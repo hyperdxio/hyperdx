@@ -22,7 +22,7 @@ const defaultRateLimiter = rateLimiter({
   keyGenerator: rateLimiterKeyGenerator,
 });
 
-router.get('/', validateUserAccessKey, (req, res, next) => {
+router.get('/', validateUserAccessKey, (req, res) => {
   res.json({
     version: 'v2',
     user: req.user?.toJSON(),

@@ -66,6 +66,16 @@ export const DASHBOARD_TILE_PADDING_INLINE =
 const HEADER_SPACING = DASHBOARD_TILE_PADDING_INLINE;
 const HEADER_SPACING_SLIM = 'calc(var(--mantine-spacing-md) * 0.25)';
 
+// Reserve a consistent card-header height so tiles with a title-only header line
+// up with tiles whose header carries controls (display switcher, indicators,
+// kebab, etc.). Sized to the tallest of those controls — the DisplaySwitcher: an
+// 18px `xs` ActionIcon inside a `py-2` (8px) group = 34px content, plus the
+// header's slim vertical padding (spacing-md * 0.25 top and bottom = 8px) and the
+// 1px bottom border, which count toward the box under `box-sizing: border-box` =
+// 43px. The header centers its content, so shorter headers pad up to match
+// instead of changing where the divider sits.
+const CARD_HEADER_MIN_HEIGHT = 43;
+
 function ChartContainer({
   title,
   toolbarItems,
@@ -117,7 +127,23 @@ function ChartContainer({
                     // separator so every tile has a consistent header.
                     paddingTop: HEADER_SPACING_SLIM,
                     paddingBottom: HEADER_SPACING_SLIM,
+                    // Uniform header height whether or not the header has
+                    // controls, so titles and dividers align across tiles.
+                    minHeight: CARD_HEADER_MIN_HEIGHT,
                     borderBottom: '1px solid var(--color-border)',
+                    // Keep the header pinned to the top of the card while the
+                    // body scrolls. The scrollable body lives in its own region
+                    // below (see the `disableReactiveContainer` branch), so the
+                    // header must never shrink or scroll with it. `position:
+                    // sticky` is a belt-and-suspenders fallback for the case
+                    // where the card itself (rather than the body region) is the
+                    // scroll container; it needs an opaque background matching
+                    // the card and a z-index to sit above scrolled content.
+                    flexShrink: 0,
+                    position: 'sticky',
+                    top: 0,
+                    zIndex: 2,
+                    background: 'var(--color-bg-body)',
                   }
                 : undefined
             }
@@ -186,7 +212,17 @@ function ChartContainer({
           </Group>
         )}
         {disableReactiveContainer ? (
-          children
+          cardHeader ? (
+            // In a card, the header row above is fixed (flexShrink: 0) and the
+            // body owns the scroll. This keeps a sticky-style header genuinely
+            // pinned for tall, normal-flow content (e.g. a long bar list) that
+            // would otherwise scroll the whole card and drag the header away.
+            <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+              {children}
+            </div>
+          ) : (
+            children
+          )
         ) : (
           <div
             // Hack, recharts will release real fix soon https://github.com/recharts/recharts/issues/172

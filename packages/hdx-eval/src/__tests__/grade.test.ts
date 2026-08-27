@@ -22,12 +22,13 @@ function buildRun(args: {
     input?: unknown;
   }>;
   finalAnswer: string;
+  mcp?: string;
 }): RunRecord {
   return {
     schemaVersion: 1,
     runId: `${args.scenario}-test-0`,
     scenario: args.scenario,
-    mcp: 'hyperdx',
+    mcp: args.mcp ?? 'hyperdx',
     model: 'claude-sonnet-4-6',
     plugin: 'none',
     runIndex: 0,
@@ -239,14 +240,14 @@ describe('gradeBatch tool-error penalty', () => {
   });
 });
 
-describe('gradeBatch transcript-aware adoption checks', () => {
+describe('gradeBatch metric-adoption checks', () => {
   const tmpRoot = join('/tmp', `hdx-eval-adoption-test-${Date.now()}`);
 
   afterAll(() => {
     rmSync(tmpRoot, { recursive: true, force: true });
   });
 
-  it('populates the adoption block from the tool-call transcript', async () => {
+  it('populates the adoption block from tool-call args', async () => {
     const batchDir = join(tmpRoot, 'adopted');
     writeBatch(
       batchDir,
@@ -279,21 +280,78 @@ describe('gradeBatch transcript-aware adoption checks', () => {
               groupBy: ['k8s.pod.name', 'jvm.memory.pool.name'],
             },
           },
+          // Summary metrics are discoverable but not queryable by the
+          // builder tools — the intended path is discovery → clickstack_sql.
+          // One SQL call naming the summary metric satisfies BOTH summary
+          // checks (discovered_summary_metric needs the name anywhere;
+          // queried_summary_via_sql additionally needs SELECT /
+          // ValueAtQuantiles in the same call's args).
+          {
+            name: 'mcp__hyperdx__clickstack_sql',
+            isError: false,
+            input: {
+              connectionId: 'c1',
+              sql: "SELECT TimeUnix, ValueAtQuantiles.Value[indexOf(ValueAtQuantiles.Quantile, 0.99)] AS p99 FROM eval_metric_saturation_otel_metrics_summary WHERE MetricName = 'db.client.operation.duration' ORDER BY TimeUnix",
+            },
+          },
         ],
         finalAnswer: 'JVM heap leak on recommendation-service.',
       }),
     );
     const result = await gradeBatch(batchDir, { skipJudge: true });
     const grade: GradeRecord = result.graded[0];
-    // All four transcript checks hit (used a metric tool, described the JVM
-    // memory metric, described the GC-pause metric, grouped memory by
-    // pod/pool).
+    // All six adoption checks hit (queried a target metric, the JVM memory
+    // metric, a GC metric, grouped memory by pod/pool in one call, and
+    // discovered + SQL-queried the summary distractor).
     expect(grade.adoption).toBeDefined();
+    expect(grade.adoption!.hits.map(h => h.id).sort()).toEqual([
+      'discovered_summary_metric',
+      'grouped_memory_by_pod_or_pool',
+      'queried_gc_metric',
+      'queried_jvm_memory_metric',
+      'queried_summary_via_sql',
+      'queried_target_metric',
+    ]);
     expect(grade.adoption!.score).toBeCloseTo(1, 5);
     expect(grade.adoption!.hits.every(h => h.satisfied)).toBe(true);
   });
 
-  it('scores zero adoption when no metric tools were used, without touching combinedScore', async () => {
+  it('grants adoption to a clickhouse-arm run that queries the metrics via SQL', async () => {
+    const batchDir = join(tmpRoot, 'sql-adopted');
+    writeBatch(
+      batchDir,
+      'metric-saturation',
+      'clickhouse',
+      buildRun({
+        scenario: 'metric-saturation',
+        mcp: 'clickhouse',
+        toolCalls: [
+          {
+            name: 'mcp__clickhouse__run_select_query',
+            isError: false,
+            input: {
+              query:
+                "SELECT MetricName, avg(Value) FROM otel_metrics_exponential_histogram WHERE MetricName = 'jvm.gc.pause' GROUP BY MetricName",
+            },
+          },
+        ],
+        finalAnswer: 'JVM heap leak on recommendation-service.',
+      }),
+    );
+    const result = await gradeBatch(batchDir, { skipJudge: true });
+    const grade = result.graded[0];
+    // Args-based detection is arm-agnostic: naming the target metric in raw
+    // SQL counts the same as calling a dedicated metric tool…
+    expect(grade.adoption).toBeDefined();
+    expect(grade.adoption!.score).toBeGreaterThan(0);
+    expect(
+      grade.adoption!.hits.find(h => h.id === 'queried_gc_metric')!.satisfied,
+    ).toBe(true);
+    // …and adoption still never feeds the outcome score.
+    expect(grade.combinedScore).toBeCloseTo(grade.programmatic.score, 5);
+  });
+
+  it('scores zero adoption when no tool call names a target metric, without touching combinedScore', async () => {
     const batchDir = join(tmpRoot, 'not-adopted');
     writeBatch(
       batchDir,
@@ -352,8 +410,8 @@ describe('gradeBatch transcript-aware adoption checks', () => {
     expect(grade.combinedScore).toBeLessThan(grade.adoption!.score);
   });
 
-  it('omits the adoption block for scenarios without a transcript rubric', async () => {
-    const batchDir = join(tmpRoot, 'no-transcript-rubric');
+  it('omits the adoption block for scenarios without an adoption rubric', async () => {
+    const batchDir = join(tmpRoot, 'no-adoption-rubric');
     writeBatch(
       batchDir,
       'error-root-cause',

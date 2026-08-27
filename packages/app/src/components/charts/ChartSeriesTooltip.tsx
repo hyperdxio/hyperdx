@@ -1,20 +1,34 @@
 import Link from 'next/link';
-import { ActionIcon, Group, Stack, Text, Tooltip } from '@mantine/core';
+import {
+  ActionIcon,
+  Group,
+  Stack,
+  Text,
+  Tooltip,
+  UnstyledButton,
+} from '@mantine/core';
 import { useClipboard } from '@mantine/hooks';
 import {
+  IconArrowsMaximize,
   IconCheck,
   IconCopy,
   IconFocusCentered,
   IconSearch,
 } from '@tabler/icons-react';
 
+import { MAX_EXPANDED_TOOLTIP_ROWS } from '@/defaults';
 import type { ActiveClickSeries } from '@/HDXMultiSeriesTimeChart';
+import {
+  getVisibleTooltipRows,
+  MAX_TOOLTIP_ROWS,
+} from '@/HDXMultiSeriesTimeChart';
 import type { NumberFormat } from '@/types';
 
 import {
   ChartTooltipContainer,
   ChartTooltipHeader,
   ChartTooltipItem,
+  useChartTooltipActionZIndex,
 } from './ChartTooltip';
 
 /**
@@ -33,6 +47,7 @@ function SeriesRow({
   previousValue,
   numberFormat,
   actions,
+  actionTooltipZIndex,
 }: {
   name: string;
   dataKey?: string;
@@ -46,6 +61,8 @@ function SeriesRow({
     onDrillIn: () => void;
     onFocus: () => void;
   };
+  /** z-index for the action tooltips, so they sit above the pinned popover. */
+  actionTooltipZIndex?: number;
 }) {
   const clipboard = useClipboard({ timeout: 1500 });
 
@@ -75,6 +92,7 @@ function SeriesRow({
             withinPortal
             color="gray"
             position="top"
+            zIndex={actionTooltipZIndex}
           >
             <ActionIcon
               component={Link}
@@ -98,6 +116,7 @@ function SeriesRow({
           withinPortal
           color="gray"
           position="top"
+          zIndex={actionTooltipZIndex}
         >
           <ActionIcon
             variant="subtle"
@@ -119,6 +138,7 @@ function SeriesRow({
           withinPortal
           color="gray"
           position="top"
+          zIndex={actionTooltipZIndex}
         >
           <ActionIcon
             variant="subtle"
@@ -150,6 +170,38 @@ export type ChartSeriesTooltipProps = {
   onDismiss?: () => void;
   /** Focus a series by its raw key + display name. */
   onFocusSeries?: (payload: { dataKey?: string; name: string }) => void;
+  /** Clear an active series focus; renders a "Show All Series" footer action when set. */
+  onShowAllSeries?: () => void;
+  /**
+   * Series dropped by the chart's render cap (i.e. absent from activePayload
+   * entirely, not just beyond this tooltip's row cap). Added to the tooltip's
+   * own overflow to size the "+N more" affordance against the true total.
+   */
+  hiddenSeriesCount?: number;
+  /**
+   * Render every series on the chart, bypassing the cap. When provided, the
+   * "+N more" line becomes a button that triggers it (the same escape hatch as
+   * the chart's hidden-series warning). Omit to keep "+N more" passive.
+   */
+  onLoadAllSeries?: () => void;
+  /**
+   * When true, the caller has already loaded all series ("load all" is active),
+   * so the tooltip renders EVERY row (up to `expandedRowCap`) in its scrollable
+   * body instead of clamping to MAX_TOOLTIP_ROWS. This is what makes the pinned
+   * tooltip's "load all" actually reveal the extra rows: the container
+   * (.chartTooltipContent) already scrolls, so lifting the render cap lets the
+   * user scroll through the full set. Kept bounded by `expandedRowCap` so a
+   * runaway high-cardinality bucket can't mount thousands of row Tooltips.
+   */
+  expanded?: boolean;
+  /**
+   * Upper bound on rows rendered when `expanded`. Defaults to
+   * MAX_EXPANDED_TOOLTIP_ROWS. Each row mounts several Mantine Tooltips, so this
+   * is deliberately well below the chart's materialize ceiling — enough to make
+   * "load all" meaningfully bigger than the 20-row preview without mounting
+   * thousands of popovers. Series beyond it stay counted in the "+N more" line.
+   */
+  expandedRowCap?: number;
 };
 
 /**
@@ -167,7 +219,15 @@ export function ChartSeriesTooltip({
   buildSearchUrl,
   onDismiss,
   onFocusSeries,
+  onShowAllSeries,
+  hiddenSeriesCount = 0,
+  onLoadAllSeries,
+  expanded = false,
+  expandedRowCap = MAX_EXPANDED_TOOLTIP_ROWS,
 }: ChartSeriesTooltipProps) {
+  // Called before any early return to keep hook order stable.
+  const actionTooltipZIndex = useChartTooltipActionZIndex();
+
   // Exclude previous-period series from the row list; their comparison is
   // folded into the matching current-period row as a percent-change chip.
   const rows = activePayload
@@ -179,6 +239,20 @@ export function ChartSeriesTooltip({
   if (rows.length === 0) {
     return null;
   }
+
+  // Cap rendered rows (each mounts a Mantine Tooltip); rows is value-desc, so
+  // this keeps the largest. No cursor concept here — the pin is frozen. Once
+  // "load all" is active (`expanded`), render every row (up to expandedRowCap)
+  // so the user can scroll the full set instead of being stuck at the 20-row
+  // preview; the scrollable container bounds the height either way.
+  const rowCap = expanded ? expandedRowCap : MAX_TOOLTIP_ROWS;
+  const { rows: visibleRows, hiddenCount: tooltipHiddenCount } =
+    getVisibleTooltipRows(rows, undefined, rowCap);
+
+  // Rows not shown = those beyond this tooltip's cap PLUS series the chart's
+  // render cap dropped entirely (absent from activePayload). Clicking loads all
+  // series onto the chart — the same escape hatch as the hidden-series warning.
+  const totalHidden = tooltipHiddenCount + hiddenSeriesCount;
 
   // Per-series actions only make sense with more than one group (a single series
   // is covered by the header/footer).
@@ -199,7 +273,23 @@ export function ChartSeriesTooltip({
     />
   );
 
-  const footer = canDrillDown ? (
+  const showAllSeriesAction =
+    onShowAllSeries != null ? (
+      <UnstyledButton
+        data-testid="chart-show-all-series"
+        onClick={() => {
+          onShowAllSeries();
+          onDismiss?.();
+        }}
+      >
+        <Group gap={8} py={2}>
+          <IconArrowsMaximize size={14} />
+          <Text size="xs">Show All Series</Text>
+        </Group>
+      </UnstyledButton>
+    ) : null;
+
+  const viewAllEventsAction = canDrillDown ? (
     <Link
       data-testid="chart-view-events-link"
       href={bucketSearchUrl}
@@ -214,12 +304,21 @@ export function ChartSeriesTooltip({
         <Text size="xs">View All Events</Text>
       </Group>
     </Link>
-  ) : undefined;
+  ) : null;
+
+  const footer =
+    showAllSeriesAction != null || viewAllEventsAction != null ? (
+      <Stack gap={2}>
+        {showAllSeriesAction}
+        {viewAllEventsAction}
+      </Stack>
+    ) : undefined;
 
   return (
     <ChartTooltipContainer header={header} footer={footer}>
-      <Stack gap={2} style={{ maxHeight: 200, overflowY: 'auto' }}>
-        {rows.map((payload, idx) => {
+      {/* Height bounded by the shared .chartTooltipContent container. */}
+      <Stack gap={2}>
+        {visibleRows.map((payload, idx) => {
           const name = payload.name ?? payload.dataKey ?? '';
           const rowNumberFormat =
             (payload.valueColumnName != null
@@ -241,6 +340,7 @@ export function ChartSeriesTooltip({
               value={payload.value!}
               previousValue={payload.previousValue}
               numberFormat={rowNumberFormat}
+              actionTooltipZIndex={actionTooltipZIndex}
               actions={
                 showPerSeriesActions
                   ? {
@@ -259,6 +359,21 @@ export function ChartSeriesTooltip({
             />
           );
         })}
+        {totalHidden > 0 &&
+          (onLoadAllSeries ? (
+            <UnstyledButton
+              onClick={onLoadAllSeries}
+              aria-label={`Load all ${totalHidden.toLocaleString()} more series`}
+            >
+              <Text size="xs" c="dimmed" fs="italic" pt={2}>
+                +{totalHidden.toLocaleString()} more (click to load all)
+              </Text>
+            </UnstyledButton>
+          ) : (
+            <Text size="xs" c="dimmed" fs="italic" pt={2}>
+              +{totalHidden.toLocaleString()} more
+            </Text>
+          ))}
       </Stack>
     </ChartTooltipContainer>
   );

@@ -113,10 +113,11 @@ ci-build:
 .PHONY: ci-lint
 ci-lint:
 	npx nx run-many -t ci:lint
+	node scripts/ci/ratchet.mjs
 
 .PHONY: dev-int-down
 dev-int-down:
-	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml down
+	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml down -v
 	@for port in $(HDX_CI_API_PORT) $(HDX_CI_OPAMP_PORT); do \
 		pids=$$(lsof -ti :$$port 2>/dev/null); \
 		for pid in $$pids; do \
@@ -155,7 +156,7 @@ dev-int:
 	@bash scripts/ensure-dev-portal.sh
 	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml up -d
 	bash -c 'set -o pipefail; npx nx run @hyperdx/api:dev:int $(FILE) 2>&1 | tee $(HDX_CI_LOGS_DIR)/api-int.log'; ret=$$?; \
-	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml down; \
+	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml down -v; \
 	$(call archive-int-logs); \
 	exit $$ret
 
@@ -166,7 +167,7 @@ dev-int-common-utils:
 	@bash scripts/ensure-dev-portal.sh
 	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml up -d
 	bash -c 'set -o pipefail; npx nx run @hyperdx/common-utils:dev:int $(FILE) 2>&1 | tee $(HDX_CI_LOGS_DIR)/common-utils-int.log'; ret=$$?; \
-	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml down; \
+	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml down -v; \
 	$(call archive-int-logs); \
 	exit $$ret
 
@@ -175,7 +176,7 @@ ci-int:
 	@mkdir -p $(HDX_CI_LOGS_DIR)
 	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml up -d --quiet-pull
 	bash -c 'set -o pipefail; npx nx run-many -t ci:int --parallel=false --output-style=stream 2>&1 | tee $(HDX_CI_LOGS_DIR)/ci-int.log'; ret=$$?; \
-	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml down; \
+	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml down -v; \
 	$(call archive-int-logs); \
 	exit $$ret
 
@@ -186,10 +187,13 @@ dev-unit:
 .PHONY: ci-unit
 ci-unit:
 	npx nx run-many -t ci:unit
+	node --test .github/scripts/__tests__/release-notes.test.mjs
+	node --test .github/scripts/__tests__/changeset-hash.test.mjs
 
 .PHONY: ci-triage
 ci-triage:
 	node --test .github/scripts/__tests__/pr-triage-classify.test.js
+	node --test scripts/ci/__tests__/ratchet.test.mjs
 
 # ---------------------------------------------------------------------------
 # E2E tests — port isolation is handled by scripts/test-e2e.sh

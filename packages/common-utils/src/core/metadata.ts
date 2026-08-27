@@ -15,6 +15,11 @@ import {
 } from '@/clickhouse';
 import { renderChartConfig, timeFilterExpr } from '@/core/renderChartConfig';
 import {
+  FilterState,
+  filterStateToPredicate,
+  serializeFilterState,
+} from '@/filters';
+import {
   buildTextIndexInfoLookup,
   skipIndexMatches,
   TextIndexInfo,
@@ -33,6 +38,7 @@ import {
   supportsMergeTreeTextIndex,
 } from './clickhouseVersion';
 import {
+  optimizeFacetedKeyValuesConfig,
   optimizeGetKeyValuesCalls,
   renderStartOfBucketExpr,
 } from './materializedViews';
@@ -346,6 +352,43 @@ export class Metadata {
     }
 
     return keyExpression;
+  }
+
+  /**
+   * Batch-render key expressions to their physical SQL form, keyed by the raw
+   * expression the caller passed in.
+   *
+   * Public so that callers building SQL which must line up with what
+   * `getKeyValues` emits — e.g. the materialized-view EXPLAIN probe in
+   * `optimizeFacetedKeyValuesConfig` — can render the same way rather than
+   * interpolating the raw expressions and diverging on JSON columns.
+   */
+  async renderKeyExpressions({
+    databaseName,
+    tableName,
+    connectionId,
+    keys,
+  }: {
+    databaseName: string;
+    tableName: string;
+    connectionId: string;
+    keys: string[];
+  }): Promise<Map<string, string>> {
+    const rendered = new Map<string, string>();
+    await Promise.all(
+      keys.map(async key => {
+        rendered.set(
+          key,
+          await this.renderMetadataKeyExpression({
+            databaseName,
+            tableName,
+            connectionId,
+            keyExpression: key,
+          }),
+        );
+      }),
+    );
+    return rendered;
   }
 
   private async queryTableMetadata({
@@ -1155,9 +1198,15 @@ export class Metadata {
         for (const [columnName, info] of queryOptions.entries()) {
           const orChain = concatChSql(
             ' OR ',
+            // Inline keys as SQL-escaped literals, not bind params: ~100
+            // per-key params exceed the web client's URL param budget and
+            // silently switch the request to a multipart body that proxies
+            // may reject. Keys are ingest-controlled, hence SqlString.escape.
             info.keys.map(
               k =>
-                chSql`startsWith(token, ${{ String: `${k}${info.separator}` }})`,
+                chSql`startsWith(token, ${{
+                  UNSAFE_RAW_SQL: SqlString.escape(`${k}${info.separator}`),
+                }})`,
             ),
           );
           const partsFilter = await this.partsOverlapFilter({
@@ -1329,17 +1378,22 @@ export class Metadata {
         // this should only be one mv... but we have a for loop in case
         const branch: ChSql[] = [];
         for (const [columnName, keys] of entry) {
-          const sql = chSql`(ColumnIdentifier = ${{ String: columnName }} AND Key IN (${concatChSql(
-            ',',
-            keys.map(key => chSql`${{ String: key }}`),
-          )}))`;
+          // Inline keys as SQL-escaped literals, not bind params: ~100
+          // per-key params exceed the web client's URL param budget and
+          // silently switch the request to a multipart body that proxies
+          // may reject. Keys are ingest-controlled, hence SqlString.escape.
+          const sql = chSql`(ColumnIdentifier = ${{ String: columnName }} AND Key IN (${{
+            UNSAFE_RAW_SQL: keys.map(key => SqlString.escape(key)).join(','),
+          }}))`;
           branch.push(sql);
         }
+        // Parenthesize the OR chain: `a OR b AND timeFilter` would bind the
+        // time filter (and notEmpty) to the last branch only.
         const sql = chSql`
           SELECT * FROM (
             SELECT ColumnIdentifier, Key, groupUniqArray(${{ Int32: maxValuesPerKey }})(Value) as Values
             FROM ${tableExpr({ database: databaseName, table: mvName })}
-            WHERE ${concatChSql(' OR ', branch)}
+            WHERE (${concatChSql(' OR ', branch)})
               AND ${timeFilter}
               AND notEmpty(Value)
             GROUP BY ColumnIdentifier, Key
@@ -2402,6 +2456,7 @@ export class Metadata {
   async getKeyValues({
     chartConfig,
     keys,
+    keyConditions,
     limit = 20,
     disableRowLimit = false,
     signal,
@@ -2409,6 +2464,19 @@ export class Metadata {
   }: {
     chartConfig: BuilderChartConfigWithDateRange;
     keys: string[];
+    /**
+     * Optional per-key constraint, aligned with `keys`: the selections that
+     * should narrow this key's values. When provided for a key, its values are
+     * gathered with `groupUniqArrayIf(key, <predicate>)` so several "faceted"
+     * value lists (each constrained differently) resolve in a single table
+     * scan. Only applied when `disableRowLimit` is true (the path used by
+     * filter dropdowns).
+     *
+     * Keys inside the state are RAW expressions; they are rendered here the
+     * same way as `keys`, so the predicate addresses the same physical column
+     * as the aggregate wrapping it.
+     */
+    keyConditions?: (FilterState | undefined)[];
     limit?: number;
     disableRowLimit?: boolean;
     signal?: AbortSignal;
@@ -2426,6 +2494,8 @@ export class Metadata {
         'filters',
       ]),
       keys,
+      // Serialize rather than hashing the raw state: the selections are Sets.
+      keyConditions: keyConditions?.map(s => s && serializeFilterState(s)),
       disableRowLimit,
     };
     return this.cache.getOrFetch(
@@ -2433,24 +2503,39 @@ export class Metadata {
       async () => {
         if (keys.length === 0) return [];
 
-        const renderedKeys = await Promise.all(
-          keys.map(key =>
-            this.renderMetadataKeyExpression({
-              databaseName: chartConfig.from.databaseName,
-              tableName: chartConfig.from.tableName,
-              connectionId: chartConfig.connection,
-              keyExpression: key,
-            }),
-          ),
-        );
+        // A constraint only ever references sibling keys from this same call,
+        // so the map always covers it; `?? key` is a defensive fallback rather
+        // than an expected path.
+        const renderedByKey = await this.renderKeyExpressions({
+          databaseName: chartConfig.from.databaseName,
+          tableName: chartConfig.from.tableName,
+          connectionId: chartConfig.connection,
+          keys,
+        });
+        const renderKey = (key: string) => renderedByKey.get(key) ?? key;
+        const renderedKeys = keys.map(renderKey);
 
         // When disableRowLimit is true, query directly without CTE
         // Otherwise, use CTE with row limits for sampling
         const sqlConfig = disableRowLimit
           ? {
               ...chartConfig,
-              select: renderedKeys
-                .map((k, i) => `groupUniqArray(${limit})(${k}) AS param${i}`)
+              select: keys
+                .map((key, i) => {
+                  const k = renderKey(key);
+                  const state = keyConditions?.at(i);
+                  // Render the constraint against the same expressions used in
+                  // the SELECT, or the predicate would address a different
+                  // physical column than the aggregate wrapping it.
+                  const condition =
+                    state && filterStateToPredicate(state, renderKey);
+                  // `groupUniqArrayIf` lets each key be constrained by its own
+                  // predicate, so multiple faceted value lists are computed in a
+                  // single scan instead of one query per key.
+                  return condition
+                    ? `groupUniqArrayIf(${limit})(${k}, ${condition}) AS param${i}`
+                    : `groupUniqArray(${limit})(${k}) AS param${i}`;
+                })
                 .join(', '),
             }
           : await (async () => {
@@ -2653,6 +2738,7 @@ export class Metadata {
   async getKeyValuesWithMVs({
     chartConfig,
     keys,
+    keyConditions,
     source,
     limit = 20,
     disableRowLimit,
@@ -2660,6 +2746,8 @@ export class Metadata {
   }: {
     chartConfig: BuilderChartConfigWithDateRange;
     keys: string[];
+    /** Per-key constraints for faceted value lookups; see getKeyValues. */
+    keyConditions?: (FilterState | undefined)[];
     source: TSource | undefined;
     limit?: number;
     disableRowLimit?: boolean;
@@ -2675,12 +2763,39 @@ export class Metadata {
         'filters',
       ]),
       keys,
+      // Serialize rather than hashing the raw state: the selections are Sets.
+      keyConditions: keyConditions?.map(s => s && serializeFilterState(s)),
       disableRowLimit,
     };
     return this.cache.getOrFetch(
       `${objectHash(cacheKeyConfig)}.getKeyValuesWithMVs`,
       async () => {
         if (keys.length === 0) return [];
+
+        // Faceted lookups apply a different predicate per key, so they can't be
+        // split across single-key materialized views — but they can run as one
+        // scan against a materialized view whose dimensions cover every filter
+        // column (else fall back to the raw table).
+        if (keyConditions && keyConditions.some(c => c != null)) {
+          const facetedConfig = await optimizeFacetedKeyValuesConfig({
+            chartConfig,
+            keys,
+            keyConditions,
+            source,
+            clickhouseClient: this.clickhouseClient,
+            metadata: this,
+            signal,
+          });
+          return this.getKeyValues({
+            chartConfig: facetedConfig,
+            keys,
+            keyConditions,
+            limit,
+            disableRowLimit,
+            signal,
+            source,
+          });
+        }
 
         const defaultKeyValueCall = { chartConfig, keys };
         const canHaveMVs =

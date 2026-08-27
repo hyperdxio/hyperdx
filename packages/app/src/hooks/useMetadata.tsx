@@ -13,6 +13,10 @@ import {
   TableMetadata,
 } from '@hyperdx/common-utils/dist/core/metadata';
 import {
+  FilterState,
+  serializeFilterState,
+} from '@hyperdx/common-utils/dist/filters';
+import {
   BuilderChartConfigWithDateRange,
   isLogSource,
   isTraceSource,
@@ -39,7 +43,7 @@ export type Facet = { key: string; value: string[] };
 export function useMetadataWithSettings() {
   const [metadata, setMetadata] = useState(getMetadata());
   const { data: me } = api.useMe();
-  const settingsApplied = useRef(false);
+  const settingsAppliedRef = useRef(false);
   const queryClient = useQueryClient();
 
   // Create a listener that triggers when connections are updated in local mode
@@ -53,7 +57,7 @@ export function useMetadataWithSettings() {
         // Create a new metadata instance with a new ClickHouse client,
         // since the existing one will not have connection / auth info.
         setMetadata(getMetadata());
-        settingsApplied.current = false;
+        settingsAppliedRef.current = false;
         // Clear react-query cache so that metadata is refetched with
         // the new connection info, and error states are cleared.
         queryClient.resetQueries();
@@ -67,11 +71,11 @@ export function useMetadataWithSettings() {
   }, [queryClient]);
 
   useEffect(() => {
-    if (me?.team?.metadataMaxRowsToRead && !settingsApplied.current) {
+    if (me?.team?.metadataMaxRowsToRead && !settingsAppliedRef.current) {
       metadata.setClickHouseSettings({
         max_rows_to_read: String(me.team.metadataMaxRowsToRead),
       });
-      settingsApplied.current = true;
+      settingsAppliedRef.current = true;
     }
   }, [me?.team?.metadataMaxRowsToRead, metadata]);
 
@@ -234,8 +238,13 @@ export function useMultipleAllFields(
 ) {
   const metadata = useMetadataWithSettings();
   const { data: me, isFetched } = api.useMe();
-  const { dateRange, timestampValueExpression, intersect, ...queryOptions } =
-    options ?? {};
+  const {
+    dateRange,
+    timestampValueExpression,
+    intersect,
+    enabled: enabledOption = true,
+    ...queryOptions
+  } = options ?? {};
   return useQuery<Field[]>({
     queryKey: [
       'useMetadata.useMultipleAllFields',
@@ -274,13 +283,14 @@ export function useMultipleAllFields(
         ? intersect2dArray<Field>(fields2d)
         : deduplicate2dArray<Field>(fields2d);
     },
+    ...queryOptions,
     enabled:
+      enabledOption &&
       tableConnections.length > 0 &&
       tableConnections.every(
         tc => !!tc.databaseName && !!tc.tableName && !!tc.connectionId,
       ) &&
       isFetched,
-    ...queryOptions,
   });
 }
 
@@ -332,6 +342,7 @@ export function useMultipleGetKeyValues(
   {
     chartConfigs,
     keys,
+    keyConditions,
     limit,
     disableRowLimit,
     mode = 'exact',
@@ -341,6 +352,8 @@ export function useMultipleGetKeyValues(
       | BuilderChartConfigWithDateRange
       | BuilderChartConfigWithDateRange[];
     keys: string[];
+    /** Per-key constraints for faceted ('exact' mode) value lookups. */
+    keyConditions?: (FilterState | undefined)[];
     limit?: number;
     disableRowLimit?: boolean;
     mode?: 'all' | 'exact';
@@ -366,6 +379,9 @@ export function useMultipleGetKeyValues(
       metadataMVsOverride,
       ...chartConfigsArr.map(cc => ({ ...cc })),
       ...keys,
+      // Serialized: react-query hashes keys with JSON.stringify, which would
+      // flatten every distinct Set selection to `{}`.
+      keyConditions?.map(c => c && serializeFilterState(c)),
       disableRowLimit,
       maxKeys,
     ],
@@ -412,6 +428,7 @@ export function useMultipleGetKeyValues(
             return metadata.getKeyValuesWithMVs({
               chartConfig,
               keys: keys.slice(0, maxKeys),
+              keyConditions: keyConditions?.slice(0, maxKeys),
               limit,
               disableRowLimit,
               source,
@@ -472,6 +489,7 @@ export function useGetKeyValues(
   {
     chartConfig,
     keys,
+    keyConditions,
     limit,
     disableRowLimit,
     mode,
@@ -479,6 +497,8 @@ export function useGetKeyValues(
   }: {
     chartConfig?: BuilderChartConfigWithDateRange;
     keys: string[];
+    /** Per-key constraints for faceted value lookups (groupUniqArrayIf). */
+    keyConditions?: (FilterState | undefined)[];
     limit?: number;
     disableRowLimit?: boolean;
     mode?: 'all' | 'exact';
@@ -490,6 +510,7 @@ export function useGetKeyValues(
     {
       chartConfigs: chartConfig ? [chartConfig] : [],
       keys,
+      keyConditions,
       limit,
       disableRowLimit,
       mode,

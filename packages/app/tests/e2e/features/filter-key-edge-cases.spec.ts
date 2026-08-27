@@ -507,3 +507,72 @@ for (const scenario of SCENARIOS) {
     },
   );
 }
+
+// A variable-enabled filter persists its selection under the variable's NAME,
+// so the filter's expression never reaches the URL. That takes the whole
+// key-mangling class above — brackets, quotes, dots, hyphens — off the
+// persistence path entirely, while the executed query is unchanged.
+test.describe(
+  'Filter key edge cases — variable-keyed persistence',
+  { tag: ['@dashboard', '@full-stack'] },
+  () => {
+    test('a Map-key filter persists under its variable name, not its expression', async ({
+      page,
+    }) => {
+      test.setTimeout(120000);
+      const dashboardPage = new DashboardPage(page);
+      const SOURCE = INTERESTING_FILTER_KEYS_SOURCE_NAME;
+      const EXPRESSION = "ResourceAttributes['key.subKey.subSubKey']";
+
+      await test.step('create a count Number tile with a variable-enabled Map-key filter', async () => {
+        await dashboardPage.goto();
+        await dashboardPage.createNewDashboard();
+        await dashboardPage.timePicker.selectRelativeTime('Last 1 hour');
+        await dashboardPage.addNumberTile('Count tile', SOURCE);
+        await expect(dashboardPage.getNumberTileValue()).toHaveText('3', {
+          timeout: QUERY_TIMEOUT,
+        });
+
+        await dashboardPage.openEditFiltersModal();
+        await dashboardPage.addCustomFilter('MapKeyVar', SOURCE, EXPRESSION, {
+          variableName: 'mapkey',
+        });
+        await dashboardPage.closeFiltersModal();
+      });
+
+      await test.step('selecting a value filters the tile and writes a variable entry', async () => {
+        await dashboardPage.toggleFilterValue(
+          'MapKeyVar',
+          ROW1.resourceAttrValue,
+        );
+        await expect(dashboardPage.getNumberTileValue()).toHaveText('1', {
+          timeout: QUERY_TIMEOUT,
+        });
+        await expect(dashboardPage.getTileError()).toHaveCount(0);
+
+        await expect(async () => {
+          const raw = new URL(page.url()).searchParams.get('filters');
+          expect(raw).not.toBeNull();
+          expect(JSON.parse(decodeURIComponent(raw!))).toEqual([
+            {
+              type: 'variable',
+              name: 'mapkey',
+              values: [ROW1.resourceAttrValue],
+            },
+          ]);
+          // No bracket- or quote-bearing key anywhere in the param.
+          expect(raw).not.toContain('ResourceAttributes');
+        }).toPass({ timeout: 10000 });
+      });
+
+      await test.step('the selection survives a reload', async () => {
+        await page.reload();
+        await dashboardPage.waitForLoaded();
+        await expect(dashboardPage.getNumberTileValue()).toHaveText('1', {
+          timeout: QUERY_TIMEOUT,
+        });
+        await expect(dashboardPage.getTileError()).toHaveCount(0);
+      });
+    });
+  },
+);

@@ -1,3 +1,3 @@
 export { buildInFilterCondition } from './helpers';
 export { EndpointLatencyChart } from './HttpTab';
-export { default } from './ServicesDashboardPage';
+export { default, getEffectiveTraceSourceId } from './ServicesDashboardPage';

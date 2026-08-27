@@ -3,7 +3,7 @@ import { parseAsJson, useQueryState } from 'nuqs';
 import {
   DashboardContainer,
   DashboardFilter,
-  Filter,
+  DashboardFilterValue,
   resolveChartPaletteToken,
   SavedChartConfig,
   SearchConditionLanguage,
@@ -38,12 +38,18 @@ export type Dashboard = {
   filters?: DashboardFilter[];
   savedQuery?: string | null;
   savedQueryLanguage?: SearchConditionLanguage | null;
-  savedFilterValues?: Filter[];
+  savedFilterValues?: DashboardFilterValue[];
   containers?: DashboardContainer[];
   createdAt?: string;
   updatedAt?: string;
   createdBy?: { email: string; name?: string };
   updatedBy?: { email: string; name?: string };
+  /** Machine-managed by ProvisionDashboardsTask, whose name-keyed upsert
+   *  overwrites tiles/tags/filters wholesale. Read-only here: the API already
+   *  returns it, and the dashboards router strips any client-supplied value.
+   *  Deliberately absent from `DashboardSchema`, which is the request
+   *  contract. Unrelated to `Connection.platformProvisioned`. */
+  provisioned?: boolean;
 };
 
 const localDashboards = createEntityStore<Dashboard>('hdx-local-dashboards');

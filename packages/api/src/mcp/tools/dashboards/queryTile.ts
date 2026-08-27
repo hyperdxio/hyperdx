@@ -19,6 +19,7 @@ export function registerQueryTile({
     'clickstack_query_tile',
     {
       title: 'Query a Dashboard Tile',
+      annotations: { readOnlyHint: true },
       description:
         'Execute the query for a specific tile on an existing dashboard. ' +
         'Useful for validating that a tile returns data or for spot-checking results ' +

@@ -1,4 +1,8 @@
 import {
+  validateDashboardFilterModes,
+  validateDashboardFilterVariableNames,
+} from '@hyperdx/common-utils/dist/dashboardValidation';
+import {
   DashboardSchema,
   DashboardWithoutIdSchema,
   PresetDashboard,
@@ -25,11 +29,28 @@ import {
   updatePresetDashboardFilter,
 } from '@/controllers/presetDashboardFilters';
 import { getNonNullUserWithTeam } from '@/middleware/auth';
-import logger from '@/utils/logger';
 import { objectIdSchema } from '@/utils/zod';
 
 // create routes that will get and update dashboards
 const router = express.Router();
+
+/**
+ * Additional filter validation (uniqueness, at least one mode enabled).
+ */
+const addFilterIssues = (
+  data: {
+    filters?: {
+      name: string;
+      variableName?: string;
+      isBroadcastEnabled?: boolean;
+      isVariableEnabled?: boolean;
+    }[];
+  },
+  ctx: z.RefinementCtx,
+) => {
+  validateDashboardFilterVariableNames(data.filters ?? [], ctx);
+  validateDashboardFilterModes(data.filters ?? [], ctx);
+};
 
 /**
  * Heal legacy `chart-1`..`chart-10` tile colors from #2265 on the request
@@ -73,13 +94,19 @@ router.post(
   '/',
   migrateLegacyDashboardTileColors,
   validateRequest({
-    body: DashboardWithoutIdSchema,
+    body: DashboardWithoutIdSchema.superRefine(addFilterIssues),
   }),
   async (req, res, next) => {
     try {
       const { teamId, userId } = getNonNullUserWithTeam(req);
 
-      const dashboard = req.body;
+      // `provisioned` marks a dashboard as machine-managed by
+      // ProvisionDashboardsTask, whose upsert overwrites tiles/tags/filters
+      // wholesale. It is server-owned: `validateRequest` validates without
+      // replacing `req.body`, and DashboardSchema is non-strict, so a
+      // client-supplied value would otherwise persist and hand the caller's
+      // dashboard to the provisioner.
+      const dashboard = _.omit(req.body, 'provisioned');
 
       const newDashboard = await createDashboard(teamId, dashboard, userId);
 
@@ -97,7 +124,7 @@ router.patch(
     params: z.object({
       id: objectIdSchema,
     }),
-    body: DashboardSchema.partial(),
+    body: DashboardSchema.partial().superRefine(addFilterIssues),
   }),
   async (req, res, next) => {
     try {
@@ -111,7 +138,8 @@ router.patch(
       }
 
       // Only omit undefined values, keep null (which signals field removal)
-      const updates = _.omitBy(req.body, _.isUndefined);
+      // `provisioned` is server-owned — see the POST handler above.
+      const updates = _.omitBy(_.omit(req.body, 'provisioned'), _.isUndefined);
 
       const updatedDashboard = await updateDashboard(
         dashboardId,

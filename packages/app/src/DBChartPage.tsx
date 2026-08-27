@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import { parseAsJson, useQueryState } from 'nuqs';
@@ -29,6 +29,7 @@ import EditTimeChartForm from '@/components/DBEditTimeChartForm';
 import { InputControlled } from '@/components/InputControlled';
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { useChartAssistant } from '@/hooks/ai';
+import { useResolvedSourceParam } from '@/hooks/useResolvedSourceParam';
 import { withAppNav } from '@/layout';
 import { useSources } from '@/source';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
@@ -218,7 +219,7 @@ function DBChartExplorerPage() {
   const { data: sources } = useSources();
   const { data: me } = api.useMe();
 
-  const [chartConfig, setChartConfig] = useQueryState(
+  const [rawChartConfig, setChartConfig] = useQueryState(
     'config',
     parseAsJson<SavedChartConfig>().withDefault({
       ...DEFAULT_CHART_CONFIG,
@@ -226,6 +227,14 @@ function DBChartExplorerPage() {
       connection: sources?.[0]?.connection,
     }),
   );
+
+  // `config.source` accepts a source name as well as a source ID. Resolve to a source object here.
+  const { source: paramSource } = useResolvedSourceParam(rawChartConfig.source);
+
+  const chartConfig = useMemo(() => {
+    if (!rawChartConfig.source) return rawChartConfig;
+    return { ...rawChartConfig, source: paramSource?.id ?? '' };
+  }, [rawChartConfig, paramSource?.id]);
 
   return (
     <Box data-testid="chart-explorer-page" p="sm">
@@ -261,7 +270,7 @@ const DBChartExplorerPageDynamic = dynamic(async () => DBChartExplorerPage, {
   ssr: false,
 });
 
-// @ts-ignore
+// @ts-expect-error next/dynamic component type does not include the getLayout static
 DBChartExplorerPageDynamic.getLayout = withAppNav;
 
 export default DBChartExplorerPageDynamic;

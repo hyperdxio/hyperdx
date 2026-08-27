@@ -7,6 +7,45 @@ import { AGG_FNS } from '@/ChartUtils';
 
 type AggFnValues = (typeof AGG_FNS)[number]['value'];
 
+// aggFn form values that are supported for histogram metrics.
+export const HISTOGRAM_SUPPORTED_AGG_FNS: string[] = ['count', 'quantile'];
+
+/**
+ * The aggregation to reach for when a metric is first picked, so a freshly
+ * selected metric charts something meaningful instead of inheriting whatever
+ * the previous series used.
+ *
+ * `level` is only set for quantiles: the form stores percentiles as
+ * `aggFn: 'quantile'` plus a separate level (see `AggFnSelectControlled`).
+ * Every value here survives the coercion effects in `ChartSeriesEditor`.
+ */
+export function defaultAggFnForMetricType(metricType: MetricsDataType): {
+  /** Form-level aggFn, matching the `string` typing of `HISTOGRAM_SUPPORTED_AGG_FNS`. */
+  aggFn: string;
+  level?: number;
+} {
+  switch (metricType) {
+    case MetricsDataType.Sum:
+      return { aggFn: 'sum' };
+    case MetricsDataType.Histogram:
+    case MetricsDataType.ExponentialHistogram:
+      // 'count' and 'quantile' are the only histogram-supported aggregations;
+      // p95 is the more useful of the two as a starting point.
+      return { aggFn: 'quantile', level: 0.95 };
+    default:
+      return { aggFn: 'avg' };
+  }
+}
+
+// Displayed versions of the supported aggregation functions for histogram metrics.
+const HISTOGRAM_SUPPORTED_AGG_FNS_DISPLAY: AggFnValues[] = [
+  'count',
+  'p99',
+  'p95',
+  'p90',
+  'p50',
+];
+
 type OnChangeValue =
   | { aggFn?: AggFnValues }
   | { aggFn: 'quantile'; level: number };
@@ -33,7 +72,7 @@ function AggFnSelect({
           level: Number.parseFloat(value.replace('p', '0.')),
         });
       } else {
-        // @ts-ignore
+        // @ts-expect-error Mantine Select passes a string; onChange expects a narrowed AggFn union
         onChange({ aggFn: value });
       }
     },
@@ -45,6 +84,15 @@ function AggFnSelect({
     // Only show 'increase' when the source is a Sum (counter) metric.
     if (metricType !== MetricsDataType.Sum) {
       opts = opts.filter(fn => fn.value !== 'increase');
+    }
+    // Filter out unsupported aggregation functions for histogram metrics.
+    if (
+      metricType === MetricsDataType.Histogram ||
+      metricType === MetricsDataType.ExponentialHistogram
+    ) {
+      opts = opts.filter(fn =>
+        HISTOGRAM_SUPPORTED_AGG_FNS_DISPLAY.includes(fn.value),
+      );
     }
     return opts;
   }, [hideCustom, metricType]);

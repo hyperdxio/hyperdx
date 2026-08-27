@@ -1,18 +1,22 @@
 import { dashboardBuildScenario } from './dashboard-build/generate';
+import { deployRegressionScenario } from './deploy-regression/generate';
 import { errorRootCauseScenario } from './error-root-cause/generate';
 import { latencySpikeScenario } from './latency-spike/generate';
 import { metricSaturationScenario } from './metric-saturation/generate';
 import { noisySignalsScenario } from './noisy-signals/generate';
+import { quietSaturationScenario } from './quiet-saturation/generate';
 import { segmentedRegressionScenario } from './segmented-regression/generate';
 import { serviceHealthCheckScenario } from './service-health-check/generate';
 import type { Scenario } from './types';
 
 export const SCENARIOS: Record<string, Scenario> = {
   [dashboardBuildScenario.name]: dashboardBuildScenario,
+  [deployRegressionScenario.name]: deployRegressionScenario,
   [errorRootCauseScenario.name]: errorRootCauseScenario,
   [latencySpikeScenario.name]: latencySpikeScenario,
   [metricSaturationScenario.name]: metricSaturationScenario,
   [noisySignalsScenario.name]: noisySignalsScenario,
+  [quietSaturationScenario.name]: quietSaturationScenario,
   [segmentedRegressionScenario.name]: segmentedRegressionScenario,
   [serviceHealthCheckScenario.name]: serviceHealthCheckScenario,
 };

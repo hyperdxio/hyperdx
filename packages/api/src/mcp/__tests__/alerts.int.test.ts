@@ -1,4 +1,7 @@
-import { SourceKind } from '@hyperdx/common-utils/dist/types';
+import {
+  MAX_ALERT_CHANNELS,
+  SourceKind,
+} from '@hyperdx/common-utils/dist/types';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 
 import * as config from '@/config';
@@ -9,7 +12,7 @@ import {
   getServer,
 } from '@/fixtures';
 import { McpContext } from '@/mcp/tools/types';
-import Alert, { AlertState } from '@/models/alert';
+import Alert, { AlertSource, AlertState } from '@/models/alert';
 import Connection from '@/models/connection';
 import Dashboard from '@/models/dashboard';
 import { SavedSearch } from '@/models/savedSearch';
@@ -510,6 +513,129 @@ describe('MCP Alert Tools', () => {
       });
     });
 
+    describe('multiple channels', () => {
+      const namedWebhook = (name: string) =>
+        Webhook.create({
+          team: team._id,
+          name,
+          service: WebhookService.Generic,
+          url: 'https://example.com/webhook',
+        });
+
+      it('should create an alert with several channels', async () => {
+        const savedSearch = await createTestSavedSearch();
+        const [w1, w2] = await Promise.all([
+          namedWebhook('mcp-multi-1'),
+          namedWebhook('mcp-multi-2'),
+        ]);
+
+        const result = await callTool(client, 'clickstack_save_alert', {
+          source: 'saved_search',
+          savedSearchId: savedSearch._id.toString(),
+          threshold: 50,
+          thresholdType: 'above',
+          interval: '5m',
+          channels: [
+            { type: 'webhook', webhookId: w1._id.toString() },
+            { type: 'webhook', webhookId: w2._id.toString() },
+          ],
+          name: 'MCP Multi Channel Alert',
+        });
+
+        expect(result.isError).toBeFalsy();
+        const output = JSON.parse(getFirstText(result));
+        expect(output.channels).toEqual([
+          { type: 'webhook', webhookId: w1._id.toString() },
+          { type: 'webhook', webhookId: w2._id.toString() },
+        ]);
+        expect(output.channel).toEqual({
+          type: 'webhook',
+          webhookId: w1._id.toString(),
+        });
+      });
+
+      it('should reject channel and channels that disagree', async () => {
+        const savedSearch = await createTestSavedSearch();
+        const [w1, w2] = await Promise.all([
+          namedWebhook('mcp-mismatch-1'),
+          namedWebhook('mcp-mismatch-2'),
+        ]);
+
+        const result = await callTool(client, 'clickstack_save_alert', {
+          source: 'saved_search',
+          savedSearchId: savedSearch._id.toString(),
+          threshold: 50,
+          thresholdType: 'above',
+          interval: '5m',
+          channel: { type: 'webhook', webhookId: w1._id.toString() },
+          channels: [{ type: 'webhook', webhookId: w2._id.toString() }],
+        });
+
+        expect(result.isError).toBe(true);
+        expect(getFirstText(result)).toContain('must match the first entry');
+      });
+
+      it('should reject duplicate channels', async () => {
+        const savedSearch = await createTestSavedSearch();
+        const webhook = await namedWebhook('mcp-dupe');
+        const ch = { type: 'webhook', webhookId: webhook._id.toString() };
+
+        const result = await callTool(client, 'clickstack_save_alert', {
+          source: 'saved_search',
+          savedSearchId: savedSearch._id.toString(),
+          threshold: 50,
+          thresholdType: 'above',
+          interval: '5m',
+          channels: [ch, ch],
+        });
+
+        expect(result.isError).toBe(true);
+        expect(getFirstText(result)).toContain('Duplicate');
+      });
+
+      it('should reject a payload with neither channel nor channels', async () => {
+        const savedSearch = await createTestSavedSearch();
+
+        const result = await callTool(client, 'clickstack_save_alert', {
+          source: 'saved_search',
+          savedSearchId: savedSearch._id.toString(),
+          threshold: 50,
+          thresholdType: 'above',
+          interval: '5m',
+        });
+
+        expect(result.isError).toBe(true);
+      });
+
+      // The MCP surface enforces the channel cap through the MCP SDK's own
+      // Zod .max() parsing of the tool's inputSchema -- a protocol-level check
+      // that runs before validateSaveAlertInput ever sees the payload. That is
+      // a different enforcement path from the HTTP routers' superRefine (see
+      // the "over the cap" case in routers/external-api/__tests__/alerts.int.test.ts),
+      // so it needs its own coverage.
+      it('should reject more than MAX_ALERT_CHANNELS channels', async () => {
+        const savedSearch = await createTestSavedSearch();
+        const many = Array.from({ length: MAX_ALERT_CHANNELS + 1 }, (_, i) => ({
+          type: 'webhook' as const,
+          webhookId: `fake-webhook-id-${i}`,
+        }));
+
+        const result = await callTool(client, 'clickstack_save_alert', {
+          source: 'saved_search',
+          savedSearchId: savedSearch._id.toString(),
+          threshold: 50,
+          thresholdType: 'above',
+          interval: '5m',
+          channels: many,
+        });
+
+        expect(result.isError).toBe(true);
+        const text = getFirstText(result);
+        expect(text).toContain('channels');
+        expect(text).toContain(String(MAX_ALERT_CHANNELS));
+      });
+    });
+
     describe('update', () => {
       it('should update an existing alert', async () => {
         const savedSearch = await createTestSavedSearch();
@@ -552,6 +678,143 @@ describe('MCP Alert Tools', () => {
         expect(output.name).toBe('Updated Name');
         expect(output.threshold).toBe(200);
         expect(output.interval).toBe('15m');
+      });
+
+      // The update path above only exercises the legacy singular `channel`;
+      // full-replace semantics on the agent surface are otherwise unverified.
+      it('replaces the full channels array on update, keeping the legacy channel mirror in sync', async () => {
+        const savedSearch = await createTestSavedSearch();
+        const [w1, w2, w3, w4] = await Promise.all([
+          Webhook.create({
+            team: team._id,
+            name: 'mcp-update-1',
+            service: WebhookService.Generic,
+            url: 'https://example.com/webhook',
+          }),
+          Webhook.create({
+            team: team._id,
+            name: 'mcp-update-2',
+            service: WebhookService.Generic,
+            url: 'https://example.com/webhook',
+          }),
+          Webhook.create({
+            team: team._id,
+            name: 'mcp-update-3',
+            service: WebhookService.Generic,
+            url: 'https://example.com/webhook',
+          }),
+          Webhook.create({
+            team: team._id,
+            name: 'mcp-update-4',
+            service: WebhookService.Generic,
+            url: 'https://example.com/webhook',
+          }),
+        ]);
+
+        const created = await callTool(client, 'clickstack_save_alert', {
+          source: 'saved_search',
+          savedSearchId: savedSearch._id.toString(),
+          threshold: 50,
+          thresholdType: 'above',
+          interval: '5m',
+          channels: [
+            { type: 'webhook', webhookId: w1._id.toString() },
+            { type: 'webhook', webhookId: w2._id.toString() },
+          ],
+          name: 'Multi Channel Alert For Update',
+        });
+        expect(created.isError).toBeFalsy();
+        const createdOutput = JSON.parse(getFirstText(created));
+
+        const newChannels = [
+          { type: 'webhook', webhookId: w3._id.toString() },
+          { type: 'webhook', webhookId: w4._id.toString() },
+        ];
+        const updated = await callTool(client, 'clickstack_save_alert', {
+          id: createdOutput.id,
+          source: 'saved_search',
+          savedSearchId: savedSearch._id.toString(),
+          threshold: 50,
+          thresholdType: 'above',
+          interval: '5m',
+          channels: newChannels,
+          name: 'Multi Channel Alert For Update',
+        });
+
+        expect(updated.isError).toBeFalsy();
+        const output = JSON.parse(getFirstText(updated));
+        expect(output.channels).toEqual(newChannels);
+        expect(output.channel).toEqual(newChannels[0]);
+
+        const persisted = await Alert.findById(createdOutput.id);
+        expect(persisted?.channels).toEqual(newChannels);
+        expect(persisted?.channel).toEqual(newChannels[0]);
+      });
+
+      it('should clear source-specific fields when both source field groups are provided', async () => {
+        const savedSearch = await createTestSavedSearch();
+        const dashboard = await createTestDashboardWithTile();
+        const webhook = await createTestWebhook();
+        const alert = await createTestAlert({
+          groupBy: 'service.name',
+          source: AlertSource.SAVED_SEARCH,
+        });
+
+        const tileResult = await callTool(client, 'clickstack_save_alert', {
+          id: alert._id.toString(),
+          source: 'tile',
+          dashboardId: dashboard._id.toString(),
+          tileId: 'tile-1',
+          savedSearchId: savedSearch._id.toString(),
+          groupBy: 'http.route',
+          threshold: 200,
+          thresholdType: 'above',
+          interval: '15m',
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+        });
+        expect(tileResult.isError).toBeFalsy();
+
+        let updatedAlert = await Alert.findById(alert._id);
+        expect(updatedAlert?.source).toBe(AlertSource.TILE);
+        expect(updatedAlert?.dashboard?.toString()).toBe(
+          dashboard._id.toString(),
+        );
+        expect(updatedAlert?.tileId).toBe('tile-1');
+        expect(updatedAlert?.savedSearch).toBeNull();
+        expect(updatedAlert?.groupBy).toBeNull();
+
+        const savedSearchResult = await callTool(
+          client,
+          'clickstack_save_alert',
+          {
+            id: alert._id.toString(),
+            source: 'saved_search',
+            savedSearchId: savedSearch._id.toString(),
+            groupBy: 'http.route',
+            dashboardId: dashboard._id.toString(),
+            tileId: 'tile-1',
+            threshold: 300,
+            thresholdType: 'above',
+            interval: '30m',
+            channel: {
+              type: 'webhook',
+              webhookId: webhook._id.toString(),
+            },
+          },
+        );
+        expect(savedSearchResult.isError).toBeFalsy();
+
+        updatedAlert = await Alert.findById(alert._id);
+        expect(updatedAlert?.source).toBe(AlertSource.SAVED_SEARCH);
+        expect(updatedAlert?.savedSearch?.toString()).toBe(
+          savedSearch._id.toString(),
+        );
+        expect(updatedAlert?.groupBy).toBe('http.route');
+        expect(updatedAlert?.dashboard).toBeNull();
+        expect(updatedAlert?.tileId).toBeNull();
       });
 
       it('should return not found for non-existent alert id', async () => {

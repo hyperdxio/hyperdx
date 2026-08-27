@@ -115,6 +115,67 @@ export class AlertsPage {
     await icon.click();
   }
 
+  /**
+   * Get the errored-evaluation segment(s) in an alert card's history strip.
+   * Rendered as clickable buttons (unlike normal segments which are links).
+   */
+  getErrorHistorySegments(alertCard: Locator) {
+    return alertCard.getByRole('button', { name: 'View evaluation errors' });
+  }
+
+  /**
+   * The per-evaluation error details modal (opened by clicking an errored
+   * history segment).
+   */
+  get evaluationErrorModal() {
+    return this.page.getByRole('dialog', { name: /Evaluation Errors/ });
+  }
+
+  /**
+   * Get the alert-name link for a given alert card. With alert details
+   * enabled it navigates to /alerts/:id; the source tile / saved search is
+   * reachable from the row's overflow menu.
+   */
+  getDetailsLinkForAlertCard(alertCard: Locator) {
+    return alertCard.locator('[data-testid^="alert-link-"]');
+  }
+
+  /**
+   * The row's overflow menu button. Present on every row, which is the point —
+   * the actions inside it are conditional, the control is not.
+   */
+  getRowMenuButton(alertCard: Locator) {
+    return alertCard.locator('[data-testid^="alert-row-menu-"]');
+  }
+
+  /**
+   * Open a row's overflow menu. The dropdown is portalled, so items are
+   * queried from the page rather than from the card.
+   */
+  async openRowMenu(alertCard: Locator) {
+    await this.getRowMenuButton(alertCard).click();
+    await this.page.getByRole('menu').waitFor();
+  }
+
+  /** The "Export to Terraform" item, only present for importable alerts. */
+  get terraformMenuItem() {
+    return this.page.locator('[data-testid^="terraform-menu-item-"]');
+  }
+
+  /**
+   * The alert detail page root.
+   */
+  get detailPageContainer() {
+    return this.page.locator('[data-testid="alert-detail-page"]');
+  }
+
+  /**
+   * The evaluation event-stream table on the alert detail page.
+   */
+  get evaluationsTable() {
+    return this.page.locator('[data-testid="alert-evaluations-table"]');
+  }
+
   // --- Filter interactions ---
 
   get filters() {

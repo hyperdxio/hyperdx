@@ -15,10 +15,10 @@
  * endpoint" without dropping into raw SQL with self-JOINs. The builder
  * tools (table / timeseries / search) can't express the TraceId subselect.
  */
-import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { z } from 'zod';
 
+import { ClickhouseClient } from '@/clickhouse';
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
 import {
@@ -109,6 +109,7 @@ export function registerTraceBreakdown({
     'clickstack_trace_top_time_consuming_operations',
     {
       title: 'Top Time-Consuming Operations Across Matching Traces',
+      annotations: { readOnlyHint: true },
       description:
         'Given a parent-span filter and a time window, return the child ' +
         'operations contributing the most cumulative time across all traces ' +

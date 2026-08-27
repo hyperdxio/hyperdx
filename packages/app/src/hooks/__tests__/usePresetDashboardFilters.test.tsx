@@ -1,4 +1,4 @@
-import { FilterState } from '@hyperdx/common-utils/dist/filters';
+import { FilterSelection } from '@hyperdx/common-utils/dist/dashboardFilterValues';
 import {
   DashboardFilter,
   Filter,
@@ -51,12 +51,17 @@ describe('usePresetDashboardFilters', () => {
     },
   ];
 
-  const mockFilterValues: FilterState = {
-    environment: {
-      included: new Set(['production']),
-      excluded: new Set(),
-    },
-  };
+  const mockSelectionByFilterId: ReadonlyMap<string, FilterSelection> = new Map(
+    [
+      [
+        'filter-1',
+        {
+          included: new Set<string | boolean>(['production']),
+          excluded: new Set<string | boolean>(),
+        },
+      ],
+    ],
+  );
 
   const mockFilterQueries: Filter[] = [
     {
@@ -104,12 +109,15 @@ describe('usePresetDashboardFilters', () => {
 
     // Mock useDashboardFilters
     jest.mocked(useDashboardFilters).mockReturnValue({
-      filterValues: mockFilterValues,
+      selectionByFilterId: mockSelectionByFilterId,
       setFilterValue: mockSetFilterValue,
-      filterQueries: mockFilterQueries,
-      setFilterQueries: jest.fn(),
+      broadcastedFilters: mockFilterQueries,
+      setFilterValueEntries: jest.fn(),
+      filterValueEntries: null,
       ignoredFilterExpressions: [],
+      ignoredVariableNames: [],
       getFilterQueriesForSource: jest.fn().mockReturnValue(mockFilterQueries),
+      variables: [],
     });
   });
 
@@ -227,7 +235,7 @@ describe('usePresetDashboardFilters', () => {
       }),
     );
 
-    expect(result.current.filterValues).toEqual(mockFilterValues);
+    expect(result.current.selectionByFilterId).toEqual(mockSelectionByFilterId);
     expect(result.current.filterQueries).toEqual(mockFilterQueries);
     expect(result.current.setFilterValue).toBe(mockSetFilterValue);
   });

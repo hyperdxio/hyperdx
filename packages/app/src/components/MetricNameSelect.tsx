@@ -53,6 +53,13 @@ const metricNamesQueryArgs = ({
   };
 };
 
+/**
+ * Metric names available on a metric source, one list per queryable kind.
+ *
+ * Names only, and deliberately so: it backs the always-mounted select, where a
+ * grouped scan for unit/description would be too heavy. The explorer pays for
+ * that richer catalog itself via `useMetricCatalog`, only while it is open.
+ */
 function useMetricNames(
   metricSource: TMetricSource,
   dateRange?: DateRange['dateRange'],
@@ -106,6 +113,9 @@ function useMetricNames(
     // would silently omit those metrics from an apparently healthy dropdown.
     hasError: [gauge, histogram, sum, exponentialHistogram].some(
       query => query.isError,
+    ),
+    isLoading: [gauge, histogram, sum, exponentialHistogram].some(
+      query => query.isLoading,
     ),
   };
 }

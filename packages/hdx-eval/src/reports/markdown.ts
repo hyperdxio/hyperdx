@@ -130,7 +130,7 @@ function renderScenarioTable(
     c => val(c?.programmatic.mean, pct),
     d => signedPct(d?.programmaticScore),
   );
-  // Adoption is only graded for scenarios with a transcript rubric; omit the
+  // Adoption is only graded for scenarios with an adoption rubric; omit the
   // row entirely when no cell has adoption data.
   const hasAdoption = columns.some(m => scenario.cells[m]?.adoption);
   if (hasAdoption) {
@@ -239,9 +239,11 @@ function renderAdoptionBreakdown(
   columns: ColumnKey[],
 ): string | null {
   const allChecks = new Set<string>();
+  const informational = new Set<string>();
   for (const cell of Object.values(scenario.cells)) {
     if (!cell?.adoption) continue;
     for (const id of Object.keys(cell.adoption.perCheck)) allChecks.add(id);
+    for (const id of cell.adoption.informational ?? []) informational.add(id);
   }
   if (allChecks.size === 0) return null;
 
@@ -249,7 +251,10 @@ function renderAdoptionBreakdown(
   const rows = [
     '#### Adoption per-check (usage rate)',
     '',
-    'Usage rate = share of runs whose tool-call transcript matched the check.',
+    'Usage rate = share of runs whose tool-call args matched the check.' +
+      (informational.size > 0
+        ? ' Checks marked (info) are informational — reported but excluded from the adoption score.'
+        : ''),
     '',
     `| Adoption check | ${colHeaders} |`,
     '|---' + '|---'.repeat(columns.length) + '|',
@@ -259,7 +264,8 @@ function renderAdoptionBreakdown(
       const v = scenario.cells[m]?.adoption?.perCheck[id];
       return fmtRate(v);
     });
-    rows.push(`| ${id} | ${colCells.join(' | ')} |`);
+    const label = informational.has(id) ? `${id} (info)` : id;
+    rows.push(`| ${label} | ${colCells.join(' | ')} |`);
   }
   return rows.join('\n');
 }

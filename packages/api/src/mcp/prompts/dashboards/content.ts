@@ -131,6 +131,8 @@ Apply these before calling clickstack_save_dashboard. Each rule is enforced by t
 
 14. SIZE TILES TO FIT THEIR CONTENT. The layout w/h are not one-size-fits-all; a tile that is too short clips its content (a table loses rows below the fold, a number tile crops its label) and one that is too wide wastes the row. Match the size to the displayType: number tiles stay small (w 6-8, h 3-4) so three or four KPIs share a row; line / stacked_bar / pie / bar want w 8-12 and h 4-6; tables and search lists want the full row (w 24) and h 6-10 so rows are not cut off; heatmaps want w 12 and h 5-6; a markdown note wants h 2-3 (never h 1, which clips the text). The per-field w/h descriptions on the tile schema carry the same per-displayType ranges; reach for them instead of leaving every tile at the 12x4 default.
 
+15. FILTER A BUILDER TILE ON THE SELECT ITEM, NOT THE TILE. To scope a table / line / stacked_bar / number / pie / bar tile to a subset of rows (a service, an error status), put the filter on EACH select item's where: select: [{ aggFn: "count", where: "ServiceName:payment", whereLanguage: "lucene", alias: "..." }]. The chart editor renders that per-series where as the tile's visible "Where" box, so the user can see and edit it. Do NOT put a filter at the tile config's top level for these types: the editor does not show it, so it is ignored. For a whole-dashboard scope use a dashboard-level filter (gotcha 9). The only display types with a tile-level where are search, heatmap, and event_patterns, where the editor does render it.
+
 == ADAPT, DO NOT COPY ==
 
 The dashboard_examples prompt returns concrete example shapes. Read them as patterns to adapt to the user's actual request and schema, not as literal templates to substitute names into. Specifically: the literal "ServiceName", "StatusCode:STATUS_CODE_ERROR", "Duration" come from the standard HyperDX schema. Real source schemas may use different column names and status values; always verify with clickstack_list_sources before reusing literals.
@@ -156,7 +158,8 @@ Dashboards open with a 15-minute default window. There is no dashboard-level fie
 - Missing level on aggFn "quantile" (must specify 0.5, 0.9, 0.95, or 0.99).
 - Assuming StatusCode or SeverityText values (always inspect lowCardinalityValues from clickstack_describe_source).
 - Heatmap on a non-Trace source (heatmap is Trace-only today).
-- Hardcoding a focus dimension into every tile's where clause (use a dashboard-level filter instead).`;
+- Hardcoding a focus dimension into every tile's where clause (use a dashboard-level filter instead).
+- Putting a filter at the tile-config top level on a table / line / stacked_bar / number / pie / bar tile (ignored for these types; put the where on each select item instead, see gotcha 15).`;
 }
 
 export function buildDashboardExamplesPrompt(
@@ -964,7 +967,7 @@ For configType: "sql" tiles, write ClickHouse SQL with template macros:
 
 == METRIC SOURCES ==
 
-Builder tiles work on metric sources. Each select item on a metric tile MUST set metricType ("gauge" | "sum" | "histogram" | "exponential histogram") and metricName (the OTel metric name, e.g. "system.cpu.utilization"). valueExpression defaults to "Value" when omitted, so a typical metric series is { aggFn: "<fn>", metricType: "<kind>", metricName: "<name>" }. summary metrics are not supported by the renderer.
+Builder tiles work on metric sources. Each select item on a metric tile MUST set metricType ("gauge" | "sum" | "histogram" | "exponential histogram") and metricName (the OTel metric name, e.g. "system.cpu.utilization"). valueExpression defaults to "Value" when omitted, so a typical metric series is { aggFn: "<fn>", metricType: "<kind>", metricName: "<name>" }. summary metrics are not supported by the renderer; to chart them, use a raw SQL tile (configType: "sql") against the table named in the source's metricTables.summary.
 
 Per-kind aggregation guidance:
   gauge      Use aggFn:"last_value" | "avg" | "min" | "max". Set isDelta:true for Prometheus-style delta over each bucket.
@@ -1059,6 +1062,42 @@ to plot the first as a ratio of the second. Useful for error rates:
     { aggFn: "count", alias: "Total" }
   ],
   asRatio: true
+
+== FORMULAS (metric + log/trace sources) ==
+
+line / stacked_bar / table / number tiles on a METRIC, LOG, or TRACE source
+can add derived series computed from the select items via letter-ref
+arithmetic: "A" is select[0], "B" is select[1], and so on. The grammar is
++ - * /, parentheses, and numeric constants; division by zero or a missing
+operand renders as a gap. Example: a success-rate percentage over three
+metric counters:
+  select: [
+    { aggFn: "sum", metricType: "sum", metricName: "requests.success", alias: "Success" },
+    { aggFn: "sum", metricType: "sum", metricName: "requests.error", alias: "Error" },
+    { aggFn: "sum", metricType: "sum", metricName: "requests.fsi", alias: "FSI" }
+  ],
+  formulas: [
+    { expression: "A / (A + B + C) * 100", alias: "Success rate %", numberFormat: { output: "percent", mantissa: 1 } }
+  ]
+
+Example: an error-rate percentage on a log/trace source, from two filtered
+counts over the same rows:
+  select: [
+    { aggFn: "count", where: "SeverityText:error", alias: "Errors" },
+    { aggFn: "count", alias: "Total" }
+  ],
+  formulas: [
+    { expression: "A / B * 100", alias: "Error rate %" }
+  ]
+
+Rules:
+  - Metric, log, and trace sources only; the server rejects formulas on other
+    source kinds (e.g. session).
+  - Each formula adds one series after the operand series. Set
+    showOperandSeries: false to return only the formula series.
+  - Cannot be combined with asRatio: express the ratio as a formula ("A / B").
+  - number tiles support a single formula, display its value, and always hide
+    the operand series; their select items are the formula's operands.
 
 == DASHBOARD FILTERS ==
 

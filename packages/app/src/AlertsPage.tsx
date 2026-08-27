@@ -3,11 +3,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useQueryState } from 'nuqs';
 import ReactMarkdown from 'react-markdown';
-import {
-  AlertSource,
-  AlertState,
-  isRangeThresholdType,
-} from '@hyperdx/common-utils/dist/types';
+import { AlertSource, AlertState } from '@hyperdx/common-utils/dist/types';
 import {
   Alert,
   Anchor,
@@ -39,19 +35,27 @@ import {
 
 import { AckAlert } from '@/components/alerts/AckAlert';
 import { AlertHistoryCardList } from '@/components/alerts/AlertHistoryCards';
+import { AlertPropertiesSummary } from '@/components/alerts/AlertPropertiesSummary';
+import { AlertRowMenu } from '@/components/alerts/AlertRowMenu';
 import EmptyState from '@/components/EmptyState';
 import { PageHeader } from '@/components/PageHeader';
+import { IS_ALERT_DETAILS_ENABLED } from '@/config';
 
 import { useBrandDisplayName } from './theme/ThemeProvider';
-import { TILE_ALERT_THRESHOLD_TYPE_OPTIONS } from './utils/alerts';
-import { getWebhookChannelIcon } from './utils/webhookIcons';
 import api from './api';
 import { withAppNav } from './layout';
 import type { AlertsPageItem } from './types';
 
 import styles from '@styles/AlertsPage.module.scss';
 
-function getAlertDisplayName(alert: AlertsPageItem): string {
+/**
+ * Minimum width held for the acknowledgement control, sized to its widest
+ * state (the "Ack'd" button, which carries a bell icon). A minimum rather than
+ * a fixed width so a longer label grows the slot instead of being clipped.
+ */
+const ACK_SLOT_WIDTH = 84;
+
+export function getAlertDisplayName(alert: AlertsPageItem): string {
   if (alert.source === AlertSource.TILE && alert.dashboard) {
     const tile = alert.dashboard.tiles.find(t => t.id === alert.tileId);
     const tileName = tile?.config.name || 'Tile';
@@ -59,6 +63,17 @@ function getAlertDisplayName(alert: AlertsPageItem): string {
   }
   if (alert.source === AlertSource.SAVED_SEARCH && alert.savedSearch) {
     return alert.savedSearch.name;
+  }
+  return '';
+}
+
+/** URL of the saved search / dashboard tile the alert is watching. */
+export function getAlertSourceUrl(alert: AlertsPageItem): string {
+  if (alert.source === AlertSource.TILE && alert.dashboard) {
+    return `/dashboards/${alert.dashboardId}?highlightedTileId=${alert.tileId}`;
+  }
+  if (alert.source === AlertSource.SAVED_SEARCH && alert.savedSearch) {
+    return `/search/${alert.savedSearchId}`;
   }
   return '';
 }
@@ -72,7 +87,7 @@ function getAlertCreatorLabel(alert: AlertsPageItem): string | undefined {
   return alert.createdBy.name || alert.createdBy.email;
 }
 
-function AlertNote({ note }: { note: string }) {
+export function AlertNote({ note }: { note: string }) {
   const [opened, { toggle }] = useDisclosure(false);
 
   return (
@@ -147,15 +162,7 @@ function AlertDetails({ alert }: { alert: AlertsPageItem }) {
     return '–';
   }, [alert]);
 
-  const alertUrl = React.useMemo(() => {
-    if (alert.source === AlertSource.TILE && alert.dashboard) {
-      return `/dashboards/${alert.dashboardId}?highlightedTileId=${alert.tileId}`;
-    }
-    if (alert.source === AlertSource.SAVED_SEARCH && alert.savedSearch) {
-      return `/search/${alert.savedSearchId}`;
-    }
-    return '';
-  }, [alert]);
+  const alertUrl = React.useMemo(() => getAlertSourceUrl(alert), [alert]);
 
   const alertIcon = (() => {
     switch (alert.source) {
@@ -167,33 +174,6 @@ function AlertDetails({ alert }: { alert: AlertsPageItem }) {
         return <IconHelpCircle size={14} />;
     }
   })();
-
-  const alertType = React.useMemo(() => {
-    const thresholdLabel =
-      TILE_ALERT_THRESHOLD_TYPE_OPTIONS[alert.thresholdType] ??
-      alert.thresholdType;
-    return (
-      <>
-        If value {thresholdLabel}{' '}
-        <span className="fw-bold">{alert.threshold}</span>
-        {isRangeThresholdType(alert.thresholdType) && (
-          <>
-            {' '}
-            and <span className="fw-bold">{alert.thresholdMax ?? '-'}</span>
-          </>
-        )}
-        <span>&middot;</span>
-      </>
-    );
-  }, [alert]);
-
-  const notificationMethod = React.useMemo(() => {
-    return (
-      <Group gap={5}>
-        Notify via {getWebhookChannelIcon(alert.channel.type)} Webhook
-      </Group>
-    );
-  }, [alert]);
 
   const linkTitle = React.useMemo(() => {
     switch (alert.source) {
@@ -228,11 +208,16 @@ function AlertDetails({ alert }: { alert: AlertsPageItem }) {
 
         <Stack gap={2}>
           <div>
+            {/* With alert details enabled, the alert name is the entry point
+                to its status page; the source tile / saved search moves to a
+                secondary link on the right. */}
             <Link
               data-testid={`alert-link-${alert._id}`}
-              href={alertUrl}
+              href={
+                IS_ALERT_DETAILS_ENABLED ? `/alerts/${alert._id}` : alertUrl
+              }
               className={styles.alertLink}
-              title={linkTitle}
+              title={IS_ALERT_DETAILS_ENABLED ? 'Alert details' : linkTitle}
             >
               <Group gap={2}>
                 {alertIcon}
@@ -240,18 +225,7 @@ function AlertDetails({ alert }: { alert: AlertsPageItem }) {
               </Group>
             </Link>
           </div>
-          <div className="fs-8 d-flex gap-2">
-            {alertType}
-            {notificationMethod}
-            {alert.createdBy && (
-              <>
-                <span>&middot;</span>
-                <span>
-                  Created by {alert.createdBy.name || alert.createdBy.email}
-                </span>
-              </>
-            )}
-          </div>
+          <AlertPropertiesSummary alert={alert} />
           {getAlertTags(alert).length > 0 && (
             <Group gap={4}>
               {getAlertTags(alert).map(tag => (
@@ -265,9 +239,20 @@ function AlertDetails({ alert }: { alert: AlertsPageItem }) {
         </Stack>
       </Group>
 
-      <Group>
+      <Group gap="xs" wrap="nowrap">
         <AlertHistoryCardList alert={alert} alertUrl={alertUrl} />
-        <AckAlert alert={alert} />
+        {/* Reserved width: AckAlert renders nothing for an OK alert that has
+            never been acknowledged, and letting that gap close shifted every
+            control to its left, so no two rows lined up. */}
+        <Flex miw={ACK_SLOT_WIDTH} justify="flex-end">
+          <AckAlert alert={alert} />
+        </Flex>
+        <AlertRowMenu
+          alert={alert}
+          alertUrl={IS_ALERT_DETAILS_ENABLED ? alertUrl : undefined}
+          linkTitle={linkTitle}
+          alertName={getAlertDisplayName(alert)}
+        />
       </Group>
     </div>
   );

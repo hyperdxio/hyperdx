@@ -6,18 +6,30 @@ import {
 } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   displayTypeSupportsRawSqlAlerts,
+  validateRawSqlChartConfig,
   validateRawSqlForAlert,
 } from '@hyperdx/common-utils/dist/core/utils';
-import { MACRO_SUGGESTIONS } from '@hyperdx/common-utils/dist/macros';
-import { QUERY_PARAMS_BY_DISPLAY_TYPE } from '@hyperdx/common-utils/dist/rawSqlParams';
-import { RawSqlChartConfig } from '@hyperdx/common-utils/dist/types';
+import {
+  ChartVariable,
+  RawSqlChartConfig,
+} from '@hyperdx/common-utils/dist/types';
 import {
   DisplayType,
   isLogSource,
   isMetricSource,
   isTraceSource,
 } from '@hyperdx/common-utils/dist/types';
-import { Box, Button, Group, Stack, Text, Tooltip } from '@mantine/core';
+import {
+  Alert,
+  Box,
+  Button,
+  Group,
+  List,
+  Stack,
+  Text,
+  Tooltip,
+} from '@mantine/core';
+import { useDebouncedValue } from '@mantine/hooks';
 import { IconBell, IconHelpCircle } from '@tabler/icons-react';
 
 import { ConnectionSelectControlled } from '@/components/ConnectionSelect';
@@ -38,6 +50,7 @@ import { DEFAULT_TILE_ALERT } from '@/utils/alerts';
 import { SQL_PLACEHOLDERS } from './constants';
 import { RawSqlChartInstructions } from './RawSqlChartInstructions';
 import { ChartEditorFormState } from './types';
+import { buildRawSqlCompletions } from './utils';
 
 import resizeStyles from '@/../styles/ResizablePanel.module.scss';
 
@@ -105,7 +118,9 @@ export default function RawSqlChartEditor({
   onSubmit,
   isDashboardForm,
   alert,
+  additionalWarnings,
   dashboardId,
+  variables,
 }: {
   control: Control<ChartEditorFormState>;
   setValue: UseFormSetValue<ChartEditorFormState>;
@@ -113,7 +128,9 @@ export default function RawSqlChartEditor({
   onSubmit: (suppressErrorNotification?: boolean) => void;
   isDashboardForm: boolean;
   alert: ChartEditorFormState['alert'];
+  additionalWarnings?: string[];
   dashboardId?: string;
+  variables?: ChartVariable[];
 }) {
   const { size, startResize } = useResizable(20, 'bottom');
 
@@ -132,19 +149,41 @@ export default function RawSqlChartEditor({
         sqlTemplate: sqlTemplate ?? '',
         connection: connection ?? '',
         from: sourceObject?.from,
+        metricTables:
+          sourceObject && isMetricSource(sourceObject)
+            ? sourceObject.metricTables
+            : undefined,
         displayType,
+        variables,
       }) satisfies RawSqlChartConfig,
-    [sqlTemplate, connection, sourceObject?.from, displayType],
+    [sqlTemplate, connection, sourceObject, displayType, variables],
   );
 
+  const [debouncedRawSqlConfig] = useDebouncedValue(rawSqlConfig, 300);
+
   const { alertErrorMessage, alertWarningMessage } = useMemo(() => {
-    const { errors, warnings } = validateRawSqlForAlert(rawSqlConfig);
+    const { errors, warnings } = validateRawSqlForAlert(debouncedRawSqlConfig);
+    const allWarnings = [...warnings, ...(additionalWarnings ?? [])];
     return {
-      alertErrorMessage: errors.length > 0 ? errors.join('. ') : undefined,
+      alertErrorMessage: errors.length > 0 ? errors.join(' ') : undefined,
       alertWarningMessage:
-        warnings.length > 0 ? warnings.join('. ') : undefined,
+        allWarnings.length > 0 ? allWarnings.join(' ') : undefined,
     };
-  }, [rawSqlConfig]);
+  }, [additionalWarnings, debouncedRawSqlConfig]);
+
+  const { chartErrors, chartWarnings, sqlValidationAlertVariant } =
+    useMemo(() => {
+      const { errors, warnings } = validateRawSqlChartConfig(
+        debouncedRawSqlConfig,
+        { isDashboardTile: isDashboardForm },
+      );
+
+      return {
+        chartErrors: errors,
+        chartWarnings: warnings,
+        sqlValidationAlertVariant: errors.length > 0 ? 'danger' : 'warning',
+      };
+    }, [debouncedRawSqlConfig, isDashboardForm]);
 
   const prevSource = usePrevious(source);
   const prevConnection = usePrevious(connection);
@@ -166,28 +205,10 @@ export default function RawSqlChartEditor({
 
   const placeholderSQl = SQL_PLACEHOLDERS[displayType ?? DisplayType.Table];
 
-  const additionalCompletions: SQLCompletion[] = useMemo(() => {
-    const effectiveDisplayType = displayType ?? DisplayType.Table;
-    const params = QUERY_PARAMS_BY_DISPLAY_TYPE[effectiveDisplayType];
-
-    const paramCompletions: SQLCompletion[] = params.map(({ name, type }) => ({
-      label: `{${name}:${type}}`,
-      apply: `{${name}:${type}`, // Omit the closing } because the editor will have added it when the user types {
-      detail: 'param',
-      type: 'variable',
-    }));
-
-    const macroCompletions: SQLCompletion[] = MACRO_SUGGESTIONS.map(
-      ({ name, minArgs }) => ({
-        label: `$__${name}`,
-        apply: minArgs > 0 ? `$__${name}(` : `$__${name}`,
-        detail: 'macro',
-        type: 'function',
-      }),
-    );
-
-    return [...paramCompletions, ...macroCompletions];
-  }, [displayType]);
+  const additionalCompletions: SQLCompletion[] = useMemo(
+    () => buildRawSqlCompletions({ displayType, variables }),
+    [displayType, variables],
+  );
 
   const [isSourceSchemaPreviewOpen, setIsSourceSchemaPreviewOpen] =
     useState(false);
@@ -302,7 +323,10 @@ export default function RawSqlChartEditor({
           </Group>
         </Group>
       </Group>
-      <RawSqlChartInstructions displayType={displayType ?? DisplayType.Table} />
+      <RawSqlChartInstructions
+        displayType={displayType ?? DisplayType.Table}
+        variables={variables}
+      />
       <Box style={{ position: 'relative' }}>
         <SQLEditorControlled
           control={control}
@@ -316,6 +340,22 @@ export default function RawSqlChartEditor({
         />
         <div className={resizeStyles.resizeYHandle} onMouseDown={startResize} />
       </Box>
+      {(chartErrors.length > 0 || chartWarnings.length > 0) && (
+        <Alert
+          variant={sqlValidationAlertVariant}
+          py="xs"
+          data-testid="raw-sql-validation"
+        >
+          <List size="xs" spacing={2}>
+            {chartErrors.map(message => (
+              <List.Item key={message}>Error: {message}</List.Item>
+            ))}
+            {chartWarnings.map(message => (
+              <List.Item key={message}>Warning: {message}</List.Item>
+            ))}
+          </List>
+        </Alert>
+      )}
       {alert && (
         <TileAlertEditor
           control={control}

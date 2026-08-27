@@ -20,18 +20,19 @@ import {
   IconChevronDown,
   IconChevronRight,
   IconChevronUp,
-  IconHelp,
   IconKeyboard,
   IconLogout,
   IconSettings,
-  IconSparkles,
   IconUserCog,
 } from '@tabler/icons-react';
 
 import { IS_LOCAL_MODE } from '@/config';
 
-import { ChangelogModal } from './ChangelogModal';
+import { HelpSparkle } from './HelpSparkle';
 import { KeyboardShortcutsModal } from './KeyboardShortcutsModal';
+import { useWhatsNewUnseen } from './useWhatsNewUnseen';
+import { WhatsNewDrawer } from './WhatsNewDrawer';
+import { WhatsNewSection } from './WhatsNewSection';
 
 import styles from './AppNav.module.scss';
 
@@ -86,7 +87,7 @@ export const AppNavUserMenu = ({
   logoutUrl,
   onClickUserPreferences,
 }: AppNavUserMenuProps) => {
-  const { isCollapsed } = React.useContext(AppNavContext);
+  const { isCollapsed } = React.use(AppNavContext);
   const resolvedUserName = userName.trim() || 'User';
 
   const initials = getUserInitials(resolvedUserName);
@@ -181,21 +182,37 @@ export const AppNavUserMenu = ({
 };
 
 export const AppNavHelpMenu = ({ version }: { version?: string }) => {
-  const { isCollapsed } = React.useContext(AppNavContext);
+  const { isCollapsed } = React.use(AppNavContext);
   const [
     shortcutsOpened,
     { open: openShortcutsModal, close: closeShortcutsModal },
   ] = useDisclosure(false);
+  // Control the Help menu's open state so we can both fetch "What's new" lazily
+  // (only when the menu is open) and close it when the drawer takes over.
+  const [helpMenuOpened, setHelpMenuOpened] = React.useState(false);
   const [
-    changelogOpened,
-    { open: openChangelogModal, close: closeChangelogModal },
+    whatsNewDrawerOpened,
+    { open: openWhatsNewDrawer, close: closeWhatsNewDrawer },
   ] = useDisclosure(false);
+  // Sparkle the Help button when there's a release this browser hasn't seen.
+  const [hasUnseenWhatsNew, markWhatsNewSeen] = useWhatsNewUnseen(version);
+  // Opening the menu marks the release seen, which clears hasUnseenWhatsNew in
+  // the same tick — so the menu has to render off a snapshot taken at open time.
+  // Passing hasUnseenWhatsNew straight down gives a sparkle that never appears.
+  const [wasUnseenOnOpen, setWasUnseenOnOpen] = React.useState(false);
 
   return (
     <>
       <Menu
         position="right-start"
         transitionProps={{ transition: 'fade-right' }}
+        width={320}
+        opened={helpMenuOpened}
+        onChange={setHelpMenuOpened}
+        onOpen={() => {
+          setWasUnseenOnOpen(hasUnseenWhatsNew);
+          markWhatsNewSeen();
+        }}
       >
         <Menu.Target>
           <UnstyledButton
@@ -204,21 +221,14 @@ export const AppNavHelpMenu = ({ version }: { version?: string }) => {
           >
             <span className={styles.navItemContent}>
               <span className={styles.navItemIcon}>
-                <IconHelp size={16} />
+                <HelpSparkle hasUnseen={hasUnseenWhatsNew} />
               </span>
               {!isCollapsed && <span>Help</span>}
             </span>
           </UnstyledButton>
         </Menu.Target>
         <Menu.Dropdown>
-          <Menu.Label>
-            Help{' '}
-            {version && (
-              <Text size="xs" component="span">
-                v{version}
-              </Text>
-            )}
-          </Menu.Label>
+          <Menu.Label>Help</Menu.Label>
 
           <Menu.Item
             data-testid="documentation-menu-item"
@@ -241,13 +251,6 @@ export const AppNavHelpMenu = ({ version }: { version?: string }) => {
             Setup Instructions
           </Menu.Item>
           <Menu.Item
-            data-testid="changelog-menu-item"
-            leftSection={<IconSparkles size={16} />}
-            onClick={openChangelogModal}
-          >
-            What&apos;s new
-          </Menu.Item>
-          <Menu.Item
             data-testid="keyboard-shortcuts-menu-item"
             leftSection={<IconKeyboard size={16} />}
             onClick={openShortcutsModal}
@@ -264,13 +267,28 @@ export const AppNavHelpMenu = ({ version }: { version?: string }) => {
           >
             Discord Community
           </Menu.Item>
+
+          <Menu.Divider />
+
+          <WhatsNewSection
+            enabled={helpMenuOpened}
+            hasUnseen={wasUnseenOnOpen}
+            version={version}
+            onViewAll={() => {
+              setHelpMenuOpened(false);
+              openWhatsNewDrawer();
+            }}
+          />
         </Menu.Dropdown>
       </Menu>
       <KeyboardShortcutsModal
         opened={shortcutsOpened}
         onClose={closeShortcutsModal}
       />
-      <ChangelogModal opened={changelogOpened} onClose={closeChangelogModal} />
+      <WhatsNewDrawer
+        opened={whatsNewDrawerOpened}
+        onClose={closeWhatsNewDrawer}
+      />
     </>
   );
 };
@@ -294,7 +312,7 @@ export const AppNavLink = ({
   isBeta?: boolean;
   isActive?: boolean;
 }) => {
-  const { pathname, isCollapsed } = React.useContext(AppNavContext);
+  const { pathname, isCollapsed } = React.use(AppNavContext);
 
   const testId = `nav-link-${href.replace(/^\//, '').replace(/\//g, '-') || 'home'}`;
 

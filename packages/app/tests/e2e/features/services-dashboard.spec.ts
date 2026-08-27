@@ -1,6 +1,10 @@
 import { ServicesDashboardPage } from '../page-objects/ServicesDashboardPage';
 import { expect, test } from '../utils/base-test';
 import { DEFAULT_TRACES_SOURCE_NAME } from '../utils/constants';
+import {
+  expectFieldSuggestion,
+  expectValueSuggestion,
+} from '../utils/lucene-autocomplete';
 
 test.describe('Services Dashboard', { tag: ['@services'] }, () => {
   let servicesPage: ServicesDashboardPage;
@@ -28,6 +32,19 @@ test.describe('Services Dashboard', { tag: ['@services'] }, () => {
   });
 
   test('should show filter by SpanName using Lucene', async () => {
+    await test.step('Lucene autocomplete suggests fields from the trace source', async () => {
+      // This WHERE used to be given only a table connection; suggestions need
+      // the selected source's id and the searched time range as well.
+      await servicesPage.switchToLucene();
+      await expectFieldSuggestion(servicesPage.searchInput, {
+        prefix: 'SpanN',
+        field: 'SpanName',
+      });
+      await expectValueSuggestion(servicesPage.searchInput, {
+        field: 'SpanName',
+      });
+    });
+
     await servicesPage.searchLucene('Order');
 
     // Should be filtered out

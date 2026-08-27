@@ -1,3 +1,4 @@
+import { ColumnMeta } from '@/clickhouse';
 import { ClickhouseClient } from '@/clickhouse/node';
 import {
   GET_ALL_KEY_VALUES_CHUNK_SIZE,
@@ -619,6 +620,84 @@ describe('Metadata', () => {
       );
     });
 
+    it('uses groupUniqArrayIf for keys that have a condition (faceted lookup)', async () => {
+      const renderChartConfigSpy = jest.spyOn(
+        renderChartConfigModule,
+        'renderChartConfig',
+      );
+
+      await metadata.getKeyValues({
+        chartConfig: mockChartConfig,
+        keys: ['colA', 'colB'],
+        keyConditions: [
+          undefined,
+          { colA: { included: new Set(['x']), excluded: new Set() } },
+        ],
+        limit: 10,
+        disableRowLimit: true,
+        source,
+      });
+
+      const actualConfig = renderChartConfigSpy.mock.calls.at(-1)![0];
+      if (!isBuilderChartConfig(actualConfig))
+        throw new Error('Expected builder config');
+      // No condition → plain groupUniqArray; condition → groupUniqArrayIf so
+      // both facets resolve in a single scan.
+      expect(actualConfig.select).toContain(
+        'groupUniqArray(10)(colA) AS param0',
+      );
+      expect(actualConfig.select).toContain(
+        "groupUniqArrayIf(10)(colB, (colA IN ('x'))) AS param1",
+      );
+    });
+
+    it('renders faceted conditions the same way as the keys they constrain', async () => {
+      // A JSON column renders to a typed subcolumn rather than the bracket
+      // form the caller wrote. If the predicate kept the raw expression it
+      // would address a different (or non-existent) column than the aggregate
+      // wrapping it, so both halves must come out rendered.
+      const jsonMetadata = new Metadata(mockClickhouseClient, mockCache);
+      jest
+        .spyOn(jsonMetadata, 'getColumn')
+        .mockImplementation(async ({ column }) =>
+          column === 'Attributes'
+            ? ({ name: 'Attributes', type: 'JSON' } as ColumnMeta)
+            : undefined,
+        );
+
+      const renderChartConfigSpy = jest.spyOn(
+        renderChartConfigModule,
+        'renderChartConfig',
+      );
+
+      await jsonMetadata.getKeyValues({
+        chartConfig: mockChartConfig,
+        keys: ["Attributes['cluster']", "Attributes['namespace']"],
+        keyConditions: [
+          undefined,
+          {
+            "Attributes['cluster']": {
+              included: new Set(['prod']),
+              excluded: new Set(),
+            },
+          },
+        ],
+        limit: 10,
+        disableRowLimit: true,
+        source,
+      });
+
+      const actualConfig = renderChartConfigSpy.mock.calls.at(-1)![0];
+      if (!isBuilderChartConfig(actualConfig))
+        throw new Error('Expected builder config');
+      expect(actualConfig.select).toContain(
+        'groupUniqArrayIf(10)(Attributes.`namespace`.:String, ' +
+          "(Attributes.`cluster`.:String IN ('prod'))) AS param1",
+      );
+      // The raw bracket form must not survive into either half.
+      expect(actualConfig.select).not.toContain("Attributes['");
+    });
+
     it('should apply row limit by default when disableRowLimit is not specified', async () => {
       await metadata.getKeyValues({
         chartConfig: mockChartConfig,
@@ -1011,7 +1090,7 @@ describe('Metadata', () => {
         ]),
       );
 
-      jest
+      const doMVsAggregateSpy = jest
         .spyOn(metadata as any, 'doMetadataMVsAggregateColumn')
         .mockImplementation((...args: any[]) => {
           const columnName = args[1] as string;
@@ -1019,6 +1098,9 @@ describe('Metadata', () => {
             columnName === 'ServiceName' || columnName === 'SeverityText',
           );
         });
+
+      // Returned so tests can override the MV-aggregation answer.
+      return { doMVsAggregateSpy };
     };
 
     afterEach(() => {
@@ -1080,8 +1162,101 @@ describe('Metadata', () => {
       expect(sql).toContain('BY ColumnIdentifier, Key');
       expect(sql).not.toContain('mergeTreeTextIndex(');
       expect(Object.values(params)).toContain('otel_logs_kv_rollup_15m');
-      expect(Object.values(params)).toContain('ServiceName');
-      expect(Object.values(params)).toContain('SeverityText');
+      // Keys are inlined as escaped literals, not bound as params — per-key
+      // params would push large batches into multipart bodies (see #8482).
+      expect(sql).toContain("Key IN ('ServiceName','SeverityText')");
+      expect(Object.values(params)).not.toContain('ServiceName');
+      expect(Object.values(params)).not.toContain('SeverityText');
+    });
+
+    it('keeps the KV rollup MV query parameter count independent of the number of keys', async () => {
+      const { doMVsAggregateSpy } = setupDefaultLogsSchema();
+      doMVsAggregateSpy.mockResolvedValue(true);
+
+      const manyKeys = Array.from(
+        { length: 80 },
+        (_, i) => `LogAttributes['some.rather.long.attribute.key.${i}']`,
+      );
+      // Route map keys through the MV (not the text index) so they all land in
+      // one batched rollup query.
+      jest
+        .spyOn(metadata, 'getMapColumnTextIndexes')
+        .mockResolvedValue(new Map());
+
+      await metadata.getAllKeyValues({
+        ...baseArgs,
+        keyExpressions: manyKeys,
+      });
+
+      const mvCall = (mockClickhouseClient.query as jest.Mock).mock.calls.find(
+        (c: any[]) => (c[0].query as string).includes('Key IN ('),
+      );
+      expect(mvCall).toBeDefined();
+      const params = mvCall![0].query_params as Record<string, string>;
+      // A handful of fixed params — never one per key.
+      expect(Object.keys(params).length).toBeLessThan(10);
+      const sql = mvCall![0].query as string;
+      expect(sql).toContain("'some.rather.long.attribute.key.0'");
+      expect(sql).toContain("'some.rather.long.attribute.key.79'");
+    });
+
+    it('SQL-escapes inlined rollup keys containing quotes and backslashes', async () => {
+      const { doMVsAggregateSpy } = setupDefaultLogsSchema();
+      doMVsAggregateSpy.mockResolvedValue(true);
+      jest
+        .spyOn(metadata, 'getMapColumnTextIndexes')
+        .mockResolvedValue(new Map());
+
+      await metadata.getAllKeyValues({
+        ...baseArgs,
+        keyExpressions: ["LogAttributes['it's a key']"],
+      });
+
+      const mvCall = (mockClickhouseClient.query as jest.Mock).mock.calls.find(
+        (c: any[]) => (c[0].query as string).includes('Key IN ('),
+      );
+      expect(mvCall).toBeDefined();
+      const sql = mvCall![0].query as string;
+      // The embedded quote must be escaped, never spliced raw.
+      expect(sql).toContain("Key IN ('it\\'s a key')");
+      expect(sql).not.toContain("Key IN ('it's a key')");
+    });
+
+    it('applies the time filter to every branch of the KV rollup OR chain', async () => {
+      setupDefaultLogsSchema();
+
+      await metadata.getAllKeyValues({
+        ...baseArgs,
+        keyExpressions: ['ServiceName', 'SeverityText'],
+      });
+
+      const mvCall = (mockClickhouseClient.query as jest.Mock).mock.calls.find(
+        (c: any[]) => (c[0].query as string).includes('Key IN ('),
+      );
+      expect(mvCall).toBeDefined();
+      const sql = (mvCall![0].query as string).replace(/\s+/g, ' ');
+      // Without parens, `a OR b AND time` binds the time filter to the
+      // last branch only.
+      expect(sql).toMatch(/WHERE \(\(ColumnIdentifier = /);
+      expect(sql).toMatch(/\)\) AND Timestamp >= /);
+    });
+
+    it('inlines map text index key prefixes as escaped literals, not params', async () => {
+      setupDefaultLogsSchema();
+
+      await metadata.getAllKeyValues({
+        ...baseArgs,
+        keyExpressions: ["LogAttributes['requestId']"],
+      });
+
+      const idxCall = (mockClickhouseClient.query as jest.Mock).mock.calls.find(
+        (c: any[]) => (c[0].query as string).includes('startsWith(token,'),
+      );
+      expect(idxCall).toBeDefined();
+      const sql = idxCall![0].query as string;
+      const params = idxCall![0].query_params as Record<string, string>;
+      expect(sql).toContain("startsWith(token, 'requestId=')");
+      expect(Object.values(params)).not.toContain('requestId=');
     });
 
     it('routes columns without any index or MV entry through the getKeyValues fallback (raw table scan)', async () => {
@@ -1272,11 +1447,12 @@ describe('Metadata', () => {
 
       expect(mapTextIndexCalls.length).toBeGreaterThanOrEqual(2);
 
-      const allParamValues = mapTextIndexCalls.flatMap((c: any[]) =>
-        Object.values(c[0].query_params ?? {}),
-      );
+      // Key prefixes are inlined as escaped literals, not per-key params.
+      const allQueries = mapTextIndexCalls
+        .map((c: any[]) => c[0].query as string)
+        .join('\n');
       for (let i = 0; i < keyCount; i++) {
-        expect(allParamValues).toContain(`k${i}=`);
+        expect(allQueries).toContain(`startsWith(token, 'k${i}=')`);
       }
     });
 
