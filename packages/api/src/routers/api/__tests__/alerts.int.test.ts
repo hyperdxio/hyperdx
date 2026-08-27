@@ -1832,6 +1832,108 @@ describe('alerts router', () => {
         .expect(400);
     });
 
+    it('validates metric formulas on builder chart configs', async () => {
+      const { source } = await makeSource();
+      const base = makeChartAlertConfig({ sourceId: source._id.toString() });
+
+      // Formula referencing a nonexistent series (only A exists)
+      await agent
+        .post('/alerts')
+        .send(
+          makeChartAlertInput({
+            chartConfig: { ...base, formulas: [{ expression: 'B * 2' }] },
+            webhookId: webhook._id.toString(),
+          }),
+        )
+        .expect(400);
+
+      // Malformed expression
+      await agent
+        .post('/alerts')
+        .send(
+          makeChartAlertInput({
+            chartConfig: { ...base, formulas: [{ expression: 'A +' }] },
+            webhookId: webhook._id.toString(),
+          }),
+        )
+        .expect(400);
+
+      // Formulas are mutually exclusive with the ratio toggle (internal
+      // configs spell it seriesReturnType: 'ratio')
+      await agent
+        .post('/alerts')
+        .send(
+          makeChartAlertInput({
+            chartConfig: {
+              ...base,
+              seriesReturnType: 'ratio',
+              formulas: [{ expression: 'A * 2' }],
+            },
+            webhookId: webhook._id.toString(),
+          }),
+        )
+        .expect(400);
+
+      const created = await agent
+        .post('/alerts')
+        .send(
+          makeChartAlertInput({
+            chartConfig: { ...base, formulas: [{ expression: 'A * 2' }] },
+            webhookId: webhook._id.toString(),
+          }),
+        )
+        .expect(200);
+      expect(created.body.data.chartConfig).toMatchObject({
+        formulas: [{ expression: 'A * 2' }],
+      });
+    });
+
+    it('rejects a raw SQL chart alert whose source is on a different connection', async () => {
+      const { connection, source } = await makeSource();
+      const otherConnection = await Connection.create({
+        team: team._id,
+        name: 'Other',
+        host: 'http://localhost:8124',
+        username: 'default',
+        password: '',
+      });
+
+      const rawSqlConfig = {
+        configType: 'sql' as const,
+        displayType: DisplayType.Line,
+        sqlTemplate: RAW_SQL_ALERT_TEMPLATE,
+        source: source._id.toString(),
+      };
+
+      // The source belongs to `connection`, not `otherConnection` — the
+      // worker would execute on one and expand $__sourceTable from the other.
+      await agent
+        .post('/alerts')
+        .send(
+          makeChartAlertInput({
+            chartConfig: {
+              ...rawSqlConfig,
+              connection: otherConnection._id.toString(),
+            },
+            webhookId: webhook._id.toString(),
+          }),
+        )
+        .expect(400);
+
+      await agent
+        .post('/alerts')
+        .send(
+          makeChartAlertInput({
+            chartConfig: {
+              ...rawSqlConfig,
+              connection: connection._id.toString(),
+            },
+            webhookId: webhook._id.toString(),
+          }),
+        )
+        .expect(200);
+    });
+
     it('rejects a chart alert with a PromQL config', async () => {
       await agent
         .post('/alerts')

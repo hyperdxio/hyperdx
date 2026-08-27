@@ -151,6 +151,16 @@ export const validateAlertInput = async (
         if (source == null) {
           throw new Api400Error('Source not found');
         }
+        // The worker executes the query through chartConfig.connection while
+        // expanding $__sourceTable/metricTables from this source. Accepting a
+        // source on a different (even team-owned) connection would query the
+        // wrong database — silently wrong values when the table also exists
+        // there, repeated query failures when it does not.
+        if (source.connection.toString() !== chartConfig.connection) {
+          throw new Api400Error(
+            'Source does not belong to the specified connection',
+          );
+        }
       }
     } else {
       // Builder configs: same display types the alert task can evaluate as a

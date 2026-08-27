@@ -736,6 +736,37 @@ const zChartAlert = z.object({
   chartConfig: AlertChartConfigSchema,
 });
 
+/**
+ * Metric-formula validation for chart alerts (builder configs only — raw SQL
+ * configs have no formulas). Dashboard tiles get this through the editor's
+ * save-time rules and the external tile-config refinement above; chart alerts
+ * are authored through this API directly, so without it a malformed formula
+ * (or one referencing a nonexistent series) persists and then throws on every
+ * evaluation tick instead of being rejected at write time. The helper checks
+ * the external-shape `asRatio`, so map the internal `seriesReturnType: 'ratio'`
+ * onto it.
+ */
+const validateChartAlertFormulas = (
+  alert: {
+    source: AlertSource;
+    chartConfig?: z.infer<typeof AlertChartConfigSchema>;
+  },
+  ctx: z.RefinementCtx,
+) => {
+  if (alert.source !== AlertSource.CHART || alert.chartConfig == null) {
+    return;
+  }
+  const chartConfig = alert.chartConfig;
+  if ('configType' in chartConfig) {
+    return;
+  }
+  validateChartConfigFormulas(
+    { ...chartConfig, asRatio: chartConfig.seriesReturnType === 'ratio' },
+    ctx,
+    { configPath: ['chartConfig'] },
+  );
+};
+
 const alertBaseSchema = z.object({
   channel: zAlertChannel.optional(),
   channels: zAlertChannels.optional(),
@@ -766,7 +797,8 @@ export const internalAlertSchema = alertBaseSchema
   .and(zSavedSearchAlert.or(zTileAlert).or(zChartAlert))
   .superRefine(validateAlertChannelSelection)
   .superRefine(validateAlertScheduleOffsetMinutes)
-  .superRefine(validateAlertThresholdMax);
+  .superRefine(validateAlertThresholdMax)
+  .superRefine(validateChartAlertFormulas);
 
 // ==============================
 // Webhooks
