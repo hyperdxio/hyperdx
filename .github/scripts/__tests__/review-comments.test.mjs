@@ -151,9 +151,9 @@ test('skips findings already posted, matched by fingerprint', () => {
     title: 'already said',
     body: 'fix',
   };
-  const previous = {
-    body: `whatever\n\n<!-- hdxr:${helpers.fingerprint(finding)} -->`,
-  };
+  // Take the marker from commentBody rather than hand-writing the format: a hand-written
+  // copy keeps passing after the real marker format changes, and then nothing is deduped.
+  const previous = { body: helpers.commentBody(finding) };
 
   const { inline, unanchored, skipped } = helpers.buildInlineComments({
     findings: [finding],
@@ -412,4 +412,33 @@ test("the sticky marker matches the workflow's body-includes", () => {
       `summary must carry ${marker} so find-comment updates in place (healthy=${healthy})`,
     );
   }
+});
+
+test('the dedup marker is exactly what commentBody emits', () => {
+  // seenFingerprints must recognize our own output. If the emitter's marker and the
+  // reader's regex drift, every finding reposts on every push.
+  const f = { file: 'src/a.ts', line: 11, title: 'x', body: 'y' };
+  const seen = helpers.seenFingerprints([{ body: helpers.commentBody(f) }]);
+  assert.ok(
+    seen.has(helpers.fingerprint(f)),
+    'commentBody output must be parseable back',
+  );
+});
+
+test('the summary accounts for findings skipped as already-posted', () => {
+  const body = helpers.renderSummary({
+    findings: [
+      { file: 'a', line: 1, severity: 'major', title: 'new', body: 'b' },
+      { file: 'b', line: 2, severity: 'major', title: 'old', body: 'b' },
+    ],
+    unanchored: [],
+    skipped: [
+      { file: 'b', line: 2, severity: 'major', title: 'old', body: 'b' },
+    ],
+    posted: 1,
+    healthy: true,
+    diffHash: HASH,
+    promptHash: HASH,
+  });
+  assert.match(body, /1 unchanged from an earlier push/);
 });

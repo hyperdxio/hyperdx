@@ -44,6 +44,18 @@ jobs:
       'ready_for_review' || !github.event.pull_request.draft
 
     runs-on: ubuntu-latest
+    env:
+      # TEMPORARY, mirrors deep-review.yml. CLI >= 2.1.216 has a bwrap sandbox regression
+      # that breaks every Bash call -- which for this workflow means the git/gh verbs the
+      # prompt tells the reviewer to use fail silently and it reviews the diff blind.
+      # The SHA-512 is the npm dist.integrity of the tarball; the pin step verifies the
+      # download before installing, so a compromised registry response cannot substitute
+      # the binary this credentialed job then executes. Recompute when bumping:
+      #   npm view @anthropic-ai/claude-code@<version> dist.integrity
+      # UNPIN together with deep-review.yml (HDX-4907).
+      # https://github.com/anthropics/claude-code-action/issues/1547
+      CLAUDE_CLI_VERSION: 2.1.215
+      CLAUDE_CLI_SHA512: sha512-lsWBvyMyBqg/rOZ06o/HEhlpOzHsH8IBf9RH4u5gzizQ1LWS/oXAh5nqWNUu3hn2d8QkyYg0aseNzMDlGD+3qg==
     permissions:
       contents: read
       pull-requests: write
@@ -85,29 +97,42 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: ${{ steps.pr.outputs.head_repo }}
-          ref: ${{ steps.pr.outputs.head_ref }}
+          # The SHA, not the branch: the diff, the line map and the posted comments must
+          # all describe one commit. A push mid-run would otherwise leave the anchors
+          # computed from a tree the review is not posted against.
+          ref: ${{ steps.pr.outputs.head_sha }}
           fetch-depth: 0
+          # checkout@v6 refuses a fork PR ref without this.
+          allow-unsafe-pr-checkout: true
+          # Otherwise the write-scoped token is written into .git/config, where the
+          # reviewer's own Read tool can retrieve it.
+          persist-credentials: false
 
       # The checkout above is FORK-AUTHORED. Anything this job executes or loads must come
       # from the base repo instead, or a PR can run its own code in a job holding
       # ANTHROPIC_API_KEY and a write token. The prompt lives here too: a fork editing it
       # would otherwise rewrite the reviewer's own instructions.
       #
-      # Pinned to base_sha, not the branch, so a push to main mid-run cannot change it.
+      # `github.sha` on pull_request_target is the base-branch commit this workflow file
+      # was loaded from, so the trusted copy always matches the YAML that is running.
+      # base_sha (the PR's merge target) can lag it.
       - name: Checkout trusted prompt and helpers
         uses: actions/checkout@v6
         with:
-          ref: ${{ steps.pr.outputs.base_sha }}
+          ref: ${{ github.sha }}
           path: .trusted
           sparse-checkout: |
             .github/prompts
             .github/scripts
             .github/workflows
+            .nvmrc
+          sparse-checkout-cone-mode: false
           persist-credentials: false
 
       - uses: actions/setup-node@v4
         with:
-          node-version-file: .nvmrc
+          # From the trusted tree: the fork controls its own .nvmrc.
+          node-version-file: .trusted/.nvmrc
 
       # Same pattern as pr-triage.yml: the workflow that consumes a script runs its
       # tests. Fails fast on the comment-routing logic before spending on a review.
@@ -123,20 +148,39 @@ jobs:
         env:
           BASE_REF: ${{ steps.pr.outputs.base_ref }}
           BASE_SHA: ${{ steps.pr.outputs.base_sha }}
+          BASE_REPO_URL: https://github.com/${{ github.repository }}.git
         run: |
           set -euo pipefail
-          git fetch --no-tags origin "$BASE_REF" "$BASE_SHA" || git fetch --no-tags origin "$BASE_REF"
-          MB=$(git merge-base HEAD "$BASE_SHA")
+          # On a fork PR `origin` is the FORK, which need not contain the base ref at all.
+          # Fetch from the base repo by URL, deepen once, and refuse to review without a
+          # merge-base rather than silently diffing against the base tip and reporting
+          # findings about files outside the PR. Same approach as deep-review.yml.
+          if ! git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
+            git fetch --no-tags "$BASE_REPO_URL" "$BASE_REF" \
+              || git fetch --no-tags "$BASE_REPO_URL" "$BASE_SHA"
+          fi
+          MB=$(git merge-base HEAD "$BASE_SHA" 2>/dev/null || true)
+          if [ -z "$MB" ]; then
+            git fetch --no-tags --deepen=1000 "$BASE_REPO_URL" "$BASE_REF" || true
+            MB=$(git merge-base HEAD "$BASE_SHA" 2>/dev/null || true)
+          fi
+          if [ -z "$MB" ]; then
+            echo "::error::No merge-base between the PR head and $BASE_SHA after a deep fetch. Refusing to review -- the diff scope would silently widen to the base tip."
+            exit 1
+          fi
           echo "merge_base=$MB" >> "$GITHUB_OUTPUT"
           mkdir -p .hdx
           # --no-color/--no-renames strip the config- and heuristic-driven sources of
           # non-determinism so the hash below is stable across runs and runners.
           git diff --no-color --no-renames "$MB" HEAD > .hdx/pr.diff
           echo "diff_hash=$(sha256sum .hdx/pr.diff | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
-          # Hash the entire trusted tree rather than a hand-maintained file list: the
-          # prompt, this workflow (model, schema, tool grants) and the routing helper all
-          # change reviewer behaviour, and so will whatever is added next.
-          echo "prompt_hash=$(find .trusted/.github -type f -print0 \
+          # Everything that changes what this reviewer does -- the prompt, the routing
+          # helper, and this workflow file (model, schema, tool grants) -- and nothing
+          # else. Hashing all of .github would make an unrelated workflow edit re-pay for
+          # a review of every open PR; hashing a hand-listed set would silently miss the
+          # next file added under prompts/ or scripts/.
+          echo "prompt_hash=$(find .trusted/.github/prompts .trusted/.github/scripts \
+            .trusted/.github/workflows/claude-code-review.yml -type f -print0 \
             | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
           echo "diff bytes: $(wc -c < .hdx/pr.diff)"
 
@@ -181,13 +225,37 @@ jobs:
             echo
             echo '```text'
             # Exclude our own output, or the reviewer re-reports itself.
-            { gh api "repos/$GITHUB_REPOSITORY/pulls/$PR/comments?per_page=100" \
+            # --paginate: a busy PR exceeds one page, and silently dropping the rest
+            # would let the reviewer re-report something already discussed. Both inline
+            # threads and conversation comments, since the prompt promises both.
+            { gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/comments?per_page=100" \
               --jq '.[] | select(.user.login != "github-actions[bot]") | "\(.path):\(.line // .original_line) [\(.user.login)] \(.body)"' || true; } |
-              defuse | head -c 24000 || true
+              defuse | head -c 20000 || true
+            { gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR/comments?per_page=100" \
+              --jq '.[] | select(.user.login != "github-actions[bot]") | "[\(.user.login)] \(.body)"' || true; } |
+              defuse | head -c 8000 || true
             echo
             echo '```'
           } > .hdx/context.md
           echo "context bytes: $(wc -c < .hdx/context.md)"
+
+      # Even with a correct merge-base, confirm the locally-computed file list matches the
+      # PR's file list from the API. If they diverge we are about to review the wrong diff
+      # and post findings about files outside the PR -- fail loud. From deep-review.yml.
+      - name: Verify diff file list matches PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MB: ${{ steps.diff.outputs.merge_base }}
+          PR: ${{ steps.pr.outputs.number }}
+        run: |
+          set -euo pipefail
+          LOCAL=$(git diff --name-only "$MB" HEAD | sort -u)
+          REMOTE=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json files --jq '.files[].path' | sort -u)
+          if [ "$LOCAL" != "$REMOTE" ]; then
+            echo "::error::Local diff file list does not match the PR's file list; the review base is likely wrong."
+            diff <(echo "$LOCAL") <(echo "$REMOTE") || true
+            exit 1
+          fi
 
       - name: Find existing review summary
         uses: peter-evans/find-comment@v4
@@ -249,6 +317,32 @@ jobs:
             echo 'CLAUDE_PROMPT_EOF'
           } >> "$GITHUB_OUTPUT"
 
+      # The action's own bundled CLI is not pinned; install and verify the pre-regression
+      # version and point the action at it. Lifted from deep-review.yml so both workflows
+      # move together.
+      - name: Pin Claude Code CLI to a pre-regression version
+        if: steps.gate.outputs.should_review == 'true'
+        run: |
+          set -euo pipefail
+          TARBALL="$RUNNER_TEMP/claude-code-$CLAUDE_CLI_VERSION.tgz"
+          curl -fsSL -o "$TARBALL" \
+            "https://registry.npmjs.org/@anthropic-ai/claude-code/-/claude-code-$CLAUDE_CLI_VERSION.tgz"
+          ACTUAL="sha512-$(openssl dgst -sha512 -binary "$TARBALL" | openssl base64 -A)"
+          if [ "$ACTUAL" != "$CLAUDE_CLI_SHA512" ]; then
+            echo "::error::Pinned CLI tarball integrity check failed: expected $CLAUDE_CLI_SHA512, got $ACTUAL. Refusing to install."
+            exit 1
+          fi
+          INSTALL_DIR="$RUNNER_TEMP/claude-cli"
+          npm install --prefix "$INSTALL_DIR" --no-audit --no-fund --ignore-scripts "$TARBALL"
+          node "$INSTALL_DIR/node_modules/@anthropic-ai/claude-code/install.cjs"
+          CLAUDE_BIN="$INSTALL_DIR/node_modules/.bin/claude"
+          if [ ! -x "$CLAUDE_BIN" ]; then
+            echo "::error::Pinned Claude Code CLI not found at $CLAUDE_BIN after install."
+            exit 1
+          fi
+          echo "Installed Claude Code CLI: $("$CLAUDE_BIN" --version 2>/dev/null || echo '<none>')"
+          echo "PINNED_CLAUDE=$CLAUDE_BIN" >> "$GITHUB_ENV"
+
       - name: Run Claude Code Review
         id: claude-review
         if: steps.gate.outputs.should_review == 'true'
@@ -258,6 +352,7 @@ jobs:
           allowed_bots: dependabot,dependabot[bot],kodiakhq,kodiakhq[bot],github-actions,github-actions[bot],cursor,cursor[bot],claude,claude[bot]
           github_token: ${{ secrets.GITHUB_TOKEN }} # Bypasses OIDC auth (required for pull_request_target)
           allowed_non_write_users: '*' # Allows fork contributors to trigger reviews
+          path_to_claude_code_executable: ${{ env.PINNED_CLAUDE }}
           prompt: ${{ steps.prompt.outputs.text }}
           # Model is PINNED deliberately. The prompt was evaluated on Opus and gained ~13
           # points over Sonnet, far more than the ~5 the previous prompt gained -- the
@@ -277,9 +372,18 @@ jobs:
           # Note the eval measured Read/Grep/Glob only; the git/gh verbs below are a
           # production-quality addition that the harness cannot fully score (gh pr view
           # would show the reviewer the very comments it is graded against).
+          # Reviewer confinement. .mcp.json, .claude/agents and .claude/skills are all
+          # tracked, so a fork PR can ship config for the reviewer itself.
+          #   --setting-sources user  drops project+local settings sources.
+          #   --strict-mcp-config     .mcp.json is NOT covered by the above, and -p mode
+          #     skips the trust dialog, so an MCP server declared by the PR would
+          #     otherwise be started inside this job.
+          # Neutralize by config, never by deleting the files: the reviewer diffs against
+          # the working tree, so touching it would forge deletions into the diff it sees.
           claude_args: |
             --model opus
             --setting-sources user
+            --strict-mcp-config
             --allowedTools "Read,Grep,Glob,Bash(git diff:*),Bash(git log:*),Bash(git blame:*),Bash(git show:*),Bash(git merge-base:*),Bash(git rev-parse:*),Bash(git ls-files:*),Bash(git cat-file:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr list:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*)"
             --disallowedTools "Bash(gh api:*),Bash(curl:*),Bash(wget:*),WebFetch,WebSearch,Task,Edit,Write,NotebookEdit"
             --json-schema '{"type":"object","properties":{"findings":{"type":"array","items":{"type":"object","properties":{"file":{"type":"string","description":"Repo-relative path"},"line":{"type":"integer","description":"Line in the post-image the finding applies to"},"severity":{"type":"string","enum":["critical","major","minor"]},"title":{"type":"string","description":"The issue, one line"},"body":{"type":"string","description":"The fix, one line where possible"}},"required":["file","title","body"],"additionalProperties":false}}},"required":["findings"],"additionalProperties":false}'
@@ -376,6 +480,7 @@ jobs:
 
             core.setOutput('posted', String(posted));
             core.setOutput('unanchored', JSON.stringify(unanchored));
+            core.setOutput('skipped', String(skipped.length));
             core.info(`${findings.length} findings: ${posted} inline, ${unanchored.length} in summary, ${skipped.length} already posted`);
 
       - name: Render review summary
@@ -406,16 +511,24 @@ jobs:
                 ? []
                 : JSON.parse(${{ toJSON(steps.inline.outputs.unanchored || '[]') }}),
               posted: Number('${{ steps.inline.outputs.posted || 0 }}'),
+              skipped: new Array(Number('${{ steps.inline.outputs.skipped || 0 }}')),
               healthy,
               reason: ${{ toJSON(steps.health.outputs.reason) }} || 'the review step did not complete',
               diffHash: '${{ steps.diff.outputs.diff_hash }}',
               promptHash: '${{ steps.diff.outputs.prompt_hash }}',
             }));
 
+      # Only overwrite the sticky when the run actually produced a review. An unhealthy
+      # run would otherwise replace the last good review -- including its listed
+      # out-of-diff findings -- with a "did not complete" notice. Leaving the old body in
+      # place also leaves its old diff hash, so the gate still re-reviews on the next push.
+      # The failed check is the signal that something went wrong.
       - name: Post or update review summary
-        if:
+        if: >-
           always() && steps.gate.outputs.should_review == 'true' &&
-          steps.summary.outputs.body != ''
+          steps.summary.outputs.body != '' && (steps.health.outputs.healthy ==
+          'true' ||
+           steps.find-comment.outputs.comment-id == '')
         uses: peter-evans/create-or-update-comment@v5
         with:
           comment-id: ${{ steps.find-comment.outputs.comment-id }}

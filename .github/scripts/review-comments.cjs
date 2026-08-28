@@ -162,6 +162,7 @@ function renderFinding(f) {
 function renderSummary({
   findings,
   unanchored,
+  skipped,
   posted,
   healthy,
   reason,
@@ -188,6 +189,7 @@ function renderSummary({
 
   const by = s => findings.filter(f => severityOf(f) === s).length;
   const nUnanchored = unanchored ? unanchored.length : 0;
+  const nSkipped = skipped ? skipped.length : 0;
   // Be accurate about where the findings went. "none could be anchored" is wrong when the
   // real reason is that every finding was already posted on an earlier push.
   const delivery =
@@ -200,7 +202,12 @@ function renderSummary({
   lines.push(
     `**${findings.length}** finding(s): 🔴 ${by('critical')} critical · 🟠 ${by('major')} major · 🔵 ${by('minor')} minor`,
     '',
-    delivery,
+    // Skipped findings are counted above but appear nowhere in this comment -- they are
+    // already on the PR as inline comments from an earlier push. Say so, or the totals
+    // look like they lost something.
+    nSkipped
+      ? `${delivery} ${nSkipped} unchanged from an earlier push (already inline above).`
+      : delivery,
     '',
   );
 
