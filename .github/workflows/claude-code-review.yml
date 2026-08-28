@@ -88,13 +88,6 @@ jobs:
           ref: ${{ steps.pr.outputs.head_ref }}
           fetch-depth: 0
 
-      # Same pattern as pr-triage.yml: the workflow that consumes a script runs its
-      # tests. Fails fast on the comment-routing logic before spending on a review.
-      - name: Test review helpers
-        run:
-          node --test
-          .trusted/.github/scripts/__tests__/review-comments.test.mjs
-
       # The checkout above is FORK-AUTHORED. Anything this job executes or loads must come
       # from the base repo instead, or a PR can run its own code in a job holding
       # ANTHROPIC_API_KEY and a write token. The prompt lives here too: a fork editing it
@@ -116,6 +109,13 @@ jobs:
         with:
           node-version-file: .nvmrc
 
+      # Same pattern as pr-triage.yml: the workflow that consumes a script runs its
+      # tests. Fails fast on the comment-routing logic before spending on a review.
+      - name: Test review helpers
+        run:
+          node --test
+          .trusted/.github/scripts/__tests__/review-comments.test.mjs
+
       # The reviewer reads the diff from a file: a large diff cannot be embedded in
       # workflow YAML, and subagents/later steps need a stable path.
       - name: Stage the effective diff
@@ -133,13 +133,11 @@ jobs:
           # non-determinism so the hash below is stable across runs and runners.
           git diff --no-color --no-renames "$MB" HEAD > .hdx/pr.diff
           echo "diff_hash=$(sha256sum .hdx/pr.diff | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
-          # Hash everything that changes what the reviewer does: the prompt, this workflow
-          # (model, schema, tool grants) and the routing helper. Hashing the prompt alone
-          # leaves every open PR pinned to a stale review after a workflow change.
-          echo "prompt_hash=$(cat .trusted/.github/prompts/code-review.md \
-            .trusted/.github/scripts/review-comments.cjs \
-            .trusted/.github/workflows/claude-code-review.yml \
-            | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          # Hash the entire trusted tree rather than a hand-maintained file list: the
+          # prompt, this workflow (model, schema, tool grants) and the routing helper all
+          # change reviewer behaviour, and so will whatever is added next.
+          echo "prompt_hash=$(find .trusted/.github -type f -print0 \
+            | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
           echo "diff bytes: $(wc -c < .hdx/pr.diff)"
 
       # Context the reviewer cannot safely fetch itself. `gh api` is a write primitive in

@@ -383,3 +383,33 @@ test('the summary counts both delivered and listed findings when it does both', 
   assert.match(body, /1 posted as inline comment\(s\)/);
   assert.match(body, /1 listed below/);
 });
+
+test("the sticky marker matches the workflow's body-includes", () => {
+  // find-comment locates the comment to update by substring. If this marker and the
+  // workflow's `body-includes` drift apart, every push posts a NEW sticky comment instead
+  // of updating the old one, and the gate stops finding prior state. Same class of silent
+  // duplication as the gate regex, so it gets the same treatment: read the real value.
+  const wf = readFileSync(WORKFLOW, 'utf8');
+  const line = wf.split('\n').find(l => l.trim().startsWith('body-includes:'));
+  assert.ok(line, 'could not find body-includes in the workflow');
+  const marker = line
+    .split('body-includes:')[1]
+    .trim()
+    .replace(/^['"]|['"]$/g, '');
+
+  for (const healthy of [true, false]) {
+    const body = helpers.renderSummary({
+      findings: [],
+      unanchored: [],
+      posted: 0,
+      healthy,
+      reason: 'x',
+      diffHash: HASH,
+      promptHash: HASH,
+    });
+    assert.ok(
+      body.includes(marker),
+      `summary must carry ${marker} so find-comment updates in place (healthy=${healthy})`,
+    );
+  }
+});

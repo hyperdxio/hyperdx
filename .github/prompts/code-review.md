@@ -1,5 +1,5 @@
 REPO: hyperdxio/hyperdx
-PR: #{{PR_NUMBER}} — {{PR_TITLE}}
+PR: #{{PR_NUMBER}}
 
 Review this pull request. Use the repository's CLAUDE.md for style and conventions.
 
