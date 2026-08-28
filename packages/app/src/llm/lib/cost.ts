@@ -84,7 +84,16 @@ export function resolveSpanCostUsd(info: LLMSpanInfo): {
   };
 }
 
-const escapeSqlString = (value: string) => value.replace(/'/g, "\\'");
+/**
+ * Escape a string for embedding in a ClickHouse single-quoted literal.
+ * Backslashes are doubled BEFORE quotes are escaped: ClickHouse decodes
+ * recognized escapes (\b, \t, \xHH, ...) inside literals, so a regex like
+ * `\bfoo` would otherwise arrive with a literal backspace. (Unrecognized
+ * escapes such as \d keep their backslash, but relying on that nuance is a
+ * footgun — `\\d` round-trips to `\d` either way.)
+ */
+const escapeSqlString = (value: string) =>
+  value.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 
 /**
  * Generate a ClickHouse SQL expression estimating per-row cost in USD for

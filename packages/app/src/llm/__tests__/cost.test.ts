@@ -260,4 +260,48 @@ describe('generateCostSqlExpression', () => {
     // Sanity: balanced quotes (every pattern is quoted once).
     expect((sql.match(/'/g) ?? []).length % 2).toBe(0);
   });
+
+  it('regex patterns survive ClickHouse string-literal decoding', () => {
+    // Simulate ClickHouse's literal unescaping: recognized escapes decode
+    // to control chars, \\ -> \, and unrecognized \c keeps its backslash
+    // (see ReadHelpers parseComplexEscapeSequence). String assertions alone
+    // can't catch escaping bugs, so round-trip every embedded pattern and
+    // re-match the catalog's own test cases with a JS RegExp.
+    const RECOGNIZED: Record<string, string> = {
+      b: '\b',
+      f: '\f',
+      r: '\r',
+      n: '\n',
+      t: '\t',
+      '0': '\0',
+      a: '\x07',
+      v: '\v',
+      '\\': '\\',
+      "'": "'",
+    };
+    const clickhouseUnescape = (literal: string) =>
+      literal.replace(/\\(.)/g, (_, c: string) =>
+        c in RECOGNIZED ? RECOGNIZED[c] : `\\${c}`,
+      );
+
+    const sql = generateCostSqlExpression(exprs);
+    const literals = [...sql.matchAll(/match\(model, '((?:[^'\\]|\\.)*)'\)/g)];
+    expect(literals.length).toBe(MODEL_PRICES.length * 4);
+
+    const decodedPatterns = new Set(
+      literals.map(m => clickhouseUnescape(m[1])),
+    );
+    // Every decoded pattern must equal a catalog pattern (with the (?i)
+    // prefix) — i.e. the SQL round-trip is lossless.
+    for (const price of MODEL_PRICES.slice(0, 25)) {
+      expect(decodedPatterns.has(`(?i)${price.pattern}`)).toBe(true);
+    }
+    // And dated ids still match after the round-trip (the failure mode of
+    // under-escaped \d / \. patterns).
+    const decoded = [...decodedPatterns].find(p => p.includes('gpt-5\\.1('));
+    expect(decoded).toBeDefined();
+    const re = new RegExp(decoded!.replace('(?i)', ''), 'i');
+    expect(re.test('gpt-5.1-2025-11-13')).toBe(true);
+    expect(re.test('gpt-5x1-2025-11-13')).toBe(false);
+  });
 });
