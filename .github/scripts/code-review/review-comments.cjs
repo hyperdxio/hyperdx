@@ -199,13 +199,23 @@ function renderSummary({
     return lines.join('\n');
   }
 
-  const by = s => findings.filter(f => severityOf(f) === s).length;
+  // The set actually represented in this comment: first occurrence of each fingerprint.
+  // Both the headline total and the per-severity tally run over it, so they agree -- a
+  // tally over every finding would not sum to the distinct total once duplicates collapse.
+  const seenKeys = new Set();
+  const shown = findings.filter(f => {
+    const key = fingerprint(f);
+    if (seenKeys.has(key)) return false;
+    seenKeys.add(key);
+    return true;
+  });
+  const by = s => shown.filter(f => severityOf(f) === s).length;
   const nUnanchored = unanchored ? unanchored.length : 0;
   const nSkipped = skipped ? skipped.length : 0;
   // Duplicates were collapsed into a single comment, so counting them in the headline
   // would advertise findings that appear nowhere. Report distinct findings.
   const nDuplicates = duplicates ? duplicates.length : 0;
-  const distinct = findings.length - nDuplicates;
+  const distinct = shown.length;
   // Be accurate about where the findings went. "none could be anchored" is wrong when the
   // real reason is that every finding was already posted on an earlier push.
   const delivery =

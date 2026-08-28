@@ -610,3 +610,39 @@ test('collapsed duplicates are excluded from the headline count', () => {
   );
   assert.match(body, /1 duplicate\(s\) collapsed/);
 });
+
+test('severity tallies sum to the headline total when duplicates collapse', () => {
+  // A per-severity count over every finding would not add up to the distinct total.
+  const a = {
+    file: 'a.ts',
+    line: 1,
+    severity: 'major',
+    title: 'dup',
+    body: 'y',
+  };
+  const b = {
+    file: 'b.ts',
+    line: 1,
+    severity: 'minor',
+    title: 'other',
+    body: 'y',
+  };
+  const body = helpers.renderSummary({
+    findings: [a, { ...a, line: 9 }, b],
+    unanchored: [],
+    skipped: [],
+    duplicates: [{ ...a, line: 9 }],
+    posted: 2,
+    healthy: true,
+    diffHash: HASH,
+    promptHash: HASH,
+  });
+  const m =
+    /\*\*(\d+)\*\* finding\(s\).*?(\d+) critical.*?(\d+) major.*?(\d+) minor/.exec(
+      body,
+    );
+  assert.ok(m, 'headline not found');
+  const [, total, crit, major, minor] = m.map(Number);
+  assert.equal(total, 2, 'distinct findings');
+  assert.equal(crit + major + minor, total, 'severities must sum to the total');
+});

@@ -21,7 +21,9 @@ name: Claude Code Review
 
 on:
   pull_request_target:
-    types: [opened, synchronize, ready_for_review]
+    # reopened and edited matter: a base retarget or a reopen changes the effective diff
+    # without a push, and the gate would otherwise leave a stale sticky and stale anchors.
+    types: [opened, synchronize, ready_for_review, reopened, edited]
   workflow_dispatch:
     inputs:
       pr_number:
@@ -66,7 +68,6 @@ jobs:
       contents: read
       pull-requests: write
       issues: write
-      id-token: write
       actions: read
 
     steps:
@@ -142,7 +143,7 @@ jobs:
           sparse-checkout-cone-mode: false
           persist-credentials: false
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           # From the trusted tree: the fork controls its own .nvmrc.
           node-version-file: .trusted/.nvmrc
@@ -193,7 +194,7 @@ jobs:
           # of every open PR. The dedicated code-review/ directory is what makes a
           # directory hash both precise and self-maintaining as files are added.
           echo "prompt_hash=$(find .trusted/.github/prompts/code-review.md \
-            .trusted/.github/scripts/code-review \
+            .trusted/.github/scripts/code-review/review-comments.cjs \
             .trusted/.github/workflows/claude-code-review.yml -type f -print0 \
             | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
           echo "diff bytes: $(wc -c < .hdx/pr.diff)"
@@ -347,7 +348,12 @@ jobs:
             exit 1
           fi
           INSTALL_DIR="$RUNNER_TEMP/claude-cli"
-          npm install --prefix "$INSTALL_DIR" --no-audit --no-fund --ignore-scripts "$TARBALL"
+          mkdir -p "$INSTALL_DIR"
+          # Install from RUNNER_TEMP, not the workspace: npm reads .npmrc from the cwd, and
+          # the workspace is the fork's checkout -- a committed .npmrc could redirect the
+          # registry while installing into a job holding ANTHROPIC_API_KEY.
+          ( cd "$INSTALL_DIR" && npm install --prefix "$INSTALL_DIR" --no-audit --no-fund \
+              --ignore-scripts --userconfig /dev/null "$TARBALL" )
           node "$INSTALL_DIR/node_modules/@anthropic-ai/claude-code/install.cjs"
           CLAUDE_BIN="$INSTALL_DIR/node_modules/.bin/claude"
           if [ ! -x "$CLAUDE_BIN" ]; then
@@ -364,7 +370,10 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           allowed_bots: dependabot,dependabot[bot],kodiakhq,kodiakhq[bot],github-actions,github-actions[bot],cursor,cursor[bot],claude,claude[bot]
-          github_token: ${{ secrets.GITHUB_TOKEN }} # Bypasses OIDC auth (required for pull_request_target)
+          # Bypasses OIDC, which is why this job grants no `id-token: write`: that
+          # permission would put ACTIONS_ID_TOKEN_REQUEST_TOKEN/_URL in the reviewer's
+          # environment for no benefit, and those are outside the credential canary set.
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           allowed_non_write_users: '*' # Allows fork contributors to trigger reviews
           path_to_claude_code_executable: ${{ env.PINNED_CLAUDE }}
           prompt: ${{ steps.prompt.outputs.text }}
@@ -426,11 +435,26 @@ jobs:
           printf '%s' "$OUT" | jq -e 'has("findings") and (.findings | type == "array")' >/dev/null 2>&1 \
             || broken "structured output has no findings array"
           printf '%s' "$OUT" > .hdx/findings.json
+          # A sandbox that breaks every Bash call still returns a schema-valid (often
+          # empty) result, which would stamp a state marker and make the gate skip this
+          # diff on every future push. The CLI pin only dodges the known regression; this
+          # is the permanent guard, as deep-review.yml argues for its own.
+          if [ -n "${EXECUTION_FILE:-}" ] && [ -s "$EXECUTION_FILE" ]; then
+            BWRAP=$(jq '[ .[] | select(.type == "user") | .message.content[]?
+                          | select(.type == "tool_result" and .is_error == true)
+                          | ( .content | if type == "array" then map(.text // "") | join("\n")
+                                         elif type == "string" then . else tostring end )
+                          | select(test("(^|\\n)bwrap: "))
+                        ] | length' "$EXECUTION_FILE" 2>/dev/null || echo 0)
+            if [ "${BWRAP:-0}" != "0" ]; then
+              broken "Reviewer sandbox was broken: $BWRAP Bash call(s) failed with bwrap errors, so the git/gh checks the prompt relies on never ran."
+            fi
+          fi
           echo "count=$(jq '.findings | length' .hdx/findings.json)" >> "$GITHUB_OUTPUT"
           echo "healthy=true" >> "$GITHUB_OUTPUT"
 
       # Inline comments, deduped across pushes by a hidden per-finding fingerprint.
-      # Routing logic lives in .github/scripts/review-comments.cjs, loaded from the TRUSTED
+      # Routing logic lives in .github/scripts/code-review/review-comments.cjs, from the TRUSTED
       # checkout -- requiring the fork's copy would execute PR-authored code in this job.
       - name: Post inline review comments
         id: inline
@@ -471,9 +495,17 @@ jobs:
               return;
             }
 
-            const existingComments = await github.paginate(github.rest.pulls.listReviewComments, {
-              owner: context.repo.owner, repo: context.repo.repo, pull_number: prNumber, per_page: 100,
-            });
+            // Guarded: a transient error here would otherwise throw the whole step and
+            // discard a review that already completed. An empty list only costs dedup, and
+            // the fingerprint markers keep a re-post idempotent on the next run.
+            let existingComments = [];
+            try {
+              existingComments = await github.paginate(github.rest.pulls.listReviewComments, {
+                owner: context.repo.owner, repo: context.repo.repo, pull_number: prNumber, per_page: 100,
+              });
+            } catch (err) {
+              core.warning(`could not list existing comments (${err.status}); dedup skipped`);
+            }
             const { inline, unanchored, skipped, duplicates } =
               helpers.buildInlineComments({
               findings,
@@ -512,6 +544,17 @@ jobs:
                       // Carry the real finding, not a stub: the summary must render its
                       // actual title, body and severity.
                       unanchored.push(item.finding);
+                      if (e.status !== 422) {
+                        // Not an anchor problem (rate limit, 5xx). Continuing fires N more
+                        // requests into it and demotes anchorable findings anyway.
+                        core.warning(
+                          `non-422 during retry (${e.status}); routing the remainder to the summary`,
+                        );
+                        unanchored.push(
+                          ...inline.slice(inline.indexOf(item) + 1).map(i => i.finding),
+                        );
+                        break;
+                      }
                     }
                   }
                 }
