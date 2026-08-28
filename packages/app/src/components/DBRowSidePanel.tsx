@@ -94,10 +94,16 @@ export type RowSidePanelContextProps = {
     where,
     whereLanguage,
     source,
+    pivot,
   }: {
     where: SearchConfig['where'];
     whereLanguage: SearchConfig['whereLanguage'];
     source?: TSource;
+    /**
+     * Open the search on `source` itself rather than narrowing the current
+     * search with a correlated condition on it.
+     */
+    pivot?: boolean;
   }) => string;
   generateChartUrl?: (config: {
     aggFn: string;

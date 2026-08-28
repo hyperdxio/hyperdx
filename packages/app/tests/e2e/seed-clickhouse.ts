@@ -252,9 +252,12 @@ function generateLogData(
     const service = SERVICES[i % SERVICES.length];
     const message = LOG_MESSAGES[i % LOG_MESSAGES.length];
     const traceId = i < 10 ? `trace-${i}` : ''; // Link first 10 logs to traces
+    // Trace-linked logs carry the trace's root span id; the waterfall drops
+    // logs without a SpanId, so a bare TraceId would never render there.
+    const spanId = traceId ? `span-${i}-0` : '';
 
     rows.push(
-      `('${timestampNs}', '${traceId}', '', 0, '${severity}', 0, '${service}', '${message}', '', {'service.name':'${service}','environment':'test'}, '', '', '', {}, {'request.id':'req-${i}','user.id':'user-${i % 5}'})`,
+      `('${timestampNs}', '${traceId}', '${spanId}', 0, '${severity}', 0, '${service}', '${message}', '', {'service.name':'${service}','environment':'test'}, '', '', '', {}, {'request.id':'req-${i}','user.id':'user-${i % 5}'})`,
     );
   }
 
@@ -309,9 +312,12 @@ function generateK8sLogData(
     const serviceName = SERVICES[podIdx % SERVICES.length];
 
     const traceId = i < 10 ? `trace-${i}` : '';
+    // Same as generateLogData: a SpanId is required for the log to appear in
+    // the trace waterfall.
+    const spanId = traceId ? `span-${i}-0` : '';
 
     rows.push(
-      `('${timestampNs}', '${traceId}', '', 0, '${severity}', 0, '${serviceName}', '${message}', '', {'k8s.cluster.name':'${cluster}','k8s.namespace.name':'${namespace}','k8s.node.name':'${node}','k8s.pod.name':'${podName}','k8s.pod.uid':'${podUid}','k8s.container.name':'${containerName}','service.name':'${podName}','environment':'test'}, '', '', '', {}, {'request.id':'req-${i}','container.id':'${containerName}'})`,
+      `('${timestampNs}', '${traceId}', '${spanId}', 0, '${severity}', 0, '${serviceName}', '${message}', '', {'k8s.cluster.name':'${cluster}','k8s.namespace.name':'${namespace}','k8s.node.name':'${node}','k8s.pod.name':'${podName}','k8s.pod.uid':'${podUid}','k8s.container.name':'${containerName}','service.name':'${podName}','environment':'test'}, '', '', '', {}, {'request.id':'req-${i}','container.id':'${containerName}'})`,
     );
   }
 

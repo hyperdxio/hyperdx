@@ -206,9 +206,11 @@ describe('DBTracePanel', () => {
   });
 
   // The searched source is the trace source; the selected waterfall event may
-  // belong to the correlated log source. Search urls must target the event's
-  // own source, and filter actions (which mutate the searched source's query)
-  // must be gated off for cross-source events.
+  // belong to the correlated log source. The derived context must identify the
+  // event's own source to generateSearchUrl (the search page uses it to narrow
+  // the original search with a trace-id subquery on that source), and filter
+  // actions (which mutate the searched source's query) must be gated off for
+  // cross-source events.
   describe('span detail context for the selected event', () => {
     const renderWithSearchContext = () => {
       const generateSearchUrl = jest.fn(() => '/search?mock');
@@ -233,7 +235,7 @@ describe('DBTracePanel', () => {
       return { generateSearchUrl, onPropertyAddClick };
     };
 
-    it('targets the log source for a selected log event and gates filter actions', () => {
+    it('passes the log source for a selected log event and gates filter actions', () => {
       mockEventRowWhere = {
         id: 'log-1',
         type: SourceKind.Log,
