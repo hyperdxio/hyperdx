@@ -80,8 +80,11 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            // via env, not interpolation: a `${{ }}` in a github-script literal is a
-            // script-injection sink even when only write-access actors can dispatch.
+            // Read from env rather than interpolated by Actions: an interpolated
+            // expression inside a github-script literal is a script-injection sink, even
+            // when only write-access actors can dispatch. (Note: an Actions expression
+            // cannot be written literally in this file at all -- the parser evaluates it
+            // wherever it appears, including inside a JS comment.)
             const prNumber =
               context.eventName === 'workflow_dispatch'
                 ? Number(process.env.DISPATCH_PR)

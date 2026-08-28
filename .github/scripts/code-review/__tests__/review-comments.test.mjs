@@ -573,3 +573,17 @@ test('the reviewer schema and the renderer agree on the severity enum', () => {
     );
   }
 });
+
+test('the workflow contains no empty Actions expression', () => {
+  // `${'$'}{{ }}` is parsed by Actions wherever it appears in a scalar -- including inside
+  // what looks like a JS comment -- and an empty one fails the whole workflow to parse
+  // with "An expression was expected". Nothing in the YAML linting or the test suite
+  // catches it; only a real dispatch does. Caught exactly that way once.
+  const wf = readFileSync(WORKFLOW, 'utf8');
+  const empty = wf.split('\n').filter(l => /\$\{\{\s*\}\}/.test(l));
+  assert.deepEqual(
+    empty,
+    [],
+    'empty Actions expression would break workflow parsing',
+  );
+});
