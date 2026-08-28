@@ -70,6 +70,32 @@ describe('buildCorrelatedSearchWhere', () => {
     );
   });
 
+  it('backtick-quotes database and table names that are not bare identifiers', () => {
+    expect(
+      build({
+        eventSource: {
+          ...logSource,
+          from: { databaseName: 'my db', tableName: 'otel-logs' },
+        },
+      }),
+    ).toBe(
+      "TraceId IN (SELECT TraceId FROM `my db`.`otel-logs` WHERE Body LIKE '%exception%')",
+    );
+  });
+
+  it('doubles embedded backticks when quoting identifiers', () => {
+    expect(
+      build({
+        eventSource: {
+          ...logSource,
+          from: { databaseName: 'default', tableName: 'weird`table' },
+        },
+      }),
+    ).toBe(
+      "TraceId IN (SELECT TraceId FROM default.`weird``table` WHERE Body LIKE '%exception%')",
+    );
+  });
+
   it('defaults a missing trace id expression to TraceId', () => {
     expect(
       build({

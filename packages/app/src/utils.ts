@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import { formatDistanceToNowStrict } from 'date-fns';
 import numbro from 'numbro';
 import type { SetStateAction } from 'react';
+import SqlString from 'sqlstring';
 import TimestampNano from 'timestamp-nano';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
 import {
@@ -1148,6 +1149,17 @@ export const formatUptime = (seconds: number) => {
 // unescaped quote produces malformed SQL.
 const escapeSqlSingleQuoted = (v: string): string =>
   v.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+
+/**
+ * Quote a single identifier if it isn't already a valid bare ClickHouse identifier.
+ * @param id - The identifier to quote
+ * @returns The quoted identifier if needed, otherwise the original identifier
+ */
+export function quoteIdentifierIfNeeded(id: string): string {
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(id)
+    ? id
+    : SqlString.escapeId(id, true);
+}
 
 export const mergePath = (
   path: string[],

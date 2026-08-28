@@ -40,8 +40,7 @@ test.describe(
         .first();
       await expect(logRow).toBeVisible({ timeout: 10_000 });
       await logRow.click();
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      return searchedSourceId as string;
+      return searchedSourceId!;
     };
 
     // The generated search state, parsed from the URL the action navigated to.

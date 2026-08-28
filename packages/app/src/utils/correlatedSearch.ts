@@ -1,5 +1,7 @@
 import { TSource } from '@hyperdx/common-utils/dist/types';
 
+import { quoteIdentifierIfNeeded } from '@/utils';
+
 function getTraceIdExpression(source: TSource): string | undefined {
   return 'traceIdExpression' in source && source.traceIdExpression
     ? source.traceIdExpression
@@ -34,7 +36,12 @@ export function buildCorrelatedSearchWhere({
   const searchedTraceId = getTraceIdExpression(searchedSource) ?? 'TraceId';
   const eventTraceId = getTraceIdExpression(eventSource) ?? 'TraceId';
   const { databaseName, tableName } = eventSource.from ?? {};
-  const eventTable = databaseName ? `${databaseName}.${tableName}` : tableName;
+  const quotedTable = tableName
+    ? quoteIdentifierIfNeeded(tableName)
+    : tableName;
+  const eventTable = databaseName
+    ? `${quoteIdentifierIfNeeded(databaseName)}.${quotedTable}`
+    : quotedTable;
 
   return `${searchedTraceId} IN (SELECT ${eventTraceId} FROM ${eventTable} WHERE ${eventWhere.trim()})`;
 }

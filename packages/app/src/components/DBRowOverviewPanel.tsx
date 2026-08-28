@@ -6,6 +6,7 @@ import { Accordion, Box, Flex, Text } from '@mantine/core';
 
 import { WithClause } from '@/hooks/useRowWhere';
 import { getEventBody } from '@/source';
+import { mergePath } from '@/utils';
 import { getHighlightedAttributesFromData } from '@/utils/highlightedAttributes';
 import { resolveRowTimestampAnchor } from '@/utils/rowTimestamps';
 
@@ -421,8 +422,15 @@ export function RowOverviewPanel({
                     ? ''
                     : jsonColumns?.includes(resourceAttributesExpression)
                       ? // If resource attributes is a JSON column, we need to cast the key to a string so we can run where X in Y queries
-                        `toString(${resourceAttributesExpression}.${key})`
-                      : `${resourceAttributesExpression}['${key}']`;
+                        `toString(${mergePath([resourceAttributesExpression, key], jsonColumns, mapColumns)})`
+                      : // Not a JSON column: assume Map access. Force mergePath's map
+                        // branch so the key is escaped and a numeric-looking key stays
+                        // a map subscript instead of an array index.
+                        mergePath(
+                          [resourceAttributesExpression, key],
+                          [],
+                          [resourceAttributesExpression],
+                        );
                   return (
                     <EventTag
                       {...(onPropertyAddClick

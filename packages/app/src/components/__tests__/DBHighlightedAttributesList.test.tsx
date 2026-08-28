@@ -8,19 +8,17 @@ import { fireEvent, screen } from '@testing-library/react';
 import { DBHighlightedAttributesList } from '@/components/DBHighlightedAttributesList';
 import { RowSidePanelContext } from '@/components/DBRowSidePanel';
 
-// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
 const traceSource = {
   id: 'trace-source',
   kind: SourceKind.Trace,
   name: 'Traces',
-} as TTraceSource;
+};
 
-// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
 const logSource = {
   id: 'log-source',
   kind: SourceKind.Log,
   name: 'Logs',
-} as TLogSource;
+};
 
 describe('DBHighlightedAttributesList search conditions', () => {
   const renderList = async (
@@ -52,6 +50,7 @@ describe('DBHighlightedAttributesList search conditions', () => {
   };
 
   it('uses the lucene condition when the attribute belongs to the searched source', async () => {
+    // @ts-expect-error source type
     const generateSearchUrl = await renderList(traceSource, traceSource);
     expect(generateSearchUrl).toHaveBeenCalledWith({
       where: 'user.id:"123"',
@@ -62,6 +61,7 @@ describe('DBHighlightedAttributesList search conditions', () => {
   });
 
   it('uses the SQL condition for a cross-source attribute so the search page can build a trace-id subquery', async () => {
+    // @ts-expect-error source type
     const generateSearchUrl = await renderList(logSource, traceSource);
     expect(generateSearchUrl).toHaveBeenCalledWith({
       where: "SpanAttributes['user.id'] = '123'",
@@ -72,6 +72,7 @@ describe('DBHighlightedAttributesList search conditions', () => {
   });
 
   it('keeps the lucene condition when the context has no source', async () => {
+    // @ts-expect-error source type
     const generateSearchUrl = await renderList(logSource, undefined);
     expect(generateSearchUrl).toHaveBeenCalledWith({
       where: 'user.id:"123"',
@@ -82,6 +83,7 @@ describe('DBHighlightedAttributesList search conditions', () => {
   });
 
   it('keeps the lucene condition and requests a pivot when pivotToAttributeSource is set (trace-level attributes)', async () => {
+    // @ts-expect-error source type
     const generateSearchUrl = await renderList(logSource, traceSource, true);
     expect(generateSearchUrl).toHaveBeenCalledWith({
       where: 'user.id:"123"',
