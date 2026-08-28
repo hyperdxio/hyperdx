@@ -13,6 +13,8 @@ import {
 } from '@/utils/alerts';
 import { getWebhookChannelIcon } from '@/utils/webhookIcons';
 
+import styles from '@styles/AlertsPage.module.scss';
+
 /**
  * Targets listed inline before the rest collapse into a "+N more" tooltip.
  * An alert can carry up to MAX_ALERT_CHANNELS, which would push the creator
@@ -176,13 +178,8 @@ export function AlertPropertiesSummary({
     alert.thresholdType;
 
   return (
-    // Segments wrap as whole phrases: each is nowrap, so a narrow container
-    // breaks between them rather than splitting "Notify via" down the middle.
-    <div
-      className="fs-8 d-flex gap-2 align-items-center"
-      style={{ flexWrap: 'wrap', rowGap: 4 }}
-    >
-      <span style={{ whiteSpace: 'nowrap' }}>
+    <div className={`fs-8 ${styles.propertiesSummary}`}>
+      <span className={styles.propertySegment}>
         If value {thresholdLabel}{' '}
         <span className="fw-bold">{alert.threshold}</span>
         {isRangeThresholdType(alert.thresholdType) && (
@@ -195,14 +192,14 @@ export function AlertPropertiesSummary({
       {isDetail && (
         <>
           <span>&middot;</span>
-          <span style={{ whiteSpace: 'nowrap' }}>
+          <span className={styles.propertySegment}>
             Evaluates every {alert.interval}
           </span>
           {alert.numConsecutiveWindows != null &&
             alert.numConsecutiveWindows > 1 && (
               <>
                 <span>&middot;</span>
-                <span style={{ whiteSpace: 'nowrap' }}>
+                <span className={styles.propertySegment}>
                   Fires after {alert.numConsecutiveWindows} consecutive windows
                 </span>
               </>

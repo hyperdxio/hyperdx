@@ -78,6 +78,12 @@ function renderMenu(ui: React.ReactElement) {
 // Wait for the dropdown itself: Mantine mounts it through a transition, so a
 // bare click leaves the items absent and every "item is missing" assertion
 // passes for the wrong reason.
+// openMenu alone waits up to 5s for the dropdown, which is the whole default
+// per-test budget — under parallel workers a slow transition times out the
+// test before its assertions run. Give every test in this file headroom above
+// that internal wait.
+jest.setTimeout(15_000);
+
 const openMenu = async (testId: string) => {
   await userEvent.click(screen.getByTestId(testId));
   // Generous timeout: the transition competes with the rest of the suite

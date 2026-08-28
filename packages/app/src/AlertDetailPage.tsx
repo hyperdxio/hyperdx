@@ -155,7 +155,6 @@ function AlertDetailBody({ alert }: { alert: AlertsPageItem }) {
                   component={Link}
                   href={alertUrl}
                   variant="subtle"
-                  color="gray"
                   size="md"
                   aria-label={`Open ${getAlertSourceLabel(alert).toLowerCase()}`}
                   data-testid="open-alert-source"
