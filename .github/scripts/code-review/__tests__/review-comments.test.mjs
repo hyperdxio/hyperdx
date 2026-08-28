@@ -474,37 +474,6 @@ test('short or empty secret values are ignored to avoid matching everything', ()
   );
 });
 
-test('the CLI pin stays in lockstep with deep-review.yml', () => {
-  // Both workflows pin the same pre-regression CLI and both comments say to unpin
-  // together, but nothing binds them -- a bump in one silently leaves the other on a
-  // stale integrity hash. This is the binding.
-  const read = name =>
-    readFileSync(
-      fileURLToPath(new URL(`../../../workflows/${name}`, import.meta.url)),
-      'utf8',
-    );
-  const pin = text => ({
-    version: /CLAUDE_CLI_VERSION:\s*(\S+)/.exec(text)?.[1],
-    sha: /CLAUDE_CLI_SHA512:\s*(\S+)/.exec(text)?.[1],
-  });
-  const ours = pin(read('claude-code-review.yml'));
-  const theirs = pin(read('deep-review.yml'));
-  assert.ok(
-    ours.version && ours.sha,
-    'this workflow must declare a pinned CLI',
-  );
-  assert.equal(
-    ours.version,
-    theirs.version,
-    'CLI version drifted from deep-review.yml',
-  );
-  assert.equal(
-    ours.sha,
-    theirs.sha,
-    'CLI integrity hash drifted from deep-review.yml',
-  );
-});
-
 test('a secret split across title and body is still caught', () => {
   // Joining fields with a separator and testing includes(fullSecret) misses this, yet the
   // two halves render adjacent in the published comment and are trivially reconstructed.

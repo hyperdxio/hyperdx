@@ -53,17 +53,6 @@ jobs:
       # The identity this workflow posts under. Hardcoding it in three places meant a
       # future identity change would break self-exclusion and sticky updates independently.
       BOT_LOGIN: 'github-actions[bot]'
-      # TEMPORARY, mirrors deep-review.yml. CLI >= 2.1.216 has a bwrap sandbox regression
-      # that breaks every Bash call -- which for this workflow means the git/gh verbs the
-      # prompt tells the reviewer to use fail silently and it reviews the diff blind.
-      # The SHA-512 is the npm dist.integrity of the tarball; the pin step verifies the
-      # download before installing, so a compromised registry response cannot substitute
-      # the binary this credentialed job then executes. Recompute when bumping:
-      #   npm view @anthropic-ai/claude-code@<version> dist.integrity
-      # UNPIN together with deep-review.yml (HDX-4907).
-      # https://github.com/anthropics/claude-code-action/issues/1547
-      CLAUDE_CLI_VERSION: 2.1.215
-      CLAUDE_CLI_SHA512: sha512-lsWBvyMyBqg/rOZ06o/HEhlpOzHsH8IBf9RH4u5gzizQ1LWS/oXAh5nqWNUu3hn2d8QkyYg0aseNzMDlGD+3qg==
     permissions:
       contents: read
       pull-requests: write
@@ -348,37 +337,6 @@ jobs:
             echo 'CLAUDE_PROMPT_EOF'
           } >> "$GITHUB_OUTPUT"
 
-      # The action's own bundled CLI is not pinned; install and verify the pre-regression
-      # version and point the action at it. Lifted from deep-review.yml so both workflows
-      # move together.
-      - name: Pin Claude Code CLI to a pre-regression version
-        if: steps.gate.outputs.should_review == 'true'
-        run: |
-          set -euo pipefail
-          TARBALL="$RUNNER_TEMP/claude-code-$CLAUDE_CLI_VERSION.tgz"
-          curl -fsSL --connect-timeout 10 --max-time 120 -o "$TARBALL" \
-            "https://registry.npmjs.org/@anthropic-ai/claude-code/-/claude-code-$CLAUDE_CLI_VERSION.tgz"
-          ACTUAL="sha512-$(openssl dgst -sha512 -binary "$TARBALL" | openssl base64 -A)"
-          if [ "$ACTUAL" != "$CLAUDE_CLI_SHA512" ]; then
-            echo "::error::Pinned CLI tarball integrity check failed: expected $CLAUDE_CLI_SHA512, got $ACTUAL. Refusing to install."
-            exit 1
-          fi
-          INSTALL_DIR="$RUNNER_TEMP/claude-cli"
-          mkdir -p "$INSTALL_DIR"
-          # Install from RUNNER_TEMP, not the workspace: npm reads .npmrc from the cwd, and
-          # the workspace is the fork's checkout -- a committed .npmrc could redirect the
-          # registry while installing into a job holding ANTHROPIC_API_KEY.
-          ( cd "$INSTALL_DIR" && npm install --prefix "$INSTALL_DIR" --no-audit --no-fund \
-              --ignore-scripts --userconfig /dev/null "$TARBALL" )
-          node "$INSTALL_DIR/node_modules/@anthropic-ai/claude-code/install.cjs"
-          CLAUDE_BIN="$INSTALL_DIR/node_modules/.bin/claude"
-          if [ ! -x "$CLAUDE_BIN" ]; then
-            echo "::error::Pinned Claude Code CLI not found at $CLAUDE_BIN after install."
-            exit 1
-          fi
-          echo "Installed Claude Code CLI: $("$CLAUDE_BIN" --version 2>/dev/null || echo '<none>')"
-          echo "PINNED_CLAUDE=$CLAUDE_BIN" >> "$GITHUB_ENV"
-
       - name: Run Claude Code Review
         id: claude-review
         if: steps.gate.outputs.should_review == 'true'
@@ -391,7 +349,6 @@ jobs:
           # environment for no benefit, and those are outside the credential canary set.
           github_token: ${{ secrets.GITHUB_TOKEN }}
           allowed_non_write_users: '*' # Allows fork contributors to trigger reviews
-          path_to_claude_code_executable: ${{ env.PINNED_CLAUDE }}
           prompt: ${{ steps.prompt.outputs.text }}
           # Model is PINNED deliberately. The prompt was evaluated on Opus and gained ~13
           # points over Sonnet, far more than the ~5 the previous prompt gained -- the
@@ -476,16 +433,18 @@ jobs:
           [ ! -s "$EXECUTION_FILE" ] && broken "execution transcript is empty; cannot confirm the reviewer ran"
           jq -e 'type == "array" and length > 0' "$EXECUTION_FILE" >/dev/null 2>&1 \
             || broken "execution transcript is not a non-empty JSON array; cannot confirm the reviewer ran"
-          BWRAP=$(jq '[ .[] | select(.type == "user") | .message.content[]?
-                          | select(.type == "tool_result" and .is_error == true)
-                          | ( .content | if type == "array" then map(.text // "") | join("\n")
-                                         elif type == "string" then . else tostring end )
-                          | select(test("(^|\\n)bwrap: "))
-                        ] | length' "$EXECUTION_FILE") \
-            || broken "could not analyse the execution transcript; cannot confirm the sandbox was healthy"
-          if [ "${BWRAP:-0}" != "0" ]; then
-            broken "Reviewer sandbox was broken: $BWRAP tool call(s) failed with bwrap errors, so the review ran without working tools."
+          # The diff lives at .hdx/pr.diff and the only way to reach it is the Read tool,
+          # so a review that made zero tool calls never saw the diff at all -- it answered
+          # from the prompt alone. That catches a broken sandbox, a rate limit, and a turn
+          # limit with one invariant, and unlike a bwrap-specific grep it keeps working now
+          # that no Bash is granted.
+          TOOL_CALLS=$(jq '[ .[] | select(.type == "assistant") | .message.content[]?
+                             | select(.type == "tool_use") ] | length' "$EXECUTION_FILE") \
+            || broken "could not analyse the execution transcript; cannot confirm the reviewer ran"
+          if [ "${TOOL_CALLS:-0}" = "0" ]; then
+            broken "Reviewer made no tool calls, so it never read the diff at .hdx/pr.diff -- the review was blind."
           fi
+          echo "reviewer tool calls: $TOOL_CALLS"
           echo "count=$(jq '.findings | length' .hdx/findings.json)" >> "$GITHUB_OUTPUT"
           echo "healthy=true" >> "$GITHUB_OUTPUT"
 
