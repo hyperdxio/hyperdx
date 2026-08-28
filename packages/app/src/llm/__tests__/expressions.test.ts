@@ -178,18 +178,23 @@ describe('election-gated aggregates', () => {
     expect(expressions.hasProvidedCost).toMatch(/> 0\)$/);
   });
 
-  it('sums provided-cost rows when present, else all usage reporters', () => {
+  it('elects per service: provided-cost rows when the service has any, else all usage reporters', () => {
+    // A scope-wide election would drop token-only apps whenever any other
+    // app in the same scope reports provided costs (regression).
     const sql = llmGatedSumExpr(expressions, 'x');
+    const providedCountMap = `sumMap(map(${expressions.service}, toUInt64(${expressions.hasProvidedCost})))`;
+    const tokenCountMap = `sumMap(map(${expressions.service}, toUInt64(${expressions.hasReportedTokens})))`;
+    const providedSumMap = `sumMap(map(${expressions.service}, if(${expressions.hasProvidedCost}, toFloat64(x), 0.)))`;
+    const tokenSumMap = `sumMap(map(${expressions.service}, if(${expressions.hasReportedTokens}, toFloat64(x), 0.)))`;
     expect(sql).toBe(
-      `if(countIf(${expressions.hasProvidedCost}) > 0, sumIf(x, ${expressions.hasProvidedCost}), sumIf(x, ${expressions.hasReportedTokens}))`,
+      `arraySum(arrayMap(k -> if(${providedCountMap}[k] > 0, ${providedSumMap}[k], ${tokenSumMap}[k]), arrayDistinct(arrayConcat(mapKeys(${providedCountMap}), mapKeys(${tokenCountMap})))))`,
     );
   });
 
-  it('counts calls with the same election', () => {
+  it('counts calls with the same per-service election', () => {
     const sql = llmGatedCountExpr(expressions);
-    expect(sql).toBe(
-      `if(countIf(${expressions.hasProvidedCost}) > 0, countIf(${expressions.hasProvidedCost}), countIf(${expressions.hasReportedTokens}))`,
-    );
+    expect(sql).toBe(llmGatedSumExpr(expressions, '1'));
+    expect(sql).toContain('toFloat64(1)');
   });
 });
 

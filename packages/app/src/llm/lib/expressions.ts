@@ -415,19 +415,48 @@ export const LLM_COST_SQL_ALIAS = '__llm_cost_usd';
 
 type GateExpressions = Pick<
   LLMExpressions,
-  'hasProvidedCost' | 'hasReportedTokens'
+  'hasProvidedCost' | 'hasReportedTokens' | 'service'
 >;
 
 /**
+ * Per-service election over an aggregation scope: for each service, when
+ * any of its rows carries an instrumentation-provided cost, sum only those
+ * rows; otherwise sum all its usage-reporting rows. The per-service results
+ * are then added up.
+ *
+ * `Map[k]` defaults to 0 for absent keys and sumMap keeps zero totals, so
+ * iterating the union of keys is safe. ClickHouse computes syntactically
+ * identical aggregate expressions once, so the repeated sumMaps don't
+ * re-scan.
+ */
+function perServiceElectionExpr(
+  expressions: GateExpressions,
+  valueExpression: string,
+): string {
+  const { service, hasProvidedCost, hasReportedTokens } = expressions;
+  const providedCountMap = `sumMap(map(${service}, toUInt64(${hasProvidedCost})))`;
+  const tokenCountMap = `sumMap(map(${service}, toUInt64(${hasReportedTokens})))`;
+  const providedSumMap = `sumMap(map(${service}, if(${hasProvidedCost}, toFloat64(${valueExpression}), 0.)))`;
+  const tokenSumMap = `sumMap(map(${service}, if(${hasReportedTokens}, toFloat64(${valueExpression}), 0.)))`;
+  return `arraySum(arrayMap(k -> if(${providedCountMap}[k] > 0, ${providedSumMap}[k], ${tokenSumMap}[k]), arrayDistinct(arrayConcat(mapKeys(${providedCountMap}), mapKeys(${tokenCountMap})))))`;
+}
+
+/**
  * Election-gated sum for token/cost aggregations, used as a raw select
- * expression (no aggFn). When the aggregation scope (group/time bucket)
- * contains spans with an instrumentation-provided cost, those are the app's
- * own authoritative per-call reporters and every other dialect's usage rows
- * describe the same calls again — e.g. opencode emits an OpenInference span
- * (with `cost_usd`) *and* Vercel AI SDK spans (with `gen_ai.usage.*`) for
- * each call, in separate traces, so no row-local gate can dedupe them.
- * Summing only the provided-cost rows counts each call once; scopes without
- * provided costs fall back to all usage-reporting rows.
+ * expression (no aggFn). When a service has spans with an
+ * instrumentation-provided cost, those are that app's own authoritative
+ * per-call reporters and its other dialects' usage rows describe the same
+ * calls again — e.g. opencode emits an OpenInference span (with `cost_usd`)
+ * *and* Vercel AI SDK spans (with `gen_ai.usage.*`) for each call, in
+ * separate traces, so no row-local gate can dedupe them. Summing only that
+ * service's provided-cost rows counts each call once, while services
+ * without provided costs keep all their usage-reporting rows — a scope-wide
+ * election would silently drop token-only apps whenever any other app in
+ * scope reports costs.
+ *
+ * Residual limitation: an app that stamps provided cost on only some of its
+ * own calls still undercounts — indistinguishable from duplicate reporting
+ * without row-level call identity.
  *
  * Note: rendered as raw SQL, so sample-weight correction does not apply.
  */
@@ -435,10 +464,10 @@ export function llmGatedSumExpr(
   expressions: GateExpressions,
   valueExpression: string,
 ): string {
-  return `if(countIf(${expressions.hasProvidedCost}) > 0, sumIf(${valueExpression}, ${expressions.hasProvidedCost}), sumIf(${valueExpression}, ${expressions.hasReportedTokens}))`;
+  return perServiceElectionExpr(expressions, valueExpression);
 }
 
 /** Election-gated call count (see llmGatedSumExpr). */
 export function llmGatedCountExpr(expressions: GateExpressions): string {
-  return `if(countIf(${expressions.hasProvidedCost}) > 0, countIf(${expressions.hasProvidedCost}), countIf(${expressions.hasReportedTokens}))`;
+  return perServiceElectionExpr(expressions, '1');
 }

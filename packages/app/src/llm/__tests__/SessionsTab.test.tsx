@@ -46,8 +46,9 @@ describe('SessionsTab', () => {
     expect(conditions).toContain(expressions.isLLMSpan);
     expect(conditions).toContain(expressions.hasSessionId);
 
-    // Token/cost sums use the provided-cost election so apps emitting
-    // several instrumentation dialects in parallel don't double count.
+    // Token/cost sums use the per-service provided-cost election so apps
+    // emitting several instrumentation dialects in parallel don't double
+    // count (and token-only apps aren't dropped by cost-reporting ones).
     const tokensSelect = config.select.find(
       (s: any) => s.alias === 'Total Tokens',
     );
@@ -55,7 +56,7 @@ describe('SessionsTab', () => {
       llmGatedSumExpr(expressions, expressions.totalTokens),
     );
     expect(tokensSelect.valueExpression).toContain(
-      `countIf(${expressions.hasProvidedCost})`,
+      `toUInt64(${expressions.hasProvidedCost})`,
     );
 
     // start/end must be raw min()/max() expressions, not aggFn entries: the
