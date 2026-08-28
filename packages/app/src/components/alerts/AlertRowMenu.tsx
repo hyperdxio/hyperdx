@@ -34,6 +34,14 @@ type AlertRowMenuProps = {
    * for an alert whose source can't be resolved, so callers may pass one.
    */
   alertName?: string;
+  /**
+   * Range for the edit modal's threshold preview. Callers with a picked range
+   * (the detail page) pass it; a list row has none and falls back to one
+   * derived from the alert's interval.
+   */
+  dateRange?: [Date, Date];
+  /** Runs after a successful delete, e.g. to navigate away from a detail page. */
+  onDeleted?: () => void;
 };
 
 /**
@@ -51,6 +59,8 @@ export function AlertRowMenu({
   alertUrl,
   linkTitle,
   alertName,
+  dateRange,
+  onDeleted,
 }: AlertRowMenuProps) {
   // `||`, not `??`: the empty string these arrive as for an unresolvable
   // source is not nullish, and would read as "Open " and "Delete ?".
@@ -80,14 +90,15 @@ export function AlertRowMenu({
     enabled: terraformOpened,
   });
 
-  // The edit modal's threshold preview needs a range; derive one from the
-  // alert's own interval (a list row has no picked range). Recomputed when the
-  // modal opens so a long-lived list doesn't preview a stale window.
-  const previewRange = React.useMemo(
+  // The edit modal's threshold preview needs a range. Callers with a picked
+  // one pass it; otherwise derive from the alert's interval, recomputed when
+  // the modal opens so a long-lived list doesn't preview a stale window.
+  const derivedRange = React.useMemo(
     () => intervalToDateRange(alert.interval),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- editOpened refreshes the window
     [alert.interval, editOpened],
   );
+  const previewRange = dateRange ?? derivedRange;
 
   // Eligibility comes from the shared predicate rather than an inline source
   // check, so this and the bulk export can't diverge on which alerts the
@@ -115,6 +126,7 @@ export function AlertRowMenu({
       queryClient.invalidateQueries({ queryKey: api.getAlertsQueryKey() });
       queryClient.invalidateQueries({ queryKey: ['saved-search'] });
       queryClient.invalidateQueries({ queryKey: ['dashboards'] });
+      onDeleted?.();
     } catch (error) {
       console.error('Failed to delete alert:', error);
       notifications.show({
@@ -123,7 +135,15 @@ export function AlertRowMenu({
         autoClose: 5000,
       });
     }
-  }, [alert._id, brandName, confirm, deleteAlert, name, queryClient]);
+  }, [
+    alert._id,
+    brandName,
+    confirm,
+    deleteAlert,
+    name,
+    onDeleted,
+    queryClient,
+  ]);
 
   return (
     <>

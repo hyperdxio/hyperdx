@@ -2,20 +2,19 @@ import * as React from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { AlertInterval, AlertSource } from '@hyperdx/common-utils/dist/types';
+import { AlertInterval } from '@hyperdx/common-utils/dist/types';
 import {
+  ActionIcon,
   Anchor,
   Breadcrumbs,
-  Button,
   Container,
   Group,
   Skeleton,
   Stack,
   Text,
+  Tooltip,
 } from '@mantine/core';
-import { notifications } from '@mantine/notifications';
-import { IconExternalLink, IconPencil } from '@tabler/icons-react';
-import { useQueryClient } from '@tanstack/react-query';
+import { IconExternalLink } from '@tabler/icons-react';
 
 import { AckAlert } from '@/components/alerts/AckAlert';
 import { AlertDetailChart } from '@/components/alerts/AlertDetailChart';
@@ -23,14 +22,17 @@ import { AlertDetailProperties } from '@/components/alerts/AlertDetailProperties
 import { AlertNote } from '@/components/alerts/AlertDetails';
 import { AlertEvaluationsTable } from '@/components/alerts/AlertEvaluationsTable';
 import { AlertHistoryCardList } from '@/components/alerts/AlertHistoryCards';
+import { AlertRowMenu } from '@/components/alerts/AlertRowMenu';
 import { AlertStateBadge } from '@/components/alerts/AlertStateBadge';
-import { EditAlertModal } from '@/components/alerts/EditAlertModal';
-import ConfirmDeleteMenu from '@/components/ConfirmDeleteMenu';
 import EmptyState from '@/components/EmptyState';
 import { PageHeader } from '@/components/PageHeader';
 import { TimePicker } from '@/components/TimePicker';
 import { IS_ALERT_DETAILS_ENABLED } from '@/config';
-import { getAlertDisplayName, getAlertSourceUrl } from '@/utils/alerts';
+import {
+  getAlertDisplayName,
+  getAlertSourceLabel,
+  getAlertSourceUrl,
+} from '@/utils/alerts';
 
 import { useBrandDisplayName } from './theme/ThemeProvider';
 import api from './api';
@@ -80,35 +82,7 @@ function AlertProperties({ alert }: { alert: AlertsPageItem }) {
 
 function AlertDetailBody({ alert }: { alert: AlertsPageItem }) {
   const alertUrl = getAlertSourceUrl(alert);
-  const brandName = useBrandDisplayName();
   const router = useRouter();
-  const queryClient = useQueryClient();
-  const deleteAlert = api.useDeleteAlert();
-  const [isEditModalOpen, setIsEditModalOpen] = React.useState(false);
-
-  const onDeleteAlert = React.useCallback(async () => {
-    try {
-      await deleteAlert.mutateAsync(alert._id);
-      notifications.show({
-        color: 'green',
-        message: 'Alert deleted!',
-        autoClose: 5000,
-      });
-      // The alerts list and the source-bound edit surfaces (saved search
-      // modal / dashboard tile editor) all render this alert.
-      queryClient.invalidateQueries({ queryKey: api.getAlertsQueryKey() });
-      queryClient.invalidateQueries({ queryKey: ['saved-search'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboards'] });
-      router.push('/alerts');
-    } catch (error) {
-      console.error('Failed to delete alert:', error);
-      notifications.show({
-        color: 'red',
-        message: `Something went wrong. Please contact ${brandName} team.`,
-        autoClose: 5000,
-      });
-    }
-  }, [alert._id, brandName, deleteAlert, queryClient, router]);
 
   // Interval-dependent, but fixed for the page lifetime: the body only
   // mounts once the alert has loaded, and useNewTimeQuery reads the initial
@@ -169,34 +143,42 @@ function AlertDetailBody({ alert }: { alert: AlertsPageItem }) {
           <Group gap="sm">
             {alert.state != null && <AlertStateBadge state={alert.state} />}
             <Text fw={500}>{getAlertDisplayName(alert)}</Text>
+            {alertUrl && (
+              /* Next to the name rather than in the actions row: it navigates
+                 to what the alert watches, so it belongs with the identity,
+                 not with the verbs acting on the alert. */
+              <Tooltip
+                label={`Open ${getAlertSourceLabel(alert).toLowerCase()}`}
+                withArrow
+              >
+                <ActionIcon
+                  component={Link}
+                  href={alertUrl}
+                  variant="subtle"
+                  color="gray"
+                  size="md"
+                  aria-label={`Open ${getAlertSourceLabel(alert).toLowerCase()}`}
+                  data-testid="open-alert-source"
+                >
+                  <IconExternalLink size={16} />
+                </ActionIcon>
+              </Tooltip>
+            )}
           </Group>
         }
         actions={
           <Group gap="sm" wrap="nowrap">
             <AckAlert alert={alert} />
-            <Button
-              data-testid="edit-alert-button"
-              variant="secondary"
-              size="compact-sm"
-              leftSection={<IconPencil size={14} />}
-              onClick={() => setIsEditModalOpen(true)}
-            >
-              Edit alert
-            </Button>
-            <ConfirmDeleteMenu onDelete={onDeleteAlert} />
-            {alertUrl && (
-              <Button
-                component={Link}
-                href={alertUrl}
-                variant="secondary"
-                size="compact-sm"
-                rightSection={<IconExternalLink size={14} />}
-              >
-                {alert.source === AlertSource.TILE
-                  ? 'Open dashboard tile'
-                  : 'Open saved search'}
-              </Button>
-            )}
+            {/* Edit, Terraform export and Delete live behind one overflow
+                control, shared with the alerts list so both surfaces offer the
+                same actions. The menu's own source-link item is suppressed:
+                this page carries that link next to the title instead. */}
+            <AlertRowMenu
+              alert={alert}
+              alertName={getAlertDisplayName(alert)}
+              dateRange={searchedTimeRange}
+              onDeleted={() => router.push('/alerts')}
+            />
             <TimePicker
               inputValue={displayedTimeInputValue}
               setInputValue={setDisplayedTimeInputValue}
@@ -204,12 +186,6 @@ function AlertDetailBody({ alert }: { alert: AlertsPageItem }) {
             />
           </Group>
         }
-      />
-      <EditAlertModal
-        alert={alert}
-        opened={isEditModalOpen}
-        onClose={() => setIsEditModalOpen(false)}
-        dateRange={searchedTimeRange}
       />
       <div style={{ overflow: 'auto', flexGrow: 1 }}>
         <Container size="xl" py="md">
