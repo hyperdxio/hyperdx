@@ -33,7 +33,9 @@ import {
   isRawSqlSavedChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
 import {
+  ALERT_NOTIFICATION_TARGETS_LIMIT,
   AlertErrorType,
+  AlertNotificationTargetTiming,
   AlertThresholdType,
   BuilderChartConfigWithOptDateRange,
   ChartConfigWithOptDateRange,
@@ -81,7 +83,9 @@ import {
   AlertMessageTemplateDefaultView,
   buildAlertMessageTemplateTitle,
   NotificationFailure,
+  NotificationTiming,
   renderAlertTemplate,
+  RenderedAlert,
 } from '@/tasks/checkAlerts/template';
 import { handleSendGenericWebhook } from '@/tasks/checkAlerts/transports';
 import { tasksTracer } from '@/tasks/tracer';
@@ -505,7 +509,7 @@ const fireChannelEvent = async ({
   totalCount: number;
   windowSizeInMins: number;
   teamWebhooksById: Map<string, IWebhook>;
-}): Promise<NotificationFailure[]> => {
+}): Promise<Pick<RenderedAlert, 'failures' | 'timings'>> => {
   const team = alert.team;
   if (team == null) {
     throw new Error('Team not found');
@@ -560,7 +564,7 @@ const fireChannelEvent = async ({
     value: totalCount,
   };
 
-  const { failures } = await renderAlertTemplate({
+  const { failures, timings } = await renderAlertTemplate({
     alertProvider,
     clickhouseClient,
     metadata,
@@ -575,7 +579,7 @@ const fireChannelEvent = async ({
     teamId,
     teamWebhooksById,
   });
-  return failures;
+  return { failures, timings };
 };
 
 // Use a delimiter that's unlikely to appear in alert IDs or group names
@@ -985,6 +989,45 @@ export const processAlert = async (
   // (query duration, webhook delivery time, backfilled buckets). Populated
   // progressively; hoisted so the catch blocks can attach what was measured.
   const evaluationAnalytics: IAlertHistoryAnalytics = {};
+  // Per-target notification timings, keyed by webhook id so the same target
+  // notified for several groups (and again on resolve) aggregates into one
+  // entry rather than one per dispatch.
+  const notificationTimings = new Map<string, AlertNotificationTargetTiming>();
+  const recordNotificationTimings = (timings: NotificationTiming[]) => {
+    for (const timing of timings) {
+      const existing = notificationTimings.get(timing.key);
+      if (existing == null) {
+        notificationTimings.set(timing.key, {
+          targetId: timing.key,
+          target: timing.target,
+          durationMs: timing.durationMs,
+          dispatches: 1,
+          failures: timing.ok ? 0 : 1,
+        });
+        continue;
+      }
+      existing.durationMs += timing.durationMs;
+      existing.dispatches += 1;
+      existing.failures += timing.ok ? 0 : 1;
+    }
+  };
+  /**
+   * Fold the aggregated timings onto the analytics object. Called before the
+   * records are written, from both the success and the error path, so a
+   * failed evaluation still reports what it managed to deliver.
+   */
+  const flushNotificationTimings = () => {
+    if (notificationTimings.size === 0) {
+      return;
+    }
+    evaluationAnalytics.notificationTargets = Array.from(
+      notificationTimings.values(),
+    )
+      // Slowest first: the point of the breakdown is finding what dominated
+      // the total, and the cap below should drop the least interesting rows.
+      .sort((a, b) => b.durationMs - a.durationMs)
+      .slice(0, ALERT_NOTIFICATION_TARGETS_LIMIT);
+  };
   try {
     const windowSizeInMins = ms(alert.interval) / 60000;
     const scheduleStartAt = normalizeScheduleStartAt({
@@ -1292,7 +1335,7 @@ export const processAlert = async (
         // alert logic requiring large, nested objects. We should look at
         // cleaning this up next. fireChannelEvent guards against null values
         // for these properties.
-        const failures = await fireChannelEvent({
+        const { failures, timings } = await fireChannelEvent({
           alert,
           alertProvider,
           attributes,
@@ -1310,6 +1353,7 @@ export const processAlert = async (
           windowSizeInMins,
           teamWebhooksById,
         });
+        recordNotificationTimings(timings);
         // Each entry is a target that didn't end up delivered: unresolvable,
         // capped, or (for the inline dispatcher) an actual send rejection —
         // see renderAlertTemplate.
@@ -1433,6 +1477,7 @@ export const processAlert = async (
 
       // Single-value evaluations always cover exactly the current window.
       evaluationAnalytics.backfilledBuckets = 0;
+      flushNotificationTimings();
       const historyRecords = Array.from(histories.values());
       for (const record of historyRecords) {
         record.analytics = evaluationAnalytics;
@@ -1655,6 +1700,7 @@ export const processAlert = async (
     }
 
     // Save all history records and update alert state
+    flushNotificationTimings();
     const historyRecords = Array.from(histories.values());
     for (const record of historyRecords) {
       record.analytics = evaluationAnalytics;
@@ -1683,6 +1729,9 @@ export const processAlert = async (
       e instanceof InvalidAlertError
         ? AlertErrorType.INVALID_ALERT
         : AlertErrorType.UNKNOWN;
+    // An evaluation can notify some targets and then fail; report what it
+    // managed to deliver rather than dropping the timings with the error.
+    flushNotificationTimings();
     try {
       await alertProvider.recordAlertErrors(
         alert.id,

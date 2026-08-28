@@ -20,6 +20,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { AckAlert } from '@/components/alerts/AckAlert';
 import { AlertDetailChart } from '@/components/alerts/AlertDetailChart';
 import { AlertDetailProperties } from '@/components/alerts/AlertDetailProperties';
+import { AlertNote } from '@/components/alerts/AlertDetails';
 import { AlertEvaluationsTable } from '@/components/alerts/AlertEvaluationsTable';
 import { AlertHistoryCardList } from '@/components/alerts/AlertHistoryCards';
 import { AlertStateBadge } from '@/components/alerts/AlertStateBadge';
@@ -29,13 +30,9 @@ import EmptyState from '@/components/EmptyState';
 import { PageHeader } from '@/components/PageHeader';
 import { TimePicker } from '@/components/TimePicker';
 import { IS_ALERT_DETAILS_ENABLED } from '@/config';
+import { getAlertDisplayName, getAlertSourceUrl } from '@/utils/alerts';
 
 import { useBrandDisplayName } from './theme/ThemeProvider';
-import {
-  AlertNote,
-  getAlertDisplayName,
-  getAlertSourceUrl,
-} from './AlertsPage';
 import api from './api';
 import { withAppNav } from './layout';
 import { parseTimeQuery, useNewTimeQuery } from './timeQuery';
