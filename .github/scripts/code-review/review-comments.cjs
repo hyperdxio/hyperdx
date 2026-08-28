@@ -174,6 +174,7 @@ function renderSummary({
   findings,
   unanchored,
   skipped,
+  duplicates,
   posted,
   healthy,
   reason,
@@ -201,6 +202,10 @@ function renderSummary({
   const by = s => findings.filter(f => severityOf(f) === s).length;
   const nUnanchored = unanchored ? unanchored.length : 0;
   const nSkipped = skipped ? skipped.length : 0;
+  // Duplicates were collapsed into a single comment, so counting them in the headline
+  // would advertise findings that appear nowhere. Report distinct findings.
+  const nDuplicates = duplicates ? duplicates.length : 0;
+  const distinct = findings.length - nDuplicates;
   // Be accurate about where the findings went. "none could be anchored" is wrong when the
   // real reason is that every finding was already posted on an earlier push.
   const delivery =
@@ -211,7 +216,8 @@ function renderSummary({
         ? 'None could be anchored to changed lines; they are listed below.'
         : 'Already reported on an earlier push — no new comments.';
   lines.push(
-    `**${findings.length}** finding(s): 🔴 ${by('critical')} critical · 🟠 ${by('major')} major · 🔵 ${by('minor')} minor`,
+    `**${distinct}** finding(s): 🔴 ${by('critical')} critical · 🟠 ${by('major')} major · 🔵 ${by('minor')} minor` +
+      (nDuplicates ? ` · ${nDuplicates} duplicate(s) collapsed` : ''),
     '',
     // Skipped findings are counted above but appear nowhere in this comment -- they are
     // already on the PR as inline comments from an earlier push. Say so, or the totals

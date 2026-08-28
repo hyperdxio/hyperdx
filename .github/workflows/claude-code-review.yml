@@ -474,11 +474,12 @@ jobs:
             const existingComments = await github.paginate(github.rest.pulls.listReviewComments, {
               owner: context.repo.owner, repo: context.repo.repo, pull_number: prNumber, per_page: 100,
             });
-            const { inline, unanchored, skipped } = helpers.buildInlineComments({
+            const { inline, unanchored, skipped, duplicates } =
+              helpers.buildInlineComments({
               findings,
               diffText: fs.readFileSync('.hdx/pr.diff', 'utf8'),
               existingComments,
-            });
+              });
 
             let posted = 0;
             if (inline.length) {
@@ -520,6 +521,7 @@ jobs:
             core.setOutput('posted', String(posted));
             core.setOutput('unanchored', JSON.stringify(unanchored));
             core.setOutput('skipped', String(skipped.length));
+            core.setOutput('duplicates', String(duplicates.length));
             core.info(`${findings.length} findings: ${posted} inline, ${unanchored.length} in summary, ${skipped.length} already posted`);
 
       - name: Render review summary
@@ -549,6 +551,9 @@ jobs:
               unanchored: JSON.parse(${{ toJSON(steps.inline.outputs.unanchored || '[]') }}),
               posted: Number('${{ steps.inline.outputs.posted || 0 }}'),
               skipped: new Array(Number('${{ steps.inline.outputs.skipped || 0 }}')),
+              duplicates: new Array(
+                Number('${{ steps.inline.outputs.duplicates || 0 }}'),
+              ),
               healthy,
               reason: ${{ toJSON(steps.health.outputs.reason) }} || 'the review step did not complete',
               diffHash: '${{ steps.diff.outputs.diff_hash }}',

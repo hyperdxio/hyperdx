@@ -587,3 +587,26 @@ test('the workflow contains no empty Actions expression', () => {
     'empty Actions expression would break workflow parsing',
   );
 });
+
+test('collapsed duplicates are excluded from the headline count', () => {
+  // Found by this very workflow reviewing its own PR: splitting duplicates out of
+  // `skipped` fixed the wording but left them in `findings.length`, so the total
+  // advertised findings that appeared nowhere in the comment.
+  const f = { file: 'a.ts', line: 1, severity: 'major', title: 'x', body: 'y' };
+  const body = helpers.renderSummary({
+    findings: [f, { ...f, line: 2 }],
+    unanchored: [],
+    skipped: [],
+    duplicates: [{ ...f, line: 2 }],
+    posted: 1,
+    healthy: true,
+    diffHash: HASH,
+    promptHash: HASH,
+  });
+  assert.match(
+    body,
+    /\*\*1\*\* finding\(s\)/,
+    'headline counts distinct findings',
+  );
+  assert.match(body, /1 duplicate\(s\) collapsed/);
+});
