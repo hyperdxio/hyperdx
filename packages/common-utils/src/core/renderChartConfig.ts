@@ -2663,10 +2663,17 @@ async function renderMultiSeriesMetricChartConfig(
   // The share_of_total ratio is the one projection built on a window
   // function, which ClickHouse prohibits in HAVING — its filter runs as a
   // WHERE on a wrapper around the joined result instead (see `filtered`
-  // below), and the outer ORDER BY then sits on that wrapper where the
-  // any(`__hdx_sort_<n>`) rewrite can't apply.
+  // below). That wrapper only exists when a HAVING is actually present;
+  // without one the ORDER BY sits directly on the GROUP BY ALL statement.
   const usesWindowProjection =
     isRatio && chartConfig.ratioMode === 'share_of_total';
+  // When the ORDER BY lands on the having-wrapper, the any(`__hdx_sort_<n>`)
+  // rewrite can't apply: the wrapper has no GROUP BY (so no aggregate
+  // context) and the companions are excluded from the core's output. This
+  // corner (share_of_total + HAVING + expression-group-by sort) keeps the
+  // legacy rendering, which fails the same way it did before HDX-5202.
+  const ordersOnHavingWrapper =
+    usesWindowProjection && isNonEmptyWhereExpr(chartConfig.having);
 
   // Rewrite ORDER BY items that reference a group-by expression verbatim —
   // convertToTableChartConfig defaults a table's orderBy to the raw groupBy
@@ -2674,7 +2681,7 @@ async function renderMultiSeriesMetricChartConfig(
   // Those expressions can't be evaluated in the outer scope; see
   // renderMultiSeriesOrderBy (HDX-5202).
   const rewrittenSort =
-    chartConfig.orderBy != null && hasScalarGroups && !usesWindowProjection
+    chartConfig.orderBy != null && hasScalarGroups && !ordersOnHavingWrapper
       ? renderMultiSeriesOrderBy(
           chartConfig.orderBy,
           typeof chartConfig.groupBy === 'string'

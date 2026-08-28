@@ -4379,6 +4379,57 @@ describe('renderChartConfig', () => {
           );
         });
 
+        it('rewrites the sort for a share_of_total ratio without HAVING', async () => {
+          // Without a HAVING there is no window wrapper — the ORDER BY sits
+          // on the GROUP BY ALL statement, where the companion rewrite is
+          // valid alongside the window-function ratio projection.
+          const generatedSql = await renderChartConfig(
+            {
+              ...baseMultiSeriesConfig,
+              displayType: DisplayType.Table,
+              granularity: undefined,
+              seriesReturnType: 'ratio',
+              ratioMode: 'share_of_total',
+              groupBy: "ResourceAttributes['service.name']",
+              orderBy: "ResourceAttributes['service.name']",
+            },
+            mockMetadata,
+            querySettings,
+          );
+          const sql = parameterizedQueryToSql(generatedSql);
+          expect(sql).toContain('ORDER BY any(`__hdx_sort_0`)');
+          expect(sql).toContain(
+            '* EXCEPT (`__hdx_value`, `__hdx_series_idx`, `__hdx_sort_0`)',
+          );
+        });
+
+        it('keeps the legacy sort when the ORDER BY lands on the share_of_total HAVING wrapper', async () => {
+          // share_of_total + HAVING filters through a GROUP-BY-less wrapper,
+          // where neither an aggregate nor the excluded companion resolves —
+          // the raw expression passes through (pre-existing failure mode).
+          const generatedSql = await renderChartConfig(
+            {
+              ...baseMultiSeriesConfig,
+              displayType: DisplayType.Table,
+              granularity: undefined,
+              seriesReturnType: 'ratio',
+              ratioMode: 'share_of_total',
+              groupBy: "ResourceAttributes['service.name']",
+              orderBy: "ResourceAttributes['service.name']",
+              having: '"avg(metric.alpha)/avg(metric.beta)" >= 0.2',
+              havingLanguage: 'sql',
+            },
+            mockMetadata,
+            querySettings,
+          );
+          const sql = parameterizedQueryToSql(generatedSql);
+          expect(sql).not.toContain('__hdx_sort_');
+          const orderByIdx = sql.lastIndexOf('ORDER BY');
+          expect(sql.slice(orderByIdx)).toContain(
+            "ORDER BY ResourceAttributes['service.name']",
+          );
+        });
+
         it('leaves a plain-column orderBy matching a group-by untouched', async () => {
           const generatedSql = await renderChartConfig(
             {

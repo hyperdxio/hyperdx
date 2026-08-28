@@ -2264,6 +2264,34 @@ describe('queryChartConfig Integration Tests', () => {
         ]);
       });
 
+      it('sorts a share_of_total ratio table by a raw expression group-by', async () => {
+        // No HAVING → no window wrapper: the companion-column sort coexists
+        // with the share_of_total window projection on the GROUP BY ALL
+        // statement. (With a HAVING, this shape keeps the legacy rendering
+        // and its pre-existing failure — pinned by the unit tests.)
+        const RATIO = 'avg(grpratio.err)/avg(grpratio.total)';
+        const result = await runConfig(
+          grpRatioTable({
+            seriesReturnType: 'ratio',
+            ratioMode: 'share_of_total',
+            groupBy: "ResourceAttributes['service.name']",
+            orderBy: "ResourceAttributes['service.name'] DESC",
+          }),
+        );
+
+        const DERIVED_NAME = "arrayElement(ResourceAttributes, 'service.name')";
+        expect((result.data as Row[]).map(r => col(r, DERIVED_NAME))).toEqual([
+          'svc-d',
+          'svc-c',
+          'svc-b',
+          'svc-a',
+        ]);
+        // share_of_total semantics intact: svc-b divides by the total
+        // denominator (5 + 12 + 8 = 25).
+        const svcB = (result.data as Row[])[2];
+        expect(Number(col(svcB, RATIO))).toBeCloseTo(6 / 25, 5);
+      });
+
       it('sorts mixed gauge + histogram branches on a raw expression group-by (NULL-padded)', async () => {
         // A histogram branch can't evaluate the companion sort expression
         // (its groups are packed into the Array "group" column), so its rows
