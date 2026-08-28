@@ -193,14 +193,10 @@ jobs:
           # holds pr-triage and release-notes, and editing either would re-pay for a review
           # of every open PR. The dedicated code-review/ directory is what makes a
           # directory hash both precise and self-maintaining as files are added.
-          # Directory-based so a helper added under code-review/ is covered automatically,
-          # but excluding __tests__ so a test-only edit does not force a paid re-review of
-          # every open PR. This hash is reused after the review to detect tampering.
-          echo "prompt_hash=$(find .trusted/.github/prompts/code-review.md \
-            .trusted/.github/scripts/code-review \
-            .trusted/.github/workflows/claude-code-review.yml \
-            -type f -not -path '*/__tests__/*' -print0 \
-            | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          # One definition of the covered file set, in trusted-hash.sh, so the gate and the
+          # post-review verify step cannot drift apart.
+          echo "prompt_hash=$(.trusted/.github/scripts/code-review/trusted-hash.sh .trusted)" \
+            >> "$GITHUB_OUTPUT"
           echo "diff bytes: $(wc -c < .hdx/pr.diff)"
 
       - name: Verify diff file list matches PR
@@ -210,10 +206,12 @@ jobs:
           PR: ${{ steps.pr.outputs.number }}
         run: |
           set -euo pipefail
-          # core.quotepath would C-quote non-ASCII paths here while the API returns raw
-          # UTF-8, diverging on every push for such a PR. --no-renames matches the staged
-          # diff so rename detection cannot diverge either.
-          LOCAL=$(git -c core.quotepath=false diff --no-renames --name-only "$MB" HEAD | sort -u)
+          # quotepath off: it would C-quote non-ASCII paths while the API returns raw UTF-8.
+          # Rename detection is deliberately LEFT ON, matching deep-review.yml: the API side
+          # detects renames, so --no-renames here reports old+new paths against its single
+          # new path and aborts the job on every rename PR. (Added in a previous round to
+          # "match the staged diff"; that was the wrong side to match.)
+          LOCAL=$(git -c core.quotepath=false diff --name-only "$MB" HEAD | sort -u)
           REMOTE=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json files --jq '.files[].path' | sort -u)
           if [ "$LOCAL" != "$REMOTE" ]; then
             echo "::error::Local diff file list does not match the PR's file list; the review base is likely wrong."
@@ -322,10 +320,6 @@ jobs:
           } > .hdx/context.md
           echo "context bytes: $(wc -c < .hdx/context.md)"
 
-      # Even with a correct merge-base, confirm the locally-computed file list matches the
-      # PR's file list from the API. If they diverge we are about to review the wrong diff
-      # and post findings about files outside the PR -- fail loud. From deep-review.yml.
-
       - name: Load review prompt
         id: prompt
         if: steps.gate.outputs.should_review == 'true'
@@ -352,7 +346,7 @@ jobs:
         run: |
           set -euo pipefail
           TARBALL="$RUNNER_TEMP/claude-code-$CLAUDE_CLI_VERSION.tgz"
-          curl -fsSL -o "$TARBALL" \
+          curl -fsSL --connect-timeout 10 --max-time 120 -o "$TARBALL" \
             "https://registry.npmjs.org/@anthropic-ai/claude-code/-/claude-code-$CLAUDE_CLI_VERSION.tgz"
           ACTUAL="sha512-$(openssl dgst -sha512 -binary "$TARBALL" | openssl base64 -A)"
           if [ "$ACTUAL" != "$CLAUDE_CLI_SHA512" ]; then
@@ -394,9 +388,22 @@ jobs:
           # extra passes only pay off at this tier. An action-default change must not
           # silently swap the reviewer.
           #
-          # Tool grant mirrors deep-review.yml's read-only prefix allowlist, plus
-          # Read/Grep/Glob which this prompt needs. `Bash(git status:*)` is deliberately
-          # omitted: this workflow stages .hdx/ into the working tree, so status is noise. Deliberately NOT granted, and why:
+          # NO Bash, deliberately, and this reverses an earlier widening of this grant.
+          #
+          # Every granted git verb -- log, show, diff, and blame -- accepts `--output=<path>`,
+          # and a prefix allowlist cannot constrain flags. Worse, any Bash grant permits
+          # shell redirection, so the write primitive is inherent to granting Bash at all,
+          # not to a particular verb. With a write primitive the reviewer can target Actions
+          # command files ($GITHUB_ENV, $GITHUB_PATH) that sit outside the trusted tree and
+          # gain execution in a later step holding the write token -- and the bytes written
+          # are commit-message content, which a fork author controls.
+          #
+          # deep-review.yml accepts this residual because nothing in that job loads a
+          # workspace file after its reviewer runs. This job does, so it cannot.
+          #
+          # The cost is real: no git history and no blame. The prior-review-comment context
+          # those grants were mostly added for is already materialized in trusted shell
+          # above, and this is the tool set the prompt was actually evaluated with. Deliberately NOT granted, and why:
           #   bare Bash   -- this job checks out fork-authored code and holds secrets;
           #                  running the PR's own build/test scripts here is arbitrary
           #                  code execution next to ANTHROPIC_API_KEY and a write token.
@@ -420,8 +427,8 @@ jobs:
             --model opus
             --setting-sources user
             --strict-mcp-config
-            --allowedTools "Read,Grep,Glob,Bash(git diff:*),Bash(git log:*),Bash(git blame:*),Bash(git show:*),Bash(git merge-base:*),Bash(git rev-parse:*),Bash(git ls-files:*),Bash(git cat-file:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr list:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*)"
-            --disallowedTools "Bash(gh api:*),Bash(curl:*),Bash(wget:*),WebFetch,WebSearch,Task,Edit,Write,NotebookEdit"
+            --allowedTools "Read,Grep,Glob"
+            --disallowedTools "Bash,WebFetch,WebSearch,Task,Edit,Write,NotebookEdit"
             --json-schema '{"type":"object","properties":{"findings":{"type":"array","items":{"type":"object","properties":{"file":{"type":"string","description":"Repo-relative path"},"line":{"type":"integer","description":"Line in the post-image the finding applies to"},"severity":{"type":"string","enum":["critical","major","minor"]},"title":{"type":"string","description":"The issue, one line"},"body":{"type":"string","description":"The fix, one line where possible"}},"required":["file","title","body"],"additionalProperties":false}}},"required":["findings"],"additionalProperties":false}'
 
       # Only a run that produced parseable structured output is allowed to stamp the state
@@ -489,11 +496,7 @@ jobs:
           EXPECTED: ${{ steps.diff.outputs.prompt_hash }}
         run: |
           set -euo pipefail
-          ACTUAL=$(find .trusted/.github/prompts/code-review.md \
-            .trusted/.github/scripts/code-review \
-            .trusted/.github/workflows/claude-code-review.yml \
-            -type f -not -path '*/__tests__/*' -print0 \
-            | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)
+          ACTUAL=$(.trusted/.github/scripts/code-review/trusted-hash.sh .trusted)
           if [ "$ACTUAL" != "$EXPECTED" ]; then
             echo "::error::The trusted prompt/helper tree changed during the review ($EXPECTED -> $ACTUAL). Refusing to execute it. This indicates the reviewer wrote to the workspace."
             exit 1
@@ -551,7 +554,15 @@ jobs:
                 owner: context.repo.owner, repo: context.repo.repo, pull_number: prNumber, per_page: 100,
               });
             } catch (err) {
-              core.warning(`could not list existing comments (${err.status}); dedup skipped`);
+              // Fail closed. Continuing with an empty list would make seenFingerprints
+              // empty and re-anchor every previously-posted finding as a fresh comment in
+              // this run -- the markers are idempotent across runs, not within a run that
+              // could not read them. No marker is stamped, so the next push retries.
+              core.setFailed(
+                `Could not list existing review comments (${err.status}); refusing to post ` +
+                  'and risk duplicating every prior finding. The next push will retry.',
+              );
+              return;
             }
             const { inline, unanchored, skipped, duplicates } =
               helpers.buildInlineComments({

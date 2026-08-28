@@ -148,9 +148,5 @@ Assign `severity`:
 - Read only files inside this repository. Your findings are published verbatim to a
   public pull request, so anything you quote is published — never read or quote process
   environment, credential files, or paths outside the checkout.
-- You also have read-only `git` (`log`, `blame`, `show`, `diff`) and read-only `gh`
-  (`pr view`, `issue view`, `search`). Use them when history or a linked issue would tell
-  you whether something is a deliberate change or an accident — `git blame` on a line the
-  diff touches is often the fastest way to tell.
 
 Both `.hdx` files are harness-provided; never report findings about them.

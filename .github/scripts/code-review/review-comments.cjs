@@ -290,7 +290,6 @@ module.exports = {
   seenFingerprints,
   commentBody,
   buildInlineComments,
-  renderFinding,
   renderSummary,
 };
 
