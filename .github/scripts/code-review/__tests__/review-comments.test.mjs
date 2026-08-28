@@ -185,7 +185,7 @@ test('duplicate findings within one run collapse to a single comment', () => {
 // parser silently stops recognizing the marker -- exactly the failure this file exists to
 // catch. Lift the `RE=` line out of the workflow and run the real `sed`.
 const WORKFLOW = fileURLToPath(
-  new URL('../../workflows/claude-code-review.yml', import.meta.url),
+  new URL('../../../workflows/claude-code-review.yml', import.meta.url),
 );
 
 function gateParse(body) {
@@ -441,4 +441,66 @@ test('the summary accounts for findings skipped as already-posted', () => {
     promptHash: HASH,
   });
   assert.match(body, /1 unchanged from an earlier push/);
+});
+
+test('a count-omitted hunk header is treated as a single post-image line', () => {
+  // `@@ -N +M @@` (no counts) is the common single-line-change shape. Getting the implied
+  // count wrong silently misroutes every anchor after it.
+  const diff = ['--- a/a.ts', '+++ b/a.ts', '@@ -5 +5 @@', '+only', ''].join(
+    '\n',
+  );
+  const map = helpers.parseCommentableLines(diff);
+  assert.deepEqual([...map.get('a.ts')], [5]);
+});
+
+test('findings containing a secret are identified so they can be refused', () => {
+  const secret = 'sk-ant-notarealkey-000000000000000000';
+  const clean = { file: 'a.ts', title: 'fine', body: 'no secrets here' };
+  const leaky = {
+    file: 'a.ts',
+    title: 'env dump',
+    body: `found ${secret} in the env`,
+  };
+  const found = helpers.findingsLeakingSecrets([clean, leaky], [secret]);
+  assert.equal(found.length, 1);
+  assert.equal(found[0].title, 'env dump');
+});
+
+test('short or empty secret values are ignored to avoid matching everything', () => {
+  const findings = [{ file: 'a.ts', title: 'x', body: 'the value is 1' }];
+  assert.deepEqual(
+    helpers.findingsLeakingSecrets(findings, ['1', '', undefined]),
+    [],
+  );
+});
+
+test('the CLI pin stays in lockstep with deep-review.yml', () => {
+  // Both workflows pin the same pre-regression CLI and both comments say to unpin
+  // together, but nothing binds them -- a bump in one silently leaves the other on a
+  // stale integrity hash. This is the binding.
+  const read = name =>
+    readFileSync(
+      fileURLToPath(new URL(`../../../workflows/${name}`, import.meta.url)),
+      'utf8',
+    );
+  const pin = text => ({
+    version: /CLAUDE_CLI_VERSION:\s*(\S+)/.exec(text)?.[1],
+    sha: /CLAUDE_CLI_SHA512:\s*(\S+)/.exec(text)?.[1],
+  });
+  const ours = pin(read('claude-code-review.yml'));
+  const theirs = pin(read('deep-review.yml'));
+  assert.ok(
+    ours.version && ours.sha,
+    'this workflow must declare a pinned CLI',
+  );
+  assert.equal(
+    ours.version,
+    theirs.version,
+    'CLI version drifted from deep-review.yml',
+  );
+  assert.equal(
+    ours.sha,
+    theirs.sha,
+    'CLI integrity hash drifted from deep-review.yml',
+  );
 });

@@ -4,10 +4,14 @@
  *
  * Lives outside the workflow YAML on purpose: inline `github-script` bodies cannot be
  * exercised without triggering a real PR event, and this is the logic most likely to be
- * subtly wrong (diff-hunk arithmetic, dedup keys, fallback routing). Keeping it here lets
- * `ci/dry-run.mjs` run exactly what CI runs.
+ * subtly wrong (diff-hunk arithmetic, dedup keys, fallback routing).
  *
- * Matches .github/scripts/*.js convention already used by pr-triage.
+ * In its own directory so the review gate can hash exactly this workflow's dependencies:
+ * hashing all of .github/scripts would make an edit to pr-triage or release-notes re-pay
+ * for a review of every open PR.
+ *
+ * `.cjs` rather than `.js`: this is CommonJS loaded by `require` from github-script, and
+ * the extension says so without depending on the absence of `"type": "module"`.
  */
 const crypto = require('crypto');
 
@@ -248,3 +252,31 @@ module.exports = {
   renderFinding,
   renderSummary,
 };
+
+/**
+ * Findings that contain a secret, so they can be refused rather than published.
+ *
+ * The reviewer's `Read` tool is NOT confined to the workspace -- verified: it reads
+ * /etc/hosts from an unrelated cwd without a permission prompt. Its findings are then
+ * published verbatim to a public PR, so the review body is itself an egress channel and
+ * withholding curl/gh-api/WebFetch does not close it. A prompt-injected reviewer could
+ * read /proc/self/environ and emit the token inside a finding.
+ *
+ * This is defence in depth, not a solution: a literal scan cannot catch a secret the
+ * reviewer chose to base64 or reverse. The primary mitigations are refusing to treat any
+ * repo-authored file as instructions, and not handing long-lived credentials to a job
+ * that reviews untrusted code at all.
+ */
+function findingsLeakingSecrets(findings, secrets) {
+  const needles = (secrets || [])
+    .map(v => String(v || '').trim())
+    // Short values would match constantly; only scan things long enough to be a credential.
+    .filter(v => v.length >= 16);
+  if (needles.length === 0) return [];
+  return (findings || []).filter(f => {
+    const haystack = `${f.title || ''}\n${f.body || ''}\n${f.file || ''}`;
+    return needles.some(n => haystack.includes(n));
+  });
+}
+
+module.exports.findingsLeakingSecrets = findingsLeakingSecrets;

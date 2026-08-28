@@ -44,7 +44,13 @@ jobs:
       'ready_for_review' || !github.event.pull_request.draft
 
     runs-on: ubuntu-latest
+    # A hung CLI or stalled API would otherwise hold a runner for the 6-hour default;
+    # cancel-in-progress only reclaims it if someone pushes again.
+    timeout-minutes: 30
     env:
+      # The identity this workflow posts under. Hardcoding it in three places meant a
+      # future identity change would break self-exclusion and sticky updates independently.
+      BOT_LOGIN: 'github-actions[bot]'
       # TEMPORARY, mirrors deep-review.yml. CLI >= 2.1.216 has a bwrap sandbox regression
       # that breaks every Bash call -- which for this workflow means the git/gh verbs the
       # prompt tells the reviewer to use fail silently and it reviews the diff blind.
@@ -69,12 +75,16 @@ jobs:
       - name: Resolve PR metadata
         id: pr
         uses: actions/github-script@v9
+        env:
+          DISPATCH_PR: ${{ inputs.pr_number }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
+            // via env, not interpolation: a `${{ }}` in a github-script literal is a
+            // script-injection sink even when only write-access actors can dispatch.
             const prNumber =
               context.eventName === 'workflow_dispatch'
-                ? Number('${{ inputs.pr_number }}')
+                ? Number(process.env.DISPATCH_PR)
                 : context.payload.pull_request.number;
 
             const { data: pr } = await github.rest.pulls.get({
@@ -139,7 +149,7 @@ jobs:
       - name: Test review helpers
         run:
           node --test
-          .trusted/.github/scripts/__tests__/review-comments.test.mjs
+          .trusted/.github/scripts/code-review/__tests__/review-comments.test.mjs
 
       # The reviewer reads the diff from a file: a large diff cannot be embedded in
       # workflow YAML, and subagents/later steps need a stable path.
@@ -174,12 +184,13 @@ jobs:
           # non-determinism so the hash below is stable across runs and runners.
           git diff --no-color --no-renames "$MB" HEAD > .hdx/pr.diff
           echo "diff_hash=$(sha256sum .hdx/pr.diff | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
-          # Everything that changes what this reviewer does -- the prompt, the routing
-          # helper, and this workflow file (model, schema, tool grants) -- and nothing
-          # else. Hashing all of .github would make an unrelated workflow edit re-pay for
-          # a review of every open PR; hashing a hand-listed set would silently miss the
-          # next file added under prompts/ or scripts/.
-          echo "prompt_hash=$(find .trusted/.github/prompts .trusted/.github/scripts \
+          # Exactly this reviewer's inputs: its prompt, its own scripts directory, and
+          # this workflow (model, schema, tool grants). NOT all of .github/scripts -- that
+          # holds pr-triage and release-notes, and editing either would re-pay for a review
+          # of every open PR. The dedicated code-review/ directory is what makes a
+          # directory hash both precise and self-maintaining as files are added.
+          echo "prompt_hash=$(find .trusted/.github/prompts/code-review.md \
+            .trusted/.github/scripts/code-review \
             .trusted/.github/workflows/claude-code-review.yml -type f -print0 \
             | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
           echo "diff bytes: $(wc -c < .hdx/pr.diff)"
@@ -229,10 +240,10 @@ jobs:
             # would let the reviewer re-report something already discussed. Both inline
             # threads and conversation comments, since the prompt promises both.
             { gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/comments?per_page=100" \
-              --jq '.[] | select(.user.login != "github-actions[bot]") | "\(.path):\(.line // .original_line) [\(.user.login)] \(.body)"' || true; } |
+              --jq --arg bot "$BOT_LOGIN" '.[] | select(.user.login != $bot) | "\(.path):\(.line // .original_line) [\(.user.login)] \(.body)"' || true; } |
               defuse | head -c 20000 || true
             { gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR/comments?per_page=100" \
-              --jq '.[] | select(.user.login != "github-actions[bot]") | "[\(.user.login)] \(.body)"' || true; } |
+              --jq --arg bot "$BOT_LOGIN" '.[] | select(.user.login != $bot) | "[\(.user.login)] \(.body)"' || true; } |
               defuse | head -c 8000 || true
             echo
             echo '```'
@@ -262,7 +273,7 @@ jobs:
         id: find-comment
         with:
           issue-number: ${{ steps.pr.outputs.number }}
-          comment-author: github-actions[bot]
+          comment-author: ${{ env.BOT_LOGIN }}
           body-includes: '<!-- claude-code-review -->'
           direction: last
 
@@ -359,8 +370,9 @@ jobs:
           # extra passes only pay off at this tier. An action-default change must not
           # silently swap the reviewer.
           #
-          # Tool grant is the same read-only prefix allowlist deep-review.yml uses, plus
-          # Read/Grep/Glob. Deliberately NOT granted, and why:
+          # Tool grant mirrors deep-review.yml's read-only prefix allowlist, plus
+          # Read/Grep/Glob which this prompt needs. `Bash(git status:*)` is deliberately
+          # omitted: this workflow stages .hdx/ into the working tree, so status is noise. Deliberately NOT granted, and why:
           #   bare Bash   -- this job checks out fork-authored code and holds secrets;
           #                  running the PR's own build/test scripts here is arbitrary
           #                  code execution next to ANTHROPIC_API_KEY and a write token.
@@ -420,17 +432,40 @@ jobs:
         id: inline
         if: steps.health.outputs.healthy == 'true'
         uses: actions/github-script@v9
+        env:
+          # Compared against, never printed. Named canary so a stray log of the env block
+          # does not read like the secret itself.
+          ANTHROPIC_KEY_CANARY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN_CANARY: ${{ secrets.GITHUB_TOKEN }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const fs = require('fs');
             const path = require('path');
             const helpers = require(
-              path.join(process.env.GITHUB_WORKSPACE, '.trusted/.github/scripts/review-comments.cjs'),
+              path.join(process.env.GITHUB_WORKSPACE, '.trusted/.github/scripts/code-review/review-comments.cjs'),
             );
             const prNumber = Number('${{ steps.pr.outputs.number }}');
             const headSha = '${{ steps.pr.outputs.head_sha }}';
             const { findings } = JSON.parse(fs.readFileSync('.hdx/findings.json', 'utf8'));
+
+            // The reviewer's Read tool is not confined to the workspace, and its findings
+            // are published verbatim to a public PR -- so the review body is an egress
+            // channel that withholding curl/gh-api/WebFetch does not close. Refuse to
+            // publish anything containing a credential. Defence in depth only: a literal
+            // scan cannot catch a secret the reviewer chose to encode.
+            const leaking = helpers.findingsLeakingSecrets(findings, [
+              process.env.ANTHROPIC_KEY_CANARY,
+              process.env.GITHUB_TOKEN_CANARY,
+            ]);
+            if (leaking.length) {
+              core.setFailed(
+                `Refusing to publish: ${leaking.length} finding(s) contain a credential. ` +
+                  'This indicates prompt injection in the reviewed branch.',
+              );
+              core.setOutput('leaked', 'true');
+              return;
+            }
 
             const existingComments = await github.paginate(github.rest.pulls.listReviewComments, {
               owner: context.repo.owner, repo: context.repo.repo, pull_number: prNumber, per_page: 100,
@@ -492,7 +527,7 @@ jobs:
             const fs = require('fs');
             const path = require('path');
             const helpers = require(
-              path.join(process.env.GITHUB_WORKSPACE, '.trusted/.github/scripts/review-comments.cjs'),
+              path.join(process.env.GITHUB_WORKSPACE, '.trusted/.github/scripts/code-review/review-comments.cjs'),
             );
             // A run only counts as healthy if the review parsed AND delivery actually ran.
             // Otherwise a failed inline step would still stamp a valid marker and the gate
@@ -507,9 +542,7 @@ jobs:
               findings,
               // toJSON, not a quoted literal: JSON.stringify does not escape `'`, so an
               // apostrophe in any finding would break the literal and throw here.
-              unanchored: ${{ toJSON(steps.inline.outputs.unanchored || '[]') }} === '[]'
-                ? []
-                : JSON.parse(${{ toJSON(steps.inline.outputs.unanchored || '[]') }}),
+              unanchored: JSON.parse(${{ toJSON(steps.inline.outputs.unanchored || '[]') }}),
               posted: Number('${{ steps.inline.outputs.posted || 0 }}'),
               skipped: new Array(Number('${{ steps.inline.outputs.skipped || 0 }}')),
               healthy,
@@ -526,9 +559,9 @@ jobs:
       - name: Post or update review summary
         if: >-
           always() && steps.gate.outputs.should_review == 'true' &&
-          steps.summary.outputs.body != '' && (steps.health.outputs.healthy ==
-          'true' ||
-           steps.find-comment.outputs.comment-id == '')
+          steps.summary.outputs.body != '' && ((steps.health.outputs.healthy ==
+          'true' && steps.inline.outcome == 'success')
+           || steps.find-comment.outputs.comment-id == '')
         uses: peter-evans/create-or-update-comment@v5
         with:
           comment-id: ${{ steps.find-comment.outputs.comment-id }}
