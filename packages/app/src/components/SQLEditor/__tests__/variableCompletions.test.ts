@@ -69,6 +69,26 @@ describe('buildSqlVariableCompletions', () => {
     );
   });
 
+  it('withholds the one-argument filter macro for an expressionless variable', () => {
+    // A static-list filter declares no expression, so $__filter($env) has
+    // nothing to filter on and throws at expansion time. Every other reference
+    // form still works.
+    const env: ChartVariable = { name: 'env', values: ['prod'] };
+    expect(labels([env])).not.toContain('$__filter($env)');
+    expect(labels([env])).toEqual(
+      expect.arrayContaining([
+        '$__filter',
+        '$__conditionalAll',
+        '$env',
+        '${env}',
+        '${env:sqlstring}',
+        '${env:csv}',
+        '${env:regex}',
+        '${env:lucene}',
+      ]),
+    );
+  });
+
   it('shows the empty-selection expansion when nothing is selected', () => {
     const unselected: ChartVariable = { ...SERVICE, values: [] };
     expect(footnoteOf([unselected], '$service')).toBe('Expands to: NULL');
