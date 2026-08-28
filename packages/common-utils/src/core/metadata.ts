@@ -11,6 +11,8 @@ import {
   convertCHDataTypeToJSType,
   filterColumnMetaByType,
   JSDataType,
+  Row,
+  streamToAsyncIterator,
   tableExpr,
 } from '@/clickhouse';
 import { renderChartConfig, timeFilterExpr } from '@/core/renderChartConfig';
@@ -35,6 +37,7 @@ import { isLogSource, isTraceSource, SourceKind } from '@/types';
 import {
   ClickHouseVersion,
   parseClickHouseVersion,
+  supportsMergeTreeIndex,
   supportsMergeTreeTextIndex,
 } from './clickhouseVersion';
 import {
@@ -47,6 +50,7 @@ import {
   getDistributedTableArgs,
   MetadataMVQueryOptions,
   objectHash,
+  splitAndTrimWithBracket,
   TextIndexColumnQueryOptions,
   TextIndexMapColumnQueryOptions,
 } from './utils';
@@ -58,6 +62,9 @@ const DEFAULT_MAX_KEYS = 1000;
 
 // Cap keys per dispatched query: each key is another operation for the db to fetch, and simply fetching all keys at once can be too much for the db to handle.
 export const GET_ALL_KEY_VALUES_CHUNK_SIZE = 100;
+
+// Runaway guard, not a tuning knob.
+const DEFAULT_MAX_INDEX_VALUES = 10_000;
 
 type KeyFetchingStrategies = {
   mapTextIndexLookup: TextIndexInfo[];
@@ -684,6 +691,135 @@ export class Metadata {
         AND active=1
         AND ((min_time >= ${startTime} AND min_time <= ${endTime}) OR (max_time <= ${endTime} AND max_time >= ${startTime}) OR (min_time <= ${startTime} AND max_time >= ${endTime}))
     )`;
+  }
+
+  /** Rejects what `mergeTreeIndex` cannot read; callers fall back to a scan. */
+  private async assertIndexReadable({
+    databaseName,
+    tableName,
+    column,
+    connectionId,
+  }: {
+    databaseName: string;
+    tableName: string;
+    column: string;
+    connectionId: string;
+  }): Promise<void> {
+    const reject = (reason: string) => {
+      throw new Error(`Cannot read the primary index: ${reason}`);
+    };
+
+    if (
+      !supportsMergeTreeIndex(await this.getServerVersion({ connectionId }))
+    ) {
+      reject('the server predates the mergeTreeIndex table function (< 24.2)');
+    }
+
+    const tableMetadata = await this.getTableMetadata({
+      databaseName,
+      tableName,
+      connectionId,
+    });
+    if (!tableMetadata) {
+      return reject(`table ${databaseName}.${tableName} was not found`);
+    }
+    // Distributed/Merge tables route elsewhere and have no index of their own.
+    if (tableMetadata.isPointerTable) {
+      reject(
+        `${tableMetadata.engine} tables have no primary index of their own`,
+      );
+    }
+    if (!tableMetadata.engine.includes('MergeTree')) {
+      reject(`engine ${tableMetadata.engine} is not a MergeTree`);
+    }
+    // Only primary key columns exist in the index; check for a usable message.
+    const primaryKeyColumns = splitAndTrimWithBracket(
+      tableMetadata.primary_key,
+    ).map(unquoteIdentifier);
+    if (!primaryKeyColumns.includes(unquoteIdentifier(column))) {
+      reject(
+        `${column} is not in the primary key (${tableMetadata.primary_key})`,
+      );
+    }
+  }
+
+  /**
+   * Streams the distinct values of a primary key column, read from the table's
+   * sparse primary index instead of the data — one row per granule mark rather
+   * than a full column scan.
+   *
+   * **Returns a subset.** The index only records the value at each granule
+   * boundary, so a value confined to one granule never appears; callers need a
+   * full-scan path for completeness.
+   *
+   * Unordered on purpose: `DISTINCT` streams, `ORDER BY` would have to finish
+   * before the first row. The caller sorts. Not cached — `MetadataCache`
+   * resolves a single value and cannot hold a stream.
+   */
+  async *streamDistinctIndexValues({
+    databaseName,
+    tableName,
+    column,
+    connectionId,
+    dateRange,
+    timestampValueExpression,
+    limit = DEFAULT_MAX_INDEX_VALUES,
+    signal,
+  }: {
+    databaseName: string;
+    tableName: string;
+    /** Must be a primary key column. */
+    column: string;
+    connectionId: string;
+    /** Prunes to overlapping parts; needs `timestampValueExpression` too. */
+    dateRange?: [Date, Date];
+    timestampValueExpression?: string;
+    limit?: number;
+    signal?: AbortSignal;
+  }): AsyncGenerator<string[], void, undefined> {
+    await this.assertIndexReadable({
+      databaseName,
+      tableName,
+      column,
+      connectionId,
+    });
+
+    const partsFilter = await this.partsOverlapFilter({
+      databaseName,
+      tableName,
+      dateRange,
+      timestampValueExpression,
+    });
+
+    const sql = chSql`
+      SELECT DISTINCT ${{ Identifier: column }} AS value
+      FROM mergeTreeIndex(${{ String: databaseName }}, ${{ String: tableName }})
+      WHERE ${partsFilter}
+      LIMIT ${{ Int32: limit }}`;
+
+    const resultSet = await this.clickhouseClient.query<'JSONEachRow'>({
+      query: sql.sql,
+      query_params: sql.params,
+      format: 'JSONEachRow',
+      connectionId,
+      clickhouse_settings: this.getClickHouseSettings(),
+      abort_signal: signal,
+    });
+
+    for await (const chunk of streamToAsyncIterator(resultSet.stream())) {
+      // `stream()` is typed as an unparameterized ReadableStream; narrow here.
+      const rows: Row<unknown, 'JSONEachRow'>[] = chunk;
+      const values: string[] = [];
+      for (const row of rows) {
+        const { value } = row.json<{ value: unknown }>();
+        if (typeof value === 'string' && value !== '') {
+          values.push(value);
+        }
+      }
+      if (values.length > 0) {
+        yield values;
+      }
+    }
   }
 
   async getMapKeys({

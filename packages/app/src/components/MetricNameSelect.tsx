@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
+import { DEFAULT_METRIC_NAMES_LIMIT } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   DateRange,
   MetricsDataType,
   TMetricSource,
 } from '@hyperdx/common-utils/dist/types';
-import { Select } from '@mantine/core';
+import { Select, Loader } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
 
 import { useMetricNames } from '@/hooks/useMetricNames';
@@ -157,15 +158,18 @@ export function MetricNameSelect({
     <Select
       disabled={isLoading || isError}
       variant="filled"
+      // "Search", not "Select": browsing offers only what the primary index
+      // exposes, and typing queries the table for the rest.
       placeholder={
         isLoading
           ? 'Loading...'
           : isError
             ? 'Unable to load metrics'
-            : 'Select a metric...'
+            : 'Search metrics...'
       }
       data={options}
-      limit={100}
+      // The server's page size, so an untruncated search is fully renderable.
+      limit={DEFAULT_METRIC_NAMES_LIMIT}
       searchValue={searchValue}
       onSearchChange={setSearchValue}
       // Start each browse from an empty input so the full list is offered and the
@@ -193,8 +197,21 @@ export function MetricNameSelect({
         hasError
           ? 'Some metrics failed to load'
           : isTruncated
-            ? 'Type to search all metrics'
+            ? debouncedSearch
+              ? `Showing the first ${DEFAULT_METRIC_NAMES_LIMIT} matches — refine your search`
+              : 'Type to search all metrics'
             : undefined
+      }
+      // Replaces the chevron while names are still arriving, so a user who
+      // cannot find a metric knows to wait — but only with no selection, since
+      // Mantine puts a clearable Select's clear button in this same slot.
+      rightSection={
+        isSearching && !currentValue ? (
+          <Loader size={12} color="gray" />
+        ) : undefined
+      }
+      rightSectionPointerEvents={
+        isSearching && !currentValue ? 'none' : undefined
       }
       comboboxProps={{
         position: 'bottom-start',

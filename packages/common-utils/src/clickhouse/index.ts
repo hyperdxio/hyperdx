@@ -378,6 +378,29 @@ export const extractColumnReferencesFromKey = (expr: string): string[] => {
   });
 };
 
+/**
+ * Adapts a `ReadableStream` (what `BaseResultSet.stream()` returns) into an
+ * async iterable. Needed because native async iteration over `ReadableStream`
+ * is missing in some browsers we support.
+ *
+ * Each yielded value is a **chunk** — for the ClickHouse client, an array of
+ * `Row` rather than a single row.
+ */
+export async function* streamToAsyncIterator<T>(
+  stream: ReadableStream<T>,
+): AsyncIterableIterator<T> {
+  const reader = stream.getReader();
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) return;
+      yield value;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
 export interface QueryInputs<Format extends DataFormat> {
   query: string;
   format?: Format;

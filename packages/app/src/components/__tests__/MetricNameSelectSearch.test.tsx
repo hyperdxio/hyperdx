@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import {
   MetricsDataType,
   SourceKind,
   TMetricSource,
 } from '@hyperdx/common-utils/dist/types';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
@@ -13,10 +14,20 @@ import { MetricNameSelect } from '@/components/MetricNameSelect';
 const DEBOUNCE_SETTLE_MS = 800;
 
 const useGetMetricNames = jest.fn();
+const streamDistinctIndexValues = jest.fn();
 
+// Browsing streams from the primary index; only a search reaches
+// `useGetMetricNames`. Both mocked so each test can assert against its path.
 jest.mock('@/hooks/useMetadata', () => ({
   useGetMetricNames: (...args: any[]) => useGetMetricNames(...args),
+  useMetadataWithSettings: () => ({
+    streamDistinctIndexValues: (...args: any[]) =>
+      streamDistinctIndexValues(...args),
+  }),
 }));
+
+/** Args the index stream was asked for, per kind table. */
+const streamArgs = () => streamDistinctIndexValues.mock.calls.map(([a]) => a);
 
 const metricSource: TMetricSource = {
   id: 'metric-source',
@@ -43,19 +54,30 @@ const gaugePatterns = () =>
     .filter(([args]) => args.tableName === 'otel_metrics_gauge')
     .map(([args]) => args.namePattern);
 
+/** One client per render so a cached browse list cannot leak between tests. */
+const withQueryClient = (ui: React.ReactElement) => (
+  <QueryClientProvider
+    client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+  >
+    {ui}
+  </QueryClientProvider>
+);
+
 const renderSelect = (
   props: Partial<React.ComponentProps<typeof MetricNameSelect>> = {},
 ) =>
   renderWithMantine(
-    <MetricNameSelect
-      metricType={MetricsDataType.Gauge}
-      metricName={null}
-      setMetricType={jest.fn()}
-      setMetricName={jest.fn()}
-      metricSource={metricSource}
-      data-testid="metric-name-selector"
-      {...props}
-    />,
+    withQueryClient(
+      <MetricNameSelect
+        metricType={MetricsDataType.Gauge}
+        metricName={null}
+        setMetricType={jest.fn()}
+        setMetricName={jest.fn()}
+        metricSource={metricSource}
+        data-testid="metric-name-selector"
+        {...props}
+      />,
+    ),
   );
 
 /**
@@ -85,16 +107,24 @@ beforeEach(() => {
       ? { names: ['group_reads', 'up'], truncated: false }
       : undefined,
   }));
+  streamDistinctIndexValues.mockReset();
+  streamDistinctIndexValues.mockImplementation(async function* ({
+    tableName,
+  }: any) {
+    if (tableName) yield ['group_reads', 'up'];
+  });
 });
 
 describe('MetricNameSelect', () => {
-  it('passes the clamped chart date range to each metric table query', () => {
+  it('passes the clamped chart date range to each metric table query', async () => {
     renderSelect({
       dateRange: [new Date('2024-06-01'), new Date('2024-06-08')],
     });
 
-    const [gaugeArgs] = useGetMetricNames.mock.calls.find(
-      ([args]) => args.tableName === 'otel_metrics_gauge',
+    // Browsing reads the index, so the range lands on the stream.
+    await waitFor(() => expect(streamArgs().length).toBeGreaterThan(0));
+    const gaugeArgs = streamArgs().find(
+      a => a.tableName === 'otel_metrics_gauge',
     )!;
     // Clamped to the most recent 3 days of the selected range.
     expect(gaugeArgs.dateRange).toEqual([
@@ -105,10 +135,11 @@ describe('MetricNameSelect', () => {
 
   // An unconfigured kind resolves to an empty table name, which disables the
   // query rather than emitting `FROM db.``` and failing on every render.
-  it('does not query metric kinds the source has no table for', () => {
+  it('does not query metric kinds the source has no table for', async () => {
     renderSelect();
 
-    const tables = useGetMetricNames.mock.calls.map(([args]) => args.tableName);
+    await waitFor(() => expect(streamArgs().length).toBeGreaterThan(0));
+    const tables = streamArgs().map(a => a.tableName);
 
     expect(tables).toContain('otel_metrics_gauge');
     expect(tables).not.toContain(undefined);
