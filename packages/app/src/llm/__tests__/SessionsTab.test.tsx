@@ -1,7 +1,7 @@
 import { screen } from '@testing-library/react';
 
 import { makeTraceSource } from '@/llm/__fixtures__/sources';
-import { SessionsTab } from '@/llm/dashboard/SessionsTab';
+import { buildSessionRowHref, SessionsTab } from '@/llm/dashboard/SessionsTab';
 import { getLLMExpressions, llmGatedSumExpr } from '@/llm/lib/expressions';
 
 // Capture the chart config the tab hands to DBTableChart.
@@ -12,6 +12,12 @@ jest.mock('@/components/DBTableChart', () => ({
     tableChartProps.push(props);
     return <div data-testid="table-chart" />;
   },
+}));
+
+// Reactive URL params for row-href construction (see buildSessionRowHref).
+jest.mock('next/navigation', () => ({
+  useSearchParams: () =>
+    new URLSearchParams('tab=sessions&where=foo&from=1&to=2'),
 }));
 
 const TRACE_SOURCE = makeTraceSource();
@@ -65,5 +71,43 @@ describe('SessionsTab', () => {
       alias: 'end_ts',
       valueExpression: 'max(Timestamp)',
     });
+  });
+
+  it('builds row hrefs from the reactive URL params, preserving the tab', () => {
+    // Regression: hrefs were built from a window.location snapshot, so rows
+    // rendered from cache before an async tab-switch URL write landed baked
+    // the previous tab into the link — clicking a session then navigated
+    // back to the old tab underneath the drawer.
+    const expressions = getLLMExpressions(TRACE_SOURCE, []);
+    renderWithMantine(
+      <SessionsTab
+        source={TRACE_SOURCE}
+        expressions={expressions}
+        dateRange={[new Date(0), new Date(1000)]}
+        where=""
+        whereLanguage="sql"
+      />,
+    );
+
+    const getRowSearchLink =
+      tableChartProps[tableChartProps.length - 1].getRowSearchLink;
+    expect(getRowSearchLink({ Session: 'ses_123' })).toBe(
+      '/?tab=sessions&where=foo&from=1&to=2&llmSession=ses_123',
+    );
+  });
+});
+
+describe('buildSessionRowHref', () => {
+  it('preserves existing params and sets llmSession', () => {
+    expect(buildSessionRowHref('/llm', 'tab=sessions&from=1', 'ses_a')).toBe(
+      '/llm?tab=sessions&from=1&llmSession=ses_a',
+    );
+    expect(buildSessionRowHref('/llm', '', 'ses_a')).toBe(
+      '/llm?llmSession=ses_a',
+    );
+    // Replaces a previously open session rather than duplicating the param.
+    expect(
+      buildSessionRowHref('/llm', 'llmSession=ses_old&tab=sessions', 'ses_b'),
+    ).toBe('/llm?llmSession=ses_b&tab=sessions');
   });
 });

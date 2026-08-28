@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Grid } from '@mantine/core';
 
 import { INTEGER_NUMBER_FORMAT } from '@/ChartUtils';
@@ -20,6 +21,20 @@ import {
 const TABLE_HEIGHT = 600;
 
 /**
+ * Build a session-row href that preserves the given query params (tab, time
+ * range, filters, ...) and opens the session drawer. Exported for tests.
+ */
+export function buildSessionRowHref(
+  pathname: string,
+  search: string,
+  sessionValue: string,
+): string {
+  const params = new URLSearchParams(search);
+  params.set('llmSession', sessionValue);
+  return pathname + '?' + params.toString();
+}
+
+/**
  * Sessions list: LLM activity grouped by session/conversation id
  * (gen_ai.conversation.id, session.id, or ai.telemetry.metadata.sessionId).
  * This is the primary correlation surface for instrumentations that don't
@@ -34,11 +49,21 @@ export function SessionsTab(props: LLMChartProps) {
     extraFilters: [{ type: 'sql', condition: expressions.hasSessionId }],
   });
 
-  const getRowLink = useCallback((row: Record<string, unknown>) => {
-    const searchParams = new URLSearchParams(window.location.search);
-    searchParams.set('llmSession', String(row['Session'] ?? ''));
-    return window.location.pathname + '?' + searchParams.toString();
-  }, []);
+  // Reactive search params (not a window.location snapshot): the row hrefs
+  // are computed at render time and cached rows can render before an async
+  // nuqs URL write (e.g. a tab switch) lands — a snapshot would then bake
+  // the previous tab into the link and clicking a session would navigate
+  // back to it.
+  const searchParams = useSearchParams();
+  const getRowLink = useCallback(
+    (row: Record<string, unknown>) =>
+      buildSessionRowHref(
+        window.location.pathname,
+        searchParams?.toString() ?? '',
+        String(row['Session'] ?? ''),
+      ),
+    [searchParams],
+  );
 
   return (
     <Grid grow={false} w="100%" maw="100%">
