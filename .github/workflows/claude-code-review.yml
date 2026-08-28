@@ -193,9 +193,13 @@ jobs:
           # holds pr-triage and release-notes, and editing either would re-pay for a review
           # of every open PR. The dedicated code-review/ directory is what makes a
           # directory hash both precise and self-maintaining as files are added.
+          # Directory-based so a helper added under code-review/ is covered automatically,
+          # but excluding __tests__ so a test-only edit does not force a paid re-review of
+          # every open PR. This hash is reused after the review to detect tampering.
           echo "prompt_hash=$(find .trusted/.github/prompts/code-review.md \
-            .trusted/.github/scripts/code-review/review-comments.cjs \
-            .trusted/.github/workflows/claude-code-review.yml -type f -print0 \
+            .trusted/.github/scripts/code-review \
+            .trusted/.github/workflows/claude-code-review.yml \
+            -type f -not -path '*/__tests__/*' -print0 \
             | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
           echo "diff bytes: $(wc -c < .hdx/pr.diff)"
 
@@ -264,7 +268,10 @@ jobs:
           PR: ${{ steps.pr.outputs.number }}
         run: |
           set -euo pipefail
-          LOCAL=$(git diff --name-only "$MB" HEAD | sort -u)
+          # core.quotepath would C-quote non-ASCII paths here while the API returns raw
+          # UTF-8, diverging on every push for such a PR. --no-renames matches the staged
+          # diff so rename detection cannot diverge either.
+          LOCAL=$(git -c core.quotepath=false diff --no-renames --name-only "$MB" HEAD | sort -u)
           REMOTE=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json files --jq '.files[].path' | sort -u)
           if [ "$LOCAL" != "$REMOTE" ]; then
             echo "::error::Local diff file list does not match the PR's file list; the review base is likely wrong."
@@ -439,19 +446,54 @@ jobs:
           # empty) result, which would stamp a state marker and make the gate skip this
           # diff on every future push. The CLI pin only dodges the known regression; this
           # is the permanent guard, as deep-review.yml argues for its own.
-          if [ -n "${EXECUTION_FILE:-}" ] && [ -s "$EXECUTION_FILE" ]; then
+          # A missing, empty or reshaped transcript means we cannot confirm the reviewer
+          # actually ran its checks. Treating that as healthy stamps a marker and the gate
+          # then skips this revision forever, which is the failure this guard exists for --
+          # so it is unhealthy, not "no evidence of a problem".
+          [ -z "${EXECUTION_FILE:-}" ] && broken "no execution transcript; cannot confirm the reviewer ran"
+          [ ! -s "$EXECUTION_FILE" ] && broken "execution transcript is empty; cannot confirm the reviewer ran"
+          jq -e 'type == "array" and length > 0' "$EXECUTION_FILE" >/dev/null 2>&1 \
+            || broken "execution transcript is not a non-empty JSON array; cannot confirm the reviewer ran"
+          if true; then
             BWRAP=$(jq '[ .[] | select(.type == "user") | .message.content[]?
                           | select(.type == "tool_result" and .is_error == true)
                           | ( .content | if type == "array" then map(.text // "") | join("\n")
                                          elif type == "string" then . else tostring end )
                           | select(test("(^|\\n)bwrap: "))
-                        ] | length' "$EXECUTION_FILE" 2>/dev/null || echo 0)
+                        ] | length' "$EXECUTION_FILE") \
+              || broken "could not analyse the execution transcript; cannot confirm the sandbox was healthy"
             if [ "${BWRAP:-0}" != "0" ]; then
               broken "Reviewer sandbox was broken: $BWRAP Bash call(s) failed with bwrap errors, so the git/gh checks the prompt relies on never ran."
             fi
           fi
           echo "count=$(jq '.findings | length' .hdx/findings.json)" >> "$GITHUB_OUTPUT"
           echo "healthy=true" >> "$GITHUB_OUTPUT"
+
+      # `Bash(git log:*)`/`git show`/`git diff` all accept `--output=<path>`, an
+      # arbitrary-file-write primitive a prefix allowlist cannot constrain -- and the
+      # content written is the commit message, which on a fork PR the author controls. The
+      # steps below `require()` the trusted helper, so without this check an injected
+      # reviewer could overwrite it with crafted JS and have this job execute it while
+      # holding the write token and the API key. deep-review.yml calls this residual
+      # "no longer an exec path" for its own design; here it is one, so verify.
+      #
+      # Fails closed: a mismatch means no marker is stamped and the next push re-reviews.
+      - name: Verify the trusted tree was not modified
+        if: steps.health.outputs.healthy == 'true'
+        env:
+          EXPECTED: ${{ steps.diff.outputs.prompt_hash }}
+        run: |
+          set -euo pipefail
+          ACTUAL=$(find .trusted/.github/prompts/code-review.md \
+            .trusted/.github/scripts/code-review \
+            .trusted/.github/workflows/claude-code-review.yml \
+            -type f -not -path '*/__tests__/*' -print0 \
+            | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "::error::The trusted prompt/helper tree changed during the review ($EXPECTED -> $ACTUAL). Refusing to execute it. This indicates the reviewer wrote to the workspace."
+            exit 1
+          fi
+          echo "trusted tree intact"
 
       # Inline comments, deduped across pushes by a hidden per-finding fingerprint.
       # Routing logic lives in .github/scripts/code-review/review-comments.cjs, from the TRUSTED
@@ -569,7 +611,9 @@ jobs:
 
       - name: Render review summary
         id: summary
-        if: always() && steps.gate.outputs.should_review == 'true'
+        # !cancelled() rather than always(): on cancel-in-progress the superseding run is
+        # already working, and a cancelled run's summary would race its sticky write.
+        if: "!cancelled() && steps.gate.outputs.should_review == 'true'"
         uses: actions/github-script@v9
         with:
           script: |

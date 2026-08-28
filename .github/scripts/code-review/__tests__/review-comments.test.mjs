@@ -646,3 +646,51 @@ test('severity tallies sum to the headline total when duplicates collapse', () =
   assert.equal(total, 2, 'distinct findings');
   assert.equal(crit + major + minor, total, 'severities must sum to the total');
 });
+
+test('an over-long summary is truncated but keeps the state marker', () => {
+  // The marker lives inside the body. Without a cap the post 422s, no marker is written,
+  // and the gate re-reviews and re-pays on every push without converging.
+  const big = Array.from({ length: 4000 }, (_, i) => ({
+    file: `src/file${i}.ts`,
+    severity: 'major',
+    title: `finding number ${i} with a deliberately long title to inflate the body`,
+    body: 'x'.repeat(200),
+  }));
+  const body = helpers.renderSummary({
+    findings: big,
+    unanchored: big,
+    skipped: [],
+    duplicates: [],
+    posted: 0,
+    healthy: true,
+    diffHash: HASH,
+    promptHash: HASH,
+  });
+  assert.ok(
+    body.length <= 65536,
+    `body must fit GitHub's limit, got ${body.length}`,
+  );
+  assert.equal(
+    gateParse(body).diff,
+    HASH,
+    'the marker must survive truncation',
+  );
+  assert.match(body, /Review truncated/);
+});
+
+test('a finding both already-posted and repeated in-run counts as skipped only once', () => {
+  const f = {
+    file: 'src/a.ts',
+    line: 11,
+    severity: 'major',
+    title: 'seen before',
+    body: 'b',
+  };
+  const { skipped, duplicates } = helpers.buildInlineComments({
+    findings: [f, { ...f, line: 12 }],
+    diffText: DIFF,
+    existingComments: [{ body: helpers.commentBody(f) }],
+  });
+  assert.equal(skipped.length, 1, 'one already-posted, not two');
+  assert.equal(duplicates.length, 1, 'the in-run repeat is a duplicate');
+});

@@ -132,10 +132,11 @@ function buildInlineComments({ findings, diffText, existingComments }) {
   for (const finding of findings || []) {
     const fp = fingerprint(finding);
     if (seen.has(fp)) {
-      (previouslyPosted.has(fp) ? skipped : duplicates).push({
-        ...finding,
-        severity: severityOf(finding),
-      });
+      // Count each fingerprint at most once as "already posted"; a repeat within this run
+      // is a same-run duplicate even when an earlier push also carried it, or the
+      // "N unchanged from an earlier push" tally inflates.
+      const bucket = previouslyPosted.delete(fp) ? skipped : duplicates;
+      bucket.push({ ...finding, severity: severityOf(finding) });
       continue;
     }
     seen.add(fp);
@@ -261,7 +262,24 @@ function renderSummary({
     '---',
     "<sub>Severity is the reviewer's own estimate and is used for ordering, not filtering.</sub>",
   );
-  return lines.join('\n');
+  return capBody(lines.join('\n'), marker);
+}
+
+/** GitHub rejects an issue-comment body over this, with a 422 on the whole post. */
+const MAX_BODY = 65536;
+
+/**
+ * Keep the body postable.
+ *
+ * The state marker lives inside this body, so an over-long body is not merely truncated
+ * output: the post fails, no marker is written, and the gate re-reviews and re-pays on
+ * every push without ever converging. Truncating is strictly better than that, and the
+ * marker is re-emitted so the gate still sees it.
+ */
+function capBody(body, marker) {
+  if (body.length <= MAX_BODY) return body;
+  const notice = `\n\n---\n\n_Review truncated to fit GitHub's comment limit; the findings above are complete up to this point._\n${marker}\n`;
+  return `${body.slice(0, MAX_BODY - notice.length)}${notice}`;
 }
 
 module.exports = {
