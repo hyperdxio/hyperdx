@@ -1,3 +1,4 @@
+/* eslint-disable security/detect-non-literal-fs-filename */
 import fs from 'fs';
 import mongoose from 'mongoose';
 import os from 'os';

@@ -155,5 +155,5 @@ export function resolveFilterSelection(
   }
   const expression = getFilterExpression(filter);
   if (expression == null) return undefined;
-  return parsed.byExpression[expression];
+  return new Map(Object.entries(parsed.byExpression)).get(expression);
 }

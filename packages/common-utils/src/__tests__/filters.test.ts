@@ -27,6 +27,7 @@ import type {
   DashboardFilter,
   Filter,
   QueryExpressionDashboardFilter,
+  StaticListDashboardFilter,
 } from '@/types';
 import {
   DASHBOARD_VARIABLE_NAME_MAX_LENGTH,
@@ -1762,19 +1763,18 @@ describe('filters', () => {
     // that the expression has to be passed explicitly, so it must stay
     // undefined rather than becoming an empty string.
     it('declares a static-list filter with no expression', () => {
-      expect(
-        getDashboardVariableDeclarations([
-          {
-            id: 'f1',
-            type: 'STATIC_LIST',
-            name: 'Environment',
-            options: ['prod', 'staging', 'dev'],
-            isBroadcastEnabled: false,
-            isVariableEnabled: true,
-            variableName: 'env',
-          },
-        ]),
-      ).toEqual([{ name: 'env', expression: undefined }]);
+      const staticFilter: StaticListDashboardFilter = {
+        id: 'f1',
+        type: 'STATIC_LIST',
+        name: 'Environment',
+        options: ['prod', 'staging', 'dev'],
+        isBroadcastEnabled: false,
+        isVariableEnabled: true,
+        variableName: 'env',
+      };
+      expect(getDashboardVariableDeclarations([staticFilter])).toEqual([
+        { name: 'env', expression: undefined },
+      ]);
     });
 
     it('keeps the declarations in filter order', () => {

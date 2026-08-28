@@ -1959,7 +1959,9 @@ describe('a variable with no expression', () => {
       ['with a selection', ENV],
       ['with nothing selected', EMPTY_ENV],
     ])('throws %s', (_label, env) => {
-      expect(() => substituteVariables('WHERE $__filter($env)', [env])).toThrow(
+      expect(() =>
+        substituteVariablesSql('WHERE $__filter($env)', [env]),
+      ).toThrow(
         "Macro '$__filter($env)' requires the variable's filter expression, which " +
           'is not available — pass it explicitly, e.g. $__filter(<expression>, $env).',
       );
@@ -1981,19 +1983,19 @@ describe('a variable with no expression', () => {
 
   it('expands the two-argument $__filter form', () => {
     expect(
-      substituteVariables('WHERE $__filter(ServiceName, $env)', [ENV]),
+      substituteVariablesSql('WHERE $__filter(ServiceName, $env)', [ENV]),
     ).toBe("WHERE (ServiceName IN ('prod'))");
   });
 
   it('expands $__conditionalAll', () => {
     expect(
-      substituteVariables(
+      substituteVariablesSql(
         'WHERE $__conditionalAll(ServiceName IN ($env), $env)',
         [ENV],
       ),
     ).toBe("WHERE (ServiceName IN ('prod'))");
     expect(
-      substituteVariables(
+      substituteVariablesSql(
         'WHERE $__conditionalAll(ServiceName IN ($env), $env)',
         [EMPTY_ENV],
       ),
@@ -2002,7 +2004,7 @@ describe('a variable with no expression', () => {
 
   it.each(['$env', '${env}', '${env:csv}'])('expands %s', reference => {
     expect(
-      substituteVariables(`WHERE ServiceName IN (${reference})`, [ENV]),
+      substituteVariablesSql(`WHERE ServiceName IN (${reference})`, [ENV]),
     ).toBe(
       reference === '${env:csv}'
         ? 'WHERE ServiceName IN (prod)'

@@ -7,7 +7,6 @@ import {
 import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { FilterSelection } from '@hyperdx/common-utils/dist/dashboardFilterValues';
 import {
-  DashboardFilter,
   MetricsDataType,
   QueryExpressionDashboardFilter,
   SourceKind,
@@ -83,7 +82,7 @@ describe('useQueriedDashboardFilterValues', () => {
     },
   ];
 
-  const mockFilters: DashboardFilter[] = [
+  const mockFilters: QueryExpressionDashboardFilter[] = [
     {
       id: 'filter1',
       type: 'QUERY_EXPRESSION',
@@ -315,7 +314,7 @@ describe('useQueriedDashboardFilterValues', () => {
 
   it('should group multiple filters from the same source', async () => {
     // Arrange
-    const sameSourceFilters: DashboardFilter[] = [
+    const sameSourceFilters: QueryExpressionDashboardFilter[] = [
       {
         id: 'filter1',
         type: 'QUERY_EXPRESSION',
@@ -360,7 +359,7 @@ describe('useQueriedDashboardFilterValues', () => {
 
   it('should not group filters with different where clauses', async () => {
     // Arrange
-    const sameSourceFiltersDifferentWhere: DashboardFilter[] = [
+    const sameSourceFiltersDifferentWhere: QueryExpressionDashboardFilter[] = [
       {
         id: 'filter1',
         type: 'QUERY_EXPRESSION',
@@ -453,7 +452,7 @@ describe('useQueriedDashboardFilterValues', () => {
 
   it('should filter out filters for sources that do not exist', async () => {
     // Arrange
-    const filtersWithInvalidSource: DashboardFilter[] = [
+    const filtersWithInvalidSource: QueryExpressionDashboardFilter[] = [
       ...mockFilters,
       {
         id: 'filter3',
@@ -614,7 +613,7 @@ describe('useQueriedDashboardFilterValues', () => {
       isLoading: false,
     } as any);
 
-    const multiFilters: DashboardFilter[] = [
+    const multiFilters: QueryExpressionDashboardFilter[] = [
       {
         id: 'filter1',
         type: 'QUERY_EXPRESSION',
@@ -709,7 +708,7 @@ describe('useQueriedDashboardFilterValues', () => {
       },
     ]);
 
-    const filtersForSameSource: DashboardFilter[] = [
+    const filtersForSameSource: QueryExpressionDashboardFilter[] = [
       {
         id: 'filter1',
         type: 'QUERY_EXPRESSION',
@@ -1177,7 +1176,7 @@ describe('useQueriedDashboardFilterValues', () => {
     });
 
     it('still uses a single scan for many filters when one is selected', async () => {
-      const filters: DashboardFilter[] = [
+      const filters: QueryExpressionDashboardFilter[] = [
         ...envAndStatus,
         {
           id: 'filter3',
@@ -1211,7 +1210,7 @@ describe('useQueriedDashboardFilterValues', () => {
       // Both definitions constrain the same column independently, so a third
       // dropdown's lookup is narrowed by both — not by whichever was written
       // into the constraint state last.
-      const filters: DashboardFilter[] = [
+      const filters: QueryExpressionDashboardFilter[] = [
         { ...envAndStatus[0], id: 'env-a' },
         { ...envAndStatus[0], id: 'env-b' },
         envAndStatus[1],
@@ -1262,7 +1261,7 @@ describe('useQueriedDashboardFilterValues', () => {
     });
 
     it('does not apply a selection from one source to filters on another source', async () => {
-      const filters: DashboardFilter[] = [
+      const filters: QueryExpressionDashboardFilter[] = [
         ...envAndStatus,
         {
           id: 'filter3',
@@ -1297,7 +1296,7 @@ describe('useQueriedDashboardFilterValues', () => {
     it('does not apply a selection across metric types of the same source', async () => {
       // Same source, different metric type → different physical table, so the
       // constrained column need not exist there.
-      const filters: DashboardFilter[] = [
+      const filters: QueryExpressionDashboardFilter[] = [
         {
           id: 'gauge-filter',
           type: 'QUERY_EXPRESSION',

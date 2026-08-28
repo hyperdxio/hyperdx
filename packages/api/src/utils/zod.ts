@@ -165,6 +165,11 @@ export type ExternalDashboardFilterWithId = z.infer<
   typeof externalDashboardFilterSchemaWithId
 >;
 
+export type ExternalQueryExpressionFilterWithId = Extract<
+  ExternalDashboardFilterWithId,
+  { type: 'QUERY_EXPRESSION' }
+>;
+
 export const externalDashboardFilterSchema = z.discriminatedUnion('type', [
   externalQueryExpressionFilterShape.omit({ id: true }).strict(),
   externalStaticListFilterShape.omit({ id: true }).strict(),
