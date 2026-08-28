@@ -2449,7 +2449,9 @@ export const AlertsPageItemSchema = z.object({
   dashboardId: z.string().optional(),
   savedSearchId: z.string().optional(),
   tileId: z.string().optional(),
-  // Inline alerts: the persisted chart config (absent on other sources).
+  // Inline alerts: the persisted chart config. Only present on the
+  // single-alert (detail) response — the unpaginated list omits it so every
+  // alerts-page load doesn't carry every alert's full query definition.
   chartConfig: AlertChartConfigSchema.optional(),
   groupBy: z.string().optional(),
   name: z.string().nullish(),

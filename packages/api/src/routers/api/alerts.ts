@@ -38,6 +38,7 @@ type EnhancedAlert = NonNullable<Awaited<ReturnType<typeof getAlertEnhanced>>>;
 const formatAlertResponse = (
   alert: EnhancedAlert,
   history: Omit<IAlertHistory, 'alert'>[],
+  { includeChartConfig = false }: { includeChartConfig?: boolean } = {},
 ): PreSerialized<AlertsPageItem> => {
   return {
     history,
@@ -78,9 +79,14 @@ const formatAlertResponse = (
         'tags',
       ]),
     }),
-    // Chart alerts carry their persisted config so edit surfaces can seed the
-    // chart editor and the detail page can render the query.
-    ...(alert.chartConfig && { chartConfig: alert.chartConfig }),
+    // Inline alerts carry their persisted config so edit surfaces can seed
+    // the chart editor and the detail page can render the query — but only on
+    // the single-alert response. The list endpoint is unpaginated, so
+    // attaching every alert's full config (raw SQL templates included) would
+    // bloat every alerts-page load and create a contract that couldn't be
+    // paginated away later.
+    ...(includeChartConfig &&
+      alert.chartConfig && { chartConfig: alert.chartConfig }),
     ...pick(alert, [
       '_id',
       'interval',
@@ -159,7 +165,9 @@ router.get(
         limit: 20,
       });
 
-      const data = formatAlertResponse(alert, history);
+      const data = formatAlertResponse(alert, history, {
+        includeChartConfig: true,
+      });
 
       sendJson(res, { data });
     } catch (e) {

@@ -1707,11 +1707,12 @@ describe('alerts router', () => {
       expect(single.body.data.savedSearchId).toBeUndefined();
       expect(single.body.data.dashboardId).toBeUndefined();
 
+      // The unpaginated list omits the config — only the detail response
+      // carries the full query definition.
       const list = await agent.get('/alerts').expect(200);
       expect(list.body.data).toHaveLength(1);
-      expect(list.body.data[0].chartConfig).toMatchObject({
-        source: source._id.toString(),
-      });
+      expect(list.body.data[0].source).toBe(AlertSource.INLINE);
+      expect(list.body.data[0].chartConfig).toBeUndefined();
     });
 
     it('updates an inline alert config', async () => {
