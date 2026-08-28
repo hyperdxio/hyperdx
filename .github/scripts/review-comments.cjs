@@ -30,23 +30,39 @@ function parseCommentableLines(diffText) {
   const byFile = new Map();
   let file = null;
   let newLine = 0;
+  // Remaining post-image lines declared by the current hunk header. While this is > 0 we
+  // are inside a hunk body, where a line beginning `+++ b/` or `@@` is *content*, not
+  // structure -- an added line whose text is `++ b/x` renders as `+++ b/x`.
+  let remaining = 0;
+
   for (const raw of diffText.split('\n')) {
-    const fileMatch = /^\+\+\+ b\/(.*)$/.exec(raw);
-    if (fileMatch) {
-      file = fileMatch[1] === '/dev/null' ? null : fileMatch[1];
-      if (file) byFile.set(file, new Set());
+    if (remaining <= 0) {
+      const fileMatch = /^\+\+\+ (.*)$/.exec(raw);
+      if (fileMatch) {
+        // `+++ /dev/null` marks a deletion: clear the target so a following hunk cannot
+        // attribute lines to the previously seen file.
+        const target = fileMatch[1].replace(/\t.*$/, '');
+        file = target.startsWith('b/') ? target.slice(2) : null;
+        if (file) byFile.set(file, new Set());
+        continue;
+      }
+      const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/.exec(raw);
+      if (hunk) {
+        newLine = Number(hunk[1]);
+        remaining = hunk[2] === undefined ? 1 : Number(hunk[2]);
+        continue;
+      }
       continue;
     }
-    const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(raw);
-    if (hunk) {
-      newLine = Number(hunk[1]);
-      continue;
-    }
-    if (!file) continue;
+
     if (raw.startsWith('+') || raw.startsWith(' ')) {
-      byFile.get(file).add(newLine);
+      if (file) byFile.get(file).add(newLine);
       newLine++;
+      remaining--;
+    } else if (raw.startsWith('\\')) {
+      // "\ No newline at end of file" annotates the previous line; consumes nothing.
     }
+    // A '-' line consumes no post-image line number and no post-image budget.
   }
   return byFile;
 }
@@ -93,6 +109,10 @@ function commentBody(finding) {
  * `unanchored` is not a failure bucket — findings that reference a file the diff never
  * touched are a large slice of the useful output (~9% of all findings, measured), they
  * just have nowhere to hang. They go in the summary instead of being dropped.
+ *
+ * Each `inline` entry is `{ comment, finding }`: the caller posts `comment`, and if the
+ * API rejects the anchor it can move the original `finding` into the summary rather than
+ * losing its title, body and severity.
  */
 function buildInlineComments({ findings, diffText, existingComments }) {
   const commentable = parseCommentableLines(diffText);
@@ -112,10 +132,13 @@ function buildInlineComments({ findings, diffText, existingComments }) {
     const line = Number(finding.line);
     if (line && lines && lines.has(line)) {
       inline.push({
-        path: finding.file,
-        line,
-        side: 'RIGHT',
-        body: commentBody(finding),
+        comment: {
+          path: finding.file,
+          line,
+          side: 'RIGHT',
+          body: commentBody(finding),
+        },
+        finding: { ...finding, severity: severityOf(finding) },
       });
     } else {
       unanchored.push({ ...finding, severity: severityOf(finding) });
@@ -164,12 +187,20 @@ function renderSummary({
   }
 
   const by = s => findings.filter(f => severityOf(f) === s).length;
+  const nUnanchored = unanchored ? unanchored.length : 0;
+  // Be accurate about where the findings went. "none could be anchored" is wrong when the
+  // real reason is that every finding was already posted on an earlier push.
+  const delivery =
+    posted > 0
+      ? `${posted} posted as inline comment(s) on the changed lines.` +
+        (nUnanchored ? ` ${nUnanchored} listed below.` : '')
+      : nUnanchored
+        ? 'None could be anchored to changed lines; they are listed below.'
+        : 'Already reported on an earlier push — no new comments.';
   lines.push(
     `**${findings.length}** finding(s): 🔴 ${by('critical')} critical · 🟠 ${by('major')} major · 🔵 ${by('minor')} minor`,
     '',
-    posted > 0
-      ? `${posted} posted as inline comments on the changed lines.`
-      : 'No findings could be anchored to changed lines; all are listed below.',
+    delivery,
     '',
   );
 

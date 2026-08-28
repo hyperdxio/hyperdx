@@ -5,8 +5,11 @@
 //
 // Run by claude-code-review.yml before the (expensive) review step.
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
 const helpers = require('../review-comments.cjs');
@@ -16,7 +19,7 @@ const DIFF = `diff --git a/src/a.ts b/src/a.ts
 index 1111111..2222222 100644
 --- a/src/a.ts
 +++ b/src/a.ts
-@@ -10,4 +10,5 @@ export function a() {
+@@ -10,3 +10,4 @@ export function a() {
    const keep = 1;
 -  const gone = 2;
 +  const added = 3;
@@ -94,9 +97,13 @@ test('anchors findings on diff lines and routes the rest to the summary', () => 
   });
 
   assert.equal(inline.length, 1);
-  assert.equal(inline[0].path, 'src/a.ts');
-  assert.equal(inline[0].line, 11);
-  assert.equal(inline[0].side, 'RIGHT');
+  assert.equal(inline[0].comment.path, 'src/a.ts');
+  assert.equal(inline[0].comment.line, 11);
+  assert.equal(inline[0].comment.side, 'RIGHT');
+  // The originating finding rides along so a rejected anchor can fall back to the
+  // summary with its real content instead of a stub.
+  assert.equal(inline[0].finding.title, 'on an added line');
+  assert.equal(inline[0].finding.severity, 'major');
 
   // Findings about files the diff never touched are a large slice of the useful output --
   // they must be surfaced in the summary, never dropped.
@@ -174,10 +181,27 @@ test('duplicate findings within one run collapse to a single comment', () => {
   assert.equal(inline.length, 1);
 });
 
-// The gate in claude-code-review.yml parses this marker to decide whether to re-review.
-// Keep in lockstep with MARKER_RE there.
-const GATE_RE =
-  /claude-review-state:\s*diff=([0-9a-f]{64});\s*prompt=([0-9a-f]{64})\s*-->/;
+// Do NOT hand-copy the gate's regex here. A duplicate passes while the workflow's own
+// parser silently stops recognizing the marker -- exactly the failure this file exists to
+// catch. Lift the `RE=` line out of the workflow and run the real `sed`.
+const WORKFLOW = fileURLToPath(
+  new URL('../../workflows/claude-code-review.yml', import.meta.url),
+);
+
+function gateParse(body) {
+  const line = readFileSync(WORKFLOW, 'utf8')
+    .split('\n')
+    .find(l => l.trim().startsWith('RE='));
+  assert.ok(line, 'could not find the gate RE= line in the workflow');
+  const expr = line.trim().slice(3).replace(/^'|'$/g, '');
+  const run = group =>
+    execFileSync('sed', ['-n', `${expr}\\${group}/p`], {
+      input: body,
+      encoding: 'utf-8',
+    }).split('\n')[0];
+  return { diff: run(1), prompt: run(2) };
+}
+
 const HASH = 'a'.repeat(64);
 
 test('a healthy run stamps a marker the gate can parse', () => {
@@ -191,9 +215,13 @@ test('a healthy run stamps a marker the gate can parse', () => {
     diffHash: HASH,
     promptHash: HASH,
   });
-  const m = GATE_RE.exec(body);
-  assert.ok(m, 'gate must be able to read the state it wrote');
-  assert.equal(m[1], HASH);
+  const parsed = gateParse(body);
+  assert.equal(
+    parsed.diff,
+    HASH,
+    "the workflow's own sed must read the marker we wrote",
+  );
+  assert.equal(parsed.prompt, HASH);
   assert.ok(
     body.startsWith('<!-- claude-code-review -->'),
     'sticky marker must be first',
@@ -212,7 +240,11 @@ test('an unhealthy run stamps NO parseable marker, so the gate fails open', () =
     diffHash: HASH,
     promptHash: HASH,
   });
-  assert.equal(GATE_RE.exec(body), null);
+  assert.equal(
+    gateParse(body).diff,
+    '',
+    'gate must find no hash, so it re-reviews',
+  );
   assert.match(body, /did not complete/);
 });
 
@@ -250,7 +282,11 @@ test('a clean diff produces an explicit all-clear', () => {
     promptHash: HASH,
   });
   assert.match(body, /No issues found/);
-  assert.ok(GATE_RE.exec(body), 'a clean review is still a completed review');
+  assert.equal(
+    gateParse(body).diff,
+    HASH,
+    'a clean review is still a completed review',
+  );
 });
 
 test('an unrecognized severity degrades to minor rather than throwing', () => {
@@ -267,5 +303,83 @@ test('an unrecognized severity degrades to minor rather than throwing', () => {
     diffText: DIFF,
     existingComments: [],
   });
-  assert.match(inline[0].body, /\*\*minor\*\*/);
+  assert.match(inline[0].comment.body, /\*\*minor\*\*/);
+});
+
+test('a deleted file does not leak its hunk onto the previously seen file', () => {
+  // `+++ /dev/null` must clear the target. Otherwise the deletion hunk's line numbers are
+  // attributed to whatever file was parsed before it.
+  const diff = [
+    '--- a/gone.ts',
+    '+++ /dev/null',
+    '@@ -1,2 +0,0 @@',
+    '-a',
+    '-b',
+    'diff --git a/new.ts b/new.ts',
+    '--- /dev/null',
+    '+++ b/new.ts',
+    '@@ -0,0 +1,2 @@',
+    '+x',
+    '+y',
+    '',
+  ].join('\n');
+  const map = helpers.parseCommentableLines(diff);
+  assert.deepEqual([...map.keys()], ['new.ts']);
+  assert.deepEqual([...map.get('new.ts')].sort(), [1, 2]);
+});
+
+test('diff content that looks like a file or hunk header is treated as content', () => {
+  // An added line whose text is `++ b/x` renders as `+++ b/x`; a naive parser resets state
+  // on it and mis-routes every later anchor. Hunk lengths are consumed to prevent that.
+  const diff = [
+    '--- a/a.ts',
+    '+++ b/a.ts',
+    '@@ -1,1 +1,3 @@',
+    ' context',
+    '+++ b/evil.ts',
+    '+@@ -9,9 +9,9 @@',
+    '',
+  ].join('\n');
+  const map = helpers.parseCommentableLines(diff);
+  assert.deepEqual([...map.keys()], ['a.ts'], 'no phantom file');
+  assert.deepEqual([...map.get('a.ts')].sort(), [1, 2, 3]);
+});
+
+test('findings with no file do not collide with each other', () => {
+  const a = { title: 'first', body: 'x' };
+  const b = { title: 'second', body: 'x' };
+  assert.notEqual(helpers.fingerprint(a), helpers.fingerprint(b));
+});
+
+test('the summary does not claim findings were unanchorable when they were already posted', () => {
+  // posted:0 with nothing unanchored means every finding was deduped against an earlier
+  // push. Saying "none could be anchored" and then listing nothing is misleading.
+  const body = helpers.renderSummary({
+    findings: [
+      { file: 'src/a.ts', line: 11, severity: 'major', title: 't', body: 'b' },
+    ],
+    unanchored: [],
+    posted: 0,
+    healthy: true,
+    diffHash: HASH,
+    promptHash: HASH,
+  });
+  assert.match(body, /Already reported on an earlier push/);
+  assert.doesNotMatch(body, /listed below/);
+});
+
+test('the summary counts both delivered and listed findings when it does both', () => {
+  const body = helpers.renderSummary({
+    findings: [
+      { file: 'a', line: 1, severity: 'major', title: 'x', body: 'y' },
+      { file: 'b', severity: 'major', title: 'z', body: 'w' },
+    ],
+    unanchored: [{ file: 'b', severity: 'major', title: 'z', body: 'w' }],
+    posted: 1,
+    healthy: true,
+    diffHash: HASH,
+    promptHash: HASH,
+  });
+  assert.match(body, /1 posted as inline comment\(s\)/);
+  assert.match(body, /1 listed below/);
 });
