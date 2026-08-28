@@ -972,6 +972,41 @@ export const AlertSchema = z.union([
 
 export type Alert = z.infer<typeof AlertSchema>;
 
+/**
+ * Max per-target timing entries stored on one evaluation. An evaluation's
+ * distinct targets are already bounded (configured channels plus whatever the
+ * message body @mentions, itself capped per event), so this only guards
+ * against a pathological alert growing the document. Shared so the app can
+ * explain the truncation it renders.
+ */
+export const ALERT_NOTIFICATION_TARGETS_LIMIT = 20;
+
+/**
+ * One notification target's timing within an evaluation, summed across every
+ * dispatch the evaluation made to it — a grouped alert notifies the same
+ * target once per firing group, and a resolve notification is another
+ * dispatch.
+ */
+export const AlertNotificationTargetTimingSchema = z.object({
+  /**
+   * Stable identity for the target — the webhook id. Two webhooks can share a
+   * display name, so `target` alone does not identify a row.
+   */
+  targetId: z.string(),
+  /** Display label: the webhook's name as it was at dispatch time. */
+  target: z.string(),
+  /** Summed wall time across this target's dispatches (ms). */
+  durationMs: z.number(),
+  /** Dispatches attempted for this target in the evaluation. */
+  dispatches: z.number(),
+  /** How many of those dispatches failed. */
+  failures: z.number(),
+});
+
+export type AlertNotificationTargetTiming = z.infer<
+  typeof AlertNotificationTargetTimingSchema
+>;
+
 // Diagnostics for the evaluation that wrote a history record. Evaluation-
 // level: identical on every row one evaluation writes (incl. per-group rows).
 export const AlertHistoryAnalyticsSchema = z.object({
@@ -981,6 +1016,17 @@ export const AlertHistoryAnalyticsSchema = z.object({
   webhookDurationMs: z.number().optional(),
   /** Earlier buckets backfilled in this run after missed ticks (expected buckets − 1). */
   backfilledBuckets: z.number().optional(),
+  /**
+   * Per-target breakdown of `webhookDurationMs`, highest duration first.
+   * Targets are dispatched concurrently, so these do not sum to
+   * `webhookDurationMs` — the slowest target in each dispatch round sets the
+   * total. Absent on evaluations that sent nothing, and on records written
+   * before per-target timing existed.
+   */
+  notificationTargets: z
+    .array(AlertNotificationTargetTimingSchema)
+    .max(ALERT_NOTIFICATION_TARGETS_LIMIT)
+    .optional(),
 });
 
 export type AlertHistoryAnalytics = z.infer<typeof AlertHistoryAnalyticsSchema>;

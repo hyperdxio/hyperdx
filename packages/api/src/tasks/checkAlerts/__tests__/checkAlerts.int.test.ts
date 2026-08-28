@@ -3345,6 +3345,17 @@ describe('checkAlerts', () => {
         expect(normalHistories[0].analytics!.webhookDurationMs).toEqual(
           expect.any(Number),
         );
+        // Per-target breakdown of that total: one entry for the alert's single
+        // configured webhook, named so the UI can attribute the time. Read
+        // field by field — these come back as Mongoose subdocuments, which
+        // don't deep-equal a plain object literal.
+        const targets = normalHistories[0].analytics!.notificationTargets;
+        expect(targets).toHaveLength(1);
+        expect(targets![0].targetId).toBe(webhook._id.toString());
+        expect(targets![0].target).toBe(webhook.name);
+        expect(targets![0].durationMs).toEqual(expect.any(Number));
+        expect(targets![0].dispatches).toBe(1);
+        expect(targets![0].failures).toBe(0);
       });
 
       it('keeps ERROR rows from older windows when a later window succeeds', async () => {
