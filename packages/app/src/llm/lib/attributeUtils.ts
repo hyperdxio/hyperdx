@@ -87,6 +87,15 @@ export function hasKeyWithPrefix(
 }
 
 /**
+ * Upper bound for numeric key-path indices. Real conversations have at most
+ * a few hundred entries; attribute keys arrive verbatim from ingested
+ * telemetry, and a key like `llm.input_messages.2000000000.message.content`
+ * would otherwise create a ~2e9-length sparse array whose filter/map
+ * iteration freezes the tab (~27s per pass measured in V8).
+ */
+const MAX_KEY_PATH_INDEX = 4096;
+
+/**
  * Reconstruct an array of objects from key-path attributes, e.g.
  * `gen_ai.prompt.0.role` / `gen_ai.prompt.0.content` →
  * `[{ role, content }]`. Nested indices ("tool_calls.0.name") produce nested
@@ -103,6 +112,16 @@ export function keyPathsToArray(
     const path = key.slice(fullPrefix.length).split('.');
     const index = Number(path[0]);
     if (!Number.isInteger(index) || index < 0 || path.length < 2) continue;
+    // Every integer segment indexes into an array (top-level or nested), so
+    // one oversized index anywhere in the path is rejected wholesale.
+    if (
+      path.some(segment => {
+        const n = Number(segment);
+        return Number.isInteger(n) && n > MAX_KEY_PATH_INDEX;
+      })
+    ) {
+      continue;
+    }
 
     let node: Record<string, unknown> = (items[index] ??= {});
     for (let i = 1; i < path.length - 1; i++) {
