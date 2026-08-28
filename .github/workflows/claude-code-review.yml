@@ -409,6 +409,7 @@ jobs:
         env:
           STRUCTURED_OUTPUT:
             ${{ steps.claude-review.outputs.structured_output }}
+          EXECUTION_FILE: ${{ steps.claude-review.outputs.execution_file }}
         run: |
           set -uo pipefail
           broken() { echo "::warning::$1"; { echo "healthy=false"; echo "reason=$1"; } >> "$GITHUB_OUTPUT"; exit 0; }

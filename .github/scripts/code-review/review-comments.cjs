@@ -124,11 +124,18 @@ function buildInlineComments({ findings, diffText, existingComments }) {
   const inline = [];
   const unanchored = [];
   const skipped = [];
+  const duplicates = [];
+  // Only fingerprints recovered from existing comments mean "already posted". A repeat
+  // within this run is a same-run duplicate and must not be reported as unchanged.
+  const previouslyPosted = new Set(seen);
 
   for (const finding of findings || []) {
     const fp = fingerprint(finding);
     if (seen.has(fp)) {
-      skipped.push({ ...finding, severity: severityOf(finding) });
+      (previouslyPosted.has(fp) ? skipped : duplicates).push({
+        ...finding,
+        severity: severityOf(finding),
+      });
       continue;
     }
     seen.add(fp);
@@ -148,7 +155,7 @@ function buildInlineComments({ findings, diffText, existingComments }) {
       unanchored.push({ ...finding, severity: severityOf(finding) });
     }
   }
-  return { inline, unanchored, skipped };
+  return { inline, unanchored, skipped, duplicates };
 }
 
 function renderFinding(f) {
@@ -274,8 +281,12 @@ function findingsLeakingSecrets(findings, secrets) {
     .filter(v => v.length >= 16);
   if (needles.length === 0) return [];
   return (findings || []).filter(f => {
-    const haystack = `${f.title || ''}\n${f.body || ''}\n${f.file || ''}`;
-    return needles.some(n => haystack.includes(n));
+    const fields = [f.title || '', f.body || '', f.file || ''];
+    // Check the fields joined BOTH with and without a separator: a credential split
+    // across title and body evades a `\n`-joined scan while still rendering adjacent and
+    // reconstructable in the published comment.
+    const haystacks = [fields.join('\n'), fields.join('')];
+    return needles.some(n => haystacks.some(h => h.includes(n)));
   });
 }
 

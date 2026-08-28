@@ -504,3 +504,72 @@ test('the CLI pin stays in lockstep with deep-review.yml', () => {
     'CLI integrity hash drifted from deep-review.yml',
   );
 });
+
+test('a secret split across title and body is still caught', () => {
+  // Joining fields with a separator and testing includes(fullSecret) misses this, yet the
+  // two halves render adjacent in the published comment and are trivially reconstructed.
+  const secret = 'ghp_averyrealisticlookingtokenvalue00';
+  const half = secret.length >> 1;
+  const split = {
+    file: 'a.ts',
+    title: `leaked ${secret.slice(0, half)}`,
+    body: `${secret.slice(half)} was in the env`,
+  };
+  assert.equal(helpers.findingsLeakingSecrets([split], [secret]).length, 1);
+});
+
+test('the secret scan covers the title and file fields, not just the body', () => {
+  const secret = 'sk-ant-anothernotrealkey-00000000000';
+  for (const field of ['title', 'body', 'file']) {
+    const f = { file: 'a.ts', title: 't', body: 'b', [field]: `x ${secret} y` };
+    assert.equal(
+      helpers.findingsLeakingSecrets([f], [secret]).length,
+      1,
+      `${field} must be scanned`,
+    );
+  }
+});
+
+test('a same-run duplicate is not reported as unchanged from an earlier push', () => {
+  // `skipped` drives the "already inline above" wording, which is false for a duplicate
+  // the reviewer emitted twice in this same run.
+  const f = {
+    file: 'src/a.ts',
+    line: 11,
+    severity: 'major',
+    title: 'same',
+    body: 'b',
+  };
+  const { inline, skipped, duplicates } = helpers.buildInlineComments({
+    findings: [f, { ...f, line: 12 }],
+    diffText: DIFF,
+    existingComments: [],
+  });
+  assert.equal(inline.length, 1);
+  assert.equal(skipped.length, 0, 'nothing was posted on an earlier push');
+  assert.equal(duplicates.length, 1);
+});
+
+test('the reviewer schema and the renderer agree on the severity enum', () => {
+  // The finding shape is declared in the workflow's --json-schema and independently
+  // assumed here; renaming an enum value would pass every test while severityOf silently
+  // degraded every finding to minor.
+  const wf = readFileSync(WORKFLOW, 'utf8');
+  const line = wf.split('\n').find(l => l.includes('--json-schema'));
+  assert.ok(line, 'could not find --json-schema in the workflow');
+  const schema = JSON.parse(
+    line.slice(line.indexOf("'") + 1, line.lastIndexOf("'")),
+  );
+  const props = schema.properties.findings.items;
+  assert.deepEqual(
+    props.properties.severity.enum.slice().sort(),
+    Object.keys(helpers.ICON).slice().sort(),
+    'severity enum drifted from the icons the renderer knows',
+  );
+  for (const required of props.required) {
+    assert.ok(
+      ['file', 'title', 'body'].includes(required),
+      `unexpected required field ${required}`,
+    );
+  }
+});
