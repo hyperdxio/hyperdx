@@ -5,14 +5,33 @@ import {
   serializeDashboardFilterValues,
 } from '@/dashboardFilterValues';
 import { FilterState, filtersToQuery } from '@/filters';
-import type { DashboardFilter, DashboardFilterValue } from '@/types';
+import type {
+  DashboardFilterValue,
+  QueryExpressionDashboardFilter,
+  StaticListDashboardFilter,
+} from '@/types';
 
-const filter = (overrides: Partial<DashboardFilter> = {}): DashboardFilter => ({
+const filter = (
+  overrides: Partial<QueryExpressionDashboardFilter> = {},
+): QueryExpressionDashboardFilter => ({
   id: 'f1',
   type: 'QUERY_EXPRESSION',
   name: 'Service',
   expression: 'ServiceName',
   source: 'logs',
+  ...overrides,
+});
+
+const staticFilter = (
+  overrides: Partial<StaticListDashboardFilter> = {},
+): StaticListDashboardFilter => ({
+  id: 'f1',
+  type: 'STATIC_LIST',
+  name: 'Environment',
+  options: ['prod', 'staging', 'dev'],
+  isBroadcastEnabled: false,
+  isVariableEnabled: true,
+  variableName: 'env',
   ...overrides,
 });
 
@@ -319,6 +338,22 @@ describe('dashboardFilterValues', () => {
         filterSelectionKey(filter({ name: '环境', isVariableEnabled: true })),
       ).toEqual({ kind: 'expression', expression: 'ServiceName' });
     });
+
+    it('keys a static-list filter by its variable name', () => {
+      expect(filterSelectionKey(staticFilter())).toEqual({
+        kind: 'variable',
+        name: 'env',
+      });
+    });
+
+    // Unreachable through the write paths — a static filter is variable-only by
+    // construction — but it has no expression to fall back to, so the key stays
+    // variable-kind even when no name can be derived from it.
+    it('keys a static-list filter by variable even when no name can be derived', () => {
+      expect(
+        filterSelectionKey(staticFilter({ name: '环境', variableName: '' })),
+      ).toEqual({ kind: 'variable', name: '' });
+    });
   });
 
   describe('resolveFilterSelection', () => {
@@ -378,6 +413,24 @@ describe('dashboardFilterValues', () => {
 
       expect(resolveFilterSelection(variableFilter, parsed)).toBeUndefined();
       expect(resolveFilterSelection(filter(), parsed)).toBeUndefined();
+    });
+
+    it('resolves a static-list filter from its variable entry', () => {
+      const parsed = parseDashboardFilterValues([
+        { type: 'variable', name: 'env', values: ['prod'] },
+      ]);
+
+      expect(resolveFilterSelection(staticFilter(), parsed)).toEqual(
+        included('prod'),
+      );
+    });
+
+    it('returns undefined for an expressionless filter with no variable entry', () => {
+      const parsed = parseDashboardFilterValues([
+        { type: 'sql', condition: "ServiceName IN ('legacy')" },
+      ]);
+
+      expect(resolveFilterSelection(staticFilter(), parsed)).toBeUndefined();
     });
 
     it('resolves two filters sharing an expression independently', () => {

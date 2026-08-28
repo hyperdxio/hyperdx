@@ -1942,3 +1942,83 @@ describe('macros naming an unknown variable', () => {
     expect(warnings[0]).toContain('no meaning in a Lucene expression');
   });
 });
+
+// A `STATIC_LIST` dashboard filter declares a variable with no `expression`:
+// its values are authored, not queried, so there is no column to filter on.
+// Every reference form still works except the one-argument `$__filter`, which
+// has nothing to render — this is what the reference layer owes that filter
+// type, so pin it.
+describe('a variable with no expression', () => {
+  const ENV = variable('env', ['prod']);
+  const EMPTY_ENV = variable('env', []);
+
+  describe('$__filter($name)', () => {
+    // The check sits before the empty-selection shortcut on purpose, so the
+    // author is told regardless of what happens to be selected.
+    it.each([
+      ['with a selection', ENV],
+      ['with nothing selected', EMPTY_ENV],
+    ])('throws %s', (_label, env) => {
+      expect(() => substituteVariables('WHERE $__filter($env)', [env])).toThrow(
+        "Macro '$__filter($env)' requires the variable's filter expression, which " +
+          'is not available — pass it explicitly, e.g. $__filter(<expression>, $env).',
+      );
+    });
+
+    it('is reported as an editor error rather than a warning', () => {
+      const { errors, warnings } = validateVariableReferencesInTemplate(
+        'WHERE $__filter($env)',
+        [ENV],
+      );
+
+      expect(errors).toEqual([
+        "Macro '$__filter($env)' requires the variable's filter expression, which " +
+          'is not available — pass it explicitly, e.g. $__filter(<expression>, $env).',
+      ]);
+      expect(warnings).toEqual([]);
+    });
+  });
+
+  it('expands the two-argument $__filter form', () => {
+    expect(
+      substituteVariables('WHERE $__filter(ServiceName, $env)', [ENV]),
+    ).toBe("WHERE (ServiceName IN ('prod'))");
+  });
+
+  it('expands $__conditionalAll', () => {
+    expect(
+      substituteVariables(
+        'WHERE $__conditionalAll(ServiceName IN ($env), $env)',
+        [ENV],
+      ),
+    ).toBe("WHERE (ServiceName IN ('prod'))");
+    expect(
+      substituteVariables(
+        'WHERE $__conditionalAll(ServiceName IN ($env), $env)',
+        [EMPTY_ENV],
+      ),
+    ).toBe("WHERE (1=1 /** no values selected for variable 'env' */)");
+  });
+
+  it.each(['$env', '${env}', '${env:csv}'])('expands %s', reference => {
+    expect(
+      substituteVariables(`WHERE ServiceName IN (${reference})`, [ENV]),
+    ).toBe(
+      reference === '${env:csv}'
+        ? 'WHERE ServiceName IN (prod)'
+        : "WHERE ServiceName IN ('prod')",
+    );
+  });
+
+  it('accepts the guarded and macro forms without complaint', () => {
+    for (const template of [
+      '$__filter(ServiceName, $env)',
+      '$__conditionalAll(ServiceName IN ($env), $env)',
+    ]) {
+      expect(validateVariableReferencesInTemplate(template, [ENV])).toEqual({
+        errors: [],
+        warnings: [],
+      });
+    }
+  });
+});

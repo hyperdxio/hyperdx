@@ -271,6 +271,38 @@ export function validateDashboardFilterFieldGating<
   });
 }
 
+type FilterForOptionsValidation = {
+  name: string;
+  options?: string[];
+};
+
+/** Validates uniqueness of options within each filter. */
+export function validateDashboardFilterOptionUniqueness<
+  T extends FilterForOptionsValidation,
+>(
+  filters: T[],
+  ctx: z.RefinementCtx,
+  paths?: { filtersPath?: (string | number)[] },
+): void {
+  const filtersPath = paths?.filtersPath ?? ['filters'];
+
+  filters.forEach((filter, filterIdx) => {
+    if (!filter.options?.length) return;
+    const seen = new Set<string>();
+    for (const option of filter.options) {
+      if (seen.has(option)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Filter "${filter.name}" repeats the option "${option}"; options must be unique`,
+          path: [...filtersPath, filterIdx, 'options'],
+        });
+        return;
+      }
+      seen.add(option);
+    }
+  });
+}
+
 // Structural because the internal and external chart-config shapes differ
 // (internal `seriesReturnType: 'ratio'` vs external `asRatio: true`); only
 // these fields decide formula validity. `select` stays loosely typed — a

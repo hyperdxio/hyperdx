@@ -82,6 +82,60 @@ describe('provisionDashboards', () => {
       expect(result[0].name).toBe('Test');
     });
 
+    it('parses a dashboard file carrying a static-list filter', () => {
+      const filter = {
+        id: 'filter-static',
+        type: 'STATIC_LIST',
+        name: 'Environment',
+        options: ['prod', 'staging', 'dev'],
+        isBroadcastEnabled: false,
+        isVariableEnabled: true,
+        variableName: 'env',
+      };
+      fs.writeFileSync(
+        path.join(tmpDir, 'static-filter.json'),
+        JSON.stringify({
+          name: 'Static Filter',
+          tiles: [makeTile()],
+          tags: [],
+          filters: [filter],
+        }),
+      );
+
+      const result = readDashboardFiles(tmpDir);
+      expect(result).toHaveLength(1);
+      expect(result[0].filters).toEqual([filter]);
+    });
+
+    // `expression` and `source` are optional at the field level so a
+    // `STATIC_LIST` filter can exist, so the per-type refinement is what keeps
+    // an unqueryable query-expression filter out of a provisioned file.
+    it.each(['expression', 'source'])(
+      'skips a file whose query-expression filter has no %s',
+      field => {
+        fs.writeFileSync(
+          path.join(tmpDir, `no-${field}.json`),
+          JSON.stringify({
+            name: 'Bad Filter',
+            tiles: [makeTile()],
+            tags: [],
+            filters: [
+              {
+                id: 'filter-1',
+                type: 'QUERY_EXPRESSION',
+                name: 'Service',
+                ...(field === 'expression'
+                  ? { source: 'source-1' }
+                  : { expression: 'ServiceName' }),
+              },
+            ],
+          }),
+        );
+
+        expect(readDashboardFiles(tmpDir)).toEqual([]);
+      },
+    );
+
     // Pins the inlined `migrateLegacyDashboardTileColorsRaw` walker
     // (which delegates to `walkRawDashboardTileColors` in common-utils).
     // Without the migration the strict `DashboardWithoutIdSchema`

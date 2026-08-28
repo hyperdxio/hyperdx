@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { isQueryExpressionFilter } from '@hyperdx/common-utils/dist/filters';
 import {
   ChartVariable,
   DashboardFilter,
@@ -89,7 +90,7 @@ const DashboardFiltersModal = ({
         onClose={onClose}
       />
     );
-  } else if (selectedFilter) {
+  } else if (selectedFilter && isQueryExpressionFilter(selectedFilter)) {
     return (
       <SqlVariablesProvider variables={variables}>
         <DashboardFilterEditForm
