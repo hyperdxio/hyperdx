@@ -1,7 +1,7 @@
 import { screen } from '@testing-library/react';
 
 import { makeLogSource, makeTraceSource } from '@/llm/__fixtures__/sources';
-import { SearchTilesTab } from '@/llm/dashboard/SearchTilesTab';
+import { ErrorsTab } from '@/llm/dashboard/ErrorsTab';
 import { getLLMExpressions, getLLMLogExpressions } from '@/llm/lib/expressions';
 
 // Capture the configs handed to the row tables.
@@ -29,14 +29,14 @@ const baseProps = {
   whereLanguage: 'sql' as const,
 };
 
-describe('SearchTilesTab', () => {
+describe('ErrorsTab', () => {
   beforeEach(() => {
     rowTableProps.length = 0;
   });
 
-  it('renders trace and log tiles with per-source scope filters', () => {
+  it('renders trace and log tiles scoped to errors per source', () => {
     renderWithMantine(
-      <SearchTilesTab
+      <ErrorsTab
         {...baseProps}
         logSource={LOG_SOURCE}
         logExpressions={logExpressions}
@@ -50,22 +50,30 @@ describe('SearchTilesTab', () => {
     expect(rowTableProps[0].sourceId).toBe('trace-source');
     expect(traceConfig.select).toBe(TRACE_SOURCE.defaultTableSelectExpression);
     const traceConditions = traceConfig.filters.map((f: any) => f.condition);
-    expect(traceConditions[0]).toBe(expressions.isLLMSpan);
-    expect(traceConditions[1]).toContain("'ses_123'");
+    expect(traceConditions).toContain(expressions.isLLMSpan);
+    // Scoped to error spans (lower(StatusCode) = 'error').
+    expect(traceConditions).toContain(expressions.isError);
+    expect(traceConditions.some((c: string) => c.includes("'ses_123'"))).toBe(
+      true,
+    );
     expect(traceConfig.orderBy[0].ordering).toBe('DESC');
 
     const logConfig = rowTableProps[1].config;
     expect(rowTableProps[1].sourceId).toBe('log-source');
     expect(logConfig.select).toBe(LOG_SOURCE.defaultTableSelectExpression);
     const logConditions = logConfig.filters.map((f: any) => f.condition);
-    expect(logConditions[0]).toBe(logExpressions.isLLMRelated);
+    expect(logConditions).toContain(logExpressions.isLLMRelated);
+    // Scoped to error-severity log events.
+    expect(logConditions).toContain(logExpressions.isError);
     // Session matching on logs uses the log source's attribute column.
-    expect(logConditions[1]).toContain("LogAttributes['session.id']");
-    expect(logConditions[1]).toContain("'ses_123'");
+    const sessionCondition = logConditions.find((c: string) =>
+      c.includes("'ses_123'"),
+    );
+    expect(sessionCondition).toContain("LogAttributes['session.id']");
   });
 
   it('renders only the trace tile without a log source', () => {
-    renderWithMantine(<SearchTilesTab {...baseProps} />);
+    renderWithMantine(<ErrorsTab {...baseProps} />);
     expect(screen.getAllByTestId('row-table')).toHaveLength(1);
     expect(
       screen.getByText(/Select a log source to also show/),

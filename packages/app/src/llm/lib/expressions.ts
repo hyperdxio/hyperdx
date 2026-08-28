@@ -287,11 +287,14 @@ function getLLMAttributeExpressions({
     hasAgentName: `${coalesceString(attributeField, AGENT_NAME_KEYS, isJsonColumn)} != ''`,
     // Emitters disagree on encoding ('stop' vs '["stop"]'); strip the JSON
     // array wrapper so the group-by buckets align.
+    // The char class is written backslash-free (leading ] in an RE2 class
+    // is literal) so it survives ClickHouse string-literal escape decoding
+    // verbatim.
     finishReason: `replaceRegexpAll(${coalesceString(
       attributeField,
       FINISH_REASON_KEYS,
       isJsonColumn,
-    )}, '[\\[\\]"]', '')`,
+    )}, '[]["]', '')`,
     userId: coalesceString(attributeField, USER_ID_KEYS, isJsonColumn),
     /** Estimated USD cost per row (provided cost wins over the catalog). */
     costUsd: generateCostSqlExpression({
@@ -382,10 +385,14 @@ export function getLLMLogExpressions(
     isJsonColumn,
   });
 
+  const severityText = source.severityTextExpression || 'SeverityText';
+
   return {
     ...attributeExpressions,
     service: source.serviceNameExpression || 'ServiceName',
-    severityText: source.severityTextExpression || 'SeverityText',
+    severityText,
+    /** Error log events (mirrors the serviceDashboard convention). */
+    isError: `lower(${severityText}) = 'error'`,
     /**
      * Log events that belong to LLM activity: explicit LLM markers or any
      * session id (covers tool_result / lifecycle events that carry a

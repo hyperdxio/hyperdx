@@ -15,19 +15,29 @@ import { LLMChartProps } from './types';
 const TILE_HEIGHT = 450;
 
 /**
- * Two live search tiles: LLM trace spans and correlated LLM log events. When
- * the session filter is set, both tiles narrow to that session — the
- * correlation surface for instrumentations that stamp a session id but don't
- * propagate trace context. Row clicks open the standard row side panel
- * (including the LLM conversation tab).
+ * Two live error-row tiles: LLM trace spans with an error status and
+ * correlated error-severity LLM log events. The top-bar where/session/time
+ * scoping applies, so this doubles as a filterable error browser. Row
+ * clicks open the standard row side panel.
  */
-export function SearchTilesTab(props: LLMChartProps) {
-  const { source, logSource, logExpressions, sessionId, where, whereLanguage } =
-    props;
+export function ErrorsTab(props: LLMChartProps) {
+  const {
+    source,
+    expressions,
+    logSource,
+    logExpressions,
+    sessionId,
+    where,
+    whereLanguage,
+  } = props;
 
   const traceConfig = {
     // Row search never references the cost alias; skip the WITH binding.
-    ...baseLLMChartConfig({ ...props, withCostAlias: false }),
+    ...baseLLMChartConfig({
+      ...props,
+      withCostAlias: false,
+      extraFilters: [{ type: 'sql' as const, condition: expressions.isError }],
+    }),
     select: source.defaultTableSelectExpression || '',
     orderBy: [
       {
@@ -43,6 +53,7 @@ export function SearchTilesTab(props: LLMChartProps) {
     logExpressions != null
       ? [
           { type: 'sql', condition: logExpressions.isLLMRelated },
+          { type: 'sql', condition: logExpressions.isError },
           ...(sessionId
             ? [
                 {
@@ -89,12 +100,12 @@ export function SearchTilesTab(props: LLMChartProps) {
     <Grid grow={false} w="100%" maw="100%">
       <Grid.Col span={12}>
         <ChartCard style={{ height: TILE_HEIGHT }}>
-          <ChartContainer title="LLM trace spans" disableReactiveContainer>
+          <ChartContainer title="Error trace spans" disableReactiveContainer>
             <DBSqlRowTableWithSideBar
               sourceId={source.id}
               config={traceConfig}
               isLive={false}
-              queryKeyPrefix="llm-search-traces"
+              queryKeyPrefix="llm-errors-traces"
               variant="default"
               errorVariant="collapsible"
             />
@@ -104,12 +115,12 @@ export function SearchTilesTab(props: LLMChartProps) {
       {logConfig != null && (
         <Grid.Col span={12}>
           <ChartCard style={{ height: TILE_HEIGHT }}>
-            <ChartContainer title="LLM log events" disableReactiveContainer>
+            <ChartContainer title="Error log events" disableReactiveContainer>
               <DBSqlRowTableWithSideBar
                 sourceId={logConfig.source}
                 config={logConfig}
                 isLive={false}
-                queryKeyPrefix="llm-search-logs"
+                queryKeyPrefix="llm-errors-logs"
                 variant="default"
                 errorVariant="collapsible"
               />
@@ -120,7 +131,7 @@ export function SearchTilesTab(props: LLMChartProps) {
       {logConfig == null && (
         <Grid.Col span={12}>
           <Text size="xs" c="dimmed">
-            Select a log source to also show correlated LLM log events.
+            Select a log source to also show correlated error log events.
           </Text>
         </Grid.Col>
       )}

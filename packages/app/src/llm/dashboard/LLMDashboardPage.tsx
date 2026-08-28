@@ -46,12 +46,12 @@ import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
 import { AgentToolCharts } from './AgentToolCharts';
 import { AttributionCharts } from './AttributionCharts';
 import { EfficiencyCharts } from './EfficiencyCharts';
+import { ErrorsTab } from './ErrorsTab';
 import { LatencyCharts } from './LatencyCharts';
 import { LatencyTab } from './LatencyTab';
 import { LLMEmptyStateBanner } from './LLMEmptyStateBanner';
 import { LLMSessionPanel } from './LLMSessionPanel';
 import { OverviewCharts } from './OverviewCharts';
-import { SearchTilesTab } from './SearchTilesTab';
 import { SessionSelect } from './SessionSelect';
 import { SessionsTab } from './SessionsTab';
 import { TokenCostCharts } from './TokenCostCharts';
@@ -81,15 +81,18 @@ const queryParamMap = {
 function LLMDashboardPage() {
   const brandName = useBrandDisplayName();
 
-  const [tab, setTab] = useQueryState(
+  const [rawTab, setTab] = useQueryState(
     'tab',
     parseAsStringEnum<string>([
       'overview',
       'latency',
       'sessions',
+      'errors',
+      // Accepted for shared-URL back-compat; the Search tab became Errors.
       'search',
     ]).withDefault('overview'),
   );
+  const tab = rawTab === 'search' ? 'errors' : rawTab;
 
   const [appliedConfig, setAppliedConfig] = useQueryStates(queryParamMap);
 
@@ -334,7 +337,7 @@ function LLMDashboardPage() {
               <Tabs.Tab value="overview">Overview</Tabs.Tab>
               <Tabs.Tab value="latency">Latency</Tabs.Tab>
               <Tabs.Tab value="sessions">Sessions</Tabs.Tab>
-              <Tabs.Tab value="search">Search</Tabs.Tab>
+              <Tabs.Tab value="errors">Errors</Tabs.Tab>
             </Tabs.List>
             <Tabs.Panel value="overview">
               <Grid grow={false} w="100%" maw="100%">
@@ -352,8 +355,8 @@ function LLMDashboardPage() {
             <Tabs.Panel value="sessions">
               <SessionsTab {...chartProps} />
             </Tabs.Panel>
-            <Tabs.Panel value="search">
-              <SearchTilesTab {...chartProps} />
+            <Tabs.Panel value="errors">
+              <ErrorsTab {...chartProps} />
             </Tabs.Panel>
           </Tabs>
         </>
