@@ -8,6 +8,7 @@ import { ChartCard } from '@/components/charts/ChartCard';
 import DBListBarChart from '@/components/DBListBarChart';
 import DBTableChart from '@/components/DBTableChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
+import { IS_LLM_COST_ENABLED } from '@/config';
 import {
   LLM_COST_SQL_ALIAS,
   llmGatedCountExpr,
@@ -64,7 +65,7 @@ export function TokenCostCharts(props: LLMChartProps) {
 
   return (
     <>
-      <Grid.Col span={6}>
+      <Grid.Col span={IS_LLM_COST_ENABLED ? 6 : 12}>
         <ChartCard style={{ height: CHART_HEIGHT }}>
           <DBTimeChart
             title="Token Usage"
@@ -103,26 +104,28 @@ export function TokenCostCharts(props: LLMChartProps) {
           />
         </ChartCard>
       </Grid.Col>
-      <Grid.Col span={6}>
-        <ChartCard style={{ height: CHART_HEIGHT }}>
-          <DBTimeChart
-            title="Est. Cost by Model"
-            sourceId={source.id}
-            config={{
-              ...base,
-              displayType: DisplayType.StackedBar,
-              select: [
-                {
-                  valueExpression: gatedSum(LLM_COST_SQL_ALIAS),
-                  alias: 'Est. Cost',
-                },
-              ],
-              groupBy: expressions.model,
-              numberFormat: COST_USD_NUMBER_FORMAT,
-            }}
-          />
-        </ChartCard>
-      </Grid.Col>
+      {IS_LLM_COST_ENABLED && (
+        <Grid.Col span={6}>
+          <ChartCard style={{ height: CHART_HEIGHT }}>
+            <DBTimeChart
+              title="Est. Cost by Model"
+              sourceId={source.id}
+              config={{
+                ...base,
+                displayType: DisplayType.StackedBar,
+                select: [
+                  {
+                    valueExpression: gatedSum(LLM_COST_SQL_ALIAS),
+                    alias: 'Est. Cost',
+                  },
+                ],
+                groupBy: expressions.model,
+                numberFormat: COST_USD_NUMBER_FORMAT,
+              }}
+            />
+          </ChartCard>
+        </Grid.Col>
+      )}
       <Grid.Col span={7}>
         <ChartCard style={{ height: CHART_HEIGHT }}>
           <DBTableChart
@@ -156,22 +159,26 @@ export function TokenCostCharts(props: LLMChartProps) {
                   valueExpression: gatedSum(expressions.outputTokens),
                   numberFormat: TOKEN_NUMBER_FORMAT,
                 },
-                {
-                  alias: 'Est. Cost',
-                  valueExpression: gatedSum(LLM_COST_SQL_ALIAS),
-                  numberFormat: COST_USD_NUMBER_FORMAT,
-                },
-                {
-                  alias: 'Avg Cost / Call',
-                  valueExpression: '"Est. Cost" / greatest("Calls", 1)',
-                  numberFormat: {
-                    factor: 1,
-                    output: 'currency',
-                    mantissa: 4,
-                    thousandSeparated: true,
-                    currencySymbol: '$',
-                  },
-                },
+                ...(IS_LLM_COST_ENABLED
+                  ? [
+                      {
+                        alias: 'Est. Cost',
+                        valueExpression: gatedSum(LLM_COST_SQL_ALIAS),
+                        numberFormat: COST_USD_NUMBER_FORMAT,
+                      },
+                      {
+                        alias: 'Avg Cost / Call',
+                        valueExpression: '"Est. Cost" / greatest("Calls", 1)',
+                        numberFormat: {
+                          factor: 1,
+                          output: 'currency' as const,
+                          mantissa: 4,
+                          thousandSeparated: true,
+                          currencySymbol: '$',
+                        },
+                      },
+                    ]
+                  : []),
                 {
                   alias: 'p95_duration',
                   aggFn: 'quantile',

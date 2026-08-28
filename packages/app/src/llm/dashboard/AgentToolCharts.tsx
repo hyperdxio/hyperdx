@@ -11,6 +11,7 @@ import {
 import { ChartCard } from '@/components/charts/ChartCard';
 import DBTableChart from '@/components/DBTableChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
+import { IS_LLM_COST_ENABLED } from '@/config';
 import {
   LLM_COST_SQL_ALIAS,
   llmGatedCountExpr,
@@ -179,7 +180,9 @@ export function AgentToolCharts(props: LLMChartProps) {
               filters: agentFilters,
               groupBy: 'Agent',
               selectGroupBy: false,
-              orderBy: '"Est. Cost" DESC',
+              orderBy: IS_LLM_COST_ENABLED
+                ? '"Est. Cost" DESC'
+                : '"Calls" DESC',
               select: [
                 {
                   alias: 'Agent',
@@ -198,14 +201,18 @@ export function AgentToolCharts(props: LLMChartProps) {
                   ),
                   numberFormat: TOKEN_NUMBER_FORMAT,
                 },
-                {
-                  alias: 'Est. Cost',
-                  valueExpression: llmGatedSumExpr(
-                    expressions,
-                    LLM_COST_SQL_ALIAS,
-                  ),
-                  numberFormat: COST_USD_NUMBER_FORMAT,
-                },
+                ...(IS_LLM_COST_ENABLED
+                  ? [
+                      {
+                        alias: 'Est. Cost',
+                        valueExpression: llmGatedSumExpr(
+                          expressions,
+                          LLM_COST_SQL_ALIAS,
+                        ),
+                        numberFormat: COST_USD_NUMBER_FORMAT,
+                      },
+                    ]
+                  : []),
                 {
                   alias: 'span_count',
                   aggFn: 'count',

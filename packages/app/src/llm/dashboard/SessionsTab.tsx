@@ -5,6 +5,7 @@ import { Grid } from '@mantine/core';
 import { INTEGER_NUMBER_FORMAT } from '@/ChartUtils';
 import { ChartCard } from '@/components/charts/ChartCard';
 import DBTableChart from '@/components/DBTableChart';
+import { IS_LLM_COST_ENABLED } from '@/config';
 import {
   LLM_COST_SQL_ALIAS,
   llmGatedCountExpr,
@@ -129,14 +130,18 @@ export function SessionsTab(props: LLMChartProps) {
                   ),
                   numberFormat: TOKEN_NUMBER_FORMAT,
                 },
-                {
-                  alias: 'Est. Cost',
-                  valueExpression: llmGatedSumExpr(
-                    expressions,
-                    LLM_COST_SQL_ALIAS,
-                  ),
-                  numberFormat: COST_USD_NUMBER_FORMAT,
-                },
+                ...(IS_LLM_COST_ENABLED
+                  ? [
+                      {
+                        alias: 'Est. Cost',
+                        valueExpression: llmGatedSumExpr(
+                          expressions,
+                          LLM_COST_SQL_ALIAS,
+                        ),
+                        numberFormat: COST_USD_NUMBER_FORMAT,
+                      },
+                    ]
+                  : []),
                 {
                   alias: 'Errors',
                   aggFn: 'count',

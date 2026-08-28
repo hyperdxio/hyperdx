@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { Badge, Group, Stack, Table, Text } from '@mantine/core';
 
+import { IS_LLM_COST_ENABLED } from '@/config';
 import { resolveSpanCostUsd } from '@/llm/lib/cost';
 import { LLMSpanInfo } from '@/llm/lib/types';
 
@@ -13,7 +14,10 @@ import { TokenUsageDisplay } from './TokenUsageDisplay';
  */
 export function LLMSpanSubpanel({ info }: { info: LLMSpanInfo }) {
   const { costUsd, estimated } = useMemo(
-    () => resolveSpanCostUsd(info),
+    () =>
+      IS_LLM_COST_ENABLED
+        ? resolveSpanCostUsd(info)
+        : { costUsd: undefined, estimated: false },
     [info],
   );
 

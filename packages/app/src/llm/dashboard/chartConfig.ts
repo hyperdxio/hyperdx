@@ -4,6 +4,7 @@ import {
   pickSampleWeightExpressionProps,
 } from '@hyperdx/common-utils/dist/types';
 
+import { IS_LLM_COST_ENABLED } from '@/config';
 import { LLM_COST_SQL_ALIAS } from '@/llm/lib/expressions';
 
 import { LLMChartProps } from './types';
@@ -29,13 +30,15 @@ export function baseLLMChartConfig({
   whereLanguage,
   sessionId,
   extraFilters = [],
-  withCostAlias = true,
+  withCostAlias = IS_LLM_COST_ENABLED,
 }: LLMChartProps & {
   extraFilters?: Filter[];
   /**
    * Bind the cost expression as a WITH alias (see LLM_COST_SQL_ALIAS). On by
-   * default; charts that never reference cost (e.g. search row tables) can
-   * opt out to keep their queries small.
+   * default while cost display is enabled; charts that never reference cost
+   * (e.g. error row tables) can opt out to keep their queries small. When
+   * cost display is off nothing selects the alias, so the ~70 KiB binding
+   * is skipped everywhere.
    */
   withCostAlias?: boolean;
 }) {

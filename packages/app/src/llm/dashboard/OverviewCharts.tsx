@@ -8,6 +8,7 @@ import {
 import { ChartCard } from '@/components/charts/ChartCard';
 import DBNumberChart from '@/components/DBNumberChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
+import { IS_LLM_COST_ENABLED } from '@/config';
 import {
   LLM_COST_SQL_ALIAS,
   llmGatedCountExpr,
@@ -59,9 +60,12 @@ export function OverviewCharts(props: LLMChartProps) {
     alias,
   });
 
+  // Four KPI tiles without cost, six with — either way one full row.
+  const tileSpan = IS_LLM_COST_ENABLED ? 2 : 3;
+
   return (
     <>
-      <Grid.Col span={2}>
+      <Grid.Col span={tileSpan}>
         <ChartCard style={{ height: NUMBER_TILE_HEIGHT }}>
           <DBNumberChart
             title="LLM Calls"
@@ -73,7 +77,7 @@ export function OverviewCharts(props: LLMChartProps) {
           />
         </ChartCard>
       </Grid.Col>
-      <Grid.Col span={2}>
+      <Grid.Col span={tileSpan}>
         <ChartCard style={{ height: NUMBER_TILE_HEIGHT }}>
           <DBNumberChart
             title="Total Tokens"
@@ -85,38 +89,42 @@ export function OverviewCharts(props: LLMChartProps) {
           />
         </ChartCard>
       </Grid.Col>
-      <Grid.Col span={2}>
-        <ChartCard style={{ height: NUMBER_TILE_HEIGHT }}>
-          <DBNumberChart
-            title="Est. Cost"
-            config={{
-              ...base,
-              select: [gatedSum(LLM_COST_SQL_ALIAS, 'total_cost')],
-              numberFormat: COST_USD_NUMBER_FORMAT,
-            }}
-          />
-        </ChartCard>
-      </Grid.Col>
-      <Grid.Col span={2}>
-        <ChartCard style={{ height: NUMBER_TILE_HEIGHT }}>
-          <DBNumberChart
-            title="Avg Cost / Call"
-            config={{
-              ...base,
-              select: [
-                {
-                  valueExpression: 'total_cost / greatest(llm_calls, 1)',
-                  alias: 'avg_cost_per_call',
-                },
-                gatedSum(LLM_COST_SQL_ALIAS, 'total_cost'),
-                gatedCount('llm_calls'),
-              ],
-              numberFormat: COST_PER_CALL_NUMBER_FORMAT,
-            }}
-          />
-        </ChartCard>
-      </Grid.Col>
-      <Grid.Col span={2}>
+      {IS_LLM_COST_ENABLED && (
+        <Grid.Col span={tileSpan}>
+          <ChartCard style={{ height: NUMBER_TILE_HEIGHT }}>
+            <DBNumberChart
+              title="Est. Cost"
+              config={{
+                ...base,
+                select: [gatedSum(LLM_COST_SQL_ALIAS, 'total_cost')],
+                numberFormat: COST_USD_NUMBER_FORMAT,
+              }}
+            />
+          </ChartCard>
+        </Grid.Col>
+      )}
+      {IS_LLM_COST_ENABLED && (
+        <Grid.Col span={tileSpan}>
+          <ChartCard style={{ height: NUMBER_TILE_HEIGHT }}>
+            <DBNumberChart
+              title="Avg Cost / Call"
+              config={{
+                ...base,
+                select: [
+                  {
+                    valueExpression: 'total_cost / greatest(llm_calls, 1)',
+                    alias: 'avg_cost_per_call',
+                  },
+                  gatedSum(LLM_COST_SQL_ALIAS, 'total_cost'),
+                  gatedCount('llm_calls'),
+                ],
+                numberFormat: COST_PER_CALL_NUMBER_FORMAT,
+              }}
+            />
+          </ChartCard>
+        </Grid.Col>
+      )}
+      <Grid.Col span={tileSpan}>
         <ChartCard style={{ height: NUMBER_TILE_HEIGHT }}>
           <DBNumberChart
             title="Cache Hit Rate"
@@ -135,7 +143,7 @@ export function OverviewCharts(props: LLMChartProps) {
           />
         </ChartCard>
       </Grid.Col>
-      <Grid.Col span={2}>
+      <Grid.Col span={tileSpan}>
         <ChartCard style={{ height: NUMBER_TILE_HEIGHT }}>
           <DBNumberChart
             title="Error Rate"

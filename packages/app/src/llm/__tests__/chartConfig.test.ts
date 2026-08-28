@@ -137,11 +137,11 @@ describe('baseLLMChartConfig session scoping', () => {
     expect(config.filters[2]).toEqual({ type: 'sql', condition: '1=1' });
   });
 
-  it('binds the cost expression once as a WITH expression alias', () => {
+  it('binds the cost expression once as a WITH expression alias when opted in', () => {
     // The cost expression embeds the model price catalog (~70 KiB of SQL);
     // charts referencing it more than once must go through the alias or the
     // rendered query exceeds ClickHouse's 256 KiB max_query_size.
-    const config = baseLLMChartConfig(baseProps);
+    const config = baseLLMChartConfig({ ...baseProps, withCostAlias: true });
     expect(config.with).toEqual([
       {
         name: LLM_COST_SQL_ALIAS,
@@ -149,5 +149,12 @@ describe('baseLLMChartConfig session scoping', () => {
         isSubquery: false,
       },
     ]);
+  });
+
+  it('skips the cost binding by default while cost display is disabled', () => {
+    // IS_LLM_COST_ENABLED defaults off, so no chart selects the alias and
+    // every dashboard query stays ~70 KiB smaller.
+    const config = baseLLMChartConfig(baseProps);
+    expect(config).not.toHaveProperty('with');
   });
 });

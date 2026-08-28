@@ -13,6 +13,7 @@ import {
 } from '@mantine/core';
 
 import { DrawerBody, DrawerHeader } from '@/components/DrawerUtils';
+import { IS_LLM_COST_ENABLED } from '@/config';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { TokenUsageDisplay } from '@/llm/components/TokenUsageDisplay';
 import { asNumber, asString } from '@/llm/lib/attributeUtils';
@@ -87,7 +88,7 @@ function SessionSpanItem({
               {formatTokenCount(row.totalTokens)}
             </Text>
           )}
-          {row.costUsd != null && row.costUsd > 0 && (
+          {IS_LLM_COST_ENABLED && row.costUsd != null && row.costUsd > 0 && (
             <Text size="xs" c="dimmed" style={{ whiteSpace: 'nowrap' }}>
               {formatCostUsd(row.costUsd)}
             </Text>
@@ -154,7 +155,9 @@ export function LLMSessionPanel(props: LLMChartProps) {
         { alias: 'model', valueExpression: expressions.model },
         { alias: 'toolName', valueExpression: expressions.toolName },
         { alias: 'totalTokens', valueExpression: expressions.totalTokens },
-        { alias: 'costUsd', valueExpression: LLM_COST_SQL_ALIAS },
+        ...(IS_LLM_COST_ENABLED
+          ? [{ alias: 'costUsd', valueExpression: LLM_COST_SQL_ALIAS }]
+          : []),
       ],
       orderBy: `${source.timestampValueExpression} ASC`,
       limit: { limit: MAX_SESSION_SPANS },
@@ -184,10 +187,17 @@ export function LLMSessionPanel(props: LLMChartProps) {
           ),
           alias: 'total_tokens',
         },
-        {
-          valueExpression: llmGatedSumExpr(expressions, LLM_COST_SQL_ALIAS),
-          alias: 'total_cost',
-        },
+        ...(IS_LLM_COST_ENABLED
+          ? [
+              {
+                valueExpression: llmGatedSumExpr(
+                  expressions,
+                  LLM_COST_SQL_ALIAS,
+                ),
+                alias: 'total_cost',
+              },
+            ]
+          : []),
       ],
     }),
     [props, sessionCondition, expressions],

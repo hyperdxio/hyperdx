@@ -75,15 +75,11 @@ describe('LLMSessionPanel', () => {
     );
     const aliases = listQuery.config.select.map((s: any) => s.alias);
     expect(aliases).toEqual(
-      expect.arrayContaining([
-        'ts',
-        'spanName',
-        'spanId',
-        'traceId',
-        'model',
-        'costUsd',
-      ]),
+      expect.arrayContaining(['ts', 'spanName', 'spanId', 'traceId', 'model']),
     );
+    // Cost display is off by default (IS_LLM_COST_ENABLED), so the query
+    // must not reference the (unbound) cost alias.
+    expect(aliases).not.toContain('costUsd');
     // Regression: selecting attributes shipped ~50 MiB per session.
     const selectExprs = listQuery.config.select.map(
       (s: any) => s.valueExpression,
