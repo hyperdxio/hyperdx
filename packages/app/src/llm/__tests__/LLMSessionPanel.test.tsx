@@ -16,20 +16,26 @@ jest.mock('nuqs', () => ({
 // Capture every chart query the panel issues.
 const queryConfigs: any[] = [];
 let mockListRows: Record<string, unknown>[] = [];
+let mockListLoading = false;
+let mockTotalsLoading = false;
 jest.mock('@/hooks/useChartConfig', () => ({
   useQueriedChartConfig: (config: any, opts: any) => {
     queryConfigs.push({ config, queryKey: opts?.queryKey });
     const key = Array.isArray(opts?.queryKey) ? opts.queryKey[0] : '';
     if (key === 'llm-session-spans') {
-      return { data: { data: mockListRows }, isLoading: false };
+      return mockListLoading
+        ? { data: undefined, isLoading: true }
+        : { data: { data: mockListRows }, isLoading: false };
     }
     if (key === 'llm-session-totals') {
-      return {
-        data: {
-          data: [{ span_count: 708, total_tokens: 500, total_cost: 1.5 }],
-        },
-        isLoading: false,
-      };
+      return mockTotalsLoading
+        ? { data: undefined, isLoading: true }
+        : {
+            data: {
+              data: [{ span_count: 708, total_tokens: 500, total_cost: 1.5 }],
+            },
+            isLoading: false,
+          };
     }
     return { data: { data: [] }, isLoading: false };
   },
@@ -53,6 +59,8 @@ const renderPanel = () =>
 describe('LLMSessionPanel', () => {
   beforeEach(() => {
     queryConfigs.length = 0;
+    mockListLoading = false;
+    mockTotalsLoading = false;
     mockListRows = [
       {
         ts: '2026-08-24 19:12:58.173',
@@ -94,6 +102,23 @@ describe('LLMSessionPanel', () => {
       screen.getByText(/Showing the first 100 of 708 spans/),
     ).toBeInTheDocument();
     expect(screen.getByTestId('llm-token-usage')).toBeInTheDocument();
+  });
+
+  it('shows a loading indicator while the span list loads', () => {
+    mockListLoading = true;
+    renderPanel();
+    expect(screen.getByTestId('llm-session-loading')).toBeInTheDocument();
+    expect(screen.queryByText('opencode.llm')).not.toBeInTheDocument();
+    expect(screen.queryByText(/No LLM spans found/)).not.toBeInTheDocument();
+  });
+
+  it('hides header totals until the totals query returns', () => {
+    // Rendering earlier would flash "0 tokens" while the query is in flight.
+    mockTotalsLoading = true;
+    renderPanel();
+    expect(screen.queryByTestId('llm-token-usage')).not.toBeInTheDocument();
+    // The span list still renders independently of the totals query.
+    expect(screen.getByText('opencode.llm')).toBeInTheDocument();
   });
 
   it('fetches span attributes lazily, only on expand', () => {

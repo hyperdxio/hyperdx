@@ -9,6 +9,7 @@ import {
   Button,
   Drawer,
   Group,
+  Loader,
   Text,
 } from '@mantine/core';
 
@@ -256,11 +257,15 @@ export function LLMSessionPanel(props: LLMChartProps) {
                 <Text size="sm" ff="monospace" truncate>
                   {sessionId}
                 </Text>
-                <TokenUsageDisplay
-                  usage={{ totalTokens: totals.tokens }}
-                  costUsd={totals.cost > 0 ? totals.cost : undefined}
-                  costEstimated
-                />
+                {/* Only once the totals query returns — rendering earlier
+                    flashes "0 tokens" while it loads. */}
+                {totalsData != null && (
+                  <TokenUsageDisplay
+                    usage={{ totalTokens: totals.tokens }}
+                    costUsd={totals.cost > 0 ? totals.cost : undefined}
+                    costEstimated
+                  />
+                )}
                 <Button variant="link" size="xs" onClick={onFilterDashboard}>
                   Filter dashboard
                 </Button>
@@ -287,7 +292,11 @@ export function LLMSessionPanel(props: LLMChartProps) {
                 spans.
               </Text>
             )}
-            {rows.length > 0 ? (
+            {isLoading ? (
+              <Group justify="center" p="md">
+                <Loader size="sm" data-testid="llm-session-loading" />
+              </Group>
+            ) : rows.length > 0 ? (
               <Accordion
                 multiple
                 variant="contained"
@@ -305,12 +314,9 @@ export function LLMSessionPanel(props: LLMChartProps) {
                 ))}
               </Accordion>
             ) : (
-              !isLoading && (
-                <Text size="sm" c="dimmed" p="md">
-                  No LLM spans found for this session in the selected time
-                  range.
-                </Text>
-              )
+              <Text size="sm" c="dimmed" p="md">
+                No LLM spans found for this session in the selected time range.
+              </Text>
             )}
           </DrawerBody>
         </div>
