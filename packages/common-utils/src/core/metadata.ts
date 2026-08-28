@@ -9,6 +9,7 @@ import {
   ColumnMeta,
   concatChSql,
   convertCHDataTypeToJSType,
+  extractColumnReferencesFromKey,
   filterColumnMetaByType,
   JSDataType,
   Row,
@@ -112,6 +113,24 @@ export const unquoteIdentifier = (identifier: string): string => {
     return identifier.slice(1, -1);
   }
   return identifier;
+};
+
+/**
+ * Whether a table's partition key derives from its timestamp column, which is
+ * what decides whether `system.parts.min_time` is populated and so whether
+ * part-level pruning can work at all.
+ */
+const partitionKeyCoversTimestamp = (
+  partitionKey: string,
+  timestampValueExpression: string,
+): boolean => {
+  if (!partitionKey) return false;
+  const partitionColumns = new Set(
+    extractColumnReferencesFromKey(partitionKey).map(unquoteIdentifier),
+  );
+  return extractColumnReferencesFromKey(timestampValueExpression)
+    .map(unquoteIdentifier)
+    .some(column => partitionColumns.has(column));
 };
 
 const quoteJsonPathSegment = (segment: string): string => {
@@ -704,7 +723,7 @@ export class Metadata {
     tableName: string;
     column: string;
     connectionId: string;
-  }): Promise<void> {
+  }): Promise<TableMetadata> {
     const reject = (reason: string) => {
       throw new Error(`Cannot read the primary index: ${reason}`);
     };
@@ -741,6 +760,8 @@ export class Metadata {
         `${column} is not in the primary key (${tableMetadata.primary_key})`,
       );
     }
+
+    return tableMetadata;
   }
 
   /**
@@ -777,17 +798,28 @@ export class Metadata {
     limit?: number;
     signal?: AbortSignal;
   }): AsyncGenerator<string[], void, undefined> {
-    await this.assertIndexReadable({
+    const tableMetadata = await this.assertIndexReadable({
       databaseName,
       tableName,
       column,
       connectionId,
     });
 
+    // `partsOverlapFilter` matches on `system.parts.min_time`, which ClickHouse
+    // only populates for time-based partition keys. Applying it to a table
+    // partitioned by anything else (or not at all) leaves every part at the
+    // epoch, excludes all of them, and returns an empty list without failing —
+    // so skip it there and accept the unpruned window.
+    const canPruneByPart =
+      !!timestampValueExpression &&
+      partitionKeyCoversTimestamp(
+        tableMetadata.partition_key,
+        timestampValueExpression,
+      );
     const partsFilter = await this.partsOverlapFilter({
       databaseName,
       tableName,
-      dateRange,
+      dateRange: canPruneByPart ? dateRange : undefined,
       timestampValueExpression,
     });
 

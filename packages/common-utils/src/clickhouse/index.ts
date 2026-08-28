@@ -387,8 +387,15 @@ export const extractColumnReferencesFromKey = (expr: string): string[] => {
  * `Row` rather than a single row.
  */
 export async function* streamToAsyncIterator<T>(
-  stream: ReadableStream<T>,
+  stream: ReadableStream<T> | AsyncIterable<T>,
 ): AsyncIterableIterator<T> {
+  // The node client's `stream()` hands back a Node `Readable`, which is already
+  // async-iterable; only the web client returns a WHATWG `ReadableStream`.
+  if (!('getReader' in stream)) {
+    yield* stream;
+    return;
+  }
+
   const reader = stream.getReader();
   try {
     while (true) {

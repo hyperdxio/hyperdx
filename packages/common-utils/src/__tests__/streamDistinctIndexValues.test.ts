@@ -23,6 +23,7 @@ const resultSetOf = (chunks: unknown[][]) => ({
 const GAUGE_TABLE_METADATA = {
   engine: 'MergeTree',
   primary_key: 'ServiceName, MetricName, toStartOfHour(TimeUnix)',
+  partition_key: 'toDate(TimeUnix)',
 } as TableMetadata;
 
 const ARGS = {
@@ -73,6 +74,23 @@ describe('Metadata.streamDistinctIndexValues', () => {
     ]);
   });
 
+  it('reads a node-style Readable as well as a web ReadableStream', async () => {
+    // The node client's `stream()` returns a Node Readable, which has no
+    // `getReader`; only the web client returns a WHATWG ReadableStream.
+    const metadata = buildMetadata();
+    mockQuery.mockResolvedValue({
+      stream: () => ({
+        async *[Symbol.asyncIterator]() {
+          yield [{ json: () => ({ value: 'from.node.stream' }) }];
+        },
+      }),
+    });
+
+    expect(await drain(metadata.streamDistinctIndexValues(ARGS))).toEqual([
+      ['from.node.stream'],
+    ]);
+  });
+
   it('reads the primary index with DISTINCT and no ORDER BY', async () => {
     const metadata = buildMetadata();
     mockQuery.mockResolvedValue(resultSetOf([]));
@@ -89,6 +107,49 @@ describe('Metadata.streamDistinctIndexValues', () => {
 
   it('prunes to overlapping parts when given a date range', async () => {
     const metadata = buildMetadata();
+    mockQuery.mockResolvedValue(resultSetOf([]));
+
+    await drain(
+      metadata.streamDistinctIndexValues({
+        ...ARGS,
+        dateRange: [new Date('2026-08-01'), new Date('2026-08-02')],
+        timestampValueExpression: 'TimeUnix',
+      }),
+    );
+
+    expect(mockQuery.mock.calls[0][0].query).toContain('part_name IN');
+  });
+
+  it('skips part pruning when the partition key is not time-based', async () => {
+    // ClickHouse leaves system.parts.min_time at the epoch unless the partition
+    // key derives from a time column, so the overlap predicate would exclude
+    // every part and return an empty list without failing.
+    const metadata = buildMetadata({
+      tableMetadata: {
+        ...GAUGE_TABLE_METADATA,
+        partition_key: 'ServiceName',
+      } as TableMetadata,
+    });
+    mockQuery.mockResolvedValue(resultSetOf([]));
+
+    await drain(
+      metadata.streamDistinctIndexValues({
+        ...ARGS,
+        dateRange: [new Date('2026-08-01'), new Date('2026-08-02')],
+        timestampValueExpression: 'TimeUnix',
+      }),
+    );
+
+    expect(mockQuery.mock.calls[0][0].query).not.toContain('part_name IN');
+  });
+
+  it('prunes by part when the partition key derives from the timestamp', async () => {
+    const metadata = buildMetadata({
+      tableMetadata: {
+        ...GAUGE_TABLE_METADATA,
+        partition_key: 'toDate(TimeUnix)',
+      } as TableMetadata,
+    });
     mockQuery.mockResolvedValue(resultSetOf([]));
 
     await drain(
