@@ -29,7 +29,7 @@ function PropertyRow({
 
 /**
  * Full alert metadata block for the alert detail page: the shared one-line
- * summary (threshold, schedule, targets, creator) plus every other persisted
+ * summary (threshold, schedule, targets) plus every other persisted
  * property — name, message template, group-by, schedule anchor/offset,
  * acknowledgement, tags, and created/updated timestamps. Rows render only
  * when the field is set.
@@ -101,19 +101,22 @@ export function AlertDetailProperties({ alert }: { alert: AlertsPageItem }) {
             </Group>
           </PropertyRow>
         )}
-        <PropertyRow label="Created" testId="alert-property-created">
-          <Text size="xs" c="dimmed" component="span">
-            <FormatTime value={alert.createdAt} format="withYear" />
-            {alert.updatedAt && alert.updatedAt !== alert.createdAt && (
-              <>
-                {' '}
-                · Updated{' '}
-                <FormatTime value={alert.updatedAt} format="withYear" />
-              </>
-            )}
-          </Text>
-        </PropertyRow>
       </div>
+      {/* Provenance, not configuration: the creator joins the timestamps in
+          one dimmed sub-heading line rather than competing with the alert's
+          settings above. */}
+      <Text size="xs" c="dimmed" mt="xs" data-testid="alert-property-created">
+        {alert.createdBy && (
+          <>Created by {alert.createdBy.name || alert.createdBy.email} · </>
+        )}
+        <FormatTime value={alert.createdAt} format="withYear" />
+        {alert.updatedAt && alert.updatedAt !== alert.createdAt && (
+          <>
+            {' '}
+            · Updated <FormatTime value={alert.updatedAt} format="withYear" />
+          </>
+        )}
+      </Text>
     </div>
   );
 }
