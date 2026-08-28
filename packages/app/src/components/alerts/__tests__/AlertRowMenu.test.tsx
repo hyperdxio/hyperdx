@@ -27,6 +27,14 @@ jest.mock('@/config', () => ({
   BASE_PATH: '',
 }));
 
+// The edit modal pulls in the whole alert form (queries, editors, target
+// picker); this suite is about the menu, so stub it down to an open/closed
+// marker.
+jest.mock('@/components/alerts/EditAlertModal', () => ({
+  EditAlertModal: ({ opened }: { opened: boolean }) =>
+    opened ? <div data-testid="edit-alert-modal" /> : null,
+}));
+
 const confirm = jest.fn().mockResolvedValue(true);
 jest.mock('@/useConfirm', () => ({ useConfirm: () => confirm }));
 jest.mock('@/theme/ThemeProvider', () => ({
@@ -89,6 +97,29 @@ describe('AlertRowMenu', () => {
     renderMenu(<AlertRowMenu alert={tileAlert} />);
 
     expect(screen.getByTestId('alert-row-menu-alert-2')).toBeInTheDocument();
+  });
+
+  it('opens the edit modal from the menu', async () => {
+    renderMenu(<AlertRowMenu alert={savedSearchAlert} />);
+
+    expect(screen.queryByTestId('edit-alert-modal')).not.toBeInTheDocument();
+    await openMenu('alert-row-menu-alert-1');
+    // Same rationale as openMenu's own wait: under parallel workers the
+    // dropdown's transition can lag behind the menu role appearing.
+    const editItem = await screen.findByTestId(
+      'alert-edit-alert-1',
+      undefined,
+      {
+        timeout: 5000,
+      },
+    );
+    await userEvent.click(editItem);
+
+    expect(
+      await screen.findByTestId('edit-alert-modal', undefined, {
+        timeout: 5000,
+      }),
+    ).toBeInTheDocument();
   });
 
   it('offers Terraform export for a saved-search alert', async () => {

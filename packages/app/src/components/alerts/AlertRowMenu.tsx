@@ -7,17 +7,20 @@ import {
   IconBrandTerraform,
   IconDots,
   IconExternalLink,
+  IconPencil,
   IconTrash,
 } from '@tabler/icons-react';
 import { useQueryClient } from '@tanstack/react-query';
 
 import api from '@/api';
+import { EditAlertModal } from '@/components/alerts/EditAlertModal';
 import { TerraformHelperPanel } from '@/components/Iac/TerraformHelperPanel';
 import { useTerraformSnippets } from '@/components/Iac/useTerraformSnippets';
 import { IS_IAC_EXPORT_ENABLED } from '@/config';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import type { AlertsPageItem } from '@/types';
 import { useConfirm } from '@/useConfirm';
+import { intervalToDateRange } from '@/utils/alerts';
 
 type AlertRowMenuProps = {
   alert: AlertsPageItem;
@@ -54,6 +57,7 @@ export function AlertRowMenu({
   const name = alertName?.trim() || 'this alert';
   const sourceLabel = linkTitle?.trim().toLowerCase() || 'source';
   const [terraformOpened, setTerraformOpened] = React.useState(false);
+  const [editOpened, setEditOpened] = React.useState(false);
   const confirm = useConfirm();
   const queryClient = useQueryClient();
   const brandName = useBrandDisplayName();
@@ -75,6 +79,15 @@ export function AlertRowMenu({
     resource,
     enabled: terraformOpened,
   });
+
+  // The edit modal's threshold preview needs a range; derive one from the
+  // alert's own interval (a list row has no picked range). Recomputed when the
+  // modal opens so a long-lived list doesn't preview a stale window.
+  const previewRange = React.useMemo(
+    () => intervalToDateRange(alert.interval),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- editOpened refreshes the window
+    [alert.interval, editOpened],
+  );
 
   // Eligibility comes from the shared predicate rather than an inline source
   // check, so this and the bulk export can't diverge on which alerts the
@@ -126,6 +139,13 @@ export function AlertRowMenu({
           </ActionIcon>
         </Menu.Target>
         <Menu.Dropdown>
+          <Menu.Item
+            leftSection={<IconPencil size={16} />}
+            onClick={() => setEditOpened(true)}
+            data-testid={`alert-edit-${alert._id}`}
+          >
+            Edit alert
+          </Menu.Item>
           {alertUrl && (
             <Menu.Item
               component={Link}
@@ -155,6 +175,12 @@ export function AlertRowMenu({
         </Menu.Dropdown>
       </Menu>
       {/* Outside the dropdown, which unmounts on close. */}
+      <EditAlertModal
+        alert={alert}
+        opened={editOpened}
+        onClose={() => setEditOpened(false)}
+        dateRange={previewRange}
+      />
       <Modal
         opened={terraformOpened}
         onClose={() => setTerraformOpened(false)}

@@ -160,8 +160,11 @@ function NotificationTargets({
 
 /**
  * One-line alert metadata summary: threshold condition, optional evaluation
- * schedule, notification targets, and creator. Shared between the alerts
- * page rows and the alert detail page header.
+ * schedule, and notification targets — configuration only.
+ *
+ * The creator is deliberately absent: it is provenance, not configuration, and
+ * at equal weight it crowded the line into a second row that broke mid-phrase.
+ * Each surface renders it as its own dimmed sub-line instead.
  */
 export function AlertPropertiesSummary({
   alert,
@@ -173,8 +176,13 @@ export function AlertPropertiesSummary({
     alert.thresholdType;
 
   return (
-    <div className="fs-8 d-flex gap-2 align-items-center">
-      <span>
+    // Segments wrap as whole phrases: each is nowrap, so a narrow container
+    // breaks between them rather than splitting "Notify via" down the middle.
+    <div
+      className="fs-8 d-flex gap-2 align-items-center"
+      style={{ flexWrap: 'wrap', rowGap: 4 }}
+    >
+      <span style={{ whiteSpace: 'nowrap' }}>
         If value {thresholdLabel}{' '}
         <span className="fw-bold">{alert.threshold}</span>
         {isRangeThresholdType(alert.thresholdType) && (
@@ -187,12 +195,14 @@ export function AlertPropertiesSummary({
       {isDetail && (
         <>
           <span>&middot;</span>
-          <span>Evaluates every {alert.interval}</span>
+          <span style={{ whiteSpace: 'nowrap' }}>
+            Evaluates every {alert.interval}
+          </span>
           {alert.numConsecutiveWindows != null &&
             alert.numConsecutiveWindows > 1 && (
               <>
                 <span>&middot;</span>
-                <span>
+                <span style={{ whiteSpace: 'nowrap' }}>
                   Fires after {alert.numConsecutiveWindows} consecutive windows
                 </span>
               </>
@@ -201,14 +211,6 @@ export function AlertPropertiesSummary({
       )}
       <span>&middot;</span>
       <NotificationTargets alert={alert} showNames={isDetail} />
-      {alert.createdBy && (
-        <>
-          <span>&middot;</span>
-          <span>
-            Created by {alert.createdBy.name || alert.createdBy.email}
-          </span>
-        </>
-      )}
     </div>
   );
 }

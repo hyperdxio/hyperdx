@@ -238,6 +238,24 @@ export function normalizeNoOpAlertScheduleFields<
   return normalizedAlert as T;
 }
 
+/**
+ * Human label for what an alert watches. Shared by the row's source icon
+ * tooltip, the alerts-page source filter, and free-text search, so all three
+ * agree on the wording a user sees and types.
+ */
+export function getAlertSourceLabel(alert: {
+  source?: AlertSource | null;
+}): string {
+  switch (alert.source) {
+    case AlertSource.TILE:
+      return 'Dashboard tile';
+    case AlertSource.SAVED_SEARCH:
+      return 'Saved search';
+    default:
+      return 'Unknown source';
+  }
+}
+
 export function getAlertDisplayName(alert: AlertsPageItem): string {
   if (alert.source === AlertSource.TILE && alert.dashboard) {
     const tile = alert.dashboard.tiles.find(t => t.id === alert.tileId);
