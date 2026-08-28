@@ -2,8 +2,9 @@ import { useMemo } from 'react';
 import SqlString from 'sqlstring';
 import {
   BuilderChartConfigWithDateRange,
-  SourceKind,
+  isTraceSource,
   TSource,
+  TTraceSource,
 } from '@hyperdx/common-utils/dist/types';
 import { Group, Text } from '@mantine/core';
 
@@ -51,7 +52,7 @@ export interface LinkedSpanDetails {
 // Requirements shared by both lookup directions; returns null when the source
 // can't support either query (also gates out non-trace sources).
 function getLinkedSpanSourceExpressions(source: TSource) {
-  if (source.kind !== SourceKind.Trace) {
+  if (!isTraceSource(source)) {
     return null;
   }
   const timestampExpr = source.timestampValueExpression?.trim();
@@ -59,6 +60,7 @@ function getLinkedSpanSourceExpressions(source: TSource) {
     return null;
   }
   return {
+    source,
     timestampExpr,
     traceIdExpression: source.traceIdExpression,
     spanIdExpression: source.spanIdExpression,
@@ -66,10 +68,7 @@ function getLinkedSpanSourceExpressions(source: TSource) {
   };
 }
 
-function getLinkedSpanSelect(
-  source: TSource,
-  exprs: { traceIdExpression: string; spanIdExpression: string },
-) {
+function getLinkedSpanSelect(source: TTraceSource) {
   const eventBodyExpr = getEventBody(source);
   return [
     {
@@ -77,11 +76,11 @@ function getLinkedSpanSelect(
       alias: LINKED_SPAN_ALIASES.TIMESTAMP,
     },
     {
-      valueExpression: exprs.traceIdExpression,
+      valueExpression: source.traceIdExpression,
       alias: LINKED_SPAN_ALIASES.TRACE_ID,
     },
     {
-      valueExpression: exprs.spanIdExpression,
+      valueExpression: source.spanIdExpression,
       alias: LINKED_SPAN_ALIASES.SPAN_ID,
     },
     ...(eventBodyExpr
@@ -92,7 +91,7 @@ function getLinkedSpanSelect(
           },
         ]
       : []),
-    ...(source.kind === SourceKind.Trace && source.serviceNameExpression
+    ...(source.serviceNameExpression
       ? [
           {
             valueExpression: source.serviceNameExpression,
@@ -100,7 +99,7 @@ function getLinkedSpanSelect(
           },
         ]
       : []),
-    ...(source.kind === SourceKind.Trace && source.durationExpression
+    ...(source.durationExpression
       ? [
           {
             valueExpression: getDurationMsExpression(source),
@@ -155,7 +154,7 @@ export function getReverseSpanLinksConfig({
   return {
     connection: source.connection,
     from: source.from,
-    select: getLinkedSpanSelect(source, exprs),
+    select: getLinkedSpanSelect(exprs.source),
     where,
     whereLanguage: 'sql',
     timestampValueExpression: exprs.timestampExpr,
@@ -215,7 +214,7 @@ export function getLinkedSpansConfig({
   return {
     connection: source.connection,
     from: source.from,
-    select: getLinkedSpanSelect(source, exprs),
+    select: getLinkedSpanSelect(exprs.source),
     where,
     whereLanguage: 'sql',
     timestampValueExpression: exprs.timestampExpr,
