@@ -70,6 +70,20 @@ export class AlertsPage {
   }
 
   /**
+   * Filter the list down to the alerts matching `name`, and wait for the list
+   * to settle. The list is virtualized: only the rows near the viewport exist
+   * in the DOM, so a row further down cannot be asserted on until it is
+   * filtered or scrolled to. Filtering is also what a user does on a team with
+   * thousands of alerts.
+   */
+  async filterToAlert(name: string) {
+    await this.searchByName(name);
+    await this.getAlertCardByName(name)
+      .first()
+      .waitFor({ state: 'visible', timeout: 10000 });
+  }
+
+  /**
    * Get the alert card that contains a given name (saved search or dashboard/tile name).
    * Scopes all further lookups to a single alert row so assertions aren't polluted
    * by other tests' data.
@@ -195,6 +209,7 @@ export class AlertsPage {
   }
 
   async searchByName(text: string) {
+    await this.filtersContainer.waitFor({ state: 'visible', timeout: 10000 });
     await this.searchInput.fill(text);
   }
 

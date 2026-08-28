@@ -48,6 +48,7 @@
       "parentSpanIdExpression": "ParentSpanId",
       "spanKindExpression": "SpanKind",
       "spanNameExpression": "SpanName",
+      "spanLinksValueExpression": "Links",
       "logSourceId": "E2E Logs",
       "statusCodeExpression": "StatusCode",
       "statusMessageExpression": "StatusMessage",
