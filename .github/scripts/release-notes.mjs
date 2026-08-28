@@ -140,18 +140,18 @@ export function extractSection(content, { version, inputs, latest }) {
 
 // Fail-fast checks on a model-authored body, before it is spliced into the
 // committed changelog. These are NOT the security boundary — regexes cannot be
-// complete over CommonMark. ChangelogModal.tsx holds the enforceable check: it
+// complete over CommonMark. WhatsNewDrawer.tsx holds the enforceable check: it
 // drops image nodes and allowlists link targets on react-markdown's parsed AST,
-// so no syntax can smuggle either into the in-app modal. What lives here is
-// early, legible feedback in CI (the changelog jobs run without node_modules,
-// so a real markdown parser is not available to them).
+// so no syntax can smuggle either into the in-app release summary. What lives
+// here is early, legible feedback in CI (the changelog jobs run without
+// node_modules, so a real markdown parser is not available to them).
 const MAX_BODY_BYTES = 65536;
 // Kept in sync with ALLOWED_LINK_HOSTS in
-// packages/app/src/components/AppNav/ChangelogModal.tsx, and pinned there by a
+// packages/app/src/components/AppNav/WhatsNewDrawer.tsx, and pinned there by a
 // test. Exported for that test.
 export const ALLOWED_LINK_HOSTS = new Set(['github.com', 'docs.hyperdx.io']);
 
-// Deliberately the same algorithm as allowChangelogUrl in ChangelogModal.tsx:
+// Deliberately the same algorithm as allowChangelogUrl in WhatsNewDrawer.tsx:
 // parse, then compare the whole hostname. A prefix regex disagrees with the
 // render gate on forms like `https://github.com:443/x` and
 // `https://user@github.com/x`, which would redden the publish job for content

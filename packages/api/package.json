@@ -113,6 +113,7 @@
     "dev:migrate-ch-create": "migrate create -ext sql -dir ./migrations/ch -seq",
     "dev:migrate-ch": "migrate -database 'clickhouse://localhost:9000?database=default&x-multi-statement=true' -path ./migrations/ch up",
     "docgen": "ts-node scripts/generate-api-docs.ts",
+    "seed:alerts": "ts-node --transpile-only -r tsconfig-paths/register scripts/seed-alerts.ts",
     "lint:openapi": "yarn docgen && spectral lint openapi.json"
   }
 }

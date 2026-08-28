@@ -76,6 +76,7 @@ import {
   Flex,
   Group,
   Indicator,
+  List,
   Menu,
   Modal,
   Paper,
@@ -181,7 +182,6 @@ import SearchWhereInput, {
 import { Tags } from './components/Tags';
 import useDashboardFilters from './hooks/useDashboardFilters';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
-import { useIsVariablesEnabled } from './hooks/useIsVariablesEnabled';
 import useTileSelection from './hooks/useTileSelection';
 import { useBrandDisplayName } from './theme/ThemeProvider';
 import { parseAsJsonEncoded, parseAsStringEncoded } from './utils/queryParsers';
@@ -549,7 +549,7 @@ const Tile = ({
   // changes to `tileVariables`.
   const serializedTileVariables = useMemo(
     () =>
-      !!variables && !isPromqlSavedChartConfig(chart.config)
+      variables
         ? JSON.stringify(filterReferencedVariables(chart.config, variables))
         : undefined,
     [chart.config, variables],
@@ -569,6 +569,7 @@ const Tile = ({
           connection: source.connection,
           dateRange,
           granularity,
+          variables: tileVariables,
         });
       }
       return;
@@ -1828,11 +1829,6 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     'whereLanguage',
     whereLanguageParser,
   );
-  // Get raw filter queries from URL (not processed by hook)
-  const [rawFilterQueries] = useQueryState(
-    'filters',
-    parseAsJsonEncoded<Filter[]>(),
-  );
   // Toggle for overlaying alert firing/recovery markers on tile charts.
   // Ephemeral view state (URL param), not persisted on the dashboard.
   const [showAlertAnnotations, setShowAlertAnnotations] = useQueryState(
@@ -1852,18 +1848,15 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
 
   const filters = dashboard?.filters ?? [];
   const {
-    filterValues,
+    selectionByFilterId,
     setFilterValue,
-    setFilterQueries,
+    setFilterValueEntries,
+    filterValueEntries,
     ignoredFilterExpressions,
+    ignoredVariableNames,
     getFilterQueriesForSource,
     variables,
   } = useDashboardFilters(filters);
-
-  const { isLoading: isVariablesFlagLoading, isVariablesEnabled } =
-    useIsVariablesEnabled();
-  const showFilterVariableOptions =
-    !isVariablesFlagLoading && isVariablesEnabled;
 
   const dashboardReady =
     !!dashboard?.id &&
@@ -1888,7 +1881,9 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   useEffect(() => {
     if (!dashboardReady || lastLoadedIdForBannerRef.current === dashboard?.id)
       return;
-    setShouldShowIgnoredFiltersBanner(ignoredFilterExpressions.length > 0);
+    setShouldShowIgnoredFiltersBanner(
+      ignoredFilterExpressions.length > 0 || ignoredVariableNames.length > 0,
+    );
     lastLoadedIdForBannerRef.current = dashboard?.id;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dashboard?.id, dashboardReady]);
@@ -2016,9 +2011,9 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     // dashboard without defaults, clear selected filters.
     if (!hasFiltersInUrl) {
       if (dashboard.savedFilterValues) {
-        setFilterQueries(dashboard.savedFilterValues);
+        setFilterValueEntries(dashboard.savedFilterValues);
       } else if (isSwitchingDashboards) {
-        setFilterQueries(null);
+        setFilterValueEntries(null);
       }
     }
 
@@ -2035,7 +2030,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     setValue,
     setWhere,
     setWhereLanguage,
-    setFilterQueries,
+    setFilterValueEntries,
   ]);
 
   // Sync changes to the URL params into the form
@@ -2061,8 +2056,8 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     const currentWhereLanguage = currentWhere
       ? formValues.whereLanguage || 'lucene'
       : null;
-    const currentFilterValues = rawFilterQueries?.length
-      ? rawFilterQueries
+    const currentFilterValues = filterValueEntries?.length
+      ? filterValueEntries
       : [];
 
     setDashboard(
@@ -2086,7 +2081,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     isLocalDashboard,
     setDashboard,
     getValues,
-    rawFilterQueries,
+    filterValueEntries,
     onSubmit,
   ]);
   const handleRemoveSavedQuery = useCallback(() => {
@@ -2309,7 +2304,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             },
             ...getFilterQueriesForSource(tileSourceId),
           ]}
-          variables={showFilterVariableOptions ? variables : undefined}
+          variables={variables}
           onTimeRangeSelect={onTimeRangeSelect}
           showAlertAnnotations={showAlertAnnotations}
           showReleaseAnnotations={showReleaseAnnotations}
@@ -2412,7 +2407,6 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       showAlertAnnotations,
       showReleaseAnnotations,
       getFilterQueriesForSource,
-      showFilterVariableOptions,
       variables,
       moveTargetContainers,
       handleMoveTileToGroup,
@@ -3058,9 +3052,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       </Tooltip>
       <Tooltip
         withArrow
-        label={
-          isVariablesEnabled ? 'Edit Filters and Variables' : 'Edit Filters'
-        }
+        label="Edit filters and variables"
         fz="xs"
         color="gray"
       >
@@ -3104,7 +3096,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             if (!isSaving) setEditedTile(undefined);
           }}
           dateRange={searchedTimeRange}
-          variables={showFilterVariableOptions ? variables : undefined}
+          variables={variables}
           isSaving={isSaving}
           onSave={newChart => {
             if (dashboard == null) {
@@ -3153,10 +3145,11 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       )}
       {!isKioskMode &&
         shouldShowIgnoredFiltersBanner &&
-        ignoredFilterExpressions.length > 0 && (
+        (ignoredFilterExpressions.length > 0 ||
+          ignoredVariableNames.length > 0) && (
           <Alert
-            mt="sm"
-            color="yellow"
+            mb="sm"
+            variant="warning"
             icon={<IconAlertTriangle size={16} />}
             title="Some filters could not be applied"
             data-testid="ignored-url-filters-banner"
@@ -3164,21 +3157,35 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             closeButtonLabel="Dismiss"
             onClose={() => setShouldShowIgnoredFiltersBanner(false)}
           >
-            No dashboard filter(s) found for{' '}
-            {ignoredFilterExpressions.length === 1
-              ? 'expression'
-              : 'expressions'}{' '}
-            in the URL: {ignoredFilterExpressions.join(', ')}. Add a filter with
-            a matching expression to apply these filters.
+            <List type="unordered" size="sm" mb="xs">
+              {ignoredFilterExpressions.length > 0 && (
+                <List.Item>
+                  No dashboard filter(s) found for{' '}
+                  {ignoredFilterExpressions.length === 1
+                    ? 'expression'
+                    : 'expressions'}{' '}
+                  in the URL: {ignoredFilterExpressions.join(', ')}. Add a
+                  filter with a matching expression to apply these filters.
+                </List.Item>
+              )}
+              {ignoredVariableNames.length > 0 && (
+                <List.Item>
+                  No dashboard variable(s) found for{' '}
+                  {ignoredVariableNames.map(name => `$${name}`).join(', ')} in
+                  the URL. Add a variable-enabled filter with a matching
+                  variable name to apply these values.
+                </List.Item>
+              )}
+            </List>
           </Alert>
         )}
       {!isKioskMode && (
         <DashboardFilters
           filters={filters}
-          filterValues={filterValues}
+          selectionByFilterId={selectionByFilterId}
           onSetFilterValue={setFilterValue}
           dateRange={searchedTimeRange}
-          variables={showFilterVariableOptions ? variables : undefined}
+          variables={variables}
         />
       )}
       {/* Selection indicator */}
@@ -3354,8 +3361,8 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           onSaveFilter={handleSaveFilter}
           onRemoveFilter={handleRemoveFilter}
           isLoading={isSavingDashboard || isFetchingDashboard}
-          showVariableOptions={showFilterVariableOptions}
-          variables={showFilterVariableOptions ? variables : undefined}
+          showVariableOptions
+          variables={variables}
         />
       )}
     </>
