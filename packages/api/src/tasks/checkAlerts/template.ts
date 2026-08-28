@@ -210,6 +210,18 @@ export const buildAlertMessageTemplateHdxLink = (
       startTime,
       tileId: alert.tileId ?? undefined,
     });
+  } else if (alert.source === AlertSource.INLINE) {
+    if (alert.chartConfig == null) {
+      throw new Error(`Source is ${alert.source} but chartConfig is null`);
+    }
+    // Inline alerts have no saved search or dashboard to open — link to the
+    // chart explorer seeded with the alert's persisted config.
+    return alertProvider.buildChartExplorerLink({
+      chartConfig: alert.chartConfig,
+      endTime,
+      granularity,
+      startTime,
+    });
   }
 
   throw new Error(`Unsupported alert source: ${alert.source}`);
@@ -253,6 +265,19 @@ export const buildAlertMessageTemplateTitle = ({
     const baseTitle = template
       ? handlebars.compile(template)(view)
       : `Alert for "${tile.config.name}" in "${dashboard.name}" - ${formattedValue} ${
+          doesExceedThreshold(alert, value)
+            ? describeThresholdViolation(alert.thresholdType)
+            : describeThresholdResolution(alert.thresholdType)
+        } ${describeThreshold(alert)}`;
+    return `${emoji}${baseTitle}`;
+  } else if (alert.source === AlertSource.INLINE) {
+    const formattedValue = formatValueToMatchThreshold(value, alert.threshold);
+    // Inline alerts have no saved search/tile to name them; the alert's `name`
+    // doubles as the title template, so the default falls back to the chart
+    // config's name.
+    const baseTitle = template
+      ? handlebars.compile(template)(view)
+      : `Alert for "${alert.chartConfig?.name ?? 'chart'}" - ${formattedValue} ${
           doesExceedThreshold(alert, value)
             ? describeThresholdViolation(alert.thresholdType)
             : describeThresholdResolution(alert.thresholdType)
@@ -711,8 +736,11 @@ ${targetTemplate}
 \`\`\`
 {{{__hdx_query_results__}}}
 \`\`\``;
-  } else if (alert.source === AlertSource.TILE) {
-    if (dashboard == null) {
+  } else if (
+    alert.source === AlertSource.TILE ||
+    alert.source === AlertSource.INLINE
+  ) {
+    if (alert.source === AlertSource.TILE && dashboard == null) {
       throw new Error(`Source is ${alert.source} but dashboard is null`);
     }
     const formattedValue = formatValueToMatchThreshold(value, alert.threshold);

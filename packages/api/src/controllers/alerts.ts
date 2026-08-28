@@ -1,9 +1,11 @@
 import {
+  displayTypeSupportsBuilderAlerts,
   displayTypeSupportsRawSqlAlerts,
   validateRawSqlForAlert,
 } from '@hyperdx/common-utils/dist/core/utils';
 import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import { groupBy } from 'lodash';
+import { Types } from 'mongoose';
 import { z } from 'zod';
 
 import type { ObjectId } from '@/models';
@@ -13,12 +15,14 @@ import Alert, {
   getAlertChannels,
   IAlert,
 } from '@/models/alert';
+import Connection from '@/models/connection';
 import Dashboard, { IDashboard } from '@/models/dashboard';
 import { ISavedSearch, SavedSearch } from '@/models/savedSearch';
+import { Source } from '@/models/source';
 import { IUser } from '@/models/user';
 import Webhook from '@/models/webhook';
 import { Api400Error } from '@/utils/errors';
-import { alertSchema, objectIdSchema } from '@/utils/zod';
+import { internalAlertSchema, objectIdSchema } from '@/utils/zod';
 
 export type AlertInput = Omit<
   IAlert,
@@ -57,6 +61,7 @@ export const validateAlertInput = async (
     | 'dashboardId'
     | 'tileId'
     | 'savedSearchId'
+    | 'chartConfig'
     | 'channel'
     | 'channels'
   >,
@@ -108,6 +113,85 @@ export const validateAlertInput = async (
     }
   }
 
+  if (alertInput.source === AlertSource.INLINE) {
+    const chartConfig = alertInput.chartConfig;
+    if (chartConfig == null) {
+      throw new Api400Error('Chart config is required');
+    }
+
+    if (isRawSqlSavedChartConfig(chartConfig)) {
+      if (!displayTypeSupportsRawSqlAlerts(chartConfig.displayType)) {
+        throw new Api400Error(
+          'Alerts on Raw SQL charts are only supported for Line, Stacked Bar, or Number display types',
+        );
+      }
+
+      const { errors } = validateRawSqlForAlert(chartConfig);
+      if (errors.length > 0) {
+        throw new Api400Error(
+          `Raw SQL alert query is invalid: ${errors.join(', ')}`,
+        );
+      }
+
+      // Raw SQL configs carry the connection directly; the source reference
+      // is optional metadata for macro expansion ($__sourceTable).
+      validateObjectId(chartConfig.connection, 'Invalid connection ID');
+      const connection = await Connection.findOne({
+        _id: chartConfig.connection,
+        team: teamId,
+      });
+      if (connection == null) {
+        throw new Api400Error('Connection not found');
+      }
+      if (chartConfig.source) {
+        validateObjectId(chartConfig.source, 'Invalid source ID');
+        const source = await Source.findOne({
+          _id: chartConfig.source,
+          team: teamId,
+        });
+        if (source == null) {
+          throw new Api400Error('Source not found');
+        }
+        // The worker executes the query through chartConfig.connection while
+        // expanding $__sourceTable/metricTables from this source. Accepting a
+        // source on a different (even team-owned) connection would query the
+        // wrong database — silently wrong values when the table also exists
+        // there, repeated query failures when it does not.
+        //
+        // Compare as ObjectIds, not strings: objectIdSchema admits every
+        // representation ObjectId.isValid does (uppercase hex, 12-byte
+        // strings), and the Mongo lookups above cast them — a lexical
+        // comparison would reject an equivalent non-canonical ID.
+        if (
+          !new Types.ObjectId(String(source.connection)).equals(
+            chartConfig.connection,
+          )
+        ) {
+          throw new Api400Error(
+            'Source does not belong to the specified connection',
+          );
+        }
+      }
+    } else {
+      // Builder configs: same display types the alert task can evaluate as a
+      // time series (mirrors the tile-alert rules).
+      if (!displayTypeSupportsBuilderAlerts(chartConfig.displayType)) {
+        throw new Api400Error(
+          'Inline chart alerts are only supported for Line, Stacked Bar, or Number display types',
+        );
+      }
+
+      validateObjectId(chartConfig.source, 'Invalid source ID');
+      const source = await Source.findOne({
+        _id: chartConfig.source,
+        team: teamId,
+      });
+      if (source == null) {
+        throw new Api400Error('Source not found');
+      }
+    }
+  }
+
   const channels = getAlertChannels(alertInput);
   if (channels.length === 0) {
     throw new Api400Error('At least one notification channel is required');
@@ -150,6 +234,7 @@ export const makeAlert = (
         : alert.scheduleOffsetMinutes;
   const isSavedSearch = alert.source === AlertSource.SAVED_SEARCH;
   const isTile = alert.source === AlertSource.TILE;
+  const isInline = alert.source === AlertSource.INLINE;
   const channels = getAlertChannels(alert);
 
   return {
@@ -184,11 +269,14 @@ export const makeAlert = (
       ? ((alert.savedSearchId ?? null) as unknown as ObjectId)
       : null,
     groupBy: isSavedSearch ? (alert.groupBy ?? null) : null,
-    // Chart alerts
+    // Tile alerts
     dashboard: isTile
       ? ((alert.dashboardId ?? null) as unknown as ObjectId)
       : null,
     tileId: isTile ? (alert.tileId ?? null) : null,
+
+    // Inline alerts
+    chartConfig: isInline ? (alert.chartConfig ?? null) : null,
 
     // Multi-window alerting
     numConsecutiveWindows: alert.numConsecutiveWindows ?? null,
@@ -197,7 +285,7 @@ export const makeAlert = (
 
 export const createAlert = async (
   teamId: ObjectId,
-  alertInput: z.infer<typeof alertSchema>,
+  alertInput: z.infer<typeof internalAlertSchema>,
   userId: ObjectId,
 ) => {
   return new Alert({
