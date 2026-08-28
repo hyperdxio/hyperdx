@@ -625,6 +625,20 @@ export const DBRowSidePanelInner = ({
         ]),
         SqlString.format('?=?', [SqlString.raw(spanIdExpression), link.SpanId]),
       ].join(' AND ');
+      // A link often points right back at the row one level up (forward and
+      // reverse span links come in pairs). Pop back to that breadcrumb instead
+      // of pushing an endless A <-> B trail. Only when no nav drilldown sits
+      // on top: popOne would pop the nav entry, not the source frame.
+      const topFrame =
+        sourceStack.length > 0 ? sourceStack[sourceStack.length - 1] : null;
+      if (
+        navStack.length === 0 &&
+        topFrame?.originRowId != null &&
+        topFrame.originRowId === rowId
+      ) {
+        popOne();
+        return;
+      }
       // Mark this frame so its breadcrumb switches from the `Trace <id>`
       // fallback below to the landed span name once the row loads.
       spanLinkFrameRowIdsRef.current.add(rowId);
@@ -634,6 +648,10 @@ export const DBRowSidePanelInner = ({
         label: `Trace ${link.TraceId.slice(0, 8)}`,
         sourceKind: traceSourceData.kind as SourceKind,
         aliasWith: [],
+        // The current row's canonical trace/span row id: the exact string a
+        // link hop targeting this row would compute, so the pop-back check
+        // above can compare by equality.
+        originRowId: traceSpanRowId,
       });
     },
     [
@@ -641,6 +659,10 @@ export const DBRowSidePanelInner = ({
       traceIdExpression,
       spanIdExpression,
       handleSourceStackPush,
+      sourceStack,
+      navStack,
+      popOne,
+      traceSpanRowId,
     ],
   );
 

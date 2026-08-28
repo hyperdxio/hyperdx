@@ -376,6 +376,39 @@ function generateTraceData(
   return rows.join(',\n');
 }
 
+// Cross-trace span-link pair: a consumer span in its own trace whose Links
+// reference a producer span in another trace. Exercises both directions of
+// span-link resolution in the span detail panel (resolved "Span Links"
+// details and the reverse "Linked from" section). Exported so specs can
+// search for these spans by name.
+export const SPAN_LINK_SEED = {
+  producer: {
+    traceId: 'e2e-link-producer-trace',
+    spanId: 'e2e-link-producer-span',
+    spanName: 'E2E Link Producer Publish',
+    serviceName: 'link-producer-svc',
+  },
+  consumer: {
+    traceId: 'e2e-link-consumer-trace',
+    spanId: 'e2e-link-consumer-span',
+    spanName: 'E2E Link Consumer Process',
+    serviceName: 'link-consumer-svc',
+  },
+} as const;
+
+function generateSpanLinkTraces(seedRef: number): string {
+  const { producer, consumer } = SPAN_LINK_SEED;
+  // Producer runs first; the consumer picks the message up 30s later and
+  // links back — inside both lookup windows (reverse −1h/+24h from the
+  // producer, forward −24h/+1h from the consumer).
+  const producerNs = (seedRef - 60_000) * 1_000_000;
+  const consumerNs = (seedRef - 30_000) * 1_000_000;
+  return [
+    `('${producerNs}', '${producer.traceId}', '${producer.spanId}', '', '', '${producer.spanName}', 'SPAN_KIND_PRODUCER', '${producer.serviceName}', {'service.name':'${producer.serviceName}','environment':'test'}, '', '', {}, 12000000, 'STATUS_CODE_OK', '', [], [], [], [], [], [], [])`,
+    `('${consumerNs}', '${consumer.traceId}', '${consumer.spanId}', '', '', '${consumer.spanName}', 'SPAN_KIND_CONSUMER', '${consumer.serviceName}', {'service.name':'${consumer.serviceName}','environment':'test'}, '', '', {}, 34000000, 'STATUS_CODE_OK', '', [], [], [], ['${producer.traceId}'], ['${producer.spanId}'], [''], [{'link.kind':'follows_from'}])`,
+  ].join(',\n');
+}
+
 function generateSessionData(
   count: number,
   startMs: number,
@@ -898,6 +931,19 @@ export async function seedClickHouse(): Promise<void> {
     ) VALUES ${generateTraceData(numDataPoints, startMs, endMs)}
   `);
   console.log(`  Inserted ${numDataPoints} trace spans`);
+
+  // Insert the cross-trace span-link pair (producer + consumer)
+  console.log('  Inserting span-link trace pair...');
+  await client.query(`
+    INSERT INTO ${E2E_CLICKHOUSE_DATABASE}.${E2E_TRACES_TABLE} (
+      Timestamp, TraceId, SpanId, ParentSpanId, TraceState, SpanName, SpanKind,
+      ServiceName, ResourceAttributes, ScopeName, ScopeVersion, SpanAttributes,
+      Duration, StatusCode, StatusMessage, \`Events.Timestamp\`, \`Events.Name\`,
+      \`Events.Attributes\`, \`Links.TraceId\`, \`Links.SpanId\`, \`Links.TraceState\`,
+      \`Links.Attributes\`
+    ) VALUES ${generateSpanLinkTraces(seedRef)}
+  `);
+  console.log('  Inserted span-link trace pair');
 
   // Insert session trace data (spans with rum.sessionId for session tracking)
   console.log('  Inserting session trace data...');
