@@ -11,8 +11,12 @@
 # open PR.
 set -euo pipefail
 root="${1:?usage: trusted-hash.sh <trusted-root>}"
+# agent_docs/code_style.md is included because it is fed to the reviewer as authoritative
+# conventions: a change to it changes the review, so it must invalidate the gate. The cost
+# is that editing it re-reviews every open PR, which is the correct trade for a rules change.
 find "$root/.github/prompts/code-review.md" \
   "$root/.github/scripts/code-review" \
   "$root/.github/workflows/claude-code-review.yml" \
+  "$root/agent_docs/code_style.md" \
   -type f -not -path '*/__tests__/*' -print0 |
   sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1
