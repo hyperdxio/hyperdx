@@ -466,17 +466,15 @@ jobs:
           [ ! -s "$EXECUTION_FILE" ] && broken "execution transcript is empty; cannot confirm the reviewer ran"
           jq -e 'type == "array" and length > 0' "$EXECUTION_FILE" >/dev/null 2>&1 \
             || broken "execution transcript is not a non-empty JSON array; cannot confirm the reviewer ran"
-          if true; then
-            BWRAP=$(jq '[ .[] | select(.type == "user") | .message.content[]?
+          BWRAP=$(jq '[ .[] | select(.type == "user") | .message.content[]?
                           | select(.type == "tool_result" and .is_error == true)
                           | ( .content | if type == "array" then map(.text // "") | join("\n")
                                          elif type == "string" then . else tostring end )
                           | select(test("(^|\\n)bwrap: "))
                         ] | length' "$EXECUTION_FILE") \
-              || broken "could not analyse the execution transcript; cannot confirm the sandbox was healthy"
-            if [ "${BWRAP:-0}" != "0" ]; then
-              broken "Reviewer sandbox was broken: $BWRAP Bash call(s) failed with bwrap errors, so the git/gh checks the prompt relies on never ran."
-            fi
+            || broken "could not analyse the execution transcript; cannot confirm the sandbox was healthy"
+          if [ "${BWRAP:-0}" != "0" ]; then
+            broken "Reviewer sandbox was broken: $BWRAP tool call(s) failed with bwrap errors, so the review ran without working tools."
           fi
           echo "count=$(jq '.findings | length' .hdx/findings.json)" >> "$GITHUB_OUTPUT"
           echo "healthy=true" >> "$GITHUB_OUTPUT"
@@ -515,6 +513,9 @@ jobs:
           # does not read like the secret itself.
           ANTHROPIC_KEY_CANARY: ${{ secrets.ANTHROPIC_API_KEY }}
           GITHUB_TOKEN_CANARY: ${{ secrets.GITHUB_TOKEN }}
+          # GitHub injects this into every step, so it is readable from
+          # /proc/self/environ like the others and must be canaried too.
+          RUNTIME_TOKEN_CANARY: ${{ env.ACTIONS_RUNTIME_TOKEN }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
@@ -535,6 +536,7 @@ jobs:
             const leaking = helpers.findingsLeakingSecrets(findings, [
               process.env.ANTHROPIC_KEY_CANARY,
               process.env.GITHUB_TOKEN_CANARY,
+              process.env.RUNTIME_TOKEN_CANARY,
             ]);
             if (leaking.length) {
               core.setFailed(

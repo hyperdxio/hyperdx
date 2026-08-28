@@ -17,6 +17,9 @@ const crypto = require('crypto');
 
 const ICON = { critical: '🔴', major: '🟠', minor: '🔵' };
 
+/** GitHub rejects a comment body over this with a 422 on the whole post. */
+const MAX_BODY = 65536;
+
 /** Normalize a severity we may have received from a model to one of the three we render. */
 function severityOf(finding) {
   return ICON[finding.severity] ? finding.severity : 'minor';
@@ -104,7 +107,17 @@ function seenFingerprints(existingComments) {
 
 function commentBody(finding) {
   const sev = severityOf(finding);
-  return `${ICON[sev]} **${sev}** — ${finding.title}\n\n${finding.body}\n\n<!-- hdxr:${fingerprint(finding)} -->`;
+  const marker = `<!-- hdxr:${fingerprint(finding)} -->`;
+  const head = `${ICON[sev]} **${sev}** — ${finding.title}\n\n`;
+  // Cap like the summary. GitHub rejects an over-long comment with a 422 on the whole
+  // batch, and the individual retry then fails the same way, so one oversized finding
+  // would take out every other inline comment in the run.
+  const room = MAX_BODY - head.length - marker.length - 32;
+  const body =
+    finding.body.length > room
+      ? `${finding.body.slice(0, room)}\n\n_(truncated)_`
+      : finding.body;
+  return `${head}${body}\n\n${marker}`;
 }
 
 /**
@@ -264,9 +277,6 @@ function renderSummary({
   );
   return capBody(lines.join('\n'), marker);
 }
-
-/** GitHub rejects an issue-comment body over this, with a 422 on the whole post. */
-const MAX_BODY = 65536;
 
 /**
  * Keep the body postable.

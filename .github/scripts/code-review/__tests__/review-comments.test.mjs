@@ -707,3 +707,51 @@ test('a secret straddling file and title is caught (summary renders file first)'
   };
   assert.equal(helpers.findingsLeakingSecrets([f], [secret]).length, 1);
 });
+
+test('an oversized single finding is capped so it cannot 422 the whole batch', () => {
+  // The summary is capped by capBody, but the inline path was not: one huge finding would
+  // 422 createReview, then 422 its individual retry, taking every other comment with it.
+  const f = {
+    file: 'src/a.ts',
+    line: 11,
+    severity: 'major',
+    title: 'enormous',
+    body: 'x'.repeat(200000),
+  };
+  const body = helpers.commentBody(f);
+  assert.ok(body.length <= 65536, `inline body must fit, got ${body.length}`);
+  assert.match(body, /_\(truncated\)_/);
+  // The dedup marker must survive, or the finding reposts on every push.
+  assert.ok(
+    helpers.seenFingerprints([{ body }]).has(helpers.fingerprint(f)),
+    'fingerprint marker must survive truncation',
+  );
+});
+
+test('the summary renders the finding body, not just the title', () => {
+  // Unanchored findings are the only place a human reads the body in the summary; every
+  // other test asserted the title alone, so dropping the body render stayed green.
+  const f = {
+    file: 'src/x.ts',
+    severity: 'major',
+    title: 'the problem',
+    body: 'the specific fix to apply',
+  };
+  const body = helpers.renderSummary({
+    findings: [f],
+    unanchored: [f],
+    skipped: [],
+    duplicates: [],
+    posted: 0,
+    healthy: true,
+    diffHash: HASH,
+    promptHash: HASH,
+  });
+  assert.match(body, /the problem/);
+  assert.match(
+    body,
+    /the specific fix to apply/,
+    'the fix text must reach the reader',
+  );
+  assert.match(body, /None could be anchored to changed lines/);
+});
