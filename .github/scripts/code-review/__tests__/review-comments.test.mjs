@@ -694,3 +694,16 @@ test('a finding both already-posted and repeated in-run counts as skipped only o
   assert.equal(skipped.length, 1, 'one already-posted, not two');
   assert.equal(duplicates.length, 1, 'the in-run repeat is a duplicate');
 });
+
+test('a secret straddling file and title is caught (summary renders file first)', () => {
+  // The summary line renders `file` before `title`, so scanning a [title, body, file]
+  // join misses a credential split across that boundary while it renders adjacent.
+  const secret = 'glpat-averyplausiblelookingtokenXY00';
+  const half = secret.length >> 1;
+  const f = {
+    file: `src/${secret.slice(0, half)}`,
+    title: `${secret.slice(half)} leaked`,
+    body: 'nothing here',
+  };
+  assert.equal(helpers.findingsLeakingSecrets([f], [secret]).length, 1);
+});

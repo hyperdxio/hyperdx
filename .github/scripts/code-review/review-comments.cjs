@@ -315,12 +315,20 @@ function findingsLeakingSecrets(findings, secrets) {
     .filter(v => v.length >= 16);
   if (needles.length === 0) return [];
   return (findings || []).filter(f => {
-    const fields = [f.title || '', f.body || '', f.file || ''];
-    // Check the fields joined BOTH with and without a separator: a credential split
-    // across title and body evades a `\n`-joined scan while still rendering adjacent and
-    // reconstructable in the published comment.
-    const haystacks = [fields.join('\n'), fields.join('')];
-    return needles.some(n => haystacks.some(h => h.includes(n)));
+    // Scan the strings that are actually PUBLISHED, in the order they are published.
+    // Guessing a field order misses a credential straddling two fields: the inline body
+    // renders title then body, while the summary line renders file then title.
+    //
+    // Also compare with everything outside credential-shaped characters removed, so the
+    // markup between two halves (the summary renders `file` — **title**) cannot hide a
+    // split secret a reader can still reconstruct. Needles are >= 16 characters, so
+    // collapsing punctuation does not realistically create a false match.
+    const collapse = t => t.replace(/[^A-Za-z0-9_-]/g, '');
+    const published = [commentBody(f), renderFinding(f)];
+    const haystacks = [...published, ...published.map(collapse)];
+    return needles.some(n =>
+      haystacks.some(h => h.includes(n) || h.includes(collapse(n))),
+    );
   });
 }
 
