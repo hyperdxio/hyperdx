@@ -5,6 +5,7 @@ import { serializeError } from 'serialize-error';
 import app from '@/api-app';
 import * as config from '@/config';
 import { LOCAL_APP_TEAM } from '@/controllers/team';
+import { runStartupMigrations } from '@/migrations';
 import { connectDBWithRetry, mongooseConnection } from '@/models';
 import opampApp from '@/opamp/app';
 import { setupTeamDefaults } from '@/setupDefaults';
@@ -91,6 +92,8 @@ export default class Server {
     // connectDBWithRetry for why a single failed initial connect must not be
     // allowed to leave the process running but permanently unable to serve.
     await connectDBWithRetry();
+
+    await runStartupMigrations();
 
     // Initialize default connections and sources for local app mode
     if (config.IS_LOCAL_APP_MODE) {
