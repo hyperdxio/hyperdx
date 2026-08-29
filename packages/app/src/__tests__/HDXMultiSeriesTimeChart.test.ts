@@ -11,6 +11,7 @@ import type { ActiveClickSeries } from '@/HDXMultiSeriesTimeChart';
 import {
   buildActiveClickSeries,
   collectMemoChartGradientHexes,
+  formatAxisTick,
   getSelectedLineData,
   getVisibleLineData,
   getVisibleTooltipRows,
@@ -18,6 +19,42 @@ import {
   sameActiveClickSeries,
 } from '@/HDXMultiSeriesTimeChart';
 import { COLORS } from '@/utils';
+
+describe('formatAxisTick', () => {
+  it('falls back to mantissa 0 when the format has none configured', () => {
+    // Matches the historical behavior for typically-large, unconfigured
+    // counts (log/event counts, request rates): compact, no decimals.
+    expect(formatAxisTick(1234, { output: 'number' })).toBe('1k');
+  });
+
+  it('honors an explicit mantissa instead of always rounding to 0', () => {
+    // Regression: a chart whose Decimals setting produces correct
+    // tooltip/legend values (e.g. via formatNumber(value, numberFormat)
+    // directly, see ChartTooltip.tsx) would previously still show every
+    // axis tick as "0" for values under 1 (fractional Prometheus gauges,
+    // ratios, etc.), since mantissa was unconditionally forced to 0.
+    expect(formatAxisTick(0.14, { output: 'number', mantissa: 2 })).toBe(
+      '0.14',
+    );
+    expect(formatAxisTick(0.021, { output: 'number', mantissa: 2 })).toBe(
+      '0.02',
+    );
+  });
+
+  it('always strips a configured unit and forces compact averaging', () => {
+    expect(
+      formatAxisTick(1234, {
+        output: 'number',
+        mantissa: 2,
+        unit: 'req/s',
+      }),
+    ).toBe('1.23k');
+  });
+
+  it('uses compact Intl formatting when no axisNumberFormat is set', () => {
+    expect(formatAxisTick(1234)).toBe('1.2K');
+  });
+});
 
 describe('collectMemoChartGradientHexes', () => {
   it('includes every categorical hex from COLORS up front', () => {

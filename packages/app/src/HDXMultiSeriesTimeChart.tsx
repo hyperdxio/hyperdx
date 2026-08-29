@@ -766,6 +766,36 @@ export function collectMemoChartGradientHexes(
   );
 }
 
+/**
+ * Y-axis tick label formatter. Exported so a unit test can pin the
+ * mantissa-precedence behavior without rendering recharts.
+ *
+ * `average` and `unit` are always forced (compact abbreviation like `1.2k`
+ * reads better on an axis than a series' configured unit repeated on every
+ * tick), but an explicit `axisNumberFormat.mantissa` is honored rather than
+ * discarded. Without this, a chart whose configured Decimals produces
+ * correct tooltip/legend values (e.g. `0.14`) would still round every axis
+ * tick to `0` for any series whose values live under 1 (fractional
+ * Prometheus gauges, ratios, etc.), since `mantissa` only defaults to `0`
+ * here for the common case of unconfigured, typically-large counts.
+ */
+export function formatAxisTick(
+  value: number,
+  axisNumberFormat?: NumberFormat,
+): string {
+  return axisNumberFormat
+    ? formatNumber(value, {
+        mantissa: 0,
+        ...axisNumberFormat,
+        average: true,
+        unit: undefined,
+      })
+    : new Intl.NumberFormat('en-US', {
+        notation: 'compact',
+        compactDisplay: 'short',
+      }).format(value);
+}
+
 export const MemoChart = memo(function MemoChart({
   graphResults,
   setIsClickActive,
@@ -1115,19 +1145,7 @@ export const MemoChart = memo(function MemoChart({
   );
 
   const tickFormatter = useCallback(
-    (value: number) => {
-      return axisNumberFormat
-        ? formatNumber(value, {
-            ...axisNumberFormat,
-            average: true,
-            mantissa: 0,
-            unit: undefined,
-          })
-        : new Intl.NumberFormat('en-US', {
-            notation: 'compact',
-            compactDisplay: 'short',
-          }).format(value);
-    },
+    (value: number) => formatAxisTick(value, axisNumberFormat),
     [axisNumberFormat],
   );
 
