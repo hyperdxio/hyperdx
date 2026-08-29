@@ -265,6 +265,10 @@ const MetricTablesSchema = new Schema(
     histogramPoints1h: String,
     expHistogramPoints5m: String,
     expHistogramPoints1h: String,
+    // Layout flag: 'v15' serves a v1.5 retrofit database through the v2
+    // query recipes (raw scans read the per-kind wide tables; series and
+    // tier tables keep v2's names). Default/absent = 'v2'.
+    metricsLayout: String,
   },
   { _id: false },
 );

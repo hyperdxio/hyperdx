@@ -1,5 +1,5 @@
 import { ChSql, chSql } from '@/clickhouse';
-import { BuilderChartConfig } from '@/types';
+import { BuilderChartConfig, MetricsLayout } from '@/types';
 
 /**
  * SQL (CTE) builders for the OTel metrics v2 schema — the series/points split
@@ -255,6 +255,38 @@ const seriesScanFilter = (fast: unknown) =>
  * present that day).
  */
 const NOT_STALENESS_MARKER = `bitAnd(Flags, 1) = 0`;
+
+/**
+ * The v15 layout (see MetricsLayoutSchema) serves the v1.5 retrofit database
+ * through these SAME builders — one query code path, two layouts. Exactly
+ * three things branch: the raw points-table routing (renderChartConfig), and
+ * the two helpers below. Everything else — every recipe fix, the gauge
+ * lookback, the tier shapes — is shared verbatim.
+ */
+
+/** Layout branch: fix #5's zero-bucket width read on RAW exp scans. v2
+ * stores ZeroThreshold on the points table; the v1.5 wide exp table has NO
+ * such column, so the v15 raw path binds a literal 0 — BY DESIGN the witness
+ * that this layout cannot know nonzero zero-bucket widths (the disclosed
+ * zt-p50 accuracy gap — structural, do not "fix"). Never reference
+ * ZeroThreshold in a v15 raw query. Tier reads need no branch: the tier
+ * column exists in both layouts (v15's is 0 by MV construction). */
+const ztRawExpr = (layout?: MetricsLayout) =>
+  layout === 'v15' ? 'toFloat64(0) AS zt' : 'max(ZeroThreshold) AS zt';
+
+/** Layout branch: the per-row stored-quantile-values array read by the
+ * summary quantile shape. v2 stores it directly (QuantileValues, ordered to
+ * match the series table's Quantiles); the v1.5 wide layout re-derives it
+ * from v1's ValueAtQuantiles Nested pair, key-sorted so the positions line
+ * up with the series table's arraySort'ed Quantiles. */
+const summaryQuantileValuesExpr = (layout?: MetricsLayout) =>
+  layout === 'v15'
+    ? 'arrayMap(t -> t.2, arraySort(t -> t.1, arrayZip(ValueAtQuantiles.Quantile, ValueAtQuantiles.Value)))'
+    : 'QuantileValues';
+
+/** Labels unsupported-aggregate errors with the active layout (mirrors the
+ * parity harness's qctx.src()). */
+const layoutLabel = (layout?: MetricsLayout) => layout ?? 'v2';
 
 /**
  * Prometheus's instant-selector lookback delta: a gauge-class LEVEL
@@ -925,6 +957,7 @@ export const translateHistogramV2 = ({
   select,
   fast,
   resolved,
+  layout,
   ...rest
 }: {
   select: Exclude<BuilderChartConfig['select'], string>[number];
@@ -939,6 +972,8 @@ export const translateHistogramV2 = ({
   pointsFrom: TemplatedInput;
   pointsWhere: TemplatedInput;
   valueAlias: TemplatedInput;
+  /** Error-label only: histogram shapes share every column across layouts. */
+  layout?: MetricsLayout;
 }): WithClauses => {
   if (select.aggFn === 'quantile') {
     if (!('level' in select) || select.level == null)
@@ -963,7 +998,9 @@ export const translateHistogramV2 = ({
       rawMarkerFilter: true,
     });
   }
-  throw new Error(`${select.aggFn} is not supported for histograms currently`);
+  throw new Error(
+    `${select.aggFn} is not supported for histograms currently (${layoutLabel(layout)} layout)`,
+  );
 };
 
 /**
@@ -977,6 +1014,7 @@ export const translateHistogramRollupV2 = ({
   select,
   fast,
   resolved,
+  layout,
   ...rest
 }: {
   select: Exclude<BuilderChartConfig['select'], string>[number];
@@ -991,6 +1029,8 @@ export const translateHistogramRollupV2 = ({
   pointsFrom: TemplatedInput;
   pointsWhere: TemplatedInput;
   valueAlias: TemplatedInput;
+  /** Error-label only: tier tables are v2-verbatim in both layouts. */
+  layout?: MetricsLayout;
 }): WithClauses => {
   if (select.aggFn === 'quantile') {
     if (!('level' in select) || select.level == null)
@@ -1028,7 +1068,7 @@ export const translateHistogramRollupV2 = ({
     });
   }
   throw new Error(
-    `${select.aggFn} is not supported for histogram rollups currently`,
+    `${select.aggFn} is not supported for histogram rollups currently (${layoutLabel(layout)} layout)`,
   );
 };
 
@@ -1036,6 +1076,7 @@ export const translateExpHistogramV2 = ({
   select,
   temporality,
   fast,
+  layout,
   ...rest
 }: {
   /** Whole-metric fast path (no filters/group-by): temporality resolved
@@ -1053,6 +1094,8 @@ export const translateExpHistogramV2 = ({
    * variants per point — measured −39% wall / −47% spill for cumulative,
    * more for delta which drops the window sort entirely). */
   temporality?: 'delta' | 'cumulative';
+  /** Physical layout of the raw table (drives the fix-#5 zt read). */
+  layout?: MetricsLayout;
 }): WithClauses => {
   if (select.aggFn === 'quantile') {
     if (!('level' in select) || select.level == null)
@@ -1061,6 +1104,7 @@ export const translateExpHistogramV2 = ({
       ...rest,
       level: select.level,
       temporality,
+      layout,
       // joinless only when a single temporality branch is emitted
       fast: fast != null && temporality != null,
     });
@@ -1076,7 +1120,7 @@ export const translateExpHistogramV2 = ({
     return histogramAvgCtesV2({ ...rest, fast, resolved: { temporality } });
   }
   throw new Error(
-    `${select.aggFn} is not supported for exponential histograms currently`,
+    `${select.aggFn} is not supported for exponential histograms currently (${layoutLabel(layout)} layout)`,
   );
 };
 
@@ -1084,6 +1128,7 @@ export const translateSummaryV2 = ({
   select,
   fast,
   resolved,
+  layout,
   ...rest
 }: {
   select: Exclude<BuilderChartConfig['select'], string>[number];
@@ -1098,6 +1143,8 @@ export const translateSummaryV2 = ({
   pointsFrom: TemplatedInput;
   pointsWhere: TemplatedInput;
   valueAlias: TemplatedInput;
+  /** Physical layout of the raw table (drives the stored-values read). */
+  layout?: MetricsLayout;
 }): WithClauses => {
   if (select.aggFn === 'quantile') {
     if (!('level' in select) || select.level == null)
@@ -1105,12 +1152,15 @@ export const translateSummaryV2 = ({
     return summaryQuantileCtesV2({
       ...rest,
       level: select.level,
+      layout,
     });
   }
   if (select.aggFn === 'count') {
     return histogramCountCtesV2({ ...rest, fast, resolved });
   }
-  throw new Error(`${select.aggFn} is not supported for summaries currently`);
+  throw new Error(
+    `${select.aggFn} is not supported for summaries currently (${layoutLabel(layout)} layout)`,
+  );
 };
 
 /** Builds the absolute-index positive-bucket map from a
@@ -1156,6 +1206,8 @@ type ExpBranchArgs = {
   timeBucketSelect: TemplatedInput;
   pointsFrom: TemplatedInput;
   pointsWhere: TemplatedInput;
+  /** Physical layout of the RAW exp table (drives the fix-#5 zt read). */
+  layout?: MetricsLayout;
 };
 
 /** Delta branch: points are additive across DISTINCT timestamps, but
@@ -1171,6 +1223,7 @@ const deltaExpCtes = ({
   timeBucketSelect,
   pointsFrom,
   pointsWhere,
+  layout,
 }: ExpBranchArgs): WithClauses => [
   {
     name: 'ExpRaw',
@@ -1182,7 +1235,7 @@ const deltaExpCtes = ({
         argMax((PositiveBucketCounts, PositiveOffset), Count) AS tpl,
         argMax((NegativeBucketCounts, NegativeOffset), Count) AS ntpl,
         max(toInt64(ZeroCount)) AS zero_count,
-        max(ZeroThreshold) AS zt
+        ${ztRawExpr(layout)}
       FROM ${pointsFrom}
       WHERE ${pointsWhere}${seriesScanFilter(fast)} AND ${NOT_STALENESS_MARKER}
       GROUP BY SeriesHash, TimeUnix
@@ -1214,6 +1267,7 @@ const cumulativeExpCtes = ({
   timeBucketSelect,
   pointsFrom,
   pointsWhere,
+  layout,
 }: ExpBranchArgs): WithClauses => [
   {
     name: 'ExpRaw',
@@ -1278,7 +1332,7 @@ const cumulativeExpCtes = ({
           argMax((NegativeBucketCounts, NegativeOffset), Count) AS ntpl,
           max(toInt64(ZeroCount)) AS zero_count,
           max(toInt64(Count)) AS total_count,
-          max(ZeroThreshold) AS zt
+          ${ztRawExpr(layout)}
         FROM ${pointsFrom}
         WHERE ${pointsWhere}${seriesScanFilter(fast)} AND ${NOT_STALENESS_MARKER}
         GROUP BY SeriesHash, TimeUnix
@@ -1313,6 +1367,7 @@ const dualExpCtes = ({
   timeBucketSelect,
   pointsFrom,
   pointsWhere,
+  layout,
 }: ExpBranchArgs): WithClauses => [
   {
     // Same-timestamp duplicates collapse per (series, ts) first — same-ts
@@ -1394,7 +1449,7 @@ const dualExpCtes = ({
           ) AS negMap,
           max(toInt64(ZeroCount)) AS zero_count,
           max(toInt64(Count)) AS total_count,
-          max(ZeroThreshold) AS zt
+          ${ztRawExpr(layout)}
         FROM ${pointsFrom}
         WHERE ${pointsWhere} AND ${SERIES_HASH_FILTER} AND ${NOT_STALENESS_MARKER}
         GROUP BY SeriesHash, TimeUnix
@@ -1464,6 +1519,7 @@ const expHistogramQuantileCtesV2 = ({
   valueAlias,
   level,
   temporality,
+  layout,
 }: {
   fast?: boolean;
   timeBucketSelect: TemplatedInput;
@@ -1473,12 +1529,19 @@ const expHistogramQuantileCtesV2 = ({
   valueAlias: TemplatedInput;
   level: number;
   temporality?: 'delta' | 'cumulative';
+  layout?: MetricsLayout;
 }): WithClauses => [
   ...(temporality === 'delta'
-    ? deltaExpCtes({ fast, timeBucketSelect, pointsFrom, pointsWhere })
+    ? deltaExpCtes({ fast, timeBucketSelect, pointsFrom, pointsWhere, layout })
     : temporality === 'cumulative'
-      ? cumulativeExpCtes({ fast, timeBucketSelect, pointsFrom, pointsWhere })
-      : dualExpCtes({ timeBucketSelect, pointsFrom, pointsWhere })),
+      ? cumulativeExpCtes({
+          fast,
+          timeBucketSelect,
+          pointsFrom,
+          pointsWhere,
+          layout,
+        })
+      : dualExpCtes({ timeBucketSelect, pointsFrom, pointsWhere, layout })),
   {
     name: 'ExpJoined',
     sql:
@@ -1632,6 +1695,7 @@ export const translateExpHistogramRollupV2 = ({
   select,
   temporality,
   fast,
+  layout,
   ...rest
 }: {
   /** Whole-metric fast path (no filters/group-by): temporality resolved
@@ -1645,6 +1709,9 @@ export const translateExpHistogramRollupV2 = ({
   pointsWhere: TemplatedInput;
   valueAlias: TemplatedInput;
   temporality?: 'delta' | 'cumulative';
+  /** Error-label only: tier tables are v2-verbatim in both layouts (incl.
+   * the tier ZeroThreshold column — no zt branch on tiers). */
+  layout?: MetricsLayout;
 }): WithClauses => {
   if (select.aggFn === 'quantile') {
     if (!('level' in select) || select.level == null)
@@ -1664,7 +1731,7 @@ export const translateExpHistogramRollupV2 = ({
     });
   }
   throw new Error(
-    `${select.aggFn} is not supported for exponential histogram rollups currently`,
+    `${select.aggFn} is not supported for exponential histogram rollups currently (${layoutLabel(layout)} layout)`,
   );
 };
 
@@ -2022,6 +2089,7 @@ const summaryQuantileCtesV2 = ({
   pointsWhere,
   valueAlias,
   level,
+  layout,
 }: {
   timeBucketSelect: TemplatedInput;
   groupBy?: TemplatedInput;
@@ -2029,6 +2097,10 @@ const summaryQuantileCtesV2 = ({
   pointsWhere: TemplatedInput;
   valueAlias: TemplatedInput;
   level: number;
+  /** Physical layout of the raw table: v2 reads the stored QuantileValues
+   * column; v15 re-derives it from the ValueAtQuantiles Nested pair (see
+   * summaryQuantileValuesExpr). */
+  layout?: MetricsLayout;
 }): WithClauses => [
   {
     // Same-timestamp duplicates collapse per (series, ts) to the row with
@@ -2045,7 +2117,7 @@ const summaryQuantileCtesV2 = ({
           TimeUnix,
           ${timeBucketSelect},
           SeriesHash,
-          argMax(QuantileValues, Count) AS QuantileValues
+          argMax(${summaryQuantileValuesExpr(layout)}, Count) AS QuantileValues
         FROM ${pointsFrom}
         WHERE ${pointsWhere} AND ${SERIES_HASH_FILTER} AND ${NOT_STALENESS_MARKER}
         GROUP BY SeriesHash, TimeUnix

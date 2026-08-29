@@ -271,6 +271,12 @@ type DBTimeChartComponentProps = {
   showDisplaySwitcher?: boolean;
   showLegend?: boolean;
   sourceId?: string;
+  /**
+   * Order series by name rather than by the order ClickHouse returned them
+   * in, so each series keeps the same color (and stacking position) across
+   * refreshes. Client-side only — the query is unchanged.
+   */
+  sortSeriesByName?: boolean;
   /** Names of series that should not be shown in the chart */
   hiddenSeries?: string[];
   title?: React.ReactNode;
@@ -305,6 +311,7 @@ function DBTimeChartComponent({
   showDisplaySwitcher = true,
   showLegend = true,
   sourceId,
+  sortSeriesByName = false,
   hiddenSeries,
   title,
   toolbarPrefix,
@@ -544,6 +551,7 @@ function DBTimeChartComponent({
         source,
         hiddenSeries,
         previousPeriodOffsetSeconds,
+        sortSeriesByName,
       });
       return {
         ...defaultResponse,
@@ -569,6 +577,7 @@ function DBTimeChartComponent({
     previousPeriodData,
     hiddenSeries,
     previousPeriodOffsetSeconds,
+    sortSeriesByName,
   ]);
 
   // To enable backward compatibility, allow non-controlled usage of displayType

@@ -743,6 +743,7 @@ export function formatResponseForTimeChart({
   source,
   hiddenSeries = [],
   previousPeriodOffsetSeconds = 0,
+  sortSeriesByName = false,
 }: {
   dateRange: [Date, Date];
   granularity?: SQLInterval;
@@ -767,6 +768,14 @@ export function formatResponseForTimeChart({
   source?: TSource;
   hiddenSeries?: string[];
   previousPeriodOffsetSeconds?: number;
+  /**
+   * Sort series by name instead of by the order ClickHouse returned the
+   * first row of each series in. Purely presentational: series order (and
+   * therefore the color each one gets, and the stacking order) becomes
+   * stable across refreshes instead of flipping with row order. Log-level
+   * grouping still wins as the primary sort key.
+   */
+  sortSeriesByName?: boolean;
 }) {
   const meta = currentPeriodResponse.meta;
 
@@ -823,10 +832,15 @@ export function formatResponseForTimeChart({
 
   const logLevelColorOrder = getLogLevelColorOrder();
   const sortedLineData = Object.values(lineDataMap).sort((a, b) => {
-    return (
+    const logLevelDiff =
       logLevelColorOrder.findIndex(color => color === a.color) -
-      logLevelColorOrder.findIndex(color => color === b.color)
-    );
+      logLevelColorOrder.findIndex(color => color === b.color);
+    if (logLevelDiff !== 0 || !sortSeriesByName) {
+      return logLevelDiff;
+    }
+    // Keys are unique, so this never ties -> a total order, independent of
+    // the row order the query happened to return.
+    return a.dataKey.localeCompare(b.dataKey);
   });
 
   if (generateEmptyBuckets && granularity != null) {

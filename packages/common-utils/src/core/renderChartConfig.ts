@@ -60,7 +60,9 @@ import {
   DisplayType,
   isMetricsV2Tables,
   METRICS_V2_METRIC_TYPE,
+  METRICS_V15_RAW_TABLE,
   MetricsDataType,
+  MetricsLayout,
   PromqlChartConfig,
   QuerySettings,
   RawSqlChartConfig,
@@ -2568,17 +2570,29 @@ async function translateMetricChartConfigV2(
   }
 
   const seriesTable = metricTables.series;
+  // Layout branch 1 of 3 (see MetricsLayoutSchema): the v2 layout shares one
+  // scalar points table between gauges and sums; the v15 layout routes RAW
+  // scans to the per-kind wide table (the configured per-type field, or the
+  // conventional v1 name). Series and 5m/1h tier tables are NOT resolved
+  // here — they carry v2's names in both layouts, so every tier query runs
+  // unmodified.
+  const layout: MetricsLayout =
+    metricTables.metricsLayout === 'v15' ? 'v15' : 'v2';
   const pointsTable =
-    metricType === MetricsDataType.Histogram
-      ? metricTables.histogramPoints
-      : metricType === MetricsDataType.ExponentialHistogram
-        ? metricTables.expHistogramPoints
-        : metricType === MetricsDataType.Summary
-          ? metricTables.summaryPoints
-          : metricTables.points;
+    layout === 'v15'
+      ? metricTables[metricType] || METRICS_V15_RAW_TABLE[metricType]
+      : metricType === MetricsDataType.Histogram
+        ? metricTables.histogramPoints
+        : metricType === MetricsDataType.ExponentialHistogram
+          ? metricTables.expHistogramPoints
+          : metricType === MetricsDataType.Summary
+            ? metricTables.summaryPoints
+            : metricTables.points;
 
   if (!pointsTable) {
-    throw new Error(`no v2 points table configured for type=${metricType}`);
+    throw new Error(
+      `no ${layout} points table configured for type=${metricType}`,
+    );
   }
 
   // Number/table tiles carry NO granularity — the CTE time expressions fall
@@ -3533,6 +3547,7 @@ async function translateMetricChartConfigV2(
       pointsFrom,
       pointsWhere,
       valueAlias,
+      layout,
     };
     const familyFastArg = familyFastActive ? familyFast : undefined;
     const familyResolved =

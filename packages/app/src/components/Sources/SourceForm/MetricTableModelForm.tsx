@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
-import { useWatch } from 'react-hook-form';
+import { Controller, useWatch } from 'react-hook-form';
 import { MetricsDataType } from '@hyperdx/common-utils/dist/types';
-import { Stack } from '@mantine/core';
+import { Select, Stack } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 
 import { useTablesDirect } from '@/clickhouse';
@@ -170,6 +170,35 @@ export function MetricTableModelForm({ control, setValue }: TableModelProps) {
   return (
     <>
       <Stack gap="sm">
+        <FormRow
+          label={'Metrics Layout'}
+          helpText={
+            'Physical layout served by the v2 query recipes. v2 = the ' +
+            'series/points split schema. v1.5 = the retrofit layout: raw ' +
+            'scans read the per-kind wide tables below (or the conventional ' +
+            'v1 names when unset); the series and 5m/1h rollup tables keep ' +
+            'their v2 names in the same database.'
+          }
+        >
+          <Controller
+            control={control}
+            name={'metricTables.metricsLayout' as any}
+            render={({ field: { onChange, value } }) => (
+              <Select
+                data={[
+                  { value: 'v2', label: 'v2 (series/points split)' },
+                  {
+                    value: 'v15',
+                    label: 'v1.5 (wide tables + series/tiers)',
+                  },
+                ]}
+                value={value ?? 'v2'}
+                onChange={v => onChange(v === 'v15' ? 'v15' : 'v2')}
+                allowDeselect={false}
+              />
+            )}
+          />
+        </FormRow>
         {Object.values(MetricsDataType).map(metricType => (
           <FormRow
             key={metricType.toLowerCase()}

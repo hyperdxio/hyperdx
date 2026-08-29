@@ -281,6 +281,21 @@ describe('migrateUserPreferences', () => {
       expect(localStorageMock.setItem).not.toHaveBeenCalled();
     });
 
+    it('should preserve optional chart preferences', () => {
+      const withChartPrefs: UserPreferences = {
+        isUTC: false,
+        timeFormat: '12h',
+        colorMode: 'dark',
+        font: 'IBM Plex Mono',
+        sortChartSeriesByName: true,
+      };
+
+      const result = migrateUserPreferences(JSON.stringify(withChartPrefs));
+
+      expect(result).toEqual(withChartPrefs);
+      expect(localStorageMock.setItem).not.toHaveBeenCalled();
+    });
+
     it('should handle data with both theme and colorMode (edge case)', () => {
       // If somehow both exist, prefer colorMode (already migrated)
       const mixedData = JSON.stringify({

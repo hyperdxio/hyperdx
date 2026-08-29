@@ -1747,6 +1747,271 @@ describe('metrics v2 render', () => {
     });
   });
 
+  describe('v1.5 layout mode (v2 recipes over the v1-named wide tables)', () => {
+    // A v15 source: raw scans read the per-kind wide tables; series and
+    // 5m/1h tier tables keep v2's names in the same database.
+    const V15_TABLES = {
+      gauge: 'otel_metrics_gauge',
+      histogram: 'otel_metrics_histogram',
+      sum: 'otel_metrics_sum',
+      summary: 'otel_metrics_summary',
+      'exponential histogram': 'otel_metrics_exponential_histogram',
+      series: 'otel_metrics_series',
+      points: '',
+      histogramPoints: '',
+      expHistogramPoints: '',
+      summaryPoints: '',
+      families: 'otel_metrics_families',
+      metricsLayout: 'v15' as const,
+    };
+    const v15Cfg = (
+      metricType: MetricsDataType,
+      aggFn: string,
+      over?: Record<string, unknown>,
+    ) =>
+      ({
+        ...base,
+        metricTables: V15_TABLES,
+        select: [
+          {
+            aggFn,
+            ...(aggFn === 'quantile' ? { level: 0.9 } : {}),
+            aggCondition: '',
+            valueExpression: 'Value',
+            metricName: 'test.metric',
+            metricType,
+          },
+        ],
+        ...over,
+      }) as ChartConfigWithOptDateRange;
+
+    it('raw scalar reads route to the per-kind wide table and keep the v2 recipe', async () => {
+      (mockMetadata.getMetricSeriesProfile as jest.Mock).mockResolvedValue({
+        temporality: 'cumulative',
+        isMonotonic: true,
+        otherMetricTypes: [],
+      });
+      const sum = parameterizedQueryToSql(
+        await renderChartConfig(
+          v15Cfg(MetricsDataType.Sum, 'increase'),
+          mockMetadata,
+          undefined,
+        ),
+      );
+      expect(sum).toContain('otel_metrics_sum');
+      expect(sum).toContain("MetricType = 'sum'");
+      expect(sum).toContain('SeriesHash IN (SELECT SeriesHash FROM Series)');
+      expect(sum).toContain('max(Value) AS ValueMax');
+      // fix #6 rides the shared builder: the wide sum table's StartTimeUnix
+      // feeds the same first-sample recency gate as v2
+      expect(sum).toContain('max(StartTimeUnix) AS StartTimeUnix');
+      expect(sum).toContain(
+        'IF(StartTimeUnix >= TimeUnix - INTERVAL 300 second, ValueMax, NULL)',
+      );
+      expect(sum).not.toContain('otel_metrics_points');
+      expect(sum).not.toContain('cityHash64');
+
+      const gauge = parameterizedQueryToSql(
+        await renderChartConfig(
+          v15Cfg(MetricsDataType.Gauge, 'avg'),
+          mockMetadata,
+          undefined,
+        ),
+      );
+      expect(gauge).toContain('otel_metrics_gauge');
+      // the gauge lookback default is shared code
+      expect(gauge).toContain('ARRAY JOIN arrayMap(');
+      expect(gauge).toContain('maxIf(Value, bitAnd(Flags, 1) = 0) AS ValueMax');
+      expect(gauge).toContain('HAVING argMax(TsIsMarker, TimeUnix) = 0');
+      expect(gauge).not.toContain('otel_metrics_points');
+      expect(gauge).not.toContain('otel_metrics_sum');
+    });
+
+    it('hist quantile raw reads the wide table; bounds resolve via the series table', async () => {
+      (mockMetadata.getMetricSeriesProfile as jest.Mock).mockResolvedValue({
+        temporality: 'cumulative',
+        otherMetricTypes: [],
+      });
+      const rendered = parameterizedQueryToSql(
+        await renderChartConfig(
+          v15Cfg(MetricsDataType.Histogram, 'quantile', quantileWindow),
+          mockMetadata,
+          undefined,
+        ),
+      );
+      expect(rendered).toContain('otel_metrics_histogram');
+      expect(rendered).toContain(
+        'CAST(argMax(BucketCounts, Count) AS Array(Int64))',
+      );
+      expect(rendered).toContain('s.ExplicitBounds AS ExplicitBounds');
+      expect(rendered).not.toContain('otel_metrics_histogram_points');
+      expect(rendered).not.toContain('cityHash64');
+    });
+
+    it('exp quantile raw binds a literal 0 zero-bucket width (no ZeroThreshold column)', async () => {
+      (mockMetadata.getMetricSeriesProfile as jest.Mock).mockResolvedValue({
+        temporality: 'cumulative',
+        otherMetricTypes: [],
+      });
+      const rendered = parameterizedQueryToSql(
+        await renderChartConfig(
+          v15Cfg(
+            MetricsDataType.ExponentialHistogram,
+            'quantile',
+            quantileWindow,
+          ),
+          mockMetadata,
+          undefined,
+        ),
+      );
+      expect(rendered).toContain('otel_metrics_exponential_histogram');
+      // fixes #1/#4 carry over: downscale-before-diff + signed walk
+      expect(rendered).toContain('least(Scale, prev_scale)');
+      expect(rendered).toContain('arrayReverse(mergedNeg.1) AS nks');
+      // fix #5 SHAPE carries over, but the wide table cannot know the width —
+      // the DISCLOSED zt-p50 accuracy gap, structural to this layout
+      expect(rendered).toContain('toFloat64(0) AS zt');
+      expect(rendered).toContain('max(zt) AS zeroWidth');
+      expect(rendered).toContain('if(negTotal > 0, -zeroWidth, 0.)');
+      expect(rendered).not.toContain('ZeroThreshold');
+      expect(rendered).not.toContain('otel_metrics_exp_histogram_points');
+    });
+
+    it('summary quantile re-derives the stored values via the sorted zip of the Nested pair', async () => {
+      const rendered = parameterizedQueryToSql(
+        await renderChartConfig(
+          v15Cfg(MetricsDataType.Summary, 'quantile', quantileWindow),
+          mockMetadata,
+          undefined,
+        ),
+      );
+      expect(rendered).toContain('otel_metrics_summary');
+      expect(rendered).toContain(
+        'argMax(arrayMap(t -> t.2, arraySort(t -> t.1, arrayZip(ValueAtQuantiles.Quantile, ValueAtQuantiles.Value))), Count) AS QuantileValues',
+      );
+      expect(rendered).toContain('argMax(QuantileValues, TimeUnix) AS qvals');
+      expect(rendered).not.toContain('otel_metrics_summary_points');
+    });
+
+    it('tier renders are v2-verbatim (byte-identical SQL, incl. the tier zt read)', async () => {
+      (mockMetadata.getMetricSeriesProfile as jest.Mock).mockResolvedValue({
+        temporality: 'cumulative',
+        isMonotonic: true,
+        otherMetricTypes: [],
+      });
+      // identical configs except the layout flag; tier reads never touch
+      // the raw tables, so the rendered SQL must match byte-for-byte
+      const tierTables = {
+        ...V15_TABLES,
+        points: 'otel_metrics_points',
+        points1h: 'otel_metrics_points_1h',
+        expHistogramPoints: 'otel_metrics_exp_histogram_points',
+        expHistogramPoints5m: 'otel_metrics_exp_histogram_points_5m',
+      };
+      const tierCfg = (layout: 'v2' | 'v15', metricType: MetricsDataType) =>
+        v15Cfg(
+          metricType,
+          metricType === MetricsDataType.Sum ? 'increase' : 'quantile',
+          {
+            metricTables: { ...tierTables, metricsLayout: layout },
+            granularity:
+              metricType === MetricsDataType.Sum ? '1 hour' : '30 minute',
+          },
+        );
+      for (const metricType of [
+        MetricsDataType.Sum,
+        MetricsDataType.ExponentialHistogram,
+      ]) {
+        const v15 = parameterizedQueryToSql(
+          await renderChartConfig(
+            tierCfg('v15', metricType),
+            mockMetadata,
+            undefined,
+          ),
+        );
+        const v2 = parameterizedQueryToSql(
+          await renderChartConfig(
+            tierCfg('v2', metricType),
+            mockMetadata,
+            undefined,
+          ),
+        );
+        expect(v15).toEqual(v2);
+      }
+      // the tier zt read has NO v15 branch — the tier column exists in both
+      // layouts (v15's is 0 by MV construction)
+      const expTier = parameterizedQueryToSql(
+        await renderChartConfig(
+          tierCfg('v15', MetricsDataType.ExponentialHistogram),
+          mockMetadata,
+          undefined,
+        ),
+      );
+      expect(expTier).toContain('otel_metrics_exp_histogram_points_5m');
+      expect(expTier).toContain('max(ZeroThreshold) AS zt');
+    });
+
+    it('empty per-kind fields fall back to the conventional v1 table names', async () => {
+      (mockMetadata.getMetricSeriesProfile as jest.Mock).mockResolvedValue({
+        temporality: 'delta',
+        otherMetricTypes: [],
+      });
+      const rendered = parameterizedQueryToSql(
+        await renderChartConfig(
+          v15Cfg(MetricsDataType.Sum, 'sum', {
+            metricTables: {
+              ...V15_TABLES,
+              gauge: '',
+              sum: '',
+              histogram: '',
+              summary: '',
+              'exponential histogram': '',
+            },
+          }),
+          mockMetadata,
+          undefined,
+        ),
+      );
+      expect(rendered).toContain('otel_metrics_sum');
+    });
+
+    it('unsupported-aggregate errors carry the active layout label', async () => {
+      await expect(
+        renderChartConfig(
+          v15Cfg(MetricsDataType.ExponentialHistogram, 'min'),
+          mockMetadata,
+          undefined,
+        ),
+      ).rejects.toThrow(
+        'min is not supported for exponential histograms currently (v15 layout)',
+      );
+      await expect(
+        renderChartConfig(
+          {
+            ...base,
+            metricTables: {
+              ...base.metricTables,
+              expHistogramPoints: 'otel_metrics_exp_histogram_points',
+            },
+            select: [
+              {
+                aggFn: 'min',
+                aggCondition: '',
+                valueExpression: 'Value',
+                metricName: 'test.metric',
+                metricType: MetricsDataType.ExponentialHistogram,
+              },
+            ],
+          } as ChartConfigWithOptDateRange,
+          mockMetadata,
+          undefined,
+        ),
+      ).rejects.toThrow(
+        'min is not supported for exponential histograms currently (v2 layout)',
+      );
+    });
+  });
+
   const summaryQuantileCfg = (windowHours: number) =>
     ({
       ...base,

@@ -45,6 +45,31 @@ export enum DisplayType {
 
 export type KeyValue<Key = string, Value = string> = { key: Key; value: Value };
 
+/**
+ * Physical layout served by the v2 query recipes. 'v2' is the native
+ * series/points split schema. 'v15' is the v1.5 retrofit: v1's five wide
+ * tables re-created (same names, same column set) with a MATERIALIZED
+ * exact-v2-hash SeriesHash, plus an MV-built otel_metrics_series and
+ * v2-verbatim 5m/1h rollup tiers, all in ONE database. One query code path,
+ * two layouts — raw scans route to the per-kind wide table, everything else
+ * (series resolution, tier reads, every recipe fix) is shared verbatim.
+ */
+export const MetricsLayoutSchema = z.enum(['v2', 'v15']);
+export type MetricsLayout = z.infer<typeof MetricsLayoutSchema>;
+
+/**
+ * Conventional v1-named wide tables read by the v15 layout's RAW scans (the
+ * per-kind table field overrides these when set). Series and tier tables
+ * keep v2's names in both layouts.
+ */
+export const METRICS_V15_RAW_TABLE: Record<MetricsDataType, string> = {
+  [MetricsDataType.Gauge]: 'otel_metrics_gauge',
+  [MetricsDataType.Sum]: 'otel_metrics_sum',
+  [MetricsDataType.Histogram]: 'otel_metrics_histogram',
+  [MetricsDataType.ExponentialHistogram]: 'otel_metrics_exponential_histogram',
+  [MetricsDataType.Summary]: 'otel_metrics_summary',
+};
+
 export const MetricTableSchema = z
   .object({
     ...Object.values(MetricsDataType).reduce(
@@ -61,6 +86,11 @@ export const MetricTableSchema = z
     // shape instead of the v1 wide-table shape.
     series: z.string().optional(),
     points: z.string().optional(),
+    // Layout flag: 'v15' points the v2 recipes at a v1.5 retrofit database —
+    // raw scans read the per-kind wide tables (the per-type fields above, or
+    // the conventional v1 names when unset); series and 5m/1h tier tables
+    // resolve under their v2 names in the SAME database. Default 'v2'.
+    metricsLayout: MetricsLayoutSchema.optional(),
     histogramPoints: z.string().optional(),
     expHistogramPoints: z.string().optional(),
     summaryPoints: z.string().optional(),
@@ -80,20 +110,28 @@ export const MetricTableSchema = z
     expHistogramPoints1h: z.string().optional(),
   })
   .refine(
-    tables => Object.values(tables).some(table => table && table.length > 0),
+    tables =>
+      Object.entries(tables).some(
+        ([key, table]) => key !== 'metricsLayout' && table && table.length > 0,
+      ),
     { message: 'At least one metric table must be specified' },
   );
 
 export type MetricTable = z.infer<typeof MetricTableSchema>;
 
 /**
- * True when the metric tables describe the OTel metrics v2 (series/points
- * split) schema rather than the v1 per-type wide tables.
+ * True when the metric tables describe a layout served by the v2 query
+ * recipes (the series/points split schema, or the v1.5 retrofit layout)
+ * rather than the v1 per-type wide tables. v15 sources have no shared
+ * scalar `points` table — the layout flag plus the series table marks them.
  */
 export const isMetricsV2Tables = (
   metricTables: MetricTable | undefined | null,
-): metricTables is MetricTable & { series: string; points: string } =>
-  Boolean(metricTables?.series && metricTables?.points);
+): metricTables is MetricTable & { series: string } =>
+  Boolean(
+    metricTables?.series &&
+      (metricTables?.points || metricTables?.metricsLayout === 'v15'),
+  );
 
 /**
  * MetricType column values used by the v2 series/families tables, keyed by

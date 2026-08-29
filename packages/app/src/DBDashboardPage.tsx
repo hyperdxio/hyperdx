@@ -99,6 +99,7 @@ import {
   IconPlus,
   IconRefresh,
   IconSearch,
+  IconSortAscendingLetters,
   IconSquaresDiagonal,
   IconTags,
   IconTimelineEvent,
@@ -379,6 +380,7 @@ const Tile = forwardRef(
       onTimeRangeSelect,
       filters,
       showAlertAnnotations,
+      sortSeriesByName,
 
       // Properties forwarded by grid layout
       className,
@@ -406,6 +408,9 @@ const Tile = forwardRef(
       filters?: Filter[];
       // When true, draw alert firing/recovery annotations on this tile's chart.
       showAlertAnnotations?: boolean;
+      // When true, order this tile's chart series by name so colors and
+      // stacking stay stable across refreshes.
+      sortSeriesByName?: boolean;
 
       // Properties forwarded by grid layout
       className?: string;
@@ -1088,6 +1093,7 @@ const Tile = forwardRef(
                     enabled={chartEnabled}
                     config={effectiveQueriedConfig}
                     annotations={alertAnnotations}
+                    sortSeriesByName={sortSeriesByName}
                     onTimeRangeSelect={
                       isFullscreenView
                         ? (start, end) => setFullscreenDateRange([start, end])
@@ -1294,6 +1300,7 @@ const Tile = forwardRef(
         isSourceUnset,
         hasBeenVisible,
         alertAnnotations,
+        sortSeriesByName,
       ],
     );
 
@@ -1695,6 +1702,27 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     'alertAnnotations',
     parseAsBoolean.withDefault(false),
   );
+  // Toggle for ordering tile chart series by name instead of by the order
+  // ClickHouse returned them in — keeps each series' color and stacking
+  // position stable across refreshes. Client-side only: the queries are
+  // untouched.
+  //
+  // Persisted per user (all dashboards) rather than on the dashboard, so it
+  // isn't re-toggled on every visit. The URL param stays nullable so a
+  // shared link can override the preference for that view only; toggling
+  // from the menu writes both, so they don't drift.
+  const { userPreferences, setUserPreference } = useUserPreferences();
+  const [sortSeriesByNameOverride, setSortSeriesByNameOverride] = useQueryState(
+    'sortSeries',
+    parseAsBoolean,
+  );
+  const sortSeriesByName =
+    sortSeriesByNameOverride ?? userPreferences.sortChartSeriesByName ?? false;
+  const toggleSortSeriesByName = useCallback(() => {
+    const next = !sortSeriesByName;
+    setUserPreference({ sortChartSeriesByName: next });
+    setSortSeriesByNameOverride(next);
+  }, [sortSeriesByName, setUserPreference, setSortSeriesByNameOverride]);
 
   // Track if we've initialized query for this dashboard
   const initializedDashboard = useRef<string>(undefined);
@@ -2160,6 +2188,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           ]}
           onTimeRangeSelect={onTimeRangeSelect}
           showAlertAnnotations={showAlertAnnotations}
+          sortSeriesByName={sortSeriesByName}
           isHighlighted={highlightedTileId === chart.id}
           onUpdateChart={newChart => {
             if (!dashboard) return;
@@ -2250,6 +2279,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       whereLanguage,
       onTimeRangeSelect,
       showAlertAnnotations,
+      sortSeriesByName,
       getFilterQueriesForSource,
       moveTargetContainers,
       handleMoveTileToGroup,
@@ -2658,6 +2688,17 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                   {showAlertAnnotations
                     ? 'Hide alert annotations'
                     : 'Show alert annotations'}
+                </Menu.Item>
+              )}
+              {hasTiles && (
+                <Menu.Item
+                  leftSection={<IconSortAscendingLetters size={16} />}
+                  onClick={toggleSortSeriesByName}
+                  data-testid="toggle-sort-series-menu-item"
+                >
+                  {sortSeriesByName
+                    ? 'Use query series order'
+                    : 'Sort series by name'}
                 </Menu.Item>
               )}
               {containers.length > 0 && (

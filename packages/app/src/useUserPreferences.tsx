@@ -12,6 +12,13 @@ export type UserPreferences = {
   colorMode: ColorModePreference;
   font: 'IBM Plex Mono' | 'Roboto Mono' | 'Inter' | 'Roboto';
   expandSidebarHeader?: boolean;
+  /**
+   * Order chart series by name instead of by the order ClickHouse returned
+   * them in, so a series keeps the same color and stacking position across
+   * refreshes. Purely presentational — queries are unaffected. Toggled from
+   * the dashboard menu; a `sortSeries` URL param overrides it per view.
+   */
+  sortChartSeriesByName?: boolean;
 };
 
 // Legacy type for migration

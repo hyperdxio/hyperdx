@@ -344,6 +344,96 @@ describe('ChartUtils', () => {
       ]);
     });
 
+    describe('sortSeriesByName', () => {
+      const makeResponse = (services: string[]) => ({
+        data: services.map((ServiceName, i) => ({
+          'count()': `${i + 1}`,
+          ServiceName,
+          __hdx_time_bucket: '2025-11-26T12:23:00Z',
+        })),
+        meta: [
+          { name: 'count()', type: 'UInt64' },
+          { name: 'ServiceName', type: 'LowCardinality(String)' },
+          { name: '__hdx_time_bucket', type: 'DateTime' },
+        ],
+      });
+
+      const format = (services: string[], sortSeriesByName: boolean) =>
+        formatResponseForTimeChart({
+          currentPeriodResponse: makeResponse(services),
+          dateRange: [new Date(), new Date()],
+          granularity: '1 minute',
+          generateEmptyBuckets: false,
+          sortSeriesByName,
+        }).lineData.map(l => [l.dataKey, l.color]);
+
+      it('keeps series order and colors stable across row orders', () => {
+        expect(format(['shipping', 'checkout', 'frontend'], true)).toEqual([
+          ['checkout', COLORS[0]],
+          ['frontend', COLORS[1]],
+          ['shipping', COLORS[2]],
+        ]);
+        expect(format(['frontend', 'shipping', 'checkout'], true)).toEqual(
+          format(['shipping', 'checkout', 'frontend'], true),
+        );
+      });
+
+      it('follows row order when disabled', () => {
+        expect(format(['shipping', 'checkout', 'frontend'], false)).toEqual([
+          ['shipping', COLORS[0]],
+          ['checkout', COLORS[1]],
+          ['frontend', COLORS[2]],
+        ]);
+      });
+
+      it('keeps log level grouping as the primary sort key', () => {
+        const source = {
+          kind: SourceKind.Log,
+          severityTextExpression: 'SeverityText',
+        } as TSource;
+
+        const actual = formatResponseForTimeChart({
+          currentPeriodResponse: {
+            data: [
+              {
+                'count()': '1',
+                SeverityText: 'error',
+                __hdx_time_bucket: '2025-11-26T12:23:00Z',
+              },
+              {
+                'count()': '2',
+                SeverityText: 'zebra',
+                __hdx_time_bucket: '2025-11-26T12:23:00Z',
+              },
+              {
+                'count()': '3',
+                SeverityText: 'alpha',
+                __hdx_time_bucket: '2025-11-26T12:23:00Z',
+              },
+            ],
+            meta: [
+              { name: 'count()', type: 'UInt64' },
+              { name: 'SeverityText', type: 'LowCardinality(String)' },
+              { name: '__hdx_time_bucket', type: 'DateTime' },
+            ],
+          },
+          dateRange: [new Date(), new Date()],
+          granularity: '1 minute',
+          generateEmptyBuckets: false,
+          source,
+          sortSeriesByName: true,
+        });
+
+        // info-colored levels sort ahead of error, and within the info group
+        // the tie breaks by name instead of by row order.
+        expect(actual.lineData.map(l => [l.dataKey, l.color])).toEqual([
+          ['alpha', SEMANTIC_INFO_HEX],
+          ['zebra', SEMANTIC_INFO_HEX],
+          ['error', SEMANTIC_ERROR_HEX],
+        ]);
+      });
+    });
+
     it('should zero-fill missing time buckets when generateEmptyBuckets is undefined', () => {
       const res = {
         data: [
