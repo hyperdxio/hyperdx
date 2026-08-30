@@ -431,7 +431,6 @@ function formatExternalSource(source: SourceDocument) {
  *         orderByExpression:
  *           type: string
  *           description: Custom ORDER BY expression that overrides the default ordering. Leave empty to use the auto-detected default.
- *           nullable: true
  *           example: Timestamp DESC
  *         metricSourceId:
  *           type: string
@@ -634,7 +633,6 @@ function formatExternalSource(source: SourceDocument) {
  *         sampleRateExpression:
  *           type: string
  *           description: Column or expression for upstream sampling weight (1/N). When set, aggregations (count, avg, sum, quantile) are corrected for sampling. Percentiles use quantileTDigestWeighted, which is an approximation. Leave empty if spans are not sampled.
- *           nullable: true
  *           example: SampleRate
  *         resourceAttributesExpression:
  *           type: string
@@ -654,7 +652,6 @@ function formatExternalSource(source: SourceDocument) {
  *         spanLinksValueExpression:
  *           type: string
  *           description: Expression to extract span links. Used to capture links from a span to spans in other traces. Expected to be Nested ( TraceId String, SpanId String, TraceState String, Attributes Map(LowCardinality(String), String) )
- *           nullable: true
  *           example: Links
  *         implicitColumnExpression:
  *           type: string
@@ -687,12 +684,10 @@ function formatExternalSource(source: SourceDocument) {
  *         displayedTimestampValueExpression:
  *           type: string
  *           description: This DateTime column is used to display and order search results.
- *           nullable: true
  *           example: Timestamp
  *         orderByExpression:
  *           type: string
  *           description: Custom ORDER BY expression that overrides the default ordering. Leave empty to use the auto-detected default.
- *           nullable: true
  *           example: Timestamp DESC
  *         materializedViews:
  *           type: array
@@ -779,12 +774,10 @@ function formatExternalSource(source: SourceDocument) {
  *         serviceNameExpression:
  *           type: string
  *           description: Expression to extract the service name from metric rows.
- *           nullable: true
  *           example: ServiceName
  *         seriesTable:
  *           type: string
  *           description: Table containing unique metric series, used to accelerate metrics queries. Available only when the team has the metrics series table enabled.
- *           nullable: true
  *           example: otel_metrics_series
  *         logSourceId:
  *           type: string
@@ -849,7 +842,6 @@ function formatExternalSource(source: SourceDocument) {
  *         resourceAttributesExpression:
  *           type: string
  *           description: Expression to extract resource-level attributes.
- *           nullable: true
  *           example: ResourceAttributes
  *     PromqlSource:
  *       type: object
