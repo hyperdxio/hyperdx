@@ -41,18 +41,39 @@ describe('formatAxisTick', () => {
     );
   });
 
-  it('caps an explicit mantissa at 2 instead of honoring it outright', () => {
-    // A flat cap, not magnitude-aware: HyperDX's own bundled dashboard
-    // templates (e.g. go-runtime.json) set mantissa on tiles whose values
-    // are well above 1, for tooltip readability, unrelated to the near-zero
-    // problem this formatter fixes. The Decimals setting allows up to 10,
-    // which would badly overflow the axis's ~32px label budget (measured:
-    // "0.1400000000" is far wider than "0.00" fits) if honored outright.
+  it('caps a sub-1 tick`s mantissa at 2 instead of honoring it outright', () => {
+    // The Decimals setting allows up to 10, which would badly overflow the
+    // axis's label budget for a sub-1 tick (measured: "0.1400000000" is far
+    // wider than "0.14" fits) if honored outright.
     expect(formatAxisTick(0.14, { output: 'number', mantissa: 10 })).toBe(
       '0.14',
     );
-    expect(formatAxisTick(1234, { output: 'number', mantissa: 10 })).toBe(
-      '1.23k',
+  });
+
+  it('forces 0 decimals for any tick >= 1, regardless of configured mantissa', () => {
+    // Regression (caught in review): HyperDX's own bundled dashboard
+    // templates (e.g. go-runtime.json) set mantissa on tiles whose values
+    // are well above 1, for tooltip readability, unrelated to the near-zero
+    // problem this formatter fixes - honoring it there instead of forcing 0
+    // would turn shipped ticks like `500`/`1k` into `500.00`/`1.23k`, wide
+    // enough to overflow the axis's label budget for an ordinary value, not
+    // just an extreme one.
+    expect(formatAxisTick(200, { output: 'number', mantissa: 2 })).toBe('200');
+    expect(formatAxisTick(1234, { output: 'number', mantissa: 10 })).toBe('1k');
+    // A negative tick is still `>= 1` in magnitude (Math.abs), so it's
+    // integer too, unlike the sub-1-magnitude `-0.5` covered separately.
+    expect(formatAxisTick(-1.5, { output: 'number', mantissa: 2 })).toBe('-1');
+  });
+
+  it('preserves shipped byte/throughput tiles that configure a mantissa', () => {
+    // go-runtime.json's "Memory: Used vs Limit vs GC Target" tile ships as
+    // { output: 'byte', mantissa: 1 } - a raw byte count is always >= 1, so
+    // this hits the forced-integer branch and stays `256 MB`, not `256.0 MB`.
+    expect(formatAxisTick(268435456, { output: 'byte', mantissa: 1 })).toBe(
+      '256 MB',
+    );
+    expect(formatAxisTick(1234567, { output: 'throughput', mantissa: 2 })).toBe(
+      '1234567',
     );
   });
 
@@ -63,7 +84,7 @@ describe('formatAxisTick', () => {
         mantissa: 2,
         unit: 'req/s',
       }),
-    ).toBe('1.23k');
+    ).toBe('1k');
   });
 
   it('uses compact Intl formatting when no axisNumberFormat is set', () => {
