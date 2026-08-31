@@ -767,17 +767,41 @@ export function collectMemoChartGradientHexes(
 }
 
 /**
+ * Y-axis tick labels get at most this many decimal places, regardless of a
+ * chart's configured Decimals (which can go up to 10 - see NumberFormat.tsx).
+ *
+ * `<YAxis width={Y_AXIS_WIDTH}>` (40px) leaves ~32px for the label itself
+ * after Recharts' own tickSize (6px) + tickMargin (2px). Measured in Chrome
+ * at 11px IBM Plex Mono (the tick font): "0.00" is 26px (fits), "99.99" is
+ * 33px (borderline), "99.9999" is 46px (well over). 2 decimals is enough to
+ * keep any value >= 0.005 distinguishable from 0 - the failure this cap
+ * exists to fix - without the axis regularly overflowing its column for
+ * ordinary values.
+ */
+const MAX_AXIS_MANTISSA = 2;
+
+/**
  * Y-axis tick label formatter. Exported so a unit test can pin the
  * mantissa-precedence behavior without rendering recharts.
  *
  * `average` and `unit` are always forced (compact abbreviation like `1.2k`
  * reads better on an axis than a series' configured unit repeated on every
- * tick), but an explicit `axisNumberFormat.mantissa` is honored rather than
- * discarded. Without this, a chart whose configured Decimals produces
- * correct tooltip/legend values (e.g. `0.14`) would still round every axis
- * tick to `0` for any series whose values live under 1 (fractional
- * Prometheus gauges, ratios, etc.), since `mantissa` only defaults to `0`
- * here for the common case of unconfigured, typically-large counts.
+ * tick), but an explicit `axisNumberFormat.mantissa` is honored (capped at
+ * MAX_AXIS_MANTISSA) rather than discarded outright. Without this, a chart
+ * whose configured Decimals produces correct tooltip/legend values (e.g.
+ * `0.14`) would still round every axis tick to `0` for any series whose
+ * values live under 1 (fractional Prometheus gauges, ratios, etc.), since
+ * mantissa was previously forced to 0 unconditionally.
+ *
+ * The cap, rather than honoring mantissa outright, matters because an
+ * explicit mantissa is the common case, not a rare one: HyperDX's own
+ * bundled dashboard templates (go-runtime.json et al.) set mantissa on
+ * lines/byte/percent tiles for tooltip readability, with values well above
+ * 1 and no connection to the near-zero problem this cap fixes. The cap is
+ * flat rather than magnitude-aware (unlike DBHeatmapChart's tickFormatter,
+ * which ignores configured mantissa entirely) because a little unrequested
+ * precision on a large value (e.g. `256.20` instead of `256`) is harmless,
+ * while losing all precision on a small one (`0.14` rounding to `0`) is not.
  */
 export function formatAxisTick(
   value: number,
@@ -785,8 +809,8 @@ export function formatAxisTick(
 ): string {
   return axisNumberFormat
     ? formatNumber(value, {
-        mantissa: 0,
         ...axisNumberFormat,
+        mantissa: Math.min(axisNumberFormat.mantissa ?? 0, MAX_AXIS_MANTISSA),
         average: true,
         unit: undefined,
       })

@@ -41,6 +41,21 @@ describe('formatAxisTick', () => {
     );
   });
 
+  it('caps an explicit mantissa at 2 instead of honoring it outright', () => {
+    // A flat cap, not magnitude-aware: HyperDX's own bundled dashboard
+    // templates (e.g. go-runtime.json) set mantissa on tiles whose values
+    // are well above 1, for tooltip readability, unrelated to the near-zero
+    // problem this formatter fixes. The Decimals setting allows up to 10,
+    // which would badly overflow the axis's ~32px label budget (measured:
+    // "0.1400000000" is far wider than "0.00" fits) if honored outright.
+    expect(formatAxisTick(0.14, { output: 'number', mantissa: 10 })).toBe(
+      '0.14',
+    );
+    expect(formatAxisTick(1234, { output: 'number', mantissa: 10 })).toBe(
+      '1.23k',
+    );
+  });
+
   it('always strips a configured unit and forces compact averaging', () => {
     expect(
       formatAxisTick(1234, {
