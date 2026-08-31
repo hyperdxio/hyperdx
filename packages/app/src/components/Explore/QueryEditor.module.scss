@@ -104,15 +104,6 @@
   background-color: var(--color-bg-code) !important;
 }
 
-.body :global(.cm-gutters) {
-  background: transparent !important;
-  border: none !important;
-}
-
-.body :global(.cm-editor) {
-  background: transparent !important;
-}
-
 /* Collapse the chip cluster when FilterExpression / ActiveFilterPills
    render nothing, so the editor still fills the input. */
 .filters {

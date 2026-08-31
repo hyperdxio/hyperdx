@@ -18,6 +18,7 @@ export const queryEditorBaseTheme = EditorView.theme({
     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
   },
   '.cm-activeLine, .cm-activeLineGutter': { backgroundColor: 'transparent' },
+  '.cm-gutters': { backgroundColor: 'transparent', border: 'none' },
   '.cm-lineNumbers .cm-gutterElement': { padding: '0 8px' },
 });
 
