@@ -21,7 +21,7 @@ fi
 
 diff_output=$(git --no-pager diff -- "$SPEC")
 diff_lines=$(printf '%s\n' "$diff_output" | wc -l | tr -d ' ')
-printf '%s\n' "$diff_output" | head -n 80
+head -n 80 <<< "$diff_output"
 if [ "$diff_lines" -gt 80 ]; then
   echo
   echo "  ... diff truncated, $diff_lines lines total"
