@@ -2,12 +2,19 @@ import express from 'express';
 import { performance } from 'perf_hooks';
 import { Readable } from 'stream';
 import { pipeline } from 'stream/promises';
+import z from 'zod';
 
 import { ClickhouseClient } from '@/clickhouse';
 import { getConnectionById } from '@/controllers/connection';
+import {
+  PROMETHEUS_MAX_EXECUTION_SEC,
+  PROMETHEUS_MAX_RESULT_ROWS,
+  queryLabelValues,
+} from '@/controllers/timeseriesEngine';
 import { getNonNullUserWithTeam } from '@/middleware/auth';
 import { getCounter, getHistogram } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
+import { objectIdSchema } from '@/utils/zod';
 
 const router = express.Router();
 
@@ -152,8 +159,6 @@ export function formatVectorResponse(
 
 const PROMETHEUS_PROXY_TIMEOUT_MS = 90_000;
 const PROMETHEUS_CH_TIMEOUT_MS = 30_000;
-const PROMETHEUS_MAX_EXECUTION_SEC = 30;
-const PROMETHEUS_MAX_RESULT_ROWS = '100000';
 const PROMETHEUS_MAX_RESOLUTION = 11_000;
 // Widest window /query_exemplars will proxy. Prometheus's exemplar store is a
 // small circular buffer, so a wider range mostly costs a bigger streamed body
@@ -191,7 +196,7 @@ export function isClientDisconnect(err: unknown): boolean {
 async function proxyToPrometheus(
   upstreamHost: string,
   path: string,
-  params: Record<string, string>,
+  params: Record<string, string | string[] | undefined>,
   res: express.Response,
 ): Promise<number> {
   let url: URL;
@@ -207,7 +212,13 @@ async function proxyToPrometheus(
   }
   for (const [k, v] of Object.entries(params)) {
     if (['connectionId', 'database', 'table'].includes(k)) continue;
-    if (v != null) url.searchParams.set(k, v);
+    if (v == null) continue;
+    // A repeatable param (`match[]`) appends every value
+    if (Array.isArray(v)) {
+      for (const item of v) url.searchParams.append(k, item);
+    } else {
+      url.searchParams.set(k, v);
+    }
   }
   const target = url.toString();
 
@@ -423,7 +434,7 @@ const queryRangeHandler: express.RequestHandler = async (req, res) => {
       clickhouse_settings: {
         allow_experimental_time_series_table: 1,
         max_execution_time: PROMETHEUS_MAX_EXECUTION_SEC,
-        max_result_rows: PROMETHEUS_MAX_RESULT_ROWS,
+        max_result_rows: String(PROMETHEUS_MAX_RESULT_ROWS),
       },
     });
 
@@ -537,7 +548,7 @@ const queryHandler: express.RequestHandler = async (req, res) => {
       clickhouse_settings: {
         allow_experimental_time_series_table: 1,
         max_execution_time: PROMETHEUS_MAX_EXECUTION_SEC,
-        max_result_rows: PROMETHEUS_MAX_RESULT_ROWS,
+        max_result_rows: String(PROMETHEUS_MAX_RESULT_ROWS),
       },
     });
 
@@ -719,6 +730,82 @@ router.post('/query_exemplars', queryExemplarsHandler);
 // https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels
 const PROMETHEUS_LABEL_NAME = /^[a-zA-Z_:][a-zA-Z0-9_:]*$/;
 
+/**
+ * Prometheus timestamps are either RFC3339 strings or unix seconds.
+ * This schema coerces them to unix seconds.
+ *
+ * `?start=` with no value means the same as no `start` at all. Without the
+ * empty-string arm it would not: `parseTimestamp('')` goes through `Number('')`,
+ * which is 0, pinning the bound to the epoch.
+ */
+const prometheusTimestampSchema = z
+  .union([z.string(), z.number()])
+  .transform((v, ctx) => {
+    if (v === '') return undefined;
+    try {
+      return parseTimestamp(v);
+    } catch {
+      ctx.addIssue({
+        code: 'custom',
+        message: `invalid timestamp, expected RFC3339 or unix seconds`,
+      });
+      return z.NEVER;
+    }
+  });
+
+/**
+ * Prometheus's series selector, spelled `match[]` and repeatable. Express's query
+ * parser drops the brackets, so both `match[]=up` and `match=up` land on a
+ * `match` key and a repeated one arrives as an array. The selectors themselves
+ * are never interpreted here — only Prometheus can — so an empty one is treated
+ * as absent rather than forwarded for upstream to reject.
+ */
+const prometheusMatchSchema = z
+  .union([z.string(), z.array(z.string())])
+  .transform(v => {
+    const selectors = (Array.isArray(v) ? v : [v]).filter(m => m !== '');
+    return selectors.length ? selectors : undefined;
+  });
+
+const labelValuesRequestQuerySchema = z
+  .object({
+    connectionId: objectIdSchema,
+    start: prometheusTimestampSchema.optional(),
+    end: prometheusTimestampSchema.optional(),
+    match: prometheusMatchSchema.optional(),
+    database: z.string().optional(),
+    table: z.string().optional(),
+    limit: z.preprocess(
+      v => (v === '' ? undefined : v),
+      z.coerce.number().int().nonnegative().optional(),
+    ),
+  })
+  .superRefine((params, ctx) => {
+    if (
+      params.start != null &&
+      params.end != null &&
+      params.end < params.start
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['end'],
+        message: 'end timestamp must not be before start time',
+      });
+    }
+  });
+
+// A Prometheus error body carries one human-readable string, so zod's own
+// `message` — a JSON dump of the issue list — is not usable as-is.
+function formatQueryParamIssues(error: z.ZodError): string {
+  return error.issues
+    .map(issue =>
+      issue.path.length
+        ? `${issue.path.join('.')}: ${issue.message}`
+        : issue.message,
+    )
+    .join(', ');
+}
+
 router.get('/label/:name/values', async (req, res) => {
   const startedAt = performance.now();
   let backend: PrometheusBackend = 'unknown';
@@ -732,17 +819,18 @@ router.get('/label/:name/values', async (req, res) => {
         error: 'Invalid label name',
       });
     }
-    const params = req.query as Record<string, string>;
 
-    const connectionId = params.connectionId;
-    if (!connectionId) {
+    const parseResult = labelValuesRequestQuerySchema.safeParse(req.query);
+    if (!parseResult.success) {
       return res.status(400).json({
         status: 'error',
         errorType: 'bad_data',
-        error: 'missing required parameter: connectionId',
+        error: formatQueryParamIssues(parseResult.error),
       });
     }
 
+    const params = parseResult.data;
+    const { connectionId, start, end, limit, match } = params;
     const connection = await getConnectionById(
       teamId.toString(),
       connectionId,
@@ -762,7 +850,13 @@ router.get('/label/:name/values', async (req, res) => {
       const status = await proxyToPrometheus(
         connection.host,
         `/api/v1/label/${labelName}/values`,
-        params,
+        {
+          ...(start != null ? { start: String(start) } : {}),
+          ...(end != null ? { end: String(end) } : {}),
+          ...(limit ? { limit: String(limit) } : {}),
+          // Restored under the name Prometheus expects
+          ...(match != null ? { 'match[]': match } : {}),
+        },
         res,
       );
       recordProxyOutcome(status, 'label_values', backend);
@@ -770,6 +864,17 @@ router.get('/label/:name/values', async (req, res) => {
     }
 
     backend = 'clickhouse';
+
+    // TODO: Support `match[]` for ClickHouse-Timeseries engine path
+    if (match != null) {
+      return res.status(400).json({
+        status: 'error',
+        errorType: 'bad_data',
+        error:
+          'match[] is not supported for ClickHouse-backed PromQL connections',
+      });
+    }
+
     const database = params.database ?? 'default';
     const table = params.table;
     if (!table) {
@@ -787,23 +892,18 @@ router.get('/label/:name/values', async (req, res) => {
       requestTimeout: PROMETHEUS_CH_TIMEOUT_MS,
     });
 
-    const tagsQuery =
-      labelName === '__name__'
-        ? `SELECT DISTINCT metric_name AS val FROM timeSeriesTags({db:String}, {table:String}) ORDER BY val SETTINGS allow_experimental_time_series_table = 1`
-        : `SELECT DISTINCT all_tags[{label:String}] AS val FROM timeSeriesTags({db:String}, {table:String}) WHERE mapContains(all_tags, {label:String}) ORDER BY val SETTINGS allow_experimental_time_series_table = 1`;
-
-    const resp = await client.query({
-      query: tagsQuery,
-      query_params: { db: database, table, label: labelName },
-      format: 'JSON',
-      clickhouse_settings: {
-        allow_experimental_time_series_table: 1,
-        max_execution_time: PROMETHEUS_MAX_EXECUTION_SEC,
-        max_result_rows: PROMETHEUS_MAX_RESULT_ROWS,
-      },
+    const startMs = start != null ? Math.floor(start * 1000) : undefined;
+    const endMs = end != null ? Math.ceil(end * 1000) : undefined;
+    const values = await queryLabelValues({
+      client,
+      labelName,
+      connectionId: connection.id,
+      databaseName: database,
+      tableName: table,
+      startMs,
+      endMs,
+      limit,
     });
-    const json = await resp.json<any>();
-    const values: string[] = json.data.map((r: any) => r.val);
 
     return res.json({ status: 'success', data: values });
   } catch (e) {
