@@ -15,7 +15,8 @@ name: Deep Code Review
 # Triggers automatically on every non-draft PR. The multi-agent fan-out is
 # significantly more expensive than the default single-pass review, so expect
 # higher Anthropic API spend and longer wall-clock latency than
-# claude-code-review.yml.
+# claude-code-review.yml. Every reviewer runs Opus (see
+# ANTHROPIC_DEFAULT_SONNET_MODEL below) -- a further ~3-4x on top of that.
 #
 # Author can request automated fixes for the findings by commenting
 # `/just-fix-it` on the PR -- see deep-resolve.yml.
@@ -60,6 +61,13 @@ jobs:
       # https://github.com/anthropics/claude-code-action/issues/1547
       CLAUDE_CLI_VERSION: 2.1.215
       CLAUDE_CLI_SHA512: sha512-lsWBvyMyBqg/rOZ06o/HEhlpOzHsH8IBf9RH4u5gzizQ1LWS/oXAh5nqWNUu3hn2d8QkyYg0aseNzMDlGD+3qg==
+      # Puts the whole reviewer fan-out on Opus: the plugin dispatches every
+      # persona except correctness/security/adversarial with `model: "sonnet"`,
+      # so remapping the alias is what lifts them. Must stay at JOB level -- the
+      # action's own composite `env:` block shadows the caller's step env.
+      # `[1m]` because the mid-tier already runs a 1M window today. Not
+      # remapping HAIKU: its only user here is CLI internals.
+      ANTHROPIC_DEFAULT_SONNET_MODEL: claude-opus-4-8[1m]
     permissions:
       contents: read
       pull-requests: write
@@ -652,7 +660,13 @@ jobs:
           #     and `git -c diff.external=... diff`. Covers the skill's Stage
           #     1/2 and the personas' blame/show. Residual: `git log --output`
           #     can still write files, but that is no longer an exec path.
+          #
+          # --model covers the orchestrator and the three personas the plugin
+          # exempts from its mid-tier override; without it they follow whatever
+          # CLAUDE_CLI_VERSION defaults to. Pair with the job env's
+          # ANTHROPIC_DEFAULT_SONNET_MODEL, which covers the rest.
           claude_args: |
+            --model "claude-opus-4-8[1m]"
             --setting-sources user
             --strict-mcp-config
             --allowedTools "Bash(git diff:*),Bash(git log:*),Bash(git blame:*),Bash(git show:*),Bash(git merge-base:*),Bash(git rev-parse:*),Bash(git ls-files:*),Bash(git cat-file:*),Bash(git status:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr list:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*)"
@@ -751,6 +765,46 @@ jobs:
           fi
           echo "broken=false" >> "$GITHUB_OUTPUT"
           echo "Sandbox smoke check passed -- no bwrap failures in the reviewer transcript."
+
+      # A dead alias remap looks identical to a working one in the job status,
+      # so assert the tiers from the transcript's `modelUsage`. Warning-only: a
+      # Sonnet-tier review is still a real review, just cheaper than intended.
+      - name: Check reviewer model tiers
+        if: steps.gate.outputs.should_review == 'true'
+        continue-on-error: true
+        env:
+          EXECUTION_FILE: ${{ steps.review.outputs.execution_file }}
+        run: |
+          set -uo pipefail
+          if [ -z "${EXECUTION_FILE:-}" ] || [ ! -s "$EXECUTION_FILE" ]; then
+            echo "::warning::No execution transcript; cannot verify reviewer model tiers."
+            exit 0
+          fi
+          MODELS=$(jq -r '
+            [ .[] | select(.type == "result") | (.modelUsage // {}) | keys[] ]
+            | unique | .[]
+          ' "$EXECUTION_FILE" 2>/dev/null) || true
+          if [ -z "${MODELS:-}" ]; then
+            echo "::warning::Transcript carries no modelUsage; cannot verify reviewer model tiers."
+            exit 0
+          fi
+          # Haiku is expected regardless of the remap -- the CLI uses it for its
+          # own internal calls, not for any reviewer on the `base:<sha>` path.
+          UNEXPECTED=""
+          while IFS= read -r model; do
+            if [ -n "$model" ]; then
+              echo "ran: $model"
+              case "$model" in
+                claude-opus-* | claude-haiku-*) ;;
+                *) UNEXPECTED="${UNEXPECTED} ${model}" ;;
+              esac
+            fi
+          done <<< "$MODELS"
+          if [ -n "$UNEXPECTED" ]; then
+            echo "::warning::Reviewer fan-out used a non-Opus model:${UNEXPECTED}. ANTHROPIC_DEFAULT_SONNET_MODEL is not taking effect, or the plugin now dispatches a tier this check does not know about."
+          else
+            echo "Reviewer fan-out ran Opus-tier throughout."
+          fi
 
       # fromJSON() in `with:` has been observed to leave structured_output JSON
       # unparsed for the sibling claude-code-review workflow. Extract via jq.

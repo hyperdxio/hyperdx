@@ -2,13 +2,16 @@ import {
   AlertErrorType,
   AlertThresholdType,
   DisplayType,
+  SourceKind,
 } from '@hyperdx/common-utils/dist/types';
 import mongoose from 'mongoose';
 
 import {
   getLoggedInAgent,
   getServer,
+  makeAlertChartConfig,
   makeAlertInput,
+  makeInlineAlertInput,
   makeRawSqlAlertTile,
   makeRawSqlNumberAlertTile,
   makeRawSqlTile,
@@ -19,7 +22,9 @@ import {
 } from '@/fixtures';
 import Alert, { AlertSource, AlertState } from '@/models/alert';
 import AlertHistory from '@/models/alertHistory';
+import Connection from '@/models/connection';
 import { SavedSearch } from '@/models/savedSearch';
+import { Source } from '@/models/source';
 import Webhook, { WebhookDocument, WebhookService } from '@/models/webhook';
 
 const MOCK_TILES = [makeTile(), makeTile(), makeTile(), makeTile(), makeTile()];
@@ -1647,6 +1652,375 @@ describe('alerts router', () => {
           ],
         })
         .expect(400);
+    });
+  });
+
+  describe('inline alerts', () => {
+    const makeSource = async () => {
+      const connection = await Connection.create({
+        team: team._id,
+        name: 'Default',
+        host: 'http://localhost:8123',
+        username: 'default',
+        password: '',
+      });
+      const source = await Source.create({
+        kind: SourceKind.Log,
+        team: team._id,
+        from: { databaseName: 'default', tableName: 'otel_logs' },
+        timestampValueExpression: 'Timestamp',
+        connection: connection._id,
+        name: 'Logs',
+      });
+      return { connection, source };
+    };
+
+    it('creates an inline alert and round-trips chartConfig through GET', async () => {
+      const { source } = await makeSource();
+      const chartConfig = makeAlertChartConfig({
+        sourceId: source._id.toString(),
+      });
+
+      const created = await agent
+        .post('/alerts')
+        .send(
+          makeInlineAlertInput({
+            chartConfig,
+            webhookId: webhook._id.toString(),
+          }),
+        )
+        .expect(200);
+
+      expect(created.body.data.source).toBe(AlertSource.INLINE);
+      expect(created.body.data.chartConfig).toMatchObject({
+        name: 'Chart Alert Query',
+        source: source._id.toString(),
+      });
+
+      const single = await agent
+        .get(`/alerts/${created.body.data._id}`)
+        .expect(200);
+      expect(single.body.data.chartConfig).toMatchObject({
+        name: 'Chart Alert Query',
+        source: source._id.toString(),
+      });
+      expect(single.body.data.savedSearchId).toBeUndefined();
+      expect(single.body.data.dashboardId).toBeUndefined();
+
+      // The unpaginated list omits the config — only the detail response
+      // carries the full query definition.
+      const list = await agent.get('/alerts').expect(200);
+      expect(list.body.data).toHaveLength(1);
+      expect(list.body.data[0].source).toBe(AlertSource.INLINE);
+      expect(list.body.data[0].chartConfig).toBeUndefined();
+    });
+
+    it('updates an inline alert config', async () => {
+      const { source } = await makeSource();
+      const created = await agent
+        .post('/alerts')
+        .send(
+          makeInlineAlertInput({
+            chartConfig: makeAlertChartConfig({
+              sourceId: source._id.toString(),
+            }),
+            webhookId: webhook._id.toString(),
+          }),
+        )
+        .expect(200);
+
+      const updatedConfig = makeAlertChartConfig({
+        sourceId: source._id.toString(),
+        groupBy: 'ServiceName',
+      });
+      await agent
+        .put(`/alerts/${created.body.data._id}`)
+        .send(
+          makeInlineAlertInput({
+            chartConfig: updatedConfig,
+            threshold: 42,
+            webhookId: webhook._id.toString(),
+          }),
+        )
+        .expect(200);
+
+      const stored = await Alert.findById(created.body.data._id);
+      expect(stored!.threshold).toBe(42);
+      expect(stored!.chartConfig).toMatchObject({ groupBy: 'ServiceName' });
+    });
+
+    it('clears source-specific references when switching between chart and tile sources', async () => {
+      const { source } = await makeSource();
+      const dashboard = await agent
+        .post('/dashboards')
+        .send(MOCK_DASHBOARD)
+        .expect(200);
+      const tileId = dashboard.body.tiles[0].id;
+
+      const created = await agent
+        .post('/alerts')
+        .send(
+          makeInlineAlertInput({
+            chartConfig: makeAlertChartConfig({
+              sourceId: source._id.toString(),
+            }),
+            webhookId: webhook._id.toString(),
+          }),
+        )
+        .expect(200);
+
+      await agent
+        .put(`/alerts/${created.body.data._id}`)
+        .send(
+          makeAlertInput({
+            dashboardId: dashboard.body.id,
+            tileId,
+            webhookId: webhook._id.toString(),
+          }),
+        )
+        .expect(200);
+
+      let stored = await Alert.findById(created.body.data._id);
+      expect(stored!.chartConfig).toBeNull();
+      expect(stored!.dashboard?.toString()).toBe(dashboard.body.id);
+      expect(stored!.tileId).toBe(tileId);
+
+      await agent
+        .put(`/alerts/${created.body.data._id}`)
+        .send(
+          makeInlineAlertInput({
+            chartConfig: makeAlertChartConfig({
+              sourceId: source._id.toString(),
+            }),
+            webhookId: webhook._id.toString(),
+          }),
+        )
+        .expect(200);
+
+      stored = await Alert.findById(created.body.data._id);
+      expect(stored!.chartConfig).toMatchObject({
+        source: source._id.toString(),
+      });
+      expect(stored!.dashboard).toBeNull();
+      expect(stored!.tileId).toBeNull();
+    });
+
+    it('rejects an inline alert whose source does not exist in the team', async () => {
+      await agent
+        .post('/alerts')
+        .send(
+          makeInlineAlertInput({
+            chartConfig: makeAlertChartConfig({ sourceId: randomMongoId() }),
+            webhookId: webhook._id.toString(),
+          }),
+        )
+        .expect(400);
+    });
+
+    it('rejects an inline alert with an unsupported display type', async () => {
+      const { source } = await makeSource();
+      await agent
+        .post('/alerts')
+        .send(
+          makeInlineAlertInput({
+            chartConfig: makeAlertChartConfig({
+              sourceId: source._id.toString(),
+              displayType: DisplayType.Table,
+            }),
+            webhookId: webhook._id.toString(),
+          }),
+        )
+        .expect(400);
+    });
+
+    it('validates metric formulas on builder chart configs', async () => {
+      const { source } = await makeSource();
+      const base = makeAlertChartConfig({ sourceId: source._id.toString() });
+
+      // Formula referencing a nonexistent series (only A exists)
+      await agent
+        .post('/alerts')
+        .send(
+          makeInlineAlertInput({
+            chartConfig: { ...base, formulas: [{ expression: 'B * 2' }] },
+            webhookId: webhook._id.toString(),
+          }),
+        )
+        .expect(400);
+
+      // Malformed expression
+      await agent
+        .post('/alerts')
+        .send(
+          makeInlineAlertInput({
+            chartConfig: { ...base, formulas: [{ expression: 'A +' }] },
+            webhookId: webhook._id.toString(),
+          }),
+        )
+        .expect(400);
+
+      // Formulas are mutually exclusive with the ratio toggle (internal
+      // configs spell it seriesReturnType: 'ratio')
+      await agent
+        .post('/alerts')
+        .send(
+          makeInlineAlertInput({
+            chartConfig: {
+              ...base,
+              seriesReturnType: 'ratio',
+              formulas: [{ expression: 'A * 2' }],
+            },
+            webhookId: webhook._id.toString(),
+          }),
+        )
+        .expect(400);
+
+      const created = await agent
+        .post('/alerts')
+        .send(
+          makeInlineAlertInput({
+            chartConfig: { ...base, formulas: [{ expression: 'A * 2' }] },
+            webhookId: webhook._id.toString(),
+          }),
+        )
+        .expect(200);
+      expect(created.body.data.chartConfig).toMatchObject({
+        formulas: [{ expression: 'A * 2' }],
+      });
+    });
+
+    it('rejects a raw SQL inline alert whose source is on a different connection', async () => {
+      const { connection, source } = await makeSource();
+      const otherConnection = await Connection.create({
+        team: team._id,
+        name: 'Other',
+        host: 'http://localhost:8124',
+        username: 'default',
+        password: '',
+      });
+
+      const rawSqlConfig = {
+        configType: 'sql' as const,
+        displayType: DisplayType.Line,
+        sqlTemplate: RAW_SQL_ALERT_TEMPLATE,
+        source: source._id.toString(),
+      };
+
+      // The source belongs to `connection`, not `otherConnection` — the
+      // worker would execute on one and expand $__sourceTable from the other.
+      await agent
+        .post('/alerts')
+        .send(
+          makeInlineAlertInput({
+            chartConfig: {
+              ...rawSqlConfig,
+              connection: otherConnection._id.toString(),
+            },
+            webhookId: webhook._id.toString(),
+          }),
+        )
+        .expect(400);
+
+      await agent
+        .post('/alerts')
+        .send(
+          makeInlineAlertInput({
+            chartConfig: {
+              ...rawSqlConfig,
+              connection: connection._id.toString(),
+            },
+            webhookId: webhook._id.toString(),
+          }),
+        )
+        .expect(200);
+
+      // Equivalent non-canonical representations (uppercase hex) of the same
+      // connection ID must be accepted — the consistency check compares
+      // ObjectIds, not strings.
+      await agent
+        .post('/alerts')
+        .send(
+          makeInlineAlertInput({
+            chartConfig: {
+              ...rawSqlConfig,
+              connection: connection._id.toString().toUpperCase(),
+            },
+            webhookId: webhook._id.toString(),
+          }),
+        )
+        .expect(200);
+    });
+
+    it('rejects an inline alert with a PromQL config', async () => {
+      await agent
+        .post('/alerts')
+        .send({
+          ...makeInlineAlertInput({
+            chartConfig: makeAlertChartConfig({ sourceId: randomMongoId() }),
+            webhookId: webhook._id.toString(),
+          }),
+          chartConfig: {
+            configType: 'promql',
+            promqlQuery: 'up',
+            source: randomMongoId(),
+          },
+        })
+        .expect(400);
+    });
+
+    it('accepts a raw SQL inline alert and validates its template', async () => {
+      const { connection } = await makeSource();
+
+      // Missing the required time-filter/interval parameters
+      await agent
+        .post('/alerts')
+        .send(
+          makeInlineAlertInput({
+            chartConfig: {
+              configType: 'sql',
+              displayType: DisplayType.Line,
+              sqlTemplate: 'SELECT 1',
+              connection: connection._id.toString(),
+            },
+            webhookId: webhook._id.toString(),
+          }),
+        )
+        .expect(400);
+
+      // A connection outside the team is rejected
+      await agent
+        .post('/alerts')
+        .send(
+          makeInlineAlertInput({
+            chartConfig: {
+              configType: 'sql',
+              displayType: DisplayType.Line,
+              sqlTemplate: RAW_SQL_ALERT_TEMPLATE,
+              connection: randomMongoId(),
+            },
+            webhookId: webhook._id.toString(),
+          }),
+        )
+        .expect(400);
+
+      const created = await agent
+        .post('/alerts')
+        .send(
+          makeInlineAlertInput({
+            chartConfig: {
+              configType: 'sql',
+              displayType: DisplayType.Line,
+              sqlTemplate: RAW_SQL_ALERT_TEMPLATE,
+              connection: connection._id.toString(),
+            },
+            webhookId: webhook._id.toString(),
+          }),
+        )
+        .expect(200);
+      expect(created.body.data.chartConfig).toMatchObject({
+        configType: 'sql',
+        connection: connection._id.toString(),
+      });
     });
   });
 });

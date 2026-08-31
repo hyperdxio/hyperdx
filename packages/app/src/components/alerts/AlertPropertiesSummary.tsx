@@ -13,6 +13,8 @@ import {
 } from '@/utils/alerts';
 import { getWebhookChannelIcon } from '@/utils/webhookIcons';
 
+import styles from '@styles/AlertsPage.module.scss';
+
 /**
  * Targets listed inline before the rest collapse into a "+N more" tooltip.
  * An alert can carry up to MAX_ALERT_CHANNELS, which would push the creator
@@ -85,7 +87,16 @@ function NotificationTargets({
   if (!showNames) {
     return (
       <Tooltip label={allNames} multiline maw={320} withArrow color="dark">
-        <Group gap={4} wrap="nowrap" data-testid="alert-notification-targets">
+        {/* Positioned so VisuallyHidden below resolves against this row rather
+            than the document: it is absolutely positioned, and without a
+            containing block inside the page it lands at its offset within the
+            whole document, which causes the page to extend and adds a second scrollbar. */}
+        <Group
+          gap={4}
+          wrap="nowrap"
+          pos="relative"
+          data-testid="alert-notification-targets"
+        >
           Notify via
           {targets.map(target => (
             <React.Fragment key={target.key}>
@@ -151,8 +162,11 @@ function NotificationTargets({
 
 /**
  * One-line alert metadata summary: threshold condition, optional evaluation
- * schedule, notification targets, and creator. Shared between the alerts
- * page rows and the alert detail page header.
+ * schedule, and notification targets — configuration only.
+ *
+ * The creator is deliberately absent: it is provenance, not configuration, and
+ * at equal weight it crowded the line into a second row that broke mid-phrase.
+ * Each surface renders it as its own dimmed sub-line instead.
  */
 export function AlertPropertiesSummary({
   alert,
@@ -164,8 +178,8 @@ export function AlertPropertiesSummary({
     alert.thresholdType;
 
   return (
-    <div className="fs-8 d-flex gap-2 align-items-center">
-      <span>
+    <div className={`fs-8 ${styles.propertiesSummary}`}>
+      <span className={styles.propertySegment}>
         If value {thresholdLabel}{' '}
         <span className="fw-bold">{alert.threshold}</span>
         {isRangeThresholdType(alert.thresholdType) && (
@@ -178,12 +192,14 @@ export function AlertPropertiesSummary({
       {isDetail && (
         <>
           <span>&middot;</span>
-          <span>Evaluates every {alert.interval}</span>
+          <span className={styles.propertySegment}>
+            Evaluates every {alert.interval}
+          </span>
           {alert.numConsecutiveWindows != null &&
             alert.numConsecutiveWindows > 1 && (
               <>
                 <span>&middot;</span>
-                <span>
+                <span className={styles.propertySegment}>
                   Fires after {alert.numConsecutiveWindows} consecutive windows
                 </span>
               </>
@@ -192,14 +208,6 @@ export function AlertPropertiesSummary({
       )}
       <span>&middot;</span>
       <NotificationTargets alert={alert} showNames={isDetail} />
-      {alert.createdBy && (
-        <>
-          <span>&middot;</span>
-          <span>
-            Created by {alert.createdBy.name || alert.createdBy.email}
-          </span>
-        </>
-      )}
     </div>
   );
 }

@@ -22,6 +22,10 @@ yarn dev        # or equivalently: make dev
   surviving mutant means the tests execute that code but don't assert on it.
   Always scope it with `--mutate`; a whole-package run takes tens of minutes.
   See [CONTRIBUTING.md](../CONTRIBUTING.md#mutation-tests)
+- `yarn seed:alerts --count N` (in `packages/api`): Fill this worktree's
+  dev-slot Mongo with N alerts for testing the alerts page at scale: half on
+  saved searches, half on dashboard tiles. Seeded dashboards and saved searches
+  are tagged `seeded`; `yarn seed:alerts --purge` removes them.
 
 ## Environment Configuration
 

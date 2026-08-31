@@ -1,4 +1,8 @@
-import { MalformedMacroArgsError } from '@/macroErrors';
+import {
+  MacroExpansionError,
+  MalformedMacroArgsError,
+  UnknownVariableError,
+} from '@/macroErrors';
 import type { BuilderChartConfig, ChartVariable } from '@/types';
 import {
   filterReferencedVariables,
@@ -307,6 +311,39 @@ describe('substituteVariables', () => {
           SERVICE,
         ]),
       ).toThrow("Macro '$__filter' references unknown variable 'nope'");
+    });
+
+    it('throws a typed UnknownVariableError carrying the name and the declared set', () => {
+      // Callers outside this package react to this specific failure (the MCP
+      // tools attach a "declare the filter as a variable" hint to it), and
+      // must not have to match on the message to recognize it.
+      expect.assertions(5);
+      try {
+        substituteVariables('WHERE $__filter(ServiceName, $nope)', {
+          variables: [SERVICE, variable('env', ['prod'])],
+          inputLanguage: 'sql',
+        });
+      } catch (e) {
+        expect(e).toBeInstanceOf(UnknownVariableError);
+        // Still a MacroExpansionError, so existing handling keeps working.
+        expect(e).toBeInstanceOf(MacroExpansionError);
+        const error = e as UnknownVariableError;
+        expect(error.macro).toBe('filter');
+        expect(error.variableName).toBe('nope');
+        expect(error.availableVariables).toEqual(['service', 'env']);
+      }
+    });
+
+    it('reports an empty declared set rather than omitting the field', () => {
+      expect.assertions(1);
+      try {
+        substituteVariables('WHERE $__conditionalAll(1=1, $nope)', {
+          variables: [],
+          inputLanguage: 'sql',
+        });
+      } catch (e) {
+        expect((e as UnknownVariableError).availableVariables).toEqual([]);
+      }
     });
 
     it('throws on the one-argument form when the variable has no expression', () => {
@@ -1866,5 +1903,42 @@ describe('validateVariableReferencesInTemplate', () => {
         ],
       });
     });
+  });
+});
+
+describe('macros naming an unknown variable', () => {
+  it('reports the message expansion gives', () => {
+    const { errors, warnings } = validateVariableReferencesInTemplate(
+      '$__filter(ServiceName, $tenant)',
+      [SERVICE],
+    );
+
+    expect(warnings).toEqual([]);
+    expect(errors).toEqual([
+      "Macro '$__filter' references unknown variable 'tenant'. Available variables: service.",
+    ]);
+  });
+
+  it('says nothing when the macro names a declared variable', () => {
+    expect(
+      validateVariableReferencesInTemplate(
+        "$__conditionalAll(ServiceName != 'api', $service)",
+        [SERVICE],
+      ),
+    ).toEqual({ errors: [], warnings: [] });
+  });
+
+  it('leaves the Lucene message alone rather than piling on', () => {
+    // In a Lucene input the macro is literal text, so complaining about the
+    // name it happens to carry is noise on top of the real problem.
+    const { errors, warnings } = validateVariableReferencesInTemplate(
+      '$__filter(ServiceName, tenant)',
+      [SERVICE],
+      { language: 'lucene' },
+    );
+
+    expect(errors).toEqual([]);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('no meaning in a Lucene expression');
   });
 });
