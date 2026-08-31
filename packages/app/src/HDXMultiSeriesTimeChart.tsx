@@ -767,19 +767,31 @@ export function collectMemoChartGradientHexes(
 }
 
 /**
- * A tick under 1 gets at most this many decimal places, regardless of a
- * chart's configured Decimals (which can go up to 10 - see NumberFormat.tsx).
- * Ticks >= 1 are always integers (see formatAxisTick) and so aren't governed
- * by this - only a sub-1 label's own decimals can make it wide.
+ * A tick under MAGNITUDE_THRESHOLD gets at most this many decimal places,
+ * regardless of a chart's configured Decimals (which can go up to 10 - see
+ * NumberFormat.tsx). A tick >= MAGNITUDE_THRESHOLD is always an integer (see
+ * formatAxisTick) and so isn't governed by this - only a label under the
+ * threshold, with its own decimals, can make it wide.
  *
  * `<YAxis width={Y_AXIS_WIDTH}>` leaves a few dozen px for the label itself
  * after Recharts' own tickSize + tickMargin. Measured in Chrome at 11px IBM
- * Plex Mono (the tick font): "0.00" fits comfortably, "-0.99" is borderline,
- * "-0.9999" is well over. 2 decimals is enough to keep any value >= 0.005
- * distinguishable from 0 - the failure this cap exists to fix - without a
- * sub-1 label overflowing the column.
+ * Plex Mono (the tick font, monospace): every character costs ~6.6px, and
+ * 5 characters is the most that fits. At 2 decimals, "9.99" (4 chars) fits
+ * with room to spare, and adding a single extra character - a negative
+ * sign ("-9.99") or a percent suffix ("9.99%") - still exactly fits at 5.
+ * A 2-digit integer part pushes either of those over (6 chars, e.g.
+ * "-99.99"/"99.99%" both clip), which is why MAGNITUDE_THRESHOLD is 10, not
+ * 100: it trades a wider decimal-preserving range for values that are both
+ * negative and percent-formatted (out of scope here) for one that's safe
+ * for plain positive numbers, percent, and negative numbers each on their
+ * own - the only combination this codebase's charts have needed decimals
+ * for so far. 2 decimals is also enough to keep any value >= 0.005
+ * distinguishable from 0, the failure this cap exists to fix.
  */
 const MAX_AXIS_MANTISSA = 2;
+
+/** See MAX_AXIS_MANTISSA's comment for the width math behind this value. */
+const MAGNITUDE_THRESHOLD = 10;
 
 /**
  * Y-axis tick label formatter. Exported so a unit test can pin the
@@ -787,40 +799,56 @@ const MAX_AXIS_MANTISSA = 2;
  *
  * `average` and `unit` are always forced (compact abbreviation like `1.2k`
  * reads better on an axis than a series' configured unit repeated on every
- * tick). For a tick >= 1, mantissa is always 0, matching DBHeatmapChart's
- * tickFormatter and every previously-shipped chart byte-for-byte - large
- * numbers stay `200`/`1k`/`256 MB`, never `200.00`/`1.23k`/`256.0 MB`,
- * however many decimals the chart's Number Format configures. For a tick
- * under 1, an explicit axisNumberFormat.mantissa is honored (capped at
+ * tick). For a tick at or past MAGNITUDE_THRESHOLD, mantissa is always 0 -
+ * large numbers stay `200`/`1k`/`256 MB`, never `200.00`/`1.23k`/`256.0 MB`,
+ * however many decimals the chart's Number Format configures. Below the
+ * threshold, an explicit axisNumberFormat.mantissa is honored (capped at
  * MAX_AXIS_MANTISSA) rather than forced to 0. Without that, a chart whose
  * configured Decimals produces correct tooltip/legend values (e.g. `0.14`)
  * would still round every axis tick to `0` for any series whose values live
- * under 1 (fractional Prometheus gauges, ratios, etc.).
+ * under 1 (fractional Prometheus gauges, ratios, etc.). A tick of exactly 0
+ * always short-circuits to an integer too - it's already unambiguous, and
+ * doesn't need the decimal rescue this formatter exists to provide.
  *
  * An explicit mantissa is the common case, not a rare one, which is why the
- * >= 1 branch can't just honor it: HyperDX's own bundled dashboard templates
- * (go-runtime.json et al.) set mantissa on lines/byte/percent tiles for
- * tooltip readability, with values well above 1 and no connection to the
+ * large-magnitude branch can't just honor it: HyperDX's own bundled
+ * dashboard templates (go-runtime.json et al.) set mantissa on lines/byte/
+ * percent tiles for tooltip readability, with values well above the
  * near-zero problem this formatter fixes.
+ *
+ * `formatNumber` multiplies a percent-output value by 100 before applying
+ * mantissa (a percent tile's raw value is a 0-1 ratio, e.g. `0.25` for
+ * "25%"), so the magnitude check runs against that same displayed value,
+ * not the raw one - otherwise every percent tile would take the small-
+ * magnitude branch regardless of how large the rendered percentage is.
+ *
+ * This diverges from DBHeatmapChart's tickFormatter (magnitude-aware at a
+ * >= 1 threshold, but ignoring configured mantissa entirely for values
+ * under it) - a deliberate difference in both the threshold and whether
+ * configured mantissa is honored at all, not an oversight.
  */
 export function formatAxisTick(
   value: number,
   axisNumberFormat?: NumberFormat,
 ): string {
-  return axisNumberFormat
-    ? formatNumber(value, {
-        ...axisNumberFormat,
-        mantissa:
-          Math.abs(value) >= 1
-            ? 0
-            : Math.min(axisNumberFormat.mantissa ?? 0, MAX_AXIS_MANTISSA),
-        average: true,
-        unit: undefined,
-      })
-    : new Intl.NumberFormat('en-US', {
-        notation: 'compact',
-        compactDisplay: 'short',
-      }).format(value);
+  if (!axisNumberFormat) {
+    return new Intl.NumberFormat('en-US', {
+      notation: 'compact',
+      compactDisplay: 'short',
+    }).format(value);
+  }
+
+  const displayed = axisNumberFormat.output === 'percent' ? value * 100 : value;
+
+  return formatNumber(value, {
+    ...axisNumberFormat,
+    mantissa:
+      displayed === 0 || Math.abs(displayed) >= MAGNITUDE_THRESHOLD
+        ? 0
+        : Math.min(axisNumberFormat.mantissa ?? 0, MAX_AXIS_MANTISSA),
+    average: true,
+    unit: undefined,
+  });
 }
 
 export const MemoChart = memo(function MemoChart({
