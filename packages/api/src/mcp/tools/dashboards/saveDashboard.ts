@@ -5,7 +5,7 @@ import { z } from 'zod';
 
 import * as config from '@/config';
 import type { ToolRegistrar } from '@/mcp/tools/types';
-import { mcpUserError } from '@/mcp/utils/errors';
+import { formatZodIssues, mcpUserError } from '@/mcp/utils/errors';
 import Dashboard, { IDashboard } from '@/models/dashboard';
 import {
   cleanupDashboardAlerts,
@@ -31,9 +31,12 @@ import {
 
 import { mcpContainersParam, mcpFiltersParam, mcpTilesParam } from './schemas';
 import {
+  getFilterVariableWarnings,
   getRawSqlMissingSourceError,
   getRawSqlTileMacroWarnings,
+  getTileVariableWarnings,
 } from './validation';
+import { withResolvedFilterVariableNames } from './variables';
 
 export function registerSaveDashboard({
   context,
@@ -168,9 +171,7 @@ async function createDashboard({
     filters: stripFilterIds(inputFilters),
   });
   if (!parsed.success) {
-    return mcpUserError(
-      `Validation error: ${JSON.stringify(parsed.error.errors)}`,
-    );
+    return mcpUserError(`Validation error:\n${formatZodIssues(parsed.error)}`);
   }
 
   const { tiles, filters, containers: parsedContainers } = parsed.data;
@@ -191,7 +192,11 @@ async function createDashboard({
     return mcpUserError(validationError);
   }
 
-  const macroWarnings = getRawSqlTileMacroWarnings(tilesWithId);
+  const macroWarnings = [
+    ...getRawSqlTileMacroWarnings(tilesWithId),
+    ...getTileVariableWarnings(tilesWithId, filters),
+    ...getFilterVariableWarnings(filters),
+  ];
 
   const internalTiles = convertExternalTilesToInternal(tilesWithId);
   const filtersWithIds = convertExternalFiltersToInternal(filters ?? []);
@@ -212,13 +217,17 @@ async function createDashboard({
     ...(parsedContainers !== undefined ? { containers: parsedContainers } : {}),
   }).save();
 
+  const externalDashboard = convertToExternalDashboard(newDashboard);
   return {
     content: [
       {
         type: 'text' as const,
         text: JSON.stringify(
           {
-            ...convertToExternalDashboard(newDashboard),
+            ...externalDashboard,
+            filters: withResolvedFilterVariableNames(
+              externalDashboard.filters ?? [],
+            ),
             ...(frontendUrl
               ? { url: `${frontendUrl}/dashboards/${newDashboard._id}` }
               : {}),
@@ -264,9 +273,7 @@ async function updateDashboard({
     filters: assignFilterIds(inputFilters),
   });
   if (!parsed.success) {
-    return mcpUserError(
-      `Validation error: ${JSON.stringify(parsed.error.errors)}`,
-    );
+    return mcpUserError(`Validation error:\n${formatZodIssues(parsed.error)}`);
   }
 
   const { tiles, filters, containers: parsedContainers } = parsed.data;
@@ -299,7 +306,17 @@ async function updateDashboard({
     return mcpUserError(validationError);
   }
 
-  const macroWarnings = getRawSqlTileMacroWarnings(tilesWithId);
+  // An omitted `filters` preserves the persisted set rather than clearing it
+  // (see the `$set` below), so the variable checks have to run against those.
+  const effectiveFilters = filters ?? existingDashboard.filters;
+  const macroWarnings = [
+    ...getRawSqlTileMacroWarnings(tilesWithId),
+    ...getTileVariableWarnings(tilesWithId, effectiveFilters),
+    // Only report on filters this call actually wrote: re-warning about a
+    // persisted dependent filter the agent did not touch is noise it cannot
+    // act on from a tiles-only update.
+    ...getFilterVariableWarnings(filters),
+  ];
 
   const existingTileIds = new Set(
     (existingDashboard.tiles ?? []).map((t: { id: string }) => t.id),
@@ -363,13 +380,17 @@ async function updateDashboard({
     existingTileIds,
   });
 
+  const externalDashboard = convertToExternalDashboard(updatedDashboard);
   return {
     content: [
       {
         type: 'text' as const,
         text: JSON.stringify(
           {
-            ...convertToExternalDashboard(updatedDashboard),
+            ...externalDashboard,
+            filters: withResolvedFilterVariableNames(
+              externalDashboard.filters ?? [],
+            ),
             ...(frontendUrl
               ? { url: `${frontendUrl}/dashboards/${updatedDashboard._id}` }
               : {}),
