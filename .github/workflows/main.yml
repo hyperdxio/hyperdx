@@ -59,6 +59,10 @@ jobs:
         run: node --test scripts/ci/__tests__/ratchet.test.mjs
       - name: Escape-hatch ratchet
         run: node scripts/ci/ratchet.mjs
+      # Also unconditional: the api's own `ci:lint` regenerates the spec but
+      # never asserts on it, and nx can skip or cache-replay that task.
+      - name: Check openapi.json is in sync with its sources
+        run: scripts/ci/check-openapi-sync.sh
       # Runs even when lint fails, so a red main still refreshes the cache that
       # PR runs restore from.
       - name: Save nx computation cache
