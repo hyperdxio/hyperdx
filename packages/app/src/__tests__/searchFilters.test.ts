@@ -101,14 +101,20 @@ describe('searchFilters', () => {
       expect(result.filters).toEqual({});
     });
 
-    it('skips conditions with only comparison operators', () => {
+    it('reads a comparison back as a one-sided range', () => {
       const result = parseQuery([
         {
           type: 'sql',
           condition: `duration > 1000`,
         },
       ]);
-      expect(result.filters).toEqual({});
+      expect(result.filters).toEqual({
+        duration: {
+          included: new Set(),
+          excluded: new Set(),
+          range: { min: 1000, minOp: '>' },
+        },
+      });
     });
 
     it('parses simple IN conditions alongside extracting from complex conditions', () => {
@@ -305,7 +311,7 @@ describe('searchFilters', () => {
       });
     });
 
-    it('still skips real comparison operators outside quotes', () => {
+    it('picks up comparisons outside quotes and leaves equality and OR alone', () => {
       const result = parseQuery([
         { type: 'sql', condition: `status_code = 200` },
         { type: 'sql', condition: `duration > 1000` },
@@ -315,7 +321,18 @@ describe('searchFilters', () => {
           condition: `level IN ('error') OR severity IN ('high')`,
         },
       ]);
-      expect(result.filters).toEqual({});
+      expect(result.filters).toEqual({
+        duration: {
+          included: new Set(),
+          excluded: new Set(),
+          range: { min: 1000, minOp: '>' },
+        },
+        count: {
+          included: new Set(),
+          excluded: new Set(),
+          range: { max: 5, maxOp: '<' },
+        },
+      });
     });
 
     it('extracts IN clause from AND condition with quoted = in non-IN part', () => {
