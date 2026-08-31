@@ -35,7 +35,7 @@ import {
 import { getStoredLanguage } from '@/components/SearchInput';
 import { type SQLCompletion } from '@/components/SQLEditor/utils';
 import {
-  buildVariableCompletions,
+  buildSqlVariableCompletions,
   toMacroCompletion,
 } from '@/components/SQLEditor/variableCompletions';
 import { toAlertChannels } from '@/utils/alerts';
@@ -69,7 +69,7 @@ export function buildRawSqlCompletions({
   return [
     ...paramCompletions,
     ...MACRO_SUGGESTIONS.map(toMacroCompletion),
-    ...buildVariableCompletions(variables),
+    ...buildSqlVariableCompletions(variables),
   ];
 }
 

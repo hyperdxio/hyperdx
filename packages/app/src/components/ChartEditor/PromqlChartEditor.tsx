@@ -27,11 +27,15 @@ export default function PromqlChartEditor({
 
   const sourceId = useWatch({ control, name: 'source' });
   const { data: source } = useSource({ id: sourceId });
-  const connectionId = source?.connection;
+  // The form can still hold a non-PromQL source right after switching a tile
+  // into PromQL mode (the picker above only restricts future selections), and
+  // the metric-name lookup reads a TimeSeries engine table, so it would fail
+  // against any other source's table.
+  const promqlSource = source?.kind === SourceKind.Promql ? source : undefined;
   const { data: metricNames } = usePromqlMetricNames(
-    connectionId,
-    source?.from.databaseName,
-    source?.from.tableName,
+    promqlSource?.connection,
+    promqlSource?.from.databaseName,
+    promqlSource?.from.tableName,
   );
 
   return (

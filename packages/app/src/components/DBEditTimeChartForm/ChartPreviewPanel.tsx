@@ -11,7 +11,7 @@ import {
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import { Accordion, Divider, Stack, Text } from '@mantine/core';
-import { IconCode, IconList } from '@tabler/icons-react';
+import { IconList } from '@tabler/icons-react';
 import { SortingState } from '@tanstack/react-table';
 
 import { buildTableRowSearchUrl } from '@/ChartUtils';
@@ -33,6 +33,7 @@ import { DBTimeChart } from '@/components/DBTimeChart';
 import { DBTreemapChart } from '@/components/DBTreemapChart';
 import EmptyState from '@/components/EmptyState';
 import PatternTable from '@/components/PatternTable';
+import PromQLPreview from '@/components/PromQLEditor/PromQLPreview';
 import {
   getEventBody,
   getFirstTimestampValueExpression,
@@ -43,7 +44,15 @@ import {
   sortingStateToOrderByString,
 } from '@/utils';
 
-import { buildSampleEventsConfig, isQueryReady } from './utils';
+import { QueryPreviewAccordion } from './QueryPreviewAccordion';
+import {
+  buildRenderedPromqlExpression,
+  buildSampleEventsConfig,
+  isQueryReady,
+} from './utils';
+
+/** Why a preview accordion is empty before its tile has been run. */
+const RUN_TO_PREVIEW = 'Run the query to see the preview';
 
 function HeatmapPreview({
   config,
@@ -132,6 +141,7 @@ type ChartPreviewPanelProps = {
   chartConfigForExplanations?: ChartConfigWithOptTimestamp;
   showGeneratedSql: boolean;
   showSampleEvents: boolean;
+  showGeneratedPromql: boolean;
   dbTimeChartConfig?: ChartConfigWithDateRange;
   setValue: (name: 'orderBy', value: string) => void;
   onSubmit: () => void;
@@ -148,11 +158,17 @@ export function ChartPreviewPanel({
   chartConfigForExplanations,
   showGeneratedSql,
   showSampleEvents,
+  showGeneratedPromql,
   dbTimeChartConfig,
   setValue,
   onSubmit,
 }: ChartPreviewPanelProps) {
   const [isSampleEventsOpen, setIsSampleEventsOpen] = useState(false);
+
+  const renderedPromql = useMemo(
+    () => buildRenderedPromqlExpression(queriedConfig),
+    [queriedConfig],
+  );
 
   const queryReady = !!isQueryReady(queriedConfig);
 
@@ -417,31 +433,43 @@ export function ChartPreviewPanel({
               </Accordion.Item>
             </Accordion>
           )}
-          <Accordion defaultValue="">
-            <Accordion.Item value={'SQL'}>
-              <Accordion.Control icon={<IconCode size={16} />}>
-                <Text size="sm" style={{ alignSelf: 'center' }}>
-                  Generated SQL
-                </Text>
-              </Accordion.Control>
-              <Accordion.Panel>
-                {queryReady &&
-                  chartConfigForExplanations != null &&
-                  (activeTab === 'heatmap' &&
-                  isBuilderChartConfig(chartConfigForExplanations) ? (
-                    <HeatmapSQLPreview
-                      config={chartConfigForExplanations}
-                      dateRange={dateRange}
-                    />
-                  ) : (
-                    <ChartSQLPreview
-                      config={chartConfigForExplanations}
-                      enableCopy
-                    />
-                  ))}
-              </Accordion.Panel>
-            </Accordion.Item>
-          </Accordion>
+          <QueryPreviewAccordion
+            value="SQL"
+            label="Generated SQL"
+            disabledReason={
+              queryReady && chartConfigForExplanations != null
+                ? undefined
+                : RUN_TO_PREVIEW
+            }
+          >
+            {chartConfigForExplanations != null &&
+              (activeTab === 'heatmap' &&
+              isBuilderChartConfig(chartConfigForExplanations) ? (
+                <HeatmapSQLPreview
+                  config={chartConfigForExplanations}
+                  dateRange={dateRange}
+                />
+              ) : (
+                <ChartSQLPreview
+                  config={chartConfigForExplanations}
+                  enableCopy
+                />
+              ))}
+          </QueryPreviewAccordion>
+        </>
+      )}
+      {showGeneratedPromql && (
+        <>
+          <Divider mt="md" />
+          <QueryPreviewAccordion
+            value="promql"
+            label="Generated PromQL"
+            disabledReason={
+              renderedPromql == null ? RUN_TO_PREVIEW : renderedPromql.error
+            }
+          >
+            <PromQLPreview expression={renderedPromql?.expression ?? ''} />
+          </QueryPreviewAccordion>
         </>
       )}
     </>

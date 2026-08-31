@@ -12,8 +12,11 @@ const ALLOWED_EXTENSIONS = [
   '.png',
   '.svg',
   '.ico',
-  '.md', // CHANGELOG.md, fetched by the in-app "What's new" viewer
 ];
+// Specific filenames kept regardless of extension. `.json` is NOT allow-listed
+// broadly on purpose — the export deletes Next's route-data JSON to keep the
+// bundle small — so the "What's new" data is rescued by name.
+const ALLOWED_FILENAMES = ['whats-new.json'];
 
 // removes pyodide from a next static build. We want a small bundle size, so that feature would just be ignored
 if (fs.existsSync(PYODIDE_PATH)) {
@@ -35,7 +38,10 @@ function removeNonEssentialFiles(dir) {
         walkDir(fullPath);
       } else if (entry.isFile()) {
         const ext = path.extname(entry.name).toLowerCase();
-        if (!ALLOWED_EXTENSIONS.includes(ext)) {
+        if (
+          !ALLOWED_EXTENSIONS.includes(ext) &&
+          !ALLOWED_FILENAMES.includes(entry.name)
+        ) {
           fs.unlinkSync(fullPath);
           console.log(
             `Removed non-essential file: ${path.relative(OUT_DIR, fullPath)}`,

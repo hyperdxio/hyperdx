@@ -14,12 +14,22 @@ import {
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import { Badge, Box, Flex, Group, Menu, Text, Tooltip } from '@mantine/core';
+import {
+  ActionIcon,
+  Badge,
+  Box,
+  Flex,
+  Group,
+  Menu,
+  Text,
+  Tooltip,
+} from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import {
   IconArrowDown,
   IconArrowUp,
   IconCopy,
+  IconListSearch,
   IconPalette,
   IconTrash,
 } from '@tabler/icons-react';
@@ -27,6 +37,7 @@ import {
 import { AGG_FNS } from '@/ChartUtils';
 import {
   AggFnSelectControlled,
+  defaultAggFnForMetricType,
   HISTOGRAM_SUPPORTED_AGG_FNS,
 } from '@/components/AggFnSelect';
 import {
@@ -44,6 +55,10 @@ import {
   TextInputControlled,
 } from '@/components/InputControlled';
 import { MetricAttributeHelperPanel } from '@/components/MetricAttributeHelperPanel';
+import {
+  MetricExplorerModal,
+  type MetricExplorerSelection,
+} from '@/components/MetricExplorer/MetricExplorerModal';
 import { MetricNameSelect } from '@/components/MetricNameSelect';
 import { FORMAT_ICONS } from '@/components/NumberFormat';
 import SearchWhereInput from '@/components/SearchInput/SearchWhereInput';
@@ -213,6 +228,53 @@ export function ChartSeriesEditor({
       onSubmit();
     },
     [aggCondition, namePrefix, setValue, onSubmit],
+  );
+
+  const [
+    isMetricExplorerOpen,
+    { open: openMetricExplorer, close: closeMetricExplorer },
+  ] = useDisclosure(false);
+
+  // Applying from the explorer also resets the aggregation, so a metric picked
+  // for its own sake charts something meaningful instead of inheriting whatever
+  // the previous metric used. The coercion effects above accept every value
+  // `defaultAggFnForMetricType` can return.
+  const applyExplorerMetric = useCallback(
+    ({
+      name,
+      type,
+      where,
+      groupBy: stagedGroupBy,
+    }: MetricExplorerSelection) => {
+      setValue(`${namePrefix}metricName`, name);
+      setValue(`${namePrefix}metricType`, type);
+      setValue(`${namePrefix}valueExpression`, 'Value');
+      const { aggFn: nextAggFn, level } = defaultAggFnForMetricType(type);
+      setValue(`${namePrefix}aggFn`, nextAggFn);
+      if (level != null) {
+        setValue(`${namePrefix}level`, level);
+      }
+
+      // Filters were written against this metric's attributes, so they replace
+      // the series' condition rather than stacking onto the previous metric's.
+      // Unconditionally, including when nothing was staged: leaving the old
+      // condition in place would silently apply the previous metric's
+      // attributes to the new one, which reads as an empty chart rather than
+      // an error (a Map lookup for an absent key yields '', not a failure).
+      setValue(`${namePrefix}aggCondition`, where.join(' AND '));
+
+      // Staged group-bys replace the chart's, same as the filters above: they
+      // were chosen against this metric's tags. Only when something was staged
+      // though — group by is chart-level, so clearing it on every apply would
+      // discard a grouping the user set by hand elsewhere.
+      if (stagedGroupBy.length > 0) {
+        setValue('groupBy', stagedGroupBy.join(', '));
+      }
+
+      clearErrors(`${namePrefix}metricName`);
+      onSubmit();
+    },
+    [namePrefix, setValue, clearErrors, onSubmit],
   );
 
   const handleAddToGroupBy = useCallback(
@@ -392,22 +454,46 @@ export function ChartSeriesEditor({
           </Box>
           {tableSource?.kind === SourceKind.Metric && metricType && (
             <Box miw={220}>
-              <MetricNameSelect
-                metricName={metricName}
-                metricType={metricType}
-                setMetricName={value => {
-                  setValue(`${namePrefix}metricName`, value);
-                  setValue(`${namePrefix}valueExpression`, 'Value');
-                  if (eagerSubmit) onSubmit();
-                }}
-                setMetricType={value => {
-                  setValue(`${namePrefix}metricType`, value);
-                  if (eagerSubmit) onSubmit();
-                }}
+              <Group gap="xs" wrap="nowrap" align="start">
+                <Box flex={1} miw={0}>
+                  <MetricNameSelect
+                    metricName={metricName}
+                    metricType={metricType}
+                    setMetricName={value => {
+                      setValue(`${namePrefix}metricName`, value);
+                      setValue(`${namePrefix}valueExpression`, 'Value');
+                      if (eagerSubmit) onSubmit();
+                    }}
+                    setMetricType={value => {
+                      setValue(`${namePrefix}metricType`, value);
+                      if (eagerSubmit) onSubmit();
+                    }}
+                    metricSource={tableSource}
+                    data-testid="metric-name-selector"
+                    error={errors?.metricName?.message}
+                    onFocus={() => clearErrors(`${namePrefix}metricName`)}
+                  />
+                </Box>
+                <Tooltip label="Browse metrics" withArrow>
+                  <ActionIcon
+                    variant="subtle"
+                    size="input-sm"
+                    onClick={openMetricExplorer}
+                    aria-label="Browse metrics"
+                    data-testid="metric-explorer-open"
+                  >
+                    <IconListSearch size={16} />
+                  </ActionIcon>
+                </Tooltip>
+              </Group>
+              <MetricExplorerModal
+                opened={isMetricExplorerOpen}
+                onClose={closeMetricExplorer}
                 metricSource={tableSource}
-                data-testid="metric-name-selector"
-                error={errors?.metricName?.message}
-                onFocus={() => clearErrors(`${namePrefix}metricName`)}
+                dateRange={dateRange}
+                value={{ metricName, metricType }}
+                language={aggConditionLanguage === 'sql' ? 'sql' : 'lucene'}
+                onApply={applyExplorerMetric}
               />
               {metricType === 'gauge' && (
                 <Flex justify="end">

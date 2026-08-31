@@ -61,6 +61,11 @@ export function metricKeyToRegex(key: string): RegExp {
  *
  * Result shape is identical to answer checks so reports can treat both
  * uniformly.
+ *
+ * Checks flagged `informational: true` are evaluated and included in
+ * `hits` (so per-check usage rates still report them) but contribute
+ * nothing to the weighted score — an agent that skips them still scores
+ * 100% on the remaining checks.
  */
 export function runAdoptionChecks(
   toolCalls: ToolCallRecord[],
@@ -73,7 +78,9 @@ export function runAdoptionChecks(
   let hitWeight = 0;
 
   for (const check of checks) {
-    totalWeight += check.weight;
+    const scoring = check.informational !== true;
+    const weight = check.weight ?? 0;
+    if (scoring) totalWeight += weight;
     const metricRegexes = check.metrics.map(metricKeyToRegex);
     let also: RegExp | null = null;
     if (check.alsoPattern !== undefined) {
@@ -91,12 +98,13 @@ export function runAdoptionChecks(
       args =>
         metricRegexes.some(rx => rx.test(args)) && (!also || also.test(args)),
     );
-    if (matched) hitWeight += check.weight;
+    if (matched && scoring) hitWeight += weight;
     hits.push({
       id: check.id,
-      weight: check.weight,
+      weight: scoring ? weight : 0,
       matched,
       satisfied: matched,
+      ...(scoring ? {} : { informational: true }),
     });
   }
 

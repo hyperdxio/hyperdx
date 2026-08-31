@@ -38,6 +38,7 @@ import {
   IconRefresh,
 } from '@tabler/icons-react';
 
+import DashboardFiltersModal from '@/components/DashboardFiltersModal';
 import OnboardingModal from '@/components/OnboardingModal';
 import SearchWhereInput, {
   getStoredLanguage,
@@ -49,7 +50,6 @@ import { SourceSelectControlled } from '@/components/SourceSelect';
 import { TimePicker } from '@/components/TimePicker';
 import { IS_LOCAL_MODE } from '@/config';
 import DashboardFilters from '@/DashboardFilters';
-import DashboardFiltersModal from '@/DashboardFiltersModal';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useDashboardRefresh } from '@/hooks/useDashboardRefresh';
 import usePresetDashboardFilters from '@/hooks/usePresetDashboardFilters';
@@ -236,7 +236,7 @@ function ServicesDashboardPage() {
   const [showFiltersModal, setShowFiltersModal] = useState(false);
   const {
     filters,
-    filterValues,
+    selectionByFilterId,
     setFilterValue,
     filterQueries: additionalFilters,
     handleSaveFilter,
@@ -409,7 +409,7 @@ function ServicesDashboardPage() {
       </form>
       <DashboardFilters
         filters={filters}
-        filterValues={filterValues}
+        selectionByFilterId={selectionByFilterId}
         onSetFilterValue={setFilterValue}
         dateRange={searchedTimeRange}
       />

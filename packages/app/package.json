@@ -1,6 +1,6 @@
 {
   "name": "@hyperdx/app",
-  "version": "2.36.0",
+  "version": "2.37.0",
   "private": true,
   "license": "MIT",
   "engines": {
@@ -39,7 +39,7 @@
     "@hookform/resolvers": "^3.9.0",
     "@hyperdx/api": "workspace:*",
     "@hyperdx/browser": "^0.22.1",
-    "@hyperdx/common-utils": "^0.27.0",
+    "@hyperdx/common-utils": "^0.28.0",
     "@hyperdx/node-opentelemetry": "^0.9.0",
     "@mantine/core": "^9.0.0",
     "@mantine/dates": "^9.0.0",
@@ -49,6 +49,7 @@
     "@mantine/notifications": "^9.0.0",
     "@mantine/spotlight": "^9.0.0",
     "@prometheus-io/codemirror-promql": "^0.311.3",
+    "@rrweb/replay": "2.1.1",
     "@tabler/icons-react": "^3.39.0",
     "@tanstack/react-query": "^5.56.2",
     "@tanstack/react-query-devtools": "^5.56.2",
@@ -91,7 +92,6 @@
     "react-resizable": "^3.0.4",
     "recharts": "^3.2.1",
     "remark-gfm": "^4.0.1",
-    "rrweb": "2.1.1",
     "sass": "^1.54.8",
     "sql-formatter": "^15.7.2",
     "sqlstring": "^2.3.3",

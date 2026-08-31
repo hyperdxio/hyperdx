@@ -1,5 +1,6 @@
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import {
+  AlertChartConfig,
   AlertErrorType,
   AlertState,
   AlertThresholdType,
@@ -21,6 +22,7 @@ import {
   DEFAULT_METRICS_TABLE,
   getServer,
   getTestFixtureClickHouseClient,
+  makeAlertChartConfig,
   makeTile,
   RAW_SQL_ALERT_TEMPLATE,
   RAW_SQL_NUMBER_ALERT_TEMPLATE,
@@ -54,7 +56,6 @@ import {
   buildAlertMessageTemplateHdxLink,
   buildAlertMessageTemplateTitle,
   formatValueToMatchThreshold,
-  getDefaultExternalActions,
   isAlertResolved,
   renderAlertTemplate,
   translateExternalActionsToInternal,
@@ -1124,6 +1125,17 @@ describe('checkAlerts', () => {
         };
       }
 
+      if (overrides.taskType === AlertTaskType.INLINE) {
+        return {
+          ...base,
+          taskType: AlertTaskType.INLINE,
+          chartConfig: makeAlertChartConfig({
+            sourceId: 'fake-source-id',
+            groupBy: overrides.tileGroupBy ?? '',
+          }),
+        };
+      }
+
       return {
         ...base,
         taskType: AlertTaskType.SAVED_SEARCH,
@@ -1177,6 +1189,25 @@ describe('checkAlerts', () => {
             taskType: AlertTaskType.TILE,
             alertGroupBy: 'ServiceName',
             tileGroupBy: '',
+          }),
+        ),
+      ).toBe(true);
+    });
+
+    it('should return false for inline alert with empty config groupBy', () => {
+      expect(
+        alertHasGroupBy(
+          makeDetails({ taskType: AlertTaskType.INLINE, tileGroupBy: '' }),
+        ),
+      ).toBe(false);
+    });
+
+    it('should return true for inline alert with config groupBy', () => {
+      expect(
+        alertHasGroupBy(
+          makeDetails({
+            taskType: AlertTaskType.INLINE,
+            tileGroupBy: 'ServiceName',
           }),
         ),
       ).toBe(true);
@@ -1295,6 +1326,29 @@ describe('checkAlerts', () => {
       value: 5,
     };
 
+    const inlineAlertConfig = makeAlertChartConfig({
+      sourceId: 'fake-source-id',
+    });
+    const defaultInlineAlertView: AlertMessageTemplateDefaultView = {
+      alert: {
+        thresholdType: AlertThresholdType.ABOVE,
+        threshold: 1,
+        source: AlertSource.INLINE,
+        channel: {
+          type: 'webhook',
+          webhookId: 'fake-webhook-id',
+        },
+        interval: '1m',
+        chartConfig: inlineAlertConfig,
+      },
+      startTime: new Date('2023-03-17T22:13:03.103Z'),
+      endTime: new Date('2023-03-17T22:13:59.103Z'),
+      attributes: {},
+      granularity: '5 minute',
+      isGroupedAlert: false,
+      value: 5,
+    };
+
     const server = getServer();
 
     beforeAll(async () => {
@@ -1327,6 +1381,19 @@ describe('checkAlerts', () => {
       ).toMatchInlineSnapshot(
         `"http://app:8080/dashboards/id-123?from=1679089083103&granularity=5+minute&to=1679093339103&highlightedTileId=test-tile-id"`,
       );
+
+      // Inline alerts link to the chart explorer seeded with the persisted
+      // config. Built programmatically — the URL-encoded config JSON makes an
+      // inline snapshot unreadable.
+      const expectedChartAlertUrl = new URL('http://app:8080/chart');
+      expectedChartAlertUrl.search = new URLSearchParams({
+        config: JSON.stringify(inlineAlertConfig),
+        from: '1679089083103',
+        to: '1679093339103',
+      }).toString();
+      expect(
+        buildAlertMessageTemplateHdxLink(alertProvider, defaultInlineAlertView),
+      ).toBe(expectedChartAlertUrl.toString());
     });
 
     it('formatValueToMatchThreshold', () => {
@@ -1428,6 +1495,14 @@ describe('checkAlerts', () => {
         }),
       ).toMatchInlineSnapshot(
         `"🚨 Alert for "Test Chart" in "My Dashboard" - 5 meets or exceeds 1"`,
+      );
+      // Inline alerts default to the chart config's name
+      expect(
+        buildAlertMessageTemplateTitle({
+          view: defaultInlineAlertView,
+        }),
+      ).toMatchInlineSnapshot(
+        `"🚨 Alert for "Chart Alert Query" - 5 meets or exceeds 1"`,
       );
     });
 
@@ -1533,44 +1608,6 @@ describe('checkAlerts', () => {
 
       // Test DISABLED state returns false
       expect(isAlertResolved(AlertState.DISABLED)).toBe(false);
-    });
-
-    it('getDefaultExternalActions', () => {
-      // Test fixtures only need the channel/channels fields, not a full
-      // AlertInput — a single narrowing point instead of one `as any` per case.
-      const partialAlert = (
-        over: Record<string, unknown>,
-      ): AlertMessageTemplateDefaultView['alert'] => over as any;
-
-      expect(
-        getDefaultExternalActions(
-          partialAlert({
-            channel: {
-              type: 'webhook',
-              webhookId: '123',
-            },
-          }),
-        ),
-      ).toEqual(['@webhook-123']);
-      expect(
-        getDefaultExternalActions(
-          partialAlert({
-            channels: [
-              { type: 'webhook', webhookId: '123' },
-              { type: 'webhook', webhookId: '456' },
-            ],
-          }),
-        ),
-      ).toEqual(['@webhook-123', '@webhook-456']);
-      expect(
-        getDefaultExternalActions(
-          partialAlert({
-            channel: {
-              type: 'foo',
-            },
-          }),
-        ),
-      ).toEqual([]);
     });
 
     it('translateExternalActionsToInternal', () => {
@@ -2110,6 +2147,10 @@ describe('checkAlerts', () => {
             taskType: AlertTaskType.TILE;
             tile: Tile;
             dashboard: IDashboard;
+          }
+        | {
+            taskType: AlertTaskType.INLINE;
+            chartConfig: AlertChartConfig;
           },
     ): Promise<AlertDetails> => {
       const mockUserId = new mongoose.Types.ObjectId();
@@ -2822,6 +2863,226 @@ describe('checkAlerts', () => {
       );
     });
 
+    it('INLINE alert (events) - slack webhook', async () => {
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
+
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      // Send events in the last alert window 22:05 - 22:10
+      const eventMs = now.getTime() - ms('5m');
+
+      await bulkInsertLogs(
+        Array.from({ length: 3 }, () => ({
+          ServiceName: 'api',
+          Timestamp: new Date(eventMs),
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        })),
+      );
+
+      // The config lives on the alert itself — no saved search or dashboard.
+      const chartConfig = makeAlertChartConfig({
+        sourceId: source.id,
+        name: 'Error Count',
+        aggCondition: 'ServiceName:api',
+      });
+
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.INLINE,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 1,
+          chartConfig,
+        },
+        {
+          taskType: AlertTaskType.INLINE,
+          chartConfig,
+        },
+      );
+
+      // should fetch 5m of logs
+      await processAlertAtTime(
+        now,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+
+      // skip since time diff is less than 1 window size
+      const later = new Date('2023-11-16T22:14:00.000Z');
+      await processAlertAtTime(
+        later,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+
+      const nextWindow = new Date('2023-11-16T22:16:00.000Z');
+      await processAlertAtTime(
+        nextWindow,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+      // alert should be in ok state
+      expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
+
+      // check alert history
+      const alertHistories = await AlertHistory.find({
+        alert: details.alert.id,
+      }).sort({
+        createdAt: 1,
+      });
+
+      expect(alertHistories.length).toBe(2);
+      const [history1, history2] = alertHistories;
+      expect(history1.state).toBe('ALERT');
+      expect(history1.counts).toBe(1);
+      expect(history1.createdAt).toEqual(new Date('2023-11-16T22:10:00.000Z'));
+      expect(history2.state).toBe('OK');
+      expect(history2.createdAt).toEqual(new Date('2023-11-16T22:15:00.000Z'));
+
+      // Notification links to the chart explorer seeded with the persisted
+      // config, padded by 7x granularity on both sides of the window.
+      const expectedUrl = new URL('http://app:8080/chart');
+      expectedUrl.search = new URLSearchParams({
+        config: JSON.stringify(
+          (await Alert.findById(details.alert.id))!.chartConfig,
+        ),
+        from: String(
+          new Date('2023-11-16T22:05:00.000Z').getTime() - ms('5m') * 7,
+        ),
+        to: String(
+          new Date('2023-11-16T22:10:00.000Z').getTime() + ms('5m') * 7,
+        ),
+      }).toString();
+
+      expect(slack.postMessageToWebhook).toHaveBeenNthCalledWith(
+        1,
+        'https://hooks.slack.com/services/123',
+        {
+          text: '🚨 Alert for "Error Count" - 3 meets or exceeds 1',
+          blocks: [
+            {
+              text: {
+                text: [
+                  `*<${expectedUrl.toString()} | 🚨 Alert for "Error Count" - 3 meets or exceeds 1>*`,
+                  '',
+                  '3 meets or exceeds 1',
+                  'Time Range (UTC): [Nov 16 10:05:00 PM - Nov 16 10:10:00 PM)',
+                  '',
+                ].join('\n'),
+                type: 'mrkdwn',
+              },
+              type: 'section',
+            },
+          ],
+        },
+      );
+    });
+
+    it('INLINE alert (group by) - notifies per group', async () => {
+      // Two groups fire, so two notifications go out (the shared beforeEach
+      // only mocks a single call).
+      jest.spyOn(slack, 'postMessageToWebhook').mockResolvedValue(null as any);
+
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
+
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      const eventMs = now.getTime() - ms('5m');
+
+      await bulkInsertLogs([
+        ...Array.from({ length: 3 }, () => ({
+          ServiceName: 'api',
+          Timestamp: new Date(eventMs),
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        })),
+        ...Array.from({ length: 2 }, () => ({
+          ServiceName: 'worker',
+          Timestamp: new Date(eventMs),
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        })),
+      ]);
+
+      const chartConfig = makeAlertChartConfig({
+        sourceId: source.id,
+        name: 'Errors by service',
+        groupBy: 'ServiceName',
+      });
+
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.INLINE,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 1,
+          chartConfig,
+        },
+        {
+          taskType: AlertTaskType.INLINE,
+          chartConfig,
+        },
+      );
+
+      await processAlertAtTime(
+        now,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+
+      // One firing history per group (the config's groupBy drives grouping)
+      const alertHistories = await AlertHistory.find({
+        alert: details.alert.id,
+      }).sort({ group: 1 });
+      expect(alertHistories.length).toBe(2);
+      expect(alertHistories.map(h => h.group)).toEqual([
+        'ServiceName:api',
+        'ServiceName:worker',
+      ]);
+      expect(alertHistories.every(h => h.state === 'ALERT')).toBe(true);
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(2);
+    });
+
     it.each([AlertThresholdType.BETWEEN, AlertThresholdType.NOT_BETWEEN])(
       'should not fire or record history when thresholdMax is missing for %s',
       async thresholdType => {
@@ -3384,6 +3645,17 @@ describe('checkAlerts', () => {
         expect(normalHistories[0].analytics!.webhookDurationMs).toEqual(
           expect.any(Number),
         );
+        // Per-target breakdown of that total: one entry for the alert's single
+        // configured webhook, named so the UI can attribute the time. Read
+        // field by field — these come back as Mongoose subdocuments, which
+        // don't deep-equal a plain object literal.
+        const targets = normalHistories[0].analytics!.notificationTargets;
+        expect(targets).toHaveLength(1);
+        expect(targets![0].targetId).toBe(webhook._id.toString());
+        expect(targets![0].target).toBe(webhook.name);
+        expect(targets![0].durationMs).toEqual(expect.any(Number));
+        expect(targets![0].dispatches).toBe(1);
+        expect(targets![0].failures).toBe(0);
       });
 
       it('keeps ERROR rows from older windows when a later window succeeds', async () => {

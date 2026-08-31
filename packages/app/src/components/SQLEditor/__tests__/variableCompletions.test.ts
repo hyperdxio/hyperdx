@@ -2,7 +2,7 @@ import { ChartVariable } from '@hyperdx/common-utils/dist/types';
 
 import {
   buildLuceneVariableSuggestions,
-  buildVariableCompletions,
+  buildSqlVariableCompletions,
   expandLuceneVariablesForEnglishDisplay,
 } from '@/components/SQLEditor/variableCompletions';
 
@@ -13,11 +13,11 @@ const SERVICE: ChartVariable = {
 };
 
 const labels = (variables: ChartVariable[] | undefined) =>
-  buildVariableCompletions(variables).map(completion => completion.label);
+  buildSqlVariableCompletions(variables).map(completion => completion.label);
 
 /** The second line of a completion's help — what it expands to right now. */
 const footnoteOf = (variables: ChartVariable[], label: string) => {
-  const { info } = buildVariableCompletions(variables).find(
+  const { info } = buildSqlVariableCompletions(variables).find(
     completion => completion.label === label,
   ) ?? { info: undefined };
   if (typeof info !== 'function') return undefined;
@@ -29,12 +29,12 @@ const footnoteOf = (variables: ChartVariable[], label: string) => {
   );
 };
 
-describe('buildVariableCompletions', () => {
+describe('buildSqlVariableCompletions', () => {
   it.each([
     ['off a dashboard', undefined],
     ['on a dashboard that defines none', [] as ChartVariable[]],
   ])('offers nothing %s', (_label, variables) => {
-    expect(buildVariableCompletions(variables)).toEqual([]);
+    expect(buildSqlVariableCompletions(variables)).toEqual([]);
   });
 
   it('offers the variable macros and every reference form', () => {
@@ -95,13 +95,11 @@ describe('buildLuceneVariableSuggestions', () => {
     // No braced or explicit-format forms either — in a Lucene input the bare
     // reference already renders in the lucene format.
     expect(buildLuceneVariableSuggestions([SERVICE])).toEqual([
-      {
-        value: '$service',
-        label: '$service',
-        description:
-          'The selected values of service. Expands to: ("api" OR "web")',
-      },
+      expect.objectContaining({ value: '$service', label: '$service' }),
     ]);
+    expect(buildLuceneVariableSuggestions([SERVICE])[0].description).toContain(
+      'Expands to: ("api" OR "web")',
+    );
   });
 
   it('previews the empty selection as the term that drops out', () => {
@@ -131,6 +129,14 @@ describe('expandLuceneVariablesForEnglishDisplay', () => {
     );
   });
 
+  it('expands a quoted reference to an exact match per value', () => {
+    // Quoting is how an author opts into exact matching, so the English
+    // summary has to show that shape rather than the substring one above.
+    expect(expand('ServiceName:"$service"', [SERVICE])).toBe(
+      '(ServiceName:"api" OR ServiceName:"web")',
+    );
+  });
+
   it('leaves an unselected variable as written', () => {
     // `("")` reads as `'ServiceName' is <blank>` once serialized to English,
     // which is worse than naming the placeholder that has no value yet.
@@ -146,6 +152,15 @@ describe('expandLuceneVariablesForEnglishDisplay', () => {
         { name: 'env', values: [] },
       ]),
     ).toBe('ServiceName:("api" OR "web") AND Env:$env');
+  });
+
+  it('leaves a half-typed format as written', () => {
+    // `${service:l}` is a keystroke on the way to `${service:lucene}`, and
+    // expanding it throws. This runs on every keystroke, so it has to be
+    // survivable rather than take the input down with it.
+    expect(expand('ServiceName:${service:l}', [SERVICE])).toBe(
+      'ServiceName:${service:l}',
+    );
   });
 
   it('leaves unknown references and the variable macros alone', () => {

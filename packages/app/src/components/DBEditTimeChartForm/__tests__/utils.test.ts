@@ -14,6 +14,7 @@ import {
   computeDbTimeChartConfig,
   displayTypeToActiveTab,
   isQueryReady,
+  resolvePreviewVariables,
   seriesToFilters,
   TABS_WITH_GENERATED_SQL,
 } from '@/components/DBEditTimeChartForm/utils';
@@ -284,6 +285,54 @@ describe('computeDbTimeChartConfig', () => {
     expect(result!.from).toBe(builderConfig.from);
     // @ts-expect-error union types..
     expect(result!.select).toBe(builderConfig.select);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolvePreviewVariables
+// ---------------------------------------------------------------------------
+
+describe('resolvePreviewVariables', () => {
+  const variables = [
+    { name: 'service', values: ['api'] },
+    { name: 'env', values: ['prod'] },
+  ];
+
+  const promqlConfig: ChartConfigWithDateRange = {
+    configType: 'promql',
+    promqlExpression: 'up{service=~"$service"}',
+    connection: 'local',
+    dateRange,
+  };
+
+  it('returns undefined when there are no variables in scope', () => {
+    expect(
+      resolvePreviewVariables({
+        config: promqlConfig,
+        variables: undefined,
+        hasAlert: false,
+      }),
+    ).toBeUndefined();
+  });
+
+  it('keeps the variables a PromQL expression references', () => {
+    expect(
+      resolvePreviewVariables({
+        config: promqlConfig,
+        variables,
+        hasAlert: false,
+      }),
+    ).toEqual([{ name: 'service', values: ['api'] }]);
+  });
+
+  it('drops the selections when the tile has an alert', () => {
+    expect(
+      resolvePreviewVariables({
+        config: promqlConfig,
+        variables,
+        hasAlert: true,
+      }),
+    ).toEqual([{ name: 'service', values: [] }]);
   });
 });
 

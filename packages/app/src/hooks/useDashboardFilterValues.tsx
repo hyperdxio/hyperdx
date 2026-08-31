@@ -5,7 +5,9 @@ import {
   optimizeFacetedKeyValuesConfig,
   optimizeGetKeyValuesCalls,
 } from '@hyperdx/common-utils/dist/core/materializedViews';
+import { FilterSelection } from '@hyperdx/common-utils/dist/dashboardFilterValues';
 import {
+  FilterRange,
   FilterState,
   ResolvedFilterValuesQuery,
   resolveFilterValuesWhere,
@@ -29,6 +31,9 @@ import { useSources } from '@/source';
 import { getMetricTableName, mapKeyBy } from '@/utils';
 
 import { useMetadataWithSettings } from './useMetadata';
+
+/** Stable identity for the default, so memos keyed on it don't re-run. */
+const EMPTY_SELECTIONS: ReadonlyMap<string, FilterSelection> = new Map();
 
 type FilterSourceKey = {
   sourceId: string;
@@ -61,6 +66,67 @@ const resolvedFor = (
     whereLanguage: filter.whereLanguage ?? 'sql',
   };
 
+/**
+ * Tighter of two ranges. Either bound may be absent now that a filter can be
+ * one-sided (`duration > 1000`), and absent means unbounded, so the side that
+ * states a bound wins outright. Where both state the same edge at the same
+ * value, the strict operator is the tighter one; `>=` and `<=` are the
+ * defaults and stay implicit.
+ */
+const intersectRange = (a: FilterRange, b: FilterRange): FilterRange => {
+  const range: FilterRange = {};
+
+  const min =
+    a.min != null && b.min != null ? Math.max(a.min, b.min) : (a.min ?? b.min);
+  if (min != null) {
+    range.min = min;
+    if (
+      (a.min === min && a.minOp === '>') ||
+      (b.min === min && b.minOp === '>')
+    ) {
+      range.minOp = '>';
+    }
+  }
+
+  const max =
+    a.max != null && b.max != null ? Math.min(a.max, b.max) : (a.max ?? b.max);
+  if (max != null) {
+    range.max = max;
+    if (
+      (a.max === max && a.maxOp === '<') ||
+      (b.max === max && b.maxOp === '<')
+    ) {
+      range.maxOp = '<';
+    }
+  }
+
+  return range;
+};
+
+/**
+ * AND two constraints on the same column together. Reached when two filter
+ * definitions share an expression but hold independent selections: both narrow
+ * a third dropdown's lookup, so the intersection of their inclusions applies,
+ * not whichever one happened to be written last.
+ */
+const intersectSelections = (
+  a: FilterSelection,
+  b: FilterSelection,
+): FilterSelection => ({
+  // An empty `included` is "no inclusion constraint", not "match nothing".
+  included:
+    a.included.size === 0
+      ? b.included
+      : b.included.size === 0
+        ? a.included
+        : new Set([...a.included].filter(v => b.included.has(v))),
+  excluded: new Set([...a.excluded, ...b.excluded]),
+  range:
+    a.range && b.range
+      ? intersectRange(a.range, b.range)
+      : (a.range ?? b.range),
+});
+
 type EnrichedCall = GetKeyValueCall<BuilderChartConfigWithDateRange> & {
   /** filterIds[i] = array of filter IDs whose values come from keys[i] */
   filterIds: string[][];
@@ -71,12 +137,12 @@ type EnrichedCall = GetKeyValueCall<BuilderChartConfigWithDateRange> & {
 function useOptimizedKeyValuesCalls({
   filters,
   dateRange,
-  filterValues,
+  selectionByFilterId,
   variables,
 }: {
   filters: DashboardFilter[];
   dateRange: [Date, Date];
-  filterValues: FilterState;
+  selectionByFilterId: ReadonlyMap<string, FilterSelection>;
   variables?: ChartVariable[];
 }) {
   const clickhouseClient = useClickhouseClient();
@@ -121,21 +187,24 @@ function useOptimizedKeyValuesCalls({
         ) {
           continue;
         }
-        const selection = filterValues[sibling.expression];
+        const selection = selectionByFilterId.get(sibling.id);
         if (
           selection &&
           (selection.included.size > 0 ||
             selection.excluded.size > 0 ||
             selection.range != null)
         ) {
-          prunedState[sibling.expression] = selection;
+          const existing = prunedState[sibling.expression];
+          prunedState[sibling.expression] = existing
+            ? intersectSelections(existing, selection)
+            : selection;
           hasSelection = true;
         }
       }
       byId.set(filter.id, hasSelection ? prunedState : undefined);
     }
     return byId;
-  }, [filters, filterValues]);
+  }, [filters, selectionByFilterId]);
 
   // Group filters by (source, metricType, where, whereLanguage). Every filter in
   // a group is resolved together: an unconstrained group goes through the MV
@@ -288,12 +357,13 @@ function useOptimizedKeyValuesCalls({
 export function useDashboardFilterValues({
   filters,
   dateRange,
-  filterValues = {},
+  selectionByFilterId = EMPTY_SELECTIONS,
   variables,
 }: {
   filters: DashboardFilter[];
   dateRange: [Date, Date];
-  filterValues?: FilterState;
+  /** Each filter's current selection, keyed by `filter.id`. */
+  selectionByFilterId?: ReadonlyMap<string, FilterSelection>;
   /** The dashboard's variables and their current selections, if any */
   variables?: ChartVariable[];
 }) {
@@ -306,7 +376,7 @@ export function useDashboardFilterValues({
   } = useOptimizedKeyValuesCalls({
     filters,
     dateRange,
-    filterValues,
+    selectionByFilterId,
     variables,
   });
 
