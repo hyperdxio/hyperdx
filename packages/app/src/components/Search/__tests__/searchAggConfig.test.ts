@@ -36,6 +36,24 @@ describe('parseExploreSeries', () => {
     ]);
   });
 
+  it('keeps an explicit lucene condition so old links still render', () => {
+    expect(
+      parseExploreSeries([
+        {
+          aggFn: 'count',
+          aggCondition: 'level:error',
+          aggConditionLanguage: 'lucene',
+        },
+      ])?.[0],
+    ).toMatchObject({ aggConditionLanguage: 'lucene' });
+  });
+
+  it('reads an unset condition language as SQL', () => {
+    expect(
+      parseExploreSeries([{ aggFn: 'count', valueExpression: '' }])?.[0],
+    ).toMatchObject({ aggConditionLanguage: 'sql' });
+  });
+
   it('defaults quantile level when missing', () => {
     const parsed = parseExploreSeries([
       { aggFn: 'quantile', valueExpression: 'Duration' },
@@ -64,7 +82,7 @@ describe('migrateLegacyAggToSeries', () => {
       aggFn: 'quantile',
       level: 0.95,
       aggCondition: '',
-      aggConditionLanguage: 'lucene',
+      aggConditionLanguage: 'sql',
       valueExpression: 'Duration',
     });
   });

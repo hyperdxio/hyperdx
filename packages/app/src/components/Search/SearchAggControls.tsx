@@ -54,7 +54,7 @@ export type ExploreSeries = SavedChartConfigWithSelectArray['select'][number];
 const DEFAULT_EXPLORE_SERIES: ExploreSeries = {
   aggFn: 'count',
   aggCondition: '',
-  aggConditionLanguage: 'lucene',
+  aggConditionLanguage: 'sql',
   valueExpression: '',
 };
 
@@ -71,13 +71,17 @@ export interface SearchAggConfig {
   showOperandSeries: boolean;
 }
 
-export function createEmptyExploreSeries(
-  language: 'sql' | 'lucene' = 'lucene',
-): ExploreSeries {
+/**
+ * Always SQL: these controls are Explore-only, and Explore authors WHERE
+ * clauses in SQL. Taking the language from the cross-page stored preference
+ * meant switching the Search page to Lucene silently changed what a new
+ * Explore series expected you to type.
+ */
+export function createEmptyExploreSeries(): ExploreSeries {
   return {
     aggFn: 'count',
     aggCondition: '',
-    aggConditionLanguage: language,
+    aggConditionLanguage: 'sql',
     valueExpression: '',
   };
 }
@@ -127,8 +131,10 @@ export function parseExploreSeries(value: unknown): ExploreSeries[] | null {
       typeof item.valueExpression === 'string' ? item.valueExpression : '';
     const aggCondition =
       typeof item.aggCondition === 'string' ? item.aggCondition : '';
+    // Lucene only when a link says so outright, so old shared URLs still
+    // render; anything unset is SQL, which is what Explore now authors.
     const aggConditionLanguage =
-      item.aggConditionLanguage === 'sql' ? 'sql' : 'lucene';
+      item.aggConditionLanguage === 'lucene' ? 'lucene' : 'sql';
     const alias = optionalString(item.alias);
     const metricName = optionalString(item.metricName);
     const metricType = optionalString(item.metricType);
@@ -184,8 +190,10 @@ export function migrateLegacyAggToSeries(params: {
   const isMetric = Boolean(params.metric);
   return {
     ...selectFields,
+    // The legacy params carried no condition, so there is no old syntax to
+    // preserve here and the series may as well start where Explore does.
     aggCondition: '',
-    aggConditionLanguage: 'lucene',
+    aggConditionLanguage: 'sql',
     valueExpression: isMetric ? 'Value' : (params.aggExpr ?? ''),
     ...(isMetric
       ? {

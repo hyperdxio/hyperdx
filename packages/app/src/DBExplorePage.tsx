@@ -2098,7 +2098,8 @@ function DBExplorePage() {
       return {
         ...series,
         aggCondition: series.aggCondition ?? '',
-        aggConditionLanguage: series.aggConditionLanguage ?? 'lucene',
+        aggConditionLanguage:
+          series.aggConditionLanguage ?? getDefaultExploreLanguage(),
         valueExpression: searchedMetricSource
           ? 'Value'
           : isCount
@@ -2221,7 +2222,8 @@ function DBExplorePage() {
         ...(searchedConfig.where?.trim()
           ? [
               {
-                type: searchedConfig.whereLanguage ?? 'lucene',
+                type:
+                  searchedConfig.whereLanguage ?? getDefaultExploreLanguage(),
                 condition: searchedConfig.where.trim(),
               } as Filter,
             ]

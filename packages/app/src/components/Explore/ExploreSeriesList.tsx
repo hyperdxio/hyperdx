@@ -24,7 +24,6 @@ import {
   type SearchAggConfig,
 } from '@/components/Search/SearchAggControls';
 import type { SearchView } from '@/components/Search/searchViews';
-import { getStoredLanguage } from '@/components/SearchInput/SearchWhereInput';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 
 export function ExploreSeriesList({
@@ -114,7 +113,7 @@ export function ExploreSeriesList({
   );
 
   const handleAddSeries = useCallback(() => {
-    append(createEmptyExploreSeries(getStoredLanguage() ?? 'lucene'));
+    append(createEmptyExploreSeries());
     queueMicrotask(commit);
   }, [append, commit]);
 
