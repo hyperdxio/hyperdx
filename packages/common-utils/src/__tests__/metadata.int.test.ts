@@ -1077,6 +1077,21 @@ describe('Metadata Integration Tests', () => {
       expect(result.names[0]).toBe('node_uptime_seconds');
     });
 
+    it('ranks mid-string matches by how early the match occurs', async () => {
+      const result = await metadata.getMetricNames({
+        ...baseArgs,
+        namePattern: 'up',
+      });
+
+      expect(result.names).toEqual([
+        'up', // exact
+        'group_reads', // position 4
+        'backup_size_bytes', // position 5
+        'node_uptime_seconds', // position 6
+        'mongodb_up', // position 9
+      ]);
+    });
+
     it('matches namePattern case-insensitively', async () => {
       const result = await metadata.getMetricNames({
         ...baseArgs,

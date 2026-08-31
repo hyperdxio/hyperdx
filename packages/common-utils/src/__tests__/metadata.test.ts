@@ -972,19 +972,19 @@ describe('Metadata', () => {
 
     // Without this, a short query is crowded off the page by the many names that
     // merely contain it, which is the original bug in a new form.
-    it('ranks exact then prefix matches ahead of the rest when searching', async () => {
+    it('ranks exact matches then earlier occurrences when searching', async () => {
       await metadata.getMetricNames({ ...baseArgs, namePattern: 'up' });
 
       const { query } = lastQuery();
       expect(query).toContain('lower(MetricName) = lower(');
-      expect(query).toContain('startsWith(lower(MetricName), lower(');
+      expect(query).toContain('positionCaseInsensitive(MetricName,');
     });
 
     it('adds no name predicate or ranking when browsing', async () => {
       await metadata.getMetricNames(baseArgs);
 
       expect(lastQuery().query).not.toContain('ILIKE');
-      expect(lastQuery().query).not.toContain('startsWith');
+      expect(lastQuery().query).not.toContain('positionCaseInsensitive');
     });
 
     it('excludes empty names in SQL so truncation stays accurate', async () => {

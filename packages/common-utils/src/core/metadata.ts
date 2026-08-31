@@ -2686,10 +2686,12 @@ export class Metadata {
     // Relevance first when searching, so a short query like `up` cannot be
     // crowded off the page by the many names that merely contain it
     // (`group_reads`, `node_uptime_seconds`, ...). Ordering here rather than in
-    // the client keeps the page we return the page worth showing.
+    // the client keeps the page we return the page worth showing. Position
+    // ranks earlier occurrences higher and covers prefix matches (position 1),
+    // so exact → earliest occurrence → alphabetical.
     const orderBy = namePattern
       ? chSql`lower(MetricName) = lower(${{ String: namePattern }}) DESC,
-              startsWith(lower(MetricName), lower(${{ String: namePattern }})) DESC,
+              positionCaseInsensitive(MetricName, ${{ String: namePattern }}) ASC,
               MetricName ASC`
       : chSql`MetricName ASC`;
 
