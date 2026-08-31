@@ -12,7 +12,11 @@ import {
 import type { ExternalDashboardTileWithId } from '@/utils/zod';
 import { objectIdSchema } from '@/utils/zod';
 
-import { getRawSqlTileMacroWarnings } from './validation';
+import {
+  getRawSqlTileMacroWarnings,
+  getTileVariableWarnings,
+} from './validation';
+import { mcpVariableValuesParam, resolveDashboardVariables } from './variables';
 
 /**
  * How many tiles to query against ClickHouse at once. Kept lowish so a batch
@@ -214,9 +218,10 @@ export function registerQueryTiles({
           .string()
           .optional()
           .describe('End of the query window as ISO 8601. Default: now.'),
+        variableValues: mcpVariableValuesParam.optional(),
       }),
     },
-    async ({ dashboardId, tileIds, startTime, endTime }) => {
+    async ({ dashboardId, tileIds, startTime, endTime, variableValues }) => {
       const timeRange = parseTimeRange(startTime, endTime);
       if ('error' in timeRange) {
         return mcpUserError(timeRange.error);
@@ -233,6 +238,15 @@ export function registerQueryTiles({
 
       const externalDashboard = convertToExternalDashboard(dashboard);
       const allTiles = externalDashboard.tiles;
+
+      const resolved = resolveDashboardVariables(
+        externalDashboard.filters,
+        variableValues,
+      );
+      if ('error' in resolved) {
+        return mcpUserError(resolved.error);
+      }
+      const { variables } = resolved;
 
       // Resolve the target tiles. An explicit `tileIds` array is honored
       // whenever the field is present — including an empty array, which
@@ -303,6 +317,7 @@ export function registerQueryTiles({
                 signal =>
                   runConfigTile(teamId.toString(), tile, startDate, endDate, {
                     abortSignal: signal,
+                    variables,
                   }),
                 deadlineAt,
               );
@@ -319,7 +334,10 @@ export function registerQueryTiles({
                 result.content?.[0]?.type === 'text'
                   ? result.content[0].text
                   : '';
-              const warnings = getRawSqlTileMacroWarnings([tile]);
+              const warnings = [
+                ...getRawSqlTileMacroWarnings([tile]),
+                ...getTileVariableWarnings([tile], externalDashboard.filters),
+              ];
               return {
                 ...base,
                 status: 'ok',

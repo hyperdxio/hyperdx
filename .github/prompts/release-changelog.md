@@ -30,11 +30,15 @@ splices your output into the changelog.
    `<sha> #<number> <PR title>`. Use it to append `(#NNN)` to a bullet and to
    understand intent. If an id is absent, omit the reference rather than
    guessing.
-4. Style reference: read the most recent one or two entries in
+4. `/tmp/inputs/contributors.txt` — one line per PR in this release that was
+   opened from outside the HyperDX team, as `#<number> @<handle>`. Empty when the
+   release has none. This file is the only authority on who contributed from
+   outside; do not infer it from anything else.
+5. Style reference: read the most recent one or two entries in
    `/tmp/inputs/CHANGELOG.md` (if the file exists and has any) and match their
    tone and structure. If none exist, use the example at the bottom of this
    file.
-5. `/tmp/previous-section.md` — if present, the previous generation of this very
+6. `/tmp/previous-section.md` — if present, the previous generation of this very
    section, possibly edited by a maintainer since. Preserve its phrasing for
    changes it already covers — a human may have deliberately reworded it — and
    add, update, or remove entries only where the changesets differ. Ignore any
@@ -58,9 +62,22 @@ including the checkout, is writable to you at all.
 
 ## What to write
 
-Open with 2–4 sentences of plain English summarising the release. Lead with the
+Open with a one-line headline, on its own line, bolded and nothing else:
+
+```markdown
+**Chart formulas and multi-webhook alerts**
+```
+
+The app reads that line as the title of the release in its "What's new" panel, so
+it has to stand on its own: name the one or two changes the release is actually
+about, under about 50 characters, no version number, no trailing full stop. If
+the release is housekeeping only, omit the headline rather than inventing one.
+
+Then 2–4 sentences of plain English summarising the release. Lead with the
 biggest feature or fix. Concrete, not vague; product-announcement tone; second
-person where natural ("you can now…"). No internal implementation detail.
+person where natural ("you can now…"). No internal implementation detail. The app
+shows this paragraph under the headline, so it must read on its own without the
+bullets below it.
 
 Then group the changes under these sections, in this order, omitting any section
 with no entries:
@@ -83,6 +100,12 @@ Rules:
 - One bullet per user-visible change: a **bolded outcome phrase**, a colon, then
   one or two sentences of user impact. End with the PR reference `(#NNN)` when
   you can identify it.
+- Thank outside contributions where they land. When a bullet cites a PR listed
+  in `/tmp/inputs/contributors.txt`, put the thanks in that bullet's reference:
+  `(#2909, thanks @alice!)`. Where a bullet clusters several such PRs, thank each
+  handle once. Never thank a handle that file does not list, and when it is empty
+  write nothing about contributions at all — a release with none must not gain an
+  empty gesture towards them.
 - HyperDX is a monorepo: one feature often spans several packages
   (`@hyperdx/app` + `@hyperdx/api` + `@hyperdx/common-utils` frequently move
   together). Cluster related changesets into a single bullet describing the
@@ -99,21 +122,21 @@ Rules:
 - Australian English spelling throughout.
 - Use `###` for section headings only. Never emit a `##` heading — the workflow
   owns those, and a stray one truncates the notes. The build rejects it.
-- Plain CommonMark only. The in-app "What's new" modal renders this without
+- Plain CommonMark only. The in-app "What's new" panel renders this without
   GitHub-flavoured extensions, so a pipe table degrades to literal `| --- |`
   text. Use bullet lists instead of tables.
 - Links must be inline `[text](url)` only. No reference-style links or
   definitions (`[x]: url`), and no bare autolinks (`<https://…>`) — the build
   rejects all of these. Never use a `---` or `===` underline for a heading.
-- No images, ever. Links only to `github.com` or `docs.hyperdx.io` — this
-  markdown renders in the in-app "What's new" modal for every deployment, so an
-  off-site image is a tracking beacon and an off-site link a phishing surface.
-  The build rejects both.
+- No images, ever. Links only to `github.com` or `docs.hyperdx.io` — the summary
+  renders in the in-app "What's new" panel for every deployment, so an off-site
+  image is a tracking beacon and an off-site link a phishing surface. The build
+  rejects both, and the app drops anything that gets past it.
 
 ## Output
 
 Write the result to `/tmp/release-notes-body.md` using the **Write tool** (not
-Bash). Body only — do NOT include:
+Bash). Body only — the bolded headline is part of the body, but do NOT include:
 
 - the `## vX.Y.Z` release heading,
 - any `<!-- hyperdx-release-notes … -->` marker,
@@ -124,6 +147,8 @@ The workflow adds all of those deterministically after you finish.
 ## Example body (style seed — invented content, do not copy facts)
 
 ```markdown
+**Drag-to-zoom dashboards and a collector config rename**
+
 This release is all about getting answers faster: dashboards gained a
 drag-to-zoom time picker, search autocomplete now understands your rollup
 tables, and a gnarly bug that dropped trace spans during high-cardinality bursts
@@ -147,5 +172,5 @@ upgrading.
 
 - **Trace spans no longer dropped under high-cardinality bursts**: the ingestion
   path buffered attribute maps incorrectly, silently dropping spans when a
-  service emitted thousands of distinct attribute keys (#2708).
+  service emitted thousands of distinct attribute keys (#2708, thanks @alice!).
 ```

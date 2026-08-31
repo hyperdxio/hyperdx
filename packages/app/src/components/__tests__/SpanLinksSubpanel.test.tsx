@@ -1,5 +1,6 @@
 import { fireEvent, screen } from '@testing-library/react';
 
+import { linkedSpanKey } from '@/components/linkedSpans';
 import {
   getValidSpanLinks,
   SpanLinksSubpanel,
@@ -137,6 +138,68 @@ describe('SpanLinksSubpanel', () => {
     expect(
       screen.getByText('No span links available for this trace'),
     ).toBeInTheDocument();
+  });
+
+  it('shows resolved span details in place of the bare Open trace action', () => {
+    const linkedSpanDetails = new Map([
+      [
+        linkedSpanKey(LINK_A.TraceId, LINK_A.SpanId),
+        {
+          TraceId: LINK_A.TraceId,
+          SpanId: LINK_A.SpanId,
+          spanName: 'publish message',
+          serviceName: 'producer-svc',
+          durationMs: 3,
+        },
+      ],
+    ]);
+
+    renderWithMantine(
+      <SpanLinksSubpanel
+        spanLinks={[LINK_A, LINK_B]}
+        linkedSpanDetails={linkedSpanDetails}
+      />,
+    );
+
+    // LINK_A resolved: span name replaces the action label, meta line shows.
+    expect(screen.getByText('publish message')).toBeInTheDocument();
+    expect(screen.getByText('producer-svc')).toBeInTheDocument();
+    expect(screen.getByText('3ms')).toBeInTheDocument();
+    // LINK_B unresolved: bare fallback, and its chips still render.
+    expect(screen.getByText('Open trace')).toBeInTheDocument();
+    // Attributes keep rendering on resolved links too.
+    expect(screen.getByText('link.kind: child_of')).toBeInTheDocument();
+  });
+
+  it('opens the trace from a resolved link with the original link payload', () => {
+    const onOpenTrace = jest.fn();
+    const linkedSpanDetails = new Map([
+      [
+        linkedSpanKey(LINK_A.TraceId, LINK_A.SpanId),
+        {
+          TraceId: LINK_A.TraceId,
+          SpanId: LINK_A.SpanId,
+          spanName: 'publish message',
+        },
+      ],
+    ]);
+
+    renderWithMantine(
+      <SpanLinksSubpanel
+        spanLinks={[LINK_A]}
+        linkedSpanDetails={linkedSpanDetails}
+        onOpenTrace={onOpenTrace}
+      />,
+    );
+
+    fireEvent.click(screen.getByText('publish message'));
+
+    expect(onOpenTrace).toHaveBeenCalledWith(
+      expect.objectContaining({
+        TraceId: LINK_A.TraceId,
+        SpanId: LINK_A.SpanId,
+      }),
+    );
   });
 });
 

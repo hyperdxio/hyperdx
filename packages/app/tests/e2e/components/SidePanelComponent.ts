@@ -198,6 +198,46 @@ export class SidePanelComponent {
   }
 
   /**
+   * A clickable span row in the trace waterfall, matched by its label text.
+   * Clicking it opens the span detail panel (Overview tab).
+   */
+  getWaterfallSpan(name: string) {
+    return this.panelContainer
+      .locator('[role="button"]')
+      .filter({ hasText: name });
+  }
+
+  async clickWaterfallSpan(name: string) {
+    await this.getWaterfallSpan(name).first().click({ timeout: 10_000 });
+  }
+
+  /**
+   * Rows in the span detail's "Span Links" section. Each row's open action
+   * (`span-link-open-trace`) shows the linked span's name once the target
+   * span is resolved, or "Open trace" as the unresolved fallback.
+   */
+  get spanLinkRows() {
+    return this.panelContainer.getByTestId('span-link-row');
+  }
+
+  get spanLinkOpenActions() {
+    return this.panelContainer.getByTestId('span-link-open-trace');
+  }
+
+  /**
+   * Rows in the span detail's "Linked from" section (spans whose links
+   * reference the selected span), and the per-row action that opens the
+   * referencing span's trace.
+   */
+  get linkedFromRows() {
+    return this.panelContainer.getByTestId('linked-from-row');
+  }
+
+  get linkedFromOpenActions() {
+    return this.panelContainer.getByTestId('linked-from-open-span');
+  }
+
+  /**
    * Close the side panel (if it has a close button)
    */
   async close() {

@@ -1,5 +1,6 @@
 import { createNativeClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import {
+  AlertChartConfig,
   AlertThresholdType,
   BuilderSavedChartConfig,
   DisplayType,
@@ -779,4 +780,49 @@ export const makeSavedSearchAlertInput = ({
   thresholdType: AlertThresholdType.ABOVE,
   source: AlertSource.SAVED_SEARCH,
   savedSearchId,
+});
+
+export const makeAlertChartConfig = (opts: {
+  sourceId: string;
+  name?: string;
+  displayType?: DisplayType;
+  aggCondition?: string;
+  groupBy?: string;
+}): AlertChartConfig => ({
+  name: opts.name ?? 'Chart Alert Query',
+  source: opts.sourceId,
+  displayType: opts.displayType ?? DisplayType.Line,
+  select: [
+    {
+      aggFn: 'count',
+      aggCondition: opts.aggCondition ?? '',
+      aggConditionLanguage: 'lucene',
+      valueExpression: '',
+    },
+  ],
+  where: '',
+  whereLanguage: 'lucene',
+  ...(opts.groupBy != null && { groupBy: opts.groupBy }),
+});
+
+export const makeInlineAlertInput = ({
+  chartConfig,
+  interval = '15m',
+  threshold = 8,
+  webhookId = 'test-webhook-id',
+}: {
+  chartConfig: AlertChartConfig;
+  interval?: AlertInterval;
+  threshold?: number;
+  webhookId?: string;
+}): Partial<AlertInput> => ({
+  channel: {
+    type: 'webhook',
+    webhookId,
+  },
+  interval,
+  threshold,
+  thresholdType: AlertThresholdType.ABOVE,
+  source: AlertSource.INLINE,
+  chartConfig,
 });

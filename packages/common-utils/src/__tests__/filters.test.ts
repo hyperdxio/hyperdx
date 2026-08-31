@@ -4,6 +4,7 @@ import {
   filterStateToPredicate,
   filtersToQuery,
   getDashboardVariableDeclarations,
+  getDashboardVariableFilters,
   getFilterVariableName,
   getPendingFilterValuesVariables,
   hasFilterEffect,
@@ -585,6 +586,23 @@ describe('filters', () => {
         { index: 1, language: 'lucene', condition: 'Bad:((("' },
         { index: 3, language: 'sql', condition: 'broken = = =' },
       ]);
+    });
+
+    it('ignores variable-keyed values, which carry no condition to validate', () => {
+      expect(
+        validateSavedFilterValues([
+          { type: 'variable', name: 'svc', values: ['a', 'b'] },
+        ]),
+      ).toEqual([]);
+    });
+
+    it('still reports the index of an invalid value after a variable one', () => {
+      expect(
+        validateSavedFilterValues([
+          { type: 'variable', name: 'svc', values: ['a'] },
+          { type: 'sql', condition: 'broken = = =' },
+        ]),
+      ).toEqual([{ index: 1, language: 'sql', condition: 'broken = = =' }]);
     });
   });
 
@@ -1492,6 +1510,74 @@ describe('filters', () => {
     });
   });
 
+  describe('getDashboardVariableFilters', () => {
+    const filter = (overrides: Partial<DashboardFilter>): DashboardFilter => ({
+      id: 'f1',
+      type: 'QUERY_EXPRESSION',
+      name: 'Service',
+      expression: 'ServiceName',
+      source: 'logs',
+      ...overrides,
+    });
+
+    it('returns nothing for a dashboard with no filters', () => {
+      expect(getDashboardVariableFilters(undefined)).toEqual([]);
+      expect(getDashboardVariableFilters([])).toEqual([]);
+    });
+
+    it('skips filters that do not expose a variable', () => {
+      expect(
+        getDashboardVariableFilters([
+          filter({ id: 'broadcast-only', isVariableEnabled: false }),
+          filter({ id: 'unset', name: 'Env', expression: 'Env' }),
+        ]),
+      ).toEqual([]);
+    });
+
+    it('skips a filter whose display name derives nothing usable', () => {
+      expect(
+        getDashboardVariableFilters([
+          filter({ name: '环境', isVariableEnabled: true }),
+        ]),
+      ).toEqual([]);
+    });
+
+    it('pairs each variable-enabled filter with the name it answers to', () => {
+      const explicit = filter({ isVariableEnabled: true, variableName: 'svc' });
+      const derived = filter({
+        id: 'f2',
+        name: 'Total Requests',
+        expression: 'Env',
+        isVariableEnabled: true,
+      });
+
+      expect(getDashboardVariableFilters([explicit, derived])).toEqual([
+        { filter: explicit, name: 'svc' },
+        { filter: derived, name: 'Total_Requests' },
+      ]);
+    });
+
+    it('keeps the first of two filters claiming the same name', () => {
+      const first = filter({
+        id: 'a',
+        isVariableEnabled: true,
+        variableName: 'svc',
+      });
+
+      expect(
+        getDashboardVariableFilters([
+          first,
+          filter({
+            id: 'b',
+            expression: 'Other',
+            isVariableEnabled: true,
+            variableName: 'svc',
+          }),
+        ]),
+      ).toEqual([{ filter: first, name: 'svc' }]);
+    });
+  });
+
   describe('getDashboardVariableDeclarations', () => {
     const filter = (overrides: Partial<DashboardFilter>): DashboardFilter => ({
       id: 'f1',
@@ -1505,6 +1591,22 @@ describe('filters', () => {
     it('returns nothing for a dashboard with no filters', () => {
       expect(getDashboardVariableDeclarations(undefined)).toEqual([]);
       expect(getDashboardVariableDeclarations([])).toEqual([]);
+    });
+
+    it('accepts the external filter shape, which has sourceId not source', () => {
+      // The external API and MCP hold filters with `sourceId`; only the name,
+      // expression and the two variable fields decide what a filter declares,
+      // so the signature is structural rather than tied to DashboardFilter.
+      expect(
+        getDashboardVariableDeclarations([
+          {
+            name: 'Service',
+            expression: 'ServiceName',
+            isVariableEnabled: true,
+            variableName: 'service',
+          },
+        ]),
+      ).toEqual([{ name: 'service', expression: 'ServiceName' }]);
     });
 
     it('skips filters that do not expose a variable', () => {

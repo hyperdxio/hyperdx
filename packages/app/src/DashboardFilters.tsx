@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
+import { FilterSelection } from '@hyperdx/common-utils/dist/dashboardFilterValues';
 import {
-  FilterState,
   getFilterVariableName,
   getPendingFilterValuesVariables,
   isFilterBroadcastEnabled,
@@ -167,10 +167,13 @@ const DashboardFilterSelect = ({
   );
 };
 
+/** Stable identity for the unlinked case, so the memo below doesn't re-run. */
+const EMPTY_SELECTIONS: ReadonlyMap<string, FilterSelection> = new Map();
+
 interface DashboardFilterProps {
   filters: DashboardFilter[];
-  filterValues: FilterState;
-  onSetFilterValue: (expression: string, values: string[]) => void;
+  selectionByFilterId: ReadonlyMap<string, FilterSelection>;
+  onSetFilterValue: (filterId: string, values: string[]) => void;
   dateRange: [Date, Date];
   /**
    * The dashboard's variables and their current selections. Defined only when
@@ -183,7 +186,7 @@ interface DashboardFilterProps {
 const DashboardFilters = ({
   filters,
   dateRange,
-  filterValues,
+  selectionByFilterId,
   onSetFilterValue,
   variables,
 }: DashboardFilterProps) => {
@@ -203,14 +206,14 @@ const DashboardFilters = ({
     dateRange,
     variables,
     // Only narrow by sibling selections when linked.
-    filterValues: linked ? filterValues : {},
+    selectionByFilterId: linked ? selectionByFilterId : EMPTY_SELECTIONS,
   });
 
   return (
     <Group align="start">
       {Object.values(filters).map(filter => {
         const queriedFilterValues = filterValuesById?.get(filter.id);
-        const included = filterValues[filter.expression]?.included;
+        const included = selectionByFilterId.get(filter.id)?.included;
         const selectedValues = included
           ? Array.from(included).map(v => v.toString())
           : [];
@@ -231,7 +234,7 @@ const DashboardFilters = ({
               filter,
               variables,
             )}
-            onChange={values => onSetFilterValue(filter.expression, values)}
+            onChange={values => onSetFilterValue(filter.id, values)}
             values={queriedFilterValues?.values}
             value={selectedValues}
           />
