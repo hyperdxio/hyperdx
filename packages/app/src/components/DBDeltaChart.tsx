@@ -30,6 +30,7 @@ import {
   getStableSampleExpression,
   isDenylisted,
   isHighCardinality,
+  partitionPriorityProperties,
   SAMPLE_SIZE,
   semanticBoost,
 } from './deltaChartUtils';
@@ -54,6 +55,8 @@ export default function DBDeltaChart({
   onAddFilter,
   spanIdExpression,
   legendPrefix,
+  isPriorityProperty,
+  selectExpression = '*',
 }: {
   config: BuilderChartConfigWithDateRange;
   valueExpr: string;
@@ -64,6 +67,19 @@ export default function DBDeltaChart({
   onAddFilter?: AddFilterFn;
   spanIdExpression?: string;
   legendPrefix?: React.ReactNode;
+  /**
+   * When set, visible properties matching this predicate are pinned above
+   * the rest (score order preserved within each group). Lets domain
+   * dashboards (e.g. LLM) surface their relevant attributes first.
+   */
+  isPriorityProperty?: (flattenedKey: string) => boolean;
+  /**
+   * Select list for the sampling queries. Defaults to '*'. Callers whose
+   * rows carry very large attribute values (e.g. LLM spans stamping full
+   * conversation histories) can trim them server-side — a 1000-row sample
+   * of raw LLM spans measured ~400 MiB.
+   */
+  selectExpression?: string;
 }) {
   // Derive whether a heatmap selection exists from nullable props
   const hasSelection =
@@ -222,7 +238,7 @@ export default function DBDeltaChart({
     {
       ...config,
       with: buildWithClauses(true),
-      select: '*',
+      select: selectExpression,
       filters: buildFilters(true),
       orderBy: [{ ordering: 'DESC', valueExpression: stableSampleExpr }],
       limit: { limit: SAMPLE_SIZE },
@@ -235,7 +251,7 @@ export default function DBDeltaChart({
       {
         ...config,
         with: buildWithClauses(false),
-        select: '*',
+        select: selectExpression,
         filters: buildFilters(false),
         orderBy: [{ ordering: 'DESC', valueExpression: stableSampleExpr }],
         limit: { limit: SAMPLE_SIZE },
@@ -251,7 +267,7 @@ export default function DBDeltaChart({
   } = useQueriedChartConfig(
     {
       ...config,
-      select: '*',
+      select: selectExpression,
       orderBy: [{ ordering: 'DESC', valueExpression: stableSampleExpr }],
       limit: { limit: SAMPLE_SIZE },
     },
@@ -355,7 +371,11 @@ export default function DBDeltaChart({
     });
 
     return {
-      visibleProperties,
+      // Pin caller-designated priority properties (e.g. LLM attributes)
+      // above the rest, keeping score order within each group.
+      visibleProperties: isPriorityProperty
+        ? partitionPriorityProperties(visibleProperties, isPriorityProperty)
+        : visibleProperties,
       hiddenProperties,
       outlierValueOccurences,
       inlierValueOccurences,
@@ -366,6 +386,7 @@ export default function DBDeltaChart({
     allSpansData?.data,
     hasSelection,
     columnMeta,
+    isPriorityProperty,
   ]);
 
   const [activePage, setPage] = useState(1);

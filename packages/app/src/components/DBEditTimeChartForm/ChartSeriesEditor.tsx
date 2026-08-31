@@ -454,6 +454,7 @@ export function ChartSeriesEditor({
                     setValue(`${namePrefix}metricType`, value)
                   }
                   metricSource={tableSource}
+                  dateRange={dateRange}
                   data-testid="metric-name-selector"
                   error={errors?.metricName?.message}
                   onFocus={() => clearErrors(`${namePrefix}metricName`)}
