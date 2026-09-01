@@ -4,6 +4,7 @@ import { ClickHouseClient } from '@clickhouse/client';
 import { convertCHDataTypeToJSType, JSDataType } from '@/clickhouse';
 import { ClickhouseClient as HdxClickhouseClient } from '@/clickhouse/node';
 import { Metadata, MetadataCache } from '@/core/metadata';
+import { convertToCategoricalChartConfig } from '@/core/utils';
 import {
   ChartConfigWithOptDateRange,
   DisplayType,
@@ -2352,6 +2353,33 @@ describe('queryChartConfig Integration Tests', () => {
           ['svc-c'],
           ['svc-b'],
           ['svc-a'],
+        ]);
+      });
+
+      it('sorts a categorical histogram chart with a multi-dimension group-by (HDX-5247)', async () => {
+        // convertToCategoricalChartConfig injects a structured orderBy whose
+        // second item's valueExpression is the whole group-by string; each
+        // comma piece must match its packed element like the string form.
+        const converted = convertToCategoricalChartConfig(
+          baseConfig({
+            displayType: DisplayType.Pie,
+            granularity: undefined,
+            select: [histQuantileSelect('grpsort.hist', 0.5)],
+            groupBy: "ServiceName, ResourceAttributes['service.name']",
+            seriesLimit: 10,
+          }) as Parameters<typeof convertToCategoricalChartConfig>[0],
+        );
+        const result = await runConfig(
+          converted as ChartConfigWithOptDateRange,
+        );
+
+        // Slices order by value DESC first — p50 interpolates to 20 (svc-b),
+        // 10 (svc-c), 5 (svc-a) — with the packed group pieces as tiebreak.
+        const data = result.data as Row[];
+        expect(data.map(r => col(r, 'group'))).toEqual([
+          ['svc-b', 'svc-b'],
+          ['svc-c', 'svc-c'],
+          ['svc-a', 'svc-a'],
         ]);
       });
 

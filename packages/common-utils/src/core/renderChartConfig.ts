@@ -2463,14 +2463,23 @@ function groupByEntriesForSort(
 
 /**
  * Split a SortSpecificationList into per-item expression/direction pairs.
- * String items that don't parse as a plain `<expr> [ASC|DESC]` (e.g. with a
+ * Items that don't parse as a plain `<expr> [ASC|DESC]` (e.g. with a
  * NULLS FIRST suffix) keep only `raw` and are passed through untouched.
+ *
+ * Structured items run through the same comma-splitting as the string form:
+ * convertToCategoricalChartConfig injects a single item whose
+ * valueExpression is the WHOLE group-by string (e.g. "ServiceName,
+ * HttpStatus"), which must match the group entries piece-by-piece exactly
+ * like the table default (string) form does. The item's ordering attaches
+ * to the LAST piece only — that mirrors how ClickHouse parses the rendered
+ * text `a, b DESC` (a ASC, b DESC), so splitting never changes the sort
+ * semantics of an item that already rendered successfully.
  */
 function parseSortSpecificationItems(
   sortSpecificationList: SortSpecificationList,
 ): ParsedSortItem[] {
-  if (typeof sortSpecificationList === 'string') {
-    return splitAndTrimWithBracket(sortSpecificationList).map(piece => {
+  const parsePieces = (text: string): ParsedSortItem[] =>
+    splitAndTrimWithBracket(text).map(piece => {
       const match = piece.match(/^([\s\S]*?)\s+(ASC|DESC)$/i);
       if (match) {
         return {
@@ -2484,12 +2493,15 @@ function parseSortSpecificationItems(
       // a group-by expression — so the item safely falls through untouched.
       return { raw: piece, expr: piece };
     });
+
+  if (typeof sortSpecificationList === 'string') {
+    return parsePieces(sortSpecificationList);
   }
-  return sortSpecificationList.map(item => ({
-    raw: `${item.valueExpression} ${item.ordering === 'DESC' ? 'DESC' : 'ASC'}`,
-    expr: item.valueExpression,
-    ordering: item.ordering === 'DESC' ? 'DESC' : 'ASC',
-  }));
+  return sortSpecificationList.flatMap(item =>
+    parsePieces(
+      `${item.valueExpression} ${item.ordering === 'DESC' ? 'DESC' : 'ASC'}`,
+    ),
+  );
 }
 
 /**

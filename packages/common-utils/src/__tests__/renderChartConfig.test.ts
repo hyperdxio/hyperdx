@@ -5,6 +5,7 @@ import {
   renderChartConfig,
   timeFilterExpr,
 } from '@/core/renderChartConfig';
+import { convertToCategoricalChartConfig } from '@/core/utils';
 import {
   BuilderChartConfig,
   ChartConfigWithOptDateRange,
@@ -1112,6 +1113,44 @@ describe('renderChartConfig', () => {
         );
         const sql = parameterizedQueryToSql(generatedSql);
         expect(sql).toContain('ORDER BY `group`[1] DESC');
+      });
+
+      it('sorts a categorical (pie/bar) chart with a multi-dimension group-by positionally', async () => {
+        // convertToCategoricalChartConfig injects a structured orderBy whose
+        // second item's valueExpression is the WHOLE group-by string —
+        // structured items are comma-split like the string form so each
+        // dimension matches its packed element.
+        const converted = convertToCategoricalChartConfig(
+          histTableConfig({
+            displayType: DisplayType.Pie,
+            seriesLimit: 10,
+            limit: undefined,
+            groupBy: "ServiceName, ResourceAttributes['service.name']",
+          }) as Parameters<typeof convertToCategoricalChartConfig>[0],
+        );
+        expect(converted.orderBy).toEqual([
+          { valueExpression: '"Value"', ordering: 'DESC' },
+          {
+            valueExpression: "ServiceName, ResourceAttributes['service.name']",
+            ordering: 'ASC',
+          },
+        ]);
+
+        const generatedSql = await renderChartConfig(
+          converted as ChartConfigWithOptDateRange,
+          mockMetadata,
+          querySettings,
+        );
+        const sql = parameterizedQueryToSql(generatedSql);
+        // "Value" resolves as the projected value column; the group pieces
+        // sort positionally, with the item's direction on the last piece
+        // only (matching how ClickHouse parses the raw `a, b ASC` text).
+        expect(sql).toContain(
+          'ORDER BY "Value" DESC,`group`[1],`group`[2] ASC',
+        );
+        expect(sql.slice(sql.indexOf('FROM metrics'))).not.toContain(
+          'ServiceName',
+        );
       });
 
       it('sorts by a group-by alias positionally (bare and quoted forms)', async () => {
@@ -4648,6 +4687,52 @@ describe('renderChartConfig', () => {
           const sql = parameterizedQueryToSql(generatedSql);
           expect(sql).toContain('ORDER BY `group`[1] ASC');
           expect(sql).not.toContain('__hdx_sort_');
+        });
+
+        it('splits a structured sort item carrying a multi-dimension expression', async () => {
+          // convertToCategoricalChartConfig injects the WHOLE group-by string
+          // as one structured item's valueExpression — each comma piece must
+          // match its packed element like the string form does, with the
+          // item's direction on the last piece only.
+          const generatedSql = await renderChartConfig(
+            {
+              ...baseMultiSeriesConfig,
+              displayType: DisplayType.Table,
+              granularity: undefined,
+              select: [
+                {
+                  aggFn: 'quantile',
+                  level: 0.5,
+                  aggCondition: '',
+                  aggConditionLanguage: 'sql',
+                  valueExpression: 'Value',
+                  metricName: 'metric.latency',
+                  metricType: MetricsDataType.Histogram,
+                },
+                {
+                  aggFn: 'quantile',
+                  level: 0.99,
+                  aggCondition: '',
+                  aggConditionLanguage: 'sql',
+                  valueExpression: 'Value',
+                  metricName: 'metric.latency',
+                  metricType: MetricsDataType.Histogram,
+                },
+              ],
+              groupBy: "ServiceName, ResourceAttributes['service.name']",
+              orderBy: [
+                {
+                  valueExpression:
+                    "ServiceName, ResourceAttributes['service.name']",
+                  ordering: 'DESC',
+                },
+              ],
+            },
+            mockMetadata,
+            querySettings,
+          );
+          const sql = parameterizedQueryToSql(generatedSql);
+          expect(sql).toContain('ORDER BY `group`[1],`group`[2] DESC');
         });
 
         it('rewrites the sort for a share_of_total ratio without HAVING', async () => {
