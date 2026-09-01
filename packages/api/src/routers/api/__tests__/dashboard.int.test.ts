@@ -1038,6 +1038,195 @@ describe('dashboard router', () => {
     });
   });
 
+  describe('static-list filters', () => {
+    const makeStaticFilter = (overrides = {}) => ({
+      id: new Types.ObjectId().toString(),
+      type: 'STATIC_LIST' as const,
+      name: 'Environment',
+      options: ['prod', 'staging', 'dev'],
+      isBroadcastEnabled: false,
+      isVariableEnabled: true,
+      variableName: 'env',
+      ...overrides,
+    });
+
+    it('persists a static-list filter on create and returns it on GET', async () => {
+      const filter = makeStaticFilter();
+
+      const created = await agent
+        .post('/dashboards')
+        .send({ ...MOCK_DASHBOARD, filters: [filter] })
+        .expect(200);
+
+      expect(created.body.filters).toEqual([filter]);
+
+      const listed = await agent.get('/dashboards').expect(200);
+      expect(
+        listed.body.find(
+          (dashboard: { _id: string }) => dashboard._id === created.body.id,
+        )?.filters,
+      ).toEqual([filter]);
+
+      const stored = await Dashboard.findById(created.body.id).lean();
+      expect(stored?.filters).toEqual([filter]);
+      // The queried-filter fields have to stay absent, not be materialized as
+      // null: `expression` falsiness is what makes `$__filter($env)` report
+      // that the expression must be passed explicitly.
+      expect(stored?.filters?.[0]).not.toHaveProperty('expression');
+      expect(stored?.filters?.[0]).not.toHaveProperty('source');
+    });
+
+    it('preserves the authored option order', async () => {
+      const filter = makeStaticFilter({ options: ['prod', 'staging', 'dev'] });
+
+      const created = await agent
+        .post('/dashboards')
+        .send({ ...MOCK_DASHBOARD, filters: [filter] })
+        .expect(200);
+
+      expect(created.body.filters[0].options).toEqual([
+        'prod',
+        'staging',
+        'dev',
+      ]);
+    });
+
+    it('persists an updated option list on PATCH', async () => {
+      const filter = makeStaticFilter();
+      const created = await agent
+        .post('/dashboards')
+        .send({ ...MOCK_DASHBOARD, filters: [filter] })
+        .expect(200);
+
+      const updatedFilter = { ...filter, options: ['prod', 'canary'] };
+      await agent
+        .patch(`/dashboards/${created.body.id}`)
+        .send({ filters: [updatedFilter] })
+        .expect(200);
+
+      const stored = await Dashboard.findById(created.body.id).lean();
+      expect(stored?.filters).toEqual([updatedFilter]);
+    });
+
+    it('accepts a static filter alongside a queried one', async () => {
+      await agent
+        .post('/dashboards')
+        .send({
+          ...MOCK_DASHBOARD,
+          filters: [
+            makeStaticFilter(),
+            {
+              id: new Types.ObjectId().toString(),
+              type: 'QUERY_EXPRESSION' as const,
+              name: 'Service',
+              expression: 'ServiceName',
+              source: new Types.ObjectId().toString(),
+            },
+          ],
+        })
+        .expect(200);
+    });
+
+    // The modes are literals on the static variant and `options` is `.min(1)`,
+    // so these are structural rejections; duplicate options are the one rule
+    // still carried by a refinement.
+    it.each([
+      ['broadcast enabled', { isBroadcastEnabled: true }],
+      ['broadcast unset', { isBroadcastEnabled: undefined }],
+      ['not variable-enabled', { isVariableEnabled: false }],
+      ['variables unset', { isVariableEnabled: undefined }],
+      ['no options', { options: undefined }],
+      ['an empty option list', { options: [] }],
+      ['duplicate options', { options: ['prod', 'prod'] }],
+    ])('rejects a static filter with %s', async (_label, overrides) => {
+      await agent
+        .post('/dashboards')
+        .send({
+          ...MOCK_DASHBOARD,
+          filters: [makeStaticFilter(overrides)],
+        })
+        .expect(400);
+    });
+
+    // A query-expression field on a static filter is accepted and persisted
+    // verbatim, exactly like any other unknown key on this route: the internal
+    // filter variants are not strict (a strict variant would turn a stray key
+    // left in Mongo by an older version into a failed save, since the edit form
+    // spreads the stored filter back into its payload), and `validateRequest`
+    // validates without replacing `req.body`, so nothing is stripped either.
+    // The extra fields are inert — every reader narrows on `type` — and the
+    // external API, which is strict, rejects the same payload outright.
+    it('persists a query-expression field sent on a static filter, inert', async () => {
+      const filter = makeStaticFilter();
+      const withStrayFields = {
+        ...filter,
+        expression: 'ServiceName',
+        where: "ServiceName = 'api'",
+      };
+
+      const created = await agent
+        .post('/dashboards')
+        .send({ ...MOCK_DASHBOARD, filters: [withStrayFields] })
+        .expect(200);
+
+      expect(created.body.filters).toEqual([withStrayFields]);
+
+      // Still reads back as a valid static filter, and template export drops
+      // the stray keys (see `convertToDashboardTemplate` in common-utils).
+      const stored = await Dashboard.findById(created.body.id).lean();
+      expect(stored?.filters?.[0]).toMatchObject({
+        type: 'STATIC_LIST',
+        options: ['prod', 'staging', 'dev'],
+        isBroadcastEnabled: false,
+        isVariableEnabled: true,
+      });
+    });
+
+    it('rejects the state when PATCH introduces it, leaving the stored filter alone', async () => {
+      const filter = makeStaticFilter();
+      const created = await agent
+        .post('/dashboards')
+        .send({ ...MOCK_DASHBOARD, filters: [filter] })
+        .expect(200);
+
+      await agent
+        .patch(`/dashboards/${created.body.id}`)
+        .send({ filters: [{ ...filter, options: [] }] })
+        .expect(400);
+
+      const stored = await Dashboard.findById(created.body.id).lean();
+      expect(stored?.filters).toEqual([filter]);
+    });
+
+    // The requiredness of both fields moved out of the field-level schema when
+    // `STATIC_LIST` made them optional, so it has to keep holding here.
+    it.each(['expression', 'source'])(
+      'still rejects a query-expression filter with no %s',
+      async field => {
+        const response = await agent
+          .post('/dashboards')
+          .send({
+            ...MOCK_DASHBOARD,
+            filters: [
+              {
+                id: new Types.ObjectId().toString(),
+                type: 'QUERY_EXPRESSION' as const,
+                name: 'Service',
+                expression: 'ServiceName',
+                source: new Types.ObjectId().toString(),
+                [field]: undefined,
+              },
+            ],
+          })
+          .expect(400);
+
+        expect(response.body[0].errors.issues).toEqual([
+          expect.objectContaining({ path: ['filters', 0, field] }),
+        ]);
+      },
+    );
+  });
+
   describe('preset dashboards', () => {
     const MOCK_SOURCE: Omit<Extract<TSource, { kind: 'log' }>, 'id'> = {
       kind: SourceKind.Log,
@@ -1244,6 +1433,54 @@ describe('dashboard router', () => {
           .send({ filter: filterInput })
           .expect(400);
       });
+
+      // Preset dashboards render the filter form with variables hidden, and a
+      // static filter is variable-only, so there is no way to author one here.
+      it('returns 400 for a STATIC_LIST preset filter', async () => {
+        const response = await agent
+          .post(`/dashboards/preset/${PresetDashboard.Services}/filter`)
+          .send({
+            filter: {
+              id: new Types.ObjectId().toString(),
+              type: 'STATIC_LIST',
+              name: 'Environment',
+              options: ['prod', 'staging', 'dev'],
+              isBroadcastEnabled: false,
+              isVariableEnabled: true,
+              variableName: 'env',
+              presetDashboard: PresetDashboard.Services,
+            },
+          })
+          .expect(400);
+
+        // The preset schema extends the query-expression variant, so the type
+        // literal fails alongside the fields that variant requires.
+        expect(response.body[0].errors.issues).toContainEqual(
+          expect.objectContaining({ path: ['filter', 'type'] }),
+        );
+      });
+
+      it.each(['expression', 'source'])(
+        'returns 400 for a preset filter with no %s',
+        async field => {
+          const source = await Source.create({
+            ...MOCK_SOURCE,
+            team: team._id,
+          });
+
+          await agent
+            .post(`/dashboards/preset/${PresetDashboard.Services}/filter`)
+            .send({
+              filter: {
+                ...MOCK_PRESET_DASHBOARD_FILTER,
+                id: new Types.ObjectId().toString(),
+                source: source._id.toString(),
+                [field]: undefined,
+              },
+            })
+            .expect(400);
+        },
+      );
 
       it('returns 400 when filter is missing required fields', async () => {
         const source = await Source.create({

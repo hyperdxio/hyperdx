@@ -12,7 +12,11 @@ import {
   FilterState,
   filtersToQuery,
   getDashboardVariableFilters,
+  getFilterBroadcastTarget,
+  getFilterExpression,
   isFilterBroadcastEnabled,
+  isQueryExpressionFilter,
+  isStaticListFilter,
 } from '@hyperdx/common-utils/dist/filters';
 import {
   ChartVariable,
@@ -30,8 +34,9 @@ const definitionAppliesToSource = (
   definition: DashboardFilter,
   sourceId: string | undefined,
 ): boolean => {
-  if (!isFilterBroadcastEnabled(definition)) return false;
-  const appliesTo = definition.appliesToSourceIds;
+  const target = getFilterBroadcastTarget(definition);
+  if (!target) return false;
+  const appliesTo = target.appliesToSourceIds;
   if (!appliesTo || appliesTo.length === 0) return true;
   return !!sourceId && appliesTo.includes(sourceId);
 };
@@ -64,7 +69,9 @@ const rebuildEntries = (
   const declaredVariableNames = new Set<string>();
 
   for (const filter of filters) {
-    declaredExpressions.add(filter.expression);
+    const expression = getFilterExpression(filter);
+    if (expression) declaredExpressions.add(expression);
+
     const key = filterSelectionKey(filter);
     if (key.kind !== 'variable') continue;
     declaredVariableNames.add(key.name);
@@ -72,8 +79,8 @@ const rebuildEntries = (
 
     const selection = resolveFilterSelection(filter, parsed);
     if (!selection) continue;
-    if (!isRepresentableAsVariable(selection)) {
-      byExpression[filter.expression] = selection;
+    if (!isRepresentableAsVariable(selection) && expression) {
+      byExpression[expression] = selection;
     } else if (selection.included.size > 0) {
       byVariable.set(key.name, Array.from(selection.included).map(String));
     }
@@ -83,10 +90,11 @@ const rebuildEntries = (
   // the loop above so that when a plain and a variable-enabled filter share an
   // expression, the surviving entry carries the plain filter's selection.
   for (const filter of filters) {
-    if (filterSelectionKey(filter).kind === 'variable') continue;
+    const key = filterSelectionKey(filter);
+    if (key.kind !== 'expression') continue;
     const selection = resolveFilterSelection(filter, parsed);
     if (selection && hasSelection(selection)) {
-      byExpression[filter.expression] = selection;
+      byExpression[key.expression] = selection;
     }
   }
 
@@ -164,7 +172,9 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
     }
 
     // Find state that doesn't correspond to any declared filter, so the caller can surface a warning.
-    const knownExpressions = new Set(filters.map(f => f.expression));
+    const knownExpressions = new Set(
+      filters.filter(isQueryExpressionFilter).map(f => f.expression),
+    );
     const ignoredExpressions = Object.keys(parsed.byExpression).filter(
       expression => !knownExpressions.has(expression),
     );
@@ -180,7 +190,7 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
         const selection = selectionByFilterId.get(filter.id);
         return {
           name,
-          expression: filter.expression,
+          expression: getFilterExpression(filter),
           // Sorted for deterministic react-query keys. Built explicitly rather
           // than by spreading the definition, so no extra key leaks into them.
           values: selection
@@ -205,6 +215,7 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
       const queries: Filter[] = [];
       for (const filter of filters) {
         if (!predicate(filter)) continue;
+        if (isStaticListFilter(filter)) continue;
         const selection = selectionByFilterId.get(filter.id);
         if (!selection) continue;
         // Wrap keys in `toString()` to support JSON/Dynamic-type columns.
