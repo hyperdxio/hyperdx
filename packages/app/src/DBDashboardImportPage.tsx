@@ -25,7 +25,10 @@ import {
   validateSavedFilterValues,
   validateSavedQuery,
 } from '@hyperdx/common-utils/dist/filters';
-import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
+import {
+  displayTypeRequiresSource,
+  isRawSqlSavedChartConfig,
+} from '@hyperdx/common-utils/dist/guards';
 import {
   type DashboardFilter,
   type DashboardTemplate,
@@ -386,29 +389,6 @@ function resolveAppliesToSources(
   };
 }
 
-const MappingFormStateSchema = z.object({
-  dashboardName: z.string().min(1),
-  tags: z.array(z.string()),
-  /** A list of tile source mappings, ordered by input tile index */
-  tileSourceMappings: z.array(z.string()),
-  /** A list of tile connection mappings, ordered by input tile index. Only applicable for RawSQL tiles */
-  connectionMappings: z.array(z.string()),
-  /** A list of filter source mappings, ordered by input filter index */
-  filterSourceMappings: z.array(z.string()).optional(),
-  /**
-   * Per-filter applies-to source mappings. Each entry is an array of mapped
-   * source IDs in the same order as the filter's `appliesToSourceIds` names
-   * from the template. Empty arrays mean "applies to all" after import.
-   */
-  filterAppliesToSourceMappings: z.array(z.array(z.string())).optional(),
-  /** A list of onClick source mappings, ordered by input tile index */
-  onClickSourceMappings: z.array(z.string()).optional(),
-  /** A list of onClick dashboard mappings, ordered by input tile index */
-  onClickDashboardMappings: z.array(z.string()).optional(),
-});
-
-type MappingFormState = z.infer<typeof MappingFormStateSchema>;
-
 /**
  * The query-expression half of a template filter, or `undefined` for a static
  * one. Only a queried filter references a source or an applies-to list, and
@@ -416,6 +396,86 @@ type MappingFormState = z.infer<typeof MappingFormStateSchema>;
  */
 const queriedTemplateFilter = (filter: DashboardFilter | undefined) =>
   filter && isQueryExpressionFilter(filter) ? filter : undefined;
+
+/**
+ * One mapping select's value. Mantine's Select writes `null` when the user
+ * clears a selection, so accept that and normalize it to ''.
+ */
+const MappingValueSchema = z
+  .string()
+  .nullish()
+  .transform(value => value ?? '');
+
+/**
+ * The mapping form's schema for one specific template. It has to be built from
+ * the template rather than declared once because the form state is positional
+ * (one entry per input tile/filter).
+ */
+export function buildMappingFormSchema(input: DashboardTemplate) {
+  return z
+    .object({
+      dashboardName: z.string().min(1, 'Enter a dashboard name'),
+      tags: z.array(z.string()),
+      /** A list of tile source mappings, ordered by input tile index */
+      tileSourceMappings: z.array(MappingValueSchema),
+      /** A list of tile connection mappings, ordered by input tile index. Only applicable for RawSQL tiles */
+      connectionMappings: z.array(MappingValueSchema),
+      /** A list of filter source mappings, ordered by input filter index */
+      filterSourceMappings: z.array(MappingValueSchema).optional(),
+      /**
+       * Per-filter applies-to source mappings. Each entry is an array of mapped
+       * source IDs in the same order as the filter's `appliesToSourceIds` names
+       * from the template. Empty arrays mean "applies to all" after import.
+       */
+      filterAppliesToSourceMappings: z
+        .array(z.array(MappingValueSchema))
+        .optional(),
+      /** A list of onClick source mappings, ordered by input tile index */
+      onClickSourceMappings: z.array(MappingValueSchema).optional(),
+      /** A list of onClick dashboard mappings, ordered by input tile index */
+      onClickDashboardMappings: z.array(MappingValueSchema).optional(),
+    })
+    .superRefine((data, ctx) => {
+      input.tiles.forEach((tile, idx) => {
+        const config = tile.config;
+        // Only require what the table actually offers a row for: a tile gets a
+        // source row when it declared a source, and markdown carries no
+        // meaningful source even when the template names one.
+        if (
+          config.source &&
+          displayTypeRequiresSource(config.displayType) &&
+          !data.tileSourceMappings[idx]
+        ) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['tileSourceMappings', idx],
+            message: 'Select a source for this tile',
+          });
+        }
+        // A raw SQL tile always gets a connection row, and its connection is
+        // not optional — leaving it unpicked used to throw on `connection!.id`.
+        if (isRawSqlSavedChartConfig(config) && !data.connectionMappings[idx]) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['connectionMappings', idx],
+            message: 'Select a connection for this tile',
+          });
+        }
+      });
+
+      input.filters?.forEach((filter, idx) => {
+        if (isStaticListFilter(filter)) return;
+        if (data.filterSourceMappings?.[idx]) return;
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['filterSourceMappings', idx],
+          message: 'Select a source for this filter',
+        });
+      });
+    });
+}
+
+type MappingFormState = z.infer<ReturnType<typeof buildMappingFormSchema>>;
 
 export function Mapping({ input }: { input: DashboardTemplate }) {
   const router = useRouter();
@@ -425,9 +485,12 @@ export function Mapping({ input }: { input: DashboardTemplate }) {
   const { data: existingTags } = api.useTags();
   const [dashboardId] = useQueryState('dashboardId', parseAsString);
 
+  const formSchema = useMemo(() => buildMappingFormSchema(input), [input]);
+
   const { handleSubmit, getFieldState, control, setValue, getValues } =
     useForm<MappingFormState>({
-      resolver: zodResolver(MappingFormStateSchema),
+      resolver: zodResolver(formSchema),
+      mode: 'onChange',
       defaultValues: {
         dashboardName: input.name,
         tags: input.tags ?? [],
@@ -440,9 +503,14 @@ export function Mapping({ input }: { input: DashboardTemplate }) {
       },
     });
 
+  // The template whose names have already been auto-mapped
+  const autoMappedInputRef = useRef<DashboardTemplate | null>(null);
+
   // When the input changes, reset the form
   useEffect(() => {
     if (!input || !sources || !connections || !dashboards) return;
+    if (autoMappedInputRef.current === input) return;
+    autoMappedInputRef.current = input;
 
     const tileSourceMappings = input.tiles.map(tile => {
       const config = tile.config as SavedChartConfig;
