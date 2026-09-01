@@ -1080,6 +1080,136 @@ describe('External API Alerts', () => {
         )
         .expect(400);
     });
+
+    it('accepts a number chart and enforces the single-select rule', async () => {
+      const { source } = await makeSource();
+      const webhook = await createTestWebhook();
+
+      const numberConfig = {
+        displayType: 'number',
+        sourceId: source._id.toString(),
+        select: [{ aggFn: 'count', where: 'level:error' }],
+      };
+
+      const created = await authRequest('post', ALERTS_BASE_URL)
+        .send(makeInlineAlertInput(numberConfig, webhook._id.toString()))
+        .expect(200);
+      expect(created.body.data.chartConfig).toMatchObject({
+        displayType: 'number',
+        sourceId: source._id.toString(),
+      });
+
+      // A number chart without formulas displays a single select item;
+      // extra items are only valid as formula operands.
+      await authRequest('post', ALERTS_BASE_URL)
+        .send(
+          makeInlineAlertInput(
+            {
+              ...numberConfig,
+              select: [
+                { aggFn: 'count', where: 'level:error' },
+                { aggFn: 'count', where: '' },
+              ],
+            },
+            webhook._id.toString(),
+          ),
+        )
+        .expect(400);
+
+      // With a formula, the extra select items are its operands.
+      const withFormula = await authRequest('post', ALERTS_BASE_URL)
+        .send(
+          makeInlineAlertInput(
+            {
+              ...numberConfig,
+              select: [
+                { aggFn: 'count', where: 'level:error' },
+                { aggFn: 'count', where: '' },
+              ],
+              formulas: [{ expression: 'A / B * 100' }],
+            },
+            webhook._id.toString(),
+          ),
+        )
+        .expect(200);
+      expect(withFormula.body.data.chartConfig).toMatchObject({
+        formulas: [{ expression: 'A / B * 100' }],
+      });
+    });
+
+    it('rejects asRatio without exactly two select items', async () => {
+      const { source } = await makeSource();
+      const webhook = await createTestWebhook();
+
+      await authRequest('post', ALERTS_BASE_URL)
+        .send(
+          makeInlineAlertInput(
+            makeBuilderChartConfig(source._id.toString(), { asRatio: true }),
+            webhook._id.toString(),
+          ),
+        )
+        .expect(400);
+    });
+
+    it('round-trips a single-alert GET body back through PUT unchanged', async () => {
+      // The Terraform-provider flow: read an alert, generate config from the
+      // response, apply it back. The echoed body must be valid PUT input and
+      // must not mutate the stored chart config.
+      const { source } = await makeSource();
+      const webhook = await createTestWebhook();
+
+      const created = await authRequest('post', ALERTS_BASE_URL)
+        .send(
+          makeInlineAlertInput(
+            makeBuilderChartConfig(source._id.toString(), {
+              groupBy: 'ServiceName',
+            }),
+            webhook._id.toString(),
+            { name: 'Echo Test' },
+          ),
+        )
+        .expect(200);
+      const storedBefore = await Alert.findById(created.body.data.id);
+
+      const single = await authRequest(
+        'get',
+        `${ALERTS_BASE_URL}/${created.body.data.id}`,
+      ).expect(200);
+
+      const echoed = await authRequest(
+        'put',
+        `${ALERTS_BASE_URL}/${created.body.data.id}`,
+      )
+        .send(single.body.data)
+        .expect(200);
+      expect(echoed.body.data.chartConfig).toEqual(
+        single.body.data.chartConfig,
+      );
+
+      const storedAfter = await Alert.findById(created.body.data.id);
+      expect(storedAfter!.chartConfig).toEqual(storedBefore!.chartConfig);
+    });
+
+    it('strips unknown chartConfig fields instead of persisting them', async () => {
+      const { source } = await makeSource();
+      const webhook = await createTestWebhook();
+
+      const created = await authRequest('post', ALERTS_BASE_URL)
+        .send(
+          makeInlineAlertInput(
+            {
+              ...makeBuilderChartConfig(source._id.toString()),
+              unknownField: 'dropped',
+            },
+            webhook._id.toString(),
+          ),
+        )
+        .expect(200);
+
+      expect(created.body.data.chartConfig).not.toHaveProperty('unknownField');
+      const stored = await Alert.findById(created.body.data.id);
+      expect(stored!.chartConfig).not.toHaveProperty('unknownField');
+    });
   });
 
   describe('Input validation', () => {

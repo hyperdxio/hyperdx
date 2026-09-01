@@ -11,6 +11,7 @@ import {
   DEFAULT_TRACES_TABLE,
   getLoggedInAgent,
   getServer,
+  RAW_SQL_ALERT_TEMPLATE,
 } from '@/fixtures';
 import { McpContext } from '@/mcp/tools/types';
 import Alert, { AlertSource, AlertState } from '@/models/alert';
@@ -677,6 +678,74 @@ describe('MCP Alert Tools', () => {
 
         expect(result.isError).toBe(true);
         expect(getFirstText(result)).toContain('Source not found');
+      });
+
+      it('should create a raw SQL inline alert and validate the displayType allowlist', async () => {
+        const webhook = await createTestWebhook();
+
+        // Raw SQL charts allow alertable display types only: the tool's own
+        // input schema narrows displayType, so 'table' is rejected by MCP
+        // argument validation before the handler runs.
+        const rejected = await callTool(
+          client,
+          'clickstack_save_alert',
+          makeInlineInput(webhook._id.toString(), {
+            chartConfig: {
+              configType: 'sql',
+              displayType: 'table',
+              connectionId: connection._id.toString(),
+              sqlTemplate: RAW_SQL_ALERT_TEMPLATE,
+            },
+          }),
+        );
+        expect(rejected.isError).toBe(true);
+        expect(getFirstText(rejected)).toContain('displayType');
+
+        const result = await callTool(
+          client,
+          'clickstack_save_alert',
+          makeInlineInput(webhook._id.toString(), {
+            chartConfig: {
+              configType: 'sql',
+              displayType: 'line',
+              connectionId: connection._id.toString(),
+              sqlTemplate: RAW_SQL_ALERT_TEMPLATE,
+            },
+          }),
+        );
+
+        expect(result.isError).toBeFalsy();
+        const output = JSON.parse(getFirstText(result));
+        expect(output.chartConfig).toMatchObject({
+          configType: 'sql',
+          displayType: 'line',
+          connectionId: connection._id.toString(),
+          sqlTemplate: RAW_SQL_ALERT_TEMPLATE,
+        });
+
+        // Stored with the internal field names.
+        const stored = await Alert.findById(output.id);
+        expect(stored!.chartConfig).toMatchObject({
+          configType: 'sql',
+          connection: connection._id.toString(),
+        });
+      });
+
+      it('clickstack_get_alert list entries stay slim for inline alerts', async () => {
+        const webhook = await createTestWebhook();
+        await callTool(
+          client,
+          'clickstack_save_alert',
+          makeInlineInput(webhook._id.toString()),
+        );
+
+        const list = await callTool(client, 'clickstack_get_alert', {});
+        expect(list.isError).toBeFalsy();
+        const output = JSON.parse(getFirstText(list));
+        expect(output).toHaveLength(1);
+        expect(output[0].source).toBe('inline');
+        expect(output[0].name).toBe('Inline MCP Alert');
+        expect(output[0].chartConfig).toBeUndefined();
       });
 
       it('clickstack_get_alert detail includes chartConfig and falls back to its name', async () => {

@@ -198,6 +198,22 @@ describe('utils/externalApi', () => {
       expect(translated.chartConfig).toBeUndefined();
     });
 
+    it('does not throw on an inline alert missing its chartConfig', () => {
+      // Reachable via a direct DB write or a partial legacy document; the
+      // translate layer must not crash a whole list response over one row.
+      const alert = createAlertDocument({
+        source: AlertSource.INLINE,
+        chartConfig: null,
+      });
+
+      const translated = translateAlertDocumentToExternalAlert(alert, {
+        includeChartConfig: true,
+      });
+
+      expect(translated.chartConfig).toBeUndefined();
+      expect('chartConfig' in translated).toBe(false);
+    });
+
     it('omits chartConfig when the persisted config has no external representation', () => {
       const alert = createAlertDocument({
         source: AlertSource.INLINE,
