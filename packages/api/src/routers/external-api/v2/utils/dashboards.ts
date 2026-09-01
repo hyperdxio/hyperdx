@@ -11,7 +11,10 @@ import {
   validateDashboardFilterVariableNames,
   validateDashboardTileContainerRefs,
 } from '@hyperdx/common-utils/dist/dashboardValidation';
-import { isQueryExpressionFilter } from '@hyperdx/common-utils/dist/filters';
+import {
+  isPrometheusLabelFilter,
+  isStaticListFilter,
+} from '@hyperdx/common-utils/dist/filters';
 import {
   isBuilderSavedChartConfig,
   isHeatmapCompatibleSource,
@@ -29,6 +32,7 @@ import {
   isLogSource,
   isOnClickDashboardById,
   isOnClickSearchById,
+  isPromqlSource,
   isTraceSource,
   NumberTileColorCondition,
   NumberTileColorConditionSchema,
@@ -1024,7 +1028,8 @@ function getMissingSources(
 
   if (filters?.length) {
     for (const filter of filters) {
-      if (isQueryExpressionFilter(filter)) {
+      // Every variant but the static one names a source.
+      if (!isStaticListFilter(filter)) {
         sourceIds.add(filter.sourceId);
       }
     }
@@ -1064,6 +1069,26 @@ function getHeatmapTilesWithIncompatibleSources(
   return [...heatmapSourceIds].filter(id => {
     const source = sourceById.get(id);
     return source !== undefined && !isHeatmapCompatibleSource(source);
+  });
+}
+
+/**
+ * Returns source IDs referenced by PROMETHEUS_LABEL filters that exist but are
+ * not PromQL sources.
+ */
+function getPromqlLabelFiltersWithIncompatibleSources(
+  sources: SourceForValidation[],
+  filters: (ExternalDashboardFilter | ExternalDashboardFilterWithId)[] = [],
+): string[] {
+  const referencedSourceIds = new Set<string>(
+    filters.filter(isPrometheusLabelFilter).map(f => f.sourceId),
+  );
+  if (referencedSourceIds.size === 0) return [];
+
+  const sourceById = new Map(sources.map(s => [s._id.toString(), s]));
+  return [...referencedSourceIds].filter(id => {
+    const source = sourceById.get(id);
+    return source !== undefined && !isPromqlSource(source);
   });
 }
 
@@ -1474,6 +1499,12 @@ export async function validateDashboardTiles(
   );
   if (formulaIncompatibleSources.length > 0) {
     return `Tiles with formulas require a Metric, Log, or Trace source. The following source IDs are not formula-capable: ${formulaIncompatibleSources.join(', ')}`;
+  }
+
+  const promqlLabelNonPromqlSources =
+    getPromqlLabelFiltersWithIncompatibleSources(sources, filters);
+  if (promqlLabelNonPromqlSources.length > 0) {
+    return `PROMETHEUS_LABEL filters require a PromQL source. The following source IDs are not PromQL sources: ${promqlLabelNonPromqlSources.join(', ')}`;
   }
 
   if (missingOnClickDashboards.length > 0) {

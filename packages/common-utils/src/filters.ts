@@ -787,8 +787,8 @@ export function validateDashboardFilterQueries(
   ).map(declaration => ({ ...declaration, values: [] }));
 
   for (const filter of filters) {
-    // A static filter has no values query to validate.
-    if (isStaticListFilter(filter)) continue;
+    // Only ClickHouse-queried filters carry a values query to validate.
+    if (!isQueryExpressionFilter(filter)) continue;
     const where = filter.where ?? '';
     if (!where.trim()) continue;
     const language = filter.whereLanguage ?? 'sql';
@@ -863,6 +863,13 @@ export function isStaticListFilter<T extends { type: DashboardFilterKind }>(
   return filter.type === 'STATIC_LIST';
 }
 
+/** Type guard for PROMETHEUS_LABEL type filters. */
+export function isPrometheusLabelFilter<
+  T extends { type: DashboardFilterKind },
+>(filter: T): filter is Extract<T, { type: 'PROMETHEUS_LABEL' }> {
+  return filter.type === 'PROMETHEUS_LABEL';
+}
+
 /** The SQL expression associated with the filter, if any. */
 export function getFilterExpression(
   filter: DashboardFilter,
@@ -874,7 +881,7 @@ export function getFilterExpression(
 export function getFilterBroadcastTarget(
   filter: DashboardFilter,
 ): { expression: string; appliesToSourceIds?: string[] } | undefined {
-  if (!isFilterBroadcastEnabled(filter) || isStaticListFilter(filter))
+  if (!isQueryExpressionFilter(filter) || !isFilterBroadcastEnabled(filter))
     return undefined;
   return {
     expression: filter.expression,

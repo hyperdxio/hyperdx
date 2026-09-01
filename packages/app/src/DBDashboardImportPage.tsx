@@ -389,10 +389,13 @@ function resolveAppliesToSources(
   };
 }
 
+/** Returns the filter if it names a source, or `undefined` if it doesn't. */
+const sourceBackedTemplateFilter = (filter: DashboardFilter | undefined) =>
+  filter && !isStaticListFilter(filter) ? filter : undefined;
+
 /**
- * The query-expression half of a template filter, or `undefined` for a static
- * one. Only a queried filter references a source or an applies-to list, and
- * those references are the only thing this page remaps.
+ * The query-expression half of a template filter, or `undefined` for any other
+ * type. Only a queried filter broadcasts, so only it carries an applies-to list.
  */
 const queriedTemplateFilter = (filter: DashboardFilter | undefined) =>
   filter && isQueryExpressionFilter(filter) ? filter : undefined;
@@ -639,7 +642,9 @@ export function Mapping({ input }: { input: DashboardTemplate }) {
       );
       if (idx !== -1) {
         prevFilterSourceMappingsRef.current = filterSourceMappings;
-        inputSourceName = queriedTemplateFilter(input.filters?.[idx])?.source;
+        inputSourceName = sourceBackedTemplateFilter(
+          input.filters?.[idx],
+        )?.source;
         selectedSourceId = filterSourceMappings[idx] ?? '';
       }
     }
@@ -673,7 +678,7 @@ export function Mapping({ input }: { input: DashboardTemplate }) {
         ?.map((filter, index) => ({ filter, index }))
         .filter(
           ({ filter }) =>
-            queriedTemplateFilter(filter)?.source === inputSourceName,
+            sourceBackedTemplateFilter(filter)?.source === inputSourceName,
         )
         .map(({ index }) => `filterSourceMappings.${index}` as const) ?? [];
 
@@ -705,7 +710,7 @@ export function Mapping({ input }: { input: DashboardTemplate }) {
     // the resolver's stripped-list index so it lines up with the form-state
     // array (which has unresolved template names dropped).
     input.filters?.forEach((filter, filterIdx) => {
-      if (isStaticListFilter(filter)) return;
+      if (!isQueryExpressionFilter(filter)) return;
       if (!filter.appliesToSourceIds?.includes(inputSourceName)) return;
       const key = `filterAppliesToSourceMappings.${filterIdx}` as const;
       if (getFieldState(key).isDirty) return;
@@ -1099,7 +1104,7 @@ export function Mapping({ input }: { input: DashboardTemplate }) {
                     <Table.Td />
                   </Table.Tr>
                 )}
-                {!isStaticListFilter(filter) &&
+                {isQueryExpressionFilter(filter) &&
                   !!filter.appliesToSourceIds?.length && (
                     <Table.Tr>
                       <Table.Td>{filter.name} (Filter)</Table.Td>

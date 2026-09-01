@@ -3,9 +3,12 @@ import {
   validateDashboardFilterOptionUniqueness,
   validateDashboardFilterVariableNames,
 } from '@hyperdx/common-utils/dist/dashboardValidation';
+import { isPrometheusLabelFilter } from '@hyperdx/common-utils/dist/filters';
 import {
+  DashboardFilter,
   DashboardSchema,
   DashboardWithoutIdSchema,
+  isPromqlSource,
   PresetDashboard,
   PresetDashboardFilterSchema,
   resolveChartPaletteToken,
@@ -29,7 +32,9 @@ import {
   getPresetDashboardFilters,
   updatePresetDashboardFilter,
 } from '@/controllers/presetDashboardFilters';
+import { getSources } from '@/controllers/sources';
 import { getNonNullUserWithTeam } from '@/middleware/auth';
+import type { ObjectId } from '@/models';
 import { objectIdSchema } from '@/utils/zod';
 
 // create routes that will get and update dashboards
@@ -54,6 +59,30 @@ const addFilterIssues = (
   validateDashboardFilterModes(data.filters ?? [], ctx);
   validateDashboardFilterOptionUniqueness(data.filters ?? [], ctx);
 };
+
+/**
+ * Rejects PROMETHEUS_LABEL filters whose `source` is missing or is not a PromQL
+ * source. Returns an error message, or null when there is nothing to reject.
+ */
+async function validatePromqlLabelFilterSources(
+  teamId: ObjectId,
+  filters: DashboardFilter[] = [],
+): Promise<string | null> {
+  const promqlLabelFilters = filters.filter(isPrometheusLabelFilter);
+  if (promqlLabelFilters.length === 0) return null;
+
+  const sources = await getSources(teamId.toString());
+  const promqlSourceIds = new Set(
+    sources.filter(isPromqlSource).map(source => source._id.toString()),
+  );
+
+  const invalid = promqlLabelFilters
+    .filter(filter => !promqlSourceIds.has(filter.source))
+    .map(filter => filter.source);
+  if (invalid.length === 0) return null;
+
+  return `PROMETHEUS_LABEL filters require a PromQL source. The following source IDs are not PromQL sources: ${[...new Set(invalid)].join(', ')}`;
+}
 
 /**
  * Heal legacy `chart-1`..`chart-10` tile colors from #2265 on the request
@@ -111,6 +140,14 @@ router.post(
       // dashboard to the provisioner.
       const dashboard = _.omit(req.body, 'provisioned');
 
+      const sourceError = await validatePromqlLabelFilterSources(
+        teamId,
+        req.body.filters,
+      );
+      if (sourceError != null) {
+        return res.status(400).json({ message: sourceError });
+      }
+
       const newDashboard = await createDashboard(teamId, dashboard, userId);
 
       res.json(newDashboard.toJSON());
@@ -143,6 +180,14 @@ router.patch(
       // Only omit undefined values, keep null (which signals field removal)
       // `provisioned` is server-owned — see the POST handler above.
       const updates = _.omitBy(_.omit(req.body, 'provisioned'), _.isUndefined);
+
+      const sourceError = await validatePromqlLabelFilterSources(
+        teamId,
+        req.body.filters,
+      );
+      if (sourceError != null) {
+        return res.status(400).json({ message: sourceError });
+      }
 
       const updatedDashboard = await updateDashboard(
         dashboardId,
