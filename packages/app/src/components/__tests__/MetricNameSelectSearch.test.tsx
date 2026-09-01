@@ -262,8 +262,8 @@ describe('MetricNameSelect', () => {
       ).toBeInTheDocument();
     });
 
-    // Claiming a name does not exist while a kind is still loading or broken
-    // would invite the user to commit a metric that is actually available.
+    // Claiming a name does not exist while a kind is still answering would
+    // invite the user to commit a metric that is actually available.
     it('offers nothing while a kind is in flight', async () => {
       useGetMetricNames.mockImplementation(({ tableName }: any) =>
         tableName === 'otel_metrics_sum'
@@ -280,12 +280,48 @@ describe('MetricNameSelect', () => {
       ).not.toBeInTheDocument();
     });
 
-    it('offers nothing when a kind failed to load', async () => {
+    // These queries keep the previous pattern's data while a new one is in
+    // flight, so TanStack reports `success` and `isLoading` stays false. Off
+    // `isLoading` the dropdown would confidently deny the metric exists for the
+    // whole round trip.
+    it('says it is searching rather than denying the metric exists', async () => {
+      useGetMetricNames.mockImplementation(({ tableName }: any) => ({
+        data: tableName ? { names: [], truncated: false } : undefined,
+        isFetching: true,
+      }));
+      renderSelect();
+
+      await userEvent.click(screen.getByTestId('metric-name-selector'));
+
+      expect(await screen.findByText('Searching…')).toBeInTheDocument();
+      expect(
+        screen.queryByText('No metrics reported recently'),
+      ).not.toBeInTheDocument();
+    });
+
+    // A kind whose table is misconfigured errors on every pattern and is never
+    // retried, so blocking the offer on it would permanently strand this source
+    // at the dead end the offer exists to remove.
+    it('still offers the typed name when one kind failed to load', async () => {
       useGetMetricNames.mockImplementation(({ tableName }: any) =>
         tableName === 'otel_metrics_sum'
           ? { data: undefined, isError: true }
           : { data: tableName ? { names: [], truncated: false } : undefined },
       );
+      renderSelect();
+
+      await userEvent.type(screen.getByTestId('metric-name-selector'), 'zzz');
+
+      expect(
+        await screen.findByText('Use "zzz" (no recent data)'),
+      ).toBeInTheDocument();
+    });
+
+    it('offers nothing when no kind answered at all', async () => {
+      useGetMetricNames.mockImplementation(() => ({
+        data: undefined,
+        isError: true,
+      }));
       renderSelect();
 
       await userEvent.type(screen.getByTestId('metric-name-selector'), 'zzz');

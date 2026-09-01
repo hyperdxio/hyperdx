@@ -108,7 +108,7 @@ export function MetricNameSelect({
     isTruncated,
     hasError,
     hasNoMatches,
-    isLoading: isSearching,
+    isFetching: isSearching,
   } = useMetricNames(metricSource, dateRange, debouncedSearch);
 
   const options = useMemo(() => {

@@ -1,5 +1,4 @@
 import { useMemo } from 'react';
-import { addDays, differenceInDays, subDays } from 'date-fns';
 import {
   DateRange,
   MetricsDataType,
@@ -7,6 +6,7 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 
 import { useGetMetricNames } from '@/hooks/useMetadata';
+import { clampCatalogDateRange } from '@/hooks/useMetricCatalog';
 
 const metricNamesQueryArgs = ({
   dateRange,
@@ -19,22 +19,6 @@ const metricNamesQueryArgs = ({
 }) => {
   // eslint-disable-next-line no-restricted-syntax
   const now = new Date();
-  let _dateRange: DateRange['dateRange'] = dateRange
-    ? dateRange
-    : [subDays(now, 1), now];
-  const diffInDays = differenceInDays(_dateRange[1], _dateRange[0]);
-
-  if (diffInDays < 1) {
-    const nextDay = addDays(_dateRange[0], 1);
-    if (nextDay > now) {
-      _dateRange = [subDays(_dateRange[1], 1), _dateRange[1]];
-    } else {
-      _dateRange = [_dateRange[0], nextDay];
-    }
-  } else if (diffInDays > 3) {
-    // most recent 3 days
-    _dateRange = [subDays(_dateRange[1], 3), _dateRange[1]];
-  }
 
   return {
     databaseName: metricSource.from.databaseName,
@@ -43,7 +27,7 @@ const metricNamesQueryArgs = ({
     tableName: metricSource.metricTables?.[metricType] ?? '',
     connectionId: metricSource.connection,
     timestampValueExpression: metricSource.timestampValueExpression ?? '',
-    dateRange: _dateRange,
+    dateRange: clampCatalogDateRange(dateRange, now),
   };
 };
 
@@ -106,17 +90,19 @@ export function useMetricNames(
     // query is not retried, so a transient error or a query too slow to finish
     // would silently omit those metrics from an apparently healthy dropdown.
     hasError: queries.some(query => query.isError),
-    isLoading: queries.some(query => query.isLoading),
-    // Only when every enabled kind has actually answered with nothing. Loading
-    // and error must not read as "no such metric", or a slow or broken query
-    // would invite the caller to commit a name that does exist. `isFetching` is
-    // part of that guard because these queries keep the previous page's data
-    // while a new pattern is in flight.
+    // Not `isLoading`: these queries keep the previous pattern's data while a
+    // new one is in flight, so TanStack reports `success` and `isLoading` is
+    // false for every search after the first mount.
+    isFetching: queries.some(query => query.isFetching),
+    // Only when every kind that answered returned nothing. A kind still in
+    // flight must not read as "no such metric". A kind that *errored* is
+    // deliberately not disqualifying: its table can be misconfigured
+    // indefinitely, and blocking on it would restore the dead end this exists
+    // to remove. When no kind answered at all, the `data !== undefined` check
+    // already holds the offer back.
     hasNoMatches:
       queries.some(query => query.data !== undefined) &&
       queries.every(query => (query.data?.names?.length ?? 0) === 0) &&
-      !queries.some(
-        query => query.isLoading || query.isFetching || query.isError,
-      ),
+      !queries.some(query => query.isFetching),
   };
 }
