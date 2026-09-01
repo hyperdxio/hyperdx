@@ -2518,7 +2518,10 @@ function parseSortSpecificationItems(
  * column, aliased, or expression: none resolve by name in this scope)
  * sorts as `group`[k+1]. GROUP_ALIAS is a grouping key, so the element
  * access is valid after GROUP BY ALL without an aggregate, and no
- * companion columns are involved.
+ * companion columns are involved. Sort items referencing a group-by entry
+ * by its ALIAS (bare or identifier-quoted) match too — the alias never
+ * surfaces as a column in a packed scope, unlike on scalar branches where
+ * it is a projected passthrough column and needs no rewriting.
  *
  * Anything else (value-column aliases, quoted output names, unparseable
  * items) is passed through unchanged.
@@ -2539,10 +2542,22 @@ function renderMultiSeriesOrderBy(
   let rewroteAny = false;
   const orderBy = parseSortSpecificationItems(sortSpecificationList).map(
     item => {
+      // Strip one level of identifier quoting so `"service"` / `` `service` ``
+      // compare equal to the bare alias text.
+      const unquoted =
+        item.expr != null
+          ? item.expr.trim().replace(/^"([^"]+)"$|^`([^`]+)`$/, '$1$2')
+          : undefined;
       const matched =
         item.expr != null
           ? groupEntries.find(
-              g => normalizeExprText(g.expr) === normalizeExprText(item.expr!),
+              g =>
+                normalizeExprText(g.expr) === normalizeExprText(item.expr!) ||
+                // Alias references only need rewriting in a packed scope; on
+                // scalar branches the alias is a projected column and the
+                // item must pass through untouched to keep working SQL
+                // byte-for-byte identical.
+                (groupsArePacked && g.alias != null && g.alias === unquoted),
             )
           : undefined;
       if (!matched) {

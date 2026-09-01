@@ -1114,6 +1114,33 @@ describe('renderChartConfig', () => {
         expect(sql).toContain('ORDER BY `group`[1] DESC');
       });
 
+      it('sorts by a group-by alias positionally (bare and quoted forms)', async () => {
+        // The alias is defined inside the packing array literal in an inner
+        // CTE — it never surfaces as a column in the translated scope, so an
+        // alias-referencing sort must rewrite to the packed element too.
+        for (const orderBy of [
+          [{ valueExpression: 'service', ordering: 'DESC' as const }],
+          '"service" DESC',
+        ]) {
+          const generatedSql = await renderChartConfig(
+            histTableConfig({
+              groupBy: [
+                {
+                  aggCondition: '',
+                  valueExpression: "ResourceAttributes['service.name']",
+                  alias: 'service',
+                },
+              ],
+              orderBy,
+            }),
+            mockMetadata,
+            querySettings,
+          );
+          const sql = parameterizedQueryToSql(generatedSql);
+          expect(sql).toContain('ORDER BY `group`[1] DESC');
+        }
+      });
+
       it('leaves unmatched sort items (the value alias) untouched', async () => {
         const generatedSql = await renderChartConfig(
           histTableConfig({
@@ -4574,6 +4601,52 @@ describe('renderChartConfig', () => {
           );
           const sql = parameterizedQueryToSql(generatedSql);
           expect(sql).toContain('ORDER BY `group`[1] DESC');
+          expect(sql).not.toContain('__hdx_sort_');
+        });
+
+        it('sorts an all-histogram chart by a group-by alias through the packed array', async () => {
+          // In a packed scope the alias never surfaces as a column (unlike
+          // scalar branches, where alias sorts pass through untouched), so
+          // alias references rewrite to the packed element too.
+          const generatedSql = await renderChartConfig(
+            {
+              ...baseMultiSeriesConfig,
+              displayType: DisplayType.Table,
+              granularity: undefined,
+              select: [
+                {
+                  aggFn: 'quantile',
+                  level: 0.5,
+                  aggCondition: '',
+                  aggConditionLanguage: 'sql',
+                  valueExpression: 'Value',
+                  metricName: 'metric.latency',
+                  metricType: MetricsDataType.Histogram,
+                },
+                {
+                  aggFn: 'quantile',
+                  level: 0.99,
+                  aggCondition: '',
+                  aggConditionLanguage: 'sql',
+                  valueExpression: 'Value',
+                  metricName: 'metric.latency',
+                  metricType: MetricsDataType.Histogram,
+                },
+              ],
+              groupBy: [
+                {
+                  aggCondition: '',
+                  valueExpression: "ResourceAttributes['service.name']",
+                  alias: 'service',
+                },
+              ],
+              orderBy: [{ valueExpression: 'service', ordering: 'ASC' }],
+            },
+            mockMetadata,
+            querySettings,
+          );
+          const sql = parameterizedQueryToSql(generatedSql);
+          expect(sql).toContain('ORDER BY `group`[1] ASC');
           expect(sql).not.toContain('__hdx_sort_');
         });
 

@@ -2328,6 +2328,33 @@ describe('queryChartConfig Integration Tests', () => {
         );
       });
 
+      it('sorts a SINGLE-series histogram table by its group-by alias (HDX-5247)', async () => {
+        // The alias only exists inside the packing array literal — it never
+        // surfaces as a column in the translated scope — so alias-referencing
+        // sorts rewrite to the packed element like expression sorts do.
+        const result = await runConfig(
+          baseConfig({
+            displayType: DisplayType.Table,
+            granularity: undefined,
+            select: [histQuantileSelect('grpsort.hist', 0.5)],
+            groupBy: [
+              {
+                aggCondition: '',
+                valueExpression: "ResourceAttributes['service.name']",
+                alias: 'service',
+              },
+            ],
+            orderBy: [{ valueExpression: 'service', ordering: 'DESC' }],
+          }),
+        );
+
+        expect((result.data as Row[]).map(r => col(r, 'group'))).toEqual([
+          ['svc-c'],
+          ['svc-b'],
+          ['svc-a'],
+        ]);
+      });
+
       it('sorts an all-histogram chart on a raw expression group-by via the packed group array', async () => {
         // With no scalar branch there are no individual group columns —
         // every branch packs the group values into the `group` Array, and
