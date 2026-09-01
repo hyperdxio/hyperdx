@@ -2497,13 +2497,12 @@ function renderMultiSeriesOrderBy(
   let rewroteAny = false;
   const orderBy = parseSortSpecificationItems(sortSpecificationList).map(
     item => {
-      const matchedIdx =
+      const matched =
         item.expr != null
-          ? groupEntries.findIndex(
+          ? groupEntries.find(
               g => normalizeExprText(g.expr) === normalizeExprText(item.expr!),
             )
-          : -1;
-      const matched = matchedIdx >= 0 ? groupEntries[matchedIdx] : undefined;
+          : undefined;
       if (!matched) {
         return chSql`${{ UNSAFE_RAW_SQL: item.raw }}`;
       }
@@ -2513,7 +2512,7 @@ function renderMultiSeriesOrderBy(
         // packing order in translateHistogram ([...groupBy] AS group).
         rewroteAny = true;
         return chSql`${{
-          UNSAFE_RAW_SQL: `\`${GROUP_ALIAS}\`[${matchedIdx + 1}]${direction}`,
+          UNSAFE_RAW_SQL: `\`${GROUP_ALIAS}\`[${groupEntries.indexOf(matched) + 1}]${direction}`,
         }}`;
       }
       if (!matched.alias && isPlainColumnReference(matched.expr)) {
