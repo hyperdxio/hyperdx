@@ -102,11 +102,11 @@ custom OTel configurations without rebuilding the collector.
 
 ### Connectors
 
-| Component     | Module  | Used in                              |
-| ------------- | ------- | ------------------------------------ |
-| `forward`     | core    | included for utility                 |
-| `routing`     | contrib | standalone configs, OpAMP controller |
-| `spanmetrics` | contrib | user configs                         |
+| Component      | Module  | Used in                              |
+| -------------- | ------- | ------------------------------------ |
+| `forward`      | core    | included for utility                 |
+| `routing`      | contrib | standalone configs, OpAMP controller |
+| `span_metrics` | contrib | user configs                         |
 
 ### Extensions
 
@@ -164,8 +164,13 @@ team ingestion API key.
 counts, a duration histogram) can be computed from any traces the collector
 ingests — works with `otlp/hyperdx` directly, and is most useful alongside
 [`datadogreceiver`](#ingesting-datadog-traces-metrics-and-logs) above, since
-Datadog Agent traces have no other way to produce these once ingested. The
-component's config key is `span_metrics` (the module is still named
+Datadog Agent traces otherwise only get RED metrics the same way any other
+trace source does today: computed at query time from the traces table
+(`packages/app/src/serviceDashboard.ts`'s `getExpressions`). This connector
+precomputes them once at the collector instead of per query, and adds an
+exponential-histogram latency series HyperDX's ClickHouse schema already
+has a dedicated table for (below). The component's config key is
+`span_metrics` (the module is still named
 `spanmetricsconnector`, and `spanmetrics` still works as a deprecated
 alias, but new configs should use the current name).
 
@@ -192,16 +197,13 @@ bare minimum:
   chart on `traces.span.metrics.calls` reads flat zero for an endpoint
   that's actually serving traffic. Delta temporality passes `Value`
   straight through with no diffing (same file, `AggregationTemporality =
-  1` branch), so it isn't exposed to this at all — and it's what
-  real-world `spanmetrics` configs already use for this reason (e.g.
-  Chronosphere's own gateway collector, again).
+  1` branch), so it isn't exposed to this at all.
 - `namespace: traces.span.metrics` — this is already the connector's
   default (v0.155.0's `DefaultNamespace`), so it's set here for
   explicitness rather than to avoid a collision: pinning it keeps the
   emitted names (`traces.span.metrics.calls`/`.duration`) stable and
   obvious from the local config even if a future version ever changes
-  that default, and matches the convention real-world `spanmetrics`
-  configs already use (e.g. Chronosphere's own gateway collector).
+  that default.
 - `histogram.exponential.max_size: 160` — without it, the connector
   defaults to an *explicit*-bucket duration histogram
   (`otel_metrics_histogram`), not the exponential one
@@ -235,14 +237,18 @@ inherit `processors: [memory_limiter, batch]` from the base
 add for that here — see ["Overriding base
 components"](#overriding-base-components-via-custom_otelcol_config_file)
 below for when you'd want to retune it. Confmap replaces a pipeline's
-`receivers:`/`exporters:` list wholesale rather than appending to it, so if
-you're already pairing this with `datadogreceiver` per the section above,
-`datadog` has to be re-listed here too. The example below deliberately
-leaves it out: an unconditional `datadog` here would break this exact
-example for anyone who *hasn't* configured it (`references receiver
-"datadog" which is not configured`, failing the whole config, not just
-this pipeline) — the two cases can't both be satisfied by one copy-pasted
-block, so check which one applies to you before using it:
+`receivers:`/`exporters:` list wholesale rather than appending to it, so
+Datadog *trace* data only reaches `span_metrics` if `datadog` is re-listed
+on `traces: receivers:` specifically — it's a receiver on the `traces`
+pipeline that `span_metrics` consumes as an exporter there, so putting
+`datadog` on `metrics: receivers:` instead (for the Datadog section's own
+native-metrics ingestion) does nothing for span-derived metrics. The
+example below deliberately leaves the trace-side `datadog` out: an
+unconditional reference here would break this exact example for anyone
+who *hasn't* configured it (`references receiver "datadog" which is not
+configured`, failing the whole config, not just this pipeline) — the two
+cases can't both be satisfied by one copy-pasted block, so check which one
+applies to you before using it:
 
 ```yaml
 connectors:
@@ -257,11 +263,12 @@ connectors:
 service:
   pipelines:
     traces:
-      exporters: [clickhouse, span_metrics]
-    metrics:
       # Add `datadog` here too if (and only if) you configured it per the
       # Datadog section above - this list replaces the base one rather
       # than adding to it.
+      receivers: [otlp/hyperdx]
+      exporters: [clickhouse, span_metrics]
+    metrics:
       receivers: [otlp/hyperdx, span_metrics]
 ```
 
