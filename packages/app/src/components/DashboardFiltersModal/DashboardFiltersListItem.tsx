@@ -51,7 +51,12 @@ export const DashboardFilterListItem = ({
     </Group>
     {attributes.map(({ icon, tooltip, label, testId }) => {
       return (
-        <Group key={label} gap="xs" wrap="nowrap" data-testid={testId}>
+        <Group
+          key={testId ?? label}
+          gap="xs"
+          wrap="nowrap"
+          data-testid={testId}
+        >
           {tooltip ? (
             <Tooltip label={tooltip} withinPortal multiline maw={400}>
               <Box style={{ display: 'flex', flexShrink: 0 }}>{icon}</Box>

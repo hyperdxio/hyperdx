@@ -5,7 +5,6 @@
  * and nothing else — and it is offered only where variables are.
  */
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
-import type { Page } from '@playwright/test';
 
 import { DashboardPage } from '../page-objects/DashboardPage';
 import { ServicesDashboardPage } from '../page-objects/ServicesDashboardPage';
@@ -14,30 +13,13 @@ import {
   DEFAULT_LOGS_SOURCE_NAME,
   DEFAULT_TRACES_SOURCE_NAME,
 } from '../utils/constants';
+import { expectFiltersParam } from '../utils/filters-param';
 
 /**
  * Authored in an order that is not their sorted order, so "the dropdown lists
  * them as written" is distinguishable from "the dropdown sorts them".
  */
 const ENVIRONMENTS = ['prod', 'staging', 'dev'];
-
-type FilterEntry =
-  | { type: 'sql'; condition: string }
-  | { type: 'variable'; name: string; values: string[] };
-
-/** The `filters=` param, decoded. `null` when the param is absent. */
-const filtersParam = (page: Page): FilterEntry[] | null => {
-  const raw = new URL(page.url()).searchParams.get('filters');
-  if (raw === null) return null;
-  return JSON.parse(decodeURIComponent(raw));
-};
-
-/** Wait for the param to settle on `expected` — nuqs writes it asynchronously. */
-const expectFiltersParam = async (page: Page, expected: FilterEntry[]) => {
-  await expect(async () => {
-    expect(filtersParam(page)).toEqual(expected);
-  }).toPass({ timeout: 10000 });
-};
 
 test.describe(
   'Static list dashboard filters',
