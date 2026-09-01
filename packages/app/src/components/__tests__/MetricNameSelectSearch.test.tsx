@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import {
   MetricsDataType,
   SourceKind,
@@ -56,6 +57,26 @@ const renderSelect = (
       {...props}
     />,
   );
+
+/**
+ * Holds `metricName` the way the chart form does. The mock-callback harness
+ * above never feeds a committed name back in, which hides every bug that only
+ * appears on the render after a selection.
+ */
+const StatefulSelect = () => {
+  const [metricName, setMetricName] = useState<string | null>(null);
+  const [metricType, setMetricType] = useState(MetricsDataType.Gauge);
+  return (
+    <MetricNameSelect
+      metricType={metricType}
+      metricName={metricName}
+      setMetricType={setMetricType}
+      setMetricName={setMetricName}
+      metricSource={metricSource}
+      data-testid="metric-name-selector"
+    />
+  );
+};
 
 beforeEach(() => {
   useGetMetricNames.mockReset();
@@ -205,6 +226,29 @@ describe('MetricNameSelect', () => {
         'chi_clickhouse_metric_SystemErrors',
       );
       expect(setMetricType).toHaveBeenCalledWith(MetricsDataType.Gauge);
+    });
+
+    // Committing the offer puts the name in `metricName`, which
+    // `getMetricOptions` synthesizes its own option for, while the debounced
+    // search still holds the same name for one more interval. Both build the
+    // same `name:::::::type` value, and Mantine throws on a duplicate option
+    // value — taking the whole chart editor down rather than degrading.
+    it('survives committing the typed name', async () => {
+      noMatches();
+      renderWithMantine(<StatefulSelect />);
+
+      const input = screen.getByTestId('metric-name-selector');
+      await userEvent.type(input, 'chc_');
+      await userEvent.click(
+        await screen.findByText('Use "chc_" (no recent data)'),
+      );
+
+      await waitFor(() => expect(input).toHaveValue('chc_ (Gauge)'));
+
+      // Past the debounce, where the committed name and the searched name are
+      // both still in play.
+      await new Promise(resolve => setTimeout(resolve, DEBOUNCE_SETTLE_MS));
+      expect(input).toHaveValue('chc_ (Gauge)');
     });
 
     it('explains itself rather than hiding the dropdown', async () => {

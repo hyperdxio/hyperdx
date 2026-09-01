@@ -128,9 +128,20 @@ export function MetricNameSelect({
     // search, so the offer appears only once the query behind it has answered,
     // and the name is embedded in the label because Mantine filters options by
     // substring against the label and would otherwise drop this one.
-    if (debouncedSearch && hasNoMatches) {
+    const typedValue = `${debouncedSearch}${SEPARATOR}${metricType}`;
+    // Skipped when that value is already an option, or Mantine throws on the
+    // duplicate and takes the whole editor down. Committing this offer puts the
+    // name in `metricName`, which `getMetricOptions` then synthesizes an option
+    // for, while the debounced search still holds the same name for one more
+    // interval — so the collision is the normal path through here, not an edge
+    // case.
+    if (
+      debouncedSearch &&
+      hasNoMatches &&
+      !metricOptions.some(option => option.value === typedValue)
+    ) {
       metricOptions.push({
-        value: `${debouncedSearch}${SEPARATOR}${metricType}`,
+        value: typedValue,
         label: `Use "${debouncedSearch}" (no recent data)`,
       });
     }
