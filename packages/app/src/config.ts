@@ -66,12 +66,15 @@ export const NOW = Date.now();
 
 // Features in development
 export const IS_K8S_DASHBOARD_ENABLED = true;
+// LLM dashboard cost estimation. Default off pending a price-management
+// story: the bundled catalog goes stale between releases and can't account
+// for provider discounts, so tokens are the primary metric for now.
+export const IS_LLM_COST_ENABLED =
+  env('NEXT_PUBLIC_IS_LLM_COST_ENABLED') === 'true';
 export const IS_METRICS_ENABLED = true;
 export const IS_MTVIEWS_ENABLED = false;
 export const IS_SESSIONS_ENABLED = true;
 export const IS_PROMQL_ENABLED = env('NEXT_PUBLIC_ENABLE_PROMQL') === 'true';
-export const IS_DASHBOARD_VARIABLES_ENABLED =
-  env('NEXT_PUBLIC_ENABLE_DASHBOARD_VARIABLES') === 'true';
 // Alert detail page (/alerts/:id). Default off — currently enabled only in
 // dev (.env.development) and CI (e2e webserver) while the feature bakes.
 export const IS_ALERT_DETAILS_ENABLED =

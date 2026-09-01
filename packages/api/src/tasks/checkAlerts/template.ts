@@ -210,6 +210,18 @@ export const buildAlertMessageTemplateHdxLink = (
       startTime,
       tileId: alert.tileId ?? undefined,
     });
+  } else if (alert.source === AlertSource.INLINE) {
+    if (alert.chartConfig == null) {
+      throw new Error(`Source is ${alert.source} but chartConfig is null`);
+    }
+    // Inline alerts have no saved search or dashboard to open — link to the
+    // chart explorer seeded with the alert's persisted config.
+    return alertProvider.buildChartExplorerLink({
+      chartConfig: alert.chartConfig,
+      endTime,
+      granularity,
+      startTime,
+    });
   }
 
   throw new Error(`Unsupported alert source: ${alert.source}`);
@@ -253,6 +265,19 @@ export const buildAlertMessageTemplateTitle = ({
     const baseTitle = template
       ? handlebars.compile(template)(view)
       : `Alert for "${tile.config.name}" in "${dashboard.name}" - ${formattedValue} ${
+          doesExceedThreshold(alert, value)
+            ? describeThresholdViolation(alert.thresholdType)
+            : describeThresholdResolution(alert.thresholdType)
+        } ${describeThreshold(alert)}`;
+    return `${emoji}${baseTitle}`;
+  } else if (alert.source === AlertSource.INLINE) {
+    const formattedValue = formatValueToMatchThreshold(value, alert.threshold);
+    // Inline alerts have no saved search/tile to name them; the alert's `name`
+    // doubles as the title template, so the default falls back to the chart
+    // config's name.
+    const baseTitle = template
+      ? handlebars.compile(template)(view)
+      : `Alert for "${alert.chartConfig?.name ?? 'chart'}" - ${formattedValue} ${
           doesExceedThreshold(alert, value)
             ? describeThresholdViolation(alert.thresholdType)
             : describeThresholdResolution(alert.thresholdType)
@@ -341,11 +366,30 @@ const channelKey = (c: PopulatedAlertChannel) =>
 const channelLabel = (c: PopulatedAlertChannel) =>
   c.type === 'webhook' ? c.channel.name : c.type;
 
+/**
+ * One dispatch's wall time. Emitted per target per event, so a grouped alert
+ * produces one of these per (group, target); the caller aggregates.
+ */
+export type NotificationTiming = {
+  /** Stable identity for aggregation across events — the webhook id. */
+  key: string;
+  /** Display label: the webhook's name. */
+  target: string;
+  durationMs: number;
+  ok: boolean;
+};
+
 export type RenderedAlert = {
   /** The rendered message body, as delivered to every target. */
   body: string;
   /** One entry per target that did not end up delivered — see NotificationFailure. */
   failures: NotificationFailure[];
+  /**
+   * One entry per target that reached the dispatcher, delivered or not.
+   * Targets that failed before dispatch have no timing — there was nothing to
+   * time — so this is not the complement of `failures`.
+   */
+  timings: NotificationTiming[];
 };
 
 // this method will build the body of the alert message and will be used to send the alert to the channel
@@ -692,8 +736,11 @@ ${targetTemplate}
 \`\`\`
 {{{__hdx_query_results__}}}
 \`\`\``;
-  } else if (alert.source === AlertSource.TILE) {
-    if (dashboard == null) {
+  } else if (
+    alert.source === AlertSource.TILE ||
+    alert.source === AlertSource.INLINE
+  ) {
+    if (alert.source === AlertSource.TILE && dashboard == null) {
       throw new Error(`Source is ${alert.source} but dashboard is null`);
     }
     const formattedValue = formatValueToMatchThreshold(value, alert.threshold);
@@ -733,11 +780,17 @@ ${targetTemplate}`;
     // queued dispatcher resolves after enqueue and never rejects here; it
     // reports delivery outcomes through its own logs/metrics instead (see
     // agent_docs/observability.md).
+    const timings: NotificationTiming[] = [];
     await Promise.all(
       jobs.map(async job => {
+        // Per-job, not around the Promise.all: the whole point is attributing
+        // the total to a target, and the dispatches overlap.
+        const startedAt = performance.now();
+        let ok = true;
         try {
           await dispatcher.dispatch(job);
         } catch (e) {
+          ok = false;
           logger.error(
             {
               alertId: alert.id,
@@ -751,11 +804,18 @@ ${targetTemplate}`;
             type: job.populatedChannel.type,
             error: e,
           });
+        } finally {
+          timings.push({
+            key: channelKey(job.populatedChannel),
+            target: channelLabel(job.populatedChannel),
+            durationMs: Math.round(performance.now() - startedAt),
+            ok,
+          });
         }
       }),
     );
 
-    return { body, failures };
+    return { body, failures, timings };
   }
 
   throw new Error(`Unsupported alert source: ${alert.source}`);

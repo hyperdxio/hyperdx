@@ -65,6 +65,23 @@ describe('AlertPropertiesSummary notification targets', () => {
     });
   });
 
+  // Both surfaces render the creator as their own dimmed sub-line, so the
+  // shared summary stays configuration-only.
+  it.each(['row', 'detail'] as const)(
+    'omits the creator in the %s variant',
+    variant => {
+      const withCreator = {
+        ...baseAlert,
+        createdBy: { name: 'Ada', email: 'ada@x.test' },
+      } satisfies AlertsPageItem;
+      renderWithMantine(
+        <AlertPropertiesSummary alert={withCreator} variant={variant} />,
+      );
+
+      expect(screen.queryByText(/Created by/)).not.toBeInTheDocument();
+    },
+  );
+
   describe('detail page', () => {
     it('names the single target of a legacy single-channel alert', () => {
       renderWithMantine(

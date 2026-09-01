@@ -80,6 +80,9 @@ jest.mock('@/source', () => ({
   useSources: jest.fn().mockReturnValue({ data: [] }),
 }));
 
+// Records every render's props so tests can assert what the form passes down.
+const metricNameSelectProps: any[] = [];
+
 // What the stubbed explorer reports as staged when a metric is applied. The
 // `mock` prefix is required for a jest.mock factory to close over it.
 const mockStagedWhere: string[] = [];
@@ -133,6 +136,7 @@ jest.mock('@/components/MetricExplorer/MetricExplorerModal', () => ({
 
 jest.mock('../../MetricNameSelect', () => ({
   MetricNameSelect: (props: any) => {
+    metricNameSelectProps.push(props);
     const { error, onFocus, setMetricName, metricName } = props;
     const testId = props['data-testid'];
     return (
@@ -443,6 +447,39 @@ describe('DBEditTimeChartForm - Metric Name Validation', () => {
       expect(errorMessage).toBeInTheDocument();
       expect(errorMessage).toHaveTextContent('Metric is required');
     });
+  });
+});
+
+describe('DBEditTimeChartForm - Metric name date range wiring', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    metricNameSelectProps.length = 0;
+  });
+
+  // Regression guard: MetricNameSelect only lists metrics that reported inside
+  // the range it is given, and falls back to the last 24h when the prop is
+  // missing. That pass-through was silently dropped once already when
+  // ChartSeriesEditor was split out of this file, which made any metric last
+  // seen over a day ago unselectable regardless of the chart's own range.
+  it('passes the chart date range down to the metric name select', () => {
+    renderComponent();
+
+    expect(metricNameSelectProps.length).toBeGreaterThan(0);
+    expect(metricNameSelectProps.at(-1)?.dateRange).toEqual([
+      new Date('2024-01-01'),
+      new Date('2024-01-02'),
+    ]);
+  });
+
+  it('forwards an updated date range', () => {
+    renderComponent({
+      dateRange: [new Date('2024-06-01'), new Date('2024-06-08')],
+    });
+
+    expect(metricNameSelectProps.at(-1)?.dateRange).toEqual([
+      new Date('2024-06-01'),
+      new Date('2024-06-08'),
+    ]);
   });
 });
 

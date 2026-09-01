@@ -70,7 +70,7 @@ function validateAdoptionCheck(
   if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
     throw new Error(
       `rubric.adoption for '${scenarioName}': each check must be an object ` +
-        `{ id, weight, metrics[], alsoPattern? } — tuples/patterns are not supported`,
+        `{ id, weight, metrics[], alsoPattern?, informational? } — tuples/patterns are not supported`,
     );
   }
   const check = entry as Record<string, unknown>;
@@ -79,7 +79,26 @@ function validateAdoptionCheck(
       `rubric.adoption for '${scenarioName}': each check needs a string 'id'`,
     );
   }
-  if (typeof check.weight !== 'number' || check.weight <= 0) {
+  if (
+    check.informational !== undefined &&
+    typeof check.informational !== 'boolean'
+  ) {
+    throw new Error(
+      `rubric.adoption for '${scenarioName}': check '${check.id}' informational must be a boolean`,
+    );
+  }
+  if (check.informational === true) {
+    // Informational checks are excluded from the score — weight is optional
+    // and ignored, but reject nonsense values to catch typos.
+    if (
+      check.weight !== undefined &&
+      (typeof check.weight !== 'number' || check.weight < 0)
+    ) {
+      throw new Error(
+        `rubric.adoption for '${scenarioName}': check '${check.id}' weight, when present on an informational check, must be a non-negative number`,
+      );
+    }
+  } else if (typeof check.weight !== 'number' || check.weight <= 0) {
     throw new Error(
       `rubric.adoption for '${scenarioName}': check '${check.id}' weight must be a positive number`,
     );

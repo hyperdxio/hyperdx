@@ -10,10 +10,7 @@ import {
   DashboardFilterValue,
   Filter,
 } from '@/types';
-import {
-  getVariableReferences,
-  substituteVariablesForLanguage,
-} from '@/variables';
+import { getVariableReferences, substituteVariables } from '@/variables';
 
 export type FilterState = {
   [key: string]: {
@@ -901,14 +898,32 @@ export function getDashboardVariableFilters(
   return results;
 }
 
+/** Minimal projection of fields necessary to extract the variables a dashboard declares. */
+export type FilterForVariableDeclaration = Pick<
+  DashboardFilter,
+  'name' | 'expression'
+> &
+  Partial<Pick<DashboardFilter, 'variableName' | 'isVariableEnabled'>>;
+
 /** The variables a dashboard declares, in filter order. */
 export function getDashboardVariableDeclarations(
-  filters: DashboardFilter[] | undefined,
+  filters: FilterForVariableDeclaration[] | undefined,
 ): DashboardVariableDeclaration[] {
-  return getDashboardVariableFilters(filters).map(({ filter, name }) => ({
-    name,
-    expression: filter.expression,
-  }));
+  const declarations: DashboardVariableDeclaration[] = [];
+  const takenNames = new Set<string>();
+
+  for (const filter of filters ?? []) {
+    if (!isFilterVariableEnabled(filter)) continue;
+
+    // There shouldn't be any duplicate names, but if there are then the first one wins.
+    const name = getFilterVariableName(filter);
+    if (!name || takenNames.has(name)) continue;
+    takenNames.add(name);
+
+    declarations.push({ name, expression: filter.expression });
+  }
+
+  return declarations;
 }
 
 export type ResolvedFilterValuesQuery = {
@@ -937,7 +952,10 @@ export function resolveFilterValuesWhere(
 
   try {
     return {
-      where: substituteVariablesForLanguage(where, variables, whereLanguage),
+      where: substituteVariables(where, {
+        variables,
+        inputLanguage: whereLanguage,
+      }),
       whereLanguage,
     };
   } catch (e) {

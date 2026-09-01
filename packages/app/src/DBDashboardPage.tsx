@@ -182,7 +182,6 @@ import SearchWhereInput, {
 import { Tags } from './components/Tags';
 import useDashboardFilters from './hooks/useDashboardFilters';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
-import { useIsVariablesEnabled } from './hooks/useIsVariablesEnabled';
 import useTileSelection from './hooks/useTileSelection';
 import { useBrandDisplayName } from './theme/ThemeProvider';
 import { parseAsJsonEncoded, parseAsStringEncoded } from './utils/queryParsers';
@@ -550,7 +549,7 @@ const Tile = ({
   // changes to `tileVariables`.
   const serializedTileVariables = useMemo(
     () =>
-      !!variables && !isPromqlSavedChartConfig(chart.config)
+      variables
         ? JSON.stringify(filterReferencedVariables(chart.config, variables))
         : undefined,
     [chart.config, variables],
@@ -570,6 +569,7 @@ const Tile = ({
           connection: source.connection,
           dateRange,
           granularity,
+          variables: tileVariables,
         });
       }
       return;
@@ -1858,11 +1858,6 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     variables,
   } = useDashboardFilters(filters);
 
-  const { isLoading: isVariablesFlagLoading, isVariablesEnabled } =
-    useIsVariablesEnabled();
-  const showFilterVariableOptions =
-    !isVariablesFlagLoading && isVariablesEnabled;
-
   const dashboardReady =
     !!dashboard?.id &&
     router.isReady &&
@@ -2309,7 +2304,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             },
             ...getFilterQueriesForSource(tileSourceId),
           ]}
-          variables={showFilterVariableOptions ? variables : undefined}
+          variables={variables}
           onTimeRangeSelect={onTimeRangeSelect}
           showAlertAnnotations={showAlertAnnotations}
           showReleaseAnnotations={showReleaseAnnotations}
@@ -2412,7 +2407,6 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       showAlertAnnotations,
       showReleaseAnnotations,
       getFilterQueriesForSource,
-      showFilterVariableOptions,
       variables,
       moveTargetContainers,
       handleMoveTileToGroup,
@@ -3058,9 +3052,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       </Tooltip>
       <Tooltip
         withArrow
-        label={
-          isVariablesEnabled ? 'Edit Filters and Variables' : 'Edit Filters'
-        }
+        label="Edit filters and variables"
         fz="xs"
         color="gray"
       >
@@ -3104,7 +3096,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             if (!isSaving) setEditedTile(undefined);
           }}
           dateRange={searchedTimeRange}
-          variables={showFilterVariableOptions ? variables : undefined}
+          variables={variables}
           isSaving={isSaving}
           onSave={newChart => {
             if (dashboard == null) {
@@ -3193,7 +3185,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           selectionByFilterId={selectionByFilterId}
           onSetFilterValue={setFilterValue}
           dateRange={searchedTimeRange}
-          variables={showFilterVariableOptions ? variables : undefined}
+          variables={variables}
         />
       )}
       {/* Selection indicator */}
@@ -3369,8 +3361,8 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           onSaveFilter={handleSaveFilter}
           onRemoveFilter={handleRemoveFilter}
           isLoading={isSavingDashboard || isFetchingDashboard}
-          showVariableOptions={showFilterVariableOptions}
-          variables={showFilterVariableOptions ? variables : undefined}
+          showVariableOptions
+          variables={variables}
         />
       )}
     </>
