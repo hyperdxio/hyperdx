@@ -17,6 +17,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { convertToDashboardDocument } from '@hyperdx/common-utils/dist/core/utils';
 import {
   type DashboardFilterQueryIssue,
+  isPrometheusLabelFilter,
   isQueryExpressionFilter,
   isStaticListFilter,
   type SavedFilterValueIssue,
@@ -38,6 +39,7 @@ import {
   isOnClickSearchById,
   isTraceSource,
   SavedChartConfig,
+  SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
@@ -400,6 +402,27 @@ const sourceBackedTemplateFilter = (filter: DashboardFilter | undefined) =>
 const queriedTemplateFilter = (filter: DashboardFilter | undefined) =>
   filter && isQueryExpressionFilter(filter) ? filter : undefined;
 
+/** Everything a queried filter can run its `SELECT` against. */
+const SQL_FILTER_SOURCE_KINDS = [
+  SourceKind.Log,
+  SourceKind.Trace,
+  SourceKind.Session,
+  SourceKind.Metric,
+];
+
+/**
+ * The source kinds a filter of this type can read its dropdown values from, or
+ * `undefined` for a filter that reads no source at all.
+ */
+const filterSourceKinds = (
+  filter: DashboardFilter,
+): SourceKind[] | undefined =>
+  isPrometheusLabelFilter(filter)
+    ? [SourceKind.Promql]
+    : isQueryExpressionFilter(filter)
+      ? SQL_FILTER_SOURCE_KINDS
+      : undefined;
+
 /**
  * One mapping select's value. Mantine's Select writes `null` when the user
  * clears a selection, so accept that and normalize it to ''.
@@ -414,7 +437,10 @@ const MappingValueSchema = z
  * the template rather than declared once because the form state is positional
  * (one entry per input tile/filter).
  */
-export function buildMappingFormSchema(input: DashboardTemplate) {
+export function buildMappingFormSchema(
+  input: DashboardTemplate,
+  sources?: readonly Pick<TSource, 'id' | 'kind'>[],
+) {
   return z
     .object({
       dashboardName: z.string().min(1, 'Enter a dashboard name'),
@@ -468,12 +494,31 @@ export function buildMappingFormSchema(input: DashboardTemplate) {
 
       input.filters?.forEach((filter, idx) => {
         if (isStaticListFilter(filter)) return;
-        if (data.filterSourceMappings?.[idx]) return;
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ['filterSourceMappings', idx],
-          message: 'Select a source for this filter',
-        });
+        const mappedSourceId = data.filterSourceMappings?.[idx];
+        if (!mappedSourceId) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['filterSourceMappings', idx],
+            message: 'Select a source for this filter',
+          });
+          return;
+        }
+
+        const mappedSource = sources?.find(s => s.id === mappedSourceId);
+        const allowedKinds = filterSourceKinds(filter);
+        if (
+          allowedKinds &&
+          mappedSource &&
+          !allowedKinds.includes(mappedSource.kind)
+        ) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['filterSourceMappings', idx],
+            message: isPrometheusLabelFilter(filter)
+              ? 'Select a PromQL source for this filter'
+              : 'Select a non-PromQL source for this filter',
+          });
+        }
       });
     });
 }
@@ -488,7 +533,10 @@ export function Mapping({ input }: { input: DashboardTemplate }) {
   const { data: existingTags } = api.useTags();
   const [dashboardId] = useQueryState('dashboardId', parseAsString);
 
-  const formSchema = useMemo(() => buildMappingFormSchema(input), [input]);
+  const formSchema = useMemo(
+    () => buildMappingFormSchema(input, sources),
+    [input, sources],
+  );
 
   const { handleSubmit, getFieldState, control, setValue, getValues } =
     useForm<MappingFormState>({
@@ -1093,10 +1141,14 @@ export function Mapping({ input }: { input: DashboardTemplate }) {
                       <SelectControlled
                         control={control}
                         name={`filterSourceMappings.${i}`}
-                        data={sources?.map(source => ({
-                          value: source.id,
-                          label: source.name,
-                        }))}
+                        data={sources
+                          ?.filter(source =>
+                            filterSourceKinds(filter)?.includes(source.kind),
+                          )
+                          .map(source => ({
+                            value: source.id,
+                            label: source.name,
+                          }))}
                         placeholder="Select a source"
                       />
                     </Table.Td>

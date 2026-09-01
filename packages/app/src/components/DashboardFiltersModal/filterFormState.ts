@@ -7,6 +7,7 @@ import {
 import {
   DashboardFilter,
   DashboardFilterSchema,
+  PromqlLabelDashboardFilter,
   QueryExpressionDashboardFilter,
   StaticListDashboardFilter,
 } from '@hyperdx/common-utils/dist/types';
@@ -24,6 +25,10 @@ export type FilterFormValues = {
   Omit<
     StaticListDashboardFilter,
     'type' | 'isBroadcastEnabled' | 'isVariableEnabled'
+  > &
+  Omit<
+    PromqlLabelDashboardFilter,
+    'type' | 'isBroadcastEnabled' | 'isVariableEnabled'
   >;
 
 export type FilterFormControl = Control<FilterFormValues>;
@@ -34,6 +39,7 @@ export const toFormValues = (
 ): FilterFormValues => {
   const queried = filter?.type === 'QUERY_EXPRESSION' ? filter : undefined;
   const staticList = filter?.type === 'STATIC_LIST' ? filter : undefined;
+  const promqlLabel = filter?.type === 'PROMETHEUS_LABEL' ? filter : undefined;
 
   return {
     id: filter?.id ?? crypto.randomUUID(),
@@ -45,7 +51,7 @@ export const toFormValues = (
 
     // QUERY_EXPRESSION fields
     expression: queried?.expression ?? '',
-    source: queried?.source ?? presetSourceId ?? '',
+    source: queried?.source ?? promqlLabel?.source ?? presetSourceId ?? '',
     sourceMetricType: queried?.sourceMetricType,
     where: queried?.where ?? '',
     whereLanguage: queried?.whereLanguage ?? getStoredLanguage() ?? 'sql',
@@ -53,6 +59,9 @@ export const toFormValues = (
 
     // STATIC_LIST fields
     options: staticList?.options ?? [],
+
+    // PROMETHEUS_LABEL fields
+    label: promqlLabel?.label ?? '',
   };
 };
 
@@ -62,6 +71,16 @@ export const toSavedFilter = (values: FilterFormValues): DashboardFilter => {
     return DashboardFilterSchema.parse({
       ...values,
       options: values.options.map(option => option.trim()),
+      isBroadcastEnabled: false,
+      isVariableEnabled: true,
+      variableName: getFilterVariableName(values),
+    });
+  }
+
+  if (values.type === 'PROMETHEUS_LABEL') {
+    return DashboardFilterSchema.parse({
+      ...values,
+      label: values.label.trim(),
       isBroadcastEnabled: false,
       isVariableEnabled: true,
       variableName: getFilterVariableName(values),
