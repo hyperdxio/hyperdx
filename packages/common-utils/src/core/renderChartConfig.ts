@@ -10,7 +10,7 @@ import {
   translateExponentialHistogram,
   translateHistogram,
 } from '@/core/histogram';
-import { Metadata } from '@/core/metadata';
+import { Metadata, unquoteIdentifier } from '@/core/metadata';
 import {
   convertDateRangeToGranularityString,
   convertGranularityToSeconds,
@@ -2554,22 +2554,23 @@ function renderMultiSeriesOrderBy(
   let rewroteAny = false;
   const orderBy = parseSortSpecificationItems(sortSpecificationList).map(
     item => {
-      // Strip one level of identifier quoting so `"service"` / `` `service` ``
-      // compare equal to the bare alias text.
-      const unquoted =
-        item.expr != null
-          ? item.expr.trim().replace(/^"([^"]+)"$|^`([^`]+)`$/, '$1$2')
-          : undefined;
+      // Strip one level of identifier quoting on both sides so
+      // `` `ServiceName` `` / `"service"` compare equal to the bare text.
+      // (A quoted plain-column match still passes through raw in scalar
+      // mode below, so working SQL stays byte-for-byte identical there.)
+      const matchText = (s: string) =>
+        normalizeExprText(unquoteIdentifier(s.trim()));
       const matched =
         item.expr != null
           ? groupEntries.find(
               g =>
-                normalizeExprText(g.expr) === normalizeExprText(item.expr!) ||
+                matchText(g.expr) === matchText(item.expr!) ||
                 // Alias references only need rewriting in a packed scope; on
                 // scalar branches the alias is a projected column and the
-                // item must pass through untouched to keep working SQL
-                // byte-for-byte identical.
-                (groupsArePacked && g.alias != null && g.alias === unquoted),
+                // item must pass through untouched.
+                (groupsArePacked &&
+                  g.alias != null &&
+                  g.alias === unquoteIdentifier(item.expr!.trim())),
             )
           : undefined;
       if (!matched) {

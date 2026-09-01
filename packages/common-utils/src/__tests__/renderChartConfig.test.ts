@@ -1043,11 +1043,8 @@ describe('renderChartConfig', () => {
       });
     });
 
-    // HDX-5247: the translated histogram scope only projects
-    // [bucket?, group, value] — the user's group-by values live solely
-    // inside the packed `group` Array — so a table's default
-    // orderBy (= the raw groupBy text) must sort positionally on the array,
-    // not re-reference the source columns.
+    // HDX-5247: after histogram translation only [bucket?, group, value]
+    // survive in scope, so group-by sorts must address the packed array.
     describe('ORDER BY on a grouped histogram (packed group array)', () => {
       const histTableConfig = (
         overrides: Partial<ChartConfigWithOptDateRange>,
@@ -1101,18 +1098,21 @@ describe('renderChartConfig', () => {
       });
 
       it('sorts a plain group column positionally, keeping its direction', async () => {
-        // Even a bare column has no named passthrough — only the packed
-        // `group` Array survives the histogram translation.
-        const generatedSql = await renderChartConfig(
-          histTableConfig({
-            groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
-            orderBy: [{ valueExpression: 'ServiceName', ordering: 'DESC' }],
-          }),
-          mockMetadata,
-          querySettings,
-        );
-        const sql = parameterizedQueryToSql(generatedSql);
-        expect(sql).toContain('ORDER BY `group`[1] DESC');
+        // Even a bare column group-by has no named passthrough column when
+        // every branch is a histogram — only the packed `group` Array. A
+        // backtick-quoted reference matches the bare entry the same way.
+        for (const valueExpression of ['ServiceName', '`ServiceName`']) {
+          const generatedSql = await renderChartConfig(
+            histTableConfig({
+              groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
+              orderBy: [{ valueExpression, ordering: 'DESC' }],
+            }),
+            mockMetadata,
+            querySettings,
+          );
+          const sql = parameterizedQueryToSql(generatedSql);
+          expect(sql).toContain('ORDER BY `group`[1] DESC');
+        }
       });
 
       it('sorts a categorical (pie/bar) chart with a multi-dimension group-by positionally', async () => {
