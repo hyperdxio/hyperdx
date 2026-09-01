@@ -170,27 +170,45 @@ A connector has to be declared two places: under a top-level `connectors:`
 block *and* referenced in a pipeline's `receivers`/`exporters`. Declaring
 only the reference fails validation —
 `service::pipelines::traces: references exporter "spanmetrics" which is not
-configured` — since the connector was never instantiated. Both examples
-below also carry `processors: [memory_limiter, batch]`, the same convention
-every other user-added pipeline in this repo follows (e.g.
-`docker/otel-collector/custom.config.yaml`'s `metrics/hostmetrics`) — without
-it, each connector flush becomes its own small, unbatched insert into
-ClickHouse with no memory back-pressure.
+configured` — since the connector was never instantiated.
+
+Both examples set two more fields on the connector itself, beyond the bare
+minimum:
+
+- `namespace: traces.span.metrics` — with no `namespace`, the connector
+  emits bare `calls`/`duration` metric names, which land in the same
+  `otel_metrics_sum`/`otel_metrics_histogram` tables every other metric
+  source writes to (keyed by `MetricName`), so they can collide with an
+  unrelated metric of that name and read ambiguously in the metric picker.
+  This also matches the naming convention real-world `spanmetrics` configs
+  already use (e.g. Chronosphere's own gateway collector).
+- `aggregation_cardinality_limit` — `spanmetrics` aggregates unbounded by
+  default, and its in-memory dimension map is a separate piece of state
+  from the pipeline's own data flow, so `memory_limiter` does not protect
+  it (that only refuses *incoming* data at the pipeline boundary). On a
+  Datadog-firehose source in particular, high-cardinality span names grow
+  that map until the collector OOMs regardless of `memory_limiter`'s own
+  limit. Set an explicit cap.
 
 **In standalone mode**, `traces`/`metrics` are plain pipelines in your own
-config file, so you can add `spanmetrics` to them directly:
+config file, so you can add `spanmetrics` to them directly. They already
+inherit `processors: [memory_limiter, batch]` from the base
+`docker/otel-collector/config.yaml` (loaded first), so there's nothing to
+add for that here — see ["Overriding base
+components"](#overriding-base-components-via-custom_otelcol_config_file)
+below for when you'd want to retune it:
 
 ```yaml
 connectors:
-  spanmetrics: {}
+  spanmetrics:
+    namespace: traces.span.metrics
+    aggregation_cardinality_limit: 10000
 service:
   pipelines:
     traces:
       exporters: [clickhouse, spanmetrics]
-      processors: [memory_limiter, batch]
     metrics:
       receivers: [otlp/hyperdx, spanmetrics]
-      processors: [memory_limiter, batch]
 ```
 
 **In OpAMP supervisor mode, editing the default `traces`/`metrics` pipelines
@@ -200,11 +218,18 @@ merges) those keys, the same way it does for every pipeline it manages (see
 `docker/otel-collector/config.yaml`'s note on `processors:` above). Adding
 `spanmetrics` there from `CUSTOM_OTELCOL_CONFIG_FILE` gets silently dropped —
 no error, the connector is just compiled in and wired to nothing. Use
-separate pipeline names instead, which the remote config never touches:
+separate pipeline names instead, which the remote config never touches.
+Unlike the standalone case, these are brand new pipeline names with nothing
+to inherit from, so `processors: [memory_limiter, batch]` does need to be
+declared explicitly here — though only `metrics/spanmetrics` actually
+exports to ClickHouse, so it's the only one batching helps; `traces/spanmetrics`
+carries it mainly for the shared `memory_limiter` back-pressure, not batching:
 
 ```yaml
 connectors:
-  spanmetrics: {}
+  spanmetrics:
+    namespace: traces.span.metrics
+    aggregation_cardinality_limit: 10000
 service:
   pipelines:
     traces/spanmetrics:
@@ -222,7 +247,7 @@ service:
 
 Both shapes above are verified against the real compiled binary via
 `otelcontribcol validate --config`, including the two failure modes noted
-inline.
+inline and both new connector fields.
 
 ## Overriding base components via `CUSTOM_OTELCOL_CONFIG_FILE`
 
