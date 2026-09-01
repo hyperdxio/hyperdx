@@ -193,13 +193,16 @@ const AppNavVersionItem = ({ version }: { version?: string }) => {
       closeMenuOnClick={false}
       leftSection={copied ? <IconCheck size={16} /> : <IconBug size={16} />}
       onClick={async () => {
-        // window.hdx is installed in _app.tsx and present in every environment;
-        // its copy() uses the shared clipboard util (with insecure-context
-        // fallback) and returns the copied text.
-        await (window.hdx?.copy() ??
-          copyTextToClipboard(`frontend: ${version ?? 'dev'}`));
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
+        // window.hdx (installed in _app.tsx) builds the full report; copy via
+        // the shared util so the insecure-context textarea fallback applies and
+        // we get a real success boolean back. Only flip to "Copied" when the
+        // clipboard actually took the text.
+        const text = window.hdx?.report() ?? `frontend: ${version ?? 'dev'}`;
+        const ok = await copyTextToClipboard(text);
+        if (ok) {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        }
       }}
     >
       {copied ? 'Copied debug info' : 'Copy debug info'}
