@@ -172,8 +172,8 @@ only the reference fails validation —
 `service::pipelines::traces: references exporter "spanmetrics" which is not
 configured` — since the connector was never instantiated.
 
-Both examples set two more fields on the connector itself, beyond the bare
-minimum:
+Both examples set three more fields on the connector itself, beyond the
+bare minimum:
 
 - `namespace: traces.span.metrics` — with no `namespace`, the connector
   emits bare `calls`/`duration` metric names, which land in the same
@@ -189,6 +189,12 @@ minimum:
   Datadog-firehose source in particular, high-cardinality span names grow
   that map until the collector OOMs regardless of `memory_limiter`'s own
   limit. Set an explicit cap.
+- `metrics_expiration` — the connector never expires aggregations by
+  default, so a cardinality cap alone just changes *when* it hurts: once a
+  high-cardinality burst fills the map, it stays full, and metrics for
+  every *new* service/operation are silently dropped until the collector
+  restarts — old series never release their slot. Pair the cap with an
+  expiration (e.g. `5m`) so idle series free up room for new ones.
 
 **In standalone mode**, `traces`/`metrics` are plain pipelines in your own
 config file, so you can add `spanmetrics` to them directly. They already
@@ -196,19 +202,26 @@ inherit `processors: [memory_limiter, batch]` from the base
 `docker/otel-collector/config.yaml` (loaded first), so there's nothing to
 add for that here — see ["Overriding base
 components"](#overriding-base-components-via-custom_otelcol_config_file)
-below for when you'd want to retune it:
+below for when you'd want to retune it. Confmap replaces a pipeline's
+`receivers:`/`exporters:` list wholesale rather than appending to it, so if
+you're already pairing this with `datadogreceiver` per the section above,
+`datadog` has to be re-listed here too — leaving it out doesn't fail
+validation, it just silently drops Datadog metric ingestion:
 
 ```yaml
 connectors:
   spanmetrics:
     namespace: traces.span.metrics
     aggregation_cardinality_limit: 10000
+    metrics_expiration: 5m
 service:
   pipelines:
     traces:
+      # Re-list `datadog` here too if you added it per the Datadog section
+      # above - this list replaces the base one, it doesn't add to it.
       exporters: [clickhouse, spanmetrics]
     metrics:
-      receivers: [otlp/hyperdx, spanmetrics]
+      receivers: [otlp/hyperdx, datadog, spanmetrics]
 ```
 
 **In OpAMP supervisor mode, editing the default `traces`/`metrics` pipelines
@@ -220,16 +233,19 @@ merges) those keys, the same way it does for every pipeline it manages (see
 no error, the connector is just compiled in and wired to nothing. Use
 separate pipeline names instead, which the remote config never touches.
 Unlike the standalone case, these are brand new pipeline names with nothing
-to inherit from, so `processors: [memory_limiter, batch]` does need to be
-declared explicitly here — though only `metrics/spanmetrics` actually
-exports to ClickHouse, so it's the only one batching helps; `traces/spanmetrics`
-carries it mainly for the shared `memory_limiter` back-pressure, not batching:
+to inherit from, so `processors:` does need to be declared explicitly here
+— but only with `memory_limiter` on `traces/spanmetrics`, not `batch` too:
+its only exporter is the connector itself, not a network call, so batching
+a second copy of spans already batched in `traces` just adds latency
+(up to the batch timeout) and memory for no export benefit. `batch` earns
+its place on `metrics/spanmetrics`, which does export to ClickHouse:
 
 ```yaml
 connectors:
   spanmetrics:
     namespace: traces.span.metrics
     aggregation_cardinality_limit: 10000
+    metrics_expiration: 5m
 service:
   pipelines:
     traces/spanmetrics:
@@ -238,7 +254,7 @@ service:
       # config (every pipeline, not just this one), not just this receiver.
       receivers: [otlp/hyperdx, datadog]
       exporters: [spanmetrics]
-      processors: [memory_limiter, batch]
+      processors: [memory_limiter]
     metrics/spanmetrics:
       receivers: [spanmetrics]
       exporters: [clickhouse]
@@ -247,7 +263,7 @@ service:
 
 Both shapes above are verified against the real compiled binary via
 `otelcontribcol validate --config`, including the two failure modes noted
-inline and both new connector fields.
+inline and every connector field.
 
 ## Overriding base components via `CUSTOM_OTELCOL_CONFIG_FILE`
 

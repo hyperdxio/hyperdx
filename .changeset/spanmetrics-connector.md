@@ -1,5 +1,5 @@
 ---
-"@hyperdx/otel-collector": patch
+"@hyperdx/otel-collector": minor
 ---
 
 feat(otel-collector): compile in spanmetricsconnector
