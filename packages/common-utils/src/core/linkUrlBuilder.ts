@@ -8,12 +8,12 @@ import type {
   OnClickSearch,
 } from '@/types';
 
+import { validateTemplate } from './handlebarsEnv';
 import {
   LinkTemplateError,
   MissingTemplateVariableError,
   renderLinkTemplate,
   renderUrlTemplate,
-  validateTemplate,
 } from './linkTemplate';
 
 export type LinkBuildResult =
