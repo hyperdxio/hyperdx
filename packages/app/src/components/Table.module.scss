@@ -48,6 +48,30 @@ $horizontalPadding: 12px;
     }
   }
 
+  /* Columns size to their content, and the one column given `width: 100%`
+     takes what is left. Needed wherever the table sits in a resizable panel:
+     under `fixed`, pixel column sizes can add up to more than the table is
+     wide, and the remaining column is squeezed to one character per line. */
+  &.tableLayoutAuto {
+    table {
+      table-layout: auto;
+
+      /* Auto layout never shrinks a column below its min-content width, so
+         `break-all` — a min-content of one character — would just move the
+         collapse onto the label column. Content columns break on word
+         boundaries; only the fluid one is free to break mid-word. */
+      th,
+      td {
+        word-break: normal;
+        overflow-wrap: break-word;
+      }
+
+      .fluidCell {
+        overflow-wrap: anywhere;
+      }
+    }
+  }
+
   // Borderless
   &.tableBorderless {
     padding: 4px 0;
