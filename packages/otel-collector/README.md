@@ -164,24 +164,50 @@ team ingestion API key.
 counts, a duration histogram) can be computed from any traces the collector
 ingests — works with `otlp/hyperdx` directly, and is most useful alongside
 [`datadogreceiver`](#ingesting-datadog-traces-metrics-and-logs) above, since
-Datadog Agent traces have no other way to produce these once ingested.
+Datadog Agent traces have no other way to produce these once ingested. The
+component's config key is `span_metrics` (the module is still named
+`spanmetricsconnector`, and `spanmetrics` still works as a deprecated
+alias, but new configs should use the current name).
 
 A connector has to be declared two places: under a top-level `connectors:`
 block *and* referenced in a pipeline's `receivers`/`exporters`. Declaring
 only the reference fails validation —
-`service::pipelines::traces: references exporter "spanmetrics" which is not
-configured` — since the connector was never instantiated.
+`service::pipelines::traces: references exporter "span_metrics" which is
+not configured` — since the connector was never instantiated.
 
-Both examples set three more fields on the connector itself, beyond the
+Both examples set five more fields on the connector itself, beyond the
 bare minimum:
 
-- `namespace: traces.span.metrics` — with no `namespace`, the connector
-  emits bare `calls`/`duration` metric names, which land in the same
-  `otel_metrics_sum`/`otel_metrics_histogram` tables every other metric
-  source writes to (keyed by `MetricName`), so they can collide with an
-  unrelated metric of that name and read ambiguously in the metric picker.
-  This also matches the naming convention real-world `spanmetrics` configs
-  already use (e.g. Chronosphere's own gateway collector).
+- `aggregation_temporality: AGGREGATION_TEMPORALITY_DELTA` — the
+  connector defaults to cumulative, which doesn't mix safely with the
+  `series_expiration`/`aggregation_cardinality_limit` pair below: expiring
+  a series deletes its accumulator, so the *next* span for that same
+  service+operation restarts its `calls` counter from 1 rather than
+  continuing it — an ordinary counter reset, except HyperDX's own
+  cumulative-rate SQL (`packages/common-utils/src/core/renderChartConfig.ts`,
+  `greatest(Value - lagInFrame(Value), 0)`) doesn't special-case resets;
+  it clamps the negative/zero delta and moves on. For a series that's
+  quiet for long enough between spans to keep expiring, every emitted
+  value stays `1` forever and every diffed delta is `0` — an `increase`
+  chart on `traces.span.metrics.calls` reads flat zero for an endpoint
+  that's actually serving traffic. Delta temporality passes `Value`
+  straight through with no diffing (same file, `AggregationTemporality =
+  1` branch), so it isn't exposed to this at all — and it's what
+  real-world `spanmetrics` configs already use for this reason (e.g.
+  Chronosphere's own gateway collector, again).
+- `namespace: traces.span.metrics` — this is already the connector's
+  default (v0.155.0's `DefaultNamespace`), so it's set here for
+  explicitness rather than to avoid a collision: pinning it keeps the
+  emitted names (`traces.span.metrics.calls`/`.duration`) stable and
+  obvious from the local config even if a future version ever changes
+  that default, and matches the convention real-world `spanmetrics`
+  configs already use (e.g. Chronosphere's own gateway collector).
+- `histogram.exponential.max_size: 160` — without it, the connector
+  defaults to an *explicit*-bucket duration histogram
+  (`otel_metrics_histogram`), not the exponential one
+  (`otel_metrics_exponential_histogram`) HyperDX's ClickHouse schema
+  already has a dedicated table for; this is what actually gets you
+  that table instead of the default bucket set.
 - `aggregation_cardinality_limit` — `spanmetrics` aggregates unbounded by
   default, and its in-memory dimension map is a separate piece of state
   from the pipeline's own data flow, so `memory_limiter` does not protect
@@ -189,15 +215,21 @@ bare minimum:
   Datadog-firehose source in particular, high-cardinality span names grow
   that map until the collector OOMs regardless of `memory_limiter`'s own
   limit. Set an explicit cap.
-- `metrics_expiration` — the connector never expires aggregations by
-  default, so a cardinality cap alone just changes *when* it hurts: once a
-  high-cardinality burst fills the map, it stays full, and metrics for
-  every *new* service/operation are silently dropped until the collector
-  restarts — old series never release their slot. Pair the cap with an
-  expiration (e.g. `5m`) so idle series free up room for new ones.
+- `series_expiration` — pairs with the cap above: without it, a cap alone
+  just changes *when* it hurts, since the connector never expires
+  anything by default. Specifically `series_expiration`, not
+  `metrics_expiration` — they're different fields (both real, both
+  default to "never"): `metrics_expiration` only retires a whole
+  service+operation's metric object once *no* spans for it arrive for
+  that long, while `series_expiration` evicts individual stale dimension
+  *combinations* from the cardinality-bounded map while other series
+  under the same metric stay active. A cardinality burst fills the map
+  with individual dimension combinations, not whole metrics, so
+  `series_expiration` is the one that actually frees room for new
+  series afterwards.
 
 **In standalone mode**, `traces`/`metrics` are plain pipelines in your own
-config file, so you can add `spanmetrics` to them directly. They already
+config file, so you can add `span_metrics` to them directly. They already
 inherit `processors: [memory_limiter, batch]` from the base
 `docker/otel-collector/config.yaml` (loaded first), so there's nothing to
 add for that here — see ["Overriding base
@@ -214,19 +246,23 @@ block, so check which one applies to you before using it:
 
 ```yaml
 connectors:
-  spanmetrics:
+  span_metrics:
     namespace: traces.span.metrics
+    aggregation_temporality: AGGREGATION_TEMPORALITY_DELTA
+    histogram:
+      exponential:
+        max_size: 160
     aggregation_cardinality_limit: 10000
-    metrics_expiration: 5m
+    series_expiration: 5m
 service:
   pipelines:
     traces:
-      exporters: [clickhouse, spanmetrics]
+      exporters: [clickhouse, span_metrics]
     metrics:
       # Add `datadog` here too if (and only if) you configured it per the
       # Datadog section above - this list replaces the base one rather
       # than adding to it.
-      receivers: [otlp/hyperdx, spanmetrics]
+      receivers: [otlp/hyperdx, span_metrics]
 ```
 
 **In OpAMP supervisor mode, editing the default `traces`/`metrics` pipelines
@@ -234,9 +270,9 @@ will not work** — `receivers:`/`exporters:` on those pipelines are set
 dynamically by `opampController.ts`, and the remote config overwrites (not
 merges) those keys, the same way it does for every pipeline it manages (see
 `docker/otel-collector/config.yaml`'s note on `processors:` above). Adding
-`spanmetrics` there from `CUSTOM_OTELCOL_CONFIG_FILE` gets silently dropped —
-no error, the connector is just compiled in and wired to nothing. Use
-separate pipeline names instead, which the remote config never touches.
+`span_metrics` there from `CUSTOM_OTELCOL_CONFIG_FILE` gets silently
+dropped — no error, the connector is just compiled in and wired to nothing.
+Use separate pipeline names instead, which the remote config never touches.
 Unlike the standalone case, these are brand new pipeline names with nothing
 to inherit from, so `processors:` does need to be declared explicitly here
 — but only with `memory_limiter` on `traces/spanmetrics`, not `batch` too:
@@ -247,29 +283,37 @@ its place on `metrics/spanmetrics`, which does export to ClickHouse:
 
 ```yaml
 connectors:
-  spanmetrics:
+  span_metrics:
     namespace: traces.span.metrics
+    aggregation_temporality: AGGREGATION_TEMPORALITY_DELTA
+    histogram:
+      exponential:
+        max_size: 160
     aggregation_cardinality_limit: 10000
-    metrics_expiration: 5m
+    series_expiration: 5m
 service:
   pipelines:
     traces/spanmetrics:
-      # Add `datadog` here too if (and only if) ENABLE_DATADOG_RECEIVER=true -
-      # it's only defined when that's set, and an undefined receiver fails
-      # the whole config (every pipeline, not just this one), not just this
-      # receiver.
+      # Add `datadog` here too if you've defined that receiver by any
+      # means (ENABLE_DATADOG_RECEIVER=true, or your own definition via
+      # CUSTOM_OTELCOL_CONFIG_FILE) - an undefined receiver fails the
+      # whole config (every pipeline, not just this one).
       receivers: [otlp/hyperdx]
-      exporters: [spanmetrics]
+      exporters: [span_metrics]
       processors: [memory_limiter]
     metrics/spanmetrics:
-      receivers: [spanmetrics]
+      receivers: [span_metrics]
       exporters: [clickhouse]
       processors: [memory_limiter, batch]
 ```
 
 Both shapes above are verified against the real compiled binary via
 `otelcontribcol validate --config`, including the two failure modes noted
-inline and every connector field.
+inline and every connector field. The standalone shape was also actually
+run (`otelcontribcol --config ...`, not just `validate`): it reaches
+`"Everything is ready. Begin running and processing data."` and starts the
+`span_metrics` connector, confirming `validate`'s static schema/graph
+checks aren't hiding a startup-only failure here.
 
 ## Overriding base components via `CUSTOM_OTELCOL_CONFIG_FILE`
 
