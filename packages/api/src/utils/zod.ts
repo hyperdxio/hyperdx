@@ -795,21 +795,68 @@ const validateInlineAlertFormulas = (
 // the alert task can evaluate as a time series: Line, Stacked Bar, and
 // Number. Builder + raw SQL variants; no PromQL (PromQL charts cannot be
 // alerted on).
-const externalAlertBuilderChartConfigSchema = z.discriminatedUnion(
+//
+// Unlike dashboard tiles, an alert's chart config additionally carries fields
+// that live on the tile (not its config) or are deliberately hidden from the
+// tile dialect, but are meaningful for a standalone alert:
+//   - `name`: the config's display name, used in notification titles
+//     (buildAlertMessageTemplateTitle) and as an alert-name fallback.
+//   - `where`/`whereLanguage` (builder only): the chart-level filter that
+//     renderChartConfig ANDs into every series. The tile dialect omits it
+//     because the tile editor cannot display it, but the chart-explorer
+//     editor that authors inline alerts does; without it a GET -> PUT
+//     round-trip would silently broaden the alert's query.
+const alertChartConfigNameSchema = z.string().optional();
+
+// Raw SQL configs have no chart-level filter internally
+// (RawSqlBaseChartConfigSchema); reject rather than silently strip so a
+// caller who meant to filter learns the field does not exist here.
+const rejectedAlertRawSqlWhereField = z
+  .never({
+    invalid_type_error:
+      'Raw SQL alert configs have no chart-level where; filter inside the sqlTemplate instead',
+  })
+  .optional();
+
+export const externalAlertBuilderChartConfigSchema = z.discriminatedUnion(
   'displayType',
   [
-    externalDashboardLineChartConfigSchema,
-    externalDashboardBarChartConfigSchema,
-    externalDashboardNumberChartConfigSchema,
+    externalDashboardLineChartConfigSchema.extend({
+      name: alertChartConfigNameSchema,
+      where: z.string().max(10000).optional(),
+      whereLanguage: whereLanguageSchema,
+    }),
+    externalDashboardBarChartConfigSchema.extend({
+      name: alertChartConfigNameSchema,
+      where: z.string().max(10000).optional(),
+      whereLanguage: whereLanguageSchema,
+    }),
+    externalDashboardNumberChartConfigSchema.extend({
+      name: alertChartConfigNameSchema,
+      where: z.string().max(10000).optional(),
+      whereLanguage: whereLanguageSchema,
+    }),
   ],
 );
 
-const externalAlertRawSqlChartConfigSchema = z.discriminatedUnion(
+export const externalAlertRawSqlChartConfigSchema = z.discriminatedUnion(
   'displayType',
   [
-    externalDashboardLineRawSqlChartConfigSchema,
-    externalDashboardBarRawSqlChartConfigSchema,
-    externalDashboardNumberRawSqlChartConfigSchema,
+    externalDashboardLineRawSqlChartConfigSchema.extend({
+      name: alertChartConfigNameSchema,
+      where: rejectedAlertRawSqlWhereField,
+      whereLanguage: rejectedAlertRawSqlWhereField,
+    }),
+    externalDashboardBarRawSqlChartConfigSchema.extend({
+      name: alertChartConfigNameSchema,
+      where: rejectedAlertRawSqlWhereField,
+      whereLanguage: rejectedAlertRawSqlWhereField,
+    }),
+    externalDashboardNumberRawSqlChartConfigSchema.extend({
+      name: alertChartConfigNameSchema,
+      where: rejectedAlertRawSqlWhereField,
+      whereLanguage: rejectedAlertRawSqlWhereField,
+    }),
   ],
 );
 
@@ -893,6 +940,26 @@ const zExternalInlineAlert = z.object({
   chartConfig: externalAlertChartConfigSchema,
 });
 
+// The branch schemas are strip-mode z.objects, so a stray chartConfig on a
+// non-inline alert would be silently discarded before any superRefine could
+// see it. Declaring the field as a rejected never (same pattern as the MCP
+// tile-level `where` rejection) turns that into a 400, matching both the
+// OpenAPI contract ("rejected otherwise") and the MCP surface. External-only:
+// the internal schema keeps its historical strip semantics.
+const rejectedNonInlineChartConfigField = z
+  .never({
+    invalid_type_error: 'chartConfig is only supported when source is "inline"',
+  })
+  .optional();
+
+const zExternalSavedSearchAlert = zSavedSearchAlert.extend({
+  chartConfig: rejectedNonInlineChartConfigField,
+});
+
+const zExternalTileAlert = zTileAlert.extend({
+  chartConfig: rejectedNonInlineChartConfigField,
+});
+
 const alertBaseSchema = z.object({
   channel: zAlertChannel.optional(),
   channels: zAlertChannels.optional(),
@@ -914,7 +981,9 @@ const alertBaseSchema = z.object({
 // router converts it to the internal AlertChartConfig shape before
 // validateAlertInput/createAlert.
 export const alertSchema = alertBaseSchema
-  .and(zSavedSearchAlert.or(zTileAlert).or(zExternalInlineAlert))
+  .and(
+    zExternalSavedSearchAlert.or(zExternalTileAlert).or(zExternalInlineAlert),
+  )
   .superRefine(validateAlertChannelSelection)
   .superRefine(validateAlertScheduleOffsetMinutes)
   .superRefine(validateAlertThresholdMax);

@@ -97,27 +97,70 @@
         ],
         "description": "Alert source type. \"saved_search\" alerts monitor a saved search, \"tile\" alerts monitor a dashboard tile, and \"inline\" alerts carry their own chart configuration (see AlertChartConfig) without requiring a saved search or dashboard.\n"
       },
-      "AlertChartConfig": {
-        "description": "The chart configuration an inline alert evaluates, in the same dialect as dashboard tile configs. Only the display types the alert evaluator supports are accepted: line, stacked_bar, and number, in both builder and Raw SQL (configType \"sql\") variants. Raw SQL templates must reference the evaluation window via the time-filter and interval macros (e.g. $__timeFilter and $__timeInterval), and the referenced source/connection must belong to the team.\n",
-        "oneOf": [
+      "AlertChartConfigOverlay": {
+        "type": "object",
+        "description": "Fields an alert's chart config carries on top of the dashboard tile config dialect. Unlike a tile (whose name lives on the tile, not its config), an inline alert's config is standalone.\n",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Display name for the alert query. Used in notification titles and as an alert-name fallback when the alert itself has no name.\n",
+            "example": "Error Rate Query"
+          },
+          "where": {
+            "type": "string",
+            "maxLength": 10000,
+            "description": "Chart-level filter applied on top of every select item's own \"where\" (combined via AND). Builder variants only; rejected on Raw SQL variants (filter inside the sqlTemplate instead).\n",
+            "example": "ServiceName:api"
+          },
+          "whereLanguage": {
+            "$ref": "#/components/schemas/QueryLanguage",
+            "description": "Language of the chart-level \"where\" filter."
+          }
+        }
+      },
+      "AlertLineChartConfig": {
+        "allOf": [
           {
             "$ref": "#/components/schemas/LineChartConfig"
           },
           {
+            "$ref": "#/components/schemas/AlertChartConfigOverlay"
+          }
+        ]
+      },
+      "AlertBarChartConfig": {
+        "allOf": [
+          {
             "$ref": "#/components/schemas/BarChartConfig"
           },
           {
+            "$ref": "#/components/schemas/AlertChartConfigOverlay"
+          }
+        ]
+      },
+      "AlertNumberChartConfig": {
+        "allOf": [
+          {
             "$ref": "#/components/schemas/NumberChartConfig"
+          },
+          {
+            "$ref": "#/components/schemas/AlertChartConfigOverlay"
           }
-        ],
-        "discriminator": {
-          "propertyName": "displayType",
-          "mapping": {
-            "line": "#/components/schemas/LineChartConfig",
-            "stacked_bar": "#/components/schemas/BarChartConfig",
-            "number": "#/components/schemas/NumberChartConfig"
+        ]
+      },
+      "AlertChartConfig": {
+        "description": "The chart configuration an inline alert evaluates, in the same dialect as dashboard tile configs plus the alert-only fields in AlertChartConfigOverlay. Only the display types the alert evaluator supports are accepted: line, stacked_bar, and number, in both builder and Raw SQL (configType \"sql\") variants. Raw SQL templates must reference the evaluation window via the time-filter and interval macros (e.g. $__timeFilter and $__timeInterval), and the referenced source/connection must belong to the team.\n",
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/AlertLineChartConfig"
+          },
+          {
+            "$ref": "#/components/schemas/AlertBarChartConfig"
+          },
+          {
+            "$ref": "#/components/schemas/AlertNumberChartConfig"
           }
-        }
+        ]
       },
       "AlertState": {
         "type": "string",

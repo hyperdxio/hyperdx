@@ -1,212 +1,197 @@
-import { DisplayType, MetricsDataType } from '@hyperdx/common-utils/dist/types';
+import {
+  AlertChartConfig,
+  AlertChartConfigSchema,
+  DisplayType,
+} from '@hyperdx/common-utils/dist/types';
 
 import {
   convertAlertChartConfigToExternal,
   convertExternalAlertChartConfigToInternal,
+  EVALUATION_INERT_CONFIG_KEYS,
+  EXTERNAL_TO_INTERNAL_KEY,
+  KNOWN_LOSSY_CONFIG_KEYS,
 } from '@/routers/external-api/v2/utils/alertChartConfig';
-import { ExternalAlertChartConfig } from '@/utils/zod';
+import {
+  externalAlertBuilderChartConfigSchema,
+  ExternalAlertChartConfig,
+  externalAlertRawSqlChartConfigSchema,
+} from '@/utils/zod';
 
-describe('alertChartConfig converters', () => {
-  describe('builder configs', () => {
-    const externalLineConfig: ExternalAlertChartConfig = {
-      displayType: 'line',
-      sourceId: '65f5e4a3b9e77c001a123456',
+const SOURCE_ID = '65f5e4a3b9e77c001a123456';
+const CONNECTION_ID = '65f5e4a3b9e77c001a789012';
+
+const countItem = (where = '') => ({
+  aggFn: 'count' as const,
+  where,
+  whereLanguage: 'lucene' as const,
+  valueExpression: '',
+});
+
+const baseInternal = (
+  overrides: Partial<Record<string, unknown>> = {},
+): AlertChartConfig =>
+  ({
+    displayType: DisplayType.Line,
+    source: SOURCE_ID,
+    select: [
+      {
+        aggFn: 'count',
+        aggCondition: '',
+        aggConditionLanguage: 'lucene',
+        valueExpression: '',
+      },
+    ],
+    where: '',
+    whereLanguage: 'lucene',
+    ...overrides,
+  }) as AlertChartConfig;
+
+describe('convertExternalAlertChartConfigToInternal', () => {
+  it('maps the external dialect onto the internal one', () => {
+    const internal = convertExternalAlertChartConfigToInternal({
+      displayType: DisplayType.Line,
+      sourceId: SOURCE_ID,
+      name: 'Error Rate Query',
+      where: 'ServiceName:api',
+      whereLanguage: 'lucene',
+      groupBy: 'ServiceName',
+      asRatio: true,
       select: [
-        {
-          aggFn: 'count',
-          where: 'level:error',
-          whereLanguage: 'lucene',
-          alias: 'Errors',
-        },
         {
           aggFn: 'avg',
           valueExpression: 'Value',
-          where: '',
+          where: 'level:error',
           whereLanguage: 'lucene',
-          metricType: MetricsDataType.Gauge,
+          alias: 'CPU',
+          metricType: 'gauge',
           metricName: 'system.cpu.utilization',
           periodAggFn: 'delta',
         },
+        countItem(),
       ],
+    } as ExternalAlertChartConfig);
+
+    expect(internal).toMatchObject({
+      displayType: DisplayType.Line,
+      source: SOURCE_ID,
+      name: 'Error Rate Query',
+      where: 'ServiceName:api',
+      whereLanguage: 'lucene',
+      groupBy: 'ServiceName',
+      seriesReturnType: 'ratio',
+      select: [
+        {
+          aggFn: 'avg',
+          valueExpression: 'Value',
+          aggCondition: 'level:error',
+          aggConditionLanguage: 'lucene',
+          alias: 'CPU',
+          metricType: 'gauge',
+          metricName: 'system.cpu.utilization',
+          isDelta: true,
+        },
+        { aggFn: 'count', aggCondition: '', isDelta: false },
+      ],
+    });
+    expect('alert' in internal).toBe(false);
+  });
+
+  it('omits the synthetic tile name and never persists an alert field', () => {
+    const internal = convertExternalAlertChartConfigToInternal({
+      displayType: DisplayType.Line,
+      sourceId: SOURCE_ID,
+      select: [countItem()],
+    } as ExternalAlertChartConfig);
+
+    expect('name' in internal).toBe(false);
+    expect('alert' in internal).toBe(false);
+  });
+});
+
+describe('external <-> internal round-trip', () => {
+  it('round-trips a builder line config, including alert-only and metric fields', () => {
+    const external = {
+      displayType: DisplayType.Line,
+      sourceId: SOURCE_ID,
+      name: 'Error Rate Query',
+      where: 'ServiceName:api',
+      whereLanguage: 'lucene' as const,
       groupBy: 'ServiceName',
       asRatio: true,
-      fillNulls: false,
       seriesLimit: 5,
-      numberFormat: { output: 'number', mantissa: 2 },
-    };
-
-    it('maps the external dialect onto the internal AlertChartConfig', () => {
-      const internal =
-        convertExternalAlertChartConfigToInternal(externalLineConfig);
-
-      expect(internal).toMatchObject({
-        displayType: DisplayType.Line,
-        source: '65f5e4a3b9e77c001a123456',
-        groupBy: 'ServiceName',
-        seriesReturnType: 'ratio',
-        fillNulls: false,
-        seriesLimit: 5,
-        select: [
-          {
-            aggFn: 'count',
-            aggCondition: 'level:error',
-            aggConditionLanguage: 'lucene',
-            alias: 'Errors',
-            isDelta: false,
-          },
-          {
-            aggFn: 'avg',
-            valueExpression: 'Value',
-            aggCondition: '',
-            aggConditionLanguage: 'lucene',
-            metricType: MetricsDataType.Gauge,
-            metricName: 'system.cpu.utilization',
-            isDelta: true,
-          },
-        ],
-      });
-    });
-
-    it('never persists the synthetic tile name or an embedded alert', () => {
-      const internal =
-        convertExternalAlertChartConfigToInternal(externalLineConfig);
-
-      // The tile converter writes the synthetic tile's name ('') into the
-      // config; persisting it would attach junk to every alert document.
-      expect(internal).not.toHaveProperty('name');
-      expect(internal).not.toHaveProperty('alert');
-    });
-
-    it('round-trips external -> internal -> external without losing fields', () => {
-      const internal =
-        convertExternalAlertChartConfigToInternal(externalLineConfig);
-      const roundTripped = convertAlertChartConfigToExternal(internal);
-
-      expect(roundTripped).toMatchObject({
-        displayType: 'line',
-        sourceId: '65f5e4a3b9e77c001a123456',
-        groupBy: 'ServiceName',
-        asRatio: true,
-        fillNulls: false,
-        seriesLimit: 5,
-        numberFormat: { output: 'number', mantissa: 2 },
-        select: [
-          {
-            aggFn: 'count',
-            where: 'level:error',
-            whereLanguage: 'lucene',
-            alias: 'Errors',
-          },
-          {
-            aggFn: 'avg',
-            valueExpression: 'Value',
-            where: '',
-            whereLanguage: 'lucene',
-            metricType: MetricsDataType.Gauge,
-            metricName: 'system.cpu.utilization',
-            periodAggFn: 'delta',
-          },
-        ],
-      });
-    });
-
-    it('converts internal stacked_bar and number configs to the external dialect', () => {
-      const stackedBar = convertAlertChartConfigToExternal({
-        displayType: DisplayType.StackedBar,
-        source: '65f5e4a3b9e77c001a123456',
-        select: [
-          {
-            aggFn: 'count',
-            aggCondition: '',
-            aggConditionLanguage: 'lucene',
-            valueExpression: '',
-          },
-        ],
-        where: '',
-      });
-      expect(stackedBar).toMatchObject({
-        displayType: 'stacked_bar',
-        sourceId: '65f5e4a3b9e77c001a123456',
-      });
-
-      const number = convertAlertChartConfigToExternal({
-        displayType: DisplayType.Number,
-        source: '65f5e4a3b9e77c001a123456',
-        select: [
-          {
-            aggFn: 'count',
-            aggCondition: 'level:error',
-            aggConditionLanguage: 'lucene',
-            valueExpression: '',
-          },
-        ],
-        where: '',
-        numberFormat: { output: 'percent' },
-      });
-      expect(number).toMatchObject({
-        displayType: 'number',
-        sourceId: '65f5e4a3b9e77c001a123456',
-        numberFormat: { output: 'percent' },
-        select: [{ aggFn: 'count', where: 'level:error' }],
-      });
-    });
-  });
-
-  describe('raw SQL configs', () => {
-    const externalRawSqlConfig: ExternalAlertChartConfig = {
-      configType: 'sql',
-      displayType: 'line',
-      connectionId: '65f5e4a3b9e77c001a789012',
-      sqlTemplate:
-        'SELECT $__timeInterval(Timestamp) AS ts, count() FROM t WHERE $__timeFilter(Timestamp) GROUP BY ts',
-      sourceId: '65f5e4a3b9e77c001a123456',
       fillNulls: false,
-      seriesLimit: 3,
-    };
+      numberFormat: { output: 'number' as const },
+      select: [
+        {
+          aggFn: 'avg' as const,
+          valueExpression: 'Value',
+          where: 'level:error',
+          whereLanguage: 'lucene' as const,
+          alias: 'CPU',
+          metricType: 'gauge' as const,
+          metricName: 'system.cpu.utilization',
+          periodAggFn: 'delta' as const,
+        },
+        countItem(),
+      ],
+    } as ExternalAlertChartConfig;
 
-    it('maps external field names onto the internal ones', () => {
-      const internal =
-        convertExternalAlertChartConfigToInternal(externalRawSqlConfig);
+    const roundTripped = convertAlertChartConfigToExternal(
+      convertExternalAlertChartConfigToInternal(external),
+    );
 
-      expect(internal).toMatchObject({
-        configType: 'sql',
-        displayType: DisplayType.Line,
-        connection: '65f5e4a3b9e77c001a789012',
-        source: '65f5e4a3b9e77c001a123456',
-        fillNulls: false,
-        seriesLimit: 3,
-      });
-      expect(internal).not.toHaveProperty('connectionId');
-      expect(internal).not.toHaveProperty('sourceId');
-      expect(internal).not.toHaveProperty('name');
-    });
+    expect(roundTripped).toEqual(external);
+  });
 
-    it('round-trips external -> internal -> external', () => {
-      const internal =
-        convertExternalAlertChartConfigToInternal(externalRawSqlConfig);
-      const roundTripped = convertAlertChartConfigToExternal(internal);
+  it('round-trips a quantile select item with its level', () => {
+    const external = {
+      displayType: DisplayType.StackedBar,
+      sourceId: SOURCE_ID,
+      select: [
+        {
+          aggFn: 'quantile' as const,
+          level: 0.95 as const,
+          valueExpression: 'Duration',
+          where: '',
+          whereLanguage: 'lucene' as const,
+        },
+      ],
+    } as ExternalAlertChartConfig;
 
-      expect(roundTripped).toMatchObject({
-        configType: 'sql',
-        displayType: 'line',
-        connectionId: '65f5e4a3b9e77c001a789012',
-        sqlTemplate: externalRawSqlConfig.sqlTemplate,
-        sourceId: '65f5e4a3b9e77c001a123456',
-        fillNulls: false,
-        seriesLimit: 3,
-      });
+    const roundTripped = convertAlertChartConfigToExternal(
+      convertExternalAlertChartConfigToInternal(external),
+    );
+
+    expect(roundTripped).toMatchObject({
+      displayType: DisplayType.StackedBar,
+      select: [{ aggFn: 'quantile', level: 0.95, valueExpression: 'Duration' }],
     });
   });
 
-  describe('configs without an external representation', () => {
-    it('returns undefined for a corrupt config with an unsupported display type', () => {
-      // Reachable only via a direct DB write: both write paths reject
-      // non-alertable display types, but a Mixed Mongo field enforces
-      // nothing. The translate layer omits the field rather than emitting
-      // a shape the external contract cannot express.
-      const external = convertAlertChartConfigToExternal({
-        displayType: DisplayType.Table,
-        source: '65f5e4a3b9e77c001a123456',
+  it('round-trips a raw SQL config', () => {
+    const external = {
+      configType: 'sql' as const,
+      displayType: DisplayType.Line,
+      connectionId: CONNECTION_ID,
+      sourceId: SOURCE_ID,
+      sqlTemplate: 'SELECT $__timeInterval(Timestamp) AS ts, count() ...',
+      name: 'Raw SQL Alert Query',
+      fillNulls: true,
+    } as ExternalAlertChartConfig;
+
+    const roundTripped = convertAlertChartConfigToExternal(
+      convertExternalAlertChartConfigToInternal(external),
+    );
+
+    expect(roundTripped).toEqual(external);
+  });
+});
+
+describe('convertAlertChartConfigToExternal', () => {
+  it('emits a number config', () => {
+    const external = convertAlertChartConfigToExternal(
+      baseInternal({
+        displayType: DisplayType.Number,
         select: [
           {
             aggFn: 'count',
@@ -215,10 +200,155 @@ describe('alertChartConfig converters', () => {
             valueExpression: '',
           },
         ],
-        where: '',
-      });
+      }),
+    );
 
-      expect(external).toBeUndefined();
+    expect(external).toMatchObject({
+      displayType: DisplayType.Number,
+      sourceId: SOURCE_ID,
     });
+  });
+
+  it('still emits configs carrying evaluation-inert extras', () => {
+    const external = convertAlertChartConfigToExternal(
+      baseInternal({
+        seriesReturnType: 'column',
+        fillNulls: 0,
+        markdown: '',
+        groupByColumnsOnLeft: true,
+        compareToPreviousPeriod: true,
+        color: 'chart-blue',
+        select: [
+          {
+            aggFn: 'count',
+            aggCondition: '',
+            aggConditionLanguage: 'lucene',
+            valueExpression: '',
+            color: 'chart-red',
+          },
+        ],
+      }),
+    );
+
+    expect(external).toMatchObject({ displayType: DisplayType.Line });
+  });
+
+  it.each([
+    [
+      'filters',
+      { filters: [{ type: 'sql', condition: "ServiceName = 'api'" }] },
+    ],
+    ['having', { having: 'count() > 5', havingLanguage: 'sql' }],
+    ['orderBy', { orderBy: 'Timestamp DESC' }],
+    ['limit', { limit: { limit: 10 } }],
+    ['ratioMode', { ratioMode: 'total' }],
+    ['selectGroupBy', { selectGroupBy: true }],
+    ['granularity', { granularity: '5 minute' }],
+    ['implicitColumnExpression', { implicitColumnExpression: 'Body' }],
+    ['sampleWeightExpression', { sampleWeightExpression: 'SampleRate' }],
+    ['a raw SQL select expression string', { select: 'count() as count' }],
+    [
+      'an unknown future field',
+      { someFutureEvaluationKnob: 'on' } as Record<string, unknown>,
+    ],
+  ])('refuses to emit a config carrying %s', (_label, overrides) => {
+    expect(
+      convertAlertChartConfigToExternal(baseInternal(overrides)),
+    ).toBeUndefined();
+  });
+
+  it('refuses a chart-level where longer than the external cap', () => {
+    expect(
+      convertAlertChartConfigToExternal(
+        baseInternal({ where: 'a'.repeat(10001) }),
+      ),
+    ).toBeUndefined();
+  });
+
+  it('refuses more than 20 select items', () => {
+    expect(
+      convertAlertChartConfigToExternal(
+        baseInternal({
+          select: Array.from({ length: 21 }, () => ({
+            aggFn: 'count',
+            aggCondition: '',
+            aggConditionLanguage: 'lucene',
+            valueExpression: '',
+          })),
+        }),
+      ),
+    ).toBeUndefined();
+  });
+
+  it('refuses a formula-less number config with multiple select items', () => {
+    expect(
+      convertAlertChartConfigToExternal(
+        baseInternal({
+          displayType: DisplayType.Number,
+          select: [
+            {
+              aggFn: 'count',
+              aggCondition: '',
+              aggConditionLanguage: 'lucene',
+              valueExpression: '',
+            },
+            {
+              aggFn: 'count',
+              aggCondition: 'level:error',
+              aggConditionLanguage: 'lucene',
+              valueExpression: '',
+            },
+          ],
+        }),
+      ),
+    ).toBeUndefined();
+  });
+
+  it('refuses unsupported display types and PromQL configs', () => {
+    expect(
+      convertAlertChartConfigToExternal(
+        baseInternal({ displayType: DisplayType.Table }),
+      ),
+    ).toBeUndefined();
+    expect(
+      convertAlertChartConfigToExternal({
+        configType: 'promql',
+        promqlQuery: 'up',
+        source: SOURCE_ID,
+      } as unknown as AlertChartConfig),
+    ).toBeUndefined();
+  });
+});
+
+// Drift guard: every field the internal alert chart config can persist must
+// be deliberately classified as externally representable, evaluation-inert,
+// or known-lossy. A new field on the internal schema breaks this test and
+// forces a decision instead of silently leaking through the external
+// round-trip (unknown fields refuse at runtime either way — this test is
+// about intent, not safety).
+describe('internal schema field classification', () => {
+  const representableInternalKeys = new Set(
+    [
+      ...externalAlertBuilderChartConfigSchema.options,
+      ...externalAlertRawSqlChartConfigSchema.options,
+    ].flatMap(member =>
+      Object.keys(member.shape).map(
+        key => EXTERNAL_TO_INTERNAL_KEY[key] ?? key,
+      ),
+    ),
+  );
+
+  it.each(
+    AlertChartConfigSchema.options.flatMap((member, i) =>
+      Object.keys(member.shape).map(
+        key => [i === 0 ? 'builder' : 'raw SQL', key] as const,
+      ),
+    ),
+  )('classifies the internal %s config field "%s"', (_variant, key) => {
+    const classified =
+      representableInternalKeys.has(key) ||
+      EVALUATION_INERT_CONFIG_KEYS.has(key) ||
+      KNOWN_LOSSY_CONFIG_KEYS.has(key);
+    expect(classified).toBe(true);
   });
 });

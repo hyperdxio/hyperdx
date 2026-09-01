@@ -1,5 +1,6 @@
 import {
   McpSaveAlertInput,
+  mcpSaveAlertSchema,
   validateSaveAlertInput,
 } from '@/mcp/tools/alerts/schemas';
 
@@ -128,5 +129,45 @@ describe('validateSaveAlertInput inline alerts', () => {
     });
 
     expect(result).toContain('only supported when source is "inline"');
+  });
+});
+
+describe('mcpSaveAlertSchema isDelta dialect bridge', () => {
+  const parseSelectItem = (selectItem: Record<string, unknown>) => {
+    const parsed = mcpSaveAlertSchema.parse({
+      ...baseInput,
+      source: 'inline',
+      savedSearchId: undefined,
+      channel: wh('a'),
+      chartConfig: {
+        displayType: 'line',
+        sourceId: 'source-1',
+        select: [selectItem],
+      },
+    });
+    const config = parsed.chartConfig;
+    if (!config || !('select' in config)) {
+      throw new Error('expected a builder chartConfig');
+    }
+    return config.select[0];
+  };
+
+  const gaugeItem = {
+    aggFn: 'avg',
+    metricType: 'gauge',
+    metricName: 'system.cpu.utilization',
+  };
+
+  it('normalizes the REST-dialect periodAggFn: "delta" onto isDelta', () => {
+    expect(
+      parseSelectItem({ ...gaugeItem, periodAggFn: 'delta' }),
+    ).toMatchObject({ isDelta: true });
+  });
+
+  it('passes an explicit isDelta through unchanged', () => {
+    expect(parseSelectItem({ ...gaugeItem, isDelta: true })).toMatchObject({
+      isDelta: true,
+    });
+    expect(parseSelectItem(gaugeItem).isDelta).toBeUndefined();
   });
 });

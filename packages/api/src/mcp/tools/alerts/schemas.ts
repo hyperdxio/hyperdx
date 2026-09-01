@@ -4,6 +4,7 @@ import {
   checkAlertChannelSelection,
   isRangeThresholdType,
   MAX_ALERT_CHANNELS,
+  SearchConditionTrimmedLanguageSchema,
 } from '@hyperdx/common-utils/dist/types';
 import { z } from 'zod';
 
@@ -31,12 +32,59 @@ import {
 // tile-only onClick affordance. Full validation (formulas, number
 // single-select rule, source/connection ownership) runs at save time via the
 // shared external alert schema and validateAlertInput.
+//
+// Unlike tiles, an alert's config carries its own `name` (used in
+// notification titles) and — builder variants only — a chart-level
+// `where`/`whereLanguage` filter ANDed into every series, so those override
+// the tile schemas' rejected-never fields here.
+const mcpAlertChartConfigNameSchema = z
+  .string()
+  .optional()
+  .describe(
+    'Display name for the alert query, used in notification titles when the ' +
+      'alert has no explicit name.',
+  );
+
+const mcpAlertChartLevelWhereSchema = z
+  .string()
+  .max(10000)
+  .optional()
+  .describe(
+    'Chart-level filter applied to every select item (combined with each ' +
+      "item's own `where` via AND). Lucene syntax by default.",
+  );
+
+const rejectedRawSqlAlertWhereField = z
+  .never({
+    invalid_type_error:
+      'Raw SQL alert configs have no chart-level where; filter inside the sqlTemplate instead',
+  })
+  .optional()
+  .describe(
+    'Not supported on Raw SQL alert configs. Filter inside the sqlTemplate.',
+  );
+
 const mcpAlertChartConfigSchema = z
   .union([
-    mcpLineTileSchema.shape.config,
-    mcpBarTileSchema.shape.config,
-    mcpNumberTileSchema.shape.config,
+    mcpLineTileSchema.shape.config.extend({
+      name: mcpAlertChartConfigNameSchema,
+      where: mcpAlertChartLevelWhereSchema,
+      whereLanguage: SearchConditionTrimmedLanguageSchema.optional(),
+    }),
+    mcpBarTileSchema.shape.config.extend({
+      name: mcpAlertChartConfigNameSchema,
+      where: mcpAlertChartLevelWhereSchema,
+      whereLanguage: SearchConditionTrimmedLanguageSchema.optional(),
+    }),
+    mcpNumberTileSchema.shape.config.extend({
+      name: mcpAlertChartConfigNameSchema,
+      where: mcpAlertChartLevelWhereSchema,
+      whereLanguage: SearchConditionTrimmedLanguageSchema.optional(),
+    }),
     mcpSqlTileSchema.shape.config.omit({ onClick: true }).extend({
+      name: mcpAlertChartConfigNameSchema,
+      where: rejectedRawSqlAlertWhereField,
+      whereLanguage: rejectedRawSqlAlertWhereField,
       displayType: z
         .enum(['line', 'stacked_bar', 'number'])
         .describe(

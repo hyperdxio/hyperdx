@@ -267,6 +267,18 @@ const mcpTileSelectItemSchema = z
         'METRIC SOURCES ONLY (gauge metrics). When true, computes the Prometheus-style ' +
           'delta over each bucket. Default false.',
       ),
+    // The REST v2 dialect's spelling of the same flag. Accepted so a select
+    // item read back from the external API (or clickstack_get_alert /
+    // clickstack_get_dashboard, which emit the REST dialect) can be resent
+    // verbatim without silently clearing the delta flag; normalized onto
+    // `isDelta` in the transform below.
+    periodAggFn: z
+      .enum(['delta'])
+      .optional()
+      .describe(
+        'Alias for isDelta accepted for round-tripping configs read from ' +
+          'get tools: "delta" is equivalent to isDelta: true.',
+      ),
   })
   .superRefine((data, ctx) => {
     const narrow = {
@@ -275,7 +287,10 @@ const mcpTileSelectItemSchema = z
         typeof data.metricType === 'string' ? data.metricType : undefined,
       metricName:
         typeof data.metricName === 'string' ? data.metricName : undefined,
-      isDelta: typeof data.isDelta === 'boolean' ? data.isDelta : undefined,
+      isDelta:
+        typeof data.isDelta === 'boolean'
+          ? data.isDelta
+          : data.periodAggFn === 'delta' || undefined,
       level: typeof data.level === 'number' ? data.level : undefined,
       valueExpression:
         typeof data.valueExpression === 'string'
@@ -290,11 +305,19 @@ const mcpTileSelectItemSchema = z
       });
     }
   })
-  .transform(data =>
-    data.metricType && data.aggFn !== 'count' && !data.valueExpression
-      ? { ...data, valueExpression: 'Value' }
-      : data,
-  );
+  .transform(data => {
+    // Normalize the REST-dialect spelling onto isDelta so downstream
+    // consumers only need to read one flag.
+    const withDelta =
+      data.periodAggFn === 'delta' && data.isDelta !== true
+        ? { ...data, isDelta: true }
+        : data;
+    return withDelta.metricType &&
+      withDelta.aggFn !== 'count' &&
+      !withDelta.valueExpression
+      ? { ...withDelta, valueExpression: 'Value' }
+      : withDelta;
+  });
 
 // ─── Chart formulas ──────────────────────────────────────────────────────────
 

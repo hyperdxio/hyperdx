@@ -650,7 +650,12 @@ export function convertToExternalDashboard(
 // --------------------------------------------------------------------------------
 
 const convertToInternalSelectItem = (
-  item: ExternalDashboardSelectItem,
+  // `isDelta` is the MCP tile dialect's spelling of the gauge delta flag
+  // (`periodAggFn: 'delta'` in the REST dialect). MCP tiles are cast to
+  // ExternalDashboardTileWithId before reaching this converter
+  // (saveDashboard.ts), so honoring both spellings here is what keeps an
+  // MCP-authored gauge-delta series from silently evaluating raw values.
+  item: ExternalDashboardSelectItem & { isDelta?: boolean },
 ): Exclude<BuilderSavedChartConfig['select'][number], string> => {
   return {
     ...pick(item, [
@@ -663,7 +668,7 @@ const convertToInternalSelectItem = (
     ]),
     aggCondition: item.where,
     aggConditionLanguage: item.whereLanguage,
-    isDelta: item.periodAggFn === 'delta',
+    isDelta: item.periodAggFn === 'delta' || item.isDelta === true,
     valueExpression: item.valueExpression ?? '',
   };
 };

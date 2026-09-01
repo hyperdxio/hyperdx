@@ -1210,6 +1210,211 @@ describe('External API Alerts', () => {
       const stored = await Alert.findById(created.body.data.id);
       expect(stored!.chartConfig).not.toHaveProperty('unknownField');
     });
+
+    it('rejects a chartConfig on non-inline sources instead of silently dropping it', async () => {
+      const { source } = await makeSource();
+      const webhook = await createTestWebhook();
+      const dashboard = await createTestDashboard();
+      const savedSearch = await createTestSavedSearch();
+      const chartConfig = makeBuilderChartConfig(source._id.toString());
+
+      await authRequest('post', ALERTS_BASE_URL)
+        .send({
+          source: AlertSource.TILE,
+          dashboardId: dashboard._id.toString(),
+          tileId: dashboard.tiles[0].id,
+          chartConfig,
+          threshold: 100,
+          interval: '1h',
+          thresholdType: AlertThresholdType.ABOVE,
+          channel: { type: 'webhook', webhookId: webhook._id.toString() },
+        })
+        .expect(400);
+
+      await authRequest('post', ALERTS_BASE_URL)
+        .send({
+          source: AlertSource.SAVED_SEARCH,
+          savedSearchId: savedSearch._id.toString(),
+          chartConfig,
+          threshold: 100,
+          interval: '1h',
+          thresholdType: AlertThresholdType.ABOVE,
+          channel: { type: 'webhook', webhookId: webhook._id.toString() },
+        })
+        .expect(400);
+
+      // PUT applies the same rule.
+      const { alert } = await createTestAlert();
+      await authRequest('put', `${ALERTS_BASE_URL}/${alert.id}`)
+        .send({
+          source: AlertSource.TILE,
+          dashboardId: alert.dashboardId,
+          tileId: alert.tileId,
+          chartConfig,
+          threshold: 100,
+          interval: '1h',
+          thresholdType: AlertThresholdType.ABOVE,
+          channel: alert.channel,
+        })
+        .expect(400);
+    });
+
+    it('round-trips the config name and chart-level where', async () => {
+      const { source } = await makeSource();
+      const webhook = await createTestWebhook();
+
+      const created = await authRequest('post', ALERTS_BASE_URL)
+        .send(
+          makeInlineAlertInput(
+            makeBuilderChartConfig(source._id.toString(), {
+              name: 'Error Rate Query',
+              where: 'ServiceName:api',
+              whereLanguage: 'lucene',
+            }),
+            webhook._id.toString(),
+          ),
+        )
+        .expect(200);
+
+      expect(created.body.data.chartConfig).toMatchObject({
+        name: 'Error Rate Query',
+        where: 'ServiceName:api',
+        whereLanguage: 'lucene',
+      });
+
+      // Persisted on the internal shape the evaluator reads.
+      const stored = await Alert.findById(created.body.data.id);
+      expect(stored!.chartConfig).toMatchObject({
+        name: 'Error Rate Query',
+        where: 'ServiceName:api',
+        whereLanguage: 'lucene',
+      });
+
+      const single = await authRequest(
+        'get',
+        `${ALERTS_BASE_URL}/${created.body.data.id}`,
+      ).expect(200);
+      expect(single.body.data.chartConfig).toMatchObject({
+        name: 'Error Rate Query',
+        where: 'ServiceName:api',
+      });
+
+      // Echoing the GET body through PUT keeps them intact — the
+      // read-modify-write loop must not degrade notification titles or
+      // silently broaden the alert's query.
+      await authRequest('put', `${ALERTS_BASE_URL}/${created.body.data.id}`)
+        .send(single.body.data)
+        .expect(200);
+      const storedAfter = await Alert.findById(created.body.data.id);
+      expect(storedAfter!.chartConfig).toEqual(stored!.chartConfig);
+    });
+
+    it('rejects a chart-level where on raw SQL configs', async () => {
+      const { connection } = await makeSource();
+      const webhook = await createTestWebhook();
+
+      await authRequest('post', ALERTS_BASE_URL)
+        .send(
+          makeInlineAlertInput(
+            {
+              configType: 'sql',
+              displayType: 'line',
+              sqlTemplate: RAW_SQL_ALERT_TEMPLATE,
+              connectionId: connection._id.toString(),
+              where: 'ServiceName:api',
+            },
+            webhook._id.toString(),
+          ),
+        )
+        .expect(400);
+    });
+
+    it('omits chartConfig for internally-authored configs the dialect cannot express, and a blind echo-PUT fails loudly', async () => {
+      // An alert created through the internal API can persist fields the
+      // external dialect has no spelling for (chart-level `filters` here).
+      // Emitting a lossy approximation would let a GET -> PUT loop silently
+      // broaden the alert's query, so the GET omits chartConfig entirely and
+      // re-PUTting the echoed body 400s on the missing config.
+      const { source } = await makeSource();
+
+      const alert = await createTestAlertDirectly({
+        source: AlertSource.INLINE,
+        dashboardId: undefined,
+        tileId: undefined,
+        chartConfig: {
+          displayType: 'line',
+          source: source._id.toString(),
+          select: [
+            {
+              aggFn: 'count',
+              aggCondition: '',
+              aggConditionLanguage: 'lucene',
+              valueExpression: '',
+            },
+          ],
+          where: '',
+          whereLanguage: 'lucene',
+          filters: [{ type: 'sql', condition: "ServiceName = 'api'" }],
+        },
+      });
+
+      const single = await authRequest(
+        'get',
+        `${ALERTS_BASE_URL}/${alert._id}`,
+      ).expect(200);
+      expect(single.body.data.source).toBe(AlertSource.INLINE);
+      expect(single.body.data.chartConfig).toBeUndefined();
+
+      await authRequest('put', `${ALERTS_BASE_URL}/${alert._id}`)
+        .send(single.body.data)
+        .expect(400);
+
+      // The stored config is untouched by the failed write.
+      const stored = await Alert.findById(alert._id);
+      expect(stored!.chartConfig).toMatchObject({
+        filters: [{ type: 'sql', condition: "ServiceName = 'api'" }],
+      });
+    });
+
+    it('emits chartConfig for internally-authored configs the dialect can express', async () => {
+      // Guards against over-refusal: the shapes the UI's chart explorer
+      // persists (name, empty chart-level where, count select) must keep
+      // round-tripping.
+      const { source } = await makeSource();
+
+      const alert = await createTestAlertDirectly({
+        source: AlertSource.INLINE,
+        dashboardId: undefined,
+        tileId: undefined,
+        chartConfig: {
+          name: 'Chart Alert Query',
+          displayType: 'line',
+          source: source._id.toString(),
+          select: [
+            {
+              aggFn: 'count',
+              aggCondition: 'level:error',
+              aggConditionLanguage: 'lucene',
+              valueExpression: '',
+            },
+          ],
+          where: '',
+          whereLanguage: 'lucene',
+          seriesReturnType: 'column',
+        },
+      });
+
+      const single = await authRequest(
+        'get',
+        `${ALERTS_BASE_URL}/${alert._id}`,
+      ).expect(200);
+      expect(single.body.data.chartConfig).toMatchObject({
+        displayType: 'line',
+        name: 'Chart Alert Query',
+        sourceId: source._id.toString(),
+        select: [{ aggFn: 'count', where: 'level:error' }],
+      });
+    });
   });
 
   describe('Input validation', () => {

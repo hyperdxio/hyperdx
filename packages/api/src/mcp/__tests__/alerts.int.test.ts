@@ -731,6 +731,92 @@ describe('MCP Alert Tools', () => {
         });
       });
 
+      it('preserves the gauge delta flag across the isDelta/periodAggFn dialect bridge', async () => {
+        const webhook = await createTestWebhook();
+
+        // MCP spells the flag `isDelta`; the external dialect (and the
+        // persisted internal shape) must not silently drop it — a lost flag
+        // makes the alert evaluate raw gauge values instead of deltas.
+        const createResult = await callTool(
+          client,
+          'clickstack_save_alert',
+          makeInlineInput(webhook._id.toString(), {
+            chartConfig: makeChartConfig({
+              select: [
+                {
+                  aggFn: 'avg',
+                  metricType: 'gauge',
+                  metricName: 'system.cpu.utilization',
+                  isDelta: true,
+                },
+              ],
+            }),
+          }),
+        );
+        expect(createResult.isError).toBeFalsy();
+        const created = JSON.parse(getFirstText(createResult));
+        expect(created.chartConfig.select[0]).toMatchObject({
+          periodAggFn: 'delta',
+        });
+
+        const stored = await Alert.findById(created.id);
+        expect(stored!.chartConfig).toMatchObject({
+          select: [{ isDelta: true }],
+        });
+
+        // Read-then-resend: the detail response spells the flag
+        // periodAggFn: 'delta'; resending that config verbatim must keep it.
+        const detail = await callTool(client, 'clickstack_get_alert', {
+          id: created.id,
+        });
+        const detailOutput = JSON.parse(getFirstText(detail));
+        expect(detailOutput.chartConfig.select[0]).toMatchObject({
+          periodAggFn: 'delta',
+        });
+
+        const resent = await callTool(client, 'clickstack_save_alert', {
+          ...makeInlineInput(webhook._id.toString(), {
+            chartConfig: detailOutput.chartConfig,
+          }),
+          id: created.id,
+        });
+        expect(resent.isError).toBeFalsy();
+        const storedAfter = await Alert.findById(created.id);
+        expect(storedAfter!.chartConfig).toMatchObject({
+          select: [{ isDelta: true }],
+        });
+      });
+
+      it('accepts the alert-only name and chart-level where fields', async () => {
+        const webhook = await createTestWebhook();
+
+        const result = await callTool(
+          client,
+          'clickstack_save_alert',
+          makeInlineInput(webhook._id.toString(), {
+            chartConfig: makeChartConfig({
+              name: 'Error Rate Query',
+              where: 'ServiceName:api',
+              whereLanguage: 'lucene',
+            }),
+          }),
+        );
+
+        expect(result.isError).toBeFalsy();
+        const output = JSON.parse(getFirstText(result));
+        expect(output.chartConfig).toMatchObject({
+          name: 'Error Rate Query',
+          where: 'ServiceName:api',
+        });
+
+        const stored = await Alert.findById(output.id);
+        expect(stored!.chartConfig).toMatchObject({
+          name: 'Error Rate Query',
+          where: 'ServiceName:api',
+          whereLanguage: 'lucene',
+        });
+      });
+
       it('clickstack_get_alert list entries stay slim for inline alerts', async () => {
         const webhook = await createTestWebhook();
         await callTool(
@@ -758,8 +844,8 @@ describe('MCP Alert Tools', () => {
         );
         const created = JSON.parse(getFirstText(createResult));
 
-        // Seed a chartConfig name directly (the external dialect does not
-        // carry one) to exercise the name fallback.
+        // Seed a chartConfig name directly (as the internal UI flow would)
+        // to exercise the name fallback.
         await Alert.findByIdAndUpdate(created.id, {
           $set: { 'chartConfig.name': 'Error Rate Query' },
         });
