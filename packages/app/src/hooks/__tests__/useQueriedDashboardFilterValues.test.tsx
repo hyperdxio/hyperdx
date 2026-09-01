@@ -7,16 +7,16 @@ import {
 import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { FilterSelection } from '@hyperdx/common-utils/dist/dashboardFilterValues';
 import {
-  DashboardFilter,
   MetricsDataType,
+  QueryExpressionDashboardFilter,
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 
-import { useDashboardFilterValues } from '@/hooks/useDashboardFilterValues';
 import * as useMetadataModule from '@/hooks/useMetadata';
+import { useQueriedDashboardFilterValues } from '@/hooks/useQueriedDashboardFilterValues';
 import * as sourceModule from '@/source';
 
 // Mock modules
@@ -34,7 +34,7 @@ jest.mock('@hyperdx/common-utils/dist/core/materializedViews', () => ({
     .mockImplementation(async ({ chartConfig }) => chartConfig),
 }));
 
-describe('useDashboardFilterValues', () => {
+describe('useQueriedDashboardFilterValues', () => {
   let queryClient: QueryClient;
   let wrapper: React.ComponentType<{ children: any }>;
   let mockMetadata: jest.Mocked<Metadata>;
@@ -82,7 +82,7 @@ describe('useDashboardFilterValues', () => {
     },
   ];
 
-  const mockFilters: DashboardFilter[] = [
+  const mockFilters: QueryExpressionDashboardFilter[] = [
     {
       id: 'filter1',
       type: 'QUERY_EXPRESSION',
@@ -172,7 +172,7 @@ describe('useDashboardFilterValues', () => {
     // Act
     const { result } = renderHook(
       () =>
-        useDashboardFilterValues({
+        useQueriedDashboardFilterValues({
           filters: [
             {
               id: 'filterSevNumber',
@@ -213,7 +213,7 @@ describe('useDashboardFilterValues', () => {
     // Act
     const { result } = renderHook(
       () =>
-        useDashboardFilterValues({
+        useQueriedDashboardFilterValues({
           filters: mockFilters,
           dateRange: mockDateRange,
         }),
@@ -314,7 +314,7 @@ describe('useDashboardFilterValues', () => {
 
   it('should group multiple filters from the same source', async () => {
     // Arrange
-    const sameSourceFilters: DashboardFilter[] = [
+    const sameSourceFilters: QueryExpressionDashboardFilter[] = [
       {
         id: 'filter1',
         type: 'QUERY_EXPRESSION',
@@ -339,7 +339,7 @@ describe('useDashboardFilterValues', () => {
     // Act
     const { result } = renderHook(
       () =>
-        useDashboardFilterValues({
+        useQueriedDashboardFilterValues({
           filters: sameSourceFilters,
           dateRange: mockDateRange,
         }),
@@ -359,7 +359,7 @@ describe('useDashboardFilterValues', () => {
 
   it('should not group filters with different where clauses', async () => {
     // Arrange
-    const sameSourceFiltersDifferentWhere: DashboardFilter[] = [
+    const sameSourceFiltersDifferentWhere: QueryExpressionDashboardFilter[] = [
       {
         id: 'filter1',
         type: 'QUERY_EXPRESSION',
@@ -388,7 +388,7 @@ describe('useDashboardFilterValues', () => {
     // Act
     const { result } = renderHook(
       () =>
-        useDashboardFilterValues({
+        useQueriedDashboardFilterValues({
           filters: sameSourceFiltersDifferentWhere,
           dateRange: mockDateRange,
         }),
@@ -417,7 +417,7 @@ describe('useDashboardFilterValues', () => {
     // Act
     const { result } = renderHook(
       () =>
-        useDashboardFilterValues({
+        useQueriedDashboardFilterValues({
           filters: [],
           dateRange: mockDateRange,
         }),
@@ -439,7 +439,7 @@ describe('useDashboardFilterValues', () => {
     // Act
     renderHook(
       () =>
-        useDashboardFilterValues({
+        useQueriedDashboardFilterValues({
           filters: mockFilters,
           dateRange: mockDateRange,
         }),
@@ -452,7 +452,7 @@ describe('useDashboardFilterValues', () => {
 
   it('should filter out filters for sources that do not exist', async () => {
     // Arrange
-    const filtersWithInvalidSource: DashboardFilter[] = [
+    const filtersWithInvalidSource: QueryExpressionDashboardFilter[] = [
       ...mockFilters,
       {
         id: 'filter3',
@@ -471,7 +471,7 @@ describe('useDashboardFilterValues', () => {
     // Act
     const { result } = renderHook(
       () =>
-        useDashboardFilterValues({
+        useQueriedDashboardFilterValues({
           filters: filtersWithInvalidSource,
           dateRange: mockDateRange,
         }),
@@ -499,7 +499,7 @@ describe('useDashboardFilterValues', () => {
     // Act
     const { result } = renderHook(
       () =>
-        useDashboardFilterValues({
+        useQueriedDashboardFilterValues({
           filters: mockFilters,
           dateRange: mockDateRange,
         }),
@@ -522,7 +522,7 @@ describe('useDashboardFilterValues', () => {
     // Act
     const { result } = renderHook(
       () =>
-        useDashboardFilterValues({
+        useQueriedDashboardFilterValues({
           filters: [mockFilters[0]], // Only first filter (logs-source)
           dateRange: mockDateRange,
         }),
@@ -574,7 +574,7 @@ describe('useDashboardFilterValues', () => {
     // Act
     const { result, rerender } = renderHook(
       ({ filters, dateRange }) =>
-        useDashboardFilterValues({
+        useQueriedDashboardFilterValues({
           filters,
           dateRange,
         }),
@@ -613,7 +613,7 @@ describe('useDashboardFilterValues', () => {
       isLoading: false,
     } as any);
 
-    const multiFilters: DashboardFilter[] = [
+    const multiFilters: QueryExpressionDashboardFilter[] = [
       {
         id: 'filter1',
         type: 'QUERY_EXPRESSION',
@@ -640,7 +640,7 @@ describe('useDashboardFilterValues', () => {
     // Act
     const { result } = renderHook(
       () =>
-        useDashboardFilterValues({
+        useQueriedDashboardFilterValues({
           filters: multiFilters,
           dateRange: mockDateRange,
         }),
@@ -708,7 +708,7 @@ describe('useDashboardFilterValues', () => {
       },
     ]);
 
-    const filtersForSameSource: DashboardFilter[] = [
+    const filtersForSameSource: QueryExpressionDashboardFilter[] = [
       {
         id: 'filter1',
         type: 'QUERY_EXPRESSION',
@@ -728,7 +728,7 @@ describe('useDashboardFilterValues', () => {
     // Act
     const { result } = renderHook(
       () =>
-        useDashboardFilterValues({
+        useQueriedDashboardFilterValues({
           filters: filtersForSameSource,
           dateRange: mockDateRange,
         }),
@@ -810,7 +810,7 @@ describe('useDashboardFilterValues', () => {
     // Act
     const { result } = renderHook(
       () =>
-        useDashboardFilterValues({
+        useQueriedDashboardFilterValues({
           filters: mockFilters.slice(0, 2), // Only first two filters
           dateRange: mockDateRange,
         }),
@@ -871,7 +871,7 @@ describe('useDashboardFilterValues', () => {
     // Act
     const { result } = renderHook(
       () =>
-        useDashboardFilterValues({
+        useQueriedDashboardFilterValues({
           filters: mockFilters.slice(0, 2), // Only first two filters
           dateRange: mockDateRange,
         }),
@@ -924,7 +924,7 @@ describe('useDashboardFilterValues', () => {
     // Act
     const { result } = renderHook(
       () =>
-        useDashboardFilterValues({
+        useQueriedDashboardFilterValues({
           filters: [mockFilters[0]],
           dateRange: mockDateRange,
         }),
@@ -980,7 +980,7 @@ describe('useDashboardFilterValues', () => {
     // Act - Initial render
     const { result, rerender } = renderHook(
       ({ filters, dateRange }) =>
-        useDashboardFilterValues({
+        useQueriedDashboardFilterValues({
           filters,
           dateRange,
         }),
@@ -1074,7 +1074,8 @@ describe('useDashboardFilterValues', () => {
         .filter(([arg]) => JSON.stringify(arg.keys) === JSON.stringify(keys))
         .at(-1)?.[0];
 
-    const envAndStatus: DashboardFilter[] = [
+    // Typed on the queried variant: the spreads below stay in one union member.
+    const envAndStatus: QueryExpressionDashboardFilter[] = [
       {
         id: 'filter1',
         type: 'QUERY_EXPRESSION',
@@ -1134,7 +1135,7 @@ describe('useDashboardFilterValues', () => {
     it('resolves every key in one faceted scan, constraining each by the others (exclude-self)', async () => {
       const { result } = renderHook(
         () =>
-          useDashboardFilterValues({
+          useQueriedDashboardFilterValues({
             filters: envAndStatus,
             dateRange: mockDateRange,
             selectionByFilterId: envProductionSelection,
@@ -1157,7 +1158,7 @@ describe('useDashboardFilterValues', () => {
     it('runs one unconstrained query when nothing is selected', async () => {
       const { result } = renderHook(
         () =>
-          useDashboardFilterValues({
+          useQueriedDashboardFilterValues({
             filters: envAndStatus,
             dateRange: mockDateRange,
             selectionByFilterId: new Map(),
@@ -1175,7 +1176,7 @@ describe('useDashboardFilterValues', () => {
     });
 
     it('still uses a single scan for many filters when one is selected', async () => {
-      const filters: DashboardFilter[] = [
+      const filters: QueryExpressionDashboardFilter[] = [
         ...envAndStatus,
         {
           id: 'filter3',
@@ -1188,7 +1189,7 @@ describe('useDashboardFilterValues', () => {
 
       const { result } = renderHook(
         () =>
-          useDashboardFilterValues({
+          useQueriedDashboardFilterValues({
             filters,
             dateRange: mockDateRange,
             selectionByFilterId: envProductionSelection,
@@ -1209,7 +1210,7 @@ describe('useDashboardFilterValues', () => {
       // Both definitions constrain the same column independently, so a third
       // dropdown's lookup is narrowed by both — not by whichever was written
       // into the constraint state last.
-      const filters: DashboardFilter[] = [
+      const filters: QueryExpressionDashboardFilter[] = [
         { ...envAndStatus[0], id: 'env-a' },
         { ...envAndStatus[0], id: 'env-b' },
         envAndStatus[1],
@@ -1217,7 +1218,7 @@ describe('useDashboardFilterValues', () => {
 
       const { result } = renderHook(
         () =>
-          useDashboardFilterValues({
+          useQueriedDashboardFilterValues({
             filters,
             dateRange: mockDateRange,
             selectionByFilterId: new Map([
@@ -1260,7 +1261,7 @@ describe('useDashboardFilterValues', () => {
     });
 
     it('does not apply a selection from one source to filters on another source', async () => {
-      const filters: DashboardFilter[] = [
+      const filters: QueryExpressionDashboardFilter[] = [
         ...envAndStatus,
         {
           id: 'filter3',
@@ -1273,7 +1274,7 @@ describe('useDashboardFilterValues', () => {
 
       const { result } = renderHook(
         () =>
-          useDashboardFilterValues({
+          useQueriedDashboardFilterValues({
             filters,
             dateRange: mockDateRange,
             selectionByFilterId: envProductionSelection,
@@ -1295,7 +1296,7 @@ describe('useDashboardFilterValues', () => {
     it('does not apply a selection across metric types of the same source', async () => {
       // Same source, different metric type → different physical table, so the
       // constrained column need not exist there.
-      const filters: DashboardFilter[] = [
+      const filters: QueryExpressionDashboardFilter[] = [
         {
           id: 'gauge-filter',
           type: 'QUERY_EXPRESSION',
@@ -1316,7 +1317,7 @@ describe('useDashboardFilterValues', () => {
 
       const { result } = renderHook(
         () =>
-          useDashboardFilterValues({
+          useQueriedDashboardFilterValues({
             filters,
             dateRange: mockDateRange,
             selectionByFilterId: new Map([
@@ -1341,7 +1342,7 @@ describe('useDashboardFilterValues', () => {
     it('refetches with updated conditions when a selection changes', async () => {
       const { result, rerender } = renderHook(
         ({ selectionByFilterId }) =>
-          useDashboardFilterValues({
+          useQueriedDashboardFilterValues({
             filters: envAndStatus,
             dateRange: mockDateRange,
             selectionByFilterId,
@@ -1384,7 +1385,7 @@ describe('useDashboardFilterValues', () => {
 
       const { result } = renderHook(
         () =>
-          useDashboardFilterValues({
+          useQueriedDashboardFilterValues({
             filters: envAndStatus,
             dateRange: mockDateRange,
             selectionByFilterId: envProductionSelection,
@@ -1407,7 +1408,7 @@ describe('useDashboardFilterValues', () => {
     it('expands variable references in the where clause without dropping the conditions', async () => {
       const { result } = renderHook(
         () =>
-          useDashboardFilterValues({
+          useQueriedDashboardFilterValues({
             filters: [
               envAndStatus[0],
               {
@@ -1444,7 +1445,7 @@ describe('useDashboardFilterValues', () => {
     const statusFilter = (
       where: string,
       whereLanguage: 'lucene' | 'sql' = 'sql',
-    ): DashboardFilter => ({
+    ): QueryExpressionDashboardFilter => ({
       id: 'status',
       type: 'QUERY_EXPRESSION',
       name: 'Status',
@@ -1475,7 +1476,7 @@ describe('useDashboardFilterValues', () => {
     it('expands a macro against the selected values', async () => {
       const { result } = renderHook(
         () =>
-          useDashboardFilterValues({
+          useQueriedDashboardFilterValues({
             filters: [statusFilter('$__filter(service_name, $svc)')],
             dateRange: mockDateRange,
             variables: svcVariable(['api']),
@@ -1499,7 +1500,7 @@ describe('useDashboardFilterValues', () => {
     it('still queries when the variable it depends on has no selection', async () => {
       const { result } = renderHook(
         () =>
-          useDashboardFilterValues({
+          useQueriedDashboardFilterValues({
             filters: [statusFilter('$__filter(service_name, $svc)')],
             dateRange: mockDateRange,
             variables: svcVariable([]),
@@ -1524,7 +1525,7 @@ describe('useDashboardFilterValues', () => {
     it('expands a lucene clause in the lucene format', async () => {
       const { result } = renderHook(
         () =>
-          useDashboardFilterValues({
+          useQueriedDashboardFilterValues({
             filters: [statusFilter('service_name:$svc', 'lucene')],
             dateRange: mockDateRange,
             variables: svcVariable(['api']),
@@ -1540,7 +1541,7 @@ describe('useDashboardFilterValues', () => {
     it('refetches when a referenced variable changes', async () => {
       const { result, rerender } = renderHook(
         ({ values }: { values: string[] }) =>
-          useDashboardFilterValues({
+          useQueriedDashboardFilterValues({
             filters: [statusFilter('$__filter(service_name, $svc)')],
             dateRange: mockDateRange,
             variables: svcVariable(values),
@@ -1561,7 +1562,7 @@ describe('useDashboardFilterValues', () => {
     it('does not refetch when an unreferenced variable changes', async () => {
       const { result, rerender } = renderHook(
         ({ values }: { values: string[] }) =>
-          useDashboardFilterValues({
+          useQueriedDashboardFilterValues({
             filters: [statusFilter("service_name = 'api'")],
             dateRange: mockDateRange,
             variables: [
@@ -1585,7 +1586,7 @@ describe('useDashboardFilterValues', () => {
     it('groups filters whose different clauses expand to the same SQL', async () => {
       const { result } = renderHook(
         () =>
-          useDashboardFilterValues({
+          useQueriedDashboardFilterValues({
             filters: [
               // Written out exactly as the macro below expands.
               statusFilter("(service_name IN ('api'))"),
@@ -1613,7 +1614,7 @@ describe('useDashboardFilterValues', () => {
     it('reports a macro naming an undeclared variable, and still runs the query', async () => {
       const { result } = renderHook(
         () =>
-          useDashboardFilterValues({
+          useQueriedDashboardFilterValues({
             filters: [statusFilter('$__filter(service_name, $nope)')],
             dateRange: mockDateRange,
             variables: svcVariable(['api']),
@@ -1634,7 +1635,7 @@ describe('useDashboardFilterValues', () => {
     it('leaves the clause as written when no variables are in scope', async () => {
       const { result } = renderHook(
         () =>
-          useDashboardFilterValues({
+          useQueriedDashboardFilterValues({
             filters: [statusFilter('service_name IN ($svc)')],
             dateRange: mockDateRange,
           }),
