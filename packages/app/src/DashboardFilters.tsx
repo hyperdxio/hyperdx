@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
 import { FilterSelection } from '@hyperdx/common-utils/dist/dashboardFilterValues';
 import {
+  getFilterBroadcastTarget,
   getFilterVariableName,
   getPendingFilterValuesVariables,
-  isFilterBroadcastEnabled,
   isFilterVariableEnabled,
+  isQueryExpressionFilter,
 } from '@hyperdx/common-utils/dist/filters';
 import {
   ChartVariable,
@@ -15,7 +16,7 @@ import { IconAlertTriangle, IconHelp, IconRefresh } from '@tabler/icons-react';
 
 import { FilterLinkToggle } from './components/FilterLinkToggle';
 import { VirtualMultiSelect } from './components/VirtualMultiSelect/VirtualMultiSelect';
-import { useDashboardFilterValues } from './hooks/useDashboardFilterValues';
+import { useQueriedDashboardFilterValues } from './hooks/useQueriedDashboardFilterValues';
 
 interface DashboardFilterSelectProps {
   filter: DashboardFilter;
@@ -56,8 +57,9 @@ export const getFilterEffect = (
 ): { hasEffect: boolean; tooltip: string } => {
   const parts: string[] = [];
 
-  if (isFilterBroadcastEnabled(filter)) {
-    const count = filter.appliesToSourceIds?.length ?? 0;
+  const broadcast = getFilterBroadcastTarget(filter);
+  if (broadcast) {
+    const count = broadcast.appliesToSourceIds?.length ?? 0;
     parts.push(
       count === 0
         ? 'Filters all sources'
@@ -196,13 +198,18 @@ const DashboardFilters = ({
   // on, all of a source's facets are computed in a single groupUniqArrayIf scan.
   const [linked, setLinked] = useState(false);
 
+  const queriedFilters = useMemo(
+    () => filters.filter(f => isQueryExpressionFilter(f)),
+    [filters],
+  );
+
   const {
     data: filterValuesById,
     erroredFilterIds,
     filterErrorMessages,
     isFetching,
-  } = useDashboardFilterValues({
-    filters,
+  } = useQueriedDashboardFilterValues({
+    filters: queriedFilters,
     dateRange,
     variables,
     // Only narrow by sibling selections when linked.
@@ -211,7 +218,7 @@ const DashboardFilters = ({
 
   return (
     <Group align="start">
-      {Object.values(filters).map(filter => {
+      {queriedFilters.map(filter => {
         const queriedFilterValues = filterValuesById?.get(filter.id);
         const included = selectionByFilterId.get(filter.id)?.included;
         const selectedValues = included

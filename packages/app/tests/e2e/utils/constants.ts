@@ -4,6 +4,9 @@ export const DEFAULT_METRICS_SOURCE_NAME = 'E2E Metrics';
 export const DEFAULT_LOGS_SOURCE_NAME = 'E2E Logs';
 export const PROMQL_SOURCE_NAME = 'E2E PromQL';
 
+// The single ClickHouse connection seeded from `fixtures/e2e-fixtures.json`.
+export const DEFAULT_CONNECTION_NAME = 'local';
+
 // Log source deliberately left without a correlated metric source, so tests can
 // exercise the "not correlated" paths (the search side panel's infrastructure
 // tab, and the Kubernetes dashboard's correlation warning).

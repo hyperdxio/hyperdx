@@ -15,9 +15,9 @@ import {
 import {
   BuilderChartConfigWithDateRange,
   ChartVariable,
-  DashboardFilter,
   isLogSource,
   isTraceSource,
+  QueryExpressionDashboardFilter,
 } from '@hyperdx/common-utils/dist/types';
 import {
   useQueries,
@@ -42,7 +42,7 @@ type FilterSourceKey = {
 };
 
 const filterToKey = (
-  filter: DashboardFilter,
+  filter: QueryExpressionDashboardFilter,
   resolved: ResolvedFilterValuesQuery,
 ): string =>
   JSON.stringify({
@@ -58,7 +58,7 @@ const filterToKey = (
 /** The resolved dropdown query for `filter`, falling back to the clause as written. */
 const resolvedFor = (
   resolvedByFilterId: Map<string, ResolvedFilterValuesQuery>,
-  filter: DashboardFilter,
+  filter: QueryExpressionDashboardFilter,
 ): ResolvedFilterValuesQuery =>
   resolvedByFilterId.get(filter.id) ?? {
     where: filter.where ?? '',
@@ -105,7 +105,7 @@ function useOptimizedKeyValuesCalls({
   selectionByFilterId,
   variables,
 }: {
-  filters: DashboardFilter[];
+  filters: QueryExpressionDashboardFilter[];
   dateRange: [Date, Date];
   selectionByFilterId: ReadonlyMap<string, FilterSelection>;
   variables?: ChartVariable[];
@@ -176,7 +176,7 @@ function useOptimizedKeyValuesCalls({
   // optimizer (one batched, rollup-eligible query); a constrained group runs a
   // single faceted `groupUniqArrayIf` scan carrying a per-key condition.
   const filtersByGroupKey = useMemo(() => {
-    const byGroupKey = new Map<string, DashboardFilter[]>();
+    const byGroupKey = new Map<string, QueryExpressionDashboardFilter[]>();
     for (const filter of filters) {
       const key = filterToKey(filter, resolvedFor(resolvedByFilterId, filter));
       const existing = byGroupKey.get(key);
@@ -319,13 +319,13 @@ function useOptimizedKeyValuesCalls({
   };
 }
 
-export function useDashboardFilterValues({
+export function useQueriedDashboardFilterValues({
   filters,
   dateRange,
   selectionByFilterId = EMPTY_SELECTIONS,
   variables,
 }: {
-  filters: DashboardFilter[];
+  filters: QueryExpressionDashboardFilter[];
   dateRange: [Date, Date];
   /** Each filter's current selection, keyed by `filter.id`. */
   selectionByFilterId?: ReadonlyMap<string, FilterSelection>;

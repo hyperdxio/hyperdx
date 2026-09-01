@@ -1892,7 +1892,8 @@ export const DashboardContainerSchema = z.object({
 
 export type DashboardContainer = z.infer<typeof DashboardContainerSchema>;
 
-export const DashboardFilterType = z.enum(['QUERY_EXPRESSION']);
+/** Type of dashboard filter, determining how its dropdown values are populated. */
+export const DashboardFilterType = z.enum(['QUERY_EXPRESSION', 'STATIC_LIST']);
 
 /** Allowed variable names for dashboard filters. Alphanumeric + underscore, must start with a letter. */
 export const DASHBOARD_VARIABLE_NAME_PATTERN = '[a-zA-Z][a-zA-Z0-9_]*';
@@ -1901,31 +1902,10 @@ export const DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED = new RegExp(
 );
 export const DASHBOARD_VARIABLE_NAME_MAX_LENGTH = 64;
 
-export const DashboardFilterSchema = z.object({
+/** Fields carried by every dashboard filter, whatever its type. */
+const dashboardFilterBaseSchema = z.object({
   id: z.string(),
-  type: DashboardFilterType,
   name: z.string().min(1),
-  expression: z.string().min(1),
-  source: z.string().min(1),
-  sourceMetricType: z.nativeEnum(MetricsDataType).optional(),
-  where: z.string().optional(),
-  whereLanguage: SearchConditionTrimmedLanguageSchema,
-  // Sources this filter applies to. Undefined / missing means the filter
-  // applies to all tiles.
-  appliesToSourceIds: z.array(z.string().min(1)).optional(),
-  /**
-   * Whether the selected value is applied as a filter condition on matching
-   * tiles. Undefined / missing means ENABLED — every filter that predates this
-   * field broadcasts, and that must not change. Read it through
-   * `isFilterBroadcastEnabled` rather than defaulting at each call site.
-   */
-  isBroadcastEnabled: z.boolean().optional(),
-  /**
-   * Whether the selected value is exposed to tile queries as `$variableName`.
-   * Undefined / missing means DISABLED. Ignored while the dashboard-variables
-   * feature is off.
-   */
-  isVariableEnabled: z.boolean().optional(),
   /**
    * Token that tiles reference as `$variableName`. Defaults to the filter's display
    * name with illegal characters replaced by dashes (`deriveVariableName`).
@@ -1938,15 +1918,69 @@ export const DashboardFilterSchema = z.object({
     .optional(),
 });
 
+/**
+ * A filter whose dropdown values are queried from ClickHouse: `expression`
+ * names the column, `source` the table, and the selection can be broadcast
+ * into matching tiles' `WHERE` clauses.
+ */
+export const QueryExpressionDashboardFilterSchema =
+  dashboardFilterBaseSchema.extend({
+    type: z.literal(DashboardFilterType.enum.QUERY_EXPRESSION),
+    expression: z.string().min(1),
+    source: z.string().min(1),
+    sourceMetricType: z.nativeEnum(MetricsDataType).optional(),
+    where: z.string().optional(),
+    whereLanguage: SearchConditionTrimmedLanguageSchema,
+    // Sources this filter applies to. Undefined / missing means the filter
+    // applies to all tiles.
+    appliesToSourceIds: z.array(z.string().min(1)).optional(),
+    /**
+     * Whether the selected value is applied as a filter condition on matching
+     * tiles. Undefined / missing means ENABLED — every filter that predates this
+     * field broadcasts, and that must not change. Read it through
+     * `isFilterBroadcastEnabled` rather than defaulting at each call site.
+     */
+    isBroadcastEnabled: z.boolean().optional(),
+    /**
+     * Whether the selected value is exposed to tile queries as `$variableName`.
+     * Undefined / missing means DISABLED. Ignored while the dashboard-variables
+     * feature is off.
+     */
+    isVariableEnabled: z.boolean().optional(),
+  });
+
+/** A filter whose dropdown offers a hand-authored list. */
+export const StaticListDashboardFilterSchema = dashboardFilterBaseSchema.extend(
+  {
+    type: z.literal(DashboardFilterType.enum.STATIC_LIST),
+    options: z.array(z.string().min(1).max(10000)).min(1).max(1000),
+    isBroadcastEnabled: z.literal(false),
+    isVariableEnabled: z.literal(true),
+  },
+);
+
+export const DashboardFilterSchema = z.discriminatedUnion('type', [
+  QueryExpressionDashboardFilterSchema,
+  StaticListDashboardFilterSchema,
+]);
+
+export type QueryExpressionDashboardFilter = z.infer<
+  typeof QueryExpressionDashboardFilterSchema
+>;
+export type StaticListDashboardFilter = z.infer<
+  typeof StaticListDashboardFilterSchema
+>;
 export type DashboardFilter = z.infer<typeof DashboardFilterSchema>;
 
 export enum PresetDashboard {
   Services = 'services',
 }
 
-export const PresetDashboardFilterSchema = DashboardFilterSchema.extend({
-  presetDashboard: z.nativeEnum(PresetDashboard),
-});
+/** Preset-dashboard filters are broadcast-only, and therefore do not support static value filters. */
+export const PresetDashboardFilterSchema =
+  QueryExpressionDashboardFilterSchema.extend({
+    presetDashboard: z.nativeEnum(PresetDashboard),
+  });
 
 export type PresetDashboardFilter = z.infer<typeof PresetDashboardFilterSchema>;
 
