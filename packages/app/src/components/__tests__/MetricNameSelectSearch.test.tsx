@@ -171,4 +171,31 @@ describe('MetricNameSelect', () => {
       screen.getByText('Too many metrics to list — type to search'),
     ).toBeInTheDocument();
   });
+
+  describe('right addon', () => {
+    it('draws a trailing control into the field', () => {
+      renderSelect({
+        rightAddon: <button data-testid="browse">Browse</button>,
+      });
+
+      expect(screen.getByTestId('browse')).toBeInTheDocument();
+    });
+
+    it('keeps the description out of the field frame', () => {
+      useGetMetricNames.mockImplementation(({ tableName }: any) => ({
+        data: tableName ? { names: ['a'], truncated: true } : undefined,
+      }));
+
+      renderSelect({
+        rightAddon: <button data-testid="browse">Browse</button>,
+      });
+
+      // The addon is the height of the input alone, so the description has to
+      // sit outside it rather than stretching the trailing control.
+      const description = screen.getByText(
+        'Too many metrics to list — type to search',
+      );
+      expect(description.contains(screen.getByTestId('browse'))).toBe(false);
+    });
+  });
 });

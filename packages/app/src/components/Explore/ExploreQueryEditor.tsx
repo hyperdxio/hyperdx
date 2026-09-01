@@ -1,10 +1,7 @@
 import { useCallback, useMemo } from 'react';
 import { FieldPath, useController, UseControllerProps } from 'react-hook-form';
 import { JSDataType } from '@hyperdx/common-utils/dist/clickhouse';
-import {
-  type Field,
-  TableConnectionChoice,
-} from '@hyperdx/common-utils/dist/core/metadata';
+import { TableConnectionChoice } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   BuilderChartConfigWithDateRange,
   DisplayType,
@@ -20,6 +17,7 @@ import { AddFilterControl } from './AddFilterControl';
 import { ExploreLanguageAddon } from './ExploreLanguageAddon';
 import { ExploreSqlPanel } from './ExploreSqlPanel';
 import { ExploreSqlToggle } from './ExploreSqlToggle';
+import { fieldIdentifier } from './fieldIdentifier';
 import { FilterExpression } from './FilterExpression';
 import {
   filterStateToExpression,
@@ -29,12 +27,6 @@ import {
 import { promoteWhereToFilters } from './promoteWhereToFilters';
 import { QueryConfigMode, QueryEditor, QueryLanguage } from './QueryEditor';
 import { getDefaultExploreLanguage } from './queryModeSafety';
-
-/** Map column syntax matches the autocomplete: `LogAttributes['level']`. */
-const fieldIdentifier = (field: Field): string =>
-  field.path.length > 1
-    ? `${field.path[0]}['${field.path[1]}']`
-    : field.path[0];
 
 export type ExploreQueryEditorProps = {
   onSubmit?: () => void;

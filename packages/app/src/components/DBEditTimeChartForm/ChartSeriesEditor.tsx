@@ -90,6 +90,13 @@ type ChartSeriesEditorProps = {
   onSubmit: () => void;
   setValue: UseFormSetValue<ChartEditorFormState>;
   showGroupBy: boolean;
+  /**
+   * Whether the chart has a group by at all, as opposed to this card being the
+   * place that edits it. Explore keeps the input in its toolbar, so the metric
+   * helper's "add to group by" must not disappear along with the input.
+   * Defaults to `showGroupBy` for callers that render both together.
+   */
+  canGroupBy?: boolean;
   showHaving: boolean;
   showDuplicate: boolean;
   showColor: boolean;
@@ -120,6 +127,7 @@ export function ChartSeriesEditor({
   onSubmit,
   setValue,
   showGroupBy,
+  canGroupBy = showGroupBy,
   showHaving,
   showDuplicate,
   showColor,
@@ -454,39 +462,38 @@ export function ChartSeriesEditor({
           </Box>
           {tableSource?.kind === SourceKind.Metric && metricType && (
             <Box miw={220}>
-              <Group gap="xs" wrap="nowrap" align="start">
-                <Box flex={1} miw={0}>
-                  <MetricNameSelect
-                    metricName={metricName}
-                    metricType={metricType}
-                    setMetricName={value => {
-                      setValue(`${namePrefix}metricName`, value);
-                      setValue(`${namePrefix}valueExpression`, 'Value');
-                      if (eagerSubmit) onSubmit();
-                    }}
-                    setMetricType={value => {
-                      setValue(`${namePrefix}metricType`, value);
-                      if (eagerSubmit) onSubmit();
-                    }}
-                    metricSource={tableSource}
-                    dateRange={dateRange}
-                    data-testid="metric-name-selector"
-                    error={errors?.metricName?.message}
-                    onFocus={() => clearErrors(`${namePrefix}metricName`)}
-                  />
-                </Box>
-                <Tooltip label="Browse metrics" withArrow>
-                  <ActionIcon
-                    variant="subtle"
-                    size="input-sm"
-                    onClick={openMetricExplorer}
-                    aria-label="Browse metrics"
-                    data-testid="metric-explorer-open"
-                  >
-                    <IconListSearch size={16} />
-                  </ActionIcon>
-                </Tooltip>
-              </Group>
+              <MetricNameSelect
+                metricName={metricName}
+                metricType={metricType}
+                setMetricName={value => {
+                  setValue(`${namePrefix}metricName`, value);
+                  setValue(`${namePrefix}valueExpression`, 'Value');
+                  if (eagerSubmit) onSubmit();
+                }}
+                setMetricType={value => {
+                  setValue(`${namePrefix}metricType`, value);
+                  if (eagerSubmit) onSubmit();
+                }}
+                metricSource={tableSource}
+                dateRange={dateRange}
+                data-testid="metric-name-selector"
+                error={errors?.metricName?.message}
+                onFocus={() => clearErrors(`${namePrefix}metricName`)}
+                rightAddon={
+                  <Tooltip label="Browse metrics" withArrow>
+                    <ActionIcon
+                      variant="subtle"
+                      size="input-sm"
+                      radius={0}
+                      onClick={openMetricExplorer}
+                      aria-label="Browse metrics"
+                      data-testid="metric-explorer-open"
+                    >
+                      <IconListSearch size={16} />
+                    </ActionIcon>
+                  </Tooltip>
+                }
+              />
               <MetricExplorerModal
                 opened={isMetricExplorerOpen}
                 onClose={closeMetricExplorer}
@@ -612,7 +619,7 @@ export function ChartSeriesEditor({
               language={aggConditionLanguage === 'sql' ? 'sql' : 'lucene'}
               metricMetadata={metricMetadata}
               onAddToWhere={handleAddToWhere}
-              onAddToGroupBy={showGroupBy ? handleAddToGroupBy : undefined}
+              onAddToGroupBy={canGroupBy ? handleAddToGroupBy : undefined}
             />
           )}
       </SeriesCard>

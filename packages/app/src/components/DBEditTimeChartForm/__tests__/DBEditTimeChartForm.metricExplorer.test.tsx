@@ -138,7 +138,7 @@ jest.mock('@/components/MetricExplorer/MetricExplorerModal', () => ({
 
 jest.mock('../../MetricNameSelect', () => ({
   MetricNameSelect: (props: any) => {
-    const { error, onFocus, setMetricName, metricName } = props;
+    const { error, onFocus, setMetricName, metricName, rightAddon } = props;
     const testId = props['data-testid'];
     return (
       <div>
@@ -153,6 +153,7 @@ jest.mock('../../MetricNameSelect', () => ({
           <option value="test.metric.gauge">test.metric.gauge</option>
           <option value="test.metric.sum">test.metric.sum</option>
         </select>
+        {rightAddon}
         {error && <div data-testid="metric-name-error">{error}</div>}
       </div>
     );

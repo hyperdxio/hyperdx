@@ -3,6 +3,13 @@ import { act, renderHook } from '@testing-library/react';
 
 import useResizable from '@/hooks/useResizable';
 
+const mouseDownAt = (coords: { clientX?: number; clientY?: number }) => ({
+  preventDefault: () => undefined,
+  clientX: 0,
+  clientY: 0,
+  ...coords,
+});
+
 describe('useResizable', () => {
   const originalInnerWidth = window.innerWidth;
   const originalOffsetWidth = document.body.offsetWidth;
@@ -47,8 +54,7 @@ describe('useResizable', () => {
 
     act(() => {
       // Start resize at x=500
-      const startEvent = new MouseEvent('mousedown', { clientX: 500 });
-      result.current.startResize(startEvent as any);
+      result.current.startResize(mouseDownAt({ clientX: 500 }));
 
       // Move mouse to x=600 (right)
       const moveEvent = new MouseEvent('mousemove', { clientX: 600 });
@@ -60,13 +66,53 @@ describe('useResizable', () => {
     expect(result.current.size).toBe(10); // 20 - 10
   });
 
+  describe('onResizeEnd', () => {
+    it('reports the final size once the drag finishes', () => {
+      const onResizeEnd = jest.fn();
+      const { result } = renderHook(() =>
+        useResizable(20, 'right', onResizeEnd),
+      );
+
+      act(() => {
+        result.current.startResize(mouseDownAt({ clientX: 500 }));
+        fireEvent(document, new MouseEvent('mousemove', { clientX: 550 }));
+        fireEvent(document, new MouseEvent('mousemove', { clientX: 600 }));
+      });
+
+      expect(onResizeEnd).not.toHaveBeenCalled();
+
+      act(() => {
+        fireEvent(document, new MouseEvent('mouseup'));
+      });
+
+      expect(onResizeEnd).toHaveBeenCalledTimes(1);
+      expect(onResizeEnd).toHaveBeenCalledWith(10);
+    });
+
+    it('reports a size set directly rather than dragged', () => {
+      const onResizeEnd = jest.fn();
+      const { result } = renderHook(() =>
+        useResizable(20, 'right', onResizeEnd),
+      );
+
+      act(() => {
+        result.current.setSize(100);
+      });
+      act(() => {
+        result.current.startResize(mouseDownAt({ clientX: 500 }));
+        fireEvent(document, new MouseEvent('mouseup'));
+      });
+
+      expect(onResizeEnd).toHaveBeenCalledWith(100);
+    });
+  });
+
   it('should handle left resize correctly', () => {
     const { result } = renderHook(() => useResizable(20, 'left'));
 
     act(() => {
       // Start resize at x=500
-      const startEvent = new MouseEvent('mousedown', { clientX: 500 });
-      result.current.startResize(startEvent as any);
+      result.current.startResize(mouseDownAt({ clientX: 500 }));
 
       // Move mouse to x=600 (right)
       const moveEvent = new MouseEvent('mousemove', { clientX: 600 });
@@ -82,8 +128,7 @@ describe('useResizable', () => {
     const { result } = renderHook(() => useResizable(20, 'right'));
 
     act(() => {
-      const startEvent = new MouseEvent('mousedown', { clientX: 500 });
-      result.current.startResize(startEvent as any);
+      result.current.startResize(mouseDownAt({ clientX: 500 }));
 
       // Try to resize smaller than minimum (10%)
       const moveEvent = new MouseEvent('mousemove', { clientX: 800 });
@@ -97,8 +142,7 @@ describe('useResizable', () => {
     const { result } = renderHook(() => useResizable(20, 'left'));
 
     act(() => {
-      const startEvent = new MouseEvent('mousedown', { clientX: 500 });
-      result.current.startResize(startEvent as any);
+      result.current.startResize(mouseDownAt({ clientX: 500 }));
 
       // Try to resize larger than maximum
       const moveEvent = new MouseEvent('mousemove', { clientX: 1000 });
@@ -115,8 +159,7 @@ describe('useResizable', () => {
 
     act(() => {
       // Start resize
-      const startEvent = new MouseEvent('mousedown', { clientX: 500 });
-      result.current.startResize(startEvent as any);
+      result.current.startResize(mouseDownAt({ clientX: 500 }));
     });
 
     unmount();
@@ -166,8 +209,7 @@ describe('useResizable', () => {
       const { result } = renderHook(() => useResizable(20, 'bottom'));
 
       act(() => {
-        const startEvent = new MouseEvent('mousedown', { clientY: 500 });
-        result.current.startResize(startEvent as any);
+        result.current.startResize(mouseDownAt({ clientY: 500 }));
 
         // Move mouse down by 100px
         const moveEvent = new MouseEvent('mousemove', { clientY: 600 });
@@ -183,8 +225,7 @@ describe('useResizable', () => {
       const { result } = renderHook(() => useResizable(20, 'top'));
 
       act(() => {
-        const startEvent = new MouseEvent('mousedown', { clientY: 500 });
-        result.current.startResize(startEvent as any);
+        result.current.startResize(mouseDownAt({ clientY: 500 }));
 
         // Move mouse down by 100px
         const moveEvent = new MouseEvent('mousemove', { clientY: 600 });
@@ -200,8 +241,7 @@ describe('useResizable', () => {
       const { result } = renderHook(() => useResizable(20, 'bottom'));
 
       act(() => {
-        const startEvent = new MouseEvent('mousedown', { clientY: 500 });
-        result.current.startResize(startEvent as any);
+        result.current.startResize(mouseDownAt({ clientY: 500 }));
 
         // Try to resize smaller than minimum (10%)
         const moveEvent = new MouseEvent('mousemove', { clientY: 800 });
@@ -215,8 +255,7 @@ describe('useResizable', () => {
       const { result } = renderHook(() => useResizable(20, 'top'));
 
       act(() => {
-        const startEvent = new MouseEvent('mousedown', { clientY: 500 });
-        result.current.startResize(startEvent as any);
+        result.current.startResize(mouseDownAt({ clientY: 500 }));
 
         // Try to resize larger than maximum
         const moveEvent = new MouseEvent('mousemove', { clientY: 1000 });

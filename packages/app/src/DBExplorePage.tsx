@@ -139,6 +139,13 @@ import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import DBTableChart from './components/DBTableChart';
 import { DBTreemapChart } from './components/DBTreemapChart';
 import { ExploreContextBand } from './components/Explore/ExploreContextBand';
+import {
+  defaultExploreGroupBy,
+  formatGroupByFields,
+  parseGroupByFields,
+  resolveExploreGroupBy,
+} from './components/Explore/exploreGroupBy';
+import { ExploreGroupByControl } from './components/Explore/ExploreGroupByControl';
 import { ExploreQueryEditor } from './components/Explore/ExploreQueryEditor';
 import { ExploreResultsToolbar } from './components/Explore/ExploreResultsToolbar';
 import { ExploreSeriesList } from './components/Explore/ExploreSeriesList';
@@ -1449,6 +1456,36 @@ function DBExplorePage() {
     setPatternColumn,
   ]);
 
+  // The picker stages its own selection and only emits on Apply, so there is no
+  // half-typed state to hold back here.
+  const applyGroupBy = useCallback(
+    (next: string) => {
+      setAggConfig({ groupBy: next });
+      onSubmit();
+    },
+    [setAggConfig, onSubmit],
+  );
+
+  const groupByFields = useMemo(
+    () => parseGroupByFields(aggConfig.groupBy),
+    [aggConfig.groupBy],
+  );
+
+  // Backs the side panel's group-by action, which flips one dimension the same
+  // way `toggleColumn` flips one column.
+  const toggleGroupBy = useCallback(
+    (field: string) => {
+      applyGroupBy(
+        formatGroupByFields(
+          groupByFields.includes(field)
+            ? groupByFields.filter(f => f !== field)
+            : [...groupByFields, field],
+        ),
+      );
+    },
+    [groupByFields, applyGroupBy],
+  );
+
   const debouncedSubmit = useDebouncedCallback(onSubmit, 1000);
   const handleSetFilters = useCallback(
     (filters: Filter[]) => {
@@ -1997,17 +2034,14 @@ function DBExplorePage() {
       return undefined;
     }
 
+    // The histogram has always been grouped — severity for logs, status code
+    // for traces. Letting the toolbar's group by win is what carries a chart's
+    // breakdown over to the events view: the bars restack on the dimension the
+    // reader was already looking at, and the source default takes over again
+    // the moment they clear it.
     const variableConfig: Partial<
       Pick<BuilderChartConfigWithDateRange, 'groupBy'>
-    > = {};
-    switch (searchedSource?.kind) {
-      case SourceKind.Log:
-        variableConfig.groupBy = searchedSource?.severityTextExpression;
-        break;
-      case SourceKind.Trace:
-        variableConfig.groupBy = searchedSource?.statusCodeExpression;
-        break;
-    }
+    > = { groupBy: resolveExploreGroupBy(aggConfig.groupBy, searchedSource) };
 
     return {
       ...chartConfig,
@@ -2042,22 +2076,13 @@ function DBExplorePage() {
     aliasWith,
     searchedTimeRange,
     searchedConfig.select,
+    aggConfig.groupBy,
   ]);
 
-  // Default group-by for aggregated views, mirroring the histogram's grouping.
-  const defaultAggGroupBy = useMemo(() => {
-    switch (searchedSource?.kind) {
-      case SourceKind.Log:
-        return searchedSource?.severityTextExpression;
-      case SourceKind.Trace:
-        return (
-          searchedSource?.statusCodeExpression ??
-          searchedSource?.serviceNameExpression
-        );
-      default:
-        return undefined;
-    }
-  }, [searchedSource]);
+  const defaultAggGroupBy = useMemo(
+    () => defaultExploreGroupBy(searchedSource),
+    [searchedSource],
+  );
 
   // Builds the chart config for an aggregated view (time series / number /
   // table / bar / pie / treemap) from the current search config plus the
@@ -2078,7 +2103,7 @@ function DBExplorePage() {
     const groupBy =
       view === 'number'
         ? undefined
-        : aggConfig.groupBy.trim() || defaultAggGroupBy || undefined;
+        : resolveExploreGroupBy(aggConfig.groupBy, searchedSource);
     // Categorical + summary-table views support the structured Sort menu
     // (Value = the metric, Name = the group key). Alias a single aggregate as
     // "Value" so ordering by it is stable regardless of the expression.
@@ -2157,7 +2182,7 @@ function DBExplorePage() {
     chartConfig,
     view,
     aggConfig,
-    defaultAggGroupBy,
+    searchedSource,
     searchedTimeRange,
     aliasWith,
     searchedMetricSource,
@@ -2507,6 +2532,8 @@ function DBExplorePage() {
       onPropertyAddClick: searchFilters.setFilterValue,
       displayedColumns,
       toggleColumn,
+      groupByFields,
+      toggleGroupBy,
       generateSearchUrl,
       dbSqlRowTableConfig,
       isChildModalOpen: isDrawerChildModalOpen,
@@ -2521,6 +2548,8 @@ function DBExplorePage() {
       dbSqlRowTableConfig,
       displayedColumns,
       toggleColumn,
+      groupByFields,
+      toggleGroupBy,
       generateSearchUrl,
       isDrawerChildModalOpen,
     ],
@@ -2968,6 +2997,23 @@ function DBExplorePage() {
                           />
                         )
                       }
+                      groupByControl={
+                        // Patterns are their own grouping, so a second one on
+                        // top would be two answers to the same question — the
+                        // value is held and comes back on the way out. Number
+                        // reduces to a single figure and has nothing to split.
+                        !isSqlUiMode &&
+                        view !== 'patterns' &&
+                        view !== 'number' && (
+                          <ExploreGroupByControl
+                            tableSource={searchedSource}
+                            value={aggConfig.groupBy}
+                            onApply={applyGroupBy}
+                            dateRange={searchedTimeRange}
+                            defaultGroupBy={defaultAggGroupBy}
+                          />
+                        )
+                      }
                       addToDashboard={
                         isSqlUiMode
                           ? rawSqlAddToDashboardConfig && (
@@ -3006,7 +3052,6 @@ function DBExplorePage() {
                             view={view}
                             config={aggConfig}
                             onChange={setAggConfig}
-                            defaultGroupBy={defaultAggGroupBy}
                             onSubmit={onSubmit}
                             tableSource={searchedSource}
                             dateRange={searchedTimeRange}

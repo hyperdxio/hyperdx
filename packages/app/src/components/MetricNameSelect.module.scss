@@ -1,0 +1,35 @@
+/* The metric name and its browse action read as one field, the way the query
+   bar's filter action sits inside the search field rather than beside it. */
+.group {
+  display: flex;
+
+  /* Not `stretch`: the select also renders a description and an error beneath
+     the input, and the addon must stay the height of the input alone. */
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.select {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Square the shared edge; the addon's border sits on top of the input's. */
+.joinedInput {
+  border-start-end-radius: 0;
+  border-end-end-radius: 0;
+}
+
+/* Part of the field's frame rather than a button beside it, which is what the
+   addon fill says — the same treatment the query bar's addon gets. */
+.addon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  overflow: hidden;
+  margin-left: -1px;
+  border: 1px solid var(--color-border);
+  border-start-end-radius: var(--mantine-radius-default);
+  border-end-end-radius: var(--mantine-radius-default);
+  background: var(--color-bg-field-addon);
+}

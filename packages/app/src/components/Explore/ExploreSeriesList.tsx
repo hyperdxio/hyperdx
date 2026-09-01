@@ -1,6 +1,5 @@
 import { useCallback, useMemo } from 'react';
 import { useFieldArray, useForm } from 'react-hook-form';
-import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { isFormulaSourceKind } from '@hyperdx/common-utils/dist/core/utils';
 import { TSource } from '@hyperdx/common-utils/dist/types';
 import { Button, Group, NumberInput, Stack, Text } from '@mantine/core';
@@ -24,14 +23,12 @@ import {
   type SearchAggConfig,
 } from '@/components/Search/SearchAggControls';
 import type { SearchView } from '@/components/Search/searchViews';
-import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 
 export function ExploreSeriesList({
   view,
   config,
   onChange,
   onSubmit,
-  defaultGroupBy,
   tableSource,
   dateRange,
 }: {
@@ -39,7 +36,6 @@ export function ExploreSeriesList({
   config: SearchAggConfig;
   onChange: (patch: Partial<SearchAggConfig>) => void;
   onSubmit: () => void;
-  defaultGroupBy?: string;
   tableSource?: TSource;
   dateRange?: [Date, Date];
 }) {
@@ -142,10 +138,6 @@ export function ExploreSeriesList({
     formulaCount: formulaFields.length,
   });
 
-  const tableConnection = useMemo(
-    () => tcFromSource(tableSource),
-    [tableSource],
-  );
   const databaseName = tableSource?.from.databaseName ?? '';
   const tableName = tableSource?.from.tableName ?? '';
 
@@ -158,8 +150,9 @@ export function ExploreSeriesList({
   );
   const showSeriesRef =
     exploreViewSupportsFormulas(view) && isFormulaSourceKind(tableSource?.kind);
-  const showGroupByOnCard = fields.length === 1 && view !== 'number';
-  const showSharedGroupBy = fields.length > 1 && view !== 'number';
+  // Group by lives in the page toolbar so Events and Charts share one control.
+  // The form still carries the value: the metric helper writes into it.
+  const canGroupBy = view !== 'number';
   const showLimit =
     view === 'table' || view === 'bar' || view === 'pie' || view === 'treemap';
   const showColor = view === 'table';
@@ -181,7 +174,8 @@ export function ExploreSeriesList({
           onSubmit={commit}
           setValue={setValue}
           connectionId={tableSource?.connection}
-          showGroupBy={showGroupByOnCard}
+          showGroupBy={false}
+          canGroupBy={canGroupBy}
           showHaving={false}
           showDuplicate={canAdd}
           showColor={showColor}
@@ -194,7 +188,6 @@ export function ExploreSeriesList({
           }
           clearErrors={clearErrors}
           eagerSubmit
-          groupByPlaceholder={defaultGroupBy || 'SQL columns'}
           showSeriesRef={showSeriesRef}
           onInsertSeriesRef={showSeriesRef ? handleInsertSeriesRef : undefined}
         />
@@ -221,23 +214,6 @@ export function ExploreSeriesList({
             }}
           />
         ))}
-      {showSharedGroupBy && (
-        <Group gap="xs" wrap="nowrap" align="center">
-          <Text size="xs" c="dimmed" style={{ whiteSpace: 'nowrap' }}>
-            Group by
-          </Text>
-          <div style={{ flex: 1, minWidth: 200 }}>
-            <SQLInlineEditorControlled
-              tableConnection={tableConnection}
-              control={control}
-              name="groupBy"
-              placeholder={defaultGroupBy || 'SQL columns'}
-              disableKeywordAutocomplete
-              onSubmit={commit}
-            />
-          </div>
-        </Group>
-      )}
       <Group gap="xs" justify="space-between" wrap="wrap">
         <Group gap="xs">
           {canAdd && (

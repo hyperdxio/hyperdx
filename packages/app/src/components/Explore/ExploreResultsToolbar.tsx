@@ -15,6 +15,7 @@ export function ExploreResultsToolbar({
   filterExpand,
   viewSwitcher,
   viewControls,
+  groupByControl,
   addToDashboard,
   overflowMenu,
   shapeControls,
@@ -30,6 +31,11 @@ export function ExploreResultsToolbar({
    * the slot beside the switcher always belongs to whichever view is showing.
    */
   viewControls?: React.ReactNode;
+  /**
+   * Group by, which unlike `viewControls` describes the view rather than
+   * belonging to one, so it sits alongside instead of taking turns.
+   */
+  groupByControl?: React.ReactNode;
   /** "Add to dashboard" action, shown only for chart-tile views. */
   addToDashboard?: React.ReactNode;
   /** Overflow (3-dots) menu holding secondary actions (SQL, export). */
@@ -54,6 +60,7 @@ export function ExploreResultsToolbar({
           {filterExpand}
           {viewSwitcher}
           {viewControls}
+          {groupByControl}
           {hasStats && <Divider orientation="vertical" my={4} />}
           {stats}
           {resultsCount}

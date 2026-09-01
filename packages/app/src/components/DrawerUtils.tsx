@@ -15,6 +15,16 @@ import {
 
 export const INITIAL_DRAWER_WIDTH_PERCENT = 80;
 
+/**
+ * The row panel opens narrower than the session player because its content is
+ * mostly short values, and covering the results list breaks the row-to-row
+ * scan. A long `Body` wraps at any width, so widening the default does not buy
+ * the one case that wants the space.
+ */
+export const INITIAL_ROW_PANEL_WIDTH_PERCENT = 60;
+
+export const ROW_PANEL_WIDTH_STORAGE_KEY = 'hdx_row_panel_width_percent';
+
 export const DrawerFullWidthToggle = React.memo<{
   isFullWidth?: boolean;
   onToggle: () => void;

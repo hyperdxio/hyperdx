@@ -49,7 +49,7 @@ import { getEventBody, useSource } from '@/source';
 import TabBar from '@/TabBar';
 import { SearchConfig } from '@/types';
 import { FormatTime } from '@/useFormatTime';
-import { formatDistanceToNowStrictShort } from '@/utils';
+import { formatDistanceToNowStrictShort, useLocalStorage } from '@/utils';
 import { getHighlightedAttributesFromData } from '@/utils/highlightedAttributes';
 import {
   getRowLookupWindow,
@@ -75,7 +75,8 @@ import { DBSessionPanel, useSessionId } from './DBSessionPanel';
 import DBTracePanel from './DBTracePanel';
 import {
   DrawerFullWidthToggle,
-  INITIAL_DRAWER_WIDTH_PERCENT,
+  INITIAL_ROW_PANEL_WIDTH_PERCENT,
+  ROW_PANEL_WIDTH_STORAGE_KEY,
 } from './DrawerUtils';
 import LogLevel from './LogLevel';
 import SidePanelBreadcrumbs, { BreadcrumbItem } from './SidePanelBreadcrumbs';
@@ -106,6 +107,10 @@ export type RowSidePanelContextProps = {
   }) => string;
   displayedColumns?: string[];
   toggleColumn?: (column: string) => void;
+  /** Dimensions the view is currently grouped by, for the toggle's state. */
+  groupByFields?: string[];
+  /** Only provided where the view has a grouping to change (Explore). */
+  toggleGroupBy?: (field: string) => void;
   shareUrl?: string;
   dbSqlRowTableConfig?: BuilderChartConfigWithDateRange;
   isChildModalOpen?: boolean;
@@ -136,6 +141,8 @@ export function deriveRowSidePanelContextForSource(
       : undefined,
     displayedColumns: sameSource ? parentContext.displayedColumns : undefined,
     toggleColumn: sameSource ? parentContext.toggleColumn : undefined,
+    groupByFields: sameSource ? parentContext.groupByFields : undefined,
+    toggleGroupBy: sameSource ? parentContext.toggleGroupBy : undefined,
   };
 }
 
@@ -1246,14 +1253,24 @@ export default function DBRowSidePanelErrorBoundary({
   const contextZIndex = useZIndex();
   const drawerZIndex = contextZIndex + 10;
 
+  // Reading a row is a repeated action, so the width someone settles on should
+  // outlive the session rather than being re-dragged after every reload.
+  const [storedWidth, setStoredWidth] = useLocalStorage(
+    ROW_PANEL_WIDTH_STORAGE_KEY,
+    INITIAL_ROW_PANEL_WIDTH_PERCENT,
+  );
   const { size, setSize, startResize } = useResizable(
-    INITIAL_DRAWER_WIDTH_PERCENT,
+    storedWidth,
+    'right',
+    setStoredWidth,
   );
 
   const isFullWidth = size >= 99;
   const toggleFullWidth = useCallback(() => {
-    setSize(isFullWidth ? INITIAL_DRAWER_WIDTH_PERCENT : 100);
-  }, [isFullWidth, setSize]);
+    const next = isFullWidth ? INITIAL_ROW_PANEL_WIDTH_PERCENT : 100;
+    setSize(next);
+    setStoredWidth(next);
+  }, [isFullWidth, setSize, setStoredWidth]);
 
   const { clear: clearTraceWaterfallSearchState } = useWaterfallSearchState({});
 
