@@ -86,6 +86,12 @@ const staticFeatures: Record<string, boolean> = {
   alertDetails: IS_ALERT_DETAILS_ENABLED,
 };
 
+// config.ts's IS_OSS has a precedence quirk (`?? 'true' === 'true'`), so a set
+// NEXT_PUBLIC_IS_OSS surfaces as a raw string — including "false", which is
+// truthy. Normalize to the intended boolean (OSS unless explicitly "false")
+// just for this debug surface, without changing IS_OSS itself.
+const isOss = String(IS_OSS) !== 'false';
+
 // Express /health returns more than this; we only care about the version.
 const HealthResponseSchema = z.object({ version: z.string().optional() });
 
@@ -168,7 +174,7 @@ function buildReport(): string {
   const lines = [
     `frontend: ${APP_VERSION}`,
     `backend:  ${cachedServerVersion || 'unknown'}`,
-    `mode:     ${IS_LOCAL_MODE ? 'local' : IS_OSS ? 'oss' : 'cloud'}${
+    `mode:     ${IS_LOCAL_MODE ? 'local' : isOss ? 'oss' : 'cloud'}${
       IS_CLICKHOUSE_BUILD ? ' (clickstack)' : ''
     }`,
     ...(userId ? [`user:     ${userId}`] : []),
@@ -208,7 +214,7 @@ export function installHdxDebug(): void {
       return teamId;
     },
     build: {
-      isOss: IS_OSS,
+      isOss,
       isLocalMode: IS_LOCAL_MODE,
       isClickhouseBuild: IS_CLICKHOUSE_BUILD,
       isDev: IS_DEV,
