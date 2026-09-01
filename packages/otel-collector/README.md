@@ -102,10 +102,11 @@ custom OTel configurations without rebuilding the collector.
 
 ### Connectors
 
-| Component | Module  | Used in                              |
-| --------- | ------- | ------------------------------------ |
-| `forward` | core    | included for utility                 |
-| `routing` | contrib | standalone configs, OpAMP controller |
+| Component     | Module  | Used in                              |
+| ------------- | ------- | ------------------------------------ |
+| `forward`     | core    | included for utility                 |
+| `routing`     | contrib | standalone configs, OpAMP controller |
+| `spanmetrics` | contrib | user configs                         |
 
 ### Extensions
 
