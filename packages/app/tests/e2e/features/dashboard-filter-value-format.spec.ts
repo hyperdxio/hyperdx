@@ -18,24 +18,7 @@ import type { Page } from '@playwright/test';
 import { DashboardPage } from '../page-objects/DashboardPage';
 import { expect, test } from '../utils/base-test';
 import { DEFAULT_LOGS_SOURCE_NAME } from '../utils/constants';
-
-type FilterEntry =
-  | { type: 'sql'; condition: string }
-  | { type: 'variable'; name: string; values: string[] };
-
-/** The `filters=` param, decoded. `null` when the param is absent. */
-const filtersParam = (page: Page): FilterEntry[] | null => {
-  const raw = new URL(page.url()).searchParams.get('filters');
-  if (raw === null) return null;
-  return JSON.parse(decodeURIComponent(raw));
-};
-
-/** Wait for the param to settle on `expected` — nuqs writes it asynchronously. */
-const expectFiltersParam = async (page: Page, expected: FilterEntry[]) => {
-  await expect(async () => {
-    expect(filtersParam(page)).toEqual(expected);
-  }).toPass({ timeout: 10000 });
-};
+import { expectFiltersParam, type FilterEntry } from '../utils/filters-param';
 
 /** Navigate to a dashboard with a hand-written `filters=` param. */
 const gotoWithFilters = async (
