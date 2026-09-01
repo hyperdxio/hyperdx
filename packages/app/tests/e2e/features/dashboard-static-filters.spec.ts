@@ -3,10 +3,6 @@
  * than one queried from ClickHouse. With no expression there is nothing to
  * broadcast into a tile's `WHERE` clause, so the filter is a dashboard variable
  * and nothing else — and it is offered only where variables are.
- *
- * Every test here is `@full-stack`: `NEXT_PUBLIC_ENABLE_DASHBOARD_VARIABLES` is
- * set only on the full-stack webServer (see playwright.config.ts), and without
- * it the type picker is never rendered.
  */
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import type { Page } from '@playwright/test';
