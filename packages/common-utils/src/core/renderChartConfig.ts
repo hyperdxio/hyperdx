@@ -2302,6 +2302,24 @@ async function translateMetricChartConfig(
       valueAlias,
     };
 
+    // The translated scope only projects [bucket?, group, value] — the
+    // user's group-by values (plain columns included) exist solely inside
+    // the packed GROUP_ALIAS Array, so an ORDER BY repeating a group-by
+    // entry (the table default is orderBy = groupBy text) would fail with
+    // "Unknown identifier". Rewrite matched items to the positional
+    // element access `group`[k+1] (HDX-5247; same mechanism as the
+    // composed multi-series all-histogram path, see
+    // renderMultiSeriesOrderBy). Items are raw SQL only (no bind params),
+    // so joining their text yields a plain string-form orderBy.
+    const packedOrderBy =
+      restChartConfig.orderBy != null && groupBy
+        ? renderMultiSeriesOrderBy(
+            restChartConfig.orderBy,
+            groupByEntriesForSort(chartConfig.groupBy!),
+            { groupsArePacked: true },
+          )
+        : null;
+
     return {
       ...restChartConfig,
       with: isExponentialHistogram
@@ -2316,6 +2334,9 @@ async function translateMetricChartConfig(
         databaseName: '',
         tableName: 'metrics',
       },
+      orderBy: packedOrderBy
+        ? packedOrderBy.orderBy.map(item => item.sql).join(',')
+        : restChartConfig.orderBy,
       where: '', // clear up the condition since the where clause is already applied at the upstream CTE
       // Timeseries queries discard padded buckets here. Non-timeseries queries
       // scan only the visible range and have no time dimension to filter.
@@ -2424,6 +2445,23 @@ type ParsedSortItem = {
 };
 
 /**
+ * Normalize a config's group-by (string or structured list) into the
+ * expression/alias pairs the sort rewriting matches against. Entry order is
+ * significant: it matches both the scalar-branch projection order and the
+ * packing order of the GROUP_ALIAS Array.
+ */
+function groupByEntriesForSort(
+  groupBy: NonNullable<BuilderChartConfigWithOptDateRange['groupBy']>,
+): { expr: string; alias?: string }[] {
+  return typeof groupBy === 'string'
+    ? splitAndTrimWithBracket(groupBy).map(expr => ({ expr }))
+    : groupBy.map(entry => ({
+        expr: entry.valueExpression,
+        alias: entry.alias?.trim() ? entry.alias : undefined,
+      }));
+}
+
+/**
  * Split a SortSpecificationList into per-item expression/direction pairs.
  * String items that don't parse as a plain `<expr> [ASC|DESC]` (e.g. with a
  * NULLS FIRST suffix) keep only `raw` and are passed through untouched.
@@ -2487,6 +2525,10 @@ function parseSortSpecificationItems(
  *
  * Returns null when nothing needs rewriting so the caller can keep the
  * legacy rendering path (and its exact SQL text) for untouched configs.
+ *
+ * The packed mode is shared with the SINGLE-series histogram translation
+ * (translateMetricChartConfig), whose scope has the same shape: only the
+ * packed GROUP_ALIAS Array survives translation (HDX-5247).
  */
 function renderMultiSeriesOrderBy(
   sortSpecificationList: SortSpecificationList,
@@ -2717,14 +2759,7 @@ async function renderMultiSeriesMetricChartConfig(
     !ordersOnHavingWrapper
       ? renderMultiSeriesOrderBy(
           chartConfig.orderBy,
-          typeof chartConfig.groupBy === 'string'
-            ? splitAndTrimWithBracket(chartConfig.groupBy).map(expr => ({
-                expr,
-              }))
-            : chartConfig.groupBy!.map(entry => ({
-                expr: entry.valueExpression,
-                alias: entry.alias?.trim() ? entry.alias : undefined,
-              })),
+          groupByEntriesForSort(chartConfig.groupBy!),
           { groupsArePacked: allGroupsPacked },
         )
       : null;

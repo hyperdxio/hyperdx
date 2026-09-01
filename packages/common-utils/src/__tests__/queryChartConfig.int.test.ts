@@ -2300,6 +2300,34 @@ describe('queryChartConfig Integration Tests', () => {
         expect(Number(col(svcB, RATIO))).toBeCloseTo(6 / 25, 5);
       });
 
+      it('sorts a SINGLE-series histogram table on a raw expression group-by (HDX-5247)', async () => {
+        // Same packed-array scope as the all-histogram composed case, but on
+        // the single-series render path: the histogram translation leaves
+        // only [group, value] in scope, so the table default orderBy
+        // (= groupBy text) must be rewritten there too.
+        const result = await runConfig(
+          baseConfig({
+            displayType: DisplayType.Table,
+            granularity: undefined,
+            select: [histQuantileSelect('grpsort.hist', 0.5)],
+            groupBy: "ResourceAttributes['service.name']",
+            orderBy: "ResourceAttributes['service.name'] DESC",
+          }),
+        );
+
+        const data = result.data as Row[];
+        expect(data.map(r => col(r, 'group'))).toEqual([
+          ['svc-c'],
+          ['svc-b'],
+          ['svc-a'],
+        ]);
+        // svc-b's 10 observations are all in the (10, 30] bucket: p50 = 20.
+        expect(Number(col(data[1], 'quantile(grpsort.hist)'))).toBeCloseTo(
+          20,
+          5,
+        );
+      });
+
       it('sorts an all-histogram chart on a raw expression group-by via the packed group array', async () => {
         // With no scalar branch there are no individual group columns —
         // every branch packs the group values into the `group` Array, and

@@ -1041,6 +1041,125 @@ describe('renderChartConfig', () => {
         expect(actual).toMatchSnapshot();
       });
     });
+
+    // HDX-5247: the translated histogram scope only projects
+    // [bucket?, group, value] — the user's group-by values live solely
+    // inside the packed `group` Array — so a table's default
+    // orderBy (= the raw groupBy text) must sort positionally on the array,
+    // not re-reference the source columns.
+    describe('ORDER BY on a grouped histogram (packed group array)', () => {
+      const histTableConfig = (
+        overrides: Partial<ChartConfigWithOptDateRange>,
+      ): ChartConfigWithOptDateRange =>
+        ({
+          displayType: DisplayType.Table,
+          connection: 'test-connection',
+          metricTables: {
+            gauge: 'otel_metrics_gauge',
+            histogram: 'otel_metrics_histogram',
+            sum: 'otel_metrics_sum',
+            summary: 'otel_metrics_summary',
+            'exponential histogram': 'otel_metrics_exponential_histogram',
+          },
+          from: { databaseName: 'default', tableName: '' },
+          select: [
+            {
+              aggFn: 'quantile',
+              level: 0.5,
+              valueExpression: 'Value',
+              metricName: 'http.server.duration',
+              metricType: MetricsDataType.Histogram,
+            },
+          ],
+          where: '',
+          whereLanguage: 'sql',
+          timestampValueExpression: 'TimeUnix',
+          dateRange: [new Date('2025-02-12'), new Date('2025-12-14')],
+          limit: { limit: 200 },
+          ...overrides,
+        }) as ChartConfigWithOptDateRange;
+
+      it('sorts a table default orderBy (= groupBy text) positionally', async () => {
+        const EXPR_GROUP_BY =
+          "ResourceAttributes['service.name'], concat(ResourceAttributes['host.name'], '-x')";
+        const generatedSql = await renderChartConfig(
+          histTableConfig({
+            groupBy: EXPR_GROUP_BY,
+            orderBy: EXPR_GROUP_BY,
+          }),
+          mockMetadata,
+          querySettings,
+        );
+        const sql = parameterizedQueryToSql(generatedSql);
+        expect(sql).toMatchSnapshot();
+        expect(sql).toContain('ORDER BY `group`[1],`group`[2] LIMIT 200');
+        // The raw source expressions never reach the outer statement.
+        expect(sql.slice(sql.indexOf('FROM metrics'))).not.toContain(
+          'ResourceAttributes',
+        );
+      });
+
+      it('sorts a plain group column positionally, keeping its direction', async () => {
+        // Even a bare column has no named passthrough — only the packed
+        // `group` Array survives the histogram translation.
+        const generatedSql = await renderChartConfig(
+          histTableConfig({
+            groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
+            orderBy: [{ valueExpression: 'ServiceName', ordering: 'DESC' }],
+          }),
+          mockMetadata,
+          querySettings,
+        );
+        const sql = parameterizedQueryToSql(generatedSql);
+        expect(sql).toContain('ORDER BY `group`[1] DESC');
+      });
+
+      it('leaves unmatched sort items (the value alias) untouched', async () => {
+        const generatedSql = await renderChartConfig(
+          histTableConfig({
+            select: [
+              {
+                aggFn: 'quantile',
+                level: 0.5,
+                valueExpression: 'Value',
+                metricName: 'http.server.duration',
+                metricType: MetricsDataType.Histogram,
+                alias: 'p50',
+              },
+            ],
+            groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
+            orderBy: '"p50" DESC',
+          }),
+          mockMetadata,
+          querySettings,
+        );
+        const sql = parameterizedQueryToSql(generatedSql);
+        expect(sql).toContain('ORDER BY "p50" DESC');
+        expect(sql).not.toContain('`group`[1]');
+      });
+
+      it('rewrites the orderBy for an exponential histogram the same way', async () => {
+        const generatedSql = await renderChartConfig(
+          histTableConfig({
+            select: [
+              {
+                aggFn: 'quantile',
+                level: 0.5,
+                valueExpression: 'Value',
+                metricName: 'http.server.duration',
+                metricType: MetricsDataType.ExponentialHistogram,
+              },
+            ],
+            groupBy: "ResourceAttributes['service.name']",
+            orderBy: "ResourceAttributes['service.name'] DESC",
+          }),
+          mockMetadata,
+          querySettings,
+        );
+        const sql = parameterizedQueryToSql(generatedSql);
+        expect(sql).toContain('ORDER BY `group`[1] DESC');
+      });
+    });
   });
 
   describe('containing CTE clauses', () => {
