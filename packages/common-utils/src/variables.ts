@@ -5,7 +5,11 @@ import {
   isQuoteEscapedByBackslash,
   splitAndTrimWithBracket,
 } from './core/utils';
-import { MacroExpansionError, MalformedMacroArgsError } from './macroErrors';
+import {
+  MacroExpansionError,
+  MalformedMacroArgsError,
+  UnknownVariableError,
+} from './macroErrors';
 import {
   decodeSpecialTokensToSource,
   encodeSpecialTokens,
@@ -503,13 +507,14 @@ function requireVariable(
 ): ChartVariable {
   const variable = ctx.variables.find(v => v.name === variableName);
   if (!variable) {
-    throw new MacroExpansionError(
+    const available = ctx.variables.map(v => v.name);
+    throw new UnknownVariableError(
       macroName,
+      variableName,
+      available,
       `Macro '$__${macroName}' references unknown variable '${variableName}'. ` +
         `Available variables: ${
-          ctx.variables.length > 0
-            ? ctx.variables.map(v => v.name).join(', ')
-            : '(none)'
+          available.length > 0 ? available.join(', ') : '(none)'
         }.`,
     );
   }
@@ -874,7 +879,7 @@ export function substituteVariables(
  * structural rather than tied to one config type so both runtime configs (which
  * carry `variables`) and saved configs (which don't) can be walked.
  */
-type BuilderVariableFields = {
+export type BuilderVariableFields = {
   select: SelectList;
   where?: string;
   whereLanguage?: SearchConditionLanguage;
@@ -930,7 +935,7 @@ const mapSortList = (
  * Calls the given map function to rewrite every chart builder expression
  * that may contain variable references, leaving the rest of the config untouched.
  */
-function mapBuilderVariableTemplates<T extends BuilderVariableFields>(
+export function mapBuilderVariableTemplates<T extends BuilderVariableFields>(
   config: T,
   map: TemplateMapper,
 ): T {

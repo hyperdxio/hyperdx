@@ -1,0 +1,5 @@
+---
+'@hyperdx/app': minor
+---
+
+Add a read-time, schema-agnostic LLM observability dashboard at `/llm` (beta, linked from the dashboards list) — no ingestion changes required, and it works retroactively on already-ingested telemetry. Traces instrumented with the OTel GenAI semantic conventions, OpenLLMetry, OpenInference, or the Vercel AI SDK are interpreted at query time to chart traffic, token split (uncached/cached/cache-write/output/reasoning), estimated cost by model (bundled price catalog with cache-read discounts and cache-write premiums; an instrumentation-provided cost attribute always wins), latency/TTFT, tool analytics, per-session timelines with lazy-loaded conversation views, and side-by-side LLM span/log search. Aggregations elect an app's own cost-reporting spans as the authoritative per-call reporters so apps emitting several instrumentation dialects in parallel (e.g. opencode emitting OpenInference and Vercel AI spans for each call) are counted once — verified to match opencode's self-reported session cost exactly.

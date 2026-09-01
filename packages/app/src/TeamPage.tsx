@@ -14,7 +14,15 @@ import {
   TextInput,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconPencil } from '@tabler/icons-react';
+import {
+  IconAdjustmentsHorizontal,
+  IconApi,
+  IconDatabase,
+  IconPencil,
+  IconPlug,
+  IconShieldLock,
+  IconUsers,
+} from '@tabler/icons-react';
 
 import { PageHeader } from './components/PageHeader';
 import ApiKeysSection from './components/TeamSettings/ApiKeysSection';
@@ -34,6 +42,7 @@ import { APP_CONTENT_SCROLL_CONTAINER_ID, withAppNav } from './layout';
 type TeamTab = {
   value: string;
   label: string;
+  icon: ReactNode;
   sections: {
     id: string;
     // Always a function of whether this tab is the visible one. Mantine `Tabs`
@@ -106,6 +115,7 @@ export default function TeamPage() {
     {
       value: 'data',
       label: 'Data',
+      icon: <IconDatabase size={16} />,
       sections: [
         {
           id: 'team-data-sources',
@@ -120,6 +130,7 @@ export default function TeamPage() {
     {
       value: 'team',
       label: 'Members',
+      icon: <IconUsers size={16} />,
       sections: [
         {
           id: 'team-members',
@@ -132,6 +143,7 @@ export default function TeamPage() {
           {
             value: 'access',
             label: 'Access',
+            icon: <IconShieldLock size={16} />,
             sections: [
               {
                 id: 'team-access-security-policies',
@@ -148,6 +160,7 @@ export default function TeamPage() {
     {
       value: 'api-agents',
       label: 'API & Agents',
+      icon: <IconApi size={16} />,
       sections: [
         {
           id: 'team-api-agents-api-keys',
@@ -172,6 +185,7 @@ export default function TeamPage() {
     {
       value: 'integrations',
       label: 'Integrations',
+      icon: <IconPlug size={16} />,
       sections: [
         {
           id: 'team-integrations-webhooks',
@@ -182,6 +196,7 @@ export default function TeamPage() {
     {
       value: 'advanced',
       label: 'Query Settings',
+      icon: <IconAdjustmentsHorizontal size={16} />,
       sections: [
         {
           id: 'team-advanced-query-settings',
@@ -333,7 +348,11 @@ export default function TeamPage() {
             <Tabs value={activeTab} onChange={handleTabChange}>
               <Tabs.List>
                 {tabs.map(tab => (
-                  <Tabs.Tab key={tab.value} value={tab.value}>
+                  <Tabs.Tab
+                    key={tab.value}
+                    value={tab.value}
+                    leftSection={tab.icon}
+                  >
                     {tab.label}
                   </Tabs.Tab>
                 ))}

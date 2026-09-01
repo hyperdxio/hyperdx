@@ -8,6 +8,8 @@ import {
   Flex,
   Group,
   Stack,
+  Text,
+  Tooltip,
   UnstyledButton,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
@@ -28,6 +30,7 @@ import { IS_ALERT_DETAILS_ENABLED } from '@/config';
 import type { AlertsPageItem } from '@/types';
 import {
   getAlertDisplayName,
+  getAlertSourceLabel,
   getAlertSourceUrl,
   getAlertTags,
 } from '@/utils/alerts';
@@ -122,27 +125,48 @@ export const AlertDetails = React.memo(function AlertDetails({
 
   const alertUrl = React.useMemo(() => getAlertSourceUrl(alert), [alert]);
 
-  const alertIcon = (() => {
+  const sourceLabel = getAlertSourceLabel(alert);
+
+  // The glyph alone doesn't say what it watches; the tooltip (and its
+  // accessible label) names it. `span` wrapper: Tooltip needs an element that
+  // forwards a ref, which the icon components don't.
+  const sourceGlyph = (() => {
     switch (alert.source) {
       case AlertSource.TILE:
-        return <IconChartLine size={14} />;
+        return <IconChartLine size={14} aria-hidden="true" />;
       case AlertSource.SAVED_SEARCH:
-        return <IconTableRow size={14} />;
+        return <IconTableRow size={14} aria-hidden="true" />;
       default:
-        return <IconHelpCircle size={14} />;
+        return <IconHelpCircle size={14} aria-hidden="true" />;
     }
   })();
 
-  const linkTitle = React.useMemo(() => {
-    switch (alert.source) {
-      case AlertSource.TILE:
-        return 'Dashboard tile';
-      case AlertSource.SAVED_SEARCH:
-        return 'Saved search';
-      default:
-        return '';
-    }
-  }, [alert]);
+  // Only labelled when the source actually resolves — same guard as
+  // `linkTitle`, so an alert whose source is gone doesn't get a confident
+  // "Unknown source" tooltip where the rest of the row stays silent.
+  const alertIcon = alert.source ? (
+    <Tooltip label={sourceLabel} withArrow position="top">
+      <span
+        role="img"
+        aria-label={sourceLabel}
+        style={{ display: 'inline-flex' }}
+        data-testid={`alert-source-icon-${alert._id}`}
+      >
+        {sourceGlyph}
+      </span>
+    </Tooltip>
+  ) : (
+    <span
+      style={{ display: 'inline-flex' }}
+      data-testid={`alert-source-icon-${alert._id}`}
+    >
+      {sourceGlyph}
+    </span>
+  );
+
+  // Empty for an unresolvable source: AlertRowMenu lowercases this into
+  // "Open <source>" and falls back to its own wording when blank.
+  const linkTitle = alert.source ? sourceLabel : '';
 
   return (
     <div data-testid={`alert-card-${alert._id}`} className={styles.alertRow}>
@@ -184,6 +208,11 @@ export const AlertDetails = React.memo(function AlertDetails({
             </Link>
           </div>
           <AlertPropertiesSummary alert={alert} />
+          {alert.createdBy && (
+            <Text size="xs" c="dimmed" data-testid="alert-created-by">
+              Created by {alert.createdBy.name || alert.createdBy.email}
+            </Text>
+          )}
           {getAlertTags(alert).length > 0 && (
             <Group gap={4}>
               {getAlertTags(alert).map(tag => (

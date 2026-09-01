@@ -66,6 +66,11 @@ export const NOW = Date.now();
 
 // Features in development
 export const IS_K8S_DASHBOARD_ENABLED = true;
+// LLM dashboard cost estimation. Default off pending a price-management
+// story: the bundled catalog goes stale between releases and can't account
+// for provider discounts, so tokens are the primary metric for now.
+export const IS_LLM_COST_ENABLED =
+  env('NEXT_PUBLIC_IS_LLM_COST_ENABLED') === 'true';
 export const IS_METRICS_ENABLED = true;
 export const IS_MTVIEWS_ENABLED = false;
 export const IS_SESSIONS_ENABLED = true;

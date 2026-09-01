@@ -301,7 +301,8 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
       pathname?.startsWith('/dashboards/') ||
       pathname === '/services' ||
       pathname === '/clickhouse' ||
-      pathname === '/kubernetes';
+      pathname === '/kubernetes' ||
+      pathname === '/llm';
 
     if (!isDashboardsPathname) return false;
 

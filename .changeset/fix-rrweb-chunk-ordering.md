@@ -1,5 +1,0 @@
----
-'@hyperdx/app': patch
----
-
-Fix session replays rendering empty, unstyled, or freezing mid-session when a recorded rrweb event exceeds the recorder's ~950KB chunk size. All chunks of a split event share one timestamp, and the replay query ordered by timestamp alone, so ClickHouse could return chunks in arbitrary order — the scrambled reassembly failed to parse and the event (often the full DOM snapshot carrying all inlined CSS) was silently dropped. The replay stream is now ordered deterministically (`rr-web.offset` and `rr-web.chunk` tiebreaks), chunks are reassembled by explicit chunk index per event, and dropped events are reported in the console and flagged with a warning indicator in the player instead of being swallowed. Existing recordings are replayed correctly without re-ingestion. Replaced replay streams are now also cancelled instead of streaming to completion in the background, and the player imports `Replayer` from `@rrweb/replay` (the replay-only package rrweb recommends over the deprecated combined `rrweb` package).

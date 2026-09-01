@@ -1,15 +1,22 @@
+import { DASHBOARD_VARIABLE_NAME_MAX_LENGTH } from '@hyperdx/common-utils/dist/types';
 import mongoose from 'mongoose';
 
 import {
+  mcpFiltersParam,
   mcpPatchDashboardSchema,
   mcpTilesParam,
 } from '@/mcp/tools/dashboards/schemas';
 import {
+  getFilterVariableWarnings,
   getRawSqlMissingSourceError,
   getRawSqlTileMacroWarnings,
   getRawSqlTilesMissingRequiredSource,
+  getTileVariableWarnings,
 } from '@/mcp/tools/dashboards/validation';
-import type { ExternalDashboardTileWithId } from '@/utils/zod';
+import type {
+  ExternalDashboardTileWithId,
+  ExternalQueryExpressionFilterWithId,
+} from '@/utils/zod';
 
 const connectionId = new mongoose.Types.ObjectId().toString();
 const sourceId = new mongoose.Types.ObjectId().toString();
@@ -435,5 +442,458 @@ describe('getRawSqlTileMacroHints', () => {
     ]);
     expect(hints).toHaveLength(1);
     expect(hints[0]).toContain('tile #1');
+  });
+});
+
+// ─── Variable-enabled filters ────────────────────────────────────────────────
+
+function makeFilter(
+  overrides: Partial<ExternalQueryExpressionFilterWithId> = {},
+): ExternalQueryExpressionFilterWithId {
+  return {
+    id: new mongoose.Types.ObjectId().toString(),
+    type: 'QUERY_EXPRESSION',
+    name: 'Service',
+    expression: 'ServiceName',
+    sourceId,
+    whereLanguage: 'sql',
+    ...overrides,
+  };
+}
+
+function makeSearchTile(overrides: {
+  name?: string;
+  where: string;
+  whereLanguage: 'sql' | 'lucene';
+}): ExternalDashboardTileWithId {
+  return {
+    id: 'search-tile',
+    x: 0,
+    y: 0,
+    w: 12,
+    h: 4,
+    name: overrides.name ?? 'Search Tile',
+    config: {
+      displayType: 'search',
+      sourceId,
+      select: '',
+      where: overrides.where,
+      whereLanguage: overrides.whereLanguage,
+    },
+  };
+}
+
+function makeSeriesTile(overrides: {
+  name?: string;
+  where: string;
+  whereLanguage: 'sql' | 'lucene';
+}): ExternalDashboardTileWithId {
+  return {
+    id: 'series-tile',
+    x: 0,
+    y: 0,
+    w: 12,
+    h: 4,
+    name: overrides.name ?? 'Series Tile',
+    config: {
+      displayType: 'line',
+      sourceId,
+      select: [
+        {
+          aggFn: 'count',
+          alias: 'Count',
+          where: overrides.where,
+          whereLanguage: overrides.whereLanguage,
+        },
+      ],
+    },
+  };
+}
+
+function makeTableTile(overrides: {
+  name?: string;
+  selectWhere: string;
+  selectWhereLanguage: 'sql' | 'lucene';
+  having?: string;
+  groupBy?: string;
+}): ExternalDashboardTileWithId {
+  return {
+    id: 'table-tile',
+    x: 0,
+    y: 0,
+    w: 12,
+    h: 4,
+    name: overrides.name ?? 'Table Tile',
+    config: {
+      displayType: 'table',
+      sourceId,
+      select: [
+        {
+          aggFn: 'count',
+          alias: 'Count',
+          where: overrides.selectWhere,
+          whereLanguage: overrides.selectWhereLanguage,
+        },
+      ],
+      groupBy: overrides.groupBy,
+      having: overrides.having,
+    },
+  };
+}
+
+describe('mcpFiltersParam variable fields', () => {
+  it('preserves the variable fields so a filter round-trips', () => {
+    const parsed = mcpFiltersParam.parse([
+      {
+        type: 'QUERY_EXPRESSION',
+        name: 'Service Name',
+        expression: 'ServiceName',
+        sourceId,
+        whereLanguage: 'sql',
+        isBroadcastEnabled: false,
+        isVariableEnabled: true,
+        variableName: 'service',
+      },
+    ]);
+
+    // The MCP schema used to omit these three, and a plain z.object silently
+    // drops unknown keys, so reading a variable-enabled dashboard and saving
+    // it back wiped the variable configuration.
+    expect(parsed[0]).toMatchObject({
+      isBroadcastEnabled: false,
+      isVariableEnabled: true,
+      variableName: 'service',
+    });
+  });
+
+  it.each([
+    ['a space', 'has space'],
+    ['a leading digit', '1service'],
+    ['a leading underscore', '_service'],
+    ['a dash', 'service-name'],
+  ])('rejects a variableName with %s', (_label, variableName) => {
+    const result = mcpFiltersParam.safeParse([
+      {
+        type: 'QUERY_EXPRESSION',
+        name: 'Service',
+        expression: 'ServiceName',
+        sourceId,
+        whereLanguage: 'sql',
+        isVariableEnabled: true,
+        variableName,
+      },
+    ]);
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a variableName over the length limit', () => {
+    const result = mcpFiltersParam.safeParse([
+      {
+        type: 'QUERY_EXPRESSION',
+        name: 'Service',
+        expression: 'ServiceName',
+        sourceId,
+        whereLanguage: 'sql',
+        isVariableEnabled: true,
+        variableName: `v${'a'.repeat(DASHBOARD_VARIABLE_NAME_MAX_LENGTH)}`,
+      },
+    ]);
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts a filter that omits every variable field', () => {
+    const parsed = mcpFiltersParam.parse([
+      {
+        type: 'QUERY_EXPRESSION',
+        name: 'Service',
+        expression: 'ServiceName',
+        sourceId,
+        whereLanguage: 'sql',
+      },
+    ]);
+    expect(parsed[0].isVariableEnabled).toBeUndefined();
+    expect(parsed[0].isBroadcastEnabled).toBeUndefined();
+  });
+});
+
+describe('getTileVariableWarnings', () => {
+  const variableFilter = makeFilter({
+    isBroadcastEnabled: false,
+    isVariableEnabled: true,
+    variableName: 'service',
+  });
+
+  it('returns nothing for a tile that references no variable', () => {
+    expect(
+      getTileVariableWarnings(
+        [
+          makeSqlTile({
+            sourceId,
+            sqlTemplate: 'SELECT count() FROM $__sourceTable',
+          }),
+        ],
+        [variableFilter],
+      ),
+    ).toEqual([]);
+  });
+
+  it('returns nothing for a raw SQL tile using $__filter on a declared variable', () => {
+    expect(
+      getTileVariableWarnings(
+        [
+          makeSqlTile({
+            sourceId,
+            sqlTemplate:
+              'SELECT count() FROM $__sourceTable WHERE $__filter(ServiceName, $service)',
+          }),
+        ],
+        [variableFilter],
+      ),
+    ).toEqual([]);
+  });
+
+  it('warns about an unguarded bare reference in raw SQL', () => {
+    const warnings = getTileVariableWarnings(
+      [
+        makeSqlTile({
+          name: 'Errors',
+          sourceId,
+          sqlTemplate:
+            'SELECT count() FROM $__sourceTable WHERE ServiceName IN ($service)',
+        }),
+      ],
+      [variableFilter],
+    );
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('Tile "Errors"');
+    expect(warnings[0]).toContain('renders as NULL');
+  });
+
+  it('warns about a reference wrapped in quotes', () => {
+    const warnings = getTileVariableWarnings(
+      [
+        makeSqlTile({
+          sourceId,
+          sqlTemplate:
+            "SELECT count() FROM $__sourceTable WHERE ServiceName = '$service'",
+        }),
+      ],
+      [variableFilter],
+    );
+    expect(warnings.join('\n')).toContain('already quotes each value');
+  });
+
+  it('warns when a macro names a variable the dashboard does not declare', () => {
+    const warnings = getTileVariableWarnings(
+      [
+        makeSqlTile({
+          sourceId,
+          sqlTemplate:
+            'SELECT count() FROM $__sourceTable WHERE $__filter(ServiceName, $tenant)',
+        }),
+      ],
+      [variableFilter],
+    );
+    expect(warnings.join('\n')).toContain('$__filter');
+    expect(warnings.join('\n')).toContain("unknown variable 'tenant'");
+    expect(warnings.join('\n')).toContain('Available variables: service');
+  });
+
+  it('warns about a variable macro in a Lucene builder input', () => {
+    const warnings = getTileVariableWarnings(
+      [
+        makeSearchTile({
+          name: 'Recent Errors',
+          where: '$__filter(ServiceName, $service)',
+          whereLanguage: 'lucene',
+        }),
+      ],
+      [variableFilter],
+    );
+    expect(warnings.join('\n')).toContain('Lucene');
+  });
+
+  it('checks a builder tile per-series where', () => {
+    const warnings = getTileVariableWarnings(
+      [
+        makeSeriesTile({
+          name: 'Requests',
+          where: 'ServiceName IN ($service)',
+          whereLanguage: 'sql',
+        }),
+      ],
+      [variableFilter],
+    );
+    expect(warnings.join('\n')).toContain('Tile "Requests"');
+    expect(warnings.join('\n')).toContain('renders as NULL');
+  });
+
+  it("checks a select item's condition in its own language", () => {
+    const warnings = getTileVariableWarnings(
+      [
+        makeSeriesTile({
+          name: 'Requests',
+          where: '$__filter(ServiceName, $service)',
+          whereLanguage: 'lucene',
+        }),
+      ],
+      [variableFilter],
+    );
+    expect(warnings.join('\n')).toContain('Tile "Requests"');
+    expect(warnings.join('\n')).toContain('no meaning in a Lucene expression');
+  });
+
+  it('collects issues from every expression a builder tile walks', () => {
+    const warnings = getTileVariableWarnings(
+      [
+        makeTableTile({
+          name: 'Overview',
+          selectWhere: 'ServiceName IN ($service)',
+          selectWhereLanguage: 'sql',
+          having: "count() > 0 AND ServiceName = '$service'",
+          groupBy: '$service',
+        }),
+      ],
+      [variableFilter],
+    );
+    expect(warnings).toHaveLength(3);
+    expect(warnings.join('\n')).toContain('already quotes each value');
+    expect(warnings.join('\n')).toContain('renders as NULL');
+  });
+
+  it('reports an unknown variable when the dashboard declares none', () => {
+    const warnings = getTileVariableWarnings(
+      [
+        makeSqlTile({
+          sourceId,
+          sqlTemplate:
+            'SELECT count() FROM $__sourceTable WHERE ServiceName IN ($service)',
+        }),
+      ],
+      // A broadcast-only filter declares no variable.
+      [makeFilter()],
+    );
+    expect(warnings.join('\n')).toContain('unknown variable');
+    expect(warnings.join('\n')).toContain('(none)');
+  });
+
+  it('ignores markdown tiles, which have no expressions to check', () => {
+    const markdownTile: ExternalDashboardTileWithId = {
+      id: 'md',
+      x: 0,
+      y: 0,
+      w: 12,
+      h: 3,
+      name: 'Notes',
+      config: { displayType: 'markdown', markdown: 'Pick a $service' },
+    };
+    expect(getTileVariableWarnings([markdownTile], [variableFilter])).toEqual(
+      [],
+    );
+  });
+});
+
+describe('getFilterVariableWarnings', () => {
+  // The upstream filter of every dependent-filter case below.
+  const serviceFilter = makeFilter({
+    name: 'Service',
+    expression: 'ServiceName',
+    isVariableEnabled: true,
+    variableName: 'service',
+  });
+
+  const endpointFilter = (
+    overrides: Partial<ExternalQueryExpressionFilterWithId> = {},
+  ) =>
+    makeFilter({
+      name: 'Endpoint',
+      expression: 'SpanName',
+      ...overrides,
+    });
+
+  it('returns nothing when no filter carries a where', () => {
+    expect(
+      getFilterVariableWarnings([serviceFilter, endpointFilter()]),
+    ).toEqual([]);
+  });
+
+  it('accepts a dependent filter guarded by $__filter', () => {
+    expect(
+      getFilterVariableWarnings([
+        serviceFilter,
+        endpointFilter({ where: '$__filter(ServiceName, $service)' }),
+      ]),
+    ).toEqual([]);
+  });
+
+  it('warns about a bare reference that leaves the dropdown empty', () => {
+    const warnings = getFilterVariableWarnings([
+      serviceFilter,
+      endpointFilter({ where: 'ServiceName IN ($service)' }),
+    ]);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('Filter "Endpoint"');
+    expect(warnings[0]).toContain('renders as NULL');
+  });
+
+  it('names the filter that must publish a referenced variable', () => {
+    // "Service" collects the value but never exposes it, so $service does not
+    // exist. The generic unknown-variable warning cannot say why; this one can.
+    const warnings = getFilterVariableWarnings([
+      makeFilter({ name: 'Service', expression: 'ServiceName' }),
+      endpointFilter({ where: '$__filter(ServiceName, $service)' }),
+    ]);
+    const joined = warnings.join('\n');
+    expect(joined).toContain('$service is not published as a variable');
+    expect(joined).toContain('The filter named "Service"');
+    expect(joined).toContain('isVariableEnabled: true');
+  });
+
+  it('warns when a filter references its own variable', () => {
+    const warnings = getFilterVariableWarnings([
+      serviceFilter,
+      endpointFilter({
+        isVariableEnabled: true,
+        variableName: 'endpoint',
+        where: '$__filter(SpanName, $endpoint)',
+      }),
+    ]);
+    const joined = warnings.join('\n');
+    expect(joined).toContain("references this filter's own variable $endpoint");
+    expect(joined).toContain('values already selected');
+  });
+
+  it('warns about a variable macro in a Lucene dropdown query', () => {
+    const warnings = getFilterVariableWarnings([
+      serviceFilter,
+      endpointFilter({
+        where: '$__filter(ServiceName, $service)',
+        whereLanguage: 'lucene',
+      }),
+    ]);
+    expect(warnings.join('\n')).toContain('Lucene');
+  });
+
+  it('treats a missing whereLanguage as sql, matching the dropdown query', () => {
+    // resolveFilterValuesWhere defaults to sql, so the macro resolves and
+    // there is nothing to report. Defaulting to lucene here would produce a
+    // bogus "no meaning in a Lucene expression" error on a working filter.
+    const { whereLanguage: _dropped, ...withoutLanguage } = endpointFilter({
+      where: '$__filter(ServiceName, $service)',
+    });
+    expect(getFilterVariableWarnings([serviceFilter, withoutLanguage])).toEqual(
+      [],
+    );
+  });
+
+  it('reports an unknown variable that no filter would own', () => {
+    const warnings = getFilterVariableWarnings([
+      serviceFilter,
+      endpointFilter({ where: '$__filter(ServiceName, $tenant)' }),
+    ]);
+    const joined = warnings.join('\n');
+    expect(joined).toContain('Filter "Endpoint"');
+    expect(joined).toContain("unknown variable 'tenant'");
+    expect(joined).toContain('Available variables: service');
   });
 });

@@ -2,13 +2,13 @@ import { validateChartConfigFormulas } from '@hyperdx/common-utils/dist/dashboar
 import {
   addDuplicateTileIdIssues,
   AggregateFunctionSchema,
+  AlertChartConfigSchema,
   alertNoteSchema,
   AlertThresholdType,
   BackgroundChartSchema,
   ChartPaletteTokenSchema,
   DASHBOARD_CONTAINER_ID_MAX,
   DASHBOARD_MAX_TILES,
-  DashboardFilterSchema,
   MAX_TAG_LENGTH,
   MAX_TAGS,
   MetricFormulaSchema,
@@ -18,8 +18,10 @@ import {
   OnClickDashboardSchema,
   OnClickExternalSchema,
   OnClickSearchSchema,
+  QueryExpressionDashboardFilterSchema,
   scheduleStartAtSchema,
   SearchConditionLanguageSchema as whereLanguageSchema,
+  StaticListDashboardFilterSchema,
   tagsSchema,
   validateAlertChannelSelection,
   validateAlertScheduleOffsetMinutes,
@@ -139,18 +141,39 @@ const chartSeriesSchema = z.discriminatedUnion('type', [
 // while the canonical definition lives in the shared package.
 export { MAX_TAG_LENGTH, MAX_TAGS, tagsSchema };
 
-export const externalDashboardFilterSchemaWithId = DashboardFilterSchema.omit({
-  source: true,
-})
-  .extend({ sourceId: objectIdSchema })
-  .strict();
+const externalQueryExpressionFilterShape =
+  QueryExpressionDashboardFilterSchema.omit({ source: true }).extend({
+    sourceId: objectIdSchema,
+  });
+
+// A static filter's mode flags each accept exactly one value, so callers may
+// omit them and get that value.
+const externalStaticListFilterShape = StaticListDashboardFilterSchema.extend({
+  isBroadcastEnabled: z.literal(false).default(false),
+  isVariableEnabled: z.literal(true).default(true),
+});
+
+export const externalDashboardFilterSchemaWithId = z.discriminatedUnion(
+  'type',
+  [
+    externalQueryExpressionFilterShape.strict(),
+    externalStaticListFilterShape.strict(),
+  ],
+);
 
 export type ExternalDashboardFilterWithId = z.infer<
   typeof externalDashboardFilterSchemaWithId
 >;
 
-export const externalDashboardFilterSchema =
-  externalDashboardFilterSchemaWithId.omit({ id: true });
+export type ExternalQueryExpressionFilterWithId = Extract<
+  ExternalDashboardFilterWithId,
+  { type: 'QUERY_EXPRESSION' }
+>;
+
+export const externalDashboardFilterSchema = z.discriminatedUnion('type', [
+  externalQueryExpressionFilterShape.omit({ id: true }).strict(),
+  externalStaticListFilterShape.omit({ id: true }).strict(),
+]);
 
 export type ExternalDashboardFilter = z.infer<
   typeof externalDashboardFilterSchema
@@ -729,26 +752,75 @@ const zTileAlert = z.object({
   dashboardId: z.string().min(1),
 });
 
-export const alertSchema = z
-  .object({
-    channel: zAlertChannel.optional(),
-    channels: zAlertChannels.optional(),
-    interval: z.enum(['1m', '5m', '15m', '30m', '1h', '6h', '12h', '1d']),
-    scheduleOffsetMinutes: z.number().int().min(0).max(1439).optional(),
-    scheduleStartAt: scheduleStartAtSchema,
-    threshold: z.number(),
-    thresholdType: z.nativeEnum(AlertThresholdType),
-    thresholdMax: z.number().optional(),
-    source: z.nativeEnum(AlertSource).default(AlertSource.SAVED_SEARCH),
-    name: z.string().min(1).max(512).nullish(),
-    message: z.string().min(1).max(4096).nullish(),
-    note: alertNoteSchema,
-    numConsecutiveWindows: z.number().int().min(1).nullish(),
-  })
+const zInlineAlert = z.object({
+  source: z.literal(AlertSource.INLINE),
+  // Builder + raw SQL configs only; the schema has no PromQL variant.
+  chartConfig: AlertChartConfigSchema,
+});
+
+/**
+ * Metric-formula validation for inline alerts (builder configs only — raw SQL
+ * configs have no formulas). Dashboard tiles get this through the editor's
+ * save-time rules and the external tile-config refinement above; inline alerts
+ * are authored through this API directly, so without it a malformed formula
+ * (or one referencing a nonexistent series) persists and then throws on every
+ * evaluation tick instead of being rejected at write time. The helper checks
+ * the external-shape `asRatio`, so map the internal `seriesReturnType: 'ratio'`
+ * onto it.
+ */
+const validateInlineAlertFormulas = (
+  alert: {
+    source: AlertSource;
+    chartConfig?: z.infer<typeof AlertChartConfigSchema>;
+  },
+  ctx: z.RefinementCtx,
+) => {
+  if (alert.source !== AlertSource.INLINE || alert.chartConfig == null) {
+    return;
+  }
+  const chartConfig = alert.chartConfig;
+  if ('configType' in chartConfig) {
+    return;
+  }
+  validateChartConfigFormulas(
+    { ...chartConfig, asRatio: chartConfig.seriesReturnType === 'ratio' },
+    ctx,
+    { configPath: ['chartConfig'] },
+  );
+};
+
+const alertBaseSchema = z.object({
+  channel: zAlertChannel.optional(),
+  channels: zAlertChannels.optional(),
+  interval: z.enum(['1m', '5m', '15m', '30m', '1h', '6h', '12h', '1d']),
+  scheduleOffsetMinutes: z.number().int().min(0).max(1439).optional(),
+  scheduleStartAt: scheduleStartAtSchema,
+  threshold: z.number(),
+  thresholdType: z.nativeEnum(AlertThresholdType),
+  thresholdMax: z.number().optional(),
+  source: z.nativeEnum(AlertSource).default(AlertSource.SAVED_SEARCH),
+  name: z.string().min(1).max(512).nullish(),
+  message: z.string().min(1).max(4096).nullish(),
+  note: alertNoteSchema,
+  numConsecutiveWindows: z.number().int().min(1).nullish(),
+});
+
+export const alertSchema = alertBaseSchema
   .and(zSavedSearchAlert.or(zTileAlert))
   .superRefine(validateAlertChannelSelection)
   .superRefine(validateAlertScheduleOffsetMinutes)
   .superRefine(validateAlertThresholdMax);
+
+// Superset of alertSchema for the internal API only: also accepts inline
+// alerts (source: 'inline'), which persist their own chart config. The
+// external v2 API keeps the narrower alertSchema until its contract (OpenAPI
+// docs, Terraform provider) is extended to cover inline alerts.
+export const internalAlertSchema = alertBaseSchema
+  .and(zSavedSearchAlert.or(zTileAlert).or(zInlineAlert))
+  .superRefine(validateAlertChannelSelection)
+  .superRefine(validateAlertScheduleOffsetMinutes)
+  .superRefine(validateAlertThresholdMax)
+  .superRefine(validateInlineAlertFormulas);
 
 // ==============================
 // Webhooks

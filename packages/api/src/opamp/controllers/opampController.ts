@@ -168,6 +168,13 @@ type CollectorConfig = {
   };
 };
 
+// The bearertokenauth extension matches the full Authorization header value
+// exactly, so every accepted form must be listed: the bare token plus the
+// `Bearer `-prefixed form that RFC 6750 clients send, in the scheme casings
+// seen in practice.
+export const bearerTokenVariants = (keys: string[]): string[] =>
+  keys.flatMap(key => [key, `Bearer ${key}`, `bearer ${key}`, `BEARER ${key}`]);
+
 export const buildOtelCollectorConfig = (
   teams: Pick<ITeam, 'apiKey' | 'collectorAuthenticationEnforced'>[],
 ): CollectorConfig => {
@@ -353,7 +360,7 @@ export const buildOtelCollectorConfig = (
 
       otelCollectorConfig.extensions['bearertokenauth/hyperdx'] = {
         scheme: '',
-        tokens: apiKeys,
+        tokens: bearerTokenVariants(apiKeys),
       };
       otelCollectorConfig.receivers['otlp/hyperdx'].protocols.grpc.auth = {
         authenticator: 'bearertokenauth/hyperdx',
