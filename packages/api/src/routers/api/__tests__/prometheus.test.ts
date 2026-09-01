@@ -12,6 +12,7 @@ import {
   formatMatrixResponse,
   formatVectorResponse,
   isClientDisconnect,
+  joinPrometheusUpstreamUrl,
   parseDuration,
   parseTimestamp,
   recordProxyOutcome,
@@ -255,5 +256,62 @@ describe('isClientDisconnect', () => {
   it('is false for a non-Error rejection', () => {
     expect(isClientDisconnect('boom')).toBe(false);
     expect(isClientDisconnect(undefined)).toBe(false);
+  });
+});
+
+describe('joinPrometheusUpstreamUrl', () => {
+  it('keeps a root-mounted Prometheus host working', () => {
+    expect(
+      joinPrometheusUpstreamUrl(
+        'http://prometheus:9090',
+        '/api/v1/query_range',
+      ).toString(),
+    ).toBe('http://prometheus:9090/api/v1/query_range');
+  });
+
+  it('keeps a trailing slash on a root-mounted host from doubling the path', () => {
+    expect(
+      joinPrometheusUpstreamUrl(
+        'http://prometheus:9090/',
+        '/api/v1/query_range',
+      ).toString(),
+    ).toBe('http://prometheus:9090/api/v1/query_range');
+  });
+
+  it('preserves a VictoriaMetrics cluster tenant prefix', () => {
+    expect(
+      joinPrometheusUpstreamUrl(
+        'http://vmselect:8481/select/0/prometheus',
+        '/api/v1/query_range',
+      ).toString(),
+    ).toBe('http://vmselect:8481/select/0/prometheus/api/v1/query_range');
+  });
+
+  it('strips a trailing slash on the tenant prefix before joining', () => {
+    expect(
+      joinPrometheusUpstreamUrl(
+        'http://vmselect:8481/select/0/prometheus/',
+        '/api/v1/label/__name__/values',
+      ).toString(),
+    ).toBe(
+      'http://vmselect:8481/select/0/prometheus/api/v1/label/__name__/values',
+    );
+  });
+
+  it('preserves userinfo and existing query params on the connection host', () => {
+    expect(
+      joinPrometheusUpstreamUrl(
+        'http://user:pw@vmselect:8481/select/0/prometheus?extra=1',
+        '/api/v1/query',
+      ).toString(),
+    ).toBe(
+      'http://user:pw@vmselect:8481/select/0/prometheus/api/v1/query?extra=1',
+    );
+  });
+
+  it('throws on an invalid connection host, matching the proxy 400 path', () => {
+    expect(() =>
+      joinPrometheusUpstreamUrl('not-a-url', '/api/v1/query_range'),
+    ).toThrow();
   });
 });

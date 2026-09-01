@@ -193,6 +193,29 @@ export function isClientDisconnect(err: unknown): boolean {
 // Prometheus's native response shape (`{status, data}` / `{status, errorType,
 // error}`) is already what HyperDX clients expect, so we forward the status code
 // as-is — but never the content-type, which is always relabelled (see below).
+
+/**
+ * Join a Connection host with an absolute Prometheus API path.
+ *
+ * `new URL('/api/v1/query_range', 'http://host:8481/select/0/prometheus')`
+ * discards `/select/0/prometheus` because an absolute path replaces the base
+ * pathname. VictoriaMetrics cluster (and any Prometheus-compatible server
+ * mounted under a prefix) needs that prefix kept. Host userinfo, query, and
+ * hash are left untouched.
+ *
+ * @see https://github.com/hyperdxio/hyperdx/issues/3046
+ */
+export function joinPrometheusUpstreamUrl(
+  upstreamHost: string,
+  path: string,
+): URL {
+  const url = new URL(upstreamHost);
+  const basePath = url.pathname.replace(/\/$/, '');
+  const suffix = path.startsWith('/') ? path : `/${path}`;
+  url.pathname = `${basePath}${suffix}`;
+  return url;
+}
+
 async function proxyToPrometheus(
   upstreamHost: string,
   path: string,
@@ -201,7 +224,7 @@ async function proxyToPrometheus(
 ): Promise<number> {
   let url: URL;
   try {
-    url = new URL(path, upstreamHost);
+    url = joinPrometheusUpstreamUrl(upstreamHost, path);
   } catch {
     res.status(400).json({
       status: 'error',
