@@ -569,6 +569,69 @@ export type ExternalDashboardRawSqlTileConfig = z.infer<
   typeof externalDashboardRawSqlTileConfigSchema
 >;
 
+/**
+ * Routing predicate for the configType-routed config schemas below
+ * (dashboard tiles and inline alert configs): raw SQL configs carry
+ * `configType: 'sql'`, everything else is the builder dialect.
+ */
+const isRawSqlRoutedConfig = (data: unknown): boolean =>
+  data !== null &&
+  typeof data === 'object' &&
+  'configType' in data &&
+  data.configType === 'sql';
+
+/**
+ * The shared post-parse rule set for configType-routed config schemas
+ * (dashboard tiles and inline alert configs) — kept in one place so the two
+ * surfaces cannot drift:
+ * - `asRatio` requires exactly two select items.
+ * - Builder configs: metric-formula validation (expression parse +
+ *   series-ref range checks, asRatio mutual exclusion, number single-formula
+ *   cap) — shared with the chart editor's save-time rules via common-utils.
+ * - Builder number configs without formulas display their single select
+ *   item; the relaxed `.min(1).max(20)` on the number schema exists only so
+ *   formula operands fit (the editor enforces the same in
+ *   `validateChartForm`).
+ */
+const addConfigTypeRoutedIssues = (
+  data: {
+    displayType?: string;
+    configType?: string;
+    select?: unknown;
+    formulas?: { expression: string }[];
+    asRatio?: boolean;
+  },
+  ctx: z.RefinementCtx,
+  { numberSelectMessage }: { numberSelectMessage: string },
+): void => {
+  if (
+    data.asRatio &&
+    (!Array.isArray(data.select) || data.select.length !== 2)
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'asRatio can only be used with exactly two select items',
+    });
+  }
+
+  if (!('configType' in data)) {
+    validateChartConfigFormulas(data, ctx);
+
+    if (
+      data.displayType === 'number' &&
+      (data.formulas?.length ?? 0) === 0 &&
+      Array.isArray(data.select) &&
+      data.select.length !== 1
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: numberSelectMessage,
+        path: ['select'],
+      });
+    }
+  }
+};
+
 const externalDashboardTileConfigSchema = z
   .custom<
     ExternalDashboardRawSqlTileConfig | ExternalDashboardBuilderTileConfig
@@ -577,13 +640,9 @@ const externalDashboardTileConfigSchema = z
     // Route to the correct sub-schema based on configType so Zod's
     // discriminatedUnion can produce targeted field-level errors rather
     // than a generic union failure.
-    const schema =
-      data !== null &&
-      typeof data === 'object' &&
-      'configType' in data &&
-      data.configType === 'sql'
-        ? externalDashboardRawSqlTileConfigSchema
-        : externalDashboardBuilderTileConfigSchema;
+    const schema = isRawSqlRoutedConfig(data)
+      ? externalDashboardRawSqlTileConfigSchema
+      : externalDashboardBuilderTileConfigSchema;
 
     const result = schema.safeParse(data);
     if (!result.success) {
@@ -593,55 +652,18 @@ const externalDashboardTileConfigSchema = z
       return;
     }
 
-    if (
-      'asRatio' in data &&
-      data.asRatio &&
-      (!Array.isArray(data.select) || data.select.length !== 2)
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'asRatio can only be used with exactly two select items',
-      });
-    }
-
-    if (!('configType' in data)) {
-      // Metric formulas (builder tiles only): expression parse + series-ref
-      // range checks, asRatio mutual exclusion, and the number-tile
-      // single-formula cap — shared with the chart editor's save-time rules
-      // via common-utils.
-      validateChartConfigFormulas(data, ctx);
-
-      // A number tile without formulas displays its single select item; the
-      // relaxed `.min(1).max(20)` on the number schema exists only so
-      // formula operands fit (the editor enforces the same in
-      // `validateChartForm`).
-      if (
-        data.displayType === 'number' &&
-        !('formulas' in data && (data.formulas?.length ?? 0) > 0) &&
-        Array.isArray(data.select) &&
-        data.select.length !== 1
-      ) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message:
-            'Number tiles support a single select item unless formulas are used (extra items are formula operands)',
-          path: ['select'],
-        });
-      }
-    }
+    addConfigTypeRoutedIssues(data, ctx, {
+      numberSelectMessage:
+        'Number tiles support a single select item unless formulas are used (extra items are formula operands)',
+    });
   })
   .transform(data => {
     // Re-parse through the appropriate sub-schema to strip unknown fields.
     // Safe to call .parse() here — superRefine already validated the data,
     // so this is guaranteed to succeed.
-    const schema =
-      data !== null &&
-      typeof data === 'object' &&
-      'configType' in data &&
-      data.configType === 'sql'
-        ? externalDashboardRawSqlTileConfigSchema
-        : externalDashboardBuilderTileConfigSchema;
-    return schema.parse(data);
+    return isRawSqlRoutedConfig(data)
+      ? externalDashboardRawSqlTileConfigSchema.parse(data)
+      : externalDashboardBuilderTileConfigSchema.parse(data);
   });
 
 export type ExternalDashboardTileConfig = z.infer<
@@ -865,19 +887,16 @@ export type ExternalAlertChartConfig =
   | z.infer<typeof externalAlertRawSqlChartConfigSchema>;
 
 // Mirrors the route-by-configType superRefine/transform pattern of
-// externalDashboardTileConfigSchema above, so inline alert configs get the
-// same targeted field-level errors, formula validation, and unknown-field
-// stripping as dashboard tile configs.
+// externalDashboardTileConfigSchema above (same routing predicate and the
+// shared addConfigTypeRoutedIssues rule set), so inline alert configs get
+// the same targeted field-level errors, formula validation, and
+// unknown-field stripping as dashboard tile configs.
 export const externalAlertChartConfigSchema = z
   .custom<ExternalAlertChartConfig>()
   .superRefine((data, ctx) => {
-    const schema =
-      data !== null &&
-      typeof data === 'object' &&
-      'configType' in data &&
-      data.configType === 'sql'
-        ? externalAlertRawSqlChartConfigSchema
-        : externalAlertBuilderChartConfigSchema;
+    const schema = isRawSqlRoutedConfig(data)
+      ? externalAlertRawSqlChartConfigSchema
+      : externalAlertBuilderChartConfigSchema;
 
     const result = schema.safeParse(data);
     if (!result.success) {
@@ -887,52 +906,17 @@ export const externalAlertChartConfigSchema = z
       return;
     }
 
-    if (
-      'asRatio' in data &&
-      data.asRatio &&
-      (!Array.isArray(data.select) || data.select.length !== 2)
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'asRatio can only be used with exactly two select items',
-      });
-    }
-
-    if (!('configType' in data)) {
-      // Same shared metric-formula rules the tile-config refinement applies:
-      // expression parse + series-ref range checks, asRatio mutual exclusion,
-      // and the number single-formula cap.
-      validateChartConfigFormulas(data, ctx);
-
-      // A number chart without formulas displays its single select item; the
-      // relaxed `.min(1).max(20)` on the number schema exists only so formula
-      // operands fit.
-      if (
-        data.displayType === 'number' &&
-        !('formulas' in data && (data.formulas?.length ?? 0) > 0) &&
-        Array.isArray(data.select) &&
-        data.select.length !== 1
-      ) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message:
-            'Number charts support a single select item unless formulas are used (extra items are formula operands)',
-          path: ['select'],
-        });
-      }
-    }
+    addConfigTypeRoutedIssues(data, ctx, {
+      numberSelectMessage:
+        'Number charts support a single select item unless formulas are used (extra items are formula operands)',
+    });
   })
   .transform(data => {
     // Re-parse through the appropriate sub-schema to strip unknown fields.
     // Safe to call .parse() here — superRefine already validated the data.
-    const schema =
-      data !== null &&
-      typeof data === 'object' &&
-      'configType' in data &&
-      data.configType === 'sql'
-        ? externalAlertRawSqlChartConfigSchema
-        : externalAlertBuilderChartConfigSchema;
-    return schema.parse(data);
+    return isRawSqlRoutedConfig(data)
+      ? externalAlertRawSqlChartConfigSchema.parse(data)
+      : externalAlertBuilderChartConfigSchema.parse(data);
   });
 
 const zExternalInlineAlert = z.object({

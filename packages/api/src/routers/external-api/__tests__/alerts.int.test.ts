@@ -1137,6 +1137,46 @@ describe('External API Alerts', () => {
       });
     });
 
+    it('rejects formulas on a formula-incapable source kind (session)', async () => {
+      // Same gate as dashboard tiles: the editor disables "Add Formula" for
+      // session sources, so the alert API must refuse the config too.
+      const { connection, source } = await makeSource();
+      const webhook = await createTestWebhook();
+
+      const sessionSource = await Source.create({
+        kind: SourceKind.Session,
+        team: team._id,
+        from: { databaseName: 'default', tableName: 'rrweb_events' },
+        timestampValueExpression: 'Timestamp',
+        traceSourceId: source._id.toString(),
+        connection: connection._id,
+        name: 'Sessions',
+      });
+
+      const withFormulas = (sourceId: string) =>
+        makeInlineAlertInput(
+          {
+            ...makeBuilderChartConfig(sourceId),
+            select: [
+              { aggFn: 'count', where: 'level:error' },
+              { aggFn: 'count', where: '' },
+            ],
+            formulas: [{ expression: 'A / B * 100' }],
+          },
+          webhook._id.toString(),
+        );
+
+      const rejected = await authRequest('post', ALERTS_BASE_URL)
+        .send(withFormulas(sessionSource._id.toString()))
+        .expect(400);
+      expect(JSON.stringify(rejected.body)).toContain('formulas require');
+
+      // The identical config on a formula-capable source is accepted.
+      await authRequest('post', ALERTS_BASE_URL)
+        .send(withFormulas(source._id.toString()))
+        .expect(200);
+    });
+
     it('rejects asRatio without exactly two select items', async () => {
       const { source } = await makeSource();
       const webhook = await createTestWebhook();

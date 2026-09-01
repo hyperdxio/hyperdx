@@ -7,6 +7,7 @@ import {
   AlertState,
   AlertThresholdType,
 } from '@/models/alert';
+import { translateAlertDocumentToExternalAlertWithChartConfig } from '@/routers/external-api/v2/utils/alertChartConfig';
 import { translateAlertDocumentToExternalAlert } from '@/utils/externalApi';
 
 // A channel type this repo doesn't define -- see
@@ -140,9 +141,8 @@ describe('utils/externalApi', () => {
         chartConfig: internalChartConfig,
       });
 
-      const translated = translateAlertDocumentToExternalAlert(alert, {
-        includeChartConfig: true,
-      });
+      const translated =
+        translateAlertDocumentToExternalAlertWithChartConfig(alert);
 
       // seriesReturnType 'ratio' becomes asRatio only with exactly two
       // select items — this single-select config maps to false.
@@ -172,9 +172,8 @@ describe('utils/externalApi', () => {
         },
       });
 
-      const translated = translateAlertDocumentToExternalAlert(alert, {
-        includeChartConfig: true,
-      });
+      const translated =
+        translateAlertDocumentToExternalAlertWithChartConfig(alert);
 
       expect(translated.chartConfig).toMatchObject({
         configType: 'sql',
@@ -191,9 +190,8 @@ describe('utils/externalApi', () => {
         chartConfig: internalChartConfig,
       });
 
-      const translated = translateAlertDocumentToExternalAlert(alert, {
-        includeChartConfig: true,
-      });
+      const translated =
+        translateAlertDocumentToExternalAlertWithChartConfig(alert);
 
       expect(translated.chartConfig).toBeUndefined();
     });
@@ -206,9 +204,8 @@ describe('utils/externalApi', () => {
         chartConfig: null,
       });
 
-      const translated = translateAlertDocumentToExternalAlert(alert, {
-        includeChartConfig: true,
-      });
+      const translated =
+        translateAlertDocumentToExternalAlertWithChartConfig(alert);
 
       expect(translated.chartConfig).toBeUndefined();
       expect('chartConfig' in translated).toBe(false);
@@ -224,9 +221,8 @@ describe('utils/externalApi', () => {
         },
       });
 
-      const translated = translateAlertDocumentToExternalAlert(alert, {
-        includeChartConfig: true,
-      });
+      const translated =
+        translateAlertDocumentToExternalAlertWithChartConfig(alert);
 
       expect(translated.chartConfig).toBeUndefined();
     });

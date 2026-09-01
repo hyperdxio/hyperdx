@@ -12,7 +12,10 @@ import {
   validateAlertInput,
 } from '@/controllers/alerts';
 import { AlertSource } from '@/models/alert';
-import { convertExternalAlertChartConfigToInternal } from '@/routers/external-api/v2/utils/alertChartConfig';
+import {
+  convertExternalAlertChartConfigToInternal,
+  translateAlertDocumentToExternalAlertWithChartConfig,
+} from '@/routers/external-api/v2/utils/alertChartConfig';
 import {
   processRequestWithEnhancedErrors as processRequest,
   validateRequestWithEnhancedErrors as validateRequest,
@@ -480,9 +483,7 @@ router.get(
       }
 
       return res.json({
-        data: translateAlertDocumentToExternalAlert(alert, {
-          includeChartConfig: true,
-        }),
+        data: translateAlertDocumentToExternalAlertWithChartConfig(alert),
       });
     } catch (e) {
       next(e);
@@ -700,9 +701,9 @@ router.post(
       const createdAlert = await createAlert(teamId, alertInput, userId);
 
       return res.json({
-        data: translateAlertDocumentToExternalAlert(createdAlert, {
-          includeChartConfig: true,
-        }),
+        data: translateAlertDocumentToExternalAlertWithChartConfig(
+          createdAlert,
+        ),
       });
     } catch (e) {
       next(e);
@@ -806,9 +807,7 @@ router.put(
       }
 
       res.json({
-        data: translateAlertDocumentToExternalAlert(alert, {
-          includeChartConfig: true,
-        }),
+        data: translateAlertDocumentToExternalAlertWithChartConfig(alert),
       });
     } catch (e) {
       next(e);

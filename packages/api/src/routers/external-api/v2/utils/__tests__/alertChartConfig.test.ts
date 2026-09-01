@@ -265,6 +265,20 @@ describe('convertAlertChartConfigToExternal', () => {
     ).toBeUndefined();
   });
 
+  it('refuses an empty select instead of throwing on a number config', () => {
+    // A persisted number config with select: [] used to TypeError in the
+    // tile converter (select[0] is undefined) and surface as a 500 from
+    // GET /api/v2/alerts/:id.
+    expect(
+      convertAlertChartConfigToExternal(
+        baseInternal({ displayType: DisplayType.Number, select: [] }),
+      ),
+    ).toBeUndefined();
+    expect(
+      convertAlertChartConfigToExternal(baseInternal({ select: [] })),
+    ).toBeUndefined();
+  });
+
   it('refuses more than 20 select items', () => {
     expect(
       convertAlertChartConfigToExternal(

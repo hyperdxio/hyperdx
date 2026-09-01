@@ -11,7 +11,7 @@ import { mcpUserError, validateObjectId } from '@/mcp/utils/errors';
 import Alert from '@/models/alert';
 import type { IDashboard } from '@/models/dashboard';
 import type { ISavedSearch } from '@/models/savedSearch';
-import { translateAlertDocumentToExternalAlert } from '@/utils/externalApi';
+import { translateAlertDocumentToExternalAlertWithChartConfig } from '@/routers/external-api/v2/utils/alertChartConfig';
 
 function deriveAlertName(alert: {
   name?: string | null;
@@ -124,9 +124,8 @@ export function registerGetAlert({
         return mcpUserError('Alert not found');
       }
 
-      const external = translateAlertDocumentToExternalAlert(alert, {
-        includeChartConfig: true,
-      });
+      const external =
+        translateAlertDocumentToExternalAlertWithChartConfig(alert);
 
       // Populate refs so deriveAlertName can fall back to the
       // saved search / dashboard name when the alert has no explicit name.

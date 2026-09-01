@@ -4,6 +4,11 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import { omit } from 'lodash';
 
+import { AlertDocument, AlertSource, IAlert } from '@/models/alert';
+import {
+  ExternalAlert,
+  translateAlertDocumentToExternalAlert,
+} from '@/utils/externalApi';
 import logger from '@/utils/logger';
 import {
   externalAlertBuilderChartConfigSchema,
@@ -319,4 +324,25 @@ export function convertAlertChartConfigToExternal(
       );
       return undefined;
   }
+}
+
+/**
+ * `translateAlertDocumentToExternalAlert` plus the inline alert's chartConfig
+ * (external dialect) when one is faithfully representable. Single-alert
+ * responses (GET by id, POST, PUT, MCP detail) use this; list responses use
+ * the bare translator so they stay lean. Lives here (not utils/externalApi)
+ * to keep the utils -> router-utils import direction one-way.
+ */
+export function translateAlertDocumentToExternalAlertWithChartConfig(
+  alert: AlertDocument,
+): ExternalAlert {
+  const external = translateAlertDocumentToExternalAlert(alert);
+  const alertObj: Pick<IAlert, 'source' | 'chartConfig'> = alert.toJSON
+    ? alert.toJSON()
+    : alert;
+  const chartConfig =
+    alertObj.source === AlertSource.INLINE && alertObj.chartConfig != null
+      ? convertAlertChartConfigToExternal(alertObj.chartConfig)
+      : undefined;
+  return { ...external, ...(chartConfig && { chartConfig }) };
 }

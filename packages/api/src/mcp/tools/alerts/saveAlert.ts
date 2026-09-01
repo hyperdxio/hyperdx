@@ -16,9 +16,11 @@ import {
   validateObjectId,
 } from '@/mcp/utils/errors';
 import { AlertSource } from '@/models/alert';
-import { convertExternalAlertChartConfigToInternal } from '@/routers/external-api/v2/utils/alertChartConfig';
+import {
+  convertExternalAlertChartConfigToInternal,
+  translateAlertDocumentToExternalAlertWithChartConfig,
+} from '@/routers/external-api/v2/utils/alertChartConfig';
 import { BaseError } from '@/utils/errors';
-import { translateAlertDocumentToExternalAlert } from '@/utils/externalApi';
 import { externalAlertChartConfigSchema } from '@/utils/zod';
 
 import { mcpSaveAlertSchema, validateSaveAlertInput } from './schemas';
@@ -153,9 +155,9 @@ export function registerSaveAlert({
               type: 'text' as const,
               text: JSON.stringify(
                 {
-                  ...translateAlertDocumentToExternalAlert(updated, {
-                    includeChartConfig: true,
-                  }),
+                  ...translateAlertDocumentToExternalAlertWithChartConfig(
+                    updated,
+                  ),
                   ...(frontendUrl ? { url: `${frontendUrl}/alerts` } : {}),
                 },
                 null,
@@ -178,9 +180,9 @@ export function registerSaveAlert({
             type: 'text' as const,
             text: JSON.stringify(
               {
-                ...translateAlertDocumentToExternalAlert(created, {
-                  includeChartConfig: true,
-                }),
+                ...translateAlertDocumentToExternalAlertWithChartConfig(
+                  created,
+                ),
                 ...(frontendUrl ? { url: `${frontendUrl}/alerts` } : {}),
               },
               null,
