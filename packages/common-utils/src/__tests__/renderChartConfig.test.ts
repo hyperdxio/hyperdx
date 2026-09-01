@@ -4379,6 +4379,85 @@ describe('renderChartConfig', () => {
           );
         });
 
+        it('sorts an all-histogram chart positionally on the packed group array', async () => {
+          // With no scalar branch there are no individual group columns
+          // anywhere — every branch packs the group values into the `group`
+          // Array — so matched sort items address it by element instead of
+          // through companion columns.
+          const histSelect = (metricName: string, level: number) => ({
+            aggFn: 'quantile' as const,
+            level,
+            aggCondition: '',
+            aggConditionLanguage: 'sql' as const,
+            valueExpression: 'Value',
+            metricName,
+            metricType: MetricsDataType.Histogram,
+          });
+          const generatedSql = await renderChartConfig(
+            {
+              ...baseMultiSeriesConfig,
+              displayType: DisplayType.Table,
+              granularity: undefined,
+              select: [
+                histSelect('metric.latency', 0.5),
+                histSelect('metric.latency', 0.99),
+              ],
+              groupBy: EXPR_GROUP_BY,
+              orderBy: EXPR_GROUP_BY,
+              limit: { limit: 200 },
+            },
+            mockMetadata,
+            querySettings,
+          );
+          const sql = parameterizedQueryToSql(generatedSql);
+          expect(sql).toMatchSnapshot();
+
+          expect(sql).toContain('ORDER BY `group`[1],`group`[2] LIMIT 200');
+          expect(sql).not.toContain('__hdx_sort_');
+          // The raw expressions never leak past the outer GROUP BY ALL.
+          expect(sql.slice(sql.lastIndexOf('GROUP BY ALL'))).not.toContain(
+            'ResourceAttributes',
+          );
+        });
+
+        it('sorts an all-histogram chart by a plain group column through the packed array', async () => {
+          // Even a bare column group-by has no named passthrough column when
+          // every branch is a histogram — only the packed `group` Array.
+          const generatedSql = await renderChartConfig(
+            {
+              ...baseMultiSeriesConfig,
+              displayType: DisplayType.Table,
+              granularity: undefined,
+              select: [
+                {
+                  aggFn: 'quantile',
+                  level: 0.5,
+                  aggCondition: '',
+                  aggConditionLanguage: 'sql',
+                  valueExpression: 'Value',
+                  metricName: 'metric.latency',
+                  metricType: MetricsDataType.Histogram,
+                },
+                {
+                  aggFn: 'count',
+                  aggCondition: '',
+                  aggConditionLanguage: 'sql',
+                  valueExpression: '',
+                  metricName: 'metric.latency',
+                  metricType: MetricsDataType.Histogram,
+                },
+              ],
+              groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
+              orderBy: [{ valueExpression: 'ServiceName', ordering: 'DESC' }],
+            },
+            mockMetadata,
+            querySettings,
+          );
+          const sql = parameterizedQueryToSql(generatedSql);
+          expect(sql).toContain('ORDER BY `group`[1] DESC');
+          expect(sql).not.toContain('__hdx_sort_');
+        });
+
         it('rewrites the sort for a share_of_total ratio without HAVING', async () => {
           // Without a HAVING there is no window wrapper — the ORDER BY sits
           // on the GROUP BY ALL statement, where the companion rewrite is

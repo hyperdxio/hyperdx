@@ -1303,6 +1303,14 @@ describe('queryChartConfig Integration Tests', () => {
           // bucket 1 interpolates to 5 and the all-zero bucket 0 emits no row.
           histRow('grpmix.latency', insertTs(0), 'svc-a', [0, 0, 0], [10, 30]),
           histRow('grpmix.latency', insertTs(1), 'svc-a', [10, 0, 0], [10, 30]),
+          // All-histogram ordering fixture: three services, deltas landing in
+          // bucket 1 (dedicated metric so grpmix assertions stay untouched).
+          histRow('grpsort.hist', insertTs(0), 'svc-a', [0, 0, 0], [10, 30]),
+          histRow('grpsort.hist', insertTs(1), 'svc-a', [10, 0, 0], [10, 30]),
+          histRow('grpsort.hist', insertTs(0), 'svc-b', [0, 0, 0], [10, 30]),
+          histRow('grpsort.hist', insertTs(1), 'svc-b', [0, 10, 0], [10, 30]),
+          histRow('grpsort.hist', insertTs(0), 'svc-c', [0, 0, 0], [10, 30]),
+          histRow('grpsort.hist', insertTs(1), 'svc-c', [10, 10, 0], [10, 30]),
         ],
         format: 'JSONEachRow',
       });
@@ -2290,6 +2298,38 @@ describe('queryChartConfig Integration Tests', () => {
         // denominator (5 + 12 + 8 = 25).
         const svcB = (result.data as Row[])[2];
         expect(Number(col(svcB, RATIO))).toBeCloseTo(6 / 25, 5);
+      });
+
+      it('sorts an all-histogram chart on a raw expression group-by via the packed group array', async () => {
+        // With no scalar branch there are no individual group columns —
+        // every branch packs the group values into the `group` Array, and
+        // matched sort items address it positionally (`group`[k+1]).
+        const result = await runConfig(
+          baseConfig({
+            displayType: DisplayType.Table,
+            granularity: undefined,
+            select: [
+              histQuantileSelect('grpsort.hist', 0.5),
+              histCountSelect('grpsort.hist'),
+            ],
+            groupBy: "ResourceAttributes['service.name']",
+            orderBy: "ResourceAttributes['service.name'] DESC",
+          }),
+        );
+
+        const data = result.data as Row[];
+        // The rewritten sort orders the packed group values in reverse
+        // service order.
+        expect(data.map(r => col(r, 'group'))).toEqual([
+          ['svc-c'],
+          ['svc-b'],
+          ['svc-a'],
+        ]);
+        // The joined rows stay intact: svc-b's 10 observations are all in
+        // the (10, 30] bucket, so p50 interpolates to 20.
+        const svcB = data[1];
+        expect(Number(col(svcB, 'quantile(grpsort.hist)'))).toBeCloseTo(20, 5);
+        expect(Number(col(svcB, 'count(grpsort.hist)'))).toBe(10);
       });
 
       it('sorts mixed gauge + histogram branches on a raw expression group-by (NULL-padded)', async () => {

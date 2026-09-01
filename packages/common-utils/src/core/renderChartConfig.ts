@@ -2461,7 +2461,10 @@ function parseSortSpecificationItems(
  * bucket passthrough columns — not the source table. Sort items that
  * reference a group-by *expression* verbatim (the chart editor and
  * convertToTableChartConfig both emit the raw group-by text) would fail with
- * "Unknown identifier" there, so they are rewritten (HDX-5202):
+ * "Unknown identifier" there, so they are rewritten (HDX-5202).
+ *
+ * When at least one branch is scalar (gauge/sum), the passthrough columns
+ * carry the group values individually:
  * - a group-by entry with a user alias sorts by that (quoted) alias;
  * - a plain column reference already resolves by name — left untouched;
  * - an expression group-by gets a companion `__hdx_sort_<n>` column,
@@ -2470,6 +2473,15 @@ function parseSortSpecificationItems(
  *   projection, so after GROUP BY ALL it is only reachable through an
  *   aggregate, and any() is deterministic because the companion duplicates
  *   a grouping key.
+ *
+ * When EVERY branch is histogram-class (`groupsArePacked`), no individual
+ * group columns exist at all — the group values are packed positionally
+ * into the single GROUP_ALIAS Array column — so every matched entry (plain
+ * column, aliased, or expression: none resolve by name in this scope)
+ * sorts as `group`[k+1]. GROUP_ALIAS is a grouping key, so the element
+ * access is valid after GROUP BY ALL without an aggregate, and no
+ * companion columns are involved.
+ *
  * Anything else (value-column aliases, quoted output names, unparseable
  * items) is passed through unchanged.
  *
@@ -2479,25 +2491,35 @@ function parseSortSpecificationItems(
 function renderMultiSeriesOrderBy(
   sortSpecificationList: SortSpecificationList,
   groupEntries: { expr: string; alias?: string }[],
+  { groupsArePacked }: { groupsArePacked: boolean },
 ): { orderBy: ChSql[]; sortCompanionExprs: string[] } | null {
   const sortCompanionExprs: string[] = [];
   let rewroteAny = false;
   const orderBy = parseSortSpecificationItems(sortSpecificationList).map(
     item => {
-      const matched =
+      const matchedIdx =
         item.expr != null
-          ? groupEntries.find(
+          ? groupEntries.findIndex(
               g => normalizeExprText(g.expr) === normalizeExprText(item.expr!),
             )
-          : undefined;
-      if (
-        !matched ||
-        (!matched.alias && isPlainColumnReference(matched.expr))
-      ) {
+          : -1;
+      const matched = matchedIdx >= 0 ? groupEntries[matchedIdx] : undefined;
+      if (!matched) {
+        return chSql`${{ UNSAFE_RAW_SQL: item.raw }}`;
+      }
+      const direction = item.ordering ? ` ${item.ordering}` : '';
+      if (groupsArePacked) {
+        // Arrays are 1-indexed in ClickHouse; entry order matches the
+        // packing order in translateHistogram ([...groupBy] AS group).
+        rewroteAny = true;
+        return chSql`${{
+          UNSAFE_RAW_SQL: `\`${GROUP_ALIAS}\`[${matchedIdx + 1}]${direction}`,
+        }}`;
+      }
+      if (!matched.alias && isPlainColumnReference(matched.expr)) {
         return chSql`${{ UNSAFE_RAW_SQL: item.raw }}`;
       }
       rewroteAny = true;
-      const direction = item.ordering ? ` ${item.ordering}` : '';
       if (matched.alias) {
         return chSql`${{
           UNSAFE_RAW_SQL: `${quotedColumnName(matched.alias)}${direction}`,
@@ -2574,7 +2596,9 @@ function renderMultiSeriesOrderBy(
  * - an ORDER BY item that repeats a group-by *expression* verbatim (the
  *   table default is orderBy = groupBy text) sorts via an internal
  *   `__hdx_sort_<n>` companion column so it resolves in the outer scope
- *   without renaming the passthrough columns (see renderMultiSeriesOrderBy).
+ *   without renaming the passthrough columns; when every branch is
+ *   histogram-class the matched item sorts positionally on the packed
+ *   GROUP_ALIAS Array instead (see renderMultiSeriesOrderBy).
  */
 async function renderMultiSeriesMetricChartConfig(
   rawChartConfig: BuilderChartConfigWithOptDateRangeEx,
@@ -2675,13 +2699,23 @@ async function renderMultiSeriesMetricChartConfig(
   const ordersOnHavingWrapper =
     usesWindowProjection && isNonEmptyWhereExpr(chartConfig.having);
 
+  // With no scalar branch there are no individual group columns anywhere:
+  // every branch packs the group values into the GROUP_ALIAS Array, and
+  // matched sort items address it positionally instead of via companions.
+  const allGroupsPacked =
+    includeGroupBy &&
+    scalarGroupCount > 0 &&
+    branchIsHistogram.every(isHistogram => isHistogram);
+
   // Rewrite ORDER BY items that reference a group-by expression verbatim —
   // convertToTableChartConfig defaults a table's orderBy to the raw groupBy
   // text, and users copy the same text into the editor's ORDER BY input.
   // Those expressions can't be evaluated in the outer scope; see
   // renderMultiSeriesOrderBy (HDX-5202).
   const rewrittenSort =
-    chartConfig.orderBy != null && hasScalarGroups && !ordersOnHavingWrapper
+    chartConfig.orderBy != null &&
+    (hasScalarGroups || allGroupsPacked) &&
+    !ordersOnHavingWrapper
       ? renderMultiSeriesOrderBy(
           chartConfig.orderBy,
           typeof chartConfig.groupBy === 'string'
@@ -2692,6 +2726,7 @@ async function renderMultiSeriesMetricChartConfig(
                 expr: entry.valueExpression,
                 alias: entry.alias?.trim() ? entry.alias : undefined,
               })),
+          { groupsArePacked: allGroupsPacked },
         )
       : null;
   const sortCompanionExprs = rewrittenSort?.sortCompanionExprs ?? [];
