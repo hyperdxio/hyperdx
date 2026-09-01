@@ -12,11 +12,13 @@ import {
   Tooltip,
   UnstyledButton,
 } from '@mantine/core';
-import { useDisclosure } from '@mantine/hooks';
+import { useClipboard, useDisclosure } from '@mantine/hooks';
 import {
   IconBook,
   IconBrandDiscord,
+  IconBug,
   IconBulb,
+  IconCheck,
   IconChevronDown,
   IconChevronRight,
   IconChevronUp,
@@ -181,6 +183,26 @@ export const AppNavUserMenu = ({
   );
 };
 
+const AppNavVersionItem = ({ version }: { version?: string }) => {
+  const clipboard = useClipboard({ timeout: 1500 });
+
+  return (
+    <Menu.Item
+      data-testid="copy-debug-info-menu-item"
+      closeMenuOnClick={false}
+      leftSection={
+        clipboard.copied ? <IconCheck size={16} /> : <IconBug size={16} />
+      }
+      onClick={() => {
+        // window.hdx is installed in _app.tsx and present in every environment.
+        clipboard.copy(window.hdx?.report() ?? `frontend: ${version ?? 'dev'}`);
+      }}
+    >
+      {clipboard.copied ? 'Copied debug info' : 'Copy debug info'}
+    </Menu.Item>
+  );
+};
+
 export const AppNavHelpMenu = ({ version }: { version?: string }) => {
   const { isCollapsed } = React.use(AppNavContext);
   const [
@@ -279,6 +301,10 @@ export const AppNavHelpMenu = ({ version }: { version?: string }) => {
               openWhatsNewDrawer();
             }}
           />
+
+          <Menu.Divider />
+
+          <AppNavVersionItem version={version} />
         </Menu.Dropdown>
       </Menu>
       <KeyboardShortcutsModal
