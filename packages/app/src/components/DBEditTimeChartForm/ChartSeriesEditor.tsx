@@ -469,6 +469,7 @@ export function ChartSeriesEditor({
                       if (eagerSubmit) onSubmit();
                     }}
                     metricSource={tableSource}
+                    dateRange={dateRange}
                     data-testid="metric-name-selector"
                     error={errors?.metricName?.message}
                     onFocus={() => clearErrors(`${namePrefix}metricName`)}

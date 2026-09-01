@@ -1753,12 +1753,26 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *                 $ref: '#/components/schemas/DashboardChartSeries'
  *
  *     FilterInput:
+ *       description: |
+ *         A drop-down filter on a dashboard. Depending on type, filters can either broadcast
+ *         selected value(s) to every tile (isBroadcastEnabled), expose selected
+ *         values as a variable (isVariableEnabled) or both. Typically a filter should
+ *         do just one of these things.
+ *       oneOf:
+ *         - $ref: '#/components/schemas/QueryExpressionFilterInput'
+ *         - $ref: '#/components/schemas/StaticListFilterInput'
+ *       discriminator:
+ *         propertyName: type
+ *         mapping:
+ *           QUERY_EXPRESSION: '#/components/schemas/QueryExpressionFilterInput'
+ *           STATIC_LIST: '#/components/schemas/StaticListFilterInput'
+ *
+ *     QueryExpressionFilterInput:
  *       type: object
  *       description: |
- *         A drop-down filter on a dashboard. Every filter can either broadcast its
- *         selected value(s) to every tile (isBroadcastEnabled), expose its selected
- *         value as a variable (isVariableEnabled) or both. Typically a filter should
- *         do just one of these things.
+ *         A filter whose dropdown values are queried from ClickHouse: "expression"
+ *         names the column and "sourceId" the source to read them from. Its
+ *         selection can be broadcast into matching tiles' WHERE clauses.
  *       required:
  *         - type
  *         - name
@@ -1768,7 +1782,7 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *         type:
  *           type: string
  *           enum: [QUERY_EXPRESSION]
- *           description: Filter type. Must be "QUERY_EXPRESSION".
+ *           description: Filter type discriminator. Must be "QUERY_EXPRESSION".
  *           example: "QUERY_EXPRESSION"
  *         name:
  *           type: string
@@ -1828,6 +1842,74 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *             or using the (preferred) `$__filter($<variableName>)` and
  *             `$__conditionalAll(<condition>, $<variableName>)` macros.
  *           default: false
+ *           example: true
+ *         variableName:
+ *           type: string
+ *           maxLength: 64
+ *           pattern: '^[a-zA-Z][a-zA-Z0-9_]*$'
+ *           description: |
+ *             Token tiles reference this filter's selected value by, as
+ *             `$variableName`. Must start with a letter and may contain only
+ *             letters, numbers, and underscores. Defaults to the display name with
+ *             whitespace replaced by underscores and remaining illegal characters
+ *             removed, so a variable-enabled filter whose name derives nothing
+ *             usable must send this field explicitly. Variable names must be unique
+ *             across a dashboard's variable-enabled filters. Names the variable
+ *             only, so the field is rejected when isVariableEnabled is not true, and
+ *             is omitted from responses for such a filter.
+ *           example: "environment"
+ *
+ *     StaticListFilterInput:
+ *       type: object
+ *       description: |
+ *         A filter whose dropdown offers a static custom "options" list. It carries no
+ *         expression, so it cannot be broadcast, and supports only variable mode.
+ *       required:
+ *         - type
+ *         - name
+ *         - options
+ *       properties:
+ *         type:
+ *           type: string
+ *           enum: [STATIC_LIST]
+ *           description: Discriminator. Must be "STATIC_LIST".
+ *           example: "STATIC_LIST"
+ *         name:
+ *           type: string
+ *           minLength: 1
+ *           description: Display name for the dashboard filter key
+ *           example: "Environment"
+ *         options:
+ *           type: array
+ *           minItems: 1
+ *           maxItems: 1000
+ *           items:
+ *             type: string
+ *             minLength: 1
+ *             maxLength: 10000
+ *           description: |
+ *             The values this filter's dropdown offers. Must be non-empty and
+ *             free of duplicates.
+ *           example: ["prod", "staging", "dev"]
+ *         isBroadcastEnabled:
+ *           type: boolean
+ *           enum: [false]
+ *           default: false
+ *           description: |
+ *             Must be false — there is no expression to broadcast. Omit it and it
+ *             is false.
+ *           example: false
+ *         isVariableEnabled:
+ *           type: boolean
+ *           enum: [true]
+ *           default: true
+ *           description: |
+ *             Must be true if provided, and is true when omitted. Tiles reference
+ *             the selection as `$variableName`, or with the `$__filter(<expression>, $<variableName>)`
+ *             and `$__conditionalAll(<condition>, $<variableName>)` macros. The
+ *             one-argument `$__filter($<variableName>)` form renders the filter's
+ *             own expression, which this kind of filter does not have, so it
+ *             reports that the expression must be passed explicitly.
  *           example: true
  *         variableName:
  *           type: string
@@ -2444,6 +2526,12 @@ router.post('/validate', async (req, res, next) => {
  *                     name: "Service"
  *                     expression: "service_name"
  *                     sourceId: "65f5e4a3b9e77c001a111111"
+ *                   - type: "STATIC_LIST"
+ *                     name: "Environment"
+ *                     options: ["prod", "staging", "dev"]
+ *                     isBroadcastEnabled: false
+ *                     isVariableEnabled: true
+ *                     variableName: "env"
  *     responses:
  *       '200':
  *         description: Successfully created dashboard

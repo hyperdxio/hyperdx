@@ -137,6 +137,37 @@ export class DashboardImportPage {
     }
   }
 
+  /**
+   * Clear a mapping row's selection by re-clicking the option that is already
+   * selected (Mantine's Select deselects on a second click).
+   */
+  async clearMapping(
+    inputName: string,
+    mappingType: MappingType,
+    selectedOptionName: string,
+  ) {
+    await this.getMappingRow(inputName, mappingType)
+      .getByPlaceholder('Select a source')
+      .click();
+    await this.page
+      .getByRole('option', { name: selectedOptionName, exact: true })
+      .click();
+  }
+
+  /**
+   * The validation error rendered on a mapping row whose mapping is required
+   * but left unpicked. The exact wording is asserted in the unit tests; here
+   * the row it belongs to is what matters.
+   */
+  getMappingRowError(
+    inputName: string,
+    mappingType: MappingType = 'Data Source',
+  ) {
+    return this.getMappingRow(inputName, mappingType).getByText(
+      /^Select a (?:source|connection) for this (?:tile|filter)$/,
+    );
+  }
+
   getImportSuccessNotification() {
     return this.page.getByText('Import Successful!');
   }

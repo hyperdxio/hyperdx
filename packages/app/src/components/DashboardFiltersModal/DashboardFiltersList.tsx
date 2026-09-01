@@ -1,7 +1,8 @@
 import {
+  getFilterBroadcastTarget,
   getFilterVariableName,
-  isFilterBroadcastEnabled,
   isFilterVariableEnabled,
+  isQueryExpressionFilter,
 } from '@hyperdx/common-utils/dist/filters';
 import { DashboardFilter } from '@hyperdx/common-utils/dist/types';
 import {
@@ -33,6 +34,35 @@ interface DashboardFiltersListProps {
   onAddNew: () => void;
 }
 
+function getValuesSourceName(
+  filter: DashboardFilter,
+  sources?: { id: string; name: string }[],
+) {
+  if (isQueryExpressionFilter(filter)) {
+    return sources?.find(s => s.id === filter?.source)?.name;
+  }
+
+  return 'Custom values';
+}
+
+function getBroadcastTargetDisplay(
+  filter: DashboardFilter,
+  sources?: { id: string; name: string }[],
+) {
+  const broadcastTarget = getFilterBroadcastTarget(filter);
+  if (!broadcastTarget) return undefined;
+
+  if (!broadcastTarget?.appliesToSourceIds?.length) {
+    return 'All sources';
+  }
+
+  const appliedSourceNames = broadcastTarget.appliesToSourceIds
+    .map(id => sources?.find(s => s.id === id)?.name)
+    .filter((name): name is string => !!name);
+
+  return appliedSourceNames.join(', ');
+}
+
 export const DashboardFiltersList = ({
   filters,
   isLoading,
@@ -59,17 +89,9 @@ export const DashboardFiltersList = ({
         data-testid="dashboard-filters-list"
       >
         {filters.map(filter => {
-          const queriedSourceName = sources?.find(
-            s => s.id === filter.source,
-          )?.name;
-          const appliedSourceNames = filter.appliesToSourceIds?.length
-            ? filter.appliesToSourceIds
-                .map(id => sources?.find(s => s.id === id)?.name)
-                .filter((name): name is string => !!name)
-            : undefined;
-          const appliedDisplay = appliedSourceNames
-            ? appliedSourceNames.join(', ')
-            : 'All sources';
+          const valuesSourceName = getValuesSourceName(filter, sources);
+          const broadcastTarget = getBroadcastTargetDisplay(filter, sources);
+
           const variableName =
             showVariableOptions && isFilterVariableEnabled(filter)
               ? getFilterVariableName(filter)
@@ -79,13 +101,9 @@ export const DashboardFiltersList = ({
               key={filter.id}
               name={filter.name}
               nameSuffix={variableName ? ` ($${variableName})` : undefined}
-              queriedFrom={queriedSourceName ?? ''}
-              queriedFromTooltip="Source the dropdown values are queried from"
-              appliedTo={
-                !hideAppliesTo && isFilterBroadcastEnabled(filter)
-                  ? appliedDisplay
-                  : undefined
-              }
+              queriedFrom={valuesSourceName ?? ''}
+              queriedFromTooltip="Source of the available filter values"
+              appliedTo={!hideAppliesTo ? broadcastTarget : undefined}
               actions={
                 <>
                   <UnstyledButton

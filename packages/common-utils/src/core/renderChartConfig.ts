@@ -156,6 +156,15 @@ export const setChartSelectsAlias = (
 // be reproduced node-side (see renderMultiSeriesMetricChartConfig).
 const MULTI_SERIES_VALUE_ALIAS = '__hdx_value';
 const MULTI_SERIES_IDX_ALIAS = '__hdx_series_idx';
+// Prefix for internal sort-key companion columns. When the user's ORDER BY
+// references a group-by *expression* (e.g. ResourceAttributes['service.name']),
+// the outer composed query can't evaluate it — the source columns don't exist
+// there and the passthrough column's ClickHouse-derived name is unknowable
+// node-side. Each such expression is instead projected once more in every
+// scalar branch under `__hdx_sort_<n>`, excluded from the output via
+// * EXCEPT, and referenced from the outer ORDER BY through
+// any(`__hdx_sort_<n>`) (see renderMultiSeriesOrderBy).
+const MULTI_SERIES_SORT_ALIAS_PREFIX = '__hdx_sort_';
 
 /**
  * Render a user-facing output column name as a ClickHouse double-quoted
@@ -2395,6 +2404,139 @@ export async function renderRawSqlChartConfig(
   };
 }
 
+/** Collapse whitespace so trivially reformatted expressions still match. */
+const normalizeExprText = (expr: string) => expr.trim().replace(/\s+/g, ' ');
+
+/**
+ * A bare column reference (optionally backtick-quoted). Such a group-by
+ * passes through the composed query under its own name, so an ORDER BY
+ * referencing it resolves in the outer scope without any rewriting.
+ */
+const isPlainColumnReference = (expr: string) =>
+  /^[A-Za-z_][A-Za-z0-9_]*$/.test(expr) || /^`[^`]+`$/.test(expr);
+
+type ParsedSortItem = {
+  /** The item's original SQL text, rendered verbatim when left untouched. */
+  raw: string;
+  /** The bare sort expression when the item parses as `<expr> [ASC|DESC]`. */
+  expr?: string;
+  ordering?: 'ASC' | 'DESC';
+};
+
+/**
+ * Split a SortSpecificationList into per-item expression/direction pairs.
+ * String items that don't parse as a plain `<expr> [ASC|DESC]` (e.g. with a
+ * NULLS FIRST suffix) keep only `raw` and are passed through untouched.
+ */
+function parseSortSpecificationItems(
+  sortSpecificationList: SortSpecificationList,
+): ParsedSortItem[] {
+  if (typeof sortSpecificationList === 'string') {
+    return splitAndTrimWithBracket(sortSpecificationList).map(piece => {
+      const match = piece.match(/^([\s\S]*?)\s+(ASC|DESC)$/i);
+      if (match) {
+        return {
+          raw: piece,
+          expr: match[1].trim(),
+          ordering: match[2].toUpperCase() === 'DESC' ? 'DESC' : 'ASC',
+        };
+      }
+      // No explicit direction (ClickHouse defaults to ASC). A trailing
+      // modifier like NULLS FIRST lands in `expr` too, where it can't match
+      // a group-by expression — so the item safely falls through untouched.
+      return { raw: piece, expr: piece };
+    });
+  }
+  return sortSpecificationList.map(item => ({
+    raw: `${item.valueExpression} ${item.ordering === 'DESC' ? 'DESC' : 'ASC'}`,
+    expr: item.valueExpression,
+    ordering: item.ordering === 'DESC' ? 'DESC' : 'ASC',
+  }));
+}
+
+/**
+ * Resolve the user's ORDER BY against the composed multi-series outer scope.
+ *
+ * The outer statement only sees the pivoted value columns and the group /
+ * bucket passthrough columns — not the source table. Sort items that
+ * reference a group-by *expression* verbatim (the chart editor and
+ * convertToTableChartConfig both emit the raw group-by text) would fail with
+ * "Unknown identifier" there, so they are rewritten (HDX-5202).
+ *
+ * When at least one branch is scalar (gauge/sum), the passthrough columns
+ * carry the group values individually:
+ * - a group-by entry with a user alias sorts by that (quoted) alias;
+ * - a plain column reference already resolves by name — left untouched;
+ * - an expression group-by gets a companion `__hdx_sort_<n>` column,
+ *   projected by every scalar branch and referenced through
+ *   any(`__hdx_sort_<n>`) — the companion is excluded from the outer
+ *   projection, so after GROUP BY ALL it is only reachable through an
+ *   aggregate, and any() is deterministic because the companion duplicates
+ *   a grouping key.
+ *
+ * When EVERY branch is histogram-class (`groupsArePacked`), no individual
+ * group columns exist at all — the group values are packed positionally
+ * into the single GROUP_ALIAS Array column — so every matched entry (plain
+ * column, aliased, or expression: none resolve by name in this scope)
+ * sorts as `group`[k+1]. GROUP_ALIAS is a grouping key, so the element
+ * access is valid after GROUP BY ALL without an aggregate, and no
+ * companion columns are involved.
+ *
+ * Anything else (value-column aliases, quoted output names, unparseable
+ * items) is passed through unchanged.
+ *
+ * Returns null when nothing needs rewriting so the caller can keep the
+ * legacy rendering path (and its exact SQL text) for untouched configs.
+ */
+function renderMultiSeriesOrderBy(
+  sortSpecificationList: SortSpecificationList,
+  groupEntries: { expr: string; alias?: string }[],
+  { groupsArePacked }: { groupsArePacked: boolean },
+): { orderBy: ChSql[]; sortCompanionExprs: string[] } | null {
+  const sortCompanionExprs: string[] = [];
+  let rewroteAny = false;
+  const orderBy = parseSortSpecificationItems(sortSpecificationList).map(
+    item => {
+      const matched =
+        item.expr != null
+          ? groupEntries.find(
+              g => normalizeExprText(g.expr) === normalizeExprText(item.expr!),
+            )
+          : undefined;
+      if (!matched) {
+        return chSql`${{ UNSAFE_RAW_SQL: item.raw }}`;
+      }
+      const direction = item.ordering ? ` ${item.ordering}` : '';
+      if (groupsArePacked) {
+        // Arrays are 1-indexed in ClickHouse; entry order matches the
+        // packing order in translateHistogram ([...groupBy] AS group).
+        rewroteAny = true;
+        return chSql`${{
+          UNSAFE_RAW_SQL: `\`${GROUP_ALIAS}\`[${groupEntries.indexOf(matched) + 1}]${direction}`,
+        }}`;
+      }
+      if (!matched.alias && isPlainColumnReference(matched.expr)) {
+        return chSql`${{ UNSAFE_RAW_SQL: item.raw }}`;
+      }
+      rewroteAny = true;
+      if (matched.alias) {
+        return chSql`${{
+          UNSAFE_RAW_SQL: `${quotedColumnName(matched.alias)}${direction}`,
+        }}`;
+      }
+      let companionIdx = sortCompanionExprs.indexOf(matched.expr);
+      if (companionIdx === -1) {
+        companionIdx = sortCompanionExprs.length;
+        sortCompanionExprs.push(matched.expr);
+      }
+      return chSql`${{
+        UNSAFE_RAW_SQL: `any(\`${MULTI_SERIES_SORT_ALIAS_PREFIX}${companionIdx}\`)${direction}`,
+      }}`;
+    },
+  );
+  return rewroteAny ? { orderBy, sortCompanionExprs } : null;
+}
+
 /**
  * Render a multi-series metric chart as ONE composed ClickHouse query.
  *
@@ -2449,7 +2591,13 @@ export async function renderRawSqlChartConfig(
  * - gauge/sum series project group-by dimensions as individual columns while
  *   histogram series keep their single Array GROUP_ALIAS column, so grouped
  *   histogram rows never join with grouped gauge/sum rows (each branch class
- *   pads the other's group columns with NULL / []).
+ *   pads the other's group columns with NULL / []);
+ * - an ORDER BY item that repeats a group-by *expression* verbatim (the
+ *   table default is orderBy = groupBy text) sorts via an internal
+ *   `__hdx_sort_<n>` companion column so it resolves in the outer scope
+ *   without renaming the passthrough columns; when every branch is
+ *   histogram-class the matched item sorts positionally on the packed
+ *   GROUP_ALIAS Array instead (see renderMultiSeriesOrderBy).
  */
 async function renderMultiSeriesMetricChartConfig(
   rawChartConfig: BuilderChartConfigWithOptDateRangeEx,
@@ -2528,6 +2676,83 @@ async function renderMultiSeriesMetricChartConfig(
   const hasHistogramGroup =
     includeGroupBy && branchIsHistogram.some(isHistogram => isHistogram);
 
+  // Formulas supersede the ratio toggle (mutually exclusive in the editor;
+  // rendering stays deterministic if a hand-built config carries both).
+  const hasFormulas = formulaColumns.length > 0;
+  const isRatio =
+    !hasFormulas &&
+    chartConfig.seriesReturnType === 'ratio' &&
+    select.length === 2;
+  // The share_of_total ratio is the one projection built on a window
+  // function, which ClickHouse prohibits in HAVING — its filter runs as a
+  // WHERE on a wrapper around the joined result instead (see `filtered`
+  // below). That wrapper only exists when a HAVING is actually present;
+  // without one the ORDER BY sits directly on the GROUP BY ALL statement.
+  const usesWindowProjection =
+    isRatio && chartConfig.ratioMode === 'share_of_total';
+  // When the ORDER BY lands on the having-wrapper, the any(`__hdx_sort_<n>`)
+  // rewrite can't apply: the wrapper has no GROUP BY (so no aggregate
+  // context) and the companions are excluded from the core's output. This
+  // corner (share_of_total + HAVING + expression-group-by sort) keeps the
+  // legacy rendering, which fails the same way it did before HDX-5202.
+  const ordersOnHavingWrapper =
+    usesWindowProjection && isNonEmptyWhereExpr(chartConfig.having);
+
+  // With no scalar branch there are no individual group columns anywhere:
+  // every branch packs the group values into the GROUP_ALIAS Array, and
+  // matched sort items address it positionally instead of via companions.
+  const allGroupsPacked =
+    includeGroupBy &&
+    scalarGroupCount > 0 &&
+    branchIsHistogram.every(isHistogram => isHistogram);
+
+  // Rewrite ORDER BY items that reference a group-by expression verbatim —
+  // convertToTableChartConfig defaults a table's orderBy to the raw groupBy
+  // text, and users copy the same text into the editor's ORDER BY input.
+  // Those expressions can't be evaluated in the outer scope; see
+  // renderMultiSeriesOrderBy (HDX-5202).
+  const rewrittenSort =
+    chartConfig.orderBy != null &&
+    (hasScalarGroups || allGroupsPacked) &&
+    !ordersOnHavingWrapper
+      ? renderMultiSeriesOrderBy(
+          chartConfig.orderBy,
+          typeof chartConfig.groupBy === 'string'
+            ? splitAndTrimWithBracket(chartConfig.groupBy).map(expr => ({
+                expr,
+              }))
+            : chartConfig.groupBy!.map(entry => ({
+                expr: entry.valueExpression,
+                alias: entry.alias?.trim() ? entry.alias : undefined,
+              })),
+          { groupsArePacked: allGroupsPacked },
+        )
+      : null;
+  const sortCompanionExprs = rewrittenSort?.sortCompanionExprs ?? [];
+
+  // Scalar branches project each companion sort expression once more, under
+  // its internal alias, by appending it to the branch's group-by list (the
+  // expression already IS a grouping key, so the duplicate entry doesn't
+  // change grouping semantics). Histogram branches keep the original
+  // group-by — theirs is packed into the GROUP_ALIAS array — and NULL-pad
+  // the companion slots in their wrapper instead.
+  const scalarBranchGroupBy =
+    sortCompanionExprs.length === 0
+      ? chartConfig.groupBy
+      : [
+          ...(typeof chartConfig.groupBy === 'string'
+            ? splitAndTrimWithBracket(chartConfig.groupBy).map(expr => ({
+                valueExpression: expr,
+                aggCondition: '',
+              }))
+            : chartConfig.groupBy!),
+          ...sortCompanionExprs.map((expr, companionIdx) => ({
+            valueExpression: expr,
+            aggCondition: '',
+            alias: `${MULTI_SERIES_SORT_ALIAS_PREFIX}${companionIdx}`,
+          })),
+        ];
+
   // Render each per-series branch exactly as the single-series path would —
   // only the value column gets an internal alias. Trailing SETTINGS are
   // stripped and hoisted to the outer query (ClickHouse rejects SETTINGS on
@@ -2542,6 +2767,9 @@ async function renderMultiSeriesMetricChartConfig(
       const branchConfig: ChartConfigWithOptDateRangeEx = {
         ...chartConfig,
         select: [{ ...s, alias: MULTI_SERIES_VALUE_ALIAS }],
+        groupBy: isHistogramClassSelect(s)
+          ? chartConfig.groupBy
+          : scalarBranchGroupBy,
         formulas: undefined,
         showOperandSeries: undefined,
         having: undefined,
@@ -2600,6 +2828,12 @@ async function renderMultiSeriesMetricChartConfig(
         for (let j = 0; j < scalarGroupCount; j++) {
           columns.push(`NULL AS \`__hdx_group_pad_${j}\``);
         }
+        // Companion sort slots (see renderMultiSeriesOrderBy). Histogram
+        // rows sort with NULL keys — consistent with their NULL group pads,
+        // since scalar and histogram rows never share a grouping key.
+        for (let j = 0; j < sortCompanionExprs.length; j++) {
+          columns.push(`NULL AS \`__hdx_sort_pad_${j}\``);
+        }
       }
       if (hasGranularity) {
         columns.push(`\`${FIXED_TIME_BUCKET_EXPR_ALIAS}\``);
@@ -2630,14 +2864,6 @@ async function renderMultiSeriesMetricChartConfig(
   // (group, bucket) key — a plain anyIf would default to 0.
   const valueExprFor = (splitIdx: number) =>
     `anyOrNullIf(\`${MULTI_SERIES_VALUE_ALIAS}\`, \`${MULTI_SERIES_IDX_ALIAS}\` = ${splitIdx})`;
-
-  // Formulas supersede the ratio toggle (mutually exclusive in the editor;
-  // rendering stays deterministic if a hand-built config carries both).
-  const hasFormulas = formulaColumns.length > 0;
-  const isRatio =
-    !hasFormulas &&
-    chartConfig.seriesReturnType === 'ratio' &&
-    select.length === 2;
 
   const projection: string[] = [];
   if (hasFormulas) {
@@ -2699,9 +2925,19 @@ async function renderMultiSeriesMetricChartConfig(
   const hasPassthroughColumns =
     hasScalarGroups || hasHistogramGroup || hasGranularity;
   if (hasPassthroughColumns) {
-    projection.push(
-      `* EXCEPT (\`${MULTI_SERIES_VALUE_ALIAS}\`, \`${MULTI_SERIES_IDX_ALIAS}\`)`,
-    );
+    // Companion sort columns are internal to the outer ORDER BY — exclude
+    // them so the output columns (and meta) are unchanged. Excluding them
+    // also keeps them out of GROUP BY ALL, which is why the ORDER BY reaches
+    // them through any().
+    const exceptColumns = [
+      `\`${MULTI_SERIES_VALUE_ALIAS}\``,
+      `\`${MULTI_SERIES_IDX_ALIAS}\``,
+      ...sortCompanionExprs.map(
+        (_, companionIdx) =>
+          `\`${MULTI_SERIES_SORT_ALIAS_PREFIX}${companionIdx}\``,
+      ),
+    ];
+    projection.push(`* EXCEPT (${exceptColumns.join(', ')})`);
   }
 
   const settings = mergeSettingsClauses(branches.map(b => b.settingsClause));
@@ -2720,9 +2956,10 @@ async function renderMultiSeriesMetricChartConfig(
   const orderBy = concatChSql(
     ',',
     hasGranularity ? chSql`\`${FIXED_TIME_BUCKET_EXPR_ALIAS}\`` : chSql``,
-    chartConfig.orderBy != null
-      ? renderSortSpecificationList(chartConfig.orderBy)
-      : [],
+    rewrittenSort?.orderBy ??
+      (chartConfig.orderBy != null
+        ? renderSortSpecificationList(chartConfig.orderBy)
+        : []),
   );
 
   const limit = renderLimit(chartConfig);
@@ -2733,13 +2970,11 @@ async function renderMultiSeriesMetricChartConfig(
     hasPassthroughColumns ? chSql`GROUP BY ALL` : chSql``,
   ]);
 
-  // The share_of_total ratio is the one projection built on a window
-  // function, which ClickHouse prohibits in HAVING — so filter it through
-  // a wrapper instead: WHERE on the wrapped result evaluates after the
-  // window, with the same filter-the-output-rows semantics. ORDER BY/LIMIT
-  // follow on the outermost statement either way.
-  const usesWindowProjection =
-    isRatio && chartConfig.ratioMode === 'share_of_total';
+  // usesWindowProjection: the share_of_total ratio is the one projection
+  // built on a window function, which ClickHouse prohibits in HAVING — so
+  // filter it through a wrapper instead: WHERE on the wrapped result
+  // evaluates after the window, with the same filter-the-output-rows
+  // semantics. ORDER BY/LIMIT follow on the outermost statement either way.
   const filtered = !having?.sql
     ? core
     : usesWindowProjection

@@ -11,6 +11,7 @@ import {
 import {
   DashboardFilter,
   MetricsDataType,
+  QueryExpressionDashboardFilter,
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
@@ -46,7 +47,8 @@ import { MODAL_SIZE } from './constants';
 import { CustomInputWrapper } from './CustomInputWrapper';
 
 interface DashboardFilterEditFormProps {
-  filter: DashboardFilter;
+  /** TODO: Support editing static list filters. */
+  filter: QueryExpressionDashboardFilter;
   isNew: boolean;
   source: TSource | undefined;
   /** Filters that already exist on the dashboard, used to keep variable names unique. */
@@ -66,7 +68,9 @@ const TOOLTIP_PORTAL_TARGET =
   typeof document !== 'undefined' ? document.body : null;
 
 /** Normalize a stored filter into form values. */
-const toFormValues = (filter: DashboardFilter): DashboardFilter => ({
+const toFormValues = (
+  filter: QueryExpressionDashboardFilter,
+): QueryExpressionDashboardFilter => ({
   ...filter,
   where: filter.where ?? '',
   whereLanguage: filter.whereLanguage ?? getStoredLanguage() ?? 'sql',
@@ -94,7 +98,7 @@ export const DashboardFilterEditForm = ({
     reset,
     setValue,
     trigger,
-  } = useForm<DashboardFilter>({
+  } = useForm<QueryExpressionDashboardFilter>({
     defaultValues: toFormValues(filter),
   });
 
@@ -433,7 +437,7 @@ export const DashboardFilterEditForm = ({
                 data-testid="filter-variable-enabled-checkbox"
                 rules={{ validate: validateFilterModes }}
               />
-              {formIsVariableEnabled && (
+              {!!formIsVariableEnabled && (
                 <Box ml={showVariableOptions ? 'xl' : undefined}>
                   <CustomInputWrapper
                     label="Variable name"
