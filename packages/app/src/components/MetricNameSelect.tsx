@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react';
-import { addDays, differenceInDays, subDays } from 'date-fns';
 import {
   DateRange,
   MetricsDataType,
@@ -8,117 +7,11 @@ import {
 import { Select } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
 
-import { useGetMetricNames } from '@/hooks/useMetadata';
+import { useMetricNames } from '@/hooks/useMetricNames';
 import { capitalizeFirstLetter } from '@/utils';
 
 const SEPARATOR = ':::::::';
 const SEARCH_DEBOUNCE_MS = 300;
-
-const metricNamesQueryArgs = ({
-  dateRange,
-  metricSource,
-  metricType,
-}: {
-  dateRange?: DateRange['dateRange'];
-  metricSource: TMetricSource;
-  metricType: MetricsDataType;
-}) => {
-  // eslint-disable-next-line no-restricted-syntax
-  const now = new Date();
-  let _dateRange: DateRange['dateRange'] = dateRange
-    ? dateRange
-    : [subDays(now, 1), now];
-  const diffInDays = differenceInDays(_dateRange[1], _dateRange[0]);
-
-  if (diffInDays < 1) {
-    const nextDay = addDays(_dateRange[0], 1);
-    if (nextDay > now) {
-      _dateRange = [subDays(_dateRange[1], 1), _dateRange[1]];
-    } else {
-      _dateRange = [_dateRange[0], nextDay];
-    }
-  } else if (diffInDays > 3) {
-    // most recent 3 days
-    _dateRange = [subDays(_dateRange[1], 3), _dateRange[1]];
-  }
-
-  return {
-    databaseName: metricSource.from.databaseName,
-    // Empty when this source has no table for the kind, which disables the query
-    // rather than emitting `FROM db.``` and failing on every render.
-    tableName: metricSource.metricTables?.[metricType] ?? '',
-    connectionId: metricSource.connection,
-    timestampValueExpression: metricSource.timestampValueExpression ?? '',
-    dateRange: _dateRange,
-  };
-};
-
-/**
- * Metric names available on a metric source, one list per queryable kind.
- *
- * Names only, and deliberately so: it backs the always-mounted select, where a
- * grouped scan for unit/description would be too heavy. The explorer pays for
- * that richer catalog itself via `useMetricCatalog`, only while it is open.
- */
-function useMetricNames(
-  metricSource: TMetricSource,
-  dateRange?: DateRange['dateRange'],
-  namePattern?: string,
-) {
-  const { gaugeArgs, histogramArgs, sumArgs, exponentialHistogramArgs } =
-    useMemo(
-      () => ({
-        gaugeArgs: metricNamesQueryArgs({
-          dateRange,
-          metricSource,
-          metricType: MetricsDataType.Gauge,
-        }),
-        histogramArgs: metricNamesQueryArgs({
-          dateRange,
-          metricSource,
-          metricType: MetricsDataType.Histogram,
-        }),
-        sumArgs: metricNamesQueryArgs({
-          dateRange,
-          metricSource,
-          metricType: MetricsDataType.Sum,
-        }),
-        exponentialHistogramArgs: metricNamesQueryArgs({
-          dateRange,
-          metricSource,
-          metricType: MetricsDataType.ExponentialHistogram,
-        }),
-      }),
-      [metricSource, dateRange],
-    );
-
-  const gauge = useGetMetricNames({ ...gaugeArgs, namePattern });
-  const histogram = useGetMetricNames({ ...histogramArgs, namePattern });
-  const sum = useGetMetricNames({ ...sumArgs, namePattern });
-  const exponentialHistogram = useGetMetricNames({
-    ...exponentialHistogramArgs,
-    namePattern,
-  });
-
-  return {
-    gaugeMetrics: gauge.data?.names,
-    histogramMetrics: histogram.data?.names,
-    sumMetrics: sum.data?.names,
-    exponentialHistogramMetrics: exponentialHistogram.data?.names,
-    isTruncated: [gauge, histogram, sum, exponentialHistogram].some(
-      query => query.data?.truncated,
-    ),
-    // Surfaced because a failed kind otherwise just vanishes from the list: the
-    // query is not retried, so a transient error or a query too slow to finish
-    // would silently omit those metrics from an apparently healthy dropdown.
-    hasError: [gauge, histogram, sum, exponentialHistogram].some(
-      query => query.isError,
-    ),
-    isLoading: [gauge, histogram, sum, exponentialHistogram].some(
-      query => query.isLoading,
-    ),
-  };
-}
 
 export function getMetricOptions(
   gaugeMetrics: string[] | undefined,
@@ -214,10 +107,12 @@ export function MetricNameSelect({
     exponentialHistogramMetrics,
     isTruncated,
     hasError,
+    hasNoMatches,
+    isLoading: isSearching,
   } = useMetricNames(metricSource, dateRange, debouncedSearch);
 
   const options = useMemo(() => {
-    return getMetricOptions(
+    const metricOptions = getMetricOptions(
       gaugeMetrics,
       histogramMetrics,
       sumMetrics,
@@ -225,6 +120,21 @@ export function MetricNameSelect({
       metricName,
       metricType,
     );
+    // A name missing from the picker is not necessarily missing from the data:
+    // the catalog query covers only the most recent 3 days of the chart's range,
+    // and a kind with no table configured is never queried. Offer the searched
+    // name so a pasted metric is not stranded — the select has no other way to
+    // commit a value that is not already an option. Built from the debounced
+    // search, so the offer appears only once the query behind it has answered,
+    // and the name is embedded in the label because Mantine filters options by
+    // substring against the label and would otherwise drop this one.
+    if (debouncedSearch && hasNoMatches) {
+      metricOptions.push({
+        value: `${debouncedSearch}${SEPARATOR}${metricType}`,
+        label: `Use "${debouncedSearch}" (no recent data)`,
+      });
+    }
+    return metricOptions;
   }, [
     gaugeMetrics,
     histogramMetrics,
@@ -232,6 +142,8 @@ export function MetricNameSelect({
     exponentialHistogramMetrics,
     metricName,
     metricType,
+    debouncedSearch,
+    hasNoMatches,
   ]);
 
   const currentValue =
@@ -257,13 +169,25 @@ export function MetricNameSelect({
       // on close so a collapsed control still shows its selection.
       onDropdownOpen={() => setSearchValue('')}
       onDropdownClose={() => setSearchValue(selectedLabel)}
+      // Without a message Mantine sets `hiddenWhenEmpty`, so a search matching
+      // nothing hides the whole dropdown and the field just looks broken.
+      nothingFoundMessage={
+        isSearching
+          ? 'Searching…'
+          : hasError
+            ? 'Some metrics failed to load'
+            : 'No metrics reported recently'
+      }
       // Reported in the description rather than the `error` slot, which belongs
-      // to form validation for this field.
+      // to form validation for this field. Kept below the input: it appears
+      // mid-session, and above the input it pushes the field down out of
+      // alignment with the browse-metrics button beside it.
+      inputWrapperOrder={['label', 'input', 'description', 'error']}
       description={
         hasError
-          ? 'Some metrics could not be loaded'
+          ? 'Some metrics failed to load'
           : isTruncated
-            ? 'Too many metrics to list — type to search'
+            ? 'Type to search all metrics'
             : undefined
       }
       comboboxProps={{

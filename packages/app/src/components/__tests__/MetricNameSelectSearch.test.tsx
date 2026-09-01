@@ -155,9 +155,7 @@ describe('MetricNameSelect', () => {
 
     renderSelect();
 
-    expect(
-      screen.getByText('Some metrics could not be loaded'),
-    ).toBeInTheDocument();
+    expect(screen.getByText('Some metrics failed to load')).toBeInTheDocument();
   });
 
   it('tells the user to search when the catalog is truncated', () => {
@@ -167,8 +165,103 @@ describe('MetricNameSelect', () => {
 
     renderSelect();
 
+    const input = screen.getByTestId('metric-name-selector');
+    expect(input).toHaveAccessibleDescription('Type to search all metrics');
+    // Under the input, so appearing mid-session cannot push the input down out
+    // of alignment with the browse-metrics button beside it.
+    const notice = screen.getByText('Type to search all metrics');
     expect(
-      screen.getByText('Too many metrics to list — type to search'),
-    ).toBeInTheDocument();
+      input.compareDocumentPosition(notice) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  describe('a search that matches nothing', () => {
+    const noMatches = () =>
+      useGetMetricNames.mockImplementation(({ tableName }: any) => ({
+        data: tableName ? { names: [], truncated: false } : undefined,
+      }));
+
+    // The catalog only covers the most recent 3 days of the chart's range, so a
+    // metric that stopped reporting is absent from the picker while its data is
+    // still chartable. Mantine cannot commit a value that is not an option, so
+    // without this offer the pasted name is unusable.
+    it('offers the typed name, and commits it verbatim', async () => {
+      noMatches();
+      const setMetricName = jest.fn();
+      const setMetricType = jest.fn();
+      renderSelect({ setMetricName, setMetricType });
+
+      await userEvent.type(
+        screen.getByTestId('metric-name-selector'),
+        'chi_clickhouse_metric_SystemErrors',
+      );
+
+      const offer = await screen.findByText(
+        'Use "chi_clickhouse_metric_SystemErrors" (no recent data)',
+      );
+      await userEvent.click(offer);
+
+      expect(setMetricName).toHaveBeenCalledWith(
+        'chi_clickhouse_metric_SystemErrors',
+      );
+      expect(setMetricType).toHaveBeenCalledWith(MetricsDataType.Gauge);
+    });
+
+    it('explains itself rather than hiding the dropdown', async () => {
+      noMatches();
+      renderSelect();
+
+      await userEvent.click(screen.getByTestId('metric-name-selector'));
+
+      expect(
+        await screen.findByText('No metrics reported recently'),
+      ).toBeInTheDocument();
+    });
+
+    // Claiming a name does not exist while a kind is still loading or broken
+    // would invite the user to commit a metric that is actually available.
+    it('offers nothing while a kind is in flight', async () => {
+      useGetMetricNames.mockImplementation(({ tableName }: any) =>
+        tableName === 'otel_metrics_sum'
+          ? { data: undefined, isFetching: true }
+          : { data: tableName ? { names: [], truncated: false } : undefined },
+      );
+      renderSelect();
+
+      await userEvent.type(screen.getByTestId('metric-name-selector'), 'zzz');
+      await new Promise(resolve => setTimeout(resolve, DEBOUNCE_SETTLE_MS));
+
+      expect(
+        screen.queryByText('Use "zzz" (no recent data)'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('offers nothing when a kind failed to load', async () => {
+      useGetMetricNames.mockImplementation(({ tableName }: any) =>
+        tableName === 'otel_metrics_sum'
+          ? { data: undefined, isError: true }
+          : { data: tableName ? { names: [], truncated: false } : undefined },
+      );
+      renderSelect();
+
+      await userEvent.type(screen.getByTestId('metric-name-selector'), 'zzz');
+      await new Promise(resolve => setTimeout(resolve, DEBOUNCE_SETTLE_MS));
+
+      expect(
+        screen.queryByText('Use "zzz" (no recent data)'),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  // Otherwise the escape hatch would clutter every partial search.
+  it('does not offer the typed name when a metric matches', async () => {
+    renderSelect();
+
+    await userEvent.type(screen.getByTestId('metric-name-selector'), 'up');
+    await new Promise(resolve => setTimeout(resolve, DEBOUNCE_SETTLE_MS));
+
+    expect(
+      screen.queryByText('Use "up" (no recent data)'),
+    ).not.toBeInTheDocument();
   });
 });
