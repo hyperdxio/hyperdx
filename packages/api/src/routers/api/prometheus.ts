@@ -183,17 +183,6 @@ export function isClientDisconnect(err: unknown): boolean {
   );
 }
 
-// Forwards the response straight from the upstream Prometheus to the
-// HyperDX client. Returns the HTTP status it wrote, so callers can record an
-// error metric: this helper handles its own failures by writing 400/502/504 and
-// returning normally, so a caller's `catch` never sees an upstream outage and
-// would otherwise report zero errors while still recording duration. The response can be multi-megabyte (e.g. `/label/__name__/
-// values` on a large Prometheus), so we avoid `await resp.json()` +
-// `res.json(...)` which would parse + re-serialize the whole body in memory.
-// Prometheus's native response shape (`{status, data}` / `{status, errorType,
-// error}`) is already what HyperDX clients expect, so we forward the status code
-// as-is — but never the content-type, which is always relabelled (see below).
-
 /**
  * Join a Connection host with an absolute Prometheus API path.
  *
@@ -216,6 +205,16 @@ export function joinPrometheusUpstreamUrl(
   return url;
 }
 
+// Forwards the response straight from the upstream Prometheus to the
+// HyperDX client. Returns the HTTP status it wrote, so callers can record an
+// error metric: this helper handles its own failures by writing 400/502/504 and
+// returning normally, so a caller's `catch` never sees an upstream outage and
+// would otherwise report zero errors while still recording duration. The response can be multi-megabyte (e.g. `/label/__name__/
+// values` on a large Prometheus), so we avoid `await resp.json()` +
+// `res.json(...)` which would parse + re-serialize the whole body in memory.
+// Prometheus's native response shape (`{status, data}` / `{status, errorType,
+// error}`) is already what HyperDX clients expect, so we forward the status code
+// as-is — but never the content-type, which is always relabelled (see below).
 async function proxyToPrometheus(
   upstreamHost: string,
   path: string,
@@ -233,9 +232,13 @@ async function proxyToPrometheus(
     });
     return 400;
   }
+  // Params already on the Connection host are operator-pinned (e.g.
+  // `?extra_label=namespace%3Dprod` on a VictoriaMetrics tenant URL). Do not
+  // let the incoming request overwrite them.
+  const hostPinnedKeys = new Set(url.searchParams.keys());
   for (const [k, v] of Object.entries(params)) {
     if (['connectionId', 'database', 'table'].includes(k)) continue;
-    if (v == null) continue;
+    if (v == null || hostPinnedKeys.has(k)) continue;
     // A repeatable param (`match[]`) appends every value
     if (Array.isArray(v)) {
       for (const item of v) url.searchParams.append(k, item);

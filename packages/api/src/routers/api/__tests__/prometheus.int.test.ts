@@ -303,6 +303,70 @@ describe('prometheus router', () => {
       expect(calledUrl).not.toContain('connectionId');
     });
 
+    // Pins the call site, not just the helper: reverting
+    // `url = new URL(path, upstreamHost)` would drop `/select/0/prometheus`.
+    it('keeps a VictoriaMetrics cluster path prefix on the upstream URL', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedPrometheusConnection(
+        team._id,
+        'http://vmselect:8481/select/0/prometheus',
+      );
+
+      mockFetch.mockResolvedValueOnce(
+        fakeUpstreamResponse({
+          status: 'success',
+          data: { resultType: 'matrix', result: [] },
+        }),
+      );
+
+      await agent
+        .get('/v1/prometheus/query_range')
+        .query({
+          query: 'up',
+          start: '1700000000',
+          end: '1700000060',
+          step: '15s',
+          connectionId: conn._id.toString(),
+        })
+        .expect(200);
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(mockFetch.mock.calls[0][0] as string).toMatch(
+        /^http:\/\/vmselect:8481\/select\/0\/prometheus\/api\/v1\/query_range/,
+      );
+    });
+
+    it('does not let request query params override params pinned on the connection host', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedPrometheusConnection(
+        team._id,
+        'http://vmselect:8481/select/0/prometheus?extra_label=namespace%3Dprod',
+      );
+
+      mockFetch.mockResolvedValueOnce(
+        fakeUpstreamResponse({
+          status: 'success',
+          data: { resultType: 'matrix', result: [] },
+        }),
+      );
+
+      await agent
+        .get('/v1/prometheus/query_range')
+        .query({
+          query: 'up',
+          start: '1700000000',
+          end: '1700000060',
+          step: '15s',
+          extra_label: 'namespace=other',
+          connectionId: conn._id.toString(),
+        })
+        .expect(200);
+
+      const requested = new URL(mockFetch.mock.calls[0][0] as string);
+      expect(requested.searchParams.get('extra_label')).toBe('namespace=prod');
+      expect(requested.searchParams.get('query')).toBe('up');
+    });
+
     it('does NOT proxy to Prometheus when connection is not isPrometheusEndpoint', async () => {
       const { agent, team } = await getLoggedInAgent(server);
       const conn = await seedClickHouseConnection(team._id);
