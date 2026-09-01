@@ -205,8 +205,12 @@ components"](#overriding-base-components-via-custom_otelcol_config_file)
 below for when you'd want to retune it. Confmap replaces a pipeline's
 `receivers:`/`exporters:` list wholesale rather than appending to it, so if
 you're already pairing this with `datadogreceiver` per the section above,
-`datadog` has to be re-listed here too — leaving it out doesn't fail
-validation, it just silently drops Datadog metric ingestion:
+`datadog` has to be re-listed here too. The example below deliberately
+leaves it out: an unconditional `datadog` here would break this exact
+example for anyone who *hasn't* configured it (`references receiver
+"datadog" which is not configured`, failing the whole config, not just
+this pipeline) — the two cases can't both be satisfied by one copy-pasted
+block, so check which one applies to you before using it:
 
 ```yaml
 connectors:
@@ -217,11 +221,12 @@ connectors:
 service:
   pipelines:
     traces:
-      # Re-list `datadog` here too if you added it per the Datadog section
-      # above - this list replaces the base one, it doesn't add to it.
       exporters: [clickhouse, spanmetrics]
     metrics:
-      receivers: [otlp/hyperdx, datadog, spanmetrics]
+      # Add `datadog` here too if (and only if) you configured it per the
+      # Datadog section above - this list replaces the base one rather
+      # than adding to it.
+      receivers: [otlp/hyperdx, spanmetrics]
 ```
 
 **In OpAMP supervisor mode, editing the default `traces`/`metrics` pipelines
@@ -249,10 +254,11 @@ connectors:
 service:
   pipelines:
     traces/spanmetrics:
-      # Drop `datadog` unless ENABLE_DATADOG_RECEIVER=true - it's only
-      # defined when that's set, and an undefined receiver fails the whole
-      # config (every pipeline, not just this one), not just this receiver.
-      receivers: [otlp/hyperdx, datadog]
+      # Add `datadog` here too if (and only if) ENABLE_DATADOG_RECEIVER=true -
+      # it's only defined when that's set, and an undefined receiver fails
+      # the whole config (every pipeline, not just this one), not just this
+      # receiver.
+      receivers: [otlp/hyperdx]
       exporters: [spanmetrics]
       processors: [memory_limiter]
     metrics/spanmetrics:
