@@ -14,8 +14,8 @@ import {
   getTileVariableWarnings,
 } from '@/mcp/tools/dashboards/validation';
 import type {
-  ExternalDashboardFilterWithId,
   ExternalDashboardTileWithId,
+  ExternalQueryExpressionFilterWithId,
 } from '@/utils/zod';
 
 const connectionId = new mongoose.Types.ObjectId().toString();
@@ -448,8 +448,8 @@ describe('getRawSqlTileMacroHints', () => {
 // ─── Variable-enabled filters ────────────────────────────────────────────────
 
 function makeFilter(
-  overrides: Partial<ExternalDashboardFilterWithId> = {},
-): ExternalDashboardFilterWithId {
+  overrides: Partial<ExternalQueryExpressionFilterWithId> = {},
+): ExternalQueryExpressionFilterWithId {
   return {
     id: new mongoose.Types.ObjectId().toString(),
     type: 'QUERY_EXPRESSION',
@@ -803,7 +803,7 @@ describe('getFilterVariableWarnings', () => {
   });
 
   const endpointFilter = (
-    overrides: Partial<ExternalDashboardFilterWithId> = {},
+    overrides: Partial<ExternalQueryExpressionFilterWithId> = {},
   ) =>
     makeFilter({
       name: 'Endpoint',

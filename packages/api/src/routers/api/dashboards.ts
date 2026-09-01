@@ -1,5 +1,6 @@
 import {
   validateDashboardFilterModes,
+  validateDashboardFilterOptionUniqueness,
   validateDashboardFilterVariableNames,
 } from '@hyperdx/common-utils/dist/dashboardValidation';
 import {
@@ -35,12 +36,13 @@ import { objectIdSchema } from '@/utils/zod';
 const router = express.Router();
 
 /**
- * Additional filter validation (uniqueness, at least one mode enabled).
+ * Additional filter validation (variable name and option uniqueness, at least one mode enabled).
  */
 const addFilterIssues = (
   data: {
     filters?: {
       name: string;
+      options?: string[];
       variableName?: string;
       isBroadcastEnabled?: boolean;
       isVariableEnabled?: boolean;
@@ -50,6 +52,7 @@ const addFilterIssues = (
 ) => {
   validateDashboardFilterVariableNames(data.filters ?? [], ctx);
   validateDashboardFilterModes(data.filters ?? [], ctx);
+  validateDashboardFilterOptionUniqueness(data.filters ?? [], ctx);
 };
 
 /**

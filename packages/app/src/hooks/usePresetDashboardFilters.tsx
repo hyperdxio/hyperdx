@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import { isStaticListFilter } from '@hyperdx/common-utils/dist/filters';
 import {
   DashboardFilter,
   PresetDashboard,
@@ -51,6 +52,9 @@ export default function usePresetDashboardFilters({
 
   const handleSaveFilter = useCallback(
     (dashboardFilter: DashboardFilter) => {
+      // Preset dashboards are broadcast-only, so static list filters are not supported.
+      if (isStaticListFilter(dashboardFilter)) return;
+
       const presetDashboardFilter = {
         ...dashboardFilter,
         presetDashboard,
