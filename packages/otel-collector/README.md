@@ -158,44 +158,71 @@ receiver authenticates against the team API keys (same as `otlp/hyperdx`) via
 the `DD-API-KEY` header. Set the Datadog Agent's `DD_API_KEY` to a HyperDX
 team ingestion API key.
 
-### Computing span metrics from ingested traces
+## Computing span metrics from ingested traces
 
 `spanmetricsconnector` is compiled in so span-derived RED metrics (call
-counts, a duration histogram) can be computed from traces — most useful
-alongside `datadogreceiver` above, since Datadog Agent traces have no other
-way to produce these once ingested.
+counts, a duration histogram) can be computed from any traces the collector
+ingests — works with `otlp/hyperdx` directly, and is most useful alongside
+[`datadogreceiver`](#ingesting-datadog-traces-metrics-and-logs) above, since
+Datadog Agent traces have no other way to produce these once ingested.
+
+A connector has to be declared two places: under a top-level `connectors:`
+block *and* referenced in a pipeline's `receivers`/`exporters`. Declaring
+only the reference fails validation —
+`service::pipelines::traces: references exporter "spanmetrics" which is not
+configured` — since the connector was never instantiated. Both examples
+below also carry `processors: [memory_limiter, batch]`, the same convention
+every other user-added pipeline in this repo follows (e.g.
+`docker/otel-collector/custom.config.yaml`'s `metrics/hostmetrics`) — without
+it, each connector flush becomes its own small, unbatched insert into
+ClickHouse with no memory back-pressure.
 
 **In standalone mode**, `traces`/`metrics` are plain pipelines in your own
 config file, so you can add `spanmetrics` to them directly:
 
 ```yaml
+connectors:
+  spanmetrics: {}
 service:
   pipelines:
     traces:
       exporters: [clickhouse, spanmetrics]
+      processors: [memory_limiter, batch]
     metrics:
       receivers: [otlp/hyperdx, spanmetrics]
+      processors: [memory_limiter, batch]
 ```
 
-**In OpAMP supervisor mode, this will not work** — `receivers:`/`exporters:`
-on the default `traces`/`metrics` pipelines are set dynamically by
-`opampController.ts`, and the remote config overwrites (not merges) those
-keys, the same way it does for every pipeline it manages (see
+**In OpAMP supervisor mode, editing the default `traces`/`metrics` pipelines
+will not work** — `receivers:`/`exporters:` on those pipelines are set
+dynamically by `opampController.ts`, and the remote config overwrites (not
+merges) those keys, the same way it does for every pipeline it manages (see
 `docker/otel-collector/config.yaml`'s note on `processors:` above). Adding
 `spanmetrics` there from `CUSTOM_OTELCOL_CONFIG_FILE` gets silently dropped —
 no error, the connector is just compiled in and wired to nothing. Use
 separate pipeline names instead, which the remote config never touches:
 
 ```yaml
+connectors:
+  spanmetrics: {}
 service:
   pipelines:
     traces/spanmetrics:
+      # Drop `datadog` unless ENABLE_DATADOG_RECEIVER=true - it's only
+      # defined when that's set, and an undefined receiver fails the whole
+      # config (every pipeline, not just this one), not just this receiver.
       receivers: [otlp/hyperdx, datadog]
       exporters: [spanmetrics]
+      processors: [memory_limiter, batch]
     metrics/spanmetrics:
       receivers: [spanmetrics]
       exporters: [clickhouse]
+      processors: [memory_limiter, batch]
 ```
+
+Both shapes above are verified against the real compiled binary via
+`otelcontribcol validate --config`, including the two failure modes noted
+inline.
 
 ## Overriding base components via `CUSTOM_OTELCOL_CONFIG_FILE`
 
