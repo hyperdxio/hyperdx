@@ -20,6 +20,7 @@ import {
   isPrometheusLabelFilter,
   isQueryExpressionFilter,
   isStaticListFilter,
+  QUERY_EXPRESSION_FILTER_SOURCE_KINDS,
   type SavedFilterValueIssue,
   type SavedQueryIssue,
   validateDashboardFilterQueries,
@@ -402,14 +403,6 @@ const sourceBackedTemplateFilter = (filter: DashboardFilter | undefined) =>
 const queriedTemplateFilter = (filter: DashboardFilter | undefined) =>
   filter && isQueryExpressionFilter(filter) ? filter : undefined;
 
-/** Everything a queried filter can run its `SELECT` against. */
-const SQL_FILTER_SOURCE_KINDS = [
-  SourceKind.Log,
-  SourceKind.Trace,
-  SourceKind.Session,
-  SourceKind.Metric,
-];
-
 /**
  * The source kinds a filter of this type can read its dropdown values from, or
  * `undefined` for a filter that reads no source at all.
@@ -420,7 +413,7 @@ const filterSourceKinds = (
   isPrometheusLabelFilter(filter)
     ? [SourceKind.Promql]
     : isQueryExpressionFilter(filter)
-      ? SQL_FILTER_SOURCE_KINDS
+      ? QUERY_EXPRESSION_FILTER_SOURCE_KINDS
       : undefined;
 
 /**

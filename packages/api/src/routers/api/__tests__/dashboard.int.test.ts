@@ -1397,6 +1397,101 @@ describe('dashboard router', () => {
         expect(stored?.filters).toEqual([filter]);
       });
 
+      // The app PATCHes the whole dashboard on every edit, so re-checking a
+      // filter that was already accepted would let a deleted source block
+      // every later save. The dangling reference is surfaced per-filter at
+      // query time instead.
+      it("lets unrelated edits through after the filter's source is deleted", async () => {
+        const filter = makePromqlFilter();
+        const created = await agent
+          .post('/dashboards')
+          .send({ ...MOCK_DASHBOARD, filters: [filter] })
+          .expect(200);
+
+        await Source.findByIdAndDelete(promqlSourceId);
+
+        await agent
+          .patch(`/dashboards/${created.body.id}`)
+          .send({ name: 'Renamed', filters: [filter] })
+          .expect(200);
+
+        const stored = await Dashboard.findById(created.body.id).lean();
+        expect(stored?.name).toBe('Renamed');
+        expect(stored?.filters).toEqual([filter]);
+      });
+
+      // Only the source is exempt once accepted — everything else about the
+      // filter is still the client's to change, and still validated.
+      it('lets the label change while the source stays dangling', async () => {
+        const filter = makePromqlFilter();
+        const created = await agent
+          .post('/dashboards')
+          .send({ ...MOCK_DASHBOARD, filters: [filter] })
+          .expect(200);
+
+        await Source.findByIdAndDelete(promqlSourceId);
+
+        await agent
+          .patch(`/dashboards/${created.body.id}`)
+          .send({ filters: [{ ...filter, label: 'namespace' }] })
+          .expect(200);
+      });
+
+      it('still rejects a filter added by the PATCH itself', async () => {
+        const created = await agent
+          .post('/dashboards')
+          .send(MOCK_DASHBOARD)
+          .expect(200);
+
+        const source = new Types.ObjectId().toString();
+        const response = await agent
+          .patch(`/dashboards/${created.body.id}`)
+          .send({ filters: [makePromqlFilter({ source })] })
+          .expect(400);
+
+        expect(response.body.message).toContain(source);
+      });
+
+      // Converting a filter to this type is the same as adding one, as far as
+      // the gate is concerned: its source has never been through it.
+      it('still rejects a filter PATCHed over from another type', async () => {
+        const id = new Types.ObjectId().toString();
+        const created = await agent
+          .post('/dashboards')
+          .send({
+            ...MOCK_DASHBOARD,
+            filters: [
+              {
+                id,
+                type: 'QUERY_EXPRESSION' as const,
+                name: 'Service',
+                expression: 'ServiceName',
+                source: promqlSourceId,
+              },
+            ],
+          })
+          .expect(200);
+
+        const logSource = await Source.create({
+          kind: SourceKind.Log,
+          name: 'Converted Log Source',
+          team: team._id,
+          connection: new Types.ObjectId().toString(),
+          from: { databaseName: 'test_db', tableName: 'logs_table' },
+          timestampValueExpression: 'timestamp',
+          defaultTableSelectExpression: 'body',
+        });
+
+        await agent
+          .patch(`/dashboards/${created.body.id}`)
+          .send({
+            filters: [
+              makePromqlFilter({ id, source: logSource._id.toString() }),
+            ],
+          })
+          .expect(400);
+      });
+
       // The fetch is skipped entirely when no filter of this type is present,
       // so a queried filter naming a missing source still saves as before.
       it('leaves other filter types unvalidated', async () => {

@@ -1073,23 +1073,20 @@ function getHeatmapTilesWithIncompatibleSources(
 }
 
 /**
- * Returns source IDs referenced by PROMETHEUS_LABEL filters that exist but are
- * not PromQL sources.
+ * Returns an error message string if any of the referenced source IDs is not
+ * a valid PromQL source, or null if all of them are.
  */
-function getPromqlLabelFiltersWithIncompatibleSources(
+export function getPromqlLabelFilterSourceError(
   sources: SourceForValidation[],
-  filters: (ExternalDashboardFilter | ExternalDashboardFilterWithId)[] = [],
-): string[] {
-  const referencedSourceIds = new Set<string>(
-    filters.filter(isPrometheusLabelFilter).map(f => f.sourceId),
-  );
-  if (referencedSourceIds.size === 0) return [];
-
+  referencedSourceIds: string[],
+): string | null {
   const sourceById = new Map(sources.map(s => [s._id.toString(), s]));
-  return [...referencedSourceIds].filter(id => {
+  const invalid = [...new Set(referencedSourceIds)].filter(id => {
     const source = sourceById.get(id);
-    return source !== undefined && !isPromqlSource(source);
+    return source === undefined || !isPromqlSource(source);
   });
+  if (invalid.length === 0) return null;
+  return `PROMETHEUS_LABEL filters require a PromQL source. The following source IDs are not PromQL sources: ${invalid.join(', ')}`;
 }
 
 /**
@@ -1501,11 +1498,13 @@ export async function validateDashboardTiles(
     return `Tiles with formulas require a Metric, Log, or Trace source. The following source IDs are not formula-capable: ${formulaIncompatibleSources.join(', ')}`;
   }
 
-  const promqlLabelNonPromqlSources =
-    getPromqlLabelFiltersWithIncompatibleSources(sources, filters);
-  if (promqlLabelNonPromqlSources.length > 0) {
-    return `PROMETHEUS_LABEL filters require a PromQL source. The following source IDs are not PromQL sources: ${promqlLabelNonPromqlSources.join(', ')}`;
-  }
+  // Validate that PROMETHEUS_LABEL filters reference PromQL sources
+  const promqlLabelFilters = (filters ?? []).filter(isPrometheusLabelFilter);
+  const promqlLabelFilterError = getPromqlLabelFilterSourceError(
+    sources,
+    promqlLabelFilters.map(f => f.sourceId),
+  );
+  if (promqlLabelFilterError != null) return promqlLabelFilterError;
 
   if (missingOnClickDashboards.length > 0) {
     return `Could not find the following onClick dashboard IDs: ${missingOnClickDashboards.join(', ')}`;

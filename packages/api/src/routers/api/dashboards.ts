@@ -8,7 +8,6 @@ import {
   DashboardFilter,
   DashboardSchema,
   DashboardWithoutIdSchema,
-  isPromqlSource,
   PresetDashboard,
   PresetDashboardFilterSchema,
   resolveChartPaletteToken,
@@ -35,6 +34,7 @@ import {
 import { getSources } from '@/controllers/sources';
 import { getNonNullUserWithTeam } from '@/middleware/auth';
 import type { ObjectId } from '@/models';
+import { getPromqlLabelFilterSourceError } from '@/routers/external-api/v2/utils/dashboards';
 import { objectIdSchema } from '@/utils/zod';
 
 // create routes that will get and update dashboards
@@ -60,6 +60,21 @@ const addFilterIssues = (
   validateDashboardFilterOptionUniqueness(data.filters ?? [], ctx);
 };
 
+/** Returns new and updated PROMETHEUS_LABEL filters. */
+function filterChangedPromqlLabelFilters(
+  filters: DashboardFilter[],
+  existingFilters: DashboardFilter[],
+) {
+  const existingSourceById = new Map(
+    existingFilters
+      .filter(isPrometheusLabelFilter)
+      .map(filter => [filter.id, filter.source]),
+  );
+  return filters
+    .filter(isPrometheusLabelFilter)
+    .filter(filter => existingSourceById.get(filter.id) !== filter.source);
+}
+
 /**
  * Rejects PROMETHEUS_LABEL filters whose `source` is missing or is not a PromQL
  * source. Returns an error message, or null when there is nothing to reject.
@@ -67,21 +82,18 @@ const addFilterIssues = (
 async function validatePromqlLabelFilterSources(
   teamId: ObjectId,
   filters: DashboardFilter[] = [],
+  existingFilters?: DashboardFilter[],
 ): Promise<string | null> {
-  const promqlLabelFilters = filters.filter(isPrometheusLabelFilter);
+  const promqlLabelFilters = existingFilters
+    ? filterChangedPromqlLabelFilters(filters, existingFilters)
+    : filters.filter(isPrometheusLabelFilter);
   if (promqlLabelFilters.length === 0) return null;
 
   const sources = await getSources(teamId.toString());
-  const promqlSourceIds = new Set(
-    sources.filter(isPromqlSource).map(source => source._id.toString()),
+  return getPromqlLabelFilterSourceError(
+    sources,
+    promqlLabelFilters.map(filter => filter.source),
   );
-
-  const invalid = promqlLabelFilters
-    .filter(filter => !promqlSourceIds.has(filter.source))
-    .map(filter => filter.source);
-  if (invalid.length === 0) return null;
-
-  return `PROMETHEUS_LABEL filters require a PromQL source. The following source IDs are not PromQL sources: ${[...new Set(invalid)].join(', ')}`;
 }
 
 /**
@@ -184,6 +196,7 @@ router.patch(
       const sourceError = await validatePromqlLabelFilterSources(
         teamId,
         req.body.filters,
+        dashboard.filters ?? [],
       );
       if (sourceError != null) {
         return res.status(400).json({ message: sourceError });

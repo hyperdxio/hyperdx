@@ -9,6 +9,7 @@ import {
   DashboardFilter,
   DashboardFilterValue,
   Filter,
+  SourceKind,
 } from '@/types';
 import { getVariableReferences, substituteVariables } from '@/variables';
 
@@ -848,6 +849,14 @@ export function isFilterVariableEnabled(filter: {
 
 /** The discriminant every dashboard-filter shape carries. */
 export type DashboardFilterKind = DashboardFilter['type'];
+
+/** The source kinds a QUERY_EXPRESSION filter can run its `SELECT` against. */
+export const QUERY_EXPRESSION_FILTER_SOURCE_KINDS: SourceKind[] = [
+  SourceKind.Log,
+  SourceKind.Trace,
+  SourceKind.Session,
+  SourceKind.Metric,
+];
 
 /** Type guard for QUERY_EXPRESSION type filters. */
 export function isQueryExpressionFilter<
