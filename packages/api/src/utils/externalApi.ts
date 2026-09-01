@@ -1,6 +1,7 @@
 import {
   isFilterBroadcastEnabled,
   isFilterVariableEnabled,
+  isStaticListFilter,
 } from '@hyperdx/common-utils/dist/filters';
 import {
   AlertErrorType,
@@ -216,6 +217,9 @@ export function translateExternalChartToTileConfig(
 export function translateFilterToExternalFilter(
   filter: DashboardFilter,
 ): ExternalDashboardFilterWithId {
+  // Static filters require no translation
+  if (isStaticListFilter(filter)) return filter;
+
   // Ignore variableName and appliesToSourceIds if the filter is not in a mode that uses them
   const ignoredKeys = [
     ...(isFilterVariableEnabled(filter) ? [] : (['variableName'] as const)),
@@ -232,6 +236,9 @@ export function translateFilterToExternalFilter(
 export function translateExternalFilterToFilter(
   filter: ExternalDashboardFilterWithId,
 ): DashboardFilter {
+  // Static filters require no translation
+  if (isStaticListFilter(filter)) return filter;
+
   return {
     ...omit(filter, 'sourceId'),
     source: filter.sourceId,

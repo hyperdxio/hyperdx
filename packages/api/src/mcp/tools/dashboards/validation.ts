@@ -15,8 +15,8 @@ import {
   TIME_RANGE_MACROS,
 } from '@hyperdx/common-utils/dist/macros';
 import {
-  DashboardFilter,
   DisplayType,
+  QueryExpressionDashboardFilter,
   SavedChartConfig,
   SearchConditionLanguage,
 } from '@hyperdx/common-utils/dist/types';
@@ -151,9 +151,12 @@ export function getRawSqlTileMacroWarnings(
   return hints;
 }
 
-/** Minimal projection needed to check a filter's dropdown-values query. */
+/**
+ * Minimal projection needed to check a filter's dropdown-values query. Static
+ * list filters have no dropdown query, so `where` / `whereLanguage` are optional.
+ */
 export type FilterForVariableValidation = FilterForVariableDeclaration &
-  Partial<Pick<DashboardFilter, 'where' | 'whereLanguage'>>;
+  Partial<Pick<QueryExpressionDashboardFilter, 'where' | 'whereLanguage'>>;
 
 /**
  * Non-blocking checks on the dashboard variables references in a filter's `where`.
