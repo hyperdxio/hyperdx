@@ -66,6 +66,22 @@ try {
   );
 }
 
+// The newest RELEASE version in the notes, which keys the Help-button "you
+// haven't read the latest release notes" sparkle.
+//
+// Deliberately not NEXT_PUBLIC_APP_VERSION: any deployment that stamps a build
+// id into that (a git short SHA, a CI build number) mints a new string on every
+// deploy, so the nudge fired for every user on every deploy whether the notes
+// had changed or not. This comes from the changelog headings instead, so it moves
+// only when a release is published.
+//
+// Read back from disk rather than off the object written above, so the fallback
+// path — regeneration failed and an earlier build's asset is being shipped — is
+// keyed to the asset that actually ships.
+const whatsNewVersion = JSON.parse(
+  readFileSync(join(__dirname, 'public', 'whats-new.json'), 'utf-8'),
+).releases[0]?.version;
+
 // Support legacy consumers of next-runtime-env that expect this value under window.__ENV
 process.env.NEXT_PUBLIC_APP_VERSION = version;
 
@@ -82,6 +98,9 @@ const nextConfig = {
   env: {
     // Ensures bundler-time replacements for client/server code that references this env var
     NEXT_PUBLIC_APP_VERSION: version,
+    // Inlined at build time rather than exposed through __ENV.js: builds that
+    // omit that script (static exports, embedded builds) still need the sparkle.
+    NEXT_PUBLIC_WHATS_NEW_VERSION: whatsNewVersion,
   },
   // External packages to prevent bundling issues (moved from experimental in Next.js 15+)
   // https://github.com/open-telemetry/opentelemetry-js/issues/4297#issuecomment-2285070503
