@@ -208,9 +208,7 @@ export function installHdxDebug(): void {
       return teamId;
     },
     build: {
-      // IS_OSS is `string | boolean` due to a precedence quirk in config.ts;
-      // normalize to a plain boolean for the debug surface.
-      isOss: Boolean(IS_OSS),
+      isOss: IS_OSS,
       isLocalMode: IS_LOCAL_MODE,
       isClickhouseBuild: IS_CLICKHOUSE_BUILD,
       isDev: IS_DEV,

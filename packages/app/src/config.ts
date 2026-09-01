@@ -54,7 +54,12 @@ export const IS_DEV = NODE_ENV === 'development';
 // Frontend build version — from package.json, bundled at build time. Will include sha in nightly builds.
 export const APP_VERSION = packageJson.version ?? 'dev';
 
-export const IS_OSS = process.env.NEXT_PUBLIC_IS_OSS ?? 'true' === 'true';
+// OSS unless explicitly disabled. Written as `!== 'false'` (not `=== 'true'`)
+// to preserve the historical default-on behavior when the env var is unset.
+// NOTE: the previous form `?? 'true' === 'true'` mis-parsed as
+// `?? ('true' === 'true')`, yielding the raw string (e.g. "false", which is
+// truthy) whenever the env var was set — so cloud builds read as OSS.
+export const IS_OSS = (process.env.NEXT_PUBLIC_IS_OSS ?? 'true') !== 'false';
 export const IS_LOCAL_MODE = //true;
   (process.env.NEXT_PUBLIC_IS_LOCAL_MODE ?? 'false') === 'true';
 export const IS_CLICKHOUSE_BUILD =

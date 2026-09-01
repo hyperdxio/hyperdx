@@ -12,7 +12,7 @@ import {
   Tooltip,
   UnstyledButton,
 } from '@mantine/core';
-import { useClipboard, useDisclosure } from '@mantine/hooks';
+import { useDisclosure } from '@mantine/hooks';
 import {
   IconBook,
   IconBrandDiscord,
@@ -29,6 +29,7 @@ import {
 } from '@tabler/icons-react';
 
 import { IS_LOCAL_MODE } from '@/config';
+import { copyTextToClipboard } from '@/utils/clipboard';
 
 import { HelpSparkle } from './HelpSparkle';
 import { KeyboardShortcutsModal } from './KeyboardShortcutsModal';
@@ -184,21 +185,24 @@ export const AppNavUserMenu = ({
 };
 
 const AppNavVersionItem = ({ version }: { version?: string }) => {
-  const clipboard = useClipboard({ timeout: 1500 });
+  const [copied, setCopied] = React.useState(false);
 
   return (
     <Menu.Item
       data-testid="copy-debug-info-menu-item"
       closeMenuOnClick={false}
-      leftSection={
-        clipboard.copied ? <IconCheck size={16} /> : <IconBug size={16} />
-      }
-      onClick={() => {
-        // window.hdx is installed in _app.tsx and present in every environment.
-        clipboard.copy(window.hdx?.report() ?? `frontend: ${version ?? 'dev'}`);
+      leftSection={copied ? <IconCheck size={16} /> : <IconBug size={16} />}
+      onClick={async () => {
+        // window.hdx is installed in _app.tsx and present in every environment;
+        // its copy() uses the shared clipboard util (with insecure-context
+        // fallback) and returns the copied text.
+        await (window.hdx?.copy() ??
+          copyTextToClipboard(`frontend: ${version ?? 'dev'}`));
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
       }}
     >
-      {clipboard.copied ? 'Copied debug info' : 'Copy debug info'}
+      {copied ? 'Copied debug info' : 'Copy debug info'}
     </Menu.Item>
   );
 };
