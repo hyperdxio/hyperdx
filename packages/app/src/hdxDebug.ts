@@ -6,8 +6,8 @@ import {
   BASE_PATH,
   IS_ALERT_DETAILS_ENABLED,
   IS_CLICKHOUSE_BUILD,
-  IS_DASHBOARD_VARIABLES_ENABLED,
   IS_DEV,
+  IS_LLM_COST_ENABLED,
   IS_LOCAL_MODE,
   IS_OSS,
   IS_PROMQL_ENABLED,
@@ -82,7 +82,7 @@ let dynamicFeatures: Record<string, boolean> = {};
 // every deployment and would just be noise.
 const staticFeatures: Record<string, boolean> = {
   promql: IS_PROMQL_ENABLED,
-  dashboardVariables: IS_DASHBOARD_VARIABLES_ENABLED,
+  llmCost: IS_LLM_COST_ENABLED,
   alertDetails: IS_ALERT_DETAILS_ENABLED,
 };
 
@@ -158,6 +158,12 @@ function getDevice(): HdxDevice {
   };
 }
 
+// pathname only — never the query string, which can carry a token
+// (invite/reset/share links) that would leak into the pasted report.
+function safeUrl(): string {
+  return typeof window !== 'undefined' ? window.location.pathname : '';
+}
+
 function allFeatures(): Record<string, boolean> {
   return { ...staticFeatures, ...dynamicFeatures };
 }
@@ -180,7 +186,7 @@ function buildReport(): string {
     ...(userId ? [`user:     ${userId}`] : []),
     ...(teamId ? [`team:     ${teamId}`] : []),
     `features: ${enabledFeatureList()}`,
-    `url:      ${typeof window !== 'undefined' ? window.location.href : ''}`,
+    `url:      ${safeUrl()}`,
     `screen:   ${device.screen} (viewport ${device.viewport}, dpr ${device.dpr})`,
     `platform: ${device.platform}`,
     `language: ${device.language}`,
