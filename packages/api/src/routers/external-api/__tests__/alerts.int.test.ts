@@ -1,4 +1,4 @@
-import { AlertErrorType } from '@hyperdx/common-utils/dist/types';
+import { AlertErrorType, SourceKind } from '@hyperdx/common-utils/dist/types';
 import _ from 'lodash';
 import { ObjectId } from 'mongodb';
 import request from 'supertest';
@@ -11,8 +11,10 @@ import {
 } from '@/fixtures';
 import { AlertSource, AlertThresholdType } from '@/models/alert';
 import Alert from '@/models/alert';
+import Connection from '@/models/connection';
 import Dashboard from '@/models/dashboard';
 import { SavedSearch } from '@/models/savedSearch';
+import { Source } from '@/models/source';
 import Webhook, { WebhookService } from '@/models/webhook';
 
 // Constants
@@ -657,42 +659,430 @@ describe('External API Alerts', () => {
     });
   });
 
-  describe('Input validation', () => {
-    it('rejects the internal-only inline alert source', async () => {
-      // Inline alerts (source: 'inline') are creatable through the internal API
-      // only; the external v2 contract (OpenAPI docs, Terraform provider) has
-      // not been extended to cover them yet.
-      const webhook = await createTestWebhook();
+  describe('Inline alerts', () => {
+    // Team-scoped connection + source the inline chart configs reference.
+    const makeSource = async () => {
+      const connection = await Connection.create({
+        team: team._id,
+        name: 'Default',
+        host: 'http://localhost:8123',
+        username: 'default',
+        password: '',
+      });
+      const source = await Source.create({
+        kind: SourceKind.Log,
+        team: team._id,
+        from: { databaseName: 'default', tableName: 'otel_logs' },
+        timestampValueExpression: 'Timestamp',
+        connection: connection._id,
+        name: 'Logs',
+      });
+      return { connection, source };
+    };
 
-      const alertInput = {
-        threshold: 100,
-        interval: '1h',
-        source: 'inline',
-        chartConfig: {
-          name: 'Chart Alert Query',
-          source: new ObjectId().toString(),
-          displayType: 'line',
-          select: [
-            {
-              aggFn: 'count',
-              aggCondition: '',
-              aggConditionLanguage: 'lucene',
-              valueExpression: '',
-            },
-          ],
-          where: '',
+    // External tile-config dialect (sourceId, per-select where) — the
+    // internal API's dialect (source, aggCondition) is rejected here.
+    const makeBuilderChartConfig = (
+      sourceId: string,
+      overrides: Record<string, unknown> = {},
+    ) => ({
+      displayType: 'line',
+      sourceId,
+      select: [
+        {
+          aggFn: 'count',
+          where: 'level:error',
           whereLanguage: 'lucene',
         },
-        thresholdType: AlertThresholdType.ABOVE,
-        channel: {
-          type: 'webhook',
-          webhookId: webhook._id.toString(),
-        },
-      };
-
-      await authRequest('post', ALERTS_BASE_URL).send(alertInput).expect(400);
+      ],
+      ...overrides,
     });
 
+    const makeInlineAlertInput = (
+      chartConfig: unknown,
+      webhookId: string,
+      overrides: Record<string, unknown> = {},
+    ) => ({
+      source: 'inline',
+      chartConfig,
+      threshold: 100,
+      interval: '1h',
+      thresholdType: AlertThresholdType.ABOVE,
+      channel: {
+        type: 'webhook',
+        webhookId,
+      },
+      ...overrides,
+    });
+
+    it('creates an inline alert, persists the internal dialect, and round-trips chartConfig on single-alert responses', async () => {
+      const { source } = await makeSource();
+      const webhook = await createTestWebhook();
+
+      const created = await authRequest('post', ALERTS_BASE_URL)
+        .send(
+          makeInlineAlertInput(
+            makeBuilderChartConfig(source._id.toString()),
+            webhook._id.toString(),
+            { name: 'Inline Alert' },
+          ),
+        )
+        .expect(200);
+
+      expect(created.body.data.source).toBe(AlertSource.INLINE);
+      expect(created.body.data.savedSearchId).toBeUndefined();
+      expect(created.body.data.dashboardId).toBeUndefined();
+      expect(created.body.data.chartConfig).toMatchObject({
+        displayType: 'line',
+        sourceId: source._id.toString(),
+        select: [
+          {
+            aggFn: 'count',
+            where: 'level:error',
+            whereLanguage: 'lucene',
+          },
+        ],
+      });
+
+      // Mongo persists the internal dialect the check-alerts task evaluates.
+      const stored = await Alert.findById(created.body.data.id);
+      expect(stored!.chartConfig).toMatchObject({
+        displayType: 'line',
+        source: source._id.toString(),
+        select: [
+          {
+            aggFn: 'count',
+            aggCondition: 'level:error',
+            aggConditionLanguage: 'lucene',
+          },
+        ],
+      });
+
+      const single = await authRequest(
+        'get',
+        `${ALERTS_BASE_URL}/${created.body.data.id}`,
+      ).expect(200);
+      expect(single.body.data.chartConfig).toMatchObject({
+        displayType: 'line',
+        sourceId: source._id.toString(),
+      });
+
+      // The list endpoint stays lean: no chartConfig per row.
+      const list = await authRequest('get', ALERTS_BASE_URL).expect(200);
+      const listed = list.body.data.find(a => a.id === created.body.data.id);
+      expect(listed.source).toBe(AlertSource.INLINE);
+      expect(listed.chartConfig).toBeUndefined();
+    });
+
+    it('updates an inline alert config and maps asRatio to the internal ratio return type', async () => {
+      const { source } = await makeSource();
+      const webhook = await createTestWebhook();
+
+      const created = await authRequest('post', ALERTS_BASE_URL)
+        .send(
+          makeInlineAlertInput(
+            makeBuilderChartConfig(source._id.toString()),
+            webhook._id.toString(),
+          ),
+        )
+        .expect(200);
+
+      const updated = await authRequest(
+        'put',
+        `${ALERTS_BASE_URL}/${created.body.data.id}`,
+      )
+        .send(
+          makeInlineAlertInput(
+            makeBuilderChartConfig(source._id.toString(), {
+              groupBy: 'ServiceName',
+              asRatio: true,
+              select: [
+                { aggFn: 'count', where: 'level:error' },
+                { aggFn: 'count', where: '' },
+              ],
+            }),
+            webhook._id.toString(),
+            { threshold: 42 },
+          ),
+        )
+        .expect(200);
+
+      expect(updated.body.data.threshold).toBe(42);
+      expect(updated.body.data.chartConfig).toMatchObject({
+        groupBy: 'ServiceName',
+        asRatio: true,
+      });
+
+      const stored = await Alert.findById(created.body.data.id);
+      expect(stored!.threshold).toBe(42);
+      expect(stored!.chartConfig).toMatchObject({
+        groupBy: 'ServiceName',
+        seriesReturnType: 'ratio',
+      });
+    });
+
+    it('clears source-specific references when switching between inline and tile sources', async () => {
+      const { source } = await makeSource();
+      const webhook = await createTestWebhook();
+      const dashboard = await createTestDashboard();
+      const tileId = dashboard.tiles[0].id;
+
+      const created = await authRequest('post', ALERTS_BASE_URL)
+        .send(
+          makeInlineAlertInput(
+            makeBuilderChartConfig(source._id.toString()),
+            webhook._id.toString(),
+          ),
+        )
+        .expect(200);
+
+      await authRequest('put', `${ALERTS_BASE_URL}/${created.body.data.id}`)
+        .send({
+          source: AlertSource.TILE,
+          dashboardId: dashboard._id.toString(),
+          tileId,
+          threshold: 100,
+          interval: '1h',
+          thresholdType: AlertThresholdType.ABOVE,
+          channel: { type: 'webhook', webhookId: webhook._id.toString() },
+        })
+        .expect(200);
+
+      let stored = await Alert.findById(created.body.data.id);
+      expect(stored!.chartConfig).toBeNull();
+      expect(stored!.dashboard?.toString()).toBe(dashboard._id.toString());
+      expect(stored!.tileId).toBe(tileId);
+
+      await authRequest('put', `${ALERTS_BASE_URL}/${created.body.data.id}`)
+        .send(
+          makeInlineAlertInput(
+            makeBuilderChartConfig(source._id.toString()),
+            webhook._id.toString(),
+          ),
+        )
+        .expect(200);
+
+      stored = await Alert.findById(created.body.data.id);
+      expect(stored!.chartConfig).toMatchObject({
+        source: source._id.toString(),
+      });
+      expect(stored!.dashboard).toBeNull();
+      expect(stored!.tileId).toBeNull();
+    });
+
+    it('rejects an inline alert whose source does not exist in the team', async () => {
+      const webhook = await createTestWebhook();
+      await authRequest('post', ALERTS_BASE_URL)
+        .send(
+          makeInlineAlertInput(
+            makeBuilderChartConfig(new ObjectId().toString()),
+            webhook._id.toString(),
+          ),
+        )
+        .expect(400);
+    });
+
+    it('rejects an inline alert with an unsupported display type', async () => {
+      const { source } = await makeSource();
+      const webhook = await createTestWebhook();
+      await authRequest('post', ALERTS_BASE_URL)
+        .send(
+          makeInlineAlertInput(
+            makeBuilderChartConfig(source._id.toString(), {
+              displayType: 'table',
+            }),
+            webhook._id.toString(),
+          ),
+        )
+        .expect(400);
+    });
+
+    it('rejects an inline alert with a PromQL config', async () => {
+      const webhook = await createTestWebhook();
+      await authRequest('post', ALERTS_BASE_URL)
+        .send(
+          makeInlineAlertInput(
+            {
+              configType: 'promql',
+              promqlQuery: 'up',
+              sourceId: new ObjectId().toString(),
+            },
+            webhook._id.toString(),
+          ),
+        )
+        .expect(400);
+    });
+
+    it('validates metric formulas on builder chart configs', async () => {
+      const { source } = await makeSource();
+      const webhook = await createTestWebhook();
+      const base = makeBuilderChartConfig(source._id.toString());
+
+      // Formula referencing a nonexistent series (only A exists)
+      await authRequest('post', ALERTS_BASE_URL)
+        .send(
+          makeInlineAlertInput(
+            { ...base, formulas: [{ expression: 'B * 2' }] },
+            webhook._id.toString(),
+          ),
+        )
+        .expect(400);
+
+      // Malformed expression
+      await authRequest('post', ALERTS_BASE_URL)
+        .send(
+          makeInlineAlertInput(
+            { ...base, formulas: [{ expression: 'A +' }] },
+            webhook._id.toString(),
+          ),
+        )
+        .expect(400);
+
+      // Formulas are mutually exclusive with the ratio toggle
+      await authRequest('post', ALERTS_BASE_URL)
+        .send(
+          makeInlineAlertInput(
+            {
+              ...base,
+              asRatio: true,
+              select: [
+                { aggFn: 'count', where: '' },
+                { aggFn: 'count', where: 'level:error' },
+              ],
+              formulas: [{ expression: 'A * 2' }],
+            },
+            webhook._id.toString(),
+          ),
+        )
+        .expect(400);
+
+      const created = await authRequest('post', ALERTS_BASE_URL)
+        .send(
+          makeInlineAlertInput(
+            { ...base, formulas: [{ expression: 'A * 2' }] },
+            webhook._id.toString(),
+          ),
+        )
+        .expect(200);
+      expect(created.body.data.chartConfig).toMatchObject({
+        formulas: [{ expression: 'A * 2' }],
+      });
+    });
+
+    it('accepts a raw SQL inline alert and validates its template and connection ownership', async () => {
+      const { connection } = await makeSource();
+      const webhook = await createTestWebhook();
+
+      // Missing the required time-filter/interval macros
+      await authRequest('post', ALERTS_BASE_URL)
+        .send(
+          makeInlineAlertInput(
+            {
+              configType: 'sql',
+              displayType: 'line',
+              sqlTemplate: 'SELECT 1',
+              connectionId: connection._id.toString(),
+            },
+            webhook._id.toString(),
+          ),
+        )
+        .expect(400);
+
+      // A connection outside the team is rejected
+      await authRequest('post', ALERTS_BASE_URL)
+        .send(
+          makeInlineAlertInput(
+            {
+              configType: 'sql',
+              displayType: 'line',
+              sqlTemplate: RAW_SQL_ALERT_TEMPLATE,
+              connectionId: new ObjectId().toString(),
+            },
+            webhook._id.toString(),
+          ),
+        )
+        .expect(400);
+
+      const created = await authRequest('post', ALERTS_BASE_URL)
+        .send(
+          makeInlineAlertInput(
+            {
+              configType: 'sql',
+              displayType: 'line',
+              sqlTemplate: RAW_SQL_ALERT_TEMPLATE,
+              connectionId: connection._id.toString(),
+            },
+            webhook._id.toString(),
+          ),
+        )
+        .expect(200);
+      expect(created.body.data.chartConfig).toMatchObject({
+        configType: 'sql',
+        displayType: 'line',
+        connectionId: connection._id.toString(),
+        sqlTemplate: RAW_SQL_ALERT_TEMPLATE,
+      });
+
+      // Stored internally with the internal field names
+      const stored = await Alert.findById(created.body.data.id);
+      expect(stored!.chartConfig).toMatchObject({
+        configType: 'sql',
+        connection: connection._id.toString(),
+      });
+    });
+
+    it('rejects a raw SQL inline alert whose source is on a different connection', async () => {
+      const { connection, source } = await makeSource();
+      const webhook = await createTestWebhook();
+      const otherConnection = await Connection.create({
+        team: team._id,
+        name: 'Other',
+        host: 'http://localhost:8124',
+        username: 'default',
+        password: '',
+      });
+
+      const rawSqlConfig = {
+        configType: 'sql',
+        displayType: 'line',
+        sqlTemplate: RAW_SQL_ALERT_TEMPLATE,
+        sourceId: source._id.toString(),
+      };
+
+      // The source belongs to `connection`, not `otherConnection` — the
+      // worker would execute on one and expand $__sourceTable from the other.
+      await authRequest('post', ALERTS_BASE_URL)
+        .send(
+          makeInlineAlertInput(
+            { ...rawSqlConfig, connectionId: otherConnection._id.toString() },
+            webhook._id.toString(),
+          ),
+        )
+        .expect(400);
+
+      await authRequest('post', ALERTS_BASE_URL)
+        .send(
+          makeInlineAlertInput(
+            { ...rawSqlConfig, connectionId: connection._id.toString() },
+            webhook._id.toString(),
+          ),
+        )
+        .expect(200);
+    });
+
+    it('rejects an inline alert without a chartConfig', async () => {
+      const webhook = await createTestWebhook();
+      await authRequest('post', ALERTS_BASE_URL)
+        .send(
+          makeInlineAlertInput(undefined, webhook._id.toString(), {
+            chartConfig: undefined,
+          }),
+        )
+        .expect(400);
+    });
+  });
+
+  describe('Input validation', () => {
     describe('webhook validation', () => {
       it('should reject a non-existent webhook', async () => {
         const dashboard = await createTestDashboard();

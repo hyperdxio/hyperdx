@@ -82,3 +82,51 @@ describe('validateSaveAlertInput channel comparison', () => {
     expect(result).toBeNull();
   });
 });
+
+describe('validateSaveAlertInput inline alerts', () => {
+  const chartConfig: NonNullable<McpSaveAlertInput['chartConfig']> = {
+    displayType: 'line',
+    sourceId: 'source-1',
+    select: [
+      {
+        aggFn: 'count',
+        where: '',
+        whereLanguage: 'lucene',
+      },
+    ],
+    fillNulls: true,
+  };
+
+  it('requires chartConfig when source is inline', () => {
+    const result = validateSaveAlertInput({
+      ...baseInput,
+      source: 'inline',
+      savedSearchId: undefined,
+      channel: wh('a'),
+    });
+
+    expect(result).toContain('chartConfig is required');
+  });
+
+  it('accepts an inline alert with a chartConfig', () => {
+    const result = validateSaveAlertInput({
+      ...baseInput,
+      source: 'inline',
+      savedSearchId: undefined,
+      chartConfig,
+      channel: wh('a'),
+    });
+
+    expect(result).toBeNull();
+  });
+
+  it('rejects a chartConfig on non-inline sources instead of silently dropping it', () => {
+    const result = validateSaveAlertInput({
+      ...baseInput,
+      chartConfig,
+      channel: wh('a'),
+    });
+
+    expect(result).toContain('only supported when source is "inline"');
+  });
+});

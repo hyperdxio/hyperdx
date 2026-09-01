@@ -3,6 +3,7 @@ import {
   SourceKind,
 } from '@hyperdx/common-utils/dist/types';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import mongoose from 'mongoose';
 
 import * as config from '@/config';
 import {
@@ -510,6 +511,200 @@ describe('MCP Alert Tools', () => {
         expect(output).not.toHaveProperty('_id');
         expect(output).toHaveProperty('teamId');
         expect(output).toHaveProperty('createdAt');
+      });
+    });
+
+    describe('inline alerts', () => {
+      // External tile-config dialect, same as the dashboard tools.
+      const makeChartConfig = (overrides: Record<string, unknown> = {}) => ({
+        displayType: 'line',
+        sourceId: traceSource._id.toString(),
+        select: [
+          {
+            aggFn: 'count',
+            where: 'StatusCode:STATUS_CODE_ERROR',
+            whereLanguage: 'lucene',
+          },
+        ],
+        ...overrides,
+      });
+
+      const makeInlineInput = (
+        webhookId: string,
+        overrides: Record<string, unknown> = {},
+      ) => ({
+        source: 'inline',
+        chartConfig: makeChartConfig(),
+        threshold: 10,
+        thresholdType: 'above',
+        interval: '5m',
+        channel: { type: 'webhook', webhookId },
+        name: 'Inline MCP Alert',
+        ...overrides,
+      });
+
+      it('should create an inline alert and echo the external-dialect chartConfig', async () => {
+        const webhook = await createTestWebhook();
+
+        const result = await callTool(
+          client,
+          'clickstack_save_alert',
+          makeInlineInput(webhook._id.toString()),
+        );
+
+        expect(result.isError).toBeFalsy();
+        const output = JSON.parse(getFirstText(result));
+        expect(output.source).toBe('inline');
+        expect(output.savedSearchId).toBeUndefined();
+        expect(output.dashboardId).toBeUndefined();
+        expect(output.chartConfig).toMatchObject({
+          displayType: 'line',
+          sourceId: traceSource._id.toString(),
+          select: [
+            {
+              aggFn: 'count',
+              where: 'StatusCode:STATUS_CODE_ERROR',
+              whereLanguage: 'lucene',
+            },
+          ],
+        });
+
+        // Mongo persists the internal dialect the check-alerts task reads.
+        const stored = await Alert.findById(output.id);
+        expect(stored!.source).toBe(AlertSource.INLINE);
+        expect(stored!.chartConfig).toMatchObject({
+          source: traceSource._id.toString(),
+          select: [
+            {
+              aggFn: 'count',
+              aggCondition: 'StatusCode:STATUS_CODE_ERROR',
+              aggConditionLanguage: 'lucene',
+            },
+          ],
+        });
+      });
+
+      it('should update an inline alert chart config', async () => {
+        const webhook = await createTestWebhook();
+
+        const createResult = await callTool(
+          client,
+          'clickstack_save_alert',
+          makeInlineInput(webhook._id.toString()),
+        );
+        const created = JSON.parse(getFirstText(createResult));
+
+        const updateResult = await callTool(client, 'clickstack_save_alert', {
+          ...makeInlineInput(webhook._id.toString(), {
+            chartConfig: makeChartConfig({ groupBy: 'ServiceName' }),
+            threshold: 42,
+          }),
+          id: created.id,
+        });
+
+        expect(updateResult.isError).toBeFalsy();
+        const updated = JSON.parse(getFirstText(updateResult));
+        expect(updated.threshold).toBe(42);
+        expect(updated.chartConfig).toMatchObject({ groupBy: 'ServiceName' });
+
+        const stored = await Alert.findById(created.id);
+        expect(stored!.threshold).toBe(42);
+        expect(stored!.chartConfig).toMatchObject({ groupBy: 'ServiceName' });
+      });
+
+      it('should reject inline source without chartConfig', async () => {
+        const webhook = await createTestWebhook();
+
+        const result = await callTool(
+          client,
+          'clickstack_save_alert',
+          makeInlineInput(webhook._id.toString(), { chartConfig: undefined }),
+        );
+
+        expect(result.isError).toBe(true);
+        expect(getFirstText(result)).toContain('chartConfig is required');
+      });
+
+      it('should reject a chartConfig on a saved-search alert', async () => {
+        const savedSearch = await createTestSavedSearch();
+        const webhook = await createTestWebhook();
+
+        const result = await callTool(client, 'clickstack_save_alert', {
+          source: 'saved_search',
+          savedSearchId: savedSearch._id.toString(),
+          chartConfig: makeChartConfig(),
+          threshold: 10,
+          thresholdType: 'above',
+          interval: '5m',
+          channel: { type: 'webhook', webhookId: webhook._id.toString() },
+        });
+
+        expect(result.isError).toBe(true);
+        expect(getFirstText(result)).toContain(
+          'only supported when source is "inline"',
+        );
+      });
+
+      it('should reject a malformed metric formula', async () => {
+        const webhook = await createTestWebhook();
+
+        const result = await callTool(
+          client,
+          'clickstack_save_alert',
+          makeInlineInput(webhook._id.toString(), {
+            chartConfig: makeChartConfig({
+              formulas: [{ expression: 'B * 2' }],
+            }),
+          }),
+        );
+
+        expect(result.isError).toBe(true);
+        expect(getFirstText(result)).toContain('Invalid chartConfig');
+      });
+
+      it("should reject a source that does not belong to the team's sources", async () => {
+        const webhook = await createTestWebhook();
+
+        const result = await callTool(
+          client,
+          'clickstack_save_alert',
+          makeInlineInput(webhook._id.toString(), {
+            chartConfig: makeChartConfig({
+              sourceId: new mongoose.Types.ObjectId().toString(),
+            }),
+          }),
+        );
+
+        expect(result.isError).toBe(true);
+        expect(getFirstText(result)).toContain('Source not found');
+      });
+
+      it('clickstack_get_alert detail includes chartConfig and falls back to its name', async () => {
+        const webhook = await createTestWebhook();
+
+        const createResult = await callTool(
+          client,
+          'clickstack_save_alert',
+          makeInlineInput(webhook._id.toString(), { name: undefined }),
+        );
+        const created = JSON.parse(getFirstText(createResult));
+
+        // Seed a chartConfig name directly (the external dialect does not
+        // carry one) to exercise the name fallback.
+        await Alert.findByIdAndUpdate(created.id, {
+          $set: { 'chartConfig.name': 'Error Rate Query' },
+        });
+
+        const detail = await callTool(client, 'clickstack_get_alert', {
+          id: created.id,
+        });
+        expect(detail.isError).toBeFalsy();
+        const output = JSON.parse(getFirstText(detail));
+        expect(output.chartConfig).toMatchObject({
+          displayType: 'line',
+          sourceId: traceSource._id.toString(),
+        });
+        expect(output.name).toBe('Error Rate Query');
       });
     });
 

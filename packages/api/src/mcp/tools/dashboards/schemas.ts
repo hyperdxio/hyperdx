@@ -614,7 +614,7 @@ const mcpTileLayoutSchema = z.object({
     ),
 });
 
-const mcpLineTileSchema = mcpTileLayoutSchema.extend({
+export const mcpLineTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
     ...rejectedTileWhereFields,
     displayType: z.literal('line').describe('Line chart over time'),
@@ -660,7 +660,7 @@ const mcpLineTileSchema = mcpTileLayoutSchema.extend({
   }),
 });
 
-const mcpBarTileSchema = mcpTileLayoutSchema.extend({
+export const mcpBarTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
     ...rejectedTileWhereFields,
     displayType: z
@@ -730,7 +730,7 @@ const mcpTableTileSchema = mcpTileLayoutSchema.extend({
   }),
 });
 
-const mcpNumberTileSchema = mcpTileLayoutSchema.extend({
+export const mcpNumberTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
     ...rejectedTileWhereFields,
     displayType: z.literal('number').describe('Single aggregate scalar value'),
@@ -974,7 +974,7 @@ const mcpMarkdownTileSchema = mcpTileLayoutSchema.extend({
   }),
 });
 
-const mcpSqlTileSchema = mcpTileLayoutSchema.extend({
+export const mcpSqlTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
     configType: z
       .literal('sql')

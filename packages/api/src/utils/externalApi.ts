@@ -18,13 +18,18 @@ import {
   AlertChannel,
   AlertDocument,
   AlertInterval,
+  AlertSource,
   AlertState,
   getAlertChannels,
   IAlert,
 } from '@/models/alert';
 import type { DashboardDocument } from '@/models/dashboard';
+import { convertAlertChartConfigToExternal } from '@/routers/external-api/v2/utils/alertChartConfig';
 import { SeriesTile } from '@/routers/external-api/v2/utils/dashboards';
-import { ExternalDashboardFilterWithId } from '@/utils/zod';
+import {
+  ExternalAlertChartConfig,
+  ExternalDashboardFilterWithId,
+} from '@/utils/zod';
 
 /** Returns a new object containing only the truthy, requested keys from the original object */
 const pickIfTruthy = <T, K extends keyof T>(obj: T, keys: K[]): Partial<T> => {
@@ -267,6 +272,12 @@ export type ExternalAlert = {
   dashboardId?: string;
   savedSearchId?: string;
   groupBy?: string;
+  /**
+   * Inline alerts only, and only on single-alert responses (the list endpoint
+   * stays lean): the alert's persisted chart config in the external
+   * tile-config dialect.
+   */
+  chartConfig?: ExternalAlertChartConfig;
   silenced?: {
     by?: string;
     at: string;
@@ -340,6 +351,17 @@ function transformErrorsToExternalErrors(
 
 export function translateAlertDocumentToExternalAlert(
   alert: AlertDocument,
+  {
+    includeChartConfig = false,
+  }: {
+    /**
+     * Attach an inline alert's chartConfig (external dialect). Single-alert
+     * responses (GET by id, POST, PUT, MCP detail) opt in; list responses
+     * leave it off so a team with hundreds of raw-SQL inline alerts does not
+     * ship every template on each page.
+     */
+    includeChartConfig?: boolean;
+  } = {},
 ): ExternalAlert {
   // Convert to plain object if it's a Mongoose document
   const alertObj: AlertDocumentObject = alert.toJSON
@@ -347,6 +369,13 @@ export function translateAlertDocumentToExternalAlert(
     : { ...alert };
 
   const channels = getAlertChannels(alertObj);
+
+  const externalChartConfig =
+    includeChartConfig &&
+    alertObj.source === AlertSource.INLINE &&
+    alertObj.chartConfig != null
+      ? convertAlertChartConfigToExternal(alertObj.chartConfig)
+      : undefined;
 
   // Copy all fields, renaming _id to id, ensuring ObjectId's are strings
   const result = {
@@ -376,6 +405,7 @@ export function translateAlertDocumentToExternalAlert(
     dashboardId: alertObj.dashboard?.toString(),
     savedSearchId: alertObj.savedSearch?.toString(),
     groupBy: alertObj.groupBy ?? undefined,
+    ...(externalChartConfig && { chartConfig: externalChartConfig }),
     silenced: transformSilencedToExternalSilenced(alertObj.silenced),
     executionErrors: transformErrorsToExternalErrors(alertObj.executionErrors),
     createdAt: hasCreatedAt(alertObj)

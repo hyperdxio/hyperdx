@@ -105,6 +105,117 @@ describe('utils/externalApi', () => {
     });
   });
 
+  describe('chartConfig handling', () => {
+    const internalChartConfig = {
+      displayType: 'line',
+      source: '65f5e4a3b9e77c001a123456',
+      select: [
+        {
+          aggFn: 'count',
+          aggCondition: 'level:error',
+          aggConditionLanguage: 'lucene',
+          valueExpression: '',
+        },
+      ],
+      where: '',
+      whereLanguage: 'lucene',
+      seriesReturnType: 'ratio',
+    };
+
+    it('omits chartConfig by default (list responses stay lean)', () => {
+      const alert = createAlertDocument({
+        source: AlertSource.INLINE,
+        chartConfig: internalChartConfig,
+      });
+
+      const translated = translateAlertDocumentToExternalAlert(alert);
+
+      expect(translated.chartConfig).toBeUndefined();
+      expect('chartConfig' in translated).toBe(false);
+    });
+
+    it('emits chartConfig in the external tile-config dialect when requested', () => {
+      const alert = createAlertDocument({
+        source: AlertSource.INLINE,
+        chartConfig: internalChartConfig,
+      });
+
+      const translated = translateAlertDocumentToExternalAlert(alert, {
+        includeChartConfig: true,
+      });
+
+      // seriesReturnType 'ratio' becomes asRatio only with exactly two
+      // select items — this single-select config maps to false.
+      expect(translated.chartConfig).toMatchObject({
+        displayType: 'line',
+        sourceId: '65f5e4a3b9e77c001a123456',
+        asRatio: false,
+        select: [
+          {
+            aggFn: 'count',
+            where: 'level:error',
+            whereLanguage: 'lucene',
+          },
+        ],
+      });
+    });
+
+    it('emits raw SQL chartConfig with external field names', () => {
+      const alert = createAlertDocument({
+        source: AlertSource.INLINE,
+        chartConfig: {
+          configType: 'sql',
+          displayType: 'line',
+          sqlTemplate: 'SELECT 1',
+          connection: '65f5e4a3b9e77c001a789012',
+          source: '65f5e4a3b9e77c001a123456',
+        },
+      });
+
+      const translated = translateAlertDocumentToExternalAlert(alert, {
+        includeChartConfig: true,
+      });
+
+      expect(translated.chartConfig).toMatchObject({
+        configType: 'sql',
+        displayType: 'line',
+        sqlTemplate: 'SELECT 1',
+        connectionId: '65f5e4a3b9e77c001a789012',
+        sourceId: '65f5e4a3b9e77c001a123456',
+      });
+    });
+
+    it('does not emit chartConfig for non-inline alerts even when requested', () => {
+      const alert = createAlertDocument({
+        source: AlertSource.TILE,
+        chartConfig: internalChartConfig,
+      });
+
+      const translated = translateAlertDocumentToExternalAlert(alert, {
+        includeChartConfig: true,
+      });
+
+      expect(translated.chartConfig).toBeUndefined();
+    });
+
+    it('omits chartConfig when the persisted config has no external representation', () => {
+      const alert = createAlertDocument({
+        source: AlertSource.INLINE,
+        chartConfig: {
+          configType: 'promql',
+          promqlQuery: 'up',
+          source: '65f5e4a3b9e77c001a123456',
+        },
+      });
+
+      const translated = translateAlertDocumentToExternalAlert(alert, {
+        includeChartConfig: true,
+      });
+
+      expect(translated.chartConfig).toBeUndefined();
+    });
+  });
+
   describe('channel mirroring', () => {
     // translateAlertDocumentToExternalAlert mirrors channels[0] into
     // `channel`, same as makeAlert (controllers/__tests__/alerts.test.ts).

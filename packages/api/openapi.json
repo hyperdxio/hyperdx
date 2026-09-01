@@ -92,9 +92,32 @@
         "type": "string",
         "enum": [
           "saved_search",
-          "tile"
+          "tile",
+          "inline"
         ],
-        "description": "Alert source type."
+        "description": "Alert source type. \"saved_search\" alerts monitor a saved search, \"tile\" alerts monitor a dashboard tile, and \"inline\" alerts carry their own chart configuration (see AlertChartConfig) without requiring a saved search or dashboard.\n"
+      },
+      "AlertChartConfig": {
+        "description": "The chart configuration an inline alert evaluates, in the same dialect as dashboard tile configs. Only the display types the alert evaluator supports are accepted: line, stacked_bar, and number, in both builder and Raw SQL (configType \"sql\") variants. Raw SQL templates must reference the evaluation window via the time-filter and interval macros (e.g. $__timeFilter and $__timeInterval), and the referenced source/connection must belong to the team.\n",
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/LineChartConfig"
+          },
+          {
+            "$ref": "#/components/schemas/BarChartConfig"
+          },
+          {
+            "$ref": "#/components/schemas/NumberChartConfig"
+          }
+        ],
+        "discriminator": {
+          "propertyName": "displayType",
+          "mapping": {
+            "line": "#/components/schemas/LineChartConfig",
+            "stacked_bar": "#/components/schemas/BarChartConfig",
+            "number": "#/components/schemas/NumberChartConfig"
+          }
+        }
       },
       "AlertState": {
         "type": "string",
@@ -239,6 +262,10 @@
             "description": "Group-by key for saved search alerts.",
             "nullable": true,
             "example": "ServiceName"
+          },
+          "chartConfig": {
+            "$ref": "#/components/schemas/AlertChartConfig",
+            "description": "Chart configuration for inline alerts. Required when source is \"inline\" and rejected otherwise. Returned on single-alert responses (GET by ID, POST, PUT); the list endpoint omits it.\n"
           },
           "threshold": {
             "type": "number",
@@ -5417,6 +5444,31 @@
                       }
                     ],
                     "name": "Error Spike Alert"
+                  }
+                },
+                "inlineAlert": {
+                  "summary": "Create an inline alert that carries its own chart config",
+                  "value": {
+                    "source": "inline",
+                    "chartConfig": {
+                      "displayType": "line",
+                      "sourceId": "65f5e4a3b9e77c001a123456",
+                      "select": [
+                        {
+                          "aggFn": "count",
+                          "where": "level:error",
+                          "whereLanguage": "lucene"
+                        }
+                      ]
+                    },
+                    "threshold": 100,
+                    "interval": "5m",
+                    "thresholdType": "above",
+                    "channel": {
+                      "type": "webhook",
+                      "webhookId": "65f5e4a3b9e77c001a789012"
+                    },
+                    "name": "Error log spike"
                   }
                 }
               }

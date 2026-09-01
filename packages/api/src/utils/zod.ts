@@ -789,6 +789,110 @@ const validateInlineAlertFormulas = (
   );
 };
 
+// Inline-alert chart configs on the external surface use the same external
+// tile-config dialect v2 dashboards use (`sourceId`, per-select `where`,
+// `asRatio`, `connectionId` + `sqlTemplate`), restricted to the display types
+// the alert task can evaluate as a time series: Line, Stacked Bar, and
+// Number. Builder + raw SQL variants; no PromQL (PromQL charts cannot be
+// alerted on).
+const externalAlertBuilderChartConfigSchema = z.discriminatedUnion(
+  'displayType',
+  [
+    externalDashboardLineChartConfigSchema,
+    externalDashboardBarChartConfigSchema,
+    externalDashboardNumberChartConfigSchema,
+  ],
+);
+
+const externalAlertRawSqlChartConfigSchema = z.discriminatedUnion(
+  'displayType',
+  [
+    externalDashboardLineRawSqlChartConfigSchema,
+    externalDashboardBarRawSqlChartConfigSchema,
+    externalDashboardNumberRawSqlChartConfigSchema,
+  ],
+);
+
+export type ExternalAlertChartConfig =
+  | z.infer<typeof externalAlertBuilderChartConfigSchema>
+  | z.infer<typeof externalAlertRawSqlChartConfigSchema>;
+
+// Mirrors the route-by-configType superRefine/transform pattern of
+// externalDashboardTileConfigSchema above, so inline alert configs get the
+// same targeted field-level errors, formula validation, and unknown-field
+// stripping as dashboard tile configs.
+export const externalAlertChartConfigSchema = z
+  .custom<ExternalAlertChartConfig>()
+  .superRefine((data, ctx) => {
+    const schema =
+      data !== null &&
+      typeof data === 'object' &&
+      'configType' in data &&
+      data.configType === 'sql'
+        ? externalAlertRawSqlChartConfigSchema
+        : externalAlertBuilderChartConfigSchema;
+
+    const result = schema.safeParse(data);
+    if (!result.success) {
+      for (const issue of result.error.issues) {
+        ctx.addIssue(issue);
+      }
+      return;
+    }
+
+    if (
+      'asRatio' in data &&
+      data.asRatio &&
+      (!Array.isArray(data.select) || data.select.length !== 2)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'asRatio can only be used with exactly two select items',
+      });
+    }
+
+    if (!('configType' in data)) {
+      // Same shared metric-formula rules the tile-config refinement applies:
+      // expression parse + series-ref range checks, asRatio mutual exclusion,
+      // and the number single-formula cap.
+      validateChartConfigFormulas(data, ctx);
+
+      // A number chart without formulas displays its single select item; the
+      // relaxed `.min(1).max(20)` on the number schema exists only so formula
+      // operands fit.
+      if (
+        data.displayType === 'number' &&
+        !('formulas' in data && (data.formulas?.length ?? 0) > 0) &&
+        Array.isArray(data.select) &&
+        data.select.length !== 1
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message:
+            'Number charts support a single select item unless formulas are used (extra items are formula operands)',
+          path: ['select'],
+        });
+      }
+    }
+  })
+  .transform(data => {
+    // Re-parse through the appropriate sub-schema to strip unknown fields.
+    // Safe to call .parse() here — superRefine already validated the data.
+    const schema =
+      data !== null &&
+      typeof data === 'object' &&
+      'configType' in data &&
+      data.configType === 'sql'
+        ? externalAlertRawSqlChartConfigSchema
+        : externalAlertBuilderChartConfigSchema;
+    return schema.parse(data);
+  });
+
+const zExternalInlineAlert = z.object({
+  source: z.literal(AlertSource.INLINE),
+  chartConfig: externalAlertChartConfigSchema,
+});
+
 const alertBaseSchema = z.object({
   channel: zAlertChannel.optional(),
   channels: zAlertChannels.optional(),
@@ -805,22 +909,30 @@ const alertBaseSchema = z.object({
   numConsecutiveWindows: z.number().int().min(1).nullish(),
 });
 
+// External v2 alert schema. Inline alerts carry their chart config in the
+// external tile-config dialect (see externalAlertChartConfigSchema); the
+// router converts it to the internal AlertChartConfig shape before
+// validateAlertInput/createAlert.
 export const alertSchema = alertBaseSchema
-  .and(zSavedSearchAlert.or(zTileAlert))
+  .and(zSavedSearchAlert.or(zTileAlert).or(zExternalInlineAlert))
   .superRefine(validateAlertChannelSelection)
   .superRefine(validateAlertScheduleOffsetMinutes)
   .superRefine(validateAlertThresholdMax);
 
-// Superset of alertSchema for the internal API only: also accepts inline
-// alerts (source: 'inline'), which persist their own chart config. The
-// external v2 API keeps the narrower alertSchema until its contract (OpenAPI
-// docs, Terraform provider) is extended to cover inline alerts.
+export type ExternalAlertInput = z.infer<typeof alertSchema>;
+
+// Internal-API variant: inline alerts carry the persisted internal
+// AlertChartConfig shape directly (per-select `aggCondition`,
+// `seriesReturnType: 'ratio'`, `source`/`connection`) instead of the external
+// dialect above.
 export const internalAlertSchema = alertBaseSchema
   .and(zSavedSearchAlert.or(zTileAlert).or(zInlineAlert))
   .superRefine(validateAlertChannelSelection)
   .superRefine(validateAlertScheduleOffsetMinutes)
   .superRefine(validateAlertThresholdMax)
   .superRefine(validateInlineAlertFormulas);
+
+export type InternalAlertInput = z.infer<typeof internalAlertSchema>;
 
 // ==============================
 // Webhooks

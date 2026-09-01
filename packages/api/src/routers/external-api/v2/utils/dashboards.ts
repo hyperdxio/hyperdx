@@ -197,7 +197,9 @@ const toExternalColorRules = (
   return resolved.length > 0 ? resolved : undefined;
 };
 
-const convertToExternalTileChartConfig = (
+// Exported for the inline-alert converter (v2/utils/alertChartConfig.ts),
+// which reuses the tile-config translation for an alert's persisted config.
+export const convertToExternalTileChartConfig = (
   config: SavedChartConfig,
 ): ExternalDashboardTileConfig | undefined => {
   if (isRawSqlSavedChartConfig(config)) {

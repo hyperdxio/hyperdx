@@ -10,15 +10,24 @@ import {
 } from '@/controllers/alerts';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import {
+  formatZodIssues,
   mcpServerError,
   mcpUserError,
   validateObjectId,
 } from '@/mcp/utils/errors';
 import { AlertSource } from '@/models/alert';
+import { convertExternalAlertChartConfigToInternal } from '@/routers/external-api/v2/utils/alertChartConfig';
 import { BaseError } from '@/utils/errors';
 import { translateAlertDocumentToExternalAlert } from '@/utils/externalApi';
+import { externalAlertChartConfigSchema } from '@/utils/zod';
 
 import { mcpSaveAlertSchema, validateSaveAlertInput } from './schemas';
+
+const MCP_SOURCE_TO_ALERT_SOURCE = {
+  saved_search: AlertSource.SAVED_SEARCH,
+  tile: AlertSource.TILE,
+  inline: AlertSource.INLINE,
+} as const;
 
 export function registerSaveAlert({
   context,
@@ -34,8 +43,10 @@ export function registerSaveAlert({
       annotations: { destructiveHint: true },
       description:
         'Create a new alert (omit id) or update an existing one (provide id). ' +
-        'Alerts monitor a saved search or dashboard tile and fire when the ' +
-        'metric crosses a threshold. At least one webhook notification channel ' +
+        'Alerts monitor a saved search, a dashboard tile, or an inline chart ' +
+        'config (source "inline" + chartConfig — no saved search or dashboard ' +
+        'needed) and fire when the metric crosses a threshold. At least one ' +
+        'webhook notification channel ' +
         'is required: pass "channels" for 1-10 targets, or the legacy singular ' +
         '"channel" for one. Updates replace the alert configuration rather than ' +
         'merging it, so read the alert first and resend its full "channels" ' +
@@ -56,9 +67,27 @@ export function registerSaveAlert({
         if (idError) return idError;
       }
 
+      // Inline alerts: run the chart config through the shared external
+      // schema (same one the v2 REST API parses) so formula validation and
+      // the number single-select rule cannot drift between the surfaces,
+      // then convert to the internal shape the controllers persist.
+      let internalChartConfig: AlertInput['chartConfig'];
+      if (input.source === 'inline') {
+        const parsed = externalAlertChartConfigSchema.safeParse(
+          input.chartConfig,
+        );
+        if (!parsed.success) {
+          return mcpUserError(
+            `Invalid chartConfig:\n${formatZodIssues(parsed.error)}`,
+          );
+        }
+        internalChartConfig = convertExternalAlertChartConfigToInternal(
+          parsed.data,
+        );
+      }
+
       // Build the alert input matching the shape expected by controllers.
-      const source =
-        input.source === 'tile' ? AlertSource.TILE : AlertSource.SAVED_SEARCH;
+      const source = MCP_SOURCE_TO_ALERT_SOURCE[input.source];
       const alertInput: AlertInput = {
         source,
         // `channel` is omitted; makeAlert mirrors it from channels[0].
@@ -75,6 +104,7 @@ export function registerSaveAlert({
         savedSearchId: input.savedSearchId,
         dashboardId: input.dashboardId,
         tileId: input.tileId,
+        chartConfig: internalChartConfig,
       };
 
       // ── Validate referenced entities exist ──
@@ -107,7 +137,9 @@ export function registerSaveAlert({
               type: 'text' as const,
               text: JSON.stringify(
                 {
-                  ...translateAlertDocumentToExternalAlert(updated),
+                  ...translateAlertDocumentToExternalAlert(updated, {
+                    includeChartConfig: true,
+                  }),
                   ...(frontendUrl ? { url: `${frontendUrl}/alerts` } : {}),
                 },
                 null,
@@ -130,7 +162,9 @@ export function registerSaveAlert({
             type: 'text' as const,
             text: JSON.stringify(
               {
-                ...translateAlertDocumentToExternalAlert(created),
+                ...translateAlertDocumentToExternalAlert(created, {
+                  includeChartConfig: true,
+                }),
                 ...(frontendUrl ? { url: `${frontendUrl}/alerts` } : {}),
               },
               null,
