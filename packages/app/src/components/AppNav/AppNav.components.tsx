@@ -181,7 +181,15 @@ export const AppNavUserMenu = ({
   );
 };
 
-export const AppNavHelpMenu = ({ version }: { version?: string }) => {
+// `version` is the running build, shown as a label. `whatsNewVersion` is the
+// newest release in the notes and drives the sparkle — see useWhatsNewUnseen.
+export const AppNavHelpMenu = ({
+  version,
+  whatsNewVersion,
+}: {
+  version?: string;
+  whatsNewVersion?: string;
+}) => {
   const { isCollapsed } = React.use(AppNavContext);
   const [
     shortcutsOpened,
@@ -194,8 +202,10 @@ export const AppNavHelpMenu = ({ version }: { version?: string }) => {
     whatsNewDrawerOpened,
     { open: openWhatsNewDrawer, close: closeWhatsNewDrawer },
   ] = useDisclosure(false);
-  // Sparkle the Help button when there's a release this browser hasn't seen.
-  const [hasUnseenWhatsNew, markWhatsNewSeen] = useWhatsNewUnseen(version);
+  // Sparkle the Help button when a release newer than the one this browser
+  // acknowledged has been published.
+  const [hasUnseenWhatsNew, markWhatsNewSeen] =
+    useWhatsNewUnseen(whatsNewVersion);
   // Opening the menu marks the release seen, which clears hasUnseenWhatsNew in
   // the same tick — so the menu has to render off a snapshot taken at open time.
   // Passing hasUnseenWhatsNew straight down gives a sparkle that never appears.
