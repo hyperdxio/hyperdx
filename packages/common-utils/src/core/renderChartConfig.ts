@@ -10,7 +10,7 @@ import {
   translateExponentialHistogram,
   translateHistogram,
 } from '@/core/histogram';
-import { Metadata } from '@/core/metadata';
+import { Metadata, unquoteIdentifier } from '@/core/metadata';
 import {
   convertDateRangeToGranularityString,
   convertGranularityToSeconds,
@@ -2302,6 +2302,24 @@ async function translateMetricChartConfig(
       valueAlias,
     };
 
+    // The translated scope only projects [bucket?, group, value] — the
+    // user's group-by values (plain columns included) exist solely inside
+    // the packed GROUP_ALIAS Array, so an ORDER BY repeating a group-by
+    // entry (the table default is orderBy = groupBy text) would fail with
+    // "Unknown identifier". Rewrite matched items to the positional
+    // element access `group`[k+1] (HDX-5247; same mechanism as the
+    // composed multi-series all-histogram path, see
+    // renderMultiSeriesOrderBy). Items are raw SQL only (no bind params),
+    // so joining their text yields a plain string-form orderBy.
+    const packedOrderBy =
+      restChartConfig.orderBy != null && groupBy
+        ? renderMultiSeriesOrderBy(
+            restChartConfig.orderBy,
+            groupByEntriesForSort(chartConfig.groupBy!),
+            { groupsArePacked: true },
+          )
+        : null;
+
     return {
       ...restChartConfig,
       with: isExponentialHistogram
@@ -2316,6 +2334,9 @@ async function translateMetricChartConfig(
         databaseName: '',
         tableName: 'metrics',
       },
+      orderBy: packedOrderBy
+        ? packedOrderBy.orderBy.map(item => item.sql).join(',')
+        : restChartConfig.orderBy,
       where: '', // clear up the condition since the where clause is already applied at the upstream CTE
       // Timeseries queries discard padded buckets here. Non-timeseries queries
       // scan only the visible range and have no time dimension to filter.
@@ -2424,15 +2445,41 @@ type ParsedSortItem = {
 };
 
 /**
+ * Normalize a config's group-by (string or structured list) into the
+ * expression/alias pairs the sort rewriting matches against. Entry order is
+ * significant: it matches both the scalar-branch projection order and the
+ * packing order of the GROUP_ALIAS Array.
+ */
+function groupByEntriesForSort(
+  groupBy: NonNullable<BuilderChartConfigWithOptDateRange['groupBy']>,
+): { expr: string; alias?: string }[] {
+  return typeof groupBy === 'string'
+    ? splitAndTrimWithBracket(groupBy).map(expr => ({ expr }))
+    : groupBy.map(entry => ({
+        expr: entry.valueExpression,
+        alias: entry.alias?.trim() ? entry.alias : undefined,
+      }));
+}
+
+/**
  * Split a SortSpecificationList into per-item expression/direction pairs.
- * String items that don't parse as a plain `<expr> [ASC|DESC]` (e.g. with a
+ * Items that don't parse as a plain `<expr> [ASC|DESC]` (e.g. with a
  * NULLS FIRST suffix) keep only `raw` and are passed through untouched.
+ *
+ * Structured items run through the same comma-splitting as the string form:
+ * convertToCategoricalChartConfig injects a single item whose
+ * valueExpression is the WHOLE group-by string (e.g. "ServiceName,
+ * HttpStatus"), which must match the group entries piece-by-piece exactly
+ * like the table default (string) form does. The item's ordering attaches
+ * to the LAST piece only — that mirrors how ClickHouse parses the rendered
+ * text `a, b DESC` (a ASC, b DESC), so splitting never changes the sort
+ * semantics of an item that already rendered successfully.
  */
 function parseSortSpecificationItems(
   sortSpecificationList: SortSpecificationList,
 ): ParsedSortItem[] {
-  if (typeof sortSpecificationList === 'string') {
-    return splitAndTrimWithBracket(sortSpecificationList).map(piece => {
+  const parsePieces = (text: string): ParsedSortItem[] =>
+    splitAndTrimWithBracket(text).map(piece => {
       const match = piece.match(/^([\s\S]*?)\s+(ASC|DESC)$/i);
       if (match) {
         return {
@@ -2446,12 +2493,15 @@ function parseSortSpecificationItems(
       // a group-by expression — so the item safely falls through untouched.
       return { raw: piece, expr: piece };
     });
+
+  if (typeof sortSpecificationList === 'string') {
+    return parsePieces(sortSpecificationList);
   }
-  return sortSpecificationList.map(item => ({
-    raw: `${item.valueExpression} ${item.ordering === 'DESC' ? 'DESC' : 'ASC'}`,
-    expr: item.valueExpression,
-    ordering: item.ordering === 'DESC' ? 'DESC' : 'ASC',
-  }));
+  return sortSpecificationList.flatMap(item =>
+    parsePieces(
+      `${item.valueExpression} ${item.ordering === 'DESC' ? 'DESC' : 'ASC'}`,
+    ),
+  );
 }
 
 /**
@@ -2480,13 +2530,20 @@ function parseSortSpecificationItems(
  * column, aliased, or expression: none resolve by name in this scope)
  * sorts as `group`[k+1]. GROUP_ALIAS is a grouping key, so the element
  * access is valid after GROUP BY ALL without an aggregate, and no
- * companion columns are involved.
+ * companion columns are involved. Sort items referencing a group-by entry
+ * by its ALIAS (bare or identifier-quoted) match too — the alias never
+ * surfaces as a column in a packed scope, unlike on scalar branches where
+ * it is a projected passthrough column and needs no rewriting.
  *
  * Anything else (value-column aliases, quoted output names, unparseable
  * items) is passed through unchanged.
  *
  * Returns null when nothing needs rewriting so the caller can keep the
  * legacy rendering path (and its exact SQL text) for untouched configs.
+ *
+ * The packed mode is shared with the SINGLE-series histogram translation
+ * (translateMetricChartConfig), whose scope has the same shape: only the
+ * packed GROUP_ALIAS Array survives translation (HDX-5247).
  */
 function renderMultiSeriesOrderBy(
   sortSpecificationList: SortSpecificationList,
@@ -2497,10 +2554,23 @@ function renderMultiSeriesOrderBy(
   let rewroteAny = false;
   const orderBy = parseSortSpecificationItems(sortSpecificationList).map(
     item => {
+      // Strip one level of identifier quoting on both sides so
+      // `` `ServiceName` `` / `"service"` compare equal to the bare text.
+      // (A quoted plain-column match still passes through raw in scalar
+      // mode below, so working SQL stays byte-for-byte identical there.)
+      const matchText = (s: string) =>
+        normalizeExprText(unquoteIdentifier(s.trim()));
       const matched =
         item.expr != null
           ? groupEntries.find(
-              g => normalizeExprText(g.expr) === normalizeExprText(item.expr!),
+              g =>
+                matchText(g.expr) === matchText(item.expr!) ||
+                // Alias references only need rewriting in a packed scope; on
+                // scalar branches the alias is a projected column and the
+                // item must pass through untouched.
+                (groupsArePacked &&
+                  g.alias != null &&
+                  g.alias === unquoteIdentifier(item.expr!.trim())),
             )
           : undefined;
       if (!matched) {
@@ -2717,14 +2787,7 @@ async function renderMultiSeriesMetricChartConfig(
     !ordersOnHavingWrapper
       ? renderMultiSeriesOrderBy(
           chartConfig.orderBy,
-          typeof chartConfig.groupBy === 'string'
-            ? splitAndTrimWithBracket(chartConfig.groupBy).map(expr => ({
-                expr,
-              }))
-            : chartConfig.groupBy!.map(entry => ({
-                expr: entry.valueExpression,
-                alias: entry.alias?.trim() ? entry.alias : undefined,
-              })),
+          groupByEntriesForSort(chartConfig.groupBy!),
           { groupsArePacked: allGroupsPacked },
         )
       : null;
