@@ -13,6 +13,28 @@ import { capitalizeFirstLetter } from '@/utils';
 const SEPARATOR = ':::::::';
 const SEARCH_DEBOUNCE_MS = 300;
 
+/** The kinds this select queries, in the order they are offered. Summary is
+ * absent because there is no query behind it. */
+const QUERYABLE_METRIC_TYPES = [
+  MetricsDataType.Gauge,
+  MetricsDataType.Histogram,
+  MetricsDataType.Sum,
+  MetricsDataType.ExponentialHistogram,
+] as const;
+
+const METRIC_TYPE_LABELS: Partial<Record<MetricsDataType, string>> = {
+  [MetricsDataType.Gauge]: 'Gauge',
+  [MetricsDataType.Histogram]: 'Histogram',
+  [MetricsDataType.Sum]: 'Sum',
+  [MetricsDataType.ExponentialHistogram]: 'Exponential Histogram',
+};
+
+const metricTypeLabel = (metricType: MetricsDataType) =>
+  METRIC_TYPE_LABELS[metricType] ?? capitalizeFirstLetter(metricType);
+
+const metricOptionValue = (metricName: string, metricType: MetricsDataType) =>
+  `${metricName}${SEPARATOR}${metricType}`;
+
 export function getMetricOptions(
   gaugeMetrics: string[] | undefined,
   histogramMetrics: string[] | undefined,
@@ -21,35 +43,30 @@ export function getMetricOptions(
   metricName: string | null | undefined,
   metricType: MetricsDataType,
 ) {
-  const metricsFromQuery = [
-    ...(gaugeMetrics?.map(metric => ({
-      value: `${metric}${SEPARATOR}${MetricsDataType.Gauge}`,
-      label: `${metric} (Gauge)`,
-    })) ?? []),
-    ...(histogramMetrics?.map(metric => ({
-      value: `${metric}${SEPARATOR}${MetricsDataType.Histogram}`,
-      label: `${metric} (Histogram)`,
-    })) ?? []),
-    ...(sumMetrics?.map(metric => ({
-      value: `${metric}${SEPARATOR}${MetricsDataType.Sum}`,
-      label: `${metric} (Sum)`,
-    })) ?? []),
-    ...(exponentialHistogramMetrics?.map(metric => ({
-      value: `${metric}${SEPARATOR}${MetricsDataType.ExponentialHistogram}`,
-      label: `${metric} (Exponential Histogram)`,
-    })) ?? []),
-  ];
+  const namesByType: Partial<Record<MetricsDataType, string[] | undefined>> = {
+    [MetricsDataType.Gauge]: gaugeMetrics,
+    [MetricsDataType.Histogram]: histogramMetrics,
+    [MetricsDataType.Sum]: sumMetrics,
+    [MetricsDataType.ExponentialHistogram]: exponentialHistogramMetrics,
+  };
+  const metricsFromQuery = QUERYABLE_METRIC_TYPES.flatMap(
+    type =>
+      namesByType[type]?.map(metric => ({
+        value: metricOptionValue(metric, type),
+        label: `${metric} (${metricTypeLabel(type)})`,
+      })) ?? [],
+  );
   // if saved metric does not exist in the available options, assume it exists
   // and add it to options
   if (
     metricName &&
     !metricsFromQuery.find(
-      metric => metric.value === `${metricName}${SEPARATOR}${metricType}`,
+      metric => metric.value === metricOptionValue(metricName, metricType),
     )
   ) {
     metricsFromQuery.push({
-      value: `${metricName}${SEPARATOR}${metricType}`,
-      label: `${metricName} (${capitalizeFirstLetter(metricType)})`,
+      value: metricOptionValue(metricName, metricType),
+      label: `${metricName} (${metricTypeLabel(metricType)})`,
     });
   }
   return metricsFromQuery;
@@ -125,25 +142,34 @@ export function MetricNameSelect({
     // and a kind with no table configured is never queried. Offer the searched
     // name so a pasted metric is not stranded — the select has no other way to
     // commit a value that is not already an option. Built from the debounced
-    // search, so the offer appears only once the query behind it has answered,
+    // search, so an offer appears only once the query behind it has answered,
     // and the name is embedded in the label because Mantine filters options by
-    // substring against the label and would otherwise drop this one.
-    const typedValue = `${debouncedSearch}${SEPARATOR}${metricType}`;
-    // Skipped when that value is already an option, or Mantine throws on the
-    // duplicate and takes the whole editor down. Committing this offer puts the
-    // name in `metricName`, which `getMetricOptions` then synthesizes an option
-    // for, while the debounced search still holds the same name for one more
-    // interval — so the collision is the normal path through here, not an edge
-    // case.
-    if (
-      debouncedSearch &&
-      hasNoMatches &&
-      !metricOptions.some(option => option.value === typedValue)
-    ) {
-      metricOptions.push({
-        value: typedValue,
-        label: `Use "${debouncedSearch}" (no recent data)`,
-      });
+    // substring against the label and would otherwise drop these.
+    //
+    // One offer per kind, because the kind decides which table the series is
+    // read from and a pasted name carries no kind. Filing it under whatever the
+    // last selection happened to use would query the wrong table and chart
+    // nothing, with no way to correct it.
+    if (debouncedSearch && hasNoMatches) {
+      for (const type of QUERYABLE_METRIC_TYPES) {
+        // A kind with no table is not queryable on this source, so committing
+        // the name under it could never resolve.
+        if (!metricSource.metricTables?.[type]) {
+          continue;
+        }
+        const value = metricOptionValue(debouncedSearch, type);
+        // Committing an offer puts the name in `metricName`, which
+        // `getMetricOptions` then synthesizes its own option for while the
+        // debounced search still holds the same name — and Mantine throws on a
+        // duplicate option value, taking the editor down with it.
+        if (metricOptions.some(option => option.value === value)) {
+          continue;
+        }
+        metricOptions.push({
+          value,
+          label: `${debouncedSearch} (${metricTypeLabel(type)}, no recent data)`,
+        });
+      }
     }
     return metricOptions;
   }, [
@@ -155,6 +181,7 @@ export function MetricNameSelect({
     metricType,
     debouncedSearch,
     hasNoMatches,
+    metricSource,
   ]);
 
   const currentValue =

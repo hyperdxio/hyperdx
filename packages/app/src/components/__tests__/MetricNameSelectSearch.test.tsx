@@ -218,7 +218,7 @@ describe('MetricNameSelect', () => {
       );
 
       const offer = await screen.findByText(
-        'Use "chi_clickhouse_metric_SystemErrors" (no recent data)',
+        'chi_clickhouse_metric_SystemErrors (Gauge, no recent data)',
       );
       await userEvent.click(offer);
 
@@ -226,6 +226,48 @@ describe('MetricNameSelect', () => {
         'chi_clickhouse_metric_SystemErrors',
       );
       expect(setMetricType).toHaveBeenCalledWith(MetricsDataType.Gauge);
+    });
+
+    // The kind decides which table the series reads from, and a pasted name
+    // carries none. One offer per kind lets the user say which, instead of
+    // inheriting whatever the previous selection happened to be.
+    it('offers one kind per configured table, and no others', async () => {
+      noMatches();
+      renderSelect();
+
+      await userEvent.type(screen.getByTestId('metric-name-selector'), 'zzz');
+
+      expect(
+        await screen.findByText('zzz (Gauge, no recent data)'),
+      ).toBeInTheDocument();
+      expect(screen.getByText('zzz (Sum, no recent data)')).toBeInTheDocument();
+      // The fixture source has no histogram or exponential-histogram table, so
+      // committing the name under either could never resolve.
+      expect(
+        screen.queryByText('zzz (Histogram, no recent data)'),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByText('zzz (Exponential Histogram, no recent data)'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('commits the kind the user picked, not the current one', async () => {
+      noMatches();
+      const setMetricName = jest.fn();
+      const setMetricType = jest.fn();
+      renderSelect({
+        setMetricName,
+        setMetricType,
+        metricType: MetricsDataType.Gauge,
+      });
+
+      await userEvent.type(screen.getByTestId('metric-name-selector'), 'zzz');
+      await userEvent.click(
+        await screen.findByText('zzz (Sum, no recent data)'),
+      );
+
+      expect(setMetricName).toHaveBeenCalledWith('zzz');
+      expect(setMetricType).toHaveBeenCalledWith(MetricsDataType.Sum);
     });
 
     // Committing the offer puts the name in `metricName`, which
@@ -240,7 +282,7 @@ describe('MetricNameSelect', () => {
       const input = screen.getByTestId('metric-name-selector');
       await userEvent.type(input, 'chc_');
       await userEvent.click(
-        await screen.findByText('Use "chc_" (no recent data)'),
+        await screen.findByText('chc_ (Gauge, no recent data)'),
       );
 
       await waitFor(() => expect(input).toHaveValue('chc_ (Gauge)'));
@@ -276,7 +318,7 @@ describe('MetricNameSelect', () => {
       await new Promise(resolve => setTimeout(resolve, DEBOUNCE_SETTLE_MS));
 
       expect(
-        screen.queryByText('Use "zzz" (no recent data)'),
+        screen.queryByText('zzz (Gauge, no recent data)'),
       ).not.toBeInTheDocument();
     });
 
@@ -313,7 +355,7 @@ describe('MetricNameSelect', () => {
       await userEvent.type(screen.getByTestId('metric-name-selector'), 'zzz');
 
       expect(
-        await screen.findByText('Use "zzz" (no recent data)'),
+        await screen.findByText('zzz (Gauge, no recent data)'),
       ).toBeInTheDocument();
     });
 
@@ -328,7 +370,7 @@ describe('MetricNameSelect', () => {
       await new Promise(resolve => setTimeout(resolve, DEBOUNCE_SETTLE_MS));
 
       expect(
-        screen.queryByText('Use "zzz" (no recent data)'),
+        screen.queryByText('zzz (Gauge, no recent data)'),
       ).not.toBeInTheDocument();
     });
   });
@@ -341,7 +383,7 @@ describe('MetricNameSelect', () => {
     await new Promise(resolve => setTimeout(resolve, DEBOUNCE_SETTLE_MS));
 
     expect(
-      screen.queryByText('Use "up" (no recent data)'),
+      screen.queryByText('up (Gauge, no recent data)'),
     ).not.toBeInTheDocument();
   });
 });
