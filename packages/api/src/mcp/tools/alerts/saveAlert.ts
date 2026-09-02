@@ -77,23 +77,12 @@ export function registerSaveAlert({
       if (input.source === 'inline') {
         // The MCP tile dialect spells the gauge delta flag `isDelta`; the
         // shared external schema spells it `periodAggFn: 'delta'` and strips
-        // unknown keys, so translate per select item before parsing or the
-        // flag is silently lost and the alert evaluates raw gauge values.
-        const chartConfig =
-          input.chartConfig != null &&
-          'select' in input.chartConfig &&
-          Array.isArray(input.chartConfig.select)
-            ? {
-                ...input.chartConfig,
-                select: input.chartConfig.select.map(item =>
-                  item.isDelta
-                    ? { ...item, periodAggFn: 'delta' as const }
-                    : item,
-                ),
-              }
-            : input.chartConfig;
-
-        const parsed = externalAlertChartConfigSchema.safeParse(chartConfig);
+        // unknown keys. The MCP select-item schema already emits both
+        // spellings in agreement (see mcpTileSelectItemSchema), so the flag
+        // survives this parse.
+        const parsed = externalAlertChartConfigSchema.safeParse(
+          input.chartConfig,
+        );
         if (!parsed.success) {
           return mcpUserError(
             `Invalid chartConfig:\n${formatZodIssues(parsed.error)}`,

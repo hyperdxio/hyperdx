@@ -158,16 +158,54 @@ describe('mcpSaveAlertSchema isDelta dialect bridge', () => {
     metricName: 'system.cpu.utilization',
   };
 
-  it('normalizes the REST-dialect periodAggFn: "delta" onto isDelta', () => {
-    expect(
-      parseSelectItem({ ...gaugeItem, periodAggFn: 'delta' }),
-    ).toMatchObject({ isDelta: true });
+  // Both spellings are emitted in agreement: `isDelta` for direct MCP
+  // consumers, `periodAggFn` because the external REST schema this config is
+  // re-parsed through knows only that one and strips the other.
+  it.each([
+    ['periodAggFn: "delta"', { periodAggFn: 'delta' }],
+    ['isDelta: true', { isDelta: true }],
+  ])('emits both delta spellings for %s', (_label, deltaFlag) => {
+    expect(parseSelectItem({ ...gaugeItem, ...deltaFlag })).toMatchObject({
+      isDelta: true,
+      periodAggFn: 'delta',
+    });
   });
 
-  it('passes an explicit isDelta through unchanged', () => {
-    expect(parseSelectItem({ ...gaugeItem, isDelta: true })).toMatchObject({
-      isDelta: true,
-    });
-    expect(parseSelectItem(gaugeItem).isDelta).toBeUndefined();
+  it('emits neither spelling when the item is not a delta', () => {
+    const item = parseSelectItem(gaugeItem);
+    expect(item).not.toHaveProperty('isDelta');
+    expect(item).not.toHaveProperty('periodAggFn');
   });
+
+  it('lets an explicit isDelta: false win over periodAggFn: "delta"', () => {
+    // The refinement and the transform must agree on precedence. When they
+    // disagreed, this body validated as non-delta (passing the gauge-only
+    // rule) and then persisted as a delta because the stale periodAggFn
+    // survived.
+    const item = parseSelectItem({
+      ...gaugeItem,
+      isDelta: false,
+      periodAggFn: 'delta',
+    });
+    expect(item).not.toHaveProperty('isDelta');
+    expect(item).not.toHaveProperty('periodAggFn');
+  });
+
+  it.each([
+    ['isDelta', { isDelta: true }],
+    ['periodAggFn', { periodAggFn: 'delta' }],
+  ])(
+    'rejects a delta on a non-gauge metric spelled via %s',
+    (_label, deltaFlag) => {
+      expect(() =>
+        parseSelectItem({
+          aggFn: 'sum',
+          metricType: 'sum',
+          metricName: 'http.server.requests',
+          valueExpression: 'Value',
+          ...deltaFlag,
+        }),
+      ).toThrow('isDelta is only valid for gauge metrics');
+    },
+  );
 });

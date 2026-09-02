@@ -3095,4 +3095,96 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
       expect(text).toContain(ghostDashboardId);
     });
   });
+
+  describe('metric tiles', () => {
+    const makeMetricSource = () =>
+      Source.create({
+        kind: SourceKind.Metric,
+        team: ctx.team._id,
+        from: { databaseName: DEFAULT_DATABASE, tableName: '' },
+        metricTables: {
+          [MetricsDataType.Gauge.toLowerCase()]: 'otel_metrics_gauge',
+          [MetricsDataType.Sum.toLowerCase()]: 'otel_metrics_sum',
+          [MetricsDataType.Histogram.toLowerCase()]: 'otel_metrics_histogram',
+        },
+        timestampValueExpression: 'TimeUnix',
+        connection: ctx.connection._id,
+        name: 'Metrics',
+      });
+
+    const gaugeTile = (
+      selectItem: Record<string, unknown>,
+      sourceId: string,
+    ) => ({
+      name: 'CPU delta',
+      x: 0,
+      y: 0,
+      w: 12,
+      h: 4,
+      config: {
+        displayType: 'line',
+        sourceId,
+        select: [
+          {
+            aggFn: 'avg',
+            metricType: 'gauge',
+            metricName: 'system.cpu.utilization',
+            valueExpression: 'Value',
+            where: '',
+            ...selectItem,
+          },
+        ],
+      },
+    });
+
+    it.each([
+      ['isDelta', { isDelta: true }],
+      ['periodAggFn', { periodAggFn: 'delta' }],
+    ])(
+      'persists the gauge delta flag on a saved tile spelled via %s',
+      async (_label, deltaFlag) => {
+        // The tool accepts both spellings and the conversion to the internal
+        // tile config must keep the flag: a dropped isDelta silently makes
+        // the tile chart raw gauge values instead of per-bucket deltas.
+        const metricSource = await makeMetricSource();
+        const result = await callTool(
+          ctx.client!,
+          'clickstack_save_dashboard',
+          {
+            name: `Gauge delta dashboard (${_label})`,
+            tiles: [gaugeTile(deltaFlag, metricSource._id.toString())],
+          },
+        );
+
+        expect(result.isError).toBeFalsy();
+        const output = JSON.parse(getFirstText(result));
+
+        const stored = await Dashboard.findById(output.id);
+        expect(stored!.tiles[0].config).toMatchObject({
+          select: [{ isDelta: true }],
+        });
+      },
+    );
+
+    it('rejects a delta on a non-gauge metric', async () => {
+      const metricSource = await makeMetricSource();
+      const result = await callTool(ctx.client!, 'clickstack_save_dashboard', {
+        name: 'Sum delta dashboard',
+        tiles: [
+          gaugeTile(
+            {
+              metricType: 'sum',
+              metricName: 'http.server.requests',
+              aggFn: 'sum',
+              isDelta: true,
+            },
+            metricSource._id.toString(),
+          ),
+        ],
+      });
+
+      expect(result.isError).toBe(true);
+      expect(getFirstText(result)).toContain('only valid for gauge metrics');
+    });
+  });
 });

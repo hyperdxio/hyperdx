@@ -344,6 +344,68 @@ describe('convertAlertChartConfigToExternal', () => {
     ).toBeUndefined();
   });
 
+  it('refuses a select item whose aggFn the external enum cannot express', () => {
+    // The internal schema admits aggregations the external one does not
+    // (histogram, quantileMerge, the *Merge combinators).
+    // convertToExternalSelectItem would emit aggFn: 'none' for these, so a
+    // GET -> PUT would silently rewrite the aggregation.
+    for (const aggFn of ['sumIfMerge', 'quantileMerge', 'histogram']) {
+      expect(
+        convertAlertChartConfigToExternal(
+          baseInternal({
+            select: [
+              {
+                aggFn,
+                aggCondition: '',
+                aggConditionLanguage: 'lucene',
+                valueExpression: 'Value',
+                ...(aggFn === 'quantileMerge' ? { level: 0.95 } : {}),
+              },
+            ],
+          }),
+        ),
+      ).toBeUndefined();
+    }
+  });
+
+  it('refuses a quantile level outside the external set', () => {
+    // The internal `level` is any number; the external dialect admits only
+    // 0.5/0.9/0.95/0.99, and the converter drops anything else — emitting a
+    // quantile with no level.
+    expect(
+      convertAlertChartConfigToExternal(
+        baseInternal({
+          select: [
+            {
+              aggFn: 'quantile',
+              level: 0.75,
+              aggCondition: '',
+              aggConditionLanguage: 'lucene',
+              valueExpression: 'Duration',
+            },
+          ],
+        }),
+      ),
+    ).toBeUndefined();
+
+    // A level the dialect does admit still round-trips.
+    expect(
+      convertAlertChartConfigToExternal(
+        baseInternal({
+          select: [
+            {
+              aggFn: 'quantile',
+              level: 0.95,
+              aggCondition: '',
+              aggConditionLanguage: 'lucene',
+              valueExpression: 'Duration',
+            },
+          ],
+        }),
+      ),
+    ).toMatchObject({ select: [{ aggFn: 'quantile', level: 0.95 }] });
+  });
+
   it('refuses an empty select instead of throwing on a number config', () => {
     // A persisted number config with select: [] used to TypeError in the
     // tile converter (select[0] is undefined) and surface as a 500 from

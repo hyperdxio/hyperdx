@@ -193,6 +193,21 @@ const mcpNumberFormatSchema = z.object({
     .describe('Suffix appended to the value (e.g. " req/s")'),
 });
 
+/**
+ * The delta flag a select item resolves to, given that the tool accepts both
+ * spellings (`isDelta` and the REST dialect's `periodAggFn: 'delta'`). An
+ * explicit `isDelta` wins; `periodAggFn` only fills in when it is absent.
+ * Shared by the refinement and the transform so a body carrying both cannot
+ * validate as one value and persist as the other.
+ */
+const resolveIsDelta = (data: {
+  isDelta?: unknown;
+  periodAggFn?: unknown;
+}): boolean | undefined =>
+  typeof data.isDelta === 'boolean'
+    ? data.isDelta
+    : data.periodAggFn === 'delta' || undefined;
+
 const mcpTileSelectItemSchema = z
   .object({
     aggFn: AggregateFunctionSchema.describe(
@@ -287,10 +302,11 @@ const mcpTileSelectItemSchema = z
         typeof data.metricType === 'string' ? data.metricType : undefined,
       metricName:
         typeof data.metricName === 'string' ? data.metricName : undefined,
-      isDelta:
-        typeof data.isDelta === 'boolean'
-          ? data.isDelta
-          : data.periodAggFn === 'delta' || undefined,
+      // Must use the same precedence as the transform below, or a body
+      // spelling both flags (`isDelta: false` + `periodAggFn: 'delta'`) is
+      // validated as non-delta — passing the gauge-only rule — and then
+      // persisted as a delta.
+      isDelta: resolveIsDelta(data),
       level: typeof data.level === 'number' ? data.level : undefined,
       valueExpression:
         typeof data.valueExpression === 'string'
@@ -306,12 +322,17 @@ const mcpTileSelectItemSchema = z
     }
   })
   .transform(data => {
-    // Normalize the REST-dialect spelling onto isDelta so downstream
-    // consumers only need to read one flag.
-    const withDelta =
-      data.periodAggFn === 'delta' && data.isDelta !== true
-        ? { ...data, isDelta: true }
-        : data;
+    // Emit BOTH spellings, agreeing, so neither downstream consumer can lose
+    // the flag: MCP tiles are re-parsed through the external REST schema
+    // (createDashboardBodySchema / externalAlertChartConfigSchema), which
+    // knows only `periodAggFn` and strips `isDelta`, while direct MCP
+    // consumers read `isDelta`. Writing the resolved value to both also
+    // clears a stale `periodAggFn: 'delta'` when `isDelta: false` wins,
+    // which would otherwise persist a delta the refinement never checked.
+    const { isDelta: _isDelta, periodAggFn: _periodAggFn, ...rest } = data;
+    const withDelta = resolveIsDelta(data)
+      ? { ...rest, isDelta: true as const, periodAggFn: 'delta' as const }
+      : rest;
     return withDelta.metricType &&
       withDelta.aggFn !== 'count' &&
       !withDelta.valueExpression

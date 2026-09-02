@@ -1,4 +1,5 @@
 import {
+  AggregateFunctionSchema,
   AlertChartConfig,
   DisplayType,
 } from '@hyperdx/common-utils/dist/types';
@@ -14,6 +15,7 @@ import {
   externalAlertBuilderChartConfigSchema,
   ExternalAlertChartConfig,
   externalAlertRawSqlChartConfigSchema,
+  externalQuantileLevelSchema,
 } from '@/utils/zod';
 
 import {
@@ -252,6 +254,24 @@ function isRepresentableExternally(
     return false;
   }
   for (const item of select) {
+    // Values, not just key names: `convertToExternalSelectItem` falls back to
+    // `aggFn: 'none'` for an aggregation the external enum does not admit
+    // (the internal schema also allows `histogram`, `quantileMerge`, and the
+    // *Merge combinators) and drops a `level` outside the external quantile
+    // set. Emitting either would silently rewrite the aggregation on a
+    // GET -> PUT, which is what this gate exists to prevent.
+    if (!AggregateFunctionSchema.safeParse(item.aggFn).success) {
+      return false;
+    }
+    if (
+      item.aggFn === 'quantile' &&
+      !externalQuantileLevelSchema.safeParse(
+        'level' in item ? item.level : undefined,
+      ).success
+    ) {
+      return false;
+    }
+
     for (const [key, value] of Object.entries(item)) {
       if (isEmptyValue(value) || isDefaultValue(key, value)) continue;
       // Inert leftovers the external converter heals away: a level on a
