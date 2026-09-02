@@ -1482,6 +1482,77 @@ describe('External API Alerts', () => {
       });
     });
 
+    it('omits chartConfig when the config would convert lossily or violate the external write schema', async () => {
+      // Two classes the key-classification gate alone cannot catch:
+      // an array groupBy (the tile converter silently drops it, so an
+      // echo-PUT would strip the grouping from a live alert) and an
+      // aggCondition beyond the external cap (converts cleanly but the
+      // emitted body would 400 on echo-PUT). Both are legal internally.
+      const { source } = await makeSource();
+
+      const configs = [
+        {
+          label: 'array groupBy',
+          chartConfig: {
+            displayType: 'line',
+            source: source._id.toString(),
+            select: [
+              {
+                aggFn: 'count',
+                aggCondition: '',
+                aggConditionLanguage: 'lucene',
+                valueExpression: '',
+              },
+            ],
+            where: '',
+            whereLanguage: 'lucene',
+            groupBy: [{ valueExpression: 'ServiceName' }],
+          },
+        },
+        {
+          label: 'over-cap aggCondition',
+          chartConfig: {
+            displayType: 'line',
+            source: source._id.toString(),
+            select: [
+              {
+                aggFn: 'count',
+                aggCondition: 'a'.repeat(10001),
+                aggConditionLanguage: 'lucene',
+                valueExpression: '',
+              },
+            ],
+            where: '',
+            whereLanguage: 'lucene',
+          },
+        },
+      ];
+
+      for (const { chartConfig } of configs) {
+        const alert = await createTestAlertDirectly({
+          source: AlertSource.INLINE,
+          dashboardId: undefined,
+          tileId: undefined,
+          chartConfig,
+        });
+
+        const single = await authRequest(
+          'get',
+          `${ALERTS_BASE_URL}/${alert._id}`,
+        ).expect(200);
+        expect(single.body.data.chartConfig).toBeUndefined();
+
+        // The echoed body has no chartConfig, so the write fails loudly
+        // instead of persisting a rewritten query.
+        await authRequest('put', `${ALERTS_BASE_URL}/${alert._id}`)
+          .send(single.body.data)
+          .expect(400);
+
+        const stored = await Alert.findById(alert._id);
+        expect(stored!.chartConfig).toEqual(chartConfig);
+      }
+    });
+
     it('emits chartConfig for internally-authored configs the dialect can express', async () => {
       // Guards against over-refusal: the shapes the UI's chart explorer
       // persists (name, empty chart-level where, count select) must keep

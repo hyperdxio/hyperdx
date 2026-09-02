@@ -14,6 +14,7 @@ import logger from '@/utils/logger';
 import {
   externalAlertBuilderChartConfigSchema,
   ExternalAlertChartConfig,
+  externalAlertChartConfigSchema,
   externalAlertRawSqlChartConfigSchema,
   externalQuantileLevelSchema,
 } from '@/utils/zod';
@@ -185,14 +186,22 @@ const isDefaultValue = (key: string, value: unknown): boolean => {
   }
 };
 
-const EXTERNAL_ALERT_WHERE_MAX = 10000;
-
 /**
  * Whether the persisted internal config survives an external GET -> PUT
- * round-trip without changing what the alert evaluates. Anything not
- * expressible in the external dialect (and not evaluation-inert) makes the
- * config unrepresentable. Allowlist semantics: unknown future fields refuse
- * by default rather than leaking through silently.
+ * round-trip without changing what the alert evaluates.
+ *
+ * This gate only covers what the post-conversion
+ * `externalAlertChartConfigSchema.safeParse` in
+ * `convertAlertChartConfigToExternal` cannot: SILENT losses, where the tile
+ * converter drops, substitutes, or crashes on an internal value and the
+ * converted output then parses cleanly (an inexpressible field vanishing, an
+ * out-of-enum aggFn becoming 'none', an array groupBy becoming no groupBy).
+ * Value-level contract rules the converter passes through verbatim (string
+ * caps, select-item shape, formula rules) are deliberately NOT re-implemented
+ * here — the final parse enforces them from the single source of truth.
+ *
+ * Allowlist semantics: unknown future fields refuse by default rather than
+ * leaking through silently.
  */
 function isRepresentableExternally(
   config: AlertChartConfig,
@@ -226,12 +235,13 @@ function isRepresentableExternally(
     return true;
   }
 
-  if ('where' in config && typeof config.where === 'string') {
-    // The external schema caps the chart-level filter; a longer stored value
-    // would emit a body that cannot be PUT back.
-    if (config.where.length > EXTERNAL_ALERT_WHERE_MAX) {
-      return false;
-    }
+  // The internal groupBy is a select list (string or array of derived
+  // columns) and the alert task evaluates both forms via renderSelectList;
+  // the tile dialect only carries the string form, and the converter
+  // silently omits an array. Emitting a groupBy-less body would let an
+  // echo-PUT strip the grouping from a live alert.
+  if ('groupBy' in config && Array.isArray(config.groupBy)) {
+    return false;
   }
 
   const select = 'select' in config ? config.select : undefined;
@@ -240,8 +250,10 @@ function isRepresentableExternally(
   if (!Array.isArray(select)) {
     return false;
   }
-  // The external schema caps select at 20 items.
-  if (select.length === 0 || select.length > 20) {
+  // An empty select would make the number branch of the tile converter throw
+  // (it reads select[0]); every variant's external schema requires >= 1 item
+  // anyway, so refuse before converting.
+  if (select.length === 0) {
     return false;
   }
   // The external converter keeps only select[0] on formula-less number
@@ -292,10 +304,11 @@ function isRepresentableExternally(
  * Converts an inline alert's persisted internal chart config to the external
  * tile-config dialect for API responses. Returns undefined when the external
  * contract cannot represent the config faithfully — an unsupported display
- * type, a PromQL config, or a config carrying evaluation-affecting fields the
- * dialect cannot express (see isRepresentableExternally). Callers omit the
- * field, so a blind echo-PUT fails loudly instead of silently rewriting the
- * alert's query.
+ * type, a PromQL config, a config carrying evaluation-affecting fields the
+ * dialect cannot express (see isRepresentableExternally), or a converted body
+ * the external write schema would reject. Callers omit the field, so a blind
+ * echo-PUT fails loudly instead of silently rewriting the alert's query, and
+ * anything that IS emitted is valid PUT input by construction.
  */
 export function convertAlertChartConfigToExternal(
   config: AlertChartConfig,
@@ -321,21 +334,36 @@ export function convertAlertChartConfigToExternal(
     case DisplayType.StackedBar:
     case DisplayType.Number: {
       const name = config.name ? { name: config.name } : {};
-      if ('configType' in external) {
-        return { ...external, ...name };
+      const candidate =
+        'configType' in external
+          ? { ...external, ...name }
+          : {
+              ...external,
+              ...name,
+              // Chart-level filter: builder configs only (the raw SQL
+              // internal shape has no `where`).
+              ...(!('configType' in config) && config.where
+                ? {
+                    where: config.where,
+                    whereLanguage: config.whereLanguage ?? 'lucene',
+                  }
+                : {}),
+            };
+      // The emitted body must be valid PUT input by construction: run it
+      // through the exact schema the write path parses. The internal schema
+      // is looser in places the converter passes through verbatim (uncapped
+      // aggCondition/valueExpression/alias, an empty valueExpression on a
+      // non-count agg, >20 select items), so a stored config can convert
+      // cleanly yet still violate the external contract.
+      const parsed = externalAlertChartConfigSchema.safeParse(candidate);
+      if (!parsed.success) {
+        logger.warn(
+          { displayType, issues: parsed.error.issues },
+          'Inline alert chart config converts to a body the external schema rejects; omitting chartConfig',
+        );
+        return undefined;
       }
-      return {
-        ...external,
-        ...name,
-        // Chart-level filter: builder configs only (the raw SQL internal
-        // shape has no `where`).
-        ...(!('configType' in config) && config.where
-          ? {
-              where: config.where,
-              whereLanguage: config.whereLanguage ?? 'lucene',
-            }
-          : {}),
-      };
+      return parsed.data;
     }
     default:
       logger.error(

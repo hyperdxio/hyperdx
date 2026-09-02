@@ -336,12 +336,104 @@ describe('convertAlertChartConfigToExternal', () => {
     ).toBeUndefined();
   });
 
+  // The internal schema leaves these strings uncapped / this shape legal;
+  // the post-conversion parse against externalAlertChartConfigSchema (the
+  // exact schema PUT enforces) is what refuses them, so an emitted body is
+  // valid PUT input by construction.
   it('refuses a chart-level where longer than the external cap', () => {
     expect(
       convertAlertChartConfigToExternal(
         baseInternal({ where: 'a'.repeat(10001) }),
       ),
     ).toBeUndefined();
+  });
+
+  it('refuses select-item strings longer than the external caps', () => {
+    expect(
+      convertAlertChartConfigToExternal(
+        baseInternal({
+          select: [
+            {
+              aggFn: 'count',
+              aggCondition: 'a'.repeat(10001),
+              aggConditionLanguage: 'lucene',
+              valueExpression: '',
+            },
+          ],
+        }),
+      ),
+    ).toBeUndefined();
+
+    expect(
+      convertAlertChartConfigToExternal(
+        baseInternal({
+          select: [
+            {
+              aggFn: 'avg',
+              aggCondition: '',
+              aggConditionLanguage: 'lucene',
+              valueExpression: 'a'.repeat(10001),
+            },
+          ],
+        }),
+      ),
+    ).toBeUndefined();
+
+    expect(
+      convertAlertChartConfigToExternal(
+        baseInternal({
+          select: [
+            {
+              aggFn: 'count',
+              aggCondition: '',
+              aggConditionLanguage: 'lucene',
+              valueExpression: '',
+              alias: 'a'.repeat(10001),
+            },
+          ],
+        }),
+      ),
+    ).toBeUndefined();
+  });
+
+  it('refuses a non-count aggregation with an empty valueExpression', () => {
+    // Legal internally, but the external select-item schema requires a value
+    // expression for non-count aggregations — emitting it would produce a
+    // body that 400s on echo-PUT.
+    expect(
+      convertAlertChartConfigToExternal(
+        baseInternal({
+          select: [
+            {
+              aggFn: 'avg',
+              aggCondition: '',
+              aggConditionLanguage: 'lucene',
+              valueExpression: '',
+            },
+          ],
+        }),
+      ),
+    ).toBeUndefined();
+  });
+
+  it('refuses an array groupBy the tile dialect cannot carry', () => {
+    // renderSelectList evaluates array groupBys, so the alert task honors
+    // them; the tile converter silently omits the field, which would let an
+    // echo-PUT strip the grouping from a live alert.
+    expect(
+      convertAlertChartConfigToExternal(
+        baseInternal({
+          groupBy: [{ valueExpression: 'ServiceName' }],
+        }),
+      ),
+    ).toBeUndefined();
+
+    // The string form the tile dialect does carry still round-trips.
+    expect(
+      convertAlertChartConfigToExternal(
+        baseInternal({ groupBy: 'ServiceName' }),
+      ),
+    ).toMatchObject({ groupBy: 'ServiceName' });
   });
 
   it('refuses a select item whose aggFn the external enum cannot express', () => {
