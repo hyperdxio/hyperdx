@@ -677,6 +677,7 @@ export const makeTile = (opts?: {
   id?: string;
   alert?: BuilderSavedChartConfig['alert'];
   sourceId?: string;
+  where?: string;
 }): Tile => ({
   id: opts?.id ?? randomMongoId(),
   x: 1,
@@ -690,6 +691,7 @@ export const makeChartConfig = (opts?: {
   id?: string;
   alert?: BuilderSavedChartConfig['alert'];
   sourceId?: string;
+  where?: string;
 }): SavedChartConfig => ({
   name: 'Test Chart',
   source: opts?.sourceId ?? 'test-source',
@@ -702,7 +704,7 @@ export const makeChartConfig = (opts?: {
       valueExpression: '',
     },
   ],
-  where: '',
+  where: opts?.where ?? '',
   whereLanguage: 'lucene',
   granularity: 'auto',
   implicitColumnExpression: 'Body',

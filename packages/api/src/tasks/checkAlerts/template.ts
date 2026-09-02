@@ -4,11 +4,13 @@ import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartCo
 import { formatDate, objectHash } from '@hyperdx/common-utils/dist/core/utils';
 import {
   AlertChannelType,
+  AlertChartConfig,
   AlertThresholdType,
   ChartConfigWithOptDateRange,
   DisplayType,
   isRangeThresholdType,
   pickSampleWeightExpressionProps,
+  SavedChartConfig,
   SourceKind,
   zAlertChannelType,
 } from '@hyperdx/common-utils/dist/types';
@@ -105,23 +107,37 @@ const describeThreshold = (alert: AlertInput): string => {
     : `${alert.threshold}`;
 };
 
-// An inline alert keeps its query on the alert itself rather than behind a
-// saved search, so reading only `savedSearch.where` leaves `{{sourceQuery}}`
-// empty for it. A tile alert stays empty: its query lives on the dashboard
-// tile, which the render path doesn't load.
+// Each chart config kind states its query in a different field. Discriminated
+// on `configType` the same way isRawSqlSavedChartConfig does, inlined because
+// that guard narrows to a SavedChartConfig member and so cannot narrow the
+// builder branch of an AlertChartConfig.
+const describeChartConfigQuery = (
+  config: AlertChartConfig | SavedChartConfig,
+): string => {
+  if (!('configType' in config)) {
+    return config.where ?? '';
+  }
+  return (
+    (config.configType === 'sql'
+      ? config.sqlTemplate
+      : config.promqlExpression) ?? ''
+  );
+};
+
+// Only a saved-search alert states its query as `savedSearch.where`. A tile
+// alert's lives on the dashboard tile and an inline alert's on the alert
+// itself, so both were reported as empty before.
 const describeSourceQuery = (
   alert: AlertInput,
   savedSearch?: ISavedSearch | null,
+  dashboard?: IDashboard | null,
 ): string => {
   if (alert.source === AlertSource.INLINE) {
-    const config = alert.chartConfig;
-    if (config == null) {
-      return '';
-    }
-    // Same discriminator as isRawSqlSavedChartConfig, inlined because that
-    // guard narrows to a SavedChartConfig member and so cannot narrow this
-    // union's builder branch.
-    return ('configType' in config ? config.sqlTemplate : config.where) ?? '';
+    return alert.chartConfig ? describeChartConfigQuery(alert.chartConfig) : '';
+  }
+  if (alert.source === AlertSource.TILE) {
+    const tile = dashboard?.tiles.find(t => t.id === alert.tileId);
+    return tile ? describeChartConfigQuery(tile.config) : '';
   }
   return savedSearch?.where ?? '';
 };
@@ -586,7 +602,7 @@ export const renderAlertTemplate = async ({
           : undefined,
         value,
         groupKey: group ?? '',
-        sourceQuery: describeSourceQuery(alert, savedSearch),
+        sourceQuery: describeSourceQuery(alert, savedSearch, dashboard),
         teamId,
         note: alert.note ?? '',
       },
