@@ -771,14 +771,6 @@ function formatExternalSource(source: SourceDocument) {
  *           type: string
  *           description: Column containing resource attributes for metrics
  *           example: ResourceAttributes
- *         serviceNameExpression:
- *           type: string
- *           description: Expression to extract the service name from metric rows.
- *           example: ServiceName
- *         seriesTable:
- *           type: string
- *           description: Table containing unique metric series, used to accelerate metrics queries. Available only when the team has the metrics series table enabled.
- *           example: otel_metrics_series
  *         logSourceId:
  *           type: string
  *           description: HyperDX Source for logs associated with metrics. Optional
