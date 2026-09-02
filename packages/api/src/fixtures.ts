@@ -878,6 +878,7 @@ export const makeAlertChartConfig = (opts: {
   displayType?: DisplayType;
   aggCondition?: string;
   groupBy?: string;
+  where?: string;
 }): AlertChartConfig => ({
   name: opts.name ?? 'Chart Alert Query',
   source: opts.sourceId,
@@ -890,9 +891,22 @@ export const makeAlertChartConfig = (opts: {
       valueExpression: '',
     },
   ],
-  where: '',
+  where: opts.where ?? '',
   whereLanguage: 'lucene',
   ...(opts.groupBy != null && { groupBy: opts.groupBy }),
+});
+
+/** Raw SQL counterpart to {@link makeAlertChartConfig}. */
+export const makeRawSqlAlertChartConfig = (opts?: {
+  name?: string;
+  sqlTemplate?: string;
+  connectionId?: string;
+}): AlertChartConfig => ({
+  name: opts?.name ?? 'Raw SQL Alert Query',
+  configType: 'sql',
+  displayType: DisplayType.Line,
+  sqlTemplate: opts?.sqlTemplate ?? RAW_SQL_ALERT_TEMPLATE,
+  connection: opts?.connectionId ?? 'test-connection',
 });
 
 export const makeInlineAlertInput = ({

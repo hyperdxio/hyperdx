@@ -105,6 +105,27 @@ const describeThreshold = (alert: AlertInput): string => {
     : `${alert.threshold}`;
 };
 
+// An inline alert keeps its query on the alert itself rather than behind a
+// saved search, so reading only `savedSearch.where` leaves `{{sourceQuery}}`
+// empty for it. A tile alert stays empty: its query lives on the dashboard
+// tile, which the render path doesn't load.
+const describeSourceQuery = (
+  alert: AlertInput,
+  savedSearch?: ISavedSearch | null,
+): string => {
+  if (alert.source === AlertSource.INLINE) {
+    const config = alert.chartConfig;
+    if (config == null) {
+      return '';
+    }
+    // Same discriminator as isRawSqlSavedChartConfig, inlined because that
+    // guard narrows to a SavedChartConfig member and so cannot narrow this
+    // union's builder branch.
+    return ('configType' in config ? config.sqlTemplate : config.where) ?? '';
+  }
+  return savedSearch?.where ?? '';
+};
+
 // Mappings for the enriched webhook template variables. These turn internal
 // enums into stable, consumer-friendly strings a receiver can branch on
 // without knowing HyperDX's internals.
@@ -556,9 +577,16 @@ export const renderAlertTemplate = async ({
         alertType: alert.source ? ALERT_TYPE_BY_SOURCE[alert.source] : '',
         comparator: COMPARATOR_BY_THRESHOLD_TYPE[alert.thresholdType],
         threshold: alert.threshold,
+        // Gated on the comparator, not just read off the alert: nothing clears
+        // a persisted `thresholdMax` when an alert is switched off a range
+        // comparator, and a stale bound would advertise a range that no longer
+        // fires.
+        thresholdMax: isRangeThresholdType(alert.thresholdType)
+          ? alert.thresholdMax
+          : undefined,
         value,
         groupKey: group ?? '',
-        sourceQuery: savedSearch?.where ?? '',
+        sourceQuery: describeSourceQuery(alert, savedSearch),
         teamId,
         note: alert.note ?? '',
       },

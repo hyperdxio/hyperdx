@@ -17,7 +17,8 @@ a HyperDX alert without parsing the human-readable message body.
 | `{{status}}` | string | `firing`, `resolved`, `no_data`, `pending` or `error`. |
 | `{{alertType}}` | string | `search`, `dashboard_chart` or `inline_query`. |
 | `{{comparator}}` | string | `>=`, `>`, `<`, `<=`, `=`, `!=`, `between`, `outside`. |
-| `{{threshold}}` | number | The configured threshold. |
+| `{{threshold}}` | number | The configured threshold. For `between`/`outside`, the lower bound. |
+| `{{thresholdMax}}` | number | Upper bound of a `between`/`outside` condition. Always unset for every other comparator, even if the alert was once a range, so guard it (see below). |
 | `{{value}}` | number | The value that triggered or resolved the alert. |
 | `{{groupKey}}` | string | The breaching group, for a grouped alert. |
 | `{{sourceQuery}}` | string | The search expression or SQL behind the alert. |
@@ -25,10 +26,27 @@ a HyperDX alert without parsing the human-readable message body.
 | `{{note}}` | string | The alert's freeform note — commonly a runbook link. |
 
 Strings are JSON-escaped, so they are safe to drop into a quoted slot.
-Numbers (`startTime`, `endTime`, `threshold`, `value`) are emitted raw for
-unquoted slots. Every enriched variable is optional and renders as an empty
-string when the alert doesn't carry it — an alert with no group has an empty
-`{{groupKey}}`, and a dashboard-tile alert has an empty `{{sourceQuery}}`.
+Numbers (`startTime`, `endTime`, `threshold`, `thresholdMax`, `value`) are
+emitted raw for unquoted slots. Every enriched variable is optional and renders
+as an empty string when the alert doesn't carry it — an alert with no group has
+an empty `{{groupKey}}`, and a dashboard-tile alert has an empty
+`{{sourceQuery}}` because its query lives on the tile. A saved-search alert
+reports the search's `where` expression; an inline alert reports its own
+builder `where` or raw SQL.
+
+An empty string is not valid JSON in an unquoted numeric slot, so guard any
+number that may be absent. Compare against `undefined` rather than using
+`{{#if}}`, which treats a legitimate bound of `0` as absent:
+
+```
+{
+  "threshold": {{threshold}}{{#unless (eq thresholdMax undefined)}},
+  "threshold_max": {{thresholdMax}}{{/unless}}
+}
+```
+
+Keep a newline or space between `{{/unless}}` and a closing `}` — Handlebars
+reads `}}}` as a triple-stache and fails to compile the template.
 
 ## Example
 
