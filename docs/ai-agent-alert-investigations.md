@@ -141,17 +141,12 @@ the existing session, and a firing in a later window gets a fresh
 investigation. This bounds Anthropic spend to at most one session per alert
 per agent per hour regardless of group cardinality.
 
-## Enriched webhook template variables
+## Webhook template variables
 
-The same enriched fields are available as Handlebars variables in **Generic**
-and **incident.io** webhook bodies, useful for receiver-side routing and dedup
-before spending agent tokens:
-
-`{{alertId}}`, `{{status}}` (`firing` | `resolved` | `no_data` | `pending`),
-`{{alertType}}` (`search` | `dashboard_chart`), `{{comparator}}`,
-`{{threshold}}`, `{{value}}`, `{{groupKey}}`, `{{sourceQuery}}`, `{{teamId}}`,
-`{{note}}`, and ISO-8601 `{{startTimeISO}}` / `{{endTimeISO}}` alongside the
-existing Unix-ms `{{startTime}}` / `{{endTime}}`.
+The same enriched fields are available as Handlebars variables in Generic and
+incident.io webhook bodies, useful for routing or deduping in a receiver before
+spending agent tokens. See
+[`alert-webhook-template-variables.md`](alert-webhook-template-variables.md).
 
 ## References
 

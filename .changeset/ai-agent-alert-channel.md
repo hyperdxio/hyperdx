@@ -45,9 +45,3 @@ teams that want to write the system prompt or tool set themselves. HyperDX
 provisions the environment and vault the session needs so the credential
 matches the instance, and verifies the ID before accepting it; removing an
 imported agent tears those two down and leaves the agent itself alone.
-
-Generic/incident.io webhook bodies also gain enriched template variables
-(`{{alertId}}`, `{{status}}`, `{{alertType}}`, `{{comparator}}`,
-`{{threshold}}`, `{{value}}`, `{{groupKey}}`, `{{sourceQuery}}`, `{{teamId}}`,
-`{{note}}`, `{{startTimeISO}}`, `{{endTimeISO}}`) for receiver-side routing and
-dedup.
