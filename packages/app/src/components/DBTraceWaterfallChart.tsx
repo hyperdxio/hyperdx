@@ -147,6 +147,10 @@ const SERVICE_COLORS = COLORS.filter(
     CATEGORICAL_PALETTE_TOKENS[i] !== 'chart-red',
 );
 
+// Per-window (before/after focus date) row cap applied in `getConfig` below.
+// Exported for the truncation check in `useEventsAroundFocus`.
+export const TRACE_WATERFALL_ROW_LIMIT = 50000;
+
 function getTableBody(tableModel: TSource) {
   if (tableModel?.kind === SourceKind.Trace) {
     return getSpanEventBody(tableModel) ?? '';
@@ -303,7 +307,7 @@ function getConfig(
     from: source.from,
     timestampValueExpression: source.timestampValueExpression,
     where: `${alias.TraceId} = ${SqlString.escape(traceId)}`,
-    limit: { limit: 50000 },
+    limit: { limit: TRACE_WATERFALL_ROW_LIMIT },
     connection: source.connection,
   };
   return { config, alias, type: source.kind };
@@ -384,6 +388,12 @@ export function useEventsAroundFocus({
   const isFetching = isBeforeSpanFetching || isAfterSpanFetching;
   const meta = beforeSpanData?.meta ?? afterSpanData?.meta;
   const error = beforeSpanError || afterSpanError;
+  // Either window hitting its own row cap means rows outside the fetched set
+  // exist but were dropped -- any aggregate over `rows` (e.g. total duration/
+  // span count) is then a lower bound, not an exact total.
+  const isTruncated =
+    (beforeSpanData?.data?.length ?? 0) >= TRACE_WATERFALL_ROW_LIMIT ||
+    (afterSpanData?.data?.length ?? 0) >= TRACE_WATERFALL_ROW_LIMIT;
 
   const getRowWhere = useRowWhere({ meta, aliasMap: alias });
   const rows = useMemo(() => {
@@ -422,6 +432,7 @@ export function useEventsAroundFocus({
     meta,
     isFetching,
     error,
+    isTruncated,
   };
 }
 
@@ -446,6 +457,7 @@ function useFilteredEventsAroundFocus(
       isFetching: filtered.isFetching || fallback.isFetching,
       filterError: fallback.error ? undefined : filtered.error,
       fatalError: fallback.error,
+      isTruncated: fallback.isTruncated,
     };
   }
 
@@ -455,6 +467,7 @@ function useFilteredEventsAroundFocus(
     isFetching: filtered.isFetching,
     filterError: undefined,
     fatalError: filtered.error,
+    isTruncated: filtered.isTruncated,
   };
 }
 
@@ -667,6 +680,7 @@ export function DBTraceWaterfallChartContainer({
     meta: traceRowsMeta,
     filterError: traceFilterError,
     fatalError: traceError,
+    isTruncated: traceIsTruncated,
   } = useFilteredEventsAroundFocus({
     tableSource: traceTableSource,
     focusDate,
@@ -727,7 +741,9 @@ export function DBTraceWaterfallChartContainer({
   // Aggregate wall-clock span and span count across every fetched span in the
   // trace (not the visible/collapsed subset, and unaffected by the waterfall
   // search filters below, since those only flag rows via `__hdx_hidden`
-  // rather than excluding them) -- a stable, always-accurate summary (#3038).
+  // rather than excluding them) (#3038). If the trace has more spans than fit
+  // in the fetch window (`traceIsTruncated`), this is a lower bound, not the
+  // true total -- the caller must surface that rather than claim exactness.
   const traceTotalStats = useMemo(() => {
     let minStartMs = Number.MAX_SAFE_INTEGER;
     let maxEndMs = 0;
@@ -741,8 +757,12 @@ export function DBTraceWaterfallChartContainer({
       if (endMs > maxEndMs) maxEndMs = endMs;
     }
     if (spanCount === 0) return null;
-    return { totalDurationMs: maxEndMs - minStartMs, spanCount };
-  }, [rows]);
+    return {
+      totalDurationMs: maxEndMs - minStartMs,
+      spanCount,
+      isTruncated: traceIsTruncated,
+    };
+  }, [rows, traceIsTruncated]);
 
   // Map each distinct span service to a stable color. Sorting the names first
   // keeps a service's color stable across renders regardless of row ordering.
@@ -1433,15 +1453,15 @@ export function DBTraceWaterfallChartContainer({
             <span className={errorCount ? 'text-danger' : ''}>
               {errorCountString}
             </span>
+            {traceTotalStats && (
+              <span data-testid="trace-total-stats">
+                {' '}
+                &middot; Total duration:{' '}
+                {formatDurationMs(traceTotalStats.totalDurationMs)}
+                {traceTotalStats.isTruncated ? '+' : ''}
+              </span>
+            )}
           </Text>
-          {traceTotalStats && (
-            <Text size="xs" c="dimmed" data-testid="trace-total-stats">
-              &middot; Total Duration:{' '}
-              {formatDurationMs(traceTotalStats.totalDurationMs)} &middot;{' '}
-              {traceTotalStats.spanCount} span
-              {traceTotalStats.spanCount !== 1 ? 's' : ''}
-            </Text>
-          )}
           <Group gap="xs" align="center">
             <Text size="xs" c="dimmed">
               Show:
