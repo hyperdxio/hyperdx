@@ -91,6 +91,26 @@ export function exploreSeriesHaveMetricNames(series: ExploreSeries[]): boolean {
   return series.length > 0 && series.every(s => Boolean(s.metricName));
 }
 
+/**
+ * True when every series has the column its aggregation needs.
+ *
+ * `count` is the only aggregation that takes no argument; the rest reduce over
+ * an expression. Explore commits a series edit the moment it is made, so a
+ * half-built series reaches the query layer as an empty expression and renders
+ * to `toString()` with no argument — a ClickHouse arity error that never
+ * mentions the column the user has yet to pick.
+ *
+ * Metric sources are exempt and shouldn't be passed here: they always reduce
+ * over `Value`, and the field is hidden for them.
+ */
+export function exploreSeriesHaveValueExpressions(
+  series: ExploreSeries[],
+): boolean {
+  return series.every(
+    s => s.aggFn === 'count' || Boolean(s.valueExpression?.trim()),
+  );
+}
+
 export function canAddExploreSeries(
   view: SearchView,
   seriesCount: number,

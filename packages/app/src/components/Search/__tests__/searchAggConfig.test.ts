@@ -9,6 +9,8 @@ import {
 import {
   aggFnToSelectFields,
   canAddExploreSeries,
+  type ExploreSeries,
+  exploreSeriesHaveValueExpressions,
   migrateLegacyAggToSeries,
   parseExploreSeries,
 } from '@/components/Search/SearchAggControls';
@@ -184,5 +186,58 @@ describe('insertSeriesRefAtCursor', () => {
       next: 'A / B',
       cursor: 5,
     });
+  });
+});
+
+describe('exploreSeriesHaveValueExpressions', () => {
+  const series = (over: Partial<ExploreSeries>): ExploreSeries => ({
+    aggFn: 'count',
+    aggCondition: '',
+    aggConditionLanguage: 'sql',
+    valueExpression: '',
+    ...over,
+  });
+
+  it('lets count through, the one aggregation taking no argument', () => {
+    expect(exploreSeriesHaveValueExpressions([series({})])).toBe(true);
+  });
+
+  it('holds a percentile that has no column yet', () => {
+    expect(
+      exploreSeriesHaveValueExpressions([
+        series({ aggFn: 'quantile', level: 0.99 }),
+      ]),
+    ).toBe(false);
+  });
+
+  it('is not fooled by whitespace', () => {
+    expect(
+      exploreSeriesHaveValueExpressions([
+        series({ aggFn: 'avg', valueExpression: '  ' }),
+      ]),
+    ).toBe(false);
+  });
+
+  it('passes once the column is there', () => {
+    expect(
+      exploreSeriesHaveValueExpressions([
+        series({ aggFn: 'avg', valueExpression: 'Duration' }),
+      ]),
+    ).toBe(true);
+  });
+
+  it('holds when any one series of several is incomplete', () => {
+    expect(
+      exploreSeriesHaveValueExpressions([
+        series({ aggFn: 'avg', valueExpression: 'Duration' }),
+        series({ aggFn: 'max' }),
+      ]),
+    ).toBe(false);
+  });
+
+  it('treats a Custom expression as the column it stands in for', () => {
+    expect(exploreSeriesHaveValueExpressions([series({ aggFn: 'none' })])).toBe(
+      false,
+    );
   });
 });

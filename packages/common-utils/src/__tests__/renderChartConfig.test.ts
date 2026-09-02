@@ -779,6 +779,73 @@ describe('renderChartConfig', () => {
   });
 
   describe('histogram metric queries', () => {
+    describe('a series with no column picked', () => {
+      const configWithValueExpression = (
+        valueExpression: string,
+      ): ChartConfigWithOptDateRange => ({
+        displayType: DisplayType.Line,
+        connection: 'test-connection',
+        from: { databaseName: 'default', tableName: 'otel_logs' },
+        select: [{ aggFn: 'quantile', level: 0.99, valueExpression }],
+        where: '',
+        whereLanguage: 'sql',
+        timestampValueExpression: 'Timestamp',
+        dateRange: [new Date('2025-01-01'), new Date('2025-01-02')],
+      });
+
+      it('is rejected rather than sent as `toString()` with no argument', async () => {
+        await expect(
+          renderChartConfig(
+            configWithValueExpression(''),
+            mockMetadata,
+            querySettings,
+          ),
+        ).rejects.toThrow(
+          'Column is required for all non-count aggregation functions',
+        );
+      });
+
+      it('is still rejected when the column is only whitespace', async () => {
+        await expect(
+          renderChartConfig(
+            configWithValueExpression('   '),
+            mockMetadata,
+            querySettings,
+          ),
+        ).rejects.toThrow(
+          'Column is required for all non-count aggregation functions',
+        );
+      });
+
+      it('renders once a column is there', async () => {
+        const sql = parameterizedQueryToSql(
+          await renderChartConfig(
+            configWithValueExpression('Duration'),
+            mockMetadata,
+            querySettings,
+          ),
+        );
+
+        expect(sql).toContain('quantile(0.99)');
+        expect(sql).toContain('Duration');
+      });
+
+      it('leaves count alone, which takes no argument', async () => {
+        const sql = parameterizedQueryToSql(
+          await renderChartConfig(
+            {
+              ...configWithValueExpression(''),
+              select: [{ aggFn: 'count', valueExpression: '' }],
+            },
+            mockMetadata,
+            querySettings,
+          ),
+        );
+
+        expect(sql).toContain('count()');
+      });
+    });
+
     describe('quantile', () => {
       it('should generate a whole-range query without a time dimension', async () => {
         const config: ChartConfigWithOptDateRange = {

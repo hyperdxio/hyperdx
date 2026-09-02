@@ -161,6 +161,7 @@ import { exploreViewSupportsFormulas } from './components/Search/exploreFormulas
 import {
   type AggSortField,
   exploreSeriesHaveMetricNames,
+  exploreSeriesHaveValueExpressions,
   useSearchAggConfig,
 } from './components/Search/SearchAggControls';
 import { SearchColumnPicker } from './components/Search/SearchColumnPicker';
@@ -2116,6 +2117,16 @@ function DBExplorePage() {
     ) {
       return undefined;
     }
+    // Same for the column a non-count aggregation reduces over. Explore
+    // commits each series edit immediately, so without this the moment you
+    // pick "99th percentile" the chart fails on the column you haven't typed
+    // yet.
+    if (
+      !searchedMetricSource &&
+      !exploreSeriesHaveValueExpressions(aggConfig.series)
+    ) {
+      return undefined;
+    }
     const groupBy =
       view === 'number'
         ? undefined
@@ -3465,6 +3476,26 @@ function DBExplorePage() {
                             </Text>
                             <Text size="xs" c="dimmed">
                               Choose a metric name from the series cards above.
+                            </Text>
+                          </Flex>
+                        )}
+                      {!isMetricSource &&
+                        !exploreSeriesHaveValueExpressions(
+                          aggConfig.series,
+                        ) && (
+                          <Flex
+                            h="100%"
+                            align="center"
+                            justify="center"
+                            direction="column"
+                            gap="xs"
+                          >
+                            <Text size="sm" c="dimmed">
+                              Select a field to aggregate
+                            </Text>
+                            <Text size="xs" c="dimmed">
+                              Every aggregation except count reduces over a
+                              field. Pick one in the series card above.
                             </Text>
                           </Flex>
                         )}

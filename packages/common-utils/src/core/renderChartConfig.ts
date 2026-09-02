@@ -548,6 +548,17 @@ const aggFnExpr = ({
   const isNone = fn === 'none';
   const isCount = fn.startsWith('count');
   const isWhereUsed = isNonEmptyWhereExpr(where);
+
+  // A blank expression is a half-built series, not an argument. Left alone it
+  // interpolates to `toString()` and ClickHouse rejects the whole statement
+  // with an arity error that never mentions the column the user forgot. Treat
+  // it as the missing column it is — `count` is the one aggregation that takes
+  // no argument.
+  if (!isCount && typeof expr === 'string' && expr.trim() === '') {
+    throw new Error(
+      'Column is required for all non-count aggregation functions',
+    );
+  }
   // Cast to float64 because the expr might not be a number
   const unsafeExpr = {
     UNSAFE_RAW_SQL:
