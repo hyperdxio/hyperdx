@@ -5,9 +5,10 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import { omit } from 'lodash';
 
-import { AlertDocument, AlertSource, IAlert } from '@/models/alert';
+import { AlertSource, IAlert } from '@/models/alert';
 import {
   ExternalAlert,
+  TranslatableAlertDocument,
   translateAlertDocumentToExternalAlert,
 } from '@/utils/externalApi';
 import logger from '@/utils/logger';
@@ -388,7 +389,7 @@ export function convertAlertChartConfigToExternal(
  * to keep the utils -> router-utils import direction one-way.
  */
 export function translateAlertDocumentToExternalAlertWithChartConfig(
-  alert: AlertDocument,
+  alert: TranslatableAlertDocument,
 ): ExternalAlert {
   const external = translateAlertDocumentToExternalAlert(alert);
   const alertObj: Pick<IAlert, 'source' | 'chartConfig'> = alert.toJSON

@@ -11,6 +11,7 @@ import {
   SavedChartConfig,
 } from '@hyperdx/common-utils/dist/types';
 import { omit } from 'lodash';
+import { Types } from 'mongoose';
 
 import type { ObjectId } from '@/models';
 import {
@@ -21,8 +22,14 @@ import {
   getAlertChannels,
   IAlert,
 } from '@/models/alert';
-import type { DashboardDocument } from '@/models/dashboard';
+import type { DashboardDocument, IDashboard } from '@/models/dashboard';
+import type { ISavedSearch } from '@/models/savedSearch';
 import { SeriesTile } from '@/routers/external-api/v2/utils/dashboards';
+import {
+  isPopulatedRef,
+  populatedRefOrNull,
+  resolveAlertDisplayFields,
+} from '@/utils/alerts';
 import {
   ExternalAlertChartConfig,
   ExternalDashboardFilterWithId,
@@ -272,6 +279,8 @@ export function translateExternalFilterToFilter(
 export type ExternalAlert = {
   id: string;
   name?: string | null;
+  displayName: string;
+  tags: string[];
   message?: string | null;
   note?: string | null;
   threshold: number;
@@ -310,7 +319,54 @@ export type ExternalAlert = {
   updatedAt?: string;
 };
 
-type AlertDocumentObject = IAlert & { _id: ObjectId };
+// An alert's savedSearch/dashboard ref as this module receives it: a bare
+// ObjectId, or — when the caller used a populating reader — the referenced
+// document, possibly projected down to the display fields.
+type AlertRef<T> = ObjectId | (Partial<T> & { _id: ObjectId }) | null;
+
+type AlertRefFields = {
+  savedSearch?: AlertRef<ISavedSearch>;
+  dashboard?: AlertRef<IDashboard>;
+};
+
+type AlertDocumentObject = Omit<IAlert, keyof AlertRefFields> & {
+  _id: ObjectId;
+} & AlertRefFields;
+
+export type TranslatableAlertDocument = Omit<
+  AlertDocument,
+  keyof AlertRefFields
+> &
+  AlertRefFields;
+
+/**
+ * A populated ref whose target was deleted resolves to `null` in `toJSON()`,
+ * but Mongoose still holds the original id in `populated()`. Prefer that so the
+ * response keeps pointing at the (now dangling) dashboard/saved search instead
+ * of silently dropping the field.
+ */
+function refIdToString(
+  ref: AlertRef<object> | undefined,
+  populatedId: ObjectId | undefined,
+): string | undefined {
+  if (ref == null) {
+    return populatedId?.toString();
+  }
+  return (isPopulatedRef(ref) ? ref._id : ref).toString();
+}
+
+/**
+ * Mongoose types `populated()` as `any`; it returns the original ObjectId for
+ * a populated single ref, and undefined when the path was never populated.
+ */
+function populatedRefId(
+  alert: TranslatableAlertDocument,
+  path: keyof AlertRefFields,
+): ObjectId | undefined {
+  const id: unknown =
+    typeof alert.populated === 'function' ? alert.populated(path) : undefined;
+  return id instanceof Types.ObjectId ? id : undefined;
+}
 
 function hasCreatedAt(
   alert: AlertDocumentObject,
@@ -374,19 +430,28 @@ function transformErrorsToExternalErrors(
 // v2 utils, and list responses stay lean so a team with hundreds of raw-SQL
 // inline alerts does not ship every template on each page.
 export function translateAlertDocumentToExternalAlert(
-  alert: AlertDocument,
+  alert: TranslatableAlertDocument,
 ): ExternalAlert {
-  // Convert to plain object if it's a Mongoose document
+  // Convert to plain object if it's a Mongoose document. `flattenMaps: false`
+  // picks the toJSON overload that doesn't wrap every field in FlattenMaps<>
+  // (which breaks ObjectId); the alert schema has no Map fields, so the
+  // runtime output is identical.
   const alertObj: AlertDocumentObject = alert.toJSON
-    ? alert.toJSON()
+    ? alert.toJSON({ flattenMaps: false })
     : { ...alert };
 
   const channels = getAlertChannels(alertObj);
+
+  // The ref fields are populated documents when the caller used one of the
+  // `*WithDisplayRefs` readers and bare ObjectIds otherwise.
+  const dashboard = populatedRefOrNull(alertObj.dashboard);
+  const savedSearch = populatedRefOrNull(alertObj.savedSearch);
 
   // Copy all fields, renaming _id to id, ensuring ObjectId's are strings
   const result = {
     id: alertObj._id.toString(),
     name: alertObj.name,
+    ...resolveAlertDisplayFields(alertObj, { dashboard, savedSearch }),
     message: alertObj.message,
     note: alertObj.note ?? null,
     threshold: alertObj.threshold,
@@ -408,8 +473,14 @@ export function translateAlertDocumentToExternalAlert(
     ...(channels.length > 0 && { channel: channels[0], channels }),
     teamId: alertObj.team.toString(),
     tileId: alertObj.tileId ?? undefined,
-    dashboardId: alertObj.dashboard?.toString(),
-    savedSearchId: alertObj.savedSearch?.toString(),
+    dashboardId: refIdToString(
+      alertObj.dashboard,
+      populatedRefId(alert, 'dashboard'),
+    ),
+    savedSearchId: refIdToString(
+      alertObj.savedSearch,
+      populatedRefId(alert, 'savedSearch'),
+    ),
     groupBy: alertObj.groupBy ?? undefined,
     silenced: transformSilencedToExternalSilenced(alertObj.silenced),
     executionErrors: transformErrorsToExternalErrors(alertObj.executionErrors),

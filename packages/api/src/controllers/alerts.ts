@@ -346,18 +346,6 @@ export const updateAlert = async (
   );
 };
 
-export const getAlerts = async (
-  teamId: ObjectId,
-  { limit, offset }: { limit: number; offset: number },
-) => {
-  // Sort by _id so skip/offset paging is stable across requests (MongoDB does
-  // not guarantee natural order between separate find() calls).
-  return Alert.find({ team: teamId })
-    .sort({ _id: 1 })
-    .skip(offset)
-    .limit(limit);
-};
-
 export const countAlerts = async (teamId: ObjectId) => {
   return Alert.countDocuments({ team: teamId });
 };
@@ -450,6 +438,41 @@ export const deleteSavedSearchAlerts = async (
     savedSearch: savedSearchId,
     team: teamId,
   });
+};
+
+/** Represents the documents populated and projected by getAlert[s]WithDisplayRefs */
+type AlertWithDisplayRefs = {
+  savedSearch: Pick<ISavedSearch, '_id' | 'name' | 'tags'> | null;
+  dashboard: Pick<IDashboard, '_id' | 'name' | 'tags' | 'tiles'> | null;
+};
+
+/** Minimal projections to support deriving alert names from referenced searches and dashboard tiles  */
+const DISPLAY_REF_POPULATE = [
+  { path: 'savedSearch', select: 'name tags' },
+  { path: 'dashboard', select: 'name tags tiles.id tiles.config.name' },
+];
+
+/** Get alerts, with a populated (and projected) search or dashboard reference */
+export const getAlertsWithDisplayRefs = async (
+  teamId: ObjectId,
+  { limit, offset }: { limit: number; offset: number },
+) => {
+  return Alert.find({ team: teamId })
+    .sort({ _id: 1 })
+    .skip(offset)
+    .limit(limit)
+    .populate<AlertWithDisplayRefs>(DISPLAY_REF_POPULATE);
+};
+
+/** Get alert, with a populated (and projected) search or dashboard reference */
+export const getAlertWithDisplayRefs = async (
+  alertId: ObjectId | string,
+  teamId: ObjectId | string,
+) => {
+  return Alert.findOne({
+    _id: alertId,
+    team: teamId,
+  }).populate<AlertWithDisplayRefs>(DISPLAY_REF_POPULATE);
 };
 
 export const getAlertsEnhanced = async (teamId: ObjectId) => {

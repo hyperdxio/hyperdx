@@ -3,7 +3,9 @@ import {
   MAX_TAG_LENGTH,
   MAX_TAGS,
 } from '@hyperdx/common-utils/dist/types';
+import { Types } from 'mongoose';
 
+import type { ObjectId } from '@/models';
 import { AlertSource } from '@/models/alert';
 
 import logger from './logger';
@@ -70,6 +72,26 @@ function normalizeTags(value: unknown): string[] {
     .filter((tag): tag is string => typeof tag === 'string' && tag !== '')
     .slice(0, MAX_TAGS)
     .map(tag => tag.slice(0, MAX_TAG_LENGTH));
+}
+
+/**
+ * A Mongoose ref field is either a bare ObjectId or, when the query populated
+ * it, the referenced document. Documents don't override toString(), so an
+ * unguarded `.toString()` on a populated ref silently yields "[object Object]".
+ */
+export function isPopulatedRef(ref: unknown): ref is { _id: ObjectId } {
+  return typeof ref === 'object' && ref !== null && '_id' in ref;
+}
+
+/**
+ * The populated document when the ref field was populated, null otherwise.
+ * The instanceof check is for the type system: the predicate alone can't
+ * remove the bare-ObjectId branch from the union.
+ */
+export function populatedRefOrNull<T extends { _id: ObjectId }>(
+  ref: ObjectId | T | null | undefined,
+): T | null {
+  return isPopulatedRef(ref) && !(ref instanceof Types.ObjectId) ? ref : null;
 }
 
 /**
