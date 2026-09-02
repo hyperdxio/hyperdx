@@ -9,7 +9,11 @@ import { CODE_VERSION } from '@/config';
 import { getConnectionById } from '@/controllers/connection';
 import { getNonNullUserWithTeam } from '@/middleware/auth';
 import { validateRequestHeaders } from '@/middleware/validation';
-import { recordOperationOutcome } from '@/utils/instrumentation';
+import { parseSourcePageBaggage } from '@/utils/baggage';
+import {
+  recordOperationOutcome,
+  setBusinessContext,
+} from '@/utils/instrumentation';
 import logger from '@/utils/logger';
 import { IPV6_BRACKET_RE, isPrivateIp } from '@/utils/validators';
 import { objectIdSchema } from '@/utils/zod';
@@ -174,6 +178,12 @@ const getConnection: RequestHandler =
       const { teamId } = getNonNullUserWithTeam(req);
       const connection_id = req.headers['x-hyperdx-connection-id']!; // ! because zod already validated
       delete req.headers['x-hyperdx-connection-id'];
+
+      // Stamped before the connection lookup so a slow or failing lookup still
+      // carries the originating page. Baggage is left on the request: it is a
+      // standard propagation header, not a HyperDX one to strip.
+      setBusinessContext(parseSourcePageBaggage(req.headers.baggage));
+
       const hyperdx_connection_id = Array.isArray(connection_id)
         ? connection_id.join('')
         : connection_id;

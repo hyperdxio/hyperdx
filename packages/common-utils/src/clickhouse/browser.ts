@@ -49,6 +49,59 @@ export const consoleLogger: Logger = {
   error: params => writeLog(console.error, params),
 };
 
+// Proxy requests are otherwise anonymous — the browser sends no Referer and the
+// route lives in client-side state — so a tab saturating the shared
+// clickhouse-proxy cannot be traced back to the screen that opened it. Auto-
+// refreshing views (live tail, kiosk dashboards) are the ones that generate
+// query volume without anyone watching, so record those modes too.
+const AUTO_REFRESH_PARAMS = ['kiosk', 'isLive'];
+
+export const SOURCE_PAGE_BAGGAGE_KEY = 'hyperdx.source_page';
+export const SOURCE_MODE_BAGGAGE_KEY = 'hyperdx.source_mode';
+
+/**
+ * W3C baggage carrying the originating page, so any hop can read it rather than
+ * only the one that knows about a bespoke header. Only the pathname is sent —
+ * the query string holds user search terms, and baggage travels to every
+ * downstream service.
+ */
+export const buildSourcePageBaggage = ({
+  pathname,
+  search,
+}: {
+  pathname: string;
+  search: string;
+}): string => {
+  const params = new URLSearchParams(search);
+  const modes = AUTO_REFRESH_PARAMS.filter(
+    param => params.get(param) === 'true',
+  );
+
+  const entries: [string, string][] = [
+    [SOURCE_PAGE_BAGGAGE_KEY, pathname],
+    ...(modes.length > 0
+      ? ([[SOURCE_MODE_BAGGAGE_KEY, modes.join(',')]] as [string, string][])
+      : []),
+  ];
+
+  return entries
+    .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
+    .join(',');
+};
+
+const sourcePageHeaders = (): Record<string, string> => {
+  if (typeof window === 'undefined') {
+    return {};
+  }
+
+  try {
+    return { baggage: buildSourcePageBaggage(window.location) };
+  } catch {
+    // Never fail a query to attach diagnostics.
+    return {};
+  }
+};
+
 const localModeFetch: typeof fetch = (
   input: RequestInfo | URL,
   init?: RequestInit,
@@ -188,6 +241,7 @@ export class ClickhouseClient extends BaseClickhouseClient {
       ...(connectionId && connectionId !== 'local'
         ? { 'x-hyperdx-connection-id': connectionId }
         : {}),
+      ...sourcePageHeaders(),
     };
 
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- client library type mismatch
