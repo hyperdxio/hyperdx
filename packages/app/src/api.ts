@@ -646,6 +646,8 @@ export const prometheusApi = {
     connectionId: string;
     database?: string;
     table?: string;
+    start?: number;
+    end?: number;
   }): Promise<PrometheusLabelValuesResponse> =>
     server
       .get(`v1/prometheus/label/${params.label}/values`, {
@@ -653,6 +655,8 @@ export const prometheusApi = {
           connectionId: params.connectionId,
           ...(params.database ? { database: params.database } : {}),
           ...(params.table ? { table: params.table } : {}),
+          ...(params.start != null ? { start: String(params.start) } : {}),
+          ...(params.end != null ? { end: String(params.end) } : {}),
         },
       })
       .json(),
