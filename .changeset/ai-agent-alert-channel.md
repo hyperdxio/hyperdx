@@ -31,8 +31,12 @@ Agents are provisioned from Team settings → Integrations (environment + vault
 holding the user's ClickStack access key + agent, with rollback on partial
 failure). The agent auto-approves only the read-only ClickStack MCP tools, so
 an unattended investigation cannot save or delete anything; deleting an agent
-is refused while an alert still targets it. Everything is gated behind `HDX_MANAGED_AGENTS_ENABLED` (off by
-default); the Anthropic key is read from the server environment. Fail-open
+is refused while an alert still targets it. Everything is gated behind `HDX_MANAGED_AGENTS_ENABLED` (off by default), and
+provisioning a new agent needs a second opt-in,
+`HDX_MANAGED_AGENTS_ALLOW_CREATE`, since it spends on the deployment's
+Anthropic account and writes a user's ClickStack key into a vault — importing
+an existing agent works without it. The Anthropic key is read from the server
+environment. Fail-open
 extension seams (`onProvisionAgent`, `onSessionStart`, `resolveAnthropicKey`)
 let downstream distributions customise prompts and key resolution.
 

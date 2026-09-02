@@ -91,6 +91,13 @@ export const ANTHROPIC_API_KEY = env.ANTHROPIC_API_KEY as string;
 export const IS_MANAGED_AGENTS_ENABLED =
   env.HDX_MANAGED_AGENTS_ENABLED === 'true';
 
+// Provisioning specifically: creating an agent spends money on the deployment's
+// Anthropic account and writes the creating user's ClickStack key into a vault,
+// so it needs its own opt-in on top of the feature flag. Off by default —
+// importing an agent someone else created still works with only the flag above.
+export const IS_MANAGED_AGENT_CREATE_ENABLED =
+  IS_MANAGED_AGENTS_ENABLED && env.HDX_MANAGED_AGENTS_ALLOW_CREATE === 'true';
+
 // Public HTTPS URL of the ClickStack MCP server for managed agents (falls back
 // to FRONTEND_URL + /api/mcp at the call sites). Read at call time, not module
 // load, so test suites can set it per-suite without mocking this module.

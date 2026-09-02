@@ -75,6 +75,12 @@ router.post(
   }),
   async (req, res, next) => {
     try {
+      if (!config.IS_MANAGED_AGENT_CREATE_ENABLED) {
+        return res.status(403).json({
+          message:
+            'Provisioning new agents is disabled on this deployment. Import an existing Anthropic agent instead, or set HDX_MANAGED_AGENTS_ALLOW_CREATE=true.',
+        });
+      }
       const teamId = req.user?.team;
       const userId = req.user?._id;
       const userAccessKey = req.user?.accessKey;

@@ -38,13 +38,15 @@ check-alerts task read them:
 
 | Variable | Required | Notes |
 | --- | --- | --- |
-| `HDX_MANAGED_AGENTS_ENABLED` | yes | `true` to enable provisioning and the agent channel. |
+| `HDX_MANAGED_AGENTS_ENABLED` | yes | `true` to enable the agent channel and the AI agents section. |
+| `HDX_MANAGED_AGENTS_ALLOW_CREATE` | no | `true` to allow provisioning new agents from the UI. Off by default: creating one spends on the deployment's Anthropic account and writes a user's ClickStack key into a vault. Importing an existing agent works without it. |
 | `AI_API_KEY` + `AI_PROVIDER=anthropic` | one of these | Provider-agnostic AI config. The key is only used for managed agents when the provider is explicitly `anthropic`. |
 | `ANTHROPIC_API_KEY` | one of these | Legacy Anthropic-specific key. |
 | `HDX_MANAGED_AGENTS_MCP_URL` | local dev only | Anthropic's cloud sandbox connects to your MCP server directly, so the URL must be public HTTPS. In production `FRONTEND_URL` + `/api/mcp` is used; locally, point this at a tunnel (e.g. ngrok) to your instance's `/api/mcp`. |
 
 Set `NEXT_PUBLIC_HDX_MANAGED_AGENTS_ENABLED=true` on the app so the UI renders
-the agent sections.
+the agent sections, and `NEXT_PUBLIC_HDX_MANAGED_AGENTS_ALLOW_CREATE=true` if
+you set the API's create flag — otherwise the dialog offers import only.
 
 ### 2. Create an agent
 
