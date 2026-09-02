@@ -5,7 +5,11 @@ import { performance } from 'perf_hooks';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
-import { CODE_VERSION } from '@/config';
+import {
+  CLICKHOUSE_PROXY_DEFAULT_MAX_EXECUTION_TIME_SECONDS,
+  CLICKHOUSE_PROXY_MAX_EXECUTION_TIME_SECONDS,
+  CODE_VERSION,
+} from '@/config';
 import { getConnectionById } from '@/controllers/connection';
 import { getNonNullUserWithTeam } from '@/middleware/auth';
 import { validateRequestHeaders } from '@/middleware/validation';
@@ -15,6 +19,7 @@ import {
   setBusinessContext,
 } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
+import { clampMaxExecutionTime } from '@/utils/proxySettings';
 import { IPV6_BRACKET_RE, isPrivateIp } from '@/utils/validators';
 import { objectIdSchema } from '@/utils/zod';
 
@@ -229,6 +234,11 @@ const proxyMiddleware: RequestHandler =
 
       const parsedUrl = new URL(sanitizedPath, 'http://localhost');
       const { searchParams, pathname } = parsedUrl;
+
+      clampMaxExecutionTime(searchParams, {
+        defaultSeconds: CLICKHOUSE_PROXY_DEFAULT_MAX_EXECUTION_TIME_SECONDS,
+        ceilingSeconds: CLICKHOUSE_PROXY_MAX_EXECUTION_TIME_SECONDS,
+      });
 
       // Append user email as custom ClickHouse setting for query log annotation if the prefix was set
       const hyperdxSettingPrefix = req._hdx_connection?.hyperdxSettingPrefix;

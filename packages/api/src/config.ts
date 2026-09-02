@@ -42,6 +42,19 @@ export const MONGO_URI = env.MONGO_URI;
 export const OTEL_SERVICE_NAME = env.OTEL_SERVICE_NAME as string;
 export const PORT = Number.parseInt(env.PORT as string);
 export const OPAMP_PORT = Number.parseInt(env.OPAMP_PORT as string);
+// Bounds the clickhouse-proxy puts on a query's max_execution_time. Clients set
+// their own and can omit it entirely, and each in-flight proxied query holds a
+// slot on a tier shared by every team, so an unbounded query lets one client
+// starve the rest. The default covers a client that asked for nothing; the
+// ceiling only caps one that asked for too much, so it must stay above the
+// longest timeout the product lets a team configure.
+export const CLICKHOUSE_PROXY_DEFAULT_MAX_EXECUTION_TIME_SECONDS =
+  Number.parseInt(
+    env.CLICKHOUSE_PROXY_DEFAULT_MAX_EXECUTION_TIME_SECONDS ?? '60',
+  );
+export const CLICKHOUSE_PROXY_MAX_EXECUTION_TIME_SECONDS = Number.parseInt(
+  env.CLICKHOUSE_PROXY_MAX_EXECUTION_TIME_SECONDS ?? '800',
+);
 export const USAGE_STATS_ENABLED = env.USAGE_STATS_ENABLED !== 'false';
 export const WEBHOOK_HOSTNAME_ALLOWLIST = env.WEBHOOK_HOSTNAME_ALLOWLIST ?? '';
 export const RUN_SCHEDULED_TASKS_EXTERNALLY =
