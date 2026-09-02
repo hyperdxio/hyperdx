@@ -4,6 +4,7 @@ import { ClickHouseClient } from '@clickhouse/client';
 import { convertCHDataTypeToJSType, JSDataType } from '@/clickhouse';
 import { ClickhouseClient as HdxClickhouseClient } from '@/clickhouse/node';
 import { Metadata, MetadataCache } from '@/core/metadata';
+import { convertToCategoricalChartConfig } from '@/core/utils';
 import {
   ChartConfigWithOptDateRange,
   DisplayType,
@@ -2298,6 +2299,88 @@ describe('queryChartConfig Integration Tests', () => {
         // denominator (5 + 12 + 8 = 25).
         const svcB = (result.data as Row[])[2];
         expect(Number(col(svcB, RATIO))).toBeCloseTo(6 / 25, 5);
+      });
+
+      it('sorts a SINGLE-series histogram table on a raw expression group-by (HDX-5247)', async () => {
+        // Same packed-array scope as the all-histogram composed case, but on
+        // the single-series render path: the histogram translation leaves
+        // only [group, value] in scope, so the table default orderBy
+        // (= groupBy text) must be rewritten there too.
+        const result = await runConfig(
+          baseConfig({
+            displayType: DisplayType.Table,
+            granularity: undefined,
+            select: [histQuantileSelect('grpsort.hist', 0.5)],
+            groupBy: "ResourceAttributes['service.name']",
+            orderBy: "ResourceAttributes['service.name'] DESC",
+          }),
+        );
+
+        const data = result.data as Row[];
+        expect(data.map(r => col(r, 'group'))).toEqual([
+          ['svc-c'],
+          ['svc-b'],
+          ['svc-a'],
+        ]);
+        // svc-b's 10 observations are all in the (10, 30] bucket: p50 = 20.
+        expect(Number(col(data[1], 'quantile(grpsort.hist)'))).toBeCloseTo(
+          20,
+          5,
+        );
+      });
+
+      it('sorts a SINGLE-series histogram table by its group-by alias (HDX-5247)', async () => {
+        // The alias only exists inside the packing array literal — it never
+        // surfaces as a column in the translated scope — so alias-referencing
+        // sorts rewrite to the packed element like expression sorts do.
+        const result = await runConfig(
+          baseConfig({
+            displayType: DisplayType.Table,
+            granularity: undefined,
+            select: [histQuantileSelect('grpsort.hist', 0.5)],
+            groupBy: [
+              {
+                aggCondition: '',
+                valueExpression: "ResourceAttributes['service.name']",
+                alias: 'service',
+              },
+            ],
+            orderBy: [{ valueExpression: 'service', ordering: 'DESC' }],
+          }),
+        );
+
+        expect((result.data as Row[]).map(r => col(r, 'group'))).toEqual([
+          ['svc-c'],
+          ['svc-b'],
+          ['svc-a'],
+        ]);
+      });
+
+      it('sorts a categorical histogram chart with a multi-dimension group-by (HDX-5247)', async () => {
+        // convertToCategoricalChartConfig injects a structured orderBy whose
+        // second item's valueExpression is the whole group-by string; each
+        // comma piece must match its packed element like the string form.
+        const converted = convertToCategoricalChartConfig(
+          baseConfig({
+            displayType: DisplayType.Pie,
+            granularity: undefined,
+            select: [histQuantileSelect('grpsort.hist', 0.5)],
+            groupBy: "ServiceName, ResourceAttributes['service.name']",
+            seriesLimit: 10,
+          }) as Parameters<typeof convertToCategoricalChartConfig>[0],
+        );
+        const result = await runConfig(
+          converted as ChartConfigWithOptDateRange,
+        );
+
+        // Slices order by value DESC first — p50 interpolates to 20 (svc-b),
+        // 10 (svc-c), 5 (svc-a) — with the packed group pieces as tiebreak.
+        const data = result.data as Row[];
+        expect(data.map(r => col(r, 'group'))).toEqual([
+          ['svc-b', 'svc-b'],
+          ['svc-c', 'svc-c'],
+          ['svc-a', 'svc-a'],
+        ]);
       });
 
       it('sorts an all-histogram chart on a raw expression group-by via the packed group array', async () => {
