@@ -79,6 +79,8 @@ const baseAlert = {
   channel: { type: 'webhook', webhookId: 'webhook-id' },
   name: 'My alert',
   message: 'My message template',
+  displayName: 'Checkout errors',
+  tags: ['checkout'],
   note: null,
   numConsecutiveWindows: null,
   scheduleStartAt: null,

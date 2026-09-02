@@ -22,6 +22,7 @@ import { ISavedSearch, SavedSearch } from '@/models/savedSearch';
 import { Source } from '@/models/source';
 import { IUser } from '@/models/user';
 import Webhook from '@/models/webhook';
+import { type AlertRefs, deriveAlertDisplayFields } from '@/utils/alerts';
 import { Api400Error } from '@/utils/errors';
 import { internalAlertSchema, objectIdSchema } from '@/utils/zod';
 
@@ -67,6 +68,8 @@ export const validateAlertInput = async (
     | 'channels'
   >,
 ) => {
+  const refs: AlertRefs = {};
+
   if (alertInput.source === AlertSource.TILE) {
     validateObjectId(alertInput.dashboardId, 'Invalid dashboard ID');
 
@@ -78,6 +81,7 @@ export const validateAlertInput = async (
     if (dashboard == null) {
       throw new Api400Error('Dashboard not found');
     }
+    refs.dashboard = dashboard;
 
     const tile = dashboard.tiles.find(tile => tile.id === alertInput.tileId);
 
@@ -112,6 +116,7 @@ export const validateAlertInput = async (
     if (savedSearch == null) {
       throw new Api400Error('Saved search not found');
     }
+    refs.savedSearch = savedSearch;
   }
 
   if (alertInput.source === AlertSource.INLINE) {
@@ -225,6 +230,8 @@ export const validateAlertInput = async (
   if (found !== uniqueIds.length) {
     throw new Api400Error('Webhook not found');
   }
+
+  return refs;
 };
 
 // Exported for unit testing the channel-mirroring invariant (see
@@ -232,6 +239,7 @@ export const validateAlertInput = async (
 export const makeAlert = (
   alert: AlertInput,
   userId?: ObjectId,
+  refs: AlertRefs = {},
 ): Partial<IAlert> => {
   // Preserve existing DB value when scheduleStartAt is omitted from updates
   // (undefined), while still allowing explicit clears via null.
@@ -250,6 +258,12 @@ export const makeAlert = (
   const isTile = alert.source === AlertSource.TILE;
   const isInline = alert.source === AlertSource.INLINE;
   const channels = getAlertChannels(alert);
+  // If the input explicitly provides a non-null value, persist it. If the input omits the
+  // field and a referenced entity is available, persist the value derived from the referenced entity.
+  // Otherwise, null.
+  const derivedDisplay = deriveAlertDisplayFields(alert, refs);
+  const displayName = alert.displayName ?? derivedDisplay.displayName ?? null;
+  const tags = alert.tags ?? derivedDisplay.tags ?? null;
 
   return {
     // `channels` is canonical; `channel` mirrors channels[0] so readers that
@@ -278,6 +292,9 @@ export const makeAlert = (
     message: alert.message ?? null,
     note: alert.note ?? null,
 
+    displayName,
+    tags,
+
     // Log alerts
     savedSearch: isSavedSearch
       ? ((alert.savedSearchId ?? null) as unknown as ObjectId)
@@ -301,9 +318,10 @@ export const createAlert = async (
   teamId: ObjectId,
   alertInput: z.infer<typeof internalAlertSchema>,
   userId: ObjectId,
+  refs: AlertRefs = {},
 ) => {
   return new Alert({
-    ...makeAlert(alertInput, userId),
+    ...makeAlert(alertInput, userId, refs),
     team: teamId,
   }).save();
 };
@@ -313,6 +331,7 @@ export const updateAlert = async (
   id: string,
   teamId: ObjectId,
   alertInput: AlertInput,
+  refs: AlertRefs = {},
 ) => {
   // should consider clearing AlertHistory when updating an alert?
   return Alert.findOneAndUpdate(
@@ -320,7 +339,7 @@ export const updateAlert = async (
       _id: id,
       team: teamId,
     },
-    makeAlert(alertInput),
+    makeAlert(alertInput, undefined, refs),
     {
       returnDocument: 'after',
     },
@@ -376,11 +395,12 @@ export const getDashboardAlertsByTile = async (
 };
 
 export const createOrUpdateDashboardAlerts = async (
-  dashboardId: ObjectId | string,
+  dashboard: Pick<IDashboard, '_id' | 'name' | 'tags' | 'tiles'>,
   teamId: ObjectId,
   alertsByTile: Record<string, AlertInput>,
   userId?: ObjectId,
 ) => {
+  const dashboardId = dashboard._id;
   return Promise.all(
     Object.entries(alertsByTile).map(async ([tileId, alert]) => {
       const filter = {
@@ -398,8 +418,8 @@ export const createOrUpdateDashboardAlerts = async (
       const oldAlert = await Alert.findOne(filter);
       const alertValues =
         oldAlert && oldAlert.createdBy
-          ? makeAlert(alertInput)
-          : makeAlert(alertInput, userId);
+          ? makeAlert(alertInput, undefined, { dashboard })
+          : makeAlert(alertInput, userId, { dashboard });
 
       return await Alert.findOneAndUpdate(filter, alertValues, {
         new: true,

@@ -28,6 +28,7 @@ import {
 } from '@/controllers/alerts';
 import { getAlertChannels } from '@/models/alert';
 import { IAlertHistory } from '@/models/alertHistory';
+import { resolveAlertDisplayFields } from '@/utils/alerts';
 import { PreSerialized, sendJson } from '@/utils/serialization';
 import { internalAlertSchema, objectIdSchema } from '@/utils/zod';
 
@@ -42,6 +43,13 @@ const formatAlertResponse = (
 ): PreSerialized<AlertsPageItem> => {
   return {
     history,
+    // Resolved (stored ?? derived) so alerts written before the fields existed
+    // still render. Deliberately not in the `pick` below -- a stored
+    // `undefined` there would clobber the resolved value.
+    ...resolveAlertDisplayFields(alert, {
+      savedSearch: alert.savedSearch,
+      dashboard: alert.dashboard,
+    }),
     silenced: alert.silenced
       ? {
           by: alert.silenced.by?.email,
@@ -323,9 +331,9 @@ router.post(
     }
     try {
       const alertInput = req.body;
-      await validateAlertInput(teamId, alertInput);
+      const refs = await validateAlertInput(teamId, alertInput);
       return res.json({
-        data: await createAlert(teamId, alertInput, userId),
+        data: await createAlert(teamId, alertInput, userId, refs),
       });
     } catch (e) {
       next(e);
@@ -349,8 +357,8 @@ router.put(
       }
       const { id } = req.params;
       const alertInput = req.body;
-      await validateAlertInput(teamId, alertInput);
-      const alert = await updateAlert(id, teamId, alertInput);
+      const refs = await validateAlertInput(teamId, alertInput);
+      const alert = await updateAlert(id, teamId, alertInput, refs);
       if (alert == null) {
         return res.sendStatus(404);
       }

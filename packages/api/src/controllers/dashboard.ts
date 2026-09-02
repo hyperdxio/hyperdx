@@ -16,7 +16,7 @@ import {
 } from '@/controllers/alerts';
 import type { ObjectId } from '@/models';
 import type { AlertDocument, IAlert } from '@/models/alert';
-import Dashboard from '@/models/dashboard';
+import Dashboard, { IDashboard } from '@/models/dashboard';
 
 function pickAlertsByTile(tiles: Tile[]) {
   return tiles.reduce((acc, tile) => {
@@ -69,12 +69,13 @@ function extractTileAlertData(tiles: TileForAlertSync[]): {
 }
 
 async function syncDashboardAlerts(
-  dashboardId: string,
+  dashboard: Pick<IDashboard, '_id' | 'name' | 'tags' | 'tiles'>,
   teamId: ObjectId,
   oldTiles: TileForAlertSync[],
   newTiles: Tile[],
   userId?: ObjectId,
 ): Promise<void> {
+  const dashboardId = dashboard._id.toString();
   const { tileIds: oldTileIds, tileIdsWithAlerts: oldTileIdsWithAlerts } =
     extractTileAlertData(oldTiles);
 
@@ -89,7 +90,7 @@ async function syncDashboardAlerts(
   const alertsByTile = pickAlertsByTile(newTiles);
   if (Object.keys(alertsByTile).length > 0) {
     await createOrUpdateDashboardAlerts(
-      dashboardId,
+      dashboard,
       teamId,
       alertsByTile,
       userId,
@@ -175,7 +176,7 @@ export async function createDashboard(
   }).save();
 
   await createOrUpdateDashboardAlerts(
-    newDashboard._id,
+    newDashboard,
     teamId,
     pickAlertsByTile(dashboard.tiles),
     userId,
@@ -224,7 +225,7 @@ export async function updateDashboard(
 
   if (updates.tiles) {
     await syncDashboardAlerts(
-      dashboardId,
+      updatedDashboard,
       teamId,
       oldDashboard?.tiles || [],
       updates.tiles,

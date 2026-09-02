@@ -160,6 +160,9 @@ describe('alerts router', () => {
       channel: { type: 'webhook', webhookId: webhook._id.toString() },
       name: 'My alert',
       message: 'My message template',
+      // Derived from the tile / dashboard, since neither was sent.
+      displayName: 'Test Dashboard - Test Chart',
+      tags: ['test'],
     };
 
     const list = await agent.get('/alerts').expect(200);
@@ -382,6 +385,130 @@ describe('alerts router', () => {
       .get(`/alerts/${alert.body.data._id}`)
       .expect(200);
     expect(afterClear.body.data.note).toBeNull();
+  });
+
+  it('round-trips displayName and tags through create, update, and revert', async () => {
+    const dashboard = await agent
+      .post('/dashboards')
+      .send(MOCK_DASHBOARD)
+      .expect(200);
+
+    const alert = await agent
+      .post('/alerts')
+      .send(
+        makeAlertInput({
+          dashboardId: dashboard.body.id,
+          tileId: dashboard.body.tiles[0].id,
+          webhookId: webhook._id.toString(),
+          displayName: 'Checkout errors',
+          tags: ['checkout'],
+        }),
+      )
+      .expect(200);
+    const alertId = alert.body.data._id;
+
+    const created = await agent.get(`/alerts/${alertId}`).expect(200);
+    expect(created.body.data).toMatchObject({
+      displayName: 'Checkout errors',
+      tags: ['checkout'],
+    });
+
+    // PUT is full-replace: omitting both fields reverts to the derived values.
+    await agent
+      .put(`/alerts/${alertId}`)
+      .send(
+        makeAlertInput({
+          dashboardId: dashboard.body.id,
+          tileId: dashboard.body.tiles[0].id,
+          webhookId: webhook._id.toString(),
+        }),
+      )
+      .expect(200);
+
+    const reverted = await agent.get(`/alerts/${alertId}`).expect(200);
+    expect(reverted.body.data).toMatchObject({
+      displayName: 'Test Dashboard - Test Chart',
+      tags: ['test'],
+    });
+
+    // An explicitly emptied tag list is stored, not re-derived.
+    await agent
+      .put(`/alerts/${alertId}`)
+      .send(
+        makeAlertInput({
+          dashboardId: dashboard.body.id,
+          tileId: dashboard.body.tiles[0].id,
+          webhookId: webhook._id.toString(),
+          tags: [],
+        }),
+      )
+      .expect(200);
+
+    const emptied = await agent.get(`/alerts/${alertId}`).expect(200);
+    expect(emptied.body.data.tags).toEqual([]);
+    expect((await Alert.findById(alertId))?.tags).toEqual([]);
+  });
+
+  it('derives displayName from the chart config for inline alerts', async () => {
+    const source = await Source.create({
+      kind: SourceKind.Log,
+      team: team._id,
+      from: { databaseName: 'default', tableName: 'otel_logs' },
+      timestampValueExpression: 'Timestamp',
+      connection: new mongoose.Types.ObjectId(),
+      name: 'Logs',
+    });
+
+    const alert = await agent
+      .post('/alerts')
+      .send(
+        makeInlineAlertInput({
+          chartConfig: makeAlertChartConfig({
+            sourceId: source._id.toString(),
+            name: 'Inline chart',
+          }),
+          webhookId: webhook._id.toString(),
+        }),
+      )
+      .expect(200);
+
+    const single = await agent
+      .get(`/alerts/${alert.body.data._id}`)
+      .expect(200);
+    expect(single.body.data).toMatchObject({
+      displayName: 'Inline chart',
+      tags: [],
+    });
+  });
+
+  // Documents written before the fields existed have neither, and the startup
+  // backfill has not necessarily run yet.
+  it('resolves displayName and tags for a document stored without them', async () => {
+    const savedSearch = await SavedSearch.create({
+      name: 'Legacy search',
+      source: new mongoose.Types.ObjectId(),
+      team: team._id,
+      tags: ['legacy'],
+    });
+    const alert = await Alert.create({
+      team: team._id,
+      channel: { type: 'webhook', webhookId: webhook._id.toString() },
+      interval: '15m',
+      threshold: 8,
+      thresholdType: AlertThresholdType.ABOVE,
+      source: AlertSource.SAVED_SEARCH,
+      savedSearch: savedSearch._id,
+    });
+    expect(alert.displayName).toBeUndefined();
+    expect(alert.tags).toBeUndefined();
+
+    const single = await agent
+      .get(`/alerts/${alert._id.toString()}`)
+      .expect(200);
+    expect(single.body.data).toMatchObject({
+      displayName: 'Legacy search',
+      tags: ['legacy'],
+    });
   });
 
   it('preserves scheduleStartAt when omitted in updates and clears when null', async () => {

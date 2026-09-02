@@ -918,7 +918,33 @@ export const scheduleStartAtSchema = z
     },
   );
 
+// --------------------------
+// TAGS
+// --------------------------
+// Shared limits + validator for user-supplied tag arrays. Any write path that
+// accepts tags (external API, MCP tools, internal routers) should validate with
+// `tagsSchema` so the caps stay consistent in one place. Read/model schemas keep
+// a bare `z.array(z.string())` so parsing existing documents never fails on
+// legacy data that predates these caps.
+export const MAX_TAG_LENGTH = 32;
+export const MAX_TAGS = 50;
+
+export const tagsSchema = z
+  .array(z.string().max(MAX_TAG_LENGTH))
+  .max(MAX_TAGS)
+  .optional();
+
 export const alertNoteSchema = z.string().min(1).max(4096).nullish();
+
+export const MAX_ALERT_DISPLAY_NAME_LENGTH = 512;
+export const alertDisplayNameSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(MAX_ALERT_DISPLAY_NAME_LENGTH)
+  .nullish();
+
+export const alertTagsSchema = tagsSchema.nullish();
 
 export const AlertBaseObjectSchema = z.object({
   id: z.string().optional(),
@@ -939,6 +965,8 @@ export const AlertBaseObjectSchema = z.object({
   name: z.string().min(1).max(512).nullish(),
   message: z.string().min(1).max(4096).nullish(),
   note: alertNoteSchema,
+  displayName: alertDisplayNameSchema,
+  tags: alertTagsSchema,
   silenced: z
     .object({
       by: z.string(),
@@ -1126,22 +1154,6 @@ export const DashboardFilterValueSchema = z.union([
 ]);
 
 export type DashboardFilterValue = z.infer<typeof DashboardFilterValueSchema>;
-
-// --------------------------
-// TAGS
-// --------------------------
-// Shared limits + validator for user-supplied tag arrays. Any write path that
-// accepts tags (external API, MCP tools, internal routers) should validate with
-// `tagsSchema` so the caps stay consistent in one place. Read/model schemas keep
-// a bare `z.array(z.string())` so parsing existing documents never fails on
-// legacy data that predates these caps.
-export const MAX_TAG_LENGTH = 32;
-export const MAX_TAGS = 50;
-
-export const tagsSchema = z
-  .array(z.string().max(MAX_TAG_LENGTH))
-  .max(MAX_TAGS)
-  .optional();
 
 // --------------------------
 // SAVED SEARCH
@@ -2571,6 +2583,8 @@ export const AlertsPageItemSchema = z.object({
   chartConfig: AlertChartConfigSchema.optional(),
   groupBy: z.string().optional(),
   name: z.string().nullish(),
+  displayName: z.string(),
+  tags: z.array(z.string()),
   message: z.string().nullish(),
   note: alertNoteSchema,
   createdAt: z.string(),
