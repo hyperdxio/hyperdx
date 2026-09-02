@@ -55,6 +55,9 @@ export const DBRowTableIconButton: React.FC<DBRowTableIconButtonProps> = ({
         className={baseClasses}
         tabIndex={tabIndex}
         role="button"
+        // These are icon-only, and the tooltip is visual, so without this the
+        // control has no accessible name.
+        aria-label={title}
       >
         {isActive ? <IconCheck size={iconSize} /> : children}
       </UnstyledButton>

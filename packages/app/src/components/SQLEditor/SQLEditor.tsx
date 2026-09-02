@@ -32,6 +32,10 @@ type SQLEditorProps = {
   dateRange?: [Date, Date];
   timestampValueExpression?: string;
   onSubmit?: () => void;
+  /** Gutter line numbers, for editors long enough to navigate by line. */
+  showLineNumbers?: boolean;
+  /** Applied to the surrounding surface, so callers can restyle it. */
+  className?: string;
 };
 
 export const createRunQueryKeyBinding = (onSubmit: () => void) => ({
@@ -53,10 +57,31 @@ export default function SQLEditor({
   dateRange,
   timestampValueExpression,
   onSubmit,
+  showLineNumbers = false,
+  className,
 }: SQLEditorProps) {
   const { colorScheme } = useMantineColorScheme();
   const ref = useRef<ReactCodeMirrorRef>(null);
   const compartmentRef = useRef<Compartment>(new Compartment());
+
+  // The gutter shares the editor's fill and is set off only by its rule, so
+  // the numbers read as part of the block rather than a second panel.
+  const lineNumberTheme = useMemo(
+    () =>
+      showLineNumbers
+        ? [
+            EditorView.theme({
+              '.cm-gutters': {
+                background: 'transparent',
+                borderRight: '1px solid var(--color-border)',
+                color: 'var(--color-text-muted)',
+              },
+              '.cm-lineNumbers .cm-gutterElement': { padding: '0 8px' },
+            }),
+          ]
+        : [],
+    [showLineNumbers],
+  );
 
   const runQueryKeymap = useMemo(
     () =>
@@ -112,7 +137,7 @@ export default function SQLEditor({
   }, [updateAutocompleteColumns]);
 
   return (
-    <Paper style={{ width: '100%' }}>
+    <Paper className={className} style={{ width: '100%' }}>
       <CodeMirror
         indentWithTab={false}
         ref={ref}
@@ -124,6 +149,7 @@ export default function SQLEditor({
         minHeight={'100px'}
         extensions={[
           createCodeMirrorStyleTheme(),
+          ...lineNumberTheme,
           // eslint-disable-next-line react-hooks/refs
           compartmentRef.current.of(
             clickhouseSql({
@@ -139,7 +165,10 @@ export default function SQLEditor({
           ]),
           ...(enableLineWrapping ? [EditorView.lineWrapping] : []),
         ]}
-        basicSetup={DEFAULT_CODE_MIRROR_BASIC_SETUP}
+        basicSetup={{
+          ...DEFAULT_CODE_MIRROR_BASIC_SETUP,
+          lineNumbers: showLineNumbers,
+        }}
         placeholder={placeholder}
       />
     </Paper>
@@ -147,9 +176,27 @@ export default function SQLEditor({
 }
 
 export function SQLEditorControlled({
+  onValueChange,
   ...props
-}: Omit<SQLEditorProps, 'value' | 'onChange'> & UseControllerProps<any>) {
+}: Omit<SQLEditorProps, 'value' | 'onChange'> &
+  UseControllerProps<any> & {
+    /**
+     * Fired alongside the form update, for callers that need to react to the
+     * user editing (rather than to the value changing, which also happens when
+     * the field is set programmatically).
+     */
+    onValueChange?: (value: string) => void;
+  }) {
   const { field } = useController(props);
 
-  return <SQLEditor onChange={field.onChange} value={field.value} {...props} />;
+  return (
+    <SQLEditor
+      {...props}
+      value={field.value}
+      onChange={value => {
+        field.onChange(value);
+        onValueChange?.(value);
+      }}
+    />
+  );
 }

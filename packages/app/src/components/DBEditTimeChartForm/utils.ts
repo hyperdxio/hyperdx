@@ -110,6 +110,8 @@ export function displayTypeToActiveTab(displayType: DisplayType): string {
       return 'pie';
     case DisplayType.Bar:
       return 'bar';
+    case DisplayType.Treemap:
+      return 'treemap';
     case DisplayType.Number:
       return 'number';
     case DisplayType.Heatmap:
@@ -127,6 +129,7 @@ export const TABS_WITH_GENERATED_SQL = new Set([
   'number',
   'pie',
   'bar',
+  'treemap',
   'heatmap',
 ]);
 
@@ -317,7 +320,11 @@ export function buildChartConfigForExplanations({
     return convertToNumberChartConfig(builderConfig);
   } else if (activeTab === 'table') {
     return convertToTableChartConfig(builderConfig);
-  } else if (activeTab === 'pie' || activeTab === 'bar') {
+  } else if (
+    activeTab === 'pie' ||
+    activeTab === 'bar' ||
+    activeTab === 'treemap'
+  ) {
     return convertToCategoricalChartConfig(builderConfig);
   } else if (activeTab === 'heatmap') {
     return config;

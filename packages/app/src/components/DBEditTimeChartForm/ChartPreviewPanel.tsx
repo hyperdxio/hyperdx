@@ -30,6 +30,7 @@ import { DBPieChart } from '@/components/DBPieChart';
 import DBSqlRowTableWithSideBar from '@/components/DBSqlRowTableWithSidebar';
 import DBTableChart from '@/components/DBTableChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
+import { DBTreemapChart } from '@/components/DBTreemapChart';
 import EmptyState from '@/components/EmptyState';
 import PatternTable from '@/components/PatternTable';
 import PromQLPreview from '@/components/PromQLEditor/PromQLPreview';
@@ -273,6 +274,15 @@ export function ChartPreviewPanel({
           />
         </div>
       )}
+      {queryReady && queriedConfig != null && activeTab === 'treemap' && (
+        <div className="flex-grow-1 d-flex flex-column" style={{ height: 400 }}>
+          <DBTreemapChart
+            config={queriedConfig}
+            showMVOptimizationIndicator={false}
+            errorVariant="inline"
+          />
+        </div>
+      )}
       {queryReady && queriedConfig != null && activeTab === 'number' && (
         <div className="flex-grow-1 d-flex flex-column" style={{ height: 400 }}>
           <DBNumberChart
@@ -401,7 +411,7 @@ export function ChartPreviewPanel({
               <Accordion.Item value="sample">
                 <Accordion.Control icon={<IconList size={16} />}>
                   <Text size="sm" style={{ alignSelf: 'center' }}>
-                    Sample Matched Events
+                    Sample matched events
                   </Text>
                 </Accordion.Control>
                 <Accordion.Panel>

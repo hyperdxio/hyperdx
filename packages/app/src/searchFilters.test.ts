@@ -172,6 +172,41 @@ describe('canonical key escaping at the persistence boundary', () => {
       ]);
     });
 
+    it('unions incoming values into existing FilterState in one update', () => {
+      const onFilterChange = jest.fn();
+      const { result } = renderHook(() =>
+        useSearchPageFilterState({
+          searchQuery: EMPTY_SEARCH_QUERY,
+          onFilterChange,
+          knownColumns: PLAIN_COLUMNS,
+        }),
+      );
+
+      act(() => {
+        result.current.setFilterValue('ServiceName', 'api');
+      });
+      onFilterChange.mockClear();
+      act(() => {
+        result.current.mergeFilterValues({
+          ServiceName: {
+            included: new Set(['web']),
+            excluded: new Set(),
+          },
+          Level: {
+            included: new Set(['error']),
+            excluded: new Set(),
+          },
+        });
+      });
+
+      expect([...result.current.filters.ServiceName.included].sort()).toEqual([
+        'api',
+        'web',
+      ]);
+      expect([...result.current.filters.Level.included]).toEqual(['error']);
+      expect(onFilterChange).toHaveBeenCalledTimes(1);
+    });
+
     it('unescapes a quoted key loaded from the URL back into clean FilterState', () => {
       const onFilterChange = jest.fn();
       const searchQuery: Filter[] = [

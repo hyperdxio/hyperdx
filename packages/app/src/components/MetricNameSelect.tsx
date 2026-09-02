@@ -11,6 +11,8 @@ import { useDebouncedValue } from '@mantine/hooks';
 import { useGetMetricNames } from '@/hooks/useMetadata';
 import { capitalizeFirstLetter } from '@/utils';
 
+import styles from './MetricNameSelect.module.scss';
+
 const SEPARATOR = ':::::::';
 const SEARCH_DEBOUNCE_MS = 300;
 
@@ -173,6 +175,7 @@ export function MetricNameSelect({
   dateRange,
   error,
   onFocus,
+  rightAddon,
   'data-testid': dataTestId,
 }: {
   metricType: MetricsDataType;
@@ -185,6 +188,8 @@ export function MetricNameSelect({
   dateRange?: DateRange['dateRange'];
   error?: string;
   onFocus?: () => void;
+  /** Trailing control drawn into the field's frame, e.g. the metric explorer. */
+  rightAddon?: React.ReactNode;
   'data-testid'?: string;
 }) {
   const [searchValue, setSearchValue] = useState('');
@@ -237,10 +242,11 @@ export function MetricNameSelect({
   const currentValue =
     metricName && metricType ? `${metricName}${SEPARATOR}${metricType}` : null;
 
-  return (
+  const select = (
     <Select
       disabled={isLoading || isError}
       variant="filled"
+      classNames={rightAddon ? { input: styles.joinedInput } : undefined}
       placeholder={
         isLoading
           ? 'Loading...'
@@ -285,5 +291,16 @@ export function MetricNameSelect({
       error={error}
       data-testid={dataTestId}
     />
+  );
+
+  if (!rightAddon) {
+    return select;
+  }
+
+  return (
+    <div className={styles.group}>
+      <div className={styles.select}>{select}</div>
+      <div className={styles.addon}>{rightAddon}</div>
+    </div>
   );
 }

@@ -45,7 +45,8 @@ type SeriesType =
   | 'markdown'
   | 'pie'
   | 'event_patterns'
-  | 'bar';
+  | 'bar'
+  | 'treemap';
 
 /**
  * Series data structure for chart verification

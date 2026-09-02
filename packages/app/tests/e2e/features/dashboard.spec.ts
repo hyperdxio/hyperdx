@@ -299,8 +299,10 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
   test('should warn when closing tile editor with unsaved display settings changes', async () => {
     await dashboardPage.openNewTileEditor();
 
-    // Open the Display Settings drawer
-    await dashboardPage.page.getByTestId('display-settings-button').click();
+    // Tile settings are always visible in the right rail
+    await expect(
+      dashboardPage.page.getByTestId('tile-settings-rail'),
+    ).toBeVisible({ timeout: 5000 });
     const applyButton = dashboardPage.page.getByTestId(
       'display-settings-apply-button',
     );
@@ -311,9 +313,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
       .locator('label', { hasText: 'Compare to Previous Period' })
       .click();
 
-    // Apply and wait for the drawer to close
     await applyButton.click();
-    await expect(applyButton).toBeHidden({ timeout: 5000 });
 
     // Try to close — should show unsaved changes confirm
     await dashboardPage.page.keyboard.press('Escape');

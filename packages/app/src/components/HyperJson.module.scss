@@ -73,30 +73,18 @@
 .lineMenu {
   display: none;
   align-items: center;
+  gap: 4px;
   position: absolute;
   right: 0;
   top: 0;
-  height: calc(100% + 1px);
-  max-height: 24px;
-  border-bottom: 1px solid var(--color-border);
-}
-
-.lineMenuBtn {
-  border: 0;
-  background-color: rgb(0 0 0 / 20%);
-  backdrop-filter: blur(4px);
-  color: var(--color-text);
-  border-left: 1px solid var(--color-border);
-  padding: 0 8px;
   height: 100%;
+  padding-right: 4px;
+  padding-left: 12px;
 
-  &:hover {
-    background-color: var(--color-bg-highlighted);
-  }
-
-  &:active {
-    background-color: var(--color-bg-muted);
-  }
+  // Matches the row's hover colour so the strip reads as part of the row while
+  // still hiding the value scrolling under it. The buttons carry their own
+  // surface and border, as they do in the results table.
+  background-color: var(--color-bg-highlighted);
 }
 
 .clickable {

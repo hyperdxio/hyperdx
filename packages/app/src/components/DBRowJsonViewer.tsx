@@ -24,6 +24,8 @@ import {
   IconPlus,
   IconSearch,
   IconSettings,
+  IconStack2,
+  IconStack2Filled,
   IconTextWrap,
 } from '@tabler/icons-react';
 
@@ -360,6 +362,8 @@ export function DBRowJsonViewer({
     generateChartUrl,
     displayedColumns,
     toggleColumn,
+    groupByFields,
+    toggleGroupBy,
   } = use(RowSidePanelContext);
 
   const [filter, setFilter] = useState<string>('');
@@ -566,24 +570,26 @@ export function DBRowJsonViewer({
         });
       }
 
+      // Columns and group by both address the field as a projectable
+      // expression, so they share one spelling — a map key has to arrive as
+      // `Attributes['k']` in both, or the toolbar group-by picker and this
+      // drawer would disagree about what the same field is called.
+      let columnFieldPath = fieldPath;
+      if (isInParsedJson && parsedJsonRootPath) {
+        const jsonQuery = buildJSONExtractQuery(
+          keyPath,
+          parsedJsonRootPath,
+          jsonColumns,
+          'JSONExtractString',
+          mapColumns,
+        );
+        if (jsonQuery) {
+          columnFieldPath = jsonQuery;
+        }
+      }
+
       // Toggle column action (non-object values)
       if (toggleColumn && typeof value !== 'object') {
-        let columnFieldPath = fieldPath;
-
-        // Handle parsed JSON from string columns using JSONExtractString
-        if (isInParsedJson && parsedJsonRootPath) {
-          const jsonQuery = buildJSONExtractQuery(
-            keyPath,
-            parsedJsonRootPath,
-            jsonColumns,
-            'JSONExtractString',
-            mapColumns,
-          );
-          if (jsonQuery) {
-            columnFieldPath = jsonQuery;
-          }
-        }
-
         const isIncluded = displayedColumns?.includes(columnFieldPath);
         actions.push({
           key: 'toggle-column',
@@ -598,6 +604,39 @@ export function DBRowJsonViewer({
               message: `Column "${fieldPath}" ${
                 isIncluded ? 'removed from' : 'added to'
               } results table`,
+            });
+          },
+        });
+      }
+
+      // Group by. The filter action next to it narrows to this one value; this
+      // is the opposite move — the breakdown across every value of the field.
+      // Timestamps are excluded for the same reason they are excluded from
+      // filters: grouping on one yields a group per row.
+      if (
+        toggleGroupBy &&
+        typeof value !== 'object' &&
+        fieldPath != 'Timestamp' &&
+        fieldPath != 'TimestampTime'
+      ) {
+        const isGrouped = groupByFields?.includes(columnFieldPath);
+        actions.push({
+          key: 'toggle-group-by',
+          label: isGrouped ? (
+            <IconStack2Filled size={14} />
+          ) : (
+            <IconStack2 size={14} />
+          ),
+          title: isGrouped
+            ? `Stop grouping results by ${fieldPath}`
+            : `Group results by ${fieldPath}`,
+          onClick: () => {
+            toggleGroupBy(columnFieldPath);
+            notifications.show({
+              color: 'green',
+              message: isGrouped
+                ? `Results no longer grouped by "${fieldPath}"`
+                : `Results grouped by "${fieldPath}"`,
             });
           },
         });
@@ -673,6 +712,8 @@ export function DBRowJsonViewer({
       onPropertyAddClick,
       rowData,
       toggleColumn,
+      groupByFields,
+      toggleGroupBy,
       jsonColumns,
       mapColumns,
     ],

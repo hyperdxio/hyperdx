@@ -32,6 +32,7 @@ type ChartActionBarProps = {
   setDisplayedTimeInputValue?: (value: string) => void;
   onTimeRangeSearch?: (value: string) => void;
   setSaveToDashboardModalOpen: (open: boolean) => void;
+  hidePrimaryActions?: boolean;
 };
 
 export function ChartActionBar({
@@ -52,31 +53,34 @@ export function ChartActionBar({
   setDisplayedTimeInputValue,
   onTimeRangeSearch,
   setSaveToDashboardModalOpen,
+  hidePrimaryActions = false,
 }: ChartActionBarProps) {
   return (
-    <Flex justify="space-between" mt="sm">
-      <Flex gap="sm">
-        {onSave != null && (
-          <Button
-            data-testid="chart-save-button"
-            loading={isSaving}
-            variant="primary"
-            onClick={handleSubmit(handleSave)}
-          >
-            Save
-          </Button>
-        )}
-        {onClose != null && (
-          <Button
-            variant="subtle"
-            color="dark"
-            onClick={onClose}
-            disabled={isSaving}
-          >
-            Cancel
-          </Button>
-        )}
-      </Flex>
+    <Flex justify={hidePrimaryActions ? 'flex-end' : 'space-between'} mt="sm">
+      {!hidePrimaryActions && (
+        <Flex gap="sm">
+          {onSave != null && (
+            <Button
+              data-testid="chart-save-button"
+              loading={isSaving}
+              variant="primary"
+              onClick={handleSubmit(handleSave)}
+            >
+              Save
+            </Button>
+          )}
+          {onClose != null && (
+            <Button
+              variant="subtle"
+              color="dark"
+              onClick={onClose}
+              disabled={isSaving}
+            >
+              Cancel
+            </Button>
+          )}
+        </Flex>
+      )}
       <Flex gap="sm" mb="sm" align="center" justify="end">
         {(activeTab === 'table' ||
           activeTab === 'pie' ||

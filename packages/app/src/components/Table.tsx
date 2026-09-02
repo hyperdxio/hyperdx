@@ -21,6 +21,15 @@ type TableProps<T extends Record<string, unknown> | string[]> = {
   density?: 'zero' | 'compact' | 'normal' | 'comfortable';
   interactive?: boolean;
   tableMeta?: Record<string, any>;
+  /**
+   * `fixed` honours each column's `size` in pixels, which needs the table to be
+   * wider than the sizes add up to — in a narrow panel the leftover column
+   * collapses to its min-content width, a single character once `break-all`
+   * applies. `auto` sizes columns to their content instead and lets the
+   * `UNDEFINED_WIDTH` column absorb the remainder, so the layout survives at
+   * any width. Prefer it wherever the table sits in a resizable panel.
+   */
+  layout?: 'fixed' | 'auto';
 };
 
 // TODO: Retire this component in favor of Mantine
@@ -33,6 +42,7 @@ export const Table = <T extends Record<string, unknown> | string[]>({
   density = 'normal',
   interactive,
   tableMeta,
+  layout = 'fixed',
 }: TableProps<T>) => {
   const table = useReactTable({
     data: data ?? [],
@@ -45,9 +55,19 @@ export const Table = <T extends Record<string, unknown> | string[]>({
     return <div className={styles.emptyMessage}>{emptyMessage}</div>;
   }
 
+  // In auto layout only the absorbing column is given a width; pinning the
+  // others to their `size` would reintroduce the overflow it exists to avoid.
+  const columnWidth = (size: number) => {
+    if (size === UNDEFINED_WIDTH) {
+      return '100%';
+    }
+    return layout === 'auto' ? undefined : size;
+  };
+
   return (
     <div
       className={cx(styles.tableWrapper, {
+        [styles.tableLayoutAuto]: layout === 'auto',
         [styles.tableBorderless]: borderless,
         [styles.tableDensityZero]: density === 'zero',
         [styles.tableDensityCompact]: density === 'compact',
@@ -63,12 +83,11 @@ export const Table = <T extends Record<string, unknown> | string[]>({
                 {headerGroup.headers.map(header => (
                   <th
                     key={header.id}
-                    style={{
-                      width:
-                        header.column.getSize() === UNDEFINED_WIDTH
-                          ? '100%'
-                          : header.column.getSize(),
-                    }}
+                    className={cx({
+                      [styles.fluidCell]:
+                        header.column.getSize() === UNDEFINED_WIDTH,
+                    })}
+                    style={{ width: columnWidth(header.column.getSize()) }}
                   >
                     {header.isPlaceholder
                       ? null
@@ -88,12 +107,11 @@ export const Table = <T extends Record<string, unknown> | string[]>({
               {row.getVisibleCells().map(cell => (
                 <td
                   key={cell.id}
-                  style={{
-                    width:
-                      cell.column.getSize() === UNDEFINED_WIDTH
-                        ? '100%'
-                        : cell.column.getSize(),
-                  }}
+                  className={cx({
+                    [styles.fluidCell]:
+                      cell.column.getSize() === UNDEFINED_WIDTH,
+                  })}
+                  style={{ width: columnWidth(cell.column.getSize()) }}
                 >
                   {flexRender(cell.column.columnDef.cell, cell.getContext())}
                 </td>

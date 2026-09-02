@@ -671,7 +671,10 @@ describe('DBEditTimeChartForm - Duplicate series', () => {
     renderWithSingleSeries();
     expect(screen.getAllByTestId('series-alias-input')).toHaveLength(1);
 
-    await userEvent.click(screen.getByTestId('series-duplicate-button'));
+    await userEvent.click(screen.getByTestId('series-actions-menu'));
+    await userEvent.click(
+      await screen.findByRole('menuitem', { name: 'Duplicate' }),
+    );
 
     const aliasInputs = screen.getAllByTestId('series-alias-input');
     expect(aliasInputs).toHaveLength(2);
@@ -685,7 +688,10 @@ describe('DBEditTimeChartForm - Duplicate series', () => {
     const onSave = jest.fn();
     renderWithSingleSeries({ onSave });
 
-    await userEvent.click(screen.getByTestId('series-duplicate-button'));
+    await userEvent.click(screen.getByTestId('series-actions-menu'));
+    await userEvent.click(
+      await screen.findByRole('menuitem', { name: 'Duplicate' }),
+    );
     await userEvent.click(screen.getByTestId('chart-save-button'));
 
     await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
@@ -702,7 +708,10 @@ describe('DBEditTimeChartForm - Duplicate series', () => {
     const onSave = jest.fn();
     renderWithSingleSeries({ onSave });
 
-    await userEvent.click(screen.getByTestId('series-duplicate-button'));
+    await userEvent.click(screen.getByTestId('series-actions-menu'));
+    await userEvent.click(
+      await screen.findByRole('menuitem', { name: 'Duplicate' }),
+    );
 
     const aliasInputs = screen.getAllByTestId('series-alias-input');
     await userEvent.clear(aliasInputs[1]);
@@ -755,24 +764,36 @@ describe('DBEditTimeChartForm - Column color', () => {
     select: [colorSeries],
   };
 
-  it('shows the per-column color control on table tiles', () => {
+  it('shows the per-column color control on table tiles', async () => {
     renderComponent({ chartConfig: tableConfig });
 
-    expect(screen.getByTestId('series-color-button')).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId('series-actions-menu'));
+    expect(
+      await screen.findByRole('menuitem', { name: 'Color' }),
+    ).toBeInTheDocument();
   });
 
-  it('hides the per-column color control on non-table tiles', () => {
+  it('hides the per-column color control on non-table tiles', async () => {
     renderComponent({
       chartConfig: { ...tableConfig, displayType: DisplayType.Line },
     });
 
-    expect(screen.queryByTestId('series-color-button')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByTestId('series-actions-menu'));
+    expect(
+      await screen.findByRole('menuitem', { name: 'Duplicate' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('menuitem', { name: 'Color' }),
+    ).not.toBeInTheDocument();
   });
 
   it('opens the column color drawer when the control is clicked', async () => {
     renderComponent({ chartConfig: tableConfig });
 
-    await userEvent.click(screen.getByTestId('series-color-button'));
+    await userEvent.click(screen.getByTestId('series-actions-menu'));
+    await userEvent.click(
+      await screen.findByRole('menuitem', { name: 'Color' }),
+    );
 
     // The drawer renders the reused color swatch + rules editor.
     expect(

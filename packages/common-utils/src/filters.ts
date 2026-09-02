@@ -12,13 +12,38 @@ import {
 } from '@/types';
 import { getVariableReferences, substituteVariables } from '@/variables';
 
+export type FilterRangeMinOp = '>' | '>=';
+export type FilterRangeMaxOp = '<' | '<=';
+
+/** Numeric range on a column. Two bounds emit BETWEEN; one bound emits `>`/`>=`/`<`/`<=`. */
+export type FilterRange = {
+  min?: number;
+  max?: number;
+  minOp?: FilterRangeMinOp;
+  maxOp?: FilterRangeMaxOp;
+};
+
 export type FilterState = {
   [key: string]: {
     included: Set<string | boolean>;
     excluded: Set<string | boolean>;
-    range?: { min: number; max: number }; // For BETWEEN conditions
+    range?: FilterRange;
   };
 };
+
+function rangeToSqlCondition(key: string, range: FilterRange): string | null {
+  const { min, max, minOp = '>=', maxOp = '<=' } = range;
+  if (min != null && max != null) {
+    return `${key} BETWEEN ${min} AND ${max}`;
+  }
+  if (min != null) {
+    return `${key} ${minOp} ${min}`;
+  }
+  if (max != null) {
+    return `${key} ${maxOp} ${max}`;
+  }
+  return null;
+}
 
 // Wrap a quoted string literal in a ClickHouse expression whose result type
 // matches the date column's type.
@@ -95,10 +120,13 @@ export const filtersToQuery = (
         });
       }
       if (values.range != null) {
-        conditions.push({
-          type: 'sql' as const,
-          condition: `${actualKey} BETWEEN ${values.range.min} AND ${values.range.max}`,
-        });
+        const rangeCondition = rangeToSqlCondition(actualKey, values.range);
+        if (rangeCondition != null) {
+          conditions.push({
+            type: 'sql' as const,
+            condition: rangeCondition,
+          });
+        }
       }
       return conditions;
     });
@@ -487,7 +515,7 @@ export const parseQuery = (
     {
       included: Set<string | boolean>;
       excluded: Set<string | boolean>;
-      range?: { min: number; max: number };
+      range?: FilterRange;
     }
   >();
   for (const filter of q) {
@@ -524,6 +552,35 @@ export const parseQuery = (
         }
         continue;
       }
+    }
+
+    const comparisonMatch = filter.condition.match(
+      /^(.+?)\s*(>=|<=|>|<)\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)\s*$/,
+    );
+    if (comparisonMatch) {
+      const keyStr = comparisonMatch[1].trim();
+      const op = comparisonMatch[2];
+      const bound = Number(comparisonMatch[3]);
+      if (
+        keyStr &&
+        Number.isFinite(bound) &&
+        (op === '>' || op === '>=' || op === '<' || op === '<=')
+      ) {
+        const range: FilterRange =
+          op === '>' || op === '>='
+            ? { min: bound, minOp: op }
+            : { max: bound, maxOp: op };
+        if (!state.has(keyStr)) {
+          state.set(keyStr, {
+            included: new Set(),
+            excluded: new Set(),
+            range,
+          });
+        } else {
+          state.get(keyStr)!.range = range;
+        }
+      }
+      continue;
     }
 
     // Extract all simple IN/NOT IN clauses from the condition
@@ -591,7 +648,8 @@ function countTopLevelAnd(condition: string): number {
  *
  * The sidebar only reads `type: 'sql'` conditions in the exact pinned-filter
  * form filtersToQuery produces — a single `<col> IN (...)`, `<col> NOT IN (...)`,
- * or `<col> BETWEEN <min> AND <max>` predicate. `parseQuery` is deliberately
+ * `<col> BETWEEN <min> AND <max>`, or one-sided `<col> >/</>=/<= <n>` predicate.
+ * `parseQuery` is deliberately
  * lenient (it extracts what it can and ignores the rest), so "parses to a
  * non-empty state" is *not* enough: `col IN ('x') AND foo = 1` would render the
  * `IN` facet while still executing `AND foo = 1` at query time, so the displayed
@@ -627,9 +685,10 @@ export function isRenderablePinnedFilter(filter: Filter): boolean {
   // a compound), which is not a single renderable facet.
   if (filtersToQuery(state).length !== 1) return false;
 
-  // Catch conjuncts the parser dropped: a single IN/NOT IN has no top-level
-  // AND, a single BETWEEN has exactly one (its own `min AND max`).
-  const expectedAnds = state[keys[0]].range ? 1 : 0;
+  // Catch conjuncts the parser dropped: a single IN/NOT IN or one-sided
+  // comparison has no top-level AND; a BETWEEN has exactly one (`min AND max`).
+  const range = state[keys[0]].range;
+  const expectedAnds = range?.min != null && range?.max != null ? 1 : 0;
   return countTopLevelAnd(filter.condition) === expectedAnds;
 }
 

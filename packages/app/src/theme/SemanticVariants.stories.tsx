@@ -21,8 +21,8 @@ const story = {
 };
 export default story;
 
-// Variants exposed as Button / ActionIcon (only danger).
-const CONTROL_VARIANTS = ['danger'] as const;
+// Variants exposed as Button / ActionIcon (danger + warning).
+const CONTROL_VARIANTS = ['danger', 'warning'] as const;
 
 // Variants supported by Text.
 const TEXT_VARIANTS = ['danger', 'warning', 'success'] as const;

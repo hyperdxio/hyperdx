@@ -49,7 +49,10 @@
   --color-bg-option-active: var(--mantine-color-dark-5);
   --color-bg-field: var(--mantine-color-dark-7);
   --color-bg-field-highlighted: var(--mantine-color-dark-6);
-  --color-bg-field-addon: var(--mantine-color-dark-6);
+
+  /* Recedes past the border so the addon reads as a fixed part of the input's
+     frame rather than a button sitting inside it. */
+  --color-bg-field-addon: var(--mantine-color-dark-8);
   --color-bg-neutral: var(--mantine-color-dark-4);
   --color-bg-brand: var(--mantine-color-green-3);
   --color-bg-brand-hover: var(--mantine-color-green-2);
@@ -176,9 +179,14 @@
      (Select/Combobox options, Menu items, popover/dropdown lists) when it is
      hovered or is the currently-selected entry. */
   --color-bg-option-active: var(--color-bg-sidenav-link-active);
-  --color-bg-field: #f9f9fc;
-  --color-bg-field-highlighted: var(--mantine-color-white);
-  --color-bg-field-addon: var(--mantine-color-white);
+
+  /* Inputs are the brightest thing in light mode, so the surrounding chrome
+     reads as chrome. Everything attached to a field — addons, hover — steps
+     *down* to the muted grey, mirroring dark mode, where the field is the
+     darkest surface and its addons step up. */
+  --color-bg-field: var(--mantine-color-white);
+  --color-bg-field-highlighted: var(--color-bg-muted);
+  --color-bg-field-addon: var(--color-bg-muted);
   --color-bg-neutral: var(--mantine-color-gray-5);
   --color-bg-brand: var(--mantine-color-green-7);
   --color-bg-brand-hover: var(--mantine-color-green-8);

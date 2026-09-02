@@ -379,12 +379,9 @@ export const headerColumns: ColumnDef<[string, string]>[] = [
   {
     accessorKey: '0',
     header: 'Header',
-    size: 260,
-    cell: ({ row }) => (
-      <div className="text-truncate" title={row.original[0]}>
-        {row.original[0]}
-      </div>
-    ),
+    // Header names wrap rather than truncate: the panel is narrow enough that
+    // an ellipsis hides the part that distinguishes one header from another.
+    cell: ({ row }) => <div title={row.original[0]}>{row.original[0]}</div>,
   },
   {
     size: UNDEFINED_WIDTH,
@@ -404,7 +401,6 @@ export const networkColumns: ColumnDef<{
   {
     accessorKey: 'label',
     header: 'Label',
-    size: 260,
     cell: ({ row }) => <span>{row.original.label}</span>,
   },
   {

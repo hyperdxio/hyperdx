@@ -2,7 +2,10 @@ import React from 'react';
 import { fireEvent, screen, within } from '@testing-library/react';
 
 import { buildJSONExtractQuery, DBRowJsonViewer } from './DBRowJsonViewer';
-import { RowSidePanelContext } from './DBRowSidePanel';
+import {
+  RowSidePanelContext,
+  RowSidePanelContextProps,
+} from './DBRowSidePanel';
 
 // Mock Next.js router
 jest.mock('next/router', () => ({
@@ -23,11 +26,14 @@ describe('DBRowJsonViewer', () => {
   const mockGenerateSearchUrl = jest.fn();
   const mockOnPropertyAddClick = jest.fn();
   const mockToggleColumn = jest.fn();
+  const mockToggleGroupBy = jest.fn();
 
   const defaultContext = {
     generateSearchUrl: mockGenerateSearchUrl,
     onPropertyAddClick: mockOnPropertyAddClick,
     toggleColumn: mockToggleColumn,
+    toggleGroupBy: mockToggleGroupBy,
+    groupByFields: [],
     displayedColumns: [],
     generateChartUrl: jest.fn(),
   };
@@ -67,36 +73,45 @@ describe('DBRowJsonViewer', () => {
   });
 
   // Helper to render component
-  const renderComponent = (data: any) => {
+  const renderComponent = (
+    data: any,
+    context: RowSidePanelContextProps = defaultContext,
+  ) => {
     return renderWithMantine(
-      <RowSidePanelContext value={defaultContext}>
+      <RowSidePanelContext value={context}>
         <DBRowJsonViewer data={data} />
       </RowSidePanelContext>,
     );
   };
 
-  // Line action buttons are now icon-only; locate them by their `title`
-  // tooltip. Maps the friendly action name to a unique title substring.
+  // Line action buttons are icon-only; locate them by accessible name. Maps the
+  // friendly action name to a unique substring of that name.
   const ACTION_TITLE: Record<string, string> = {
     Search: 'search for this value only',
     'Add to Filters': 'add to filters',
     Column: 'column to results table',
+    'Group By': 'group results by',
     'Copy Object': 'copy object',
     'Copy Value': 'copy value',
   };
 
   const findActionButton = (line: HTMLElement, buttonText: string) => {
     const needle = (ACTION_TITLE[buttonText] ?? buttonText).toLowerCase();
-    return within(line).getByTitle((content: string) =>
-      (content ?? '').toLowerCase().includes(needle),
-    );
+    return within(line).getByRole('button', {
+      name: (name: string) => (name ?? '').toLowerCase().includes(needle),
+    });
+  };
+
+  // The action menu only mounts while the line is hovered.
+  const hoveredLine = (fieldText: string) => {
+    const line = screen.getByText(fieldText).closest('.line')! as HTMLElement;
+    fireEvent.mouseEnter(line);
+    return line;
   };
 
   // Helper to click a button on a line
   const clickLineButton = (fieldText: string, buttonText: string) => {
-    const line = screen.getByText(fieldText).closest('.line')! as HTMLElement;
-    fireEvent.mouseEnter(line);
-    const button = findActionButton(line, buttonText);
+    const button = findActionButton(hoveredLine(fieldText), buttonText);
     fireEvent.click(button);
   };
 
@@ -184,6 +199,55 @@ describe('DBRowJsonViewer', () => {
     clickLineButton('field1', 'Column');
 
     expect(mockToggleColumn).toHaveBeenCalledWith("LogAttributes['field1']");
+  });
+
+  describe('group by', () => {
+    it('groups by the same expression the column toggle uses', () => {
+      renderComponent(logData);
+      clickLineButton('field1', 'Group By');
+
+      expect(mockToggleGroupBy).toHaveBeenCalledWith("LogAttributes['field1']");
+    });
+
+    it.each([['Timestamp'], ['TimestampTime']])(
+      'offers no grouping for %s, which would give a group per row',
+      field => {
+        renderComponent(logData);
+        const line = hoveredLine(field);
+
+        expect(
+          within(line).queryByRole('button', {
+            name: /group(ing)? results by/i,
+          }),
+        ).not.toBeInTheDocument();
+      },
+    );
+
+    it('offers to stop grouping when the field is already a dimension', () => {
+      renderComponent(logData, {
+        ...defaultContext,
+        groupByFields: ["LogAttributes['field1']"],
+      });
+      const line = hoveredLine('field1');
+
+      expect(
+        within(line).getByRole('button', {
+          name: /stop grouping results by/i,
+        }),
+      ).toBeInTheDocument();
+    });
+
+    it('has no group-by action where the view has no grouping', () => {
+      renderComponent(logData, {
+        ...defaultContext,
+        toggleGroupBy: undefined,
+      });
+      const line = hoveredLine('field1');
+
+      expect(
+        within(line).queryByRole('button', { name: /group(ing)? results by/i }),
+      ).not.toBeInTheDocument();
+    });
   });
 
   describe('timestamp fields', () => {

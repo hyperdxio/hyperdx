@@ -273,10 +273,13 @@ const convertToExternalTileChartConfig = (
           sourceId: config.source,
           numberFormat: config.numberFormat,
         };
+      // Treemap is not in the external dashboard schema yet; drop it
+      // rather than emitting an undocumented displayType.
       case DisplayType.Search:
       case DisplayType.Markdown:
       case DisplayType.Heatmap:
       case DisplayType.EventPatterns:
+      case DisplayType.Treemap:
         logger.error(
           { config },
           'Error converting chart config to external chart - unsupported display type for raw SQL config',
@@ -506,6 +509,13 @@ const convertToExternalTileChartConfig = (
         where: stringValueOrDefault(config.where, ''),
         whereLanguage: config.whereLanguage ?? 'lucene',
       };
+    case DisplayType.Treemap:
+      // Treemap is not in the external dashboard schema yet.
+      logger.error(
+        { config },
+        'Error converting chart config to external chart - unsupported display type',
+      );
+      return undefined;
     case undefined:
       logger.error(
         { config },

@@ -13,10 +13,12 @@ export default function PromqlChartEditor({
   control,
   onSubmit,
   onOpenDisplaySettings,
+  hideDisplaySettings = false,
 }: {
   control: Control<ChartEditorFormState>;
   onSubmit: (suppressErrorNotification?: boolean) => void;
   onOpenDisplaySettings: () => void;
+  hideDisplaySettings?: boolean;
 }) {
   const { field: expressionField } = useController({
     control,
@@ -62,13 +64,15 @@ export default function PromqlChartEditor({
         />
       </Box>
       <Flex justify="end">
-        <Button
-          onClick={onOpenDisplaySettings}
-          size="compact-sm"
-          variant="secondary"
-        >
-          Display Settings
-        </Button>
+        {!hideDisplaySettings && (
+          <Button
+            onClick={onOpenDisplaySettings}
+            size="compact-sm"
+            variant="secondary"
+          >
+            Display Settings
+          </Button>
+        )}
       </Flex>
     </Stack>
   );

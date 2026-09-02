@@ -69,6 +69,12 @@ export const areFiltersEqual = (a: FilterState, b: FilterState) => {
     // Check range
     if (a[key].range?.min !== b[key].range?.min) return false;
     if (a[key].range?.max !== b[key].range?.max) return false;
+    if ((a[key].range?.minOp ?? '>=') !== (b[key].range?.minOp ?? '>=')) {
+      return false;
+    }
+    if ((a[key].range?.maxOp ?? '<=') !== (b[key].range?.maxOp ?? '<=')) {
+      return false;
+    }
   }
 
   return true;
@@ -212,6 +218,59 @@ export const useSearchPageFilterState = ({
     [updateFilterQuery],
   );
 
+  // Set a property's included values to exactly `values` (an OR-set) in one
+  // update. Unlike setFilterValue(..., 'only') which takes a single value, this
+  // scopes a column to multiple values at once (e.g. a "severity: error" pill
+  // that maps to both ERROR and FATAL). Passing an empty array clears the
+  // filter entirely.
+  const setIncludedValues = useCallback(
+    (property: string, values: (string | boolean)[]) => {
+      setFilters(prevFilters => {
+        const newFilters = produce(prevFilters, draft => {
+          if (values.length === 0) {
+            delete draft[property];
+          } else {
+            draft[property] = {
+              included: new Set(values),
+              excluded: new Set(),
+            };
+          }
+        });
+        updateFilterQuery(newFilters);
+        return newFilters;
+      });
+    },
+    [updateFilterQuery],
+  );
+
+  const mergeFilterValues = useCallback(
+    (incoming: FilterState) => {
+      setFilters(prevFilters => {
+        const newFilters = produce(prevFilters, draft => {
+          for (const [field, sel] of Object.entries(incoming)) {
+            if (!draft[field]) {
+              draft[field] = { included: new Set(), excluded: new Set() };
+            }
+            for (const value of sel.included) {
+              draft[field].excluded.delete(value);
+              draft[field].included.add(value);
+            }
+            for (const value of sel.excluded) {
+              draft[field].included.delete(value);
+              draft[field].excluded.add(value);
+            }
+            if (sel.range != null) {
+              draft[field].range = sel.range;
+            }
+          }
+        });
+        updateFilterQuery(newFilters);
+        return newFilters;
+      });
+    },
+    [updateFilterQuery],
+  );
+
   const setFilterRange = useCallback(
     (property: string, range: { min: number; max: number }) => {
       setFilters(prevFilters => {
@@ -308,6 +367,8 @@ export const useSearchPageFilterState = ({
     setFilters,
     setFilterValue,
     setOnlyFilters,
+    setIncludedValues,
+    mergeFilterValues,
     replaceFilterValue,
     setFilterRange,
     clearFilter,

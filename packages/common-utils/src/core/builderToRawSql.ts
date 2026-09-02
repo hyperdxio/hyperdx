@@ -22,6 +22,7 @@ const RAW_SQL_DISPLAY_TYPES = new Set<DisplayType>([
   DisplayType.StackedBar,
   DisplayType.Pie,
   DisplayType.Bar,
+  DisplayType.Treemap,
   DisplayType.Number,
 ]);
 
@@ -139,7 +140,9 @@ export async function renderBuilderConfigAsSqlTemplate(
     dateRange: [new Date(0), new Date(0)],
   };
   const renderConfig =
-    displayType === DisplayType.Pie || displayType === DisplayType.Bar
+    displayType === DisplayType.Pie ||
+    displayType === DisplayType.Bar ||
+    displayType === DisplayType.Treemap
       ? convertToCategoricalChartConfig(templateConfig)
       : displayType === DisplayType.Number
         ? convertToNumberChartConfig(templateConfig)

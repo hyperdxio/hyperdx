@@ -7,6 +7,7 @@ import {
 } from '@hyperdx/common-utils/dist/core/materializedViews';
 import { FilterSelection } from '@hyperdx/common-utils/dist/dashboardFilterValues';
 import {
+  FilterRange,
   FilterState,
   ResolvedFilterValuesQuery,
   resolveFilterValuesWhere,
@@ -66,6 +67,43 @@ const resolvedFor = (
   };
 
 /**
+ * Tighter of two ranges. Either bound may be absent now that a filter can be
+ * one-sided (`duration > 1000`), and absent means unbounded, so the side that
+ * states a bound wins outright. Where both state the same edge at the same
+ * value, the strict operator is the tighter one; `>=` and `<=` are the
+ * defaults and stay implicit.
+ */
+const intersectRange = (a: FilterRange, b: FilterRange): FilterRange => {
+  const range: FilterRange = {};
+
+  const min =
+    a.min != null && b.min != null ? Math.max(a.min, b.min) : (a.min ?? b.min);
+  if (min != null) {
+    range.min = min;
+    if (
+      (a.min === min && a.minOp === '>') ||
+      (b.min === min && b.minOp === '>')
+    ) {
+      range.minOp = '>';
+    }
+  }
+
+  const max =
+    a.max != null && b.max != null ? Math.min(a.max, b.max) : (a.max ?? b.max);
+  if (max != null) {
+    range.max = max;
+    if (
+      (a.max === max && a.maxOp === '<') ||
+      (b.max === max && b.maxOp === '<')
+    ) {
+      range.maxOp = '<';
+    }
+  }
+
+  return range;
+};
+
+/**
  * AND two constraints on the same column together. Reached when two filter
  * definitions share an expression but hold independent selections: both narrow
  * a third dropdown's lookup, so the intersection of their inclusions applies,
@@ -85,10 +123,7 @@ const intersectSelections = (
   excluded: new Set([...a.excluded, ...b.excluded]),
   range:
     a.range && b.range
-      ? {
-          min: Math.max(a.range.min, b.range.min),
-          max: Math.min(a.range.max, b.range.max),
-        }
+      ? intersectRange(a.range, b.range)
       : (a.range ?? b.range),
 });
 

@@ -39,6 +39,7 @@ LIMIT
   `,
   [DisplayType.Pie]: SINGLE_SERIES_GROUPED_PLACEHOLDER_SQL,
   [DisplayType.Bar]: SINGLE_SERIES_GROUPED_PLACEHOLDER_SQL,
+  [DisplayType.Treemap]: SINGLE_SERIES_GROUPED_PLACEHOLDER_SQL,
   [DisplayType.Number]: `SELECT
   count()
 FROM

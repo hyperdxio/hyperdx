@@ -379,6 +379,7 @@ export function convertTileConfigForQuery(
       return convertToTableChartConfig(config);
     case DisplayType.Pie:
     case DisplayType.Bar:
+    case DisplayType.Treemap:
       // Raw SQL configs pass through untouched (matches CategoricalChart)
       return isBuilderChartConfig(config)
         ? (convertToCategoricalChartConfig(config) as ChartConfigWithDateRange &
