@@ -110,7 +110,6 @@ import { IS_LOCAL_MODE } from '@/config';
 import { useAliasMapFromChartConfig } from '@/hooks/useChartConfig';
 import { useExplainQuery } from '@/hooks/useExplainQuery';
 import { useResolvedSourceParam } from '@/hooks/useResolvedSourceParam';
-import { useTraceTotalDuration } from '@/hooks/useTraceTotalDuration';
 import { withAppNav } from '@/layout';
 import {
   useCreateSavedSearch,
@@ -436,40 +435,6 @@ export function SearchNumRows({
           </ActionIcon>
         </Tooltip>
       </Group>
-    </>
-  );
-}
-
-function TraceTotalDurationStat({
-  config,
-  traceId,
-  enabled,
-}: {
-  config: ChartConfigWithDateRange;
-  traceId: string;
-  enabled: boolean;
-}) {
-  const { data, isLoading } = useTraceTotalDuration(config, traceId, {
-    enabled,
-    placeholderData: keepPreviousData,
-  });
-
-  if (isLoading || !data) {
-    return null;
-  }
-
-  return (
-    <>
-      <Text size="xs" c="dimmed">
-        |
-      </Text>
-      <Text size="xs">
-        {`Total Duration: ${formatDurationMs(data.totalDurationMs)}`}
-      </Text>
-      <Text size="xs" c="dimmed">
-        |
-      </Text>
-      <Text size="xs">{`Spans: ${data.spanCount.toLocaleString()}`}</Text>
     </>
   );
 }
@@ -2608,17 +2573,6 @@ export function DBSearchPage() {
                               isSearching={isAnyQueryFetching}
                               isLiveTail={isLive ?? false}
                             />
-                            {searchedSource?.kind === SourceKind.Trace &&
-                              directTraceId && (
-                                <TraceTotalDurationStat
-                                  config={{
-                                    ...chartConfig,
-                                    dateRange: searchedTimeRange,
-                                  }}
-                                  traceId={directTraceId}
-                                  enabled={isReady}
-                                />
-                              )}
                           </Group>
                         </Group>
                       </Box>

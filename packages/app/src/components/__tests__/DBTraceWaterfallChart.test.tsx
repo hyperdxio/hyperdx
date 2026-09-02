@@ -312,6 +312,84 @@ describe('DBTraceWaterfallChartContainer', () => {
     expect(MockTimelineChart.latestProps.rows[1]).toBeTruthy(); // Log row
   });
 
+  it('renders total duration and span count computed from all fetched spans', async () => {
+    setupQueryMocks({ traceData: mockTraceData });
+    renderComponent(null); // No log table source
+    await waitForLoading();
+
+    const stats = screen.getByTestId('trace-total-stats');
+    // mockTraceData has one span, Duration: 0.1 (seconds) -> 100ms wall clock
+    expect(stats.textContent).toContain('Total Duration: 100ms');
+    expect(stats.textContent).toContain('1 span');
+  });
+
+  it('counts only spans (not correlated logs) toward the span count/duration stat', async () => {
+    setupQueryMocks({
+      traceData: mockTraceData,
+      logData: mockLogData,
+    });
+
+    renderComponent(); // With log table source
+    await waitForLoading();
+
+    // 2 total rows (1 span + 1 log), but the stat should only count the span
+    const stats = screen.getByTestId('trace-total-stats');
+    expect(stats.textContent).toContain('1 span');
+    expect(stats.textContent).not.toContain('2 span');
+  });
+
+  it('computes total duration as the wall-clock span across multiple non-overlapping spans', async () => {
+    const multiSpanData = {
+      data: [
+        {
+          Body: 'first span',
+          Timestamp: '2024-01-01T06:00:00.000000000Z',
+          Duration: 0.1, // ends at +100ms
+          SpanId: 'span-1',
+          ParentSpanId: '',
+          ServiceName: 'test-service',
+          HyperDXEventType: 'span' as const,
+          type: 'trace',
+        } as SpanRow,
+        {
+          Body: 'second span',
+          Timestamp: '2024-01-01T06:00:01.000000000Z', // starts 1s after the first
+          Duration: 0.5, // ends at +1.5s from the first span's start
+          SpanId: 'span-2',
+          ParentSpanId: '',
+          ServiceName: 'test-service',
+          HyperDXEventType: 'span' as const,
+          type: 'trace',
+        } as SpanRow,
+      ],
+      meta: [{ totalCount: 2 }],
+    };
+
+    setupQueryMocks({ traceData: multiSpanData });
+    renderComponent(null);
+    await waitForLoading();
+
+    const stats = screen.getByTestId('trace-total-stats');
+    // MIN(start) = 06:00:00.000, MAX(start+duration) = 06:00:01.500 -> 1500ms
+    expect(stats.textContent).toContain('Total Duration: 1.5s');
+    expect(stats.textContent).toContain('2 spans');
+  });
+
+  it('does not render the total duration stat when there are no spans', async () => {
+    // A log with no matching span never becomes a visible node (correlated
+    // logs attach to a span), so this renders the existing empty state --
+    // just confirms the new stat doesn't render in that case either.
+    setupQueryMocks({ logData: mockLogData });
+    renderComponent();
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('No matching spans or logs found'),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('trace-total-stats')).not.toBeInTheDocument();
+  });
+
   it('renders empty state when no data is available', async () => {
     mockUseOffsetPaginatedQuery.mockReturnValue({
       data: emptyData,

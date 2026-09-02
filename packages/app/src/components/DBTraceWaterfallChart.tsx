@@ -66,6 +66,7 @@ import { useFormatTime } from '@/useFormatTime';
 import {
   CATEGORICAL_PALETTE_TOKENS,
   COLORS,
+  formatDurationMs,
   getChartColorError,
   getChartColorSuccess,
   getChartColorSuccessHighlight,
@@ -722,6 +723,26 @@ export function DBTraceWaterfallChartContainer({
 
     return nextRows;
   }, [traceRowsData, logRowsData]);
+
+  // Aggregate wall-clock span and span count across every fetched span in the
+  // trace (not the visible/collapsed subset, and unaffected by the waterfall
+  // search filters below, since those only flag rows via `__hdx_hidden`
+  // rather than excluding them) -- a stable, always-accurate summary (#3038).
+  const traceTotalStats = useMemo(() => {
+    let minStartMs = Number.MAX_SAFE_INTEGER;
+    let maxEndMs = 0;
+    let spanCount = 0;
+    for (const row of rows) {
+      if (row.type === SourceKind.Log) continue;
+      spanCount++;
+      const startMs = parseTimestampToMs(row.Timestamp);
+      const endMs = startMs + (row.Duration || 0) * 1000;
+      if (startMs < minStartMs) minStartMs = startMs;
+      if (endMs > maxEndMs) maxEndMs = endMs;
+    }
+    if (spanCount === 0) return null;
+    return { totalDurationMs: maxEndMs - minStartMs, spanCount };
+  }, [rows]);
 
   // Map each distinct span service to a stable color. Sorting the names first
   // keeps a service's color stable across renders regardless of row ordering.
@@ -1413,6 +1434,14 @@ export function DBTraceWaterfallChartContainer({
               {errorCountString}
             </span>
           </Text>
+          {traceTotalStats && (
+            <Text size="xs" c="dimmed" data-testid="trace-total-stats">
+              &middot; Total Duration:{' '}
+              {formatDurationMs(traceTotalStats.totalDurationMs)} &middot;{' '}
+              {traceTotalStats.spanCount} span
+              {traceTotalStats.spanCount !== 1 ? 's' : ''}
+            </Text>
+          )}
           <Group gap="xs" align="center">
             <Text size="xs" c="dimmed">
               Show:
