@@ -38,6 +38,7 @@
   },
   "ignore": [
     "scripts/dev-portal/**",
+    "scripts/explorer-demo/**",
     ".github/scripts/**",
     ".github/actions/**",
     "docker/hyperdx/**",
