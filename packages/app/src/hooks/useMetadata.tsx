@@ -294,19 +294,6 @@ export function useMultipleAllFields(
   });
 }
 
-export function useAllFields(
-  tableConnection: TableConnection | undefined,
-  options?: Partial<UseQueryOptions<Field[]>> & {
-    dateRange?: [Date, Date];
-    timestampValueExpression?: string;
-  },
-) {
-  return useMultipleAllFields(
-    tableConnection ? [tableConnection] : [],
-    options,
-  );
-}
-
 export function useTableMetadata(
   {
     databaseName,

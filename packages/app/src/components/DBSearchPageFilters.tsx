@@ -1,8 +1,8 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import cx from 'classnames';
 import {
+  TableConnection,
   TableMetadata,
-  tcFromSource,
 } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   type FilterRange,
@@ -68,7 +68,10 @@ import { useSource } from '@/source';
 import { useLocalStorage } from '@/utils';
 
 import { FilterSettingsPanel } from './DBSearchPageFilters/FilterSettingsPopover';
-import { useFetchFacets } from './DBSearchPageFilters/hooks';
+import {
+  resolveTableConnections,
+  useFetchFacets,
+} from './DBSearchPageFilters/hooks';
 import { NestedFilterGroup } from './DBSearchPageFilters/NestedFilterGroup';
 import {
   PinShareIndicator,
@@ -1071,6 +1074,7 @@ const DBSearchPageFiltersComponent = ({
   analysisMode,
   setAnalysisMode,
   sourceId,
+  tableConnections,
   showDelta,
   denoiseResults,
   setDenoiseResults,
@@ -1084,6 +1088,12 @@ const DBSearchPageFiltersComponent = ({
   isLive: boolean;
   chartConfig: BuilderChartConfigWithDateRange;
   sourceId?: string;
+  /**
+   * Tables to discover fields and values from when the source can't say. A
+   * metric source fans out to one table per metric type, so the caller resolves
+   * one per selected series. Memoize it — it keys the discovery queries.
+   */
+  tableConnections?: TableConnection[];
   showDelta?: boolean;
   denoiseResults: boolean;
   setDenoiseResults: (denoiseResults: boolean) => void;
@@ -1138,7 +1148,13 @@ const DBSearchPageFiltersComponent = ({
   const { size, startResize } = useResizable(16, 'left');
 
   const { data: source } = useSource({ id: sourceId });
-  const sourceTableConnection = tcFromSource(source);
+  // A metric source has no single table of its own, so schema lookups here read
+  // the per-series metric tables the caller resolved. Any one of them answers
+  // for columns and metadata; field discovery intersects them in `useFacets`.
+  const sourceTableConnection = useMemo(
+    () => resolveTableConnections(source, tableConnections)[0],
+    [source, tableConnections],
+  );
   const { data: jsonColumns } = useJsonColumns(sourceTableConnection);
 
   // Special case for live tail
@@ -1146,11 +1162,7 @@ const DBSearchPageFiltersComponent = ({
     chartConfig.dateRange,
   );
 
-  const { data: columns } = useColumns({
-    databaseName: chartConfig.from.databaseName,
-    tableName: chartConfig.from.tableName,
-    connectionId: chartConfig.connection,
-  });
+  const { data: columns } = useColumns(sourceTableConnection);
 
   const { data: tableMetadata } = useTableMetadata(sourceTableConnection);
 
@@ -1183,6 +1195,7 @@ const DBSearchPageFiltersComponent = ({
   } = useFetchFacets({
     chartConfig,
     sourceId: sourceId ?? null,
+    tableConnections,
     dateRange,
     mode: showAllValues ? 'all' : 'exact',
     filterState,

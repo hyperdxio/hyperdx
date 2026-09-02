@@ -66,7 +66,7 @@ jest.mock('@/hooks/useMetadata', () => ({
   useDateTimeColumns: jest.fn(),
   useJsonColumns: jest.fn(),
   useMapColumns: jest.fn(),
-  useAllFields: jest.fn(),
+  useMultipleAllFields: jest.fn(),
   useGetKeyValues: jest.fn(),
 }));
 
@@ -80,7 +80,9 @@ const useColumns = jest.mocked(useMetadataModule.useColumns);
 const useDateTimeColumns = jest.mocked(useMetadataModule.useDateTimeColumns);
 const useJsonColumns = jest.mocked(useMetadataModule.useJsonColumns);
 const useMapColumns = jest.mocked(useMetadataModule.useMapColumns);
-const useAllFields = jest.mocked(useMetadataModule.useAllFields);
+const useMultipleAllFields = jest.mocked(
+  useMetadataModule.useMultipleAllFields,
+);
 const useGetKeyValues = jest.mocked(useMetadataModule.useGetKeyValues);
 
 const CHART_CONFIG: BuilderChartConfigWithDateRange = {
@@ -165,7 +167,7 @@ function setupDefaultMocks({ withMVs }: { withMVs: boolean }) {
   useJsonColumns.mockReturnValue({ data: [] } as any);
   useMapColumns.mockReturnValue({ data: [] } as any);
 
-  useAllFields.mockReturnValue({
+  useMultipleAllFields.mockReturnValue({
     data: [
       {
         path: ['ServiceName'],
@@ -304,7 +306,7 @@ describe('useFetchFacets', () => {
       expect(call?.[1]?.enabled).toBe(true);
     });
 
-    it('does not defer the field metadata query — useAllFields stays enabled', () => {
+    it('does not defer the field metadata query — useMultipleAllFields stays enabled', () => {
       setupDefaultMocks({ withMVs: false });
       const { wrapper } = makeWrapper();
 
@@ -320,7 +322,7 @@ describe('useFetchFacets', () => {
         { wrapper },
       );
 
-      const call = useAllFields.mock.calls.at(-1);
+      const call = useMultipleAllFields.mock.calls.at(-1);
       expect(call?.[1]?.enabled).toBe(true);
     });
 
@@ -445,7 +447,7 @@ describe('useFetchFacets', () => {
         { wrapper },
       );
 
-      // `data.keys` is field metadata (from `useAllFields`) and is
+      // `data.keys` is field metadata (from `useMultipleAllFields`) and is
       // independent of the values query; it stays defined once metadata
       // loads. Only `keyValues` is gated on the active pipeline query.
       expect(result.current.data.keyValues).toBeUndefined();
@@ -930,14 +932,14 @@ describe('useFetchFacets', () => {
   });
 
   /**
-   * `tableConnection` is a fallback, not an override: whenever a source is
+   * `tableConnections` is a fallback, not an override: whenever a source is
    * available it wins, so its metadata materialized views keep serving key and
    * value discovery. Only two cases reach the fallback.
    *
    *  1. No source id. The dashboard-wide WHERE spans every tile, so no single
    *     source names its table. Deriving discovery from the source id alone
    *     left `tcFromSource(undefined)` returning an all-empty connection and
-   *     `useAllFields`'s enabled guard rejecting it, so that input offered zero
+   *     `useMultipleAllFields`'s enabled guard rejecting it, so that input offered zero
    *     suggestions.
    *  2. A metric source, whose rows live in per-type tables its `from` doesn't
    *     name — KubernetesFilters always, and the tile editor and dashboard
@@ -946,7 +948,7 @@ describe('useFetchFacets', () => {
    * Every other input passes a source id and never consults the fallback, even
    * though it still passes a connection.
    */
-  describe('tableConnection fallback', () => {
+  describe('tableConnections fallback', () => {
     const FALLBACK_TC = {
       databaseName: 'other_db',
       tableName: 'other_table',
@@ -959,6 +961,23 @@ describe('useFetchFacets', () => {
       connectionId: 'conn1',
     });
 
+    const METRIC_SOURCE = {
+      id: 'source1',
+      kind: SourceKind.Metric as const,
+      name: 'metrics',
+      connection: 'conn1',
+      from: { databaseName: 'db', tableName: '' },
+      timestampValueExpression: 'TimeUnix',
+      metricTables: {
+        gauge: 'otel_metrics_gauge',
+        histogram: 'otel_metrics_histogram',
+        sum: 'otel_metrics_sum',
+        summary: 'otel_metrics_summary',
+        'exponential histogram': 'otel_metrics_exponential_histogram',
+      },
+      resourceAttributesExpression: 'ResourceAttributes',
+    };
+
     it('discovers fields from the connection when there is no sourceId', () => {
       setupDefaultMocks({ withMVs: false });
       mockSourceQuery(undefined);
@@ -969,7 +988,7 @@ describe('useFetchFacets', () => {
           useFetchFacets({
             chartConfig: CHART_CONFIG,
             sourceId: null,
-            tableConnection: FALLBACK_TC,
+            tableConnections: [FALLBACK_TC],
             dateRange: DATE_RANGE,
             mode: 'all',
             disableValues: true,
@@ -977,7 +996,9 @@ describe('useFetchFacets', () => {
         { wrapper },
       );
 
-      expect(useAllFields.mock.calls.at(-1)?.[0]).toEqual(FALLBACK_TC);
+      expect(useMultipleAllFields.mock.calls.at(-1)?.[0]?.[0]).toEqual(
+        FALLBACK_TC,
+      );
       expect(useColumns.mock.calls.at(-1)?.[0]).toEqual(FALLBACK_TC);
     });
 
@@ -992,37 +1013,26 @@ describe('useFetchFacets', () => {
           useFetchFacets({
             chartConfig: CHART_CONFIG,
             sourceId: 'source1',
-            tableConnection: FALLBACK_TC,
+            tableConnections: [FALLBACK_TC],
             dateRange: DATE_RANGE,
             mode: 'all',
           }),
         { wrapper },
       );
 
-      expect(useAllFields.mock.calls.at(-1)?.[0]).toEqual(SOURCE_TC);
-      expect(useAllFields.mock.calls.at(-1)?.[0]?.metadataMVs).toBeDefined();
+      expect(useMultipleAllFields.mock.calls.at(-1)?.[0]?.[0]).toEqual(
+        SOURCE_TC,
+      );
+      expect(
+        useMultipleAllFields.mock.calls.at(-1)?.[0]?.[0]?.metadataMVs,
+      ).toBeDefined();
     });
 
     it('uses the connection for a metric source, whose from does not name a table', () => {
       // Metric rows live in per-type tables (gauge/sum/...). Only the caller
       // knows which one — and which metric — is in play.
       setupDefaultMocks({ withMVs: false });
-      mockSourceQuery({
-        id: 'source1',
-        kind: SourceKind.Metric,
-        name: 'metrics',
-        connection: 'conn1',
-        from: { databaseName: 'db', tableName: '' },
-        timestampValueExpression: 'TimeUnix',
-        metricTables: {
-          gauge: 'otel_metrics_gauge',
-          histogram: 'otel_metrics_histogram',
-          sum: 'otel_metrics_sum',
-          summary: 'otel_metrics_summary',
-          'exponential histogram': 'otel_metrics_exponential_histogram',
-        },
-        resourceAttributesExpression: 'ResourceAttributes',
-      });
+      mockSourceQuery(METRIC_SOURCE);
       const { wrapper } = makeWrapper();
 
       const metricTc = { ...FALLBACK_TC, metricName: 'k8s.pod.cpu' };
@@ -1031,14 +1041,55 @@ describe('useFetchFacets', () => {
           useFetchFacets({
             chartConfig: CHART_CONFIG,
             sourceId: 'source1',
-            tableConnection: metricTc,
+            tableConnections: [metricTc],
             dateRange: DATE_RANGE,
             mode: 'all',
           }),
         { wrapper },
       );
 
-      expect(useAllFields.mock.calls.at(-1)?.[0]).toEqual(metricTc);
+      expect(useMultipleAllFields.mock.calls.at(-1)?.[0]?.[0]).toEqual(
+        metricTc,
+      );
+    });
+
+    it('intersects fields across a metric source charting several metric types', () => {
+      // A sidebar filter applies to every series, so a field only one metric
+      // table has would break the other series' query.
+      setupDefaultMocks({ withMVs: false });
+      mockSourceQuery(METRIC_SOURCE);
+      const { wrapper } = makeWrapper();
+
+      const gaugeTc = {
+        databaseName: 'db',
+        tableName: 'otel_metrics_gauge',
+        connectionId: 'conn1',
+        metricName: 'k8s.pod.cpu',
+      };
+      const sumTc = {
+        databaseName: 'db',
+        tableName: 'otel_metrics_sum',
+        connectionId: 'conn1',
+        metricName: 'http.requests',
+      };
+
+      renderHook(
+        () =>
+          useFetchFacets({
+            chartConfig: CHART_CONFIG,
+            sourceId: 'source1',
+            tableConnections: [gaugeTc, sumTc],
+            dateRange: DATE_RANGE,
+            mode: 'all',
+          }),
+        { wrapper },
+      );
+
+      const call = useMultipleAllFields.mock.calls.at(-1);
+      expect(call?.[0]).toEqual([gaugeTc, sumTc]);
+      expect(call?.[1]?.intersect).toBe(true);
+      // Values only need one table — an intersected field exists in all of them.
+      expect(useColumns.mock.calls.at(-1)?.[0]).toEqual(gaugeTc);
     });
 
     it('ignores an incomplete connection', () => {
@@ -1052,18 +1103,22 @@ describe('useFetchFacets', () => {
           useFetchFacets({
             chartConfig: CHART_CONFIG,
             sourceId: 'source1',
-            tableConnection: {
-              databaseName: '',
-              tableName: '',
-              connectionId: '',
-            },
+            tableConnections: [
+              {
+                databaseName: '',
+                tableName: '',
+                connectionId: '',
+              },
+            ],
             dateRange: DATE_RANGE,
             mode: 'all',
           }),
         { wrapper },
       );
 
-      expect(useAllFields.mock.calls.at(-1)?.[0]).toEqual(SOURCE_TC);
+      expect(useMultipleAllFields.mock.calls.at(-1)?.[0]?.[0]).toEqual(
+        SOURCE_TC,
+      );
     });
 
     it('loads more values from the connection when there is no source', async () => {
@@ -1083,7 +1138,7 @@ describe('useFetchFacets', () => {
           useFetchFacets({
             chartConfig: CHART_CONFIG,
             sourceId: null,
-            tableConnection: FALLBACK_TC,
+            tableConnections: [FALLBACK_TC],
             dateRange: DATE_RANGE,
             mode: 'all',
             disableValues: true,
@@ -1120,16 +1175,16 @@ describe('useFetchFacets', () => {
 
       const { wrapper } = makeWrapper();
       const { result, rerender } = renderHook(
-        (props: { tableConnection: typeof FALLBACK_TC }) =>
+        (props: { tableConnections: (typeof FALLBACK_TC)[] }) =>
           useFetchFacets({
             chartConfig: CHART_CONFIG,
             sourceId: null,
-            tableConnection: props.tableConnection,
+            tableConnections: props.tableConnections,
             dateRange: DATE_RANGE,
             mode: 'all',
             disableValues: true,
           }),
-        { wrapper, initialProps: { tableConnection: FALLBACK_TC } },
+        { wrapper, initialProps: { tableConnections: [FALLBACK_TC] } },
       );
 
       await act(async () => {
@@ -1139,7 +1194,7 @@ describe('useFetchFacets', () => {
       expect(result.current.extraFacetKeys.has('NewKey')).toBe(true);
 
       rerender({
-        tableConnection: { ...FALLBACK_TC, tableName: 'yet_another_table' },
+        tableConnections: [{ ...FALLBACK_TC, tableName: 'yet_another_table' }],
       });
 
       expect(result.current.extraFacetKeys.size).toBe(0);

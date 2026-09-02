@@ -130,6 +130,7 @@ import {
   useNewTimeQuery,
 } from '@/timeQuery';
 import { formatDurationMs, useLocalStorage, usePrevious } from '@/utils';
+import { metricTableConnections } from '@/utils/metricTableConnections';
 
 import ChartSQLPreview, { SQLPreview } from './components/ChartSQLPreview';
 import { DBBarChart } from './components/DBBarChart';
@@ -2555,9 +2556,18 @@ function DBExplorePage() {
     ],
   );
 
+  // A metric source's real tables are per metric type, so anything that reads
+  // schema — the filter sidebar, the WHERE field's autocomplete — has to go to
+  // the tables behind the selected series. `from.tableName` is empty on a
+  // metric source, and reading it leaves both with nothing to suggest.
+  const inputMetricTableConnections = useMemo(
+    () => metricTableConnections(inputSourceObj, aggConfig.series),
+    [inputSourceObj, aggConfig.series],
+  );
+
   const inputSourceTableConnection = useMemo(
-    () => tcFromSource(inputSourceObj),
-    [inputSourceObj],
+    () => inputMetricTableConnections[0] ?? tcFromSource(inputSourceObj),
+    [inputMetricTableConnections, inputSourceObj],
   );
 
   const [isSourceSchemaPreviewOpen, setIsSourceSchemaPreviewOpen] =
@@ -2916,6 +2926,7 @@ function DBExplorePage() {
                     analysisMode={analysisMode}
                     chartConfig={filtersChartConfig}
                     sourceId={inputSourceObj?.id}
+                    tableConnections={inputMetricTableConnections}
                     showDelta={
                       !!(searchedSource?.kind === SourceKind.Trace
                         ? searchedSource.durationExpression
@@ -3160,6 +3171,7 @@ function DBExplorePage() {
                           queryKeyPrefix={QUERY_KEY_PREFIX}
                           onTimeRangeSelect={handleTimeRangeSelect}
                           onFocusSeries={handleFocusSeries}
+                          drillDownPath="/explore"
                           enableParallelQueries
                         />
                       </Box>
@@ -3427,6 +3439,7 @@ function DBExplorePage() {
                             onSubmit();
                           }}
                           showMVOptimizationIndicator={false}
+                          drillDownPath="/explore"
                           queryKeyPrefix={QUERY_KEY_PREFIX}
                         />
                       )}

@@ -16,13 +16,13 @@ import {
 
 import {
   Facet,
-  useAllFields,
   useColumns,
   useDateTimeColumns,
   useGetKeyValues,
   useJsonColumns,
   useMapColumns,
   useMetadataWithSettings,
+  useMultipleAllFields,
 } from '@/hooks/useMetadata';
 import { escapeFilterStateKeys, usePinnedFilters } from '@/searchFilters';
 import { useSource } from '@/source';
@@ -36,34 +36,51 @@ const INITIAL_LOAD_LIMIT = 20;
 const LOAD_MORE_LOAD_LIMIT = 10000;
 
 /**
- * Decide which table key-value discovery reads from.
+ * Decide which table(s) key-value discovery reads from.
  *
  * The source stays authoritative whenever we have one, so its metadata
- * materialized views keep serving discovery. `fallback` — the table connection
- * a caller passes — is consulted in the two cases the source can't answer:
+ * materialized views keep serving discovery. `fallbacks` — the table
+ * connections a caller passes — are consulted in the two cases the source
+ * cannot answer:
  *
  *  - No source id is provided
- *  - A metric source, in which case the fallback provides the metric type's table name
+ *  - A metric source, whose `from.tableName` is empty because the real tables
+ *    are per metric type; the caller resolves one per selected series
+ *
+ * More than one connection only arises for a metric source charting several
+ * metric types at once. Field discovery intersects them, since a sidebar filter
+ * applies to every series and offering a field only one table has would break
+ * the others. Value lookups use the first instead: an intersected field exists
+ * in all of them, so any one table can answer.
  */
+export function resolveTableConnections(
+  source: TSource | undefined,
+  fallbacks: TableConnection[] | undefined,
+): TableConnection[] {
+  const usable = (fallbacks ?? []).filter(
+    tc => !!tc.databaseName && !!tc.tableName && !!tc.connectionId,
+  );
+  if (!source) {
+    return usable.length > 0 ? usable : [tcFromSource(undefined)];
+  }
+  if (isMetricSource(source) && usable.length > 0) {
+    return usable;
+  }
+  return [tcFromSource(source)];
+}
+
+/** Single-table form of {@link resolveTableConnections}. */
 export function resolveTableConnection(
   source: TSource | undefined,
   fallback: TableConnection | undefined,
 ): TableConnection {
-  const isFallbackUsable =
-    !!fallback?.databaseName && !!fallback.tableName && !!fallback.connectionId;
-  if (!source) {
-    return isFallbackUsable ? fallback : tcFromSource(undefined);
-  }
-  if (isMetricSource(source) && isFallbackUsable) {
-    return fallback;
-  }
-  return tcFromSource(source);
+  return resolveTableConnections(source, fallback ? [fallback] : [])[0];
 }
 
 function useFacets({
   chartConfig,
   sourceId,
-  tableConnection: tableConnectionFallback,
+  tableConnections: tableConnectionFallbacks,
   mode,
   dateRange,
   filterState,
@@ -74,10 +91,10 @@ function useFacets({
   chartConfig: BuilderChartConfigWithDateRange;
   sourceId: string | null;
   /**
-   * A table where keys and values are discovered. Used when sourceId
-   * is not provided or references a metrics source.
+   * Tables where keys and values are discovered. Used when sourceId is not
+   * provided or references a metrics source. Memoize it — it keys the queries.
    */
-  tableConnection?: TableConnection;
+  tableConnections?: TableConnection[];
   mode: 'all' | 'exact';
   dateRange: [Date, Date];
   filterState?: FilterState;
@@ -88,10 +105,11 @@ function useFacets({
   const { data: source } = useSource({
     id: sourceId,
   });
-  const tableConnection = useMemo(
-    () => resolveTableConnection(source, tableConnectionFallback),
-    [source, tableConnectionFallback],
+  const tableConnections = useMemo(
+    () => resolveTableConnections(source, tableConnectionFallbacks),
+    [source, tableConnectionFallbacks],
   );
+  const tableConnection = tableConnections[0];
   const { data: columns, isLoading: isColumnsLoading } =
     useColumns(tableConnection);
   const dateTimeColumns = useDateTimeColumns(columns);
@@ -106,10 +124,11 @@ function useFacets({
     data: allFields,
     error: allFieldsError,
     isLoading: isAllFieldsLoading,
-  } = useAllFields(tableConnection, {
+  } = useMultipleAllFields(tableConnections, {
     dateRange,
     timestampValueExpression: source?.timestampValueExpression,
     enabled,
+    intersect: tableConnections.length > 1,
   });
 
   const { isFieldPinned, isSharedFieldPinned } = usePinnedFilters(
@@ -299,7 +318,7 @@ function useFacets({
 export function useFetchFacets({
   chartConfig,
   sourceId,
-  tableConnection,
+  tableConnections,
   dateRange,
   mode,
   filterState,
@@ -309,10 +328,10 @@ export function useFetchFacets({
   chartConfig: BuilderChartConfigWithDateRange;
   sourceId: string | null;
   /**
-   * A table where keys and values are discovered. Used when sourceId
-   * is not provided or references a metrics source.
+   * Tables where keys and values are discovered. Used when sourceId is not
+   * provided or references a metrics source. Memoize it — it keys the queries.
    */
-  tableConnection?: TableConnection;
+  tableConnections?: TableConnection[];
   dateRange: [Date, Date];
   mode: 'all' | 'exact';
   filterState?: FilterState;
@@ -322,7 +341,7 @@ export function useFetchFacets({
   const facetsQuery = useFacets({
     chartConfig,
     sourceId,
-    tableConnection,
+    tableConnections,
     mode,
     dateRange,
     filterState,
@@ -330,6 +349,10 @@ export function useFetchFacets({
     enabled: true,
     disableValues,
   });
+
+  // Serialized, because callers pass this array inline. Keying the reset effect
+  // below on its identity would fire it every render.
+  const tableConnectionsKey = JSON.stringify(tableConnections ?? []);
 
   const [extraFacets, setExtraFacets] = useState<Facet[] | null>(null);
   const facets = useMemo<Facet[] | undefined>(() => {
@@ -410,9 +433,7 @@ export function useFetchFacets({
     setExtraFacetKeys(new Set());
   }, [
     sourceId,
-    tableConnection?.databaseName,
-    tableConnection?.tableName,
-    tableConnection?.connectionId,
+    tableConnectionsKey,
     dateRange,
     mode,
     filterState,

@@ -37,11 +37,11 @@ import {
 } from '@/ChartUtils';
 import { ChartEditorFormState } from '@/components/ChartEditor/types';
 import { getFirstTimestampValueExpression } from '@/source';
-import { getMetricTableName } from '@/utils';
 import {
   extendDateRangeToInterval,
   intervalToGranularity,
 } from '@/utils/alerts';
+import { metricTableConnections } from '@/utils/metricTableConnections';
 
 export const isQueryReady = (
   queriedConfig: ChartConfigWithDateRange | undefined,
@@ -357,26 +357,7 @@ export function buildGroupByConnectionProps({
   series: { metricType?: string; metricName?: string }[] | undefined;
   tableConnection: TableConnection;
 }): TableConnectionChoice & { intersectFields?: boolean } {
-  if (tableSource?.kind !== SourceKind.Metric || !Array.isArray(series)) {
-    return { tableConnection };
-  }
-
-  const seen = new Set<string>();
-  const connections: TableConnection[] = [];
-  for (const s of series) {
-    if (!s?.metricType || !s?.metricName) continue;
-    const metricTable = getMetricTableName(tableSource, s.metricType);
-    if (!metricTable) continue;
-    const key = `${metricTable}::${s.metricName}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    connections.push({
-      databaseName: tableSource.from.databaseName,
-      tableName: metricTable,
-      connectionId: tableSource.connection,
-      metricName: s.metricName,
-    });
-  }
+  const connections = metricTableConnections(tableSource, series);
 
   return connections.length > 0
     ? { tableConnections: connections, intersectFields: true }

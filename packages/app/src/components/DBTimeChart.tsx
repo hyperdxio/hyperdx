@@ -21,6 +21,7 @@ import {
   BuilderChartConfigWithDateRange,
   ChartConfigWithDateRange,
   DisplayType,
+  SourceKind,
 } from '@hyperdx/common-utils/dist/types';
 import { Popover, Portal } from '@mantine/core';
 import { IconChartBar, IconChartLine } from '@tabler/icons-react';
@@ -324,6 +325,12 @@ type DBTimeChartComponentProps = {
    * behavior), which is all a standalone chart can do.
    */
   onFocusSeries?: (filters: SeriesGroupFilter[]) => void;
+  /**
+   * Page a series drill-down opens. Defaults to the Search page; Explore points
+   * it at itself so drilling into a chart doesn't hand the reader to a
+   * different page mid-investigation.
+   */
+  drillDownPath?: '/search' | '/explore';
 };
 
 function DBTimeChartComponent({
@@ -349,6 +356,7 @@ function DBTimeChartComponent({
   showDateRangeIndicator = true,
   errorVariant,
   onFocusSeries,
+  drillDownPath,
 }: DBTimeChartComponentProps) {
   const [selectedSeriesSet, setSelectedSeriesSet] = useState<Set<string>>(
     new Set(),
@@ -534,6 +542,16 @@ function DBTimeChartComponent({
 
   const { data: source } = useSource({
     id: sourceId || config.source,
+  });
+
+  // Where a metric chart's drill-down lands. Loaded here so the clicked series
+  // can be re-addressed against the destination's own attribute expression
+  // rather than arriving as a bare time range.
+  const { data: drillDownTargetSource } = useSource({
+    id:
+      source?.kind === SourceKind.Metric || source?.kind === SourceKind.Trace
+        ? source.logSourceId
+        : undefined,
   });
 
   const { formatByColumn, chartFormat: axisNumberFormat } =
@@ -828,6 +846,8 @@ function DBTimeChartComponent({
         dateRange: [from, to],
         groupFilters,
         valueRangeFilter,
+        targetSource: drillDownTargetSource,
+        basePath: drillDownPath,
       });
     },
     [
@@ -835,6 +855,8 @@ function DBTimeChartComponent({
       config,
       granularity,
       source,
+      drillDownTargetSource,
+      drillDownPath,
       groupColumns,
       valueColumns,
       isSingleValueColumn,
