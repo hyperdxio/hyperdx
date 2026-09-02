@@ -1,5 +1,5 @@
-import { deriveAlertNameAndTags } from '@/migrations';
 import { AlertSource } from '@/models/alert';
+import { deriveAlertNameAndTags } from '@/utils/alerts';
 
 describe('deriveAlertNameAndTags', () => {
   const savedSearch = { name: 'Error spikes', tags: ['errors', 'prod'] };
@@ -33,7 +33,7 @@ describe('deriveAlertNameAndTags', () => {
         undefined,
         dashboard,
       ),
-    ).toEqual({ name: 'Service health P95 latency', tags: ['infra'] });
+    ).toEqual({ name: 'Service health - P95 latency', tags: ['infra'] });
   });
 
   it('falls back to "Tile" when the tile is missing or unnamed', () => {
@@ -43,14 +43,14 @@ describe('deriveAlertNameAndTags', () => {
         undefined,
         dashboard,
       ).name,
-    ).toBe('Service health Tile');
+    ).toBe('Service health - Tile');
     expect(
       deriveAlertNameAndTags(
         { source: AlertSource.TILE, tileId: 'tile-1' },
         undefined,
         { name: 'Dash', tiles: [{ id: 'tile-1', config: {} }] },
       ).name,
-    ).toBe('Dash Tile');
+    ).toBe('Dash - Tile');
   });
 
   it('uses the chart config name for inline alerts', () => {

@@ -64,6 +64,7 @@ describe('backfillAlertNameAndTags', () => {
       missingTileAlert,
       namedAlert,
       taggedAlert,
+      clearedTagsAlert,
       danglingAlert,
       inlineAlert,
     ] = await Alert.create([
@@ -111,6 +112,13 @@ describe('backfillAlertNameAndTags', () => {
         ...baseAlert,
         team: team._id,
         source: AlertSource.SAVED_SEARCH,
+        savedSearch: savedSearch._id,
+        tags: [],
+      },
+      {
+        ...baseAlert,
+        team: team._id,
+        source: AlertSource.SAVED_SEARCH,
         savedSearch: new mongoose.Types.ObjectId(),
       },
       {
@@ -137,11 +145,11 @@ describe('backfillAlertNameAndTags', () => {
       tags: ['errors', 'prod'],
     });
     expect(await byId(tileAlert._id)).toMatchObject({
-      name: 'Service health P95 latency',
+      name: 'Service health - P95 latency',
       tags: ['infra'],
     });
     expect((await byId(missingTileAlert._id))?.name).toBe(
-      'Service health Tile',
+      'Service health - Tile',
     );
     expect(await byId(namedAlert._id)).toMatchObject({
       name: 'Custom name',
@@ -151,12 +159,22 @@ describe('backfillAlertNameAndTags', () => {
       name: 'Error spikes',
       tags: ['keep-me'],
     });
+    // [] means the user cleared the tags; it must not be re-filled.
+    expect(await byId(clearedTagsAlert._id)).toMatchObject({
+      name: 'Error spikes',
+      tags: [],
+    });
     expect((await byId(inlineAlert._id))?.name).toBe('CPU usage');
     expect(await byId(legacyAlertId)).toMatchObject({ name: 'Error spikes' });
 
     const untagged = await byId(untaggedSearchAlert._id);
     expect(untagged?.name).toBe('Untagged search');
     expect(untagged?.tags).toBeUndefined();
+
+    // The backfill is not a user edit; it must not bump updatedAt.
+    expect((await byId(searchAlert._id))?.updatedAt).toEqual(
+      searchAlert.updatedAt,
+    );
 
     const dangling = await byId(danglingAlert._id);
     expect(dangling?.name).toBeUndefined();

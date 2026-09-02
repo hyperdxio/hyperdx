@@ -1,74 +1,20 @@
 import mongoose from 'mongoose';
 
-import Alert, { AlertSource, IAlert } from '@/models/alert';
+import Alert, { IAlert } from '@/models/alert';
 import Dashboard from '@/models/dashboard';
 import { SavedSearch } from '@/models/savedSearch';
+import { deriveAlertNameAndTags } from '@/utils/alerts';
 import logger from '@/utils/logger';
-
-const ALERT_NAME_MAX_LENGTH = 512;
-
-function normalizeName(value: unknown): string | null {
-  if (typeof value !== 'string') {
-    return null;
-  }
-  const trimmed = value.trim();
-  return trimmed === '' ? null : trimmed;
-}
-
-function normalizeTags(value: unknown): string[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  return value.filter(
-    (tag): tag is string => typeof tag === 'string' && tag !== '',
-  );
-}
-
-export function deriveAlertNameAndTags(
-  alert: {
-    source?: unknown;
-    tileId?: unknown;
-    chartConfig?: { name?: unknown } | null;
-  },
-  savedSearch: { name?: unknown; tags?: unknown } | undefined,
-  dashboard: { name?: unknown; tags?: unknown; tiles?: unknown } | undefined,
-): { name: string | null; tags: string[] } {
-  const source = alert.source ?? AlertSource.SAVED_SEARCH;
-
-  let name: string | null = null;
-  let tags: string[] = [];
-  if (source === AlertSource.TILE) {
-    const dashboardName = normalizeName(dashboard?.name);
-    if (dashboardName != null) {
-      const rawTiles = dashboard?.tiles;
-      const tiles: { id?: unknown; config?: { name?: unknown } | null }[] =
-        Array.isArray(rawTiles) ? rawTiles : [];
-      const tile =
-        typeof alert.tileId === 'string'
-          ? tiles.find(t => t?.id === alert.tileId)
-          : undefined;
-      name = `${dashboardName} ${normalizeName(tile?.config?.name) ?? 'Tile'}`;
-    }
-    tags = normalizeTags(dashboard?.tags);
-  } else if (source === AlertSource.INLINE) {
-    name = normalizeName(alert.chartConfig?.name);
-  } else {
-    name = normalizeName(savedSearch?.name);
-    tags = normalizeTags(savedSearch?.tags);
-  }
-
-  return { name: name?.slice(0, ALERT_NAME_MAX_LENGTH) ?? null, tags };
-}
 
 const BACKFILL_BATCH_SIZE = 500;
 
 const NAME_MISSING_FILTER = { name: { $in: [null, ''] } };
-const TAGS_MISSING_FILTER = { $or: [{ tags: null }, { tags: { $size: 0 } }] };
+const TAGS_MISSING_FILTER = { tags: null };
 
 export async function backfillAlertNameAndTags() {
   const ids = (
     await Alert.find(
-      { $or: [NAME_MISSING_FILTER, ...TAGS_MISSING_FILTER.$or] },
+      { $or: [NAME_MISSING_FILTER, TAGS_MISSING_FILTER] },
       { _id: 1 },
     ).lean()
   ).map(doc => doc._id);
@@ -131,7 +77,7 @@ export async function backfillAlertNameAndTags() {
           : undefined,
       );
       const hasName = typeof alert.name === 'string' && alert.name !== '';
-      const hasTags = Array.isArray(alert.tags) && alert.tags.length > 0;
+      const hasTags = alert.tags != null;
 
       const inputsUnchangedFilter = {
         source: alert.source ?? null,
@@ -164,7 +110,7 @@ export async function backfillAlertNameAndTags() {
 
     if (ops.length > 0) {
       const result = await Alert.bulkWrite(
-        ops.map(op => ({ updateOne: op })),
+        ops.map(op => ({ updateOne: { ...op, timestamps: false } })),
         { ordered: false },
       );
       updatedCount += result.modifiedCount;
