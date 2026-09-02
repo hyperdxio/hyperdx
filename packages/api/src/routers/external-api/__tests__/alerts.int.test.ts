@@ -913,13 +913,61 @@ describe('External API Alerts', () => {
         .expect(400);
     });
 
+    it('rejects an unsupported configType instead of routing it to the builder dialect', async () => {
+      // An otherwise-valid builder body carrying configType: 'promql' parses
+      // against the builder union (the unknown keys are stripped), so without
+      // an explicit check it would persist as a builder config AND skip the
+      // builder-only rules — here a formula referencing a nonexistent series,
+      // which then throws on every check-alerts evaluation.
+      const { source } = await makeSource();
+      const webhook = await createTestWebhook();
+      const base = makeBuilderChartConfig(source._id.toString());
+
+      const withFormula = await authRequest('post', ALERTS_BASE_URL)
+        .send(
+          makeInlineAlertInput(
+            {
+              ...base,
+              configType: 'promql',
+              formulas: [{ expression: 'B * 2' }],
+            },
+            webhook._id.toString(),
+          ),
+        )
+        .expect(400);
+      expect(withFormula.body.message).toContain(
+        'configType must be "sql" or omitted',
+      );
+
+      // Same bypass for the number single-select rule.
+      const numberConfig = await authRequest('post', ALERTS_BASE_URL)
+        .send(
+          makeInlineAlertInput(
+            {
+              ...base,
+              configType: 'promql',
+              displayType: 'number',
+              select: [
+                { aggFn: 'count', where: 'level:error' },
+                { aggFn: 'count', where: '' },
+              ],
+            },
+            webhook._id.toString(),
+          ),
+        )
+        .expect(400);
+      expect(numberConfig.body.message).toContain(
+        'configType must be "sql" or omitted',
+      );
+    });
+
     it('validates metric formulas on builder chart configs', async () => {
       const { source } = await makeSource();
       const webhook = await createTestWebhook();
       const base = makeBuilderChartConfig(source._id.toString());
 
       // Formula referencing a nonexistent series (only A exists)
-      await authRequest('post', ALERTS_BASE_URL)
+      const unknownSeries = await authRequest('post', ALERTS_BASE_URL)
         .send(
           makeInlineAlertInput(
             { ...base, formulas: [{ expression: 'B * 2' }] },
@@ -927,6 +975,9 @@ describe('External API Alerts', () => {
           ),
         )
         .expect(400);
+      // The schema-level message must survive the alert body's source union —
+      // a plain `.or()` collapses every branch issue to "Invalid input".
+      expect(unknownSeries.body.message).toContain('Unknown series "B"');
 
       // Malformed expression
       await authRequest('post', ALERTS_BASE_URL)
@@ -1101,7 +1152,7 @@ describe('External API Alerts', () => {
 
       // A number chart without formulas displays a single select item;
       // extra items are only valid as formula operands.
-      await authRequest('post', ALERTS_BASE_URL)
+      const multiSelect = await authRequest('post', ALERTS_BASE_URL)
         .send(
           makeInlineAlertInput(
             {
@@ -1115,6 +1166,9 @@ describe('External API Alerts', () => {
           ),
         )
         .expect(400);
+      expect(multiSelect.body.message).toContain(
+        'Number charts support a single select item',
+      );
 
       // With a formula, the extra select items are its operands.
       const withFormula = await authRequest('post', ALERTS_BASE_URL)
@@ -1181,7 +1235,7 @@ describe('External API Alerts', () => {
       const { source } = await makeSource();
       const webhook = await createTestWebhook();
 
-      await authRequest('post', ALERTS_BASE_URL)
+      const res = await authRequest('post', ALERTS_BASE_URL)
         .send(
           makeInlineAlertInput(
             makeBuilderChartConfig(source._id.toString(), { asRatio: true }),
@@ -1189,6 +1243,9 @@ describe('External API Alerts', () => {
           ),
         )
         .expect(400);
+      expect(res.body.message).toContain(
+        'asRatio can only be used with exactly two select items',
+      );
     });
 
     it('round-trips a single-alert GET body back through PUT unchanged', async () => {
@@ -1258,7 +1315,7 @@ describe('External API Alerts', () => {
       const savedSearch = await createTestSavedSearch();
       const chartConfig = makeBuilderChartConfig(source._id.toString());
 
-      await authRequest('post', ALERTS_BASE_URL)
+      const tileRes = await authRequest('post', ALERTS_BASE_URL)
         .send({
           source: AlertSource.TILE,
           dashboardId: dashboard._id.toString(),
@@ -1270,8 +1327,11 @@ describe('External API Alerts', () => {
           channel: { type: 'webhook', webhookId: webhook._id.toString() },
         })
         .expect(400);
+      expect(tileRes.body.message).toContain(
+        'chartConfig is only supported when source is "inline"',
+      );
 
-      await authRequest('post', ALERTS_BASE_URL)
+      const savedSearchRes = await authRequest('post', ALERTS_BASE_URL)
         .send({
           source: AlertSource.SAVED_SEARCH,
           savedSearchId: savedSearch._id.toString(),
@@ -1282,6 +1342,9 @@ describe('External API Alerts', () => {
           channel: { type: 'webhook', webhookId: webhook._id.toString() },
         })
         .expect(400);
+      expect(savedSearchRes.body.message).toContain(
+        'chartConfig is only supported when source is "inline"',
+      );
 
       // PUT applies the same rule.
       const { alert } = await createTestAlert();
@@ -1353,7 +1416,7 @@ describe('External API Alerts', () => {
       const { connection } = await makeSource();
       const webhook = await createTestWebhook();
 
-      await authRequest('post', ALERTS_BASE_URL)
+      const res = await authRequest('post', ALERTS_BASE_URL)
         .send(
           makeInlineAlertInput(
             {
@@ -1367,6 +1430,9 @@ describe('External API Alerts', () => {
           ),
         )
         .expect(400);
+      expect(res.body.message).toContain(
+        'Raw SQL alert configs have no chart-level where',
+      );
     });
 
     it('omits chartConfig for internally-authored configs the dialect cannot express, and a blind echo-PUT fails loudly', async () => {

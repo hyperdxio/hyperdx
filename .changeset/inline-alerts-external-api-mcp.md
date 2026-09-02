@@ -13,5 +13,10 @@ and team-scoped source/connection ownership. Passing a `chartConfig` to a
 and reading an inline alert whose config carries internal-only fields omits
 `chartConfig` rather than returning a lossy approximation.
 
-Also fixes the external v2 dashboards dialect dropping the gauge `isDelta`
-flag when converting tile select items to the internal shape.
+Also fixes three pre-existing issues on the external v2 dashboards path: the
+dialect dropped the gauge `isDelta` flag when converting tile select items to
+the internal shape; a tile config carrying an unrecognized `configType` (e.g.
+`promql`) was silently stored as a builder config and skipped the formula and
+number-select rules, and is now rejected; and validation errors on alert
+bodies no longer collapse to `Invalid input` — the schema reports the failing
+branch's own message.

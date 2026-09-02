@@ -581,6 +581,34 @@ const isRawSqlRoutedConfig = (data: unknown): boolean =>
   data.configType === 'sql';
 
 /**
+ * Rejects a `configType` the routing predicate does not recognize. Without
+ * this, an unknown value (e.g. `configType: 'promql'`) routes to the builder
+ * union, which strips the unrecognized keys and parses a body that asked for
+ * something else — so the caller's PromQL config would silently persist as a
+ * builder config. Returns true when an issue was raised (caller stops).
+ */
+const addUnsupportedConfigTypeIssue = (
+  data: unknown,
+  ctx: z.RefinementCtx,
+): boolean => {
+  if (
+    data !== null &&
+    typeof data === 'object' &&
+    'configType' in data &&
+    data.configType !== 'sql'
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message:
+        'configType must be "sql" or omitted (builder configs carry no configType)',
+      path: ['configType'],
+    });
+    return true;
+  }
+  return false;
+};
+
+/**
  * The shared post-parse rule set for configType-routed config schemas
  * (dashboard tiles and inline alert configs) — kept in one place so the two
  * surfaces cannot drift:
@@ -592,6 +620,10 @@ const isRawSqlRoutedConfig = (data: unknown): boolean =>
  *   item; the relaxed `.min(1).max(20)` on the number schema exists only so
  *   formula operands fit (the editor enforces the same in
  *   `validateChartForm`).
+ *
+ * The builder-only rules gate on `isRawSqlRoutedConfig` — the same predicate
+ * that picks the parsing schema — so a config parsed as builder always gets
+ * the builder rules.
  */
 const addConfigTypeRoutedIssues = (
   data: {
@@ -614,7 +646,7 @@ const addConfigTypeRoutedIssues = (
     });
   }
 
-  if (!('configType' in data)) {
+  if (!isRawSqlRoutedConfig(data)) {
     validateChartConfigFormulas(data, ctx);
 
     if (
@@ -637,6 +669,10 @@ const externalDashboardTileConfigSchema = z
     ExternalDashboardRawSqlTileConfig | ExternalDashboardBuilderTileConfig
   >()
   .superRefine((data, ctx) => {
+    if (addUnsupportedConfigTypeIssue(data, ctx)) {
+      return;
+    }
+
     // Route to the correct sub-schema based on configType so Zod's
     // discriminatedUnion can produce targeted field-level errors rather
     // than a generic union failure.
@@ -894,6 +930,10 @@ export type ExternalAlertChartConfig =
 export const externalAlertChartConfigSchema = z
   .custom<ExternalAlertChartConfig>()
   .superRefine((data, ctx) => {
+    if (addUnsupportedConfigTypeIssue(data, ctx)) {
+      return;
+    }
+
     const schema = isRawSqlRoutedConfig(data)
       ? externalAlertRawSqlChartConfigSchema
       : externalAlertBuilderChartConfigSchema;
@@ -964,9 +1004,18 @@ const alertBaseSchema = z.object({
 // external tile-config dialect (see externalAlertChartConfigSchema); the
 // router converts it to the internal AlertChartConfig shape before
 // validateAlertInput/createAlert.
+// Discriminated on `source` (not a plain `.or()`): a failing `.or()` branch
+// collapses to a single "Invalid input" issue with the real messages buried
+// in unionErrors, which the external API's error formatter drops — so every
+// chartConfig rule below would surface as "Body validation failed: Invalid
+// input". Discriminating reports the matching branch's own issues.
 export const alertSchema = alertBaseSchema
   .and(
-    zExternalSavedSearchAlert.or(zExternalTileAlert).or(zExternalInlineAlert),
+    z.discriminatedUnion('source', [
+      zExternalSavedSearchAlert,
+      zExternalTileAlert,
+      zExternalInlineAlert,
+    ]),
   )
   .superRefine(validateAlertChannelSelection)
   .superRefine(validateAlertScheduleOffsetMinutes)
@@ -979,7 +1028,13 @@ export type ExternalAlertInput = z.infer<typeof alertSchema>;
 // `seriesReturnType: 'ratio'`, `source`/`connection`) instead of the external
 // dialect above.
 export const internalAlertSchema = alertBaseSchema
-  .and(zSavedSearchAlert.or(zTileAlert).or(zInlineAlert))
+  .and(
+    z.discriminatedUnion('source', [
+      zSavedSearchAlert,
+      zTileAlert,
+      zInlineAlert,
+    ]),
+  )
   .superRefine(validateAlertChannelSelection)
   .superRefine(validateAlertScheduleOffsetMinutes)
   .superRefine(validateAlertThresholdMax)

@@ -14,6 +14,7 @@ import {
 import {
   externalAlertBuilderChartConfigSchema,
   ExternalAlertChartConfig,
+  externalAlertChartConfigSchema,
   externalAlertRawSqlChartConfigSchema,
 } from '@/utils/zod';
 
@@ -45,6 +46,84 @@ const baseInternal = (
     whereLanguage: 'lucene',
     ...overrides,
   }) as AlertChartConfig;
+
+describe('externalAlertChartConfigSchema configType routing', () => {
+  const builderBody = (overrides: Record<string, unknown> = {}) => ({
+    displayType: DisplayType.Line,
+    sourceId: SOURCE_ID,
+    select: [{ aggFn: 'count', where: '' }],
+    ...overrides,
+  });
+
+  const messages = (body: unknown) => {
+    const result = externalAlertChartConfigSchema.safeParse(body);
+    return result.success
+      ? []
+      : result.error.issues.map(i => `${i.path.join('.')}: ${i.message}`);
+  };
+
+  it('rejects a configType the router does not recognize', () => {
+    // Routing keys on configType === 'sql', so an unrecognized value would
+    // otherwise parse as a builder config (unknown keys stripped) and skip
+    // the builder-only rules below.
+    expect(messages(builderBody({ configType: 'promql' }))).toEqual([
+      'configType: configType must be "sql" or omitted (builder configs carry no configType)',
+    ]);
+  });
+
+  it('still applies the builder rules to a config carrying an unsupported configType', () => {
+    // The bypass this guards: both bodies parse against the builder union.
+    expect(
+      messages(
+        builderBody({
+          configType: 'promql',
+          formulas: [{ expression: 'B * 2' }],
+        }),
+      ).join(' '),
+    ).toContain('configType must be "sql" or omitted');
+    expect(
+      messages(
+        builderBody({
+          configType: 'promql',
+          displayType: DisplayType.Number,
+          select: [
+            { aggFn: 'count', where: '' },
+            { aggFn: 'count', where: 'level:error' },
+          ],
+        }),
+      ).join(' '),
+    ).toContain('configType must be "sql" or omitted');
+  });
+
+  it('applies the builder rules when configType is omitted', () => {
+    expect(
+      messages(builderBody({ formulas: [{ expression: 'B * 2' }] })).join(' '),
+    ).toContain('Unknown series "B"');
+    expect(
+      messages(
+        builderBody({
+          displayType: DisplayType.Number,
+          select: [
+            { aggFn: 'count', where: '' },
+            { aggFn: 'count', where: 'level:error' },
+          ],
+        }),
+      ).join(' '),
+    ).toContain('Number charts support a single select item');
+  });
+
+  it('accepts the raw SQL dialect', () => {
+    expect(
+      messages({
+        configType: 'sql',
+        displayType: DisplayType.Line,
+        connectionId: CONNECTION_ID,
+        sqlTemplate:
+          'SELECT $__timeInterval(Timestamp) AS ts, count() FROM t WHERE $__timeFilter(Timestamp) GROUP BY ts',
+      }),
+    ).toEqual([]);
+  });
+});
 
 describe('convertExternalAlertChartConfigToInternal', () => {
   it('maps the external dialect onto the internal one', () => {
