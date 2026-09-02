@@ -8,52 +8,28 @@ import { Select } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
 
 import { useMetricNames } from '@/hooks/useMetricNames';
-import { capitalizeFirstLetter } from '@/utils';
+import {
+  metricKindLabel,
+  QUERYABLE_KINDS,
+  type QueryableMetricKind,
+} from '@/utils/metricKinds';
 
 const SEPARATOR = ':::::::';
 const SEARCH_DEBOUNCE_MS = 300;
-
-/** The kinds this select queries, in the order they are offered. Summary is
- * absent because there is no query behind it. */
-const QUERYABLE_METRIC_TYPES = [
-  MetricsDataType.Gauge,
-  MetricsDataType.Histogram,
-  MetricsDataType.Sum,
-  MetricsDataType.ExponentialHistogram,
-] as const;
-
-const METRIC_TYPE_LABELS: Partial<Record<MetricsDataType, string>> = {
-  [MetricsDataType.Gauge]: 'Gauge',
-  [MetricsDataType.Histogram]: 'Histogram',
-  [MetricsDataType.Sum]: 'Sum',
-  [MetricsDataType.ExponentialHistogram]: 'Exponential Histogram',
-};
-
-const metricTypeLabel = (metricType: MetricsDataType) =>
-  METRIC_TYPE_LABELS[metricType] ?? capitalizeFirstLetter(metricType);
 
 const metricOptionValue = (metricName: string, metricType: MetricsDataType) =>
   `${metricName}${SEPARATOR}${metricType}`;
 
 export function getMetricOptions(
-  gaugeMetrics: string[] | undefined,
-  histogramMetrics: string[] | undefined,
-  sumMetrics: string[] | undefined,
-  exponentialHistogramMetrics: string[] | undefined,
+  namesByKind: Record<QueryableMetricKind, string[] | undefined>,
   metricName: string | null | undefined,
   metricType: MetricsDataType,
 ) {
-  const namesByType: Partial<Record<MetricsDataType, string[] | undefined>> = {
-    [MetricsDataType.Gauge]: gaugeMetrics,
-    [MetricsDataType.Histogram]: histogramMetrics,
-    [MetricsDataType.Sum]: sumMetrics,
-    [MetricsDataType.ExponentialHistogram]: exponentialHistogramMetrics,
-  };
-  const metricsFromQuery = QUERYABLE_METRIC_TYPES.flatMap(
-    type =>
-      namesByType[type]?.map(metric => ({
-        value: metricOptionValue(metric, type),
-        label: `${metric} (${metricTypeLabel(type)})`,
+  const metricsFromQuery = QUERYABLE_KINDS.flatMap(
+    kind =>
+      namesByKind[kind]?.map(metric => ({
+        value: metricOptionValue(metric, kind),
+        label: `${metric} (${metricKindLabel(kind)})`,
       })) ?? [],
   );
   // if saved metric does not exist in the available options, assume it exists
@@ -66,7 +42,7 @@ export function getMetricOptions(
   ) {
     metricsFromQuery.push({
       value: metricOptionValue(metricName, metricType),
-      label: `${metricName} (${metricTypeLabel(metricType)})`,
+      label: `${metricName} (${metricKindLabel(metricType)})`,
     });
   }
   return metricsFromQuery;
@@ -103,11 +79,11 @@ export function MetricNameSelect({
   // input when the selection changes, and reports it through `onSearchChange`
   // exactly like typed text. Passing that on would search ClickHouse for
   // "up (Gauge)", which matches nothing, so an already-configured chart would
-  // open to an empty list. Compared case-insensitively because the label for a
-  // saved exponential-histogram metric differs only in case from the one built
-  // for a discovered metric.
+  // open to an empty list. Built from the same label helper as the options, so
+  // the two always agree; compared case-insensitively as a cheap guard against
+  // that drifting again.
   const selectedLabel = metricName
-    ? `${metricName} (${capitalizeFirstLetter(metricType)})`
+    ? `${metricName} (${metricKindLabel(metricType)})`
     : '';
   const trimmedSearch = searchValue.trim();
   const activeSearch =
@@ -116,12 +92,12 @@ export function MetricNameSelect({
       : trimmedSearch;
 
   const [debouncedSearch] = useDebouncedValue(activeSearch, SEARCH_DEBOUNCE_MS);
+  // The debounce has not fired yet, so the options on screen answer the
+  // previous text and no query is in flight for the current one.
+  const isSearchPending = activeSearch !== debouncedSearch;
 
   const {
-    gaugeMetrics,
-    histogramMetrics,
-    sumMetrics,
-    exponentialHistogramMetrics,
+    namesByKind,
     isTruncated,
     hasError,
     hasNoMatches,
@@ -129,14 +105,7 @@ export function MetricNameSelect({
   } = useMetricNames(metricSource, dateRange, debouncedSearch);
 
   const options = useMemo(() => {
-    const metricOptions = getMetricOptions(
-      gaugeMetrics,
-      histogramMetrics,
-      sumMetrics,
-      exponentialHistogramMetrics,
-      metricName,
-      metricType,
-    );
+    const metricOptions = getMetricOptions(namesByKind, metricName, metricType);
     // A name missing from the picker is not necessarily missing from the data:
     // the catalog query covers only the most recent 3 days of the chart's range,
     // and a kind with no table configured is never queried. Offer the searched
@@ -151,13 +120,13 @@ export function MetricNameSelect({
     // last selection happened to use would query the wrong table and chart
     // nothing, with no way to correct it.
     if (debouncedSearch && hasNoMatches) {
-      for (const type of QUERYABLE_METRIC_TYPES) {
+      for (const kind of QUERYABLE_KINDS) {
         // A kind with no table is not queryable on this source, so committing
         // the name under it could never resolve.
-        if (!metricSource.metricTables?.[type]) {
+        if (!metricSource.metricTables?.[kind]) {
           continue;
         }
-        const value = metricOptionValue(debouncedSearch, type);
+        const value = metricOptionValue(debouncedSearch, kind);
         // Committing an offer puts the name in `metricName`, which
         // `getMetricOptions` then synthesizes its own option for while the
         // debounced search still holds the same name — and Mantine throws on a
@@ -167,16 +136,13 @@ export function MetricNameSelect({
         }
         metricOptions.push({
           value,
-          label: `${debouncedSearch} (${metricTypeLabel(type)}, no recent data)`,
+          label: `${debouncedSearch} (${metricKindLabel(kind)}, no recent data)`,
         });
       }
     }
     return metricOptions;
   }, [
-    gaugeMetrics,
-    histogramMetrics,
-    sumMetrics,
-    exponentialHistogramMetrics,
+    namesByKind,
     metricName,
     metricType,
     debouncedSearch,
@@ -210,11 +176,13 @@ export function MetricNameSelect({
       // Without a message Mantine sets `hiddenWhenEmpty`, so a search matching
       // nothing hides the whole dropdown and the field just looks broken.
       nothingFoundMessage={
-        isSearching
+        isSearchPending || isSearching
           ? 'Searching…'
           : hasError
             ? 'Some metrics failed to load'
-            : 'No metrics reported recently'
+            : activeSearch
+              ? 'No matching metrics'
+              : 'No metrics reported recently'
       }
       // Reported in the description rather than the `error` slot, which belongs
       // to form validation for this field. Kept below the input: it appears

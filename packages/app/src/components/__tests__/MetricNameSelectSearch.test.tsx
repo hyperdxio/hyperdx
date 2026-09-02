@@ -341,6 +341,54 @@ describe('MetricNameSelect', () => {
       ).not.toBeInTheDocument();
     });
 
+    // Nothing is in flight during the 300ms before the debounce fires, so an
+    // `isFetching`-only check reads as settled while the options on screen still
+    // answer the previous keystroke.
+    it('says it is searching before the debounce has even fired', async () => {
+      noMatches();
+      renderSelect();
+
+      await userEvent.type(screen.getByTestId('metric-name-selector'), 'ab');
+
+      expect(await screen.findByText('Searching…')).toBeInTheDocument();
+      expect(
+        screen.queryByText('No metrics reported recently'),
+      ).not.toBeInTheDocument();
+    });
+
+    // "No metrics reported recently" is a claim about the source, which is the
+    // wrong thing to say about a search that simply did not match.
+    it('distinguishes an unmatched search from an empty source', async () => {
+      useGetMetricNames.mockImplementation(({ tableName }: any) => ({
+        data: tableName ? { names: [], truncated: false } : undefined,
+      }));
+      // No table for any kind, so no offer is appended and the message shows.
+      renderSelect({
+        metricSource: {
+          ...metricSource,
+          metricTables: {
+            gauge: '',
+            sum: '',
+            histogram: '',
+            summary: '',
+            'exponential histogram': '',
+          },
+        },
+      });
+
+      await userEvent.click(screen.getByTestId('metric-name-selector'));
+      expect(
+        await screen.findByText('No metrics reported recently'),
+      ).toBeInTheDocument();
+
+      await userEvent.type(screen.getByTestId('metric-name-selector'), 'zzz');
+      await new Promise(resolve => setTimeout(resolve, DEBOUNCE_SETTLE_MS));
+
+      expect(
+        await screen.findByText('No matching metrics'),
+      ).toBeInTheDocument();
+    });
+
     // A kind whose table is misconfigured errors on every pattern and is never
     // retried, so blocking the offer on it would permanently strand this source
     // at the dead end the offer exists to remove.

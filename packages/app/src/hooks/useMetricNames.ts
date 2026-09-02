@@ -7,6 +7,7 @@ import {
 
 import { useGetMetricNames } from '@/hooks/useMetadata';
 import { clampCatalogDateRange } from '@/hooks/useMetricCatalog';
+import type { QueryableMetricKind } from '@/utils/metricKinds';
 
 const metricNamesQueryArgs = ({
   dateRange,
@@ -80,11 +81,18 @@ export function useMetricNames(
 
   const queries = [gauge, histogram, sum, exponentialHistogram];
 
+  // Keyed by `QueryableMetricKind`, so adding a kind to `QUERYABLE_KINDS`
+  // fails to compile here until a query for it is wired up above — rather than
+  // quietly offering that kind in the dropdown with nothing behind it.
+  const namesByKind: Record<QueryableMetricKind, string[] | undefined> = {
+    [MetricsDataType.Gauge]: gauge.data?.names,
+    [MetricsDataType.Sum]: sum.data?.names,
+    [MetricsDataType.Histogram]: histogram.data?.names,
+    [MetricsDataType.ExponentialHistogram]: exponentialHistogram.data?.names,
+  };
+
   return {
-    gaugeMetrics: gauge.data?.names,
-    histogramMetrics: histogram.data?.names,
-    sumMetrics: sum.data?.names,
-    exponentialHistogramMetrics: exponentialHistogram.data?.names,
+    namesByKind,
     isTruncated: queries.some(query => query.data?.truncated),
     // Surfaced because a failed kind otherwise just vanishes from the list: the
     // query is not retried, so a transient error or a query too slow to finish
