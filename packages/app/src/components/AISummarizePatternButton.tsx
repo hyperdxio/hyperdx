@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Pattern,
   PATTERN_COLUMN_ALIAS,
+  SERVICE_NAME_COLUMN_ALIAS,
   SEVERITY_TEXT_COLUMN_ALIAS,
 } from '@/hooks/usePatterns';
 
@@ -20,16 +21,16 @@ import {
  * Build a synthetic RowData from the first sample event so the summary
  * generators can extract OTel facts (service, severity, body, etc.).
  */
-function buildRowDataFromSample(
-  pattern: Pattern,
-  serviceNameExpression: string,
-): { rowData: RowData; severityText?: string } {
+function buildRowDataFromSample(pattern: Pattern): {
+  rowData: RowData;
+  severityText?: string;
+} {
   const sample = pattern.samples[0];
   if (!sample) return { rowData: {} };
   return {
     rowData: {
       __hdx_body: sample[PATTERN_COLUMN_ALIAS],
-      ServiceName: sample[serviceNameExpression],
+      ServiceName: sample[SERVICE_NAME_COLUMN_ALIAS],
       __hdx_severity_text: sample[SEVERITY_TEXT_COLUMN_ALIAS],
       // Pass through any other fields the sample may have (attributes, etc.)
       ...sample,
@@ -40,10 +41,8 @@ function buildRowDataFromSample(
 
 export default function AISummarizePatternButton({
   pattern,
-  serviceNameExpression,
 }: {
   pattern: Pattern;
-  serviceNameExpression: string;
 }) {
   const [result, setResult] = useState<{
     text: string;
@@ -79,10 +78,7 @@ export default function AISummarizePatternButton({
     }
     setIsGenerating(true);
     setIsOpen(true);
-    const { rowData, severityText } = buildRowDataFromSample(
-      pattern,
-      serviceNameExpression,
-    );
+    const { rowData, severityText } = buildRowDataFromSample(pattern);
     timerRef.current = setTimeout(() => {
       setResult(
         generatePatternSummary(
@@ -95,14 +91,11 @@ export default function AISummarizePatternButton({
       setIsGenerating(false);
       timerRef.current = null;
     }, 1800);
-  }, [pattern, serviceNameExpression, result]);
+  }, [pattern, result]);
 
   const handleRegenerate = useCallback(() => {
     setIsGenerating(true);
-    const { rowData, severityText } = buildRowDataFromSample(
-      pattern,
-      serviceNameExpression,
-    );
+    const { rowData, severityText } = buildRowDataFromSample(pattern);
     timerRef.current = setTimeout(() => {
       setResult(
         generatePatternSummary(
@@ -115,7 +108,7 @@ export default function AISummarizePatternButton({
       setIsGenerating(false);
       timerRef.current = null;
     }, 1200);
-  }, [pattern, serviceNameExpression]);
+  }, [pattern]);
 
   const handleDismiss = useCallback(() => {
     dismissEasterEgg();

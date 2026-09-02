@@ -78,6 +78,10 @@ export default function PatternTable({
       (source?.kind === SourceKind.Log && source.severityTextExpression) || '',
     statusCodeExpression:
       (source?.kind === SourceKind.Trace && source.statusCodeExpression) || '',
+    serviceNameExpression:
+      ((source?.kind === SourceKind.Log || source?.kind === SourceKind.Trace) &&
+        source.serviceNameExpression) ||
+      '',
     totalCount,
   });
 

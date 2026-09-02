@@ -109,6 +109,7 @@ async function mineEventPatterns(logs: string[], pyodide: any) {
 export const PATTERN_COLUMN_ALIAS = '__hdx_pattern_field';
 export const TIMESTAMP_COLUMN_ALIAS = '__hdx_timestamp';
 export const SEVERITY_TEXT_COLUMN_ALIAS = '__hdx_severity_text';
+export const SERVICE_NAME_COLUMN_ALIAS = '__hdx_service_name';
 const STATUS_CODE_COLUMN_ALIAS = '__hdx_status_code';
 
 type SampleLog = {
@@ -130,6 +131,7 @@ function usePatterns({
   bodyValueExpression,
   severityTextExpression,
   statusCodeExpression,
+  serviceNameExpression,
   enabled = true,
 }: {
   config: BuilderChartConfigWithDateRange;
@@ -137,6 +139,7 @@ function usePatterns({
   bodyValueExpression: string;
   severityTextExpression?: string;
   statusCodeExpression?: string;
+  serviceNameExpression?: string;
   enabled?: boolean;
 }) {
   const configWithPrimaryAndPartitionKey = useConfigWithAdditionalSelect({
@@ -150,6 +153,9 @@ function usePatterns({
         : []),
       ...(statusCodeExpression
         ? [`${statusCodeExpression} as ${STATUS_CODE_COLUMN_ALIAS}`]
+        : []),
+      ...(serviceNameExpression
+        ? [`${serviceNameExpression} as ${SERVICE_NAME_COLUMN_ALIAS}`]
         : []),
     ].join(','),
     // TODO: Proper sampling
@@ -225,6 +231,7 @@ export function useGroupedPatterns({
   bodyValueExpression,
   severityTextExpression,
   statusCodeExpression,
+  serviceNameExpression,
   totalCount,
   enabled = true,
 }: {
@@ -233,6 +240,7 @@ export function useGroupedPatterns({
   bodyValueExpression: string;
   severityTextExpression?: string;
   statusCodeExpression?: string;
+  serviceNameExpression?: string;
   totalCount?: number;
   enabled?: boolean;
 }) {
@@ -247,6 +255,7 @@ export function useGroupedPatterns({
     bodyValueExpression,
     severityTextExpression,
     statusCodeExpression,
+    serviceNameExpression,
     enabled,
   });
 
