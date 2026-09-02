@@ -108,9 +108,9 @@ async function mineEventPatterns(logs: string[], pyodide: any) {
 
 export const PATTERN_COLUMN_ALIAS = '__hdx_pattern_field';
 export const TIMESTAMP_COLUMN_ALIAS = '__hdx_timestamp';
-export const SEVERITY_TEXT_COLUMN_ALIAS = '__hdx_severity_text';
 export const SERVICE_NAME_COLUMN_ALIAS = '__hdx_service_name';
-const STATUS_CODE_COLUMN_ALIAS = '__hdx_status_code';
+// The source's level column: severity text for logs, status code for traces.
+export const LEVEL_COLUMN_ALIAS = '__hdx_level';
 
 type SampleLog = {
   [PATTERN_COLUMN_ALIAS]: string;
@@ -129,16 +129,14 @@ function usePatterns({
   config,
   samples,
   bodyValueExpression,
-  severityTextExpression,
-  statusCodeExpression,
+  levelExpression,
   serviceNameExpression,
   enabled = true,
 }: {
   config: BuilderChartConfigWithDateRange;
   samples: number;
   bodyValueExpression: string;
-  severityTextExpression?: string;
-  statusCodeExpression?: string;
+  levelExpression?: string;
   serviceNameExpression?: string;
   enabled?: boolean;
 }) {
@@ -148,11 +146,8 @@ function usePatterns({
     select: [
       `${bodyValueExpression} as ${PATTERN_COLUMN_ALIAS}`,
       `${getFirstTimestampValueExpression(config.timestampValueExpression)} as ${TIMESTAMP_COLUMN_ALIAS}`,
-      ...(severityTextExpression
-        ? [`${severityTextExpression} as ${SEVERITY_TEXT_COLUMN_ALIAS}`]
-        : []),
-      ...(statusCodeExpression
-        ? [`${statusCodeExpression} as ${STATUS_CODE_COLUMN_ALIAS}`]
+      ...(levelExpression
+        ? [`${levelExpression} as ${LEVEL_COLUMN_ALIAS}`]
         : []),
       ...(serviceNameExpression
         ? [`${serviceNameExpression} as ${SERVICE_NAME_COLUMN_ALIAS}`]
@@ -229,8 +224,7 @@ export function useGroupedPatterns({
   config,
   samples,
   bodyValueExpression,
-  severityTextExpression,
-  statusCodeExpression,
+  levelExpression,
   serviceNameExpression,
   totalCount,
   enabled = true,
@@ -238,8 +232,7 @@ export function useGroupedPatterns({
   config: BuilderChartConfigWithDateRange;
   samples: number;
   bodyValueExpression: string;
-  severityTextExpression?: string;
-  statusCodeExpression?: string;
+  levelExpression?: string;
   serviceNameExpression?: string;
   totalCount?: number;
   enabled?: boolean;
@@ -253,8 +246,7 @@ export function useGroupedPatterns({
     config,
     samples,
     bodyValueExpression,
-    severityTextExpression,
-    statusCodeExpression,
+    levelExpression,
     serviceNameExpression,
     enabled,
   });
@@ -316,8 +308,7 @@ export function useGroupedPatterns({
         pattern: reconstructedPattern, // last pattern is usually the most up to date templated pattern
         count,
         countStr: `~${count}`,
-        severityText: lastRow?.[SEVERITY_TEXT_COLUMN_ALIAS], // last severitytext is usually representative of the entire pattern set
-        statusCode: lastRow?.[STATUS_CODE_COLUMN_ALIAS],
+        level: lastRow?.[LEVEL_COLUMN_ALIAS], // last level is usually representative of the entire pattern set
         samples: rows,
         __hdx_pattern_trend: {
           data: Object.entries(bucketCounts).map(([bucket, count]) => ({

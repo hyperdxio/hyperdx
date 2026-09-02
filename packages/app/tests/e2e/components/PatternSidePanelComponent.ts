@@ -6,8 +6,9 @@
 import { Locator, Page } from '@playwright/test';
 
 // Column order rendered by the sample table (see PatternSidePanel's
-// displayedColumns): Timestamp, Service, level, Body.
+// displayedColumns): Timestamp, Service, Level, Body.
 const SERVICE_COLUMN_INDEX = 1;
+const LEVEL_COLUMN_INDEX = 2;
 
 export class PatternSidePanelComponent {
   readonly page: Page;
@@ -40,6 +41,11 @@ export class PatternSidePanelComponent {
     return this.panelContainer.getByRole('columnheader', { name: 'Service' });
   }
 
+  /** The "Level" column header of the sample table. */
+  get levelColumnHeader() {
+    return this.panelContainer.getByRole('columnheader', { name: 'Level' });
+  }
+
   /**
    * The Service-column cell of a sample row. Columns render as sibling divs
    * inside the row's content button, in the order declared by displayedColumns,
@@ -50,5 +56,13 @@ export class PatternSidePanelComponent {
       .nth(rowIndex)
       .locator('td > button > div')
       .nth(SERVICE_COLUMN_INDEX);
+  }
+
+  /** The Level-column cell of a sample row. */
+  levelCell(rowIndex = 0) {
+    return this.sampleRows
+      .nth(rowIndex)
+      .locator('td > button > div')
+      .nth(LEVEL_COLUMN_INDEX);
   }
 }

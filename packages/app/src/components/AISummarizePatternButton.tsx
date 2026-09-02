@@ -2,10 +2,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import {
+  LEVEL_COLUMN_ALIAS,
   Pattern,
   PATTERN_COLUMN_ALIAS,
   SERVICE_NAME_COLUMN_ALIAS,
-  SEVERITY_TEXT_COLUMN_ALIAS,
 } from '@/hooks/usePatterns';
 
 import AISummaryPanel from './aiSummarize/AISummaryPanel';
@@ -31,11 +31,11 @@ function buildRowDataFromSample(pattern: Pattern): {
     rowData: {
       __hdx_body: sample[PATTERN_COLUMN_ALIAS],
       ServiceName: sample[SERVICE_NAME_COLUMN_ALIAS],
-      __hdx_severity_text: sample[SEVERITY_TEXT_COLUMN_ALIAS],
+      __hdx_severity_text: sample[LEVEL_COLUMN_ALIAS],
       // Pass through any other fields the sample may have (attributes, etc.)
       ...sample,
     },
-    severityText: sample[SEVERITY_TEXT_COLUMN_ALIAS],
+    severityText: sample[LEVEL_COLUMN_ALIAS],
   };
 }
 

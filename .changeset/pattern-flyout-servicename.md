@@ -2,4 +2,4 @@
 '@hyperdx/app': patch
 ---
 
-fix: Reliably show service name in pattern sample drawer
+fix: Reliably show service name and level in pattern sample drawer

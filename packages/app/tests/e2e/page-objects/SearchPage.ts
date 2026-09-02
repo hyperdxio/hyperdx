@@ -140,6 +140,19 @@ export class SearchPage {
     await this.patternListRows.first().waitFor({ state: 'visible', timeout });
   }
 
+  /**
+   * The Level-column cell of a pattern-list row. The list renders its columns
+   * as sibling divs inside the row's content button (see PatternTable's
+   * displayedColumns: Trend, Count, Level, Pattern).
+   */
+  patternListLevelCell(rowIndex = 0) {
+    const PATTERN_LIST_LEVEL_COLUMN_INDEX = 2;
+    return this.patternListRows
+      .nth(rowIndex)
+      .locator('td > button > div')
+      .nth(PATTERN_LIST_LEVEL_COLUMN_INDEX);
+  }
+
   /** Open the first pattern's sample flyout and wait for it to render. */
   async openFirstPattern(timeout = 30_000) {
     await this.patternListRows.first().click();

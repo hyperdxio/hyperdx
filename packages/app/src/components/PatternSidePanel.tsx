@@ -9,11 +9,11 @@ import AISummarizePatternButton from '@/components/AISummarizePatternButton';
 import DBRowSidePanel from '@/components/DBRowSidePanel';
 import { RawLogTable } from '@/components/DBRowTable';
 import { DrawerBody, DrawerHeader } from '@/components/DrawerUtils';
-import { Pattern } from '@/hooks/usePatterns';
 import {
+  LEVEL_COLUMN_ALIAS,
+  Pattern,
   PATTERN_COLUMN_ALIAS,
   SERVICE_NAME_COLUMN_ALIAS,
-  SEVERITY_TEXT_COLUMN_ALIAS,
   TIMESTAMP_COLUMN_ALIAS,
 } from '@/hooks/usePatterns';
 import useRowWhere, { RowWhereResult } from '@/hooks/useRowWhere';
@@ -46,7 +46,7 @@ export default function PatternSidePanel({
       new Map<string, { _type: JSDataType | null }>([
         [TIMESTAMP_COLUMN_ALIAS, { _type: JSDataType.Date }],
         [PATTERN_COLUMN_ALIAS, { _type: JSDataType.String }],
-        [SEVERITY_TEXT_COLUMN_ALIAS, { _type: JSDataType.String }],
+        [LEVEL_COLUMN_ALIAS, { _type: JSDataType.String }],
         [SERVICE_NAME_COLUMN_ALIAS, { _type: JSDataType.String }],
       ]),
     [],
@@ -56,7 +56,7 @@ export default function PatternSidePanel({
     () => ({
       [TIMESTAMP_COLUMN_ALIAS]: 'Timestamp',
       [SERVICE_NAME_COLUMN_ALIAS]: 'Service',
-      [SEVERITY_TEXT_COLUMN_ALIAS]: 'level',
+      [LEVEL_COLUMN_ALIAS]: 'Level',
       [PATTERN_COLUMN_ALIAS]: 'Body',
     }),
     [],
@@ -66,7 +66,7 @@ export default function PatternSidePanel({
     return [
       TIMESTAMP_COLUMN_ALIAS,
       SERVICE_NAME_COLUMN_ALIAS,
-      SEVERITY_TEXT_COLUMN_ALIAS,
+      LEVEL_COLUMN_ALIAS,
       PATTERN_COLUMN_ALIAS,
     ];
   }, []);
