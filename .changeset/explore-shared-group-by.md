@@ -16,4 +16,7 @@ Picking a dimension no longer means writing SQL. The control is a field picker
 shaped like the columns picker beside it — searchable, multi-select, and
 including nested map keys such as `ResourceAttributes['host.name']` — with a
 SQL tab for groupings a field list cannot express. Grouping by more than one
-dimension already worked and still does; the picker just makes it visible.
+dimension already worked and still does; the picker just makes it visible. The
+control spells out `Group by SeverityText` in a labelled field, built as the
+same left-addon shape as the `As <chart type>` picker beside it, rather than
+leaving an icon to carry the word "group".

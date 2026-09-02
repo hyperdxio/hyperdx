@@ -1,0 +1,57 @@
+/* A field with a fixed left addon, built the same way as the "As <chart type>"
+   picker it shares a toolbar row with: "Group by" names the frame rather than
+   being something you can press, and the addon fill is what says so. */
+
+/* The switcher beside this one is a 24px segment inside 4px of padding, so this
+   has to come out at the same height or the row reads as ragged. */
+$control-height: 32px;
+
+.control {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  overflow: hidden;
+  background: var(--color-bg-field);
+  border: 1px solid var(--color-border);
+  border-radius: var(--mantine-radius-default);
+}
+
+/* Full-contrast text, not dimmed: the addon fill already sets the label apart
+   from the value, so weight carries the hierarchy instead — the field name
+   beside it is the heavier of the two. */
+.label {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  padding-inline: 8px;
+  border-right: 1px solid var(--color-border);
+  background: var(--color-bg-field-addon);
+  color: var(--color-text);
+  white-space: nowrap;
+}
+
+.target {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: $control-height;
+  padding-inline: 8px;
+  white-space: nowrap;
+
+  &:hover:not(:disabled) {
+    background: var(--color-bg-hover);
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+}
+
+/* A long field name truncates rather than pushing the rest of the toolbar off
+   the row. */
+.value {
+  overflow: hidden;
+  max-width: 220px;
+  text-overflow: ellipsis;
+}

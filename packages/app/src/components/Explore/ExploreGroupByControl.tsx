@@ -11,14 +11,17 @@ import {
   SegmentedControl,
   Text,
   TextInput,
+  UnstyledButton,
 } from '@mantine/core';
-import { IconChevronDown, IconStack2 } from '@tabler/icons-react';
+import { IconChevronDown } from '@tabler/icons-react';
 
 import SQLInlineEditor from '@/components/SQLEditor/SQLInlineEditor';
 import { useMultipleAllFields } from '@/hooks/useMetadata';
 
 import { formatGroupByFields, parseGroupByFields } from './exploreGroupBy';
 import { fieldIdentifier } from './fieldIdentifier';
+
+import classes from './ExploreGroupByControl.module.scss';
 
 function triggerLabel(selected: string[], fallback?: string) {
   if (selected.length === 1) return selected[0];
@@ -112,31 +115,32 @@ export function ExploreGroupByControl({
       shadow="md"
       width={300}
     >
-      <Popover.Target>
-        <Button
-          variant="secondary"
-          size="xs"
-          disabled={disabled}
-          leftSection={<IconStack2 size={14} />}
-          rightSection={<IconChevronDown size={14} />}
-          onClick={() => handleOpenChange(!opened)}
-          data-testid="explore-group-by"
-          style={{ flexShrink: 0 }}
-        >
-          <Text
-            size="xs"
-            span
-            c={selected.length === 0 ? 'dimmed' : undefined}
-            style={{
-              maxWidth: 220,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-            }}
+      <div className={classes.control} data-testid="explore-group-by">
+        <Text size="xs" fw={500} className={classes.label}>
+          Group by
+        </Text>
+        <Popover.Target>
+          <UnstyledButton
+            className={classes.target}
+            disabled={disabled}
+            onClick={() => handleOpenChange(!opened)}
+            // The visible label lives in the sibling addon, so the button
+            // carries the whole phrase rather than announcing a bare field name.
+            aria-label={`Group by ${triggerLabel(selected, defaultGroupBy)}`}
+            data-testid="explore-group-by-target"
           >
-            by {triggerLabel(selected, defaultGroupBy)}
-          </Text>
-        </Button>
-      </Popover.Target>
+            <Text
+              size="xs"
+              fw={600}
+              className={classes.value}
+              c={selected.length === 0 ? 'dimmed' : undefined}
+            >
+              {triggerLabel(selected, defaultGroupBy)}
+            </Text>
+            <IconChevronDown size={14} />
+          </UnstyledButton>
+        </Popover.Target>
+      </div>
       <Popover.Dropdown p="xs">
         <SegmentedControl
           fullWidth
