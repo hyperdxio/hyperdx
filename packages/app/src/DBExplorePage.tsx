@@ -152,6 +152,7 @@ import { ExploreResultsToolbar } from './components/Explore/ExploreResultsToolba
 import { ExploreSeriesList } from './components/Explore/ExploreSeriesList';
 import { type QueryConfigMode } from './components/Explore/QueryEditor';
 import { SeveritySummary } from './components/Explore/SeveritySummary';
+import { nextSearchForPatternMatch } from './components/Patterns/patternColumn';
 import { PatternColumnSelector } from './components/Patterns/PatternColumnSelector';
 import PatternTable from './components/PatternTable';
 import { DBSearchHeatmapChart } from './components/Search/DBSearchHeatmapChart';
@@ -1203,12 +1204,6 @@ function DBExplorePage() {
     'patternColumn',
     parseAsString,
   );
-  const [draftPatternColumn, setDraftPatternColumn] = useState(
-    patternColumn ?? '',
-  );
-  useEffect(() => {
-    setDraftPatternColumn(patternColumn ?? '');
-  }, [patternColumn]);
 
   const [isLive, setIsLive] = useQueryState(
     'isLive',
@@ -1444,8 +1439,6 @@ function DBExplorePage() {
         });
       },
     )();
-    setPatternColumn(draftPatternColumn || null);
-    // clear query errors
     setQueryErrors({});
   }, [
     handleSubmit,
@@ -1453,9 +1446,31 @@ function DBExplorePage() {
     displayedTimeInputValue,
     onSearch,
     setQueryErrors,
-    draftPatternColumn,
-    setPatternColumn,
   ]);
+
+  const applyPatternColumn = useCallback(
+    (next: string) => {
+      setPatternColumn(next || null);
+      onSubmit();
+    },
+    [setPatternColumn, onSubmit],
+  );
+
+  const handleViewMatchingEvents = useCallback(
+    (sqlCondition: string) => {
+      const next = nextSearchForPatternMatch({
+        where: getValues('where') ?? '',
+        whereLanguage: getValues('whereLanguage'),
+        filters: getValues('filters') ?? [],
+        sqlCondition,
+      });
+      setValue('where', next.where, { shouldDirty: true });
+      setValue('filters', next.filters, { shouldDirty: true });
+      setView('list');
+      onSubmit();
+    },
+    [getValues, setValue, setView, onSubmit],
+  );
 
   // The picker stages its own selection and only emits on Apply, so there is no
   // half-typed state to hold back here.
@@ -2214,6 +2229,27 @@ function DBExplorePage() {
       showOperandSeries: aggViewChartConfig.showOperandSeries,
     } as SavedChartConfig;
   }, [aggViewChartConfig, savedSearch?.name, searchedConfig]);
+
+  const patternsAddToDashboardConfig = useMemo<
+    SavedChartConfig | undefined
+  >(() => {
+    if (view !== 'patterns' || !searchedConfig.source) {
+      return undefined;
+    }
+    const select =
+      patternColumn ||
+      (searchedSource ? (getEventBody(searchedSource) ?? '') : '');
+    return {
+      name: savedSearch?.name || 'Event patterns',
+      source: searchedConfig.source,
+      displayType: DisplayType.EventPatterns,
+      select,
+      where: searchedConfig.where ?? '',
+      whereLanguage:
+        searchedConfig.whereLanguage ?? getDefaultExploreLanguage(),
+      filters: searchedConfig.filters ?? [],
+    } as SavedChartConfig;
+  }, [view, patternColumn, searchedSource, searchedConfig, savedSearch?.name]);
 
   // Raw-SQL config for SQL mode. Bypasses buildSearchChartConfig entirely: the
   // user-authored sqlTemplate owns the whole statement, and the source metadata
@@ -2995,12 +3031,11 @@ function DBExplorePage() {
                           // the chart-type picker uses, rather than stranded
                           // between the chart and the table it governs.
                           <PatternColumnSelector
-                            sourceId={searchedSource?.id}
-                            value={draftPatternColumn}
-                            onChange={setDraftPatternColumn}
-                            onSubmit={onSubmit}
+                            tableSource={searchedSource}
+                            value={patternColumn ?? ''}
+                            onApply={applyPatternColumn}
                             dateRange={searchedTimeRange}
-                            bodyValueExpression={
+                            defaultField={
                               searchedSource
                                 ? (getEventBody(searchedSource) ?? '')
                                 : (chartConfig.implicitColumnExpression ?? '')
@@ -3032,12 +3067,18 @@ function DBExplorePage() {
                                 config={rawSqlAddToDashboardConfig}
                               />
                             )
-                          : isAggregatedSearchView(view) &&
-                            addToDashboardConfig && (
-                              <AddToDashboardButton
-                                config={addToDashboardConfig}
-                              />
-                            )
+                          : view === 'patterns'
+                            ? patternsAddToDashboardConfig && (
+                                <AddToDashboardButton
+                                  config={patternsAddToDashboardConfig}
+                                />
+                              )
+                            : isAggregatedSearchView(view) &&
+                              addToDashboardConfig && (
+                                <AddToDashboardButton
+                                  config={addToDashboardConfig}
+                                />
+                              )
                       }
                       overflowMenu={
                         <ResultsOverflowMenu
@@ -3382,6 +3423,7 @@ function DBExplorePage() {
                             : (chartConfig.implicitColumnExpression ?? '')
                         }
                         patternColumn={patternColumn}
+                        onViewMatchingEvents={handleViewMatchingEvents}
                         totalCountConfig={histogramTimeChartConfig}
                         totalCountQueryKeyPrefix={QUERY_KEY_PREFIX}
                       />

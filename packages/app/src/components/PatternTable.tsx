@@ -6,16 +6,19 @@ import {
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import { Box, Code, Container, Text } from '@mantine/core';
+import { IconBracketsContain } from '@tabler/icons-react';
 
 import { SQLPreview } from '@/components/ChartSQLPreview';
 import { RawLogTable } from '@/components/DBRowTable';
+import EmptyState from '@/components/EmptyState';
 import { useSearchTotalCount } from '@/components/SearchTotalCountChart';
 import { Pattern, useGroupedPatterns } from '@/hooks/usePatterns';
 
 import {
   buildPatternColumnExpression,
-  PatternColumnSelector,
-} from './Patterns/PatternColumnSelector';
+  patternMatchSqlCondition,
+} from './Patterns/patternColumn';
+import { PatternColumnSelector } from './Patterns/PatternColumnSelector';
 import PatternSidePanel from './PatternSidePanel';
 
 const emptyMap = new Map();
@@ -26,18 +29,17 @@ export default function PatternTable({
   totalCountQueryKeyPrefix,
   bodyValueExpression,
   patternColumn: externalPatternColumn,
-  draftPatternColumn: externalDraftPatternColumn,
-  onDraftPatternColumnChange: externalOnDraftPatternColumnChange,
-  onSubmit: externalOnSubmit,
+  onApplyPatternColumn,
+  onViewMatchingEvents,
   source,
 }: {
   config: BuilderChartConfigWithDateRange;
   totalCountConfig: BuilderChartConfigWithDateRange;
   bodyValueExpression: string;
   patternColumn?: string | null;
-  draftPatternColumn?: string;
-  onDraftPatternColumnChange?: (value: string) => void;
-  onSubmit?: () => void;
+  onApplyPatternColumn?: (value: string) => void;
+  /** Switch the search to events matching this Drain template. */
+  onViewMatchingEvents?: (sqlCondition: string) => void;
   totalCountQueryKeyPrefix: string;
   source?: TSource;
 }) {
@@ -45,14 +47,9 @@ export default function PatternTable({
 
   const [selectedPattern, setSelectedPattern] = useState<Pattern | null>(null);
 
-  // When external handlers are provided (e.g. search page), the pattern
-  // column selector is shown inline and the user can override the expression
-  // at runtime. For dashboard/preview tiles, the pattern expression is
-  // configured in the tile edit UI (via the config's `select` field) and
-  // the PatternColumnSelector is not shown.
-  const hasExternalPatternColumn =
-    externalOnDraftPatternColumnChange != null && externalOnSubmit != null;
-
+  // Explore puts the picker in the results toolbar. Search still renders it
+  // here, above the table. Dashboard tiles configure the expression in the
+  // editor, so they pass neither handler.
   const effectiveBodyValueExpression = buildPatternColumnExpression({
     patternColumn: externalPatternColumn ?? null,
     fallback: bodyValueExpression,
@@ -92,17 +89,27 @@ export default function PatternTable({
     ) as Pattern[];
   }, [groupedResults]);
 
+  const handleViewMatchingEvents = (pattern: Pattern) => {
+    const sqlCondition = patternMatchSqlCondition(
+      effectiveBodyValueExpression,
+      pattern.pattern,
+    );
+    if (sqlCondition == null || onViewMatchingEvents == null) {
+      return;
+    }
+    onViewMatchingEvents(sqlCondition);
+  };
+
   return (
     <>
-      {hasExternalPatternColumn && (
+      {onApplyPatternColumn != null && (
         <Box py="xs">
           <PatternColumnSelector
-            sourceId={source?.id}
-            value={externalDraftPatternColumn ?? ''}
-            onChange={externalOnDraftPatternColumnChange}
-            onSubmit={externalOnSubmit}
+            tableSource={source}
+            value={externalPatternColumn ?? ''}
+            onApply={onApplyPatternColumn}
             dateRange={config.dateRange}
-            bodyValueExpression={bodyValueExpression}
+            defaultField={bodyValueExpression}
           />
         </Box>
       )}
@@ -137,6 +144,13 @@ export default function PatternTable({
             </Box>
           )}
         </Container>
+      ) : !isLoading && sortedGroupedResults.length === 0 ? (
+        <EmptyState
+          h="100%"
+          icon={<IconBracketsContain size={32} />}
+          title="No patterns found"
+          description="No repeating event shapes in this sample of 10,000. Try a different field or a wider time range."
+        />
       ) : (
         <>
           <RawLogTable
@@ -158,7 +172,7 @@ export default function PatternTable({
             generateRowId={row => ({ where: row.id, aliasWith: [] })}
             columnNameMap={{
               __hdx_pattern_trend: 'Trend',
-              countStr: 'Count',
+              countStr: 'Est. count',
               pattern: 'Pattern',
               severityText: 'Level',
             }}
@@ -172,6 +186,11 @@ export default function PatternTable({
               pattern={selectedPattern}
               bodyValueExpression={effectiveBodyValueExpression}
               onClose={() => setSelectedPattern(null)}
+              onViewMatchingEvents={
+                onViewMatchingEvents != null
+                  ? () => handleViewMatchingEvents(selectedPattern)
+                  : undefined
+              }
             />
           )}
         </>

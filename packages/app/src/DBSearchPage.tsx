@@ -134,6 +134,7 @@ import {
 
 import ChartSQLPreview, { SQLPreview } from './components/ChartSQLPreview';
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
+import { nextSearchForPatternMatch } from './components/Patterns/patternColumn';
 import PatternTable from './components/PatternTable';
 import { DBSearchHeatmapChart } from './components/Search/DBSearchHeatmapChart';
 import DirectTraceSidePanel from './components/Search/DirectTraceSidePanel';
@@ -1063,12 +1064,6 @@ export function DBSearchPage() {
     'patternColumn',
     parseAsString,
   );
-  const [draftPatternColumn, setDraftPatternColumn] = useState(
-    patternColumn ?? '',
-  );
-  useEffect(() => {
-    setDraftPatternColumn(patternColumn ?? '');
-  }, [patternColumn]);
 
   const [isLive, setIsLive] = useQueryState(
     'isLive',
@@ -1102,7 +1097,7 @@ export function DBSearchPage() {
     [sources, lastSelectedSourceId],
   );
 
-  const { control, setValue, reset, handleSubmit, formState } =
+  const { control, setValue, getValues, reset, handleSubmit, formState } =
     useForm<SearchConfigFromSchema>({
       values: {
         select: searchedConfig.select || '',
@@ -1279,8 +1274,6 @@ export function DBSearchPage() {
         });
       },
     )();
-    setPatternColumn(draftPatternColumn || null);
-    // clear query errors
     setQueryErrors({});
   }, [
     handleSubmit,
@@ -1288,9 +1281,31 @@ export function DBSearchPage() {
     displayedTimeInputValue,
     onSearch,
     setQueryErrors,
-    draftPatternColumn,
-    setPatternColumn,
   ]);
+
+  const applyPatternColumn = useCallback(
+    (next: string) => {
+      setPatternColumn(next || null);
+      onSubmit();
+    },
+    [setPatternColumn, onSubmit],
+  );
+
+  const handleViewMatchingEvents = useCallback(
+    (sqlCondition: string) => {
+      const next = nextSearchForPatternMatch({
+        where: getValues('where') ?? '',
+        whereLanguage: getValues('whereLanguage'),
+        filters: getValues('filters') ?? [],
+        sqlCondition,
+      });
+      setValue('where', next.where, { shouldDirty: true });
+      setValue('filters', next.filters, { shouldDirty: true });
+      setAnalysisMode('results');
+      onSubmit();
+    },
+    [getValues, setValue, setAnalysisMode, onSubmit],
+  );
 
   const debouncedSubmit = useDebouncedCallback(onSubmit, 1000);
   const handleSetFilters = useCallback(
@@ -2514,9 +2529,8 @@ export function DBSearchPage() {
                             : (chartConfig.implicitColumnExpression ?? '')
                         }
                         patternColumn={patternColumn}
-                        draftPatternColumn={draftPatternColumn}
-                        onDraftPatternColumnChange={setDraftPatternColumn}
-                        onSubmit={onSubmit}
+                        onApplyPatternColumn={applyPatternColumn}
+                        onViewMatchingEvents={handleViewMatchingEvents}
                         totalCountConfig={histogramTimeChartConfig}
                         totalCountQueryKeyPrefix={QUERY_KEY_PREFIX}
                       />

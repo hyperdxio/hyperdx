@@ -115,6 +115,7 @@ import {
   TableSearchInput,
   TableSearchMatchIndicator,
 } from './DBTable/TableSearchInput';
+import { PatternTemplate } from './Patterns/PatternTemplate';
 import { SQLPreview } from './ChartSQLPreview';
 import { CsvExportButton } from './CsvExportButton';
 import { RowSidePanelContext } from './DBRowSidePanel';
@@ -635,11 +636,15 @@ export const RawLogTable = memo(
                 tableSearch.matchIndices[tableSearch.currentMatchIndex] ===
                   info.row.index;
 
-              const displayValue = tableSearch.searchQuery
-                ? highlightText(truncatedStrValue, tableSearch.searchQuery, {
-                    isCurrentMatch,
-                  })
-                : truncatedStrValue;
+              const displayValue = tableSearch.searchQuery ? (
+                highlightText(truncatedStrValue, tableSearch.searchQuery, {
+                  isCurrentMatch,
+                })
+              ) : column === 'pattern' ? (
+                <PatternTemplate text={truncatedStrValue} />
+              ) : (
+                truncatedStrValue
+              );
 
               return (
                 <span
@@ -1835,7 +1840,7 @@ function DBSqlRowTableComponent({
           <Box mah={100} style={{ overflow: 'auto' }}>
             {noisyPatterns.data?.map(p => (
               <Text fz="xs" key={p.id}>
-                {p.pattern}
+                <PatternTemplate text={p.pattern} />
               </Text>
             ))}
             {noisyPatternIds.length === 0 && (

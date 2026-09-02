@@ -1,0 +1,10 @@
+.slot {
+  display: inline;
+  white-space: nowrap;
+  margin: 0 0.1em;
+  padding: 0 0.2em;
+  border-radius: 3px;
+  background: var(--color-bg-info-subtle);
+  color: var(--color-text-info);
+  font-weight: 600;
+}
