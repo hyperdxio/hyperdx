@@ -50,7 +50,7 @@ export const OPAMP_PORT = Number.parseInt(env.OPAMP_PORT as string);
 // longest timeout the product lets a team configure.
 export const CLICKHOUSE_PROXY_DEFAULT_MAX_EXECUTION_TIME_SECONDS =
   Number.parseInt(
-    env.CLICKHOUSE_PROXY_DEFAULT_MAX_EXECUTION_TIME_SECONDS ?? '60',
+    env.CLICKHOUSE_PROXY_DEFAULT_MAX_EXECUTION_TIME_SECONDS ?? '180',
   );
 export const CLICKHOUSE_PROXY_MAX_EXECUTION_TIME_SECONDS = Number.parseInt(
   env.CLICKHOUSE_PROXY_MAX_EXECUTION_TIME_SECONDS ?? '800',

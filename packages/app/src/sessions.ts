@@ -283,9 +283,10 @@ export function useSessions(
 class TimeoutError extends Error {}
 
 // Replay streams page through up to MAX_LIMIT events and legitimately run for
-// minutes, so they opt out of DEFAULT_QUERY_TIMEOUT. Shared by the ClickHouse
-// max_execution_time and the client-side abort so the server can't cut the
-// query off before the consumer stops waiting for it.
+// minutes. Pinned here rather than inherited from DEFAULT_QUERY_TIMEOUT (which
+// it currently matches) because it is shared with the client-side abort below:
+// the two must move together, or the server cuts the query off before the
+// consumer stops waiting for it.
 const SESSION_FETCH_TIMEOUT_SECONDS = 180;
 
 /**

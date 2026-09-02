@@ -2,7 +2,11 @@ import type { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist
 
 // Limit defaults
 export const DEFAULT_SEARCH_ROW_LIMIT = 200;
-export const DEFAULT_QUERY_TIMEOUT = 60; // max_execution_time, seconds
+// max_execution_time, seconds. Applied to any query whose team has no override,
+// and the ceiling a client hits when it asks for nothing. Kept generous because
+// a query that fails is worse for the user than one that is slow; the protection
+// against a slot-hogging client is the proxy-side bound, not this number.
+export const DEFAULT_QUERY_TIMEOUT = 180;
 export const DEFAULT_FILTER_KEYS_FETCH_LIMIT = 100;
 export const DEFAULT_SERIES_LIMIT = 100;
 
