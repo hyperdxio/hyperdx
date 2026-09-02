@@ -912,14 +912,22 @@ export type DashboardVariableDeclaration = Pick<
   'name' | 'expression'
 >;
 
+/** Minimal projection of fields necessary to extract the variables a dashboard declares. */
+export type FilterForVariableDeclaration = {
+  name: string;
+  expression?: string;
+  variableName?: string;
+  isVariableEnabled?: boolean;
+};
+
 /**
  * The variable-enabled filters a dashboard declares, paired with the name each
  * one answers to, in filter order.
  */
-export function getDashboardVariableFilters(
-  filters: DashboardFilter[] | undefined,
-): { filter: DashboardFilter; name: string }[] {
-  const results: { filter: DashboardFilter; name: string }[] = [];
+export function getDashboardVariableFilters<
+  T extends FilterForVariableDeclaration,
+>(filters: T[] | undefined): { filter: T; name: string }[] {
+  const results: { filter: T; name: string }[] = [];
   const takenNames = new Set<string>();
 
   for (const filter of filters ?? []) {
@@ -936,33 +944,14 @@ export function getDashboardVariableFilters(
   return results;
 }
 
-/** Minimal projection of fields necessary to extract the variables a dashboard declares. */
-export type FilterForVariableDeclaration = {
-  name: string;
-  expression?: string;
-  variableName?: string;
-  isVariableEnabled?: boolean;
-};
-
 /** The variables a dashboard declares, in filter order. */
 export function getDashboardVariableDeclarations(
   filters: FilterForVariableDeclaration[] | undefined,
 ): DashboardVariableDeclaration[] {
-  const declarations: DashboardVariableDeclaration[] = [];
-  const takenNames = new Set<string>();
-
-  for (const filter of filters ?? []) {
-    if (!isFilterVariableEnabled(filter)) continue;
-
-    // There shouldn't be any duplicate names, but if there are then the first one wins.
-    const name = getFilterVariableName(filter);
-    if (!name || takenNames.has(name)) continue;
-    takenNames.add(name);
-
-    declarations.push({ name, expression: filter.expression });
-  }
-
-  return declarations;
+  return getDashboardVariableFilters(filters).map(({ filter, name }) => ({
+    name,
+    expression: filter.expression,
+  }));
 }
 
 export type ResolvedFilterValuesQuery = {

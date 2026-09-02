@@ -1904,6 +1904,7 @@ export const DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED = new RegExp(
   `^${DASHBOARD_VARIABLE_NAME_PATTERN}$`,
 );
 export const DASHBOARD_VARIABLE_NAME_MAX_LENGTH = 64;
+export const DASHBOARD_STATIC_FILTER_MAX_OPTIONS = 1000;
 
 /** Fields carried by every dashboard filter, whatever its type. */
 const dashboardFilterBaseSchema = z.object({
@@ -1956,7 +1957,10 @@ export const QueryExpressionDashboardFilterSchema =
 export const StaticListDashboardFilterSchema = dashboardFilterBaseSchema.extend(
   {
     type: z.literal(DashboardFilterType.enum.STATIC_LIST),
-    options: z.array(z.string().min(1).max(10000)).min(1).max(1000),
+    options: z
+      .array(z.string().min(1).max(10000))
+      .min(1)
+      .max(DASHBOARD_STATIC_FILTER_MAX_OPTIONS),
     isBroadcastEnabled: z.literal(false),
     isVariableEnabled: z.literal(true),
   },
