@@ -4012,6 +4012,7 @@
           "orderByExpression": {
             "type": "string",
             "description": "Custom ORDER BY expression that overrides the default ordering. Leave empty to use the auto-detected default.",
+            "nullable": true,
             "example": "Timestamp DESC"
           },
           "metricSourceId": {
@@ -4267,6 +4268,7 @@
           "sampleRateExpression": {
             "type": "string",
             "description": "Column or expression for upstream sampling weight (1/N). When set, aggregations (count, avg, sum, quantile) are corrected for sampling. Percentiles use quantileTDigestWeighted, which is an approximation. Leave empty if spans are not sampled.",
+            "nullable": true,
             "example": "SampleRate"
           },
           "resourceAttributesExpression": {
@@ -4290,6 +4292,7 @@
           "spanLinksValueExpression": {
             "type": "string",
             "description": "Expression to extract span links. Used to capture links from a span to spans in other traces. Expected to be Nested ( TraceId String, SpanId String, TraceState String, Attributes Map(LowCardinality(String), String) )",
+            "nullable": true,
             "example": "Links"
           },
           "implicitColumnExpression": {
@@ -4334,11 +4337,13 @@
           "displayedTimestampValueExpression": {
             "type": "string",
             "description": "This DateTime column is used to display and order search results.",
+            "nullable": true,
             "example": "Timestamp"
           },
           "orderByExpression": {
             "type": "string",
             "description": "Custom ORDER BY expression that overrides the default ordering. Leave empty to use the auto-detected default.",
+            "nullable": true,
             "example": "Timestamp DESC"
           },
           "materializedViews": {
@@ -4527,6 +4532,7 @@
           "resourceAttributesExpression": {
             "type": "string",
             "description": "Expression to extract resource-level attributes.",
+            "nullable": true,
             "example": "ResourceAttributes"
           }
         }
