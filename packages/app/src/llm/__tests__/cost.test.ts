@@ -1,0 +1,307 @@
+import {
+  computeCostUsd,
+  findModelPrice,
+  generateCostSqlExpression,
+  resolveSpanCostUsd,
+} from '@/llm/lib/cost';
+import { MODEL_PRICES } from '@/llm/lib/modelPrices';
+
+describe('MODEL_PRICES catalog', () => {
+  it('contains valid, compilable regex patterns', () => {
+    for (const price of MODEL_PRICES) {
+      expect(() => new RegExp(price.pattern, 'i')).not.toThrow();
+      expect(price.inputPricePerToken).toBeGreaterThan(0);
+      expect(price.outputPricePerToken).toBeGreaterThan(0);
+    }
+  });
+
+  it('matches provider-prefixed and vendor-flavored model ids', () => {
+    expect(findModelPrice('gpt-4o')?.name).toBe('gpt-4o');
+    expect(findModelPrice('openai/gpt-4o')?.name).toBe('gpt-4o');
+    expect(findModelPrice('gpt-4o-2024-08-06')?.name).toBe('gpt-4o');
+    expect(findModelPrice('gpt-4o-2024-05-13')?.name).toBe('gpt-4o-2024-05-13');
+    expect(findModelPrice('GPT-4o-mini')?.name).toBe('gpt-4o-mini');
+    expect(findModelPrice('claude-sonnet-4-5-20250929')?.name).toBe(
+      'claude-sonnet-4-x',
+    );
+    expect(
+      findModelPrice('us.anthropic.claude-sonnet-4-5-20250929-v1:0')?.name,
+    ).toBe('claude-sonnet-4-x');
+    expect(findModelPrice('anthropic/claude-opus-4-1')?.name).toBe(
+      'claude-opus-4',
+    );
+    // Bracket variants (1M context window ids from Claude Code).
+    expect(findModelPrice('claude-opus-5[1m]')?.name).toBe('claude-opus-5');
+    expect(findModelPrice('claude-sonnet-4-5-20250929[1m]')?.name).toBe(
+      'claude-sonnet-4-x',
+    );
+    expect(findModelPrice('gemini-2.5-flash')?.name).toBe('gemini-2.5-flash');
+    expect(findModelPrice('googleai/gemini-2.5-pro')?.name).toBe(
+      'gemini-2.5-pro',
+    );
+  });
+
+  it('matches the expanded provider families across id flavors', () => {
+    // xAI (bare + OpenRouter-style ids)
+    expect(findModelPrice('grok-4')?.name).toBe('grok-4');
+    expect(findModelPrice('x-ai/grok-4-fast-reasoning')?.name).toBe(
+      'grok-4-fast',
+    );
+    expect(findModelPrice('grok-code-fast-1')?.name).toBe('grok-code-fast');
+    // DeepSeek (bare, OpenRouter, HF, Bedrock)
+    expect(findModelPrice('deepseek-chat')?.name).toBe('deepseek-chat');
+    expect(findModelPrice('deepseek/deepseek-reasoner')?.name).toBe(
+      'deepseek-reasoner',
+    );
+    expect(findModelPrice('deepseek-ai/DeepSeek-V3.2')?.name).toBe(
+      'deepseek-chat',
+    );
+    expect(findModelPrice('us.deepseek.r1-v1:0')?.name).toBe(
+      'deepseek-reasoner',
+    );
+    // Mistral
+    expect(findModelPrice('mistral-large-latest')?.name).toBe('mistral-large');
+    expect(findModelPrice('mistralai/mistral-small-2503')?.name).toBe(
+      'mistral-small',
+    );
+    expect(findModelPrice('codestral-2508')?.name).toBe('codestral');
+    // Cohere (bare + Bedrock)
+    expect(findModelPrice('command-a-03-2025')?.name).toBe('command-a');
+    expect(findModelPrice('cohere.command-r-plus-v1:0')?.name).toBe(
+      'command-r-plus',
+    );
+    expect(findModelPrice('command-r-08-2024')?.name).toBe('command-r');
+    // Qwen
+    expect(findModelPrice('qwen3-max')?.name).toBe('qwen3-max');
+    expect(findModelPrice('qwen/qwen-plus-latest')?.name).toBe('qwen-plus');
+    // Meta Llama (Groq, OpenRouter, Bedrock id flavors)
+    expect(findModelPrice('llama-3.3-70b-versatile')?.name).toBe(
+      'llama-3.3-70b',
+    );
+    expect(findModelPrice('meta-llama/llama-4-maverick')?.name).toBe(
+      'llama-4-maverick',
+    );
+    expect(findModelPrice('meta.llama3-3-70b-instruct-v1:0')?.name).toBe(
+      'llama-3.3-70b',
+    );
+    // Amazon Nova (Bedrock + cross-region)
+    expect(findModelPrice('amazon.nova-pro-v1:0')?.name).toBe('nova-pro');
+    expect(findModelPrice('us.amazon.nova-lite-v1:0')?.name).toBe('nova-lite');
+  });
+
+  it('keeps more specific expanded variants ahead of family entries', () => {
+    expect(findModelPrice('command-r-plus')?.name).toBe('command-r-plus');
+    expect(findModelPrice('command-r7b-12-2024')?.name).toBe('command-r7b');
+    expect(findModelPrice('grok-3-mini')?.name).toBe('grok-3-mini');
+    expect(findModelPrice('magistral-medium-latest')?.name).toBe(
+      'magistral-medium',
+    );
+    expect(findModelPrice('ministral-8b-latest')?.name).toBe('ministral-8b');
+  });
+
+  it('returns undefined for unknown models', () => {
+    expect(findModelPrice('my-custom-finetune')).toBeUndefined();
+    expect(findModelPrice('')).toBeUndefined();
+  });
+
+  it('does not let family patterns swallow more specific variants', () => {
+    // mini/nano variants must not match the base family entry.
+    expect(findModelPrice('gpt-5-mini')?.name).toBe('gpt-5-mini');
+    expect(findModelPrice('gpt-5')?.name).toBe('gpt-5');
+    expect(findModelPrice('o1-mini')?.name).toBe('o1-mini');
+    expect(findModelPrice('o3-mini')?.name).toBe('o3-mini');
+  });
+});
+
+describe('computeCostUsd', () => {
+  it('computes input+output cost for a known model', () => {
+    // gpt-4o: $2.5/M input, $10/M output
+    const cost = computeCostUsd(
+      { inputTokens: 1_000_000, outputTokens: 100_000 },
+      'gpt-4o',
+    );
+    expect(cost).toBeCloseTo(2.5 + 1.0, 10);
+  });
+
+  it('bills cached input tokens at the cached rate', () => {
+    // gpt-4o cached input: $1.25/M
+    const cost = computeCostUsd(
+      {
+        inputTokens: 1_000_000,
+        cachedInputTokens: 400_000,
+        outputTokens: 0,
+      },
+      'gpt-4o',
+    );
+    expect(cost).toBeCloseTo(0.6 * 2.5 + 0.4 * 1.25, 10);
+  });
+
+  it('handles exclusive-style usage where cache counts exceed input', () => {
+    // Anthropic/OpenInference-style: inputTokens excludes cache reads, so
+    // cached > input means both must be billed (input at full rate).
+    const cost = computeCostUsd(
+      { inputTokens: 100, cachedInputTokens: 500, outputTokens: 0 },
+      'gpt-4o',
+    );
+    expect(cost).toBeCloseTo(100 * 2.5e-6 + 500 * 1.25e-6, 12);
+  });
+
+  it('bills cache writes at the premium rate (inclusive-style input)', () => {
+    // Verified against opencode's own cost_usd: claude-fable-5 at $10/M
+    // input, $50/M output, $1/M cache read, $12.5/M cache write. Vercel AI
+    // SDK style: inputTokens includes reads + writes.
+    const cost = computeCostUsd(
+      {
+        inputTokens: 650_361,
+        outputTokens: 369,
+        cachedInputTokens: 649_452,
+        cacheWriteInputTokens: 907,
+      },
+      'claude-fable-5',
+    );
+    expect(cost).toBeCloseTo(0.6792595, 7);
+  });
+
+  it('bills cache writes at the premium rate (exclusive-style input)', () => {
+    // OpenInference style: llm.token_count.prompt excludes reads + writes.
+    const cost = computeCostUsd(
+      {
+        inputTokens: 1,
+        outputTokens: 632,
+        cachedInputTokens: 0,
+        cacheWriteInputTokens: 649_452,
+      },
+      'claude-fable-5',
+    );
+    expect(cost).toBeCloseTo(8.14976, 7);
+  });
+
+  it('returns undefined for unknown models or empty usage', () => {
+    expect(
+      computeCostUsd({ inputTokens: 100, outputTokens: 10 }, 'mystery'),
+    ).toBeUndefined();
+    expect(computeCostUsd({}, 'gpt-4o')).toBeUndefined();
+    expect(computeCostUsd({ inputTokens: 10 }, undefined)).toBeUndefined();
+  });
+});
+
+describe('resolveSpanCostUsd', () => {
+  it('prefers the instrumentation-provided cost', () => {
+    const resolved = resolveSpanCostUsd({
+      model: 'gpt-4o',
+      usage: { inputTokens: 1000, outputTokens: 100 },
+      providedCostUsd: 0.42,
+      params: {},
+    });
+    expect(resolved).toEqual({ costUsd: 0.42, estimated: false });
+  });
+
+  it('falls back to catalog estimation', () => {
+    const resolved = resolveSpanCostUsd({
+      model: 'gpt-4o',
+      usage: { inputTokens: 1_000_000, outputTokens: 0 },
+      params: {},
+    });
+    expect(resolved.estimated).toBe(true);
+    expect(resolved.costUsd).toBeCloseTo(2.5, 10);
+  });
+});
+
+describe('generateCostSqlExpression', () => {
+  const exprs = {
+    modelExpr: 'model',
+    uncachedInputTokensExpr: 'uncached_tok',
+    cachedInputTokensExpr: 'cached_tok',
+    cacheWriteInputTokensExpr: 'cache_write_tok',
+    outputTokensExpr: 'out_tok',
+  };
+
+  it('multiplies each token term once by a rate-only multiIf', () => {
+    const sql = generateCostSqlExpression({ ...exprs, maxModels: 2 });
+    expect(sql).toContain("match(model, '(?i)");
+    expect(sql).toContain('(uncached_tok) * multiIf(');
+    expect(sql).toContain('(cached_tok) * multiIf(');
+    expect(sql).toContain('(cache_write_tok) * multiIf(');
+    expect(sql).toContain('(out_tok) * multiIf(');
+    // Token expressions appear exactly once each — embedding them inside
+    // every model branch multiplies their size by the catalog and can blow
+    // past ClickHouse's max_query_size (regression).
+    expect(sql.match(/uncached_tok/g)).toHaveLength(1);
+    // Bounded: exactly 2 branches per rate lookup.
+    expect(sql.match(/match\(/g)).toHaveLength(2 * 4);
+  });
+
+  it('prices cache reads and writes at their catalog rates', () => {
+    // claude-fable-5: $10/M input, $50/M output, $1/M read, $12.5/M write.
+    const fableIndex = MODEL_PRICES.findIndex(p => p.name === 'claude-fable-5');
+    const sql = generateCostSqlExpression({
+      ...exprs,
+      maxModels: fableIndex + 1,
+    });
+    const rates = [
+      ...sql.matchAll(
+        /match\(model, '\(\?i\)[^']*claude-fable-5[^']*'\), ([\d.e-]+)/g,
+      ),
+    ].map(m => Number(m[1]));
+    expect(rates).toEqual([10e-6, 1e-6, 12.5e-6, 50e-6]);
+  });
+
+  it('wraps with provided-cost precedence when given', () => {
+    const sql = generateCostSqlExpression({
+      ...exprs,
+      providedCostExpr: 'provided_cost',
+      maxModels: 1,
+    });
+    expect(sql.startsWith('if((provided_cost) > 0, provided_cost,')).toBe(true);
+  });
+
+  it('contains no unescaped single quotes inside patterns', () => {
+    const sql = generateCostSqlExpression(exprs);
+    // Sanity: balanced quotes (every pattern is quoted once).
+    expect((sql.match(/'/g) ?? []).length % 2).toBe(0);
+  });
+
+  it('regex patterns survive ClickHouse string-literal decoding', () => {
+    // Simulate ClickHouse's literal unescaping: recognized escapes decode
+    // to control chars, \\ -> \, and unrecognized \c keeps its backslash
+    // (see ReadHelpers parseComplexEscapeSequence). String assertions alone
+    // can't catch escaping bugs, so round-trip every embedded pattern and
+    // re-match the catalog's own test cases with a JS RegExp.
+    const RECOGNIZED: Record<string, string> = {
+      b: '\b',
+      f: '\f',
+      r: '\r',
+      n: '\n',
+      t: '\t',
+      '0': '\0',
+      a: '\x07',
+      v: '\v',
+      '\\': '\\',
+      "'": "'",
+    };
+    const clickhouseUnescape = (literal: string) =>
+      literal.replace(/\\(.)/g, (_, c: string) =>
+        c in RECOGNIZED ? RECOGNIZED[c] : `\\${c}`,
+      );
+
+    const sql = generateCostSqlExpression(exprs);
+    const literals = [...sql.matchAll(/match\(model, '((?:[^'\\]|\\.)*)'\)/g)];
+    expect(literals.length).toBe(MODEL_PRICES.length * 4);
+
+    const decodedPatterns = new Set(
+      literals.map(m => clickhouseUnescape(m[1])),
+    );
+    // Every decoded pattern must equal a catalog pattern (with the (?i)
+    // prefix) — i.e. the SQL round-trip is lossless.
+    for (const price of MODEL_PRICES.slice(0, 25)) {
+      expect(decodedPatterns.has(`(?i)${price.pattern}`)).toBe(true);
+    }
+    // And dated ids still match after the round-trip (the failure mode of
+    // under-escaped \d / \. patterns).
+    const decoded = [...decodedPatterns].find(p => p.includes('gpt-5\\.1('));
+    expect(decoded).toBeDefined();
+    const re = new RegExp(decoded!.replace('(?i)', ''), 'i');
+    expect(re.test('gpt-5.1-2025-11-13')).toBe(true);
+    expect(re.test('gpt-5x1-2025-11-13')).toBe(false);
+  });
+});

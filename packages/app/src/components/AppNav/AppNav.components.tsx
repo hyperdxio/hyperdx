@@ -16,7 +16,9 @@ import { useDisclosure } from '@mantine/hooks';
 import {
   IconBook,
   IconBrandDiscord,
+  IconBug,
   IconBulb,
+  IconCheck,
   IconChevronDown,
   IconChevronRight,
   IconChevronUp,
@@ -27,6 +29,7 @@ import {
 } from '@tabler/icons-react';
 
 import { IS_LOCAL_MODE } from '@/config';
+import { copyTextToClipboard } from '@/utils/clipboard';
 
 import { HelpSparkle } from './HelpSparkle';
 import { KeyboardShortcutsModal } from './KeyboardShortcutsModal';
@@ -181,6 +184,32 @@ export const AppNavUserMenu = ({
   );
 };
 
+const AppNavVersionItem = ({ version }: { version?: string }) => {
+  const [copied, setCopied] = React.useState(false);
+
+  return (
+    <Menu.Item
+      data-testid="copy-debug-info-menu-item"
+      closeMenuOnClick={false}
+      leftSection={copied ? <IconCheck size={16} /> : <IconBug size={16} />}
+      onClick={async () => {
+        // window.hdx (installed in _app.tsx) builds the full report; copy via
+        // the shared util so the insecure-context textarea fallback applies and
+        // we get a real success boolean back. Only flip to "Copied" when the
+        // clipboard actually took the text.
+        const text = window.hdx?.report() ?? `frontend: ${version ?? 'dev'}`;
+        const ok = await copyTextToClipboard(text);
+        if (ok) {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        }
+      }}
+    >
+      {copied ? 'Copied debug info' : 'Copy debug info'}
+    </Menu.Item>
+  );
+};
+
 export const AppNavHelpMenu = ({ version }: { version?: string }) => {
   const { isCollapsed } = React.use(AppNavContext);
   const [
@@ -279,6 +308,10 @@ export const AppNavHelpMenu = ({ version }: { version?: string }) => {
               openWhatsNewDrawer();
             }}
           />
+
+          <Menu.Divider />
+
+          <AppNavVersionItem version={version} />
         </Menu.Dropdown>
       </Menu>
       <KeyboardShortcutsModal

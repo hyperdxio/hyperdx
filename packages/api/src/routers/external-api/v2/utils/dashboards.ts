@@ -7,9 +7,11 @@ import {
   validateDashboardContainersStructure,
   validateDashboardFilterFieldGating,
   validateDashboardFilterModes,
+  validateDashboardFilterOptionUniqueness,
   validateDashboardFilterVariableNames,
   validateDashboardTileContainerRefs,
 } from '@hyperdx/common-utils/dist/dashboardValidation';
+import { isQueryExpressionFilter } from '@hyperdx/common-utils/dist/filters';
 import {
   isBuilderSavedChartConfig,
   isHeatmapCompatibleSource,
@@ -1022,7 +1024,7 @@ function getMissingSources(
 
   if (filters?.length) {
     for (const filter of filters) {
-      if ('sourceId' in filter) {
+      if (isQueryExpressionFilter(filter)) {
         sourceIds.add(filter.sourceId);
       }
     }
@@ -1573,6 +1575,8 @@ function buildDashboardBodySchema(filterSchema: z.ZodTypeAny): z.ZodEffects<
       validateDashboardFilterVariableNames(data.filters ?? [], ctx);
       validateDashboardFilterModes(data.filters ?? [], ctx);
       validateDashboardFilterFieldGating(data.filters ?? [], ctx);
+
+      validateDashboardFilterOptionUniqueness(data.filters ?? [], ctx);
     });
 }
 

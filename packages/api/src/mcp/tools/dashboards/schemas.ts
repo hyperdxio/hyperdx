@@ -1152,7 +1152,8 @@ const mcpDashboardFilterSchema = z
           'one. On CREATE (no top-level `id` on the dashboard call), filter `id` may ' +
           'be omitted and one will be generated server-side.',
       ),
-    type: DashboardFilterType.describe(
+    // TODO: Add static value filter type when variables are supported in MCP
+    type: DashboardFilterType.extract(['QUERY_EXPRESSION']).describe(
       'Filter type. Currently only "QUERY_EXPRESSION" is supported.',
     ),
     name: z

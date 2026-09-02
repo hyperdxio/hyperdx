@@ -1267,8 +1267,15 @@ describe('utils', () => {
           source: 'Logs',
         },
       ]);
-      expect(template.filters?.[2].appliesToSourceIds).toBeUndefined();
-      expect(template.filters?.[3].appliesToSourceIds).toBeUndefined();
+      // Explicitly absent rather than an empty array, which the import would
+      // read as "matches no tiles". Both are queried filters, pinned above.
+      for (const index of [2, 3]) {
+        const filter = template.filters![index];
+        expect(filter.type).toBe('QUERY_EXPRESSION');
+        expect(
+          filter.type === 'QUERY_EXPRESSION' && filter.appliesToSourceIds,
+        ).toBeUndefined();
+      }
     });
 
     // Variable settings are dashboard-local — unlike `source` and
@@ -1322,6 +1329,74 @@ describe('utils', () => {
           variableName: 'Service_Name',
         },
       ]);
+    });
+
+    // A `STATIC_LIST` filter references nothing in the workspace at all, so it
+    // must survive export untouched — in particular `source` must stay absent
+    // rather than being stamped with the empty string the name lookup returns
+    // for an unresolvable id, which the re-import would then reject.
+    it('should export a static-list filter with no source', () => {
+      const sources: TSource[] = [
+        {
+          id: 'source1',
+          name: 'Logs',
+          connection: 'connection1',
+          kind: SourceKind.Log,
+          from: { databaseName: 'db1', tableName: 'logs_table' },
+          timestampValueExpression: 'Timestamp',
+          defaultTableSelectExpression: '',
+        },
+      ];
+
+      const staticFilter = {
+        id: 'filter-static',
+        type: 'STATIC_LIST' as const,
+        name: 'Environment',
+        options: ['prod', 'staging', 'dev'],
+        isBroadcastEnabled: false as const,
+        isVariableEnabled: true as const,
+        variableName: 'env',
+      };
+
+      const dashboard: z.infer<typeof DashboardSchema> = {
+        id: 'dashboard1',
+        name: 'Static Filter Dashboard',
+        tags: [],
+        tiles: [],
+        filters: [
+          staticFilter,
+          {
+            id: 'filter-queried',
+            type: 'QUERY_EXPRESSION',
+            name: 'Service',
+            expression: 'ServiceName',
+            source: 'source1',
+          },
+        ],
+      };
+
+      const template = convertToDashboardTemplate(dashboard, sources);
+
+      expect(template.filters).toEqual([
+        staticFilter,
+        {
+          id: 'filter-queried',
+          type: 'QUERY_EXPRESSION',
+          name: 'Service',
+          expression: 'ServiceName',
+          source: 'Logs',
+        },
+      ]);
+      // No `source` key at all, rather than one holding the empty string the
+      // name lookup returns for an unresolvable id.
+      expect('source' in template.filters![0]).toBe(false);
+
+      // And back: the import path carries the filter through verbatim, so a
+      // round-trip through the template format is lossless.
+      expect(
+        convertToDashboardDocument({ ...template, filters: template.filters })
+          .filters?.[0],
+      ).toEqual(staticFilter);
     });
 
     it('should convert a dashboard without filters to a dashboard template', () => {

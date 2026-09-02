@@ -787,6 +787,8 @@ export function validateDashboardFilterQueries(
   ).map(declaration => ({ ...declaration, values: [] }));
 
   for (const filter of filters) {
+    // A static filter has no values query to validate.
+    if (isStaticListFilter(filter)) continue;
     const where = filter.where ?? '';
     if (!where.trim()) continue;
     const language = filter.whereLanguage ?? 'sql';
@@ -844,6 +846,42 @@ export function isFilterVariableEnabled(filter: {
   return filter.isVariableEnabled === true;
 }
 
+/** The discriminant every dashboard-filter shape carries. */
+export type DashboardFilterKind = DashboardFilter['type'];
+
+/** Type guard for QUERY_EXPRESSION type filters. */
+export function isQueryExpressionFilter<
+  T extends { type: DashboardFilterKind },
+>(filter: T): filter is Extract<T, { type: 'QUERY_EXPRESSION' }> {
+  return filter.type === 'QUERY_EXPRESSION';
+}
+
+/** Type guard for STATIC_LIST type filters. */
+export function isStaticListFilter<T extends { type: DashboardFilterKind }>(
+  filter: T,
+): filter is Extract<T, { type: 'STATIC_LIST' }> {
+  return filter.type === 'STATIC_LIST';
+}
+
+/** The SQL expression associated with the filter, if any. */
+export function getFilterExpression(
+  filter: DashboardFilter,
+): string | undefined {
+  return isQueryExpressionFilter(filter) ? filter.expression : undefined;
+}
+
+/** What the filter broadcasts, or undefined when it cannot broadcast. */
+export function getFilterBroadcastTarget(
+  filter: DashboardFilter,
+): { expression: string; appliesToSourceIds?: string[] } | undefined {
+  if (!isFilterBroadcastEnabled(filter) || isStaticListFilter(filter))
+    return undefined;
+  return {
+    expression: filter.expression,
+    appliesToSourceIds: filter.appliesToSourceIds,
+  };
+}
+
 /**
  * Whether a filter does anything at all with the value it collects — broadcast
  * it as a condition, expose it as `$variableName`, or both.
@@ -899,11 +937,12 @@ export function getDashboardVariableFilters(
 }
 
 /** Minimal projection of fields necessary to extract the variables a dashboard declares. */
-export type FilterForVariableDeclaration = Pick<
-  DashboardFilter,
-  'name' | 'expression'
-> &
-  Partial<Pick<DashboardFilter, 'variableName' | 'isVariableEnabled'>>;
+export type FilterForVariableDeclaration = {
+  name: string;
+  expression?: string;
+  variableName?: string;
+  isVariableEnabled?: boolean;
+};
 
 /** The variables a dashboard declares, in filter order. */
 export function getDashboardVariableDeclarations(

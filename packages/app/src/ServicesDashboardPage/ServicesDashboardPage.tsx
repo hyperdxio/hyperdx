@@ -377,6 +377,7 @@ function ServicesDashboardPage() {
                   variant="secondary"
                   onClick={() => setShowFiltersModal(true)}
                   size="lg"
+                  data-testid="edit-filters-button"
                 >
                   <IconFilterEdit size={18} />
                 </ActionIcon>
