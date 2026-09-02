@@ -29,6 +29,7 @@ import HyperDX from '@hyperdx/browser';
 import {
   ClickHouseQueryError,
   ColumnMeta,
+  isQueryTimeoutError,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { buildSearchChartConfig } from '@hyperdx/common-utils/dist/core/searchChartConfig';
@@ -48,6 +49,7 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
+  Alert,
   Anchor,
   Box,
   Breadcrumbs,
@@ -2601,6 +2603,18 @@ export function DBSearchPage() {
                   {hasQueryError && queryError ? (
                     <>
                       <div className="h-100 w-100 px-4 mt-4 align-items-center justify-content-center text-muted overflow-auto">
+                        {isQueryTimeoutError(queryError) && (
+                          <Alert
+                            variant="warning"
+                            title="Query timed out"
+                            mb="xl"
+                          >
+                            The query ran longer than this team&apos;s query
+                            timeout and was stopped by ClickHouse. Narrow the
+                            time range or the search, or raise the query timeout
+                            in team settings.
+                          </Alert>
+                        )}
                         {whereSuggestions && whereSuggestions.length > 0 && (
                           <Box mb="xl">
                             <Text size="lg">

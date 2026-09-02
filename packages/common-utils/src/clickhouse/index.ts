@@ -329,6 +329,17 @@ export function isMissingColumnError(error: unknown): boolean {
 }
 
 /**
+ * Heuristically detects whether a query error is a ClickHouse execution-time
+ * timeout (`max_execution_time`). Worth separating from a malformed query: the
+ * user's next step is to narrow the time range or raise the team's query
+ * timeout, which a bare SQL error does not suggest.
+ */
+export function isQueryTimeoutError(error: unknown): boolean {
+  const msg = error instanceof Error ? error.message : String(error ?? '');
+  return /TIMEOUT_EXCEEDED|Timeout exceeded|max_execution_time/i.test(msg);
+}
+
+/**
  * Returns columns referenced in given expression, where the expression is a comma-separated list of SQL expressions
  * E.g. "id, toStartOfInterval(timestamp, toIntervalDay(3)), user_id, json.a.b".
  */
@@ -494,9 +505,14 @@ export abstract class BaseClickhouseClient {
     if (clickhouse_settings?.max_rows_to_read && this.maxRowReadOnly) {
       delete clickhouse_settings['max_rows_to_read'];
     }
+    // 0 is a configurable "no limit", so it is sent explicitly rather than
+    // omitted: an absent setting is indistinguishable from a client that never
+    // set one, and a proxy has to assume the worst about that case. Sending 0
+    // keeps the intent visible to whatever enforces the bound.
     if (
       clickhouse_settings?.max_execution_time === undefined &&
-      (this.queryTimeout || 0) > 0
+      this.queryTimeout != null &&
+      this.queryTimeout >= 0
     ) {
       clickhouse_settings.max_execution_time = this.queryTimeout;
     }
