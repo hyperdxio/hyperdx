@@ -5,9 +5,9 @@
     "eslint-disable": 32
   },
   "app": {
-    "as-any": 215,
+    "as-any": 206,
     "ts-ignore": 0,
-    "eslint-disable": 146
+    "eslint-disable": 143
   },
   "cli": {
     "as-any": 0,
