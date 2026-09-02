@@ -273,6 +273,29 @@ describe('prometheus router', () => {
       expect(res.headers['x-content-type-options']).toBe('nosniff');
     });
 
+    it('returns 400 for a scheme-less connection host instead of 502', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedPrometheusConnection(team._id, 'prometheus:9090');
+
+      const res = await agent
+        .get('/v1/prometheus/query_range')
+        .query({
+          query: 'up',
+          start: '1700000000',
+          end: '1700000060',
+          step: '15s',
+          connectionId: conn._id.toString(),
+        })
+        .expect(400);
+
+      expect(res.body).toMatchObject({
+        status: 'error',
+        errorType: 'bad_data',
+        error: expect.stringContaining('prometheus:9090'),
+      });
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
     it('proxies to upstream Prometheus when connection isPrometheusEndpoint', async () => {
       const { agent, team } = await getLoggedInAgent(server);
       const conn = await seedPrometheusConnection(team._id);
@@ -365,6 +388,35 @@ describe('prometheus router', () => {
       const requested = new URL(mockFetch.mock.calls[0][0] as string);
       expect(requested.searchParams.get('extra_label')).toBe('namespace=prod');
       expect(requested.searchParams.get('query')).toBe('up');
+    });
+
+    it('lets the request step override a step pinned on the connection host', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedPrometheusConnection(
+        team._id,
+        'http://prom.example.com?step=5m',
+      );
+
+      mockFetch.mockResolvedValueOnce(
+        fakeUpstreamResponse({
+          status: 'success',
+          data: { resultType: 'matrix', result: [] },
+        }),
+      );
+
+      await agent
+        .get('/v1/prometheus/query_range')
+        .query({
+          query: 'up',
+          start: '1700000000',
+          end: '1700000060',
+          step: '15s',
+          connectionId: conn._id.toString(),
+        })
+        .expect(200);
+
+      const requested = new URL(mockFetch.mock.calls[0][0] as string);
+      expect(requested.searchParams.get('step')).toBe('15s');
     });
 
     it('does NOT proxy to Prometheus when connection is not isPrometheusEndpoint', async () => {
@@ -961,6 +1013,35 @@ describe('prometheus router', () => {
       const sentStart = Number(requested.searchParams.get('start'));
       expect(Number(requested.searchParams.get('end'))).toBe(end);
       expect(sentStart).toBeGreaterThan(end - thirtyDays);
+      expect(end - sentStart).toBe(PROMETHEUS_MAX_EXEMPLAR_WINDOW_SEC);
+    });
+
+    it('lets the clamped exemplar window override start/end pinned on the host', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const end = 1700000000;
+      const thirtyDays = 30 * 24 * 60 * 60;
+      const conn = await seedPrometheusConnection(
+        team._id,
+        `http://prom.example.com?start=${end - thirtyDays}&end=${end}`,
+      );
+
+      mockFetch.mockResolvedValueOnce(
+        fakeUpstreamResponse({ status: 'success', data: [] }),
+      );
+
+      await agent
+        .get('/v1/prometheus/query_exemplars')
+        .query({
+          query: 'up',
+          start: String(end - thirtyDays),
+          end: String(end),
+          connectionId: conn._id.toString(),
+        })
+        .expect(200);
+
+      const requested = new URL(mockFetch.mock.calls[0][0] as string);
+      const sentStart = Number(requested.searchParams.get('start'));
+      expect(Number(requested.searchParams.get('end'))).toBe(end);
       expect(end - sentStart).toBe(PROMETHEUS_MAX_EXEMPLAR_WINDOW_SEC);
     });
 

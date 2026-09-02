@@ -323,4 +323,16 @@ describe('joinPrometheusUpstreamUrl', () => {
       joinPrometheusUpstreamUrl('not-a-url', '/api/v1/query_range'),
     ).toThrow();
   });
+
+  // `new URL('prometheus:9090')` succeeds (scheme `prometheus:`, opaque path).
+  // Without the http(s) guard the helper would return the host unchanged and
+  // the proxy would 502 instead of 400.
+  it('throws on a scheme-less host that URL parses as an opaque path', () => {
+    expect(() =>
+      joinPrometheusUpstreamUrl('prometheus:9090', '/api/v1/query_range'),
+    ).toThrow(/http\(s\)/);
+    expect(() =>
+      joinPrometheusUpstreamUrl('localhost:9090', '/api/v1/query_range'),
+    ).toThrow(/http\(s\)/);
+  });
 });

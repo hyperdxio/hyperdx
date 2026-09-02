@@ -199,6 +199,14 @@ export function joinPrometheusUpstreamUrl(
   path: string,
 ): URL {
   const url = new URL(upstreamHost);
+  // `new URL('prometheus:9090')` succeeds with an opaque path (`prometheus:`
+  // scheme). The pathname setter is a no-op there, so without this guard the
+  // helper would return the host unchanged, `fetch` would fail, and the proxy
+  // would 502 / increment query_errors for a user misconfiguration. Same check
+  // as clickhouseProxy.ts.
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new TypeError('Connection host must be http(s)');
+  }
   const basePath = url.pathname.replace(/\/$/, '');
   const suffix = path.startsWith('/') ? path : `/${path}`;
   url.pathname = `${basePath}${suffix}`;
@@ -233,9 +241,15 @@ async function proxyToPrometheus(
     return 400;
   }
   // Params already on the Connection host are operator-pinned (e.g.
-  // `?extra_label=namespace%3Dprod` on a VictoriaMetrics tenant URL). Do not
-  // let the incoming request overwrite them.
-  const hostPinnedKeys = new Set(url.searchParams.keys());
+  // `?extra_label=namespace%3Dprod` on a VictoriaMetrics tenant URL). Skip the
+  // incoming value for those keys rather than appending — including repeatable
+  // ones such as `match[]`. Exception: `start`/`end`/`step` are owned by this
+  // proxy (exemplar window clamp, chart resolution) and still overwrite a host
+  // value so a Connection cannot defeat those bounds.
+  const PROXY_OWNED_PARAM_KEYS = new Set(['start', 'end', 'step']);
+  const hostPinnedKeys = new Set(
+    [...url.searchParams.keys()].filter(k => !PROXY_OWNED_PARAM_KEYS.has(k)),
+  );
   for (const [k, v] of Object.entries(params)) {
     if (['connectionId', 'database', 'table'].includes(k)) continue;
     if (v == null || hostPinnedKeys.has(k)) continue;
