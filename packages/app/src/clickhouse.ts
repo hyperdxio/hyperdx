@@ -25,25 +25,33 @@ const PROXY_CLICKHOUSE_HOST = '/api/clickhouse-proxy';
 export const getClickhouseClient = (
   options: ClickhouseClientOptions = {},
 ): ClickhouseClient => {
+  // `??`, not a spread default: callers pass `{ queryTimeout: undefined }` when
+  // a team has no override, and a spread would let that undefined win — leaving
+  // the query with no max_execution_time and running to the server default.
+  const withTimeout: ClickhouseClientOptions = {
+    ...options,
+    queryTimeout: options.queryTimeout ?? DEFAULT_QUERY_TIMEOUT,
+  };
+
   if (IS_LOCAL_MODE) {
     const localConnections = getLocalConnections();
     if (localConnections.length === 0) {
       console.warn('No local connection found');
       return new ClickhouseClient({
         host: '',
-        ...options,
+        ...withTimeout,
       });
     }
     return new ClickhouseClient({
       host: localConnections[0].host,
       username: localConnections[0].username,
       password: localConnections[0].password,
-      ...options,
+      ...withTimeout,
     });
   }
   return new ClickhouseClient({
     host: PROXY_CLICKHOUSE_HOST,
-    ...options,
+    ...withTimeout,
   });
 };
 
@@ -51,14 +59,13 @@ export const useClickhouseClient = (
   options: ClickhouseClientOptions = {},
 ): ClickhouseClient => {
   const { data: me } = api.useMe();
-  const teamQueryTimeout = me?.team?.queryTimeout;
-  if (teamQueryTimeout !== undefined) {
-    options.queryTimeout = teamQueryTimeout;
-  } else {
-    options.queryTimeout = DEFAULT_QUERY_TIMEOUT;
-  }
 
-  return getClickhouseClient(options);
+  // The team override wins when set; the DEFAULT_QUERY_TIMEOUT fallback now
+  // lives in getClickhouseClient, so passing undefined through is enough.
+  return getClickhouseClient({
+    ...options,
+    queryTimeout: me?.team?.queryTimeout,
+  });
 };
 
 export function useDatabasesDirect(

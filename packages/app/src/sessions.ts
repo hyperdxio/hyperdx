@@ -282,6 +282,12 @@ export function useSessions(
 // we want to use clickhouse-proxy instead
 class TimeoutError extends Error {}
 
+// Replay streams page through up to MAX_LIMIT events and legitimately run for
+// minutes, so they opt out of DEFAULT_QUERY_TIMEOUT. Shared by the ClickHouse
+// max_execution_time and the client-side abort so the server can't cut the
+// query off before the consumer stops waiting for it.
+const SESSION_FETCH_TIMEOUT_SECONDS = 180;
+
 /**
  * Whether an error is the expected rejection of an aborted request —
  * replaced or unmounted rrweb event streams are cancelled on purpose.
@@ -483,7 +489,9 @@ export function useRRWebEventStream(
 
       const format = 'JSONEachRow';
       const fetchPromise = (async () => {
-        const clickhouseClient = getClickhouseClient();
+        const clickhouseClient = getClickhouseClient({
+          queryTimeout: SESSION_FETCH_TIMEOUT_SECONDS,
+        });
         const resultSet = await clickhouseClient.query({
           query: query.sql,
           query_params: query.params,
@@ -543,7 +551,7 @@ export function useRRWebEventStream(
           new Promise((_, reject) => {
             setTimeout(() => {
               reject(new TimeoutError('Timeout'));
-            }, 180 * 1000);
+            }, SESSION_FETCH_TIMEOUT_SECONDS * 1000);
           }),
         ]);
       } catch (e) {
