@@ -200,6 +200,16 @@ describe('convertFormStateToSavedChartConfig', () => {
     expect(result.source).toBe('source-log');
   });
 
+  it('drops the PromQL-only legendTemplate from builder configs', () => {
+    const form: ChartEditorFormState = {
+      displayType: DisplayType.Line,
+      series: [seriesItem],
+      legendTemplate: '{{pod}}',
+    };
+    const result = convertFormStateToSavedChartConfig(form, logSource);
+    expect(result).not.toHaveProperty('legendTemplate');
+  });
+
   it('uses form.select string for Search displayType', () => {
     const form: ChartEditorFormState = {
       displayType: DisplayType.Search,
