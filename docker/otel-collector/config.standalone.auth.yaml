@@ -4,8 +4,14 @@
 extensions:
   bearertokenauth/hyperdx:
     scheme: ""
+    # The extension matches the full Authorization header value exactly, so
+    # list the `Bearer `-prefixed forms that RFC 6750 clients send alongside
+    # the bare token.
     tokens:
       - ${env:OTLP_AUTH_TOKEN}
+      - Bearer ${env:OTLP_AUTH_TOKEN}
+      - bearer ${env:OTLP_AUTH_TOKEN}
+      - BEARER ${env:OTLP_AUTH_TOKEN}
 
 receivers:
   otlp/hyperdx:

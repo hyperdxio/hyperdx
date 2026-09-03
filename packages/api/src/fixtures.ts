@@ -1,5 +1,6 @@
 import { createNativeClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import {
+  AlertChartConfig,
   AlertThresholdType,
   BuilderSavedChartConfig,
   DisplayType,
@@ -255,6 +256,96 @@ export const executeSqlCommand = async (sql: string) => {
       wait_end_of_query: 1,
     },
   });
+};
+
+// The TimeSeries engine is experimental, and its flag is a *query* setting — it
+// cannot ride along in a CREATE's own SETTINGS clause, which only takes storage
+// settings. Every statement therefore carries it, which is why these tables
+// cannot go through `executeSqlCommand`.
+export const executeTimeSeriesSqlCommand = async (sql: string) => {
+  const client = await getTestFixtureClickHouseClient();
+  return await client.command({
+    query: sql,
+    clickhouse_settings: {
+      allow_experimental_time_series_table: 1,
+      wait_end_of_query: 1,
+    },
+  });
+};
+
+export const dropTimeSeriesTable = async ({
+  table,
+  database = DEFAULT_DATABASE,
+}: {
+  table: string;
+  database?: string;
+}) => executeTimeSeriesSqlCommand(`DROP TABLE IF EXISTS ${database}.${table}`);
+
+export type TimeSeriesFixtureSeries = {
+  metricName: string;
+  /** Labels other than `__name__`, which is derived from `metricName`. */
+  tags: Record<string, string>;
+  /** Series window in unix seconds; ignored when the table stores no bounds. */
+  startSec: number;
+  endSec: number;
+};
+
+/**
+ * (Re)creates a TimeSeries table and writes `series` straight into its tags
+ * inner table — Prometheus remote-write is the only other way in, and label
+ * lookups never read the data inner table.
+ *
+ * `storeTimeBounds: false` creates the table with
+ * `store_min_time_and_max_time = 0`, which leaves the tags table without the
+ * min_time/max_time columns a time-bounded lookup reads.
+ */
+export const seedTimeSeriesTagsTable = async ({
+  table,
+  series,
+  database = DEFAULT_DATABASE,
+  storeTimeBounds = true,
+}: {
+  table: string;
+  series: TimeSeriesFixtureSeries[];
+  database?: string;
+  storeTimeBounds?: boolean;
+}) => {
+  await dropTimeSeriesTable({ table, database });
+  await executeTimeSeriesSqlCommand(
+    `CREATE TABLE ${database}.${table} ENGINE = TimeSeries${
+      storeTimeBounds ? '' : ' SETTINGS store_min_time_and_max_time = 0'
+    }`,
+  );
+
+  const quoted = (v: string) => `'${v.replace(/'/g, "\\'")}'`;
+  const mapLiteral = (tags: Record<string, string>) =>
+    `map(${Object.entries(tags)
+      .flatMap(([k, v]) => [quoted(k), quoted(v)])
+      .join(', ')})`;
+
+  const columns = storeTimeBounds
+    ? '(metric_name, tags, all_tags, min_time, max_time)'
+    : '(metric_name, tags, all_tags)';
+  const values = series
+    .map(s => {
+      const row = [
+        quoted(s.metricName),
+        mapLiteral(s.tags),
+        mapLiteral({ __name__: s.metricName, ...s.tags }),
+      ];
+      if (storeTimeBounds) {
+        row.push(
+          `toDateTime64(${s.startSec}, 3)`,
+          `toDateTime64(${s.endSec}, 3)`,
+        );
+      }
+      return `(${row.join(', ')})`;
+    })
+    .join(', ');
+
+  await executeTimeSeriesSqlCommand(
+    `INSERT INTO TABLE FUNCTION timeSeriesTags('${database}', '${table}') ${columns} VALUES ${values}`,
+  );
 };
 
 export const clearClickhouseTables = async () => {
@@ -779,4 +870,49 @@ export const makeSavedSearchAlertInput = ({
   thresholdType: AlertThresholdType.ABOVE,
   source: AlertSource.SAVED_SEARCH,
   savedSearchId,
+});
+
+export const makeAlertChartConfig = (opts: {
+  sourceId: string;
+  name?: string;
+  displayType?: DisplayType;
+  aggCondition?: string;
+  groupBy?: string;
+}): AlertChartConfig => ({
+  name: opts.name ?? 'Chart Alert Query',
+  source: opts.sourceId,
+  displayType: opts.displayType ?? DisplayType.Line,
+  select: [
+    {
+      aggFn: 'count',
+      aggCondition: opts.aggCondition ?? '',
+      aggConditionLanguage: 'lucene',
+      valueExpression: '',
+    },
+  ],
+  where: '',
+  whereLanguage: 'lucene',
+  ...(opts.groupBy != null && { groupBy: opts.groupBy }),
+});
+
+export const makeInlineAlertInput = ({
+  chartConfig,
+  interval = '15m',
+  threshold = 8,
+  webhookId = 'test-webhook-id',
+}: {
+  chartConfig: AlertChartConfig;
+  interval?: AlertInterval;
+  threshold?: number;
+  webhookId?: string;
+}): Partial<AlertInput> => ({
+  channel: {
+    type: 'webhook',
+    webhookId,
+  },
+  interval,
+  threshold,
+  thresholdType: AlertThresholdType.ABOVE,
+  source: AlertSource.INLINE,
+  chartConfig,
 });

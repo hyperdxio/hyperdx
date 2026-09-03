@@ -1,4 +1,7 @@
+import { AlertSource } from '@hyperdx/common-utils/dist/types';
+
 import {
+  getAlertSourceLabel,
   normalizeNoOpAlertScheduleFields,
   toAlertChannels,
 } from '@/utils/alerts';
@@ -160,5 +163,24 @@ describe('toAlertChannels', () => {
       wh('a'),
       email,
     ]);
+  });
+});
+
+describe('getAlertSourceLabel', () => {
+  it('names each source kind', () => {
+    expect(getAlertSourceLabel({ source: AlertSource.SAVED_SEARCH })).toBe(
+      'Saved search',
+    );
+    expect(getAlertSourceLabel({ source: AlertSource.TILE })).toBe(
+      'Dashboard tile',
+    );
+  });
+
+  // The row's tooltip, the alerts-page filter and free-text search all read
+  // this, so an unresolvable source has to yield something printable rather
+  // than undefined leaking into a label.
+  it('falls back for a missing source', () => {
+    expect(getAlertSourceLabel({})).toBe('Unknown source');
+    expect(getAlertSourceLabel({ source: null })).toBe('Unknown source');
   });
 });

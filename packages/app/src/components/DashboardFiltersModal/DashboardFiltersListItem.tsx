@@ -1,7 +1,16 @@
-import { Group, Paper, Text, Tooltip } from '@mantine/core';
-import { IconFilter, IconSearch } from '@tabler/icons-react';
+import { Box, Group, Paper, Text, Tooltip } from '@mantine/core';
 
 import styles from '@styles/DashboardFiltersModal.module.scss';
+
+/** One icon + text row describing some aspect of the filter. */
+export interface DashboardFilterAttribute {
+  icon: React.ReactNode;
+  /** Tooltip on the icon describing what `label` represents, where it needs one. */
+  tooltip?: string;
+  label: string;
+  /** `data-testid` for the row, for the attributes a test needs to target. */
+  testId?: string;
+}
 
 interface DashboardFilterListItemProps {
   /** Display name shown in the header and used in `data-testid` slugs. */
@@ -11,12 +20,8 @@ interface DashboardFilterListItemProps {
    * Kept out of `name` so the `data-testid` slugs stay stable.
    */
   nameSuffix?: string;
-  /** Text shown next to the search icon (e.g. source name or column name). */
-  queriedFrom: string;
-  /** Tooltip on the search icon describing what `queriedFrom` represents. */
-  queriedFromTooltip: string;
-  /** Comma-joined source names this filter applies to, or undefined to hide the row. */
-  appliedTo?: string;
+  /** Rows describing the filter, shown under the header in the given order. */
+  attributes: DashboardFilterAttribute[];
   /** Optional trailing action buttons (edit / delete). Omit for readonly items. */
   actions?: React.ReactNode;
 }
@@ -25,9 +30,7 @@ interface DashboardFilterListItemProps {
 export const DashboardFilterListItem = ({
   name,
   nameSuffix,
-  queriedFrom,
-  queriedFromTooltip,
-  appliedTo,
+  attributes,
   actions,
 }: DashboardFilterListItemProps) => (
   <Paper
@@ -46,32 +49,26 @@ export const DashboardFilterListItem = ({
       </Group>
       {actions != null && <Group>{actions}</Group>}
     </Group>
-    <Group gap="xs" wrap="nowrap">
-      <Tooltip label={queriedFromTooltip} withinPortal>
-        <IconSearch size={14} />
-      </Tooltip>
-      <Text size="xs" truncate="end">
-        {queriedFrom}
-      </Text>
-    </Group>
-    {appliedTo != null && (
-      <Group
-        gap="xs"
-        wrap="nowrap"
-        data-testid={`dashboard-filter-applies-to-${name}`}
-      >
-        <Tooltip
-          label="Sources this filter applies to"
-          withinPortal
-          multiline
-          maw={400}
+    {attributes.map(({ icon, tooltip, label, testId }) => {
+      return (
+        <Group
+          key={testId ?? label}
+          gap="xs"
+          wrap="nowrap"
+          data-testid={testId}
         >
-          <IconFilter size={14} style={{ flexShrink: 0 }} />
-        </Tooltip>
-        <Text size="xs" truncate="end">
-          {appliedTo}
-        </Text>
-      </Group>
-    )}
+          {tooltip ? (
+            <Tooltip label={tooltip} withinPortal multiline maw={400}>
+              <Box style={{ display: 'flex', flexShrink: 0 }}>{icon}</Box>
+            </Tooltip>
+          ) : (
+            <Box style={{ display: 'flex', flexShrink: 0 }}>{icon}</Box>
+          )}
+          <Text size="xs" truncate="end">
+            {label}
+          </Text>
+        </Group>
+      );
+    })}
   </Paper>
 );

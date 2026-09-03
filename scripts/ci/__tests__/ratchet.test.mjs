@@ -41,7 +41,7 @@ test('counts escape hatches across a package, not just src/', () => {
     },
   });
   assert.deepEqual(collectCounts(root), {
-    app: { 'as-any': 1, 'ts-ignore': 1, 'eslint-disable': 1 },
+    app: { 'as-any': 1, 'ts-ignore': 1, 'eslint-disable': 1, '@source': 0 },
   });
 });
 
@@ -92,6 +92,24 @@ test('above baseline fails', () => {
   );
   assert.equal(failed, true);
   assert.match(messages.join('\n'), /app\/as-any: 3 > baseline 2/);
+});
+
+test('an advisory pattern above baseline warns instead of failing', () => {
+  const { failed, messages } = compare(
+    { cli: { 'as-any': 0, 'ts-ignore': 0, 'eslint-disable': 0, '@source': 38 } },
+    { cli: { 'as-any': 0, 'ts-ignore': 0, 'eslint-disable': 0, '@source': 37 } },
+  );
+  assert.equal(failed, false);
+  assert.match(messages.join('\n'), /! cli\/@source: 38 > baseline 37/);
+});
+
+test('an advisory rise does not mask a gated pattern rising too', () => {
+  const { failed, messages } = compare(
+    { cli: { 'as-any': 1, 'ts-ignore': 0, 'eslint-disable': 0, '@source': 38 } },
+    { cli: { 'as-any': 0, 'ts-ignore': 0, 'eslint-disable': 0, '@source': 37 } },
+  );
+  assert.equal(failed, true);
+  assert.match(messages.join('\n'), /x cli\/as-any: 1 > baseline 0/);
 });
 
 test('at baseline passes quietly', () => {

@@ -66,6 +66,43 @@ export const logBlockedWebhookDelivery = (
 const DEFAULT_GENERIC_WEBHOOK_BODY_TEMPLATE =
   '{"text": "{{title}} | {{body}} | {{link}} | {{state}} | {{startTime}} | {{endTime}} | {{eventId}}"}';
 
+// Renders a Unix-ms timestamp as an ISO-8601 string, or '' if it isn't a valid
+// time (so a template slot never becomes the literal "Invalid Date").
+const toIsoTimestamp = (t: number): string => {
+  const d = new Date(t);
+  return Number.isNaN(d.getTime()) ? '' : d.toISOString();
+};
+
+/**
+ * The variable set exposed to user-editable webhook body templates. Strings
+ * are JSON-escaped; numbers are emitted raw for unquoted JSON slots.
+ * `startTime`/`endTime` are raw Unix ms; `startTimeISO`/`endTimeISO` are ISO
+ * strings for human-readable time ranges. The enriched variables (status,
+ * comparator, sourceQuery, …) enable routing/dedup in receivers without
+ * parsing the message body.
+ */
+export const buildWebhookTemplateVariables = (message: Message) => ({
+  body: escapeJsonString(message.body),
+  endTime: message.endTime,
+  endTimeISO: escapeJsonString(toIsoTimestamp(message.endTime)),
+  eventId: message.eventId,
+  link: escapeJsonString(message.hdxLink),
+  startTime: message.startTime,
+  startTimeISO: escapeJsonString(toIsoTimestamp(message.startTime)),
+  state: message.state,
+  title: escapeJsonString(message.title),
+  alertId: escapeJsonString(message.alertId ?? ''),
+  alertType: escapeJsonString(message.alertType ?? ''),
+  comparator: escapeJsonString(message.comparator ?? ''),
+  groupKey: escapeJsonString(message.groupKey ?? ''),
+  note: escapeJsonString(message.note ?? ''),
+  sourceQuery: escapeJsonString(message.sourceQuery ?? ''),
+  status: escapeJsonString(message.status ?? ''),
+  teamId: escapeJsonString(message.teamId ?? ''),
+  threshold: message.threshold,
+  value: message.value,
+});
+
 /**
  * Creates a Handlebars instance with common helpers registered.
  * Use this to ensure consistent helper availability across all template rendering.
@@ -183,15 +220,7 @@ const sendGenericWebhook = async (
 
     body = handlebars.compile(bodyTemplate, {
       noEscape: true,
-    })({
-      body: escapeJsonString(message.body),
-      endTime: message.endTime,
-      eventId: message.eventId,
-      link: escapeJsonString(message.hdxLink),
-      startTime: message.startTime,
-      state: message.state,
-      title: escapeJsonString(message.title),
-    });
+    })(buildWebhookTemplateVariables(message));
   } catch (e) {
     logger.error(
       {

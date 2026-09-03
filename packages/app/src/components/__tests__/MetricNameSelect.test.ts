@@ -1,29 +1,38 @@
 import { MetricsDataType } from '@hyperdx/common-utils/dist/types';
 
 import { getMetricOptions } from '@/components/MetricNameSelect';
+import type { QueryableMetricKind } from '@/utils/metricKinds';
 
 const SEPARATOR = ':::::::';
+
+/** Builds the per-kind name map `getMetricOptions` takes, defaulting to none. */
+const kinds = ({
+  gauge,
+  sum,
+  histogram,
+  exponentialHistogram,
+}: {
+  gauge?: string[];
+  sum?: string[];
+  histogram?: string[];
+  exponentialHistogram?: string[];
+} = {}): Record<QueryableMetricKind, string[] | undefined> => ({
+  [MetricsDataType.Gauge]: gauge,
+  [MetricsDataType.Sum]: sum,
+  [MetricsDataType.Histogram]: histogram,
+  [MetricsDataType.ExponentialHistogram]: exponentialHistogram,
+});
 
 describe('getMetricOptions', () => {
   describe('no metrics provided', () => {
     it('returns empty array when all metric lists are undefined', () => {
-      const result = getMetricOptions(
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        null,
-        MetricsDataType.Gauge,
-      );
+      const result = getMetricOptions(kinds(), null, MetricsDataType.Gauge);
       expect(result).toEqual([]);
     });
 
     it('returns empty array when all metric lists are empty', () => {
       const result = getMetricOptions(
-        [],
-        [],
-        [],
-        [],
+        kinds({ gauge: [], sum: [], histogram: [], exponentialHistogram: [] }),
         null,
         MetricsDataType.Gauge,
       );
@@ -32,10 +41,7 @@ describe('getMetricOptions', () => {
 
     it('adds saved metricName when it is not in empty results', () => {
       const result = getMetricOptions(
-        undefined,
-        undefined,
-        undefined,
-        undefined,
+        kinds(),
         'my.metric',
         MetricsDataType.Sum,
       );
@@ -51,10 +57,7 @@ describe('getMetricOptions', () => {
   describe('one metric in a single argument list', () => {
     it('returns a single gauge option', () => {
       const result = getMetricOptions(
-        ['cpu.usage'],
-        undefined,
-        undefined,
-        undefined,
+        kinds({ gauge: ['cpu.usage'] }),
         null,
         MetricsDataType.Gauge,
       );
@@ -65,10 +68,7 @@ describe('getMetricOptions', () => {
 
     it('returns a single histogram option', () => {
       const result = getMetricOptions(
-        undefined,
-        ['request.duration'],
-        undefined,
-        undefined,
+        kinds({ histogram: ['request.duration'] }),
         null,
         MetricsDataType.Histogram,
       );
@@ -82,10 +82,7 @@ describe('getMetricOptions', () => {
 
     it('returns a single sum option', () => {
       const result = getMetricOptions(
-        undefined,
-        undefined,
-        ['bytes.sent'],
-        undefined,
+        kinds({ sum: ['bytes.sent'] }),
         null,
         MetricsDataType.Sum,
       );
@@ -96,27 +93,21 @@ describe('getMetricOptions', () => {
 
     it('returns a single exponential histogram option', () => {
       const result = getMetricOptions(
-        undefined,
-        undefined,
-        undefined,
-        ['request.duration'],
+        kinds({ exponentialHistogram: ['request.duration'] }),
         null,
         MetricsDataType.ExponentialHistogram,
       );
       expect(result).toEqual([
         {
           value: `request.duration${SEPARATOR}${MetricsDataType.ExponentialHistogram}`,
-          label: 'request.duration (Exponential Histogram)',
+          label: 'request.duration (Exp. histogram)',
         },
       ]);
     });
 
     it('does not duplicate a saved metricName already present in results', () => {
       const result = getMetricOptions(
-        ['cpu.usage'],
-        undefined,
-        undefined,
-        undefined,
+        kinds({ gauge: ['cpu.usage'] }),
         'cpu.usage',
         MetricsDataType.Gauge,
       );
@@ -129,10 +120,7 @@ describe('getMetricOptions', () => {
 
     it('appends saved metricName when it is not in single-entry results', () => {
       const result = getMetricOptions(
-        ['cpu.usage'],
-        undefined,
-        undefined,
-        undefined,
+        kinds({ gauge: ['cpu.usage'] }),
         'missing.metric',
         MetricsDataType.Gauge,
       );
@@ -145,23 +133,16 @@ describe('getMetricOptions', () => {
   });
 
   describe('multiple metrics in each argument list', () => {
-    const gaugeMetrics = ['cpu.usage', 'mem.usage', 'disk.usage'];
-    const histogramMetrics = ['request.duration', 'db.query.duration'];
-    const sumMetrics = ['bytes.sent', 'bytes.received', 'requests.total'];
-    const exponentialHistogramMetrics = [
-      'http.request.duration',
-      'rpc.server.duration',
-    ];
+    const all = () =>
+      kinds({
+        gauge: ['cpu.usage', 'mem.usage', 'disk.usage'],
+        histogram: ['request.duration', 'db.query.duration'],
+        sum: ['bytes.sent', 'bytes.received', 'requests.total'],
+        exponentialHistogram: ['http.request.duration', 'rpc.server.duration'],
+      });
 
     it('returns all options for all metric types', () => {
-      const result = getMetricOptions(
-        gaugeMetrics,
-        histogramMetrics,
-        sumMetrics,
-        exponentialHistogramMetrics,
-        null,
-        MetricsDataType.Gauge,
-      );
+      const result = getMetricOptions(all(), null, MetricsDataType.Gauge);
 
       expect(result).toHaveLength(10);
 
@@ -199,20 +180,36 @@ describe('getMetricOptions', () => {
       });
       expect(result).toContainEqual({
         value: `http.request.duration${SEPARATOR}${MetricsDataType.ExponentialHistogram}`,
-        label: 'http.request.duration (Exponential Histogram)',
+        label: 'http.request.duration (Exp. histogram)',
       });
       expect(result).toContainEqual({
         value: `rpc.server.duration${SEPARATOR}${MetricsDataType.ExponentialHistogram}`,
-        label: 'rpc.server.duration (Exponential Histogram)',
+        label: 'rpc.server.duration (Exp. histogram)',
       });
+    });
+
+    // Grouping order comes from QUERYABLE_KINDS, which is what the dropdown
+    // renders top to bottom.
+    it('groups the options gauge, sum, histogram, exponential histogram', () => {
+      const result = getMetricOptions(all(), null, MetricsDataType.Gauge);
+
+      expect(result.map(option => option.value.split(SEPARATOR)[1])).toEqual([
+        'gauge',
+        'gauge',
+        'gauge',
+        'sum',
+        'sum',
+        'sum',
+        'histogram',
+        'histogram',
+        MetricsDataType.ExponentialHistogram,
+        MetricsDataType.ExponentialHistogram,
+      ]);
     });
 
     it('does not duplicate a saved metricName already present among multiple options', () => {
       const result = getMetricOptions(
-        gaugeMetrics,
-        histogramMetrics,
-        sumMetrics,
-        exponentialHistogramMetrics,
+        all(),
         'mem.usage',
         MetricsDataType.Gauge,
       );
@@ -225,10 +222,7 @@ describe('getMetricOptions', () => {
 
     it('appends saved metricName when absent from multiple-option results', () => {
       const result = getMetricOptions(
-        gaugeMetrics,
-        histogramMetrics,
-        sumMetrics,
-        exponentialHistogramMetrics,
+        all(),
         'absent.metric',
         MetricsDataType.Histogram,
       );

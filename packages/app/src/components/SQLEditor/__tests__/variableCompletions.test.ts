@@ -2,7 +2,7 @@ import { ChartVariable } from '@hyperdx/common-utils/dist/types';
 
 import {
   buildLuceneVariableSuggestions,
-  buildVariableCompletions,
+  buildSqlVariableCompletions,
   expandLuceneVariablesForEnglishDisplay,
 } from '@/components/SQLEditor/variableCompletions';
 
@@ -13,11 +13,11 @@ const SERVICE: ChartVariable = {
 };
 
 const labels = (variables: ChartVariable[] | undefined) =>
-  buildVariableCompletions(variables).map(completion => completion.label);
+  buildSqlVariableCompletions(variables).map(completion => completion.label);
 
 /** The second line of a completion's help — what it expands to right now. */
 const footnoteOf = (variables: ChartVariable[], label: string) => {
-  const { info } = buildVariableCompletions(variables).find(
+  const { info } = buildSqlVariableCompletions(variables).find(
     completion => completion.label === label,
   ) ?? { info: undefined };
   if (typeof info !== 'function') return undefined;
@@ -29,12 +29,12 @@ const footnoteOf = (variables: ChartVariable[], label: string) => {
   );
 };
 
-describe('buildVariableCompletions', () => {
+describe('buildSqlVariableCompletions', () => {
   it.each([
     ['off a dashboard', undefined],
     ['on a dashboard that defines none', [] as ChartVariable[]],
   ])('offers nothing %s', (_label, variables) => {
-    expect(buildVariableCompletions(variables)).toEqual([]);
+    expect(buildSqlVariableCompletions(variables)).toEqual([]);
   });
 
   it('offers the variable macros and every reference form', () => {
@@ -66,6 +66,26 @@ describe('buildVariableCompletions', () => {
     expect(footnoteOf([SERVICE], '$service')).toBe("Expands to: 'api', 'web'");
     expect(footnoteOf([SERVICE], '$__filter($service)')).toBe(
       "Expands to: (toString(ServiceName) IN ('api', 'web'))",
+    );
+  });
+
+  it('withholds the one-argument filter macro for an expressionless variable', () => {
+    // A static-list filter declares no expression, so $__filter($env) has
+    // nothing to filter on and throws at expansion time. Every other reference
+    // form still works.
+    const env: ChartVariable = { name: 'env', values: ['prod'] };
+    expect(labels([env])).not.toContain('$__filter($env)');
+    expect(labels([env])).toEqual(
+      expect.arrayContaining([
+        '$__filter',
+        '$__conditionalAll',
+        '$env',
+        '${env}',
+        '${env:sqlstring}',
+        '${env:csv}',
+        '${env:regex}',
+        '${env:lucene}',
+      ]),
     );
   });
 

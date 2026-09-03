@@ -2435,7 +2435,15 @@
               },
               "color": {
                 "$ref": "#/components/schemas/ChartPaletteToken",
-                "description": "Optional static color applied to the displayed number. Raw SQL number tiles do not support conditional colorRules.\n"
+                "description": "Optional static color applied to the displayed number."
+              },
+              "colorRules": {
+                "type": "array",
+                "maxItems": 10,
+                "description": "Ordered conditional color rules evaluated against the displayed value (last match wins). Falls back to color, then the default text color when no rule matches.\n",
+                "items": {
+                  "$ref": "#/components/schemas/NumberTileColorCondition"
+                }
               }
             }
           }
@@ -3040,8 +3048,30 @@
         ]
       },
       "FilterInput": {
+        "description": "A drop-down filter on a dashboard. Depending on type, filters can either broadcast\nselected value(s) to every tile (isBroadcastEnabled), expose selected\nvalues as a variable (isVariableEnabled) or both. Typically a filter should\ndo just one of these things.\n",
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/QueryExpressionFilterInput"
+          },
+          {
+            "$ref": "#/components/schemas/StaticListFilterInput"
+          },
+          {
+            "$ref": "#/components/schemas/PrometheusLabelFilterInput"
+          }
+        ],
+        "discriminator": {
+          "propertyName": "type",
+          "mapping": {
+            "QUERY_EXPRESSION": "#/components/schemas/QueryExpressionFilterInput",
+            "STATIC_LIST": "#/components/schemas/StaticListFilterInput",
+            "PROMETHEUS_LABEL": "#/components/schemas/PrometheusLabelFilterInput"
+          }
+        }
+      },
+      "QueryExpressionFilterInput": {
         "type": "object",
-        "description": "A drop-down filter on a dashboard. Every filter can either broadcast its\nselected value(s) to every tile (isBroadcastEnabled), expose its selected\nvalue as a variable (isVariableEnabled) or both. Typically a filter should\ndo just one of these things.\n",
+        "description": "A filter whose dropdown values are queried from ClickHouse: \"expression\"\nnames the column and \"sourceId\" the source to read them from. Its\nselection can be broadcast into matching tiles' WHERE clauses.\n",
         "required": [
           "type",
           "name",
@@ -3054,7 +3084,7 @@
             "enum": [
               "QUERY_EXPRESSION"
             ],
-            "description": "Filter type. Must be \"QUERY_EXPRESSION\".",
+            "description": "Filter type discriminator. Must be \"QUERY_EXPRESSION\".",
             "example": "QUERY_EXPRESSION"
           },
           "name": {
@@ -3129,6 +3159,135 @@
             "pattern": "^[a-zA-Z][a-zA-Z0-9_]*$",
             "description": "Token tiles reference this filter's selected value by, as\n`$variableName`. Must start with a letter and may contain only\nletters, numbers, and underscores. Defaults to the display name with\nwhitespace replaced by underscores and remaining illegal characters\nremoved, so a variable-enabled filter whose name derives nothing\nusable must send this field explicitly. Variable names must be unique\nacross a dashboard's variable-enabled filters. Names the variable\nonly, so the field is rejected when isVariableEnabled is not true, and\nis omitted from responses for such a filter.\n",
             "example": "environment"
+          }
+        }
+      },
+      "StaticListFilterInput": {
+        "type": "object",
+        "description": "A filter whose dropdown offers a static custom \"options\" list. It carries no\nexpression, so it cannot be broadcast, and supports only variable mode.\n",
+        "required": [
+          "type",
+          "name",
+          "options"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "STATIC_LIST"
+            ],
+            "description": "Discriminator. Must be \"STATIC_LIST\".",
+            "example": "STATIC_LIST"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Display name for the dashboard filter key",
+            "example": "Environment"
+          },
+          "options": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1000,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 10000
+            },
+            "description": "The values this filter's dropdown offers. Must be non-empty and\nfree of duplicates.\n",
+            "example": [
+              "prod",
+              "staging",
+              "dev"
+            ]
+          },
+          "isBroadcastEnabled": {
+            "type": "boolean",
+            "enum": [
+              false
+            ],
+            "default": false,
+            "description": "Must be false — there is no expression to broadcast. Omit it and it\nis false.\n",
+            "example": false
+          },
+          "isVariableEnabled": {
+            "type": "boolean",
+            "enum": [
+              true
+            ],
+            "default": true,
+            "description": "Must be true if provided, and is true when omitted. Tiles reference\nthe selection as `$variableName`, or with the `$__filter(<expression>, $<variableName>)`\nand `$__conditionalAll(<condition>, $<variableName>)` macros. The\none-argument `$__filter($<variableName>)` form renders the filter's\nown expression, which this kind of filter does not have, so it\nreports that the expression must be passed explicitly.\n",
+            "example": true
+          },
+          "variableName": {
+            "type": "string",
+            "maxLength": 64,
+            "pattern": "^[a-zA-Z][a-zA-Z0-9_]*$",
+            "description": "Token tiles reference this filter's selected value by, as\n`$variableName`. Must start with a letter and may contain only\nletters, numbers, and underscores. Defaults to the display name with\nwhitespace replaced by underscores and remaining illegal characters\nremoved, so a variable-enabled filter whose name derives nothing\nusable must send this field explicitly. Variable names must be unique\nacross a dashboard's variable-enabled filters. Names the variable\nonly, so the field is rejected when isVariableEnabled is not true, and\nis omitted from responses for such a filter.\n",
+            "example": "environment"
+          }
+        }
+      },
+      "PrometheusLabelFilterInput": {
+        "type": "object",
+        "description": "A filter whose dropdown lists the values for a Prometheus label,\nread from a PromQL source over the dashboard's time range.\nSupports variable mode only.\n",
+        "required": [
+          "type",
+          "name",
+          "sourceId",
+          "label"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "PROMETHEUS_LABEL"
+            ],
+            "description": "Discriminator. Must be \"PROMETHEUS_LABEL\".",
+            "example": "PROMETHEUS_LABEL"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Display name for the dashboard filter",
+            "example": "Pod"
+          },
+          "sourceId": {
+            "type": "string",
+            "description": "Id of the PromQL source the label values are read from.\n",
+            "example": "65f5e4a3b9e77c001a123456"
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024,
+            "description": "Label whose values populate the dropdown. Use \"__name__\" to list\nmetric names.\n",
+            "example": "pod"
+          },
+          "isBroadcastEnabled": {
+            "type": "boolean",
+            "enum": [
+              false
+            ],
+            "default": false,
+            "description": "Must be false or omitted.",
+            "example": false
+          },
+          "isVariableEnabled": {
+            "type": "boolean",
+            "enum": [
+              true
+            ],
+            "default": true,
+            "description": "Must be true if provided, and is true when omitted. Tiles reference\nthe selection as `$variableName`.\n",
+            "example": true
+          },
+          "variableName": {
+            "type": "string",
+            "maxLength": 64,
+            "pattern": "^[a-zA-Z][a-zA-Z0-9_]*$",
+            "description": "Token that tiles reference this filter's selected value by, as\n`$variableName`. Must start with a letter and may contain only\nletters, numbers, and underscores. Defaults to the display name with\nwhitespace replaced by underscores and remaining illegal characters\nremoved. Variable names must be unique across a dashboard's\nvariable-enabled filters.\n",
+            "example": "pod"
           }
         }
       },
@@ -4009,6 +4168,11 @@
             "nullable": true,
             "example": "TimestampTime"
           },
+          "orderByExpression": {
+            "type": "string",
+            "description": "Custom ORDER BY expression that overrides the default ordering. Leave empty to use the auto-detected default.",
+            "example": "Timestamp DESC"
+          },
           "metricSourceId": {
             "type": "string",
             "description": "HyperDX Source for metrics associated with logs. Optional",
@@ -4259,6 +4423,11 @@
             "nullable": true,
             "example": "ResourceAttributes['service.version']"
           },
+          "sampleRateExpression": {
+            "type": "string",
+            "description": "Column or expression for upstream sampling weight (1/N). When set, aggregations (count, avg, sum, quantile) are corrected for sampling. Percentiles use quantileTDigestWeighted, which is an approximation. Leave empty if spans are not sampled.",
+            "example": "SampleRate"
+          },
           "resourceAttributesExpression": {
             "type": "string",
             "description": "Expression to extract resource-level attributes.",
@@ -4276,6 +4445,11 @@
             "description": "Expression to extract span events. Used to capture events associated with spans. Expected to be Nested ( Timestamp DateTime64(9), Name LowCardinality(String), Attributes Map(LowCardinality(String), String)",
             "nullable": true,
             "example": "Events"
+          },
+          "spanLinksValueExpression": {
+            "type": "string",
+            "description": "Expression to extract span links. Used to capture links from a span to spans in other traces. Expected to be Nested ( TraceId String, SpanId String, TraceState String, Attributes Map(LowCardinality(String), String) )",
+            "example": "Links"
           },
           "implicitColumnExpression": {
             "type": "string",
@@ -4315,6 +4489,16 @@
               "$ref": "#/components/schemas/HighlightedAttributeExpression"
             },
             "nullable": true
+          },
+          "displayedTimestampValueExpression": {
+            "type": "string",
+            "description": "This DateTime column is used to display and order search results.",
+            "example": "Timestamp"
+          },
+          "orderByExpression": {
+            "type": "string",
+            "description": "Custom ORDER BY expression that overrides the default ordering. Leave empty to use the auto-detected default.",
+            "example": "Timestamp DESC"
           },
           "materializedViews": {
             "type": "array",
@@ -4498,6 +4682,11 @@
             "type": "string",
             "description": "HyperDX Source for traces associated with sessions.",
             "example": "507f1f77bcf86cd799439021"
+          },
+          "resourceAttributesExpression": {
+            "type": "string",
+            "description": "Expression to extract resource-level attributes.",
+            "example": "ResourceAttributes"
           }
         }
       },
@@ -6147,6 +6336,18 @@
                         "name": "Service",
                         "expression": "service_name",
                         "sourceId": "65f5e4a3b9e77c001a111111"
+                      },
+                      {
+                        "type": "STATIC_LIST",
+                        "name": "Environment",
+                        "options": [
+                          "prod",
+                          "staging",
+                          "dev"
+                        ],
+                        "isBroadcastEnabled": false,
+                        "isVariableEnabled": true,
+                        "variableName": "env"
                       }
                     ]
                   }

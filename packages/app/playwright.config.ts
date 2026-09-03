@@ -105,8 +105,8 @@ export default defineConfig({
         {
           // Full UI: Alerts + Dashboards. Not local mode; Alerts enabled;
           command: USE_DEV
-            ? `SERVER_URL=http://localhost:${API_PORT} PORT=${APP_PORT} NEXT_DIST_DIR=.next-e2e NEXT_PUBLIC_ENABLE_DASHBOARD_VARIABLES=true NEXT_PUBLIC_ENABLE_ALERT_DETAILS=true next dev --webpack`
-            : `SERVER_URL=http://localhost:${API_PORT} PORT=${APP_PORT} NEXT_DIST_DIR=.next-e2e NEXT_PUBLIC_ENABLE_DASHBOARD_VARIABLES=true NEXT_PUBLIC_ENABLE_ALERT_DETAILS=true yarn build && SERVER_URL=http://localhost:${API_PORT} PORT=${APP_PORT} NEXT_DIST_DIR=.next-e2e NEXT_PUBLIC_ENABLE_DASHBOARD_VARIABLES=true NEXT_PUBLIC_ENABLE_ALERT_DETAILS=true yarn start`,
+            ? `SERVER_URL=http://localhost:${API_PORT} PORT=${APP_PORT} NEXT_DIST_DIR=.next-e2e NEXT_PUBLIC_ENABLE_ALERT_DETAILS=true NEXT_PUBLIC_ENABLE_PROMQL=true next dev --webpack`
+            : `SERVER_URL=http://localhost:${API_PORT} PORT=${APP_PORT} NEXT_DIST_DIR=.next-e2e NEXT_PUBLIC_ENABLE_ALERT_DETAILS=true NEXT_PUBLIC_ENABLE_PROMQL=true yarn build && SERVER_URL=http://localhost:${API_PORT} PORT=${APP_PORT} NEXT_DIST_DIR=.next-e2e NEXT_PUBLIC_ENABLE_ALERT_DETAILS=true NEXT_PUBLIC_ENABLE_PROMQL=true yarn start`,
           port: parseInt(APP_PORT, 10),
           reuseExistingServer: !process.env.CI,
           timeout: APP_SERVER_STARTUP_TIMEOUT_MS,
