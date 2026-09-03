@@ -296,6 +296,33 @@ describe('prometheus router', () => {
       expect(mockFetch).not.toHaveBeenCalled();
     });
 
+    // Only the pure `redactHostUserinfo` helper is unit-tested for this --
+    // this pins the actual call site, so reverting the 400 branch to echo
+    // the raw host verbatim (as it did before the userinfo-redaction fix)
+    // would fail the suite.
+    it('redacts credentials from a scheme-less host in the 400 body', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedPrometheusConnection(
+        team._id,
+        'user:secret-password@prometheus:9090',
+      );
+
+      const res = await agent
+        .get('/v1/prometheus/query_range')
+        .query({
+          query: 'up',
+          start: '1700000000',
+          end: '1700000060',
+          step: '15s',
+          connectionId: conn._id.toString(),
+        })
+        .expect(400);
+
+      expect(res.body.error).not.toContain('secret-password');
+      expect(res.body.error).toContain('prometheus:9090');
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
     it('proxies to upstream Prometheus when connection isPrometheusEndpoint', async () => {
       const { agent, team } = await getLoggedInAgent(server);
       const conn = await seedPrometheusConnection(team._id);
