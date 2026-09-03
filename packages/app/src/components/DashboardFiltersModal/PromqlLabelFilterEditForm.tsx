@@ -1,12 +1,13 @@
-import { useFormState } from 'react-hook-form';
+import { useWatch } from 'react-hook-form';
 import {
   DashboardFilter,
   isPromqlSource,
   SourceKind,
 } from '@hyperdx/common-utils/dist/types';
-import { TextInput } from '@mantine/core';
 
+import { AutocompleteControlled } from '@/components/InputControlled';
 import { SourceSelectControlled } from '@/components/SourceSelect';
+import { usePromqlLabelNames } from '@/hooks/usePromqlMetadata';
 import { useSources } from '@/source';
 
 import { CustomInputWrapper } from './CustomInputWrapper';
@@ -24,7 +25,6 @@ export const PromqlLabelFilterEditForm = ({
   control,
   otherFilters,
 }: PromqlLabelFilterEditFormProps) => {
-  const { errors } = useFormState({ control });
   const { data: sources } = useSources();
 
   const validatePromqlSource = (value: string) => {
@@ -34,6 +34,17 @@ export const PromqlLabelFilterEditForm = ({
     }
     return true;
   };
+
+  // Only a PromQL source can answer the label lookup; the form may briefly hold
+  // another kind while the user switches types.
+  const sourceId = useWatch({ control, name: 'source' });
+  const source = sources?.find(s => s.id === sourceId);
+  const promqlSource = source && isPromqlSource(source) ? source : undefined;
+  const { data: labelNames } = usePromqlLabelNames(
+    promqlSource?.connection,
+    promqlSource?.from.databaseName,
+    promqlSource?.from.tableName,
+  );
 
   return (
     <>
@@ -57,16 +68,20 @@ export const PromqlLabelFilterEditForm = ({
       <CustomInputWrapper
         label="Label"
         tooltipText="The Prometheus label whose values fill the dropdown. Use __name__ to list metric names."
-        error={errors.label}
       >
-        <TextInput
+        <AutocompleteControlled
+          control={control}
+          name="label"
+          data={labelNames ?? []}
           placeholder="e.g. instance, job, or __name__"
           data-testid="filter-label-input"
-          {...control.register('label', {
-            required: true,
+          comboboxProps={{ withinPortal: true }}
+          rules={{
+            required: 'This field is required',
             validate: value =>
-              value.trim().length > 0 || 'This field is required',
-          })}
+              (typeof value === 'string' && value.trim().length > 0) ||
+              'This field is required',
+          }}
         />
       </CustomInputWrapper>
 
