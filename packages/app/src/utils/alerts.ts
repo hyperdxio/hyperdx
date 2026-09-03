@@ -8,13 +8,16 @@ import _ from 'lodash';
 import { z } from 'zod';
 import { formatTileAlertDisplayName } from '@hyperdx/common-utils/dist/alerts';
 import { Granularity } from '@hyperdx/common-utils/dist/core/utils';
+import { isPromqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
   ALERT_INTERVAL_TO_MINUTES,
   AlertChannelType,
+  AlertChartConfig,
   AlertInterval,
   AlertSource,
   AlertThresholdType,
   ChartAlertBaseSchema,
+  SavedChartConfig,
 } from '@hyperdx/common-utils/dist/types';
 
 import { IS_DEV } from '@/config';
@@ -252,6 +255,8 @@ export function getAlertSourceLabel(alert: {
       return 'Dashboard tile';
     case AlertSource.SAVED_SEARCH:
       return 'Saved search';
+    case AlertSource.INLINE:
+      return 'Chart';
     default:
       return 'Unknown source';
   }
@@ -271,10 +276,23 @@ export function getDerivedAlertDisplayName(
   if (alert.source === AlertSource.SAVED_SEARCH && alert.savedSearch) {
     return alert.savedSearch.name;
   }
+  // Mirrors what the server derives for an inline alert, which has no
+  // referenced entity to inherit from — only the chart it carries.
+  if (alert.source === AlertSource.INLINE) {
+    return alert.chartConfig?.name || undefined;
+  }
   return undefined;
 }
 
-/** URL of the saved search / dashboard tile the alert is watching. */
+/**
+ * URL of what the alert watches: the saved search, the dashboard tile, or —
+ * for an inline alert — the chart explorer seeded with its persisted config.
+ * Matches the link the alert notification sends (see the check-alerts task's
+ * `buildChartExplorerLink`), so both land the user on the same chart.
+ *
+ * Empty for an inline alert read off the alerts list, which omits
+ * `chartConfig`; callers already treat an empty url as "no source link".
+ */
 export function getAlertSourceUrl(alert: AlertsPageItem): string {
   if (alert.source === AlertSource.TILE && alert.dashboard) {
     return `/dashboards/${alert.dashboardId}?highlightedTileId=${alert.tileId}`;
@@ -282,7 +300,49 @@ export function getAlertSourceUrl(alert: AlertsPageItem): string {
   if (alert.source === AlertSource.SAVED_SEARCH && alert.savedSearch) {
     return `/search/${alert.savedSearchId}`;
   }
+  if (alert.source === AlertSource.INLINE && alert.chartConfig) {
+    const params = new URLSearchParams({
+      config: JSON.stringify(alert.chartConfig),
+    });
+    return `/chart?${params.toString()}`;
+  }
   return '';
+}
+
+/**
+ * Payload shape for an inline alert: the alert's own fields plus the chart
+ * config it persists. Structurally the inline member of `AlertSchema`, spelled
+ * out here so the app can build one without threading the union's refinements.
+ */
+export type InlineAlert = z.infer<typeof ChartAlertBaseSchema> & {
+  source: AlertSource.INLINE;
+  chartConfig: AlertChartConfig;
+};
+
+/**
+ * Split a chart-editor config into the inline-alert API payload: the alert
+ * fields live on the alert document, and everything else is persisted as its
+ * `chartConfig`. The alert's name doubles as the notification title, so it
+ * falls back to the chart's name when the user left it blank.
+ *
+ * Returns undefined when the config carries no alert — the caller has nothing
+ * to save, and the chart editor lets an alert be removed before saving.
+ */
+export function buildInlineAlertPayload(
+  config: SavedChartConfig,
+): InlineAlert | undefined {
+  // PromQL configs have no inline-alert representation (the schema has no
+  // PromQL variant), and the editor never offers an alert on one.
+  if (config.alert == null || isPromqlSavedChartConfig(config)) {
+    return undefined;
+  }
+  const { alert, ...chartConfig } = config;
+  return {
+    ...alert,
+    source: AlertSource.INLINE,
+    chartConfig,
+    name: alert.name || chartConfig.name || undefined,
+  };
 }
 
 export function getAlertCreatorLabel(
