@@ -11,3 +11,9 @@ alert: the builder `where` or the raw `sqlTemplate`.
 Add `{{thresholdMax}}`, the upper bound of a `between` / `outside` condition.
 Receivers previously saw only the lower bound and could not reconstruct the
 range that fired. It renders empty for every other comparator.
+
+Test Webhook now sends a sample value for every template variable. It carried
+only the original seven, so a body using an enriched variable rendered it empty
+— and because `threshold`, `thresholdMax` and `value` are emitted unquoted, a
+body like `{"value": {{value}}}` was sent as `{"value": }` and rejected,
+failing the test for a template that works on a real firing.
