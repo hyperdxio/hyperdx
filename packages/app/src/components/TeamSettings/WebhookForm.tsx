@@ -13,8 +13,10 @@ import { isValidSlackUrl } from '@hyperdx/common-utils/dist/validation';
 import {
   Alert,
   Button,
+  Code,
   Group,
   Radio,
+  SimpleGrid,
   Stack,
   Text,
   TextInput,
@@ -41,6 +43,51 @@ const DEFAULT_GENERIC_WEBHOOK_BODY = [
 ];
 const DEFAULT_GENERIC_WEBHOOK_BODY_TEMPLATE =
   DEFAULT_GENERIC_WEBHOOK_BODY.join(' | ');
+
+// Mirrors buildWebhookTemplateVariables in
+// packages/api/src/tasks/checkAlerts/transports/generic.ts — keep in sync when
+// variables are added or removed there.
+export const getWebhookTemplateVariables = (
+  brandName: string,
+): { name: string; description: string }[] => [
+  { name: '{{title}}', description: 'Alert title' },
+  { name: '{{body}}', description: 'Rendered message body (markdown)' },
+  { name: '{{link}}', description: `Deep link back into ${brandName}` },
+  { name: '{{state}}', description: 'Raw internal alert state' },
+  {
+    name: '{{status}}',
+    description: 'firing, resolved, no_data, pending or error',
+  },
+  { name: '{{eventId}}', description: 'Unique id for this firing' },
+  {
+    name: '{{alertId}}',
+    description: 'Stable id of the alert — the key to dedupe on',
+  },
+  {
+    name: '{{alertType}}',
+    description: 'search, dashboard_chart or inline_query',
+  },
+  {
+    name: '{{comparator}}',
+    description: '>=, >, <, <=, =, !=, between or outside',
+  },
+  { name: '{{threshold}}', description: 'The configured threshold (number)' },
+  {
+    name: '{{value}}',
+    description: 'Value that triggered or resolved the alert (number)',
+  },
+  { name: '{{groupKey}}', description: 'The breaching group, if grouped' },
+  {
+    name: '{{sourceQuery}}',
+    description: 'Search expression or SQL behind the alert',
+  },
+  { name: '{{startTime}}', description: 'Window start, Unix ms (number)' },
+  { name: '{{endTime}}', description: 'Window end, Unix ms (number)' },
+  { name: '{{startTimeISO}}', description: 'Window start, ISO-8601' },
+  { name: '{{endTimeISO}}', description: 'Window end, ISO-8601' },
+  { name: '{{teamId}}', description: 'Team the alert belongs to' },
+  { name: '{{note}}', description: "Alert's note, commonly a runbook link" },
+];
 
 const jsonLinterWithEmptyCheck = () => (editorView: EditorView) => {
   const text = editorView.state.doc.toString().trim();
@@ -277,6 +324,7 @@ export function WebhookForm({
   };
 
   const service = useWatch({ control: form.control, name: 'service' });
+  const templateVariables = getWebhookTemplateVariables(brandName);
   const headersText = useWatch({ control: form.control, name: 'headers' });
   const hasMaskedHeaders = isEditing && !!headersText?.includes('****');
 
@@ -401,19 +449,30 @@ export function WebhookForm({
             className="mb-4"
             color="gray"
           >
-            <span>
-              Currently the body supports the following message template
-              variables:
-            </span>
-            <br />
-            <span>
-              {DEFAULT_GENERIC_WEBHOOK_BODY.map((body, index) => (
-                <span key={index}>
-                  <code>{body}</code>
-                  {index < DEFAULT_GENERIC_WEBHOOK_BODY.length - 1 && ', '}
-                </span>
+            <Text size="sm">
+              The body supports the following template variables:
+            </Text>
+            <SimpleGrid
+              cols={{ base: 1, sm: 2 }}
+              spacing="xs"
+              verticalSpacing={4}
+              mt="xs"
+              data-testid="webhook-template-variables"
+            >
+              {templateVariables.map(({ name, description }) => (
+                <Group key={name} gap="xs" wrap="nowrap" align="baseline">
+                  <Code>{name}</Code>
+                  <Text size="xs" c="dimmed">
+                    {description}
+                  </Text>
+                </Group>
               ))}
-            </span>
+            </SimpleGrid>
+            <Text size="xs" c="dimmed" mt="xs">
+              Strings are JSON-escaped, so they are safe inside quotes. Numbers
+              are emitted raw for unquoted slots. A variable the alert
+              doesn&apos;t carry renders as an empty string.
+            </Text>
           </Alert>,
         ]}
         <Group justify="space-between">
