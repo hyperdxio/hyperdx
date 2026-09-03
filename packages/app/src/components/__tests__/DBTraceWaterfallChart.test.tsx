@@ -18,6 +18,7 @@ import {
   getDescendantIds,
   SpanRow,
   TRACE_WATERFALL_ROW_LIMIT,
+  TraceTotalDurationStat,
   useEventsAroundFocus,
 } from '@/components/DBTraceWaterfallChart';
 import { TimelineChart } from '@/components/TimelineChart';
@@ -320,7 +321,7 @@ describe('DBTraceWaterfallChartContainer', () => {
 
     const stats = screen.getByTestId('trace-total-stats');
     // mockTraceData has one span, Duration: 0.1 (seconds) -> 100ms wall clock
-    expect(stats.textContent).toContain('Total duration: 100ms');
+    expect(stats.textContent?.trim()).toBe('· Total duration: 100ms');
   });
 
   it('excludes correlated logs from the total duration computation', async () => {
@@ -346,7 +347,7 @@ describe('DBTraceWaterfallChartContainer', () => {
     await waitForLoading();
 
     const stats = screen.getByTestId('trace-total-stats');
-    expect(stats.textContent).toContain('Total duration: 100ms');
+    expect(stats.textContent?.trim()).toBe('· Total duration: 100ms');
   });
 
   it('computes total duration as the wall-clock span across multiple non-overlapping spans', async () => {
@@ -382,7 +383,7 @@ describe('DBTraceWaterfallChartContainer', () => {
 
     const stats = screen.getByTestId('trace-total-stats');
     // MIN(start) = 06:00:00.000, MAX(start+duration) = 06:00:01.500 -> 1500ms
-    expect(stats.textContent).toContain('Total duration: 1.5s');
+    expect(stats.textContent?.trim()).toBe('· Total duration: 1.5s');
   });
 
   it('computes total duration as the true max end time even when a later-processed span ends earlier (overlapping spans)', async () => {
@@ -419,7 +420,7 @@ describe('DBTraceWaterfallChartContainer', () => {
     const stats = screen.getByTestId('trace-total-stats');
     // A "last row wins" bug would report the inner span's earlier end (300ms)
     // instead of the true MAX(end) across all spans (1000ms).
-    expect(stats.textContent).toContain('Total duration: 1s');
+    expect(stats.textContent?.trim()).toBe('· Total duration: 1s');
   });
 
   it('does not change when the Spans chip hides spans from the visible timeline (reflects all fetched spans, not the visible subset)', async () => {
@@ -431,7 +432,7 @@ describe('DBTraceWaterfallChartContainer', () => {
     await waitForLoading();
 
     const statsBefore = screen.getByTestId('trace-total-stats').textContent;
-    expect(statsBefore).toContain('Total duration: 100ms');
+    expect(statsBefore?.trim()).toBe('· Total duration: 100ms');
 
     await userEvent.click(screen.getByTestId('show-spans-chip'));
 
@@ -455,6 +456,15 @@ describe('DBTraceWaterfallChartContainer', () => {
       ).toBeInTheDocument();
     });
     expect(screen.queryByTestId('trace-total-stats')).not.toBeInTheDocument();
+  });
+
+  it('appends + on the duration label when the fetch window was truncated', () => {
+    renderWithMantine(
+      <TraceTotalDurationStat totalDurationMs={100} isTruncated={true} />,
+    );
+    expect(screen.getByTestId('trace-total-stats').textContent?.trim()).toBe(
+      '· Total duration: 100ms+',
+    );
   });
 
   it('renders empty state when no data is available', async () => {
@@ -835,21 +845,34 @@ describe('useEventsAroundFocus', () => {
     expect(result.rows.length).toBe(0);
   });
 
-  it('flags isTruncated when a window returns exactly the row cap (spans beyond it were dropped)', () => {
-    // Only `.length` matters for the cap check, so every element shares the
-    // same trivial object rather than allocating TRACE_WATERFALL_ROW_LIMIT
-    // distinct ones.
-    const cappedData = {
+  it('does not flag isTruncated when a window returns exactly the row cap', () => {
+    const exactCapData = {
       data: new Array(TRACE_WATERFALL_ROW_LIMIT).fill(null),
       meta: [{ totalCount: TRACE_WATERFALL_ROW_LIMIT }],
     };
 
     const result = testEventsAroundFocus({
-      beforeData: cappedData,
+      beforeData: exactCapData,
+      afterData: { data: [], meta: [{ totalCount: 0 }] },
+    });
+
+    expect(result.isTruncated).toBe(false);
+    expect(result.rows.length).toBe(TRACE_WATERFALL_ROW_LIMIT);
+  });
+
+  it('flags isTruncated when a window returns more rows than the cap, and drops the sentinel row', () => {
+    const overCapData = {
+      data: new Array(TRACE_WATERFALL_ROW_LIMIT + 1).fill(null),
+      meta: [{ totalCount: TRACE_WATERFALL_ROW_LIMIT + 1 }],
+    };
+
+    const result = testEventsAroundFocus({
+      beforeData: overCapData,
       afterData: { data: [], meta: [{ totalCount: 0 }] },
     });
 
     expect(result.isTruncated).toBe(true);
+    expect(result.rows.length).toBe(TRACE_WATERFALL_ROW_LIMIT);
   });
 
   it('does not flag isTruncated when both windows return fewer rows than the cap', () => {
