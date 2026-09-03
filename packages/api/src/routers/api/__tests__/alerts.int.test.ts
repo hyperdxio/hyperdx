@@ -1874,7 +1874,7 @@ describe('alerts router', () => {
       const base = makeAlertChartConfig({ sourceId: source._id.toString() });
 
       // Formula referencing a nonexistent series (only A exists)
-      await agent
+      const unknownSeries = await agent
         .post('/alerts')
         .send(
           makeInlineAlertInput({
@@ -1883,6 +1883,10 @@ describe('alerts router', () => {
           }),
         )
         .expect(400);
+      // The alert body's source union must be discriminated for this to
+      // surface: a plain `.or()` reports only a generic union failure and
+      // buries the real issue in unionErrors.
+      expect(JSON.stringify(unknownSeries.body)).toContain('Unknown series');
 
       // Malformed expression
       await agent

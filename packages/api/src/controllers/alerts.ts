@@ -1,6 +1,7 @@
 import {
   displayTypeSupportsBuilderAlerts,
   displayTypeSupportsRawSqlAlerts,
+  isFormulaSourceKind,
   validateRawSqlForAlert,
 } from '@hyperdx/common-utils/dist/core/utils';
 import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
@@ -189,6 +190,19 @@ export const validateAlertInput = async (
       });
       if (source == null) {
         throw new Api400Error('Source not found');
+      }
+
+      // Same formula source-kind gate as dashboard tiles ("Add Formula" is
+      // disabled in the editor for these kinds), so the API cannot persist a
+      // config the editor refuses.
+      if (
+        'formulas' in chartConfig &&
+        (chartConfig.formulas?.length ?? 0) > 0 &&
+        !isFormulaSourceKind(source.kind)
+      ) {
+        throw new Api400Error(
+          'Alerts with formulas require a Metric, Log, or Trace source',
+        );
       }
     }
   }

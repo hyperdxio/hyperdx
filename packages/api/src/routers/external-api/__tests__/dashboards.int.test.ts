@@ -6603,6 +6603,18 @@ describe('External API v2 Dashboards - new format', () => {
       );
     });
 
+    it('rejects an unsupported configType instead of routing it to the builder dialect', async () => {
+      // A body carrying an unrecognized configType parses fine against the
+      // builder union (the unknown keys are stripped), so without an explicit
+      // check it would persist as a builder tile AND skip the builder-only
+      // rules — here a formula referencing a nonexistent series.
+      const res = await postTile({
+        configType: 'promql',
+        formulas: [{ expression: 'C * 2' }],
+      }).expect(400);
+      expect(res.body.message).toContain('configType must be "sql" or omitted');
+    });
+
     it('round-trips formulas on a log/trace event source', async () => {
       // Event-source formulas are accepted and round-trip just like
       // metric formulas.
