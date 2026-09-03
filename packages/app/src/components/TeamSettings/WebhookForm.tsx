@@ -73,6 +73,10 @@ export const getWebhookTemplateVariables = (
   },
   { name: '{{threshold}}', description: 'The configured threshold (number)' },
   {
+    name: '{{thresholdMax}}',
+    description: 'Upper bound of a between/outside range (number)',
+  },
+  {
     name: '{{value}}',
     description: 'Value that triggered or resolved the alert (number)',
   },
