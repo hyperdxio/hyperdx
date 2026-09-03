@@ -6,6 +6,7 @@ import { z } from 'zod';
 
 export { default as objectHash } from 'object-hash';
 
+import { isQueryExpressionFilter, isStaticListFilter } from '@/filters';
 import { isBuilderSavedChartConfig, isRawSqlSavedChartConfig } from '@/guards';
 import { MacroExpansionError, MalformedMacroArgsError } from '@/macroErrors';
 import {
@@ -32,6 +33,7 @@ import {
   RawSqlChartConfig,
   SavedChartConfig,
   SortSpecificationList,
+  SourceKind,
   SQLInterval,
   TileTemplateSchema,
   TSource,
@@ -699,17 +701,24 @@ export function convertToDashboardTemplate(
     input: DashboardFilter,
     sources: TSource[],
   ): DashboardFilter => {
-    const filter = DashboardFilterSchema.strip().parse(structuredClone(input));
+    const filter = DashboardFilterSchema.parse(structuredClone(input));
+
+    // A static filter references nothing in the workspace
+    if (isStaticListFilter(filter)) return filter;
+
     // Extract name from source or default to '' if not found
     filter.source =
-      sources.find(source => source.id === input.source)?.name ?? '';
-    if (input.appliesToSourceIds?.length) {
-      const remapped = input.appliesToSourceIds
-        .map(id => sources.find(source => source.id === id)?.name)
-        .filter((name): name is string => !!name && name.length > 0);
-      filter.appliesToSourceIds = remapped.length > 0 ? remapped : undefined;
-    } else {
-      filter.appliesToSourceIds = undefined;
+      sources.find(source => source.id === filter.source)?.name ?? '';
+
+    if (isQueryExpressionFilter(filter)) {
+      if (filter.appliesToSourceIds?.length) {
+        const remapped = filter.appliesToSourceIds
+          .map(id => sources.find(source => source.id === id)?.name)
+          .filter((name): name is string => !!name && name.length > 0);
+        filter.appliesToSourceIds = remapped.length > 0 ? remapped : undefined;
+      } else {
+        filter.appliesToSourceIds = undefined;
+      }
     }
     return filter;
   };
@@ -877,11 +886,21 @@ export function convertToCategoricalChartConfig(
 /**
  * Number charts collapse to a single aggregate value, so drop the time bucket
  * (granularity) and any group-by.
+ *
+ * Metric formula configs (HDX-5080) additionally always hide their operand
+ * series: the number chart displays the first value column of the result, so
+ * the formula column must be the only one projected — never a raw operand.
+ * Enforced here (the choke point every number render passes through) so it
+ * holds for stale saved configs and display-type switches alike, regardless
+ * of the tile's "Show input series" setting on other display types.
  */
 export function convertToNumberChartConfig(
   config: BuilderChartConfigWithOptTimestamp,
 ): BuilderChartConfigWithOptTimestamp {
-  return omit(config, ['granularity', 'groupBy']);
+  const converted = omit(config, ['granularity', 'groupBy']);
+  return config.formulas?.length
+    ? { ...converted, showOperandSeries: false }
+    : converted;
 }
 
 /**
@@ -1381,6 +1400,38 @@ export function displayTypeSupportsBuilderAlerts(
   );
 }
 
+/**
+ * Display types that can carry formulas — the shapes the formula query
+ * paths render (composed multi-series for metrics, inline single-scan for
+ * events). Shared by the chart editor's "Add Formula" gating and the
+ * external API / MCP tile validation, so the surfaces cannot drift.
+ */
+export const isFormulaDisplayType = (
+  displayType: DisplayType | undefined,
+): displayType is
+  | DisplayType.Line
+  | DisplayType.StackedBar
+  | DisplayType.Table
+  | DisplayType.Number =>
+  displayType === DisplayType.Line ||
+  displayType === DisplayType.StackedBar ||
+  displayType === DisplayType.Table ||
+  displayType === DisplayType.Number;
+
+/**
+ * Source kinds that can carry formulas: metric sources (rendered via the
+ * composed multi-series metric query) and log/trace event sources (compiled
+ * inline in the single-scan SELECT). Shared by the chart editor's
+ * "Add Formula" gating and the external API / MCP tile validation, so the
+ * surfaces cannot drift. Session (and other) sources stay gated off.
+ */
+export const isFormulaSourceKind = (
+  kind: SourceKind | undefined,
+): kind is SourceKind.Metric | SourceKind.Log | SourceKind.Trace =>
+  kind === SourceKind.Metric ||
+  kind === SourceKind.Log ||
+  kind === SourceKind.Trace;
+
 export function displayTypeSupportsPromQLAlerts(
   displayType: DisplayType | undefined,
 ): boolean {
@@ -1567,8 +1618,14 @@ export function validateRawSqlChartConfig(
 
       // Everything else — an unknown variable, a bad argument count, an
       // unrecognized `${v:format}`, an unconfigured metric type — is invisible
-      // to the user until the query fails, so it is reported verbatim.
-      if (!isStillTyping && !isAlreadyReported) {
+      // to the user until the query fails, so it is reported verbatim. A
+      // variable macro's message can already have come from the variable checks
+      // above, which expand the same template.
+      if (
+        !isStillTyping &&
+        !isAlreadyReported &&
+        !errors.includes(error.message)
+      ) {
         errors.push(error.message);
       }
     }

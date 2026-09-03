@@ -114,10 +114,15 @@ ci-build:
 ci-lint:
 	npx nx run-many -t ci:lint
 	node scripts/ci/ratchet.mjs
+	scripts/ci/check-openapi-sync.sh
+
+.PHONY: ci-openapi
+ci-openapi:
+	scripts/ci/check-openapi-sync.sh
 
 .PHONY: dev-int-down
 dev-int-down:
-	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml down
+	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml down -v
 	@for port in $(HDX_CI_API_PORT) $(HDX_CI_OPAMP_PORT); do \
 		pids=$$(lsof -ti :$$port 2>/dev/null); \
 		for pid in $$pids; do \
@@ -156,7 +161,7 @@ dev-int:
 	@bash scripts/ensure-dev-portal.sh
 	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml up -d
 	bash -c 'set -o pipefail; npx nx run @hyperdx/api:dev:int $(FILE) 2>&1 | tee $(HDX_CI_LOGS_DIR)/api-int.log'; ret=$$?; \
-	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml down; \
+	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml down -v; \
 	$(call archive-int-logs); \
 	exit $$ret
 
@@ -167,7 +172,7 @@ dev-int-common-utils:
 	@bash scripts/ensure-dev-portal.sh
 	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml up -d
 	bash -c 'set -o pipefail; npx nx run @hyperdx/common-utils:dev:int $(FILE) 2>&1 | tee $(HDX_CI_LOGS_DIR)/common-utils-int.log'; ret=$$?; \
-	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml down; \
+	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml down -v; \
 	$(call archive-int-logs); \
 	exit $$ret
 
@@ -176,7 +181,7 @@ ci-int:
 	@mkdir -p $(HDX_CI_LOGS_DIR)
 	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml up -d --quiet-pull
 	bash -c 'set -o pipefail; npx nx run-many -t ci:int --parallel=false --output-style=stream 2>&1 | tee $(HDX_CI_LOGS_DIR)/ci-int.log'; ret=$$?; \
-	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml down; \
+	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml down -v; \
 	$(call archive-int-logs); \
 	exit $$ret
 

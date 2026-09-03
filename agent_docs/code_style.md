@@ -15,8 +15,84 @@
 
 - **Single Responsibility**: One clear purpose per component/function
 - **File Size**: Max 300 lines - refactor when approaching limit
-- **DRY**: Reuse existing functionality; consolidate duplicates
+- **DRY**: Grep for an existing implementation before adding a type, schema,
+  helper, or component - see "Before you add a type, schema, or helper" below
+  (REQUIRED)
 - **In-Context Learning**: Explore similar files before implementing
+
+## Before you add a type, schema, or helper (REQUIRED)
+
+**Grep for an existing implementation before you define a new type, Zod schema,
+helper function, or React component.** Search for the _operation_ — splitting a
+list, bucketing a timestamp, validating a URL, formatting a duration — not for
+the name you were about to give it. Names differ; operations don't.
+
+```bash
+# Two or three words for the operation, as alternates. Runs in ~20ms.
+grep -rniE "export (const|function|type|interface|enum) [a-zA-Z]*(bucket|interval|granular)" \
+  packages/common-utils/src packages/app/src packages/api/src \
+  --include='*.ts' --include='*.tsx'
+```
+
+Search order: the file you are editing, then `packages/common-utils/src/`, then
+the rest of your package. `common-utils` has **no root barrel** — no
+`src/index.ts`, and its `package.json` declares no entry point, which is why
+every import is a deep `@hyperdx/common-utils/dist/...` path. `src/types.ts`
+alone is ~2,850 lines and 280+ exports. You cannot discover what exists by
+reading an index; grep is the index.
+
+### Where shared code already lives
+
+Nine modules carry ~90% of all cross-package imports:
+
+| Import path | Holds |
+|-------------|-------|
+| `.../dist/types` | Every shared Zod schema and its inferred type: sources, alerts, dashboards, tiles, webhooks, chart configs, `SQLInterval`, `MetricsDataType`, `StacktraceFrame` |
+| `.../dist/core/utils` | Time-bucket and granularity math (`toStartOfInterval`, `timeBucketByGranularity`, `convertGranularityToSeconds`), string splitting (`splitAndTrimCSV`, `splitAndTrimWithBracket`, `escapeSqlString`), `hashCode`, `parseJSON`, `formatDate` |
+| `.../dist/core/metadata` | ClickHouse table/column introspection — `Metadata`, `getMetadata`, `parseKeyPath`, `unquoteIdentifier` |
+| `.../dist/clickhouse` (`/node`, `/browser`) | Query client, `ChSql`/`chSql`/`concatChSql`, CH↔JS type conversion |
+| `.../dist/core/renderChartConfig` | `ChartConfig` → SQL |
+| `.../dist/filters` | Filter state, serialization, and validation (`FilterState`, `filtersToQuery`, `parseQuery`) |
+| `.../dist/guards` | Chart-config and source type guards (`isBuilderChartConfig`, `isRawSqlChartConfig`, `isHeatmapCompatibleSource`) |
+| `.../dist/validation` | `isValidUrl`, `isValidSlackUrl`, password validators |
+| `.../dist/variables` | Dashboard variable resolution and template expansion |
+
+Package-local homes, searched second: `packages/app/src/utils.ts`,
+`packages/app/src/types.ts`, `packages/app/src/ChartUtils.tsx`,
+`packages/api/src/utils/`.
+
+### What to do once you find it
+
+| Situation | Do this |
+|-----------|---------|
+| Canonical version exists and fits | Import it. Delete the copy you were writing. |
+| Exists, but you want a local name | Alias-shim it — `packages/app/src/types.ts:9`, `export type NumberFormat = _NumberFormat;`. Never retype the definition. |
+| Exists, but the shape is _almost_ right | Derive from it (`Pick`, `Omit`, `.extend()`, `Alert & { … }`) or parameterize the canonical one. One source of truth. |
+| Shared logic between two components | Factor it into a sibling module — `packages/app/src/components/sourceSelectUtils.tsx:51` (`useFilteredSortedSourceItems`, shared by `SourceSelect` and `SourceMultiSelect`). |
+| Two genuinely must coexist | Doc-comment _why_, and name the twin. `packages/common-utils/src/types.ts:571-582` does this for the Mongoose `IWebhook` (`packages/api/src/models/webhook.ts:17`) vs the JSON-serialized `WebhookSchema`. |
+
+Not acceptable: a second definition with no alias, no doc comment explaining the
+twin, and no test pinning the two together.
+
+### Marking a whole-file port
+
+When an entire file has to be copied across packages — `packages/cli` does this
+for the components listed under "Web Frontend Alignment" in
+[`packages/cli/AGENTS.md`](../packages/cli/AGENTS.md) — head it with an
+`@source` tag naming the origin, one tag per origin file:
+
+```ts
+/**
+ * Source helper functions.
+ *
+ * @source packages/app/src/source.ts
+ */
+```
+
+`scripts/ci/ratchet.mjs` counts these so the total stays visible in CI. That
+count is advisory, not a gate: annotating a port never fails the build, and
+stripping the tag to go green hides the copy instead of removing it. Lower it by
+moving the shared code into `common-utils`, then run `yarn ratchet:update`.
 
 ## React Patterns
 
@@ -103,7 +179,7 @@ This pattern cannot be enforced by ESLint and requires manual code review.
 
 We ship **themed semantic variants** for `Alert`, `Text`, `Button`, and `ActionIcon` so callouts and status text are token-driven and consistent across the HyperDX and ClickStack brands (and light/dark). **Prefer these over raw Mantine palette colors** (`color="yellow"`, `color="red"`, `c="green"`, etc.).
 
-The variant → token mapping is centralized in `packages/app/src/theme/themes/semanticVariants.ts` (the single source of truth, consumed by both brand themes' `mantineTheme.ts`). See the Storybook stories `Components/Alert` (interactive `Playground`) and `Design Tokens/Semantic Variants` for the full visual matrix.
+The variant → token mapping is centralized in `packages/app/src/theme/themes/semanticVariants.ts` (the single source of truth, consumed by both brand themes' `mantineTheme.ts`). See the Storybook stories `Components/Alert` (interactive `Playground`) and `Design tokens/Semantic variants` for the full visual matrix.
 
 **`Alert`** — `info` | `success` | `warning` | `danger`. Renders a tinted `-subtle` background with the title, icon, **and body text** in the semantic color token:
 
@@ -208,6 +284,37 @@ the copy). Exercise the real dialog in E2E instead.
 ```
 
 **Title copy**: Treat `title` as a short headline (like `Title` in the UI). Do **not** end it with a period. Use `description` for full sentences, which should use normal punctuation including a trailing period when appropriate. Match listing pages (e.g. dashboards and saved searches use parallel phrasing such as “No matching … yet” / “No … yet” without dots).
+
+### Code snippets (REQUIRED)
+
+**Do not render raw `<pre>`, ad-hoc `Paper` + monospace text, or unstyled `<code>`.** Use the existing Mantine/product components so snippets match Terraform export, onboarding, and Storybook guidelines.
+
+| Kind | Component | When |
+|------|-----------|------|
+| **Inline code** | Mantine `<Code>` | Short tokens in prose (`Session`, a column name, a flag). |
+| **Fenced / multi-line / copyable** | `CopySnippet` (`@/components/ClickStackOnboarding/CopySnippet`) | Install commands, HCL, JSX examples, any block the user might copy. Wraps `<Code block>` plus a Copy button. |
+
+```tsx
+// ✅ inline — Mantine Code
+Create a source with <Code>Session</Code> type.
+
+// ✅ fenced / copyable — CopySnippet (Code + Copy)
+<CopySnippet
+  label="Import block"
+  snippet={`import { clickstack_dashboard } from "clickhouse/clickstack"`}
+/>
+
+// Label is optional when the surrounding heading already names the snippet
+<CopySnippet snippet={USAGE} />
+
+// ❌ BAD — raw pre / Paper chrome
+<pre>{snippet}</pre>
+<Paper bg="var(--color-bg-code)"><Text component="pre" ff="monospace">{snippet}</Text></Paper>
+```
+
+**SQL query previews** (rendered ClickHouse SQL with highlighting) still use `SQLPreview` / `ChartSQLPreview` — those are editors, not snippet chrome.
+
+Storybook: `Components/Code` (live `InlineCode`, `FencedBlocks`, and `Usage`). Guidelines markdown maps fenced blocks → `CopySnippet` and inline `` `code` `` → `<Code>` automatically. Follow the same split in app UI.
 
 ### Chart cards (ChartCard)
 

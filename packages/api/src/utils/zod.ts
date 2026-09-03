@@ -1,27 +1,36 @@
+import { validateChartConfigFormulas } from '@hyperdx/common-utils/dist/dashboardValidation';
 import {
   addDuplicateTileIdIssues,
   AggregateFunctionSchema,
+  AlertChartConfigSchema,
   alertNoteSchema,
   AlertThresholdType,
   BackgroundChartSchema,
   ChartPaletteTokenSchema,
   DASHBOARD_CONTAINER_ID_MAX,
   DASHBOARD_MAX_TILES,
-  DashboardFilterSchema,
   MAX_TAG_LENGTH,
   MAX_TAGS,
+  MetricFormulaSchema,
   MetricsDataType,
   NumberFormatSchema,
   NumberTileColorConditionSchema,
   OnClickDashboardSchema,
   OnClickExternalSchema,
   OnClickSearchSchema,
+  PromqlLabelDashboardFilterSchema,
+  QueryExpressionDashboardFilterSchema,
   scheduleStartAtSchema,
   SearchConditionLanguageSchema as whereLanguageSchema,
+  StaticListDashboardFilterSchema,
   tagsSchema,
+  validateAlertChannelSelection,
   validateAlertScheduleOffsetMinutes,
   validateAlertThresholdMax,
+  VariableFilterValueSchema,
   WebhookService,
+  zAlertChannel,
+  zAlertChannels,
 } from '@hyperdx/common-utils/dist/types';
 import { Types } from 'mongoose';
 import { z } from 'zod';
@@ -133,27 +142,65 @@ const chartSeriesSchema = z.discriminatedUnion('type', [
 // while the canonical definition lives in the shared package.
 export { MAX_TAG_LENGTH, MAX_TAGS, tagsSchema };
 
-export const externalDashboardFilterSchemaWithId = DashboardFilterSchema.omit({
+const externalQueryExpressionFilterShape =
+  QueryExpressionDashboardFilterSchema.omit({ source: true }).extend({
+    sourceId: objectIdSchema,
+  });
+
+// A static filter's mode flags each accept exactly one value, so callers may
+// omit them and get that value.
+const externalStaticListFilterShape = StaticListDashboardFilterSchema.extend({
+  isBroadcastEnabled: z.literal(false).default(false),
+  isVariableEnabled: z.literal(true).default(true),
+});
+
+const externalPromqlLabelFilterShape = PromqlLabelDashboardFilterSchema.omit({
   source: true,
-})
-  .extend({ sourceId: objectIdSchema })
-  .strict();
+}).extend({
+  sourceId: objectIdSchema,
+  isBroadcastEnabled: z.literal(false).default(false),
+  isVariableEnabled: z.literal(true).default(true),
+});
+
+export const externalDashboardFilterSchemaWithId = z.discriminatedUnion(
+  'type',
+  [
+    externalQueryExpressionFilterShape.strict(),
+    externalStaticListFilterShape.strict(),
+    externalPromqlLabelFilterShape.strict(),
+  ],
+);
 
 export type ExternalDashboardFilterWithId = z.infer<
   typeof externalDashboardFilterSchemaWithId
 >;
 
-export const externalDashboardFilterSchema =
-  externalDashboardFilterSchemaWithId.omit({ id: true });
+export type ExternalQueryExpressionFilterWithId = Extract<
+  ExternalDashboardFilterWithId,
+  { type: 'QUERY_EXPRESSION' }
+>;
+
+export const externalDashboardFilterSchema = z.discriminatedUnion('type', [
+  externalQueryExpressionFilterShape.omit({ id: true }).strict(),
+  externalStaticListFilterShape.omit({ id: true }).strict(),
+  externalPromqlLabelFilterShape.omit({ id: true }).strict(),
+]);
 
 export type ExternalDashboardFilter = z.infer<
   typeof externalDashboardFilterSchema
 >;
 
-export const externalDashboardSavedFilterValueSchema = z.object({
-  type: z.literal('sql').optional().default('sql'),
-  condition: z.string().max(10000),
-});
+/**
+ * One entry in a dashboard's `savedFilterValues`: either a rendered SQL
+ * predicate, or a selection addressed by the dashboard variable it belongs to.
+ */
+export const externalDashboardSavedFilterValueSchema = z.union([
+  z.object({
+    type: z.literal('sql').optional().default('sql'),
+    condition: z.string().max(10000),
+  }),
+  VariableFilterValueSchema.strict(),
+]);
 
 // ================================
 // Dashboards (new format)
@@ -194,7 +241,7 @@ const externalOnClickSchema = z.discriminatedUnion('type', [
   externalOnClickExternalSchema,
 ]);
 
-const externalDashboardSelectItemSchema = z
+export const externalDashboardSelectItemSchema = z
   .object({
     // For logs, traces, and metrics
     valueExpression: z.string().max(10000).optional(),
@@ -245,6 +292,24 @@ const externalDashboardRawSqlChartConfigBaseSchema = z.object({
   numberFormat: NumberFormatSchema.optional(),
 });
 
+// Derived series computed from the `select` entries via letter-ref arithmetic
+// expressions (`A` = select[0], ...), e.g. "A / (A + B) * 100". Metric sources
+// only (enforced by `validateDashboardTiles`, which can see the tile's
+// source); expressions are parsed and validated against the tile's select
+// list by `validateChartConfigFormulas` in the tile-config refinement below.
+// `MetricFormulaSchema` is imported from common-utils so the external surface
+// cannot drift from what the UI persists. The array cap mirrors what the
+// editor would ever produce (one formula per "Add Formula" click; select
+// itself caps at 20).
+const externalFormulasSchema = z.array(MetricFormulaSchema).max(10).optional();
+
+// Whether the raw operand series referenced by `formulas` are returned
+// alongside the formula column(s) (true / unset) or only the formula
+// column(s) are returned (false). Only meaningful when `formulas` is
+// non-empty; ignored otherwise. Number tiles always hide operands
+// (persisted internally as false), so they do not expose this field.
+const externalShowOperandSeriesSchema = z.boolean().optional();
+
 const externalDashboardTimeChartConfigSchema = z.object({
   sourceId: objectIdSchema,
   select: z.array(externalDashboardSelectItemSchema).min(1).max(20),
@@ -253,6 +318,8 @@ const externalDashboardTimeChartConfigSchema = z.object({
   alignDateRangeToGranularity: z.boolean().optional(),
   fillNulls: z.boolean().optional(),
   numberFormat: NumberFormatSchema.optional(),
+  formulas: externalFormulasSchema,
+  showOperandSeries: externalShowOperandSeriesSchema,
 });
 
 const externalDashboardLineChartConfigSchema =
@@ -310,6 +377,8 @@ const externalDashboardTableChartConfigSchema = z.object({
   numberFormat: NumberFormatSchema.optional(),
   groupByColumnsOnLeft: z.boolean().optional(),
   onClick: externalOnClickSchema.optional(),
+  formulas: externalFormulasSchema,
+  showOperandSeries: externalShowOperandSeriesSchema,
 });
 
 const externalDashboardTableRawSqlChartConfigSchema =
@@ -340,8 +409,17 @@ const externalDashboardCategoricalBarRawSqlChartConfigSchema =
 const externalDashboardNumberChartConfigSchema = z.object({
   displayType: z.literal('number'),
   sourceId: objectIdSchema,
-  select: z.array(externalDashboardSelectItemSchema).length(1),
+  // Exactly one select item unless `formulas` is set: a formula number tile
+  // displays the (single) formula value and its select entries are the
+  // formula's operands (e.g. A / (A + B)). The one-item rule for
+  // formula-less tiles is enforced in the tile-config refinement below,
+  // where `formulas` is visible.
+  select: z.array(externalDashboardSelectItemSchema).min(1).max(20),
   numberFormat: NumberFormatSchema.optional(),
+  // Number tiles display a single value, so operand series are always
+  // hidden — persisted internally as `showOperandSeries: false` (see
+  // `convertToInternalTileConfig`); the field is not exposed here.
+  formulas: externalFormulasSchema,
   // Number-tile color authoring. Mirrors the internal
   // `SharedChartSettingsSchema` fields (common-utils types.ts), which the
   // editor gates to number tiles (`ChartDisplaySettingsDrawer`:
@@ -530,6 +608,32 @@ const externalDashboardTileConfigSchema = z
         message: 'asRatio can only be used with exactly two select items',
       });
     }
+
+    if (!('configType' in data)) {
+      // Metric formulas (builder tiles only): expression parse + series-ref
+      // range checks, asRatio mutual exclusion, and the number-tile
+      // single-formula cap — shared with the chart editor's save-time rules
+      // via common-utils.
+      validateChartConfigFormulas(data, ctx);
+
+      // A number tile without formulas displays its single select item; the
+      // relaxed `.min(1).max(20)` on the number schema exists only so
+      // formula operands fit (the editor enforces the same in
+      // `validateChartForm`).
+      if (
+        data.displayType === 'number' &&
+        !('formulas' in data && (data.formulas?.length ?? 0) > 0) &&
+        Array.isArray(data.select) &&
+        data.select.length !== 1
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message:
+            'Number tiles support a single select item unless formulas are used (extra items are formula operands)',
+          path: ['select'],
+        });
+      }
+    }
   })
   .transform(data => {
     // Re-parse through the appropriate sub-schema to strip unknown fields.
@@ -641,11 +745,6 @@ export const externalDashboardTileListSchema = z
 // ==============================
 // Alerts
 // ==============================
-const zChannel = z.object({
-  type: z.literal('webhook'),
-  webhookId: z.string().min(1),
-});
-
 const zSavedSearchAlert = z.object({
   source: z.literal(AlertSource.SAVED_SEARCH),
   groupBy: z.string().nullish(),
@@ -658,24 +757,75 @@ const zTileAlert = z.object({
   dashboardId: z.string().min(1),
 });
 
-export const alertSchema = z
-  .object({
-    channel: zChannel,
-    interval: z.enum(['1m', '5m', '15m', '30m', '1h', '6h', '12h', '1d']),
-    scheduleOffsetMinutes: z.number().int().min(0).max(1439).optional(),
-    scheduleStartAt: scheduleStartAtSchema,
-    threshold: z.number(),
-    thresholdType: z.nativeEnum(AlertThresholdType),
-    thresholdMax: z.number().optional(),
-    source: z.nativeEnum(AlertSource).default(AlertSource.SAVED_SEARCH),
-    name: z.string().min(1).max(512).nullish(),
-    message: z.string().min(1).max(4096).nullish(),
-    note: alertNoteSchema,
-    numConsecutiveWindows: z.number().int().min(1).nullish(),
-  })
+const zInlineAlert = z.object({
+  source: z.literal(AlertSource.INLINE),
+  // Builder + raw SQL configs only; the schema has no PromQL variant.
+  chartConfig: AlertChartConfigSchema,
+});
+
+/**
+ * Metric-formula validation for inline alerts (builder configs only — raw SQL
+ * configs have no formulas). Dashboard tiles get this through the editor's
+ * save-time rules and the external tile-config refinement above; inline alerts
+ * are authored through this API directly, so without it a malformed formula
+ * (or one referencing a nonexistent series) persists and then throws on every
+ * evaluation tick instead of being rejected at write time. The helper checks
+ * the external-shape `asRatio`, so map the internal `seriesReturnType: 'ratio'`
+ * onto it.
+ */
+const validateInlineAlertFormulas = (
+  alert: {
+    source: AlertSource;
+    chartConfig?: z.infer<typeof AlertChartConfigSchema>;
+  },
+  ctx: z.RefinementCtx,
+) => {
+  if (alert.source !== AlertSource.INLINE || alert.chartConfig == null) {
+    return;
+  }
+  const chartConfig = alert.chartConfig;
+  if ('configType' in chartConfig) {
+    return;
+  }
+  validateChartConfigFormulas(
+    { ...chartConfig, asRatio: chartConfig.seriesReturnType === 'ratio' },
+    ctx,
+    { configPath: ['chartConfig'] },
+  );
+};
+
+const alertBaseSchema = z.object({
+  channel: zAlertChannel.optional(),
+  channels: zAlertChannels.optional(),
+  interval: z.enum(['1m', '5m', '15m', '30m', '1h', '6h', '12h', '1d']),
+  scheduleOffsetMinutes: z.number().int().min(0).max(1439).optional(),
+  scheduleStartAt: scheduleStartAtSchema,
+  threshold: z.number(),
+  thresholdType: z.nativeEnum(AlertThresholdType),
+  thresholdMax: z.number().optional(),
+  source: z.nativeEnum(AlertSource).default(AlertSource.SAVED_SEARCH),
+  name: z.string().min(1).max(512).nullish(),
+  message: z.string().min(1).max(4096).nullish(),
+  note: alertNoteSchema,
+  numConsecutiveWindows: z.number().int().min(1).nullish(),
+});
+
+export const alertSchema = alertBaseSchema
   .and(zSavedSearchAlert.or(zTileAlert))
+  .superRefine(validateAlertChannelSelection)
   .superRefine(validateAlertScheduleOffsetMinutes)
   .superRefine(validateAlertThresholdMax);
+
+// Superset of alertSchema for the internal API only: also accepts inline
+// alerts (source: 'inline'), which persist their own chart config. The
+// external v2 API keeps the narrower alertSchema until its contract (OpenAPI
+// docs, Terraform provider) is extended to cover inline alerts.
+export const internalAlertSchema = alertBaseSchema
+  .and(zSavedSearchAlert.or(zTileAlert).or(zInlineAlert))
+  .superRefine(validateAlertChannelSelection)
+  .superRefine(validateAlertScheduleOffsetMinutes)
+  .superRefine(validateAlertThresholdMax)
+  .superRefine(validateInlineAlertFormulas);
 
 // ==============================
 // Webhooks

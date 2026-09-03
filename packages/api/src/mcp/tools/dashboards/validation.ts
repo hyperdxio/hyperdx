@@ -1,11 +1,33 @@
+import type { FilterForVariableDeclaration } from '@hyperdx/common-utils/dist/filters';
+import {
+  getDashboardVariableDeclarations,
+  getFilterVariableName,
+  isFilterVariableEnabled,
+} from '@hyperdx/common-utils/dist/filters';
+import {
+  isBuilderSavedChartConfig,
+  isRawSqlSavedChartConfig,
+} from '@hyperdx/common-utils/dist/guards';
 import {
   getSourceDependentMacrosUsed,
   hasMacro,
   INTERVAL_MACROS,
   TIME_RANGE_MACROS,
 } from '@hyperdx/common-utils/dist/macros';
+import {
+  DisplayType,
+  QueryExpressionDashboardFilter,
+  SavedChartConfig,
+  SearchConditionLanguage,
+} from '@hyperdx/common-utils/dist/types';
+import {
+  getVariableReferences,
+  mapBuilderVariableTemplates,
+  validateVariableReferencesInTemplate,
+} from '@hyperdx/common-utils/dist/variables';
 
 import {
+  convertToInternalTileConfig,
   isConfigTile,
   isRawSqlExternalTileConfig,
 } from '@/routers/external-api/v2/utils/dashboards';
@@ -127,4 +149,155 @@ export function getRawSqlTileMacroWarnings(
     }
   });
   return hints;
+}
+
+/**
+ * Minimal projection needed to check a filter's dropdown-values query. Static
+ * list filters have no dropdown query, so `where` / `whereLanguage` are optional.
+ */
+export type FilterForVariableValidation = FilterForVariableDeclaration &
+  Partial<Pick<QueryExpressionDashboardFilter, 'where' | 'whereLanguage'>>;
+
+/**
+ * Non-blocking checks on the dashboard variables references in a filter's `where`.
+ *
+ * A dependent filter is one whose `where` names another filter's variable, so
+ * that picking a service narrows the endpoint dropdown to that service's
+ * endpoints.
+ *
+ * Three warnings can arise from a dependent filter's `where`:
+ *  - referencing a filter that collects a value but never publishes it
+ *    (`isVariableEnabled` unset), which is the usual cause of an "unknown
+ *    variable" here;
+ *  - referencing the filter's OWN variable, which narrows its dropdown to the
+ *    values already selected so the rest disappear from a multi-select;
+ *  - a `where` that is not `sql`, where the macros are literal text.
+ */
+export function getFilterVariableWarnings(
+  filters: FilterForVariableValidation[] | undefined,
+): string[] {
+  if (!filters?.length) return [];
+
+  const variables = getDashboardVariableDeclarations(filters).map(
+    declaration => ({ ...declaration, values: [] }),
+  );
+  const declaredNames = new Set(variables.map(variable => variable.name));
+
+  // A map from variable name to to the name of the filter that collects it but is not variable-enabled.
+  const filtersByUnpublishedVarName = new Map<string, string>();
+  for (const filter of filters) {
+    if (isFilterVariableEnabled(filter)) continue;
+    for (const candidate of [
+      getFilterVariableName(filter),
+      filter.variableName?.trim(),
+    ]) {
+      if (!candidate) continue;
+      const key = candidate.toLowerCase();
+      if (!filtersByUnpublishedVarName.has(key))
+        filtersByUnpublishedVarName.set(key, filter.name);
+    }
+  }
+
+  const warnings: string[] = [];
+  filters.forEach((filter, index) => {
+    const where = filter.where?.trim();
+    if (!where) return;
+
+    const label = filter.name?.trim() || `filter #${index + 1}`;
+    const language = filter.whereLanguage ?? 'sql';
+
+    const result = validateVariableReferencesInTemplate(where, variables, {
+      subject: 'The dropdown values query',
+      language,
+    });
+    const issues = [...result.errors, ...result.warnings];
+
+    const referencedNames = new Set(
+      getVariableReferences(where).map(reference => reference.name),
+    );
+
+    const ownName = isFilterVariableEnabled(filter)
+      ? getFilterVariableName(filter)
+      : undefined;
+    if (ownName && referencedNames.has(ownName)) {
+      issues.push(
+        `The dropdown values query references this filter's own variable $${ownName}, ` +
+          'which narrows the dropdown to the values already selected. Reference ' +
+          "another filter's variable instead.",
+      );
+    }
+
+    for (const name of referencedNames) {
+      if (declaredNames.has(name)) continue;
+      const owner = filtersByUnpublishedVarName.get(name.toLowerCase());
+      if (owner == null) continue;
+      issues.push(
+        `$${name} is not published as a variable. The filter named "${owner}" collects ` +
+          `that value but does not expose it: set isVariableEnabled: true (and ` +
+          `variableName: "${name}") on it so this dropdown can depend on it.`,
+      );
+    }
+
+    warnings.push(...issues.map(issue => `Filter "${label}": ${issue}`));
+  });
+
+  return warnings;
+}
+
+/**
+ * Non-blocking checks on the dashboard variables a tile's expressions
+ * reference, run against the variables the dashboard's filters actually
+ * declare.
+ */
+export function getTileVariableWarnings(
+  tiles: ExternalDashboardTileWithId[],
+  filters: FilterForVariableDeclaration[] | undefined,
+): string[] {
+  const variables = getDashboardVariableDeclarations(filters).map(
+    declaration => ({ ...declaration, values: [] }),
+  );
+
+  const warnings: string[] = [];
+  tiles.forEach((tile, index) => {
+    if (!isConfigTile(tile)) return;
+    const label = tile.name?.trim() || `tile #${index + 1}`;
+
+    // Convert to the internal config format so that variable validators can run
+    let config: SavedChartConfig;
+    try {
+      config = convertToInternalTileConfig(tile).config;
+    } catch {
+      // A tile shape the converter refuses is already reported by the schema
+      // validation that runs alongside this; nothing to add here.
+      return;
+    }
+
+    const issues: string[] = [];
+    const validate = (template: string, language: SearchConditionLanguage) => {
+      const result = validateVariableReferencesInTemplate(template, variables, {
+        subject: language === 'lucene' ? 'The Lucene filter' : 'SQL',
+        language,
+      });
+      issues.push(...result.errors, ...result.warnings);
+    };
+
+    if (isRawSqlSavedChartConfig(config)) {
+      validate(config.sqlTemplate, 'sql');
+    } else if (
+      isBuilderSavedChartConfig(config) &&
+      config.displayType !== DisplayType.Markdown
+    ) {
+      mapBuilderVariableTemplates(config, (template, language) => {
+        validate(template, language);
+        return template;
+      });
+    }
+
+    // Not every message from the validators names its subject (the editor
+    // shows them attached to the input they came from), so identify the tile
+    // here rather than relying on the `subject` option.
+    warnings.push(...issues.map(issue => `Tile "${label}": ${issue}`));
+  });
+
+  return warnings;
 }

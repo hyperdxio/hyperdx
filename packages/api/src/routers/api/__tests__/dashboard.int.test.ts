@@ -263,6 +263,65 @@ describe('dashboard router', () => {
     expect(storedAlert?.groupBy).toBeNull();
   });
 
+  // A tile alert must always end up with a resolvable notification target.
+  // Making `channel` optional briefly let a channels-only tile alert through
+  // this path and persist with nothing to notify.
+  it('persists a resolvable target for a channels-only tile alert', async () => {
+    const dashboard = await agent
+      .post('/dashboards')
+      .send({
+        name: 'Test Dashboard',
+        tiles: [
+          makeTile({
+            alert: {
+              channels: [
+                { type: 'webhook' as const, webhookId: webhook._id.toString() },
+              ],
+              interval: '12h' as const,
+              threshold: 1,
+              thresholdType: AlertThresholdType.ABOVE,
+            },
+          }),
+        ],
+        tags: [],
+      })
+      .expect(200);
+
+    const storedAlert = await Alert.findOne({
+      team: team._id,
+      dashboard: dashboard.body.id,
+      source: AlertSource.TILE,
+    });
+    expect(storedAlert).not.toBeNull();
+    expect(storedAlert?.channels).toEqual([
+      { type: 'webhook', webhookId: webhook._id.toString() },
+    ]);
+    // The legacy mirror is what pre-multi-channel readers dispatch from.
+    expect(storedAlert?.channel).toEqual({
+      type: 'webhook',
+      webhookId: webhook._id.toString(),
+    });
+  });
+
+  it('rejects a tile alert with no notification channel', async () => {
+    await agent
+      .post('/dashboards')
+      .send({
+        name: 'Test Dashboard',
+        tiles: [
+          makeTile({
+            alert: {
+              interval: '12h' as const,
+              threshold: 1,
+              thresholdType: AlertThresholdType.ABOVE,
+            },
+          }),
+        ],
+        tags: [],
+      })
+      .expect(400);
+  });
+
   it('alerts are created when updating dashboard (adding alert to tile)', async () => {
     const mockAlert = makeMockAlert(webhook._id.toString());
     const dashboard = await agent
@@ -979,6 +1038,503 @@ describe('dashboard router', () => {
     });
   });
 
+  describe('static-list filters', () => {
+    const makeStaticFilter = (overrides = {}) => ({
+      id: new Types.ObjectId().toString(),
+      type: 'STATIC_LIST' as const,
+      name: 'Environment',
+      options: ['prod', 'staging', 'dev'],
+      isBroadcastEnabled: false,
+      isVariableEnabled: true,
+      variableName: 'env',
+      ...overrides,
+    });
+
+    it('persists a static-list filter on create and returns it on GET', async () => {
+      const filter = makeStaticFilter();
+
+      const created = await agent
+        .post('/dashboards')
+        .send({ ...MOCK_DASHBOARD, filters: [filter] })
+        .expect(200);
+
+      expect(created.body.filters).toEqual([filter]);
+
+      const listed = await agent.get('/dashboards').expect(200);
+      expect(
+        listed.body.find(
+          (dashboard: { _id: string }) => dashboard._id === created.body.id,
+        )?.filters,
+      ).toEqual([filter]);
+
+      const stored = await Dashboard.findById(created.body.id).lean();
+      expect(stored?.filters).toEqual([filter]);
+      // The queried-filter fields have to stay absent, not be materialized as
+      // null: `expression` falsiness is what makes `$__filter($env)` report
+      // that the expression must be passed explicitly.
+      expect(stored?.filters?.[0]).not.toHaveProperty('expression');
+      expect(stored?.filters?.[0]).not.toHaveProperty('source');
+    });
+
+    it('preserves the authored option order', async () => {
+      const filter = makeStaticFilter({ options: ['prod', 'staging', 'dev'] });
+
+      const created = await agent
+        .post('/dashboards')
+        .send({ ...MOCK_DASHBOARD, filters: [filter] })
+        .expect(200);
+
+      expect(created.body.filters[0].options).toEqual([
+        'prod',
+        'staging',
+        'dev',
+      ]);
+    });
+
+    it('persists an updated option list on PATCH', async () => {
+      const filter = makeStaticFilter();
+      const created = await agent
+        .post('/dashboards')
+        .send({ ...MOCK_DASHBOARD, filters: [filter] })
+        .expect(200);
+
+      const updatedFilter = { ...filter, options: ['prod', 'canary'] };
+      await agent
+        .patch(`/dashboards/${created.body.id}`)
+        .send({ filters: [updatedFilter] })
+        .expect(200);
+
+      const stored = await Dashboard.findById(created.body.id).lean();
+      expect(stored?.filters).toEqual([updatedFilter]);
+    });
+
+    it('accepts a static filter alongside a queried one', async () => {
+      await agent
+        .post('/dashboards')
+        .send({
+          ...MOCK_DASHBOARD,
+          filters: [
+            makeStaticFilter(),
+            {
+              id: new Types.ObjectId().toString(),
+              type: 'QUERY_EXPRESSION' as const,
+              name: 'Service',
+              expression: 'ServiceName',
+              source: new Types.ObjectId().toString(),
+            },
+          ],
+        })
+        .expect(200);
+    });
+
+    // The modes are literals on the static variant and `options` is `.min(1)`,
+    // so these are structural rejections; duplicate options are the one rule
+    // still carried by a refinement.
+    it.each([
+      ['broadcast enabled', { isBroadcastEnabled: true }],
+      ['broadcast unset', { isBroadcastEnabled: undefined }],
+      ['not variable-enabled', { isVariableEnabled: false }],
+      ['variables unset', { isVariableEnabled: undefined }],
+      ['no options', { options: undefined }],
+      ['an empty option list', { options: [] }],
+      ['duplicate options', { options: ['prod', 'prod'] }],
+    ])('rejects a static filter with %s', async (_label, overrides) => {
+      await agent
+        .post('/dashboards')
+        .send({
+          ...MOCK_DASHBOARD,
+          filters: [makeStaticFilter(overrides)],
+        })
+        .expect(400);
+    });
+
+    // A query-expression field on a static filter is accepted and persisted
+    // verbatim, exactly like any other unknown key on this route: the internal
+    // filter variants are not strict (a strict variant would turn a stray key
+    // left in Mongo by an older version into a failed save, since the edit form
+    // spreads the stored filter back into its payload), and `validateRequest`
+    // validates without replacing `req.body`, so nothing is stripped either.
+    // The extra fields are inert — every reader narrows on `type` — and the
+    // external API, which is strict, rejects the same payload outright.
+    it('persists a query-expression field sent on a static filter, inert', async () => {
+      const filter = makeStaticFilter();
+      const withStrayFields = {
+        ...filter,
+        expression: 'ServiceName',
+        where: "ServiceName = 'api'",
+      };
+
+      const created = await agent
+        .post('/dashboards')
+        .send({ ...MOCK_DASHBOARD, filters: [withStrayFields] })
+        .expect(200);
+
+      expect(created.body.filters).toEqual([withStrayFields]);
+
+      // Still reads back as a valid static filter, and template export drops
+      // the stray keys (see `convertToDashboardTemplate` in common-utils).
+      const stored = await Dashboard.findById(created.body.id).lean();
+      expect(stored?.filters?.[0]).toMatchObject({
+        type: 'STATIC_LIST',
+        options: ['prod', 'staging', 'dev'],
+        isBroadcastEnabled: false,
+        isVariableEnabled: true,
+      });
+    });
+
+    it('rejects the state when PATCH introduces it, leaving the stored filter alone', async () => {
+      const filter = makeStaticFilter();
+      const created = await agent
+        .post('/dashboards')
+        .send({ ...MOCK_DASHBOARD, filters: [filter] })
+        .expect(200);
+
+      await agent
+        .patch(`/dashboards/${created.body.id}`)
+        .send({ filters: [{ ...filter, options: [] }] })
+        .expect(400);
+
+      const stored = await Dashboard.findById(created.body.id).lean();
+      expect(stored?.filters).toEqual([filter]);
+    });
+
+    // The requiredness of both fields moved out of the field-level schema when
+    // `STATIC_LIST` made them optional, so it has to keep holding here.
+    it.each(['expression', 'source'])(
+      'still rejects a query-expression filter with no %s',
+      async field => {
+        const response = await agent
+          .post('/dashboards')
+          .send({
+            ...MOCK_DASHBOARD,
+            filters: [
+              {
+                id: new Types.ObjectId().toString(),
+                type: 'QUERY_EXPRESSION' as const,
+                name: 'Service',
+                expression: 'ServiceName',
+                source: new Types.ObjectId().toString(),
+                [field]: undefined,
+              },
+            ],
+          })
+          .expect(400);
+
+        expect(response.body[0].errors.issues).toEqual([
+          expect.objectContaining({ path: ['filters', 0, field] }),
+        ]);
+      },
+    );
+  });
+
+  describe('promql-label filters', () => {
+    const createPromqlSource = () =>
+      Source.create({
+        kind: SourceKind.Promql,
+        name: 'Test PromQL Source',
+        team: team._id,
+        connection: new Types.ObjectId().toString(),
+        from: { databaseName: 'test_db', tableName: 'timeseries_table' },
+        timestampValueExpression: 'timestamp',
+      });
+
+    // The route rejects a filter naming anything but a live PromQL source, so
+    // every case here needs a real one.
+    let promqlSourceId: string;
+    beforeEach(async () => {
+      promqlSourceId = (await createPromqlSource())._id.toString();
+    });
+
+    const makePromqlFilter = (overrides = {}) => ({
+      id: new Types.ObjectId().toString(),
+      type: 'PROMETHEUS_LABEL' as const,
+      name: 'Pod',
+      source: promqlSourceId,
+      label: 'pod',
+      isBroadcastEnabled: false,
+      isVariableEnabled: true,
+      variableName: 'pod',
+      ...overrides,
+    });
+
+    it('persists a promql-label filter on create and returns it on GET', async () => {
+      const filter = makePromqlFilter();
+
+      const created = await agent
+        .post('/dashboards')
+        .send({ ...MOCK_DASHBOARD, filters: [filter] })
+        .expect(200);
+
+      expect(created.body.filters).toEqual([filter]);
+
+      const stored = await Dashboard.findById(created.body.id).lean();
+      expect(stored?.filters).toEqual([filter]);
+      // Same reason as the static variant: an absent `expression` is what makes
+      // `$__filter($pod)` report that the expression must be passed explicitly.
+      expect(stored?.filters?.[0]).not.toHaveProperty('expression');
+    });
+
+    // Prometheus 3 allows UTF-8 label names, and a ClickHouse-backed source's
+    // tags map holds whatever the collector ingested.
+    it('persists a dotted OTel-shaped label', async () => {
+      const filter = makePromqlFilter({ label: 'k8s.pod.name' });
+
+      const created = await agent
+        .post('/dashboards')
+        .send({ ...MOCK_DASHBOARD, filters: [filter] })
+        .expect(200);
+
+      expect(created.body.filters).toEqual([filter]);
+    });
+
+    it('persists an updated label on PATCH', async () => {
+      const filter = makePromqlFilter();
+      const created = await agent
+        .post('/dashboards')
+        .send({ ...MOCK_DASHBOARD, filters: [filter] })
+        .expect(200);
+
+      const updatedFilter = { ...filter, label: 'namespace' };
+      await agent
+        .patch(`/dashboards/${created.body.id}`)
+        .send({ filters: [updatedFilter] })
+        .expect(200);
+
+      const stored = await Dashboard.findById(created.body.id).lean();
+      expect(stored?.filters).toEqual([updatedFilter]);
+    });
+
+    it.each([
+      ['broadcast enabled', { isBroadcastEnabled: true }],
+      ['broadcast unset', { isBroadcastEnabled: undefined }],
+      ['not variable-enabled', { isVariableEnabled: false }],
+      ['variables unset', { isVariableEnabled: undefined }],
+      ['no source', { source: undefined }],
+      ['no label', { label: undefined }],
+      ['an empty label', { label: '' }],
+    ])('rejects a promql-label filter with %s', async (_label, overrides) => {
+      await agent
+        .post('/dashboards')
+        .send({ ...MOCK_DASHBOARD, filters: [makePromqlFilter(overrides)] })
+        .expect(400);
+    });
+
+    // Resolving one of these reads the source's connection and db/table, which
+    // only a PromQL source carries — so unlike every other source reference on
+    // this route, a bad id is rejected rather than saved.
+    describe('source validation', () => {
+      it('rejects a filter naming a source that does not exist', async () => {
+        const source = new Types.ObjectId().toString();
+
+        const response = await agent
+          .post('/dashboards')
+          .send({ ...MOCK_DASHBOARD, filters: [makePromqlFilter({ source })] })
+          .expect(400);
+
+        expect(response.body.message).toContain(source);
+      });
+
+      it('rejects a filter naming a source of the wrong kind', async () => {
+        const logSource = await Source.create({
+          kind: SourceKind.Log,
+          name: 'Test Log Source',
+          team: team._id,
+          connection: new Types.ObjectId().toString(),
+          from: { databaseName: 'test_db', tableName: 'logs_table' },
+          timestampValueExpression: 'timestamp',
+          defaultTableSelectExpression: 'body',
+        });
+
+        const response = await agent
+          .post('/dashboards')
+          .send({
+            ...MOCK_DASHBOARD,
+            filters: [makePromqlFilter({ source: logSource._id.toString() })],
+          })
+          .expect(400);
+
+        expect(response.body.message).toContain(logSource._id.toString());
+      });
+
+      // The lookup is team-scoped, so another team's PromQL source is as good
+      // as absent.
+      it("rejects another team's PromQL source", async () => {
+        const otherTeamSource = await Source.create({
+          kind: SourceKind.Promql,
+          name: 'Other Team PromQL Source',
+          team: new Types.ObjectId(),
+          connection: new Types.ObjectId().toString(),
+          from: { databaseName: 'test_db', tableName: 'timeseries_table' },
+          timestampValueExpression: 'timestamp',
+        });
+
+        await agent
+          .post('/dashboards')
+          .send({
+            ...MOCK_DASHBOARD,
+            filters: [
+              makePromqlFilter({ source: otherTeamSource._id.toString() }),
+            ],
+          })
+          .expect(400);
+      });
+
+      it('rejects the source when PATCH introduces it, leaving the stored filter alone', async () => {
+        const filter = makePromqlFilter();
+        const created = await agent
+          .post('/dashboards')
+          .send({ ...MOCK_DASHBOARD, filters: [filter] })
+          .expect(200);
+
+        await agent
+          .patch(`/dashboards/${created.body.id}`)
+          .send({
+            filters: [{ ...filter, source: new Types.ObjectId().toString() }],
+          })
+          .expect(400);
+
+        const stored = await Dashboard.findById(created.body.id).lean();
+        expect(stored?.filters).toEqual([filter]);
+      });
+
+      // The app PATCHes the whole dashboard on every edit, so re-checking a
+      // filter that was already accepted would let a deleted source block
+      // every later save. The dangling reference is surfaced per-filter at
+      // query time instead.
+      it("lets unrelated edits through after the filter's source is deleted", async () => {
+        const filter = makePromqlFilter();
+        const created = await agent
+          .post('/dashboards')
+          .send({ ...MOCK_DASHBOARD, filters: [filter] })
+          .expect(200);
+
+        await Source.findByIdAndDelete(promqlSourceId);
+
+        await agent
+          .patch(`/dashboards/${created.body.id}`)
+          .send({ name: 'Renamed', filters: [filter] })
+          .expect(200);
+
+        const stored = await Dashboard.findById(created.body.id).lean();
+        expect(stored?.name).toBe('Renamed');
+        expect(stored?.filters).toEqual([filter]);
+      });
+
+      // Only the source is exempt once accepted — everything else about the
+      // filter is still the client's to change, and still validated.
+      it('lets the label change while the source stays dangling', async () => {
+        const filter = makePromqlFilter();
+        const created = await agent
+          .post('/dashboards')
+          .send({ ...MOCK_DASHBOARD, filters: [filter] })
+          .expect(200);
+
+        await Source.findByIdAndDelete(promqlSourceId);
+
+        await agent
+          .patch(`/dashboards/${created.body.id}`)
+          .send({ filters: [{ ...filter, label: 'namespace' }] })
+          .expect(200);
+      });
+
+      it('still rejects a filter added by the PATCH itself', async () => {
+        const created = await agent
+          .post('/dashboards')
+          .send(MOCK_DASHBOARD)
+          .expect(200);
+
+        const source = new Types.ObjectId().toString();
+        const response = await agent
+          .patch(`/dashboards/${created.body.id}`)
+          .send({ filters: [makePromqlFilter({ source })] })
+          .expect(400);
+
+        expect(response.body.message).toContain(source);
+      });
+
+      // Converting a filter to this type is the same as adding one, as far as
+      // the gate is concerned: its source has never been through it.
+      it('still rejects a filter PATCHed over from another type', async () => {
+        const id = new Types.ObjectId().toString();
+        const created = await agent
+          .post('/dashboards')
+          .send({
+            ...MOCK_DASHBOARD,
+            filters: [
+              {
+                id,
+                type: 'QUERY_EXPRESSION' as const,
+                name: 'Service',
+                expression: 'ServiceName',
+                source: promqlSourceId,
+              },
+            ],
+          })
+          .expect(200);
+
+        const logSource = await Source.create({
+          kind: SourceKind.Log,
+          name: 'Converted Log Source',
+          team: team._id,
+          connection: new Types.ObjectId().toString(),
+          from: { databaseName: 'test_db', tableName: 'logs_table' },
+          timestampValueExpression: 'timestamp',
+          defaultTableSelectExpression: 'body',
+        });
+
+        await agent
+          .patch(`/dashboards/${created.body.id}`)
+          .send({
+            filters: [
+              makePromqlFilter({ id, source: logSource._id.toString() }),
+            ],
+          })
+          .expect(400);
+      });
+
+      // The fetch is skipped entirely when no filter of this type is present,
+      // so a queried filter naming a missing source still saves as before.
+      it('leaves other filter types unvalidated', async () => {
+        await agent
+          .post('/dashboards')
+          .send({
+            ...MOCK_DASHBOARD,
+            filters: [
+              {
+                id: new Types.ObjectId().toString(),
+                type: 'QUERY_EXPRESSION' as const,
+                name: 'Service',
+                expression: 'ServiceName',
+                source: new Types.ObjectId().toString(),
+              },
+            ],
+          })
+          .expect(200);
+      });
+    });
+
+    it('rejects a variable name it shares with another filter', async () => {
+      await agent
+        .post('/dashboards')
+        .send({
+          ...MOCK_DASHBOARD,
+          filters: [
+            makePromqlFilter({ variableName: 'pod' }),
+            {
+              id: new Types.ObjectId().toString(),
+              type: 'QUERY_EXPRESSION' as const,
+              name: 'Pod (logs)',
+              expression: 'PodName',
+              source: new Types.ObjectId().toString(),
+              isVariableEnabled: true,
+              variableName: 'pod',
+            },
+          ],
+        })
+        .expect(400);
+    });
+  });
+
   describe('preset dashboards', () => {
     const MOCK_SOURCE: Omit<Extract<TSource, { kind: 'log' }>, 'id'> = {
       kind: SourceKind.Log,
@@ -1185,6 +1741,54 @@ describe('dashboard router', () => {
           .send({ filter: filterInput })
           .expect(400);
       });
+
+      // Preset dashboards render the filter form with variables hidden, and a
+      // static filter is variable-only, so there is no way to author one here.
+      it('returns 400 for a STATIC_LIST preset filter', async () => {
+        const response = await agent
+          .post(`/dashboards/preset/${PresetDashboard.Services}/filter`)
+          .send({
+            filter: {
+              id: new Types.ObjectId().toString(),
+              type: 'STATIC_LIST',
+              name: 'Environment',
+              options: ['prod', 'staging', 'dev'],
+              isBroadcastEnabled: false,
+              isVariableEnabled: true,
+              variableName: 'env',
+              presetDashboard: PresetDashboard.Services,
+            },
+          })
+          .expect(400);
+
+        // The preset schema extends the query-expression variant, so the type
+        // literal fails alongside the fields that variant requires.
+        expect(response.body[0].errors.issues).toContainEqual(
+          expect.objectContaining({ path: ['filter', 'type'] }),
+        );
+      });
+
+      it.each(['expression', 'source'])(
+        'returns 400 for a preset filter with no %s',
+        async field => {
+          const source = await Source.create({
+            ...MOCK_SOURCE,
+            team: team._id,
+          });
+
+          await agent
+            .post(`/dashboards/preset/${PresetDashboard.Services}/filter`)
+            .send({
+              filter: {
+                ...MOCK_PRESET_DASHBOARD_FILTER,
+                id: new Types.ObjectId().toString(),
+                source: source._id.toString(),
+                [field]: undefined,
+              },
+            })
+            .expect(400);
+        },
+      );
 
       it('returns 400 when filter is missing required fields', async () => {
         const source = await Source.create({

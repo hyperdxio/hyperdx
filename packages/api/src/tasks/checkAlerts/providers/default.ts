@@ -1,12 +1,16 @@
 import PQueue from '@esm2cjs/p-queue';
-import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { displayTypeSupportsRawSqlAlerts } from '@hyperdx/common-utils/dist/core/utils';
 import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
-import { Tile } from '@hyperdx/common-utils/dist/types';
+import {
+  AlertChartConfig,
+  RawSqlSavedChartConfig,
+  Tile,
+} from '@hyperdx/common-utils/dist/types';
 import mongoose from 'mongoose';
 import ms from 'ms';
 import { URLSearchParams } from 'url';
 
+import { ClickhouseClient } from '@/clickhouse';
 import * as config from '@/config';
 import { ALERT_HISTORY_QUERY_CONCURRENCY } from '@/controllers/alertHistory';
 import { LOCAL_APP_TEAM } from '@/controllers/team';
@@ -91,6 +95,52 @@ async function getSavedSearchDetails(
   ];
 }
 
+/**
+ * Load the optional source a raw-SQL config references for macro metadata
+ * ($__sourceTable, metricTables). Write-path validation guarantees the source
+ * belongs to the config's connection at save time, but a source can be moved
+ * to a different connection afterwards. The query always executes through the
+ * config's pinned connection, so metadata from a moved source would silently
+ * target the wrong database (when the same table exists there) or fail
+ * confusingly. Drop it instead, with a warning: templates that don't use
+ * source macros keep evaluating correctly, and templates that do fail with a
+ * visible query error recorded on the alert.
+ */
+async function getRawSqlSourceMetadata(
+  alert: IAlert,
+  chartConfig: RawSqlSavedChartConfig,
+): Promise<ISource | undefined> {
+  if (!chartConfig.source) {
+    return undefined;
+  }
+  const sourceDoc = await Source.findOne({
+    _id: chartConfig.source,
+    team: alert.team,
+  });
+  if (!sourceDoc) {
+    return undefined;
+  }
+  // Compare as ObjectIds: stored configs may hold non-canonical but valid
+  // representations (e.g. uppercase hex), which a lexical compare would
+  // misjudge as a mismatch.
+  if (
+    !new mongoose.Types.ObjectId(String(sourceDoc.connection)).equals(
+      chartConfig.connection,
+    )
+  ) {
+    logger.warn({
+      message:
+        'raw sql alert source has moved to a different connection; ignoring its metadata',
+      alertId: alert.id,
+      sourceId: chartConfig.source,
+      sourceConnectionId: String(sourceDoc.connection),
+      configConnectionId: chartConfig.connection,
+    });
+    return undefined;
+  }
+  return sourceDoc.toObject();
+}
+
 async function getTileDetails(
   alert: IAlert,
 ): Promise<[IConnection, PartialAlertDetails] | []> {
@@ -151,16 +201,7 @@ async function getTileDetails(
     }
 
     // Optionally look up source for filter/macro metadata
-    let source: ISource | undefined;
-    if (tile.config.source) {
-      const sourceDoc = await Source.findOne({
-        _id: tile.config.source,
-        team: alert.team,
-      });
-      if (sourceDoc) {
-        source = sourceDoc.toObject();
-      }
-    }
+    const source = await getRawSqlSourceMetadata(alert, tile.config);
 
     return [
       connection,
@@ -218,6 +259,96 @@ async function getTileDetails(
   ];
 }
 
+async function getInlineAlertDetails(
+  alert: IAlert,
+): Promise<[IConnection, PartialAlertDetails] | []> {
+  const chartConfig = alert.chartConfig;
+  if (chartConfig == null) {
+    logger.error({
+      message: 'inline alert has no chartConfig',
+      alertId: alert.id,
+    });
+    return [];
+  }
+
+  if (isRawSqlSavedChartConfig(chartConfig)) {
+    if (!displayTypeSupportsRawSqlAlerts(chartConfig.displayType)) {
+      logger.warn({
+        alertId: alert.id,
+        message:
+          'skipping inline alert with raw sql chart config, only line/bar/number display types are supported',
+      });
+      return [];
+    }
+
+    // Raw SQL configs store the connection ID directly
+    const connection = await Connection.findOne({
+      _id: chartConfig.connection,
+      team: alert.team,
+    }).select('+password');
+
+    if (!connection) {
+      logger.error({
+        message: 'connection not found for raw sql inline alert',
+        connectionId: chartConfig.connection,
+        alertId: alert.id,
+      });
+      return [];
+    }
+
+    // Optionally look up source for filter/macro metadata
+    const source = await getRawSqlSourceMetadata(alert, chartConfig);
+
+    return [
+      connection,
+      {
+        alert,
+        source,
+        taskType: AlertTaskType.INLINE,
+        chartConfig,
+      },
+    ];
+  }
+
+  const source = await Source.findOne({
+    _id: chartConfig.source,
+    team: alert.team,
+  }).populate<Omit<ISource, 'connection'> & { connection: IConnection }>({
+    path: 'connection',
+    match: { team: alert.team },
+    select: '+password',
+  });
+  if (!source) {
+    logger.error({
+      message: 'source not found',
+      sourceId: chartConfig.source,
+      alertId: alert.id,
+    });
+    return [];
+  }
+
+  if (!source.connection) {
+    logger.error({
+      message: 'connection not found',
+      alertId: alert.id,
+      sourceId: source.id,
+    });
+    return [];
+  }
+
+  const connection = source.connection;
+  const sourceProps = source.toObject();
+  return [
+    connection,
+    {
+      alert,
+      source: { ...sourceProps, connection: connection.id },
+      taskType: AlertTaskType.INLINE,
+      chartConfig,
+    },
+  ];
+}
+
 async function loadAlert(
   alert: IAlert,
   groupedTasks: Map<string, AlertTask>,
@@ -244,6 +375,10 @@ async function loadAlert(
 
     case AlertSource.TILE:
       [conn, details] = await getTileDetails(alert);
+      break;
+
+    case AlertSource.INLINE:
+      [conn, details] = await getInlineAlertDetails(alert);
       break;
 
     default:
@@ -370,6 +505,32 @@ export default class DefaultAlertProvider implements AlertProvider {
     if (tileId) {
       queryParams.set('highlightedTileId', tileId);
     }
+    url.search = queryParams.toString();
+    return url.toString();
+  }
+
+  buildChartExplorerLink({
+    chartConfig,
+    endTime,
+    granularity,
+    startTime,
+  }: {
+    chartConfig: AlertChartConfig;
+    endTime: Date;
+    granularity: string;
+    startTime: Date;
+  }): string {
+    const url = new URL(`${config.FRONTEND_URL}/chart`);
+    // Extend both start and end time by 7x granularity, matching the
+    // dashboard link so the alerting window has surrounding context. The
+    // chart explorer reads `config` (JSON) and `from`/`to` (epoch ms).
+    const from = (startTime.getTime() - ms(granularity) * 7).toString();
+    const to = (endTime.getTime() + ms(granularity) * 7).toString();
+    const queryParams = new URLSearchParams({
+      config: JSON.stringify(chartConfig),
+      from,
+      to,
+    });
     url.search = queryParams.toString();
     return url.toString();
   }

@@ -1,5 +1,9 @@
+import { MetricsDataType, SourceKind } from '@hyperdx/common-utils/dist/types';
+
+import { DEFAULT_DATABASE, DEFAULT_METRICS_TABLE } from '@/fixtures';
 import { callTool, getFirstText } from '@/mcp/__tests__/mcpTestUtils';
 import Dashboard from '@/models/dashboard';
+import { Source } from '@/models/source';
 import type { ExternalDashboardTileWithId } from '@/utils/zod';
 
 import { setupDashboardTests } from './setup';
@@ -868,6 +872,402 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
       expect(patchResult.isError).toBeFalsy();
       const output = JSON.parse(getFirstText(patchResult));
       expect(output.warnings).toBeUndefined();
+    });
+  });
+
+  describe('dashboard variable warnings', () => {
+    // A patch cannot change the filters, so the patched tile's variable
+    // references are checked against the dashboard's persisted set. This is
+    // the tool clickstack_save_dashboard points agents at for single-tile
+    // edits, so it has to catch what a full save would.
+    const variableFilter = (sourceId: string) => ({
+      type: 'QUERY_EXPRESSION' as const,
+      name: 'Service',
+      expression: 'ServiceName',
+      sourceId,
+      whereLanguage: 'sql' as const,
+      isBroadcastEnabled: false,
+      isVariableEnabled: true,
+      variableName: 'service',
+    });
+
+    const createVariableDashboard = async (name: string) => {
+      const sourceId = ctx.traceSource._id.toString();
+      const createResult = await callTool(
+        ctx.client!,
+        'clickstack_save_dashboard',
+        {
+          name,
+          tiles: [
+            {
+              name: 'Builder Tile',
+              config: {
+                displayType: 'number',
+                sourceId,
+                select: [{ aggFn: 'count' }],
+              },
+            },
+          ],
+          filters: [variableFilter(sourceId)],
+        },
+      );
+      expect(createResult.isError).toBeFalsy();
+      return JSON.parse(getFirstText(createResult));
+    };
+
+    const macroSql = (variable: string) =>
+      'SELECT ServiceName, count() AS c FROM $__sourceTable ' +
+      'WHERE $__timeFilter(Timestamp) AND $__filters ' +
+      `AND $__filter(ServiceName, $${variable}) GROUP BY ServiceName LIMIT 10`;
+
+    it('warns when a patched tile names a variable no filter declares', async () => {
+      const sourceId = ctx.traceSource._id.toString();
+      const connectionId = ctx.connection._id.toString();
+      const created = await createVariableDashboard('Patch unknown variable');
+
+      const patchResult = await callTool(
+        ctx.client!,
+        'clickstack_patch_dashboard',
+        {
+          dashboardId: created.id,
+          tileId: created.tiles[0].id,
+          tile: {
+            name: 'Errors',
+            config: {
+              configType: 'sql',
+              displayType: 'table',
+              connectionId,
+              sourceId,
+              sqlTemplate: macroSql('tenant'),
+            },
+          },
+        },
+      );
+
+      // Non-blocking, like the macro warnings above.
+      expect(patchResult.isError).toBeFalsy();
+      const output = JSON.parse(getFirstText(patchResult));
+      const warnings: string[] = output.warnings ?? [];
+      expect(warnings.join('\n')).toContain('Tile "Errors"');
+      expect(warnings.join('\n')).toContain("unknown variable 'tenant'");
+      expect(warnings.join('\n')).toContain('Available variables: service');
+    });
+
+    it('warns about an unguarded bare reference in a patched builder tile', async () => {
+      const sourceId = ctx.traceSource._id.toString();
+      const created = await createVariableDashboard('Patch bare reference');
+
+      const patchResult = await callTool(
+        ctx.client!,
+        'clickstack_patch_dashboard',
+        {
+          dashboardId: created.id,
+          tileId: created.tiles[0].id,
+          tile: {
+            name: 'Requests',
+            config: {
+              displayType: 'number',
+              sourceId,
+              select: [
+                {
+                  aggFn: 'count',
+                  alias: 'Requests',
+                  where: 'ServiceName IN ($service)',
+                  whereLanguage: 'sql',
+                },
+              ],
+            },
+          },
+        },
+      );
+
+      expect(patchResult.isError).toBeFalsy();
+      const output = JSON.parse(getFirstText(patchResult));
+      const warnings: string[] = output.warnings ?? [];
+      expect(warnings.join('\n')).toContain('Tile "Requests"');
+      expect(warnings.join('\n')).toContain('renders as NULL');
+    });
+
+    it('omits warnings when the patched tile references a declared variable', async () => {
+      const sourceId = ctx.traceSource._id.toString();
+      const connectionId = ctx.connection._id.toString();
+      const created = await createVariableDashboard('Patch declared variable');
+
+      const patchResult = await callTool(
+        ctx.client!,
+        'clickstack_patch_dashboard',
+        {
+          dashboardId: created.id,
+          tileId: created.tiles[0].id,
+          tile: {
+            name: 'Errors',
+            config: {
+              configType: 'sql',
+              displayType: 'table',
+              connectionId,
+              sourceId,
+              sqlTemplate: macroSql('service'),
+            },
+          },
+        },
+      );
+
+      expect(patchResult.isError).toBeFalsy();
+      const output = JSON.parse(getFirstText(patchResult));
+      expect(output.warnings).toBeUndefined();
+    });
+
+    it('resolves variables declared by a static list filter', async () => {
+      const sourceId = ctx.traceSource._id.toString();
+      const connectionId = ctx.connection._id.toString();
+      const createResult = await callTool(
+        ctx.client!,
+        'clickstack_save_dashboard',
+        {
+          name: 'Patch static variable',
+          tiles: [
+            {
+              name: 'Builder Tile',
+              config: {
+                displayType: 'number',
+                sourceId,
+                select: [{ aggFn: 'count' }],
+              },
+            },
+          ],
+          filters: [
+            {
+              type: 'STATIC_LIST',
+              name: 'Environment',
+              options: ['prod', 'staging'],
+              variableName: 'env',
+            },
+          ],
+        },
+      );
+      expect(createResult.isError).toBeFalsy();
+      const created = JSON.parse(getFirstText(createResult));
+
+      const declaredResult = await callTool(
+        ctx.client!,
+        'clickstack_patch_dashboard',
+        {
+          dashboardId: created.id,
+          tileId: created.tiles[0].id,
+          tile: {
+            name: 'Errors',
+            config: {
+              configType: 'sql',
+              displayType: 'table',
+              connectionId,
+              sourceId,
+              sqlTemplate: macroSql('env'),
+            },
+          },
+        },
+      );
+      expect(declaredResult.isError).toBeFalsy();
+      const declared = JSON.parse(getFirstText(declaredResult));
+      expect(declared.warnings).toBeUndefined();
+
+      const unknownResult = await callTool(
+        ctx.client!,
+        'clickstack_patch_dashboard',
+        {
+          dashboardId: created.id,
+          tileId: created.tiles[0].id,
+          tile: {
+            name: 'Errors',
+            config: {
+              configType: 'sql',
+              displayType: 'table',
+              connectionId,
+              sourceId,
+              sqlTemplate: macroSql('tenant'),
+            },
+          },
+        },
+      );
+      expect(unknownResult.isError).toBeFalsy();
+      const unknown = JSON.parse(getFirstText(unknownResult));
+      const warnings: string[] = unknown.warnings ?? [];
+      expect(warnings.join('\n')).toContain("unknown variable 'tenant'");
+      expect(warnings.join('\n')).toContain('Available variables: env');
+    });
+  });
+
+  // Patches replace a single tile without going through the save_dashboard
+  // body schemas, so the handler re-runs the external tile schema's
+  // cross-field refinements itself — otherwise a patch could persist a
+  // config that an equivalent create or full update rejects.
+  describe('metric formula validation', () => {
+    const metricSelect = () => [
+      {
+        aggFn: 'max',
+        metricType: 'gauge',
+        metricName: 'patch.errors',
+        alias: 'Errors',
+      },
+      {
+        aggFn: 'max',
+        metricType: 'gauge',
+        metricName: 'patch.requests',
+        alias: 'Requests',
+      },
+    ];
+
+    const createMetricSource = () =>
+      Source.create({
+        kind: SourceKind.Metric,
+        team: ctx.team._id,
+        from: { databaseName: DEFAULT_DATABASE, tableName: '' },
+        metricTables: {
+          [MetricsDataType.Gauge.toLowerCase()]: DEFAULT_METRICS_TABLE.GAUGE,
+        },
+        timestampValueExpression: 'TimeUnix',
+        connection: ctx.connection._id,
+        name: 'Gauge Metrics (patch)',
+      });
+
+    const createFormulaDashboard = async (sourceId: string) => {
+      const createResult = await callTool(
+        ctx.client!,
+        'clickstack_save_dashboard',
+        {
+          name: 'Patch Formula Dashboard',
+          tiles: [
+            {
+              name: 'Error rate',
+              config: {
+                displayType: 'line',
+                sourceId,
+                select: metricSelect(),
+                formulas: [{ expression: 'A / B * 100', alias: 'Rate %' }],
+              },
+            },
+          ],
+        },
+      );
+      if (createResult.isError) {
+        throw new Error(getFirstText(createResult));
+      }
+      return JSON.parse(getFirstText(createResult));
+    };
+
+    it('rejects a patch whose formula references an unknown series', async () => {
+      const metricSource = await createMetricSource();
+      const sourceId = metricSource._id.toString();
+      const dashboard = await createFormulaDashboard(sourceId);
+
+      const patchResult = await callTool(
+        ctx.client!,
+        'clickstack_patch_dashboard',
+        {
+          dashboardId: dashboard.id,
+          tileId: dashboard.tiles[0].id,
+          tile: {
+            config: {
+              displayType: 'line',
+              sourceId,
+              select: metricSelect(),
+              formulas: [{ expression: 'A / C' }],
+            },
+          },
+        },
+      );
+
+      expect(patchResult.isError).toBe(true);
+      expect(getFirstText(patchResult)).toContain('Unknown series');
+    });
+
+    it('rejects a patch combining formulas with asRatio', async () => {
+      const metricSource = await createMetricSource();
+      const sourceId = metricSource._id.toString();
+      const dashboard = await createFormulaDashboard(sourceId);
+
+      const patchResult = await callTool(
+        ctx.client!,
+        'clickstack_patch_dashboard',
+        {
+          dashboardId: dashboard.id,
+          tileId: dashboard.tiles[0].id,
+          tile: {
+            config: {
+              displayType: 'line',
+              sourceId,
+              select: metricSelect(),
+              formulas: [{ expression: 'A / B' }],
+              asRatio: true,
+            },
+          },
+        },
+      );
+
+      expect(patchResult.isError).toBe(true);
+      expect(getFirstText(patchResult)).toContain('asRatio');
+    });
+
+    it('rejects a patch making a number tile multi-select without formulas', async () => {
+      const metricSource = await createMetricSource();
+      const sourceId = metricSource._id.toString();
+      const dashboard = await createFormulaDashboard(sourceId);
+
+      const patchResult = await callTool(
+        ctx.client!,
+        'clickstack_patch_dashboard',
+        {
+          dashboardId: dashboard.id,
+          tileId: dashboard.tiles[0].id,
+          tile: {
+            config: {
+              displayType: 'number',
+              sourceId,
+              select: metricSelect(),
+            },
+          },
+        },
+      );
+
+      expect(patchResult.isError).toBe(true);
+      expect(getFirstText(patchResult)).toContain(
+        'Number tiles support a single select item',
+      );
+    });
+
+    it('round-trips a valid formula patch', async () => {
+      const metricSource = await createMetricSource();
+      const sourceId = metricSource._id.toString();
+      const dashboard = await createFormulaDashboard(sourceId);
+
+      const formulas = [{ expression: 'B / A', alias: 'Inverse' }];
+      const patchResult = await callTool(
+        ctx.client!,
+        'clickstack_patch_dashboard',
+        {
+          dashboardId: dashboard.id,
+          tileId: dashboard.tiles[0].id,
+          tile: {
+            config: {
+              displayType: 'line',
+              sourceId,
+              select: metricSelect(),
+              formulas,
+              showOperandSeries: false,
+            },
+          },
+        },
+      );
+
+      expect(patchResult.isError).toBeFalsy();
+
+      const getResult = await callTool(
+        ctx.client!,
+        'clickstack_get_dashboard_tile',
+        { dashboardId: dashboard.id, tileId: dashboard.tiles[0].id },
+      );
+      const tile = JSON.parse(getFirstText(getResult));
+      expect(tile.config.formulas).toEqual(formulas);
+      expect(tile.config.showOperandSeries).toBe(false);
     });
   });
 });

@@ -4,6 +4,7 @@ import { ClickHouseClient } from '@clickhouse/client';
 import { convertCHDataTypeToJSType, JSDataType } from '@/clickhouse';
 import { ClickhouseClient as HdxClickhouseClient } from '@/clickhouse/node';
 import { Metadata, MetadataCache } from '@/core/metadata';
+import { convertToCategoricalChartConfig } from '@/core/utils';
 import {
   ChartConfigWithOptDateRange,
   DisplayType,
@@ -1303,6 +1304,14 @@ describe('queryChartConfig Integration Tests', () => {
           // bucket 1 interpolates to 5 and the all-zero bucket 0 emits no row.
           histRow('grpmix.latency', insertTs(0), 'svc-a', [0, 0, 0], [10, 30]),
           histRow('grpmix.latency', insertTs(1), 'svc-a', [10, 0, 0], [10, 30]),
+          // All-histogram ordering fixture: three services, deltas landing in
+          // bucket 1 (dedicated metric so grpmix assertions stay untouched).
+          histRow('grpsort.hist', insertTs(0), 'svc-a', [0, 0, 0], [10, 30]),
+          histRow('grpsort.hist', insertTs(1), 'svc-a', [10, 0, 0], [10, 30]),
+          histRow('grpsort.hist', insertTs(0), 'svc-b', [0, 0, 0], [10, 30]),
+          histRow('grpsort.hist', insertTs(1), 'svc-b', [0, 10, 0], [10, 30]),
+          histRow('grpsort.hist', insertTs(0), 'svc-c', [0, 0, 0], [10, 30]),
+          histRow('grpsort.hist', insertTs(1), 'svc-c', [10, 10, 0], [10, 30]),
         ],
         format: 'JSONEachRow',
       });
@@ -2027,6 +2036,824 @@ describe('queryChartConfig Integration Tests', () => {
         // svc-b has no tbl.two rows: 0 / 20 = 0.
         expect(Number(col(byService.get('svc-b'), 'ratio'))).toBe(0);
       });
+    });
+
+    // HAVING / ORDER BY / LIMIT apply to the final joined result and
+    // reference its output columns — not each per-series branch, where the
+    // output names don't exist and each series would be
+    // filtered/ordered/truncated independently.
+    //
+    // Fixture recap (grpratio.* grouped by ServiceName, table shape — gauge
+    // reads the last value per series when time is ungrouped):
+    //   avg(grpratio.err):   svc-a 2, svc-b 6,  svc-d 5,  svc-c gap
+    //   avg(grpratio.total): svc-a 5, svc-b 12, svc-c 8,  svc-d gap
+    describe('outer HAVING / ORDER BY / LIMIT', () => {
+      const grpRatioTable = (overrides: Partial<ChartConfigWithOptDateRange>) =>
+        baseConfig({
+          displayType: DisplayType.Table,
+          granularity: undefined,
+          select: [gaugeSelect('grpratio.err'), gaugeSelect('grpratio.total')],
+          groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
+          ...overrides,
+        });
+
+      const services = (data: unknown) =>
+        (data as Row[]).map(r => col(r, 'ServiceName'));
+
+      it('filters the joined rows with HAVING on an operand output column', async () => {
+        const result = await runConfig(
+          grpRatioTable({
+            having: '"avg(grpratio.total)" > 5',
+            havingLanguage: 'sql',
+          }),
+        );
+
+        // svc-a (4.5) fails the predicate; svc-d has err data but a NULL
+        // total, and NULL > 5 filters out. A per-branch HAVING could never
+        // drop svc-d — its err branch has no total column to inspect.
+        expect(services(result.data).sort()).toEqual(['svc-b', 'svc-c']);
+      });
+
+      it('filters with HAVING on a formula output column', async () => {
+        const result = await runConfig(
+          grpRatioTable({
+            formulas: [{ expression: 'A / B', alias: 'err rate' }],
+            having: '"err rate" >= 0.5',
+            havingLanguage: 'sql',
+          }),
+        );
+
+        // Rates: svc-a 2/5=0.4, svc-b 0.5, svc-c 0/8=0, svc-d gap.
+        expect(services(result.data)).toEqual(['svc-b']);
+        expect(Number(col((result.data as Row[])[0], 'err rate'))).toBeCloseTo(
+          0.5,
+          5,
+        );
+      });
+
+      it('orders by a plain group column across the joined result', async () => {
+        const result = await runConfig(
+          grpRatioTable({
+            orderBy: [{ valueExpression: 'ServiceName', ordering: 'DESC' }],
+          }),
+        );
+
+        expect(services(result.data)).toEqual([
+          'svc-d',
+          'svc-c',
+          'svc-b',
+          'svc-a',
+        ]);
+      });
+
+      it('orders by an output value column and paginates the joined result with LIMIT/OFFSET', async () => {
+        const orderBy = [
+          {
+            valueExpression: '"avg(grpratio.total)"',
+            ordering: 'DESC' as const,
+          },
+        ];
+
+        // Full order: svc-b (12), svc-c (8), svc-a (4.5), svc-d (NULL —
+        // ClickHouse sorts NULLS LAST by default).
+        const page1 = await runConfig(
+          grpRatioTable({ orderBy, limit: { limit: 2 } }),
+        );
+        expect(services(page1.data)).toEqual(['svc-b', 'svc-c']);
+
+        // The second page continues the SAME joined ordering — page windows
+        // are disjoint and the group universe is consistent across series.
+        // (A per-branch LIMIT truncated each series to its own arbitrary
+        // groups before the join, so pages neither aligned nor partitioned.)
+        const page2 = await runConfig(
+          grpRatioTable({ orderBy, limit: { limit: 2, offset: 2 } }),
+        );
+        expect(services(page2.data)).toEqual(['svc-a', 'svc-d']);
+
+        // The joined row is intact on every page: svc-d keeps its err value
+        // and its total gap.
+        const svcD = (page2.data as Row[])[1];
+        expect(Number(col(svcD, 'avg(grpratio.err)'))).toBe(5);
+        expectGap(col(svcD, 'avg(grpratio.total)'));
+      });
+
+      it('orders time-series rows by bucket first, user sort second', async () => {
+        const result = await runConfig(
+          baseConfig({
+            select: [gaugeSelect('grp.one'), gaugeSelect('grp.two')],
+            groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
+            orderBy: [{ valueExpression: 'ServiceName', ordering: 'DESC' }],
+          }),
+        );
+
+        // All rows share bucket 0; the user sort breaks the tie in reverse
+        // service order.
+        expect(services(result.data)).toEqual(['svc-c', 'svc-b', 'svc-a']);
+      });
+
+      it('resolves an expression group-by in ORDER BY via its derived output name', async () => {
+        // The passthrough column for an expression group-by keeps its
+        // ClickHouse-derived name, and referencing that (quoted) output name
+        // from ORDER BY/HAVING resolves directly. (The raw map-access
+        // expression also works — see the companion sort column tests below.)
+        const result = await runConfig(
+          grpRatioTable({
+            groupBy: [
+              {
+                aggCondition: '',
+                valueExpression: "ResourceAttributes['service.name']",
+              },
+            ],
+            orderBy: [
+              {
+                valueExpression: `"arrayElement(ResourceAttributes, 'service.name')"`,
+                ordering: 'DESC',
+              },
+            ],
+          }),
+        );
+
+        const DERIVED_NAME = "arrayElement(ResourceAttributes, 'service.name')";
+        expect((result.data as Row[]).map(r => col(r, DERIVED_NAME))).toEqual([
+          'svc-d',
+          'svc-c',
+          'svc-b',
+          'svc-a',
+        ]);
+      });
+
+      // HDX-5202: convertToTableChartConfig defaults a table's orderBy to
+      // the raw groupBy text, so a multi-series metric table grouped by an
+      // expression used to fail with "Unknown identifier ResourceAttributes"
+      // — the outer scope has no source columns. Such items now sort via
+      // internal `__hdx_sort_<n>` companion columns.
+      it('orders by a raw expression group-by (table default orderBy = groupBy text)', async () => {
+        const GROUP_BY = "ResourceAttributes['service.name']";
+        const result = await runConfig(
+          grpRatioTable({
+            groupBy: GROUP_BY,
+            orderBy: `${GROUP_BY} DESC`,
+          }),
+        );
+
+        const DERIVED_NAME = "arrayElement(ResourceAttributes, 'service.name')";
+        expect((result.data as Row[]).map(r => col(r, DERIVED_NAME))).toEqual([
+          'svc-d',
+          'svc-c',
+          'svc-b',
+          'svc-a',
+        ]);
+        // The companion column is internal: the group column keeps its
+        // derived name (the consumer lookup contract) and no `__hdx_sort_*`
+        // column leaks into the output.
+        const metaNames = result.meta?.map(m => m.name) ?? [];
+        expect(metaNames).toContain(DERIVED_NAME);
+        expect(metaNames.some(name => name.startsWith('__hdx_sort_'))).toBe(
+          false,
+        );
+      });
+
+      it('orders by a raw expression group-by from a structured sort item', async () => {
+        const result = await runConfig(
+          grpRatioTable({
+            groupBy: [
+              {
+                aggCondition: '',
+                valueExpression: "ResourceAttributes['service.name']",
+              },
+            ],
+            orderBy: [
+              {
+                valueExpression: "ResourceAttributes['service.name']",
+                ordering: 'ASC',
+              },
+            ],
+          }),
+        );
+
+        const DERIVED_NAME = "arrayElement(ResourceAttributes, 'service.name')";
+        expect((result.data as Row[]).map(r => col(r, DERIVED_NAME))).toEqual([
+          'svc-a',
+          'svc-b',
+          'svc-c',
+          'svc-d',
+        ]);
+        // The joined rows stay intact under the companion-column sort.
+        const svcD = (result.data as Row[])[3];
+        expect(Number(col(svcD, 'avg(grpratio.err)'))).toBe(5);
+        expectGap(col(svcD, 'avg(grpratio.total)'));
+      });
+
+      it('orders time-series rows by bucket first, then a raw expression group-by', async () => {
+        const result = await runConfig(
+          baseConfig({
+            select: [gaugeSelect('grp.one'), gaugeSelect('grp.two')],
+            groupBy: [
+              {
+                aggCondition: '',
+                valueExpression: "ResourceAttributes['service.name']",
+              },
+            ],
+            orderBy: [
+              {
+                valueExpression: "ResourceAttributes['service.name']",
+                ordering: 'DESC',
+              },
+            ],
+          }),
+        );
+
+        const DERIVED_NAME = "arrayElement(ResourceAttributes, 'service.name')";
+        // All rows share bucket 0; the rewritten sort breaks the tie in
+        // reverse service order.
+        expect((result.data as Row[]).map(r => col(r, DERIVED_NAME))).toEqual([
+          'svc-c',
+          'svc-b',
+          'svc-a',
+        ]);
+      });
+
+      it('sorts a share_of_total ratio table by a raw expression group-by', async () => {
+        // No HAVING → no window wrapper: the companion-column sort coexists
+        // with the share_of_total window projection on the GROUP BY ALL
+        // statement. (With a HAVING, this shape keeps the legacy rendering
+        // and its pre-existing failure — pinned by the unit tests.)
+        const RATIO = 'avg(grpratio.err)/avg(grpratio.total)';
+        const result = await runConfig(
+          grpRatioTable({
+            seriesReturnType: 'ratio',
+            ratioMode: 'share_of_total',
+            groupBy: "ResourceAttributes['service.name']",
+            orderBy: "ResourceAttributes['service.name'] DESC",
+          }),
+        );
+
+        const DERIVED_NAME = "arrayElement(ResourceAttributes, 'service.name')";
+        expect((result.data as Row[]).map(r => col(r, DERIVED_NAME))).toEqual([
+          'svc-d',
+          'svc-c',
+          'svc-b',
+          'svc-a',
+        ]);
+        // share_of_total semantics intact: svc-b divides by the total
+        // denominator (5 + 12 + 8 = 25).
+        const svcB = (result.data as Row[])[2];
+        expect(Number(col(svcB, RATIO))).toBeCloseTo(6 / 25, 5);
+      });
+
+      it('sorts a SINGLE-series histogram table on a raw expression group-by (HDX-5247)', async () => {
+        // Same packed-array scope as the all-histogram composed case, but on
+        // the single-series render path: the histogram translation leaves
+        // only [group, value] in scope, so the table default orderBy
+        // (= groupBy text) must be rewritten there too.
+        const result = await runConfig(
+          baseConfig({
+            displayType: DisplayType.Table,
+            granularity: undefined,
+            select: [histQuantileSelect('grpsort.hist', 0.5)],
+            groupBy: "ResourceAttributes['service.name']",
+            orderBy: "ResourceAttributes['service.name'] DESC",
+          }),
+        );
+
+        const data = result.data as Row[];
+        expect(data.map(r => col(r, 'group'))).toEqual([
+          ['svc-c'],
+          ['svc-b'],
+          ['svc-a'],
+        ]);
+        // svc-b's 10 observations are all in the (10, 30] bucket: p50 = 20.
+        expect(Number(col(data[1], 'quantile(grpsort.hist)'))).toBeCloseTo(
+          20,
+          5,
+        );
+      });
+
+      it('sorts a SINGLE-series histogram table by its group-by alias (HDX-5247)', async () => {
+        // The alias only exists inside the packing array literal — it never
+        // surfaces as a column in the translated scope — so alias-referencing
+        // sorts rewrite to the packed element like expression sorts do.
+        const result = await runConfig(
+          baseConfig({
+            displayType: DisplayType.Table,
+            granularity: undefined,
+            select: [histQuantileSelect('grpsort.hist', 0.5)],
+            groupBy: [
+              {
+                aggCondition: '',
+                valueExpression: "ResourceAttributes['service.name']",
+                alias: 'service',
+              },
+            ],
+            orderBy: [{ valueExpression: 'service', ordering: 'DESC' }],
+          }),
+        );
+
+        expect((result.data as Row[]).map(r => col(r, 'group'))).toEqual([
+          ['svc-c'],
+          ['svc-b'],
+          ['svc-a'],
+        ]);
+      });
+
+      it('sorts a categorical histogram chart with a multi-dimension group-by (HDX-5247)', async () => {
+        // convertToCategoricalChartConfig injects a structured orderBy whose
+        // second item's valueExpression is the whole group-by string; each
+        // comma piece must match its packed element like the string form.
+        const converted = convertToCategoricalChartConfig(
+          baseConfig({
+            displayType: DisplayType.Pie,
+            granularity: undefined,
+            select: [histQuantileSelect('grpsort.hist', 0.5)],
+            groupBy: "ServiceName, ResourceAttributes['service.name']",
+            seriesLimit: 10,
+          }) as Parameters<typeof convertToCategoricalChartConfig>[0],
+        );
+        const result = await runConfig(
+          converted as ChartConfigWithOptDateRange,
+        );
+
+        // Slices order by value DESC first — p50 interpolates to 20 (svc-b),
+        // 10 (svc-c), 5 (svc-a) — with the packed group pieces as tiebreak.
+        const data = result.data as Row[];
+        expect(data.map(r => col(r, 'group'))).toEqual([
+          ['svc-b', 'svc-b'],
+          ['svc-c', 'svc-c'],
+          ['svc-a', 'svc-a'],
+        ]);
+      });
+
+      it('sorts an all-histogram chart on a raw expression group-by via the packed group array', async () => {
+        // With no scalar branch there are no individual group columns —
+        // every branch packs the group values into the `group` Array, and
+        // matched sort items address it positionally (`group`[k+1]).
+        const result = await runConfig(
+          baseConfig({
+            displayType: DisplayType.Table,
+            granularity: undefined,
+            select: [
+              histQuantileSelect('grpsort.hist', 0.5),
+              histCountSelect('grpsort.hist'),
+            ],
+            groupBy: "ResourceAttributes['service.name']",
+            orderBy: "ResourceAttributes['service.name'] DESC",
+          }),
+        );
+
+        const data = result.data as Row[];
+        // The rewritten sort orders the packed group values in reverse
+        // service order.
+        expect(data.map(r => col(r, 'group'))).toEqual([
+          ['svc-c'],
+          ['svc-b'],
+          ['svc-a'],
+        ]);
+        // The joined rows stay intact: svc-b's 10 observations are all in
+        // the (10, 30] bucket, so p50 interpolates to 20.
+        const svcB = data[1];
+        expect(Number(col(svcB, 'quantile(grpsort.hist)'))).toBeCloseTo(20, 5);
+        expect(Number(col(svcB, 'count(grpsort.hist)'))).toBe(10);
+      });
+
+      it('sorts mixed gauge + histogram branches on a raw expression group-by (NULL-padded)', async () => {
+        // A histogram branch can't evaluate the companion sort expression
+        // (its groups are packed into the Array "group" column), so its rows
+        // carry a NULL sort key and sort last — consistent with their NULL
+        // scalar-group pads.
+        const result = await runConfig(
+          baseConfig({
+            select: [
+              gaugeSelect('grpmix.gauge'),
+              histQuantileSelect('grpmix.latency', 0.5),
+            ],
+            groupBy: [
+              {
+                aggCondition: '',
+                valueExpression: "ResourceAttributes['service.name']",
+              },
+            ],
+            orderBy: [
+              {
+                valueExpression: "ResourceAttributes['service.name']",
+                ordering: 'ASC',
+              },
+            ],
+          }),
+        );
+
+        const data = result.data as Row[];
+        expect(data).toHaveLength(2);
+        // Non-NULL sort key (the gauge row) first, NULL (histogram) last.
+        expect(col(data[0], 'avg(grpmix.gauge)')).toBe(42);
+        expect(Number(col(data[1], 'quantile(grpmix.latency)'))).toBeCloseTo(
+          5,
+          5,
+        );
+      });
+
+      it('orders by an aliased expression group-by through the alias', async () => {
+        const result = await runConfig(
+          grpRatioTable({
+            groupBy: [
+              {
+                aggCondition: '',
+                valueExpression: "ResourceAttributes['service.name']",
+                alias: 'service',
+              },
+            ],
+            orderBy: [{ valueExpression: 'service', ordering: 'ASC' }],
+          }),
+        );
+
+        expect((result.data as Row[]).map(r => col(r, 'service'))).toEqual([
+          'svc-a',
+          'svc-b',
+          'svc-c',
+          'svc-d',
+        ]);
+      });
+
+      it('filters and orders the ratio output column', async () => {
+        const result = await runConfig(
+          grpRatioTable({
+            seriesReturnType: 'ratio',
+            having: '"avg(grpratio.err)/avg(grpratio.total)" >= 0.3',
+            havingLanguage: 'sql',
+            orderBy: [
+              {
+                valueExpression: '"avg(grpratio.err)/avg(grpratio.total)"',
+                ordering: 'DESC',
+              },
+            ],
+          }),
+        );
+
+        // Rates: svc-a 0.4, svc-b 0.5, svc-c 0, svc-d gap (NULL fails the
+        // predicate).
+        expect(services(result.data)).toEqual(['svc-b', 'svc-a']);
+      });
+
+      it('filters a share_of_total ratio after its window function evaluates', async () => {
+        // share_of_total is built on sum(...) OVER (...), which ClickHouse
+        // prohibits inside HAVING — the filter runs as WHERE on a wrapper
+        // around the joined result instead.
+        const RATIO = 'avg(grpratio.err)/avg(grpratio.total)';
+        const result = await runConfig(
+          grpRatioTable({
+            seriesReturnType: 'ratio',
+            ratioMode: 'share_of_total',
+            having: `"${RATIO}" >= 0.15`,
+            havingLanguage: 'sql',
+            orderBy: [{ valueExpression: `"${RATIO}"`, ordering: 'DESC' }],
+          }),
+        );
+
+        // Denominator total across ALL groups (gauge reads the last value
+        // per series on the ungrouped-time table shape, so svc-a's total is
+        // 5): 5 + 12 + 8 = 25. Shares: svc-a 2/25 = 0.08, svc-b 6/25 = 0.24,
+        // svc-c 0, svc-d 5/25 = 0.2 — so >= 0.15 keeps b and d.
+        expect(services(result.data)).toEqual(['svc-b', 'svc-d']);
+        // The share divides by the pre-filter total (25), proving the window
+        // evaluated over the full joined result before the filter.
+        const rows = result.data as Row[];
+        expect(Number(col(rows[0], RATIO))).toBeCloseTo(6 / 25, 5);
+        expect(Number(col(rows[1], RATIO))).toBeCloseTo(5 / 25, 5);
+      });
+
+      it('partitions the share_of_total window per bucket on a time series, then filters', async () => {
+        const RATIO = 'avg(grpratio.err)/avg(grpratio.total)';
+        const result = await runConfig(
+          baseConfig({
+            select: [
+              gaugeSelect('grpratio.err'),
+              gaugeSelect('grpratio.total'),
+            ],
+            groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
+            seriesReturnType: 'ratio',
+            ratioMode: 'share_of_total',
+            having: `"${RATIO}" >= 0.2`,
+            havingLanguage: 'sql',
+            orderBy: [{ valueExpression: `"${RATIO}"`, ordering: 'DESC' }],
+          }),
+        );
+
+        // Per-bucket totals: bucket 0 = 4 + 12 + 8 = 24 (shares a 1/24,
+        // b 0.25, c 0, d 5/24); bucket 1 = 5 (share a 2/5 = 0.4). The
+        // >= 0.2 filter keeps (b0, b), (b0, d) and (b1, a); rows stay
+        // bucket-ordered first (outermost ORDER BY, outside the wrapper),
+        // share-descending within the bucket.
+        const rows = result.data as Row[];
+        expect(
+          rows.map(r => [
+            String(col(r, '__hdx_time_bucket')),
+            col(r, 'ServiceName'),
+          ]),
+        ).toEqual([
+          [bucket(0), 'svc-b'],
+          [bucket(0), 'svc-d'],
+          [bucket(1), 'svc-a'],
+        ]);
+        expect(Number(col(rows[0], RATIO))).toBeCloseTo(6 / 24, 5);
+        expect(Number(col(rows[1], RATIO))).toBeCloseTo(5 / 24, 5);
+        expect(Number(col(rows[2], RATIO))).toBeCloseTo(2 / 5, 5);
+      });
+
+      it('filters number-shape results with HAVING (no GROUP BY)', async () => {
+        const numberConfig = (having: string) =>
+          baseConfig({
+            displayType: DisplayType.Number,
+            granularity: undefined,
+            select: [gaugeSelect('tbl.one'), gaugeSelect('tbl.two')],
+            having,
+            havingLanguage: 'sql',
+          });
+
+        // The number shape has no passthrough columns, so the outer query is
+        // one implicit global aggregation — HAVING filters its single row.
+        // Values: avg(tbl.one) = 15, avg(tbl.two) = 100.
+        const kept = await runConfig(numberConfig('"avg(tbl.two)" > 50'));
+        expect(kept.data as Row[]).toHaveLength(1);
+        expect(col((kept.data as Row[])[0], 'avg(tbl.one)')).toBe(15);
+
+        const dropped = await runConfig(numberConfig('"avg(tbl.two)" > 200'));
+        expect(dropped.data as Row[]).toHaveLength(0);
+      });
+
+      it('filters time-series (bucket, group) rows with HAVING', async () => {
+        const result = await runConfig(
+          baseConfig({
+            select: [gaugeSelect('grp.one'), gaugeSelect('grp.two')],
+            groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
+            having: '"avg(grp.one)" >= 2',
+            havingLanguage: 'sql',
+          }),
+        );
+
+        // Joined bucket-0 rows: svc-a (grp.one 1), svc-b (grp.one 2),
+        // svc-c (grp.one NULL — grp.two only). Only svc-b passes; NULL fails
+        // the predicate like any SQL comparison.
+        const rows = result.data as Row[];
+        expect(rows).toHaveLength(1);
+        expect(col(rows[0], 'ServiceName')).toBe('svc-b');
+        expect(String(col(rows[0], '__hdx_time_bucket'))).toBe(bucket(0));
+        expect(col(rows[0], 'avg(grp.one)')).toBe(2);
+      });
+
+      it('applies HAVING across heterogeneous branch classes (gauge + histogram)', async () => {
+        const result = await runConfig(
+          baseConfig({
+            select: [
+              gaugeSelect('grpmix.gauge'),
+              histQuantileSelect('grpmix.latency', 0.5),
+            ],
+            groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
+            having: '"avg(grpmix.gauge)" >= 0',
+            havingLanguage: 'sql',
+          }),
+        );
+
+        // Gauge and histogram rows never share a merge key (plain vs Array
+        // group columns), so the histogram row carries a NULL gauge value
+        // and the HAVING on the gauge column drops it.
+        const rows = result.data as Row[];
+        expect(rows).toHaveLength(1);
+        expect(col(rows[0], 'ServiceName')).toBe('svc-a');
+        expect(col(rows[0], 'avg(grpmix.gauge)')).toBe(42);
+        expectGap(col(rows[0], 'quantile(grpmix.latency)'));
+      });
+
+      it('orders by a formula output column', async () => {
+        const result = await runConfig(
+          grpRatioTable({
+            formulas: [{ expression: 'A / B', alias: 'err rate' }],
+            orderBy: [{ valueExpression: '"err rate"', ordering: 'DESC' }],
+            limit: { limit: 2 },
+          }),
+        );
+
+        // Rates (last-value gauge semantics on the table shape): svc-a
+        // 2/5 = 0.4, svc-b 0.5, svc-c 0, svc-d gap (NULL sorts last).
+        expect(services(result.data)).toEqual(['svc-b', 'svc-a']);
+        expect(Number(col((result.data as Row[])[0], 'err rate'))).toBeCloseTo(
+          0.5,
+          5,
+        );
+      });
+
+      it('rejects HAVING on an operand hidden by showOperandSeries: false', async () => {
+        // The contract is "reference what the result outputs": with the
+        // operand series dropped from the projection, their names are not
+        // resolvable — the query fails instead of silently filtering on a
+        // column the chart doesn't show.
+        await expect(
+          runConfig(
+            grpRatioTable({
+              formulas: [{ expression: 'A / B', alias: 'err rate' }],
+              showOperandSeries: false,
+              having: '"avg(grpratio.err)" > 1',
+              havingLanguage: 'sql',
+            }),
+          ),
+        ).rejects.toThrow();
+      });
+    });
+  });
+
+  // Formulas on event (log/trace) sources compile inline in the single-scan
+  // SELECT (renderSelectListWithFormulas) rather than through the composed
+  // metric UNION ALL + pivot path.
+  describe('event (log/trace) formula charts (inline single-query)', () => {
+    const EVENTS_TABLE = 'events_formula_int_test';
+
+    const insertTs = (minute: number) => `2025-04-15 10:0${minute}:00`;
+    const bucket = (minute: number) => `2025-04-15T10:0${minute}:00Z`;
+    const DATE_RANGE: [Date, Date] = [
+      new Date('2025-04-14'),
+      new Date('2025-04-16'),
+    ];
+
+    type Row = Record<string, unknown>;
+    const col = (row: Row | undefined, name: string): unknown =>
+      row == null ? undefined : new Map(Object.entries(row)).get(name);
+    const expectGap = (value: unknown) => {
+      expect(value == null || Number.isNaN(Number(value))).toBe(true);
+    };
+
+    const errorCountSelect = {
+      aggFn: 'count' as const,
+      valueExpression: '',
+      aggCondition: "SeverityText = 'error'",
+      aggConditionLanguage: 'sql' as const,
+      alias: 'errors',
+    };
+    const totalCountSelect = {
+      aggFn: 'count' as const,
+      valueExpression: '',
+      aggCondition: '',
+      alias: 'total',
+    };
+
+    const baseConfig = (
+      overrides: Partial<ChartConfigWithOptDateRange>,
+    ): ChartConfigWithOptDateRange =>
+      ({
+        displayType: DisplayType.Line,
+        connection: 'test-connection',
+        from: { databaseName: DATABASE, tableName: EVENTS_TABLE },
+        select: [errorCountSelect, totalCountSelect],
+        where: '',
+        whereLanguage: 'sql',
+        timestampValueExpression: 'Timestamp',
+        dateRange: DATE_RANGE,
+        granularity: '1 minute',
+        ...overrides,
+      }) as ChartConfigWithOptDateRange;
+
+    const runConfig = (config: ChartConfigWithOptDateRange) =>
+      hdxClient.queryChartConfig({
+        config,
+        metadata,
+        querySettings: undefined,
+      });
+
+    beforeAll(async () => {
+      await client.command({
+        query: `CREATE OR REPLACE TABLE ${DATABASE}.${EVENTS_TABLE} (
+          Timestamp DateTime CODEC(Delta, ZSTD(1)),
+          ServiceName LowCardinality(String) CODEC(ZSTD(1)),
+          SeverityText LowCardinality(String) CODEC(ZSTD(1))
+        ) ENGINE = MergeTree ORDER BY (ServiceName, Timestamp)`,
+      });
+
+      // bucket 0: svc-a 4 rows (1 error), svc-b 4 rows (3 errors)
+      //   -> overall 4 errors / 8 total = 50%
+      // bucket 1: svc-a 2 rows (0 errors) -> 0%
+      // grouped over both buckets: svc-a 1/6, svc-b 3/4
+      const row = (minute: number, service: string, severity: string) => ({
+        Timestamp: insertTs(minute),
+        ServiceName: service,
+        SeverityText: severity,
+      });
+      await client.insert({
+        table: `${DATABASE}.${EVENTS_TABLE}`,
+        values: [
+          row(0, 'svc-a', 'error'),
+          row(0, 'svc-a', 'info'),
+          row(0, 'svc-a', 'info'),
+          row(0, 'svc-a', 'info'),
+          row(0, 'svc-b', 'error'),
+          row(0, 'svc-b', 'error'),
+          row(0, 'svc-b', 'error'),
+          row(0, 'svc-b', 'info'),
+          row(1, 'svc-a', 'info'),
+          row(1, 'svc-a', 'info'),
+        ],
+        format: 'JSONEachRow',
+      });
+    });
+
+    afterAll(async () => {
+      await client.command({
+        query: `DROP TABLE IF EXISTS ${DATABASE}.${EVENTS_TABLE}`,
+      });
+    });
+
+    it('appends formula columns after the operands on a time chart, with ratio gap semantics', async () => {
+      const result = await runConfig(
+        baseConfig({
+          formulas: [
+            { expression: 'A / B * 100', alias: 'Error rate' },
+            // 0 / nullif(0, 0) at bucket 1 — a gap, not 0 or an error.
+            { expression: 'A / A', alias: 'self ratio' },
+          ],
+        }),
+      );
+
+      // Meta contract: operand value columns first, in select order, then
+      // the formula columns — ahead of the bucket column.
+      const metaNames = result.meta?.map(m => m.name) ?? [];
+      expect(metaNames.slice(0, 4)).toEqual([
+        'errors',
+        'total',
+        'Error rate',
+        'self ratio',
+      ]);
+      expect(metaNames.indexOf('__hdx_time_bucket')).toBeGreaterThanOrEqual(4);
+
+      const rows = new Map(
+        (result.data as Row[]).map(r => [
+          String(col(r, '__hdx_time_bucket')),
+          r,
+        ]),
+      );
+      expect([...rows.keys()].sort()).toEqual([bucket(0), bucket(1)]);
+
+      expect(Number(col(rows.get(bucket(0)), 'errors'))).toBe(4);
+      expect(Number(col(rows.get(bucket(0)), 'total'))).toBe(8);
+      expect(Number(col(rows.get(bucket(0)), 'Error rate'))).toBeCloseTo(50, 5);
+      expect(Number(col(rows.get(bucket(0)), 'self ratio'))).toBe(1);
+
+      expect(Number(col(rows.get(bucket(1)), 'Error rate'))).toBe(0);
+      expectGap(col(rows.get(bucket(1)), 'self ratio'));
+    });
+
+    it('drops the operand columns from meta and rows when showOperandSeries is false', async () => {
+      const result = await runConfig(
+        baseConfig({
+          formulas: [{ expression: 'A / B * 100', alias: 'Error rate' }],
+          showOperandSeries: false,
+        }),
+      );
+
+      const metaNames = result.meta?.map(m => m.name) ?? [];
+      expect(metaNames[0]).toBe('Error rate');
+      expect(metaNames).not.toContain('errors');
+      expect(metaNames).not.toContain('total');
+
+      const rows = new Map(
+        (result.data as Row[]).map(r => [
+          String(col(r, '__hdx_time_bucket')),
+          r,
+        ]),
+      );
+      expect(Number(col(rows.get(bucket(0)), 'Error rate'))).toBeCloseTo(50, 5);
+    });
+
+    it('computes a grouped table formula and lets HAVING filter on it', async () => {
+      const result = await runConfig(
+        baseConfig({
+          displayType: DisplayType.Table,
+          granularity: undefined,
+          groupBy: 'ServiceName',
+          formulas: [{ expression: 'A / B * 100', alias: 'Error rate' }],
+          having: '"Error rate" > 50',
+          havingLanguage: 'sql',
+        }),
+      );
+
+      // svc-a: 1/6 ≈ 16.7% (filtered out); svc-b: 3/4 = 75%.
+      const rows = result.data as Row[];
+      expect(rows).toHaveLength(1);
+      expect(col(rows[0], 'ServiceName')).toBe('svc-b');
+      expect(Number(col(rows[0], 'Error rate'))).toBeCloseTo(75, 5);
+    });
+
+    it('collapses a number-shape formula to a single derived value', async () => {
+      const result = await runConfig(
+        baseConfig({
+          displayType: DisplayType.Number,
+          granularity: undefined,
+          formulas: [{ expression: 'A / B * 100', alias: 'Error rate' }],
+          showOperandSeries: false,
+        }),
+      );
+
+      // 4 errors / 10 total across the whole range.
+      const rows = result.data as Row[];
+      expect(rows).toHaveLength(1);
+      const metaNames = result.meta?.map(m => m.name) ?? [];
+      expect(metaNames).toEqual(['Error rate']);
+      expect(Number(col(rows[0], 'Error rate'))).toBeCloseTo(40, 5);
     });
   });
 });

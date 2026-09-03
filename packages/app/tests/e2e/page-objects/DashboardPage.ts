@@ -7,7 +7,14 @@ import { expect, Locator, Page } from '@playwright/test';
 
 import { ChartEditorComponent } from '../components/ChartEditorComponent';
 import { TimePickerComponent } from '../components/TimePickerComponent';
-import { getSqlEditor } from '../utils/locators';
+import { dismissSqlAutocomplete, getSqlEditor } from '../utils/locators';
+import { switchWhereLanguage } from '../utils/lucene-autocomplete';
+
+/** The "Dropdown values filter" on a dashboard filter, and its language. */
+export type FilterWhereOptions = {
+  value: string;
+  language?: 'sql' | 'lucene';
+};
 
 /**
  * Config format tile config, as accepted by the external dashboard API.
@@ -837,6 +844,40 @@ export class DashboardPage {
     await this.addFiltersButton.click();
   }
 
+  /** The filter edit form's display-name input. */
+  getFilterNameInput(): Locator {
+    return this.page.getByTestId('filter-name-input');
+  }
+
+  /**
+   * Fill only the filter's display name in the open edit form. Enough to mark
+   * the react-hook-form dirty without completing the whole form.
+   */
+  async fillFilterName(name: string) {
+    await this.getFilterNameInput().fill(name);
+  }
+
+  /** Open the edit form for an already-saved filter, without saving. */
+  async openEditFilterForm(filterName: string) {
+    await this.page.getByTestId(`edit-filter-button-${filterName}`).click();
+  }
+
+  /**
+   * Replace the filter expression in the open edit form, then blur the SQL
+   * editor so its autocomplete tooltip closes — left open it overlaps the save
+   * button and makes the click flake on "element is not stable".
+   */
+  async fillFilterExpression(expression: string) {
+    const editor = getSqlEditor(this.page, 'expression');
+    await editor.click();
+    await this.page.keyboard.press(
+      process.platform === 'darwin' ? 'Meta+A' : 'Control+A',
+    );
+    await this.page.keyboard.press('Backspace');
+    await this.page.keyboard.insertText(expression);
+    await this.getFilterNameInput().click();
+  }
+
   /** Pick the data source in the filter edit form. */
   async selectFilterSource(sourceName: string) {
     await this.filtersSourceSelector.click();
@@ -856,6 +897,7 @@ export class DashboardPage {
       isVariableEnabled?: boolean;
       variableName?: string;
     },
+    whereOptions?: FilterWhereOptions,
   ) {
     const filterNameInput = this.page.getByTestId('filter-name-input');
     await filterNameInput.fill(name);
@@ -872,16 +914,27 @@ export class DashboardPage {
         .click();
     }
 
+    if (whereOptions) {
+      await this.fillFilterDropdownValuesWhere(whereOptions);
+    }
+
     // Applied before the applies-to selector below, because unchecking broadcast
     // hides that control.
     if (variableOptions?.isBroadcastEnabled === false) {
       await this.broadcastFilterCheckbox.uncheck();
     }
+    // New filters default to broadcast-only, so the variable box is opt-in here:
+    // asking for a variable name, or for the mode outright, checks it.
     if (variableOptions?.isVariableEnabled === false) {
       await this.variableEnabledCheckbox.uncheck();
-    } else if (variableOptions?.variableName !== undefined) {
+    } else if (
+      variableOptions?.isVariableEnabled === true ||
+      variableOptions?.variableName !== undefined
+    ) {
       await this.variableEnabledCheckbox.check();
-      await this.variableNameInput.fill(variableOptions.variableName);
+      if (variableOptions.variableName !== undefined) {
+        await this.variableNameInput.fill(variableOptions.variableName);
+      }
     }
 
     if (appliesToSourceNames && appliesToSourceNames.length > 0) {
@@ -910,6 +963,7 @@ export class DashboardPage {
       isVariableEnabled?: boolean;
       variableName?: string;
     },
+    whereOptions?: FilterWhereOptions,
   ) {
     await this.addFiltersButton.click();
 
@@ -920,7 +974,75 @@ export class DashboardPage {
       metricType,
       appliesToSourceNames,
       variableOptions,
+      whereOptions,
     );
+  }
+
+  /** The filter edit form's dialog, scoped so page-level locators stay unambiguous. */
+  getFilterForm(): Locator {
+    return this.page
+      .getByRole('dialog')
+      .filter({ has: this.page.getByTestId('filter-name-input') });
+  }
+
+  /**
+   * The "Dropdown values filter" input's root, reached from its language switch.
+   *
+   * Located this way because the input itself carries no test id, and matching
+   * it by placeholder only works while it is empty.
+   */
+  getFilterWhereRoot(): Locator {
+    return this.getFilterForm()
+      .getByTestId('where-language-switch')
+      .locator('xpath=..');
+  }
+
+  /** The CodeMirror editor behind the SQL form of the dropdown values filter. */
+  getFilterWhereSqlEditor(): Locator {
+    return this.getFilterWhereRoot().locator('div.cm-editor');
+  }
+
+  /** What the dropdown values filter flags about the variables it references. */
+  getFilterWhereVariableWarning(): Locator {
+    return this.getFilterWhereRoot().getByTestId('variable-validation');
+  }
+
+  /**
+   * Fill the "Dropdown values filter" (the filter's `where`) in the open filter
+   * edit form, replacing whatever is there.
+   *
+   * The language is always set explicitly: the form seeds it from the
+   * `hdx-search-where-language` localStorage key, which other specs write, so
+   * "it defaults to SQL" is not safe to assume.
+   */
+  async fillFilterDropdownValuesWhere({
+    value,
+    language = 'sql',
+  }: FilterWhereOptions) {
+    await switchWhereLanguage(
+      this.getFilterForm().getByTestId('where-language-switch'),
+      language === 'sql' ? 'SQL' : 'Lucene',
+    );
+
+    if (language === 'lucene') {
+      const input = this.getFilterWhereRoot().getByRole('textbox');
+      await input.click();
+      await input.fill(value);
+      // Blur so the Lucene suggestion dropdown can't cover the save button.
+      await this.page.getByTestId('filter-name-input').click();
+      return;
+    }
+
+    const editor = this.getFilterWhereSqlEditor();
+    await editor.click();
+    await this.page.keyboard.press(
+      process.platform === 'darwin' ? 'Meta+A' : 'Control+A',
+    );
+    await this.page.keyboard.press('Backspace');
+    // insertText, not type: CodeMirror's bracket auto-closing would corrupt a
+    // clause containing `(`, as every macro reference does.
+    await this.page.keyboard.insertText(value);
+    await dismissSqlAutocomplete(this.page);
   }
 
   getFilterLabel(name: string) {
@@ -955,6 +1077,14 @@ export class DashboardPage {
     await this.page.getByTestId(`edit-filter-button-${filterName}`).click();
     await this.broadcastFilterCheckbox.setChecked(enabled);
     await this.page.getByTestId('save-filter-button').click();
+  }
+
+  /**
+   * The warning shown in the filter edit form when a filter both broadcasts and
+   * is a variable, with no "Applies to sources" scope to limit the broadcast.
+   */
+  get unscopedBroadcastWarning() {
+    return this.page.getByTestId('filter-unscoped-broadcast-warning');
   }
 
   /** The warning icon shown when a filter neither broadcasts nor is a variable. */
@@ -1000,6 +1130,37 @@ export class DashboardPage {
    */
   getFilterEmptyDropdownState(): Locator {
     return this.page.getByText('Nothing found...').first();
+  }
+
+  /**
+   * Open a dashboard filter's dropdown, leaving it open so the caller can
+   * assert on the options it offers.
+   */
+  async openFilterDropdown(filterName: string) {
+    const select = this.getFilterSelectByName(filterName);
+    await select.waitFor({ state: 'visible', timeout: 15000 });
+    await select.scrollIntoViewIfNeeded();
+    await select.click();
+  }
+
+  /**
+   * Locator for one option in a dashboard filter's (open) dropdown. The
+   * dropdown is portaled out of the select, so this is located at page level.
+   */
+  getFilterOption(value: string): Locator {
+    return this.page.getByRole('option', { name: value, exact: true });
+  }
+
+  /** The warning shown when a filter's dropdown query awaits a variable's value. */
+  getFilterPendingVariableWarning(filterName: string): Locator {
+    return this.page.getByTestId(
+      `dashboard-filter-pending-variable-${filterName}`,
+    );
+  }
+
+  /** The error shown when a filter's dropdown values query failed. */
+  getFilterErrorIcon(filterName: string): Locator {
+    return this.page.getByTestId(`dashboard-filter-error-${filterName}`);
   }
 
   /**
@@ -1072,7 +1233,12 @@ export class DashboardPage {
    * or backticks. Assumes the Edit Filters modal is already open; leaves it open
    * (on the filters list) so multiple filters can be added in sequence.
    */
-  async addCustomFilter(name: string, sourceName: string, expression: string) {
+  async addCustomFilter(
+    name: string,
+    sourceName: string,
+    expression: string,
+    variableOptions?: { variableName: string },
+  ) {
     await this.addFiltersButton.click();
     const nameInput = this.page.getByTestId('filter-name-input');
     await nameInput.waitFor({ state: 'visible', timeout: 10000 });
@@ -1092,6 +1258,10 @@ export class DashboardPage {
     // closes — left open it overlaps the save button and makes the click flake
     // on "element is not stable".
     await nameInput.click();
+    if (variableOptions) {
+      await this.variableEnabledCheckbox.check();
+      await this.variableNameInput.fill(variableOptions.variableName);
+    }
     const saveButton = this.page.getByTestId('save-filter-button');
     await expect(saveButton).toBeEnabled();
     await saveButton.click();
@@ -1101,6 +1271,141 @@ export class DashboardPage {
       state: 'visible',
       timeout: 10000,
     });
+  }
+
+  /**
+   * The type dropdown at the top of the filter edit form. Only rendered where
+   * dashboard variables are on. It is a Mantine `Select`, whose test id lands
+   * on the underlying text input.
+   */
+  getFilterTypePicker(): Locator {
+    return this.page.getByTestId('filter-type-picker');
+  }
+
+  /** Switch the add-filter form between the available value types. */
+  async selectFilterType(
+    label: 'Queried values' | 'Static values' | 'PromQL label values',
+  ) {
+    await this.getFilterTypePicker().click();
+    await this.getFilterOption(label).click();
+  }
+
+  /**
+   * The static filter form's options field — a Mantine `TagsInput`, whose test
+   * id lands on the underlying text input.
+   */
+  getFilterOptionsInput(): Locator {
+    return this.page.getByTestId('filter-options-input');
+  }
+
+  /**
+   * The authored options currently held by the options field, in order. Each
+   * is a Mantine `Pill`, matched by class because the pills carry no role or
+   * test id of their own and the filter form has no other pills.
+   *
+   * `allTextContents` does not auto-wait, so the field is waited for first —
+   * a read taken before the form has rendered would otherwise return `[]`.
+   */
+  async getFilterOptionValues(): Promise<string[]> {
+    await this.getFilterOptionsInput().waitFor({
+      state: 'visible',
+      timeout: 10000,
+    });
+    const texts = await this.getFilterForm()
+      .locator('[class*="Pill-label"]')
+      .allTextContents();
+    return texts.map(text => text.trim());
+  }
+
+  /** Append `options` to the static filter form's options field, in order. */
+  async fillFilterOptions(options: string[]) {
+    const input = this.getFilterOptionsInput();
+    await input.click();
+    for (const option of options) {
+      await input.fill(option);
+      await input.press('Enter');
+    }
+  }
+
+  /**
+   * Add a dashboard filter whose dropdown offers a hand-authored list. Kept
+   * separate from `fillFilterForm` because a static filter shares only the
+   * display name and variable name with a queried one — it has no source,
+   * expression, or broadcast mode to configure.
+   *
+   * Assumes the Edit Filters modal is already open; leaves it open on the
+   * filters list, having waited for the new filter to land there so a slow
+   * save cannot race the next add.
+   */
+  async addStaticListFilterToDashboard(
+    name: string,
+    options: string[],
+    variableOptions?: { variableName?: string },
+  ) {
+    await this.addFiltersButton.click();
+    await this.selectFilterType('Static values');
+    const nameInput = this.getFilterNameInput();
+    await nameInput.waitFor({ state: 'visible', timeout: 10000 });
+    await nameInput.fill(name);
+    await this.fillFilterOptions(options);
+    if (variableOptions?.variableName !== undefined) {
+      await this.variableNameInput.fill(variableOptions.variableName);
+    }
+    await this.page.getByTestId('save-filter-button').click();
+    await this.getFilterItemByName(name).waitFor({
+      state: 'visible',
+      timeout: 10000,
+    });
+  }
+
+  /** The PromQL filter form's label field. */
+  getFilterLabelInput(): Locator {
+    return this.page.getByTestId('filter-label-input');
+  }
+
+  /**
+   * Add a dashboard filter whose dropdown lists the values of one Prometheus
+   * label. Like the static variant it shares only the display name and variable
+   * name with a queried filter — there is no expression or broadcast mode, and
+   * the source must be a PromQL one.
+   *
+   * Assumes the Edit Filters modal is already open; leaves it open on the
+   * filters list, having waited for the new filter to land there so a slow
+   * save cannot race the next add.
+   */
+  async addPromqlLabelFilterToDashboard(
+    name: string,
+    sourceName: string,
+    label: string,
+    variableOptions?: { variableName?: string },
+  ) {
+    await this.addFiltersButton.click();
+    await this.selectFilterType('PromQL label values');
+    const nameInput = this.getFilterNameInput();
+    await nameInput.waitFor({ state: 'visible', timeout: 10000 });
+    await nameInput.fill(name);
+    await this.selectFilterSource(sourceName);
+    await this.getFilterLabelInput().fill(label);
+    if (variableOptions?.variableName !== undefined) {
+      await this.variableNameInput.fill(variableOptions.variableName);
+    }
+    await this.page.getByTestId('save-filter-button').click();
+    await this.getFilterItemByName(name).waitFor({
+      state: 'visible',
+      timeout: 10000,
+    });
+  }
+
+  /**
+   * The options offered by the dashboard filter dropdown that is currently
+   * open, in render order. Scoped to visible nodes: a just-closed dropdown's
+   * portal can linger in the DOM.
+   */
+  async getOpenFilterDropdownOptions(): Promise<string[]> {
+    const texts = await this.page
+      .locator('[role="option"]:visible')
+      .allTextContents();
+    return texts.map(text => text.trim());
   }
 
   /**

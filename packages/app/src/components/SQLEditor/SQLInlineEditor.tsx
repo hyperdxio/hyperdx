@@ -42,7 +42,7 @@ import {
   createCodeMirrorStyleTheme,
   DEFAULT_CODE_MIRROR_BASIC_SETUP,
 } from './utils';
-import { useVariableCompletions } from './variableCompletions';
+import { useSqlVariableCompletions } from './variableCompletions';
 import {
   useVariableValidation,
   VariableIssueIndicator,
@@ -165,7 +165,7 @@ export default function SQLInlineEditor({
   // Dashboard variables in scope, offered alongside the column identifiers, and
   // checked for the references that won't expand. This editor's content is
   // always SQL — `language` only drives the switch.
-  const variableCompletions = useVariableCompletions({
+  const variableCompletions = useSqlVariableCompletions({
     enabled: enableVariables,
   });
   const variableIssues = useVariableValidation(value, {
@@ -252,6 +252,12 @@ export default function SQLInlineEditor({
   const tooltipExt = useMemo(() => {
     if (parentRef == null) {
       return [];
+    }
+    // A body-level parent is already outside every scroll container, so the
+    // tooltip should be free to use the whole viewport — CodeMirror's default
+    // space.
+    if (parentRef === parentRef.ownerDocument.body) {
+      return [tooltips({ parent: parentRef })];
     }
     return [
       tooltips({

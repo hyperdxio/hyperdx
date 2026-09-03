@@ -12,6 +12,10 @@ import {
   renderChartConfig,
 } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
+  renderSeriesNames,
+  SeriesNameInput,
+} from '@hyperdx/common-utils/dist/core/seriesNameTemplate';
+import {
   convertDateRangeToGranularityString,
   hasPositiveSeriesLimit,
 } from '@hyperdx/common-utils/dist/core/utils';
@@ -27,6 +31,7 @@ import {
   ChartConfigWithOptDateRange,
   QuerySettings,
 } from '@hyperdx/common-utils/dist/types';
+import { substitutePromqlChartConfigVariables } from '@hyperdx/common-utils/dist/variables';
 import {
   useQuery,
   useQueryClient,
@@ -323,6 +328,9 @@ export function useQueriedChartConfig(
     queryFn: async context => {
       // PromQL queries go through the Prometheus API route, not ClickHouse proxy
       if (isPromqlChartConfig(config) && config.dateRange) {
+        // Expand dashboard variables in the PromQL expression before sending to Prometheus API.
+        const { promqlExpression } =
+          substitutePromqlChartConfigVariables(config);
         const [startDate, endDate] = config.dateRange;
         const startSec = startDate.getTime() / 1000;
         const endSec = endDate.getTime() / 1000;
@@ -348,7 +356,7 @@ export function useQueriedChartConfig(
         }
 
         const resp = await prometheusApi.queryRange({
-          query: config.promqlExpression,
+          query: promqlExpression,
           start: startSec,
           end: endSec,
           step: stepStr,
@@ -379,14 +387,25 @@ export function useQueriedChartConfig(
           if (vs.size > 1) distinguishingKeys.add(k);
         }
 
-        const data: Record<string, string | number>[] = [];
-        for (const series of allSeries) {
+        const seriesInputs: SeriesNameInput[] = allSeries.map(series => {
           const metricName = series.metric.__name__ ?? '';
           const labels = Object.entries(series.metric)
             .filter(([k]) => k !== '__name__' && distinguishingKeys.has(k))
             .map(([k, v]) => `${k}="${v}"`)
             .join(', ');
-          const seriesName = labels ? `${metricName}{${labels}}` : metricName;
+          return {
+            labels: series.metric,
+            fallback: labels ? `${metricName}{${labels}}` : metricName,
+          };
+        });
+        const legendTemplate = config.legendTemplate?.trim();
+        const seriesNames = legendTemplate
+          ? renderSeriesNames(legendTemplate, seriesInputs)
+          : seriesInputs.map(s => s.fallback);
+
+        const data: Record<string, string | number>[] = [];
+        for (const [i, series] of allSeries.entries()) {
+          const seriesName = seriesNames[i];
 
           for (const [ts, val] of series.values) {
             data.push({

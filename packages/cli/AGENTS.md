@@ -144,13 +144,16 @@ dashboard**:
 1. `shared/tileConfig.ts` resolves a tile's `SavedChartConfig` against its
    source (port of the web Tile's `queriedConfig` effect in
    `DBDashboardPage.tsx`) and applies the per-displayType config transform
-   (`convertToTimeChartConfig` / `convertToNumberChartConfig` /
-   `convertToTableChartConfig` / `convertToCategoricalChartConfig`).
+   (`convertToTimeChartConfig` locally; `convertToNumberChartConfig` /
+   `convertToTableChartConfig` / `convertToCategoricalChartConfig` are the
+   shared common-utils transforms the web imports too — the number transform
+   is formula-aware, hiding operand series on number tiles with `formulas`).
 2. `shared/tileQuery.ts` executes it via `clickhouseClient.queryChartConfig()`
    from common-utils — internally `setChartSelectsAlias → renderChartConfig`
-   (one composed statement, even for multi-series metric charts), identical to
-   the web's `useQueriedChartConfig` core (minus chunking / MV optimization /
-   PromQL).
+   (one composed statement, even for multi-series metric charts and metric
+   formula tiles, whose derived `formulas` columns are computed in ClickHouse),
+   identical to the web's `useQueriedChartConfig` core (minus chunking / MV
+   optimization / PromQL).
 3. `shared/chartData.ts` shapes the response (ports of
    `formatResponseForTimeChart`, `formatResponseForCategoricalChart`, etc.).
 4. `termchart/` renders pure ANSI strings, consumed by both the Ink `TileChart`
@@ -210,6 +213,10 @@ consistent:
 | `shared/tileRender`   | `DBDashboardPage`                | `renderChartContent` dispatch     |
 | `shared/chartData`    | `ChartUtils`                     | Response shaping ports            |
 | `shared/formatNumber` | `utils.ts` + `source.ts`         | formatNumber + format resolution  |
+
+Ported files carry an `@source packages/app/...` tag naming their origin. Keep
+the tag when you edit one and add a tag when you add a port — see
+[`agent_docs/code_style.md`](../../agent_docs/code_style.md#marking-a-whole-file-port).
 
 Key expression mappings from the web frontend's `getConfig()`:
 

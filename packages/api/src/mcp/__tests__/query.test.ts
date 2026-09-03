@@ -7,6 +7,10 @@ jest.mock('@/utils/trimToolResponse', () => ({
 }));
 
 import { ClickHouseError } from '@clickhouse/client-common';
+import {
+  MacroExpansionError,
+  UnknownVariableError,
+} from '@hyperdx/common-utils/dist/macroErrors';
 
 import {
   annotateIncreaseTopNHint,
@@ -22,6 +26,7 @@ import {
 import {
   applyMetricSelectDefaults,
   getMetricSelectIssues,
+  mcpQuantileLevelSchema,
   validateMetricSelectItems,
 } from '@/mcp/tools/query/schemas';
 import { resolveOrderBy } from '@/mcp/tools/query/table';
@@ -229,6 +234,49 @@ describe('errorHint', () => {
       'Syntax error: cannot cast as Float64 near token...',
     );
     expect(hint).toBeNull();
+  });
+
+  describe('unknown dashboard variable', () => {
+    // Matched on the error's type, not its wording, so rephrasing the
+    // expansion message cannot silently drop the hint.
+    it('points at the filter config', () => {
+      const hint = errorHint(
+        'some message the hint does not read',
+        new UnknownVariableError('filter', 'tenant', ['service', 'env'], 'x'),
+      );
+
+      expect(hint).toContain('isVariableEnabled');
+      expect(hint).toContain('clickstack_get_dashboard');
+    });
+
+    it('finds the error through a wrapper that keeps it as a cause', () => {
+      const hint = errorHint(
+        'x',
+        new Error('Query failed', {
+          cause: new UnknownVariableError('filter', 'tenant', ['service'], 'x'),
+        }),
+      );
+
+      expect(hint).toContain('isVariableEnabled');
+    });
+
+    it('does not fire on a different expansion failure for the same macro', () => {
+      // This message already says exactly what to do, so the
+      // declare-a-variable hint would be misleading noise on top of it. The
+      // old string match could not tell the two apart.
+      const message =
+        "Macro '$__filter($service)' requires the variable's filter " +
+        'expression, which is not available - pass it explicitly, e.g. ' +
+        '$__filter(<expression>, $service).';
+
+      expect(
+        errorHint(message, new MacroExpansionError('filter', message)),
+      ).toBeNull();
+    });
+
+    it('does not fire on a message that merely mentions an unknown variable', () => {
+      expect(errorHint("references unknown variable 'tenant'")).toBeNull();
+    });
   });
 
   it('should match V8 string length overflow', () => {
@@ -1256,5 +1304,42 @@ describe('assertSourceKindMatchesSelect', () => {
       assertSourceKindMatchesSelect({ kind: 'trace' }, undefined),
     ).toBeNull();
     expect(assertSourceKindMatchesSelect({ kind: 'trace' }, null)).toBeNull();
+  });
+});
+
+describe('mcpQuantileLevelSchema', () => {
+  // Advertised to MCP callers as a string enum because Gemini's function
+  // declarations reject `enum` on any non-string type, which takes down the
+  // whole tool list. Everything downstream still wants a number, so parsing
+  // has to coerce — and callers working from a cached schema still send the
+  // number. See #2967.
+  it.each([
+    ['0.5', 0.5],
+    ['0.9', 0.9],
+    ['0.95', 0.95],
+    ['0.99', 0.99],
+  ])('parses the string %p to the number %p', (input, expected) => {
+    expect(mcpQuantileLevelSchema.parse(input)).toBe(expected);
+  });
+
+  it.each([0.5, 0.9, 0.95, 0.99])(
+    'still accepts the numeric form %p',
+    input => {
+      expect(mcpQuantileLevelSchema.parse(input)).toBe(input);
+    },
+  );
+
+  it.each([0.97, '0.97', 1, '1', 0, 'p95', '', null, true, {}])(
+    'rejects %p',
+    input => {
+      expect(mcpQuantileLevelSchema.safeParse(input).success).toBe(false);
+    },
+  );
+
+  it('is optional at the call site without swallowing bad values', () => {
+    const optional = mcpQuantileLevelSchema.optional();
+
+    expect(optional.parse(undefined)).toBeUndefined();
+    expect(optional.safeParse('0.97').success).toBe(false);
   });
 });

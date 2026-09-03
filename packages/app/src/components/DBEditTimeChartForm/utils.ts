@@ -25,7 +25,7 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import {
   filterReferencedVariables,
-  substituteChartConfigVariables,
+  substitutePromqlChartConfigVariables,
 } from '@hyperdx/common-utils/dist/variables';
 
 import {
@@ -33,6 +33,7 @@ import {
   convertToNumberChartConfig,
   convertToTableChartConfig,
   convertToTimeChartConfig,
+  tryExpandConfigVariables,
 } from '@/ChartUtils';
 import { ChartEditorFormState } from '@/components/ChartEditor/types';
 import { getFirstTimestampValueExpression } from '@/source';
@@ -150,7 +151,6 @@ export function computeDbTimeChartConfig(
 
 /**
  * Returns the dashboard variables a chart preview should use.
- * - PromQL configs don't yet support variables, so they resolve to an empty set
  * - Alerts always run with empty variable selections, so they resolve to each referenced variable with an empty `values` array.
  * - Otherwise, variables are filtered to only those referenced by the chart config.
  */
@@ -170,18 +170,34 @@ export function resolvePreviewVariables({
     : referenced;
 }
 
-/**
- * Expand a builder config's variable references, falling back to the config as
- * written when one of them can't be expanded (a malformed reference, or a macro
- * naming a variable the dashboard doesn't declare).
- */
-function expandVariablesOrLeaveRaw<
-  T extends Parameters<typeof substituteChartConfigVariables>[0],
->(config: T): T {
+/** A PromQL tile's substituted expression, or why there isn't one. */
+export type RenderedPromqlExpression =
+  | { expression: string; error?: never }
+  | { expression?: never; error: string };
+
+/** The expression a PromQL tile is queried with, with variables substituted. */
+export function buildRenderedPromqlExpression(
+  queriedConfig: ChartConfigWithDateRange | undefined,
+): RenderedPromqlExpression | undefined {
+  if (queriedConfig == null || !isPromqlChartConfig(queriedConfig)) {
+    return undefined;
+  }
+
   try {
-    return substituteChartConfigVariables(config);
-  } catch {
-    return config;
+    return {
+      expression:
+        substitutePromqlChartConfigVariables(queriedConfig).promqlExpression,
+    };
+  } catch (e) {
+    // Substitution throws on an unrecognized format such as `${svc:json}`. The
+    // query path substitutes the same way, so nothing reached Prometheus —
+    // showing the template here would claim an expression that never ran.
+    return {
+      error:
+        e instanceof Error
+          ? `Variables could not be expanded: ${e.message}`
+          : 'Variables could not be expanded.',
+    };
   }
 }
 
@@ -203,7 +219,7 @@ export function buildSampleEventsConfig(
   // The series' agg conditions become `filters` below, and `filters` is
   // deliberately not scanned for variable references. So expand the variables
   // here, building the filters in the sample events config below.
-  const config = expandVariablesOrLeaveRaw(queriedConfig);
+  const config = tryExpandConfigVariables(queriedConfig);
 
   return {
     ...config,

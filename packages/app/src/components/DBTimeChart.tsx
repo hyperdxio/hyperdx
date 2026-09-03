@@ -34,6 +34,7 @@ import {
   formatResponseForTimeChart,
   getPreviousDateRange,
   shouldFillNullsWithZero,
+  tryExpandConfigVariables,
   useTimeChartSettings,
 } from '@/ChartUtils';
 import { ChartAnnotation } from '@/components/charts/chartAnnotations';
@@ -718,6 +719,15 @@ function DBTimeChartComponent({
         return null;
       }
 
+      // The search page has no variable machinery, so the expressions read here
+      // and handed to buildEventsSearchUrl must be final SQL/Lucene.
+      // `whereLanguage` is pinned to buildEventsSearchUrl's default first, since
+      // expansion below leaves nothing for it to expand.
+      const expandedConfig = tryExpandConfigVariables({
+        ...config,
+        whereLanguage: config.whereLanguage || 'lucene',
+      });
+
       // Parse the series key to extract group values
       const seriesKeys = seriesKey?.split(ChartKeyJoiner);
       const groupFilters = decodeSeriesGroupFilters({
@@ -734,16 +744,31 @@ function DBTimeChartComponent({
           }
         | undefined;
 
+      // Metric formula configs with hidden operand series project only the
+      // formula column(s), so value columns no longer map positionally onto
+      // `select` — skip the value-range filter rather than misattributing a
+      // formula value to an operand's expression. (With operands shown, the
+      // operand columns still map by index and formula columns fall past the
+      // `< expandedConfig.select.length` bound below.)
+      const operandsHidden =
+        isBuilderChartConfig(expandedConfig) &&
+        (expandedConfig.formulas?.length ?? 0) > 0 &&
+        expandedConfig.showOperandSeries === false;
+
       if (
         seriesValue &&
-        Array.isArray(config.select) &&
-        config.select.length > 0
+        !operandsHidden &&
+        Array.isArray(expandedConfig.select) &&
+        expandedConfig.select.length > 0
       ) {
         // Determine which value column to filter on
         let valueExpression: string | undefined;
 
-        if ((isSingleValueColumn ?? true) && config.select.length === 1) {
-          const firstSelect = config.select[0];
+        if (
+          (isSingleValueColumn ?? true) &&
+          expandedConfig.select.length === 1
+        ) {
+          const firstSelect = expandedConfig.select[0];
           const aggFn =
             typeof firstSelect === 'string' ? undefined : firstSelect.aggFn;
           // Only add value range filter if the aggregation is attributable
@@ -765,9 +790,9 @@ function DBTimeChartComponent({
           if (
             valueColumnIndex != null &&
             valueColumnIndex >= 0 &&
-            valueColumnIndex < config.select.length
+            valueColumnIndex < expandedConfig.select.length
           ) {
-            const selectItem = config.select[valueColumnIndex];
+            const selectItem = expandedConfig.select[valueColumnIndex];
             const aggFn =
               typeof selectItem === 'string' ? undefined : selectItem.aggFn;
             // Only add value range filter if the aggregation is attributable
@@ -799,7 +824,7 @@ function DBTimeChartComponent({
 
       return buildEventsSearchUrl({
         source,
-        config,
+        config: expandedConfig,
         dateRange: [from, to],
         groupFilters,
         valueRangeFilter,

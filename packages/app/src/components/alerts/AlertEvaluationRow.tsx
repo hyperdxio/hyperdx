@@ -15,6 +15,7 @@ import {
   AlertErrorsContent,
 } from '@/components/alerts/AlertHistoryCards';
 import { AlertStateBadge } from '@/components/alerts/AlertStateBadge';
+import { NotificationDurationCell } from '@/components/alerts/NotificationDurationCell';
 import { FormatTime } from '@/useFormatTime';
 import { formatDurationMs } from '@/utils';
 
@@ -184,7 +185,7 @@ export function AlertEvaluationRow({
         </Table.Td>
         <Table.Td>{durationCell(history.analytics?.queryDurationMs)}</Table.Td>
         <Table.Td>
-          {durationCell(history.analytics?.webhookDurationMs)}
+          <NotificationDurationCell analytics={history.analytics} />
         </Table.Td>
         <Table.Td>
           {hasErrors ? (

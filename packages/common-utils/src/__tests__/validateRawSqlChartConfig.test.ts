@@ -447,12 +447,30 @@ describe('validateRawSqlChartConfig', () => {
     it('errors on a macro naming a variable the dashboard does not have', () => {
       const { errors } = validateRawSqlChartConfig(
         withVariables(
-          'SELECT count() FROM $__sourceTable WHERE $__filter(ServiceName, nope)',
+          'SELECT count() FROM $__sourceTable WHERE $__filter(ServiceName, $nope)',
         ),
       );
       expect(errors).toContain(
         "Macro '$__filter' references unknown variable 'nope'. Available variables: service, env.",
       );
+    });
+
+    it('errors once on a macro whose variable argument is missing its $', () => {
+      // Both the variable checks and macro resolution expand this template, so
+      // the same message can be reached twice.
+      const { errors } = validateRawSqlChartConfig(
+        withVariables(
+          'SELECT count() FROM $__sourceTable WHERE $__filter(ServiceName, service)',
+        ),
+      );
+      expect(
+        errors.filter(error =>
+          error.includes('requires its variable argument'),
+        ),
+      ).toEqual([
+        "Macro '$__filter' requires its variable argument to be written as a " +
+          "reference, as in $__filter(<expression>, $service) — got 'service'.",
+      ]);
     });
 
     it('warns on a bare reference the dashboard does not have', () => {
@@ -473,7 +491,7 @@ describe('validateRawSqlChartConfig', () => {
         ),
       );
       expect(errors).toContain(
-        '$service is wrapped in quotes, but the default sqlstring format already quotes each value. Did you mean to use $__filter(<expression>, service) or ${service:csv} instead?',
+        '$service is wrapped in quotes, but the default sqlstring format already quotes each value. Did you mean to use $__filter(<expression>, $service) or ${service:csv} instead?',
       );
     });
 
@@ -484,7 +502,7 @@ describe('validateRawSqlChartConfig', () => {
         ),
       );
       expect(warnings).toContain(
-        '$service has no valid empty-selection value — it renders as NULL before anything is selected. Prefer $__filter(<expression>, service) or $__conditionalAll(<condition>, service) so the query stays valid when no values are selected.',
+        '$service has no valid empty-selection value — it renders as NULL before anything is selected. Prefer $__filter(<expression>, $service) or $__conditionalAll(<condition>, $service) so the query stays valid when no values are selected.',
       );
     });
 
@@ -503,7 +521,7 @@ describe('validateRawSqlChartConfig', () => {
     it('does not call a reference unguarded when the enclosing macro guards that same variable', () => {
       const { errors, warnings } = validateRawSqlChartConfig(
         withVariables(
-          'SELECT count() FROM $__sourceTable WHERE $__conditionalAll(ServiceName NOT IN ($service), service) AND $__timeFilter(ts)',
+          'SELECT count() FROM $__sourceTable WHERE $__conditionalAll(ServiceName NOT IN ($service), $service) AND $__timeFilter(ts)',
         ),
       );
       expect(errors).toEqual([]);
@@ -513,18 +531,18 @@ describe('validateRawSqlChartConfig', () => {
     it('still warns when the enclosing macro guards a different variable', () => {
       const { warnings } = validateRawSqlChartConfig(
         withVariables(
-          'SELECT count() FROM $__sourceTable WHERE $__conditionalAll(Env IN ($env), service) AND $__timeFilter(ts)',
+          'SELECT count() FROM $__sourceTable WHERE $__conditionalAll(Env IN ($env), $service) AND $__timeFilter(ts)',
         ),
       );
       expect(warnings).toContain(
-        '$env has no valid empty-selection value — it renders as NULL before anything is selected. Prefer $__filter(<expression>, env) or $__conditionalAll(<condition>, env) so the query stays valid when no values are selected.',
+        '$env has no valid empty-selection value — it renders as NULL before anything is selected. Prefer $__filter(<expression>, $env) or $__conditionalAll(<condition>, $env) so the query stays valid when no values are selected.',
       );
     });
 
     it('leaves a correct $__filter usage alone', () => {
       const { errors, warnings } = validateRawSqlChartConfig(
         withVariables(
-          'SELECT count() FROM $__sourceTable WHERE $__filter(ServiceName, service) AND $__timeFilter(ts)',
+          'SELECT count() FROM $__sourceTable WHERE $__filter(ServiceName, $service) AND $__timeFilter(ts)',
         ),
       );
       expect(errors).toEqual([]);
@@ -557,7 +575,7 @@ describe('validateRawSqlChartConfig', () => {
         const { errors } = validateRawSqlChartConfig(
           config({
             sqlTemplate:
-              'SELECT count() FROM $__sourceTable WHERE $__filter(ServiceName, service)',
+              'SELECT count() FROM $__sourceTable WHERE $__filter(ServiceName, $service)',
           }),
         );
         expect(errors).toContain(
@@ -594,7 +612,7 @@ describe('validateRawSqlChartConfig', () => {
       const { warnings } = validateRawSqlChartConfig(
         config({
           sqlTemplate:
-            'SELECT count() FROM $__sourceTable WHERE $__filter(ServiceName, service)',
+            'SELECT count() FROM $__sourceTable WHERE $__filter(ServiceName, $service)',
           variables: [
             { name: 'service', values: ['api'], expression: 'ServiceName' },
           ],

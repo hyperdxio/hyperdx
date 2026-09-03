@@ -10,9 +10,11 @@ import {
   AlertThresholdType,
   isRangeThresholdType,
   scheduleStartAtSchema,
+  validateAlertChannelSelection,
   validateAlertScheduleOffsetMinutes,
   validateAlertThresholdMax,
   zAlertChannel,
+  zAlertChannels,
 } from '@hyperdx/common-utils/dist/types';
 import {
   Accordion,
@@ -40,6 +42,7 @@ import { useSource } from '@/source';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import type { AlertsPageItem } from '@/types';
 import { optionsToSelectData } from '@/utils';
+import { toAlertChannels } from '@/utils/alerts';
 import {
   ALERT_CHANNEL_OPTIONS,
   ALERT_INTERVAL_OPTIONS,
@@ -61,12 +64,14 @@ const EditAlertFormSchema = z
     scheduleOffsetMinutes: z.number().int().min(0).default(0),
     scheduleStartAt: scheduleStartAtSchema,
     thresholdType: z.nativeEnum(AlertThresholdType),
-    channel: zAlertChannel,
+    channel: zAlertChannel.optional(),
+    channels: zAlertChannels.optional(),
     // nullish() (not optional()): persisted alerts store this as null, which
     // optional() would reject.
     numConsecutiveWindows: z.number().int().min(1).nullish(),
   })
   .passthrough()
+  .superRefine(validateAlertChannelSelection)
   .superRefine(validateAlertScheduleOffsetMinutes)
   .superRefine(validateAlertThresholdMax);
 
@@ -90,10 +95,14 @@ function alertToFormValues(alert: AlertsPageItem): Alert {
         : typeof alert.scheduleStartAt === 'string'
           ? alert.scheduleStartAt
           : alert.scheduleStartAt.toISOString(),
-    channel: {
-      type: 'webhook' as const,
-      webhookId: alert.channel.webhookId ?? '',
-    },
+    // AlertsPageItem types a channel loosely (type?: string | null) while the
+    // form carries the strict Alert shape. Copy channels through rather than
+    // rebuilding them, so a fork's extra channel fields survive an edit; only
+    // webhookId is coerced, because the picker needs a string.
+    channels: toAlertChannels(alert).map(c => ({
+      ...c,
+      webhookId: c.webhookId ?? '',
+    })) as Alert['channels'],
     name: alert.name ?? null,
     message: alert.message ?? null,
     note: alert.note ?? null,
@@ -174,7 +183,6 @@ export function EditAlertModal({
   const thresholdType = useWatch({ control, name: 'thresholdType' });
   const threshold = useWatch({ control, name: 'threshold' });
   const thresholdMax = useWatch({ control, name: 'thresholdMax' });
-  const channelType = useWatch({ control, name: 'channel.type' });
   const interval = useWatch({ control, name: 'interval' });
   const groupBy = useWatch({ control, name: 'groupBy' });
   const scheduleOffsetMinutes = useWatch({
@@ -362,7 +370,7 @@ export function EditAlertModal({
             </Text>
             <Controller
               control={control}
-              name="channel.type"
+              name="channels.0.type"
               render={({ field }) => (
                 <NativeSelect
                   data={optionsToSelectData(ALERT_CHANNEL_OPTIONS)}
@@ -401,7 +409,7 @@ export function EditAlertModal({
           <Text size="xxs" opacity={0.5} mb={4}>
             Send to
           </Text>
-          <AlertChannelForm control={control} type={channelType} />
+          <AlertChannelForm control={control} channelsName="channels" />
           <AlertNoteField control={control} name="note" />
           {!isTileAlert &&
             groupBy &&

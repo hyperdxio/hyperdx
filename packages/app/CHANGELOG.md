@@ -1,5 +1,200 @@
 # @hyperdx/app
 
+## 2.37.0
+
+### Minor Changes
+
+- db6ee45f: feat(alerts): tidy the alert detail header and its properties block
+
+  Edit, Delete and Terraform export move behind the same overflow menu the
+  alerts list uses, so the header no longer spreads four buttons across the top
+  and both surfaces offer the same actions. The link to what the alert watches
+  becomes an icon beside the alert name, where it reads as part of the alert's
+  identity rather than another action.
+
+  The properties block splits configuration from provenance: the creator now
+  sits with the created and updated timestamps in a dimmed line beneath, instead
+  of competing with the alert's settings.
+
+- 0558f77e: Record and show which notification target an evaluation's delivery time went to. `webhookDurationMs` was a single number covering the whole delivery, and because targets are dispatched concurrently the slowest one sets it — so a multi-target alert reported a figure with no way to tell which webhook was responsible, or that the other targets were fine.
+
+  Each dispatch is now timed individually and aggregated per target across the evaluation, since a grouped alert notifies the same target once per firing group and again on resolve. One entry per distinct target carries its webhook id, display name, summed duration, how many dispatches it took, and how many failed. The evaluation history's "Notification duration" cell expands in place to show the breakdown.
+
+  Stored per evaluation rather than per dispatch: a 50-group alert notifying 10 targets would otherwise write 500 entries onto every history row. The array is capped at `ALERT_NOTIFICATION_TARGETS_LIMIT` and sorted slowest-first, so the cap drops the least interesting rows. Records written before this change keep rendering their total with nothing to expand.
+
+- db6ee45f: feat(alerts): edit from the alerts list, filter by alert source, and label the source icons
+
+  The alerts page row menu now opens the alert editor directly, so changing a
+  threshold no longer means navigating to the alert first. The source icon on
+  each row gets a tooltip and accessible label naming what it watches ("Saved
+  search" / "Dashboard tile"), and a new filter narrows the list by that source
+  — free-text search matches it too, so typing "tile" works without touching the
+  dropdown. Team settings tabs gain icons.
+
+- 8f3126f0: Add a metrics explorer to the chart editor, so you no longer have to already know a metric's name to chart it. A browse control beside the metric select opens a modal with a prefix hierarchy over the metric namespace — `system` → `cpu` → `utilization` — plus search across every name and description the source is reporting. Each row carries the metric's kind and its description, and the detail pane shows the unit (rendered from its UCUM code), reporting services, and tag keys drilling into their values. Previously the picker was a flat 3,000-entry dropdown and that metadata only appeared after you had already committed to a metric.
+
+  Names are split per metric: on `.` when the name has one (OpenTelemetry), otherwise on `_` (Prometheus exporters). Deciding per name rather than per source matters in practice — a real deployment carries thousands of underscore-style collector self-telemetry names alongside dozens of dotted application metrics, and a single source-wide separator flattened whichever family was outnumbered. Single-child chains collapse so the tree does not become a corridor, and the unfiltered tree is never truncated, so no namespace can go missing.
+
+  While browsing a metric's tags you can stage filters and group-bys the same way the chart editor's inline attribute panel allows; they are shown as removable chips and applied together with the metric. Applying also sets an aggregation appropriate to the kind — average for a gauge, sum for a counter, p95 for a histogram — instead of inheriting whatever the previous series used. Both replace rather than merge, since they were written against the newly chosen metric: staged filters replace the series condition, and staged group-bys replace the chart's.
+
+  The chart editor's inline attribute panel now also shows the metric's kind. Only chartable kinds are listed (gauge, sum, histogram, exponential histogram); `summary` is omitted because the query renderer cannot translate it. The browser is a self-contained component, so the modal is one shell around it rather than the only possible home.
+
+- 6b7ca4ab: Show reverse span links and resolved span-link details in the span detail Overview panel.
+- e0d29328: feat: rebuild the Help menu's "What's new" around the release notes. Replaces
+  the full-changelog modal with an inline section, a "View all releases" drawer,
+  and a sparkle on the Help icon when the running version hasn't been acknowledged
+  in this browser.
+
+  Everything shown now comes from the root CHANGELOG.md, the release-level summary
+  written during each release: its headline and opening paragraph lead the
+  release, breaking changes and new features are listed individually and badged
+  apart, and the remaining sections are summed up as counts linking to that
+  release's section of the changelog. Nothing is hand-authored in the app. The
+  whole changelog is no longer shipped as a fetched asset either — next.config.mjs
+  parses it at build time and emits a small public/whats-new.json instead.
+
+### Patch Changes
+
+- cb48c46a: Show every notification target an alert is configured with. The alerts page rows and the alert detail header only ever rendered the legacy singular `channel`, so an alert notifying three webhooks read as if it notified one, and the label was the generic "Webhook" rather than the webhook's name. Both surfaces now resolve all of an alert's channels: the detail page names each target with its service icon (Slack, incident.io, generic), keeping the first two inline and collapsing the rest into a `+N more` tooltip, while the alerts-page rows show the icons only with the names on hover, since spelling out up to ten names wrapped the row into an unreadable block. The hover-only names are also placed in the accessibility tree rather than left to an `aria-label` on a role-less wrapper.
+
+  The evaluation history's "Webhook Duration" column is renamed "Notification duration" and gains a tooltip. The value was always the wall time of the whole delivery, which fans out to every target concurrently, so a single slow webhook sets the figure — but the singular heading read as one webhook's latency. Per-target attribution is not available yet; nothing records it. The remaining column headings are corrected to sentence case.
+
+- cf8e7e72: Give every alerts-page row the same trailing controls. The row's Terraform import button, source link, and acknowledgement button were each independently conditional — import needs a saved-search alert _and_ the export feature, and `AckAlert` renders nothing for an OK alert that has never been acknowledged — so the flex row collapsed differently per alert and no two rows lined up. The conditional actions move into an overflow menu that always renders, alongside a new "Delete alert" item, and the acknowledgement button gets a reserved slot so its absence no longer shifts everything to its left.
+
+  The Terraform snippet building is extracted into a `useTerraformSnippets` hook so the row menu can present the same snippets in a modal without duplicating it, or moving `ResourceTerraformPopover` off the two other pages that use it. Snippets are still built lazily on open, which is what keeps `window.location.origin` out of the render path and the ClickStack static export building.
+
+- bb320db6: fix: Confirm before discarding unsaved changes when closing the dashboard filter editor
+- f11038ef: feat: Persist variable-keyed dashboard filter value state
+- f9f7d5bc: feat: Add completions for PromQL variables
+- 82180780: feat: Enable dashboard variables for everyone by removing the feature toggle
+- 2ba1b25b: fix: Expand variables prior to navigating to search page via drill-down
+- 9155b436: Fix session replays rendering empty, unstyled, or freezing mid-session when a recorded rrweb event exceeds the recorder's ~950KB chunk size. All chunks of a split event share one timestamp, and the replay query ordered by timestamp alone, so ClickHouse could return chunks in arbitrary order — the scrambled reassembly failed to parse and the event (often the full DOM snapshot carrying all inlined CSS) was silently dropped. The replay stream is now ordered deterministically (`rr-web.offset` and `rr-web.chunk` tiebreaks), chunks are reassembled by explicit chunk index per event, and dropped events are reported in the console and flagged with a warning indicator in the player instead of being swallowed. Existing recordings are replayed correctly without re-ingestion. Replaced replay streams are now also cancelled instead of streaming to completion in the background, and the player imports `Replayer` from `@rrweb/replay` (the replay-only package rrweb recommends over the deprecated combined `rrweb` package).
+- de9038e7: feat: Distribute exact-match lucene variable references
+- 7662fae8: feat: Show warnings for invalid promql variable usage
+- 93b51b13: feat: Add generated PromQL preview
+- 64326d09: feat: Support variable substitution in PromQL charts
+- 7f3878bc: refactor: Split `DashboardFiltersModal` into smaller components
+- 210a3fb7: Release markers now show a distinct "couldn't load release markers" notification when the underlying query fails (e.g. a source's version expression references a column, such as `ResourceAttributes`, that the table doesn't have), instead of silently rendering no markers indistinguishable from "no releases found in this time range."
+- e995c393: feat(app): mask secrets in API key and MCP install snippets with a shared reveal-to-copy component
+- 057a6845: perf: Virtualize the alerts page list
+- Updated dependencies [3c81bb96]
+- Updated dependencies [0558f77e]
+- Updated dependencies [f11038ef]
+- Updated dependencies [df4a7a55]
+- Updated dependencies [f9f7d5bc]
+- Updated dependencies [892cc653]
+- Updated dependencies [82852c3a]
+- Updated dependencies [b52a6fa8]
+- Updated dependencies [de9038e7]
+- Updated dependencies [5fc33413]
+- Updated dependencies [7662fae8]
+- Updated dependencies [93b51b13]
+- Updated dependencies [64326d09]
+  - @hyperdx/api@2.37.0
+  - @hyperdx/common-utils@0.28.0
+
+## 2.36.0
+
+### Minor Changes
+
+- fb284465: Alert forms for saved searches and dashboard tiles can now send to several webhooks. Add or remove notification channels inline (up to 10); webhooks already chosen by the alert are greyed out in the other pickers, since duplicates are rejected.
+- b1d8dc14: Formulas now work on log and trace sources, not just metrics. Time series, table and number charts on event sources can define derived series via letter-ref arithmetic expressions (e.g. `A / B * 100`), with the same editor controls (Add Formula, series letter badges, Show input series) previously offered only on metric sources. Event formulas compile inline into the chart's single-scan SELECT — no per-series query fan-out — with the same missing-data semantics as the existing events ratio toggle.
+- e153f46d: Add metric formula editing to the chart editor. Metric-source charts (time series, table, number) gain an "Add Formula" row: a letter-ref arithmetic expression over the chart's series (`A` = series 1, `B` = series 2, ...) such as `A / (A + B) * 100`, with inline structured validation (malformed expressions, unknown series references), per-formula alias and number format, and a "Show input series" toggle to render only the formula column(s) or the formula alongside its operand series. Series rows now carry their reference letter as a badge. Formulas and the "As Ratio" toggle are mutually exclusive, and formulas persist on dashboard tiles and standalone charts.
+
+### Patch Changes
+
+- 59b96e99: Upgrade the session replay player from `rrweb@2.0.0-alpha.8` to stable `rrweb@2.1.1`, aligning the replayer with the rrweb version used by current `@hyperdx/browser` recorders and picking up several years of upstream replayer fixes (style-sheet handling, virtual DOM, adopted stylesheets). Replay fidelity was verified for sessions recorded with both `rrweb@1.1.3` (older browser SDKs) and `rrweb@2.1.1` (current SDKs).
+- f31a1458: Make the `CopySnippet` heading optional (omit `label` to hide it) and add
+  `IconAiNotebook`, a Tabler-compatible custom icon for AI notebooks.
+- 68d2ed20: feat: Support dependent variable value queries
+- 2eedfb26: feat: Substitute dashboard variables in chart builder tiles
+- 1ce61c0c: feat: Expand dashboard variables and macros nested in macro arguments
+- 43f68566: Allow editing and deleting alerts directly from the alert details page. An
+  "Edit alert" action opens a modal for changing the alert's threshold,
+  evaluation interval, schedule, group-by (saved-search alerts), notification
+  webhook, and note, and a Delete action (with confirmation) removes the alert
+  and returns to the alerts list. Alert API responses now include the
+  notification channel's webhook id and the alert's name/message template so
+  edits round-trip these fields.
+- 905d1941: Adopt React 19 context and ref APIs across the app and enforce them via ESLint.
+  Render `<Context>` directly instead of `<Context.Provider>`, use the `use` hook
+  instead of `useContext`, and pass `ref` as a regular prop instead of wrapping
+  components in `forwardRef`. The corresponding `@eslint-react/no-context-provider`,
+  `no-use-context`, and `no-forward-ref` rules are promoted to `error` and the
+  app's `--max-warnings` ceiling is lowered. Behavior is unchanged.
+- b0b13806: Align alert firing/recovery chart markers with the evaluated data: markers are now drawn at the start of the newest evaluated bucket (matching the evaluation history table and the plotted data point) instead of at the evaluation time, which sat one bucket to the right.
+- 8be68100: Fix dashboard filter selection state breaking on complex expressions. The
+  filter parser (shared with the search page) now tracks parenthesis depth in
+  addition to quote depth, so selections stored for expression-based filters such
+  as `if(SeverityText = 'error' OR SeverityText = 'fatal', 'Errors', 'Non-errors')`
+  or `if(SeverityText IN ('error', 'fatal'), 'Errors', 'Non-errors')` are parsed
+  correctly instead of being dropped or split on operators/keywords nested inside
+  the expression.
+- 9c7742fa: Fix multi-series metric charts mixing float and integer aggregations (e.g. histogram quantile + histogram count) failing with "No value columns found in result column metadata". The composed UNION ALL query now normalizes every series value to Float64, so the merged column type is deterministic instead of erroring with NO_COMMON_TYPE or producing a Variant(Float64, Int64) column depending on the ClickHouse server's `use_variant_as_common_type` setting. As a defensive layer, all-numeric `Variant(...)` result columns (e.g. from raw-SQL charts) are now also classified as numeric.
+- 75909ace: Fix Surrounding Context filters for non-OTEL schemas by using the source's serviceNameExpression for the "Service" filter instead of hardcoded ResourceAttributes lookup. Also adds quick event attribute filters that let users toggle attributes from the current event to narrow surrounding context results.
+- 7294944a: fix: route per-query SQL debug logging through an injectable logger (#2416)
+
+  `BaseClickhouseClient` dumped raw SQL to the console on every ClickHouse query,
+  unconditionally and outside the pino logger, flooding API logs with query spam.
+
+  Query logging now goes through an optional per-client `customLogger` on
+  `ClickhouseClientOptions`, logged at `debug`, and is silent when no logger is
+  passed. The API injects a pino-backed logger, so query logging follows the
+  existing `HYPERDX_LOG_LEVEL` setting instead of writing to `console.debug`. The
+  browser client defaults to a console logger that pretty-prints the SQL as a
+  single multi-line block, so query SQL stays visible and readable in devtools in
+  all builds instead of wrapping into one long line.
+
+  The API's log level now defaults to `info` (was `debug`), so SQL logging is
+  silent in production unless `HYPERDX_LOG_LEVEL=debug` is set. Dev and CI env
+  files already pin their levels explicitly and are unaffected. The default also
+  now applies when `HYPERDX_LOG_LEVEL` is set but empty — which is what Compose
+  passes when the variable is unset in the environment, and which previously made
+  pino throw at startup.
+
+- 47fe0cd9: Use the categorical chart palette and shared tooltip on histogram charts (including Request Latency on the Services dashboard) instead of a hardcoded neon green fill and a one-off tooltip.
+- 9f640a61: Add a Rotate action for the personal API access key in Team Settings → API & Agents. Previously the personal access key — the bearer token for the external API v2 and the MCP server — was generated once at account creation and could never be changed, so a leaked key could only be remediated by deleting the user. Rotating immediately revokes the previous key, so MCP / AI agent configs, external API v2 clients, Terraform / IaC providers, and CI scripts using the old key must be updated with the new one. Browser sessions are unaffected.
+- c4dcab95: Introduce a shared `ChartCard` component that gives standalone charts the same
+  card treatment as custom dashboard tiles (bordered surface + full-bleed header
+  divider). The card header stays pinned while the card body scrolls (e.g. cards
+  wrapping a long list like "Top 20 Most Time Consuming Queries"): in card mode
+  the header is a fixed row and scrollable list content gets its own internal
+  scroll region, so the header no longer scrolls away once you pass the first
+  card-height of content. Migrate the Service
+  Dashboards (HTTP, Database, Errors, endpoint and DB-query side panels) and the
+  ClickHouse page from the old `ChartBox` wrapper to `ChartCard` so chart surfaces
+  look consistent across the app.
+- adba65ab: fix: Sort JSON viewer keys alphabetically so wide Map columns are scannable
+- Updated dependencies [8723d7af]
+- Updated dependencies [be26530f]
+- Updated dependencies [a4b2ad00]
+- Updated dependencies [c349a5dd]
+- Updated dependencies [d205a776]
+- Updated dependencies [68d2ed20]
+- Updated dependencies [2eedfb26]
+- Updated dependencies [1ce61c0c]
+- Updated dependencies [90da4097]
+- Updated dependencies [43f68566]
+- Updated dependencies [b1d8dc14]
+- Updated dependencies [40ec0858]
+- Updated dependencies [b0b13806]
+- Updated dependencies [a94d6da8]
+- Updated dependencies [8be68100]
+- Updated dependencies [c592207b]
+- Updated dependencies [9c7742fa]
+- Updated dependencies [dc29d57f]
+- Updated dependencies [e153f46d]
+- Updated dependencies [7294944a]
+- Updated dependencies [e60a7d30]
+- Updated dependencies [3ecf73c2]
+- Updated dependencies [3ecf73c2]
+- Updated dependencies [e153f46d]
+- Updated dependencies [9f640a61]
+- Updated dependencies [ea127077]
+- Updated dependencies [08e5b62f]
+  - @hyperdx/api@2.36.0
+  - @hyperdx/common-utils@0.27.0
+
 ## 2.35.0
 
 ### Minor Changes

@@ -12,6 +12,14 @@ import userEvent from '@testing-library/user-event';
 import DBEditTimeChartForm from '@/components/DBEditTimeChartForm';
 import { useSource } from '@/source';
 
+/**
+ * These render the whole chart editor and drive it through user events, so
+ * individual tests routinely exceed Jest's 5s default when the suite competes
+ * for CPU with the rest of the run. Verified pre-existing: the slowest tests
+ * here time out the same way on a clean origin/main checkout.
+ */
+jest.setTimeout(20_000);
+
 // Mock the hooks that fetch data
 jest.mock('@/hooks/useFetchMetricResourceAttrs', () => ({
   useFetchMetricResourceAttrs: jest.fn().mockReturnValue({
@@ -72,8 +80,63 @@ jest.mock('@/source', () => ({
   useSources: jest.fn().mockReturnValue({ data: [] }),
 }));
 
+// Records every render's props so tests can assert what the form passes down.
+const metricNameSelectProps: any[] = [];
+
+// What the stubbed explorer reports as staged when a metric is applied. The
+// `mock` prefix is required for a jest.mock factory to close over it.
+const mockStagedWhere: string[] = [];
+const mockStagedGroupBy: string[] = [];
+
+// The explorer has its own suite (MetricExplorer.test.tsx). Here it is stubbed
+// down to "emit a chosen metric", so these tests cover only the form wiring —
+// mounting the real tree six times pushed this suite past the 5s-per-test
+// budget under parallel load.
+jest.mock('@/components/MetricExplorer/MetricExplorerModal', () => ({
+  MetricExplorerModal: ({
+    opened,
+    onApply,
+  }: {
+    opened: boolean;
+    onApply: (selection: {
+      name: string;
+      type: string;
+      where: string[];
+      groupBy: string[];
+    }) => void;
+  }) =>
+    opened ? (
+      <div data-testid="metric-explorer-stub">
+        {(
+          [
+            ['gauge', 'test.metric.gauge'],
+            ['sum', 'test.metric.counter'],
+            ['histogram', 'test.metric.latency'],
+          ] as const
+        ).map(([type, name]) => (
+          <button
+            key={type}
+            type="button"
+            data-testid={`metric-explorer-pick-${type}`}
+            onClick={() =>
+              onApply({
+                name,
+                type,
+                where: mockStagedWhere,
+                groupBy: mockStagedGroupBy,
+              })
+            }
+          >
+            {name}
+          </button>
+        ))}
+      </div>
+    ) : null,
+}));
+
 jest.mock('../../MetricNameSelect', () => ({
   MetricNameSelect: (props: any) => {
+    metricNameSelectProps.push(props);
     const { error, onFocus, setMetricName, metricName } = props;
     const testId = props['data-testid'];
     return (
@@ -125,6 +188,13 @@ jest.mock('../../DBNumberChart', () => ({
 jest.mock('@/components/SearchInput/SearchInputV2', () => ({
   __esModule: true,
   default: () => <div>Search Input</div>,
+}));
+
+// The sample-events panel (rendered for event sources) reads Next router
+// query state via nuqs, which isn't mounted in this test environment.
+jest.mock('@/components/DBSqlRowTableWithSidebar', () => ({
+  __esModule: true,
+  default: () => <div>SQL Row Table</div>,
 }));
 
 jest.mock('../../MaterializedViews/MVOptimizationIndicator', () => ({
@@ -377,6 +447,39 @@ describe('DBEditTimeChartForm - Metric Name Validation', () => {
       expect(errorMessage).toBeInTheDocument();
       expect(errorMessage).toHaveTextContent('Metric is required');
     });
+  });
+});
+
+describe('DBEditTimeChartForm - Metric name date range wiring', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    metricNameSelectProps.length = 0;
+  });
+
+  // Regression guard: MetricNameSelect only lists metrics that reported inside
+  // the range it is given, and falls back to the last 24h when the prop is
+  // missing. That pass-through was silently dropped once already when
+  // ChartSeriesEditor was split out of this file, which made any metric last
+  // seen over a day ago unselectable regardless of the chart's own range.
+  it('passes the chart date range down to the metric name select', () => {
+    renderComponent();
+
+    expect(metricNameSelectProps.length).toBeGreaterThan(0);
+    expect(metricNameSelectProps.at(-1)?.dateRange).toEqual([
+      new Date('2024-01-01'),
+      new Date('2024-01-02'),
+    ]);
+  });
+
+  it('forwards an updated date range', () => {
+    renderComponent({
+      dateRange: [new Date('2024-06-01'), new Date('2024-06-08')],
+    });
+
+    expect(metricNameSelectProps.at(-1)?.dateRange).toEqual([
+      new Date('2024-06-01'),
+      new Date('2024-06-08'),
+    ]);
   });
 });
 
@@ -676,5 +779,309 @@ describe('DBEditTimeChartForm - Column color', () => {
       await screen.findByTestId('color-swatch-input-trigger'),
     ).toBeInTheDocument();
     expect(screen.getByTestId('series-color-apply')).toBeInTheDocument();
+  });
+});
+
+describe('DBEditTimeChartForm - Metric formulas', () => {
+  const mockUseSourceData = (data: unknown) => {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const mocked = { data } as ReturnType<typeof useSource>;
+    jest.mocked(useSource).mockReturnValue(mocked);
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    // Earlier describes override the useSource mock with mockReturnValue
+    // (which survives clearAllMocks), so pin the metric source back.
+    mockUseSourceData({
+      id: 'metric-source',
+      kind: SourceKind.Metric,
+      name: 'Test Metric Source',
+      from: { databaseName: 'default', tableName: '' },
+      connection: 'default',
+      timestampValueExpression: 'Timestamp',
+      metricTables: {
+        gauge: 'metrics.gauge',
+        sum: 'metrics.sum',
+        histogram: 'metrics.histogram',
+      },
+    });
+  });
+
+  const gaugeSeries = {
+    aggFn: 'avg' as const,
+    aggCondition: '',
+    aggConditionLanguage: 'lucene' as const,
+    valueExpression: 'Value',
+    metricType: MetricsDataType.Gauge,
+    metricName: 'test.metric.gauge',
+  };
+
+  const twoSeriesConfig: SavedChartConfig = {
+    ...defaultChartConfig,
+    select: [gaugeSeries, { ...gaugeSeries, metricName: 'test.metric.sum' }],
+  };
+
+  it('shows the Add Formula button and series letter badges for metric sources', () => {
+    renderComponent({ chartConfig: twoSeriesConfig });
+
+    expect(screen.getByTestId('add-formula-button')).toBeInTheDocument();
+    const badges = screen.getAllByTestId('series-ref-badge');
+    expect(badges.map(b => b.textContent)).toEqual(['A', 'B']);
+  });
+
+  it('adds a formula row with an expression input when Add Formula is clicked', async () => {
+    renderComponent({ chartConfig: twoSeriesConfig });
+
+    await userEvent.click(screen.getByTestId('add-formula-button'));
+
+    expect(screen.getByTestId('formula-expression-input')).toBeInTheDocument();
+    expect(screen.getByTestId('formula-alias-input')).toBeInTheDocument();
+  });
+
+  it('shows an inline validation error for a malformed expression', async () => {
+    renderComponent({ chartConfig: twoSeriesConfig });
+
+    await userEvent.click(screen.getByTestId('add-formula-button'));
+    await userEvent.type(screen.getByTestId('formula-expression-input'), 'A +');
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Unexpected end of expression/),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it('shows an inline validation error for an unknown series reference', async () => {
+    renderComponent({ chartConfig: twoSeriesConfig });
+
+    await userEvent.click(screen.getByTestId('add-formula-button'));
+    await userEvent.type(screen.getByTestId('formula-expression-input'), 'C');
+
+    await waitFor(() => {
+      expect(screen.getByText(/Unknown series "C"/)).toBeInTheDocument();
+    });
+  });
+
+  it('clears the inline error once the expression becomes valid', async () => {
+    renderComponent({ chartConfig: twoSeriesConfig });
+
+    await userEvent.click(screen.getByTestId('add-formula-button'));
+    const input = screen.getByTestId('formula-expression-input');
+    await userEvent.type(input, 'C');
+    await waitFor(() => {
+      expect(screen.getByText(/Unknown series "C"/)).toBeInTheDocument();
+    });
+
+    await userEvent.clear(input);
+    await userEvent.type(input, 'A / (A + B) * 100');
+
+    await waitFor(() => {
+      expect(screen.queryByText(/Unknown series/)).not.toBeInTheDocument();
+    });
+  });
+
+  it('saves formulas on the chart config', async () => {
+    const onSave = jest.fn();
+    renderComponent({ chartConfig: twoSeriesConfig, onSave });
+
+    await userEvent.click(screen.getByTestId('add-formula-button'));
+    await userEvent.type(
+      screen.getByTestId('formula-expression-input'),
+      'A / (A + B) * 100',
+    );
+    await userEvent.type(
+      screen.getByTestId('formula-alias-input'),
+      'Share of gauge',
+    );
+    await userEvent.click(screen.getByTestId('chart-save-button'));
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    const saved = onSave.mock.calls[0][0];
+    expect(saved.formulas).toEqual([
+      { expression: 'A / (A + B) * 100', alias: 'Share of gauge' },
+    ]);
+  });
+
+  it('blocks save when the formula expression is invalid', async () => {
+    const onSave = jest.fn();
+    renderComponent({ chartConfig: twoSeriesConfig, onSave });
+
+    await userEvent.click(screen.getByTestId('add-formula-button'));
+    await userEvent.type(screen.getByTestId('formula-expression-input'), 'Z');
+    await userEvent.click(screen.getByTestId('chart-save-button'));
+
+    // Save is rejected by validateChartForm; onSave never fires.
+    await waitFor(() => {
+      expect(screen.getAllByText(/Unknown series "Z"/).length).toBeGreaterThan(
+        0,
+      );
+    });
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it('removes the formula row and clears formulas from the saved config', async () => {
+    const onSave = jest.fn();
+    renderComponent({
+      chartConfig: {
+        ...twoSeriesConfig,
+        formulas: [{ expression: 'A + B' }],
+        showOperandSeries: false,
+      },
+      onSave,
+    });
+
+    expect(screen.getByTestId('formula-expression-input')).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId('formula-remove-button'));
+    expect(
+      screen.queryByTestId('formula-expression-input'),
+    ).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByTestId('chart-save-button'));
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    const saved = onSave.mock.calls[0][0];
+    expect(saved.formulas).toBeUndefined();
+    expect(saved.showOperandSeries).toBeUndefined();
+  });
+
+  it('hides the As Ratio toggle while a formula exists', () => {
+    renderComponent({
+      chartConfig: {
+        ...twoSeriesConfig,
+        formulas: [{ expression: 'A + B' }],
+      },
+    });
+
+    expect(screen.queryByLabelText('As Ratio')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Show input series')).toBeInTheDocument();
+  });
+
+  it('hides the Add Formula button while ratio mode is enabled', () => {
+    renderComponent({
+      chartConfig: { ...twoSeriesConfig, seriesReturnType: 'ratio' },
+    });
+
+    expect(screen.getByLabelText('As Ratio')).toBeInTheDocument();
+    expect(screen.queryByTestId('add-formula-button')).not.toBeInTheDocument();
+  });
+
+  it('toggles showOperandSeries via the Show input series switch', async () => {
+    const onSave = jest.fn();
+    renderComponent({
+      chartConfig: {
+        ...twoSeriesConfig,
+        formulas: [{ expression: 'A + B' }],
+      },
+      onSave,
+    });
+
+    const toggle = screen.getByLabelText('Show input series');
+    expect(toggle).toBeChecked();
+    await userEvent.click(toggle);
+
+    await userEvent.click(screen.getByTestId('chart-save-button'));
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(onSave.mock.calls[0][0].showOperandSeries).toBe(false);
+  });
+
+  it('Number tiles take a single formula and always hide input series', async () => {
+    const onSave = jest.fn();
+    renderComponent({
+      chartConfig: {
+        ...twoSeriesConfig,
+        displayType: DisplayType.Number,
+        // A formula defined before switching the display type to Number,
+        // with the operand series still shown.
+        formulas: [{ expression: 'A / (A + B) * 100' }],
+      },
+      onSave,
+    });
+
+    // One formula is the cap on Number tiles, and the operand series are
+    // hidden unconditionally, so neither control is offered.
+    expect(screen.queryByTestId('add-formula-button')).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText('Show input series'),
+    ).not.toBeInTheDocument();
+
+    // Saving hardcodes hidden operand series onto the config.
+    await userEvent.click(screen.getByTestId('chart-save-button'));
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(onSave.mock.calls[0][0].showOperandSeries).toBe(false);
+  });
+
+  it('shows formula controls and series letter badges for log event sources', async () => {
+    const onSave = jest.fn();
+    mockUseSourceData({
+      id: 'log-source',
+      kind: SourceKind.Log,
+      name: 'Logs',
+      from: { databaseName: 'default', tableName: 'otel_logs' },
+      connection: 'default',
+      timestampValueExpression: 'Timestamp',
+    });
+
+    const countSeries = {
+      aggFn: 'count' as const,
+      aggCondition: '',
+      aggConditionLanguage: 'lucene' as const,
+      valueExpression: '',
+    };
+    renderComponent({
+      chartConfig: {
+        ...defaultChartConfig,
+        source: 'log-source',
+        select: [
+          { ...countSeries, aggCondition: 'SeverityText:error' },
+          countSeries,
+        ],
+      },
+      onSave,
+    });
+
+    const badges = screen.getAllByTestId('series-ref-badge');
+    expect(badges.map(b => b.textContent)).toEqual(['A', 'B']);
+
+    await userEvent.click(screen.getByTestId('add-formula-button'));
+    await userEvent.type(
+      screen.getByTestId('formula-expression-input'),
+      'A / B * 100',
+    );
+    await userEvent.click(screen.getByTestId('chart-save-button'));
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(onSave.mock.calls[0][0].formulas).toEqual([
+      { expression: 'A / B * 100', alias: '' },
+    ]);
+  });
+
+  it('does not show formula controls for formula-incapable source kinds', () => {
+    mockUseSourceData({
+      id: 'session-source',
+      kind: SourceKind.Session,
+      name: 'Sessions',
+      from: { databaseName: 'default', tableName: 'sessions' },
+      connection: 'default',
+      timestampValueExpression: 'Timestamp',
+      traceSourceId: 'trace-source',
+    });
+
+    renderComponent({
+      chartConfig: {
+        ...defaultChartConfig,
+        source: 'session-source',
+        select: [
+          {
+            aggFn: 'count',
+            aggCondition: '',
+            aggConditionLanguage: 'lucene' as const,
+            valueExpression: '',
+          },
+        ],
+      },
+    });
+
+    expect(screen.queryByTestId('add-formula-button')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('series-ref-badge')).not.toBeInTheDocument();
   });
 });

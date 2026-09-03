@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import { isQueryExpressionFilter } from '@hyperdx/common-utils/dist/filters';
 import {
   DashboardFilter,
   PresetDashboard,
@@ -28,9 +29,11 @@ export default function usePresetDashboardFilters({
     enabled,
   );
 
-  const { filterValues, setFilterValue, filterQueries } = useDashboardFilters(
-    data ?? [],
-  );
+  const {
+    selectionByFilterId,
+    setFilterValue,
+    broadcastedFilters: filterQueries,
+  } = useDashboardFilters(data ?? []);
 
   const onSuccess = useCallback(() => {
     refetch();
@@ -49,6 +52,10 @@ export default function usePresetDashboardFilters({
 
   const handleSaveFilter = useCallback(
     (dashboardFilter: DashboardFilter) => {
+      // Preset dashboards are broadcast-only, so variable-only filter types
+      // (static lists, PromQL labels) are not supported.
+      if (!isQueryExpressionFilter(dashboardFilter)) return;
+
       const presetDashboardFilter = {
         ...dashboardFilter,
         presetDashboard,
@@ -91,7 +98,7 @@ export default function usePresetDashboardFilters({
 
   return {
     filters: data ?? [],
-    filterValues,
+    selectionByFilterId,
     setFilterValue,
     filterQueries,
     handleSaveFilter,

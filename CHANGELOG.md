@@ -6,6 +6,407 @@ PR — keep the `hyperdx-release-notes` comment marker intact when editing so yo
 edits survive regeneration. Per-package detail lives in each
 `packages/*/CHANGELOG.md`.
 
+## v2.37.0 — 2026-08-28
+
+<!-- hyperdx-release-notes version=2.37.0 inputs=27e3ad215675 -->
+
+**Metrics explorer and in-app release notes**
+
+You no longer have to know a metric's name to chart it: the chart editor gains a
+metrics explorer that browses your metric namespace as a tree, searches every
+name and description the source reports, and shows a metric's kind, unit,
+reporting services and tag values before you commit to it. The Help menu's
+"What's new" is rebuilt around these release notes, so each release's highlights
+are readable in the app itself. Multi-webhook alerts are now honoured end to
+end — every configured channel is notified, every target is shown on the alerts
+pages, and delivery time is attributed to the target it went to — and session
+replays no longer break when a recording contains a very large event.
+
+### ✨ New Features
+
+- **Metrics explorer in the chart editor**: a browse control beside the metric
+  select opens a modal with a prefix hierarchy over your metric namespace
+  (`system` → `cpu` → `utilization`) plus search across every metric name and
+  description. Each row shows the metric's kind and description, and the detail
+  pane gives the unit, reporting services and tag keys you can drill into,
+  replacing a flat dropdown of thousands of names that only revealed that
+  metadata after you had chosen. Names split on `.` when they have one and on
+  `_` otherwise, decided per metric, so dotted OpenTelemetry names and
+  underscore-style exporter names both nest sensibly. While browsing a metric's
+  tags you can stage filters and group-bys as removable chips and apply them
+  with the metric, and applying sets an aggregation suited to the kind — average
+  for a gauge, sum for a counter, p95 for a histogram (#3000, thanks
+  @MikeShi42!).
+- **"What's new" lives in the app**: the Help menu's full-changelog modal is
+  replaced by an inline section, a "View all releases" drawer, and a sparkle on
+  the Help icon when the running version has not been acknowledged in this
+  browser. Everything comes from the release notes themselves — headline and
+  summary lead each release, breaking changes and new features are listed and
+  badged apart, and the remaining sections are summarised as counts. The
+  changelog is parsed at build time rather than shipped as a fetched asset
+  (#2993, thanks @jordan-simonovski!).
+- **Alerts that carry their own chart, without a saved search or dashboard
+  tile**: a new `inline` alert source persists a chart config directly on the
+  alert, so alerting on a query no longer means saving a search or building a
+  tile first. Builder configs on log, trace and metric sources are supported
+  alongside raw SQL on Line, Stacked Bar and Number displays (PromQL is
+  rejected), inline alerts evaluate through the same path as tile alerts —
+  group-by and multi-window behaviour included — and their notifications link
+  to the chart explorer seeded with the alert's own config over the alerting
+  window. This release lands the backend only; the creation and edit UI and
+  external API v2 support follow separately (#3010).
+- **Span links read both ways in the span detail**: the Overview panel now shows
+  reverse span links — the spans that link to the one you are looking at — as
+  well as the links the span declares itself, and resolves each link's details
+  instead of leaving you with bare ids (#3011, thanks @karl-power!).
+- **Dashboard variables are available to everyone**: the feature toggle that
+  gated dashboard variables is gone, so every deployment gets variables — and
+  the filter, Lucene and PromQL work below — without turning a flag on first
+  (#3009, thanks @pulpdrew!).
+- **Dashboard filter values persist per variable**: filter value state is now
+  stored keyed by its variable, so a dashboard keeps the selections you made
+  (#2963, thanks @pulpdrew!).
+- **Exact-match Lucene variable references are distributed**: a Lucene search
+  that matches a field exactly against a dashboard variable now expands across
+  the variable's values (#2987, thanks @pulpdrew!).
+- **Dashboard variables work in PromQL charts**: a PromQL query on a dashboard
+  tile now has its variable references substituted before it runs, so PromQL
+  charts respond to the dashboard's variables like the rest of your tiles, and
+  the PromQL editor completes the variables available to it as you type. A
+  variable used somewhere PromQL cannot take one is now called out with a
+  warning instead of leaving you to work out why the chart is empty, and a
+  preview shows the generated PromQL the chart will run (#2994, #2995, #2997,
+  #2998, thanks @pulpdrew!).
+- **Dashboard variables over the MCP server**: the MCP server now supports
+  dashboard variables, so a dashboard an agent reads or writes keeps the
+  variables it is built on (#2951, thanks @pulpdrew!).
+
+### 🔧 Improvements
+
+- **Notification duration is attributed to each target**: the figure was a
+  single number covering the whole delivery, and because an alert's targets are
+  notified concurrently the slowest one set it — so a multi-target alert gave
+  you a number with no way to tell which webhook was responsible, or that the
+  others were fine. Each dispatch is now timed on its own and aggregated per
+  target across the evaluation, so the evaluation history's "Notification
+  duration" cell expands in place to show each target's name, its summed
+  duration, how many dispatches it took and how many of them failed. Evaluations
+  recorded before this release keep showing their total with nothing to expand
+  (#3003, thanks @jordan-simonovski!).
+- **Alert actions are the same on both alerts surfaces, and an alert's source
+  is legible**: the alerts page row menu now opens the alert editor directly, so
+  changing a threshold no longer means navigating to the alert first, and a new
+  filter narrows the list by what an alert watches — free-text search matches it
+  too, so typing "tile" works without touching the dropdown. Each row's source
+  icon gains a tooltip and accessible label naming it ("Saved search" /
+  "Dashboard tile"). On the alert detail page, Edit, Delete and Terraform export
+  move behind the same overflow menu the list uses instead of spreading four
+  buttons across the header, the link to what the alert watches becomes an icon
+  beside the alert's name, and the properties block keeps the creator and the
+  created and updated timestamps in a dimmed line beneath the alert's settings
+  rather than competing with them. Team settings tabs gain icons (#3015, thanks
+  @jordan-simonovski!).
+- **Every alerts-page row has the same trailing controls**: the Terraform
+  import, source link and acknowledgement actions were each conditional, so no
+  two rows lined up. The conditional actions move into an overflow menu that
+  always renders — with a new "Delete alert" item alongside them — and the
+  acknowledgement button gets a reserved slot, so its absence no longer shifts
+  the row (#3002, thanks @jordan-simonovski!).
+- **The alerts page stays responsive with a long list of alerts**: the list is
+  virtualised, so only the rows on screen are rendered and scrolling no longer
+  slows down on a team with hundreds of alerts (#3012, thanks @pulpdrew!).
+- **API keys and MCP install snippets stay masked until revealed**: both now
+  hide their secret behind a shared reveal-to-copy control, so you can open
+  those pages without the key on screen (#2988).
+- **Closing the dashboard filter editor confirms first**: you are asked before
+  unsaved changes to a dashboard filter are discarded, so a stray click no
+  longer loses the edits you were part-way through (#3005, thanks @pulpdrew!).
+- **Better metric discovery over MCP**: the MCP server's metric discovery is
+  improved, so an agent working with your metrics finds the right one more
+  reliably (#2861, thanks @karl-power!).
+
+### 🐛 Bug Fixes
+
+- **Alerts reliably notify their configured channels**: configured channels were
+  encoded as `@webhook-<id>` mention strings and appended after whatever you
+  wrote in the alert message, so a body containing enough mentions consumed the
+  entire per-event notification cap and the alert's own channel — the one target
+  it was set up to notify — was silently never reached. Configured channels are
+  now built directly, queued first, and exempt from a cap that only ever meant
+  to bound ad hoc mentions. Mentions in the message body are unchanged, still
+  capped, and still deduplicated against the configured channels, so naming one
+  twice notifies it once (#2984, thanks @jordan-simonovski!).
+- **The alerts pages show every notification target**: rows and the alert detail
+  header only rendered the legacy singular channel, so an alert notifying three
+  webhooks read as if it notified one, labelled a generic "Webhook" rather than
+  the webhook's name. The detail page now names each target with its service
+  icon, keeping the first two inline and collapsing the rest into a `+N more`
+  tooltip, while rows show the icons with names on hover. The evaluation
+  history's "Webhook Duration" column is renamed "Notification duration" with a
+  tooltip, since the figure was always the wall time of a delivery that fans out
+  to every target at once (#3001, thanks @jordan-simonovski!).
+- **Session replays survive very large recorded events**: an rrweb event over
+  the recorder's ~950KB chunk size is split into chunks that all share one
+  timestamp, and the replay query ordered by timestamp alone, so ClickHouse
+  could return them scrambled and the event — often the full DOM snapshot with
+  all its inlined CSS — was silently dropped, leaving replays empty, unstyled or
+  frozen mid-session. The stream is now ordered deterministically, chunks are
+  reassembled by explicit index, and any event that still cannot be rebuilt is
+  flagged in the player instead of swallowed. Existing recordings play back
+  correctly without re-ingestion (#2956).
+- **Gemini-backed MCP clients can connect again**: the quantile `level` field
+  was advertised as a numeric enum, and Gemini's function declarations accept
+  `enum` only alongside `type: "string"` — so a client forwarding tool schemas
+  to the provider had its whole tool list rejected over this one field, with a
+  generic "trouble connecting to the model provider" error that named neither
+  the tool nor the property. `level` is now advertised as a string enum on
+  `clickstack_timeseries`, `clickstack_table`, `clickstack_save_dashboard` and
+  `clickstack_patch_dashboard`; numeric input is still accepted and
+  out-of-set values are still rejected, and the external REST API's own contract
+  is untouched (#2971, thanks @RIP21!).
+- **Drilling down to Search carries the variable's value, not its name**:
+  dashboard variables are now expanded before a drill-down opens the search
+  page, so the search runs against the values you were looking at instead of the
+  unresolved variable references (#3008, thanks @pulpdrew!).
+- **A failed release-marker query says so**: when the query behind release
+  markers fails — for example because a source's version expression references a
+  column such as `ResourceAttributes` that the table does not have — you now get
+  a distinct "couldn't load release markers" notification, instead of an empty
+  chart indistinguishable from "no releases in this time range" (#3007, thanks
+  @teeohhem!).
+
+### 📦 Build / Packaging
+
+- **`@hyperdx/common-utils` ships usable type declarations**: internal `@/*`
+  path aliases no longer leak into the published `.d.ts` files, where they could
+  not be resolved by consumers (#2969, thanks @pulpdrew!).
+
+<!-- hyperdx-package-list -->
+
+### 📦 Package changelogs
+
+- `@hyperdx/api` 2.36.0 → 2.37.0 — [changelog](https://github.com/hyperdxio/hyperdx/blob/main/packages/api/CHANGELOG.md#2370)
+- `@hyperdx/app` 2.36.0 → 2.37.0 — [changelog](https://github.com/hyperdxio/hyperdx/blob/main/packages/app/CHANGELOG.md#2370)
+- `@hyperdx/common-utils` 0.27.0 → 0.28.0 — [changelog](https://github.com/hyperdxio/hyperdx/blob/main/packages/common-utils/CHANGELOG.md#0280)
+- `@hyperdx/hdx-eval` 0.3.2 → 0.3.3 — [changelog](https://github.com/hyperdxio/hyperdx/blob/main/packages/hdx-eval/CHANGELOG.md#033)
+- `@hyperdx/otel-collector` 2.36.0 → 2.37.0 — [changelog](https://github.com/hyperdxio/hyperdx/blob/main/packages/otel-collector/CHANGELOG.md#2370)
+
+<!-- /hyperdx-package-list -->
+
+## v2.36.0 — 2026-08-21
+
+<!-- hyperdx-release-notes version=2.36.0 inputs=f975367d849a -->
+
+Formulas are the headline of this release: any metric, log or trace chart can
+now carry a derived series written as letter-ref arithmetic over its own series
+(`A / (A + B) * 100`), authored in the chart editor and readable and writable
+over the external API, MCP and the CLI. Alerts gained two long-standing
+requests — up to ten notification webhooks per alert, and an Edit/Delete action
+on the alert details page — and your personal API access key can finally be
+rotated instead of being fixed for the life of the account. Operators get
+per-signal ClickHouse table TTLs with optional reconciliation of existing
+tables, a configurable exporter timeout, and an API that retries a MongoDB it
+cannot reach at startup, behind a new `/ready` probe. Note the API logging
+default change below before upgrading if you read query SQL out of your API
+logs.
+
+### 💥 Breaking Changes
+
+- **The API's log level now defaults to `info`, and query SQL is no longer
+  dumped to the console**: `BaseClickhouseClient` printed raw SQL on every
+  ClickHouse query, unconditionally and outside the pino logger, flooding API
+  logs with query spam. Query logging now goes through the pino logger at
+  `debug`, and the API's default log level moves from `debug` to `info` — so
+  set `HYPERDX_LOG_LEVEL=debug` if you relied on seeing query SQL or other
+  debug output in production. Dev and CI env files pin their levels explicitly
+  and are unaffected. An empty `HYPERDX_LOG_LEVEL` — what Compose passes when
+  the variable is unset — now falls back to the default instead of making pino
+  throw at startup. In the browser, query SQL still goes to devtools,
+  pretty-printed as a readable multi-line block (#2679).
+
+### ✨ New Features
+
+- **Formulas on metric, log and trace charts**: time series, table and number
+  charts gain an "Add Formula" row where you write a letter-ref arithmetic
+  expression over the chart's series (`A` = series 1, `B` = series 2), with
+  inline validation of malformed expressions and unknown references, a
+  per-formula alias and number format, series letter badges, and a "Show input
+  series" toggle to render the formula on its own or alongside its operands.
+  Formulas and the "As Ratio" toggle are mutually exclusive, a missing operand
+  counts as 0 while a zero or missing denominator renders a gap, and number
+  tiles always show the formula rather than the first raw operand. Event-source
+  formulas compile inline into the chart's single-scan SELECT, so there's no
+  per-series query fan-out, and formulas persist on dashboard tiles and
+  standalone charts (#2909, #2908, #2953).
+- **Formulas over the external API, MCP and CLI**: external dashboards API v2
+  and the MCP `save_dashboard` / `patch_dashboard` tools accept `formulas` and
+  `showOperandSeries` on line, stacked bar, table and number builder tiles and
+  round-trip them through GET/PUT. Expressions are validated on write — unknown
+  series refs, malformed syntax, formulas combined with `asRatio`, several
+  formulas on a number tile, and formulas on source kinds that can't carry them
+  are all rejected with actionable errors. `query_tile` computes formula
+  columns for metric and event tiles, the query-guide prompt documents the
+  feature, and CLI-rendered tiles now hide operands exactly as the web does
+  (#2952).
+- **Alerts can notify up to 10 webhooks**: alert forms for saved searches and
+  dashboard tiles let you add and remove notification channels inline, with
+  webhooks the alert already uses greyed out in the other pickers since
+  duplicates are rejected. The new `channels` field is available on the v2
+  external API, the internal API and the MCP `clickstack_save_alert` tool, and
+  the singular `channel` field still works unchanged. One caveat for API
+  clients: an alert update is a full replace, not a merge, so fetch the alert
+  and resend the complete `channels` array — an update carrying only `channel`
+  reduces a multi-channel alert to that one webhook (#2846, #2848, #2845).
+- **Edit and delete an alert from its details page**: an "Edit alert" action
+  opens a modal for the alert's threshold, evaluation interval, schedule,
+  group-by (saved-search alerts), notification webhook and note, and a Delete
+  action removes the alert after confirmation and returns you to the alerts
+  list. Alert API responses now include the notification channel's webhook id
+  and the alert's name and message template, so edits round-trip those fields
+  (#2931).
+- **Rotate your personal API access key**: Team Settings → API & Agents gains a
+  Rotate action for the personal access key — the bearer token behind external
+  API v2 and the MCP server — which until now was generated once at account
+  creation and could only be changed by deleting the user. Rotating revokes the
+  previous key immediately, so update your MCP and AI agent configs, API
+  clients, Terraform providers and CI scripts with the new one. Browser
+  sessions are unaffected (#2926).
+- **Per-signal ClickHouse table TTLs**: `HYPERDX_OTEL_EXPORTER_LOGS_TTL`,
+  `..._TRACES_TTL`, `..._METRICS_TTL` and `..._SESSIONS_TTL` each fall back to
+  the existing `HYPERDX_OTEL_EXPORTER_TABLES_TTL`, so you can keep logs and
+  traces for six months while metrics age out at 30 days. Set
+  `HYPERDX_OTEL_EXPORTER_RECONCILE_TABLE_TTL=true` and the migrate tool also
+  applies the configured retention to tables that already exist, where
+  previously a TTL change only reached newly-created tables. Reconciliation is
+  off by default and deliberately conservative: extending a retention keeps
+  data already on disk, shrinking one never triggers a bulk delete at startup,
+  and compound policies (tiering, `RECOMPRESS`, `GROUP BY` rollups) and
+  calendar-unit retentions are reported and left untouched (#2709).
+- **The API survives a MongoDB that is unreachable at startup, and serves a
+  readiness probe**: a failed initial connect was never retried, so the process
+  kept listening while every Mongo-backed request timed out — `/health` still
+  answered 200, Kubernetes kept the pod Ready indefinitely, and the resulting
+  OpAMP 500s crash-looped collectors. The initial connection is now retried
+  with capped exponential backoff until it succeeds, and both the API and OpAMP
+  servers expose `GET /ready`, which returns 503 unless MongoDB is connected.
+  Point your Kubernetes readiness probes at it; `/health` remains a pure
+  liveness check (#2968).
+- **Dashboard variables reach chart builder tiles**: variables are now
+  substituted into builder tiles as well as raw SQL, a variable's value query
+  can depend on other variables, and variables and macros nested inside macro
+  arguments are expanded (#2901, #2923, #2937).
+- **Dashboard variables over the external API**: dashboard variable properties
+  are now carried by the external dashboards API, so a dashboard managed as
+  code keeps its variables (#2944).
+
+### 🔧 Improvements
+
+- **"Convert to SQL" handles multi-series, ratio and formula metric charts**:
+  the composed UNION ALL and pivot query is emitted as a macro-based raw-SQL
+  template with a `$__sourceTable(<metricType>)` macro per series branch,
+  instead of answering "cannot be auto-converted". Non-time-series metric
+  charts remain unsupported, as before (#2908).
+- **The ClickHouse exporter timeout is configurable**: set
+  `HYPERDX_OTEL_EXPORTER_TIMEOUT` in either OpAMP-managed or standalone
+  collector mode. The default is still 5 seconds (#2899).
+- **Map attribute searches use ClickHouse's direct-read path more often**: the
+  Map KV text-index rewrite now also applies to SQL predicates in the top-level
+  `where` — the search box, saved searches and alerts — and to SQL
+  `aggCondition`s copied into the WHERE clause, where previously only
+  `sql`-type filter entries were rewritten (#2948).
+- **Failed MCP tool calls show their error in the trace**: the span's
+  `StatusMessage` is now populated, so you can read why a tool call failed
+  without correlating logs (#2934).
+- **Interface polish**: standalone charts now use the same bordered card
+  treatment as dashboard tiles, with a header that stays pinned while a long
+  list like "Top 20 Most Time Consuming Queries" scrolls underneath (Service
+  Dashboards and the ClickHouse page are migrated); histogram charts, including
+  Request Latency on the Services dashboard, use the categorical palette and
+  shared tooltip instead of a hardcoded neon green fill; and JSON viewer keys
+  are sorted alphabetically so wide Map columns are scannable (#2829, #2949,
+  #2943).
+
+### 🐛 Bug Fixes
+
+- **Filter sidebar values no longer disappear behind a query proxy**: batched
+  facet-value queries bound one query parameter per key, and with around 100
+  keys that exceeded the ClickHouse web client's URL parameter budget, silently
+  promoting the request to a multipart body that proxy gateways reject — every
+  LowCardinality-column and map-attribute filter then vanished with no error.
+  Keys are now inlined as escaped literals so the query rides the POST body
+  with a constant parameter count. Also fixes an operator-precedence bug that
+  applied the KV rollup time filter to only the last OR branch (#2932).
+- **Dashboard filter selections survive complex expressions**: the filter
+  parser shared with the search page now tracks parenthesis depth as well as
+  quote depth, so a selection stored against an expression-based filter such as
+  `if(SeverityText IN ('error', 'fatal'), 'Errors', 'Non-errors')` is parsed
+  correctly instead of being dropped or split on a keyword nested inside the
+  expression (#2950).
+- **Multi-series metric charts can mix float and integer aggregations**: a
+  chart combining, say, a histogram quantile with a histogram count failed with
+  "No value columns found in result column metadata". Every series value is now
+  normalised to Float64 so the merged column type is deterministic, rather than
+  erroring with NO_COMMON_TYPE or producing a Variant column depending on the
+  server's `use_variant_as_common_type` setting. All-numeric `Variant(...)`
+  columns from raw-SQL charts are also classified as numeric now (#2916).
+- **HAVING, ORDER BY and LIMIT apply to the whole multi-series chart**: they
+  were leaking into each per-series branch, so an ORDER BY was applied per
+  branch and then discarded by the join. They now reference the chart's output
+  columns — operand aliases, formula names, the ratio column, group-by columns
+  and the time bucket — so a HAVING like `"err rate" > 0.5` filters the joined
+  rows and LIMIT/OFFSET paginate one consistent group set across every series
+  (#2946).
+- **MCP tool schemas validate against JSON Schema draft 2020-12**: the
+  number-tile `colorRules` `between` rule declared its value as a tuple, which
+  serialises to the draft-07 form, so `clickstack_save_dashboard` and
+  `clickstack_patch_dashboard` failed validation — and clients that forward
+  tool schemas straight to an LLM provider rejected the entire tool list,
+  making the MCP server unusable. The wire format is unchanged, and a new test
+  validates every tool's schema against the 2020-12 metaschema (#2925).
+- **Alert markers line up with the data they were evaluated against**: firing
+  and recovery markers are drawn at the start of the newest evaluated bucket,
+  matching the evaluation history table and the plotted point, instead of at
+  the evaluation time one bucket to the right (#2928).
+- **Tile alerts on formula charts evaluate the formula**: the alert task
+  dropped `formulas` and `showOperandSeries` when rebuilding the tile's chart
+  config, so the threshold was compared against a raw operand (bytes, say)
+  rather than the derived value. Grouped ratio tile alerts also honour
+  `ratioMode` now, where `share_of_total` previously evaluated as `per_group`
+  (#2909).
+- **Surrounding Context filters work on non-OTel schemas**: the "Service"
+  filter uses the source's `serviceNameExpression` instead of a hardcoded
+  ResourceAttributes lookup, and quick event attribute filters let you toggle
+  attributes from the current event to narrow the surrounding results (#2558).
+- **The external dashboards API stops returning unusable aggregation
+  parameters**: a `level` left over from a quantile aggregation, or a
+  `valueExpression` left on a count, were ignored when rendering but rejected
+  by the input schema — so a GET body could not be PUT back, and importing a
+  dashboard into Terraform failed with "Level can only be used with quantile
+  aggregation function" (#2945).
+- **The check-alerts worker no longer hits `MongoExpiredSessionError`**:
+  mongoose `autoIndex` is disabled in the worker (#2887).
+
+### 📦 Build / Packaging
+
+- **Session replay player upgraded to rrweb 2.1.1**: the replayer moves off
+  `2.0.0-alpha.8` onto the stable release used by current `@hyperdx/browser`
+  recorders, picking up several years of upstream fixes to style-sheet
+  handling, the virtual DOM and adopted stylesheets. Replay fidelity was
+  verified against sessions recorded with both older (`rrweb@1.1.3`) and
+  current SDKs, so existing recordings keep playing back (#2954).
+
+<!-- hyperdx-package-list -->
+
+### 📦 Package changelogs
+
+- `@hyperdx/api` 2.35.0 → 2.36.0 — [changelog](https://github.com/hyperdxio/hyperdx/blob/main/packages/api/CHANGELOG.md#2360)
+- `@hyperdx/app` 2.35.0 → 2.36.0 — [changelog](https://github.com/hyperdxio/hyperdx/blob/main/packages/app/CHANGELOG.md#2360)
+- `@hyperdx/cli` 0.6.1 → 0.6.2 — [changelog](https://github.com/hyperdxio/hyperdx/blob/main/packages/cli/CHANGELOG.md#062)
+- `@hyperdx/common-utils` 0.26.0 → 0.27.0 — [changelog](https://github.com/hyperdxio/hyperdx/blob/main/packages/common-utils/CHANGELOG.md#0270)
+- `@hyperdx/otel-collector` 2.35.0 → 2.36.0 — [changelog](https://github.com/hyperdxio/hyperdx/blob/main/packages/otel-collector/CHANGELOG.md#2360)
+
+<!-- /hyperdx-package-list -->
+
 ## v2.35.0 — 2026-08-14
 
 <!-- hyperdx-release-notes version=2.35.0 inputs=e0e56c56149f -->

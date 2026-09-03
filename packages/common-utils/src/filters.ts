@@ -7,8 +7,11 @@ import {
   DASHBOARD_VARIABLE_NAME_MAX_LENGTH,
   DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED,
   DashboardFilter,
+  DashboardFilterValue,
   Filter,
+  SourceKind,
 } from '@/types';
+import { getVariableReferences, substituteVariables } from '@/variables';
 
 export type FilterState = {
   [key: string]: {
@@ -245,14 +248,22 @@ function splitValuesOnComma(valuesStr: string): (string | boolean)[] {
   return values;
 }
 
-// Check whether a SQL fragment contains a keyword or operator outside of
-// single-quoted strings.  Accepts either single characters (=, <, >) or
-// multi-character keywords (' OR ', ' BETWEEN ') to search for.
+// Check whether a SQL fragment contains a keyword or operator at the *top
+// level* — outside single-quoted strings and outside any parentheses.  Accepts
+// either single characters (=, <, >) or multi-character keywords (' OR ',
+// ' BETWEEN ') to search for.
+//
+// Parenthesis-depth awareness is what lets a complex expression key survive
+// parsing: in `if(SeverityText = 'error' OR SeverityText = 'fatal', ...) IN
+// ('Errors')` the `=` and ` OR ` live inside the `if(...)` sub-expression, so
+// they must not be mistaken for top-level operators that would disqualify the
+// clause. Parentheses inside quoted strings don't affect depth.
 function containsOutsideQuotes(
   text: string,
   targets: (string | { char: string })[],
 ): boolean {
   let inString = false;
+  let depth = 0;
   for (let i = 0; i < text.length; i++) {
     const char = text[i];
     if (isQuoteBoundary(text, i)) {
@@ -267,6 +278,16 @@ function containsOutsideQuotes(
       continue;
     }
     if (inString) continue;
+
+    if (char === '(') {
+      depth++;
+      continue;
+    }
+    if (char === ')') {
+      if (depth > 0) depth--;
+      continue;
+    }
+    if (depth > 0) continue;
 
     for (const target of targets) {
       if (typeof target === 'object') {
@@ -289,15 +310,24 @@ function containsOperatorOutsideQuotes(part: string): boolean {
   ]);
 }
 
-// Split a string on the first occurrence of `delimiter` that is outside
-// single-quoted strings.  Returns [before, after] or null if not found.
+// Split a string on the first occurrence of `delimiter` that is at the top
+// level — outside single-quoted strings and outside any parentheses.  Returns
+// [before, after] or null if not found.
+//
+// Depth awareness makes the split land on the separator between the key
+// expression and its value list rather than on an operator nested inside the
+// key: `if(SeverityText IN ('error','fatal'), ...) IN ('Errors')` must split on
+// the outer ` IN `, keeping the whole `if(...)` as the key, not on the ` IN `
+// inside the `if(...)`.
 function splitOnFirstOutsideQuotes(
   text: string,
   delimiter: string,
 ): [string, string] | null {
   let inString = false;
+  let depth = 0;
   const upper = delimiter.toUpperCase();
   for (let i = 0; i < text.length; i++) {
+    const char = text.charAt(i);
     if (isQuoteBoundary(text, i)) {
       if (inString) {
         const esc = handleQuoteEscape(text, i);
@@ -310,6 +340,15 @@ function splitOnFirstOutsideQuotes(
       continue;
     }
     if (inString) continue;
+    if (char === '(') {
+      depth++;
+      continue;
+    }
+    if (char === ')') {
+      if (depth > 0) depth--;
+      continue;
+    }
+    if (depth > 0) continue;
     if (text.slice(i, i + upper.length).toUpperCase() === upper) {
       return [text.slice(0, i), text.slice(i + upper.length)];
     }
@@ -330,10 +369,15 @@ function extractInClauses(condition: string): Array<{
     isExclude: boolean;
   }> = [];
 
-  // Split on ' AND ' while respecting quoted strings (including SQL-escaped quotes)
+  // Split on ' AND ' while respecting quoted strings (including SQL-escaped
+  // quotes) and parenthesis depth. Only a *top-level* ` AND ` joins two
+  // separate predicates; an ` AND ` nested inside parentheses belongs to a key
+  // sub-expression (e.g. `if(x BETWEEN 1 AND 2, ...) IN (...)`) and must not
+  // split the clause.
   const parts: string[] = [];
   let currentPart = '';
   let inString = false;
+  let depth = 0;
 
   for (let i = 0; i < condition.length; i++) {
     const char = condition[i];
@@ -352,13 +396,22 @@ function extractInClauses(condition: string): Array<{
       continue;
     }
 
-    if (!inString && condition.slice(i, i + 5).toUpperCase() === ' AND ') {
-      if (currentPart.trim()) {
-        parts.push(currentPart.trim());
+    if (!inString) {
+      if (char === '(') {
+        depth++;
+      } else if (char === ')') {
+        if (depth > 0) depth--;
+      } else if (
+        depth === 0 &&
+        condition.slice(i, i + 5).toUpperCase() === ' AND '
+      ) {
+        if (currentPart.trim()) {
+          parts.push(currentPart.trim());
+        }
+        currentPart = '';
+        i += 4; // Skip past ' AND '
+        continue;
       }
-      currentPart = '';
-      i += 4; // Skip past ' AND '
-      continue;
     }
 
     currentPart += char;
@@ -371,7 +424,10 @@ function extractInClauses(condition: string): Array<{
   // Process each part to extract IN/NOT IN clauses
   for (const part of parts) {
     // Skip parts that contain OR (not supported) or comparison operators,
-    // but only when those operators appear outside of quoted strings.
+    // but only when those operators appear at the top level — outside quoted
+    // strings and outside any parentheses. Operators nested inside a key
+    // expression's parentheses (e.g. `if(a = 'x' OR b = 'y', ...)`) are part of
+    // that expression and must not disqualify the clause.
     if (containsOperatorOutsideQuotes(part)) {
       continue;
     }
@@ -492,12 +548,16 @@ export const parseQuery = (
   return { filters: Object.fromEntries(state) };
 };
 
-// Count top-level ` AND ` separators (outside quoted strings). Used to detect
-// conjuncts the pinned-filter parser silently drops.
+// Count top-level ` AND ` separators (outside quoted strings and outside any
+// parentheses). Used to detect conjuncts the pinned-filter parser silently
+// drops. An ` AND ` nested inside parentheses belongs to a key sub-expression
+// and is not a top-level conjunct.
 function countTopLevelAnd(condition: string): number {
   let count = 0;
   let inString = false;
+  let depth = 0;
   for (let i = 0; i < condition.length; i++) {
+    const char = condition.charAt(i);
     if (isQuoteBoundary(condition, i)) {
       if (inString) {
         const esc = handleQuoteEscape(condition, i);
@@ -510,6 +570,15 @@ function countTopLevelAnd(condition: string): number {
       continue;
     }
     if (inString) continue;
+    if (char === '(') {
+      depth++;
+      continue;
+    }
+    if (char === ')') {
+      if (depth > 0) depth--;
+      continue;
+    }
+    if (depth > 0) continue;
     if (condition.slice(i, i + 5).toUpperCase() === ' AND ') {
       count++;
       i += 4;
@@ -630,9 +699,11 @@ export function isValidFilterCondition(
  *
  * Empty / whitespace-only conditions are treated as valid (they're no-ops at
  * query time, not errors), as are structurally-validated `sql_ast` filters.
+ * Variable-keyed entries carry no condition text at all, so there is nothing to
+ * validate and they are skipped by the same `type` guard.
  */
 export function validateSavedFilterValues(
-  filters: Filter[],
+  filters: DashboardFilterValue[],
 ): SavedFilterValueIssue[] {
   const issues: SavedFilterValueIssue[] = [];
   filters.forEach((filter, index) => {
@@ -687,6 +758,8 @@ export type DashboardFilterQueryIssue = {
   language: 'lucene' | 'sql';
   /** The raw `where` clause that failed to parse */
   where: string;
+  /** Why it failed, when the clause itself parses but its variables don't resolve. */
+  detail?: string;
 };
 
 /**
@@ -698,6 +771,8 @@ export type DashboardFilterQueryIssue = {
  * after opening the dashboard. Returns one issue per filter whose `where`
  * fails to parse as its declared language.
  *
+ * Variable references are expanded before the parse validation.
+ *
  * Note: this only checks that the `where` clause *parses*. It cannot catch a
  * `where`/`expression` that references a non-existent column — that only fails
  * when the query runs against ClickHouse.
@@ -706,12 +781,29 @@ export function validateDashboardFilterQueries(
   filters: DashboardFilter[],
 ): DashboardFilterQueryIssue[] {
   const issues: DashboardFilterQueryIssue[] = [];
+
+  // Variables are expanded with an empty selection.
+  const variables: ChartVariable[] = getDashboardVariableDeclarations(
+    filters,
+  ).map(declaration => ({ ...declaration, values: [] }));
+
   for (const filter of filters) {
+    // Only ClickHouse-queried filters carry a values query to validate.
+    if (!isQueryExpressionFilter(filter)) continue;
     const where = filter.where ?? '';
     if (!where.trim()) continue;
     const language = filter.whereLanguage ?? 'sql';
     if (language !== 'lucene' && language !== 'sql') continue;
-    if (!isValidFilterCondition(where, language)) {
+    const resolved = resolveFilterValuesWhere(filter, variables);
+    if (resolved.error) {
+      issues.push({
+        filterId: filter.id,
+        filterName: filter.name,
+        language,
+        where,
+        detail: resolved.error,
+      });
+    } else if (!isValidFilterCondition(resolved.where, language)) {
       issues.push({
         filterId: filter.id,
         filterName: filter.name,
@@ -755,6 +847,57 @@ export function isFilterVariableEnabled(filter: {
   return filter.isVariableEnabled === true;
 }
 
+/** The discriminant every dashboard-filter shape carries. */
+export type DashboardFilterKind = DashboardFilter['type'];
+
+/** The source kinds a QUERY_EXPRESSION filter can run its `SELECT` against. */
+export const QUERY_EXPRESSION_FILTER_SOURCE_KINDS: SourceKind[] = [
+  SourceKind.Log,
+  SourceKind.Trace,
+  SourceKind.Session,
+  SourceKind.Metric,
+];
+
+/** Type guard for QUERY_EXPRESSION type filters. */
+export function isQueryExpressionFilter<
+  T extends { type: DashboardFilterKind },
+>(filter: T): filter is Extract<T, { type: 'QUERY_EXPRESSION' }> {
+  return filter.type === 'QUERY_EXPRESSION';
+}
+
+/** Type guard for STATIC_LIST type filters. */
+export function isStaticListFilter<T extends { type: DashboardFilterKind }>(
+  filter: T,
+): filter is Extract<T, { type: 'STATIC_LIST' }> {
+  return filter.type === 'STATIC_LIST';
+}
+
+/** Type guard for PROMETHEUS_LABEL type filters. */
+export function isPrometheusLabelFilter<
+  T extends { type: DashboardFilterKind },
+>(filter: T): filter is Extract<T, { type: 'PROMETHEUS_LABEL' }> {
+  return filter.type === 'PROMETHEUS_LABEL';
+}
+
+/** The SQL expression associated with the filter, if any. */
+export function getFilterExpression(
+  filter: DashboardFilter,
+): string | undefined {
+  return isQueryExpressionFilter(filter) ? filter.expression : undefined;
+}
+
+/** What the filter broadcasts, or undefined when it cannot broadcast. */
+export function getFilterBroadcastTarget(
+  filter: DashboardFilter,
+): { expression: string; appliesToSourceIds?: string[] } | undefined {
+  if (!isQueryExpressionFilter(filter) || !isFilterBroadcastEnabled(filter))
+    return undefined;
+  return {
+    expression: filter.expression,
+    appliesToSourceIds: filter.appliesToSourceIds,
+  };
+}
+
 /**
  * Whether a filter does anything at all with the value it collects — broadcast
  * it as a condition, expose it as `$variableName`, or both.
@@ -785,11 +928,22 @@ export type DashboardVariableDeclaration = Pick<
   'name' | 'expression'
 >;
 
-/** The variables a dashboard declares, in filter order. */
-export function getDashboardVariableDeclarations(
-  filters: DashboardFilter[] | undefined,
-): DashboardVariableDeclaration[] {
-  const declarations: DashboardVariableDeclaration[] = [];
+/** Minimal projection of fields necessary to extract the variables a dashboard declares. */
+export type FilterForVariableDeclaration = {
+  name: string;
+  expression?: string;
+  variableName?: string;
+  isVariableEnabled?: boolean;
+};
+
+/**
+ * The variable-enabled filters a dashboard declares, paired with the name each
+ * one answers to, in filter order.
+ */
+export function getDashboardVariableFilters<
+  T extends FilterForVariableDeclaration,
+>(filters: T[] | undefined): { filter: T; name: string }[] {
+  const results: { filter: T; name: string }[] = [];
   const takenNames = new Set<string>();
 
   for (const filter of filters ?? []) {
@@ -800,10 +954,99 @@ export function getDashboardVariableDeclarations(
     if (!name || takenNames.has(name)) continue;
     takenNames.add(name);
 
-    declarations.push({ name, expression: filter.expression });
+    results.push({ filter, name });
   }
 
-  return declarations;
+  return results;
+}
+
+/** The variables a dashboard declares, in filter order. */
+export function getDashboardVariableDeclarations(
+  filters: FilterForVariableDeclaration[] | undefined,
+): DashboardVariableDeclaration[] {
+  return getDashboardVariableFilters(filters).map(({ filter, name }) => ({
+    name,
+    expression: filter.expression,
+  }));
+}
+
+export type ResolvedFilterValuesQuery = {
+  /** The clause the values lookup actually runs. */
+  where: string;
+  whereLanguage: 'lucene' | 'sql';
+  /** Set when expansion failed; `where` is then the template as written. */
+  error?: string;
+};
+
+/**
+ * Expand the dashboard variables a filter's dropdown-values query references.
+ *
+ * Never throws. Failures (unknown variables, etc) leave the clause as written, so
+ * downstream lookup still runs and reports an `error`.
+ */
+export function resolveFilterValuesWhere(
+  filter: { where?: string; whereLanguage?: 'lucene' | 'sql' },
+  variables: ChartVariable[] | undefined,
+): ResolvedFilterValuesQuery {
+  const where = filter.where ?? '';
+  const whereLanguage = filter.whereLanguage ?? 'sql';
+  if (variables == null || !where.trim()) {
+    return { where, whereLanguage };
+  }
+
+  try {
+    return {
+      where: substituteVariables(where, {
+        variables,
+        inputLanguage: whereLanguage,
+      }),
+      whereLanguage,
+    };
+  } catch (e) {
+    return {
+      where,
+      whereLanguage,
+      error: e instanceof Error ? e.message : String(e),
+    };
+  }
+}
+
+/**
+ * Variables whose selection a filter's dropdown-values query needs before it can
+ * match anything.
+ *
+ * Only bare and braced SQL references qualify. `$__filter` /
+ * `$__conditionalAll` expand to `(1=1)`, the `regex` format to `.*`, and a
+ * Lucene reference to `("")` (rendered as `(1=1)`), so all of those list every
+ * value while their variable is empty. A `sqlstring` reference renders as
+ * `NULL` and a `csv` one as nothing at all, which match no rows.
+ */
+export function getPendingFilterValuesVariables(
+  filter: { where?: string; whereLanguage?: 'lucene' | 'sql' },
+  variables: ChartVariable[] | undefined,
+): string[] {
+  const where = filter.where ?? '';
+  const whereLanguage = filter.whereLanguage ?? 'sql';
+  if (variables == null || !where.trim() || whereLanguage !== 'sql') return [];
+
+  const emptyVariableNames = new Set(
+    variables.filter(v => v.values.length === 0).map(v => v.name),
+  );
+  if (emptyVariableNames.size === 0) return [];
+
+  const pending = getVariableReferences(where)
+    .filter(
+      reference =>
+        reference.kind !== 'macro' &&
+        // A reference inside the macro that guards it is only emitted once the
+        // variable has values, so it needs no empty-state rendering of its own.
+        reference.guardedBy !== reference.name &&
+        (reference.format ?? 'sqlstring') !== 'regex' &&
+        emptyVariableNames.has(reference.name),
+    )
+    .map(reference => reference.name);
+
+  return Array.from(new Set(pending));
 }
 
 /**

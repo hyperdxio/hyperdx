@@ -141,6 +141,14 @@ including but not limited to:
 - Voting on [open issues](https://github.com/hyperdxio/hyperdx/issues) or
   contributing use cases to a feature request
 
+**Pull requests.** Issues, bug reports and discussion stay open to everyone. For
+code we now use [Vouch](https://github.com/mitchellh/vouch): a maintainer has to
+vouch for you before your first pull request gets reviewed. AI tools make it
+cheap to open a plausible-looking PR with no understanding behind it, and
+reviewing those crowds out the contributions we want to spend time on. Getting
+vouched takes one issue — say hello and tell us what you want to work on. See
+[Getting vouched](./CONTRIBUTING.md#getting-vouched).
+
 ## Motivation
 
 Our mission is to help engineers ship reliable software. To enable that, we

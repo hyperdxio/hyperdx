@@ -6,6 +6,7 @@ import {
   UseFormSetValue,
   useWatch,
 } from 'react-hook-form';
+import { indexToSeriesRef } from '@hyperdx/common-utils/dist/core/formula';
 import {
   DateRange,
   isChartPaletteToken,
@@ -15,6 +16,7 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
+  Badge,
   Button,
   Divider,
   Flex,
@@ -27,6 +29,7 @@ import {
   IconArrowDown,
   IconArrowUp,
   IconCopy,
+  IconListSearch,
   IconPalette,
   IconTrash,
 } from '@tabler/icons-react';
@@ -34,17 +37,23 @@ import {
 import { AGG_FNS } from '@/ChartUtils';
 import {
   AggFnSelectControlled,
+  defaultAggFnForMetricType,
   HISTOGRAM_SUPPORTED_AGG_FNS,
 } from '@/components/AggFnSelect';
 import {
   ChartEditorFormState,
   SavedChartConfigWithSelectArray,
 } from '@/components/ChartEditor/types';
+import { isFormulaSourceKind } from '@/components/ChartEditor/utils';
 import {
   CheckBoxControlled,
   TextInputControlled,
 } from '@/components/InputControlled';
 import { MetricAttributeHelperPanel } from '@/components/MetricAttributeHelperPanel';
+import {
+  MetricExplorerModal,
+  type MetricExplorerSelection,
+} from '@/components/MetricExplorer/MetricExplorerModal';
 import { MetricNameSelect } from '@/components/MetricNameSelect';
 import { FORMAT_ICONS } from '@/components/NumberFormat';
 import SearchWhereInput from '@/components/SearchInput/SearchWhereInput';
@@ -205,6 +214,53 @@ export function ChartSeriesEditor({
     [aggCondition, namePrefix, setValue, onSubmit],
   );
 
+  const [
+    isMetricExplorerOpen,
+    { open: openMetricExplorer, close: closeMetricExplorer },
+  ] = useDisclosure(false);
+
+  // Applying from the explorer also resets the aggregation, so a metric picked
+  // for its own sake charts something meaningful instead of inheriting whatever
+  // the previous metric used. The coercion effects above accept every value
+  // `defaultAggFnForMetricType` can return.
+  const applyExplorerMetric = useCallback(
+    ({
+      name,
+      type,
+      where,
+      groupBy: stagedGroupBy,
+    }: MetricExplorerSelection) => {
+      setValue(`${namePrefix}metricName`, name);
+      setValue(`${namePrefix}metricType`, type);
+      setValue(`${namePrefix}valueExpression`, 'Value');
+      const { aggFn: nextAggFn, level } = defaultAggFnForMetricType(type);
+      setValue(`${namePrefix}aggFn`, nextAggFn);
+      if (level != null) {
+        setValue(`${namePrefix}level`, level);
+      }
+
+      // Filters were written against this metric's attributes, so they replace
+      // the series' condition rather than stacking onto the previous metric's.
+      // Unconditionally, including when nothing was staged: leaving the old
+      // condition in place would silently apply the previous metric's
+      // attributes to the new one, which reads as an empty chart rather than
+      // an error (a Map lookup for an absent key yields '', not a failure).
+      setValue(`${namePrefix}aggCondition`, where.join(' AND '));
+
+      // Staged group-bys replace the chart's, same as the filters above: they
+      // were chosen against this metric's tags. Only when something was staged
+      // though — group by is chart-level, so clearing it on every apply would
+      // discard a grouping the user set by hand elsewhere.
+      if (stagedGroupBy.length > 0) {
+        setValue('groupBy', stagedGroupBy.join(', '));
+      }
+
+      clearErrors(`${namePrefix}metricName`);
+      onSubmit();
+    },
+    [namePrefix, setValue, clearErrors, onSubmit],
+  );
+
   const handleAddToGroupBy = useCallback(
     (clause: string) => {
       const currentValue = groupBy || '';
@@ -254,6 +310,23 @@ export function ChartSeriesEditor({
       <Divider
         label={
           <Group gap="xs">
+            {/* Formula series reference (HDX-5080): formulas address series
+                positionally by letter (`A` = series 1, ...), so surface the
+                letter on each row of formula-capable sources (metric and
+                log/trace events). */}
+            {isFormulaSourceKind(tableSource?.kind) && (
+              <Tooltip label="Reference this series in a formula by this letter">
+                <Badge
+                  size="sm"
+                  radius="sm"
+                  variant="light"
+                  color="gray"
+                  data-testid="series-ref-badge"
+                >
+                  {indexToSeriesRef(index) ?? index + 1}
+                </Badge>
+              </Tooltip>
+            )}
             <Text size="xxs">Alias</Text>
 
             <div style={{ width: 150 }}>
@@ -368,31 +441,54 @@ export function ChartSeriesEditor({
         </div>
         {tableSource?.kind === SourceKind.Metric && metricType && (
           <div style={{ minWidth: 220 }}>
-            <MetricNameSelect
-              metricName={metricName}
-              metricType={metricType}
-              setMetricName={value => {
-                setValue(`${namePrefix}metricName`, value);
-                setValue(`${namePrefix}valueExpression`, 'Value');
-              }}
-              setMetricType={value =>
-                setValue(`${namePrefix}metricType`, value)
-              }
+            <Group gap="xs" wrap="nowrap" align="start">
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <MetricNameSelect
+                  metricName={metricName}
+                  metricType={metricType}
+                  setMetricName={value => {
+                    setValue(`${namePrefix}metricName`, value);
+                    setValue(`${namePrefix}valueExpression`, 'Value');
+                  }}
+                  setMetricType={value =>
+                    setValue(`${namePrefix}metricType`, value)
+                  }
+                  metricSource={tableSource}
+                  dateRange={dateRange}
+                  data-testid="metric-name-selector"
+                  error={errors?.metricName?.message}
+                  onFocus={() => clearErrors(`${namePrefix}metricName`)}
+                />
+              </div>
+              <Tooltip label="Browse metrics" withArrow>
+                <ActionIcon
+                  variant="subtle"
+                  size="input-sm"
+                  onClick={openMetricExplorer}
+                  aria-label="Browse metrics"
+                  data-testid="metric-explorer-open"
+                >
+                  <IconListSearch size={16} />
+                </ActionIcon>
+              </Tooltip>
+            </Group>
+            <MetricExplorerModal
+              opened={isMetricExplorerOpen}
+              onClose={closeMetricExplorer}
               metricSource={tableSource}
-              data-testid="metric-name-selector"
-              error={errors?.metricName?.message}
-              onFocus={() => clearErrors(`${namePrefix}metricName`)}
+              dateRange={dateRange}
+              value={{ metricName, metricType }}
+              language={aggConditionLanguage === 'sql' ? 'sql' : 'lucene'}
+              onApply={applyExplorerMetric}
             />
             {metricType === 'gauge' && (
-              <Flex justify="end">
-                <CheckBoxControlled
-                  control={control}
-                  name={`${namePrefix}isDelta`}
-                  label="Delta"
-                  size="xs"
-                  className="mt-2"
-                />
-              </Flex>
+              <CheckBoxControlled
+                control={control}
+                name={`${namePrefix}isDelta`}
+                label="Delta"
+                size="xs"
+                className="mt-2"
+              />
             )}
           </div>
         )}
