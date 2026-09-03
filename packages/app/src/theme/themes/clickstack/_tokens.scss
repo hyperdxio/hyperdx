@@ -138,6 +138,12 @@
   /* Recedes past the border (neutral-712) so the addon reads as a fixed part of
      the input's frame rather than a button sitting inside it. */
   --color-bg-field-addon: var(--palette-neutral-725);
+
+  /* Hover for a control that sits on the surface rather than inside a field —
+     the "Group by <field>" pickers. Dark mode lifts off the surface where
+     light mode steps down from white, so this lands on the addon here and
+     stays above it there; both end up a shade short of the label. */
+  --color-bg-control-hover: var(--palette-neutral-725);
   --color-bg-neutral: #4d4f66;
   --color-bg-success: #22c55e;
   --color-bg-danger: #ef4444;
@@ -374,6 +380,12 @@
     var(--palette-slate-100) 50%,
     var(--palette-slate-50)
   );
+
+  /* Hover for a control that sits on the surface rather than inside a field —
+     the "Group by <field>" pickers. Stops short of the addon so the two halves
+     stay legible when hovered: the value is dimmed whenever it is showing a
+     default, and dimmed text on the addon grey is a poor read. */
+  --color-bg-control-hover: var(--palette-slate-50);
   --color-bg-neutral: #adb5bd;
   --color-bg-success: #16a34a;
   --color-bg-danger: #dc2626;

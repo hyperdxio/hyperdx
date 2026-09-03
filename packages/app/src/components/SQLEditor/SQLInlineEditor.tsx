@@ -68,6 +68,8 @@ type SQLInlineEditorProps = {
   queryHistoryType?: string;
   parentRef?: HTMLElement | null;
   allowMultiline?: boolean;
+  /** Collapsed editor height in px. Defaults from `size` (xs → 30, else 36). */
+  minHeight?: number;
   dateRange?: [Date, Date];
   sourceId?: string;
   // With multiple tableConnections, offer only fields present in ALL of them
@@ -104,6 +106,7 @@ export default function SQLInlineEditor({
   queryHistoryType,
   parentRef,
   allowMultiline = true,
+  minHeight,
   dateRange,
   sourceId,
   intersectFields,
@@ -346,7 +349,7 @@ export default function SQLInlineEditor({
 
   const isVariableWarningOnly =
     variableIssues.errors.length === 0 && variableIssues.warnings.length > 0;
-  const baseHeight = size === 'xs' ? 30 : 36;
+  const baseHeight = minHeight ?? (size === 'xs' ? 30 : 36);
 
   return (
     <div

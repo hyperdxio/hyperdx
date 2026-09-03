@@ -21,13 +21,16 @@ $pill-height: $segment-height + 2 * $pill-padding;
 
 /* Built as a field with a left addon rather than a second segmented control:
    "As" is a fixed part of the frame, not a thing you can press, and the addon
-   colour is what says so. */
+   colour is what says so.
+
+   On the surface rather than the field fill, matching Group by beside it:
+   neither is typed into, and the input colour promised an editable box. */
 .asControl {
   display: flex;
   align-items: center;
   flex-shrink: 0;
   overflow: hidden;
-  background: var(--color-bg-field);
+  background: var(--color-bg-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--mantine-radius-default);
 }
@@ -54,8 +57,9 @@ $pill-height: $segment-height + 2 * $pill-padding;
   padding-inline: 8px;
   white-space: nowrap;
 
+  /* A shade short of the addon, matching Group by beside it. */
   &:hover {
-    background: var(--color-bg-hover);
+    background: var(--color-bg-control-hover);
   }
 }
 

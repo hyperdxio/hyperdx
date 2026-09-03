@@ -55,4 +55,18 @@ describe('ExploreGroupByControl', () => {
       screen.getByRole('button', { name: 'Group by nothing' }),
     ).toBeInTheDocument();
   });
+
+  // Popover.Target clones the trigger and passes props of its own. Spread
+  // those after `className` and the target silently loses its layout — the
+  // value overflows the field and the chevron wraps onto a second line, which
+  // every assertion above still passes straight through.
+  it('keeps its own styling once Popover.Target has cloned it', () => {
+    renderWithMantine(
+      <ExploreGroupByControl value="StatusCode" onApply={jest.fn()} />,
+    );
+
+    expect(
+      screen.getByRole('button', { name: 'Group by StatusCode' }),
+    ).toHaveClass('target');
+  });
 });

@@ -1,27 +1,9 @@
-import { useMemo, useState } from 'react';
-import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { TSource } from '@hyperdx/common-utils/dist/types';
-import {
-  Box,
-  Button,
-  Checkbox,
-  Group,
-  Popover,
-  ScrollArea,
-  SegmentedControl,
-  Text,
-  TextInput,
-  UnstyledButton,
-} from '@mantine/core';
-import { IconChevronDown } from '@tabler/icons-react';
+import { Popover } from '@mantine/core';
 
-import SQLInlineEditor from '@/components/SQLEditor/SQLInlineEditor';
-import { useMultipleAllFields } from '@/hooks/useMetadata';
+import { FieldPicker, FieldPickerTarget } from '@/components/FieldPicker';
 
 import { formatGroupByFields, parseGroupByFields } from './exploreGroupBy';
-import { fieldIdentifier } from './fieldIdentifier';
-
-import classes from './ExploreGroupByControl.module.scss';
 
 function triggerLabel(selected: string[], fallback?: string) {
   if (selected.length === 1) return selected[0];
@@ -35,10 +17,6 @@ function triggerLabel(selected: string[], fallback?: string) {
  * a grouping, it was just pinned to severity or status code — so keeping one
  * control in the toolbar is what lets the grouping survive a view switch
  * instead of being rebuilt on each side.
- *
- * Shaped like the Columns picker it sits beside: picking a field is the common
- * case and should not require writing SQL, but the expression escape hatch stays
- * one click away because group by accepts anything ClickHouse will group on.
  */
 export function ExploreGroupByControl({
   tableSource,
@@ -57,180 +35,32 @@ export function ExploreGroupByControl({
   defaultGroupBy?: string;
   disabled?: boolean;
 }) {
-  const [opened, setOpened] = useState(false);
-  const [search, setSearch] = useState('');
-  const [mode, setMode] = useState<'fields' | 'sql'>('fields');
-  const [draft, setDraft] = useState<string[]>([]);
-  const [sqlDraft, setSqlDraft] = useState(value);
-
-  const tableConnection = tcFromSource(tableSource);
-  const { data: fields } = useMultipleAllFields(
-    tableConnection ? [tableConnection] : [],
-    {
-      dateRange,
-      timestampValueExpression: tableSource?.timestampValueExpression,
-      enabled: opened && Boolean(tableConnection),
-    },
-  );
-
-  const selected = useMemo(() => parseGroupByFields(value), [value]);
-
-  // Nested map keys matter here — grouping by `ResourceAttributes['host']` is
-  // as ordinary as grouping by a top-level column, so the list is every field
-  // rather than the table's columns.
-  const available = useMemo(
-    () => (fields ?? []).map(fieldIdentifier),
-    [fields],
-  );
-
-  const handleOpenChange = (next: boolean) => {
-    if (next) {
-      setDraft(selected);
-      setSqlDraft(value);
-      setSearch('');
-      setMode('fields');
-    }
-    setOpened(next);
-  };
-
-  const options = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    // Selected first, and kept even when absent from the schema: an expression
-    // typed through the SQL tab is still a grouping the reader chose.
-    const union = Array.from(new Set([...selected, ...available]));
-    return q ? union.filter(f => f.toLowerCase().includes(q)) : union;
-  }, [search, available, selected]);
-
-  const commit = (next: string) => {
-    onApply(next);
-    setOpened(false);
-  };
+  const selected = parseGroupByFields(value);
 
   return (
-    <Popover
-      opened={opened}
-      onChange={handleOpenChange}
-      position="bottom-start"
-      withinPortal
-      shadow="md"
-      width={300}
-    >
-      <div className={classes.control} data-testid="explore-group-by">
-        <Text size="xs" fw={500} className={classes.label}>
-          Group by
-        </Text>
+    <FieldPicker
+      tableSource={tableSource}
+      dateRange={dateRange}
+      selection="multi"
+      selected={selected}
+      onApply={fields => onApply(formatGroupByFields(fields))}
+      sqlPlaceholder={defaultGroupBy || "ResourceAttributes['cloud.region']"}
+      sqlMultiline
+      sqlMinHeight={72}
+      trigger={({ toggle }) => (
         <Popover.Target>
-          <UnstyledButton
-            className={classes.target}
+          <FieldPickerTarget
+            label="Group by"
+            value={triggerLabel(selected, defaultGroupBy)}
+            muted={selected.length === 0}
             disabled={disabled}
-            onClick={() => handleOpenChange(!opened)}
-            // The visible label lives in the sibling addon, so the button
-            // carries the whole phrase rather than announcing a bare field name.
+            onClick={toggle}
             aria-label={`Group by ${triggerLabel(selected, defaultGroupBy)}`}
+            containerTestId="explore-group-by"
             data-testid="explore-group-by-target"
-          >
-            <Text
-              size="xs"
-              fw={600}
-              className={classes.value}
-              c={selected.length === 0 ? 'dimmed' : undefined}
-            >
-              {triggerLabel(selected, defaultGroupBy)}
-            </Text>
-            <IconChevronDown size={14} />
-          </UnstyledButton>
+          />
         </Popover.Target>
-      </div>
-      <Popover.Dropdown p="xs">
-        <SegmentedControl
-          fullWidth
-          size="xs"
-          mb="xs"
-          value={mode}
-          onChange={next => setMode(next === 'sql' ? 'sql' : 'fields')}
-          data={[
-            { label: 'Fields', value: 'fields' },
-            { label: 'SQL', value: 'sql' },
-          ]}
-        />
-        {mode === 'sql' ? (
-          <Box>
-            <SQLInlineEditor
-              tableConnection={tableConnection}
-              value={sqlDraft}
-              onChange={setSqlDraft}
-              onSubmit={() => commit(sqlDraft)}
-              placeholder={defaultGroupBy || 'SQL columns'}
-              size="xs"
-              allowMultiline={false}
-              disableKeywordAutocomplete
-              sourceId={tableSource?.id}
-              dateRange={dateRange}
-            />
-            <Button
-              fullWidth
-              size="xs"
-              mt="xs"
-              onClick={() => commit(sqlDraft)}
-            >
-              Apply
-            </Button>
-          </Box>
-        ) : (
-          <>
-            <TextInput
-              size="xs"
-              placeholder="Search fields…"
-              value={search}
-              onChange={e => setSearch(e.currentTarget.value)}
-              mb="xs"
-              autoFocus
-            />
-            <ScrollArea.Autosize mah={260} type="auto">
-              <Box>
-                {options.length === 0 ? (
-                  <Text size="xs" c="dimmed" py="xs" ta="center">
-                    No fields found
-                  </Text>
-                ) : (
-                  options.map(field => (
-                    <Checkbox
-                      key={field}
-                      size="xs"
-                      my={4}
-                      label={field}
-                      checked={draft.includes(field)}
-                      onChange={() =>
-                        setDraft(prev =>
-                          prev.includes(field)
-                            ? prev.filter(f => f !== field)
-                            : [...prev, field],
-                        )
-                      }
-                    />
-                  ))
-                )}
-              </Box>
-            </ScrollArea.Autosize>
-            <Group gap="xs" mt="xs" grow>
-              <Button
-                variant="secondary"
-                size="xs"
-                disabled={draft.length === 0}
-                onClick={() => setDraft([])}
-              >
-                Clear
-              </Button>
-              <Button
-                size="xs"
-                onClick={() => commit(formatGroupByFields(draft))}
-              >
-                Apply
-              </Button>
-            </Group>
-          </>
-        )}
-      </Popover.Dropdown>
-    </Popover>
+      )}
+    />
   );
 }

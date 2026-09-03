@@ -50,6 +50,7 @@ import {
   SeriesCard,
   SeriesCardMenu,
 } from '@/components/ChartSeries/SeriesCard';
+import { SeriesColumnPicker } from '@/components/DBEditTimeChartForm/SeriesColumnPicker';
 import {
   CheckBoxControlled,
   TextInputControlled,
@@ -516,21 +517,31 @@ export function ChartSeriesEditor({
               )}
             </Box>
           )}
-          {tableSource?.kind !== SourceKind.Metric && aggFn !== 'count' && (
-            <Box
-              miw={180}
-              style={{ flexGrow: aggFn === 'none' ? 2 : undefined }}
-            >
-              <SQLInlineEditorControlled
-                tableConnection={tableConnection}
+          {tableSource?.kind !== SourceKind.Metric &&
+            aggFn !== 'count' &&
+            // Custom is an expression by definition — there is no column to
+            // pick, so it keeps the editor.
+            (aggFn === 'none' ? (
+              <Box miw={180} style={{ flexGrow: 2 }}>
+                <SQLInlineEditorControlled
+                  tableConnection={tableConnection}
+                  control={control}
+                  name={`${namePrefix}valueExpression`}
+                  placeholder="SQL expression"
+                  onSubmit={onSubmit}
+                  enableVariables
+                />
+              </Box>
+            ) : (
+              <SeriesColumnPicker
                 control={control}
                 name={`${namePrefix}valueExpression`}
-                placeholder="SQL column"
+                aggFn={aggFn}
+                tableSource={tableSource}
+                dateRange={dateRange}
                 onSubmit={onSubmit}
-                enableVariables
               />
-            </Box>
-          )}
+            ))}
           {showWhere && (
             <Group
               gap="xs"
