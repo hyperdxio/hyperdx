@@ -33,6 +33,7 @@ import api from '@/api';
 import { IS_LOCAL_MODE } from '@/config';
 import { LOCAL_STORE_CONNECTIONS_KEY } from '@/connection';
 import { DEFAULT_FILTER_KEYS_FETCH_LIMIT } from '@/defaults';
+import { useMultiSourceSlots } from '@/hooks/useSourceSlots';
 import { getMetadata } from '@/metadata';
 import { useSource, useSources } from '@/source';
 import { toArray } from '@/utils';
@@ -450,7 +451,7 @@ export function useMultipleGetKeyValues(
   };
 }
 
-export function useGetValuesDistribution(
+function useGetValuesDistribution(
   {
     chartConfig,
     key,
@@ -483,6 +484,79 @@ export function useGetValuesDistribution(
     retry: false,
     ...options,
   });
+}
+
+/** Slot hook: value→count distribution for one source's config. */
+function useValuesDistributionSlot(
+  chartConfig: BuilderChartConfigWithDateRange | undefined,
+  { key, limit, enabled }: { key: string; limit: number; enabled: boolean },
+) {
+  const { data, isFetching, error } = useGetValuesDistribution(
+    {
+      chartConfig: chartConfig ?? STUB_DISTRIBUTION_CONFIG,
+      key,
+      limit,
+    },
+    { enabled: enabled && chartConfig != null },
+  );
+  return useMemo(
+    () => ({ data, isFetching, error }),
+    [data, isFetching, error],
+  );
+}
+
+const STUB_DISTRIBUTION_CONFIG: BuilderChartConfigWithDateRange = {
+  connection: '',
+  from: { databaseName: '', tableName: '' },
+  timestampValueExpression: '',
+  select: '',
+  where: '',
+  whereLanguage: 'sql',
+  dateRange: [new Date(0), new Date(0)],
+};
+
+/**
+ * Value→count distribution for a filter key across every selected source,
+ * summed. With one source this is exactly `useGetValuesDistribution`; with
+ * several, a value's count is the total across the sources that have it, so
+ * the sidebar's percentages describe the whole search rather than one table.
+ */
+export function useMergedValuesDistribution(
+  {
+    chartConfigs,
+    key,
+    limit,
+  }: {
+    chartConfigs: BuilderChartConfigWithDateRange[];
+    key: string;
+    limit: number;
+  },
+  options?: { enabled?: boolean },
+) {
+  const slots = useMultiSourceSlots(chartConfigs, useValuesDistributionSlot, {
+    key,
+    limit,
+    enabled: options?.enabled ?? true,
+  });
+
+  return useMemo(() => {
+    const merged = new Map<string, number>();
+    let any = false;
+    for (const slot of slots) {
+      if (slot.data == null) continue;
+      any = true;
+      for (const [value, count] of slot.data) {
+        merged.set(value, (merged.get(value) ?? 0) + count);
+      }
+    }
+    return {
+      data: any ? merged : undefined,
+      isFetching: slots.some(s => s.isFetching),
+      // Surface the first failure so the group can drop percentages rather
+      // than showing counts that silently omit a source.
+      error: slots.find(s => s.error != null)?.error ?? null,
+    };
+  }, [slots]);
 }
 
 export function useGetKeyValues(
