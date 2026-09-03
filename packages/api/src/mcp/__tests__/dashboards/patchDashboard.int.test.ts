@@ -1016,6 +1016,84 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
       const output = JSON.parse(getFirstText(patchResult));
       expect(output.warnings).toBeUndefined();
     });
+
+    it('resolves variables declared by a static list filter', async () => {
+      const sourceId = ctx.traceSource._id.toString();
+      const connectionId = ctx.connection._id.toString();
+      const createResult = await callTool(
+        ctx.client!,
+        'clickstack_save_dashboard',
+        {
+          name: 'Patch static variable',
+          tiles: [
+            {
+              name: 'Builder Tile',
+              config: {
+                displayType: 'number',
+                sourceId,
+                select: [{ aggFn: 'count' }],
+              },
+            },
+          ],
+          filters: [
+            {
+              type: 'STATIC_LIST',
+              name: 'Environment',
+              options: ['prod', 'staging'],
+              variableName: 'env',
+            },
+          ],
+        },
+      );
+      expect(createResult.isError).toBeFalsy();
+      const created = JSON.parse(getFirstText(createResult));
+
+      const declaredResult = await callTool(
+        ctx.client!,
+        'clickstack_patch_dashboard',
+        {
+          dashboardId: created.id,
+          tileId: created.tiles[0].id,
+          tile: {
+            name: 'Errors',
+            config: {
+              configType: 'sql',
+              displayType: 'table',
+              connectionId,
+              sourceId,
+              sqlTemplate: macroSql('env'),
+            },
+          },
+        },
+      );
+      expect(declaredResult.isError).toBeFalsy();
+      const declared = JSON.parse(getFirstText(declaredResult));
+      expect(declared.warnings).toBeUndefined();
+
+      const unknownResult = await callTool(
+        ctx.client!,
+        'clickstack_patch_dashboard',
+        {
+          dashboardId: created.id,
+          tileId: created.tiles[0].id,
+          tile: {
+            name: 'Errors',
+            config: {
+              configType: 'sql',
+              displayType: 'table',
+              connectionId,
+              sourceId,
+              sqlTemplate: macroSql('tenant'),
+            },
+          },
+        },
+      );
+      expect(unknownResult.isError).toBeFalsy();
+      const unknown = JSON.parse(getFirstText(unknownResult));
+      const warnings: string[] = unknown.warnings ?? [];
+      expect(warnings.join('\n')).toContain("unknown variable 'tenant'");
+      expect(warnings.join('\n')).toContain('Available variables: env');
+    });
   });
 
   // Patches replace a single tile without going through the save_dashboard
