@@ -287,6 +287,38 @@ describe('prometheus router', () => {
       expect(res.body.error).toContain('prom.example.com');
     });
 
+    // The 504 timeout branch builds its message from the same `redactedTarget`
+    // as the 502 branch, but had no test of its own -- pin it separately so a
+    // regression isolated to this branch (e.g. someone reintroducing the raw
+    // `target` here specifically) would still be caught.
+    it('does not leak credentials or a host query-string secret into the 504 message', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedPrometheusConnection(
+        team._id,
+        'http://user:s3cr3t@prom.example.com?authKey=super-secret-token',
+      );
+
+      mockFetch.mockRejectedValueOnce(
+        Object.assign(new Error('The operation was aborted'), {
+          name: 'TimeoutError',
+        }),
+      );
+
+      const res = await agent
+        .get('/v1/prometheus/query_exemplars')
+        .query({
+          query: 'up',
+          start: '1700000000',
+          end: '1700000060',
+          connectionId: conn._id.toString(),
+        })
+        .expect(504);
+
+      expect(res.body.error).not.toContain('s3cr3t');
+      expect(res.body.error).not.toContain('super-secret-token');
+      expect(res.body.error).toContain('prom.example.com');
+    });
+
     // nosniff is set by router middleware, so the helper's own error bodies —
     // which echo the caller-supplied host — carry it too.
     it('sends nosniff on its own error responses', async () => {
@@ -331,8 +363,7 @@ describe('prometheus router', () => {
 
     // The 400 branch never echoes the Connection host at all (rather than
     // trying to redact it), so this pins the actual call site: reverting to
-    // interpolate the raw host back in would fail the suite even though only
-    // the pure `redactHostUserinfo` helper is otherwise unit-tested.
+    // interpolate the raw host back in would fail the suite.
     it('never echoes the connection host (or any credentials in it) in the 400 body', async () => {
       const { agent, team } = await getLoggedInAgent(server);
       const conn = await seedPrometheusConnection(

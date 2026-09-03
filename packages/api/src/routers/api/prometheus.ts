@@ -218,6 +218,24 @@ export function joinPrometheusUpstreamUrl(
   return url;
 }
 
+// Only real Prometheus API params are ever caller-settable in
+// proxyToPrometheus's query merge below. `params` there is built upstream by
+// spreading the *entire* `req.query`/`req.body` with no allowlist (see
+// `getParams`), so without this, a request could supply an arbitrary key --
+// e.g. VictoriaMetrics's `extra_label`, which a Connection host may pin as a
+// tenant-isolation scope -- and un-pin or override it, even though no
+// legitimate caller ever sends that key.
+const CALLER_SETTABLE_PARAM_KEYS = new Set([
+  'query',
+  'time',
+  'start',
+  'end',
+  'step',
+  'match',
+  'match[]',
+  'limit',
+]);
+
 // Forwards the response straight from the upstream Prometheus to the
 // HyperDX client. Returns the HTTP status it wrote, so callers can record an
 // error metric: this helper handles its own failures by writing 400/502/504 and
@@ -252,28 +270,11 @@ async function proxyToPrometheus(
     });
     return 400;
   }
-  // Only real Prometheus API params are ever caller-settable. `params` is
-  // built upstream by spreading the *entire* `req.query`/`req.body` with no
-  // allowlist (see `getParams`), so without this, a request could supply an
-  // arbitrary key -- e.g. VictoriaMetrics's `extra_label`, which a Connection
-  // host may pin as a tenant-isolation scope -- and un-pin or override it,
-  // even though no legitimate caller ever sends that key.
-  //
-  // For a key in this set, the request always wins outright, including
-  // repeatable ones like `match[]` -- so a Connection host can never silently
-  // override (or, for `match[]`, narrow) a value the caller or this proxy
-  // explicitly sets. A host-only param outside this set (e.g. the
-  // `extra_label` example above) is left as-is.
-  const CALLER_SETTABLE_PARAM_KEYS = new Set([
-    'query',
-    'time',
-    'start',
-    'end',
-    'step',
-    'match',
-    'match[]',
-    'limit',
-  ]);
+  // For a key in CALLER_SETTABLE_PARAM_KEYS, the request always wins
+  // outright, including repeatable ones like `match[]` -- so a Connection
+  // host can never silently override (or, for `match[]`, narrow) a value
+  // the caller or this proxy explicitly sets. A host-only param outside
+  // that set (e.g. VictoriaMetrics's `extra_label`) is left as-is.
   for (const [k, v] of Object.entries(params)) {
     if (!CALLER_SETTABLE_PARAM_KEYS.has(k)) continue;
     if (v == null) continue;
