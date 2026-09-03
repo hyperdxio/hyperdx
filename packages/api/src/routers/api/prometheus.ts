@@ -234,6 +234,8 @@ const CALLER_SETTABLE_PARAM_KEYS = new Set([
   'match',
   'match[]',
   'limit',
+  'timeout',
+  'stats',
 ]);
 
 // Forwards the response straight from the upstream Prometheus to the

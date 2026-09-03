@@ -547,6 +547,41 @@ describe('prometheus router', () => {
       expect(requested.searchParams.get('query')).toBe('up');
     });
 
+    // `timeout` and `stats` are real Prometheus API params on
+    // /api/v1/query(_range) -- omitting them from the allowlist (as an
+    // earlier version of this fix did) would silently drop a request's
+    // value rather than forward it, contradicting the "request always wins"
+    // guarantee for every param this list claims to cover.
+    it('forwards a request timeout, overriding one pinned on the connection host', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedPrometheusConnection(
+        team._id,
+        'http://prom.example.com?timeout=5s',
+      );
+
+      mockFetch.mockResolvedValueOnce(
+        fakeUpstreamResponse({
+          status: 'success',
+          data: { resultType: 'matrix', result: [] },
+        }),
+      );
+
+      await agent
+        .get('/v1/prometheus/query_range')
+        .query({
+          query: 'up',
+          start: '1700000000',
+          end: '1700000060',
+          step: '15s',
+          timeout: '30s',
+          connectionId: conn._id.toString(),
+        })
+        .expect(200);
+
+      const requested = new URL(mockFetch.mock.calls[0][0] as string);
+      expect(requested.searchParams.get('timeout')).toBe('30s');
+    });
+
     // Unlike a real Prometheus API param, an arbitrary key the request
     // happens to also send (here VictoriaMetrics's own `extra_label`, which
     // a Connection host may pin as a tenant-isolation scope) must NOT be
