@@ -8,6 +8,7 @@ import {
   ChartPaletteTokenSchema,
   DASHBOARD_CONTAINER_ID_MAX,
   DASHBOARD_MAX_CONTAINERS,
+  DASHBOARD_STATIC_FILTER_MAX_OPTIONS,
   DASHBOARD_VARIABLE_NAME_MAX_LENGTH,
   DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED,
   DashboardContainerSchema,
@@ -15,6 +16,7 @@ import {
   MetricsDataType,
   NumberTileColorConditionSchema,
   SearchConditionTrimmedLanguageSchema,
+  StaticListDashboardFilterSchema,
 } from '@hyperdx/common-utils/dist/types';
 import { z } from 'zod';
 
@@ -125,8 +127,12 @@ const numberTileColorRulesDescription =
 const rawSqlNumberTileColorDescription =
   'Static color for the displayed number, as a palette token such as ' +
   '"chart-blue" or "chart-success". Valid only when displayType is ' +
-  '"number", ignored otherwise. Raw SQL number tiles do not support ' +
-  'conditional colorRules.';
+  '"number", ignored otherwise. Applied unless a colorRules entry matches ' +
+  'the value.';
+
+const rawSqlNumberTileColorRulesDescription =
+  `${numberTileColorRulesDescription} Valid only when displayType is ` +
+  '"number", ignored otherwise.';
 
 const numberTileBackgroundChartDescription =
   'Optional background trend sparkline drawn behind the number, derived ' +
@@ -1050,6 +1056,11 @@ GROUP BY ServiceName, ts
     color: ChartPaletteTokenSchema.optional().describe(
       rawSqlNumberTileColorDescription,
     ),
+    colorRules: z
+      .array(NumberTileColorConditionSchema)
+      .max(10)
+      .optional()
+      .describe(rawSqlNumberTileColorRulesDescription),
     onClick: mcpOnClickSchema.optional(),
   }),
 });
@@ -1136,31 +1147,49 @@ export const mcpTilesParam = z
       '"numberFormat": { "output": "duration", "factor": 0.000000001 } } }',
   );
 
-const mcpDashboardFilterSchema = z
-  .object({
-    id: z
-      .string()
-      .optional()
-      .describe(
-        'Filter identity. ' +
-          'On UPDATE of an existing dashboard, every filter in the array MUST carry ' +
-          'an id: pass the exact id returned by clickstack_get_dashboard for any filter ' +
-          'you are keeping (so saved values bound to it stay attached), and generate ' +
-          'a fresh random hex/ObjectId string for any filter you are adding in this ' +
-          'update. Omitting `id` on an existing filter would orphan its saved values; ' +
-          'reusing an existing id for a new filter would silently overwrite the old ' +
-          'one. On CREATE (no top-level `id` on the dashboard call), filter `id` may ' +
-          'be omitted and one will be generated server-side.',
-      ),
-    // TODO: Add static value filter type when variables are supported in MCP
-    type: DashboardFilterType.extract(['QUERY_EXPRESSION']).describe(
-      'Filter type. Currently only "QUERY_EXPRESSION" is supported.',
+const VARIABLE_NAME_DESCRIPTION =
+  "Token that tiles reference this filter's selected value by, eg. $variableName. " +
+  'Must start with a letter and may contain only letters, numbers, and ' +
+  `underscores, up to ${DASHBOARD_VARIABLE_NAME_MAX_LENGTH} characters. ` +
+  'A default is determined based on the display name. ' +
+  "Must be unique across the dashboard's variable-enabled filters.";
+
+const variableNameSchema = z
+  .string()
+  .max(DASHBOARD_VARIABLE_NAME_MAX_LENGTH)
+  .regex(DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED)
+  .optional();
+const mcpDashboardFilterBaseShape = {
+  id: z
+    .string()
+    .optional()
+    .describe(
+      'Filter identity. ' +
+        'On UPDATE of an existing dashboard, every filter in the array MUST carry ' +
+        'an id: pass the exact id returned by clickstack_get_dashboard for any filter ' +
+        'you are keeping (so saved values bound to it stay attached), and generate ' +
+        'a fresh random hex/ObjectId string for any filter you are adding in this ' +
+        'update. Omitting `id` on an existing filter would orphan its saved values; ' +
+        'reusing an existing id for a new filter would silently overwrite the old ' +
+        'one. On CREATE (no top-level `id` on the dashboard call), filter `id` may ' +
+        'be omitted and one will be generated server-side.',
     ),
-    name: z
-      .string()
-      .min(1)
+  name: z
+    .string()
+    .min(1)
+    .describe(
+      'Human-readable filter label shown in the dashboard filter bar dropdown.',
+    ),
+  variableName: variableNameSchema.describe(VARIABLE_NAME_DESCRIPTION),
+};
+
+const mcpQueryExpressionFilterSchema = z
+  .object({
+    ...mcpDashboardFilterBaseShape,
+    type: z
+      .literal(DashboardFilterType.enum.QUERY_EXPRESSION)
       .describe(
-        'Human-readable filter label shown in the dashboard filter bar dropdown.',
+        'Filter type discriminator for a filter whose dropdown values are queried from a source column (expression + sourceId).',
       ),
     expression: z
       .string()
@@ -1239,22 +1268,12 @@ const mcpDashboardFilterSchema = z
           "tile's sqlTemplate). Another filter's `where` can reference it too, which " +
           "chains that filter's dropdown off this one.",
       ),
-    variableName: z
-      .string()
-      .max(DASHBOARD_VARIABLE_NAME_MAX_LENGTH)
-      .regex(DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED)
-      .optional()
-      .describe(
-        "Token tiles reference this filter's selected value by, eg. $variableName. " +
-          'Must start with a letter and may contain only letters, numbers, and ' +
-          `underscores, up to ${DASHBOARD_VARIABLE_NAME_MAX_LENGTH} characters. ` +
-          'A default is determined based on the display name. ' +
-          "Must be unique across the dashboard's variable-enabled filters. " +
-          'Rejected when isVariableEnabled is not true.',
-      ),
+    variableName: variableNameSchema.describe(
+      `${VARIABLE_NAME_DESCRIPTION} Rejected when isVariableEnabled is not true.`,
+    ),
   })
   .describe(
-    'A dashboard-level filter the user can adjust in the dashboard filter bar. ' +
+    'A dashboard filter whose dropdown values are queried from a source. ' +
       'Each filter binds a label/name to a column expression on a source. ' +
       'Every filter either broadcasts its selected value to matching tiles as a ' +
       'condition (isBroadcastEnabled, the default), exposes it to tile queries as a ' +
@@ -1262,6 +1281,40 @@ const mcpDashboardFilterSchema = z
       "Filters are also the contract for row-click navigation: a table tile's " +
       'onClick.filters[i].expression must match a filter declared here for the value to land.',
   );
+
+const mcpStaticListFilterSchema = z
+  .object({
+    ...mcpDashboardFilterBaseShape,
+    type: z
+      .literal(DashboardFilterType.enum.STATIC_LIST)
+      .describe(
+        'Filter type discriminator for a filter whose dropdown offers a fixed hand-authored list; no source query.',
+      ),
+    options: StaticListDashboardFilterSchema.shape.options.describe(
+      'The values the dropdown offers, in display order. ' +
+        `1-${DASHBOARD_STATIC_FILTER_MAX_OPTIONS} unique, non-empty strings.`,
+    ),
+  })
+  .describe(
+    'A variable-only dashboard filter whose dropdown offers a hand-authored options ' +
+      'list. Use it when the values are a fixed business list (environments, tiers, ' +
+      'regions) rather than derivable from the data. The selected value reaches tiles ' +
+      'only as $variableName — typically via $__filter(<expression>, $<variableName>) ' +
+      'with the column passed explicitly, since the filter has no expression of its own.',
+  );
+
+const mcpDashboardFilterSchema = z
+  .discriminatedUnion('type', [
+    mcpQueryExpressionFilterSchema,
+    mcpStaticListFilterSchema,
+  ])
+  .describe(
+    'A dashboard-level filter the user can adjust in the dashboard filter bar. ' +
+      'Two types: QUERY_EXPRESSION queries its dropdown values from a source column; ' +
+      'STATIC_LIST declares them inline and is always variable-only.',
+  );
+
+export type McpDashboardFilter = z.infer<typeof mcpDashboardFilterSchema>;
 
 export const mcpFiltersParam = z
   .array(mcpDashboardFilterSchema)
@@ -1271,7 +1324,10 @@ export const mcpFiltersParam = z
       'If another tile\'s onClick targets THIS dashboard with `filters: [{ expression: "X", ... }]`, ' +
       'this array MUST declare a filter whose `expression` is "X". Otherwise the value is ' +
       'dropped on arrival and the destination opens unfiltered.\n\n' +
-      'Each filter runs in one of two modes (or both). BROADCAST (the default) applies the ' +
+      'Two filter types: QUERY_EXPRESSION queries its dropdown values from a source column, ' +
+      'while STATIC_LIST declares them inline via `options` and is always variable-only ' +
+      '(it has no expression to broadcast).\n\n' +
+      'A QUERY_EXPRESSION filter runs in one of two modes (or both). BROADCAST (the default) applies the ' +
       'selected value as a condition on matching tiles with no per-tile wiring. VARIABLE ' +
       '(isVariableEnabled) exposes the value to tile queries as $variableName, which the tile ' +
       'must reference explicitly. Prefer broadcast; reach for a variable in advanced cases. ' +
@@ -1300,6 +1356,15 @@ export const mcpFiltersParam = z
       ']\n' +
       'A tile then uses it as $__filter(ServiceName, $service) in a SQL where clause, which ' +
       'expands to 1=1 while nothing is selected.\n\n' +
+      'Example (static list: fixed hand-authored values, always a variable, no source query):\n' +
+      '[\n' +
+      '  { "type": "STATIC_LIST", "name": "Environment",\n' +
+      '    "options": ["prod", "staging", "dev"], "variableName": "env" }\n' +
+      ']\n' +
+      "A tile references it as $__filter(ResourceAttributes['deployment.environment'], $env). " +
+      'Always pass the column explicitly: the one-argument $__filter($env) form reuses the ' +
+      "filter's own expression, which a static filter does not have. Prefer STATIC_LIST when " +
+      'the values are a fixed business list or a curated subset rather than derivable from the data.\n\n' +
       "Example (dependent filter: the Endpoint dropdown only lists the selected service's " +
       'endpoints):\n' +
       '[\n' +

@@ -1299,9 +1299,16 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *               example: "number"
  *             color:
  *               $ref: '#/components/schemas/ChartPaletteToken'
+ *               description: Optional static color applied to the displayed number.
+ *             colorRules:
+ *               type: array
+ *               maxItems: 10
  *               description: >
- *                 Optional static color applied to the displayed number. Raw
- *                 SQL number tiles do not support conditional colorRules.
+ *                 Ordered conditional color rules evaluated against the displayed
+ *                 value (last match wins). Falls back to color, then the default
+ *                 text color when no rule matches.
+ *               items:
+ *                 $ref: '#/components/schemas/NumberTileColorCondition'
  *
  *     PieRawSqlChartConfig:
  *       description: Raw SQL configuration for a pie chart.
@@ -1761,11 +1768,13 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *       oneOf:
  *         - $ref: '#/components/schemas/QueryExpressionFilterInput'
  *         - $ref: '#/components/schemas/StaticListFilterInput'
+ *         - $ref: '#/components/schemas/PrometheusLabelFilterInput'
  *       discriminator:
  *         propertyName: type
  *         mapping:
  *           QUERY_EXPRESSION: '#/components/schemas/QueryExpressionFilterInput'
  *           STATIC_LIST: '#/components/schemas/StaticListFilterInput'
+ *           PROMETHEUS_LABEL: '#/components/schemas/PrometheusLabelFilterInput'
  *
  *     QueryExpressionFilterInput:
  *       type: object
@@ -1926,6 +1935,68 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *             only, so the field is rejected when isVariableEnabled is not true, and
  *             is omitted from responses for such a filter.
  *           example: "environment"
+ *
+ *     PrometheusLabelFilterInput:
+ *       type: object
+ *       description: |
+ *         A filter whose dropdown lists the values for a Prometheus label,
+ *         read from a PromQL source over the dashboard's time range.
+ *         Supports variable mode only.
+ *       required:
+ *         - type
+ *         - name
+ *         - sourceId
+ *         - label
+ *       properties:
+ *         type:
+ *           type: string
+ *           enum: [PROMETHEUS_LABEL]
+ *           description: Discriminator. Must be "PROMETHEUS_LABEL".
+ *           example: "PROMETHEUS_LABEL"
+ *         name:
+ *           type: string
+ *           minLength: 1
+ *           description: Display name for the dashboard filter
+ *           example: "Pod"
+ *         sourceId:
+ *           type: string
+ *           description: |
+ *             Id of the PromQL source the label values are read from.
+ *           example: "65f5e4a3b9e77c001a123456"
+ *         label:
+ *           type: string
+ *           minLength: 1
+ *           maxLength: 1024
+ *           description: |
+ *             Label whose values populate the dropdown. Use "__name__" to list
+ *             metric names.
+ *           example: "pod"
+ *         isBroadcastEnabled:
+ *           type: boolean
+ *           enum: [false]
+ *           default: false
+ *           description: Must be false or omitted.
+ *           example: false
+ *         isVariableEnabled:
+ *           type: boolean
+ *           enum: [true]
+ *           default: true
+ *           description: |
+ *             Must be true if provided, and is true when omitted. Tiles reference
+ *             the selection as `$variableName`.
+ *           example: true
+ *         variableName:
+ *           type: string
+ *           maxLength: 64
+ *           pattern: '^[a-zA-Z][a-zA-Z0-9_]*$'
+ *           description: |
+ *             Token that tiles reference this filter's selected value by, as
+ *             `$variableName`. Must start with a letter and may contain only
+ *             letters, numbers, and underscores. Defaults to the display name with
+ *             whitespace replaced by underscores and remaining illegal characters
+ *             removed. Variable names must be unique across a dashboard's
+ *             variable-enabled filters.
+ *           example: "pod"
  *
  *     Filter:
  *       allOf:

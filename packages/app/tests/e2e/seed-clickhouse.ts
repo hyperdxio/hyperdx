@@ -14,6 +14,7 @@ import {
   E2E_ALT_METRICS_GAUGE_TABLE,
   E2E_ALT_METRICS_SUM_TABLE,
   E2E_CLICKHOUSE_DATABASE,
+  E2E_CUSTOM_SERVICE_LOGS_TABLE,
   E2E_INTERESTING_FILTER_KEYS_TABLE,
   E2E_LOGS_TABLE,
   E2E_METADATA_MV_KEY_ROLLUP_TABLE,
@@ -162,6 +163,22 @@ export const METADATA_MV_ROWS = [
   },
 ] as const;
 
+// Service (`AppName`) values seeded into `e2e_custom_service_name`.
+export const CUSTOM_SERVICE_LOGS_APP_NAMES = [
+  'checkout-app',
+  'payments-app',
+  'inventory-app',
+  'auth-app',
+] as const;
+
+// Body templates for `e2e_custom_service_name`.
+const CUSTOM_SERVICE_LOG_MESSAGES = [
+  'Started request handler for endpoint',
+  'Completed background reconciliation loop for object',
+  'Cache lookup finished for entry',
+  'Connection pool statistics reported for shard',
+] as const;
+
 const LOG_MESSAGES = [
   'Request processed successfully',
   'Database connection established',
@@ -255,6 +272,35 @@ function generateLogData(
 
     rows.push(
       `('${timestampNs}', '${traceId}', '', 0, '${severity}', 0, '${service}', '${message}', '', {'service.name':'${service}','environment':'test'}, '', '', '', {}, {'request.id':'req-${i}','user.id':'user-${i % 5}'})`,
+    );
+  }
+
+  return rows.join(',\n');
+}
+
+/**
+ * Build the VALUES tuples for `e2e_custom_service_name`. Rows cycle through
+ * CUSTOM_SERVICE_LOGS_APP_NAMES and CUSTOM_SERVICE_LOG_MESSAGES so every Drain pattern's
+ * samples span multiple services. Spread across the seed window like the other
+ * log data so relative time ranges find them.
+ */
+function generateCustomServiceLogData(
+  count: number,
+  startMs: number,
+  endMs: number,
+): string {
+  const rows: string[] = [];
+  const span = endMs - startMs;
+
+  for (let i = 0; i < count; i++) {
+    const t = count > 1 ? startMs + (i / (count - 1)) * span : startMs;
+    const timestampNs = Math.round(t) * 1000000;
+    const appName =
+      CUSTOM_SERVICE_LOGS_APP_NAMES[i % CUSTOM_SERVICE_LOGS_APP_NAMES.length];
+    const severity = SEVERITIES[i % SEVERITIES.length];
+    const message = `${CUSTOM_SERVICE_LOG_MESSAGES[i % CUSTOM_SERVICE_LOG_MESSAGES.length]} ${i}`;
+    rows.push(
+      `('${timestampNs}', '${appName}', '${severity}', '${message}', {'level':'${severity}'})`,
     );
   }
 
@@ -850,6 +896,9 @@ async function clearTestData(
   await client.query(
     `TRUNCATE TABLE IF EXISTS ${E2E_CLICKHOUSE_DATABASE}.${E2E_METADATA_MV_KEY_ROLLUP_TABLE}`,
   );
+  await client.query(
+    `TRUNCATE TABLE IF EXISTS ${E2E_CLICKHOUSE_DATABASE}.${E2E_CUSTOM_SERVICE_LOGS_TABLE}`,
+  );
   console.log('  Existing data cleared');
 }
 
@@ -1036,6 +1085,14 @@ export async function seedClickHouse(): Promise<void> {
   console.log(
     `  Inserted ${METADATA_MV_ROWS.length} metadata-MV source entries`,
   );
+
+  console.log('  Inserting custom service name logs data...');
+  await client.query(`
+    INSERT INTO ${E2E_CLICKHOUSE_DATABASE}.${E2E_CUSTOM_SERVICE_LOGS_TABLE} (
+      Timestamp, AppName, SeverityText, Body, LogAttributes
+    ) VALUES ${generateCustomServiceLogData(numDataPoints, startMs, endMs)}
+  `);
+  console.log(`  Inserted ${numDataPoints} generic log entries`);
 
   // PromQL series: one per service, labelled with the same `ServiceName` values
   // the logs carry, so a dashboard filter on ServiceName selects values that

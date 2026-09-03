@@ -16,7 +16,6 @@ import {
   getFilterExpression,
   isFilterBroadcastEnabled,
   isQueryExpressionFilter,
-  isStaticListFilter,
 } from '@hyperdx/common-utils/dist/filters';
 import {
   ChartVariable,
@@ -215,13 +214,14 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
       const queries: Filter[] = [];
       for (const filter of filters) {
         if (!predicate(filter)) continue;
-        if (isStaticListFilter(filter)) continue;
+        const expression = getFilterExpression(filter);
+        if (expression == null) continue;
         const selection = selectionByFilterId.get(filter.id);
         if (!selection) continue;
         // Wrap keys in `toString()` to support JSON/Dynamic-type columns.
         // All keys can be stringified, since filter select values are stringified as well.
         const emitted = filtersToQuery(
-          { [filter.expression]: selection },
+          { [expression]: selection },
           { stringifyKeys: true },
         );
         for (const query of emitted) {
