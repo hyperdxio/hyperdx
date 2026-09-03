@@ -22,4 +22,8 @@ Query parameters on the Connection host are now only a fallback: any param the
 request supplies (including repeatable ones such as `match[]`) always wins and
 replaces a same-named host value outright, rather than being dropped. A
 param the request never mentions -- for example `?extra_label=namespace%3Dprod`
-pinning a VictoriaMetrics tenant scope -- is left as-is.
+pinning a VictoriaMetrics tenant scope -- is left as-is. This also means a host
+copied with a stray query string (not just a stray path) now forwards that
+query string upstream as a fallback on every request unless the same key is
+part of the request itself -- trim those too if they weren't intended as
+Prometheus API params.

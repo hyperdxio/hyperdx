@@ -362,4 +362,14 @@ describe('redactHostUserinfo', () => {
       'http://prom:9090/path?to=a@b.com',
     );
   });
+
+  // A password containing a literal "@" must be fully stripped, not just up
+  // to its first occurrence -- otherwise the suffix after the first "@"
+  // (part of the actual secret) would leak into the redacted output.
+  it('fully strips a password that itself contains "@"', () => {
+    const redacted = redactHostUserinfo('http://user:p@ss@prom:9090/graph');
+    expect(redacted).toBe('http://prom:9090/graph');
+    expect(redacted).not.toContain('p@ss');
+    expect(redacted).not.toContain('ss@');
+  });
 });
