@@ -184,6 +184,19 @@ export function isClientDisconnect(err: unknown): boolean {
 }
 
 /**
+ * Strip userinfo (`user:pw@`) from a Connection host/URL string for safe
+ * display in an error response. Operates on the raw string rather than a
+ * parsed `URL`, because it also has to redact hosts that fail to parse, or
+ * whose userinfo lands in an opaque path instead of `URL.username`/
+ * `.password` -- a scheme-less host like `user:pw@prom:9090` parses with
+ * scheme `user:` and never has a `://`, so a check that required one would
+ * leave the password in the response for exactly that case.
+ */
+export function redactHostUserinfo(host: string): string {
+  return host.replace(/^([a-z][a-z0-9+.-]*:)?(\/\/)?[^/@]*@/i, '$1$2');
+}
+
+/**
  * Join a Connection host with an absolute Prometheus API path.
  *
  * `new URL('/api/v1/query_range', 'http://host:8481/select/0/prometheus')`
@@ -238,17 +251,14 @@ async function proxyToPrometheus(
   try {
     url = joinPrometheusUpstreamUrl(upstreamHost, path);
   } catch (err) {
-    // Redact userinfo the same way `redactedTarget` does below -- this branch
-    // runs before `url` exists, so it can't reuse that helper, but the raw
-    // host is still shown to the browser and may carry `user:pw@`. Surface
-    // the caught error's own message (e.g. the scheme guard's "Connection
-    // host must be http(s)") instead of a single generic string, so a wrong
-    // scheme isn't reported identically to a host that fails to parse at all.
-    const redactedHost = upstreamHost.replace(/:\/\/[^/@]*@/, '://');
+    // The raw host is shown to the browser and may carry credentials.
+    // Surface the caught error's own message (e.g. "Connection host must be
+    // http(s)") instead of a single generic string, so a wrong scheme isn't
+    // reported identically to a host that fails to parse at all.
     res.status(400).json({
       status: 'error',
       errorType: 'bad_data',
-      error: `Invalid Connection host ${JSON.stringify(redactedHost)}: ${err instanceof Error ? err.message : String(err)}`,
+      error: `Invalid Connection host ${JSON.stringify(redactHostUserinfo(upstreamHost))}: ${err instanceof Error ? err.message : String(err)}`,
     });
     return 400;
   }
@@ -275,12 +285,7 @@ async function proxyToPrometheus(
   // A connection host may carry basic-auth credentials (`http://user:pw@host`),
   // and the error bodies below are shown in the browser. Strip them for display
   // only — `target` itself still needs them to authenticate.
-  const redactedTarget = (() => {
-    const safe = new URL(url);
-    safe.username = '';
-    safe.password = '';
-    return safe.toString();
-  })();
+  const redactedTarget = redactHostUserinfo(target);
 
   let upstreamResp: Response;
   try {
