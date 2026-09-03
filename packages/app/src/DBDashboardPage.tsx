@@ -146,7 +146,10 @@ import { PageHeader } from '@/components/PageHeader';
 import { PageLayout } from '@/components/PageLayout';
 import { SqlVariablesProvider } from '@/components/SQLEditor/variableCompletions';
 import { TimePicker } from '@/components/TimePicker';
-import { parseTimeRangeInput } from '@/components/TimePicker/utils';
+import {
+  parseTimeRangeInput,
+  timeRangeInputToSeconds,
+} from '@/components/TimePicker/utils';
 import {
   Dashboard,
   type Tile,
@@ -2078,10 +2081,10 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       ? filterValueEntries
       : [];
 
-    const timeRange = parseTimeQuery(displayedTimeInputValue, isUTC);
-    const currentRelativeDateRange = timeRange.some(v => v === null)
-      ? null
-      : (timeRange[1]!.getTime() - timeRange[0]!.getTime()) / 1000;
+    const currentRelativeDateRange = timeRangeInputToSeconds(
+      displayedTimeInputValue,
+      isUTC,
+    );
 
     setDashboard(
       produce(dashboard, draft => {

@@ -829,6 +829,25 @@ describe('DashboardFilterValueSchema', () => {
   });
 });
 
+describe('DashboardSchema.savedRelativeDateRange', () => {
+  const base = { id: 'd1', name: 'Dashboard', tiles: [], tags: [] };
+
+  it('accepts a number, null, or absent', () => {
+    for (const savedRelativeDateRange of [3600, null, undefined]) {
+      expect(
+        DashboardSchema.safeParse({ ...base, savedRelativeDateRange }).success,
+      ).toBe(true);
+    }
+  });
+
+  it('rejects non-numeric values', () => {
+    expect(
+      DashboardSchema.safeParse({ ...base, savedRelativeDateRange: '1h' })
+        .success,
+    ).toBe(false);
+  });
+});
+
 describe('MetricFormulaSchema', () => {
   it('parses an expression-only formula', () => {
     const result = MetricFormulaSchema.safeParse({
