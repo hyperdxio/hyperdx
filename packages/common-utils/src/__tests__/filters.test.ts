@@ -705,6 +705,23 @@ describe('filters', () => {
       ).toEqual([]);
     });
 
+    it('skips a promql-label filter, which has no ClickHouse values query', () => {
+      expect(
+        validateDashboardFilterQueries([
+          {
+            id: 'f1',
+            type: 'PROMETHEUS_LABEL',
+            name: 'Pod',
+            source: 'promql',
+            label: 'pod',
+            isBroadcastEnabled: false,
+            isVariableEnabled: true,
+            variableName: 'pod',
+          },
+        ]),
+      ).toEqual([]);
+    });
+
     it('accepts a valid lucene where clause', () => {
       expect(
         validateDashboardFilterQueries([
@@ -1481,9 +1498,24 @@ describe('filters', () => {
       expect(getFilterExpression(queried)).toBe('ServiceName');
     });
 
+    const promqlLabel: DashboardFilter = {
+      id: 'f3',
+      type: 'PROMETHEUS_LABEL',
+      name: 'Pod',
+      source: 'promql',
+      label: 'pod',
+      isBroadcastEnabled: false,
+      isVariableEnabled: true,
+    };
+
     it('rejects a static-list filter, which names no column', () => {
       expect(isQueryExpressionFilter(staticList)).toBe(false);
       expect(getFilterExpression(staticList)).toBeUndefined();
+    });
+
+    it('rejects a promql-label filter, which names a label rather than a column', () => {
+      expect(isQueryExpressionFilter(promqlLabel)).toBe(false);
+      expect(getFilterExpression(promqlLabel)).toBeUndefined();
     });
   });
 
@@ -1524,6 +1556,20 @@ describe('filters', () => {
           type: 'STATIC_LIST',
           name: 'Environment',
           options: ['prod'],
+          isBroadcastEnabled: false,
+          isVariableEnabled: true,
+        }),
+      ).toBeUndefined();
+    });
+
+    it('returns undefined for a promql-label filter, which has no column', () => {
+      expect(
+        getFilterBroadcastTarget({
+          id: 'f3',
+          type: 'PROMETHEUS_LABEL',
+          name: 'Pod',
+          source: 'promql',
+          label: 'pod',
           isBroadcastEnabled: false,
           isVariableEnabled: true,
         }),
