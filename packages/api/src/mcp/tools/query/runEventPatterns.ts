@@ -1,13 +1,16 @@
-import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   getFirstTimestampValueExpression,
   splitAndTrimWithBracket,
 } from '@hyperdx/common-utils/dist/core/utils';
 import { minePatterns } from '@hyperdx/common-utils/dist/drain';
-import type { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
+import type {
+  ChartConfigWithDateRange,
+  ChartVariable,
+} from '@hyperdx/common-utils/dist/types';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
 
+import { ClickhouseClient } from '@/clickhouse';
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
 import {
@@ -43,6 +46,9 @@ export async function mineWindowPatterns(
     bodyExpression?: string;
     sampleSize?: number;
     trendBuckets?: number;
+    abortSignal?: AbortSignal;
+    /** Dashboard variables and their selected values. Omitted outside a dashboard context. */
+    variables?: ChartVariable[];
   },
 ): Promise<
   | { error: McpErrorResult }
@@ -125,6 +131,9 @@ export async function mineWindowPatterns(
       ? source.useTextIndexForImplicitColumn
       : undefined;
 
+  // `variables` rides on both configs so the renderer expands variable
+  // references and macros in `where` the same way it does for every other
+  // dashboard tile. Undefined (the standalone-tool case) is a no-op there.
   const sampleConfig = {
     displayType: DisplayType.Search,
     source: source._id.toString(),
@@ -142,6 +151,7 @@ export async function mineWindowPatterns(
     orderBy: [{ ordering: 'DESC' as const, valueExpression: 'rand()' }],
     limit: { limit: sampleSize, offset: 0 },
     dateRange: [startDate, endDate] as [Date, Date],
+    variables: options?.variables,
   } satisfies ChartConfigWithDateRange;
 
   const countConfig = {
@@ -160,6 +170,7 @@ export async function mineWindowPatterns(
     useTextIndexForImplicitColumn,
     limit: { limit: 1, offset: 0 },
     dateRange: [startDate, endDate] as [Date, Date],
+    variables: options?.variables,
   } satisfies ChartConfigWithDateRange;
 
   // The client is constructed fresh per call (not pooled) and is only used for
@@ -174,13 +185,19 @@ export async function mineWindowPatterns(
         config: sampleConfig,
         metadata,
         querySettings: source.querySettings,
-        opts: { clickhouse_settings: { max_execution_time: 30 } },
+        opts: {
+          clickhouse_settings: { max_execution_time: 30 },
+          abort_signal: options?.abortSignal,
+        },
       }),
       clickhouseClient.queryChartConfig({
         config: countConfig,
         metadata,
         querySettings: source.querySettings,
-        opts: { clickhouse_settings: { max_execution_time: 30 } },
+        opts: {
+          clickhouse_settings: { max_execution_time: 30 },
+          abort_signal: options?.abortSignal,
+        },
       }),
     ]);
   } catch (err) {
@@ -271,6 +288,9 @@ export async function runEventPatterns(
     sampleSize?: number;
     topN?: number;
     trendBuckets?: number;
+    abortSignal?: AbortSignal;
+    /** Dashboard variables and their selected values. Omitted outside a dashboard context. */
+    variables?: ChartVariable[];
   },
 ) {
   const topN = options?.topN ?? 20;
@@ -291,6 +311,8 @@ export async function runEventPatterns(
     bodyExpression: options?.bodyExpression,
     sampleSize: options?.sampleSize,
     trendBuckets,
+    abortSignal: options?.abortSignal,
+    variables: options?.variables,
   });
   if ('error' in mined) return mined.error;
 

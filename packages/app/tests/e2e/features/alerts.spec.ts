@@ -59,6 +59,7 @@ test.describe('Alert Creation', { tag: ['@alerts', '@full-stack'] }, () => {
       await test.step('Verify the alert is visible on the alerts page', async () => {
         await alertsPage.goto();
         await expect(alertsPage.pageContainer).toBeVisible();
+        await alertsPage.filterToAlert(savedSearchName);
         await expect(
           alertsPage.pageContainer
             .getByRole('link')
@@ -66,11 +67,10 @@ test.describe('Alert Creation', { tag: ['@alerts', '@full-stack'] }, () => {
         ).toBeVisible({ timeout: 10000 });
         // The provider models saved-search alerts, so this one is offered for
         // import.
-        await expect(
-          alertsPage
-            .getAlertCardByName(savedSearchName)
-            .locator('[data-testid^="terraform-popover-button-"]'),
-        ).toBeVisible();
+        await alertsPage.openRowMenu(
+          alertsPage.getAlertCardByName(savedSearchName),
+        );
+        await expect(alertsPage.terraformMenuItem).toBeVisible();
       });
     },
   );
@@ -126,18 +126,16 @@ test.describe('Alert Creation', { tag: ['@alerts', '@full-stack'] }, () => {
       await test.step('Verify the alert is visible on the alerts page', async () => {
         await alertsPage.goto();
         await expect(alertsPage.pageContainer).toBeVisible();
+        await alertsPage.filterToAlert(tileName);
         await expect(
           alertsPage.pageContainer
             .getByRole('link')
             .filter({ hasText: tileName }),
         ).toBeVisible({ timeout: 10000 });
         // Tile alerts have no Terraform resource, so they must not be offered
-        // for import — this is the eligibility branch in AlertsPage.
-        await expect(
-          alertsPage
-            .getAlertCardByName(tileName)
-            .locator('[data-testid^="terraform-popover-button-"]'),
-        ).toBeHidden();
+        // for import — this is the eligibility branch in AlertRowMenu.
+        await alertsPage.openRowMenu(alertsPage.getAlertCardByName(tileName));
+        await expect(alertsPage.terraformMenuItem).toBeHidden();
       });
     },
   );
@@ -198,6 +196,7 @@ test.describe('Alert Creation', { tag: ['@alerts', '@full-stack'] }, () => {
       await test.step('Verify the alert is visible on the alerts page', async () => {
         await alertsPage.goto();
         await expect(alertsPage.pageContainer).toBeVisible();
+        await alertsPage.filterToAlert(tileName);
         await expect(
           alertsPage.pageContainer
             .getByRole('link')
@@ -322,6 +321,7 @@ test.describe('Alert Creation', { tag: ['@alerts', '@full-stack'] }, () => {
       await test.step('Verify the alert is visible on the alerts page', async () => {
         await alertsPage.goto();
         await expect(alertsPage.pageContainer).toBeVisible();
+        await alertsPage.filterToAlert(tileName);
         await expect(
           alertsPage.pageContainer
             .getByRole('link')
@@ -383,6 +383,7 @@ test.describe('Alert Creation', { tag: ['@alerts', '@full-stack'] }, () => {
       await test.step('Verify the alert is visible on the alerts page', async () => {
         await alertsPage.goto();
         await expect(alertsPage.pageContainer).toBeVisible();
+        await alertsPage.filterToAlert(savedSearchName);
         await expect(
           alertsPage.pageContainer
             .getByRole('link')
@@ -453,6 +454,7 @@ test.describe('Alert Creation', { tag: ['@alerts', '@full-stack'] }, () => {
       await test.step('Verify the alert is visible on the alerts page', async () => {
         await alertsPage.goto();
         await expect(alertsPage.pageContainer).toBeVisible();
+        await alertsPage.filterToAlert(tileName);
         await expect(
           alertsPage.pageContainer
             .getByRole('link')
@@ -529,6 +531,10 @@ test.describe(
         await test.step('Verify the alert no longer appears on the alerts page', async () => {
           await alertsPage.goto();
           await expect(alertsPage.pageContainer).toBeVisible();
+          // Search rather than scan the list: a virtualized row that is merely
+          // outside the render window is also absent from the DOM, so this
+          // assertion would pass whether or not the delete worked.
+          await alertsPage.searchByName(savedSearchName);
           await expect(
             alertsPage.getAlertCardByName(savedSearchName),
           ).toBeHidden({ timeout: 10000 });
@@ -588,6 +594,7 @@ test.describe('Alert Notes', { tag: ['@alerts', '@full-stack'] }, () => {
       await test.step('Verify the note is displayed on the alerts page', async () => {
         await alertsPage.goto();
         await expect(alertsPage.pageContainer).toBeVisible();
+        await alertsPage.filterToAlert(savedSearchName);
         const alertCard = alertsPage.getAlertCardByName(savedSearchName);
         await expect(alertCard).toBeVisible({ timeout: 10000 });
 
@@ -662,6 +669,7 @@ test.describe('Alert Notes', { tag: ['@alerts', '@full-stack'] }, () => {
       await test.step('Verify the note is displayed on the alerts page', async () => {
         await alertsPage.goto();
         await expect(alertsPage.pageContainer).toBeVisible();
+        await alertsPage.filterToAlert(tileName);
         const alertCard = alertsPage.getAlertCardByName(tileName);
         await expect(alertCard).toBeVisible({ timeout: 10000 });
 
@@ -691,6 +699,9 @@ test.describe(
       alertsPage = new AlertsPage(page);
       await alertsPage.goto();
       await expect(alertsPage.pageContainer).toBeVisible();
+      // Every test here works on the one seeded alert; filtering to it keeps
+      // its row inside the virtualized list's render window.
+      await alertsPage.filterToAlert(SEEDED_ERROR_ALERT.savedSearchName);
     });
 
     test('shows alert errors with the correct type and message', async () => {
@@ -718,6 +729,56 @@ test.describe(
         SEEDED_ERROR_ALERT.errorMessage,
       );
     });
+
+    test('shows an errored evaluation in the history strip with details on click', async () => {
+      const seededCard = alertsPage.getAlertCardByName(
+        SEEDED_ERROR_ALERT.savedSearchName,
+      );
+      await expect(seededCard).toBeVisible({ timeout: 10000 });
+
+      // The seeded ERROR evaluation window renders as a clickable segment
+      const errorSegment = alertsPage.getErrorHistorySegments(seededCard);
+      await expect(errorSegment).toHaveCount(1);
+
+      await errorSegment.click();
+      await expect(alertsPage.evaluationErrorModal).toBeVisible();
+      await expect(alertsPage.evaluationErrorModal).toContainText(
+        'Query Timeout',
+      );
+      await expect(
+        alertsPage.evaluationErrorModal.locator('pre'),
+      ).toContainText(SEEDED_ERROR_ALERT.historyErrorMessage);
+    });
+
+    test('navigates to the alert detail page and shows the evaluation history', async () => {
+      const seededCard = alertsPage.getAlertCardByName(
+        SEEDED_ERROR_ALERT.savedSearchName,
+      );
+      await expect(seededCard).toBeVisible({ timeout: 10000 });
+
+      await alertsPage.getDetailsLinkForAlertCard(seededCard).click();
+
+      // Generous timeout: in dev mode the first hit compiles the new route,
+      // which can take tens of seconds before the navigation completes.
+      await alertsPage.page.waitForURL(/\/alerts\/[a-f0-9]{24}/, {
+        timeout: 30000,
+      });
+      await expect(alertsPage.detailPageContainer).toBeVisible({
+        timeout: 15000,
+      });
+
+      // The event stream lists the errored evaluation with its type label
+      await expect(alertsPage.evaluationsTable).toBeVisible({
+        timeout: 10000,
+      });
+      await expect(alertsPage.evaluationsTable).toContainText('Query Timeout');
+      // ...and the OK window seeded alongside it
+      await expect(
+        alertsPage.evaluationsTable.locator(
+          '[data-testid="alert-evaluation-row"]',
+        ),
+      ).toHaveCount(2);
+    });
   },
 );
 
@@ -727,6 +788,15 @@ test.describe('Alert Filtering', { tag: ['@alerts', '@full-stack'] }, () => {
 
   let alertsPage: AlertsPage;
   const ts = Date.now();
+
+  /**
+   * Common to all three fixture names. Every test below searches by it first:
+   * the org accumulates alerts from the specs that ran earlier, and the list is
+   * virtualized, so an unfiltered fixture row can sit outside the render window
+   * and therefore outside the DOM. These tests are about how filtering behaves,
+   * not about where a row lands in a long list.
+   */
+  const seededScope = 'E2E Filter';
 
   const searchAlpha = {
     name: `E2E FilterAlpha ${ts}`,
@@ -802,6 +872,7 @@ test.describe('Alert Filtering', { tag: ['@alerts', '@full-stack'] }, () => {
     await alertsPage.goto();
     await expect(alertsPage.pageContainer).toBeVisible();
     await expect(alertsPage.filters).toBeVisible({ timeout: 10000 });
+    await alertsPage.searchByName(seededScope);
   });
 
   test('should show search and filter controls', async () => {
@@ -840,6 +911,12 @@ test.describe('Alert Filtering', { tag: ['@alerts', '@full-stack'] }, () => {
 
     await test.step('Clearing search restores all alerts', async () => {
       await alertsPage.clearSearch();
+      await expect(alertsPage.page).not.toHaveURL(/search=/);
+      // Re-scope before asserting: with no search at all, these rows are back
+      // among every other alert in the org and may fall outside the
+      // virtualized render window. What matters is that the alerts excluded by
+      // the FilterAlpha search are selectable again.
+      await alertsPage.searchByName(seededScope);
       await expect(
         alertsPage.getAlertCardByName(searchAlpha.name),
       ).toBeVisible();

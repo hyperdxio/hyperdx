@@ -1,3 +1,4 @@
+import { isBuilderSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import { MetricsDataType, SourceKind } from '@hyperdx/common-utils/dist/types';
 import { omit } from 'lodash';
 import { ObjectId } from 'mongodb';
@@ -1871,7 +1872,7 @@ describe('External API v2 Dashboards - new format', () => {
   });
 
   const server = getServer();
-  let agent, team, user, traceSource, metricSource, connection;
+  let agent, team, user, traceSource, metricSource, promqlSource, connection;
 
   beforeAll(async () => {
     await server.start();
@@ -1919,6 +1920,18 @@ describe('External API v2 Dashboards - new format', () => {
       timestampValueExpression: 'TimeUnix',
       connection: connection._id,
       name: 'Metrics',
+    });
+
+    promqlSource = await Source.create({
+      kind: SourceKind.Promql,
+      team: team._id,
+      from: {
+        databaseName: DEFAULT_DATABASE,
+        tableName: 'otel_metrics_timeseries',
+      },
+      timestampValueExpression: 'TimeUnix',
+      connection: connection._id,
+      name: 'PromQL',
     });
   });
 
@@ -3649,6 +3662,95 @@ describe('External API v2 Dashboards - new format', () => {
       expect(getResponse.body.data.filters).toEqual(response.body.data.filters);
     });
 
+    // The create body schema takes filters without ids, so the variable
+    // settings ride a different schema than the update case.
+    it('should round-trip the filter variable settings', async () => {
+      const payload = createMockDashboardWithIds(traceSource._id.toString(), {
+        filters: [
+          // Broadcast only, stated explicitly rather than left to the
+          // missing-means-enabled default.
+          {
+            type: 'QUERY_EXPRESSION' as const,
+            name: 'Environment',
+            expression: 'environment',
+            sourceId: traceSource._id.toString(),
+            isBroadcastEnabled: true,
+            isVariableEnabled: false,
+          },
+          // Variable only: collects a value for `$service` without filtering
+          // any tile directly.
+          {
+            type: 'QUERY_EXPRESSION' as const,
+            name: 'Service Name',
+            expression: 'ServiceName',
+            sourceId: traceSource._id.toString(),
+            isBroadcastEnabled: false,
+            isVariableEnabled: true,
+            variableName: 'service',
+          },
+          // Both modes, with the variable name left to derive from the display
+          // name (`Region_Name`).
+          {
+            type: 'QUERY_EXPRESSION' as const,
+            name: 'Region Name',
+            expression: 'region',
+            sourceId: traceSource._id.toString(),
+            isVariableEnabled: true,
+          },
+        ],
+      });
+
+      const response = await authRequest('post', BASE_URL)
+        .send(payload)
+        .expect(200);
+
+      expect(response.body.data.filters).toMatchObject([
+        {
+          name: 'Environment',
+          isBroadcastEnabled: true,
+          isVariableEnabled: false,
+        },
+        {
+          name: 'Service Name',
+          isBroadcastEnabled: false,
+          isVariableEnabled: true,
+          variableName: 'service',
+        },
+        { name: 'Region Name', isVariableEnabled: true },
+      ]);
+      // Neither omitted field is materialized on read: an absent
+      // isBroadcastEnabled has to keep reading as enabled, and an absent
+      // variableName keeps deriving the token from the display name.
+      expect(response.body.data.filters[2]).not.toHaveProperty(
+        'isBroadcastEnabled',
+      );
+      expect(response.body.data.filters[2]).not.toHaveProperty('variableName');
+
+      const getResponse = await authRequest(
+        'get',
+        `${BASE_URL}/${response.body.data.id}`,
+      ).expect(200);
+      expect(getResponse.body.data.filters).toEqual(response.body.data.filters);
+
+      const stored = await Dashboard.findById(response.body.data.id).lean();
+      expect(stored?.filters).toMatchObject([
+        {
+          source: traceSource._id.toString(),
+          isBroadcastEnabled: true,
+          isVariableEnabled: false,
+        },
+        {
+          source: traceSource._id.toString(),
+          isBroadcastEnabled: false,
+          isVariableEnabled: true,
+          variableName: 'service',
+        },
+        { source: traceSource._id.toString(), isVariableEnabled: true },
+      ]);
+      expect(stored?.filters?.[2]).not.toHaveProperty('isBroadcastEnabled');
+      expect(stored?.filters?.[2]).not.toHaveProperty('variableName');
+    });
+
     it('should return 400 when filter source ID does not exist', async () => {
       const nonExistentSourceId = new ObjectId().toString();
       const dashboardPayload = {
@@ -3937,6 +4039,181 @@ describe('External API v2 Dashboards - new format', () => {
       expect(getResponse.body.data.filters[1]).toMatchObject(
         existingFilters[1],
       );
+    });
+
+    it('should round-trip the filter variable settings', async () => {
+      const filterId = new ObjectId().toString();
+      const storedFilter = {
+        id: filterId,
+        type: 'QUERY_EXPRESSION' as const,
+        name: 'Service Name',
+        expression: 'ServiceName',
+        source: traceSource._id.toString(),
+      };
+      // Seeded on the dashboard so the id is preserved rather than reassigned,
+      // which keeps the assertions below about the filter the caller sent.
+      const dashboard = await createTestDashboard({ filters: [storedFilter] });
+      const payload = createMockDashboardWithIds(
+        traceSource._id.toString(),
+        {},
+      );
+
+      const response = await authRequest('put', `${BASE_URL}/${dashboard._id}`)
+        .send({
+          ...payload,
+          filters: [
+            {
+              ...omit(storedFilter, 'source'),
+              sourceId: traceSource._id.toString(),
+              isBroadcastEnabled: false,
+              isVariableEnabled: true,
+              variableName: 'Service_Name',
+            },
+          ],
+        })
+        .expect(200);
+
+      expect(response.body.data.filters[0]).toMatchObject({
+        id: filterId,
+        isBroadcastEnabled: false,
+        isVariableEnabled: true,
+        variableName: 'Service_Name',
+      });
+
+      const stored = await Dashboard.findById(dashboard._id).lean();
+      expect(stored?.filters?.[0]).toMatchObject({
+        id: filterId,
+        isBroadcastEnabled: false,
+        isVariableEnabled: true,
+        variableName: 'Service_Name',
+      });
+    });
+
+    it('should clear the filter variable settings when an update omits them', async () => {
+      const filterId = new ObjectId().toString();
+      const storedFilter = {
+        id: filterId,
+        type: 'QUERY_EXPRESSION' as const,
+        name: 'Service Name',
+        expression: 'ServiceName',
+        source: traceSource._id.toString(),
+        isBroadcastEnabled: false,
+        isVariableEnabled: true,
+        variableName: 'service',
+      };
+      const dashboard = await createTestDashboard({ filters: [storedFilter] });
+      const payload = createMockDashboardWithIds(
+        traceSource._id.toString(),
+        {},
+      );
+
+      const response = await authRequest('put', `${BASE_URL}/${dashboard._id}`)
+        .send({
+          ...payload,
+          filters: [
+            {
+              ...omit(
+                storedFilter,
+                'source',
+                'isBroadcastEnabled',
+                'isVariableEnabled',
+                'variableName',
+              ),
+              sourceId: traceSource._id.toString(),
+            },
+          ],
+        })
+        .expect(200);
+
+      // Filters are replaced wholesale, so dropping the fields turns the
+      // variable back off instead of leaving the stored settings behind.
+      expect(response.body.data.filters[0]).toMatchObject({ id: filterId });
+      expect(response.body.data.filters[0]).not.toHaveProperty(
+        'isBroadcastEnabled',
+      );
+      expect(response.body.data.filters[0]).not.toHaveProperty(
+        'isVariableEnabled',
+      );
+      expect(response.body.data.filters[0]).not.toHaveProperty('variableName');
+
+      const stored = await Dashboard.findById(dashboard._id).lean();
+      expect(stored?.filters?.[0]).not.toHaveProperty('isVariableEnabled');
+      expect(stored?.filters?.[0]).not.toHaveProperty('variableName');
+    });
+
+    // The app's filter form leaves a chosen `appliesToSourceIds` on a filter
+    // whose broadcast it switches off, so stored filters can hold the
+    // combination the write schema now rejects. Reads drop the ignored fields
+    // so such a dashboard still survives a GET -> PUT.
+    it('omits the ignored fields on read so a stored filter round-trips', async () => {
+      const variableOnlyId = new ObjectId().toString();
+      const broadcastOnlyId = new ObjectId().toString();
+      const dashboard = await createTestDashboard({
+        filters: [
+          {
+            id: variableOnlyId,
+            type: 'QUERY_EXPRESSION' as const,
+            name: 'Service Name',
+            expression: 'ServiceName',
+            source: traceSource._id.toString(),
+            isBroadcastEnabled: false,
+            isVariableEnabled: true,
+            variableName: 'service',
+            // Left behind by the form when broadcast was switched off.
+            appliesToSourceIds: [traceSource._id.toString()],
+          },
+          {
+            id: broadcastOnlyId,
+            type: 'QUERY_EXPRESSION' as const,
+            name: 'Environment',
+            expression: 'environment',
+            source: traceSource._id.toString(),
+            isBroadcastEnabled: true,
+            isVariableEnabled: false,
+            // Left behind by the form when the variable was switched off.
+            variableName: 'environment',
+          },
+        ],
+      });
+
+      const getResponse = await authRequest(
+        'get',
+        `${BASE_URL}/${dashboard._id}`,
+      ).expect(200);
+
+      const [variableOnly, broadcastOnly] = getResponse.body.data.filters;
+      expect(variableOnly).toMatchObject({
+        id: variableOnlyId,
+        isBroadcastEnabled: false,
+        variableName: 'service',
+      });
+      expect(variableOnly).not.toHaveProperty('appliesToSourceIds');
+      expect(broadcastOnly).toMatchObject({
+        id: broadcastOnlyId,
+        isBroadcastEnabled: true,
+      });
+      expect(broadcastOnly).not.toHaveProperty('variableName');
+
+      // The healed body is exactly what a caller would send back.
+      const putResponse = await authRequest(
+        'put',
+        `${BASE_URL}/${dashboard._id}`,
+      )
+        .send({
+          name: getResponse.body.data.name,
+          tiles: getResponse.body.data.tiles,
+          filters: getResponse.body.data.filters,
+        })
+        .expect(200);
+      expect(putResponse.body.data.filters).toEqual(
+        getResponse.body.data.filters,
+      );
+
+      // The re-PUT persists the healed filters, dropping the fields the
+      // stored document carried in the mode that ignored them.
+      const stored = await Dashboard.findById(dashboard._id).lean();
+      expect(stored?.filters?.[0]).not.toHaveProperty('appliesToSourceIds');
+      expect(stored?.filters?.[1]).not.toHaveProperty('variableName');
     });
 
     it('should clear existing dashboard filters when provided an empty filters array', async () => {
@@ -5039,6 +5316,528 @@ describe('External API v2 Dashboards - new format', () => {
     });
   });
 
+  // The create and update body schemas share these filter validations but take
+  // different filter shapes (only an update filter may carry an `id`), so every
+  // rule runs against both request paths.
+  describe.each(['post', 'put'] as const)('filter validation (%s)', method => {
+    const filterInput = (overrides = {}) => ({
+      id: new ObjectId().toString(),
+      type: 'QUERY_EXPRESSION' as const,
+      name: 'Service Name',
+      expression: 'ServiceName',
+      sourceId: traceSource._id.toString(),
+      ...overrides,
+    });
+
+    const sendFilters = async (filters: Record<string, unknown>[]) => {
+      const payload = createMockDashboardWithIds(
+        traceSource._id.toString(),
+        {},
+      );
+      if (method === 'post') {
+        // A create body may not choose filter ids, so the shared fixtures shed
+        // theirs on this path.
+        return authRequest('post', BASE_URL).send({
+          ...payload,
+          filters: filters.map(filter => omit(filter, 'id')),
+        });
+      }
+      const dashboard = await createTestDashboard({});
+      return authRequest('put', `${BASE_URL}/${dashboard._id}`).send({
+        ...payload,
+        filters,
+      });
+    };
+
+    const expectFilters = async (
+      filters: Record<string, unknown>[],
+      expectedStatus: number,
+    ) => {
+      const response = await sendFilters(filters);
+      expect(response.status).toBe(expectedStatus);
+    };
+
+    it('rejects a variableName that is not a bare token', async () => {
+      await expectFilters(
+        [filterInput({ isVariableEnabled: true, variableName: 'has space' })],
+        400,
+      );
+    });
+
+    describe('filter variable name uniqueness', () => {
+      const variableFilter = (overrides = {}) =>
+        filterInput({
+          isVariableEnabled: true,
+          variableName: 'service',
+          ...overrides,
+        });
+
+      it('rejects two variable-enabled filters sharing a variable name', async () => {
+        await expectFilters([variableFilter(), variableFilter()], 400);
+      });
+
+      it('rejects a clash against a name derived from the filter name', async () => {
+        await expectFilters(
+          [
+            variableFilter({ name: 'Service Name', variableName: undefined }),
+            variableFilter({ variableName: 'Service_Name' }),
+          ],
+          400,
+        );
+      });
+
+      it('accepts distinct variable names', async () => {
+        await expectFilters(
+          [
+            variableFilter({ variableName: 'service' }),
+            variableFilter({ variableName: 'environment' }),
+          ],
+          200,
+        );
+      });
+
+      // A caller that never enabled the feature must not be blocked by this
+      // rule. `variableName` goes with the flag: a filter that is not
+      // variable-enabled may not carry one (see the field-gating tests below).
+      it('accepts duplicate names when the filters are not variable-enabled', async () => {
+        await expectFilters(
+          [
+            variableFilter({
+              isVariableEnabled: false,
+              variableName: undefined,
+            }),
+            variableFilter({
+              isVariableEnabled: undefined,
+              variableName: undefined,
+            }),
+          ],
+          200,
+        );
+      });
+
+      it('accepts identically named filters that carry no variable fields', async () => {
+        const legacyFilter = {
+          isVariableEnabled: undefined,
+          variableName: undefined,
+        };
+        await expectFilters(
+          [variableFilter(legacyFilter), variableFilter(legacyFilter)],
+          200,
+        );
+      });
+
+      // `variableName` is optional in the schema, so without this check a caller
+      // could enable variables on a filter whose name yields no derivable token and
+      // persist a variable no tile could reference.
+      it('rejects a variable-enabled filter with no usable variable name', async () => {
+        await expectFilters(
+          [variableFilter({ name: '环境', variableName: undefined })],
+          400,
+        );
+      });
+
+      it('accepts an unusable filter name when an explicit variable name is sent', async () => {
+        await expectFilters(
+          [variableFilter({ name: '环境', variableName: 'env' })],
+          200,
+        );
+      });
+
+      it('accepts an unusable filter name when the filter is not variable-enabled', async () => {
+        await expectFilters(
+          [
+            variableFilter({
+              name: '环境',
+              variableName: undefined,
+              isVariableEnabled: false,
+            }),
+          ],
+          200,
+        );
+      });
+    });
+
+    describe('filter requires at least one mode', () => {
+      it('rejects a filter with both modes off', async () => {
+        const response = await sendFilters([
+          filterInput({ isBroadcastEnabled: false, isVariableEnabled: false }),
+        ]);
+
+        expect(response.status).toBe(400);
+        // Quote-free slice of the message: the body nests a serialized error,
+        // so the quotes around the filter name come back re-escaped.
+        expect(JSON.stringify(response.body)).toContain(
+          'must broadcast its value, be available as a variable, or both',
+        );
+      });
+
+      it('treats an omitted variable flag as off', async () => {
+        const response = await sendFilters([
+          filterInput({ isBroadcastEnabled: false }),
+        ]);
+
+        expect(response.status).toBe(400);
+      });
+
+      it('accepts broadcast-only and variable-only filters', async () => {
+        const response = await sendFilters([
+          filterInput({ isBroadcastEnabled: true, isVariableEnabled: false }),
+          filterInput({
+            isBroadcastEnabled: false,
+            isVariableEnabled: true,
+            variableName: 'service',
+          }),
+        ]);
+
+        expect(response.status).toBe(200);
+      });
+
+      // Backwards compatibility: a missing `isBroadcastEnabled` reads as
+      // enabled, so a caller that never sends the field cannot be rejected.
+      it('accepts a filter that carries neither flag', async () => {
+        const response = await sendFilters([filterInput()]);
+
+        expect(response.status).toBe(200);
+        expect(response.body.data.filters[0]).not.toHaveProperty(
+          'isBroadcastEnabled',
+        );
+      });
+    });
+
+    describe('filter fields are gated on the mode that uses them', () => {
+      it('rejects a variableName on a filter that is not variable-enabled', async () => {
+        const response = await sendFilters([
+          filterInput({ isVariableEnabled: false, variableName: 'service' }),
+        ]);
+
+        expect(response.status).toBe(400);
+        expect(JSON.stringify(response.body)).toContain(
+          'sets variableName but is not available as a variable',
+        );
+      });
+
+      it('rejects a variableName when the variable flag is omitted', async () => {
+        const response = await sendFilters([
+          filterInput({ variableName: 'service' }),
+        ]);
+
+        expect(response.status).toBe(400);
+      });
+
+      it('rejects appliesToSourceIds on a filter that does not broadcast', async () => {
+        const response = await sendFilters([
+          filterInput({
+            isBroadcastEnabled: false,
+            isVariableEnabled: true,
+            variableName: 'service',
+            appliesToSourceIds: [traceSource._id.toString()],
+          }),
+        ]);
+
+        expect(response.status).toBe(400);
+        expect(JSON.stringify(response.body)).toContain(
+          'sets appliesToSourceIds but does not broadcast its value',
+        );
+      });
+
+      // An empty array is what "applies to all tiles" looks like, so it
+      // restricts nothing and cannot contradict a disabled broadcast.
+      it('accepts an empty appliesToSourceIds on a non-broadcasting filter', async () => {
+        const response = await sendFilters([
+          filterInput({
+            isBroadcastEnabled: false,
+            isVariableEnabled: true,
+            variableName: 'service',
+            appliesToSourceIds: [],
+          }),
+        ]);
+
+        expect(response.status).toBe(200);
+      });
+
+      it('accepts appliesToSourceIds when the broadcast flag is omitted', async () => {
+        const response = await sendFilters([
+          filterInput({
+            appliesToSourceIds: [traceSource._id.toString()],
+          }),
+        ]);
+
+        expect(response.status).toBe(200);
+      });
+    });
+
+    describe('static-list filters', () => {
+      const staticFilterInput = (overrides = {}) => ({
+        id: new ObjectId().toString(),
+        type: 'STATIC_LIST' as const,
+        name: 'Environment',
+        options: ['prod', 'staging', 'dev'],
+        isBroadcastEnabled: false,
+        isVariableEnabled: true,
+        variableName: 'env',
+        ...overrides,
+      });
+
+      it('accepts a static-list filter and round-trips it through GET', async () => {
+        const response = await sendFilters([staticFilterInput()]);
+        expect(response.status).toBe(200);
+
+        const [filter] = response.body.data.filters;
+        expect(filter).toMatchObject({
+          type: 'STATIC_LIST',
+          name: 'Environment',
+          // Author order, not sorted.
+          options: ['prod', 'staging', 'dev'],
+          isBroadcastEnabled: false,
+          isVariableEnabled: true,
+          variableName: 'env',
+        });
+        // A sourceless filter emits no `sourceId` key at all rather than a
+        // null one, so the response body can be PUT straight back.
+        expect(filter).not.toHaveProperty('sourceId');
+        expect(filter).not.toHaveProperty('expression');
+
+        const getResponse = await authRequest(
+          'get',
+          `${BASE_URL}/${response.body.data.id}`,
+        ).expect(200);
+        expect(getResponse.body.data.filters).toEqual(
+          response.body.data.filters,
+        );
+      });
+
+      it('accepts a static filter alongside a queried one', async () => {
+        const response = await sendFilters([
+          filterInput(),
+          staticFilterInput(),
+        ]);
+
+        expect(response.status).toBe(200);
+        expect(response.body.data.filters).toHaveLength(2);
+      });
+
+      // Each mode flag accepts exactly one value, so omitting it fills that
+      // value in rather than falling back to the queried filter's defaults.
+      it('defaults the mode flags when they are omitted', async () => {
+        const response = await sendFilters([
+          staticFilterInput({
+            isBroadcastEnabled: undefined,
+            isVariableEnabled: undefined,
+          }),
+        ]);
+
+        expect(response.status).toBe(200);
+        expect(response.body.data.filters[0]).toMatchObject({
+          isBroadcastEnabled: false,
+          isVariableEnabled: true,
+          variableName: 'env',
+        });
+      });
+
+      it.each([
+        ['broadcast enabled', { isBroadcastEnabled: true }],
+        ['not variable-enabled', { isVariableEnabled: false }],
+        ['no options', { options: undefined }],
+        ['an empty option list', { options: [] }],
+        ['duplicate options', { options: ['prod', 'prod'] }],
+      ])('rejects a static filter with %s', async (_label, overrides) => {
+        const response = await sendFilters([staticFilterInput(overrides)]);
+
+        expect(response.status).toBe(400);
+      });
+
+      // Unlike the internal variants, which strip them, the external ones are
+      // strict: a field belonging to the other variant is an unrecognized key,
+      // named in the error.
+      it.each([
+        ['an expression', { expression: 'ServiceName' }],
+        ['a sourceId', { sourceId: '65f5e4a3b9e77c001a111111' }],
+        ['a where clause', { where: "ServiceName = 'api'" }],
+        ['a where language', { whereLanguage: 'sql' }],
+        [
+          'applies-to sources',
+          { appliesToSourceIds: ['65f5e4a3b9e77c001a111111'] },
+        ],
+      ])('rejects a static filter carrying %s', async (_label, overrides) => {
+        const response = await sendFilters([staticFilterInput(overrides)]);
+
+        expect(response.status).toBe(400);
+        expect(JSON.stringify(response.body)).toContain(
+          `Unrecognized key(s) in object: '${Object.keys(overrides)[0]}'`,
+        );
+      });
+
+      it('rejects options on a queried filter', async () => {
+        const response = await sendFilters([
+          filterInput({ options: ['prod'] }),
+        ]);
+
+        expect(response.status).toBe(400);
+        expect(JSON.stringify(response.body)).toContain(
+          "Unrecognized key(s) in object: 'options'",
+        );
+      });
+
+      it.each(['expression', 'sourceId'])(
+        'still rejects a queried filter with no %s',
+        async field => {
+          const response = await sendFilters([
+            filterInput({ [field]: undefined }),
+          ]);
+
+          expect(response.status).toBe(400);
+          expect(JSON.stringify(response.body)).toContain(field);
+        },
+      );
+
+      // A bogus type must not fall through to either variant.
+      it('rejects an unknown filter type at the discriminator', async () => {
+        const response = await sendFilters([
+          staticFilterInput({ type: 'STATIC' }),
+        ]);
+
+        expect(response.status).toBe(400);
+        expect(JSON.stringify(response.body)).toContain(
+          'Invalid discriminator value',
+        );
+      });
+    });
+
+    describe('promql-label filters', () => {
+      const promqlFilterInput = (overrides = {}) => ({
+        id: new ObjectId().toString(),
+        type: 'PROMETHEUS_LABEL' as const,
+        name: 'Pod',
+        sourceId: promqlSource._id.toString(),
+        label: 'pod',
+        isBroadcastEnabled: false,
+        isVariableEnabled: true,
+        variableName: 'pod',
+        ...overrides,
+      });
+
+      it('accepts a promql-label filter and round-trips it through GET', async () => {
+        const response = await sendFilters([promqlFilterInput()]);
+        expect(response.status).toBe(200);
+
+        const [filter] = response.body.data.filters;
+        expect(filter).toMatchObject({
+          type: 'PROMETHEUS_LABEL',
+          name: 'Pod',
+          sourceId: promqlSource._id.toString(),
+          label: 'pod',
+          isBroadcastEnabled: false,
+          isVariableEnabled: true,
+          variableName: 'pod',
+        });
+        // Stored internally as `source`; only `sourceId` is ever external.
+        expect(filter).not.toHaveProperty('source');
+        expect(filter).not.toHaveProperty('expression');
+
+        const getResponse = await authRequest(
+          'get',
+          `${BASE_URL}/${response.body.data.id}`,
+        ).expect(200);
+        expect(getResponse.body.data.filters).toEqual(
+          response.body.data.filters,
+        );
+      });
+
+      // Prometheus 3 allows UTF-8 label names, and a ClickHouse-backed source's
+      // tags hold whatever the collector ingested.
+      it('accepts a dotted OTel-shaped label', async () => {
+        const response = await sendFilters([
+          promqlFilterInput({ label: 'k8s.pod.name' }),
+        ]);
+
+        expect(response.status).toBe(200);
+        expect(response.body.data.filters[0].label).toBe('k8s.pod.name');
+      });
+
+      // Each mode flag accepts exactly one value, so omitting it fills that
+      // value in rather than falling back to the queried filter's defaults.
+      it('defaults the mode flags when they are omitted', async () => {
+        const response = await sendFilters([
+          promqlFilterInput({
+            isBroadcastEnabled: undefined,
+            isVariableEnabled: undefined,
+          }),
+        ]);
+
+        expect(response.status).toBe(200);
+        expect(response.body.data.filters[0]).toMatchObject({
+          isBroadcastEnabled: false,
+          isVariableEnabled: true,
+          variableName: 'pod',
+        });
+      });
+
+      // Resolving one of these reads the source's connection and db/table,
+      // which only a PromQL source carries. Mirrors the heatmap/formula gates.
+      it('rejects a source of the wrong kind', async () => {
+        const response = await sendFilters([
+          promqlFilterInput({ sourceId: traceSource._id.toString() }),
+        ]);
+
+        expect(response.status).toBe(400);
+        expect(JSON.stringify(response.body)).toContain(
+          `PROMETHEUS_LABEL filters require a PromQL source. The following source IDs are not PromQL sources: ${traceSource._id.toString()}`,
+        );
+      });
+
+      it('rejects a source that does not exist for the team', async () => {
+        const sourceId = new ObjectId().toString();
+        const response = await sendFilters([promqlFilterInput({ sourceId })]);
+
+        expect(response.status).toBe(400);
+        expect(JSON.stringify(response.body)).toContain(
+          `Could not find the following source IDs: ${sourceId}`,
+        );
+      });
+
+      it.each([
+        ['broadcast enabled', { isBroadcastEnabled: true }],
+        ['not variable-enabled', { isVariableEnabled: false }],
+        ['no label', { label: undefined }],
+        ['an empty label', { label: '' }],
+        ['no sourceId', { sourceId: undefined }],
+      ])('rejects a promql-label filter with %s', async (_label, overrides) => {
+        const response = await sendFilters([promqlFilterInput(overrides)]);
+
+        expect(response.status).toBe(400);
+      });
+
+      it.each([
+        ['an expression', { expression: 'ServiceName' }],
+        ['an option list', { options: ['prod'] }],
+        ['a source', { source: '65f5e4a3b9e77c001a111111' }],
+        [
+          'applies-to sources',
+          { appliesToSourceIds: ['65f5e4a3b9e77c001a111111'] },
+        ],
+      ])(
+        'rejects a promql-label filter carrying %s',
+        async (_label, overrides) => {
+          const response = await sendFilters([promqlFilterInput(overrides)]);
+
+          expect(response.status).toBe(400);
+          expect(JSON.stringify(response.body)).toContain(
+            `Unrecognized key(s) in object: '${Object.keys(overrides)[0]}'`,
+          );
+        },
+      );
+
+      it('rejects a label on a queried filter', async () => {
+        const response = await sendFilters([filterInput({ label: 'pod' })]);
+
+        expect(response.status).toBe(400);
+        expect(JSON.stringify(response.body)).toContain(
+          "Unrecognized key(s) in object: 'label'",
+        );
+      });
+    });
+  });
+
   describe('Number tile color (HDX-1360)', () => {
     // Minimal builder number tile; callers supply color / colorRules. The
     // payload is sent through `.send()` (untyped) so negative tests can post
@@ -5537,6 +6336,290 @@ describe('External API v2 Dashboards - new format', () => {
     it('round-trips a builder number tile with no background chart', async () => {
       const create = await postTile({}).expect(200);
       expect(create.body.data.tiles[0].config.backgroundChart).toBeUndefined();
+    });
+  });
+
+  describe('Chart formulas', () => {
+    // Two metric operand series (A, B) — the shape the formula grammar
+    // references by position. Payloads go through `.send()` (untyped) so
+    // negative tests can post intentionally invalid values.
+    const metricSelect = () => [
+      {
+        aggFn: 'max',
+        valueExpression: 'Value',
+        metricType: 'gauge',
+        metricName: 'test.errors',
+        alias: 'Errors',
+        where: '',
+      },
+      {
+        aggFn: 'max',
+        valueExpression: 'Value',
+        metricType: 'gauge',
+        metricName: 'test.requests',
+        alias: 'Requests',
+        where: '',
+      },
+    ];
+
+    const formulaTile = (config: Record<string, unknown>) => ({
+      name: 'Formula tile',
+      x: 0,
+      y: 0,
+      w: 6,
+      h: 3,
+      config: {
+        displayType: 'line',
+        sourceId: metricSource._id.toString(),
+        select: metricSelect(),
+        ...config,
+      },
+    });
+
+    const postTile = (config: Record<string, unknown>) =>
+      authRequest('post', BASE_URL).send({
+        name: 'Formula dashboard',
+        tiles: [formulaTile(config)],
+        tags: [],
+      });
+
+    // ── Positive: round-trips per display type ──────────────────────────
+
+    it('round-trips a line tile with formulas and showOperandSeries', async () => {
+      const formulas = [
+        {
+          expression: 'A / B * 100',
+          alias: 'Error rate %',
+          numberFormat: { output: 'percent', mantissa: 1 },
+        },
+      ];
+      const create = await postTile({
+        formulas,
+        showOperandSeries: false,
+      }).expect(200);
+      expect(create.body.data.tiles[0].config.formulas).toEqual(formulas);
+      expect(create.body.data.tiles[0].config.showOperandSeries).toBe(false);
+
+      const get = await authRequest(
+        'get',
+        `${BASE_URL}/${create.body.data.id}`,
+      ).expect(200);
+      expect(get.body.data.tiles[0].config.formulas).toEqual(formulas);
+      expect(get.body.data.tiles[0].config.showOperandSeries).toBe(false);
+    });
+
+    it('round-trips a table tile with formulas', async () => {
+      const formulas = [{ expression: 'A + B', alias: 'Combined' }];
+      const create = await postTile({
+        displayType: 'table',
+        formulas,
+      }).expect(200);
+      expect(create.body.data.tiles[0].config.formulas).toEqual(formulas);
+
+      const get = await authRequest(
+        'get',
+        `${BASE_URL}/${create.body.data.id}`,
+      ).expect(200);
+      expect(get.body.data.tiles[0].config.formulas).toEqual(formulas);
+    });
+
+    it('round-trips a number tile with multiple operands and one formula', async () => {
+      const formulas = [{ expression: 'A / B * 100', alias: 'Error rate %' }];
+      const create = await postTile({
+        displayType: 'number',
+        formulas,
+      }).expect(200);
+      const config = create.body.data.tiles[0].config;
+      expect(config.formulas).toEqual(formulas);
+      // Every operand select item survives (formulas reference them by
+      // position); operands are always hidden on number tiles, persisted
+      // internally rather than exposed on the external surface.
+      expect(config.select).toHaveLength(2);
+      expect(config.showOperandSeries).toBeUndefined();
+
+      const get = await authRequest(
+        'get',
+        `${BASE_URL}/${create.body.data.id}`,
+      ).expect(200);
+      expect(get.body.data.tiles[0].config.formulas).toEqual(formulas);
+      expect(get.body.data.tiles[0].config.select).toHaveLength(2);
+
+      // The internal saved config is self-describing about hidden operands.
+      const saved = await Dashboard.findById(create.body.data.id).lean();
+      const savedConfig = saved!.tiles[0].config;
+      expect(
+        isBuilderSavedChartConfig(savedConfig) && savedConfig.showOperandSeries,
+      ).toBe(false);
+    });
+
+    it('round-trips formulas through an update (PUT)', async () => {
+      const created = await postTile({}).expect(200);
+      const dashboardId = created.body.data.id;
+      const tile = created.body.data.tiles[0];
+
+      const formulas = [{ expression: 'B / A', alias: 'Inverse' }];
+      const update = await authRequest('put', `${BASE_URL}/${dashboardId}`)
+        .send({
+          name: 'Formula dashboard',
+          tiles: [{ ...tile, config: { ...tile.config, formulas } }],
+          tags: [],
+        })
+        .expect(200);
+      expect(update.body.data.tiles[0].config.formulas).toEqual(formulas);
+
+      const get = await authRequest('get', `${BASE_URL}/${dashboardId}`).expect(
+        200,
+      );
+      expect(get.body.data.tiles[0].config.formulas).toEqual(formulas);
+    });
+
+    // ── Negative: one per validation rule ───────────────────────────────
+
+    it('rejects a formula referencing a series the tile does not have', async () => {
+      const res = await postTile({
+        formulas: [{ expression: 'A / C' }],
+      }).expect(400);
+      expect(res.body.message).toContain('tiles.0.config.formulas.0');
+      expect(res.body.message).toContain('Unknown series "C"');
+    });
+
+    it('rejects a malformed formula expression', async () => {
+      const res = await postTile({
+        formulas: [{ expression: 'A +' }],
+      }).expect(400);
+      expect(res.body.message).toContain('tiles.0.config.formulas.0');
+    });
+
+    it('rejects formulas combined with asRatio', async () => {
+      const res = await postTile({
+        formulas: [{ expression: 'A / B' }],
+        asRatio: true,
+      }).expect(400);
+      expect(res.body.message).toContain('asRatio');
+    });
+
+    it('rejects multiple formulas on a number tile', async () => {
+      const res = await postTile({
+        displayType: 'number',
+        formulas: [{ expression: 'A / B' }, { expression: 'A + B' }],
+      }).expect(400);
+      expect(res.body.message).toContain(
+        'Number charts support a single formula',
+      );
+    });
+
+    it('rejects multiple select items on a number tile without formulas', async () => {
+      const res = await postTile({ displayType: 'number' }).expect(400);
+      expect(res.body.message).toContain(
+        'Number tiles support a single select item',
+      );
+    });
+
+    it('round-trips formulas on a log/trace event source', async () => {
+      // Event-source formulas are accepted and round-trip just like
+      // metric formulas.
+      const formulas = [{ expression: 'A / B * 100', alias: 'Error rate %' }];
+      const create = await postTile({
+        sourceId: traceSource._id.toString(),
+        select: [
+          { aggFn: 'count', where: 'StatusCode:Error', alias: 'Errors' },
+          { aggFn: 'count', where: '', alias: 'Total' },
+        ],
+        formulas,
+        showOperandSeries: false,
+      }).expect(200);
+      expect(create.body.data.tiles[0].config.formulas).toEqual(formulas);
+      expect(create.body.data.tiles[0].config.showOperandSeries).toBe(false);
+
+      const get = await authRequest(
+        'get',
+        `${BASE_URL}/${create.body.data.id}`,
+      ).expect(200);
+      expect(get.body.data.tiles[0].config.formulas).toEqual(formulas);
+      expect(get.body.data.tiles[0].config.showOperandSeries).toBe(false);
+    });
+
+    it('rejects formulas on a formula-incapable source kind (session)', async () => {
+      const sessionSource = await Source.create({
+        kind: SourceKind.Session,
+        team: team._id,
+        from: {
+          databaseName: DEFAULT_DATABASE,
+          tableName: 'rrweb_events',
+        },
+        timestampValueExpression: 'Timestamp',
+        traceSourceId: traceSource._id.toString(),
+        connection: connection._id,
+        name: 'Sessions',
+      });
+
+      const res = await postTile({
+        sourceId: sessionSource._id.toString(),
+        select: [
+          { aggFn: 'count', where: '', alias: 'A' },
+          { aggFn: 'count', where: '', alias: 'B' },
+        ],
+        formulas: [{ expression: 'A / B' }],
+      }).expect(400);
+      expect(res.body.message).toContain(
+        'require a Metric, Log, or Trace source',
+      );
+    });
+
+    it('does not block updates over an unchanged formula tile whose source kind changed', async () => {
+      // Accept a formula tile on a metric source, then flip the source's
+      // kind to a formula-incapable one out from under it. Mirroring the
+      // heatmap gate, an update that leaves the tile untouched must not be
+      // rejected — only changes to the tile's formulas/source re-enter the
+      // gate.
+      const created = await postTile({
+        formulas: [{ expression: 'A / B', alias: 'Rate' }],
+      }).expect(200);
+      const dashboardId = created.body.data.id;
+      const tile = created.body.data.tiles[0];
+
+      // `kind` is the Mongoose discriminator key, which updateOne silently
+      // strips from $set — write through the raw collection instead, the
+      // same way a source-replace API call would leave the doc.
+      await Source.collection.updateOne(
+        { _id: metricSource._id },
+        { $set: { kind: SourceKind.Session } },
+      );
+
+      // Unrelated edit (rename) resubmitting the unchanged tile: accepted.
+      await authRequest('put', `${BASE_URL}/${dashboardId}`)
+        .send({ name: 'Renamed formula dashboard', tiles: [tile], tags: [] })
+        .expect(200);
+
+      // Changing the tile's formulas re-enters the gate: rejected.
+      const res = await authRequest('put', `${BASE_URL}/${dashboardId}`)
+        .send({
+          name: 'Renamed formula dashboard',
+          tiles: [
+            {
+              ...tile,
+              config: {
+                ...tile.config,
+                formulas: [{ expression: 'B / A', alias: 'Inverse' }],
+              },
+            },
+          ],
+          tags: [],
+        })
+        .expect(400);
+      expect(res.body.message).toContain(
+        'require a Metric, Log, or Trace source',
+      );
+    });
+
+    // ── Backward compatibility: formulas are opt-in ─────────────────────
+
+    it('round-trips a multi-series metric tile with no formulas', async () => {
+      const create = await postTile({}).expect(200);
+      expect(create.body.data.tiles[0].config.formulas).toBeUndefined();
+      expect(
+        create.body.data.tiles[0].config.showOperandSeries,
+      ).toBeUndefined();
     });
   });
 
@@ -6292,6 +7375,108 @@ describe('External API v2 Dashboards - new format', () => {
       const [returnedTile] = getResp.body.data.tiles;
       expect(returnedTile.containerId).toBe('real');
       expect(returnedTile.tabId).toBeUndefined();
+    });
+  });
+
+  describe('savedFilterValues', () => {
+    const sqlValue = { type: 'sql', condition: "Env IN ('prod')" };
+    const variableValue = {
+      type: 'variable',
+      name: 'svc',
+      values: ['accounting', 'frontend'],
+    };
+
+    it('should persist and return a variable-keyed value verbatim', async () => {
+      const response = await authRequest('post', BASE_URL)
+        .send(
+          createMockDashboard(traceSource._id.toString(), {
+            savedFilterValues: [variableValue],
+          }),
+        )
+        .expect(200);
+
+      expect(response.body.data.savedFilterValues).toEqual([variableValue]);
+
+      const dashboardInDb = await Dashboard.findById(
+        response.body.data.id,
+      ).lean();
+      expect(dashboardInDb?.savedFilterValues).toEqual([variableValue]);
+    });
+
+    it('should accept a variable-keyed value with no values selected', async () => {
+      const emptySelection = { type: 'variable', name: 'svc', values: [] };
+      const response = await authRequest('post', BASE_URL)
+        .send(
+          createMockDashboard(traceSource._id.toString(), {
+            savedFilterValues: [emptySelection],
+          }),
+        )
+        .expect(200);
+
+      expect(response.body.data.savedFilterValues).toEqual([emptySelection]);
+    });
+
+    // The regression this format change exists to prevent: GET returns whatever
+    // is stored, so a write schema that only accepted the sql shape would make a
+    // dashboard holding a variable value un-updatable by echoing its own body.
+    it('should accept a mixed array echoed straight back from GET', async () => {
+      const created = await authRequest('post', BASE_URL)
+        .send(
+          createMockDashboardWithIds(traceSource._id.toString(), {
+            savedFilterValues: [sqlValue, variableValue],
+          }),
+        )
+        .expect(200);
+
+      const fetched = await authRequest(
+        'get',
+        `${BASE_URL}/${created.body.data.id}`,
+      ).expect(200);
+      expect(fetched.body.data.savedFilterValues).toEqual([
+        sqlValue,
+        variableValue,
+      ]);
+
+      const echoed = await authRequest(
+        'put',
+        `${BASE_URL}/${created.body.data.id}`,
+      )
+        .send(fetched.body.data)
+        .expect(200);
+      expect(echoed.body.data.savedFilterValues).toEqual([
+        sqlValue,
+        variableValue,
+      ]);
+    });
+
+    it('should return 400 for a variable-keyed value missing name', async () => {
+      await authRequest('post', BASE_URL)
+        .send(
+          createMockDashboard(traceSource._id.toString(), {
+            savedFilterValues: [{ type: 'variable', values: ['a'] }],
+          }),
+        )
+        .expect(400);
+    });
+
+    it('should return 400 for a variable-keyed value missing values', async () => {
+      await authRequest('post', BASE_URL)
+        .send(
+          createMockDashboard(traceSource._id.toString(), {
+            savedFilterValues: [{ type: 'variable', name: 'svc' }],
+          }),
+        )
+        .expect(400);
+    });
+
+    it('should return 400 for an unknown saved filter value type', async () => {
+      await authRequest('post', BASE_URL)
+        .send(
+          createMockDashboard(traceSource._id.toString(), {
+            savedFilterValues: [{ type: 'nonsense', name: 'svc', values: [] }],
+          }),
+        )
+        .expect(400);
     });
   });
 

@@ -55,7 +55,7 @@
     "release": "npx changeset publish --no-git-tag && npx changeset tag"
   },
   "lint-staged": {
-    "packages/api/src/routers/external-api/**/*.ts": [
+    "packages/api/src/{routers/external-api/**/*.ts,utils/swagger.ts}": [
       "prettier --write --ignore-unknown",
       "eslint --flag v10_config_lookup_from_file --fix --quiet",
       "sh -c 'cd packages/api && yarn run lint:openapi && git add openapi.json'"

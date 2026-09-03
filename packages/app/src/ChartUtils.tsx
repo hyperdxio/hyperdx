@@ -36,6 +36,7 @@ import {
   TMetricSource,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
+import { substituteChartConfigVariables } from '@hyperdx/common-utils/dist/variables';
 import { notifications } from '@mantine/notifications';
 
 import DateRangeIndicator from './components/charts/DateRangeIndicator';
@@ -197,6 +198,33 @@ export function useTimeChartSettings(
 
 export const ChartKeyJoiner = ' · ';
 const PreviousPeriodSuffix = ' (previous)';
+
+/**
+ * Finds the color of the series a group value belongs to — e.g. the color of
+ * the `checkout-service` line on a chart grouped by service name.
+ *
+ * Series keys are the group values joined by `ChartKeyJoiner`, prefixed by the
+ * value column name when the chart has more than one, so the group value is
+ * matched against the key's components rather than the whole key. Previous
+ * period series are skipped; they mirror a current period series' color.
+ *
+ * Used to tint chart annotations (release markers) to match the series they
+ * describe, so a marker for one service can't be read as another's.
+ */
+export function getSeriesColorForGroup(
+  lineData: LineData[],
+  group: string,
+): string | undefined {
+  for (const line of lineData) {
+    if (line.isDashed) {
+      continue;
+    }
+    if (line.currentPeriodKey.split(ChartKeyJoiner).includes(group)) {
+      return line.color;
+    }
+  }
+  return undefined;
+}
 
 // Note: roundToNearestMinutes is broken in date-fns currently
 // additionally it doesn't support seconds or > 30min
@@ -410,6 +438,11 @@ export const K8S_FILESYSTEM_NUMBER_FORMAT: NumberFormat = {
 
 export const K8S_MEM_NUMBER_FORMAT: NumberFormat = {
   output: 'byte',
+};
+
+export const GPU_UTILIZATION_NUMBER_FORMAT: NumberFormat = {
+  output: 'percent',
+  mantissa: 1,
 };
 
 function inferValueColumns(
@@ -1124,12 +1157,30 @@ export const convertV1ChartConfigToV2 = (
 };
 
 /**
+ * Expand a builder config's variable references, falling back to the config as
+ * written when one of them can't be expanded (a malformed reference, or a macro
+ * naming a variable the dashboard doesn't declare).
+ *
+ * Idempotent: the result carries `variables: undefined`, so expanding again at
+ * an inner layer is a no-op.
+ */
+export function tryExpandConfigVariables<
+  T extends Parameters<typeof substituteChartConfigVariables>[0],
+>(config: T): T {
+  try {
+    return substituteChartConfigVariables(config);
+  } catch {
+    return config;
+  }
+}
+
+/**
  * Build search URL for viewing events based on group-by values
  * Used by both chart clicks and table row clicks
  */
 export function buildEventsSearchUrl({
   source,
-  config,
+  config: rawConfig,
   dateRange,
   groupFilters,
   valueRangeFilter,
@@ -1143,6 +1194,13 @@ export function buildEventsSearchUrl({
   if (!source?.id) {
     return null;
   }
+
+  // The destination page has no variable machinery, so every expression must be
+  // final SQL/Lucene before it goes in the URL.
+  const config = tryExpandConfigVariables({
+    ...rawConfig,
+    whereLanguage: rawConfig.whereLanguage || 'lucene',
+  });
 
   const isMetricChart = isMetricChartConfig(config);
   if (isMetricChart) {
@@ -1301,7 +1359,7 @@ function extractGroupColumns(
 export function buildTableRowSearchUrl({
   row,
   source,
-  config,
+  config: rawConfig,
   dateRange,
 }: {
   row: Record<string, any>;
@@ -1312,6 +1370,10 @@ export function buildTableRowSearchUrl({
   if (!source?.id) {
     return null;
   }
+
+  // The row keys are result-set column names, so they're already expanded — the
+  // group-by expressions have to be expanded here to match them.
+  const config = tryExpandConfigVariables(rawConfig);
 
   // Extract group-by column names and build filters from row values
   const groupFilters: Array<{ column: string; value: any }> = [];

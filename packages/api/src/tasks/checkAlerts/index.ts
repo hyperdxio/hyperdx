@@ -24,6 +24,7 @@ import {
   isTimeSeriesDisplayType,
 } from '@hyperdx/common-utils/dist/core/utils';
 import { timeBucketByGranularity } from '@hyperdx/common-utils/dist/core/utils';
+import { getDashboardVariableDeclarations } from '@hyperdx/common-utils/dist/filters';
 import {
   isBuilderChartConfig,
   isBuilderSavedChartConfig,
@@ -32,13 +33,16 @@ import {
   isRawSqlSavedChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
 import {
+  ALERT_NOTIFICATION_TARGETS_LIMIT,
   AlertErrorType,
+  AlertNotificationTargetTiming,
   AlertThresholdType,
   BuilderChartConfigWithOptDateRange,
   ChartConfigWithOptDateRange,
   DisplayType,
   getSampleWeightExpression,
   pickSampleWeightExpressionProps,
+  SavedChartConfig,
   SourceKind,
 } from '@hyperdx/common-utils/dist/types';
 import * as fns from 'date-fns';
@@ -51,13 +55,21 @@ import { serializeError } from 'serialize-error';
 
 import { ALERT_HISTORY_QUERY_CONCURRENCY } from '@/controllers/alertHistory';
 import { AlertState, IAlert, IAlertError } from '@/models/alert';
-import AlertHistory, { IAlertHistory } from '@/models/alertHistory';
+import AlertHistory, {
+  IAlertHistory,
+  IAlertHistoryAnalytics,
+} from '@/models/alertHistory';
 import { IDashboard } from '@/models/dashboard';
 import { ISavedSearch } from '@/models/savedSearch';
 import { ISource } from '@/models/source';
 import { IWebhook } from '@/models/webhook';
 import {
+  isClientTimeoutOrAbortError,
+  isQueryTimeoutError,
+  NotificationCapExceededError,
+  UnsupportedMentionError,
   WEBHOOK_REDIRECT_ERROR_MESSAGE,
+  WebhookNotFoundError,
   WebhookRedirectError,
 } from '@/tasks/checkAlerts/errors';
 import {
@@ -70,9 +82,12 @@ import {
 import {
   AlertMessageTemplateDefaultView,
   buildAlertMessageTemplateTitle,
-  handleSendGenericWebhook,
+  NotificationFailure,
+  NotificationTiming,
   renderAlertTemplate,
+  RenderedAlert,
 } from '@/tasks/checkAlerts/template';
+import { handleSendGenericWebhook } from '@/tasks/checkAlerts/transports';
 import { tasksTracer } from '@/tasks/tracer';
 import { CheckAlertsTaskArgs, HdxTask } from '@/tasks/types';
 import {
@@ -84,7 +99,9 @@ import {
   getCounter,
   type OperationOutcome,
   recordOperationOutcome,
+  setBusinessContext,
   SpanStatusCode,
+  withSpan,
 } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
 
@@ -113,18 +130,31 @@ const alertBatchFailuresCounter = getCounter('hyperdx.alerts.batch_failures', {
 /**
  * Determine if an alert has group-by behavior.
  * For saved search alerts, groupBy is on alert.groupBy.
- * For tile alerts, groupBy is on tile.config.groupBy.
+ * For tile and inline alerts, groupBy is on the chart config.
  */
 export const alertHasGroupBy = (details: AlertDetails): boolean => {
   const { alert } = details;
   if (alert.groupBy && alert.groupBy.length > 0) {
     return true;
   }
+
+  // AlertChartConfig members are the tile config types minus the embedded
+  // alert field, so they're assignable to SavedChartConfig (which the
+  // chart-config guards narrow on).
+  const savedConfig: SavedChartConfig | undefined =
+    details.taskType === AlertTaskType.TILE
+      ? details.tile.config
+      : details.taskType === AlertTaskType.INLINE
+        ? details.chartConfig
+        : undefined;
+  if (savedConfig == null) {
+    return false;
+  }
+
   if (
-    details.taskType === AlertTaskType.TILE &&
-    isBuilderSavedChartConfig(details.tile.config) &&
-    details.tile.config.groupBy &&
-    details.tile.config.groupBy.length > 0
+    isBuilderSavedChartConfig(savedConfig) &&
+    savedConfig.groupBy &&
+    savedConfig.groupBy.length > 0
   ) {
     return true;
   }
@@ -133,11 +163,8 @@ export const alertHasGroupBy = (details: AlertDetails): boolean => {
   // group by (besides the group by on the interval), so we'll assume it might
   // in the case of time series charts, and assume it will not in the case of number charts.
   // Group name will just be blank if there are no group by values.
-  if (
-    details.taskType === AlertTaskType.TILE &&
-    isRawSqlSavedChartConfig(details.tile.config)
-  ) {
-    return details.tile.config.displayType !== DisplayType.Number;
+  if (isRawSqlSavedChartConfig(savedConfig)) {
+    return savedConfig.displayType !== DisplayType.Number;
   }
   return false;
 };
@@ -215,6 +242,29 @@ const getErrorMessage = (e: unknown): string => {
   return String(e);
 };
 
+const QUERY_TIMEOUT_RETRY_NOTE =
+  'The evaluation is retried on every check, but the alert will not fire until the query completes in time.';
+
+/**
+ * Build the IAlertError for a failed alert query, classifying timeouts
+ * (client request timeout/abort, server-side TIMEOUT_EXCEEDED, socket
+ * timeouts) separately from other query errors so the message is actionable.
+ */
+const makeQueryAlertError = (
+  e: unknown,
+  requestTimeoutMs: number,
+): IAlertError => {
+  if (!isQueryTimeoutError(e)) {
+    return makeAlertError(AlertErrorType.QUERY_ERROR, getErrorMessage(e));
+  }
+  // For the client's own request timeout we know the configured limit; for
+  // server-side timeouts the original ClickHouse message carries the limit.
+  const message = isClientTimeoutOrAbortError(e)
+    ? `Alert query did not complete within the ${Math.round(requestTimeoutMs / 1000)}s evaluation timeout. ${QUERY_TIMEOUT_RETRY_NOTE}`
+    : `Alert query timed out before completing: ${getErrorMessage(e)}. ${QUERY_TIMEOUT_RETRY_NOTE}`;
+  return makeAlertError(AlertErrorType.QUERY_TIMEOUT, message);
+};
+
 // Most webhook errors show a hardcoded message to avoid leaking sensitive request details in the UI.
 // Redirect errors are a known class of errors which we want to surface to the user, so it has a specific message.
 const makeWebhookAlertError = (error: unknown): IAlertError => {
@@ -227,6 +277,59 @@ const makeWebhookAlertError = (error: unknown): IAlertError => {
   }
 
   return makeAlertError(AlertErrorType.WEBHOOK_ERROR, getErrorMessage(error));
+};
+
+// Per-target variant: names the target so a multi-channel alert's errors are
+// attributable. Two kinds of failure reach here (see renderAlertTemplate):
+// pre-dispatch (unresolvable mention/webhook, the per-event cap) and, for the
+// inline dispatcher, an actual delivery rejection. Raw upstream detail stays
+// hidden (same policy as makeWebhookAlertError); timeout and not-found
+// messages are authored by us.
+const makeNotificationAlertError = (
+  failure: NotificationFailure,
+): IAlertError => {
+  const target = `${failure.type} "${failure.target}"`;
+  const timestamp = new Date();
+  if (failure.error instanceof UnsupportedMentionError) {
+    return {
+      timestamp,
+      type: AlertErrorType.WEBHOOK_ERROR,
+      message: failure.error.message.slice(0, 10000),
+    };
+  }
+  if (failure.error instanceof NotificationCapExceededError) {
+    return {
+      timestamp,
+      type: AlertErrorType.WEBHOOK_ERROR,
+      message: `${failure.error.message} (${target})`.slice(0, 10000),
+    };
+  }
+  if (failure.error instanceof WebhookNotFoundError) {
+    // Name the target like every other branch — with several channels, "a
+    // webhook was deleted" is useless unless it says which one.
+    return {
+      timestamp,
+      type: AlertErrorType.WEBHOOK_ERROR,
+      message: `${failure.error.message} (${target})`.slice(0, 10000),
+    };
+  }
+  if (failure.error instanceof WebhookRedirectError) {
+    return {
+      timestamp,
+      type: AlertErrorType.WEBHOOK_ERROR,
+      message: `${WEBHOOK_REDIRECT_ERROR_MESSAGE} (${target})`.slice(0, 10000),
+    };
+  }
+  // A delivery rejection from the inline dispatcher — the only case left.
+  return {
+    timestamp,
+    type: AlertErrorType.WEBHOOK_ERROR,
+    message:
+      `Failed to send notification to ${target}. Check the webhook configuration and destination.`.slice(
+        0,
+        10000,
+      ),
+  };
 };
 
 export const doesExceedThreshold = (
@@ -406,17 +509,27 @@ const fireChannelEvent = async ({
   totalCount: number;
   windowSizeInMins: number;
   teamWebhooksById: Map<string, IWebhook>;
-}) => {
+}): Promise<Pick<RenderedAlert, 'failures' | 'timings'>> => {
   const team = alert.team;
   if (team == null) {
     throw new Error('Team not found');
   }
+  // alert.team is typed as a bare ObjectId, but a caller that populated it
+  // (int-test setups do `.populate(['team', ...])`; the production path never
+  // does) hands us a full Team document instead — Mongoose documents don't
+  // override toString(), so calling it directly would silently stringify to
+  // "[object Object]" rather than the hex id. Prefer the populated
+  // document's own _id when present.
+  const isPopulatedWithId = (value: unknown): value is { _id: ObjectId } =>
+    typeof value === 'object' && value !== null && '_id' in value;
+  const teamId = (isPopulatedWithId(team) ? team._id : team).toString();
 
   const attributesNested = unflattenObject(attributes);
   const templateView: AlertMessageTemplateDefaultView = {
     alert: {
       id: alert.id,
       channel: alert.channel,
+      channels: alert.channels,
       dashboardId: dashboard?.id,
       groupBy: alert.groupBy,
       interval: alert.interval,
@@ -435,6 +548,9 @@ const fireChannelEvent = async ({
       thresholdMax: alert.thresholdMax,
       thresholdType: alert.thresholdType,
       tileId: alert.tileId,
+      // Inline alerts: the persisted config, used to build the explorer link
+      // and the default notification title.
+      chartConfig: alert.chartConfig,
     },
     attributes: attributesNested,
     dashboard,
@@ -448,7 +564,7 @@ const fireChannelEvent = async ({
     value: totalCount,
   };
 
-  await renderAlertTemplate({
+  const { failures, timings } = await renderAlertTemplate({
     alertProvider,
     clickhouseClient,
     metadata,
@@ -460,8 +576,10 @@ const fireChannelEvent = async ({
     }),
     template: alert.message,
     view: templateView,
+    teamId,
     teamWebhooksById,
   });
+  return { failures, timings };
 };
 
 // Use a delimiter that's unlikely to appear in alert IDs or group names
@@ -567,6 +685,124 @@ const getAlertEvaluationDateRange = (
   );
 };
 
+/**
+ * Assemble the queryable chart config for an alert backed by a saved chart
+ * config — a dashboard tile's config or an inline alert's persisted config.
+ * Shared so tile and inline alerts evaluate identically; only the dashboard
+ * variables differ (inline alerts have no dashboard, so none are declared).
+ */
+const buildAlertChartConfigFromSavedConfig = ({
+  alertId,
+  savedConfig,
+  source,
+  connection,
+  dateRange,
+  windowSizeInMins,
+  variables,
+}: {
+  alertId: string;
+  // AlertChartConfig (an inline alert's persisted config) is assignable here:
+  // its members are the tile config types minus the embedded alert field.
+  savedConfig: SavedChartConfig;
+  source?: ISource;
+  connection: string;
+  dateRange: [Date, Date];
+  windowSizeInMins: number;
+  variables: NonNullable<BuilderChartConfigWithOptDateRange['variables']>;
+}): ChartConfigWithOptDateRange | undefined => {
+  // Raw SQL configs: build a RawSqlChartConfig
+  if (isRawSqlSavedChartConfig(savedConfig)) {
+    if (displayTypeSupportsRawSqlAlerts(savedConfig.displayType)) {
+      return {
+        ...pick(savedConfig, [
+          'configType',
+          'sqlTemplate',
+          'displayType',
+          'source',
+        ]),
+        connection,
+        dateRange,
+        variables,
+        // Only time-series charts use interval bucketing
+        ...(isTimeSeriesDisplayType(savedConfig.displayType) && {
+          granularity: `${windowSizeInMins} minute`,
+        }),
+        // Include source metadata for macro expansion ($__sourceTable)
+        ...(source && {
+          from: source.from,
+          metricTables:
+            source.kind === SourceKind.Metric ? source.metricTables : undefined,
+        }),
+      };
+    }
+    return undefined;
+  }
+
+  // PromQL charts don't support alerts yet
+  if (isPromqlSavedChartConfig(savedConfig)) {
+    return undefined;
+  }
+
+  if (!source) {
+    logger.error({ alertId }, 'Source not found for builder inline alert');
+    return undefined;
+  }
+
+  if (
+    savedConfig.displayType === DisplayType.Line ||
+    savedConfig.displayType === DisplayType.StackedBar ||
+    savedConfig.displayType === DisplayType.Number
+  ) {
+    // Alerts can use Log, Trace, or Metric sources.
+    // implicitColumnExpression+useTextIndexForImplicitColumn exist on Log and Trace sources;
+    // metricTables exists on Metric sources.
+    const implicitColumnExpression =
+      source.kind === SourceKind.Log || source.kind === SourceKind.Trace
+        ? source.implicitColumnExpression
+        : undefined;
+    const useTextIndexForImplicitColumn =
+      source.kind === SourceKind.Log || source.kind === SourceKind.Trace
+        ? source.useTextIndexForImplicitColumn
+        : undefined;
+    const sampleWeightExpression = getSampleWeightExpression(source);
+    const metricTables =
+      source.kind === SourceKind.Metric ? source.metricTables : undefined;
+    return {
+      connection,
+      dateRange,
+      dateRangeStartInclusive: true,
+      dateRangeEndInclusive: false,
+      displayType: savedConfig.displayType,
+      from: source.from,
+      granularity: `${windowSizeInMins} minute`,
+      groupBy: savedConfig.groupBy,
+      implicitColumnExpression,
+      useTextIndexForImplicitColumn,
+      sampleWeightExpression,
+      metricTables,
+      select: savedConfig.select,
+      timestampValueExpression: source.timestampValueExpression,
+      where: savedConfig.where,
+      whereLanguage: savedConfig.whereLanguage,
+      seriesReturnType: savedConfig.seriesReturnType,
+      // Grouped ratios can divide per-group or share-of-total; without this
+      // the alert would silently evaluate the default (per-group) mode.
+      ratioMode: savedConfig.ratioMode,
+      // Metric formulas (HDX-5080): the alert must evaluate the derived
+      // formula column, not a raw operand series. Operand columns are
+      // always dropped from the alert query — regardless of the tile's
+      // "Show input series" display toggle — so the formula is the value
+      // column parseAlertData picks (the last one wins, consistent with
+      // the multi-series "last series drives the alert" semantics).
+      formulas: savedConfig.formulas,
+      ...(savedConfig.formulas?.length ? { showOperandSeries: false } : {}),
+      variables,
+    };
+  }
+
+  return undefined;
+};
+
 const getChartConfigFromAlert = (
   details: AlertDetails,
   connection: string,
@@ -595,90 +831,39 @@ const getChartConfigFromAlert = (
       granularity: `${windowSizeInMins} minute`,
     });
   } else if (details.taskType === AlertTaskType.TILE) {
-    const tile = details.tile;
+    // Substitute empty selections for each variable the dashboard defines
+    const variables = getDashboardVariableDeclarations(
+      details.dashboard.filters,
+    ).map(declaration => ({
+      ...declaration,
+      values: [],
+    }));
 
-    // Raw SQL tiles: build a RawSqlChartConfig
-    if (isRawSqlSavedChartConfig(tile.config)) {
-      if (displayTypeSupportsRawSqlAlerts(tile.config.displayType)) {
-        return {
-          ...pick(tile.config, [
-            'configType',
-            'sqlTemplate',
-            'displayType',
-            'source',
-          ]),
-          connection,
-          dateRange,
-          // Only time-series charts use interval bucketing
-          ...(isTimeSeriesDisplayType(tile.config.displayType) && {
-            granularity: `${windowSizeInMins} minute`,
-          }),
-          // Include source metadata for macro expansion ($__sourceTable)
-          ...(details.source && {
-            from: details.source.from,
-            metricTables:
-              details.source.kind === SourceKind.Metric
-                ? details.source.metricTables
-                : undefined,
-          }),
-        };
-      }
-      return undefined;
+    const config = buildAlertChartConfigFromSavedConfig({
+      alertId: alert.id,
+      savedConfig: details.tile.config,
+      source: details.source,
+      connection,
+      dateRange,
+      windowSizeInMins,
+      variables,
+    });
+    if (config != null) {
+      return config;
     }
-
-    // PromQL tiles don't support alerts yet
-    if (isPromqlSavedChartConfig(tile.config)) {
-      return undefined;
-    }
-
-    const { source } = details;
-    if (!source) {
-      logger.error(
-        { alertId: alert.id },
-        'Source not found for builder tile alert',
-      );
-      return undefined;
-    }
-
-    // Doesn't work for metric alerts yet
-    if (
-      tile.config.displayType === DisplayType.Line ||
-      tile.config.displayType === DisplayType.StackedBar ||
-      tile.config.displayType === DisplayType.Number
-    ) {
-      // Tile alerts can use Log, Trace, or Metric sources.
-      // implicitColumnExpression+useTextIndexForImplicitColumn exist on Log and Trace sources;
-      // metricTables exists on Metric sources.
-      const implicitColumnExpression =
-        source.kind === SourceKind.Log || source.kind === SourceKind.Trace
-          ? source.implicitColumnExpression
-          : undefined;
-      const useTextIndexForImplicitColumn =
-        source.kind === SourceKind.Log || source.kind === SourceKind.Trace
-          ? source.useTextIndexForImplicitColumn
-          : undefined;
-      const sampleWeightExpression = getSampleWeightExpression(source);
-      const metricTables =
-        source.kind === SourceKind.Metric ? source.metricTables : undefined;
-      return {
-        connection,
-        dateRange,
-        dateRangeStartInclusive: true,
-        dateRangeEndInclusive: false,
-        displayType: tile.config.displayType,
-        from: source.from,
-        granularity: `${windowSizeInMins} minute`,
-        groupBy: tile.config.groupBy,
-        implicitColumnExpression,
-        useTextIndexForImplicitColumn,
-        sampleWeightExpression,
-        metricTables,
-        select: tile.config.select,
-        timestampValueExpression: source.timestampValueExpression,
-        where: tile.config.where,
-        whereLanguage: tile.config.whereLanguage,
-        seriesReturnType: tile.config.seriesReturnType,
-      };
+  } else if (details.taskType === AlertTaskType.INLINE) {
+    // Inline alerts have no dashboard, so no variables are declared.
+    const config = buildAlertChartConfigFromSavedConfig({
+      alertId: alert.id,
+      savedConfig: details.chartConfig,
+      source: details.source,
+      connection,
+      dateRange,
+      windowSizeInMins,
+      variables: [],
+    });
+    if (config != null) {
+      return config;
     }
   }
 
@@ -797,6 +982,52 @@ export const processAlert = async (
   // availability SLIs cover every real evaluation regardless of exit point.
   const evalStartedAt = performance.now();
   let evalOutcome: OperationOutcome | 'skipped' = 'success';
+  // Scheduled start of the window being evaluated. Hoisted so the catch
+  // blocks can attribute error history records to the correct window.
+  let evaluationWindowStart: Date | undefined;
+  // Diagnostics persisted on every history record this evaluation writes
+  // (query duration, webhook delivery time, backfilled buckets). Populated
+  // progressively; hoisted so the catch blocks can attach what was measured.
+  const evaluationAnalytics: IAlertHistoryAnalytics = {};
+  // Per-target notification timings, keyed by webhook id so the same target
+  // notified for several groups (and again on resolve) aggregates into one
+  // entry rather than one per dispatch.
+  const notificationTimings = new Map<string, AlertNotificationTargetTiming>();
+  const recordNotificationTimings = (timings: NotificationTiming[]) => {
+    for (const timing of timings) {
+      const existing = notificationTimings.get(timing.key);
+      if (existing == null) {
+        notificationTimings.set(timing.key, {
+          targetId: timing.key,
+          target: timing.target,
+          durationMs: timing.durationMs,
+          dispatches: 1,
+          failures: timing.ok ? 0 : 1,
+        });
+        continue;
+      }
+      existing.durationMs += timing.durationMs;
+      existing.dispatches += 1;
+      existing.failures += timing.ok ? 0 : 1;
+    }
+  };
+  /**
+   * Fold the aggregated timings onto the analytics object. Called before the
+   * records are written, from both the success and the error path, so a
+   * failed evaluation still reports what it managed to deliver.
+   */
+  const flushNotificationTimings = () => {
+    if (notificationTimings.size === 0) {
+      return;
+    }
+    evaluationAnalytics.notificationTargets = Array.from(
+      notificationTimings.values(),
+    )
+      // Slowest first: the point of the breakdown is finding what dominated
+      // the total, and the cap below should drop the least interesting rows.
+      .sort((a, b) => b.durationMs - a.durationMs)
+      .slice(0, ALERT_NOTIFICATION_TARGETS_LIMIT);
+  };
   try {
     const windowSizeInMins = ms(alert.interval) / 60000;
     const scheduleStartAt = normalizeScheduleStartAt({
@@ -838,6 +1069,7 @@ export const processAlert = async (
       scheduleOffsetMinutes,
       scheduleStartAt,
     );
+    evaluationWindowStart = nowInMinsRoundDown;
     const hasGroupBy = alertHasGroupBy(details);
 
     // Check if we should skip this alert check based on last evaluation time
@@ -971,31 +1203,53 @@ export const processAlert = async (
       });
       // SLO signal for alert data fetching (distinct from the end-to-end
       // evaluation SLI): did ClickHouse serve the alert query, and how fast.
+      const queryDurationMs = performance.now() - queryStartedAt;
+      evaluationAnalytics.queryDurationMs = Math.round(queryDurationMs);
       recordOperationOutcome({
         operation: 'alerts.query',
         outcome: 'success',
-        durationMs: performance.now() - queryStartedAt,
+        durationMs: queryDurationMs,
         attributes: { alert_source: alert.source ?? 'unknown' },
       });
     } catch (e) {
+      const queryDurationMs = performance.now() - queryStartedAt;
+      // Time-to-failure — for QUERY_TIMEOUT this is roughly the configured
+      // evaluation timeout.
+      evaluationAnalytics.queryDurationMs = Math.round(queryDurationMs);
       recordOperationOutcome({
         operation: 'alerts.query',
         outcome: 'error',
-        durationMs: performance.now() - queryStartedAt,
+        durationMs: queryDurationMs,
         attributes: { alert_source: alert.source ?? 'unknown' },
       });
       evalOutcome = 'error';
-      alertQueryFailuresCounter.add(1);
+      const alertError = makeQueryAlertError(
+        e,
+        clickhouseClient.requestTimeoutMs,
+      );
+      alertQueryFailuresCounter.add(1, {
+        error_type:
+          alertError.type === AlertErrorType.QUERY_TIMEOUT
+            ? 'timeout'
+            : 'error',
+      });
       logger.error(
         {
           alertId: alert.id,
+          errorType: alertError.type,
           error: serializeError(e),
         },
         'Alert query failed, skipping state/history update',
       );
-      await alertProvider.recordAlertErrors(alert.id, [
-        makeAlertError(AlertErrorType.QUERY_ERROR, getErrorMessage(e)),
-      ]);
+      // Record the error on the alert and as an ERROR history row for this
+      // window. ERROR rows are excluded from the due-ness gate and date-range
+      // computation, so the failed window is still retried/backfilled.
+      await alertProvider.recordAlertErrors(
+        alert.id,
+        [alertError],
+        nowInMinsRoundDown,
+        evaluationAnalytics,
+      );
       return;
     }
 
@@ -1075,12 +1329,13 @@ export const processAlert = async (
           : `Alert resolved for group "${group}", triggering ${alert.channel.type} notification`,
       );
 
+      const notificationStartedAt = performance.now();
       try {
         // Casts to any here because this is where I stopped unraveling the
         // alert logic requiring large, nested objects. We should look at
         // cleaning this up next. fireChannelEvent guards against null values
         // for these properties.
-        await fireChannelEvent({
+        const { failures, timings } = await fireChannelEvent({
           alert,
           alertProvider,
           attributes,
@@ -1098,12 +1353,36 @@ export const processAlert = async (
           windowSizeInMins,
           teamWebhooksById,
         });
+        recordNotificationTimings(timings);
+        // Each entry is a target that didn't end up delivered: unresolvable,
+        // capped, or (for the inline dispatcher) an actual send rejection —
+        // see renderAlertTemplate.
+        for (const failure of failures) {
+          logger.error(
+            {
+              alertId: alert.id,
+              group,
+              target: failure.target,
+              error: serializeError(failure.error),
+            },
+            'Notification target could not be dispatched',
+          );
+          executionErrors.push(makeNotificationAlertError(failure));
+        }
       } catch (e) {
+        // Render-level failures (title/link building, template compile) —
+        // nothing was dispatched.
         logger.error(
           { alertId: alert.id, group, error: serializeError(e) },
           'Failed to fire channel event',
         );
         executionErrors.push(makeWebhookAlertError(e));
+      } finally {
+        // Total wall time spent delivering notifications in this evaluation
+        // (summed across groups/resolves, includes retries and failures).
+        evaluationAnalytics.webhookDurationMs =
+          (evaluationAnalytics.webhookDurationMs ?? 0) +
+          Math.round(performance.now() - notificationStartedAt);
       }
     };
 
@@ -1196,11 +1475,18 @@ export const processAlert = async (
       // Auto-resolve
       await sendNotificationIfResolved(previous, history, '');
 
+      // Single-value evaluations always cover exactly the current window.
+      evaluationAnalytics.backfilledBuckets = 0;
+      flushNotificationTimings();
       const historyRecords = Array.from(histories.values());
+      for (const record of historyRecords) {
+        record.analytics = evaluationAnalytics;
+      }
       await alertProvider.updateAlertState(
         alert.id,
         historyRecords,
         executionErrors,
+        dateRange,
       );
       return;
     }
@@ -1210,6 +1496,12 @@ export const processAlert = async (
       dateRange[0],
       dateRange[1],
       `${windowSizeInMins} minute`,
+    );
+    // Buckets beyond the current window were backfilled in this run —
+    // earlier evaluation ticks were missed (job delay, failed evaluations).
+    evaluationAnalytics.backfilledBuckets = Math.max(
+      0,
+      expectedBuckets.length - 1,
     );
 
     // Group data by time bucket (grouped alerts may have multiple entries per time bucket)
@@ -1289,8 +1581,9 @@ export const processAlert = async (
       for (const checkData of dataForBucket) {
         const { value, extraFields } = parseAlertData(checkData, meta);
 
-        // TODO: we might want to fix the null value from the upstream (check if this is still needed)
-        // this happens when the ratio is 0/0
+        // NULL means no data: a metric series with no row at this bucket, or
+        // a ratio with a missing/zero denominator. Skip the row instead of
+        // fabricating a state from a gap.
         if (value == null) {
           continue;
         }
@@ -1380,7 +1673,6 @@ export const processAlert = async (
       let groupPrevious = previousMap.get(previousKey);
 
       const hitAlertThisRun = latestAlertContext.has(groupKey);
-      const wasAlertingBefore = groupPrevious?.state === AlertState.ALERT;
 
       // If it hit ALERT during this run, send the notification (re-notifying every tick if it continuously breaches)
       if (hitAlertThisRun) {
@@ -1408,11 +1700,16 @@ export const processAlert = async (
     }
 
     // Save all history records and update alert state
+    flushNotificationTimings();
     const historyRecords = Array.from(histories.values());
+    for (const record of historyRecords) {
+      record.analytics = evaluationAnalytics;
+    }
     await alertProvider.updateAlertState(
       alert.id,
       historyRecords,
       executionErrors,
+      dateRange,
     );
   } catch (e) {
     // Uncomment this for better error messages locally
@@ -1432,10 +1729,18 @@ export const processAlert = async (
       e instanceof InvalidAlertError
         ? AlertErrorType.INVALID_ALERT
         : AlertErrorType.UNKNOWN;
+    // An evaluation can notify some targets and then fail; report what it
+    // managed to deliver rather than dropping the timings with the error.
+    flushNotificationTimings();
     try {
-      await alertProvider.recordAlertErrors(alert.id, [
-        makeAlertError(type, message),
-      ]);
+      await alertProvider.recordAlertErrors(
+        alert.id,
+        [makeAlertError(type, message)],
+        evaluationWindowStart,
+        Object.keys(evaluationAnalytics).length > 0
+          ? evaluationAnalytics
+          : undefined,
+      );
     } catch (recordErr) {
       logger.error(
         {
@@ -1507,6 +1812,10 @@ export const getPreviousAlertHistories = async (
             $match: {
               alert: id,
               createdAt: { $lte: now, $gte: lookbackDate },
+              // ERROR rows record failed evaluations; they must not count as
+              // "window evaluated" or the failed window would never be
+              // retried/backfilled.
+              state: { $ne: AlertState.ERROR },
             },
           },
           // With a single alert value, the compound index {alert: 1, group: 1, createdAt: -1}
@@ -1605,6 +1914,9 @@ export const getConsecutiveWindowHistories = async (
             $match: {
               alert: id,
               createdAt: { $gte: earliestAllowedTime, $lt: windowStart },
+              // Failed evaluations (ERROR rows) are not evaluated windows and
+              // must not affect consecutive-window counting.
+              state: { $ne: AlertState.ERROR },
             },
           },
           { $sort: { alert: 1, group: 1, createdAt: -1 } },
@@ -1641,7 +1953,7 @@ export const getConsecutiveWindowHistories = async (
   return map;
 };
 
-export default class CheckAlertTask implements HdxTask<CheckAlertsTaskArgs> {
+export default class CheckAlertTask implements HdxTask {
   private provider!: AlertProvider;
   private task_queue: PQueue;
 
@@ -1663,6 +1975,7 @@ export default class CheckAlertTask implements HdxTask<CheckAlertsTaskArgs> {
     teamWebhooksById: Map<string, IWebhook>,
   ): Promise<boolean> {
     return tasksTracer.startActiveSpan('processAlertTask', async span => {
+      setBusinessContext({ teamId: alertTask.conn.team.toString() });
       try {
         span.setAttribute(
           'hyperdx.alerts.team.id',
@@ -1686,13 +1999,28 @@ export default class CheckAlertTask implements HdxTask<CheckAlertsTaskArgs> {
 
         for (const alert of alerts) {
           this.task_queue.add(async () =>
-            processAlert(
-              alertTask.now,
-              alert,
-              clickhouseClient,
-              conn.id,
-              this.provider,
-              teamWebhooksById,
+            // withSpan (not a hand-rolled tracer) so exceptions and status are
+            // recorded the same way as everywhere else — see agent_docs/observability.md.
+            withSpan(
+              'processAlert',
+              async () => {
+                setBusinessContext({ teamId: conn.team.toString() });
+                await processAlert(
+                  alertTask.now,
+                  alert,
+                  clickhouseClient,
+                  conn.id,
+                  this.provider,
+                  teamWebhooksById,
+                );
+              },
+              {
+                attributes: {
+                  'hyperdx.alert.id': alert.alert.id,
+                  'hyperdx.team.id': conn.team.toString(),
+                  'hyperdx.alert.source': alert.alert.source ?? 'unknown',
+                },
+              },
             ),
           );
         }

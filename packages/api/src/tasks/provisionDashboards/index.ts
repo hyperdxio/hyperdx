@@ -1,3 +1,4 @@
+import { validateDashboardFilterOptionUniqueness } from '@hyperdx/common-utils/dist/dashboardValidation';
 import {
   DashboardWithoutId,
   DashboardWithoutIdSchema,
@@ -28,6 +29,11 @@ function migrateLegacyDashboardTileColorsRaw(raw: unknown): unknown {
   });
 }
 
+const provisionedDashboardSchema = DashboardWithoutIdSchema.superRefine(
+  (data, ctx) =>
+    validateDashboardFilterOptionUniqueness(data.filters ?? [], ctx),
+);
+
 export function readDashboardFiles(dir: string): DashboardWithoutId[] {
   let files: string[];
   try {
@@ -43,7 +49,7 @@ export function readDashboardFiles(dir: string): DashboardWithoutId[] {
       const raw = migrateLegacyDashboardTileColorsRaw(
         JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8')),
       ) as Record<string, unknown> | null | undefined;
-      const parsed = DashboardWithoutIdSchema.safeParse({
+      const parsed = provisionedDashboardSchema.safeParse({
         tags: [],
         ...(raw as object),
       });
@@ -113,9 +119,7 @@ export async function syncDashboards(teamId: string, dir: string) {
   }
 }
 
-export default class ProvisionDashboardsTask
-  implements HdxTask<ProvisionDashboardsTaskArgs>
-{
+export default class ProvisionDashboardsTask implements HdxTask {
   constructor(private args: ProvisionDashboardsTaskArgs) {}
 
   name(): string {

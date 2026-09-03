@@ -3,6 +3,7 @@ import { MetricsDataType, SourceKind } from '@hyperdx/common-utils/dist/types';
 import {
   bucketExponentialHistogramObservations,
   bulkInsertLogs,
+  bulkInsertMetricsGauge,
   bulkInsertMetricsHistogram,
   DEFAULT_DATABASE,
   DEFAULT_LOGS_TABLE,
@@ -119,6 +120,257 @@ describe('MCP Dashboard Tools - clickstack_query_tile', () => {
     // Should succeed (may have empty results since no data inserted)
     expect(result.isError).toBeFalsy();
     expect(result.content).toHaveLength(1);
+  });
+
+  it('should save and query a metric formula tile', async () => {
+    const metricSource = await Source.create({
+      kind: SourceKind.Metric,
+      team: ctx.team._id,
+      from: { databaseName: DEFAULT_DATABASE, tableName: '' },
+      metricTables: {
+        [MetricsDataType.Gauge.toLowerCase()]: DEFAULT_METRICS_TABLE.GAUGE,
+      },
+      timestampValueExpression: 'TimeUnix',
+      connection: ctx.connection._id,
+      name: 'Gauge Metrics',
+    });
+    const now = new Date();
+    await bulkInsertMetricsGauge([
+      {
+        MetricName: 'formula.errors',
+        ResourceAttributes: {},
+        ServiceName: 'api',
+        TimeUnix: now,
+        Value: 10,
+      },
+      {
+        MetricName: 'formula.requests',
+        ResourceAttributes: {},
+        ServiceName: 'api',
+        TimeUnix: now,
+        Value: 200,
+      },
+    ]);
+
+    const formulas = [{ expression: 'A / B * 100', alias: 'Error rate %' }];
+    const createResult = await callTool(
+      ctx.client!,
+      'clickstack_save_dashboard',
+      {
+        name: 'Formula Dashboard',
+        tiles: [
+          {
+            name: 'Error rate',
+            config: {
+              displayType: 'line',
+              sourceId: metricSource._id.toString(),
+              select: [
+                {
+                  aggFn: 'max',
+                  metricType: 'gauge',
+                  metricName: 'formula.errors',
+                  alias: 'Errors',
+                },
+                {
+                  aggFn: 'max',
+                  metricType: 'gauge',
+                  metricName: 'formula.requests',
+                  alias: 'Requests',
+                },
+              ],
+              formulas,
+              showOperandSeries: false,
+            },
+          },
+        ],
+      },
+    );
+    if (createResult.isError) {
+      throw new Error(getFirstText(createResult));
+    }
+    const dashboard = JSON.parse(getFirstText(createResult));
+    // The formula config round-trips through the save response.
+    expect(dashboard.tiles[0].config.formulas).toEqual(formulas);
+    expect(dashboard.tiles[0].config.showOperandSeries).toBe(false);
+
+    const result = await callTool(ctx.client!, 'clickstack_query_tile', {
+      dashboardId: dashboard.id,
+      tileId: dashboard.tiles[0].id,
+      startTime: new Date(now.getTime() - 60_000).toISOString(),
+      endTime: new Date(now.getTime() + 60_000).toISOString(),
+    });
+
+    expect(result.isError).toBeFalsy();
+    const parsed: {
+      result: { data: Array<Record<string, unknown>> };
+    } = JSON.parse(getFirstText(result));
+    const rows = parsed.result.data;
+    expect(rows.length).toBeGreaterThan(0);
+    // The formula column is computed in ClickHouse (10 / 200 * 100 = 5) and,
+    // with showOperandSeries: false, the raw operand columns are hidden.
+    expect(Number(rows[0]['Error rate %'])).toBe(5);
+    expect(rows[0]).not.toHaveProperty('Errors');
+    expect(rows[0]).not.toHaveProperty('Requests');
+  });
+
+  it('should save and query a log-source formula tile', async () => {
+    // Event (log/trace) formulas render through a different path than
+    // metric formulas (inline single-scan SELECT vs the composed query),
+    // so cover them end-to-end: save → round-trip → query_tile.
+    const logSource = await Source.create({
+      kind: SourceKind.Log,
+      team: ctx.team._id,
+      from: {
+        databaseName: DEFAULT_DATABASE,
+        tableName: DEFAULT_LOGS_TABLE,
+      },
+      timestampValueExpression: 'Timestamp',
+      connection: ctx.connection._id,
+      name: 'Formula Logs',
+      bodyExpression: 'Body',
+      severityTextExpression: 'SeverityText',
+    });
+    const now = new Date();
+    await bulkInsertLogs([
+      ...Array.from({ length: 3 }, (_, i) => ({
+        Body: `formula error log ${i}`,
+        ServiceName: 'api',
+        SeverityText: 'error',
+        Timestamp: now,
+      })),
+      ...Array.from({ length: 9 }, (_, i) => ({
+        Body: `formula info log ${i}`,
+        ServiceName: 'api',
+        SeverityText: 'info',
+        Timestamp: now,
+      })),
+    ]);
+
+    const formulas = [{ expression: 'A / B * 100', alias: 'Error rate %' }];
+    const createResult = await callTool(
+      ctx.client!,
+      'clickstack_save_dashboard',
+      {
+        name: 'Log Formula Dashboard',
+        tiles: [
+          {
+            name: 'Log error rate',
+            config: {
+              displayType: 'number',
+              sourceId: logSource._id.toString(),
+              select: [
+                {
+                  aggFn: 'count',
+                  where: 'SeverityText:error',
+                  alias: 'Errors',
+                },
+                { aggFn: 'count', alias: 'Total' },
+              ],
+              formulas,
+            },
+          },
+        ],
+      },
+    );
+    if (createResult.isError) {
+      throw new Error(getFirstText(createResult));
+    }
+    const dashboard = JSON.parse(getFirstText(createResult));
+    expect(dashboard.tiles[0].config.formulas).toEqual(formulas);
+
+    const result = await callTool(ctx.client!, 'clickstack_query_tile', {
+      dashboardId: dashboard.id,
+      tileId: dashboard.tiles[0].id,
+      startTime: new Date(now.getTime() - 60_000).toISOString(),
+      endTime: new Date(now.getTime() + 60_000).toISOString(),
+    });
+
+    expect(result.isError).toBeFalsy();
+    const parsed: {
+      result: { data: Array<Record<string, unknown>> };
+    } = JSON.parse(getFirstText(result));
+    const rows = parsed.result.data;
+    expect(rows.length).toBeGreaterThan(0);
+    // 3 errors / 12 total * 100 = 25; number tiles always hide operands.
+    expect(Number(rows[0]['Error rate %'])).toBe(25);
+    expect(rows[0]).not.toHaveProperty('Errors');
+    expect(rows[0]).not.toHaveProperty('Total');
+  });
+
+  it('should reject a formula tile on a formula-incapable source kind', async () => {
+    const sessionSource = await Source.create({
+      kind: SourceKind.Session,
+      team: ctx.team._id,
+      from: {
+        databaseName: DEFAULT_DATABASE,
+        tableName: 'rrweb_events',
+      },
+      timestampValueExpression: 'Timestamp',
+      traceSourceId: ctx.traceSource._id.toString(),
+      connection: ctx.connection._id,
+      name: 'Sessions',
+    });
+
+    const result = await callTool(ctx.client!, 'clickstack_save_dashboard', {
+      name: 'Bad Formula Dashboard',
+      tiles: [
+        {
+          name: 'Formula on sessions',
+          config: {
+            displayType: 'line',
+            sourceId: sessionSource._id.toString(),
+            select: [
+              { aggFn: 'count', alias: 'A' },
+              { aggFn: 'count', alias: 'B' },
+            ],
+            formulas: [{ expression: 'A / B' }],
+          },
+        },
+      ],
+    });
+
+    expect(result.isError).toBe(true);
+    expect(getFirstText(result)).toContain(
+      'require a Metric, Log, or Trace source',
+    );
+  });
+
+  it('should reject a formula referencing an unknown series', async () => {
+    const metricSource = await Source.create({
+      kind: SourceKind.Metric,
+      team: ctx.team._id,
+      from: { databaseName: DEFAULT_DATABASE, tableName: '' },
+      metricTables: {
+        [MetricsDataType.Gauge.toLowerCase()]: DEFAULT_METRICS_TABLE.GAUGE,
+      },
+      timestampValueExpression: 'TimeUnix',
+      connection: ctx.connection._id,
+      name: 'Gauge Metrics Invalid Formula',
+    });
+
+    const result = await callTool(ctx.client!, 'clickstack_save_dashboard', {
+      name: 'Invalid Formula Dashboard',
+      tiles: [
+        {
+          name: 'Unknown ref',
+          config: {
+            displayType: 'line',
+            sourceId: metricSource._id.toString(),
+            select: [
+              {
+                aggFn: 'max',
+                metricType: 'gauge',
+                metricName: 'formula.errors',
+              },
+            ],
+            formulas: [{ expression: 'A / B' }],
+          },
+        },
+      ],
+    });
+
+    expect(result.isError).toBe(true);
+    expect(getFirstText(result)).toContain('Unknown series');
   });
 
   it('should save and query an exponential histogram tile', async () => {
@@ -441,6 +693,434 @@ describe('MCP Dashboard Tools - clickstack_query_tile', () => {
       expect(result.isError).toBeFalsy();
       const parsed = JSON.parse(getFirstText(result));
       expect(parsed.warnings).toBeUndefined();
+    });
+  });
+
+  describe('dashboard variables', () => {
+    const now = new Date();
+    const tenMinAgo = new Date(now.getTime() - 10 * 60 * 1000);
+    const startTime = new Date(now.getTime() - 60 * 60 * 1000).toISOString();
+    const endTime = new Date(now.getTime() + 60 * 1000).toISOString();
+
+    let logSourceId: string;
+
+    beforeEach(async () => {
+      const logSource = await Source.create({
+        kind: SourceKind.Log,
+        team: ctx.team._id,
+        from: {
+          databaseName: DEFAULT_DATABASE,
+          tableName: DEFAULT_LOGS_TABLE,
+        },
+        timestampValueExpression: 'Timestamp',
+        connection: ctx.connection._id,
+        name: 'Variable Logs',
+        bodyExpression: 'Body',
+        severityTextExpression: 'SeverityText',
+      });
+      logSourceId = logSource._id.toString();
+
+      await bulkInsertLogs([
+        {
+          Body: 'checkout one',
+          ServiceName: 'checkout',
+          SeverityText: 'INFO',
+          Timestamp: tenMinAgo,
+        },
+        {
+          Body: 'checkout two',
+          ServiceName: 'checkout',
+          SeverityText: 'INFO',
+          Timestamp: new Date(tenMinAgo.getTime() + 10),
+        },
+        {
+          Body: 'payments one',
+          ServiceName: 'payments',
+          SeverityText: 'INFO',
+          Timestamp: new Date(tenMinAgo.getTime() + 20),
+        },
+      ]);
+    });
+
+    const variableFilter = () => ({
+      type: 'QUERY_EXPRESSION' as const,
+      name: 'Service',
+      expression: 'ServiceName',
+      sourceId: logSourceId,
+      whereLanguage: 'sql' as const,
+      isBroadcastEnabled: false,
+      isVariableEnabled: true,
+      variableName: 'service',
+    });
+
+    const saveDashboard = async (tiles: unknown[]) => {
+      const result = await callTool(ctx.client!, 'clickstack_save_dashboard', {
+        name: 'Variable tiles',
+        tiles,
+        filters: [variableFilter()],
+      });
+      expect(result.isError).toBeFalsy();
+      return JSON.parse(getFirstText(result));
+    };
+
+    const rowsOf = (text: string) => {
+      const parsed = JSON.parse(text);
+      const result = parsed.result;
+      return Array.isArray(result) ? result : (result?.data ?? []);
+    };
+
+    const sqlTile = () => ({
+      name: 'Rows by service',
+      config: {
+        configType: 'sql',
+        displayType: 'table',
+        connectionId: ctx.connection._id.toString(),
+        sourceId: logSourceId,
+        sqlTemplate:
+          'SELECT ServiceName, count() AS c FROM $__sourceTable ' +
+          'WHERE $__timeFilter(Timestamp) AND $__filters ' +
+          'AND $__filter(ServiceName, $service) ' +
+          'GROUP BY ServiceName ORDER BY ServiceName LIMIT 10',
+      },
+    });
+
+    const builderTile = () => ({
+      name: 'Rows by service (builder)',
+      config: {
+        displayType: 'table',
+        sourceId: logSourceId,
+        groupBy: 'ServiceName',
+        select: [
+          {
+            aggFn: 'count',
+            alias: 'Count',
+            where: '$__filter(ServiceName, $service)',
+            whereLanguage: 'sql',
+          },
+        ],
+      },
+    });
+
+    const eventPatternsTile = (
+      where = '$__filter(ServiceName, $service)',
+      whereLanguage: 'sql' | 'lucene' = 'sql',
+    ) => ({
+      name: 'Log patterns',
+      config: {
+        displayType: 'event_patterns',
+        sourceId: logSourceId,
+        select: 'Body',
+        where,
+        whereLanguage,
+      },
+    });
+
+    const patternsOf = (text: string) => {
+      const parsed = JSON.parse(text);
+      return {
+        totalCount: Number(parsed.summary.totalCount),
+        sampledCount: Number(parsed.summary.sampledCount),
+        bodies: Array.isArray(parsed.patterns)
+          ? parsed.patterns.flatMap(p => ('samples' in p ? p.samples : []))
+          : [],
+      };
+    };
+
+    it('expands $__filter to a no-op on an event_patterns tile with nothing selected', async () => {
+      const dashboard = await saveDashboard([eventPatternsTile()]);
+
+      const result = await callTool(ctx.client!, 'clickstack_query_tile', {
+        dashboardId: dashboard.id,
+        tileId: dashboard.tiles[0].id,
+        startTime,
+        endTime,
+      });
+
+      expect(result.isError).toBeFalsy();
+      const { totalCount, bodies } = patternsOf(getFirstText(result));
+      // Nothing selected means the macro contributes no condition, so both
+      // services are still mined.
+      expect(totalCount).toBe(3);
+      expect(bodies.some(b => b.includes('checkout'))).toBe(true);
+      expect(bodies.some(b => b.includes('payments'))).toBe(true);
+    });
+
+    it('narrows an event_patterns tile when variableValues supplies a selection', async () => {
+      const dashboard = await saveDashboard([eventPatternsTile()]);
+
+      const result = await callTool(ctx.client!, 'clickstack_query_tile', {
+        dashboardId: dashboard.id,
+        tileId: dashboard.tiles[0].id,
+        startTime,
+        endTime,
+        variableValues: [{ name: 'service', values: ['checkout'] }],
+      });
+
+      expect(result.isError).toBeFalsy();
+      const { totalCount, sampledCount, bodies } = patternsOf(
+        getFirstText(result),
+      );
+      // The selection narrows BOTH the sampled rows and the total count the
+      // estimates are extrapolated from — the payments row is gone from each.
+      expect(totalCount).toBe(2);
+      expect(sampledCount).toBe(2);
+      expect(bodies.some(b => b.includes('checkout'))).toBe(true);
+      expect(bodies.some(b => b.includes('payments'))).toBe(false);
+    });
+
+    it('expands a Lucene variable reference on an event_patterns tile', async () => {
+      // event_patterns tiles default to Lucene, where a reference renders as a
+      // value list rather than a SQL predicate.
+      const dashboard = await saveDashboard([
+        eventPatternsTile('ServiceName:$service', 'lucene'),
+      ]);
+
+      const result = await callTool(ctx.client!, 'clickstack_query_tile', {
+        dashboardId: dashboard.id,
+        tileId: dashboard.tiles[0].id,
+        startTime,
+        endTime,
+        variableValues: [{ name: 'service', values: ['payments'] }],
+      });
+
+      expect(result.isError).toBeFalsy();
+      const { totalCount, bodies } = patternsOf(getFirstText(result));
+      expect(totalCount).toBe(1);
+      expect(bodies.some(b => b.includes('checkout'))).toBe(false);
+      expect(bodies.some(b => b.includes('payments'))).toBe(true);
+    });
+
+    it('reports an event_patterns macro naming a variable the dashboard does not declare', async () => {
+      const dashboard = await saveDashboard([
+        eventPatternsTile('$__filter(ServiceName, $tenant)'),
+      ]);
+
+      const result = await callTool(ctx.client!, 'clickstack_query_tile', {
+        dashboardId: dashboard.id,
+        tileId: dashboard.tiles[0].id,
+        startTime,
+        endTime,
+      });
+
+      // Expansion throws before ClickHouse sees anything, and the mining path
+      // surfaces the same named error and hint as every other tile type.
+      expect(result.isError).toBe(true);
+      const text = getFirstText(result);
+      expect(text).toContain("references unknown variable 'tenant'");
+      expect(text).toContain('isVariableEnabled');
+    });
+
+    it('expands $__filter to a no-op on a raw SQL tile with nothing selected', async () => {
+      // Before variables were threaded through, the macro text reached
+      // ClickHouse verbatim and the tile died with a syntax error.
+      const dashboard = await saveDashboard([sqlTile()]);
+
+      const result = await callTool(ctx.client!, 'clickstack_query_tile', {
+        dashboardId: dashboard.id,
+        tileId: dashboard.tiles[0].id,
+        startTime,
+        endTime,
+      });
+
+      expect(result.isError).toBeFalsy();
+      // Nothing selected means the macro contributes no condition, so every
+      // service is still counted.
+      expect(rowsOf(getFirstText(result))).toHaveLength(2);
+    });
+
+    it('narrows a raw SQL tile when variableValues supplies a selection', async () => {
+      const dashboard = await saveDashboard([sqlTile()]);
+
+      const result = await callTool(ctx.client!, 'clickstack_query_tile', {
+        dashboardId: dashboard.id,
+        tileId: dashboard.tiles[0].id,
+        startTime,
+        endTime,
+        variableValues: [{ name: 'service', values: ['checkout'] }],
+      });
+
+      expect(result.isError).toBeFalsy();
+      const rows = rowsOf(getFirstText(result));
+      expect(rows).toHaveLength(1);
+      expect(rows[0].ServiceName).toBe('checkout');
+    });
+
+    it('expands $__filter in a builder tile per-series where', async () => {
+      const dashboard = await saveDashboard([builderTile()]);
+
+      const unselected = await callTool(ctx.client!, 'clickstack_query_tile', {
+        dashboardId: dashboard.id,
+        tileId: dashboard.tiles[0].id,
+        startTime,
+        endTime,
+      });
+      expect(unselected.isError).toBeFalsy();
+      expect(rowsOf(getFirstText(unselected))).toHaveLength(2);
+
+      const selected = await callTool(ctx.client!, 'clickstack_query_tile', {
+        dashboardId: dashboard.id,
+        tileId: dashboard.tiles[0].id,
+        startTime,
+        endTime,
+        variableValues: [{ name: 'service', values: ['payments'] }],
+      });
+      expect(selected.isError).toBeFalsy();
+      const rows = rowsOf(getFirstText(selected));
+      // countIf leaves the other group at zero rather than dropping it.
+      const payments = rows.find(
+        (r: Record<string, unknown>) => r.ServiceName === 'payments',
+      );
+      const checkout = rows.find(
+        (r: Record<string, unknown>) => r.ServiceName === 'checkout',
+      );
+      expect(Number(payments?.Count)).toBe(1);
+      expect(Number(checkout?.Count ?? 0)).toBe(0);
+    });
+
+    it('reports a macro naming a variable the dashboard does not declare', async () => {
+      const dashboard = await saveDashboard([
+        {
+          name: 'Typo',
+          config: {
+            configType: 'sql',
+            displayType: 'table',
+            connectionId: ctx.connection._id.toString(),
+            sourceId: logSourceId,
+            sqlTemplate:
+              'SELECT count() AS c FROM $__sourceTable ' +
+              'WHERE $__timeFilter(Timestamp) AND $__filter(ServiceName, $tenant) LIMIT 1',
+          },
+        },
+      ]);
+
+      const result = await callTool(ctx.client!, 'clickstack_query_tile', {
+        dashboardId: dashboard.id,
+        tileId: dashboard.tiles[0].id,
+        startTime,
+        endTime,
+      });
+
+      // Expansion throws before ClickHouse sees anything, and the message
+      // names the variable rather than surfacing as a SQL syntax error.
+      expect(result.isError).toBe(true);
+      const text = getFirstText(result);
+      expect(text).toContain("references unknown variable 'tenant'");
+      expect(text).toContain('HINT:');
+      expect(text).toContain('isVariableEnabled');
+    });
+
+    it('rejects a variableValues entry the dashboard does not declare', async () => {
+      const dashboard = await saveDashboard([sqlTile()]);
+
+      const result = await callTool(ctx.client!, 'clickstack_query_tile', {
+        dashboardId: dashboard.id,
+        tileId: dashboard.tiles[0].id,
+        startTime,
+        endTime,
+        variableValues: [{ name: 'tenant', values: ['acme'] }],
+      });
+
+      expect(result.isError).toBe(true);
+      expect(getFirstText(result)).toContain('Available variables: service');
+    });
+
+    describe('static list filters', () => {
+      const staticSqlTile = () => ({
+        name: 'Rows by service (static)',
+        config: {
+          configType: 'sql',
+          displayType: 'table',
+          connectionId: ctx.connection._id.toString(),
+          sourceId: logSourceId,
+          sqlTemplate:
+            'SELECT ServiceName, count() AS c FROM $__sourceTable ' +
+            'WHERE $__timeFilter(Timestamp) AND $__filter(ServiceName, $svc) ' +
+            'GROUP BY ServiceName ORDER BY ServiceName LIMIT 10',
+        },
+      });
+
+      const saveStaticDashboard = async () => {
+        const result = await callTool(
+          ctx.client!,
+          'clickstack_save_dashboard',
+          {
+            name: 'Static variable tiles',
+            tiles: [staticSqlTile()],
+            filters: [
+              {
+                type: 'STATIC_LIST',
+                name: 'Service',
+                options: ['checkout', 'payments', 'ghost'],
+                variableName: 'svc',
+              },
+            ],
+          },
+        );
+        expect(result.isError).toBeFalsy();
+        return JSON.parse(getFirstText(result));
+      };
+
+      it('narrows a tile when variableValues selects a static option', async () => {
+        const dashboard = await saveStaticDashboard();
+
+        const unselected = await callTool(
+          ctx.client!,
+          'clickstack_query_tile',
+          {
+            dashboardId: dashboard.id,
+            tileId: dashboard.tiles[0].id,
+            startTime,
+            endTime,
+          },
+        );
+        expect(unselected.isError).toBeFalsy();
+        expect(rowsOf(getFirstText(unselected))).toHaveLength(2);
+
+        const selected = await callTool(ctx.client!, 'clickstack_query_tile', {
+          dashboardId: dashboard.id,
+          tileId: dashboard.tiles[0].id,
+          startTime,
+          endTime,
+          variableValues: [{ name: 'svc', values: ['checkout'] }],
+        });
+        expect(selected.isError).toBeFalsy();
+        const rows = rowsOf(getFirstText(selected));
+        expect(rows).toHaveLength(1);
+        expect(rows[0].ServiceName).toBe('checkout');
+      });
+
+      it('treats an empty selection as nothing selected', async () => {
+        const dashboard = await saveStaticDashboard();
+
+        const result = await callTool(ctx.client!, 'clickstack_query_tile', {
+          dashboardId: dashboard.id,
+          tileId: dashboard.tiles[0].id,
+          startTime,
+          endTime,
+          variableValues: [{ name: 'svc', values: [] }],
+        });
+
+        expect(result.isError).toBeFalsy();
+        expect(rowsOf(getFirstText(result))).toHaveLength(2);
+      });
+
+      it('rejects a value outside the declared options', async () => {
+        const dashboard = await saveStaticDashboard();
+
+        const result = await callTool(ctx.client!, 'clickstack_query_tile', {
+          dashboardId: dashboard.id,
+          tileId: dashboard.tiles[0].id,
+          startTime,
+          endTime,
+          variableValues: [{ name: 'svc', values: ['not-a-service'] }],
+        });
+
+        expect(result.isError).toBe(true);
+        const text = getFirstText(result);
+        expect(text).toContain('"svc"');
+        expect(text).toContain('"not-a-service"');
+        expect(text).toContain('checkout, payments, ghost');
+      });
     });
   });
 

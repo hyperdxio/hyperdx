@@ -1,5 +1,205 @@
 # @hyperdx/api
 
+## 2.37.0
+
+### Minor Changes
+
+- 0558f77e: Record and show which notification target an evaluation's delivery time went to. `webhookDurationMs` was a single number covering the whole delivery, and because targets are dispatched concurrently the slowest one sets it — so a multi-target alert reported a figure with no way to tell which webhook was responsible, or that the other targets were fine.
+
+  Each dispatch is now timed individually and aggregated per target across the evaluation, since a grouped alert notifies the same target once per firing group and again on resolve. One entry per distinct target carries its webhook id, display name, summed duration, how many dispatches it took, and how many failed. The evaluation history's "Notification duration" cell expands in place to show the breakdown.
+
+  Stored per evaluation rather than per dispatch: a 50-group alert notifying 10 targets would otherwise write 500 entries onto every history row. The array is capped at `ALERT_NOTIFICATION_TARGETS_LIMIT` and sorted slowest-first, so the cap drops the least interesting rows. Records written before this change keep rendering their total with nothing to expand.
+
+- df4a7a55: Add a new `inline` alert source that persists its own chart config directly on the alert, so alerts no longer require a saved search (logs) or a dashboard tile (metrics). The config is the same shape a dashboard tile stores — builder configs on log/trace/metric sources plus raw SQL (Line/Stacked Bar/Number display types); PromQL is rejected. The internal alerts API accepts and returns the new source, and the check-alerts task evaluates inline alerts through the same code path as tile alerts (including group-by and multi-window behavior). Notifications for inline alerts link to the chart explorer seeded with the alert's config over the alerting window, and default their title to the config's name. Backend only — the creation/edit UI and external API v2 support land separately.
+
+### Patch Changes
+
+- 3c81bb96: Build alert notifications for an alert's configured channels directly, instead of encoding them as `@webhook-<id>` mention strings and parsing them back out. That round-trip carried only `type` and `webhookId`, and it appended the channels _after_ whatever the user wrote in the message body — so a body containing `MAX_NOTIFICATIONS_PER_EVENT` mentions consumed every slot of the per-event cap and the alert's own configured channel, the one target it was set up to notify, was silently never reached. Configured channels are now queued first and are exempt from that cap, which only ever meant to bound ad hoc mentions; `channels` is already bounded by `MAX_ALERT_CHANNELS`. Mentions written into the message body are unchanged, still capped, and still deduplicated against the configured channels so naming one twice notifies it once. This also removes the lossiness that prevented a channel from carrying any field beyond its webhook id through to delivery, which downstream forks with richer channel types (e.g. an `email` channel, or a Slack-app channel that also needs a Slack channel id) could not work around. `getDefaultExternalActions` is removed, as nothing needs the mention-string form of a configured channel any more.
+- f11038ef: feat: Persist variable-keyed dashboard filter value state
+- 892cc653: feat(mcp): improve metric discovery, add quiet-saturation eval scenario
+- b52a6fa8: Advertise the MCP quantile `level` field as a string enum so Gemini-backed clients can use the server at all. `z.union([z.literal(0.5), ...])` renders as `{ "type": "number", "enum": [0.5, 0.9, 0.95, 0.99] }`, and Gemini's function declarations only accept `enum` alongside `type: "string"` — so a client that forwards MCP tool schemas to the provider had its entire tool list rejected because of this one field, surfacing as a generic "trouble connecting to the model provider" error that named neither the tool nor the property. Affected `clickstack_timeseries`, `clickstack_table`, `clickstack_save_dashboard` and `clickstack_patch_dashboard`. Only the advertised wire type changes: numeric input is still accepted for callers working from a cached schema, the value is coerced back to a number before any consumer sees it, and out-of-set values are still rejected. The external REST API's own `level` contract is untouched. A new test asserts that no advertised tool schema carries a non-string `enum` or an array-form `items`, complementing the draft-2020-12 metaschema check.
+- 5fc33413: feat: Support dashboard variables in the MCP server
+- Updated dependencies [0558f77e]
+- Updated dependencies [f11038ef]
+- Updated dependencies [df4a7a55]
+- Updated dependencies [f9f7d5bc]
+- Updated dependencies [82852c3a]
+- Updated dependencies [de9038e7]
+- Updated dependencies [5fc33413]
+- Updated dependencies [7662fae8]
+- Updated dependencies [93b51b13]
+- Updated dependencies [64326d09]
+  - @hyperdx/common-utils@0.28.0
+
+## 2.36.0
+
+### Minor Changes
+
+- 8723d7af: Alerts can be configured with multiple notification channels (up to 10 webhooks) via the new `channels` field on the v2 external API, internal API, and the MCP `clickstack_save_alert` tool. The legacy singular `channel` field is still accepted on input and mirrored in responses, so existing integrations keep working unchanged.
+
+  Note that alert updates are a full replace, not a merge. A client that sends only the legacy `channel` field when updating an alert that has several channels will reduce it to that one channel — fetch the alert and resend the complete `channels` array to preserve them.
+
+- a4b2ad00: The API now recovers from a MongoDB that is unreachable at startup, and exposes a Mongo-aware readiness endpoint. Previously a failed initial connect was never retried: the process kept listening while every Mongo-backed request timed out, `/health` reported 200, and Kubernetes kept the pod Ready indefinitely — cascading into OpAMP 500s and crash-looping collectors. The initial connection is now retried with capped exponential backoff until it succeeds, and both the API and OpAMP servers expose `GET /ready`, which returns 503 unless MongoDB is connected (point Kubernetes readiness probes at it; `/health` remains a pure liveness check).
+- dc29d57f: Chart formulas are now supported across every API surface that persists or accepts chart configs. The external dashboards API v2 and the MCP `save_dashboard` / `patch_dashboard` tools accept `formulas` (letter-ref arithmetic over the tile's select items, e.g. `A / (A + B) * 100`) and `showOperandSeries` on line, stacked bar, table and number builder tiles, round-trip them through GET/PUT, and validate the expressions on write — unknown series refs, malformed syntax, combining formulas with `asRatio`, multiple formulas on a number tile, and formulas on formula-incapable source kinds (anything other than metric, log, or trace) are all rejected with actionable errors. MCP `query_tile` computes formula columns for both metric and log/trace event tiles, the query-guide prompt documents the feature, and the OpenAPI spec includes the new `Formula` schema. The CLI's dashboard tile pipeline now delegates its number/table config transforms to the shared common-utils implementations, so formula tiles render with operand-hiding behavior identical to the web.
+
+### Patch Changes
+
+- d205a776: Allow the ClickHouse exporter request timeout to be configured with
+  `HYPERDX_OTEL_EXPORTER_TIMEOUT` in both OpAMP-managed and standalone collector
+  modes. The default remains 5 seconds.
+- 90da4097: Disable mongoose autoIndex in check-alerts worker to prevent MongoExpiredSessionError
+- 43f68566: Allow editing and deleting alerts directly from the alert details page. An
+  "Edit alert" action opens a modal for changing the alert's threshold,
+  evaluation interval, schedule, group-by (saved-search alerts), notification
+  webhook, and note, and a Delete action (with confirmation) removes the alert
+  and returns to the alerts list. Alert API responses now include the
+  notification channel's webhook id and the alert's name/message template so
+  edits round-trip these fields.
+- 40ec0858: feat: Add dashboard variable properties to external dashboards API
+- b0b13806: Align alert firing/recovery chart markers with the evaluated data: markers are now drawn at the start of the newest evaluated bucket (matching the evaluation history table and the plotted data point) instead of at the evaluation time, which sat one bucket to the right.
+- c592207b: Fix MCP tool schemas being rejected by strict JSON Schema draft 2020-12 clients. The number-tile `colorRules` `between` rule declared its `value` as a Zod tuple, which `zod-to-json-schema` renders in the draft-07 tuple form (`items: [ ... ]`). Draft 2020-12 requires `items` to be a schema rather than an array, so `clickstack_save_dashboard` and `clickstack_patch_dashboard` failed validation — and clients that forward MCP tool schemas straight to an LLM provider (e.g. the Anthropic API) rejected the entire tool list with `tools.N.custom.input_schema: JSON schema is invalid`, making the MCP server unusable. `value` is now a fixed-length array, which validates identically and serializes to the same `[min, max]` wire format. A new test validates every MCP tool's input schema against the 2020-12 metaschema so this cannot regress.
+- e153f46d: Tile alerts on metric charts with formulas now evaluate the formula value instead of the last raw operand series: the alert task previously dropped `formulas`/`showOperandSeries` when rebuilding the tile's chart config, so an alert on a formula tile compared the threshold against a raw operand (e.g. bytes) rather than the derived value. Grouped ratio tile alerts also now honor `ratioMode` (`share_of_total` previously evaluated as `per_group`).
+- 7294944a: fix: route per-query SQL debug logging through an injectable logger (#2416)
+
+  `BaseClickhouseClient` dumped raw SQL to the console on every ClickHouse query,
+  unconditionally and outside the pino logger, flooding API logs with query spam.
+
+  Query logging now goes through an optional per-client `customLogger` on
+  `ClickhouseClientOptions`, logged at `debug`, and is silent when no logger is
+  passed. The API injects a pino-backed logger, so query logging follows the
+  existing `HYPERDX_LOG_LEVEL` setting instead of writing to `console.debug`. The
+  browser client defaults to a console logger that pretty-prints the SQL as a
+  single multi-line block, so query SQL stays visible and readable in devtools in
+  all builds instead of wrapping into one long line.
+
+  The API's log level now defaults to `info` (was `debug`), so SQL logging is
+  silent in production unless `HYPERDX_LOG_LEVEL=debug` is set. Dev and CI env
+  files already pin their levels explicitly and are unaffected. The default also
+  now applies when `HYPERDX_LOG_LEVEL` is set but empty — which is what Compose
+  passes when the variable is unset in the environment, and which previously made
+  pino throw at startup.
+
+- e60a7d30: fix: populate the span StatusMessage on failed MCP tool calls so the error text is visible in the trace
+- 9f640a61: Add a Rotate action for the personal API access key in Team Settings → API & Agents. Previously the personal access key — the bearer token for the external API v2 and the MCP server — was generated once at account creation and could never be changed, so a leaked key could only be remediated by deleting the user. Rotating immediately revokes the previous key, so MCP / AI agent configs, external API v2 clients, Terraform / IaC providers, and CI scripts using the old key must be updated with the new one. Browser sessions are unaffected.
+- 08e5b62f: Stop the external dashboards API returning aggregation parameters the aggregation cannot carry: a `level` left over from a quantile agg, or a `valueExpression` left over on a count. Both are ignored when rendering, but the input schema rejects them, so a GET body could not be PUT back and importing a dashboard into Terraform failed with "Level can only be used with quantile aggregation function".
+- Updated dependencies [be26530f]
+- Updated dependencies [c349a5dd]
+- Updated dependencies [68d2ed20]
+- Updated dependencies [2eedfb26]
+- Updated dependencies [1ce61c0c]
+- Updated dependencies [43f68566]
+- Updated dependencies [b1d8dc14]
+- Updated dependencies [40ec0858]
+- Updated dependencies [b0b13806]
+- Updated dependencies [a94d6da8]
+- Updated dependencies [8be68100]
+- Updated dependencies [c592207b]
+- Updated dependencies [9c7742fa]
+- Updated dependencies [dc29d57f]
+- Updated dependencies [7294944a]
+- Updated dependencies [3ecf73c2]
+- Updated dependencies [3ecf73c2]
+- Updated dependencies [e153f46d]
+- Updated dependencies [9f640a61]
+- Updated dependencies [ea127077]
+  - @hyperdx/common-utils@0.27.0
+
+## 2.35.0
+
+### Minor Changes
+
+- fd54ac78: Persist alert evaluation errors (query errors, timeouts, webhook failures) as
+  ERROR-state AlertHistory records instead of only a latest-only snapshot,
+  upserted per evaluation window so retries collapse into a single row. Query
+  timeouts are classified separately (QUERY_TIMEOUT, including timeouts wrapped
+  by the ClickHouse query client) with an actionable message. ERROR rows are
+  excluded from scheduling/backfill computations so failed windows are still
+  retried and backfilled, and once a failed window recovers (via a same-window
+  retry or a later tick's backfill) its stale ERROR row is removed. Evaluation
+  analytics (query/webhook durations, backfilled buckets) are recorded on every
+  history row.
+- 05a3fd81: Add the AlertHistory evaluations read model and GET /alerts/:id/evaluations
+  endpoint: per-window evaluation history scoped to a time range (clamped to the
+  retention window) with per-group breakdown for group-by alerts, evaluation
+  analytics fields, deduped error surfacing for ERROR-state windows, and
+  cursor-based pagination that always advances across gaps. Adds read-side
+  schema/type support for ERROR-state AlertHistory rows and evaluation analytics.
+- 4fa4975a: Add a `clickstack_query_tiles` MCP tool that validates many dashboard tiles in
+  a single call. It accepts a dashboard ID and an optional list of tile IDs
+  (default: every non-markdown tile), runs the tile queries with bounded
+  concurrency, and returns a compact per-tile success/failure summary
+  (status, row count, errors, and raw-SQL macro warnings) plus an aggregate
+  count. A tile that fails to query is reported inline without failing the whole
+  call, so an agent can validate an entire dashboard in one or two calls instead
+  of one `clickstack_query_tile` call per tile. The `clickstack_save_dashboard`
+  guidance now points at the batch tool for post-save validation.
+- d201b71f: Add an optional `serviceVersionExpression` to log and trace sources, identifying
+  the running release of a service. Defaults to the OpenTelemetry
+  `service.version` resource attribute; teams whose release identifier lives
+  elsewhere, such as a container image tag under GitOps, can point it there
+  instead of changing instrumentation.
+
+### Patch Changes
+
+- b9430a62: feat: Add broadcast and variable settings to dashboard filters
+- b6196031: Treat a session whose user no longer exists as logged out instead of failing the
+  request. Deleting a team member left that person's browser holding a session
+  cookie pointing at a user document that was gone, and `deserializeUser` reported
+  the missing user as an error rather than as an unauthenticated session. Because
+  `passport.session()` runs ahead of every router, each request carrying the
+  cookie came back `500 Something went wrong :(` regardless of path or method,
+  including public routes such as `POST /team/setup/:token` and `GET /logout`, so
+  a removed person could neither accept a fresh invite nor clear their own
+  session. The stale id is now dropped from the session and the request continues
+  unauthenticated, so protected routes answer 401 and the browser is sent back to
+  the login page.
+- de783063: Clear the remaining small api ESLint warnings and enforce their rules. Merges
+  the duplicate Express `declare global` namespace blocks in the auth middleware
+  (the `namespace` + empty-interface augmentation pattern is required, so it
+  carries a scoped disable with a comment), and scopes `n/no-process-exit` off for
+  the process entry points (`src/index.ts`, `src/tasks/index.ts`) where exiting
+  with a status code is intended. `@typescript-eslint/no-namespace`,
+  `no-empty-object-type`, and `n/no-process-exit` are promoted to `error` and the
+  api `--max-warnings` ceiling is lowered. Behavior is unchanged.
+- 018a6486: Clean up ESLint warnings and tighten lint enforcement. Resolved all
+  `no-unused-vars` and `@typescript-eslint/ban-ts-comment` warnings (removing dead
+  code and converting `@ts-ignore` to described `@ts-expect-error`), then promoted
+  those rules to `error` in the api/app/common-utils/cli/hdx-eval configs, disabled
+  the noisy `@typescript-eslint/no-empty-function` rule in app, and lowered each
+  package's `--max-warnings` ceiling so the counts can't regress. Behavior is
+  unchanged.
+- 582f3940: Show password requirements on the Join Team page and align the checklist with the server policy. When a user accepts a team invite and sets their password, the same live password policy checklist used on the auth/register page is now displayed, so users no longer have to guess the required length, casing, number, and special-character rules. The checklist previously diverged from the server in two ways that could show all-green checks for a password the server rejects: its special-character rule used a broader pattern than the backend (so a password whose only special character was e.g. `~`, a backtick, or a space passed the checklist but failed on submit), and it never surfaced the 72-character maximum (so an over-long password passed the checklist but failed on submit). The length rule now enforces both the minimum and maximum, and the password policy checks (length bounds, casing, number, and the accepted special-character set) live in a single shared module in `@hyperdx/common-utils` used by both the frontend checklist and the backend `passwordSchema`, so they can no longer drift. Finally, when the server rejects a password the Join Team page now shows the specific reason(s) it failed (e.g. "Password must include at least one special character (!@#$%^&\*(),.?\":{}|<>;-+=)") instead of a generic "Password is invalid", so users are told exactly what to change — including which special characters are accepted.
+- f891eb19: fix(mcp): steer agents toward builder query tools instead of raw SQL (HDX-4892). Telemetry showed agents (notebook investigations) using `clickstack_sql` for ~73% of data queries — usually for single-source aggregations, top-N, and time-series that the builder tools express more reliably (raw SQL also had ~2x the error rate). Reworded the `clickstack_sql` description to mark it a last resort, added a reciprocal "prefer me over SQL" nudge to `clickstack_table`, `clickstack_timeseries`, and `clickstack_search`, and added a server-level `instructions` tool-selection policy so the guidance is surfaced on `initialize` rather than only via the opt-in `query_guide` prompt.
+- 4c5ccfc4: Add MCP tool annotations (readOnlyHint, destructiveHint) to every MCP tool so
+  clients can distinguish read-only query tools from mutating ones. Read/query
+  tools are marked read-only; save/patch and delete tools are marked destructive
+  since they can overwrite or remove existing resources. Hints that would be
+  redundant against the MCP spec defaults are omitted (e.g. destructiveHint is
+  left off read-only tools, where it has no meaning).
+- 6662379e: feat: expose summary metrics through the mcp
+- f34cfaed: Remove the non-functional `GET /ext/silence-alert/:token` endpoint and its dead code path.
+- 711b905d: Guide dashboard MCP agents to filter builder tiles (table, line, stacked_bar,
+  number, pie, bar) with the per-series `where` on each select item, which the
+  chart editor surfaces as the tile's visible "Where" box. The dashboard prompt
+  and the select-item `where` tool description now steer toward it, and the save
+  and patch tools reject a tile-config-level `where`/`whereLanguage` on these
+  types with an actionable message (the editor does not render a tile-level filter
+  for them, so it would be invisible and uneditable). Search, heatmap, and
+  event_patterns tiles keep their tile-level `where`.
+- 908b27ed: Reject source writes that reference malformed, missing, or another team's
+  connection.
+- Updated dependencies [fd54ac78]
+- Updated dependencies [05a3fd81]
+- Updated dependencies [b9430a62]
+- Updated dependencies [546dd442]
+- Updated dependencies [cab98c7c]
+- Updated dependencies [018a6486]
+- Updated dependencies [8508b6c7]
+- Updated dependencies [2d33b83b]
+- Updated dependencies [0ed72ddf]
+- Updated dependencies [aedb514f]
+  - @hyperdx/common-utils@0.26.0
+
 ## 2.34.0
 
 ### Minor Changes

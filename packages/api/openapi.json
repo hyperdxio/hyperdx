@@ -118,6 +118,7 @@
         "type": "string",
         "enum": [
           "QUERY_ERROR",
+          "QUERY_TIMEOUT",
           "WEBHOOK_ERROR",
           "INVALID_ALERT",
           "UNKNOWN"
@@ -203,6 +204,15 @@
           "propertyName": "type"
         }
       },
+      "AlertChannels": {
+        "type": "array",
+        "description": "Notification channels to trigger when the alert fires or resolves. Between 1 and 10 channels; duplicates are rejected.\n",
+        "minItems": 1,
+        "maxItems": 10,
+        "items": {
+          "$ref": "#/components/schemas/AlertChannel"
+        }
+      },
       "Alert": {
         "type": "object",
         "properties": {
@@ -272,7 +282,11 @@
           },
           "channel": {
             "$ref": "#/components/schemas/AlertChannel",
-            "description": "Alert notification channel configuration."
+            "description": "First notification channel, mirrored from \"channels\" for pre-multi-channel clients."
+          },
+          "channels": {
+            "$ref": "#/components/schemas/AlertChannels",
+            "description": "All notification channels to trigger when the alert fires or resolves."
           },
           "name": {
             "type": "string",
@@ -364,11 +378,11 @@
           },
           {
             "type": "object",
+            "description": "At least one of \"channel\" or \"channels\" must be provided. Sending both is allowed only when \"channel\" matches the first entry of \"channels\", so a response body can be echoed back unchanged. Responses always include both, with \"channel\" mirroring the first entry of \"channels\".\n",
             "required": [
               "threshold",
               "interval",
-              "thresholdType",
-              "channel"
+              "thresholdType"
             ]
           }
         ]
@@ -380,11 +394,11 @@
           },
           {
             "type": "object",
+            "description": "At least one of \"channel\" or \"channels\" must be provided. Sending both is allowed only when \"channel\" matches the first entry of \"channels\", so a response body can be echoed back unchanged. Responses always include both, with \"channel\" mirroring the first entry of \"channels\". Updates replace the alert's configuration rather than merging it: sending only the legacy \"channel\" field for an alert that has several channels reduces it to that one channel. Fetch the alert and resend the complete \"channels\" array to preserve them.\n",
             "required": [
               "threshold",
               "interval",
-              "thresholdType",
-              "channel"
+              "thresholdType"
             ]
           }
         ]
@@ -820,6 +834,17 @@
         "description": "Query language for the where clause."
       },
       "SavedFilterValue": {
+        "description": "A single saved dashboard filter selection. Either a rendered SQL condition, or a selection addressed by the name of the dashboard variable it belongs to.\n",
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/SqlSavedFilterValue"
+          },
+          {
+            "$ref": "#/components/schemas/VariableSavedFilterValue"
+          }
+        ]
+      },
+      "SqlSavedFilterValue": {
         "type": "object",
         "required": [
           "condition"
@@ -831,13 +856,51 @@
               "sql"
             ],
             "default": "sql",
-            "description": "Filter type. Currently only \"sql\" is supported.",
+            "description": "Filter type.",
             "example": "sql"
           },
           "condition": {
             "type": "string",
+            "maxLength": 10000,
             "description": "SQL filter condition. For example use expressions in the form \"column IN ('value')\".",
             "example": "ServiceName IN ('hdx-oss-dev-api')"
+          }
+        }
+      },
+      "VariableSavedFilterValue": {
+        "type": "object",
+        "required": [
+          "type",
+          "name",
+          "values"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "variable"
+            ],
+            "description": "Filter type.",
+            "example": "variable"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024,
+            "description": "The variableName of the dashboard variable this selection belongs to. Only allowed for variable-enabled filters.\n",
+            "example": "service"
+          },
+          "values": {
+            "type": "array",
+            "maxItems": 1000,
+            "description": "Selected values",
+            "items": {
+              "type": "string",
+              "maxLength": 10000
+            },
+            "example": [
+              "hdx-oss-dev-api"
+            ]
           }
         }
       },
@@ -1577,6 +1640,30 @@
           }
         }
       },
+      "Formula": {
+        "type": "object",
+        "required": [
+          "expression"
+        ],
+        "description": "A derived series computed from the chart's select items via a letter-ref arithmetic expression (metric, log, and trace sources only). \"A\" refers to select[0], \"B\" to select[1], and so on. The grammar supports + - * /, parentheses, and numeric constants; expressions are parsed and validated, never passed through as raw SQL. Division by zero or a missing operand yields NULL (rendered as a gap).\n",
+        "properties": {
+          "expression": {
+            "type": "string",
+            "maxLength": 1024,
+            "description": "Arithmetic expression over the select items by position, e.g. \"A / (A + B) * 100\" for a success-rate percentage.\n",
+            "example": "A / (A + B) * 100"
+          },
+          "alias": {
+            "type": "string",
+            "description": "Display label for the formula series in chart legends and column headers. Falls back to the raw expression text when unset.\n",
+            "example": "Success rate %"
+          },
+          "numberFormat": {
+            "$ref": "#/components/schemas/NumberFormat",
+            "description": "Per-series number formatting options for the formula series.\n"
+          }
+        }
+      },
       "LineBuilderChartConfig": {
         "type": "object",
         "required": [
@@ -1648,6 +1735,19 @@
             "minimum": 0,
             "description": "Maximum number of series rendered (top-N by value). Omit to use the default render cap, set 0 for unlimited, or a positive N to keep the top N series.\n",
             "example": 5
+          },
+          "formulas": {
+            "type": "array",
+            "maxItems": 10,
+            "description": "Derived series computed from the select items via letter-ref arithmetic (\"A\" = select[0], \"B\" = select[1], ...). Metric, log, and trace sources only. Cannot be combined with asRatio.\n",
+            "items": {
+              "$ref": "#/components/schemas/Formula"
+            }
+          },
+          "showOperandSeries": {
+            "type": "boolean",
+            "description": "Only meaningful with formulas. When false, only the formula series are returned; the raw operand series are hidden.\n",
+            "default": true
           }
         }
       },
@@ -1712,6 +1812,19 @@
             "minimum": 0,
             "description": "Maximum number of series rendered (top-N by value). Omit to use the default render cap, set 0 for unlimited, or a positive N to keep the top N series.",
             "example": 5
+          },
+          "formulas": {
+            "type": "array",
+            "maxItems": 10,
+            "description": "Derived series computed from the select items via letter-ref arithmetic (\"A\" = select[0], \"B\" = select[1], ...). Metric, log, and trace sources only. Cannot be combined with asRatio.\n",
+            "items": {
+              "$ref": "#/components/schemas/Formula"
+            }
+          },
+          "showOperandSeries": {
+            "type": "boolean",
+            "description": "Only meaningful with formulas. When false, only the formula series are returned; the raw operand series are hidden.\n",
+            "default": true
           }
         }
       },
@@ -1782,6 +1895,19 @@
           "onClick": {
             "$ref": "#/components/schemas/OnClick",
             "description": "Optional link-out configuration applied when a user clicks a row."
+          },
+          "formulas": {
+            "type": "array",
+            "maxItems": 10,
+            "description": "Derived columns computed from the select items via letter-ref arithmetic (\"A\" = select[0], \"B\" = select[1], ...). Metric, log, and trace sources only. Cannot be combined with asRatio.\n",
+            "items": {
+              "$ref": "#/components/schemas/Formula"
+            }
+          },
+          "showOperandSeries": {
+            "type": "boolean",
+            "description": "Only meaningful with formulas. When false, only the formula columns are returned; the raw operand columns are hidden.\n",
+            "default": true
           }
         }
       },
@@ -1810,10 +1936,18 @@
           "select": {
             "type": "array",
             "minItems": 1,
-            "maxItems": 1,
-            "description": "Exactly one aggregated value to display as a single number.",
+            "maxItems": 20,
+            "description": "Exactly one aggregated value to display as a single number — unless \"formulas\" is set, in which case the select items are the formula's operands and the (single) formula value is displayed instead.\n",
             "items": {
               "$ref": "#/components/schemas/SelectItem"
+            }
+          },
+          "formulas": {
+            "type": "array",
+            "maxItems": 1,
+            "description": "A single derived value computed from the select items via letter-ref arithmetic (\"A\" = select[0], \"B\" = select[1], ...). Metric, log, and trace sources only. Number tiles display the formula value and always hide the operand series.\n",
+            "items": {
+              "$ref": "#/components/schemas/Formula"
             }
           },
           "numberFormat": {
@@ -2906,8 +3040,30 @@
         ]
       },
       "FilterInput": {
+        "description": "A drop-down filter on a dashboard. Depending on type, filters can either broadcast\nselected value(s) to every tile (isBroadcastEnabled), expose selected\nvalues as a variable (isVariableEnabled) or both. Typically a filter should\ndo just one of these things.\n",
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/QueryExpressionFilterInput"
+          },
+          {
+            "$ref": "#/components/schemas/StaticListFilterInput"
+          },
+          {
+            "$ref": "#/components/schemas/PrometheusLabelFilterInput"
+          }
+        ],
+        "discriminator": {
+          "propertyName": "type",
+          "mapping": {
+            "QUERY_EXPRESSION": "#/components/schemas/QueryExpressionFilterInput",
+            "STATIC_LIST": "#/components/schemas/StaticListFilterInput",
+            "PROMETHEUS_LABEL": "#/components/schemas/PrometheusLabelFilterInput"
+          }
+        }
+      },
+      "QueryExpressionFilterInput": {
         "type": "object",
-        "description": "Dashboard filter key that can be added to a dashboard",
+        "description": "A filter whose dropdown values are queried from ClickHouse: \"expression\"\nnames the column and \"sourceId\" the source to read them from. Its\nselection can be broadcast into matching tiles' WHERE clauses.\n",
         "required": [
           "type",
           "name",
@@ -2920,7 +3076,7 @@
             "enum": [
               "QUERY_EXPRESSION"
             ],
-            "description": "Filter type. Must be \"QUERY_EXPRESSION\".",
+            "description": "Filter type discriminator. Must be \"QUERY_EXPRESSION\".",
             "example": "QUERY_EXPRESSION"
           },
           "name": {
@@ -2932,7 +3088,7 @@
           "expression": {
             "type": "string",
             "minLength": 1,
-            "description": "Key expression used when applying this dashboard filter key",
+            "description": "SQL expression used when querying values for this filter, and when applying this dashboard filter to tiles.",
             "example": "environment"
           },
           "sourceId": {
@@ -2972,10 +3128,158 @@
             "items": {
               "type": "string"
             },
-            "description": "Optional list of source IDs this filter applies to. Omit or provide\nan empty array to apply the filter to ALL tiles regardless of source.\nA non-empty array restricts the filter to only tiles whose source ID\nis in the list; tiles using other sources are not affected by the\nselected filter value(s).\n",
+            "description": "Optional list of source IDs this filter applies to. Omit or provide\nan empty array to apply the filter to ALL tiles regardless of source.\nA non-empty array restricts the filter to only tiles whose source ID\nis in the list; tiles using other sources are not affected by the\nselected filter value(s). Scopes the broadcast condition only, so a\nnon-empty array is rejected when isBroadcastEnabled is false, and is\nomitted from responses for such a filter.\n",
             "example": [
               "65f5e4a3b9e77c001a111111"
             ]
+          },
+          "isBroadcastEnabled": {
+            "type": "boolean",
+            "description": "Whether the selected value is applied as a filter condition on every\nbuilder tile this filter applies to (see appliesToSourceIds), and every\nraw sql tile using the $__filters macro. Omitting the field means enabled.\n",
+            "default": true,
+            "example": false
+          },
+          "isVariableEnabled": {
+            "type": "boolean",
+            "description": "Whether the selected value is exposed to tile queries as a dashboard\nvariable named by variableName. Tiles may reference it as `$variableName`\nor using the (preferred) `$__filter($<variableName>)` and\n`$__conditionalAll(<condition>, $<variableName>)` macros.\n",
+            "default": false,
+            "example": true
+          },
+          "variableName": {
+            "type": "string",
+            "maxLength": 64,
+            "pattern": "^[a-zA-Z][a-zA-Z0-9_]*$",
+            "description": "Token tiles reference this filter's selected value by, as\n`$variableName`. Must start with a letter and may contain only\nletters, numbers, and underscores. Defaults to the display name with\nwhitespace replaced by underscores and remaining illegal characters\nremoved, so a variable-enabled filter whose name derives nothing\nusable must send this field explicitly. Variable names must be unique\nacross a dashboard's variable-enabled filters. Names the variable\nonly, so the field is rejected when isVariableEnabled is not true, and\nis omitted from responses for such a filter.\n",
+            "example": "environment"
+          }
+        }
+      },
+      "StaticListFilterInput": {
+        "type": "object",
+        "description": "A filter whose dropdown offers a static custom \"options\" list. It carries no\nexpression, so it cannot be broadcast, and supports only variable mode.\n",
+        "required": [
+          "type",
+          "name",
+          "options"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "STATIC_LIST"
+            ],
+            "description": "Discriminator. Must be \"STATIC_LIST\".",
+            "example": "STATIC_LIST"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Display name for the dashboard filter key",
+            "example": "Environment"
+          },
+          "options": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1000,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 10000
+            },
+            "description": "The values this filter's dropdown offers. Must be non-empty and\nfree of duplicates.\n",
+            "example": [
+              "prod",
+              "staging",
+              "dev"
+            ]
+          },
+          "isBroadcastEnabled": {
+            "type": "boolean",
+            "enum": [
+              false
+            ],
+            "default": false,
+            "description": "Must be false — there is no expression to broadcast. Omit it and it\nis false.\n",
+            "example": false
+          },
+          "isVariableEnabled": {
+            "type": "boolean",
+            "enum": [
+              true
+            ],
+            "default": true,
+            "description": "Must be true if provided, and is true when omitted. Tiles reference\nthe selection as `$variableName`, or with the `$__filter(<expression>, $<variableName>)`\nand `$__conditionalAll(<condition>, $<variableName>)` macros. The\none-argument `$__filter($<variableName>)` form renders the filter's\nown expression, which this kind of filter does not have, so it\nreports that the expression must be passed explicitly.\n",
+            "example": true
+          },
+          "variableName": {
+            "type": "string",
+            "maxLength": 64,
+            "pattern": "^[a-zA-Z][a-zA-Z0-9_]*$",
+            "description": "Token tiles reference this filter's selected value by, as\n`$variableName`. Must start with a letter and may contain only\nletters, numbers, and underscores. Defaults to the display name with\nwhitespace replaced by underscores and remaining illegal characters\nremoved, so a variable-enabled filter whose name derives nothing\nusable must send this field explicitly. Variable names must be unique\nacross a dashboard's variable-enabled filters. Names the variable\nonly, so the field is rejected when isVariableEnabled is not true, and\nis omitted from responses for such a filter.\n",
+            "example": "environment"
+          }
+        }
+      },
+      "PrometheusLabelFilterInput": {
+        "type": "object",
+        "description": "A filter whose dropdown lists the values for a Prometheus label,\nread from a PromQL source over the dashboard's time range.\nSupports variable mode only.\n",
+        "required": [
+          "type",
+          "name",
+          "sourceId",
+          "label"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "PROMETHEUS_LABEL"
+            ],
+            "description": "Discriminator. Must be \"PROMETHEUS_LABEL\".",
+            "example": "PROMETHEUS_LABEL"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Display name for the dashboard filter",
+            "example": "Pod"
+          },
+          "sourceId": {
+            "type": "string",
+            "description": "Id of the PromQL source the label values are read from.\n",
+            "example": "65f5e4a3b9e77c001a123456"
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024,
+            "description": "Label whose values populate the dropdown. Use \"__name__\" to list\nmetric names.\n",
+            "example": "pod"
+          },
+          "isBroadcastEnabled": {
+            "type": "boolean",
+            "enum": [
+              false
+            ],
+            "default": false,
+            "description": "Must be false or omitted.",
+            "example": false
+          },
+          "isVariableEnabled": {
+            "type": "boolean",
+            "enum": [
+              true
+            ],
+            "default": true,
+            "description": "Must be true if provided, and is true when omitted. Tiles reference\nthe selection as `$variableName`.\n",
+            "example": true
+          },
+          "variableName": {
+            "type": "string",
+            "maxLength": 64,
+            "pattern": "^[a-zA-Z][a-zA-Z0-9_]*$",
+            "description": "Token that tiles reference this filter's selected value by, as\n`$variableName`. Must start with a letter and may contain only\nletters, numbers, and underscores. Defaults to the display name with\nwhitespace replaced by underscores and remaining illegal characters\nremoved. Variable names must be unique across a dashboard's\nvariable-enabled filters.\n",
+            "example": "pod"
           }
         }
       },
@@ -3035,7 +3339,7 @@
           },
           "filters": {
             "type": "array",
-            "description": "Dashboard filter keys added to the dashboard and applied to all tiles",
+            "description": "Dropdown filters added to the dashboard. Each one broadcasts\nits selected value as a condition, acts as a variable which\ncan be referenced in tile queries, or both.\n",
             "items": {
               "$ref": "#/components/schemas/Filter"
             }
@@ -3105,7 +3409,7 @@
           },
           "filters": {
             "type": "array",
-            "description": "Dashboard filter keys to add to the dashboard and apply across all tiles",
+            "description": "Dropdown filters added to the dashboard. Each one broadcasts\nits selected value as a condition, acts as a variable which\ncan be referenced in tile queries, or both.\n",
             "items": {
               "$ref": "#/components/schemas/FilterInput"
             }
@@ -3176,7 +3480,7 @@
           },
           "filters": {
             "type": "array",
-            "description": "Dashboard filter keys on the dashboard, applied across all tiles",
+            "description": "Dropdown filters added to the dashboard. Each one broadcasts\nits selected value as a condition, acts as a variable which\ncan be referenced in tile queries, or both.\n",
             "items": {
               "$ref": "#/components/schemas/Filter"
             }
@@ -3820,6 +4124,12 @@
             "nullable": true,
             "example": "ServiceName"
           },
+          "serviceVersionExpression": {
+            "type": "string",
+            "description": "Expression identifying the running release of a service. Defaults to the OpenTelemetry service.version resource attribute when unset. Where services carry the release on different attributes, fall back across them with coalesce(nullIf(a, ''), nullIf(b, '')).",
+            "nullable": true,
+            "example": "ResourceAttributes['service.version']"
+          },
           "severityTextExpression": {
             "type": "string",
             "description": "Expression to extract the severity/log level text.",
@@ -4093,6 +4403,12 @@
             "description": "Expression to extract the service name from trace rows.",
             "nullable": true,
             "example": "ServiceName"
+          },
+          "serviceVersionExpression": {
+            "type": "string",
+            "description": "Expression identifying the running release of a service. Defaults to the OpenTelemetry service.version resource attribute when unset. Where services carry the release on different attributes, fall back across them with coalesce(nullIf(a, ''), nullIf(b, '')).",
+            "nullable": true,
+            "example": "ResourceAttributes['service.version']"
           },
           "resourceAttributesExpression": {
             "type": "string",
@@ -5148,6 +5464,27 @@
                     "message": "Error rate has exceeded 100 in the last hour",
                     "numConsecutiveWindows": 3
                   }
+                },
+                "multiChannelAlert": {
+                  "summary": "Create an alert that notifies several webhooks",
+                  "value": {
+                    "savedSearchId": "65f5e4a3b9e77c001a345678",
+                    "threshold": 10,
+                    "interval": "5m",
+                    "source": "saved_search",
+                    "thresholdType": "above",
+                    "channels": [
+                      {
+                        "type": "webhook",
+                        "webhookId": "65f5e4a3b9e77c001a789012"
+                      },
+                      {
+                        "type": "webhook",
+                        "webhookId": "65f5e4a3b9e77c001a789013"
+                      }
+                    ],
+                    "name": "Error Spike Alert"
+                  }
                 }
               }
             }
@@ -5961,6 +6298,18 @@
                         "name": "Service",
                         "expression": "service_name",
                         "sourceId": "65f5e4a3b9e77c001a111111"
+                      },
+                      {
+                        "type": "STATIC_LIST",
+                        "name": "Environment",
+                        "options": [
+                          "prod",
+                          "staging",
+                          "dev"
+                        ],
+                        "isBroadcastEnabled": false,
+                        "isVariableEnabled": true,
+                        "variableName": "env"
                       }
                     ]
                   }

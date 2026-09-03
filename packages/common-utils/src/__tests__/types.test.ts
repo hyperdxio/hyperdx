@@ -1,9 +1,18 @@
 import { z } from 'zod';
 
+import { MAX_FORMULA_EXPRESSION_LENGTH } from '@/core/formula';
 import {
   BackgroundChartSchema,
   ColorConditionSchema,
+  DASHBOARD_VARIABLE_NAME_MAX_LENGTH,
+  DashboardFilterSchema,
+  DashboardFilterValueSchema,
+  DashboardSchema,
   DerivedColumnSchema,
+  MAX_LEGEND_TEMPLATE_LENGTH,
+  MetricFormulaSchema,
+  PresetDashboard,
+  PresetDashboardFilterSchema,
   SavedChartConfigSchema,
 } from '@/types';
 
@@ -51,6 +60,24 @@ describe('ColorConditionSchema', () => {
         color: 'chart-blue',
       });
       expect(result.success).toBe(true);
+    });
+
+    // `value` is a fixed-length array rather than a tuple so the MCP tools can
+    // publish a draft-2020-12-valid JSON Schema. These guard that the looser
+    // container still pins arity and element type exactly as a tuple did.
+    it.each([
+      ['too few bounds', [10]],
+      ['too many bounds', [10, 100, 1000]],
+      ['a non-numeric bound', [10, '100']],
+      ['a non-finite bound', [10, Infinity]],
+      ['a bare number', 10],
+    ])('rejects %s', (_label, value) => {
+      const result = ColorConditionSchema.safeParse({
+        operator: 'between',
+        value,
+        color: 'chart-blue',
+      });
+      expect(result.success).toBe(false);
     });
   });
 
@@ -455,5 +482,450 @@ describe('alternateRowBackground on saved chart configs', () => {
     });
 
     expect(parsed).toMatchObject({ alternateRowBackground: true });
+  });
+});
+
+describe('DashboardFilterSchema variable fields', () => {
+  const baseFilter = {
+    id: 'f1',
+    type: 'QUERY_EXPRESSION' as const,
+    name: 'Service',
+    expression: 'ServiceName',
+    source: 'source-1',
+  };
+
+  it('parses a filter with none of the variable fields set', () => {
+    const parsed = DashboardFilterSchema.parse(baseFilter);
+    expect(parsed.isBroadcastEnabled).toBeUndefined();
+    expect(parsed.isVariableEnabled).toBeUndefined();
+    expect(parsed.variableName).toBeUndefined();
+  });
+
+  it('parses a fully configured variable filter', () => {
+    const parsed = DashboardFilterSchema.parse({
+      ...baseFilter,
+      isBroadcastEnabled: false,
+      isVariableEnabled: true,
+      variableName: 'Service_Name_1',
+    });
+    expect(parsed).toMatchObject({
+      isBroadcastEnabled: false,
+      isVariableEnabled: true,
+      variableName: 'Service_Name_1',
+    });
+  });
+
+  // The requiredness of `variableName` is a form-level concern: readers fall back
+  // to a name derived from the filter's display name, so a filter written by any
+  // other path stays resolvable rather than being rejected.
+  it('accepts isVariableEnabled without a variableName', () => {
+    const result = DashboardFilterSchema.safeParse({
+      ...baseFilter,
+      isVariableEnabled: true,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it.each([
+    'has space',
+    'dollar$',
+    'dot.notation',
+    "quote'",
+    'br[ackets]',
+    'with-dash',
+    '1leading',
+    '_leading',
+    '',
+  ])('rejects variableName %p', variableName => {
+    const result = DashboardFilterSchema.safeParse({
+      ...baseFilter,
+      variableName,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a variableName longer than the maximum', () => {
+    const result = DashboardFilterSchema.safeParse({
+      ...baseFilter,
+      variableName: 'a'.repeat(DASHBOARD_VARIABLE_NAME_MAX_LENGTH + 1),
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts a variableName at exactly the maximum length', () => {
+    const result = DashboardFilterSchema.safeParse({
+      ...baseFilter,
+      variableName: 'a'.repeat(DASHBOARD_VARIABLE_NAME_MAX_LENGTH),
+    });
+    expect(result.success).toBe(true);
+  });
+});
+
+// `DashboardFilterSchema` is a discriminated union, so most per-type rules are
+// structural and belong here. Only option *uniqueness* needs a refinement
+// (`validateDashboardFilterOptions`), covered in `dashboardValidation.test.ts`.
+describe('DashboardFilterSchema static-list variant', () => {
+  const staticFilter = {
+    id: 'f1',
+    type: 'STATIC_LIST' as const,
+    name: 'Environment',
+    options: ['prod', 'staging', 'dev'],
+    isBroadcastEnabled: false,
+    isVariableEnabled: true,
+    variableName: 'env',
+  };
+
+  it('parses a static-list filter and preserves the authored option order', () => {
+    const parsed = DashboardFilterSchema.parse(staticFilter);
+
+    expect(parsed).toEqual(staticFilter);
+    expect(parsed.type === 'STATIC_LIST' && parsed.options).toEqual([
+      'prod',
+      'staging',
+      'dev',
+    ]);
+  });
+
+  it('rejects an unknown filter type at the discriminator', () => {
+    const result = DashboardFilterSchema.safeParse({
+      ...staticFilter,
+      type: 'STATIC',
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]).toMatchObject({
+      code: 'invalid_union_discriminator',
+      path: ['type'],
+    });
+  });
+
+  it.each([
+    ['a missing option list', { options: undefined }],
+    ['an empty option list', { options: [] }],
+    ['an empty option', { options: ['prod', ''] }],
+  ])('rejects %s', (_label, overrides) => {
+    expect(
+      DashboardFilterSchema.safeParse({ ...staticFilter, ...overrides })
+        .success,
+    ).toBe(false);
+  });
+
+  // Bounds mirror `VariableFilterValueSchema`, so a selection can always hold
+  // whatever the option list offers.
+  it('rejects an option longer than a selection could carry', () => {
+    expect(
+      DashboardFilterSchema.safeParse({
+        ...staticFilter,
+        options: ['a'.repeat(10001)],
+      }).success,
+    ).toBe(false);
+    expect(
+      DashboardFilterSchema.safeParse({
+        ...staticFilter,
+        options: ['a'.repeat(10000)],
+      }).success,
+    ).toBe(true);
+  });
+
+  it('rejects more options than a selection could carry', () => {
+    const options = Array.from({ length: 1001 }, (_, i) => `option-${i}`);
+
+    expect(
+      DashboardFilterSchema.safeParse({ ...staticFilter, options }).success,
+    ).toBe(false);
+    expect(
+      DashboardFilterSchema.safeParse({
+        ...staticFilter,
+        options: options.slice(0, 1000),
+      }).success,
+    ).toBe(true);
+  });
+
+  // Variable-only by construction: with no expression there is nothing to
+  // broadcast into a WHERE clause, so the modes are literals rather than
+  // optional booleans.
+  it.each([
+    ['broadcast enabled', { isBroadcastEnabled: true }],
+    ['broadcast unset', { isBroadcastEnabled: undefined }],
+    ['variables disabled', { isVariableEnabled: false }],
+    ['variables unset', { isVariableEnabled: undefined }],
+  ])('rejects a static filter with %s', (_label, overrides) => {
+    const result = DashboardFilterSchema.safeParse({
+      ...staticFilter,
+      ...overrides,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0].path).toEqual([Object.keys(overrides)[0]]);
+  });
+
+  // Not strict, on purpose: these variants parse unvalidated Mongo documents,
+  // where a key left behind by an older version must not make template export
+  // throw. The external API's variants *are* strict and reject it — see
+  // `dashboards.int.test.ts`.
+  it('strips a query-expression field rather than rejecting it', () => {
+    const parsed = DashboardFilterSchema.parse({
+      ...staticFilter,
+      expression: 'ServiceName',
+      source: 'source-1',
+      where: "ServiceName = 'api'",
+      appliesToSourceIds: ['source-1'],
+    });
+
+    expect(parsed).toEqual(staticFilter);
+  });
+});
+
+describe('DashboardFilterSchema query-expression variant', () => {
+  const queryFilter = {
+    id: 'f1',
+    type: 'QUERY_EXPRESSION' as const,
+    name: 'Service',
+    expression: 'ServiceName',
+    source: 'source-1',
+  };
+
+  it.each(['expression', 'source'] as const)(
+    'requires a non-empty %s',
+    field => {
+      for (const value of [undefined, '']) {
+        expect(
+          DashboardFilterSchema.safeParse({ ...queryFilter, [field]: value })
+            .success,
+        ).toBe(false);
+      }
+    },
+  );
+
+  it('strips an option list, which this type has no use for', () => {
+    expect(
+      DashboardFilterSchema.parse({ ...queryFilter, options: ['prod'] }),
+    ).toEqual(queryFilter);
+  });
+
+  // Unlike the static variant these stay optional booleans: a filter written
+  // before either field existed broadcasts, and must keep parsing.
+  it('accepts a filter carrying neither mode flag', () => {
+    expect(DashboardFilterSchema.parse(queryFilter)).toEqual(queryFilter);
+  });
+});
+
+// Preset dashboards are broadcast-only, so the preset schema extends the
+// query-expression variant rather than the union — a static filter is
+// unrepresentable rather than rejected by a refinement.
+describe('PresetDashboardFilterSchema', () => {
+  const presetFilter = {
+    id: 'f1',
+    type: 'QUERY_EXPRESSION' as const,
+    name: 'Service',
+    expression: 'ServiceName',
+    source: 'source-1',
+    presetDashboard: PresetDashboard.Services,
+  };
+
+  it('accepts a query-expression preset filter', () => {
+    expect(PresetDashboardFilterSchema.parse(presetFilter)).toEqual(
+      presetFilter,
+    );
+  });
+
+  it('rejects a static-list preset filter', () => {
+    const result = PresetDashboardFilterSchema.safeParse({
+      id: 'f1',
+      type: 'STATIC_LIST',
+      name: 'Environment',
+      options: ['prod'],
+      isBroadcastEnabled: false,
+      isVariableEnabled: true,
+      presetDashboard: PresetDashboard.Services,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0].path).toEqual(['type']);
+  });
+
+  // The Mongoose model requires both, so the schema has to as well.
+  it.each(['expression', 'source'] as const)('requires %s', field => {
+    expect(
+      PresetDashboardFilterSchema.safeParse({
+        ...presetFilter,
+        [field]: undefined,
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe('DashboardFilterValueSchema', () => {
+  it('accepts the legacy condition-carrying entries', () => {
+    for (const entry of [
+      { type: 'sql', condition: "ServiceName IN ('api')" },
+      { type: 'lucene', condition: 'ServiceName:"api"' },
+      { type: 'sql_ast', operator: '=', left: 'ServiceName', right: 'api' },
+    ]) {
+      expect(DashboardFilterValueSchema.safeParse(entry).success).toBe(true);
+    }
+  });
+
+  it('accepts a variable-keyed entry, including with no values selected', () => {
+    expect(
+      DashboardFilterValueSchema.safeParse({
+        type: 'variable',
+        name: 'svc',
+        values: ['accounting'],
+      }).success,
+    ).toBe(true);
+    expect(
+      DashboardFilterValueSchema.safeParse({
+        type: 'variable',
+        name: 'svc',
+        values: [],
+      }).success,
+    ).toBe(true);
+  });
+
+  it('requires a non-empty name and a values array', () => {
+    for (const entry of [
+      { type: 'variable', values: ['a'] },
+      { type: 'variable', name: '', values: ['a'] },
+      { type: 'variable', name: 'svc' },
+      { type: 'variable', name: 'svc', values: 'a' },
+      { type: 'variable', name: 'svc', values: [1] },
+      { type: 'variable', name: 'a'.repeat(1025), values: ['a'] },
+    ]) {
+      expect(DashboardFilterValueSchema.safeParse(entry).success).toBe(false);
+    }
+  });
+
+  it.each([
+    ['one the variable-name grammar would reject', 'not a token'],
+    ['far longer than the variable-name limit', 'a'.repeat(65)],
+    ['at the entry limit', 'a'.repeat(1024)],
+  ])('accepts a name that is %s', (_label, name) => {
+    // Both the grammar and the 64-character limit are enforced on the filter
+    // *definition*. Enforcing either here would make a selection written by a
+    // looser client unparseable, and an unmatched selection is meant to survive
+    // as an orphan rather than be dropped. The entry's own cap only bounds input.
+    expect(
+      DashboardFilterValueSchema.safeParse({
+        type: 'variable',
+        name,
+        values: ['a'],
+      }).success,
+    ).toBe(true);
+  });
+
+  it('is accepted by DashboardSchema.savedFilterValues alongside sql entries', () => {
+    const result = DashboardSchema.safeParse({
+      id: 'd1',
+      name: 'Dashboard',
+      tiles: [],
+      tags: [],
+      savedFilterValues: [
+        { type: 'sql', condition: "Env IN ('prod')" },
+        { type: 'variable', name: 'svc', values: ['accounting'] },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+});
+
+describe('MetricFormulaSchema', () => {
+  it('parses an expression-only formula', () => {
+    const result = MetricFormulaSchema.safeParse({
+      expression: 'A / (A + B + C) * 100',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('parses a formula with alias and numberFormat', () => {
+    const result = MetricFormulaSchema.safeParse({
+      expression: 'A / B',
+      alias: 'Success rate',
+      numberFormat: { output: 'percent', mantissa: 1 },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('requires an expression', () => {
+    expect(MetricFormulaSchema.safeParse({ alias: 'x' }).success).toBe(false);
+    expect(MetricFormulaSchema.safeParse({ expression: 1 }).success).toBe(
+      false,
+    );
+  });
+
+  // The schema length cap and the parser's MAX_FORMULA_EXPRESSION_LENGTH
+  // must agree — types.ts is a leaf module (imports only zod), so the bound
+  // is duplicated as a literal there and pinned here.
+  it('caps expression length at MAX_FORMULA_EXPRESSION_LENGTH', () => {
+    expect(
+      MetricFormulaSchema.safeParse({
+        expression: 'A'.repeat(MAX_FORMULA_EXPRESSION_LENGTH),
+      }).success,
+    ).toBe(true);
+    expect(
+      MetricFormulaSchema.safeParse({
+        expression: 'A'.repeat(MAX_FORMULA_EXPRESSION_LENGTH + 1),
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe('formulas on saved chart configs', () => {
+  // `formulas` / `showOperandSeries` live on _ChartConfigSchema (builder
+  // configs only — formulas reference `select` entries by position, which
+  // raw SQL / PromQL configs do not have).
+
+  it('retains formulas and showOperandSeries on a builder saved config', () => {
+    const parsed = SavedChartConfigSchema.parse({
+      source: 'test-source',
+      timestampValueExpression: 'Timestamp',
+      select: [
+        { aggFn: 'sum', valueExpression: 'Value', metricName: 'success' },
+        { aggFn: 'sum', valueExpression: 'Value', metricName: 'error' },
+      ],
+      where: '',
+      formulas: [{ expression: 'A / (A + B) * 100', alias: 'Success rate' }],
+      showOperandSeries: false,
+    });
+
+    expect(parsed).toMatchObject({
+      formulas: [{ expression: 'A / (A + B) * 100', alias: 'Success rate' }],
+      showOperandSeries: false,
+    });
+  });
+
+  it('parses a builder saved config without formulas (back-compat)', () => {
+    const parsed = SavedChartConfigSchema.parse({
+      source: 'test-source',
+      timestampValueExpression: 'Timestamp',
+      select: [{ aggFn: 'count', valueExpression: '' }],
+      where: '',
+    });
+
+    expect(parsed).not.toHaveProperty('formulas');
+  });
+});
+
+describe('PromQL legend templates on saved chart configs', () => {
+  const promqlConfig = (legendTemplate: string) => ({
+    configType: 'promql' as const,
+    promqlExpression: 'up',
+    connection: 'conn-1',
+    legendTemplate,
+  });
+
+  // The editor rejects an over-long template inline using the same constant;
+  // if these drift, a template the editor accepts fails the dashboard save.
+  it('caps legendTemplate at MAX_LEGEND_TEMPLATE_LENGTH', () => {
+    expect(
+      SavedChartConfigSchema.safeParse(
+        promqlConfig('a'.repeat(MAX_LEGEND_TEMPLATE_LENGTH)),
+      ).success,
+    ).toBe(true);
+    expect(
+      SavedChartConfigSchema.safeParse(
+        promqlConfig('a'.repeat(MAX_LEGEND_TEMPLATE_LENGTH + 1)),
+      ).success,
+    ).toBe(false);
   });
 });

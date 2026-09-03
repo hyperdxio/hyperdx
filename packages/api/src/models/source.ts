@@ -18,6 +18,9 @@ import { objectIdSchema } from '@/utils/zod';
 // ISource is a discriminated union (inherits from TSource) with team added
 // and connection widened to ObjectId | string for Mongoose.
 // Omit and & distribute over the union, preserving the discriminated structure.
+// Schema exists purely to derive ISource / ISourceInput via `typeof` below; the
+// runtime value is intentionally never parsed, so no-unused-vars is a false positive here.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const ISourceSchema = z.discriminatedUnion('kind', [
   LogSourceSchema.omit({ connection: true }).extend({
     team: objectIdSchema,
@@ -139,6 +142,7 @@ export const LogSource = Source.discriminator<ILogSource>(
   new Schema<ILogSource>({
     defaultTableSelectExpression: String,
     serviceNameExpression: String,
+    serviceVersionExpression: String,
     severityTextExpression: String,
     bodyExpression: String,
     eventAttributesExpression: String,
@@ -199,6 +203,7 @@ export const TraceSource = Source.discriminator<ITraceSource>(
     statusCodeExpression: String,
     statusMessageExpression: String,
     serviceNameExpression: String,
+    serviceVersionExpression: String,
     resourceAttributesExpression: String,
     eventAttributesExpression: String,
     spanEventsValueExpression: String,

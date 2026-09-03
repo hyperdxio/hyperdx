@@ -6,11 +6,15 @@ import { z } from 'zod';
 
 export { default as objectHash } from 'object-hash';
 
+import { isQueryExpressionFilter, isStaticListFilter } from '@/filters';
 import { isBuilderSavedChartConfig, isRawSqlSavedChartConfig } from '@/guards';
+import { MacroExpansionError, MalformedMacroArgsError } from '@/macroErrors';
 import {
   getSourceDependentMacrosUsed,
   getSourceTableMacroArgCounts,
   hasMacro,
+  isMissingFiltersMacro,
+  MacroName,
   replaceMacros,
 } from '@/macros';
 import { QUERY_PARAMS, RawSqlQueryParam } from '@/rawSqlParams';
@@ -29,10 +33,12 @@ import {
   RawSqlChartConfig,
   SavedChartConfig,
   SortSpecificationList,
+  SourceKind,
   SQLInterval,
   TileTemplateSchema,
   TSource,
 } from '@/types';
+import { validateVariableReferencesInTemplate } from '@/variables';
 
 import { SkipIndexMetadata, TableMetadata } from './metadata';
 
@@ -72,7 +78,14 @@ export function splitAndTrimCSV(input: string): string[] {
     .filter(column => column.length > 0);
 }
 
-function isQuoteEscapedByBackslash(input: string, index: number): boolean {
+/** Escape a value for embedding in a single-quoted ClickHouse string literal. */
+export const escapeSqlString = (value: string) =>
+  value.replace(/\\/g, '\\\\').replace(/'/g, "''");
+
+export function isQuoteEscapedByBackslash(
+  input: string,
+  index: number,
+): boolean {
   let backslashes = 0;
   for (let i = index - 1; i >= 0 && input[i] === '\\'; i--) {
     backslashes++;
@@ -569,7 +582,7 @@ export const _useTry = <T>(fn: () => T): [null | Error | unknown, null | T] => {
 };
 
 export const parseJSON = <T = any>(json: string) => {
-  const [error, result] = _useTry<T>(() => JSON.parse(json));
+  const [_error, result] = _useTry<T>(() => JSON.parse(json));
   return result;
 };
 
@@ -688,17 +701,24 @@ export function convertToDashboardTemplate(
     input: DashboardFilter,
     sources: TSource[],
   ): DashboardFilter => {
-    const filter = DashboardFilterSchema.strip().parse(structuredClone(input));
+    const filter = DashboardFilterSchema.parse(structuredClone(input));
+
+    // A static filter references nothing in the workspace
+    if (isStaticListFilter(filter)) return filter;
+
     // Extract name from source or default to '' if not found
     filter.source =
-      sources.find(source => source.id === input.source)?.name ?? '';
-    if (input.appliesToSourceIds?.length) {
-      const remapped = input.appliesToSourceIds
-        .map(id => sources.find(source => source.id === id)?.name)
-        .filter((name): name is string => !!name && name.length > 0);
-      filter.appliesToSourceIds = remapped.length > 0 ? remapped : undefined;
-    } else {
-      filter.appliesToSourceIds = undefined;
+      sources.find(source => source.id === filter.source)?.name ?? '';
+
+    if (isQueryExpressionFilter(filter)) {
+      if (filter.appliesToSourceIds?.length) {
+        const remapped = filter.appliesToSourceIds
+          .map(id => sources.find(source => source.id === id)?.name)
+          .filter((name): name is string => !!name && name.length > 0);
+        filter.appliesToSourceIds = remapped.length > 0 ? remapped : undefined;
+      } else {
+        filter.appliesToSourceIds = undefined;
+      }
     }
     return filter;
   };
@@ -866,11 +886,21 @@ export function convertToCategoricalChartConfig(
 /**
  * Number charts collapse to a single aggregate value, so drop the time bucket
  * (granularity) and any group-by.
+ *
+ * Metric formula configs (HDX-5080) additionally always hide their operand
+ * series: the number chart displays the first value column of the result, so
+ * the formula column must be the only one projected — never a raw operand.
+ * Enforced here (the choke point every number render passes through) so it
+ * holds for stale saved configs and display-type switches alike, regardless
+ * of the tile's "Show input series" setting on other display types.
  */
 export function convertToNumberChartConfig(
   config: BuilderChartConfigWithOptTimestamp,
 ): BuilderChartConfigWithOptTimestamp {
-  return omit(config, ['granularity', 'groupBy']);
+  const converted = omit(config, ['granularity', 'groupBy']);
+  return config.formulas?.length
+    ? { ...converted, showOperandSeries: false }
+    : converted;
 }
 
 /**
@@ -1370,6 +1400,38 @@ export function displayTypeSupportsBuilderAlerts(
   );
 }
 
+/**
+ * Display types that can carry formulas — the shapes the formula query
+ * paths render (composed multi-series for metrics, inline single-scan for
+ * events). Shared by the chart editor's "Add Formula" gating and the
+ * external API / MCP tile validation, so the surfaces cannot drift.
+ */
+export const isFormulaDisplayType = (
+  displayType: DisplayType | undefined,
+): displayType is
+  | DisplayType.Line
+  | DisplayType.StackedBar
+  | DisplayType.Table
+  | DisplayType.Number =>
+  displayType === DisplayType.Line ||
+  displayType === DisplayType.StackedBar ||
+  displayType === DisplayType.Table ||
+  displayType === DisplayType.Number;
+
+/**
+ * Source kinds that can carry formulas: metric sources (rendered via the
+ * composed multi-series metric query) and log/trace event sources (compiled
+ * inline in the single-scan SELECT). Shared by the chart editor's
+ * "Add Formula" gating and the external API / MCP tile validation, so the
+ * surfaces cannot drift. Session (and other) sources stay gated off.
+ */
+export const isFormulaSourceKind = (
+  kind: SourceKind | undefined,
+): kind is SourceKind.Metric | SourceKind.Log | SourceKind.Trace =>
+  kind === SourceKind.Metric ||
+  kind === SourceKind.Log ||
+  kind === SourceKind.Trace;
+
 export function displayTypeSupportsPromQLAlerts(
   displayType: DisplayType | undefined,
 ): boolean {
@@ -1378,43 +1440,37 @@ export function displayTypeSupportsPromQLAlerts(
   return displayType ? false : false;
 }
 
+/** Expand the chart's macros, returning failures instead of throwing. */
+function resolveRawSqlMacros(
+  chartConfig: RawSqlChartConfig,
+): { sql: string; error?: undefined } | { sql?: undefined; error: Error } {
+  try {
+    return { sql: replaceMacros(chartConfig) };
+  } catch (e) {
+    return { error: e instanceof Error ? e : new Error(String(e)) };
+  }
+}
+
 /**
- * Resolves the chart's macros and reports which raw-SQL time-range/interval
- * query params are present in the resolved SQL. Shared by
- * `validateRawSqlForAlert` and `validateRawSqlChartConfig`, which each build
- * their own error/warning messages from this on top.
- *
- * Returns `null` if the config isn't raw SQL or macro resolution fails
- * (`replaceMacros` throws frequently while a user is still typing).
+ * Reports which time-range/interval query params are present in the given SQL.
  */
-function getRawSqlTimeRangeStatus(chartConfig: RawSqlChartConfig): {
+function getRawSqlTimeRangeStatus(
+  chartConfig: RawSqlChartConfig,
+  sql: string,
+): {
   isTimeSeries: boolean;
   hasInterval: boolean;
   hasTimeFilter: boolean;
-} | null {
-  try {
-    if (!isRawSqlSavedChartConfig(chartConfig)) {
-      return null;
-    }
-
-    const sql = replaceMacros(chartConfig);
-
-    return {
-      isTimeSeries: isTimeSeriesDisplayType(chartConfig.displayType),
-      hasInterval:
-        sql.includes(
-          QUERY_PARAMS[RawSqlQueryParam.intervalMilliseconds].name,
-        ) || sql.includes(QUERY_PARAMS[RawSqlQueryParam.intervalSeconds].name),
-      hasTimeFilter:
-        sql.includes(
-          QUERY_PARAMS[RawSqlQueryParam.startDateMilliseconds].name,
-        ) &&
-        sql.includes(QUERY_PARAMS[RawSqlQueryParam.endDateMilliseconds].name),
-    };
-  } catch {
-    // replaceMacros will often fail as users type in the SQL template
-    return null;
-  }
+} {
+  return {
+    isTimeSeries: isTimeSeriesDisplayType(chartConfig.displayType),
+    hasInterval:
+      sql.includes(QUERY_PARAMS[RawSqlQueryParam.intervalMilliseconds].name) ||
+      sql.includes(QUERY_PARAMS[RawSqlQueryParam.intervalSeconds].name),
+    hasTimeFilter:
+      sql.includes(QUERY_PARAMS[RawSqlQueryParam.startDateMilliseconds].name) &&
+      sql.includes(QUERY_PARAMS[RawSqlQueryParam.endDateMilliseconds].name),
+  };
 }
 
 export function validateRawSqlForAlert(chartConfig: RawSqlChartConfig): {
@@ -1434,8 +1490,9 @@ export function validateRawSqlForAlert(chartConfig: RawSqlChartConfig): {
     );
   }
 
-  const status = getRawSqlTimeRangeStatus(chartConfig);
-  if (status) {
+  const { sql } = resolveRawSqlMacros(chartConfig);
+  if (sql != null) {
+    const status = getRawSqlTimeRangeStatus(chartConfig, sql);
     // Interval params are only required for time-series display types (Line, StackedBar).
     // Number charts don't use interval bucketing.
     if (status.isTimeSeries && !status.hasInterval) {
@@ -1469,9 +1526,23 @@ export function validateRawSqlChartConfig(
     return { errors, warnings };
   }
 
+  // An empty editor has nothing wrong with it yet.
+  if (!chartConfig.sqlTemplate.trim()) {
+    return { errors, warnings };
+  }
+
+  // Track macros this function has already described with an error, to avoid repetition.
+  const reportedMacros = new Set<MacroName>();
+  const pushError = (message: string, macro?: MacroName) => {
+    errors.push(message);
+    if (macro != null) reportedMacros.add(macro);
+  };
+
   try {
-    const status = getRawSqlTimeRangeStatus(chartConfig);
-    if (status) {
+    const resolved = resolveRawSqlMacros(chartConfig);
+
+    if (resolved.sql != null) {
+      const status = getRawSqlTimeRangeStatus(chartConfig, resolved.sql);
       if (status.isTimeSeries && !status.hasInterval) {
         errors.push(
           'SQL must include an interval parameter or macro (e.g. $__interval_s) for this display type.',
@@ -1485,13 +1556,21 @@ export function validateRawSqlChartConfig(
       }
     }
 
+    const variableIssues = validateVariableReferencesInTemplate(
+      chartConfig.sqlTemplate,
+      chartConfig.variables,
+      { subject: 'SQL', language: 'sql' },
+    );
+    errors.push(...variableIssues.errors);
+    warnings.push(...variableIssues.warnings);
+
     if (isDashboardTile) {
       if (!hasMacro(chartConfig.sqlTemplate, 'sourceTable')) {
         warnings.push(
           'SQL should include the $__sourceTable macro so this tile queries its configured source.',
         );
       }
-      if (!hasMacro(chartConfig.sqlTemplate, 'filters')) {
+      if (isMissingFiltersMacro(chartConfig.sqlTemplate)) {
         warnings.push(
           'SQL should include the $__filters macro so dashboard filters apply to this tile.',
         );
@@ -1506,6 +1585,7 @@ export function validateRawSqlChartConfig(
         errors.push(
           `SQL uses ${usedMacros.map(m => `$__${m}`).join(' and ')} but no source is selected — select a source so ${usedMacros.length > 1 ? 'these macros' : 'this macro'} can resolve correctly.`,
         );
+        usedMacros.forEach(macro => reportedMacros.add(macro));
       }
     } else {
       // A metric type argument is required for a metrics source and
@@ -1514,21 +1594,54 @@ export function validateRawSqlChartConfig(
       const isMetricsSource = !!chartConfig.metricTables;
 
       if (argCounts.some(count => count > 0) && !isMetricsSource) {
-        errors.push(
+        pushError(
           'SQL uses $__sourceTable(<metricType>) but the selected source is not a metrics source — use a bare $__sourceTable instead.',
+          'sourceTable',
         );
       }
 
       if (argCounts.some(count => count === 0) && isMetricsSource) {
-        errors.push(
+        pushError(
           'SQL uses a bare $__sourceTable but the selected source is a metrics source — specify a metric type, e.g. $__sourceTable(gauge).',
+          'sourceTable',
         );
       }
     }
-  } catch {
+
+    // Report anything else macro expansion refused to do
+    const { error } = resolved;
+    if (error != null) {
+      // An unterminated argument list is what a half-typed macro looks like, so it stays silent.
+      const isStillTyping = error instanceof MalformedMacroArgsError;
+      const isAlreadyReported =
+        error instanceof MacroExpansionError && reportedMacros.has(error.macro);
+
+      // Everything else — an unknown variable, a bad argument count, an
+      // unrecognized `${v:format}`, an unconfigured metric type — is invisible
+      // to the user until the query fails, so it is reported verbatim. A
+      // variable macro's message can already have come from the variable checks
+      // above, which expand the same template.
+      if (
+        !isStillTyping &&
+        !isAlreadyReported &&
+        !errors.includes(error.message)
+      ) {
+        errors.push(error.message);
+      }
+    }
+  } catch (e) {
     // hasMacro/getSourceDependentMacrosUsed throw on malformed macro args
     // (e.g. an unmatched paren) while the user is still typing; fall back to
     // whatever errors/warnings were already accumulated rather than crash.
+    // That is the expected path here — the editor revalidates on every
+    // keystroke, so logging it would put a stack trace in the console on each
+    // debounce tick and drown out the case below.
+    if (e instanceof MalformedMacroArgsError) {
+      return { errors, warnings };
+    }
+
+    // Anything else is a bug in the checks above, so surface it for investigation:
+    console.error('Unexpected error validating raw SQL chart config', e);
   }
 
   return { errors, warnings };

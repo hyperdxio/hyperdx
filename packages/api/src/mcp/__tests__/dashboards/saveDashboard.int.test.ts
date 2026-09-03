@@ -2043,6 +2043,794 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
       expect(envFilter.id).not.toBe(existingFilterId);
     });
 
+    describe('variable-enabled filters', () => {
+      // The three variable fields were missing from mcpDashboardFilterSchema,
+      // and a plain z.object drops unknown keys, so an agent that read a
+      // variable-enabled dashboard and saved it back silently wiped the
+      // variable configuration. These guard the round trip and the
+      // validations the filter configuration form applies.
+
+      const variableFilter = (
+        sourceId: string,
+        overrides: Record<string, unknown> = {},
+      ) => ({
+        type: 'QUERY_EXPRESSION' as const,
+        name: 'Service',
+        expression: 'ServiceName',
+        sourceId,
+        whereLanguage: 'sql' as const,
+        isBroadcastEnabled: false,
+        isVariableEnabled: true,
+        variableName: 'service',
+        ...overrides,
+      });
+
+      it('round-trips the variable fields through create, get, and save', async () => {
+        const sourceId = ctx.traceSource._id.toString();
+
+        const createResult = await callTool(
+          ctx.client!,
+          'clickstack_save_dashboard',
+          {
+            name: 'Variable round-trip',
+            tiles: [traceTile(sourceId)],
+            filters: [variableFilter(sourceId)],
+          },
+        );
+        expect(createResult.isError).toBeFalsy();
+        const created = JSON.parse(getFirstText(createResult));
+        expect(created.filters[0]).toMatchObject({
+          isBroadcastEnabled: false,
+          isVariableEnabled: true,
+          variableName: 'service',
+        });
+
+        const getResult = await callTool(
+          ctx.client!,
+          'clickstack_get_dashboard',
+          { id: created.id },
+        );
+        const fetched = JSON.parse(getFirstText(getResult));
+        expect(fetched.filters[0]).toMatchObject({
+          isBroadcastEnabled: false,
+          isVariableEnabled: true,
+          variableName: 'service',
+        });
+
+        // The whole point: feed the get response straight back in.
+        const updateResult = await callTool(
+          ctx.client!,
+          'clickstack_save_dashboard',
+          {
+            id: created.id,
+            name: fetched.name,
+            tiles: [traceTile(sourceId)],
+            filters: fetched.filters,
+          },
+        );
+        expect(updateResult.isError).toBeFalsy();
+        const updated = JSON.parse(getFirstText(updateResult));
+        expect(updated.filters[0]).toMatchObject({
+          id: fetched.filters[0].id,
+          isBroadcastEnabled: false,
+          isVariableEnabled: true,
+          variableName: 'service',
+        });
+      });
+
+      it('derives the variable name from the display name when omitted', async () => {
+        const sourceId = ctx.traceSource._id.toString();
+        const result = await callTool(
+          ctx.client!,
+          'clickstack_save_dashboard',
+          {
+            name: 'Derived variable name',
+            tiles: [traceTile(sourceId)],
+            filters: [
+              variableFilter(sourceId, {
+                name: 'Service Name',
+                variableName: undefined,
+              }),
+            ],
+          },
+        );
+
+        expect(result.isError).toBeFalsy();
+        const created = JSON.parse(getFirstText(result));
+        // Nothing is persisted under variableName: the renderer derives
+        // $Service_Name from the display name at read time. The response
+        // still echoes that resolved name so a caller doesn't have to
+        // reimplement the derivation to know what token ($Service_Name)
+        // actually resolves at query time.
+        expect(created.filters[0].variableName).toBe('Service_Name');
+      });
+
+      it('round-trips a derived variable name through get and save unchanged', async () => {
+        const sourceId = ctx.traceSource._id.toString();
+        const createResult = await callTool(
+          ctx.client!,
+          'clickstack_save_dashboard',
+          {
+            name: 'Derived variable name round-trip',
+            tiles: [traceTile(sourceId)],
+            filters: [
+              variableFilter(sourceId, {
+                name: 'Service Name',
+                variableName: undefined,
+              }),
+            ],
+          },
+        );
+        expect(createResult.isError).toBeFalsy();
+        const created = JSON.parse(getFirstText(createResult));
+        expect(created.filters[0].variableName).toBe('Service_Name');
+
+        const getResult = await callTool(
+          ctx.client!,
+          'clickstack_get_dashboard',
+          { id: created.id },
+        );
+        const fetched = JSON.parse(getFirstText(getResult));
+        expect(fetched.filters[0].variableName).toBe('Service_Name');
+
+        // Feed the derived name straight back in, unmodified, and confirm
+        // it comes back the same rather than drifting or being dropped.
+        const updateResult = await callTool(
+          ctx.client!,
+          'clickstack_save_dashboard',
+          {
+            id: created.id,
+            name: fetched.name,
+            tiles: [traceTile(sourceId)],
+            filters: fetched.filters,
+          },
+        );
+        expect(updateResult.isError).toBeFalsy();
+        const updated = JSON.parse(getFirstText(updateResult));
+        expect(updated.filters[0].variableName).toBe('Service_Name');
+      });
+
+      it('rejects a filter that neither broadcasts nor exposes a variable', async () => {
+        const sourceId = ctx.traceSource._id.toString();
+        const result = await callTool(
+          ctx.client!,
+          'clickstack_save_dashboard',
+          {
+            name: 'Inert filter',
+            tiles: [traceTile(sourceId)],
+            filters: [
+              variableFilter(sourceId, {
+                isVariableEnabled: false,
+                variableName: undefined,
+              }),
+            ],
+          },
+        );
+
+        expect(result.isError).toBe(true);
+        expect(getFirstText(result)).toContain(
+          'must broadcast its value, be available as a variable, or both',
+        );
+      });
+
+      it('rejects two variable-enabled filters claiming the same name', async () => {
+        const sourceId = ctx.traceSource._id.toString();
+        const result = await callTool(
+          ctx.client!,
+          'clickstack_save_dashboard',
+          {
+            name: 'Duplicate variable names',
+            tiles: [traceTile(sourceId)],
+            filters: [
+              variableFilter(sourceId),
+              variableFilter(sourceId, {
+                name: 'Service (alt)',
+                expression: 'SpanName',
+              }),
+            ],
+          },
+        );
+
+        expect(result.isError).toBe(true);
+        expect(getFirstText(result)).toContain(
+          'Variable names must be unique: "service"',
+        );
+      });
+
+      it('rejects a variableName on a filter that is not variable-enabled', async () => {
+        const sourceId = ctx.traceSource._id.toString();
+        const result = await callTool(
+          ctx.client!,
+          'clickstack_save_dashboard',
+          {
+            name: 'Stray variable name',
+            tiles: [traceTile(sourceId)],
+            filters: [
+              variableFilter(sourceId, {
+                isBroadcastEnabled: true,
+                isVariableEnabled: false,
+              }),
+            ],
+          },
+        );
+
+        expect(result.isError).toBe(true);
+        expect(getFirstText(result)).toContain(
+          'sets variableName but is not available as a variable',
+        );
+      });
+
+      it('rejects a variable-enabled filter whose name derives nothing usable', async () => {
+        const sourceId = ctx.traceSource._id.toString();
+        const result = await callTool(
+          ctx.client!,
+          'clickstack_save_dashboard',
+          {
+            name: 'Non-derivable variable name',
+            tiles: [traceTile(sourceId)],
+            filters: [
+              variableFilter(sourceId, {
+                name: '\u73af\u5883',
+                variableName: undefined,
+              }),
+            ],
+          },
+        );
+
+        expect(result.isError).toBe(true);
+        expect(getFirstText(result)).toContain('Variable name is required');
+      });
+
+      it('reports the validation failure as readable lines, not raw Zod JSON', async () => {
+        const sourceId = ctx.traceSource._id.toString();
+        const result = await callTool(
+          ctx.client!,
+          'clickstack_save_dashboard',
+          {
+            name: 'Readable errors',
+            tiles: [traceTile(sourceId)],
+            filters: [
+              variableFilter(sourceId),
+              variableFilter(sourceId, { name: 'Service (alt)' }),
+            ],
+          },
+        );
+
+        const text = getFirstText(result);
+        expect(text).toContain('filters[1].variableName:');
+        expect(text).not.toContain('"code":');
+      });
+
+      it('warns about an unguarded bare reference without blocking the save', async () => {
+        const sourceId = ctx.traceSource._id.toString();
+        const result = await callTool(
+          ctx.client!,
+          'clickstack_save_dashboard',
+          {
+            name: 'Unguarded reference',
+            tiles: [
+              {
+                name: 'Requests',
+                x: 0,
+                y: 0,
+                w: 6,
+                h: 3,
+                config: {
+                  displayType: 'line' as const,
+                  sourceId,
+                  select: [
+                    {
+                      aggFn: 'count' as const,
+                      alias: 'Requests',
+                      where: 'ServiceName IN ($service)',
+                      whereLanguage: 'sql' as const,
+                    },
+                  ],
+                },
+              },
+            ],
+            filters: [variableFilter(sourceId)],
+          },
+        );
+
+        expect(result.isError).toBeFalsy();
+        const created = JSON.parse(getFirstText(result));
+        const warnings: string[] = created.warnings ?? [];
+        expect(warnings.join('\n')).toContain('Tile "Requests"');
+        expect(warnings.join('\n')).toContain('renders as NULL');
+      });
+
+      it('warns when a tile macro names a variable no filter declares', async () => {
+        const sourceId = ctx.traceSource._id.toString();
+        const result = await callTool(
+          ctx.client!,
+          'clickstack_save_dashboard',
+          {
+            name: 'Unknown variable macro',
+            tiles: [
+              {
+                name: 'Errors',
+                x: 0,
+                y: 0,
+                w: 6,
+                h: 3,
+                config: {
+                  configType: 'sql' as const,
+                  displayType: 'table' as const,
+                  connectionId: ctx.connection._id.toString(),
+                  sourceId,
+                  sqlTemplate:
+                    'SELECT count() FROM $__sourceTable WHERE $__timeFilter(Timestamp) AND $__filters AND $__filter(ServiceName, $tenant) LIMIT 10',
+                },
+              },
+            ],
+            filters: [variableFilter(sourceId)],
+          },
+        );
+
+        expect(result.isError).toBeFalsy();
+        const created = JSON.parse(getFirstText(result));
+        const warnings: string[] = created.warnings ?? [];
+        expect(warnings.join('\n')).toContain("unknown variable 'tenant'");
+      });
+
+      // A dependent filter's own `where` is the one variable-carrying
+      // expression no other check reaches: it is not a tile, and no MCP tool
+      // runs the dropdown query, so save is the only chance to catch it.
+      it('warns about a dependent filter whose upstream publishes no variable', async () => {
+        const sourceId = ctx.traceSource._id.toString();
+        const result = await callTool(
+          ctx.client!,
+          'clickstack_save_dashboard',
+          {
+            name: 'Dependent filter',
+            tiles: [
+              {
+                name: 'Requests',
+                x: 0,
+                y: 0,
+                w: 6,
+                h: 3,
+                config: {
+                  displayType: 'line' as const,
+                  sourceId,
+                  select: [{ aggFn: 'count' as const, alias: 'Requests' }],
+                },
+              },
+            ],
+            filters: [
+              // Broadcast-only: it collects a service but never publishes
+              // $service, so the Endpoint dropdown below cannot depend on it.
+              {
+                type: 'QUERY_EXPRESSION' as const,
+                name: 'Service',
+                expression: 'ServiceName',
+                sourceId,
+                whereLanguage: 'sql' as const,
+              },
+              {
+                type: 'QUERY_EXPRESSION' as const,
+                name: 'Endpoint',
+                expression: 'SpanName',
+                sourceId,
+                whereLanguage: 'sql' as const,
+                where: '$__filter(ServiceName, $service)',
+              },
+            ],
+          },
+        );
+
+        expect(result.isError).toBeFalsy();
+        const created = JSON.parse(getFirstText(result));
+        const warnings: string[] = created.warnings ?? [];
+        const joined = warnings.join('\n');
+        expect(joined).toContain('Filter "Endpoint"');
+        expect(joined).toContain('$service is not published as a variable');
+        expect(joined).toContain('The filter named "Service"');
+        // Advisory only: the dashboard still saved with both filters.
+        expect(created.filters).toHaveLength(2);
+      });
+
+      it('accepts a dependent filter wired to a variable-enabled upstream', async () => {
+        const sourceId = ctx.traceSource._id.toString();
+        const result = await callTool(
+          ctx.client!,
+          'clickstack_save_dashboard',
+          {
+            name: 'Dependent filter, wired',
+            tiles: [
+              {
+                name: 'Requests',
+                x: 0,
+                y: 0,
+                w: 6,
+                h: 3,
+                config: {
+                  displayType: 'line' as const,
+                  sourceId,
+                  select: [{ aggFn: 'count' as const, alias: 'Requests' }],
+                },
+              },
+            ],
+            filters: [
+              variableFilter(sourceId, { isBroadcastEnabled: true }),
+              {
+                type: 'QUERY_EXPRESSION' as const,
+                name: 'Endpoint',
+                expression: 'SpanName',
+                sourceId,
+                whereLanguage: 'sql' as const,
+                where: '$__filter(ServiceName, $service)',
+              },
+            ],
+          },
+        );
+
+        expect(result.isError).toBeFalsy();
+        const created = JSON.parse(getFirstText(result));
+        expect(created.warnings).toBeUndefined();
+        expect(created.filters).toHaveLength(2);
+      });
+
+      // `filters` is optional on update and omitting it PRESERVES the
+      // persisted set rather than clearing it, so the variable check has to
+      // run against those. Checking against the absent request field instead
+      // reported every tile on a variable dashboard as referencing something
+      // unknown, and an agent acting on that would rewrite working tiles.
+      describe('an update that omits filters', () => {
+        const macroTile = (
+          sourceId: string,
+          connectionId: string,
+          variable: string,
+        ) => ({
+          name: 'Errors',
+          x: 0,
+          y: 0,
+          w: 6,
+          h: 3,
+          config: {
+            configType: 'sql' as const,
+            displayType: 'table' as const,
+            connectionId,
+            sourceId,
+            sqlTemplate:
+              'SELECT count() FROM $__sourceTable WHERE $__timeFilter(Timestamp) ' +
+              `AND $__filters AND $__filter(ServiceName, $${variable}) LIMIT 10`,
+          },
+        });
+
+        it('checks tiles against the preserved filters, not an empty set', async () => {
+          const sourceId = ctx.traceSource._id.toString();
+          const connectionId = ctx.connection._id.toString();
+          const tile = macroTile(sourceId, connectionId, 'service');
+
+          const createResult = await callTool(
+            ctx.client!,
+            'clickstack_save_dashboard',
+            {
+              name: 'Preserved variable filters',
+              tiles: [tile],
+              filters: [variableFilter(sourceId)],
+            },
+          );
+          expect(createResult.isError).toBeFalsy();
+          const created = JSON.parse(getFirstText(createResult));
+          expect(created.warnings).toBeUndefined();
+
+          const updateResult = await callTool(
+            ctx.client!,
+            'clickstack_save_dashboard',
+            {
+              id: created.id,
+              name: 'Preserved variable filters',
+              tiles: [tile],
+            },
+          );
+
+          expect(updateResult.isError).toBeFalsy();
+          const updated = JSON.parse(getFirstText(updateResult));
+          expect(updated.warnings).toBeUndefined();
+          // The filters really were preserved, so there was something to
+          // check against — this is not passing because nothing ran.
+          expect(updated.filters).toHaveLength(1);
+          expect(updated.filters[0]).toMatchObject({ variableName: 'service' });
+        });
+
+        it('still reports a variable the preserved filters do not declare', async () => {
+          const sourceId = ctx.traceSource._id.toString();
+          const connectionId = ctx.connection._id.toString();
+
+          const createResult = await callTool(
+            ctx.client!,
+            'clickstack_save_dashboard',
+            {
+              name: 'Preserved filters, bad reference',
+              tiles: [macroTile(sourceId, connectionId, 'service')],
+              filters: [variableFilter(sourceId)],
+            },
+          );
+          expect(createResult.isError).toBeFalsy();
+          const created = JSON.parse(getFirstText(createResult));
+
+          const updateResult = await callTool(
+            ctx.client!,
+            'clickstack_save_dashboard',
+            {
+              id: created.id,
+              name: 'Preserved filters, bad reference',
+              tiles: [macroTile(sourceId, connectionId, 'tenant')],
+            },
+          );
+
+          expect(updateResult.isError).toBeFalsy();
+          const updated = JSON.parse(getFirstText(updateResult));
+          const warnings: string[] = updated.warnings ?? [];
+          expect(warnings.join('\n')).toContain("unknown variable 'tenant'");
+          expect(warnings.join('\n')).toContain('Available variables: service');
+        });
+      });
+    });
+
+    describe('static list filters', () => {
+      const staticFilter = (overrides: Record<string, unknown> = {}) => ({
+        type: 'STATIC_LIST' as const,
+        name: 'Environment',
+        options: ['prod', 'staging', 'dev'],
+        variableName: 'env',
+        ...overrides,
+      });
+
+      it('round-trips a static filter through create, get, and save', async () => {
+        const sourceId = ctx.traceSource._id.toString();
+
+        // Mode flags deliberately omitted: they default server-side.
+        const createResult = await callTool(
+          ctx.client!,
+          'clickstack_save_dashboard',
+          {
+            name: 'Static filter round-trip',
+            tiles: [traceTile(sourceId)],
+            filters: [staticFilter()],
+          },
+        );
+        expect(createResult.isError).toBeFalsy();
+        const created = JSON.parse(getFirstText(createResult));
+        expect(created.filters[0]).toMatchObject({
+          type: 'STATIC_LIST',
+          options: ['prod', 'staging', 'dev'],
+          isBroadcastEnabled: false,
+          isVariableEnabled: true,
+          variableName: 'env',
+        });
+        expect(created.filters[0].id).toBeDefined();
+
+        const getResult = await callTool(
+          ctx.client!,
+          'clickstack_get_dashboard',
+          { id: created.id },
+        );
+        const fetched = JSON.parse(getFirstText(getResult));
+        expect(fetched.filters[0]).toMatchObject({
+          type: 'STATIC_LIST',
+          options: ['prod', 'staging', 'dev'],
+          isBroadcastEnabled: false,
+          isVariableEnabled: true,
+          variableName: 'env',
+        });
+
+        // Feed the get response straight back in — this is the round-trip
+        // that a QUERY_EXPRESSION-only filter schema rejected.
+        const updateResult = await callTool(
+          ctx.client!,
+          'clickstack_save_dashboard',
+          {
+            id: created.id,
+            name: fetched.name,
+            tiles: [traceTile(sourceId)],
+            filters: fetched.filters,
+          },
+        );
+        expect(updateResult.isError).toBeFalsy();
+        const updated = JSON.parse(getFirstText(updateResult));
+        expect(updated.filters[0]).toMatchObject({
+          id: fetched.filters[0].id,
+          type: 'STATIC_LIST',
+          options: ['prod', 'staging', 'dev'],
+        });
+      });
+
+      it('derives the variable name from the display name when omitted', async () => {
+        const sourceId = ctx.traceSource._id.toString();
+        const result = await callTool(
+          ctx.client!,
+          'clickstack_save_dashboard',
+          {
+            name: 'Static derived variable name',
+            tiles: [traceTile(sourceId)],
+            filters: [
+              staticFilter({ name: 'Deploy Env', variableName: undefined }),
+            ],
+          },
+        );
+
+        expect(result.isError).toBeFalsy();
+        const created = JSON.parse(getFirstText(result));
+        expect(created.filters[0].variableName).toBe('Deploy_Env');
+      });
+
+      it('ignores mode flags passed on a static filter', async () => {
+        const sourceId = ctx.traceSource._id.toString();
+        const result = await callTool(
+          ctx.client!,
+          'clickstack_save_dashboard',
+          {
+            name: 'Broadcasting static filter',
+            tiles: [traceTile(sourceId)],
+            filters: [
+              staticFilter({
+                isBroadcastEnabled: true,
+                isVariableEnabled: false,
+              }),
+            ],
+          },
+        );
+
+        expect(result.isError).toBeFalsy();
+        const created = JSON.parse(getFirstText(result));
+        expect(created.filters[0]).toMatchObject({
+          isBroadcastEnabled: false,
+          isVariableEnabled: true,
+        });
+      });
+
+      it('rejects empty options', async () => {
+        const sourceId = ctx.traceSource._id.toString();
+        const result = await callTool(
+          ctx.client!,
+          'clickstack_save_dashboard',
+          {
+            name: 'Empty options',
+            tiles: [traceTile(sourceId)],
+            filters: [staticFilter({ options: [] })],
+          },
+        );
+
+        expect(result.isError).toBe(true);
+        expect(getFirstText(result)).toContain('options');
+      });
+
+      it('rejects duplicate options', async () => {
+        const sourceId = ctx.traceSource._id.toString();
+        const result = await callTool(
+          ctx.client!,
+          'clickstack_save_dashboard',
+          {
+            name: 'Duplicate options',
+            tiles: [traceTile(sourceId)],
+            filters: [staticFilter({ options: ['prod', 'prod'] })],
+          },
+        );
+
+        expect(result.isError).toBe(true);
+        expect(getFirstText(result)).toContain(
+          'repeats the option "prod"; options must be unique',
+        );
+      });
+
+      it('rejects a static and a query filter claiming the same variable name', async () => {
+        const sourceId = ctx.traceSource._id.toString();
+        const result = await callTool(
+          ctx.client!,
+          'clickstack_save_dashboard',
+          {
+            name: 'Cross-type duplicate variable names',
+            tiles: [traceTile(sourceId)],
+            filters: [
+              staticFilter(),
+              {
+                type: 'QUERY_EXPRESSION',
+                name: 'Environment (queried)',
+                expression: "ResourceAttributes['env']",
+                sourceId,
+                whereLanguage: 'sql',
+                isBroadcastEnabled: false,
+                isVariableEnabled: true,
+                variableName: 'env',
+              },
+            ],
+          },
+        );
+
+        expect(result.isError).toBe(true);
+        expect(getFirstText(result)).toContain(
+          'Variable names must be unique: "env"',
+        );
+      });
+
+      it('strips stray query-expression fields from a static filter', async () => {
+        const sourceId = ctx.traceSource._id.toString();
+        // The MCP members are non-strict like every other schema in the
+        // file, so a stray field is dropped rather than rejected.
+        const result = await callTool(
+          ctx.client!,
+          'clickstack_save_dashboard',
+          {
+            name: 'Static filter with stray fields',
+            tiles: [traceTile(sourceId)],
+            filters: [staticFilter({ expression: 'ServiceName', sourceId })],
+          },
+        );
+
+        expect(result.isError).toBeFalsy();
+        const created = JSON.parse(getFirstText(result));
+        expect(created.filters[0].expression).toBeUndefined();
+        expect(created.filters[0].sourceId).toBeUndefined();
+      });
+
+      it('does not warn about a tile referencing the static variable', async () => {
+        const sourceId = ctx.traceSource._id.toString();
+        const result = await callTool(
+          ctx.client!,
+          'clickstack_save_dashboard',
+          {
+            name: 'Tile references static variable',
+            tiles: [
+              {
+                name: 'Per-env count',
+                x: 0,
+                y: 0,
+                w: 6,
+                h: 3,
+                config: {
+                  displayType: 'line' as const,
+                  sourceId,
+                  select: [
+                    {
+                      aggFn: 'count' as const,
+                      where: "$__filter(ResourceAttributes['env'], $env)",
+                      whereLanguage: 'sql' as const,
+                    },
+                  ],
+                },
+              },
+            ],
+            filters: [staticFilter()],
+          },
+        );
+
+        expect(result.isError).toBeFalsy();
+        const created = JSON.parse(getFirstText(result));
+        expect(created.warnings ?? []).toEqual([]);
+      });
+
+      it('accepts a dependent filter chaining off a static variable', async () => {
+        const sourceId = ctx.traceSource._id.toString();
+        const result = await callTool(
+          ctx.client!,
+          'clickstack_save_dashboard',
+          {
+            name: 'Dependent filter on static variable',
+            tiles: [traceTile(sourceId)],
+            filters: [
+              staticFilter(),
+              {
+                type: 'QUERY_EXPRESSION',
+                name: 'Service',
+                expression: 'ServiceName',
+                sourceId,
+                whereLanguage: 'sql',
+                where: "$__filter(ResourceAttributes['env'], $env)",
+              },
+            ],
+          },
+        );
+
+        expect(result.isError).toBeFalsy();
+        const created = JSON.parse(getFirstText(result));
+        expect(created.warnings ?? []).toEqual([]);
+      });
+    });
+
     it('should round-trip a table tile that uses a having clause', async () => {
       // mcpTableTileSchema exposes `having` so the service_detail
       // example's "Top Error Messages" pattern (groupBy StatusMessage

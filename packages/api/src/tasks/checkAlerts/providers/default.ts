@@ -1,12 +1,16 @@
 import PQueue from '@esm2cjs/p-queue';
-import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { displayTypeSupportsRawSqlAlerts } from '@hyperdx/common-utils/dist/core/utils';
 import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
-import { Tile } from '@hyperdx/common-utils/dist/types';
+import {
+  AlertChartConfig,
+  RawSqlSavedChartConfig,
+  Tile,
+} from '@hyperdx/common-utils/dist/types';
 import mongoose from 'mongoose';
 import ms from 'ms';
 import { URLSearchParams } from 'url';
 
+import { ClickhouseClient } from '@/clickhouse';
 import * as config from '@/config';
 import { ALERT_HISTORY_QUERY_CONCURRENCY } from '@/controllers/alertHistory';
 import { LOCAL_APP_TEAM } from '@/controllers/team';
@@ -17,7 +21,10 @@ import Alert, {
   type IAlert,
   type IAlertError,
 } from '@/models/alert';
-import AlertHistory, { IAlertHistory } from '@/models/alertHistory';
+import AlertHistory, {
+  IAlertHistory,
+  IAlertHistoryAnalytics,
+} from '@/models/alertHistory';
 import Connection, { IConnection } from '@/models/connection';
 import Dashboard from '@/models/dashboard';
 import { type ISavedSearch, SavedSearch } from '@/models/savedSearch';
@@ -88,6 +95,52 @@ async function getSavedSearchDetails(
   ];
 }
 
+/**
+ * Load the optional source a raw-SQL config references for macro metadata
+ * ($__sourceTable, metricTables). Write-path validation guarantees the source
+ * belongs to the config's connection at save time, but a source can be moved
+ * to a different connection afterwards. The query always executes through the
+ * config's pinned connection, so metadata from a moved source would silently
+ * target the wrong database (when the same table exists there) or fail
+ * confusingly. Drop it instead, with a warning: templates that don't use
+ * source macros keep evaluating correctly, and templates that do fail with a
+ * visible query error recorded on the alert.
+ */
+async function getRawSqlSourceMetadata(
+  alert: IAlert,
+  chartConfig: RawSqlSavedChartConfig,
+): Promise<ISource | undefined> {
+  if (!chartConfig.source) {
+    return undefined;
+  }
+  const sourceDoc = await Source.findOne({
+    _id: chartConfig.source,
+    team: alert.team,
+  });
+  if (!sourceDoc) {
+    return undefined;
+  }
+  // Compare as ObjectIds: stored configs may hold non-canonical but valid
+  // representations (e.g. uppercase hex), which a lexical compare would
+  // misjudge as a mismatch.
+  if (
+    !new mongoose.Types.ObjectId(String(sourceDoc.connection)).equals(
+      chartConfig.connection,
+    )
+  ) {
+    logger.warn({
+      message:
+        'raw sql alert source has moved to a different connection; ignoring its metadata',
+      alertId: alert.id,
+      sourceId: chartConfig.source,
+      sourceConnectionId: String(sourceDoc.connection),
+      configConnectionId: chartConfig.connection,
+    });
+    return undefined;
+  }
+  return sourceDoc.toObject();
+}
+
 async function getTileDetails(
   alert: IAlert,
 ): Promise<[IConnection, PartialAlertDetails] | []> {
@@ -148,16 +201,7 @@ async function getTileDetails(
     }
 
     // Optionally look up source for filter/macro metadata
-    let source: ISource | undefined;
-    if (tile.config.source) {
-      const sourceDoc = await Source.findOne({
-        _id: tile.config.source,
-        team: alert.team,
-      });
-      if (sourceDoc) {
-        source = sourceDoc.toObject();
-      }
-    }
+    const source = await getRawSqlSourceMetadata(alert, tile.config);
 
     return [
       connection,
@@ -215,6 +259,96 @@ async function getTileDetails(
   ];
 }
 
+async function getInlineAlertDetails(
+  alert: IAlert,
+): Promise<[IConnection, PartialAlertDetails] | []> {
+  const chartConfig = alert.chartConfig;
+  if (chartConfig == null) {
+    logger.error({
+      message: 'inline alert has no chartConfig',
+      alertId: alert.id,
+    });
+    return [];
+  }
+
+  if (isRawSqlSavedChartConfig(chartConfig)) {
+    if (!displayTypeSupportsRawSqlAlerts(chartConfig.displayType)) {
+      logger.warn({
+        alertId: alert.id,
+        message:
+          'skipping inline alert with raw sql chart config, only line/bar/number display types are supported',
+      });
+      return [];
+    }
+
+    // Raw SQL configs store the connection ID directly
+    const connection = await Connection.findOne({
+      _id: chartConfig.connection,
+      team: alert.team,
+    }).select('+password');
+
+    if (!connection) {
+      logger.error({
+        message: 'connection not found for raw sql inline alert',
+        connectionId: chartConfig.connection,
+        alertId: alert.id,
+      });
+      return [];
+    }
+
+    // Optionally look up source for filter/macro metadata
+    const source = await getRawSqlSourceMetadata(alert, chartConfig);
+
+    return [
+      connection,
+      {
+        alert,
+        source,
+        taskType: AlertTaskType.INLINE,
+        chartConfig,
+      },
+    ];
+  }
+
+  const source = await Source.findOne({
+    _id: chartConfig.source,
+    team: alert.team,
+  }).populate<Omit<ISource, 'connection'> & { connection: IConnection }>({
+    path: 'connection',
+    match: { team: alert.team },
+    select: '+password',
+  });
+  if (!source) {
+    logger.error({
+      message: 'source not found',
+      sourceId: chartConfig.source,
+      alertId: alert.id,
+    });
+    return [];
+  }
+
+  if (!source.connection) {
+    logger.error({
+      message: 'connection not found',
+      alertId: alert.id,
+      sourceId: source.id,
+    });
+    return [];
+  }
+
+  const connection = source.connection;
+  const sourceProps = source.toObject();
+  return [
+    connection,
+    {
+      alert,
+      source: { ...sourceProps, connection: connection.id },
+      taskType: AlertTaskType.INLINE,
+      chartConfig,
+    },
+  ];
+}
+
 async function loadAlert(
   alert: IAlert,
   groupedTasks: Map<string, AlertTask>,
@@ -241,6 +375,10 @@ async function loadAlert(
 
     case AlertSource.TILE:
       [conn, details] = await getTileDetails(alert);
+      break;
+
+    case AlertSource.INLINE:
+      [conn, details] = await getInlineAlertDetails(alert);
       break;
 
     default:
@@ -271,7 +409,12 @@ async function loadAlert(
 
 export default class DefaultAlertProvider implements AlertProvider {
   async init() {
-    await Promise.all([connectDB()]);
+    // The check-alerts worker only reads from MongoDB and never needs to
+    // ensure indexes exist (the API service owns that). Disabling autoIndex
+    // prevents background createIndexes calls from racing the short-lived
+    // connection close (which sends endSessions), surfaced as
+    // MongoExpiredSessionError on mongodb.createIndexes spans.
+    await Promise.all([connectDB({ autoIndex: false })]);
   }
 
   async asyncDispose() {
@@ -366,10 +509,37 @@ export default class DefaultAlertProvider implements AlertProvider {
     return url.toString();
   }
 
+  buildChartExplorerLink({
+    chartConfig,
+    endTime,
+    granularity,
+    startTime,
+  }: {
+    chartConfig: AlertChartConfig;
+    endTime: Date;
+    granularity: string;
+    startTime: Date;
+  }): string {
+    const url = new URL(`${config.FRONTEND_URL}/chart`);
+    // Extend both start and end time by 7x granularity, matching the
+    // dashboard link so the alerting window has surrounding context. The
+    // chart explorer reads `config` (JSON) and `from`/`to` (epoch ms).
+    const from = (startTime.getTime() - ms(granularity) * 7).toString();
+    const to = (endTime.getTime() + ms(granularity) * 7).toString();
+    const queryParams = new URLSearchParams({
+      config: JSON.stringify(chartConfig),
+      from,
+      to,
+    });
+    url.search = queryParams.toString();
+    return url.toString();
+  }
+
   async updateAlertState(
     alertId: string,
     histories: IAlertHistory[],
     errors: IAlertError[],
+    evaluatedDateRange?: [Date, Date],
   ) {
     // Save history records first (in parallel), then update alert state
     // Use Promise.allSettled to handle partial failures gracefully
@@ -413,12 +583,92 @@ export default class DefaultAlertProvider implements AlertProvider {
       { _id: new mongoose.Types.ObjectId(alertId) },
       { $set: { state: finalState, executionErrors: errors } },
     );
+
+    // All histories in one execution share the same createdAt (the current
+    // evaluation window start) and the same evaluation-level analytics.
+    const evaluationWindowStart = histories[0]?.createdAt;
+
+    // Failed earlier ticks may have left ERROR rows for windows this
+    // evaluation just covered (recordAlertErrors upserts one per failed
+    // window, and ERROR rows don't mark a window as evaluated, so those
+    // windows are retried — a same-window retry re-evaluates at the same
+    // createdAt, while later ticks fold them in as backfilled buckets
+    // stamped with the current window start). The query has now succeeded
+    // over the whole evaluated range, so remove the stale ERROR rows for
+    // every window it covered — otherwise a recovered window renders as
+    // ERROR until the TTL expires it (the evaluations view ranks ERROR
+    // above OK/ALERT). The range start is exclusive: an ERROR row at
+    // exactly the previous anchor belongs to an already-evaluated window
+    // (e.g. a webhook failure recorded alongside its normal rows) that is
+    // never retried, so it is a truthful record that must survive.
+    if (evaluationWindowStart != null && successfulHistories.length > 0) {
+      await AlertHistory.deleteMany({
+        alert: new mongoose.Types.ObjectId(alertId),
+        state: AlertState.ERROR,
+        createdAt: evaluatedDateRange
+          ? { $gt: evaluatedDateRange[0], $lte: evaluationWindowStart }
+          : evaluationWindowStart,
+      });
+    }
+
+    // Notification (e.g. webhook) failures happened during this evaluation:
+    // record them as an ERROR history row alongside the normal rows so the
+    // failure is visible in the alert's evaluation history.
+    if (errors.length > 0 && evaluationWindowStart != null) {
+      await this.upsertErrorHistory(
+        alertId,
+        evaluationWindowStart,
+        errors,
+        histories[0]?.analytics,
+      );
+    }
   }
 
-  async recordAlertErrors(alertId: string, errors: IAlertError[]) {
+  async recordAlertErrors(
+    alertId: string,
+    errors: IAlertError[],
+    evaluationWindowStart?: Date,
+    analytics?: IAlertHistoryAnalytics,
+  ) {
     await Alert.updateOne(
       { _id: new mongoose.Types.ObjectId(alertId) },
       { $set: { executionErrors: errors } },
+    );
+
+    if (evaluationWindowStart != null) {
+      await this.upsertErrorHistory(
+        alertId,
+        evaluationWindowStart,
+        errors,
+        analytics,
+      );
+    }
+  }
+
+  /**
+   * Upsert the ERROR-state history row for the given evaluation window.
+   * Keyed on {alert, createdAt, state} so retries within the same window
+   * update a single row instead of accumulating one row per tick — a
+   * permanently failing 1d alert produces one error row per day, not one per
+   * minute. Rows expire with the collection's existing TTL index.
+   */
+  private async upsertErrorHistory(
+    alertId: string,
+    evaluationWindowStart: Date,
+    errors: IAlertError[],
+    analytics?: IAlertHistoryAnalytics,
+  ) {
+    await AlertHistory.updateOne(
+      {
+        alert: new mongoose.Types.ObjectId(alertId),
+        createdAt: evaluationWindowStart,
+        state: AlertState.ERROR,
+      },
+      {
+        $set: { errors, ...(analytics != null && { analytics }) },
+        $setOnInsert: { counts: 0, lastValues: [] },
+      },
+      { upsert: true },
     );
   }
 

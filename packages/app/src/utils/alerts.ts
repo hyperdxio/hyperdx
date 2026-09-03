@@ -11,11 +11,13 @@ import {
   ALERT_INTERVAL_TO_MINUTES,
   AlertChannelType,
   AlertInterval,
+  AlertSource,
   AlertThresholdType,
   ChartAlertBaseSchema,
 } from '@hyperdx/common-utils/dist/types';
 
 import { IS_DEV } from '@/config';
+import type { AlertsPageItem } from '@/types';
 
 export function intervalToGranularity(interval: AlertInterval) {
   if (interval === '1m') return Granularity.OneMinute;
@@ -128,16 +130,36 @@ export const ALERT_CHANNEL_OPTIONS: Record<AlertChannelType, string> = {
   webhook: 'Webhook',
 };
 
+const EMPTY_ALERT_CHANNEL = { type: 'webhook', webhookId: '' } as const;
+
+/**
+ * Form value for an alert's notification channels. Alerts saved before
+ * multi-channel support only carry the singular `channel`, and the form always
+ * needs at least one row to render.
+ *
+ * A downstream fork defines channel types this repo doesn't (e.g. email).
+ * Channels are copied through untouched rather than rebuilt field-by-field,
+ * so saving an alert here never destroys fields this repo doesn't know about.
+ */
+export function toAlertChannels<T extends { type?: string | null }>(alert?: {
+  channel?: T | null;
+  channels?: T[] | null;
+}): T[] | [typeof EMPTY_ALERT_CHANNEL] {
+  const source = alert?.channels?.length
+    ? alert.channels
+    : alert?.channel != null && alert.channel.type != null
+      ? [alert.channel]
+      : [];
+  return source.length > 0 ? source : [{ ...EMPTY_ALERT_CHANNEL }];
+}
+
 export const DEFAULT_TILE_ALERT: z.infer<typeof ChartAlertBaseSchema> = {
   threshold: 1,
   thresholdType: AlertThresholdType.ABOVE,
   interval: '5m',
   scheduleOffsetMinutes: 0,
   scheduleStartAt: null,
-  channel: {
-    type: 'webhook',
-    webhookId: '',
-  },
+  channels: [{ ...EMPTY_ALERT_CHANNEL }],
   note: null,
 };
 
@@ -214,4 +236,56 @@ export function normalizeNoOpAlertScheduleFields<
   }
 
   return normalizedAlert as T;
+}
+
+/**
+ * Human label for what an alert watches. Shared by the row's source icon
+ * tooltip, the alerts-page source filter, and free-text search, so all three
+ * agree on the wording a user sees and types.
+ */
+export function getAlertSourceLabel(alert: {
+  source?: AlertSource | null;
+}): string {
+  switch (alert.source) {
+    case AlertSource.TILE:
+      return 'Dashboard tile';
+    case AlertSource.SAVED_SEARCH:
+      return 'Saved search';
+    default:
+      return 'Unknown source';
+  }
+}
+
+export function getAlertDisplayName(alert: AlertsPageItem): string {
+  if (alert.source === AlertSource.TILE && alert.dashboard) {
+    const tile = alert.dashboard.tiles.find(t => t.id === alert.tileId);
+    const tileName = tile?.config.name || 'Tile';
+    return `${alert.dashboard.name} ${tileName}`;
+  }
+  if (alert.source === AlertSource.SAVED_SEARCH && alert.savedSearch) {
+    return alert.savedSearch.name;
+  }
+  return '';
+}
+
+/** URL of the saved search / dashboard tile the alert is watching. */
+export function getAlertSourceUrl(alert: AlertsPageItem): string {
+  if (alert.source === AlertSource.TILE && alert.dashboard) {
+    return `/dashboards/${alert.dashboardId}?highlightedTileId=${alert.tileId}`;
+  }
+  if (alert.source === AlertSource.SAVED_SEARCH && alert.savedSearch) {
+    return `/search/${alert.savedSearchId}`;
+  }
+  return '';
+}
+
+export function getAlertTags(alert: AlertsPageItem): string[] {
+  return alert.dashboard?.tags ?? alert.savedSearch?.tags ?? [];
+}
+
+export function getAlertCreatorLabel(
+  alert: AlertsPageItem,
+): string | undefined {
+  if (!alert.createdBy) return undefined;
+  return alert.createdBy.name || alert.createdBy.email;
 }

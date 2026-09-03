@@ -8,6 +8,7 @@ import {
 } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   Field,
+  MetricNames,
   TableConnection,
   TableMetadata,
 } from '@hyperdx/common-utils/dist/core/metadata';
@@ -42,7 +43,7 @@ export type Facet = { key: string; value: string[] };
 export function useMetadataWithSettings() {
   const [metadata, setMetadata] = useState(getMetadata());
   const { data: me } = api.useMe();
-  const settingsApplied = useRef(false);
+  const settingsAppliedRef = useRef(false);
   const queryClient = useQueryClient();
 
   // Create a listener that triggers when connections are updated in local mode
@@ -56,7 +57,7 @@ export function useMetadataWithSettings() {
         // Create a new metadata instance with a new ClickHouse client,
         // since the existing one will not have connection / auth info.
         setMetadata(getMetadata());
-        settingsApplied.current = false;
+        settingsAppliedRef.current = false;
         // Clear react-query cache so that metadata is refetched with
         // the new connection info, and error states are cleared.
         queryClient.resetQueries();
@@ -70,11 +71,11 @@ export function useMetadataWithSettings() {
   }, [queryClient]);
 
   useEffect(() => {
-    if (me?.team?.metadataMaxRowsToRead && !settingsApplied.current) {
+    if (me?.team?.metadataMaxRowsToRead && !settingsAppliedRef.current) {
       metadata.setClickHouseSettings({
         max_rows_to_read: String(me.team.metadataMaxRowsToRead),
       });
-      settingsApplied.current = true;
+      settingsAppliedRef.current = true;
     }
   }, [me?.team?.metadataMaxRowsToRead, metadata]);
 
@@ -517,6 +518,73 @@ export function useGetKeyValues(
     },
     options,
   );
+}
+
+/**
+ * List metric names for one metrics table, ordered and matched server-side.
+ *
+ * Prefer this over `useGetKeyValues({ keys: ['MetricName'] })`, which samples an
+ * arbitrary subset via `groupUniqArray` and can silently omit metrics on
+ * high-cardinality sources.
+ */
+export function useGetMetricNames(
+  {
+    databaseName,
+    tableName,
+    connectionId,
+    dateRange,
+    timestampValueExpression,
+    namePattern,
+  }: {
+    databaseName: string;
+    tableName: string;
+    connectionId: string;
+    dateRange: [Date, Date];
+    timestampValueExpression: string;
+    namePattern?: string;
+  },
+  options?: Partial<UseQueryOptions<MetricNames>>,
+) {
+  const metadata = useMetadataWithSettings();
+  return useQuery<MetricNames>({
+    queryKey: [
+      'useMetadata.useGetMetricNames',
+      {
+        databaseName,
+        tableName,
+        connectionId,
+        dateRange,
+        timestampValueExpression,
+        namePattern,
+      },
+    ],
+    queryFn: async ({ signal }) =>
+      metadata.getMetricNames({
+        databaseName,
+        tableName,
+        connectionId,
+        dateRange,
+        timestampValueExpression,
+        namePattern,
+        signal,
+      }),
+    // An empty table name means the source has no table for this metric kind.
+    enabled:
+      !!databaseName &&
+      !!tableName &&
+      !!connectionId &&
+      !!timestampValueExpression,
+    placeholderData: keepPreviousData,
+    // Four of these run per debounced keystroke, each an unbounded aggregation
+    // capped only by execution time. Retrying would turn one slow pattern into
+    // sixteen such scans, and refetching on focus would re-run them all — the
+    // replaced MetadataCache path served repeats from memory, so without these
+    // this would be busier than what it replaced.
+    retry: false,
+    staleTime: 1000 * 60 * 5,
+    refetchOnWindowFocus: false,
+    ...options,
+  });
 }
 
 export function deduplicate2dArray<T extends object>(array2d: T[][]): T[] {

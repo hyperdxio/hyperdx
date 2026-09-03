@@ -1,5 +1,8 @@
 import { env } from 'next-runtime-env';
 
+// eslint-disable-next-line no-restricted-imports -- package.json lives outside src, no @/ alias reaches it
+import packageJson from '../package.json';
+
 // ONLY USED IN LOCAL MODE
 // ex: NEXT_PUBLIC_HDX_LOCAL_DEFAULT_CONNECTIONS='[{"id":"local","name":"Demo","host":"https://demo-ch.hyperdx.io","username":"demo","password":"demo"}]' NEXT_PUBLIC_HDX_LOCAL_DEFAULT_SOURCES='[{"id":"l701179602","kind":"trace","name":"Demo Traces","connection":"local","from":{"databaseName":"default","tableName":"otel_traces"},"timestampValueExpression":"Timestamp","defaultTableSelectExpression":"Timestamp, ServiceName, StatusCode, round(Duration / 1e6), SpanName","serviceNameExpression":"ServiceName","eventAttributesExpression":"SpanAttributes","resourceAttributesExpression":"ResourceAttributes","traceIdExpression":"TraceId","spanIdExpression":"SpanId","implicitColumnExpression":"SpanName","durationExpression":"Duration","durationPrecision":9,"parentSpanIdExpression":"ParentSpanId","spanKindExpression":"SpanKind","spanNameExpression":"SpanName","logSourceId":"l-758211293","statusCodeExpression":"StatusCode","statusMessageExpression":"StatusMessage"},{"id":"l-758211293","kind":"log","name":"Demo Logs","connection":"local","from":{"databaseName":"default","tableName":"otel_logs"},"timestampValueExpression":"Timestamp","defaultTableSelectExpression":"Timestamp, ServiceName, SeverityText, Body","serviceNameExpression":"ServiceName","severityTextExpression":"SeverityText","eventAttributesExpression":"LogAttributes","resourceAttributesExpression":"ResourceAttributes","traceIdExpression":"TraceId","spanIdExpression":"SpanId","implicitColumnExpression":"Body","traceSourceId":"l701179602"}]' yarn dev:local
 export const HDX_LOCAL_DEFAULT_CONNECTIONS = env(
@@ -48,9 +51,11 @@ export const HDX_LOGS_COLLECTOR_URL =
   process.env.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT;
 export const IS_DEV = NODE_ENV === 'development';
 
+// Frontend build version — from package.json, bundled at build time. Will include sha in nightly builds.
+export const APP_VERSION = packageJson.version ?? 'dev';
+
 export const IS_OSS = process.env.NEXT_PUBLIC_IS_OSS ?? 'true' === 'true';
 export const IS_LOCAL_MODE = //true;
-  // @ts-ignore
   (process.env.NEXT_PUBLIC_IS_LOCAL_MODE ?? 'false') === 'true';
 export const IS_CLICKHOUSE_BUILD =
   process.env.NEXT_PUBLIC_CLICKHOUSE_BUILD === 'true';
@@ -66,11 +71,21 @@ export const IS_NOINDEX = process.env.NEXT_PUBLIC_NOINDEX === 'true';
 export const NOW = Date.now();
 
 // Features in development
+// When adding an env-configurable flag (one whose value varies by deployment), add it to the feature snapshot in hdxDebug.ts.
 export const IS_K8S_DASHBOARD_ENABLED = true;
+// LLM dashboard cost estimation. Default off pending a price-management
+// story: the bundled catalog goes stale between releases and can't account
+// for provider discounts, so tokens are the primary metric for now.
+export const IS_LLM_COST_ENABLED =
+  env('NEXT_PUBLIC_IS_LLM_COST_ENABLED') === 'true';
 export const IS_METRICS_ENABLED = true;
 export const IS_MTVIEWS_ENABLED = false;
 export const IS_SESSIONS_ENABLED = true;
 export const IS_PROMQL_ENABLED = env('NEXT_PUBLIC_ENABLE_PROMQL') === 'true';
+// Alert detail page (/alerts/:id). Default off — currently enabled only in
+// dev (.env.development) and CI (e2e webserver) while the feature bakes.
+export const IS_ALERT_DETAILS_ENABLED =
+  env('NEXT_PUBLIC_ENABLE_ALERT_DETAILS') === 'true';
 // Not exported: IS_IAC_EXPORT_ENABLED below is the only gate callers should
 // read. Leaving the raw flag importable re-opens the "forgot the local-mode
 // check" mistake that folding the two together was meant to close.

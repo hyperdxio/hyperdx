@@ -2,343 +2,33 @@ import * as React from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useQueryState } from 'nuqs';
-import ReactMarkdown from 'react-markdown';
-import { isImportableAlert } from '@hyperdx/common-utils/dist/iac';
-import {
-  AlertSource,
-  AlertState,
-  isRangeThresholdType,
-} from '@hyperdx/common-utils/dist/types';
 import {
   Alert,
   Anchor,
-  Badge,
-  Collapse,
   Container,
   Flex,
-  Group,
   Select,
-  Stack,
   TextInput,
-  UnstyledButton,
 } from '@mantine/core';
-import { useDisclosure } from '@mantine/hooks';
 import {
-  IconAlertTriangle,
   IconBell,
-  IconChartLine,
-  IconCheck,
-  IconChevronDown,
-  IconChevronRight,
-  IconHelpCircle,
-  IconHourglass,
   IconInfoCircleFilled,
-  IconNote,
   IconSearch,
-  IconTableRow,
 } from '@tabler/icons-react';
 
-import { AckAlert } from '@/components/alerts/AckAlert';
-import { AlertHistoryCardList } from '@/components/alerts/AlertHistoryCards';
+import { AlertCardList } from '@/components/alerts/AlertCardList';
 import EmptyState from '@/components/EmptyState';
-import ResourceTerraformPopover from '@/components/Iac/ResourceTerraformPopover';
 import { PageHeader } from '@/components/PageHeader';
+import {
+  getAlertCreatorLabel,
+  getAlertDisplayName,
+  getAlertSourceLabel,
+  getAlertTags,
+} from '@/utils/alerts';
 
 import { useBrandDisplayName } from './theme/ThemeProvider';
-import { TILE_ALERT_THRESHOLD_TYPE_OPTIONS } from './utils/alerts';
-import { getWebhookChannelIcon } from './utils/webhookIcons';
 import api from './api';
 import { withAppNav } from './layout';
-import type { AlertsPageItem } from './types';
-
-import styles from '@styles/AlertsPage.module.scss';
-
-function getAlertDisplayName(alert: AlertsPageItem): string {
-  if (alert.source === AlertSource.TILE && alert.dashboard) {
-    const tile = alert.dashboard.tiles.find(t => t.id === alert.tileId);
-    const tileName = tile?.config.name || 'Tile';
-    return `${alert.dashboard.name} ${tileName}`;
-  }
-  if (alert.source === AlertSource.SAVED_SEARCH && alert.savedSearch) {
-    return alert.savedSearch.name;
-  }
-  return '';
-}
-
-function getAlertTags(alert: AlertsPageItem): string[] {
-  return alert.dashboard?.tags ?? alert.savedSearch?.tags ?? [];
-}
-
-function getAlertCreatorLabel(alert: AlertsPageItem): string | undefined {
-  if (!alert.createdBy) return undefined;
-  return alert.createdBy.name || alert.createdBy.email;
-}
-
-function AlertNote({ note }: { note: string }) {
-  const [opened, { toggle }] = useDisclosure(false);
-
-  return (
-    <div>
-      <UnstyledButton data-testid="alert-note-section" onClick={toggle} mt={4}>
-        <Group gap={4}>
-          <IconChevronDown
-            size={12}
-            style={{
-              transform: opened ? 'rotate(0deg)' : 'rotate(-90deg)',
-              transition: 'transform 200ms',
-            }}
-          />
-          <IconNote size={14} opacity={0.5} />
-          <span className="fs-8" style={{ opacity: 0.6 }}>
-            Note
-          </span>
-        </Group>
-      </UnstyledButton>
-      <Collapse expanded={opened}>
-        <div
-          className="hdx-markdown fs-8 mt-1"
-          style={{ opacity: 0.8, paddingLeft: 20 }}
-          data-testid="alert-note-content"
-        >
-          {opened && (
-            <ReactMarkdown
-              components={{
-                a: props => (
-                  <a
-                    {...props}
-                    target="_blank"
-                    rel="noopener noreferrer nofollow"
-                  />
-                ),
-                img: props => (
-                  <img {...props} referrerPolicy="no-referrer" loading="lazy" />
-                ),
-              }}
-            >
-              {note}
-            </ReactMarkdown>
-          )}
-        </div>
-      </Collapse>
-    </div>
-  );
-}
-
-function AlertDetails({ alert }: { alert: AlertsPageItem }) {
-  const alertName = React.useMemo(() => {
-    if (alert.source === AlertSource.TILE && alert.dashboard) {
-      const tile = alert.dashboard?.tiles.find(
-        tile => tile.id === alert.tileId,
-      );
-      const tileName = tile?.config.name || 'Tile';
-      return (
-        <>
-          {alert.dashboard?.name}
-          {tileName ? (
-            <>
-              <IconChevronRight size={14} className="mx-1" />
-              {tileName}
-            </>
-          ) : null}
-        </>
-      );
-    }
-    if (alert.source === AlertSource.SAVED_SEARCH && alert.savedSearch) {
-      return alert.savedSearch?.name;
-    }
-    return '–';
-  }, [alert]);
-
-  const alertUrl = React.useMemo(() => {
-    if (alert.source === AlertSource.TILE && alert.dashboard) {
-      return `/dashboards/${alert.dashboardId}?highlightedTileId=${alert.tileId}`;
-    }
-    if (alert.source === AlertSource.SAVED_SEARCH && alert.savedSearch) {
-      return `/search/${alert.savedSearchId}`;
-    }
-    return '';
-  }, [alert]);
-
-  const alertIcon = (() => {
-    switch (alert.source) {
-      case AlertSource.TILE:
-        return <IconChartLine size={14} />;
-      case AlertSource.SAVED_SEARCH:
-        return <IconTableRow size={14} />;
-      default:
-        return <IconHelpCircle size={14} />;
-    }
-  })();
-
-  const alertType = React.useMemo(() => {
-    const thresholdLabel =
-      TILE_ALERT_THRESHOLD_TYPE_OPTIONS[alert.thresholdType] ??
-      alert.thresholdType;
-    return (
-      <>
-        If value {thresholdLabel}{' '}
-        <span className="fw-bold">{alert.threshold}</span>
-        {isRangeThresholdType(alert.thresholdType) && (
-          <>
-            {' '}
-            and <span className="fw-bold">{alert.thresholdMax ?? '-'}</span>
-          </>
-        )}
-        <span>&middot;</span>
-      </>
-    );
-  }, [alert]);
-
-  const notificationMethod = React.useMemo(() => {
-    return (
-      <Group gap={5}>
-        Notify via {getWebhookChannelIcon(alert.channel.type)} Webhook
-      </Group>
-    );
-  }, [alert]);
-
-  const linkTitle = React.useMemo(() => {
-    switch (alert.source) {
-      case AlertSource.TILE:
-        return 'Dashboard tile';
-      case AlertSource.SAVED_SEARCH:
-        return 'Saved search';
-      default:
-        return '';
-    }
-  }, [alert]);
-
-  return (
-    <div data-testid={`alert-card-${alert._id}`} className={styles.alertRow}>
-      <Group>
-        {alert.state === AlertState.ALERT && (
-          <Badge variant="light" color="red">
-            Alert
-          </Badge>
-        )}
-        {alert.state === AlertState.PENDING && (
-          <Badge variant="light" color="orange">
-            Pending
-          </Badge>
-        )}
-        {alert.state === AlertState.OK && <Badge variant="light">Ok</Badge>}
-        {alert.state === AlertState.DISABLED && (
-          <Badge variant="light" color="gray">
-            Disabled
-          </Badge>
-        )}
-
-        <Stack gap={2}>
-          <div>
-            <Link
-              data-testid={`alert-link-${alert._id}`}
-              href={alertUrl}
-              className={styles.alertLink}
-              title={linkTitle}
-            >
-              <Group gap={2}>
-                {alertIcon}
-                {alertName}
-              </Group>
-            </Link>
-          </div>
-          <div className="fs-8 d-flex gap-2">
-            {alertType}
-            {notificationMethod}
-            {alert.createdBy && (
-              <>
-                <span>&middot;</span>
-                <span>
-                  Created by {alert.createdBy.name || alert.createdBy.email}
-                </span>
-              </>
-            )}
-          </div>
-          {getAlertTags(alert).length > 0 && (
-            <Group gap={4}>
-              {getAlertTags(alert).map(tag => (
-                <Badge key={tag} variant="light" color="gray" size="xs">
-                  {tag}
-                </Badge>
-              ))}
-            </Group>
-          )}
-          {alert.note && <AlertNote note={alert.note} />}
-        </Stack>
-      </Group>
-
-      <Group>
-        {/* Eligibility comes from the shared predicate rather than an inline
-            source check, so this and the bulk export can't diverge on which
-            alerts the provider can actually model. */}
-        {isImportableAlert(alert) && (
-          <ResourceTerraformPopover
-            resource={{
-              type: 'alert',
-              id: alert._id,
-              // No fallback to the saved search's name: the name only labels
-              // the generated block, and the manifest the bulk export reads
-              // carries the alert's own name, so a fallback here would make
-              // the two surfaces disagree about what they call this alert.
-              name: alert.name ?? undefined,
-            }}
-          />
-        )}
-        <AlertHistoryCardList alert={alert} alertUrl={alertUrl} />
-        <AckAlert alert={alert} />
-      </Group>
-    </div>
-  );
-}
-
-function AlertCardList({ alerts }: { alerts: AlertsPageItem[] }) {
-  const alarmAlerts = alerts.filter(alert => alert.state === AlertState.ALERT);
-  const pendingAlerts = alerts.filter(
-    alert => alert.state === AlertState.PENDING,
-  );
-  const okData = alerts.filter(alert => alert.state === AlertState.OK);
-
-  return (
-    <div className="d-flex flex-column gap-4">
-      {alarmAlerts.length > 0 && (
-        <div>
-          <Group className={styles.sectionHeader}>
-            <IconAlertTriangle size={14} /> Triggered
-          </Group>
-          {alarmAlerts.map(alert => (
-            <AlertDetails key={alert._id} alert={alert} />
-          ))}
-        </div>
-      )}
-      {pendingAlerts.length > 0 && (
-        <div>
-          <Group className={styles.sectionHeader}>
-            <IconHourglass size={14} /> Pending
-          </Group>
-          {pendingAlerts.map(alert => (
-            <AlertDetails key={alert._id} alert={alert} />
-          ))}
-        </div>
-      )}
-      <div>
-        <Group className={styles.sectionHeader}>
-          <IconCheck size={14} /> OK
-        </Group>
-        {okData.length === 0 && (
-          <EmptyState
-            variant="card"
-            icon={<IconBell size={32} />}
-            title="No alerts"
-            description="All alerts in OK state will appear here."
-          />
-        )}
-        {okData.map(alert => (
-          <AlertDetails key={alert._id} alert={alert} />
-        ))}
-      </div>
-    </div>
-  );
-}
 
 export default function AlertsPage() {
   const brandName = useBrandDisplayName();
@@ -349,6 +39,7 @@ export default function AlertsPage() {
   const [search, setSearch] = useQueryState('search');
   const [tagFilter, setTagFilter] = useQueryState('tag');
   const [creatorFilter, setCreatorFilter] = useQueryState('creator');
+  const [sourceFilter, setSourceFilter] = useQueryState('alertSource');
 
   const allTags = React.useMemo(() => {
     const tags = new Set<string>();
@@ -365,8 +56,19 @@ export default function AlertsPage() {
     return Array.from(creators).sort();
   }, [alerts]);
 
+  // Only the source types actually present, so the filter never offers an
+  // option that yields an empty list.
+  const allSources = React.useMemo(() => {
+    const sources = new Set<string>();
+    alerts.forEach(a => sources.add(getAlertSourceLabel(a)));
+    return Array.from(sources).sort();
+  }, [alerts]);
+
   const filteredAlerts = React.useMemo(() => {
     let result = alerts;
+    if (sourceFilter) {
+      result = result.filter(a => getAlertSourceLabel(a) === sourceFilter);
+    }
     if (tagFilter) {
       result = result.filter(a => getAlertTags(a).includes(tagFilter));
     }
@@ -378,31 +80,45 @@ export default function AlertsPage() {
       result = result.filter(
         a =>
           getAlertDisplayName(a).toLowerCase().includes(q) ||
+          // So "tile" / "saved search" narrow the list the same way the type
+          // filter does, without having to reach for the dropdown.
+          getAlertSourceLabel(a)
+            .toLowerCase()
+            .split(' ')
+            .some(word => word.startsWith(q)) ||
           getAlertTags(a).some(t => t.toLowerCase().includes(q)),
       );
     }
     return result;
-  }, [alerts, search, tagFilter, creatorFilter]);
+  }, [alerts, search, tagFilter, creatorFilter, sourceFilter]);
 
-  const hasFilters = !!(search?.trim() || tagFilter || creatorFilter);
+  const hasFilters = !!(
+    search?.trim() ||
+    tagFilter ||
+    creatorFilter ||
+    sourceFilter
+  );
 
   return (
     <div
       data-testid="alerts-page"
       className="AlertsPage"
-      style={{ display: 'flex', flexDirection: 'column', height: '100%' }}
+      style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}
     >
       <Head>
         <title>Alerts - {brandName}</title>
       </Head>
       <PageHeader title="Alerts" />
-      <div className="my-4" style={{ flex: 1 }}>
+      <div
+        className="my-4"
+        style={{ flex: 1, display: 'flex', flexDirection: 'column' }}
+      >
         {isLoading ? (
           <div className="text-center my-4 fs-8">Loading...</div>
         ) : isError ? (
           <div className="text-center my-4 fs-8">Error</div>
         ) : alerts?.length ? (
-          <Container maw={1500}>
+          <Container maw={1500} w="100%">
             <Alert
               icon={<IconInfoCircleFilled size={16} />}
               color="gray"
@@ -429,6 +145,23 @@ export default function AlertsPage() {
                 miw={100}
                 data-testid="alerts-search-input"
               />
+              {(allSources.length > 1 || sourceFilter) && (
+                <Select
+                  placeholder="Filter by alert source"
+                  // A filter carried in from the URL may name a source no
+                  // current alert has; keep it selectable so it can be cleared.
+                  data={
+                    sourceFilter && !allSources.includes(sourceFilter)
+                      ? [...allSources, sourceFilter]
+                      : allSources
+                  }
+                  value={sourceFilter}
+                  onChange={v => setSourceFilter(v)}
+                  clearable
+                  style={{ maxWidth: 220 }}
+                  data-testid="alerts-source-filter"
+                />
+              )}
               {allTags.length > 0 && (
                 <Select
                   placeholder="Filter by tag"
@@ -459,6 +192,7 @@ export default function AlertsPage() {
             ) : (
               <EmptyState
                 variant="card"
+                mt="md"
                 icon={<IconBell size={32} />}
                 title={hasFilters ? 'No matching alerts' : 'No alerts'}
                 description={
@@ -470,24 +204,27 @@ export default function AlertsPage() {
             )}
           </Container>
         ) : (
-          <EmptyState
-            h="100%"
-            icon={<IconBell size={32} />}
-            title="No alerts created yet"
-            description={
-              <>
-                Alerts can be created from{' '}
-                <Anchor component={Link} href="/dashboards">
-                  dashboard charts
-                </Anchor>{' '}
-                and{' '}
-                <Anchor component={Link} href="/search">
-                  saved searches
-                </Anchor>
-                .
-              </>
-            }
-          />
+          // A percentage height cannot resolve through the min-height-sized
+          // page root, so center with a growing flex wrapper instead.
+          <Flex align="center" justify="center" style={{ flex: 1 }}>
+            <EmptyState
+              icon={<IconBell size={32} />}
+              title="No alerts created yet"
+              description={
+                <>
+                  Alerts can be created from{' '}
+                  <Anchor component={Link} href="/dashboards">
+                    dashboard charts
+                  </Anchor>{' '}
+                  and{' '}
+                  <Anchor component={Link} href="/search">
+                    saved searches
+                  </Anchor>
+                  .
+                </>
+              }
+            />
+          </Flex>
         )}
       </div>
     </div>

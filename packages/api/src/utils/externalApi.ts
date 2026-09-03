@@ -1,4 +1,8 @@
 import {
+  isFilterBroadcastEnabled,
+  isFilterVariableEnabled,
+} from '@hyperdx/common-utils/dist/filters';
+import {
   AlertErrorType,
   AlertThresholdType,
   BuilderSavedChartConfig,
@@ -14,6 +18,7 @@ import {
   AlertDocument,
   AlertInterval,
   AlertState,
+  getAlertChannels,
   IAlert,
 } from '@/models/alert';
 import type { DashboardDocument } from '@/models/dashboard';
@@ -211,19 +216,53 @@ export function translateExternalChartToTileConfig(
 export function translateFilterToExternalFilter(
   filter: DashboardFilter,
 ): ExternalDashboardFilterWithId {
-  return {
-    ...omit(filter, 'source'),
-    sourceId: filter.source.toString(),
-  };
+  switch (filter.type) {
+    case 'STATIC_LIST':
+      return filter;
+
+    case 'PROMETHEUS_LABEL':
+      return {
+        ...omit(filter, 'source'),
+        sourceId: filter.source.toString(),
+      };
+
+    case 'QUERY_EXPRESSION': {
+      // Ignore variableName and appliesToSourceIds if the filter is not in a mode that uses them
+      const ignoredKeys = [
+        ...(isFilterVariableEnabled(filter) ? [] : (['variableName'] as const)),
+        ...(isFilterBroadcastEnabled(filter)
+          ? []
+          : (['appliesToSourceIds'] as const)),
+      ];
+      return {
+        ...omit(filter, 'source', ...ignoredKeys),
+        sourceId: filter.source.toString(),
+      };
+    }
+
+    default:
+      filter satisfies never;
+      return filter;
+  }
 }
 
 export function translateExternalFilterToFilter(
   filter: ExternalDashboardFilterWithId,
 ): DashboardFilter {
-  return {
-    ...omit(filter, 'sourceId'),
-    source: filter.sourceId,
-  };
+  switch (filter.type) {
+    case 'STATIC_LIST':
+      return filter;
+
+    case 'PROMETHEUS_LABEL':
+      return { ...omit(filter, 'sourceId'), source: filter.sourceId };
+
+    case 'QUERY_EXPRESSION':
+      return { ...omit(filter, 'sourceId'), source: filter.sourceId };
+
+    default:
+      filter satisfies never;
+      return filter;
+  }
 }
 
 // Alert related types and transformations
@@ -241,7 +280,8 @@ export type ExternalAlert = {
   thresholdType: AlertThresholdType;
   source?: string;
   state: AlertState;
-  channel: AlertChannel;
+  channel?: AlertChannel;
+  channels?: AlertChannel[];
   teamId: string;
   tileId?: string;
   dashboardId?: string;
@@ -326,6 +366,8 @@ export function translateAlertDocumentToExternalAlert(
     ? alert.toJSON()
     : { ...alert };
 
+  const channels = getAlertChannels(alertObj);
+
   // Copy all fields, renaming _id to id, ensuring ObjectId's are strings
   const result = {
     id: alertObj._id.toString(),
@@ -343,7 +385,12 @@ export function translateAlertDocumentToExternalAlert(
     thresholdType: alertObj.thresholdType,
     source: alertObj.source,
     state: alertObj.state,
-    channel: alertObj.channel,
+    // Omit both fields when no channel resolves (e.g. a legacy `{type: null}`
+    // channel) instead of emitting `channels: []` alongside a null-typed
+    // `channel` -- that shape violates this API's own OpenAPI contract
+    // (`AlertChannels` requires minItems: 1, and `AlertChannel`'s oneOf has no
+    // branch for `{type: null}`).
+    ...(channels.length > 0 && { channel: channels[0], channels }),
     teamId: alertObj.team.toString(),
     tileId: alertObj.tileId ?? undefined,
     dashboardId: alertObj.dashboard?.toString(),

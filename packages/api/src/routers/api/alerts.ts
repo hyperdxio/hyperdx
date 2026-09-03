@@ -26,9 +26,10 @@ import {
   updateAlert,
   validateAlertInput,
 } from '@/controllers/alerts';
+import { getAlertChannels } from '@/models/alert';
 import { IAlertHistory } from '@/models/alertHistory';
 import { PreSerialized, sendJson } from '@/utils/serialization';
-import { alertSchema, objectIdSchema } from '@/utils/zod';
+import { internalAlertSchema, objectIdSchema } from '@/utils/zod';
 
 const router = express.Router();
 
@@ -37,6 +38,7 @@ type EnhancedAlert = NonNullable<Awaited<ReturnType<typeof getAlertEnhanced>>>;
 const formatAlertResponse = (
   alert: EnhancedAlert,
   history: Omit<IAlertHistory, 'alert'>[],
+  { includeChartConfig = false }: { includeChartConfig?: boolean } = {},
 ): PreSerialized<AlertsPageItem> => {
   return {
     history,
@@ -50,7 +52,11 @@ const formatAlertResponse = (
     createdBy: alert.createdBy
       ? pick(alert.createdBy, ['email', 'name'])
       : undefined,
-    channel: pick(alert.channel, ['type']),
+    // webhookId is included so edit surfaces (e.g. the alert detail page) can
+    // prefill the notification channel; webhook ids are already visible to
+    // team members via GET /webhooks.
+    channel: pick(alert.channel, ['type', 'webhookId']),
+    channels: getAlertChannels(alert).map(c => pick(c, ['type', 'webhookId'])),
     ...(alert.dashboard && {
       dashboardId: alert.dashboard._id,
       dashboard: {
@@ -73,6 +79,14 @@ const formatAlertResponse = (
         'tags',
       ]),
     }),
+    // Inline alerts carry their persisted config so edit surfaces can seed
+    // the chart editor and the detail page can render the query — but only on
+    // the single-alert response. The list endpoint is unpaginated, so
+    // attaching every alert's full config (raw SQL templates included) would
+    // bloat every alerts-page load and create a contract that couldn't be
+    // paginated away later.
+    ...(includeChartConfig &&
+      alert.chartConfig && { chartConfig: alert.chartConfig }),
     ...pick(alert, [
       '_id',
       'interval',
@@ -83,6 +97,8 @@ const formatAlertResponse = (
       'thresholdType',
       'state',
       'source',
+      'name',
+      'message',
       'note',
       'createdAt',
       'updatedAt',
@@ -149,7 +165,9 @@ router.get(
         limit: 20,
       });
 
-      const data = formatAlertResponse(alert, history);
+      const data = formatAlertResponse(alert, history, {
+        includeChartConfig: true,
+      });
 
       sendJson(res, { data });
     } catch (e) {
@@ -296,7 +314,7 @@ router.get(
 
 router.post(
   '/',
-  processRequest({ body: alertSchema }),
+  processRequest({ body: internalAlertSchema }),
   async (req, res, next) => {
     const teamId = req.user?.team;
     const userId = req.user?._id;
@@ -318,7 +336,7 @@ router.post(
 router.put(
   '/:id',
   processRequest({
-    body: alertSchema,
+    body: internalAlertSchema,
     params: z.object({
       id: objectIdSchema,
     }),

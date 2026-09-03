@@ -43,9 +43,27 @@
     background-color: var(--color-bg-warning);
   }
 
+  // Errored evaluation: striped red so it reads as "bad" but is visually
+  // distinct from a solid firing (alarm) segment.
+  &.error {
+    background-color: var(--color-bg-danger);
+    background-image: repeating-linear-gradient(
+      -45deg,
+      transparent 0 2px,
+      rgb(0 0 0 / 45%) 2px 4px
+    );
+  }
+
   &.clickable {
     cursor: pointer;
   }
+}
+
+// Child rows (per-group breakdown / error details) under an evaluation
+// window row in the alert detail page's event stream. Muted background keeps
+// parent windows visually dominant when several are expanded.
+.evaluationChildRow {
+  background-color: var(--color-bg-muted);
 }
 
 .alertRow {
@@ -65,4 +83,18 @@
   &:hover {
     color: var(--color-text);
   }
+}
+
+/* The properties line wraps between whole phrases, never inside one: without
+   this a narrow header split "Notify via" across two lines. */
+.propertiesSummary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  row-gap: 4px;
+}
+
+.propertySegment {
+  white-space: nowrap;
 }

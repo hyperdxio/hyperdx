@@ -37,15 +37,15 @@ export default [
     rules: {
       ...nodePlugin.configs.recommended.rules,
       ...securityPlugin.configs['recommended-legacy'].rules,
-      '@typescript-eslint/ban-ts-comment': 'warn',
+      '@typescript-eslint/ban-ts-comment': 'error',
       '@typescript-eslint/no-empty-interface': 'off',
-      '@typescript-eslint/no-empty-object-type': 'warn',
+      '@typescript-eslint/no-empty-object-type': 'error',
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-floating-promises': 'error',
       '@typescript-eslint/no-unsafe-type-assertion': 'warn',
-      '@typescript-eslint/no-namespace': 'warn',
+      '@typescript-eslint/no-namespace': 'error',
       '@typescript-eslint/no-unused-vars': [
-        'warn',
+        'error',
         {
           argsIgnorePattern: '^_',
           varsIgnorePattern: '^_',
@@ -57,7 +57,7 @@ export default [
           tryExtensions: ['.js', '.ts', '.json'],
         },
       ],
-      'n/no-process-exit': 'warn',
+      'n/no-process-exit': 'error',
       'n/no-missing-import': 'off',
       'n/no-unpublished-import': [
         'error',
@@ -112,6 +112,15 @@ export default [
         clearImmediate: 'readonly',
         global: 'readonly',
       },
+    },
+  },
+  {
+    // Process entry points and the CLI task runner: exiting with a status code
+    // on startup failure, task completion, or a last-resort uncaught-exception
+    // handler is the intended behavior here.
+    files: ['src/index.ts', 'src/tasks/index.ts'],
+    rules: {
+      'n/no-process-exit': 'off',
     },
   },
 ];

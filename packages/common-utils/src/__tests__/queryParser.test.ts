@@ -3,6 +3,8 @@ import { ClickhouseClient } from '@/clickhouse/node';
 import { getMetadata } from '@/core/metadata';
 import {
   CustomSchemaSQLSerializerV2,
+  decodeSpecialTokensToSource,
+  encodeSpecialTokens,
   genEnglishExplanation,
   parseKvItemsCastExpression,
   parseKvItemsExpression,
@@ -18,6 +20,24 @@ beforeAll(() => {
 });
 afterAll(() => {
   jest.restoreAllMocks();
+});
+
+describe('special token encoding', () => {
+  it('decodeSpecialTokensToSource is a lossless inverse of encodeSpecialTokens', () => {
+    const queries = [
+      'Url:http://example.com',
+      'Url:https://example.com/path',
+      'Host:localhost:3000',
+      'Body:path\\\\to\\\\file',
+      'foo\\:bar:baz',
+      'Url:http://localhost:8080 AND Body:a\\\\b AND foo\\:bar:x',
+    ];
+    for (const query of queries) {
+      expect(decodeSpecialTokensToSource(encodeSpecialTokens(query))).toBe(
+        query,
+      );
+    }
+  });
 });
 
 describe('CustomSchemaSQLSerializerV2 - json', () => {
@@ -176,6 +196,43 @@ describe('CustomSchemaSQLSerializerV2 - json', () => {
       lucene: 'ServiceName:("foo bar baz")',
       sql: "(((ServiceName ILIKE '%foo bar baz%')))",
       english: '(ServiceName contains "foo bar baz")',
+    },
+    // The shapes the `lucene` variable format expands a field-scoped reference
+    // into. Distributing the field is what makes each value an exact match:
+    // the grouped `ServiceName:("a" OR "b")` above is a substring match.
+    {
+      lucene: '(ServiceName:"a" OR ServiceName:"b")',
+      sql: "(((ServiceName = 'a') OR (ServiceName = 'b')))",
+      english: "('ServiceName' is a OR 'ServiceName' is b)",
+    },
+    {
+      lucene: '(ServiceName:"a")',
+      sql: "(((ServiceName = 'a')))",
+      english: "('ServiceName' is a)",
+    },
+    {
+      // A Map key distributes to exact equality per value AND keeps the
+      // per-term index hint. Contrast the grouped form above, which is a
+      // substring match.
+      lucene:
+        '(LogAttributes.error.message:"a" OR LogAttributes.error.message:"b")',
+      sql: "(((`LogAttributes`['error.message'] = 'a' AND indexHint(mapContains(`LogAttributes`, 'error.message'))) OR (`LogAttributes`['error.message'] = 'b' AND indexHint(mapContains(`LogAttributes`, 'error.message')))))",
+      english:
+        "('LogAttributes.error.message' is a OR 'LogAttributes.error.message' is b)",
+    },
+    {
+      // Same for a JSON path: exact equality per value, where the grouped form
+      // above compiles to ILIKE.
+      lucene:
+        '(ResourceAttributesJSON.error.message:"a" OR ResourceAttributesJSON.error.message:"b")',
+      sql: "(((toString(`ResourceAttributesJSON`.`error`.`message`) = 'a') OR (toString(`ResourceAttributesJSON`.`error`.`message`) = 'b')))",
+      english:
+        "('ResourceAttributesJSON.error.message' is a OR 'ResourceAttributesJSON.error.message' is b)",
+    },
+    {
+      lucene: 'NOT (ServiceName:"a" OR ServiceName:"b")',
+      sql: "(NOT ((ServiceName = 'a') OR (ServiceName = 'b')))",
+      english: "NOT ('ServiceName' is a OR 'ServiceName' is b)",
     },
     {
       lucene: 'ServiceName:(abc def)',
@@ -492,6 +549,50 @@ describe('CustomSchemaSQLSerializerV2 - json', () => {
         metadata,
       });
       expect(actualEnglish).toBe(english);
+    },
+  );
+
+  // What the `lucene` variable format renders for an empty selection. It has
+  // to drop out of the predicate rather than match nothing, and it stays
+  // parenthesized for exactly that reason: the bare `ServiceName:""` below
+  // compares the column against the empty string instead.
+  it.each([
+    ['ServiceName:("")', '(((1=1)))'],
+    ['("")', '(((1=1)))'],
+    ['ServiceName:""', "((ServiceName = ''))"],
+    // A Map key drops out the same way a plain column does.
+    ['LogAttributes.error.message:("")', '(((1=1)))'],
+  ])('renders the empty lucene term %s as %s', async (lucene, expected) => {
+    expect(await new SearchQueryBuilder(lucene, serializer).build()).toBe(
+      expected,
+    );
+  });
+
+  // Two empty-selection shapes that do NOT cleanly drop out. Pinned as-is so a
+  // fix shows up here as a deliberate change rather than a surprise; see the
+  // note on each.
+  it.each([
+    [
+      // A JSON path renders as a match-anything ILIKE rather than `1=1`. Whether
+      // this really matches every row depends on what `toString` yields for an
+      // absent path — if that is NULL, rows missing the attribute are filtered
+      // out while nothing is selected.
+      'ResourceAttributesJSON.error.message:("")',
+      "(((toString(`ResourceAttributesJSON`.`error`.`message`) ILIKE '%%')))",
+    ],
+    [
+      // `NOT (1=1)` matches NOTHING. A negated reference — `-ServiceName:$svc`
+      // or `-ServiceName:"$svc"` — therefore empties the tile until a value is
+      // selected, which is the opposite of the no-op the empty state intends.
+      '-ServiceName:("")',
+      '(NOT ((1=1)))',
+    ],
+  ])(
+    'renders the empty lucene term %s as %s, which is not a no-op',
+    async (lucene, expected) => {
+      expect(await new SearchQueryBuilder(lucene, serializer).build()).toBe(
+        expected,
+      );
     },
   );
 

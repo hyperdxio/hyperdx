@@ -1,4 +1,5 @@
 {
+  "analytics": false,
   "affected": {
     "defaultBase": "main"
   },
@@ -25,8 +26,25 @@
       "dependsOn": ["^ci:build"],
       "inputs": ["default", "^production", { "runtime": "node --version" }]
     },
+    // Unit tests import the compiled `dist` of workspace dependencies (e.g.
+    // `@hyperdx/common-utils/dist/types`), so they need the same `^ci:build`
+    // that `ci:lint` has. Without it, `nx run-many -t ci:unit` can run jest
+    // against a stale or absent dist — which fails intermittently, because the
+    // nx cache usually leaves a usable dist behind and occasionally does not.
+    "ci:unit": {
+      "cache": true,
+      "dependsOn": ["^ci:build"],
+      "inputs": ["default", "^production", { "runtime": "node --version" }]
+    },
+    // `outputs` is not optional here. Without it nx caches only the terminal
+    // output, so a cache hit replays a convincing build log and leaves `dist`
+    // exactly as it found it — stale, or missing entirely. That bites because
+    // `ci:build` writes the same `dist` from a different command (tsup alone,
+    // no `tsc --emitDeclarationOnly`), so running unit tests and then `yarn dev`
+    // leaves you on whichever dist won the race, with no sign anything is off.
     "dev:build": {
-      "cache": true
+      "cache": true,
+      "outputs": ["{projectRoot}/dist"]
     },
     "lint": {
       "cache": true

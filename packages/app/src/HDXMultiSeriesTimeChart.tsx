@@ -17,6 +17,7 @@ import {
   BarChart,
   BarProps,
   CartesianGrid,
+  Customized,
   Legend,
   ReferenceArea,
   ReferenceLine,
@@ -34,8 +35,15 @@ import type { NumberFormat } from '@/types';
 import { COLORS, formatNumber, truncateMiddle } from '@/utils';
 
 import {
+  AnnotationHitLayer,
+  type HoveredAnnotation,
+} from './components/charts/AnnotationHitLayer';
+import { AnnotationTooltip } from './components/charts/AnnotationTooltip';
+import {
   ChartAnnotation,
   getAnnotationElements,
+  layoutAnnotations,
+  resolveAnnotationSeries,
 } from './components/charts/chartAnnotations';
 import { ChartOverlayControls } from './components/charts/ChartOverlayControls';
 import {
@@ -48,6 +56,7 @@ import {
 import { useChartSyncId } from './chartSync';
 import {
   findNearestSeriesKey,
+  getSeriesColorForGroup,
   LineData,
   MAX_TIME_CHART_SERIES,
   toStartOfInterval,
@@ -757,6 +766,91 @@ export function collectMemoChartGradientHexes(
   );
 }
 
+/**
+ * A tick under MAGNITUDE_THRESHOLD gets at most this many decimal places,
+ * regardless of a chart's configured Decimals (which can go up to 10 - see
+ * NumberFormat.tsx). A tick >= MAGNITUDE_THRESHOLD is always an integer (see
+ * formatAxisTick) and so isn't governed by this - only a label under the
+ * threshold, with its own decimals, can make it wide.
+ *
+ * `<YAxis width={Y_AXIS_WIDTH}>` leaves a few dozen px for the label itself
+ * after Recharts' own tickSize + tickMargin. Measured in Chrome at 11px IBM
+ * Plex Mono (the tick font, monospace): every character costs ~6.6px, and
+ * 5 characters is the most that fits. At 2 decimals, "9.99" (4 chars) fits
+ * with room to spare, and adding a single extra character - a negative
+ * sign ("-9.99") or a percent suffix ("9.99%") - still exactly fits at 5.
+ * A 2-digit integer part pushes either of those over (6 chars, e.g.
+ * "-99.99"/"99.99%" both clip), which is why MAGNITUDE_THRESHOLD is 10, not
+ * 100: it trades a wider decimal-preserving range for values that are both
+ * negative and percent-formatted (out of scope here) for one that's safe
+ * for plain positive numbers, percent, and negative numbers each on their
+ * own - the only combination this codebase's charts have needed decimals
+ * for so far. 2 decimals is also enough to keep any value >= 0.005
+ * distinguishable from 0, the failure this cap exists to fix.
+ */
+const MAX_AXIS_MANTISSA = 2;
+
+/** See MAX_AXIS_MANTISSA's comment for the width math behind this value. */
+const MAGNITUDE_THRESHOLD = 10;
+
+/**
+ * Y-axis tick label formatter. Exported so a unit test can pin the
+ * mantissa-precedence behavior without rendering recharts.
+ *
+ * `average` and `unit` are always forced (compact abbreviation like `1.2k`
+ * reads better on an axis than a series' configured unit repeated on every
+ * tick). For a tick at or past MAGNITUDE_THRESHOLD, mantissa is always 0 -
+ * large numbers stay `200`/`1k`/`256 MB`, never `200.00`/`1.23k`/`256.0 MB`,
+ * however many decimals the chart's Number Format configures. Below the
+ * threshold, an explicit axisNumberFormat.mantissa is honored (capped at
+ * MAX_AXIS_MANTISSA) rather than forced to 0. Without that, a chart whose
+ * configured Decimals produces correct tooltip/legend values (e.g. `0.14`)
+ * would still round every axis tick to `0` for any series whose values live
+ * under 1 (fractional Prometheus gauges, ratios, etc.). A tick of exactly 0
+ * always short-circuits to an integer too - it's already unambiguous, and
+ * doesn't need the decimal rescue this formatter exists to provide.
+ *
+ * An explicit mantissa is the common case, not a rare one, which is why the
+ * large-magnitude branch can't just honor it: HyperDX's own bundled
+ * dashboard templates (go-runtime.json et al.) set mantissa on lines/byte/
+ * percent tiles for tooltip readability, with values well above the
+ * near-zero problem this formatter fixes.
+ *
+ * `formatNumber` multiplies a percent-output value by 100 before applying
+ * mantissa (a percent tile's raw value is a 0-1 ratio, e.g. `0.25` for
+ * "25%"), so the magnitude check runs against that same displayed value,
+ * not the raw one - otherwise every percent tile would take the small-
+ * magnitude branch regardless of how large the rendered percentage is.
+ *
+ * This diverges from DBHeatmapChart's tickFormatter (magnitude-aware at a
+ * >= 1 threshold, but ignoring configured mantissa entirely for values
+ * under it) - a deliberate difference in both the threshold and whether
+ * configured mantissa is honored at all, not an oversight.
+ */
+export function formatAxisTick(
+  value: number,
+  axisNumberFormat?: NumberFormat,
+): string {
+  if (!axisNumberFormat) {
+    return new Intl.NumberFormat('en-US', {
+      notation: 'compact',
+      compactDisplay: 'short',
+    }).format(value);
+  }
+
+  const displayed = axisNumberFormat.output === 'percent' ? value * 100 : value;
+
+  return formatNumber(value, {
+    ...axisNumberFormat,
+    mantissa:
+      displayed === 0 || Math.abs(displayed) >= MAGNITUDE_THRESHOLD
+        ? 0
+        : Math.min(axisNumberFormat.mantissa ?? 0, MAX_AXIS_MANTISSA),
+    average: true,
+    unit: undefined,
+  });
+}
+
 export const MemoChart = memo(function MemoChart({
   graphResults,
   setIsClickActive,
@@ -796,7 +890,7 @@ export const MemoChart = memo(function MemoChart({
   lineData: LineData[];
   referenceLines?: React.ReactNode;
   /**
-   * Event markers (alerts, deploys, …) drawn as dashed vertical lines with a
+   * Event markers (alerts, releases, …) drawn as dashed vertical lines with a
    * label above. Passed as data rather than pre-rendered elements so the chart
    * can clamp them to its own x-axis domain. Distinct from `referenceLines`
    * (threshold lines).
@@ -1106,19 +1200,7 @@ export const MemoChart = memo(function MemoChart({
   );
 
   const tickFormatter = useCallback(
-    (value: number) => {
-      return axisNumberFormat
-        ? formatNumber(value, {
-            ...axisNumberFormat,
-            average: true,
-            mantissa: 0,
-            unit: undefined,
-          })
-        : new Intl.NumberFormat('en-US', {
-            notation: 'compact',
-            compactDisplay: 'short',
-          }).format(value);
-    },
+    (value: number) => formatAxisTick(value, axisNumberFormat),
     [axisNumberFormat],
   );
 
@@ -1395,7 +1477,9 @@ export const MemoChart = memo(function MemoChart({
     [buildActivePayloadFromState, setIsClickActive],
   );
 
-  const xAxisDomain: AxisDomain = useMemo(() => {
+  // Typed as the tuple it actually is (assignable to AxisDomain) so the
+  // annotation helpers can take it without an unsafe cast.
+  const xAxisDomain: [number, number] = useMemo(() => {
     let startTime = toStartOfInterval(dateRange[0], granularity);
     let endTime = toStartOfInterval(dateRange[1], granularity);
     const endTimeIsBoundaryAligned = isSameSecond(dateRange[1], endTime);
@@ -1420,15 +1504,44 @@ export const MemoChart = memo(function MemoChart({
   // Alert/event markers as dashed lines, clamped to the chart's x-axis domain so
   // an edge marker (e.g. an alert already firing at window open) stays visible
   // instead of being dropped. Labels float in the reserved top headroom.
-  const annotationElements = useMemo(() => {
+  // Tint each marker to match the series it describes and drop the ones that
+  // can't be tied to anything on this chart — see `resolveAnnotationSeries`.
+  const coloredAnnotations = useMemo(() => {
     if (!annotations?.length) {
+      return annotations;
+    }
+    return resolveAnnotationSeries(annotations, group =>
+      getSeriesColorForGroup(lineData, group),
+    );
+  }, [annotations, lineData]);
+
+  // Same geometry the hit layer positions against, so the hover bands can't
+  // drift from the lines they belong to.
+  const laidOutAnnotations = useMemo(() => {
+    if (!coloredAnnotations?.length) {
       return null;
     }
-    // xAxisDomain is a [min, max] tuple at runtime (declared as AxisDomain).
-    return getAnnotationElements(annotations, {
-      domain: xAxisDomain as [number, number],
+    return layoutAnnotations(coloredAnnotations, {
+      domain: xAxisDomain,
+      plotWidth: Math.max(0, containerWidth - Y_AXIS_WIDTH),
     });
-  }, [annotations, xAxisDomain]);
+  }, [coloredAnnotations, xAxisDomain, containerWidth]);
+
+  const [hoveredAnnotation, setHoveredAnnotation] =
+    useState<HoveredAnnotation | null>(null);
+
+  const annotationElements = useMemo(() => {
+    if (!coloredAnnotations?.length) {
+      return null;
+    }
+    return getAnnotationElements(coloredAnnotations, {
+      domain: xAxisDomain,
+      // Drawable width, so markers too close together share one label. Zero on
+      // the first paint (before ResponsiveContainer measures), which the
+      // renderer treats as "label everything".
+      plotWidth: Math.max(0, containerWidth - Y_AXIS_WIDTH),
+    });
+  }, [coloredAnnotations, xAxisDomain, containerWidth]);
 
   return (
     <div
@@ -1451,6 +1564,9 @@ export const MemoChart = memo(function MemoChart({
       style={{ position: 'relative', width: '100%', height: '100%' }}
     >
       {nearestSeriesStyle}
+      {hoveredAnnotation != null && (
+        <AnnotationTooltip hovered={hoveredAnnotation} />
+      )}
       <ChartOverlayControls
         onClearSelection={
           onClearSeriesSelection != null &&
@@ -1555,6 +1671,16 @@ export const MemoChart = memo(function MemoChart({
           )}
           {referenceLines}
           {annotationElements}
+          {laidOutAnnotations != null && (
+            <Customized
+              component={
+                <AnnotationHitLayer
+                  annotations={laidOutAnnotations}
+                  onHover={setHoveredAnnotation}
+                />
+              }
+            />
+          )}
           {highlightStart && highlightEnd ? (
             <ReferenceArea
               // yAxisId="1"

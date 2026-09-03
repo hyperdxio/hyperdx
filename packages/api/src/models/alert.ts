@@ -1,5 +1,6 @@
 import {
   ALERT_INTERVAL_TO_MINUTES,
+  AlertChartConfig,
   AlertErrorType,
   AlertThresholdType,
 } from '@hyperdx/common-utils/dist/types';
@@ -50,14 +51,35 @@ export type AlertChannel =
       type: null;
     };
 
+/**
+ * Resolve an alert's notification channels regardless of document vintage:
+ * documents written before multi-channel support only have the singular
+ * `channel`. Writers keep `channel` mirrored to `channels[0]`.
+ */
+export const getAlertChannels = (alert: {
+  channel?: AlertChannel | null;
+  channels?: AlertChannel[] | null;
+}): AlertChannel[] => {
+  if (alert.channels != null && alert.channels.length > 0) {
+    return alert.channels;
+  }
+  if (alert.channel != null && alert.channel.type != null) {
+    return [alert.channel];
+  }
+  return [];
+};
+
 export enum AlertSource {
   SAVED_SEARCH = 'saved_search',
   TILE = 'tile',
+  /** Detached alert whose chart config lives inline on the alert (no saved search/tile). */
+  INLINE = 'inline',
 }
 
 export interface IAlert {
   id: string;
   channel: AlertChannel;
+  channels?: AlertChannel[];
   interval: AlertInterval;
   scheduleOffsetMinutes?: number;
   scheduleStartAt?: Date | null;
@@ -84,6 +106,10 @@ export interface IAlert {
   // Tile alerts
   dashboard?: ObjectId | null;
   tileId?: string | null;
+
+  // Inline alerts: the persisted chart config (same shape as a dashboard
+  // tile's config, minus the embedded alert field)
+  chartConfig?: AlertChartConfig | null;
 
   // Silenced
   silenced?: {
@@ -146,6 +172,10 @@ const AlertSchema = new Schema<IAlert>(
       required: false,
     },
     channel: Schema.Types.Mixed, // slack, email, etc
+    // Canonical list of notification channels. `channel` above is kept in
+    // sync (first entry) so pre-multi-channel readers keep working.
+    // `default: undefined` stops Mongoose materialising [] on old documents.
+    channels: { type: [Schema.Types.Mixed], default: undefined },
     state: {
       type: String,
       enum: AlertState,
@@ -199,6 +229,12 @@ const AlertSchema = new Schema<IAlert>(
     },
     tileId: {
       type: String,
+      required: false,
+    },
+
+    // Inline alerts
+    chartConfig: {
+      type: Schema.Types.Mixed,
       required: false,
     },
     numConsecutiveWindows: {

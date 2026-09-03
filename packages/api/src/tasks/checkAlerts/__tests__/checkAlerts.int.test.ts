@@ -1,5 +1,6 @@
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import {
+  AlertChartConfig,
   AlertErrorType,
   AlertState,
   AlertThresholdType,
@@ -21,6 +22,7 @@ import {
   DEFAULT_METRICS_TABLE,
   getServer,
   getTestFixtureClickHouseClient,
+  makeAlertChartConfig,
   makeTile,
   RAW_SQL_ALERT_TEMPLATE,
   RAW_SQL_NUMBER_ALERT_TEMPLATE,
@@ -54,7 +56,6 @@ import {
   buildAlertMessageTemplateHdxLink,
   buildAlertMessageTemplateTitle,
   formatValueToMatchThreshold,
-  getDefaultExternalAction,
   isAlertResolved,
   renderAlertTemplate,
   translateExternalActionsToInternal,
@@ -1124,6 +1125,17 @@ describe('checkAlerts', () => {
         };
       }
 
+      if (overrides.taskType === AlertTaskType.INLINE) {
+        return {
+          ...base,
+          taskType: AlertTaskType.INLINE,
+          chartConfig: makeAlertChartConfig({
+            sourceId: 'fake-source-id',
+            groupBy: overrides.tileGroupBy ?? '',
+          }),
+        };
+      }
+
       return {
         ...base,
         taskType: AlertTaskType.SAVED_SEARCH,
@@ -1177,6 +1189,25 @@ describe('checkAlerts', () => {
             taskType: AlertTaskType.TILE,
             alertGroupBy: 'ServiceName',
             tileGroupBy: '',
+          }),
+        ),
+      ).toBe(true);
+    });
+
+    it('should return false for inline alert with empty config groupBy', () => {
+      expect(
+        alertHasGroupBy(
+          makeDetails({ taskType: AlertTaskType.INLINE, tileGroupBy: '' }),
+        ),
+      ).toBe(false);
+    });
+
+    it('should return true for inline alert with config groupBy', () => {
+      expect(
+        alertHasGroupBy(
+          makeDetails({
+            taskType: AlertTaskType.INLINE,
+            tileGroupBy: 'ServiceName',
           }),
         ),
       ).toBe(true);
@@ -1295,6 +1326,29 @@ describe('checkAlerts', () => {
       value: 5,
     };
 
+    const inlineAlertConfig = makeAlertChartConfig({
+      sourceId: 'fake-source-id',
+    });
+    const defaultInlineAlertView: AlertMessageTemplateDefaultView = {
+      alert: {
+        thresholdType: AlertThresholdType.ABOVE,
+        threshold: 1,
+        source: AlertSource.INLINE,
+        channel: {
+          type: 'webhook',
+          webhookId: 'fake-webhook-id',
+        },
+        interval: '1m',
+        chartConfig: inlineAlertConfig,
+      },
+      startTime: new Date('2023-03-17T22:13:03.103Z'),
+      endTime: new Date('2023-03-17T22:13:59.103Z'),
+      attributes: {},
+      granularity: '5 minute',
+      isGroupedAlert: false,
+      value: 5,
+    };
+
     const server = getServer();
 
     beforeAll(async () => {
@@ -1327,6 +1381,19 @@ describe('checkAlerts', () => {
       ).toMatchInlineSnapshot(
         `"http://app:8080/dashboards/id-123?from=1679089083103&granularity=5+minute&to=1679093339103&highlightedTileId=test-tile-id"`,
       );
+
+      // Inline alerts link to the chart explorer seeded with the persisted
+      // config. Built programmatically — the URL-encoded config JSON makes an
+      // inline snapshot unreadable.
+      const expectedChartAlertUrl = new URL('http://app:8080/chart');
+      expectedChartAlertUrl.search = new URLSearchParams({
+        config: JSON.stringify(inlineAlertConfig),
+        from: '1679089083103',
+        to: '1679093339103',
+      }).toString();
+      expect(
+        buildAlertMessageTemplateHdxLink(alertProvider, defaultInlineAlertView),
+      ).toBe(expectedChartAlertUrl.toString());
     });
 
     it('formatValueToMatchThreshold', () => {
@@ -1428,6 +1495,14 @@ describe('checkAlerts', () => {
         }),
       ).toMatchInlineSnapshot(
         `"🚨 Alert for "Test Chart" in "My Dashboard" - 5 meets or exceeds 1"`,
+      );
+      // Inline alerts default to the chart config's name
+      expect(
+        buildAlertMessageTemplateTitle({
+          view: defaultInlineAlertView,
+        }),
+      ).toMatchInlineSnapshot(
+        `"🚨 Alert for "Chart Alert Query" - 5 meets or exceeds 1"`,
       );
     });
 
@@ -1535,24 +1610,6 @@ describe('checkAlerts', () => {
       expect(isAlertResolved(AlertState.DISABLED)).toBe(false);
     });
 
-    it('getDefaultExternalAction', () => {
-      expect(
-        getDefaultExternalAction({
-          channel: {
-            type: 'webhook',
-            webhookId: '123',
-          },
-        } as any),
-      ).toBe('@webhook-123');
-      expect(
-        getDefaultExternalAction({
-          channel: {
-            type: 'foo',
-          },
-        } as any),
-      ).toBeNull();
-    });
-
     it('translateExternalActionsToInternal', () => {
       // normal
       expect(
@@ -1635,12 +1692,15 @@ describe('checkAlerts', () => {
           },
         },
         title: 'Alert for "My Search" - 10 lines found',
+        teamId: team._id.toString(),
         teamWebhooksById: new Map<string, typeof webhook>([
           [webhook._id.toString(), webhook],
         ]),
       });
 
-      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(2);
+      // The message names the webhook by name prefix and the alert also has it
+      // configured as a channel; it is one target, so it is notified once.
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(1);
       // TODO: test call arguments
     });
 
@@ -1669,6 +1729,7 @@ describe('checkAlerts', () => {
           },
         },
         title: '🚨 Alert for "My Search" - 10 lines found',
+        teamId: team._id.toString(),
         teamWebhooksById: new Map<string, typeof webhook>([
           [webhook._id.toString(), webhook],
         ]),
@@ -1729,6 +1790,7 @@ describe('checkAlerts', () => {
           },
         },
         title: '🚨 Alert for "My Search" - 10 lines found',
+        teamId: team._id.toString(),
         teamWebhooksById: new Map<string, typeof webhook>([
           [webhook._id.toString(), webhook],
         ]),
@@ -1814,6 +1876,7 @@ describe('checkAlerts', () => {
           },
         },
         title: '🚨 Alert for "My Search" - 10 lines found',
+        teamId: team._id.toString(),
         teamWebhooksById,
       });
 
@@ -1838,6 +1901,7 @@ describe('checkAlerts', () => {
           },
         },
         title: '🚨 Alert for "My Search" - 10 lines found',
+        teamId: team._id.toString(),
         teamWebhooksById,
       });
 
@@ -1927,6 +1991,7 @@ describe('checkAlerts', () => {
           },
         },
         title: '✅ Alert for "My Search" - 10 lines found',
+        teamId: team._id.toString(),
         teamWebhooksById: new Map<string, typeof webhook>([
           [webhook._id.toString(), webhook],
         ]),
@@ -2082,6 +2147,10 @@ describe('checkAlerts', () => {
             taskType: AlertTaskType.TILE;
             tile: Tile;
             dashboard: IDashboard;
+          }
+        | {
+            taskType: AlertTaskType.INLINE;
+            chartConfig: AlertChartConfig;
           },
     ): Promise<AlertDetails> => {
       const mockUserId = new mongoose.Types.ObjectId();
@@ -2794,6 +2863,226 @@ describe('checkAlerts', () => {
       );
     });
 
+    it('INLINE alert (events) - slack webhook', async () => {
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
+
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      // Send events in the last alert window 22:05 - 22:10
+      const eventMs = now.getTime() - ms('5m');
+
+      await bulkInsertLogs(
+        Array.from({ length: 3 }, () => ({
+          ServiceName: 'api',
+          Timestamp: new Date(eventMs),
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        })),
+      );
+
+      // The config lives on the alert itself — no saved search or dashboard.
+      const chartConfig = makeAlertChartConfig({
+        sourceId: source.id,
+        name: 'Error Count',
+        aggCondition: 'ServiceName:api',
+      });
+
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.INLINE,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 1,
+          chartConfig,
+        },
+        {
+          taskType: AlertTaskType.INLINE,
+          chartConfig,
+        },
+      );
+
+      // should fetch 5m of logs
+      await processAlertAtTime(
+        now,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+
+      // skip since time diff is less than 1 window size
+      const later = new Date('2023-11-16T22:14:00.000Z');
+      await processAlertAtTime(
+        later,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+
+      const nextWindow = new Date('2023-11-16T22:16:00.000Z');
+      await processAlertAtTime(
+        nextWindow,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+      // alert should be in ok state
+      expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
+
+      // check alert history
+      const alertHistories = await AlertHistory.find({
+        alert: details.alert.id,
+      }).sort({
+        createdAt: 1,
+      });
+
+      expect(alertHistories.length).toBe(2);
+      const [history1, history2] = alertHistories;
+      expect(history1.state).toBe('ALERT');
+      expect(history1.counts).toBe(1);
+      expect(history1.createdAt).toEqual(new Date('2023-11-16T22:10:00.000Z'));
+      expect(history2.state).toBe('OK');
+      expect(history2.createdAt).toEqual(new Date('2023-11-16T22:15:00.000Z'));
+
+      // Notification links to the chart explorer seeded with the persisted
+      // config, padded by 7x granularity on both sides of the window.
+      const expectedUrl = new URL('http://app:8080/chart');
+      expectedUrl.search = new URLSearchParams({
+        config: JSON.stringify(
+          (await Alert.findById(details.alert.id))!.chartConfig,
+        ),
+        from: String(
+          new Date('2023-11-16T22:05:00.000Z').getTime() - ms('5m') * 7,
+        ),
+        to: String(
+          new Date('2023-11-16T22:10:00.000Z').getTime() + ms('5m') * 7,
+        ),
+      }).toString();
+
+      expect(slack.postMessageToWebhook).toHaveBeenNthCalledWith(
+        1,
+        'https://hooks.slack.com/services/123',
+        {
+          text: '🚨 Alert for "Error Count" - 3 meets or exceeds 1',
+          blocks: [
+            {
+              text: {
+                text: [
+                  `*<${expectedUrl.toString()} | 🚨 Alert for "Error Count" - 3 meets or exceeds 1>*`,
+                  '',
+                  '3 meets or exceeds 1',
+                  'Time Range (UTC): [Nov 16 10:05:00 PM - Nov 16 10:10:00 PM)',
+                  '',
+                ].join('\n'),
+                type: 'mrkdwn',
+              },
+              type: 'section',
+            },
+          ],
+        },
+      );
+    });
+
+    it('INLINE alert (group by) - notifies per group', async () => {
+      // Two groups fire, so two notifications go out (the shared beforeEach
+      // only mocks a single call).
+      jest.spyOn(slack, 'postMessageToWebhook').mockResolvedValue(null as any);
+
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
+
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      const eventMs = now.getTime() - ms('5m');
+
+      await bulkInsertLogs([
+        ...Array.from({ length: 3 }, () => ({
+          ServiceName: 'api',
+          Timestamp: new Date(eventMs),
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        })),
+        ...Array.from({ length: 2 }, () => ({
+          ServiceName: 'worker',
+          Timestamp: new Date(eventMs),
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        })),
+      ]);
+
+      const chartConfig = makeAlertChartConfig({
+        sourceId: source.id,
+        name: 'Errors by service',
+        groupBy: 'ServiceName',
+      });
+
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.INLINE,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 1,
+          chartConfig,
+        },
+        {
+          taskType: AlertTaskType.INLINE,
+          chartConfig,
+        },
+      );
+
+      await processAlertAtTime(
+        now,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+
+      // One firing history per group (the config's groupBy drives grouping)
+      const alertHistories = await AlertHistory.find({
+        alert: details.alert.id,
+      }).sort({ group: 1 });
+      expect(alertHistories.length).toBe(2);
+      expect(alertHistories.map(h => h.group)).toEqual([
+        'ServiceName:api',
+        'ServiceName:worker',
+      ]);
+      expect(alertHistories.every(h => h.state === 'ALERT')).toBe(true);
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(2);
+    });
+
     it.each([AlertThresholdType.BETWEEN, AlertThresholdType.NOT_BETWEEN])(
       'should not fire or record history when thresholdMax is missing for %s',
       async thresholdType => {
@@ -2849,12 +3138,26 @@ describe('checkAlerts', () => {
           teamWebhooksById,
         );
 
-        // Alert should remain in its default OK state and no history/webhooks should be emitted
+        // Alert should remain in its default OK state and no normal
+        // history/webhooks should be emitted. The failure is recorded as an
+        // ERROR-state history row for the window.
         const updated = await Alert.findById(details.alert.id);
         expect(updated!.state).toBe('OK');
         expect(
-          await AlertHistory.countDocuments({ alert: details.alert.id }),
+          await AlertHistory.countDocuments({
+            alert: details.alert.id,
+            state: { $ne: AlertState.ERROR },
+          }),
         ).toBe(0);
+        const errorHistories = await AlertHistory.find({
+          alert: details.alert.id,
+          state: AlertState.ERROR,
+        });
+        expect(errorHistories).toHaveLength(1);
+        expect(errorHistories[0].errors).toHaveLength(1);
+        expect(errorHistories[0].errors![0].type).toBe(
+          AlertErrorType.INVALID_ALERT,
+        );
         expect(slack.postMessageToWebhook).not.toHaveBeenCalled();
 
         // The invalid alert configuration should be recorded on the Alert
@@ -2966,19 +3269,41 @@ describe('checkAlerts', () => {
         const updated = await Alert.findById(details.alert.id);
         // State must be untouched — still ALERT
         expect(updated!.state).toBe(AlertState.ALERT);
-        // No AlertHistory created
+        // No normal AlertHistory created
         expect(
-          await AlertHistory.countDocuments({ alert: details.alert.id }),
+          await AlertHistory.countDocuments({
+            alert: details.alert.id,
+            state: { $ne: AlertState.ERROR },
+          }),
         ).toBe(0);
         // No webhook fired
         expect(slack.postMessageToWebhook).not.toHaveBeenCalled();
-        // Error recorded
+        // Error recorded on the alert (latest-only snapshot)
         expect(updated!.executionErrors).toBeDefined();
         expect(updated!.executionErrors!.length).toBe(1);
         expect(updated!.executionErrors![0].type).toBe(
           AlertErrorType.QUERY_ERROR,
         );
         expect(updated!.executionErrors![0].message).toContain(
+          'clickhouse kaput',
+        );
+        // ...and persisted as an ERROR history row for the evaluation window
+        // (5m interval at 22:12 → window start 22:10)
+        const errorHistories = await AlertHistory.find({
+          alert: details.alert.id,
+          state: AlertState.ERROR,
+        });
+        expect(errorHistories).toHaveLength(1);
+        expect(errorHistories[0].createdAt.toISOString()).toBe(
+          '2023-11-16T22:10:00.000Z',
+        );
+        expect(errorHistories[0].counts).toBe(0);
+        expect(errorHistories[0].lastValues).toHaveLength(0);
+        expect(errorHistories[0].errors).toHaveLength(1);
+        expect(errorHistories[0].errors![0].type).toBe(
+          AlertErrorType.QUERY_ERROR,
+        );
+        expect(errorHistories[0].errors![0].message).toContain(
           'clickhouse kaput',
         );
       });
@@ -3031,11 +3356,578 @@ describe('checkAlerts', () => {
         // Default state is OK — must stay OK (not flipped to ALERT or anything else)
         expect(updated!.state).toBe(AlertState.OK);
         expect(
-          await AlertHistory.countDocuments({ alert: details.alert.id }),
+          await AlertHistory.countDocuments({
+            alert: details.alert.id,
+            state: { $ne: AlertState.ERROR },
+          }),
         ).toBe(0);
         expect(updated!.executionErrors![0].type).toBe(
           AlertErrorType.QUERY_ERROR,
         );
+      });
+
+      it('records a QUERY_TIMEOUT with an actionable message when the query times out', async () => {
+        const {
+          team,
+          webhook,
+          connection,
+          source,
+          savedSearch,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
+
+        const details = await createAlertDetails(
+          team,
+          source,
+          {
+            source: AlertSource.SAVED_SEARCH,
+            channel: {
+              type: 'webhook',
+              webhookId: webhook._id.toString(),
+            },
+            interval: '5m',
+            thresholdType: AlertThresholdType.ABOVE,
+            threshold: 1,
+            savedSearchId: savedSearch.id,
+          },
+          {
+            taskType: AlertTaskType.SAVED_SEARCH,
+            savedSearch,
+          },
+        );
+
+        // The exact message the ClickHouse client rejects with when
+        // request_timeout elapses.
+        jest
+          .spyOn(clickhouseClient, 'queryChartConfig')
+          .mockRejectedValueOnce(new Error('Timeout error.'));
+
+        await processAlertAtTime(
+          new Date('2023-11-16T22:12:00.000Z'),
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        const updated = await Alert.findById(details.alert.id);
+        expect(updated!.executionErrors).toHaveLength(1);
+        expect(updated!.executionErrors![0].type).toBe(
+          AlertErrorType.QUERY_TIMEOUT,
+        );
+        expect(updated!.executionErrors![0].message).toMatch(
+          /did not complete within the \d+s evaluation timeout/,
+        );
+        expect(updated!.executionErrors![0].message).toContain(
+          'the alert will not fire until the query completes in time',
+        );
+
+        const errorHistories = await AlertHistory.find({
+          alert: details.alert.id,
+          state: AlertState.ERROR,
+        });
+        expect(errorHistories).toHaveLength(1);
+        expect(errorHistories[0].errors![0].type).toBe(
+          AlertErrorType.QUERY_TIMEOUT,
+        );
+        // The ERROR row records the query's time-to-failure
+        expect(errorHistories[0].analytics?.queryDurationMs).toEqual(
+          expect.any(Number),
+        );
+      });
+
+      it('dedupes error history rows per evaluation window and separates windows', async () => {
+        const {
+          team,
+          webhook,
+          connection,
+          source,
+          savedSearch,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
+
+        const details = await createAlertDetails(
+          team,
+          source,
+          {
+            source: AlertSource.SAVED_SEARCH,
+            channel: {
+              type: 'webhook',
+              webhookId: webhook._id.toString(),
+            },
+            interval: '5m',
+            thresholdType: AlertThresholdType.ABOVE,
+            threshold: 1,
+            savedSearchId: savedSearch.id,
+          },
+          {
+            taskType: AlertTaskType.SAVED_SEARCH,
+            savedSearch,
+          },
+        );
+
+        const querySpy = jest
+          .spyOn(clickhouseClient, 'queryChartConfig')
+          .mockRejectedValueOnce(new Error('boom 1'))
+          .mockRejectedValueOnce(new Error('boom 2'))
+          .mockRejectedValueOnce(new Error('boom 3'));
+
+        // Two failing ticks within the same 5m window (22:10) — the retry
+        // must not be skipped (the ERROR row is excluded from the due-ness
+        // gate) and must not accumulate a second row (upsert per window).
+        await processAlertAtTime(
+          new Date('2023-11-16T22:12:00.000Z'),
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+        );
+        await processAlertAtTime(
+          new Date('2023-11-16T22:13:00.000Z'),
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        expect(querySpy).toHaveBeenCalledTimes(2);
+        let errorHistories = await AlertHistory.find({
+          alert: details.alert.id,
+          state: AlertState.ERROR,
+        });
+        expect(errorHistories).toHaveLength(1);
+        expect(errorHistories[0].createdAt.toISOString()).toBe(
+          '2023-11-16T22:10:00.000Z',
+        );
+        // The row carries the latest attempt's error
+        expect(errorHistories[0].errors).toHaveLength(1);
+        expect(errorHistories[0].errors![0].message).toContain('boom 2');
+
+        // A failing tick in the NEXT window gets its own row
+        await processAlertAtTime(
+          new Date('2023-11-16T22:16:00.000Z'),
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+        );
+        errorHistories = await AlertHistory.find({
+          alert: details.alert.id,
+          state: AlertState.ERROR,
+        }).sort({ createdAt: 1 });
+        expect(errorHistories).toHaveLength(2);
+        expect(errorHistories[1].createdAt.toISOString()).toBe(
+          '2023-11-16T22:15:00.000Z',
+        );
+
+        // No normal history was ever written
+        expect(
+          await AlertHistory.countDocuments({
+            alert: details.alert.id,
+            state: { $ne: AlertState.ERROR },
+          }),
+        ).toBe(0);
+      });
+
+      it('still evaluates and fires for a window whose earlier attempt failed', async () => {
+        const {
+          team,
+          webhook,
+          connection,
+          source,
+          savedSearch,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
+
+        // Data inside the window evaluated at 22:10 (range [22:05, 22:10))
+        await bulkInsertLogs([
+          {
+            ServiceName: 'api',
+            Timestamp: new Date('2023-11-16T22:05:00.000Z'),
+            SeverityText: 'error',
+            Body: 'oh no',
+          },
+          {
+            ServiceName: 'api',
+            Timestamp: new Date('2023-11-16T22:05:00.000Z'),
+            SeverityText: 'error',
+            Body: 'oh no',
+          },
+        ]);
+
+        const details = await createAlertDetails(
+          team,
+          source,
+          {
+            source: AlertSource.SAVED_SEARCH,
+            channel: {
+              type: 'webhook',
+              webhookId: webhook._id.toString(),
+            },
+            interval: '5m',
+            thresholdType: AlertThresholdType.ABOVE,
+            threshold: 1,
+            savedSearchId: savedSearch.id,
+          },
+          {
+            taskType: AlertTaskType.SAVED_SEARCH,
+            savedSearch,
+          },
+        );
+
+        // First tick fails — records an ERROR row, no state/history change
+        jest
+          .spyOn(clickhouseClient, 'queryChartConfig')
+          .mockRejectedValueOnce(new Error('transient failure'));
+
+        await processAlertAtTime(
+          new Date('2023-11-16T22:12:00.000Z'),
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+        );
+        expect((await Alert.findById(details.alert.id))!.state).toBe(
+          AlertState.OK,
+        );
+
+        // Next tick (same window): the real query runs and the alert fires.
+        // If the ERROR row counted as "window evaluated", this tick would be
+        // skipped and the alert would never fire.
+        await processAlertAtTime(
+          new Date('2023-11-16T22:13:00.000Z'),
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        const updated = await Alert.findById(details.alert.id);
+        expect(updated!.state).toBe(AlertState.ALERT);
+        // Errors on the alert are cleared by the successful execution
+        expect(updated!.executionErrors ?? []).toHaveLength(0);
+
+        // The normal history was written for the retried window, and the
+        // failed attempt's ERROR row was removed — otherwise the window
+        // would render as ERROR forever (the evaluations view ranks ERROR
+        // above OK/ALERT) even though the retry succeeded.
+        const normalHistories = await AlertHistory.find({
+          alert: details.alert.id,
+          state: { $ne: AlertState.ERROR },
+        });
+        expect(normalHistories).toHaveLength(1);
+        expect(normalHistories[0].state).toBe(AlertState.ALERT);
+        expect(normalHistories[0].createdAt.toISOString()).toBe(
+          '2023-11-16T22:10:00.000Z',
+        );
+        expect(
+          await AlertHistory.countDocuments({
+            alert: details.alert.id,
+            state: AlertState.ERROR,
+          }),
+        ).toBe(0);
+        // Evaluation analytics: single-window evaluation → no backfill;
+        // query duration recorded; notification sent → delivery time recorded
+        expect(normalHistories[0].analytics).toBeDefined();
+        expect(normalHistories[0].analytics!.backfilledBuckets).toBe(0);
+        expect(normalHistories[0].analytics!.queryDurationMs).toEqual(
+          expect.any(Number),
+        );
+        expect(normalHistories[0].analytics!.webhookDurationMs).toEqual(
+          expect.any(Number),
+        );
+        // Per-target breakdown of that total: one entry for the alert's single
+        // configured webhook, named so the UI can attribute the time. Read
+        // field by field — these come back as Mongoose subdocuments, which
+        // don't deep-equal a plain object literal.
+        const targets = normalHistories[0].analytics!.notificationTargets;
+        expect(targets).toHaveLength(1);
+        expect(targets![0].targetId).toBe(webhook._id.toString());
+        expect(targets![0].target).toBe(webhook.name);
+        expect(targets![0].durationMs).toEqual(expect.any(Number));
+        expect(targets![0].dispatches).toBe(1);
+        expect(targets![0].failures).toBe(0);
+      });
+
+      it('keeps ERROR rows from older windows when a later window succeeds', async () => {
+        const {
+          team,
+          webhook,
+          connection,
+          source,
+          savedSearch,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
+
+        // Non-breaching data in the 22:15 window (range [22:10, 22:15))
+        await bulkInsertLogs([
+          {
+            ServiceName: 'api',
+            Timestamp: new Date('2023-11-16T22:11:00.000Z'),
+            SeverityText: 'error',
+            Body: 'oh no',
+          },
+        ]);
+
+        const details = await createAlertDetails(
+          team,
+          source,
+          {
+            source: AlertSource.SAVED_SEARCH,
+            channel: {
+              type: 'webhook',
+              webhookId: webhook._id.toString(),
+            },
+            interval: '5m',
+            thresholdType: AlertThresholdType.ABOVE,
+            threshold: 1,
+            savedSearchId: savedSearch.id,
+          },
+          {
+            taskType: AlertTaskType.SAVED_SEARCH,
+            savedSearch,
+          },
+        );
+
+        // Tick in the 22:10 window fails — ERROR row at 22:10
+        jest
+          .spyOn(clickhouseClient, 'queryChartConfig')
+          .mockRejectedValueOnce(new Error('transient failure'));
+        await processAlertAtTime(
+          new Date('2023-11-16T22:12:00.000Z'),
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        // The next window (22:15) evaluates cleanly. With no previous
+        // history the clean tick only looks back one window ([22:10, 22:15))
+        // — the failed tick's data range ([22:05, 22:10)) was never
+        // re-evaluated, so the 22:10 ERROR row is a truthful record of an
+        // unrecovered failure and must survive.
+        await processAlertAtTime(
+          new Date('2023-11-16T22:17:00.000Z'),
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        const normalHistories = await AlertHistory.find({
+          alert: details.alert.id,
+          state: { $ne: AlertState.ERROR },
+        });
+        expect(normalHistories).toHaveLength(1);
+        expect(normalHistories[0].createdAt.toISOString()).toBe(
+          '2023-11-16T22:15:00.000Z',
+        );
+
+        const errorHistories = await AlertHistory.find({
+          alert: details.alert.id,
+          state: AlertState.ERROR,
+        });
+        expect(errorHistories).toHaveLength(1);
+        expect(errorHistories[0].createdAt.toISOString()).toBe(
+          '2023-11-16T22:10:00.000Z',
+        );
+      });
+
+      it('clears the stale ERROR row when a failed window recovers via backfill on a later tick', async () => {
+        const {
+          team,
+          webhook,
+          connection,
+          source,
+          savedSearch,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
+
+        const details = await createAlertDetails(
+          team,
+          source,
+          {
+            source: AlertSource.SAVED_SEARCH,
+            channel: {
+              type: 'webhook',
+              webhookId: webhook._id.toString(),
+            },
+            interval: '5m',
+            thresholdType: AlertThresholdType.ABOVE,
+            threshold: 1,
+            savedSearchId: savedSearch.id,
+          },
+          {
+            taskType: AlertTaskType.SAVED_SEARCH,
+            savedSearch,
+          },
+        );
+
+        // Tick 1 (window 22:05) evaluates cleanly — anchors the backfill.
+        await processAlertAtTime(
+          new Date('2023-11-16T22:07:00.000Z'),
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        // A webhook-failure-style ERROR row recorded alongside tick 1's
+        // normal rows (same createdAt). Its window WAS evaluated — it is
+        // never retried, so the cleanup below must not delete it.
+        await AlertHistory.create({
+          alert: details.alert.id,
+          createdAt: new Date('2023-11-16T22:05:00.000Z'),
+          state: AlertState.ERROR,
+          counts: 0,
+          lastValues: [],
+          errors: [
+            {
+              type: AlertErrorType.WEBHOOK_ERROR,
+              message: 'webhook boom',
+              timestamp: new Date('2023-11-16T22:07:00.000Z'),
+            },
+          ],
+        });
+
+        // Tick 2 (window 22:10) fails — ERROR row at 22:10, window not
+        // marked evaluated.
+        jest
+          .spyOn(clickhouseClient, 'queryChartConfig')
+          .mockRejectedValueOnce(new Error('transient failure'));
+        await processAlertAtTime(
+          new Date('2023-11-16T22:12:00.000Z'),
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+        );
+        expect(
+          await AlertHistory.countDocuments({
+            alert: details.alert.id,
+            state: AlertState.ERROR,
+          }),
+        ).toBe(2);
+
+        // Tick 3 (window 22:15) evaluates cleanly. Its anchor is tick 1's
+        // 22:05 row, so the range [22:05, 22:15) folds the failed 22:10
+        // window in as a backfilled bucket — stamped with createdAt 22:15,
+        // NOT 22:10. The stale 22:10 ERROR row must still be cleared, or
+        // the recovered window renders as ERROR until the TTL expires it.
+        await processAlertAtTime(
+          new Date('2023-11-16T22:17:00.000Z'),
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        const normalHistories = await AlertHistory.find({
+          alert: details.alert.id,
+          state: { $ne: AlertState.ERROR },
+        }).sort({ createdAt: 1 });
+        expect(normalHistories.map(h => h.createdAt.toISOString())).toEqual([
+          '2023-11-16T22:05:00.000Z',
+          '2023-11-16T22:15:00.000Z',
+        ]);
+        expect(normalHistories[1].analytics!.backfilledBuckets).toBe(1);
+
+        // The backfilled window's ERROR row is gone; the webhook-failure
+        // row at the (already-evaluated) anchor window survives.
+        const errorHistories = await AlertHistory.find({
+          alert: details.alert.id,
+          state: AlertState.ERROR,
+        });
+        expect(errorHistories).toHaveLength(1);
+        expect(errorHistories[0].createdAt.toISOString()).toBe(
+          '2023-11-16T22:05:00.000Z',
+        );
+        expect(errorHistories[0].errors![0].type).toBe(
+          AlertErrorType.WEBHOOK_ERROR,
+        );
+      });
+
+      it('records backfilled buckets when an evaluation catches up missed windows', async () => {
+        const {
+          team,
+          webhook,
+          connection,
+          source,
+          savedSearch,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
+
+        const details = await createAlertDetails(
+          team,
+          source,
+          {
+            source: AlertSource.SAVED_SEARCH,
+            channel: {
+              type: 'webhook',
+              webhookId: webhook._id.toString(),
+            },
+            interval: '5m',
+            thresholdType: AlertThresholdType.ABOVE,
+            threshold: 1,
+            savedSearchId: savedSearch.id,
+          },
+          {
+            taskType: AlertTaskType.SAVED_SEARCH,
+            savedSearch,
+          },
+        );
+
+        // First evaluation: steady state, covers a single bucket
+        await processAlertAtTime(
+          new Date('2023-11-16T22:12:00.000Z'),
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+        );
+        const first = await AlertHistory.findOne({
+          alert: details.alert.id,
+          createdAt: new Date('2023-11-16T22:10:00.000Z'),
+        });
+        expect(first!.analytics!.backfilledBuckets).toBe(0);
+
+        // Next evaluation runs 15 minutes late (missed the 22:15 and 22:20
+        // ticks): the 22:25 window backfills the two missed buckets.
+        await processAlertAtTime(
+          new Date('2023-11-16T22:27:00.000Z'),
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+        );
+        const second = await AlertHistory.findOne({
+          alert: details.alert.id,
+          createdAt: new Date('2023-11-16T22:25:00.000Z'),
+        });
+        expect(second).toBeDefined();
+        expect(second!.analytics!.backfilledBuckets).toBe(2);
+        expect(second!.analytics!.queryDurationMs).toEqual(expect.any(Number));
+        // No notification fired in this evaluation → no delivery time
+        expect(second!.analytics!.webhookDurationMs).toBeUndefined();
       });
 
       it.each([
@@ -3044,8 +3936,10 @@ describe('checkAlerts', () => {
           status: 500,
           responseBody: 'webhook exploded',
           expectedRequestCount: 3,
+          // Per-target message: names the failing webhook so a multi-channel
+          // alert's errors are attributable. Raw upstream detail stays hidden.
           expectedErrorMessage:
-            'Failed to send webhook notification. Check the webhook configuration and destination.',
+            'Failed to send notification to webhook "Generic Webhook". Check the webhook configuration and destination.',
         },
         {
           responseDescription: 'a redirect response',
@@ -3053,7 +3947,7 @@ describe('checkAlerts', () => {
           responseBody: 'redirecting',
           expectedRequestCount: 1,
           expectedErrorMessage:
-            'Webhook destination responded with a redirect. Redirects are not supported.',
+            'Webhook destination responded with a redirect. Redirects are not supported. (webhook "Generic Webhook")',
         },
       ])(
         'sets state to ALERT and records a WEBHOOK_ERROR when the generic webhook returns $responseDescription',
@@ -3141,10 +4035,31 @@ describe('checkAlerts', () => {
 
           const updated = await Alert.findById(details.alert.id);
           expect(updated!.state).toBe(AlertState.ALERT);
-          // Query succeeded, so AlertHistory should have been written
+          // Query succeeded, so normal AlertHistory should have been written
           expect(
-            await AlertHistory.countDocuments({ alert: details.alert.id }),
+            await AlertHistory.countDocuments({
+              alert: details.alert.id,
+              state: { $ne: AlertState.ERROR },
+            }),
           ).toBe(1);
+          // The webhook failure is also persisted as an ERROR history row
+          const errorHistories = await AlertHistory.find({
+            alert: details.alert.id,
+            state: AlertState.ERROR,
+          });
+          expect(errorHistories).toHaveLength(1);
+          expect(errorHistories[0].errors).toHaveLength(1);
+          expect(errorHistories[0].errors![0].type).toBe(
+            AlertErrorType.WEBHOOK_ERROR,
+          );
+          expect(errorHistories[0].errors![0].message).toBe(
+            expectedErrorMessage,
+          );
+          // ...carrying the evaluation's analytics, including the time spent
+          // attempting the webhook delivery
+          expect(errorHistories[0].analytics?.webhookDurationMs).toEqual(
+            expect.any(Number),
+          );
           expect(updated!.executionErrors).toBeDefined();
           expect(updated!.executionErrors!.length).toBe(1);
           expect(updated!.executionErrors![0].type).toBe(
@@ -3525,9 +4440,24 @@ describe('checkAlerts', () => {
         expect(updated!.state).toBe(AlertState.ALERT);
         const histories = await AlertHistory.find({
           alert: details.alert.id,
+          state: { $ne: AlertState.ERROR },
         });
         expect(histories.length).toBe(2);
         expect(histories.every(h => h.state === AlertState.ALERT)).toBe(true);
+
+        // Both groups' webhook failures land on a single ERROR history row
+        // for the evaluation window.
+        const errorHistories = await AlertHistory.find({
+          alert: details.alert.id,
+          state: AlertState.ERROR,
+        });
+        expect(errorHistories).toHaveLength(1);
+        expect(errorHistories[0].errors).toHaveLength(2);
+        expect(
+          errorHistories[0].errors!.every(
+            e => e.type === AlertErrorType.WEBHOOK_ERROR,
+          ),
+        ).toBe(true);
 
         // Each group attempted to send a webhook and each one failed. withRetry
         // retries up to 3 times per group (2 groups × 3 attempts = 6 total calls).
@@ -3547,10 +4477,10 @@ describe('checkAlerts', () => {
           ),
         ).toBe(true);
         expect(
-          updated!.executionErrors!.every(
-            e =>
-              e.message ===
-              'Failed to send webhook notification. Check the webhook configuration and destination.',
+          updated!.executionErrors!.every(e =>
+            /^Failed to send notification to webhook ".+"\. Check the webhook configuration and destination\.$/.test(
+              e.message,
+            ),
           ),
         ).toBe(true);
       });
@@ -3614,9 +4544,19 @@ describe('checkAlerts', () => {
         const updated = await Alert.findById(details.alert.id);
 
         // Query succeeded, state should flip to ALERT, history written
+        // (plus an ERROR row recording the webhook failure)
         expect(updated!.state).toBe(AlertState.ALERT);
         expect(
-          await AlertHistory.countDocuments({ alert: details.alert.id }),
+          await AlertHistory.countDocuments({
+            alert: details.alert.id,
+            state: { $ne: AlertState.ERROR },
+          }),
+        ).toBe(1);
+        expect(
+          await AlertHistory.countDocuments({
+            alert: details.alert.id,
+            state: AlertState.ERROR,
+          }),
         ).toBe(1);
 
         // A WEBHOOK_ERROR should be recorded. The message is hardcoded for
@@ -3627,8 +4567,11 @@ describe('checkAlerts', () => {
         expect(updated!.executionErrors![0].type).toBe(
           AlertErrorType.WEBHOOK_ERROR,
         );
-        expect(updated!.executionErrors![0].message).toBe(
-          'Failed to send webhook notification. Check the webhook configuration and destination.',
+        // A deleted webhook now reports what actually went wrong instead of the
+        // generic transport message, and names the target so a multi-channel
+        // alert says which webhook is missing. Authored by us, not upstream.
+        expect(updated!.executionErrors![0].message).toMatch(
+          /^Webhook not found\. The webhook may have been deleted \u2014 update the alert's notification channel\. \(webhook ".+"\)$/,
         );
 
         // No actual network call should have been attempted
@@ -3878,6 +4821,7 @@ describe('checkAlerts', () => {
           Authorization: 'Bearer test-token',
           'Idempotency-Key': expect.any(String),
         }),
+        signal: expect.any(AbortSignal),
       });
     });
 
@@ -4065,6 +5009,355 @@ describe('checkAlerts', () => {
       expect(alertHistories[0].counts).toBe(1);
       expect(alertHistories[0].lastValues[0].count).toBeGreaterThanOrEqual(1);
       expect(alertHistories[1].state).toBe('OK');
+    });
+
+    describe('dashboard variables', () => {
+      const NOW = new Date('2023-11-16T22:12:00.000Z');
+      // Inside the last alert window, 22:05 - 22:10.
+      const EVENT_AT = new Date(NOW.getTime() - ms('5m'));
+
+      const seedLogs = (serviceNames: string[]) =>
+        bulkInsertLogs(
+          serviceNames.map((ServiceName, i) => ({
+            ServiceName,
+            Timestamp: EVENT_AT,
+            SeverityText: 'error',
+            Body: `variable alert test event ${i}`,
+          })),
+        );
+
+      /** A dashboard filter on `ServiceName`, exposed as `$svc` by default. */
+      const serviceFilter = (overrides: Record<string, unknown> = {}) => ({
+        id: 'service-filter',
+        type: 'QUERY_EXPRESSION',
+        name: 'Service',
+        expression: 'ServiceName',
+        source: 'unused-by-the-alert-task',
+        whereLanguage: 'sql',
+        isVariableEnabled: true,
+        variableName: 'svc',
+        ...overrides,
+      });
+
+      const tileAlertConfig = (
+        webhookId: string,
+        dashboardId: string,
+        tileId: string,
+      ) => ({
+        source: AlertSource.TILE as const,
+        channel: { type: 'webhook' as const, webhookId },
+        interval: '5m' as const,
+        thresholdType: AlertThresholdType.ABOVE,
+        threshold: 1,
+        dashboardId,
+        tileId,
+      });
+
+      const lastValue = async (alertId: string) => {
+        const histories = await AlertHistory.find({ alert: alertId }).sort({
+          createdAt: 1,
+        });
+        expect(histories.length).toBe(1);
+        return histories[0].lastValues[0]?.count;
+      };
+
+      it('expands a Lucene reference to its empty state, and does not broadcast the filter', async () => {
+        const {
+          team,
+          webhook,
+          connection,
+          source,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
+
+        await seedLogs(['api', 'web']);
+
+        const dashboard = await new Dashboard({
+          name: 'Variables Dashboard',
+          team: team._id,
+          // The filter's own `where` would exclude every row if it were
+          // broadcast onto the tile — alerts only take the variable.
+          filters: [
+            serviceFilter({
+              source: source.id,
+              where: "ServiceName = 'nothing-matches-this'",
+            }),
+          ],
+          tiles: [
+            {
+              id: 'lucene-var',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 4,
+              config: {
+                name: 'Logs Count',
+                select: [
+                  {
+                    aggFn: 'count',
+                    aggCondition: '',
+                    valueExpression: '',
+                    aggConditionLanguage: 'lucene',
+                  },
+                ],
+                where: 'ServiceName:$svc',
+                whereLanguage: 'lucene',
+                displayType: 'line',
+                granularity: 'auto',
+                source: source.id,
+                groupBy: '',
+              },
+            },
+          ],
+        }).save();
+
+        const tile = dashboard.tiles?.find((t: any) => t.id === 'lucene-var');
+        if (!tile) throw new Error('tile not found');
+
+        const details = await createAlertDetails(
+          team,
+          source,
+          tileAlertConfig(webhook._id.toString(), dashboard.id, 'lucene-var'),
+          { taskType: AlertTaskType.TILE, tile, dashboard },
+        );
+
+        await processAlertAtTime(
+          NOW,
+          details,
+          clickhouseClient,
+          connection,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        // The empty Lucene selection renders as `("")`, which drops out of the
+        // predicate — so both rows are counted. Left unsubstituted, the literal
+        // `$svc` would match nothing and the alert would stay OK.
+        expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+        expect(await lastValue(details.alert.id)).toBe(2);
+        expect(
+          (await Alert.findById(details.alert.id))!.executionErrors ?? [],
+        ).toHaveLength(0);
+      });
+
+      it('expands $__conditionalAll in a SQL where to its no-op form', async () => {
+        const {
+          team,
+          webhook,
+          connection,
+          source,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
+
+        await seedLogs(['api', 'web']);
+
+        const dashboard = await new Dashboard({
+          name: 'Variables Dashboard',
+          team: team._id,
+          filters: [serviceFilter({ source: source.id })],
+          tiles: [
+            {
+              id: 'macro-var',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 4,
+              config: {
+                name: 'Logs Count',
+                select: [
+                  {
+                    aggFn: 'count',
+                    aggCondition: '',
+                    valueExpression: '',
+                    aggConditionLanguage: 'lucene',
+                  },
+                ],
+                where: "$__conditionalAll(ServiceName = 'api', $svc)",
+                whereLanguage: 'sql',
+                displayType: 'line',
+                granularity: 'auto',
+                source: source.id,
+                groupBy: '',
+              },
+            },
+          ],
+        }).save();
+
+        const tile = dashboard.tiles?.find((t: any) => t.id === 'macro-var');
+        if (!tile) throw new Error('tile not found');
+
+        const details = await createAlertDetails(
+          team,
+          source,
+          tileAlertConfig(webhook._id.toString(), dashboard.id, 'macro-var'),
+          { taskType: AlertTaskType.TILE, tile, dashboard },
+        );
+
+        await processAlertAtTime(
+          NOW,
+          details,
+          clickhouseClient,
+          connection,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        // Nothing is selected, so the guarded condition drops out and both rows
+        // are counted. Left unexpanded, `$__conditionalAll(...)` is not valid
+        // SQL and the query would fail outright.
+        expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+        expect(await lastValue(details.alert.id)).toBe(2);
+      });
+
+      it('leaves references the dashboard does not declare exactly as written', async () => {
+        const {
+          team,
+          webhook,
+          connection,
+          source,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
+
+        await seedLogs(['$abc', '$hidden', 'api']);
+
+        const dashboard = await new Dashboard({
+          name: 'Variables Dashboard',
+          team: team._id,
+          filters: [
+            serviceFilter({ source: source.id }),
+            // Collects a value but does not expose it as a variable, so
+            // `$hidden` names nothing.
+            serviceFilter({
+              id: 'hidden-filter',
+              name: 'Hidden',
+              variableName: 'hidden',
+              isVariableEnabled: false,
+              source: source.id,
+            }),
+          ],
+          tiles: [
+            {
+              id: 'unknown-var',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 4,
+              config: {
+                name: 'Logs Count',
+                select: [
+                  {
+                    aggFn: 'count',
+                    aggCondition: '',
+                    valueExpression: '',
+                    aggConditionLanguage: 'lucene',
+                  },
+                ],
+                where: "ServiceName = '$abc' OR ServiceName = '$hidden'",
+                whereLanguage: 'sql',
+                displayType: 'line',
+                granularity: 'auto',
+                source: source.id,
+                groupBy: '',
+              },
+            },
+          ],
+        }).save();
+
+        const tile = dashboard.tiles?.find((t: any) => t.id === 'unknown-var');
+        if (!tile) throw new Error('tile not found');
+
+        const details = await createAlertDetails(
+          team,
+          source,
+          tileAlertConfig(webhook._id.toString(), dashboard.id, 'unknown-var'),
+          { taskType: AlertTaskType.TILE, tile, dashboard },
+        );
+
+        await processAlertAtTime(
+          NOW,
+          details,
+          clickhouseClient,
+          connection,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        // Both literals survived substitution and matched their rows; the
+        // `api` row did not.
+        expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+        expect(await lastValue(details.alert.id)).toBe(2);
+      });
+
+      it('expands $__filter in a raw SQL tile while leaving an undeclared literal alone', async () => {
+        const {
+          team,
+          webhook,
+          connection,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
+
+        await seedLogs(['api', 'web', '$abc']);
+
+        const sqlTemplate = [
+          'SELECT toStartOfInterval(Timestamp, INTERVAL {intervalSeconds:Int64} second) AS ts,',
+          ' count() AS cnt',
+          ' FROM default.otel_logs',
+          ' WHERE Timestamp >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64})',
+          ' AND Timestamp < fromUnixTimestamp64Milli({endDateMilliseconds:Int64})',
+          ' AND $__filter($svc)',
+          " AND ServiceName != '$abc'",
+          ' GROUP BY ts ORDER BY ts',
+        ].join('');
+
+        const dashboard = await new Dashboard({
+          name: 'Raw SQL Variables Dashboard',
+          team: team._id,
+          filters: [serviceFilter()],
+          tiles: [
+            {
+              id: 'rawsql-var',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 4,
+              config: {
+                configType: 'sql',
+                displayType: 'line',
+                sqlTemplate,
+                connection: connection.id,
+              },
+            },
+          ],
+        }).save();
+
+        const tile = dashboard.tiles?.find((t: any) => t.id === 'rawsql-var');
+        if (!tile) throw new Error('tile not found');
+
+        const details = await createAlertDetails(
+          team,
+          undefined, // No source for raw SQL tiles
+          tileAlertConfig(webhook._id.toString(), dashboard.id, 'rawsql-var'),
+          { taskType: AlertTaskType.TILE, tile, dashboard },
+        );
+
+        await processAlertAtTime(
+          NOW,
+          details,
+          clickhouseClient,
+          connection,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        // `$__filter($svc)` expanded to its empty-selection no-op, so it matched
+        // everything; `'$abc'` was left as a literal and excluded its own row.
+        expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+        expect(await lastValue(details.alert.id)).toBe(2);
+      });
     });
 
     it('TILE alert (raw SQL) - multiple rows per time bucket from GROUP BY', async () => {
@@ -6050,6 +7343,693 @@ describe('checkAlerts', () => {
           (b: string) => b.includes('Group:') && b.includes('service-b'),
         ),
       ).toBe(true);
+    });
+
+    // ── Multi-series metric tiles ──
+    // A multi-series metric chart is one ClickHouse query with a value column
+    // per series. The alert compares the threshold against the LAST series'
+    // value, and a series with no row at a bucket yields NULL, which
+    // processAlert skips.
+
+    const gaugePoint = (
+      metricName: string,
+      value: number,
+      timestampMs: number,
+      serviceName = 'api',
+    ) => ({
+      MetricName: metricName,
+      ServiceName: serviceName,
+      // Include the service in ResourceAttributes so grouped tests get
+      // distinct AttributesHash values per service (see the groupBy test
+      // above); harmless for ungrouped tests.
+      ResourceAttributes: { host: 'host1', 'service.name': serviceName },
+      Value: value,
+      TimeUnix: new Date(timestampMs),
+    });
+
+    const setupMetricTileAlert = async ({
+      select,
+      seriesReturnType,
+      ratioMode,
+      formulas,
+      showOperandSeries,
+      groupBy,
+      threshold,
+    }: {
+      select: Array<Record<string, string>>;
+      seriesReturnType?: 'ratio' | 'column';
+      ratioMode?: 'per_group' | 'share_of_total';
+      formulas?: Array<{ expression: string; alias?: string }>;
+      showOperandSeries?: boolean;
+      groupBy?: string;
+      threshold: number;
+    }) => {
+      const { team, webhook, connection, teamWebhooksById, clickhouseClient } =
+        await setupSavedSearchAlertTest();
+
+      // Persistent mock: the beforeEach mockResolvedValueOnce only covers the
+      // first call, and resolve notifications can trigger a second one.
+      jest
+        .spyOn(slack, 'postMessageToWebhook')
+        .mockResolvedValue({ text: 'ok' });
+
+      const source = await Source.create({
+        kind: 'metric',
+        team: team._id,
+        from: {
+          databaseName: DEFAULT_DATABASE,
+          tableName: '',
+        },
+        metricTables: {
+          gauge: DEFAULT_METRICS_TABLE.GAUGE,
+          histogram: DEFAULT_METRICS_TABLE.HISTOGRAM,
+          sum: DEFAULT_METRICS_TABLE.SUM,
+        },
+        timestampValueExpression: 'TimeUnix',
+        connection: connection.id,
+        name: 'Metrics',
+      });
+
+      const dashboard = await new Dashboard({
+        name: 'My Dashboard',
+        team: team._id,
+        tiles: [
+          {
+            id: 'multi1',
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 4,
+            config: {
+              name: 'Errors vs Requests',
+              select,
+              ...(seriesReturnType ? { seriesReturnType } : {}),
+              ...(ratioMode ? { ratioMode } : {}),
+              ...(formulas ? { formulas } : {}),
+              ...(showOperandSeries !== undefined ? { showOperandSeries } : {}),
+              where: '',
+              displayType: 'line',
+              source: source.id,
+              groupBy: groupBy ?? '',
+            },
+          },
+        ],
+      }).save();
+
+      const tile = dashboard.tiles?.find((t: any) => t.id === 'multi1');
+      if (!tile) {
+        throw new Error('tile not found for multi-series metric test');
+      }
+
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.TILE,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold,
+          dashboardId: dashboard.id,
+          tileId: 'multi1',
+        },
+        {
+          taskType: AlertTaskType.TILE,
+          tile,
+          dashboard,
+        },
+      );
+
+      return { details, connection, teamWebhooksById, clickhouseClient };
+    };
+
+    it('TILE alert (metrics, multi-series) - threshold compares the last series value', async () => {
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      // Alert window is [22:05, 22:10)
+      const eventMs = now.getTime() - ms('7m');
+
+      await bulkInsertMetricsGauge([
+        // Both series exceed the threshold; only the LAST one may drive the
+        // alert value.
+        gaugePoint('test.requests', 100, eventMs),
+        gaugePoint('test.errors', 6, eventMs),
+      ]);
+
+      const { details, connection, teamWebhooksById, clickhouseClient } =
+        await setupMetricTileAlert({
+          select: [
+            {
+              aggFn: 'max',
+              valueExpression: 'Value',
+              metricType: 'gauge',
+              metricName: 'test.requests',
+            },
+            {
+              aggFn: 'max',
+              valueExpression: 'Value',
+              metricType: 'gauge',
+              metricName: 'test.errors',
+            },
+          ],
+          threshold: 5,
+        });
+
+      await processAlertAtTime(
+        now,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+
+      // The evaluated value is the last series' 6, not the first series' 100.
+      const [history] = await AlertHistory.find({
+        alert: details.alert.id,
+      }).sort({ createdAt: 1 });
+      expect(history.state).toBe('ALERT');
+      expect(history.lastValues.length).toBe(1);
+      expect(history.lastValues[0].count).toBe(6);
+
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(1);
+      expect(
+        jest.mocked(slack.postMessageToWebhook).mock.calls[0][1].text,
+      ).toContain('6 meets or exceeds 5');
+
+      // Next window has no data -> resolves to OK.
+      const nextWindow = new Date('2023-11-16T22:16:00.000Z');
+      await processAlertAtTime(
+        nextWindow,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+      expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
+    });
+
+    it('TILE alert (metrics, multi-series) - a gap in the last series is skipped, not backfilled from an earlier series', async () => {
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      // Alert window is [22:05, 22:10)
+      const eventMs = now.getTime() - ms('7m');
+
+      await bulkInsertMetricsGauge([
+        // The first series exceeds the threshold inside the window.
+        gaugePoint('test.requests', 100, eventMs),
+        // The last series exists but has no data points inside the window.
+        gaugePoint('test.errors', 999, now.getTime() - ms('2h')),
+      ]);
+
+      const { details, connection, teamWebhooksById, clickhouseClient } =
+        await setupMetricTileAlert({
+          select: [
+            {
+              aggFn: 'max',
+              valueExpression: 'Value',
+              metricType: 'gauge',
+              metricName: 'test.requests',
+            },
+            {
+              aggFn: 'max',
+              valueExpression: 'Value',
+              metricType: 'gauge',
+              metricName: 'test.errors',
+            },
+          ],
+          threshold: 5,
+        });
+
+      await processAlertAtTime(
+        now,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      // The last series is NULL for the bucket, so the row is skipped: no
+      // alert fires from the first series' 100, and the run records a single
+      // default OK history with no values.
+      expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
+
+      const histories = await AlertHistory.find({ alert: details.alert.id });
+      expect(histories.length).toBe(1);
+      expect(histories[0].state).toBe('OK');
+      expect(histories[0].counts).toBe(0);
+      expect(histories[0].lastValues.length).toBe(0);
+
+      expect(slack.postMessageToWebhook).not.toHaveBeenCalled();
+    });
+
+    it('TILE alert (metrics, ratio) - a zero denominator yields NULL and is skipped without NaN history', async () => {
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      // Alert window is [22:05, 22:10)
+      const eventMs = now.getTime() - ms('7m');
+
+      await bulkInsertMetricsGauge([
+        // Numerator present, denominator zero: the ratio is NULL.
+        gaugePoint('test.errors', 5, eventMs),
+        gaugePoint('test.requests', 0, eventMs),
+      ]);
+
+      const { details, connection, teamWebhooksById, clickhouseClient } =
+        await setupMetricTileAlert({
+          select: [
+            {
+              aggFn: 'max',
+              valueExpression: 'Value',
+              metricType: 'gauge',
+              metricName: 'test.errors',
+            },
+            {
+              aggFn: 'max',
+              valueExpression: 'Value',
+              metricType: 'gauge',
+              metricName: 'test.requests',
+            },
+          ],
+          seriesReturnType: 'ratio',
+          threshold: 0.1,
+        });
+
+      await processAlertAtTime(
+        now,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
+
+      const histories = await AlertHistory.find({ alert: details.alert.id });
+      expect(histories.length).toBe(1);
+      expect(histories[0].state).toBe('OK');
+      expect(histories[0].counts).toBe(0);
+      expect(histories[0].lastValues.length).toBe(0);
+
+      expect(slack.postMessageToWebhook).not.toHaveBeenCalled();
+    });
+
+    // ── Metric formula tiles (HDX-5080) ──
+    // A tile with `formulas` derives its displayed series from the operand
+    // series (letter refs: A = select[0], ...). The alert must evaluate the
+    // FORMULA value — never a raw operand — regardless of the tile's
+    // "Show input series" display toggle (getChartConfigFromAlert always
+    // drops the operand columns from the alert query).
+
+    it('TILE alert (metrics, formula) - threshold compares the formula value, not an operand', async () => {
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      // Alert window is [22:05, 22:10)
+      const eventMs = now.getTime() - ms('7m');
+
+      await bulkInsertMetricsGauge([
+        // Both operands are far from the formula result (10 / 200 * 100 = 5),
+        // so a regression back to evaluating either operand fails loudly.
+        gaugePoint('test.requests', 200, eventMs),
+        gaugePoint('test.errors', 10, eventMs),
+      ]);
+
+      const { details, connection, teamWebhooksById, clickhouseClient } =
+        await setupMetricTileAlert({
+          select: [
+            {
+              aggFn: 'max',
+              valueExpression: 'Value',
+              metricType: 'gauge',
+              metricName: 'test.requests',
+            },
+            {
+              aggFn: 'max',
+              valueExpression: 'Value',
+              metricType: 'gauge',
+              metricName: 'test.errors',
+            },
+          ],
+          formulas: [{ expression: 'B / A * 100', alias: 'Error rate' }],
+          // Mirrors the editor default of hiding operands; the alert result
+          // must be identical either way (see the next test).
+          showOperandSeries: false,
+          threshold: 4,
+        });
+
+      await processAlertAtTime(
+        now,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+
+      const [history] = await AlertHistory.find({
+        alert: details.alert.id,
+      }).sort({ createdAt: 1 });
+      expect(history.state).toBe('ALERT');
+      expect(history.lastValues.length).toBe(1);
+      // The formula value (5) — not operand A (200) or operand B (10).
+      expect(history.lastValues[0].count).toBe(5);
+
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(1);
+      expect(
+        jest.mocked(slack.postMessageToWebhook).mock.calls[0][1].text,
+      ).toContain('5 meets or exceeds 4');
+    });
+
+    it('TILE alert (metrics, formula) - evaluates the formula even when the tile shows its input series', async () => {
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      // Alert window is [22:05, 22:10)
+      const eventMs = now.getTime() - ms('7m');
+
+      await bulkInsertMetricsGauge([
+        gaugePoint('test.requests', 200, eventMs),
+        gaugePoint('test.errors', 10, eventMs),
+      ]);
+
+      const { details, connection, teamWebhooksById, clickhouseClient } =
+        await setupMetricTileAlert({
+          select: [
+            {
+              aggFn: 'max',
+              valueExpression: 'Value',
+              metricType: 'gauge',
+              metricName: 'test.requests',
+            },
+            {
+              aggFn: 'max',
+              valueExpression: 'Value',
+              metricType: 'gauge',
+              metricName: 'test.errors',
+            },
+          ],
+          formulas: [{ expression: 'B / A * 100' }],
+          // showOperandSeries left unset: the dashboard tile renders the raw
+          // operand series alongside the formula, but the alert still
+          // evaluates the formula value only.
+          threshold: 4,
+        });
+
+      await processAlertAtTime(
+        now,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+
+      const [history] = await AlertHistory.find({
+        alert: details.alert.id,
+      }).sort({ createdAt: 1 });
+      expect(history.lastValues.length).toBe(1);
+      expect(history.lastValues[0].count).toBe(5);
+
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(1);
+      expect(
+        jest.mocked(slack.postMessageToWebhook).mock.calls[0][1].text,
+      ).toContain('5 meets or exceeds 4');
+    });
+
+    it('TILE alert (metrics, formula) - a zero denominator yields NULL and is skipped without NaN history', async () => {
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      // Alert window is [22:05, 22:10)
+      const eventMs = now.getTime() - ms('7m');
+
+      await bulkInsertMetricsGauge([
+        // Numerator present, denominator zero: A / nullif(B, 0) is NULL.
+        gaugePoint('test.errors', 5, eventMs),
+        gaugePoint('test.requests', 0, eventMs),
+      ]);
+
+      const { details, connection, teamWebhooksById, clickhouseClient } =
+        await setupMetricTileAlert({
+          select: [
+            {
+              aggFn: 'max',
+              valueExpression: 'Value',
+              metricType: 'gauge',
+              metricName: 'test.errors',
+            },
+            {
+              aggFn: 'max',
+              valueExpression: 'Value',
+              metricType: 'gauge',
+              metricName: 'test.requests',
+            },
+          ],
+          formulas: [{ expression: 'A / B' }],
+          showOperandSeries: false,
+          threshold: 0.1,
+        });
+
+      await processAlertAtTime(
+        now,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
+
+      const histories = await AlertHistory.find({ alert: details.alert.id });
+      expect(histories.length).toBe(1);
+      expect(histories[0].state).toBe('OK');
+      expect(histories[0].counts).toBe(0);
+      expect(histories[0].lastValues.length).toBe(0);
+
+      expect(slack.postMessageToWebhook).not.toHaveBeenCalled();
+    });
+
+    // ── Event (log/trace) formula tiles ──
+    // Event formulas render through a different path than metric formulas
+    // (inline single-scan SELECT vs the composed query). The alert path is
+    // source-kind agnostic — it passes `formulas` through and forces
+    // showOperandSeries: false — so the formula value drives the threshold
+    // here too.
+
+    it('TILE alert (events, formula) - threshold compares the formula value, not an operand', async () => {
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
+
+      // Persistent mock: the beforeEach mockResolvedValueOnce only covers the
+      // first call, and resolve notifications can trigger a second one.
+      jest
+        .spyOn(slack, 'postMessageToWebhook')
+        .mockResolvedValue({ text: 'ok' });
+
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      // Alert window is [22:05, 22:10)
+      const eventMs = now.getTime() - ms('7m');
+
+      // 1 error / 4 total * 100 = 25. Both operands (1 and 4) are far from
+      // the formula result, so a regression back to evaluating either
+      // operand fails loudly against the threshold below.
+      await bulkInsertLogs([
+        {
+          ServiceName: 'api',
+          Timestamp: new Date(eventMs),
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        },
+        ...Array.from({ length: 3 }, (_, i) => ({
+          ServiceName: 'api',
+          Timestamp: new Date(eventMs),
+          SeverityText: 'info',
+          Body: `All good ${i}`,
+        })),
+      ]);
+
+      const dashboard = await new Dashboard({
+        name: 'My Dashboard',
+        team: team._id,
+        tiles: [
+          {
+            id: 'evtformula1',
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 4,
+            config: {
+              name: 'Error rate',
+              select: [
+                {
+                  aggFn: 'count',
+                  aggCondition: 'SeverityText:error',
+                  valueExpression: '',
+                  aggConditionLanguage: 'lucene',
+                  alias: 'Errors',
+                },
+                {
+                  aggFn: 'count',
+                  aggCondition: '',
+                  valueExpression: '',
+                  aggConditionLanguage: 'lucene',
+                  alias: 'Total',
+                },
+              ],
+              formulas: [{ expression: 'A / B * 100', alias: 'Error rate' }],
+              showOperandSeries: false,
+              where: '',
+              displayType: 'line',
+              source: source.id,
+              groupBy: '',
+            },
+          },
+        ],
+      }).save();
+
+      const tile = dashboard.tiles?.find((t: any) => t.id === 'evtformula1');
+      if (!tile) throw new Error('tile not found for event formula test');
+
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.TILE,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 20,
+          dashboardId: dashboard.id,
+          tileId: 'evtformula1',
+        },
+        {
+          taskType: AlertTaskType.TILE,
+          tile,
+          dashboard,
+        },
+      );
+
+      await processAlertAtTime(
+        now,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+
+      const [history] = await AlertHistory.find({
+        alert: details.alert.id,
+      }).sort({ createdAt: 1 });
+      expect(history.state).toBe('ALERT');
+      expect(history.lastValues.length).toBe(1);
+      // The formula value (25) — not operand A (1) or operand B (4).
+      expect(history.lastValues[0].count).toBe(25);
+
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(1);
+      expect(
+        jest.mocked(slack.postMessageToWebhook).mock.calls[0][1].text,
+      ).toContain('25 meets or exceeds 20');
+
+      // Next window has no data -> resolves to OK.
+      const nextWindow = new Date('2023-11-16T22:16:00.000Z');
+      await processAlertAtTime(
+        nextWindow,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+      expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
+    });
+
+    it('TILE alert (metrics, grouped ratio) - honors ratioMode share_of_total', async () => {
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      // Alert window is [22:05, 22:10)
+      const eventMs = now.getTime() - ms('7m');
+
+      await bulkInsertMetricsGauge([
+        // share_of_total divides each group's numerator by the denominator
+        // total across ALL groups in the bucket:
+        //   service-a: 5 / (10 + 30) = 0.125
+        //   service-b: 3 / (10 + 30) = 0.075
+        // per_group (the default this config must NOT fall back to) would be
+        // 0.5 and 0.1 instead.
+        gaugePoint('test.errors', 5, eventMs, 'service-a'),
+        gaugePoint('test.requests', 10, eventMs, 'service-a'),
+        gaugePoint('test.errors', 3, eventMs, 'service-b'),
+        gaugePoint('test.requests', 30, eventMs, 'service-b'),
+      ]);
+
+      const { details, connection, teamWebhooksById, clickhouseClient } =
+        await setupMetricTileAlert({
+          select: [
+            {
+              aggFn: 'max',
+              valueExpression: 'Value',
+              metricType: 'gauge',
+              metricName: 'test.errors',
+            },
+            {
+              aggFn: 'max',
+              valueExpression: 'Value',
+              metricType: 'gauge',
+              metricName: 'test.requests',
+            },
+          ],
+          seriesReturnType: 'ratio',
+          ratioMode: 'share_of_total',
+          groupBy: 'ServiceName',
+          // Only service-a's share (0.125) crosses; under per_group both
+          // values (0.5, 0.1) would differ and service-a would fire at 0.5.
+          threshold: 0.12,
+        });
+
+      await processAlertAtTime(
+        now,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+
+      const alertingHistories = await AlertHistory.find({
+        alert: details.alert.id,
+        state: 'ALERT',
+      });
+      expect(alertingHistories.length).toBe(1);
+      expect(alertingHistories[0].group).toContain('service-a');
+      expect(alertingHistories[0].lastValues.length).toBe(1);
+      // The share-of-total value — not service-a's per-group ratio (0.5).
+      expect(alertingHistories[0].lastValues[0].count).toBe(0.125);
+
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(1);
+      // The message value is rounded to the threshold's decimal places
+      // (0.125 -> "0.13"); the exact-value assertion above is the source of
+      // truth for which ratio mode was evaluated.
+      expect(
+        jest.mocked(slack.postMessageToWebhook).mock.calls[0][1].text,
+      ).toContain('meets or exceeds 0.12');
     });
 
     // The auto-resolve logic ensures that if a subsequent bucket within the same tick drops below the threshold,

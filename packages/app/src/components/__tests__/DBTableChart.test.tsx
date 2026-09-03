@@ -32,6 +32,10 @@ jest.mock('@/source', () => ({
   useChartNumberFormats: jest
     .fn()
     .mockReturnValue({ formatByColumn: new Map(), chartFormat: undefined }),
+  // Pure helper (no hooks/network) — use the real implementation so the
+  // group-by column inference under test matches production behavior.
+  getBuilderValueColumnCount:
+    jest.requireActual('@/source').getBuilderValueColumnCount,
 }));
 
 jest.mock('@/HDXMultiSeriesTableChart', () => ({

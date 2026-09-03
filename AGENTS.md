@@ -61,8 +61,14 @@ directory:
 - `agent_docs/architecture.md` - Detailed architecture patterns and data models
 - `agent_docs/tech_stack.md` - Technology stack details and component patterns
 - `agent_docs/development.md` - Development workflows, testing, and common tasks
-- `agent_docs/code_style.md` - Code patterns and best practices (read only when
-  actively coding)
+- `agent_docs/code_style.md` - Code patterns and best practices. **Read this
+  before writing or planning any `packages/app` UI change, and before adding a
+  type, Zod schema, helper, or component in any package**, not just while
+  typing code. It carries required patterns that are invisible from the
+  surrounding file (sentence-case UI text, mandated Button/ActionIcon variants,
+  `useConfirm` for confirmation dialogs, `EmptyState`, and where shared code
+  already lives), so copying the conventions of the component you are editing is
+  not sufficient.
 - `agent_docs/observability.md` - Instrumentation standards (tracing, metrics,
   context) and the shared helpers (read when adding or changing a feature)
 
@@ -84,10 +90,18 @@ before stopping.
 1. **Multi-tenancy**: All data is scoped to `Team` - ensure proper filtering
 2. **Type safety**: Use TypeScript strictly; Zod schemas for validation
 3. **Existing patterns**: Follow established patterns in the codebase - explore
-   similar files before implementing
+   similar files before implementing. **Before you define a type, Zod schema,
+   helper, or component, grep for one that already exists.** Search for the
+   operation it performs (`bucket`, `valid.*url`, `split.*trim`) - not the name
+   you were about to give it, because names differ. Look in
+   `packages/common-utils/src/` first, then the package you are editing. If you
+   find it, import or alias it; do not add a second definition. See
+   `agent_docs/code_style.md` → "Before you add a type, schema, or helper"
 4. **Component size**: Keep files under 300 lines; break down large components
 5. **UI Components**: Use custom Button/ActionIcon variants (`primary`,
-   `secondary`, `danger`) - see `agent_docs/code_style.md` for required patterns
+   `secondary`, `danger`), `useConfirm` for "are you sure?" dialogs rather than
+   a hand-rolled `Modal`, and sentence case for all user-facing text - see
+   `agent_docs/code_style.md` for required patterns
 6. **Testing**: Tests live in `__tests__/` directories; use Jest for
    unit/integration tests
 7. **Observability**: This is an observability product - instrument new code as
@@ -100,6 +114,34 @@ before stopping.
    them). Use the shared helpers in
    `packages/api/src/utils/instrumentation.ts`. See
    [`agent_docs/observability.md`](agent_docs/observability.md).
+8. **Communication**: Be concise and straightforward - in chat, in code
+   comments, in commits, and in PR descriptions. See
+   [Communication style](#communication-style) below.
+
+## Communication style
+
+Write plainly. This applies to everything you produce: chat replies, code
+comments, commit messages, PR descriptions, and docs.
+
+- **Lead with the answer.** State the result first, then the detail that
+  supports it. No preamble, no restating the request back at the reader.
+- **Cut filler.** Drop hedges ("it seems like", "essentially", "basically"),
+  intensifiers ("very", "extremely", "quite"), and throat-clearing ("in order
+  to" → "to"). Prefer short concrete words over long abstract ones.
+- **Keep summaries short.** A handful of bullets or a short paragraph. Don't
+  recap what the diff already shows, and don't restate one point in three
+  different phrasings.
+- **No self-narration.** Skip the play-by-play of your own process, the options
+  you rejected, and the victory lap ("Perfect!", "All done!"). Report what
+  changed and what is still broken.
+- **Comments explain _why_, not _what_.** The code already says what it does.
+  Omit the comment when the line is self-evident; write one when a choice needs
+  justification — a workaround, a non-obvious constraint, a ClickHouse quirk. No
+  banner comments, no ASCII section dividers, and no `// increment the counter`
+  restatements. This applies to test bodies too: don't narrate each step of a
+  test that already reads top-to-bottom.
+- **Say it straight.** If something is broken, unverified, or skipped, say so in
+  one sentence. Don't soften bad news and don't oversell partial work.
 
 ## Running Tests
 

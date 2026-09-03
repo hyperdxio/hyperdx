@@ -6,6 +6,7 @@
  *   improvement in). Non-fatal so an improvement can never turn `main` red —
  *   e.g. when two count-lowering PRs merge close together and `main`'s
  *   committed baseline briefly sits above the real count.
+ * Advisory patterns (see ADVISORY) are counted and reported but never fail.
  */
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -17,7 +18,23 @@ export const PATTERNS = {
   'as-any': /\bas any\b/g,
   'ts-ignore': /@ts-ignore/g,
   'eslint-disable': /eslint-disable/g,
+  // Duplication licensed by comment. `@source` marks code copied from another
+  // package (mostly packages/cli/src/shared today, plus a handful under
+  // src/components, src/utils and src/api).
+  '@source': /@source packages\//g,
 };
+
+/**
+ * Counted and reported, never fatal.
+ *
+ * `@source` is a doc comment, not an escape hatch. Deleting an `as any` or an
+ * `eslint-disable` forces the underlying problem to surface; deleting an
+ * `@source` line removes the record of a copy, not the copy. Gating on it would
+ * only teach people to stop annotating their ports — the one behaviour that
+ * makes the duplication findable. So the number is tracked and surfaced, and
+ * lowering it means moving the code into `common-utils`.
+ */
+export const ADVISORY = new Set(['@source']);
 
 // Generated, vendored or build output — not ours to ratchet.
 const SKIP_DIRS = new Set([
@@ -25,11 +42,19 @@ const SKIP_DIRS = new Set([
   'dist',
   'build',
   'coverage',
-  '.next',
   '.nx',
   '.turbo',
+  // .next* is skipped by prefix below
 ]);
 const EXTS = new Set(['.ts', '.tsx']);
+
+/**
+ * `.next` by prefix, not exact name: `NEXT_DIST_DIR` moves the build output
+ * (E2E runs use `.next-e2e`).
+ */
+function isSkippedDir(name) {
+  return SKIP_DIRS.has(name) || name.startsWith('.next');
+}
 
 /**
  * Workspace package directories, keyed by directory name. Derived from the
@@ -73,7 +98,7 @@ function countDir(dir) {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {
-      if (SKIP_DIRS.has(entry.name)) continue;
+      if (isSkippedDir(entry.name)) continue;
       const sub = countDir(full);
       for (const name of Object.keys(counts)) counts[name] += sub[name];
     } else if (entry.isFile() && EXTS.has(path.extname(entry.name))) {
@@ -120,7 +145,11 @@ export function compare(current, baseline) {
     for (const name of Object.keys(PATTERNS)) {
       const now = current[pkg][name];
       const max = baseline[pkg]?.[name] ?? 0;
-      if (now > max) {
+      if (now > max && ADVISORY.has(name)) {
+        messages.push(
+          `! ${pkg}/${name}: ${now} > baseline ${max} — advisory; move the copy into common-utils if you can, then run \`yarn ratchet:update\``,
+        );
+      } else if (now > max) {
         failed = true;
         messages.push(
           `x ${pkg}/${name}: ${now} > baseline ${max} — remove the new occurrence(s)`,
@@ -155,14 +184,14 @@ function main() {
   }
 
   const baseline = JSON.parse(readFileSync(baselinePath, 'utf8'));
-  const { failed, improved, messages } = compare(current, baseline);
+  const { failed, messages } = compare(current, baseline);
   for (const message of messages) {
     (message.startsWith('x ') ? console.error : console.warn)(message);
   }
   if (failed) return 1;
   console.log(
-    improved
-      ? 'ratchet ok: some counts are below baseline (see above)'
+    messages.length
+      ? 'ratchet ok: nothing above a gated baseline (see notes above)'
       : 'ratchet ok: all escape-hatch counts at baseline',
   );
   return 0;

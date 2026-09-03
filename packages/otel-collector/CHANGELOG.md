@@ -1,5 +1,38 @@
 # @hyperdx/otel-collector
 
+## 2.37.0
+
+## 2.36.0
+
+### Minor Changes
+
+- 395ae8d6: feat: support per-signal ClickHouse table TTLs and reconcile TTL on existing tables
+
+  Adds `HYPERDX_OTEL_EXPORTER_LOGS_TTL`, `HYPERDX_OTEL_EXPORTER_TRACES_TTL`, `HYPERDX_OTEL_EXPORTER_METRICS_TTL` and `HYPERDX_OTEL_EXPORTER_SESSIONS_TTL`, each falling back to the existing `HYPERDX_OTEL_EXPORTER_TABLES_TTL`, so retention can be configured independently per signal (e.g. keep logs and traces for 6 months while metrics stay at 30 days).
+
+  When `HYPERDX_OTEL_EXPORTER_RECONCILE_TABLE_TTL=true`, the migrate tool also applies the configured TTL to tables that already exist (`ALTER TABLE ... MODIFY TTL`), diff-guarded so only tables whose retention actually differs are changed. Previously a changed TTL only affected newly-created tables. Extending a retention uses `materialize_ttl_after_modify=1` so data already on disk is kept for the new (longer) period; shrinking uses `=0` so a startup reconcile never triggers a bulk delete (existing parts age out under their old TTL). Only a plain `<anchor> + <one fixed-length interval>` retention is rewritten: compound policies (`TO VOLUME`/`TO DISK` tiering, `RECOMPRESS`, `GROUP BY` rollups, several rules) and calendar-unit retentions (month/quarter/year) are reported and left untouched. Off by default. Implements hyperdxio/hyperdx#1311.
+
+### Patch Changes
+
+- d205a776: Allow the ClickHouse exporter request timeout to be configured with
+  `HYPERDX_OTEL_EXPORTER_TIMEOUT` in both OpAMP-managed and standalone collector
+  modes. The default remains 5 seconds.
+
+## 2.35.0
+
+### Minor Changes
+
+- 8351d632: Add OIDC-based bearer token authentication for the OTLP receiver in standalone mode, as an alternative to the existing static `OTLP_AUTH_TOKEN`. Set `OIDC_ISSUER_URL` and `OIDC_AUDIENCE` to validate incoming OTLP requests against an OIDC provider's published JWKS instead of a single long-lived shared secret.
+
+### Patch Changes
+
+- 58a467ae: Use the OpAMP supervisor's native `passthrough_logs` for collector log
+  forwarding instead of a background `tail` process. The old approach had
+  the supervisor and the tailer writing to the same stdout fd with no
+  synchronization, so log lines were getting mangled by the two streams
+  interleaving mid-line. The native approach has the supervisor re-emitting
+  the collector's output through its own logger to avoid this.
+
 ## 2.34.0
 
 ## 2.33.0

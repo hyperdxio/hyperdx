@@ -8,18 +8,24 @@ import {
   ChartPaletteTokenSchema,
   DASHBOARD_CONTAINER_ID_MAX,
   DASHBOARD_MAX_CONTAINERS,
+  DASHBOARD_STATIC_FILTER_MAX_OPTIONS,
+  DASHBOARD_VARIABLE_NAME_MAX_LENGTH,
+  DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED,
   DashboardContainerSchema,
   DashboardFilterType,
   MetricsDataType,
   NumberTileColorConditionSchema,
   SearchConditionTrimmedLanguageSchema,
+  StaticListDashboardFilterSchema,
 } from '@hyperdx/common-utils/dist/types';
 import { z } from 'zod';
 
-import { getMetricSelectIssues } from '@/mcp/tools/query/schemas';
+import {
+  getMetricSelectIssues,
+  mcpQuantileLevelSchema,
+} from '@/mcp/tools/query/schemas';
 import { QUERYABLE_METRIC_KINDS } from '@/mcp/tools/sources/metricKinds';
 import {
-  externalQuantileLevelSchema,
   MAX_TAG_LENGTH,
   MAX_TAGS,
   objectIdSchema,
@@ -46,6 +52,54 @@ const tileLevelNumberFormatDescription =
   'Controls how the number value(s) are formatted for display. Applies to series or numbers without a series-level numberFormat. ' +
   'Most useful: { output: "duration", factor: 0.000000001 } to auto-format nanosecond durations, ' +
   'or { output: "number", mantissa: 2, thousandSeparated: true } for clean counts.';
+
+// Aggregation builder tiles (table, line, stacked_bar, number, pie, bar) do NOT
+// support a tile-level `where`: the chart editor only surfaces a per-select-item
+// filter, so a tile-level filter would be applied to the query yet stay
+// invisible and uneditable in the UI. Rather than silently dropping the field,
+// these fields are declared solely to REJECT it with an actionable message that
+// points at the per-select-item `where`. Keeping them as plain object fields (a
+// refinement, not a wrapping `.superRefine`) preserves each config schema's
+// `.shape` so the patch tile union can still read `.shape.config`.
+const rejectTileWhereMessage =
+  'This tile type has no tile-level `where`. Put the filter on each select ' +
+  'item\'s `where` instead (that is the tile\'s visible "Where" box); use a ' +
+  'dashboard-level filter to scope the whole dashboard.';
+
+const rejectedTileWhereField = z
+  .never({ invalid_type_error: rejectTileWhereMessage })
+  .optional()
+  .describe(
+    "Not supported on this tile type. Filter via each select item's `where`.",
+  );
+
+const rejectedTileWhereFields = {
+  where: rejectedTileWhereField,
+  whereLanguage: rejectedTileWhereField,
+};
+
+// A variable reference expands in either language; only the two variable
+// MACROS are SQL-only. Every input that can carry one repeats the note rather
+// than relying on the agent having fetched the query_guide prompt.
+const variableMacroDescription =
+  'DASHBOARD VARIABLES: a reference to a variable-enabled dashboard filter ' +
+  'expands here in either language ($variableName renders as quoted SQL ' +
+  'values, or as a Lucene value list in a Lucene input). With whereLanguage ' +
+  '"sql" this also accepts $__filter(<expression>, $<variableName>) and ' +
+  '$__conditionalAll(<condition>, $<variableName>), which are preferred ' +
+  'because they expand to 1=1 while nothing is selected, where a bare SQL ' +
+  'reference renders as NULL. The two macros have no meaning in a Lucene ' +
+  'input and are matched as literal text; write ServiceName:$variableName ' +
+  'there. A Lucene reference needs no macro: with nothing selected it renders ' +
+  'as ("") and the translator drops it to a match-all.';
+
+// Same note for the always-SQL expressions (HAVING), which have no
+// whereLanguage to set.
+const sqlOnlyVariableMacroDescription =
+  'DASHBOARD VARIABLES: accepts $__filter(<expression>, $<variableName>) and ' +
+  '$__conditionalAll(<condition>, $<variableName>), which expand to 1=1 while ' +
+  'the variable has no selection, as well as a bare $variableName reference ' +
+  '(which renders as NULL when nothing is selected).';
 
 const timeChartSeriesLimitDescription =
   'Maximum number of series to fetch (the "Series Limit" display setting). ' +
@@ -164,7 +218,16 @@ const mcpTileSelectItemSchema = z
       .string()
       .optional()
       .default('')
-      .describe('Filter in Lucene syntax. Example: "level:error"'),
+      .describe(
+        'Row filter for THIS series (compiles to `countIf(...)`). This is how ' +
+          "you filter a builder tile: the chart editor renders it as the tile's " +
+          'visible "Where" box, so the user can see and edit it. To scope the ' +
+          'whole tile to a subset of rows, put the same `where` on every select ' +
+          'item; use different filters per item for cohort comparisons (errors ' +
+          'vs total). There is no tile-level `where` for these tile types. ' +
+          'Lucene syntax by default. Example: "level:error"\n\n' +
+          variableMacroDescription,
+      ),
     whereLanguage:
       SearchConditionTrimmedLanguageSchema.optional().default('lucene'),
     alias: z
@@ -176,7 +239,7 @@ const mcpTileSelectItemSchema = z
           'Without an alias the UI shows the raw ClickHouse expression (e.g. count(), quantile(0.95)(Duration)) which is hard to read. ' +
           'Heatmap select items are the only exception (no alias needed).',
       ),
-    level: externalQuantileLevelSchema
+    level: mcpQuantileLevelSchema
       .optional()
       .describe(
         'Percentile level for aggFn="quantile". REQUIRED for histogram and exponential histogram metrics with aggFn:"quantile".',
@@ -233,6 +296,54 @@ const mcpTileSelectItemSchema = z
     data.metricType && data.aggFn !== 'count' && !data.valueExpression
       ? { ...data, valueExpression: 'Value' }
       : data,
+  );
+
+// ─── Chart formulas ──────────────────────────────────────────────────────────
+
+const mcpFormulaSchema = z.object({
+  expression: z
+    .string()
+    .max(1024)
+    .describe(
+      'Arithmetic expression over the tile\'s select items by position: "A" is ' +
+        'select[0], "B" is select[1], etc. Supports + - * /, parentheses, and ' +
+        'numeric constants — e.g. "A / (A + B) * 100" for a success rate. ' +
+        'Division by zero or a missing operand renders as a gap (NULL), not an error.',
+    ),
+  alias: z
+    .string()
+    .optional()
+    .describe(
+      'Display label for the formula series (chart legend / column header). ' +
+        'Falls back to the raw expression text when unset. Always set a short, ' +
+        'human-readable alias (e.g. "Error rate %").',
+    ),
+  numberFormat: mcpNumberFormatSchema
+    .optional()
+    .describe(seriesLevelNumberFormatDescription),
+});
+
+const tileFormulasDescription =
+  'METRIC, LOG, AND TRACE SOURCES. Derived series computed from the select ' +
+  'items via letter-ref arithmetic ("A" = select[0], "B" = select[1], ...). ' +
+  'Example: [{ expression: "A / B * 100", alias: "Error rate %" }] with ' +
+  'select = [errors count, total count]. Each formula adds one series ' +
+  'computed in ClickHouse. Cannot be combined with asRatio (express the ' +
+  'ratio as a formula instead). Rejected on other source kinds (e.g. session).';
+
+const mcpTileFormulasSchema = z
+  .array(mcpFormulaSchema)
+  .max(10)
+  .optional()
+  .describe(tileFormulasDescription);
+
+const mcpShowOperandSeriesSchema = z
+  .boolean()
+  .optional()
+  .describe(
+    'Only meaningful with `formulas`: when false, only the formula series ' +
+      'are returned and the raw operand series (the select items) are hidden. ' +
+      'Defaults to true (operands shown alongside the formula).',
   );
 
 // ─── OnClick (link-out) schemas for table tiles ──────────────────────────────
@@ -507,6 +618,7 @@ const mcpTileLayoutSchema = z.object({
 
 const mcpLineTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
+    ...rejectedTileWhereFields,
     displayType: z.literal('line').describe('Line chart over time'),
     sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
     select: z
@@ -545,11 +657,14 @@ const mcpLineTileSchema = mcpTileLayoutSchema.extend({
         'Scale the y-axis to the data range instead of starting at zero.',
       ),
     seriesLimit: seriesLimitSchema.describe(timeChartSeriesLimitDescription),
+    formulas: mcpTileFormulasSchema,
+    showOperandSeries: mcpShowOperandSeriesSchema,
   }),
 });
 
 const mcpBarTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
+    ...rejectedTileWhereFields,
     displayType: z
       .literal('stacked_bar')
       .describe('Stacked bar chart over time'),
@@ -563,11 +678,14 @@ const mcpBarTileSchema = mcpTileLayoutSchema.extend({
       .optional()
       .describe(tileLevelNumberFormatDescription),
     seriesLimit: seriesLimitSchema.describe(timeChartSeriesLimitDescription),
+    formulas: mcpTileFormulasSchema,
+    showOperandSeries: mcpShowOperandSeriesSchema,
   }),
 });
 
 const mcpTableTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
+    ...rejectedTileWhereFields,
     displayType: z.literal('table').describe('Tabular aggregated data'),
     sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
     select: z.array(mcpTileSelectItemSchema).min(1).max(20),
@@ -586,7 +704,8 @@ const mcpTableTileSchema = mcpTileLayoutSchema.extend({
         'Post-aggregation SQL HAVING expression. Example: "Count > 100" to drop ' +
           'groups with few rows, or "StatusMessage != \'\'" to drop empty-message rows ' +
           'from a groupBy: "StatusMessage" table. Mirrors the same field on the REST ' +
-          'table chart config in `externalDashboardTableChartConfigSchema`.',
+          'table chart config in `externalDashboardTableChartConfigSchema`.\n\n' +
+          sqlOnlyVariableMacroDescription,
       ),
     orderBy: z
       .string()
@@ -608,20 +727,36 @@ const mcpTableTileSchema = mcpTileLayoutSchema.extend({
       .optional()
       .describe(tileLevelNumberFormatDescription),
     onClick: mcpOnClickSchema.optional(),
+    formulas: mcpTileFormulasSchema,
+    showOperandSeries: mcpShowOperandSeriesSchema,
   }),
 });
 
 const mcpNumberTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
+    ...rejectedTileWhereFields,
     displayType: z.literal('number').describe('Single aggregate scalar value'),
     sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
     select: z
       .array(mcpTileSelectItemSchema)
-      .length(1)
-      .describe('Exactly one metric to display'),
+      .min(1)
+      .max(20)
+      .describe(
+        'Exactly one metric to display — unless `formulas` is set, in which ' +
+          'case the select items are the formula operands and the (single) ' +
+          'formula value is displayed instead.',
+      ),
     numberFormat: mcpNumberFormatSchema
       .optional()
       .describe(tileLevelNumberFormatDescription),
+    formulas: z
+      .array(mcpFormulaSchema)
+      .max(1)
+      .optional()
+      .describe(
+        `${tileFormulasDescription} Number tiles support a single formula ` +
+          'and always display the formula value (operand series are hidden).',
+      ),
     color: ChartPaletteTokenSchema.optional().describe(
       numberTileColorDescription,
     ),
@@ -638,6 +773,7 @@ const mcpNumberTileSchema = mcpTileLayoutSchema.extend({
 
 const mcpPieTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
+    ...rejectedTileWhereFields,
     displayType: z.literal('pie').describe('Pie chart'),
     sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
     select: z.array(mcpTileSelectItemSchema).length(1),
@@ -678,6 +814,7 @@ const mcpPieTileSchema = mcpTileLayoutSchema.extend({
 // from 'stacked_bar', which is a time series.
 const mcpCategoricalBarTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
+    ...rejectedTileWhereFields,
     displayType: z
       .literal('bar')
       .describe('Bar chart — one bar per group value (not a time series)'),
@@ -766,7 +903,8 @@ const mcpHeatmapTileSchema = mcpTileLayoutSchema.extend({
       .optional()
       .default('')
       .describe(
-        'Row-level filter applied before bucketing. Example: "level:error"',
+        'Row-level filter applied before bucketing. Example: "level:error"\n\n' +
+          variableMacroDescription,
       ),
     whereLanguage:
       SearchConditionTrimmedLanguageSchema.optional().default('lucene'),
@@ -787,7 +925,10 @@ const mcpSearchTileSchema = mcpTileLayoutSchema.extend({
       .string()
       .optional()
       .default('')
-      .describe('Filter in Lucene syntax. Example: "level:error"'),
+      .describe(
+        'Filter in Lucene syntax. Example: "level:error"\n\n' +
+          variableMacroDescription,
+      ),
     whereLanguage:
       SearchConditionTrimmedLanguageSchema.optional().default('lucene'),
     select: z
@@ -810,7 +951,10 @@ const mcpEventPatternsTileSchema = mcpTileLayoutSchema.extend({
       .string()
       .optional()
       .default('')
-      .describe('Filter in Lucene syntax. Example: "level:error"'),
+      .describe(
+        'Filter in Lucene syntax. Example: "level:error"\n\n' +
+          variableMacroDescription,
+      ),
     whereLanguage:
       SearchConditionTrimmedLanguageSchema.optional().default('lucene'),
     select: z
@@ -994,30 +1138,49 @@ export const mcpTilesParam = z
       '"numberFormat": { "output": "duration", "factor": 0.000000001 } } }',
   );
 
-const mcpDashboardFilterSchema = z
-  .object({
-    id: z
-      .string()
-      .optional()
-      .describe(
-        'Filter identity. ' +
-          'On UPDATE of an existing dashboard, every filter in the array MUST carry ' +
-          'an id: pass the exact id returned by clickstack_get_dashboard for any filter ' +
-          'you are keeping (so saved values bound to it stay attached), and generate ' +
-          'a fresh random hex/ObjectId string for any filter you are adding in this ' +
-          'update. Omitting `id` on an existing filter would orphan its saved values; ' +
-          'reusing an existing id for a new filter would silently overwrite the old ' +
-          'one. On CREATE (no top-level `id` on the dashboard call), filter `id` may ' +
-          'be omitted and one will be generated server-side.',
-      ),
-    type: DashboardFilterType.describe(
-      'Filter type. Currently only "QUERY_EXPRESSION" is supported.',
+const VARIABLE_NAME_DESCRIPTION =
+  "Token that tiles reference this filter's selected value by, eg. $variableName. " +
+  'Must start with a letter and may contain only letters, numbers, and ' +
+  `underscores, up to ${DASHBOARD_VARIABLE_NAME_MAX_LENGTH} characters. ` +
+  'A default is determined based on the display name. ' +
+  "Must be unique across the dashboard's variable-enabled filters.";
+
+const variableNameSchema = z
+  .string()
+  .max(DASHBOARD_VARIABLE_NAME_MAX_LENGTH)
+  .regex(DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED)
+  .optional();
+const mcpDashboardFilterBaseShape = {
+  id: z
+    .string()
+    .optional()
+    .describe(
+      'Filter identity. ' +
+        'On UPDATE of an existing dashboard, every filter in the array MUST carry ' +
+        'an id: pass the exact id returned by clickstack_get_dashboard for any filter ' +
+        'you are keeping (so saved values bound to it stay attached), and generate ' +
+        'a fresh random hex/ObjectId string for any filter you are adding in this ' +
+        'update. Omitting `id` on an existing filter would orphan its saved values; ' +
+        'reusing an existing id for a new filter would silently overwrite the old ' +
+        'one. On CREATE (no top-level `id` on the dashboard call), filter `id` may ' +
+        'be omitted and one will be generated server-side.',
     ),
-    name: z
-      .string()
-      .min(1)
+  name: z
+    .string()
+    .min(1)
+    .describe(
+      'Human-readable filter label shown in the dashboard filter bar dropdown.',
+    ),
+  variableName: variableNameSchema.describe(VARIABLE_NAME_DESCRIPTION),
+};
+
+const mcpQueryExpressionFilterSchema = z
+  .object({
+    ...mcpDashboardFilterBaseShape,
+    type: z
+      .literal(DashboardFilterType.enum.QUERY_EXPRESSION)
       .describe(
-        'Human-readable filter label shown in the dashboard filter bar dropdown.',
+        'Filter type discriminator for a filter whose dropdown values are queried from a source column (expression + sourceId).',
       ),
     expression: z
       .string()
@@ -1045,7 +1208,17 @@ const mcpDashboardFilterSchema = z
       .string()
       .optional()
       .describe(
-        'Optional WHERE clause scoping the dropdown values (e.g. "level:error" in Lucene).',
+        'Optional WHERE clause scoping the dropdown values (e.g. "level:error" in Lucene). ' +
+          "DEPENDENT FILTERS: this clause may reference ANOTHER filter's variable, which " +
+          "chains one dropdown off another (pick a service, and this filter's dropdown only " +
+          "offers that service's endpoints). The upstream filter must set isVariableEnabled: true; " +
+          'this one does not have to. With whereLanguage "sql", prefer ' +
+          '$__filter(<expression>, $<variableName>) so the dropdown lists every value until the ' +
+          'upstream filter is set; a bare $variableName leaves this dropdown empty until then. ' +
+          'With whereLanguage "lucene" a bare reference is already safe: it renders as ("") ' +
+          'with nothing selected, which matches all. ' +
+          "Reference a SIBLING filter's variable only: naming this filter's own variable " +
+          'collapses its dropdown to the values already picked.',
       ),
     whereLanguage: SearchConditionTrimmedLanguageSchema.describe(
       'Filter language for `where` ("lucene" or "sql"). Optional, but set it explicitly.',
@@ -1060,15 +1233,79 @@ const mcpDashboardFilterSchema = z
           'A non-empty array restricts the filter to only tiles whose source ID is in the list; ' +
           'tiles on other sources are not affected by the dropdown value at all. ' +
           'Useful on mixed-source dashboards where a column (e.g. SpanName) only exists on ' +
-          'a subset of sources.',
+          'a subset of sources. ' +
+          'Scopes the broadcast condition only, so a non-empty array is rejected when ' +
+          'isBroadcastEnabled is false.',
       ),
+    isBroadcastEnabled: z
+      .boolean()
+      .optional()
+      .describe(
+        'Whether the selected value is applied as a filter condition on every builder ' +
+          'tile this filter applies to (see appliesToSourceIds), and on every raw SQL ' +
+          'tile using the $__filters macro. Omitting the field means ENABLED. ' +
+          'Set false to build a variable-only filter that tiles opt into by name.',
+      ),
+    isVariableEnabled: z
+      .boolean()
+      .optional()
+      .describe(
+        'Whether the selected value is exposed to tile queries as a dashboard variable ' +
+          'named by variableName. Omitting the field means DISABLED. ' +
+          'Tiles reference it as $variableName, or (preferred) via ' +
+          '$__filter(<expression>, $<variableName>) and ' +
+          '$__conditionalAll(<condition>, $<variableName>) in any SQL condition ' +
+          "(a select item's `where`, a tile-level `where`, `having`, or a raw SQL " +
+          "tile's sqlTemplate). Another filter's `where` can reference it too, which " +
+          "chains that filter's dropdown off this one.",
+      ),
+    variableName: variableNameSchema.describe(
+      `${VARIABLE_NAME_DESCRIPTION} Rejected when isVariableEnabled is not true.`,
+    ),
   })
   .describe(
-    'A dashboard-level filter the user can adjust in the dashboard filter bar. ' +
+    'A dashboard filter whose dropdown values are queried from a source. ' +
       'Each filter binds a label/name to a column expression on a source. ' +
+      'Every filter either broadcasts its selected value to matching tiles as a ' +
+      'condition (isBroadcastEnabled, the default), exposes it to tile queries as a ' +
+      'variable (isVariableEnabled + variableName), or both. Typically pick only ONE.' +
       "Filters are also the contract for row-click navigation: a table tile's " +
       'onClick.filters[i].expression must match a filter declared here for the value to land.',
   );
+
+const mcpStaticListFilterSchema = z
+  .object({
+    ...mcpDashboardFilterBaseShape,
+    type: z
+      .literal(DashboardFilterType.enum.STATIC_LIST)
+      .describe(
+        'Filter type discriminator for a filter whose dropdown offers a fixed hand-authored list; no source query.',
+      ),
+    options: StaticListDashboardFilterSchema.shape.options.describe(
+      'The values the dropdown offers, in display order. ' +
+        `1-${DASHBOARD_STATIC_FILTER_MAX_OPTIONS} unique, non-empty strings.`,
+    ),
+  })
+  .describe(
+    'A variable-only dashboard filter whose dropdown offers a hand-authored options ' +
+      'list. Use it when the values are a fixed business list (environments, tiers, ' +
+      'regions) rather than derivable from the data. The selected value reaches tiles ' +
+      'only as $variableName — typically via $__filter(<expression>, $<variableName>) ' +
+      'with the column passed explicitly, since the filter has no expression of its own.',
+  );
+
+const mcpDashboardFilterSchema = z
+  .discriminatedUnion('type', [
+    mcpQueryExpressionFilterSchema,
+    mcpStaticListFilterSchema,
+  ])
+  .describe(
+    'A dashboard-level filter the user can adjust in the dashboard filter bar. ' +
+      'Two types: QUERY_EXPRESSION queries its dropdown values from a source column; ' +
+      'STATIC_LIST declares them inline and is always variable-only.',
+  );
+
+export type McpDashboardFilter = z.infer<typeof mcpDashboardFilterSchema>;
 
 export const mcpFiltersParam = z
   .array(mcpDashboardFilterSchema)
@@ -1078,11 +1315,20 @@ export const mcpFiltersParam = z
       'If another tile\'s onClick targets THIS dashboard with `filters: [{ expression: "X", ... }]`, ' +
       'this array MUST declare a filter whose `expression` is "X". Otherwise the value is ' +
       'dropped on arrival and the destination opens unfiltered.\n\n' +
-      'By default a filter applies to every tile on the dashboard. On mixed-source dashboards, ' +
-      'use the optional `appliesToSourceIds` field to restrict a filter to only the tiles whose ' +
-      'source carries the referenced column — leave `appliesToSourceIds` omitted to keep the ' +
-      'broadcast-to-all-tiles default.\n\n' +
-      'Example (broadcast to every tile):\n' +
+      'Two filter types: QUERY_EXPRESSION queries its dropdown values from a source column, ' +
+      'while STATIC_LIST declares them inline via `options` and is always variable-only ' +
+      '(it has no expression to broadcast).\n\n' +
+      'A QUERY_EXPRESSION filter runs in one of two modes (or both). BROADCAST (the default) applies the ' +
+      'selected value as a condition on matching tiles with no per-tile wiring. VARIABLE ' +
+      '(isVariableEnabled) exposes the value to tile queries as $variableName, which the tile ' +
+      'must reference explicitly. Prefer broadcast; reach for a variable in advanced cases. ' +
+      'Enabling both on one filter applies the value twice.\n\n' +
+      'By default, a broadcast filter applies to every tile on the dashboard. On mixed-source ' +
+      'dashboards, use variable mode or the optional `appliesToSourceIds` field to restrict a filter to only the ' +
+      'tiles whose source carries the referenced column — leave `appliesToSourceIds` omitted to ' +
+      'keep the broadcast-to-all-tiles default. `appliesToSourceIds` does NOT scope variable ' +
+      'references; any tile may reference any variable.\n\n' +
+      'Example (broadcast to every tile, the common case):\n' +
       '[\n' +
       '  { "type": "QUERY_EXPRESSION", "name": "Service", "expression": "ServiceName",\n' +
       '    "sourceId": "<trace-source-id>", "whereLanguage": "sql" }\n' +
@@ -1092,7 +1338,37 @@ export const mcpFiltersParam = z
       '  { "type": "QUERY_EXPRESSION", "name": "Service", "expression": "SpanName",\n' +
       '    "sourceId": "<trace-source-id>", "whereLanguage": "sql",\n' +
       '    "appliesToSourceIds": ["<trace-source-id>"] }\n' +
-      ']',
+      ']\n\n' +
+      'Example (variable only, referenced by tiles as $service):\n' +
+      '[\n' +
+      '  { "type": "QUERY_EXPRESSION", "name": "Service", "expression": "ServiceName",\n' +
+      '    "sourceId": "<trace-source-id>", "whereLanguage": "sql",\n' +
+      '    "isBroadcastEnabled": false, "isVariableEnabled": true, "variableName": "service" }\n' +
+      ']\n' +
+      'A tile then uses it as $__filter(ServiceName, $service) in a SQL where clause, which ' +
+      'expands to 1=1 while nothing is selected.\n\n' +
+      'Example (static list: fixed hand-authored values, always a variable, no source query):\n' +
+      '[\n' +
+      '  { "type": "STATIC_LIST", "name": "Environment",\n' +
+      '    "options": ["prod", "staging", "dev"], "variableName": "env" }\n' +
+      ']\n' +
+      "A tile references it as $__filter(ResourceAttributes['deployment.environment'], $env). " +
+      'Always pass the column explicitly: the one-argument $__filter($env) form reuses the ' +
+      "filter's own expression, which a static filter does not have. Prefer STATIC_LIST when " +
+      'the values are a fixed business list or a curated subset rather than derivable from the data.\n\n' +
+      "Example (dependent filter: the Endpoint dropdown only lists the selected service's " +
+      'endpoints):\n' +
+      '[\n' +
+      '  { "type": "QUERY_EXPRESSION", "name": "Service", "expression": "ServiceName",\n' +
+      '    "sourceId": "<trace-source-id>", "whereLanguage": "sql",\n' +
+      '    "isVariableEnabled": true, "variableName": "service" },\n' +
+      '  { "type": "QUERY_EXPRESSION", "name": "Endpoint", "expression": "SpanName",\n' +
+      '    "sourceId": "<trace-source-id>", "whereLanguage": "sql",\n' +
+      '    "where": "$__filter(ServiceName, $service)" }\n' +
+      ']\n' +
+      "A filter's `where` scopes only the values ITS dropdown offers; it is not applied to " +
+      'any tile. That is why Service keeps broadcasting here: its variable is read by the ' +
+      'Endpoint dropdown, not by a tile, so the value is never applied twice.',
   );
 
 export const mcpPatchDashboardSchema = z.object({

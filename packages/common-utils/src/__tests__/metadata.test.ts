@@ -877,6 +877,145 @@ describe('Metadata', () => {
   // Each of the four fetch strategies emits a distinct SQL shape (map-text-
   // index, native-text-index, metadata-MV, raw-table). We assert against
   // those shapes rather than exposing the private methods.
+  // Metric names must be listed deterministically. The previous implementation
+  // reused getKeyValues, whose `groupUniqArray(limit)(MetricName)` keeps an
+  // arbitrary subset once a table exceeds `limit` distinct names — that is what
+  // silently hid metrics such as Prometheus' `up`.
+  describe('getMetricNames', () => {
+    const baseArgs = {
+      databaseName: 'default',
+      tableName: 'otel_metrics_gauge',
+      connectionId: 'test_connection',
+      dateRange: [new Date('2024-01-01'), new Date('2024-01-02')] as [
+        Date,
+        Date,
+      ],
+      timestampValueExpression: 'TimeUnix',
+    };
+
+    const mockNames = (names: string[]) => {
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
+        json: () =>
+          Promise.resolve({ data: names.map(MetricName => ({ MetricName })) }),
+      });
+    };
+
+    const lastQuery = () =>
+      (mockClickhouseClient.query as jest.Mock).mock.calls.at(-1)[0];
+
+    beforeEach(() => {
+      mockNames([]);
+    });
+
+    it('groups and orders by name instead of sampling', async () => {
+      await metadata.getMetricNames(baseArgs);
+
+      const { query } = lastQuery();
+      expect(query).toContain('GROUP BY MetricName');
+      expect(query).toContain('MetricName ASC');
+      expect(query).not.toContain('groupUniqArray');
+    });
+
+    it('requests one row beyond the limit so truncation is detectable', async () => {
+      await metadata.getMetricNames({ ...baseArgs, limit: 100 });
+
+      expect(Object.values(lastQuery().query_params)).toContain(101);
+    });
+
+    it('reports truncated and trims to the requested limit', async () => {
+      mockNames(['a', 'b', 'c']);
+
+      await expect(
+        metadata.getMetricNames({ ...baseArgs, limit: 2 }),
+      ).resolves.toEqual({ names: ['a', 'b'], truncated: true });
+    });
+
+    it('reports not truncated when the page is not full', async () => {
+      mockNames(['a', 'b']);
+
+      await expect(
+        metadata.getMetricNames({ ...baseArgs, limit: 5 }),
+      ).resolves.toEqual({ names: ['a', 'b'], truncated: false });
+    });
+
+    it('applies the shared time filter', async () => {
+      await metadata.getMetricNames(baseArgs);
+
+      expect(timeFilterExpr).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tableName: 'otel_metrics_gauge',
+          timestampValueExpression: 'TimeUnix',
+          dateRange: baseArgs.dateRange,
+        }),
+      );
+      expect(lastQuery().query).toContain('__TIME_FILTER__');
+    });
+
+    it('matches namePattern as a substring, server-side', async () => {
+      await metadata.getMetricNames({ ...baseArgs, namePattern: 'up' });
+
+      const { query, query_params } = lastQuery();
+      expect(query).toContain('MetricName ILIKE');
+      expect(Object.values(query_params)).toContain('%up%');
+    });
+
+    it('escapes ILIKE wildcards in namePattern', async () => {
+      await metadata.getMetricNames({
+        ...baseArgs,
+        namePattern: 'cpu_%usage',
+      });
+
+      expect(Object.values(lastQuery().query_params)).toContain(
+        '%cpu\\_\\%usage%',
+      );
+    });
+
+    // Without this, a short query is crowded off the page by the many names that
+    // merely contain it, which is the original bug in a new form.
+    it('ranks exact matches then earlier occurrences when searching', async () => {
+      await metadata.getMetricNames({ ...baseArgs, namePattern: 'up' });
+
+      const { query } = lastQuery();
+      expect(query).toContain('lower(MetricName) = lower(');
+      expect(query).toContain('positionCaseInsensitive(MetricName,');
+    });
+
+    it('adds no name predicate or ranking when browsing', async () => {
+      await metadata.getMetricNames(baseArgs);
+
+      expect(lastQuery().query).not.toContain('ILIKE');
+      expect(lastQuery().query).not.toContain('positionCaseInsensitive');
+    });
+
+    it('excludes empty names in SQL so truncation stays accurate', async () => {
+      await metadata.getMetricNames(baseArgs);
+
+      expect(lastQuery().query).toContain("MetricName != ''");
+    });
+
+    // `break` returns a partial aggregate as HTTP 200, which reads as a complete
+    // short list — the silent incompleteness this method replaced.
+    it('lets a timeout throw rather than returning a partial page', async () => {
+      await metadata.getMetricNames(baseArgs);
+
+      expect(lastQuery().clickhouse_settings).toMatchObject({
+        max_rows_to_read: '0',
+        timeout_overflow_mode: 'throw',
+      });
+      // Left to the client so the deployment's configured query timeout applies,
+      // matching the bound this path had before.
+      expect(
+        lastQuery().clickhouse_settings.max_execution_time,
+      ).toBeUndefined();
+    });
+
+    it('rejects a non-positive limit', async () => {
+      await expect(
+        metadata.getMetricNames({ ...baseArgs, limit: 0 }),
+      ).rejects.toThrow('limit must be a positive integer');
+    });
+  });
+
   describe('getAllKeyValues (router)', () => {
     const dateRange: [Date, Date] = [
       new Date('2024-01-01'),
@@ -951,7 +1090,7 @@ describe('Metadata', () => {
         ]),
       );
 
-      jest
+      const doMVsAggregateSpy = jest
         .spyOn(metadata as any, 'doMetadataMVsAggregateColumn')
         .mockImplementation((...args: any[]) => {
           const columnName = args[1] as string;
@@ -959,6 +1098,9 @@ describe('Metadata', () => {
             columnName === 'ServiceName' || columnName === 'SeverityText',
           );
         });
+
+      // Returned so tests can override the MV-aggregation answer.
+      return { doMVsAggregateSpy };
     };
 
     afterEach(() => {
@@ -1020,8 +1162,101 @@ describe('Metadata', () => {
       expect(sql).toContain('BY ColumnIdentifier, Key');
       expect(sql).not.toContain('mergeTreeTextIndex(');
       expect(Object.values(params)).toContain('otel_logs_kv_rollup_15m');
-      expect(Object.values(params)).toContain('ServiceName');
-      expect(Object.values(params)).toContain('SeverityText');
+      // Keys are inlined as escaped literals, not bound as params — per-key
+      // params would push large batches into multipart bodies (see #8482).
+      expect(sql).toContain("Key IN ('ServiceName','SeverityText')");
+      expect(Object.values(params)).not.toContain('ServiceName');
+      expect(Object.values(params)).not.toContain('SeverityText');
+    });
+
+    it('keeps the KV rollup MV query parameter count independent of the number of keys', async () => {
+      const { doMVsAggregateSpy } = setupDefaultLogsSchema();
+      doMVsAggregateSpy.mockResolvedValue(true);
+
+      const manyKeys = Array.from(
+        { length: 80 },
+        (_, i) => `LogAttributes['some.rather.long.attribute.key.${i}']`,
+      );
+      // Route map keys through the MV (not the text index) so they all land in
+      // one batched rollup query.
+      jest
+        .spyOn(metadata, 'getMapColumnTextIndexes')
+        .mockResolvedValue(new Map());
+
+      await metadata.getAllKeyValues({
+        ...baseArgs,
+        keyExpressions: manyKeys,
+      });
+
+      const mvCall = (mockClickhouseClient.query as jest.Mock).mock.calls.find(
+        (c: any[]) => (c[0].query as string).includes('Key IN ('),
+      );
+      expect(mvCall).toBeDefined();
+      const params = mvCall![0].query_params as Record<string, string>;
+      // A handful of fixed params — never one per key.
+      expect(Object.keys(params).length).toBeLessThan(10);
+      const sql = mvCall![0].query as string;
+      expect(sql).toContain("'some.rather.long.attribute.key.0'");
+      expect(sql).toContain("'some.rather.long.attribute.key.79'");
+    });
+
+    it('SQL-escapes inlined rollup keys containing quotes and backslashes', async () => {
+      const { doMVsAggregateSpy } = setupDefaultLogsSchema();
+      doMVsAggregateSpy.mockResolvedValue(true);
+      jest
+        .spyOn(metadata, 'getMapColumnTextIndexes')
+        .mockResolvedValue(new Map());
+
+      await metadata.getAllKeyValues({
+        ...baseArgs,
+        keyExpressions: ["LogAttributes['it's a key']"],
+      });
+
+      const mvCall = (mockClickhouseClient.query as jest.Mock).mock.calls.find(
+        (c: any[]) => (c[0].query as string).includes('Key IN ('),
+      );
+      expect(mvCall).toBeDefined();
+      const sql = mvCall![0].query as string;
+      // The embedded quote must be escaped, never spliced raw.
+      expect(sql).toContain("Key IN ('it\\'s a key')");
+      expect(sql).not.toContain("Key IN ('it's a key')");
+    });
+
+    it('applies the time filter to every branch of the KV rollup OR chain', async () => {
+      setupDefaultLogsSchema();
+
+      await metadata.getAllKeyValues({
+        ...baseArgs,
+        keyExpressions: ['ServiceName', 'SeverityText'],
+      });
+
+      const mvCall = (mockClickhouseClient.query as jest.Mock).mock.calls.find(
+        (c: any[]) => (c[0].query as string).includes('Key IN ('),
+      );
+      expect(mvCall).toBeDefined();
+      const sql = (mvCall![0].query as string).replace(/\s+/g, ' ');
+      // Without parens, `a OR b AND time` binds the time filter to the
+      // last branch only.
+      expect(sql).toMatch(/WHERE \(\(ColumnIdentifier = /);
+      expect(sql).toMatch(/\)\) AND Timestamp >= /);
+    });
+
+    it('inlines map text index key prefixes as escaped literals, not params', async () => {
+      setupDefaultLogsSchema();
+
+      await metadata.getAllKeyValues({
+        ...baseArgs,
+        keyExpressions: ["LogAttributes['requestId']"],
+      });
+
+      const idxCall = (mockClickhouseClient.query as jest.Mock).mock.calls.find(
+        (c: any[]) => (c[0].query as string).includes('startsWith(token,'),
+      );
+      expect(idxCall).toBeDefined();
+      const sql = idxCall![0].query as string;
+      const params = idxCall![0].query_params as Record<string, string>;
+      expect(sql).toContain("startsWith(token, 'requestId=')");
+      expect(Object.values(params)).not.toContain('requestId=');
     });
 
     it('routes columns without any index or MV entry through the getKeyValues fallback (raw table scan)', async () => {
@@ -1212,11 +1447,12 @@ describe('Metadata', () => {
 
       expect(mapTextIndexCalls.length).toBeGreaterThanOrEqual(2);
 
-      const allParamValues = mapTextIndexCalls.flatMap((c: any[]) =>
-        Object.values(c[0].query_params ?? {}),
-      );
+      // Key prefixes are inlined as escaped literals, not per-key params.
+      const allQueries = mapTextIndexCalls
+        .map((c: any[]) => c[0].query as string)
+        .join('\n');
       for (let i = 0; i < keyCount; i++) {
-        expect(allParamValues).toContain(`k${i}=`);
+        expect(allQueries).toContain(`startsWith(token, 'k${i}=')`);
       }
     });
 

@@ -163,6 +163,81 @@ export class SidePanelComponent {
   }
 
   /**
+   * The Surrounding Context tab. Its "Custom" mode reveals a WHERE input that
+   * narrows the surrounding rows.
+   */
+  get contextTab() {
+    return this.page.getByTestId('side-panel-tab-context');
+  }
+
+  /**
+   * Pick a mode in the Surrounding Context tab's segmented control (All,
+   * Service, Host, Pod, Node, Custom). Clicks the label because Mantine's
+   * SegmentedControl hides the underlying radio.
+   */
+  async setContextBy(mode: string) {
+    await this.contextTab.getByText(mode, { exact: true }).click();
+  }
+
+  /**
+   * The trace waterfall's spans and logs filters, each a `SearchWhereInput`
+   * with its own language switch. Both are collapsed behind the "Show Filters"
+   * toggle — call `toggleTraceFilters` first.
+   */
+  get traceSpansFilter() {
+    return this.page.getByTestId('trace-spans-filter');
+  }
+
+  get traceLogsFilter() {
+    return this.page.getByTestId('trace-logs-filter');
+  }
+
+  /** Expand or collapse the trace waterfall's filter inputs. */
+  async toggleTraceFilters() {
+    await this.page.getByTestId('trace-filters-toggle').click();
+  }
+
+  /**
+   * A clickable span row in the trace waterfall, matched by its label text.
+   * Clicking it opens the span detail panel (Overview tab).
+   */
+  getWaterfallSpan(name: string) {
+    return this.panelContainer
+      .locator('[role="button"]')
+      .filter({ hasText: name });
+  }
+
+  async clickWaterfallSpan(name: string) {
+    await this.getWaterfallSpan(name).first().click({ timeout: 10_000 });
+  }
+
+  /**
+   * Rows in the span detail's "Span Links" section. Each row's open action
+   * (`span-link-open-trace`) shows the linked span's name once the target
+   * span is resolved, or "Open trace" as the unresolved fallback.
+   */
+  get spanLinkRows() {
+    return this.panelContainer.getByTestId('span-link-row');
+  }
+
+  get spanLinkOpenActions() {
+    return this.panelContainer.getByTestId('span-link-open-trace');
+  }
+
+  /**
+   * Rows in the span detail's "Linked from" section (spans whose links
+   * reference the selected span), and the per-row action that opens the
+   * referencing span's trace.
+   */
+  get linkedFromRows() {
+    return this.panelContainer.getByTestId('linked-from-row');
+  }
+
+  get linkedFromOpenActions() {
+    return this.panelContainer.getByTestId('linked-from-open-span');
+  }
+
+  /**
    * Close the side panel (if it has a close button)
    */
   async close() {

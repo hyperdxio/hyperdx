@@ -5,6 +5,7 @@ import {
   convertToCategoricalChartConfig,
   convertToDashboardDocument,
   convertToDashboardTemplate,
+  convertToNumberChartConfig,
   extractSettingsClauseFromEnd,
   findJsonExpressions,
   formatDate,
@@ -508,6 +509,59 @@ describe('utils', () => {
       expect(config.select[0]).not.toHaveProperty('alias');
       expect(config.orderBy).toBeUndefined();
       expect(config.limit).toBeUndefined();
+    });
+  });
+
+  describe('convertToNumberChartConfig', () => {
+    const dateRange: [Date, Date] = [
+      new Date('2025-11-26T00:00:00Z'),
+      new Date('2025-11-27T00:00:00Z'),
+    ];
+
+    it('drops granularity and groupBy', () => {
+      const config = {
+        select: [{ aggFn: 'count', valueExpression: '' }],
+        granularity: '5 minute',
+        groupBy: 'ServiceName',
+        dateRange,
+      } as BuilderChartConfigWithDateRange;
+
+      const converted = convertToNumberChartConfig(config);
+
+      expect(converted.granularity).toBeUndefined();
+      expect(converted.groupBy).toBeUndefined();
+    });
+
+    it('leaves showOperandSeries untouched without formulas', () => {
+      const config = {
+        select: [{ aggFn: 'count', valueExpression: '' }],
+        dateRange,
+      } as BuilderChartConfigWithDateRange;
+
+      expect(convertToNumberChartConfig(config).showOperandSeries).toBe(
+        undefined,
+      );
+    });
+
+    it('always hides operand series for formula configs (HDX-5080)', () => {
+      // A number chart displays the first value column of the result, so the
+      // formula column must be the only projection — even when the stored
+      // config shows operand series on other display types.
+      const config = {
+        select: [
+          { aggFn: 'max', valueExpression: 'Value' },
+          { aggFn: 'max', valueExpression: 'Value' },
+        ],
+        formulas: [{ expression: 'A / B * 100' }],
+        granularity: '5 minute',
+        dateRange,
+      } as BuilderChartConfigWithDateRange;
+
+      expect(convertToNumberChartConfig(config).showOperandSeries).toBe(false);
+      expect(
+        convertToNumberChartConfig({ ...config, showOperandSeries: true })
+          .showOperandSeries,
+      ).toBe(false);
     });
   });
 
@@ -1213,8 +1267,185 @@ describe('utils', () => {
           source: 'Logs',
         },
       ]);
-      expect(template.filters?.[2].appliesToSourceIds).toBeUndefined();
-      expect(template.filters?.[3].appliesToSourceIds).toBeUndefined();
+      // Explicitly absent rather than an empty array, which the import would
+      // read as "matches no tiles". Both are queried filters, pinned above.
+      for (const index of [2, 3]) {
+        const filter = template.filters![index];
+        expect(filter.type).toBe('QUERY_EXPRESSION');
+        expect(
+          filter.type === 'QUERY_EXPRESSION' && filter.appliesToSourceIds,
+        ).toBeUndefined();
+      }
+    });
+
+    // Variable settings are dashboard-local — unlike `source` and
+    // `appliesToSourceIds` they reference nothing in the workspace, so they need
+    // no name↔ID remapping and must survive export verbatim.
+    it('should export filter variable settings unchanged while still remapping sources', () => {
+      const sources: TSource[] = [
+        {
+          id: 'source1',
+          name: 'Logs',
+          connection: 'connection1',
+          kind: SourceKind.Log,
+          from: { databaseName: 'db1', tableName: 'logs_table' },
+          timestampValueExpression: 'Timestamp',
+          defaultTableSelectExpression: '',
+        },
+      ];
+
+      const dashboard: z.infer<typeof DashboardSchema> = {
+        id: 'dashboard1',
+        name: 'Variables Dashboard',
+        tags: [],
+        tiles: [],
+        filters: [
+          {
+            id: 'filter-variable',
+            type: 'QUERY_EXPRESSION',
+            name: 'Service Name',
+            expression: 'ServiceName',
+            source: 'source1',
+            appliesToSourceIds: ['source1'],
+            isBroadcastEnabled: false,
+            isVariableEnabled: true,
+            variableName: 'Service_Name',
+          },
+        ],
+      };
+
+      const template = convertToDashboardTemplate(dashboard, sources);
+
+      expect(template.filters).toEqual([
+        {
+          id: 'filter-variable',
+          type: 'QUERY_EXPRESSION',
+          name: 'Service Name',
+          expression: 'ServiceName',
+          source: 'Logs',
+          appliesToSourceIds: ['Logs'],
+          isBroadcastEnabled: false,
+          isVariableEnabled: true,
+          variableName: 'Service_Name',
+        },
+      ]);
+    });
+
+    it('should export a promql-label filter with its source id remapped to a name', () => {
+      const sources: TSource[] = [
+        {
+          id: 'source1',
+          name: 'Prom',
+          connection: 'connection1',
+          kind: SourceKind.Promql,
+          from: { databaseName: 'db1', tableName: 'timeseries_table' },
+          timestampValueExpression: 'Timestamp',
+        },
+      ];
+
+      const dashboard: z.infer<typeof DashboardSchema> = {
+        id: 'dashboard1',
+        name: 'PromQL Filter Dashboard',
+        tags: [],
+        tiles: [],
+        filters: [
+          {
+            id: 'filter-promql',
+            type: 'PROMETHEUS_LABEL',
+            name: 'Pod',
+            source: 'source1',
+            label: 'pod',
+            isBroadcastEnabled: false,
+            isVariableEnabled: true,
+            variableName: 'pod',
+          },
+        ],
+      };
+
+      const template = convertToDashboardTemplate(dashboard, sources);
+
+      expect(template.filters).toEqual([
+        {
+          id: 'filter-promql',
+          type: 'PROMETHEUS_LABEL',
+          name: 'Pod',
+          source: 'Prom',
+          label: 'pod',
+          isBroadcastEnabled: false,
+          isVariableEnabled: true,
+          variableName: 'pod',
+        },
+      ]);
+      // Only queried filters broadcast, so no applies-to key is stamped on.
+      expect('appliesToSourceIds' in template.filters![0]).toBe(false);
+    });
+
+    // A `STATIC_LIST` filter references nothing in the workspace at all, so it
+    // must survive export untouched — in particular `source` must stay absent
+    // rather than being stamped with the empty string the name lookup returns
+    // for an unresolvable id, which the re-import would then reject.
+    it('should export a static-list filter with no source', () => {
+      const sources: TSource[] = [
+        {
+          id: 'source1',
+          name: 'Logs',
+          connection: 'connection1',
+          kind: SourceKind.Log,
+          from: { databaseName: 'db1', tableName: 'logs_table' },
+          timestampValueExpression: 'Timestamp',
+          defaultTableSelectExpression: '',
+        },
+      ];
+
+      const staticFilter = {
+        id: 'filter-static',
+        type: 'STATIC_LIST' as const,
+        name: 'Environment',
+        options: ['prod', 'staging', 'dev'],
+        isBroadcastEnabled: false as const,
+        isVariableEnabled: true as const,
+        variableName: 'env',
+      };
+
+      const dashboard: z.infer<typeof DashboardSchema> = {
+        id: 'dashboard1',
+        name: 'Static Filter Dashboard',
+        tags: [],
+        tiles: [],
+        filters: [
+          staticFilter,
+          {
+            id: 'filter-queried',
+            type: 'QUERY_EXPRESSION',
+            name: 'Service',
+            expression: 'ServiceName',
+            source: 'source1',
+          },
+        ],
+      };
+
+      const template = convertToDashboardTemplate(dashboard, sources);
+
+      expect(template.filters).toEqual([
+        staticFilter,
+        {
+          id: 'filter-queried',
+          type: 'QUERY_EXPRESSION',
+          name: 'Service',
+          expression: 'ServiceName',
+          source: 'Logs',
+        },
+      ]);
+      // No `source` key at all, rather than one holding the empty string the
+      // name lookup returns for an unresolvable id.
+      expect('source' in template.filters![0]).toBe(false);
+
+      // And back: the import path carries the filter through verbatim, so a
+      // round-trip through the template format is lossless.
+      expect(
+        convertToDashboardDocument({ ...template, filters: template.filters })
+          .filters?.[0],
+      ).toEqual(staticFilter);
     });
 
     it('should convert a dashboard without filters to a dashboard template', () => {
