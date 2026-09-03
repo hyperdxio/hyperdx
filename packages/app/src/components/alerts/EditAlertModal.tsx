@@ -5,8 +5,10 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   type Alert,
+  alertDisplayNameSchema,
   AlertIntervalSchema,
   AlertSource,
+  alertTagsSchema,
   AlertThresholdType,
   isRangeThresholdType,
   scheduleStartAtSchema,
@@ -32,6 +34,7 @@ import { IconChartLine, IconInfoCircleFilled } from '@tabler/icons-react';
 import { useQueryClient } from '@tanstack/react-query';
 
 import api from '@/api';
+import { AlertDisplayFields } from '@/components/AlertDisplayFields';
 import { AlertNoteField } from '@/components/AlertNoteField';
 import { AlertChannelForm } from '@/components/Alerts';
 import { AlertDetailChart } from '@/components/alerts/AlertDetailChart';
@@ -42,7 +45,7 @@ import { useSource } from '@/source';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import type { AlertsPageItem } from '@/types';
 import { optionsToSelectData } from '@/utils';
-import { toAlertChannels } from '@/utils/alerts';
+import { getDerivedAlertDisplayName, toAlertChannels } from '@/utils/alerts';
 import {
   ALERT_CHANNEL_OPTIONS,
   ALERT_INTERVAL_OPTIONS,
@@ -66,6 +69,8 @@ const EditAlertFormSchema = z
     thresholdType: z.nativeEnum(AlertThresholdType),
     channel: zAlertChannel.optional(),
     channels: zAlertChannels.optional(),
+    displayName: alertDisplayNameSchema,
+    tags: alertTagsSchema,
     // nullish() (not optional()): persisted alerts store this as null, which
     // optional() would reject.
     numConsecutiveWindows: z.number().int().min(1).nullish(),
@@ -106,6 +111,8 @@ function alertToFormValues(alert: AlertsPageItem): Alert {
     name: alert.name ?? null,
     message: alert.message ?? null,
     note: alert.note ?? null,
+    displayName: alert.displayName,
+    tags: alert.tags,
     // Persisted null -> undefined for the NumberInput.
     numConsecutiveWindows: alert.numConsecutiveWindows ?? undefined,
   };
@@ -380,6 +387,12 @@ export function EditAlertModal({
               )}
             />
           </Group>
+          <AlertDisplayFields
+            control={control}
+            displayNameName="displayName"
+            tagsName="tags"
+            derivedDisplayName={getDerivedAlertDisplayName(alert)}
+          />
           <AlertScheduleFields
             control={control}
             setValue={setValue}

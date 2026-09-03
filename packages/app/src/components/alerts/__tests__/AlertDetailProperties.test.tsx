@@ -30,6 +30,7 @@ jest.mock('@/useFormatTime', () => ({
 
 const baseAlert = {
   _id: 'alert-1',
+  tags: [],
   interval: '5m',
   threshold: 3,
   thresholdType: AlertThresholdType.ABOVE,
@@ -59,6 +60,7 @@ describe('AlertDetailProperties', () => {
               // Far future so the silence reads as active, not expired.
               until: '2099-01-01T00:00:00.000Z',
             },
+            tags: ['prod', 'payments'],
             savedSearch: {
               _id: 'saved-search-id',
               name: 'My Search',
@@ -72,7 +74,7 @@ describe('AlertDetailProperties', () => {
     );
 
     expect(screen.getByTestId('alert-property-name')).toHaveTextContent(
-      'CPU alert',
+      'Notification titleCPU alert',
     );
     expect(screen.getByTestId('alert-property-message')).toHaveTextContent(
       'CPU is high on {{group}}',
@@ -94,6 +96,33 @@ describe('AlertDetailProperties', () => {
     );
     // The summary line resolves the webhook id to its display name.
     expect(screen.getByText(/Team Slack/)).toBeInTheDocument();
+  });
+
+  it("renders the alert's own tags, not the saved search's", () => {
+    renderWithMantine(
+      <AlertDetailProperties
+        alert={
+          {
+            ...baseAlert,
+            tags: ['own-tag'],
+            savedSearch: {
+              _id: 'saved-search-id',
+              name: 'My Search',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              tags: ['prod'],
+            },
+          } as AlertsPageItem
+        }
+      />,
+    );
+
+    expect(screen.getByTestId('alert-property-tags')).toHaveTextContent(
+      'own-tag',
+    );
+    expect(screen.getByTestId('alert-property-tags')).not.toHaveTextContent(
+      'prod',
+    );
   });
 
   it('omits rows for unset fields and marks expired silences', () => {

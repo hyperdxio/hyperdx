@@ -29,9 +29,7 @@ type AlertRowMenuProps = {
   /** Label for that source, e.g. "Saved search". */
   linkTitle?: string;
   /**
-   * Display name, for the delete confirmation and the menu's accessible
-   * label. Both `getAlertDisplayName` and `linkTitle` return an empty string
-   * for an alert whose source can't be resolved, so callers may pass one.
+   * Display name, for the delete confirmation and the menu's accessible label.
    */
   alertName?: string;
   /**

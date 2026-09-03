@@ -13,7 +13,6 @@ import EmptyState from '@/components/EmptyState';
 import { useVirtualList } from '@/hooks/useVirtualList';
 import { APP_CONTENT_SCROLL_CONTAINER_ID } from '@/layout';
 import type { AlertsPageItem } from '@/types';
-import { getAlertTags } from '@/utils/alerts';
 
 import styles from '@styles/AlertsPage.module.scss';
 
@@ -56,7 +55,7 @@ function estimateItemHeight(item: AlertListItem): number {
     default:
       return (
         ROW_HEIGHT +
-        (getAlertTags(item.alert).length > 0 ? TAGS_HEIGHT : 0) +
+        (item.alert.tags?.length > 0 ? TAGS_HEIGHT : 0) +
         (item.alert.note ? NOTE_TOGGLE_HEIGHT : 0)
       );
   }

@@ -11,6 +11,7 @@ import {
   replaceEditorText,
 } from '../utils/locators';
 import { switchWhereToLucene } from '../utils/lucene-autocomplete';
+import { addTagViaPicker, removeTagViaPicker } from '../utils/tags';
 
 import { WebhookAlertModalComponent } from './WebhookAlertModalComponent';
 
@@ -798,8 +799,8 @@ export class ChartEditorComponent {
    */
   async save() {
     await this.saveButton.click();
-    // Wait for save button to disappear (modal closes)
-    await this.saveButton.waitFor({ state: 'hidden', timeout: 2000 });
+    // The modal closes once the dashboard mutation resolves.
+    await this.saveButton.waitFor({ state: 'hidden', timeout: 10000 });
   }
 
   /**
@@ -920,6 +921,28 @@ export class ChartEditorComponent {
       .nth(1);
     await input.fill(String(value));
     await input.blur();
+  }
+
+  /** Set the alert's own display name in the tile alert editor. */
+  async setTileAlertDisplayName(name: string) {
+    await this.page
+      .getByTestId('alert-details')
+      .getByTestId('alert-display-name-input')
+      .fill(name);
+  }
+
+  private get tileAlertTagsButton() {
+    return this.page
+      .getByTestId('alert-details')
+      .getByTestId('alert-tags-button');
+  }
+
+  async addTileAlertTag(tag: string) {
+    await addTagViaPicker(this.page, this.tileAlertTagsButton, tag);
+  }
+
+  async removeTileAlertTag(tag: string) {
+    await removeTagViaPicker(this.page, this.tileAlertTagsButton, tag);
   }
 
   /**
