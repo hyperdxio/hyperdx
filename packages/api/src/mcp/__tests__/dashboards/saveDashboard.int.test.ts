@@ -816,34 +816,42 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
       expect(result.isError).toBe(true);
     });
 
-    it('should keep color but drop colorRules on a raw SQL number tile', async () => {
+    it('should round-trip color and colorRules on a raw SQL number tile', async () => {
       const connectionId = ctx.connection._id.toString();
+      const sqlConfig = {
+        configType: 'sql',
+        displayType: 'number',
+        connectionId,
+        sqlTemplate: 'SELECT 0.99 AS value LIMIT 1',
+        color: 'chart-success',
+        colorRules: [
+          { operator: 'lt', value: 0.95, color: 'chart-error', label: 'Down' },
+          { operator: 'between', value: [0.95, 0.99], color: 'chart-warning' },
+        ],
+      };
+
       const saveResult = await callTool(
         ctx.client!,
         'clickstack_save_dashboard',
         {
           name: 'SQL Number Color',
-          tiles: [
-            {
-              name: 'SLO',
-              config: {
-                configType: 'sql',
-                displayType: 'number',
-                connectionId,
-                sqlTemplate: 'SELECT 0.99 AS value LIMIT 1',
-                color: 'chart-success',
-                colorRules: [
-                  { operator: 'gte', value: 1, color: 'chart-error' },
-                ],
-              },
-            },
-          ],
+          tiles: [{ name: 'SLO', config: sqlConfig }],
         },
       );
       expect(saveResult.isError).toBeFalsy();
       const saved = JSON.parse(getFirstText(saveResult));
-      expect(saved.tiles[0].config.color).toBe('chart-success');
-      expect(saved.tiles[0].config.colorRules).toBeUndefined();
+      expect(saved.tiles[0].config).toMatchObject(sqlConfig);
+
+      const getResult = await callTool(
+        ctx.client!,
+        'clickstack_get_dashboard',
+        {
+          id: saved.id,
+        },
+      );
+      expect(getResult.isError).toBeFalsy();
+      const fetched = JSON.parse(getFirstText(getResult));
+      expect(fetched.tiles[0].config).toMatchObject(sqlConfig);
     });
 
     it('should round-trip number-tile backgroundChart through save and get', async () => {

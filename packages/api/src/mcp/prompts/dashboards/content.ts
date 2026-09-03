@@ -1060,7 +1060,7 @@ Colors are palette tokens, not hex. Order rules from least to most severe so the
     ]
   }
 
-colorRules is for number builder tiles only. Raw SQL number tiles (configType: "sql") support color but not colorRules.
+Both color and colorRules work on builder number tiles and on raw SQL number tiles (configType: "sql").
 
 == NUMBER TILE BACKGROUND CHART ==
 
