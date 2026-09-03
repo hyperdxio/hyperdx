@@ -2571,6 +2571,266 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
       });
     });
 
+    describe('static list filters', () => {
+      const staticFilter = (overrides: Record<string, unknown> = {}) => ({
+        type: 'STATIC_LIST' as const,
+        name: 'Environment',
+        options: ['prod', 'staging', 'dev'],
+        variableName: 'env',
+        ...overrides,
+      });
+
+      it('round-trips a static filter through create, get, and save', async () => {
+        const sourceId = ctx.traceSource._id.toString();
+
+        // Mode flags deliberately omitted: they default server-side.
+        const createResult = await callTool(
+          ctx.client!,
+          'clickstack_save_dashboard',
+          {
+            name: 'Static filter round-trip',
+            tiles: [traceTile(sourceId)],
+            filters: [staticFilter()],
+          },
+        );
+        expect(createResult.isError).toBeFalsy();
+        const created = JSON.parse(getFirstText(createResult));
+        expect(created.filters[0]).toMatchObject({
+          type: 'STATIC_LIST',
+          options: ['prod', 'staging', 'dev'],
+          isBroadcastEnabled: false,
+          isVariableEnabled: true,
+          variableName: 'env',
+        });
+        expect(created.filters[0].id).toBeDefined();
+
+        const getResult = await callTool(
+          ctx.client!,
+          'clickstack_get_dashboard',
+          { id: created.id },
+        );
+        const fetched = JSON.parse(getFirstText(getResult));
+        expect(fetched.filters[0]).toMatchObject({
+          type: 'STATIC_LIST',
+          options: ['prod', 'staging', 'dev'],
+          isBroadcastEnabled: false,
+          isVariableEnabled: true,
+          variableName: 'env',
+        });
+
+        // Feed the get response straight back in — this is the round-trip
+        // that a QUERY_EXPRESSION-only filter schema rejected.
+        const updateResult = await callTool(
+          ctx.client!,
+          'clickstack_save_dashboard',
+          {
+            id: created.id,
+            name: fetched.name,
+            tiles: [traceTile(sourceId)],
+            filters: fetched.filters,
+          },
+        );
+        expect(updateResult.isError).toBeFalsy();
+        const updated = JSON.parse(getFirstText(updateResult));
+        expect(updated.filters[0]).toMatchObject({
+          id: fetched.filters[0].id,
+          type: 'STATIC_LIST',
+          options: ['prod', 'staging', 'dev'],
+        });
+      });
+
+      it('derives the variable name from the display name when omitted', async () => {
+        const sourceId = ctx.traceSource._id.toString();
+        const result = await callTool(
+          ctx.client!,
+          'clickstack_save_dashboard',
+          {
+            name: 'Static derived variable name',
+            tiles: [traceTile(sourceId)],
+            filters: [
+              staticFilter({ name: 'Deploy Env', variableName: undefined }),
+            ],
+          },
+        );
+
+        expect(result.isError).toBeFalsy();
+        const created = JSON.parse(getFirstText(result));
+        expect(created.filters[0].variableName).toBe('Deploy_Env');
+      });
+
+      it('ignores mode flags passed on a static filter', async () => {
+        const sourceId = ctx.traceSource._id.toString();
+        const result = await callTool(
+          ctx.client!,
+          'clickstack_save_dashboard',
+          {
+            name: 'Broadcasting static filter',
+            tiles: [traceTile(sourceId)],
+            filters: [
+              staticFilter({
+                isBroadcastEnabled: true,
+                isVariableEnabled: false,
+              }),
+            ],
+          },
+        );
+
+        expect(result.isError).toBeFalsy();
+        const created = JSON.parse(getFirstText(result));
+        expect(created.filters[0]).toMatchObject({
+          isBroadcastEnabled: false,
+          isVariableEnabled: true,
+        });
+      });
+
+      it('rejects empty options', async () => {
+        const sourceId = ctx.traceSource._id.toString();
+        const result = await callTool(
+          ctx.client!,
+          'clickstack_save_dashboard',
+          {
+            name: 'Empty options',
+            tiles: [traceTile(sourceId)],
+            filters: [staticFilter({ options: [] })],
+          },
+        );
+
+        expect(result.isError).toBe(true);
+        expect(getFirstText(result)).toContain('options');
+      });
+
+      it('rejects duplicate options', async () => {
+        const sourceId = ctx.traceSource._id.toString();
+        const result = await callTool(
+          ctx.client!,
+          'clickstack_save_dashboard',
+          {
+            name: 'Duplicate options',
+            tiles: [traceTile(sourceId)],
+            filters: [staticFilter({ options: ['prod', 'prod'] })],
+          },
+        );
+
+        expect(result.isError).toBe(true);
+        expect(getFirstText(result)).toContain(
+          'repeats the option "prod"; options must be unique',
+        );
+      });
+
+      it('rejects a static and a query filter claiming the same variable name', async () => {
+        const sourceId = ctx.traceSource._id.toString();
+        const result = await callTool(
+          ctx.client!,
+          'clickstack_save_dashboard',
+          {
+            name: 'Cross-type duplicate variable names',
+            tiles: [traceTile(sourceId)],
+            filters: [
+              staticFilter(),
+              {
+                type: 'QUERY_EXPRESSION',
+                name: 'Environment (queried)',
+                expression: "ResourceAttributes['env']",
+                sourceId,
+                whereLanguage: 'sql',
+                isBroadcastEnabled: false,
+                isVariableEnabled: true,
+                variableName: 'env',
+              },
+            ],
+          },
+        );
+
+        expect(result.isError).toBe(true);
+        expect(getFirstText(result)).toContain(
+          'Variable names must be unique: "env"',
+        );
+      });
+
+      it('strips stray query-expression fields from a static filter', async () => {
+        const sourceId = ctx.traceSource._id.toString();
+        // The MCP members are non-strict like every other schema in the
+        // file, so a stray field is dropped rather than rejected.
+        const result = await callTool(
+          ctx.client!,
+          'clickstack_save_dashboard',
+          {
+            name: 'Static filter with stray fields',
+            tiles: [traceTile(sourceId)],
+            filters: [staticFilter({ expression: 'ServiceName', sourceId })],
+          },
+        );
+
+        expect(result.isError).toBeFalsy();
+        const created = JSON.parse(getFirstText(result));
+        expect(created.filters[0].expression).toBeUndefined();
+        expect(created.filters[0].sourceId).toBeUndefined();
+      });
+
+      it('does not warn about a tile referencing the static variable', async () => {
+        const sourceId = ctx.traceSource._id.toString();
+        const result = await callTool(
+          ctx.client!,
+          'clickstack_save_dashboard',
+          {
+            name: 'Tile references static variable',
+            tiles: [
+              {
+                name: 'Per-env count',
+                x: 0,
+                y: 0,
+                w: 6,
+                h: 3,
+                config: {
+                  displayType: 'line' as const,
+                  sourceId,
+                  select: [
+                    {
+                      aggFn: 'count' as const,
+                      where: "$__filter(ResourceAttributes['env'], $env)",
+                      whereLanguage: 'sql' as const,
+                    },
+                  ],
+                },
+              },
+            ],
+            filters: [staticFilter()],
+          },
+        );
+
+        expect(result.isError).toBeFalsy();
+        const created = JSON.parse(getFirstText(result));
+        expect(created.warnings ?? []).toEqual([]);
+      });
+
+      it('accepts a dependent filter chaining off a static variable', async () => {
+        const sourceId = ctx.traceSource._id.toString();
+        const result = await callTool(
+          ctx.client!,
+          'clickstack_save_dashboard',
+          {
+            name: 'Dependent filter on static variable',
+            tiles: [traceTile(sourceId)],
+            filters: [
+              staticFilter(),
+              {
+                type: 'QUERY_EXPRESSION',
+                name: 'Service',
+                expression: 'ServiceName',
+                sourceId,
+                whereLanguage: 'sql',
+                where: "$__filter(ResourceAttributes['env'], $env)",
+              },
+            ],
+          },
+        );
+
+        expect(result.isError).toBeFalsy();
+        const created = JSON.parse(getFirstText(result));
+        expect(created.warnings ?? []).toEqual([]);
+      });
+    });
+
     it('should round-trip a table tile that uses a having clause', async () => {
       // mcpTableTileSchema exposes `having` so the service_detail
       // example's "Top Error Messages" pattern (groupBy StatusMessage

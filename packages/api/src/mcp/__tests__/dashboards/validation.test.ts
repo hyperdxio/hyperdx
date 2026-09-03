@@ -566,39 +566,52 @@ describe('mcpFiltersParam variable fields', () => {
     });
   });
 
-  it.each([
-    ['a space', 'has space'],
-    ['a leading digit', '1service'],
-    ['a leading underscore', '_service'],
-    ['a dash', 'service-name'],
-  ])('rejects a variableName with %s', (_label, variableName) => {
-    const result = mcpFiltersParam.safeParse([
-      {
-        type: 'QUERY_EXPRESSION',
-        name: 'Service',
-        expression: 'ServiceName',
-        sourceId,
-        whereLanguage: 'sql',
-        isVariableEnabled: true,
-        variableName,
-      },
-    ]);
-    expect(result.success).toBe(false);
-  });
+  const filterWithVariableName = {
+    QUERY_EXPRESSION: (variableName: string) => ({
+      type: 'QUERY_EXPRESSION',
+      name: 'Service',
+      expression: 'ServiceName',
+      sourceId,
+      whereLanguage: 'sql',
+      isVariableEnabled: true,
+      variableName,
+    }),
+    STATIC_LIST: (variableName: string) => ({
+      type: 'STATIC_LIST',
+      name: 'Environment',
+      options: ['prod', 'staging'],
+      variableName,
+    }),
+  };
 
-  it('rejects a variableName over the length limit', () => {
-    const result = mcpFiltersParam.safeParse([
-      {
-        type: 'QUERY_EXPRESSION',
-        name: 'Service',
-        expression: 'ServiceName',
-        sourceId,
-        whereLanguage: 'sql',
-        isVariableEnabled: true,
-        variableName: `v${'a'.repeat(DASHBOARD_VARIABLE_NAME_MAX_LENGTH)}`,
-      },
-    ]);
-    expect(result.success).toBe(false);
+  describe.each(['QUERY_EXPRESSION', 'STATIC_LIST'] as const)('%s', type => {
+    it.each([
+      ['a space', 'has space'],
+      ['a leading digit', '1service'],
+      ['a leading underscore', '_service'],
+      ['a dash', 'service-name'],
+    ])('rejects a variableName with %s', (_label, variableName) => {
+      const result = mcpFiltersParam.safeParse([
+        filterWithVariableName[type](variableName),
+      ]);
+      expect(result.success).toBe(false);
+    });
+
+    it('rejects a variableName over the length limit', () => {
+      const result = mcpFiltersParam.safeParse([
+        filterWithVariableName[type](
+          `v${'a'.repeat(DASHBOARD_VARIABLE_NAME_MAX_LENGTH)}`,
+        ),
+      ]);
+      expect(result.success).toBe(false);
+    });
+
+    it('accepts a valid variableName', () => {
+      const parsed = mcpFiltersParam.parse([
+        filterWithVariableName[type]('my_var1'),
+      ]);
+      expect(parsed[0]).toMatchObject({ variableName: 'my_var1' });
+    });
   });
 
   it('accepts a filter that omits every variable field', () => {
@@ -611,8 +624,8 @@ describe('mcpFiltersParam variable fields', () => {
         whereLanguage: 'sql',
       },
     ]);
-    expect(parsed[0].isVariableEnabled).toBeUndefined();
-    expect(parsed[0].isBroadcastEnabled).toBeUndefined();
+    expect(parsed[0]).not.toHaveProperty('isVariableEnabled');
+    expect(parsed[0]).not.toHaveProperty('isBroadcastEnabled');
   });
 });
 

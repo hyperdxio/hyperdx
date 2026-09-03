@@ -1085,6 +1085,17 @@ export class ChartEditorComponent {
   }
 
   /**
+   * Set the "Legend template" value in the Display Settings drawer (PromQL
+   * charts only). Opens the drawer, fills the input, then applies and closes.
+   */
+  async setLegendTemplate(template: string) {
+    await this.openDisplaySettings();
+    const drawer = this.page.getByRole('dialog', { name: 'Display Settings' });
+    await drawer.getByTestId('legend-template-input').fill(template);
+    await this.applyDisplaySettings();
+  }
+
+  /**
    * Open the Display Settings drawer and wait for it to become visible.
    */
   async openDisplaySettings() {

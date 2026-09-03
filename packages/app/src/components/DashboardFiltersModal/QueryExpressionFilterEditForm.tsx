@@ -6,7 +6,10 @@ import {
   useWatch,
 } from 'react-hook-form';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
-import { hasFilterEffect } from '@hyperdx/common-utils/dist/filters';
+import {
+  hasFilterEffect,
+  QUERY_EXPRESSION_FILTER_SOURCE_KINDS,
+} from '@hyperdx/common-utils/dist/filters';
 import {
   DashboardFilter,
   MetricsDataType,
@@ -138,12 +141,7 @@ export const QueryExpressionFilterEditForm = ({
           onSchemaPreview={() => setIsSourceSchemaPreviewOpen(true)}
           isSchemaPreviewEnabled={isSourceSchemaPreviewEnabled(source)}
           disabled={!!presetSource}
-          allowedSourceKinds={[
-            SourceKind.Log,
-            SourceKind.Trace,
-            SourceKind.Session,
-            SourceKind.Metric,
-          ]}
+          allowedSourceKinds={QUERY_EXPRESSION_FILTER_SOURCE_KINDS}
         />
         <SourceSchemaPreview
           source={source}
@@ -244,12 +242,7 @@ export const QueryExpressionFilterEditForm = ({
               data-testid="applies-to-source-selector"
               comboboxProps={{ withinPortal: true }}
               placeholder="All sources"
-              allowedSourceKinds={[
-                SourceKind.Log,
-                SourceKind.Trace,
-                SourceKind.Session,
-                SourceKind.Metric,
-              ]}
+              allowedSourceKinds={QUERY_EXPRESSION_FILTER_SOURCE_KINDS}
             />
           </CustomInputWrapper>
         </Box>
