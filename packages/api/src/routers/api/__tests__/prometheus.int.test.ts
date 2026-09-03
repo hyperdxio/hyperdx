@@ -582,6 +582,39 @@ describe('prometheus router', () => {
       expect(requested.searchParams.get('timeout')).toBe('30s');
     });
 
+    // `stats` is `timeout`'s sibling in the allowlist -- covered separately
+    // so a regression dropping just `stats` (and not `timeout`) would still
+    // be caught.
+    it('forwards a request stats value, overriding one pinned on the connection host', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedPrometheusConnection(
+        team._id,
+        'http://prom.example.com?stats=all',
+      );
+
+      mockFetch.mockResolvedValueOnce(
+        fakeUpstreamResponse({
+          status: 'success',
+          data: { resultType: 'matrix', result: [] },
+        }),
+      );
+
+      await agent
+        .get('/v1/prometheus/query_range')
+        .query({
+          query: 'up',
+          start: '1700000000',
+          end: '1700000060',
+          step: '15s',
+          stats: 'none',
+          connectionId: conn._id.toString(),
+        })
+        .expect(200);
+
+      const requested = new URL(mockFetch.mock.calls[0][0] as string);
+      expect(requested.searchParams.get('stats')).toBe('none');
+    });
+
     // Unlike a real Prometheus API param, an arbitrary key the request
     // happens to also send (here VictoriaMetrics's own `extra_label`, which
     // a Connection host may pin as a tenant-isolation scope) must NOT be

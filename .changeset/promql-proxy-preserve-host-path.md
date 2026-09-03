@@ -31,3 +31,9 @@ carries. This also means a host copied with a stray query string (not just a
 stray path) now forwards its non-Prometheus keys upstream as a fallback on
 every request -- trim those too if they weren't intended as Prometheus API
 params.
+
+This is also a behavior change for a direct API caller (e.g. curl or
+Terraform) that previously relied on sending an arbitrary, non-Prometheus
+query param through this endpoint: that param is now silently dropped rather
+than forwarded, regardless of whether the Connection host carries anything
+under the same name.
