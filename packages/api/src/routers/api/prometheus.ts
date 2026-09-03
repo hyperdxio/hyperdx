@@ -264,29 +264,55 @@ async function proxyToPrometheus(
   try {
     url = joinPrometheusUpstreamUrl(upstreamHost, path);
   } catch (err) {
-    // The raw host is shown to the browser and may carry credentials.
-    // Surface the caught error's own message (e.g. "Connection host must be
-    // http(s)") instead of a single generic string, so a wrong scheme isn't
-    // reported identically to a host that fails to parse at all.
+    // Not echoing `upstreamHost` at all -- a redaction regex on an arbitrary
+    // (possibly malformed, since this is the failure branch) string can
+    // always be wrong for some shape (e.g. a `/` preceding the credentials).
+    // `err.message` is always safe to show: it's either this function's own
+    // fixed "Connection host must be http(s)", or `URL`'s parse-failure
+    // message, which is the fixed string "Invalid URL" and never echoes the
+    // input (verified against Node's URL implementation).
     res.status(400).json({
       status: 'error',
       errorType: 'bad_data',
-      error: `Invalid Connection host ${JSON.stringify(redactHostUserinfo(upstreamHost))}: ${err instanceof Error ? err.message : String(err)}`,
+      error: `Invalid Connection host: ${err instanceof Error ? err.message : String(err)}`,
     });
     return 400;
   }
-  // Every param the request supplies wins outright, including repeatable
-  // ones like `match[]` -- so a Connection host can never silently override
-  // (or, for `match[]`, narrow) a value the caller or this proxy explicitly
-  // sets. A host-only param the request never mentions (e.g. VictoriaMetrics
-  // `?extra_label=namespace%3Dprod` pinning a tenant scope) is left as-is.
+  // Only real Prometheus API params are ever caller-settable. `params` is
+  // built upstream by spreading the *entire* `req.query`/`req.body` with no
+  // allowlist (see `getParams`), so without this, a request could supply an
+  // arbitrary key -- e.g. VictoriaMetrics's `extra_label`, which a Connection
+  // host may pin as a tenant-isolation scope -- and un-pin or override it,
+  // even though no legitimate caller ever sends that key.
+  //
+  // For a key in this set, the request always wins outright, including
+  // repeatable ones like `match[]` -- so a Connection host can never silently
+  // override (or, for `match[]`, narrow) a value the caller or this proxy
+  // explicitly sets. A host-only param outside this set (e.g. the
+  // `extra_label` example above) is left as-is.
+  const CALLER_SETTABLE_PARAM_KEYS = new Set([
+    'query',
+    'time',
+    'start',
+    'end',
+    'step',
+    'match',
+    'match[]',
+    'limit',
+  ]);
   for (const [k, v] of Object.entries(params)) {
-    if (['connectionId', 'database', 'table'].includes(k)) continue;
+    if (!CALLER_SETTABLE_PARAM_KEYS.has(k)) continue;
     if (v == null) continue;
     // Clear any host-pinned value at this key first: for a repeatable param
     // this prevents an `append` from leaving the host's value(s) alongside
-    // the request's rather than replacing them.
+    // the request's rather than replacing them. This also means a request's
+    // `limit=0` still clears a host-pinned `limit` (see below) even though
+    // it isn't itself re-set.
     url.searchParams.delete(k);
+    // Prometheus reads a limit of 0 as "unlimited", the same as omitting the
+    // key entirely -- forward that by omission too, rather than a literal
+    // "0", so upstream sees the same request shape it always has.
+    if (k === 'limit' && v === '0') continue;
     if (Array.isArray(v)) {
       for (const item of v) url.searchParams.append(k, item);
     } else {
@@ -921,7 +947,12 @@ router.get('/label/:name/values', async (req, res) => {
         {
           ...(start != null ? { start: String(start) } : {}),
           ...(end != null ? { end: String(end) } : {}),
-          ...(limit ? { limit: String(limit) } : {}),
+          // `limit` is 0 or absent when validation passes (see the schema
+          // above); 0 means "unlimited" to Prometheus and must still be
+          // forwarded (`v == null` is the merge loop's own absence check),
+          // otherwise a request explicitly asking for unlimited results
+          // silently loses to a host-pinned `limit`.
+          ...(limit != null ? { limit: String(limit) } : {}),
           // Restored under the name Prometheus expects
           ...(match != null ? { 'match[]': match } : {}),
         },

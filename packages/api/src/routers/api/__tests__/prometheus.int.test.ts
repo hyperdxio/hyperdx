@@ -291,16 +291,16 @@ describe('prometheus router', () => {
       expect(res.body).toMatchObject({
         status: 'error',
         errorType: 'bad_data',
-        error: expect.stringContaining('prometheus:9090'),
+        error: expect.stringContaining('http(s)'),
       });
       expect(mockFetch).not.toHaveBeenCalled();
     });
 
-    // Only the pure `redactHostUserinfo` helper is unit-tested for this --
-    // this pins the actual call site, so reverting the 400 branch to echo
-    // the raw host verbatim (as it did before the userinfo-redaction fix)
-    // would fail the suite.
-    it('redacts credentials from a scheme-less host in the 400 body', async () => {
+    // The 400 branch never echoes the Connection host at all (rather than
+    // trying to redact it), so this pins the actual call site: reverting to
+    // interpolate the raw host back in would fail the suite even though only
+    // the pure `redactHostUserinfo` helper is otherwise unit-tested.
+    it('never echoes the connection host (or any credentials in it) in the 400 body', async () => {
       const { agent, team } = await getLoggedInAgent(server);
       const conn = await seedPrometheusConnection(
         team._id,
@@ -319,7 +319,8 @@ describe('prometheus router', () => {
         .expect(400);
 
       expect(res.body.error).not.toContain('secret-password');
-      expect(res.body.error).toContain('prometheus:9090');
+      expect(res.body.error).not.toContain('prometheus:9090');
+      expect(res.body.error).toContain('http(s)');
       expect(mockFetch).not.toHaveBeenCalled();
     });
 
@@ -386,6 +387,38 @@ describe('prometheus router', () => {
       );
     });
 
+    // Every other userinfo test asserts what's redacted for *display* (the
+    // error bodies below). The actual outgoing `fetch` target must still
+    // carry real credentials, or authenticated Prometheus connections would
+    // silently stop authenticating.
+    it('still sends real credentials to the actual upstream fetch call', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedPrometheusConnection(
+        team._id,
+        'http://user:pw@prom.example.com',
+      );
+
+      mockFetch.mockResolvedValueOnce(
+        fakeUpstreamResponse({
+          status: 'success',
+          data: { resultType: 'matrix', result: [] },
+        }),
+      );
+
+      await agent
+        .get('/v1/prometheus/query_range')
+        .query({
+          query: 'up',
+          start: '1700000000',
+          end: '1700000060',
+          step: '15s',
+          connectionId: conn._id.toString(),
+        })
+        .expect(200);
+
+      expect(mockFetch.mock.calls[0][0] as string).toContain('user:pw@');
+    });
+
     it('leaves a host-pinned param untouched when the request never references it', async () => {
       const { agent, team } = await getLoggedInAgent(server);
       const conn = await seedPrometheusConnection(
@@ -416,12 +449,48 @@ describe('prometheus router', () => {
       expect(requested.searchParams.get('query')).toBe('up');
     });
 
-    // A host-pinned param the request DOES supply a value for must not
-    // silently win: a Connection host could otherwise override `query`,
-    // `match[]`, or `limit` and the caller would get a wrong answer with no
-    // error (e.g. a pinned `query=up` making every chart on that connection
-    // return the same series regardless of what was actually requested).
+    // A host-pinned Prometheus-native param the request DOES supply a value
+    // for must not silently win: a Connection host could otherwise override
+    // `query`, `match[]`, or `limit` and the caller would get a wrong answer
+    // with no error (e.g. a pinned `query=up` making every chart on that
+    // connection return the same series regardless of what was requested).
     it('lets a request query param override a same-named one pinned on the connection host', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedPrometheusConnection(
+        team._id,
+        'http://vmselect:8481/select/0/prometheus?query=host_pinned_query',
+      );
+
+      mockFetch.mockResolvedValueOnce(
+        fakeUpstreamResponse({
+          status: 'success',
+          data: { resultType: 'matrix', result: [] },
+        }),
+      );
+
+      await agent
+        .get('/v1/prometheus/query_range')
+        .query({
+          query: 'up',
+          start: '1700000000',
+          end: '1700000060',
+          step: '15s',
+          connectionId: conn._id.toString(),
+        })
+        .expect(200);
+
+      const requested = new URL(mockFetch.mock.calls[0][0] as string);
+      expect(requested.searchParams.get('query')).toBe('up');
+    });
+
+    // Unlike a real Prometheus API param, an arbitrary key the request
+    // happens to also send (here VictoriaMetrics's own `extra_label`, which
+    // a Connection host may pin as a tenant-isolation scope) must NOT be
+    // caller-overridable: `getParams` spreads the entire incoming
+    // query/body with no allowlist, so without restricting the merge to
+    // real Prometheus params, any request could un-pin a host's scoping
+    // param just by naming it.
+    it('does not let a request override a non-Prometheus param pinned on the connection host', async () => {
       const { agent, team } = await getLoggedInAgent(server);
       const conn = await seedPrometheusConnection(
         team._id,
@@ -449,7 +518,7 @@ describe('prometheus router', () => {
 
       const requested = new URL(mockFetch.mock.calls[0][0] as string);
       expect(requested.searchParams.get('extra_label')).toBe(
-        'namespace=other',
+        'namespace=prod',
       );
       expect(requested.searchParams.get('query')).toBe('up');
     });
@@ -707,6 +776,28 @@ describe('prometheus router', () => {
     it('drops a zero limit and still proxies', async () => {
       const { agent, team } = await getLoggedInAgent(server);
       const conn = await seedPrometheusConnection(team._id);
+
+      await agent
+        .get('/v1/prometheus/label/job/values')
+        .query({ connectionId: conn._id.toString(), limit: '0' })
+        .expect(200);
+
+      const requested = new URL(String(mockFetch.mock.calls[0][0]));
+      expect(requested.searchParams.has('limit')).toBe(false);
+    });
+
+    // `limit: '0'` is falsy, so a naive `limit ? {...} : {}` guard on the
+    // route drops it before it ever reaches proxyToPrometheus's merge loop --
+    // a host-pinned limit would then silently survive even though the
+    // request explicitly asked for "unlimited". Pin a non-zero limit on the
+    // host and confirm the request's 0 still clears it (rather than 0 itself
+    // reaching upstream, which the previous test guards separately).
+    it('lets a request limit of 0 clear a non-zero limit pinned on the connection host', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedPrometheusConnection(
+        team._id,
+        'http://prom.example.com?limit=100',
+      );
 
       await agent
         .get('/v1/prometheus/label/job/values')
