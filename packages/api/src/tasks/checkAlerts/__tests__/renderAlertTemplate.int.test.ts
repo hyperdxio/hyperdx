@@ -1,12 +1,14 @@
 import {
+  AlertChartConfig,
   AlertState,
   AlertThresholdType,
   DisplayType,
   SourceKind,
+  Tile,
 } from '@hyperdx/common-utils/dist/types';
 import mongoose from 'mongoose';
 
-import { makeChartConfig, makeTile } from '@/fixtures';
+import { makeTile } from '@/fixtures';
 import { AlertSource } from '@/models/alert';
 import type { IWebhook } from '@/models/webhook';
 import {
@@ -143,6 +145,7 @@ const makeTileView = (
     thresholdMax?: number;
     value?: number;
     group?: string;
+    tile?: Tile;
   } = {},
 ): AlertMessageTemplateDefaultView => ({
   alert: {
@@ -152,13 +155,13 @@ const makeTileView = (
     source: AlertSource.TILE,
     channel: { type: null },
     interval: '1m',
-    tileId: 'test-tile-id',
+    tileId: (overrides.tile ?? testTile).id,
   },
   dashboard: {
     _id: new mongoose.Types.ObjectId(),
     id: 'id-123',
     name: 'My Dashboard',
-    tiles: [testTile],
+    tiles: [overrides.tile ?? testTile],
     team: 'team-123' as any,
     tags: ['test'],
     createdAt: new Date(),
@@ -175,6 +178,33 @@ const makeTileView = (
 
 // An inline alert carries its own chart config, either builder (`where`) or
 // raw SQL (`sqlTemplate`) — the two places its query can live.
+const makeInlineChartConfig = (
+  query: { where: string } | { sqlTemplate: string },
+): AlertChartConfig =>
+  'sqlTemplate' in query
+    ? {
+        name: 'Inline SQL',
+        configType: 'sql',
+        connection: 'connection-123',
+        displayType: DisplayType.Line,
+        sqlTemplate: query.sqlTemplate,
+      }
+    : {
+        name: 'Inline Chart',
+        source: 'fake-source-id',
+        displayType: DisplayType.Line,
+        select: [
+          {
+            aggFn: 'count',
+            aggCondition: '',
+            aggConditionLanguage: 'lucene',
+            valueExpression: '',
+          },
+        ],
+        where: query.where,
+        whereLanguage: 'lucene',
+      };
+
 const makeInlineView = (
   query: { where: string } | { sqlTemplate: string },
 ): AlertMessageTemplateDefaultView => ({
@@ -184,22 +214,7 @@ const makeInlineView = (
     source: AlertSource.INLINE,
     channel: { type: null },
     interval: '1m',
-    chartConfig:
-      'sqlTemplate' in query
-        ? // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-          ({
-            name: 'Inline SQL',
-            configType: 'sql',
-            connection: 'connection-123',
-            displayType: DisplayType.Line,
-            sqlTemplate: query.sqlTemplate,
-          } as any)
-        : // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-          ({
-            ...makeChartConfig(),
-            name: 'Inline Chart',
-            where: query.where,
-          } as any),
+    chartConfig: makeInlineChartConfig(query),
   },
   attributes: {},
   granularity: '5 minute',
@@ -561,16 +576,12 @@ describe('enriched message fields', () => {
 
   it('reads sourceQuery from the tile a dashboard alert points at', async () => {
     const tile = makeTile({ id: 'queried-tile' });
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    (tile.config as any).where = 'ServiceName: "checkout"';
-    const base = makeTileView();
+    tile.config = makeInlineChartConfig({ where: 'ServiceName: "checkout"' });
 
-    const { dispatched } = await renderView(AlertState.ALERT, {
-      ...base,
-      alert: { ...base.alert, tileId: tile.id },
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      dashboard: { ...base.dashboard, tiles: [tile] } as any,
-    });
+    const { dispatched } = await renderView(
+      AlertState.ALERT,
+      makeTileView({ tile }),
+    );
 
     expect(dispatched[0].message).toMatchObject({
       alertType: 'dashboard_chart',
