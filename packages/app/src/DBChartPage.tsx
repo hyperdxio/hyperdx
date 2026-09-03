@@ -43,6 +43,7 @@ import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
 import { useLocalStorage } from '@/utils';
 import { buildInlineAlertPayload } from '@/utils/alerts';
+import { getApiErrorMessage } from '@/utils/apiErrors';
 
 import OnboardingModal from './components/OnboardingModal';
 
@@ -301,8 +302,10 @@ function DBChartExplorerPage() {
         notifications.show({
           color: 'red',
           title: 'Error creating alert',
-          message:
-            error instanceof Error ? error.message : 'Failed to create alert.',
+          // The API validates more than the editor can (raw SQL templates,
+          // source/connection ownership, formula references), so its reason is
+          // usually the only thing that says what to fix.
+          message: await getApiErrorMessage(error, 'Failed to create alert.'),
           autoClose: 5000,
         });
       }
