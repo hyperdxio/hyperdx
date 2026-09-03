@@ -254,10 +254,8 @@ const convertToExternalTileChartConfig = (
           sqlTemplate: config.sqlTemplate,
           sourceId: config.source,
           numberFormat: config.numberFormat,
-          // Raw SQL number tiles carry the static tile color too (no
-          // colorRules; see the schema). Normalize a legacy token saved
-          // before the hue rename to its hue name on output.
           color: resolveChartPaletteToken(config.color),
+          colorRules: toExternalColorRules(config.colorRules),
         };
       case DisplayType.Pie:
         return {
@@ -726,11 +724,13 @@ export function convertToInternalTileConfig(
             externalConfig.displayType === 'table'
               ? externalConfig.onClick
               : undefined,
-          // Only the raw SQL number variant carries `color`; table and pie
-          // do not expose it. `_.omitBy(_.isNil)` below drops it when absent.
           color:
             externalConfig.displayType === 'number'
               ? externalConfig.color
+              : undefined,
+          colorRules:
+            externalConfig.displayType === 'number'
+              ? externalConfig.colorRules
               : undefined,
         } satisfies RawSqlSavedChartConfig;
         break;

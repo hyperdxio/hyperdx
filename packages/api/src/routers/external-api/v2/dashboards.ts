@@ -1299,9 +1299,16 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *               example: "number"
  *             color:
  *               $ref: '#/components/schemas/ChartPaletteToken'
+ *               description: Optional static color applied to the displayed number.
+ *             colorRules:
+ *               type: array
+ *               maxItems: 10
  *               description: >
- *                 Optional static color applied to the displayed number. Raw
- *                 SQL number tiles do not support conditional colorRules.
+ *                 Ordered conditional color rules evaluated against the displayed
+ *                 value (last match wins). Falls back to color, then the default
+ *                 text color when no rule matches.
+ *               items:
+ *                 $ref: '#/components/schemas/NumberTileColorCondition'
  *
  *     PieRawSqlChartConfig:
  *       description: Raw SQL configuration for a pie chart.

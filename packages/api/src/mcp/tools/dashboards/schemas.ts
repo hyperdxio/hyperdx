@@ -127,8 +127,12 @@ const numberTileColorRulesDescription =
 const rawSqlNumberTileColorDescription =
   'Static color for the displayed number, as a palette token such as ' +
   '"chart-blue" or "chart-success". Valid only when displayType is ' +
-  '"number", ignored otherwise. Raw SQL number tiles do not support ' +
-  'conditional colorRules.';
+  '"number", ignored otherwise. Applied unless a colorRules entry matches ' +
+  'the value.';
+
+const rawSqlNumberTileColorRulesDescription =
+  `${numberTileColorRulesDescription} Valid only when displayType is ` +
+  '"number", ignored otherwise.';
 
 const numberTileBackgroundChartDescription =
   'Optional background trend sparkline drawn behind the number, derived ' +
@@ -1052,6 +1056,11 @@ GROUP BY ServiceName, ts
     color: ChartPaletteTokenSchema.optional().describe(
       rawSqlNumberTileColorDescription,
     ),
+    colorRules: z
+      .array(NumberTileColorConditionSchema)
+      .max(10)
+      .optional()
+      .describe(rawSqlNumberTileColorRulesDescription),
     onClick: mcpOnClickSchema.optional(),
   }),
 });
