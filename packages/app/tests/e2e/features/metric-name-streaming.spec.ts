@@ -5,30 +5,7 @@ import {
   E2E_CLICKHOUSE_DATABASE,
   E2E_METRICS_GAUGE_TABLE,
 } from '../utils/constants';
-
-const CLICKHOUSE_HOST =
-  process.env.CLICKHOUSE_HOST ||
-  `http://localhost:${process.env.HDX_E2E_CH_PORT || '20500'}`;
-
-async function clickhouseSelect(sql: string): Promise<string[]> {
-  const url = new URL(CLICKHOUSE_HOST);
-  url.searchParams.set('user', process.env.CLICKHOUSE_USER || 'default');
-  if (process.env.CLICKHOUSE_PASSWORD) {
-    url.searchParams.set('password', process.env.CLICKHOUSE_PASSWORD);
-  }
-
-  const response = await fetch(url.toString(), {
-    method: 'POST',
-    body: `${sql} FORMAT TSV`,
-    headers: { 'Content-Type': 'text/plain' },
-  });
-  if (!response.ok) {
-    throw new Error(
-      `ClickHouse query failed (${response.status}): ${await response.text()}`,
-    );
-  }
-  return (await response.text()).trim().split('\n').filter(Boolean);
-}
+import { clickhouseSelect } from '../utils/db-helpers';
 
 /**
  * The browse list is legitimately a subset — the index only records
@@ -94,6 +71,10 @@ test.describe('Metric name streaming', { tag: ['@charts'] }, () => {
       const browsed = await offeredGaugeNames();
       expect(browsed.length).toBeGreaterThan(0);
       expect(namesInTable).toEqual(expect.arrayContaining(browsed));
+      // Pins the index path: were the read to fail, the exhaustive fallback
+      // would list *more* names, including this one, and every other
+      // assertion here would still hold.
+      expect(browsed).not.toContain(missingFromIndex[0]);
       // Incomplete here, so the control must invite typing.
       await expect(metricSelect).toHaveAttribute(
         'placeholder',

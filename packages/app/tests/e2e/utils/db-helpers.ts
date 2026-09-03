@@ -70,3 +70,46 @@ use('hyperdx-e2e');
 db.teams.updateOne({}, { $set: { [${JSON.stringify(flagName)}]: ${JSON.stringify(value)} } });
 `);
 }
+
+const CLICKHOUSE_HOST =
+  process.env.CLICKHOUSE_HOST ||
+  `http://localhost:${process.env.HDX_E2E_CH_PORT || '20500'}`;
+
+/** ClickHouse HTTP endpoint with credentials, as the E2E stack exposes it. */
+function clickhouseUrl(): string {
+  const url = new URL(CLICKHOUSE_HOST);
+  url.searchParams.set('user', process.env.CLICKHOUSE_USER || 'default');
+  if (process.env.CLICKHOUSE_PASSWORD) {
+    url.searchParams.set('password', process.env.CLICKHOUSE_PASSWORD);
+  }
+  return url.toString();
+}
+
+/** Runs a statement, throwing on a non-2xx so a failed seed is not silent. */
+export async function clickhouseExec(sql: string): Promise<void> {
+  const response = await fetch(clickhouseUrl(), {
+    method: 'POST',
+    body: sql,
+    headers: { 'Content-Type': 'text/plain' },
+  });
+  if (!response.ok) {
+    throw new Error(
+      `ClickHouse query failed (${response.status}): ${await response.text()}`,
+    );
+  }
+}
+
+/** Runs a SELECT and returns one trimmed line per row (TSV). */
+export async function clickhouseSelect(sql: string): Promise<string[]> {
+  const response = await fetch(clickhouseUrl(), {
+    method: 'POST',
+    body: `${sql} FORMAT TSV`,
+    headers: { 'Content-Type': 'text/plain' },
+  });
+  if (!response.ok) {
+    throw new Error(
+      `ClickHouse query failed (${response.status}): ${await response.text()}`,
+    );
+  }
+  return (await response.text()).trim().split('\n').filter(Boolean);
+}

@@ -154,6 +154,10 @@ export function MetricNameSelect({
   const currentValue =
     metricName && metricType ? `${metricName}${SEPARATOR}${metricType}` : null;
 
+  // The browse path has no server-side truncation flag, but the render cap
+  // still hides options once the index yields more than one page of them.
+  const exceedsRenderCap = options.length > DEFAULT_METRIC_NAMES_LIMIT;
+
   return (
     <Select
       disabled={isLoading || isError}
@@ -196,7 +200,7 @@ export function MetricNameSelect({
       description={
         hasError
           ? 'Some metrics failed to load'
-          : isTruncated
+          : isTruncated || exceedsRenderCap
             ? debouncedSearch
               ? `Showing the first ${DEFAULT_METRIC_NAMES_LIMIT} matches — refine your search`
               : 'Type to search all metrics'
