@@ -62,7 +62,8 @@ export function TileAlertEditor({
   setValue: UseFormSetValue<ChartEditorFormState>;
   alert: NonNullable<ChartEditorFormState['alert']>;
   dashboardId?: string;
-  onRemove: () => void;
+  /** Omit to hide the remove control, for surfaces that require an alert. */
+  onRemove?: () => void;
   error?: string;
   warning?: string;
   tooltip?: string;
@@ -143,17 +144,19 @@ export function TileAlertEditor({
         <Group gap="xs">
           {alertItem && <AlertHistoryCardList alert={alertItem} />}
           {alertItem && <AckAlert alert={alertItem} />}
-          <Tooltip label="Remove alert">
-            <ActionIcon
-              variant="danger"
-              color="red"
-              size="sm"
-              onClick={onRemove}
-              data-testid="remove-alert-button"
-            >
-              <IconTrash size={14} />
-            </ActionIcon>
-          </Tooltip>
+          {onRemove && (
+            <Tooltip label="Remove alert">
+              <ActionIcon
+                variant="danger"
+                color="red"
+                size="sm"
+                onClick={onRemove}
+                data-testid="remove-alert-button"
+              >
+                <IconTrash size={14} />
+              </ActionIcon>
+            </Tooltip>
+          )}
         </Group>
       </Group>
       <Collapse expanded={opened}>

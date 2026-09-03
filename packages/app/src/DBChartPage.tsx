@@ -1,12 +1,14 @@
-import { useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
+import Link from 'next/link';
 import { parseAsJson, useQueryState } from 'nuqs';
 import { useForm } from 'react-hook-form';
 import { useHotkeys } from 'react-hotkeys-hook';
 import { SavedChartConfig, SourceKind } from '@hyperdx/common-utils/dist/types';
 import {
   Alert,
+  Anchor,
   Box,
   Button,
   Collapse,
@@ -22,12 +24,14 @@ import {
   IconChevronUp,
   IconInfoCircle,
 } from '@tabler/icons-react';
+import { useQueryClient } from '@tanstack/react-query';
 
 import api from '@/api';
 import { DEFAULT_CHART_CONFIG } from '@/ChartUtils';
 import EditTimeChartForm from '@/components/DBEditTimeChartForm';
 import { InputControlled } from '@/components/InputControlled';
 import { SourceSelectControlled } from '@/components/SourceSelect';
+import { IS_ALERT_DETAILS_ENABLED } from '@/config';
 import { useChartAssistant } from '@/hooks/ai';
 import { useResolvedSourceParam } from '@/hooks/useResolvedSourceParam';
 import { withAppNav } from '@/layout';
@@ -35,6 +39,7 @@ import { useSources } from '@/source';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
 import { useLocalStorage } from '@/utils';
+import { buildInlineAlertPayload } from '@/utils/alerts';
 
 import OnboardingModal from './components/OnboardingModal';
 
@@ -218,6 +223,8 @@ function DBChartExplorerPage() {
   const submitRef = useRef<(() => void) | undefined>(undefined);
   const { data: sources } = useSources();
   const { data: me } = api.useMe();
+  const queryClient = useQueryClient();
+  const createAlert = api.useCreateAlert();
 
   const [rawChartConfig, setChartConfig] = useQueryState(
     'config',
@@ -235,6 +242,54 @@ function DBChartExplorerPage() {
     if (!rawChartConfig.source) return rawChartConfig;
     return { ...rawChartConfig, source: paramSource?.id ?? '' };
   }, [rawChartConfig, paramSource?.id]);
+
+  // Creates an alert that carries this chart's config (an inline alert), with
+  // no saved search or dashboard tile behind it. The alert is dropped from the
+  // explorer's config afterwards: it now lives on the alert document, and
+  // leaving it in the URL would offer to create a second copy.
+  const onSaveAlert = useCallback(
+    async (config: SavedChartConfig) => {
+      const payload = buildInlineAlertPayload(config);
+      if (payload == null) return;
+
+      try {
+        const { data: created } = await createAlert.mutateAsync(payload);
+        queryClient.invalidateQueries({ queryKey: api.getAlertsQueryKey() });
+        setChartConfig({ ...config, alert: undefined });
+        notifications.show({
+          color: 'green',
+          message: (
+            <>
+              Alert created.{' '}
+              <Anchor
+                component={Link}
+                href={
+                  IS_ALERT_DETAILS_ENABLED && created?.id
+                    ? `/alerts/${created.id}`
+                    : '/alerts'
+                }
+                inherit
+                underline="always"
+              >
+                View alert
+              </Anchor>
+            </>
+          ),
+          autoClose: 5000,
+        });
+      } catch (error) {
+        console.error('Failed to create alert:', error);
+        notifications.show({
+          color: 'red',
+          title: 'Error creating alert',
+          message:
+            error instanceof Error ? error.message : 'Failed to create alert.',
+          autoClose: 5000,
+        });
+      }
+    },
+    [createAlert, queryClient, setChartConfig],
+  );
 
   return (
     <Box data-testid="chart-explorer-page" p="sm">
@@ -261,6 +316,10 @@ function DBChartExplorerPage() {
         onTimeRangeSelect={onTimeRangeSelect}
         submitRef={submitRef}
         autoRun
+        enableAlerts
+        onSaveAlert={onSaveAlert}
+        saveAlertLabel="Create alert"
+        isSavingAlert={createAlert.isPending}
       />
     </Box>
   );

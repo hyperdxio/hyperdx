@@ -1,7 +1,10 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { pick } from 'lodash';
-import { isTimeSeriesDisplayType } from '@hyperdx/common-utils/dist/core/utils';
+import {
+  Granularity,
+  isTimeSeriesDisplayType,
+} from '@hyperdx/common-utils/dist/core/utils';
 import { getDashboardVariableDeclarations } from '@hyperdx/common-utils/dist/filters';
 import {
   isPromqlSavedChartConfig,
@@ -10,11 +13,14 @@ import {
 import {
   AlertSource,
   ChartConfigWithDateRange,
+  ChartVariable,
   DisplayType,
   getSampleWeightExpression,
   isLogSource,
   isTraceSource,
+  SavedChartConfig,
   SourceKind,
+  TSource,
 } from '@hyperdx/common-utils/dist/types';
 import { Anchor, Center, Paper, Skeleton, Text } from '@mantine/core';
 
@@ -110,6 +116,119 @@ function SavedSearchAlertChart({
   );
 }
 
+/**
+ * Assemble a renderable chart config from a saved chart config (a dashboard
+ * tile's, or an inline alert's persisted one) over the alert's window.
+ * Mirrors the dashboard Tile's assembly, and is shared by the tile and inline
+ * variants so the two previews cannot drift.
+ *
+ * Returns undefined when the config can't be charted here: PromQL (no alert
+ * support), a raw SQL config that isn't a time series, or a source that
+ * hasn't resolved.
+ */
+export function buildAlertChartConfig({
+  savedConfig,
+  source,
+  variables,
+  dateRange,
+  granularity,
+}: {
+  /**
+   * A dashboard tile's config, or an inline alert's persisted one — the
+   * latter is the former minus the embedded `alert`, so both fit here.
+   */
+  savedConfig: SavedChartConfig | undefined;
+  source: TSource | undefined;
+  variables: ChartVariable[];
+  dateRange: [Date, Date];
+  granularity: Granularity;
+}): ChartConfigWithDateRange | undefined {
+  if (!savedConfig || isPromqlSavedChartConfig(savedConfig)) {
+    return undefined;
+  }
+
+  // Raw SQL: only time-series display types can be charted over the alert
+  // window (mirrors what the alert task evaluates as a time series).
+  if (isRawSqlSavedChartConfig(savedConfig)) {
+    if (!isTimeSeriesDisplayType(savedConfig.displayType)) {
+      return undefined;
+    }
+    if (!savedConfig.source) {
+      return { ...savedConfig, dateRange, granularity, variables };
+    }
+    if (!source) {
+      return undefined;
+    }
+    return {
+      ...savedConfig,
+      variables,
+      ...pick(source, [
+        'implicitColumnExpression',
+        'useTextIndexForImplicitColumn',
+        'from',
+        'metricTables',
+      ]),
+      ...(isLogSource(source) ? { bodyExpression: source.bodyExpression } : {}),
+      sampleWeightExpression: getSampleWeightExpression(source),
+      dateRange,
+      granularity,
+    };
+  }
+
+  // Builder configs. Number tiles are rendered as a line chart here — the
+  // alert task evaluates them as a time series, and the threshold-over-time
+  // view is what matters.
+  if (!source?.connection) {
+    return undefined;
+  }
+  const isMetricSource = source.kind === SourceKind.Metric;
+  const firstSelect = savedConfig.select[0];
+  const metricType =
+    isMetricSource && typeof firstSelect !== 'string'
+      ? firstSelect?.metricType
+      : undefined;
+  const tableName = getMetricTableName(source, metricType);
+  return {
+    ...savedConfig,
+    variables,
+    displayType:
+      savedConfig.displayType === DisplayType.Number
+        ? DisplayType.Line
+        : savedConfig.displayType,
+    connection: source.connection,
+    dateRange,
+    granularity,
+    timestampValueExpression: source.timestampValueExpression,
+    from: {
+      databaseName: source.from?.databaseName || 'default',
+      tableName: tableName || '',
+    },
+    implicitColumnExpression:
+      isLogSource(source) || isTraceSource(source)
+        ? source.implicitColumnExpression
+        : undefined,
+    useTextIndexForImplicitColumn:
+      isLogSource(source) || isTraceSource(source)
+        ? source.useTextIndexForImplicitColumn
+        : undefined,
+    bodyExpression: isLogSource(source) ? source.bodyExpression : undefined,
+    sampleWeightExpression: getSampleWeightExpression(source),
+    metricTables: isMetricSource ? source.metricTables : undefined,
+  };
+}
+
+function useAlertReferenceLines(alert: AlertsPageItem) {
+  return React.useMemo(
+    () =>
+      getAlertReferenceLines({
+        threshold: alert.threshold,
+        thresholdMax: alert.thresholdMax,
+        thresholdType: alert.thresholdType,
+      }),
+    [alert.threshold, alert.thresholdMax, alert.thresholdType],
+  );
+}
+
 function TileAlertChart({
   alert,
   dateRange,
@@ -133,100 +252,23 @@ function TileAlertChart({
   });
 
   const granularity = intervalToGranularity(alert.interval);
-  const config = React.useMemo<ChartConfigWithDateRange | undefined>(() => {
-    if (!tile || isPromqlSavedChartConfig(tile.config)) {
-      return undefined;
-    }
-
-    // The alert (and its preview) runs with every dashboard variable in its empty state
-    const variables = getDashboardVariableDeclarations(dashboard?.filters).map(
-      declaration => ({
-        ...declaration,
-        values: [],
-      }),
-    );
-
-    // Raw SQL tiles: only time-series display types can be charted over the
-    // alert window (mirrors what the alert task evaluates as a time series).
-    if (isRawSqlSavedChartConfig(tile.config)) {
-      if (!isTimeSeriesDisplayType(tile.config.displayType)) {
-        return undefined;
-      }
-      if (!tile.config.source) {
-        return { ...tile.config, dateRange, granularity, variables };
-      }
-      if (!source) {
-        return undefined;
-      }
-      return {
-        ...tile.config,
-        variables,
-        ...pick(source, [
-          'implicitColumnExpression',
-          'useTextIndexForImplicitColumn',
-          'from',
-          'metricTables',
-        ]),
-        ...(isLogSource(source)
-          ? { bodyExpression: source.bodyExpression }
-          : {}),
-        sampleWeightExpression: getSampleWeightExpression(source),
+  const config = React.useMemo(
+    () =>
+      buildAlertChartConfig({
+        savedConfig: tile?.config,
+        source,
+        // The alert (and its preview) runs with every dashboard variable in
+        // its empty state.
+        variables: getDashboardVariableDeclarations(dashboard?.filters).map(
+          declaration => ({ ...declaration, values: [] }),
+        ),
         dateRange,
         granularity,
-      };
-    }
-
-    // Builder tiles (mirrors the dashboard Tile's config assembly). Number
-    // tiles are rendered as a line chart here — the alert task evaluates them
-    // as a time series, and the threshold-over-time view is what matters.
-    if (!source?.connection) {
-      return undefined;
-    }
-    const isMetricSource = source.kind === SourceKind.Metric;
-    const firstSelect = tile.config.select[0];
-    const metricType =
-      isMetricSource && typeof firstSelect !== 'string'
-        ? firstSelect?.metricType
-        : undefined;
-    const tableName = getMetricTableName(source, metricType);
-    return {
-      ...tile.config,
-      variables,
-      displayType:
-        tile.config.displayType === DisplayType.Number
-          ? DisplayType.Line
-          : tile.config.displayType,
-      connection: source.connection,
-      dateRange,
-      granularity,
-      timestampValueExpression: source.timestampValueExpression,
-      from: {
-        databaseName: source.from?.databaseName || 'default',
-        tableName: tableName || '',
-      },
-      implicitColumnExpression:
-        isLogSource(source) || isTraceSource(source)
-          ? source.implicitColumnExpression
-          : undefined,
-      useTextIndexForImplicitColumn:
-        isLogSource(source) || isTraceSource(source)
-          ? source.useTextIndexForImplicitColumn
-          : undefined,
-      bodyExpression: isLogSource(source) ? source.bodyExpression : undefined,
-      sampleWeightExpression: getSampleWeightExpression(source),
-      metricTables: isMetricSource ? source.metricTables : undefined,
-    };
-  }, [tile, source, dashboard?.filters, dateRange, granularity]);
-
-  const referenceLines = React.useMemo(
-    () =>
-      getAlertReferenceLines({
-        threshold: alert.threshold,
-        thresholdMax: alert.thresholdMax,
-        thresholdType: alert.thresholdType,
       }),
-    [alert.threshold, alert.thresholdMax, alert.thresholdType],
+    [tile, source, dashboard?.filters, dateRange, granularity],
   );
+
+  const referenceLines = useAlertReferenceLines(alert);
 
   if (isDashboardsLoading || (tileSourceId != null && isSourceLoading)) {
     return <Skeleton h={CHART_HEIGHT} w="100%" />;
@@ -257,6 +299,72 @@ function TileAlertChart({
 }
 
 /**
+ * An inline alert's chart, rendered from the config persisted on the alert
+ * itself — no dashboard or saved search to resolve. Only the single-alert
+ * response carries `chartConfig`, so a list-shaped alert falls through to the
+ * "can't be previewed" message.
+ */
+function InlineAlertChart({
+  alert,
+  dateRange,
+  alertUrl,
+}: {
+  alert: AlertsPageItem;
+  dateRange: [Date, Date];
+  alertUrl?: string;
+}) {
+  const annotations = useAlertAnnotations(alert._id, dateRange, true);
+  const chartConfig = alert.chartConfig;
+  const configSourceId = chartConfig?.source;
+  const { data: source, isLoading: isSourceLoading } = useSource({
+    id: configSourceId,
+  });
+
+  const granularity = intervalToGranularity(alert.interval);
+  const config = React.useMemo(
+    () =>
+      buildAlertChartConfig({
+        savedConfig: chartConfig,
+        source,
+        // Inline alerts have no dashboard, so no variables are in scope.
+        variables: [],
+        dateRange,
+        granularity,
+      }),
+    [chartConfig, source, dateRange, granularity],
+  );
+
+  const referenceLines = useAlertReferenceLines(alert);
+
+  if (configSourceId != null && isSourceLoading) {
+    return <Skeleton h={CHART_HEIGHT} w="100%" />;
+  }
+
+  if (!config) {
+    return (
+      <ChartFallback
+        alertUrl={alertUrl}
+        message="This alert's chart can't be previewed here."
+      />
+    );
+  }
+
+  return (
+    <ChartShell>
+      <DBTimeChart
+        sourceId={configSourceId ?? undefined}
+        showDisplaySwitcher={false}
+        showMVOptimizationIndicator={false}
+        showDateRangeIndicator={false}
+        referenceLines={referenceLines}
+        annotations={annotations}
+        config={config}
+      />
+    </ChartShell>
+  );
+}
+
+/**
  * The alert's underlying query charted over the selected time range, with
  * threshold reference lines and firing/recovery annotations.
  */
@@ -275,6 +383,15 @@ export function AlertDetailChart({
   if (alert.source === AlertSource.TILE) {
     return (
       <TileAlertChart alert={alert} dateRange={dateRange} alertUrl={alertUrl} />
+    );
+  }
+  if (alert.source === AlertSource.INLINE) {
+    return (
+      <InlineAlertChart
+        alert={alert}
+        dateRange={dateRange}
+        alertUrl={alertUrl}
+      />
     );
   }
   return (
