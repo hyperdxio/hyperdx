@@ -9,7 +9,10 @@ import {
   DashboardFilterValueSchema,
   DashboardSchema,
   DerivedColumnSchema,
+  MAX_LEGEND_TEMPLATE_LENGTH,
   MetricFormulaSchema,
+  PresetDashboard,
+  PresetDashboardFilterSchema,
   SavedChartConfigSchema,
 } from '@/types';
 
@@ -558,6 +561,200 @@ describe('DashboardFilterSchema variable fields', () => {
   });
 });
 
+// `DashboardFilterSchema` is a discriminated union, so most per-type rules are
+// structural and belong here. Only option *uniqueness* needs a refinement
+// (`validateDashboardFilterOptions`), covered in `dashboardValidation.test.ts`.
+describe('DashboardFilterSchema static-list variant', () => {
+  const staticFilter = {
+    id: 'f1',
+    type: 'STATIC_LIST' as const,
+    name: 'Environment',
+    options: ['prod', 'staging', 'dev'],
+    isBroadcastEnabled: false,
+    isVariableEnabled: true,
+    variableName: 'env',
+  };
+
+  it('parses a static-list filter and preserves the authored option order', () => {
+    const parsed = DashboardFilterSchema.parse(staticFilter);
+
+    expect(parsed).toEqual(staticFilter);
+    expect(parsed.type === 'STATIC_LIST' && parsed.options).toEqual([
+      'prod',
+      'staging',
+      'dev',
+    ]);
+  });
+
+  it('rejects an unknown filter type at the discriminator', () => {
+    const result = DashboardFilterSchema.safeParse({
+      ...staticFilter,
+      type: 'STATIC',
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]).toMatchObject({
+      code: 'invalid_union_discriminator',
+      path: ['type'],
+    });
+  });
+
+  it.each([
+    ['a missing option list', { options: undefined }],
+    ['an empty option list', { options: [] }],
+    ['an empty option', { options: ['prod', ''] }],
+  ])('rejects %s', (_label, overrides) => {
+    expect(
+      DashboardFilterSchema.safeParse({ ...staticFilter, ...overrides })
+        .success,
+    ).toBe(false);
+  });
+
+  // Bounds mirror `VariableFilterValueSchema`, so a selection can always hold
+  // whatever the option list offers.
+  it('rejects an option longer than a selection could carry', () => {
+    expect(
+      DashboardFilterSchema.safeParse({
+        ...staticFilter,
+        options: ['a'.repeat(10001)],
+      }).success,
+    ).toBe(false);
+    expect(
+      DashboardFilterSchema.safeParse({
+        ...staticFilter,
+        options: ['a'.repeat(10000)],
+      }).success,
+    ).toBe(true);
+  });
+
+  it('rejects more options than a selection could carry', () => {
+    const options = Array.from({ length: 1001 }, (_, i) => `option-${i}`);
+
+    expect(
+      DashboardFilterSchema.safeParse({ ...staticFilter, options }).success,
+    ).toBe(false);
+    expect(
+      DashboardFilterSchema.safeParse({
+        ...staticFilter,
+        options: options.slice(0, 1000),
+      }).success,
+    ).toBe(true);
+  });
+
+  // Variable-only by construction: with no expression there is nothing to
+  // broadcast into a WHERE clause, so the modes are literals rather than
+  // optional booleans.
+  it.each([
+    ['broadcast enabled', { isBroadcastEnabled: true }],
+    ['broadcast unset', { isBroadcastEnabled: undefined }],
+    ['variables disabled', { isVariableEnabled: false }],
+    ['variables unset', { isVariableEnabled: undefined }],
+  ])('rejects a static filter with %s', (_label, overrides) => {
+    const result = DashboardFilterSchema.safeParse({
+      ...staticFilter,
+      ...overrides,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0].path).toEqual([Object.keys(overrides)[0]]);
+  });
+
+  // Not strict, on purpose: these variants parse unvalidated Mongo documents,
+  // where a key left behind by an older version must not make template export
+  // throw. The external API's variants *are* strict and reject it — see
+  // `dashboards.int.test.ts`.
+  it('strips a query-expression field rather than rejecting it', () => {
+    const parsed = DashboardFilterSchema.parse({
+      ...staticFilter,
+      expression: 'ServiceName',
+      source: 'source-1',
+      where: "ServiceName = 'api'",
+      appliesToSourceIds: ['source-1'],
+    });
+
+    expect(parsed).toEqual(staticFilter);
+  });
+});
+
+describe('DashboardFilterSchema query-expression variant', () => {
+  const queryFilter = {
+    id: 'f1',
+    type: 'QUERY_EXPRESSION' as const,
+    name: 'Service',
+    expression: 'ServiceName',
+    source: 'source-1',
+  };
+
+  it.each(['expression', 'source'] as const)(
+    'requires a non-empty %s',
+    field => {
+      for (const value of [undefined, '']) {
+        expect(
+          DashboardFilterSchema.safeParse({ ...queryFilter, [field]: value })
+            .success,
+        ).toBe(false);
+      }
+    },
+  );
+
+  it('strips an option list, which this type has no use for', () => {
+    expect(
+      DashboardFilterSchema.parse({ ...queryFilter, options: ['prod'] }),
+    ).toEqual(queryFilter);
+  });
+
+  // Unlike the static variant these stay optional booleans: a filter written
+  // before either field existed broadcasts, and must keep parsing.
+  it('accepts a filter carrying neither mode flag', () => {
+    expect(DashboardFilterSchema.parse(queryFilter)).toEqual(queryFilter);
+  });
+});
+
+// Preset dashboards are broadcast-only, so the preset schema extends the
+// query-expression variant rather than the union — a static filter is
+// unrepresentable rather than rejected by a refinement.
+describe('PresetDashboardFilterSchema', () => {
+  const presetFilter = {
+    id: 'f1',
+    type: 'QUERY_EXPRESSION' as const,
+    name: 'Service',
+    expression: 'ServiceName',
+    source: 'source-1',
+    presetDashboard: PresetDashboard.Services,
+  };
+
+  it('accepts a query-expression preset filter', () => {
+    expect(PresetDashboardFilterSchema.parse(presetFilter)).toEqual(
+      presetFilter,
+    );
+  });
+
+  it('rejects a static-list preset filter', () => {
+    const result = PresetDashboardFilterSchema.safeParse({
+      id: 'f1',
+      type: 'STATIC_LIST',
+      name: 'Environment',
+      options: ['prod'],
+      isBroadcastEnabled: false,
+      isVariableEnabled: true,
+      presetDashboard: PresetDashboard.Services,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0].path).toEqual(['type']);
+  });
+
+  // The Mongoose model requires both, so the schema has to as well.
+  it.each(['expression', 'source'] as const)('requires %s', field => {
+    expect(
+      PresetDashboardFilterSchema.safeParse({
+        ...presetFilter,
+        [field]: undefined,
+      }).success,
+    ).toBe(false);
+  });
+});
+
 describe('DashboardFilterValueSchema', () => {
   it('accepts the legacy condition-carrying entries', () => {
     for (const entry of [
@@ -706,5 +903,29 @@ describe('formulas on saved chart configs', () => {
     });
 
     expect(parsed).not.toHaveProperty('formulas');
+  });
+});
+
+describe('PromQL legend templates on saved chart configs', () => {
+  const promqlConfig = (legendTemplate: string) => ({
+    configType: 'promql' as const,
+    promqlExpression: 'up',
+    connection: 'conn-1',
+    legendTemplate,
+  });
+
+  // The editor rejects an over-long template inline using the same constant;
+  // if these drift, a template the editor accepts fails the dashboard save.
+  it('caps legendTemplate at MAX_LEGEND_TEMPLATE_LENGTH', () => {
+    expect(
+      SavedChartConfigSchema.safeParse(
+        promqlConfig('a'.repeat(MAX_LEGEND_TEMPLATE_LENGTH)),
+      ).success,
+    ).toBe(true);
+    expect(
+      SavedChartConfigSchema.safeParse(
+        promqlConfig('a'.repeat(MAX_LEGEND_TEMPLATE_LENGTH + 1)),
+      ).success,
+    ).toBe(false);
   });
 });

@@ -9,7 +9,6 @@ import {
   ChartPaletteTokenSchema,
   DASHBOARD_CONTAINER_ID_MAX,
   DASHBOARD_MAX_TILES,
-  DashboardFilterSchema,
   MAX_TAG_LENGTH,
   MAX_TAGS,
   MetricFormulaSchema,
@@ -19,8 +18,11 @@ import {
   OnClickDashboardSchema,
   OnClickExternalSchema,
   OnClickSearchSchema,
+  PromqlLabelDashboardFilterSchema,
+  QueryExpressionDashboardFilterSchema,
   scheduleStartAtSchema,
   SearchConditionLanguageSchema as whereLanguageSchema,
+  StaticListDashboardFilterSchema,
   tagsSchema,
   validateAlertChannelSelection,
   validateAlertScheduleOffsetMinutes,
@@ -140,18 +142,49 @@ const chartSeriesSchema = z.discriminatedUnion('type', [
 // while the canonical definition lives in the shared package.
 export { MAX_TAG_LENGTH, MAX_TAGS, tagsSchema };
 
-export const externalDashboardFilterSchemaWithId = DashboardFilterSchema.omit({
+const externalQueryExpressionFilterShape =
+  QueryExpressionDashboardFilterSchema.omit({ source: true }).extend({
+    sourceId: objectIdSchema,
+  });
+
+// A static filter's mode flags each accept exactly one value, so callers may
+// omit them and get that value.
+const externalStaticListFilterShape = StaticListDashboardFilterSchema.extend({
+  isBroadcastEnabled: z.literal(false).default(false),
+  isVariableEnabled: z.literal(true).default(true),
+});
+
+const externalPromqlLabelFilterShape = PromqlLabelDashboardFilterSchema.omit({
   source: true,
-})
-  .extend({ sourceId: objectIdSchema })
-  .strict();
+}).extend({
+  sourceId: objectIdSchema,
+  isBroadcastEnabled: z.literal(false).default(false),
+  isVariableEnabled: z.literal(true).default(true),
+});
+
+export const externalDashboardFilterSchemaWithId = z.discriminatedUnion(
+  'type',
+  [
+    externalQueryExpressionFilterShape.strict(),
+    externalStaticListFilterShape.strict(),
+    externalPromqlLabelFilterShape.strict(),
+  ],
+);
 
 export type ExternalDashboardFilterWithId = z.infer<
   typeof externalDashboardFilterSchemaWithId
 >;
 
-export const externalDashboardFilterSchema =
-  externalDashboardFilterSchemaWithId.omit({ id: true });
+export type ExternalQueryExpressionFilterWithId = Extract<
+  ExternalDashboardFilterWithId,
+  { type: 'QUERY_EXPRESSION' }
+>;
+
+export const externalDashboardFilterSchema = z.discriminatedUnion('type', [
+  externalQueryExpressionFilterShape.omit({ id: true }).strict(),
+  externalStaticListFilterShape.omit({ id: true }).strict(),
+  externalPromqlLabelFilterShape.omit({ id: true }).strict(),
+]);
 
 export type ExternalDashboardFilter = z.infer<
   typeof externalDashboardFilterSchema

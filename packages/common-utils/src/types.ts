@@ -1670,6 +1670,8 @@ const RawSqlChartConfigSchema = RawSqlBaseChartConfigSchema.extend({
 
 export type RawSqlChartConfig = z.infer<typeof RawSqlChartConfigSchema>;
 
+export const MAX_LEGEND_TEMPLATE_LENGTH = 1024;
+
 /** Base schema for PromQL chart configs (persisted fields) */
 const PromqlBaseChartConfigSchema = SharedChartSettingsSchema.extend({
   configType: z.literal('promql'),
@@ -1677,6 +1679,7 @@ const PromqlBaseChartConfigSchema = SharedChartSettingsSchema.extend({
   connection: z.string(),
   source: z.string().optional(),
   step: z.string().optional(),
+  legendTemplate: z.string().max(MAX_LEGEND_TEMPLATE_LENGTH).optional(),
 });
 
 /** Schema describing PromQL chart configs with runtime-only fields */
@@ -1892,7 +1895,12 @@ export const DashboardContainerSchema = z.object({
 
 export type DashboardContainer = z.infer<typeof DashboardContainerSchema>;
 
-export const DashboardFilterType = z.enum(['QUERY_EXPRESSION']);
+/** Type of dashboard filter, determining how its dropdown values are populated. */
+export const DashboardFilterType = z.enum([
+  'QUERY_EXPRESSION',
+  'STATIC_LIST',
+  'PROMETHEUS_LABEL',
+]);
 
 /** Allowed variable names for dashboard filters. Alphanumeric + underscore, must start with a letter. */
 export const DASHBOARD_VARIABLE_NAME_PATTERN = '[a-zA-Z][a-zA-Z0-9_]*';
@@ -1900,32 +1908,12 @@ export const DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED = new RegExp(
   `^${DASHBOARD_VARIABLE_NAME_PATTERN}$`,
 );
 export const DASHBOARD_VARIABLE_NAME_MAX_LENGTH = 64;
+export const DASHBOARD_STATIC_FILTER_MAX_OPTIONS = 1000;
 
-export const DashboardFilterSchema = z.object({
+/** Fields carried by every dashboard filter, whatever its type. */
+const dashboardFilterBaseSchema = z.object({
   id: z.string(),
-  type: DashboardFilterType,
   name: z.string().min(1),
-  expression: z.string().min(1),
-  source: z.string().min(1),
-  sourceMetricType: z.nativeEnum(MetricsDataType).optional(),
-  where: z.string().optional(),
-  whereLanguage: SearchConditionTrimmedLanguageSchema,
-  // Sources this filter applies to. Undefined / missing means the filter
-  // applies to all tiles.
-  appliesToSourceIds: z.array(z.string().min(1)).optional(),
-  /**
-   * Whether the selected value is applied as a filter condition on matching
-   * tiles. Undefined / missing means ENABLED — every filter that predates this
-   * field broadcasts, and that must not change. Read it through
-   * `isFilterBroadcastEnabled` rather than defaulting at each call site.
-   */
-  isBroadcastEnabled: z.boolean().optional(),
-  /**
-   * Whether the selected value is exposed to tile queries as `$variableName`.
-   * Undefined / missing means DISABLED. Ignored while the dashboard-variables
-   * feature is off.
-   */
-  isVariableEnabled: z.boolean().optional(),
   /**
    * Token that tiles reference as `$variableName`. Defaults to the filter's display
    * name with illegal characters replaced by dashes (`deriveVariableName`).
@@ -1938,15 +1926,92 @@ export const DashboardFilterSchema = z.object({
     .optional(),
 });
 
+/**
+ * A filter whose dropdown values are queried from ClickHouse: `expression`
+ * names the column, `source` the table, and the selection can be broadcast
+ * into matching tiles' `WHERE` clauses.
+ */
+export const QueryExpressionDashboardFilterSchema =
+  dashboardFilterBaseSchema.extend({
+    type: z.literal(DashboardFilterType.enum.QUERY_EXPRESSION),
+    expression: z.string().min(1),
+    source: z.string().min(1),
+    sourceMetricType: z.nativeEnum(MetricsDataType).optional(),
+    where: z.string().optional(),
+    whereLanguage: SearchConditionTrimmedLanguageSchema,
+    // Sources this filter applies to. Undefined / missing means the filter
+    // applies to all tiles.
+    appliesToSourceIds: z.array(z.string().min(1)).optional(),
+    /**
+     * Whether the selected value is applied as a filter condition on matching
+     * tiles. Undefined / missing means ENABLED — every filter that predates this
+     * field broadcasts, and that must not change. Read it through
+     * `isFilterBroadcastEnabled` rather than defaulting at each call site.
+     */
+    isBroadcastEnabled: z.boolean().optional(),
+    /**
+     * Whether the selected value is exposed to tile queries as `$variableName`.
+     * Undefined / missing means DISABLED. Ignored while the dashboard-variables
+     * feature is off.
+     */
+    isVariableEnabled: z.boolean().optional(),
+  });
+
+/** A filter whose dropdown offers a hand-authored list. */
+export const StaticListDashboardFilterSchema = dashboardFilterBaseSchema.extend(
+  {
+    type: z.literal(DashboardFilterType.enum.STATIC_LIST),
+    options: z
+      .array(z.string().min(1).max(10000))
+      .min(1)
+      .max(DASHBOARD_STATIC_FILTER_MAX_OPTIONS),
+    isBroadcastEnabled: z.literal(false),
+    isVariableEnabled: z.literal(true),
+  },
+);
+
+/** Sanity bound on a persisted label name; Prometheus itself imposes no limit. */
+export const PROMETHEUS_LABEL_NAME_MAX_LENGTH = 1024;
+
+/** A filter whose dropdown lists the values of a Prometheus label */
+export const PromqlLabelDashboardFilterSchema =
+  dashboardFilterBaseSchema.extend({
+    type: z.literal(DashboardFilterType.enum.PROMETHEUS_LABEL),
+    /** ID of a PromQL source to query */
+    source: z.string().min(1),
+    /** Label whose values populate the dropdown. */
+    label: z.string().min(1).max(PROMETHEUS_LABEL_NAME_MAX_LENGTH),
+    // Variable-only: there is no SQL expression to broadcast
+    isBroadcastEnabled: z.literal(false),
+    isVariableEnabled: z.literal(true),
+  });
+
+export const DashboardFilterSchema = z.discriminatedUnion('type', [
+  QueryExpressionDashboardFilterSchema,
+  StaticListDashboardFilterSchema,
+  PromqlLabelDashboardFilterSchema,
+]);
+
+export type QueryExpressionDashboardFilter = z.infer<
+  typeof QueryExpressionDashboardFilterSchema
+>;
+export type StaticListDashboardFilter = z.infer<
+  typeof StaticListDashboardFilterSchema
+>;
+export type PromqlLabelDashboardFilter = z.infer<
+  typeof PromqlLabelDashboardFilterSchema
+>;
 export type DashboardFilter = z.infer<typeof DashboardFilterSchema>;
 
 export enum PresetDashboard {
   Services = 'services',
 }
 
-export const PresetDashboardFilterSchema = DashboardFilterSchema.extend({
-  presetDashboard: z.nativeEnum(PresetDashboard),
-});
+/** Preset-dashboard filters are broadcast-only, and therefore do not support static value filters. */
+export const PresetDashboardFilterSchema =
+  QueryExpressionDashboardFilterSchema.extend({
+    presetDashboard: z.nativeEnum(PresetDashboard),
+  });
 
 export type PresetDashboardFilter = z.infer<typeof PresetDashboardFilterSchema>;
 

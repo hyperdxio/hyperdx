@@ -430,6 +430,69 @@ describe('renderAlertTemplate', () => {
   });
 });
 
+// The enriched fields are what a receiver routes and dedupes on, so they have
+// to survive the render, not just the variable builder in isolation.
+describe('enriched message fields', () => {
+  const renderWithWebhook = async (
+    state: AlertState,
+    viewOverrides: Parameters<typeof makeSearchView>[0] = {},
+  ) => {
+    const webhook = castWebhook({
+      _id: new mongoose.Types.ObjectId(),
+      team: new mongoose.Types.ObjectId(),
+      service: 'slack',
+      name: 'enriched-hook',
+      url: 'https://hooks.slack.com/services/x',
+    });
+    const { dispatcher, dispatched } = makeRecordingDispatcher();
+    const base = makeSearchView(viewOverrides);
+
+    const result = await renderAlertTemplate({
+      alertProvider,
+      clickhouseClient: mockClickhouseClient,
+      metadata: mockMetadata,
+      state,
+      template: null,
+      title: 'Test Alert Title',
+      view: {
+        ...base,
+        alert: {
+          ...base.alert,
+          channel: { type: 'webhook', webhookId: webhook._id.toString() },
+          channels: [{ type: 'webhook', webhookId: webhook._id.toString() }],
+        },
+      },
+      teamId: TEST_TEAM_ID,
+      teamWebhooksById: new Map([[webhook._id.toString(), webhook]]),
+      dispatcher,
+    });
+    return { dispatched, result };
+  };
+
+  it('carries the alert identity and condition onto the dispatched job', async () => {
+    const { dispatched, result } = await renderWithWebhook(AlertState.ALERT, {
+      group: 'http',
+    });
+
+    expect(result.failures).toEqual([]);
+    expect(dispatched[0].message).toMatchObject({
+      status: 'firing',
+      alertType: 'search',
+      comparator: '>=',
+      threshold: 5,
+      groupKey: 'http',
+      sourceQuery: 'Body: "error"',
+      teamId: TEST_TEAM_ID,
+    });
+  });
+
+  it('reports a resolve as resolved', async () => {
+    const { dispatched } = await renderWithWebhook(AlertState.OK);
+
+    expect(dispatched[0].message).toMatchObject({ status: 'resolved' });
+  });
+});
+
 describe('buildAlertMessageTemplateTitle', () => {
   describe('saved search alerts', () => {
     describe('ALERT state', () => {

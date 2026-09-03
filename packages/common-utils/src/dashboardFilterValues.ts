@@ -1,6 +1,7 @@
 import {
   FilterState,
   filtersToQuery,
+  getFilterExpression,
   getFilterVariableName,
   isFilterVariableEnabled,
   parseQuery,
@@ -113,18 +114,22 @@ export function serializeDashboardFilterValues(input: {
  * has one, otherwise its SQL expression.
  */
 export function filterSelectionKey(
-  filter: Pick<
-    DashboardFilter,
-    'name' | 'expression' | 'variableName' | 'isVariableEnabled'
-  >,
+  filter: DashboardFilter,
 ):
   | { kind: 'variable'; name: string }
   | { kind: 'expression'; expression: string } {
+  const expression = getFilterExpression(filter);
+
+  if (expression == null) {
+    return { kind: 'variable', name: getFilterVariableName(filter) ?? '' };
+  }
+
   if (isFilterVariableEnabled(filter)) {
     const name = getFilterVariableName(filter);
     if (name) return { kind: 'variable', name };
   }
-  return { kind: 'expression', expression: filter.expression };
+
+  return { kind: 'expression', expression };
 }
 
 /**
@@ -134,10 +139,7 @@ export function filterSelectionKey(
  * the same filter, including when it holds no values.
  */
 export function resolveFilterSelection(
-  filter: Pick<
-    DashboardFilter,
-    'name' | 'expression' | 'variableName' | 'isVariableEnabled'
-  >,
+  filter: DashboardFilter,
   parsed: Pick<ParsedDashboardFilterValues, 'byExpression'> & {
     byVariable: ReadonlyMap<string, string[]>;
   },
@@ -152,5 +154,7 @@ export function resolveFilterSelection(
       };
     }
   }
-  return parsed.byExpression[filter.expression];
+  const expression = getFilterExpression(filter);
+  if (expression == null) return undefined;
+  return new Map(Object.entries(parsed.byExpression)).get(expression);
 }

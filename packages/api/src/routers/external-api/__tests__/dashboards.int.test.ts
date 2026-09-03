@@ -1872,7 +1872,7 @@ describe('External API v2 Dashboards - new format', () => {
   });
 
   const server = getServer();
-  let agent, team, user, traceSource, metricSource, connection;
+  let agent, team, user, traceSource, metricSource, promqlSource, connection;
 
   beforeAll(async () => {
     await server.start();
@@ -1920,6 +1920,18 @@ describe('External API v2 Dashboards - new format', () => {
       timestampValueExpression: 'TimeUnix',
       connection: connection._id,
       name: 'Metrics',
+    });
+
+    promqlSource = await Source.create({
+      kind: SourceKind.Promql,
+      team: team._id,
+      from: {
+        databaseName: DEFAULT_DATABASE,
+        tableName: 'otel_metrics_timeseries',
+      },
+      timestampValueExpression: 'TimeUnix',
+      connection: connection._id,
+      name: 'PromQL',
     });
   });
 
@@ -5551,6 +5563,277 @@ describe('External API v2 Dashboards - new format', () => {
         ]);
 
         expect(response.status).toBe(200);
+      });
+    });
+
+    describe('static-list filters', () => {
+      const staticFilterInput = (overrides = {}) => ({
+        id: new ObjectId().toString(),
+        type: 'STATIC_LIST' as const,
+        name: 'Environment',
+        options: ['prod', 'staging', 'dev'],
+        isBroadcastEnabled: false,
+        isVariableEnabled: true,
+        variableName: 'env',
+        ...overrides,
+      });
+
+      it('accepts a static-list filter and round-trips it through GET', async () => {
+        const response = await sendFilters([staticFilterInput()]);
+        expect(response.status).toBe(200);
+
+        const [filter] = response.body.data.filters;
+        expect(filter).toMatchObject({
+          type: 'STATIC_LIST',
+          name: 'Environment',
+          // Author order, not sorted.
+          options: ['prod', 'staging', 'dev'],
+          isBroadcastEnabled: false,
+          isVariableEnabled: true,
+          variableName: 'env',
+        });
+        // A sourceless filter emits no `sourceId` key at all rather than a
+        // null one, so the response body can be PUT straight back.
+        expect(filter).not.toHaveProperty('sourceId');
+        expect(filter).not.toHaveProperty('expression');
+
+        const getResponse = await authRequest(
+          'get',
+          `${BASE_URL}/${response.body.data.id}`,
+        ).expect(200);
+        expect(getResponse.body.data.filters).toEqual(
+          response.body.data.filters,
+        );
+      });
+
+      it('accepts a static filter alongside a queried one', async () => {
+        const response = await sendFilters([
+          filterInput(),
+          staticFilterInput(),
+        ]);
+
+        expect(response.status).toBe(200);
+        expect(response.body.data.filters).toHaveLength(2);
+      });
+
+      // Each mode flag accepts exactly one value, so omitting it fills that
+      // value in rather than falling back to the queried filter's defaults.
+      it('defaults the mode flags when they are omitted', async () => {
+        const response = await sendFilters([
+          staticFilterInput({
+            isBroadcastEnabled: undefined,
+            isVariableEnabled: undefined,
+          }),
+        ]);
+
+        expect(response.status).toBe(200);
+        expect(response.body.data.filters[0]).toMatchObject({
+          isBroadcastEnabled: false,
+          isVariableEnabled: true,
+          variableName: 'env',
+        });
+      });
+
+      it.each([
+        ['broadcast enabled', { isBroadcastEnabled: true }],
+        ['not variable-enabled', { isVariableEnabled: false }],
+        ['no options', { options: undefined }],
+        ['an empty option list', { options: [] }],
+        ['duplicate options', { options: ['prod', 'prod'] }],
+      ])('rejects a static filter with %s', async (_label, overrides) => {
+        const response = await sendFilters([staticFilterInput(overrides)]);
+
+        expect(response.status).toBe(400);
+      });
+
+      // Unlike the internal variants, which strip them, the external ones are
+      // strict: a field belonging to the other variant is an unrecognized key,
+      // named in the error.
+      it.each([
+        ['an expression', { expression: 'ServiceName' }],
+        ['a sourceId', { sourceId: '65f5e4a3b9e77c001a111111' }],
+        ['a where clause', { where: "ServiceName = 'api'" }],
+        ['a where language', { whereLanguage: 'sql' }],
+        [
+          'applies-to sources',
+          { appliesToSourceIds: ['65f5e4a3b9e77c001a111111'] },
+        ],
+      ])('rejects a static filter carrying %s', async (_label, overrides) => {
+        const response = await sendFilters([staticFilterInput(overrides)]);
+
+        expect(response.status).toBe(400);
+        expect(JSON.stringify(response.body)).toContain(
+          `Unrecognized key(s) in object: '${Object.keys(overrides)[0]}'`,
+        );
+      });
+
+      it('rejects options on a queried filter', async () => {
+        const response = await sendFilters([
+          filterInput({ options: ['prod'] }),
+        ]);
+
+        expect(response.status).toBe(400);
+        expect(JSON.stringify(response.body)).toContain(
+          "Unrecognized key(s) in object: 'options'",
+        );
+      });
+
+      it.each(['expression', 'sourceId'])(
+        'still rejects a queried filter with no %s',
+        async field => {
+          const response = await sendFilters([
+            filterInput({ [field]: undefined }),
+          ]);
+
+          expect(response.status).toBe(400);
+          expect(JSON.stringify(response.body)).toContain(field);
+        },
+      );
+
+      // A bogus type must not fall through to either variant.
+      it('rejects an unknown filter type at the discriminator', async () => {
+        const response = await sendFilters([
+          staticFilterInput({ type: 'STATIC' }),
+        ]);
+
+        expect(response.status).toBe(400);
+        expect(JSON.stringify(response.body)).toContain(
+          'Invalid discriminator value',
+        );
+      });
+    });
+
+    describe('promql-label filters', () => {
+      const promqlFilterInput = (overrides = {}) => ({
+        id: new ObjectId().toString(),
+        type: 'PROMETHEUS_LABEL' as const,
+        name: 'Pod',
+        sourceId: promqlSource._id.toString(),
+        label: 'pod',
+        isBroadcastEnabled: false,
+        isVariableEnabled: true,
+        variableName: 'pod',
+        ...overrides,
+      });
+
+      it('accepts a promql-label filter and round-trips it through GET', async () => {
+        const response = await sendFilters([promqlFilterInput()]);
+        expect(response.status).toBe(200);
+
+        const [filter] = response.body.data.filters;
+        expect(filter).toMatchObject({
+          type: 'PROMETHEUS_LABEL',
+          name: 'Pod',
+          sourceId: promqlSource._id.toString(),
+          label: 'pod',
+          isBroadcastEnabled: false,
+          isVariableEnabled: true,
+          variableName: 'pod',
+        });
+        // Stored internally as `source`; only `sourceId` is ever external.
+        expect(filter).not.toHaveProperty('source');
+        expect(filter).not.toHaveProperty('expression');
+
+        const getResponse = await authRequest(
+          'get',
+          `${BASE_URL}/${response.body.data.id}`,
+        ).expect(200);
+        expect(getResponse.body.data.filters).toEqual(
+          response.body.data.filters,
+        );
+      });
+
+      // Prometheus 3 allows UTF-8 label names, and a ClickHouse-backed source's
+      // tags hold whatever the collector ingested.
+      it('accepts a dotted OTel-shaped label', async () => {
+        const response = await sendFilters([
+          promqlFilterInput({ label: 'k8s.pod.name' }),
+        ]);
+
+        expect(response.status).toBe(200);
+        expect(response.body.data.filters[0].label).toBe('k8s.pod.name');
+      });
+
+      // Each mode flag accepts exactly one value, so omitting it fills that
+      // value in rather than falling back to the queried filter's defaults.
+      it('defaults the mode flags when they are omitted', async () => {
+        const response = await sendFilters([
+          promqlFilterInput({
+            isBroadcastEnabled: undefined,
+            isVariableEnabled: undefined,
+          }),
+        ]);
+
+        expect(response.status).toBe(200);
+        expect(response.body.data.filters[0]).toMatchObject({
+          isBroadcastEnabled: false,
+          isVariableEnabled: true,
+          variableName: 'pod',
+        });
+      });
+
+      // Resolving one of these reads the source's connection and db/table,
+      // which only a PromQL source carries. Mirrors the heatmap/formula gates.
+      it('rejects a source of the wrong kind', async () => {
+        const response = await sendFilters([
+          promqlFilterInput({ sourceId: traceSource._id.toString() }),
+        ]);
+
+        expect(response.status).toBe(400);
+        expect(JSON.stringify(response.body)).toContain(
+          `PROMETHEUS_LABEL filters require a PromQL source. The following source IDs are not PromQL sources: ${traceSource._id.toString()}`,
+        );
+      });
+
+      it('rejects a source that does not exist for the team', async () => {
+        const sourceId = new ObjectId().toString();
+        const response = await sendFilters([promqlFilterInput({ sourceId })]);
+
+        expect(response.status).toBe(400);
+        expect(JSON.stringify(response.body)).toContain(
+          `Could not find the following source IDs: ${sourceId}`,
+        );
+      });
+
+      it.each([
+        ['broadcast enabled', { isBroadcastEnabled: true }],
+        ['not variable-enabled', { isVariableEnabled: false }],
+        ['no label', { label: undefined }],
+        ['an empty label', { label: '' }],
+        ['no sourceId', { sourceId: undefined }],
+      ])('rejects a promql-label filter with %s', async (_label, overrides) => {
+        const response = await sendFilters([promqlFilterInput(overrides)]);
+
+        expect(response.status).toBe(400);
+      });
+
+      it.each([
+        ['an expression', { expression: 'ServiceName' }],
+        ['an option list', { options: ['prod'] }],
+        ['a source', { source: '65f5e4a3b9e77c001a111111' }],
+        [
+          'applies-to sources',
+          { appliesToSourceIds: ['65f5e4a3b9e77c001a111111'] },
+        ],
+      ])(
+        'rejects a promql-label filter carrying %s',
+        async (_label, overrides) => {
+          const response = await sendFilters([promqlFilterInput(overrides)]);
+
+          expect(response.status).toBe(400);
+          expect(JSON.stringify(response.body)).toContain(
+            `Unrecognized key(s) in object: '${Object.keys(overrides)[0]}'`,
+          );
+        },
+      );
+
+      it('rejects a label on a queried filter', async () => {
+        const response = await sendFilters([filterInput({ label: 'pod' })]);
+
+        expect(response.status).toBe(400);
+        expect(JSON.stringify(response.body)).toContain(
+          "Unrecognized key(s) in object: 'label'",
+        );
       });
     });
   });
