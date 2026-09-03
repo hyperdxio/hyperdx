@@ -199,6 +199,21 @@ const mcpNumberFormatSchema = z.object({
     .describe('Suffix appended to the value (e.g. " req/s")'),
 });
 
+/**
+ * The delta flag a select item resolves to, given that the tool accepts both
+ * spellings (`isDelta` and the REST dialect's `periodAggFn: 'delta'`). An
+ * explicit `isDelta` wins; `periodAggFn` only fills in when it is absent.
+ * Shared by the refinement and the transform so a body carrying both cannot
+ * validate as one value and persist as the other.
+ */
+const resolveIsDelta = (data: {
+  isDelta?: unknown;
+  periodAggFn?: unknown;
+}): boolean | undefined =>
+  typeof data.isDelta === 'boolean'
+    ? data.isDelta
+    : data.periodAggFn === 'delta' || undefined;
+
 const mcpTileSelectItemSchema = z
   .object({
     aggFn: AggregateFunctionSchema.describe(
@@ -273,6 +288,18 @@ const mcpTileSelectItemSchema = z
         'METRIC SOURCES ONLY (gauge metrics). When true, computes the Prometheus-style ' +
           'delta over each bucket. Default false.',
       ),
+    // The REST v2 dialect's spelling of the same flag. Accepted so a select
+    // item read back from the external API (or clickstack_get_alert /
+    // clickstack_get_dashboard, which emit the REST dialect) can be resent
+    // verbatim without silently clearing the delta flag; normalized onto
+    // `isDelta` in the transform below.
+    periodAggFn: z
+      .enum(['delta'])
+      .optional()
+      .describe(
+        'Alias for isDelta accepted for round-tripping configs read from ' +
+          'get tools: "delta" is equivalent to isDelta: true.',
+      ),
   })
   .superRefine((data, ctx) => {
     const narrow = {
@@ -281,7 +308,11 @@ const mcpTileSelectItemSchema = z
         typeof data.metricType === 'string' ? data.metricType : undefined,
       metricName:
         typeof data.metricName === 'string' ? data.metricName : undefined,
-      isDelta: typeof data.isDelta === 'boolean' ? data.isDelta : undefined,
+      // Must use the same precedence as the transform below, or a body
+      // spelling both flags (`isDelta: false` + `periodAggFn: 'delta'`) is
+      // validated as non-delta — passing the gauge-only rule — and then
+      // persisted as a delta.
+      isDelta: resolveIsDelta(data),
       level: typeof data.level === 'number' ? data.level : undefined,
       valueExpression:
         typeof data.valueExpression === 'string'
@@ -296,11 +327,24 @@ const mcpTileSelectItemSchema = z
       });
     }
   })
-  .transform(data =>
-    data.metricType && data.aggFn !== 'count' && !data.valueExpression
-      ? { ...data, valueExpression: 'Value' }
-      : data,
-  );
+  .transform(data => {
+    // Emit BOTH spellings, agreeing, so neither downstream consumer can lose
+    // the flag: MCP tiles are re-parsed through the external REST schema
+    // (createDashboardBodySchema / externalAlertChartConfigSchema), which
+    // knows only `periodAggFn` and strips `isDelta`, while direct MCP
+    // consumers read `isDelta`. Writing the resolved value to both also
+    // clears a stale `periodAggFn: 'delta'` when `isDelta: false` wins,
+    // which would otherwise persist a delta the refinement never checked.
+    const { isDelta: _isDelta, periodAggFn: _periodAggFn, ...rest } = data;
+    const withDelta = resolveIsDelta(data)
+      ? { ...rest, isDelta: true as const, periodAggFn: 'delta' as const }
+      : rest;
+    return withDelta.metricType &&
+      withDelta.aggFn !== 'count' &&
+      !withDelta.valueExpression
+      ? { ...withDelta, valueExpression: 'Value' }
+      : withDelta;
+  });
 
 // ─── Chart formulas ──────────────────────────────────────────────────────────
 
@@ -620,7 +664,7 @@ const mcpTileLayoutSchema = z.object({
     ),
 });
 
-const mcpLineTileSchema = mcpTileLayoutSchema.extend({
+export const mcpLineTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
     ...rejectedTileWhereFields,
     displayType: z.literal('line').describe('Line chart over time'),
@@ -666,7 +710,7 @@ const mcpLineTileSchema = mcpTileLayoutSchema.extend({
   }),
 });
 
-const mcpBarTileSchema = mcpTileLayoutSchema.extend({
+export const mcpBarTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
     ...rejectedTileWhereFields,
     displayType: z
@@ -736,7 +780,7 @@ const mcpTableTileSchema = mcpTileLayoutSchema.extend({
   }),
 });
 
-const mcpNumberTileSchema = mcpTileLayoutSchema.extend({
+export const mcpNumberTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
     ...rejectedTileWhereFields,
     displayType: z.literal('number').describe('Single aggregate scalar value'),
@@ -980,7 +1024,7 @@ const mcpMarkdownTileSchema = mcpTileLayoutSchema.extend({
   }),
 });
 
-const mcpSqlTileSchema = mcpTileLayoutSchema.extend({
+export const mcpSqlTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
     configType: z
       .literal('sql')

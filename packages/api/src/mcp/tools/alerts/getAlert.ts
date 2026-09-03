@@ -11,13 +11,14 @@ import { mcpUserError, validateObjectId } from '@/mcp/utils/errors';
 import Alert from '@/models/alert';
 import type { IDashboard } from '@/models/dashboard';
 import type { ISavedSearch } from '@/models/savedSearch';
-import { translateAlertDocumentToExternalAlert } from '@/utils/externalApi';
+import { translateAlertDocumentToExternalAlertWithChartConfig } from '@/routers/external-api/v2/utils/alertChartConfig';
 
 function deriveAlertName(alert: {
   name?: string | null;
   tileId?: string | null;
   savedSearch?: ISavedSearch | null;
   dashboard?: IDashboard | null;
+  chartConfig?: { name?: string } | null;
 }): string | null {
   // Prefer explicit alert name
   if (alert.name) {
@@ -27,6 +28,11 @@ function deriveAlertName(alert: {
   // Fall back to saved search name
   if (alert.savedSearch?.name) {
     return alert.savedSearch.name;
+  }
+
+  // Inline alerts: fall back to the persisted chart config's name
+  if (alert.chartConfig?.name) {
+    return alert.chartConfig.name;
   }
 
   // Fall back to dashboard tile name or dashboard name
@@ -118,7 +124,8 @@ export function registerGetAlert({
         return mcpUserError('Alert not found');
       }
 
-      const external = translateAlertDocumentToExternalAlert(alert);
+      const external =
+        translateAlertDocumentToExternalAlertWithChartConfig(alert);
 
       // Populate refs so deriveAlertName can fall back to the
       // saved search / dashboard name when the alert has no explicit name.
