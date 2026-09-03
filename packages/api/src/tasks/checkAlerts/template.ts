@@ -3,8 +3,11 @@ import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import { formatDate, objectHash } from '@hyperdx/common-utils/dist/core/utils';
 import {
+  isPromqlSavedChartConfig,
+  isRawSqlSavedChartConfig,
+} from '@hyperdx/common-utils/dist/guards';
+import {
   AlertChannelType,
-  AlertChartConfig,
   AlertThresholdType,
   ChartConfigWithOptDateRange,
   DisplayType,
@@ -107,21 +110,18 @@ const describeThreshold = (alert: AlertInput): string => {
     : `${alert.threshold}`;
 };
 
-// Each chart config kind states its query in a different field. Discriminated
-// on `configType` the same way isRawSqlSavedChartConfig does, inlined because
-// that guard narrows to a SavedChartConfig member and so cannot narrow the
-// builder branch of an AlertChartConfig.
-const describeChartConfigQuery = (
-  config: AlertChartConfig | SavedChartConfig,
-): string => {
-  if (!('configType' in config)) {
-    return config.where ?? '';
+// Each chart config kind states its query in a different field. Typed as
+// SavedChartConfig so the shared guards narrow: an AlertChartConfig is
+// assignable to it (its members are the tile config types minus the embedded
+// alert field), the same way buildAlertChartConfigFromSavedConfig takes one.
+const describeChartConfigQuery = (config: SavedChartConfig): string => {
+  if (isRawSqlSavedChartConfig(config)) {
+    return config.sqlTemplate ?? '';
   }
-  return (
-    (config.configType === 'sql'
-      ? config.sqlTemplate
-      : config.promqlExpression) ?? ''
-  );
+  if (isPromqlSavedChartConfig(config)) {
+    return config.promqlExpression ?? '';
+  }
+  return config.where ?? '';
 };
 
 // Only a saved-search alert states its query as `savedSearch.where`. A tile

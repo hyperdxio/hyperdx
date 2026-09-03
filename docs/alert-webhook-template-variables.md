@@ -52,6 +52,10 @@ number that may be absent. Compare against `undefined` rather than using
 Keep a newline or space between `{{/unless}}` and a closing `}` — Handlebars
 reads `}}}` as a triple-stache and fails to compile the template.
 
+The **Send test** button on the webhook form fills these variables with sample
+values, so a template that uses them can be checked before an alert fires. The
+sample is a `>=` alert, so `{{thresholdMax}}` is absent there.
+
 ## Example
 
 Routing by severity and deduping on the alert rather than the firing:

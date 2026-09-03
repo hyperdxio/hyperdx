@@ -135,6 +135,42 @@ describe('alerts router', () => {
     expect(allAlerts.body.data[0].threshold).toBe(10);
   });
 
+  it('clears thresholdMax when an alert is moved off a range comparator', async () => {
+    const dashboard = await agent
+      .post('/dashboards')
+      .send(MOCK_DASHBOARD)
+      .expect(200);
+    const alert = await agent
+      .post('/alerts')
+      .send({
+        ...makeAlertInput({
+          dashboardId: dashboard.body.id,
+          tileId: MOCK_TILES[0].id,
+          webhookId: webhook._id.toString(),
+        }),
+        thresholdType: AlertThresholdType.BETWEEN,
+        threshold: 5,
+        thresholdMax: 20,
+      })
+      .expect(200);
+    expect(alert.body.data.thresholdMax).toBe(20);
+
+    await agent
+      .put(`/alerts/${alert.body.data._id}`)
+      .send({
+        ...alert.body.data,
+        dashboardId: dashboard.body.id,
+        thresholdType: AlertThresholdType.ABOVE,
+        thresholdMax: undefined,
+      })
+      .expect(200);
+
+    const updated = await agent
+      .get(`/alerts/${alert.body.data._id}`)
+      .expect(200);
+    expect(updated.body.data.thresholdMax).toBeUndefined();
+  });
+
   it('returns channel.webhookId, name, and message in GET list and GET single', async () => {
     const dashboard = await agent
       .post('/dashboards')

@@ -4,6 +4,7 @@ import {
   validateRawSqlForAlert,
 } from '@hyperdx/common-utils/dist/core/utils';
 import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
+import { isRangeThresholdType } from '@hyperdx/common-utils/dist/types';
 import { groupBy } from 'lodash';
 import { Types } from 'mongoose';
 import { z } from 'zod';
@@ -253,7 +254,13 @@ export const makeAlert = (
     }),
     source: alert.source,
     threshold: alert.threshold,
-    thresholdMax: alert.thresholdMax,
+    // Omitted rather than set to undefined for a non-range comparator, so
+    // updateAlert can $unset the path. Writing null instead would surface on
+    // the create/update responses, which return the document directly, and a
+    // client round-tripping one back into an update would fail validation.
+    ...(isRangeThresholdType(alert.thresholdType) && {
+      thresholdMax: alert.thresholdMax,
+    }),
     thresholdType: alert.thresholdType,
     ...(userId && { createdBy: userId }),
 
@@ -301,12 +308,19 @@ export const updateAlert = async (
   alertInput: AlertInput,
 ) => {
   // should consider clearing AlertHistory when updating an alert?
+  // Mongoose drops an undefined key from an update rather than clearing the
+  // path, so an alert edited off `between` would keep its old upper bound and
+  // report a range condition it no longer has. $unset clears it.
+  const isRange = isRangeThresholdType(alertInput.thresholdType);
   return Alert.findOneAndUpdate(
     {
       _id: id,
       team: teamId,
     },
-    makeAlert(alertInput),
+    {
+      $set: makeAlert(alertInput),
+      ...(!isRange && { $unset: { thresholdMax: 1 } }),
+    },
     {
       returnDocument: 'after',
     },

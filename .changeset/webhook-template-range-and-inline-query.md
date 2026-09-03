@@ -13,3 +13,8 @@ and PromQL expression respectively.
 `{{thresholdMax}}` is gated on the comparator rather than read straight off the
 alert: switching an alert off a range comparator leaves the old bound on the
 document, and reporting it would advertise a range that no longer fires.
+
+Editing an alert off a range comparator now clears the stored `thresholdMax`
+instead of leaving the old bound on the document, where it was also served by
+the alerts APIs. The "Send test" payload carries sample values for the enriched
+variables, so a body template using them can be checked before an alert fires.
