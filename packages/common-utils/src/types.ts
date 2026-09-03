@@ -2532,6 +2532,11 @@ export const AlertsPageItemSchema = z.object({
   dashboardId: z.string().optional(),
   savedSearchId: z.string().optional(),
   tileId: z.string().optional(),
+  // Tile alerts only: set when the tile this alert watches cannot be
+  // addressed in generated Terraform, so the row's export action is withheld.
+  // Server-computed — `dashboard.tiles` below carries only this alert's own
+  // tile. See isTileAlertUnaddressable.
+  unaddressableTile: z.boolean().optional(),
   // Inline alerts: the persisted chart config. Only present on the
   // single-alert (detail) response — the unpaginated list omits it so every
   // alerts-page load doesn't carry every alert's full query definition.
@@ -2817,9 +2822,15 @@ export const IacImportManifestSchema = z.object({
   ),
   alerts: z.array(
     IacManifestEntrySchema.extend({
-      // Only saved-search alerts are modelled by the Terraform provider.
+      // The provider models saved-search and dashboard tile alerts, not
+      // inline ones, so the client needs the discriminator to filter.
       source: z.string().optional(),
       savedSearchId: z.string().optional(),
+      // Tile alerts only: set when the tile the alert watches has no unique,
+      // non-blank name, so the provider's `tile_ids` map cannot address it.
+      // Computed server-side — the tile lives on a dashboard this manifest
+      // may not even list. See isAddressableTile.
+      unaddressableTile: z.boolean().optional(),
     }),
   ),
   savedSearches: z.array(IacManifestEntrySchema),

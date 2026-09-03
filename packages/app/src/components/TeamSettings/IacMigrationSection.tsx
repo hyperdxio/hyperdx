@@ -139,7 +139,7 @@ export default function IacMigrationSection({
     [
       {
         count: alerts,
-        text: `${alerts} alert${alerts === 1 ? '' : 's'} — the provider only supports saved-search alerts.`,
+        text: `${alerts} alert${alerts === 1 ? '' : 's'} — the provider models saved-search and dashboard tile alerts, and an alerted tile needs a unique, non-blank name on a dashboard Terraform can own.`,
       },
       {
         count: dashboards,
@@ -159,7 +159,7 @@ export default function IacMigrationSection({
     {
       key: 'alerts',
       count: skippedAlerts,
-      text: `${skippedAlerts} alert${skippedAlerts === 1 ? '' : 's'} will be skipped — the Terraform provider only supports saved-search alerts.`,
+      text: `${skippedAlerts} alert${skippedAlerts === 1 ? '' : 's'} will be skipped — the Terraform provider models saved-search and dashboard tile alerts, and an alerted tile needs a unique, non-blank name on a dashboard Terraform can own.`,
     },
     {
       key: 'dashboards',

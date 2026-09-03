@@ -8,26 +8,107 @@ import { AlertSource, DisplayType, SourceKind } from './types';
 // disagree about what is eligible.
 
 /**
- * The provider models only saved-search alerts — a tile alert has no
- * corresponding resource, so offering one for import produces a command that
- * fails. Shared by the bulk export and the per-alert popover so the two cannot
- * disagree about what is eligible.
+ * The provider models saved-search alerts and — since 3.26.0 — dashboard tile
+ * alerts. An inline alert carries its own chart config, which
+ * `clickhouse_clickstack_alert` has no attributes for, so offering one produces
+ * a command that fails. Shared by the bulk export and the per-alert popover so
+ * the two cannot disagree about what is eligible.
  */
 export function isImportableAlert(alert: {
   source?: string;
   savedSearchId?: string;
+  /**
+   * Tile alerts only, and server-computed — see isTileAlertUnaddressable.
+   * Absent means addressable, so a response predating that check offers the
+   * alert; the cost is an import whose reference needs a hand fix, which is
+   * the lesser of the two failures during a rolling deploy.
+   */
+  unaddressableTile?: boolean;
 }): boolean {
+  if (alert.source === AlertSource.TILE) return !alert.unaddressableTile;
   // `source` is authoritative whenever it is set. The savedSearchId fallback
   // covers only legacy rows that predate the discriminator — it must NOT be an
   // unconditional `||`, because converting a saved-search alert to a tile alert
   // leaves the old savedSearch reference behind: `makeAlert` passes
   // `savedSearch: undefined` and Mongoose 6 deletes undefined keys from the
   // `$set` instead of clearing the field. A tile alert can therefore still
-  // report a savedSearchId, and the provider cannot model it.
+  // report a savedSearchId, and it must be judged by the tile rule above, not
+  // waved through as a saved-search alert.
   return (
     alert.source === AlertSource.SAVED_SEARCH ||
     (alert.source == null && !!alert.savedSearchId)
   );
+}
+
+/**
+ * `config.name` trimmed, or undefined when the tile has no usable one. Total
+ * over `config?: unknown` for the same reason isUnexportableTile is — `tiles`
+ * is a Mongoose `Mixed` array, so nothing guarantees a config, let alone a
+ * name.
+ *
+ * Trimmed rather than raw so `"Errors"` and `"Errors "` count as the same key.
+ * If the provider trims its `tile_ids` keys they collide, and treating them as
+ * distinct would offer a reference that cannot resolve; if it does not trim,
+ * the cost is withholding two alerts that would have worked. Wrong in the safe
+ * direction.
+ */
+function tileName(tile: { config?: unknown } | undefined): string | undefined {
+  const config = tile?.config;
+  if (config == null || typeof config !== 'object') return undefined;
+  const name = 'name' in config ? config.name : undefined;
+  if (typeof name !== 'string') return undefined;
+  const trimmed = name.trim();
+  return trimmed === '' ? undefined : trimmed;
+}
+
+/**
+ * True when a tile alert's tile can be addressed in generated Terraform.
+ *
+ * Tile ids are server-assigned, so the provider exposes them as a computed
+ * `tile_ids` map on `clickhouse_clickstack_dashboard`, keyed by tile name —
+ * and a tile whose name is blank or shared with another tile is absent from
+ * that map. An alert on one can only ever pin the literal id the server
+ * happens to hold today, which the next dashboard apply is free to re-mint,
+ * taking the alert with it. Not offered for import at all rather than offered
+ * with a caveat: the failure lands at apply time, on the alert, long after the
+ * export.
+ */
+export function isAddressableTile(
+  tiles: readonly { id?: string; config?: unknown }[] | undefined,
+  tileId: string | null | undefined,
+): boolean {
+  if (!tileId) return false;
+  // Array.isArray for the same reason as dashboardHasUnexportableTiles: a
+  // legacy Mixed row could hold something that is not an array.
+  const list = Array.isArray(tiles) ? tiles : [];
+  const name = tileName(list.find(t => t?.id === tileId));
+  if (name == null) return false;
+  return list.filter(t => tileName(t) === name).length === 1;
+}
+
+/**
+ * The whole tile-alert rule, in one place: the alert's dashboard has to exist,
+ * be one Terraform could own, and give the tile an addressable name.
+ *
+ * `provisioned` is here for the same reason isImportableDashboard rejects it —
+ * ProvisionDashboardsTask rewrites a provisioned dashboard's tiles wholesale,
+ * so the tile this alert is bound to can be replaced (and the server deletes a
+ * tile alert whose tile goes away) with Terraform none the wiser.
+ *
+ * Both the IaC manifest and the alerts listing compute this server-side; the
+ * client cannot, because neither response ships a dashboard's sibling tiles.
+ */
+export function isTileAlertUnaddressable(
+  dashboard:
+    | {
+        provisioned?: boolean;
+        tiles?: readonly { id?: string; config?: unknown }[];
+      }
+    | undefined,
+  tileId: string | null | undefined,
+): boolean {
+  if (dashboard == null) return true;
+  return !!dashboard.provisioned || !isAddressableTile(dashboard.tiles, tileId);
 }
 
 /**

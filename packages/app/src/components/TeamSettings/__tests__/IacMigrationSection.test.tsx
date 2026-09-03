@@ -43,7 +43,16 @@ const MANIFEST = {
       source: 'saved_search',
       savedSearchId: '4'.repeat(24),
     },
-    { id: '5'.repeat(24), source: 'tile' },
+    // Importable since provider 3.26.0.
+    { id: '5'.repeat(24), name: 'A2', source: 'tile' },
+    // Its tile has no unique, non-blank name, so the provider cannot address
+    // it — the server marks it and the export withholds it.
+    {
+      id: '7'.repeat(24),
+      name: 'A3',
+      source: 'tile',
+      unaddressableTile: true,
+    },
   ],
   savedSearches: [{ id: '4'.repeat(24), name: 'S1' }],
   sources: [],
@@ -105,7 +114,7 @@ describe('IacMigrationSection', () => {
     renderSection();
 
     expect(screen.getByText('Dashboards (2)')).toBeInTheDocument();
-    expect(screen.getByText('Alerts (2)')).toBeInTheDocument();
+    expect(screen.getByText('Alerts (3)')).toBeInTheDocument();
     expect(screen.getByText(/1 alert will be skipped/)).toBeInTheDocument();
   });
 
@@ -135,7 +144,13 @@ describe('IacMigrationSection', () => {
     // Team-scoped import ids — a ClickHouse Cloud service can back several
     // teams, so the resource id alone does not say which one to read.
     expect(content).toContain(`id = "${mockTeamId}/${'1'.repeat(24)}"`);
-    expect(content).not.toContain('5'.repeat(24)); // tile alert excluded
+    expect(content).toContain(
+      `to = clickhouse_clickstack_alert.alert_${'5'.repeat(24)}`,
+    );
+    // A tile alert in the file raises the provider floor to the version that
+    // models `source = "tile"`.
+    expect(content).toContain('version = ">= 3.26.0"');
+    expect(content).not.toContain('7'.repeat(24)); // unaddressable tile alert excluded
     expect(content).not.toContain('6'.repeat(24)); // connections not selected by default
   });
 
@@ -320,7 +335,7 @@ describe('IacMigrationSection', () => {
 
     for (const label of [
       /Dashboards \(2\)/,
-      /Alerts \(2\)/,
+      /Alerts \(3\)/,
       /Saved searches/,
     ]) {
       fireEvent.click(screen.getByLabelText(label));
