@@ -2,10 +2,17 @@ import {
   AlertState,
   AlertThresholdType,
   SourceKind,
+  Tile,
 } from '@hyperdx/common-utils/dist/types';
 import mongoose from 'mongoose';
 
-import { makeTile } from '@/fixtures';
+import {
+  makeAlertChartConfig,
+  makeRawSqlAlertChartConfig,
+  makeRawSqlAlertTile,
+  makeTile,
+  RAW_SQL_ALERT_TEMPLATE,
+} from '@/fixtures';
 import { AlertSource } from '@/models/alert';
 import type { IWebhook } from '@/models/webhook';
 import {
@@ -84,14 +91,21 @@ const mockClickhouseClient = {
 const startTime = new Date('2023-03-17T22:10:00.000Z');
 const endTime = new Date('2023-03-17T22:15:00.000Z');
 
+// Shared by the three view builders below, so a knob added for one is
+// accepted by renderWithWebhook's `makeView` parameter for all of them.
+type ViewOverrides = Partial<AlertMessageTemplateDefaultView> & {
+  thresholdType?: AlertThresholdType;
+  threshold?: number;
+  thresholdMax?: number;
+  value?: number;
+  group?: string;
+  where?: string;
+  rawSql?: boolean;
+  tile?: Tile;
+};
+
 const makeSearchView = (
-  overrides: Partial<AlertMessageTemplateDefaultView> & {
-    thresholdType?: AlertThresholdType;
-    threshold?: number;
-    thresholdMax?: number;
-    value?: number;
-    group?: string;
-  } = {},
+  overrides: ViewOverrides = {},
 ): AlertMessageTemplateDefaultView => ({
   alert: {
     thresholdType: overrides.thresholdType ?? AlertThresholdType.ABOVE,
@@ -136,13 +150,7 @@ const makeSearchView = (
 
 const testTile = makeTile({ id: 'test-tile-id' });
 const makeTileView = (
-  overrides: Partial<AlertMessageTemplateDefaultView> & {
-    thresholdType?: AlertThresholdType;
-    threshold?: number;
-    thresholdMax?: number;
-    value?: number;
-    group?: string;
-  } = {},
+  overrides: ViewOverrides = {},
 ): AlertMessageTemplateDefaultView => ({
   alert: {
     thresholdType: overrides.thresholdType ?? AlertThresholdType.ABOVE,
@@ -151,13 +159,13 @@ const makeTileView = (
     source: AlertSource.TILE,
     channel: { type: null },
     interval: '1m',
-    tileId: 'test-tile-id',
+    tileId: (overrides.tile ?? testTile).id,
   },
   dashboard: {
     _id: new mongoose.Types.ObjectId(),
     id: 'id-123',
     name: 'My Dashboard',
-    tiles: [testTile],
+    tiles: [overrides.tile ?? testTile],
     team: 'team-123' as any,
     tags: ['test'],
     createdAt: new Date(),
@@ -165,6 +173,32 @@ const makeTileView = (
   },
   attributes: {},
   granularity: '5 minute',
+  group: overrides.group,
+  isGroupedAlert: false,
+  startTime,
+  endTime,
+  value: overrides.value ?? 10,
+});
+
+const makeInlineView = (
+  overrides: ViewOverrides = {},
+): AlertMessageTemplateDefaultView => ({
+  alert: {
+    thresholdType: overrides.thresholdType ?? AlertThresholdType.ABOVE,
+    threshold: overrides.threshold ?? 5,
+    thresholdMax: overrides.thresholdMax,
+    source: AlertSource.INLINE,
+    channel: { type: null },
+    interval: '1m',
+    chartConfig: overrides.rawSql
+      ? makeRawSqlAlertChartConfig()
+      : makeAlertChartConfig({
+          sourceId: 'fake-source-id',
+          where: overrides.where ?? 'ServiceName: "checkout"',
+        }),
+  },
+  attributes: {},
+  granularity: '1m',
   group: overrides.group,
   isGroupedAlert: false,
   startTime,
@@ -435,7 +469,10 @@ describe('renderAlertTemplate', () => {
 describe('enriched message fields', () => {
   const renderWithWebhook = async (
     state: AlertState,
-    viewOverrides: Parameters<typeof makeSearchView>[0] = {},
+    viewOverrides: ViewOverrides = {},
+    makeView: (
+      overrides: ViewOverrides,
+    ) => AlertMessageTemplateDefaultView = makeSearchView,
   ) => {
     const webhook = castWebhook({
       _id: new mongoose.Types.ObjectId(),
@@ -445,7 +482,7 @@ describe('enriched message fields', () => {
       url: 'https://hooks.slack.com/services/x',
     });
     const { dispatcher, dispatched } = makeRecordingDispatcher();
-    const base = makeSearchView(viewOverrides);
+    const base = makeView(viewOverrides);
 
     const result = await renderAlertTemplate({
       alertProvider,
@@ -490,6 +527,86 @@ describe('enriched message fields', () => {
     const { dispatched } = await renderWithWebhook(AlertState.OK);
 
     expect(dispatched[0].message).toMatchObject({ status: 'resolved' });
+  });
+
+  it('carries both bounds of a range condition', async () => {
+    const { dispatched } = await renderWithWebhook(AlertState.ALERT, {
+      thresholdType: AlertThresholdType.BETWEEN,
+      threshold: 5,
+      thresholdMax: 20,
+      value: 12,
+    });
+
+    expect(dispatched[0].message).toMatchObject({
+      comparator: 'between',
+      threshold: 5,
+      thresholdMax: 20,
+    });
+  });
+
+  // Switching an alert off a range comparator leaves the old bound on the
+  // document, and reporting it would advertise a range that no longer fires.
+  it('drops a stale thresholdMax for a single-bound condition', async () => {
+    const { dispatched } = await renderWithWebhook(AlertState.ALERT, {
+      thresholdType: AlertThresholdType.ABOVE,
+      threshold: 5,
+      thresholdMax: 20,
+    });
+
+    expect(dispatched[0].message).toMatchObject({ comparator: '>=' });
+    expect(dispatched[0].message.thresholdMax).toBeUndefined();
+  });
+
+  it("reports an inline alert's query from its own chart config", async () => {
+    const { dispatched } = await renderWithWebhook(
+      AlertState.ALERT,
+      {},
+      makeInlineView,
+    );
+
+    expect(dispatched[0].message).toMatchObject({
+      alertType: 'inline_query',
+      sourceQuery: 'ServiceName: "checkout"',
+    });
+  });
+
+  it('reports the SQL of a raw SQL inline alert', async () => {
+    const { dispatched } = await renderWithWebhook(
+      AlertState.ALERT,
+      { rawSql: true },
+      makeInlineView,
+    );
+
+    expect(dispatched[0].message).toMatchObject({
+      alertType: 'inline_query',
+      sourceQuery: RAW_SQL_ALERT_TEMPLATE,
+    });
+  });
+
+  it("reports a tile alert's query from its tile", async () => {
+    const { dispatched } = await renderWithWebhook(
+      AlertState.ALERT,
+      { tile: makeTile({ id: 'tile-1', where: 'SeverityText: "error"' }) },
+      makeTileView,
+    );
+
+    expect(dispatched[0].message).toMatchObject({
+      alertType: 'dashboard_chart',
+      sourceQuery: 'SeverityText: "error"',
+    });
+  });
+
+  it('reports the SQL of a raw SQL tile alert', async () => {
+    const { dispatched } = await renderWithWebhook(
+      AlertState.ALERT,
+      { tile: makeRawSqlAlertTile({ id: 'tile-1' }) },
+      makeTileView,
+    );
+
+    expect(dispatched[0].message).toMatchObject({
+      alertType: 'dashboard_chart',
+      sourceQuery: RAW_SQL_ALERT_TEMPLATE,
+    });
   });
 });
 

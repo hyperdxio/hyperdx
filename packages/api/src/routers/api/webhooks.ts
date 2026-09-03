@@ -459,7 +459,12 @@ router.post(
         body,
       });
 
-      // Send test message
+      // Send test message. The enriched fields carry sample values so a body
+      // template that uses them renders the same shape here as it will on a
+      // real alert -- left unset, `{{threshold}}` and friends render empty and
+      // a correct template produces invalid JSON only on the test send.
+      // Deliberately a `>=` alert, so `thresholdMax` is absent the way it is
+      // for any non-range comparator.
       const testMessage = {
         hdxLink: 'https://hyperdx.io',
         title: 'Test Webhook from HyperDX',
@@ -468,6 +473,16 @@ router.post(
         endTime: Date.now(),
         state: AlertState.INSUFFICIENT_DATA,
         eventId: 'test-event-id',
+        alertId: 'test-alert-id',
+        status: 'no_data',
+        alertType: 'search',
+        comparator: '>=',
+        threshold: 10,
+        value: 42,
+        groupKey: '',
+        sourceQuery: 'level:error',
+        teamId: teamId.toString(),
+        note: '',
       };
 
       const testChannel = { type: 'webhook' as const, channel: testWebhook };

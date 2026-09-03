@@ -3,12 +3,17 @@ import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import { formatDate, objectHash } from '@hyperdx/common-utils/dist/core/utils';
 import {
+  isPromqlSavedChartConfig,
+  isRawSqlSavedChartConfig,
+} from '@hyperdx/common-utils/dist/guards';
+import {
   AlertChannelType,
   AlertThresholdType,
   ChartConfigWithOptDateRange,
   DisplayType,
   isRangeThresholdType,
   pickSampleWeightExpressionProps,
+  SavedChartConfig,
   SourceKind,
   zAlertChannelType,
 } from '@hyperdx/common-utils/dist/types';
@@ -103,6 +108,38 @@ const describeThreshold = (alert: AlertInput): string => {
   return isRangeThresholdType(alert.thresholdType)
     ? `${alert.threshold} and ${alert.thresholdMax ?? '?'}`
     : `${alert.threshold}`;
+};
+
+// Each chart config kind states its query in a different field. Typed as
+// SavedChartConfig so the shared guards narrow: an AlertChartConfig is
+// assignable to it (its members are the tile config types minus the embedded
+// alert field), the same way buildAlertChartConfigFromSavedConfig takes one.
+const describeChartConfigQuery = (config: SavedChartConfig): string => {
+  if (isRawSqlSavedChartConfig(config)) {
+    return config.sqlTemplate ?? '';
+  }
+  if (isPromqlSavedChartConfig(config)) {
+    return config.promqlExpression ?? '';
+  }
+  return config.where ?? '';
+};
+
+// Only a saved-search alert states its query as `savedSearch.where`. A tile
+// alert's lives on the dashboard tile and an inline alert's on the alert
+// itself, so both were reported as empty before.
+const describeSourceQuery = (
+  alert: AlertInput,
+  savedSearch?: ISavedSearch | null,
+  dashboard?: IDashboard | null,
+): string => {
+  if (alert.source === AlertSource.INLINE) {
+    return alert.chartConfig ? describeChartConfigQuery(alert.chartConfig) : '';
+  }
+  if (alert.source === AlertSource.TILE) {
+    const tile = dashboard?.tiles.find(t => t.id === alert.tileId);
+    return tile ? describeChartConfigQuery(tile.config) : '';
+  }
+  return savedSearch?.where ?? '';
 };
 
 // Mappings for the enriched webhook template variables. These turn internal
@@ -556,9 +593,16 @@ export const renderAlertTemplate = async ({
         alertType: alert.source ? ALERT_TYPE_BY_SOURCE[alert.source] : '',
         comparator: COMPARATOR_BY_THRESHOLD_TYPE[alert.thresholdType],
         threshold: alert.threshold,
+        // Gated on the comparator, not just read off the alert: nothing clears
+        // a persisted `thresholdMax` when an alert is switched off a range
+        // comparator, and a stale bound would advertise a range that no longer
+        // fires.
+        thresholdMax: isRangeThresholdType(alert.thresholdType)
+          ? alert.thresholdMax
+          : undefined,
         value,
         groupKey: group ?? '',
-        sourceQuery: savedSearch?.where ?? '',
+        sourceQuery: describeSourceQuery(alert, savedSearch, dashboard),
         teamId,
         note: alert.note ?? '',
       },
