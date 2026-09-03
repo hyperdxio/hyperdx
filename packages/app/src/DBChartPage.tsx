@@ -2,7 +2,7 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import Link from 'next/link';
-import { parseAsJson, useQueryState } from 'nuqs';
+import { parseAsJson, parseAsString, useQueryState } from 'nuqs';
 import { useForm } from 'react-hook-form';
 import { useHotkeys } from 'react-hotkeys-hook';
 import { SavedChartConfig, SourceKind } from '@hyperdx/common-utils/dist/types';
@@ -16,6 +16,8 @@ import {
   Group,
   Loader,
   Pill,
+  Skeleton,
+  Stack,
   Text,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
@@ -33,6 +35,7 @@ import { InputControlled } from '@/components/InputControlled';
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { IS_ALERT_DETAILS_ENABLED } from '@/config';
 import { useChartAssistant } from '@/hooks/ai';
+import { useAlertSeededChartConfig } from '@/hooks/useAlertSeededChartConfig';
 import { useResolvedSourceParam } from '@/hooks/useResolvedSourceParam';
 import { withAppNav } from '@/layout';
 import { useSources } from '@/source';
@@ -235,6 +238,22 @@ function DBChartExplorerPage() {
     }),
   );
 
+  // Opens the explorer on an inline alert's persisted query. `history:
+  // 'replace'` so the transient param doesn't leave a back-button step that
+  // would re-seed over the user's edits.
+  const [alertId, setAlertId] = useQueryState(
+    'alertId',
+    parseAsString.withOptions({ history: 'replace' }),
+  );
+  const clearAlertId = useCallback(() => {
+    setAlertId(null);
+  }, [setAlertId]);
+  const isSeedingFromAlert = useAlertSeededChartConfig({
+    alertId,
+    setChartConfig,
+    clearAlertId,
+  });
+
   // `config.source` accepts a source name as well as a source ID. Resolve to a source object here.
   const { source: paramSource } = useResolvedSourceParam(rawChartConfig.source);
 
@@ -303,24 +322,34 @@ function DBChartExplorerPage() {
         submitRef={submitRef}
         aiAssistantEnabled={me?.aiAssistantEnabled ?? false}
       />
-      <EditTimeChartForm
-        data-testid="chart-explorer-form"
-        chartConfig={chartConfig}
-        setChartConfig={config => {
-          setChartConfig(config);
-        }}
-        dateRange={searchedTimeRange}
-        setDisplayedTimeInputValue={setDisplayedTimeInputValue}
-        displayedTimeInputValue={displayedTimeInputValue}
-        onTimeRangeSearch={onSearch}
-        onTimeRangeSelect={onTimeRangeSelect}
-        submitRef={submitRef}
-        autoRun
-        enableAlerts
-        onSaveAlert={onSaveAlert}
-        saveAlertLabel="Create alert"
-        isSavingAlert={createAlert.isPending}
-      />
+      {/* Held back until an `alertId` seed resolves: the form auto-runs once
+          on mount, and mounting it early would run the default config and
+          then swap the query out from under the result. */}
+      {isSeedingFromAlert ? (
+        <Stack gap="md" data-testid="chart-explorer-loading">
+          <Skeleton h={32} w="40%" />
+          <Skeleton h={320} w="100%" />
+        </Stack>
+      ) : (
+        <EditTimeChartForm
+          data-testid="chart-explorer-form"
+          chartConfig={chartConfig}
+          setChartConfig={config => {
+            setChartConfig(config);
+          }}
+          dateRange={searchedTimeRange}
+          setDisplayedTimeInputValue={setDisplayedTimeInputValue}
+          displayedTimeInputValue={displayedTimeInputValue}
+          onTimeRangeSearch={onSearch}
+          onTimeRangeSelect={onTimeRangeSelect}
+          submitRef={submitRef}
+          autoRun
+          enableAlerts
+          onSaveAlert={onSaveAlert}
+          saveAlertLabel="Create alert"
+          isSavingAlert={createAlert.isPending}
+        />
+      )}
     </Box>
   );
 }

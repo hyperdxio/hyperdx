@@ -286,12 +286,15 @@ export function getDerivedAlertDisplayName(
 
 /**
  * URL of what the alert watches: the saved search, the dashboard tile, or —
- * for an inline alert — the chart explorer seeded with its persisted config.
- * Matches the link the alert notification sends (see the check-alerts task's
- * `buildChartExplorerLink`), so both land the user on the same chart.
+ * for an inline alert — the chart explorer opened on its persisted query.
  *
- * Empty for an inline alert read off the alerts list, which omits
- * `chartConfig`; callers already treat an empty url as "no source link".
+ * The inline link carries the alert's id rather than its config, because the
+ * alerts list response omits `chartConfig` and a row would otherwise have no
+ * link at all. The explorer resolves it (see `useAlertSeededChartConfig`),
+ * which also means the link opens the query as it stands now rather than a
+ * snapshot. The notification link inlines the config instead — it is built
+ * server-side, where there is no session to fetch with — but lands on the
+ * same chart.
  */
 export function getAlertSourceUrl(alert: AlertsPageItem): string {
   if (alert.source === AlertSource.TILE && alert.dashboard) {
@@ -300,11 +303,8 @@ export function getAlertSourceUrl(alert: AlertsPageItem): string {
   if (alert.source === AlertSource.SAVED_SEARCH && alert.savedSearch) {
     return `/search/${alert.savedSearchId}`;
   }
-  if (alert.source === AlertSource.INLINE && alert.chartConfig) {
-    const params = new URLSearchParams({
-      config: JSON.stringify(alert.chartConfig),
-    });
-    return `/chart?${params.toString()}`;
+  if (alert.source === AlertSource.INLINE) {
+    return `/chart?alertId=${alert._id}`;
   }
   return '';
 }
