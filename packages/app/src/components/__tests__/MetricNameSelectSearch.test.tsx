@@ -133,8 +133,8 @@ describe('MetricNameSelect', () => {
     ]);
   });
 
-  // An unconfigured kind resolves to an empty table name, which disables the
-  // query rather than emitting `FROM db.``` and failing on every render.
+  // An unconfigured kind resolves to an empty table name. The stream is never
+  // started for it at all, rather than started and disabled.
   it('does not query metric kinds the source has no table for', async () => {
     renderSelect();
 
@@ -142,8 +142,9 @@ describe('MetricNameSelect', () => {
     const tables = streamArgs().map(a => a.tableName);
 
     expect(tables).toContain('otel_metrics_gauge');
+    expect(tables).toContain('otel_metrics_sum');
+    expect(tables).not.toContain('');
     expect(tables).not.toContain(undefined);
-    expect(tables).toContain('');
   });
 
   it('sends the typed text as a server-side name pattern', async () => {
@@ -198,7 +199,19 @@ describe('MetricNameSelect', () => {
 
   // A failed kind is not retried, so without this its metrics would simply be
   // missing from a dropdown that looks perfectly healthy.
-  it('reports a metric kind that failed to load', () => {
+  it('reports a metric kind that failed to load', async () => {
+    // Both paths have to fail — a failed index read falls back to the scan.
+    streamDistinctIndexValues.mockImplementation(({ tableName }: any) =>
+      tableName === 'otel_metrics_sum'
+        ? {
+            [Symbol.asyncIterator]: () => ({
+              next: () => Promise.reject(new Error('no index')),
+            }),
+          }
+        : (async function* () {
+            yield ['up'];
+          })(),
+    );
     useGetMetricNames.mockImplementation(({ tableName }: any) =>
       tableName === 'otel_metrics_sum'
         ? { data: undefined, isError: true }
@@ -207,10 +220,21 @@ describe('MetricNameSelect', () => {
 
     renderSelect();
 
-    expect(screen.getByText('Some metrics failed to load')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.getByText('Some metrics failed to load'),
+      ).toBeInTheDocument(),
+    );
   });
 
-  it('tells the user to search when the catalog is truncated', () => {
+  it('tells the user to search when the catalog is truncated', async () => {
+    // Truncation comes from the exhaustive query, which browsing reaches only
+    // when the index cannot be read.
+    streamDistinctIndexValues.mockImplementation(() => ({
+      [Symbol.asyncIterator]: () => ({
+        next: () => Promise.reject(new Error('no index')),
+      }),
+    }));
     useGetMetricNames.mockImplementation(({ tableName }: any) => ({
       data: tableName ? { names: ['a'], truncated: true } : undefined,
     }));
@@ -218,7 +242,9 @@ describe('MetricNameSelect', () => {
     renderSelect();
 
     const input = screen.getByTestId('metric-name-selector');
-    expect(input).toHaveAccessibleDescription('Type to search all metrics');
+    await waitFor(() =>
+      expect(input).toHaveAccessibleDescription('Type to search all metrics'),
+    );
     // Under the input, so appearing mid-session cannot push the input down out
     // of alignment with the browse-metrics button beside it.
     const notice = screen.getByText('Type to search all metrics');
@@ -228,10 +254,16 @@ describe('MetricNameSelect', () => {
   });
 
   describe('a search that matches nothing', () => {
-    const noMatches = () =>
+    // Nothing on either path: the index stream yields no names and the
+    // exhaustive query answers empty.
+    const noMatches = () => {
+      streamDistinctIndexValues.mockImplementation(async function* () {
+        // no chunks
+      });
       useGetMetricNames.mockImplementation(({ tableName }: any) => ({
         data: tableName ? { names: [], truncated: false } : undefined,
       }));
+    };
 
     // The catalog only covers the most recent 3 days of the chart's range, so a
     // metric that stopped reporting is absent from the picker while its data is
@@ -308,7 +340,7 @@ describe('MetricNameSelect', () => {
     // value — taking the whole chart editor down rather than degrading.
     it('survives committing the typed name', async () => {
       noMatches();
-      renderWithMantine(<StatefulSelect />);
+      renderWithMantine(withQueryClient(<StatefulSelect />));
 
       const input = screen.getByTestId('metric-name-selector');
       await userEvent.type(input, 'chc_');
@@ -358,6 +390,10 @@ describe('MetricNameSelect', () => {
     // `isLoading` the dropdown would confidently deny the metric exists for the
     // whole round trip.
     it('says it is searching rather than denying the metric exists', async () => {
+      // Browsing streams, so that is where "in flight" comes from.
+      streamDistinctIndexValues.mockImplementation(() => ({
+        [Symbol.asyncIterator]: () => ({ next: () => new Promise(() => {}) }),
+      }));
       useGetMetricNames.mockImplementation(({ tableName }: any) => ({
         data: tableName ? { names: [], truncated: false } : undefined,
         isFetching: true,

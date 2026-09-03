@@ -5,7 +5,7 @@ import {
   MetricsDataType,
   TMetricSource,
 } from '@hyperdx/common-utils/dist/types';
-import { Select, Loader } from '@mantine/core';
+import { Loader, Select } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
 
 import { useMetricNames } from '@/hooks/useMetricNames';

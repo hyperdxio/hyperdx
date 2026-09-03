@@ -151,10 +151,10 @@ describe('useMetricNames', () => {
     await waitFor(() =>
       expect(result.current.namesByKind[MetricsDataType.Gauge]).toEqual(['a']),
     );
-    expect(result.current.isStreaming).toBe(true);
+    expect(result.current.isFetching).toBe(true);
 
     releaseGauge();
-    await waitFor(() => expect(result.current.isStreaming).toBe(false));
+    await waitFor(() => expect(result.current.isFetching).toBe(false));
   });
 
   it('falls back to the exhaustive listing when the index cannot be read', async () => {
@@ -247,7 +247,7 @@ describe('useMetricNames', () => {
       'system.cpu.time',
       'system.memory.usage',
     ]);
-    expect(result.current.isStreaming).toBe(true);
+    expect(result.current.isFetching).toBe(true);
   });
 
   it('ignores a stale page from the previous search pattern', async () => {

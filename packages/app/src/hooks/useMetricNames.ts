@@ -101,24 +101,40 @@ function useMetricNamesForKind(
   const streamedNames = streamed.data;
 
   return useMemo(() => {
-    if (settled && exhaustive.data) {
-      // Already relevance-ranked in SQL; re-sorting would discard that.
+    // The index emits in granule order, so sort — otherwise the options
+    // reshuffle on every chunk. Search results are already relevance-ranked in
+    // SQL, so they are never re-sorted.
+    const browsed = streamedNames && {
+      names: [...streamedNames].sort((a, b) => a.localeCompare(b)),
+      truncated: false,
+    };
+
+    if (!useExhaustive) {
       return {
-        data: exhaustive.data,
-        isError: exhaustive.isError,
+        data: browsed,
+        isError: false,
+        isFetching: streamed.isStreaming,
+      };
+    }
+    if (exhaustive.isError) {
+      // This kind has no answer for the pattern. Holding the browse list would
+      // offer names that do not match what was typed.
+      return {
+        data: undefined,
+        isError: true,
         isFetching: exhaustive.isFetching,
       };
     }
-    return {
-      // The index emits in granule order, so sort — otherwise the options
-      // reshuffle on every chunk.
-      data: streamedNames && {
-        names: [...streamedNames].sort((a, b) => a.localeCompare(b)),
-        truncated: false,
-      },
-      isError: useExhaustive ? exhaustive.isError : false,
-      isFetching: useExhaustive ? exhaustive.isFetching : streamed.isStreaming,
-    };
+    if (settled && exhaustive.data) {
+      return {
+        data: exhaustive.data,
+        isError: false,
+        isFetching: exhaustive.isFetching,
+      };
+    }
+    // In flight, or holding a placeholder page: keep the browse list on screen
+    // so the options do not blank out mid-keystroke.
+    return { data: browsed, isError: false, isFetching: exhaustive.isFetching };
   }, [
     settled,
     exhaustive.data,
