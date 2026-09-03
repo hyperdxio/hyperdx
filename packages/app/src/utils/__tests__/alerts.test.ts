@@ -285,20 +285,13 @@ const inlineAlert = (overrides: Partial<AlertsPageItem> = {}): AlertsPageItem =>
   }) as AlertsPageItem;
 
 describe('getAlertSourceUrl', () => {
-  it('links an inline alert to the chart explorer, seeded with its config', () => {
-    const url = getAlertSourceUrl(
-      inlineAlert({ chartConfig: inlineChartConfig }),
-    );
-
-    const params = new URLSearchParams(url.slice(url.indexOf('?') + 1));
-    expect(url.startsWith('/chart?')).toBe(true);
-    expect(JSON.parse(params.get('config') ?? '')).toEqual(inlineChartConfig);
-  });
-
-  // The alerts list omits chartConfig, so a row has nothing to link to.
-  // Callers render the name as plain text when this is empty.
-  it('is empty for an inline alert with no config', () => {
-    expect(getAlertSourceUrl(inlineAlert())).toBe('');
+  // By id, not by an inlined config: the alerts list omits chartConfig, so a
+  // config-carrying link would leave every list row without one.
+  it('links an inline alert to the chart explorer by id', () => {
+    expect(
+      getAlertSourceUrl(inlineAlert({ chartConfig: inlineChartConfig })),
+    ).toBe('/chart?alertId=alert-1');
+    expect(getAlertSourceUrl(inlineAlert())).toBe('/chart?alertId=alert-1');
   });
 });
 
