@@ -148,7 +148,8 @@ export function buildAlertChartConfig({
   }
 
   // Raw SQL: only time-series display types can be charted over the alert
-  // window (mirrors what the alert task evaluates as a time series).
+  // window. A raw SQL Number alert is a valid alert, but its query returns one
+  // value per window rather than a series — see `isSingleValueRawSqlConfig`.
   if (isRawSqlSavedChartConfig(savedConfig)) {
     if (!isTimeSeriesDisplayType(savedConfig.displayType)) {
       return undefined;
@@ -217,6 +218,31 @@ export function buildAlertChartConfig({
   };
 }
 
+/**
+ * Whether the alert's query yields a single value per evaluation window rather
+ * than a series, which is the case for a raw SQL chart on a non-time-series
+ * display type — in practice Number, the only other display type raw SQL
+ * alerts support.
+ *
+ * These are legitimate alerts, they just have no threshold-over-time chart to
+ * draw: their SQL carries no interval parameter to bucket by, which is exactly
+ * why the check-alerts task evaluates them as `single_value` (see
+ * `getResponseMetadata`). Distinguished from an unsupported config so the
+ * fallback can say why instead of reading as a defect.
+ */
+export function isSingleValueRawSqlConfig(
+  config: SavedChartConfig | undefined,
+): boolean {
+  return (
+    config != null &&
+    isRawSqlSavedChartConfig(config) &&
+    !isTimeSeriesDisplayType(config.displayType)
+  );
+}
+
+const SINGLE_VALUE_RAW_SQL_MESSAGE =
+  'This alert runs a raw SQL query that returns one value per window, so it has no chart over time.';
+
 function useAlertReferenceLines(alert: AlertsPageItem) {
   return React.useMemo(
     () =>
@@ -278,7 +304,11 @@ function TileAlertChart({
     return (
       <ChartFallback
         alertUrl={alertUrl}
-        message="This tile type can't be previewed here."
+        message={
+          isSingleValueRawSqlConfig(tile?.config)
+            ? SINGLE_VALUE_RAW_SQL_MESSAGE
+            : "This tile type can't be previewed here."
+        }
       />
     );
   }
@@ -344,7 +374,11 @@ function InlineAlertChart({
     return (
       <ChartFallback
         alertUrl={alertUrl}
-        message="This alert's chart can't be previewed here."
+        message={
+          isSingleValueRawSqlConfig(chartConfig)
+            ? SINGLE_VALUE_RAW_SQL_MESSAGE
+            : "This alert's chart can't be previewed here."
+        }
       />
     );
   }

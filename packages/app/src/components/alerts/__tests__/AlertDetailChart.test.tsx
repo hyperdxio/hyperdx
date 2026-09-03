@@ -6,7 +6,10 @@ import {
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 
-import { buildAlertChartConfig } from '@/components/alerts/AlertDetailChart';
+import {
+  buildAlertChartConfig,
+  isSingleValueRawSqlConfig,
+} from '@/components/alerts/AlertDetailChart';
 
 const dateRange: [Date, Date] = [
   new Date('2026-05-01T00:00:00.000Z'),
@@ -121,12 +124,49 @@ describe('buildAlertChartConfig', () => {
       ).toMatchObject({ sqlTemplate: 'SELECT 1', dateRange });
     });
 
-    // Only time series can be charted over the alert window — which is what
-    // the alert task evaluates for raw SQL.
+    // A raw SQL Number chart is a valid alert, but its SQL carries no interval
+    // parameter to bucket by — the check-alerts task evaluates it as a single
+    // value per window, so there is no series to chart. The caller says as
+    // much rather than reporting it as unsupported.
+    it('has no series to chart for a Number query', () => {
+      const numberConfig = { ...rawSqlConfig, displayType: DisplayType.Number };
+
+      expect(build(numberConfig)).toBeUndefined();
+      expect(isSingleValueRawSqlConfig(numberConfig)).toBe(true);
+    });
+
     it('refuses a non-time-series display type', () => {
       expect(
         build({ ...rawSqlConfig, displayType: DisplayType.Table }),
       ).toBeUndefined();
     });
+  });
+});
+
+describe('isSingleValueRawSqlConfig', () => {
+  // A builder Number config re-buckets into a line chart, so it does have a
+  // series — only raw SQL is single-value.
+  it('is false for a builder Number config', () => {
+    expect(
+      isSingleValueRawSqlConfig({
+        ...builderConfig,
+        displayType: DisplayType.Number,
+      }),
+    ).toBe(false);
+  });
+
+  it('is false for a raw SQL time series', () => {
+    expect(
+      isSingleValueRawSqlConfig({
+        configType: 'sql',
+        sqlTemplate: 'SELECT 1',
+        connection: 'conn-1',
+        displayType: DisplayType.Line,
+      }),
+    ).toBe(false);
+  });
+
+  it('is false without a config', () => {
+    expect(isSingleValueRawSqlConfig(undefined)).toBe(false);
   });
 });
