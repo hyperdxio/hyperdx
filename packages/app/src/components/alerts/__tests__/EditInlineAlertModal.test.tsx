@@ -193,6 +193,33 @@ describe('EditInlineAlertModal', () => {
     expect(payload.chartConfig).not.toHaveProperty('alert');
   });
 
+  // The API validates more than the editor can — raw SQL templates, source /
+  // connection ownership, formula references — so its reason is usually the
+  // only thing that says what to fix. ky's own message is just the status line.
+  it('surfaces the reason the API rejected the save', async () => {
+    updateAlertMutateAsync.mockRejectedValueOnce(
+      Object.assign(
+        new Error('Request failed with status code 400 Bad Request'),
+        {
+          response: {
+            json: async () => ({
+              message: 'Source does not belong to the specified connection',
+            }),
+          },
+        },
+      ),
+    );
+    renderModal(inlineAlert);
+
+    await userEvent.click(screen.getByText('Save'));
+
+    expect(
+      await screen.findByText(
+        'Source does not belong to the specified connection',
+      ),
+    ).toBeInTheDocument();
+  });
+
   // The display type can be switched to one that drops the alert; saving then
   // would rewrite the alert with no threshold to evaluate.
   it('refuses to save a config whose alert was dropped', async () => {

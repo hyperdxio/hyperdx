@@ -18,6 +18,7 @@ import {
   normalizeNoOpAlertScheduleFields,
   toAlertChannels,
 } from '@/utils/alerts';
+import { getApiErrorMessage } from '@/utils/apiErrors';
 
 /**
  * Seed the chart editor from a persisted inline alert: its chart config with
@@ -174,7 +175,12 @@ export function EditInlineAlertModal({
         console.error('Error updating alert:', error);
         notifications.show({
           color: 'red',
-          message: `Something went wrong. Please contact ${brandName} team.`,
+          // Most failures here are the API rejecting the edited query for a
+          // specific, fixable reason; the generic line is for the rest.
+          message: await getApiErrorMessage(
+            error,
+            `Something went wrong. Please contact ${brandName} team.`,
+          ),
           autoClose: 5000,
         });
       }
