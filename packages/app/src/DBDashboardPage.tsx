@@ -1976,6 +1976,9 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     setWhereLanguage,
   ]);
 
+  // eslint-disable-next-line no-restricted-syntax
+  const now = useMemo(() => Date.now(), []);
+
   // Initialize query/filter state once when dashboard changes.
   useEffect(() => {
     if (!dashboard?.id || !router.isReady) return;
@@ -2017,20 +2020,31 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       }
     }
 
+    // Initialize dashboard with the saved date range
+    if (dashboard.savedRelativeDateRange) {
+      onTimeRangeSelect(
+        new Date(now - dashboard.savedRelativeDateRange * 1000),
+        new Date(now),
+      );
+    }
+
     initializedDashboardRef.current = dashboard.id;
   }, [
     dashboard?.id,
     dashboard?.savedQuery,
     dashboard?.savedQueryLanguage,
     dashboard?.savedFilterValues,
+    dashboard?.savedRelativeDateRange,
     isLocalDashboard,
     isFetchingDashboard,
     router.isReady,
     router.query,
+    now,
     setValue,
     setWhere,
     setWhereLanguage,
     setFilterValueEntries,
+    onTimeRangeSelect,
   ]);
 
   // Sync changes to the URL params into the form
@@ -2060,11 +2074,14 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       ? filterValueEntries
       : [];
 
+    const currentRelativeDateRange =
+      (searchedTimeRange[1].getTime() - searchedTimeRange[0].getTime()) / 1000;
     setDashboard(
       produce(dashboard, draft => {
         draft.savedQuery = currentWhere;
         draft.savedQueryLanguage = currentWhereLanguage;
         draft.savedFilterValues = currentFilterValues;
+        draft.savedRelativeDateRange = currentRelativeDateRange;
       }),
       () => {
         notifications.show({
@@ -2083,6 +2100,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     getValues,
     filterValueEntries,
     onSubmit,
+    searchedTimeRange,
   ]);
   const handleRemoveSavedQuery = useCallback(() => {
     if (!dashboard || isLocalDashboard) return;

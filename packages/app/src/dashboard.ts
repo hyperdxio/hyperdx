@@ -39,6 +39,7 @@ export type Dashboard = {
   savedQuery?: string | null;
   savedQueryLanguage?: SearchConditionLanguage | null;
   savedFilterValues?: DashboardFilterValue[];
+  savedRelativeDateRange?: number;
   containers?: DashboardContainer[];
   createdAt?: string;
   updatedAt?: string;
