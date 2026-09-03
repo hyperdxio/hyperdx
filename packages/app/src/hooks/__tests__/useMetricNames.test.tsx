@@ -274,9 +274,49 @@ describe('useMetricNames', () => {
     });
     rerender({ pattern: 'billing' });
 
+    // The browse names must survive: a stale page alone cannot match the new
+    // pattern, and the consumer's filter would reduce it to an empty picker.
+    // Stale names may ride along — they simply never match the typed text.
+    expect(result.current.namesByKind[MetricsDataType.Gauge]).toEqual(
+      expect.arrayContaining(['billing.invoice.total', 'system.cpu.time']),
+    );
+  });
+
+  it('keeps offering names when there is no browse list to hold', async () => {
+    // A fallback deployment has no streamed list at all, so holding it would
+    // hand back nothing and blank the picker on every search keystroke.
+    streamDistinctIndexValues.mockImplementation(
+      failingStream(
+        'Cannot read the primary index: engine Log is not a MergeTree',
+      ),
+    );
+    useGetMetricNames.mockReturnValue({
+      ...IDLE_EXHAUSTIVE,
+      data: { names: ['from.previous.page'], truncated: false },
+    });
+
+    const { result, rerender } = renderHook(
+      ({ pattern }: { pattern?: string }) =>
+        useMetricNames(METRIC_SOURCE, undefined, pattern),
+      { wrapper: createWrapper(), initialProps: {} as { pattern?: string } },
+    );
+    await waitFor(() =>
+      expect(result.current.namesByKind[MetricsDataType.Gauge]).toEqual([
+        'from.previous.page',
+      ]),
+    );
+
+    // The new pattern's page is still in flight and only a placeholder exists.
+    useGetMetricNames.mockReturnValue({
+      ...IDLE_EXHAUSTIVE,
+      data: { names: ['from.previous.page'], truncated: false },
+      isPlaceholderData: true,
+      isFetching: true,
+    });
+    rerender({ pattern: 'from' });
+
     expect(result.current.namesByKind[MetricsDataType.Gauge]).toEqual([
-      'billing.invoice.total',
-      'system.cpu.time',
+      'from.previous.page',
     ]);
   });
 

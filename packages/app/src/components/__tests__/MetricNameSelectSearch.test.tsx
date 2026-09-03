@@ -253,6 +253,103 @@ describe('MetricNameSelect', () => {
     ).toBeTruthy();
   });
 
+  describe('a browse list bigger than the render cap', () => {
+    const manyNames = Array.from({ length: 600 }, (_, i) => `metric.${i}`);
+
+    it('advises typing, since the cap hides the rest', async () => {
+      streamDistinctIndexValues.mockImplementation(async function* ({
+        tableName,
+      }: any) {
+        if (tableName) yield manyNames;
+      });
+
+      renderSelect();
+
+      await waitFor(() =>
+        expect(
+          screen.getByTestId('metric-name-selector'),
+        ).toHaveAccessibleDescription('Type to search all metrics'),
+      );
+    });
+
+    // The held browse list is what fills `options` mid-search, so counting it
+    // says nothing about how many names the search itself matched.
+    it('does not claim the search was capped while its query is in flight', async () => {
+      streamDistinctIndexValues.mockImplementation(async function* ({
+        tableName,
+      }: any) {
+        if (tableName) yield manyNames;
+      });
+      useGetMetricNames.mockImplementation(() => ({
+        data: undefined,
+        isFetching: true,
+      }));
+
+      renderSelect();
+      await userEvent.type(
+        screen.getByTestId('metric-name-selector'),
+        'metric.1',
+      );
+      await new Promise(resolve => setTimeout(resolve, DEBOUNCE_SETTLE_MS));
+
+      expect(
+        screen.queryByText(/Showing the first \d+ matches/),
+      ).not.toBeInTheDocument();
+    });
+
+    it('advises refining once the server reports the search truncated', async () => {
+      useGetMetricNames.mockImplementation(({ tableName }: any) => ({
+        data: tableName ? { names: ['metric.1'], truncated: true } : undefined,
+      }));
+
+      renderSelect();
+      await userEvent.type(
+        screen.getByTestId('metric-name-selector'),
+        'metric.1',
+      );
+
+      expect(
+        await screen.findByText(
+          'Showing the first 500 matches — refine your search',
+        ),
+      ).toBeInTheDocument();
+    });
+  });
+
+  describe('the streaming spinner', () => {
+    const neverResolves = () => ({
+      [Symbol.asyncIterator]: () => ({ next: () => new Promise(() => {}) }),
+    });
+
+    it('shows while names are still arriving and nothing is selected', async () => {
+      streamDistinctIndexValues.mockImplementation(neverResolves);
+
+      const { container } = renderSelect();
+
+      await waitFor(() =>
+        expect(container.querySelector('.mantine-Loader-root')).toBeTruthy(),
+      );
+    });
+
+    // Mantine puts a clearable Select's clear button in `rightSection`, so
+    // occupying it with a selection present would hide the only way to clear.
+    it('stays out of the way once a metric is selected', async () => {
+      streamDistinctIndexValues.mockImplementation(neverResolves);
+
+      const { container } = renderSelect({
+        metricName: 'up',
+        metricType: MetricsDataType.Gauge,
+      });
+
+      await waitFor(() =>
+        expect(screen.getByTestId('metric-name-selector')).toHaveValue(
+          'up (Gauge)',
+        ),
+      );
+      expect(container.querySelector('.mantine-Loader-root')).toBeNull();
+    });
+  });
+
   describe('a search that matches nothing', () => {
     // Nothing on either path: the index stream yields no names and the
     // exhaustive query answers empty.

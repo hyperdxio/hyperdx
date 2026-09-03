@@ -1,5 +1,5 @@
 /**
- * Direct MongoDB access helpers for full-stack E2E tests. Only usable in
+ * Direct MongoDB and ClickHouse access helpers for full-stack E2E tests. Only usable in
  * full-stack mode (real Mongo via docker-compose) — there is no database in
  * local mode, so callers must gate on `{ tag: ['@full-stack'] }`.
  */
@@ -83,20 +83,6 @@ function clickhouseUrl(): string {
     url.searchParams.set('password', process.env.CLICKHOUSE_PASSWORD);
   }
   return url.toString();
-}
-
-/** Runs a statement, throwing on a non-2xx so a failed seed is not silent. */
-export async function clickhouseExec(sql: string): Promise<void> {
-  const response = await fetch(clickhouseUrl(), {
-    method: 'POST',
-    body: sql,
-    headers: { 'Content-Type': 'text/plain' },
-  });
-  if (!response.ok) {
-    throw new Error(
-      `ClickHouse query failed (${response.status}): ${await response.text()}`,
-    );
-  }
 }
 
 /** Runs a SELECT and returns one trimmed line per row (TSV). */

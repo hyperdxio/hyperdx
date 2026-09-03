@@ -132,9 +132,23 @@ function useMetricNamesForKind(
         isFetching: exhaustive.isFetching,
       };
     }
-    // In flight, or holding a placeholder page: keep the browse list on screen
-    // so the options do not blank out mid-keystroke.
-    return { data: browsed, isError: false, isFetching: exhaustive.isFetching };
+    // In flight, or holding a placeholder page for another pattern. Offer both
+    // sets: the consumer filters by the typed text, so only what matches
+    // renders, and nothing blanks. Either alone is insufficient — a fallback
+    // deployment has no browse list at all (`streamed.data` is suppressed on
+    // error), and a browse list omits the index-invisible names that a
+    // prefix-extending search's previous page still holds.
+    const provisional = new Set([
+      ...(browsed?.names ?? []),
+      ...(exhaustive.data?.names ?? []),
+    ]);
+    return {
+      data: provisional.size
+        ? { names: [...provisional], truncated: false }
+        : undefined,
+      isError: false,
+      isFetching: exhaustive.isFetching,
+    };
   }, [
     settled,
     exhaustive.data,
