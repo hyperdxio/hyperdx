@@ -1896,7 +1896,11 @@ export const DashboardContainerSchema = z.object({
 export type DashboardContainer = z.infer<typeof DashboardContainerSchema>;
 
 /** Type of dashboard filter, determining how its dropdown values are populated. */
-export const DashboardFilterType = z.enum(['QUERY_EXPRESSION', 'STATIC_LIST']);
+export const DashboardFilterType = z.enum([
+  'QUERY_EXPRESSION',
+  'STATIC_LIST',
+  'PROMETHEUS_LABEL',
+]);
 
 /** Allowed variable names for dashboard filters. Alphanumeric + underscore, must start with a letter. */
 export const DASHBOARD_VARIABLE_NAME_PATTERN = '[a-zA-Z][a-zA-Z0-9_]*';
@@ -1966,9 +1970,26 @@ export const StaticListDashboardFilterSchema = dashboardFilterBaseSchema.extend(
   },
 );
 
+/** Sanity bound on a persisted label name; Prometheus itself imposes no limit. */
+export const PROMETHEUS_LABEL_NAME_MAX_LENGTH = 1024;
+
+/** A filter whose dropdown lists the values of a Prometheus label */
+export const PromqlLabelDashboardFilterSchema =
+  dashboardFilterBaseSchema.extend({
+    type: z.literal(DashboardFilterType.enum.PROMETHEUS_LABEL),
+    /** ID of a PromQL source to query */
+    source: z.string().min(1),
+    /** Label whose values populate the dropdown. */
+    label: z.string().min(1).max(PROMETHEUS_LABEL_NAME_MAX_LENGTH),
+    // Variable-only: there is no SQL expression to broadcast
+    isBroadcastEnabled: z.literal(false),
+    isVariableEnabled: z.literal(true),
+  });
+
 export const DashboardFilterSchema = z.discriminatedUnion('type', [
   QueryExpressionDashboardFilterSchema,
   StaticListDashboardFilterSchema,
+  PromqlLabelDashboardFilterSchema,
 ]);
 
 export type QueryExpressionDashboardFilter = z.infer<
@@ -1976,6 +1997,9 @@ export type QueryExpressionDashboardFilter = z.infer<
 >;
 export type StaticListDashboardFilter = z.infer<
   typeof StaticListDashboardFilterSchema
+>;
+export type PromqlLabelDashboardFilter = z.infer<
+  typeof PromqlLabelDashboardFilterSchema
 >;
 export type DashboardFilter = z.infer<typeof DashboardFilterSchema>;
 

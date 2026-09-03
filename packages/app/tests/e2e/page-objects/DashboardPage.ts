@@ -1282,8 +1282,10 @@ export class DashboardPage {
     return this.page.getByTestId('filter-type-picker');
   }
 
-  /** Switch the add-filter form between the queried and static value types. */
-  async selectFilterType(label: 'Queried values' | 'Static values') {
+  /** Switch the add-filter form between the available value types. */
+  async selectFilterType(
+    label: 'Queried values' | 'Static values' | 'PromQL label values',
+  ) {
     await this.getFilterTypePicker().click();
     await this.getFilterOption(label).click();
   }
@@ -1346,6 +1348,44 @@ export class DashboardPage {
     await nameInput.waitFor({ state: 'visible', timeout: 10000 });
     await nameInput.fill(name);
     await this.fillFilterOptions(options);
+    if (variableOptions?.variableName !== undefined) {
+      await this.variableNameInput.fill(variableOptions.variableName);
+    }
+    await this.page.getByTestId('save-filter-button').click();
+    await this.getFilterItemByName(name).waitFor({
+      state: 'visible',
+      timeout: 10000,
+    });
+  }
+
+  /** The PromQL filter form's label field. */
+  getFilterLabelInput(): Locator {
+    return this.page.getByTestId('filter-label-input');
+  }
+
+  /**
+   * Add a dashboard filter whose dropdown lists the values of one Prometheus
+   * label. Like the static variant it shares only the display name and variable
+   * name with a queried filter — there is no expression or broadcast mode, and
+   * the source must be a PromQL one.
+   *
+   * Assumes the Edit Filters modal is already open; leaves it open on the
+   * filters list, having waited for the new filter to land there so a slow
+   * save cannot race the next add.
+   */
+  async addPromqlLabelFilterToDashboard(
+    name: string,
+    sourceName: string,
+    label: string,
+    variableOptions?: { variableName?: string },
+  ) {
+    await this.addFiltersButton.click();
+    await this.selectFilterType('PromQL label values');
+    const nameInput = this.getFilterNameInput();
+    await nameInput.waitFor({ state: 'visible', timeout: 10000 });
+    await nameInput.fill(name);
+    await this.selectFilterSource(sourceName);
+    await this.getFilterLabelInput().fill(label);
     if (variableOptions?.variableName !== undefined) {
       await this.variableNameInput.fill(variableOptions.variableName);
     }
