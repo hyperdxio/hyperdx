@@ -120,27 +120,42 @@ describe('Metadata.streamDistinctIndexValues', () => {
     expect(mockQuery.mock.calls[0][0].query).toContain('part_name IN');
   });
 
-  it('skips part pruning when the partition key is not time-based', async () => {
-    // ClickHouse leaves system.parts.min_time at the epoch unless the partition
-    // key derives from a time column, so the overlap predicate would exclude
-    // every part and return an empty list without failing.
+  it('refuses a range-scoped read the partition key cannot prune', async () => {
+    // Part pruning is the only range restriction this read can express, and
+    // system.parts.min_time is unset unless the partition key derives from a
+    // time column. Returning names from outside the window would disagree with
+    // the exhaustive search the caller falls back to.
     const metadata = buildMetadata({
       tableMetadata: {
         ...GAUGE_TABLE_METADATA,
         partition_key: 'ServiceName',
       } as TableMetadata,
     });
-    mockQuery.mockResolvedValue(resultSetOf([]));
 
-    await drain(
-      metadata.streamDistinctIndexValues({
-        ...ARGS,
-        dateRange: [new Date('2026-08-01'), new Date('2026-08-02')],
-        timestampValueExpression: 'TimeUnix',
-      }),
-    );
+    await expect(
+      drain(
+        metadata.streamDistinctIndexValues({
+          ...ARGS,
+          dateRange: [new Date('2026-08-01'), new Date('2026-08-02')],
+          timestampValueExpression: 'TimeUnix',
+        }),
+      ),
+    ).rejects.toThrow(/cannot be scoped to the date range/);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
 
-    expect(mockQuery.mock.calls[0][0].query).not.toContain('part_name IN');
+  it('reads without pruning when no range is requested', async () => {
+    const metadata = buildMetadata({
+      tableMetadata: {
+        ...GAUGE_TABLE_METADATA,
+        partition_key: 'ServiceName',
+      } as TableMetadata,
+    });
+    mockQuery.mockResolvedValue(resultSetOf([[{ value: 'ok' }]]));
+
+    expect(await drain(metadata.streamDistinctIndexValues(ARGS))).toEqual([
+      ['ok'],
+    ]);
   });
 
   it('prunes by part when the partition key derives from the timestamp', async () => {

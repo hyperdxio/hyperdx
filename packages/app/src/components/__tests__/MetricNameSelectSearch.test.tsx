@@ -253,10 +253,12 @@ describe('MetricNameSelect', () => {
     ).toBeTruthy();
   });
 
-  describe('a browse list bigger than the render cap', () => {
+  describe('an index-derived browse list', () => {
     const manyNames = Array.from({ length: 600 }, (_, i) => `metric.${i}`);
 
-    it('advises typing, since the cap hides the rest', async () => {
+    // The index records a value only at each granule boundary, so the list is
+    // a subset at any size — not only past the render cap.
+    it('advises typing, since names are missing at any size', async () => {
       streamDistinctIndexValues.mockImplementation(async function* ({
         tableName,
       }: any) {
@@ -274,6 +276,8 @@ describe('MetricNameSelect', () => {
 
     // The held browse list is what fills `options` mid-search, so counting it
     // says nothing about how many names the search itself matched.
+    // `isSubset` describes the browse list; mid-search it says nothing about
+    // how many names the search itself matched.
     it('does not claim the search was capped while its query is in flight', async () => {
       streamDistinctIndexValues.mockImplementation(async function* ({
         tableName,

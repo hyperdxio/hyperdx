@@ -64,6 +64,18 @@ const DEFAULT_MAX_KEYS = 1000;
 // Cap keys per dispatched query: each key is another operation for the db to fetch, and simply fetching all keys at once can be too much for the db to handle.
 export const GET_ALL_KEY_VALUES_CHUNK_SIZE = 100;
 
+/**
+ * The index read could not be scoped to the requested date range, so it was
+ * refused in favour of a path that can. Not a failure — an expected property
+ * of tables whose partition key is not time-derived.
+ */
+export class UnprunableIndexReadError extends Error {
+  constructor(reason: string) {
+    super(`Cannot scope the primary index read: ${reason}`);
+    this.name = 'UnprunableIndexReadError';
+  }
+}
+
 // Runaway guard, not a tuning knob.
 const DEFAULT_MAX_INDEX_VALUES = 10_000;
 
@@ -805,21 +817,29 @@ export class Metadata {
       connectionId,
     });
 
-    // `partsOverlapFilter` matches on `system.parts.min_time`, which ClickHouse
-    // only populates for time-based partition keys. Applying it to a table
-    // partitioned by anything else (or not at all) leaves every part at the
-    // epoch, excludes all of them, and returns an empty list without failing —
-    // so skip it there and accept the unpruned window.
-    const canPruneByPart =
-      !!timestampValueExpression &&
-      partitionKeyCoversTimestamp(
+    // Part pruning is the only range restriction this read can express —
+    // `mergeTreeIndex` exposes primary key columns and part metadata, not the
+    // timestamp — and `system.parts.min_time` is only populated for time-based
+    // partition keys. Rather than quietly returning names from outside the
+    // requested window (which would disagree with the exhaustive search the
+    // caller falls back to), refuse the read and let that path answer.
+    if (
+      dateRange &&
+      timestampValueExpression &&
+      !partitionKeyCoversTimestamp(
         tableMetadata.partition_key,
         timestampValueExpression,
+      )
+    ) {
+      throw new UnprunableIndexReadError(
+        `partition key ${tableMetadata.partition_key || '(none)'} is not derived from ${timestampValueExpression}, so the read cannot be scoped to the date range`,
       );
+    }
+
     const partsFilter = await this.partsOverlapFilter({
       databaseName,
       tableName,
-      dateRange: canPruneByPart ? dateRange : undefined,
+      dateRange,
       timestampValueExpression,
     });
 

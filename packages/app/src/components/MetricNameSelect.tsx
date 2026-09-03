@@ -103,6 +103,7 @@ export function MetricNameSelect({
     hasError,
     hasNoMatches,
     isFetching: isSearching,
+    isSubset,
   } = useMetricNames(metricSource, dateRange, debouncedSearch);
 
   const options = useMemo(() => {
@@ -154,13 +155,6 @@ export function MetricNameSelect({
   const currentValue =
     metricName && metricType ? `${metricName}${SEPARATOR}${metricType}` : null;
 
-  // The browse path has no server-side truncation flag, but the render cap
-  // still hides options once the index yields more than one page of them.
-  // Browse only: mid-search `options` is the whole held list, which says
-  // nothing about how many names the search itself matched.
-  const browseExceedsRenderCap =
-    !debouncedSearch && options.length > DEFAULT_METRIC_NAMES_LIMIT;
-
   return (
     <Select
       disabled={isLoading || isError}
@@ -203,7 +197,7 @@ export function MetricNameSelect({
       description={
         hasError
           ? 'Some metrics failed to load'
-          : isTruncated || browseExceedsRenderCap
+          : isTruncated || (!debouncedSearch && isSubset)
             ? debouncedSearch
               ? `Showing the first ${DEFAULT_METRIC_NAMES_LIMIT} matches — refine your search`
               : 'Type to search all metrics'

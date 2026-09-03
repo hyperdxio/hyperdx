@@ -114,6 +114,9 @@ function useMetricNamesForKind(
         data: browsed,
         isError: false,
         isFetching: streamed.isStreaming,
+        // The index records a value only at each granule boundary, so this
+        // list is a subset at any size.
+        fromIndex: true,
       };
     }
     if (exhaustive.isError) {
@@ -123,6 +126,7 @@ function useMetricNamesForKind(
         data: undefined,
         isError: true,
         isFetching: exhaustive.isFetching,
+        fromIndex: false,
       };
     }
     if (settled && exhaustive.data) {
@@ -130,6 +134,7 @@ function useMetricNamesForKind(
         data: exhaustive.data,
         isError: false,
         isFetching: exhaustive.isFetching,
+        fromIndex: false,
       };
     }
     // In flight, or holding a placeholder page for another pattern. Offer both
@@ -148,6 +153,8 @@ function useMetricNamesForKind(
         : undefined,
       isError: false,
       isFetching: exhaustive.isFetching,
+      // Part of what is on screen came from the index, so it is still a subset.
+      fromIndex: !!browsed,
     };
   }, [
     settled,
@@ -234,6 +241,9 @@ export function useMetricNames(
     // new one is in flight, so TanStack reports `success` and `isLoading` is
     // false for every search after the first mount.
     isFetching: queries.some(query => query.isFetching),
+    // Any kind answered from the primary index, which never lists every name.
+    // Distinct from `isTruncated`, which is the server reporting a full page.
+    isSubset: queries.some(query => query.fromIndex),
     // Only when every kind that answered returned nothing. A kind still in
     // flight must not read as "no such metric". A kind that *errored* is
     // deliberately not disqualifying: its table can be misconfigured
