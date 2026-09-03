@@ -18,6 +18,7 @@ import {
   OnClickDashboardSchema,
   OnClickExternalSchema,
   OnClickSearchSchema,
+  PromqlLabelDashboardFilterSchema,
   QueryExpressionDashboardFilterSchema,
   scheduleStartAtSchema,
   SearchConditionLanguageSchema as whereLanguageSchema,
@@ -153,11 +154,20 @@ const externalStaticListFilterShape = StaticListDashboardFilterSchema.extend({
   isVariableEnabled: z.literal(true).default(true),
 });
 
+const externalPromqlLabelFilterShape = PromqlLabelDashboardFilterSchema.omit({
+  source: true,
+}).extend({
+  sourceId: objectIdSchema,
+  isBroadcastEnabled: z.literal(false).default(false),
+  isVariableEnabled: z.literal(true).default(true),
+});
+
 export const externalDashboardFilterSchemaWithId = z.discriminatedUnion(
   'type',
   [
     externalQueryExpressionFilterShape.strict(),
     externalStaticListFilterShape.strict(),
+    externalPromqlLabelFilterShape.strict(),
   ],
 );
 
@@ -173,6 +183,7 @@ export type ExternalQueryExpressionFilterWithId = Extract<
 export const externalDashboardFilterSchema = z.discriminatedUnion('type', [
   externalQueryExpressionFilterShape.omit({ id: true }).strict(),
   externalStaticListFilterShape.omit({ id: true }).strict(),
+  externalPromqlLabelFilterShape.omit({ id: true }).strict(),
 ]);
 
 export type ExternalDashboardFilter = z.infer<

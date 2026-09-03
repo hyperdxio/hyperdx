@@ -12,6 +12,7 @@ import { IconAlertTriangle } from '@tabler/icons-react';
 
 import SelectControlled from '@/components/SelectControlled';
 import { SqlVariablesProvider } from '@/components/SQLEditor/variableCompletions';
+import { IS_PROMQL_ENABLED } from '@/config';
 import { useConfirm } from '@/useConfirm';
 import { useZIndex } from '@/zIndex';
 
@@ -22,6 +23,7 @@ import {
   toFormValues,
   toSavedFilter,
 } from './filterFormState';
+import { PromqlLabelFilterEditForm } from './PromqlLabelFilterEditForm';
 import { QueryExpressionFilterEditForm } from './QueryExpressionFilterEditForm';
 import { StaticListFilterEditForm } from './StaticListFilterEditForm';
 
@@ -31,6 +33,14 @@ const FILTER_TYPE_OPTIONS = [
     label: 'Queried values',
   },
   { value: DashboardFilterType.enum.STATIC_LIST, label: 'Static values' },
+  ...(IS_PROMQL_ENABLED
+    ? [
+        {
+          value: DashboardFilterType.enum.PROMETHEUS_LABEL,
+          label: 'PromQL label values',
+        },
+      ]
+    : []),
 ];
 
 interface DashboardFilterEditFormProps {
@@ -50,7 +60,7 @@ interface DashboardFilterEditFormProps {
 }
 
 /**
- * The editor for a single filter, of either type. One form covers both, so
+ * The editor for a single filter, of any type. One form covers them all, so
  * switching type keeps the fields they share. Which of the fields are actually
  * stored is settled by `toSavedFilter`, not by which editor happens to be
  * mounted.
@@ -141,8 +151,7 @@ export const DashboardFilterEditForm = ({
   );
 
   const isNew = !filter;
-  const isStaticListTypeAvailable = !!showVariableOptions;
-  const showTypeInput = isStaticListTypeAvailable;
+  const showTypeInput = !!showVariableOptions;
 
   return (
     <Modal
@@ -191,6 +200,11 @@ export const DashboardFilterEditForm = ({
 
           {formFilterType === 'STATIC_LIST' ? (
             <StaticListFilterEditForm
+              control={control}
+              otherFilters={otherFilters}
+            />
+          ) : formFilterType === 'PROMETHEUS_LABEL' ? (
+            <PromqlLabelFilterEditForm
               control={control}
               otherFilters={otherFilters}
             />
