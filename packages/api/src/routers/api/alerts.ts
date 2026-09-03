@@ -1,3 +1,4 @@
+import { isTileAlertUnaddressable } from '@hyperdx/common-utils/dist/iac';
 import type {
   AlertApiResponse,
   AlertEvaluationsApiResponse,
@@ -26,7 +27,7 @@ import {
   updateAlert,
   validateAlertInput,
 } from '@/controllers/alerts';
-import { getAlertChannels } from '@/models/alert';
+import { AlertSource, getAlertChannels } from '@/models/alert';
 import { IAlertHistory } from '@/models/alertHistory';
 import { PreSerialized, sendJson } from '@/utils/serialization';
 import { internalAlertSchema, objectIdSchema } from '@/utils/zod';
@@ -59,6 +60,14 @@ const formatAlertResponse = (
     channels: getAlertChannels(alert).map(c => pick(c, ['type', 'webhookId'])),
     ...(alert.dashboard && {
       dashboardId: alert.dashboard._id,
+      // Computed here rather than on the client: `tiles` below is filtered to
+      // this alert's own tile, so the response cannot show whether a sibling
+      // tile shares its name — which is what decides Terraform eligibility.
+      // Omitted rather than `false` when fine, matching the IaC manifest.
+      ...(alert.source === AlertSource.TILE &&
+      isTileAlertUnaddressable(alert.dashboard, alert.tileId)
+        ? { unaddressableTile: true }
+        : {}),
       dashboard: {
         tiles: alert.dashboard.tiles
           .filter(tile => tile.id === alert.tileId)

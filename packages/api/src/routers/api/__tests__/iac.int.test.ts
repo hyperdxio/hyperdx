@@ -246,6 +246,151 @@ describe('iac router', () => {
     ]);
   });
 
+  // Tile alerts are importable since provider 3.26.0, but only when the tile
+  // has a unique, non-blank name — the provider's `tile_ids` map is keyed by
+  // name and omits the rest. The dashboards leg of the manifest cannot answer
+  // this (it drops provisioned dashboards and caps at IAC_MANIFEST_LIMIT), so
+  // this pins the separate tile-name read.
+  it('marks a tile alert whose tile has no addressable name', async () => {
+    const { agent, team } = await getLoggedInAgent(server);
+
+    const tile = (id: string, name: string) => ({
+      id,
+      x: 0,
+      y: 0,
+      w: 4,
+      h: 2,
+      config: { name, displayType: 'line' },
+    });
+    const dashboard = await Dashboard.create({
+      name: 'Ops',
+      team: team._id,
+      tiles: [
+        tile('tile-unique', 'Errors'),
+        tile('tile-dup-a', 'Latency'),
+        tile('tile-dup-b', 'Latency'),
+        tile('tile-blank', '   '),
+      ],
+    });
+
+    const tileAlert = async (name: string, tileId: string) =>
+      Alert.create({
+        team: team._id,
+        name,
+        source: AlertSource.TILE,
+        dashboard: dashboard._id,
+        tileId,
+        threshold: 1,
+        interval: '5m',
+        state: AlertState.OK,
+        channel: { type: null },
+      });
+
+    await tileAlert('Unique', 'tile-unique');
+    await tileAlert('Duplicate', 'tile-dup-a');
+    await tileAlert('Blank', 'tile-blank');
+    await tileAlert('Dangling', 'tile-gone');
+
+    const resp = await agent.get('/iac/import-manifest').expect(200);
+    const byName = Object.fromEntries(
+      resp.body.alerts.map((a: { name: string }) => [a.name, a]),
+    );
+
+    // Absent rather than `false`, like the dashboards leg's marker.
+    expect(byName['Unique']).not.toHaveProperty('unaddressableTile');
+    expect(byName['Duplicate'].unaddressableTile).toBe(true);
+    expect(byName['Blank'].unaddressableTile).toBe(true);
+    expect(byName['Dangling'].unaddressableTile).toBe(true);
+    // The tile lookup is for the marker only; tile references stay off the wire.
+    expect(byName['Unique']).not.toHaveProperty('tileId');
+    expect(byName['Unique']).not.toHaveProperty('dashboardId');
+  });
+
+  // ProvisionDashboardsTask rewrites a provisioned dashboard's tiles
+  // wholesale, so an alert bound to one of its tiles is not Terraform's to
+  // own either. The dashboards listing filters these out, which is why the
+  // tile-name read has to see them.
+  it('marks a tile alert on a provisioned dashboard', async () => {
+    const { agent, team } = await getLoggedInAgent(server);
+
+    const dashboard = await Dashboard.create({
+      name: 'Provisioned',
+      team: team._id,
+      provisioned: true,
+      tiles: [
+        {
+          id: 'tile-1',
+          x: 0,
+          y: 0,
+          w: 4,
+          h: 2,
+          config: { name: 'Errors', displayType: 'line' },
+        },
+      ],
+    });
+    await Alert.create({
+      team: team._id,
+      name: 'On provisioned',
+      source: AlertSource.TILE,
+      dashboard: dashboard._id,
+      tileId: 'tile-1',
+      threshold: 1,
+      interval: '5m',
+      state: AlertState.OK,
+      channel: { type: null },
+    });
+
+    const resp = await agent.get('/iac/import-manifest').expect(200);
+
+    expect(resp.body.dashboards).toHaveLength(0);
+    expect(resp.body.alerts).toHaveLength(1);
+    expect(resp.body.alerts[0].unaddressableTile).toBe(true);
+  });
+
+  // The tile-name read is team-scoped like every other listing. A dashboard
+  // this team cannot read is indistinguishable from one that is gone, and
+  // both make the alert unimportable.
+  it('marks a tile alert whose dashboard is gone or belongs to another team', async () => {
+    const { agent, team } = await getLoggedInAgent(server);
+    const otherTeamDashboard = await Dashboard.create({
+      name: 'Someone else',
+      team: randomMongoId(),
+      tiles: [
+        {
+          id: 'tile-1',
+          x: 0,
+          y: 0,
+          w: 4,
+          h: 2,
+          config: { name: 'Errors', displayType: 'line' },
+        },
+      ],
+    });
+
+    const alert = async (name: string, dashboardId: unknown) =>
+      Alert.create({
+        team: team._id,
+        name,
+        source: AlertSource.TILE,
+        dashboard: dashboardId,
+        tileId: 'tile-1',
+        threshold: 1,
+        interval: '5m',
+        state: AlertState.OK,
+        channel: { type: null },
+      });
+
+    await alert('Deleted dashboard', randomMongoId());
+    await alert('Other team', otherTeamDashboard._id);
+
+    const resp = await agent.get('/iac/import-manifest').expect(200);
+
+    expect(resp.body.alerts).toHaveLength(2);
+    for (const a of resp.body.alerts) {
+      expect(a.unaddressableTile).toBe(true);
+    }
+  });
+
   it('surfaces an explicit platformProvisioned marker on a connection', async () => {
     const { agent, team } = await getLoggedInAgent(server);
 

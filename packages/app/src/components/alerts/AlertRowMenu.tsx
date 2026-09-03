@@ -1,6 +1,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { isImportableAlert } from '@hyperdx/common-utils/dist/iac';
+import { AlertSource } from '@hyperdx/common-utils/dist/types';
 import { ActionIcon, Menu, Modal } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import {
@@ -73,6 +74,7 @@ export function AlertRowMenu({
   const brandName = useBrandDisplayName();
   const deleteAlert = api.useDeleteAlert();
 
+  const isTileAlert = alert.source === AlertSource.TILE;
   const resource = React.useMemo(
     () => ({
       type: 'alert' as const,
@@ -82,8 +84,10 @@ export function AlertRowMenu({
       // alert's own name, so a fallback here would make the two surfaces
       // disagree about what they call this alert.
       name: alert.name ?? undefined,
+      // Raises the provider version floor in the "Provider setup" snippet.
+      tileAlert: isTileAlert,
     }),
-    [alert._id, alert.name],
+    [alert._id, alert.name, isTileAlert],
   );
   const snippets = useTerraformSnippets({
     resource,
@@ -105,7 +109,16 @@ export function AlertRowMenu({
   // provider can actually model. The feature flag is checked here too because
   // this renders the panel directly rather than through the popover, which
   // does its own gating.
-  const canExport = IS_IAC_EXPORT_ENABLED && isImportableAlert(alert);
+  // `unaddressableTile` comes from the server on both surfaces — this
+  // response's `dashboard.tiles` holds only this alert's own tile, so the
+  // client cannot tell whether a sibling tile shares its name.
+  const canExport =
+    IS_IAC_EXPORT_ENABLED &&
+    isImportableAlert({
+      source: alert.source,
+      savedSearchId: alert.savedSearchId,
+      unaddressableTile: alert.unaddressableTile,
+    });
 
   const onDelete = React.useCallback(async () => {
     const confirmed = await confirm(`Delete ${name}?`, 'Delete', {

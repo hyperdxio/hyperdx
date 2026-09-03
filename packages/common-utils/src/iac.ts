@@ -3,15 +3,17 @@ import {
   isImportableDashboard,
   isImportableSource,
 } from './iacEligibility';
-import { type IacImportManifest } from './types';
+import { AlertSource, type IacImportManifest } from './types';
 
 // Re-exported so callers keep one import site (`@hyperdx/common-utils/dist/iac`)
 // for both halves of the feature.
 export {
   dashboardHasUnexportableTiles,
+  isAddressableTile,
   isImportableAlert,
   isImportableDashboard,
   isImportableSource,
+  isTileAlertUnaddressable,
   isUnexportableTile,
 } from './iacEligibility';
 
@@ -33,6 +35,15 @@ const TERRAFORM_PROVIDER_SOURCE = 'ClickHouse/clickhouse';
 // we pin). The `<team_id>/<resource_id>` id we emit has been accepted since
 // 3.22.0 and does not need this floor.
 const TERRAFORM_PROVIDER_VERSION_CONSTRAINT = '>= 3.25.0';
+// `source = "tile"` with `dashboard_id`/`tile_id` on
+// clickhouse_clickstack_alert, and the `tile_ids` map on
+// clickhouse_clickstack_dashboard, arrive in 3.26.0 (provider #683). Only a
+// file that actually carries a tile alert asks for it — an export of anything
+// else still installs on 3.25.x, and raising the floor for everyone would
+// break those exports for no reason.
+// Exported: the per-alert popover names it in its copy, and a second literal
+// there would drift the moment this one moves.
+export const TERRAFORM_PROVIDER_TILE_ALERT_VERSION_CONSTRAINT = '>= 3.26.0';
 // `import {}` blocks and `-generate-config-out` both landed in Terraform 1.5.
 // Without this, an older CLI fails with a syntax error instead of saying so.
 const TERRAFORM_VERSION_CONSTRAINT = '>= 1.5.0';
@@ -62,6 +73,12 @@ export type IacResourceRef = {
   type: IacResourceType;
   id: string;
   name?: string;
+  /**
+   * Set on an alert that watches a dashboard tile. It only decides which
+   * provider version the file asks for — the address and the import id of a
+   * tile alert are the same as any other alert's.
+   */
+  tileAlert?: boolean;
 };
 
 // The manifest contract lives in ./types so this module and the router that
@@ -149,6 +166,13 @@ export function providerEndpoint(origin: string, basePath = ''): string {
   return `${origin}${basePath}/api`;
 }
 
+/** The higher of the two floors that applies to what the file contains. */
+function providerVersionConstraint(tileAlerts: boolean): string {
+  return tileAlerts
+    ? TERRAFORM_PROVIDER_TILE_ALERT_VERSION_CONSTRAINT
+    : TERRAFORM_PROVIDER_VERSION_CONSTRAINT;
+}
+
 /**
  * The endpoint is emitted as a variable rather than a baked literal. The
  * default is derived from the browser that generated the file, and that is a
@@ -157,13 +181,16 @@ export function providerEndpoint(origin: string, basePath = ''): string {
  * a different network, localhost). A variable makes it overridable without
  * editing generated HCL, and the header tells the user to check it.
  */
-export function buildProviderBlock(endpoint: string): string {
+export function buildProviderBlock(
+  endpoint: string,
+  { tileAlerts = false }: { tileAlerts?: boolean } = {},
+): string {
   return `terraform {
   required_version = "${TERRAFORM_VERSION_CONSTRAINT}"
   required_providers {
     clickhouse = {
       source  = "${TERRAFORM_PROVIDER_SOURCE}"
-      version = "${TERRAFORM_PROVIDER_VERSION_CONSTRAINT}"
+      version = "${providerVersionConstraint(tileAlerts)}"
     }
   }
 }
@@ -227,8 +254,12 @@ export function buildImportFile({
    */
   skipNotices?: string[];
 }): string {
+  // Derived from the resources rather than taken as a parameter: a call site
+  // that forgot to pass it would emit a file that installs a provider with no
+  // `source = "tile"`, and the failure would land at plan time.
+  const tileAlerts = resources.some(r => r.tileAlert);
   const sections = [
-    buildProviderBlock(endpoint),
+    buildProviderBlock(endpoint, { tileAlerts }),
     ...(connectionLocals.length
       ? [buildConnectionLocalsBlock(connectionLocals)]
       : []),
@@ -240,6 +271,21 @@ export function buildImportFile({
 #   entries and were capped, so this file covers only the first
 #   ${IAC_MANIFEST_LIMIT} of each: ${truncatedTypes.join(', ')}.
 #   The remainder is not in this file and re-exporting returns the same page.
+`
+    : '';
+  // Tile alerts are the one resource whose generated config needs a hand edit
+  // to be durable, so the file says so where the user will read it.
+  const tileAlertNotice = tileAlerts
+    ? `# * Tile alerts in this file need provider ${TERRAFORM_PROVIDER_TILE_ALERT_VERSION_CONSTRAINT},
+#   where clickhouse_clickstack_alert gained source = "tile". The generated
+#   config pins dashboard_id and tile_id as literals; if the dashboard is in
+#   this file too, replace them with references —
+#   clickhouse_clickstack_dashboard.<name>.id and
+#   ...tile_ids["<tile name>"] — before you commit. Tile ids are
+#   server-assigned, so a literal one goes stale the next time the dashboard is
+#   applied, and the alert is deleted with the tile it pointed at. Renaming an
+#   alerted tile also mints a new id, which fails the plan until the reference
+#   is updated.
 `
     : '';
   const skipped = skipNotices.length
@@ -281,10 +327,10 @@ ${partialWarning}${skipped}#
 #   service is a single ClickStack, so drop the "<team_id>/" prefix.
 # * The provider version constraint below is a floor, not decoration. If you
 #   delete the "terraform" block per step 1, check your own declaration
-#   requires >= 3.25.0 — older providers write server-only ids into the config
-#   generated for a dashboard, and applying that churns its tile ids and
-#   deletes the tile alerts attached to them.
-# * Re-exporting later does NOT produce an additive file. It re-emits every
+#   requires ${providerVersionConstraint(tileAlerts)} — older providers write
+#   server-only ids into the config generated for a dashboard, and applying
+#   that churns its tile ids and deletes the tile alerts attached to them.
+${tileAlertNotice}# * Re-exporting later does NOT produce an additive file. It re-emits every
 #   resource, including the ones already in state, so two of these files in one
 #   module means duplicate "to" addresses — which Terraform rejects for the
 #   whole plan, not just the clashing blocks. Delete the previous file, or the
@@ -344,7 +390,14 @@ export function collectImportableResources(
         skippedAlerts += 1;
         continue;
       }
-      resources.push({ type: 'alert', id: alert.id, name: alert.name });
+      resources.push({
+        type: 'alert',
+        id: alert.id,
+        name: alert.name,
+        // Only set when true: the ref is compared structurally in tests and a
+        // `false` on every other alert reads as a tri-state it is not.
+        ...(alert.source === AlertSource.TILE ? { tileAlert: true } : {}),
+      });
     }
   }
 
