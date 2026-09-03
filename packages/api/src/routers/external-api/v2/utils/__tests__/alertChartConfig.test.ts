@@ -312,6 +312,22 @@ describe('convertAlertChartConfigToExternal', () => {
     expect(external).toMatchObject({ displayType: DisplayType.Line });
   });
 
+  it('still emits configs carrying a stored granularity', () => {
+    // The chart explorer persists granularity: 'auto' on every inline alert
+    // it authors, and the alert task derives the real bucket size from
+    // alert.interval — refusing on it would blank chartConfig for the most
+    // common authoring path. The field is dropped (the external dialect has
+    // no spelling for it), which only affects the unattached chart-editor
+    // preview.
+    for (const granularity of ['auto', '5 minute']) {
+      const external = convertAlertChartConfigToExternal(
+        baseInternal({ granularity }),
+      );
+      expect(external).toMatchObject({ displayType: DisplayType.Line });
+      expect(external).not.toHaveProperty('granularity');
+    }
+  });
+
   it.each([
     [
       'filters',
@@ -322,7 +338,6 @@ describe('convertAlertChartConfigToExternal', () => {
     ['limit', { limit: { limit: 10 } }],
     ['ratioMode', { ratioMode: 'total' }],
     ['selectGroupBy', { selectGroupBy: true }],
-    ['granularity', { granularity: '5 minute' }],
     ['implicitColumnExpression', { implicitColumnExpression: 'Body' }],
     ['sampleWeightExpression', { sampleWeightExpression: 'SampleRate' }],
     ['a raw SQL select expression string', { select: 'count() as count' }],

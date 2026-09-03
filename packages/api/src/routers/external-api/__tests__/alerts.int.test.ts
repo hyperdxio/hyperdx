@@ -1555,8 +1555,9 @@ describe('External API Alerts', () => {
 
     it('emits chartConfig for internally-authored configs the dialect can express', async () => {
       // Guards against over-refusal: the shapes the UI's chart explorer
-      // persists (name, empty chart-level where, count select) must keep
-      // round-tripping.
+      // persists (name, empty chart-level where, count select, and its
+      // always-written granularity: 'auto' — evaluation derives the bucket
+      // size from alert.interval) must keep round-tripping.
       const { source } = await makeSource();
 
       const alert = await createTestAlertDirectly({
@@ -1578,6 +1579,7 @@ describe('External API Alerts', () => {
           where: '',
           whereLanguage: 'lucene',
           seriesReturnType: 'column',
+          granularity: 'auto',
         },
       });
 

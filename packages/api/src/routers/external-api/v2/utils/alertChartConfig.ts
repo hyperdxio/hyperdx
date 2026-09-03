@@ -111,6 +111,13 @@ export const EVALUATION_INERT_CONFIG_KEYS: ReadonlySet<string> = new Set([
   // Evaluation-relevant only with a groupBy, which (on variants whose shape
   // lacks seriesLimit, i.e. number) is itself refused when present.
   'seriesLimit',
+  // The alert task derives granularity from alert.interval
+  // (tasks/checkAlerts/index.ts: `${windowSizeInMins} minute`) and the alert
+  // detail chart from intervalToGranularity, so the stored value only affects
+  // the unattached chart-editor preview. The chart explorer persists
+  // granularity: 'auto' on every inline alert it authors — refusing on it
+  // would blank chartConfig for the most common authoring path.
+  'granularity',
 ]);
 
 /**
@@ -129,7 +136,6 @@ export const KNOWN_LOSSY_CONFIG_KEYS: ReadonlySet<string> = new Set([
   'limit',
   'ratioMode',
   'selectGroupBy',
-  'granularity',
   'implicitColumnExpression',
   'sampleWeightExpression',
   'eventTableSelect',
