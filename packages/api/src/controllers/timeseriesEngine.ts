@@ -14,6 +14,16 @@ import logger from '@/utils/logger';
 export const PROMETHEUS_MAX_EXECUTION_SEC = 30;
 export const PROMETHEUS_MAX_RESULT_ROWS = 100000;
 
+export type TimeSeriesTagsQueryArgs = {
+  client: ClickhouseClient;
+  connectionId: string;
+  databaseName: string;
+  tableName: string;
+  startMs?: number;
+  endMs?: number;
+  limit?: number;
+};
+
 /**
  * Indicates whether the tags inner table associated with the given TimeSeries table
  * includes the optional `min_time` and `max_time` columns.
@@ -49,64 +59,61 @@ async function timeSeriesTagsTableHasTimeBounds({
 }
 
 /**
- * Queries distinct values for the given label name from the given TimeSeries table,
- * optionally filtering by a time range (if the table has the optional time range columns).
+ * Returns SQL predicates restricting tags rows to series that overlap [startMs, endMs].
+ * Empty when no bound is given, or when the table stores no time bounds.
  */
-export async function queryLabelValues({
+async function getTimeFilterCondition({
   client,
-  databaseName,
   connectionId,
+  databaseName,
   tableName,
-  labelName,
   startMs,
   endMs,
-  limit,
-}: {
-  client: ClickhouseClient;
-  connectionId: string;
-  databaseName: string;
-  tableName: string;
-  labelName: string;
-  startMs?: number;
-  endMs?: number;
-  limit?: number;
-}): Promise<string[]> {
-  const isMetricName = labelName === '__name__';
-  const value = isMetricName
-    ? chSql`${{ Identifier: 'metric_name' }} `
-    : chSql`${{ Identifier: 'tags' }}[${{ String: labelName }}]`;
-
-  const conditions: ChSql[] = [];
-  if (!isMetricName)
-    conditions.push(
-      chSql`mapContains(${{ Identifier: 'tags' }}, ${{ String: labelName }})`,
-    );
-
-  const metadata = new Metadata(client, new MetadataCache());
-  const hasStartTime = startMs != null;
-  const hasEndTime = endMs != null;
+}: Omit<TimeSeriesTagsQueryArgs, 'limit'>): Promise<ChSql[]> {
+  if (startMs == null && endMs == null) return [];
 
   // min and max time columns are optional in the tags inner table,
   // so we check if they exist before adding time conditions
-  const tableHasTimeBounds =
-    (hasStartTime || hasEndTime) && // Short-circuit if no time conditions are needed
-    (await timeSeriesTagsTableHasTimeBounds({
-      metadata,
-      connectionId,
-      database: databaseName,
-      table: tableName,
-    }));
+  const metadata = new Metadata(client, new MetadataCache());
+  const tableHasTimeBounds = await timeSeriesTagsTableHasTimeBounds({
+    metadata,
+    connectionId,
+    database: databaseName,
+    table: tableName,
+  });
+  if (!tableHasTimeBounds) return [];
 
-  if (tableHasTimeBounds && endMs != null)
+  const conditions: ChSql[] = [];
+  if (endMs != null)
     conditions.push(
       chSql`(min_time IS NULL OR min_time <= fromUnixTimestamp64Milli(${{ Int64: endMs }}))`,
     );
-
-  if (tableHasTimeBounds && startMs != null)
+  if (startMs != null)
     conditions.push(
       chSql`(max_time IS NULL OR max_time >= fromUnixTimestamp64Milli(${{ Int64: startMs }}))`,
     );
+  return conditions;
+}
 
+/**
+ * Runs `SELECT DISTINCT <value> AS val FROM timeSeriesTags(...)` with the given
+ * conditions, sorted, and returns the distinct values.
+ */
+async function queryDistinctTagsValues({
+  client,
+  databaseName,
+  tableName,
+  value,
+  conditions,
+  limit,
+}: {
+  client: ClickhouseClient;
+  databaseName: string;
+  tableName: string;
+  value: ChSql;
+  conditions: ChSql[];
+  limit?: number;
+}): Promise<string[]> {
   const where = conditions.length
     ? chSql`WHERE ${concatChSql(' AND ', ...conditions)}`
     : chSql``;
@@ -134,4 +141,45 @@ export async function queryLabelValues({
 
   const json = await resp.json<{ val: string }>();
   return json.data.map(r => r.val);
+}
+
+/**
+ * Queries distinct values for the given label name from the given TimeSeries table,
+ * optionally filtering by a time range (if the table has the optional time range columns).
+ */
+export async function queryLabelValues({
+  labelName,
+  limit,
+  ...args
+}: TimeSeriesTagsQueryArgs & { labelName: string }): Promise<string[]> {
+  const isMetricName = labelName === '__name__';
+  const value = isMetricName
+    ? chSql`${{ Identifier: 'metric_name' }} `
+    : chSql`${{ Identifier: 'tags' }}[${{ String: labelName }}]`;
+
+  const conditions: ChSql[] = [];
+  if (!isMetricName)
+    conditions.push(
+      chSql`mapContains(${{ Identifier: 'tags' }}, ${{ String: labelName }})`,
+    );
+  conditions.push(...(await getTimeFilterCondition(args)));
+
+  return queryDistinctTagsValues({ ...args, value, conditions, limit });
+}
+
+/**
+ * Queries the distinct label names carried by any series in the given TimeSeries
+ * table, optionally filtering by a time range (if the table has the optional time
+ * range columns).
+ */
+export async function queryLabelNames({
+  limit,
+  ...args
+}: TimeSeriesTagsQueryArgs): Promise<string[]> {
+  // `all_tags` is EPHEMERAL by default, so the label names come from `tags`,
+  // which the engine strips `__name__` out of. It is folded back in explicitly.
+  const value = chSql`arrayJoin(arrayConcat([${{ String: '__name__' }}], mapKeys(${{ Identifier: 'tags' }})))`;
+  const conditions = await getTimeFilterCondition(args);
+
+  return queryDistinctTagsValues({ ...args, value, conditions, limit });
 }

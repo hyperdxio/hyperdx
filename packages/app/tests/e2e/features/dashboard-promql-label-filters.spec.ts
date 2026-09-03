@@ -100,8 +100,19 @@ test.describe(
         await dashboardPage.getFilterOption(PROMQL_SOURCE_NAME).click();
       });
 
+      await test.step('The label field suggests the label names the source carries', async () => {
+        await dashboardPage.getFilterLabelInput().click();
+        const suggestion = (name: string) =>
+          dashboardPage.page.getByRole('option', { name, exact: true });
+        await expect(suggestion('service')).toBeVisible({ timeout: 20000 });
+        await expect(suggestion('__name__')).toBeVisible();
+        await suggestion('service').click();
+        await expect(dashboardPage.getFilterLabelInput()).toHaveValue(
+          'service',
+        );
+      });
+
       await test.step('The saved filter is summarized by its source and label', async () => {
-        await dashboardPage.getFilterLabelInput().fill('service');
         await dashboardPage.variableNameInput.fill('svc');
         await dashboardPage.page.getByTestId('save-filter-button').click();
 

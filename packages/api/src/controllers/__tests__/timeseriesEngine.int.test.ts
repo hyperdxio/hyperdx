@@ -1,12 +1,16 @@
 import { ClickhouseClient } from '@/clickhouse';
 import * as config from '@/config';
-import { queryLabelValues } from '@/controllers/timeseriesEngine';
+import {
+  queryLabelNames,
+  queryLabelValues,
+} from '@/controllers/timeseriesEngine';
 import {
   closeTestFixtureClickHouseClient,
   DEFAULT_DATABASE,
   dropTimeSeriesTable,
   executeSqlCommand,
   seedTimeSeriesTagsTable,
+  TimeSeriesFixtureSeries,
 } from '@/fixtures';
 
 const CONNECTION_ID = 'timeseries-engine-int-test';
@@ -19,11 +23,12 @@ const RECENT_START_SEC = 1700000000;
 const sec = (s: number) => s * 1000;
 
 // Three series: one only in the distant past, two only in the recent window
-// sharing a metric name (so DISTINCT has something to collapse).
-const SERIES = [
+// sharing a metric name (so DISTINCT has something to collapse). Only the old
+// series carries `region`, so a window can exclude a label name too.
+const SERIES: TimeSeriesFixtureSeries[] = [
   {
     metricName: 'old_metric',
-    tags: { job: 'batch' },
+    tags: { job: 'batch', region: 'eu' },
     startSec: OLD_START_SEC,
     endSec: OLD_START_SEC + HOUR_SEC,
   },
@@ -239,6 +244,64 @@ describe('timeseriesEngine controller', () => {
           `DROP TABLE IF EXISTS ${DEFAULT_DATABASE}.test_ts_plain`,
         );
       }
+    });
+  });
+
+  describe('queryLabelNames', () => {
+    const labelNames = (
+      args: Partial<Parameters<typeof queryLabelNames>[0]> = {},
+    ) =>
+      queryLabelNames({
+        client,
+        connectionId: CONNECTION_ID,
+        databaseName: DEFAULT_DATABASE,
+        tableName: BOUNDED_TABLE,
+        ...args,
+      });
+
+    // `__name__` is not a key of `tags`, so it only appears if folded back in.
+    it('returns every label name including __name__, deduplicated and sorted', async () => {
+      expect(await labelNames()).toEqual(['__name__', 'job', 'region']);
+    });
+
+    it('keeps only labels carried by series overlapping the window', async () => {
+      expect(
+        await labelNames({
+          startMs: sec(RECENT_START_SEC),
+          endMs: sec(RECENT_START_SEC + HOUR_SEC),
+        }),
+      ).toEqual(['__name__', 'job']);
+    });
+
+    it('returns nothing for a window no series covers', async () => {
+      expect(
+        await labelNames({
+          startMs: sec(OLD_START_SEC + 2 * HOUR_SEC),
+          endMs: sec(OLD_START_SEC + 3 * HOUR_SEC),
+        }),
+      ).toEqual([]);
+    });
+
+    it('caps the number of names returned, keeping the ordering', async () => {
+      expect(await labelNames({ limit: 2 })).toEqual(['__name__', 'job']);
+    });
+
+    it('treats a zero limit as unlimited', async () => {
+      expect(await labelNames({ limit: 0 })).toEqual([
+        '__name__',
+        'job',
+        'region',
+      ]);
+    });
+
+    it('ignores the bounds on a table without min_time/max_time', async () => {
+      expect(
+        await labelNames({
+          tableName: UNBOUNDED_TABLE,
+          startMs: sec(RECENT_START_SEC),
+          endMs: sec(RECENT_START_SEC + HOUR_SEC),
+        }),
+      ).toEqual(['__name__', 'job', 'region']);
     });
   });
 });
