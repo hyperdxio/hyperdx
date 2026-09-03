@@ -157,7 +157,9 @@ enum InlineTab {
   ColumnValues = 'columnValues',
 }
 
-function RowOverviewPanelWrapper({
+// Exported for MultiSourceRowTable, which renders the same expanded-row
+// overview but resolves the source per row instead of once per table.
+export function RowOverviewPanelWrapper({
   source,
   rowId,
   aliasWith,

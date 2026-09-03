@@ -1419,7 +1419,7 @@ export function appendSelectWithAdditionalKeys(
   }
 }
 
-function getSelectLength(select: SelectList): number {
+export function getSelectLength(select: SelectList): number {
   if (typeof select === 'string') {
     return select.split(',').filter(s => s.trim().length > 0).length;
   } else {
@@ -1512,7 +1512,7 @@ export function useConfigWithAdditionalSelect(
  * (e.g. `SELECT *`). Exported for SearchResultsTable, which resolves the same
  * columns when rendering a single source's own SELECT.
  */
-function selectColumnMapWithoutAdditionalKeys(
+export function selectColumnMapWithoutAdditionalKeys(
   selectMeta: ColumnMetaType[] | undefined,
   additionalKeysLength: number | undefined,
 ): Map<
@@ -1547,7 +1547,7 @@ export type DBRowTableVariant = 'default' | 'muted';
  * implementation. Denoising is inherently single-source: it mines patterns
  * from one table's body column against that source's severity expression.
  */
-function useDenoisedRows({
+export function useDenoisedRows({
   config,
   sourceId,
   processedRows,
@@ -1653,7 +1653,7 @@ function useDenoisedRows({
 }
 
 /** The "Removed Noisy Event Patterns" summary shown above denoised results. */
-function DenoisedPatternsSummary({
+export function DenoisedPatternsSummary({
   noisyPatterns,
   hasNoisyPatterns,
 }: {

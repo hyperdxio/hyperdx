@@ -305,6 +305,7 @@ export function useFetchFacets({
   filterState,
   showMoreFields,
   disableValues,
+  enabled = true,
 }: {
   chartConfig: BuilderChartConfigWithDateRange;
   sourceId: string | null;
@@ -318,6 +319,8 @@ export function useFetchFacets({
   filterState?: FilterState;
   showMoreFields?: boolean;
   disableValues?: boolean;
+  /** Disable all data fetching (e.g. an unused multi-source hook slot). */
+  enabled?: boolean;
 }) {
   const facetsQuery = useFacets({
     chartConfig,
@@ -327,7 +330,7 @@ export function useFetchFacets({
     dateRange,
     filterState,
     showMoreFields,
-    enabled: true,
+    enabled,
     disableValues,
   });
 
