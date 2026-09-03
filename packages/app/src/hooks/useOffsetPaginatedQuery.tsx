@@ -427,7 +427,9 @@ function flattenPages(pages: TQueryFnData[]) {
   return pages.flatMap(p => p.data);
 }
 
-function flattenData(data: TData | undefined): TQueryFnData | null {
+function flattenData(
+  data: TData | undefined,
+): (TQueryFnData & { lastPageRowCount: number }) | null {
   if (data == null || data.pages.length === 0) {
     return null;
   }
@@ -437,6 +439,10 @@ function flattenData(data: TData | undefined): TQueryFnData | null {
     data: flattenPages(data.pages),
     chSql: data.pages[0].chSql,
     window: data.pages[data.pages.length - 1].window,
+    // Whether the last fetched page hit results distinguishes "still mid-window
+    // at LIMIT" from "window drained" — multi-source merge uses this to compute
+    // how far this stream's time coverage safely extends.
+    lastPageRowCount: data.pages[data.pages.length - 1].data.length,
   };
 }
 
