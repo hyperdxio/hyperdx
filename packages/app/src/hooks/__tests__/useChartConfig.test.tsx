@@ -10,6 +10,7 @@ import {
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 
+import { prometheusApi } from '@/api';
 import { useClickhouseClient } from '@/clickhouse';
 import {
   appendChunk,
@@ -67,6 +68,16 @@ jest.mock('../useMVOptimizationExplanation', () => ({
     data: undefined,
     isLoading: false,
   }),
+}));
+
+// Mock prometheusApi for the PromQL query path, keeping the rest of the
+// module (useMetadata calls api.useMe at render time).
+jest.mock('@/api', () => ({
+  __esModule: true,
+  ...jest.requireActual('@/api'),
+  prometheusApi: {
+    queryRange: jest.fn(),
+  },
 }));
 
 // Create a mock ChartConfig
@@ -376,6 +387,72 @@ describe('useChartConfig', () => {
       } as unknown as jest.Mocked<ClickhouseClient>;
 
       jest.mocked(useClickhouseClient).mockReturnValue(mockClickhouseClient);
+    });
+
+    describe('promql configs', () => {
+      const createPromqlConfig = (
+        overrides: Partial<ChartConfigWithOptDateRange> = {},
+      ): ChartConfigWithOptDateRange =>
+        ({
+          configType: 'promql',
+          promqlExpression: 'e2e_service_up',
+          connection: 'foo',
+          dateRange: [
+            new Date('2023-01-10 00:00:00'),
+            new Date('2023-01-10 01:00:00'),
+          ],
+          ...overrides,
+        }) as ChartConfigWithOptDateRange;
+
+      const matrixResponse = {
+        status: 'success' as const,
+        data: {
+          resultType: 'matrix' as const,
+          result: [
+            {
+              metric: { __name__: 'e2e_service_up', service: 'accounting' },
+              values: [[1673308800, '1']] as [number, string][],
+            },
+            {
+              metric: { __name__: 'e2e_service_up', service: 'api-server' },
+              values: [[1673308800, '2']] as [number, string][],
+            },
+          ],
+        },
+      };
+
+      it('renders series names from the legend template', async () => {
+        jest.mocked(prometheusApi.queryRange).mockResolvedValue(matrixResponse);
+
+        const config = createPromqlConfig({
+          legendTemplate: 'svc:{{service}}',
+        });
+        const { result } = renderHook(() => useQueriedChartConfig(config), {
+          wrapper,
+        });
+
+        await waitFor(() => expect(result.current.isSuccess).toBe(true));
+        expect(
+          result.current.data?.data.map((r: any) => r.series_name),
+        ).toEqual(['svc:accounting', 'svc:api-server']);
+      });
+
+      it('uses the default label-set name without a legend template', async () => {
+        jest.mocked(prometheusApi.queryRange).mockResolvedValue(matrixResponse);
+
+        const { result } = renderHook(
+          () => useQueriedChartConfig(createPromqlConfig()),
+          { wrapper },
+        );
+
+        await waitFor(() => expect(result.current.isSuccess).toBe(true));
+        expect(
+          result.current.data?.data.map((r: any) => r.series_name),
+        ).toEqual([
+          'e2e_service_up{service="accounting"}',
+          'e2e_service_up{service="api-server"}',
+        ]);
+      });
     });
 
     it('fetches data without chunking when no dateRange is provided', async () => {

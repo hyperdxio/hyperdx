@@ -71,6 +71,20 @@ export type KeyValues = {
   value: string[] | number[];
 };
 
+export type MetricNames = {
+  names: string[];
+  /** True when more names matched than `limit`, so the page is incomplete. */
+  truncated: boolean;
+};
+
+// Metric-name listing. See `getMetricNames`.
+export const DEFAULT_METRIC_NAMES_LIMIT = 500;
+
+// `%` and `_` are ILIKE wildcards, so a metric name containing them (or a
+// literal backslash) has to be escaped before being wrapped in `%...%`.
+const escapeLikePattern = (value: string): string =>
+  value.replace(/[\\%_]/g, char => `\\${char}`);
+
 // See https://github.com/hyperdxio/hyperdx/issues/2163. Inlining a validated
 // integer literal avoids the `_CAST` wrapper entirely.
 const inlineNonNegativeInt = (value: number, label: string): string => {
@@ -82,7 +96,8 @@ const inlineNonNegativeInt = (value: number, label: string): string => {
   return String(value);
 };
 
-const unquoteIdentifier = (identifier: string): string => {
+/** Strip one level of `…` / "…" identifier quoting, if present. */
+export const unquoteIdentifier = (identifier: string): string => {
   if (
     (identifier.startsWith('`') && identifier.endsWith('`')) ||
     (identifier.startsWith('"') && identifier.endsWith('"'))
@@ -503,6 +518,39 @@ export class Metadata {
             query_params: sql.params,
             connectionId,
             clickhouse_settings: this.getClickHouseSettings(),
+          })
+          .then(res => res.json<ColumnMeta>())
+          .then(d => d.data);
+        return columns;
+      },
+    );
+  }
+
+  /** Queries and returns the columns of a TimeSeries table's inner table */
+  async getTimeSeriesTableColumns({
+    connectionId,
+    databaseName,
+    tableName,
+    innerTableType,
+  }: {
+    connectionId: string;
+    databaseName: string;
+    tableName: string;
+    innerTableType: 'Tags' | 'Metrics' | 'Data';
+  }) {
+    return this.cache.getOrFetch<ColumnMeta[]>(
+      `${connectionId}.${databaseName}.${tableName}.${innerTableType}.getTimeSeriesTableColumns`,
+      async () => {
+        const sql = chSql`DESCRIBE TABLE timeSeries${innerTableType}(${{ String: databaseName }}, ${{ String: tableName }})`;
+        const columns = await this.clickhouseClient
+          .query<'JSON'>({
+            query: sql.sql,
+            query_params: sql.params,
+            connectionId,
+            clickhouse_settings: {
+              ...this.getClickHouseSettings(),
+              allow_experimental_time_series_table: 1,
+            },
           })
           .then(res => res.json<ColumnMeta>())
           .then(d => d.data);
@@ -2599,6 +2647,128 @@ export class Metadata {
         }));
       },
     );
+  }
+
+  /**
+   * List metric names from a single OTel metrics table.
+   *
+   * Deliberately does NOT go through `getKeyValues`: that path builds
+   * `groupUniqArray(limit)(MetricName)`, which keeps an *arbitrary* subset once a
+   * table has more than `limit` distinct names — the survivors follow hash order,
+   * not name order, and shift as the data and part layout change. On a
+   * high-cardinality source (a full Prometheus scrape) that silently hid metrics
+   * such as `up`, with no way to search for what had been dropped.
+   *
+   * Instead: a deterministic page, ordered by relevance to `namePattern` so an
+   * exact match is always on the first page, plus one extra row so callers can
+   * tell the list was cut off rather than having to guess.
+   *
+   * Not cached in `MetadataCache`: that is an unbounded module-level Map with no
+   * TTL, and this is the only lookup keyed on free-form user input. Callers
+   * should cache through react-query, whose `gcTime` bounds it.
+   */
+  async getMetricNames({
+    databaseName,
+    tableName,
+    connectionId,
+    dateRange,
+    timestampValueExpression,
+    namePattern,
+    limit = DEFAULT_METRIC_NAMES_LIMIT,
+    signal,
+  }: {
+    databaseName: string;
+    tableName: string;
+    connectionId: string;
+    dateRange: [Date, Date];
+    timestampValueExpression: string;
+    namePattern?: string;
+    limit?: number;
+    signal?: AbortSignal;
+  }): Promise<MetricNames> {
+    if (!Number.isInteger(limit) || limit < 1) {
+      throw new Error(
+        `limit must be a positive integer, got: ${String(limit)}`,
+      );
+    }
+
+    // Reuse the shared time filter so `timestampValueExpression` and the
+    // primary-key/partition pruning optimizations keep applying.
+    const timeFilter = await timeFilterExpr({
+      connectionId,
+      databaseName,
+      dateRange,
+      dateRangeEndInclusive: true,
+      dateRangeStartInclusive: true,
+      metadata: this,
+      tableName,
+      timestampValueExpression,
+    });
+
+    // Excluded in SQL rather than after the fact: an empty name sorts first, so
+    // filtering it client-side would consume the extra row and under-report
+    // `truncated`.
+    const whereParts: ChSql[] = [timeFilter, chSql`MetricName != ''`];
+    if (namePattern) {
+      whereParts.push(
+        chSql`MetricName ILIKE ${{
+          String: `%${escapeLikePattern(namePattern)}%`,
+        }}`,
+      );
+    }
+
+    // Relevance first when searching, so a short query like `up` cannot be
+    // crowded off the page by the many names that merely contain it
+    // (`group_reads`, `node_uptime_seconds`, ...). Ordering here rather than in
+    // the client keeps the page we return the page worth showing. Position
+    // ranks earlier occurrences higher and covers prefix matches (position 1),
+    // so exact → earliest occurrence → alphabetical.
+    const orderBy = namePattern
+      ? chSql`lower(MetricName) = lower(${{ String: namePattern }}) DESC,
+              positionCaseInsensitive(MetricName, ${{ String: namePattern }}) ASC,
+              MetricName ASC`
+      : chSql`MetricName ASC`;
+
+    const sql = chSql`
+      SELECT MetricName
+      FROM ${tableExpr({ database: databaseName, table: tableName })}
+      WHERE ${concatChSql(' AND ', whereParts)}
+      GROUP BY MetricName
+      ORDER BY ${orderBy}
+      LIMIT ${{ Int32: limit + 1 }}
+    `;
+
+    const names = await this.clickhouseClient
+      .query<'JSON'>({
+        query: sql.sql,
+        query_params: sql.params,
+        connectionId,
+        clickhouse_settings: {
+          ...this.getClickHouseSettings(),
+          // Bounded by wall clock, not rows: a row cap under `ORDER BY ... LIMIT`
+          // is what made the old result an arbitrary subset, so capping rows here
+          // would reintroduce the bug this method removes. `max_execution_time`
+          // is deliberately left unset so the client applies the deployment's
+          // configured query timeout — the same effective bound this path had
+          // before. Superseded searches abort through `signal`, so only the
+          // latest pattern is ever in flight.
+          max_rows_to_read: '0',
+          // Pinned, not merely left unset: `break` returns a partial aggregate
+          // as HTTP 200, i.e. a short list reporting `truncated: false`, which
+          // is the silent incompleteness this method exists to remove. The
+          // spread above is a mutable process-wide bag, so relying on absence
+          // would let a deployment profile reintroduce it.
+          timeout_overflow_mode: 'throw',
+        },
+        abort_signal: signal,
+      })
+      .then(res => res.json<{ MetricName: string }>())
+      .then(d => d.data.map(row => row.MetricName));
+
+    return {
+      names: names.slice(0, limit),
+      truncated: names.length > limit,
+    };
   }
 
   async getKeyValuesWithMVs({

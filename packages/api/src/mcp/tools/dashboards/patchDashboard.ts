@@ -18,6 +18,7 @@ import { mcpPatchDashboardSchema } from './schemas';
 import {
   getRawSqlMissingSourceError,
   getRawSqlTileMacroWarnings,
+  getTileVariableWarnings,
 } from './validation';
 
 export function registerPatchDashboard({
@@ -245,7 +246,10 @@ export function registerPatchDashboard({
         output.patchedTile = patchedTile;
         output.hint =
           'Use clickstack_query_tile to test the patched tile query.';
-        const macroWarnings = getRawSqlTileMacroWarnings([patchedTile]);
+        const macroWarnings = [
+          ...getRawSqlTileMacroWarnings([patchedTile]),
+          ...getTileVariableWarnings([patchedTile], existingDashboard.filters),
+        ];
         if (macroWarnings.length > 0) {
           output.warnings = macroWarnings;
         }

@@ -1872,7 +1872,7 @@ describe('External API v2 Dashboards - new format', () => {
   });
 
   const server = getServer();
-  let agent, team, user, traceSource, metricSource, connection;
+  let agent, team, user, traceSource, metricSource, promqlSource, connection;
 
   beforeAll(async () => {
     await server.start();
@@ -1920,6 +1920,18 @@ describe('External API v2 Dashboards - new format', () => {
       timestampValueExpression: 'TimeUnix',
       connection: connection._id,
       name: 'Metrics',
+    });
+
+    promqlSource = await Source.create({
+      kind: SourceKind.Promql,
+      team: team._id,
+      from: {
+        databaseName: DEFAULT_DATABASE,
+        tableName: 'otel_metrics_timeseries',
+      },
+      timestampValueExpression: 'TimeUnix',
+      connection: connection._id,
+      name: 'PromQL',
     });
   });
 
@@ -3186,7 +3198,7 @@ describe('External API v2 Dashboards - new format', () => {
           sqlTemplate,
           sourceId,
           numberFormat: { output: 'currency', currencySymbol: '$' },
-          // Raw SQL number tiles carry the static tile color (no colorRules).
+          // This fixture exercises the static color; raw SQL number tiles also support colorRules.
           color: 'chart-purple',
         },
       };
@@ -4882,7 +4894,7 @@ describe('External API v2 Dashboards - new format', () => {
           sqlTemplate,
           sourceId,
           numberFormat: { output: 'currency', currencySymbol: '$' },
-          // Raw SQL number tiles carry the static tile color (no colorRules).
+          // This fixture exercises the static color; raw SQL number tiles also support colorRules.
           color: 'chart-purple',
         },
       };
@@ -5667,6 +5679,277 @@ describe('External API v2 Dashboards - new format', () => {
         expect(response.status).toBe(200);
       });
     });
+
+    describe('static-list filters', () => {
+      const staticFilterInput = (overrides = {}) => ({
+        id: new ObjectId().toString(),
+        type: 'STATIC_LIST' as const,
+        name: 'Environment',
+        options: ['prod', 'staging', 'dev'],
+        isBroadcastEnabled: false,
+        isVariableEnabled: true,
+        variableName: 'env',
+        ...overrides,
+      });
+
+      it('accepts a static-list filter and round-trips it through GET', async () => {
+        const response = await sendFilters([staticFilterInput()]);
+        expect(response.status).toBe(200);
+
+        const [filter] = response.body.data.filters;
+        expect(filter).toMatchObject({
+          type: 'STATIC_LIST',
+          name: 'Environment',
+          // Author order, not sorted.
+          options: ['prod', 'staging', 'dev'],
+          isBroadcastEnabled: false,
+          isVariableEnabled: true,
+          variableName: 'env',
+        });
+        // A sourceless filter emits no `sourceId` key at all rather than a
+        // null one, so the response body can be PUT straight back.
+        expect(filter).not.toHaveProperty('sourceId');
+        expect(filter).not.toHaveProperty('expression');
+
+        const getResponse = await authRequest(
+          'get',
+          `${BASE_URL}/${response.body.data.id}`,
+        ).expect(200);
+        expect(getResponse.body.data.filters).toEqual(
+          response.body.data.filters,
+        );
+      });
+
+      it('accepts a static filter alongside a queried one', async () => {
+        const response = await sendFilters([
+          filterInput(),
+          staticFilterInput(),
+        ]);
+
+        expect(response.status).toBe(200);
+        expect(response.body.data.filters).toHaveLength(2);
+      });
+
+      // Each mode flag accepts exactly one value, so omitting it fills that
+      // value in rather than falling back to the queried filter's defaults.
+      it('defaults the mode flags when they are omitted', async () => {
+        const response = await sendFilters([
+          staticFilterInput({
+            isBroadcastEnabled: undefined,
+            isVariableEnabled: undefined,
+          }),
+        ]);
+
+        expect(response.status).toBe(200);
+        expect(response.body.data.filters[0]).toMatchObject({
+          isBroadcastEnabled: false,
+          isVariableEnabled: true,
+          variableName: 'env',
+        });
+      });
+
+      it.each([
+        ['broadcast enabled', { isBroadcastEnabled: true }],
+        ['not variable-enabled', { isVariableEnabled: false }],
+        ['no options', { options: undefined }],
+        ['an empty option list', { options: [] }],
+        ['duplicate options', { options: ['prod', 'prod'] }],
+      ])('rejects a static filter with %s', async (_label, overrides) => {
+        const response = await sendFilters([staticFilterInput(overrides)]);
+
+        expect(response.status).toBe(400);
+      });
+
+      // Unlike the internal variants, which strip them, the external ones are
+      // strict: a field belonging to the other variant is an unrecognized key,
+      // named in the error.
+      it.each([
+        ['an expression', { expression: 'ServiceName' }],
+        ['a sourceId', { sourceId: '65f5e4a3b9e77c001a111111' }],
+        ['a where clause', { where: "ServiceName = 'api'" }],
+        ['a where language', { whereLanguage: 'sql' }],
+        [
+          'applies-to sources',
+          { appliesToSourceIds: ['65f5e4a3b9e77c001a111111'] },
+        ],
+      ])('rejects a static filter carrying %s', async (_label, overrides) => {
+        const response = await sendFilters([staticFilterInput(overrides)]);
+
+        expect(response.status).toBe(400);
+        expect(JSON.stringify(response.body)).toContain(
+          `Unrecognized key(s) in object: '${Object.keys(overrides)[0]}'`,
+        );
+      });
+
+      it('rejects options on a queried filter', async () => {
+        const response = await sendFilters([
+          filterInput({ options: ['prod'] }),
+        ]);
+
+        expect(response.status).toBe(400);
+        expect(JSON.stringify(response.body)).toContain(
+          "Unrecognized key(s) in object: 'options'",
+        );
+      });
+
+      it.each(['expression', 'sourceId'])(
+        'still rejects a queried filter with no %s',
+        async field => {
+          const response = await sendFilters([
+            filterInput({ [field]: undefined }),
+          ]);
+
+          expect(response.status).toBe(400);
+          expect(JSON.stringify(response.body)).toContain(field);
+        },
+      );
+
+      // A bogus type must not fall through to either variant.
+      it('rejects an unknown filter type at the discriminator', async () => {
+        const response = await sendFilters([
+          staticFilterInput({ type: 'STATIC' }),
+        ]);
+
+        expect(response.status).toBe(400);
+        expect(JSON.stringify(response.body)).toContain(
+          'Invalid discriminator value',
+        );
+      });
+    });
+
+    describe('promql-label filters', () => {
+      const promqlFilterInput = (overrides = {}) => ({
+        id: new ObjectId().toString(),
+        type: 'PROMETHEUS_LABEL' as const,
+        name: 'Pod',
+        sourceId: promqlSource._id.toString(),
+        label: 'pod',
+        isBroadcastEnabled: false,
+        isVariableEnabled: true,
+        variableName: 'pod',
+        ...overrides,
+      });
+
+      it('accepts a promql-label filter and round-trips it through GET', async () => {
+        const response = await sendFilters([promqlFilterInput()]);
+        expect(response.status).toBe(200);
+
+        const [filter] = response.body.data.filters;
+        expect(filter).toMatchObject({
+          type: 'PROMETHEUS_LABEL',
+          name: 'Pod',
+          sourceId: promqlSource._id.toString(),
+          label: 'pod',
+          isBroadcastEnabled: false,
+          isVariableEnabled: true,
+          variableName: 'pod',
+        });
+        // Stored internally as `source`; only `sourceId` is ever external.
+        expect(filter).not.toHaveProperty('source');
+        expect(filter).not.toHaveProperty('expression');
+
+        const getResponse = await authRequest(
+          'get',
+          `${BASE_URL}/${response.body.data.id}`,
+        ).expect(200);
+        expect(getResponse.body.data.filters).toEqual(
+          response.body.data.filters,
+        );
+      });
+
+      // Prometheus 3 allows UTF-8 label names, and a ClickHouse-backed source's
+      // tags hold whatever the collector ingested.
+      it('accepts a dotted OTel-shaped label', async () => {
+        const response = await sendFilters([
+          promqlFilterInput({ label: 'k8s.pod.name' }),
+        ]);
+
+        expect(response.status).toBe(200);
+        expect(response.body.data.filters[0].label).toBe('k8s.pod.name');
+      });
+
+      // Each mode flag accepts exactly one value, so omitting it fills that
+      // value in rather than falling back to the queried filter's defaults.
+      it('defaults the mode flags when they are omitted', async () => {
+        const response = await sendFilters([
+          promqlFilterInput({
+            isBroadcastEnabled: undefined,
+            isVariableEnabled: undefined,
+          }),
+        ]);
+
+        expect(response.status).toBe(200);
+        expect(response.body.data.filters[0]).toMatchObject({
+          isBroadcastEnabled: false,
+          isVariableEnabled: true,
+          variableName: 'pod',
+        });
+      });
+
+      // Resolving one of these reads the source's connection and db/table,
+      // which only a PromQL source carries. Mirrors the heatmap/formula gates.
+      it('rejects a source of the wrong kind', async () => {
+        const response = await sendFilters([
+          promqlFilterInput({ sourceId: traceSource._id.toString() }),
+        ]);
+
+        expect(response.status).toBe(400);
+        expect(JSON.stringify(response.body)).toContain(
+          `PROMETHEUS_LABEL filters require a PromQL source. The following source IDs are not PromQL sources: ${traceSource._id.toString()}`,
+        );
+      });
+
+      it('rejects a source that does not exist for the team', async () => {
+        const sourceId = new ObjectId().toString();
+        const response = await sendFilters([promqlFilterInput({ sourceId })]);
+
+        expect(response.status).toBe(400);
+        expect(JSON.stringify(response.body)).toContain(
+          `Could not find the following source IDs: ${sourceId}`,
+        );
+      });
+
+      it.each([
+        ['broadcast enabled', { isBroadcastEnabled: true }],
+        ['not variable-enabled', { isVariableEnabled: false }],
+        ['no label', { label: undefined }],
+        ['an empty label', { label: '' }],
+        ['no sourceId', { sourceId: undefined }],
+      ])('rejects a promql-label filter with %s', async (_label, overrides) => {
+        const response = await sendFilters([promqlFilterInput(overrides)]);
+
+        expect(response.status).toBe(400);
+      });
+
+      it.each([
+        ['an expression', { expression: 'ServiceName' }],
+        ['an option list', { options: ['prod'] }],
+        ['a source', { source: '65f5e4a3b9e77c001a111111' }],
+        [
+          'applies-to sources',
+          { appliesToSourceIds: ['65f5e4a3b9e77c001a111111'] },
+        ],
+      ])(
+        'rejects a promql-label filter carrying %s',
+        async (_label, overrides) => {
+          const response = await sendFilters([promqlFilterInput(overrides)]);
+
+          expect(response.status).toBe(400);
+          expect(JSON.stringify(response.body)).toContain(
+            `Unrecognized key(s) in object: '${Object.keys(overrides)[0]}'`,
+          );
+        },
+      );
+
+      it('rejects a label on a queried filter', async () => {
+        const response = await sendFilters([filterInput({ label: 'pod' })]);
+
+        expect(response.status).toBe(400);
+        expect(JSON.stringify(response.body)).toContain(
+          "Unrecognized key(s) in object: 'label'",
+        );
+      });
+    });
   });
 
   describe('Number tile color (HDX-1360)', () => {
@@ -5709,6 +5992,13 @@ describe('External API v2 Dashboards - new format', () => {
         ...config,
       },
     });
+
+    const postRawSqlTile = (config: Record<string, unknown>) =>
+      authRequest('post', BASE_URL).send({
+        name: 'Raw SQL number color dashboard',
+        tiles: [rawSqlNumberTile(config)],
+        tags: [],
+      });
 
     // ── Positive: one per UI input ──────────────────────────────────────
 
@@ -5805,21 +6095,52 @@ describe('External API v2 Dashboards - new format', () => {
       });
     });
 
-    it('strips colorRules from a raw SQL number tile, keeping color', async () => {
+    it('round-trips colorRules for a raw SQL number tile', async () => {
+      const colorRules = [
+        { operator: 'gt', value: 1, color: 'chart-red' },
+        { operator: 'lte', value: 1, color: 'chart-green' },
+      ];
+
       const create = await authRequest('post', BASE_URL)
         .send({
           name: 'Raw SQL colorRules',
           tiles: [
             rawSqlNumberTile({
               color: 'chart-blue',
-              colorRules: [{ operator: 'gt', value: 1, color: 'chart-red' }],
+              colorRules,
             }),
           ],
           tags: [],
         })
         .expect(200);
-      expect(create.body.data.tiles[0].config.color).toBe('chart-blue');
-      expect(create.body.data.tiles[0].config.colorRules).toBeUndefined();
+
+      expect(create.body.data.tiles[0].config).toMatchObject({
+        color: 'chart-blue',
+        colorRules,
+      });
+
+      const dashboardId = create.body.data.id;
+      const get = await authRequest('get', `${BASE_URL}/${dashboardId}`).expect(
+        200,
+      );
+
+      expect(get.body.data.tiles[0].config).toMatchObject({
+        color: 'chart-blue',
+        colorRules,
+      });
+
+      const update = await authRequest('put', `${BASE_URL}/${dashboardId}`)
+        .send({
+          name: get.body.data.name,
+          tiles: get.body.data.tiles,
+          tags: get.body.data.tags,
+        })
+        .expect(200);
+
+      expect(update.body.data.tiles[0].config).toMatchObject({
+        color: 'chart-blue',
+        colorRules,
+      });
     });
 
     // ── Negative: one per schema rejection rule ─────────────────────────
@@ -5849,6 +6170,16 @@ describe('External API v2 Dashboards - new format', () => {
       expect(res.body.message).toContain('tiles.0.config.colorRules');
     });
 
+    it('rejects more than 10 colorRules for a raw SQL number tile', async () => {
+      const colorRules = Array.from({ length: 11 }, (_, i) => ({
+        operator: 'gt',
+        value: i,
+        color: 'chart-blue',
+      }));
+      const res = await postRawSqlTile({ colorRules }).expect(400);
+      expect(res.body.message).toContain('tiles.0.config.colorRules');
+    });
+
     it('rejects a between rule whose value is not a two-number tuple', async () => {
       await postTile({
         colorRules: [{ operator: 'between', value: 100, color: 'chart-blue' }],
@@ -5870,6 +6201,15 @@ describe('External API v2 Dashboards - new format', () => {
       }
     });
 
+    it('rejects unsupported colorRule operators for a raw SQL number tile', async () => {
+      for (const operator of ['contains', 'startsWith', 'endsWith', 'regex']) {
+        const res = await postRawSqlTile({
+          colorRules: [{ operator, value: 'error', color: 'chart-blue' }],
+        }).expect(400);
+        expect(res.body.message).toContain('tiles.0.config.colorRules');
+      }
+    });
+
     it('rejects a per-rule color that is not a palette token', async () => {
       const res = await postTile({
         colorRules: [{ operator: 'gt', value: 1, color: 'red' }],
@@ -5877,6 +6217,17 @@ describe('External API v2 Dashboards - new format', () => {
       expect(res.body.message).toContain('tiles.0.config.colorRules');
       // Legacy numeric tokens are normalized on read, never accepted on write.
       await postTile({
+        colorRules: [{ operator: 'gt', value: 1, color: 'chart-1' }],
+      }).expect(400);
+    });
+
+    it('rejects a per-rule color that is not a palette token for a raw SQL number tile', async () => {
+      const res = await postRawSqlTile({
+        colorRules: [{ operator: 'gt', value: 1, color: 'red' }],
+      }).expect(400);
+      expect(res.body.message).toContain('tiles.0.config.colorRules');
+
+      await postRawSqlTile({
         colorRules: [{ operator: 'gt', value: 1, color: 'chart-1' }],
       }).expect(400);
     });
@@ -5979,13 +6330,7 @@ describe('External API v2 Dashboards - new format', () => {
     });
 
     it('normalizes a legacy numeric token on a raw SQL number tile to its hue name on read', async () => {
-      const create = await authRequest('post', BASE_URL)
-        .send({
-          name: 'Raw SQL legacy color',
-          tiles: [rawSqlNumberTile({ color: 'chart-blue' })],
-          tags: [],
-        })
-        .expect(200);
+      const create = await postRawSqlTile({ color: 'chart-blue' }).expect(200);
       const dashboardId = create.body.data.id;
 
       await Dashboard.updateOne(
@@ -5998,6 +6343,32 @@ describe('External API v2 Dashboards - new format', () => {
       );
       // chart-4 maps to chart-red.
       expect(get.body.data.tiles[0].config.color).toBe('chart-red');
+    });
+
+    it('normalizes legacy raw SQL colorRule colors and drops unresolvable ones on read', async () => {
+      const create = await postRawSqlTile({
+        colorRules: [{ operator: 'gt', value: 1, color: 'chart-green' }],
+      }).expect(200);
+      const dashboardId = create.body.data.id;
+
+      await Dashboard.updateOne(
+        { _id: dashboardId },
+        {
+          $set: {
+            'tiles.0.config.colorRules': [
+              { operator: 'gt', value: 1, color: 'chart-1' },
+              { operator: 'gt', value: 2, color: 'not-a-token' },
+            ],
+          },
+        },
+      );
+
+      const get = await authRequest('get', `${BASE_URL}/${dashboardId}`).expect(
+        200,
+      );
+      expect(get.body.data.tiles[0].config.colorRules).toEqual([
+        { operator: 'gt', value: 1, color: 'chart-green' },
+      ]);
     });
   });
 

@@ -6,6 +6,7 @@ import { z } from 'zod';
 
 export { default as objectHash } from 'object-hash';
 
+import { isQueryExpressionFilter, isStaticListFilter } from '@/filters';
 import { isBuilderSavedChartConfig, isRawSqlSavedChartConfig } from '@/guards';
 import { MacroExpansionError, MalformedMacroArgsError } from '@/macroErrors';
 import {
@@ -700,17 +701,24 @@ export function convertToDashboardTemplate(
     input: DashboardFilter,
     sources: TSource[],
   ): DashboardFilter => {
-    const filter = DashboardFilterSchema.strip().parse(structuredClone(input));
+    const filter = DashboardFilterSchema.parse(structuredClone(input));
+
+    // A static filter references nothing in the workspace
+    if (isStaticListFilter(filter)) return filter;
+
     // Extract name from source or default to '' if not found
     filter.source =
-      sources.find(source => source.id === input.source)?.name ?? '';
-    if (input.appliesToSourceIds?.length) {
-      const remapped = input.appliesToSourceIds
-        .map(id => sources.find(source => source.id === id)?.name)
-        .filter((name): name is string => !!name && name.length > 0);
-      filter.appliesToSourceIds = remapped.length > 0 ? remapped : undefined;
-    } else {
-      filter.appliesToSourceIds = undefined;
+      sources.find(source => source.id === filter.source)?.name ?? '';
+
+    if (isQueryExpressionFilter(filter)) {
+      if (filter.appliesToSourceIds?.length) {
+        const remapped = filter.appliesToSourceIds
+          .map(id => sources.find(source => source.id === id)?.name)
+          .filter((name): name is string => !!name && name.length > 0);
+        filter.appliesToSourceIds = remapped.length > 0 ? remapped : undefined;
+      } else {
+        filter.appliesToSourceIds = undefined;
+      }
     }
     return filter;
   };

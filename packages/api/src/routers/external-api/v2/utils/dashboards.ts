@@ -7,9 +7,14 @@ import {
   validateDashboardContainersStructure,
   validateDashboardFilterFieldGating,
   validateDashboardFilterModes,
+  validateDashboardFilterOptionUniqueness,
   validateDashboardFilterVariableNames,
   validateDashboardTileContainerRefs,
 } from '@hyperdx/common-utils/dist/dashboardValidation';
+import {
+  isPrometheusLabelFilter,
+  isStaticListFilter,
+} from '@hyperdx/common-utils/dist/filters';
 import {
   isBuilderSavedChartConfig,
   isHeatmapCompatibleSource,
@@ -27,6 +32,7 @@ import {
   isLogSource,
   isOnClickDashboardById,
   isOnClickSearchById,
+  isPromqlSource,
   isTraceSource,
   NumberTileColorCondition,
   NumberTileColorConditionSchema,
@@ -249,10 +255,8 @@ const convertToExternalTileChartConfig = (
           sqlTemplate: config.sqlTemplate,
           sourceId: config.source,
           numberFormat: config.numberFormat,
-          // Raw SQL number tiles carry the static tile color too (no
-          // colorRules; see the schema). Normalize a legacy token saved
-          // before the hue rename to its hue name on output.
           color: resolveChartPaletteToken(config.color),
+          colorRules: toExternalColorRules(config.colorRules),
         };
       case DisplayType.Pie:
         return {
@@ -737,6 +741,10 @@ export function convertToInternalTileConfig(
             externalConfig.displayType === 'number'
               ? externalConfig.color
               : undefined,
+          colorRules:
+            externalConfig.displayType === 'number'
+              ? externalConfig.colorRules
+              : undefined,
         } satisfies RawSqlSavedChartConfig;
         break;
       default:
@@ -1034,7 +1042,8 @@ function getMissingSources(
 
   if (filters?.length) {
     for (const filter of filters) {
-      if ('sourceId' in filter) {
+      // Every variant but the static one names a source.
+      if (!isStaticListFilter(filter)) {
         sourceIds.add(filter.sourceId);
       }
     }
@@ -1075,6 +1084,23 @@ function getHeatmapTilesWithIncompatibleSources(
     const source = sourceById.get(id);
     return source !== undefined && !isHeatmapCompatibleSource(source);
   });
+}
+
+/**
+ * Returns an error message string if any of the referenced source IDs is not
+ * a valid PromQL source, or null if all of them are.
+ */
+export function getPromqlLabelFilterSourceError(
+  sources: SourceForValidation[],
+  referencedSourceIds: string[],
+): string | null {
+  const sourceById = new Map(sources.map(s => [s._id.toString(), s]));
+  const invalid = [...new Set(referencedSourceIds)].filter(id => {
+    const source = sourceById.get(id);
+    return source === undefined || !isPromqlSource(source);
+  });
+  if (invalid.length === 0) return null;
+  return `PROMETHEUS_LABEL filters require a PromQL source. The following source IDs are not PromQL sources: ${invalid.join(', ')}`;
 }
 
 /**
@@ -1486,6 +1512,14 @@ export async function validateDashboardTiles(
     return `Tiles with formulas require a Metric, Log, or Trace source. The following source IDs are not formula-capable: ${formulaIncompatibleSources.join(', ')}`;
   }
 
+  // Validate that PROMETHEUS_LABEL filters reference PromQL sources
+  const promqlLabelFilters = (filters ?? []).filter(isPrometheusLabelFilter);
+  const promqlLabelFilterError = getPromqlLabelFilterSourceError(
+    sources,
+    promqlLabelFilters.map(f => f.sourceId),
+  );
+  if (promqlLabelFilterError != null) return promqlLabelFilterError;
+
   if (missingOnClickDashboards.length > 0) {
     return `Could not find the following onClick dashboard IDs: ${missingOnClickDashboards.join(', ')}`;
   }
@@ -1585,6 +1619,8 @@ function buildDashboardBodySchema(filterSchema: z.ZodTypeAny): z.ZodEffects<
       validateDashboardFilterVariableNames(data.filters ?? [], ctx);
       validateDashboardFilterModes(data.filters ?? [], ctx);
       validateDashboardFilterFieldGating(data.filters ?? [], ctx);
+
+      validateDashboardFilterOptionUniqueness(data.filters ?? [], ctx);
     });
 }
 

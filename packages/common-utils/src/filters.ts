@@ -9,6 +9,7 @@ import {
   DashboardFilter,
   DashboardFilterValue,
   Filter,
+  SourceKind,
 } from '@/types';
 import { getVariableReferences, substituteVariables } from '@/variables';
 
@@ -787,6 +788,8 @@ export function validateDashboardFilterQueries(
   ).map(declaration => ({ ...declaration, values: [] }));
 
   for (const filter of filters) {
+    // Only ClickHouse-queried filters carry a values query to validate.
+    if (!isQueryExpressionFilter(filter)) continue;
     const where = filter.where ?? '';
     if (!where.trim()) continue;
     const language = filter.whereLanguage ?? 'sql';
@@ -844,6 +847,57 @@ export function isFilterVariableEnabled(filter: {
   return filter.isVariableEnabled === true;
 }
 
+/** The discriminant every dashboard-filter shape carries. */
+export type DashboardFilterKind = DashboardFilter['type'];
+
+/** The source kinds a QUERY_EXPRESSION filter can run its `SELECT` against. */
+export const QUERY_EXPRESSION_FILTER_SOURCE_KINDS: SourceKind[] = [
+  SourceKind.Log,
+  SourceKind.Trace,
+  SourceKind.Session,
+  SourceKind.Metric,
+];
+
+/** Type guard for QUERY_EXPRESSION type filters. */
+export function isQueryExpressionFilter<
+  T extends { type: DashboardFilterKind },
+>(filter: T): filter is Extract<T, { type: 'QUERY_EXPRESSION' }> {
+  return filter.type === 'QUERY_EXPRESSION';
+}
+
+/** Type guard for STATIC_LIST type filters. */
+export function isStaticListFilter<T extends { type: DashboardFilterKind }>(
+  filter: T,
+): filter is Extract<T, { type: 'STATIC_LIST' }> {
+  return filter.type === 'STATIC_LIST';
+}
+
+/** Type guard for PROMETHEUS_LABEL type filters. */
+export function isPrometheusLabelFilter<
+  T extends { type: DashboardFilterKind },
+>(filter: T): filter is Extract<T, { type: 'PROMETHEUS_LABEL' }> {
+  return filter.type === 'PROMETHEUS_LABEL';
+}
+
+/** The SQL expression associated with the filter, if any. */
+export function getFilterExpression(
+  filter: DashboardFilter,
+): string | undefined {
+  return isQueryExpressionFilter(filter) ? filter.expression : undefined;
+}
+
+/** What the filter broadcasts, or undefined when it cannot broadcast. */
+export function getFilterBroadcastTarget(
+  filter: DashboardFilter,
+): { expression: string; appliesToSourceIds?: string[] } | undefined {
+  if (!isQueryExpressionFilter(filter) || !isFilterBroadcastEnabled(filter))
+    return undefined;
+  return {
+    expression: filter.expression,
+    appliesToSourceIds: filter.appliesToSourceIds,
+  };
+}
+
 /**
  * Whether a filter does anything at all with the value it collects — broadcast
  * it as a condition, expose it as `$variableName`, or both.
@@ -874,14 +928,22 @@ export type DashboardVariableDeclaration = Pick<
   'name' | 'expression'
 >;
 
+/** Minimal projection of fields necessary to extract the variables a dashboard declares. */
+export type FilterForVariableDeclaration = {
+  name: string;
+  expression?: string;
+  variableName?: string;
+  isVariableEnabled?: boolean;
+};
+
 /**
  * The variable-enabled filters a dashboard declares, paired with the name each
  * one answers to, in filter order.
  */
-export function getDashboardVariableFilters(
-  filters: DashboardFilter[] | undefined,
-): { filter: DashboardFilter; name: string }[] {
-  const results: { filter: DashboardFilter; name: string }[] = [];
+export function getDashboardVariableFilters<
+  T extends FilterForVariableDeclaration,
+>(filters: T[] | undefined): { filter: T; name: string }[] {
+  const results: { filter: T; name: string }[] = [];
   const takenNames = new Set<string>();
 
   for (const filter of filters ?? []) {
@@ -900,7 +962,7 @@ export function getDashboardVariableFilters(
 
 /** The variables a dashboard declares, in filter order. */
 export function getDashboardVariableDeclarations(
-  filters: DashboardFilter[] | undefined,
+  filters: FilterForVariableDeclaration[] | undefined,
 ): DashboardVariableDeclaration[] {
   return getDashboardVariableFilters(filters).map(({ filter, name }) => ({
     name,

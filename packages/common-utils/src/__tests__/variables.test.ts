@@ -1,4 +1,8 @@
-import { MalformedMacroArgsError } from '@/macroErrors';
+import {
+  MacroExpansionError,
+  MalformedMacroArgsError,
+  UnknownVariableError,
+} from '@/macroErrors';
 import type { BuilderChartConfig, ChartVariable } from '@/types';
 import {
   filterReferencedVariables,
@@ -307,6 +311,39 @@ describe('substituteVariables', () => {
           SERVICE,
         ]),
       ).toThrow("Macro '$__filter' references unknown variable 'nope'");
+    });
+
+    it('throws a typed UnknownVariableError carrying the name and the declared set', () => {
+      // Callers outside this package react to this specific failure (the MCP
+      // tools attach a "declare the filter as a variable" hint to it), and
+      // must not have to match on the message to recognize it.
+      expect.assertions(5);
+      try {
+        substituteVariables('WHERE $__filter(ServiceName, $nope)', {
+          variables: [SERVICE, variable('env', ['prod'])],
+          inputLanguage: 'sql',
+        });
+      } catch (e) {
+        expect(e).toBeInstanceOf(UnknownVariableError);
+        // Still a MacroExpansionError, so existing handling keeps working.
+        expect(e).toBeInstanceOf(MacroExpansionError);
+        const error = e as UnknownVariableError;
+        expect(error.macro).toBe('filter');
+        expect(error.variableName).toBe('nope');
+        expect(error.availableVariables).toEqual(['service', 'env']);
+      }
+    });
+
+    it('reports an empty declared set rather than omitting the field', () => {
+      expect.assertions(1);
+      try {
+        substituteVariables('WHERE $__conditionalAll(1=1, $nope)', {
+          variables: [],
+          inputLanguage: 'sql',
+        });
+      } catch (e) {
+        expect((e as UnknownVariableError).availableVariables).toEqual([]);
+      }
     });
 
     it('throws on the one-argument form when the variable has no expression', () => {
@@ -1866,5 +1903,124 @@ describe('validateVariableReferencesInTemplate', () => {
         ],
       });
     });
+  });
+});
+
+describe('macros naming an unknown variable', () => {
+  it('reports the message expansion gives', () => {
+    const { errors, warnings } = validateVariableReferencesInTemplate(
+      '$__filter(ServiceName, $tenant)',
+      [SERVICE],
+    );
+
+    expect(warnings).toEqual([]);
+    expect(errors).toEqual([
+      "Macro '$__filter' references unknown variable 'tenant'. Available variables: service.",
+    ]);
+  });
+
+  it('says nothing when the macro names a declared variable', () => {
+    expect(
+      validateVariableReferencesInTemplate(
+        "$__conditionalAll(ServiceName != 'api', $service)",
+        [SERVICE],
+      ),
+    ).toEqual({ errors: [], warnings: [] });
+  });
+
+  it('leaves the Lucene message alone rather than piling on', () => {
+    // In a Lucene input the macro is literal text, so complaining about the
+    // name it happens to carry is noise on top of the real problem.
+    const { errors, warnings } = validateVariableReferencesInTemplate(
+      '$__filter(ServiceName, tenant)',
+      [SERVICE],
+      { language: 'lucene' },
+    );
+
+    expect(errors).toEqual([]);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('no meaning in a Lucene expression');
+  });
+});
+
+// A `STATIC_LIST` dashboard filter declares a variable with no `expression`:
+// its values are authored, not queried, so there is no column to filter on.
+// Every reference form still works except the one-argument `$__filter`, which
+// has nothing to render — this is what the reference layer owes that filter
+// type, so pin it.
+describe('a variable with no expression', () => {
+  const ENV = variable('env', ['prod']);
+  const EMPTY_ENV = variable('env', []);
+
+  describe('$__filter($name)', () => {
+    // The check sits before the empty-selection shortcut on purpose, so the
+    // author is told regardless of what happens to be selected.
+    it.each([
+      ['with a selection', ENV],
+      ['with nothing selected', EMPTY_ENV],
+    ])('throws %s', (_label, env) => {
+      expect(() =>
+        substituteVariablesSql('WHERE $__filter($env)', [env]),
+      ).toThrow(
+        "Macro '$__filter($env)' requires the variable's filter expression, which " +
+          'is not available — pass it explicitly, e.g. $__filter(<expression>, $env).',
+      );
+    });
+
+    it('is reported as an editor error rather than a warning', () => {
+      const { errors, warnings } = validateVariableReferencesInTemplate(
+        'WHERE $__filter($env)',
+        [ENV],
+      );
+
+      expect(errors).toEqual([
+        "Macro '$__filter($env)' requires the variable's filter expression, which " +
+          'is not available — pass it explicitly, e.g. $__filter(<expression>, $env).',
+      ]);
+      expect(warnings).toEqual([]);
+    });
+  });
+
+  it('expands the two-argument $__filter form', () => {
+    expect(
+      substituteVariablesSql('WHERE $__filter(ServiceName, $env)', [ENV]),
+    ).toBe("WHERE (ServiceName IN ('prod'))");
+  });
+
+  it('expands $__conditionalAll', () => {
+    expect(
+      substituteVariablesSql(
+        'WHERE $__conditionalAll(ServiceName IN ($env), $env)',
+        [ENV],
+      ),
+    ).toBe("WHERE (ServiceName IN ('prod'))");
+    expect(
+      substituteVariablesSql(
+        'WHERE $__conditionalAll(ServiceName IN ($env), $env)',
+        [EMPTY_ENV],
+      ),
+    ).toBe("WHERE (1=1 /** no values selected for variable 'env' */)");
+  });
+
+  it.each(['$env', '${env}', '${env:csv}'])('expands %s', reference => {
+    expect(
+      substituteVariablesSql(`WHERE ServiceName IN (${reference})`, [ENV]),
+    ).toBe(
+      reference === '${env:csv}'
+        ? 'WHERE ServiceName IN (prod)'
+        : "WHERE ServiceName IN ('prod')",
+    );
+  });
+
+  it('accepts the guarded and macro forms without complaint', () => {
+    for (const template of [
+      '$__filter(ServiceName, $env)',
+      '$__conditionalAll(ServiceName IN ($env), $env)',
+    ]) {
+      expect(validateVariableReferencesInTemplate(template, [ENV])).toEqual({
+        errors: [],
+        warnings: [],
+      });
+    }
   });
 });

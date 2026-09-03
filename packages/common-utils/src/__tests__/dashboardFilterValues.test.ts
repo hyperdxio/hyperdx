@@ -5,14 +5,48 @@ import {
   serializeDashboardFilterValues,
 } from '@/dashboardFilterValues';
 import { FilterState, filtersToQuery } from '@/filters';
-import type { DashboardFilter, DashboardFilterValue } from '@/types';
+import type {
+  DashboardFilterValue,
+  PromqlLabelDashboardFilter,
+  QueryExpressionDashboardFilter,
+  StaticListDashboardFilter,
+} from '@/types';
 
-const filter = (overrides: Partial<DashboardFilter> = {}): DashboardFilter => ({
+const filter = (
+  overrides: Partial<QueryExpressionDashboardFilter> = {},
+): QueryExpressionDashboardFilter => ({
   id: 'f1',
   type: 'QUERY_EXPRESSION',
   name: 'Service',
   expression: 'ServiceName',
   source: 'logs',
+  ...overrides,
+});
+
+const staticFilter = (
+  overrides: Partial<StaticListDashboardFilter> = {},
+): StaticListDashboardFilter => ({
+  id: 'f1',
+  type: 'STATIC_LIST',
+  name: 'Environment',
+  options: ['prod', 'staging', 'dev'],
+  isBroadcastEnabled: false,
+  isVariableEnabled: true,
+  variableName: 'env',
+  ...overrides,
+});
+
+const promqlFilter = (
+  overrides: Partial<PromqlLabelDashboardFilter> = {},
+): PromqlLabelDashboardFilter => ({
+  id: 'f1',
+  type: 'PROMETHEUS_LABEL',
+  name: 'Pod',
+  source: 'promql',
+  label: 'pod',
+  isBroadcastEnabled: false,
+  isVariableEnabled: true,
+  variableName: 'pod',
   ...overrides,
 });
 
@@ -319,6 +353,29 @@ describe('dashboardFilterValues', () => {
         filterSelectionKey(filter({ name: '环境', isVariableEnabled: true })),
       ).toEqual({ kind: 'expression', expression: 'ServiceName' });
     });
+
+    it('keys a static-list filter by its variable name', () => {
+      expect(filterSelectionKey(staticFilter())).toEqual({
+        kind: 'variable',
+        name: 'env',
+      });
+    });
+
+    it('keys a promql-label filter by its variable name', () => {
+      expect(filterSelectionKey(promqlFilter())).toEqual({
+        kind: 'variable',
+        name: 'pod',
+      });
+    });
+
+    // Unreachable through the write paths — a static filter is variable-only by
+    // construction — but it has no expression to fall back to, so the key stays
+    // variable-kind even when no name can be derived from it.
+    it('keys a static-list filter by variable even when no name can be derived', () => {
+      expect(
+        filterSelectionKey(staticFilter({ name: '环境', variableName: '' })),
+      ).toEqual({ kind: 'variable', name: '' });
+    });
   });
 
   describe('resolveFilterSelection', () => {
@@ -379,6 +436,40 @@ describe('dashboardFilterValues', () => {
       expect(resolveFilterSelection(variableFilter, parsed)).toBeUndefined();
       expect(resolveFilterSelection(filter(), parsed)).toBeUndefined();
     });
+
+    it('resolves a static-list filter from its variable entry', () => {
+      const parsed = parseDashboardFilterValues([
+        { type: 'variable', name: 'env', values: ['prod'] },
+      ]);
+
+      expect(resolveFilterSelection(staticFilter(), parsed)).toEqual(
+        included('prod'),
+      );
+    });
+
+    it('resolves a promql-label filter from its variable entry', () => {
+      const parsed = parseDashboardFilterValues([
+        { type: 'variable', name: 'pod', values: ['api-0'] },
+      ]);
+
+      expect(resolveFilterSelection(promqlFilter(), parsed)).toEqual(
+        included('api-0'),
+      );
+    });
+
+    it.each([
+      ['static-list', staticFilter()],
+      ['promql-label', promqlFilter()],
+    ])(
+      'returns undefined for an expressionless %s filter with no variable entry',
+      (_label, expressionless) => {
+        const parsed = parseDashboardFilterValues([
+          { type: 'sql', condition: "ServiceName IN ('legacy')" },
+        ]);
+
+        expect(resolveFilterSelection(expressionless, parsed)).toBeUndefined();
+      },
+    );
 
     it('resolves two filters sharing an expression independently', () => {
       const parsed = parseDashboardFilterValues([

@@ -48,6 +48,7 @@
       "parentSpanIdExpression": "ParentSpanId",
       "spanKindExpression": "SpanKind",
       "spanNameExpression": "SpanName",
+      "spanLinksValueExpression": "Links",
       "logSourceId": "E2E Logs",
       "statusCodeExpression": "StatusCode",
       "statusMessageExpression": "StatusMessage",
@@ -180,6 +181,23 @@
       "resourceAttributesExpression": "ResourceAttributes",
       "traceIdExpression": "TraceId",
       "spanIdExpression": "SpanId",
+      "implicitColumnExpression": "Body",
+      "displayedTimestampValueExpression": "Timestamp"
+    },
+    {
+      "id": "E2E Custom Service Logs",
+      "kind": "log",
+      "name": "E2E Custom Service Logs",
+      "connection": "local",
+      "from": {
+        "databaseName": "default",
+        "tableName": "e2e_custom_service_name"
+      },
+      "timestampValueExpression": "Timestamp",
+      "defaultTableSelectExpression": "Timestamp, AppName as service, SeverityText as level, Body",
+      "serviceNameExpression": "AppName",
+      "severityTextExpression": "SeverityText",
+      "eventAttributesExpression": "LogAttributes",
       "implicitColumnExpression": "Body",
       "displayedTimestampValueExpression": "Timestamp"
     },
