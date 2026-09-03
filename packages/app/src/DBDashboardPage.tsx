@@ -2058,6 +2058,10 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     );
   }, [setValue, where, whereLanguage]);
 
+  const {
+    userPreferences: { isUTC },
+  } = useUserPreferences();
+
   const handleSaveQuery = useCallback(() => {
     if (!dashboard || isLocalDashboard) return;
 
@@ -2074,8 +2078,11 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       ? filterValueEntries
       : [];
 
-    const currentRelativeDateRange =
-      (searchedTimeRange[1].getTime() - searchedTimeRange[0].getTime()) / 1000;
+    const timeRange = parseTimeQuery(displayedTimeInputValue, isUTC);
+    const currentRelativeDateRange = timeRange.some(v => v === null)
+      ? null
+      : (timeRange[1]!.getTime() - timeRange[0]!.getTime()) / 1000;
+
     setDashboard(
       produce(dashboard, draft => {
         draft.savedQuery = currentWhere;
@@ -2100,7 +2107,8 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     getValues,
     filterValueEntries,
     onSubmit,
-    searchedTimeRange,
+    isUTC,
+    displayedTimeInputValue,
   ]);
   const handleRemoveSavedQuery = useCallback(() => {
     if (!dashboard || isLocalDashboard) return;
