@@ -7,6 +7,7 @@ import {
 import { FilterState, filtersToQuery } from '@/filters';
 import type {
   DashboardFilterValue,
+  PromqlLabelDashboardFilter,
   QueryExpressionDashboardFilter,
   StaticListDashboardFilter,
 } from '@/types';
@@ -32,6 +33,20 @@ const staticFilter = (
   isBroadcastEnabled: false,
   isVariableEnabled: true,
   variableName: 'env',
+  ...overrides,
+});
+
+const promqlFilter = (
+  overrides: Partial<PromqlLabelDashboardFilter> = {},
+): PromqlLabelDashboardFilter => ({
+  id: 'f1',
+  type: 'PROMETHEUS_LABEL',
+  name: 'Pod',
+  source: 'promql',
+  label: 'pod',
+  isBroadcastEnabled: false,
+  isVariableEnabled: true,
+  variableName: 'pod',
   ...overrides,
 });
 
@@ -346,6 +361,13 @@ describe('dashboardFilterValues', () => {
       });
     });
 
+    it('keys a promql-label filter by its variable name', () => {
+      expect(filterSelectionKey(promqlFilter())).toEqual({
+        kind: 'variable',
+        name: 'pod',
+      });
+    });
+
     // Unreachable through the write paths — a static filter is variable-only by
     // construction — but it has no expression to fall back to, so the key stays
     // variable-kind even when no name can be derived from it.
@@ -425,13 +447,29 @@ describe('dashboardFilterValues', () => {
       );
     });
 
-    it('returns undefined for an expressionless filter with no variable entry', () => {
+    it('resolves a promql-label filter from its variable entry', () => {
       const parsed = parseDashboardFilterValues([
-        { type: 'sql', condition: "ServiceName IN ('legacy')" },
+        { type: 'variable', name: 'pod', values: ['api-0'] },
       ]);
 
-      expect(resolveFilterSelection(staticFilter(), parsed)).toBeUndefined();
+      expect(resolveFilterSelection(promqlFilter(), parsed)).toEqual(
+        included('api-0'),
+      );
     });
+
+    it.each([
+      ['static-list', staticFilter()],
+      ['promql-label', promqlFilter()],
+    ])(
+      'returns undefined for an expressionless %s filter with no variable entry',
+      (_label, expressionless) => {
+        const parsed = parseDashboardFilterValues([
+          { type: 'sql', condition: "ServiceName IN ('legacy')" },
+        ]);
+
+        expect(resolveFilterSelection(expressionless, parsed)).toBeUndefined();
+      },
+    );
 
     it('resolves two filters sharing an expression independently', () => {
       const parsed = parseDashboardFilterValues([

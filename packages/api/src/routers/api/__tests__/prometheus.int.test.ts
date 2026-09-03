@@ -1,11 +1,18 @@
 import { Types } from 'mongoose';
 
 import * as config from '@/config';
-import { getAgent, getLoggedInAgent, getServer } from '@/fixtures';
+import {
+  DEFAULT_DATABASE,
+  dropTimeSeriesTable,
+  getAgent,
+  getLoggedInAgent,
+  getServer,
+  seedTimeSeriesTagsTable,
+} from '@/fixtures';
 import Connection from '@/models/connection';
 import { PROMETHEUS_MAX_EXEMPLAR_WINDOW_SEC } from '@/routers/api/prometheus';
 
-const mockFetch = global.fetch as jest.Mock;
+const mockFetch = jest.mocked(global.fetch);
 
 // The proxy now streams the upstream response straight through (no
 // `await resp.json()`), so test mocks must expose the fields the pipeline
@@ -289,7 +296,7 @@ describe('prometheus router', () => {
 
       expect(res.body).toEqual(promResponse);
       expect(mockFetch).toHaveBeenCalledTimes(1);
-      const calledUrl = mockFetch.mock.calls[0][0] as string;
+      const calledUrl = mockFetch.mock.calls[0][0];
       expect(calledUrl).toContain('http://prom.example.com');
       expect(calledUrl).toContain('/api/v1/query_range');
       expect(calledUrl).toContain('query=up');
@@ -382,7 +389,7 @@ describe('prometheus router', () => {
 
       expect(res.body).toEqual(promResponse);
       expect(mockFetch).toHaveBeenCalledTimes(1);
-      const calledUrl = mockFetch.mock.calls[0][0] as string;
+      const calledUrl = mockFetch.mock.calls[0][0];
       expect(calledUrl).toContain('/api/v1/query');
       expect(calledUrl).not.toContain('/api/v1/query_range');
     });
@@ -393,6 +400,26 @@ describe('prometheus router', () => {
       const { agent } = await getLoggedInAgent(server);
       await agent.get('/v1/prometheus/label/__name__/values').expect(400);
     });
+
+    // An empty or malformed id must fail in the schema. Reaching Mongoose
+    // instead turns a client error into a cast failure that the handler's
+    // catch-all reports as a backend fault.
+    it.each(['', 'not-an-object-id'])(
+      'returns 400 for connectionId %p',
+      async connectionId => {
+        const { agent } = await getLoggedInAgent(server);
+        const res = await agent
+          .get('/v1/prometheus/label/__name__/values')
+          .query({ connectionId })
+          .expect(400);
+
+        expect(res.body).toMatchObject({
+          status: 'error',
+          errorType: 'bad_data',
+          error: expect.stringContaining('connectionId'),
+        });
+      },
+    );
 
     it('returns 404 when connection does not exist', async () => {
       const { agent } = await getLoggedInAgent(server);
@@ -415,8 +442,536 @@ describe('prometheus router', () => {
         .expect(200);
 
       expect(res.body).toEqual(promResponse);
-      const calledUrl = mockFetch.mock.calls[0][0] as string;
+      const calledUrl = mockFetch.mock.calls[0][0];
       expect(calledUrl).toContain('/api/v1/label/__name__/values');
+    });
+
+    it('forwards normalized bounds upstream', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedPrometheusConnection(team._id);
+
+      await agent
+        .get('/v1/prometheus/label/job/values')
+        .query({
+          connectionId: conn._id.toString(),
+          start: '2023-11-14T22:13:20Z',
+          end: '1700000060',
+        })
+        .expect(200);
+
+      const requested = new URL(String(mockFetch.mock.calls[0][0]));
+      expect(requested.searchParams.get('start')).toBe('1700000000');
+      expect(requested.searchParams.get('end')).toBe('1700000060');
+    });
+
+    it('sends no bounds upstream when the caller gives none', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedPrometheusConnection(team._id);
+
+      await agent
+        .get('/v1/prometheus/label/job/values')
+        .query({ connectionId: conn._id.toString() })
+        .expect(200);
+
+      const requested = new URL(String(mockFetch.mock.calls[0][0]));
+      expect(requested.searchParams.has('start')).toBe(false);
+      expect(requested.searchParams.has('end')).toBe(false);
+    });
+
+    // `?start=` is what a client sends for "no bound"; it must not become the
+    // epoch, which is what parseTimestamp('') -> Number('') would make it.
+    it('treats an empty bound as absent rather than as the epoch', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedPrometheusConnection(team._id);
+
+      await agent
+        .get('/v1/prometheus/label/job/values')
+        .query({ connectionId: conn._id.toString(), start: '', end: '' })
+        .expect(200);
+
+      const requested = new URL(String(mockFetch.mock.calls[0][0]));
+      expect(requested.searchParams.has('start')).toBe(false);
+      expect(requested.searchParams.has('end')).toBe(false);
+    });
+
+    // Query-string values arrive as strings; a schema that only accepts numbers
+    // would 400 every request carrying a limit.
+    it('forwards limit upstream', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedPrometheusConnection(team._id);
+
+      await agent
+        .get('/v1/prometheus/label/job/values')
+        .query({ connectionId: conn._id.toString(), limit: '25' })
+        .expect(200);
+
+      const requested = new URL(String(mockFetch.mock.calls[0][0]));
+      expect(requested.searchParams.get('limit')).toBe('25');
+    });
+
+    it('treats an empty limit as absent', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedPrometheusConnection(team._id);
+
+      await agent
+        .get('/v1/prometheus/label/job/values')
+        .query({ connectionId: conn._id.toString(), limit: '' })
+        .expect(200);
+
+      const requested = new URL(String(mockFetch.mock.calls[0][0]));
+      expect(requested.searchParams.has('limit')).toBe(false);
+    });
+
+    // Prometheus reads limit=0 as unlimited, which is also what sending no
+    // limit means. Rejecting it would break a caller Prometheus itself accepts.
+    it('drops a zero limit and still proxies', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedPrometheusConnection(team._id);
+
+      await agent
+        .get('/v1/prometheus/label/job/values')
+        .query({ connectionId: conn._id.toString(), limit: '0' })
+        .expect(200);
+
+      const requested = new URL(String(mockFetch.mock.calls[0][0]));
+      expect(requested.searchParams.has('limit')).toBe(false);
+    });
+
+    it('rejects a negative limit', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedPrometheusConnection(team._id);
+
+      await agent
+        .get('/v1/prometheus/label/job/values')
+        .query({ connectionId: conn._id.toString(), limit: '-1' })
+        .expect(400);
+
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('rejects a non-numeric limit', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedPrometheusConnection(team._id);
+
+      await agent
+        .get('/v1/prometheus/label/job/values')
+        .query({ connectionId: conn._id.toString(), limit: 'lots' })
+        .expect(400);
+
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('rejects a malformed bound before reaching upstream', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedPrometheusConnection(team._id);
+
+      const res = await agent
+        .get('/v1/prometheus/label/job/values')
+        .query({ connectionId: conn._id.toString(), start: 'not-a-time' })
+        .expect(400);
+
+      expect(res.body).toMatchObject({
+        status: 'error',
+        errorType: 'bad_data',
+        error: 'start: invalid timestamp, expected RFC3339 or unix seconds',
+      });
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    // Upstream 400s on an inverted range, so rejecting it here keeps the two
+    // backends answering the same request the same way.
+    it('rejects an inverted range before reaching upstream', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedPrometheusConnection(team._id);
+
+      const res = await agent
+        .get('/v1/prometheus/label/job/values')
+        .query({
+          connectionId: conn._id.toString(),
+          start: '1700000000',
+          end: '1600000000',
+        })
+        .expect(400);
+
+      expect(res.body).toMatchObject({
+        status: 'error',
+        errorType: 'bad_data',
+        error: 'end: end timestamp must not be before start time',
+      });
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    // `match[]` is how a client scopes label values to one metric; dropping it
+    // silently widens the answer to every series in the store. Repeatable, and
+    // forwarded verbatim — a selector is PromQL, which only upstream parses.
+    it('forwards every match[] selector verbatim', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedPrometheusConnection(team._id);
+
+      await agent
+        .get('/v1/prometheus/label/job/values')
+        .query(
+          `connectionId=${conn._id.toString()}&start=2023-11-14T22:13:20Z` +
+            `&match[]=${encodeURIComponent('up{env="prod"}')}` +
+            `&match[]=${encodeURIComponent('down')}`,
+        )
+        .expect(200);
+
+      const requested = new URL(String(mockFetch.mock.calls[0][0]));
+      expect(requested.searchParams.getAll('match[]')).toEqual([
+        'up{env="prod"}',
+        'down',
+      ]);
+      expect(requested.searchParams.getAll('start')).toEqual(['1700000000']);
+    });
+
+    // qs strips the brackets, so the unbracketed spelling arrives on the same
+    // key. It still has to leave as `match[]`, which is the only name
+    // Prometheus reads.
+    it('restores the bracketed name for an unbracketed match', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedPrometheusConnection(team._id);
+
+      await agent
+        .get('/v1/prometheus/label/job/values')
+        .query({ connectionId: conn._id.toString(), match: 'up' })
+        .expect(200);
+
+      const requested = new URL(String(mockFetch.mock.calls[0][0]));
+      expect(requested.searchParams.getAll('match[]')).toEqual(['up']);
+      expect(requested.searchParams.has('match')).toBe(false);
+    });
+
+    it('treats an empty match as absent', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedPrometheusConnection(team._id);
+
+      await agent
+        .get('/v1/prometheus/label/job/values')
+        .query({ connectionId: conn._id.toString(), match: '' })
+        .expect(200);
+
+      const requested = new URL(String(mockFetch.mock.calls[0][0]));
+      expect(requested.searchParams.has('match[]')).toBe(false);
+    });
+
+    // queryLabelValues' own bounds/limit/fallback behaviour is covered in
+    // controllers/__tests__/timeseriesEngine.int.test.ts. What only the route
+    // can show is that query-string params reach it intact — bounds in unix
+    // seconds where the controller takes milliseconds, and a stringified limit.
+    describe('ClickHouse-backed', () => {
+      const TABLE = 'prom_label_values_bounded_test';
+      const OLD_METRIC = 'label_values_old_metric';
+      const RECENT_METRIC = 'label_values_recent_metric';
+      const OLD_START = 1600000000;
+      const RECENT_START = 1700000000;
+      const SERIES_LENGTH_SEC = 3600;
+
+      const labelValues = async (query: Record<string, string>) => {
+        const { agent, team } = await getLoggedInAgent(server);
+        const conn = await seedClickHouseConnection(team._id);
+        const res = await agent
+          .get('/v1/prometheus/label/__name__/values')
+          .query({
+            connectionId: conn._id.toString(),
+            database: DEFAULT_DATABASE,
+            table: TABLE,
+            ...query,
+          })
+          .expect(200);
+        return res.body;
+      };
+
+      beforeAll(async () => {
+        await seedTimeSeriesTagsTable({
+          table: TABLE,
+          series: [
+            {
+              metricName: OLD_METRIC,
+              tags: { job: 'batch' },
+              startSec: OLD_START,
+              endSec: OLD_START + SERIES_LENGTH_SEC,
+            },
+            {
+              metricName: RECENT_METRIC,
+              tags: { job: 'api' },
+              startSec: RECENT_START,
+              endSec: RECENT_START + SERIES_LENGTH_SEC,
+            },
+          ],
+        });
+      });
+
+      afterAll(async () => {
+        await dropTimeSeriesTable({ table: TABLE });
+      });
+
+      it('returns every value when no bounds are given', async () => {
+        expect(await labelValues({})).toEqual({
+          status: 'success',
+          data: [OLD_METRIC, RECENT_METRIC],
+        });
+      });
+
+      // Bounds arrive in unix seconds. Passed through unscaled they land in
+      // 1970, where the min_time predicate excludes every series instead.
+      it('reads bounds as unix seconds', async () => {
+        expect(
+          await labelValues({
+            start: String(RECENT_START),
+            end: String(RECENT_START + SERIES_LENGTH_SEC),
+          }),
+        ).toEqual({ status: 'success', data: [RECENT_METRIC] });
+      });
+
+      // Without the range check this answers 200 with whatever series span the
+      // inverted gap, while the proxy path 400s the identical request.
+      it('rejects an inverted range instead of answering', async () => {
+        const { agent, team } = await getLoggedInAgent(server);
+        const conn = await seedClickHouseConnection(team._id);
+
+        const res = await agent
+          .get('/v1/prometheus/label/__name__/values')
+          .query({
+            connectionId: conn._id.toString(),
+            database: DEFAULT_DATABASE,
+            table: TABLE,
+            start: String(RECENT_START),
+            end: String(OLD_START),
+          })
+          .expect(400);
+
+        expect(res.body).toMatchObject({
+          status: 'error',
+          errorType: 'bad_data',
+          error: 'end: end timestamp must not be before start time',
+        });
+      });
+
+      // A zero-width range is a point query, not an inversion.
+      it('accepts equal bounds', async () => {
+        expect(
+          await labelValues({
+            start: String(RECENT_START),
+            end: String(RECENT_START),
+          }),
+        ).toEqual({ status: 'success', data: [RECENT_METRIC] });
+      });
+
+      it('honours a limit given as a query string', async () => {
+        expect(await labelValues({ limit: '1' })).toEqual({
+          status: 'success',
+          data: [OLD_METRIC],
+        });
+      });
+
+      it('reads a zero limit as unlimited', async () => {
+        expect(await labelValues({ limit: '0' })).toEqual({
+          status: 'success',
+          data: [OLD_METRIC, RECENT_METRIC],
+        });
+      });
+
+      // Nothing here evaluates a PromQL selector, so answering 200 with
+      // unfiltered values would be a wrong answer the caller trusts.
+      it('rejects match[] instead of ignoring it', async () => {
+        const { agent, team } = await getLoggedInAgent(server);
+        const conn = await seedClickHouseConnection(team._id);
+
+        const res = await agent
+          .get('/v1/prometheus/label/__name__/values')
+          .query({
+            connectionId: conn._id.toString(),
+            database: DEFAULT_DATABASE,
+            table: TABLE,
+            'match[]': 'up',
+          })
+          .expect(400);
+
+        expect(res.body).toMatchObject({
+          status: 'error',
+          errorType: 'bad_data',
+          error:
+            'match[] is not supported for ClickHouse-backed PromQL connections',
+        });
+      });
+    });
+  });
+
+  describe('GET /v1/prometheus/labels', () => {
+    it('returns 400 when connectionId parameter is missing', async () => {
+      const { agent } = await getLoggedInAgent(server);
+      await agent.get('/v1/prometheus/labels').expect(400);
+    });
+
+    it('returns 404 when connection does not exist', async () => {
+      const { agent } = await getLoggedInAgent(server);
+      await agent
+        .get('/v1/prometheus/labels')
+        .query({ connectionId: new Types.ObjectId().toString() })
+        .expect(404);
+    });
+
+    it('proxies to upstream Prometheus when connection isPrometheusEndpoint', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedPrometheusConnection(team._id);
+
+      const promResponse = {
+        status: 'success',
+        data: ['__name__', 'instance', 'job'],
+      };
+      mockFetch.mockResolvedValueOnce(fakeUpstreamResponse(promResponse));
+
+      const res = await agent
+        .get('/v1/prometheus/labels')
+        .query({ connectionId: conn._id.toString() })
+        .expect(200);
+
+      expect(res.body).toEqual(promResponse);
+      const requested = new URL(String(mockFetch.mock.calls[0][0]));
+      expect(requested.pathname).toBe('/api/v1/labels');
+    });
+
+    it('forwards normalized bounds, limit, and match[] upstream', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedPrometheusConnection(team._id);
+
+      await agent
+        .get('/v1/prometheus/labels')
+        .query(
+          `connectionId=${conn._id.toString()}&start=2023-11-14T22:13:20Z` +
+            `&end=1700000060&limit=25&match[]=${encodeURIComponent('up')}`,
+        )
+        .expect(200);
+
+      const requested = new URL(String(mockFetch.mock.calls[0][0]));
+      expect(requested.searchParams.get('start')).toBe('1700000000');
+      expect(requested.searchParams.get('end')).toBe('1700000060');
+      expect(requested.searchParams.get('limit')).toBe('25');
+      expect(requested.searchParams.getAll('match[]')).toEqual(['up']);
+    });
+
+    it('rejects a malformed bound before reaching upstream', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedPrometheusConnection(team._id);
+
+      const res = await agent
+        .get('/v1/prometheus/labels')
+        .query({ connectionId: conn._id.toString(), start: 'not-a-time' })
+        .expect(400);
+
+      expect(res.body).toMatchObject({
+        status: 'error',
+        errorType: 'bad_data',
+        error: 'start: invalid timestamp, expected RFC3339 or unix seconds',
+      });
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    describe('ClickHouse-backed', () => {
+      const TABLE = 'prom_labels_test';
+      const OLD_START = 1600000000;
+      const RECENT_START = 1700000000;
+      const SERIES_LENGTH_SEC = 3600;
+
+      const labels = async (query: Record<string, string>) => {
+        const { agent, team } = await getLoggedInAgent(server);
+        const conn = await seedClickHouseConnection(team._id);
+        const res = await agent
+          .get('/v1/prometheus/labels')
+          .query({
+            connectionId: conn._id.toString(),
+            database: DEFAULT_DATABASE,
+            table: TABLE,
+            ...query,
+          })
+          .expect(200);
+        return res.body;
+      };
+
+      beforeAll(async () => {
+        await seedTimeSeriesTagsTable({
+          table: TABLE,
+          series: [
+            {
+              metricName: 'labels_old_metric',
+              tags: { job: 'batch', region: 'eu' },
+              startSec: OLD_START,
+              endSec: OLD_START + SERIES_LENGTH_SEC,
+            },
+            {
+              metricName: 'labels_recent_metric',
+              tags: { job: 'api' },
+              startSec: RECENT_START,
+              endSec: RECENT_START + SERIES_LENGTH_SEC,
+            },
+          ],
+        });
+      });
+
+      afterAll(async () => {
+        await dropTimeSeriesTable({ table: TABLE });
+      });
+
+      it('returns every label name when no bounds are given', async () => {
+        expect(await labels({})).toEqual({
+          status: 'success',
+          data: ['__name__', 'job', 'region'],
+        });
+      });
+
+      it('reads bounds as unix seconds', async () => {
+        expect(
+          await labels({
+            start: String(RECENT_START),
+            end: String(RECENT_START + SERIES_LENGTH_SEC),
+          }),
+        ).toEqual({ status: 'success', data: ['__name__', 'job'] });
+      });
+
+      it('honours a limit given as a query string', async () => {
+        expect(await labels({ limit: '1' })).toEqual({
+          status: 'success',
+          data: ['__name__'],
+        });
+      });
+
+      it('returns 400 when table is missing', async () => {
+        const { agent, team } = await getLoggedInAgent(server);
+        const conn = await seedClickHouseConnection(team._id);
+
+        const res = await agent
+          .get('/v1/prometheus/labels')
+          .query({ connectionId: conn._id.toString() })
+          .expect(400);
+
+        expect(res.body).toMatchObject({
+          status: 'error',
+          error: expect.stringContaining('table'),
+        });
+      });
+
+      it('rejects match[] instead of ignoring it', async () => {
+        const { agent, team } = await getLoggedInAgent(server);
+        const conn = await seedClickHouseConnection(team._id);
+
+        const res = await agent
+          .get('/v1/prometheus/labels')
+          .query({
+            connectionId: conn._id.toString(),
+            database: DEFAULT_DATABASE,
+            table: TABLE,
+            'match[]': 'up',
+          })
+          .expect(400);
+
+        expect(res.body).toMatchObject({
+          status: 'error',
+          errorType: 'bad_data',
+          error:
+            'match[] is not supported for ClickHouse-backed PromQL connections',
+        });
+      });
     });
   });
 
@@ -485,7 +1040,7 @@ describe('prometheus router', () => {
         .expect(200);
 
       expect(res.body).toEqual(promResponse);
-      const calledUrl = mockFetch.mock.calls[0][0] as string;
+      const calledUrl = mockFetch.mock.calls[0][0];
       expect(calledUrl).toContain('/api/v1/query_exemplars');
       expect(calledUrl).toContain('query=up');
     });

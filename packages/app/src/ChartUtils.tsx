@@ -440,6 +440,11 @@ export const K8S_MEM_NUMBER_FORMAT: NumberFormat = {
   output: 'byte',
 };
 
+export const GPU_UTILIZATION_NUMBER_FORMAT: NumberFormat = {
+  output: 'percent',
+  mantissa: 1,
+};
+
 function inferValueColumns(
   meta: Array<{ name: string; type: string }>,
   excluded: Set<string>,

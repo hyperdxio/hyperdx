@@ -550,5 +550,48 @@ describe('MCP Dashboard Tools - clickstack_query_tiles', () => {
       expect(result.isError).toBe(true);
       expect(getFirstText(result)).toContain('Available variables: (none)');
     });
+
+    it('rejects a value outside a static filter options', async () => {
+      const sourceId = ctx.traceSource._id.toString();
+      const createResult = await callTool(
+        ctx.client!,
+        'clickstack_save_dashboard',
+        {
+          name: 'Batch static filter test',
+          tiles: [
+            {
+              name: 'Count',
+              config: {
+                displayType: 'number',
+                sourceId,
+                select: [{ aggFn: 'count' }],
+              },
+            },
+          ],
+          filters: [
+            {
+              type: 'STATIC_LIST',
+              name: 'Environment',
+              options: ['prod', 'staging'],
+              variableName: 'env',
+            },
+          ],
+        },
+      );
+      expect(createResult.isError).toBeFalsy();
+      const dashboard = JSON.parse(getFirstText(createResult));
+
+      const result = await callTool(ctx.client!, 'clickstack_query_tiles', {
+        dashboardId: dashboard.id,
+        ...wideRange(),
+        variableValues: [{ name: 'env', values: ['dev'] }],
+      });
+
+      expect(result.isError).toBe(true);
+      const text = getFirstText(result);
+      expect(text).toContain('"env"');
+      expect(text).toContain('"dev"');
+      expect(text).toContain('prod, staging');
+    });
   });
 });

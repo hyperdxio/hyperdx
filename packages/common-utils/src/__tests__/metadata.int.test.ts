@@ -1144,4 +1144,170 @@ describe('Metadata Integration Tests', () => {
       expect(result.names).toEqual([]);
     });
   });
+
+  describe('getTimeSeriesTableColumns', () => {
+    const boundedTable = 'test_ts_bounded';
+    const unboundedTable = 'test_ts_unbounded';
+    let metadata: Metadata;
+
+    // The TimeSeries engine is experimental, so both the DDL and every read of
+    // an inner table need the setting — it cannot be attached to the CREATE's
+    // own SETTINGS clause, which only takes storage settings.
+    const timeSeriesCommand = (query: string) =>
+      client.command({
+        query,
+        clickhouse_settings: { allow_experimental_time_series_table: 1 },
+      });
+
+    beforeAll(async () => {
+      await timeSeriesCommand(`DROP TABLE IF EXISTS default.${boundedTable}`);
+      await timeSeriesCommand(`DROP TABLE IF EXISTS default.${unboundedTable}`);
+      await timeSeriesCommand(
+        `CREATE TABLE default.${boundedTable} ENGINE = TimeSeries`,
+      );
+      await timeSeriesCommand(
+        `CREATE TABLE default.${unboundedTable} ENGINE = TimeSeries SETTINGS store_min_time_and_max_time = 0`,
+      );
+    });
+
+    afterAll(async () => {
+      await timeSeriesCommand(`DROP TABLE IF EXISTS default.${boundedTable}`);
+      await timeSeriesCommand(`DROP TABLE IF EXISTS default.${unboundedTable}`);
+    });
+
+    beforeEach(() => {
+      metadata = new Metadata(hdxClient, new MetadataCache());
+    });
+
+    it('describes the tags inner table, not the TimeSeries table itself', async () => {
+      const columns = await metadata.getTimeSeriesTableColumns({
+        connectionId: 'test_connection',
+        databaseName: 'default',
+        tableName: boundedTable,
+        innerTableType: 'Tags',
+      });
+
+      const byName = new Map(columns.map(c => [c.name, c]));
+      expect([...byName.keys()].sort()).toEqual([
+        'all_tags',
+        'id',
+        'max_time',
+        'metric_name',
+        'min_time',
+        'tags',
+      ]);
+      expect(byName.get('min_time')?.type).toBe(
+        'SimpleAggregateFunction(min, Nullable(DateTime64(3)))',
+      );
+      // Ephemeral, so it cannot be selected — the reason a caller has to
+      // inspect the columns rather than assume the documented shape.
+      expect(byName.get('all_tags')?.default_type).toBe('EPHEMERAL');
+    });
+
+    // What `store_min_time_and_max_time = 0` costs: the time-bound columns are
+    // simply absent, and referencing them is a hard ClickHouse error.
+    it('omits min_time/max_time when the table does not store them', async () => {
+      const columns = await metadata.getTimeSeriesTableColumns({
+        connectionId: 'test_connection',
+        databaseName: 'default',
+        tableName: unboundedTable,
+        innerTableType: 'Tags',
+      });
+
+      const names = columns.map(c => c.name);
+      expect(names).toEqual(
+        expect.arrayContaining(['metric_name', 'tags', 'id']),
+      );
+      expect(names).not.toContain('min_time');
+      expect(names).not.toContain('max_time');
+    });
+
+    it.each([
+      ['Metrics', ['metric_family_name', 'type', 'unit', 'help']],
+      ['Data', ['id', 'timestamp', 'value']],
+    ] as const)(
+      'describes the %s inner table',
+      async (innerTableType, expected) => {
+        const columns = await metadata.getTimeSeriesTableColumns({
+          connectionId: 'test_connection',
+          databaseName: 'default',
+          tableName: boundedTable,
+          innerTableType,
+        });
+
+        expect(columns.map(c => c.name)).toEqual(expected);
+      },
+    );
+
+    // Matching on the message, not just "it threw": an unbound {db:String}
+    // placeholder also throws, and would let both of these pass while the
+    // database and table never reached ClickHouse at all.
+    it('rejects when the table does not exist', async () => {
+      await expect(
+        metadata.getTimeSeriesTableColumns({
+          connectionId: 'test_connection',
+          databaseName: 'default',
+          tableName: 'test_ts_missing',
+          innerTableType: 'Tags',
+        }),
+      ).rejects.toThrow(/default\.test_ts_missing does not exist/);
+    });
+
+    it('rejects when the table is not a TimeSeries table', async () => {
+      await timeSeriesCommand(
+        `CREATE OR REPLACE TABLE default.test_ts_not_timeseries (ts DateTime) ENGINE = MergeTree ORDER BY ts`,
+      );
+      try {
+        await expect(
+          metadata.getTimeSeriesTableColumns({
+            connectionId: 'test_connection',
+            databaseName: 'default',
+            tableName: 'test_ts_not_timeseries',
+            innerTableType: 'Tags',
+          }),
+        ).rejects.toThrow(/TimeSeries table only/);
+      } finally {
+        await timeSeriesCommand(
+          'DROP TABLE IF EXISTS default.test_ts_not_timeseries',
+        );
+      }
+    });
+
+    it('caches per database, table and inner table type', async () => {
+      const querySpy = jest.spyOn(hdxClient, 'query');
+
+      const first = await metadata.getTimeSeriesTableColumns({
+        connectionId: 'test_connection',
+        databaseName: 'default',
+        tableName: boundedTable,
+        innerTableType: 'Tags',
+      });
+      const second = await metadata.getTimeSeriesTableColumns({
+        connectionId: 'test_connection',
+        databaseName: 'default',
+        tableName: boundedTable,
+        innerTableType: 'Tags',
+      });
+      expect(second).toBe(first);
+      expect(querySpy).toHaveBeenCalledTimes(1);
+
+      await metadata.getTimeSeriesTableColumns({
+        connectionId: 'test_connection',
+        databaseName: 'default',
+        tableName: unboundedTable,
+        innerTableType: 'Tags',
+      });
+      expect(querySpy).toHaveBeenCalledTimes(2);
+
+      await metadata.getTimeSeriesTableColumns({
+        connectionId: 'test_connection',
+        databaseName: 'default',
+        tableName: boundedTable,
+        innerTableType: 'Metrics',
+      });
+      expect(querySpy).toHaveBeenCalledTimes(3);
+
+      querySpy.mockRestore();
+    });
+  });
 });

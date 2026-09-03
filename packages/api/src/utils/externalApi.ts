@@ -1,7 +1,6 @@
 import {
   isFilterBroadcastEnabled,
   isFilterVariableEnabled,
-  isStaticListFilter,
 } from '@hyperdx/common-utils/dist/filters';
 import {
   AlertErrorType,
@@ -220,32 +219,53 @@ export function translateExternalChartToTileConfig(
 export function translateFilterToExternalFilter(
   filter: DashboardFilter,
 ): ExternalDashboardFilterWithId {
-  // Static filters require no translation
-  if (isStaticListFilter(filter)) return filter;
+  switch (filter.type) {
+    case 'STATIC_LIST':
+      return filter;
 
-  // Ignore variableName and appliesToSourceIds if the filter is not in a mode that uses them
-  const ignoredKeys = [
-    ...(isFilterVariableEnabled(filter) ? [] : (['variableName'] as const)),
-    ...(isFilterBroadcastEnabled(filter)
-      ? []
-      : (['appliesToSourceIds'] as const)),
-  ];
-  return {
-    ...omit(filter, 'source', ...ignoredKeys),
-    sourceId: filter.source.toString(),
-  };
+    case 'PROMETHEUS_LABEL':
+      return {
+        ...omit(filter, 'source'),
+        sourceId: filter.source.toString(),
+      };
+
+    case 'QUERY_EXPRESSION': {
+      // Ignore variableName and appliesToSourceIds if the filter is not in a mode that uses them
+      const ignoredKeys = [
+        ...(isFilterVariableEnabled(filter) ? [] : (['variableName'] as const)),
+        ...(isFilterBroadcastEnabled(filter)
+          ? []
+          : (['appliesToSourceIds'] as const)),
+      ];
+      return {
+        ...omit(filter, 'source', ...ignoredKeys),
+        sourceId: filter.source.toString(),
+      };
+    }
+
+    default:
+      filter satisfies never;
+      return filter;
+  }
 }
 
 export function translateExternalFilterToFilter(
   filter: ExternalDashboardFilterWithId,
 ): DashboardFilter {
-  // Static filters require no translation
-  if (isStaticListFilter(filter)) return filter;
+  switch (filter.type) {
+    case 'STATIC_LIST':
+      return filter;
 
-  return {
-    ...omit(filter, 'sourceId'),
-    source: filter.sourceId,
-  };
+    case 'PROMETHEUS_LABEL':
+      return { ...omit(filter, 'sourceId'), source: filter.sourceId };
+
+    case 'QUERY_EXPRESSION':
+      return { ...omit(filter, 'sourceId'), source: filter.sourceId };
+
+    default:
+      filter satisfies never;
+      return filter;
+  }
 }
 
 // Alert related types and transformations

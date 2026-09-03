@@ -591,7 +591,7 @@ type PrometheusQueryRangeResponse = {
   };
   error?: string;
 };
-type PrometheusLabelValuesResponse = {
+type PrometheusLabelsResponse = {
   status: 'success' | 'error';
   data?: string[];
   error?: string;
@@ -641,19 +641,46 @@ export const prometheusApi = {
       ...(params.table ? { table: params.table } : {}),
     }),
 
+  labels: (params: {
+    connectionId: string;
+    database?: string;
+    table?: string;
+    start?: number;
+    end?: number;
+  }): Promise<PrometheusLabelsResponse> =>
+    server
+      .get('v1/prometheus/labels', {
+        searchParams: labelLookupSearchParams(params),
+      })
+      .json(),
+
   labelValues: (params: {
     label: string;
     connectionId: string;
     database?: string;
     table?: string;
-  }): Promise<PrometheusLabelValuesResponse> =>
+    start?: number;
+    end?: number;
+  }): Promise<PrometheusLabelsResponse> =>
     server
       .get(`v1/prometheus/label/${params.label}/values`, {
-        searchParams: {
-          connectionId: params.connectionId,
-          ...(params.database ? { database: params.database } : {}),
-          ...(params.table ? { table: params.table } : {}),
-        },
+        searchParams: labelLookupSearchParams(params),
       })
       .json(),
 };
+
+function labelLookupSearchParams(params: {
+  connectionId: string;
+  database?: string;
+  table?: string;
+  start?: number;
+  end?: number;
+}): Record<string, string> {
+  return {
+    connectionId: params.connectionId,
+    ...(params.database ? { database: params.database } : {}),
+    ...(params.table ? { table: params.table } : {}),
+    ...(params.start != null ? { start: String(params.start) } : {}),
+    ...(params.end != null ? { end: String(params.end) } : {}),
+  };
+}
