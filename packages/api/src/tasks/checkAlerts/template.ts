@@ -105,6 +105,37 @@ const describeThreshold = (alert: AlertInput): string => {
     : `${alert.threshold}`;
 };
 
+// Mappings for the enriched webhook template variables. These turn internal
+// enums into stable, consumer-friendly strings a receiver can branch on
+// without knowing HyperDX's internals.
+const ALERT_STATUS_BY_STATE: Record<AlertState, string> = {
+  [AlertState.ALERT]: 'firing',
+  [AlertState.OK]: 'resolved',
+  [AlertState.INSUFFICIENT_DATA]: 'no_data',
+  [AlertState.DISABLED]: 'no_data',
+  [AlertState.PENDING]: 'pending',
+  [AlertState.ERROR]: 'error',
+};
+
+const COMPARATOR_BY_THRESHOLD_TYPE: Record<AlertThresholdType, string> = {
+  [AlertThresholdType.ABOVE]: '>=',
+  [AlertThresholdType.ABOVE_EXCLUSIVE]: '>',
+  [AlertThresholdType.BELOW]: '<',
+  [AlertThresholdType.BELOW_OR_EQUAL]: '<=',
+  [AlertThresholdType.EQUAL]: '=',
+  [AlertThresholdType.NOT_EQUAL]: '!=',
+  [AlertThresholdType.BETWEEN]: 'between',
+  [AlertThresholdType.NOT_BETWEEN]: 'outside',
+};
+
+const ALERT_TYPE_BY_SOURCE: Record<AlertSource, string> = {
+  [AlertSource.SAVED_SEARCH]: 'search',
+  [AlertSource.TILE]: 'dashboard_chart',
+  // Detached alert: the chart config lives on the alert itself, so there is
+  // no saved search or tile behind it to open.
+  [AlertSource.INLINE]: 'inline_query',
+};
+
 const MAX_MESSAGE_LENGTH = 500;
 const NOTIFY_FN_NAME = '__hdx_notify_channel__';
 const IS_MATCH_FN_NAME = 'is_match';
@@ -519,6 +550,17 @@ export const renderAlertTemplate = async ({
         startTime: view.startTime.getTime(),
         endTime: view.endTime.getTime(),
         eventId,
+        // Enriched fields, exposed to Generic/incident.io body templates.
+        alertId: alert.id ?? '',
+        status: ALERT_STATUS_BY_STATE[state],
+        alertType: alert.source ? ALERT_TYPE_BY_SOURCE[alert.source] : '',
+        comparator: COMPARATOR_BY_THRESHOLD_TYPE[alert.thresholdType],
+        threshold: alert.threshold,
+        value,
+        groupKey: group ?? '',
+        sourceQuery: savedSearch?.where ?? '',
+        teamId,
+        note: alert.note ?? '',
       },
     });
     return true;
