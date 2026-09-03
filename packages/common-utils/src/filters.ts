@@ -7,12 +7,10 @@ import {
   DASHBOARD_VARIABLE_NAME_MAX_LENGTH,
   DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED,
   DashboardFilter,
+  DashboardFilterValue,
   Filter,
 } from '@/types';
-import {
-  getVariableReferences,
-  substituteVariablesForLanguage,
-} from '@/variables';
+import { getVariableReferences, substituteVariables } from '@/variables';
 
 export type FilterState = {
   [key: string]: {
@@ -700,9 +698,11 @@ export function isValidFilterCondition(
  *
  * Empty / whitespace-only conditions are treated as valid (they're no-ops at
  * query time, not errors), as are structurally-validated `sql_ast` filters.
+ * Variable-keyed entries carry no condition text at all, so there is nothing to
+ * validate and they are skipped by the same `type` guard.
  */
 export function validateSavedFilterValues(
-  filters: Filter[],
+  filters: DashboardFilterValue[],
 ): SavedFilterValueIssue[] {
   const issues: SavedFilterValueIssue[] = [];
   filters.forEach((filter, index) => {
@@ -787,6 +787,8 @@ export function validateDashboardFilterQueries(
   ).map(declaration => ({ ...declaration, values: [] }));
 
   for (const filter of filters) {
+    // A static filter has no values query to validate.
+    if (isStaticListFilter(filter)) continue;
     const where = filter.where ?? '';
     if (!where.trim()) continue;
     const language = filter.whereLanguage ?? 'sql';
@@ -844,6 +846,42 @@ export function isFilterVariableEnabled(filter: {
   return filter.isVariableEnabled === true;
 }
 
+/** The discriminant every dashboard-filter shape carries. */
+export type DashboardFilterKind = DashboardFilter['type'];
+
+/** Type guard for QUERY_EXPRESSION type filters. */
+export function isQueryExpressionFilter<
+  T extends { type: DashboardFilterKind },
+>(filter: T): filter is Extract<T, { type: 'QUERY_EXPRESSION' }> {
+  return filter.type === 'QUERY_EXPRESSION';
+}
+
+/** Type guard for STATIC_LIST type filters. */
+export function isStaticListFilter<T extends { type: DashboardFilterKind }>(
+  filter: T,
+): filter is Extract<T, { type: 'STATIC_LIST' }> {
+  return filter.type === 'STATIC_LIST';
+}
+
+/** The SQL expression associated with the filter, if any. */
+export function getFilterExpression(
+  filter: DashboardFilter,
+): string | undefined {
+  return isQueryExpressionFilter(filter) ? filter.expression : undefined;
+}
+
+/** What the filter broadcasts, or undefined when it cannot broadcast. */
+export function getFilterBroadcastTarget(
+  filter: DashboardFilter,
+): { expression: string; appliesToSourceIds?: string[] } | undefined {
+  if (!isFilterBroadcastEnabled(filter) || isStaticListFilter(filter))
+    return undefined;
+  return {
+    expression: filter.expression,
+    appliesToSourceIds: filter.appliesToSourceIds,
+  };
+}
+
 /**
  * Whether a filter does anything at all with the value it collects — broadcast
  * it as a condition, expose it as `$variableName`, or both.
@@ -874,9 +912,41 @@ export type DashboardVariableDeclaration = Pick<
   'name' | 'expression'
 >;
 
+/**
+ * The variable-enabled filters a dashboard declares, paired with the name each
+ * one answers to, in filter order.
+ */
+export function getDashboardVariableFilters(
+  filters: DashboardFilter[] | undefined,
+): { filter: DashboardFilter; name: string }[] {
+  const results: { filter: DashboardFilter; name: string }[] = [];
+  const takenNames = new Set<string>();
+
+  for (const filter of filters ?? []) {
+    if (!isFilterVariableEnabled(filter)) continue;
+
+    // There shouldn't be any duplicate names, but if there are then the first one wins.
+    const name = getFilterVariableName(filter);
+    if (!name || takenNames.has(name)) continue;
+    takenNames.add(name);
+
+    results.push({ filter, name });
+  }
+
+  return results;
+}
+
+/** Minimal projection of fields necessary to extract the variables a dashboard declares. */
+export type FilterForVariableDeclaration = {
+  name: string;
+  expression?: string;
+  variableName?: string;
+  isVariableEnabled?: boolean;
+};
+
 /** The variables a dashboard declares, in filter order. */
 export function getDashboardVariableDeclarations(
-  filters: DashboardFilter[] | undefined,
+  filters: FilterForVariableDeclaration[] | undefined,
 ): DashboardVariableDeclaration[] {
   const declarations: DashboardVariableDeclaration[] = [];
   const takenNames = new Set<string>();
@@ -921,7 +991,10 @@ export function resolveFilterValuesWhere(
 
   try {
     return {
-      where: substituteVariablesForLanguage(where, variables, whereLanguage),
+      where: substituteVariables(where, {
+        variables,
+        inputLanguage: whereLanguage,
+      }),
       whereLanguage,
     };
   } catch (e) {

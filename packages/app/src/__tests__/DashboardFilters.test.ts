@@ -88,6 +88,23 @@ describe('getFilterEffect', () => {
     ).toEqual('Filters 2 sources');
   });
 
+  it('describes a static filter as a variable only', () => {
+    expect(
+      getFilterEffect({
+        id: 'filter2',
+        type: 'STATIC_LIST',
+        name: 'Environment',
+        options: ['prod', 'staging', 'dev'],
+        isBroadcastEnabled: false,
+        isVariableEnabled: true,
+        variableName: 'env',
+      }),
+    ).toEqual({
+      hasEffect: true,
+      tooltip: 'Available as variable ($env)',
+    });
+  });
+
   it('ignores the stored scope while broadcasting is off', () => {
     expect(
       getFilterEffect({

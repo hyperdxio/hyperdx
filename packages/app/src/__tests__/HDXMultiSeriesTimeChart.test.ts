@@ -11,6 +11,7 @@ import type { ActiveClickSeries } from '@/HDXMultiSeriesTimeChart';
 import {
   buildActiveClickSeries,
   collectMemoChartGradientHexes,
+  formatAxisTick,
   getSelectedLineData,
   getVisibleLineData,
   getVisibleTooltipRows,
@@ -18,6 +19,122 @@ import {
   sameActiveClickSeries,
 } from '@/HDXMultiSeriesTimeChart';
 import { COLORS } from '@/utils';
+
+describe('formatAxisTick', () => {
+  it('falls back to mantissa 0 when the format has none configured', () => {
+    // Matches the historical behavior for typically-large, unconfigured
+    // counts (log/event counts, request rates): compact, no decimals.
+    expect(formatAxisTick(1234, { output: 'number' })).toBe('1k');
+  });
+
+  it('honors an explicit mantissa instead of always rounding to 0', () => {
+    // Regression: a chart whose Decimals setting produces correct
+    // tooltip/legend values (e.g. via formatNumber(value, numberFormat)
+    // directly, see ChartTooltip.tsx) would previously still show every
+    // axis tick as "0" for values under 1 (fractional Prometheus gauges,
+    // ratios, etc.), since mantissa was unconditionally forced to 0.
+    expect(formatAxisTick(0.14, { output: 'number', mantissa: 2 })).toBe(
+      '0.14',
+    );
+    expect(formatAxisTick(0.021, { output: 'number', mantissa: 2 })).toBe(
+      '0.02',
+    );
+  });
+
+  it('caps a sub-1 tick`s mantissa at 2 instead of honoring it outright', () => {
+    // The Decimals setting allows up to 10, which would badly overflow the
+    // axis's label budget for a sub-1 tick (measured: "0.1400000000" is far
+    // wider than "0.14" fits) if honored outright.
+    expect(formatAxisTick(0.14, { output: 'number', mantissa: 10 })).toBe(
+      '0.14',
+    );
+  });
+
+  it('forces 0 decimals for any tick >= 10, regardless of configured mantissa', () => {
+    // Regression (caught in review): HyperDX's own bundled dashboard
+    // templates (e.g. go-runtime.json) set mantissa on tiles whose values
+    // are well above the threshold, for tooltip readability, unrelated to
+    // the near-zero problem this formatter fixes - honoring it there
+    // instead of forcing 0 would turn shipped ticks like `200`/`1k` into
+    // `200.00`/`1.23k`, wide enough to overflow the axis's label budget for
+    // an ordinary value, not just an extreme one.
+    expect(formatAxisTick(200, { output: 'number', mantissa: 2 })).toBe('200');
+    expect(formatAxisTick(1234, { output: 'number', mantissa: 10 })).toBe('1k');
+    expect(formatAxisTick(10, { output: 'number', mantissa: 2 })).toBe('10');
+    // A negative tick is still `>= 10` in magnitude (Math.abs), so it's
+    // integer too.
+    expect(formatAxisTick(-15, { output: 'number', mantissa: 2 })).toBe('-15');
+  });
+
+  it('honors configured mantissa up to 9.99 in magnitude, positive or negative', () => {
+    // Raised from a >= 1 threshold to >= 10: at a 2-decimal cap, a single
+    // extra character - a negative sign or a percent suffix - still fits
+    // the axis's label budget up to one integer digit (measured: "-9.99"
+    // and "9.99%" are both the same width as "99.99", which fits). This
+    // also mostly avoids the mixed-precision-on-one-axis problem a >= 1
+    // threshold had: ticks 0, 0.5, 1, 1.5, 2 on one chart no longer collapse
+    // 1.5 and 2 into the identical label "2".
+    expect(formatAxisTick(9.99, { output: 'number', mantissa: 2 })).toBe(
+      '9.99',
+    );
+    expect(formatAxisTick(-1.5, { output: 'number', mantissa: 2 })).toBe(
+      '-1.50',
+    );
+  });
+
+  it('always renders exactly 0 as a bare integer', () => {
+    // Regression (caught in review): 0 has magnitude 0, which is under any
+    // positive threshold, so it took the capped-mantissa branch and
+    // rendered `0.00`/`0.0 B` - on essentially every chart, since the
+    // y-axis domain defaults to starting at 0. 0 is already unambiguous;
+    // it doesn't need the decimal rescue this formatter exists to provide.
+    expect(formatAxisTick(0, { output: 'number', mantissa: 2 })).toBe('0');
+    expect(formatAxisTick(0, { output: 'byte', mantissa: 1 })).toBe('0 B');
+  });
+
+  it('checks a percent tick`s magnitude against its displayed (x100) value', () => {
+    // Regression (caught in review): formatNumber multiplies a percent
+    // value by 100 before applying mantissa, since a percent tile's raw
+    // value is a 0-1 ratio. Checking the raw value's magnitude instead of
+    // the displayed one meant every percent tick took the capped-mantissa
+    // branch regardless of the rendered percentage - go-runtime.json's
+    // process.cpu.utilization tile (`{output: 'percent', mantissa: 1}`)
+    // would go from `25%` to `25.00%` for an ordinary, not-near-zero value.
+    expect(formatAxisTick(0.25, { output: 'percent', mantissa: 2 })).toBe(
+      '25%',
+    );
+    // A genuinely near-zero percent (0.1%) still gets the decimal rescue.
+    expect(formatAxisTick(0.001, { output: 'percent', mantissa: 2 })).toBe(
+      '0.10%',
+    );
+  });
+
+  it('preserves shipped byte/throughput tiles that configure a mantissa', () => {
+    // go-runtime.json's "Memory: Used vs Limit vs GC Target" tile ships as
+    // { output: 'byte', mantissa: 1 } - a raw byte count is always >= 1, so
+    // this hits the forced-integer branch and stays `256 MB`, not `256.0 MB`.
+    expect(formatAxisTick(268435456, { output: 'byte', mantissa: 1 })).toBe(
+      '256 MB',
+    );
+    expect(formatAxisTick(1234567, { output: 'throughput', mantissa: 2 })).toBe(
+      '1234567',
+    );
+  });
+
+  it('always strips a configured unit and forces compact averaging', () => {
+    expect(
+      formatAxisTick(1234, {
+        output: 'number',
+        mantissa: 2,
+        unit: 'req/s',
+      }),
+    ).toBe('1k');
+  });
+
+  it('uses compact Intl formatting when no axisNumberFormat is set', () => {
+    expect(formatAxisTick(1234)).toBe('1.2K');
+  });
+});
 
 describe('collectMemoChartGradientHexes', () => {
   it('includes every categorical hex from COLORS up front', () => {

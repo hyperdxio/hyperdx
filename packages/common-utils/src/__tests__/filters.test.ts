@@ -4,11 +4,15 @@ import {
   filterStateToPredicate,
   filtersToQuery,
   getDashboardVariableDeclarations,
+  getDashboardVariableFilters,
+  getFilterBroadcastTarget,
+  getFilterExpression,
   getFilterVariableName,
   getPendingFilterValuesVariables,
   hasFilterEffect,
   isFilterBroadcastEnabled,
   isFilterVariableEnabled,
+  isQueryExpressionFilter,
   isRenderablePinnedFilter,
   parseQuery,
   resolveFilterValuesWhere,
@@ -18,7 +22,13 @@ import {
   validateSavedQuery,
   validateVariableName,
 } from '@/filters';
-import type { ChartVariable, DashboardFilter, Filter } from '@/types';
+import type {
+  ChartVariable,
+  DashboardFilter,
+  Filter,
+  QueryExpressionDashboardFilter,
+  StaticListDashboardFilter,
+} from '@/types';
 import {
   DASHBOARD_VARIABLE_NAME_MAX_LENGTH,
   DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED,
@@ -586,6 +596,23 @@ describe('filters', () => {
         { index: 3, language: 'sql', condition: 'broken = = =' },
       ]);
     });
+
+    it('ignores variable-keyed values, which carry no condition to validate', () => {
+      expect(
+        validateSavedFilterValues([
+          { type: 'variable', name: 'svc', values: ['a', 'b'] },
+        ]),
+      ).toEqual([]);
+    });
+
+    it('still reports the index of an invalid value after a variable one', () => {
+      expect(
+        validateSavedFilterValues([
+          { type: 'variable', name: 'svc', values: ['a'] },
+          { type: 'sql', condition: 'broken = = =' },
+        ]),
+      ).toEqual([{ index: 1, language: 'sql', condition: 'broken = = =' }]);
+    });
   });
 
   describe('validateSavedQuery', () => {
@@ -633,7 +660,9 @@ describe('filters', () => {
   });
 
   describe('validateDashboardFilterQueries', () => {
-    const filter = (overrides: Partial<DashboardFilter>): DashboardFilter => ({
+    const filter = (
+      overrides: Partial<QueryExpressionDashboardFilter>,
+    ): QueryExpressionDashboardFilter => ({
       id: 'f1',
       type: 'QUERY_EXPRESSION',
       name: 'ServiceName',
@@ -656,6 +685,22 @@ describe('filters', () => {
       expect(
         validateDashboardFilterQueries([
           filter({ where: '   ', whereLanguage: 'lucene' }),
+        ]),
+      ).toEqual([]);
+    });
+
+    it('skips a static-list filter, which has no values query', () => {
+      expect(
+        validateDashboardFilterQueries([
+          {
+            id: 'f1',
+            type: 'STATIC_LIST',
+            name: 'Environment',
+            options: ['prod', 'staging', 'dev'],
+            isBroadcastEnabled: false,
+            isVariableEnabled: true,
+            variableName: 'env',
+          },
         ]),
       ).toEqual([]);
     });
@@ -1414,6 +1459,78 @@ describe('filters', () => {
     });
   });
 
+  describe('isQueryExpressionFilter / getFilterExpression', () => {
+    const queried: QueryExpressionDashboardFilter = {
+      id: 'f1',
+      type: 'QUERY_EXPRESSION',
+      name: 'Service',
+      expression: 'ServiceName',
+      source: 'logs',
+    };
+    const staticList: DashboardFilter = {
+      id: 'f2',
+      type: 'STATIC_LIST',
+      name: 'Environment',
+      options: ['prod'],
+      isBroadcastEnabled: false,
+      isVariableEnabled: true,
+    };
+
+    it('identifies a queried filter and reports its expression', () => {
+      expect(isQueryExpressionFilter(queried)).toBe(true);
+      expect(getFilterExpression(queried)).toBe('ServiceName');
+    });
+
+    it('rejects a static-list filter, which names no column', () => {
+      expect(isQueryExpressionFilter(staticList)).toBe(false);
+      expect(getFilterExpression(staticList)).toBeUndefined();
+    });
+  });
+
+  describe('getFilterBroadcastTarget', () => {
+    const filter = (
+      overrides: Partial<QueryExpressionDashboardFilter>,
+    ): QueryExpressionDashboardFilter => ({
+      id: 'f1',
+      type: 'QUERY_EXPRESSION',
+      name: 'Service',
+      expression: 'ServiceName',
+      source: 'logs',
+      ...overrides,
+    });
+
+    it('reports the expression and scope for a broadcasting filter', () => {
+      expect(getFilterBroadcastTarget(filter({}))).toEqual({
+        expression: 'ServiceName',
+        appliesToSourceIds: undefined,
+      });
+      expect(
+        getFilterBroadcastTarget(filter({ appliesToSourceIds: ['logs'] })),
+      ).toEqual({ expression: 'ServiceName', appliesToSourceIds: ['logs'] });
+    });
+
+    it('returns undefined when broadcasting is off', () => {
+      expect(
+        getFilterBroadcastTarget(
+          filter({ isBroadcastEnabled: false, appliesToSourceIds: ['logs'] }),
+        ),
+      ).toBeUndefined();
+    });
+
+    it('returns undefined for a static-list filter, which has no column', () => {
+      expect(
+        getFilterBroadcastTarget({
+          id: 'f2',
+          type: 'STATIC_LIST',
+          name: 'Environment',
+          options: ['prod'],
+          isBroadcastEnabled: false,
+          isVariableEnabled: true,
+        }),
+      ).toBeUndefined();
+    });
+  });
+
   describe('isFilterVariableEnabled', () => {
     it('treats a missing flag as disabled', () => {
       expect(isFilterVariableEnabled({})).toBe(false);
@@ -1492,8 +1609,80 @@ describe('filters', () => {
     });
   });
 
+  describe('getDashboardVariableFilters', () => {
+    const filter = (
+      overrides: Partial<QueryExpressionDashboardFilter>,
+    ): QueryExpressionDashboardFilter => ({
+      id: 'f1',
+      type: 'QUERY_EXPRESSION',
+      name: 'Service',
+      expression: 'ServiceName',
+      source: 'logs',
+      ...overrides,
+    });
+
+    it('returns nothing for a dashboard with no filters', () => {
+      expect(getDashboardVariableFilters(undefined)).toEqual([]);
+      expect(getDashboardVariableFilters([])).toEqual([]);
+    });
+
+    it('skips filters that do not expose a variable', () => {
+      expect(
+        getDashboardVariableFilters([
+          filter({ id: 'broadcast-only', isVariableEnabled: false }),
+          filter({ id: 'unset', name: 'Env', expression: 'Env' }),
+        ]),
+      ).toEqual([]);
+    });
+
+    it('skips a filter whose display name derives nothing usable', () => {
+      expect(
+        getDashboardVariableFilters([
+          filter({ name: '环境', isVariableEnabled: true }),
+        ]),
+      ).toEqual([]);
+    });
+
+    it('pairs each variable-enabled filter with the name it answers to', () => {
+      const explicit = filter({ isVariableEnabled: true, variableName: 'svc' });
+      const derived = filter({
+        id: 'f2',
+        name: 'Total Requests',
+        expression: 'Env',
+        isVariableEnabled: true,
+      });
+
+      expect(getDashboardVariableFilters([explicit, derived])).toEqual([
+        { filter: explicit, name: 'svc' },
+        { filter: derived, name: 'Total_Requests' },
+      ]);
+    });
+
+    it('keeps the first of two filters claiming the same name', () => {
+      const first = filter({
+        id: 'a',
+        isVariableEnabled: true,
+        variableName: 'svc',
+      });
+
+      expect(
+        getDashboardVariableFilters([
+          first,
+          filter({
+            id: 'b',
+            expression: 'Other',
+            isVariableEnabled: true,
+            variableName: 'svc',
+          }),
+        ]),
+      ).toEqual([{ filter: first, name: 'svc' }]);
+    });
+  });
+
   describe('getDashboardVariableDeclarations', () => {
-    const filter = (overrides: Partial<DashboardFilter>): DashboardFilter => ({
+    const filter = (
+      overrides: Partial<QueryExpressionDashboardFilter>,
+    ): QueryExpressionDashboardFilter => ({
       id: 'f1',
       type: 'QUERY_EXPRESSION',
       name: 'Service',
@@ -1505,6 +1694,22 @@ describe('filters', () => {
     it('returns nothing for a dashboard with no filters', () => {
       expect(getDashboardVariableDeclarations(undefined)).toEqual([]);
       expect(getDashboardVariableDeclarations([])).toEqual([]);
+    });
+
+    it('accepts the external filter shape, which has sourceId not source', () => {
+      // The external API and MCP hold filters with `sourceId`; only the name,
+      // expression and the two variable fields decide what a filter declares,
+      // so the signature is structural rather than tied to DashboardFilter.
+      expect(
+        getDashboardVariableDeclarations([
+          {
+            name: 'Service',
+            expression: 'ServiceName',
+            isVariableEnabled: true,
+            variableName: 'service',
+          },
+        ]),
+      ).toEqual([{ name: 'service', expression: 'ServiceName' }]);
     });
 
     it('skips filters that do not expose a variable', () => {
@@ -1554,6 +1759,24 @@ describe('filters', () => {
       ).toEqual([{ name: 'svc', expression: 'ServiceName' }]);
     });
 
+    // The falsiness of `expression` is what makes `$__filter($name)` report
+    // that the expression has to be passed explicitly, so it must stay
+    // undefined rather than becoming an empty string.
+    it('declares a static-list filter with no expression', () => {
+      const staticFilter: StaticListDashboardFilter = {
+        id: 'f1',
+        type: 'STATIC_LIST',
+        name: 'Environment',
+        options: ['prod', 'staging', 'dev'],
+        isBroadcastEnabled: false,
+        isVariableEnabled: true,
+        variableName: 'env',
+      };
+      expect(getDashboardVariableDeclarations([staticFilter])).toEqual([
+        { name: 'env', expression: undefined },
+      ]);
+    });
+
     it('keeps the declarations in filter order', () => {
       expect(
         getDashboardVariableDeclarations([
@@ -1575,8 +1798,8 @@ describe('filters', () => {
 
   describe('validateVariableName', () => {
     const variableFilter = (
-      overrides: Partial<DashboardFilter>,
-    ): DashboardFilter => ({
+      overrides: Partial<QueryExpressionDashboardFilter>,
+    ): QueryExpressionDashboardFilter => ({
       id: 'f1',
       type: 'QUERY_EXPRESSION',
       name: 'Service',

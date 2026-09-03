@@ -35,7 +35,7 @@ import {
 import { getStoredLanguage } from '@/components/SearchInput';
 import { type SQLCompletion } from '@/components/SQLEditor/utils';
 import {
-  buildVariableCompletions,
+  buildSqlVariableCompletions,
   toMacroCompletion,
 } from '@/components/SQLEditor/variableCompletions';
 import { toAlertChannels } from '@/utils/alerts';
@@ -69,7 +69,7 @@ export function buildRawSqlCompletions({
   return [
     ...paramCompletions,
     ...MACRO_SUGGESTIONS.map(toMacroCompletion),
-    ...buildVariableCompletions(variables),
+    ...buildSqlVariableCompletions(variables),
   ];
 }
 
@@ -204,6 +204,7 @@ export function convertFormStateToSavedChartConfig(
       promqlExpression: form.promqlExpression ?? '',
       connection: form.connection ?? '',
       source: form.source || undefined,
+      legendTemplate: form.legendTemplate?.trim() || undefined,
     };
 
     return promqlConfig;
@@ -238,7 +239,7 @@ export function convertFormStateToSavedChartConfig(
 
   if (form.displayType === DisplayType.Markdown) {
     const config: BuilderSavedChartConfig = {
-      ...omit(form, ['series', 'configType', 'sqlTemplate']),
+      ...omit(form, ['series', 'configType', 'sqlTemplate', 'legendTemplate']),
       select: [],
       where: form.where ?? '',
       source: source?.id ?? form.source ?? '',
@@ -249,7 +250,7 @@ export function convertFormStateToSavedChartConfig(
   if (source) {
     // Merge the series and select fields back together, and prevent the series field from being submitted
     const config: BuilderSavedChartConfig = {
-      ...omit(form, ['series', 'configType', 'sqlTemplate']),
+      ...omit(form, ['series', 'configType', 'sqlTemplate', 'legendTemplate']),
       select: isStringSelectDisplayType(form.displayType)
         ? typeof form.select === 'string'
           ? form.select
@@ -285,6 +286,7 @@ export function convertFormStateToChartConfig(
       connection: source?.connection ?? form.connection ?? '',
       source: form.source || undefined,
       from: source?.from,
+      legendTemplate: form.legendTemplate?.trim() || undefined,
     };
 
     return { ...promqlConfig, dateRange };
@@ -340,7 +342,7 @@ export function convertFormStateToChartConfig(
     const isSelectEmpty = !mergedSelect || mergedSelect.length === 0;
 
     const newConfig: ChartConfigWithDateRange = {
-      ...omit(form, ['series', 'configType', 'sqlTemplate']),
+      ...omit(form, ['series', 'configType', 'sqlTemplate', 'legendTemplate']),
       from: source.from,
       timestampValueExpression: source.timestampValueExpression,
       dateRange,

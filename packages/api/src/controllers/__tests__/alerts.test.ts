@@ -1,5 +1,10 @@
+import {
+  AlertChartConfig,
+  DisplayType,
+} from '@hyperdx/common-utils/dist/types';
+
 import { makeAlert } from '@/controllers/alerts';
-import { AlertChannel, AlertThresholdType } from '@/models/alert';
+import { AlertChannel, AlertSource, AlertThresholdType } from '@/models/alert';
 
 // A channel type this repo doesn't define -- see
 // models/__tests__/alert.test.ts for why. `value: any` (rather than an `as`
@@ -27,5 +32,55 @@ describe('makeAlert', () => {
 
     expect(result.channel).toEqual(exotic);
     expect(result.channels).toEqual([exotic]);
+  });
+
+  const chartConfig: AlertChartConfig = {
+    name: 'Errors',
+    source: 'source-id',
+    displayType: DisplayType.Line,
+    select: [
+      {
+        aggFn: 'count',
+        aggCondition: '',
+        aggConditionLanguage: 'lucene',
+        valueExpression: '',
+      },
+    ],
+    where: '',
+    whereLanguage: 'lucene',
+  };
+
+  it('persists chartConfig for inline alerts and clears the other source references', () => {
+    const result = makeAlert({
+      interval: '5m',
+      threshold: 1,
+      thresholdType: AlertThresholdType.ABOVE,
+      channels: [{ type: 'webhook', webhookId: 'webhook-id' }],
+      source: AlertSource.INLINE,
+      chartConfig,
+    });
+
+    expect(result.chartConfig).toEqual(chartConfig);
+    expect(result.savedSearch).toBeNull();
+    expect(result.groupBy).toBeNull();
+    expect(result.dashboard).toBeNull();
+    expect(result.tileId).toBeNull();
+  });
+
+  it('clears chartConfig when the alert source is not chart', () => {
+    // Converting an inline alert to another source must not leave the old
+    // config behind (mirrors how savedSearch/dashboard references clear).
+    const result = makeAlert({
+      interval: '5m',
+      threshold: 1,
+      thresholdType: AlertThresholdType.ABOVE,
+      channels: [{ type: 'webhook', webhookId: 'webhook-id' }],
+      source: AlertSource.SAVED_SEARCH,
+      savedSearchId: 'saved-search-id',
+      chartConfig,
+    });
+
+    expect(result.chartConfig).toBeNull();
+    expect(result.savedSearch).toBe('saved-search-id');
   });
 });

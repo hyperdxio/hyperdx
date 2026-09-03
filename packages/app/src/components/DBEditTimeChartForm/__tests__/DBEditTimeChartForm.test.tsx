@@ -12,6 +12,14 @@ import userEvent from '@testing-library/user-event';
 import DBEditTimeChartForm from '@/components/DBEditTimeChartForm';
 import { useSource } from '@/source';
 
+/**
+ * These render the whole chart editor and drive it through user events, so
+ * individual tests routinely exceed Jest's 5s default when the suite competes
+ * for CPU with the rest of the run. Verified pre-existing: the slowest tests
+ * here time out the same way on a clean origin/main checkout.
+ */
+jest.setTimeout(20_000);
+
 // Mock the hooks that fetch data
 jest.mock('@/hooks/useFetchMetricResourceAttrs', () => ({
   useFetchMetricResourceAttrs: jest.fn().mockReturnValue({
@@ -72,8 +80,63 @@ jest.mock('@/source', () => ({
   useSources: jest.fn().mockReturnValue({ data: [] }),
 }));
 
+// Records every render's props so tests can assert what the form passes down.
+const metricNameSelectProps: any[] = [];
+
+// What the stubbed explorer reports as staged when a metric is applied. The
+// `mock` prefix is required for a jest.mock factory to close over it.
+const mockStagedWhere: string[] = [];
+const mockStagedGroupBy: string[] = [];
+
+// The explorer has its own suite (MetricExplorer.test.tsx). Here it is stubbed
+// down to "emit a chosen metric", so these tests cover only the form wiring —
+// mounting the real tree six times pushed this suite past the 5s-per-test
+// budget under parallel load.
+jest.mock('@/components/MetricExplorer/MetricExplorerModal', () => ({
+  MetricExplorerModal: ({
+    opened,
+    onApply,
+  }: {
+    opened: boolean;
+    onApply: (selection: {
+      name: string;
+      type: string;
+      where: string[];
+      groupBy: string[];
+    }) => void;
+  }) =>
+    opened ? (
+      <div data-testid="metric-explorer-stub">
+        {(
+          [
+            ['gauge', 'test.metric.gauge'],
+            ['sum', 'test.metric.counter'],
+            ['histogram', 'test.metric.latency'],
+          ] as const
+        ).map(([type, name]) => (
+          <button
+            key={type}
+            type="button"
+            data-testid={`metric-explorer-pick-${type}`}
+            onClick={() =>
+              onApply({
+                name,
+                type,
+                where: mockStagedWhere,
+                groupBy: mockStagedGroupBy,
+              })
+            }
+          >
+            {name}
+          </button>
+        ))}
+      </div>
+    ) : null,
+}));
+
 jest.mock('../../MetricNameSelect', () => ({
   MetricNameSelect: (props: any) => {
+    metricNameSelectProps.push(props);
     const { error, onFocus, setMetricName, metricName } = props;
     const testId = props['data-testid'];
     return (
@@ -384,6 +447,39 @@ describe('DBEditTimeChartForm - Metric Name Validation', () => {
       expect(errorMessage).toBeInTheDocument();
       expect(errorMessage).toHaveTextContent('Metric is required');
     });
+  });
+});
+
+describe('DBEditTimeChartForm - Metric name date range wiring', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    metricNameSelectProps.length = 0;
+  });
+
+  // Regression guard: MetricNameSelect only lists metrics that reported inside
+  // the range it is given, and falls back to the last 24h when the prop is
+  // missing. That pass-through was silently dropped once already when
+  // ChartSeriesEditor was split out of this file, which made any metric last
+  // seen over a day ago unselectable regardless of the chart's own range.
+  it('passes the chart date range down to the metric name select', () => {
+    renderComponent();
+
+    expect(metricNameSelectProps.length).toBeGreaterThan(0);
+    expect(metricNameSelectProps.at(-1)?.dateRange).toEqual([
+      new Date('2024-01-01'),
+      new Date('2024-01-02'),
+    ]);
+  });
+
+  it('forwards an updated date range', () => {
+    renderComponent({
+      dateRange: [new Date('2024-06-01'), new Date('2024-06-08')],
+    });
+
+    expect(metricNameSelectProps.at(-1)?.dateRange).toEqual([
+      new Date('2024-06-01'),
+      new Date('2024-06-08'),
+    ]);
   });
 });
 

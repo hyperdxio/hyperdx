@@ -430,6 +430,69 @@ describe('renderAlertTemplate', () => {
   });
 });
 
+// The enriched fields are what a receiver routes and dedupes on, so they have
+// to survive the render, not just the variable builder in isolation.
+describe('enriched message fields', () => {
+  const renderWithWebhook = async (
+    state: AlertState,
+    viewOverrides: Parameters<typeof makeSearchView>[0] = {},
+  ) => {
+    const webhook = castWebhook({
+      _id: new mongoose.Types.ObjectId(),
+      team: new mongoose.Types.ObjectId(),
+      service: 'slack',
+      name: 'enriched-hook',
+      url: 'https://hooks.slack.com/services/x',
+    });
+    const { dispatcher, dispatched } = makeRecordingDispatcher();
+    const base = makeSearchView(viewOverrides);
+
+    const result = await renderAlertTemplate({
+      alertProvider,
+      clickhouseClient: mockClickhouseClient,
+      metadata: mockMetadata,
+      state,
+      template: null,
+      title: 'Test Alert Title',
+      view: {
+        ...base,
+        alert: {
+          ...base.alert,
+          channel: { type: 'webhook', webhookId: webhook._id.toString() },
+          channels: [{ type: 'webhook', webhookId: webhook._id.toString() }],
+        },
+      },
+      teamId: TEST_TEAM_ID,
+      teamWebhooksById: new Map([[webhook._id.toString(), webhook]]),
+      dispatcher,
+    });
+    return { dispatched, result };
+  };
+
+  it('carries the alert identity and condition onto the dispatched job', async () => {
+    const { dispatched, result } = await renderWithWebhook(AlertState.ALERT, {
+      group: 'http',
+    });
+
+    expect(result.failures).toEqual([]);
+    expect(dispatched[0].message).toMatchObject({
+      status: 'firing',
+      alertType: 'search',
+      comparator: '>=',
+      threshold: 5,
+      groupKey: 'http',
+      sourceQuery: 'Body: "error"',
+      teamId: TEST_TEAM_ID,
+    });
+  });
+
+  it('reports a resolve as resolved', async () => {
+    const { dispatched } = await renderWithWebhook(AlertState.OK);
+
+    expect(dispatched[0].message).toMatchObject({ status: 'resolved' });
+  });
+});
+
 describe('buildAlertMessageTemplateTitle', () => {
   describe('saved search alerts', () => {
     describe('ALERT state', () => {
@@ -539,6 +602,88 @@ describe('per-event notification cap', () => {
       name: `hook-${i}`,
       url: 'https://hooks.slack.com/services/x',
     });
+
+  // The alert's own channels used to be appended to the template as
+  // `@webhook-<id>` mentions, after whatever the user wrote — so a message
+  // body carrying CAP mentions consumed every slot and the configured channel,
+  // the one target the alert was actually set up to notify, was never reached.
+  it('notifies a configured channel even when the body is full of mentions', async () => {
+    const configured = makeWebhook(999);
+    const mentioned = Array.from({ length: CAP }, (_, i) => makeWebhook(i));
+    const teamWebhooksById = new Map(
+      [configured, ...mentioned].map(w => [w._id.toString(), w]),
+    );
+    const template = mentioned
+      .map(w => `@webhook-${w._id.toString()}`)
+      .join(' ');
+    const { dispatcher, dispatched } = makeRecordingDispatcher();
+
+    await renderAlertTemplate({
+      alertProvider,
+      clickhouseClient: mockClickhouseClient,
+      metadata: mockMetadata,
+      state: AlertState.ALERT,
+      template,
+      title: 'Test Alert Title',
+      view: {
+        ...makeSearchView(),
+        alert: {
+          ...makeSearchView().alert,
+          channel: { type: 'webhook', webhookId: configured._id.toString() },
+          channels: [{ type: 'webhook', webhookId: configured._id.toString() }],
+        },
+      },
+      teamId: TEST_TEAM_ID,
+      teamWebhooksById,
+      dispatcher,
+    });
+
+    expect(
+      dispatched.map(j => j.populatedChannel.channel._id.toString()),
+    ).toContain(configured._id.toString());
+  });
+
+  // A configured channel and an `@mention` must deliver byte-identical bodies.
+  // Both render through the same Handlebars instance (the one with `is_match`
+  // enabled), and only that instance's output is ever delivered — the body
+  // returned by renderAlertTemplate is rendered separately, with `is_match`
+  // suppressed, and goes to the caller rather than to a channel. Pinned here
+  // so the two delivery paths cannot drift.
+  it('delivers the same body to a configured channel and a mentioned one', async () => {
+    const configured = makeWebhook(1);
+    const mentioned = makeWebhook(2);
+    const teamWebhooksById = new Map(
+      [configured, mentioned].map(w => [w._id.toString(), w]),
+    );
+    const { dispatcher, dispatched } = makeRecordingDispatcher();
+
+    await renderAlertTemplate({
+      alertProvider,
+      clickhouseClient: mockClickhouseClient,
+      metadata: mockMetadata,
+      state: AlertState.ALERT,
+      template: `{{#is_match "group" "http"}}routed{{/is_match}} @webhook-${mentioned._id.toString()}`,
+      title: 'Test Alert Title',
+      view: {
+        ...makeSearchView({ group: 'http' }),
+        alert: {
+          ...makeSearchView().alert,
+          channel: { type: 'webhook', webhookId: configured._id.toString() },
+          channels: [{ type: 'webhook', webhookId: configured._id.toString() }],
+        },
+      },
+      teamId: TEST_TEAM_ID,
+      teamWebhooksById,
+      dispatcher,
+    });
+
+    expect(dispatched).toHaveLength(2);
+    const bodies = new Set(dispatched.map(j => j.message.body));
+    expect(bodies.size).toBe(1);
+    // And the routing block really is present, so this is not passing on two
+    // empty strings.
+    expect([...bodies][0]).toContain('routed');
+  });
 
   // A repeat of a target that is already queued is a no-op, so it must not be
   // reported as a target the cap turned away.

@@ -5553,6 +5553,143 @@ describe('External API v2 Dashboards - new format', () => {
         expect(response.status).toBe(200);
       });
     });
+
+    describe('static-list filters', () => {
+      const staticFilterInput = (overrides = {}) => ({
+        id: new ObjectId().toString(),
+        type: 'STATIC_LIST' as const,
+        name: 'Environment',
+        options: ['prod', 'staging', 'dev'],
+        isBroadcastEnabled: false,
+        isVariableEnabled: true,
+        variableName: 'env',
+        ...overrides,
+      });
+
+      it('accepts a static-list filter and round-trips it through GET', async () => {
+        const response = await sendFilters([staticFilterInput()]);
+        expect(response.status).toBe(200);
+
+        const [filter] = response.body.data.filters;
+        expect(filter).toMatchObject({
+          type: 'STATIC_LIST',
+          name: 'Environment',
+          // Author order, not sorted.
+          options: ['prod', 'staging', 'dev'],
+          isBroadcastEnabled: false,
+          isVariableEnabled: true,
+          variableName: 'env',
+        });
+        // A sourceless filter emits no `sourceId` key at all rather than a
+        // null one, so the response body can be PUT straight back.
+        expect(filter).not.toHaveProperty('sourceId');
+        expect(filter).not.toHaveProperty('expression');
+
+        const getResponse = await authRequest(
+          'get',
+          `${BASE_URL}/${response.body.data.id}`,
+        ).expect(200);
+        expect(getResponse.body.data.filters).toEqual(
+          response.body.data.filters,
+        );
+      });
+
+      it('accepts a static filter alongside a queried one', async () => {
+        const response = await sendFilters([
+          filterInput(),
+          staticFilterInput(),
+        ]);
+
+        expect(response.status).toBe(200);
+        expect(response.body.data.filters).toHaveLength(2);
+      });
+
+      // Each mode flag accepts exactly one value, so omitting it fills that
+      // value in rather than falling back to the queried filter's defaults.
+      it('defaults the mode flags when they are omitted', async () => {
+        const response = await sendFilters([
+          staticFilterInput({
+            isBroadcastEnabled: undefined,
+            isVariableEnabled: undefined,
+          }),
+        ]);
+
+        expect(response.status).toBe(200);
+        expect(response.body.data.filters[0]).toMatchObject({
+          isBroadcastEnabled: false,
+          isVariableEnabled: true,
+          variableName: 'env',
+        });
+      });
+
+      it.each([
+        ['broadcast enabled', { isBroadcastEnabled: true }],
+        ['not variable-enabled', { isVariableEnabled: false }],
+        ['no options', { options: undefined }],
+        ['an empty option list', { options: [] }],
+        ['duplicate options', { options: ['prod', 'prod'] }],
+      ])('rejects a static filter with %s', async (_label, overrides) => {
+        const response = await sendFilters([staticFilterInput(overrides)]);
+
+        expect(response.status).toBe(400);
+      });
+
+      // Unlike the internal variants, which strip them, the external ones are
+      // strict: a field belonging to the other variant is an unrecognized key,
+      // named in the error.
+      it.each([
+        ['an expression', { expression: 'ServiceName' }],
+        ['a sourceId', { sourceId: '65f5e4a3b9e77c001a111111' }],
+        ['a where clause', { where: "ServiceName = 'api'" }],
+        ['a where language', { whereLanguage: 'sql' }],
+        [
+          'applies-to sources',
+          { appliesToSourceIds: ['65f5e4a3b9e77c001a111111'] },
+        ],
+      ])('rejects a static filter carrying %s', async (_label, overrides) => {
+        const response = await sendFilters([staticFilterInput(overrides)]);
+
+        expect(response.status).toBe(400);
+        expect(JSON.stringify(response.body)).toContain(
+          `Unrecognized key(s) in object: '${Object.keys(overrides)[0]}'`,
+        );
+      });
+
+      it('rejects options on a queried filter', async () => {
+        const response = await sendFilters([
+          filterInput({ options: ['prod'] }),
+        ]);
+
+        expect(response.status).toBe(400);
+        expect(JSON.stringify(response.body)).toContain(
+          "Unrecognized key(s) in object: 'options'",
+        );
+      });
+
+      it.each(['expression', 'sourceId'])(
+        'still rejects a queried filter with no %s',
+        async field => {
+          const response = await sendFilters([
+            filterInput({ [field]: undefined }),
+          ]);
+
+          expect(response.status).toBe(400);
+          expect(JSON.stringify(response.body)).toContain(field);
+        },
+      );
+
+      // A bogus type must not fall through to either variant.
+      it('rejects an unknown filter type at the discriminator', async () => {
+        const response = await sendFilters([
+          staticFilterInput({ type: 'STATIC' }),
+        ]);
+
+        expect(response.status).toBe(400);
+        expect(JSON.stringify(response.body)).toContain(
+          'Invalid discriminator value',
+        );
+      });
+    });
   });
 
   describe('Number tile color (HDX-1360)', () => {
@@ -7092,6 +7229,108 @@ describe('External API v2 Dashboards - new format', () => {
       const [returnedTile] = getResp.body.data.tiles;
       expect(returnedTile.containerId).toBe('real');
       expect(returnedTile.tabId).toBeUndefined();
+    });
+  });
+
+  describe('savedFilterValues', () => {
+    const sqlValue = { type: 'sql', condition: "Env IN ('prod')" };
+    const variableValue = {
+      type: 'variable',
+      name: 'svc',
+      values: ['accounting', 'frontend'],
+    };
+
+    it('should persist and return a variable-keyed value verbatim', async () => {
+      const response = await authRequest('post', BASE_URL)
+        .send(
+          createMockDashboard(traceSource._id.toString(), {
+            savedFilterValues: [variableValue],
+          }),
+        )
+        .expect(200);
+
+      expect(response.body.data.savedFilterValues).toEqual([variableValue]);
+
+      const dashboardInDb = await Dashboard.findById(
+        response.body.data.id,
+      ).lean();
+      expect(dashboardInDb?.savedFilterValues).toEqual([variableValue]);
+    });
+
+    it('should accept a variable-keyed value with no values selected', async () => {
+      const emptySelection = { type: 'variable', name: 'svc', values: [] };
+      const response = await authRequest('post', BASE_URL)
+        .send(
+          createMockDashboard(traceSource._id.toString(), {
+            savedFilterValues: [emptySelection],
+          }),
+        )
+        .expect(200);
+
+      expect(response.body.data.savedFilterValues).toEqual([emptySelection]);
+    });
+
+    // The regression this format change exists to prevent: GET returns whatever
+    // is stored, so a write schema that only accepted the sql shape would make a
+    // dashboard holding a variable value un-updatable by echoing its own body.
+    it('should accept a mixed array echoed straight back from GET', async () => {
+      const created = await authRequest('post', BASE_URL)
+        .send(
+          createMockDashboardWithIds(traceSource._id.toString(), {
+            savedFilterValues: [sqlValue, variableValue],
+          }),
+        )
+        .expect(200);
+
+      const fetched = await authRequest(
+        'get',
+        `${BASE_URL}/${created.body.data.id}`,
+      ).expect(200);
+      expect(fetched.body.data.savedFilterValues).toEqual([
+        sqlValue,
+        variableValue,
+      ]);
+
+      const echoed = await authRequest(
+        'put',
+        `${BASE_URL}/${created.body.data.id}`,
+      )
+        .send(fetched.body.data)
+        .expect(200);
+      expect(echoed.body.data.savedFilterValues).toEqual([
+        sqlValue,
+        variableValue,
+      ]);
+    });
+
+    it('should return 400 for a variable-keyed value missing name', async () => {
+      await authRequest('post', BASE_URL)
+        .send(
+          createMockDashboard(traceSource._id.toString(), {
+            savedFilterValues: [{ type: 'variable', values: ['a'] }],
+          }),
+        )
+        .expect(400);
+    });
+
+    it('should return 400 for a variable-keyed value missing values', async () => {
+      await authRequest('post', BASE_URL)
+        .send(
+          createMockDashboard(traceSource._id.toString(), {
+            savedFilterValues: [{ type: 'variable', name: 'svc' }],
+          }),
+        )
+        .expect(400);
+    });
+
+    it('should return 400 for an unknown saved filter value type', async () => {
+      await authRequest('post', BASE_URL)
+        .send(
+          createMockDashboard(traceSource._id.toString(), {
+            savedFilterValues: [{ type: 'nonsense', name: 'svc', values: [] }],
+          }),
+        )
+        .expect(400);
     });
   });
 

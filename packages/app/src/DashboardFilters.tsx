@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react';
+import { FilterSelection } from '@hyperdx/common-utils/dist/dashboardFilterValues';
 import {
-  FilterState,
+  getFilterBroadcastTarget,
   getFilterVariableName,
   getPendingFilterValuesVariables,
-  isFilterBroadcastEnabled,
   isFilterVariableEnabled,
+  isQueryExpressionFilter,
+  isStaticListFilter,
 } from '@hyperdx/common-utils/dist/filters';
 import {
   ChartVariable,
@@ -56,8 +58,9 @@ export const getFilterEffect = (
 ): { hasEffect: boolean; tooltip: string } => {
   const parts: string[] = [];
 
-  if (isFilterBroadcastEnabled(filter)) {
-    const count = filter.appliesToSourceIds?.length ?? 0;
+  const broadcast = getFilterBroadcastTarget(filter);
+  if (broadcast) {
+    const count = broadcast.appliesToSourceIds?.length ?? 0;
     parts.push(
       count === 0
         ? 'Filters all sources'
@@ -159,6 +162,8 @@ const DashboardFilterSelect = ({
           // so a completed/empty/failed query stays interactive and the user can
           // still clear or adjust the selection.
           loading={isLoading}
+          // A static list renders in the order its author wrote it.
+          sort={!isStaticListFilter(filter)}
           onChange={onChange}
           data-testid={`dashboard-filter-select-${filter.name}`}
         />
@@ -167,10 +172,13 @@ const DashboardFilterSelect = ({
   );
 };
 
+/** Stable identity for the unlinked case, so the memo below doesn't re-run. */
+const EMPTY_SELECTIONS: ReadonlyMap<string, FilterSelection> = new Map();
+
 interface DashboardFilterProps {
   filters: DashboardFilter[];
-  filterValues: FilterState;
-  onSetFilterValue: (expression: string, values: string[]) => void;
+  selectionByFilterId: ReadonlyMap<string, FilterSelection>;
+  onSetFilterValue: (filterId: string, values: string[]) => void;
   dateRange: [Date, Date];
   /**
    * The dashboard's variables and their current selections. Defined only when
@@ -183,7 +191,7 @@ interface DashboardFilterProps {
 const DashboardFilters = ({
   filters,
   dateRange,
-  filterValues,
+  selectionByFilterId,
   onSetFilterValue,
   variables,
 }: DashboardFilterProps) => {
@@ -203,14 +211,21 @@ const DashboardFilters = ({
     dateRange,
     variables,
     // Only narrow by sibling selections when linked.
-    filterValues: linked ? filterValues : {},
+    selectionByFilterId: linked ? selectionByFilterId : EMPTY_SELECTIONS,
   });
+
+  // Linking narrows queried dropdowns by sibling selections; a static
+  // list can neither constrain nor be constrained, so it doesn't count.
+  const linkableFiltersCount = useMemo(
+    () => filters.filter(isQueryExpressionFilter).length,
+    [filters],
+  );
 
   return (
     <Group align="start">
-      {Object.values(filters).map(filter => {
+      {filters.map(filter => {
         const queriedFilterValues = filterValuesById?.get(filter.id);
-        const included = filterValues[filter.expression]?.included;
+        const included = selectionByFilterId.get(filter.id)?.included;
         const selectedValues = included
           ? Array.from(included).map(v => v.toString())
           : [];
@@ -220,6 +235,11 @@ const DashboardFilters = ({
         const isLoadingValues = queriedFilterValues
           ? queriedFilterValues.isLoading
           : isFetching;
+        // Only a queried dropdown has a values query that can await a
+        // variable's selection.
+        const pendingVariables = isQueryExpressionFilter(filter)
+          ? getPendingFilterValuesVariables(filter, variables)
+          : undefined;
         return (
           <DashboardFilterSelect
             key={filter.id}
@@ -227,17 +247,14 @@ const DashboardFilters = ({
             isLoading={isLoadingValues}
             isError={erroredFilterIds?.has(filter.id) ?? false}
             errorMessage={filterErrorMessages?.get(filter.id)}
-            pendingVariables={getPendingFilterValuesVariables(
-              filter,
-              variables,
-            )}
-            onChange={values => onSetFilterValue(filter.expression, values)}
+            pendingVariables={pendingVariables}
+            onChange={values => onSetFilterValue(filter.id, values)}
             values={queriedFilterValues?.values}
             value={selectedValues}
           />
         );
       })}
-      {filters.length >= 2 && (
+      {linkableFiltersCount >= 2 && (
         <Stack gap={2} justify="flex-end">
           {/* Spacer to align the toggle with the inputs (filters have a label row above). */}
           <Text size="xs" c="transparent" aria-hidden>

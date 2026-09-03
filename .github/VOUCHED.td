@@ -28,6 +28,7 @@
 adityapimpalkar
 alex-fedotyev
 alok87
+arj22
 aryainguz
 brandon-pereira
 colehpage
@@ -52,14 +53,18 @@ leticiawebb
 lyhuang
 mark-omarov
 martincholuj
+mfa-g
 michael-anastasakis
 mikeshi42
+milansanjeev
 mkaesz
 motsc
 niladrix719
 peter-leonov-ch
+pttydou wants to improve FE type safety
 pulpdrew
 rawatprince
+rip21
 sanjams2
 shuvamk
 spencertorres

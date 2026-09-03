@@ -12,10 +12,7 @@ import {
   displayTypeSupportsBuilderAlerts,
   displayTypeSupportsRawSqlAlerts,
 } from '@hyperdx/common-utils/dist/core/utils';
-import {
-  isPromqlChartConfig,
-  isRawSqlSavedChartConfig,
-} from '@hyperdx/common-utils/dist/guards';
+import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
   ChartConfigWithDateRange,
   ChartVariable,
@@ -285,6 +282,7 @@ export default function EditTimeChartForm({
     color,
     colorRules,
     backgroundChart,
+    legendTemplate,
   ] = useWatch({
     control,
     name: [
@@ -299,6 +297,7 @@ export default function EditTimeChartForm({
       'color',
       'colorRules',
       'backgroundChart',
+      'legendTemplate',
     ],
   });
 
@@ -329,6 +328,7 @@ export default function EditTimeChartForm({
       color,
       colorRules,
       backgroundChart,
+      legendTemplate,
     }),
     [
       alignDateRangeToGranularity,
@@ -342,6 +342,7 @@ export default function EditTimeChartForm({
       color,
       colorRules,
       backgroundChart,
+      legendTemplate,
     ],
   );
 
@@ -375,7 +376,7 @@ export default function EditTimeChartForm({
 
   // Attach variables so that variable references can be validated and expanded in the preview
   const previewConfig = useMemo(() => {
-    if (queriedConfig == null || isPromqlChartConfig(queriedConfig)) {
+    if (queriedConfig == null) {
       return queriedConfig;
     }
     return {
@@ -395,7 +396,6 @@ export default function EditTimeChartForm({
 
   // Casting because `useWatch` returns a deep partial type, but we know that the
   // form state is complete due to default values set above.
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
   const watchedForm = useWatch({ control }) as ChartEditorFormState;
   const [debouncedForm] = useDebouncedValue(watchedForm, 300);
   const additionalAlertWarnings = useMemo(() => {
@@ -674,6 +674,7 @@ export default function EditTimeChartForm({
         color,
         colorRules,
         backgroundChart,
+        legendTemplate,
       }: ChartConfigDisplaySettings,
       isDirty: boolean,
     ) => {
@@ -696,6 +697,10 @@ export default function EditTimeChartForm({
       setValue('color', color);
       setValue('colorRules', colorRules);
       setValue('backgroundChart', backgroundChart);
+      // Empty string (not undefined) so the cleared state survives the URL round-trip.
+      if (configType === 'promql') {
+        setValue('legendTemplate', legendTemplate ?? '');
+      }
       // Display settings live in a separate drawer form, so RHF can't track
       // them. Latch dirty state only when the drawer reports actual changes.
       if (isDirty) {
@@ -704,7 +709,7 @@ export default function EditTimeChartForm({
       }
       onSubmit();
     },
-    [setValue, onDirtyChange, onSubmit],
+    [setValue, onDirtyChange, onSubmit, configType],
   );
 
   const handleUpdateHeatmapSettings = useCallback(
@@ -957,6 +962,7 @@ export default function EditTimeChartForm({
         chartConfigForExplanations={chartConfigForExplanations}
         showGeneratedSql={showGeneratedSql}
         showSampleEvents={showSampleEvents}
+        showGeneratedPromql={isPromqlInput}
         dbTimeChartConfig={dbTimeChartConfig}
         setValue={(name, value) => setValue(name, value)}
         onSubmit={onSubmit}

@@ -666,6 +666,12 @@ export type AlertError = z.infer<typeof AlertErrorSchema>;
 export enum AlertSource {
   SAVED_SEARCH = 'saved_search',
   TILE = 'tile',
+  /**
+   * A "detached" alert whose query definition lives inline on the alert
+   * document (a chart config, the same shape a dashboard tile stores)
+   * instead of referencing a saved search or tile.
+   */
+  INLINE = 'inline',
 }
 
 export const AlertIntervalSchema = z.union([
@@ -821,6 +827,18 @@ export const zTileAlert = z.object({
   dashboardId: z.string().min(1),
 });
 
+/**
+ * Inline alerts persist their query/chart definition directly on the alert —
+ * the same shape a dashboard tile stores (minus the embedded `alert` field).
+ * Builder and raw SQL configs only; PromQL charts cannot be alerted on.
+ * `z.lazy` defers resolution because the chart-config schemas are declared
+ * later in this module.
+ */
+export const zInlineAlert = z.object({
+  source: z.literal(AlertSource.INLINE),
+  chartConfig: z.lazy(() => AlertChartConfigSchema),
+});
+
 export const validateAlertScheduleOffsetMinutes = (
   alert: {
     interval: AlertInterval;
@@ -968,9 +986,45 @@ const ChartAlertBaseValidatedSchema = ChartAlertBaseSchema.superRefine(
 export const AlertSchema = z.union([
   z.intersection(AlertBaseValidatedSchema, zSavedSearchAlert),
   z.intersection(ChartAlertBaseValidatedSchema, zTileAlert),
+  z.intersection(ChartAlertBaseValidatedSchema, zInlineAlert),
 ]);
 
 export type Alert = z.infer<typeof AlertSchema>;
+
+/**
+ * Max per-target timing entries stored on one evaluation. An evaluation's
+ * distinct targets are already bounded (configured channels plus whatever the
+ * message body @mentions, itself capped per event), so this only guards
+ * against a pathological alert growing the document. Shared so the app can
+ * explain the truncation it renders.
+ */
+export const ALERT_NOTIFICATION_TARGETS_LIMIT = 20;
+
+/**
+ * One notification target's timing within an evaluation, summed across every
+ * dispatch the evaluation made to it — a grouped alert notifies the same
+ * target once per firing group, and a resolve notification is another
+ * dispatch.
+ */
+export const AlertNotificationTargetTimingSchema = z.object({
+  /**
+   * Stable identity for the target — the webhook id. Two webhooks can share a
+   * display name, so `target` alone does not identify a row.
+   */
+  targetId: z.string(),
+  /** Display label: the webhook's name as it was at dispatch time. */
+  target: z.string(),
+  /** Summed wall time across this target's dispatches (ms). */
+  durationMs: z.number(),
+  /** Dispatches attempted for this target in the evaluation. */
+  dispatches: z.number(),
+  /** How many of those dispatches failed. */
+  failures: z.number(),
+});
+
+export type AlertNotificationTargetTiming = z.infer<
+  typeof AlertNotificationTargetTimingSchema
+>;
 
 // Diagnostics for the evaluation that wrote a history record. Evaluation-
 // level: identical on every row one evaluation writes (incl. per-group rows).
@@ -981,6 +1035,17 @@ export const AlertHistoryAnalyticsSchema = z.object({
   webhookDurationMs: z.number().optional(),
   /** Earlier buckets backfilled in this run after missed ticks (expected buckets − 1). */
   backfilledBuckets: z.number().optional(),
+  /**
+   * Per-target breakdown of `webhookDurationMs`, highest duration first.
+   * Targets are dispatched concurrently, so these do not sum to
+   * `webhookDurationMs` — the slowest target in each dispatch round sets the
+   * total. Absent on evaluations that sent nothing, and on records written
+   * before per-target timing existed.
+   */
+  notificationTargets: z
+    .array(AlertNotificationTargetTimingSchema)
+    .max(ALERT_NOTIFICATION_TARGETS_LIMIT)
+    .optional(),
 });
 
 export type AlertHistoryAnalytics = z.infer<typeof AlertHistoryAnalyticsSchema>;
@@ -1045,6 +1110,22 @@ export const FilterSchema = z.union([
 ]);
 
 export type Filter = z.infer<typeof FilterSchema>;
+
+export const VariableFilterValueSchema = z.object({
+  type: z.literal('variable'),
+  name: z.string().min(1).max(1024),
+  values: z.array(z.string().max(10000)).max(1000),
+});
+
+export type VariableFilterValue = z.infer<typeof VariableFilterValueSchema>;
+
+/** One entry in a dashboard's `filters=` param / `savedFilterValues`. */
+export const DashboardFilterValueSchema = z.union([
+  FilterSchema,
+  VariableFilterValueSchema,
+]);
+
+export type DashboardFilterValue = z.infer<typeof DashboardFilterValueSchema>;
 
 // --------------------------
 // TAGS
@@ -1589,6 +1670,8 @@ const RawSqlChartConfigSchema = RawSqlBaseChartConfigSchema.extend({
 
 export type RawSqlChartConfig = z.infer<typeof RawSqlChartConfigSchema>;
 
+export const MAX_LEGEND_TEMPLATE_LENGTH = 1024;
+
 /** Base schema for PromQL chart configs (persisted fields) */
 const PromqlBaseChartConfigSchema = SharedChartSettingsSchema.extend({
   configType: z.literal('promql'),
@@ -1596,6 +1679,7 @@ const PromqlBaseChartConfigSchema = SharedChartSettingsSchema.extend({
   connection: z.string(),
   source: z.string().optional(),
   step: z.string().optional(),
+  legendTemplate: z.string().max(MAX_LEGEND_TEMPLATE_LENGTH).optional(),
 });
 
 /** Schema describing PromQL chart configs with runtime-only fields */
@@ -1604,6 +1688,7 @@ const PromqlChartConfigSchema = PromqlBaseChartConfigSchema.extend({
   from: z
     .object({ databaseName: z.string(), tableName: z.string() })
     .optional(),
+  variables: z.array(ChartVariableSchema).optional(),
 });
 
 export type PromqlChartConfig = z.infer<typeof PromqlChartConfigSchema>;
@@ -1721,6 +1806,19 @@ export const SavedChartConfigSchema = z.union([
   PromqlSavedChartConfigSchema,
 ]);
 
+/**
+ * The chart config an inline-source alert persists (see `zInlineAlert`). Same
+ * shape as a dashboard tile's config, but without the embedded `alert` field
+ * (the alert's own document carries those fields) and without the PromQL
+ * variant (PromQL charts cannot be alerted on).
+ */
+export const AlertChartConfigSchema = z.union([
+  BuilderSavedChartConfigWithoutAlertSchema,
+  RawSqlSavedChartConfigWithoutAlertSchema,
+]);
+
+export type AlertChartConfig = z.infer<typeof AlertChartConfigSchema>;
+
 export type RawSqlSavedChartConfig = z.infer<
   typeof RawSqlSavedChartConfigSchema
 >;
@@ -1797,7 +1895,8 @@ export const DashboardContainerSchema = z.object({
 
 export type DashboardContainer = z.infer<typeof DashboardContainerSchema>;
 
-export const DashboardFilterType = z.enum(['QUERY_EXPRESSION']);
+/** Type of dashboard filter, determining how its dropdown values are populated. */
+export const DashboardFilterType = z.enum(['QUERY_EXPRESSION', 'STATIC_LIST']);
 
 /** Allowed variable names for dashboard filters. Alphanumeric + underscore, must start with a letter. */
 export const DASHBOARD_VARIABLE_NAME_PATTERN = '[a-zA-Z][a-zA-Z0-9_]*';
@@ -1806,31 +1905,10 @@ export const DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED = new RegExp(
 );
 export const DASHBOARD_VARIABLE_NAME_MAX_LENGTH = 64;
 
-export const DashboardFilterSchema = z.object({
+/** Fields carried by every dashboard filter, whatever its type. */
+const dashboardFilterBaseSchema = z.object({
   id: z.string(),
-  type: DashboardFilterType,
   name: z.string().min(1),
-  expression: z.string().min(1),
-  source: z.string().min(1),
-  sourceMetricType: z.nativeEnum(MetricsDataType).optional(),
-  where: z.string().optional(),
-  whereLanguage: SearchConditionTrimmedLanguageSchema,
-  // Sources this filter applies to. Undefined / missing means the filter
-  // applies to all tiles.
-  appliesToSourceIds: z.array(z.string().min(1)).optional(),
-  /**
-   * Whether the selected value is applied as a filter condition on matching
-   * tiles. Undefined / missing means ENABLED — every filter that predates this
-   * field broadcasts, and that must not change. Read it through
-   * `isFilterBroadcastEnabled` rather than defaulting at each call site.
-   */
-  isBroadcastEnabled: z.boolean().optional(),
-  /**
-   * Whether the selected value is exposed to tile queries as `$variableName`.
-   * Undefined / missing means DISABLED. Ignored while the dashboard-variables
-   * feature is off.
-   */
-  isVariableEnabled: z.boolean().optional(),
   /**
    * Token that tiles reference as `$variableName`. Defaults to the filter's display
    * name with illegal characters replaced by dashes (`deriveVariableName`).
@@ -1843,15 +1921,69 @@ export const DashboardFilterSchema = z.object({
     .optional(),
 });
 
+/**
+ * A filter whose dropdown values are queried from ClickHouse: `expression`
+ * names the column, `source` the table, and the selection can be broadcast
+ * into matching tiles' `WHERE` clauses.
+ */
+export const QueryExpressionDashboardFilterSchema =
+  dashboardFilterBaseSchema.extend({
+    type: z.literal(DashboardFilterType.enum.QUERY_EXPRESSION),
+    expression: z.string().min(1),
+    source: z.string().min(1),
+    sourceMetricType: z.nativeEnum(MetricsDataType).optional(),
+    where: z.string().optional(),
+    whereLanguage: SearchConditionTrimmedLanguageSchema,
+    // Sources this filter applies to. Undefined / missing means the filter
+    // applies to all tiles.
+    appliesToSourceIds: z.array(z.string().min(1)).optional(),
+    /**
+     * Whether the selected value is applied as a filter condition on matching
+     * tiles. Undefined / missing means ENABLED — every filter that predates this
+     * field broadcasts, and that must not change. Read it through
+     * `isFilterBroadcastEnabled` rather than defaulting at each call site.
+     */
+    isBroadcastEnabled: z.boolean().optional(),
+    /**
+     * Whether the selected value is exposed to tile queries as `$variableName`.
+     * Undefined / missing means DISABLED. Ignored while the dashboard-variables
+     * feature is off.
+     */
+    isVariableEnabled: z.boolean().optional(),
+  });
+
+/** A filter whose dropdown offers a hand-authored list. */
+export const StaticListDashboardFilterSchema = dashboardFilterBaseSchema.extend(
+  {
+    type: z.literal(DashboardFilterType.enum.STATIC_LIST),
+    options: z.array(z.string().min(1).max(10000)).min(1).max(1000),
+    isBroadcastEnabled: z.literal(false),
+    isVariableEnabled: z.literal(true),
+  },
+);
+
+export const DashboardFilterSchema = z.discriminatedUnion('type', [
+  QueryExpressionDashboardFilterSchema,
+  StaticListDashboardFilterSchema,
+]);
+
+export type QueryExpressionDashboardFilter = z.infer<
+  typeof QueryExpressionDashboardFilterSchema
+>;
+export type StaticListDashboardFilter = z.infer<
+  typeof StaticListDashboardFilterSchema
+>;
 export type DashboardFilter = z.infer<typeof DashboardFilterSchema>;
 
 export enum PresetDashboard {
   Services = 'services',
 }
 
-export const PresetDashboardFilterSchema = DashboardFilterSchema.extend({
-  presetDashboard: z.nativeEnum(PresetDashboard),
-});
+/** Preset-dashboard filters are broadcast-only, and therefore do not support static value filters. */
+export const PresetDashboardFilterSchema =
+  QueryExpressionDashboardFilterSchema.extend({
+    presetDashboard: z.nativeEnum(PresetDashboard),
+  });
 
 export type PresetDashboardFilter = z.infer<typeof PresetDashboardFilterSchema>;
 
@@ -1893,7 +2025,7 @@ export const DashboardSchema = z.object({
   filters: z.array(DashboardFilterSchema).optional(),
   savedQuery: z.string().nullable().optional(),
   savedQueryLanguage: SearchConditionLanguageSchema.nullable().optional(),
-  savedFilterValues: z.array(FilterSchema).optional(),
+  savedFilterValues: z.array(DashboardFilterValueSchema).optional(),
   containers: z
     .array(DashboardContainerSchema)
     .max(DASHBOARD_MAX_CONTAINERS)
@@ -2400,6 +2532,10 @@ export const AlertsPageItemSchema = z.object({
   dashboardId: z.string().optional(),
   savedSearchId: z.string().optional(),
   tileId: z.string().optional(),
+  // Inline alerts: the persisted chart config. Only present on the
+  // single-alert (detail) response — the unpaginated list omits it so every
+  // alerts-page load doesn't carry every alert's full query definition.
+  chartConfig: AlertChartConfigSchema.optional(),
   groupBy: z.string().optional(),
   name: z.string().nullish(),
   message: z.string().nullish(),

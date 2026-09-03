@@ -3,7 +3,7 @@ import { parseAsJson, useQueryState } from 'nuqs';
 import {
   DashboardContainer,
   DashboardFilter,
-  Filter,
+  DashboardFilterValue,
   resolveChartPaletteToken,
   SavedChartConfig,
   SearchConditionLanguage,
@@ -38,7 +38,7 @@ export type Dashboard = {
   filters?: DashboardFilter[];
   savedQuery?: string | null;
   savedQueryLanguage?: SearchConditionLanguage | null;
-  savedFilterValues?: Filter[];
+  savedFilterValues?: DashboardFilterValue[];
   containers?: DashboardContainer[];
   createdAt?: string;
   updatedAt?: string;
