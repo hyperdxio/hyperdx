@@ -166,7 +166,7 @@ export function providerEndpoint(origin: string, basePath = ''): string {
   return `${origin}${basePath}/api`;
 }
 
-/** The higher of the two floors that applies to what the file contains. */
+/** Whichever floor applies to what the file contains. */
 function providerVersionConstraint(tileAlerts: boolean): string {
   return tileAlerts
     ? TERRAFORM_PROVIDER_TILE_ALERT_VERSION_CONSTRAINT
@@ -278,14 +278,15 @@ export function buildImportFile({
   const tileAlertNotice = tileAlerts
     ? `# * Tile alerts in this file need provider ${TERRAFORM_PROVIDER_TILE_ALERT_VERSION_CONSTRAINT},
 #   where clickhouse_clickstack_alert gained source = "tile". The generated
-#   config pins dashboard_id and tile_id as literals; if the dashboard is in
+#   config pins dashboard_id and tile_id as literals. If the dashboard is in
 #   this file too, replace them with references —
 #   clickhouse_clickstack_dashboard.<name>.id and
-#   ...tile_ids["<tile name>"] — before you commit. Tile ids are
-#   server-assigned, so a literal one goes stale the next time the dashboard is
-#   applied, and the alert is deleted with the tile it pointed at. Renaming an
-#   alerted tile also mints a new id, which fails the plan until the reference
-#   is updated.
+#   ...tile_ids["<tile name>"] — before you apply. If it is not, the literals
+#   hold only while nothing else applies that dashboard, so import it under
+#   Terraform before you do. Tile ids are server-assigned: the first apply of
+#   an unreferenced dashboard re-mints them and the alert is deleted with the
+#   tile it pointed at. Renaming an alerted tile mints a new id too, which
+#   fails the plan until the reference is updated.
 `
     : '';
   const skipped = skipNotices.length

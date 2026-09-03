@@ -2826,10 +2826,10 @@ export const IacImportManifestSchema = z.object({
       // inline ones, so the client needs the discriminator to filter.
       source: z.string().optional(),
       savedSearchId: z.string().optional(),
-      // Tile alerts only: set when the tile the alert watches has no unique,
-      // non-blank name, so the provider's `tile_ids` map cannot address it.
-      // Computed server-side — the tile lives on a dashboard this manifest
-      // may not even list. See isAddressableTile.
+      // Tile alerts only: set when the provider could not address the tile
+      // this alert watches. Computed server-side — the tile lives on a
+      // dashboard this manifest may not even list. See
+      // isTileAlertUnaddressable.
       unaddressableTile: z.boolean().optional(),
     }),
   ),

@@ -23,6 +23,7 @@ import {
 import Alert, { AlertSource, AlertState } from '@/models/alert';
 import AlertHistory from '@/models/alertHistory';
 import Connection from '@/models/connection';
+import Dashboard from '@/models/dashboard';
 import { SavedSearch } from '@/models/savedSearch';
 import { Source } from '@/models/source';
 import Webhook, { WebhookDocument, WebhookService } from '@/models/webhook';
@@ -742,6 +743,42 @@ describe('alerts router', () => {
     expect(byDashboard['Test Dashboard'].unaddressableTile).toBe(true);
     // Absent rather than `false` when fine, matching the IaC manifest.
     expect(byDashboard['Unique tiles']).not.toHaveProperty('unaddressableTile');
+  });
+
+  // Both legs of the rule the manifest also applies. The provisioned case
+  // works only because getAlertsEnhanced populates the dashboard whole — a
+  // projection added there would break it silently — and the deleted case
+  // only because the marker sits outside the `alert.dashboard` spread.
+  it('marks a tile alert on a provisioned dashboard, and one whose dashboard is gone', async () => {
+    const tile = makeTile();
+    const provisioned = await Dashboard.create({
+      name: 'Provisioned',
+      team: team._id,
+      provisioned: true,
+      tiles: [tile],
+    });
+
+    const tileAlert = async (dashboardId: unknown, tileId: string) =>
+      Alert.create({
+        team: team._id,
+        channel: { type: 'webhook', webhookId: webhook._id.toString() },
+        interval: '15m',
+        threshold: 8,
+        thresholdType: AlertThresholdType.ABOVE,
+        source: AlertSource.TILE,
+        dashboard: dashboardId,
+        tileId,
+      });
+
+    await tileAlert(provisioned._id, tile.id);
+    await tileAlert(randomMongoId(), tile.id);
+
+    const resp = await agent.get('/alerts').expect(200);
+
+    expect(resp.body.data).toHaveLength(2);
+    for (const alert of resp.body.data) {
+      expect(alert.unaddressableTile).toBe(true);
+    }
   });
 
   it('can silence an alert', async () => {

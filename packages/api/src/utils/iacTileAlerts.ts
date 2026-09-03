@@ -1,7 +1,4 @@
-import {
-  IAC_MANIFEST_LIMIT,
-  isTileAlertUnaddressable,
-} from '@hyperdx/common-utils/dist/iac';
+import { isTileAlertUnaddressable } from '@hyperdx/common-utils/dist/iac';
 
 import type { ObjectId } from '@/models';
 import { AlertSource } from '@/models/alert';
@@ -24,11 +21,11 @@ type TileAlertRow = {
  * IAC_MANIFEST_LIMIT. Hence this separate, narrower read, keyed on the
  * dashboards the tile alerts actually point at.
  *
- * Bounded the same way the manifest's listings are, and for the same reason —
- * the fan-out is one id per tile alert, and this runs on every Team Settings
- * visit. Past the cap a dashboard's tiles go unread, which marks its alerts
- * unaddressable: withholding an alert that would have worked, rather than
- * offering one that would not.
+ * Bounded by its own `$in`, which is why it needs no `limit`: the ids come
+ * from the alerts listing, itself capped at IAC_MANIFEST_LIMIT. `maxTimeMS` is
+ * the caller's remaining budget, not a fresh one — this read is sequenced
+ * after the manifest's six concurrent listings, and the ceiling is meant to
+ * bound the request, not each leg of it.
  */
 export async function unaddressableTileAlertIds({
   teamId,
@@ -54,8 +51,6 @@ export async function unaddressableTileAlertIds({
         // Only what isTileAlertUnaddressable reads. Keep in step with it.
         { provisioned: 1, 'tiles.id': 1, 'tiles.config.name': 1 },
       )
-        .sort({ _id: 1 })
-        .limit(IAC_MANIFEST_LIMIT)
         .maxTimeMS(maxTimeMS)
         .lean()
     : [];
