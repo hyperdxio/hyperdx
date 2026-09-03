@@ -16,7 +16,6 @@ import {
   parseDuration,
   parseTimestamp,
   recordProxyOutcome,
-  redactHostUserinfo,
   resolveExemplarWindow,
 } from '@/routers/api/prometheus';
 
@@ -335,41 +334,5 @@ describe('joinPrometheusUpstreamUrl', () => {
     expect(() =>
       joinPrometheusUpstreamUrl('localhost:9090', '/api/v1/query_range'),
     ).toThrow(/http\(s\)/);
-  });
-});
-
-describe('redactHostUserinfo', () => {
-  it('strips userinfo from a normal http(s) URL', () => {
-    expect(redactHostUserinfo('http://user:pw@prom:9090/graph')).toBe(
-      'http://prom:9090/graph',
-    );
-  });
-
-  it('leaves a URL with no userinfo unchanged', () => {
-    expect(redactHostUserinfo('http://prom:9090')).toBe('http://prom:9090');
-  });
-
-  // This is the case the http(s) guard in joinPrometheusUpstreamUrl exists to
-  // catch: `new URL('user:pw@prom:9090')` parses scheme `user:` with an
-  // opaque path, so there is no `://` to anchor on -- a redaction regex that
-  // required one would echo the password straight back into the browser.
-  it('strips userinfo from a scheme-less host with no "//"', () => {
-    expect(redactHostUserinfo('user:pw@prom:9090')).not.toContain('pw');
-  });
-
-  it('does not touch an "@" that appears after the host (e.g. in a query value)', () => {
-    expect(redactHostUserinfo('http://prom:9090/path?to=a@b.com')).toBe(
-      'http://prom:9090/path?to=a@b.com',
-    );
-  });
-
-  // A password containing a literal "@" must be fully stripped, not just up
-  // to its first occurrence -- otherwise the suffix after the first "@"
-  // (part of the actual secret) would leak into the redacted output.
-  it('fully strips a password that itself contains "@"', () => {
-    const redacted = redactHostUserinfo('http://user:p@ss@prom:9090/graph');
-    expect(redacted).toBe('http://prom:9090/graph');
-    expect(redacted).not.toContain('p@ss');
-    expect(redacted).not.toContain('ss@');
   });
 });

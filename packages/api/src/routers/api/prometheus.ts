@@ -184,32 +184,6 @@ export function isClientDisconnect(err: unknown): boolean {
 }
 
 /**
- * Strip userinfo (`user:pw@`) from a Connection host/URL string, or a fully
- * serialized target URL (host + path + query), for safe display in an error
- * response -- assumes a host or host+path is present, not a bare host+query
- * (an `@` in a query value with no path before it would be misread as
- * userinfo, though the "no path, no `/`" shape doesn't occur for this
- * proxy's own targets).
- *
- * Operates on the raw string rather than a parsed `URL`, because it also has
- * to redact hosts that fail to parse, or whose userinfo lands in an opaque
- * path instead of `URL.username`/`.password` -- a scheme-less host like
- * `user:pw@prom:9090` parses with scheme `user:` and never has a `://`, so a
- * check that required one would leave the password in the response for
- * exactly that case. In that shape the leading `user:` reads as the scheme
- * and survives redaction (only the password after it is stripped) -- there
- * is no way to tell it apart from a real scheme without a fixed allowlist,
- * so this only guarantees the password is removed, not the username.
- *
- * Matches through the *last* `@` before the first path separator, not the
- * first, so a password that itself contains `@` is fully stripped rather
- * than leaving its suffix in the output.
- */
-export function redactHostUserinfo(host: string): string {
-  return host.replace(/^([a-z][a-z0-9+.-]*:)?(\/\/)?[^/]*@/i, '$1$2');
-}
-
-/**
  * Join a Connection host with an absolute Prometheus API path.
  *
  * `new URL('/api/v1/query_range', 'http://host:8481/select/0/prometheus')`
@@ -321,10 +295,16 @@ async function proxyToPrometheus(
   }
   const target = url.toString();
 
-  // A connection host may carry basic-auth credentials (`http://user:pw@host`),
-  // and the error bodies below are shown in the browser. Strip them for display
-  // only — `target` itself still needs them to authenticate.
-  const redactedTarget = redactHostUserinfo(target);
+  // A connection host may carry basic-auth credentials (`http://user:pw@host`)
+  // or a secret pinned in its own query string (e.g. VictoriaMetrics
+  // `?authKey=...`, preserved by the merge above for any key outside
+  // `CALLER_SETTABLE_PARAM_KEYS`), and the error bodies below are shown in
+  // the browser. `url.origin` never includes userinfo (WHATWG URL spec), and
+  // dropping the query/hash entirely -- rather than trying to redact only the
+  // secret-shaped parts of it -- means there's no query key to ever miss.
+  // `target` itself is unaffected and still carries everything needed to
+  // authenticate.
+  const redactedTarget = `${url.origin}${url.pathname}`;
 
   let upstreamResp: Response;
   try {

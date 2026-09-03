@@ -254,6 +254,39 @@ describe('prometheus router', () => {
       expect(res.body.error).not.toContain('s3cr3t');
     });
 
+    // Unlike basic-auth userinfo, a secret pinned in the host's own query
+    // string (e.g. VictoriaMetrics `?authKey=...`) is preserved verbatim on
+    // the upstream URL by the param merge -- `redactedTarget` must drop the
+    // whole query string for display, not try to redact only the
+    // secret-shaped parts of it, or this leaks into the 502 body.
+    it('does not leak a secret pinned in the host query string into the 502 message', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedPrometheusConnection(
+        team._id,
+        'http://prom.example.com?authKey=super-secret-token',
+      );
+
+      mockFetch.mockRejectedValueOnce(
+        Object.assign(new Error('fetch failed'), {
+          cause: { code: 'ECONNREFUSED' },
+        }),
+      );
+
+      const res = await agent
+        .get('/v1/prometheus/query_exemplars')
+        .query({
+          query: 'up',
+          start: '1700000000',
+          end: '1700000060',
+          connectionId: conn._id.toString(),
+        })
+        .expect(502);
+
+      expect(res.body.error).toContain('ECONNREFUSED');
+      expect(res.body.error).not.toContain('super-secret-token');
+      expect(res.body.error).toContain('prom.example.com');
+    });
+
     // nosniff is set by router middleware, so the helper's own error bodies —
     // which echo the caller-supplied host — carry it too.
     it('sends nosniff on its own error responses', async () => {
