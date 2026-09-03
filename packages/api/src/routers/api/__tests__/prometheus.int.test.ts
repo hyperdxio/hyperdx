@@ -359,7 +359,42 @@ describe('prometheus router', () => {
       );
     });
 
-    it('does not let request query params override params pinned on the connection host', async () => {
+    it('leaves a host-pinned param untouched when the request never references it', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedPrometheusConnection(
+        team._id,
+        'http://vmselect:8481/select/0/prometheus?extra_label=namespace%3Dprod',
+      );
+
+      mockFetch.mockResolvedValueOnce(
+        fakeUpstreamResponse({
+          status: 'success',
+          data: { resultType: 'matrix', result: [] },
+        }),
+      );
+
+      await agent
+        .get('/v1/prometheus/query_range')
+        .query({
+          query: 'up',
+          start: '1700000000',
+          end: '1700000060',
+          step: '15s',
+          connectionId: conn._id.toString(),
+        })
+        .expect(200);
+
+      const requested = new URL(mockFetch.mock.calls[0][0] as string);
+      expect(requested.searchParams.get('extra_label')).toBe('namespace=prod');
+      expect(requested.searchParams.get('query')).toBe('up');
+    });
+
+    // A host-pinned param the request DOES supply a value for must not
+    // silently win: a Connection host could otherwise override `query`,
+    // `match[]`, or `limit` and the caller would get a wrong answer with no
+    // error (e.g. a pinned `query=up` making every chart on that connection
+    // return the same series regardless of what was actually requested).
+    it('lets a request query param override a same-named one pinned on the connection host', async () => {
       const { agent, team } = await getLoggedInAgent(server);
       const conn = await seedPrometheusConnection(
         team._id,
@@ -386,7 +421,9 @@ describe('prometheus router', () => {
         .expect(200);
 
       const requested = new URL(mockFetch.mock.calls[0][0] as string);
-      expect(requested.searchParams.get('extra_label')).toBe('namespace=prod');
+      expect(requested.searchParams.get('extra_label')).toBe(
+        'namespace=other',
+      );
       expect(requested.searchParams.get('query')).toBe('up');
     });
 
@@ -771,6 +808,33 @@ describe('prometheus router', () => {
       expect(requested.searchParams.has('match[]')).toBe(false);
     });
 
+    // A repeatable param needs its own regression test: a naive fix could
+    // append the request's values alongside a host-pinned one instead of
+    // replacing it, silently narrowing what upstream is asked for (e.g. a
+    // host pinning `match[]` would otherwise make label-value autocomplete
+    // return the wrong series list).
+    it('replaces a host-pinned match[] with the request values, not appends alongside them', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedPrometheusConnection(
+        team._id,
+        'http://prom.example.com?match%5B%5D=host-pinned-series',
+      );
+
+      await agent
+        .get('/v1/prometheus/label/job/values')
+        .query({
+          connectionId: conn._id.toString(),
+          match: ['requested-series-1', 'requested-series-2'],
+        })
+        .expect(200);
+
+      const requested = new URL(String(mockFetch.mock.calls[0][0]));
+      expect(requested.searchParams.getAll('match[]')).toEqual([
+        'requested-series-1',
+        'requested-series-2',
+      ]);
+    });
+
     // queryLabelValues' own bounds/limit/fallback behaviour is covered in
     // controllers/__tests__/timeseriesEngine.int.test.ts. What only the route
     // can show is that query-string params reach it intact — bounds in unix
@@ -1020,9 +1084,13 @@ describe('prometheus router', () => {
       const { agent, team } = await getLoggedInAgent(server);
       const end = 1700000000;
       const thirtyDays = 30 * 24 * 60 * 60;
+      // Pinned an hour earlier than the request's `end` so the assertion
+      // below can only pass if the request's value actually won -- if the
+      // host's pinned value were used instead, `end` wouldn't match.
+      const hostEnd = end - 3600;
       const conn = await seedPrometheusConnection(
         team._id,
-        `http://prom.example.com?start=${end - thirtyDays}&end=${end}`,
+        `http://prom.example.com?start=${hostEnd - thirtyDays}&end=${hostEnd}`,
       );
 
       mockFetch.mockResolvedValueOnce(

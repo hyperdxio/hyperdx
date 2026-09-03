@@ -192,6 +192,9 @@ export function isClientDisconnect(err: unknown): boolean {
  * mounted under a prefix) needs that prefix kept. Host userinfo, query, and
  * hash are left untouched.
  *
+ * `path` must be an absolute path (every call site passes a literal starting
+ * with `/`) -- this is not a general-purpose URL joiner.
+ *
  * @see https://github.com/hyperdxio/hyperdx/issues/3046
  */
 export function joinPrometheusUpstreamUrl(
@@ -207,9 +210,11 @@ export function joinPrometheusUpstreamUrl(
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
     throw new TypeError('Connection host must be http(s)');
   }
-  const basePath = url.pathname.replace(/\/$/, '');
-  const suffix = path.startsWith('/') ? path : `/${path}`;
-  url.pathname = `${basePath}${suffix}`;
+  // Strip ALL trailing slashes, not just one -- a host saved with a doubled
+  // trailing slash (e.g. `http://prom:9090//`) would otherwise leave a `//`
+  // in the joined path, which most servers treat as a distinct (404) path.
+  const basePath = url.pathname.replace(/\/+$/, '');
+  url.pathname = `${basePath}${path}`;
   return url;
 }
 
@@ -232,28 +237,33 @@ async function proxyToPrometheus(
   let url: URL;
   try {
     url = joinPrometheusUpstreamUrl(upstreamHost, path);
-  } catch {
+  } catch (err) {
+    // Redact userinfo the same way `redactedTarget` does below -- this branch
+    // runs before `url` exists, so it can't reuse that helper, but the raw
+    // host is still shown to the browser and may carry `user:pw@`. Surface
+    // the caught error's own message (e.g. the scheme guard's "Connection
+    // host must be http(s)") instead of a single generic string, so a wrong
+    // scheme isn't reported identically to a host that fails to parse at all.
+    const redactedHost = upstreamHost.replace(/:\/\/[^/@]*@/, '://');
     res.status(400).json({
       status: 'error',
       errorType: 'bad_data',
-      error: `Connection host is not a valid URL: ${JSON.stringify(upstreamHost)}`,
+      error: `Invalid Connection host ${JSON.stringify(redactedHost)}: ${err instanceof Error ? err.message : String(err)}`,
     });
     return 400;
   }
-  // Params already on the Connection host are operator-pinned (e.g.
-  // `?extra_label=namespace%3Dprod` on a VictoriaMetrics tenant URL). Skip the
-  // incoming value for those keys rather than appending — including repeatable
-  // ones such as `match[]`. Exception: `start`/`end`/`step` are owned by this
-  // proxy (exemplar window clamp, chart resolution) and still overwrite a host
-  // value so a Connection cannot defeat those bounds.
-  const PROXY_OWNED_PARAM_KEYS = new Set(['start', 'end', 'step']);
-  const hostPinnedKeys = new Set(
-    [...url.searchParams.keys()].filter(k => !PROXY_OWNED_PARAM_KEYS.has(k)),
-  );
+  // Every param the request supplies wins outright, including repeatable
+  // ones like `match[]` -- so a Connection host can never silently override
+  // (or, for `match[]`, narrow) a value the caller or this proxy explicitly
+  // sets. A host-only param the request never mentions (e.g. VictoriaMetrics
+  // `?extra_label=namespace%3Dprod` pinning a tenant scope) is left as-is.
   for (const [k, v] of Object.entries(params)) {
     if (['connectionId', 'database', 'table'].includes(k)) continue;
-    if (v == null || hostPinnedKeys.has(k)) continue;
-    // A repeatable param (`match[]`) appends every value
+    if (v == null) continue;
+    // Clear any host-pinned value at this key first: for a repeatable param
+    // this prevents an `append` from leaving the host's value(s) alongside
+    // the request's rather than replacing them.
+    url.searchParams.delete(k);
     if (Array.isArray(v)) {
       for (const item of v) url.searchParams.append(k, item);
     } else {

@@ -18,10 +18,8 @@ to work because the absolute API path replaced `/graph`; requests now go to
 Connection hosts before upgrading. Root-mounted hosts (`http://prom:9090` or
 `http://prom:9090/`) are unchanged.
 
-Query parameters already on the Connection host are treated as operator-pinned
-(for example `?extra_label=namespace%3Dprod` on a VictoriaMetrics tenant URL)
-and are no longer overwritten by the same-named request parameter. Incoming
-values for those keys are dropped, including repeatable ones such as `match[]`.
-Exception: `start`, `end`, and `step` stay under the proxy's control so the
-`/query_exemplars` window clamp and chart resolution cannot be defeated by a
-host that already carries those keys.
+Query parameters on the Connection host are now only a fallback: any param the
+request supplies (including repeatable ones such as `match[]`) always wins and
+replaces a same-named host value outright, rather than being dropped. A
+param the request never mentions -- for example `?extra_label=namespace%3Dprod`
+pinning a VictoriaMetrics tenant scope -- is left as-is.

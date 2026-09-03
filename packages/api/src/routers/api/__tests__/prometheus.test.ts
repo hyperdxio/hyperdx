@@ -309,13 +309,13 @@ describe('joinPrometheusUpstreamUrl', () => {
     );
   });
 
-  it('prepends a slash when the path has none', () => {
+  it('strips every trailing slash, not just one, so the join never leaves a double slash', () => {
     expect(
       joinPrometheusUpstreamUrl(
-        'http://prometheus:9090',
-        'api/v1/query',
+        'http://prometheus:9090//',
+        '/api/v1/query_range',
       ).toString(),
-    ).toBe('http://prometheus:9090/api/v1/query');
+    ).toBe('http://prometheus:9090/api/v1/query_range');
   });
 
   it('throws on an invalid connection host, matching the proxy 400 path', () => {
