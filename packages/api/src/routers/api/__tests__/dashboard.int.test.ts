@@ -303,6 +303,51 @@ describe('dashboard router', () => {
     });
   });
 
+  // The dashboard editor only ever sets thresholdMax, so switching a tile alert
+  // off a range comparator has to clear the stored bound on this path too.
+  it('clears thresholdMax when a tile alert is moved off a range comparator', async () => {
+    const mockAlert = makeMockAlert(webhook._id.toString());
+    const tile = makeTile({
+      alert: {
+        ...mockAlert,
+        thresholdType: AlertThresholdType.BETWEEN,
+        threshold: 5,
+        thresholdMax: 20,
+      },
+    });
+    const dashboard = await agent
+      .post('/dashboards')
+      .send({ name: 'Test Dashboard', tiles: [tile], tags: [] })
+      .expect(200);
+
+    const created = await agent.get(`/alerts`).expect(200);
+    expect(created.body.data[0].thresholdMax).toBe(20);
+
+    await agent
+      .patch(`/dashboards/${dashboard.body.id}`)
+      .send({
+        ...dashboard.body,
+        tiles: [
+          {
+            ...dashboard.body.tiles[0],
+            config: {
+              ...dashboard.body.tiles[0].config,
+              alert: {
+                ...mockAlert,
+                thresholdType: AlertThresholdType.ABOVE,
+                threshold: 5,
+              },
+            },
+          },
+        ],
+      })
+      .expect(200);
+
+    const updated = await agent.get(`/alerts`).expect(200);
+    expect(updated.body.data[0].thresholdType).toBe(AlertThresholdType.ABOVE);
+    expect(updated.body.data[0].thresholdMax).toBeUndefined();
+  });
+
   it('rejects a tile alert with no notification channel', async () => {
     await agent
       .post('/dashboards')

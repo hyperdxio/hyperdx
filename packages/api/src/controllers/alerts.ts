@@ -290,6 +290,18 @@ export const makeAlert = (
   };
 };
 
+// makeAlert omits thresholdMax for a non-range comparator, and Mongoose drops
+// an omitted key from an update rather than clearing the path, so the bound has
+// to be unset explicitly or an alert edited off `between` keeps a stale one and
+// reports a range condition it no longer has. Every update path needs this;
+// $unset is ignored on an upsert insert, so it is safe there too.
+const makeAlertUpdate = (alertInput: AlertInput, userId?: ObjectId) => ({
+  $set: makeAlert(alertInput, userId),
+  ...(!isRangeThresholdType(alertInput.thresholdType) && {
+    $unset: { thresholdMax: 1 },
+  }),
+});
+
 export const createAlert = async (
   teamId: ObjectId,
   alertInput: z.infer<typeof internalAlertSchema>,
@@ -308,19 +320,12 @@ export const updateAlert = async (
   alertInput: AlertInput,
 ) => {
   // should consider clearing AlertHistory when updating an alert?
-  // Mongoose drops an undefined key from an update rather than clearing the
-  // path, so an alert edited off `between` would keep its old upper bound and
-  // report a range condition it no longer has. $unset clears it.
-  const isRange = isRangeThresholdType(alertInput.thresholdType);
   return Alert.findOneAndUpdate(
     {
       _id: id,
       team: teamId,
     },
-    {
-      $set: makeAlert(alertInput),
-      ...(!isRange && { $unset: { thresholdMax: 1 } }),
-    },
+    makeAlertUpdate(alertInput),
     {
       returnDocument: 'after',
     },
@@ -396,12 +401,12 @@ export const createOrUpdateDashboardAlerts = async (
         tileId,
       };
       const oldAlert = await Alert.findOne(filter);
-      const alertValues =
+      const alertUpdate =
         oldAlert && oldAlert.createdBy
-          ? makeAlert(alertInput)
-          : makeAlert(alertInput, userId);
+          ? makeAlertUpdate(alertInput)
+          : makeAlertUpdate(alertInput, userId);
 
-      return await Alert.findOneAndUpdate(filter, alertValues, {
+      return await Alert.findOneAndUpdate(filter, alertUpdate, {
         new: true,
         upsert: true,
       });
