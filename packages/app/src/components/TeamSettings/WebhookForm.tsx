@@ -6,6 +6,8 @@ import { json, jsonParseLinter } from '@codemirror/lang-json';
 import { linter } from '@codemirror/lint';
 import {
   AlertState,
+  DEFAULT_WEBHOOK_TEMPLATE_VARIABLES,
+  WEBHOOK_TEMPLATE_VARIABLES,
   WebhookApiData,
   WebhookService,
 } from '@hyperdx/common-utils/dist/types';
@@ -30,17 +32,16 @@ import api from '@/api';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import { isValidUrl } from '@/utils';
 
-const DEFAULT_GENERIC_WEBHOOK_BODY = [
-  '{{title}}',
-  '{{body}}',
-  '{{link}}',
-  '{{state}}',
-  '{{startTime}}',
-  '{{endTime}}',
-  '{{eventId}}',
-];
-const DEFAULT_GENERIC_WEBHOOK_BODY_TEMPLATE =
-  DEFAULT_GENERIC_WEBHOOK_BODY.join(' | ');
+// Both lists come from common-utils so this form, the API's fallback body and
+// docs/alert-webhook-template-variables.md cannot drift: the default template
+// uses the original seven, while the info callout advertises every variable a
+// body template may reference.
+const asHandlebars = (names: readonly string[]) =>
+  names.map(name => `{{${name}}}`);
+const DEFAULT_GENERIC_WEBHOOK_BODY_TEMPLATE = asHandlebars(
+  DEFAULT_WEBHOOK_TEMPLATE_VARIABLES,
+).join(' | ');
+const TEMPLATE_VARIABLES = asHandlebars(WEBHOOK_TEMPLATE_VARIABLES);
 
 const jsonLinterWithEmptyCheck = () => (editorView: EditorView) => {
   const text = editorView.state.doc.toString().trim();
@@ -407,10 +408,10 @@ export function WebhookForm({
             </span>
             <br />
             <span>
-              {DEFAULT_GENERIC_WEBHOOK_BODY.map((body, index) => (
-                <span key={index}>
-                  <code>{body}</code>
-                  {index < DEFAULT_GENERIC_WEBHOOK_BODY.length - 1 && ', '}
+              {TEMPLATE_VARIABLES.map((variable, index) => (
+                <span key={variable}>
+                  <code>{variable}</code>
+                  {index < TEMPLATE_VARIABLES.length - 1 && ', '}
                 </span>
               ))}
             </span>
