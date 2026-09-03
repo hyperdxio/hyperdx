@@ -104,6 +104,7 @@ router.get('/import-manifest', async (req, res, next) => {
     const { teamId } = getNonNullUserWithTeam(req);
 
     const manifest = await withSpan('iac.import_manifest', async span => {
+      const startedAt = Date.now();
       const [
         dashboardRows,
         alertRows,
@@ -159,7 +160,13 @@ router.get('/import-manifest', async (req, res, next) => {
       const unaddressableTileAlerts = await unaddressableTileAlertIds({
         teamId,
         alerts: alerts.items,
-        maxTimeMS: IAC_MANIFEST_MAX_TIME_MS,
+        // What is left of the request's budget, not a second helping of it:
+        // this read is sequenced after the six listings above, and a fresh
+        // ceiling here would double the worst case the bound exists to cap.
+        maxTimeMS: Math.max(
+          1_000,
+          IAC_MANIFEST_MAX_TIME_MS - (Date.now() - startedAt),
+        ),
       });
 
       const truncatedTypes = (

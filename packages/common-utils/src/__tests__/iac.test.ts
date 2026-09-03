@@ -565,6 +565,32 @@ describe('buildImportFile', () => {
     expect(file).toContain('requires >= 3.26.0');
   });
 
+  // The floor is picked, not compared, so a bump to the base floor past the
+  // tile-alert one would make a tile-alert export ask for *less*.
+  it('keeps the tile-alert floor at or above the base floor', () => {
+    const base = buildImportFile({
+      endpoint: 'https://hyperdx.example.com/api',
+      teamId: TEAM_ID,
+      resources: [{ type: 'dashboard', id: ID }],
+    });
+    const withTileAlert = buildImportFile({
+      endpoint: 'https://hyperdx.example.com/api',
+      teamId: TEAM_ID,
+      resources: [{ type: 'alert', id: ID, tileAlert: true }],
+    });
+    // Sortable, so this cannot pass on a string comparison of "3.9" vs "3.10".
+    const floor = (file: string) => {
+      const [major, minor, patch] = (
+        file.match(/version = ">= ([\d.]+)"/)?.[1] ?? '0.0.0'
+      )
+        .split('.')
+        .map(Number);
+      return major * 1e6 + minor * 1e3 + patch;
+    };
+
+    expect(floor(withTileAlert)).toBeGreaterThanOrEqual(floor(base));
+  });
+
   it('keeps the lower floor and drops the tile-alert notice without one', () => {
     const file = buildImportFile({
       endpoint: 'https://hyperdx.example.com/api',
