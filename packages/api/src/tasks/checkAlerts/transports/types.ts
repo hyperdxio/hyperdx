@@ -12,6 +12,18 @@ export interface Message {
   startTime: number;
   endTime: number;
   eventId: string;
+  // Enriched fields exposed as Generic/incident.io template variables.
+  // Optional so existing callers and non-enriched templates are unaffected.
+  alertId?: string;
+  status?: string; // firing | resolved | no_data | pending
+  alertType?: string; // search | dashboard_chart
+  comparator?: string; // >=, >, <=, <, =, !=, between, outside
+  threshold?: number;
+  value?: number; // the value that triggered/resolved the alert
+  groupKey?: string;
+  sourceQuery?: string; // the search expr / SQL that defines the alert
+  teamId?: string;
+  note?: string; // freeform alert note (markdown); commonly holds a runbook link
 }
 
 export type WebhookChannel = Extract<
