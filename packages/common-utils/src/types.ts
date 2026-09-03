@@ -2054,7 +2054,7 @@ export const DashboardSchema = z.object({
   savedQuery: z.string().nullable().optional(),
   savedQueryLanguage: SearchConditionLanguageSchema.nullable().optional(),
   savedFilterValues: z.array(DashboardFilterValueSchema).optional(),
-  savedRelativeDateRange: z.number().optional(),
+  savedRelativeDateRange: z.number().nullish(),
   containers: z
     .array(DashboardContainerSchema)
     .max(DASHBOARD_MAX_CONTAINERS)

@@ -210,6 +210,7 @@ import {
 } from './source';
 import {
   dateRangeToString,
+  parseRelativeTimeQuery,
   parseTimeQuery,
   useNewTimeQuery,
 } from './timeQuery';
@@ -1976,9 +1977,6 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     setWhereLanguage,
   ]);
 
-  // eslint-disable-next-line no-restricted-syntax
-  const now = useMemo(() => Date.now(), []);
-
   // Initialize query/filter state once when dashboard changes.
   useEffect(() => {
     if (!dashboard?.id || !router.isReady) return;
@@ -1990,6 +1988,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
 
     const hasWhereInUrl = 'where' in router.query;
     const hasFiltersInUrl = 'filters' in router.query;
+    const hasDateRangeInUrl = 'from' in router.query && 'to' in router.query;
 
     // Query defaults: URL query overrides saved defaults. If switching to a
     // dashboard without defaults, clear query. On first load/reload, keep current state.
@@ -2021,11 +2020,13 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     }
 
     // Initialize dashboard with the saved date range
-    if (dashboard.savedRelativeDateRange) {
-      onTimeRangeSelect(
-        new Date(now - dashboard.savedRelativeDateRange * 1000),
-        new Date(now),
-      );
+    if (!hasDateRangeInUrl) {
+      if (dashboard.savedRelativeDateRange) {
+        const [start, end] = parseRelativeTimeQuery(
+          dashboard.savedRelativeDateRange * 1000,
+        );
+        onTimeRangeSelect(start, end);
+      }
     }
 
     initializedDashboardRef.current = dashboard.id;
@@ -2039,7 +2040,6 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     isFetchingDashboard,
     router.isReady,
     router.query,
-    now,
     setValue,
     setWhere,
     setWhereLanguage,
@@ -2110,6 +2110,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         draft.savedQuery = null;
         draft.savedQueryLanguage = null;
         draft.savedFilterValues = [];
+        draft.savedRelativeDateRange = null;
       }),
       () => {
         notifications.show({
