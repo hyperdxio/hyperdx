@@ -176,6 +176,7 @@ export function ChartEditorControls({
   // Grouped ratios can divide two ways (see RatioModeSchema); the mode toggle
   // is only meaningful when a Group By is set, so gate it on a non-empty value.
   const groupBy = useWatch({ control, name: 'groupBy' });
+  const chartName = useWatch({ control, name: 'name' });
   const hasGroupBy = typeof groupBy === 'string' && groupBy.trim().length > 0;
 
   return (
@@ -490,7 +491,12 @@ export function ChartEditorControls({
                     variant="subtle"
                     data-testid="alert-button"
                     size="sm"
-                    onClick={() => setValue('alert', DEFAULT_TILE_ALERT)}
+                    onClick={() =>
+                      setValue('alert', {
+                        ...DEFAULT_TILE_ALERT,
+                        ...(chartName && { displayName: chartName }),
+                      })
+                    }
                   >
                     <IconBell size={14} className="me-2" />
                     Add Alert
@@ -559,6 +565,7 @@ export function ChartEditorControls({
             control={control}
             setValue={setValue}
             alert={alert}
+            dashboardId={dashboardId}
             onRemove={() => setValue('alert', undefined)}
             warning={
               additionalWarnings?.length

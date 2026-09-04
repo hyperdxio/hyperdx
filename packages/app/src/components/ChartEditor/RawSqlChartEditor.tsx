@@ -140,6 +140,7 @@ export default function RawSqlChartEditor({
   const connection = useWatch({ control, name: 'connection' });
   const source = useWatch({ control, name: 'source' });
   const sqlTemplate = useWatch({ control, name: 'sqlTemplate' });
+  const chartName = useWatch({ control, name: 'name' });
   const sourceObject = sources?.find(s => s.id === source);
 
   const rawSqlConfig = useMemo(
@@ -298,7 +299,12 @@ export default function RawSqlChartEditor({
                 data-testid="alert-button"
                 size="sm"
                 color={'gray'}
-                onClick={() => setValue('alert', DEFAULT_TILE_ALERT)}
+                onClick={() =>
+                  setValue('alert', {
+                    ...DEFAULT_TILE_ALERT,
+                    ...(chartName && { displayName: chartName }),
+                  })
+                }
               >
                 <IconBell size={14} className="me-2" />
                 Add Alert
@@ -361,6 +367,7 @@ export default function RawSqlChartEditor({
           control={control}
           setValue={setValue}
           alert={alert}
+          dashboardId={dashboardId}
           onRemove={() => setValue('alert', undefined)}
           error={alertErrorMessage}
           warning={alertWarningMessage}

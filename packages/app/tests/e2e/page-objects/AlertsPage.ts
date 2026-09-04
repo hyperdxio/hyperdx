@@ -183,6 +183,34 @@ export class AlertsPage {
     return this.page.locator('[data-testid="alert-detail-page"]');
   }
 
+  /** The alert's name in the detail page header. */
+  get detailName() {
+    return this.page.getByTestId('alert-detail-name');
+  }
+
+  /** The Tags row in the detail page properties. Absent when there are none. */
+  get detailTags() {
+    return this.page.getByTestId('alert-property-tags');
+  }
+
+  /** Link on the detail page to the saved search / dashboard tile watched. */
+  get detailSourceLink() {
+    return this.page.getByTestId('open-alert-source');
+  }
+
+  /**
+   * Follow a card's name link to /alerts/:id and wait for the page to render.
+   * Generous timeouts: in dev mode the first hit compiles the route.
+   */
+  async openDetails(alertCard: Locator) {
+    await this.getDetailsLinkForAlertCard(alertCard).click();
+    await this.page.waitForURL(/\/alerts\/[a-f0-9]{24}/, { timeout: 60000 });
+    await this.detailPageContainer.waitFor({
+      state: 'visible',
+      timeout: 15000,
+    });
+  }
+
   /**
    * The evaluation event-stream table on the alert detail page.
    */
