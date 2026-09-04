@@ -4,6 +4,8 @@ import {
   getFilterBroadcastTarget,
   getFilterVariableName,
   getPendingFilterValuesVariables,
+  isFilterGlobalRequirement,
+  isFilterRequired,
   isFilterVariableEnabled,
   isQueryExpressionFilter,
   isStaticListFilter,
@@ -50,6 +52,15 @@ export const getPendingVariablesTooltip = (
 };
 
 /**
+ * Explain a required filter that has nothing selected, naming how far the block
+ * it imposes reaches.
+ */
+export const getRequiredFilterTooltip = (filter: DashboardFilter): string =>
+  isFilterGlobalRequirement(filter)
+    ? 'Required filter. No tile on this dashboard loads until it has a selection.'
+    : 'Required filter. Tiles that use this filter do not load until it has a selection.';
+
+/**
  * Describe what a filter does with the value you pick: broadcast it as a
  * condition, expose it as a variable, both, or neither.
  */
@@ -87,6 +98,25 @@ export const getFilterEffect = (
   return { hasEffect: true, tooltip: parts.join(', ') };
 };
 
+/** One of the caution icons a filter's label row can carry, with its tooltip. */
+const FilterCaution = ({
+  label,
+  testId,
+  variant = 'warning',
+}: {
+  label: string;
+  testId: string;
+  variant?: 'warning' | 'danger';
+}) => (
+  <Tooltip label={label} withinPortal multiline maw={400}>
+    <IconAlertTriangle
+      size={12}
+      color={`var(--color-text-${variant})`}
+      data-testid={testId}
+    />
+  </Tooltip>
+);
+
 const DashboardFilterSelect = ({
   filter,
   onChange,
@@ -99,6 +129,7 @@ const DashboardFilterSelect = ({
 }: DashboardFilterSelectProps) => {
   const valuesOrEmptyMemo = useMemo(() => values ?? [], [values]);
   const effect = getFilterEffect(filter);
+  const isMissingRequiredValue = isFilterRequired(filter) && value.length === 0;
 
   return (
     <Stack gap={2}>
@@ -121,36 +152,27 @@ const DashboardFilterSelect = ({
             />
           )}
         </Tooltip>
+        {isMissingRequiredValue && (
+          <FilterCaution
+            label={getRequiredFilterTooltip(filter)}
+            testId={`dashboard-filter-required-${filter.name}`}
+          />
+        )}
         {!!pendingVariables?.length && (
-          <Tooltip
+          <FilterCaution
             label={getPendingVariablesTooltip(pendingVariables)}
-            withinPortal
-            multiline
-            maw={400}
-          >
-            <IconAlertTriangle
-              size={12}
-              color="var(--color-text-warning)"
-              data-testid={`dashboard-filter-pending-variable-${filter.name}`}
-            />
-          </Tooltip>
+            testId={`dashboard-filter-pending-variable-${filter.name}`}
+          />
         )}
         {isError && (
-          <Tooltip
+          <FilterCaution
             label={
               errorMessage ??
               "Filter values query failed. The filter's query may be invalid."
             }
-            withinPortal
-            multiline
-            maw={400}
-          >
-            <IconAlertTriangle
-              size={12}
-              color="var(--color-text-danger)"
-              data-testid={`dashboard-filter-error-${filter.name}`}
-            />
-          </Tooltip>
+            testId={`dashboard-filter-error-${filter.name}`}
+            variant="danger"
+          />
         )}
       </Group>
       <div style={{ width: 250 }}>

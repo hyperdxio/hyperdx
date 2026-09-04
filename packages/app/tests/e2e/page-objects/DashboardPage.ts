@@ -20,6 +20,12 @@ export type FilterWhereOptions = {
   language?: 'sql' | 'lucene';
 };
 
+/** The "Required" checkbox and the "Block every tile" one nested under it. */
+export type FilterRequirementOptions = {
+  required?: boolean;
+  globalRequirement?: boolean;
+};
+
 /**
  * Config format tile config, as accepted by the external dashboard API.
  * Used with verifyTileFormFromConfig
@@ -98,6 +104,8 @@ export class DashboardPage {
   readonly appliesToSourceSelector: Locator;
   readonly broadcastFilterCheckbox: Locator;
   readonly variableEnabledCheckbox: Locator;
+  readonly requiredFilterCheckbox: Locator;
+  readonly globalRequirementCheckbox: Locator;
   readonly variableNameInput: Locator;
   private readonly saveButton: Locator;
   private readonly tileSourceSelector: Locator;
@@ -160,6 +168,10 @@ export class DashboardPage {
     );
     this.variableEnabledCheckbox = page.getByTestId(
       'filter-variable-enabled-checkbox',
+    );
+    this.requiredFilterCheckbox = page.getByTestId('filter-required-checkbox');
+    this.globalRequirementCheckbox = page.getByTestId(
+      'filter-global-requirement-checkbox',
     );
     this.variableNameInput = page.getByTestId('filter-variable-name-input');
     this.saveButton = page.getByTestId('chart-save-button');
@@ -890,6 +902,22 @@ export class DashboardPage {
       .click();
   }
 
+  /**
+   * Set the filter form's requirement checkboxes, leaving either alone when the
+   * caller says nothing about it. The nested "Block every tile" box only exists
+   * while "Required" is checked, so the order matters.
+   */
+  private async setFilterRequirement(options?: FilterRequirementOptions) {
+    if (options?.required !== undefined) {
+      await this.requiredFilterCheckbox.setChecked(options.required);
+    }
+    if (options?.globalRequirement !== undefined) {
+      await this.globalRequirementCheckbox.setChecked(
+        options.globalRequirement,
+      );
+    }
+  }
+
   async fillFilterForm(
     name: string,
     sourceName: string,
@@ -900,7 +928,7 @@ export class DashboardPage {
       isBroadcastEnabled?: boolean;
       isVariableEnabled?: boolean;
       variableName?: string;
-    },
+    } & FilterRequirementOptions,
     whereOptions?: FilterWhereOptions,
   ) {
     const filterNameInput = this.page.getByTestId('filter-name-input');
@@ -941,6 +969,8 @@ export class DashboardPage {
       }
     }
 
+    await this.setFilterRequirement(variableOptions);
+
     if (appliesToSourceNames && appliesToSourceNames.length > 0) {
       for (const appliesName of appliesToSourceNames) {
         await this.appliesToSourceSelector.click();
@@ -966,7 +996,7 @@ export class DashboardPage {
       isBroadcastEnabled?: boolean;
       isVariableEnabled?: boolean;
       variableName?: string;
-    },
+    } & FilterRequirementOptions,
     whereOptions?: FilterWhereOptions,
   ) {
     await this.addFiltersButton.click();
@@ -1081,6 +1111,33 @@ export class DashboardPage {
     await this.page.getByTestId(`edit-filter-button-${filterName}`).click();
     await this.broadcastFilterCheckbox.setChecked(enabled);
     await this.page.getByTestId('save-filter-button').click();
+  }
+
+  /**
+   * Toggle "Required" on an already-saved filter and save. Assumes the filters
+   * list modal is open.
+   */
+  async setFilterRequiredForSavedFilter(filterName: string, enabled: boolean) {
+    await this.page.getByTestId(`edit-filter-button-${filterName}`).click();
+    await this.requiredFilterCheckbox.setChecked(enabled);
+    await this.page.getByTestId('save-filter-button').click();
+    await this.getFilterItemByName(filterName).waitFor({
+      state: 'visible',
+      timeout: 10000,
+    });
+  }
+
+  /** The caution icon shown when a required filter has no selected value. */
+  getFilterRequiredWarning(filterName: string): Locator {
+    return this.page.getByTestId(`dashboard-filter-required-${filterName}`);
+  }
+
+  /**
+   * The placeholder a tile renders instead of its chart while a required
+   * filter has no selected value.
+   */
+  getTileMissingRequiredFilters(tileIndex = 0): Locator {
+    return this.getTile(tileIndex).getByTestId('tile-missing-required-filters');
   }
 
   /**
@@ -1206,18 +1263,44 @@ export class DashboardPage {
   /**
    * Create a Number tile that counts events from `sourceName`. The tile editor's
    * default aggregation is "Count of Events", so no agg configuration is needed.
-   * Leaves exactly one tile on the dashboard.
+   *
+   * `sqlSeriesWhere` sets the tile's own SQL filter, the usual place a tile
+   * references a `$variable`.
    */
-  async addNumberTile(name: string, sourceName: string) {
+  async addNumberTile(
+    name: string,
+    sourceName: string,
+    options?: { sqlSeriesWhere?: string },
+  ) {
+    const existingTiles = await this.getTiles().count();
     await this.addTile();
     await expect(this.chartEditor.nameInput).toBeVisible();
     await this.chartEditor.waitForDataToLoad();
     await this.chartEditor.setChartType(DisplayType.Number);
     await this.chartEditor.setChartName(name);
     await this.chartEditor.selectSource(sourceName);
+    if (options?.sqlSeriesWhere != null) {
+      await this.chartEditor.setSqlWhere(options.sqlSeriesWhere, 'series');
+    }
     await this.chartEditor.runQuery(false);
     await this.chartEditor.save();
-    await expect(this.getTiles()).toHaveCount(1, { timeout: 10000 });
+    await expect(this.getTiles()).toHaveCount(existingTiles + 1, {
+      timeout: 10000,
+    });
+  }
+
+  /** Create a Markdown tile, which needs neither a source nor a query. */
+  async addMarkdownTile(name: string, content: string) {
+    const existingTiles = await this.getTiles().count();
+    await this.addTile();
+    await expect(this.chartEditor.nameInput).toBeVisible();
+    await this.chartEditor.setChartType(DisplayType.Markdown);
+    await this.chartEditor.setChartName(name);
+    await this.markdownTextarea.first().fill(content);
+    await this.chartEditor.save();
+    await expect(this.getTiles()).toHaveCount(existingTiles + 1, {
+      timeout: 10000,
+    });
   }
 
   /** Locator for the rendered value of a Number tile. */
@@ -1344,7 +1427,7 @@ export class DashboardPage {
   async addStaticListFilterToDashboard(
     name: string,
     options: string[],
-    variableOptions?: { variableName?: string },
+    variableOptions?: { variableName?: string } & FilterRequirementOptions,
   ) {
     await this.addFiltersButton.click();
     await this.selectFilterType('Static values');
@@ -1355,6 +1438,7 @@ export class DashboardPage {
     if (variableOptions?.variableName !== undefined) {
       await this.variableNameInput.fill(variableOptions.variableName);
     }
+    await this.setFilterRequirement(variableOptions);
     await this.page.getByTestId('save-filter-button').click();
     await this.getFilterItemByName(name).waitFor({
       state: 'visible',
@@ -1420,7 +1504,10 @@ export class DashboardPage {
     name: string,
     sourceName: string,
     label: string,
-    variableOptions?: { variableName?: string; match?: string },
+    variableOptions?: {
+      variableName?: string;
+      match?: string;
+    } & FilterRequirementOptions,
   ) {
     await this.addFiltersButton.click();
     await this.selectFilterType('PromQL label values');
@@ -1435,6 +1522,7 @@ export class DashboardPage {
     if (variableOptions?.variableName !== undefined) {
       await this.variableNameInput.fill(variableOptions.variableName);
     }
+    await this.setFilterRequirement(variableOptions);
     await this.page.getByTestId('save-filter-button').click();
     await this.getFilterItemByName(name).waitFor({
       state: 'visible',

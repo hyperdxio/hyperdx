@@ -1936,6 +1936,18 @@ const dashboardFilterBaseSchema = z.object({
     .max(DASHBOARD_VARIABLE_NAME_MAX_LENGTH)
     .regex(DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED)
     .optional(),
+  /**
+   * How many values must be selected before tiles will load. `isGlobalRequirement`
+   * decides which tiles are blocked. Only 0 and 1 are currently allowed.
+   * undefined and 0 both imply no minimum selection requirement.
+   */
+  minSelections: z.number().int().min(0).max(1).optional(),
+  /**
+   * Whether an unsatisfied requirement blocks every tile on the dashboard,
+   * rather than only the tiles that read this filter (via variable or broadcast).
+   * Ignored unless `minSelections` marks the filter required.
+   */
+  isGlobalRequirement: z.boolean().optional(),
 });
 
 /**
