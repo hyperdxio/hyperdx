@@ -99,6 +99,9 @@ export interface IAlert {
   // Freeform note (supports markdown)
   note?: string | null;
 
+  // Tags for filtering
+  tags?: string[] | null;
+
   // SavedSearch alerts
   groupBy?: string | null;
   savedSearch?: ObjectId | null;
@@ -208,6 +211,10 @@ const AlertSchema = new Schema<IAlert>(
     note: {
       type: String,
       required: false,
+    },
+    tags: {
+      type: [String],
+      default: undefined,
     },
 
     // Log alerts

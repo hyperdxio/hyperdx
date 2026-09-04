@@ -707,6 +707,28 @@ describe('buildAlertMessageTemplateTitle', () => {
       );
     });
   });
+
+  describe('custom title template', () => {
+    it('renders template variables', () => {
+      const result = buildAlertMessageTemplateTitle({
+        template: '{{alert.threshold}} exceeded',
+        view: makeSearchView({ threshold: 5, value: 10 }),
+        state: AlertState.ALERT,
+      });
+
+      expect(result).toBe('🚨 5 exceeded');
+    });
+
+    it('falls back to the raw name when the template is malformed', () => {
+      const result = buildAlertMessageTemplateTitle({
+        template: 'Errors {{spike',
+        view: makeSearchView({ threshold: 5, value: 10 }),
+        state: AlertState.ALERT,
+      });
+
+      expect(result).toBe('🚨 Errors {{spike');
+    });
+  });
 });
 
 // MAX_NOTIFICATIONS_PER_EVENT bounds how many targets one fire/resolve event can

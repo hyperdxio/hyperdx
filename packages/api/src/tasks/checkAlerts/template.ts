@@ -306,14 +306,27 @@ export const buildAlertMessageTemplateTitle = ({
   // Add emoji prefix based on alert state
   const emoji = isAlertResolved(state) ? '✅ ' : '🚨 ';
 
+  let renderedTemplate: string | null = null;
+  if (template) {
+    try {
+      renderedTemplate = handlebars.compile(template)(view);
+    } catch (e) {
+      logger.error(
+        { err: e, alertId: alert.id, template },
+        'Failed to render alert title template',
+      );
+
+      renderedTemplate = template;
+    }
+  }
+
   if (alert.source === AlertSource.SAVED_SEARCH) {
     if (savedSearch == null) {
       throw new Error(`Source is ${alert.source}  but savedSearch is null`);
     }
-    // TODO: using template engine to render the title
-    const baseTitle = template
-      ? handlebars.compile(template)(view)
-      : `Alert for "${savedSearch.name}" - ${value} lines found`;
+    const baseTitle =
+      renderedTemplate ??
+      `Alert for "${savedSearch.name}" - ${value} lines found`;
     return `${emoji}${baseTitle}`;
   } else if (alert.source === AlertSource.TILE) {
     if (dashboard == null) {
@@ -326,26 +339,26 @@ export const buildAlertMessageTemplateTitle = ({
       );
     }
     const formattedValue = formatValueToMatchThreshold(value, alert.threshold);
-    const baseTitle = template
-      ? handlebars.compile(template)(view)
-      : `Alert for "${tile.config.name}" in "${dashboard.name}" - ${formattedValue} ${
-          doesExceedThreshold(alert, value)
-            ? describeThresholdViolation(alert.thresholdType)
-            : describeThresholdResolution(alert.thresholdType)
-        } ${describeThreshold(alert)}`;
+    const baseTitle =
+      renderedTemplate ??
+      `Alert for "${tile.config.name}" in "${dashboard.name}" - ${formattedValue} ${
+        doesExceedThreshold(alert, value)
+          ? describeThresholdViolation(alert.thresholdType)
+          : describeThresholdResolution(alert.thresholdType)
+      } ${describeThreshold(alert)}`;
     return `${emoji}${baseTitle}`;
   } else if (alert.source === AlertSource.INLINE) {
     const formattedValue = formatValueToMatchThreshold(value, alert.threshold);
     // Inline alerts have no saved search/tile to name them; the alert's `name`
     // doubles as the title template, so the default falls back to the chart
     // config's name.
-    const baseTitle = template
-      ? handlebars.compile(template)(view)
-      : `Alert for "${alert.chartConfig?.name ?? 'chart'}" - ${formattedValue} ${
-          doesExceedThreshold(alert, value)
-            ? describeThresholdViolation(alert.thresholdType)
-            : describeThresholdResolution(alert.thresholdType)
-        } ${describeThreshold(alert)}`;
+    const baseTitle =
+      renderedTemplate ??
+      `Alert for "${alert.chartConfig?.name ?? 'chart'}" - ${formattedValue} ${
+        doesExceedThreshold(alert, value)
+          ? describeThresholdViolation(alert.thresholdType)
+          : describeThresholdResolution(alert.thresholdType)
+      } ${describeThreshold(alert)}`;
     return `${emoji}${baseTitle}`;
   }
 
