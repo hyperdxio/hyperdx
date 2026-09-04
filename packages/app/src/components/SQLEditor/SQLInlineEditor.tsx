@@ -12,7 +12,9 @@ import {
 import {
   Field,
   TableConnectionChoice,
+  tcFromSource,
 } from '@hyperdx/common-utils/dist/core/metadata';
+import { isMetricSource } from '@hyperdx/common-utils/dist/types';
 import {
   Flex,
   Paper,
@@ -107,13 +109,35 @@ export default function SQLInlineEditor({
   enableVariables = false,
 }: SQLInlineEditorProps & TableConnectionChoice) {
   const { colorScheme } = useMantineColorScheme();
-  const _tableConnections = tableConnection
-    ? [tableConnection]
-    : tableConnections;
   const { data: source } = useSource({ id: sourceId });
+  // Merge the source's metadataMVs/timestampValueExpression in, but only
+  // when sourceId names this exact table+connection (DBTracePanel doesn't).
+  const resolvedSourceTc = useMemo(
+    () => (source ? tcFromSource(source) : undefined),
+    [source],
+  );
+  // A metric source's own from.tableName is empty (the caller names a
+  // per-metric-type table instead), so skip the tableName comparison for it.
+  const sameTable =
+    !!tableConnection &&
+    !!source &&
+    !!resolvedSourceTc &&
+    resolvedSourceTc.databaseName === tableConnection.databaseName &&
+    resolvedSourceTc.connectionId === tableConnection.connectionId &&
+    (isMetricSource(source) ||
+      resolvedSourceTc.tableName === tableConnection.tableName);
+  const _tableConnections = useMemo(() => {
+    const base = tableConnection ? [tableConnection] : tableConnections;
+    return sameTable && resolvedSourceTc?.metadataMVs
+      ? [{ ...tableConnection, metadataMVs: resolvedSourceTc.metadataMVs }]
+      : base;
+  }, [tableConnection, tableConnections, sameTable, resolvedSourceTc]);
   const { data: fields } = useMultipleAllFields(_tableConnections ?? [], {
     dateRange,
-    timestampValueExpression: source?.timestampValueExpression,
+    timestampValueExpression:
+      !tableConnection || sameTable
+        ? source?.timestampValueExpression
+        : undefined,
     intersect: intersectFields,
   });
   const filteredFields = useMemo(() => {

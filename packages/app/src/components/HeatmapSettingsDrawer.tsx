@@ -29,6 +29,8 @@ export default function HeatmapSettingsDrawer({
   opened,
   onClose,
   connection,
+  sourceId,
+  dateRange,
   parentRef,
   defaultValues,
   onSubmit,
@@ -36,6 +38,8 @@ export default function HeatmapSettingsDrawer({
   opened: boolean;
   onClose: () => void;
   connection: TableConnection;
+  sourceId?: string;
+  dateRange?: [Date, Date];
   parentRef?: HTMLElement | null;
   defaultValues: HeatmapSettingsValues;
   onSubmit: (v: HeatmapSettingsValues) => void;
@@ -92,6 +96,8 @@ export default function HeatmapSettingsDrawer({
           <SQLInlineEditorControlled
             parentRef={parentRef}
             tableConnection={connection}
+            sourceId={sourceId}
+            dateRange={dateRange}
             control={form.control}
             name="value"
             size="xs"
@@ -108,6 +114,8 @@ export default function HeatmapSettingsDrawer({
           <SQLInlineEditorControlled
             parentRef={parentRef}
             tableConnection={connection}
+            sourceId={sourceId}
+            dateRange={dateRange}
             control={form.control}
             name="count"
             placeholder="SQL expression"
