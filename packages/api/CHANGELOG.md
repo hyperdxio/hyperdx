@@ -1,5 +1,113 @@
 # @hyperdx/api
 
+## 2.38.0
+
+### Minor Changes
+
+- 74c28e7f: feat: Alerts now persist their own `displayName` and `tags`
+- 9c4f94f2: Add enriched template variables to Generic and incident.io webhook bodies:
+  `{{alertId}}`, `{{status}}`, `{{alertType}}`, `{{comparator}}`, `{{threshold}}`,
+  `{{value}}`, `{{groupKey}}`, `{{sourceQuery}}`, `{{teamId}}`, `{{note}}`, and
+  ISO-8601 `{{startTimeISO}}` / `{{endTimeISO}}` alongside the existing Unix-ms
+  `{{startTime}}` / `{{endTime}}`.
+
+  Receivers can now route, filter and dedupe on an alert's identity and condition
+  without parsing the rendered message body. Existing templates are unaffected —
+  every new variable is additive and renders empty when an alert doesn't carry it.
+
+- f0d1cef5: Support inline chart alerts (source `inline` + `chartConfig`) in the external
+  API v2 and the MCP `clickstack_save_alert` / `clickstack_get_alert` tools.
+  Inline alerts can now be created, updated, listed, and deleted through
+  `/api/v2/alerts` using the same tile-config dialect as v2 dashboards, with the
+  same validation rules as the internal API: display-type allowlist, metric
+  formula validation, the formula source-kind gate, raw SQL template validation,
+  and team-scoped source/connection ownership. Passing a `chartConfig` to a
+  `tile` or `saved_search` alert is now rejected instead of silently dropped,
+  and reading an inline alert whose config carries internal-only fields omits
+  `chartConfig` rather than returning a lossy approximation.
+
+  Also fixes three pre-existing issues on the external v2 dashboards path: a
+  gauge tile saved through `clickstack_save_dashboard` with `isDelta: true` was
+  persisted as a non-delta (the flag was dropped converting MCP tiles to the
+  internal shape); a tile config carrying an unrecognized `configType` (e.g.
+  `promql`) was silently stored as a builder config and skipped the formula and
+  number-select rules, and is now rejected; and validation errors on alert
+  bodies no longer collapse to `Invalid input` — the schema reports the failing
+  branch's own message.
+
+- d9c5c455: fix: preserve a Connection host path prefix when proxying PromQL.
+  `proxyToPrometheus` joined absolute Prometheus paths (`/api/v1/query_range`,
+  `/api/v1/query`, `/api/v1/query_exemplars`, `/api/v1/label/.../values`) with
+  `new URL(path, host)`, which replaces the host pathname instead of appending to
+  it. VictoriaMetrics cluster `vmselect` URLs such as
+  `http://vmselect:8481/select/0/prometheus` were rewritten to
+  `/api/v1/query_range` and rejected. The join now keeps the existing pathname.
+
+  This is a behavior change for Connections whose host already included a path
+  that was never meant as a Prometheus API prefix — for example
+  `http://prom:9090/graph` copied from the Prometheus UI. That previously happened
+  to work because the absolute API path replaced `/graph`; requests now go to
+  `/graph/api/v1/query_range` and will 404. Trim stray paths from existing
+  Connection hosts before upgrading. Root-mounted hosts (`http://prom:9090` or
+  `http://prom:9090/`) are unchanged.
+
+  Query parameters on the Connection host are now only a fallback for a fixed set
+  of real Prometheus API params (`query`, `time`, `start`, `end`, `step`,
+  `match`/`match[]`, `limit`, `timeout`, `stats`): a request value for one of
+  these (including repeatable ones such as `match[]`) always wins and replaces a
+  same-named host value outright, rather than being dropped. Any other host query
+  key the request never mentions -- for example `?extra_label=namespace%3Dprod`
+  pinning a VictoriaMetrics tenant scope -- is left as-is and is never overridable
+  by the request, since a param name outside that fixed set is not forwarded at
+  all regardless of what the host carries. This also means a host copied with a
+  stray query string (not just a stray path) now forwards its non-Prometheus keys
+  upstream as a fallback on every request -- trim those too if they weren't
+  intended as Prometheus API params.
+
+  This is also a behavior change for a direct API caller (e.g. curl or Terraform)
+  that previously relied on sending an arbitrary, non-Prometheus query param
+  through this endpoint: that param is now silently dropped rather than forwarded,
+  regardless of whether the Connection host carries anything under the same name.
+
+### Patch Changes
+
+- 25a3b015: Fix `{{sourceQuery}}` returning empty for inline-query and dashboard-tile
+  alerts. It read only the saved search's filter, so alerts backed by a chart
+  config — where the query lives on the alert or the tile — advertised a variable
+  that never rendered. It now resolves the query from whichever config backs the
+  alert: the builder `where` or the raw `sqlTemplate`.
+
+  Add `{{thresholdMax}}`, the upper bound of a `between` / `outside` condition.
+  Receivers previously saw only the lower bound and could not reconstruct the
+  range that fired. It renders empty for every other comparator.
+
+  Test Webhook now sends a sample value for every template variable. It carried
+  only the original seven, so a body using an enriched variable rendered it empty
+  — and because `threshold`, `thresholdMax` and `value` are emitted unquoted, a
+  body like `{"value": {{value}}}` was sent as `{"value": }` and rejected,
+  failing the test for a template that works on a real firing.
+
+- 808b3453: Accept `Bearer `-prefixed Authorization header values on the OTel ingest endpoint in OpAMP-managed mode. The collector's bearer-token authenticator matches the full header value exactly and was configured with only the bare API key, so RFC 6750 clients that send `Authorization: Bearer <token>` were rejected. The generated collector config now also accepts `Bearer`, `bearer`, and `BEARER` prefixed forms of each ingestion API key.
+- bf4443df: feat: Support autocomplete for PromQL label filters
+- 55db91fa: feat: Support static filters in MCP
+- 89a897ec: Fixed single-series histogram charts failing with "Unknown expression or function identifier" when sorted by a group-by column or expression. The histogram translation packs group values into a single `group` Array, so the table default ORDER BY (the raw group-by text) referenced source columns that no longer exist in scope; matched sort items now address the packed array positionally.
+- f1062a7b: Fixed multi-series metric charts failing with "Unknown expression or function identifier" when sorted by an expression group-by (e.g. `ResourceAttributes['service.name']`). Table tiles default their ORDER BY to the group-by text, so any multi-series metric table grouped by a resource/attribute-derived expression failed to render. Such sort expressions are now evaluated inside each per-series branch through internal companion columns instead of being re-evaluated in the composed outer query, where the source columns no longer exist.
+- 4184a898: feat: Support dashboard filters based on Prometheus label values
+- 27360036: feat: Support series filter (matcher) in PromQL label dashboard filters
+- 7ed8dc8c: feat: Evaluate Prometheus `match[]` series selectors on the labels and label values endpoints for ClickHouse TimeSeries connections
+- bcf0257c: feat: Accept optional time bounds on Prometheus label values endpoint
+- cff6388c: feat: Add static filters to schemas and APIs
+- Updated dependencies [74c28e7f]
+- Updated dependencies [b917308d]
+- Updated dependencies [55db91fa]
+- Updated dependencies [89a897ec]
+- Updated dependencies [f1062a7b]
+- Updated dependencies [4184a898]
+- Updated dependencies [27360036]
+- Updated dependencies [c7965927]
+- Updated dependencies [cff6388c]
+  - @hyperdx/common-utils@0.28.1
+
 ## 2.37.0
 
 ### Minor Changes
