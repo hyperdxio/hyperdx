@@ -829,22 +829,25 @@ describe('DashboardFilterValueSchema', () => {
   });
 });
 
-describe('DashboardSchema.savedRelativeDateRange', () => {
+describe('DashboardSchema.savedDateRange', () => {
   const base = { id: 'd1', name: 'Dashboard', tiles: [], tags: [] };
+  const parse = (savedDateRange: unknown) =>
+    DashboardSchema.safeParse({ ...base, savedDateRange }).success;
 
-  it('accepts a number, null, or absent', () => {
-    for (const savedRelativeDateRange of [3600, null, undefined]) {
-      expect(
-        DashboardSchema.safeParse({ ...base, savedRelativeDateRange }).success,
-      ).toBe(true);
-    }
+  it('accepts relative, historical, null, or absent', () => {
+    expect(parse({ type: 'relative', value: 3600 })).toBe(true);
+    expect(parse({ type: 'historical', value: [1700000000, 1700003600] })).toBe(
+      true,
+    );
+    expect(parse(null)).toBe(true);
+    expect(parse(undefined)).toBe(true);
   });
 
-  it('rejects non-numeric values', () => {
-    expect(
-      DashboardSchema.safeParse({ ...base, savedRelativeDateRange: '1h' })
-        .success,
-    ).toBe(false);
+  it('rejects malformed values', () => {
+    expect(parse({ type: 'relative', value: '1h' })).toBe(false);
+    expect(parse({ type: 'historical', value: [1700000000] })).toBe(false);
+    expect(parse({ type: 'other', value: 1 })).toBe(false);
+    expect(parse(3600)).toBe(false);
   });
 });
 

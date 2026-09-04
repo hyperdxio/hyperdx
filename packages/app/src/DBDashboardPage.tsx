@@ -77,6 +77,7 @@ import {
   Group,
   Indicator,
   List,
+  Loader,
   Menu,
   Modal,
   Paper,
@@ -378,9 +379,6 @@ const tileToLayoutItem = (chart: Tile): RGL.Layout => ({
   minH: 1,
   minW: 1,
 });
-
-// TODO: This is a hack to set the default time range
-const defaultTimeRange = parseTimeQuery('Past 1h', false) as [Date, Date];
 
 const whereLanguageParser = parseAsString.withDefault(
   typeof window !== 'undefined' ? (getStoredLanguage() ?? 'lucene') : 'lucene',
@@ -1771,15 +1769,13 @@ function DashboardContainerRow({
   );
 }
 
-function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
-  const brandName = useBrandDisplayName();
-  const confirm = useConfirm();
-
-  const router = useRouter();
-  const dashboardId = router.query.dashboardId as string | undefined;
-  const { enterKioskMode, exitKioskMode, isKioskMode } =
-    useDashboardKioskMode();
-
+function DBDashboardPage({
+  dashboardProps,
+  defaultTimeInput,
+}: {
+  dashboardProps: ReturnType<typeof useDashboard>;
+  defaultTimeInput: string;
+}) {
   const {
     dashboard,
     setDashboard,
@@ -1787,10 +1783,17 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     isLocalDashboard,
     isFetching: isFetchingDashboard,
     isSetting: isSavingDashboard,
-  } = useDashboard({
-    dashboardId: dashboardId as string | undefined,
-    presetConfig,
-  });
+  } = dashboardProps;
+  const brandName = useBrandDisplayName();
+  const confirm = useConfirm();
+  const {
+    userPreferences: { isUTC },
+  } = useUserPreferences();
+
+  const router = useRouter();
+  const dashboardId = router.query.dashboardId as string | undefined;
+  const { enterKioskMode, exitKioskMode, isKioskMode } =
+    useDashboardKioskMode();
 
   const { data: sources } = useSources();
   const { data: connections } = useConnections();
@@ -1947,10 +1950,17 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   }, [router.isReady, watchedGranularity, granularity, setGranularity]);
 
   const [displayedTimeInputValue, setDisplayedTimeInputValue] =
-    useState('Past 1h');
+    useState(defaultTimeInput);
+
+  // Must not depend on displayedTimeInputValue: useNewTimeQuery resets the
+  // input whenever initialTimeRange changes, which would clobber typing.
+  const defaultTimeRange = useMemo(
+    () => parseTimeQuery(defaultTimeInput, isUTC) as [Date, Date],
+    [defaultTimeInput, isUTC],
+  );
 
   const { searchedTimeRange, onSearch, onTimeRangeSelect } = useNewTimeQuery({
-    initialDisplayValue: 'Past 1h',
+    initialDisplayValue: defaultTimeInput,
     initialTimeRange: defaultTimeRange,
     setDisplayedTimeInputValue,
   });
@@ -1991,7 +2001,6 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
 
     const hasWhereInUrl = 'where' in router.query;
     const hasFiltersInUrl = 'filters' in router.query;
-    const hasDateRangeInUrl = 'from' in router.query && 'to' in router.query;
 
     // Query defaults: URL query overrides saved defaults. If switching to a
     // dashboard without defaults, clear query. On first load/reload, keep current state.
@@ -2019,21 +2028,6 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         setFilterValueEntries(dashboard.savedFilterValues);
       } else if (isSwitchingDashboards) {
         setFilterValueEntries(null);
-      }
-    }
-
-    // Initialize dashboard with the saved date range
-    if (!hasDateRangeInUrl) {
-      if (dashboard.savedDateRange) {
-        // assume only relative right now
-        const dateRange = dashboard.savedDateRange;
-        let start: Date, end: Date;
-        if (dateRange.type === 'relative') {
-          [start, end] = parseRelativeTimeQuery(dateRange.value * 1000);
-        } else {
-          [start, end] = dateRange.value;
-        }
-        onTimeRangeSelect(start, end);
       }
     }
 
@@ -2065,10 +2059,6 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         : (getStoredLanguage() ?? 'lucene'),
     );
   }, [setValue, where, whereLanguage]);
-
-  const {
-    userPreferences: { isUTC },
-  } = useUserPreferences();
 
   const handleSaveQuery = useCallback(() => {
     if (!dashboard || isLocalDashboard) return;
@@ -2109,7 +2099,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           color: 'green',
           title: 'Query saved and executed',
           message:
-            'Filter query and dropdown values have been saved with the dashboard',
+            'Filter query, dropdown values, and relative time range have been saved with the dashboard',
           autoClose: 3000,
         });
       },
@@ -3432,7 +3422,46 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   );
 }
 
-const DBDashboardPageDynamic = dynamic(async () => DBDashboardPage, {
+function DBDashboardPageGuarded({
+  presetConfig,
+}: {
+  presetConfig?: Dashboard;
+}) {
+  const router = useRouter();
+  const dashboardId = router.query.dashboardId as string | undefined;
+  const dashboardProps = useDashboard({
+    dashboardId: dashboardId as string | undefined,
+    presetConfig,
+  });
+  const {
+    userPreferences: { isUTC },
+  } = useUserPreferences();
+
+  const savedDateRange = dashboardProps.dashboard?.savedDateRange;
+  // Keyed on the saved range, not the render: a relative range re-stringifies
+  // to a new value every render, and useNewTimeQuery resets the input on change.
+  // Valid URL from/to still win: useNewTimeQuery overwrites the input from them.
+  const defaultTimeInput = useMemo(() => {
+    if (!savedDateRange) return 'Past 1h';
+    const [start, end] =
+      savedDateRange.type === 'relative'
+        ? parseRelativeTimeQuery(savedDateRange.value * 1000)
+        : savedDateRange.value.map(v => new Date(v));
+    // TODO: show relative ranges as "Past Xh" via getRelativeInterval
+    return dateRangeToString([start, end], isUTC);
+  }, [savedDateRange, isUTC]);
+
+  if (!dashboardProps || !router.isReady) return <Loader size="lg" />;
+
+  return (
+    <DBDashboardPage
+      dashboardProps={dashboardProps}
+      defaultTimeInput={defaultTimeInput}
+    />
+  );
+}
+
+const DBDashboardPageDynamic = dynamic(async () => DBDashboardPageGuarded, {
   ssr: false,
 });
 
