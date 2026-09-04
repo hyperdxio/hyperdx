@@ -173,10 +173,9 @@ export const AlertDetails = React.memo(function AlertDetails({
           <div>
             {/* With alert details enabled, the alert name is the entry point
                 to its status page; the source tile / saved search moves to a
-                secondary link on the right. Without a destination — an alert
-                whose source is gone, or an inline alert on the list response,
-                which omits the chart config the explorer link is built from —
-                the name is plain text rather than a link to nowhere. */}
+                secondary link on the right. An alert whose source cannot be
+                resolved — a deleted dashboard, say — has no destination at
+                all, so its name is plain text rather than a link to nowhere. */}
             {nameHref ? (
               <Link
                 data-testid={`alert-link-${alert._id}`}

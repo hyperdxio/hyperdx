@@ -45,7 +45,10 @@ import { useSource } from '@/source';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import type { AlertsPageItem } from '@/types';
 import { optionsToSelectData } from '@/utils';
-import { getDerivedAlertDisplayName, toAlertChannels } from '@/utils/alerts';
+import {
+  getDerivedAlertDisplayName,
+  toFormAlertChannels,
+} from '@/utils/alerts';
 import {
   ALERT_CHANNEL_OPTIONS,
   ALERT_INTERVAL_OPTIONS,
@@ -104,14 +107,7 @@ function alertToFormValues(alert: AlertsPageItem): Alert {
         : typeof alert.scheduleStartAt === 'string'
           ? alert.scheduleStartAt
           : alert.scheduleStartAt.toISOString(),
-    // AlertsPageItem types a channel loosely (type?: string | null) while the
-    // form carries the strict Alert shape. Copy channels through rather than
-    // rebuilding them, so a fork's extra channel fields survive an edit; only
-    // webhookId is coerced, because the picker needs a string.
-    channels: toAlertChannels(alert).map(c => ({
-      ...c,
-      webhookId: c.webhookId ?? '',
-    })) as Alert['channels'],
+    channels: toFormAlertChannels(alert),
     name: alert.name ?? null,
     message: alert.message ?? null,
     note: alert.note ?? null,

@@ -1157,7 +1157,9 @@ describe('DBEditTimeChartForm - Inline alerts', () => {
 
   // A tile alert is named by the tile it hangs off; an inline alert has
   // nothing else to name it, and the name doubles as the notification title.
-  it('collects an alert name outside a dashboard', async () => {
+  // An inline alert has no tile or saved search to inherit a name from, so
+  // the shared display-name field is how the alerts page gets a label for it.
+  it('carries the alert display name into the save payload', async () => {
     const onSaveAlert = jest.fn();
     // Seeded with a channel: an alert with no webhook fails validation before
     // the save handler runs, which is what the picker is there to prevent.
@@ -1173,24 +1175,16 @@ describe('DBEditTimeChartForm - Inline alerts', () => {
     });
 
     await userEvent.type(
-      screen.getByTestId('alert-name-input'),
+      screen.getByTestId('alert-display-name-input'),
       'Prod error rate',
     );
     await userEvent.click(screen.getByTestId('chart-save-alert-button'));
 
     await waitFor(() => expect(onSaveAlert).toHaveBeenCalledTimes(1));
     expect(onSaveAlert.mock.calls[0][0].alert).toMatchObject({
-      name: 'Prod error rate',
+      displayName: 'Prod error rate',
       threshold: 1,
     });
-  });
-
-  it('hides the name field inside a dashboard, where the tile names the alert', async () => {
-    renderInlineAlertForm({ dashboardId: 'test-dashboard-id' });
-
-    await userEvent.click(screen.getByTestId('alert-button'));
-
-    expect(screen.queryByTestId('alert-name-input')).not.toBeInTheDocument();
   });
 
   // With no alert there is nothing to save, and the button would read as a

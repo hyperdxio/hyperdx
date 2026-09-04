@@ -271,7 +271,7 @@ const inlineChartConfig = {
 };
 
 const inlineAlert = (overrides: Partial<AlertsPageItem> = {}): AlertsPageItem =>
-  ({
+  asAlert({
     _id: 'alert-1',
     source: AlertSource.INLINE,
     interval: '5m',
@@ -282,7 +282,7 @@ const inlineAlert = (overrides: Partial<AlertsPageItem> = {}): AlertsPageItem =>
     updatedAt: '2026-01-01T00:00:00.000Z',
     history: [],
     ...overrides,
-  }) as AlertsPageItem;
+  });
 
 describe('getAlertSourceUrl', () => {
   // By id, not by an inlined config: the alerts list omits chartConfig, so a
@@ -306,13 +306,13 @@ describe('buildInlineAlertPayload', () => {
   it('splits the alert off the chart config', () => {
     const payload = buildInlineAlertPayload({
       ...inlineChartConfig,
-      alert: { ...alert, name: 'Prod errors' },
+      alert: { ...alert, displayName: 'Prod errors' },
     });
 
     expect(payload).toMatchObject({
       source: AlertSource.INLINE,
       threshold: 10,
-      name: 'Prod errors',
+      displayName: 'Prod errors',
       chartConfig: inlineChartConfig,
     });
     // The alert must not be persisted inside its own chart config: the
@@ -320,18 +320,12 @@ describe('buildInlineAlertPayload', () => {
     expect(payload?.chartConfig).not.toHaveProperty('alert');
   });
 
-  // The name doubles as the notification title, so a blank field takes the
-  // chart's name rather than sending an empty one.
-  it('defaults the name to the chart name', () => {
-    expect(buildInlineAlertPayload({ ...inlineChartConfig, alert })?.name).toBe(
-      'Error rate',
-    );
+  // The server derives an inline alert's name from its chart when none is
+  // given; sending one anyway would freeze a copy that stops tracking it.
+  it('leaves an unset display name for the server to derive', () => {
     expect(
-      buildInlineAlertPayload({
-        ...inlineChartConfig,
-        alert: { ...alert, name: null },
-      })?.name,
-    ).toBe('Error rate');
+      buildInlineAlertPayload({ ...inlineChartConfig, alert }),
+    ).not.toHaveProperty('displayName');
   });
 
   it('returns nothing when there is no alert to save', () => {

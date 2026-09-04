@@ -71,13 +71,13 @@ const tileAlert = {
   tileId: 'tile-1',
 } as unknown as AlertsPageItem;
 
-const inlineAlert = {
+const inlineAlert: AlertsPageItem = {
   ...savedSearchAlert,
   _id: 'alert-3',
   source: AlertSource.INLINE,
   savedSearchId: undefined,
-  name: 'Prod error rate',
-} as unknown as AlertsPageItem;
+  displayName: 'Prod error rate',
+};
 
 function renderMenu(ui: React.ReactElement) {
   const queryClient = new QueryClient({
