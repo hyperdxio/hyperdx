@@ -92,9 +92,75 @@
         "type": "string",
         "enum": [
           "saved_search",
-          "tile"
+          "tile",
+          "inline"
         ],
-        "description": "Alert source type."
+        "description": "Alert source type. \"saved_search\" alerts monitor a saved search, \"tile\" alerts monitor a dashboard tile, and \"inline\" alerts carry their own chart configuration (see AlertChartConfig) without requiring a saved search or dashboard.\n"
+      },
+      "AlertChartConfigOverlay": {
+        "type": "object",
+        "description": "Fields an alert's chart config carries on top of the dashboard tile config dialect. Unlike a tile (whose name lives on the tile, not its config), an inline alert's config is standalone.\n",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Display name for the alert query. Used in notification titles and as an alert-name fallback when the alert itself has no name.\n",
+            "example": "Error Rate Query"
+          },
+          "where": {
+            "type": "string",
+            "maxLength": 10000,
+            "description": "Chart-level filter applied on top of every select item's own \"where\" (combined via AND). Builder variants only; rejected on Raw SQL variants (filter inside the sqlTemplate instead).\n",
+            "example": "ServiceName:api"
+          },
+          "whereLanguage": {
+            "$ref": "#/components/schemas/QueryLanguage",
+            "description": "Language of the chart-level \"where\" filter."
+          }
+        }
+      },
+      "AlertLineChartConfig": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/LineChartConfig"
+          },
+          {
+            "$ref": "#/components/schemas/AlertChartConfigOverlay"
+          }
+        ]
+      },
+      "AlertBarChartConfig": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BarChartConfig"
+          },
+          {
+            "$ref": "#/components/schemas/AlertChartConfigOverlay"
+          }
+        ]
+      },
+      "AlertNumberChartConfig": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/NumberChartConfig"
+          },
+          {
+            "$ref": "#/components/schemas/AlertChartConfigOverlay"
+          }
+        ]
+      },
+      "AlertChartConfig": {
+        "description": "The chart configuration an inline alert evaluates, in the same dialect as dashboard tile configs plus the alert-only fields in AlertChartConfigOverlay. Only the display types the alert evaluator supports are accepted: line, stacked_bar, and number, in both builder and Raw SQL (configType \"sql\") variants. Raw SQL templates must reference the evaluation window via the time-filter and interval macros (e.g. $__timeFilter and $__timeInterval), and the referenced source/connection must belong to the team.\n",
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/AlertLineChartConfig"
+          },
+          {
+            "$ref": "#/components/schemas/AlertBarChartConfig"
+          },
+          {
+            "$ref": "#/components/schemas/AlertNumberChartConfig"
+          }
+        ]
       },
       "AlertState": {
         "type": "string",
@@ -239,6 +305,10 @@
             "description": "Group-by key for saved search alerts.",
             "nullable": true,
             "example": "ServiceName"
+          },
+          "chartConfig": {
+            "$ref": "#/components/schemas/AlertChartConfig",
+            "description": "Chart configuration for inline alerts. Required when source is \"inline\" and rejected otherwise. Returned on single-alert responses (GET by ID, POST, PUT); the list endpoint omits it.\n"
           },
           "threshold": {
             "type": "number",
@@ -2435,7 +2505,15 @@
               },
               "color": {
                 "$ref": "#/components/schemas/ChartPaletteToken",
-                "description": "Optional static color applied to the displayed number. Raw SQL number tiles do not support conditional colorRules.\n"
+                "description": "Optional static color applied to the displayed number."
+              },
+              "colorRules": {
+                "type": "array",
+                "maxItems": 10,
+                "description": "Ordered conditional color rules evaluated against the displayed value (last match wins). Falls back to color, then the default text color when no rule matches.\n",
+                "items": {
+                  "$ref": "#/components/schemas/NumberTileColorCondition"
+                }
               }
             }
           }
@@ -3047,13 +3125,17 @@
           },
           {
             "$ref": "#/components/schemas/StaticListFilterInput"
+          },
+          {
+            "$ref": "#/components/schemas/PrometheusLabelFilterInput"
           }
         ],
         "discriminator": {
           "propertyName": "type",
           "mapping": {
             "QUERY_EXPRESSION": "#/components/schemas/QueryExpressionFilterInput",
-            "STATIC_LIST": "#/components/schemas/StaticListFilterInput"
+            "STATIC_LIST": "#/components/schemas/StaticListFilterInput",
+            "PROMETHEUS_LABEL": "#/components/schemas/PrometheusLabelFilterInput"
           }
         }
       },
@@ -3213,6 +3295,69 @@
             "pattern": "^[a-zA-Z][a-zA-Z0-9_]*$",
             "description": "Token tiles reference this filter's selected value by, as\n`$variableName`. Must start with a letter and may contain only\nletters, numbers, and underscores. Defaults to the display name with\nwhitespace replaced by underscores and remaining illegal characters\nremoved, so a variable-enabled filter whose name derives nothing\nusable must send this field explicitly. Variable names must be unique\nacross a dashboard's variable-enabled filters. Names the variable\nonly, so the field is rejected when isVariableEnabled is not true, and\nis omitted from responses for such a filter.\n",
             "example": "environment"
+          }
+        }
+      },
+      "PrometheusLabelFilterInput": {
+        "type": "object",
+        "description": "A filter whose dropdown lists the values for a Prometheus label,\nread from a PromQL source over the dashboard's time range.\nSupports variable mode only.\n",
+        "required": [
+          "type",
+          "name",
+          "sourceId",
+          "label"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "PROMETHEUS_LABEL"
+            ],
+            "description": "Discriminator. Must be \"PROMETHEUS_LABEL\".",
+            "example": "PROMETHEUS_LABEL"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Display name for the dashboard filter",
+            "example": "Pod"
+          },
+          "sourceId": {
+            "type": "string",
+            "description": "Id of the PromQL source the label values are read from.\n",
+            "example": "65f5e4a3b9e77c001a123456"
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024,
+            "description": "Label whose values populate the dropdown. Use \"__name__\" to list\nmetric names.\n",
+            "example": "pod"
+          },
+          "isBroadcastEnabled": {
+            "type": "boolean",
+            "enum": [
+              false
+            ],
+            "default": false,
+            "description": "Must be false or omitted.",
+            "example": false
+          },
+          "isVariableEnabled": {
+            "type": "boolean",
+            "enum": [
+              true
+            ],
+            "default": true,
+            "description": "Must be true if provided, and is true when omitted. Tiles reference\nthe selection as `$variableName`.\n",
+            "example": true
+          },
+          "variableName": {
+            "type": "string",
+            "maxLength": 64,
+            "pattern": "^[a-zA-Z][a-zA-Z0-9_]*$",
+            "description": "Token that tiles reference this filter's selected value by, as\n`$variableName`. Must start with a letter and may contain only\nletters, numbers, and underscores. Defaults to the display name with\nwhitespace replaced by underscores and remaining illegal characters\nremoved. Variable names must be unique across a dashboard's\nvariable-enabled filters.\n",
+            "example": "pod"
           }
         }
       },
@@ -4093,6 +4238,11 @@
             "nullable": true,
             "example": "TimestampTime"
           },
+          "orderByExpression": {
+            "type": "string",
+            "description": "Custom ORDER BY expression that overrides the default ordering. Leave empty to use the auto-detected default.",
+            "example": "Timestamp DESC"
+          },
           "metricSourceId": {
             "type": "string",
             "description": "HyperDX Source for metrics associated with logs. Optional",
@@ -4343,6 +4493,11 @@
             "nullable": true,
             "example": "ResourceAttributes['service.version']"
           },
+          "sampleRateExpression": {
+            "type": "string",
+            "description": "Column or expression for upstream sampling weight (1/N). When set, aggregations (count, avg, sum, quantile) are corrected for sampling. Percentiles use quantileTDigestWeighted, which is an approximation. Leave empty if spans are not sampled.",
+            "example": "SampleRate"
+          },
           "resourceAttributesExpression": {
             "type": "string",
             "description": "Expression to extract resource-level attributes.",
@@ -4360,6 +4515,11 @@
             "description": "Expression to extract span events. Used to capture events associated with spans. Expected to be Nested ( Timestamp DateTime64(9), Name LowCardinality(String), Attributes Map(LowCardinality(String), String)",
             "nullable": true,
             "example": "Events"
+          },
+          "spanLinksValueExpression": {
+            "type": "string",
+            "description": "Expression to extract span links. Used to capture links from a span to spans in other traces. Expected to be Nested ( TraceId String, SpanId String, TraceState String, Attributes Map(LowCardinality(String), String) )",
+            "example": "Links"
           },
           "implicitColumnExpression": {
             "type": "string",
@@ -4399,6 +4559,16 @@
               "$ref": "#/components/schemas/HighlightedAttributeExpression"
             },
             "nullable": true
+          },
+          "displayedTimestampValueExpression": {
+            "type": "string",
+            "description": "This DateTime column is used to display and order search results.",
+            "example": "Timestamp"
+          },
+          "orderByExpression": {
+            "type": "string",
+            "description": "Custom ORDER BY expression that overrides the default ordering. Leave empty to use the auto-detected default.",
+            "example": "Timestamp DESC"
           },
           "materializedViews": {
             "type": "array",
@@ -4582,6 +4752,11 @@
             "type": "string",
             "description": "HyperDX Source for traces associated with sessions.",
             "example": "507f1f77bcf86cd799439021"
+          },
+          "resourceAttributesExpression": {
+            "type": "string",
+            "description": "Expression to extract resource-level attributes.",
+            "example": "ResourceAttributes"
           }
         }
       },
@@ -5417,6 +5592,31 @@
                       }
                     ],
                     "name": "Error Spike Alert"
+                  }
+                },
+                "inlineAlert": {
+                  "summary": "Create an inline alert that carries its own chart config",
+                  "value": {
+                    "source": "inline",
+                    "chartConfig": {
+                      "displayType": "line",
+                      "sourceId": "65f5e4a3b9e77c001a123456",
+                      "select": [
+                        {
+                          "aggFn": "count",
+                          "where": "level:error",
+                          "whereLanguage": "lucene"
+                        }
+                      ]
+                    },
+                    "threshold": 100,
+                    "interval": "5m",
+                    "thresholdType": "above",
+                    "channel": {
+                      "type": "webhook",
+                      "webhookId": "65f5e4a3b9e77c001a789012"
+                    },
+                    "name": "Error log spike"
                   }
                 }
               }

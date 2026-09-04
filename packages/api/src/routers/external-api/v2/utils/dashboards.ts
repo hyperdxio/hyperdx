@@ -11,7 +11,10 @@ import {
   validateDashboardFilterVariableNames,
   validateDashboardTileContainerRefs,
 } from '@hyperdx/common-utils/dist/dashboardValidation';
-import { isQueryExpressionFilter } from '@hyperdx/common-utils/dist/filters';
+import {
+  isPrometheusLabelFilter,
+  isStaticListFilter,
+} from '@hyperdx/common-utils/dist/filters';
 import {
   isBuilderSavedChartConfig,
   isHeatmapCompatibleSource,
@@ -29,6 +32,7 @@ import {
   isLogSource,
   isOnClickDashboardById,
   isOnClickSearchById,
+  isPromqlSource,
   isTraceSource,
   NumberTileColorCondition,
   NumberTileColorConditionSchema,
@@ -197,7 +201,9 @@ const toExternalColorRules = (
   return resolved.length > 0 ? resolved : undefined;
 };
 
-const convertToExternalTileChartConfig = (
+// Exported for the inline-alert converter (v2/utils/alertChartConfig.ts),
+// which reuses the tile-config translation for an alert's persisted config.
+export const convertToExternalTileChartConfig = (
   config: SavedChartConfig,
 ): ExternalDashboardTileConfig | undefined => {
   if (isRawSqlSavedChartConfig(config)) {
@@ -250,10 +256,8 @@ const convertToExternalTileChartConfig = (
           sqlTemplate: config.sqlTemplate,
           sourceId: config.source,
           numberFormat: config.numberFormat,
-          // Raw SQL number tiles carry the static tile color too (no
-          // colorRules; see the schema). Normalize a legacy token saved
-          // before the hue rename to its hue name on output.
           color: resolveChartPaletteToken(config.color),
+          colorRules: toExternalColorRules(config.colorRules),
         };
       case DisplayType.Pie:
         return {
@@ -648,7 +652,12 @@ export function convertToExternalDashboard(
 // --------------------------------------------------------------------------------
 
 const convertToInternalSelectItem = (
-  item: ExternalDashboardSelectItem,
+  // `isDelta` is the MCP tile dialect's spelling of the gauge delta flag
+  // (`periodAggFn: 'delta'` in the REST dialect). MCP tiles are cast to
+  // ExternalDashboardTileWithId before reaching this converter
+  // (saveDashboard.ts), so honoring both spellings here is what keeps an
+  // MCP-authored gauge-delta series from silently evaluating raw values.
+  item: ExternalDashboardSelectItem & { isDelta?: boolean },
 ): Exclude<BuilderSavedChartConfig['select'][number], string> => {
   return {
     ...pick(item, [
@@ -661,7 +670,7 @@ const convertToInternalSelectItem = (
     ]),
     aggCondition: item.where,
     aggConditionLanguage: item.whereLanguage,
-    isDelta: item.periodAggFn === 'delta',
+    isDelta: item.periodAggFn === 'delta' || item.isDelta === true,
     valueExpression: item.valueExpression ?? '',
   };
 };
@@ -722,11 +731,13 @@ export function convertToInternalTileConfig(
             externalConfig.displayType === 'table'
               ? externalConfig.onClick
               : undefined,
-          // Only the raw SQL number variant carries `color`; table and pie
-          // do not expose it. `_.omitBy(_.isNil)` below drops it when absent.
           color:
             externalConfig.displayType === 'number'
               ? externalConfig.color
+              : undefined,
+          colorRules:
+            externalConfig.displayType === 'number'
+              ? externalConfig.colorRules
               : undefined,
         } satisfies RawSqlSavedChartConfig;
         break;
@@ -1024,7 +1035,8 @@ function getMissingSources(
 
   if (filters?.length) {
     for (const filter of filters) {
-      if (isQueryExpressionFilter(filter)) {
+      // Every variant but the static one names a source.
+      if (!isStaticListFilter(filter)) {
         sourceIds.add(filter.sourceId);
       }
     }
@@ -1065,6 +1077,23 @@ function getHeatmapTilesWithIncompatibleSources(
     const source = sourceById.get(id);
     return source !== undefined && !isHeatmapCompatibleSource(source);
   });
+}
+
+/**
+ * Returns an error message string if any of the referenced source IDs is not
+ * a valid PromQL source, or null if all of them are.
+ */
+export function getPromqlLabelFilterSourceError(
+  sources: SourceForValidation[],
+  referencedSourceIds: string[],
+): string | null {
+  const sourceById = new Map(sources.map(s => [s._id.toString(), s]));
+  const invalid = [...new Set(referencedSourceIds)].filter(id => {
+    const source = sourceById.get(id);
+    return source === undefined || !isPromqlSource(source);
+  });
+  if (invalid.length === 0) return null;
+  return `PROMETHEUS_LABEL filters require a PromQL source. The following source IDs are not PromQL sources: ${invalid.join(', ')}`;
 }
 
 /**
@@ -1475,6 +1504,14 @@ export async function validateDashboardTiles(
   if (formulaIncompatibleSources.length > 0) {
     return `Tiles with formulas require a Metric, Log, or Trace source. The following source IDs are not formula-capable: ${formulaIncompatibleSources.join(', ')}`;
   }
+
+  // Validate that PROMETHEUS_LABEL filters reference PromQL sources
+  const promqlLabelFilters = (filters ?? []).filter(isPrometheusLabelFilter);
+  const promqlLabelFilterError = getPromqlLabelFilterSourceError(
+    sources,
+    promqlLabelFilters.map(f => f.sourceId),
+  );
+  if (promqlLabelFilterError != null) return promqlLabelFilterError;
 
   if (missingOnClickDashboards.length > 0) {
     return `Could not find the following onClick dashboard IDs: ${missingOnClickDashboards.join(', ')}`;

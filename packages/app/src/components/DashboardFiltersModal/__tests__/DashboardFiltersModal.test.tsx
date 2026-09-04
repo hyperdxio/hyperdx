@@ -304,6 +304,16 @@ describe('DashboardFiltersModal', () => {
     expect(onSaveFilter.mock.calls[0][0]).not.toHaveProperty('options');
   });
 
+  it('omits the PromQL type where PromQL is disabled', async () => {
+    const { user } = renderModal();
+
+    await user.click(screen.getByTestId('add-filter-button'));
+    await user.click(screen.getByTestId('filter-type-picker'));
+
+    expect(await screen.findByText('Static values')).toBeInTheDocument();
+    expect(screen.queryByText('PromQL label values')).toBeNull();
+  });
+
   it('hides the type picker where variables are unavailable', async () => {
     const { user } = renderModal({ showVariableOptions: false });
 
