@@ -2024,10 +2024,15 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
 
     // Initialize dashboard with the saved date range
     if (!hasDateRangeInUrl) {
-      if (dashboard.savedRelativeDateRange) {
-        const [start, end] = parseRelativeTimeQuery(
-          dashboard.savedRelativeDateRange * 1000,
-        );
+      if (dashboard.savedDateRange) {
+        // assume only relative right now
+        const dateRange = dashboard.savedDateRange;
+        let start: Date, end: Date;
+        if (dateRange.type === 'relative') {
+          [start, end] = parseRelativeTimeQuery(dateRange.value * 1000);
+        } else {
+          [start, end] = dateRange.value;
+        }
         onTimeRangeSelect(start, end);
       }
     }
@@ -2038,7 +2043,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     dashboard?.savedQuery,
     dashboard?.savedQueryLanguage,
     dashboard?.savedFilterValues,
-    dashboard?.savedRelativeDateRange,
+    dashboard?.savedDateRange,
     isLocalDashboard,
     isFetchingDashboard,
     router.isReady,
@@ -2091,7 +2096,13 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         draft.savedQuery = currentWhere;
         draft.savedQueryLanguage = currentWhereLanguage;
         draft.savedFilterValues = currentFilterValues;
-        draft.savedRelativeDateRange = currentRelativeDateRange;
+        // Only supporting relative date range saving ATM
+        if (currentRelativeDateRange) {
+          draft.savedDateRange = {
+            type: 'relative',
+            value: currentRelativeDateRange,
+          };
+        }
       }),
       () => {
         notifications.show({
@@ -2121,7 +2132,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         draft.savedQuery = null;
         draft.savedQueryLanguage = null;
         draft.savedFilterValues = [];
-        draft.savedRelativeDateRange = null;
+        draft.savedDateRange = null;
       }),
       () => {
         notifications.show({

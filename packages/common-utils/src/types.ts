@@ -2054,7 +2054,18 @@ export const DashboardSchema = z.object({
   savedQuery: z.string().nullable().optional(),
   savedQueryLanguage: SearchConditionLanguageSchema.nullable().optional(),
   savedFilterValues: z.array(DashboardFilterValueSchema).optional(),
-  savedRelativeDateRange: z.number().nullish(),
+  savedDateRange: z
+    .discriminatedUnion('type', [
+      z.object({
+        type: z.literal('relative'),
+        value: z.number(),
+      }),
+      z.object({
+        type: z.literal('historical'),
+        value: z.array(z.number()).length(2),
+      }),
+    ])
+    .nullish(),
   containers: z
     .array(DashboardContainerSchema)
     .max(DASHBOARD_MAX_CONTAINERS)
