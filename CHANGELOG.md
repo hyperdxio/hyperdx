@@ -6,6 +6,238 @@ PR — keep the `hyperdx-release-notes` comment marker intact when editing so yo
 edits survive regeneration. Per-package detail lives in each
 `packages/*/CHANGELOG.md`.
 
+## v2.38.0 — 2026-09-04
+
+<!-- hyperdx-release-notes version=2.38.0 inputs=c2af4f77b513 -->
+
+**LLM observability dashboard (beta)**
+
+You can now see what your LLM calls cost, how many tokens they consume and how
+long they take to respond, without changing a line of instrumentation: a new
+beta dashboard at `/llm` reads the traces you have already ingested and
+interprets them at query time. It understands the OTel GenAI semantic
+conventions, OpenLLMetry, OpenInference and the Vercel AI SDK, and works
+retroactively over telemetry collected long before this release. Sending
+`Authorization: Bearer <token>` to the OTel ingest endpoint now works too —
+previously the standard RFC 6750 form was turned away as unauthorised. The
+chart editor's metric dropdown also stops quietly hiding metrics on large
+metrics tables. If a Prometheus Connection's host carries a path or a query
+string, read the breaking change below before you upgrade.
+
+### 💥 Breaking Changes
+
+- **PromQL proxying keeps a Connection host's path prefix**: an absolute
+  Prometheus API path was joined to the host in a way that replaced the host's
+  own path, so a VictoriaMetrics cluster `vmselect` URL such as
+  `http://vmselect:8481/select/0/prometheus` was rewritten to
+  `/api/v1/query_range` and rejected. The path is now kept and appended to. A
+  host that carries a path never meant as a Prometheus API prefix — for example
+  `http://prom:9090/graph` copied out of the Prometheus UI — used to work by
+  accident and will now 404, so trim stray paths from your Connection hosts
+  before upgrading; root-mounted hosts such as `http://prom:9090` are
+  unaffected. Query parameters on the host are now only a fallback for a fixed
+  set of real Prometheus API params (`query`, `time`, `start`, `end`, `step`,
+  `match`/`match[]`, `limit`, `timeout`, `stats`), where a request value always
+  wins outright; any other host key is left as-is, is never overridable by the
+  request, and a non-Prometheus param sent by a direct API caller such as curl
+  or Terraform is now dropped rather than forwarded. Trim stray query strings
+  too if they weren't intended as Prometheus API params (#3047, thanks
+  @milansanjeev!).
+
+### ✨ New Features
+
+- **GPU charts in the log and span side panel**: the Infrastructure section now
+  charts GPU utilisation and GPU memory utilisation whenever `hw.gpu.*` metrics
+  (the OTel hardware semantic conventions) exist for the correlated host or
+  node. Every GPU on a host is drawn as its own series, grouped by `hw.id`, and
+  utilisation is split per GPU engine by `hw.gpu.task` — general, encoder,
+  decoder — so a node saturated on video encode is still visible; a missing task
+  is reported as `general`. The section hides itself entirely when there are no
+  GPU metrics and renders what it has when only one of the two is available.
+  Switching the panel to a row on a different host no longer briefly shows the
+  previous host's GPU charts while the new ones load. The Infrastructure tab
+  also stops appearing for rows whose Kubernetes resource attribute is present
+  but empty, such as `k8s.node.name: ""`, which used to open a tab that could
+  render nothing (#2897, thanks @MikeShi42!).
+- **Alert webhooks carry the alert's identity and condition**: Generic and
+  incident.io webhook bodies gain template variables describing the alert
+  itself — `{{alertId}}`, `{{status}}`, `{{alertType}}`, `{{comparator}}`,
+  `{{threshold}}`, `{{value}}`, `{{groupKey}}`, `{{sourceQuery}}`, `{{teamId}}`
+  and `{{note}}` — plus ISO-8601 `{{startTimeISO}}` and `{{endTimeISO}}`
+  alongside the existing Unix-ms `{{startTime}}` and `{{endTime}}`. Your
+  receiver can route, filter and dedupe on those fields instead of parsing the
+  rendered message body. Existing templates are unaffected: every new variable
+  is additive and renders empty when an alert doesn't carry it (#3057, thanks
+  @jordan-simonovski!).
+- **Inline chart alerts through the external API and MCP**: the `inline` alert
+  source — an alert that carries its own chart config, with no saved search or
+  dashboard tile behind it — can now be created, updated, listed and deleted
+  through `/api/v2/alerts` and the MCP `clickstack_save_alert` /
+  `clickstack_get_alert` tools, using the same tile-config dialect as v2
+  dashboards. The same validation the app applies holds here: the display-type
+  allowlist, metric formula validation, the formula source-kind gate, raw SQL
+  template validation, and team-scoped source and connection ownership. Passing
+  a `chartConfig` to a `tile` or `saved_search` alert is now rejected rather
+  than silently dropped, and reading an inline alert whose config carries
+  internal-only fields omits `chartConfig` instead of returning a lossy
+  approximation (#3043).
+- **Alerts carry their own display name and tags**: an alert now persists a
+  `displayName` and `tags` of its own, so it can be named and labelled in its
+  own right rather than being identified only by the saved search, dashboard
+  tile or chart config it watches (#3063, thanks @pulpdrew!).
+- **Filters can offer a static list of values**: a filter can now be given a
+  fixed set of values to choose from, instead of the values always being
+  discovered from your data. The static list is carried through the schemas and
+  APIs as well as the app, and the filter renders as a picker over those values,
+  so a filter defined this way survives a round trip through the API and is
+  chosen from rather than typed into. You can create and edit one from the
+  dashboard filter editor as well, rather than only through the API, and the MCP
+  server understands static filters too, so an agent reading or writing a
+  dashboard keeps them intact (#3017, #3020, #3022, #3060, thanks @pulpdrew!).
+- **Dashboard filters built on Prometheus label values**: a dashboard filter can
+  now take its values from a Prometheus label, so a dashboard of PromQL charts
+  can be filtered by the labels its metrics actually carry. Such a filter also
+  accepts a series filter (matcher), so its values come only from the series the
+  matcher selects rather than every series that carries the label (#3053, #3080,
+  thanks @pulpdrew!).
+- **"Copy debug info" in the Help menu, and a `window.hdx` console handle**:
+  when something looks wrong, you can now grab everything worth attaching to an
+  issue in one action — the frontend and backend versions (they deploy
+  separately, so they can differ), deployment mode, your user and team ids, the
+  env-configurable feature flags that are on, the current URL, screen, viewport,
+  OS and browser details, and the session id. The same summary is available from
+  the browser console as `window.hdx.report()` (#3056).
+- **PromQL series legends can follow your own template**: a PromQL chart now
+  accepts a custom template for its series legends, so you can label each series
+  the way you want instead of taking the default rendering of its labels
+  (#3055, thanks @pulpdrew!).
+
+### 🧪 Experimental
+
+- **LLM observability dashboard, in beta**: a new dashboard at `/llm`, linked
+  from the dashboards list, charts LLM traffic, token split (uncached, cached,
+  cache-write, output and reasoning), estimated cost by model, latency and time
+  to first token, and tool usage — plus per-session timelines with conversation
+  views and side-by-side LLM span and log search. Costs come from a bundled
+  price catalogue that accounts for cache-read discounts and cache-write
+  premiums, and a cost attribute reported by your own instrumentation always
+  wins over the estimate. Where an app emits several instrumentation dialects
+  for the same call — opencode, for instance, emits both OpenInference and
+  Vercel AI spans — one is elected as the authoritative reporter so the call is
+  counted once. Being beta, the dashboard's charts and layout may still change;
+  no flag or ingestion change is needed to try it (#2990).
+
+### 🔧 Improvements
+
+- **The webhook form lists every template variable it supports**: the form now
+  shows the full set — including the enriched variables above and the new
+  `{{thresholdMax}}`, the upper bound of a `between` or `outside` condition,
+  which receivers needed to reconstruct the range that fired — each with a
+  one-line description, so a webhook body can be written without leaving the
+  form. `{{thresholdMax}}` renders empty for every other comparator (#3071).
+- **A metric the catalogue has not listed can still be charted by name**: the
+  chart editor's metric picker now says when a search matches nothing, instead
+  of silently hiding the dropdown, and offers the name you typed as a selectable
+  option — the catalogue only covers the most recent three days of the chart's
+  time range, so a metric that had stopped reporting was previously impossible
+  to chart by name. The truncation and load-failure notices also moved below the
+  input and were shortened, so they no longer push the field out of alignment
+  with the browse-metrics button beside it or wrap in the tile editor's column
+  (#3054, thanks @teeohhem!).
+- **PromQL label filters autocomplete as you write them**: the PromQL editor now
+  suggests label filters as you type, so building a query no longer means
+  recalling exactly how your metrics are labelled (#3072, thanks @pulpdrew!).
+- **Prometheus label values can be scoped to a time range**: the Prometheus
+  label values endpoint now accepts optional time bounds, so a lookup can be
+  limited to the window you are querying rather than covering everything the
+  source has seen (#3039, thanks @pulpdrew!).
+- **Label lookups honour `match[]` series selectors**: the Prometheus labels and
+  label values endpoints now evaluate `match[]` series selectors on ClickHouse
+  TimeSeries connections, so a lookup can be narrowed to the series a selector
+  picks out instead of returning everything the source carries (#3079, thanks
+  @pulpdrew!).
+
+### 🐛 Bug Fixes
+
+- **Ingest accepts both Authorization header formats**: the OTel ingest endpoint
+  in OpAMP-managed mode and the OTLP receiver in standalone mode
+  (`OTLP_AUTH_TOKEN`) now accept `Bearer`, `bearer` and `BEARER` prefixed tokens
+  as well as the bare token, so an SDK or client that follows RFC 6750 no longer
+  has its telemetry rejected. Existing bare-token senders are unaffected
+  (#3027).
+- **Every metric name is selectable in the chart editor**: the metric dropdown
+  used to sample the names it offered, so once a metrics table held more than
+  3000 distinct names, metrics that existed and were actively reporting could be
+  missing from the list with no warning and no way to search for them. Names are
+  now listed in order and matched as you type, an exact match always appears
+  first, and the dropdown tells you when the list is incomplete. The list also
+  respects the chart's selected time range instead of always looking at the last
+  24 hours (#2747, thanks @teeohhem!).
+- **Multi-series metric charts sorted by an expression group-by render again**:
+  a multi-series metric table grouped by an expression such as
+  `ResourceAttributes['service.name']` failed with "Unknown expression or
+  function identifier", because table tiles sort by their group-by text by
+  default and that expression could not be resolved once the series were
+  composed together. Sort expressions are now evaluated within each series, so
+  these tiles chart as expected (#3013).
+- **Grouped single-series histogram charts sort without erroring**: the same
+  "Unknown expression or function identifier" failure hit a histogram chart
+  sorted by a group-by column or expression, because the histogram query packs
+  the group values into one array and the table's default sort still named the
+  original columns. Matching sort items now address the packed array by
+  position, so a grouped histogram table renders (#3045).
+- **Y-axis tick labels keep their decimals on small values**: a time series
+  chart whose values live under 1 — fractional gauges, ratios, sub-1 rates —
+  labelled every axis tick `0`, even though the tooltip and legend showed the
+  right value. A tick under 10 in magnitude now honours the chart's Number
+  Format decimals, capped at two so the label still fits the axis, while ticks
+  of 10 or more and a tick of exactly 0 stay integers as they were — so ordinary
+  counts and the byte and percent tiles in the bundled dashboard templates look
+  the same as before. The CLI's terminal charts get the same fix (#3030, thanks
+  @arj22!).
+- **Conditional colour rules stick on SQL and PromQL charts**: the conditional
+  colour rules you set on a chart configured with raw SQL or with PromQL are now
+  preserved in the chart's config instead of being dropped (#2940, thanks
+  @espenloov!).
+- **Duplicate PromQL labels no longer crash the filter picker**: a source that
+  reported the same label name or label value twice took the PromQL label
+  filter's Mantine control down with it. Labels and values are now de-duplicated
+  before they reach the picker (#3083, thanks @pulpdrew!).
+- **The pattern sample drawer shows service name and level reliably**: samples
+  opened from a log pattern now consistently show the service that emitted the
+  event and its severity level, instead of leaving those fields blank (#3062,
+  thanks @pulpdrew!).
+- **`{{sourceQuery}}` renders for chart-backed alerts, and Test Webhook fills
+  every variable**: `{{sourceQuery}}` read only the saved search's filter, so an
+  alert backed by a chart config — where the query lives on the alert or the
+  tile — advertised a variable that never rendered; it now resolves the query
+  from whichever config backs the alert, the builder `where` or the raw
+  `sqlTemplate`. Test Webhook also sends a sample value for every variable
+  rather than only the original seven, so a body such as
+  `{"value": {{value}}}` is no longer sent as `{"value": }` and rejected,
+  failing the test for a template that works on a real firing (#3071).
+- **Dashboards saved through MCP keep their tile settings**: three long-standing
+  problems on the external v2 dashboards path are fixed. A gauge tile saved
+  through `clickstack_save_dashboard` with `isDelta: true` was persisted as a
+  non-delta, because the flag was dropped converting MCP tiles to the internal
+  shape; a tile config carrying an unrecognised `configType`, such as `promql`,
+  was silently stored as a builder config and skipped the formula and
+  number-select rules, and is now rejected outright; and validation errors on
+  alert bodies no longer collapse to `Invalid input`, reporting the failing
+  branch's own message instead (#3043).
+
+<!-- hyperdx-package-list -->
+
+### 📦 Package changelogs
+
+- `@hyperdx/api` 2.37.0 → 2.38.0 — [changelog](https://github.com/hyperdxio/hyperdx/blob/main/packages/api/CHANGELOG.md#2380)
+- `@hyperdx/app` 2.37.0 → 2.38.0 — [changelog](https://github.com/hyperdxio/hyperdx/blob/main/packages/app/CHANGELOG.md#2380)
+- `@hyperdx/cli` 0.6.2 → 0.6.3 — [changelog](https://github.com/hyperdxio/hyperdx/blob/main/packages/cli/CHANGELOG.md#063)
+- `@hyperdx/common-utils` 0.28.0 → 0.28.1 — [changelog](https://github.com/hyperdxio/hyperdx/blob/main/packages/common-utils/CHANGELOG.md#0281)
+- `@hyperdx/otel-collector` 2.37.0 → 2.38.0 — [changelog](https://github.com/hyperdxio/hyperdx/blob/main/packages/otel-collector/CHANGELOG.md#2380)
+
+<!-- /hyperdx-package-list -->
+
 ## v2.37.0 — 2026-08-28
 
 <!-- hyperdx-release-notes version=2.37.0 inputs=27e3ad215675 -->
