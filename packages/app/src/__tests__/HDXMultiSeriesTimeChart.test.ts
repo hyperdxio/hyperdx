@@ -10,7 +10,9 @@ import type { LineData } from '@/ChartUtils';
 import type { ActiveClickSeries } from '@/HDXMultiSeriesTimeChart';
 import {
   buildActiveClickSeries,
+  cappedYAxisUpperBound,
   collectMemoChartGradientHexes,
+  compactTickAnchor,
   formatAxisTick,
   getSelectedLineData,
   getVisibleLineData,
@@ -481,5 +483,49 @@ describe('getVisibleTooltipRows', () => {
     const keys = result.rows.map(r => r.dataKey);
     expect(keys.filter(k => k === 's3')).toHaveLength(1);
     expect(result.rows).toHaveLength(20);
+  });
+});
+
+describe('cappedYAxisUpperBound', () => {
+  it('auto-scales to the data max plus 10% headroom when below the cap', () => {
+    expect(cappedYAxisUpperBound(0.5, 1)).toBeCloseTo(0.55);
+  });
+
+  it('never exceeds the cap, even when the data max plus headroom would', () => {
+    // 0.95 * 1.1 = 1.045, clamped to the cap.
+    expect(cappedYAxisUpperBound(0.95, 1)).toBe(1);
+    expect(cappedYAxisUpperBound(5, 1)).toBe(1);
+  });
+
+  it('uses the cap for a flat/zero series instead of a degenerate domain', () => {
+    expect(cappedYAxisUpperBound(0, 1)).toBe(1);
+  });
+
+  it('uses the cap for a negative or non-finite data max', () => {
+    expect(cappedYAxisUpperBound(-1, 1)).toBe(1);
+    expect(cappedYAxisUpperBound(NaN, 1)).toBe(1);
+    expect(cappedYAxisUpperBound(Infinity, 1)).toBe(1);
+  });
+});
+
+describe('compactTickAnchor', () => {
+  it('anchors the first tick to the start edge', () => {
+    expect(compactTickAnchor(0, 5)).toBe('start');
+  });
+
+  it('anchors the last tick to the end edge', () => {
+    expect(compactTickAnchor(4, 5)).toBe('end');
+  });
+
+  it('centers interior ticks', () => {
+    expect(compactTickAnchor(2, 5)).toBe('middle');
+  });
+
+  it('treats a negative index as the start edge', () => {
+    expect(compactTickAnchor(-1, 5)).toBe('start');
+  });
+
+  it('resolves the single-tick case to start (the first-edge check wins)', () => {
+    expect(compactTickAnchor(0, 1)).toBe('start');
   });
 });

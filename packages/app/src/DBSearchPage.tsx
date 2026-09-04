@@ -59,6 +59,7 @@ import {
   Group,
   Modal,
   Paper,
+  SegmentedControl,
   Select,
   Stack,
   Text,
@@ -137,6 +138,10 @@ import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import PatternTable from './components/PatternTable';
 import { DBSearchHeatmapChart } from './components/Search/DBSearchHeatmapChart';
 import DirectTraceSidePanel from './components/Search/DirectTraceSidePanel';
+import {
+  type TraceChartMode,
+  TraceRedMetricsChart,
+} from './components/Search/TraceRedMetricsChart';
 import SourceSchemaPreview, {
   isSourceSchemaPreviewEnabled,
 } from './components/SourceSchemaPreview';
@@ -203,6 +208,13 @@ const SearchConfigSchema = z.object({
 type SearchConfigFromSchema = z.infer<typeof SearchConfigSchema>;
 
 const QUERY_KEY_PREFIX = 'search';
+// The RED tiles are auxiliary viz, not the results query, so they key their
+// queries under a separate prefix to stay out of the `search executed`
+// telemetry (which matches [QUERY_KEY_PREFIX] only). Otherwise the slow
+// avg/p95/p99 duration query would become what the reported search latency
+// measures. The live-tail pause, on the other hand, does wait on this prefix
+// (see the pause signal below) so live ticks don't stack fresh quantile scans.
+const RED_QUERY_KEY_PREFIX = `${QUERY_KEY_PREFIX}-red`;
 
 // Clicks inside the results panel keep the row side panel open (so users can
 // scroll the table or select a different row); clicks anywhere else on the page
@@ -1059,6 +1071,14 @@ export function DBSearchPage() {
     ]).withDefault('results'),
   );
 
+  // RED metrics vs heatmap for the trace results chart area. URL state (like
+  // the other view toggles on this page) so a reload or shared link keeps the
+  // chosen view; the switch lives inline in the search stats row.
+  const [traceChartMode, setTraceChartMode] = useQueryState(
+    'traceChartMode',
+    parseAsStringEnum<TraceChartMode>(['red', 'heatmap']).withDefault('red'),
+  );
+
   const [patternColumn, setPatternColumn] = useQueryState(
     'patternColumn',
     parseAsString,
@@ -1580,6 +1600,16 @@ export function DBSearchPage() {
       queryKey: [QUERY_KEY_PREFIX],
     }) > 0;
 
+  // Live tail also waits on the RED metric queries. They live under a separate
+  // prefix (kept out of the search-latency telemetry above), so without this
+  // each ~10s tick would fire a fresh avg/p95/p99 scan without waiting for the
+  // previous one, stacking slow quantile queries while live tail runs. Resolves
+  // to 0 when the RED tiles aren't mounted, so it's a no-op off the trace view.
+  const isRedQueryFetching =
+    useIsFetching({
+      queryKey: [RED_QUERY_KEY_PREFIX],
+    }) > 0;
+
   const { searchElapsedMs } = useSearchTelemetry({
     isAnyQueryFetching,
     isLive: isLive ?? false,
@@ -1621,7 +1651,8 @@ export function DBSearchPage() {
     interval,
     refreshFrequency,
     onTimeRangeSelect,
-    pause: isAnyQueryFetching || !queryReady || !isTabVisible,
+    pause:
+      isAnyQueryFetching || isRedQueryFetching || !queryReady || !isTabVisible,
   });
 
   // This ensures we only render this conditionally on the client
@@ -1807,6 +1838,34 @@ export function DBSearchPage() {
   const { data: aliasMap } = useAliasMapFromChartConfig(dbSqlRowTableConfig);
 
   const aliasWith = useMemo(() => aliasMapToWithClauses(aliasMap), [aliasMap]);
+
+  // The trace results chart shows RED metrics (and a heatmap) only for a trace
+  // source that exposes a duration column; otherwise the single histogram
+  // stays. Derived once, as the narrowed source or null, so the stats-row
+  // toggle and the chart branch can't drift apart on which one renders.
+  const traceRedMetricsSource =
+    searchedSource != null &&
+    isTraceSource(searchedSource) &&
+    searchedSource.durationExpression
+      ? searchedSource
+      : null;
+
+  // Reset to the default RED view when the source actually changes, so
+  // returning to a trace source after viewing another one doesn't silently
+  // reopen in Heatmap. The ref starts undefined and is only compared once a
+  // real id has been seen, so the async source resolution on first load
+  // (undefined -> id) doesn't count as a change and a shared link that pins
+  // ?traceChartMode=heatmap survives.
+  const prevSourceIdRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (
+      prevSourceIdRef.current !== undefined &&
+      prevSourceIdRef.current !== searchedSource?.id
+    ) {
+      setTraceChartMode('red');
+    }
+    prevSourceIdRef.current = searchedSource?.id;
+  }, [searchedSource?.id, setTraceChartMode]);
 
   const histogramTimeChartConfig = useMemo(() => {
     if (chartConfig == null) {
@@ -2435,11 +2494,7 @@ export function DBSearchPage() {
                     setAnalysisMode={setAnalysisMode}
                     chartConfig={filtersChartConfig}
                     sourceId={inputSourceObj?.id}
-                    showDelta={
-                      !!(searchedSource?.kind === SourceKind.Trace
-                        ? searchedSource.durationExpression
-                        : undefined)
-                    }
+                    showDelta={traceRedMetricsSource != null}
                     onColumnToggle={toggleColumn}
                     displayedColumns={displayedColumns}
                     onCollapse={() => setIsFilterSidebarCollapsed(true)}
@@ -2556,6 +2611,21 @@ export function DBSearchPage() {
                             enableParallelQueries
                           />
                           <Group gap="sm" align="center">
+                            {traceRedMetricsSource != null && (
+                              <SegmentedControl
+                                size="xs"
+                                value={traceChartMode}
+                                onChange={v =>
+                                  setTraceChartMode(
+                                    v === 'heatmap' ? 'heatmap' : 'red',
+                                  )
+                                }
+                                data={[
+                                  { label: 'RED', value: 'red' },
+                                  { label: 'Heatmap', value: 'heatmap' },
+                                ]}
+                              />
+                            )}
                             {shouldShowLiveModeHint &&
                               denoiseResults != true && (
                                 <ResumeLiveTailButton
@@ -2576,26 +2646,50 @@ export function DBSearchPage() {
                           </Group>
                         </Group>
                       </Box>
-                      {!hasQueryError && (
-                        <Box
-                          className={searchPageStyles.timeChartContainer}
-                          mih="0"
-                        >
-                          <DBTimeChart
-                            sourceId={searchedConfig.source ?? undefined}
-                            showLegend={false}
-                            config={histogramTimeChartConfig}
-                            enabled={isReady}
-                            showDisplaySwitcher={false}
-                            showMVOptimizationIndicator={false}
-                            showDateRangeIndicator={false}
-                            queryKeyPrefix={QUERY_KEY_PREFIX}
-                            onTimeRangeSelect={handleTimeRangeSelect}
-                            onFocusSeries={handleFocusSeries}
-                            enableParallelQueries
-                          />
-                        </Box>
-                      )}
+                      {!hasQueryError &&
+                        (traceRedMetricsSource != null ? (
+                          <Box
+                            className={searchPageStyles.timeChartContainer}
+                            mih="0"
+                            h={240}
+                          >
+                            <TraceRedMetricsChart
+                              mode={traceChartMode}
+                              histogramTimeChartConfig={
+                                histogramTimeChartConfig
+                              }
+                              heatmapChartConfig={{
+                                ...chartConfig,
+                                dateRange: searchedTimeRange,
+                                with: aliasWith,
+                              }}
+                              source={traceRedMetricsSource}
+                              isReady={isReady}
+                              queryKeyPrefix={RED_QUERY_KEY_PREFIX}
+                              onTimeRangeSelect={handleTimeRangeSelect}
+                              onFocusSeries={handleFocusSeries}
+                            />
+                          </Box>
+                        ) : (
+                          <Box
+                            className={searchPageStyles.timeChartContainer}
+                            mih="0"
+                          >
+                            <DBTimeChart
+                              sourceId={searchedConfig.source ?? undefined}
+                              showLegend={false}
+                              config={histogramTimeChartConfig}
+                              enabled={isReady}
+                              showDisplaySwitcher={false}
+                              showMVOptimizationIndicator={false}
+                              showDateRangeIndicator={false}
+                              queryKeyPrefix={QUERY_KEY_PREFIX}
+                              onTimeRangeSelect={handleTimeRangeSelect}
+                              onFocusSeries={handleFocusSeries}
+                              enableParallelQueries
+                            />
+                          </Box>
+                        ))}
                     </>
                   )}
                   {hasQueryError && queryError ? (
