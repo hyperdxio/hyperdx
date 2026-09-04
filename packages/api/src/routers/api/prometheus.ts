@@ -185,6 +185,61 @@ export function isClientDisconnect(err: unknown): boolean {
   );
 }
 
+/**
+ * Join a Connection host with an absolute Prometheus API path.
+ *
+ * `new URL('/api/v1/query_range', 'http://host:8481/select/0/prometheus')`
+ * discards `/select/0/prometheus` because an absolute path replaces the base
+ * pathname. VictoriaMetrics cluster (and any Prometheus-compatible server
+ * mounted under a prefix) needs that prefix kept. Host userinfo, query, and
+ * hash are left untouched.
+ *
+ * `path` must be an absolute path (every call site passes a literal starting
+ * with `/`) -- this is not a general-purpose URL joiner.
+ *
+ * @see https://github.com/hyperdxio/hyperdx/issues/3046
+ */
+export function joinPrometheusUpstreamUrl(
+  upstreamHost: string,
+  path: string,
+): URL {
+  const url = new URL(upstreamHost);
+  // `new URL('prometheus:9090')` succeeds with an opaque path (`prometheus:`
+  // scheme). The pathname setter is a no-op there, so without this guard the
+  // helper would return the host unchanged, `fetch` would fail, and the proxy
+  // would 502 / increment query_errors for a user misconfiguration. Same check
+  // as clickhouseProxy.ts.
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new TypeError('Connection host must be http(s)');
+  }
+  // Strip ALL trailing slashes, not just one -- a host saved with a doubled
+  // trailing slash (e.g. `http://prom:9090//`) would otherwise leave a `//`
+  // in the joined path, which most servers treat as a distinct (404) path.
+  const basePath = url.pathname.replace(/\/+$/, '');
+  url.pathname = `${basePath}${path}`;
+  return url;
+}
+
+// Only real Prometheus API params are ever caller-settable in
+// proxyToPrometheus's query merge below. `params` there is built upstream by
+// spreading the *entire* `req.query`/`req.body` with no allowlist (see
+// `getParams`), so without this, a request could supply an arbitrary key --
+// e.g. VictoriaMetrics's `extra_label`, which a Connection host may pin as a
+// tenant-isolation scope -- and un-pin or override it, even though no
+// legitimate caller ever sends that key.
+const CALLER_SETTABLE_PARAM_KEYS = new Set([
+  'query',
+  'time',
+  'start',
+  'end',
+  'step',
+  'match',
+  'match[]',
+  'limit',
+  'timeout',
+  'stats',
+]);
+
 // Forwards the response straight from the upstream Prometheus to the
 // HyperDX client. Returns the HTTP status it wrote, so callers can record an
 // error metric: this helper handles its own failures by writing 400/502/504 and
@@ -203,19 +258,40 @@ async function proxyToPrometheus(
 ): Promise<number> {
   let url: URL;
   try {
-    url = new URL(path, upstreamHost);
-  } catch {
+    url = joinPrometheusUpstreamUrl(upstreamHost, path);
+  } catch (err) {
+    // Not echoing `upstreamHost` at all -- a redaction regex on an arbitrary
+    // (possibly malformed, since this is the failure branch) string can
+    // always be wrong for some shape (e.g. a `/` preceding the credentials).
+    // `err.message` is always safe to show: it's either this function's own
+    // fixed "Connection host must be http(s)", or `URL`'s parse-failure
+    // message, which is the fixed string "Invalid URL" and never echoes the
+    // input (verified against Node's URL implementation).
     res.status(400).json({
       status: 'error',
       errorType: 'bad_data',
-      error: `Connection host is not a valid URL: ${JSON.stringify(upstreamHost)}`,
+      error: `Invalid Connection host: ${err instanceof Error ? err.message : String(err)}`,
     });
     return 400;
   }
+  // For a key in CALLER_SETTABLE_PARAM_KEYS, the request always wins
+  // outright, including repeatable ones like `match[]` -- so a Connection
+  // host can never silently override (or, for `match[]`, narrow) a value
+  // the caller or this proxy explicitly sets. A host-only param outside
+  // that set (e.g. VictoriaMetrics's `extra_label`) is left as-is.
   for (const [k, v] of Object.entries(params)) {
-    if (['connectionId', 'database', 'table'].includes(k)) continue;
+    if (!CALLER_SETTABLE_PARAM_KEYS.has(k)) continue;
     if (v == null) continue;
-    // A repeatable param (`match[]`) appends every value
+    // Clear any host-pinned value at this key first: for a repeatable param
+    // this prevents an `append` from leaving the host's value(s) alongside
+    // the request's rather than replacing them. This also means a request's
+    // `limit=0` still clears a host-pinned `limit` (see below) even though
+    // it isn't itself re-set.
+    url.searchParams.delete(k);
+    // Prometheus reads a limit of 0 as "unlimited", the same as omitting the
+    // key entirely -- forward that by omission too, rather than a literal
+    // "0", so upstream sees the same request shape it always has.
+    if (k === 'limit' && v === '0') continue;
     if (Array.isArray(v)) {
       for (const item of v) url.searchParams.append(k, item);
     } else {
@@ -224,15 +300,16 @@ async function proxyToPrometheus(
   }
   const target = url.toString();
 
-  // A connection host may carry basic-auth credentials (`http://user:pw@host`),
-  // and the error bodies below are shown in the browser. Strip them for display
-  // only — `target` itself still needs them to authenticate.
-  const redactedTarget = (() => {
-    const safe = new URL(url);
-    safe.username = '';
-    safe.password = '';
-    return safe.toString();
-  })();
+  // A connection host may carry basic-auth credentials (`http://user:pw@host`)
+  // or a secret pinned in its own query string (e.g. VictoriaMetrics
+  // `?authKey=...`, preserved by the merge above for any key outside
+  // `CALLER_SETTABLE_PARAM_KEYS`), and the error bodies below are shown in
+  // the browser. `url.origin` never includes userinfo (WHATWG URL spec), and
+  // dropping the query/hash entirely -- rather than trying to redact only the
+  // secret-shaped parts of it -- means there's no query key to ever miss.
+  // `target` itself is unaffected and still carries everything needed to
+  // authenticate.
+  const redactedTarget = `${url.origin}${url.pathname}`;
 
   let upstreamResp: Response;
   try {
@@ -869,7 +946,12 @@ async function handleLabelLookup(
         {
           ...(start != null ? { start: String(start) } : {}),
           ...(end != null ? { end: String(end) } : {}),
-          ...(limit ? { limit: String(limit) } : {}),
+          // `limit` is 0 or absent when validation passes (see the schema
+          // above); 0 means "unlimited" to Prometheus and must still be
+          // forwarded (`v == null` is the merge loop's own absence check),
+          // otherwise a request explicitly asking for unlimited results
+          // silently loses to a host-pinned `limit`.
+          ...(limit != null ? { limit: String(limit) } : {}),
           // Restored under the name Prometheus expects
           ...(match != null ? { 'match[]': match } : {}),
         },

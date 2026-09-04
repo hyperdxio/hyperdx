@@ -254,6 +254,71 @@ describe('prometheus router', () => {
       expect(res.body.error).not.toContain('s3cr3t');
     });
 
+    // Unlike basic-auth userinfo, a secret pinned in the host's own query
+    // string (e.g. VictoriaMetrics `?authKey=...`) is preserved verbatim on
+    // the upstream URL by the param merge -- `redactedTarget` must drop the
+    // whole query string for display, not try to redact only the
+    // secret-shaped parts of it, or this leaks into the 502 body.
+    it('does not leak a secret pinned in the host query string into the 502 message', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedPrometheusConnection(
+        team._id,
+        'http://prom.example.com?authKey=super-secret-token',
+      );
+
+      mockFetch.mockRejectedValueOnce(
+        Object.assign(new Error('fetch failed'), {
+          cause: { code: 'ECONNREFUSED' },
+        }),
+      );
+
+      const res = await agent
+        .get('/v1/prometheus/query_exemplars')
+        .query({
+          query: 'up',
+          start: '1700000000',
+          end: '1700000060',
+          connectionId: conn._id.toString(),
+        })
+        .expect(502);
+
+      expect(res.body.error).toContain('ECONNREFUSED');
+      expect(res.body.error).not.toContain('super-secret-token');
+      expect(res.body.error).toContain('prom.example.com');
+    });
+
+    // The 504 timeout branch builds its message from the same `redactedTarget`
+    // as the 502 branch, but had no test of its own -- pin it separately so a
+    // regression isolated to this branch (e.g. someone reintroducing the raw
+    // `target` here specifically) would still be caught.
+    it('does not leak credentials or a host query-string secret into the 504 message', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedPrometheusConnection(
+        team._id,
+        'http://user:s3cr3t@prom.example.com?authKey=super-secret-token',
+      );
+
+      mockFetch.mockRejectedValueOnce(
+        Object.assign(new Error('The operation was aborted'), {
+          name: 'TimeoutError',
+        }),
+      );
+
+      const res = await agent
+        .get('/v1/prometheus/query_exemplars')
+        .query({
+          query: 'up',
+          start: '1700000000',
+          end: '1700000060',
+          connectionId: conn._id.toString(),
+        })
+        .expect(504);
+
+      expect(res.body.error).not.toContain('s3cr3t');
+      expect(res.body.error).not.toContain('super-secret-token');
+      expect(res.body.error).toContain('prom.example.com');
+    });
+
     // nosniff is set by router middleware, so the helper's own error bodies —
     // which echo the caller-supplied host — carry it too.
     it('sends nosniff on its own error responses', async () => {
@@ -271,6 +336,56 @@ describe('prometheus router', () => {
         .expect(400);
 
       expect(res.headers['x-content-type-options']).toBe('nosniff');
+    });
+
+    it('returns 400 for a scheme-less connection host instead of 502', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedPrometheusConnection(team._id, 'prometheus:9090');
+
+      const res = await agent
+        .get('/v1/prometheus/query_range')
+        .query({
+          query: 'up',
+          start: '1700000000',
+          end: '1700000060',
+          step: '15s',
+          connectionId: conn._id.toString(),
+        })
+        .expect(400);
+
+      expect(res.body).toMatchObject({
+        status: 'error',
+        errorType: 'bad_data',
+        error: expect.stringContaining('http(s)'),
+      });
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    // The 400 branch never echoes the Connection host at all (rather than
+    // trying to redact it), so this pins the actual call site: reverting to
+    // interpolate the raw host back in would fail the suite.
+    it('never echoes the connection host (or any credentials in it) in the 400 body', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedPrometheusConnection(
+        team._id,
+        'user:secret-password@prometheus:9090',
+      );
+
+      const res = await agent
+        .get('/v1/prometheus/query_range')
+        .query({
+          query: 'up',
+          start: '1700000000',
+          end: '1700000060',
+          step: '15s',
+          connectionId: conn._id.toString(),
+        })
+        .expect(400);
+
+      expect(res.body.error).not.toContain('secret-password');
+      expect(res.body.error).not.toContain('prometheus:9090');
+      expect(res.body.error).toContain('http(s)');
+      expect(mockFetch).not.toHaveBeenCalled();
     });
 
     it('proxies to upstream Prometheus when connection isPrometheusEndpoint', async () => {
@@ -301,6 +416,270 @@ describe('prometheus router', () => {
       expect(calledUrl).toContain('/api/v1/query_range');
       expect(calledUrl).toContain('query=up');
       expect(calledUrl).not.toContain('connectionId');
+    });
+
+    // Pins the call site, not just the helper: reverting
+    // `url = new URL(path, upstreamHost)` would drop `/select/0/prometheus`.
+    it('keeps a VictoriaMetrics cluster path prefix on the upstream URL', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedPrometheusConnection(
+        team._id,
+        'http://vmselect:8481/select/0/prometheus',
+      );
+
+      mockFetch.mockResolvedValueOnce(
+        fakeUpstreamResponse({
+          status: 'success',
+          data: { resultType: 'matrix', result: [] },
+        }),
+      );
+
+      await agent
+        .get('/v1/prometheus/query_range')
+        .query({
+          query: 'up',
+          start: '1700000000',
+          end: '1700000060',
+          step: '15s',
+          connectionId: conn._id.toString(),
+        })
+        .expect(200);
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(mockFetch.mock.calls[0][0] as string).toMatch(
+        /^http:\/\/vmselect:8481\/select\/0\/prometheus\/api\/v1\/query_range/,
+      );
+    });
+
+    // Every other userinfo test asserts what's redacted for *display* (the
+    // error bodies below). The actual outgoing `fetch` target must still
+    // carry real credentials, or authenticated Prometheus connections would
+    // silently stop authenticating.
+    it('still sends real credentials to the actual upstream fetch call', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedPrometheusConnection(
+        team._id,
+        'http://user:pw@prom.example.com',
+      );
+
+      mockFetch.mockResolvedValueOnce(
+        fakeUpstreamResponse({
+          status: 'success',
+          data: { resultType: 'matrix', result: [] },
+        }),
+      );
+
+      await agent
+        .get('/v1/prometheus/query_range')
+        .query({
+          query: 'up',
+          start: '1700000000',
+          end: '1700000060',
+          step: '15s',
+          connectionId: conn._id.toString(),
+        })
+        .expect(200);
+
+      expect(mockFetch.mock.calls[0][0] as string).toContain('user:pw@');
+    });
+
+    it('leaves a host-pinned param untouched when the request never references it', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedPrometheusConnection(
+        team._id,
+        'http://vmselect:8481/select/0/prometheus?extra_label=namespace%3Dprod',
+      );
+
+      mockFetch.mockResolvedValueOnce(
+        fakeUpstreamResponse({
+          status: 'success',
+          data: { resultType: 'matrix', result: [] },
+        }),
+      );
+
+      await agent
+        .get('/v1/prometheus/query_range')
+        .query({
+          query: 'up',
+          start: '1700000000',
+          end: '1700000060',
+          step: '15s',
+          connectionId: conn._id.toString(),
+        })
+        .expect(200);
+
+      const requested = new URL(mockFetch.mock.calls[0][0] as string);
+      expect(requested.searchParams.get('extra_label')).toBe('namespace=prod');
+      expect(requested.searchParams.get('query')).toBe('up');
+    });
+
+    // A host-pinned Prometheus-native param the request DOES supply a value
+    // for must not silently win: a Connection host could otherwise override
+    // `query`, `match[]`, or `limit` and the caller would get a wrong answer
+    // with no error (e.g. a pinned `query=up` making every chart on that
+    // connection return the same series regardless of what was requested).
+    it('lets a request query param override a same-named one pinned on the connection host', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedPrometheusConnection(
+        team._id,
+        'http://vmselect:8481/select/0/prometheus?query=host_pinned_query',
+      );
+
+      mockFetch.mockResolvedValueOnce(
+        fakeUpstreamResponse({
+          status: 'success',
+          data: { resultType: 'matrix', result: [] },
+        }),
+      );
+
+      await agent
+        .get('/v1/prometheus/query_range')
+        .query({
+          query: 'up',
+          start: '1700000000',
+          end: '1700000060',
+          step: '15s',
+          connectionId: conn._id.toString(),
+        })
+        .expect(200);
+
+      const requested = new URL(mockFetch.mock.calls[0][0] as string);
+      expect(requested.searchParams.get('query')).toBe('up');
+    });
+
+    // `timeout` and `stats` are real Prometheus API params on
+    // /api/v1/query(_range) -- omitting them from the allowlist (as an
+    // earlier version of this fix did) would silently drop a request's
+    // value rather than forward it, contradicting the "request always wins"
+    // guarantee for every param this list claims to cover.
+    it('forwards a request timeout, overriding one pinned on the connection host', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedPrometheusConnection(
+        team._id,
+        'http://prom.example.com?timeout=5s',
+      );
+
+      mockFetch.mockResolvedValueOnce(
+        fakeUpstreamResponse({
+          status: 'success',
+          data: { resultType: 'matrix', result: [] },
+        }),
+      );
+
+      await agent
+        .get('/v1/prometheus/query_range')
+        .query({
+          query: 'up',
+          start: '1700000000',
+          end: '1700000060',
+          step: '15s',
+          timeout: '30s',
+          connectionId: conn._id.toString(),
+        })
+        .expect(200);
+
+      const requested = new URL(mockFetch.mock.calls[0][0] as string);
+      expect(requested.searchParams.get('timeout')).toBe('30s');
+    });
+
+    // `stats` is `timeout`'s sibling in the allowlist -- covered separately
+    // so a regression dropping just `stats` (and not `timeout`) would still
+    // be caught.
+    it('forwards a request stats value, overriding one pinned on the connection host', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedPrometheusConnection(
+        team._id,
+        'http://prom.example.com?stats=all',
+      );
+
+      mockFetch.mockResolvedValueOnce(
+        fakeUpstreamResponse({
+          status: 'success',
+          data: { resultType: 'matrix', result: [] },
+        }),
+      );
+
+      await agent
+        .get('/v1/prometheus/query_range')
+        .query({
+          query: 'up',
+          start: '1700000000',
+          end: '1700000060',
+          step: '15s',
+          stats: 'none',
+          connectionId: conn._id.toString(),
+        })
+        .expect(200);
+
+      const requested = new URL(mockFetch.mock.calls[0][0] as string);
+      expect(requested.searchParams.get('stats')).toBe('none');
+    });
+
+    // Unlike a real Prometheus API param, an arbitrary key the request
+    // happens to also send (here VictoriaMetrics's own `extra_label`, which
+    // a Connection host may pin as a tenant-isolation scope) must NOT be
+    // caller-overridable: `getParams` spreads the entire incoming
+    // query/body with no allowlist, so without restricting the merge to
+    // real Prometheus params, any request could un-pin a host's scoping
+    // param just by naming it.
+    it('does not let a request override a non-Prometheus param pinned on the connection host', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedPrometheusConnection(
+        team._id,
+        'http://vmselect:8481/select/0/prometheus?extra_label=namespace%3Dprod',
+      );
+
+      mockFetch.mockResolvedValueOnce(
+        fakeUpstreamResponse({
+          status: 'success',
+          data: { resultType: 'matrix', result: [] },
+        }),
+      );
+
+      await agent
+        .get('/v1/prometheus/query_range')
+        .query({
+          query: 'up',
+          start: '1700000000',
+          end: '1700000060',
+          step: '15s',
+          extra_label: 'namespace=other',
+          connectionId: conn._id.toString(),
+        })
+        .expect(200);
+
+      const requested = new URL(mockFetch.mock.calls[0][0] as string);
+      expect(requested.searchParams.get('extra_label')).toBe('namespace=prod');
+      expect(requested.searchParams.get('query')).toBe('up');
+    });
+
+    it('lets the request step override a step pinned on the connection host', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedPrometheusConnection(
+        team._id,
+        'http://prom.example.com?step=5m',
+      );
+
+      mockFetch.mockResolvedValueOnce(
+        fakeUpstreamResponse({
+          status: 'success',
+          data: { resultType: 'matrix', result: [] },
+        }),
+      );
+
+      await agent
+        .get('/v1/prometheus/query_range')
+        .query({
+          query: 'up',
+          start: '1700000000',
+          end: '1700000060',
+          step: '15s',
+          connectionId: conn._id.toString(),
+        })
+        .expect(200);
+
+      const requested = new URL(mockFetch.mock.calls[0][0] as string);
+      expect(requested.searchParams.get('step')).toBe('15s');
     });
 
     it('does NOT proxy to Prometheus when connection is not isPrometheusEndpoint', async () => {
@@ -537,6 +916,28 @@ describe('prometheus router', () => {
       expect(requested.searchParams.has('limit')).toBe(false);
     });
 
+    // `limit: '0'` is falsy, so a naive `limit ? {...} : {}` guard on the
+    // route drops it before it ever reaches proxyToPrometheus's merge loop --
+    // a host-pinned limit would then silently survive even though the
+    // request explicitly asked for "unlimited". Pin a non-zero limit on the
+    // host and confirm the request's 0 still clears it (rather than 0 itself
+    // reaching upstream, which the previous test guards separately).
+    it('lets a request limit of 0 clear a non-zero limit pinned on the connection host', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedPrometheusConnection(
+        team._id,
+        'http://prom.example.com?limit=100',
+      );
+
+      await agent
+        .get('/v1/prometheus/label/job/values')
+        .query({ connectionId: conn._id.toString(), limit: '0' })
+        .expect(200);
+
+      const requested = new URL(String(mockFetch.mock.calls[0][0]));
+      expect(requested.searchParams.has('limit')).toBe(false);
+    });
+
     it('rejects a negative limit', async () => {
       const { agent, team } = await getLoggedInAgent(server);
       const conn = await seedPrometheusConnection(team._id);
@@ -653,6 +1054,33 @@ describe('prometheus router', () => {
 
       const requested = new URL(String(mockFetch.mock.calls[0][0]));
       expect(requested.searchParams.has('match[]')).toBe(false);
+    });
+
+    // A repeatable param needs its own regression test: a naive fix could
+    // append the request's values alongside a host-pinned one instead of
+    // replacing it, silently narrowing what upstream is asked for (e.g. a
+    // host pinning `match[]` would otherwise make label-value autocomplete
+    // return the wrong series list).
+    it('replaces a host-pinned match[] with the request values, not appends alongside them', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedPrometheusConnection(
+        team._id,
+        'http://prom.example.com?match%5B%5D=host-pinned-series',
+      );
+
+      await agent
+        .get('/v1/prometheus/label/job/values')
+        .query({
+          connectionId: conn._id.toString(),
+          match: ['requested-series-1', 'requested-series-2'],
+        })
+        .expect(200);
+
+      const requested = new URL(String(mockFetch.mock.calls[0][0]));
+      expect(requested.searchParams.getAll('match[]')).toEqual([
+        'requested-series-1',
+        'requested-series-2',
+      ]);
     });
 
     // queryLabelValues' own bounds/limit/fallback behaviour is covered in
@@ -1074,6 +1502,39 @@ describe('prometheus router', () => {
       const sentStart = Number(requested.searchParams.get('start'));
       expect(Number(requested.searchParams.get('end'))).toBe(end);
       expect(sentStart).toBeGreaterThan(end - thirtyDays);
+      expect(end - sentStart).toBe(PROMETHEUS_MAX_EXEMPLAR_WINDOW_SEC);
+    });
+
+    it('lets the clamped exemplar window override start/end pinned on the host', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const end = 1700000000;
+      const thirtyDays = 30 * 24 * 60 * 60;
+      // Pinned an hour earlier than the request's `end` so the assertion
+      // below can only pass if the request's value actually won -- if the
+      // host's pinned value were used instead, `end` wouldn't match.
+      const hostEnd = end - 3600;
+      const conn = await seedPrometheusConnection(
+        team._id,
+        `http://prom.example.com?start=${hostEnd - thirtyDays}&end=${hostEnd}`,
+      );
+
+      mockFetch.mockResolvedValueOnce(
+        fakeUpstreamResponse({ status: 'success', data: [] }),
+      );
+
+      await agent
+        .get('/v1/prometheus/query_exemplars')
+        .query({
+          query: 'up',
+          start: String(end - thirtyDays),
+          end: String(end),
+          connectionId: conn._id.toString(),
+        })
+        .expect(200);
+
+      const requested = new URL(mockFetch.mock.calls[0][0] as string);
+      const sentStart = Number(requested.searchParams.get('start'));
+      expect(Number(requested.searchParams.get('end'))).toBe(end);
       expect(end - sentStart).toBe(PROMETHEUS_MAX_EXEMPLAR_WINDOW_SEC);
     });
 
