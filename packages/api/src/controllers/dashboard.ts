@@ -14,6 +14,7 @@ import {
   getDashboardAlertsByTile,
   getTeamDashboardAlertsByDashboardAndTile,
 } from '@/controllers/alerts';
+import { recordOnboardingTaskCompletion } from '@/controllers/user';
 import type { ObjectId } from '@/models';
 import type { AlertDocument, IAlert } from '@/models/alert';
 import Dashboard from '@/models/dashboard';
@@ -25,6 +26,18 @@ function pickAlertsByTile(tiles: Tile[]) {
     }
     return acc;
   }, {});
+}
+
+// The 'dashboard' onboarding task means the user built something worth charting,
+// so it completes only once a dashboard actually has a tile — an empty
+// dashboard shell (created, then never filled in) does not count.
+function recordDashboardOnboardingIfHasTiles(
+  userId: ObjectId | undefined,
+  tiles: { length: number } | null | undefined,
+) {
+  if ((tiles?.length ?? 0) > 0) {
+    recordOnboardingTaskCompletion(userId, 'dashboard');
+  }
 }
 
 /**
@@ -181,6 +194,8 @@ export async function createDashboard(
     userId,
   );
 
+  recordDashboardOnboardingIfHasTiles(userId, newDashboard.tiles);
+
   return newDashboard;
 }
 
@@ -231,6 +246,8 @@ export async function updateDashboard(
       userId,
     );
   }
+
+  recordDashboardOnboardingIfHasTiles(userId, updatedDashboard.tiles);
 
   return updatedDashboard;
 }

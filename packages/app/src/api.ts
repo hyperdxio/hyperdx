@@ -1,3 +1,4 @@
+import { useCallback } from 'react';
 import Router from 'next/router';
 import type { HTTPError, Options, ResponsePromise } from 'ky';
 import ky from 'ky-universal';
@@ -9,6 +10,8 @@ import type {
   AlertsApiResponse,
   InstallationApiResponse,
   MeApiResponse,
+  OnboardingDataApiResponse,
+  OnboardingTaskId,
   PresetDashboard,
   PresetDashboardFilter,
   RotateAccessKeyApiResponse,
@@ -83,23 +86,96 @@ export const hdxServer = (
   });
 };
 
+// Standalone (not just an `api.` method) so other mutation hooks in this file
+// can compose it — e.g. the alert/dashboard save hooks call it on success.
+// Idempotent on the server, seeds the `me` cache from the response.
+export function useCompleteOnboardingTask() {
+  const queryClient = useQueryClient();
+  return useMutation<
+    OnboardingDataApiResponse,
+    Error | HTTPError,
+    OnboardingTaskId
+  >({
+    mutationFn: async (taskId: OnboardingTaskId) =>
+      hdxServer('me/onboarding/task', {
+        method: 'POST',
+        json: { taskId },
+      }).json<OnboardingDataApiResponse>(),
+    onSuccess: data => {
+      queryClient.setQueryData<MeApiResponse | null>(['me'], prev =>
+        prev == null ? prev : { ...prev, onboardingData: data.onboardingData },
+      );
+    },
+  });
+}
+
+// Patch ONLY `onboardingData.completedTasks` in the cached `me` object, with no
+// network request and no query invalidation. Use this when the backend has
+// already recorded a task (alerts/dashboards record server-side) and the client
+// just needs its cache kept in sync. Invalidating `['me']` instead would refetch
+// for every `useMe` consumer — useMetadata, clickhouse settings, AppNav, etc. —
+// which is a wide blast radius for a change only the sidebar checklist cares
+// about. Returns a stable callback; a no-op if the task is already recorded.
+export function useMarkOnboardingTaskComplete() {
+  const queryClient = useQueryClient();
+  return useCallback(
+    (taskId: OnboardingTaskId) => {
+      queryClient.setQueryData<MeApiResponse | null>(['me'], prev => {
+        if (prev == null) {
+          return prev;
+        }
+        if (prev.onboardingData.completedTasks.includes(taskId)) {
+          return prev;
+        }
+        return {
+          ...prev,
+          onboardingData: {
+            ...prev.onboardingData,
+            completedTasks: [...prev.onboardingData.completedTasks, taskId],
+          },
+        };
+      });
+    },
+    [queryClient],
+  );
+}
+
 const api = {
   useCreateAlert() {
+    const markOnboardingTaskComplete = useMarkOnboardingTaskComplete();
     return useMutation<{ data: Alert }, Error, Alert>({
       mutationFn: async alert =>
         server('alerts', {
           method: 'POST',
           json: alert,
         }).json(),
+      // The backend records the 'alert' onboarding task on create (see
+      // createAlert). Patch just onboardingData in the `me` cache so the sidebar
+      // checklist updates without refetching `me` for every consumer.
+      onSuccess: () => {
+        if (!IS_LOCAL_MODE) {
+          markOnboardingTaskComplete('alert');
+        }
+      },
     });
   },
   useUpdateAlert() {
+    const markOnboardingTaskComplete = useMarkOnboardingTaskComplete();
     return useMutation<{ data: Alert }, Error, { id: string } & Alert>({
       mutationFn: async alert =>
         server(`alerts/${alert.id}`, {
           method: 'PUT',
           json: alert,
         }).json(),
+      // The backend records the 'alert' onboarding task on update too (see
+      // updateAlert), so editing an existing alert completes the checklist.
+      // Patch just onboardingData in the `me` cache to avoid a full `me`
+      // refetch, matching useCreateAlert.
+      onSuccess: () => {
+        if (!IS_LOCAL_MODE) {
+          markOnboardingTaskComplete('alert');
+        }
+      },
     });
   },
   useDeleteAlert() {
@@ -289,6 +365,28 @@ const api = {
       onSuccess: data => {
         queryClient.setQueryData<MeApiResponse | null>(['me'], prev =>
           prev == null ? prev : { ...prev, accessKey: data.newAccessKey },
+        );
+      },
+    });
+  },
+  // Marks a product-usage onboarding task complete. Idempotent on the server
+  // ($addToSet), so callers fire it optimistically without checking whether the
+  // task is already done. Seeds the `me` cache from the response so the sidebar
+  // checklist ticks instantly without a refetch.
+  useCompleteOnboardingTask,
+  useDismissOnboarding() {
+    const queryClient = useQueryClient();
+    return useMutation<OnboardingDataApiResponse, Error | HTTPError, boolean>({
+      mutationFn: async (isDismissed: boolean) =>
+        hdxServer('me/onboarding/dismiss', {
+          method: 'PATCH',
+          json: { isDismissed },
+        }).json<OnboardingDataApiResponse>(),
+      onSuccess: data => {
+        queryClient.setQueryData<MeApiResponse | null>(['me'], prev =>
+          prev == null
+            ? prev
+            : { ...prev, onboardingData: data.onboardingData },
         );
       },
     });

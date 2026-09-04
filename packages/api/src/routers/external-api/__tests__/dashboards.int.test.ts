@@ -1,5 +1,9 @@
 import { isBuilderSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
-import { MetricsDataType, SourceKind } from '@hyperdx/common-utils/dist/types';
+import {
+  MetricsDataType,
+  OnboardingTaskId,
+  SourceKind,
+} from '@hyperdx/common-utils/dist/types';
 import { omit } from 'lodash';
 import { ObjectId } from 'mongodb';
 import request from 'supertest';
@@ -17,6 +21,7 @@ import Alert, { AlertSource, AlertThresholdType } from '@/models/alert';
 import Connection from '@/models/connection';
 import Dashboard from '@/models/dashboard';
 import { Source } from '@/models/source';
+import User from '@/models/user';
 import Webhook, { WebhookService } from '@/models/webhook';
 import {
   ExternalDashboardTile,
@@ -216,6 +221,43 @@ describe('External API v2 Dashboards - old format', () => {
   const authRequest = (method, url) => {
     return agent[method](url).set('Authorization', `Bearer ${user?.accessKey}`);
   };
+
+  describe('onboarding task recording', () => {
+    const completedTasks = async () =>
+      (await User.findById(user._id))?.onboardingData?.completedTasks ?? [];
+
+    // Recording is fire-and-forget (not awaited by the handler), so poll
+    // briefly rather than reading once immediately after the response.
+    const waitForTask = async (task: OnboardingTaskId) => {
+      for (let i = 0; i < 20; i++) {
+        if ((await completedTasks()).includes(task)) return true;
+        await new Promise(r => setTimeout(r, 25));
+      }
+      return false;
+    };
+
+    it('records the dashboard task when a v2 dashboard with a tile is created', async () => {
+      await authRequest('post', BASE_URL)
+        .send({
+          name: 'With tile',
+          tiles: [createTimeSeriesChart(traceSource._id.toString())],
+          tags: [],
+        })
+        .expect(200);
+
+      expect(await waitForTask('dashboard')).toBe(true);
+    });
+
+    it('does not record the dashboard task for a tileless v2 dashboard', async () => {
+      await authRequest('post', BASE_URL)
+        .send({ name: 'Empty', tiles: [], tags: [] })
+        .expect(200);
+
+      // Give any stray write a chance to land, then assert it did not.
+      await new Promise(r => setTimeout(r, 200));
+      expect(await completedTasks()).not.toContain('dashboard');
+    });
+  });
 
   describe('Response Format', () => {
     it('should return responses in the expected (new) format when creating the dashboard in the old format', async () => {

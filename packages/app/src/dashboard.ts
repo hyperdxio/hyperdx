@@ -4,6 +4,7 @@ import {
   DashboardContainer,
   DashboardFilter,
   DashboardFilterValue,
+  OnboardingTaskId,
   resolveChartPaletteToken,
   SavedChartConfig,
   SearchConditionLanguage,
@@ -14,7 +15,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { hashCode } from '@/utils';
 
-import { hdxServer } from './api';
+import api, {
+  hdxServer,
+  useCompleteOnboardingTask,
+  useMarkOnboardingTaskComplete,
+} from './api';
 import { IS_LOCAL_MODE } from './config';
 import { createEntityStore } from './localStore';
 
@@ -126,8 +131,29 @@ export async function fetchDashboards(): Promise<Dashboard[]> {
   return dashboards.map(normalizeDashboardTileColors);
 }
 
+// The backend records the 'dashboard' (and, for a tile that carries an alert,
+// 'alert') onboarding task on save. We patch just those ids into the `me` cache
+// rather than invalidating `['me']`, which would refetch for every useMe
+// consumer (useMetadata, clickhouse settings, AppNav, …). No-op in local mode.
+//
+// 'dashboard' completes only when the dashboard has a tile, matching the
+// backend: an empty dashboard shell does not count as charting your data.
+function markDashboardOnboarding(
+  markOnboardingTaskComplete: (taskId: OnboardingTaskId) => void,
+  tiles: Tile[] | undefined,
+) {
+  if (IS_LOCAL_MODE || !tiles?.length) {
+    return;
+  }
+  markOnboardingTaskComplete('dashboard');
+  if (tiles.some(tile => tile.config.alert != null)) {
+    markOnboardingTaskComplete('alert');
+  }
+}
+
 export function useUpdateDashboard() {
   const queryClient = useQueryClient();
+  const markOnboardingTaskComplete = useMarkOnboardingTaskComplete();
 
   return useMutation({
     mutationFn: async (
@@ -144,14 +170,16 @@ export function useUpdateDashboard() {
         json: normalized,
       });
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['dashboards'] });
+      markDashboardOnboarding(markOnboardingTaskComplete, variables.tiles);
     },
   });
 }
 
 export function useCreateDashboard() {
   const queryClient = useQueryClient();
+  const markOnboardingTaskComplete = useMarkOnboardingTaskComplete();
 
   return useMutation({
     mutationFn: async (dashboard: Omit<Dashboard, 'id'>) => {
@@ -164,8 +192,9 @@ export function useCreateDashboard() {
         json: normalized,
       }).json<Dashboard>();
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['dashboards'] });
+      markDashboardOnboarding(markOnboardingTaskComplete, variables.tiles);
     },
   });
 }
@@ -201,6 +230,10 @@ export function useDashboard({
   );
 
   const updateDashboard = useUpdateDashboard();
+  const completeOnboardingTask = useCompleteOnboardingTask();
+  const { data: me } = api.useMe();
+  const hasBuiltDashboard =
+    me?.onboardingData?.completedTasks.includes('dashboard') ?? false;
 
   const { data: remoteDashboard, isFetching: isFetchingRemoteDashboard } =
     useQuery({
@@ -240,6 +273,19 @@ export function useDashboard({
         // inserted via a preset literal) and matches the canonical hue
         // tokens used by the renderers.
         setLocalDashboard(normalizeDashboardTileColors(newDashboard));
+        // A temporary (URL-state) dashboard never hits the backend, so the
+        // server can't record the 'dashboard' onboarding task. Adding a tile
+        // here is still "built a chart", so record it directly. setDashboard
+        // runs on every local edit (move/resize/etc), so skip once already
+        // recorded — otherwise every edit fires a redundant POST. Skipped in
+        // local single-user mode where there is no `me` endpoint.
+        if (
+          !IS_LOCAL_MODE &&
+          !hasBuiltDashboard &&
+          (newDashboard.tiles?.length ?? 0) > 0
+        ) {
+          completeOnboardingTask.mutate('dashboard');
+        }
         onSuccess?.();
       } else {
         setIsSettingDashboard(true);
@@ -261,7 +307,13 @@ export function useDashboard({
         });
       }
     },
-    [isLocalDashboard, setLocalDashboard, updateDashboard],
+    [
+      isLocalDashboard,
+      setLocalDashboard,
+      updateDashboard,
+      completeOnboardingTask,
+      hasBuiltDashboard,
+    ],
   );
 
   const dashboardHash =

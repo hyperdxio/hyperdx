@@ -8,6 +8,7 @@ import { groupBy } from 'lodash';
 import { Types } from 'mongoose';
 import { z } from 'zod';
 
+import { recordOnboardingTaskCompletion } from '@/controllers/user';
 import type { ObjectId } from '@/models';
 import Alert, {
   AlertChannel,
@@ -288,10 +289,12 @@ export const createAlert = async (
   alertInput: z.infer<typeof internalAlertSchema>,
   userId: ObjectId,
 ) => {
-  return new Alert({
+  const alert = await new Alert({
     ...makeAlert(alertInput, userId),
     team: teamId,
   }).save();
+  recordOnboardingTaskCompletion(userId, 'alert');
+  return alert;
 };
 
 // create an update alert function based off of the above create alert function
@@ -299,9 +302,10 @@ export const updateAlert = async (
   id: string,
   teamId: ObjectId,
   alertInput: AlertInput,
+  userId?: ObjectId,
 ) => {
   // should consider clearing AlertHistory when updating an alert?
-  return Alert.findOneAndUpdate(
+  const alert = await Alert.findOneAndUpdate(
     {
       _id: id,
       team: teamId,
@@ -311,6 +315,13 @@ export const updateAlert = async (
       returnDocument: 'after',
     },
   );
+  // Editing an existing alert is still "set up an alert" for onboarding —
+  // record it the same as create so the checklist completes from any edit,
+  // not only the initial create. No-op once already recorded.
+  if (alert != null) {
+    recordOnboardingTaskCompletion(userId, 'alert');
+  }
+  return alert;
 };
 
 export const getAlerts = async (
@@ -367,7 +378,7 @@ export const createOrUpdateDashboardAlerts = async (
   alertsByTile: Record<string, AlertInput>,
   userId?: ObjectId,
 ) => {
-  return Promise.all(
+  const result = await Promise.all(
     Object.entries(alertsByTile).map(async ([tileId, alert]) => {
       const filter = {
         dashboard: dashboardId,
@@ -393,6 +404,14 @@ export const createOrUpdateDashboardAlerts = async (
       });
     }),
   );
+
+  // A tile alert never goes through the /alerts router, so this is the only
+  // place a dashboard-tile alert can complete the onboarding task.
+  if (result.length > 0) {
+    recordOnboardingTaskCompletion(userId, 'alert');
+  }
+
+  return result;
 };
 
 export const deleteDashboardAlerts = async (

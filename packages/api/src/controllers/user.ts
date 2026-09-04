@@ -1,9 +1,11 @@
+import type { OnboardingTaskId } from '@hyperdx/common-utils/dist/types';
 import mongoose from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
 
 import type { ObjectId } from '@/models';
 import Alert from '@/models/alert';
 import User from '@/models/user';
+import logger from '@/utils/logger';
 export function findUserByAccessKey(accessKey: string) {
   return User.findOne({ accessKey });
 }
@@ -30,6 +32,60 @@ export function findUserByEmail(email: string) {
 
 export function findUsersByTeam(team: string | ObjectId) {
   return User.find({ team }).sort({ createdAt: 1 });
+}
+
+// Idempotent: $addToSet means completing an already-completed task is a no-op,
+// so the frontend can fire optimistically without guarding against duplicates.
+// taskId is typed OnboardingTaskId so call sites can't pass an unknown key.
+export function completeOnboardingTask(
+  userId: string | ObjectId,
+  taskId: OnboardingTaskId,
+) {
+  return User.findByIdAndUpdate(
+    userId,
+    { $addToSet: { 'onboardingData.completedTasks': taskId } },
+    { new: true },
+  );
+}
+
+export function setOnboardingDismissed(
+  userId: string | ObjectId,
+  isDismissed: boolean,
+) {
+  return User.findByIdAndUpdate(
+    userId,
+    { $set: { 'onboardingData.isDismissed': isDismissed } },
+    { new: true },
+  );
+}
+
+// Fire-and-forget wrapper for recording a product-usage task from an unrelated
+// write path (creating an alert, saving a dashboard, an MCP tool call).
+// Onboarding bookkeeping must never fail or delay the operation that triggered
+// it, so errors are swallowed after logging. No-op when userId is absent (e.g.
+// a tile alert upserted without an owning user).
+//
+// Unlike completeOnboardingTask (which the /me/onboarding/task route calls and
+// whose returned doc seeds the client cache), this path ignores the result, so
+// it guards on $ne to skip the DB write entirely once the task is recorded.
+// These call sites fire on every save / every MCP tool call, so skipping the
+// redundant $addToSet avoids write amplification on hot paths.
+export function recordOnboardingTaskCompletion(
+  userId: string | ObjectId | undefined | null,
+  taskId: OnboardingTaskId,
+) {
+  if (userId == null) {
+    return;
+  }
+  void User.updateOne(
+    { _id: userId, 'onboardingData.completedTasks': { $ne: taskId } },
+    { $addToSet: { 'onboardingData.completedTasks': taskId } },
+  ).catch(err => {
+    logger.warn(
+      { error: err, userId: userId.toString(), taskId },
+      'Failed to record onboarding task completion',
+    );
+  });
 }
 
 export async function deleteTeamMember(

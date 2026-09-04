@@ -6,7 +6,13 @@
 // `jest.isolateModules` did not override the hoisted `jest.mock` factory
 // reliably enough to share a file.
 jest.mock('../config', () => ({ IS_LOCAL_MODE: false }));
-jest.mock('../api', () => ({ hdxServer: jest.fn() }));
+jest.mock('../api', () => ({
+  __esModule: true,
+  default: { useMe: () => ({ data: null }) },
+  hdxServer: jest.fn(),
+  useMarkOnboardingTaskComplete: () => jest.fn(),
+  useCompleteOnboardingTask: () => ({ mutate: jest.fn() }),
+}));
 jest.mock('@mantine/notifications', () => ({
   notifications: { show: jest.fn() },
 }));

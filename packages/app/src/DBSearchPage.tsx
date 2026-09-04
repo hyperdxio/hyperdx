@@ -84,6 +84,7 @@ import { keepPreviousData, useIsFetching } from '@tanstack/react-query';
 import { SortingState } from '@tanstack/react-table';
 import CodeMirror from '@uiw/react-codemirror';
 
+import api, { useCompleteOnboardingTask } from '@/api';
 import { ActiveFilterPills } from '@/components/ActiveFilterPills';
 import { AlertStatusIcon } from '@/components/AlertStatusIcon';
 import { ContactSupportText } from '@/components/ContactSupportText';
@@ -1251,6 +1252,11 @@ export function DBSearchPage() {
     [key: string]: Error | ClickHouseQueryError;
   }>({});
 
+  const completeOnboardingTask = useCompleteOnboardingTask();
+  const { data: me } = api.useMe();
+  const hasExploredData =
+    me?.onboardingData?.completedTasks.includes('advancedQuery') ?? false;
+
   useEffect(() => {
     if (!isBrowser || !IS_LOCAL_MODE) return;
     const nullQueryErrors = (event: StorageEvent) => {
@@ -1277,6 +1283,18 @@ export function DBSearchPage() {
           filters,
           orderBy,
         });
+        // "Explored data" completes on any non-trivial user-run search:
+        // a non-empty where clause in either language (the search page
+        // defaults to Lucene, so requiring SQL made this practically
+        // unreachable), or any applied filter. A blank default search does
+        // not count. The task is a one-time milestone but this runs on every
+        // search, so skip the request once it's already recorded — otherwise
+        // every subsequent qualifying search fires a redundant (idempotent) POST.
+        const hasWhere = where.trim() !== '';
+        const hasFilters = (filters ?? []).length > 0;
+        if (!IS_LOCAL_MODE && !hasExploredData && (hasWhere || hasFilters)) {
+          completeOnboardingTask.mutate('advancedQuery');
+        }
       },
     )();
     setPatternColumn(draftPatternColumn || null);
@@ -1290,6 +1308,8 @@ export function DBSearchPage() {
     setQueryErrors,
     draftPatternColumn,
     setPatternColumn,
+    completeOnboardingTask,
+    hasExploredData,
   ]);
 
   const debouncedSubmit = useDebouncedCallback(onSubmit, 1000);

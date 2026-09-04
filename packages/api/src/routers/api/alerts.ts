@@ -350,7 +350,7 @@ router.put(
       const { id } = req.params;
       const alertInput = req.body;
       await validateAlertInput(teamId, alertInput);
-      const alert = await updateAlert(id, teamId, alertInput);
+      const alert = await updateAlert(id, teamId, alertInput, req.user?._id);
       if (alert == null) {
         return res.sendStatus(404);
       }

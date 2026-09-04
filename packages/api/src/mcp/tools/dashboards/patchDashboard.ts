@@ -1,6 +1,7 @@
 import { uniq } from 'lodash';
 
 import * as config from '@/config';
+import { recordOnboardingTaskCompletion } from '@/controllers/user';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
 import Dashboard from '@/models/dashboard';
@@ -25,7 +26,7 @@ export function registerPatchDashboard({
   context,
   registerTool,
 }: ToolRegistrar): void {
-  const { teamId } = context;
+  const { teamId, userId } = context;
   const frontendUrl = config.FRONTEND_URL;
 
   registerTool(
@@ -230,6 +231,10 @@ export function registerPatchDashboard({
           internalTiles: patchedTileInDb,
           existingTileIds,
         });
+      }
+
+      if (updatedDashboard.tiles.length > 0) {
+        recordOnboardingTaskCompletion(userId, 'dashboard');
       }
 
       // Return a lightweight response: the patched tile (if any) plus

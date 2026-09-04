@@ -2756,6 +2756,45 @@ export type InstallationApiResponse = z.infer<
   typeof InstallationApiResponseSchema
 >;
 
+// Onboarding
+//
+// Single source of truth for the product-usage onboarding tasks tracked per
+// user. Adding a key here is the ONLY change needed to the contract: the Zod
+// enum below rejects unknown ids at the API boundary, and the frontend task
+// registry is typed `Record<OnboardingTaskId, ...>` so the compiler forces UI
+// copy + a link for every new key. UI copy and hrefs live in the frontend, not
+// here, to keep this package free of presentation concerns.
+export const ONBOARDING_TASK_IDS = [
+  'advancedQuery',
+  'mcp',
+  'dashboard',
+  'alert',
+] as const;
+
+export type OnboardingTaskId = (typeof ONBOARDING_TASK_IDS)[number];
+
+const KNOWN_ONBOARDING_TASK_IDS: readonly string[] = ONBOARDING_TASK_IDS;
+
+export const OnboardingDataSchema = z.object({
+  // Read-tolerant / write-strict asymmetry: the READ path drops persisted ids
+  // that are no longer in ONBOARDING_TASK_IDS instead of throwing, so removing
+  // or renaming a task can't 500 GET /me for users who already completed it.
+  // The WRITE boundary (CompleteOnboardingTaskApiBodySchema) stays a strict
+  // z.enum, so the API still rejects unknown ids on POST. The transform keeps
+  // the inferred type as OnboardingTaskId[].
+  completedTasks: z
+    .array(z.string())
+    .default([])
+    .transform(ids =>
+      ids.filter((id): id is OnboardingTaskId =>
+        KNOWN_ONBOARDING_TASK_IDS.includes(id),
+      ),
+    ),
+  isDismissed: z.boolean().default(false),
+});
+
+export type OnboardingData = z.infer<typeof OnboardingDataSchema>;
+
 // Me
 export const MeApiResponseSchema = z.object({
   accessKey: z.string(),
@@ -2763,6 +2802,7 @@ export const MeApiResponseSchema = z.object({
   email: z.string(),
   id: z.string(),
   name: z.string(),
+  onboardingData: OnboardingDataSchema,
   team: TeamSchema.pick({
     id: true,
     name: true,
@@ -2774,6 +2814,34 @@ export const MeApiResponseSchema = z.object({
 });
 
 export type MeApiResponse = z.infer<typeof MeApiResponseSchema>;
+
+// Body for `POST /me/onboarding/task`.
+export const CompleteOnboardingTaskApiBodySchema = z.object({
+  taskId: z.enum(ONBOARDING_TASK_IDS),
+});
+
+export type CompleteOnboardingTaskApiBody = z.infer<
+  typeof CompleteOnboardingTaskApiBodySchema
+>;
+
+// Body for `PATCH /me/onboarding/dismiss`.
+export const DismissOnboardingApiBodySchema = z.object({
+  isDismissed: z.boolean(),
+});
+
+export type DismissOnboardingApiBody = z.infer<
+  typeof DismissOnboardingApiBodySchema
+>;
+
+// Response for both onboarding mutations: the updated onboarding state, so the
+// client can seed its `me` cache without a refetch.
+export const OnboardingDataApiResponseSchema = z.object({
+  onboardingData: OnboardingDataSchema,
+});
+
+export type OnboardingDataApiResponse = z.infer<
+  typeof OnboardingDataApiResponseSchema
+>;
 
 // Response for `PATCH /me/accessKey`.
 //

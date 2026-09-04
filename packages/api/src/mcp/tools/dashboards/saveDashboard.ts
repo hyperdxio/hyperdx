@@ -4,6 +4,7 @@ import mongoose from 'mongoose';
 import { z } from 'zod';
 
 import * as config from '@/config';
+import { recordOnboardingTaskCompletion } from '@/controllers/user';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { formatZodIssues, mcpUserError } from '@/mcp/utils/errors';
 import Dashboard, { IDashboard } from '@/models/dashboard';
@@ -42,7 +43,7 @@ export function registerSaveDashboard({
   context,
   registerTool,
 }: ToolRegistrar): void {
-  const { teamId } = context;
+  const { teamId, userId } = context;
   const frontendUrl = config.FRONTEND_URL;
 
   registerTool(
@@ -84,6 +85,7 @@ export function registerSaveDashboard({
       if (!dashboardId) {
         return createDashboard({
           teamId,
+          userId,
           frontendUrl,
           name,
           inputTiles,
@@ -94,6 +96,7 @@ export function registerSaveDashboard({
       }
       return updateDashboard({
         teamId,
+        userId,
         frontendUrl,
         dashboardId,
         name,
@@ -146,6 +149,7 @@ function assignFilterIds(
 
 async function createDashboard({
   teamId,
+  userId,
   frontendUrl,
   name,
   inputTiles,
@@ -154,6 +158,7 @@ async function createDashboard({
   inputFilters,
 }: {
   teamId: string;
+  userId: string | undefined;
   frontendUrl: string | undefined;
   name: string;
   inputTiles: unknown[];
@@ -217,6 +222,10 @@ async function createDashboard({
     ...(parsedContainers !== undefined ? { containers: parsedContainers } : {}),
   }).save();
 
+  if (newDashboard.tiles.length > 0) {
+    recordOnboardingTaskCompletion(userId, 'dashboard');
+  }
+
   const externalDashboard = convertToExternalDashboard(newDashboard);
   return {
     content: [
@@ -246,6 +255,7 @@ async function createDashboard({
 
 async function updateDashboard({
   teamId,
+  userId,
   frontendUrl,
   dashboardId,
   name,
@@ -255,6 +265,7 @@ async function updateDashboard({
   inputFilters,
 }: {
   teamId: string;
+  userId: string | undefined;
   frontendUrl: string | undefined;
   dashboardId: string;
   name: string;
@@ -379,6 +390,10 @@ async function updateDashboard({
     internalTiles,
     existingTileIds,
   });
+
+  if (updatedDashboard.tiles.length > 0) {
+    recordOnboardingTaskCompletion(userId, 'dashboard');
+  }
 
   const externalDashboard = convertToExternalDashboard(updatedDashboard);
   return {

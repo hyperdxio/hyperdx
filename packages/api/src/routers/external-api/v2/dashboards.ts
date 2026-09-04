@@ -3,6 +3,7 @@ import { uniq } from 'lodash';
 import { z } from 'zod';
 
 import { deleteDashboard } from '@/controllers/dashboard';
+import { recordOnboardingTaskCompletion } from '@/controllers/user';
 import Dashboard, { IDashboard } from '@/models/dashboard';
 import { processRequestWithEnhancedErrors as validateRequest } from '@/utils/enhancedErrors';
 import { ExternalDashboardTileWithId, objectIdSchema } from '@/utils/zod';
@@ -2644,6 +2645,13 @@ router.post(
         ...(containers !== undefined ? { containers } : {}),
       }).save();
 
+      // Complete the 'dashboard' onboarding task only when the dashboard has a
+      // tile (matches the internal controllers; an empty dashboard shell does
+      // not count). Fire-and-forget, so it never affects the response.
+      if (newDashboard.tiles.length > 0) {
+        recordOnboardingTaskCompletion(req.user?._id, 'dashboard');
+      }
+
       res.json({
         data: convertToExternalDashboard(newDashboard),
       });
@@ -2909,6 +2917,10 @@ router.put(
         internalTiles,
         existingTileIds,
       });
+
+      if (updatedDashboard.tiles.length > 0) {
+        recordOnboardingTaskCompletion(req.user?._id, 'dashboard');
+      }
 
       res.json({
         data: convertToExternalDashboard(updatedDashboard),

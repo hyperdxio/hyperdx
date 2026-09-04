@@ -97,7 +97,12 @@ export function registerSaveAlert({
 
       // ── Update existing alert ──
       if (alertId) {
-        const updated = await updateAlert(alertId, mongoTeamId, alertInput);
+        const updated = await updateAlert(
+          alertId,
+          mongoTeamId,
+          alertInput,
+          mongoUserId,
+        );
         if (!updated) {
           return mcpUserError('Alert not found');
         }

@@ -692,7 +692,7 @@ router.put(
       const alertInput = req.body;
       await validateAlertInput(teamId, alertInput);
 
-      const alert = await updateAlert(id, teamId, alertInput);
+      const alert = await updateAlert(id, teamId, alertInput, req.user?._id);
 
       if (alert == null) {
         return res.status(404).json({ message: 'Alert not found' });
