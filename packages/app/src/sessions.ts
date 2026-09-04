@@ -3,8 +3,10 @@ import produce from 'immer';
 import type { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
 import { chSql } from '@hyperdx/common-utils/dist/clickhouse';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
+import { escapeSqlString } from '@hyperdx/common-utils/dist/core/utils';
 import {
   DateRange,
+  Filter,
   pickSampleWeightExpressionProps,
   SearchCondition,
   SearchConditionLanguage,
@@ -37,6 +39,37 @@ export type Session = {
   userName: string;
 };
 
+/**
+ * Build the `ServiceName IN (...)` scope filter for the trace aggregation.
+ *
+ * `serviceNames` come from ingested telemetry, so each value is escaped with
+ * `escapeSqlString` (backslash then single-quote) before being interpolated
+ * into the SQL literal — otherwise a crafted name (e.g. `x') OR 1=1 --`) could
+ * break out of the literal (second-order injection), and any backslash name
+ * would produce invalid SQL. Returns `[]` for an empty list so the caller
+ * emits no predicate and falls back to the unscoped scan.
+ *
+ * `serviceNameExpression` is source config (a column expression), not user
+ * input, so it is interpolated as-is.
+ */
+export function buildServiceScopeFilters(
+  serviceNames: string[],
+  serviceNameExpression: string,
+): Filter[] {
+  if (serviceNames.length === 0) {
+    return [];
+  }
+  const inList = serviceNames
+    .map(name => `'${escapeSqlString(name)}'`)
+    .join(', ');
+  return [
+    {
+      type: 'sql',
+      condition: `${serviceNameExpression} IN (${inList})`,
+    },
+  ];
+}
+
 export function useSessions(
   {
     traceSource,
@@ -44,12 +77,19 @@ export function useSessions(
     dateRange,
     where,
     whereLanguage,
+    filters,
   }: {
     traceSource?: TTraceSource;
     sessionSource?: TSessionSource;
     dateRange: DateRange['dateRange'];
     where?: SearchCondition;
     whereLanguage?: SearchConditionLanguage;
+    /**
+     * Faceted filters from the sidebar (`DBSearchPageFilters`), applied to the
+     * trace source alongside the free-text `where`. Persisted in their quoted
+     * ClickHouse key form so they emit valid SQL verbatim.
+     */
+    filters?: Filter[];
   },
   options?: Omit<UseQueryOptions<any, Error>, 'queryKey'>,
 ) {
@@ -77,6 +117,7 @@ export function useSessions(
       dateRange,
       where,
       whereLanguage,
+      filters,
     ],
     queryFn: async () => {
       if (
@@ -92,6 +133,110 @@ export function useSessions(
         traceSource.resourceAttributesExpression ?? 'ResourceAttributes',
         'rum.sessionId',
       );
+
+      // Combine the free-text `where` with the sidebar's faceted filters into a
+      // single filter list applied to the trace source. When either is present
+      // we treat the query as an explicit user search (see `hasSearchQuery`).
+      const searchFilters: Filter[] = [
+        ...(where
+          ? [
+              {
+                type:
+                  (whereLanguage === 'promql' ? 'lucene' : whereLanguage) ??
+                  'lucene',
+                condition: where,
+              } as Filter,
+            ]
+          : []),
+        ...(filters ?? []),
+      ];
+      const hasSearchQuery = searchFilters.length > 0;
+
+      // Scope the trace aggregation to just the service(s) that emit RUM
+      // sessions. `otel_traces` is sorted by (ServiceName, SpanName, Timestamp),
+      // so with no ServiceName predicate the time filter can't prune via the
+      // primary index — the query scans the whole table's marks (~100k) to
+      // evaluate the `rum.sessionId` skip index. RUM traffic comes from a tiny
+      // set of services, which we read cheaply from the session source (sorted
+      // by time), turning the trace scan into a primary-key range (~50 marks,
+      // ~20x faster cold).
+      //
+      // Correctness assumption: the session and trace sources report the same
+      // `ServiceName` for RUM spans (the session source is the cheap,
+      // time-sorted projection of the same RUM traffic, which is why we read the
+      // list from there instead of re-scanning the trace table). If they diverge
+      // — a service present in trace RUM spans but absent from the session-source
+      // scan, or a differing service-name column — that service's sessions would
+      // be dropped. On any query failure or an empty result we fall back to the
+      // unscoped (correct) scan.
+      const serviceNameExpression =
+        traceSource.serviceNameExpression || 'ServiceName';
+      // Enumerate RUM services over a window wider than the selected range. A
+      // session's row in the session source is timestamped at (near) its start,
+      // which can fall *before* `dateRange` even though its trace spans land
+      // inside it. Scoping to only services seen within the exact range would
+      // then drop those sessions. Over-inclusion is safe — an extra ServiceName
+      // only widens the primary-key range scanned; the `rum.sessionId`
+      // predicate + HAVING still filter the rows — so we look back a generous
+      // margin. Under-inclusion is the correctness bug we must avoid.
+      const SERVICE_SCOPE_LOOKBACK_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+      const serviceScopeDateRange: [Date, Date] = [
+        new Date(dateRange[0].getTime() - SERVICE_SCOPE_LOOKBACK_MS),
+        dateRange[1],
+      ];
+      // Resolve the scope AND serialize it inside the try: `ServiceName` is
+      // ingested telemetry, so a value with a quote/backslash must be escaped
+      // (see `buildServiceScopeFilters`). Keeping construction here means any
+      // failure — query or serialization — falls back to the unscoped (correct)
+      // scan rather than emitting broken/injectable SQL into the aggregation.
+      let serviceScopeFilters: Filter[] = [];
+      try {
+        const serviceNamesQuery = await renderChartConfig(
+          {
+            select: [
+              {
+                valueExpression: `DISTINCT ${serviceNameExpression}`,
+                alias: 'serviceName',
+              },
+            ],
+            from: sessionSource.from,
+            dateRange: serviceScopeDateRange,
+            where: `notEmpty(${getSessionsSourceFieldExpression(
+              sessionSource.resourceAttributesExpression ??
+                'ResourceAttributes',
+              'rum.sessionId',
+            )})`,
+            whereLanguage: 'sql',
+            timestampValueExpression: sessionSource.timestampValueExpression,
+            connection: sessionSource.connection,
+          },
+          metadata,
+          sessionSource.querySettings,
+        );
+        const serviceNamesJson = await clickhouseClient
+          .query({
+            query: serviceNamesQuery.sql,
+            query_params: serviceNamesQuery.params,
+            connectionId: sessionSource.connection,
+          })
+          .then(res => res.json<{ serviceName: string }>());
+        const rumServiceNames = (serviceNamesJson.data ?? [])
+          .map(row => row.serviceName)
+          .filter((name): name is string => !!name);
+        serviceScopeFilters = buildServiceScopeFilters(
+          rumServiceNames,
+          serviceNameExpression,
+        );
+      } catch {
+        // Optimization only — fall back to an unscoped scan.
+      }
+
+      const sessionsQueryFilters: Filter[] = [
+        // Service scope kept separate from `hasSearchQuery` so it never flips
+        // the HAVING/CTE behavior below.
+        ...serviceScopeFilters,
+        ...(hasSearchQuery ? searchFilters : []),
+      ];
 
       const [
         sessionsQuery,
@@ -153,15 +298,8 @@ export function useSessions(
             dateRange,
             where: `${traceSource.resourceAttributesExpression}.rum.sessionId:*`,
             whereLanguage: 'lucene',
-            ...(where && {
-              filters: [
-                {
-                  type:
-                    (whereLanguage === 'promql' ? 'lucene' : whereLanguage) ??
-                    'lucene',
-                  condition: where,
-                },
-              ],
+            ...(sessionsQueryFilters.length > 0 && {
+              filters: sessionsQueryFilters,
             }),
             timestampValueExpression: traceSource.timestampValueExpression,
             implicitColumnExpression: traceSource.implicitColumnExpression,
@@ -232,16 +370,17 @@ export function useSessions(
           ${
             // If the user is giving us an explicit query, we don't need to filter out sessions with no interactions
             // this is because the events that match the query might not be user interactions, and we'll just show 0 results otherwise.
-            where ? '' : 'HAVING interactionCount > 0 OR recordingCount > 0'
+            hasSearchQuery
+              ? ''
+              : 'HAVING interactionCount > 0 OR recordingCount > 0'
           }
           ORDER BY maxTimestamp DESC
           LIMIT 500
         )
       `;
 
-      const finalQuery =
-        where && where.length > 0
-          ? chSql`
+      const finalQuery = hasSearchQuery
+        ? chSql`
         ${sessionsCTE},
         sessionIdsWithRecordings AS (${sessionIdsWithRecordingsQuery}),
         sessionIdsWithUserActivity AS (${sessionIdsWithUserActivityQuery})
@@ -253,7 +392,7 @@ export function useSessions(
           SELECT sessionIdsWithUserActivity.sessionId FROM sessionIdsWithUserActivity
         )
       `
-          : chSql`
+        : chSql`
         ${sessionsCTE}
         SELECT *
         FROM ${SESSIONS_CTE_NAME}
