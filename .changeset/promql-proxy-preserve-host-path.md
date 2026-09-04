@@ -18,22 +18,20 @@ to work because the absolute API path replaced `/graph`; requests now go to
 Connection hosts before upgrading. Root-mounted hosts (`http://prom:9090` or
 `http://prom:9090/`) are unchanged.
 
-Query parameters on the Connection host are now only a fallback for a fixed
-set of real Prometheus API params (`query`, `time`, `start`, `end`, `step`,
+Query parameters on the Connection host are now only a fallback for a fixed set
+of real Prometheus API params (`query`, `time`, `start`, `end`, `step`,
 `match`/`match[]`, `limit`, `timeout`, `stats`): a request value for one of
-these (including repeatable ones such as `match[]`) always wins and replaces
-a same-named host value outright, rather than being dropped. Any other host
-query key the request never mentions -- for example
-`?extra_label=namespace%3Dprod` pinning a VictoriaMetrics tenant scope -- is
-left as-is and is never overridable by the request, since a param name
-outside that fixed set is not forwarded at all regardless of what the host
-carries. This also means a host copied with a stray query string (not just a
-stray path) now forwards its non-Prometheus keys upstream as a fallback on
-every request -- trim those too if they weren't intended as Prometheus API
-params.
+these (including repeatable ones such as `match[]`) always wins and replaces a
+same-named host value outright, rather than being dropped. Any other host query
+key the request never mentions -- for example `?extra_label=namespace%3Dprod`
+pinning a VictoriaMetrics tenant scope -- is left as-is and is never overridable
+by the request, since a param name outside that fixed set is not forwarded at
+all regardless of what the host carries. This also means a host copied with a
+stray query string (not just a stray path) now forwards its non-Prometheus keys
+upstream as a fallback on every request -- trim those too if they weren't
+intended as Prometheus API params.
 
-This is also a behavior change for a direct API caller (e.g. curl or
-Terraform) that previously relied on sending an arbitrary, non-Prometheus
-query param through this endpoint: that param is now silently dropped rather
-than forwarded, regardless of whether the Connection host carries anything
-under the same name.
+This is also a behavior change for a direct API caller (e.g. curl or Terraform)
+that previously relied on sending an arbitrary, non-Prometheus query param
+through this endpoint: that param is now silently dropped rather than forwarded,
+regardless of whether the Connection host carries anything under the same name.

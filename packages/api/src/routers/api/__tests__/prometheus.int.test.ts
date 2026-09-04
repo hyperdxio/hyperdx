@@ -649,9 +649,7 @@ describe('prometheus router', () => {
         .expect(200);
 
       const requested = new URL(mockFetch.mock.calls[0][0] as string);
-      expect(requested.searchParams.get('extra_label')).toBe(
-        'namespace=prod',
-      );
+      expect(requested.searchParams.get('extra_label')).toBe('namespace=prod');
       expect(requested.searchParams.get('query')).toBe('up');
     });
 
