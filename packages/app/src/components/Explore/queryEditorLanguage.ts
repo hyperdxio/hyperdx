@@ -53,8 +53,8 @@ export function languageExtensions(
       includeRegularFunctions: true,
     });
   }
-  // Plaintext with completions, no grammar: Explore is SQL-only now, and
-  // Lucene survives only to render saved searches written before that. It is
-  // not worth a CodeMirror mode for text nobody can newly author here.
+  // Plaintext with completions, no grammar. Explore never asks for Lucene —
+  // it discards a carried Lucene WHERE rather than render one — so this is
+  // only here for other callers of the editor.
   return [autocompletion({ override: [luceneCompletions(fields)] })];
 }

@@ -100,6 +100,11 @@ export type RowSidePanelContextProps = {
     whereLanguage: SearchConfig['whereLanguage'];
     source?: TSource;
   }) => string;
+  /**
+   * The page `generateSearchUrl` points at authors SQL only (Explore), so
+   * actions with both forms of an expression must send the SQL one.
+   */
+  sqlOnlySearchUrl?: boolean;
   generateChartUrl?: (config: {
     aggFn: string;
     field: string;

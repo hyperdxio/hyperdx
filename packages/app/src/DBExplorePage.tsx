@@ -99,7 +99,11 @@ import { cleanClickHouseExpression } from '@/components/DBSearchPageFilters/util
 import { DBTimeChart, type SeriesGroupFilter } from '@/components/DBTimeChart';
 import EmptyState from '@/components/EmptyState';
 import { ErrorBoundary } from '@/components/Error/ErrorBoundary';
-import { getDefaultExploreLanguage } from '@/components/Explore/queryModeSafety';
+import {
+  getDefaultExploreLanguage,
+  hasUneditableLuceneWhere,
+  toSqlWhere,
+} from '@/components/Explore/queryModeSafety';
 import { FavoriteButton } from '@/components/FavoriteButton';
 import { InputControlled } from '@/components/InputControlled';
 import OnboardingModal from '@/components/OnboardingModal';
@@ -1049,6 +1053,9 @@ function useDefaultOrderBy(sourceID: string | undefined | null) {
   }, [source, tableMetadata]);
 }
 
+const LUCENE_WHERE_DROPPED_MESSAGE =
+  'This search was written in Lucene. Explore filters in SQL, so the query was cleared — the Search page still opens it as saved.';
+
 function formatDroppedFiltersMessage(count: number): string {
   const noun = count === 1 ? 'filter' : 'filters';
   const verb = count === 1 ? 'was' : 'were';
@@ -1147,7 +1154,17 @@ function DBExplorePage() {
   const paths = window.location.pathname.split('/');
   const savedSearchId = paths.length === 3 ? paths[2] : null;
 
-  const [searchedConfig, setSearchedConfig] = useQueryStates(queryStateMap);
+  const [rawSearchedConfig, setSearchedConfig] = useQueryStates(queryStateMap);
+
+  // Everything downstream sees a SQL WHERE, whatever the URL carried.
+  const searchedConfig = useMemo(
+    () => ({
+      ...rawSearchedConfig,
+      ...toSqlWhere(rawSearchedConfig.where, rawSearchedConfig.whereLanguage),
+    }),
+    [rawSearchedConfig],
+  );
+
   const [directTraceId, setDirectTraceId] = useQueryState(
     'traceId',
     parseAsStringEncoded,
@@ -1261,8 +1278,7 @@ function DBExplorePage() {
       values: {
         select: searchedConfig.select || '',
         where: searchedConfig.where || '',
-        whereLanguage:
-          searchedConfig.whereLanguage ?? getDefaultExploreLanguage(),
+        whereLanguage: searchedConfig.whereLanguage,
         configType: searchedConfig.configType ?? 'builder',
         sqlTemplate: searchedConfig.sqlTemplate ?? '',
         source:
@@ -1300,8 +1316,7 @@ function DBExplorePage() {
         searchedSource?.kind === SourceKind.Trace
           ? searchedSource.defaultTableSelectExpression
           : undefined),
-      where: _savedSearch?.where ?? '',
-      whereLanguage: _savedSearch?.whereLanguage ?? getDefaultExploreLanguage(),
+      ...toSqlWhere(_savedSearch?.where, _savedSearch?.whereLanguage),
       source: _savedSearch?.source,
       filters: _savedSearch?.filters ?? [],
       orderBy: _savedSearch?.orderBy || defaultOrderBy,
@@ -1333,8 +1348,7 @@ function DBExplorePage() {
       reset({
         select: searchedConfig?.select ?? '',
         where: searchedConfig?.where ?? '',
-        whereLanguage:
-          searchedConfig?.whereLanguage ?? getDefaultExploreLanguage(),
+        whereLanguage: searchedConfig.whereLanguage,
         configType: searchedConfig?.configType ?? 'builder',
         sqlTemplate: searchedConfig?.sqlTemplate ?? '',
         source: searchedConfig?.source ?? undefined,
@@ -1347,7 +1361,9 @@ function DBExplorePage() {
   // Populate searched query with saved search if the query params have
   // been wiped (ex. clicking on the same saved search again)
   useEffect(() => {
-    const { source, where, select, whereLanguage, filters } = searchedConfig;
+    // The raw config, because "no language in the URL" is part of what makes a
+    // config empty, and the coerced one always names SQL.
+    const { source, where, select, whereLanguage, filters } = rawSearchedConfig;
     const isSearchConfigEmpty =
       !source && !where && !select && !whereLanguage && !filters?.length;
 
@@ -1359,9 +1375,8 @@ function DBExplorePage() {
     ) {
       setSearchedConfig({
         source: savedSearch.source,
-        where: savedSearch.where,
         select: savedSearch.select,
-        whereLanguage: savedSearch.whereLanguage as 'sql' | 'lucene',
+        ...toSqlWhere(savedSearch.where, savedSearch.whereLanguage),
         filters: savedSearch.filters ?? [],
         orderBy: savedSearch.orderBy ?? '',
       });
@@ -1386,12 +1401,39 @@ function DBExplorePage() {
     }
   }, [
     savedSearch,
-    searchedConfig,
+    rawSearchedConfig,
     setSearchedConfig,
     savedSearchId,
     defaultSourceId,
     directTraceId,
     sources,
+  ]);
+
+  // Rewrite a Lucene URL rather than only coercing it on read, so the address
+  // bar stops advertising a query the page is not running and a later partial
+  // update can't resurrect it.
+  useEffect(() => {
+    if (rawSearchedConfig.whereLanguage !== 'lucene') {
+      return;
+    }
+    if (
+      hasUneditableLuceneWhere(
+        rawSearchedConfig.where,
+        rawSearchedConfig.whereLanguage,
+      )
+    ) {
+      notifications.show({
+        color: 'yellow',
+        message: LUCENE_WHERE_DROPPED_MESSAGE,
+      });
+    }
+    setSearchedConfig(
+      toSqlWhere(rawSearchedConfig.where, rawSearchedConfig.whereLanguage),
+    );
+  }, [
+    rawSearchedConfig.where,
+    rawSearchedConfig.whereLanguage,
+    setSearchedConfig,
   ]);
 
   const [_queryErrors, setQueryErrors] = useState<{
@@ -1658,8 +1700,7 @@ function DBExplorePage() {
       select: searchedConfig.select ?? '',
       source: chartSourceId,
       where: searchedConfig.where ?? '',
-      whereLanguage:
-        searchedConfig.whereLanguage ?? getDefaultExploreLanguage(),
+      whereLanguage: searchedConfig.whereLanguage,
       filters: searchedConfig.filters ?? [],
       orderBy: searchedConfig.orderBy ?? '',
     }),
@@ -1748,8 +1789,7 @@ function DBExplorePage() {
             name: savedSearch.name,
             select: searchedConfig.select ?? '',
             where: searchedConfig.where ?? '',
-            whereLanguage:
-              searchedConfig.whereLanguage ?? getDefaultExploreLanguage(),
+            whereLanguage: searchedConfig.whereLanguage,
             source: searchedConfig.source ?? '',
             orderBy: searchedConfig.orderBy ?? '',
             filters: searchedConfig.filters ?? [],
@@ -1938,8 +1978,12 @@ function DBExplorePage() {
       whereLanguage: SearchConfig['whereLanguage'];
       source?: TSource;
     }) => {
+      // The link points back at Explore, which authors SQL, so a Lucene
+      // condition from a caller is dropped here rather than one navigation
+      // later.
+      const sqlWhere = toSqlWhere(where, whereLanguage);
       const qParams = new URLSearchParams({
-        whereLanguage: whereLanguage || 'sql',
+        whereLanguage: sqlWhere.whereLanguage,
         from: searchedTimeRange[0].getTime().toString(),
         to: searchedTimeRange[1].getTime().toString(),
         isLive: 'false',
@@ -1949,11 +1993,11 @@ function DBExplorePage() {
       // When generating a search based on a different source,
       // filters and select for the current source are not preserved.
       if (source && source.id !== searchedSource?.id) {
-        qParams.append('where', where || '');
+        qParams.append('where', sqlWhere.where);
         qParams.append('source', source.id);
       } else {
         qParams.append('select', searchedConfig.select || '');
-        qParams.append('where', where || searchedConfig.where || '');
+        qParams.append('where', sqlWhere.where || searchedConfig.where || '');
         qParams.append('filters', JSON.stringify(searchedConfig.filters ?? []));
         qParams.append('source', searchedSource?.id || '');
       }
@@ -2229,7 +2273,7 @@ function DBExplorePage() {
       displayType: aggViewChartConfig.displayType,
       select: aggViewChartConfig.select,
       where: searchedConfig.where ?? '',
-      whereLanguage: searchedConfig.whereLanguage ?? 'sql',
+      whereLanguage: searchedConfig.whereLanguage,
       filters: searchedConfig.filters ?? [],
       groupBy: aggViewChartConfig.groupBy,
       orderBy: aggViewChartConfig.orderBy,
@@ -2256,8 +2300,7 @@ function DBExplorePage() {
       displayType: DisplayType.EventPatterns,
       select,
       where: searchedConfig.where ?? '',
-      whereLanguage:
-        searchedConfig.whereLanguage ?? getDefaultExploreLanguage(),
+      whereLanguage: searchedConfig.whereLanguage,
       filters: searchedConfig.filters ?? [],
     } as SavedChartConfig;
   }, [view, patternColumn, searchedSource, searchedConfig, savedSearch?.name]);
@@ -2295,8 +2338,7 @@ function DBExplorePage() {
         ...(searchedConfig.where?.trim()
           ? [
               {
-                type:
-                  searchedConfig.whereLanguage ?? getDefaultExploreLanguage(),
+                type: searchedConfig.whereLanguage,
                 condition: searchedConfig.where.trim(),
               } as Filter,
             ]
@@ -2583,6 +2625,7 @@ function DBExplorePage() {
       groupByFields,
       toggleGroupBy,
       generateSearchUrl,
+      sqlOnlySearchUrl: true,
       dbSqlRowTableConfig,
       isChildModalOpen: isDrawerChildModalOpen,
       setChildModalOpen: setDrawerChildModalOpen,
