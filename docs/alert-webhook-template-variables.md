@@ -18,17 +18,21 @@ a HyperDX alert without parsing the human-readable message body.
 | `{{alertType}}` | string | `search`, `dashboard_chart` or `inline_query`. |
 | `{{comparator}}` | string | `>=`, `>`, `<`, `<=`, `=`, `!=`, `between`, `outside`. |
 | `{{threshold}}` | number | The configured threshold. |
+| `{{thresholdMax}}` | number | Upper bound of a `between` / `outside` range; empty for every other comparator. |
 | `{{value}}` | number | The value that triggered or resolved the alert. |
 | `{{groupKey}}` | string | The breaching group, for a grouped alert. |
-| `{{sourceQuery}}` | string | The search expression or SQL behind the alert. |
+| `{{sourceQuery}}` | string | The query behind the alert: the saved search's filter, the chart's `where`, or the raw SQL. |
 | `{{teamId}}` | string | Team the alert belongs to. |
 | `{{note}}` | string | The alert's freeform note — commonly a runbook link. |
 
 Strings are JSON-escaped, so they are safe to drop into a quoted slot.
-Numbers (`startTime`, `endTime`, `threshold`, `value`) are emitted raw for
-unquoted slots. Every enriched variable is optional and renders as an empty
-string when the alert doesn't carry it — an alert with no group has an empty
-`{{groupKey}}`, and a dashboard-tile alert has an empty `{{sourceQuery}}`.
+Numbers (`startTime`, `endTime`, `threshold`, `thresholdMax`, `value`) are
+emitted raw for unquoted slots. Every enriched variable is optional and renders
+as an empty string when the alert doesn't carry it — an alert with no group has
+an empty `{{groupKey}}`, and a non-range alert has an empty `{{thresholdMax}}`.
+
+An empty variable in an unquoted numeric slot produces invalid JSON, so guard
+the optional numbers: `{{#if thresholdMax}}"max": {{thresholdMax}},{{/if}}`.
 
 ## Example
 
