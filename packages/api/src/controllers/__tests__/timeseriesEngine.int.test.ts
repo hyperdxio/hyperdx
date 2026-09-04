@@ -68,7 +68,11 @@ describe('timeseriesEngine controller', () => {
       username: config.CLICKHOUSE_USER,
       password: config.CLICKHOUSE_PASSWORD,
     });
-    await seedTimeSeriesTagsTable({ table: BOUNDED_TABLE, series: SERIES });
+    await seedTimeSeriesTagsTable({
+      table: BOUNDED_TABLE,
+      series: SERIES,
+      withSamples: true,
+    });
     await seedTimeSeriesTagsTable({
       table: UNBOUNDED_TABLE,
       series: SERIES,
@@ -175,6 +179,119 @@ describe('timeseriesEngine controller', () => {
       });
     });
 
+    // A selector matches a series only if it has a sample in the window, which
+    // is why BOUNDED_TABLE is seeded with samples.
+    describe('match[] selectors', () => {
+      it('keeps only the values carried by matching series', async () => {
+        expect(
+          await labelValues({
+            labelName: 'job',
+            match: ['recent_metric{job="api"}'],
+          }),
+        ).toEqual(['api']);
+      });
+
+      // Prometheus unions the selectors rather than intersecting them.
+      it('unions the series matched by each selector', async () => {
+        expect(
+          await labelValues({
+            labelName: 'job',
+            match: ['recent_metric{job="api"}', 'old_metric'],
+          }),
+        ).toEqual(['api', 'batch']);
+      });
+
+      it('scopes metric names to the selector', async () => {
+        expect(
+          await labelValues({
+            labelName: '__name__',
+            match: ['{job="batch"}'],
+          }),
+        ).toEqual(['old_metric']);
+      });
+
+      it('evaluates regex matchers', async () => {
+        expect(
+          await labelValues({
+            labelName: '__name__',
+            match: ['{job=~"a.*|w.*"}'],
+          }),
+        ).toEqual(['recent_metric']);
+      });
+
+      // Both filters have to survive: the selector alone would answer with
+      // every job, the window alone with every recent one.
+      it('narrows the selector by the time window', async () => {
+        expect(
+          await labelValues({
+            labelName: 'job',
+            match: ['{job=~".+"}'],
+            startMs: sec(RECENT_START_SEC),
+            endMs: sec(RECENT_START_SEC + HOUR_SEC),
+          }),
+        ).toEqual(['api', 'web']);
+      });
+
+      it('returns nothing when no series matches', async () => {
+        expect(
+          await labelValues({ labelName: 'job', match: ['absent_metric'] }),
+        ).toEqual([]);
+      });
+
+      it('treats an empty selector list as no filter', async () => {
+        expect(await labelValues({ labelName: 'job', match: [] })).toEqual([
+          'api',
+          'batch',
+          'web',
+        ]);
+      });
+
+      it('surfaces a malformed selector as an error', async () => {
+        await expect(
+          labelValues({ labelName: 'job', match: ['recent_metric{'] }),
+        ).rejects.toThrow(/while parsing PromQL query/);
+      });
+
+      // A selector is caller-supplied text. Interpolated, this closes the
+      // enclosing string and the query fails; parameterized, it is a plain miss
+      // — so the assertion is "empty", not "throws".
+      it('parameterizes the selector rather than interpolating it', async () => {
+        expect(
+          await labelValues({
+            labelName: 'job',
+            match: [`{job="a') OR 1=1 --"}`],
+          }),
+        ).toEqual([]);
+      });
+
+      it('collapses a repeated identical selector', async () => {
+        expect(
+          await labelValues({
+            labelName: 'job',
+            match: ['old_metric', 'old_metric'],
+          }),
+        ).toEqual(['batch']);
+      });
+
+      it('applies the limit after the selector', async () => {
+        expect(
+          await labelValues({
+            labelName: 'job',
+            match: ['{job=~".+"}'],
+            limit: 1,
+          }),
+        ).toEqual(['api']);
+      });
+
+      // The label predicate and the selector have to AND together rather than
+      // one standing in for the other.
+      it('returns nothing when the matched series lack the label', async () => {
+        expect(
+          await labelValues({ labelName: 'region', match: ['recent_metric'] }),
+        ).toEqual([]);
+      });
+    });
+
     describe('limit', () => {
       it('caps the number of values returned, keeping the ordering', async () => {
         expect(await labelValues({ labelName: '__name__', limit: 1 })).toEqual([
@@ -213,6 +330,21 @@ describe('timeseriesEngine controller', () => {
             endMs: sec(RECENT_START_SEC + HOUR_SEC),
           }),
         ).toEqual(['old_metric', 'recent_metric']);
+      });
+
+      // A selector needs those columns to evaluate at all. Unlike the bounds it
+      // cannot degrade to "no filter" — that would answer a different question.
+      it('rejects match[] rather than dropping it', async () => {
+        await expect(
+          queryLabelValues({
+            client,
+            connectionId: CONNECTION_ID,
+            databaseName: DEFAULT_DATABASE,
+            tableName: UNBOUNDED_TABLE,
+            labelName: 'job',
+            match: ['recent_metric'],
+          }),
+        ).rejects.toThrow(/store_min_time_and_max_time = 1/);
       });
 
       it('still filters on the label itself', async () => {
@@ -302,6 +434,45 @@ describe('timeseriesEngine controller', () => {
           endMs: sec(RECENT_START_SEC + HOUR_SEC),
         }),
       ).toEqual(['__name__', 'job', 'region']);
+    });
+
+    describe('match[] selectors', () => {
+      // Only the old series carries `region`, so a selector that excludes it
+      // has to drop a label name from the answer.
+      it('keeps only the names carried by matching series', async () => {
+        expect(await labelNames({ match: ['recent_metric'] })).toEqual([
+          '__name__',
+          'job',
+        ]);
+      });
+
+      it('unions the series matched by each selector', async () => {
+        expect(
+          await labelNames({ match: ['{job="web"}', 'old_metric'] }),
+        ).toEqual(['__name__', 'job', 'region']);
+      });
+
+      // Both filters have to survive: the selector alone would answer with
+      // `region` too, the window alone with every recent label.
+      it('narrows the selector by the time window', async () => {
+        expect(
+          await labelNames({
+            match: ['{job=~".+"}'],
+            startMs: sec(RECENT_START_SEC),
+            endMs: sec(RECENT_START_SEC + HOUR_SEC),
+          }),
+        ).toEqual(['__name__', 'job']);
+      });
+
+      it('returns nothing when no series matches', async () => {
+        expect(await labelNames({ match: ['absent_metric'] })).toEqual([]);
+      });
+
+      it('rejects match[] on a table without min_time/max_time', async () => {
+        await expect(
+          labelNames({ tableName: UNBOUNDED_TABLE, match: ['recent_metric'] }),
+        ).rejects.toThrow(/store_min_time_and_max_time = 1/);
+      });
     });
   });
 });

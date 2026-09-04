@@ -292,24 +292,35 @@ export type TimeSeriesFixtureSeries = {
 
 /**
  * (Re)creates a TimeSeries table and writes `series` straight into its tags
- * inner table — Prometheus remote-write is the only other way in, and label
- * lookups never read the data inner table.
+ * inner table — Prometheus remote-write is the only other way in.
  *
  * `storeTimeBounds: false` creates the table with
  * `store_min_time_and_max_time = 0`, which leaves the tags table without the
  * min_time/max_time columns a time-bounded lookup reads.
+ *
+ * `withSamples: true` also writes a sample at each series' `startSec` and
+ * `endSec`. A `match[]` lookup matches only series that have a sample in the
+ * window, so on a tags-only table every selector answers nothing.
  */
 export const seedTimeSeriesTagsTable = async ({
   table,
   series,
   database = DEFAULT_DATABASE,
   storeTimeBounds = true,
+  withSamples = false,
 }: {
   table: string;
   series: TimeSeriesFixtureSeries[];
   database?: string;
   storeTimeBounds?: boolean;
+  withSamples?: boolean;
 }) => {
+  if (withSamples && !storeTimeBounds) {
+    throw new Error(
+      'withSamples needs storeTimeBounds: sample timestamps come from min_time/max_time',
+    );
+  }
+
   await dropTimeSeriesTable({ table, database });
   await executeTimeSeriesSqlCommand(
     `CREATE TABLE ${database}.${table} ENGINE = TimeSeries${
@@ -346,6 +357,17 @@ export const seedTimeSeriesTagsTable = async ({
   await executeTimeSeriesSqlCommand(
     `INSERT INTO TABLE FUNCTION timeSeriesTags('${database}', '${table}') ${columns} VALUES ${values}`,
   );
+
+  // The engine derives `id` from the tags, so the samples are read back out of
+  // the tags table rather than recomputed here.
+  if (withSamples) {
+    await executeTimeSeriesSqlCommand(
+      `INSERT INTO TABLE FUNCTION timeSeriesData('${database}', '${table}')
+       SELECT id, ts AS timestamp, 1 AS value
+       FROM timeSeriesTags('${database}', '${table}')
+       ARRAY JOIN [min_time, max_time] AS ts`,
+    );
+  }
 };
 
 export const clearClickhouseTables = async () => {
