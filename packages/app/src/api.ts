@@ -619,6 +619,15 @@ async function withPrometheusError<T>(request: () => Promise<T>): Promise<T> {
   }
 }
 
+/**
+ * Some Prometheus backends return the same label name or value more than once,
+ * de-dupe to prevent any duplicate option errors downstream.
+ */
+const uniqueLabels = (
+  resp: PrometheusLabelsResponse,
+): PrometheusLabelsResponse =>
+  resp.data ? { ...resp, data: [...new Set(resp.data)] } : resp;
+
 const prometheusFetch = <T>(
   path: string,
   searchParams: Record<string, string>,
@@ -656,7 +665,8 @@ export const prometheusApi = {
       .get('v1/prometheus/labels', {
         searchParams: labelLookupSearchParams(params),
       })
-      .json(),
+      .json<PrometheusLabelsResponse>()
+      .then(uniqueLabels),
 
   labelValues: (params: {
     label: string;
@@ -672,7 +682,8 @@ export const prometheusApi = {
         .get(`v1/prometheus/label/${params.label}/values`, {
           searchParams: labelLookupSearchParams(params),
         })
-        .json<PrometheusLabelsResponse>(),
+        .json<PrometheusLabelsResponse>()
+        .then(uniqueLabels),
     ),
 };
 

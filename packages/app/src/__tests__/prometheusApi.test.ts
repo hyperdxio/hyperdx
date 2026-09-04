@@ -50,4 +50,49 @@ describe('prometheusApi.labelValues', () => {
 
     expect(requestedParams().has('match[]')).toBe(false);
   });
+
+  it('reports a repeated value once', async () => {
+    get.mockReturnValue({
+      json: () =>
+        Promise.resolve({ status: 'success', data: ['byoc', 'api', 'byoc'] }),
+    });
+
+    const resp = await prometheusApi.labelValues({
+      label: 'pod',
+      connectionId: 'conn',
+    });
+
+    // Mantine throws on duplicate options, taking the page down with it.
+    expect(resp.data).toEqual(['byoc', 'api']);
+  });
+});
+
+describe('prometheusApi.labels', () => {
+  beforeEach(() => {
+    get.mockReset();
+  });
+
+  it('reports a repeated label name once', async () => {
+    get.mockReturnValue({
+      json: () =>
+        Promise.resolve({
+          status: 'success',
+          data: ['byoc', 'instance', 'byoc'],
+        }),
+    });
+
+    const resp = await prometheusApi.labels({ connectionId: 'conn' });
+
+    expect(resp.data).toEqual(['byoc', 'instance']);
+  });
+
+  it('leaves a response without data alone', async () => {
+    get.mockReturnValue({
+      json: () => Promise.resolve({ status: 'error', error: 'nope' }),
+    });
+
+    const resp = await prometheusApi.labels({ connectionId: 'conn' });
+
+    expect(resp).toEqual({ status: 'error', error: 'nope' });
+  });
 });
