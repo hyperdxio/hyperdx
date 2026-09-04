@@ -95,6 +95,8 @@ const inlineAlert = asAlert({
   thresholdType: AlertThresholdType.ABOVE,
   channel: { type: 'webhook', webhookId: 'webhook-id' },
   name: 'Prod error rate',
+  displayName: 'Prod error rate',
+  tags: ['checkout'],
   message: 'My message template',
   note: null,
   numConsecutiveWindows: null,
@@ -142,6 +144,10 @@ describe('inlineAlertToChartConfig', () => {
         interval: '5m',
         threshold: 3,
         name: 'Prod error rate',
+        // The alerts page reads these off the alert, so an edit has to carry
+        // them through rather than dropping back to a derived name.
+        displayName: 'Prod error rate',
+        tags: ['checkout'],
         channels: [{ type: 'webhook', webhookId: 'webhook-id' }],
       },
     });

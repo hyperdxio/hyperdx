@@ -16,7 +16,7 @@ import { useConfirm } from '@/useConfirm';
 import {
   buildInlineAlertPayload,
   normalizeNoOpAlertScheduleFields,
-  toAlertChannels,
+  toFormAlertChannels,
 } from '@/utils/alerts';
 import { getApiErrorMessage } from '@/utils/apiErrors';
 
@@ -46,15 +46,12 @@ export function inlineAlertToChartConfig(
           : typeof alert.scheduleStartAt === 'string'
             ? alert.scheduleStartAt
             : alert.scheduleStartAt.toISOString(),
-      // AlertsPageItem types a channel loosely (type?: string | null) while
-      // the editor carries the strict shape. Copy channels through rather
-      // than rebuilding them, so a fork's extra channel fields survive an
-      // edit; only webhookId is coerced, because the picker needs a string.
-      channels: toAlertChannels(alert).map(c => ({
-        ...c,
-        webhookId: c.webhookId ?? '',
-      })) as NonNullable<SavedChartConfig['alert']>['channels'],
+      channels: toFormAlertChannels(alert),
       name: alert.name ?? null,
+      // The alerts page reads displayName, so an edit has to round-trip it
+      // (and the tags) rather than dropping back to a derived name.
+      displayName: alert.displayName ?? null,
+      tags: alert.tags ?? null,
       message: alert.message ?? null,
       note: alert.note ?? null,
       // Persisted null -> undefined for the NumberInput.

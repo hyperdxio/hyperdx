@@ -10,6 +10,7 @@ import { formatTileAlertDisplayName } from '@hyperdx/common-utils/dist/alerts';
 import { Granularity } from '@hyperdx/common-utils/dist/core/utils';
 import { isPromqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
+  type Alert,
   ALERT_INTERVAL_TO_MINUTES,
   AlertChannelType,
   AlertChartConfig,
@@ -155,6 +156,25 @@ export function toAlertChannels<T extends { type?: string | null }>(alert?: {
       ? [alert.channel]
       : [];
   return source.length > 0 ? source : [{ ...EMPTY_ALERT_CHANNEL }];
+}
+
+/**
+ * An alert's channels in the shape an edit form carries.
+ *
+ * `AlertsPageItem` types a channel loosely (`type?: string | null`) because it
+ * echoes whatever was persisted, including rows written before multi-channel
+ * support; the form's `Alert` shape is strict. Channels are copied through
+ * rather than rebuilt field-by-field, so a fork's extra channel fields survive
+ * an edit — only `webhookId` is coerced, because the picker needs a string.
+ */
+export function toFormAlertChannels(alert: {
+  channel?: { type?: string | null; webhookId?: string } | null;
+  channels?: { type?: string | null; webhookId?: string }[] | null;
+}): NonNullable<Alert['channels']> {
+  return toAlertChannels(alert).map(c => ({
+    ...c,
+    webhookId: c.webhookId ?? '',
+  })) as NonNullable<Alert['channels']>;
 }
 
 export const DEFAULT_TILE_ALERT: z.infer<typeof ChartAlertBaseSchema> = {
@@ -322,8 +342,11 @@ export type InlineAlert = z.infer<typeof ChartAlertBaseSchema> & {
 /**
  * Split a chart-editor config into the inline-alert API payload: the alert
  * fields live on the alert document, and everything else is persisted as its
- * `chartConfig`. The alert's name doubles as the notification title, so it
- * falls back to the chart's name when the user left it blank.
+ * `chartConfig`.
+ *
+ * `displayName` is left as the user set it, including unset — the server
+ * derives an inline alert's name from its chart when none is given, so
+ * forcing one here would freeze a copy that stops tracking the chart's name.
  *
  * Returns undefined when the config carries no alert — the caller has nothing
  * to save, and the chart editor lets an alert be removed before saving.
@@ -341,7 +364,6 @@ export function buildInlineAlertPayload(
     ...alert,
     source: AlertSource.INLINE,
     chartConfig,
-    name: alert.name || chartConfig.name || undefined,
   };
 }
 
