@@ -35,6 +35,13 @@ jest.mock('@/components/alerts/EditAlertModal', () => ({
     opened ? <div data-testid="edit-alert-modal" /> : null,
 }));
 
+// The inline editor mounts the whole chart editor; this suite only cares
+// which of the two modals the menu opens.
+jest.mock('@/components/alerts/EditInlineAlertModal', () => ({
+  EditInlineAlertModal: ({ opened }: { opened: boolean }) =>
+    opened ? <div data-testid="edit-inline-alert-modal" /> : null,
+}));
+
 const confirm = jest.fn().mockResolvedValue(true);
 jest.mock('@/useConfirm', () => ({ useConfirm: () => confirm }));
 jest.mock('@/theme/ThemeProvider', () => ({
@@ -63,6 +70,14 @@ const tileAlert = {
   dashboardId: 'dashboard-1',
   tileId: 'tile-1',
 } as unknown as AlertsPageItem;
+
+const inlineAlert: AlertsPageItem = {
+  ...savedSearchAlert,
+  _id: 'alert-3',
+  source: AlertSource.INLINE,
+  savedSearchId: undefined,
+  displayName: 'Prod error rate',
+};
 
 function renderMenu(ui: React.ReactElement) {
   const queryClient = new QueryClient({
@@ -126,6 +141,25 @@ describe('AlertRowMenu', () => {
         timeout: 5000,
       }),
     ).toBeInTheDocument();
+  });
+
+  // An inline alert owns its query, so the field-only modal cannot edit it —
+  // and saving through it would rewrite the alert without its chart config.
+  it('opens the chart editor for an inline alert', async () => {
+    renderMenu(<AlertRowMenu alert={inlineAlert} />);
+    await openMenu('alert-row-menu-alert-3');
+    await userEvent.click(
+      await screen.findByTestId('alert-edit-alert-3', undefined, {
+        timeout: 5000,
+      }),
+    );
+
+    expect(
+      await screen.findByTestId('edit-inline-alert-modal', undefined, {
+        timeout: 5000,
+      }),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId('edit-alert-modal')).not.toBeInTheDocument();
   });
 
   it('offers Terraform export for a saved-search alert', async () => {

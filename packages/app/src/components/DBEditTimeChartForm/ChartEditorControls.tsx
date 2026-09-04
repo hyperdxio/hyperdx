@@ -74,6 +74,10 @@ type ChartEditorControlsProps = {
   ratioMode: ChartEditorFormState['ratioMode'];
   alert: ChartEditorFormState['alert'];
   additionalWarnings?: string[];
+  /** Whether this editor offers an alert (see EditTimeChartForm.enableAlerts). */
+  alertsEnabled?: boolean;
+  /** Hides the alert editor's remove control. */
+  isAlertRequired?: boolean;
   isRawSqlInput: boolean;
   dashboardId?: string;
   parentRef: HTMLElement | null;
@@ -105,6 +109,8 @@ export function ChartEditorControls({
   ratioMode,
   alert,
   additionalWarnings,
+  alertsEnabled,
+  isAlertRequired,
   isRawSqlInput,
   dashboardId,
   parentRef,
@@ -484,7 +490,7 @@ export function ChartEditorControls({
               {(displayType === DisplayType.Line ||
                 displayType === DisplayType.StackedBar ||
                 displayType === DisplayType.Number) &&
-                dashboardId &&
+                alertsEnabled &&
                 !alert &&
                 !IS_LOCAL_MODE && (
                   <Button
@@ -566,7 +572,9 @@ export function ChartEditorControls({
             setValue={setValue}
             alert={alert}
             dashboardId={dashboardId}
-            onRemove={() => setValue('alert', undefined)}
+            onRemove={
+              isAlertRequired ? undefined : () => setValue('alert', undefined)
+            }
             warning={
               additionalWarnings?.length
                 ? additionalWarnings.join(' ')

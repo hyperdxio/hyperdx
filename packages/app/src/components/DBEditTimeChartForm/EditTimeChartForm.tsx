@@ -114,6 +114,26 @@ type EditTimeChartFormProps = {
   submitRef?: React.MutableRefObject<(() => void) | undefined>;
   isDashboardForm?: boolean;
   autoRun?: boolean;
+  /**
+   * Whether the editor offers an alert. Defaults to "inside a dashboard",
+   * which is where tile alerts live; the chart explorer and the inline-alert
+   * editor opt in explicitly (their alerts persist on the alert document
+   * rather than on a tile).
+   */
+  enableAlerts?: boolean;
+  /**
+   * Save the chart's alert on its own, without a dashboard tile behind it
+   * (an inline alert). Renders a save button in the action bar; the config
+   * handed over still carries `alert`, so the caller splits it.
+   */
+  onSaveAlert?: (chart: SavedChartConfig) => void;
+  /** Label for the alert save button, e.g. "Create alert" vs "Save alert". */
+  saveAlertLabel?: string;
+  isSavingAlert?: boolean;
+  /** Hides the alert editor's remove control, for surfaces that require one. */
+  isAlertRequired?: boolean;
+  /** Whether to offer "Save to dashboard". Defaults to "outside a dashboard". */
+  showSaveToDashboard?: boolean;
 };
 
 /** Populate form state with the standard heatmap series + duration numberFormat. */
@@ -153,7 +173,14 @@ export default function EditTimeChartForm({
   submitRef,
   isDashboardForm = false,
   autoRun = false,
+  enableAlerts,
+  onSaveAlert,
+  saveAlertLabel,
+  isSavingAlert,
+  isAlertRequired = false,
+  showSaveToDashboard,
 }: EditTimeChartFormProps) {
+  const alertsEnabled = enableAlerts ?? dashboardId != null;
   const formValue: ChartEditorFormState = useMemo(
     () => convertSavedChartConfigToFormState(chartConfig),
     [chartConfig],
@@ -536,6 +563,39 @@ export default function EditTimeChartForm({
     [validateAndNormalize, onSave],
   );
 
+  // Same validation path as a tile save, but hands the config to the
+  // inline-alert saver. The alert must survive the round trip: the display
+  // type could have been switched to one that drops it since it was added.
+  const handleSaveAlert = useCallback(
+    (form: ChartEditorFormState) => {
+      const { errors, config } = validateAndNormalize(form);
+      if (errors.length > 0) {
+        notifications.show({
+          id: 'chart-error',
+          title: 'Invalid Chart',
+          message: <ErrorNotificationMessage errors={errors} />,
+          color: 'red',
+        });
+        return;
+      }
+
+      if (config == null) return;
+
+      if (config.alert == null) {
+        notifications.show({
+          id: 'chart-error',
+          color: 'red',
+          title: 'Invalid alert',
+          message: 'This chart has no alert to save.',
+        });
+        return;
+      }
+
+      onSaveAlert?.(config);
+    },
+    [validateAndNormalize, onSaveAlert],
+  );
+
   // Track previous values for detecting changes
   const prevGranularityRef = useRef(granularity);
   const prevDisplayTypeRef = useRef(displayType);
@@ -896,6 +956,8 @@ export default function EditTimeChartForm({
             isDashboardForm={isDashboardForm}
             alert={alert}
             additionalWarnings={additionalAlertWarnings}
+            alertsEnabled={alertsEnabled}
+            isAlertRequired={isAlertRequired}
             dashboardId={dashboardId}
             variables={variables}
           />
@@ -922,6 +984,8 @@ export default function EditTimeChartForm({
             ratioMode={ratioMode}
             alert={alert}
             additionalWarnings={additionalAlertWarnings}
+            alertsEnabled={alertsEnabled}
+            isAlertRequired={isAlertRequired}
             isRawSqlInput={isRawSqlInput}
             dashboardId={dashboardId}
             parentRef={parentRef}
@@ -945,6 +1009,12 @@ export default function EditTimeChartForm({
           onSave={onSave}
           onClose={onClose}
           isSaving={isSaving}
+          hasAlert={alert != null}
+          handleSaveAlert={handleSaveAlert}
+          onSaveAlert={onSaveAlert}
+          saveAlertLabel={saveAlertLabel}
+          isSavingAlert={isSavingAlert}
+          showSaveToDashboard={showSaveToDashboard}
           displayedTimeInputValue={displayedTimeInputValue}
           setDisplayedTimeInputValue={setDisplayedTimeInputValue}
           onTimeRangeSearch={onTimeRangeSearch}

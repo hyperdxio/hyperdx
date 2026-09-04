@@ -11,6 +11,7 @@ import userEvent from '@testing-library/user-event';
 
 import DBEditTimeChartForm from '@/components/DBEditTimeChartForm';
 import { useSource } from '@/source';
+import { DEFAULT_TILE_ALERT } from '@/utils/alerts';
 
 /**
  * These render the whole chart editor and drive it through user events, so
@@ -237,6 +238,17 @@ const defaultChartConfig: SavedChartConfig = {
   whereLanguage: 'lucene',
   granularity: 'auto',
   alignDateRangeToGranularity: true,
+};
+
+/**
+ * Pin what `useSource` resolves to. Earlier describes override the module-level
+ * mock with mockReturnValue (which survives clearAllMocks), so a describe that
+ * needs a particular source has to set it back in its own beforeEach.
+ */
+const mockUseSourceData = (data: unknown) => {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  const mocked = { data } as ReturnType<typeof useSource>;
+  jest.mocked(useSource).mockReturnValue(mocked);
 };
 
 const renderComponent = (
@@ -783,12 +795,6 @@ describe('DBEditTimeChartForm - Column color', () => {
 });
 
 describe('DBEditTimeChartForm - Metric formulas', () => {
-  const mockUseSourceData = (data: unknown) => {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    const mocked = { data } as ReturnType<typeof useSource>;
-    jest.mocked(useSource).mockReturnValue(mocked);
-  };
-
   beforeEach(() => {
     jest.clearAllMocks();
     // Earlier describes override the useSource mock with mockReturnValue
@@ -1083,5 +1089,127 @@ describe('DBEditTimeChartForm - Metric formulas', () => {
 
     expect(screen.queryByTestId('add-formula-button')).not.toBeInTheDocument();
     expect(screen.queryByTestId('series-ref-badge')).not.toBeInTheDocument();
+  });
+});
+
+// Inline alerts (HDX-5192): the chart explorer has no dashboard behind it, so
+// the alert affordances are gated on `enableAlerts` rather than a dashboardId,
+// and the alert is saved on its own rather than as part of a tile.
+describe('DBEditTimeChartForm - Inline alerts', () => {
+  // A complete series: the save path validates the chart first, and the
+  // shared default config leaves the metric name blank.
+  const validNumberConfig: SavedChartConfig = {
+    ...defaultChartConfig,
+    displayType: DisplayType.Number,
+    select: [
+      {
+        aggFn: 'avg',
+        aggCondition: '',
+        aggConditionLanguage: 'lucene' as const,
+        valueExpression: 'Value',
+        metricType: MetricsDataType.Gauge,
+        metricName: 'test.metric.gauge',
+      },
+    ],
+  };
+
+  const renderInlineAlertForm = (
+    props: Partial<React.ComponentProps<typeof DBEditTimeChartForm>> = {},
+  ) =>
+    renderComponent({
+      chartConfig: validNumberConfig,
+      enableAlerts: true,
+      ...props,
+    });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    // Earlier describes override the useSource mock with mockReturnValue
+    // (which survives clearAllMocks), so pin the metric source back.
+    mockUseSourceData({
+      id: 'metric-source',
+      kind: SourceKind.Metric,
+      name: 'Test Metric Source',
+      from: { databaseName: 'default', tableName: '' },
+      connection: 'default',
+      timestampValueExpression: 'Timestamp',
+      metricTables: {
+        gauge: 'metrics.gauge',
+        sum: 'metrics.sum',
+        histogram: 'metrics.histogram',
+      },
+    });
+  });
+
+  it('offers an alert outside a dashboard when alerts are enabled', async () => {
+    renderInlineAlertForm();
+
+    await userEvent.click(screen.getByTestId('alert-button'));
+
+    expect(screen.getByTestId('alert-details')).toBeInTheDocument();
+  });
+
+  it('offers no alert without a dashboard or an explicit opt-in', () => {
+    renderComponent({ chartConfig: validNumberConfig });
+
+    expect(screen.queryByTestId('alert-button')).not.toBeInTheDocument();
+  });
+
+  // A tile alert is named by the tile it hangs off; an inline alert has
+  // nothing else to name it, and the name doubles as the notification title.
+  // An inline alert has no tile or saved search to inherit a name from, so
+  // the shared display-name field is how the alerts page gets a label for it.
+  it('carries the alert display name into the save payload', async () => {
+    const onSaveAlert = jest.fn();
+    // Seeded with a channel: an alert with no webhook fails validation before
+    // the save handler runs, which is what the picker is there to prevent.
+    renderInlineAlertForm({
+      chartConfig: {
+        ...validNumberConfig,
+        alert: {
+          ...DEFAULT_TILE_ALERT,
+          channels: [{ type: 'webhook', webhookId: 'hook-1' }],
+        },
+      },
+      onSaveAlert,
+    });
+
+    await userEvent.type(
+      screen.getByTestId('alert-display-name-input'),
+      'Prod error rate',
+    );
+    await userEvent.click(screen.getByTestId('chart-save-alert-button'));
+
+    await waitFor(() => expect(onSaveAlert).toHaveBeenCalledTimes(1));
+    expect(onSaveAlert.mock.calls[0][0].alert).toMatchObject({
+      displayName: 'Prod error rate',
+      threshold: 1,
+    });
+  });
+
+  // With no alert there is nothing to save, and the button would read as a
+  // second way to add one.
+  it('shows the alert save button only once an alert exists', async () => {
+    renderInlineAlertForm({ onSaveAlert: jest.fn() });
+
+    expect(
+      screen.queryByTestId('chart-save-alert-button'),
+    ).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByTestId('alert-button'));
+
+    expect(screen.getByTestId('chart-save-alert-button')).toBeInTheDocument();
+  });
+
+  // The editor requires an alert on this surface, so removing it would leave
+  // the save button with nothing to write.
+  it('hides the remove control when the alert is required', async () => {
+    renderInlineAlertForm({
+      chartConfig: { ...validNumberConfig, alert: DEFAULT_TILE_ALERT },
+      isAlertRequired: true,
+    });
+
+    expect(screen.getByTestId('alert-details')).toBeInTheDocument();
+    expect(screen.queryByTestId('remove-alert-button')).not.toBeInTheDocument();
   });
 });
