@@ -213,7 +213,7 @@ export function ExploreContextBand({
         {!savedSearchId ? (
           <Button
             data-testid="save-view-button"
-            variant="primary"
+            variant="secondary"
             size="xs"
             onClick={onSaveView}
             disabled={saveDisabled}
@@ -227,7 +227,7 @@ export function ExploreContextBand({
           <>
             <Button
               data-testid="save-view-button"
-              variant="primary"
+              variant="secondary"
               size="xs"
               onClick={onUpdate}
               disabled={saveDisabled}

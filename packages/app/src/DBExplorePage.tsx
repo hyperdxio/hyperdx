@@ -394,11 +394,11 @@ function SearchLiveControl({
   );
 }
 
-function SearchRunControl({ isFormStateDirty }: { isFormStateDirty: boolean }) {
+function SearchRunControl() {
   return (
     <Button
       data-testid="search-submit-button"
-      variant={isFormStateDirty ? 'primary' : 'secondary'}
+      variant="primary"
       type="submit"
       leftSection={<IconPlayerPlay size={16} />}
       style={{ flexShrink: 0 }}
@@ -2912,7 +2912,7 @@ function DBExplorePage() {
                     }}
                   />
                 )}
-                <SearchRunControl isFormStateDirty={formState.isDirty} />
+                <SearchRunControl />
               </>
             }
           />
