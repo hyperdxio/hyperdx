@@ -20,7 +20,7 @@ import {
   useColumns,
   useDateTimeColumns,
   useGetKeyValues,
-  useJsonColumns,
+  useJsonColumnNames,
   useMapColumns,
   useMetadataWithSettings,
 } from '@/hooks/useMetadata';
@@ -28,7 +28,10 @@ import { escapeFilterStateKeys, usePinnedFilters } from '@/searchFilters';
 import { useSource } from '@/source';
 import { mergePath } from '@/utils';
 
-import { toQuotedClickHouseKeyExpression } from './utils';
+import {
+  cleanClickHouseExpression,
+  toQuotedClickHouseKeyExpression,
+} from './utils';
 
 const INITIAL_LOAD_LIMIT = 20;
 
@@ -99,7 +102,8 @@ function useFacets({
     () => (columns ? new Set(columns.map(c => c.name)) : new Set<string>()),
     [columns],
   );
-  const { data: jsonColumns } = useJsonColumns(tableConnection);
+  const jsonColumns = useJsonColumnNames(columns);
+  const jsonColumnSet = useMemo(() => new Set(jsonColumns), [jsonColumns]);
   const { data: mapColumns } = useMapColumns(tableConnection);
 
   const {
@@ -176,7 +180,12 @@ function useFacets({
 
     const sqlKeyToUiKey = new Map<string, string>();
     const escapedKeysToFetch = keysToFetch.map(key => {
-      const sqlKey = toQuotedClickHouseKeyExpression(key, knownColumns);
+      // Metadata renders JSON keys from the table schema. Pass its canonical
+      // raw-key form rather than reparsing a generated toString(...) expression.
+      const sqlKey = toQuotedClickHouseKeyExpression(
+        cleanClickHouseExpression(key),
+        knownColumns,
+      );
       sqlKeyToUiKey.set(sqlKey, key);
       return sqlKey;
     });
@@ -215,17 +224,23 @@ function useFacets({
   const loadMoreFacetsForKey = useCallback(
     async (key: string): Promise<Facet | undefined> => {
       try {
-        const sqlKey = toQuotedClickHouseKeyExpression(key, knownColumns);
+        const cleanKey = cleanClickHouseExpression(key);
+        const sqlKey = toQuotedClickHouseKeyExpression(cleanKey, knownColumns);
         if (mode === 'exact') {
           const strippedFilterState: FilterState = { ...filterState };
           delete strippedFilterState[key];
-          if (sqlKey !== key) delete strippedFilterState[sqlKey];
+          delete strippedFilterState[cleanKey];
+          delete strippedFilterState[sqlKey];
           const newKeyVals = await metadata.getKeyValuesWithMVs({
             chartConfig: {
               ...chartConfig,
               dateRange,
               filters: filtersToQuery(
-                escapeFilterStateKeys(strippedFilterState, knownColumns),
+                escapeFilterStateKeys(
+                  strippedFilterState,
+                  knownColumns,
+                  jsonColumnSet,
+                ),
                 { dateTimeColumns },
               ),
             },
@@ -284,6 +299,7 @@ function useFacets({
       source,
       filterState,
       dateTimeColumns,
+      jsonColumnSet,
     ],
   );
 

@@ -7,6 +7,7 @@ import cx from 'classnames';
 import sub from 'date-fns/sub';
 import { useQueryState } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
+import { renderJsonStringSubcolumn } from '@hyperdx/common-utils/dist/core/metadata';
 import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
 import {
   isLogSource,
@@ -1275,10 +1276,22 @@ function KubernetesDashboardPage() {
       logSourceJsonColumns?.includes(logSource.eventAttributesExpression)
     ) {
       return {
-        Severity: `${logSource.eventAttributesExpression}.object.type.:String`,
-        Kind: `${logSource.eventAttributesExpression}.object.regarding.kind.:String`,
-        Name: `${logSource.eventAttributesExpression}.object.regarding.name.:String`,
-        Message: `${logSource.eventAttributesExpression}.object.note.:String`,
+        Severity: renderJsonStringSubcolumn(
+          logSource.eventAttributesExpression,
+          'object.type',
+        ),
+        Kind: renderJsonStringSubcolumn(
+          logSource.eventAttributesExpression,
+          'object.regarding.kind',
+        ),
+        Name: renderJsonStringSubcolumn(
+          logSource.eventAttributesExpression,
+          'object.regarding.name',
+        ),
+        Message: renderJsonStringSubcolumn(
+          logSource.eventAttributesExpression,
+          'object.note',
+        ),
       };
     }
 

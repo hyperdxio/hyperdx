@@ -1,7 +1,11 @@
 // Utility functions for parsing and grouping map-like field names
 
 import SqlString from 'sqlstring';
-import { parseKeyPath } from '@hyperdx/common-utils/dist/core/metadata';
+import {
+  parseKeyPath,
+  renderJsonStringSubcolumn,
+  stripJsonTypeSuffix,
+} from '@hyperdx/common-utils/dist/core/metadata';
 import type { FilterState } from '@hyperdx/common-utils/dist/filters';
 
 import { mergePath } from '@/utils';
@@ -10,10 +14,16 @@ import { mergePath } from '@/utils';
 export function cleanClickHouseExpression(key: string): string {
   // Remove toString() wrapper if present
   let cleanKey = key.replace(/^toString\((.+)\)$/, '$1');
+  cleanKey = cleanKey.replace(/^getSubcolumn\((.+), ''\)$/, "$1['']");
+
+  // Older persisted JSON filters used ClickHouse's explicit typed subcolumns.
+  cleanKey = stripJsonTypeSuffix(cleanKey);
 
   // Convert backtick dot notation to clean dot notation
   // e.g., `host`.`arch` -> host.arch
-  cleanKey = cleanKey.replace(/`([^`]+)`/g, '$1');
+  cleanKey = cleanKey.replace(/`((?:``|[^`])*)`/g, (_, identifier: string) =>
+    identifier.replace(/``/g, '`'),
+  );
 
   return cleanKey;
 }
@@ -209,11 +219,17 @@ function quoteIdentifierIfNeeded(id: string): string {
 export function toQuotedClickHouseKeyExpression(
   key: string,
   knownColumns: Set<string>,
+  jsonColumns: ReadonlySet<string> = new Set(),
 ): string {
   // A whole-key match against a real column wins: quote the entire name as one
   // identifier (handles flat columns whose name contains dots/hyphens/etc.).
   if (knownColumns.has(key)) {
     return quoteIdentifierIfNeeded(key);
+  }
+
+  const parsed = parseMapFieldName(key);
+  if (parsed && jsonColumns.has(parsed.baseName)) {
+    return renderJsonStringSubcolumn(parsed.baseName, parsed.propertyPath);
   }
 
   // Normalize dot-form (ResourceAttributes.host.name) to map access form (ResourceAttributes['host.name'])

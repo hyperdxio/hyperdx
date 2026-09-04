@@ -5,6 +5,7 @@ import {
   Metadata,
   MetadataCache,
   parseKeyPath,
+  renderJsonStringSubcolumn,
 } from '@/core/metadata';
 import * as renderChartConfigModule from '@/core/renderChartConfig';
 import { timeFilterExpr } from '@/core/renderChartConfig';
@@ -53,6 +54,21 @@ beforeAll(() => {
 });
 afterAll(() => {
   jest.restoreAllMocks();
+});
+
+describe('renderJsonStringSubcolumn', () => {
+  it.each([
+    ['foo.:String', 'toString(ResourceAttributes.`foo`)'],
+    [
+      'http.status_code.:Int64',
+      'toString(ResourceAttributes.`http`.`status_code`)',
+    ],
+    ['', "toString(getSubcolumn(ResourceAttributes, ''))"],
+  ])('renders JSON path %j safely', (path, expected) => {
+    expect(renderJsonStringSubcolumn('ResourceAttributes', path)).toBe(
+      expected,
+    );
+  });
 });
 
 describe('MetadataCache', () => {
@@ -652,7 +668,7 @@ describe('Metadata', () => {
     });
 
     it('renders faceted conditions the same way as the keys they constrain', async () => {
-      // A JSON column renders to a typed subcolumn rather than the bracket
+      // A JSON column renders to a string expression rather than the bracket
       // form the caller wrote. If the predicate kept the raw expression it
       // would address a different (or non-existent) column than the aggregate
       // wrapping it, so both halves must come out rendered.
@@ -691,8 +707,8 @@ describe('Metadata', () => {
       if (!isBuilderChartConfig(actualConfig))
         throw new Error('Expected builder config');
       expect(actualConfig.select).toContain(
-        'groupUniqArrayIf(10)(Attributes.`namespace`.:String, ' +
-          "(Attributes.`cluster`.:String IN ('prod'))) AS param1",
+        'groupUniqArrayIf(10)(toString(Attributes.`namespace`), ' +
+          "(toString(Attributes.`cluster`) IN ('prod'))) AS param1",
       );
       // The raw bracket form must not survive into either half.
       expect(actualConfig.select).not.toContain("Attributes['");
@@ -772,7 +788,7 @@ describe('Metadata', () => {
       expect(renderChartConfigSpy).not.toHaveBeenCalled();
     });
 
-    it('renders JSON attribute keys as typed subcolumns', async () => {
+    it('renders JSON attribute keys as string expressions', async () => {
       jest.spyOn(metadata, 'getColumn').mockImplementation(({ column }) =>
         Promise.resolve(
           column === 'ResourceAttributes'
@@ -801,7 +817,7 @@ describe('Metadata', () => {
       expect(actualConfig.with?.[0]).toMatchObject({
         chartConfig: {
           select:
-            'ResourceAttributes.`k8s`.`namespace`.`name`.:String as param0',
+            'toString(ResourceAttributes.`k8s`.`namespace`.`name`) as param0',
         },
       });
     });
@@ -835,7 +851,7 @@ describe('Metadata', () => {
       expect(actualConfig.with?.[0]).toMatchObject({
         chartConfig: {
           select:
-            'ResourceAttributes.`foo`.`:String, count() AS injected`.:String as param0',
+            'toString(ResourceAttributes.`foo`.`:String, count() AS injected`) as param0',
         },
       });
     });
@@ -1044,19 +1060,24 @@ describe('Metadata', () => {
 
       jest.spyOn(metadata, 'getServerVersion').mockResolvedValue([26, 3, 0, 0]);
 
-      jest.spyOn(metadata, 'getColumns').mockResolvedValue([
-        { name: 'Timestamp', type: 'DateTime64(9)' },
-        { name: 'TraceId', type: 'String' },
-        { name: 'SpanId', type: 'String' },
-        { name: 'ServiceName', type: 'LowCardinality(String)' },
-        { name: 'SeverityText', type: 'LowCardinality(String)' },
-        { name: 'Body', type: 'String' },
-        { name: 'LogAttributes', type: 'Map(LowCardinality(String), String)' },
-        {
-          name: 'ResourceAttributes',
-          type: 'Map(LowCardinality(String), String)',
-        },
-      ] as any);
+      const getColumnsSpy = jest
+        .spyOn(metadata, 'getColumns')
+        .mockResolvedValue([
+          { name: 'Timestamp', type: 'DateTime64(9)' },
+          { name: 'TraceId', type: 'String' },
+          { name: 'SpanId', type: 'String' },
+          { name: 'ServiceName', type: 'LowCardinality(String)' },
+          { name: 'SeverityText', type: 'LowCardinality(String)' },
+          { name: 'Body', type: 'String' },
+          {
+            name: 'LogAttributes',
+            type: 'Map(LowCardinality(String), String)',
+          },
+          {
+            name: 'ResourceAttributes',
+            type: 'Map(LowCardinality(String), String)',
+          },
+        ] as any);
 
       jest.spyOn(metadata, 'getMapColumnTextIndexes').mockResolvedValue(
         new Map([
@@ -1100,7 +1121,7 @@ describe('Metadata', () => {
         });
 
       // Returned so tests can override the MV-aggregation answer.
-      return { doMVsAggregateSpy };
+      return { doMVsAggregateSpy, getColumnsSpy };
     };
 
     afterEach(() => {
@@ -1392,6 +1413,39 @@ describe('Metadata', () => {
       ][0] as any;
       expect(configArg.select).toContain('groupUniqArray(');
       expect(configArg.select).toContain('param0');
+    });
+
+    it('routes an empty JSON path to the raw table even when its column has an MV', async () => {
+      const { doMVsAggregateSpy, getColumnsSpy } = setupDefaultLogsSchema();
+      doMVsAggregateSpy.mockResolvedValue(true);
+      getColumnsSpy.mockResolvedValue([
+        {
+          name: 'ResourceAttributes',
+          type: 'JSON(max_dynamic_types=8, max_dynamic_paths=64)',
+          default_type: '',
+          default_expression: '',
+          comment: '',
+          codec_expression: '',
+          ttl_expression: '',
+        },
+      ]);
+      const renderChartConfigSpy = jest.spyOn(
+        renderChartConfigModule,
+        'renderChartConfig',
+      );
+
+      await metadata.getAllKeyValues({
+        ...baseArgs,
+        keyExpressions: ["ResourceAttributes['']"],
+      });
+
+      expect(renderChartConfigSpy).toHaveBeenCalled();
+      const configArg = renderChartConfigSpy.mock.calls.at(-1)?.[0];
+      if (!configArg || !isBuilderChartConfig(configArg))
+        throw new Error('Expected builder config');
+      expect(configArg.with?.[0]?.chartConfig?.select).toContain(
+        "toString(getSubcolumn(ResourceAttributes, ''))",
+      );
     });
 
     it('SQL-escapes map keys with single quotes on the raw-table fallback path (SQL-injection regression)', async () => {
@@ -1850,7 +1904,7 @@ describe('Metadata', () => {
       });
     });
 
-    it('renders JSON distribution keys as typed subcolumns', async () => {
+    it('renders JSON distribution keys as string expressions', async () => {
       jest.spyOn(metadata, 'getColumn').mockImplementation(({ column }) =>
         Promise.resolve(
           column === 'ResourceAttributes'
@@ -1876,7 +1930,7 @@ describe('Metadata', () => {
       if (!isBuilderChartConfig(actualConfig))
         throw new Error('Expected builder config');
       expect(actualConfig.select).toBe(
-        'ResourceAttributes.`k8s`.`namespace`.`name`.:String AS __hdx_value, count() as __hdx_count, __hdx_count / (sum(__hdx_count) OVER ()) * 100 AS __hdx_percentage',
+        'toString(ResourceAttributes.`k8s`.`namespace`.`name`) AS __hdx_value, count() as __hdx_count, __hdx_count / (sum(__hdx_count) OVER ()) * 100 AS __hdx_percentage',
       );
       expect(actualConfig.groupBy).toBe('__hdx_value');
     });
@@ -1907,7 +1961,7 @@ describe('Metadata', () => {
       if (!isBuilderChartConfig(actualConfig))
         throw new Error('Expected builder config');
       expect(actualConfig.select).toBe(
-        'ResourceAttributes.`k8s`.`namespace`.`name`.:String AS __hdx_value, count() as __hdx_count, __hdx_count / (sum(__hdx_count) OVER ()) * 100 AS __hdx_percentage',
+        'toString(ResourceAttributes.`k8s`.`namespace`.`name`) AS __hdx_value, count() as __hdx_count, __hdx_count / (sum(__hdx_count) OVER ()) * 100 AS __hdx_percentage',
       );
     });
   });
@@ -2393,7 +2447,7 @@ describe('Metadata', () => {
       expect(valuesCall.query).toContain('__TIME_FILTER__');
     });
 
-    it('uses typed JSON subcolumns for JSON attribute values', async () => {
+    it('uses string expressions for JSON attribute values', async () => {
       const md = buildMetadata();
       jest.spyOn(md, 'getColumn').mockResolvedValue({
         name: 'ResourceAttributes',
@@ -2415,7 +2469,7 @@ describe('Metadata', () => {
       const valuesCall = (mockClickhouseClient.query as jest.Mock).mock
         .calls[0][0];
       expect(valuesCall.query).toContain(
-        'ResourceAttributes.`k8s`.`namespace`.`name`.:String as value',
+        'toString(ResourceAttributes.`k8s`.`namespace`.`name`) as value',
       );
       expect(valuesCall.query).not.toContain('ResourceAttributes[');
     });

@@ -4,6 +4,7 @@ import { act, renderHook } from '@testing-library/react';
 
 import {
   areFiltersEqual,
+  escapeFilterStateKeys,
   parseQuery,
   useSearchPageFilterState,
 } from '@/searchFilters';
@@ -13,6 +14,39 @@ enableMapSet();
 type ConditionFilter = { type: 'sql' | 'lucene'; condition: string };
 
 describe('searchFilters', () => {
+  it.each([
+    [
+      'ResourceAttributes.k8s.namespace.name',
+      new Set(['ResourceAttributes']),
+      "toString(ResourceAttributes.`k8s`.`namespace`.`name`) IN ('production')",
+    ],
+    [
+      'LogAttributes.k8s.namespace.name',
+      new Set(['ResourceAttributes']),
+      "LogAttributes['k8s.namespace.name'] IN ('production')",
+    ],
+  ])('serializes %s with its schema accessor', (key, jsonColumns, expected) => {
+    const selection = {
+      included: new Set<string | boolean>(['production']),
+      excluded: new Set<string | boolean>(),
+    };
+
+    expect(
+      filtersToQuery(
+        escapeFilterStateKeys(
+          { [key]: selection },
+          new Set(['ResourceAttributes', 'LogAttributes']),
+          jsonColumns,
+        ),
+      ),
+    ).toEqual([
+      {
+        type: 'sql',
+        condition: expected,
+      },
+    ]);
+  });
+
   describe('parseQuery', () => {
     it('empty query', () => {
       const result = parseQuery([]);

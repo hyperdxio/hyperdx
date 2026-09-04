@@ -19,6 +19,41 @@ describe('cleanClickHouseExpression', () => {
     ).toBe('ResourceAttributes.hdx.sdk');
   });
 
+  it('strips the legacy JSON String suffix', () => {
+    expect(
+      cleanClickHouseExpression(
+        'ResourceAttributes.`k8s`.`namespace`.`name`.:String',
+      ),
+    ).toBe('ResourceAttributes.k8s.namespace.name');
+  });
+
+  it('strips other legacy JSON type suffixes', () => {
+    expect(
+      cleanClickHouseExpression(
+        'ResourceAttributes.`http`.`status_code`.:Int64',
+      ),
+    ).toBe('ResourceAttributes.http.status_code');
+  });
+
+  it('does not strip suffix-looking text inside a function argument', () => {
+    const expression = "JSONExtractString(Body, 'foo.:Int64')";
+    expect(cleanClickHouseExpression(expression)).toBe(expression);
+  });
+
+  it('unescapes doubled backticks in quoted JSON path segments', () => {
+    expect(
+      cleanClickHouseExpression('toString(ResourceAttributes.`k8s`.`na``me`)'),
+    ).toBe('ResourceAttributes.k8s.na`me');
+  });
+
+  it('restores an empty JSON subcolumn to bracket form', () => {
+    expect(
+      cleanClickHouseExpression(
+        "toString(getSubcolumn(ResourceAttributes, ''))",
+      ),
+    ).toBe("ResourceAttributes['']");
+  });
+
   it('leaves a plain identifier unchanged', () => {
     expect(cleanClickHouseExpression('ServiceName')).toBe('ServiceName');
   });
@@ -319,5 +354,25 @@ describe('toQuotedClickHouseKeyExpression', () => {
         toQuotedClickHouseKeyExpression("LogAttributes['host.name']", cols),
       ).toBe("LogAttributes['host.name']");
     });
+  });
+
+  it.each([
+    ['ResourceAttributes.region', 'toString(ResourceAttributes.`region`)'],
+    [
+      'ResourceAttributes.k8s.namespace.name',
+      'toString(ResourceAttributes.`k8s`.`namespace`.`name`)',
+    ],
+    [
+      'ResourceAttributes.k8s.na`me',
+      'toString(ResourceAttributes.`k8s`.`na``me`)',
+    ],
+  ])('renders JSON key %s as a string expression', (key, expected) => {
+    expect(
+      toQuotedClickHouseKeyExpression(
+        key,
+        new Set(['ResourceAttributes']),
+        new Set(['ResourceAttributes']),
+      ),
+    ).toBe(expected);
   });
 });

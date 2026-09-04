@@ -9,12 +9,14 @@ import type { Filter } from '@hyperdx/common-utils/dist/types';
 
 import {
   cleanClickHouseExpression,
+  parseMapFieldName,
   toQuotedClickHouseKeyExpression,
 } from './components/DBSearchPageFilters/utils';
 import { usePinnedFiltersApi, useUpdatePinnedFilters } from './pinnedFilters';
 import { useLocalStorage } from './utils';
 
 export const IS_ROOT_SPAN_COLUMN_NAME = 'isRootSpan';
+const EMPTY_JSON_COLUMNS: ReadonlySet<string> = new Set();
 
 // Filter keys live in two forms.
 // 1. In-memory `FilterState`: use the clean/unquoted forms of each key. This is what
@@ -22,25 +24,118 @@ export const IS_ROOT_SPAN_COLUMN_NAME = 'isRootSpan';
 // 2. The persisted `Filter[]`: Uses the quoted/bracketed ClickHouse form so it emits
 // valid SQL verbatim. Persisted in URL params, local storage, and MongoDB for saved searches.
 
+const mergeFilterSelections = (
+  current: FilterState[string] | undefined,
+  incoming: FilterState[string],
+): FilterState[string] => {
+  const range = incoming.range ?? current?.range;
+  return {
+    included: new Set([...(current?.included ?? []), ...incoming.included]),
+    excluded: new Set([...(current?.excluded ?? []), ...incoming.excluded]),
+    ...(range ? { range } : {}),
+  };
+};
+
+const toFilterStateKey = (
+  key: string,
+  jsonColumns: ReadonlySet<string>,
+): string => {
+  const cleanKey = cleanClickHouseExpression(key);
+  const parsed = parseMapFieldName(cleanKey);
+  if (!parsed || !jsonColumns.has(parsed.baseName)) return cleanKey;
+  return parsed.propertyPath
+    ? `${parsed.baseName}.${parsed.propertyPath}`
+    : `${parsed.baseName}['']`;
+};
+
 // Convert the clean FilterState keys to valid SQL (quoted/bracket) keys.
 export const escapeFilterStateKeys = (
   filters: FilterState,
   knownColumns: Set<string>,
+  jsonColumns: ReadonlySet<string> = EMPTY_JSON_COLUMNS,
 ): FilterState => {
   const escaped: FilterState = {};
   for (const [key, value] of Object.entries(filters)) {
-    escaped[toQuotedClickHouseKeyExpression(key, knownColumns)] = value;
+    const escapedKey = toQuotedClickHouseKeyExpression(
+      key,
+      knownColumns,
+      jsonColumns,
+    );
+    escaped[escapedKey] = mergeFilterSelections(escaped[escapedKey], value);
   }
   return escaped;
 };
 
 // Convert valid SQL/persisted keys to clean FilterState keys.
-const unescapeFilterStateKeys = (filters: FilterState): FilterState => {
+const unescapeFilterStateKeys = (
+  filters: FilterState,
+  jsonColumns: ReadonlySet<string> = EMPTY_JSON_COLUMNS,
+): FilterState => {
   const cleaned: FilterState = {};
   for (const [key, value] of Object.entries(filters)) {
-    cleaned[cleanClickHouseExpression(key)] = value;
+    const cleanKey = toFilterStateKey(key, jsonColumns);
+    cleaned[cleanKey] = mergeFilterSelections(cleaned[cleanKey], value);
   }
   return cleaned;
+};
+
+const canonicalizeFilterKeys = (
+  searchQuery: Filter[],
+  knownColumns: Set<string>,
+  jsonColumns: ReadonlySet<string>,
+  dateTimeColumns?: ReadonlyMap<string, string>,
+): Filter[] => {
+  const canonicalKeyByIndex = new Map<number, string>();
+  const canonicalGroups = new Map<
+    string,
+    { firstIndex: number; selection: FilterState[string] }
+  >();
+
+  searchQuery.forEach((filter, index) => {
+    if (filter.type !== 'sql') return;
+
+    const parsed = parseQuery([filter]).filters;
+    const roundTrip = filtersToQuery(parsed, { dateTimeColumns });
+    // Preserve arbitrary SQL that parseQuery only partially understands.
+    if (
+      roundTrip.length !== 1 ||
+      roundTrip[0].type !== 'sql' ||
+      roundTrip[0].condition !== filter.condition
+    ) {
+      return;
+    }
+
+    const keys = Object.keys(parsed);
+    const parsedKey = keys.length === 1 ? parseMapFieldName(keys[0]) : null;
+    if (!parsedKey || !jsonColumns.has(parsedKey.baseName)) return;
+
+    const normalized = unescapeFilterStateKeys(parsed, jsonColumns);
+    const [entry] = Object.entries(normalized);
+    if (!entry) return;
+    const [key, selection] = entry;
+    const group = canonicalGroups.get(key);
+    canonicalGroups.set(key, {
+      firstIndex: group?.firstIndex ?? index,
+      selection: mergeFilterSelections(group?.selection, selection),
+    });
+    canonicalKeyByIndex.set(index, key);
+  });
+
+  return searchQuery.flatMap((filter, index) => {
+    const key = canonicalKeyByIndex.get(index);
+    if (key == null) return [filter];
+
+    const group = canonicalGroups.get(key);
+    if (!group || group.firstIndex !== index) return [];
+    return filtersToQuery(
+      escapeFilterStateKeys(
+        { [key]: group.selection },
+        knownColumns,
+        jsonColumns,
+      ),
+      { dateTimeColumns },
+    );
+  });
 };
 
 export const areFiltersEqual = (a: FilterState, b: FilterState) => {
@@ -81,11 +176,14 @@ export { parseQuery };
 export const useSearchPageFilterState = ({
   searchQuery = [],
   onFilterChange,
+  onCanonicalizeFilterChange = onFilterChange,
   dateTimeColumns,
   knownColumns,
+  jsonColumns = EMPTY_JSON_COLUMNS,
 }: {
   searchQuery?: Filter[];
   onFilterChange: (filters: Filter[]) => void;
+  onCanonicalizeFilterChange?: (filters: Filter[]) => void;
   dateTimeColumns?: ReadonlyMap<string, string>;
   /**
    * Top-level column names on the table, used to quote
@@ -93,6 +191,7 @@ export const useSearchPageFilterState = ({
    * (eg. service-name --> `service-name`).
    **/
   knownColumns: Set<string>;
+  jsonColumns?: ReadonlySet<string>;
 }) => {
   // Access knownColumns through a ref so the returned mutators (which depend on
   // updateFilterQuery) keep stable identities across knownColumns reference
@@ -102,19 +201,46 @@ export const useSearchPageFilterState = ({
   useEffect(() => {
     knownColumnsRef.current = knownColumns;
   }, [knownColumns]);
+  const jsonColumnsRef = useRef<ReadonlySet<string>>(jsonColumns);
+  useEffect(() => {
+    jsonColumnsRef.current = jsonColumns;
+  }, [jsonColumns]);
 
   // Persisted filters carry canonical (escaped) keys; convert back to the clean
   // keys the sidebar/comparisons use as they enter in-memory FilterState.
   const parsedQuery = useMemo(() => {
     try {
       return {
-        filters: unescapeFilterStateKeys(parseQuery(searchQuery).filters),
+        filters: unescapeFilterStateKeys(
+          parseQuery(searchQuery).filters,
+          jsonColumns,
+        ),
       };
     } catch (e) {
       console.error(e);
       return { filters: {} };
     }
-  }, [searchQuery]);
+  }, [jsonColumns, searchQuery]);
+
+  useEffect(() => {
+    if (jsonColumns.size === 0) return;
+
+    const canonicalQuery = canonicalizeFilterKeys(
+      searchQuery,
+      knownColumns,
+      jsonColumns,
+      dateTimeColumns,
+    );
+    if (JSON.stringify(canonicalQuery) !== JSON.stringify(searchQuery)) {
+      onCanonicalizeFilterChange(canonicalQuery);
+    }
+  }, [
+    dateTimeColumns,
+    jsonColumns,
+    knownColumns,
+    onCanonicalizeFilterChange,
+    searchQuery,
+  ]);
 
   const [filters, setFilters] = useState<FilterState>({});
 
@@ -133,6 +259,7 @@ export const useSearchPageFilterState = ({
       const escapedFilters = escapeFilterStateKeys(
         newFilters,
         knownColumnsRef.current,
+        jsonColumnsRef.current,
       );
       onFilterChange(filtersToQuery(escapedFilters, { dateTimeColumns }));
     },
@@ -145,14 +272,15 @@ export const useSearchPageFilterState = ({
       value: string | boolean,
       action?: 'only' | 'exclude' | 'include',
     ) => {
+      const filterKey = toFilterStateKey(property, jsonColumnsRef.current);
       setFilters(prevFilters => {
         const newFilters = produce(prevFilters, draft => {
-          if (!draft[property]) {
-            draft[property] = { included: new Set(), excluded: new Set() };
+          if (!draft[filterKey]) {
+            draft[filterKey] = { included: new Set(), excluded: new Set() };
           }
 
           if (action === 'only') {
-            draft[property] = {
+            draft[filterKey] = {
               included: new Set([value]),
               excluded: new Set(),
             };
@@ -161,22 +289,22 @@ export const useSearchPageFilterState = ({
 
           if (action === 'exclude') {
             // Remove from included if it was there
-            draft[property].included.delete(value);
+            draft[filterKey].included.delete(value);
             // Toggle in excluded
-            if (draft[property].excluded.has(value)) {
-              draft[property].excluded.delete(value);
+            if (draft[filterKey].excluded.has(value)) {
+              draft[filterKey].excluded.delete(value);
             } else {
-              draft[property].excluded.add(value);
+              draft[filterKey].excluded.add(value);
             }
             return;
           }
 
           // Regular toggle (include)
-          draft[property].excluded.delete(value);
-          if (draft[property].included.has(value)) {
-            draft[property].included.delete(value);
+          draft[filterKey].excluded.delete(value);
+          if (draft[filterKey].included.has(value)) {
+            draft[filterKey].included.delete(value);
           } else {
-            draft[property].included.add(value);
+            draft[filterKey].included.add(value);
           }
         });
         updateFilterQuery(newFilters);
@@ -199,7 +327,7 @@ export const useSearchPageFilterState = ({
       setFilters(prevFilters => {
         const newFilters = produce(prevFilters, draft => {
           for (const { property, value } of entries) {
-            draft[property] = {
+            draft[toFilterStateKey(property, jsonColumnsRef.current)] = {
               included: new Set([value]),
               excluded: new Set(),
             };
@@ -214,12 +342,13 @@ export const useSearchPageFilterState = ({
 
   const setFilterRange = useCallback(
     (property: string, range: { min: number; max: number }) => {
+      const filterKey = toFilterStateKey(property, jsonColumnsRef.current);
       setFilters(prevFilters => {
         const newFilters = produce(prevFilters, draft => {
-          if (!draft[property]) {
-            draft[property] = { included: new Set(), excluded: new Set() };
+          if (!draft[filterKey]) {
+            draft[filterKey] = { included: new Set(), excluded: new Set() };
           }
-          draft[property].range = range;
+          draft[filterKey].range = range;
         });
         updateFilterQuery(newFilters);
         return newFilters;
@@ -230,9 +359,10 @@ export const useSearchPageFilterState = ({
 
   const clearFilter = useCallback(
     (property: string) => {
+      const filterKey = toFilterStateKey(property, jsonColumnsRef.current);
       setFilters(prevFilters => {
         const newFilters = produce(prevFilters, draft => {
-          delete draft[property];
+          delete draft[filterKey];
         });
         updateFilterQuery(newFilters);
         return newFilters;
@@ -251,15 +381,16 @@ export const useSearchPageFilterState = ({
       newValue: string | boolean,
       action: 'include' | 'exclude',
     ) => {
+      const filterKey = toFilterStateKey(property, jsonColumnsRef.current);
       setFilters(prevFilters => {
         const newFilters = produce(prevFilters, draft => {
-          if (!draft[property]) {
-            draft[property] = { included: new Set(), excluded: new Set() };
+          if (!draft[filterKey]) {
+            draft[filterKey] = { included: new Set(), excluded: new Set() };
           }
           const set =
             action === 'exclude'
-              ? draft[property].excluded
-              : draft[property].included;
+              ? draft[filterKey].excluded
+              : draft[filterKey].included;
           set.delete(oldValue);
           set.add(newValue);
         });

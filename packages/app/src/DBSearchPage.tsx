@@ -146,6 +146,7 @@ import {
 } from './components/TimePicker/utils';
 import {
   useColumns,
+  useJsonColumnNames,
   useResolvedDateTimeColumns,
   useTableMetadata,
 } from './hooks/useMetadata';
@@ -1300,6 +1301,13 @@ export function DBSearchPage() {
     },
     [debouncedSubmit, setValue],
   );
+  const handleCanonicalizeFilters = useCallback(
+    (filters: Filter[]) => {
+      setValue('filters', filters, { shouldDirty: false });
+      setSearchedConfig({ filters });
+    },
+    [setSearchedConfig, setValue],
+  );
 
   // Top-level column names for the active source, used to quote
   // filter keys that contain special characters.
@@ -1317,6 +1325,11 @@ export function DBSearchPage() {
         ? new Set(inputSourceColumns.map(c => c.name))
         : new Set<string>(),
     [inputSourceColumns],
+  );
+  const jsonColumnNames = useJsonColumnNames(inputSourceColumns);
+  const jsonColumns = useMemo(
+    () => new Set(jsonColumnNames),
+    [jsonColumnNames],
   );
 
   const watchedSource = useWatch({
@@ -1351,8 +1364,10 @@ export function DBSearchPage() {
   const searchFilters = useSearchPageFilterState({
     searchQuery: filters ?? undefined,
     onFilterChange: handleSetFilters,
+    onCanonicalizeFilterChange: handleCanonicalizeFilters,
     dateTimeColumns,
     knownColumns,
+    jsonColumns,
   });
 
   useEffect(() => {
