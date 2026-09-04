@@ -758,6 +758,10 @@ function selectColumnsToAliasMap(
                 `${column.expr.column.expr.value}['${column.expr.array_index[0].index.value}']`
               : // normal alias
                 column.expr.column.expr.value;
+        } else if (column.expr.type === 'null') {
+          // NULL literal projection (multi-source search pads columns a source
+          // lacks with `NULL AS "alias"`); the parser emits it without a loc.
+          aliasMap[column.as] = 'NULL';
         } else if (column.expr.loc != null) {
           aliasMap[column.as] = parsedSql.slice(
             column.expr.loc.start.offset,
