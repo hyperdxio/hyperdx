@@ -9,6 +9,7 @@ import {
 import * as renderChartConfigModule from '@/core/renderChartConfig';
 import { timeFilterExpr } from '@/core/renderChartConfig';
 import { isBuilderChartConfig } from '@/guards';
+import { TextIndexInfoLookup } from '@/queryParser';
 import { BuilderChartConfigWithDateRange, SourceKind, TSource } from '@/types';
 
 // Mock ClickhouseClient
@@ -1952,33 +1953,212 @@ describe('Metadata', () => {
       });
     });
 
-    it('emits a sampledKeys SQL with no time-filter or source-filter clause when neither is provided', async () => {
+    const partialDateRange: [Date, Date] = [
+      new Date('2026-05-11T16:00:00Z'),
+      new Date('2026-05-11T17:00:00Z'),
+    ];
+
+    // The inner LIMIT prunes rows, not parts, so an unscoped scan still
+    // selects every active part. #3037.
+    it.each([
+      ['only dateRange is provided', { dateRange: partialDateRange }],
+      [
+        'only timestampValueExpression is provided',
+        { timestampValueExpression: 'EventTime, EventDate' },
+      ],
+    ])('skips the raw table scan when %s', async (_label, scope) => {
       const md = buildMetadata();
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
 
-      (mockClickhouseClient.query as jest.Mock)
-        .mockResolvedValueOnce({
-          // DESCRIBE TABLE
-          json: () => Promise.resolve({ data: [lowCardinalityMapColumn] }),
-        })
-        .mockResolvedValueOnce({
-          // sampledKeys query
-          json: () => Promise.resolve({ data: [] }),
-        });
-
-      await md.getMapKeys({
+      const keys = await md.getMapKeys({
         databaseName: 'otel',
         tableName: 'generic_logs',
         column: 'LogAttributes',
         connectionId: 'conn-1',
+        ...scope,
       });
 
-      expect(timeFilterExpr).not.toHaveBeenCalled();
+      expect(keys).toEqual([]);
+      expect(mockClickhouseClient.query).not.toHaveBeenCalled();
+      expect(warn).toHaveBeenCalled();
+      warn.mockRestore();
+    });
 
-      // Find the sampledKeys query (the second call, after DESCRIBE)
-      const sampledKeysCall = (mockClickhouseClient.query as jest.Mock).mock
-        .calls[1][0];
-      expect(sampledKeysCall.query).not.toContain('WHERE');
-      expect(sampledKeysCall.query).not.toContain('__TIME_FILTER__');
+    it('never queries for an unbounded call, and warns once per column', async () => {
+      // getMetadata() builds a fresh Metadata per caller over a shared cache,
+      // so the dedup has to survive that.
+      const cache = new (
+        jest.requireActual('../core/metadata') as any
+      ).MetadataCache();
+      const build = () => {
+        const md = new Metadata(mockClickhouseClient, cache);
+        jest
+          .spyOn(md, 'getMapColumnTextIndexes')
+          .mockResolvedValue(new Map() as any);
+        jest.spyOn(md, 'getServerVersion').mockResolvedValue([26, 3, 0, 0]);
+        return md;
+      };
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      const args = {
+        databaseName: 'otel',
+        tableName: 'generic_logs',
+        column: 'LogAttributes',
+        connectionId: 'conn-1',
+      };
+
+      await build().getMapKeys(args);
+      await build().getMapKeys(args);
+
+      expect(mockClickhouseClient.query).not.toHaveBeenCalled();
+      expect(warn).toHaveBeenCalledTimes(1);
+      warn.mockRestore();
+    });
+
+    describe('text index path', () => {
+      const withKeyIndex = () => {
+        const md = buildMetadata();
+        const lookup: TextIndexInfoLookup = new Map([
+          [
+            'LogAttributes',
+            {
+              key: {
+                indexName: 'idx_log_attr_keys',
+                mapColumn: 'LogAttributes',
+              },
+            },
+          ],
+        ]);
+        jest.spyOn(md, 'getMapColumnTextIndexes').mockResolvedValue(lookup);
+        return md;
+      };
+
+      it('is skipped when there is nothing to bound the parts filter', async () => {
+        const md = withKeyIndex();
+        const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+        const keys = await md.getMapKeys({
+          databaseName: 'otel',
+          tableName: 'generic_logs',
+          column: 'LogAttributes',
+          connectionId: 'conn-1',
+        });
+
+        expect(keys).toEqual([]);
+        expect(mockClickhouseClient.query).not.toHaveBeenCalled();
+        warn.mockRestore();
+      });
+
+      it('shares one index entry across callers with different timestamp expressions', async () => {
+        const md = withKeyIndex();
+        (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
+          json: () => Promise.resolve({ data: [{ key: 'http.method' }] }),
+        });
+        const args = {
+          databaseName: 'otel',
+          tableName: 'generic_logs',
+          column: 'LogAttributes',
+          connectionId: 'conn-1',
+          dateRange: partialDateRange,
+        };
+
+        // The index read never uses the expression, so it must not split the key.
+        await md.getMapKeys(args);
+        await md.getMapKeys({ ...args, timestampValueExpression: 'Timestamp' });
+
+        expect(mockClickhouseClient.query).toHaveBeenCalledTimes(1);
+      });
+
+      it('does not serve a capped result to a caller asking for more keys', async () => {
+        const md = withKeyIndex();
+        (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
+          json: () => Promise.resolve({ data: [{ key: 'http.method' }] }),
+        });
+        const args = {
+          databaseName: 'otel',
+          tableName: 'generic_logs',
+          column: 'LogAttributes',
+          connectionId: 'conn-1',
+          dateRange: partialDateRange,
+        };
+
+        await md.getMapKeys({ ...args, maxKeys: 50 });
+        await md.getMapKeys({ ...args, maxKeys: 1000 });
+
+        expect(mockClickhouseClient.query).toHaveBeenCalledTimes(2);
+      });
+
+      it('keys the cache per window when only a date range is given', async () => {
+        const md = withKeyIndex();
+        const laterRange: [Date, Date] = [
+          new Date('2026-05-11T18:00:00Z'),
+          new Date('2026-05-11T19:00:00Z'),
+        ];
+        (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
+          json: () => Promise.resolve({ data: [{ key: 'http.method' }] }),
+        });
+        const args = {
+          databaseName: 'otel',
+          tableName: 'generic_logs',
+          column: 'LogAttributes',
+          connectionId: 'conn-1',
+        };
+
+        await md.getMapKeys({ ...args, dateRange: partialDateRange });
+        await md.getMapKeys({ ...args, dateRange: laterRange });
+
+        // Moving the time picker must not be served the first window's keys.
+        expect(mockClickhouseClient.query).toHaveBeenCalledTimes(2);
+      });
+
+      it('aligns a caller range so a ticking window reuses one entry', async () => {
+        const md = withKeyIndex();
+        (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
+          json: () => Promise.resolve({ data: [{ key: 'http.method' }] }),
+        });
+        const args = {
+          databaseName: 'otel',
+          tableName: 'generic_logs',
+          column: 'LogAttributes',
+          connectionId: 'conn-1',
+        };
+        const tick = (min: number): [Date, Date] => [
+          new Date(`2026-05-11T16:${String(min).padStart(2, '0')}:00Z`),
+          new Date(`2026-05-11T16:${String(min + 5).padStart(2, '0')}:00Z`),
+        ];
+
+        await md.getMapKeys({ ...args, dateRange: tick(10) });
+        await md.getMapKeys({ ...args, dateRange: tick(20) });
+
+        expect(mockClickhouseClient.query).toHaveBeenCalledTimes(1);
+      });
+
+      it('reads the index when the caller supplies a scope', async () => {
+        const md = withKeyIndex();
+        const signal = new AbortController().signal;
+
+        (mockClickhouseClient.query as jest.Mock).mockResolvedValueOnce({
+          json: () => Promise.resolve({ data: [{ key: 'http.method' }] }),
+        });
+
+        const keys = await md.getMapKeys({
+          databaseName: 'otel',
+          tableName: 'generic_logs',
+          column: 'LogAttributes',
+          connectionId: 'conn-1',
+          dateRange: [
+            new Date('2026-05-11T16:00:00Z'),
+            new Date('2026-05-11T17:00:00Z'),
+          ],
+          timestampValueExpression: 'EventTime, EventDate',
+          signal,
+        });
+
+        expect(keys).toEqual(['http.method']);
+        const call = (mockClickhouseClient.query as jest.Mock).mock.calls[0][0];
+        expect(call.query).toContain('mergeTreeTextIndex(');
+        expect(call.query).toContain('part_name IN (');
+        expect(call.abort_signal).toBe(signal);
+      });
     });
 
     it('injects the time filter into the sampledKeys WHERE clause when dateRange and timestampValueExpression are provided', async () => {
@@ -2011,7 +2191,8 @@ describe('Metadata', () => {
           connectionId: 'conn-1',
           databaseName: 'otel',
           tableName: 'generic_logs',
-          dateRange,
+          // widened to the 24h discovery lookback
+          dateRange: [new Date('2026-05-10T17:00:00Z'), dateRange[1]],
           timestampValueExpression: 'EventTime, EventDate',
         }),
       );
@@ -2044,6 +2225,8 @@ describe('Metadata', () => {
         tableName: 'generic_logs',
         column: 'LogAttributes',
         connectionId: 'conn-1',
+        dateRange: partialDateRange,
+        timestampValueExpression: 'EventTime, EventDate',
       });
 
       const sampledKeysCall = (mockClickhouseClient.query as jest.Mock).mock
@@ -2082,6 +2265,8 @@ describe('Metadata', () => {
         tableName: 'generic_logs',
         column: 'LogAttributes',
         connectionId: 'conn-1',
+        dateRange: partialDateRange,
+        timestampValueExpression: 'EventTime, EventDate',
       });
 
       const sampledKeysCall = (mockClickhouseClient.query as jest.Mock).mock
@@ -2144,6 +2329,11 @@ describe('Metadata', () => {
   // longer in the recommended log/trace schemas, but users who still have
   // the MV configured must be able to query it.
   describe('getMapKeys (key rollup table path)', () => {
+    const flushMicrotasks = async () => {
+      for (let i = 0; i < 5; i++) {
+        await new Promise(resolve => setImmediate(resolve));
+      }
+    };
     const buildMetadata = () => {
       const realCache = new (
         jest.requireActual('../core/metadata') as any
@@ -2174,6 +2364,101 @@ describe('Metadata', () => {
     afterEach(() => {
       jest.restoreAllMocks();
       (mockClickhouseClient.query as jest.Mock).mockReset();
+    });
+
+    it('does not reject a caller when another caller sharing the key aborts', async () => {
+      const md = buildMetadata();
+      jest
+        .spyOn(md, 'getMapColumnTextIndexes')
+        .mockResolvedValue(new Map() as any);
+      const theirs = new AbortController();
+      const mine = new AbortController();
+
+      let release: (v: any) => void;
+      (mockClickhouseClient.query as jest.Mock).mockImplementationOnce(
+        ({ abort_signal }: { abort_signal?: AbortSignal }) =>
+          new Promise((resolve, reject) => {
+            abort_signal?.addEventListener('abort', () =>
+              reject(new Error('The user aborted a request.')),
+            );
+            release = resolve;
+          }),
+      );
+
+      const theirCall = md.getMapKeys({ ...baseArgs, signal: theirs.signal });
+      const myCall = md.getMapKeys({ ...baseArgs, signal: mine.signal });
+      await flushMicrotasks();
+      theirs.abort();
+      release!({
+        json: () => Promise.resolve({ data: [{ Key: 'http.method' }] }),
+      });
+
+      await expect(myCall).resolves.toEqual(['http.method']);
+      await expect(theirCall).resolves.toEqual(['http.method']);
+    });
+
+    it('aborts the shared query once every caller has given up', async () => {
+      const md = buildMetadata();
+      jest
+        .spyOn(md, 'getMapColumnTextIndexes')
+        .mockResolvedValue(new Map() as any);
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      const theirs = new AbortController();
+      const mine = new AbortController();
+
+      let shared: AbortSignal | undefined;
+      (mockClickhouseClient.query as jest.Mock).mockImplementationOnce(
+        ({ abort_signal }: { abort_signal?: AbortSignal }) => {
+          shared = abort_signal;
+          return new Promise(() => {});
+        },
+      );
+
+      const theirCall = md.getMapKeys({ ...baseArgs, signal: theirs.signal });
+      const myCall = md.getMapKeys({ ...baseArgs, signal: mine.signal });
+      await flushMicrotasks();
+
+      theirs.abort();
+      expect(shared?.aborted).toBe(false);
+      mine.abort();
+      expect(shared?.aborted).toBe(true);
+
+      theirCall.catch(() => {});
+      myCall.catch(() => {});
+      warn.mockRestore();
+    });
+
+    it('starts a fresh query for a caller arriving after the shared one aborted', async () => {
+      const md = buildMetadata();
+      jest
+        .spyOn(md, 'getMapColumnTextIndexes')
+        .mockResolvedValue(new Map() as any);
+      const theirs = new AbortController();
+
+      (mockClickhouseClient.query as jest.Mock).mockImplementationOnce(
+        ({ abort_signal }: { abort_signal?: AbortSignal }) =>
+          // The real client rejects only once the socket unwinds.
+          new Promise((_resolve, reject) => {
+            abort_signal?.addEventListener('abort', () =>
+              setTimeout(() => reject(new Error('aborted')), 10),
+            );
+          }),
+      );
+
+      // Attach the handler up front; the rejection lands mid-test.
+      const theirCall = expect(
+        md.getMapKeys({ ...baseArgs, signal: theirs.signal }),
+      ).rejects.toThrow();
+      await flushMicrotasks();
+      theirs.abort();
+
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
+        json: () => Promise.resolve({ data: [{ Key: 'http.method' }] }),
+      });
+      await expect(md.getMapKeys({ ...baseArgs })).resolves.toEqual([
+        'http.method',
+      ]);
+      await theirCall;
     });
 
     it('queries the key rollup table when metadataMVs is configured and no text index exists', async () => {
@@ -2217,6 +2502,59 @@ describe('Metadata', () => {
       expect(call.query).toContain('toStartOfFifteenMinutes(');
       expect(call.query).toContain('Timestamp >=');
       expect(call.query).toContain('Timestamp <=');
+    });
+
+    it('reuses one text-index entry across a ticking sub-hour window', async () => {
+      const md = buildMetadata();
+      jest
+        .spyOn(md, 'getMapColumnTextIndexes')
+        .mockResolvedValue(
+          new Map([
+            ['LogAttributes', { key: { indexName: 'idx_log_attr_keys' } }],
+          ]) as any,
+        );
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
+        json: () => Promise.resolve({ data: [{ key: 'http.method' }] }),
+      });
+
+      for (const minute of ['00:05', '00:20', '00:35', '00:50']) {
+        await md.getMapKeys({
+          ...baseArgs,
+          dateRange: [
+            new Date('2024-01-01T00:00:00Z'),
+            new Date(`2024-01-01T${minute}:00Z`),
+          ],
+        });
+      }
+
+      expect(mockClickhouseClient.query).toHaveBeenCalledTimes(1);
+    });
+
+    it('widens a sub-hour window to the discovery lookback', async () => {
+      const md = buildMetadata();
+      jest
+        .spyOn(md, 'getMapColumnTextIndexes')
+        .mockResolvedValue(new Map() as any);
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
+        json: () => Promise.resolve({ data: [{ Key: 'http.method' }] }),
+      });
+
+      await md.getMapKeys({
+        ...baseArgs,
+        dateRange: [
+          new Date('2024-01-01T00:40:00Z'),
+          new Date('2024-01-01T00:55:00Z'),
+        ],
+      });
+
+      const { query_params } = (mockClickhouseClient.query as jest.Mock).mock
+        .calls[0][0];
+      const bounds = Object.values(query_params).filter(
+        (v): v is number => typeof v === 'number' && v > 1e12,
+      );
+      const span = Math.max(...bounds) - Math.min(...bounds);
+      expect(span).toBeGreaterThanOrEqual(24 * 60 * 60 * 1000);
+      expect(span % (15 * 60 * 1000)).toBe(0);
     });
 
     it('filters empty keys from the rollup response', async () => {
@@ -2465,8 +2803,89 @@ describe('Metadata', () => {
   });
 
   describe('getAllFields', () => {
+    const SCOPED_DATE_RANGE: [Date, Date] = [
+      new Date('2026-05-11T16:00:00Z'),
+      new Date('2026-05-11T17:00:00Z'),
+    ];
+
     beforeEach(() => {
       jest.clearAllMocks();
+      (timeFilterExpr as jest.Mock).mockResolvedValue({
+        sql: '__TIME_FILTER__',
+        params: {},
+      });
+    });
+
+    it('forwards the abort signal to getMapKeys', async () => {
+      const md = new Metadata(mockClickhouseClient, new MetadataCache());
+      const getMapKeysSpy = jest.spyOn(md, 'getMapKeys').mockResolvedValue([]);
+
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
+        json: () =>
+          Promise.resolve({
+            data: [
+              {
+                name: 'LogAttributes',
+                type: 'Map(LowCardinality(String), String)',
+                default_type: '',
+                default_expression: '',
+                comment: '',
+                codec_expression: '',
+                ttl_expression: '',
+              },
+            ],
+          }),
+      });
+
+      const signal = new AbortController().signal;
+      await md.getAllFields({
+        databaseName: 'otel',
+        tableName: 'otel_logs',
+        connectionId: 'conn-1',
+        dateRange: SCOPED_DATE_RANGE,
+        timestampValueExpression: 'EventTime, EventDate',
+        signal,
+      });
+
+      expect(getMapKeysSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ signal }),
+      );
+    });
+
+    it('yields no Map sub-fields when the caller has no date range to scope the scan', async () => {
+      const md = new Metadata(mockClickhouseClient, new MetadataCache());
+      jest.spyOn(md, 'getMapColumnTextIndexes').mockResolvedValue(new Map());
+      jest.spyOn(md, 'getServerVersion').mockResolvedValue([26, 3, 0, 0]);
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
+        json: () =>
+          Promise.resolve({
+            data: [
+              {
+                name: 'LogAttributes',
+                type: 'Map(LowCardinality(String), String)',
+                default_type: '',
+                default_expression: '',
+                comment: '',
+                codec_expression: '',
+                ttl_expression: '',
+              },
+            ],
+          }),
+      });
+
+      const fields = await md.getAllFields({
+        databaseName: 'otel',
+        tableName: 'otel_logs',
+        connectionId: 'conn-1',
+      });
+
+      expect(fields).toEqual([
+        expect.objectContaining({ path: ['LogAttributes'] }),
+      ]);
+      expect(mockClickhouseClient.query).toHaveBeenCalledTimes(1);
+      warn.mockRestore();
     });
 
     it('threads dateRange and timestampValueExpression through to getMapKeys', async () => {
@@ -2559,6 +2978,8 @@ describe('Metadata', () => {
         databaseName: 'otel',
         tableName: 'test_logs',
         connectionId: 'conn-1',
+        dateRange: SCOPED_DATE_RANGE,
+        timestampValueExpression: 'EventTime, EventDate',
       });
 
       // The Map column itself should be present
@@ -2642,6 +3063,8 @@ describe('Metadata', () => {
         databaseName: 'otel',
         tableName: 'test_logs',
         connectionId: 'conn-1',
+        dateRange: SCOPED_DATE_RANGE,
+        timestampValueExpression: 'EventTime, EventDate',
       });
 
       // Sub-fields for LogAttributes
@@ -3301,6 +3724,11 @@ describe('parametric aggregate arguments are inlined as literals', () => {
       column: 'LogAttributes',
       connectionId: 'conn-1',
       maxKeys: 500,
+      dateRange: [
+        new Date('2026-05-11T16:00:00Z'),
+        new Date('2026-05-11T17:00:00Z'),
+      ],
+      timestampValueExpression: 'EventTime, EventDate',
     });
 
     const sampledKeysCall = (mockClickhouseClient.query as jest.Mock).mock

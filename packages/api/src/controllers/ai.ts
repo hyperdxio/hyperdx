@@ -1,8 +1,10 @@
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createOpenAI } from '@ai-sdk/openai';
 import {
+  defaultFieldMetadataDateRange,
   getMetadata,
   TableMetadata,
+  tcFromSource,
 } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   AILineTableResponse,
@@ -128,6 +130,9 @@ export async function getAIMetadata(source: ISource) {
     databaseName,
     tableName,
     connectionId,
+    metadataMVs: tcFromSource(source).metadataMVs,
+    dateRange: defaultFieldMetadataDateRange(),
+    timestampValueExpression: source.timestampValueExpression,
   });
 
   // TODO: Dedup with DBSearchPageFilters.tsx logic
