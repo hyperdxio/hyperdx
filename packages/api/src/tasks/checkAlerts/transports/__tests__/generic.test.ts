@@ -96,8 +96,9 @@ describe('buildWebhookTemplateVariables', () => {
       alertId: 'alert-1',
       status: 'firing',
       alertType: 'search',
-      comparator: '>=',
+      comparator: 'between',
       threshold: 5,
+      thresholdMax: 10,
       value: 42,
       groupKey: 'checkout',
       sourceQuery: 'Body: "error"',
@@ -111,8 +112,9 @@ describe('buildWebhookTemplateVariables', () => {
       alertId: 'alert-1',
       status: 'firing',
       alertType: 'search',
-      comparator: '>=',
+      comparator: 'between',
       threshold: 5,
+      thresholdMax: 10,
       value: 42,
       groupKey: 'checkout',
       teamId: 'team-1',
@@ -129,5 +131,7 @@ describe('buildWebhookTemplateVariables', () => {
     expect(vars.status).toBe('');
     expect(vars.note).toBe('');
     expect(vars.startTimeISO).toBe(new Date(0).toISOString());
+    // A raw number renders as an empty slot when absent, not "undefined".
+    expect(vars.thresholdMax).toBeUndefined();
   });
 });

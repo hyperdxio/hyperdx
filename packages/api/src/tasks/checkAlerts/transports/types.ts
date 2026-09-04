@@ -19,6 +19,7 @@ export interface Message {
   alertType?: string; // search | dashboard_chart
   comparator?: string; // >=, >, <=, <, =, !=, between, outside
   threshold?: number;
+  thresholdMax?: number; // upper bound; only set when comparator is between/outside
   value?: number; // the value that triggered/resolved the alert
   groupKey?: string;
   sourceQuery?: string; // the search expr / SQL that defines the alert

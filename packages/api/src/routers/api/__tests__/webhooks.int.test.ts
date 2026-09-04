@@ -4,6 +4,8 @@ import { getLoggedInAgent, getServer } from '@/fixtures';
 import Alert from '@/models/alert';
 import Webhook, { WebhookService } from '@/models/webhook';
 import * as transports from '@/tasks/checkAlerts/transports';
+import { buildWebhookTemplateVariables } from '@/tasks/checkAlerts/transports/generic';
+import type { Message } from '@/tasks/checkAlerts/transports/types';
 
 const MOCK_WEBHOOK = {
   name: 'Test Webhook',
@@ -1294,6 +1296,35 @@ describe('webhooks router', () => {
       expect(sentWebhook.headers.toJSON()).toEqual({
         Authorization: '****',
       });
+    });
+
+    // The webhook form documents every one of these variables directly above
+    // the Test Webhook button, so a test send has to exercise the same set —
+    // an unset raw number renders `"value": ` and the receiver rejects a
+    // template that works on a real firing.
+    it('sends a sample value for every template variable', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+
+      await agent
+        .post('/webhooks/test')
+        .send({
+          service: WebhookService.Generic,
+          url: 'https://example.com/webhook',
+          body: '{"text": "test"}',
+        })
+        .expect(200);
+
+      const sent: Message = genericSpy.mock.calls[0][1];
+      const rendered = buildWebhookTemplateVariables(sent);
+
+      for (const [name, value] of Object.entries(rendered)) {
+        expect(`${name}=${value}`).not.toMatch(/=(undefined|null)?$/);
+      }
+      // Emitted unquoted, so these are what break a body when left unset.
+      for (const name of ['threshold', 'thresholdMax', 'value'] as const) {
+        expect(typeof rendered[name]).toBe('number');
+      }
+      expect(sent.teamId).toBe(team._id.toString());
     });
 
     it('returns 404 when webhookId does not exist', async () => {
