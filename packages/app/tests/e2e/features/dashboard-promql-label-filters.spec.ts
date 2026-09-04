@@ -84,9 +84,9 @@ test.describe(
         await expect(
           form.getByTestId('filter-variable-enabled-checkbox'),
         ).toHaveCount(0);
-        // Covers both the filter expression and the dropdown values filter:
-        // each is a CodeMirror editor, and this form has neither.
-        await expect(form.locator('div.cm-editor')).toHaveCount(0);
+        // The series selector is the form's only CodeMirror editor: neither the
+        // filter expression nor the dropdown values filter belongs to this type.
+        await expect(form.locator('div.cm-editor')).toHaveCount(1);
       });
 
       await test.step('Only PromQL sources are offered', async () => {
@@ -241,6 +241,88 @@ test.describe(
         await expect(
           tile.getByTitle('accounting', { exact: true }),
         ).toHaveCount(0);
+      });
+    });
+
+    test('narrows the dropdown to the series the selector matches', async ({
+      page,
+    }) => {
+      test.setTimeout(120000);
+
+      await dashboardPage.createNewDashboard();
+      await dashboardPage.openEditFiltersModal();
+      await dashboardPage.addPromqlLabelFilterToDashboard(
+        'Service',
+        PROMQL_SOURCE_NAME,
+        'service',
+        {
+          variableName: 'svc',
+          match: `${E2E_PROMQL_METRIC_NAME}{service="${SORTED_SERVICES[0]}"}`,
+        },
+      );
+      await dashboardPage.closeFiltersModal();
+
+      await dashboardPage.openFilterDropdown('Service');
+      await expect(async () => {
+        expect(await dashboardPage.getOpenFilterDropdownOptions()).toEqual([
+          SORTED_SERVICES[0],
+        ]);
+      }).toPass({ timeout: 20000 });
+      await page.keyboard.press('Escape');
+    });
+
+    test("authors a selector that references another filter's variable", async ({
+      page,
+    }) => {
+      test.setTimeout(120000);
+
+      await test.step('Declare an Environment variable for the selector to reference', async () => {
+        await dashboardPage.createNewDashboard();
+        await dashboardPage.openEditFiltersModal();
+        await dashboardPage.addStaticListFilterToDashboard(
+          'Environment',
+          ['prod', 'staging'],
+          { variableName: 'env' },
+        );
+      });
+
+      await test.step("The selector completes the other filter's variable", async () => {
+        await dashboardPage.openAddFilterForm();
+        await dashboardPage.selectFilterType('PromQL label values');
+        await dashboardPage.getFilterNameInput().fill('Pod');
+        await dashboardPage.selectFilterSource(PROMQL_SOURCE_NAME);
+        await dashboardPage.getFilterLabelInput().fill('pod');
+        // The closing `"` and `}` are auto-inserted, and the completion's
+        // replace range reaches over them.
+        await dashboardPage.fillFilterMatch('up{job=~"$en');
+        await dashboardPage.acceptFilterMatchCompletion('$env');
+        expect(await dashboardPage.getFilterMatchText()).toBe(
+          'up{job=~"$env"}',
+        );
+      });
+
+      await test.step('The selector survives a save and a reload', async () => {
+        await dashboardPage.variableNameInput.fill('pod');
+        await page.getByTestId('save-filter-button').click();
+        await expect(dashboardPage.getFilterItemByName('Pod')).toBeVisible();
+        await dashboardPage.closeFiltersModal();
+
+        await page.reload();
+        await dashboardPage.waitForLoaded();
+        await dashboardPage.openEditFiltersModal();
+        await dashboardPage.openEditFilterForm('Pod');
+        expect(await dashboardPage.getFilterMatchText()).toBe(
+          'up{job=~"$env"}',
+        );
+      });
+
+      // Honoring it would narrow the dropdown to the values already selected
+      // in it, so the reference is never offered in the first place.
+      await test.step('The filter cannot reference its own variable', async () => {
+        await dashboardPage.fillFilterMatch('{job=~"$');
+        const options = dashboardPage.filterMatchCompletionOptions();
+        await expect(options.filter({ hasText: '$env' })).not.toHaveCount(0);
+        await expect(options.filter({ hasText: '$pod' })).toHaveCount(0);
       });
     });
 

@@ -62,6 +62,7 @@ export const toFormValues = (
 
     // PROMETHEUS_LABEL fields
     label: promqlLabel?.label ?? '',
+    match: promqlLabel?.match ?? '',
   };
 };
 
@@ -81,6 +82,7 @@ export const toSavedFilter = (values: FilterFormValues): DashboardFilter => {
     return DashboardFilterSchema.parse({
       ...values,
       label: values.label.trim(),
+      match: values.match?.trim() || undefined,
       isBroadcastEnabled: false,
       isVariableEnabled: true,
       variableName: getFilterVariableName(values),

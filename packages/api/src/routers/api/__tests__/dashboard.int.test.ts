@@ -1287,6 +1287,27 @@ describe('dashboard router', () => {
       expect(created.body.filters).toEqual([filter]);
     });
 
+    it('persists a series selector', async () => {
+      const filter = makePromqlFilter({ match: 'up{job=~"$env"}' });
+
+      const created = await agent
+        .post('/dashboards')
+        .send({ ...MOCK_DASHBOARD, filters: [filter] })
+        .expect(200);
+
+      expect(created.body.filters).toEqual([filter]);
+    });
+
+    it('rejects an empty series selector', async () => {
+      await agent
+        .post('/dashboards')
+        .send({
+          ...MOCK_DASHBOARD,
+          filters: [makePromqlFilter({ match: '' })],
+        })
+        .expect(400);
+    });
+
     it('persists an updated label on PATCH', async () => {
       const filter = makePromqlFilter();
       const created = await agent

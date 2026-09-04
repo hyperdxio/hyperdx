@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
-import { deriveVariableName } from '@hyperdx/common-utils/dist/filters';
+import {
+  deriveVariableName,
+  getFilterVariableName,
+} from '@hyperdx/common-utils/dist/filters';
 import {
   ChartVariable,
   DashboardFilter,
@@ -150,6 +153,14 @@ export const DashboardFilterEditForm = ({
     [filters, filter?.id],
   );
 
+  // A filter referencing its own variable would narrow its dropdown to the
+  // values already selected in it, so don't offer that reference at all.
+  const otherVariables = useMemo(() => {
+    const ownName = filter && getFilterVariableName(filter);
+    if (!ownName) return variables;
+    return variables?.filter(variable => variable.name !== ownName);
+  }, [variables, filter]);
+
   const isNew = !filter;
   const showTypeInput = !!showVariableOptions;
 
@@ -204,12 +215,14 @@ export const DashboardFilterEditForm = ({
               otherFilters={otherFilters}
             />
           ) : formFilterType === 'PROMETHEUS_LABEL' ? (
-            <PromqlLabelFilterEditForm
-              control={control}
-              otherFilters={otherFilters}
-            />
+            <SqlVariablesProvider variables={otherVariables}>
+              <PromqlLabelFilterEditForm
+                control={control}
+                otherFilters={otherFilters}
+              />
+            </SqlVariablesProvider>
           ) : (
-            <SqlVariablesProvider variables={variables}>
+            <SqlVariablesProvider variables={otherVariables}>
               <QueryExpressionFilterEditForm
                 control={control}
                 trigger={trigger}
