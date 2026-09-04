@@ -34,6 +34,10 @@ export default mongoose.model<IDashboard>(
       savedQuery: { type: String, required: false },
       savedQueryLanguage: { type: String, required: false },
       savedFilterValues: { type: mongoose.Schema.Types.Array, required: false },
+      savedDateRange: {
+        type: mongoose.Schema.Types.Mixed,
+        required: false,
+      },
       containers: { type: mongoose.Schema.Types.Array, required: false },
       createdBy: {
         type: mongoose.Schema.Types.ObjectId,
