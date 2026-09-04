@@ -3160,7 +3160,7 @@
         ]
       },
       "FilterInput": {
-        "description": "A drop-down filter on a dashboard. Depending on type, filters can either broadcast\nselected value(s) to every tile (isBroadcastEnabled), expose selected\nvalues as a variable (isVariableEnabled) or both. Typically a filter should\ndo just one of these things.\n",
+        "description": "A drop-down filter on a dashboard. Depending on type, filters can either broadcast\nselected value(s) to every tile (isBroadcastEnabled), expose selected\nvalues as a variable (isVariableEnabled) or both. Typically a filter should\ndo just one of these things. Any filter may additionally be marked\nrequired via minSelections, which blocks the tiles that read it until it\nhas a selected value - or every tile on the dashboard, with\nisGlobalRequirement.\n",
         "oneOf": [
           {
             "$ref": "#/components/schemas/QueryExpressionFilterInput"
@@ -3271,6 +3271,22 @@
             "pattern": "^[a-zA-Z][a-zA-Z0-9_]*$",
             "description": "Token tiles reference this filter's selected value by, as\n`$variableName`. Must start with a letter and may contain only\nletters, numbers, and underscores. Defaults to the display name with\nwhitespace replaced by underscores and remaining illegal characters\nremoved, so a variable-enabled filter whose name derives nothing\nusable must send this field explicitly. Variable names must be unique\nacross a dashboard's variable-enabled filters. Names the variable\nonly, so the field is rejected when isVariableEnabled is not true, and\nis omitted from responses for such a filter.\n",
             "example": "environment"
+          },
+          "minSelections": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "default": 0,
+            "description": "Minimum number of values that must be selected before tiles load.\nSet to 1 to make the filter required. Only 0 and 1 are accepted.\nOmit the field (or send 0) for the default optional behavior.\n",
+            "example": 1
+          },
+          "isGlobalRequirement": {
+            "type": "boolean",
+            "default": false,
+            "description": "Widens a required filter's block to every tile on the dashboard. False\n(the default) blocks only the tiles that read the filter: those\nreferencing its variableName, and those its broadcast applies to.\nIgnored unless minSelections is 1.\n",
+            "example": true
           }
         }
       },
@@ -3337,6 +3353,22 @@
             "pattern": "^[a-zA-Z][a-zA-Z0-9_]*$",
             "description": "Token tiles reference this filter's selected value by, as\n`$variableName`. Must start with a letter and may contain only\nletters, numbers, and underscores. Defaults to the display name with\nwhitespace replaced by underscores and remaining illegal characters\nremoved, so a variable-enabled filter whose name derives nothing\nusable must send this field explicitly. Variable names must be unique\nacross a dashboard's variable-enabled filters. Names the variable\nonly, so the field is rejected when isVariableEnabled is not true, and\nis omitted from responses for such a filter.\n",
             "example": "environment"
+          },
+          "minSelections": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "default": 0,
+            "description": "Minimum number of values that must be selected before tiles load.\nSet to 1 to make the filter required. Only 0 and 1 are accepted.\nOmit the field (or send 0) for the default optional behavior.\n",
+            "example": 1
+          },
+          "isGlobalRequirement": {
+            "type": "boolean",
+            "default": false,
+            "description": "Widens a required filter's block to every tile on the dashboard. False\n(the default) blocks only the tiles that read the filter: those\nreferencing its variableName, and those its broadcast applies to.\nIgnored unless minSelections is 1.\n",
+            "example": true
           }
         }
       },
@@ -3406,6 +3438,22 @@
             "pattern": "^[a-zA-Z][a-zA-Z0-9_]*$",
             "description": "Token that tiles reference this filter's selected value by, as\n`$variableName`. Must start with a letter and may contain only\nletters, numbers, and underscores. Defaults to the display name with\nwhitespace replaced by underscores and remaining illegal characters\nremoved. Variable names must be unique across a dashboard's\nvariable-enabled filters.\n",
             "example": "pod"
+          },
+          "minSelections": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "default": 0,
+            "description": "Minimum number of values that must be selected before tiles load.\nSet to 1 to make the filter required. Only 0 and 1 are accepted.\nOmit the field (or send 0) for the default optional behavior.\n",
+            "example": 1
+          },
+          "isGlobalRequirement": {
+            "type": "boolean",
+            "default": false,
+            "description": "Widens a required filter's block to every tile on the dashboard. False\n(the default) blocks only the tiles that read the filter: those\nreferencing its variableName, and those its broadcast applies to.\nIgnored unless minSelections is 1.\n",
+            "example": true
           }
         }
       },

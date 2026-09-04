@@ -1,5 +1,6 @@
 import {
   isFilterBroadcastEnabled,
+  isFilterRequired,
   isFilterVariableEnabled,
 } from '@hyperdx/common-utils/dist/filters';
 import {
@@ -226,19 +227,26 @@ export function translateExternalChartToTileConfig(
 export function translateFilterToExternalFilter(
   filter: DashboardFilter,
 ): ExternalDashboardFilterWithId {
+  // Omitted from responses unless the filter is required, so a GET response
+  // can be PUT back verbatim.
+  const omittedKeys = isFilterRequired(filter)
+    ? []
+    : (['minSelections', 'isGlobalRequirement'] as const);
+
   switch (filter.type) {
     case 'STATIC_LIST':
-      return filter;
+      return omit(filter, ...omittedKeys);
 
     case 'PROMETHEUS_LABEL':
       return {
-        ...omit(filter, 'source'),
+        ...omit(filter, 'source', ...omittedKeys),
         sourceId: filter.source.toString(),
       };
 
     case 'QUERY_EXPRESSION': {
       // Ignore variableName and appliesToSourceIds if the filter is not in a mode that uses them
       const ignoredKeys = [
+        ...omittedKeys,
         ...(isFilterVariableEnabled(filter) ? [] : (['variableName'] as const)),
         ...(isFilterBroadcastEnabled(filter)
           ? []

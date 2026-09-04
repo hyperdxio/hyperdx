@@ -1,5 +1,6 @@
 import {
   deriveVariableName,
+  doesFilterApplyToSource,
   FilterState,
   filterStateToPredicate,
   filtersToQuery,
@@ -11,6 +12,8 @@ import {
   getPendingFilterValuesVariables,
   hasFilterEffect,
   isFilterBroadcastEnabled,
+  isFilterGlobalRequirement,
+  isFilterRequired,
   isFilterVariableEnabled,
   isQueryExpressionFilter,
   isRenderablePinnedFilter,
@@ -1658,6 +1661,95 @@ describe('filters', () => {
     it('respects an explicit flag', () => {
       expect(isFilterVariableEnabled({ isVariableEnabled: true })).toBe(true);
       expect(isFilterVariableEnabled({ isVariableEnabled: false })).toBe(false);
+    });
+  });
+
+  describe('isFilterRequired', () => {
+    it('treats a missing or zero minimum as not required', () => {
+      expect(isFilterRequired({})).toBe(false);
+      expect(isFilterRequired({ minSelections: undefined })).toBe(false);
+      expect(isFilterRequired({ minSelections: 0 })).toBe(false);
+    });
+
+    it('treats a null minimum as not required', () => {
+      expect(
+        isFilterRequired({
+          minSelections: null,
+        } as unknown as DashboardFilter),
+      ).toBe(false);
+    });
+
+    it('holds for a minimum of one', () => {
+      expect(isFilterRequired({ minSelections: 1 })).toBe(true);
+    });
+  });
+
+  describe('isFilterGlobalRequirement', () => {
+    it('treats a missing flag as covering only the tiles that read the filter', () => {
+      expect(isFilterGlobalRequirement({})).toBe(false);
+      expect(
+        isFilterGlobalRequirement({ isGlobalRequirement: undefined }),
+      ).toBe(false);
+    });
+
+    it('respects an explicit flag', () => {
+      expect(isFilterGlobalRequirement({ isGlobalRequirement: true })).toBe(
+        true,
+      );
+      expect(isFilterGlobalRequirement({ isGlobalRequirement: false })).toBe(
+        false,
+      );
+    });
+  });
+
+  describe('doesFilterApplyToSource', () => {
+    const filter = (
+      overrides: Partial<QueryExpressionDashboardFilter> = {},
+    ): QueryExpressionDashboardFilter => ({
+      id: 'f1',
+      type: 'QUERY_EXPRESSION',
+      name: 'Service',
+      expression: 'ServiceName',
+      source: 'logs',
+      ...overrides,
+    });
+
+    it('reaches every tile when the scope is empty', () => {
+      for (const scoped of [
+        filter(),
+        filter({ appliesToSourceIds: [] }),
+        filter({ appliesToSourceIds: undefined }),
+      ]) {
+        expect(doesFilterApplyToSource(scoped, 'traces')).toBe(true);
+        expect(doesFilterApplyToSource(scoped, undefined)).toBe(true);
+      }
+    });
+
+    it('reaches only the scoped sources', () => {
+      const scoped = filter({ appliesToSourceIds: ['logs'] });
+
+      expect(doesFilterApplyToSource(scoped, 'logs')).toBe(true);
+      expect(doesFilterApplyToSource(scoped, 'traces')).toBe(false);
+      expect(doesFilterApplyToSource(scoped, undefined)).toBe(false);
+    });
+
+    it('reaches nothing when broadcasting is off', () => {
+      expect(
+        doesFilterApplyToSource(filter({ isBroadcastEnabled: false }), 'logs'),
+      ).toBe(false);
+      expect(
+        doesFilterApplyToSource(
+          {
+            id: 'f2',
+            type: 'STATIC_LIST',
+            name: 'Environment',
+            options: ['prod'],
+            isBroadcastEnabled: false,
+            isVariableEnabled: true,
+          },
+          'logs',
+        ),
+      ).toBe(false);
     });
   });
 

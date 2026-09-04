@@ -460,6 +460,7 @@ function ServicesDashboardPage() {
         source={source}
         isLoading={isFetchingFilters || isFiltersMutationPending}
         showVariableOptions={false}
+        showRequiredFilterOptions={false}
       />
     </Box>
   );

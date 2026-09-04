@@ -34,6 +34,7 @@ import {
   Granularity,
   isTimeSeriesDisplayType,
 } from '@hyperdx/common-utils/dist/core/utils';
+import { getBlockingRequiredFilters } from '@hyperdx/common-utils/dist/dashboardFilterValues';
 import {
   displayTypeRequiresSource,
   isBuilderChartConfig,
@@ -382,6 +383,36 @@ const whereLanguageParser = parseAsString.withDefault(
   typeof window !== 'undefined' ? (getStoredLanguage() ?? 'lucene') : 'lucene',
 );
 
+/**
+ * A tile that cannot draw its chart yet, explaining why in its place. Keeps the
+ * chrome identical to a rendered tile so the toolbar stays usable.
+ */
+const TilePlaceholder = ({
+  title,
+  toolbarItems,
+  children,
+  'data-testid': dataTestId,
+}: {
+  title: React.ReactNode;
+  toolbarItems?: React.ReactNode[];
+  children: React.ReactNode;
+  'data-testid'?: string;
+}) => (
+  <ChartContainer title={title} toolbarItems={toolbarItems}>
+    <Stack
+      align="center"
+      justify="center"
+      h="100%"
+      p="md"
+      data-testid={dataTestId}
+    >
+      <Text size="sm" c="dimmed" ta="center">
+        {children}
+      </Text>
+    </Stack>
+  </ChartContainer>
+);
+
 const Tile = ({
   chart,
   dateRange,
@@ -395,6 +426,7 @@ const Tile = ({
   onTimeRangeSelect,
   filters,
   variables,
+  unsatisfiedRequiredFilters,
   showAlertAnnotations,
   showReleaseAnnotations,
   isLive,
@@ -426,6 +458,8 @@ const Tile = ({
   onTimeRangeSelect: (start: Date, end: Date) => void;
   filters?: Filter[];
   variables?: ChartVariable[];
+  /** The dashboard's required filters that have nothing selected. */
+  unsatisfiedRequiredFilters?: DashboardFilter[];
   // When true, draw alert firing/recovery annotations on this tile's chart.
   showAlertAnnotations?: boolean;
   // When true, draw release markers on this tile's chart.
@@ -560,6 +594,49 @@ const Tile = ({
     [serializedTileVariables],
   );
 
+  // Whether a broadcast filter reaches this tile's query at all. PromQL tiles
+  // are handed no filters, and a raw-SQL tile drops them without a source or
+  // without a macro to apply them.
+  const consumesBroadcastFilters = useMemo(() => {
+    if (isPromqlSavedChartConfig(chart.config)) return false;
+    if (isRawSqlSavedChartConfig(chart.config)) {
+      return (
+        !!chart.config.source &&
+        !isMissingFiltersMacro(chart.config.sqlTemplate)
+      );
+    }
+    return true;
+  }, [chart.config]);
+
+  // Serialized for the same reason as `tileVariables`: any change to the
+  // dashboard's filters hands this tile a new array, and only a change to the
+  // names this tile is blocked on should churn the render memo below.
+  const serializedMissingRequiredFilterNames = useMemo(
+    () =>
+      JSON.stringify(
+        getBlockingRequiredFilters(unsatisfiedRequiredFilters ?? [], {
+          sourceId: chart.config.source,
+          referencedVariableNames: tileVariables?.map(
+            variable => variable.name,
+          ),
+          consumesBroadcastFilters,
+        }).map(filter => filter.name),
+      ),
+    [
+      unsatisfiedRequiredFilters,
+      chart.config.source,
+      tileVariables,
+      consumesBroadcastFilters,
+    ],
+  );
+  const missingRequiredFilterNames = useMemo<string[]>(
+    () => JSON.parse(serializedMissingRequiredFilterNames),
+    [serializedMissingRequiredFilterNames],
+  );
+  const isBlockedByRequiredFilters =
+    missingRequiredFilterNames.length > 0 &&
+    displayTypeRequiresSource(chart.config.displayType);
+
   useEffect(() => {
     if (isPromqlSavedChartConfig(chart.config)) {
       if (source != null) {
@@ -692,7 +769,9 @@ const Tile = ({
   const alertAnnotations = useAlertAnnotations(
     alert?.id,
     isFullscreen ? fullscreenDateRange : dateRange,
-    showAlertAnnotations && tileCanDrawAnnotations,
+    showAlertAnnotations &&
+      tileCanDrawAnnotations &&
+      !isBlockedByRequiredFilters,
   );
 
   // Release markers, over the same visible window. Scoped to this tile: the
@@ -709,7 +788,9 @@ const Tile = ({
     : undefined;
   const releaseAnnotations = useReleaseAnnotations(
     isFullscreen ? fullscreenDateRange : dateRange,
-    showReleaseAnnotations && tileCanDrawAnnotations,
+    showReleaseAnnotations &&
+      tileCanDrawAnnotations &&
+      !isBlockedByRequiredFilters,
     {
       source,
       where: builderConfig?.where,
@@ -1147,7 +1228,11 @@ const Tile = ({
 
       // The fullscreen view is always visible, so it should always load.
       // In the tile (grid) view, gate data fetching on viewport visibility.
-      const chartEnabled = isFullscreenView ? true : hasBeenVisible;
+      const chartEnabled = isBlockedByRequiredFilters
+        ? false
+        : isFullscreenView
+          ? true
+          : hasBeenVisible;
 
       // Use the fullscreen-local date range and granularity when rendering
       // inside the fullscreen modal so that changing them does not affect
@@ -1178,24 +1263,26 @@ const Tile = ({
             </div>
           }
         >
-          {isSourceMissing ? (
-            <ChartContainer title={title} toolbarItems={toolbar}>
-              <Stack align="center" justify="center" h="100%" p="md">
-                <Text size="sm" c="dimmed" ta="center">
-                  The data source for this tile no longer exists. Edit the tile
-                  to select a new source.
-                </Text>
-              </Stack>
-            </ChartContainer>
+          {isBlockedByRequiredFilters ? (
+            <TilePlaceholder
+              title={title}
+              toolbarItems={toolbar}
+              data-testid="tile-missing-required-filters"
+            >
+              {`Missing required filters: ${missingRequiredFilterNames.join(
+                ', ',
+              )}. Select a value for each to load this tile.`}
+            </TilePlaceholder>
+          ) : isSourceMissing ? (
+            <TilePlaceholder title={title} toolbarItems={toolbar}>
+              The data source for this tile no longer exists. Edit the tile to
+              select a new source.
+            </TilePlaceholder>
           ) : isSourceUnset ? (
-            <ChartContainer title={title} toolbarItems={toolbar}>
-              <Stack align="center" justify="center" h="100%" p="md">
-                <Text size="sm" c="dimmed" ta="center">
-                  The data source for this tile is not set. Edit the tile to
-                  select a data source.
-                </Text>
-              </Stack>
-            </ChartContainer>
+            <TilePlaceholder title={title} toolbarItems={toolbar}>
+              The data source for this tile is not set. Edit the tile to select
+              a data source.
+            </TilePlaceholder>
           ) : (
             <>
               {(effectiveQueriedConfig?.displayType === DisplayType.Line ||
@@ -1420,6 +1507,8 @@ const Tile = ({
       filterWarning,
       isSourceMissing,
       isSourceUnset,
+      isBlockedByRequiredFilters,
+      missingRequiredFilterNames,
       hasBeenVisible,
       annotations,
       isLive,
@@ -1856,6 +1945,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     ignoredVariableNames,
     getFilterQueriesForSource,
     variables,
+    unsatisfiedRequiredFilters,
   } = useDashboardFilters(filters);
 
   const dashboardReady =
@@ -2305,6 +2395,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             ...getFilterQueriesForSource(tileSourceId),
           ]}
           variables={variables}
+          unsatisfiedRequiredFilters={unsatisfiedRequiredFilters}
           onTimeRangeSelect={onTimeRangeSelect}
           showAlertAnnotations={showAlertAnnotations}
           showReleaseAnnotations={showReleaseAnnotations}
@@ -2408,6 +2499,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       showReleaseAnnotations,
       getFilterQueriesForSource,
       variables,
+      unsatisfiedRequiredFilters,
       moveTargetContainers,
       handleMoveTileToGroup,
       selectedTileIds,
@@ -3362,6 +3454,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           onRemoveFilter={handleRemoveFilter}
           isLoading={isSavingDashboard || isFetchingDashboard}
           showVariableOptions
+          showRequiredFilterOptions
           variables={variables}
         />
       )}
