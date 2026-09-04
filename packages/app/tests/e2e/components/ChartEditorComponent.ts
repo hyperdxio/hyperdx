@@ -5,7 +5,11 @@
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import { expect, Locator, Page } from '@playwright/test';
 
-import { dismissSqlAutocomplete, getSqlEditor } from '../utils/locators';
+import {
+  dismissSqlAutocomplete,
+  getSqlEditor,
+  replaceEditorText,
+} from '../utils/locators';
 import { switchWhereToLucene } from '../utils/lucene-autocomplete';
 
 import { WebhookAlertModalComponent } from './WebhookAlertModalComponent';
@@ -434,13 +438,11 @@ export class ChartEditorComponent {
    * "Generated PromQL" accordion holds a second, read-only CodeMirror.
    */
   async replacePromqlExpression(expression: string) {
-    const content = this.page.locator('.cm-editor .cm-content').first();
-    await content.click();
-    await this.page.keyboard.press(
-      process.platform === 'darwin' ? 'Meta+A' : 'Control+A',
+    await replaceEditorText(
+      this.page,
+      this.page.locator('.cm-editor .cm-content').first(),
+      expression,
     );
-    await this.page.keyboard.press('Delete');
-    await this.page.keyboard.type(expression);
   }
 
   /** Read the current text of the PromQL expression editor. */

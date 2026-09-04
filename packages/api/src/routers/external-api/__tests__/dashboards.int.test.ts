@@ -5754,6 +5754,21 @@ describe('External API v2 Dashboards - new format', () => {
         expect(response.body.data.filters[0].label).toBe('k8s.pod.name');
       });
 
+      it('round-trips a series selector', async () => {
+        const response = await sendFilters([
+          promqlFilterInput({ match: 'up{job=~"$env"}' }),
+        ]);
+
+        expect(response.status).toBe(200);
+        expect(response.body.data.filters[0].match).toBe('up{job=~"$env"}');
+      });
+
+      it('rejects an empty series selector', async () => {
+        const response = await sendFilters([promqlFilterInput({ match: '' })]);
+
+        expect(response.status).toBe(400);
+      });
+
       // Each mode flag accepts exactly one value, so omitting it fills that
       // value in rather than falling back to the queried filter's defaults.
       it('defaults the mode flags when they are omitted', async () => {
@@ -6601,6 +6616,18 @@ describe('External API v2 Dashboards - new format', () => {
       expect(res.body.message).toContain(
         'Number tiles support a single select item',
       );
+    });
+
+    it('rejects an unsupported configType instead of routing it to the builder dialect', async () => {
+      // A body carrying an unrecognized configType parses fine against the
+      // builder union (the unknown keys are stripped), so without an explicit
+      // check it would persist as a builder tile AND skip the builder-only
+      // rules — here a formula referencing a nonexistent series.
+      const res = await postTile({
+        configType: 'promql',
+        formulas: [{ expression: 'C * 2' }],
+      }).expect(400);
+      expect(res.body.message).toContain('configType must be "sql" or omitted');
     });
 
     it('round-trips formulas on a log/trace event source', async () => {

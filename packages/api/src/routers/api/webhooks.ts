@@ -8,6 +8,7 @@ import type {
 import express from 'express';
 import { ObjectId } from 'mongodb';
 import mongoose from 'mongoose';
+import ms from 'ms';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
@@ -18,6 +19,7 @@ import {
   handleSendGenericWebhook,
   handleSendSlackWebhook,
 } from '@/tasks/checkAlerts/transports';
+import type { Message } from '@/tasks/checkAlerts/transports/types';
 import { isDuplicateKeyError } from '@/utils/errors';
 import {
   validateWebhookUrl,
@@ -459,15 +461,33 @@ router.post(
         body,
       });
 
-      // Send test message
-      const testMessage = {
+      // Every field a real firing sends, so a body written against the
+      // documented variables renders here exactly as it will in production.
+      // The enriched variables especially: `threshold`, `thresholdMax` and
+      // `value` are emitted raw, so leaving them unset renders `"value": `
+      // and the receiver rejects a template that would have worked.
+      // A range comparator is the useful sample — it is the one case where
+      // `thresholdMax` is populated.
+      const now = Date.now();
+      const testMessage: Message = {
         hdxLink: 'https://hyperdx.io',
         title: 'Test Webhook from HyperDX',
         body: 'This is a test message to verify your webhook configuration is working correctly.',
-        startTime: Date.now(),
-        endTime: Date.now(),
-        state: AlertState.INSUFFICIENT_DATA,
+        startTime: now - ms('5m'),
+        endTime: now,
+        state: AlertState.ALERT,
         eventId: 'test-event-id',
+        alertId: 'test-alert-id',
+        status: 'firing',
+        alertType: 'search',
+        comparator: 'between',
+        threshold: 5,
+        thresholdMax: 10,
+        value: 7,
+        groupKey: 'test-group',
+        sourceQuery: 'SeverityText: "error"',
+        teamId: teamId.toString(),
+        note: 'Test webhook — no runbook',
       };
 
       const testChannel = { type: 'webhook' as const, channel: testWebhook };

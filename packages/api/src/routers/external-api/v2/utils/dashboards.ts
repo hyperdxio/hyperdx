@@ -201,7 +201,9 @@ const toExternalColorRules = (
   return resolved.length > 0 ? resolved : undefined;
 };
 
-const convertToExternalTileChartConfig = (
+// Exported for the inline-alert converter (v2/utils/alertChartConfig.ts),
+// which reuses the tile-config translation for an alert's persisted config.
+export const convertToExternalTileChartConfig = (
   config: SavedChartConfig,
 ): ExternalDashboardTileConfig | undefined => {
   if (isRawSqlSavedChartConfig(config)) {
@@ -650,7 +652,12 @@ export function convertToExternalDashboard(
 // --------------------------------------------------------------------------------
 
 const convertToInternalSelectItem = (
-  item: ExternalDashboardSelectItem,
+  // `isDelta` is the MCP tile dialect's spelling of the gauge delta flag
+  // (`periodAggFn: 'delta'` in the REST dialect). MCP tiles are cast to
+  // ExternalDashboardTileWithId before reaching this converter
+  // (saveDashboard.ts), so honoring both spellings here is what keeps an
+  // MCP-authored gauge-delta series from silently evaluating raw values.
+  item: ExternalDashboardSelectItem & { isDelta?: boolean },
 ): Exclude<BuilderSavedChartConfig['select'][number], string> => {
   return {
     ...pick(item, [
@@ -663,7 +670,7 @@ const convertToInternalSelectItem = (
     ]),
     aggCondition: item.where,
     aggConditionLanguage: item.whereLanguage,
-    isDelta: item.periodAggFn === 'delta',
+    isDelta: item.periodAggFn === 'delta' || item.isDelta === true,
     valueExpression: item.valueExpression ?? '',
   };
 };

@@ -7,7 +7,11 @@ import { expect, Locator, Page } from '@playwright/test';
 
 import { ChartEditorComponent } from '../components/ChartEditorComponent';
 import { TimePickerComponent } from '../components/TimePickerComponent';
-import { dismissSqlAutocomplete, getSqlEditor } from '../utils/locators';
+import {
+  dismissSqlAutocomplete,
+  getSqlEditor,
+  replaceEditorText,
+} from '../utils/locators';
 import { switchWhereLanguage } from '../utils/lucene-autocomplete';
 
 /** The "Dropdown values filter" on a dashboard filter, and its language. */
@@ -1364,6 +1368,45 @@ export class DashboardPage {
   }
 
   /**
+   * The PromQL filter form's series-selector editor. Only rendered when the
+   * chosen source sits on a connection that proxies to a real Prometheus.
+   */
+  getFilterMatchInput(): Locator {
+    return this.getFilterForm().getByTestId('filter-match-input');
+  }
+
+  /** Replace the contents of the series-selector editor. */
+  async fillFilterMatch(selector: string) {
+    await replaceEditorText(
+      this.page,
+      this.getFilterMatchInput().locator('.cm-content'),
+      selector,
+    );
+  }
+
+  /** The current text of the series-selector editor. */
+  async getFilterMatchText(): Promise<string> {
+    return this.getFilterMatchInput().locator('.cm-content').innerText();
+  }
+
+  /**
+   * The series-selector editor's completion options. Portalled to the body
+   * rather than rendered in the modal, so this is not scoped to the form.
+   */
+  filterMatchCompletionOptions(): Locator {
+    return this.page.locator('.cm-tooltip-autocomplete > ul > li');
+  }
+
+  /** Accept the completion labelled `label` from that popup. */
+  async acceptFilterMatchCompletion(label: string) {
+    const option = this.filterMatchCompletionOptions()
+      .filter({ has: this.page.getByText(label, { exact: true }) })
+      .first();
+    await option.waitFor({ state: 'visible', timeout: 10000 });
+    await option.click();
+  }
+
+  /**
    * Add a dashboard filter whose dropdown lists the values of one Prometheus
    * label. Like the static variant it shares only the display name and variable
    * name with a queried filter — there is no expression or broadcast mode, and
@@ -1377,7 +1420,7 @@ export class DashboardPage {
     name: string,
     sourceName: string,
     label: string,
-    variableOptions?: { variableName?: string },
+    variableOptions?: { variableName?: string; match?: string },
   ) {
     await this.addFiltersButton.click();
     await this.selectFilterType('PromQL label values');
@@ -1386,6 +1429,9 @@ export class DashboardPage {
     await nameInput.fill(name);
     await this.selectFilterSource(sourceName);
     await this.getFilterLabelInput().fill(label);
+    if (variableOptions?.match !== undefined) {
+      await this.fillFilterMatch(variableOptions.match);
+    }
     if (variableOptions?.variableName !== undefined) {
       await this.variableNameInput.fill(variableOptions.variableName);
     }

@@ -1981,6 +1981,11 @@ export const PromqlLabelDashboardFilterSchema =
     source: z.string().min(1),
     /** Label whose values populate the dropdown. */
     label: z.string().min(1).max(PROMETHEUS_LABEL_NAME_MAX_LENGTH),
+    /**
+     * Optional Prometheus series selector narrowing which series the label
+     * values are read from.
+     */
+    match: z.string().min(1).optional(),
     // Variable-only: there is no SQL expression to broadcast
     isBroadcastEnabled: z.literal(false),
     isVariableEnabled: z.literal(true),

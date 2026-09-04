@@ -63,6 +63,7 @@ export function useDashboardFilterValues({
   const promqlLabelValues = usePromqlLabelFilterValues({
     filters: promqlLabelFilters,
     dateRange,
+    variables,
   });
 
   const data = useMemo(

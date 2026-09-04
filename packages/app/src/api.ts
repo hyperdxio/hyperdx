@@ -591,18 +591,16 @@ type PrometheusQueryRangeResponse = {
   };
   error?: string;
 };
-type PrometheusLabelValuesResponse = {
+type PrometheusLabelsResponse = {
   status: 'success' | 'error';
   data?: string[];
   error?: string;
 };
 
-async function prometheusFetch<T>(
-  path: string,
-  searchParams: Record<string, string>,
-): Promise<T> {
+/** Reports the reason a Prometheus-shaped error body carries, not ky's. */
+async function withPrometheusError<T>(request: () => Promise<T>): Promise<T> {
   try {
-    return await server.post(path, { searchParams }).json();
+    return await request();
   } catch (e: any) {
     // ky throws HTTPError on non-2xx — read the response body for the real error
     if (e?.response) {
@@ -620,6 +618,12 @@ async function prometheusFetch<T>(
     throw e;
   }
 }
+
+const prometheusFetch = <T>(
+  path: string,
+  searchParams: Record<string, string>,
+): Promise<T> =>
+  withPrometheusError(() => server.post(path, { searchParams }).json<T>());
 
 export const prometheusApi = {
   queryRange: (params: {
@@ -641,6 +645,19 @@ export const prometheusApi = {
       ...(params.table ? { table: params.table } : {}),
     }),
 
+  labels: (params: {
+    connectionId: string;
+    database?: string;
+    table?: string;
+    start?: number;
+    end?: number;
+  }): Promise<PrometheusLabelsResponse> =>
+    server
+      .get('v1/prometheus/labels', {
+        searchParams: labelLookupSearchParams(params),
+      })
+      .json(),
+
   labelValues: (params: {
     label: string;
     connectionId: string;
@@ -648,16 +665,31 @@ export const prometheusApi = {
     table?: string;
     start?: number;
     end?: number;
-  }): Promise<PrometheusLabelValuesResponse> =>
-    server
-      .get(`v1/prometheus/label/${params.label}/values`, {
-        searchParams: {
-          connectionId: params.connectionId,
-          ...(params.database ? { database: params.database } : {}),
-          ...(params.table ? { table: params.table } : {}),
-          ...(params.start != null ? { start: String(params.start) } : {}),
-          ...(params.end != null ? { end: String(params.end) } : {}),
-        },
-      })
-      .json(),
+    match?: string;
+  }): Promise<PrometheusLabelsResponse> =>
+    withPrometheusError(() =>
+      server
+        .get(`v1/prometheus/label/${params.label}/values`, {
+          searchParams: labelLookupSearchParams(params),
+        })
+        .json<PrometheusLabelsResponse>(),
+    ),
 };
+
+function labelLookupSearchParams(params: {
+  connectionId: string;
+  database?: string;
+  table?: string;
+  start?: number;
+  end?: number;
+  match?: string;
+}): Record<string, string> {
+  return {
+    connectionId: params.connectionId,
+    ...(params.database ? { database: params.database } : {}),
+    ...(params.table ? { table: params.table } : {}),
+    ...(params.start != null ? { start: String(params.start) } : {}),
+    ...(params.end != null ? { end: String(params.end) } : {}),
+    ...(params.match ? { 'match[]': params.match } : {}),
+  };
+}
