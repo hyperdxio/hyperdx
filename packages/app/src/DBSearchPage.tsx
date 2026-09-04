@@ -131,6 +131,7 @@ import {
   useLocalStorage,
   usePrevious,
 } from '@/utils';
+import { buildCorrelatedSearchWhere } from '@/utils/correlatedSearch';
 
 import ChartSQLPreview, { SQLPreview } from './components/ChartSQLPreview';
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
@@ -1695,10 +1696,12 @@ export function DBSearchPage() {
       where,
       whereLanguage,
       source,
+      pivot,
     }: {
       where: SearchConfig['where'];
       whereLanguage: SearchConfig['whereLanguage'];
       source?: TSource;
+      pivot?: boolean;
     }) => {
       const qParams = new URLSearchParams({
         whereLanguage: whereLanguage || 'sql',
@@ -1708,11 +1711,29 @@ export function DBSearchPage() {
         liveInterval: interval.toString(),
       });
 
-      // When generating a search based on a different source,
-      // filters and select for the current source are not preserved.
-      if (source && source.id !== searchedSource?.id) {
+      if (source && pivot && source.id !== searchedSource?.id) {
+        // A deliberate pivot (e.g. the trace-level attributes above the
+        // waterfall): open the attribute's own source. Filters and select for
+        // the current source are not preserved.
         qParams.append('where', where || '');
         qParams.append('source', source.id);
+      } else if (source && searchedSource && source.id !== searchedSource.id) {
+        // For an event from a correlated source, "Search for this value only"
+        // becomes a trace-id subquery on the event's table rather than a pivot
+        // to the event's source: the searched source, select, and filters are
+        // kept, and — like the same-source action — the search box is replaced.
+        // If the subquery can't run (e.g. the event's table isn't on this
+        // connection), the query fails visibly where the user can edit it.
+        const correlatedWhere = buildCorrelatedSearchWhere({
+          searchedSource,
+          eventSource: source,
+          eventWhere: where || '',
+        });
+        qParams.set('whereLanguage', 'sql');
+        qParams.append('select', searchedConfig.select || '');
+        qParams.append('where', correlatedWhere);
+        qParams.append('filters', JSON.stringify(searchedConfig.filters ?? []));
+        qParams.append('source', searchedSource.id);
       } else {
         qParams.append('select', searchedConfig.select || '');
         qParams.append('where', where || searchedConfig.where || '');
@@ -1727,7 +1748,7 @@ export function DBSearchPage() {
       searchedConfig.filters,
       searchedConfig.select,
       searchedConfig.where,
-      searchedSource?.id,
+      searchedSource,
       searchedTimeRange,
     ],
   );
