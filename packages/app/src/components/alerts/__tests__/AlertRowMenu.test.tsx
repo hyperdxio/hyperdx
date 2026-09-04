@@ -179,7 +179,7 @@ describe('AlertRowMenu', () => {
     expect(mutateAsync).toHaveBeenCalledWith('alert-1');
   });
 
-  // getAlertDisplayName and linkTitle both return '' for an alert whose source
+  // linkTitle returns '' for an alert whose source
   // can't be resolved, and '' is not nullish — so `??` would have produced
   // "Delete ?" and "Open ".
   it('falls back to generic wording when the name and source are empty', async () => {

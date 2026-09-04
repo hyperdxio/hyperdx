@@ -146,6 +146,8 @@ describe('MCP Alert Tools', () => {
         // Slim summary fields present
         expect(output[0]).toHaveProperty('id');
         expect(output[0]).toHaveProperty('name');
+        expect(output[0]).toHaveProperty('displayName');
+        expect(output[0]).toHaveProperty('tags');
         expect(output[0]).toHaveProperty('state');
         expect(output[0]).toHaveProperty('source');
         expect(output[0]).toHaveProperty('interval');
@@ -210,7 +212,7 @@ describe('MCP Alert Tools', () => {
         await client2.close();
       });
 
-      it('should derive name from saved search when alert has no explicit name', async () => {
+      it('derives displayName from the saved search and leaves name unset', async () => {
         const savedSearch = await createTestSavedSearch(); // name: 'Test Saved Search'
         await new Alert({
           team: team._id,
@@ -230,10 +232,13 @@ describe('MCP Alert Tools', () => {
         expect(result.isError).toBeFalsy();
         const output = JSON.parse(getFirstText(result));
         expect(output).toHaveLength(1);
-        expect(output[0].name).toBe('Test Saved Search');
+        // `name` stays raw so an agent that reads-then-resends the alert can't
+        // freeze the derived title into the Handlebars name template.
+        expect(output[0].name).toBeUndefined();
+        expect(output[0].displayName).toBe('Test Saved Search');
       });
 
-      it('should derive name from dashboard tile when tile alert has no explicit name', async () => {
+      it('derives displayName from the dashboard tile and leaves name unset', async () => {
         const dashboard = await createTestDashboardWithTile(); // tile name: 'Error Count'
         await new Alert({
           team: team._id,
@@ -254,7 +259,8 @@ describe('MCP Alert Tools', () => {
         expect(result.isError).toBeFalsy();
         const output = JSON.parse(getFirstText(result));
         expect(output).toHaveLength(1);
-        expect(output[0].name).toBe('Error Count');
+        expect(output[0].name).toBeUndefined();
+        expect(output[0].displayName).toBe('Test Dashboard - Error Count');
       });
     });
 
@@ -345,6 +351,51 @@ describe('MCP Alert Tools', () => {
         expect(output.source).toBe('saved_search');
         expect(output.threshold).toBe(50);
         expect(output.state).toBe('OK');
+      });
+
+      it('should create an alert with an explicit displayName and tags', async () => {
+        const savedSearch = await createTestSavedSearch();
+        const webhook = await createTestWebhook();
+
+        const result = await callTool(client, 'clickstack_save_alert', {
+          source: 'saved_search',
+          savedSearchId: savedSearch._id.toString(),
+          threshold: 50,
+          thresholdType: 'above',
+          interval: '5m',
+          channel: { type: 'webhook', webhookId: webhook._id.toString() },
+          displayName: 'Checkout errors',
+          tags: ['checkout'],
+        });
+
+        expect(result.isError).toBeFalsy();
+        const output = JSON.parse(getFirstText(result));
+        expect(output.displayName).toBe('Checkout errors');
+        expect(output.tags).toEqual(['checkout']);
+      });
+
+      it('derives displayName and tags from the saved search when omitted', async () => {
+        const savedSearch = await SavedSearch.create({
+          team: team._id,
+          name: 'Payments errors',
+          source: traceSource._id,
+          tags: ['payments'],
+        });
+        const webhook = await createTestWebhook();
+
+        const result = await callTool(client, 'clickstack_save_alert', {
+          source: 'saved_search',
+          savedSearchId: savedSearch._id.toString(),
+          threshold: 50,
+          thresholdType: 'above',
+          interval: '5m',
+          channel: { type: 'webhook', webhookId: webhook._id.toString() },
+        });
+
+        expect(result.isError).toBeFalsy();
+        const output = JSON.parse(getFirstText(result));
+        expect(output.displayName).toBe('Payments errors');
+        expect(output.tags).toEqual(['payments']);
       });
 
       it('should create a tile-based alert', async () => {
@@ -831,6 +882,8 @@ describe('MCP Alert Tools', () => {
         expect(output).toHaveLength(1);
         expect(output[0].source).toBe('inline');
         expect(output[0].name).toBe('Inline MCP Alert');
+        expect(output[0]).toHaveProperty('displayName');
+        expect(output[0]).toHaveProperty('tags');
         expect(output[0].chartConfig).toBeUndefined();
       });
 
@@ -859,7 +912,84 @@ describe('MCP Alert Tools', () => {
           displayType: 'line',
           sourceId: traceSource._id.toString(),
         });
-        expect(output.name).toBe('Error Rate Query');
+        // `name` stays the (unset) title template; the chart config name
+        // surfaces as the resolved display name.
+        expect(output.name).toBeNull();
+        expect(output.displayName).toBe('Error Rate Query');
+      });
+
+      it('derives displayName from the chart config name when omitted', async () => {
+        const webhook = await createTestWebhook();
+
+        const result = await callTool(
+          client,
+          'clickstack_save_alert',
+          makeInlineInput(webhook._id.toString(), {
+            chartConfig: makeChartConfig({ name: 'Trace error rate' }),
+          }),
+        );
+
+        expect(result.isError).toBeFalsy();
+        const output = JSON.parse(getFirstText(result));
+        expect(output.displayName).toBe('Trace error rate');
+        // Inline alerts have no parent entity to inherit tags from.
+        expect(output.tags).toEqual([]);
+
+        const stored = await Alert.findById(output.id);
+        expect(stored!.displayName).toBe('Trace error rate');
+        expect(stored!.tags).toEqual([]);
+      });
+
+      it('persists an explicit displayName and tags over the chart config name', async () => {
+        const webhook = await createTestWebhook();
+
+        const result = await callTool(
+          client,
+          'clickstack_save_alert',
+          makeInlineInput(webhook._id.toString(), {
+            chartConfig: makeChartConfig({ name: 'Trace error rate' }),
+            displayName: 'Checkout error spike',
+            tags: ['checkout', 'p1'],
+          }),
+        );
+
+        expect(result.isError).toBeFalsy();
+        const output = JSON.parse(getFirstText(result));
+        expect(output.displayName).toBe('Checkout error spike');
+        expect(output.tags).toEqual(['checkout', 'p1']);
+
+        const detail = await callTool(client, 'clickstack_get_alert', {
+          id: output.id,
+        });
+        expect(JSON.parse(getFirstText(detail))).toMatchObject({
+          displayName: 'Checkout error spike',
+          tags: ['checkout', 'p1'],
+        });
+      });
+
+      it('re-derives displayName when a later save drops it', async () => {
+        const webhook = await createTestWebhook();
+        const createResult = await callTool(
+          client,
+          'clickstack_save_alert',
+          makeInlineInput(webhook._id.toString(), {
+            chartConfig: makeChartConfig({ name: 'Trace error rate' }),
+            displayName: 'Checkout error spike',
+          }),
+        );
+        const created = JSON.parse(getFirstText(createResult));
+
+        const updateResult = await callTool(client, 'clickstack_save_alert', {
+          ...makeInlineInput(webhook._id.toString(), {
+            chartConfig: makeChartConfig({ name: 'Trace error rate' }),
+          }),
+          id: created.id,
+        });
+
+        expect(updateResult.isError).toBeFalsy();
+        expect(JSON.parse(getFirstText(updateResult)).displayName).toBe(
+          'Trace error rate',
+        );
       });
     });
 

@@ -853,12 +853,16 @@ export const makeAlertInput = ({
   threshold = 8,
   tileId,
   webhookId = 'test-webhook-id',
+  displayName,
+  tags,
 }: {
   dashboardId: string;
   interval?: AlertInterval;
   threshold?: number;
   tileId: string;
   webhookId?: string;
+  displayName?: string | null;
+  tags?: string[] | null;
 }): Partial<AlertInput> => ({
   channel: {
     type: 'webhook',
@@ -870,6 +874,8 @@ export const makeAlertInput = ({
   source: AlertSource.TILE,
   dashboardId,
   tileId,
+  ...(displayName !== undefined && { displayName }),
+  ...(tags !== undefined && { tags }),
 });
 
 export const makeSavedSearchAlertInput = ({
@@ -877,11 +883,15 @@ export const makeSavedSearchAlertInput = ({
   interval = '15m',
   threshold = 8,
   webhookId = 'test-webhook-id',
+  displayName,
+  tags,
 }: {
   savedSearchId: string;
   interval?: AlertInterval;
   threshold?: number;
   webhookId?: string;
+  displayName?: string | null;
+  tags?: string[] | null;
 }): Partial<AlertInput> => ({
   channel: {
     type: 'webhook',
@@ -892,6 +902,8 @@ export const makeSavedSearchAlertInput = ({
   thresholdType: AlertThresholdType.ABOVE,
   source: AlertSource.SAVED_SEARCH,
   savedSearchId,
+  ...(displayName !== undefined && { displayName }),
+  ...(tags !== undefined && { tags }),
 });
 
 export const makeAlertChartConfig = (opts: {
@@ -922,11 +934,15 @@ export const makeInlineAlertInput = ({
   interval = '15m',
   threshold = 8,
   webhookId = 'test-webhook-id',
+  displayName,
+  tags,
 }: {
   chartConfig: AlertChartConfig;
   interval?: AlertInterval;
   threshold?: number;
   webhookId?: string;
+  displayName?: string | null;
+  tags?: string[] | null;
 }): Partial<AlertInput> => ({
   channel: {
     type: 'webhook',
@@ -937,4 +953,6 @@ export const makeInlineAlertInput = ({
   thresholdType: AlertThresholdType.ABOVE,
   source: AlertSource.INLINE,
   chartConfig,
+  ...(displayName !== undefined && { displayName }),
+  ...(tags !== undefined && { tags }),
 });

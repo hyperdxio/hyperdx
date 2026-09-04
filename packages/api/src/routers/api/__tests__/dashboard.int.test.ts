@@ -240,7 +240,7 @@ describe('dashboard router', () => {
       .send({
         name: 'Test Dashboard',
         tiles: [makeTile({ alert: mockAlert })],
-        tags: [],
+        tags: ['ops'],
       })
       .expect(200);
 
@@ -261,6 +261,68 @@ describe('dashboard router', () => {
     expect(storedAlert).not.toBeNull();
     expect(storedAlert?.savedSearch).toBeNull();
     expect(storedAlert?.groupBy).toBeNull();
+    // Neither field was sent, so they derive from the tile and dashboard.
+    expect(storedAlert?.displayName).toBe('Test Dashboard - Test Chart');
+    expect(storedAlert?.tags).toEqual(['ops']);
+  });
+
+  it('resolves displayName and tags on GET for a tile alert stored without them', async () => {
+    const mockAlert = makeMockAlert(webhook._id.toString());
+    const dashboard = await agent
+      .post('/dashboards')
+      .send({
+        name: 'Test Dashboard',
+        tiles: [makeTile({ alert: mockAlert })],
+        tags: ['ops'],
+      })
+      .expect(200);
+    // Alerts written before the fields existed.
+    await Alert.updateMany(
+      { dashboard: dashboard.body.id },
+      { $set: { displayName: null, tags: null } },
+    );
+
+    const list = await agent.get('/dashboards').expect(200);
+    const fromList = list.body.find(d => d._id === dashboard.body.id);
+    expect(fromList.tiles[0].config.alert).toMatchObject({
+      displayName: 'Test Dashboard - Test Chart',
+      tags: ['ops'],
+    });
+  });
+
+  it('persists a tile alert displayName sent through the dashboard PATCH', async () => {
+    const mockAlert = makeMockAlert(webhook._id.toString());
+    const dashboard = await agent
+      .post('/dashboards')
+      .send({
+        name: 'Test Dashboard',
+        tiles: [makeTile({ alert: mockAlert })],
+        tags: ['ops'],
+      })
+      .expect(200);
+
+    await agent
+      .patch(`/dashboards/${dashboard.body.id}`)
+      .send({
+        tiles: [
+          {
+            ...dashboard.body.tiles[0],
+            config: {
+              ...dashboard.body.tiles[0].config,
+              alert: { ...mockAlert, displayName: 'Checkout errors' },
+            },
+          },
+        ],
+      })
+      .expect(200);
+
+    const storedAlert = await Alert.findOne({
+      team: team._id,
+      dashboard: dashboard.body.id,
+      tileId: dashboard.body.tiles[0].id,
+      source: AlertSource.TILE,
+    });
+    expect(storedAlert?.displayName).toBe('Checkout errors');
   });
 
   // A tile alert must always end up with a resolvable notification target.

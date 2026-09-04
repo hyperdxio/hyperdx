@@ -95,6 +95,7 @@ import {
   roundDownToXMinutes,
   unflattenObject,
 } from '@/tasks/util';
+import { isPopulatedRef } from '@/utils/alerts';
 import {
   getCounter,
   type OperationOutcome,
@@ -516,13 +517,8 @@ const fireChannelEvent = async ({
   }
   // alert.team is typed as a bare ObjectId, but a caller that populated it
   // (int-test setups do `.populate(['team', ...])`; the production path never
-  // does) hands us a full Team document instead — Mongoose documents don't
-  // override toString(), so calling it directly would silently stringify to
-  // "[object Object]" rather than the hex id. Prefer the populated
-  // document's own _id when present.
-  const isPopulatedWithId = (value: unknown): value is { _id: ObjectId } =>
-    typeof value === 'object' && value !== null && '_id' in value;
-  const teamId = (isPopulatedWithId(team) ? team._id : team).toString();
+  // does) hands us a full Team document instead. Prefer its own _id.
+  const teamId = (isPopulatedRef(team) ? team._id : team).toString();
 
   const attributesNested = unflattenObject(attributes);
   const templateView: AlertMessageTemplateDefaultView = {
@@ -541,6 +537,8 @@ const fireChannelEvent = async ({
       }),
       message: alert.message,
       name: alert.name,
+      displayName: alert.displayName,
+      tags: alert.tags,
       savedSearchId: savedSearch?.id,
       silenced: alert.silenced,
       source: alert.source,
@@ -570,7 +568,6 @@ const fireChannelEvent = async ({
     metadata,
     state,
     title: buildAlertMessageTemplateTitle({
-      template: alert.name,
       view: templateView,
       state,
     }),
