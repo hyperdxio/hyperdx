@@ -13,6 +13,7 @@ import {
 import { Alert, Button, Group, Modal, Stack, TextInput } from '@mantine/core';
 import { IconAlertTriangle } from '@tabler/icons-react';
 
+import { ErrorBoundary } from '@/components/Error/ErrorBoundary';
 import SelectControlled from '@/components/SelectControlled';
 import { SqlVariablesProvider } from '@/components/SQLEditor/variableCompletions';
 import { IS_PROMQL_ENABLED } from '@/config';
@@ -208,30 +209,35 @@ export const DashboardFilterEditForm = ({
               {...register('name', { required: true, minLength: 1 })}
             />
           </CustomInputWrapper>
-
-          {formFilterType === 'STATIC_LIST' ? (
-            <StaticListFilterEditForm
-              control={control}
-              otherFilters={otherFilters}
-            />
-          ) : formFilterType === 'PROMETHEUS_LABEL' ? (
-            <SqlVariablesProvider variables={otherVariables}>
-              <PromqlLabelFilterEditForm
+          <ErrorBoundary
+            key={formFilterType}
+            message="Failed to load filter"
+            showErrorMessage
+          >
+            {formFilterType === 'STATIC_LIST' ? (
+              <StaticListFilterEditForm
                 control={control}
                 otherFilters={otherFilters}
               />
-            </SqlVariablesProvider>
-          ) : (
-            <SqlVariablesProvider variables={otherVariables}>
-              <QueryExpressionFilterEditForm
-                control={control}
-                trigger={trigger}
-                pinnedSource={presetSource}
-                otherFilters={otherFilters}
-                showVariableOptions={showVariableOptions}
-              />
-            </SqlVariablesProvider>
-          )}
+            ) : formFilterType === 'PROMETHEUS_LABEL' ? (
+              <SqlVariablesProvider variables={otherVariables}>
+                <PromqlLabelFilterEditForm
+                  control={control}
+                  otherFilters={otherFilters}
+                />
+              </SqlVariablesProvider>
+            ) : (
+              <SqlVariablesProvider variables={otherVariables}>
+                <QueryExpressionFilterEditForm
+                  control={control}
+                  trigger={trigger}
+                  pinnedSource={presetSource}
+                  otherFilters={otherFilters}
+                  showVariableOptions={showVariableOptions}
+                />
+              </SqlVariablesProvider>
+            )}
+          </ErrorBoundary>
 
           {formState.errors.root && (
             <Alert
