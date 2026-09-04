@@ -3334,6 +3334,12 @@
             "description": "Label whose values populate the dropdown. Use \"__name__\" to list\nmetric names.\n",
             "example": "pod"
           },
+          "match": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Optional Prometheus series selector narrowing which series the\nlabel values are read from.\n",
+            "example": "up{job=\"api\"}"
+          },
           "isBroadcastEnabled": {
             "type": "boolean",
             "enum": [
