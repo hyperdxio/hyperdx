@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import {
   MetricsDataType,
   SourceKind,
   TMetricSource,
 } from '@hyperdx/common-utils/dist/types';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
@@ -13,10 +14,20 @@ import { MetricNameSelect } from '@/components/MetricNameSelect';
 const DEBOUNCE_SETTLE_MS = 800;
 
 const useGetMetricNames = jest.fn();
+const streamDistinctIndexValues = jest.fn();
 
+// Browsing streams from the primary index; only a search reaches
+// `useGetMetricNames`. Both mocked so each test can assert against its path.
 jest.mock('@/hooks/useMetadata', () => ({
   useGetMetricNames: (...args: any[]) => useGetMetricNames(...args),
+  useMetadataWithSettings: () => ({
+    streamDistinctIndexValues: (...args: any[]) =>
+      streamDistinctIndexValues(...args),
+  }),
 }));
+
+/** Args the index stream was asked for, per kind table. */
+const streamArgs = () => streamDistinctIndexValues.mock.calls.map(([a]) => a);
 
 const metricSource: TMetricSource = {
   id: 'metric-source',
@@ -43,19 +54,30 @@ const gaugePatterns = () =>
     .filter(([args]) => args.tableName === 'otel_metrics_gauge')
     .map(([args]) => args.namePattern);
 
+/** One client per render so a cached browse list cannot leak between tests. */
+const withQueryClient = (ui: React.ReactElement) => (
+  <QueryClientProvider
+    client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+  >
+    {ui}
+  </QueryClientProvider>
+);
+
 const renderSelect = (
   props: Partial<React.ComponentProps<typeof MetricNameSelect>> = {},
 ) =>
   renderWithMantine(
-    <MetricNameSelect
-      metricType={MetricsDataType.Gauge}
-      metricName={null}
-      setMetricType={jest.fn()}
-      setMetricName={jest.fn()}
-      metricSource={metricSource}
-      data-testid="metric-name-selector"
-      {...props}
-    />,
+    withQueryClient(
+      <MetricNameSelect
+        metricType={MetricsDataType.Gauge}
+        metricName={null}
+        setMetricType={jest.fn()}
+        setMetricName={jest.fn()}
+        metricSource={metricSource}
+        data-testid="metric-name-selector"
+        {...props}
+      />,
+    ),
   );
 
 /**
@@ -85,16 +107,24 @@ beforeEach(() => {
       ? { names: ['group_reads', 'up'], truncated: false }
       : undefined,
   }));
+  streamDistinctIndexValues.mockReset();
+  streamDistinctIndexValues.mockImplementation(async function* ({
+    tableName,
+  }: any) {
+    if (tableName) yield ['group_reads', 'up'];
+  });
 });
 
 describe('MetricNameSelect', () => {
-  it('passes the clamped chart date range to each metric table query', () => {
+  it('passes the clamped chart date range to each metric table query', async () => {
     renderSelect({
       dateRange: [new Date('2024-06-01'), new Date('2024-06-08')],
     });
 
-    const [gaugeArgs] = useGetMetricNames.mock.calls.find(
-      ([args]) => args.tableName === 'otel_metrics_gauge',
+    // Browsing reads the index, so the range lands on the stream.
+    await waitFor(() => expect(streamArgs().length).toBeGreaterThan(0));
+    const gaugeArgs = streamArgs().find(
+      a => a.tableName === 'otel_metrics_gauge',
     )!;
     // Clamped to the most recent 3 days of the selected range.
     expect(gaugeArgs.dateRange).toEqual([
@@ -103,16 +133,18 @@ describe('MetricNameSelect', () => {
     ]);
   });
 
-  // An unconfigured kind resolves to an empty table name, which disables the
-  // query rather than emitting `FROM db.``` and failing on every render.
-  it('does not query metric kinds the source has no table for', () => {
+  // An unconfigured kind resolves to an empty table name. The stream is never
+  // started for it at all, rather than started and disabled.
+  it('does not query metric kinds the source has no table for', async () => {
     renderSelect();
 
-    const tables = useGetMetricNames.mock.calls.map(([args]) => args.tableName);
+    await waitFor(() => expect(streamArgs().length).toBeGreaterThan(0));
+    const tables = streamArgs().map(a => a.tableName);
 
     expect(tables).toContain('otel_metrics_gauge');
+    expect(tables).toContain('otel_metrics_sum');
+    expect(tables).not.toContain('');
     expect(tables).not.toContain(undefined);
-    expect(tables).toContain('');
   });
 
   it('sends the typed text as a server-side name pattern', async () => {
@@ -167,7 +199,19 @@ describe('MetricNameSelect', () => {
 
   // A failed kind is not retried, so without this its metrics would simply be
   // missing from a dropdown that looks perfectly healthy.
-  it('reports a metric kind that failed to load', () => {
+  it('reports a metric kind that failed to load', async () => {
+    // Both paths have to fail — a failed index read falls back to the scan.
+    streamDistinctIndexValues.mockImplementation(({ tableName }: any) =>
+      tableName === 'otel_metrics_sum'
+        ? {
+            [Symbol.asyncIterator]: () => ({
+              next: () => Promise.reject(new Error('no index')),
+            }),
+          }
+        : (async function* () {
+            yield ['up'];
+          })(),
+    );
     useGetMetricNames.mockImplementation(({ tableName }: any) =>
       tableName === 'otel_metrics_sum'
         ? { data: undefined, isError: true }
@@ -176,10 +220,21 @@ describe('MetricNameSelect', () => {
 
     renderSelect();
 
-    expect(screen.getByText('Some metrics failed to load')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.getByText('Some metrics failed to load'),
+      ).toBeInTheDocument(),
+    );
   });
 
-  it('tells the user to search when the catalog is truncated', () => {
+  it('tells the user to search when the catalog is truncated', async () => {
+    // Truncation comes from the exhaustive query, which browsing reaches only
+    // when the index cannot be read.
+    streamDistinctIndexValues.mockImplementation(() => ({
+      [Symbol.asyncIterator]: () => ({
+        next: () => Promise.reject(new Error('no index')),
+      }),
+    }));
     useGetMetricNames.mockImplementation(({ tableName }: any) => ({
       data: tableName ? { names: ['a'], truncated: true } : undefined,
     }));
@@ -187,7 +242,9 @@ describe('MetricNameSelect', () => {
     renderSelect();
 
     const input = screen.getByTestId('metric-name-selector');
-    expect(input).toHaveAccessibleDescription('Type to search all metrics');
+    await waitFor(() =>
+      expect(input).toHaveAccessibleDescription('Type to search all metrics'),
+    );
     // Under the input, so appearing mid-session cannot push the input down out
     // of alignment with the browse-metrics button beside it.
     const notice = screen.getByText('Type to search all metrics');
@@ -196,11 +253,118 @@ describe('MetricNameSelect', () => {
     ).toBeTruthy();
   });
 
+  describe('an index-derived browse list', () => {
+    const manyNames = Array.from({ length: 600 }, (_, i) => `metric.${i}`);
+
+    // The index records a value only at each granule boundary, so the list is
+    // a subset at any size — not only past the render cap.
+    it('advises typing, since names are missing at any size', async () => {
+      streamDistinctIndexValues.mockImplementation(async function* ({
+        tableName,
+      }: any) {
+        if (tableName) yield manyNames;
+      });
+
+      renderSelect();
+
+      await waitFor(() =>
+        expect(
+          screen.getByTestId('metric-name-selector'),
+        ).toHaveAccessibleDescription('Type to search all metrics'),
+      );
+    });
+
+    // The held browse list is what fills `options` mid-search, so counting it
+    // says nothing about how many names the search itself matched.
+    // `isSubset` describes the browse list; mid-search it says nothing about
+    // how many names the search itself matched.
+    it('does not claim the search was capped while its query is in flight', async () => {
+      streamDistinctIndexValues.mockImplementation(async function* ({
+        tableName,
+      }: any) {
+        if (tableName) yield manyNames;
+      });
+      useGetMetricNames.mockImplementation(() => ({
+        data: undefined,
+        isFetching: true,
+      }));
+
+      renderSelect();
+      await userEvent.type(
+        screen.getByTestId('metric-name-selector'),
+        'metric.1',
+      );
+      await new Promise(resolve => setTimeout(resolve, DEBOUNCE_SETTLE_MS));
+
+      expect(
+        screen.queryByText(/Showing the first \d+ matches/),
+      ).not.toBeInTheDocument();
+    });
+
+    it('advises refining once the server reports the search truncated', async () => {
+      useGetMetricNames.mockImplementation(({ tableName }: any) => ({
+        data: tableName ? { names: ['metric.1'], truncated: true } : undefined,
+      }));
+
+      renderSelect();
+      await userEvent.type(
+        screen.getByTestId('metric-name-selector'),
+        'metric.1',
+      );
+
+      expect(
+        await screen.findByText(
+          'Showing the first 500 matches — refine your search',
+        ),
+      ).toBeInTheDocument();
+    });
+  });
+
+  describe('the streaming spinner', () => {
+    const neverResolves = () => ({
+      [Symbol.asyncIterator]: () => ({ next: () => new Promise(() => {}) }),
+    });
+
+    it('shows while names are still arriving and nothing is selected', async () => {
+      streamDistinctIndexValues.mockImplementation(neverResolves);
+
+      const { container } = renderSelect();
+
+      await waitFor(() =>
+        expect(container.querySelector('.mantine-Loader-root')).toBeTruthy(),
+      );
+    });
+
+    // Mantine puts a clearable Select's clear button in `rightSection`, so
+    // occupying it with a selection present would hide the only way to clear.
+    it('stays out of the way once a metric is selected', async () => {
+      streamDistinctIndexValues.mockImplementation(neverResolves);
+
+      const { container } = renderSelect({
+        metricName: 'up',
+        metricType: MetricsDataType.Gauge,
+      });
+
+      await waitFor(() =>
+        expect(screen.getByTestId('metric-name-selector')).toHaveValue(
+          'up (Gauge)',
+        ),
+      );
+      expect(container.querySelector('.mantine-Loader-root')).toBeNull();
+    });
+  });
+
   describe('a search that matches nothing', () => {
-    const noMatches = () =>
+    // Nothing on either path: the index stream yields no names and the
+    // exhaustive query answers empty.
+    const noMatches = () => {
+      streamDistinctIndexValues.mockImplementation(async function* () {
+        // no chunks
+      });
       useGetMetricNames.mockImplementation(({ tableName }: any) => ({
         data: tableName ? { names: [], truncated: false } : undefined,
       }));
+    };
 
     // The catalog only covers the most recent 3 days of the chart's range, so a
     // metric that stopped reporting is absent from the picker while its data is
@@ -277,7 +441,7 @@ describe('MetricNameSelect', () => {
     // value — taking the whole chart editor down rather than degrading.
     it('survives committing the typed name', async () => {
       noMatches();
-      renderWithMantine(<StatefulSelect />);
+      renderWithMantine(withQueryClient(<StatefulSelect />));
 
       const input = screen.getByTestId('metric-name-selector');
       await userEvent.type(input, 'chc_');
@@ -327,6 +491,10 @@ describe('MetricNameSelect', () => {
     // `isLoading` the dropdown would confidently deny the metric exists for the
     // whole round trip.
     it('says it is searching rather than denying the metric exists', async () => {
+      // Browsing streams, so that is where "in flight" comes from.
+      streamDistinctIndexValues.mockImplementation(() => ({
+        [Symbol.asyncIterator]: () => ({ next: () => new Promise(() => {}) }),
+      }));
       useGetMetricNames.mockImplementation(({ tableName }: any) => ({
         data: tableName ? { names: [], truncated: false } : undefined,
         isFetching: true,

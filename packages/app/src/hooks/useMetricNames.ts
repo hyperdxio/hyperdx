@@ -5,9 +5,17 @@ import {
   TMetricSource,
 } from '@hyperdx/common-utils/dist/types';
 
-import { useGetMetricNames } from '@/hooks/useMetadata';
+import {
+  useGetMetricNames,
+  useMetadataWithSettings,
+} from '@/hooks/useMetadata';
 import { clampCatalogDateRange } from '@/hooks/useMetricCatalog';
+import { useStreamingQuery } from '@/hooks/useStreamingQuery';
 import type { QueryableMetricKind } from '@/utils/metricKinds';
+
+const METRIC_NAME_COLUMN = 'MetricName';
+
+type MetricNamesQueryArgs = ReturnType<typeof metricNamesQueryArgs>;
 
 const metricNamesQueryArgs = ({
   dateRange,
@@ -33,11 +41,142 @@ const metricNamesQueryArgs = ({
 };
 
 /**
+ * One kind's names, from whichever source suits the task.
+ *
+ * - **Browsing** (no `namePattern`) streams from the sparse primary index:
+ *   near-free and progressive, but a subset weighted to high-volume metrics.
+ * - **Searching** runs the exhaustive `GROUP BY` with the pattern in SQL:
+ *   slower, but authoritative, so an omitted metric is always reachable.
+ *
+ * The exhaustive query also covers browsing when the index cannot be read —
+ * old server, Distributed table, or `MetricName` outside the primary key.
+ *
+ * Returns the `{ data, isError, isFetching }` shape of the query it replaces,
+ * so the aggregation in `useMetricNames` is indifferent to which path ran.
+ */
+function useMetricNamesForKind(
+  args: MetricNamesQueryArgs,
+  namePattern?: string,
+) {
+  const metadata = useMetadataWithSettings();
+  // An unconfigured kind resolves to an empty table name.
+  const isQueryable = !!args.databaseName && !!args.tableName;
+  const isSearching = !!namePattern;
+
+  const streamed = useStreamingQuery<string>({
+    queryKey: [
+      'useMetricNames.index',
+      args.connectionId,
+      args.databaseName,
+      args.tableName,
+      args.timestampValueExpression,
+      args.dateRange[0].getTime(),
+      args.dateRange[1].getTime(),
+    ],
+    // Not memoized: read when the query runs, not hashed into its key.
+    streamFactory: ({ signal }) =>
+      metadata.streamDistinctIndexValues({
+        databaseName: args.databaseName,
+        tableName: args.tableName,
+        column: METRIC_NAME_COLUMN,
+        connectionId: args.connectionId,
+        dateRange: args.dateRange,
+        timestampValueExpression: args.timestampValueExpression,
+        signal,
+      }),
+    enabled: isQueryable && !isSearching,
+  });
+
+  const useExhaustive = isSearching || streamed.isError;
+  const exhaustive = useGetMetricNames(
+    { ...args, namePattern },
+    { enabled: isQueryable && useExhaustive },
+  );
+
+  // A placeholder page holds the *previous* pattern's results, which cannot
+  // match the new one — the consumer would filter them to nothing and flash an
+  // empty picker, and its `truncated` flag describes a search already moved on
+  // from. Hold the unfiltered browse list until the real page lands.
+  const settled = useExhaustive && !exhaustive.isPlaceholderData;
+  const streamedNames = streamed.data;
+
+  return useMemo(() => {
+    // The index emits in granule order, so sort — otherwise the options
+    // reshuffle on every chunk. Search results are already relevance-ranked in
+    // SQL, so they are never re-sorted.
+    const browsed = streamedNames && {
+      names: [...streamedNames].sort((a, b) => a.localeCompare(b)),
+      truncated: false,
+    };
+
+    if (!useExhaustive) {
+      return {
+        data: browsed,
+        isError: false,
+        isFetching: streamed.isStreaming,
+        // The index records a value only at each granule boundary, so this
+        // list is a subset at any size.
+        fromIndex: true,
+      };
+    }
+    if (exhaustive.isError) {
+      // This kind has no answer for the pattern. Holding the browse list would
+      // offer names that do not match what was typed.
+      return {
+        data: undefined,
+        isError: true,
+        isFetching: exhaustive.isFetching,
+        fromIndex: false,
+      };
+    }
+    if (settled && exhaustive.data) {
+      return {
+        data: exhaustive.data,
+        isError: false,
+        isFetching: exhaustive.isFetching,
+        fromIndex: false,
+      };
+    }
+    // In flight, or holding a placeholder page for another pattern. Offer both
+    // sets: the consumer filters by the typed text, so only what matches
+    // renders, and nothing blanks. Either alone is insufficient — a fallback
+    // deployment has no browse list at all (`streamed.data` is suppressed on
+    // error), and a browse list omits the index-invisible names that a
+    // prefix-extending search's previous page still holds.
+    const provisional = new Set([
+      ...(browsed?.names ?? []),
+      ...(exhaustive.data?.names ?? []),
+    ]);
+    return {
+      data: provisional.size
+        ? { names: [...provisional], truncated: false }
+        : undefined,
+      isError: false,
+      isFetching: exhaustive.isFetching,
+      // Part of what is on screen came from the index, so it is still a subset.
+      fromIndex: !!browsed,
+    };
+  }, [
+    settled,
+    exhaustive.data,
+    exhaustive.isError,
+    exhaustive.isFetching,
+    streamedNames,
+    streamed.isStreaming,
+    useExhaustive,
+  ]);
+}
+
+/**
  * Metric names available on a metric source, one list per queryable kind.
  *
  * Names only, and deliberately so: it backs the always-mounted select, where a
  * grouped scan for unit/description would be too heavy. The explorer pays for
  * that richer catalog itself via `useMetricCatalog`, only while it is open.
+ *
+ * Without a `namePattern` the lists are streamed from the primary index and are
+ * therefore incomplete; passing one switches every kind to the exhaustive
+ * search. See `useMetricNamesForKind`.
  */
 export function useMetricNames(
   metricSource: TMetricSource,
@@ -71,13 +210,13 @@ export function useMetricNames(
       [metricSource, dateRange],
     );
 
-  const gauge = useGetMetricNames({ ...gaugeArgs, namePattern });
-  const histogram = useGetMetricNames({ ...histogramArgs, namePattern });
-  const sum = useGetMetricNames({ ...sumArgs, namePattern });
-  const exponentialHistogram = useGetMetricNames({
-    ...exponentialHistogramArgs,
+  const gauge = useMetricNamesForKind(gaugeArgs, namePattern);
+  const histogram = useMetricNamesForKind(histogramArgs, namePattern);
+  const sum = useMetricNamesForKind(sumArgs, namePattern);
+  const exponentialHistogram = useMetricNamesForKind(
+    exponentialHistogramArgs,
     namePattern,
-  });
+  );
 
   const queries = [gauge, histogram, sum, exponentialHistogram];
 
@@ -102,6 +241,9 @@ export function useMetricNames(
     // new one is in flight, so TanStack reports `success` and `isLoading` is
     // false for every search after the first mount.
     isFetching: queries.some(query => query.isFetching),
+    // Any kind answered from the primary index, which never lists every name.
+    // Distinct from `isTruncated`, which is the server reporting a full page.
+    isSubset: queries.some(query => query.fromIndex),
     // Only when every kind that answered returned nothing. A kind still in
     // flight must not read as "no such metric". A kind that *errored* is
     // deliberately not disqualifying: its table can be misconfigured
