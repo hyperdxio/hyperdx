@@ -23,7 +23,10 @@ import {
 } from '@/models/alert';
 import type { DashboardDocument } from '@/models/dashboard';
 import { SeriesTile } from '@/routers/external-api/v2/utils/dashboards';
-import { ExternalDashboardFilterWithId } from '@/utils/zod';
+import {
+  ExternalAlertChartConfig,
+  ExternalDashboardFilterWithId,
+} from '@/utils/zod';
 
 /** Returns a new object containing only the truthy, requested keys from the original object */
 const pickIfTruthy = <T, K extends keyof T>(obj: T, keys: K[]): Partial<T> => {
@@ -287,6 +290,12 @@ export type ExternalAlert = {
   dashboardId?: string;
   savedSearchId?: string;
   groupBy?: string;
+  /**
+   * Inline alerts only, and only on single-alert responses (the list endpoint
+   * stays lean): the alert's persisted chart config in the external
+   * tile-config dialect.
+   */
+  chartConfig?: ExternalAlertChartConfig;
   silenced?: {
     by?: string;
     at: string;
@@ -358,6 +367,12 @@ function transformErrorsToExternalErrors(
   }));
 }
 
+// Note: this translator does not attach an inline alert's `chartConfig`.
+// Single-alert responses (GET by id, POST, PUT, MCP detail) attach it via
+// `translateAlertDocumentToExternalAlertWithChartConfig` (v2 router util) —
+// keeping the converter out of here avoids a runtime import cycle with the
+// v2 utils, and list responses stay lean so a team with hundreds of raw-SQL
+// inline alerts does not ship every template on each page.
 export function translateAlertDocumentToExternalAlert(
   alert: AlertDocument,
 ): ExternalAlert {

@@ -7,6 +7,7 @@ import {
   AlertState,
   AlertThresholdType,
 } from '@/models/alert';
+import { translateAlertDocumentToExternalAlertWithChartConfig } from '@/routers/external-api/v2/utils/alertChartConfig';
 import { translateAlertDocumentToExternalAlert } from '@/utils/externalApi';
 
 // A channel type this repo doesn't define -- see
@@ -102,6 +103,128 @@ describe('utils/externalApi', () => {
       const translated = translateAlertDocumentToExternalAlert(alert);
 
       expect(translated.numConsecutiveWindows).toBe(3);
+    });
+  });
+
+  describe('chartConfig handling', () => {
+    const internalChartConfig = {
+      displayType: 'line',
+      source: '65f5e4a3b9e77c001a123456',
+      select: [
+        {
+          aggFn: 'count',
+          aggCondition: 'level:error',
+          aggConditionLanguage: 'lucene',
+          valueExpression: '',
+        },
+      ],
+      where: '',
+      whereLanguage: 'lucene',
+      seriesReturnType: 'ratio',
+    };
+
+    it('omits chartConfig by default (list responses stay lean)', () => {
+      const alert = createAlertDocument({
+        source: AlertSource.INLINE,
+        chartConfig: internalChartConfig,
+      });
+
+      const translated = translateAlertDocumentToExternalAlert(alert);
+
+      expect(translated.chartConfig).toBeUndefined();
+      expect('chartConfig' in translated).toBe(false);
+    });
+
+    it('emits chartConfig in the external tile-config dialect when requested', () => {
+      const alert = createAlertDocument({
+        source: AlertSource.INLINE,
+        chartConfig: internalChartConfig,
+      });
+
+      const translated =
+        translateAlertDocumentToExternalAlertWithChartConfig(alert);
+
+      // seriesReturnType 'ratio' becomes asRatio only with exactly two
+      // select items — this single-select config maps to false.
+      expect(translated.chartConfig).toMatchObject({
+        displayType: 'line',
+        sourceId: '65f5e4a3b9e77c001a123456',
+        asRatio: false,
+        select: [
+          {
+            aggFn: 'count',
+            where: 'level:error',
+            whereLanguage: 'lucene',
+          },
+        ],
+      });
+    });
+
+    it('emits raw SQL chartConfig with external field names', () => {
+      const alert = createAlertDocument({
+        source: AlertSource.INLINE,
+        chartConfig: {
+          configType: 'sql',
+          displayType: 'line',
+          sqlTemplate: 'SELECT 1',
+          connection: '65f5e4a3b9e77c001a789012',
+          source: '65f5e4a3b9e77c001a123456',
+        },
+      });
+
+      const translated =
+        translateAlertDocumentToExternalAlertWithChartConfig(alert);
+
+      expect(translated.chartConfig).toMatchObject({
+        configType: 'sql',
+        displayType: 'line',
+        sqlTemplate: 'SELECT 1',
+        connectionId: '65f5e4a3b9e77c001a789012',
+        sourceId: '65f5e4a3b9e77c001a123456',
+      });
+    });
+
+    it('does not emit chartConfig for non-inline alerts even when requested', () => {
+      const alert = createAlertDocument({
+        source: AlertSource.TILE,
+        chartConfig: internalChartConfig,
+      });
+
+      const translated =
+        translateAlertDocumentToExternalAlertWithChartConfig(alert);
+
+      expect(translated.chartConfig).toBeUndefined();
+    });
+
+    it('does not throw on an inline alert missing its chartConfig', () => {
+      // Reachable via a direct DB write or a partial legacy document; the
+      // translate layer must not crash a whole list response over one row.
+      const alert = createAlertDocument({
+        source: AlertSource.INLINE,
+        chartConfig: null,
+      });
+
+      const translated =
+        translateAlertDocumentToExternalAlertWithChartConfig(alert);
+
+      expect(translated.chartConfig).toBeUndefined();
+      expect('chartConfig' in translated).toBe(false);
+    });
+
+    it('omits chartConfig when the persisted config has no external representation', () => {
+      const alert = createAlertDocument({
+        source: AlertSource.INLINE,
+        chartConfig: {
+          configType: 'promql',
+          promqlQuery: 'up',
+          source: '65f5e4a3b9e77c001a123456',
+        },
+      });
+
+      const translated =
+        translateAlertDocumentToExternalAlertWithChartConfig(alert);
+
+      expect(translated.chartConfig).toBeUndefined();
     });
   });
 

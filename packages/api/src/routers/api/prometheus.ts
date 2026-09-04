@@ -9,7 +9,9 @@ import { getConnectionById } from '@/controllers/connection';
 import {
   PROMETHEUS_MAX_EXECUTION_SEC,
   PROMETHEUS_MAX_RESULT_ROWS,
+  queryLabelNames,
   queryLabelValues,
+  TimeSeriesTagsQueryArgs,
 } from '@/controllers/timeseriesEngine';
 import { getNonNullUserWithTeam } from '@/middleware/auth';
 import { getCounter, getHistogram } from '@/utils/instrumentation';
@@ -798,7 +800,7 @@ router.get('/query_exemplars', queryExemplarsHandler);
 router.post('/query_exemplars', queryExemplarsHandler);
 
 // --------------------------
-// GET /label/:name/values
+// GET /labels, GET /label/:name/values
 // --------------------------
 
 // Prometheus label-name grammar — used to reject anything that could
@@ -844,7 +846,7 @@ const prometheusMatchSchema = z
     return selectors.length ? selectors : undefined;
   });
 
-const labelValuesRequestQuerySchema = z
+const labelLookupRequestQuerySchema = z
   .object({
     connectionId: objectIdSchema,
     start: prometheusTimestampSchema.optional(),
@@ -883,21 +885,35 @@ function formatQueryParamIssues(error: z.ZodError): string {
     .join(', ');
 }
 
-router.get('/label/:name/values', async (req, res) => {
+type LabelLookupSubject = 'labels' | 'label_values';
+
+type ClickHouseLabelLookup = (
+  args: TimeSeriesTagsQueryArgs,
+) => Promise<string[]>;
+
+/**
+ * Handles a Prometheus label lookup — `/labels` or `/label/:name/values` — from
+ * whichever backend the connection points at.
+ */
+async function handleLabelLookup(
+  req: express.Request,
+  res: express.Response,
+  {
+    subject,
+    proxyPath,
+    queryClickHouse,
+  }: {
+    subject: LabelLookupSubject;
+    proxyPath: string;
+    queryClickHouse: ClickHouseLabelLookup;
+  },
+) {
   const startedAt = performance.now();
   let backend: PrometheusBackend = 'unknown';
   try {
     const { teamId } = getNonNullUserWithTeam(req);
-    const labelName = req.params.name;
-    if (!PROMETHEUS_LABEL_NAME.test(labelName)) {
-      return res.status(400).json({
-        status: 'error',
-        errorType: 'bad_data',
-        error: 'Invalid label name',
-      });
-    }
 
-    const parseResult = labelValuesRequestQuerySchema.safeParse(req.query);
+    const parseResult = labelLookupRequestQuerySchema.safeParse(req.query);
     if (!parseResult.success) {
       return res.status(400).json({
         status: 'error',
@@ -926,7 +942,7 @@ router.get('/label/:name/values', async (req, res) => {
       backend = 'prometheus';
       const status = await proxyToPrometheus(
         connection.host,
-        `/api/v1/label/${labelName}/values`,
+        proxyPath,
         {
           ...(start != null ? { start: String(start) } : {}),
           ...(end != null ? { end: String(end) } : {}),
@@ -941,7 +957,7 @@ router.get('/label/:name/values', async (req, res) => {
         },
         res,
       );
-      recordProxyOutcome(status, 'label_values', backend);
+      recordProxyOutcome(status, subject, backend);
       return;
     }
 
@@ -976,9 +992,8 @@ router.get('/label/:name/values', async (req, res) => {
 
     const startMs = start != null ? Math.floor(start * 1000) : undefined;
     const endMs = end != null ? Math.ceil(end * 1000) : undefined;
-    const values = await queryLabelValues({
+    const values = await queryClickHouse({
       client,
-      labelName,
       connectionId: connection.id,
       databaseName: database,
       tableName: table,
@@ -989,8 +1004,8 @@ router.get('/label/:name/values', async (req, res) => {
 
     return res.json({ status: 'success', data: values });
   } catch (e) {
-    prometheusQueryErrors.add(1, { endpoint: 'label_values', backend });
-    logger.error(e, 'Prometheus label values error');
+    prometheusQueryErrors.add(1, { endpoint: subject, backend });
+    logger.error(e, `Prometheus ${subject} error`);
     return res.status(400).json({
       status: 'error',
       errorType: 'bad_data',
@@ -998,10 +1013,35 @@ router.get('/label/:name/values', async (req, res) => {
     });
   } finally {
     prometheusQueryDuration.record(performance.now() - startedAt, {
-      endpoint: 'label_values',
+      endpoint: subject,
       backend,
     });
   }
+}
+
+router.get('/labels', (req, res) =>
+  handleLabelLookup(req, res, {
+    subject: 'labels',
+    proxyPath: '/api/v1/labels',
+    queryClickHouse: queryLabelNames,
+  }),
+);
+
+router.get('/label/:name/values', (req, res) => {
+  const labelName = req.params.name;
+  if (!PROMETHEUS_LABEL_NAME.test(labelName)) {
+    return res.status(400).json({
+      status: 'error',
+      errorType: 'bad_data',
+      error: 'Invalid label name',
+    });
+  }
+
+  return handleLabelLookup(req, res, {
+    subject: 'label_values',
+    proxyPath: `/api/v1/label/${labelName}/values`,
+    queryClickHouse: args => queryLabelValues({ ...args, labelName }),
+  });
 });
 
 export default router;

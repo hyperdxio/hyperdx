@@ -201,7 +201,9 @@ const toExternalColorRules = (
   return resolved.length > 0 ? resolved : undefined;
 };
 
-const convertToExternalTileChartConfig = (
+// Exported for the inline-alert converter (v2/utils/alertChartConfig.ts),
+// which reuses the tile-config translation for an alert's persisted config.
+export const convertToExternalTileChartConfig = (
   config: SavedChartConfig,
 ): ExternalDashboardTileConfig | undefined => {
   if (isRawSqlSavedChartConfig(config)) {
@@ -254,10 +256,8 @@ const convertToExternalTileChartConfig = (
           sqlTemplate: config.sqlTemplate,
           sourceId: config.source,
           numberFormat: config.numberFormat,
-          // Raw SQL number tiles carry the static tile color too (no
-          // colorRules; see the schema). Normalize a legacy token saved
-          // before the hue rename to its hue name on output.
           color: resolveChartPaletteToken(config.color),
+          colorRules: toExternalColorRules(config.colorRules),
         };
       case DisplayType.Pie:
         return {
@@ -652,7 +652,12 @@ export function convertToExternalDashboard(
 // --------------------------------------------------------------------------------
 
 const convertToInternalSelectItem = (
-  item: ExternalDashboardSelectItem,
+  // `isDelta` is the MCP tile dialect's spelling of the gauge delta flag
+  // (`periodAggFn: 'delta'` in the REST dialect). MCP tiles are cast to
+  // ExternalDashboardTileWithId before reaching this converter
+  // (saveDashboard.ts), so honoring both spellings here is what keeps an
+  // MCP-authored gauge-delta series from silently evaluating raw values.
+  item: ExternalDashboardSelectItem & { isDelta?: boolean },
 ): Exclude<BuilderSavedChartConfig['select'][number], string> => {
   return {
     ...pick(item, [
@@ -665,7 +670,7 @@ const convertToInternalSelectItem = (
     ]),
     aggCondition: item.where,
     aggConditionLanguage: item.whereLanguage,
-    isDelta: item.periodAggFn === 'delta',
+    isDelta: item.periodAggFn === 'delta' || item.isDelta === true,
     valueExpression: item.valueExpression ?? '',
   };
 };
@@ -726,11 +731,13 @@ export function convertToInternalTileConfig(
             externalConfig.displayType === 'table'
               ? externalConfig.onClick
               : undefined,
-          // Only the raw SQL number variant carries `color`; table and pie
-          // do not expose it. `_.omitBy(_.isNil)` below drops it when absent.
           color:
             externalConfig.displayType === 'number'
               ? externalConfig.color
+              : undefined,
+          colorRules:
+            externalConfig.displayType === 'number'
+              ? externalConfig.colorRules
               : undefined,
         } satisfies RawSqlSavedChartConfig;
         break;
