@@ -22,6 +22,7 @@ export type TimeSeriesTagsQueryArgs = {
   startMs?: number;
   endMs?: number;
   limit?: number;
+  match?: string[];
 };
 
 /**
@@ -58,22 +59,64 @@ async function timeSeriesTagsTableHasTimeBounds({
   }
 }
 
+// `timeSeriesSelector()` requires both bounds, so we define the minimum and maximum possible times
+// as default bounds when explicit bounds are not provided.
+const TIMESERIES_MIN_TIME_MS = -2208988800000; // 1900-01-01T00:00:00Z
+const TIMESERIES_MAX_TIME_MS = 10413791999999; // 2299-12-31T23:59:59.999Z
+
 /**
- * Returns SQL predicates restricting tags rows to series that overlap [startMs, endMs].
- * Empty when no bound is given, or when the table stores no time bounds.
+ * Returns a predicate keeping only the series matched by at least one of
+ * the given `match` selectors.
  */
-async function getTimeFilterCondition({
+function getSeriesSelectorCondition({
+  databaseName,
+  tableName,
+  match,
+  startMs,
+  endMs,
+}: {
+  databaseName: string;
+  tableName: string;
+  match: string[];
+  startMs?: number;
+  endMs?: number;
+}): ChSql {
+  const minTime = { Int64: startMs ?? TIMESERIES_MIN_TIME_MS };
+  const maxTime = { Int64: endMs ?? TIMESERIES_MAX_TIME_MS };
+  const idsPerSelector = match.map(
+    selector => chSql`
+      SELECT id
+      FROM timeSeriesSelector(
+        ${{ String: databaseName }},
+        ${{ String: tableName }},
+        ${{ String: selector }},
+        fromUnixTimestamp64Milli(${minTime}),
+        fromUnixTimestamp64Milli(${maxTime})
+      )`,
+  );
+
+  return chSql`id IN (${concatChSql(' UNION DISTINCT ', idsPerSelector)})`;
+}
+
+/**
+ * Returns SQL predicates restricting tags rows to the series a label lookup
+ * should consider: those overlapping [startMs, endMs], and those matched by
+ * `match`. Empty when neither is given.
+ */
+async function getSeriesFilterConditions({
   client,
   connectionId,
   databaseName,
   tableName,
   startMs,
   endMs,
+  match,
 }: Omit<TimeSeriesTagsQueryArgs, 'limit'>): Promise<ChSql[]> {
-  if (startMs == null && endMs == null) return [];
+  const selectors = match?.length ? match : undefined;
+  if (startMs == null && endMs == null && selectors == null) return [];
 
-  // min and max time columns are optional in the tags inner table,
-  // so we check if they exist before adding time conditions
+  // Both filters lean on min_time/max_time, which the tags inner table carries
+  // only when the table was created with store_min_time_and_max_time on.
   const metadata = new Metadata(client, new MetadataCache());
   const tableHasTimeBounds = await timeSeriesTagsTableHasTimeBounds({
     metadata,
@@ -81,17 +124,40 @@ async function getTimeFilterCondition({
     database: databaseName,
     table: tableName,
   });
-  if (!tableHasTimeBounds) return [];
 
   const conditions: ChSql[] = [];
-  if (endMs != null)
+
+  if (selectors != null) {
+    // timeSeriesSelector() prunes on min_time/max_time unconditionally, so
+    // without those columns it cannot run. Unlike the bounds it also cannot
+    // degrade to "no filter" — that would answer a different question.
+    if (!tableHasTimeBounds) {
+      throw new Error(
+        'match[] requires a TimeSeries table created with store_min_time_and_max_time = 1',
+      );
+    }
     conditions.push(
-      chSql`(min_time IS NULL OR min_time <= fromUnixTimestamp64Milli(${{ Int64: endMs }}))`,
+      getSeriesSelectorCondition({
+        databaseName,
+        tableName,
+        match: selectors,
+        startMs,
+        endMs,
+      }),
     );
-  if (startMs != null)
-    conditions.push(
-      chSql`(max_time IS NULL OR max_time >= fromUnixTimestamp64Milli(${{ Int64: startMs }}))`,
-    );
+  }
+
+  if (tableHasTimeBounds) {
+    if (endMs != null)
+      conditions.push(
+        chSql`(min_time IS NULL OR min_time <= fromUnixTimestamp64Milli(${{ Int64: endMs }}))`,
+      );
+    if (startMs != null)
+      conditions.push(
+        chSql`(max_time IS NULL OR max_time >= fromUnixTimestamp64Milli(${{ Int64: startMs }}))`,
+      );
+  }
+
   return conditions;
 }
 
@@ -144,8 +210,8 @@ async function queryDistinctTagsValues({
 }
 
 /**
- * Queries distinct values for the given label name from the given TimeSeries table,
- * optionally filtering by a time range (if the table has the optional time range columns).
+ * Queries distinct values for the given label name from the given TimeSeries
+ * table, optionally narrowed to a time range and to `match`'s series selectors.
  */
 export async function queryLabelValues({
   labelName,
@@ -162,15 +228,14 @@ export async function queryLabelValues({
     conditions.push(
       chSql`mapContains(${{ Identifier: 'tags' }}, ${{ String: labelName }})`,
     );
-  conditions.push(...(await getTimeFilterCondition(args)));
+  conditions.push(...(await getSeriesFilterConditions(args)));
 
   return queryDistinctTagsValues({ ...args, value, conditions, limit });
 }
 
 /**
  * Queries the distinct label names carried by any series in the given TimeSeries
- * table, optionally filtering by a time range (if the table has the optional time
- * range columns).
+ * table, optionally narrowed to a time range and to `match`'s series selectors.
  */
 export async function queryLabelNames({
   limit,
@@ -179,7 +244,7 @@ export async function queryLabelNames({
   // `all_tags` is EPHEMERAL by default, so the label names come from `tags`,
   // which the engine strips `__name__` out of. It is folded back in explicitly.
   const value = chSql`arrayJoin(arrayConcat([${{ String: '__name__' }}], mapKeys(${{ Identifier: 'tags' }})))`;
-  const conditions = await getTimeFilterCondition(args);
+  const conditions = await getSeriesFilterConditions(args);
 
   return queryDistinctTagsValues({ ...args, value, conditions, limit });
 }

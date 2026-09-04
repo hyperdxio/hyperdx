@@ -963,16 +963,6 @@ async function handleLabelLookup(
 
     backend = 'clickhouse';
 
-    // TODO: Support `match[]` for ClickHouse-Timeseries engine path
-    if (match != null) {
-      return res.status(400).json({
-        status: 'error',
-        errorType: 'bad_data',
-        error:
-          'match[] is not supported for ClickHouse-backed PromQL connections',
-      });
-    }
-
     const database = params.database ?? 'default';
     const table = params.table;
     if (!table) {
@@ -1000,6 +990,7 @@ async function handleLabelLookup(
       startMs,
       endMs,
       limit,
+      match,
     });
 
     return res.json({ status: 'success', data: values });

@@ -14,6 +14,9 @@ import { PROMETHEUS_MAX_EXEMPLAR_WINDOW_SEC } from '@/routers/api/prometheus';
 
 const mockFetch = jest.mocked(global.fetch);
 
+const matchQueryString = (selectors: string[]) =>
+  selectors.map(s => `match[]=${encodeURIComponent(s)}`).join('&');
+
 // The proxy now streams the upstream response straight through (no
 // `await resp.json()`), so test mocks must expose the fields the pipeline
 // actually reads: `status`, `headers.get()`, and a web `ReadableStream` body.
@@ -1095,17 +1098,23 @@ describe('prometheus router', () => {
       const RECENT_START = 1700000000;
       const SERIES_LENGTH_SEC = 3600;
 
-      const labelValues = async (query: Record<string, string>) => {
+      // `match` goes on as a raw query string: it is repeatable, which a plain
+      // object cannot express.
+      const labelValues = async (
+        query: Record<string, string>,
+        { labelName = '__name__', match = [] as string[] } = {},
+      ) => {
         const { agent, team } = await getLoggedInAgent(server);
         const conn = await seedClickHouseConnection(team._id);
         const res = await agent
-          .get('/v1/prometheus/label/__name__/values')
+          .get(`/v1/prometheus/label/${labelName}/values`)
           .query({
             connectionId: conn._id.toString(),
             database: DEFAULT_DATABASE,
             table: TABLE,
             ...query,
           })
+          .query(matchQueryString(match))
           .expect(200);
         return res.body;
       };
@@ -1127,6 +1136,7 @@ describe('prometheus router', () => {
               endSec: RECENT_START + SERIES_LENGTH_SEC,
             },
           ],
+          withSamples: true,
         });
       });
 
@@ -1200,9 +1210,50 @@ describe('prometheus router', () => {
         });
       });
 
-      // Nothing here evaluates a PromQL selector, so answering 200 with
-      // unfiltered values would be a wrong answer the caller trusts.
-      it('rejects match[] instead of ignoring it', async () => {
+      // Selector evaluation is covered in
+      // controllers/__tests__/timeseriesEngine.int.test.ts; these pin that the
+      // selectors survive the query string on the way there.
+      it('filters values through a match[] selector', async () => {
+        expect(await labelValues({}, { match: ['{job="api"}'] })).toEqual({
+          status: 'success',
+          data: [RECENT_METRIC],
+        });
+      });
+
+      it('unions repeated match[] params', async () => {
+        expect(
+          await labelValues(
+            {},
+            { labelName: 'job', match: [OLD_METRIC, RECENT_METRIC] },
+          ),
+        ).toEqual({ status: 'success', data: ['api', 'batch'] });
+      });
+
+      it('accepts the unbracketed match spelling', async () => {
+        expect(await labelValues({ match: `{job="batch"}` })).toEqual({
+          status: 'success',
+          data: [OLD_METRIC],
+        });
+      });
+
+      it('treats an empty match as no filter', async () => {
+        expect(await labelValues({ match: '' })).toEqual({
+          status: 'success',
+          data: [OLD_METRIC, RECENT_METRIC],
+        });
+      });
+
+      it('narrows a selector by the requested window', async () => {
+        expect(
+          await labelValues({
+            match: '{job=~".+"}',
+            start: String(RECENT_START),
+            end: String(RECENT_START + SERIES_LENGTH_SEC),
+          }),
+        ).toEqual({ status: 'success', data: [RECENT_METRIC] });
+      });
+
+      it('answers 400 when a selector is not valid PromQL', async () => {
         const { agent, team } = await getLoggedInAgent(server);
         const conn = await seedClickHouseConnection(team._id);
 
@@ -1212,15 +1263,14 @@ describe('prometheus router', () => {
             connectionId: conn._id.toString(),
             database: DEFAULT_DATABASE,
             table: TABLE,
-            'match[]': 'up',
+            'match[]': 'up{',
           })
           .expect(400);
 
         expect(res.body).toMatchObject({
           status: 'error',
           errorType: 'bad_data',
-          error:
-            'match[] is not supported for ClickHouse-backed PromQL connections',
+          error: expect.stringContaining('while parsing PromQL query'),
         });
       });
     });
@@ -1298,11 +1348,16 @@ describe('prometheus router', () => {
 
     describe('ClickHouse-backed', () => {
       const TABLE = 'prom_labels_test';
+      const OLD_METRIC = 'labels_old_metric';
+      const RECENT_METRIC = 'labels_recent_metric';
       const OLD_START = 1600000000;
       const RECENT_START = 1700000000;
       const SERIES_LENGTH_SEC = 3600;
 
-      const labels = async (query: Record<string, string>) => {
+      const labels = async (
+        query: Record<string, string>,
+        { match = [] as string[] } = {},
+      ) => {
         const { agent, team } = await getLoggedInAgent(server);
         const conn = await seedClickHouseConnection(team._id);
         const res = await agent
@@ -1313,6 +1368,7 @@ describe('prometheus router', () => {
             table: TABLE,
             ...query,
           })
+          .query(matchQueryString(match))
           .expect(200);
         return res.body;
       };
@@ -1322,18 +1378,19 @@ describe('prometheus router', () => {
           table: TABLE,
           series: [
             {
-              metricName: 'labels_old_metric',
+              metricName: OLD_METRIC,
               tags: { job: 'batch', region: 'eu' },
               startSec: OLD_START,
               endSec: OLD_START + SERIES_LENGTH_SEC,
             },
             {
-              metricName: 'labels_recent_metric',
+              metricName: RECENT_METRIC,
               tags: { job: 'api' },
               startSec: RECENT_START,
               endSec: RECENT_START + SERIES_LENGTH_SEC,
             },
           ],
+          withSamples: true,
         });
       });
 
@@ -1379,7 +1436,32 @@ describe('prometheus router', () => {
         });
       });
 
-      it('rejects match[] instead of ignoring it', async () => {
+      // Only the old series carries `region`, so a selector that excludes it
+      // has to drop a label name from the answer.
+      it('keeps only the label names carried by matching series', async () => {
+        expect(await labels({}, { match: [RECENT_METRIC] })).toEqual({
+          status: 'success',
+          data: ['__name__', 'job'],
+        });
+      });
+
+      it('unions repeated match[] params', async () => {
+        expect(
+          await labels({}, { match: [RECENT_METRIC, '{region="eu"}'] }),
+        ).toEqual({
+          status: 'success',
+          data: ['__name__', 'job', 'region'],
+        });
+      });
+
+      it('returns nothing when no series matches', async () => {
+        expect(await labels({}, { match: ['absent_metric'] })).toEqual({
+          status: 'success',
+          data: [],
+        });
+      });
+
+      it('answers 400 when a selector is not valid PromQL', async () => {
         const { agent, team } = await getLoggedInAgent(server);
         const conn = await seedClickHouseConnection(team._id);
 
@@ -1389,15 +1471,14 @@ describe('prometheus router', () => {
             connectionId: conn._id.toString(),
             database: DEFAULT_DATABASE,
             table: TABLE,
-            'match[]': 'up',
+            'match[]': 'up{',
           })
           .expect(400);
 
         expect(res.body).toMatchObject({
           status: 'error',
           errorType: 'bad_data',
-          error:
-            'match[] is not supported for ClickHouse-backed PromQL connections',
+          error: expect.stringContaining('while parsing PromQL query'),
         });
       });
     });
