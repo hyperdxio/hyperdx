@@ -144,6 +144,10 @@ export function AddFilterControl({
                 setOperator(picked);
               }
             }}
+            // In the portal the option list is outside this popover, so
+            // picking an operator reads as a click outside and shuts the whole
+            // form. Same reason as the two selects around it.
+            comboboxProps={{ withinPortal: false }}
             aria-label="Filter operator"
           />
           <Autocomplete
