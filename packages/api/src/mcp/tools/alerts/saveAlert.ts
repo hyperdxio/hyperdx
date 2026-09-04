@@ -107,6 +107,8 @@ export function registerSaveAlert({
         scheduleStartAt: input.scheduleStartAt,
         name: input.name,
         message: input.message,
+        displayName: input.displayName,
+        tags: input.tags,
         groupBy: input.groupBy,
         savedSearchId: input.savedSearchId,
         dashboardId: input.dashboardId,
@@ -116,8 +118,9 @@ export function registerSaveAlert({
 
       // ── Validate referenced entities exist ──
       const mongoTeamId = new mongoose.Types.ObjectId(teamId);
+      let refs;
       try {
-        await validateAlertInput(mongoTeamId, alertInput);
+        refs = await validateAlertInput(mongoTeamId, alertInput);
       } catch (e) {
         // BaseError subclasses (Api400Error, Api404Error, etc.) store the
         // descriptive message in `name` and a generic string in `message`.
@@ -134,7 +137,12 @@ export function registerSaveAlert({
 
       // ── Update existing alert ──
       if (alertId) {
-        const updated = await updateAlert(alertId, mongoTeamId, alertInput);
+        const updated = await updateAlert(
+          alertId,
+          mongoTeamId,
+          alertInput,
+          refs,
+        );
         if (!updated) {
           return mcpUserError('Alert not found');
         }
@@ -162,6 +170,7 @@ export function registerSaveAlert({
         mongoTeamId,
         alertInput as Parameters<typeof createAlert>[1],
         mongoUserId,
+        refs,
       );
       return {
         content: [

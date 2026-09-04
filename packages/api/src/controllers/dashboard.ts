@@ -17,6 +17,7 @@ import {
 import type { ObjectId } from '@/models';
 import type { AlertDocument, IAlert } from '@/models/alert';
 import Dashboard, { IDashboard } from '@/models/dashboard';
+import { resolveAlertDisplayFields } from '@/utils/alerts';
 
 function pickAlertsByTile(tiles: Tile[]) {
   return tiles.reduce((acc, tile) => {
@@ -117,6 +118,23 @@ async function syncDashboardAlerts(
   }
 }
 
+/**
+ * Attach the resolved display name/tags so the chart editor prefills real
+ * values for alerts written before the fields existed.
+ */
+function withResolvedDisplayFields(
+  alert: AlertDocument | undefined,
+  dashboard: Pick<IDashboard, 'name' | 'tags' | 'tiles'>,
+) {
+  if (alert == null) {
+    return undefined;
+  }
+  return {
+    ...alert.toJSON(),
+    ...resolveAlertDisplayFields(alert, { dashboard }),
+  };
+}
+
 export async function getDashboards(teamId: ObjectId) {
   const [_dashboards, alerts] = await Promise.all([
     Dashboard.find({ team: teamId })
@@ -133,7 +151,10 @@ export async function getDashboards(teamId: ObjectId) {
         ...t,
         config: {
           ...t.config,
-          alert: alerts[`${d._id.toString()}:${t.id}`]?.[0],
+          alert: withResolvedDisplayFields(
+            alerts[`${d._id.toString()}:${t.id}`]?.[0],
+            d,
+          ),
         },
       })),
     }))
@@ -158,7 +179,10 @@ export async function getDashboard(dashboardId: string, teamId: ObjectId) {
     ..._dashboard.toJSON(),
     tiles: _dashboard.tiles.map(t => ({
       ...t,
-      config: { ...t.config, alert: alerts[t.id]?.[0] },
+      config: {
+        ...t.config,
+        alert: withResolvedDisplayFields(alerts[t.id]?.[0], _dashboard),
+      },
     })),
   });
 }

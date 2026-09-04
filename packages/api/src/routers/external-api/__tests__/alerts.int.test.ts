@@ -190,6 +190,258 @@ describe('External API Alerts', () => {
     });
   };
 
+  // The readers behind these routes project the referenced dashboard down to
+  // the handful of fields the derivation needs, rather than pulling every
+  // tile's full chart config. These cases fail if the projection drops one.
+  describe('display refs are projected, not fetched whole', () => {
+    const createNamedTileDashboard = async () => {
+      const tileId = new ObjectId().toString();
+      const dashboard = await new Dashboard({
+        name: 'Projected Dashboard',
+        tags: ['projected'],
+        tiles: [
+          {
+            id: tileId,
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 3,
+            config: {
+              name: 'Projected Tile',
+              displayType: 'line',
+              source: new ObjectId().toString(),
+              select: [
+                {
+                  aggFn: 'count',
+                  aggCondition: '',
+                  aggConditionLanguage: 'lucene',
+                  valueExpression: '',
+                },
+              ],
+              where: '',
+              whereLanguage: 'lucene',
+            },
+          },
+        ],
+        team: team._id,
+      }).save();
+      await createTestAlertDirectly({ dashboard: dashboard._id, tileId });
+      return dashboard;
+    };
+
+    it('derives the tile name on the list route', async () => {
+      const dashboard = await createNamedTileDashboard();
+
+      const res = await authRequest('get', ALERTS_BASE_URL).expect(200);
+      const alert = res.body.data.find(
+        (a: { dashboardId?: string }) =>
+          a.dashboardId === dashboard._id.toString(),
+      );
+
+      expect(alert).toMatchObject({
+        displayName: 'Projected Dashboard - Projected Tile',
+        tags: ['projected'],
+      });
+    });
+
+    it('derives the tile name on the single-alert route', async () => {
+      const dashboard = await createNamedTileDashboard();
+      const list = await authRequest('get', ALERTS_BASE_URL).expect(200);
+      const id = list.body.data.find(
+        (a: { dashboardId?: string }) =>
+          a.dashboardId === dashboard._id.toString(),
+      ).id;
+
+      const res = await authRequest('get', `${ALERTS_BASE_URL}/${id}`).expect(
+        200,
+      );
+
+      expect(res.body.data).toMatchObject({
+        displayName: 'Projected Dashboard - Projected Tile',
+        tags: ['projected'],
+        dashboardId: dashboard._id.toString(),
+      });
+    });
+  });
+
+  describe('displayName and tags', () => {
+    const createTaggedDashboard = async () => {
+      const tileId = new ObjectId().toString();
+      const dashboard = await new Dashboard({
+        name: 'Tagged Dashboard',
+        tags: ['dashboard-tag'],
+        tiles: [
+          {
+            id: tileId,
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 3,
+            config: {
+              name: 'Error Rate',
+              displayType: 'line',
+              source: new ObjectId().toString(),
+              select: [
+                {
+                  aggFn: 'count',
+                  aggCondition: '',
+                  aggConditionLanguage: 'lucene',
+                  valueExpression: '',
+                },
+              ],
+              where: '',
+              whereLanguage: 'lucene',
+            },
+          },
+        ],
+        team: team._id,
+      }).save();
+      return { dashboard, tileId };
+    };
+
+    const tileAlertInput = async (overrides = {}) => {
+      const { dashboard, tileId } = await createTaggedDashboard();
+      const webhook = await createTestWebhook();
+      return {
+        source: AlertSource.TILE,
+        dashboardId: dashboard._id.toString(),
+        tileId,
+        threshold: 100,
+        interval: '1h',
+        thresholdType: AlertThresholdType.ABOVE,
+        channel: { type: 'webhook', webhookId: webhook._id.toString() },
+        ...overrides,
+      };
+    };
+
+    it('persists an explicit displayName and tags on create', async () => {
+      const input = await tileAlertInput({
+        displayName: 'Checkout error spike',
+        tags: ['checkout', 'p1'],
+      });
+
+      const created = await authRequest('post', ALERTS_BASE_URL)
+        .send(input)
+        .expect(200);
+      expect(created.body.data).toMatchObject({
+        displayName: 'Checkout error spike',
+        tags: ['checkout', 'p1'],
+      });
+
+      const fetched = await authRequest(
+        'get',
+        `${ALERTS_BASE_URL}/${created.body.data.id}`,
+      ).expect(200);
+      expect(fetched.body.data).toMatchObject({
+        displayName: 'Checkout error spike',
+        tags: ['checkout', 'p1'],
+      });
+    });
+
+    it('treats an explicit empty tags array as a clear, not an omission', async () => {
+      const input = await tileAlertInput({ tags: [] });
+
+      const created = await authRequest('post', ALERTS_BASE_URL)
+        .send(input)
+        .expect(200);
+      expect(created.body.data.tags).toEqual([]);
+
+      const fetched = await authRequest(
+        'get',
+        `${ALERTS_BASE_URL}/${created.body.data.id}`,
+      ).expect(200);
+      expect(fetched.body.data.tags).toEqual([]);
+      expect(fetched.body.data.displayName).toBe(
+        'Tagged Dashboard - Error Rate',
+      );
+    });
+
+    it('replaces displayName and tags on update when provided', async () => {
+      const input = await tileAlertInput({
+        displayName: 'Before',
+        tags: ['before'],
+      });
+      const created = await authRequest('post', ALERTS_BASE_URL)
+        .send(input)
+        .expect(200);
+
+      await authRequest('put', `${ALERTS_BASE_URL}/${created.body.data.id}`)
+        .send({ ...input, displayName: 'After', tags: ['after'] })
+        .expect(200);
+
+      const fetched = await authRequest(
+        'get',
+        `${ALERTS_BASE_URL}/${created.body.data.id}`,
+      ).expect(200);
+      expect(fetched.body.data).toMatchObject({
+        displayName: 'After',
+        tags: ['after'],
+      });
+    });
+
+    it('re-derives displayName and tags on update when omitted', async () => {
+      const input = await tileAlertInput({
+        displayName: 'Explicit name',
+        tags: ['explicit'],
+      });
+      const created = await authRequest('post', ALERTS_BASE_URL)
+        .send(input)
+        .expect(200);
+
+      await authRequest('put', `${ALERTS_BASE_URL}/${created.body.data.id}`)
+        .send(_.omit(input, ['displayName', 'tags']))
+        .expect(200);
+
+      const fetched = await authRequest(
+        'get',
+        `${ALERTS_BASE_URL}/${created.body.data.id}`,
+      ).expect(200);
+      expect(fetched.body.data).toMatchObject({
+        displayName: 'Tagged Dashboard - Error Rate',
+        tags: ['dashboard-tag'],
+      });
+    });
+
+    it('keeps dashboardId when the referenced dashboard has been deleted', async () => {
+      const input = await tileAlertInput();
+      const created = await authRequest('post', ALERTS_BASE_URL)
+        .send(input)
+        .expect(200);
+      await Dashboard.deleteOne({ _id: input.dashboardId });
+
+      const fetched = await authRequest(
+        'get',
+        `${ALERTS_BASE_URL}/${created.body.data.id}`,
+      ).expect(200);
+      expect(fetched.body.data.dashboardId).toBe(input.dashboardId);
+
+      const listed = await authRequest('get', ALERTS_BASE_URL).expect(200);
+      expect(listed.body.data[0].dashboardId).toBe(input.dashboardId);
+    });
+
+    it('keeps savedSearchId when the referenced saved search has been deleted', async () => {
+      const savedSearch = await createTestSavedSearch();
+      const webhook = await createTestWebhook();
+      const created = await authRequest('post', ALERTS_BASE_URL)
+        .send({
+          source: AlertSource.SAVED_SEARCH,
+          savedSearchId: savedSearch._id.toString(),
+          threshold: 100,
+          interval: '1h',
+          thresholdType: AlertThresholdType.ABOVE,
+          channel: { type: 'webhook', webhookId: webhook._id.toString() },
+        })
+        .expect(200);
+      await SavedSearch.deleteOne({ _id: savedSearch._id });
+
+      const fetched = await authRequest(
+        'get',
+        `${ALERTS_BASE_URL}/${created.body.data.id}`,
+      ).expect(200);
+      expect(fetched.body.data.savedSearchId).toBe(savedSearch._id.toString());
+    });
+  });
+
   describe('Response Format', () => {
     it('should return responses in the expected format', async () => {
       // Create a test dashboard and webhook with known values
@@ -223,6 +475,9 @@ describe('External API Alerts', () => {
         data: {
           id: expect.any(String),
           name: 'Format Test Alert',
+          // Neither was sent, so both derive.
+          displayName: 'Test Dashboard - Tile',
+          tags: [],
           message: 'This is a test alert for format verification',
           note: null,
           numConsecutiveWindows: null,
@@ -270,6 +525,27 @@ describe('External API Alerts', () => {
       expect(listResponse.headers['content-type']).toMatch(/application\/json/);
       expect(listResponse.body).toHaveProperty('data');
       expect(Array.isArray(listResponse.body.data)).toBe(true);
+
+      // A document written before the displayName and tags fields existed still resolves
+      const legacyDashboard = await createTestDashboard({
+        name: 'Legacy Dashboard',
+      });
+      await createTestAlertDirectly({
+        dashboard: legacyDashboard._id,
+        tileId: legacyDashboard.tiles[0].id,
+      });
+
+      const listWithLegacy = await authRequest('get', ALERTS_BASE_URL).expect(
+        200,
+      );
+      const legacy = listWithLegacy.body.data.find(
+        (a: { dashboardId?: string }) =>
+          a.dashboardId === legacyDashboard._id.toString(),
+      );
+      expect(legacy).toMatchObject({
+        displayName: 'Legacy Dashboard - Tile',
+        tags: [],
+      });
 
       // Delete response format
       const deleteResponse = await authRequest(
@@ -772,6 +1048,121 @@ describe('External API Alerts', () => {
       const listed = list.body.data.find(a => a.id === created.body.data.id);
       expect(listed.source).toBe(AlertSource.INLINE);
       expect(listed.chartConfig).toBeUndefined();
+    });
+
+    // Inline alerts reference no dashboard or saved search, so their display
+    // fields derive from the chart config rather than a populated ref.
+    describe('displayName and tags', () => {
+      it('derives displayName from the chart config name and leaves tags empty', async () => {
+        const { source } = await makeSource();
+        const webhook = await createTestWebhook();
+
+        const created = await authRequest('post', ALERTS_BASE_URL)
+          .send(
+            makeInlineAlertInput(
+              makeBuilderChartConfig(source._id.toString(), {
+                name: 'Error rate',
+              }),
+              webhook._id.toString(),
+            ),
+          )
+          .expect(200);
+
+        expect(created.body.data).toMatchObject({
+          displayName: 'Error rate',
+          tags: [],
+        });
+
+        const single = await authRequest(
+          'get',
+          `${ALERTS_BASE_URL}/${created.body.data.id}`,
+        ).expect(200);
+        expect(single.body.data).toMatchObject({
+          displayName: 'Error rate',
+          tags: [],
+        });
+
+        const list = await authRequest('get', ALERTS_BASE_URL).expect(200);
+        const listed = list.body.data.find(a => a.id === created.body.data.id);
+        expect(listed).toMatchObject({ displayName: 'Error rate', tags: [] });
+      });
+
+      it('falls back when the chart config has no name', async () => {
+        const { source } = await makeSource();
+        const webhook = await createTestWebhook();
+
+        const created = await authRequest('post', ALERTS_BASE_URL)
+          .send(
+            makeInlineAlertInput(
+              makeBuilderChartConfig(source._id.toString()),
+              webhook._id.toString(),
+            ),
+          )
+          .expect(200);
+
+        expect(created.body.data).toMatchObject({
+          displayName: 'Alert',
+          tags: [],
+        });
+      });
+
+      it('persists an explicit displayName and tags over the chart config name', async () => {
+        const { source } = await makeSource();
+        const webhook = await createTestWebhook();
+
+        const created = await authRequest('post', ALERTS_BASE_URL)
+          .send(
+            makeInlineAlertInput(
+              makeBuilderChartConfig(source._id.toString(), {
+                name: 'Error rate',
+              }),
+              webhook._id.toString(),
+              { displayName: 'Checkout error spike', tags: ['checkout', 'p1'] },
+            ),
+          )
+          .expect(200);
+
+        expect(created.body.data).toMatchObject({
+          displayName: 'Checkout error spike',
+          tags: ['checkout', 'p1'],
+        });
+
+        const single = await authRequest(
+          'get',
+          `${ALERTS_BASE_URL}/${created.body.data.id}`,
+        ).expect(200);
+        expect(single.body.data).toMatchObject({
+          displayName: 'Checkout error spike',
+          tags: ['checkout', 'p1'],
+        });
+      });
+
+      it('re-derives displayName and tags when an update omits them', async () => {
+        const { source } = await makeSource();
+        const webhook = await createTestWebhook();
+        const input = makeInlineAlertInput(
+          makeBuilderChartConfig(source._id.toString(), { name: 'Error rate' }),
+          webhook._id.toString(),
+          { displayName: 'Checkout error spike', tags: ['checkout'] },
+        );
+
+        const created = await authRequest('post', ALERTS_BASE_URL)
+          .send(input)
+          .expect(200);
+
+        await authRequest('put', `${ALERTS_BASE_URL}/${created.body.data.id}`)
+          .send(_.omit(input, ['displayName', 'tags']))
+          .expect(200);
+
+        const single = await authRequest(
+          'get',
+          `${ALERTS_BASE_URL}/${created.body.data.id}`,
+        ).expect(200);
+        expect(single.body.data).toMatchObject({
+          displayName: 'Error rate',
+          tags: [],
+        });
+      });
     });
 
     it('updates an inline alert config and maps asRatio to the internal ratio return type', async () => {

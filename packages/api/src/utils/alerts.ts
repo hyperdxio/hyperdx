@@ -1,9 +1,11 @@
 import {
-  MAX_ALERT_DISPLAY_NAME_LENGTH,
-  MAX_TAG_LENGTH,
-  MAX_TAGS,
-} from '@hyperdx/common-utils/dist/types';
+  clampAlertDisplayName,
+  clampAlertTags,
+  formatTileAlertDisplayName,
+} from '@hyperdx/common-utils/dist/alerts';
+import { Types } from 'mongoose';
 
+import type { ObjectId } from '@/models';
 import { AlertSource } from '@/models/alert';
 
 import logger from './logger';
@@ -42,7 +44,6 @@ type AlertDisplayInput = {
 };
 
 const FALLBACK_DISPLAY_NAME = 'Alert';
-const FALLBACK_TILE_NAME = 'Tile';
 
 /**
  * Referenced entities are read straight from Mongo and predate any of these
@@ -57,19 +58,34 @@ function normalizeName(value: unknown): string | null {
   return trimmed === '' ? null : trimmed;
 }
 
-/**
- * Derived tags are persisted on the alert, which validates them with
- * `alertTagsSchema`, but they are copied from a dashboard/saved search whose
- * own schema caps neither length nor count. Apply the alert caps here.
- */
+/** Untrusted Mongo value -> tags that satisfy `alertTagsSchema`. */
 function normalizeTags(value: unknown): string[] {
   if (!Array.isArray(value)) {
     return [];
   }
-  return value
-    .filter((tag): tag is string => typeof tag === 'string' && tag !== '')
-    .slice(0, MAX_TAGS)
-    .map(tag => tag.slice(0, MAX_TAG_LENGTH));
+  return clampAlertTags(
+    value.filter((tag): tag is string => typeof tag === 'string'),
+  );
+}
+
+/**
+ * A Mongoose ref field is either a bare ObjectId or, when the query populated
+ * it, the referenced document. Documents don't override toString(), so an
+ * unguarded `.toString()` on a populated ref silently yields "[object Object]".
+ */
+export function isPopulatedRef(ref: unknown): ref is { _id: ObjectId } {
+  return typeof ref === 'object' && ref !== null && '_id' in ref;
+}
+
+/**
+ * The populated document when the ref field was populated, null otherwise.
+ * The instanceof check is for the type system: the predicate alone can't
+ * remove the bare-ObjectId branch from the union.
+ */
+export function populatedRefOrNull<T extends { _id: ObjectId }>(
+  ref: ObjectId | T | null | undefined,
+): T | null {
+  return isPopulatedRef(ref) && !(ref instanceof Types.ObjectId) ? ref : null;
 }
 
 /**
@@ -97,8 +113,10 @@ export function deriveAlertDisplayFields(
           const tile = alert.tileId
             ? tiles.find(t => t.id === alert.tileId)
             : undefined;
-          const tileName = normalizeName(tile?.config?.name);
-          displayName = `${dashboardName} - ${tileName ?? FALLBACK_TILE_NAME}`;
+          displayName = formatTileAlertDisplayName(
+            dashboardName,
+            normalizeName(tile?.config?.name),
+          );
         }
         tags = dashboard ? normalizeTags(dashboard.tags) : null;
         break;
@@ -125,7 +143,8 @@ export function deriveAlertDisplayFields(
   }
 
   return {
-    displayName: displayName?.slice(0, MAX_ALERT_DISPLAY_NAME_LENGTH) ?? null,
+    displayName:
+      displayName == null ? null : clampAlertDisplayName(displayName),
     tags,
   };
 }

@@ -707,6 +707,110 @@ describe('buildAlertMessageTemplateTitle', () => {
       );
     });
   });
+
+  // `alert.name` is the title override, read off the view rather than passed
+  // in separately -- these pin that wiring.
+  describe('alert.name as a title override', () => {
+    it('replaces the default title', () => {
+      const view = makeSearchView();
+
+      const result = buildAlertMessageTemplateTitle({
+        view: { ...view, alert: { ...view.alert, name: 'Custom title' } },
+        state: AlertState.ALERT,
+      });
+
+      expect(result).toBe('🚨 Custom title');
+    });
+
+    it('renders Handlebars against the view', () => {
+      const view = makeSearchView({ threshold: 5, value: 10 });
+
+      const result = buildAlertMessageTemplateTitle({
+        view: {
+          ...view,
+          alert: { ...view.alert, name: '{{value}} over {{alert.threshold}}' },
+        },
+        state: AlertState.ALERT,
+      });
+
+      expect(result).toBe('🚨 10 over 5');
+    });
+  });
+
+  describe('stored displayName', () => {
+    it('names a saved-search alert', () => {
+      const view = makeSearchView();
+
+      const result = buildAlertMessageTemplateTitle({
+        view: {
+          ...view,
+          alert: { ...view.alert, displayName: 'Checkout errors' },
+        },
+        state: AlertState.ALERT,
+      });
+
+      expect(result).toBe('🚨 Alert for "Checkout errors" - 10 lines found');
+    });
+
+    it('names a tile alert', () => {
+      const view = makeTileView();
+
+      const result = buildAlertMessageTemplateTitle({
+        view: {
+          ...view,
+          alert: { ...view.alert, displayName: 'Error rate' },
+        },
+        state: AlertState.ALERT,
+      });
+
+      expect(result).toContain('Alert for "Error rate" -');
+      expect(result).not.toContain('My Dashboard');
+    });
+
+    it('names an inline alert', () => {
+      const view = makeInlineView({ where: 'level:error' });
+
+      const result = buildAlertMessageTemplateTitle({
+        view: { ...view, alert: { ...view.alert, displayName: 'p99 latency' } },
+        state: AlertState.ALERT,
+      });
+
+      expect(result).toContain('Alert for "p99 latency"');
+      expect(result).not.toContain('Inline Chart');
+    });
+  });
+
+  // Saved-search and tile derivation is pinned by the snapshots above; inline
+  // alerts have no referenced entity, so their name comes off the chart config.
+  describe('derived displayName', () => {
+    it('names an inline alert from its chart config', () => {
+      const result = buildAlertMessageTemplateTitle({
+        view: makeInlineView({ where: 'level:error' }),
+        state: AlertState.ALERT,
+      });
+
+      expect(result).toBe(
+        '🚨 Alert for "Inline Chart" - 10 meets or exceeds 5',
+      );
+    });
+
+    it('falls back when an inline chart config has no name', () => {
+      const view = makeInlineView({ where: 'level:error' });
+
+      const result = buildAlertMessageTemplateTitle({
+        view: {
+          ...view,
+          alert: {
+            ...view.alert,
+            chartConfig: { ...view.alert.chartConfig!, name: undefined },
+          },
+        },
+        state: AlertState.ALERT,
+      });
+
+      expect(result).toBe('🚨 Alert for "Alert" - 10 meets or exceeds 5');
+    });
+  });
 });
 
 // MAX_NOTIFICATIONS_PER_EVENT bounds how many targets one fire/resolve event can

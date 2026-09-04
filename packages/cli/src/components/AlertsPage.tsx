@@ -39,7 +39,7 @@ function stateLabel(state?: string): string {
 }
 
 function alertName(alert: AlertItem): string {
-  if (alert.name) return alert.name;
+  if (alert.displayName) return alert.displayName;
   if (alert.dashboard) {
     const tile = alert.dashboard.tiles.find(t => t.id === alert.tileId);
     const tileName = tile?.config.name ?? alert.tileId ?? '';

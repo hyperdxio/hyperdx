@@ -266,6 +266,30 @@ describe('dashboard router', () => {
     expect(storedAlert?.tags).toEqual(['ops']);
   });
 
+  it('resolves displayName and tags on GET for a tile alert stored without them', async () => {
+    const mockAlert = makeMockAlert(webhook._id.toString());
+    const dashboard = await agent
+      .post('/dashboards')
+      .send({
+        name: 'Test Dashboard',
+        tiles: [makeTile({ alert: mockAlert })],
+        tags: ['ops'],
+      })
+      .expect(200);
+    // Alerts written before the fields existed.
+    await Alert.updateMany(
+      { dashboard: dashboard.body.id },
+      { $set: { displayName: null, tags: null } },
+    );
+
+    const list = await agent.get('/dashboards').expect(200);
+    const fromList = list.body.find(d => d._id === dashboard.body.id);
+    expect(fromList.tiles[0].config.alert).toMatchObject({
+      displayName: 'Test Dashboard - Test Chart',
+      tags: ['ops'],
+    });
+  });
+
   it('persists a tile alert displayName sent through the dashboard PATCH', async () => {
     const mockAlert = makeMockAlert(webhook._id.toString());
     const dashboard = await agent

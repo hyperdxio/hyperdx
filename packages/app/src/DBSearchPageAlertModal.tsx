@@ -3,11 +3,17 @@ import router from 'next/router';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
+import {
+  clampAlertDisplayName,
+  clampAlertTags,
+} from '@hyperdx/common-utils/dist/alerts';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   type Alert,
+  alertDisplayNameSchema,
   AlertIntervalSchema,
   AlertSource,
+  alertTagsSchema,
   AlertThresholdType,
   Filter,
   isRangeThresholdType,
@@ -56,6 +62,7 @@ import {
   toAlertChannels,
 } from '@/utils/alerts';
 
+import { AlertDisplayFields } from './components/AlertDisplayFields';
 import { AlertNoteField } from './components/AlertNoteField';
 import { AlertPreviewChart } from './components/AlertPreviewChart';
 import { AlertChannelForm } from './components/Alerts';
@@ -78,6 +85,8 @@ const SavedSearchAlertFormSchema = z
     scheduleStartAt: scheduleStartAtSchema,
     thresholdType: z.nativeEnum(AlertThresholdType),
     channels: zAlertChannels,
+    displayName: alertDisplayNameSchema,
+    tags: alertTagsSchema,
     // nullish() (not optional()): persisted alerts store this as null, which
     // optional() would reject.
     numConsecutiveWindows: z.number().int().min(1).nullish(),
@@ -93,9 +102,11 @@ const AlertForm = ({
   filters,
   select,
   defaultValues,
+  prefill,
   loading,
   deleteLoading,
   hasSavedSearch,
+  savedSearchName,
   onDelete,
   onSubmit,
   onClose,
@@ -106,9 +117,12 @@ const AlertForm = ({
   filters?: Filter[] | null;
   select?: string | null;
   defaultValues?: null | AlertWithCreatedBy;
+  /** Seed values for a brand-new alert */
+  prefill?: { displayName?: string; tags?: string[] };
   loading?: boolean;
   deleteLoading?: boolean;
   hasSavedSearch?: boolean;
+  savedSearchName?: string;
   onDelete: (id: string) => void;
   onSubmit: (data: Alert) => void;
   onClose: () => void;
@@ -140,6 +154,8 @@ const AlertForm = ({
           source: AlertSource.SAVED_SEARCH,
           channels: [{ type: 'webhook', webhookId: '' }],
           note: null,
+          displayName: prefill?.displayName,
+          tags: prefill?.tags,
         },
     resolver: zodResolver(SavedSearchAlertFormSchema),
   });
@@ -193,6 +209,13 @@ const AlertForm = ({
     >
       <Paper px="sm" py="xs" radius="xs">
         <Stack gap="xs">
+          <AlertDisplayFields
+            control={control}
+            displayNameName="displayName"
+            tagsName="tags"
+            derivedDisplayName={savedSearchName}
+            labelMarginTop="0"
+          />
           <Text size="xxs" opacity={0.5}>
             Trigger
           </Text>
@@ -607,6 +630,15 @@ export const DBSearchPageAlertModal = ({
         <AlertForm
           key={activeIndex}
           hasSavedSearch={!!savedSearch}
+          savedSearchName={savedSearch?.name}
+          prefill={
+            savedSearch
+              ? {
+                  displayName: clampAlertDisplayName(savedSearch.name),
+                  tags: clampAlertTags(savedSearch.tags),
+                }
+              : undefined
+          }
           sourceId={searchedConfig?.source}
           where={searchedConfig?.where}
           whereLanguage={searchedConfig?.whereLanguage}

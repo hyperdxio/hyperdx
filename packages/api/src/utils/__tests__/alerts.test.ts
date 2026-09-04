@@ -7,6 +7,7 @@ import {
 import { AlertSource } from '@/models/alert';
 import {
   deriveAlertDisplayFields,
+  isPopulatedRef,
   resolveAlertDisplayFields,
 } from '@/utils/alerts';
 
@@ -224,5 +225,17 @@ describe('resolveAlertDisplayFields', () => {
     const alert = { source: AlertSource.SAVED_SEARCH, tags: ['a'] };
     resolveAlertDisplayFields(alert).tags.push('b');
     expect(alert.tags).toEqual(['a']);
+  });
+});
+
+describe('isPopulatedRef', () => {
+  it.each([
+    [{ _id: 'abc' }, true],
+    [{}, false],
+    [null, false],
+    [undefined, false],
+    ['abc', false],
+  ])('%p -> %p', (value, expected) => {
+    expect(isPopulatedRef(value)).toBe(expected);
   });
 });

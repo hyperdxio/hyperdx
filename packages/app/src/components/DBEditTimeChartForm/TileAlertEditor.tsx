@@ -4,6 +4,7 @@ import {
   UseFormSetValue,
   useWatch,
 } from 'react-hook-form';
+import { formatTileAlertDisplayName } from '@hyperdx/common-utils/dist/alerts';
 import {
   AlertThresholdType,
   isRangeThresholdType,
@@ -31,12 +32,14 @@ import {
 } from '@tabler/icons-react';
 
 import api from '@/api';
+import { AlertDisplayFields } from '@/components/AlertDisplayFields';
 import { AlertNoteField } from '@/components/AlertNoteField';
 import { AlertChannelForm } from '@/components/Alerts';
 import { AckAlert } from '@/components/alerts/AckAlert';
 import { AlertHistoryCardList } from '@/components/alerts/AlertHistoryCards';
 import { AlertScheduleFields } from '@/components/AlertScheduleFields';
 import { ChartEditorFormState } from '@/components/ChartEditor/types';
+import { useDashboards } from '@/dashboard';
 import { optionsToSelectData } from '@/utils';
 import {
   ALERT_CHANNEL_OPTIONS,
@@ -49,6 +52,7 @@ export function TileAlertEditor({
   control,
   setValue,
   alert,
+  dashboardId,
   onRemove,
   error,
   warning,
@@ -57,6 +61,7 @@ export function TileAlertEditor({
   control: Control<ChartEditorFormState>;
   setValue: UseFormSetValue<ChartEditorFormState>;
   alert: NonNullable<ChartEditorFormState['alert']>;
+  dashboardId?: string;
   onRemove: () => void;
   error?: string;
   warning?: string;
@@ -84,6 +89,13 @@ export function TileAlertEditor({
 
   const { data: alertData } = api.useAlert(alert.id);
   const alertItem = alertData?.data;
+
+  const tileName = useWatch({ control, name: 'name' });
+  const { data: dashboards } = useDashboards();
+  const dashboardName = dashboards?.find(d => d.id === dashboardId)?.name;
+  const derivedDisplayName = dashboardName
+    ? formatTileAlertDisplayName(dashboardName, tileName)
+    : undefined;
 
   return (
     <Paper data-testid="alert-details">
@@ -228,6 +240,12 @@ export function TileAlertEditor({
               Created by {alert.createdBy.name || alert.createdBy.email}
             </Text>
           )}
+          <AlertDisplayFields
+            control={control}
+            displayNameName="alert.displayName"
+            tagsName="alert.tags"
+            derivedDisplayName={derivedDisplayName}
+          />
           <AlertScheduleFields
             control={control}
             setValue={setValue}

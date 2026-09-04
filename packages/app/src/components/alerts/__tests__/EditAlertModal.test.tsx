@@ -19,6 +19,12 @@ jest.mock('@/api', () => ({
     }),
     getAlertQueryKey: (alertId: string | undefined) => ['alert', alertId],
     getAlertsQueryKey: () => ['alerts'],
+    useTags: () => ({
+      data: { data: ['checkout'] },
+      isLoading: false,
+      isError: false,
+      refetch: jest.fn(),
+    }),
   },
 }));
 
@@ -159,6 +165,8 @@ describe('EditAlertModal', () => {
         // clears any that are omitted.
         name: 'My alert',
         message: 'My message template',
+        displayName: 'Checkout errors',
+        tags: ['checkout'],
       }),
     );
   });
@@ -180,6 +188,34 @@ describe('EditAlertModal', () => {
         name: 'My alert',
         message: 'My message template',
       }),
+    );
+  });
+
+  it('sends an edited display name in the PUT payload', async () => {
+    renderModal(savedSearchAlert);
+
+    fireEvent.change(screen.getByTestId('alert-display-name-input'), {
+      target: { value: 'Checkout 5xx' },
+    });
+
+    await submitForm();
+
+    expect(updateAlertMutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ displayName: 'Checkout 5xx' }),
+    );
+  });
+
+  it('clears the display name to null so the server re-derives it', async () => {
+    renderModal(savedSearchAlert);
+
+    fireEvent.change(screen.getByTestId('alert-display-name-input'), {
+      target: { value: '' },
+    });
+
+    await submitForm();
+
+    expect(updateAlertMutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ displayName: null }),
     );
   });
 

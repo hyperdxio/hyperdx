@@ -1,10 +1,12 @@
 import {
   ALERT_INTERVAL_TO_MINUTES,
+  alertDisplayNameSchema,
   type AlertInterval,
   checkAlertChannelSelection,
   isRangeThresholdType,
   MAX_ALERT_CHANNELS,
   SearchConditionTrimmedLanguageSchema,
+  tagsSchema,
 } from '@hyperdx/common-utils/dist/types';
 import { z } from 'zod';
 
@@ -206,13 +208,19 @@ export const mcpSaveAlertSchema = z.object({
     .min(1)
     .max(512)
     .optional()
-    .describe('Human-friendly alert name.'),
+    .describe('Alert title template (supports Handlebars syntax).'),
   message: z
     .string()
     .min(1)
     .max(4096)
     .optional()
     .describe('Alert message template (supports Handlebars syntax).'),
+  displayName: alertDisplayNameSchema.describe(
+    'Display name shown for the alert in the UI. Defaults to the saved search name, dashboard tile name, or inline chartConfig name when omitted. Overridden by the "name" field in alert notifications when provided.',
+  ),
+  tags: tagsSchema.describe(
+    'Tags for the alert. Defaults to the tags of the referenced saved search or dashboard when omitted; inline alerts default to an empty list.',
+  ),
 });
 
 export type McpSaveAlertInput = z.infer<typeof mcpSaveAlertSchema>;
