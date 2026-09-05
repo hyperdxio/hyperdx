@@ -50,8 +50,6 @@ import { useConnections } from './connection';
 import { useDefaultTimeRange, useNewTimeQuery } from './timeQuery';
 import { usePrevious } from './utils';
 
-
-
 const from = {
   databaseName: 'system',
   tableName: 'query_log',

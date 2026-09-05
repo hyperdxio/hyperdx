@@ -356,8 +356,6 @@ const tileToLayoutItem = (chart: Tile): RGL.Layout => ({
   minW: 1,
 });
 
-
-
 const whereLanguageParser = parseAsString.withDefault(
   typeof window !== 'undefined' ? (getStoredLanguage() ?? 'lucene') : 'lucene',
 );

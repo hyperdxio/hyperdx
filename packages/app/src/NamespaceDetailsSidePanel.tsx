@@ -242,7 +242,7 @@ export default function NamespaceDetailsSidePanel({
 
   const defaultTimeRange = useDefaultTimeRange('Past 1h');
 
-  const { isReady, searchedTimeRange: dateRange } = useTimeQuery({
+  const { searchedTimeRange: dateRange } = useTimeQuery({
     defaultValue: 'Past 1h',
     defaultTimeRange: [
       defaultTimeRange?.[0]?.getTime() ?? -1,

@@ -685,8 +685,6 @@ function SaveSearchModalComponent({
 }
 const SaveSearchModal = memo(SaveSearchModalComponent);
 
-
-
 function useLiveUpdate({
   isLive,
   interval, // ms ago to refresh from
@@ -956,10 +954,7 @@ export function useSearchTelemetry({
 export function DBSearchPage() {
   const brandName = useBrandDisplayName();
   const defaultTimeRange = useDefaultTimeRange('Past 15m');
-  const [sessionSourceId, setSessionSourceId] = useLocalStorage<string>(
-    'hdx-last-selected-source-id',
-    '',
-  );
+
   // Next router is laggy behind window.location, which causes race
   // conditions with useQueryStates, so we'll parse it directly
   const paths = window.location.pathname.split('/');

@@ -41,8 +41,6 @@ import OnboardingModal from './components/OnboardingModal';
 
 // Sampled field discovery and full field discovery
 
-
-
 function AIAssistant({
   setConfig,
   onTimeRangeSelect,

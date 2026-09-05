@@ -215,7 +215,6 @@ function SessionCardList({
   );
 }
 
-
 const selectedSessionQueryStateMap = {
   sid: parseAsString,
   sfrom: parseAsFloat,
