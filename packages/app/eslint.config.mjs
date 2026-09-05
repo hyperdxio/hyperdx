@@ -264,6 +264,9 @@ export default [
       '@typescript-eslint/no-explicit-any': 'off',
       '@next/next/no-html-link-for-pages': 'off',
       'playwright/no-networkidle': 'off', // temporary until we have a better way to deal with react re-renders
+      'playwright/no-conditional-expect': 'off',
+      'playwright/no-conditional-in-test': 'off',
+      'playwright/no-wait-for-selector': 'off',
       // Shared helpers that assert on our behalf, so a test calling only these
       // still counts as having assertions.
       'playwright/expect-expect': [

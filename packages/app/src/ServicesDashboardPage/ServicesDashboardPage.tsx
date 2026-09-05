@@ -59,7 +59,7 @@ import { useServiceDashboardExpressions } from '@/serviceDashboard';
 import { useSource, useSources } from '@/source';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import { useDefaultTimeRange, useNewTimeQuery } from '@/timeQuery';
-import { usePrevious } from '@/utils';
+
 
 import DatabaseTab from './DatabaseTab';
 import ErrorsTab from './ErrorsTab';
