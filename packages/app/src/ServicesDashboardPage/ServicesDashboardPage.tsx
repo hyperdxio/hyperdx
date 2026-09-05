@@ -60,7 +60,6 @@ import { useSource, useSources } from '@/source';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import { useDefaultTimeRange, useNewTimeQuery } from '@/timeQuery';
 
-
 import DatabaseTab from './DatabaseTab';
 import ErrorsTab from './ErrorsTab';
 import HttpTab from './HttpTab';

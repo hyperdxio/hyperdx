@@ -34,7 +34,6 @@ import { useBrandDisplayName } from './theme/ThemeProvider';
 import api from './api';
 import { withAppNav } from './layout';
 import {
-  parseTimeQuery,
   useDefaultTimeRange,
   useNewTimeQuery,
 } from './timeQuery';
