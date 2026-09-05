@@ -174,7 +174,7 @@ export function AlertCardList({ alerts }: { alerts: AlertsPageItem[] }) {
       getScrollElement: () =>
         document.getElementById(APP_CONTENT_SCROLL_CONTAINER_ID),
       scrollMargin,
-      getItemKey: useCallback(index => items[index].key, [items]),
+      getItemKey: useCallback((index: number) => items[index].key, [items]),
     });
 
   return (
