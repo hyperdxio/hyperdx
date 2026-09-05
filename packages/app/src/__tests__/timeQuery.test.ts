@@ -1,6 +1,6 @@
 import { renderHook } from '@testing-library/react';
 
-import { useDefaultTimeRange } from '../timeQuery';
+import { useDefaultTimeRange } from '@/timeQuery';
 
 describe('useDefaultTimeRange', () => {
   beforeEach(() => {

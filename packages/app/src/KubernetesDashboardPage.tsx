@@ -940,7 +940,6 @@ const NamespacesTable = ({
   );
 };
 
-
 const CHART_HEIGHT = 300;
 
 const findSource = (

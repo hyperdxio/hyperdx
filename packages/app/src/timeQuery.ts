@@ -22,6 +22,7 @@ import {
   useQueryState,
   useQueryStates,
 } from 'nuqs';
+import { NOW } from '@/config';
 import { formatDate } from '@hyperdx/common-utils/dist/core/utils';
 import { DateRange } from '@hyperdx/common-utils/dist/types';
 
@@ -528,7 +529,7 @@ export function useDefaultTimeRange(query: string = 'Past 1h'): [Date, Date] {
     if (parsed[0] != null && parsed[1] != null) {
       return [parsed[0], parsed[1]];
     }
-    const now = new Date();
+    const now = new Date(NOW);
     return [new Date(now.getTime() - 60 * 60 * 1000), now];
   }, [query]);
 }

@@ -32,7 +32,7 @@ import SearchWhereInput, {
 } from '@/components/SearchInput/SearchWhereInput';
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { TimePicker } from '@/components/TimePicker';
-import { NOW } from '@/config';
+
 import { withAppNav } from '@/layout';
 import {
   useLLMDashboardExpressions,
