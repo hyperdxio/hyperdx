@@ -120,9 +120,12 @@ test.describe('Sources Functionality', { tag: ['@sources'] }, () => {
     await expect(searchPage.createNewSourceItem).toBeVisible();
 
     // `Manage sources` is wired only in non-local (full-stack) mode.
+    // eslint-disable-next-line playwright/no-conditional-in-test
     if (process.env.E2E_FULLSTACK === 'true') {
+      // eslint-disable-next-line playwright/no-conditional-expect
       await expect(searchPage.manageSourcesItem).toBeVisible();
     } else {
+      // eslint-disable-next-line playwright/no-conditional-expect
       await expect(searchPage.manageSourcesItem).toHaveCount(0);
     }
   });
@@ -138,6 +141,7 @@ test.describe('Sources Functionality', { tag: ['@sources'] }, () => {
       for (const sourceData of editableSourcesData) {
         await test.step(`Verify ${sourceData.name} fields`, async () => {
           // Demo Logs is selected by default, so we don't need to select it again
+          // eslint-disable-next-line playwright/no-conditional-in-test
           if (sourceData.name !== 'Demo Logs') {
             await searchPage.selectSource(sourceData.name);
           }
@@ -317,7 +321,9 @@ test.describe('Sources Functionality', { tag: ['@sources'] }, () => {
         'updatedAt',
       ]);
       for (const key of Object.keys(sourceBefore)) {
+        // eslint-disable-next-line playwright/no-conditional-in-test
         if (serverManagedKeys.has(key)) continue;
+        // eslint-disable-next-line playwright/no-conditional-in-test
         if (sourceBefore[key] == null) continue;
         expect(sourceAfter).toHaveProperty(key);
       }

@@ -188,14 +188,17 @@ test.describe('Relative Time Picker', { tag: '@relative-time' }, () => {
           .first();
         const isVisible = await resumeButton.isVisible().catch(() => false);
 
+        // eslint-disable-next-line playwright/no-conditional-in-test
         if (isVisible) {
           await resumeButton.click();
           await searchPage.page.waitForURL('**/search**isLive=true**');
 
           // Verify back in live mode
           const url = searchPage.page.url();
+          // eslint-disable-next-line playwright/no-conditional-expect
           expect(url).toContain('isLive=true');
           // Should retain the previously selected interval (5 minutes = 300000ms)
+          // eslint-disable-next-line playwright/no-conditional-expect
           expect(url).toContain('liveInterval=300000');
         }
       });

@@ -207,6 +207,7 @@ test.describe(
         expect(url.searchParams.get('isLive')).toBe('false');
         // Default row click encodes the group-by filter as a SQL IN clause in
         // the JSON-encoded `filters` param.
+        // eslint-disable-next-line playwright/no-conditional-in-test
         const filters = url.searchParams.get('filters') ?? '[]';
         expect(filters).toContain(`ServiceName IN ('${serviceName}')`);
         const from = Number(url.searchParams.get('from'));

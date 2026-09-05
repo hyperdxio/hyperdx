@@ -267,6 +267,7 @@ async function globalSetup(_config: FullConfig) {
     await page.goto('/search', { timeout: PAGE_LOAD_TIMEOUT_MS });
 
     // Wait for source selector to be ready (indicates sources are loaded)
+    // eslint-disable-next-line playwright/no-wait-for-selector
     await page.waitForSelector('[data-testid="source-selector"]', {
       state: 'visible',
       timeout: SOURCE_SELECTOR_TIMEOUT_MS,
