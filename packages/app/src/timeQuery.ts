@@ -523,9 +523,19 @@ export function useNewTimeQuery({
 }
 
 export function useDefaultTimeRange(query: string = 'Past 1h'): [Date, Date] {
-  const cacheRef = useRef<{ query: string; range: [Date, Date] } | null>(null);
+  const [state, setState] = useState<{ query: string; range: [Date, Date] }>(
+    () => {
+      const parsed = parseValidTimeRange(query, false);
+      if (parsed) {
+        return { query, range: parsed };
+      }
+      // eslint-disable-next-line no-restricted-syntax
+      const now = new Date();
+      return { query, range: [new Date(now.getTime() - 60 * 60 * 1000), now] };
+    },
+  );
 
-  if (cacheRef.current?.query !== query) {
+  if (state.query !== query) {
     const parsed = parseValidTimeRange(query, false);
     let range: [Date, Date];
     if (parsed) {
@@ -535,8 +545,10 @@ export function useDefaultTimeRange(query: string = 'Past 1h'): [Date, Date] {
       const now = new Date();
       range = [new Date(now.getTime() - 60 * 60 * 1000), now];
     }
-    cacheRef.current = { query, range };
+    const newState = { query, range };
+    setState(newState);
+    return newState.range;
   }
 
-  return cacheRef.current.range;
+  return state.range;
 }
