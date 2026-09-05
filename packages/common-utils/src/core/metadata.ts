@@ -28,6 +28,7 @@ import type {
   BuilderChartConfig,
   BuilderChartConfigWithDateRange,
   MetadataMaterializedViews,
+  SQLInterval,
   TSource,
 } from '@/types';
 import { isLogSource, isTraceSource, SourceKind } from '@/types';
@@ -165,41 +166,97 @@ const renderJsonStringSubcolumn = (
   return `${columnIdentifier}.${path}${JSON_STRING_TYPE_SUFFIX}`;
 };
 
+type PendingQuery<T> = {
+  promise: Promise<T>;
+  controller: AbortController;
+  waiters: number;
+};
+
 export class MetadataCache {
   private cache = new Map<string, any>();
-  private pendingQueries = new Map<string, Promise<any>>();
+  private pendingQueries = new Map<string, PendingQuery<any>>();
+  private seenKeys = new Set<string>();
 
   // this should be getOrUpdate... or just query to follow react query
   get<T>(key: string): T | undefined {
     return this.cache.get(key);
   }
 
-  async getOrFetch<T>(key: string, query: () => Promise<T>): Promise<T> {
+  /**
+   * `query` receives a signal shared by everyone waiting on this key, aborted
+   * only once every waiter has given up. Passing a caller's own signal through
+   * instead would let one caller's cancellation reject all the others.
+   */
+  async getOrFetch<T>(
+    key: string,
+    query: (signal?: AbortSignal) => Promise<T>,
+    signal?: AbortSignal,
+  ): Promise<T> {
     // Check if value exists in cache
     const cachedValue: T | undefined = this.cache.get(key);
     if (cachedValue != null) {
       return cachedValue;
     }
 
-    // Check if there is a pending query
-    if (this.pendingQueries.has(key)) {
-      return this.pendingQueries.get(key)!;
+    // An entry lingers until its query settles, so one already aborted by its
+    // last waiter would hand this caller a promise guaranteed to reject.
+    const existing = this.pendingQueries.get(key);
+    const pending: PendingQuery<T> =
+      existing != null && !existing.controller.signal.aborted
+        ? existing
+        : this.startQuery<T>(key, query);
+
+    pending.waiters += 1;
+    if (signal == null) {
+      return pending.promise;
     }
-
-    // If no pending query, initiate the new query
-    const queryPromise = query();
-
-    // Store the pending query promise
-    this.pendingQueries.set(key, queryPromise);
-
+    const giveUp = () => {
+      if ((pending.waiters -= 1) === 0) pending.controller.abort();
+    };
+    if (signal.aborted) {
+      giveUp();
+    } else {
+      signal.addEventListener('abort', giveUp, { once: true });
+    }
     try {
-      const result = await queryPromise;
-      this.cache.set(key, result);
-      return result;
+      return await pending.promise;
     } finally {
-      // Clean up the pending query map
-      this.pendingQueries.delete(key);
+      signal.removeEventListener('abort', giveUp);
     }
+  }
+
+  private startQuery<T>(
+    key: string,
+    query: (signal?: AbortSignal) => Promise<T>,
+  ): PendingQuery<T> {
+    const controller = new AbortController();
+    // A superseded entry must touch neither the cache nor the map: its result
+    // is older than the replacement's, and this cache never expires.
+    const isCurrent = () => this.pendingQueries.get(key) === entry;
+    const promise = (async () => {
+      const result = await query(controller.signal);
+      if (isCurrent()) {
+        this.cache.set(key, result);
+      }
+      return result;
+    })();
+    const entry: PendingQuery<T> = { controller, waiters: 0, promise };
+    this.pendingQueries.set(key, entry);
+
+    const cleanup = () => {
+      if (isCurrent()) {
+        this.pendingQueries.delete(key);
+      }
+    };
+    promise.then(cleanup, cleanup);
+    return entry;
+  }
+
+  /** True the first time `key` is seen; for one-shot logging. */
+  firstSeen(key: string): boolean {
+    if (this.seenKeys.has(key)) return false;
+    this.seenKeys.add(key);
+    return true;
   }
 
   set<T>(key: string, value: T) {
@@ -265,6 +322,26 @@ export type SkipIndexMetadata = {
   expression: string; // e.g., "tokens(lower(Body))"
   granularity: number;
 };
+
+const FIELD_METADATA_LOOKBACK_MS = 24 * 60 * 60 * 1000;
+const FIELD_METADATA_BUCKET: SQLInterval = '1 hour';
+
+function widenToLookback([start, end]: [Date, Date]): [Date, Date] {
+  const earliest = new Date(end.getTime() - FIELD_METADATA_LOOKBACK_MS);
+  return [start < earliest ? start : earliest, end];
+}
+
+/**
+ * Without a range `getMapKeys` skips Map columns entirely. Aligned to the hour
+ * because it keys its cache on the exact range and never evicts.
+ */
+export function defaultFieldMetadataDateRange(): [Date, Date] {
+  const now = new Date();
+  return getAlignedDateRange(
+    [new Date(now.getTime() - FIELD_METADATA_LOOKBACK_MS), now],
+    FIELD_METADATA_BUCKET,
+  );
+}
 
 export class Metadata {
   private readonly clickhouseClient: BaseClickhouseClient;
@@ -667,14 +744,11 @@ export class Metadata {
     databaseName,
     tableName,
     dateRange,
-    timestampValueExpression,
   }: {
     databaseName: string;
     tableName: string;
-    dateRange?: [Date, Date];
-    timestampValueExpression?: string;
+    dateRange: [Date, Date];
   }): Promise<ChSql> {
-    if (!dateRange || !timestampValueExpression) return chSql`1`;
     const startTime = chSql`fromUnixTimestamp64Milli(${{ Int64: dateRange[0].getTime() }})`;
     const endTime = chSql`fromUnixTimestamp64Milli(${{ Int64: dateRange[1].getTime() }})`;
     return chSql`part_name IN (
@@ -694,7 +768,7 @@ export class Metadata {
     connectionId,
     metricName,
     metadataMVs,
-    dateRange,
+    dateRange: rawDateRange,
     timestampValueExpression,
     signal,
   }: {
@@ -711,22 +785,44 @@ export class Metadata {
   }) {
     inlineNonNegativeInt(maxKeys, 'maxKeys');
 
+    // Same lookback as the no-range default, so narrowing the time picker never
+    // yields fewer keys than having none. Aligned because the cache never evicts.
+    const discoveryRange = rawDateRange
+      ? widenToLookback(rawDateRange)
+      : undefined;
+    const dateRange = discoveryRange
+      ? getAlignedDateRange(discoveryRange, FIELD_METADATA_BUCKET)
+      : undefined;
+
     // Align date range to rollup granularity for consistent cache keys
     const alignedDateRange =
-      metadataMVs && dateRange
-        ? getAlignedDateRange(dateRange, metadataMVs.granularity)
+      metadataMVs && discoveryRange
+        ? getAlignedDateRange(discoveryRange, metadataMVs.granularity)
         : undefined;
 
-    const dateRangeCacheSuffix =
-      dateRange && timestampValueExpression
-        ? `${dateRange[0].getTime()}-${dateRange[1].getTime()}-${timestampValueExpression}`
-        : '';
-    const cacheKey = metricName
-      ? `${connectionId}.${databaseName}.${tableName}.${column}.${metricName}.${dateRangeCacheSuffix}.keys`
-      : metadataMVs && alignedDateRange
-        ? `${connectionId}.${databaseName}.${tableName}.${column}.${alignedDateRange[0].getTime()}.${alignedDateRange[1].getTime()}.keys`
-        : `${connectionId}.${databaseName}.${tableName}.${column}.${dateRangeCacheSuffix}.keys`;
-    const cachedKeys = this.cache.get<string[]>(cacheKey);
+    // The index read is bounded by dateRange alone, so the key must carry it.
+    const dateRangeCacheSuffix = dateRange
+      ? `${dateRange[0].getTime()}-${dateRange[1].getTime()}-${timestampValueExpression ?? ''}`
+      : '';
+    // maxKeys caps the result, so callers asking for different limits (the MCP
+    // tool wants 50, the AI controller 1000) must not share an entry.
+    const keyPrefix = metricName
+      ? `${connectionId}.${databaseName}.${tableName}.${column}.${metricName}.${maxKeys}`
+      : `${connectionId}.${databaseName}.${tableName}.${column}.${maxKeys}`;
+    const cacheKey = `${keyPrefix}.${dateRangeCacheSuffix}.keys`;
+    // The index reads are bounded by dateRange alone, so a timestamp expression
+    // in their key would split one result across callers that share a window.
+    const indexCacheKey = dateRange
+      ? `${keyPrefix}.${dateRange[0].getTime()}-${dateRange[1].getTime()}.index.keys`
+      : cacheKey;
+    // The rollup query is bounded by the MV bucket rather than dateRange, so it
+    // keys its own entry; getOrFetch reads it on the rollup path below.
+    const rollupCacheKey = alignedDateRange
+      ? `${keyPrefix}.${alignedDateRange[0].getTime()}.${alignedDateRange[1].getTime()}.keys`
+      : cacheKey;
+    const cachedKeys =
+      this.cache.get<string[]>(indexCacheKey) ??
+      this.cache.get<string[]>(cacheKey);
 
     if (cachedKeys != null) {
       return cachedKeys;
@@ -741,14 +837,22 @@ export class Metadata {
     const clickhouseVersion = await this.getServerVersion({ connectionId });
     const canQueryMergeTreeTextIndex =
       supportsMergeTreeTextIndex(clickhouseVersion);
+
+    // The raw fallback has no WHERE at all without both, so it would scan the
+    // full retention. The index reads below need only the range. HDX #3037.
+    const canScanTable = Boolean(dateRange && timestampValueExpression);
+
     // Text Index path: query the key rollup index
     const textIndexInfo = textIndexInfoLookup.get(column);
-    if (textIndexInfo?.key?.indexName && canQueryMergeTreeTextIndex) {
+    if (
+      dateRange &&
+      textIndexInfo?.key?.indexName &&
+      canQueryMergeTreeTextIndex
+    ) {
       const partsFilter = await this.partsOverlapFilter({
         databaseName,
         tableName,
         dateRange,
-        timestampValueExpression,
       });
       const index = textIndexInfo.key.indexName;
       const sql = chSql`
@@ -764,11 +868,12 @@ export class Metadata {
             query_params: sql.params,
             connectionId,
             clickhouse_settings: this.getClickHouseSettings(),
+            abort_signal: signal,
           })
           .then(r => r.json<{ key: string }>())
           .then(d => d.data.map(r => r.key).filter(Boolean));
         if (keys.length > 0) {
-          this.cache.set(cacheKey, keys);
+          this.cache.set(indexCacheKey, keys);
           return keys;
         }
       } catch (e) {
@@ -778,12 +883,15 @@ export class Metadata {
         );
         return [];
       }
-    } else if (textIndexInfo?.kv?.indexName && canQueryMergeTreeTextIndex) {
+    } else if (
+      dateRange &&
+      textIndexInfo?.kv?.indexName &&
+      canQueryMergeTreeTextIndex
+    ) {
       const partsFilter = await this.partsOverlapFilter({
         databaseName,
         tableName,
         dateRange,
-        timestampValueExpression,
       });
       const index = textIndexInfo.kv.indexName;
       const separator = textIndexInfo.kv.separator;
@@ -800,11 +908,12 @@ export class Metadata {
             query_params: sql.params,
             connectionId,
             clickhouse_settings: this.getClickHouseSettings(),
+            abort_signal: signal,
           })
           .then(r => r.json<{ key: string }>())
           .then(d => d.data.map(r => r.key).filter(Boolean));
         if (keys.length > 0) {
-          this.cache.set(cacheKey, keys);
+          this.cache.set(indexCacheKey, keys);
           return keys;
         }
       } catch (e) {
@@ -819,8 +928,8 @@ export class Metadata {
     // Rollup path: query the key rollup table filtered by ColumnIdentifier and date range
     if (metadataMVs && alignedDateRange) {
       const rollupKeys = await this.cache.getOrFetch<string[]>(
-        cacheKey,
-        async () => {
+        rollupCacheKey,
+        async sharedSignal => {
           try {
             const startExpr = renderStartOfBucketExpr(
               metadataMVs.granularity,
@@ -865,21 +974,37 @@ export class Metadata {
                   max_execution_time: 15,
                   max_rows_to_read: '0',
                 },
-                abort_signal: signal,
+                abort_signal: sharedSignal,
               })
               .then(res => res.json<{ Key: string }>())
               .then(d => d.data.map(row => row.Key).filter(k => k));
           } catch (e) {
+            // getOrFetch never evicts, so a swallowed abort pins [] forever.
+            if (sharedSignal?.aborted) throw e;
             console.warn('getMapKeys rollup query failed', e);
             return [];
           }
         },
+        signal,
       );
 
       if (rollupKeys.length > 0) return rollupKeys;
     }
 
     // Original path: scan main table
+    if (!canScanTable) {
+      // Editors re-fetch constantly; one line per column is enough.
+      if (
+        this.cache.firstSeen(`unbounded:${databaseName}.${tableName}.${column}`)
+      ) {
+        console.warn(
+          `Skipping Map key discovery for ${databaseName}.${tableName}.${column}: ` +
+            'no dateRange/timestampValueExpression to bound the scan',
+        );
+      }
+      return [];
+    }
+
     const colMeta = await this.getColumn({
       databaseName,
       tableName,
@@ -963,37 +1088,41 @@ export class Metadata {
       `;
     }
 
-    return this.cache.getOrFetch<string[]>(cacheKey, async () => {
-      const keys = await this.clickhouseClient
-        .query<'JSON'>({
-          query: sql.sql,
-          query_params: sql.params,
-          connectionId,
-          clickhouse_settings: {
-            ...this.getClickHouseSettings(),
-            // Max 15 seconds to get keys
-            timeout_overflow_mode: 'break',
-            max_execution_time: 15,
-            // Set the value to 0 (unlimited) so that the LIMIT is used instead
-            max_rows_to_read: '0',
-          },
-          abort_signal: signal,
-        })
-        .then(res => res.json<{ keysArr?: string[]; key?: string }>())
-        .then(d => {
-          let output: string[];
-          if (strategy === 'groupUniqArrayArray') {
-            output = d.data[0].keysArr ?? [];
-          } else {
-            output = d.data
-              .map(row => row.key)
-              .filter((k): k is string => Boolean(k));
-          }
+    return this.cache.getOrFetch<string[]>(
+      cacheKey,
+      async sharedSignal => {
+        const keys = await this.clickhouseClient
+          .query<'JSON'>({
+            query: sql.sql,
+            query_params: sql.params,
+            connectionId,
+            clickhouse_settings: {
+              ...this.getClickHouseSettings(),
+              // Max 15 seconds to get keys
+              timeout_overflow_mode: 'break',
+              max_execution_time: 15,
+              // Set the value to 0 (unlimited) so that the LIMIT is used instead
+              max_rows_to_read: '0',
+            },
+            abort_signal: sharedSignal,
+          })
+          .then(res => res.json<{ keysArr?: string[]; key?: string }>())
+          .then(d => {
+            let output: string[];
+            if (strategy === 'groupUniqArrayArray') {
+              output = d.data[0].keysArr ?? [];
+            } else {
+              output = d.data
+                .map(row => row.key)
+                .filter((k): k is string => Boolean(k));
+            }
 
-          return output.filter(r => r);
-        });
-      return keys;
-    });
+            return output.filter(r => r);
+          });
+        return keys;
+      },
+      signal,
+    );
   }
 
   async getJSONKeys({
@@ -1247,7 +1376,6 @@ export class Metadata {
             databaseName,
             tableName,
             dateRange,
-            timestampValueExpression,
           });
           const valueSql = chSql`substring(token, position(token, ${{ String: info.separator }}) + ${{ Int32: info.separator.length }})`;
           const sql = chSql`
@@ -1326,7 +1454,6 @@ export class Metadata {
             databaseName,
             tableName,
             dateRange,
-            timestampValueExpression,
           });
           const sql = chSql`
         SELECT * FROM (
@@ -1486,9 +1613,11 @@ export class Metadata {
     metadataMVs,
     dateRange,
     timestampValueExpression,
+    signal,
   }: TableConnection & {
     dateRange?: [Date, Date];
     timestampValueExpression?: string;
+    signal?: AbortSignal;
   }) {
     const fields: Field[] = [];
     const columns = await this.getColumns({
@@ -1542,6 +1671,7 @@ export class Metadata {
           metadataMVs,
           dateRange,
           timestampValueExpression,
+          signal,
         });
 
         const match = column.type.match(/Map\(.+,\s*(.+)\)/);

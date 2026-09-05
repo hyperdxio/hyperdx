@@ -7,6 +7,7 @@ import {
   JSDataType,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import {
+  defaultFieldMetadataDateRange,
   Field,
   MetricNames,
   TableConnection,
@@ -253,15 +254,22 @@ export function useMultipleAllFields(
       timestampValueExpression,
       intersect ?? false,
     ],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const team = me?.team;
       if (team?.fieldMetadataDisabled) {
         return [];
       }
 
+      const scopedDateRange = dateRange ?? defaultFieldMetadataDateRange();
+
       const promiseResults = await Promise.allSettled(
         tableConnections.map(tc =>
-          metadata.getAllFields({ ...tc, dateRange, timestampValueExpression }),
+          metadata.getAllFields({
+            ...tc,
+            dateRange: scopedDateRange,
+            timestampValueExpression,
+            signal,
+          }),
         ),
       );
 

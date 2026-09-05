@@ -233,6 +233,8 @@ export function ChartEditorControls({
         <Flex gap="xs" direction="column">
           <SQLInlineEditorControlled
             tableConnection={tableConnection}
+            sourceId={tableSource?.id}
+            dateRange={dateRange}
             control={control}
             name="select"
             placeholder={
@@ -339,6 +341,8 @@ export function ChartEditorControls({
                 <div>
                   <SQLInlineEditorControlled
                     {...groupByConnectionProps}
+                    sourceId={tableSource?.id}
+                    dateRange={dateRange}
                     control={control}
                     name={`groupBy`}
                     placeholder="SQL Columns"
@@ -363,6 +367,8 @@ export function ChartEditorControls({
                     <div>
                       <SQLInlineEditorControlled
                         tableConnection={tableConnection}
+                        sourceId={tableSource?.id}
+                        dateRange={dateRange}
                         control={control}
                         name="having"
                         placeholder="SQL HAVING clause (ex. count() > 100)"
@@ -526,6 +532,8 @@ export function ChartEditorControls({
         <Flex gap="xs" direction="column">
           <SQLInlineEditorControlled
             tableConnection={tableConnection}
+            sourceId={tableSource?.id}
+            dateRange={dateRange}
             control={control}
             name="select"
             placeholder={

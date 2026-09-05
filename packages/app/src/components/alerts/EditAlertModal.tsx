@@ -411,6 +411,7 @@ export function EditAlertModal({
               </Text>
               <SQLInlineEditorControlled
                 tableConnection={tcFromSource(source)}
+                sourceId={source?.id}
                 control={control}
                 name="groupBy"
                 placeholder="SQL Columns"

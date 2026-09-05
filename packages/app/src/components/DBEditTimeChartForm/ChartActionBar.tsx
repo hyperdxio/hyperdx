@@ -18,6 +18,8 @@ type ChartActionBarProps = {
   control: Control<ChartEditorFormState>;
   handleSubmit: UseFormHandleSubmit<ChartEditorFormState>;
   tableConnection: TableConnection;
+  sourceId?: string;
+  dateRange?: [Date, Date];
   activeTab: string;
   isRawSqlInput: boolean;
   dashboardId?: string;
@@ -38,6 +40,8 @@ export function ChartActionBar({
   control,
   handleSubmit,
   tableConnection,
+  sourceId,
+  dateRange,
   activeTab,
   isRawSqlInput,
   dashboardId,
@@ -86,6 +90,8 @@ export function ChartActionBar({
               <SQLInlineEditorControlled
                 parentRef={parentRef}
                 tableConnection={tableConnection}
+                sourceId={sourceId}
+                dateRange={dateRange}
                 // The default order by is the current group by value
                 placeholder={typeof groupBy === 'string' ? groupBy : ''}
                 control={control}

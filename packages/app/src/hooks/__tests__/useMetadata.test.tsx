@@ -465,6 +465,101 @@ describe('useMultipleAllFields', () => {
 
     expect(result.current.data).toEqual(fieldsA);
   });
+
+  it('substitutes a default lookback when only a timestamp expression is given', async () => {
+    const getAllFields = jest
+      .spyOn(mockMetadata, 'getAllFields')
+      .mockResolvedValue(fieldsA);
+
+    const { result } = renderHook(
+      () =>
+        useMultipleAllFields([tcA], {
+          timestampValueExpression: 'Timestamp',
+        }),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    const dateRange = getAllFields.mock.calls.at(-1)?.[0].dateRange;
+    if (!dateRange) {
+      throw new Error('expected getAllFields to receive a dateRange');
+    }
+    const HOUR = 60 * 60 * 1000;
+    expect(
+      dateRange[1].getTime() - dateRange[0].getTime(),
+    ).toBeGreaterThanOrEqual(24 * HOUR);
+    expect(dateRange[0].getTime() % HOUR).toBe(0);
+    expect(dateRange[1].getTime() % HOUR).toBe(0);
+    expect(dateRange[1].getTime()).toBeGreaterThanOrEqual(Date.now());
+  });
+
+  it('reuses the same default window across refetches within the hour', async () => {
+    const getAllFields = jest
+      .spyOn(mockMetadata, 'getAllFields')
+      .mockResolvedValue(fieldsA);
+
+    const { result } = renderHook(
+      () =>
+        useMultipleAllFields([tcA], {
+          timestampValueExpression: 'Timestamp',
+        }),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    await result.current.refetch();
+
+    const ranges = getAllFields.mock.calls
+      .map(([args]) => args.dateRange)
+      .filter((range): range is [Date, Date] => range != null);
+    expect(ranges).toHaveLength(getAllFields.mock.calls.length);
+    expect(ranges.length).toBeGreaterThan(1);
+    expect(
+      new Set(ranges.map(r => `${r[0].getTime()}-${r[1].getTime()}`)).size,
+    ).toBe(1);
+  });
+
+  it('still supplies the default window without a timestamp expression', async () => {
+    const getAllFields = jest
+      .spyOn(mockMetadata, 'getAllFields')
+      .mockResolvedValue(fieldsA);
+
+    const { result } = renderHook(() => useMultipleAllFields([tcA]), {
+      wrapper,
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    // Only the raw scan needs the expression, and getMapKeys gates it.
+    expect(getAllFields).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dateRange: expect.any(Array),
+        timestampValueExpression: undefined,
+      }),
+    );
+  });
+
+  it('aborts the getAllFields fetch when the last observer unmounts', async () => {
+    let received: AbortSignal | undefined;
+    jest
+      .spyOn(mockMetadata, 'getAllFields')
+      .mockImplementation(({ signal }) => {
+        received = signal;
+        return new Promise(() => {});
+      });
+
+    const { unmount } = renderHook(() => useMultipleAllFields([tcA]), {
+      wrapper,
+    });
+
+    await waitFor(() => expect(received).toBeDefined());
+    expect(received?.aborted).toBe(false);
+
+    // Only react-query's own signal is wired to observer teardown.
+    unmount();
+    await waitFor(() => expect(received?.aborted).toBe(true));
+  });
 });
 
 describe('deduplicate2dArray', () => {
