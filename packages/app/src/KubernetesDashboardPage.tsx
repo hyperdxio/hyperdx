@@ -940,7 +940,6 @@ const NamespacesTable = ({
   );
 };
 
-// defaultTimeRange removed - using hook instead
 
 const CHART_HEIGHT = 300;
 

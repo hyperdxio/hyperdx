@@ -35,7 +35,6 @@ import { getEventBody } from './source';
 import styles from '@styles/LogSidePanel.module.scss';
 
 const CHART_HEIGHT = 300;
-// defaultTimeRange removed - using hook instead
 
 const PodDetailsProperty = React.memo(
   ({ label, value }: { label: string; value?: string }) => {

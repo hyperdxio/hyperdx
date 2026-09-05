@@ -46,8 +46,8 @@ import { PageLayout } from '@/components/PageLayout';
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { TimePicker } from '@/components/TimePicker';
 import { useDashboardRefresh } from '@/hooks/useDashboardRefresh';
-import { useDefaultTimeRange, useNewTimeQuery } from '@/timeQuery';
 import { useResolvedSourceParam } from '@/hooks/useResolvedSourceParam';
+import { useDefaultTimeRange, useNewTimeQuery } from '@/timeQuery';
 
 import OnboardingModal from './components/OnboardingModal';
 import SearchWhereInput, {
