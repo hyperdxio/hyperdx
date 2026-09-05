@@ -94,7 +94,6 @@ test.describe('Search', { tag: '@search' }, () => {
       await searchPage.goto();
     });
 
-    // eslint-disable-next-line playwright/expect-expect
     test('Search with Different Query Types - Lucene', async () => {
       await test.step('Test multiple search query types', async () => {
         const queries = [

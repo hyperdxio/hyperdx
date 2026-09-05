@@ -209,7 +209,6 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
         .isVisible({ timeout: 1000 })
         .catch(() => false);
 
-      // eslint-disable-next-line playwright/no-conditional-in-test
       if (liveButtonVisible) {
         await dashboardPage.toggleLiveMode();
       }
@@ -1273,7 +1272,6 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
 
         // Extract dashboard ID
         const url = dashboardPage.page.url();
-        // eslint-disable-next-line playwright/no-conditional-in-test
         dashboardId = url.split('/').pop()?.split('?')[0] || '';
       });
 
@@ -2248,7 +2246,6 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
             await expect(link).toBeVisible({ timeout: 2000 });
           }).toPass({ timeout: 30000 });
 
-          // eslint-disable-next-line playwright/no-conditional-in-test
           const href = (await link.getAttribute('href')) ?? '';
           const params = new URL(href, 'http://localhost').searchParams;
           expect(params.get('where')).toBe("(ServiceName IN ('accounting'))");

@@ -216,9 +216,7 @@ test.describe('Kubernetes Dashboard', { tag: ['@kubernetes'] }, () => {
         const sortIcon = k8sPage.getSortIcon(header);
 
         // Verify no sort icon initially (unless specified)
-        // eslint-disable-next-line playwright/no-conditional-in-test
         if (!column.hasInitialSort) {
-          // eslint-disable-next-line playwright/no-conditional-expect
           await expect(sortIcon).toHaveCount(0);
         }
 

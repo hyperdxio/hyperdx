@@ -123,7 +123,6 @@ test.describe('Advanced Search Workflow - Traces', { tag: '@traces' }, () => {
       await expect(spanElements.first()).toBeVisible({ timeout: 5000 });
 
       const spanCount = await spanElements.count();
-      // eslint-disable-next-line playwright/no-conditional-in-test
       if (spanCount > 1) {
         const secondSpan = spanElements.nth(1);
         await secondSpan.scrollIntoViewIfNeeded();

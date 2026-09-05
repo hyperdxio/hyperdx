@@ -454,9 +454,7 @@ for (const scenario of SCENARIOS) {
           await test.step('add a custom filter for each column', async () => {
             await dashboardPage.openEditFiltersModal();
             for (const col of scenario.dashboardColumns) {
-              // eslint-disable-next-line playwright/no-conditional-in-test
               const expression = variant === 'raw' ? col.raw : col.quoted;
-              // eslint-disable-next-line playwright/no-conditional-in-test
               if (!expression) continue;
               await dashboardPage.addCustomFilter(col.name, SOURCE, expression);
             }
@@ -472,9 +470,7 @@ for (const scenario of SCENARIOS) {
             // Columns with no expression for the current variant (e.g. raw forms
             // that are invalid verbatim) are skipped above, so skip them here too.
             for (const col of scenario.dashboardColumns) {
-              // eslint-disable-next-line playwright/no-conditional-in-test
               const expression = variant === 'raw' ? col.raw : col.quoted;
-              // eslint-disable-next-line playwright/no-conditional-in-test
               if (!expression) continue;
               await expect(
                 dashboardPage.getFilterSelectByName(col.name),
@@ -483,9 +479,7 @@ for (const scenario of SCENARIOS) {
           });
 
           for (const col of scenario.dashboardColumns) {
-            // eslint-disable-next-line playwright/no-conditional-in-test
             const expression = variant === 'raw' ? col.raw : col.quoted;
-            // eslint-disable-next-line playwright/no-conditional-in-test
             if (!expression) continue;
 
             await test.step(`${col.name}: select → 1, reload → 1, deselect → 3`, async () => {

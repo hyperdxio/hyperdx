@@ -57,12 +57,9 @@ test.describe('Team Settings Page', { tag: ['@team', '@full-stack'] }, () => {
     });
 
     await test.step('Verify access tab content when available', async () => {
-      // eslint-disable-next-line playwright/no-conditional-in-test
       if (await teamPage.hasAccessTab()) {
-        // eslint-disable-next-line playwright/no-conditional-expect
         await expect(teamPage.accessTab).toBeVisible();
         await teamPage.openAccessTab();
-        // eslint-disable-next-line playwright/no-conditional-expect
         await expect(teamPage.securityPolicies).toBeVisible();
       }
     });
