@@ -66,4 +66,47 @@ describe('useDefaultTimeRange', () => {
       new Date('2024-01-01T11:30:00.000Z').getTime(),
     );
   });
+
+  it('maintains referential stability across re-renders when the query is unchanged', () => {
+    jest.setSystemTime(new Date('2024-01-01T12:00:00.000Z'));
+
+    const { result, rerender } = renderHook(
+      ({ query }) => useDefaultTimeRange(query),
+      { initialProps: { query: 'Past 15m' } },
+    );
+
+    const initialReference = result.current;
+
+    jest.setSystemTime(new Date('2024-01-01T12:05:00.000Z'));
+    rerender({ query: 'Past 15m' });
+
+    expect(result.current).toBe(initialReference);
+
+    jest.setSystemTime(new Date('2024-01-01T12:10:00.000Z'));
+    rerender({ query: 'Past 15m' });
+
+    expect(result.current).toBe(initialReference);
+  });
+
+  it('updates the reference and evaluates against the current clock when the query changes', () => {
+    jest.setSystemTime(new Date('2024-01-01T12:00:00.000Z'));
+
+    const { result, rerender } = renderHook(
+      ({ query }) => useDefaultTimeRange(query),
+      { initialProps: { query: 'Past 15m' } },
+    );
+
+    const initialReference = result.current;
+
+    jest.setSystemTime(new Date('2024-01-01T12:30:00.000Z'));
+    rerender({ query: 'Past 1h' });
+
+    expect(result.current).not.toBe(initialReference);
+    
+    const [start, end] = result.current;
+    expect(end.getTime()).toBe(new Date('2024-01-01T12:30:00.000Z').getTime());
+    expect(start.getTime()).toBe(
+      new Date('2024-01-01T11:30:00.000Z').getTime(),
+    );
+  });
 });

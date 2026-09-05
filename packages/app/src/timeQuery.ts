@@ -160,9 +160,9 @@ export function useTimeQuery({
   const timeQueryDerivedInputValue =
     isReady && timeRangeQuery.from != -1 && timeRangeQuery.to != -1
       ? dateRangeToString(
-        [new Date(timeRangeQuery.from), new Date(timeRangeQuery.to)],
-        isUTC,
-      )
+          [new Date(timeRangeQuery.from), new Date(timeRangeQuery.to)],
+          isUTC,
+        )
       : undefined;
 
   const inputTimeQueryDerivedTimeQueryRef = useRef<[Date, Date] | undefined>(
@@ -505,7 +505,7 @@ export function useNewTimeQuery({
     to,
     isReady,
     displayedTimeInputValue: deprecatedDisplayedTimeInputValue,
-    setDisplayedTimeInputValue: () => { },
+    setDisplayedTimeInputValue: () => {},
     searchedTimeRange,
     onSearch,
     onTimeRangeSelect: useCallback(
@@ -523,14 +523,20 @@ export function useNewTimeQuery({
 }
 
 export function useDefaultTimeRange(query: string = 'Past 1h'): [Date, Date] {
-  return useMemo(() => {
-    const parsed = parseTimeQuery(query, false);
-    if (parsed[0] != null && parsed[1] != null) {
-      return [parsed[0], parsed[1]];
+  const cacheRef = useRef<{ query: string; range: [Date, Date] } | null>(null);
+
+  if (cacheRef.current?.query !== query) {
+    const parsed = parseValidTimeRange(query, false);
+    let range: [Date, Date];
+    if (parsed) {
+      range = parsed;
+    } else {
+      // eslint-disable-next-line no-restricted-syntax
+      const now = new Date();
+      range = [new Date(now.getTime() - 60 * 60 * 1000), now];
     }
-    // wrapped in useMemo, so it evaluates exactly once at mount time without causing re-render loops. So this below new Date() is safe
-    // eslint-disable-next-line no-restricted-syntax
-    const now = new Date();
-    return [new Date(now.getTime() - 60 * 60 * 1000), now];
-  }, [query]);
+    cacheRef.current = { query, range };
+  }
+
+  return cacheRef.current.range;
 }
