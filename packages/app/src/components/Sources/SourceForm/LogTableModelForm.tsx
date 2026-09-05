@@ -12,6 +12,7 @@ import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import {
   DEFAULT_DATABASE,
   KNOWN_COLUMNS_EXPRESSION_HELP_TEXT,
+  SERVICE_VERSION_EXPRESSION_HELP_TEXT,
 } from './constants';
 import { ExpressionFormRow } from './ExpressionFormRow';
 import { FormRow } from './FormRow';
@@ -114,6 +115,17 @@ export function LogTableModelForm(props: TableModelProps) {
           name="serviceNameExpression"
           label="Service Name Expression"
           placeholder="ServiceName"
+          columns={columns}
+          sourceKind={SourceKind.Log}
+          tableConnection={tableConnection}
+        />
+        <ExpressionFormRow
+          control={control}
+          setValue={setValue}
+          name="serviceVersionExpression"
+          label="Service Version Expression"
+          placeholder="ResourceAttributes['service.version']"
+          helpText={SERVICE_VERSION_EXPRESSION_HELP_TEXT}
           columns={columns}
           sourceKind={SourceKind.Log}
           tableConnection={tableConnection}

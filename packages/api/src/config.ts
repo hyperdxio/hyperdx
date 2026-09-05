@@ -43,6 +43,7 @@ export const OTEL_SERVICE_NAME = env.OTEL_SERVICE_NAME as string;
 export const PORT = Number.parseInt(env.PORT as string);
 export const OPAMP_PORT = Number.parseInt(env.OPAMP_PORT as string);
 export const USAGE_STATS_ENABLED = env.USAGE_STATS_ENABLED !== 'false';
+export const WEBHOOK_HOSTNAME_ALLOWLIST = env.WEBHOOK_HOSTNAME_ALLOWLIST ?? '';
 export const RUN_SCHEDULED_TASKS_EXTERNALLY =
   env.RUN_SCHEDULED_TASKS_EXTERNALLY === 'true';
 

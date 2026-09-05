@@ -5,6 +5,7 @@ import {
   isMissingColumnError,
   JSDataType,
 } from '@/clickhouse';
+import { ClickhouseClient } from '@/clickhouse/node';
 
 describe('isMissingColumnError', () => {
   it.each([
@@ -122,5 +123,85 @@ describe('convertCHDataTypeToJSType', () => {
 
   it('should handle Nullable(Bool) as Bool', () => {
     expect(convertCHDataTypeToJSType('Nullable(Bool)')).toBe(JSDataType.Bool);
+  });
+
+  // A UNION ALL over columns with no least supertype (e.g. Float64 and
+  // Int64) produces Variant(...) when the server runs with
+  // use_variant_as_common_type = 1. All-numeric variants chart as numbers.
+  it('should handle all-numeric Variant as Number', () => {
+    expect(convertCHDataTypeToJSType('Variant(Float64, Int64)')).toBe(
+      JSDataType.Number,
+    );
+    expect(convertCHDataTypeToJSType('Variant(Int64, UInt64)')).toBe(
+      JSDataType.Number,
+    );
+    expect(convertCHDataTypeToJSType('Variant(Float64, Nullable(Int32))')).toBe(
+      JSDataType.Number,
+    );
+  });
+
+  it('should not classify mixed or non-numeric Variant', () => {
+    expect(convertCHDataTypeToJSType('Variant(Float64, String)')).toBeNull();
+    expect(
+      convertCHDataTypeToJSType('Variant(String, Array(Int64))'),
+    ).toBeNull();
+    expect(convertCHDataTypeToJSType('Variant()')).toBeNull();
+  });
+});
+
+// logQuery is protected on the base class; this subclass exposes it so the
+// tests can drive it without reaching through the client's public query path.
+class TestClickhouseClient extends ClickhouseClient {
+  logQuery(query: string, query_params: Record<string, any> = {}): void {
+    super.logQuery(query, query_params);
+  }
+}
+
+describe('BaseClickhouseClient.logQuery', () => {
+  const makeLogger = () => ({
+    trace: jest.fn(),
+    debug: jest.fn(),
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('stays silent when no customLogger is configured', () => {
+    const debugSpy = jest.spyOn(console, 'debug').mockImplementation(() => {});
+    const client = new TestClickhouseClient({ host: 'http://localhost' });
+    client.logQuery('SELECT 1 FROM system.one');
+    expect(debugSpy).not.toHaveBeenCalled();
+  });
+
+  it('logs through the customLogger passed to the client', () => {
+    const customLogger = makeLogger();
+    const client = new TestClickhouseClient({
+      host: 'http://localhost',
+      customLogger,
+    });
+    client.logQuery('SELECT 1 FROM system.one');
+    expect(customLogger.debug).toHaveBeenCalledWith({
+      module: 'clickhouse',
+      message: 'Sending query',
+      args: { sql: 'SELECT 1 FROM system.one' },
+    });
+  });
+
+  it('interpolates query_params into the logged SQL', () => {
+    const customLogger = makeLogger();
+    const client = new TestClickhouseClient({
+      host: 'http://localhost',
+      customLogger,
+    });
+    client.logQuery('SELECT {id:Int32}', { id: 5 });
+    expect(customLogger.debug).toHaveBeenCalledWith({
+      module: 'clickhouse',
+      message: 'Sending query',
+      args: { sql: 'SELECT 5' },
+    });
   });
 });

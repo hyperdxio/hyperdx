@@ -21,6 +21,7 @@ export const LOCAL_APP_TEAM = {
   hookId: uuidv4(),
   apiKey: uuidv4(),
   collectorAuthenticationEnforced: false,
+  isMetricsSeriesTableEnabled: false,
   toJSON() {
     return this;
   },

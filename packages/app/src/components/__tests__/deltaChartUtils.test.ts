@@ -2,7 +2,24 @@ import {
   applyTopNAggregation,
   MAX_CHART_VALUES,
   MAX_CHART_VALUES_UPPER,
+  partitionPriorityProperties,
 } from '@/components/deltaChartUtils';
+
+describe('partitionPriorityProperties', () => {
+  it('pins priority keys first, preserving order within each group', () => {
+    const sorted = ['b', 'llm.a', 'c', 'llm.z', 'a'];
+    expect(
+      partitionPriorityProperties(sorted, k => k.startsWith('llm.')),
+    ).toEqual(['llm.a', 'llm.z', 'b', 'c', 'a']);
+  });
+
+  it('is a no-op when nothing (or everything) matches', () => {
+    const sorted = ['b', 'c', 'a'];
+    expect(partitionPriorityProperties(sorted, () => false)).toEqual(sorted);
+    expect(partitionPriorityProperties(sorted, () => true)).toEqual(sorted);
+    expect(partitionPriorityProperties([], () => true)).toEqual([]);
+  });
+});
 
 describe('applyTopNAggregation', () => {
   const makeData = (names: string[]) =>

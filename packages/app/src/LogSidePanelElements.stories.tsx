@@ -3,7 +3,7 @@ import type { Meta } from '@storybook/nextjs';
 import { NetworkBody } from './LogSidePanelElements';
 
 const meta: Meta = {
-  title: 'LogSidePanelElements',
+  title: 'Components/LogSidePanelElements',
   component: NetworkBody,
   parameters: {},
 };

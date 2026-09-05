@@ -8,6 +8,7 @@ import {
   Card,
   CloseButton,
   Divider,
+  getDefaultZIndex,
   Group,
   Popover,
   ScrollArea,
@@ -268,6 +269,7 @@ const TimePickerComponent = ({
       closeOnEscape
       opened={opened}
       onClose={close}
+      zIndex={getDefaultZIndex('popover') + 2}
     >
       <Popover.Target>
         <TextInput

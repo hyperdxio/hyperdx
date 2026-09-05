@@ -1,6 +1,7 @@
 import { differenceInSeconds } from 'date-fns';
 
 import { BaseClickhouseClient, ChSql, chSql } from '@/clickhouse';
+import { FilterState, filterStateToPredicate } from '@/filters';
 import {
   BuilderChartConfigWithOptDateRange,
   CteChartConfig,
@@ -898,4 +899,116 @@ export async function optimizeGetKeyValuesCalls<
   }
 
   return calls;
+}
+
+/**
+ * Resolve which table a *faceted* key-values lookup should scan. A faceted
+ * lookup applies a different predicate per key (`groupUniqArrayIf`), so it can't
+ * be split across single-key rollups like `optimizeGetKeyValuesCalls` — but it
+ * CAN run against one materialized view whose dimension columns cover every
+ * filter column. Returns an MV-pointed chartConfig when a covering MV validates
+ * via EXPLAIN (cheapest row estimate wins), otherwise the original (raw) config.
+ */
+export async function optimizeFacetedKeyValuesConfig<
+  C extends BuilderChartConfigWithOptDateRange,
+>({
+  chartConfig,
+  keys,
+  keyConditions,
+  source,
+  clickhouseClient,
+  metadata,
+  signal,
+}: {
+  chartConfig: C;
+  keys: string[];
+  /** Per-key constraint aligned with `keys` (undefined = unconstrained). */
+  keyConditions: (FilterState | undefined)[];
+  source: TSource | undefined;
+  clickhouseClient: BaseClickhouseClient;
+  metadata: Metadata;
+  signal?: AbortSignal;
+}): Promise<C> {
+  const mvs =
+    source && (isTraceSource(source) || isLogSource(source))
+      ? (source.materializedViews ?? [])
+      : [];
+  if (mvs.length === 0) return chartConfig;
+
+  // A covering MV must expose every filter column as a dimension. The per-key
+  // conditions only reference other keys, so requiring all `keys` covers them
+  // too; anything else (e.g. the static `where`) is caught by the EXPLAIN below.
+  //
+  // Matched against the RAW keys on purpose: `dimensionColumns` is configured
+  // by hand in the source form using the same expressions the filters use, not
+  // the rendered physical form. Only the generated SQL below is rendered.
+  const coveringMvs = mvs.filter(mv => {
+    const intervalsInDateRange = chartConfig.dateRange
+      ? countIntervalsInDateRange(chartConfig.dateRange, mv.minGranularity)
+      : Infinity;
+    if (
+      !mvConfigSupportsDateRange(mv, chartConfig) ||
+      intervalsInDateRange < 3
+    ) {
+      return false;
+    }
+    const dimensionColumns = splitAndTrimWithBracket(mv.dimensionColumns);
+    return keys.every(k => dimensionColumns.includes(k));
+  });
+  if (coveringMvs.length === 0) return chartConfig;
+
+  // Build + EXPLAIN-validate a faceted config against each covering MV. The
+  // EXPLAIN only needs the same columns, so the limit is irrelevant here.
+  const explainResults = await Promise.all(
+    coveringMvs.map(async mv => {
+      // Render against the MV, since that is the table getKeyValues will
+      // render against once this config is returned. An EXPLAIN built from raw
+      // expressions would validate different SQL than the one we end up running.
+      const renderedByKey = await metadata.renderKeyExpressions({
+        databaseName: mv.databaseName,
+        tableName: mv.tableName,
+        connectionId: chartConfig.connection,
+        keys,
+      });
+      const renderKey = (key: string) => renderedByKey.get(key) ?? key;
+      const config = {
+        ...structuredClone(chartConfig),
+        timestampValueExpression: mv.timestampColumn,
+        from: { databaseName: mv.databaseName, tableName: mv.tableName },
+        select: keys
+          .map((key, i) => {
+            const k = renderKey(key);
+            const state = keyConditions.at(i);
+            const condition = state && filterStateToPredicate(state, renderKey);
+            return condition
+              ? `groupUniqArrayIf(1)(${k}, ${condition}) AS param${i}`
+              : `groupUniqArray(1)(${k}) AS param${i}`;
+          })
+          .join(', '),
+      };
+      const { isValid, rowEstimate = Number.POSITIVE_INFINITY } =
+        await clickhouseClient.testChartConfigValidity({
+          config,
+          metadata,
+          opts: { abort_signal: signal },
+          querySettings: source?.querySettings,
+        });
+      return { mv, isValid, rowEstimate };
+    }),
+  );
+
+  const best = explainResults
+    .filter(r => r.isValid)
+    .sort((a, b) => a.rowEstimate - b.rowEstimate)[0];
+  if (!best) return chartConfig;
+
+  const optimizedConfig: C = {
+    ...structuredClone(chartConfig),
+    timestampValueExpression: best.mv.timestampColumn,
+    from: {
+      databaseName: best.mv.databaseName,
+      tableName: best.mv.tableName,
+    },
+  };
+  return optimizedConfig;
 }

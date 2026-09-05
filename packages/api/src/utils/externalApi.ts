@@ -1,4 +1,8 @@
 import {
+  isFilterBroadcastEnabled,
+  isFilterVariableEnabled,
+} from '@hyperdx/common-utils/dist/filters';
+import {
   AlertErrorType,
   AlertThresholdType,
   BuilderSavedChartConfig,
@@ -7,6 +11,7 @@ import {
   SavedChartConfig,
 } from '@hyperdx/common-utils/dist/types';
 import { omit } from 'lodash';
+import { Types } from 'mongoose';
 
 import type { ObjectId } from '@/models';
 import {
@@ -14,11 +19,21 @@ import {
   AlertDocument,
   AlertInterval,
   AlertState,
+  getAlertChannels,
   IAlert,
 } from '@/models/alert';
-import type { DashboardDocument } from '@/models/dashboard';
+import type { DashboardDocument, IDashboard } from '@/models/dashboard';
+import type { ISavedSearch } from '@/models/savedSearch';
 import { SeriesTile } from '@/routers/external-api/v2/utils/dashboards';
-import { ExternalDashboardFilterWithId } from '@/utils/zod';
+import {
+  isPopulatedRef,
+  populatedRefOrNull,
+  resolveAlertDisplayFields,
+} from '@/utils/alerts';
+import {
+  ExternalAlertChartConfig,
+  ExternalDashboardFilterWithId,
+} from '@/utils/zod';
 
 /** Returns a new object containing only the truthy, requested keys from the original object */
 const pickIfTruthy = <T, K extends keyof T>(obj: T, keys: K[]): Partial<T> => {
@@ -211,25 +226,61 @@ export function translateExternalChartToTileConfig(
 export function translateFilterToExternalFilter(
   filter: DashboardFilter,
 ): ExternalDashboardFilterWithId {
-  return {
-    ...omit(filter, 'source'),
-    sourceId: filter.source.toString(),
-  };
+  switch (filter.type) {
+    case 'STATIC_LIST':
+      return filter;
+
+    case 'PROMETHEUS_LABEL':
+      return {
+        ...omit(filter, 'source'),
+        sourceId: filter.source.toString(),
+      };
+
+    case 'QUERY_EXPRESSION': {
+      // Ignore variableName and appliesToSourceIds if the filter is not in a mode that uses them
+      const ignoredKeys = [
+        ...(isFilterVariableEnabled(filter) ? [] : (['variableName'] as const)),
+        ...(isFilterBroadcastEnabled(filter)
+          ? []
+          : (['appliesToSourceIds'] as const)),
+      ];
+      return {
+        ...omit(filter, 'source', ...ignoredKeys),
+        sourceId: filter.source.toString(),
+      };
+    }
+
+    default:
+      filter satisfies never;
+      return filter;
+  }
 }
 
 export function translateExternalFilterToFilter(
   filter: ExternalDashboardFilterWithId,
 ): DashboardFilter {
-  return {
-    ...omit(filter, 'sourceId'),
-    source: filter.sourceId,
-  };
+  switch (filter.type) {
+    case 'STATIC_LIST':
+      return filter;
+
+    case 'PROMETHEUS_LABEL':
+      return { ...omit(filter, 'sourceId'), source: filter.sourceId };
+
+    case 'QUERY_EXPRESSION':
+      return { ...omit(filter, 'sourceId'), source: filter.sourceId };
+
+    default:
+      filter satisfies never;
+      return filter;
+  }
 }
 
 // Alert related types and transformations
 export type ExternalAlert = {
   id: string;
   name?: string | null;
+  displayName: string;
+  tags: string[];
   message?: string | null;
   note?: string | null;
   threshold: number;
@@ -241,12 +292,19 @@ export type ExternalAlert = {
   thresholdType: AlertThresholdType;
   source?: string;
   state: AlertState;
-  channel: AlertChannel;
+  channel?: AlertChannel;
+  channels?: AlertChannel[];
   teamId: string;
   tileId?: string;
   dashboardId?: string;
   savedSearchId?: string;
   groupBy?: string;
+  /**
+   * Inline alerts only, and only on single-alert responses (the list endpoint
+   * stays lean): the alert's persisted chart config in the external
+   * tile-config dialect.
+   */
+  chartConfig?: ExternalAlertChartConfig;
   silenced?: {
     by?: string;
     at: string;
@@ -261,7 +319,54 @@ export type ExternalAlert = {
   updatedAt?: string;
 };
 
-type AlertDocumentObject = IAlert & { _id: ObjectId };
+// An alert's savedSearch/dashboard ref as this module receives it: a bare
+// ObjectId, or — when the caller used a populating reader — the referenced
+// document, possibly projected down to the display fields.
+type AlertRef<T> = ObjectId | (Partial<T> & { _id: ObjectId }) | null;
+
+type AlertRefFields = {
+  savedSearch?: AlertRef<ISavedSearch>;
+  dashboard?: AlertRef<IDashboard>;
+};
+
+type AlertDocumentObject = Omit<IAlert, keyof AlertRefFields> & {
+  _id: ObjectId;
+} & AlertRefFields;
+
+export type TranslatableAlertDocument = Omit<
+  AlertDocument,
+  keyof AlertRefFields
+> &
+  AlertRefFields;
+
+/**
+ * A populated ref whose target was deleted resolves to `null` in `toJSON()`,
+ * but Mongoose still holds the original id in `populated()`. Prefer that so the
+ * response keeps pointing at the (now dangling) dashboard/saved search instead
+ * of silently dropping the field.
+ */
+function refIdToString(
+  ref: AlertRef<object> | undefined,
+  populatedId: ObjectId | undefined,
+): string | undefined {
+  if (ref == null) {
+    return populatedId?.toString();
+  }
+  return (isPopulatedRef(ref) ? ref._id : ref).toString();
+}
+
+/**
+ * Mongoose types `populated()` as `any`; it returns the original ObjectId for
+ * a populated single ref, and undefined when the path was never populated.
+ */
+function populatedRefId(
+  alert: TranslatableAlertDocument,
+  path: keyof AlertRefFields,
+): ObjectId | undefined {
+  const id: unknown =
+    typeof alert.populated === 'function' ? alert.populated(path) : undefined;
+  return id instanceof Types.ObjectId ? id : undefined;
+}
 
 function hasCreatedAt(
   alert: AlertDocumentObject,
@@ -318,18 +423,35 @@ function transformErrorsToExternalErrors(
   }));
 }
 
+// Note: this translator does not attach an inline alert's `chartConfig`.
+// Single-alert responses (GET by id, POST, PUT, MCP detail) attach it via
+// `translateAlertDocumentToExternalAlertWithChartConfig` (v2 router util) —
+// keeping the converter out of here avoids a runtime import cycle with the
+// v2 utils, and list responses stay lean so a team with hundreds of raw-SQL
+// inline alerts does not ship every template on each page.
 export function translateAlertDocumentToExternalAlert(
-  alert: AlertDocument,
+  alert: TranslatableAlertDocument,
 ): ExternalAlert {
-  // Convert to plain object if it's a Mongoose document
+  // Convert to plain object if it's a Mongoose document. `flattenMaps: false`
+  // picks the toJSON overload that doesn't wrap every field in FlattenMaps<>
+  // (which breaks ObjectId); the alert schema has no Map fields, so the
+  // runtime output is identical.
   const alertObj: AlertDocumentObject = alert.toJSON
-    ? alert.toJSON()
+    ? alert.toJSON({ flattenMaps: false })
     : { ...alert };
+
+  const channels = getAlertChannels(alertObj);
+
+  // The ref fields are populated documents when the caller used one of the
+  // `*WithDisplayRefs` readers and bare ObjectIds otherwise.
+  const dashboard = populatedRefOrNull(alertObj.dashboard);
+  const savedSearch = populatedRefOrNull(alertObj.savedSearch);
 
   // Copy all fields, renaming _id to id, ensuring ObjectId's are strings
   const result = {
     id: alertObj._id.toString(),
     name: alertObj.name,
+    ...resolveAlertDisplayFields(alertObj, { dashboard, savedSearch }),
     message: alertObj.message,
     note: alertObj.note ?? null,
     threshold: alertObj.threshold,
@@ -343,12 +465,23 @@ export function translateAlertDocumentToExternalAlert(
     thresholdType: alertObj.thresholdType,
     source: alertObj.source,
     state: alertObj.state,
-    channel: alertObj.channel,
+    // Omit both fields when no channel resolves (e.g. a legacy `{type: null}`
+    // channel) instead of emitting `channels: []` alongside a null-typed
+    // `channel` -- that shape violates this API's own OpenAPI contract
+    // (`AlertChannels` requires minItems: 1, and `AlertChannel`'s oneOf has no
+    // branch for `{type: null}`).
+    ...(channels.length > 0 && { channel: channels[0], channels }),
     teamId: alertObj.team.toString(),
-    tileId: alertObj.tileId,
-    dashboardId: alertObj.dashboard?.toString(),
-    savedSearchId: alertObj.savedSearch?.toString(),
-    groupBy: alertObj.groupBy,
+    tileId: alertObj.tileId ?? undefined,
+    dashboardId: refIdToString(
+      alertObj.dashboard,
+      populatedRefId(alert, 'dashboard'),
+    ),
+    savedSearchId: refIdToString(
+      alertObj.savedSearch,
+      populatedRefId(alert, 'savedSearch'),
+    ),
+    groupBy: alertObj.groupBy ?? undefined,
     silenced: transformSilencedToExternalSilenced(alertObj.silenced),
     executionErrors: transformErrorsToExternalErrors(alertObj.executionErrors),
     createdAt: hasCreatedAt(alertObj)

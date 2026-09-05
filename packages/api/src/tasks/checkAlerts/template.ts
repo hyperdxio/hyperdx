@@ -1,11 +1,7 @@
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
-import {
-  _useTry,
-  formatDate,
-  objectHash,
-} from '@hyperdx/common-utils/dist/core/utils';
+import { formatDate, objectHash } from '@hyperdx/common-utils/dist/core/utils';
 import {
   AlertChannelType,
   AlertThresholdType,
@@ -14,20 +10,21 @@ import {
   isRangeThresholdType,
   pickSampleWeightExpressionProps,
   SourceKind,
-  WebhookService,
   zAlertChannelType,
 } from '@hyperdx/common-utils/dist/types';
-import { isValidSlackUrl } from '@hyperdx/common-utils/dist/validation';
 import Handlebars, { HelperOptions } from 'handlebars';
 import _ from 'lodash';
-import { performance } from 'perf_hooks';
 import PromisedHandlebars from 'promised-handlebars';
 import { serializeError } from 'serialize-error';
 import { z } from 'zod';
 
-import * as config from '@/config';
 import { AlertInput } from '@/controllers/alerts';
-import { AlertSource, AlertState } from '@/models/alert';
+import {
+  AlertChannel,
+  AlertSource,
+  AlertState,
+  getAlertChannels,
+} from '@/models/alert';
 import { IDashboard } from '@/models/dashboard';
 import { ISavedSearch } from '@/models/savedSearch';
 import { ISource } from '@/models/source';
@@ -36,34 +33,26 @@ import {
   computeAliasWithClauses,
   doesExceedThreshold,
 } from '@/tasks/checkAlerts';
-import { WebhookRedirectError } from '@/tasks/checkAlerts/errors';
+import {
+  NotificationCapExceededError,
+  UnsupportedMentionError,
+  WebhookNotFoundError,
+} from '@/tasks/checkAlerts/errors';
+import {
+  inlineNotificationDispatcher,
+  NotificationDispatcher,
+  NotificationJob,
+} from '@/tasks/checkAlerts/notifications';
 import {
   AlertProvider,
   PopulatedAlertChannel,
 } from '@/tasks/checkAlerts/providers';
-import { escapeJsonString, unflattenObject } from '@/tasks/util';
+import { createHandlebarsWithHelpers } from '@/tasks/checkAlerts/transports';
+import { unflattenObject } from '@/tasks/util';
+import { resolveAlertDisplayFields } from '@/utils/alerts';
 import { truncateString } from '@/utils/common';
-import { getCounter, getHistogram } from '@/utils/instrumentation';
+import { getCounter } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
-import { withRetry } from '@/utils/retry';
-import * as slack from '@/utils/slack';
-import { IPV6_BRACKET_RE, isPrivateIp } from '@/utils/validators';
-
-// Webhook delivery is the last (and most failure-prone) hop of an alert. It
-// happens in the background task, so failures only show up in logs today.
-// `service` and `outcome` are bounded enums (see agent_docs/observability.md).
-const webhookDeliveryCounter = getCounter('hyperdx.alerts.webhook_deliveries', {
-  description:
-    'Count of alert webhook delivery attempts, labeled by service (slack, generic, incidentio) and outcome (success, error).',
-});
-const webhookDeliveryDuration = getHistogram(
-  'hyperdx.alerts.webhook_delivery.duration_ms',
-  {
-    description:
-      'Duration of an alert webhook delivery attempt, labeled by service.',
-    unit: 'ms',
-  },
-);
 
 const describeThresholdViolation = (
   thresholdType: AlertThresholdType,
@@ -117,20 +106,90 @@ const describeThreshold = (alert: AlertInput): string => {
     : `${alert.threshold}`;
 };
 
+// Mappings for the enriched webhook template variables. These turn internal
+// enums into stable, consumer-friendly strings a receiver can branch on
+// without knowing HyperDX's internals.
+const ALERT_STATUS_BY_STATE: Record<AlertState, string> = {
+  [AlertState.ALERT]: 'firing',
+  [AlertState.OK]: 'resolved',
+  [AlertState.INSUFFICIENT_DATA]: 'no_data',
+  [AlertState.DISABLED]: 'no_data',
+  [AlertState.PENDING]: 'pending',
+  [AlertState.ERROR]: 'error',
+};
+
+const COMPARATOR_BY_THRESHOLD_TYPE: Record<AlertThresholdType, string> = {
+  [AlertThresholdType.ABOVE]: '>=',
+  [AlertThresholdType.ABOVE_EXCLUSIVE]: '>',
+  [AlertThresholdType.BELOW]: '<',
+  [AlertThresholdType.BELOW_OR_EQUAL]: '<=',
+  [AlertThresholdType.EQUAL]: '=',
+  [AlertThresholdType.NOT_EQUAL]: '!=',
+  [AlertThresholdType.BETWEEN]: 'between',
+  [AlertThresholdType.NOT_BETWEEN]: 'outside',
+};
+
+const ALERT_TYPE_BY_SOURCE: Record<AlertSource, string> = {
+  [AlertSource.SAVED_SEARCH]: 'search',
+  [AlertSource.TILE]: 'dashboard_chart',
+  // Detached alert: the chart config lives on the alert itself, so there is
+  // no saved search or tile behind it to open.
+  [AlertSource.INLINE]: 'inline_query',
+};
+
+/**
+ * The persisted query behind an alert, as a receiver would route on it. Each
+ * alert source keeps it somewhere different: a saved search on the search
+ * itself, an inline alert on the alert, a tile on its dashboard.
+ */
+const getAlertSourceQuery = ({
+  alert,
+  dashboard,
+  savedSearch,
+}: AlertMessageTemplateDefaultView): string => {
+  if (alert.source === AlertSource.SAVED_SEARCH) {
+    return savedSearch?.where ?? '';
+  }
+
+  const chartConfig =
+    alert.source === AlertSource.INLINE
+      ? alert.chartConfig
+      : dashboard?.tiles.find(t => t.id === alert.tileId)?.config;
+  if (chartConfig == null) {
+    return '';
+  }
+  // Narrowed on `configType` rather than through isRawSqlSavedChartConfig /
+  // isPromqlSavedChartConfig: those predicate on SavedChartConfig, and an
+  // inline alert's AlertChartConfig is built from the without-alert variants,
+  // so the guards can't subtract a member from that union.
+  if ('configType' in chartConfig) {
+    // Raw SQL keeps the whole query in sqlTemplate. A PromQL chart can't be
+    // alerted on, but a tile's config is the full union, so it lands here.
+    return chartConfig.configType === 'sql' ? chartConfig.sqlTemplate : '';
+  }
+  return chartConfig.where ?? '';
+};
+
 const MAX_MESSAGE_LENGTH = 500;
 const NOTIFY_FN_NAME = '__hdx_notify_channel__';
 const IS_MATCH_FN_NAME = 'is_match';
 
-/**
- * Creates a Handlebars instance with common helpers registered.
- * Use this to ensure consistent helper availability across all template rendering.
- */
-const createHandlebarsWithHelpers = () => {
-  const hb = Handlebars.create();
-  // Register eq helper for conditional checks (e.g., {{#if (eq state "ALERT")}})
-  hb.registerHelper('eq', (a, b) => a === b);
-  return hb;
-};
+// Bounds how many targets one fire/resolve event can notify, counting
+// configured channels and @webhook- mentions together. Distinct from
+// MAX_ALERT_CHANNELS (packages/common-utils), which caps how many channels an
+// alert can be configured with; this caps the per-event fan-out, which also
+// includes ad hoc @mentions written into the message.
+const MAX_NOTIFICATIONS_PER_EVENT = 20;
+
+// A skipped target must be visible operationally even if nobody reads the
+// per-target execution error — see recordPreFailure below for the user-facing side.
+const notificationCapExceededCounter = getCounter(
+  'hyperdx.alerts.notification_cap_exceeded',
+  {
+    description:
+      'Count of alert notification targets dropped because MAX_NOTIFICATIONS_PER_EVENT was reached, labeled by channel_type.',
+  },
+);
 
 const zNotifyFnParams = z.object({
   hash: z.object({
@@ -153,16 +212,6 @@ export type AlertMessageTemplateDefaultView = {
   startTime: Date;
   value: number;
 };
-
-interface Message {
-  hdxLink: string;
-  title: string;
-  body: string;
-  state: AlertState;
-  startTime: number;
-  endTime: number;
-  eventId: string;
-}
 
 export const isAlertResolved = (state?: AlertState): boolean => {
   return state === AlertState.OK;
@@ -195,261 +244,6 @@ export const formatValueToMatchThreshold = (
   }).format(value);
 };
 
-const notifyChannel = async ({
-  channel,
-  message,
-}: {
-  channel: PopulatedAlertChannel;
-  message: Message;
-}) => {
-  switch (channel.type) {
-    case 'webhook': {
-      const webhook = channel.channel;
-      // TODO: migrate to use handleSendGenericWebhook so templates can be used
-      if (webhook.service === WebhookService.Slack) {
-        await handleSendSlackWebhook(webhook, message);
-      } else if (
-        webhook.service === WebhookService.Generic ||
-        webhook.service === WebhookService.IncidentIO
-      ) {
-        await handleSendGenericWebhook(webhook, message);
-      }
-      break;
-    }
-    default:
-      throw new Error(`Unsupported channel type: ${channel.type}`);
-  }
-};
-
-const blacklistedWebhookHosts = (() => {
-  const map = new Map<string, string>();
-  const configKeys = ['CLICKHOUSE_HOST', 'MONGO_URI'];
-  for (const configKey of configKeys) {
-    // ignore errors
-    const [_, e] = _useTry(() =>
-      map.set(new URL(config[configKey]).host, configKey),
-    );
-  }
-  return map;
-})();
-
-function validateWebhookUrl(
-  webhook: IWebhook,
-): asserts webhook is IWebhook & { url: string } {
-  if (!webhook.url) {
-    throw new Error('Webhook URL is not set');
-  }
-
-  if (webhook.service === WebhookService.Slack) {
-    // check that hostname ends in "slack.com"
-    if (!isValidSlackUrl(webhook.url)) {
-      const message = `Slack Webhook URL ${webhook.url} does not have hostname that ends in 'slack.com'`;
-      logger.warn(
-        {
-          webhook: {
-            id: webhook._id.toString(),
-            name: webhook.name,
-            url: webhook.url,
-            body: webhook.body,
-          },
-        },
-        message,
-      );
-      throw new Error(`SSRF AllowedDomainError: ${message}`);
-    }
-  } else {
-    // check webhookurl host is not blacklisted and not a private IP
-    const url = new URL(webhook.url);
-    if (blacklistedWebhookHosts.has(url.host)) {
-      const message = `Webhook attempting to query blacklisted route ${blacklistedWebhookHosts.get(
-        url.host,
-      )}`;
-      logger.warn(
-        {
-          webhook: {
-            id: webhook._id.toString(),
-            name: webhook.name,
-            url: webhook.url,
-            body: webhook.body,
-          },
-        },
-        message,
-      );
-      throw new Error(`SSRF AllowedDomainError: ${message}`);
-    }
-    // Block direct private/reserved IP literals to prevent SSRF
-    const hostname = url.hostname.replace(IPV6_BRACKET_RE, ''); // strip IPv6 brackets
-    if (isPrivateIp(hostname)) {
-      const message = `Webhook URL resolves to a private or reserved address: ${hostname}`;
-      logger.warn(
-        {
-          webhook: {
-            id: webhook._id.toString(),
-            name: webhook.name,
-            url: webhook.url,
-          },
-        },
-        message,
-      );
-      throw new Error(`SSRF AllowedDomainError: ${message}`);
-    }
-  }
-}
-
-export const handleSendSlackWebhook = async (
-  webhook: IWebhook,
-  message: Message,
-) => {
-  const startedAt = performance.now();
-  try {
-    validateWebhookUrl(webhook);
-
-    await slack.postMessageToWebhook(webhook.url, {
-      text: message.title,
-      blocks: [
-        {
-          type: 'section',
-          text: {
-            type: 'mrkdwn',
-            text: `*<${message.hdxLink} | ${message.title}>*\n${message.body}`,
-          },
-        },
-      ],
-    });
-    webhookDeliveryCounter.add(1, {
-      service: WebhookService.Slack,
-      outcome: 'success',
-    });
-  } catch (e) {
-    webhookDeliveryCounter.add(1, {
-      service: WebhookService.Slack,
-      outcome: 'error',
-    });
-    throw e;
-  } finally {
-    webhookDeliveryDuration.record(performance.now() - startedAt, {
-      service: WebhookService.Slack,
-    });
-  }
-};
-
-export const handleSendGenericWebhook = async (
-  webhook: IWebhook,
-  message: Message,
-) => {
-  const startedAt = performance.now();
-  // webhook.service is an enum, so it is safe as a low-cardinality label.
-  const service = webhook.service ?? WebhookService.Generic;
-  try {
-    await sendGenericWebhook(webhook, message);
-    webhookDeliveryCounter.add(1, { service, outcome: 'success' });
-  } catch (e) {
-    webhookDeliveryCounter.add(1, { service, outcome: 'error' });
-    throw e;
-  } finally {
-    webhookDeliveryDuration.record(performance.now() - startedAt, { service });
-  }
-};
-
-const sendGenericWebhook = async (webhook: IWebhook, message: Message) => {
-  validateWebhookUrl(webhook);
-
-  let url: string;
-  // user input of queryParams is disabled on the frontend for now
-  if (webhook.queryParams) {
-    // user may have included params in both the url and the query params
-    // so they should be merged
-    const tmpURL = new URL(webhook.url);
-    for (const [key, value] of Object.entries(webhook.queryParams.toJSON())) {
-      tmpURL.searchParams.append(key, value);
-    }
-
-    url = tmpURL.toString();
-  } else {
-    // if there are no query params given, just use the url
-    url = webhook.url;
-  }
-
-  // HEADERS
-  // TODO: handle real webhook security and signage after v0
-  // X-HyperDX-Signature FROM PRIVATE SHA-256 HMAC, time based nonces, caching functionality etc
-
-  const headers = {
-    'Content-Type': 'application/json', // default, will be overwritten if user has set otherwise
-    ...(webhook.headers?.toJSON() ?? {}),
-    // Stable per-alert key for receivers that honour Idempotency-Key; delivery is at-least-once.
-    'Idempotency-Key': objectHash({
-      eventId: message.eventId,
-      startTime: message.startTime,
-      endTime: message.endTime,
-      state: message.state,
-    }),
-  };
-  // BODY
-  let body = '';
-  try {
-    const handlebars = createHandlebarsWithHelpers();
-
-    body = handlebars.compile(webhook.body, {
-      noEscape: true,
-    })({
-      body: escapeJsonString(message.body),
-      endTime: message.endTime,
-      eventId: message.eventId,
-      link: escapeJsonString(message.hdxLink),
-      startTime: message.startTime,
-      state: message.state,
-      title: escapeJsonString(message.title),
-    });
-  } catch (e) {
-    logger.error(
-      {
-        error: serializeError(e),
-      },
-      'Failed to compile generic webhook body',
-    );
-    throw new Error('Failed to build webhook request body', { cause: e });
-  }
-
-  try {
-    await withRetry(async () => {
-      const res = await fetch(url, {
-        method: 'POST',
-        redirect: 'manual',
-        headers: headers as Record<string, string>,
-        body,
-      });
-
-      // Disallow redirects to avoid redirect-based SSRF.
-      if (res.status >= 300 && res.status < 400) {
-        logger.error(
-          { webhookId: webhook._id.toString(), teamId: webhook.team },
-          'Webhook request was redirected, which is not allowed',
-        );
-        throw new WebhookRedirectError(res.status);
-      }
-
-      if (!res.ok) {
-        const errorText = await res.text();
-        const err = new Error(errorText) as any;
-        err.status = res.status;
-        throw err;
-      }
-
-      return res;
-    });
-  } catch (e) {
-    logger.error(
-      {
-        error: serializeError(e),
-      },
-      'Failed to send generic webhook message',
-    );
-    // rethrow so that it can be recorded in alert errors
-    throw e;
-  }
-};
-
 export const buildAlertMessageTemplateHdxLink = (
   alertProvider: AlertProvider,
   {
@@ -479,24 +273,40 @@ export const buildAlertMessageTemplateHdxLink = (
       endTime,
       granularity,
       startTime,
-      tileId: alert.tileId,
+      tileId: alert.tileId ?? undefined,
+    });
+  } else if (alert.source === AlertSource.INLINE) {
+    if (alert.chartConfig == null) {
+      throw new Error(`Source is ${alert.source} but chartConfig is null`);
+    }
+    // Inline alerts have no saved search or dashboard to open — link to the
+    // chart explorer seeded with the alert's persisted config.
+    return alertProvider.buildChartExplorerLink({
+      chartConfig: alert.chartConfig,
+      endTime,
+      granularity,
+      startTime,
     });
   }
 
-  throw new Error(`Unsupported alert source: ${(alert as any).source}`);
+  throw new Error(`Unsupported alert source: ${alert.source}`);
 };
 
 export const buildAlertMessageTemplateTitle = ({
-  template,
   view,
   state,
 }: {
-  template?: string | null;
   view: AlertMessageTemplateDefaultView;
   state?: AlertState;
 }) => {
   const { alert, dashboard, savedSearch, value } = view;
   const handlebars = createHandlebarsWithHelpers();
+  // `alert.name` is an optional Handlebars template for the notification title.
+  const template = alert.name;
+  const { displayName } = resolveAlertDisplayFields(alert, {
+    savedSearch,
+    dashboard,
+  });
 
   // Add emoji prefix based on alert state
   const emoji = isAlertResolved(state) ? '✅ ' : '🚨 ';
@@ -508,7 +318,7 @@ export const buildAlertMessageTemplateTitle = ({
     // TODO: using template engine to render the title
     const baseTitle = template
       ? handlebars.compile(template)(view)
-      : `Alert for "${savedSearch.name}" - ${value} lines found`;
+      : `Alert for "${displayName}" - ${value} lines found`;
     return `${emoji}${baseTitle}`;
   } else if (alert.source === AlertSource.TILE) {
     if (dashboard == null) {
@@ -523,7 +333,20 @@ export const buildAlertMessageTemplateTitle = ({
     const formattedValue = formatValueToMatchThreshold(value, alert.threshold);
     const baseTitle = template
       ? handlebars.compile(template)(view)
-      : `Alert for "${tile.config.name}" in "${dashboard.name}" - ${formattedValue} ${
+      : `Alert for "${displayName}" - ${formattedValue} ${
+          doesExceedThreshold(alert, value)
+            ? describeThresholdViolation(alert.thresholdType)
+            : describeThresholdResolution(alert.thresholdType)
+        } ${describeThreshold(alert)}`;
+    return `${emoji}${baseTitle}`;
+  } else if (alert.source === AlertSource.INLINE) {
+    const formattedValue = formatValueToMatchThreshold(value, alert.threshold);
+    // Inline alerts have no saved search/tile to name them; the alert's `name`
+    // doubles as the title template, so the default falls back to the resolved
+    // display name (itself derived from the chart config's name).
+    const baseTitle = template
+      ? handlebars.compile(template)(view)
+      : `Alert for "${displayName}" - ${formattedValue} ${
           doesExceedThreshold(alert, value)
             ? describeThresholdViolation(alert.thresholdType)
             : describeThresholdResolution(alert.thresholdType)
@@ -531,16 +354,7 @@ export const buildAlertMessageTemplateTitle = ({
     return `${emoji}${baseTitle}`;
   }
 
-  throw new Error(`Unsupported alert source: ${(alert as any).source}`);
-};
-
-export const getDefaultExternalAction = (
-  alert: AlertMessageTemplateDefaultView['alert'],
-) => {
-  if (alert.channel.type === 'webhook' && alert.channel.webhookId != null) {
-    return `@${alert.channel.type}-${alert.channel.webhookId}`;
-  }
-  return null;
+  throw new Error(`Unsupported alert source: ${alert.source}`);
 };
 
 export const translateExternalActionsToInternal = (template: string) => {
@@ -582,7 +396,7 @@ const getPopulatedChannel = (
           },
           'webhook not found',
         );
-        throw new Error(
+        throw new WebhookNotFoundError(
           `Webhook not found. The webhook may have been deleted — update the alert's notification channel.`,
         );
       }
@@ -595,6 +409,58 @@ const getPopulatedChannel = (
   }
 };
 
+/**
+ * A notification target that did not end up delivered: it never reached the
+ * dispatcher (unresolvable mention/webhook, the per-event cap), or it did
+ * reach the dispatcher and `dispatch()` rejected. The inline dispatcher
+ * resolves after delivery, so a real send failure rejects and is caught below
+ * — a queued dispatcher instead resolves after enqueue and reports delivery
+ * outcomes through its own logs/metrics, so this array simply won't see them.
+ */
+export type NotificationFailure = {
+  /** The webhook id/name prefix, or the raw @mention, that failed. */
+  target: string;
+  /** The channel type the target belongs to, or 'unknown' when it couldn't be determined (e.g. an unparseable @mention). */
+  type: AlertChannelType | 'unknown';
+  error: unknown;
+};
+
+// PopulatedAlertChannel only has a `webhook` variant in this repo, but a
+// downstream build adds more (e.g. `email`) without a `channel` field at all.
+// Narrowing here — rather than assuming `.channel` exists — keeps this
+// mechanical for that merge instead of a judgement call, and keeps an error
+// handler from throwing on an unrecognized channel type.
+const channelKey = (c: PopulatedAlertChannel) =>
+  c.type === 'webhook' ? c.channel._id.toString() : JSON.stringify(c);
+const channelLabel = (c: PopulatedAlertChannel) =>
+  c.type === 'webhook' ? c.channel.name : c.type;
+
+/**
+ * One dispatch's wall time. Emitted per target per event, so a grouped alert
+ * produces one of these per (group, target); the caller aggregates.
+ */
+export type NotificationTiming = {
+  /** Stable identity for aggregation across events — the webhook id. */
+  key: string;
+  /** Display label: the webhook's name. */
+  target: string;
+  durationMs: number;
+  ok: boolean;
+};
+
+export type RenderedAlert = {
+  /** The rendered message body, as delivered to every target. */
+  body: string;
+  /** One entry per target that did not end up delivered — see NotificationFailure. */
+  failures: NotificationFailure[];
+  /**
+   * One entry per target that reached the dispatcher, delivered or not.
+   * Targets that failed before dispatch have no timing — there was nothing to
+   * time — so this is not the complement of `failures`.
+   */
+  timings: NotificationTiming[];
+};
+
 // this method will build the body of the alert message and will be used to send the alert to the channel
 export const renderAlertTemplate = async ({
   alertProvider,
@@ -604,7 +470,9 @@ export const renderAlertTemplate = async ({
   template,
   title,
   view: inputView,
+  teamId,
   teamWebhooksById,
+  dispatcher = inlineNotificationDispatcher,
 }: {
   alertProvider: AlertProvider;
   clickhouseClient: ClickhouseClient;
@@ -613,8 +481,10 @@ export const renderAlertTemplate = async ({
   template?: string | null;
   title: string;
   view: AlertMessageTemplateDefaultView;
+  teamId: string;
   teamWebhooksById: Map<string, IWebhook>;
-}) => {
+  dispatcher?: NotificationDispatcher;
+}): Promise<RenderedAlert> => {
   // Internal mutable view with __hdx_query_results__ populated on the
   // saved-search path. Untrusted values must flow through the view so
   // Handlebars treats them as literal data, never as template syntax.
@@ -636,13 +506,9 @@ export const renderAlertTemplate = async ({
     value,
   } = view;
 
-  const defaultExternalAction = getDefaultExternalAction(alert);
-  const targetTemplate =
-    defaultExternalAction !== null
-      ? translateExternalActionsToInternal(
-          `${template ?? ''} ${defaultExternalAction}`,
-        ).trim()
-      : translateExternalActionsToInternal(template ?? '');
+  // Only ad hoc `@mentions` written into the message body go through the
+  // template. The alert's configured channels are queued directly below.
+  const targetTemplate = translateExternalActionsToInternal(template ?? '');
 
   const isMatchFn = function (shouldRender: boolean) {
     return function (
@@ -663,14 +529,150 @@ export const renderAlertTemplate = async ({
   _hb.registerHelper(NOTIFY_FN_NAME, () => null);
   _hb.registerHelper(IS_MATCH_FN_NAME, isMatchFn(true));
   const hb = PromisedHandlebars(Handlebars);
+
+  // Rendering collects the notification jobs; dispatch happens once afterwards
+  // so every target goes out concurrently instead of serially mid-render.
+  const jobs: NotificationJob[] = [];
+  const failures: NotificationFailure[] = [];
+  // Webhook ids already queued this event, so a target configured as a channel
+  // and also named by an @mention is only notified once.
+  const queuedWebhookIds = new Set<string>();
+
+  // A target that failed before dispatch still needs to surface as its own
+  // result, so the alert reports which channel missed out.
+  const recordPreFailure = (
+    target: string,
+    type: AlertChannelType | 'unknown',
+    error: unknown,
+  ) => {
+    failures.push({ target, type, error });
+  };
+
+  /**
+   * Queue one resolved target. Returns false when it was already queued — a
+   * configured channel and an `@mention` can name the same destination, and
+   * notifying it twice is not the intent.
+   */
+  const queueChannel = (
+    channel: PopulatedAlertChannel,
+    renderedBody: string,
+  ) => {
+    const webhookId = channelKey(channel);
+    if (queuedWebhookIds.has(webhookId)) {
+      return false;
+    }
+    queuedWebhookIds.add(webhookId);
+
+    const eventId = objectHash({
+      alertId: alert.id,
+      channel: {
+        type: channel.type,
+        id: channel.channel._id.toString(),
+      },
+      // Explicitly track if this is a grouped alert
+      isGrouped: view.isGroupedAlert,
+      ...(view.isGroupedAlert && group ? { groupId: group } : {}),
+    });
+
+    jobs.push({
+      eventId,
+      alertId: alert.id,
+      teamId,
+      group,
+      populatedChannel: channel,
+      message: {
+        hdxLink: buildAlertMessageTemplateHdxLink(alertProvider, view),
+        title,
+        body: renderedBody,
+        state,
+        startTime: view.startTime.getTime(),
+        endTime: view.endTime.getTime(),
+        eventId,
+        // Enriched fields, exposed to Generic/incident.io body templates.
+        alertId: alert.id ?? '',
+        status: ALERT_STATUS_BY_STATE[state],
+        alertType: alert.source ? ALERT_TYPE_BY_SOURCE[alert.source] : '',
+        comparator: COMPARATOR_BY_THRESHOLD_TYPE[alert.thresholdType],
+        threshold: alert.threshold,
+        // Only a range comparator has an upper bound; leaving it undefined
+        // elsewhere renders the variable empty rather than as a bound that
+        // isn't part of the condition.
+        thresholdMax: isRangeThresholdType(alert.thresholdType)
+          ? alert.thresholdMax
+          : undefined,
+        value,
+        groupKey: group ?? '',
+        sourceQuery: getAlertSourceQuery(view),
+        teamId,
+        note: alert.note ?? '',
+      },
+    });
+    return true;
+  };
+
+  /**
+   * Expand one configured channel into the targets it delivers to, resolved
+   * straight from the alert rather than round-tripped through an
+   * `@webhook-<id>` mention string. The mention carries only `type` and an id,
+   * so every other field on the channel was lost before delivery.
+   */
+  const resolveConfiguredChannel = (
+    channel: AlertChannel,
+  ): PopulatedAlertChannel[] => {
+    if (channel.type !== 'webhook') {
+      return [];
+    }
+    const webhook = teamWebhooksById.get(channel.webhookId);
+    if (!webhook) {
+      logger.error(
+        { alertId: alert.id, webhookId: channel.webhookId },
+        'webhook not found',
+      );
+      recordPreFailure(
+        channel.webhookId,
+        'webhook',
+        new WebhookNotFoundError(
+          `Webhook not found. The webhook may have been deleted — update the alert's notification channel.`,
+        ),
+      );
+      return [];
+    }
+    return [{ type: 'webhook', channel: webhook }];
+  };
+
   const registerHelpers = (rawTemplateBody: string) => {
     hb.registerHelper(IS_MATCH_FN_NAME, isMatchFn(false));
 
     // Register a custom helper which sends notifications to the specified channel
     // Usage: {{NOTIFY_FN_NAME channel="webhook" id="1234_5678"}}
     hb.registerHelper(NOTIFY_FN_NAME, async (options: unknown) => {
-      const { hash } = zNotifyFnParams.parse(options);
-      const { channel: channelType, id: idTemplate } = hash;
+      // Any `@word` in the message body is rewritten into this helper, so an
+      // ordinary mention like "@here" arrives with an unsupported channel type.
+      // Parsing inside the guard keeps that from rejecting the whole render and
+      // dropping every already-collected job.
+      const parsed = zNotifyFnParams.safeParse(options);
+      if (!parsed.success) {
+        const mention =
+          typeof options === 'object' &&
+          options !== null &&
+          'hash' in options &&
+          typeof (options as { hash?: unknown }).hash === 'object'
+            ? JSON.stringify((options as { hash: unknown }).hash)
+            : 'unknown';
+        logger.warn(
+          { alertId: alert.id, mention },
+          'Unsupported notification mention in alert message; skipping it',
+        );
+        recordPreFailure(
+          mention,
+          'unknown',
+          new UnsupportedMentionError(
+            'Alert message contains a mention that is not a webhook channel.',
+          ),
+        );
+        return;
+      }
+      const { channel: channelType, id: idTemplate } = parsed.data.hash;
 
       // The id field can also be a template itself, e.g. id="{{attributes.webhookId}}", so it must be compiled and rendered
       // The id might also be the prefix of the webhook name.
@@ -679,40 +681,45 @@ export const renderAlertTemplate = async ({
       // render body template
       const renderedBody = _hb.compile(rawTemplateBody)(view);
 
-      const channel = getPopulatedChannel(
-        channelType,
-        renderedIdOrNamePrefix,
-        teamWebhooksById,
-      );
-
-      if (channel) {
-        const startTime = view.startTime.getTime();
-        const endTime = view.endTime.getTime();
-
-        const eventId = objectHash({
-          alertId: alert.id,
-          channel: {
-            type: channel.type,
-            id: channel.channel._id.toString(),
-          },
-          // Explicitly track if this is a grouped alert
-          isGrouped: view.isGroupedAlert,
-          ...(view.isGroupedAlert && group ? { groupId: group } : {}),
-        });
-
-        await notifyChannel({
-          channel,
-          message: {
-            hdxLink: buildAlertMessageTemplateHdxLink(alertProvider, view),
-            title,
-            body: renderedBody,
-            state,
-            startTime,
-            endTime,
-            eventId,
-          },
-        });
+      let channel: PopulatedAlertChannel;
+      try {
+        channel = getPopulatedChannel(
+          channelType,
+          renderedIdOrNamePrefix,
+          teamWebhooksById,
+        );
+      } catch (e) {
+        // A missing webhook must not abort the render: the other channels
+        // still fire, and this one is reported per-target.
+        recordPreFailure(renderedIdOrNamePrefix, channelType, e);
+        return;
       }
+
+      // Resolve and dedupe before the cap check: a channel and an @mention can
+      // name the same target by id and by name prefix, and a repeat of an
+      // already-queued target is a no-op, not a target the cap turned away.
+      const webhookId = channelKey(channel);
+      if (queuedWebhookIds.has(webhookId)) {
+        return;
+      }
+
+      if (jobs.length >= MAX_NOTIFICATIONS_PER_EVENT) {
+        logger.warn(
+          { alertId: alert.id, cap: MAX_NOTIFICATIONS_PER_EVENT },
+          'Notification cap reached for this alert event; skipping channel',
+        );
+        notificationCapExceededCounter.add(1, { channel_type: channelType });
+        // Record it as a per-target failure too. A skipped channel that only
+        // shows up in a log line and a metric looks like a healthy alert to the
+        // operator, who never learns some targets were never notified.
+        recordPreFailure(
+          renderedIdOrNamePrefix,
+          channelType,
+          new NotificationCapExceededError(MAX_NOTIFICATIONS_PER_EVENT),
+        );
+        return;
+      }
+      queueChannel(channel, renderedBody);
     });
   };
 
@@ -815,8 +822,11 @@ ${targetTemplate}
 \`\`\`
 {{{__hdx_query_results__}}}
 \`\`\``;
-  } else if (alert.source === AlertSource.TILE) {
-    if (dashboard == null) {
+  } else if (
+    alert.source === AlertSource.TILE ||
+    alert.source === AlertSource.INLINE
+  ) {
+    if (alert.source === AlertSource.TILE && dashboard == null) {
       throw new Error(`Source is ${alert.source} but dashboard is null`);
     }
     const formattedValue = formatValueToMatchThreshold(value, alert.threshold);
@@ -831,10 +841,68 @@ ${targetTemplate}`;
 
   // render the template
   if (rawTemplateBody) {
+    // Queue the configured channels first, and without the per-event cap:
+    // `channels` is already bounded by MAX_ALERT_CHANNELS, so letting ad hoc
+    // mentions in the message body crowd out an alert's own targets would be
+    // backwards.
+    const configuredBody = _hb.compile(rawTemplateBody)(view);
+    for (const configured of getAlertChannels(alert)) {
+      for (const channel of resolveConfiguredChannel(configured)) {
+        queueChannel(channel, configuredBody);
+      }
+    }
+
     registerHelpers(rawTemplateBody);
     const compiledTemplate = hb.compile(rawTemplateBody);
-    return compiledTemplate(view);
+    const body = await compiledTemplate(view);
+
+    // Dispatch every surviving channel concurrently, once the render (and
+    // therefore the message body) is complete. Each dispatch is isolated in
+    // its own try/catch so one failing channel can't stop the others.
+    //
+    // The inline dispatcher resolves *after* delivery, so a real send failure
+    // rejects here and is recorded exactly like a pre-dispatch failure — this
+    // preserves WEBHOOK_ERROR reporting for the default (only) dispatcher. A
+    // queued dispatcher resolves after enqueue and never rejects here; it
+    // reports delivery outcomes through its own logs/metrics instead (see
+    // agent_docs/observability.md).
+    const timings: NotificationTiming[] = [];
+    await Promise.all(
+      jobs.map(async job => {
+        // Per-job, not around the Promise.all: the whole point is attributing
+        // the total to a target, and the dispatches overlap.
+        const startedAt = performance.now();
+        let ok = true;
+        try {
+          await dispatcher.dispatch(job);
+        } catch (e) {
+          ok = false;
+          logger.error(
+            {
+              alertId: alert.id,
+              webhookId: channelKey(job.populatedChannel),
+              error: serializeError(e),
+            },
+            'Failed to deliver alert notification',
+          );
+          failures.push({
+            target: channelLabel(job.populatedChannel),
+            type: job.populatedChannel.type,
+            error: e,
+          });
+        } finally {
+          timings.push({
+            key: channelKey(job.populatedChannel),
+            target: channelLabel(job.populatedChannel),
+            durationMs: Math.round(performance.now() - startedAt),
+            ok,
+          });
+        }
+      }),
+    );
+
+    return { body, failures, timings };
   }
 
-  throw new Error(`Unsupported alert source: ${(alert as any).source}`);
+  throw new Error(`Unsupported alert source: ${alert.source}`);
 };

@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
+import { memo, useEffect, useMemo, useState } from 'react';
 import { omit } from 'lodash';
 import { useHotkeys } from 'react-hotkeys-hook';
 import {
@@ -11,17 +10,23 @@ import {
   YAxis,
 } from 'recharts';
 import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
+import { Text } from '@mantine/core';
 
-import { buildMVDateRangeIndicator } from '@/ChartUtils';
+import { buildMVDateRangeIndicator, INTEGER_NUMBER_FORMAT } from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useSource } from '@/source';
+import { getColorFromCSSToken } from '@/utils';
 
 import ChartContainer from './charts/ChartContainer';
 import ChartErrorState, {
   ChartErrorStateVariant,
 } from './charts/ChartErrorState';
+import { ChartTooltipContainer, ChartTooltipItem } from './charts/ChartTooltip';
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
+
+/** First categorical series hue (`chart-blue`). Exported for unit tests. */
+export const HISTOGRAM_BAR_COLOR = getColorFromCSSToken('chart-blue');
 
 /**
  * Normalize a chart click's `activeIndex` to a real, in-range bar index.
@@ -42,13 +47,7 @@ export function resolvePinnedBarIndex(
   return Number.isInteger(idx) && idx >= 0 ? idx : undefined;
 }
 
-function HistogramChart({
-  graphResults,
-  generateSearchUrl,
-}: {
-  graphResults: any[];
-  generateSearchUrl?: (lower: string, upper: string) => string;
-}) {
+function HistogramChart({ graphResults }: { graphResults: any[] }) {
   const data = useMemo(() => {
     return (
       graphResults?.map((result: any) => {
@@ -128,9 +127,7 @@ function HistogramChart({
           // Remount when the pinned bar changes so `defaultIndex` re-seeds on a
           // fresh instance rather than relying on it being reactive after mount.
           key={pinnedIndex ?? 'hover'}
-          content={
-            <HDXHistogramChartTooltip generateSearchUrl={generateSearchUrl} />
-          }
+          content={<HistogramChartTooltip />}
           // When a bar is pinned, lock the tooltip to that bar: `trigger:
           // 'click'` makes the tooltip ignore hover (which would otherwise let
           // the tooltip drift to whatever bar the cursor grazes), and
@@ -140,52 +137,60 @@ function HistogramChart({
             ? { active: true, defaultIndex: pinnedIndex, trigger: 'click' }
             : {})}
         />
-        <Bar dataKey="height" stackId="a" fill="#50FA7B" />
+        <Bar dataKey="height" stackId="a" fill={HISTOGRAM_BAR_COLOR} />
       </BarChart>
     </ResponsiveContainer>
   );
 }
 
-const HDXHistogramChartTooltip = (props: any) => {
-  const { active, payload, generateSearchUrl } = props;
-  if (active && payload && payload.length > 0) {
-    const bucket = props.payload[0].payload;
+export const HistogramChartTooltip = memo(
+  ({
+    active,
+    payload,
+  }: {
+    active?: boolean;
+    payload?: {
+      name?: string;
+      value: number;
+      color?: string;
+      payload: { lower: number; upper: number; height: number };
+    }[];
+  }) => {
+    if (!active || !payload?.length) {
+      return null;
+    }
 
+    const bucket = payload[0].payload;
     const lower = bucket.lower.toFixed(5);
     const upper = bucket.upper.toFixed(5);
 
     return (
-      <div
-        className="bg-muted px-3 py-2 rounded fs-8"
-        style={{ pointerEvents: 'auto' }}
+      <ChartTooltipContainer
+        header={
+          <span>
+            Bucket: {lower} - {upper}
+          </span>
+        }
+        footer={
+          <Text size="xs" c="dimmed">
+            Click to pin tooltip • Approx value via SPDT algorithm
+          </Text>
+        }
       >
-        <div className="mb-2">
-          Bucket: {lower} - {upper}
-        </div>
-        {payload.map((p: any) => (
-          <div key={p.name} style={{ color: p.color }}>
-            Number of Events: {p.value}
-          </div>
+        {payload.map((p, index) => (
+          <ChartTooltipItem
+            key={p.name ?? index}
+            color={p.color ?? HISTOGRAM_BAR_COLOR}
+            name="Number of events"
+            value={p.value}
+            numberFormat={INTEGER_NUMBER_FORMAT}
+            indicator="square"
+          />
         ))}
-        <div className="mt-2">
-          {generateSearchUrl && (
-            <Link
-              href={generateSearchUrl(lower, upper)}
-              className="text-muted-hover cursor-pointer"
-              onClick={e => e.stopPropagation()}
-            >
-              View Events
-            </Link>
-          )}
-        </div>
-        <div className="text-muted fs-9 mt-2">
-          Click to Pin Tooltip • Approx value via SPDT algorithm
-        </div>
-      </div>
+      </ChartTooltipContainer>
     );
-  }
-  return null;
-};
+  },
+);
 
 export default function DBHistogramChart({
   config,

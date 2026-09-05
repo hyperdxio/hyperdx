@@ -77,12 +77,13 @@ export async function updateSource(
   // document already carries one — preserve the original in both paths.
   const createdAt: Date | undefined = existing.get('createdAt');
 
-  // Same kind: simple update through the discriminator model
+  // findOneAndReplace swaps the whole document, so `team` must be in the
+  // replacement or the source is dropped from every team-scoped query.
   if (existing.kind === source.kind) {
     // @ts-expect-error The findOneAndReplace method has incompatible type signatures but is actually safe
     return getModelForKind(source.kind)?.findOneAndReplace(
       { _id: sourceId, team },
-      { ...source, ...(createdAt && { createdAt }) },
+      { ...source, team, ...(createdAt && { createdAt }) },
       { new: true },
     );
   }

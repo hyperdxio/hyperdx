@@ -18,6 +18,14 @@ yarn dev        # or equivalently: make dev
 - `make dev-portal`: Start the dev portal manually (auto-started by `yarn dev`)
 - `yarn lint`: Run linting across all packages
 - `yarn dev:unit`: Run unit tests in watch mode (per package)
+- `yarn dev:mutation --mutate <file>`: Run mutation tests (common-utils only). A
+  surviving mutant means the tests execute that code but don't assert on it.
+  Always scope it with `--mutate`; a whole-package run takes tens of minutes.
+  See [CONTRIBUTING.md](../CONTRIBUTING.md#mutation-tests)
+- `yarn seed:alerts --count N` (in `packages/api`): Fill this worktree's
+  dev-slot Mongo with N alerts for testing the alerts page at scale: half on
+  saved searches, half on dashboard tiles. Seeded dashboards and saved searches
+  are tagged `seeded`; `yarn seed:alerts --purge` removes them.
 
 ## Environment Configuration
 
@@ -246,7 +254,10 @@ yarn run lint
 - **Controllers**: `packages/api/src/controllers/`
 - **Pages**: `packages/app/pages/`
 - **Components**: `packages/app/src/`
-- **Shared Utils**: `packages/common-utils/src/`
+- **Shared Utils**: `packages/common-utils/src/` — no root barrel, so imports are
+  deep `@hyperdx/common-utils/dist/...` paths. See
+  [`code_style.md`](code_style.md#where-shared-code-already-lives) for the module
+  map and the grep-first rule before you add a helper.
 
 ## Vercel Preview Deployments (Inline API)
 

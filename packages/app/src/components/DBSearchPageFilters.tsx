@@ -1171,7 +1171,7 @@ const DBSearchPageFiltersComponent = ({
 
   const [showMoreFields, setShowMoreFields] = useState(false);
   const {
-    data: facets,
+    data: fetchFacetsData,
     isLoading: isFacetsLoading,
     isFetching: isFacetsFetching,
     error,
@@ -1186,6 +1186,7 @@ const DBSearchPageFiltersComponent = ({
     filterState,
     showMoreFields,
   });
+  const facets = fetchFacetsData.keyValues;
 
   useEffect(() => {
     if (error) {

@@ -17,7 +17,7 @@ import logger from '@/utils/logger';
 
 import { tasksTracer } from './tracer';
 
-function createTask(argv: TaskArgs): HdxTask<TaskArgs> {
+function createTask(argv: TaskArgs): HdxTask {
   const taskName = argv.taskName;
   switch (taskName) {
     case TaskName.CHECK_ALERTS:
@@ -33,7 +33,7 @@ function createTask(argv: TaskArgs): HdxTask<TaskArgs> {
 
 async function main(argv: TaskArgs): Promise<void> {
   await tasksTracer.startActiveSpan(argv.taskName || 'task', async span => {
-    const task: HdxTask<TaskArgs> = createTask(argv);
+    const task: HdxTask = createTask(argv);
     try {
       logger.info(`${task.name()} started at ${new Date()}`);
       await task.execute();
@@ -69,7 +69,7 @@ const instrumentedMain = timeExec(main, duration => {
 if (!RUN_SCHEDULED_TASKS_EXTERNALLY) {
   logger.info('In-app cron job is enabled');
   // run cron job every 1 minute
-  const job = CronJob.from({
+  CronJob.from({
     cronTime: '0 * * * * *',
     waitForCompletion: true,
     onTick: async () => instrumentedMain(argv),

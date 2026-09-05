@@ -78,7 +78,7 @@ jest.mock('@/DashboardFilters', () => ({
   __esModule: true,
   default: () => null,
 }));
-jest.mock('@/DashboardFiltersModal', () => ({
+jest.mock('@/components/DashboardFiltersModal', () => ({
   __esModule: true,
   default: () => null,
 }));

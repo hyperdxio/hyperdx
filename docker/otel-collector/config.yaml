@@ -163,6 +163,14 @@ service:
                 port: 8888
     logs:
       level: ${HYPERDX_LOG_LEVEL}
+      # The collector's zap logger defaults to stderr. Under the supervisor's
+      # `passthrough_logs`, stdout is re-emitted at Info and stderr at Error,
+      # so leaving the default would surface every collector log line as an
+      # error. Writing to stdout keeps the supervisor-assigned level sane; the
+      # collector's real severity is still in the wrapped record's own `level`
+      # field. In standalone mode both streams land in the container log, so
+      # this is a no-op there.
+      output_paths: [stdout]
   extensions: [health_check]
   # Pipeline receivers and exporters are configured dynamically in
   # opampController.ts. Pipeline `processors:` lists are declared here in

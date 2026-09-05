@@ -25,6 +25,7 @@ export class ClickhouseClient extends BaseClickhouseClient {
       password: this.password,
       request_timeout: this.requestTimeout,
       application: this.application,
+      use_multipart_params_auto: true,
     });
   }
 
@@ -46,7 +47,7 @@ export class ClickhouseClient extends BaseClickhouseClient {
     queryId,
     shouldSkipApplySettings,
   }: QueryInputs<Format>): Promise<BaseResultSet<ReadableStream, Format>> {
-    this.logDebugQuery(query, query_params);
+    this.logQuery(query, query_params);
 
     let clickhouseSettings: ClickHouseSettings | undefined;
     // If this is the settings query, we must not process the clickhouse settings, or else we will infinitely recurse

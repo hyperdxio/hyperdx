@@ -362,6 +362,15 @@ describe('External API v2 Webhooks', () => {
         .expect(400);
     });
 
+    it('should reject a private webhook URL without persisting it', async () => {
+      const response = await authRequest('post', WEBHOOKS_BASE_URL)
+        .send({ ...MOCK_GENERIC_WEBHOOK, url: 'http://10.0.0.1/webhook' })
+        .expect(400);
+
+      expect(response.body.message).toContain('private or reserved address');
+      expect(await Webhook.countDocuments({})).toBe(0);
+    });
+
     it.each(['headers', 'queryParams', 'body'])(
       'should reject %s on a slack webhook (unsupported by the service)',
       async field => {
@@ -505,6 +514,25 @@ describe('External API v2 Webhooks', () => {
   });
 
   describe('PUT /api/v2/webhooks/:id', () => {
+    it('should reject a private webhook URL without updating it', async () => {
+      const created = await Webhook.create({
+        ...MOCK_GENERIC_WEBHOOK,
+        team: team._id,
+      });
+
+      const response = await authRequest(
+        'put',
+        `${WEBHOOKS_BASE_URL}/${created._id}`,
+      )
+        .send({ ...MOCK_GENERIC_WEBHOOK, url: 'http://[fd00::1]/webhook' })
+        .expect(400);
+
+      expect(response.body.message).toContain('private or reserved address');
+      expect((await Webhook.findById(created._id))!.url).toBe(
+        MOCK_GENERIC_WEBHOOK.url,
+      );
+    });
+
     it('should replace readable fields but preserve omitted write-only fields when the destination is unchanged', async () => {
       const created = await Webhook.create({
         ...MOCK_GENERIC_WEBHOOK,
@@ -594,9 +622,9 @@ describe('External API v2 Webhooks', () => {
       await authRequest('put', `${WEBHOOKS_BASE_URL}/${created._id}`)
         .send({
           name: MOCK_GENERIC_WEBHOOK.name,
-          // same url, but service changes => destination changed
+          // service and URL change together to a valid Slack destination
           service: WebhookService.Slack,
-          url: MOCK_GENERIC_WEBHOOK.url,
+          url: MOCK_SLACK_WEBHOOK.url,
         })
         .expect(200);
 

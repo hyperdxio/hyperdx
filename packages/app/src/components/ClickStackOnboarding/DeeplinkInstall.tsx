@@ -8,22 +8,21 @@ interface DeeplinkInstallProps {
   deeplink: string;
   fallbackLabel: string;
   fallbackSnippet: string;
+  /** Access key to mask in the fallback snippet (the deep link isn't shown). */
+  fallbackAccessKey?: string;
   note?: ReactNode;
 }
 
 /**
- * One-click "Add to <host>" deep-link install for hosts that
- * support it (Cursor, VS Code + Copilot). The manual fallback
- * snippet stays tucked behind a `Manual setup` toggle so the
- * primary affordance is always the deep link, with the JSON
- * paste-it-yourself path available for users who can't or won't
- * use the deep link.
+ * One-click "Add to <host>" deep-link install (Cursor, VS Code), with a
+ * manual JSON fallback behind a `Manual setup` toggle.
  */
 export function DeeplinkInstall({
   buttonLabel,
   deeplink,
   fallbackLabel,
   fallbackSnippet,
+  fallbackAccessKey,
   note,
 }: DeeplinkInstallProps) {
   const [manualOpen, setManualOpen] = useState(false);
@@ -48,7 +47,11 @@ export function DeeplinkInstall({
       </Group>
       {note}
       <Collapse expanded={manualOpen} transitionDuration={150}>
-        <CopySnippet label={fallbackLabel} snippet={fallbackSnippet} />
+        <CopySnippet
+          label={fallbackLabel}
+          snippet={fallbackSnippet}
+          accessKey={fallbackAccessKey}
+        />
       </Collapse>
     </Stack>
   );

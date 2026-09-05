@@ -1,4 +1,4 @@
-import { useContext } from 'react';
+import { use } from 'react';
 import { TTraceSource } from '@hyperdx/common-utils/dist/types';
 import { Text } from '@mantine/core';
 import { Handle, Node, NodeProps, NodeToolbar, Position } from '@xyflow/react';
@@ -53,7 +53,7 @@ export default function ServiceMapNode(
     onFocusService,
   } = data;
 
-  const { metric, metricMax } = useContext(ServiceMapMetricContext);
+  const { metric, metricMax } = use(ServiceMapMetricContext);
 
   const { backgroundColor, borderColor } = getNodeColors(
     getServiceMetricValue(data, metric),

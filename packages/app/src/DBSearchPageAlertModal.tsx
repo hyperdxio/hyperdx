@@ -3,11 +3,17 @@ import router from 'next/router';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
+import {
+  clampAlertDisplayName,
+  clampAlertTags,
+} from '@hyperdx/common-utils/dist/alerts';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   type Alert,
+  alertDisplayNameSchema,
   AlertIntervalSchema,
   AlertSource,
+  alertTagsSchema,
   AlertThresholdType,
   Filter,
   isRangeThresholdType,
@@ -16,7 +22,7 @@ import {
   SearchConditionLanguage,
   validateAlertScheduleOffsetMinutes,
   validateAlertThresholdMax,
-  zAlertChannel,
+  zAlertChannels,
 } from '@hyperdx/common-utils/dist/types';
 import {
   Accordion,
@@ -53,8 +59,10 @@ import {
   ALERT_THRESHOLD_TYPE_OPTIONS,
   intervalToMinutes,
   normalizeNoOpAlertScheduleFields,
+  toAlertChannels,
 } from '@/utils/alerts';
 
+import { AlertDisplayFields } from './components/AlertDisplayFields';
 import { AlertNoteField } from './components/AlertNoteField';
 import { AlertPreviewChart } from './components/AlertPreviewChart';
 import { AlertChannelForm } from './components/Alerts';
@@ -76,7 +84,9 @@ const SavedSearchAlertFormSchema = z
     scheduleOffsetMinutes: z.number().int().min(0).default(0),
     scheduleStartAt: scheduleStartAtSchema,
     thresholdType: z.nativeEnum(AlertThresholdType),
-    channel: zAlertChannel,
+    channels: zAlertChannels,
+    displayName: alertDisplayNameSchema,
+    tags: alertTagsSchema,
     // nullish() (not optional()): persisted alerts store this as null, which
     // optional() would reject.
     numConsecutiveWindows: z.number().int().min(1).nullish(),
@@ -92,9 +102,11 @@ const AlertForm = ({
   filters,
   select,
   defaultValues,
+  prefill,
   loading,
   deleteLoading,
   hasSavedSearch,
+  savedSearchName,
   onDelete,
   onSubmit,
   onClose,
@@ -105,9 +117,12 @@ const AlertForm = ({
   filters?: Filter[] | null;
   select?: string | null;
   defaultValues?: null | AlertWithCreatedBy;
+  /** Seed values for a brand-new alert */
+  prefill?: { displayName?: string; tags?: string[] };
   loading?: boolean;
   deleteLoading?: boolean;
   hasSavedSearch?: boolean;
+  savedSearchName?: string;
   onDelete: (id: string) => void;
   onSubmit: (data: Alert) => void;
   onClose: () => void;
@@ -123,6 +138,7 @@ const AlertForm = ({
     defaultValues: defaultValues
       ? {
           ...defaultValues,
+          channels: toAlertChannels(defaultValues),
           scheduleOffsetMinutes: defaultValues.scheduleOffsetMinutes ?? 0,
           scheduleStartAt: defaultValues.scheduleStartAt ?? null,
           // Persisted null -> undefined for the NumberInput.
@@ -136,18 +152,16 @@ const AlertForm = ({
           scheduleStartAt: null,
           thresholdType: AlertThresholdType.ABOVE,
           source: AlertSource.SAVED_SEARCH,
-          channel: {
-            type: 'webhook',
-            webhookId: '',
-          },
+          channels: [{ type: 'webhook', webhookId: '' }],
           note: null,
+          displayName: prefill?.displayName,
+          tags: prefill?.tags,
         },
     resolver: zodResolver(SavedSearchAlertFormSchema),
   });
 
   const groupBy = useWatch({ control, name: 'groupBy' });
   const thresholdType = useWatch({ control, name: 'thresholdType' });
-  const channelType = useWatch({ control, name: 'channel.type' });
   const interval = useWatch({ control, name: 'interval' });
   const scheduleOffsetMinutes = useWatch({
     control,
@@ -178,7 +192,10 @@ const AlertForm = ({
             // this form was opened with. This binds the submission to the
             // originally-edited alert rather than whatever the parent's alerts
             // list happens to index at submit time.
-            { ...data, id: defaultValues?.id },
+            // `channel` is cleared (JSON drops undefined): the API derives it
+            // from channels[0], and echoing a stale value back would conflict
+            // with an edited list.
+            { ...data, channel: undefined, id: defaultValues?.id },
             defaultValues,
             {
               preserveExplicitScheduleOffsetMinutes:
@@ -192,6 +209,13 @@ const AlertForm = ({
     >
       <Paper px="sm" py="xs" radius="xs">
         <Stack gap="xs">
+          <AlertDisplayFields
+            control={control}
+            displayNameName="displayName"
+            tagsName="tags"
+            derivedDisplayName={savedSearchName}
+            labelMarginTop="0"
+          />
           <Text size="xxs" opacity={0.5}>
             Trigger
           </Text>
@@ -264,7 +288,7 @@ const AlertForm = ({
             </Text>
             <Controller
               control={control}
-              name="channel.type"
+              name="channels.0.type"
               render={({ field }) => (
                 <NativeSelect
                   data={optionsToSelectData(ALERT_CHANNEL_OPTIONS)}
@@ -299,7 +323,7 @@ const AlertForm = ({
           <Text size="xxs" opacity={0.5} mb={4}>
             Send to
           </Text>
-          <AlertChannelForm control={control} type={channelType} />
+          <AlertChannelForm control={control} channelsName="channels" />
           <AlertNoteField control={control} name="note" />
           {groupBy &&
             (thresholdType === AlertThresholdType.BELOW ||
@@ -588,7 +612,7 @@ export const DBSearchPageAlertModal = ({
             {(savedSearch?.alerts || []).map((alert, index) => (
               <Tabs.Tab key={alert.id} value={`${index}`}>
                 <Group gap="xs">
-                  {getWebhookChannelIcon(alert.channel.type)}
+                  {getWebhookChannelIcon(alert.channel?.type)}
                   Alert {index + 1}
                   <AlertStatusIcon alerts={[alert]} />
                 </Group>
@@ -606,6 +630,15 @@ export const DBSearchPageAlertModal = ({
         <AlertForm
           key={activeIndex}
           hasSavedSearch={!!savedSearch}
+          savedSearchName={savedSearch?.name}
+          prefill={
+            savedSearch
+              ? {
+                  displayName: clampAlertDisplayName(savedSearch.name),
+                  tags: clampAlertTags(savedSearch.tags),
+                }
+              : undefined
+          }
           sourceId={searchedConfig?.source}
           where={searchedConfig?.where}
           whereLanguage={searchedConfig?.whereLanguage}

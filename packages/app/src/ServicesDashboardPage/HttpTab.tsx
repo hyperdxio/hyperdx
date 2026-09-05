@@ -19,7 +19,7 @@ import {
   INTEGER_NUMBER_FORMAT,
   MS_NUMBER_FORMAT,
 } from '@/ChartUtils';
-import { ChartBox } from '@/components/ChartBox';
+import { ChartCard } from '@/components/charts/ChartCard';
 import DisplaySwitcher from '@/components/charts/DisplaySwitcher';
 import DBHistogramChart from '@/components/DBHistogramChart';
 import DBListBarChart from '@/components/DBListBarChart';
@@ -73,7 +73,7 @@ export function EndpointLatencyChart({
   );
 
   return (
-    <ChartBox style={{ height: 350 }}>
+    <ChartCard style={{ height: 350 }}>
       {source &&
         expressions &&
         (latencyChartType === 'line' ? (
@@ -172,7 +172,7 @@ export function EndpointLatencyChart({
             }}
           />
         ))}
-    </ChartBox>
+    </ChartCard>
   );
 }
 
@@ -396,7 +396,7 @@ function HttpTab({
   return (
     <Grid mt="md" grow={false} w="100%" maw="100%">
       <Grid.Col span={6}>
-        <ChartBox
+        <ChartCard
           style={{ height: 350 }}
           data-testid="services-request-error-rate-chart"
         >
@@ -423,10 +423,10 @@ function HttpTab({
               disableDrillDown
             />
           )}
-        </ChartBox>
+        </ChartCard>
       </Grid.Col>
       <Grid.Col span={6}>
-        <ChartBox
+        <ChartCard
           style={{ height: 350 }}
           data-testid="services-request-throughput-chart"
         >
@@ -456,10 +456,10 @@ function HttpTab({
               }}
             />
           )}
-        </ChartBox>
+        </ChartCard>
       </Grid.Col>
       <Grid.Col span={6}>
-        <ChartBox style={{ height: 350, overflow: 'auto' }}>
+        <ChartCard style={{ height: 350, overflow: 'auto' }}>
           {source && expressions && (
             <DBListBarChart
               title="Top 20 Most Time Consuming Endpoints"
@@ -555,7 +555,7 @@ function HttpTab({
               }}
             />
           )}
-        </ChartBox>
+        </ChartCard>
       </Grid.Col>
       <Grid.Col span={6}>
         {source && isTraceSource(source) && (
@@ -567,7 +567,7 @@ function HttpTab({
         )}
       </Grid.Col>
       <Grid.Col span={12}>
-        <ChartBox
+        <ChartCard
           style={{ height: 350 }}
           data-testid="services-top-endpoints-table"
         >
@@ -690,7 +690,7 @@ function HttpTab({
               }}
             />
           )}
-        </ChartBox>
+        </ChartCard>
       </Grid.Col>
     </Grid>
   );

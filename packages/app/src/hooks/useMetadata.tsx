@@ -8,9 +8,14 @@ import {
 } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   Field,
+  MetricNames,
   TableConnection,
   TableMetadata,
 } from '@hyperdx/common-utils/dist/core/metadata';
+import {
+  FilterState,
+  serializeFilterState,
+} from '@hyperdx/common-utils/dist/filters';
 import {
   BuilderChartConfigWithDateRange,
   isLogSource,
@@ -38,7 +43,7 @@ export type Facet = { key: string; value: string[] };
 export function useMetadataWithSettings() {
   const [metadata, setMetadata] = useState(getMetadata());
   const { data: me } = api.useMe();
-  const settingsApplied = useRef(false);
+  const settingsAppliedRef = useRef(false);
   const queryClient = useQueryClient();
 
   // Create a listener that triggers when connections are updated in local mode
@@ -52,7 +57,7 @@ export function useMetadataWithSettings() {
         // Create a new metadata instance with a new ClickHouse client,
         // since the existing one will not have connection / auth info.
         setMetadata(getMetadata());
-        settingsApplied.current = false;
+        settingsAppliedRef.current = false;
         // Clear react-query cache so that metadata is refetched with
         // the new connection info, and error states are cleared.
         queryClient.resetQueries();
@@ -66,11 +71,11 @@ export function useMetadataWithSettings() {
   }, [queryClient]);
 
   useEffect(() => {
-    if (me?.team?.metadataMaxRowsToRead && !settingsApplied.current) {
+    if (me?.team?.metadataMaxRowsToRead && !settingsAppliedRef.current) {
       metadata.setClickHouseSettings({
         max_rows_to_read: String(me.team.metadataMaxRowsToRead),
       });
-      settingsApplied.current = true;
+      settingsAppliedRef.current = true;
     }
   }, [me?.team?.metadataMaxRowsToRead, metadata]);
 
@@ -233,8 +238,13 @@ export function useMultipleAllFields(
 ) {
   const metadata = useMetadataWithSettings();
   const { data: me, isFetched } = api.useMe();
-  const { dateRange, timestampValueExpression, intersect, ...queryOptions } =
-    options ?? {};
+  const {
+    dateRange,
+    timestampValueExpression,
+    intersect,
+    enabled: enabledOption = true,
+    ...queryOptions
+  } = options ?? {};
   return useQuery<Field[]>({
     queryKey: [
       'useMetadata.useMultipleAllFields',
@@ -273,13 +283,14 @@ export function useMultipleAllFields(
         ? intersect2dArray<Field>(fields2d)
         : deduplicate2dArray<Field>(fields2d);
     },
+    ...queryOptions,
     enabled:
+      enabledOption &&
       tableConnections.length > 0 &&
       tableConnections.every(
         tc => !!tc.databaseName && !!tc.tableName && !!tc.connectionId,
       ) &&
       isFetched,
-    ...queryOptions,
   });
 }
 
@@ -331,6 +342,7 @@ export function useMultipleGetKeyValues(
   {
     chartConfigs,
     keys,
+    keyConditions,
     limit,
     disableRowLimit,
     mode = 'exact',
@@ -340,6 +352,8 @@ export function useMultipleGetKeyValues(
       | BuilderChartConfigWithDateRange
       | BuilderChartConfigWithDateRange[];
     keys: string[];
+    /** Per-key constraints for faceted ('exact' mode) value lookups. */
+    keyConditions?: (FilterState | undefined)[];
     limit?: number;
     disableRowLimit?: boolean;
     mode?: 'all' | 'exact';
@@ -365,6 +379,9 @@ export function useMultipleGetKeyValues(
       metadataMVsOverride,
       ...chartConfigsArr.map(cc => ({ ...cc })),
       ...keys,
+      // Serialized: react-query hashes keys with JSON.stringify, which would
+      // flatten every distinct Set selection to `{}`.
+      keyConditions?.map(c => c && serializeFilterState(c)),
       disableRowLimit,
       maxKeys,
     ],
@@ -392,6 +409,7 @@ export function useMultipleGetKeyValues(
           databaseName,
           tableName,
           keyExpressions: keys.slice(0, maxKeys),
+          maxValuesPerKey: 20,
           connectionId,
           metadataMVs,
           dateRange,
@@ -410,6 +428,7 @@ export function useMultipleGetKeyValues(
             return metadata.getKeyValuesWithMVs({
               chartConfig,
               keys: keys.slice(0, maxKeys),
+              keyConditions: keyConditions?.slice(0, maxKeys),
               limit,
               disableRowLimit,
               source,
@@ -470,6 +489,7 @@ export function useGetKeyValues(
   {
     chartConfig,
     keys,
+    keyConditions,
     limit,
     disableRowLimit,
     mode,
@@ -477,6 +497,8 @@ export function useGetKeyValues(
   }: {
     chartConfig?: BuilderChartConfigWithDateRange;
     keys: string[];
+    /** Per-key constraints for faceted value lookups (groupUniqArrayIf). */
+    keyConditions?: (FilterState | undefined)[];
     limit?: number;
     disableRowLimit?: boolean;
     mode?: 'all' | 'exact';
@@ -488,6 +510,7 @@ export function useGetKeyValues(
     {
       chartConfigs: chartConfig ? [chartConfig] : [],
       keys,
+      keyConditions,
       limit,
       disableRowLimit,
       mode,
@@ -498,71 +521,69 @@ export function useGetKeyValues(
 }
 
 /**
- * Combined key + value discovery in a single rollup query.
- * Returns all fields and their top N values without needing a separate
- * useAllFields + useGetKeyValues chain.
+ * List metric names for one metrics table, ordered and matched server-side.
+ *
+ * Prefer this over `useGetKeyValues({ keys: ['MetricName'] })`, which samples an
+ * arbitrary subset via `groupUniqArray` and can silently omit metrics on
+ * high-cardinality sources.
  */
-export function useAllFieldsAndValues(
+export function useGetMetricNames(
   {
     databaseName,
     tableName,
     connectionId,
-    metadataMVs,
     dateRange,
-    maxValuesPerKey,
-    maxKeys,
+    timestampValueExpression,
+    namePattern,
   }: {
     databaseName: string;
     tableName: string;
     connectionId: string;
-    metadataMVs?: MetadataMaterializedViews;
-    dateRange?: [Date, Date];
-    maxValuesPerKey?: number;
-    maxKeys?: number;
+    dateRange: [Date, Date];
+    timestampValueExpression: string;
+    namePattern?: string;
   },
-  options?: Omit<UseQueryOptions<any, Error>, 'queryKey'>,
+  options?: Partial<UseQueryOptions<MetricNames>>,
 ) {
   const metadata = useMetadataWithSettings();
-  const { data: me } = api.useMe();
-  const { enabled = true } = options || {};
-  const fieldMetadataDisabled = !!me?.team?.fieldMetadataDisabled;
-
-  return useQuery<Facet[]>({
+  return useQuery<MetricNames>({
     queryKey: [
-      'useMetadata.useAllFieldsAndValues',
-      databaseName,
-      tableName,
-      connectionId,
-      metadataMVs,
-      dateRange?.[0]?.getTime(),
-      dateRange?.[1]?.getTime(),
-      maxValuesPerKey,
-      maxKeys,
-    ],
-    queryFn: async ({ signal }) => {
-      if (fieldMetadataDisabled) {
-        return [];
-      }
-      return metadata.getAllFieldsAndValues({
+      'useMetadata.useGetMetricNames',
+      {
         databaseName,
         tableName,
         connectionId,
-        metadataMVs,
         dateRange,
-        maxValuesPerKey,
-        maxKeys,
+        timestampValueExpression,
+        namePattern,
+      },
+    ],
+    queryFn: async ({ signal }) =>
+      metadata.getMetricNames({
+        databaseName,
+        tableName,
+        connectionId,
+        dateRange,
+        timestampValueExpression,
+        namePattern,
         signal,
-      });
-    },
-    staleTime: 1000 * 60 * 5,
-    placeholderData: keepPreviousData,
-    ...options,
+      }),
+    // An empty table name means the source has no table for this metric kind.
     enabled:
-      !!enabled &&
-      !fieldMetadataDisabled &&
       !!databaseName &&
       !!tableName &&
-      !!connectionId,
+      !!connectionId &&
+      !!timestampValueExpression,
+    placeholderData: keepPreviousData,
+    // Four of these run per debounced keystroke, each an unbounded aggregation
+    // capped only by execution time. Retrying would turn one slow pattern into
+    // sixteen such scans, and refetching on focus would re-run them all — the
+    // replaced MetadataCache path served repeats from memory, so without these
+    // this would be busier than what it replaced.
+    retry: false,
+    staleTime: 1000 * 60 * 5,
+    refetchOnWindowFocus: false,
+    ...options,
   });
 }
 

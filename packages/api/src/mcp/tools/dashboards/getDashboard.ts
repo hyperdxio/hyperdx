@@ -8,6 +8,8 @@ import { mcpUserError, validateObjectId } from '@/mcp/utils/errors';
 import Dashboard from '@/models/dashboard';
 import { convertToExternalDashboard } from '@/routers/external-api/v2/utils/dashboards';
 
+import { withResolvedFilterVariableNames } from './variables';
+
 export function registerGetDashboard({
   context,
   registerTool,
@@ -19,6 +21,7 @@ export function registerGetDashboard({
     'clickstack_get_dashboard',
     {
       title: 'Get Dashboard(s)',
+      annotations: { readOnlyHint: true },
       description:
         'Without an ID: list all dashboards (returns IDs, names, tags). ' +
         'With an ID: get full dashboard detail including all tiles and configuration.',
@@ -56,13 +59,17 @@ export function registerGetDashboard({
       if (!dashboard) {
         return mcpUserError('Dashboard not found');
       }
+      const externalDashboard = convertToExternalDashboard(dashboard);
       return {
         content: [
           {
             type: 'text' as const,
             text: JSON.stringify(
               {
-                ...convertToExternalDashboard(dashboard),
+                ...externalDashboard,
+                filters: withResolvedFilterVariableNames(
+                  externalDashboard.filters ?? [],
+                ),
                 ...(frontendUrl
                   ? { url: `${frontendUrl}/dashboards/${dashboard._id}` }
                   : {}),

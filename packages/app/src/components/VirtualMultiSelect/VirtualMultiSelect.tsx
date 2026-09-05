@@ -21,7 +21,11 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 type VirtualMultiSelectProps = {
   data: string[];
   disabled?: boolean;
+  /** Show a "Loading…" empty state while values are being fetched. */
+  loading?: boolean;
   placeholder?: string;
+  /** Whether to sort options before rendering. True by default */
+  sort?: boolean;
   values: string[];
   onChange: (values: string[]) => void;
   'data-testid'?: string;
@@ -30,7 +34,9 @@ type VirtualMultiSelectProps = {
 export function VirtualMultiSelect({
   data,
   disabled,
+  loading,
   placeholder,
+  sort = true,
   values,
   onChange,
   'data-testid': dataTestId,
@@ -40,8 +46,8 @@ export function VirtualMultiSelect({
   const [search, setSearch] = useState('');
 
   const sorted = useMemo(() => {
-    return data.toSorted((a, b) => a.localeCompare(b));
-  }, [data]);
+    return sort ? data.toSorted((a, b) => a.localeCompare(b)) : data;
+  }, [data, sort]);
 
   const options = useMemo(() => {
     const searchLowerCase = search.trim().toLowerCase();
@@ -66,10 +72,12 @@ export function VirtualMultiSelect({
     },
   });
 
-  const handleSelectValue = (val: string) =>
+  const handleSelectValue = (val: string) => {
     onChange(
       values.includes(val) ? values.filter(v => v !== val) : [...values, val],
     );
+    setSearch('');
+  };
 
   const handleRemoveValue = (val: string) =>
     onChange(values.filter(v => v !== val));
@@ -215,7 +223,9 @@ export function VirtualMultiSelect({
               </div>
             </ScrollArea.Autosize>
           ) : (
-            <Combobox.Empty>Nothing found...</Combobox.Empty>
+            <Combobox.Empty>
+              {loading ? 'Loading…' : 'Nothing found...'}
+            </Combobox.Empty>
           )}
         </Combobox.Options>
       </Combobox.Dropdown>

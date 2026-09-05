@@ -35,6 +35,11 @@ process.on('unhandledRejection', (err: any) => {
   logger.error({ err: serializeError(err) }, 'Unhandled rejection');
 });
 
-server
-  .start()
-  .catch(e => logger.error({ err: serializeError(e) }, 'Server start failed'));
+server.start().catch(e => {
+  // start() only rejects on non-retryable failures (e.g. MONGO_URI unset) —
+  // transient MongoDB connection errors are retried internally. Exit so the
+  // orchestrator restarts us instead of lingering as a zombie that listens
+  // but can never serve (https://github.com/hyperdxio/hyperdx/issues/2966).
+  logger.error({ err: serializeError(e) }, 'Server start failed, exiting');
+  process.exit(1);
+});

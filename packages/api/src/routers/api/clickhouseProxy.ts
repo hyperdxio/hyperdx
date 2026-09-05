@@ -272,7 +272,7 @@ const proxyMiddleware: RequestHandler =
 
         try {
           proxyReq.write(body);
-        } catch (e) {
+        } catch {
           console.error(
             `clickhouseProxy error writing body, body is type ${typeof body}`,
           );

@@ -131,6 +131,18 @@ export default function TeamMembersSection() {
           },
           onError: e => {
             if (e instanceof HTTPError) {
+              // The delete is team-scoped, so an invite that is already gone
+              // comes back 404 with no body. From the user's side that is a
+              // no-op, not something worth the contact-support message.
+              if (e.response.status === 404) {
+                notifications.show({
+                  color: 'yellow',
+                  message: 'That invite has already been removed',
+                  autoClose: 5000,
+                });
+                refetchInvitations();
+                return;
+              }
               e.response
                 .json()
                 .then(res => {

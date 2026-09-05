@@ -25,6 +25,7 @@ export function registerSaveSavedSearch({
     'clickstack_save_saved_search',
     {
       title: 'Create or Update Saved Search',
+      annotations: { destructiveHint: true },
       description:
         'Create a new saved search (omit id) or update an existing one (provide id). ' +
         'A saved search stores a reusable query against a data source. ' +

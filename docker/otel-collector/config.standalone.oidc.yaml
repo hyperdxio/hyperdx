@@ -1,0 +1,27 @@
+# This configuration enables OIDC-based bearer token authentication for the
+# OTLP receiver. Only included when OIDC_ISSUER_URL environment variable is set.
+#
+# Clients must present a JWT as a bearer token (Authorization: Bearer <token>).
+# The collector verifies the token's signature against the issuer's published
+# JWKS (fetched from {issuer_url}/.well-known/openid-configuration), and
+# validates the issuer and audience claims. This is intended for deployments
+# that want short-lived, centrally-issued tokens instead of (or in addition
+# to) a long-lived static token -- see config.standalone.auth.yaml.
+
+extensions:
+  oidc/hyperdx:
+    issuer_url: ${env:OIDC_ISSUER_URL}
+    audience: ${env:OIDC_AUDIENCE}
+
+receivers:
+  otlp/hyperdx:
+    protocols:
+      grpc:
+        auth:
+          authenticator: oidc/hyperdx
+      http:
+        auth:
+          authenticator: oidc/hyperdx
+
+service:
+  extensions: [health_check, oidc/hyperdx]

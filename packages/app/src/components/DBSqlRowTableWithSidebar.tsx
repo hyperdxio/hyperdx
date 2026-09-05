@@ -17,12 +17,13 @@ import { useLocalStorage } from '@/utils';
 import { parseAsStringEncoded } from '@/utils/queryParsers';
 
 import { ChartErrorStateVariant } from './charts/ChartErrorState';
-import { RowDataPanel } from './DBRowDataPanel';
+import { RowDataPanel, useRowData } from './DBRowDataPanel';
 import { RowOverviewPanel } from './DBRowOverviewPanel';
 import DBRowSidePanel, {
   RowSidePanelContext,
   RowSidePanelContextProps,
 } from './DBRowSidePanel';
+import { DBRowSidePanelErrorState } from './DBRowSidePanelErrorState';
 import { DBRowTableVariant, DBSqlRowTable } from './DBRowTable';
 
 interface Props {
@@ -46,7 +47,15 @@ interface Props {
   tableId?: string;
   errorVariant?: ChartErrorStateVariant;
   onResolvedColumnsChange?: (meta: ColumnMetaType[]) => void;
+  // Clicking outside the row side panel (and outside `keepOpenSelector`) closes
+  // it. Enabled by default; pass `false` to opt out.
+  closeOnClickOutside?: boolean;
+  keepOpenSelector?: string;
 }
+
+// Clicking the results table (selecting/switching rows, scrolling) keeps the
+// row side panel open by default; callers can widen this via `keepOpenSelector`.
+const DEFAULT_KEEP_OPEN_SELECTOR = '[data-testid="search-results-table"]';
 
 export default function DBSqlRowTableWithSideBar({
   sourceId,
@@ -67,6 +76,8 @@ export default function DBSqlRowTableWithSideBar({
   tableId,
   errorVariant,
   onResolvedColumnsChange,
+  closeOnClickOutside = true,
+  keepOpenSelector = DEFAULT_KEEP_OPEN_SELECTOR,
 }: Props) {
   const { data: sourceData } = useSource({ id: sourceId });
   const [rowId, setRowId] = useQueryState('rowWhere', parseAsStringEncoded);
@@ -104,13 +115,15 @@ export default function DBSqlRowTableWithSideBar({
   );
 
   return (
-    <RowSidePanelContext.Provider value={context ?? {}}>
+    <RowSidePanelContext value={context ?? {}}>
       {sourceData && (rowSource === sourceId || !rowSource) && (
         <DBRowSidePanel
           source={sourceData}
           rowId={rowId ?? undefined}
           aliasWith={aliasWith}
           onClose={onCloseSidebar}
+          closeOnClickOutside={closeOnClickOutside}
+          keepOpenSelector={keepOpenSelector}
         />
       )}
       <DBSqlRowTable
@@ -135,7 +148,7 @@ export default function DBSqlRowTableWithSideBar({
         errorVariant={errorVariant}
         onResolvedColumnsChange={onResolvedColumnsChange}
       />
-    </RowSidePanelContext.Provider>
+    </RowSidePanelContext>
   );
 }
 
@@ -158,6 +171,22 @@ function RowOverviewPanelWrapper({
     'hdx-expanded-row-default-tab',
     InlineTab.ColumnValues,
   );
+
+  // Surface the same error state the row side panel shows (e.g. `SELECT *`
+  // failures on Distributed/Merge tables) rather than silently rendering an
+  // empty expanded row. Both tabs load the same row data, so a failure here
+  // affects the whole expanded row.
+  const { isError, error } = useRowData({ source, rowId, aliasWith });
+
+  if (isError && error) {
+    return (
+      <div className="position-relative">
+        <div className="px-3 py-3">
+          <DBRowSidePanelErrorState error={error} source={source} />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="position-relative">

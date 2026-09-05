@@ -13,6 +13,7 @@ export function registerGetWebhook({
     'clickstack_get_webhook',
     {
       title: 'List Webhooks',
+      annotations: { readOnlyHint: true },
       description:
         'List available webhook destinations (id, name, service type). ' +
         'Use the returned id as the webhookId when creating alerts with ' +

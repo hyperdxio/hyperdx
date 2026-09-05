@@ -4,7 +4,7 @@ import type { Meta } from '@storybook/nextjs';
 import { TooltipItem } from './HDXMultiSeriesTimeChart';
 
 const meta: Meta = {
-  title: 'TooltipItem',
+  title: 'Components/TooltipItem',
   component: TooltipItem,
   parameters: {
     layout: 'centered',

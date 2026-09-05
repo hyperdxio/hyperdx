@@ -535,6 +535,37 @@ describe('useOffsetPaginatedQuery', () => {
   });
 
   describe('Data Flattening and Aggregation', () => {
+    it('should preserve all data rows if headers span multiple stream chunks', async () => {
+      const config = createMockChartConfig();
+
+      mockReader.read
+        .mockResolvedValueOnce({
+          done: false,
+          value: [{ json: () => ['timestamp', 'message'] }],
+        })
+        .mockResolvedValueOnce({
+          done: false,
+          value: [
+            { json: () => ['DateTime', 'String'] },
+            { json: () => ['2024-01-01T01:00:00Z', 'first log'] },
+            { json: () => ['2024-01-01T02:00:00Z', 'second log'] },
+          ],
+        })
+        .mockResolvedValueOnce({ done: true });
+
+      const { result } = renderHook(() => useOffsetPaginatedQuery(config), {
+        wrapper,
+      });
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      expect(result.current.data?.data).toHaveLength(2);
+      expect(result.current.data?.data).toEqual([
+        { timestamp: '2024-01-01T01:00:00Z', message: 'first log' },
+        { timestamp: '2024-01-01T02:00:00Z', message: 'second log' },
+      ]);
+    });
+
     it('should flatten data from multiple windows correctly', async () => {
       const config = createMockChartConfig({
         dateRange: [

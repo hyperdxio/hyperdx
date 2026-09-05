@@ -48,6 +48,7 @@
       "parentSpanIdExpression": "ParentSpanId",
       "spanKindExpression": "SpanKind",
       "spanNameExpression": "SpanName",
+      "spanLinksValueExpression": "Links",
       "logSourceId": "E2E Logs",
       "statusCodeExpression": "StatusCode",
       "statusMessageExpression": "StatusMessage",
@@ -184,6 +185,23 @@
       "displayedTimestampValueExpression": "Timestamp"
     },
     {
+      "id": "E2E Custom Service Logs",
+      "kind": "log",
+      "name": "E2E Custom Service Logs",
+      "connection": "local",
+      "from": {
+        "databaseName": "default",
+        "tableName": "e2e_custom_service_name"
+      },
+      "timestampValueExpression": "Timestamp",
+      "defaultTableSelectExpression": "Timestamp, AppName as service, SeverityText as level, Body",
+      "serviceNameExpression": "AppName",
+      "severityTextExpression": "SeverityText",
+      "eventAttributesExpression": "LogAttributes",
+      "implicitColumnExpression": "Body",
+      "displayedTimestampValueExpression": "Timestamp"
+    },
+    {
       "id": "E2E Interesting Filter Keys",
       "kind": "log",
       "name": "E2E Interesting Filter Keys",
@@ -226,6 +244,37 @@
         "kvRollupTable": "e2e_otel_logs_kv_rollup_15m",
         "granularity": "15 minute"
       }
+    },
+    {
+      "id": "E2E Distributed Missing Column",
+      "kind": "log",
+      "name": "E2E Distributed Missing Column",
+      "connection": "local",
+      "from": {
+        "databaseName": "default",
+        "tableName": "e2e_otel_logs_distributed"
+      },
+      "timestampValueExpression": "Timestamp",
+      "defaultTableSelectExpression": "Timestamp, ServiceName, SeverityText, Body",
+      "serviceNameExpression": "ServiceName",
+      "severityTextExpression": "SeverityText",
+      "eventAttributesExpression": "LogAttributes",
+      "resourceAttributesExpression": "ResourceAttributes",
+      "traceIdExpression": "TraceId",
+      "spanIdExpression": "SpanId",
+      "implicitColumnExpression": "Body",
+      "displayedTimestampValueExpression": "Timestamp"
+    },
+    {
+      "id": "E2E PromQL",
+      "kind": "promql",
+      "name": "E2E PromQL",
+      "connection": "local",
+      "from": {
+        "databaseName": "default",
+        "tableName": "e2e_promql"
+      },
+      "timestampValueExpression": "timestamp"
     }
   ]
 }

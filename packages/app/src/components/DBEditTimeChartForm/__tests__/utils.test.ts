@@ -14,6 +14,7 @@ import {
   computeDbTimeChartConfig,
   displayTypeToActiveTab,
   isQueryReady,
+  resolvePreviewVariables,
   seriesToFilters,
   TABS_WITH_GENERATED_SQL,
 } from '@/components/DBEditTimeChartForm/utils';
@@ -287,6 +288,54 @@ describe('computeDbTimeChartConfig', () => {
 });
 
 // ---------------------------------------------------------------------------
+// resolvePreviewVariables
+// ---------------------------------------------------------------------------
+
+describe('resolvePreviewVariables', () => {
+  const variables = [
+    { name: 'service', values: ['api'] },
+    { name: 'env', values: ['prod'] },
+  ];
+
+  const promqlConfig: ChartConfigWithDateRange = {
+    configType: 'promql',
+    promqlExpression: 'up{service=~"$service"}',
+    connection: 'local',
+    dateRange,
+  };
+
+  it('returns undefined when there are no variables in scope', () => {
+    expect(
+      resolvePreviewVariables({
+        config: promqlConfig,
+        variables: undefined,
+        hasAlert: false,
+      }),
+    ).toBeUndefined();
+  });
+
+  it('keeps the variables a PromQL expression references', () => {
+    expect(
+      resolvePreviewVariables({
+        config: promqlConfig,
+        variables,
+        hasAlert: false,
+      }),
+    ).toEqual([{ name: 'service', values: ['api'] }]);
+  });
+
+  it('drops the selections when the tile has an alert', () => {
+    expect(
+      resolvePreviewVariables({
+        config: promqlConfig,
+        variables,
+        hasAlert: true,
+      }),
+    ).toEqual([{ name: 'service', values: [] }]);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // buildSampleEventsConfig
 // ---------------------------------------------------------------------------
 
@@ -349,6 +398,122 @@ describe('buildSampleEventsConfig', () => {
 
     expect(result).not.toBeNull();
     expect(result!.select).toBe('');
+  });
+
+  // The agg conditions leave `select` for `filters`, which is never scanned for
+  // variables, so they have to be expanded on the way out.
+  describe('dashboard variables', () => {
+    const configWithAggCondition = (
+      aggCondition: string,
+      aggConditionLanguage: 'lucene' | 'sql',
+      values: string[],
+    ): ChartConfigWithDateRange =>
+      ({
+        ...builderConfig,
+        select: [
+          {
+            aggFn: 'count',
+            aggCondition,
+            aggConditionLanguage,
+            valueExpression: '',
+          },
+        ],
+        variables: [{ name: 'svc', expression: 'ServiceName', values }],
+      }) as ChartConfigWithDateRange;
+
+    it('expands a Lucene reference in an agg condition to the selected values', () => {
+      const result = buildSampleEventsConfig(
+        configWithAggCondition('ServiceName:${svc:lucene}', 'lucene', [
+          'accounting',
+        ]),
+        logSource,
+        dateRange,
+        true,
+      );
+
+      expect(result!.filters).toEqual([
+        { type: 'lucene', condition: 'ServiceName:("accounting")' },
+      ]);
+    });
+
+    it('expands a Lucene reference to its empty state when nothing is selected', () => {
+      const result = buildSampleEventsConfig(
+        configWithAggCondition('ServiceName:${svc:lucene}', 'lucene', []),
+        logSource,
+        dateRange,
+        true,
+      );
+
+      expect(result!.filters).toEqual([
+        { type: 'lucene', condition: 'ServiceName:("")' },
+      ]);
+    });
+
+    it('expands $__filter in a SQL agg condition to the selected values', () => {
+      const result = buildSampleEventsConfig(
+        configWithAggCondition('$__filter(ServiceName, $svc)', 'sql', [
+          'accounting',
+        ]),
+        logSource,
+        dateRange,
+        true,
+      );
+
+      expect(result!.filters).toEqual([
+        { type: 'sql', condition: "(ServiceName IN ('accounting'))" },
+      ]);
+    });
+
+    it('expands $__filter to its no-op form when nothing is selected', () => {
+      const result = buildSampleEventsConfig(
+        configWithAggCondition('$__filter(ServiceName, $svc)', 'sql', []),
+        logSource,
+        dateRange,
+        true,
+      );
+
+      expect(result!.filters).toEqual([
+        {
+          type: 'sql',
+          condition: "(1=1 /** no values selected for variable 'svc' */)",
+        },
+      ]);
+    });
+
+    it('expands the chart-level where and consumes the variables', () => {
+      const config = configWithAggCondition('', 'lucene', ['accounting']);
+      const result = buildSampleEventsConfig(
+        {
+          ...config,
+          where: 'ServiceName IN ($svc)',
+          whereLanguage: 'sql',
+        } as ChartConfigWithDateRange,
+        logSource,
+        dateRange,
+        true,
+      );
+
+      expect(result!.where).toBe("ServiceName IN ('accounting')");
+      // Cleared so the renderer doesn't substitute a second time
+      expect(result!.variables).toBeUndefined();
+    });
+
+    it('leaves the condition as written when a macro names an unknown variable', () => {
+      const build = () =>
+        buildSampleEventsConfig(
+          configWithAggCondition('$__filter(ServiceName, $nope)', 'sql', [
+            'accounting',
+          ]),
+          logSource,
+          dateRange,
+          true,
+        );
+
+      expect(build).not.toThrow();
+      expect(build()!.filters).toEqual([
+        { type: 'sql', condition: '$__filter(ServiceName, $nope)' },
+      ]);
+    });
   });
 });
 
@@ -427,7 +592,6 @@ describe('buildChartConfigForExplanations', () => {
     });
 
     expect(result).toBeDefined();
-    // @ts-expect-error union types..
     expect(result!.seriesLimit).toBe(3);
   });
 
@@ -442,7 +606,6 @@ describe('buildChartConfigForExplanations', () => {
     });
 
     expect(result).toBeDefined();
-    // @ts-expect-error union types..
     expect(result!.seriesLimit).toBeUndefined();
   });
 

@@ -102,6 +102,7 @@ export default function HeatmapSettingsDrawer({
             label="Value"
             error={form.formState.errors.value?.message}
             rules={{ required: true }}
+            enableVariables
           />
 
           <SQLInlineEditorControlled

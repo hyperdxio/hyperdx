@@ -120,6 +120,8 @@ export type SearchWhereInputProps = {
    */
   sourceId?: string;
   parentRef?: HTMLElement | null;
+  /** Whether the dashboard variables in scope apply to this expression. */
+  enableVariables?: boolean;
 } & TableConnectionChoice &
   UseControllerProps<any>;
 
@@ -168,6 +170,7 @@ export default function SearchWhereInput({
   languageName = `${name}Language`,
   sourceId,
   parentRef,
+  enableVariables = false,
 }: SearchWhereInputProps) {
   const [syntaxRefOpened, { open: openSyntaxRef, close: closeSyntaxRef }] =
     useDisclosure(false);
@@ -243,6 +246,7 @@ export default function SearchWhereInput({
               dateRange={dateRange}
               sourceId={sourceId}
               parentRef={parentRef}
+              enableVariables={enableVariables}
             />
           ) : (
             <SearchInputV2
@@ -258,6 +262,7 @@ export default function SearchWhereInput({
               additionalSuggestions={additionalSuggestions}
               dateRange={dateRange}
               sourceId={sourceId}
+              enableVariables={enableVariables}
             />
           )}
           {enableHotkey && (

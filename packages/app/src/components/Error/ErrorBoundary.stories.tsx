@@ -63,7 +63,6 @@ export const CustomMessage: Story = {
 
 /** Error caught showing the error details */
 export const ShowErrorMessage: Story = {
-  name: 'Show Error Message',
   render: () => (
     <ErrorBoundary showErrorMessage>
       <BuggyComponent shouldThrow />
@@ -73,7 +72,6 @@ export const ShowErrorMessage: Story = {
 
 /** Error caught with retry button */
 export const WithRetryButton: Story = {
-  name: 'With Retry Button',
   render: () => (
     <ErrorBoundary allowReset showErrorMessage>
       <BuggyComponent shouldThrow />

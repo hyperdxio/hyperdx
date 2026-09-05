@@ -2,6 +2,7 @@ import { createClient } from '@clickhouse/client';
 import { ClickHouseClient } from '@clickhouse/client';
 
 import { ClickhouseClient as HdxClickhouseClient } from '@/clickhouse/node';
+import { supportsMergeTreeTextIndex } from '@/core/clickhouseVersion';
 import { Metadata, MetadataCache } from '@/core/metadata';
 import {
   parseKvItemsCastExpression,
@@ -777,45 +778,71 @@ describe('Metadata Integration Tests', () => {
     });
   });
 
-  describe('getAllFieldsAndValues', () => {
-    let metadata: Metadata;
-    const kvRollupTableName = 'test_kv_rollup';
+  describe('getAllKeyValues (strategy routing)', () => {
+    // Exercises the four strategies `getAllKeyValues` routes to, against the
+    // production `default.otel_logs` schema (auto-created by the OTel
+    // Collector's migration on stack startup — see
+    // docker/otel-collector/schema/seed/00002_otel_logs.sql and
+    // 00006_otel_logs_rollups.sql). No custom tables or MVs are created here.
+    const connectionId = 'test_connection';
+    const tag = `getAllKeyValues-routing-${Date.now()}`;
 
-    const metadataMVs = {
-      keyRollupTable: 'test_key_rollup', // not used by this method
-      kvRollupTable: kvRollupTableName,
-      granularity: '1 minute',
+    // Anchor timestamps to now so they stay inside the otel_logs 1-day TTL.
+    // The 15-minute-bucketed MV rows for these inserts land in the bucket
+    // containing `testTime`, so the query dateRange below must cover it.
+    const testTime = new Date();
+    const dateRange: [Date, Date] = [
+      new Date(testTime.getTime() - 60 * 60 * 1000),
+      new Date(testTime.getTime() + 60 * 1000),
+    ];
+
+    const commonArgs = {
+      databaseName: 'default',
+      tableName: 'otel_logs',
+      connectionId,
+      dateRange,
+      timestampValueExpression: 'Timestamp',
+      metadataMVs: {
+        kvRollupTable: 'otel_logs_kv_rollup_15m',
+        granularity: '15 minute' as const,
+      },
     };
 
-    beforeAll(async () => {
-      // Create KV rollup table matching the schema getAllFieldsAndValues expects
-      await client.command({
-        query: `CREATE OR REPLACE TABLE default.${kvRollupTableName} (
-            Timestamp DateTime CODEC(Delta, ZSTD(1)),
-            ColumnIdentifier String CODEC(ZSTD(1)),
-            Key String CODEC(ZSTD(1)),
-            Value String CODEC(ZSTD(1)),
-            count UInt64
-          )
-          ENGINE = SummingMergeTree()
-          ORDER BY (Timestamp, ColumnIdentifier, Key, Value)
-        `,
-      });
+    // Values unique to this suite so `expect.arrayContaining` still passes
+    // when the shared table already holds other rows (dev stacks with live
+    // telemetry). The MV's default maxValuesPerKey=20 could otherwise drop
+    // our values if the target key already has >20 distinct entries.
+    const podNameA = `pod-a-${tag}`;
+    const podNameB = `pod-b-${tag}`;
+    const traceIdA = `trace-a-${tag}`;
+    const traceIdB = `trace-b-${tag}`;
+    const traceIdC = `trace-c-${tag}`;
+    const bodyA = `Body A ${tag}`;
+    const bodyB = `Body B ${tag}`;
+    const bodyC = `Body C ${tag}`;
+    const schemaUrlA = `https://example.test/${tag}/a`;
+    const schemaUrlB = `https://example.test/${tag}/b`;
+    const mapKey = `pod.name.${tag}`;
 
-      // Insert sample data: native columns + map sub-fields
+    let metadata: Metadata;
+    // `mergeTreeTextIndex(...)` — used by both getMapTextIndexKeyValues and
+    // getTextIndexKeyValues — was introduced in 26.3. Older servers skip
+    // those code paths entirely, which would make the routing assertions
+    // meaningless. Detect once and skip those two cases on older servers.
+    let textIndexSupported = false;
+
+    beforeAll(async () => {
+      const probe = new Metadata(hdxClient, new MetadataCache());
+      const version = await probe.getServerVersion({ connectionId });
+      textIndexSupported = supportsMergeTreeTextIndex(version);
+
+      const timestamp = testTime.toISOString().replace('T', ' ').slice(0, 23);
       await client.command({
-        query: `INSERT INTO default.${kvRollupTableName}
-          (Timestamp, ColumnIdentifier, Key, Value, count) VALUES
-          ('2024-01-10 12:00:00', 'NativeColumn', 'SeverityText', 'info', 10),
-          ('2024-01-10 12:00:00', 'NativeColumn', 'SeverityText', 'error', 5),
-          ('2024-01-10 12:00:00', 'NativeColumn', 'SeverityText', 'warning', 2),
-          ('2024-01-10 12:00:00', 'NativeColumn', 'SeverityText', '', 1),
-          ('2024-01-10 12:00:00', 'NativeColumn', 'ServiceName', 'api', 8),
-          ('2024-01-10 12:00:00', 'NativeColumn', 'ServiceName', 'web', 6),
-          ('2024-01-10 12:00:00', 'ResourceAttributes', 'env', 'prod', 12),
-          ('2024-01-10 12:00:00', 'ResourceAttributes', 'env', 'staging', 3),
-          ('2024-01-10 12:00:00', 'ResourceAttributes', 'region', 'us-east', 7),
-          ('2024-01-10 12:00:00', 'ResourceAttributes', 'region', 'eu-west', 4)
+        query: `INSERT INTO default.otel_logs
+          (Timestamp, TraceId, ServiceName, SeverityText, Body, ResourceSchemaUrl, ResourceAttributes) VALUES
+          ('${timestamp}', '${traceIdA}', 'api', 'info',    '${bodyA}', '${schemaUrlA}', {'${mapKey}': '${podNameA}'}),
+          ('${timestamp}', '${traceIdB}', 'api', 'error',   '${bodyB}', '${schemaUrlA}', {'${mapKey}': '${podNameB}'}),
+          ('${timestamp}', '${traceIdC}', 'web', 'warning', '${bodyC}', '${schemaUrlB}', {'${mapKey}': '${podNameA}'})
         `,
       });
     });
@@ -824,137 +851,463 @@ describe('Metadata Integration Tests', () => {
       metadata = new Metadata(hdxClient, new MetadataCache());
     });
 
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    type StrategySpies = {
+      mapTextIndex: jest.SpyInstance;
+      textIndex: jest.SpyInstance;
+      mv: jest.SpyInstance;
+      raw: jest.SpyInstance;
+    };
+
+    const spyOnAllStrategies = (m: Metadata): StrategySpies => ({
+      mapTextIndex: jest.spyOn(m as any, 'getMapTextIndexKeyValues'),
+      textIndex: jest.spyOn(m as any, 'getTextIndexKeyValues'),
+      mv: jest.spyOn(m as any, 'getMetadataMVKeyValues'),
+      raw: jest.spyOn(m, 'getKeyValues'),
+    });
+
+    const expectOnlyCalled = (
+      spies: StrategySpies,
+      called: keyof StrategySpies,
+    ) => {
+      for (const [name, spy] of Object.entries(spies)) {
+        if (name === called) {
+          expect(spy).toHaveBeenCalledTimes(1);
+        } else {
+          expect(spy).not.toHaveBeenCalled();
+        }
+      }
+    };
+
+    it(`routes ResourceAttributes[<mapKey>] through getMapTextIndexKeyValues`, async () => {
+      if (!textIndexSupported) {
+        console.warn(
+          'Skipping: ClickHouse < 26.3 does not support mergeTreeTextIndex()',
+        );
+        return;
+      }
+      const spies = spyOnAllStrategies(metadata);
+
+      const result = await metadata.getAllKeyValues({
+        ...commonArgs,
+        keyExpressions: [`ResourceAttributes['${mapKey}']`],
+      });
+
+      expectOnlyCalled(spies, 'mapTextIndex');
+
+      const podNames = result.find(
+        r => r.key === `ResourceAttributes['${mapKey}']`,
+      );
+      expect(podNames).toBeDefined();
+      expect(podNames!.value).toEqual(
+        expect.arrayContaining([podNameA, podNameB]),
+      );
+    });
+
+    it('routes TraceId through getTextIndexKeyValues', async () => {
+      if (!textIndexSupported) {
+        console.warn(
+          'Skipping: ClickHouse < 26.3 does not support mergeTreeTextIndex()',
+        );
+        return;
+      }
+      const spies = spyOnAllStrategies(metadata);
+
+      const result = await metadata.getAllKeyValues({
+        ...commonArgs,
+        keyExpressions: ['TraceId'],
+      });
+
+      expectOnlyCalled(spies, 'textIndex');
+
+      const traceIds = result.find(r => r.key === 'TraceId');
+      expect(traceIds).toBeDefined();
+      expect(traceIds!.value).toEqual(
+        expect.arrayContaining([traceIdA, traceIdB, traceIdC]),
+      );
+    });
+
+    it('routes ResourceSchemaUrl through getMetadataMVKeyValues', async () => {
+      // ResourceSchemaUrl has no text index but appears as a NativeColumn
+      // in the otel_logs_attr_kv_rollup_15m_mv SELECT, so it should be
+      // routed through the MV.
+      const spies = spyOnAllStrategies(metadata);
+
+      const result = await metadata.getAllKeyValues({
+        ...commonArgs,
+        keyExpressions: ['ResourceSchemaUrl'],
+      });
+
+      expectOnlyCalled(spies, 'mv');
+
+      const schemas = result.find(r => r.key === 'ResourceSchemaUrl');
+      expect(schemas).toBeDefined();
+      expect(schemas!.value).toEqual(
+        expect.arrayContaining([schemaUrlA, schemaUrlB]),
+      );
+    });
+
+    it('routes Body through getKeyValues (raw table fallback)', async () => {
+      // The `idx_lower_body` skip index is on the expression `lower(Body)`,
+      // not the bare `Body` column, so getNativeArrayColumnTextIndexes will
+      // not match it. Body is also absent from the KV rollup MV SELECT.
+      // The only remaining route is the raw-table fallback via getKeyValues.
+      const spies = spyOnAllStrategies(metadata);
+
+      const result = await metadata.getAllKeyValues({
+        ...commonArgs,
+        keyExpressions: ['Body'],
+      });
+
+      expectOnlyCalled(spies, 'raw');
+
+      const bodies = result.find(r => r.key === 'Body');
+      expect(bodies).toBeDefined();
+      expect(bodies!.value).toEqual(
+        expect.arrayContaining([bodyA, bodyB, bodyC]),
+      );
+    });
+  });
+  // Coverage here was logs-only, which is how a metrics-specific truncation bug
+  // shipped repeatedly. Runs against a table shaped like the real OTel gauge
+  // table holding more distinct names than one page can return.
+  describe('getMetricNames', () => {
+    let metadata: Metadata;
+    const GENERATED = 1000;
+    // Most of these merely *contain* "up". The exact `up` gauge — Prometheus'
+    // scrape-health metric — sorts last alphabetically, so it is the one a
+    // name-ordered page cannot reach.
+    const NOISE = [
+      'backup_size_bytes',
+      'group_reads',
+      'mongodb_up',
+      'node_uptime_seconds',
+      'up',
+    ];
+
+    const baseArgs = {
+      databaseName: 'default',
+      tableName: 'test_metrics_gauge',
+      connectionId: 'test_connection',
+      dateRange: [new Date('2023-01-01'), new Date('2025-01-01')] as [
+        Date,
+        Date,
+      ],
+      timestampValueExpression: 'TimeUnix',
+    };
+
+    beforeAll(async () => {
+      await client.command({
+        query: `CREATE OR REPLACE TABLE default.test_metrics_gauge (
+            ServiceName LowCardinality(String),
+            MetricName String,
+            TimeUnix DateTime64(9),
+            Value Float64,
+            Attributes Map(LowCardinality(String), String)
+          )
+          ENGINE = MergeTree()
+          ORDER BY (ServiceName, MetricName, toStartOfHour(TimeUnix), cityHash64(Attributes), TimeUnix)
+        `,
+      });
+      await client.command({
+        query: `INSERT INTO default.test_metrics_gauge
+          SELECT 'svc', concat('metric_', leftPad(toString(number), 5, '0')),
+                 toDateTime64('2024-06-01 12:00:00', 9), 1, map()
+          FROM numbers(${GENERATED})`,
+      });
+      await client.command({
+        query: `INSERT INTO default.test_metrics_gauge
+          SELECT 'svc', arrayJoin([${NOISE.map(n => `'${n}'`).join(', ')}]),
+                 toDateTime64('2024-06-01 12:00:00', 9), 1, map()`,
+      });
+    });
+
     afterAll(async () => {
       await client.command({
-        query: `DROP TABLE IF EXISTS default.${kvRollupTableName}`,
+        query: 'DROP TABLE IF EXISTS default.test_metrics_gauge',
       });
     });
 
-    it('should return all keys and values from the KV rollup table', async () => {
-      const result = await metadata.getAllFieldsAndValues({
-        databaseName: 'default',
-        tableName: 'unused_base_table',
-        connectionId: 'test_connection',
-        metadataMVs,
-        dateRange: [new Date('2024-01-01'), new Date('2024-01-31')],
+    beforeEach(() => {
+      metadata = new Metadata(hdxClient, new MetadataCache());
+    });
+
+    it('reports truncation instead of silently dropping names', async () => {
+      const result = await metadata.getMetricNames({ ...baseArgs, limit: 100 });
+
+      expect(result.names).toHaveLength(100);
+      expect(result.truncated).toBe(true);
+    });
+
+    it('returns an alphabetically ordered page when browsing', async () => {
+      const result = await metadata.getMetricNames({ ...baseArgs, limit: 50 });
+
+      expect(result.names).toEqual([...result.names].sort());
+    });
+
+    // The reported failure mode: `up` is present and healthy, but a capped page
+    // cannot reach it, and the exact match must outrank the many names that
+    // merely contain it.
+    it('surfaces an exact match a capped page could not otherwise reach', async () => {
+      const browsing = await metadata.getMetricNames({
+        ...baseArgs,
+        limit: 100,
+      });
+      expect(browsing.names).not.toContain('up');
+
+      const searched = await metadata.getMetricNames({
+        ...baseArgs,
+        limit: 100,
+        namePattern: 'up',
       });
 
-      // Should have 4 keys: SeverityText, ServiceName, ResourceAttributes['env'], ResourceAttributes['region']
-      expect(result).toHaveLength(4);
+      expect(searched.names[0]).toBe('up');
+      expect(searched.names).toContain('mongodb_up');
+    });
 
-      // Native columns use bare key names
-      const severity = result.find(r => r.key === 'SeverityText');
-      expect(severity).toBeDefined();
-      expect(severity!.value).toEqual(
-        expect.arrayContaining(['info', 'error', 'warning']),
+    it('ranks prefix matches ahead of mid-string ones', async () => {
+      const result = await metadata.getMetricNames({
+        ...baseArgs,
+        namePattern: 'node_',
+      });
+
+      expect(result.names[0]).toBe('node_uptime_seconds');
+    });
+
+    it('ranks mid-string matches by how early the match occurs', async () => {
+      const result = await metadata.getMetricNames({
+        ...baseArgs,
+        namePattern: 'up',
+      });
+
+      expect(result.names).toEqual([
+        'up', // exact
+        'group_reads', // position 4
+        'backup_size_bytes', // position 5
+        'node_uptime_seconds', // position 6
+        'mongodb_up', // position 9
+      ]);
+    });
+
+    it('matches namePattern case-insensitively', async () => {
+      const result = await metadata.getMetricNames({
+        ...baseArgs,
+        namePattern: 'UP',
+      });
+
+      expect([...result.names].sort()).toEqual([...NOISE].sort());
+    });
+
+    // Escaping `_` must still leave it matching a literal underscore. Asserting
+    // only that wildcards stop matching would also pass if the pattern were
+    // over-escaped into matching nothing, which would break essentially every
+    // Prometheus search since those names are full of underscores.
+    it('still matches underscores after escaping them', async () => {
+      const result = await metadata.getMetricNames({
+        ...baseArgs,
+        namePattern: 'node_uptime',
+      });
+
+      expect(result.names).toEqual(['node_uptime_seconds']);
+    });
+
+    it('treats ILIKE wildcards in namePattern as literals', async () => {
+      const result = await metadata.getMetricNames({
+        ...baseArgs,
+        namePattern: 'metric%000',
+      });
+
+      expect(result.names).toEqual([]);
+    });
+
+    it('returns every name when the limit exceeds the distinct count', async () => {
+      const result = await metadata.getMetricNames({
+        ...baseArgs,
+        limit: GENERATED + NOISE.length + 10,
+      });
+
+      expect(result.truncated).toBe(false);
+      expect(result.names).toHaveLength(GENERATED + NOISE.length);
+      expect(result.names).toContain('up');
+    });
+
+    it('excludes names outside the date range', async () => {
+      const result = await metadata.getMetricNames({
+        ...baseArgs,
+        dateRange: [new Date('2020-01-01'), new Date('2020-12-31')],
+        namePattern: 'up',
+      });
+
+      expect(result.names).toEqual([]);
+    });
+  });
+
+  describe('getTimeSeriesTableColumns', () => {
+    const boundedTable = 'test_ts_bounded';
+    const unboundedTable = 'test_ts_unbounded';
+    let metadata: Metadata;
+
+    // The TimeSeries engine is experimental, so both the DDL and every read of
+    // an inner table need the setting — it cannot be attached to the CREATE's
+    // own SETTINGS clause, which only takes storage settings.
+    const timeSeriesCommand = (query: string) =>
+      client.command({
+        query,
+        clickhouse_settings: { allow_experimental_time_series_table: 1 },
+      });
+
+    beforeAll(async () => {
+      await timeSeriesCommand(`DROP TABLE IF EXISTS default.${boundedTable}`);
+      await timeSeriesCommand(`DROP TABLE IF EXISTS default.${unboundedTable}`);
+      await timeSeriesCommand(
+        `CREATE TABLE default.${boundedTable} ENGINE = TimeSeries`,
       );
-      // Empty values should be excluded
-      expect(severity!.value).not.toContain('');
-
-      const service = result.find(r => r.key === 'ServiceName');
-      expect(service).toBeDefined();
-      expect(service!.value).toEqual(expect.arrayContaining(['api', 'web']));
-
-      // Map sub-fields use bracket notation
-      const env = result.find(r => r.key === "ResourceAttributes['env']");
-      expect(env).toBeDefined();
-      expect(env!.value).toEqual(expect.arrayContaining(['prod', 'staging']));
-
-      const region = result.find(r => r.key === "ResourceAttributes['region']");
-      expect(region).toBeDefined();
-      expect(region!.value).toEqual(
-        expect.arrayContaining(['us-east', 'eu-west']),
+      await timeSeriesCommand(
+        `CREATE TABLE default.${unboundedTable} ENGINE = TimeSeries SETTINGS store_min_time_and_max_time = 0`,
       );
     });
 
-    it('should return native columns before map sub-fields', async () => {
-      const result = await metadata.getAllFieldsAndValues({
-        databaseName: 'default',
-        tableName: 'unused_base_table',
-        connectionId: 'test_connection',
-        metadataMVs,
-        dateRange: [new Date('2024-01-01'), new Date('2024-01-31')],
-      });
-
-      // NativeColumn rows are ordered first by the ORDER BY clause
-      const nativeKeys = result
-        .filter(r => !r.key.includes('['))
-        .map(r => r.key);
-      const mapKeys = result.filter(r => r.key.includes('[')).map(r => r.key);
-
-      // All native keys should come before map keys
-      const lastNativeIdx = Math.max(
-        ...nativeKeys.map(k => result.findIndex(r => r.key === k)),
-      );
-      const firstMapIdx = Math.min(
-        ...mapKeys.map(k => result.findIndex(r => r.key === k)),
-      );
-      expect(lastNativeIdx).toBeLessThan(firstMapIdx);
+    afterAll(async () => {
+      await timeSeriesCommand(`DROP TABLE IF EXISTS default.${boundedTable}`);
+      await timeSeriesCommand(`DROP TABLE IF EXISTS default.${unboundedTable}`);
     });
 
-    it('should respect maxKeys limit', async () => {
-      const result = await metadata.getAllFieldsAndValues({
-        databaseName: 'default',
-        tableName: 'unused_base_table',
-        connectionId: 'test_connection',
-        metadataMVs,
-        dateRange: [new Date('2024-01-01'), new Date('2024-01-31')],
-        maxKeys: 2,
-      });
-
-      expect(result).toHaveLength(2);
+    beforeEach(() => {
+      metadata = new Metadata(hdxClient, new MetadataCache());
     });
 
-    it('should respect maxValuesPerKey limit', async () => {
-      const result = await metadata.getAllFieldsAndValues({
-        databaseName: 'default',
-        tableName: 'unused_base_table',
+    it('describes the tags inner table, not the TimeSeries table itself', async () => {
+      const columns = await metadata.getTimeSeriesTableColumns({
         connectionId: 'test_connection',
-        metadataMVs,
-        dateRange: [new Date('2024-01-01'), new Date('2024-01-31')],
-        maxValuesPerKey: 1,
+        databaseName: 'default',
+        tableName: boundedTable,
+        innerTableType: 'Tags',
       });
 
-      // Each key should have at most 1 value
-      for (const entry of result) {
-        expect(entry.value.length).toBeLessThanOrEqual(1);
+      const byName = new Map(columns.map(c => [c.name, c]));
+      expect([...byName.keys()].sort()).toEqual([
+        'all_tags',
+        'id',
+        'max_time',
+        'metric_name',
+        'min_time',
+        'tags',
+      ]);
+      expect(byName.get('min_time')?.type).toBe(
+        'SimpleAggregateFunction(min, Nullable(DateTime64(3)))',
+      );
+      // Ephemeral, so it cannot be selected — the reason a caller has to
+      // inspect the columns rather than assume the documented shape.
+      expect(byName.get('all_tags')?.default_type).toBe('EPHEMERAL');
+    });
+
+    // What `store_min_time_and_max_time = 0` costs: the time-bound columns are
+    // simply absent, and referencing them is a hard ClickHouse error.
+    it('omits min_time/max_time when the table does not store them', async () => {
+      const columns = await metadata.getTimeSeriesTableColumns({
+        connectionId: 'test_connection',
+        databaseName: 'default',
+        tableName: unboundedTable,
+        innerTableType: 'Tags',
+      });
+
+      const names = columns.map(c => c.name);
+      expect(names).toEqual(
+        expect.arrayContaining(['metric_name', 'tags', 'id']),
+      );
+      expect(names).not.toContain('min_time');
+      expect(names).not.toContain('max_time');
+    });
+
+    it.each([
+      ['Metrics', ['metric_family_name', 'type', 'unit', 'help']],
+      ['Data', ['id', 'timestamp', 'value']],
+    ] as const)(
+      'describes the %s inner table',
+      async (innerTableType, expected) => {
+        const columns = await metadata.getTimeSeriesTableColumns({
+          connectionId: 'test_connection',
+          databaseName: 'default',
+          tableName: boundedTable,
+          innerTableType,
+        });
+
+        expect(columns.map(c => c.name)).toEqual(expected);
+      },
+    );
+
+    // Matching on the message, not just "it threw": an unbound {db:String}
+    // placeholder also throws, and would let both of these pass while the
+    // database and table never reached ClickHouse at all.
+    it('rejects when the table does not exist', async () => {
+      await expect(
+        metadata.getTimeSeriesTableColumns({
+          connectionId: 'test_connection',
+          databaseName: 'default',
+          tableName: 'test_ts_missing',
+          innerTableType: 'Tags',
+        }),
+      ).rejects.toThrow(/default\.test_ts_missing does not exist/);
+    });
+
+    it('rejects when the table is not a TimeSeries table', async () => {
+      await timeSeriesCommand(
+        `CREATE OR REPLACE TABLE default.test_ts_not_timeseries (ts DateTime) ENGINE = MergeTree ORDER BY ts`,
+      );
+      try {
+        await expect(
+          metadata.getTimeSeriesTableColumns({
+            connectionId: 'test_connection',
+            databaseName: 'default',
+            tableName: 'test_ts_not_timeseries',
+            innerTableType: 'Tags',
+          }),
+        ).rejects.toThrow(/TimeSeries table only/);
+      } finally {
+        await timeSeriesCommand(
+          'DROP TABLE IF EXISTS default.test_ts_not_timeseries',
+        );
       }
     });
 
-    it('should return empty array when metadataMVs is undefined', async () => {
-      const result = await metadata.getAllFieldsAndValues({
-        databaseName: 'default',
-        tableName: 'unused_base_table',
+    it('caches per database, table and inner table type', async () => {
+      const querySpy = jest.spyOn(hdxClient, 'query');
+
+      const first = await metadata.getTimeSeriesTableColumns({
         connectionId: 'test_connection',
-        metadataMVs: undefined,
-        dateRange: [new Date('2024-01-01'), new Date('2024-01-31')],
-      });
-
-      expect(result).toEqual([]);
-    });
-
-    it('should return empty array when dateRange is undefined', async () => {
-      const result = await metadata.getAllFieldsAndValues({
         databaseName: 'default',
-        tableName: 'unused_base_table',
-        connectionId: 'test_connection',
-        metadataMVs,
-        dateRange: undefined,
+        tableName: boundedTable,
+        innerTableType: 'Tags',
       });
-
-      expect(result).toEqual([]);
-    });
-
-    it('should return empty array when date range has no matching data', async () => {
-      const result = await metadata.getAllFieldsAndValues({
+      const second = await metadata.getTimeSeriesTableColumns({
+        connectionId: 'test_connection',
         databaseName: 'default',
-        tableName: 'unused_base_table',
-        connectionId: 'test_connection',
-        metadataMVs,
-        dateRange: [new Date('2025-06-01'), new Date('2025-06-30')],
+        tableName: boundedTable,
+        innerTableType: 'Tags',
       });
+      expect(second).toBe(first);
+      expect(querySpy).toHaveBeenCalledTimes(1);
 
-      expect(result).toEqual([]);
+      await metadata.getTimeSeriesTableColumns({
+        connectionId: 'test_connection',
+        databaseName: 'default',
+        tableName: unboundedTable,
+        innerTableType: 'Tags',
+      });
+      expect(querySpy).toHaveBeenCalledTimes(2);
+
+      await metadata.getTimeSeriesTableColumns({
+        connectionId: 'test_connection',
+        databaseName: 'default',
+        tableName: boundedTable,
+        innerTableType: 'Metrics',
+      });
+      expect(querySpy).toHaveBeenCalledTimes(3);
+
+      querySpy.mockRestore();
     });
   });
 });

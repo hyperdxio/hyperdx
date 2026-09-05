@@ -10,8 +10,10 @@ import {
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 
+import { prometheusApi } from '@/api';
 import { useClickhouseClient } from '@/clickhouse';
 import {
+  appendChunk,
   getGranularityAlignedTimeWindows,
   useQueriedChartConfig,
 } from '@/hooks/useChartConfig';
@@ -66,6 +68,16 @@ jest.mock('../useMVOptimizationExplanation', () => ({
     data: undefined,
     isLoading: false,
   }),
+}));
+
+// Mock prometheusApi for the PromQL query path, keeping the rest of the
+// module (useMetadata calls api.useMe at render time).
+jest.mock('@/api', () => ({
+  __esModule: true,
+  ...jest.requireActual('@/api'),
+  prometheusApi: {
+    queryRange: jest.fn(),
+  },
 }));
 
 // Create a mock ChartConfig
@@ -375,6 +387,72 @@ describe('useChartConfig', () => {
       } as unknown as jest.Mocked<ClickhouseClient>;
 
       jest.mocked(useClickhouseClient).mockReturnValue(mockClickhouseClient);
+    });
+
+    describe('promql configs', () => {
+      const createPromqlConfig = (
+        overrides: Partial<ChartConfigWithOptDateRange> = {},
+      ): ChartConfigWithOptDateRange =>
+        ({
+          configType: 'promql',
+          promqlExpression: 'e2e_service_up',
+          connection: 'foo',
+          dateRange: [
+            new Date('2023-01-10 00:00:00'),
+            new Date('2023-01-10 01:00:00'),
+          ],
+          ...overrides,
+        }) as ChartConfigWithOptDateRange;
+
+      const matrixResponse = {
+        status: 'success' as const,
+        data: {
+          resultType: 'matrix' as const,
+          result: [
+            {
+              metric: { __name__: 'e2e_service_up', service: 'accounting' },
+              values: [[1673308800, '1']] as [number, string][],
+            },
+            {
+              metric: { __name__: 'e2e_service_up', service: 'api-server' },
+              values: [[1673308800, '2']] as [number, string][],
+            },
+          ],
+        },
+      };
+
+      it('renders series names from the legend template', async () => {
+        jest.mocked(prometheusApi.queryRange).mockResolvedValue(matrixResponse);
+
+        const config = createPromqlConfig({
+          legendTemplate: 'svc:{{service}}',
+        });
+        const { result } = renderHook(() => useQueriedChartConfig(config), {
+          wrapper,
+        });
+
+        await waitFor(() => expect(result.current.isSuccess).toBe(true));
+        expect(
+          result.current.data?.data.map((r: any) => r.series_name),
+        ).toEqual(['svc:accounting', 'svc:api-server']);
+      });
+
+      it('uses the default label-set name without a legend template', async () => {
+        jest.mocked(prometheusApi.queryRange).mockResolvedValue(matrixResponse);
+
+        const { result } = renderHook(
+          () => useQueriedChartConfig(createPromqlConfig()),
+          { wrapper },
+        );
+
+        await waitFor(() => expect(result.current.isSuccess).toBe(true));
+        expect(
+          result.current.data?.data.map((r: any) => r.series_name),
+        ).toEqual([
+          'e2e_service_up{service="accounting"}',
+          'e2e_service_up{service="api-server"}',
+        ]);
+      });
     });
 
     it('fetches data without chunking when no dateRange is provided', async () => {
@@ -1522,6 +1600,44 @@ describe('useChartConfig', () => {
       expect(queryCall.config.from.tableName).toBe('metrics_rollup_1h');
 
       expect(result2.current.data?.data).toBeDefined();
+    });
+  });
+
+  describe('appendChunk', () => {
+    const empty = { data: [], meta: [], rows: 0, isComplete: false };
+
+    it('reuses the chunk array on the first/only chunk (no copy)', () => {
+      const chunkData = [{ a: 1 }, { a: 2 }];
+      const chunk = {
+        data: chunkData,
+        meta: [{ name: 'a', type: 'UInt64' }],
+        rows: 2,
+      };
+      const result = appendChunk(empty, { chunk, isComplete: true });
+      // Same array reference — the large-array spread copy is skipped.
+      expect(result.data).toBe(chunkData);
+      expect(result.rows).toBe(2);
+      expect(result.isComplete).toBe(true);
+      expect(result.meta).toBe(chunk.meta);
+    });
+
+    it('prepends the newer chunk ahead of accumulated rows on later chunks', () => {
+      const older = {
+        data: [{ a: 3 }],
+        meta: [{ name: 'a', type: 'UInt64' }],
+        rows: 1,
+        isComplete: false,
+      };
+      const chunk = {
+        data: [{ a: 1 }, { a: 2 }],
+        meta: [{ name: 'a', type: 'UInt64' }],
+        rows: 2,
+      };
+      const result = appendChunk(older, { chunk, isComplete: true });
+      // Newer chunk first, then accumulated (oldest-first ordering preserved).
+      expect(result.data).toEqual([{ a: 1 }, { a: 2 }, { a: 3 }]);
+      expect(result.data).not.toBe(chunk.data); // fresh array when merging
+      expect(result.rows).toBe(3);
     });
   });
 });

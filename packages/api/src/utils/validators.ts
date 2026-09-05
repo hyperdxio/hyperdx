@@ -1,5 +1,15 @@
+import { WebhookService } from '@hyperdx/common-utils/dist/types';
+import {
+  isValidSlackUrl,
+  PASSWORD_MAX_LENGTH,
+  PASSWORD_MIN_LENGTH,
+  PASSWORD_SPECIAL_CHARS,
+  passwordValidators,
+} from '@hyperdx/common-utils/dist/validation';
 import { Address4, Address6 } from 'ip-address';
 import { z } from 'zod';
+
+import * as config from '@/config';
 
 // Strips the surrounding brackets from IPv6 literals in URL hostnames (e.g. [::1] → ::1)
 export const IPV6_BRACKET_RE = /^\[|\]$/g;
@@ -60,18 +70,124 @@ export function isPrivateIp(ip: string): boolean {
   return false;
 }
 
+const normalizeWebhookHostname = (hostname: string): string =>
+  hostname.replace(IPV6_BRACKET_RE, '').replace(/\.+$/, '').toLowerCase();
+
+const WEBHOOK_HOSTNAME_ALLOWLIST = (config.WEBHOOK_HOSTNAME_ALLOWLIST ?? '')
+  .split(',')
+  .map(hostname => normalizeWebhookHostname(hostname.trim()))
+  .filter(Boolean);
+
+const isAllowlistedWebhookHostname = (hostname: string): boolean =>
+  WEBHOOK_HOSTNAME_ALLOWLIST.some(
+    allowedHostname =>
+      hostname === allowedHostname ||
+      (!Address4.isValid(allowedHostname) &&
+        !Address6.isValid(allowedHostname) &&
+        hostname.endsWith(`.${allowedHostname}`)),
+  );
+
+const getWebhookHostKey = (url: URL): string =>
+  `${normalizeWebhookHostname(url.hostname)}:${url.port}`;
+
+const BLOCKED_WEBHOOK_HOSTS = (() => {
+  const hosts = new Map<string, string>();
+  const configuredHosts = {
+    CLICKHOUSE_HOST: config.CLICKHOUSE_HOST,
+    MONGO_URI: config.MONGO_URI,
+  };
+
+  for (const [configKey, configuredUrl] of Object.entries(configuredHosts)) {
+    if (!configuredUrl) continue;
+    try {
+      hosts.set(getWebhookHostKey(new URL(configuredUrl)), configKey);
+    } catch {
+      // Invalid service configuration is handled by the service that owns it.
+    }
+  }
+
+  return hosts;
+})();
+
+export class WebhookUrlValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'WebhookUrlValidationError';
+  }
+}
+
+type WebhookUrlInput = {
+  service: WebhookService;
+  url?: string;
+};
+
+export function validateWebhookUrl(
+  webhook: WebhookUrlInput,
+): asserts webhook is WebhookUrlInput & { url: string } {
+  if (!webhook.url) {
+    throw new WebhookUrlValidationError('Webhook URL is not set');
+  }
+
+  let url: URL;
+  try {
+    url = new URL(webhook.url);
+  } catch {
+    throw new WebhookUrlValidationError('Webhook URL is invalid');
+  }
+
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new WebhookUrlValidationError('Webhook URL must use HTTP or HTTPS');
+  }
+
+  if (
+    webhook.service === WebhookService.Slack &&
+    !isValidSlackUrl(webhook.url)
+  ) {
+    throw new WebhookUrlValidationError(
+      `Slack Webhook URL ${webhook.url} does not have hostname that ends in 'slack.com'`,
+    );
+  }
+
+  if (BLOCKED_WEBHOOK_HOSTS.has(getWebhookHostKey(url))) {
+    throw new WebhookUrlValidationError(
+      `Webhook attempting to query disallowed route.`,
+    );
+  }
+
+  const hostname = normalizeWebhookHostname(url.hostname);
+  const isLocalhost =
+    hostname === 'localhost' || hostname.endsWith('.localhost');
+  const isAllowlistedHostname = isAllowlistedWebhookHostname(hostname);
+  if (!isAllowlistedHostname && (isLocalhost || isPrivateIp(hostname))) {
+    throw new WebhookUrlValidationError(
+      `Webhook URL resolves to a private or reserved address.`,
+    );
+  }
+}
+
 export const passwordSchema = z
   .string()
-  .min(12, 'Password must have at least 12 characters')
-  .max(72, 'Password must be at most 72 characters')
+  .min(
+    PASSWORD_MIN_LENGTH,
+    `Password must have at least ${PASSWORD_MIN_LENGTH} characters`,
+  )
+  .max(
+    PASSWORD_MAX_LENGTH,
+    `Password must be at most ${PASSWORD_MAX_LENGTH} characters`,
+  )
   .refine(
-    pass => /[a-z]/.test(pass) && /[A-Z]/.test(pass),
+    pass =>
+      passwordValidators.hasLowerCase(pass) &&
+      passwordValidators.hasUpperCase(pass),
     'Password must include both lower and upper case characters',
   )
-  .refine(pass => /\d/.test(pass), 'Password must include at least one number')
   .refine(
-    pass => /[!@#$%^&*(),.?":{}|<>;\-+=]/.test(pass),
-    'Password must include at least one special character',
+    pass => passwordValidators.hasNumber(pass),
+    'Password must include at least one number',
+  )
+  .refine(
+    pass => passwordValidators.hasSpecialChar(pass),
+    `Password must include at least one special character (${PASSWORD_SPECIAL_CHARS})`,
   );
 
 export const validatePassword = (password: string) => {

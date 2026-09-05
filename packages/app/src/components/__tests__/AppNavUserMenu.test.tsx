@@ -8,9 +8,9 @@ import {
 
 const renderAppNavUserMenu = (userName?: string) => {
   return renderWithMantine(
-    <AppNavContext.Provider value={{ isCollapsed: false, pathname: '/' }}>
+    <AppNavContext value={{ isCollapsed: false, pathname: '/' }}>
       <AppNavUserMenu userName={userName} teamName="HyperDX" />
-    </AppNavContext.Provider>,
+    </AppNavContext>,
   );
 };
 

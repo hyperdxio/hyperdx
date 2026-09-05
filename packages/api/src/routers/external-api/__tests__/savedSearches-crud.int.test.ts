@@ -149,7 +149,7 @@ describe('External API v2 Saved Searches CRUD', () => {
     });
 
     it('should reject a missing name', async () => {
-      const { name, ...rest } = savedSearchBody();
+      const { name: _name, ...rest } = savedSearchBody();
       await authRequest('post', BASE_URL).send(rest).expect(400);
     });
 

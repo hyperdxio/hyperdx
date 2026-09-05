@@ -4,15 +4,18 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 
 import * as config from '@/config';
 import {
+  bucketExponentialHistogramObservations,
   bulkInsertLogs,
   bulkInsertMetricsGauge,
   bulkInsertMetricsHistogram,
   bulkInsertMetricsSum,
   DEFAULT_DATABASE,
   DEFAULT_LOGS_TABLE,
+  DEFAULT_METRICS_TABLE,
   DEFAULT_TRACES_TABLE,
   getLoggedInAgent,
   getServer,
+  seedExponentialHistogramMetric,
 } from '@/fixtures';
 import { McpContext } from '@/mcp/tools/types';
 import Connection from '@/models/connection';
@@ -721,6 +724,36 @@ describe('MCP Query Tools', () => {
       expect(result.isError).toBe(true);
       expect(getFirstText(result)).toContain('Invalid');
     });
+
+    it.each([
+      '$__filter(ServiceName, $service)',
+      '$__conditionalAll(1=1, $svc)',
+    ])(
+      'rejects %s, which needs a dashboard to resolve against',
+      async macro => {
+        // Rejected up front rather than sent on: an unrecognized macro passes
+        // through as literal text, so ClickHouse would answer with an opaque
+        // syntax error pointing at a '$'.
+        const result = await callTool(client, 'clickstack_sql', {
+          connectionId: connection._id.toString(),
+          sql: `SELECT 1 AS value WHERE ${macro}`,
+        });
+
+        expect(result.isError).toBe(true);
+        expect(getFirstText(result)).toContain(
+          'only resolve for a tile on a dashboard',
+        );
+      },
+    );
+
+    it('still allows $__filters, which needs no variable context', async () => {
+      const result = await callTool(client, 'clickstack_sql', {
+        connectionId: connection._id.toString(),
+        sql: 'SELECT 1 AS value WHERE $__filters',
+      });
+
+      expect(result.isError).toBeFalsy();
+    });
   });
 
   // ─── ClickHouse query errors ──────────────────────────────────────────────────
@@ -986,6 +1019,8 @@ describe('MCP Query Tools', () => {
           [MetricsDataType.Gauge.toLowerCase()]: 'otel_metrics_gauge',
           [MetricsDataType.Sum.toLowerCase()]: 'otel_metrics_sum',
           [MetricsDataType.Histogram.toLowerCase()]: 'otel_metrics_histogram',
+          [MetricsDataType.ExponentialHistogram.toLowerCase()]:
+            DEFAULT_METRICS_TABLE.EXPONENTIAL_HISTOGRAM,
         },
         timestampValueExpression: 'TimeUnix',
         connection: connection._id,
@@ -1045,6 +1080,21 @@ describe('MCP Query Tools', () => {
           AggregationTemporality: 1,
         },
       ]);
+    };
+
+    const seedExponentialHistogram = async (now: Date) => {
+      await seedExponentialHistogramMetric({
+        metricName: 'http.server.request.duration.exponential',
+        aggregationTemporality: 1,
+        points: [
+          {
+            TimeUnix: now,
+            ResourceAttributes: { 'service.name': 'svc-a' },
+            ServiceName: 'svc-a',
+            ...bucketExponentialHistogramObservations([2, 4, 8]),
+          },
+        ],
+      });
     };
 
     it('runs clickstack_timeseries against a gauge metric source', async () => {
@@ -1128,6 +1178,52 @@ describe('MCP Query Tools', () => {
         startTime: new Date(now.getTime() - 60_000).toISOString(),
         endTime: new Date(now.getTime() + 60_000).toISOString(),
         granularity: '1 minute',
+      });
+
+      expect(result.isError).toBeFalsy();
+    });
+
+    it('runs clickstack_timeseries quantile against an exponential histogram metric source', async () => {
+      const metricSource = await createMetricSource();
+      const now = new Date();
+      await seedExponentialHistogram(now);
+
+      const result = await callTool(client, 'clickstack_timeseries', {
+        sourceId: metricSource._id.toString(),
+        select: [
+          {
+            aggFn: 'quantile',
+            level: 0.95,
+            metricType: 'exponential histogram',
+            metricName: 'http.server.request.duration.exponential',
+            alias: 'p95',
+          },
+        ],
+        startTime: new Date(now.getTime() - 60_000).toISOString(),
+        endTime: new Date(now.getTime() + 60_000).toISOString(),
+        granularity: '1 minute',
+      });
+
+      expect(result.isError).toBeFalsy();
+    });
+
+    it('runs clickstack_table count against an exponential histogram metric source', async () => {
+      const metricSource = await createMetricSource();
+      const now = new Date();
+      await seedExponentialHistogram(now);
+
+      const result = await callTool(client, 'clickstack_table', {
+        sourceId: metricSource._id.toString(),
+        select: [
+          {
+            aggFn: 'count',
+            metricType: 'exponential histogram',
+            metricName: 'http.server.request.duration.exponential',
+            alias: 'count',
+          },
+        ],
+        startTime: new Date(now.getTime() - 60_000).toISOString(),
+        endTime: new Date(now.getTime() + 60_000).toISOString(),
       });
 
       expect(result.isError).toBeFalsy();

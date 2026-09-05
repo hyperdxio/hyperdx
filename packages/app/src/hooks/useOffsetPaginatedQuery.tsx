@@ -265,7 +265,8 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
 
   const reader = stream.getReader();
 
-  const rows: Row<unknown[], 'JSONCompactEachRowWithNamesAndTypes'>[] = [];
+  const headerRows: Row<unknown[], 'JSONCompactEachRowWithNamesAndTypes'>[] =
+    [];
 
   if (isStreamingIncrementally) {
     queryClient.setQueryData<TData>(queryKey, (oldData): TData => {
@@ -300,14 +301,15 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
       return;
     }
 
-    // TODO: Simplify this logic for header handling and value buffering
-    rows.push(...value);
+    if (queryResultMeta.length === 0) {
+      headerRows.push(...value);
+    }
 
-    if (rows.length >= 2) {
+    if (queryResultMeta.length > 0 || headerRows.length >= 2) {
       let dataRows = value;
       if (queryResultMeta.length === 0) {
-        const names = rows[0].json<string[]>();
-        const values = rows[1].json<string[]>();
+        const names = headerRows[0].json<string[]>();
+        const values = headerRows[1].json<string[]>();
 
         if (names.length !== values.length) {
           throw new Error(
@@ -322,7 +324,8 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
           });
         }
 
-        dataRows = dataRows.slice(2);
+        dataRows = headerRows.slice(2);
+        headerRows.length = 0;
       }
 
       const rowObjs: Record<string, unknown>[] = [];

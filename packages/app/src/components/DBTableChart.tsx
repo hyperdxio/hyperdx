@@ -5,7 +5,11 @@ import {
   isPromqlChartConfig,
   isRawSqlChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
-import { ChartConfigWithOptTimestamp } from '@hyperdx/common-utils/dist/types';
+import {
+  ChartConfigWithOptTimestamp,
+  ChartPaletteToken,
+  ColorCondition,
+} from '@hyperdx/common-utils/dist/types';
 import { Text } from '@mantine/core';
 import { SortingState } from '@tanstack/react-table';
 
@@ -17,7 +21,11 @@ import { Table, TableVariant } from '@/HDXMultiSeriesTableChart';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import { useOnClickLinkBuilder } from '@/hooks/useOnClickLinkBuilder';
-import { useChartNumberFormats, useSource } from '@/source';
+import {
+  getBuilderValueColumnCount,
+  useChartNumberFormats,
+  useSource,
+} from '@/source';
 import { useIntersectionObserver } from '@/utils';
 
 import ChartContainer from './charts/ChartContainer';
@@ -127,6 +135,45 @@ export default function DBTableChart({
 
   const { formatByColumn } = useChartNumberFormats(queriedConfig, data?.meta);
 
+  // Per-column color config (static token + ordered conditional rules) for
+  // builder table tiles. Mirrors `formatByColumn`: each series in `select`
+  // maps by index to its result column (meta[i].name), so these maps key
+  // identically and the columns memo consumes them the same way. Color targets
+  // aggregation (series) columns only; group-by columns are not select items
+  // and never appear here. Ratio configs merge two series into one column, so
+  // per-column color is skipped (matching the numberFormat treatment). Metric
+  // formula configs with hidden operand series project no per-series columns
+  // at all (only formula columns, which carry no color config), so they're
+  // skipped too; with operands shown the positional mapping below still holds
+  // (formula columns come after the operands and simply get no color).
+  const { colorByColumn, rulesByColumn } = useMemo(() => {
+    const colorByColumn = new Map<string, ChartPaletteToken>();
+    const rulesByColumn = new Map<string, ColorCondition[]>();
+    const meta = data?.meta;
+    if (
+      !meta ||
+      !isBuilderChartConfig(queriedConfig) ||
+      !Array.isArray(queriedConfig.select) ||
+      isRatioChartConfig(queriedConfig.select, queriedConfig) ||
+      (queriedConfig.formulas?.length &&
+        queriedConfig.showOperandSeries === false)
+    ) {
+      return { colorByColumn, rulesByColumn };
+    }
+    for (let i = 0; i < queriedConfig.select.length; i++) {
+      const series = queriedConfig.select[i];
+      const key = meta[i]?.name;
+      if (key == null) continue;
+      if (series.color) {
+        colorByColumn.set(key, series.color);
+      }
+      if (series.colorRules && series.colorRules.length > 0) {
+        rulesByColumn.set(key, series.colorRules);
+      }
+    }
+    return { colorByColumn, rulesByColumn };
+  }, [data?.meta, queriedConfig]);
+
   const columns = useMemo(() => {
     const rows = data?.data ?? [];
     if (rows.length === 0) {
@@ -144,8 +191,9 @@ export default function DBTableChart({
       isBuilderChartConfig(queriedConfig) &&
       Array.isArray(queriedConfig.select)
     ) {
-      const isRatio = isRatioChartConfig(queriedConfig.select, queriedConfig);
-      const seriesCount = isRatio ? 1 : queriedConfig.select.length;
+      // Value columns come first (formula-aware: operands + formula columns,
+      // or one merged ratio column); everything after is a group-by column.
+      const seriesCount = getBuilderValueColumnCount(queriedConfig);
       const groupByCount = allKeys.length - seriesCount;
       groupByKeys = groupByCount > 0 ? allKeys.slice(-groupByCount) : [];
     }
@@ -172,9 +220,21 @@ export default function DBTableChart({
         numberFormat: groupByKeys.includes(key)
           ? undefined
           : (formatByColumn.get(key) ?? queriedConfig.numberFormat),
+        color: groupByKeys.includes(key) ? undefined : colorByColumn.get(key),
+        colorRules: groupByKeys.includes(key)
+          ? undefined
+          : rulesByColumn.get(key),
         sortingFn: getClientSideSortingFn(data?.meta, key),
       }));
-  }, [data, queriedConfig, hiddenColumns, aliasMap, formatByColumn]);
+  }, [
+    data,
+    queriedConfig,
+    hiddenColumns,
+    aliasMap,
+    formatByColumn,
+    colorByColumn,
+    rulesByColumn,
+  ]);
 
   const toolbarItemsMemo = useMemo(() => {
     const allToolbarItems = [];
@@ -248,6 +308,7 @@ export default function DBTableChart({
           enableClientSideSorting={isRawSqlChartConfig(config)}
           onSortingChange={handleSortingChange}
           variant={variant}
+          alternateRowBackground={!!queriedConfig.alternateRowBackground}
           tableBottom={
             hasNextPage && (
               <Text ref={fetchMoreRef} ta="center">

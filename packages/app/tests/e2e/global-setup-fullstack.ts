@@ -13,11 +13,11 @@
  * - Demo ClickHouse (remote) for telemetry data (logs, traces, metrics, K8s)
  */
 
-import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { chromium, FullConfig } from '@playwright/test';
 
+import { runMongoshScript } from './utils/db-helpers';
 import { seedClickHouse } from './seed-clickhouse';
 
 // Configuration constants
@@ -56,37 +56,11 @@ export const SEEDED_ERROR_ALERT = {
   errorType: 'QUERY_ERROR',
   errorMessage:
     'ClickHouse returned 500: DB::Exception: Timeout exceeded: elapsed 30s, maximum: 30s while executing query.',
+  // Message on the seeded ERROR-state AlertHistory row (evaluation history)
+  historyErrorType: 'QUERY_TIMEOUT',
+  historyErrorMessage:
+    'Alert query did not complete within the 300s evaluation timeout. The evaluation is retried on every check, but the alert will not fire until the query completes in time.',
 };
-
-/**
- * Run a mongosh script against the e2e MongoDB container by piping the script
- * through stdin. Using stdin (rather than `--eval "<...>"`) avoids having to
- * escape quotes in the script body, so callers can pass multi-line JavaScript
- * with string literals verbatim.
- *
- * Throws if the docker-compose file can't be found (meaning we're not running
- * in the expected Docker-backed e2e environment).
- */
-function runMongoshScript(script: string): string {
-  const dockerComposeFile = path.join(__dirname, 'docker-compose.yml');
-  if (!fs.existsSync(dockerComposeFile)) {
-    throw new Error(
-      `docker-compose.yml not found at ${dockerComposeFile} — e2e Docker stack unavailable`,
-    );
-  }
-
-  const e2eSlot = process.env.HDX_E2E_SLOT || '0';
-  const e2eProject = `e2e-${e2eSlot}`;
-
-  return execSync(
-    `docker compose -p ${e2eProject} -f "${dockerComposeFile}" exec -T db mongosh --quiet`,
-    {
-      encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-      input: script,
-    },
-  );
-}
 
 /**
  * Clears the MongoDB database to ensure a clean slate for tests
@@ -409,6 +383,13 @@ async function seedAlertWithErrors(
   // check-alerts job is the only code that writes this field in normal
   // operation, so we write it here to avoid having to run that job during
   // setup.
+  // Evaluation windows aligned to the alert's 5m interval: one OK window
+  // followed by an ERROR window (a failed evaluation), so the alerts page
+  // history strip and the alert detail page have data to render.
+  const windowMs = 5 * 60 * 1000;
+  const errorWindowStart = Math.floor(Date.now() / windowMs) * windowMs;
+  const okWindowStart = errorWindowStart - windowMs;
+
   const patchScript = `
 use('hyperdx-e2e');
 db.alerts.updateOne(
@@ -426,6 +407,30 @@ db.alerts.updateOne(
     }
   }
 );
+db.alerthistories.deleteMany({ alert: ObjectId(${JSON.stringify(alertId)}) });
+db.alerthistories.insertMany([
+  {
+    alert: ObjectId(${JSON.stringify(alertId)}),
+    createdAt: new Date(${okWindowStart}),
+    state: 'OK',
+    counts: 0,
+    lastValues: [{ startTime: new Date(${okWindowStart - windowMs}), count: 0 }]
+  },
+  {
+    alert: ObjectId(${JSON.stringify(alertId)}),
+    createdAt: new Date(${errorWindowStart}),
+    state: 'ERROR',
+    counts: 0,
+    lastValues: [],
+    errors: [
+      {
+        timestamp: new Date(),
+        type: ${JSON.stringify(SEEDED_ERROR_ALERT.historyErrorType)},
+        message: ${JSON.stringify(SEEDED_ERROR_ALERT.historyErrorMessage)}
+      }
+    ]
+  }
+]);
 `;
 
   try {

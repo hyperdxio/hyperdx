@@ -220,6 +220,84 @@ $transition-slow: 0.2s ease;
   margin-left: auto;
 }
 
+/* Sparkles scattered over the Help "?" icon when there's an unseen release,
+   so the icon reads as "shiny". Monochrome, in the theme's brand colour
+   (HyperDX green in dark mode). */
+.helpIcon {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+// Shared by both sparkles so the reduced-motion rule below stays one selector.
+.sparkleGlyph {
+  color: var(--color-text-brand);
+  pointer-events: none;
+  animation: whats-new-twinkle 1.8s ease-in-out infinite;
+}
+
+.helpSparkle {
+  position: absolute;
+}
+
+// One inline glyph marking the "What's new" menu label, sized to the label text
+// rather than scattered like the nav-icon set. Opening the menu marks the
+// release seen, so the nav sparkle has already stopped by the time this shows
+// and the two never animate at once.
+.whatsNewLabelSparkle {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 5px;
+  vertical-align: -1px;
+}
+
+.helpSparkleA {
+  top: -3px;
+  right: -4px;
+  width: 8px;
+  height: 8px;
+  animation-delay: 0s;
+}
+
+.helpSparkleB {
+  bottom: -2px;
+  left: -3px;
+  width: 5px;
+  height: 5px;
+  animation-delay: 0.6s;
+}
+
+.helpSparkleC {
+  top: 3px;
+  left: -5px;
+  width: 4px;
+  height: 4px;
+  animation-delay: 1.2s;
+}
+
+@keyframes whats-new-twinkle {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.8) rotate(0deg);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.15) rotate(15deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  // Static but visible, not hidden: the sparkle carries information.
+  .sparkleGlyph {
+    animation: none;
+    opacity: 0.9;
+  }
+}
+
 .navItemToggle {
   @include flex-center;
 

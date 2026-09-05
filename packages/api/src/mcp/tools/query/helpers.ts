@@ -1,17 +1,15 @@
 import { ClickHouseError } from '@clickhouse/client-common';
-import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   convertToCategoricalChartConfig,
   getFirstTimestampValueExpression,
   splitAndTrimWithBracket,
 } from '@hyperdx/common-utils/dist/core/utils';
-import {
-  isBuilderSavedChartConfig,
-  isRawSqlSavedChartConfig,
-} from '@hyperdx/common-utils/dist/guards';
+import { isBuilderSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
+import { UnknownVariableError } from '@hyperdx/common-utils/dist/macroErrors';
 import type {
   ChartConfigWithDateRange,
+  ChartVariable,
   MetricTable,
 } from '@hyperdx/common-utils/dist/types';
 import {
@@ -22,6 +20,7 @@ import {
 import { ObjectId } from 'mongodb';
 import ms from 'ms';
 
+import { ClickhouseClient } from '@/clickhouse';
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
 import type { McpErrorResult } from '@/mcp/utils/errors';
@@ -356,7 +355,7 @@ export function assertSourceKindMatchesSelect(
   if (isMetricSource && metricItemCount === 0) {
     return mcpUserError(
       'Source kind is "metric", but no select item specifies metricType + metricName. ' +
-        'Each select item on a metric source must set metricType ("gauge" | "sum" | "histogram") ' +
+        'Each select item on a metric source must set metricType ("gauge" | "sum" | "histogram" | "exponential histogram") ' +
         'and metricName (e.g. metricName:"system.cpu.utilization"). Call ' +
         'clickstack_describe_source or clickstack_list_metrics to discover available metric names.',
     );
@@ -376,12 +375,36 @@ export function assertSourceKindMatchesSelect(
 
 // ─── Tile execution ──────────────────────────────────────────────────────────
 
+/**
+ * `getSource` returns a hydrated Mongoose document, so `source.metricTables`
+ * is a live subdocument rather than a plain object. Downstream render paths
+ * may clone the chart config — notably `convertToCategoricalChartConfig`
+ * (pie/bar) runs it through `structuredClone`, which cannot clone a Mongoose
+ * subdocument and throws `DataCloneError: [object Array] could not be cloned`.
+ * Materialize a plain object so the chart config is always structured-cloneable.
+ */
+function toPlainMetricTables(
+  metricTables: MetricTable | undefined,
+): MetricTable | undefined {
+  if (metricTables == null) return undefined;
+  return 'toObject' in metricTables &&
+    typeof metricTables.toObject === 'function'
+    ? metricTables.toObject()
+    : metricTables;
+}
+
 export async function runConfigTile(
   teamId: string,
   tile: ExternalDashboardTileWithId,
   startDate: Date,
   endDate: Date,
-  options?: { maxResults?: number; granularity?: string },
+  options?: {
+    maxResults?: number;
+    granularity?: string;
+    abortSignal?: AbortSignal;
+    /** Dashboard variables and their selected values. Omitted when not in a dashboard context. */
+    variables?: ChartVariable[];
+  },
 ) {
   if (!isConfigTile(tile)) {
     return mcpUserError('Invalid tile: config field missing');
@@ -423,6 +446,12 @@ export async function runConfigTile(
           whereLanguage:
             (builderConfig.whereLanguage as 'lucene' | 'sql') ?? 'lucene',
           bodyExpression: selectStr || undefined,
+          variables: options?.variables,
+          // Forward the batch deadline's abort signal so an event-patterns
+          // tile that overruns is cancelled server-side alongside the generic
+          // chart-config path, rather than escaping cancellation and letting
+          // later tiles exceed the concurrency limit.
+          abortSignal: options?.abortSignal,
         },
       );
     }
@@ -538,12 +567,15 @@ export async function runConfigTile(
         databaseName: source.from.databaseName,
         tableName: isMetricSource ? '' : source.from.tableName,
       },
-      ...(isMetricSource && { metricTables: source.metricTables }),
+      ...(isMetricSource && {
+        metricTables: toPlainMetricTables(source.metricTables),
+      }),
       connection: source.connection.toString(),
       timestampValueExpression: source.timestampValueExpression,
       implicitColumnExpression: implicitColumn,
       useTextIndexForImplicitColumn,
       dateRange: [startDate, endDate] as [Date, Date],
+      variables: options?.variables,
     } satisfies ChartConfigWithDateRange;
 
     // Apply seriesLimit as LIMIT to categorical charts (pie/bar)
@@ -560,7 +592,10 @@ export async function runConfigTile(
         config: renderConfig,
         metadata,
         querySettings: source.querySettings,
-        opts: { clickhouse_settings: MCP_CLICKHOUSE_SETTINGS },
+        opts: {
+          clickhouse_settings: MCP_CLICKHOUSE_SETTINGS,
+          abort_signal: options?.abortSignal,
+        },
       });
       return formatQueryResult(result);
     } catch (e) {
@@ -589,7 +624,9 @@ export async function runConfigTile(
             ? source.useTextIndexForImplicitColumn
             : undefined,
         metricTables:
-          source.kind === SourceKind.Metric ? source.metricTables : undefined,
+          source.kind === SourceKind.Metric
+            ? toPlainMetricTables(source.metricTables)
+            : undefined,
       };
     }
   }
@@ -616,6 +653,7 @@ export async function runConfigTile(
     ...savedConfig,
     ...sourceFields,
     dateRange: [startDate, endDate] as [Date, Date],
+    variables: options?.variables,
   } satisfies ChartConfigWithDateRange;
 
   const metadata = getMetadata(clickhouseClient);
@@ -624,7 +662,10 @@ export async function runConfigTile(
       config: chartConfig,
       metadata,
       querySettings: undefined,
-      opts: { clickhouse_settings: MCP_CLICKHOUSE_SETTINGS },
+      opts: {
+        clickhouse_settings: MCP_CLICKHOUSE_SETTINGS,
+        abort_signal: options?.abortSignal,
+      },
     });
     return formatQueryResult(result);
   } catch (e) {
@@ -798,7 +839,7 @@ export function clickHouseErrorResult(
         (e.cause instanceof Error ? e.cause.message : '') ||
         String(e)
       : String(e);
-  const hint = errorHint(raw);
+  const hint = errorHint(raw, e);
   const base = hint ? `${raw}\n\nHINT: ${hint}` : raw;
   const text = `${prefix ? `${prefix}: ` : ''}${base}${suffix ? ` ${suffix}` : ''}`;
 
@@ -808,8 +849,34 @@ export function clickHouseErrorResult(
   return isServerError(e) ? mcpServerError(text) : mcpUserError(text);
 }
 
+/** Walk the cause chain looking for an error of the given class. */
+function findCause<T>(
+  error: unknown,
+  is: (e: unknown) => e is T,
+  depth = 5,
+): T | undefined {
+  let current = error;
+  for (let i = 0; i <= depth; i++) {
+    if (is(current)) return current;
+    if (!(current instanceof Error)) return undefined;
+    current = current.cause;
+  }
+  return undefined;
+}
+
 /** @internal Exported for testing only. */
-export function errorHint(msg: string): string | null {
+export function errorHint(msg: string, error?: unknown): string | null {
+  const unknownVariableError = findCause(
+    error,
+    (e): e is UnknownVariableError => e instanceof UnknownVariableError,
+  );
+  if (unknownVariableError) {
+    return (
+      "A variable exists only when one of the dashboard's filters sets " +
+      'isVariableEnabled. Call clickstack_get_dashboard to see the declared ' +
+      'filters and the names they can be referenced by.'
+    );
+  }
   if (
     /Cannot (convert|parse) string .* (to|as) (type )?DateTime64/i.test(msg)
   ) {

@@ -1,5 +1,11 @@
 import { SessionsPage } from '../page-objects/SessionsPage';
 import { expect, test } from '../utils/base-test';
+import {
+  clearLuceneInput,
+  expectFieldSuggestion,
+  expectValueSuggestion,
+  switchWhereToLucene,
+} from '../utils/lucene-autocomplete';
 
 test.describe('Client Sessions Functionality', { tag: ['@sessions'] }, () => {
   let sessionsPage: SessionsPage;
@@ -39,6 +45,55 @@ test.describe('Client Sessions Functionality', { tag: ['@sessions'] }, () => {
       await sessionsPage.openFirstSession();
     });
   });
+
+  // Both WHERE inputs on this page query the session source's *trace* source,
+  // not the session table — the sessions page filters sessions by the spans
+  // they contain, and the replay drawer lists those spans as events. Neither
+  // offered any suggestions until they were handed that source's id.
+  test(
+    'Lucene autocomplete suggests trace fields in the sessions search and the replay event filter',
+    { tag: ['@full-stack'] },
+    async ({ page }) => {
+      await test.step('Navigate to sessions and select the sessions source', async () => {
+        // Via /search first so the onboarding modal is handled.
+        await page.goto('/search');
+        await sessionsPage.goto();
+        await sessionsPage.selectDataSource();
+        await expect(sessionsPage.getFirstSessionCard()).toBeVisible();
+      });
+
+      await test.step('The sessions search suggests fields and values', async () => {
+        await switchWhereToLucene(sessionsPage.whereLanguageSwitch);
+        await expectFieldSuggestion(sessionsPage.whereInput, {
+          prefix: 'Servi',
+          field: 'ServiceName',
+        });
+        await expectValueSuggestion(sessionsPage.whereInput, {
+          field: 'ServiceName',
+        });
+        // Leave nothing overlaying the session cards below the input.
+        await clearLuceneInput(sessionsPage.whereInput);
+      });
+
+      await test.step('Open a session replay', async () => {
+        await sessionsPage.openFirstSession();
+        await expect(sessionsPage.sessionSidePanel).toBeVisible();
+        await expect(sessionsPage.getSessionEventRows().first()).toBeVisible({
+          timeout: 15000,
+        });
+      });
+
+      await test.step("The replay event filter suggests the trace source's fields", async () => {
+        // This one is also scoped to the replayed session's own time window, so
+        // it doubles as a check that the passed date range is a valid one.
+        await switchWhereToLucene(sessionsPage.eventsWhereLanguageSwitch);
+        await expectFieldSuggestion(sessionsPage.eventsWhereInput, {
+          prefix: 'Servi',
+          field: 'ServiceName',
+        });
+      });
+    },
+  );
 
   test(
     'clicking a session event opens the event detail panel with tabs, not another session replay',

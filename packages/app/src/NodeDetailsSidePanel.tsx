@@ -352,7 +352,7 @@ export default function NodeDetailsSidePanel({
         },
       }}
     >
-      <ZIndexContext.Provider value={drawerZIndex}>
+      <ZIndexContext value={drawerZIndex}>
         <IsolatedChartSyncProvider>
           <div className={styles.panel} data-testid="k8s-node-details-panel">
             <DrawerHeader
@@ -453,7 +453,7 @@ export default function NodeDetailsSidePanel({
             </DrawerBody>
           </div>
         </IsolatedChartSyncProvider>
-      </ZIndexContext.Provider>
+      </ZIndexContext>
     </Drawer>
   );
 }

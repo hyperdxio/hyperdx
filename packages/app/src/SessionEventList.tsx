@@ -42,56 +42,52 @@ const EVENT_ROW_SOURCE_ICONS: Record<string, React.ReactNode> = {
   custom: <IconPointer size={14} />,
 };
 
-const EventRow = React.forwardRef(
-  (
-    {
-      dataIndex,
-      event,
-      isHighlighted,
-      onClick,
-      onTimeClick,
-    }: {
-      dataIndex: number;
-      event: SessionEvent;
-      isHighlighted: boolean;
-      onClick: VoidFunction;
-      onTimeClick: VoidFunction;
-    },
-    ref: React.Ref<HTMLDivElement>,
-  ) => {
-    return (
-      <div
-        data-index={dataIndex}
-        data-testid={`session-event-row-${dataIndex}`}
-        ref={ref}
-        className={cx(styles.eventRow, {
-          [styles.eventRowError]: event.isError,
-          [styles.eventRowSuccess]: event.isSuccess,
-          [styles.eventRowHighlighted]: isHighlighted,
-        })}
-      >
-        <div className={styles.eventRowIcon}>
-          {EVENT_ROW_SOURCE_ICONS[event.eventSource] || (
-            <IconTerminal size={14} />
-          )}
+const EventRow = ({
+  dataIndex,
+  event,
+  isHighlighted,
+  onClick,
+  onTimeClick,
+  ref,
+}: {
+  dataIndex: number;
+  event: SessionEvent;
+  isHighlighted: boolean;
+  onClick: VoidFunction;
+  onTimeClick: VoidFunction;
+  ref?: React.Ref<HTMLDivElement>;
+}) => {
+  return (
+    <div
+      data-index={dataIndex}
+      data-testid={`session-event-row-${dataIndex}`}
+      ref={ref}
+      className={cx(styles.eventRow, {
+        [styles.eventRowError]: event.isError,
+        [styles.eventRowSuccess]: event.isSuccess,
+        [styles.eventRowHighlighted]: isHighlighted,
+      })}
+    >
+      <div className={styles.eventRowIcon}>
+        {EVENT_ROW_SOURCE_ICONS[event.eventSource] || (
+          <IconTerminal size={14} />
+        )}
+      </div>
+      <div className={styles.eventRowContent} onClick={onClick}>
+        <div className={styles.eventRowTitle}>
+          {event.title} {event.duration > 0 && <span>{event.duration}ms</span>}
         </div>
-        <div className={styles.eventRowContent} onClick={onClick}>
-          <div className={styles.eventRowTitle}>
-            {event.title}{' '}
-            {event.duration > 0 && <span>{event.duration}ms</span>}
-          </div>
-          <div className={styles.eventRowDescription} title={event.description}>
-            {event.description}
-          </div>
-        </div>
-        <div className={styles.eventRowTimestamp} onClick={onTimeClick}>
-          <IconPlayerPlay size={12} className="me-1" />
-          {event.formattedTimestamp}
+        <div className={styles.eventRowDescription} title={event.description}>
+          {event.description}
         </div>
       </div>
-    );
-  },
-);
+      <div className={styles.eventRowTimestamp} onClick={onTimeClick}>
+        <IconPlayerPlay size={12} className="me-1" />
+        {event.formattedTimestamp}
+      </div>
+    </div>
+  );
+};
 
 export const SessionEventList = ({
   queriedConfig,

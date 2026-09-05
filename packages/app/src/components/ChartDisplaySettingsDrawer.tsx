@@ -1,8 +1,13 @@
 import { useCallback, useEffect, useMemo } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import {
+  UnknownTemplateHelperError,
+  validateTemplate,
+} from '@hyperdx/common-utils/dist/core/handlebarsEnv';
+import {
   ChartConfigWithDateRange,
   DisplayType,
+  MAX_LEGEND_TEMPLATE_LENGTH,
   NumberFormat,
 } from '@hyperdx/common-utils/dist/types';
 import {
@@ -19,7 +24,7 @@ import {
 } from '@mantine/core';
 
 import { shouldFillNullsWithZero } from '@/ChartUtils';
-import { DEFAULT_SERIES_LIMIT } from '@/defaults';
+import { MAX_RENDERED_TIME_CHART_SERIES } from '@/defaults';
 import { FormatTime } from '@/useFormatTime';
 
 import { BackgroundChartInput } from './BackgroundChartInput';
@@ -30,7 +35,7 @@ import {
   stripLocalIds,
 } from './ColorRulesEditor';
 import { ColorSwatchInput } from './ColorSwatchInput';
-import { CheckBoxControlled } from './InputControlled';
+import { CheckBoxControlled, TextInputControlled } from './InputControlled';
 import { DEFAULT_NUMBER_FORMAT, NumberFormatForm } from './NumberFormat';
 
 export type ChartConfigDisplaySettings = Pick<
@@ -45,13 +50,17 @@ export type ChartConfigDisplaySettings = Pick<
   | 'backgroundChart'
 > & {
   groupByColumnsOnLeft?: boolean;
-  // Per-tile cap on the number of series fetched. On group-by time charts it
-  // drives the __hdx_series_limit CTE; on pie/bar builder charts it becomes a
-  // plain SQL LIMIT.
-  // null/undefined = disabled (every series is fetched). The editor clears to
-  // `null` (not `undefined`) so the cleared state survives JSON
-  // round-tripping through the URL query state.
+  alternateRowBackground?: boolean;
+  // Per-tile series cap. On builder group-by/pie/bar charts it's a fetch cap
+  // (the __hdx_series_limit CTE / a SQL LIMIT); on raw SQL time charts it's a
+  // client-side render cap only. Three-state: null/undefined = default cap,
+  // 0 = unlimited, positive N = top N. See SharedChartSettingsSchema.seriesLimit
+  // for the authoritative semantics. The editor clears to `null` (not
+  // `undefined`) so the cleared state survives JSON round-tripping via the URL.
   seriesLimit?: number | null;
+  // PromQL-only: Handlebars template over each series' Prometheus label set
+  // that renders the legend/tooltip name.
+  legendTemplate?: string;
 };
 
 /**
@@ -92,9 +101,11 @@ function applyDefaultSettings(
     compareToPreviousPeriod: settings.compareToPreviousPeriod ?? false,
     fitYAxisToData: settings.fitYAxisToData ?? false,
     groupByColumnsOnLeft: settings.groupByColumnsOnLeft ?? false,
+    alternateRowBackground: settings.alternateRowBackground ?? false,
     // Coerce to null so `reset` clears the input; undefined leaves the
     // previously registered field value in place.
     seriesLimit: settings.seriesLimit ?? null,
+    legendTemplate: settings.legendTemplate ?? '',
     color: settings.color,
     colorRules: settings.colorRules
       ? attachLocalIds(settings.colorRules)
@@ -163,8 +174,9 @@ export default function ChartDisplaySettingsDrawer({
         },
         hasDirtyFields,
       );
+      // Close only on successful validation
+      onClose();
     })();
-    onClose();
   }, [onChange, handleSubmit, onClose, settings.numberFormat, dirtyFields]);
 
   const resetToDefaults = useCallback(() => {
@@ -179,10 +191,17 @@ export default function ChartDisplaySettingsDrawer({
   const isTimeChart =
     displayType === DisplayType.Line || displayType === DisplayType.StackedBar;
 
-  // The series-limit CTE is only emitted for builder group-by time charts;
-  // raw SQL configs author their own LIMIT logic directly.
-  const showSeriesLimit =
-    isTimeChart && configType !== 'sql' && configType !== 'promql';
+  // Series Limit applies to every time chart. On builder group-by charts a
+  // positive value drives the __hdx_series_limit SQL CTE (trimming what's
+  // fetched); on raw SQL it drives the client-side render cap in
+  // `formatResponseForTimeChart` (raw SQL can't inject the CTE). PromQL is
+  // excluded — its series come from Prometheus, not this pipeline.
+  const showSeriesLimit = isTimeChart && configType !== 'promql';
+  const isRawSqlTimeChart = showSeriesLimit && configType === 'sql';
+
+  // Every PromQL display except Number surfaces the series name
+  const showLegendTemplate =
+    configType === 'promql' && displayType !== DisplayType.Number;
 
   // On pie/bar builder charts, seriesLimit becomes a plain SQL LIMIT on the
   // number of slices/bars; raw SQL configs author their own LIMIT directly.
@@ -191,10 +210,12 @@ export default function ChartDisplaySettingsDrawer({
   const showCategoricalLimit =
     isCategoricalChart && configType !== 'sql' && configType !== 'promql';
 
-  // Group By column ordering only applies to builder table charts; raw SQL
-  // configs let the user author whatever column order they want directly.
-  const showGroupByColumnsOnLeft =
-    displayType === DisplayType.Table && configType !== 'sql';
+  // Table display options. Alternate Row Background is purely presentational
+  // (it stripes rendered rows), so it applies to any table tile. Group By
+  // column ordering needs the builder `select` structure to know which columns
+  // are group-by keys, so it stays builder-only.
+  const showTableOptions = displayType === DisplayType.Table;
+  const showGroupByColumnsOnLeft = showTableOptions && configType !== 'sql';
 
   // Tile-level color is only meaningful for number tiles today.
   // Per-series colors on line / bar / pie ship in a follow-up PR via
@@ -267,9 +288,13 @@ export default function ChartDisplaySettingsDrawer({
                     <NumberInput
                       size="xs"
                       label="Series Limit"
-                      description="Maximum number of series fetched for a group-by chart. Leave empty to fetch every series."
-                      placeholder={`Disabled (e.g. ${DEFAULT_SERIES_LIMIT})`}
-                      min={1}
+                      description={
+                        isRawSqlTimeChart
+                          ? `Maximum number of series rendered, keeping those with the largest values. Leave empty for the default (${MAX_RENDERED_TIME_CHART_SERIES}); set 0 for unlimited.`
+                          : `Maximum number of series fetched for a group-by chart, keeping those with the largest values. Leave empty for the default (${MAX_RENDERED_TIME_CHART_SERIES}); set 0 for unlimited.`
+                      }
+                      placeholder={`Default (${MAX_RENDERED_TIME_CHART_SERIES})`}
+                      min={0}
                       allowDecimal={false}
                       value={value ?? ''}
                       onChange={v =>
@@ -280,6 +305,40 @@ export default function ChartDisplaySettingsDrawer({
                 />
               </Box>
             )}
+            <Divider />
+          </>
+        )}
+
+        {showLegendTemplate && (
+          <>
+            <Box>
+              <TextInputControlled
+                control={control}
+                name="legendTemplate"
+                size="xs"
+                label="Legend template"
+                description="Handlebars template rendered with each series' Prometheus labels. Leave empty for the default legend. Additional labels will be added if the template does not produce unique labels for each series."
+                placeholder="e.g. {{namespace}} - {{pod}}"
+                data-testid="legend-template-input"
+                rules={{
+                  validate: value => {
+                    if (typeof value !== 'string' || !value) return true;
+                    const trimmed = value.trim();
+                    if (trimmed.length > MAX_LEGEND_TEMPLATE_LENGTH) {
+                      return `Template is too long (${trimmed.length} characters, max ${MAX_LEGEND_TEMPLATE_LENGTH})`;
+                    }
+                    try {
+                      validateTemplate(trimmed);
+                      return true;
+                    } catch (err) {
+                      return err instanceof UnknownTemplateHelperError
+                        ? err.message
+                        : 'Invalid Handlebars template';
+                    }
+                  },
+                }}
+              />
+            </Box>
             <Divider />
           </>
         )}
@@ -310,13 +369,21 @@ export default function ChartDisplaySettingsDrawer({
           </>
         )}
 
-        {showGroupByColumnsOnLeft && (
+        {showTableOptions && (
           <>
+            {showGroupByColumnsOnLeft && (
+              <CheckBoxControlled
+                control={control}
+                name="groupByColumnsOnLeft"
+                size="xs"
+                label="Display Group By Columns on Left"
+              />
+            )}
             <CheckBoxControlled
               control={control}
-              name="groupByColumnsOnLeft"
+              name="alternateRowBackground"
               size="xs"
-              label="Display Group By Columns on Left"
+              label="Alternate Row Background"
             />
             <Divider />
           </>

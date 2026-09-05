@@ -1,6 +1,8 @@
 import {
   ActionIcon,
+  Alert,
   Button,
+  Code,
   MantineTheme,
   MantineThemeOverride,
   rem,
@@ -11,6 +13,12 @@ import {
   Text,
   Tooltip,
 } from '@mantine/core';
+
+import {
+  SEMANTIC_ALERT_VARS,
+  SEMANTIC_CONTROL_COLORS,
+  SEMANTIC_TEXT_COLORS,
+} from '@/theme/themes/semanticVariants';
 
 import componentClasses from '@/theme/themes/components.module.scss';
 import focusClasses from '@styles/focus.module.scss';
@@ -88,6 +96,13 @@ const makeTheme = ({
     fontFamily,
   },
   components: {
+    Code: Code.extend({
+      vars: () => ({
+        root: {
+          '--code-bg': 'var(--color-bg-code)',
+        },
+      }),
+    }),
     Tooltip: Tooltip.extend({
       styles: () => ({
         tooltip: {
@@ -228,12 +243,29 @@ const makeTheme = ({
         };
       },
     },
+    Alert: Alert.extend({
+      vars: (_theme, props) => {
+        if (props.variant && props.variant in SEMANTIC_ALERT_VARS) {
+          return { root: SEMANTIC_ALERT_VARS[props.variant] };
+        }
+        return { root: {} };
+      },
+      styles: (_theme, props) => {
+        // Body text follows the semantic accent color (title/icon already do
+        // via --alert-color); Mantine otherwise forces the message to
+        // black/white.
+        if (props.variant && props.variant in SEMANTIC_ALERT_VARS) {
+          return { message: { color: 'var(--alert-color)' } };
+        }
+        return {};
+      },
+    }),
     Text: Text.extend({
-      styles: (theme, props) => {
-        if (props.variant === 'danger') {
+      styles: (_theme, props) => {
+        if (props.variant && props.variant in SEMANTIC_TEXT_COLORS) {
           return {
             root: {
-              color: 'var(--color-text-danger)',
+              color: SEMANTIC_TEXT_COLORS[props.variant],
             },
           };
         }
@@ -274,10 +306,11 @@ const makeTheme = ({
           baseVars['--button-bd'] = '1px solid var(--color-border)';
         }
 
-        if (props.variant === 'danger') {
-          baseVars['--button-bg'] = 'var(--mantine-color-red-light)';
-          baseVars['--button-hover'] = 'var(--mantine-color-red-light-hover)';
-          baseVars['--button-color'] = 'var(--mantine-color-red-light-color)';
+        if (props.variant && props.variant in SEMANTIC_CONTROL_COLORS) {
+          const c = SEMANTIC_CONTROL_COLORS[props.variant];
+          baseVars['--button-bg'] = c.bg;
+          baseVars['--button-hover'] = c.hover;
+          baseVars['--button-color'] = c.color;
         }
 
         if (props.variant === 'subtle') {
@@ -301,10 +334,13 @@ const makeTheme = ({
     SegmentedControl: SegmentedControl.extend({
       styles: () => ({
         root: {
-          background: 'var(--color-bg-field)',
+          background: 'var(--color-bg-body)',
+          border: '1px solid var(--color-border)',
         },
         indicator: {
-          background: 'var(--color-bg-field-highlighted)',
+          background: 'var(--color-bg-option-active)',
+          borderRadius: '2px',
+          boxShadow: 'none',
         },
       }),
     }),
@@ -312,8 +348,13 @@ const makeTheme = ({
       vars: () => ({
         root: {
           '--tabs-color': 'var(--color-text-brand)',
+          '--tab-border-color': 'var(--color-border)',
         },
       }),
+      classNames: {
+        list: componentClasses.tabsList,
+        tab: componentClasses.tabsTab,
+      },
       styles: {
         tabLabel: { textAlign: 'left' },
       },
@@ -358,10 +399,11 @@ const makeTheme = ({
           baseVars['--ai-bd'] = '1px solid var(--color-border)';
         }
 
-        if (props.variant === 'danger') {
-          baseVars['--ai-bg'] = 'var(--mantine-color-red-light)';
-          baseVars['--ai-hover'] = 'var(--mantine-color-red-light-hover)';
-          baseVars['--ai-color'] = 'var(--mantine-color-red-light-color)';
+        if (props.variant && props.variant in SEMANTIC_CONTROL_COLORS) {
+          const c = SEMANTIC_CONTROL_COLORS[props.variant];
+          baseVars['--ai-bg'] = c.bg;
+          baseVars['--ai-hover'] = c.hover;
+          baseVars['--ai-color'] = c.color;
         }
 
         if (props.variant === 'link') {

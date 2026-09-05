@@ -7,7 +7,11 @@ import Dashboard from '@/models/dashboard';
 import { convertToExternalDashboard } from '@/routers/external-api/v2/utils/dashboards';
 import { objectIdSchema } from '@/utils/zod';
 
-import { getRawSqlTileMacroWarnings } from './validation';
+import {
+  getRawSqlTileMacroWarnings,
+  getTileVariableWarnings,
+} from './validation';
+import { mcpVariableValuesParam, resolveDashboardVariables } from './variables';
 
 export function registerQueryTile({
   context,
@@ -19,6 +23,7 @@ export function registerQueryTile({
     'clickstack_query_tile',
     {
       title: 'Query a Dashboard Tile',
+      annotations: { readOnlyHint: true },
       description:
         'Execute the query for a specific tile on an existing dashboard. ' +
         'Useful for validating that a tile returns data or for spot-checking results ' +
@@ -43,9 +48,10 @@ export function registerQueryTile({
           .string()
           .optional()
           .describe('End of the query window as ISO 8601. Default: now.'),
+        variableValues: mcpVariableValuesParam.optional(),
       }),
     },
-    async ({ dashboardId, tileId, startTime, endTime }) => {
+    async ({ dashboardId, tileId, startTime, endTime, variableValues }) => {
       const timeRange = parseTimeRange(startTime, endTime);
       if ('error' in timeRange) {
         return mcpUserError(timeRange.error);
@@ -68,25 +74,37 @@ export function registerQueryTile({
         );
       }
 
+      const resolvedVariables = resolveDashboardVariables(
+        externalDashboard.filters,
+        variableValues,
+      );
+      if ('error' in resolvedVariables) {
+        return mcpUserError(resolvedVariables.error);
+      }
+
       const result = await runConfigTile(
         teamId.toString(),
         tile,
         startDate,
         endDate,
+        { variables: resolvedVariables.variables },
       );
 
-      // Surface non-blocking missing macro warnings alongside
+      // Surface non-blocking missing macro and variable warnings alongside
       // the successful result so the agent can spot a tile that runs but
       // ignores dashboard controls.
-      const macroWarnings = getRawSqlTileMacroWarnings([tile]);
+      const warnings = [
+        ...getRawSqlTileMacroWarnings([tile]),
+        ...getTileVariableWarnings([tile], externalDashboard.filters),
+      ];
       if (
-        macroWarnings.length > 0 &&
+        warnings.length > 0 &&
         !('isError' in result && result.isError) &&
         result.content?.[0]?.type === 'text'
       ) {
         try {
           const parsed = JSON.parse(result.content[0].text);
-          parsed.warnings = macroWarnings;
+          parsed.warnings = warnings;
           result.content[0].text = JSON.stringify(parsed, null, 2);
         } catch {
           // leave result unmodified

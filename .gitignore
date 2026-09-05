@@ -93,5 +93,17 @@ docker-compose.prod.yml
 # NX
 .nx/
 
+# stryker (mutation testing)
+**/.stryker-tmp/
+
+# generated report output at a package root. Not **/reports/ — packages/hdx-eval
+# has tracked source under src/reports/.
+packages/*/reports/
+
 # webstorm
 .idea
+
+# local agent scratch, never part of a PR
+docs/superpowers/
+.superpowers/
+.playwright-mcp/

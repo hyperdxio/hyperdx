@@ -1,5 +1,9 @@
 import { SearchPage } from '../../page-objects/SearchPage';
 import { expect, test } from '../../utils/base-test';
+import {
+  expectFieldSuggestion,
+  switchWhereToLucene,
+} from '../../utils/lucene-autocomplete';
 
 test.describe('Search', { tag: '@search' }, () => {
   let searchPage: SearchPage;
@@ -60,6 +64,26 @@ test.describe('Search', { tag: '@search' }, () => {
           await searchPage.sidePanel.clickTab(tabName);
           await expect(searchPage.sidePanel.getTab(tabName)).toBeVisible();
         }
+      });
+
+      await test.step("Lucene autocomplete works in Surrounding Context's custom filter", async () => {
+        await searchPage.sidePanel.clickTab('context');
+        await searchPage.sidePanel.setContextBy('Custom');
+
+        const whereInput = searchPage.sidePanel.contextTab.getByPlaceholder(
+          'Search your events w/ Lucene ex. column:foo',
+        );
+        await switchWhereToLucene(
+          searchPage.sidePanel.contextTab.getByTestId('where-language-switch'),
+        );
+
+        // This input's date range is the narrow window around the selected row,
+        // so it only ever suggested anything once it was given both that range
+        // and the source id.
+        await expectFieldSuggestion(whereInput, {
+          prefix: 'Servi',
+          field: 'ServiceName',
+        });
       });
     });
   });

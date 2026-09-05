@@ -1161,7 +1161,7 @@ program
 About:
   Renders charts as terminal output. Designed for troubleshooting from
   the CLI (including by AI agents): visualize a metric, spot the spike,
-  then narrow down with --where, 'hdx query', or 'hdx stream'.
+  then narrow down with --where or 'hdx query'.
 
   All modes query through the exact same renderChartConfig pipeline the
   web dashboards use, so SQL and results match the web UI.

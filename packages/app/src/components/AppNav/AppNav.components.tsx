@@ -16,11 +16,12 @@ import { useDisclosure } from '@mantine/hooks';
 import {
   IconBook,
   IconBrandDiscord,
+  IconBug,
   IconBulb,
+  IconCheck,
   IconChevronDown,
   IconChevronRight,
   IconChevronUp,
-  IconHelp,
   IconKeyboard,
   IconLogout,
   IconSettings,
@@ -28,8 +29,13 @@ import {
 } from '@tabler/icons-react';
 
 import { IS_LOCAL_MODE } from '@/config';
+import { copyTextToClipboard } from '@/utils/clipboard';
 
+import { HelpSparkle } from './HelpSparkle';
 import { KeyboardShortcutsModal } from './KeyboardShortcutsModal';
+import { useWhatsNewUnseen } from './useWhatsNewUnseen';
+import { WhatsNewDrawer } from './WhatsNewDrawer';
+import { WhatsNewSection } from './WhatsNewSection';
 
 import styles from './AppNav.module.scss';
 
@@ -84,7 +90,7 @@ export const AppNavUserMenu = ({
   logoutUrl,
   onClickUserPreferences,
 }: AppNavUserMenuProps) => {
-  const { isCollapsed } = React.useContext(AppNavContext);
+  const { isCollapsed } = React.use(AppNavContext);
   const resolvedUserName = userName.trim() || 'User';
 
   const initials = getUserInitials(resolvedUserName);
@@ -178,18 +184,64 @@ export const AppNavUserMenu = ({
   );
 };
 
+const AppNavVersionItem = ({ version }: { version?: string }) => {
+  const [copied, setCopied] = React.useState(false);
+
+  return (
+    <Menu.Item
+      data-testid="copy-debug-info-menu-item"
+      closeMenuOnClick={false}
+      leftSection={copied ? <IconCheck size={16} /> : <IconBug size={16} />}
+      onClick={async () => {
+        // window.hdx (installed in _app.tsx) builds the full report; copy via
+        // the shared util so the insecure-context textarea fallback applies and
+        // we get a real success boolean back. Only flip to "Copied" when the
+        // clipboard actually took the text.
+        const text = window.hdx?.report() ?? `frontend: ${version ?? 'dev'}`;
+        const ok = await copyTextToClipboard(text);
+        if (ok) {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        }
+      }}
+    >
+      {copied ? 'Copied debug info' : 'Copy debug info'}
+    </Menu.Item>
+  );
+};
+
 export const AppNavHelpMenu = ({ version }: { version?: string }) => {
-  const { isCollapsed } = React.useContext(AppNavContext);
+  const { isCollapsed } = React.use(AppNavContext);
   const [
     shortcutsOpened,
     { open: openShortcutsModal, close: closeShortcutsModal },
   ] = useDisclosure(false);
+  // Control the Help menu's open state so we can both fetch "What's new" lazily
+  // (only when the menu is open) and close it when the drawer takes over.
+  const [helpMenuOpened, setHelpMenuOpened] = React.useState(false);
+  const [
+    whatsNewDrawerOpened,
+    { open: openWhatsNewDrawer, close: closeWhatsNewDrawer },
+  ] = useDisclosure(false);
+  // Sparkle the Help button when there's a release this browser hasn't seen.
+  const [hasUnseenWhatsNew, markWhatsNewSeen] = useWhatsNewUnseen(version);
+  // Opening the menu marks the release seen, which clears hasUnseenWhatsNew in
+  // the same tick — so the menu has to render off a snapshot taken at open time.
+  // Passing hasUnseenWhatsNew straight down gives a sparkle that never appears.
+  const [wasUnseenOnOpen, setWasUnseenOnOpen] = React.useState(false);
 
   return (
     <>
       <Menu
         position="right-start"
         transitionProps={{ transition: 'fade-right' }}
+        width={320}
+        opened={helpMenuOpened}
+        onChange={setHelpMenuOpened}
+        onOpen={() => {
+          setWasUnseenOnOpen(hasUnseenWhatsNew);
+          markWhatsNewSeen();
+        }}
       >
         <Menu.Target>
           <UnstyledButton
@@ -198,21 +250,14 @@ export const AppNavHelpMenu = ({ version }: { version?: string }) => {
           >
             <span className={styles.navItemContent}>
               <span className={styles.navItemIcon}>
-                <IconHelp size={16} />
+                <HelpSparkle hasUnseen={hasUnseenWhatsNew} />
               </span>
               {!isCollapsed && <span>Help</span>}
             </span>
           </UnstyledButton>
         </Menu.Target>
         <Menu.Dropdown>
-          <Menu.Label>
-            Help{' '}
-            {version && (
-              <Text size="xs" component="span">
-                v{version}
-              </Text>
-            )}
-          </Menu.Label>
+          <Menu.Label>Help</Menu.Label>
 
           <Menu.Item
             data-testid="documentation-menu-item"
@@ -251,11 +296,31 @@ export const AppNavHelpMenu = ({ version }: { version?: string }) => {
           >
             Discord Community
           </Menu.Item>
+
+          <Menu.Divider />
+
+          <WhatsNewSection
+            enabled={helpMenuOpened}
+            hasUnseen={wasUnseenOnOpen}
+            version={version}
+            onViewAll={() => {
+              setHelpMenuOpened(false);
+              openWhatsNewDrawer();
+            }}
+          />
+
+          <Menu.Divider />
+
+          <AppNavVersionItem version={version} />
         </Menu.Dropdown>
       </Menu>
       <KeyboardShortcutsModal
         opened={shortcutsOpened}
         onClose={closeShortcutsModal}
+      />
+      <WhatsNewDrawer
+        opened={whatsNewDrawerOpened}
+        onClose={closeWhatsNewDrawer}
       />
     </>
   );
@@ -280,7 +345,7 @@ export const AppNavLink = ({
   isBeta?: boolean;
   isActive?: boolean;
 }) => {
-  const { pathname, isCollapsed } = React.useContext(AppNavContext);
+  const { pathname, isCollapsed } = React.use(AppNavContext);
 
   const testId = `nav-link-${href.replace(/^\//, '').replace(/\//g, '-') || 'home'}`;
 

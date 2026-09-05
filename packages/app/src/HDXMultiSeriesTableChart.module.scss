@@ -4,6 +4,16 @@
 // .rowButtons pattern from LogTable.module.scss (lines 156-172),
 // scoped down to a single icon. See HDX-4405.
 
+.tableHeader {
+  // Always-on 1px separator between the sticky header and the rows. An
+  // inset box-shadow rather than a border because the table sets
+  // `border-collapse: collapse`, under which a collapsed `border-bottom`
+  // on a `position: sticky` header renders unreliably (it can scroll away
+  // with the cell content). The shadow paints on the sticky element
+  // itself, so it stays pinned as rows scroll underneath.
+  box-shadow: inset 0 -1px 0 0 var(--color-border);
+}
+
 .tableRow {
   // Row hover is the visibility trigger for the trailing-icon hint.
   // We rely on a descendant selector rather than wrapping a <tbody>
@@ -25,6 +35,23 @@
   &:hover {
     background-color: var(--color-bg-highlighted);
   }
+}
+
+.stripedRow {
+  // Opt-in zebra striping for table tiles, applied to odd rows.
+  background-color: var(--color-bg-table-stripe);
+}
+
+.tableRow.stripedRow:hover {
+  // A striped row already sits a few percent off the body background, close
+  // enough to `--color-bg-muted` that the shared `.bg-muted-hover` hover
+  // would be nearly invisible on it (the stripe and the muted hover land on
+  // the same luminance in both light and dark). Promote the hover on striped
+  // rows to the stronger `--color-bg-highlighted` so the row under the cursor
+  // stays obvious. The compound `.tableRow.stripedRow` selector (0,3,0)
+  // outranks both `.bg-muted-hover:hover` and `.actionableRow:hover` (0,2,0),
+  // so it wins deterministically regardless of stylesheet order.
+  background-color: var(--color-bg-highlighted);
 }
 
 .lastCell {

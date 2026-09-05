@@ -1,6 +1,8 @@
 import React, { useCallback } from 'react';
 import Papa from 'papaparse';
 
+import { downloadTextFile } from '@/utils/downloadFile';
+
 interface CsvExportButtonProps {
   data: Record<string, any>[];
   filename: string | (() => string);
@@ -40,18 +42,12 @@ export const CsvExportButton: React.FC<CsvExportButtonProps> = ({
         delimiter: ',',
         header: true,
       });
-      const blob = new Blob([`\ufeff${csv}`], {
-        type: 'text/csv;charset=utf-8;',
-      });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download =
-        typeof filename === 'string' ? `${filename}.csv` : `${filename()}.csv`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+      // Leading BOM so Excel reads the file as UTF-8.
+      downloadTextFile(
+        `\ufeff${csv}`,
+        typeof filename === 'string' ? `${filename}.csv` : `${filename()}.csv`,
+        'text/csv;charset=utf-8;',
+      );
 
       onExportComplete?.();
     } catch (error) {

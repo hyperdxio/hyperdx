@@ -8,6 +8,7 @@ import {
 } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { validateOnClickTemplate } from '@hyperdx/common-utils/dist/core/linkUrlBuilder';
+import { getFilterExpression } from '@hyperdx/common-utils/dist/filters';
 import {
   isSearchableSource,
   OnClick,
@@ -119,11 +120,18 @@ function DashboardOnClickFields({
 
       setValue(
         'onClick.filters',
-        dashboardFilters.map(f => ({
-          kind: 'expressionTemplate' as const,
-          expression: f.expression,
-          template: '',
-        })),
+        dashboardFilters.flatMap(f => {
+          const expression = getFilterExpression(f);
+          return expression != null
+            ? [
+                {
+                  kind: 'expressionTemplate' as const,
+                  expression,
+                  template: '',
+                },
+              ]
+            : [];
+        }),
       );
     },
     [dashboards, setValue, getValues],

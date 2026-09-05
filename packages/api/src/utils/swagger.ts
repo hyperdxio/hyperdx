@@ -1,4 +1,4 @@
-import { Application, Express } from 'express';
+import { Application } from 'express';
 import fs from 'fs';
 import path from 'path';
 import swaggerJsdoc from 'swagger-jsdoc';

@@ -93,15 +93,15 @@ export class SavedSearchModalComponent {
     // Start waiting for URL change BEFORE clicking submit to avoid race condition
     const urlPromise = this.page.waitForURL(/\/search\/[a-f0-9]+/, {
       timeout: 15000,
+      // Saving now uses a document navigation to avoid useQueryStates restoring
+      // stale search URL. Do not wait for unrelated resources to finish loading.
+      waitUntil: 'domcontentloaded',
     });
 
     await this.submit();
 
     // Wait for navigation to complete
     await urlPromise;
-
-    // Wait for modal to fully close
-    await expect(this.container).toBeHidden();
 
     await expect(this.savedSearchNameTitle).toBeVisible({ timeout: 5000 });
     await expect(this.savedSearchNameTitle).toHaveText(name, { timeout: 5000 });

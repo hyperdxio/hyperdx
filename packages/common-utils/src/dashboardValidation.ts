@@ -1,12 +1,36 @@
 import { z } from 'zod';
 
-import { DashboardContainerSchema } from './types';
+import { validateFormula } from './core/formula';
+import {
+  getFilterVariableName,
+  hasFilterEffect,
+  isFilterBroadcastEnabled,
+  isFilterVariableEnabled,
+} from './filters';
+import { DashboardContainerSchema, DisplayType } from './types';
 
 // Inputs shared by the internal `DashboardSchema` refinement and the
 // external API body schema: the validation only depends on the
 // containerId/tabId reference shape, not on Builder-vs-RawSql config.
 type ContainerForValidation = z.infer<typeof DashboardContainerSchema>;
 type TileForValidation = { containerId?: string; tabId?: string };
+// Structural for the same reason as the helpers in `./filters`: the internal
+// and external filter shapes differ (`source` vs `sourceId`), and only these
+// three fields decide variable-name identity.
+type FilterForVariableValidation = {
+  name: string;
+  variableName?: string;
+  isVariableEnabled?: boolean;
+};
+type FilterForModeValidation = {
+  name: string;
+  isBroadcastEnabled?: boolean;
+  isVariableEnabled?: boolean;
+};
+type FilterForGatingValidation = FilterForModeValidation & {
+  variableName?: string;
+  appliesToSourceIds?: string[];
+};
 
 /**
  * Pass 1: container-id uniqueness and per-container tab-id uniqueness.
@@ -126,4 +150,227 @@ export function validateDashboardTileContainerRefs<T extends TileForValidation>(
       }
     }
   });
+}
+
+/**
+ * Variable names across a dashboard's filters must each resolve to something and
+ * be unique, mirroring the dashboard filter form's own check so the API cannot
+ * accept what the UI refuses (`validateVariableName` in `./filters`).
+ *
+ * Only filters with variables *enabled* participate, in both directions: a
+ * disabled filter is neither reported nor treated as taking a name. That
+ * matters because a name is derived from the display name when none is stored,
+ * so two legitimately identically-named filters on different sources would
+ * otherwise collide for users who never turned the feature on. Deliberately
+ * independent of the feature flag itself — the check is on stored data, and
+ * data that predates the flag can never trip it.
+ *
+ * Comparison is case-sensitive, matching the form.
+ *
+ * Issues raised:
+ * - A variable-enabled filter with no name and nothing token-safe to derive one
+ *   from (path `<filtersPath>[i].variableName`).
+ * - A second variable-enabled filter resolving to an already-taken name
+ *   (path `<filtersPath>[i].variableName`).
+ */
+export function validateDashboardFilterVariableNames(
+  filters: FilterForVariableValidation[],
+  ctx: z.RefinementCtx,
+  paths?: { filtersPath?: (string | number)[] },
+): void {
+  const filtersPath = paths?.filtersPath ?? ['filters'];
+  const seen = new Set<string>();
+
+  filters.forEach((filter, filterIdx) => {
+    if (!isFilterVariableEnabled(filter)) return;
+    const variableName = getFilterVariableName(filter);
+
+    // No explicit name, and the display name yields nothing token-safe to derive
+    // one from. Rejected rather than skipped: the filter is variable-*enabled*, so
+    // accepting it would persist a variable with no reference any tile could use —
+    // and the form refuses the same state via its own required check.
+    if (!variableName) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Variable name is required for filter "${filter.name}"`,
+        path: [...filtersPath, filterIdx, 'variableName'],
+      });
+      return;
+    }
+
+    if (seen.has(variableName)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Variable names must be unique: "${variableName}"`,
+        path: [...filtersPath, filterIdx, 'variableName'],
+      });
+      return;
+    }
+    seen.add(variableName);
+  });
+}
+
+/**
+ * A filter has to do something with the value it collects: broadcast it as a
+ * condition on matching tiles, expose it to tiles as `$variableName`, or both.
+ */
+export function validateDashboardFilterModes<T extends FilterForModeValidation>(
+  filters: T[],
+  ctx: z.RefinementCtx,
+  paths?: { filtersPath?: (string | number)[] },
+): void {
+  const filtersPath = paths?.filtersPath ?? ['filters'];
+
+  filters.forEach((filter, filterIdx) => {
+    if (hasFilterEffect(filter)) return;
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `Filter "${filter.name}" must broadcast its value, be available as a variable, or both`,
+      path: [...filtersPath, filterIdx, 'isBroadcastEnabled'],
+    });
+  });
+}
+
+/**
+ * Validate that the `variableName` and `appliesToSourceIds` fields are only set
+ * on filters with the appropriate modes enabled.
+ *
+ * Issues raised:
+ * - `variableName` on a filter that is not variable-enabled (path `<filtersPath>[i].variableName`).
+ * - A non-empty `appliesToSourceIds` on a filter that does not broadcast (path `<filtersPath>[i].appliesToSourceIds`).
+ */
+export function validateDashboardFilterFieldGating<
+  T extends FilterForGatingValidation,
+>(
+  filters: T[],
+  ctx: z.RefinementCtx,
+  paths?: { filtersPath?: (string | number)[] },
+): void {
+  const filtersPath = paths?.filtersPath ?? ['filters'];
+
+  filters.forEach((filter, filterIdx) => {
+    if (filter.variableName !== undefined && !isFilterVariableEnabled(filter)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Filter "${filter.name}" sets variableName but is not available as a variable; set isVariableEnabled to true or drop variableName`,
+        path: [...filtersPath, filterIdx, 'variableName'],
+      });
+    }
+
+    if (
+      filter.appliesToSourceIds !== undefined &&
+      filter.appliesToSourceIds.length > 0 &&
+      !isFilterBroadcastEnabled(filter)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Filter "${filter.name}" sets appliesToSourceIds but does not broadcast its value; set isBroadcastEnabled to true or drop appliesToSourceIds`,
+        path: [...filtersPath, filterIdx, 'appliesToSourceIds'],
+      });
+    }
+  });
+}
+
+type FilterForOptionsValidation = {
+  name: string;
+  options?: string[];
+};
+
+/** Validates uniqueness of options within each filter. */
+export function validateDashboardFilterOptionUniqueness<
+  T extends FilterForOptionsValidation,
+>(
+  filters: T[],
+  ctx: z.RefinementCtx,
+  paths?: { filtersPath?: (string | number)[] },
+): void {
+  const filtersPath = paths?.filtersPath ?? ['filters'];
+
+  filters.forEach((filter, filterIdx) => {
+    if (!filter.options?.length) return;
+    const seen = new Set<string>();
+    for (const option of filter.options) {
+      if (seen.has(option)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Filter "${filter.name}" repeats the option "${option}"; options must be unique`,
+          path: [...filtersPath, filterIdx, 'options'],
+        });
+        return;
+      }
+      seen.add(option);
+    }
+  });
+}
+
+// Structural because the internal and external chart-config shapes differ
+// (internal `seriesReturnType: 'ratio'` vs external `asRatio: true`); only
+// these fields decide formula validity. `select` stays loosely typed — a
+// string select (search tiles) simply has zero letter-referenceable series.
+type ChartConfigForFormulaValidation = {
+  displayType?: DisplayType | string;
+  select?: unknown;
+  formulas?: { expression: string }[];
+  asRatio?: boolean;
+};
+
+/**
+ * Structural validation for a chart config's formulas, mirroring the chart
+ * editor's save-time rules (`validateChartForm` in
+ * `packages/app/src/components/ChartEditor/utils.ts`) so the API cannot
+ * persist a config the editor refuses:
+ *
+ * - Every formula expression must parse and only reference existing series
+ *   (`A` = select[0], ...), via the same `validateFormula` the editor and
+ *   the query renderer use.
+ * - Formulas are mutually exclusive with the ratio toggle (`asRatio`).
+ * - Number charts display a single value, so they support at most one
+ *   formula.
+ *
+ * The source-kind gate deliberately lives with the callers that can see the
+ * tile's source (`validateDashboardTiles` in the external API) — this
+ * helper only sees the config.
+ *
+ * Issues raised:
+ * - Invalid expression (path `<configPath>.formulas[i].expression`).
+ * - `asRatio` combined with formulas (path `<configPath>.formulas`).
+ * - More than one formula on a number chart (path `<configPath>.formulas`).
+ */
+export function validateChartConfigFormulas(
+  config: ChartConfigForFormulaValidation,
+  ctx: z.RefinementCtx,
+  paths?: { configPath?: (string | number)[] },
+): void {
+  const formulas = config.formulas;
+  if (!formulas || formulas.length === 0) return;
+  const configPath = paths?.configPath ?? [];
+
+  const seriesCount = Array.isArray(config.select) ? config.select.length : 0;
+  formulas.forEach((formula, formulaIdx) => {
+    const result = validateFormula(formula.expression ?? '', { seriesCount });
+    if (!result.ok) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: result.errors.map(e => e.message).join('; '),
+        path: [...configPath, 'formulas', formulaIdx, 'expression'],
+      });
+    }
+  });
+
+  if (config.asRatio) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message:
+        'formulas cannot be combined with asRatio; express the ratio as a formula instead (e.g. "A / B")',
+      path: [...configPath, 'formulas'],
+    });
+  }
+
+  if (config.displayType === DisplayType.Number && formulas.length > 1) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Number charts support a single formula',
+      path: [...configPath, 'formulas'],
+    });
+  }
 }

@@ -1,6 +1,5 @@
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createOpenAI } from '@ai-sdk/openai';
-import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import {
   getMetadata,
   TableMetadata,
@@ -10,13 +9,13 @@ import {
   AssistantLineTableConfigSchema,
   ChartConfigWithDateRange,
   pickSampleWeightExpressionProps,
-  SourceKind,
 } from '@hyperdx/common-utils/dist/types';
 import type { LanguageModel } from 'ai';
 import * as chrono from 'chrono-node';
 import ms from 'ms';
 import z from 'zod';
 
+import { ClickhouseClient } from '@/clickhouse';
 import * as config from '@/config';
 import { ISource } from '@/models/source';
 import { parseJSON } from '@/utils/common';
@@ -71,6 +70,28 @@ export function getAIModel(): LanguageModel {
         `Unknown AI provider: ${provider}. Currently supported: anthropic, openai`,
       );
   }
+}
+
+/**
+ * Vercel AI SDK telemetry settings for LLM calls. The SDK flattens each
+ * metadata entry onto every span of the call as
+ * `ai.telemetry.metadata.<key>`, which the LLM dashboard reads:
+ * `sessionId` groups the call's spans into a session on the Sessions tab
+ * (pass a stable conversation-scoped id, e.g. a notebook id) and `userId`
+ * feeds per-user attribution. Nullish values are dropped.
+ */
+export function llmTelemetry(metadata: Record<string, string | undefined>): {
+  isEnabled: boolean;
+  metadata: Record<string, string>;
+} {
+  return {
+    isEnabled: true,
+    metadata: Object.fromEntries(
+      Object.entries(metadata).filter(
+        (entry): entry is [string, string] => entry[1] != null,
+      ),
+    ),
+  };
 }
 
 export async function getAIMetadata(source: ISource) {

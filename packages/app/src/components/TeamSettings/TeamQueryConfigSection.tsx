@@ -21,7 +21,6 @@ import api from '@/api';
 import SelectControlled from '@/components/SelectControlled';
 import {
   DEFAULT_FILTER_KEYS_FETCH_LIMIT,
-  DEFAULT_FILTER_KEYS_FETCH_LIMIT_WITH_MVS,
   DEFAULT_QUERY_TIMEOUT,
   DEFAULT_SEARCH_ROW_LIMIT,
 } from '@/defaults';
@@ -327,7 +326,7 @@ export default function TeamQueryConfigSection() {
             min={1}
             max={1000}
             displayValue={displayValueWithUnit('keys')}
-            description={`Default is ${DEFAULT_FILTER_KEYS_FETCH_LIMIT} keys, or ${DEFAULT_FILTER_KEYS_FETCH_LIMIT_WITH_MVS} when metadata materialized views are enabled.`}
+            description={`Default is ${DEFAULT_FILTER_KEYS_FETCH_LIMIT}`}
           />
           <ClickhouseSettingForm
             settingKey="fieldMetadataDisabled"

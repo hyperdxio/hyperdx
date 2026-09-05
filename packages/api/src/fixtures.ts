@@ -1,5 +1,6 @@
 import { createNativeClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import {
+  AlertChartConfig,
   AlertThresholdType,
   BuilderSavedChartConfig,
   DisplayType,
@@ -257,6 +258,118 @@ export const executeSqlCommand = async (sql: string) => {
   });
 };
 
+// The TimeSeries engine is experimental, and its flag is a *query* setting — it
+// cannot ride along in a CREATE's own SETTINGS clause, which only takes storage
+// settings. Every statement therefore carries it, which is why these tables
+// cannot go through `executeSqlCommand`.
+export const executeTimeSeriesSqlCommand = async (sql: string) => {
+  const client = await getTestFixtureClickHouseClient();
+  return await client.command({
+    query: sql,
+    clickhouse_settings: {
+      allow_experimental_time_series_table: 1,
+      wait_end_of_query: 1,
+    },
+  });
+};
+
+export const dropTimeSeriesTable = async ({
+  table,
+  database = DEFAULT_DATABASE,
+}: {
+  table: string;
+  database?: string;
+}) => executeTimeSeriesSqlCommand(`DROP TABLE IF EXISTS ${database}.${table}`);
+
+export type TimeSeriesFixtureSeries = {
+  metricName: string;
+  /** Labels other than `__name__`, which is derived from `metricName`. */
+  tags: Record<string, string>;
+  /** Series window in unix seconds; ignored when the table stores no bounds. */
+  startSec: number;
+  endSec: number;
+};
+
+/**
+ * (Re)creates a TimeSeries table and writes `series` straight into its tags
+ * inner table — Prometheus remote-write is the only other way in.
+ *
+ * `storeTimeBounds: false` creates the table with
+ * `store_min_time_and_max_time = 0`, which leaves the tags table without the
+ * min_time/max_time columns a time-bounded lookup reads.
+ *
+ * `withSamples: true` also writes a sample at each series' `startSec` and
+ * `endSec`. A `match[]` lookup matches only series that have a sample in the
+ * window, so on a tags-only table every selector answers nothing.
+ */
+export const seedTimeSeriesTagsTable = async ({
+  table,
+  series,
+  database = DEFAULT_DATABASE,
+  storeTimeBounds = true,
+  withSamples = false,
+}: {
+  table: string;
+  series: TimeSeriesFixtureSeries[];
+  database?: string;
+  storeTimeBounds?: boolean;
+  withSamples?: boolean;
+}) => {
+  if (withSamples && !storeTimeBounds) {
+    throw new Error(
+      'withSamples needs storeTimeBounds: sample timestamps come from min_time/max_time',
+    );
+  }
+
+  await dropTimeSeriesTable({ table, database });
+  await executeTimeSeriesSqlCommand(
+    `CREATE TABLE ${database}.${table} ENGINE = TimeSeries${
+      storeTimeBounds ? '' : ' SETTINGS store_min_time_and_max_time = 0'
+    }`,
+  );
+
+  const quoted = (v: string) => `'${v.replace(/'/g, "\\'")}'`;
+  const mapLiteral = (tags: Record<string, string>) =>
+    `map(${Object.entries(tags)
+      .flatMap(([k, v]) => [quoted(k), quoted(v)])
+      .join(', ')})`;
+
+  const columns = storeTimeBounds
+    ? '(metric_name, tags, all_tags, min_time, max_time)'
+    : '(metric_name, tags, all_tags)';
+  const values = series
+    .map(s => {
+      const row = [
+        quoted(s.metricName),
+        mapLiteral(s.tags),
+        mapLiteral({ __name__: s.metricName, ...s.tags }),
+      ];
+      if (storeTimeBounds) {
+        row.push(
+          `toDateTime64(${s.startSec}, 3)`,
+          `toDateTime64(${s.endSec}, 3)`,
+        );
+      }
+      return `(${row.join(', ')})`;
+    })
+    .join(', ');
+
+  await executeTimeSeriesSqlCommand(
+    `INSERT INTO TABLE FUNCTION timeSeriesTags('${database}', '${table}') ${columns} VALUES ${values}`,
+  );
+
+  // The engine derives `id` from the tags, so the samples are read back out of
+  // the tags table rather than recomputed here.
+  if (withSamples) {
+    await executeTimeSeriesSqlCommand(
+      `INSERT INTO TABLE FUNCTION timeSeriesData('${database}', '${table}')
+       SELECT id, ts AS timestamp, 1 AS value
+       FROM timeSeriesTags('${database}', '${table}')
+       ARRAY JOIN [min_time, max_time] AS ts`,
+    );
+  }
+};
+
 export const clearClickhouseTables = async () => {
   if (!config.IS_CI) {
     throw new Error('ONLY execute this in CI env 😈 !!!');
@@ -387,7 +500,9 @@ export const bulkInsertMetricsHistogram = async (
     ResourceAttributes: Record<string, string>;
     ScopeAttributes?: Record<string, string>;
     Attributes?: Record<string, string>;
+    ServiceName?: string;
     TimeUnix: Date;
+    Count?: number;
     BucketCounts: number[];
     ExplicitBounds: number[];
     AggregationTemporality: number;
@@ -399,6 +514,140 @@ export const bulkInsertMetricsHistogram = async (
   await bulkInsertData(
     `${DEFAULT_DATABASE}.${DEFAULT_METRICS_TABLE.HISTOGRAM}`,
     metrics,
+  );
+};
+
+export const bulkInsertMetricsSummary = async (
+  metrics: {
+    MetricName: string;
+    ResourceAttributes: Record<string, string>;
+    ScopeAttributes?: Record<string, string>;
+    Attributes?: Record<string, string>;
+    ServiceName?: string;
+    TimeUnix: Date;
+    Count?: number;
+    Sum?: number;
+  }[],
+) => {
+  if (!config.IS_CI) {
+    throw new Error('ONLY execute this in CI env 😈 !!!');
+  }
+  await bulkInsertData(
+    `${DEFAULT_DATABASE}.${DEFAULT_METRICS_TABLE.SUMMARY}`,
+    metrics,
+  );
+};
+
+type ExponentialHistogramMetricPoint = {
+  TimeUnix: Date;
+  ServiceName?: string;
+  Scale?: number;
+  Count?: number;
+  Sum?: number;
+  ZeroCount?: number;
+  PositiveOffset?: number;
+  PositiveBucketCounts?: number[];
+  NegativeOffset?: number;
+  NegativeBucketCounts?: number[];
+  StartTimeUnix?: Date;
+  ResourceAttributes?: Record<string, string>;
+  ScopeAttributes?: Record<string, string>;
+  Attributes?: Record<string, string>;
+};
+
+type DenseExponentialHistogramBuckets = {
+  offset: number;
+  counts: number[];
+};
+
+const toDenseExponentialHistogramBuckets = (
+  buckets: Map<number, number>,
+): DenseExponentialHistogramBuckets => {
+  if (buckets.size === 0) {
+    return { offset: 0, counts: [] };
+  }
+
+  const indexes = [...buckets.keys()];
+  const offset = Math.min(...indexes);
+  const counts = Array(Math.max(...indexes) - offset + 1).fill(0);
+  for (const [index, count] of buckets) {
+    counts[index - offset] = count;
+  }
+  return { offset, counts };
+};
+
+export const bucketExponentialHistogramObservations = (
+  observations: number[],
+  scale = 0,
+) => {
+  if (!Number.isInteger(scale)) {
+    throw new Error('exponential histogram scale must be an integer');
+  }
+
+  const positiveBuckets = new Map<number, number>();
+  const negativeBuckets = new Map<number, number>();
+  let zeroCount = 0;
+
+  for (const observation of observations) {
+    if (!Number.isFinite(observation)) {
+      throw new Error('exponential histogram observations must be finite');
+    }
+    if (observation === 0) {
+      zeroCount += 1;
+      continue;
+    }
+
+    const buckets = observation > 0 ? positiveBuckets : negativeBuckets;
+    const index = Math.ceil(Math.log2(Math.abs(observation)) * 2 ** scale) - 1;
+    buckets.set(index, (buckets.get(index) ?? 0) + 1);
+  }
+
+  const positive = toDenseExponentialHistogramBuckets(positiveBuckets);
+  const negative = toDenseExponentialHistogramBuckets(negativeBuckets);
+  return {
+    Scale: scale,
+    Count: observations.length,
+    Sum: observations.reduce((sum, observation) => sum + observation, 0),
+    ZeroCount: zeroCount,
+    PositiveOffset: positive.offset,
+    PositiveBucketCounts: positive.counts,
+    NegativeOffset: negative.offset,
+    NegativeBucketCounts: negative.counts,
+  };
+};
+
+export const seedExponentialHistogramMetric = async ({
+  metricName,
+  points,
+  aggregationTemporality = 2,
+}: {
+  metricName: string;
+  points: ExponentialHistogramMetricPoint[];
+  aggregationTemporality?: number;
+}) => {
+  if (!config.IS_CI) {
+    throw new Error('ONLY execute this in CI env 😈 !!!');
+  }
+
+  const startTimeUnix = points[0]?.StartTimeUnix ?? points[0]?.TimeUnix;
+  await bulkInsertData(
+    `${DEFAULT_DATABASE}.${DEFAULT_METRICS_TABLE.EXPONENTIAL_HISTOGRAM}`,
+    points.map(point => ({
+      MetricName: metricName,
+      ServiceName: 'test-service',
+      ResourceAttributes: {},
+      ScopeAttributes: {},
+      Attributes: {},
+      StartTimeUnix: startTimeUnix,
+      AggregationTemporality: aggregationTemporality,
+      Scale: 0,
+      ZeroCount: 0,
+      PositiveOffset: 0,
+      PositiveBucketCounts: [],
+      NegativeOffset: 0,
+      NegativeBucketCounts: [],
+      ...point,
+    })),
   );
 };
 
@@ -430,7 +679,7 @@ export function buildMetricSeries({
   unit: string;
   team_id: string;
 }): MetricModel[] {
-  // @ts-ignore TODO: Fix Timestamp types
+  // @ts-expect-error TODO: Fix Timestamp types
   return points.map(({ value, timestamp, le }) => ({
     _string_attributes: { ...tags, ...(le && { le }) },
     name,
@@ -604,12 +853,16 @@ export const makeAlertInput = ({
   threshold = 8,
   tileId,
   webhookId = 'test-webhook-id',
+  displayName,
+  tags,
 }: {
   dashboardId: string;
   interval?: AlertInterval;
   threshold?: number;
   tileId: string;
   webhookId?: string;
+  displayName?: string | null;
+  tags?: string[] | null;
 }): Partial<AlertInput> => ({
   channel: {
     type: 'webhook',
@@ -621,6 +874,8 @@ export const makeAlertInput = ({
   source: AlertSource.TILE,
   dashboardId,
   tileId,
+  ...(displayName !== undefined && { displayName }),
+  ...(tags !== undefined && { tags }),
 });
 
 export const makeSavedSearchAlertInput = ({
@@ -628,11 +883,15 @@ export const makeSavedSearchAlertInput = ({
   interval = '15m',
   threshold = 8,
   webhookId = 'test-webhook-id',
+  displayName,
+  tags,
 }: {
   savedSearchId: string;
   interval?: AlertInterval;
   threshold?: number;
   webhookId?: string;
+  displayName?: string | null;
+  tags?: string[] | null;
 }): Partial<AlertInput> => ({
   channel: {
     type: 'webhook',
@@ -643,4 +902,57 @@ export const makeSavedSearchAlertInput = ({
   thresholdType: AlertThresholdType.ABOVE,
   source: AlertSource.SAVED_SEARCH,
   savedSearchId,
+  ...(displayName !== undefined && { displayName }),
+  ...(tags !== undefined && { tags }),
+});
+
+export const makeAlertChartConfig = (opts: {
+  sourceId: string;
+  name?: string;
+  displayType?: DisplayType;
+  aggCondition?: string;
+  groupBy?: string;
+}): AlertChartConfig => ({
+  name: opts.name ?? 'Chart Alert Query',
+  source: opts.sourceId,
+  displayType: opts.displayType ?? DisplayType.Line,
+  select: [
+    {
+      aggFn: 'count',
+      aggCondition: opts.aggCondition ?? '',
+      aggConditionLanguage: 'lucene',
+      valueExpression: '',
+    },
+  ],
+  where: '',
+  whereLanguage: 'lucene',
+  ...(opts.groupBy != null && { groupBy: opts.groupBy }),
+});
+
+export const makeInlineAlertInput = ({
+  chartConfig,
+  interval = '15m',
+  threshold = 8,
+  webhookId = 'test-webhook-id',
+  displayName,
+  tags,
+}: {
+  chartConfig: AlertChartConfig;
+  interval?: AlertInterval;
+  threshold?: number;
+  webhookId?: string;
+  displayName?: string | null;
+  tags?: string[] | null;
+}): Partial<AlertInput> => ({
+  channel: {
+    type: 'webhook',
+    webhookId,
+  },
+  interval,
+  threshold,
+  thresholdType: AlertThresholdType.ABOVE,
+  source: AlertSource.INLINE,
+  chartConfig,
+  ...(displayName !== undefined && { displayName }),
+  ...(tags !== undefined && { tags }),
 });

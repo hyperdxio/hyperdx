@@ -1,26 +1,38 @@
 import { rewriteSqlFilterWithKvItems } from '@/core/renderChartConfig';
-import { KvItemsLookup } from '@/queryParser';
+import { TextIndexInfoLookup } from '@/queryParser';
 
 type PartialKvItemsInfo = {
-  kvItemsColumn: string;
+  columnName: string;
   separator: string;
   useHasAny?: boolean;
 };
 
 const makeLookup = (
   entries: Array<[string, PartialKvItemsInfo]>,
-): KvItemsLookup =>
-  new Map(entries.map(([k, v]) => [k, { useHasAny: true, ...v }]));
+): TextIndexInfoLookup =>
+  new Map(
+    entries.map(([mapColumn, v]) => [
+      mapColumn,
+      {
+        kv: {
+          useHasAny: true,
+          indexName: `${v.columnName}_idx`,
+          mapColumn,
+          ...v,
+        },
+      },
+    ]),
+  );
 
-const defaultLookup: KvItemsLookup = makeLookup([
-  ['LogAttributes', { kvItemsColumn: 'LogAttributeItems', separator: '=' }],
+const defaultLookup: TextIndexInfoLookup = makeLookup([
+  ['LogAttributes', { columnName: 'LogAttributeItems', separator: '=' }],
 ]);
 
-const legacyLookup: KvItemsLookup = makeLookup([
+const legacyLookup: TextIndexInfoLookup = makeLookup([
   [
     'LogAttributes',
     {
-      kvItemsColumn: 'LogAttributeItems',
+      columnName: 'LogAttributeItems',
       separator: '=',
       useHasAny: false,
     },
@@ -250,10 +262,7 @@ describe('rewriteSqlFilterWithKvItems', () => {
   describe('lookup configuration', () => {
     it('uses the configured separator in the rewritten concat', () => {
       const colonLookup = makeLookup([
-        [
-          'LogAttributes',
-          { kvItemsColumn: 'LogAttributeItems', separator: ':' },
-        ],
+        ['LogAttributes', { columnName: 'LogAttributeItems', separator: ':' }],
       ]);
       const result = rewriteSqlFilterWithKvItems(
         "LogAttributes['k'] = 'v'",
@@ -264,10 +273,7 @@ describe('rewriteSqlFilterWithKvItems', () => {
 
     it('uses the configured kv items column name (backtick-quoted)', () => {
       const lookup = makeLookup([
-        [
-          'LogAttributes',
-          { kvItemsColumn: 'CustomItemsColumn', separator: '=' },
-        ],
+        ['LogAttributes', { columnName: 'CustomItemsColumn', separator: '=' }],
       ]);
       const result = rewriteSqlFilterWithKvItems(
         "LogAttributes['k'] = 'v'",
@@ -278,13 +284,10 @@ describe('rewriteSqlFilterWithKvItems', () => {
 
     it('applies independent lookup entries to each map column', () => {
       const lookup = makeLookup([
-        [
-          'LogAttributes',
-          { kvItemsColumn: 'LogAttributeItems', separator: '=' },
-        ],
+        ['LogAttributes', { columnName: 'LogAttributeItems', separator: '=' }],
         [
           'ResourceAttributes',
-          { kvItemsColumn: 'ResourceAttributeItems', separator: ':' },
+          { columnName: 'ResourceAttributeItems', separator: ':' },
         ],
       ]);
       const result = rewriteSqlFilterWithKvItems(

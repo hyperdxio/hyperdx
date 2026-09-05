@@ -11,7 +11,14 @@ import {
   isUsingGranularity,
   renderChartConfig,
 } from '@hyperdx/common-utils/dist/core/renderChartConfig';
-import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
+import {
+  renderSeriesNames,
+  SeriesNameInput,
+} from '@hyperdx/common-utils/dist/core/seriesNameTemplate';
+import {
+  convertDateRangeToGranularityString,
+  hasPositiveSeriesLimit,
+} from '@hyperdx/common-utils/dist/core/utils';
 import {
   isBuilderChartConfig,
   isPromqlChartConfig,
@@ -24,6 +31,7 @@ import {
   ChartConfigWithOptDateRange,
   QuerySettings,
 } from '@hyperdx/common-utils/dist/types';
+import { substitutePromqlChartConfigVariables } from '@hyperdx/common-utils/dist/variables';
 import {
   useQuery,
   useQueryClient,
@@ -160,9 +168,12 @@ async function* fetchDataInChunks({
   // are picked by recent activity, so groups with no events in the newest
   // window are dropped from the chart.
   const rankingDateRange = windows[0]?.dateRange;
-  const seriesLimit = isBuilderChartConfig(config)
-    ? config.seriesLimit
-    : undefined;
+  // Only a positive seriesLimit emits the __hdx_series_limit CTE (0 = unlimited,
+  // null = default), so only then does the ranking need a pinned date range.
+  const seriesLimit =
+    isBuilderChartConfig(config) && hasPositiveSeriesLimit(config.seriesLimit)
+      ? config.seriesLimit
+      : undefined;
   const windowedConfigFor = (w: (typeof windows)[number]) => ({
     ...config,
     ...(w ?? {}),
@@ -244,13 +255,22 @@ async function* fetchDataInChunks({
   }
 }
 
-/** Append the given chunk to the given accumulated result */
-function appendChunk(
+/** Append the given chunk to the given accumulated result. Exported for tests. */
+export function appendChunk(
   accumulated: TQueryFnData,
   { chunk, isComplete }: TChunk,
 ): TQueryFnData {
+  const chunkData = chunk.data || [];
+  const accumulatedData = accumulated?.data || [];
+  // Fast path for the first/only chunk (always the case for raw SQL, which is
+  // never chunked): reuse the chunk's array instead of spreading it into a new
+  // one. Avoids an O(rows) copy of a potentially very large (100k+) row array.
+  const data =
+    accumulatedData.length === 0
+      ? chunkData
+      : [...chunkData, ...accumulatedData];
   return {
-    data: [...(chunk.data || []), ...(accumulated?.data || [])],
+    data,
     meta: chunk.meta,
     rows: (accumulated?.rows || 0) + (chunk.rows || 0),
     isComplete,
@@ -308,6 +328,9 @@ export function useQueriedChartConfig(
     queryFn: async context => {
       // PromQL queries go through the Prometheus API route, not ClickHouse proxy
       if (isPromqlChartConfig(config) && config.dateRange) {
+        // Expand dashboard variables in the PromQL expression before sending to Prometheus API.
+        const { promqlExpression } =
+          substitutePromqlChartConfigVariables(config);
         const [startDate, endDate] = config.dateRange;
         const startSec = startDate.getTime() / 1000;
         const endSec = endDate.getTime() / 1000;
@@ -333,7 +356,7 @@ export function useQueriedChartConfig(
         }
 
         const resp = await prometheusApi.queryRange({
-          query: config.promqlExpression,
+          query: promqlExpression,
           start: startSec,
           end: endSec,
           step: stepStr,
@@ -364,14 +387,25 @@ export function useQueriedChartConfig(
           if (vs.size > 1) distinguishingKeys.add(k);
         }
 
-        const data: Record<string, string | number>[] = [];
-        for (const series of allSeries) {
+        const seriesInputs: SeriesNameInput[] = allSeries.map(series => {
           const metricName = series.metric.__name__ ?? '';
           const labels = Object.entries(series.metric)
             .filter(([k]) => k !== '__name__' && distinguishingKeys.has(k))
             .map(([k, v]) => `${k}="${v}"`)
             .join(', ');
-          const seriesName = labels ? `${metricName}{${labels}}` : metricName;
+          return {
+            labels: series.metric,
+            fallback: labels ? `${metricName}{${labels}}` : metricName,
+          };
+        });
+        const legendTemplate = config.legendTemplate?.trim();
+        const seriesNames = legendTemplate
+          ? renderSeriesNames(legendTemplate, seriesInputs)
+          : seriesInputs.map(s => s.fallback);
+
+        const data: Record<string, string | number>[] = [];
+        for (const [i, series] of allSeries.entries()) {
+          const seriesName = seriesNames[i];
 
           for (const [ts, val] of series.values) {
             data.push({
@@ -545,10 +579,7 @@ export function useAliasMapFromChartConfig(
       // PromQL queries use prometheusQuery() which node-sql-parser can't parse.
       // Return a fixed alias map since the column names are known.
       // Check configType directly since the TS type may not include PromQL here.
-      if (
-        'configType' in config &&
-        (config as { configType: string }).configType === 'promql'
-      ) {
+      if ('configType' in config && config.configType === 'promql') {
         return {
           __hdx_time_bucket: '__hdx_time_bucket',
           value: 'value',

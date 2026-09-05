@@ -1,4 +1,4 @@
-// @ts-ignore don't install the @types for this package, as it conflicts with mongoose
+// @ts-expect-error don't install the @types for this package, as it conflicts with mongoose
 import passportLocalMongoose from '@hyperdx/passport-local-mongoose';
 import mongoose, { Schema } from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';

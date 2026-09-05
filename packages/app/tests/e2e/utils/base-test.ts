@@ -2,6 +2,8 @@ import fs from 'fs';
 import path from 'path';
 import { expect, test as base } from '@playwright/test';
 
+import { VIEW_TRACE_CALLOUT_DISMISSED_KEY } from '../../../src/components/viewTraceCallout';
+
 // Single source of truth: e2e-fixtures.json (connections/sources). API gets them via run-api-with-fixtures.js.
 const E2E_FIXTURES_PATH = path.join(__dirname, '../fixtures/e2e-fixtures.json');
 function loadE2EFixtures(): { connections: unknown[]; sources: unknown[] } {
@@ -28,7 +30,7 @@ export const test = base.extend({
     // e2e-fixtures.json so local mode uses the same data as full-stack.
     await page.addInitScript(
       (arg: unknown[]) => {
-        const [connections, sources] = arg;
+        const [connections, sources, calloutDismissedKey] = arg;
         window.localStorage.setItem('TanstackQueryDevtools.open', 'false');
         window.sessionStorage.setItem(
           'connections',
@@ -38,8 +40,19 @@ export const test = base.extend({
           'hdx-local-source',
           JSON.stringify(sources),
         );
+        // Suppress the one-time "View trace" callout so its auto-opening
+        // popover never interferes with side-panel interactions. useLocalStorage
+        // JSON-encodes values, so store the boolean as JSON.
+        window.localStorage.setItem(
+          String(calloutDismissedKey),
+          JSON.stringify(true),
+        );
       },
-      [e2eFixtures.connections, e2eFixtures.sources],
+      [
+        e2eFixtures.connections,
+        e2eFixtures.sources,
+        VIEW_TRACE_CALLOUT_DISMISSED_KEY,
+      ],
     );
     await fn(page);
   },

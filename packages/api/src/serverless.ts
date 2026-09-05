@@ -78,7 +78,7 @@ export async function serverlessHandler(
 ): Promise<void> {
   try {
     await ensureDb();
-  } catch (err) {
+  } catch {
     if (!res.headersSent) {
       res.statusCode = 503;
       res.setHeader('Content-Type', 'application/json');

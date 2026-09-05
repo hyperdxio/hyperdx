@@ -1,3 +1,4 @@
+import objectHash from 'object-hash';
 import { z } from 'zod';
 
 // Basic Enums
@@ -235,6 +236,166 @@ export const RootValueExpressionSchema = z
       isDelta: z.boolean().optional(),
     }),
   );
+/**
+ * The set of palette tokens a user can pick for chart series colors,
+ * number-tile colors, reference lines, and threshold rules.
+ *
+ * Tokens map to CSS variables in
+ * `packages/app/src/theme/themes/<theme>/_tokens.scss`:
+ *   chart-{hue}                 -> --color-chart-{hue}                    (10 hues, unified across themes)
+ *   chart-success/warning/error -> --color-chart-{success|warning|error}  (semantic; unified across brands)
+ *
+ * `chart-info` is a render-time CSS variable (defined in the shared
+ * `chart-semantic-tokens` SCSS mixin) but is intentionally *not* in the
+ * picker enum; it's consumed only by code paths that always want
+ * brand-primary (e.g. info-level log series, `getChartColorInfo()`).
+ *
+ * Storing tokens (not hex) lets user choices reflow correctly across
+ * themes and color modes; see notes/repo-conventions/hyperdx/tile-styling.md.
+ *
+ * Lives in common-utils because the schema is shared between the app
+ * and the API; the theme-aware CSS resolver (`getColorFromCSSToken`)
+ * stays in `packages/app/src/utils.ts` because it depends on
+ * `getComputedStyle(document.documentElement)`.
+ */
+/** Categorical tokens (10 hues). Tuple literal so the element type
+ * stays narrow (`'chart-blue' | 'chart-orange' | ...`) rather than
+ * widening to `ChartPaletteToken`; downstream consumers like
+ * `CATEGORICAL_HEX_BY_TOKEN` in `packages/app/src/utils.ts` rely on
+ * the narrow element type to enforce 1:1 coverage at compile time. */
+export const CATEGORICAL_PALETTE_TOKENS = [
+  'chart-blue',
+  'chart-orange',
+  'chart-red',
+  'chart-cyan',
+  'chart-green',
+  'chart-pink',
+  'chart-purple',
+  'chart-light-blue',
+  'chart-brown',
+  'chart-gray',
+] as const;
+
+/** Semantic tokens (success / warning / error). Tuple literal for the
+ * same narrow-element-type reason as the categorical list above. */
+export const SEMANTIC_PALETTE_TOKENS = [
+  'chart-success',
+  'chart-warning',
+  'chart-error',
+] as const;
+
+export const CHART_PALETTE_TOKENS = [
+  ...CATEGORICAL_PALETTE_TOKENS,
+  ...SEMANTIC_PALETTE_TOKENS,
+] as const;
+
+export type ChartPaletteToken = (typeof CHART_PALETTE_TOKENS)[number];
+
+/**
+ * Strict Zod schema for the curated palette tokens. Intentionally
+ * does NOT accept legacy numeric tokens (`chart-1` .. `chart-10`)
+ * from #2265. Wrapping the enum in `z.preprocess` would force the
+ * schema's input type to `unknown`, which breaks downstream `z.infer`
+ * consumers (e.g. `validateRequest` in the API handlers infers
+ * `req.body` as `unknown` for any field reached through this schema).
+ *
+ * Legacy data is healed at load time instead: see
+ * `normalizeDashboardTileColors` in `packages/app/src/dashboard.ts`,
+ * which walks `tiles[i].config.color` and replaces any legacy token
+ * with its hue-named equivalent via `resolveChartPaletteToken`.
+ * Render-time consumers also call `resolveChartPaletteToken` as
+ * belt-and-suspenders against any data path that bypasses the
+ * fetch-time normalizer.
+ */
+export const ChartPaletteTokenSchema = z.enum(CHART_PALETTE_TOKENS);
+
+/**
+ * A single conditional color rule. Rules are evaluated in order against
+ * the tile's displayed value; the LAST matching rule's color wins
+ * (last-match-wins: higher-priority rules go last). If no rule matches,
+ * the tile's static `color` applies; if that is unset, the default text
+ * color applies.
+ *
+ * String operators (`contains`, `startsWith`, `endsWith`, `regex`) are
+ * included at the schema level so a future table-tile slice can reuse
+ * the same type without a schema change. The number-tile UI only exposes
+ * numeric / equality operators.
+ *
+ * Lives in common-utils so both the app and a future external-API parity
+ * PR can import it.
+ */
+// Numeric ordered operators (gt | gte | lt | lte).
+const numericOrderedColorCondition = z.object({
+  operator: z.enum(['gt', 'gte', 'lt', 'lte']),
+  value: z.number().finite(),
+  color: ChartPaletteTokenSchema,
+  label: z.string().max(40).optional(),
+});
+
+const betweenColorCondition = z.object({
+  operator: z.literal('between'),
+  // A fixed-length array rather than `z.tuple([...])`: the MCP dashboard tools
+  // (clickstack_save_dashboard / clickstack_patch_dashboard) expose this schema
+  // as a tool `input_schema`, and `zod-to-json-schema` renders a tuple in the
+  // draft-07 form (`items: [ ... ]`). In JSON Schema draft 2020-12 `items` must
+  // be a schema, not an array, so a tuple here makes the whole tool schema
+  // invalid and any strict draft-2020-12 client (e.g. the Anthropic API) rejects
+  // the tool list outright. The wire format — `[min, max]` — is identical either
+  // way, and matches the published `BetweenColorCondition` external-API schema.
+  value: z.array(z.number().finite()).length(2),
+  color: ChartPaletteTokenSchema,
+  label: z.string().max(40).optional(),
+});
+
+// Equality against a number or a string value.
+const equalityColorCondition = z.object({
+  operator: z.enum(['eq', 'neq']),
+  value: z.union([z.number().finite(), z.string().max(200)]),
+  color: ChartPaletteTokenSchema,
+  label: z.string().max(40).optional(),
+});
+
+// String-match operators, kept at the schema level only for a future
+// table-tile slice (see the doc comment above). The number-tile editor
+// never emits these.
+const stringMatchColorCondition = z.object({
+  operator: z.enum(['contains', 'startsWith', 'endsWith']),
+  value: z.string().min(1).max(200),
+  color: ChartPaletteTokenSchema,
+  label: z.string().max(40).optional(),
+});
+
+const regexColorCondition = z.object({
+  operator: z.literal('regex'),
+  value: z
+    .string()
+    .min(1)
+    .max(500)
+    .refine(
+      v => {
+        try {
+          new RegExp(v);
+          return true;
+        } catch {
+          return false;
+        }
+      },
+      { message: 'Invalid regex pattern' },
+    ),
+  color: ChartPaletteTokenSchema,
+  label: z.string().max(40).optional(),
+});
+
+export const ColorConditionSchema = z.discriminatedUnion('operator', [
+  numericOrderedColorCondition,
+  betweenColorCondition,
+  equalityColorCondition,
+  stringMatchColorCondition,
+  regexColorCondition,
+]);
+
+export type ColorCondition = z.infer<typeof ColorConditionSchema>;
+
 export const DerivedColumnSchema = z.intersection(
   RootValueExpressionSchema,
   z.object({
@@ -246,9 +407,49 @@ export const DerivedColumnSchema = z.intersection(
     countExpression: z.string().optional(),
     heatmapScaleType: z.enum(['log', 'linear']).optional(),
     numberFormat: NumberFormatSchema.optional(),
+    // Per-column palette-token color, applied by the renderer to this
+    // column's cells on table tiles only (gated in the series editor by
+    // display type); other display types ignore the field. Mirrors the
+    // per-column `numberFormat` above. The select item is the per-column
+    // config home for builder table tiles, so the table-cell counterpart
+    // of the number tile's static color lives here.
+    color: ChartPaletteTokenSchema.optional(),
+    // Ordered conditional color rules for this column's cells on table
+    // tiles. Last matching rule wins (higher-priority rules go last); when
+    // no rule matches the column's static `color` applies. The table-cell
+    // counterpart of the number tile's `colorRules`, reusing the same
+    // `ColorConditionSchema` so no schema change was needed (the union's
+    // string-match operators were always intended for this slice).
+    colorRules: z.array(ColorConditionSchema).max(10).optional(),
   }),
 );
 export const SelectListSchema = z.array(DerivedColumnSchema).or(z.string());
+
+/**
+ * A derived series computed from other series in the chart's `select` list
+ * via a letter-ref arithmetic expression (metric charts only for v1).
+ *
+ * `expression` references select entries by position using single uppercase
+ * letters — `A` is `select[0]`, `B` is `select[1]`, ... (Grafana/Datadog
+ * convention; stable against alias edits). Example: `A / (A + B + C) * 100`.
+ *
+ * The grammar is arithmetic only (`+ - * /`, parentheses, numeric constants)
+ * and is parsed to a validated AST by `core/formula.ts` before any query
+ * rendering — expressions are never passed through as raw SQL.
+ */
+export const MetricFormulaSchema = z.object({
+  // Length-capped at the validation boundary so persisted configs can never
+  // carry an expression large enough to matter for the recursive parser
+  // (mirrors MAX_FORMULA_EXPRESSION_LENGTH in `core/formula.ts`, which
+  // guards the parser itself for arbitrary caller input).
+  expression: z.string().max(1024),
+  // Legend / column name for the formula series. Falls back to the raw
+  // expression when unset (mirrors DerivedColumnSchema.alias semantics).
+  alias: z.string().optional(),
+  numberFormat: NumberFormatSchema.optional(),
+});
+export type MetricFormula = z.infer<typeof MetricFormulaSchema>;
+
 export const SortSpecificationSchema = z.intersection(
   RootValueExpressionSchema,
   z.object({
@@ -285,8 +486,10 @@ export const SelectSQLStatementSchema = z.object({
   limit: LimitSchema.optional(),
   // Nullish (not just optional): the chart editor clears the value to `null`
   // so the cleared state survives JSON round-tripping (e.g. through the URL
-  // query state). `null` and `undefined` both mean "disabled" downstream.
-  seriesLimit: z.number().int().positive().nullish(),
+  // query state). See SharedChartSettingsSchema.seriesLimit for full semantics
+  // (0 = unlimited, null/undefined = default cap). On builder group-by time
+  // charts a positive value additionally drives the __hdx_series_limit CTE.
+  seriesLimit: z.number().int().nonnegative().nullish(),
 });
 
 export type SQLInterval = z.infer<typeof SQLIntervalSchema>;
@@ -431,6 +634,13 @@ export const isRangeThresholdType = (type: string): boolean =>
 export enum AlertState {
   ALERT = 'ALERT',
   DISABLED = 'DISABLED',
+  /**
+   * Only used on AlertHistory records (never on the alert itself): marks an
+   * evaluation window whose evaluation or notification failed. ERROR history
+   * rows are excluded from alert scheduling/backfill computations so the
+   * failed window is still retried.
+   */
+  ERROR = 'ERROR',
   INSUFFICIENT_DATA = 'INSUFFICIENT_DATA',
   OK = 'OK',
   PENDING = 'PENDING',
@@ -438,6 +648,8 @@ export enum AlertState {
 
 export enum AlertErrorType {
   QUERY_ERROR = 'QUERY_ERROR',
+  /** The alert query did not complete within the evaluation timeout. */
+  QUERY_TIMEOUT = 'QUERY_TIMEOUT',
   WEBHOOK_ERROR = 'WEBHOOK_ERROR',
   INVALID_ALERT = 'INVALID_ALERT',
   UNKNOWN = 'UNKNOWN',
@@ -454,6 +666,12 @@ export type AlertError = z.infer<typeof AlertErrorSchema>;
 export enum AlertSource {
   SAVED_SEARCH = 'saved_search',
   TILE = 'tile',
+  /**
+   * A "detached" alert whose query definition lives inline on the alert
+   * document (a chart config, the same shape a dashboard tile stores)
+   * instead of referencing a saved search or tile.
+   */
+  INLINE = 'inline',
 }
 
 export const AlertIntervalSchema = z.union([
@@ -489,6 +707,114 @@ export const zAlertChannel = z.object({
   webhookId: z.string().nonempty("Webhook ID can't be empty"),
 });
 
+export const MAX_ALERT_CHANNELS = 10;
+
+export const zAlertChannels = z
+  .array(zAlertChannel)
+  .min(1, 'At least one notification channel is required')
+  .max(
+    MAX_ALERT_CHANNELS,
+    `An alert supports at most ${MAX_ALERT_CHANNELS} notification channels`,
+  );
+
+/**
+ * Identifies a channel by its full contents, not just `type` + `webhookId`.
+ * Two channels of a type this repo doesn't define (e.g. a downstream fork's
+ * `email` channel) both key as `"email:undefined"` under a webhook-shaped
+ * key, so a legitimate pair reads as a duplicate and a genuine disagreement
+ * reads as agreement. Hashing the whole object avoids assuming any particular
+ * field set.
+ */
+export const alertChannelKey = (channel: Record<string, unknown>) =>
+  objectHash(channel);
+
+/**
+ * Why a channel selection is rejected. Zod-independent so both the
+ * superRefine below and the MCP tool's hand-rolled validator (which has no
+ * ZodIssueCode to report through) can turn this into their own error shape.
+ */
+export type AlertChannelSelectionErrorCode =
+  | 'missing'
+  | 'mismatch'
+  | 'duplicate';
+
+export type AlertChannelSelectionResult =
+  | { ok: true }
+  | { ok: false; code: AlertChannelSelectionErrorCode };
+
+/**
+ * Cross-field rule shared by every alert input in this repo (internal API,
+ * external v2 API, MCP `clickstack_save_alert`): at least one of the legacy
+ * singular `channel` or the plural `channels` must be provided, and
+ * `channels` must not contain duplicates.
+ *
+ * Both may be sent together only when they agree — `channel` must equal
+ * `channels[0]`. Responses carry both fields, so read-modify-write clients
+ * echo both back untouched; rejecting that outright would break every
+ * GET-then-PUT caller. A genuine disagreement is still an error rather than a
+ * silent precedence rule, so no client can be surprised about which one won.
+ *
+ * Pure and throw-free by design: callers own how the failure is reported
+ * (Zod issue, MCP error string, …), this only classifies it.
+ */
+export const checkAlertChannelSelection = (alert: {
+  channel?: Record<string, unknown> | null;
+  channels?: Record<string, unknown>[];
+}): AlertChannelSelectionResult => {
+  const hasChannel = alert.channel != null;
+  const hasChannels = alert.channels != null;
+  if (!hasChannel && !hasChannels) {
+    return { ok: false, code: 'missing' };
+  }
+  if (hasChannel && hasChannels) {
+    const first = alert.channels?.[0];
+    if (
+      first == null ||
+      alertChannelKey(alert.channel!) !== alertChannelKey(first)
+    ) {
+      return { ok: false, code: 'mismatch' };
+    }
+  }
+  const keys = (alert.channels ?? []).map(alertChannelKey);
+  if (new Set(keys).size !== keys.length) {
+    return { ok: false, code: 'duplicate' };
+  }
+  return { ok: true };
+};
+
+const alertChannelSelectionMessages: Record<
+  AlertChannelSelectionErrorCode,
+  string
+> = {
+  missing: 'Provide either "channel" or "channels"',
+  mismatch:
+    'When both "channel" and "channels" are provided, "channel" must match the first entry of "channels"',
+  duplicate: 'Duplicate notification channels are not allowed',
+};
+
+/**
+ * Zod superRefine wrapper around {@link checkAlertChannelSelection}, shared by
+ * every alert input schema in this repo (internal API, external v2 API) — the
+ * MCP tool schema calls checkAlertChannelSelection directly, since its runtime
+ * validator has no ZodIssueCode to report through.
+ */
+export const validateAlertChannelSelection = (
+  alert: {
+    channel?: Record<string, unknown> | null;
+    channels?: Record<string, unknown>[];
+  },
+  ctx: z.RefinementCtx,
+) => {
+  const result = checkAlertChannelSelection(alert);
+  if (!result.ok) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['channels'],
+      message: alertChannelSelectionMessages[result.code],
+    });
+  }
+};
+
 export const zSavedSearchAlert = z.object({
   source: z.literal(AlertSource.SAVED_SEARCH),
   groupBy: z.string().optional(),
@@ -499,6 +825,18 @@ export const zTileAlert = z.object({
   source: z.literal(AlertSource.TILE),
   tileId: z.string().min(1),
   dashboardId: z.string().min(1),
+});
+
+/**
+ * Inline alerts persist their query/chart definition directly on the alert —
+ * the same shape a dashboard tile stores (minus the embedded `alert` field).
+ * Builder and raw SQL configs only; PromQL charts cannot be alerted on.
+ * `z.lazy` defers resolution because the chart-config schemas are declared
+ * later in this module.
+ */
+export const zInlineAlert = z.object({
+  source: z.literal(AlertSource.INLINE),
+  chartConfig: z.lazy(() => AlertChartConfigSchema),
 });
 
 export const validateAlertScheduleOffsetMinutes = (
@@ -580,7 +918,33 @@ export const scheduleStartAtSchema = z
     },
   );
 
+// --------------------------
+// TAGS
+// --------------------------
+// Shared limits + validator for user-supplied tag arrays. Any write path that
+// accepts tags (external API, MCP tools, internal routers) should validate with
+// `tagsSchema` so the caps stay consistent in one place. Read/model schemas keep
+// a bare `z.array(z.string())` so parsing existing documents never fails on
+// legacy data that predates these caps.
+export const MAX_TAG_LENGTH = 32;
+export const MAX_TAGS = 50;
+
+export const tagsSchema = z
+  .array(z.string().max(MAX_TAG_LENGTH))
+  .max(MAX_TAGS)
+  .optional();
+
 export const alertNoteSchema = z.string().min(1).max(4096).nullish();
+
+export const MAX_ALERT_DISPLAY_NAME_LENGTH = 512;
+export const alertDisplayNameSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(MAX_ALERT_DISPLAY_NAME_LENGTH)
+  .nullish();
+
+export const alertTagsSchema = tagsSchema.nullish();
 
 export const AlertBaseObjectSchema = z.object({
   id: z.string().optional(),
@@ -595,11 +959,14 @@ export const AlertBaseObjectSchema = z.object({
   threshold: z.number(),
   thresholdType: z.nativeEnum(AlertThresholdType),
   thresholdMax: z.number().optional(),
-  channel: zAlertChannel,
+  channel: zAlertChannel.optional(),
+  channels: zAlertChannels.optional(),
   state: z.nativeEnum(AlertState).optional(),
   name: z.string().min(1).max(512).nullish(),
   message: z.string().min(1).max(4096).nullish(),
   note: alertNoteSchema,
+  displayName: alertDisplayNameSchema,
+  tags: alertTagsSchema,
   silenced: z
     .object({
       by: z.string(),
@@ -616,38 +983,136 @@ export const AlertBaseSchema = AlertBaseObjectSchema;
 
 const AlertBaseValidatedSchema = AlertBaseObjectSchema.superRefine(
   validateAlertScheduleOffsetMinutes,
-).superRefine(validateAlertThresholdMax);
+)
+  .superRefine(validateAlertThresholdMax)
+  .superRefine(validateAlertChannelSelection);
 
 export const ChartAlertBaseSchema = AlertBaseObjectSchema.extend({
   threshold: z.number(),
 });
 
+// Tile alerts embedded in a saved chart config are validated through
+// SavedChartConfigSchema, not through the API's alertSchema, so the channel rule
+// has to be attached here as well. Without it, making `channel` optional would
+// let a tile alert be saved through the dashboards endpoint with no target at
+// all — it would fire and notify nobody. Only the channel rule is applied (not
+// the schedule/threshold refinements), so existing saved dashboards that never
+// passed those checks keep parsing.
+const AlertBaseChannelCheckedSchema = AlertBaseObjectSchema.superRefine(
+  validateAlertChannelSelection,
+);
+const ChartAlertBaseChannelCheckedSchema = ChartAlertBaseSchema.superRefine(
+  validateAlertChannelSelection,
+);
+
 const ChartAlertBaseValidatedSchema = ChartAlertBaseSchema.superRefine(
   validateAlertScheduleOffsetMinutes,
-).superRefine(validateAlertThresholdMax);
+)
+  .superRefine(validateAlertThresholdMax)
+  .superRefine(validateAlertChannelSelection);
 
 export const AlertSchema = z.union([
   z.intersection(AlertBaseValidatedSchema, zSavedSearchAlert),
   z.intersection(ChartAlertBaseValidatedSchema, zTileAlert),
+  z.intersection(ChartAlertBaseValidatedSchema, zInlineAlert),
 ]);
 
 export type Alert = z.infer<typeof AlertSchema>;
+
+/**
+ * Max per-target timing entries stored on one evaluation. An evaluation's
+ * distinct targets are already bounded (configured channels plus whatever the
+ * message body @mentions, itself capped per event), so this only guards
+ * against a pathological alert growing the document. Shared so the app can
+ * explain the truncation it renders.
+ */
+export const ALERT_NOTIFICATION_TARGETS_LIMIT = 20;
+
+/**
+ * One notification target's timing within an evaluation, summed across every
+ * dispatch the evaluation made to it — a grouped alert notifies the same
+ * target once per firing group, and a resolve notification is another
+ * dispatch.
+ */
+export const AlertNotificationTargetTimingSchema = z.object({
+  /**
+   * Stable identity for the target — the webhook id. Two webhooks can share a
+   * display name, so `target` alone does not identify a row.
+   */
+  targetId: z.string(),
+  /** Display label: the webhook's name as it was at dispatch time. */
+  target: z.string(),
+  /** Summed wall time across this target's dispatches (ms). */
+  durationMs: z.number(),
+  /** Dispatches attempted for this target in the evaluation. */
+  dispatches: z.number(),
+  /** How many of those dispatches failed. */
+  failures: z.number(),
+});
+
+export type AlertNotificationTargetTiming = z.infer<
+  typeof AlertNotificationTargetTimingSchema
+>;
+
+// Diagnostics for the evaluation that wrote a history record. Evaluation-
+// level: identical on every row one evaluation writes (incl. per-group rows).
+export const AlertHistoryAnalyticsSchema = z.object({
+  /** ClickHouse query duration for the evaluation (ms). On query-failure ERROR records, the time until the query failed. */
+  queryDurationMs: z.number().optional(),
+  /** Total wall time delivering webhook notifications in the evaluation, including retries (ms). */
+  webhookDurationMs: z.number().optional(),
+  /** Earlier buckets backfilled in this run after missed ticks (expected buckets − 1). */
+  backfilledBuckets: z.number().optional(),
+  /**
+   * Per-target breakdown of `webhookDurationMs`, highest duration first.
+   * Targets are dispatched concurrently, so these do not sum to
+   * `webhookDurationMs` — the slowest target in each dispatch round sets the
+   * total. Absent on evaluations that sent nothing, and on records written
+   * before per-target timing existed.
+   */
+  notificationTargets: z
+    .array(AlertNotificationTargetTimingSchema)
+    .max(ALERT_NOTIFICATION_TARGETS_LIMIT)
+    .optional(),
+});
+
+export type AlertHistoryAnalytics = z.infer<typeof AlertHistoryAnalyticsSchema>;
 
 export const AlertHistorySchema = z.object({
   counts: z.number(),
   createdAt: z.string(),
   lastValues: z.array(z.object({ startTime: z.string(), count: z.number() })),
   state: z.nativeEnum(AlertState),
+  /** Errors recorded for this evaluation window (query/webhook failures). */
+  errors: z.array(AlertErrorSchema).optional(),
+  /** Diagnostics for the evaluation that wrote this record. */
+  analytics: AlertHistoryAnalyticsSchema.optional(),
 });
 
 export type AlertHistory = z.infer<typeof AlertHistorySchema>;
+
+/**
+ * Max per-group entries returned per evaluation window on the alert detail
+ * page. Groups are sorted firing-first before the cap, so firing groups are
+ * always visible. Shared between the API (enforces the cap) and the app
+ * (explains it in the UI).
+ */
+export const ALERT_EVALUATION_GROUPS_LIMIT = 50;
 
 // A single alert state transition within a time range, used to draw
 // firing/recovery annotations on dashboard charts. Only boundary crossings are
 // emitted: ALERT = fired, OK = recovered.
 export const AlertTransitionSchema = z.object({
-  createdAt: z.string(),
+  createdAt: z.string().datetime(),
   state: z.nativeEnum(AlertState),
+  // Start of the newest bucket evaluated by the transitioning window. Charts
+  // plot each bucket's value at its *start*, while the evaluation runs at the
+  // bucket *end* (createdAt) — markers drawn at bucketStart line up with the
+  // data point that produced the transition. Optional for compatibility with
+  // older API responses; consumers fall back to createdAt. Floored at the
+  // requested range start so an edge crossing's marker never precedes a
+  // carry-in pin; charts clamp edge markers into their rendered domain.
+  bucketStart: z.string().datetime().optional(),
 });
 
 export type AlertTransition = z.infer<typeof AlertTransitionSchema>;
@@ -674,21 +1139,21 @@ export const FilterSchema = z.union([
 
 export type Filter = z.infer<typeof FilterSchema>;
 
-// --------------------------
-// TAGS
-// --------------------------
-// Shared limits + validator for user-supplied tag arrays. Any write path that
-// accepts tags (external API, MCP tools, internal routers) should validate with
-// `tagsSchema` so the caps stay consistent in one place. Read/model schemas keep
-// a bare `z.array(z.string())` so parsing existing documents never fails on
-// legacy data that predates these caps.
-export const MAX_TAG_LENGTH = 32;
-export const MAX_TAGS = 50;
+export const VariableFilterValueSchema = z.object({
+  type: z.literal('variable'),
+  name: z.string().min(1).max(1024),
+  values: z.array(z.string().max(10000)).max(1000),
+});
 
-export const tagsSchema = z
-  .array(z.string().max(MAX_TAG_LENGTH))
-  .max(MAX_TAGS)
-  .optional();
+export type VariableFilterValue = z.infer<typeof VariableFilterValueSchema>;
+
+/** One entry in a dashboard's `filters=` param / `savedFilterValues`. */
+export const DashboardFilterValueSchema = z.union([
+  FilterSchema,
+  VariableFilterValueSchema,
+]);
+
+export type DashboardFilterValue = z.infer<typeof DashboardFilterValueSchema>;
 
 // --------------------------
 // SAVED SEARCH
@@ -835,61 +1300,6 @@ export function isOnClickDashboardById(
     onClick.target.mode === 'id'
   );
 }
-
-/**
- * The set of palette tokens a user can pick for chart series colors,
- * number-tile colors, reference lines, and threshold rules.
- *
- * Tokens map to CSS variables in
- * `packages/app/src/theme/themes/<theme>/_tokens.scss`:
- *   chart-{hue}                 -> --color-chart-{hue}                    (10 hues, unified across themes)
- *   chart-success/warning/error -> --color-chart-{success|warning|error}  (semantic; unified across brands)
- *
- * `chart-info` is a render-time CSS variable (defined in the shared
- * `chart-semantic-tokens` SCSS mixin) but is intentionally *not* in the
- * picker enum; it's consumed only by code paths that always want
- * brand-primary (e.g. info-level log series, `getChartColorInfo()`).
- *
- * Storing tokens (not hex) lets user choices reflow correctly across
- * themes and color modes; see notes/repo-conventions/hyperdx/tile-styling.md.
- *
- * Lives in common-utils because the schema is shared between the app
- * and the API; the theme-aware CSS resolver (`getColorFromCSSToken`)
- * stays in `packages/app/src/utils.ts` because it depends on
- * `getComputedStyle(document.documentElement)`.
- */
-/** Categorical tokens (10 hues). Tuple literal so the element type
- * stays narrow (`'chart-blue' | 'chart-orange' | ...`) rather than
- * widening to `ChartPaletteToken`; downstream consumers like
- * `CATEGORICAL_HEX_BY_TOKEN` in `packages/app/src/utils.ts` rely on
- * the narrow element type to enforce 1:1 coverage at compile time. */
-export const CATEGORICAL_PALETTE_TOKENS = [
-  'chart-blue',
-  'chart-orange',
-  'chart-red',
-  'chart-cyan',
-  'chart-green',
-  'chart-pink',
-  'chart-purple',
-  'chart-light-blue',
-  'chart-brown',
-  'chart-gray',
-] as const;
-
-/** Semantic tokens (success / warning / error). Tuple literal for the
- * same narrow-element-type reason as the categorical list above. */
-export const SEMANTIC_PALETTE_TOKENS = [
-  'chart-success',
-  'chart-warning',
-  'chart-error',
-] as const;
-
-export const CHART_PALETTE_TOKENS = [
-  ...CATEGORICAL_PALETTE_TOKENS,
-  ...SEMANTIC_PALETTE_TOKENS,
-] as const;
-
-export type ChartPaletteToken = (typeof CHART_PALETTE_TOKENS)[number];
 
 /** Numeric tokens (`chart-1` .. `chart-10`) shipped in #2265. */
 type LegacyChartPaletteTokenKey =
@@ -1043,103 +1453,6 @@ export function walkRawDashboardTileColors(
 }
 
 /**
- * Strict Zod schema for the curated palette tokens. Intentionally
- * does NOT accept legacy numeric tokens (`chart-1` .. `chart-10`)
- * from #2265. Wrapping the enum in `z.preprocess` would force the
- * schema's input type to `unknown`, which breaks downstream `z.infer`
- * consumers (e.g. `validateRequest` in the API handlers infers
- * `req.body` as `unknown` for any field reached through this schema).
- *
- * Legacy data is healed at load time instead: see
- * `normalizeDashboardTileColors` in `packages/app/src/dashboard.ts`,
- * which walks `tiles[i].config.color` and replaces any legacy token
- * with its hue-named equivalent via `resolveChartPaletteToken`.
- * Render-time consumers also call `resolveChartPaletteToken` as
- * belt-and-suspenders against any data path that bypasses the
- * fetch-time normalizer.
- */
-export const ChartPaletteTokenSchema = z.enum(CHART_PALETTE_TOKENS);
-
-/**
- * A single conditional color rule. Rules are evaluated in order against
- * the tile's displayed value; the LAST matching rule's color wins
- * (last-match-wins: higher-priority rules go last). If no rule matches,
- * the tile's static `color` applies; if that is unset, the default text
- * color applies.
- *
- * String operators (`contains`, `startsWith`, `endsWith`, `regex`) are
- * included at the schema level so a future table-tile slice can reuse
- * the same type without a schema change. The number-tile UI only exposes
- * numeric / equality operators.
- *
- * Lives in common-utils so both the app and a future external-API parity
- * PR can import it.
- */
-// Numeric ordered operators (gt | gte | lt | lte).
-const numericOrderedColorCondition = z.object({
-  operator: z.enum(['gt', 'gte', 'lt', 'lte']),
-  value: z.number().finite(),
-  color: ChartPaletteTokenSchema,
-  label: z.string().max(40).optional(),
-});
-
-const betweenColorCondition = z.object({
-  operator: z.literal('between'),
-  value: z.tuple([z.number().finite(), z.number().finite()]),
-  color: ChartPaletteTokenSchema,
-  label: z.string().max(40).optional(),
-});
-
-// Equality against a number or a string value.
-const equalityColorCondition = z.object({
-  operator: z.enum(['eq', 'neq']),
-  value: z.union([z.number().finite(), z.string().max(200)]),
-  color: ChartPaletteTokenSchema,
-  label: z.string().max(40).optional(),
-});
-
-// String-match operators, kept at the schema level only for a future
-// table-tile slice (see the doc comment above). The number-tile editor
-// never emits these.
-const stringMatchColorCondition = z.object({
-  operator: z.enum(['contains', 'startsWith', 'endsWith']),
-  value: z.string().min(1).max(200),
-  color: ChartPaletteTokenSchema,
-  label: z.string().max(40).optional(),
-});
-
-const regexColorCondition = z.object({
-  operator: z.literal('regex'),
-  value: z
-    .string()
-    .min(1)
-    .max(500)
-    .refine(
-      v => {
-        try {
-          new RegExp(v);
-          return true;
-        } catch {
-          return false;
-        }
-      },
-      { message: 'Invalid regex pattern' },
-    ),
-  color: ChartPaletteTokenSchema,
-  label: z.string().max(40).optional(),
-});
-
-export const ColorConditionSchema = z.discriminatedUnion('operator', [
-  numericOrderedColorCondition,
-  betweenColorCondition,
-  equalityColorCondition,
-  stringMatchColorCondition,
-  regexColorCondition,
-]);
-
-export type ColorCondition = z.infer<typeof ColorConditionSchema>;
-
-/**
  * The subset of color-rule operators the number-tile editor actually
  * emits (`ColorRulesEditor.tsx` OPERATOR_OPTIONS: gt, gte, lt, lte,
  * between, eq, neq). The external dashboards API and the MCP dashboard
@@ -1215,6 +1528,28 @@ const SharedChartSettingsSchema = z.object({
   // number tiles have no time dimension to bucket). Other display types
   // ignore the field. Kept at shared level mirroring `color` / `colorRules`.
   backgroundChart: BackgroundChartSchema.optional(),
+  // Zebra striping for table tiles: when true, the renderer tints alternating
+  // rows so wide tables are easier to scan across. Applies to any table tile
+  // (builder or raw SQL); the striping is purely presentational and keys off
+  // the rendered row index, so it does not depend on the config kind. The UI
+  // gates the control on `displayType === DisplayType.Table`. Other display
+  // types ignore the field. Off by default, so existing tiles are unchanged.
+  // Kept at shared level mirroring `color` / `colorRules` / `backgroundChart`.
+  alternateRowBackground: z.boolean().optional(),
+  // Per-tile cap on the number of series a time chart renders. Shared level so
+  // it applies to BOTH builder and raw SQL time charts (raw SQL cannot inject
+  // the __hdx_series_limit CTE, so there the cap is enforced client-side in
+  // `formatResponseForTimeChart`). Semantics:
+  //   - null / undefined: use the default client render cap
+  //     (MAX_RENDERED_TIME_CHART_SERIES) — high-cardinality tiles stay
+  //     protected without opting in.
+  //   - a positive integer N: keep the top N series (by peak value).
+  //   - 0: unlimited — render every series (deliberate opt-out; a
+  //     high-cardinality group-by can then exhaust browser memory).
+  // On builder pie/bar charts this instead becomes a plain SQL LIMIT, and on
+  // builder group-by time charts a positive value also drives the
+  // __hdx_series_limit CTE (see SelectSQLStatementSchema.seriesLimit).
+  seriesLimit: z.number().int().nonnegative().nullish(),
 });
 
 // How a grouped ratio divides once split into numerator/denominator series:
@@ -1247,11 +1582,38 @@ export const _ChartConfigSchema = SharedChartSettingsSchema.extend({
   // Only meaningful for grouped ratios (seriesReturnType === 'ratio' + a Group
   // By). Defaults to per-group when unset. See RatioModeSchema.
   ratioMode: RatioModeSchema.optional(),
+  // Derived series computed from the `select` entries via letter-ref
+  // arithmetic expressions (`A` = select[0], ...). Metric sources only for
+  // v1; enforced by the editor and query renderer rather than this
+  // (deliberately permissive) schema, mirroring how `seriesReturnType:
+  // 'ratio'` is gated. Formulas are additive — the ratio toggle is untouched
+  // and the two are mutually exclusive in the editor. See
+  // MetricFormulaSchema and `core/formula.ts` for the grammar/validation.
+  formulas: z.array(MetricFormulaSchema).optional(),
+  // Whether the raw operand series referenced by `formulas` are emitted
+  // alongside the formula column(s) (true / unset) or only the formula
+  // column(s) are returned (false). Only meaningful when `formulas` is
+  // non-empty; ignored otherwise.
+  showOperandSeries: z.boolean().optional(),
   // Used to preserve original table select string when chart overrides it (e.g., histograms)
   eventTableSelect: z.string().optional(),
   source: z.string().optional(),
+  // Builder-only: render group-by columns to the left of series columns.
+  // Needs the builder `select` structure to know which columns are group-by
+  // keys, so unlike `alternateRowBackground` this stays on the builder config.
   groupByColumnsOnLeft: z.boolean().optional(),
 });
+
+/** A dashboard variable as seen by a tile's query. */
+export const ChartVariableSchema = z.object({
+  name: z.string(),
+  /** The filter's target expression; enables the 1-arg `$__filter($name)` form. */
+  expression: z.string().optional(),
+  /** Empty means nothing is selected. */
+  values: z.array(z.string()),
+});
+
+export type ChartVariable = z.infer<typeof ChartVariableSchema>;
 
 // This is a ChartConfig type without the `with` CTE clause included.
 // It needs to be a separate, named schema to avoid use of z.lazy(...),
@@ -1286,7 +1648,12 @@ export const WithClauseSchema = z.object({
 // ensure the type system can catch more issues in the build pipeline.
 const BuilderChartConfigSchema = z.intersection(
   z.intersection(_ChartConfigSchema, SelectSQLStatementSchema),
-  z.object({ with: z.array(WithClauseSchema) }).partial(),
+  z
+    .object({
+      with: z.array(WithClauseSchema),
+      variables: z.array(ChartVariableSchema),
+    })
+    .partial(),
 );
 
 export type BuilderChartConfig = z.infer<typeof BuilderChartConfigSchema>;
@@ -1310,9 +1677,12 @@ const RawSqlChartConfigSchema = RawSqlBaseChartConfigSchema.extend({
   bodyExpression: z.string().optional(),
   useTextIndexForImplicitColumn: UseTextIndexSchema.optional(),
   metricTables: MetricTableSchema.optional(),
+  variables: z.array(ChartVariableSchema).optional(),
 });
 
 export type RawSqlChartConfig = z.infer<typeof RawSqlChartConfigSchema>;
+
+export const MAX_LEGEND_TEMPLATE_LENGTH = 1024;
 
 /** Base schema for PromQL chart configs (persisted fields) */
 const PromqlBaseChartConfigSchema = SharedChartSettingsSchema.extend({
@@ -1321,6 +1691,7 @@ const PromqlBaseChartConfigSchema = SharedChartSettingsSchema.extend({
   connection: z.string(),
   source: z.string().optional(),
   step: z.string().optional(),
+  legendTemplate: z.string().max(MAX_LEGEND_TEMPLATE_LENGTH).optional(),
 });
 
 /** Schema describing PromQL chart configs with runtime-only fields */
@@ -1329,6 +1700,7 @@ const PromqlChartConfigSchema = PromqlBaseChartConfigSchema.extend({
   from: z
     .object({ databaseName: z.string(), tableName: z.string() })
     .optional(),
+  variables: z.array(ChartVariableSchema).optional(),
 });
 
 export type PromqlChartConfig = z.infer<typeof PromqlChartConfigSchema>;
@@ -1405,8 +1777,8 @@ const BuilderSavedChartConfigWithoutAlertSchema = z
 const BuilderSavedChartConfigSchema =
   BuilderSavedChartConfigWithoutAlertSchema.extend({
     alert: z.union([
-      AlertBaseSchema.optional(),
-      ChartAlertBaseSchema.optional(),
+      AlertBaseChannelCheckedSchema.optional(),
+      ChartAlertBaseChannelCheckedSchema.optional(),
     ]),
   });
 
@@ -1422,8 +1794,8 @@ const RawSqlSavedChartConfigWithoutAlertSchema =
 const RawSqlSavedChartConfigSchema =
   RawSqlSavedChartConfigWithoutAlertSchema.extend({
     alert: z.union([
-      AlertBaseSchema.optional(),
-      ChartAlertBaseSchema.optional(),
+      AlertBaseChannelCheckedSchema.optional(),
+      ChartAlertBaseChannelCheckedSchema.optional(),
     ]),
   });
 
@@ -1435,8 +1807,8 @@ const PromqlSavedChartConfigWithoutAlertSchema =
 const PromqlSavedChartConfigSchema =
   PromqlSavedChartConfigWithoutAlertSchema.extend({
     alert: z.union([
-      AlertBaseSchema.optional(),
-      ChartAlertBaseSchema.optional(),
+      AlertBaseChannelCheckedSchema.optional(),
+      ChartAlertBaseChannelCheckedSchema.optional(),
     ]),
   });
 
@@ -1445,6 +1817,19 @@ export const SavedChartConfigSchema = z.union([
   RawSqlSavedChartConfigSchema,
   PromqlSavedChartConfigSchema,
 ]);
+
+/**
+ * The chart config an inline-source alert persists (see `zInlineAlert`). Same
+ * shape as a dashboard tile's config, but without the embedded `alert` field
+ * (the alert's own document carries those fields) and without the PromQL
+ * variant (PromQL charts cannot be alerted on).
+ */
+export const AlertChartConfigSchema = z.union([
+  BuilderSavedChartConfigWithoutAlertSchema,
+  RawSqlSavedChartConfigWithoutAlertSchema,
+]);
+
+export type AlertChartConfig = z.infer<typeof AlertChartConfigSchema>;
 
 export type RawSqlSavedChartConfig = z.infer<
   typeof RawSqlSavedChartConfigSchema
@@ -1522,31 +1907,128 @@ export const DashboardContainerSchema = z.object({
 
 export type DashboardContainer = z.infer<typeof DashboardContainerSchema>;
 
-export const DashboardFilterType = z.enum(['QUERY_EXPRESSION']);
+/** Type of dashboard filter, determining how its dropdown values are populated. */
+export const DashboardFilterType = z.enum([
+  'QUERY_EXPRESSION',
+  'STATIC_LIST',
+  'PROMETHEUS_LABEL',
+]);
 
-export const DashboardFilterSchema = z.object({
+/** Allowed variable names for dashboard filters. Alphanumeric + underscore, must start with a letter. */
+export const DASHBOARD_VARIABLE_NAME_PATTERN = '[a-zA-Z][a-zA-Z0-9_]*';
+export const DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED = new RegExp(
+  `^${DASHBOARD_VARIABLE_NAME_PATTERN}$`,
+);
+export const DASHBOARD_VARIABLE_NAME_MAX_LENGTH = 64;
+export const DASHBOARD_STATIC_FILTER_MAX_OPTIONS = 1000;
+
+/** Fields carried by every dashboard filter, whatever its type. */
+const dashboardFilterBaseSchema = z.object({
   id: z.string(),
-  type: DashboardFilterType,
   name: z.string().min(1),
-  expression: z.string().min(1),
-  source: z.string().min(1),
-  sourceMetricType: z.nativeEnum(MetricsDataType).optional(),
-  where: z.string().optional(),
-  whereLanguage: SearchConditionTrimmedLanguageSchema,
-  // Sources this filter applies to. Undefined / missing means the filter
-  // applies to all tiles.
-  appliesToSourceIds: z.array(z.string().min(1)).optional(),
+  /**
+   * Token that tiles reference as `$variableName`. Defaults to the filter's display
+   * name with illegal characters replaced by dashes (`deriveVariableName`).
+   * Ignored when `isVariableEnabled` is not true.
+   */
+  variableName: z
+    .string()
+    .max(DASHBOARD_VARIABLE_NAME_MAX_LENGTH)
+    .regex(DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED)
+    .optional(),
 });
 
+/**
+ * A filter whose dropdown values are queried from ClickHouse: `expression`
+ * names the column, `source` the table, and the selection can be broadcast
+ * into matching tiles' `WHERE` clauses.
+ */
+export const QueryExpressionDashboardFilterSchema =
+  dashboardFilterBaseSchema.extend({
+    type: z.literal(DashboardFilterType.enum.QUERY_EXPRESSION),
+    expression: z.string().min(1),
+    source: z.string().min(1),
+    sourceMetricType: z.nativeEnum(MetricsDataType).optional(),
+    where: z.string().optional(),
+    whereLanguage: SearchConditionTrimmedLanguageSchema,
+    // Sources this filter applies to. Undefined / missing means the filter
+    // applies to all tiles.
+    appliesToSourceIds: z.array(z.string().min(1)).optional(),
+    /**
+     * Whether the selected value is applied as a filter condition on matching
+     * tiles. Undefined / missing means ENABLED — every filter that predates this
+     * field broadcasts, and that must not change. Read it through
+     * `isFilterBroadcastEnabled` rather than defaulting at each call site.
+     */
+    isBroadcastEnabled: z.boolean().optional(),
+    /**
+     * Whether the selected value is exposed to tile queries as `$variableName`.
+     * Undefined / missing means DISABLED. Ignored while the dashboard-variables
+     * feature is off.
+     */
+    isVariableEnabled: z.boolean().optional(),
+  });
+
+/** A filter whose dropdown offers a hand-authored list. */
+export const StaticListDashboardFilterSchema = dashboardFilterBaseSchema.extend(
+  {
+    type: z.literal(DashboardFilterType.enum.STATIC_LIST),
+    options: z
+      .array(z.string().min(1).max(10000))
+      .min(1)
+      .max(DASHBOARD_STATIC_FILTER_MAX_OPTIONS),
+    isBroadcastEnabled: z.literal(false),
+    isVariableEnabled: z.literal(true),
+  },
+);
+
+/** Sanity bound on a persisted label name; Prometheus itself imposes no limit. */
+export const PROMETHEUS_LABEL_NAME_MAX_LENGTH = 1024;
+
+/** A filter whose dropdown lists the values of a Prometheus label */
+export const PromqlLabelDashboardFilterSchema =
+  dashboardFilterBaseSchema.extend({
+    type: z.literal(DashboardFilterType.enum.PROMETHEUS_LABEL),
+    /** ID of a PromQL source to query */
+    source: z.string().min(1),
+    /** Label whose values populate the dropdown. */
+    label: z.string().min(1).max(PROMETHEUS_LABEL_NAME_MAX_LENGTH),
+    /**
+     * Optional Prometheus series selector narrowing which series the label
+     * values are read from.
+     */
+    match: z.string().min(1).optional(),
+    // Variable-only: there is no SQL expression to broadcast
+    isBroadcastEnabled: z.literal(false),
+    isVariableEnabled: z.literal(true),
+  });
+
+export const DashboardFilterSchema = z.discriminatedUnion('type', [
+  QueryExpressionDashboardFilterSchema,
+  StaticListDashboardFilterSchema,
+  PromqlLabelDashboardFilterSchema,
+]);
+
+export type QueryExpressionDashboardFilter = z.infer<
+  typeof QueryExpressionDashboardFilterSchema
+>;
+export type StaticListDashboardFilter = z.infer<
+  typeof StaticListDashboardFilterSchema
+>;
+export type PromqlLabelDashboardFilter = z.infer<
+  typeof PromqlLabelDashboardFilterSchema
+>;
 export type DashboardFilter = z.infer<typeof DashboardFilterSchema>;
 
 export enum PresetDashboard {
   Services = 'services',
 }
 
-export const PresetDashboardFilterSchema = DashboardFilterSchema.extend({
-  presetDashboard: z.nativeEnum(PresetDashboard),
-});
+/** Preset-dashboard filters are broadcast-only, and therefore do not support static value filters. */
+export const PresetDashboardFilterSchema =
+  QueryExpressionDashboardFilterSchema.extend({
+    presetDashboard: z.nativeEnum(PresetDashboard),
+  });
 
 export type PresetDashboardFilter = z.infer<typeof PresetDashboardFilterSchema>;
 
@@ -1588,7 +2070,7 @@ export const DashboardSchema = z.object({
   filters: z.array(DashboardFilterSchema).optional(),
   savedQuery: z.string().nullable().optional(),
   savedQueryLanguage: SearchConditionLanguageSchema.nullable().optional(),
-  savedFilterValues: z.array(FilterSchema).optional(),
+  savedFilterValues: z.array(DashboardFilterValueSchema).optional(),
   containers: z
     .array(DashboardContainerSchema)
     .max(DASHBOARD_MAX_CONTAINERS)
@@ -1670,6 +2152,7 @@ export const TeamSchema = z
     apiKey: z.string(),
     hookId: z.string(),
     collectorAuthenticationEnforced: z.boolean(),
+    isMetricsSeriesTableEnabled: z.boolean(),
   })
   .merge(TeamClickHouseSettingsSchema);
 
@@ -1758,7 +2241,7 @@ export type MaterializedViewConfiguration = z.infer<
 >;
 
 export const MetadataMaterializedViewsSchema = z.object({
-  keyRollupTable: z.string().min(1, 'Key rollup table name is required'),
+  keyRollupTable: z.string().nullish(),
   kvRollupTable: z.string().min(1, 'KV rollup table name is required'),
   granularity: SQLIntervalSchema,
 });
@@ -1775,6 +2258,13 @@ export const LogSourceSchema = BaseSourceSchema.extend({
     .min(1, 'Default Select Expression is required'),
   // Optional fields for logs
   serviceNameExpression: z.string().optional(),
+  /**
+   * Expression identifying the running release of a service. Defaults to the
+   * OpenTelemetry `service.version` resource attribute when unset; teams whose
+   * version lives elsewhere - a container image tag under GitOps, a custom
+   * attribute - point it there instead of changing instrumentation.
+   */
+  serviceVersionExpression: z.string().optional(),
   severityTextExpression: z.string().optional(),
   bodyExpression: z.string().optional(),
   eventAttributesExpression: z.string().optional(),
@@ -1832,9 +2322,12 @@ export const TraceSourceSchema = BaseSourceSchema.extend({
   statusCodeExpression: z.string().optional(),
   statusMessageExpression: z.string().optional(),
   serviceNameExpression: z.string().optional(),
+  /** See `serviceVersionExpression` on `LogSourceSchema`. */
+  serviceVersionExpression: z.string().optional(),
   resourceAttributesExpression: z.string().optional(),
   eventAttributesExpression: z.string().optional(),
   spanEventsValueExpression: z.string().optional(),
+  spanLinksValueExpression: z.string().optional(),
   implicitColumnExpression: z.string().optional(),
   knownColumnsListExpression: z.string().optional(),
   displayedTimestampValueExpression: z.string().optional(),
@@ -1879,6 +2372,8 @@ export const MetricSourceSchema = BaseSourceSchema.extend({
   // Optional fields for metrics
   serviceNameExpression: z.string().optional(),
   logSourceId: z.string().optional(),
+  // Unified metrics series table. Available only when `isMetricsSeriesTableEnabled` is set on the team document.
+  seriesTable: z.string().optional(),
 });
 
 // PromQL source form schema
@@ -2060,6 +2555,13 @@ export type AssistantResponseConfigSchema = z.infer<
 // --------------------------
 
 // Alerts
+// Looser than zAlertChannel: a page item echoes whatever was persisted, which
+// includes rows written before multi-channel that have a null type and no webhook.
+const alertsPageItemChannelSchema = z.object({
+  type: z.string().optional().nullable(),
+  webhookId: z.string().optional(),
+});
+
 export const AlertsPageItemSchema = z.object({
   _id: z.string(),
   interval: AlertIntervalSchema,
@@ -2068,13 +2570,21 @@ export const AlertsPageItemSchema = z.object({
   threshold: z.number(),
   thresholdMax: z.number().optional(),
   thresholdType: z.nativeEnum(AlertThresholdType),
-  channel: z.object({ type: z.string().optional().nullable() }),
+  channel: alertsPageItemChannelSchema,
+  channels: z.array(alertsPageItemChannelSchema).optional(),
   state: z.nativeEnum(AlertState).optional(),
   source: z.nativeEnum(AlertSource).optional(),
   dashboardId: z.string().optional(),
   savedSearchId: z.string().optional(),
   tileId: z.string().optional(),
+  // Inline alerts: the persisted chart config. Only present on the
+  // single-alert (detail) response — the unpaginated list omits it so every
+  // alerts-page load doesn't carry every alert's full query definition.
+  chartConfig: AlertChartConfigSchema.optional(),
+  groupBy: z.string().optional(),
   name: z.string().nullish(),
+  displayName: z.string(),
+  tags: z.array(z.string()),
   message: z.string().nullish(),
   note: alertNoteSchema,
   createdAt: z.string(),
@@ -2142,6 +2652,50 @@ export type AlertHistoryRangeApiResponse = z.infer<
   typeof AlertHistoryRangeApiResponseSchema
 >;
 
+// Per-group result of one evaluation window for a group-by alert.
+export const AlertEvaluationGroupSchema = z.object({
+  group: z.string(),
+  state: z.nativeEnum(AlertState),
+  counts: z.number(),
+  /** The group's most recent bucket value in this window, if any. */
+  lastValue: z.object({ startTime: z.string(), count: z.number() }).optional(),
+  /** True when a notification was actually sent for this group. */
+  fired: z.boolean().optional(),
+});
+
+export type AlertEvaluationGroup = z.infer<typeof AlertEvaluationGroupSchema>;
+
+// One evaluation window on the alert detail page. For group-by alerts,
+// carries the per-group breakdown (firing-first, capped server-side).
+export const AlertEvaluationSchema = AlertHistorySchema.extend({
+  groups: z.array(AlertEvaluationGroupSchema).optional(),
+  /** Total number of groups evaluated in this window (before the cap). */
+  groupsTotal: z.number().optional(),
+});
+
+export type AlertEvaluation = z.infer<typeof AlertEvaluationSchema>;
+
+// Paginated evaluation history for the alert detail page. Each entry is one
+// evaluation window (newest first), including any errors recorded for it.
+export const AlertEvaluationsApiResponseSchema = z.object({
+  data: z.array(AlertEvaluationSchema),
+  /**
+   * True when older evaluation windows may exist within the requested time
+   * range beyond the returned page.
+   */
+  hasMore: z.boolean(),
+  /**
+   * Cursor (epoch ms) for the next-older page: pass as `before` on the next
+   * request. Present when hasMore is true. Cursor-based (not offset-based)
+   * so pages advance even across gaps with no evaluations.
+   */
+  nextBefore: z.number().optional(),
+});
+
+export type AlertEvaluationsApiResponse = z.infer<
+  typeof AlertEvaluationsApiResponseSchema
+>;
+
 // Webhooks
 export const WebhooksApiResponseSchema = z.object({
   data: z.array(WebhookSchema),
@@ -2180,6 +2734,7 @@ export const TeamApiResponseSchema = z.object({
   apiKey: z.string(),
   name: z.string(),
   createdAt: z.string(),
+  isMetricsSeriesTableEnabled: z.boolean(),
 });
 
 export type TeamApiResponse = z.infer<typeof TeamApiResponseSchema>;
@@ -2269,3 +2824,75 @@ export const MeApiResponseSchema = z.object({
 });
 
 export type MeApiResponse = z.infer<typeof MeApiResponseSchema>;
+
+// Response for `PATCH /me/accessKey`.
+//
+// Deliberately not RotateApiKeyApiResponseSchema (`{ newApiKey }`): `team.apiKey`
+// is the shared ingestion key, while `user.accessKey` is the per-user bearer
+// token for the external API v2 and the MCP server. The two are rendered side by
+// side in Team Settings, so the wire names must not blur together.
+export const RotateAccessKeyApiResponseSchema = z.object({
+  newAccessKey: z.string(),
+});
+
+export type RotateAccessKeyApiResponse = z.infer<
+  typeof RotateAccessKeyApiResponseSchema
+>;
+
+// IaC (Terraform) export
+//
+// Shared so `GET /iac/import-manifest` and the generators in
+// packages/common-utils/src/iac.ts cannot drift apart. Every listing is
+// id + name only — the endpoint deliberately projects nothing heavier.
+const IacManifestEntrySchema = z.object({
+  // Constrained, not a bare string: `id` is the only manifest value that
+  // reaches generated HCL inside a quoted string literal, and the client parse
+  // is what the export treats as its trust boundary. See assertResourceId in
+  // ./iac.ts, which enforces the same shape at the emit sink.
+  id: z.string().regex(/^[0-9a-fA-F]{24}$/),
+  name: z.string().optional(),
+});
+
+export const IacImportManifestSchema = z.object({
+  dashboards: z.array(
+    IacManifestEntrySchema.extend({
+      // Set when a tile would not survive the import round trip, so the
+      // dashboard must not be offered. Computed server-side: the manifest
+      // deliberately does not ship tile configs. See isUnexportableTile.
+      unexportableTiles: z.boolean().optional(),
+    }),
+  ),
+  alerts: z.array(
+    IacManifestEntrySchema.extend({
+      // Only saved-search alerts are modelled by the Terraform provider.
+      source: z.string().optional(),
+      savedSearchId: z.string().optional(),
+    }),
+  ),
+  savedSearches: z.array(IacManifestEntrySchema),
+  sources: z.array(
+    IacManifestEntrySchema.extend({
+      // The provider models only the ClickHouse-backed kinds, so the client
+      // needs `kind` to filter PromQL sources out. See isImportableSource.
+      kind: z.string().optional(),
+    }),
+  ),
+  connections: z.array(
+    IacManifestEntrySchema.extend({
+      // Tri-state, mirroring the Connection model: undefined = unknown
+      // provenance, true = platform-provisioned, false = self-managed.
+      // Only an explicit `false` makes a connection safe to import.
+      platformProvisioned: z.boolean().optional(),
+    }),
+  ),
+  webhooks: z.array(IacManifestEntrySchema),
+  // Manifest keys whose listing hit IAC_MANIFEST_LIMIT, so the export for
+  // those types is partial. Per-type rather than one global boolean: warning
+  // that the file is incomplete because of a type the user did not tick is a
+  // false alarm. Defaulted so a response predating the field still parses —
+  // app and API ship in one image, but a multi-replica rolling deploy can
+  // briefly serve a new bundle against an old API.
+  truncatedTypes: z.array(z.string()).default([]),
+});
+
+export type IacImportManifest = z.infer<typeof IacImportManifestSchema>;

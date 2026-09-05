@@ -10,6 +10,7 @@ import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import {
   DEFAULT_DATABASE,
   KNOWN_COLUMNS_EXPRESSION_HELP_TEXT,
+  SERVICE_VERSION_EXPRESSION_HELP_TEXT,
 } from './constants';
 import { ExpressionFormRow } from './ExpressionFormRow';
 import { FormRow } from './FormRow';
@@ -277,6 +278,17 @@ export function TraceTableModelForm(props: TableModelProps) {
       <ExpressionFormRow
         control={control}
         setValue={setValue}
+        name="serviceVersionExpression"
+        label="Service Version Expression"
+        placeholder="ResourceAttributes['service.version']"
+        helpText={SERVICE_VERSION_EXPRESSION_HELP_TEXT}
+        columns={columns}
+        sourceKind={SourceKind.Trace}
+        tableConnection={tableConnection}
+      />
+      <ExpressionFormRow
+        control={control}
+        setValue={setValue}
         name="resourceAttributesExpression"
         label="Resource Attributes Expression"
         placeholder="ResourceAttributes"
@@ -322,6 +334,21 @@ export function TraceTableModelForm(props: TableModelProps) {
           control={control}
           name="spanEventsValueExpression"
           placeholder="Events"
+        />
+      </FormRow>
+      <FormRow
+        label={'Span Links Expression'}
+        helpText="Expression to extract span links. Used to capture links from a span to spans in other traces. Expected to be Nested ( TraceId String, SpanId String, TraceState String, Attributes Map(LowCardinality(String), String) )"
+      >
+        <SQLInlineEditorControlled
+          tableConnection={{
+            databaseName,
+            tableName,
+            connectionId,
+          }}
+          control={control}
+          name="spanLinksValueExpression"
+          placeholder="Links"
         />
       </FormRow>
       <ExpressionFormRow

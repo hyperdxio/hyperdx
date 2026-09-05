@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import request, { SuperAgentTest } from 'supertest';
 
 import * as config from '@/config';
+import { validateConnectionId } from '@/controllers/connection';
 import {
   DEFAULT_DATABASE,
   DEFAULT_LOGS_TABLE,
@@ -13,7 +14,6 @@ import Connection, { IConnection } from '@/models/connection';
 import { LogSource, Source, TraceSource } from '@/models/source';
 import { ITeam } from '@/models/team';
 import { IUser } from '@/models/user';
-import { validateConnectionId } from '@/routers/external-api/v2/sources';
 
 describe('External API v2 Sources CRUD', () => {
   const server = getServer();

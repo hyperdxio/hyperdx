@@ -260,7 +260,9 @@ mirrors HyperDX's `otel_traces` / `otel_logs` exactly.
 | Scenario | Agent Prompt | What's Planted |
 |---|---|---|
 | `error-root-cause` | "Checkout requests are failing..." | `payment-service` DB timeout cascading into `checkout-api` 5xx. 6M+ spans, 12M logs, 5 distractors. |
+| `deploy-regression` | "Support has been fielding a growing trickle of 'something went wrong at checkout' reports..." | `checkout-api` staged rollout on 3/6 pods → ~7% checkout 500s. Root cause is in **traces/logs** via `k8s.pod.name` cross-tab; metrics only corroborate. 6 distractors. |
 | `latency-spike` | "p99 latency on api-server has jumped..." | `/api/orders/search` p99 spike for enterprise tenants. 12M+ spans, 5 regions, 5 distractors. |
+| `metric-saturation` | "Shoppers are seeing slow/missing recommendations; frontend-proxy logs upstream 503s..." (blinded — culprit service not named) | `recommendation-service` JVM heap leak → GC-pause tail → latency shift → pod-restart cadence. Root cause is **metrics-only** (per-pod × per-pool heap gauges, all five metric types), with 5 distractors incl. a healthy JVM twin. |
 | `noisy-signals` | "We want to cut log ingest cost..." | ~16M logs across composite cells. Each noisy cell has a load-bearing pattern mixed in. |
 | `segmented-regression` | "API error rate has gone up..." | Enterprise x cache-miss errors at ~12%. Single-axis aggregates dilute the signal. |
 | `service-health-check` | "Generate a service health report..." | Peace-time report — no incident, but 4 novel signals to call out. |
@@ -336,13 +338,43 @@ dev runs-instrument <batch>                 # enrich with ClickHouse query_log t
 ### Grading & Reporting
 
 ```bash
-dev grade <batch>                           # programmatic + LLM-as-judge
-dev grade <batch> --judge-model claude-sonnet-4-6
-dev grade <batch> --no-judge                # programmatic checks only
-dev grade <batch> --rerun-judge             # re-run judge even if grades exist
-dev report <batch>                          # render _summary.md + _summary.json
-dev report <batch> --baseline hyperdx-main  # override baseline for deltas
+dev grade <batch>                            # programmatic + LLM-as-judge
+dev grade <batch> --judge-model openai:gpt-4o        # grade with a different provider
+dev grade <batch> --no-judge                 # programmatic checks only
+dev grade <batch> --rerun-judge              # force re-grade with the current judge
+dev report <batch>                           # render _summary.md + _summary.json
+dev report <batch> --baseline hyperdx-main   # override baseline for deltas
 ```
+
+#### Independent grader (different provider/model)
+
+The LLM-as-judge can run on a **different provider/model than the run model**
+(Anthropic run graded by OpenAI, and vice-versa), which reduces same-model bias.
+Pass `--judge-model` as a `provider:model` spec — supported providers
+`anthropic` and `openai`; a bare model name defaults to `anthropic`:
+
+```bash
+dev grade <batch> --judge-model openai:gpt-4o
+dev grade <batch> --judge-model claude-opus-4-7   # == anthropic:claude-opus-4-7
+```
+
+Precedence: `--judge-model` flag → `eval.config.json` `grading.judgeModel` →
+built-in default (`anthropic:claude-opus-4-7`):
+
+```json
+{ "grading": { "judgeModel": "openai:gpt-4o" } }
+```
+
+Grades are cached per run; re-grading a batch with a **different** judge
+re-runs that judge automatically (a cached grade from another judge model is
+treated as stale). Use `--rerun-judge` to force a refresh with the same judge.
+
+**Grader credentials** come from the environment, mirroring `packages/api`:
+`OPENAI_API_KEY` / `ANTHROPIC_API_KEY` per provider, `AI_API_KEY` as a fallback,
+`AI_BASE_URL` for a custom endpoint (Azure AI, LiteLLM proxy), and
+`AI_REQUEST_HEADERS` (OpenAI) as a JSON object. The **provider-specific key
+wins** over `AI_API_KEY`, so the runner's Anthropic key can live in `AI_API_KEY`
+while an OpenAI grader uses `OPENAI_API_KEY` without the two colliding.
 
 ### Viewer
 
@@ -365,11 +397,36 @@ Combined score = `0.4 * programmatic + 0.6 * judge - toolErrorPenalty`
   answer, defined per-scenario in `ground-truth.json`. Includes both positive
   checks (must find the right thing) and negative checks (must not blame a
   distractor).
-- **LLM-as-judge (60%)** — multi-criteria rubric scored 0-5 by Claude Opus
-  (configurable). Criteria are scenario-specific. Answers are **blinded** —
-  MCP tool names and brand terms are redacted so the judge can't tell which
-  MCP produced the answer.
+- **LLM-as-judge (60%)** — scenario-specific, multi-criteria rubric scored 0-5
+  by an LLM judge (configurable — see [Independent grader](#independent-grader-different-providermodel)).
+  The judge prompt defines **explicit 0-5 scoring anchors** (0 = wrong/absent …
+  5 = fully correct) to keep scores calibrated across judge models, and answers
+  are **blinded** — MCP tool names and brand terms are redacted so the judge
+  can't tell which MCP produced the answer.
+
+  > Judge scores are only comparable **within the same judge model** (anchors
+  > reduce but don't erase per-model scale differences). Hold the judge constant
+  > across runs you compare directly.
 - **Tool error penalty** — up to 20% deducted for high tool-call error rates.
+
+**Adoption (tool use)** is reported alongside the outcome score for scenarios
+with an `adoption` rubric block. Each check declares the scenario's target
+metric names/keys; a tool call counts when its **input args** name one of them
+(separator-tolerant: `jvm.gc.pause` ≡ `jvm_gc_pause`), regardless of which
+tool was called — a dedicated metric tool and raw SQL against the metrics
+tables score identically, so both arms are graded by the same rule. Tool
+names, tool outputs, and the prompt never count. Adoption is intentionally
+**excluded** from the combined score: measuring tool usage must not inflate
+outcome quality. `metric-saturation` (metrics load-bearing) should show
+≈100% adoption on its four core checks; the interesting readout is
+`deploy-regression` (metrics merely corroborating), where adoption measures
+whether the agent reaches for metrics it doesn't strictly need.
+
+`metric-saturation` includes two opportunistic checks (`discovered_summary_metric`,
+`queried_summary_via_sql`) on the `db.client.operation.duration` Summary distractor,
+which is discoverable via MCP but only queryable through raw `clickstack_sql`.
+They measure whether the agent follows that discovery → SQL path; since a strong
+run may justifiably skip the distractor after finding the JVM leak, sub-100% scores are expected.
 
 ### Baseline + Challengers
 

@@ -4,12 +4,13 @@ import {
   pickSampleWeightExpressionProps,
   type TTraceSource,
 } from '@hyperdx/common-utils/dist/types';
-import { Group, Text } from '@mantine/core';
+import { Text } from '@mantine/core';
 
-import { ChartBox } from '@/components/ChartBox';
+import { ChartCard } from '@/components/charts/ChartCard';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useServiceDashboardExpressions } from '@/serviceDashboard';
 
+import ChartContainer from './charts/ChartContainer';
 import ChartErrorState from './charts/ChartErrorState';
 import DBSqlRowTableWithSideBar from './DBSqlRowTableWithSidebar';
 
@@ -66,25 +67,28 @@ export default function SlowestEventsTile({
   const roundedP95 = Math.round(p95 ?? 0);
 
   return (
-    <ChartBox style={{ height }}>
-      <Group justify="space-between" align="center" mb="sm">
-        <Text size="sm">{title}</Text>
-        <Text size="xs">(Slower than {roundedP95}ms)</Text>
-      </Group>
-      {isLoading && !data ? (
-        <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
-          Loading Chart Data...
-        </div>
-      ) : isError ? (
-        <ChartErrorState error={error} />
-      ) : data?.data.length === 0 ? (
-        <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
-          No data found within time range.
-        </div>
-      ) : (
-        source &&
-        expressions && (
-          <>
+    <ChartCard style={{ height }}>
+      <ChartContainer
+        title={<Text size="sm">{title}</Text>}
+        toolbarItems={[
+          <Text key="slower-than" size="xs" style={{ whiteSpace: 'nowrap' }}>
+            (Slower than {roundedP95}ms)
+          </Text>,
+        ]}
+      >
+        {isLoading && !data ? (
+          <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
+            Loading Chart Data...
+          </div>
+        ) : isError ? (
+          <ChartErrorState error={error} />
+        ) : data?.data.length === 0 ? (
+          <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
+            No data found within time range.
+          </div>
+        ) : (
+          source &&
+          expressions && (
             <DBSqlRowTableWithSideBar
               sourceId={source.id}
               config={{
@@ -134,9 +138,9 @@ export default function SlowestEventsTile({
               isLive={false}
               queryKeyPrefix="service-dashboard-slowest-transactions"
             />
-          </>
-        )
-      )}
-    </ChartBox>
+          )
+        )}
+      </ChartContainer>
+    </ChartCard>
   );
 }

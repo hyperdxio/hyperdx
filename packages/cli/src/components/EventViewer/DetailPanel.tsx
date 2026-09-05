@@ -82,8 +82,6 @@ export function DetailPanel({
   columnValuesScrollOffset,
   traceDetailScrollOffset,
   expandedFormattedRow,
-  scrollOffset,
-  expandedRow,
   onTraceChSqlChange,
   onTraceSelectedNodeChange,
 }: DetailPanelProps) {

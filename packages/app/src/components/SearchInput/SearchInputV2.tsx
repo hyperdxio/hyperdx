@@ -10,6 +10,15 @@ import { Group } from '@mantine/core';
 import { IconBook } from '@tabler/icons-react';
 
 import {
+  useLuceneVariableEnglishExpander,
+  useLuceneVariableSuggestions,
+} from '@/components/SQLEditor/variableCompletions';
+import {
+  hasVariableIssues,
+  useVariableValidation,
+  VariableIssueIndicator,
+} from '@/components/SQLEditor/variableValidation';
+import {
   ILanguageFormatter,
   useAutoCompleteOptions,
 } from '@/hooks/useAutoCompleteOptions';
@@ -46,6 +55,7 @@ export default function SearchInputV2({
   queryHistoryType,
   dateRange,
   sourceId,
+  enableVariables = false,
   'data-testid': dataTestId,
   ...props
 }: {
@@ -60,6 +70,7 @@ export default function SearchInputV2({
   queryHistoryType?: string;
   dateRange?: [Date, Date];
   sourceId?: string;
+  enableVariables?: boolean;
   'data-testid'?: string;
 } & UseControllerProps<any> &
   TableConnectionChoice) {
@@ -70,6 +81,21 @@ export default function SearchInputV2({
   const metadata = useMetadataWithSettings();
   const ref = useRef<HTMLTextAreaElement>(null);
   const [parsedEnglishQuery, setParsedEnglishQuery] = useState<string>('');
+
+  // Bare `$name` references only, no macros
+  const variableOptions = useLuceneVariableSuggestions({
+    enabled: enableVariables,
+  });
+  const expandVariablesForEnglish = useLuceneVariableEnglishExpander({
+    enabled: enableVariables,
+  });
+  const variableIssues = useVariableValidation(
+    value != null ? `${value}` : '',
+    {
+      enabled: enableVariables,
+      language: 'lucene',
+    },
+  );
 
   const {
     options: autoCompleteOptions,
@@ -90,14 +116,14 @@ export default function SearchInputV2({
   useEffect(() => {
     if (tableConnection) {
       genEnglishExplanation({
-        query: value,
+        query: expandVariablesForEnglish(value != null ? `${value}` : ''),
         tableConnection,
         metadata,
       }).then(q => {
         setParsedEnglishQuery(q);
       });
     }
-  }, [value, tableConnection, metadata]);
+  }, [value, expandVariablesForEnglish, tableConnection, metadata]);
 
   useHotkeys(
     ['/', 's'],
@@ -121,6 +147,7 @@ export default function SearchInputV2({
       onChange={onChange}
       placeholder={placeholder}
       autocompleteOptions={autoCompleteOptions}
+      variableOptions={variableOptions}
       isLoadingValues={isLoadingValues}
       tokenInfo={tokenInfo}
       size={size}
@@ -130,6 +157,11 @@ export default function SearchInputV2({
       onSubmit={onSubmit}
       queryHistoryType={queryHistoryType}
       data-testid={dataTestId}
+      rightAdornment={
+        hasVariableIssues(variableIssues) ? (
+          <VariableIssueIndicator issues={variableIssues} />
+        ) : undefined
+      }
       aboveSuggestions={
         <>
           <div className={styles.searchingHeader}>Searching for:</div>

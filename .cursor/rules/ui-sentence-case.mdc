@@ -1,0 +1,37 @@
+---
+description: Enforce sentence case (not Title Case) for user-facing UI text in the app
+globs: packages/app/src/**/*.tsx
+alwaysApply: false
+---
+
+# UI text: sentence case
+
+All user-facing text uses **sentence case** — capitalize only the **first word**
+and any proper nouns/acronyms. Never use Title Case. Applies to labels, buttons,
+tab/menu items, headings, modal/section titles, placeholders, tooltips, table
+column headers, empty states, and toast copy.
+
+```tsx
+// ❌ BAD — Title Case
+<Text>Data Source</Text>
+<TextInput label="Chart Name" />
+<Button>Add Series</Button>
+<Menu.Item>Delete Dashboard</Menu.Item>
+
+// ✅ GOOD — sentence case
+<Text>Data source</Text>
+<TextInput label="Chart name" />
+<Button>Add series</Button>
+<Menu.Item>Delete dashboard</Menu.Item>
+```
+
+**Preserve proper nouns, product names, and acronyms** wherever they appear —
+sentence case only touches the surrounding words: HyperDX, ClickHouse,
+ClickStack, OpenTelemetry/OTel, Lucene, SQL, PromQL, MongoDB, Kubernetes, JSON,
+CSV, URL, ID, API, MCP, CPU, P95. E.g. `Search your events w/ Lucene`,
+`Edit SQL`, `View in ClickHouse`.
+
+Only sentence-case **static UI chrome**. Render dynamic/user data (column names,
+tag values, log/trace content, user-typed source/dashboard names) verbatim.
+
+Source of truth: `agent_docs/code_style.md` → "UI text: use sentence case".

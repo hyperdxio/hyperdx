@@ -32,7 +32,7 @@ export function usePinnedFiltersApi(sourceId: string | null) {
   return useQuery({
     queryKey: pinnedFiltersQueryKey(sourceId),
     queryFn: () => fetchPinnedFilters(sourceId!),
-    enabled: sourceId != null,
+    enabled: !!sourceId,
   });
 }
 

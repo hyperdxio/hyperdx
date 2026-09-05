@@ -1,11 +1,15 @@
 import React from 'react';
-import { DisplayType } from '@hyperdx/common-utils/dist/types';
+import {
+  DisplayType,
+  MAX_LEGEND_TEMPLATE_LENGTH,
+} from '@hyperdx/common-utils/dist/types';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import ChartDisplaySettingsDrawer, {
   ChartConfigDisplaySettings,
 } from '@/components/ChartDisplaySettingsDrawer';
+import { MAX_RENDERED_TIME_CHART_SERIES } from '@/defaults';
 
 // FormatTime depends on useUserPreferences (jotai + localStorage); mock it
 // so the drawer renders in isolation.
@@ -192,7 +196,7 @@ describe('ChartDisplaySettingsDrawer', () => {
       ).toBeInTheDocument();
     });
 
-    it('does not show the Series Limit input for raw SQL line charts', () => {
+    it('shows the Series Limit input for raw SQL line charts (client render cap)', () => {
       renderWithMantine(
         <ChartDisplaySettingsDrawer
           {...baseProps}
@@ -200,9 +204,12 @@ describe('ChartDisplaySettingsDrawer', () => {
         />,
       );
 
-      expect(
-        screen.queryByRole('textbox', { name: /series limit/i }),
-      ).not.toBeInTheDocument();
+      const input = screen.getByRole('textbox', { name: /series limit/i });
+      expect(input).toBeInTheDocument();
+      expect(input).toHaveAttribute(
+        'placeholder',
+        `Default (${MAX_RENDERED_TIME_CHART_SERIES})`,
+      );
     });
 
     it('does not show the Series Limit input for table charts', () => {
@@ -341,6 +348,144 @@ describe('ChartDisplaySettingsDrawer', () => {
     });
   });
 
+  describe('alternate row background setting', () => {
+    const builderProps = { ...baseProps, configType: 'builder' as const };
+
+    it('shows the toggle for builder table charts', () => {
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...builderProps}
+          displayType={DisplayType.Table}
+        />,
+      );
+
+      expect(
+        screen.getByRole('checkbox', { name: /alternate row background/i }),
+      ).toBeInTheDocument();
+    });
+
+    it('shows the toggle for raw SQL table charts', () => {
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          displayType={DisplayType.Table}
+        />,
+      );
+
+      expect(
+        screen.getByRole('checkbox', { name: /alternate row background/i }),
+      ).toBeInTheDocument();
+    });
+
+    it('does not show the toggle for line charts', () => {
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...builderProps}
+          displayType={DisplayType.Line}
+        />,
+      );
+
+      expect(
+        screen.queryByRole('checkbox', { name: /alternate row background/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('does not show the toggle for number tiles', () => {
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...builderProps}
+          displayType={DisplayType.Number}
+        />,
+      );
+
+      expect(
+        screen.queryByRole('checkbox', { name: /alternate row background/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('calls onChange with alternateRowBackground = true when enabled and applied', async () => {
+      const onChange = jest.fn();
+      const user = userEvent.setup();
+
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...builderProps}
+          displayType={DisplayType.Table}
+          onChange={onChange}
+        />,
+      );
+
+      await user.click(
+        screen.getByRole('checkbox', { name: /alternate row background/i }),
+      );
+      await user.click(screen.getByRole('button', { name: /apply/i }));
+
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(onChange.mock.calls[0][0]).toMatchObject({
+        alternateRowBackground: true,
+      });
+    });
+
+    it('calls onChange with alternateRowBackground = true for raw SQL table charts', async () => {
+      const onChange = jest.fn();
+      const user = userEvent.setup();
+
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          displayType={DisplayType.Table}
+          onChange={onChange}
+        />,
+      );
+
+      await user.click(
+        screen.getByRole('checkbox', { name: /alternate row background/i }),
+      );
+      await user.click(screen.getByRole('button', { name: /apply/i }));
+
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(onChange.mock.calls[0][0]).toMatchObject({
+        alternateRowBackground: true,
+      });
+    });
+  });
+
+  describe('display group by columns on left setting', () => {
+    const builderProps = { ...baseProps, configType: 'builder' as const };
+
+    it('shows the toggle for builder table charts', () => {
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...builderProps}
+          displayType={DisplayType.Table}
+        />,
+      );
+
+      expect(
+        screen.getByRole('checkbox', {
+          name: /display group by columns on left/i,
+        }),
+      ).toBeInTheDocument();
+    });
+
+    it('does not show the toggle for raw SQL table charts', () => {
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          displayType={DisplayType.Table}
+        />,
+      );
+
+      // Group By ordering needs the builder select structure, so it stays
+      // builder-only even though Alternate Row Background is shown for SQL.
+      expect(
+        screen.queryByRole('checkbox', {
+          name: /display group by columns on left/i,
+        }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
   describe('number format persistence', () => {
     // A duration number tile (e.g. p95 Duration from a trace source) auto-detects
     // a duration format from the datasource; the drawer receives it as
@@ -423,6 +568,76 @@ describe('ChartDisplaySettingsDrawer', () => {
         color: 'chart-blue',
         numberFormat: { output: 'currency' },
       });
+    });
+  });
+
+  describe('legend template', () => {
+    const promqlProps = {
+      ...baseProps,
+      configType: 'promql' as const,
+      displayType: DisplayType.Line,
+    };
+
+    it('blocks Apply when the template exceeds the persisted length cap', async () => {
+      const onChange = jest.fn();
+      const onClose = jest.fn();
+      const user = userEvent.setup();
+
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...promqlProps}
+          onChange={onChange}
+          onClose={onClose}
+        />,
+      );
+
+      const tooLong = 'a'.repeat(MAX_LEGEND_TEMPLATE_LENGTH + 1);
+      await user.click(screen.getByTestId('legend-template-input'));
+      await user.paste(tooLong);
+      await user.click(screen.getByRole('button', { name: /apply/i }));
+
+      expect(
+        screen.getByText(
+          `Template is too long (${MAX_LEGEND_TEMPLATE_LENGTH + 1} characters, max ${MAX_LEGEND_TEMPLATE_LENGTH})`,
+        ),
+      ).toBeInTheDocument();
+      expect(onChange).not.toHaveBeenCalled();
+      expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it('accepts a template exactly at the cap', async () => {
+      const onChange = jest.fn();
+      const user = userEvent.setup();
+
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer {...promqlProps} onChange={onChange} />,
+      );
+
+      const atCap = 'a'.repeat(MAX_LEGEND_TEMPLATE_LENGTH);
+      await user.click(screen.getByTestId('legend-template-input'));
+      await user.paste(atCap);
+      await user.click(screen.getByRole('button', { name: /apply/i }));
+
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(onChange.mock.calls[0][0]).toMatchObject({
+        legendTemplate: atCap,
+      });
+    });
+
+    it('measures the trimmed value, matching what gets persisted', async () => {
+      const onChange = jest.fn();
+      const user = userEvent.setup();
+
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer {...promqlProps} onChange={onChange} />,
+      );
+
+      const padded = `  ${'a'.repeat(MAX_LEGEND_TEMPLATE_LENGTH)}  `;
+      await user.click(screen.getByTestId('legend-template-input'));
+      await user.paste(padded);
+      await user.click(screen.getByRole('button', { name: /apply/i }));
+
+      expect(onChange).toHaveBeenCalledTimes(1);
     });
   });
 });

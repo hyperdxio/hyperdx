@@ -155,8 +155,23 @@ test.describe('Dashboards Listing Page', { tag: ['@dashboard'] }, () => {
         await dashboardsListPage.goto();
       });
 
-      await test.step('Delete the dashboard via the card menu', async () => {
-        await dashboardsListPage.deleteDashboardFromCard(uniqueName);
+      await test.step('Open the delete dialog from the card menu', async () => {
+        await dashboardsListPage.openDeleteDashboardDialogFromCard(uniqueName);
+        await expect(dashboardsListPage.deleteConfirmModal).toBeVisible();
+      });
+
+      await test.step('Cancel the deletion and verify the dashboard card is still visible', async () => {
+        await dashboardsListPage.cancelDeleteDashboard();
+        await expect(dashboardsListPage.deleteConfirmModal).toBeHidden();
+        await expect(
+          dashboardsListPage.getDashboardCard(uniqueName),
+        ).toBeVisible();
+      });
+
+      await test.step('Reopen the delete dialog and confirm deletion', async () => {
+        await dashboardsListPage.openDeleteDashboardDialogFromCard(uniqueName);
+        await expect(dashboardsListPage.deleteConfirmModal).toBeVisible();
+        await dashboardsListPage.confirmDeleteDashboard();
       });
 
       await test.step('Verify the dashboard is no longer visible', async () => {

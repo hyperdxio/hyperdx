@@ -1,4 +1,7 @@
-import { formatDataForHeatmap } from '@/components/DBHeatmapChart';
+import {
+  computeBucketPercentiles,
+  formatDataForHeatmap,
+} from '@/components/DBHeatmapChart';
 
 // CH widthBucket returns buckets 0..nBuckets+1, so each time bucket
 // produces nBuckets+2 grid cells.
@@ -92,5 +95,55 @@ describe('formatDataForHeatmap', () => {
       0, 5, 4, 0, 0, 0, // T0: bucket 1 = 5, with the duplicate value
       0, 6, 0, 0, 0, 0, // T1: cells after the duplicate must still render
     ]);
+  });
+});
+
+describe('computeBucketPercentiles', () => {
+  it('reports the share of events at or below each bucket, pooled across time buckets', () => {
+    const percentiles = computeBucketPercentiles(
+      formatDataForHeatmap({
+        ...baseArgs,
+        data: [
+          row(T0, 1, '3'),
+          row(T0, 4, '1'),
+          row(T1, 1, '5'),
+          row(T1, 2, '1'),
+        ],
+      }),
+    );
+
+    expect(percentiles).toEqual(
+      new Map([
+        [0, 0],
+        [1, 80], // 3 + 5 of the 10 events, both time buckets counted
+        [2, 90],
+        [3, 90], // empty bucket carries the share of the one below it
+        [4, 100],
+        [5, 100],
+      ]),
+    );
+  });
+
+  it('returns no percentiles when the grid holds no events', () => {
+    // Every cell is 0, so there is no distribution to place a value in
+    // the tooltip omits the percentile rather than dividing by zero.
+    expect(
+      computeBucketPercentiles(formatDataForHeatmap({ ...baseArgs, data: [] })),
+    ).toEqual(new Map());
+  });
+
+  it('orders buckets by y-value rather than by the order they arrive in', () => {
+    const percentiles = computeBucketPercentiles([
+      [0, 0], // times, unused
+      [5, 1], // y-values, highest first
+      [1, 3], // counts
+    ]);
+
+    expect(percentiles).toEqual(
+      new Map([
+        [1, 75],
+        [5, 100],
+      ]),
+    );
   });
 });

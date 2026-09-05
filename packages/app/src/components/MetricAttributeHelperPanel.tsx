@@ -31,6 +31,7 @@ import {
   AttributeCategory,
   AttributeKey,
 } from '@/hooks/useFetchMetricResourceAttrs';
+import { metricKindLabel } from '@/utils/metricKinds';
 
 interface MetricAttributeHelperPanelProps {
   databaseName: string;
@@ -116,7 +117,7 @@ const UCUM_UNIT_NAMES: Record<string, string> = {
 };
 
 // Format UCUM unit code to human-readable name
-function formatUnitDisplay(unit: string): string {
+export function formatUnitDisplay(unit: string): string {
   // Direct match
   if (UCUM_UNIT_NAMES[unit]) {
     return UCUM_UNIT_NAMES[unit];
@@ -161,19 +162,25 @@ function formatGroupByClause(
   return `${category}.${name}`;
 }
 
-interface AttributeValueListProps {
+export interface AttributeValueListProps {
   databaseName: string;
   metricType: string;
   metricName: string;
   tableSource: TMetricSource | undefined;
   attribute: AttributeKey;
-  language: 'sql' | 'lucene';
-  onAddToWhere: (clause: string) => void;
   onBack: () => void;
+  /**
+   * Filter syntax for the clause handed to `onAddToWhere`. Only meaningful
+   * when that callback is supplied. @default 'sql'
+   */
+  language?: 'sql' | 'lucene';
+  /** Omit to render values read-only, without the per-value `Where` button. */
+  onAddToWhere?: (clause: string) => void;
+  /** Omit to hide the `Group by` button. */
   onAddToGroupBy?: (clause: string) => void;
 }
 
-function AttributeValueList({
+export function AttributeValueList({
   databaseName,
   metricType,
   metricName,
@@ -199,11 +206,12 @@ function AttributeValueList({
 
   const handleAddValueToWhere = useCallback(
     (value: string) => {
+      if (!onAddToWhere) return;
       const clause = formatWhereClause(
         attribute.category,
         attribute.name,
         value,
-        language,
+        language ?? 'sql',
       );
       onAddToWhere(clause);
     },
@@ -276,14 +284,16 @@ function AttributeValueList({
                 <Text size="xs" style={{ wordBreak: 'break-all' }}>
                   {value}
                 </Text>
-                <Button
-                  variant="secondary"
-                  size="compact-xs"
-                  leftSection={<IconFilter size={12} />}
-                  onClick={() => handleAddValueToWhere(value)}
-                >
-                  Where
-                </Button>
+                {onAddToWhere && (
+                  <Button
+                    variant="secondary"
+                    size="compact-xs"
+                    leftSection={<IconFilter size={12} />}
+                    onClick={() => handleAddValueToWhere(value)}
+                  >
+                    Where
+                  </Button>
+                )}
               </Group>
             ))}
           </Stack>
@@ -297,12 +307,12 @@ function AttributeValueList({
   );
 }
 
-interface AttributeListProps {
+export interface AttributeListProps {
   attributeKeys: AttributeKey[];
   onSelectAttribute: (attr: AttributeKey) => void;
 }
 
-function AttributeList({
+export function AttributeList({
   attributeKeys,
   onSelectAttribute,
 }: AttributeListProps) {
@@ -444,6 +454,11 @@ export function MetricAttributeHelperPanel({
             )}
           </Box>
           <Group gap="xs" wrap="nowrap">
+            {!!metricType && (
+              <Badge size="xs" variant="light">
+                {metricKindLabel(metricType)}
+              </Badge>
+            )}
             {attributeKeys.length > 0 && (
               <Badge size="xs" variant="light">
                 {attributeKeys.length} attributes

@@ -49,6 +49,16 @@ export type EvalConfig = {
    * pass `--live` to ignore the saved value and use wall-clock time.
    */
   anchorTime?: string;
+  /** Grading (LLM-as-judge) defaults for this repo. */
+  grading?: {
+    /**
+     * Default judge model spec in `provider:model` form (e.g. `openai:gpt-4o`
+     * or `anthropic:claude-opus-4-7`). A bare model name defaults to the
+     * anthropic provider. The `--judge-model` CLI flag overrides this; this in
+     * turn overrides the framework's built-in default.
+     */
+    judgeModel?: string;
+  };
 };
 
 const CONFIG_FILENAME = 'eval.config.json';
@@ -245,6 +255,22 @@ function validateConfig(raw: unknown, path: string): EvalConfig {
           `Eval config 'plugins.${name}' must set exactly one of 'url' or 'dir'`,
         );
       }
+    }
+  }
+
+  // Validate the optional `grading` section.
+  const grading = obj.grading as Record<string, unknown> | undefined;
+  if (grading !== undefined) {
+    if (typeof grading !== 'object' || grading === null) {
+      throw new Error(`Eval config at ${path} 'grading' must be an object`);
+    }
+    if (
+      grading.judgeModel !== undefined &&
+      (typeof grading.judgeModel !== 'string' || !grading.judgeModel)
+    ) {
+      throw new Error(
+        `Eval config 'grading.judgeModel' must be a non-empty string`,
+      );
     }
   }
 

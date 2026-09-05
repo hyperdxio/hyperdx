@@ -1,11 +1,20 @@
 import {
   displayTypeSupportsBuilderAlerts,
   displayTypeSupportsRawSqlAlerts,
+  isFormulaSourceKind,
 } from '@hyperdx/common-utils/dist/core/utils';
 import {
   validateDashboardContainersStructure,
+  validateDashboardFilterFieldGating,
+  validateDashboardFilterModes,
+  validateDashboardFilterOptionUniqueness,
+  validateDashboardFilterVariableNames,
   validateDashboardTileContainerRefs,
 } from '@hyperdx/common-utils/dist/dashboardValidation';
+import {
+  isPrometheusLabelFilter,
+  isStaticListFilter,
+} from '@hyperdx/common-utils/dist/filters';
 import {
   isBuilderSavedChartConfig,
   isHeatmapCompatibleSource,
@@ -15,7 +24,6 @@ import {
 import {
   AggregateFunctionSchema,
   BuilderSavedChartConfig,
-  ChartPaletteToken,
   ColorCondition,
   DASHBOARD_MAX_CONTAINERS,
   DashboardContainer,
@@ -24,6 +32,7 @@ import {
   isLogSource,
   isOnClickDashboardById,
   isOnClickSearchById,
+  isPromqlSource,
   isTraceSource,
   NumberTileColorCondition,
   NumberTileColorConditionSchema,
@@ -136,15 +145,24 @@ const convertToExternalSelectItem = (
     'level' in item
       ? externalQuantileLevelSchema.safeParse(item.level)
       : undefined;
-  const level = parsedLevel?.success ? parsedLevel.data : undefined;
+  // Drop aggregation parameters the emitted aggFn cannot carry. Changing a
+  // tile's aggregation in the editor leaves the previous agg's field behind in
+  // the stored config, where it is inert: renderChartConfig reads `level` only
+  // for a quantile or histogram agg, and ignores `valueExpression` for a count.
+  // On the way out it is not inert — externalDashboardSelectItemSchema rejects
+  // both, so the GET body could not be PUT back and an imported dashboard
+  // failed `terraform plan` with "Level can only be used with quantile
+  // aggregation function". Same read-path heal as the container refs below.
+  //
+  // Scoped to exactly what that schema rejects: an *empty* valueExpression on a
+  // count is what the editor writes for every count tile and validates fine, so
+  // it stays. Only a leftover value is dropped.
+  const level =
+    aggFn === 'quantile' && parsedLevel?.success ? parsedLevel.data : undefined;
+  const staleValueExpression = aggFn === 'count' && !!item.valueExpression;
   return {
-    ...pick(item, [
-      'valueExpression',
-      'alias',
-      'metricType',
-      'metricName',
-      'numberFormat',
-    ]),
+    ...pick(item, ['alias', 'metricType', 'metricName', 'numberFormat']),
+    ...(staleValueExpression ? {} : pick(item, ['valueExpression'])),
     aggFn,
     where: item.aggCondition ?? '',
     whereLanguage: item.aggConditionLanguage ?? 'lucene',
@@ -183,7 +201,9 @@ const toExternalColorRules = (
   return resolved.length > 0 ? resolved : undefined;
 };
 
-const convertToExternalTileChartConfig = (
+// Exported for the inline-alert converter (v2/utils/alertChartConfig.ts),
+// which reuses the tile-config translation for an alert's persisted config.
+export const convertToExternalTileChartConfig = (
   config: SavedChartConfig,
 ): ExternalDashboardTileConfig | undefined => {
   if (isRawSqlSavedChartConfig(config)) {
@@ -200,6 +220,9 @@ const convertToExternalTileChartConfig = (
           fitYAxisToData: config.fitYAxisToData,
           numberFormat: config.numberFormat,
           compareToPreviousPeriod: config.compareToPreviousPeriod,
+          // Three-state passthrough: 0 (unlimited) and positive N round-trip;
+          // null/undefined map to absent (the default-cap state).
+          seriesLimit: config.seriesLimit ?? undefined,
         };
       case DisplayType.StackedBar:
         return {
@@ -211,6 +234,9 @@ const convertToExternalTileChartConfig = (
           alignDateRangeToGranularity: config.alignDateRangeToGranularity,
           fillNulls: config.fillNulls !== false,
           numberFormat: config.numberFormat,
+          // Three-state passthrough: 0 (unlimited) and positive N round-trip;
+          // null/undefined map to absent (the default-cap state).
+          seriesLimit: config.seriesLimit ?? undefined,
         };
       case DisplayType.Table:
         return {
@@ -230,10 +256,8 @@ const convertToExternalTileChartConfig = (
           sqlTemplate: config.sqlTemplate,
           sourceId: config.source,
           numberFormat: config.numberFormat,
-          // Raw SQL number tiles carry the static tile color too (no
-          // colorRules; see the schema). Normalize a legacy token saved
-          // before the hue rename to its hue name on output.
           color: resolveChartPaletteToken(config.color),
+          colorRules: toExternalColorRules(config.colorRules),
         };
       case DisplayType.Pie:
         return {
@@ -282,6 +306,18 @@ const convertToExternalTileChartConfig = (
     return typeof value === 'string' ? value : defaultValue;
   };
 
+  // Formulas are emitted only when present so formula-less tiles keep
+  // their pre-formula response shape. Number tiles never emit
+  // `showOperandSeries` — operands are always hidden there, and the
+  // internal converter re-persists the explicit `false` on the way in.
+  const externalFormulaFields = config.formulas?.length
+    ? { formulas: config.formulas }
+    : {};
+  const externalShowOperandSeriesField =
+    config.formulas?.length && config.showOperandSeries !== undefined
+      ? { showOperandSeries: config.showOperandSeries }
+      : {};
+
   switch (config.displayType) {
     case DisplayType.Line:
       return {
@@ -300,6 +336,11 @@ const convertToExternalTileChartConfig = (
           : [DEFAULT_SELECT_ITEM],
         compareToPreviousPeriod: config.compareToPreviousPeriod,
         numberFormat: config.numberFormat,
+        // Three-state passthrough: 0 (unlimited) and positive N round-trip;
+        // null/undefined map to absent (the default-cap state).
+        seriesLimit: config.seriesLimit ?? undefined,
+        ...externalFormulaFields,
+        ...externalShowOperandSeriesField,
       };
     case DisplayType.StackedBar:
       return {
@@ -316,15 +357,26 @@ const convertToExternalTileChartConfig = (
           ? config.select.map(convertToExternalSelectItem)
           : [DEFAULT_SELECT_ITEM],
         numberFormat: config.numberFormat,
+        // Three-state passthrough: 0 (unlimited) and positive N round-trip;
+        // null/undefined map to absent (the default-cap state).
+        seriesLimit: config.seriesLimit ?? undefined,
+        ...externalFormulaFields,
+        ...externalShowOperandSeriesField,
       };
     case DisplayType.Number:
       return {
         displayType: config.displayType,
         sourceId,
+        // A formula number tile carries every operand select item (the
+        // formula references them by position), so emit them all; a
+        // formula-less tile keeps its single-item response shape.
         select: Array.isArray(config.select)
-          ? [convertToExternalSelectItem(config.select[0])]
+          ? config.formulas?.length
+            ? config.select.map(convertToExternalSelectItem)
+            : [convertToExternalSelectItem(config.select[0])]
           : [DEFAULT_SELECT_ITEM],
         numberFormat: config.numberFormat,
+        ...externalFormulaFields,
         // Normalize stored palette tokens on the way out. A static `color`
         // saved before the hue rename holds a legacy `chart-1`..`chart-10`
         // token in Mongo (the `tiles` field is `Mixed`), so map it to the
@@ -352,6 +404,8 @@ const convertToExternalTileChartConfig = (
         groupBy: stringValueOrDefault(config.groupBy, undefined),
         orderBy: stringValueOrDefault(config.orderBy, undefined),
         numberFormat: config.numberFormat,
+        // Three-state passthrough: 0 (unlimited) and positive N round-trip;
+        // null/undefined map to absent (the default-cap state).
         limit: config.seriesLimit ?? undefined,
       };
     case DisplayType.Bar:
@@ -364,6 +418,8 @@ const convertToExternalTileChartConfig = (
         groupBy: stringValueOrDefault(config.groupBy, undefined),
         orderBy: stringValueOrDefault(config.orderBy, undefined),
         numberFormat: config.numberFormat,
+        // Three-state passthrough: 0 (unlimited) and positive N round-trip;
+        // null/undefined map to absent (the default-cap state).
         limit: config.seriesLimit ?? undefined,
       };
     case DisplayType.Table:
@@ -385,6 +441,8 @@ const convertToExternalTileChartConfig = (
           ? config.select.map(convertToExternalSelectItem)
           : [DEFAULT_SELECT_ITEM],
         orderBy: stringValueOrDefault(config.orderBy, undefined),
+        ...externalFormulaFields,
+        ...externalShowOperandSeriesField,
       };
     case DisplayType.Search:
       return {
@@ -594,7 +652,12 @@ export function convertToExternalDashboard(
 // --------------------------------------------------------------------------------
 
 const convertToInternalSelectItem = (
-  item: ExternalDashboardSelectItem,
+  // `isDelta` is the MCP tile dialect's spelling of the gauge delta flag
+  // (`periodAggFn: 'delta'` in the REST dialect). MCP tiles are cast to
+  // ExternalDashboardTileWithId before reaching this converter
+  // (saveDashboard.ts), so honoring both spellings here is what keeps an
+  // MCP-authored gauge-delta series from silently evaluating raw values.
+  item: ExternalDashboardSelectItem & { isDelta?: boolean },
 ): Exclude<BuilderSavedChartConfig['select'][number], string> => {
   return {
     ...pick(item, [
@@ -607,7 +670,7 @@ const convertToInternalSelectItem = (
     ]),
     aggCondition: item.where,
     aggConditionLanguage: item.whereLanguage,
-    isDelta: item.periodAggFn === 'delta',
+    isDelta: item.periodAggFn === 'delta' || item.isDelta === true,
     valueExpression: item.valueExpression ?? '',
   };
 };
@@ -631,6 +694,8 @@ export function convertToInternalTileConfig(
             'alignDateRangeToGranularity',
             'compareToPreviousPeriod',
             'fitYAxisToData',
+            // Round-trip the render cap so a GET→PUT does not silently wipe it.
+            'seriesLimit',
           ]),
           displayType:
             externalConfig.displayType === 'stacked_bar'
@@ -666,11 +731,13 @@ export function convertToInternalTileConfig(
             externalConfig.displayType === 'table'
               ? externalConfig.onClick
               : undefined,
-          // Only the raw SQL number variant carries `color`; table and pie
-          // do not expose it. `_.omitBy(_.isNil)` below drops it when absent.
           color:
             externalConfig.displayType === 'number'
               ? externalConfig.color
+              : undefined,
+          colorRules:
+            externalConfig.displayType === 'number'
+              ? externalConfig.colorRules
               : undefined,
         } satisfies RawSqlSavedChartConfig;
         break;
@@ -693,6 +760,10 @@ export function convertToInternalTileConfig(
             'alignDateRangeToGranularity',
             'compareToPreviousPeriod',
             'fitYAxisToData',
+            // Formulas round-trip as-is; the input schema has already
+            // validated the expressions against `select`.
+            'formulas',
+            'showOperandSeries',
           ]),
           displayType:
             externalConfig.displayType === 'stacked_bar'
@@ -703,6 +774,7 @@ export function convertToInternalTileConfig(
           where: '',
           fillNulls: externalConfig.fillNulls === false ? false : undefined,
           seriesReturnType: externalConfig.asRatio ? 'ratio' : undefined,
+          seriesLimit: externalConfig.seriesLimit,
           name,
         } satisfies BuilderSavedChartConfig;
         break;
@@ -715,6 +787,10 @@ export function convertToInternalTileConfig(
             'orderBy',
             'groupByColumnsOnLeft',
             'onClick',
+            // Formulas round-trip as-is; the input schema has already
+            // validated the expressions against `select`.
+            'formulas',
+            'showOperandSeries',
           ]),
           displayType: DisplayType.Table,
           select: externalConfig.select.map(convertToInternalSelectItem),
@@ -727,10 +803,23 @@ export function convertToInternalTileConfig(
       case 'number':
         internalConfig = {
           displayType: DisplayType.Number,
-          select: [convertToInternalSelectItem(externalConfig.select[0])],
+          // A formula number tile keeps every operand select item (formulas
+          // reference them by position); a formula-less tile persists its
+          // single item, preserving the pre-formula shape.
+          select: externalConfig.formulas?.length
+            ? externalConfig.select.map(convertToInternalSelectItem)
+            : [convertToInternalSelectItem(externalConfig.select[0])],
           source: externalConfig.sourceId,
           where: '',
           numberFormat: externalConfig.numberFormat,
+          // Number charts display the first value column, so operand series
+          // are always hidden — persist the explicit `false` so the saved
+          // config is self-describing, mirroring the chart editor's
+          // `convertFormStateToSavedChartConfig`.
+          formulas: externalConfig.formulas,
+          showOperandSeries: externalConfig.formulas?.length
+            ? false
+            : undefined,
           // The input schema validates these as hue-only palette tokens,
           // so pass them through directly; `_.omitBy(_.isNil)` below drops
           // them when absent.
@@ -946,7 +1035,8 @@ function getMissingSources(
 
   if (filters?.length) {
     for (const filter of filters) {
-      if ('sourceId' in filter) {
+      // Every variant but the static one names a source.
+      if (!isStaticListFilter(filter)) {
         sourceIds.add(filter.sourceId);
       }
     }
@@ -986,6 +1076,105 @@ function getHeatmapTilesWithIncompatibleSources(
   return [...heatmapSourceIds].filter(id => {
     const source = sourceById.get(id);
     return source !== undefined && !isHeatmapCompatibleSource(source);
+  });
+}
+
+/**
+ * Returns an error message string if any of the referenced source IDs is not
+ * a valid PromQL source, or null if all of them are.
+ */
+export function getPromqlLabelFilterSourceError(
+  sources: SourceForValidation[],
+  referencedSourceIds: string[],
+): string | null {
+  const sourceById = new Map(sources.map(s => [s._id.toString(), s]));
+  const invalid = [...new Set(referencedSourceIds)].filter(id => {
+    const source = sourceById.get(id);
+    return source === undefined || !isPromqlSource(source);
+  });
+  if (invalid.length === 0) return null;
+  return `PROMETHEUS_LABEL filters require a PromQL source. The following source IDs are not PromQL sources: ${invalid.join(', ')}`;
+}
+
+/**
+ * Returns source IDs referenced by formula tiles that exist but are not
+ * formula-capable. Formulas render on metric and log/trace sources; other
+ * kinds (e.g. session) are deliberately gated off via the shared
+ * `isFormulaSourceKind` predicate — the same gate as the editor's
+ * "Add Formula" button — so the API cannot persist a config the editor
+ * refuses.
+ */
+function getFormulaTilesWithIncompatibleSources(
+  sources: SourceForValidation[],
+  tiles: ExternalDashboardTileWithId[],
+): string[] {
+  const formulaSourceIds = new Set<string>();
+  for (const tile of tiles) {
+    if (
+      isConfigTile(tile) &&
+      !isRawSqlExternalTileConfig(tile.config) &&
+      'formulas' in tile.config &&
+      (tile.config.formulas?.length ?? 0) > 0 &&
+      'sourceId' in tile.config &&
+      tile.config.sourceId
+    ) {
+      formulaSourceIds.add(tile.config.sourceId);
+    }
+  }
+  if (formulaSourceIds.size === 0) return [];
+
+  const sourceById = new Map(sources.map(s => [s._id.toString(), s]));
+  return [...formulaSourceIds].filter(id => {
+    const source = sourceById.get(id);
+    return source !== undefined && !isFormulaSourceKind(source.kind);
+  });
+}
+
+/**
+ * For a PUT (update) request, return only the formula tiles that need to
+ * be re-validated against the source-kind gate. Mirrors
+ * `filterChangedHeatmapTiles` below: a tile that already carried the same
+ * formulas on the same source is kept as "unchanged" so the user can edit
+ * other parts of the dashboard without being blocked when the source's
+ * `kind` was changed after the formulas were originally accepted. New
+ * formula tiles, tiles with new or edited formulas, and tiles whose
+ * `sourceId` changed all flow through the check.
+ */
+function filterChangedFormulaTiles(
+  requestTiles: ExternalDashboardTileWithId[],
+  existingTiles: DashboardDocument['tiles'],
+): ExternalDashboardTileWithId[] {
+  const existingTilesById = new Map<string, DashboardDocument['tiles'][number]>(
+    existingTiles.map(t => [t.id, t]),
+  );
+  return requestTiles.filter(tile => {
+    if (
+      !isConfigTile(tile) ||
+      isRawSqlExternalTileConfig(tile.config) ||
+      !('formulas' in tile.config) ||
+      (tile.config.formulas?.length ?? 0) === 0
+    ) {
+      return false;
+    }
+    const existing = tile.id ? existingTilesById.get(tile.id) : undefined;
+    if (existing === undefined) {
+      // New formula tile: validate.
+      return true;
+    }
+    const existingConfig = existing.config;
+    if (!isBuilderSavedChartConfig(existingConfig)) {
+      // Existing tile was raw-SQL/PromQL; user is converting to a builder
+      // tile with formulas.
+      return true;
+    }
+    if (!_.isEqual(existingConfig.formulas, tile.config.formulas)) {
+      // Formulas newly added or edited: the user is actively touching
+      // the gated feature, so surface the source-kind error.
+      return true;
+    }
+    // Existing tile already carried these exact formulas. Re-check only
+    // when the source changed.
+    return existingConfig.source?.toString() !== tile.config.sourceId;
   });
 }
 
@@ -1301,6 +1490,29 @@ export async function validateDashboardTiles(
     return `Heatmap tiles require a Trace source. The following source IDs are not Trace sources: ${heatmapNonTraceSources.join(', ')}`;
   }
 
+  // Formula source-kind gate. On create (no existingTiles), validate all
+  // tiles. On update, scope to tiles whose formulas/sourceId changed —
+  // mirroring the heatmap gate — so a source whose kind changed after
+  // acceptance doesn't block unrelated dashboard edits.
+  const formulaTilesToCheck = existingTiles
+    ? filterChangedFormulaTiles(tiles, existingTiles)
+    : tiles;
+  const formulaIncompatibleSources = getFormulaTilesWithIncompatibleSources(
+    sources,
+    formulaTilesToCheck,
+  );
+  if (formulaIncompatibleSources.length > 0) {
+    return `Tiles with formulas require a Metric, Log, or Trace source. The following source IDs are not formula-capable: ${formulaIncompatibleSources.join(', ')}`;
+  }
+
+  // Validate that PROMETHEUS_LABEL filters reference PromQL sources
+  const promqlLabelFilters = (filters ?? []).filter(isPrometheusLabelFilter);
+  const promqlLabelFilterError = getPromqlLabelFilterSourceError(
+    sources,
+    promqlLabelFilters.map(f => f.sourceId),
+  );
+  if (promqlLabelFilterError != null) return promqlLabelFilterError;
+
   if (missingOnClickDashboards.length > 0) {
     return `Could not find the following onClick dashboard IDs: ${missingOnClickDashboards.join(', ')}`;
   }
@@ -1394,6 +1606,14 @@ function buildDashboardBodySchema(filterSchema: z.ZodTypeAny): z.ZodEffects<
       // (otherwise a tile that references a real preserved container
       // would be rejected against an empty `data.containers ?? []`).
       validateDashboardContainersStructure(data.containers ?? [], ctx);
+
+      // Mirrors the dashboard filter form's validations. Backwards compatible
+      // with pre-`isBroadcastEnabled` payloads.
+      validateDashboardFilterVariableNames(data.filters ?? [], ctx);
+      validateDashboardFilterModes(data.filters ?? [], ctx);
+      validateDashboardFilterFieldGating(data.filters ?? [], ctx);
+
+      validateDashboardFilterOptionUniqueness(data.filters ?? [], ctx);
     });
 }
 

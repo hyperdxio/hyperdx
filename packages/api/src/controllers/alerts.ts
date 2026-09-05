@@ -1,26 +1,35 @@
 import {
+  displayTypeSupportsBuilderAlerts,
   displayTypeSupportsRawSqlAlerts,
+  isFormulaSourceKind,
   validateRawSqlForAlert,
 } from '@hyperdx/common-utils/dist/core/utils';
 import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
-import { sign, verify } from 'jsonwebtoken';
 import { groupBy } from 'lodash';
-import ms from 'ms';
+import { Types } from 'mongoose';
 import { z } from 'zod';
 
 import type { ObjectId } from '@/models';
-import Alert, { AlertSource, IAlert } from '@/models/alert';
+import Alert, {
+  AlertChannel,
+  AlertSource,
+  getAlertChannels,
+  IAlert,
+} from '@/models/alert';
+import Connection from '@/models/connection';
 import Dashboard, { IDashboard } from '@/models/dashboard';
 import { ISavedSearch, SavedSearch } from '@/models/savedSearch';
+import { Source } from '@/models/source';
 import { IUser } from '@/models/user';
 import Webhook from '@/models/webhook';
+import { type AlertRefs, deriveAlertDisplayFields } from '@/utils/alerts';
 import { Api400Error } from '@/utils/errors';
-import logger from '@/utils/logger';
-import { alertSchema, objectIdSchema } from '@/utils/zod';
+import { internalAlertSchema, objectIdSchema } from '@/utils/zod';
 
 export type AlertInput = Omit<
   IAlert,
   | 'id'
+  | 'channel'
   | 'scheduleStartAt'
   | 'savedSearchId'
   | 'createdAt'
@@ -30,6 +39,9 @@ export type AlertInput = Omit<
   | 'state'
 > & {
   id?: string;
+  // Exactly one of channel/channels is provided (enforced by alertSchema);
+  // `channels` flows in optionally via IAlert.
+  channel?: AlertChannel;
   // Replace the Date-type fields from IAlert
   scheduleStartAt?: string | null;
   // Replace the ObjectId-type fields from IAlert
@@ -47,9 +59,17 @@ export const validateAlertInput = async (
   teamId: ObjectId,
   alertInput: Pick<
     AlertInput,
-    'source' | 'dashboardId' | 'tileId' | 'savedSearchId' | 'channel'
+    | 'source'
+    | 'dashboardId'
+    | 'tileId'
+    | 'savedSearchId'
+    | 'chartConfig'
+    | 'channel'
+    | 'channels'
   >,
 ) => {
+  const refs: AlertRefs = {};
+
   if (alertInput.source === AlertSource.TILE) {
     validateObjectId(alertInput.dashboardId, 'Invalid dashboard ID');
 
@@ -61,6 +81,7 @@ export const validateAlertInput = async (
     if (dashboard == null) {
       throw new Api400Error('Dashboard not found');
     }
+    refs.dashboard = dashboard;
 
     const tile = dashboard.tiles.find(tile => tile.id === alertInput.tileId);
 
@@ -95,23 +116,131 @@ export const validateAlertInput = async (
     if (savedSearch == null) {
       throw new Api400Error('Saved search not found');
     }
+    refs.savedSearch = savedSearch;
   }
 
-  if (alertInput.channel.type === 'webhook') {
-    validateObjectId(alertInput.channel.webhookId, 'Invalid webhook ID');
+  if (alertInput.source === AlertSource.INLINE) {
+    const chartConfig = alertInput.chartConfig;
+    if (chartConfig == null) {
+      throw new Api400Error('Chart config is required');
+    }
 
-    if (
-      (await Webhook.findOne({
-        _id: alertInput.channel.webhookId,
+    if (isRawSqlSavedChartConfig(chartConfig)) {
+      if (!displayTypeSupportsRawSqlAlerts(chartConfig.displayType)) {
+        throw new Api400Error(
+          'Alerts on Raw SQL charts are only supported for Line, Stacked Bar, or Number display types',
+        );
+      }
+
+      const { errors } = validateRawSqlForAlert(chartConfig);
+      if (errors.length > 0) {
+        throw new Api400Error(
+          `Raw SQL alert query is invalid: ${errors.join(', ')}`,
+        );
+      }
+
+      // Raw SQL configs carry the connection directly; the source reference
+      // is optional metadata for macro expansion ($__sourceTable).
+      validateObjectId(chartConfig.connection, 'Invalid connection ID');
+      const connection = await Connection.findOne({
+        _id: chartConfig.connection,
         team: teamId,
-      })) == null
-    ) {
-      throw new Api400Error('Webhook not found');
+      });
+      if (connection == null) {
+        throw new Api400Error('Connection not found');
+      }
+      if (chartConfig.source) {
+        validateObjectId(chartConfig.source, 'Invalid source ID');
+        const source = await Source.findOne({
+          _id: chartConfig.source,
+          team: teamId,
+        });
+        if (source == null) {
+          throw new Api400Error('Source not found');
+        }
+        // The worker executes the query through chartConfig.connection while
+        // expanding $__sourceTable/metricTables from this source. Accepting a
+        // source on a different (even team-owned) connection would query the
+        // wrong database — silently wrong values when the table also exists
+        // there, repeated query failures when it does not.
+        //
+        // Compare as ObjectIds, not strings: objectIdSchema admits every
+        // representation ObjectId.isValid does (uppercase hex, 12-byte
+        // strings), and the Mongo lookups above cast them — a lexical
+        // comparison would reject an equivalent non-canonical ID.
+        if (
+          !new Types.ObjectId(String(source.connection)).equals(
+            chartConfig.connection,
+          )
+        ) {
+          throw new Api400Error(
+            'Source does not belong to the specified connection',
+          );
+        }
+      }
+    } else {
+      // Builder configs: same display types the alert task can evaluate as a
+      // time series (mirrors the tile-alert rules).
+      if (!displayTypeSupportsBuilderAlerts(chartConfig.displayType)) {
+        throw new Api400Error(
+          'Inline chart alerts are only supported for Line, Stacked Bar, or Number display types',
+        );
+      }
+
+      validateObjectId(chartConfig.source, 'Invalid source ID');
+      const source = await Source.findOne({
+        _id: chartConfig.source,
+        team: teamId,
+      });
+      if (source == null) {
+        throw new Api400Error('Source not found');
+      }
+
+      // Same formula source-kind gate as dashboard tiles ("Add Formula" is
+      // disabled in the editor for these kinds), so the API cannot persist a
+      // config the editor refuses.
+      if (
+        'formulas' in chartConfig &&
+        (chartConfig.formulas?.length ?? 0) > 0 &&
+        !isFormulaSourceKind(source.kind)
+      ) {
+        throw new Api400Error(
+          'Alerts with formulas require a Metric, Log, or Trace source',
+        );
+      }
     }
   }
+
+  const channels = getAlertChannels(alertInput);
+  if (channels.length === 0) {
+    throw new Api400Error('At least one notification channel is required');
+  }
+
+  const webhookIds = channels
+    .filter(c => c.type === 'webhook')
+    .map(c => c.webhookId);
+  for (const webhookId of webhookIds) {
+    validateObjectId(webhookId, 'Invalid webhook ID');
+  }
+  const uniqueIds = [...new Set(webhookIds)];
+  const found = await Webhook.countDocuments({
+    _id: { $in: uniqueIds },
+    team: teamId,
+  });
+  if (found !== uniqueIds.length) {
+    throw new Api400Error('Webhook not found');
+  }
+
+  return refs;
 };
 
-const makeAlert = (alert: AlertInput, userId?: ObjectId): Partial<IAlert> => {
+// Exported for unit testing the channel-mirroring invariant (see
+// controllers/__tests__/alerts.test.ts) -- otherwise only used internally.
+export const makeAlert = (
+  alert: AlertInput,
+  userId?: ObjectId,
+  refs: AlertRefs = {},
+): Partial<IAlert> => {
   // Preserve existing DB value when scheduleStartAt is omitted from updates
   // (undefined), while still allowing explicit clears via null.
   const hasScheduleStartAt = alert.scheduleStartAt !== undefined;
@@ -125,9 +254,23 @@ const makeAlert = (alert: AlertInput, userId?: ObjectId): Partial<IAlert> => {
       : hasScheduleStartAt && alert.scheduleOffsetMinutes == null
         ? 0
         : alert.scheduleOffsetMinutes;
+  const isSavedSearch = alert.source === AlertSource.SAVED_SEARCH;
+  const isTile = alert.source === AlertSource.TILE;
+  const isInline = alert.source === AlertSource.INLINE;
+  const channels = getAlertChannels(alert);
+  // If the input explicitly provides a non-null value, persist it. If the input omits the
+  // field and a referenced entity is available, persist the value derived from the referenced entity.
+  // Otherwise, null.
+  const derivedDisplay = deriveAlertDisplayFields(alert, refs);
+  const displayName = alert.displayName ?? derivedDisplay.displayName ?? null;
+  const tags = alert.tags ?? derivedDisplay.tags ?? null;
 
   return {
-    channel: alert.channel,
+    // `channels` is canonical; `channel` mirrors channels[0] so readers that
+    // predate multi-channel support (older task runners mid-rollout) still
+    // notify the first target.
+    channel: channels[0] ?? { type: null },
+    channels,
     interval: alert.interval,
     ...(normalizedScheduleOffsetMinutes != null && {
       scheduleOffsetMinutes: normalizedScheduleOffsetMinutes,
@@ -149,12 +292,22 @@ const makeAlert = (alert: AlertInput, userId?: ObjectId): Partial<IAlert> => {
     message: alert.message ?? null,
     note: alert.note ?? null,
 
+    displayName,
+    tags,
+
     // Log alerts
-    savedSearch: alert.savedSearchId as unknown as ObjectId,
-    groupBy: alert.groupBy,
-    // Chart alerts
-    dashboard: alert.dashboardId as unknown as ObjectId,
-    tileId: alert.tileId,
+    savedSearch: isSavedSearch
+      ? ((alert.savedSearchId ?? null) as unknown as ObjectId)
+      : null,
+    groupBy: isSavedSearch ? (alert.groupBy ?? null) : null,
+    // Tile alerts
+    dashboard: isTile
+      ? ((alert.dashboardId ?? null) as unknown as ObjectId)
+      : null,
+    tileId: isTile ? (alert.tileId ?? null) : null,
+
+    // Inline alerts
+    chartConfig: isInline ? (alert.chartConfig ?? null) : null,
 
     // Multi-window alerting
     numConsecutiveWindows: alert.numConsecutiveWindows ?? null,
@@ -163,11 +316,12 @@ const makeAlert = (alert: AlertInput, userId?: ObjectId): Partial<IAlert> => {
 
 export const createAlert = async (
   teamId: ObjectId,
-  alertInput: z.infer<typeof alertSchema>,
+  alertInput: z.infer<typeof internalAlertSchema>,
   userId: ObjectId,
+  refs: AlertRefs = {},
 ) => {
   return new Alert({
-    ...makeAlert(alertInput, userId),
+    ...makeAlert(alertInput, userId, refs),
     team: teamId,
   }).save();
 };
@@ -177,6 +331,7 @@ export const updateAlert = async (
   id: string,
   teamId: ObjectId,
   alertInput: AlertInput,
+  refs: AlertRefs = {},
 ) => {
   // should consider clearing AlertHistory when updating an alert?
   return Alert.findOneAndUpdate(
@@ -184,23 +339,11 @@ export const updateAlert = async (
       _id: id,
       team: teamId,
     },
-    makeAlert(alertInput),
+    makeAlert(alertInput, undefined, refs),
     {
       returnDocument: 'after',
     },
   );
-};
-
-export const getAlerts = async (
-  teamId: ObjectId,
-  { limit, offset }: { limit: number; offset: number },
-) => {
-  // Sort by _id so skip/offset paging is stable across requests (MongoDB does
-  // not guarantee natural order between separate find() calls).
-  return Alert.find({ team: teamId })
-    .sort({ _id: 1 })
-    .skip(offset)
-    .limit(limit);
 };
 
 export const countAlerts = async (teamId: ObjectId) => {
@@ -240,11 +383,12 @@ export const getDashboardAlertsByTile = async (
 };
 
 export const createOrUpdateDashboardAlerts = async (
-  dashboardId: ObjectId | string,
+  dashboard: Pick<IDashboard, '_id' | 'name' | 'tags' | 'tiles'>,
   teamId: ObjectId,
   alertsByTile: Record<string, AlertInput>,
   userId?: ObjectId,
 ) => {
+  const dashboardId = dashboard._id;
   return Promise.all(
     Object.entries(alertsByTile).map(async ([tileId, alert]) => {
       const filter = {
@@ -253,11 +397,17 @@ export const createOrUpdateDashboardAlerts = async (
         source: AlertSource.TILE,
         team: teamId,
       };
+      const alertInput = {
+        ...alert,
+        source: AlertSource.TILE,
+        dashboardId: dashboardId.toString(),
+        tileId,
+      };
       const oldAlert = await Alert.findOne(filter);
       const alertValues =
         oldAlert && oldAlert.createdBy
-          ? makeAlert(alert)
-          : makeAlert(alert, userId);
+          ? makeAlert(alertInput, undefined, { dashboard })
+          : makeAlert(alertInput, userId, { dashboard });
 
       return await Alert.findOneAndUpdate(filter, alertValues, {
         new: true,
@@ -290,6 +440,41 @@ export const deleteSavedSearchAlerts = async (
   });
 };
 
+/** Represents the documents populated and projected by getAlert[s]WithDisplayRefs */
+type AlertWithDisplayRefs = {
+  savedSearch: Pick<ISavedSearch, '_id' | 'name' | 'tags'> | null;
+  dashboard: Pick<IDashboard, '_id' | 'name' | 'tags' | 'tiles'> | null;
+};
+
+/** Minimal projections to support deriving alert names from referenced searches and dashboard tiles  */
+const DISPLAY_REF_POPULATE = [
+  { path: 'savedSearch', select: 'name tags' },
+  { path: 'dashboard', select: 'name tags tiles.id tiles.config.name' },
+];
+
+/** Get alerts, with a populated (and projected) search or dashboard reference */
+export const getAlertsWithDisplayRefs = async (
+  teamId: ObjectId,
+  { limit, offset }: { limit: number; offset: number },
+) => {
+  return Alert.find({ team: teamId })
+    .sort({ _id: 1 })
+    .skip(offset)
+    .limit(limit)
+    .populate<AlertWithDisplayRefs>(DISPLAY_REF_POPULATE);
+};
+
+/** Get alert, with a populated (and projected) search or dashboard reference */
+export const getAlertWithDisplayRefs = async (
+  alertId: ObjectId | string,
+  teamId: ObjectId | string,
+) => {
+  return Alert.findOne({
+    _id: alertId,
+    team: teamId,
+  }).populate<AlertWithDisplayRefs>(DISPLAY_REF_POPULATE);
+};
+
 export const getAlertsEnhanced = async (teamId: ObjectId) => {
   return Alert.find({ team: teamId }).populate<{
     savedSearch: ISavedSearch;
@@ -320,66 +505,4 @@ export const deleteAlert = async (id: string, teamId: ObjectId) => {
     _id: id,
     team: teamId,
   });
-};
-
-export const generateAlertSilenceToken = async (
-  alertId: ObjectId | string,
-  teamId: ObjectId | string,
-) => {
-  const secret = process.env.EXPRESS_SESSION_SECRET;
-
-  if (!secret) {
-    logger.error(
-      'EXPRESS_SESSION_SECRET is not set for signing token, skipping alert silence JWT generation',
-    );
-    return '';
-  }
-
-  const alert = await getAlertById(alertId, teamId);
-  if (alert == null) {
-    throw new Error('Alert not found');
-  }
-
-  const token = sign(
-    { alertId: alert._id.toString(), teamId: teamId.toString() },
-    secret,
-    { expiresIn: '1h' },
-  );
-
-  // Slack does not accept ids longer than 255 characters
-  if (token.length > 255) {
-    logger.error(
-      'Alert silence JWT length is greater than 255 characters, this may cause issues with some clients.',
-    );
-  }
-
-  return token;
-};
-
-export const silenceAlertByToken = async (token: string) => {
-  const secret = process.env.EXPRESS_SESSION_SECRET;
-
-  if (!secret) {
-    throw new Error('EXPRESS_SESSION_SECRET is not set for verifying token');
-  }
-
-  const decoded = verify(token, secret, {
-    algorithms: ['HS256'],
-  }) as { alertId: string; teamId: string };
-
-  if (!decoded?.alertId || !decoded?.teamId) {
-    throw new Error('Invalid token');
-  }
-
-  const alert = await getAlertById(decoded.alertId, decoded.teamId);
-  if (alert == null) {
-    throw new Error('Alert not found');
-  }
-
-  alert.silenced = {
-    at: new Date(),
-    until: new Date(Date.now() + ms('30m')),
-  };
-
-  return alert.save();
 };

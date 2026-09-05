@@ -73,9 +73,9 @@ const mcpAggFnSchema = z
   );
 
 /**
- * Metric type values exposed to MCP tool callers. Restricted to the three
- * kinds the renderer can translate today; summary and exponential histogram
- * are intentionally excluded. See `../sources/metricKinds` for the shared
+ * Metric type values exposed to MCP tool callers. Restricted to the kinds the
+ * renderer can translate today; summary is intentionally excluded. See
+ * `../sources/metricKinds` for the shared
  * source-of-truth constant used by every metric-aware tool.
  */
 const mcpMetricTypeSchema = z
@@ -87,8 +87,37 @@ const mcpMetricTypeSchema = z
       '  gauge – instantaneous values (CPU, memory, queue depth). Use last_value/avg/min/max; set isDelta:true for Prometheus-style delta over the bucket.\n' +
       '  sum – cumulative or delta counters (request counts, bytes processed). Use aggFn:"increase" for counter increase, or sum/avg on the computed rate.\n' +
       '  histogram – bucketed distributions (request duration). Use aggFn:"quantile" with level for percentiles, or aggFn:"count" for total bucket count.\n' +
-      'NOTE: summary and exponential histogram are not supported by the query renderer yet.',
+      '  exponential histogram – exponential-bucket distributions. Use aggFn:"quantile" with level for percentiles, or aggFn:"count" for total bucket count.\n' +
+      'NOTE: summary is not supported by the query renderer — to look at summary ' +
+      "metrics, use clickstack_sql against the table in the source's metricTables.summary.",
   );
+
+/**
+ * Percentile levels for `aggFn: "quantile"`, advertised to MCP callers as a
+ * string enum rather than a union of numeric literals.
+ *
+ * `enum` on a non-string type is valid JSON Schema, and the equivalent
+ * `z.union([z.literal(0.5), ...])` renders as
+ * `{ "type": "number", "enum": [0.5, 0.9, 0.95, 0.99] }` — but Gemini's
+ * function-declaration subset only accepts `enum` alongside `type: "string"`.
+ * Clients that forward MCP tool schemas straight to the provider therefore
+ * get the ENTIRE tool list rejected because of this one field, and the user
+ * sees a generic connectivity error that names neither the tool nor the
+ * property. See https://github.com/hyperdxio/hyperdx/issues/2967.
+ *
+ * The wire type is the only thing that changes. Numeric input is still
+ * accepted for callers working from a cached schema, the value is coerced
+ * back to a number before it reaches any consumer, and out-of-set values are
+ * still rejected either way — so `level` remains a `number` everywhere
+ * downstream, including the `quantile(<level>)(...)` SQL synthesis and the
+ * stored dashboard config.
+ */
+export const mcpQuantileLevelSchema = z
+  .preprocess(
+    value => (typeof value === 'number' ? String(value) : value),
+    z.enum(['0.5', '0.9', '0.95', '0.99']),
+  )
+  .transform(Number);
 
 /**
  * Shared cross-field validation issues for MCP select items. Returns the
@@ -106,9 +135,8 @@ const mcpMetricTypeSchema = z
  *   - valueExpression is required for non-count aggFns UNLESS metricType is
  *     set (defaults to "Value" for metric sources)
  *
- * Note: summary and exponential histogram metric kinds are not in the input
- * enum so they cannot reach this function — they are rejected by the field
- * schema itself.
+ * Note: summary is not in the input enum, so it is rejected by the field
+ * schema before reaching this function.
  */
 export function getMetricSelectIssues(data: {
   aggFn?: string;
@@ -133,7 +161,7 @@ export function getMetricSelectIssues(data: {
     issues.push({
       path: ['metricType'],
       message:
-        'metricType is required when metricName is set. Use one of: gauge, sum, histogram.',
+        'metricType is required when metricName is set. Use one of: gauge, sum, histogram, exponential histogram.',
     });
   }
 
@@ -147,20 +175,24 @@ export function getMetricSelectIssues(data: {
     });
   }
 
-  // Histogram supports only quantile (+ level) or count today
-  if (data.metricType === 'histogram') {
+  // Histogram kinds support only quantile (+ level) or count today
+  if (
+    data.metricType === 'histogram' ||
+    data.metricType === 'exponential histogram'
+  ) {
+    const kindLabel =
+      data.metricType === 'histogram' ? 'Histogram' : 'Exponential histogram';
     if (data.aggFn !== 'quantile' && data.aggFn !== 'count') {
       issues.push({
         path: ['aggFn'],
-        message:
-          'Histogram metrics only support aggFn "quantile" (with level) or "count" today.',
+        message: `${kindLabel} metrics only support aggFn "quantile" (with level) or "count" today.`,
       });
     }
     if (data.aggFn === 'quantile' && data.level == null) {
       issues.push({
         path: ['level'],
         message:
-          'level is required when aggFn is "quantile" on a histogram metric. ' +
+          `level is required when aggFn is "quantile" on an ${data.metricType} metric. ` +
           'Use 0.5, 0.9, 0.95, or 0.99.',
       });
     }
@@ -257,18 +289,17 @@ export const mcpSelectItemSchema = z.object({
         'Always set a short, human-readable alias (e.g. "Requests", "P95 Latency", "Error Rate"). ' +
         'Without an alias the UI shows the raw ClickHouse expression (e.g. count(), quantile(0.95)(Duration)) which is hard to read.',
     ),
-  level: z
-    .union([z.literal(0.5), z.literal(0.9), z.literal(0.95), z.literal(0.99)])
+  level: mcpQuantileLevelSchema
     .optional()
     .describe(
-      'Percentile level. Required when aggFn is "quantile" on a histogram metric, ' +
+      'Percentile level. Required when aggFn is "quantile" on a histogram or exponential histogram metric, ' +
         'optional otherwise. ' +
         'Allowed values: 0.5, 0.9, 0.95, 0.99',
     ),
   metricType: mcpMetricTypeSchema
     .optional()
     .describe(
-      'METRIC SOURCES ONLY. OTel metric kind: gauge, sum, or histogram. ' +
+      'METRIC SOURCES ONLY. OTel metric kind: gauge, sum, histogram, or exponential histogram. ' +
         'Required (with metricName) when sourceId is a metric source. ' +
         'Discover via clickstack_describe_source (sample) or clickstack_describe_metric.',
     ),
@@ -311,24 +342,24 @@ export type McpSelectItem = {
   whereLanguage?: 'lucene' | 'sql';
   alias?: string;
   level?: number;
-  metricType?: 'gauge' | 'sum' | 'histogram';
+  metricType?: 'gauge' | 'sum' | 'histogram' | 'exponential histogram';
   metricName?: string;
   isDelta?: boolean;
 };
 
 /**
- * Default `valueExpression` to `"Value"` for every metric-tagged select
- * item that omits it. Must be called BEFORE `buildTile`, because the
- * external dashboard tile schema's `superRefine` rejects non-count
- * aggregations with an empty `valueExpression`. The runtime renderer
- * looks for `Value` on metric tables, so defaulting it here matches what
- * `external-api/v2/charts.ts:240-250` does on the REST path.
+ * Default `valueExpression` to `"Value"` for every non-count metric-tagged
+ * select item that omits it. Count must remain expressionless because the
+ * external dashboard tile schema rejects value expressions on count. This
+ * must be called BEFORE `buildTile`, whose schema requires an expression for
+ * every other aggregation. The runtime renderer looks for `Value` on metric
+ * tables, so defaulting it here matches the REST path.
  */
 export function applyMetricSelectDefaults<T extends McpSelectItem>(
   items: ReadonlyArray<T>,
 ): T[] {
   return items.map(item =>
-    item.metricType && !item.valueExpression
+    item.metricType && item.aggFn !== 'count' && !item.valueExpression
       ? { ...item, valueExpression: 'Value' }
       : item,
   );

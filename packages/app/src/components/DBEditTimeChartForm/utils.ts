@@ -14,6 +14,7 @@ import {
   ChartAlertBaseSchema,
   ChartConfigWithDateRange,
   ChartConfigWithOptTimestamp,
+  ChartVariable,
   DisplayType,
   Filter,
   SavedChartConfig,
@@ -22,12 +23,17 @@ import {
   TSource,
   validateAlertScheduleOffsetMinutes,
 } from '@hyperdx/common-utils/dist/types';
+import {
+  filterReferencedVariables,
+  substitutePromqlChartConfigVariables,
+} from '@hyperdx/common-utils/dist/variables';
 
 import {
   convertToCategoricalChartConfig,
   convertToNumberChartConfig,
   convertToTableChartConfig,
   convertToTimeChartConfig,
+  tryExpandConfigVariables,
 } from '@/ChartUtils';
 import { ChartEditorFormState } from '@/components/ChartEditor/types';
 import { getFirstTimestampValueExpression } from '@/source';
@@ -143,6 +149,58 @@ export function computeDbTimeChartConfig(
   };
 }
 
+/**
+ * Returns the dashboard variables a chart preview should use.
+ * - Alerts always run with empty variable selections, so they resolve to each referenced variable with an empty `values` array.
+ * - Otherwise, variables are filtered to only those referenced by the chart config.
+ */
+export function resolvePreviewVariables({
+  config,
+  variables,
+  hasAlert,
+}: {
+  config: ChartConfigWithDateRange;
+  variables: ChartVariable[] | undefined;
+  hasAlert: boolean;
+}): ChartVariable[] | undefined {
+  if (!variables) return undefined;
+  const referenced = filterReferencedVariables(config, variables);
+  return hasAlert
+    ? referenced.map(variable => ({ ...variable, values: [] }))
+    : referenced;
+}
+
+/** A PromQL tile's substituted expression, or why there isn't one. */
+export type RenderedPromqlExpression =
+  | { expression: string; error?: never }
+  | { expression?: never; error: string };
+
+/** The expression a PromQL tile is queried with, with variables substituted. */
+export function buildRenderedPromqlExpression(
+  queriedConfig: ChartConfigWithDateRange | undefined,
+): RenderedPromqlExpression | undefined {
+  if (queriedConfig == null || !isPromqlChartConfig(queriedConfig)) {
+    return undefined;
+  }
+
+  try {
+    return {
+      expression:
+        substitutePromqlChartConfigVariables(queriedConfig).promqlExpression,
+    };
+  } catch (e) {
+    // Substitution throws on an unrecognized format such as `${svc:json}`. The
+    // query path substitutes the same way, so nothing reached Prometheus —
+    // showing the template here would claim an expression that never ran.
+    return {
+      error:
+        e instanceof Error
+          ? `Variables could not be expanded: ${e.message}`
+          : 'Variables could not be expanded.',
+    };
+  }
+}
+
 export function buildSampleEventsConfig(
   queriedConfig: ChartConfigWithDateRange | undefined,
   tableSource: TSource | undefined,
@@ -158,8 +216,13 @@ export function buildSampleEventsConfig(
     return null;
   }
 
+  // The series' agg conditions become `filters` below, and `filters` is
+  // deliberately not scanned for variable references. So expand the variables
+  // here, building the filters in the sample events config below.
+  const config = tryExpandConfigVariables(queriedConfig);
+
   return {
-    ...queriedConfig,
+    ...config,
     orderBy: [
       {
         ordering: 'DESC' as const,
@@ -178,7 +241,7 @@ export function buildSampleEventsConfig(
         tableSource.kind === SourceKind.Trace) &&
         tableSource.defaultTableSelectExpression) ||
       '',
-    filters: seriesToFilters(queriedConfig.select),
+    filters: seriesToFilters(config.select),
     filtersLogicalOperator: 'OR' as const,
     groupBy: undefined,
     granularity: undefined,

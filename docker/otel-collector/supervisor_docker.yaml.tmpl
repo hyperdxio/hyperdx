@@ -18,6 +18,10 @@ capabilities:
 
 agent:
   executable: /otelcontribcol
+{{- if eq (getenv "OTEL_SUPERVISOR_LOGS") "true" }}
+  # Stream the collector's stdout/stderr through te supervisor's own logger.
+  passthrough_logs: true
+{{- end }}
   config_files:
     - /etc/otelcol-contrib/config.yaml
 {{- if getenv "CUSTOM_OTELCOL_CONFIG_FILE" }}

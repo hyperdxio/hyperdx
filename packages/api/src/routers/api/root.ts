@@ -5,10 +5,6 @@ import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
 import * as config from '@/config';
-import {
-  generateAlertSilenceToken,
-  silenceAlertByToken,
-} from '@/controllers/alerts';
 import { createTeam, isTeamExisting } from '@/controllers/team';
 import { handleAuthError, redirectToDashboard } from '@/middleware/auth';
 import TeamInvite from '@/models/teamInvite';
@@ -16,7 +12,8 @@ import User from '@/models/user'; // TODO -> do not import model directly
 import { setupTeamDefaults } from '@/setupDefaults';
 import logger from '@/utils/logger';
 import passport from '@/utils/passport';
-import { passwordSchema, validatePassword } from '@/utils/validators';
+import { isMongoConnected, mongoReadyStateName } from '@/utils/readiness';
+import { passwordSchema } from '@/utils/validators';
 
 const registrationSchema = z
   .object({
@@ -31,12 +28,31 @@ const registrationSchema = z
 
 const router = express.Router();
 
+// Liveness: 200 whenever the process can serve HTTP. Deliberately checks no
+// external dependencies — restarting the pod does not fix a Mongo outage.
 router.get('/health', async (req, res) => {
   res.send({
     data: 'OK',
     version: config.CODE_VERSION,
     ip: req.ip,
     env: config.NODE_ENV,
+  });
+});
+
+// Readiness: 503 unless MongoDB is connected. Nearly every route is
+// Mongo-backed, so a pod without a Mongo connection cannot serve traffic and
+// should be removed from Service endpoints (see utils/readiness.ts).
+router.get('/ready', async (req, res) => {
+  if (isMongoConnected()) {
+    return res.send({
+      data: 'OK',
+      version: config.CODE_VERSION,
+      env: config.NODE_ENV,
+    });
+  }
+  res.status(503).send({
+    status: 'unavailable',
+    mongo: mongoReadyStateName(),
   });
 });
 
@@ -138,9 +154,15 @@ router.post('/team/setup/:token', async (req, res, next) => {
     const { password } = req.body;
     const { token } = req.params;
 
-    if (!validatePassword(password)) {
+    const passwordResult = passwordSchema.safeParse(password);
+    if (!passwordResult.success) {
+      // Emit one `reason` query param per failed requirement so the Join Team
+      // page can render them as a readable list rather than one run-on line.
+      const reasonParams = passwordResult.error.issues
+        .map(issue => `reason=${encodeURIComponent(issue.message)}`)
+        .join('&');
       return res.redirect(
-        `${config.FRONTEND_REDIRECT_BASE}/join-team?err=invalid&token=${token}`,
+        `${config.FRONTEND_REDIRECT_BASE}/join-team?err=invalid&${reasonParams}&token=${token}`,
       );
     }
 
@@ -179,40 +201,6 @@ router.post('/team/setup/:token', async (req, res, next) => {
   } catch (e) {
     next(e);
   }
-});
-
-router.get('/ext/silence-alert/:token', async (req, res) => {
-  let isError = false;
-
-  try {
-    const token = req.params.token;
-    await silenceAlertByToken(token);
-  } catch (e) {
-    isError = true;
-    logger.error({ err: e }, 'Failed to silence alert');
-  }
-
-  // TODO: Create a template for utility pages
-  return res.send(`
-  <html>
-    <head>
-      <title>HyperDX</title>
-      <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.classless.min.css" />
-    </head>
-    <body>
-      <header>
-        <img src="https://www.hyperdx.io/Icon32.png" />
-      </header>
-      <main>
-        ${
-          isError
-            ? '<p><strong>Link is invalid or expired.</strong> Please try again.</p>'
-            : '<p><strong>Alert silenced.</strong> You can close this window now.</p>'
-        }
-        <a href="${config.FRONTEND_URL}">Back to HyperDX</a>
-      </main>
-    </body>
-  </html>`);
 });
 
 export default router;

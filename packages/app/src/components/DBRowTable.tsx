@@ -1,7 +1,7 @@
 import React, {
   memo,
+  use,
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useState,
@@ -37,7 +37,6 @@ import {
 import {
   BuilderChartConfigWithDateRange,
   SelectList,
-  SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
@@ -88,7 +87,7 @@ import useRowWhere, {
   WithClause,
 } from '@/hooks/useRowWhere';
 import { useTableSearch } from '@/hooks/useTableSearch';
-import { useSource } from '@/source';
+import { getLevelExpression, useSource } from '@/source';
 import {
   MIN_COLUMN_WIDTH,
   MIN_LAST_COLUMN_WIDTH,
@@ -136,7 +135,6 @@ const SPECIAL_VALUES = {
 const ACCESSOR_MAP: Record<string, AccessorFn> = {
   duration: row =>
     row.duration >= 0 ? row.duration : SPECIAL_VALUES.not_available,
-  severityText: row => row.severityText ?? row.statusCode,
   default: (row, column) => row[column],
 };
 
@@ -595,10 +593,7 @@ export const RawLogTable = memo(
                     <PatternTrendChart
                       data={value.data}
                       dateRange={value.dateRange}
-                      color={logLevelColor(
-                        info.row.original.severityText ??
-                          info.row.original.statusCode,
-                      )}
+                      color={logLevelColor(info.row.original.level)}
                     />
                   </div>
                 );
@@ -686,6 +681,7 @@ export const RawLogTable = memo(
           if (
             scrollHeight - scrollTop - clientHeight < FETCH_NEXT_PAGE_PX &&
             !isLoading &&
+            !isError &&
             hasNextPage
           ) {
             // Cancel refetch is important to ensure we wait for the last fetch to finish
@@ -693,7 +689,7 @@ export const RawLogTable = memo(
           }
         }
       },
-      [fetchNextPage, isLoading, hasNextPage],
+      [fetchNextPage, isLoading, isError, hasNextPage],
     );
 
     //a check on mount and after a fetch to see if the table is already scrolled to the bottom and immediately needs to fetch more data
@@ -887,6 +883,7 @@ export const RawLogTable = memo(
         if (
           dedupedRows.length < MAX_SCROLL_FETCH_LINES &&
           !isLoading &&
+          !isError &&
           hasNextPage
         ) {
           fetchNextPage?.({ cancelRefetch: false });
@@ -908,6 +905,7 @@ export const RawLogTable = memo(
       rowVirtualizer,
       scrolledToHighlightedLine,
       isLoading,
+      isError,
       hasNextPage,
     ]);
 
@@ -1556,7 +1554,7 @@ function DBSqlRowTableComponent({
 }) {
   const { data: me } = api.useMe();
   const { toggleColumn, displayedColumns: contextDisplayedColumns } =
-    useContext(RowSidePanelContext);
+    use(RowSidePanelContext);
 
   const [orderBy, setOrderBy] = useState<SortingState[number] | null>(
     initialSortBy?.[0] ?? null,
@@ -1737,10 +1735,7 @@ function DBSqlRowTableComponent({
     config,
     samples: DENOISE_SAMPLE_SIZE,
     bodyValueExpression: patternColumn ?? '',
-    severityTextExpression:
-      (source?.kind === SourceKind.Log
-        ? source.severityTextExpression
-        : undefined) ?? '',
+    levelExpression: getLevelExpression(source),
     totalCount: undefined,
     enabled: denoiseResults,
   });

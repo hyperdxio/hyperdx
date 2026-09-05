@@ -8,7 +8,12 @@ import { getChartColorError, getChartColorSuccess } from '@/utils';
 /**
  * Maps alert state transitions to generic chart annotations: firing (→ ALERT)
  * is a red "Alert" marker, recovery (→ OK) a green "OK" marker. Colors come
- * from the theme's semantic chart palette (error / success).
+ * from the theme's semantic chart palette (error / success). Markers are drawn
+ * at the transition's `bucketStart` — charts plot each bucket's value at its
+ * start, while the evaluation runs at the bucket end (`createdAt`) — so the
+ * marker lines up with the data point that produced the transition (and with
+ * the evaluation table, which shows the same bucket start). `createdAt` is the
+ * fallback for older API responses without `bucketStart`.
  */
 export function alertTransitionsToAnnotations(
   transitions: AlertTransition[],
@@ -18,11 +23,12 @@ export function alertTransitionsToAnnotations(
   const okColor = getChartColorSuccess();
   return transitions.map(transition => {
     const isFiring = transition.state === AlertState.ALERT;
+    const time = transition.bucketStart ?? transition.createdAt;
     return {
-      time: transition.createdAt,
+      time,
       label: isFiring ? 'Alert' : 'OK',
       color: isFiring ? alertColor : okColor,
-      key: `alert-annotation-${transition.createdAt}-${transition.state}`,
+      key: `alert-annotation-${time}-${transition.state}`,
     };
   });
 }

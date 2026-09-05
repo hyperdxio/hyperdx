@@ -1,4 +1,4 @@
-import { useCallback, useContext, useMemo, useState } from 'react';
+import { use, useCallback, useMemo, useState } from 'react';
 import router from 'next/router';
 import { useAtom, useAtomValue } from 'jotai';
 import { atomWithStorage } from 'jotai/utils';
@@ -360,7 +360,7 @@ export function DBRowJsonViewer({
     generateChartUrl,
     displayedColumns,
     toggleColumn,
-  } = useContext(RowSidePanelContext);
+  } = use(RowSidePanelContext);
 
   const [filter, setFilter] = useState<string>('');
   const [debouncedFilter] = useDebouncedValue(filter, 100);

@@ -6,13 +6,13 @@ receivers:
     protocols:
       grpc:
         include_metadata: true
-        endpoint: "0.0.0.0:4317"
+        endpoint: '0.0.0.0:4317'
       http:
         cors:
-          allowed_origins: ["*"]
-          allowed_headers: ["*"]
+          allowed_origins: ['*']
+          allowed_headers: ['*']
         include_metadata: true
-        endpoint: "0.0.0.0:4318"
+        endpoint: '0.0.0.0:4318'
 
 connectors:
   routing/logs:
@@ -31,7 +31,7 @@ exporters:
     username: ${env:CLICKHOUSE_USER}
     ttl: 720h
     logs_table_name: hyperdx_sessions
-    timeout: 5s
+    timeout: ${env:HYPERDX_OTEL_EXPORTER_TIMEOUT:-5s}
     create_schema: ${env:HYPERDX_OTEL_EXPORTER_CREATE_LEGACY_SCHEMA:-false}
     json: ${env:HYPERDX_OTEL_EXPORTER_CLICKHOUSE_JSON_ENABLE:-false}
     retry_on_failure:
@@ -45,7 +45,7 @@ exporters:
     password: ${env:CLICKHOUSE_PASSWORD}
     username: ${env:CLICKHOUSE_USER}
     ttl: 720h
-    timeout: 5s
+    timeout: ${env:HYPERDX_OTEL_EXPORTER_TIMEOUT:-5s}
     create_schema: ${env:HYPERDX_OTEL_EXPORTER_CREATE_LEGACY_SCHEMA:-false}
     json: ${env:HYPERDX_OTEL_EXPORTER_CLICKHOUSE_JSON_ENABLE:-false}
     retry_on_failure:

@@ -17,6 +17,12 @@ class ResizeObserver {
   disconnect() {}
 }
 window.ResizeObserver = ResizeObserver;
+// jsdom has no scrollIntoView, and Mantine's Combobox calls it on the active
+// option when a dropdown opens — from a setTimeout, so the resulting TypeError
+// surfaces as an unrelated async test failure.
+if (!Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = () => undefined;
+}
 Object.defineProperty(window, 'matchMedia', {
   value: () => ({
     matches: false,

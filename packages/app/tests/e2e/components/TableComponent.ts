@@ -68,6 +68,46 @@ export class TableComponent {
   }
 
   /**
+   * Expand a row in place via its chevron button, revealing the inline expanded
+   * row underneath it.
+   */
+  async expandRow(index: number) {
+    await this.getRow(index)
+      .getByRole('button', { name: 'Expand log details' })
+      .click();
+    await this.firstExpandedRow.waitFor({ state: 'visible', timeout: 10_000 });
+  }
+
+  /**
+   * All inline expanded rows currently rendered. Each carries
+   * `data-testid="expanded-row-<rowWhere>"`, where rowWhere is a SQL fragment,
+   * so match on the prefix rather than the full id.
+   */
+  get expandedRows() {
+    return this.page.locator('[data-testid^="expanded-row-"]');
+  }
+
+  get firstExpandedRow() {
+    return this.expandedRows.first();
+  }
+
+  /**
+   * The row-level error state rendered inside the first expanded row when its
+   * full row data query fails.
+   */
+  get expandedRowErrorState() {
+    return this.firstExpandedRow.getByTestId('row-error-state');
+  }
+
+  /**
+   * The "Known Columns List" hint rendered inside the first expanded row's error
+   * state (a `SELECT *` failure against a Distributed/Merge table).
+   */
+  get expandedRowKnownColumnsListHint() {
+    return this.firstExpandedRow.getByTestId('known-columns-list-hint');
+  }
+
+  /**
    * Get cell value by row index and column name
    * Usage in spec: await expect(table.getCell(0, 'status')).toHaveText('200')
    */

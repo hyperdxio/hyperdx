@@ -472,6 +472,147 @@ describe('searchFilters', () => {
         },
       });
     });
+
+    // Dashboard filters can be defined by an arbitrary expression, not just a
+    // bare column. The parser must treat the whole expression as the key and
+    // ignore operators/keywords nested inside its parentheses.
+    describe('complex expression keys', () => {
+      const ifExpr = `if(SeverityText = 'error' or SeverityText = 'fatal', 'Errors', 'Non-errors')`;
+      const ifWithInExpr = `if(SeverityText IN ('error', 'fatal'), 'Errors', 'Non-errors')`;
+
+      it('keeps the whole expression as the key when it contains OR and = inside parens', () => {
+        const result = parseQuery([
+          { type: 'sql', condition: `${ifExpr} IN ('Errors')` },
+        ]);
+        expect(result.filters).toEqual({
+          [ifExpr]: {
+            included: new Set(['Errors']),
+            excluded: new Set(),
+          },
+        });
+      });
+
+      it('splits on the outer IN, not the IN nested inside the expression', () => {
+        const result = parseQuery([
+          { type: 'sql', condition: `${ifWithInExpr} IN ('Errors')` },
+        ]);
+        expect(result.filters).toEqual({
+          [ifWithInExpr]: {
+            included: new Set(['Errors']),
+            excluded: new Set(),
+          },
+        });
+      });
+
+      it('parses multiple selected values on an expression key', () => {
+        const result = parseQuery([
+          {
+            type: 'sql',
+            condition: `${ifExpr} IN ('Errors', 'Non-errors')`,
+          },
+        ]);
+        expect(result.filters).toEqual({
+          [ifExpr]: {
+            included: new Set(['Errors', 'Non-errors']),
+            excluded: new Set(),
+          },
+        });
+      });
+
+      it('parses NOT IN on an expression key without splitting on nested IN', () => {
+        const result = parseQuery([
+          { type: 'sql', condition: `${ifWithInExpr} NOT IN ('Errors')` },
+        ]);
+        expect(result.filters).toEqual({
+          [ifWithInExpr]: {
+            included: new Set(),
+            excluded: new Set(['Errors']),
+          },
+        });
+      });
+
+      it('parses included and excluded selections on the same expression key', () => {
+        const result = parseQuery([
+          { type: 'sql', condition: `${ifExpr} IN ('Errors')` },
+          { type: 'sql', condition: `${ifExpr} NOT IN ('Non-errors')` },
+        ]);
+        expect(result.filters).toEqual({
+          [ifExpr]: {
+            included: new Set(['Errors']),
+            excluded: new Set(['Non-errors']),
+          },
+        });
+      });
+
+      it('extracts an expression clause from an AND-joined compound condition', () => {
+        const result = parseQuery([
+          {
+            type: 'sql',
+            condition: `ServiceName IN ('api') AND ${ifExpr} IN ('Errors')`,
+          },
+        ]);
+        expect(result.filters).toEqual({
+          ServiceName: {
+            included: new Set(['api']),
+            excluded: new Set(),
+          },
+          [ifExpr]: {
+            included: new Set(['Errors']),
+            excluded: new Set(),
+          },
+        });
+      });
+
+      it('does not split on AND nested inside an expression key', () => {
+        const betweenExpr = `if(Duration BETWEEN 1 AND 2, 'fast', 'slow')`;
+        const result = parseQuery([
+          { type: 'sql', condition: `${betweenExpr} IN ('fast')` },
+        ]);
+        expect(result.filters).toEqual({
+          [betweenExpr]: {
+            included: new Set(['fast']),
+            excluded: new Set(),
+          },
+        });
+      });
+
+      it('does not treat a BETWEEN nested inside an expression key as a range', () => {
+        const betweenExpr = `if(Duration BETWEEN 1 AND 2, 'fast', 'slow')`;
+        const result = parseQuery([
+          { type: 'sql', condition: `${betweenExpr} NOT IN ('slow')` },
+        ]);
+        expect(result.filters).toEqual({
+          [betweenExpr]: {
+            included: new Set(),
+            excluded: new Set(['slow']),
+          },
+        });
+      });
+
+      it('handles a nested function expression key', () => {
+        const key = `toString(multiIf(Status >= 500, 'error', Status >= 400, 'warn', 'ok'))`;
+        const result = parseQuery([
+          { type: 'sql', condition: `${key} IN ('error', 'warn')` },
+        ]);
+        expect(result.filters).toEqual({
+          [key]: {
+            included: new Set(['error', 'warn']),
+            excluded: new Set(),
+          },
+        });
+      });
+
+      it('round-trips an expression key through filtersToQuery', () => {
+        const originalFilters = {
+          [ifExpr]: {
+            included: new Set<string | boolean>(['Errors']),
+            excluded: new Set<string | boolean>(['Non-errors']),
+          },
+        };
+        const query = filtersToQuery(originalFilters);
+        expect(parseQuery(query).filters).toEqual(originalFilters);
+      });
+    });
   });
 
   describe('areFiltersEqual', () => {
