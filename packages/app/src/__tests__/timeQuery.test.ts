@@ -102,7 +102,7 @@ describe('useDefaultTimeRange', () => {
     rerender({ query: 'Past 1h' });
 
     expect(result.current).not.toBe(initialReference);
-    
+
     const [start, end] = result.current;
     expect(end.getTime()).toBe(new Date('2024-01-01T12:30:00.000Z').getTime());
     expect(start.getTime()).toBe(
