@@ -32,7 +32,7 @@ import { useChartAssistant } from '@/hooks/ai';
 import { withAppNav } from '@/layout';
 import { useSources } from '@/source';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
-import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
+import { useDefaultTimeRange, useNewTimeQuery } from '@/timeQuery';
 import { useLocalStorage } from '@/utils';
 
 import OnboardingModal from './components/OnboardingModal';
@@ -41,8 +41,7 @@ import OnboardingModal from './components/OnboardingModal';
 
 // Sampled field discovery and full field discovery
 
-// TODO: This is a hack to set the default time range
-const defaultTimeRange = parseTimeQuery('Past 1h', false) as [Date, Date];
+
 
 function AIAssistant({
   setConfig,
@@ -201,6 +200,7 @@ function AIAssistant({
 }
 
 function DBChartExplorerPage() {
+  const defaultTimeRange = useDefaultTimeRange('Past 1h');
   const brandName = useBrandDisplayName();
   const {
     searchedTimeRange,

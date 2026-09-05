@@ -47,11 +47,10 @@ import { useDashboardRefresh } from './hooks/useDashboardRefresh';
 import { useBrandDisplayName } from './theme/ThemeProvider';
 import { clickhouseSql } from './utils/codeMirror';
 import { useConnections } from './connection';
-import { parseTimeQuery, useNewTimeQuery } from './timeQuery';
+import { useDefaultTimeRange, useNewTimeQuery } from './timeQuery';
 import { usePrevious } from './utils';
 
-// TODO: This is a hack to set the default time range
-const defaultTimeRange = parseTimeQuery('Past 1h', false) as [Date, Date];
+
 
 const from = {
   databaseName: 'system',
@@ -491,6 +490,7 @@ function InsertsTab({
 }
 
 function ClickhousePage() {
+  const defaultTimeRange = useDefaultTimeRange('Past 1h');
   const brandName = useBrandDisplayName();
   const { colorScheme } = useMantineColorScheme();
   const { data: connections } = useConnections();

@@ -87,6 +87,7 @@ jest.mock('@/source', () => ({
 jest.mock('@/timeQuery', () => ({
   parseRelativeTimeQuery: () => [new Date(0), new Date(1)],
   parseTimeQuery: () => [new Date(0), new Date(1)],
+  useDefaultTimeRange: () => [new Date(0), new Date(1)],
   useNewTimeQuery: () => ({
     isReady: true,
     searchedTimeRange: [

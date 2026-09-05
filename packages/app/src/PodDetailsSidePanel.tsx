@@ -25,7 +25,7 @@ import { DBTimeChart } from '@/components/DBTimeChart';
 import { DrawerBody, DrawerHeader } from '@/components/DrawerUtils';
 import { KubeTimeline, useV2LogBatch } from '@/components/KubeComponents';
 import { WithClause } from '@/hooks/useRowWhere';
-import { parseTimeQuery, useTimeQuery } from '@/timeQuery';
+import { useDefaultTimeRange, useTimeQuery } from '@/timeQuery';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
@@ -35,7 +35,7 @@ import { getEventBody } from './source';
 import styles from '@styles/LogSidePanel.module.scss';
 
 const CHART_HEIGHT = 300;
-const defaultTimeRange = parseTimeQuery('Past 1h', false);
+// defaultTimeRange removed - using hook instead
 
 const PodDetailsProperty = React.memo(
   ({ label, value }: { label: string; value?: string }) => {
@@ -242,6 +242,8 @@ export default function PodDetailsSidePanel({
   const metricsWhere = React.useMemo(() => {
     return `${metricSource?.resourceAttributesExpression}.k8s.pod.name:"${podName}"`;
   }, [podName, metricSource]);
+
+  const defaultTimeRange = useDefaultTimeRange('Past 1h');
 
   const { searchedTimeRange: dateRange } = useTimeQuery({
     defaultValue: 'Past 1h',

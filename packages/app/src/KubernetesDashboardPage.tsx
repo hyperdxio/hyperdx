@@ -68,7 +68,7 @@ import NamespaceDetailsSidePanel from './NamespaceDetailsSidePanel';
 import NodeDetailsSidePanel from './NodeDetailsSidePanel';
 import PodDetailsSidePanel from './PodDetailsSidePanel';
 import { useSource, useSources } from './source';
-import { parseTimeQuery, useTimeQuery } from './timeQuery';
+import { useDefaultTimeRange, useTimeQuery } from './timeQuery';
 import { KubePhase } from './types';
 import { formatNumber, formatUptime } from './utils';
 
@@ -939,7 +939,7 @@ const NamespacesTable = ({
   );
 };
 
-const defaultTimeRange = parseTimeQuery('Past 1h', false);
+// defaultTimeRange removed - using hook instead
 
 const CHART_HEIGHT = 300;
 
@@ -1047,6 +1047,7 @@ export const resolveSourceIds = (
 };
 
 function KubernetesDashboardPage() {
+  const defaultTimeRange = useDefaultTimeRange('Past 1h');
   const brandName = useBrandDisplayName();
   const { data: sources } = useSources();
 

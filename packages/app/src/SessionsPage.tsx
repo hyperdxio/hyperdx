@@ -39,7 +39,7 @@ import { PageLayout } from '@/components/PageLayout';
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { TimePicker } from '@/components/TimePicker';
 import { useDashboardRefresh } from '@/hooks/useDashboardRefresh';
-import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
+import { useDefaultTimeRange, useNewTimeQuery } from '@/timeQuery';
 
 import OnboardingModal from './components/OnboardingModal';
 import SearchWhereInput, {
@@ -215,8 +215,7 @@ function SessionCardList({
   );
 }
 
-// TODO: This is a hack to set the default time range
-const defaultTimeRange = parseTimeQuery('Past 1h', false) as [Date, Date];
+
 const selectedSessionQueryStateMap = {
   sid: parseAsString,
   sfrom: parseAsFloat,
@@ -228,6 +227,7 @@ const appliedConfigMap = {
   whereLanguage: parseAsStringEnum<'sql' | 'lucene'>(['sql', 'lucene']),
 };
 function SessionsPage() {
+  const defaultTimeRange = useDefaultTimeRange('Past 1h');
   const brandName = useBrandDisplayName();
   const [appliedConfig, setAppliedConfig] = useQueryStates(appliedConfigMap);
 

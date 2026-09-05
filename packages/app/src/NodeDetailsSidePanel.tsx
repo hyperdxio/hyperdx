@@ -23,7 +23,7 @@ import { DBTimeChart } from '@/components/DBTimeChart';
 import { DrawerBody, DrawerHeader } from '@/components/DrawerUtils';
 import { InfraPodsStatusTable } from '@/KubernetesDashboardPage';
 import { getEventBody } from '@/source';
-import { parseTimeQuery, useTimeQuery } from '@/timeQuery';
+import { useDefaultTimeRange, useTimeQuery } from '@/timeQuery';
 import { formatUptime } from '@/utils';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
@@ -34,7 +34,7 @@ import { useGetKeyValues, useTableMetadata } from './hooks/useMetadata';
 import styles from '@styles/LogSidePanel.module.scss';
 
 const CHART_HEIGHT = 300;
-const defaultTimeRange = parseTimeQuery('Past 1h', false);
+// defaultTimeRange removed - using hook instead
 
 const PodDetailsProperty = React.memo(
   ({ label, value }: { label: string; value?: React.ReactNode }) => {
@@ -252,6 +252,8 @@ export default function NodeDetailsSidePanel({
   const metricsWhere = React.useMemo(() => {
     return `${metricSource?.resourceAttributesExpression}.k8s.node.name:"${nodeName}"`;
   }, [nodeName, metricSource]);
+
+  const defaultTimeRange = useDefaultTimeRange('Past 1h');
 
   const { searchedTimeRange: dateRange } = useTimeQuery({
     defaultValue: 'Past 1h',

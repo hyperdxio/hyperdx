@@ -189,7 +189,7 @@ import {
 } from './source';
 import {
   dateRangeToString,
-  parseTimeQuery,
+  useDefaultTimeRange,
   useNewTimeQuery,
 } from './timeQuery';
 import { useConfirm } from './useConfirm';
@@ -356,8 +356,7 @@ const tileToLayoutItem = (chart: Tile): RGL.Layout => ({
   minW: 1,
 });
 
-// TODO: This is a hack to set the default time range
-const defaultTimeRange = parseTimeQuery('Past 1h', false) as [Date, Date];
+
 
 const whereLanguageParser = parseAsString.withDefault(
   typeof window !== 'undefined' ? (getStoredLanguage() ?? 'lucene') : 'lucene',
@@ -1616,6 +1615,7 @@ function DashboardContainerRow({
 }
 
 function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
+  const defaultTimeRange = useDefaultTimeRange('Past 1h');
   const brandName = useBrandDisplayName();
   const confirm = useConfirm();
 

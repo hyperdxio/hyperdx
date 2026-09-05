@@ -47,7 +47,7 @@ import { withAppNav } from '@/layout';
 import { useServiceDashboardExpressions } from '@/serviceDashboard';
 import { useSource, useSources } from '@/source';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
-import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
+import { useDefaultTimeRange, useNewTimeQuery } from '@/timeQuery';
 import { usePrevious } from '@/utils';
 
 import DatabaseTab from './DatabaseTab';
@@ -129,9 +129,6 @@ function ServiceSelectControlled({
   );
 }
 
-// TODO: This is a hack to set the default time range
-const defaultTimeRange = parseTimeQuery('Past 1h', false) as [Date, Date];
-
 const appliedConfigMap = {
   source: parseAsString,
   where: parseAsString,
@@ -140,6 +137,7 @@ const appliedConfigMap = {
 };
 
 function ServicesDashboardPage() {
+  const defaultTimeRange = useDefaultTimeRange('Past 1h');
   const brandName = useBrandDisplayName();
   const [tab, setTab] = useQueryState(
     'tab',

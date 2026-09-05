@@ -521,3 +521,13 @@ export function useNewTimeQuery({
     ),
   };
 }
+
+export function useDefaultTimeRange(query: string = 'Past 1h'): [Date, Date] {
+  const {
+    userPreferences: { isUTC },
+  } = useUserPreferences();
+  return useMemo(
+    () => parseTimeQuery(query, isUTC) as [Date, Date],
+    [query, isUTC],
+  );
+}

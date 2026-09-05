@@ -24,7 +24,7 @@ import { DrawerBody, DrawerHeader } from '@/components/DrawerUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { InfraPodsStatusTable } from '@/KubernetesDashboardPage';
 import { getEventBody } from '@/source';
-import { parseTimeQuery, useTimeQuery } from '@/timeQuery';
+import { useDefaultTimeRange, useTimeQuery } from '@/timeQuery';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
@@ -33,7 +33,7 @@ import { useGetKeyValues, useTableMetadata } from './hooks/useMetadata';
 import styles from '@styles/LogSidePanel.module.scss';
 
 const CHART_HEIGHT = 300;
-const defaultTimeRange = parseTimeQuery('Past 1h', false);
+// defaultTimeRange removed - using hook instead
 
 const PodDetailsProperty = React.memo(
   ({ label, value }: { label: string; value?: React.ReactNode }) => {
@@ -240,7 +240,9 @@ export default function NamespaceDetailsSidePanel({
     return `${metricSource?.resourceAttributesExpression}.k8s.namespace.name:"${namespaceName}"`;
   }, [namespaceName, metricSource]);
 
-  const { searchedTimeRange: dateRange } = useTimeQuery({
+  const defaultTimeRange = useDefaultTimeRange('Past 1h');
+
+  const { isReady, searchedTimeRange: dateRange } = useTimeQuery({
     defaultValue: 'Past 1h',
     defaultTimeRange: [
       defaultTimeRange?.[0]?.getTime() ?? -1,
