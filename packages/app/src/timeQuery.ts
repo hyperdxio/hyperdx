@@ -25,8 +25,6 @@ import {
 import { formatDate } from '@hyperdx/common-utils/dist/core/utils';
 import { DateRange } from '@hyperdx/common-utils/dist/types';
 
-import { NOW } from '@/config';
-
 import { parseTimeRangeInput } from './components/TimePicker/utils';
 import { useUserPreferences } from './useUserPreferences';
 import { usePrevious } from './utils';
