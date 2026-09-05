@@ -33,10 +33,7 @@ import { getAlertSourceLabel, getAlertSourceUrl } from '@/utils/alerts';
 import { useBrandDisplayName } from './theme/ThemeProvider';
 import api from './api';
 import { withAppNav } from './layout';
-import {
-  useDefaultTimeRange,
-  useNewTimeQuery,
-} from './timeQuery';
+import { useDefaultTimeRange, useNewTimeQuery } from './timeQuery';
 import type { AlertsPageItem } from './types';
 
 import styles from '@styles/AlertsPage.module.scss';
