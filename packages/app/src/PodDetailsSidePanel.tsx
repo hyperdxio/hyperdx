@@ -211,6 +211,7 @@ function PodLogs({
     </Card>
   );
 }
+const DEFAULT_INTERVAL = 'Past 1h';
 
 export default function PodDetailsSidePanel({
   logSource,
@@ -242,10 +243,10 @@ export default function PodDetailsSidePanel({
     return `${metricSource?.resourceAttributesExpression}.k8s.pod.name:"${podName}"`;
   }, [podName, metricSource]);
 
-  const defaultTimeRange = useDefaultTimeRange('Past 1h');
+  const defaultTimeRange = useDefaultTimeRange(DEFAULT_INTERVAL);
 
   const { searchedTimeRange: dateRange } = useTimeQuery({
-    defaultValue: 'Past 1h',
+    defaultValue: DEFAULT_INTERVAL,
     defaultTimeRange: [
       defaultTimeRange?.[0]?.getTime() ?? -1,
       defaultTimeRange?.[1]?.getTime() ?? -1,

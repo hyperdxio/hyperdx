@@ -220,6 +220,8 @@ function NamespaceLogs({
   );
 }
 
+const DEFAULT_INTERVAL = 'Past 1h';
+
 export default function NamespaceDetailsSidePanel({
   metricSource,
   logSource,
@@ -239,10 +241,10 @@ export default function NamespaceDetailsSidePanel({
     return `${metricSource?.resourceAttributesExpression}.k8s.namespace.name:"${namespaceName}"`;
   }, [namespaceName, metricSource]);
 
-  const defaultTimeRange = useDefaultTimeRange('Past 1h');
+  const defaultTimeRange = useDefaultTimeRange(DEFAULT_INTERVAL);
 
   const { searchedTimeRange: dateRange } = useTimeQuery({
-    defaultValue: 'Past 1h',
+    defaultValue: DEFAULT_INTERVAL,
     defaultTimeRange: [
       defaultTimeRange?.[0]?.getTime() ?? -1,
       defaultTimeRange?.[1]?.getTime() ?? -1,

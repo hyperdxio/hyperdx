@@ -1764,8 +1764,10 @@ function DashboardContainerRow({
   );
 }
 
+const DEFAULT_INTERVAL = 'Past 1h';
+
 function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
-  const defaultTimeRange = useDefaultTimeRange('Past 1h');
+  const defaultTimeRange = useDefaultTimeRange(DEFAULT_INTERVAL);
   const brandName = useBrandDisplayName();
   const confirm = useConfirm();
 
@@ -1941,10 +1943,10 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   }, [router.isReady, watchedGranularity, granularity, setGranularity]);
 
   const [displayedTimeInputValue, setDisplayedTimeInputValue] =
-    useState('Past 1h');
+    useState(DEFAULT_INTERVAL);
 
   const { searchedTimeRange, onSearch, onTimeRangeSelect } = useNewTimeQuery({
-    initialDisplayValue: 'Past 1h',
+    initialDisplayValue: DEFAULT_INTERVAL,
     initialTimeRange: defaultTimeRange,
     setDisplayedTimeInputValue,
   });

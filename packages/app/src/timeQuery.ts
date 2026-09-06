@@ -16,6 +16,7 @@ import {
   sub,
   subMilliseconds,
 } from 'date-fns';
+import ms from 'ms';
 import {
   parseAsFloat,
   parseAsString,
@@ -529,7 +530,9 @@ function computeDefaultTimeRange(query: string): [Date, Date] {
   // Safe: evaluates exactly once at mount time without causing re-render loops.
   // eslint-disable-next-line no-restricted-syntax
   const now = new Date();
-  return [new Date(now.getTime() - 60 * 60 * 1000), now];
+  const cleanQuery = query.toLowerCase().replace('past ', '').trim();
+  const milliseconds = ms(cleanQuery) || 60 * 60 * 1000;
+  return [new Date(now.getTime() - milliseconds), now];
 }
 
 export function useDefaultTimeRange(query: string = 'Past 1h'): [Date, Date] {

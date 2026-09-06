@@ -233,6 +233,8 @@ function NodeLogs({
   );
 }
 
+const DEFAULT_INTERVAL = 'Past 1h';
+
 export default function NodeDetailsSidePanel({
   metricSource,
   logSource,
@@ -252,10 +254,10 @@ export default function NodeDetailsSidePanel({
     return `${metricSource?.resourceAttributesExpression}.k8s.node.name:"${nodeName}"`;
   }, [nodeName, metricSource]);
 
-  const defaultTimeRange = useDefaultTimeRange('Past 1h');
+  const defaultTimeRange = useDefaultTimeRange(DEFAULT_INTERVAL);
 
   const { searchedTimeRange: dateRange } = useTimeQuery({
-    defaultValue: 'Past 1h',
+    defaultValue: DEFAULT_INTERVAL,
     defaultTimeRange: [
       defaultTimeRange?.[0]?.getTime() ?? -1,
       defaultTimeRange?.[1]?.getTime() ?? -1,
