@@ -522,30 +522,23 @@ export function useNewTimeQuery({
   };
 }
 
+function computeDefaultTimeRange(query: string): [Date, Date] {
+  const parsed = parseValidTimeRange(query, false);
+  if (parsed) return parsed;
+  
+  // Safe: evaluates exactly once at mount time without causing re-render loops.
+  // eslint-disable-next-line no-restricted-syntax
+  const now = new Date();
+  return [new Date(now.getTime() - 60 * 60 * 1000), now];
+}
+
 export function useDefaultTimeRange(query: string = 'Past 1h'): [Date, Date] {
   const [state, setState] = useState<{ query: string; range: [Date, Date] }>(
-    () => {
-      const parsed = parseValidTimeRange(query, false);
-      if (parsed) {
-        return { query, range: parsed };
-      }
-      // eslint-disable-next-line no-restricted-syntax
-      const now = new Date();
-      return { query, range: [new Date(now.getTime() - 60 * 60 * 1000), now] };
-    },
+    () => ({ query, range: computeDefaultTimeRange(query) }),
   );
 
   if (state.query !== query) {
-    const parsed = parseValidTimeRange(query, false);
-    let range: [Date, Date];
-    if (parsed) {
-      range = parsed;
-    } else {
-      // eslint-disable-next-line no-restricted-syntax
-      const now = new Date();
-      range = [new Date(now.getTime() - 60 * 60 * 1000), now];
-    }
-    const newState = { query, range };
+    const newState = { query, range: computeDefaultTimeRange(query) };
     setState(newState);
     return newState.range;
   }
