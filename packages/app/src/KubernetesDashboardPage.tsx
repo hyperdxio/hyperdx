@@ -5,7 +5,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import cx from 'classnames';
 import sub from 'date-fns/sub';
-import { useQueryState } from 'nuqs';
+import { parseAsString, useQueryState } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
 import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
 import {
