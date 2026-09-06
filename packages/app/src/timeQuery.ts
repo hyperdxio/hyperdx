@@ -48,7 +48,7 @@ function isInputTimeQueryLive(inputTimeQuery: string) {
   return inputTimeQuery === '' || inputTimeQuery.includes(LIVE_TAIL_TIME_QUERY);
 }
 
-export function parseRelativeTimeQuery(interval: number) {
+export function parseRelativeTimeQuery(interval: number): [Date, Date] {
   // eslint-disable-next-line no-restricted-syntax
   const end = startOfSecond(new Date());
   return [subMilliseconds(end, interval), end];
@@ -522,22 +522,25 @@ export function useNewTimeQuery({
   };
 }
 
+function getRangeOrFallback(query: string): [Date, Date] {
+  return (
+    parseValidTimeRange(query, false) ??
+    parseRelativeTimeQuery(60 * 60 * 1000)
+  );
+}
+
 export function useDefaultTimeRange(query: string): [Date, Date] {
   const [state, setState] = useState<{ query: string; range: [Date, Date] }>(
     () => ({
       query,
-      range:
-        parseValidTimeRange(query, false) ??
-        parseRelativeTimeQuery(60 * 60 * 1000),
+      range: getRangeOrFallback(query),
     }),
   );
 
   if (state.query !== query) {
     const newState = {
       query,
-      range:
-        parseValidTimeRange(query, false) ??
-        parseRelativeTimeQuery(60 * 60 * 1000),
+      range: getRangeOrFallback(query),
     };
     setState(newState);
     return newState.range;
