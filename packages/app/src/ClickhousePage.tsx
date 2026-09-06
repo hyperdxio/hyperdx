@@ -487,8 +487,10 @@ function InsertsTab({
   );
 }
 
+const DEFAULT_INTERVAL = 'Past 1h';
+
 function ClickhousePage() {
-  const defaultTimeRange = useDefaultTimeRange('Past 1h');
+  const defaultTimeRange = useDefaultTimeRange(DEFAULT_INTERVAL);
   const brandName = useBrandDisplayName();
   const { colorScheme } = useMantineColorScheme();
   const { data: connections } = useConnections();
@@ -520,7 +522,6 @@ function ClickhousePage() {
       setConnection(watchedConnection ?? null);
     }
   }, [watchedConnection, setConnection, previousWatchedConnection]);
-  const DEFAULT_INTERVAL = 'Past 1h';
   const [displayedTimeInputValue, setDisplayedTimeInputValue] =
     useState(DEFAULT_INTERVAL);
 

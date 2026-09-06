@@ -236,8 +236,10 @@ const appliedConfigMap = {
   where: parseAsString.withDefault(''),
   whereLanguage: parseAsStringEnum<'sql' | 'lucene'>(['sql', 'lucene']),
 };
+const DEFAULT_INTERVAL = 'Past 1h';
+
 function SessionsPage() {
-  const defaultTimeRange = useDefaultTimeRange('Past 1h');
+  const defaultTimeRange = useDefaultTimeRange(DEFAULT_INTERVAL);
   const brandName = useBrandDisplayName();
   const [appliedConfig, setAppliedConfig] = useQueryStates(appliedConfigMap);
   // `?sessionSource=` accepts a source name as well as a source ID. The form
@@ -300,7 +302,6 @@ function SessionsPage() {
     }
   }, [sources, appliedConfig.sessionSource, setValue]);
 
-  const DEFAULT_INTERVAL = 'Past 1h';
   const [displayedTimeInputValue, setDisplayedTimeInputValue] =
     useState(DEFAULT_INTERVAL);
 

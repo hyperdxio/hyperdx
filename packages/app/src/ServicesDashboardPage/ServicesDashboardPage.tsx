@@ -162,8 +162,10 @@ export function getEffectiveTraceSourceId(
   return (isUsable ? sourceId : traceSources?.[0]?.id) || '';
 }
 
+const DEFAULT_INTERVAL = 'Past 1h';
+
 function ServicesDashboardPage() {
-  const defaultTimeRange = useDefaultTimeRange('Past 1h');
+  const defaultTimeRange = useDefaultTimeRange(DEFAULT_INTERVAL);
   const brandName = useBrandDisplayName();
   const [tab, setTab] = useQueryState(
     'tab',
@@ -266,7 +268,6 @@ function ServicesDashboardPage() {
     syncSourceParam(appliedConfigWithoutFilters.source);
   }, [appliedConfigWithoutFilters.source]);
 
-  const DEFAULT_INTERVAL = 'Past 1h';
   const [displayedTimeInputValue, setDisplayedTimeInputValue] =
     useState(DEFAULT_INTERVAL);
 

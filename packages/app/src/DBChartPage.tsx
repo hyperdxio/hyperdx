@@ -198,8 +198,10 @@ function AIAssistant({
   );
 }
 
+const DEFAULT_INTERVAL = 'Past 1h';
+
 function DBChartExplorerPage() {
-  const defaultTimeRange = useDefaultTimeRange('Past 1h');
+  const defaultTimeRange = useDefaultTimeRange(DEFAULT_INTERVAL);
   const brandName = useBrandDisplayName();
   const {
     searchedTimeRange,
@@ -208,7 +210,7 @@ function DBChartExplorerPage() {
     onSearch,
     onTimeRangeSelect,
   } = useNewTimeQuery({
-    initialDisplayValue: 'Past 1h',
+    initialDisplayValue: DEFAULT_INTERVAL,
     initialTimeRange: defaultTimeRange,
     // showRelativeInterval: isLive,
   });
