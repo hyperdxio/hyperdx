@@ -525,6 +525,8 @@ export function useNewTimeQuery({
 function getRangeOrFallback(query: string): [Date, Date] {
   return (
     parseValidTimeRange(query, false) ??
+    // This fallback catches arbitrary inputs but shouldn't be reachable
+    // for standard literal labels (e.g., 'Past 1h') since they are always valid.
     parseRelativeTimeQuery(60 * 60 * 1000)
   );
 }

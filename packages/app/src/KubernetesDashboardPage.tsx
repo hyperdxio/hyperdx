@@ -5,7 +5,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import cx from 'classnames';
 import sub from 'date-fns/sub';
-import { parseAsString, useQueryState } from 'nuqs';
+import { useQueryState } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
 import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
 import {
@@ -65,11 +65,9 @@ import {
   K8S_MEM_NUMBER_FORMAT,
 } from './ChartUtils';
 import { withAppNav } from './layout';
-import NamespaceDetailsSidePanel, {
-  NAMESPACE_PARAM_NAME,
-} from './NamespaceDetailsSidePanel';
-import NodeDetailsSidePanel, { NODE_PARAM_NAME } from './NodeDetailsSidePanel';
-import PodDetailsSidePanel, { POD_PARAM_NAME } from './PodDetailsSidePanel';
+import NamespaceDetailsSidePanel from './NamespaceDetailsSidePanel';
+import NodeDetailsSidePanel from './NodeDetailsSidePanel';
+import PodDetailsSidePanel from './PodDetailsSidePanel';
 import { useSource, useSources } from './source';
 import { useDefaultTimeRange, useTimeQuery } from './timeQuery';
 import { KubePhase } from './types';
@@ -1057,19 +1055,6 @@ function KubernetesDashboardPage() {
   const [_logSourceId, setLogSourceId] = useQueryState('logSource');
   const [_metricSourceId, setMetricSourceId] = useQueryState('metricSource');
 
-  const [podName] = useQueryState(
-    POD_PARAM_NAME,
-    parseAsString.withDefault(''),
-  );
-  const [nodeName] = useQueryState(
-    NODE_PARAM_NAME,
-    parseAsString.withDefault(''),
-  );
-  const [namespaceName] = useQueryState(
-    NAMESPACE_PARAM_NAME,
-    parseAsString.withDefault(''),
-  );
-
   // Both params accept a source name as well as a source ID. Resolve them before
   // `resolveSourceIds` so its correlation only ever works with real IDs, and so a
   // param that names nothing is treated as absent (i.e. it gets the correlated
@@ -1398,7 +1383,6 @@ function KubernetesDashboardPage() {
       <OnboardingModal requireSource={false} />
       {metricSource && logSource && (
         <PodDetailsSidePanel
-          key={podName || 'empty'}
           logSource={logSource}
           metricSource={metricSource}
           dateRange={dateRange}
@@ -1406,7 +1390,6 @@ function KubernetesDashboardPage() {
       )}
       {metricSource && logSource && (
         <NodeDetailsSidePanel
-          key={nodeName || 'empty'}
           metricSource={metricSource}
           logSource={logSource}
           dateRange={dateRange}
@@ -1414,7 +1397,6 @@ function KubernetesDashboardPage() {
       )}
       {metricSource && logSource && (
         <NamespaceDetailsSidePanel
-          key={namespaceName || 'empty'}
           metricSource={metricSource}
           logSource={logSource}
           dateRange={dateRange}

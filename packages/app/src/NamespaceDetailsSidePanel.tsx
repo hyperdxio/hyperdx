@@ -219,22 +219,19 @@ function NamespaceLogs({
   );
 }
 
-export const NAMESPACE_PARAM_NAME = 'namespaceName';
-
-export default function NamespaceDetailsSidePanel({
+function NamespaceDetailsSidePanelInner({
   metricSource,
   logSource,
   dateRange,
+  namespaceName,
+  setNamespaceName,
 }: {
   metricSource: TMetricSource;
   logSource: TLogSource;
   dateRange: [Date, Date];
+  namespaceName: string;
+  setNamespaceName: (value: string | null) => void;
 }) {
-  const [namespaceName, setNamespaceName] = useQueryState(
-    NAMESPACE_PARAM_NAME,
-    parseAsString.withDefault(''),
-  );
-
   const contextZIndex = useZIndex();
   const drawerZIndex = contextZIndex + 10;
 
@@ -434,5 +431,25 @@ export default function NamespaceDetailsSidePanel({
         </IsolatedChartSyncProvider>
       </ZIndexContext>
     </Drawer>
+  );
+}
+
+export default function NamespaceDetailsSidePanel(props: {
+  metricSource: TMetricSource;
+  logSource: TLogSource;
+  dateRange: [Date, Date];
+}) {
+  const [namespaceName, setNamespaceName] = useQueryState(
+    'namespaceName',
+    parseAsString.withDefault(''),
+  );
+
+  return (
+    <NamespaceDetailsSidePanelInner
+      {...props}
+      key={namespaceName || 'empty'}
+      namespaceName={namespaceName}
+      setNamespaceName={setNamespaceName}
+    />
   );
 }

@@ -232,22 +232,19 @@ function NodeLogs({
   );
 }
 
-export const NODE_PARAM_NAME = 'nodeName';
-
-export default function NodeDetailsSidePanel({
+function NodeDetailsSidePanelInner({
   metricSource,
   logSource,
   dateRange,
+  nodeName,
+  setNodeName,
 }: {
   metricSource: TMetricSource;
   logSource: TLogSource;
   dateRange: [Date, Date];
+  nodeName: string;
+  setNodeName: (value: string | null) => void;
 }) {
-  const [nodeName, setNodeName] = useQueryState(
-    NODE_PARAM_NAME,
-    parseAsString.withDefault(''),
-  );
-
   const contextZIndex = useZIndex();
   const drawerZIndex = contextZIndex + 10;
 
@@ -447,5 +444,25 @@ export default function NodeDetailsSidePanel({
         </IsolatedChartSyncProvider>
       </ZIndexContext>
     </Drawer>
+  );
+}
+
+export default function NodeDetailsSidePanel(props: {
+  metricSource: TMetricSource;
+  logSource: TLogSource;
+  dateRange: [Date, Date];
+}) {
+  const [nodeName, setNodeName] = useQueryState(
+    'nodeName',
+    parseAsString.withDefault(''),
+  );
+
+  return (
+    <NodeDetailsSidePanelInner
+      {...props}
+      key={nodeName || 'empty'}
+      nodeName={nodeName}
+      setNodeName={setNodeName}
+    />
   );
 }

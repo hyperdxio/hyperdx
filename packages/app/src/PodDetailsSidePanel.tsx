@@ -210,22 +210,20 @@ function PodLogs({
     </Card>
   );
 }
-export const POD_PARAM_NAME = 'podName';
 
-export default function PodDetailsSidePanel({
+function PodDetailsSidePanelInner({
   logSource,
   metricSource,
   dateRange,
+  podName,
+  setPodName,
 }: {
   logSource: TLogSource;
   metricSource: TMetricSource;
   dateRange: [Date, Date];
+  podName: string;
+  setPodName: (value: string | null) => void;
 }) {
-  const [podName, setPodName] = useQueryState(
-    POD_PARAM_NAME,
-    parseAsString.withDefault(''),
-  );
-
   const [rowId, setRowId] = React.useState<string | null>(null);
   const [aliasWith] = React.useState<WithClause[]>([]);
   const handleCloseRowSidePanel = React.useCallback(() => {
@@ -459,5 +457,25 @@ export default function PodDetailsSidePanel({
         </IsolatedChartSyncProvider>
       </ZIndexContext>
     </Drawer>
+  );
+}
+
+export default function PodDetailsSidePanel(props: {
+  logSource: TLogSource;
+  metricSource: TMetricSource;
+  dateRange: [Date, Date];
+}) {
+  const [podName, setPodName] = useQueryState(
+    'podName',
+    parseAsString.withDefault(''),
+  );
+
+  return (
+    <PodDetailsSidePanelInner
+      {...props}
+      key={podName || 'empty'}
+      podName={podName}
+      setPodName={setPodName}
+    />
   );
 }
