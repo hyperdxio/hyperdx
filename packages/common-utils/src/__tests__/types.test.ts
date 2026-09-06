@@ -9,6 +9,7 @@ import {
   DashboardFilterValueSchema,
   DashboardSchema,
   DerivedColumnSchema,
+  MAX_LEGEND_TEMPLATE_LENGTH,
   MetricFormulaSchema,
   PresetDashboard,
   PresetDashboardFilterSchema,
@@ -902,5 +903,29 @@ describe('formulas on saved chart configs', () => {
     });
 
     expect(parsed).not.toHaveProperty('formulas');
+  });
+});
+
+describe('PromQL legend templates on saved chart configs', () => {
+  const promqlConfig = (legendTemplate: string) => ({
+    configType: 'promql' as const,
+    promqlExpression: 'up',
+    connection: 'conn-1',
+    legendTemplate,
+  });
+
+  // The editor rejects an over-long template inline using the same constant;
+  // if these drift, a template the editor accepts fails the dashboard save.
+  it('caps legendTemplate at MAX_LEGEND_TEMPLATE_LENGTH', () => {
+    expect(
+      SavedChartConfigSchema.safeParse(
+        promqlConfig('a'.repeat(MAX_LEGEND_TEMPLATE_LENGTH)),
+      ).success,
+    ).toBe(true);
+    expect(
+      SavedChartConfigSchema.safeParse(
+        promqlConfig('a'.repeat(MAX_LEGEND_TEMPLATE_LENGTH + 1)),
+      ).success,
+    ).toBe(false);
   });
 });

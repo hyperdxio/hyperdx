@@ -96,7 +96,8 @@ const inlineNonNegativeInt = (value: number, label: string): string => {
   return String(value);
 };
 
-const unquoteIdentifier = (identifier: string): string => {
+/** Strip one level of `…` / "…" identifier quoting, if present. */
+export const unquoteIdentifier = (identifier: string): string => {
   if (
     (identifier.startsWith('`') && identifier.endsWith('`')) ||
     (identifier.startsWith('"') && identifier.endsWith('"'))
@@ -517,6 +518,39 @@ export class Metadata {
             query_params: sql.params,
             connectionId,
             clickhouse_settings: this.getClickHouseSettings(),
+          })
+          .then(res => res.json<ColumnMeta>())
+          .then(d => d.data);
+        return columns;
+      },
+    );
+  }
+
+  /** Queries and returns the columns of a TimeSeries table's inner table */
+  async getTimeSeriesTableColumns({
+    connectionId,
+    databaseName,
+    tableName,
+    innerTableType,
+  }: {
+    connectionId: string;
+    databaseName: string;
+    tableName: string;
+    innerTableType: 'Tags' | 'Metrics' | 'Data';
+  }) {
+    return this.cache.getOrFetch<ColumnMeta[]>(
+      `${connectionId}.${databaseName}.${tableName}.${innerTableType}.getTimeSeriesTableColumns`,
+      async () => {
+        const sql = chSql`DESCRIBE TABLE timeSeries${innerTableType}(${{ String: databaseName }}, ${{ String: tableName }})`;
+        const columns = await this.clickhouseClient
+          .query<'JSON'>({
+            query: sql.sql,
+            query_params: sql.params,
+            connectionId,
+            clickhouse_settings: {
+              ...this.getClickHouseSettings(),
+              allow_experimental_time_series_table: 1,
+            },
           })
           .then(res => res.json<ColumnMeta>())
           .then(d => d.data);

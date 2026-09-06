@@ -15,10 +15,11 @@ Instead of stuffing all instructions into `AGENTS.md` (which goes into every con
 - **`architecture.md`** - System architecture, data models, service relationships, security patterns
 - **`tech_stack.md`** - Technology choices, UI component patterns, library usage
 - **`development.md`** - Development workflows, testing strategy, common tasks, debugging
-- **`code_style.md`** - Code patterns and best practices (read only when actively coding)
+- **`code_style.md`** - Code patterns and best practices. Read before adding a type, Zod schema, helper, or component in any package (grep-first rule, plus a map of what already lives in `common-utils`), and before any `packages/app` UI change.
 - **`page_layout.md`** - PageHeader, PageLayout, and consistent page chrome (titles, actions, tool pages)
 - **`data_viz_colors.md`** - Chart, heatmap, and semantic status colors. Read before adding or changing any color in a chart, sparkline, heatmap, legend, or status pill.
 - **`themes.md`** - How the brand theme system (HyperDX vs ClickStack) and color mode (light/dark/system) work. Read before changing anything in `packages/app/src/theme/`, adding semantic CSS variables, or touching brand-conditional UI.
+- **`observability.md`** - Instrumentation standards (tracing, metrics, context) and the shared helpers. Read when adding or changing a feature.
 - **`evals.md`** - MCP eval framework: dual-slot setup, running A/B comparisons between branches, interpreting results. Read before running evals or benchmarking MCP changes.
 
 ## Usage Pattern

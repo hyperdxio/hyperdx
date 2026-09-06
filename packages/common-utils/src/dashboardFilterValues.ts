@@ -4,7 +4,6 @@ import {
   getFilterExpression,
   getFilterVariableName,
   isFilterVariableEnabled,
-  isStaticListFilter,
   parseQuery,
 } from '@/filters';
 import {
@@ -119,7 +118,9 @@ export function filterSelectionKey(
 ):
   | { kind: 'variable'; name: string }
   | { kind: 'expression'; expression: string } {
-  if (isStaticListFilter(filter)) {
+  const expression = getFilterExpression(filter);
+
+  if (expression == null) {
     return { kind: 'variable', name: getFilterVariableName(filter) ?? '' };
   }
 
@@ -128,7 +129,7 @@ export function filterSelectionKey(
     if (name) return { kind: 'variable', name };
   }
 
-  return { kind: 'expression', expression: filter.expression };
+  return { kind: 'expression', expression };
 }
 
 /**

@@ -24,6 +24,8 @@ type VirtualMultiSelectProps = {
   /** Show a "Loading…" empty state while values are being fetched. */
   loading?: boolean;
   placeholder?: string;
+  /** Whether to sort options before rendering. True by default */
+  sort?: boolean;
   values: string[];
   onChange: (values: string[]) => void;
   'data-testid'?: string;
@@ -34,6 +36,7 @@ export function VirtualMultiSelect({
   disabled,
   loading,
   placeholder,
+  sort = true,
   values,
   onChange,
   'data-testid': dataTestId,
@@ -43,8 +46,8 @@ export function VirtualMultiSelect({
   const [search, setSearch] = useState('');
 
   const sorted = useMemo(() => {
-    return data.toSorted((a, b) => a.localeCompare(b));
-  }, [data]);
+    return sort ? data.toSorted((a, b) => a.localeCompare(b)) : data;
+  }, [data, sort]);
 
   const options = useMemo(() => {
     const searchLowerCase = search.trim().toLowerCase();

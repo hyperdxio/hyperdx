@@ -62,11 +62,13 @@ directory:
 - `agent_docs/tech_stack.md` - Technology stack details and component patterns
 - `agent_docs/development.md` - Development workflows, testing, and common tasks
 - `agent_docs/code_style.md` - Code patterns and best practices. **Read this
-  before writing or planning any `packages/app` UI change**, not just while
+  before writing or planning any `packages/app` UI change, and before adding a
+  type, Zod schema, helper, or component in any package**, not just while
   typing code. It carries required patterns that are invisible from the
   surrounding file (sentence-case UI text, mandated Button/ActionIcon variants,
-  `useConfirm` for confirmation dialogs, `EmptyState`), so copying the
-  conventions of the component you are editing is not sufficient.
+  `useConfirm` for confirmation dialogs, `EmptyState`, and where shared code
+  already lives), so copying the conventions of the component you are editing is
+  not sufficient.
 - `agent_docs/observability.md` - Instrumentation standards (tracing, metrics,
   context) and the shared helpers (read when adding or changing a feature)
 
@@ -88,7 +90,13 @@ before stopping.
 1. **Multi-tenancy**: All data is scoped to `Team` - ensure proper filtering
 2. **Type safety**: Use TypeScript strictly; Zod schemas for validation
 3. **Existing patterns**: Follow established patterns in the codebase - explore
-   similar files before implementing
+   similar files before implementing. **Before you define a type, Zod schema,
+   helper, or component, grep for one that already exists.** Search for the
+   operation it performs (`bucket`, `valid.*url`, `split.*trim`) - not the name
+   you were about to give it, because names differ. Look in
+   `packages/common-utils/src/` first, then the package you are editing. If you
+   find it, import or alias it; do not add a second definition. See
+   `agent_docs/code_style.md` → "Before you add a type, schema, or helper"
 4. **Component size**: Keep files under 300 lines; break down large components
 5. **UI Components**: Use custom Button/ActionIcon variants (`primary`,
    `secondary`, `danger`), `useConfirm` for "are you sure?" dialogs rather than

@@ -30,9 +30,10 @@ import {
 
 import api from '@/api';
 import { AlertStatusIcon } from '@/components/AlertStatusIcon';
-import { IS_LOCAL_MODE } from '@/config';
+import { APP_VERSION, IS_LOCAL_MODE } from '@/config';
 import { Dashboard, useDashboards } from '@/dashboard';
 import { useFavorites } from '@/favorites';
+import { setHdxIdentity } from '@/hdxDebug';
 import InstallInstructionModal from '@/InstallInstructionsModal';
 import OnboardingChecklist from '@/OnboardingChecklist';
 import { useSavedSearches } from '@/savedSearch';
@@ -40,9 +41,6 @@ import { useLogomark, useWordmark } from '@/theme/ThemeProvider';
 import { UserPreferencesModal } from '@/UserPreferencesModal';
 import { useUserPreferences } from '@/useUserPreferences';
 import { useWindowSize } from '@/utils';
-
-// eslint-disable-next-line no-restricted-imports -- package.json lives outside src, no @/ alias reaches it
-import packageJson from '../../../package.json';
 
 import {
   AppNavCloudBanner,
@@ -54,10 +52,6 @@ import {
 import { AppNavFeedback } from './AppNavFeedback';
 
 import styles from './AppNav.module.scss';
-
-// Expose the same value Next injected at build time; fall back to package.json for dev tooling
-const APP_VERSION =
-  process.env.NEXT_PUBLIC_APP_VERSION ?? packageJson.version ?? 'dev';
 
 // Reo.dev client ID for our usage tracking. USAGE_STATS_ENABLED is the opt-out.
 const REO_CLIENT_ID = '38b2e79cdb32fa7';
@@ -210,6 +204,15 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
         userEmail: meData.email,
         userName: meData.name,
         teamName: meData.team.name,
+      });
+      // Fold user/team ids + per-user toggles into window.hdx for debug reports.
+      setHdxIdentity({
+        userId: meData.id,
+        teamId: meData.team.id,
+        features: {
+          usageStats: meData.usageStatsEnabled,
+          aiAssistant: meData.aiAssistantEnabled,
+        },
       });
     }
   }, [meData]);

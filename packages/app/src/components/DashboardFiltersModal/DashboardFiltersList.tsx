@@ -2,7 +2,6 @@ import {
   getFilterBroadcastTarget,
   getFilterVariableName,
   isFilterVariableEnabled,
-  isQueryExpressionFilter,
 } from '@hyperdx/common-utils/dist/filters';
 import { DashboardFilter } from '@hyperdx/common-utils/dist/types';
 import {
@@ -13,12 +12,23 @@ import {
   Stack,
   UnstyledButton,
 } from '@mantine/core';
-import { IconPencil, IconRefresh, IconTrash } from '@tabler/icons-react';
+import {
+  IconBuildingBroadcastTower,
+  IconLabel,
+  IconList,
+  IconPencil,
+  IconRefresh,
+  IconSearch,
+  IconTrash,
+} from '@tabler/icons-react';
 
 import { useSources } from '@/source';
 
 import { MODAL_SIZE } from './constants';
-import { DashboardFilterListItem } from './DashboardFiltersListItem';
+import {
+  DashboardFilterAttribute,
+  DashboardFilterListItem,
+} from './DashboardFiltersListItem';
 
 import styles from '@styles/DashboardFiltersModal.module.scss';
 
@@ -34,15 +44,37 @@ interface DashboardFiltersListProps {
   onAddNew: () => void;
 }
 
-function getValuesSourceName(
+/** Where the dropdown's values come from: the queried source, or the authored list. */
+function getValuesAttribute(
   filter: DashboardFilter,
   sources?: { id: string; name: string }[],
-) {
-  if (isQueryExpressionFilter(filter)) {
-    return sources?.find(s => s.id === filter?.source)?.name;
+): DashboardFilterAttribute {
+  switch (filter.type) {
+    case 'QUERY_EXPRESSION':
+      return {
+        icon: <IconSearch size={14} />,
+        tooltip: 'Source the dropdown values are queried from',
+        label: sources?.find(s => s.id === filter.source)?.name ?? '',
+      };
+    case 'PROMETHEUS_LABEL':
+      return {
+        icon: <IconLabel size={14} />,
+        tooltip: 'PromQL source and label the dropdown values come from',
+        label: [sources?.find(s => s.id === filter.source)?.name, filter.label]
+          .filter(Boolean)
+          .join(' · '),
+      };
+    case 'STATIC_LIST': {
+      const count = filter.options.length;
+      return {
+        icon: <IconList size={14} />,
+        label: `${count} custom option${count === 1 ? '' : 's'}`,
+      };
+    }
+    default:
+      filter satisfies never; // exhaustive check
+      return { icon: <IconSearch size={14} />, label: '' };
   }
-
-  return 'Custom values';
 }
 
 function getBroadcastTargetDisplay(
@@ -89,8 +121,17 @@ export const DashboardFiltersList = ({
         data-testid="dashboard-filters-list"
       >
         {filters.map(filter => {
-          const valuesSourceName = getValuesSourceName(filter, sources);
+          const attributes = [getValuesAttribute(filter, sources)];
+
           const broadcastTarget = getBroadcastTargetDisplay(filter, sources);
+          if (!hideAppliesTo && broadcastTarget != null) {
+            attributes.push({
+              icon: <IconBuildingBroadcastTower size={14} />,
+              tooltip: 'Sources this filter broadcasts to',
+              label: broadcastTarget,
+              testId: `dashboard-filter-applies-to-${filter.name}`,
+            });
+          }
 
           const variableName =
             showVariableOptions && isFilterVariableEnabled(filter)
@@ -101,9 +142,7 @@ export const DashboardFiltersList = ({
               key={filter.id}
               name={filter.name}
               nameSuffix={variableName ? ` ($${variableName})` : undefined}
-              queriedFrom={valuesSourceName ?? ''}
-              queriedFromTooltip="Source of the available filter values"
-              appliedTo={!hideAppliesTo ? broadcastTarget : undefined}
+              attributes={attributes}
               actions={
                 <>
                   <UnstyledButton

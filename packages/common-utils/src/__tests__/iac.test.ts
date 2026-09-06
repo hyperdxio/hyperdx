@@ -76,6 +76,12 @@ describe('isImportableAlert', () => {
     expect(isImportableAlert({ source: 'tile' })).toBe(false);
   });
 
+  // The provider's alert resource does not model a chartConfig, so inline
+  // alerts stay excluded even though external API v2 can create/read them.
+  it('rejects an inline alert', () => {
+    expect(isImportableAlert({ source: 'inline' })).toBe(false);
+  });
+
   it('rejects an alert with no source and no saved search', () => {
     expect(isImportableAlert({})).toBe(false);
   });

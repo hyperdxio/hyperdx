@@ -1,8 +1,13 @@
 import { useCallback, useEffect, useMemo } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import {
+  UnknownTemplateHelperError,
+  validateTemplate,
+} from '@hyperdx/common-utils/dist/core/handlebarsEnv';
+import {
   ChartConfigWithDateRange,
   DisplayType,
+  MAX_LEGEND_TEMPLATE_LENGTH,
   NumberFormat,
 } from '@hyperdx/common-utils/dist/types';
 import {
@@ -30,7 +35,7 @@ import {
   stripLocalIds,
 } from './ColorRulesEditor';
 import { ColorSwatchInput } from './ColorSwatchInput';
-import { CheckBoxControlled } from './InputControlled';
+import { CheckBoxControlled, TextInputControlled } from './InputControlled';
 import { DEFAULT_NUMBER_FORMAT, NumberFormatForm } from './NumberFormat';
 
 export type ChartConfigDisplaySettings = Pick<
@@ -53,6 +58,9 @@ export type ChartConfigDisplaySettings = Pick<
   // for the authoritative semantics. The editor clears to `null` (not
   // `undefined`) so the cleared state survives JSON round-tripping via the URL.
   seriesLimit?: number | null;
+  // PromQL-only: Handlebars template over each series' Prometheus label set
+  // that renders the legend/tooltip name.
+  legendTemplate?: string;
 };
 
 /**
@@ -97,6 +105,7 @@ function applyDefaultSettings(
     // Coerce to null so `reset` clears the input; undefined leaves the
     // previously registered field value in place.
     seriesLimit: settings.seriesLimit ?? null,
+    legendTemplate: settings.legendTemplate ?? '',
     color: settings.color,
     colorRules: settings.colorRules
       ? attachLocalIds(settings.colorRules)
@@ -165,8 +174,9 @@ export default function ChartDisplaySettingsDrawer({
         },
         hasDirtyFields,
       );
+      // Close only on successful validation
+      onClose();
     })();
-    onClose();
   }, [onChange, handleSubmit, onClose, settings.numberFormat, dirtyFields]);
 
   const resetToDefaults = useCallback(() => {
@@ -188,6 +198,10 @@ export default function ChartDisplaySettingsDrawer({
   // excluded — its series come from Prometheus, not this pipeline.
   const showSeriesLimit = isTimeChart && configType !== 'promql';
   const isRawSqlTimeChart = showSeriesLimit && configType === 'sql';
+
+  // Every PromQL display except Number surfaces the series name
+  const showLegendTemplate =
+    configType === 'promql' && displayType !== DisplayType.Number;
 
   // On pie/bar builder charts, seriesLimit becomes a plain SQL LIMIT on the
   // number of slices/bars; raw SQL configs author their own LIMIT directly.
@@ -291,6 +305,40 @@ export default function ChartDisplaySettingsDrawer({
                 />
               </Box>
             )}
+            <Divider />
+          </>
+        )}
+
+        {showLegendTemplate && (
+          <>
+            <Box>
+              <TextInputControlled
+                control={control}
+                name="legendTemplate"
+                size="xs"
+                label="Legend template"
+                description="Handlebars template rendered with each series' Prometheus labels. Leave empty for the default legend. Additional labels will be added if the template does not produce unique labels for each series."
+                placeholder="e.g. {{namespace}} - {{pod}}"
+                data-testid="legend-template-input"
+                rules={{
+                  validate: value => {
+                    if (typeof value !== 'string' || !value) return true;
+                    const trimmed = value.trim();
+                    if (trimmed.length > MAX_LEGEND_TEMPLATE_LENGTH) {
+                      return `Template is too long (${trimmed.length} characters, max ${MAX_LEGEND_TEMPLATE_LENGTH})`;
+                    }
+                    try {
+                      validateTemplate(trimmed);
+                      return true;
+                    } catch (err) {
+                      return err instanceof UnknownTemplateHelperError
+                        ? err.message
+                        : 'Invalid Handlebars template';
+                    }
+                  },
+                }}
+              />
+            </Box>
             <Divider />
           </>
         )}
