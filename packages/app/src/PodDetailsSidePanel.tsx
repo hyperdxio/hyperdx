@@ -213,15 +213,19 @@ function PodLogs({
 }
 const DEFAULT_INTERVAL = 'Past 1h';
 
+export const POD_PARAM_NAME = 'podName';
+
 export default function PodDetailsSidePanel({
   logSource,
   metricSource,
+  dateRange,
 }: {
   logSource: TLogSource;
   metricSource: TMetricSource;
+  dateRange: [Date, Date];
 }) {
   const [podName, setPodName] = useQueryState(
-    'podName',
+    POD_PARAM_NAME,
     parseAsString.withDefault(''),
   );
 
@@ -243,15 +247,6 @@ export default function PodDetailsSidePanel({
     return `${metricSource?.resourceAttributesExpression}.k8s.pod.name:"${podName}"`;
   }, [podName, metricSource]);
 
-  const defaultTimeRange = useDefaultTimeRange(DEFAULT_INTERVAL);
-
-  const { searchedTimeRange: dateRange } = useTimeQuery({
-    defaultValue: DEFAULT_INTERVAL,
-    defaultTimeRange: [
-      defaultTimeRange[0].getTime(),
-      defaultTimeRange[1].getTime(),
-    ],
-  });
 
   const { data: logsTableMetadata } = useTableMetadata(tcFromSource(logSource));
 

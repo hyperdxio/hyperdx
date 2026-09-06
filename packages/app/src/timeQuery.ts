@@ -524,13 +524,20 @@ export function useNewTimeQuery({
 
 export function useDefaultTimeRange(query: string): [Date, Date] {
   const [state, setState] = useState<{ query: string; range: [Date, Date] }>(
-    () => ({ query, range: parseValidTimeRange(query, false) as [Date, Date] }),
+    () => ({
+      query,
+      range:
+        parseValidTimeRange(query, false) ??
+        parseRelativeTimeQuery(60 * 60 * 1000),
+    }),
   );
 
   if (state.query !== query) {
     const newState = {
       query,
-      range: parseValidTimeRange(query, false) as [Date, Date],
+      range:
+        parseValidTimeRange(query, false) ??
+        parseRelativeTimeQuery(60 * 60 * 1000),
     };
     setState(newState);
     return newState.range;

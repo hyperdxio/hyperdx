@@ -39,6 +39,22 @@ describe('useDefaultTimeRange', () => {
     );
   });
 
+  it('falls back to the current clock for unparseable queries', () => {
+    jest.setSystemTime(new Date('2024-01-01T12:00:00.000Z'));
+
+    const { result, unmount } = renderHook(() =>
+      useDefaultTimeRange('unparseable string'),
+    );
+
+    const [start1, end1] = result.current;
+    expect(end1.getTime()).toBe(new Date('2024-01-01T12:00:00.000Z').getTime());
+    expect(start1.getTime()).toBe(
+      new Date('2024-01-01T11:00:00.000Z').getTime(),
+    );
+
+    unmount();
+  });
+
   it('maintains referential stability across re-renders when the query is unchanged', () => {
     jest.setSystemTime(new Date('2024-01-01T12:00:00.000Z'));
 

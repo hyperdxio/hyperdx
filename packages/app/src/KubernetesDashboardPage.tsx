@@ -65,9 +65,15 @@ import {
   K8S_MEM_NUMBER_FORMAT,
 } from './ChartUtils';
 import { withAppNav } from './layout';
-import NamespaceDetailsSidePanel from './NamespaceDetailsSidePanel';
-import NodeDetailsSidePanel from './NodeDetailsSidePanel';
-import PodDetailsSidePanel from './PodDetailsSidePanel';
+import NamespaceDetailsSidePanel, {
+  NAMESPACE_PARAM_NAME,
+} from './NamespaceDetailsSidePanel';
+import NodeDetailsSidePanel, {
+  NODE_PARAM_NAME,
+} from './NodeDetailsSidePanel';
+import PodDetailsSidePanel, {
+  POD_PARAM_NAME,
+} from './PodDetailsSidePanel';
 import { useSource, useSources } from './source';
 import { useDefaultTimeRange, useTimeQuery } from './timeQuery';
 import { KubePhase } from './types';
@@ -1055,10 +1061,10 @@ function KubernetesDashboardPage() {
   const [_logSourceId, setLogSourceId] = useQueryState('logSource');
   const [_metricSourceId, setMetricSourceId] = useQueryState('metricSource');
 
-  const [podName] = useQueryState('podName', parseAsString.withDefault(''));
-  const [nodeName] = useQueryState('nodeName', parseAsString.withDefault(''));
+  const [podName] = useQueryState(POD_PARAM_NAME, parseAsString.withDefault(''));
+  const [nodeName] = useQueryState(NODE_PARAM_NAME, parseAsString.withDefault(''));
   const [namespaceName] = useQueryState(
-    'namespaceName',
+    NAMESPACE_PARAM_NAME,
     parseAsString.withDefault(''),
   );
 
@@ -1393,6 +1399,7 @@ function KubernetesDashboardPage() {
           key={podName || 'empty'}
           logSource={logSource}
           metricSource={metricSource}
+          dateRange={dateRange}
         />
       )}
       {metricSource && logSource && (
@@ -1400,6 +1407,7 @@ function KubernetesDashboardPage() {
           key={nodeName || 'empty'}
           metricSource={metricSource}
           logSource={logSource}
+          dateRange={dateRange}
         />
       )}
       {metricSource && logSource && (
@@ -1407,6 +1415,7 @@ function KubernetesDashboardPage() {
           key={namespaceName || 'empty'}
           metricSource={metricSource}
           logSource={logSource}
+          dateRange={dateRange}
         />
       )}
       {metricSource && (

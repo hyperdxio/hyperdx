@@ -222,15 +222,19 @@ function NamespaceLogs({
 
 const DEFAULT_INTERVAL = 'Past 1h';
 
+export const NAMESPACE_PARAM_NAME = 'namespaceName';
+
 export default function NamespaceDetailsSidePanel({
   metricSource,
   logSource,
+  dateRange,
 }: {
   metricSource: TMetricSource;
   logSource: TLogSource;
+  dateRange: [Date, Date];
 }) {
   const [namespaceName, setNamespaceName] = useQueryState(
-    'namespaceName',
+    NAMESPACE_PARAM_NAME,
     parseAsString.withDefault(''),
   );
 
@@ -241,15 +245,6 @@ export default function NamespaceDetailsSidePanel({
     return `${metricSource?.resourceAttributesExpression}.k8s.namespace.name:"${namespaceName}"`;
   }, [namespaceName, metricSource]);
 
-  const defaultTimeRange = useDefaultTimeRange(DEFAULT_INTERVAL);
-
-  const { searchedTimeRange: dateRange } = useTimeQuery({
-    defaultValue: DEFAULT_INTERVAL,
-    defaultTimeRange: [
-      defaultTimeRange[0].getTime(),
-      defaultTimeRange[1].getTime(),
-    ],
-  });
 
   const { data: logsTableMetadata } = useTableMetadata(tcFromSource(logSource));
 

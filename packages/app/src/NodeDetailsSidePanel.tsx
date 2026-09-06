@@ -235,15 +235,19 @@ function NodeLogs({
 
 const DEFAULT_INTERVAL = 'Past 1h';
 
+export const NODE_PARAM_NAME = 'nodeName';
+
 export default function NodeDetailsSidePanel({
   metricSource,
   logSource,
+  dateRange,
 }: {
   metricSource: TMetricSource;
   logSource: TLogSource;
+  dateRange: [Date, Date];
 }) {
   const [nodeName, setNodeName] = useQueryState(
-    'nodeName',
+    NODE_PARAM_NAME,
     parseAsString.withDefault(''),
   );
 
@@ -254,15 +258,6 @@ export default function NodeDetailsSidePanel({
     return `${metricSource?.resourceAttributesExpression}.k8s.node.name:"${nodeName}"`;
   }, [nodeName, metricSource]);
 
-  const defaultTimeRange = useDefaultTimeRange(DEFAULT_INTERVAL);
-
-  const { searchedTimeRange: dateRange } = useTimeQuery({
-    defaultValue: DEFAULT_INTERVAL,
-    defaultTimeRange: [
-      defaultTimeRange[0].getTime(),
-      defaultTimeRange[1].getTime(),
-    ],
-  });
 
   const { data: logsTableMetadata } = useTableMetadata(tcFromSource(logSource));
 
