@@ -45,7 +45,7 @@ const manifestUnaddressableTileAlerts = getCounter(
   'hyperdx.iac.import_manifest_unaddressable_tile_alerts',
   {
     description:
-      "Tile alerts withheld from Terraform export because their tile has no unique, non-blank name for the provider's tile_ids map.",
+      'Tile alerts withheld from Terraform export because Terraform cannot address their tile: the dashboard is gone or provisioned, or the tile has no unique, non-blank name.',
   },
 );
 

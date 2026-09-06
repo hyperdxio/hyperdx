@@ -71,6 +71,58 @@ const truncatedLabels = (
       truncatedTypes.includes(RESOURCE_TYPE_OPTIONS[type].key),
   ).map(type => RESOURCE_TYPE_OPTIONS[type].label.toLowerCase());
 
+type SkipCounts = {
+  skippedAlerts: number;
+  skippedDashboards: number;
+  skippedSources: number;
+};
+
+// One table, two renderings: the banner says "will be skipped", the header of
+// the generated file does not. The reasons lived in both places and had to be
+// hand-edited in both when tile alerts became eligible, which is how copy that
+// is meant to agree stops agreeing.
+const SKIP_RULES: readonly {
+  key: string;
+  noun: string;
+  count: (counts: SkipCounts) => number;
+  reason: string;
+}[] = [
+  {
+    key: 'alerts',
+    noun: 'alert',
+    count: c => c.skippedAlerts,
+    reason:
+      'the provider models saved-search and dashboard tile alerts, and an alerted tile needs a unique, non-blank name on a dashboard Terraform can own',
+  },
+  {
+    key: 'dashboards',
+    noun: 'dashboard',
+    count: c => c.skippedDashboards,
+    reason:
+      'a tile on them cannot be represented by the provider, and importing one would delete that tile on the next apply',
+  },
+  {
+    key: 'sources',
+    noun: 'PromQL source',
+    count: c => c.skippedSources,
+    reason: 'the provider models only ClickHouse-backed sources',
+  },
+];
+
+function skippedRules(
+  counts: SkipCounts,
+  { willBeSkipped = false }: { willBeSkipped?: boolean } = {},
+): { key: string; text: string }[] {
+  return SKIP_RULES.map(rule => ({ rule, count: rule.count(counts) }))
+    .filter(({ count }) => count > 0)
+    .map(({ rule, count }) => ({
+      key: rule.key,
+      text: `${count} ${rule.noun}${count === 1 ? '' : 's'}${
+        willBeSkipped ? ' will be skipped' : ''
+      } — ${rule.reason}.`,
+    }));
+}
+
 /**
  * Renders the "Export to Terraform" section on the Team Settings page
  * (API & Agents tab). Downloads a Terraform import file for the selected
@@ -127,51 +179,10 @@ export default function IacMigrationSection({
   );
   const [downloadError, setDownloadError] = useState(false);
 
-  const skipNoticesFor = ({
-    skippedAlerts: alerts,
-    skippedDashboards: dashboards,
-    skippedSources: sources,
-  }: {
-    skippedAlerts: number;
-    skippedDashboards: number;
-    skippedSources: number;
-  }) =>
-    [
-      {
-        count: alerts,
-        text: `${alerts} alert${alerts === 1 ? '' : 's'} — the provider models saved-search and dashboard tile alerts, and an alerted tile needs a unique, non-blank name on a dashboard Terraform can own.`,
-      },
-      {
-        count: dashboards,
-        text: `${dashboards} dashboard${dashboards === 1 ? '' : 's'} — a tile on them cannot be represented by the provider, and importing one would delete that tile on the next apply.`,
-      },
-      {
-        count: sources,
-        text: `${sources} PromQL source${sources === 1 ? '' : 's'} — the provider models only ClickHouse-backed sources.`,
-      },
-    ]
-      .filter(n => n.count > 0)
-      .map(n => n.text);
-
-  // One renderer for all three exclusion rules — they differ only in count and
-  // reason, and a fourth rule should not mean a fourth near-identical block.
-  const skipNotices = [
-    {
-      key: 'alerts',
-      count: skippedAlerts,
-      text: `${skippedAlerts} alert${skippedAlerts === 1 ? '' : 's'} will be skipped — the Terraform provider models saved-search and dashboard tile alerts, and an alerted tile needs a unique, non-blank name on a dashboard Terraform can own.`,
-    },
-    {
-      key: 'dashboards',
-      count: skippedDashboards,
-      text: `${skippedDashboards} dashboard${skippedDashboards === 1 ? '' : 's'} will be skipped — a tile on them cannot be represented by the provider, and importing one would delete that tile on the next apply.`,
-    },
-    {
-      key: 'sources',
-      count: skippedSources,
-      text: `${skippedSources} PromQL source${skippedSources === 1 ? '' : 's'} will be skipped — the provider models only ClickHouse-backed sources.`,
-    },
-  ].filter(notice => notice.count > 0);
+  const skipNotices = skippedRules(
+    { skippedAlerts, skippedDashboards, skippedSources },
+    { willBeSkipped: true },
+  );
 
   const onDownload = async () => {
     // The whole body is guarded: this is an async click handler, so anything
@@ -206,7 +217,7 @@ export default function IacMigrationSection({
           // Recomputed from the refetched payload, like truncatedTypes: the
           // banner above is cached-manifest state, the file must describe what
           // was actually written.
-          skipNotices: skipNoticesFor(freshSelection),
+          skipNotices: skippedRules(freshSelection).map(n => n.text),
         }),
         'hyperdx-import.tf',
       );

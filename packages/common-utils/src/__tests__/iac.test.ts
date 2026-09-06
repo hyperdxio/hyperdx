@@ -177,8 +177,11 @@ describe('isAddressableTile', () => {
   });
 
   // `tiles` is a Mongoose Mixed array, so a legacy row can carry anything.
-  it('survives tiles with no config and a non-array tiles value', () => {
+  it('survives tiles with no config, a non-string name and a non-array tiles value', () => {
     expect(isAddressableTile([{ id: 'tile-1' }], 'tile-1')).toBe(false);
+    expect(
+      isAddressableTile([{ id: 'tile-1', config: { name: 123 } }], 'tile-1'),
+    ).toBe(false);
     expect(isAddressableTile('not an array' as any, 'tile-1')).toBe(false);
   });
 });

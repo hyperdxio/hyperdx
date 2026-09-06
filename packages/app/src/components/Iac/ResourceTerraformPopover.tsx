@@ -27,8 +27,9 @@ import { useTerraformSnippets } from './useTerraformSnippets';
  *
  * Feature and local-mode gating lives here rather than at each call site, so
  * the surfaces that render this cannot drift on when it appears. Callers
- * still own per-resource eligibility: the provider models only saved-search
- * alerts, so an alert call site must not render this for a tile alert.
+ * still own per-resource eligibility — for an alert that is isImportableAlert,
+ * whose tile-alert arm needs the server-computed marker described on
+ * isTileAlertUnaddressable.
  */
 export default function ResourceTerraformPopover({
   resource,

@@ -1,8 +1,19 @@
 import { isTileAlertUnaddressable } from '@hyperdx/common-utils/dist/iac';
+import { serializeError } from 'serialize-error';
 
 import type { ObjectId } from '@/models';
 import { AlertSource } from '@/models/alert';
 import Dashboard from '@/models/dashboard';
+import { getCounter } from '@/utils/instrumentation';
+import logger from '@/utils/logger';
+
+const tileAlertLookupFailures = getCounter(
+  'hyperdx.iac.tile_alert_lookup_failed',
+  {
+    description:
+      "Failures to read the dashboards a team's tile alerts point at, each of which withholds every tile alert from Terraform export.",
+  },
+);
 
 type TileAlertRow = {
   _id: ObjectId;
@@ -25,7 +36,8 @@ type TileAlertRow = {
  * from the alerts listing, itself capped at IAC_MANIFEST_LIMIT. `maxTimeMS` is
  * the caller's remaining budget, not a fresh one — this read is sequenced
  * after the manifest's six concurrent listings, and the ceiling is meant to
- * bound the request, not each leg of it.
+ * bound the request, not each leg of it. If it fails or expires, every tile
+ * alert is reported unaddressable rather than failing the manifest.
  */
 export async function unaddressableTileAlertIds({
   teamId,
@@ -45,15 +57,42 @@ export async function unaddressableTileAlertIds({
     ),
   ];
 
-  const dashboards = dashboardIds.length
-    ? await Dashboard.find(
-        { team: teamId, _id: { $in: dashboardIds } },
-        // Only what isTileAlertUnaddressable reads. Keep in step with it.
-        { provisioned: 1, 'tiles.id': 1, 'tiles.config.name': 1 },
-      )
-        .maxTimeMS(maxTimeMS)
-        .lean()
-    : [];
+  const allTileAlertIds = () => new Set(tileAlerts.map(a => a._id.toString()));
+  if (!dashboardIds.length) return allTileAlertIds();
+
+  // Handled with `then(ok, err)` rather than try/catch so the row type stays
+  // inferred from the query — a `let` declared ahead of a try block widens to
+  // any and the predicate below stops type-checking against the projection.
+  const dashboards = await Dashboard.find(
+    { team: teamId, _id: { $in: dashboardIds } },
+    // Only what isTileAlertUnaddressable reads. Keep in step with it.
+    { provisioned: 1, 'tiles.id': 1, 'tiles.config.name': 1 },
+  )
+    .maxTimeMS(maxTimeMS)
+    .lean()
+    .then(
+      rows => rows,
+      (e: unknown) => {
+        // This read decides one optional marker, so it must not take the whole
+        // manifest with it — the other six listings are the export. It runs
+        // last on what is left of the request's budget, so it is the leg most
+        // likely to hit MaxTimeMSExpired.
+        logger.warn({
+          message:
+            'Failed to resolve tile-alert addressability; withholding all',
+          error: serializeError(e),
+          teamId: teamId.toString(),
+          tileAlerts: tileAlerts.length,
+        });
+        tileAlertLookupFailures.add(1);
+        return null;
+      },
+    );
+  // Withheld rather than offered unchecked: the export comes up short, which
+  // both the generated file and the UI report, instead of carrying an alert
+  // whose reference cannot resolve.
+  if (dashboards == null) return allTileAlertIds();
+
   const byId = new Map(dashboards.map(d => [d._id.toString(), d]));
 
   return new Set(
