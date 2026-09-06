@@ -24,7 +24,6 @@ import { DrawerBody, DrawerHeader } from '@/components/DrawerUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { InfraPodsStatusTable } from '@/KubernetesDashboardPage';
 import { getEventBody } from '@/source';
-import { useDefaultTimeRange, useTimeQuery } from '@/timeQuery';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
@@ -220,8 +219,6 @@ function NamespaceLogs({
   );
 }
 
-const DEFAULT_INTERVAL = 'Past 1h';
-
 export const NAMESPACE_PARAM_NAME = 'namespaceName';
 
 export default function NamespaceDetailsSidePanel({
@@ -244,7 +241,6 @@ export default function NamespaceDetailsSidePanel({
   const metricsWhere = React.useMemo(() => {
     return `${metricSource?.resourceAttributesExpression}.k8s.namespace.name:"${namespaceName}"`;
   }, [namespaceName, metricSource]);
-
 
   const { data: logsTableMetadata } = useTableMetadata(tcFromSource(logSource));
 

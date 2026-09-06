@@ -23,7 +23,6 @@ import { DBTimeChart } from '@/components/DBTimeChart';
 import { DrawerBody, DrawerHeader } from '@/components/DrawerUtils';
 import { InfraPodsStatusTable } from '@/KubernetesDashboardPage';
 import { getEventBody } from '@/source';
-import { useDefaultTimeRange, useTimeQuery } from '@/timeQuery';
 import { formatUptime } from '@/utils';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
@@ -233,8 +232,6 @@ function NodeLogs({
   );
 }
 
-const DEFAULT_INTERVAL = 'Past 1h';
-
 export const NODE_PARAM_NAME = 'nodeName';
 
 export default function NodeDetailsSidePanel({
@@ -257,7 +254,6 @@ export default function NodeDetailsSidePanel({
   const metricsWhere = React.useMemo(() => {
     return `${metricSource?.resourceAttributesExpression}.k8s.node.name:"${nodeName}"`;
   }, [nodeName, metricSource]);
-
 
   const { data: logsTableMetadata } = useTableMetadata(tcFromSource(logSource));
 

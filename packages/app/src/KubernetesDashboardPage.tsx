@@ -68,12 +68,8 @@ import { withAppNav } from './layout';
 import NamespaceDetailsSidePanel, {
   NAMESPACE_PARAM_NAME,
 } from './NamespaceDetailsSidePanel';
-import NodeDetailsSidePanel, {
-  NODE_PARAM_NAME,
-} from './NodeDetailsSidePanel';
-import PodDetailsSidePanel, {
-  POD_PARAM_NAME,
-} from './PodDetailsSidePanel';
+import NodeDetailsSidePanel, { NODE_PARAM_NAME } from './NodeDetailsSidePanel';
+import PodDetailsSidePanel, { POD_PARAM_NAME } from './PodDetailsSidePanel';
 import { useSource, useSources } from './source';
 import { useDefaultTimeRange, useTimeQuery } from './timeQuery';
 import { KubePhase } from './types';
@@ -1061,8 +1057,14 @@ function KubernetesDashboardPage() {
   const [_logSourceId, setLogSourceId] = useQueryState('logSource');
   const [_metricSourceId, setMetricSourceId] = useQueryState('metricSource');
 
-  const [podName] = useQueryState(POD_PARAM_NAME, parseAsString.withDefault(''));
-  const [nodeName] = useQueryState(NODE_PARAM_NAME, parseAsString.withDefault(''));
+  const [podName] = useQueryState(
+    POD_PARAM_NAME,
+    parseAsString.withDefault(''),
+  );
+  const [nodeName] = useQueryState(
+    NODE_PARAM_NAME,
+    parseAsString.withDefault(''),
+  );
   const [namespaceName] = useQueryState(
     NAMESPACE_PARAM_NAME,
     parseAsString.withDefault(''),

@@ -25,7 +25,6 @@ import { DBTimeChart } from '@/components/DBTimeChart';
 import { DrawerBody, DrawerHeader } from '@/components/DrawerUtils';
 import { KubeTimeline, useV2LogBatch } from '@/components/KubeComponents';
 import { WithClause } from '@/hooks/useRowWhere';
-import { useDefaultTimeRange, useTimeQuery } from '@/timeQuery';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
@@ -211,8 +210,6 @@ function PodLogs({
     </Card>
   );
 }
-const DEFAULT_INTERVAL = 'Past 1h';
-
 export const POD_PARAM_NAME = 'podName';
 
 export default function PodDetailsSidePanel({
@@ -246,7 +243,6 @@ export default function PodDetailsSidePanel({
   const metricsWhere = React.useMemo(() => {
     return `${metricSource?.resourceAttributesExpression}.k8s.pod.name:"${podName}"`;
   }, [podName, metricSource]);
-
 
   const { data: logsTableMetadata } = useTableMetadata(tcFromSource(logSource));
 
