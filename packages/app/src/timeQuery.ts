@@ -525,7 +525,7 @@ export function useNewTimeQuery({
 function computeDefaultTimeRange(query: string): [Date, Date] {
   const parsed = parseValidTimeRange(query, false);
   if (parsed) return parsed;
-  
+
   // Safe: evaluates exactly once at mount time without causing re-render loops.
   // eslint-disable-next-line no-restricted-syntax
   const now = new Date();
