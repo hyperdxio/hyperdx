@@ -13,6 +13,9 @@
  * `version: Number` field with `$inc` at each write site.
  */
 
+import type { ObjectId } from '@/models';
+import Dashboard from '@/models/dashboard';
+
 // Exactly the shape `Date.prototype.toISOString` produces. Deliberately
 // strict: `new Date('2026')` succeeds and would yield a token that can never
 // match a stored value, reporting a client's typo as somebody else's edit.
@@ -42,4 +45,26 @@ export function parseIfMatch(header: string): Date | '*' | null {
   if (raw === '*') return '*';
   const unwrapped = raw.replace(/^W\//, '').replace(/^"(.*)"$/, '$1');
   return parseVersionToken(unwrapped);
+}
+
+export type DashboardWriteMiss =
+  | { kind: 'deleted' }
+  | { kind: 'conflict'; currentVersion: string };
+
+/**
+ * Explains why a version-guarded `findOneAndUpdate` matched nothing. Without
+ * this every conflict reports as "dashboard not found", which sends the
+ * caller down the wrong recovery path — an agent would give up instead of
+ * re-reading and retrying.
+ */
+export async function resolveDashboardWriteMiss(
+  dashboardId: string,
+  teamId: string | ObjectId,
+): Promise<DashboardWriteMiss> {
+  const current = await Dashboard.findOne(
+    { _id: dashboardId, team: teamId },
+    { updatedAt: 1 },
+  ).lean();
+  if (current == null) return { kind: 'deleted' };
+  return { kind: 'conflict', currentVersion: versionToken(current) };
 }
