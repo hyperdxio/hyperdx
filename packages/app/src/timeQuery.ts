@@ -16,7 +16,6 @@ import {
   sub,
   subMilliseconds,
 } from 'date-fns';
-import ms from 'ms';
 import {
   parseAsFloat,
   parseAsString,
@@ -523,25 +522,16 @@ export function useNewTimeQuery({
   };
 }
 
-function computeDefaultTimeRange(query: string): [Date, Date] {
-  const parsed = parseValidTimeRange(query, false);
-  if (parsed) return parsed;
-
-  // Safe: evaluates exactly once at mount time without causing re-render loops.
-  // eslint-disable-next-line no-restricted-syntax
-  const now = new Date();
-  const cleanQuery = query.toLowerCase().replace('past ', '').trim();
-  const milliseconds = ms(cleanQuery) || 60 * 60 * 1000;
-  return [new Date(now.getTime() - milliseconds), now];
-}
-
-export function useDefaultTimeRange(query: string = 'Past 1h'): [Date, Date] {
+export function useDefaultTimeRange(query: string): [Date, Date] {
   const [state, setState] = useState<{ query: string; range: [Date, Date] }>(
-    () => ({ query, range: computeDefaultTimeRange(query) }),
+    () => ({ query, range: parseValidTimeRange(query, false) as [Date, Date] }),
   );
 
   if (state.query !== query) {
-    const newState = { query, range: computeDefaultTimeRange(query) };
+    const newState = {
+      query,
+      range: parseValidTimeRange(query, false) as [Date, Date],
+    };
     setState(newState);
     return newState.range;
   }

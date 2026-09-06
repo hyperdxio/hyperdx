@@ -246,8 +246,8 @@ export default function NamespaceDetailsSidePanel({
   const { searchedTimeRange: dateRange } = useTimeQuery({
     defaultValue: DEFAULT_INTERVAL,
     defaultTimeRange: [
-      defaultTimeRange?.[0]?.getTime() ?? -1,
-      defaultTimeRange?.[1]?.getTime() ?? -1,
+      defaultTimeRange[0].getTime(),
+      defaultTimeRange[1].getTime(),
     ],
   });
 

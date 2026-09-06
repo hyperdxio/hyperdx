@@ -1055,6 +1055,13 @@ function KubernetesDashboardPage() {
   const [_logSourceId, setLogSourceId] = useQueryState('logSource');
   const [_metricSourceId, setMetricSourceId] = useQueryState('metricSource');
 
+  const [podName] = useQueryState('podName', parseAsString.withDefault(''));
+  const [nodeName] = useQueryState('nodeName', parseAsString.withDefault(''));
+  const [namespaceName] = useQueryState(
+    'namespaceName',
+    parseAsString.withDefault(''),
+  );
+
   // Both params accept a source name as well as a source ID. Resolve them before
   // `resolveSourceIds` so its correlation only ever works with real IDs, and so a
   // param that names nothing is treated as absent (i.e. it gets the correlated
@@ -1242,8 +1249,8 @@ function KubernetesDashboardPage() {
   } = useTimeQuery({
     defaultValue: DEFAULT_INTERVAL,
     defaultTimeRange: [
-      defaultTimeRange?.[0]?.getTime() ?? -1,
-      defaultTimeRange?.[1]?.getTime() ?? -1,
+      defaultTimeRange[0].getTime(),
+      defaultTimeRange[1].getTime(),
     ],
   });
 
@@ -1383,18 +1390,21 @@ function KubernetesDashboardPage() {
       <OnboardingModal requireSource={false} />
       {metricSource && logSource && (
         <PodDetailsSidePanel
+          key={podName || 'empty'}
           logSource={logSource}
           metricSource={metricSource}
         />
       )}
       {metricSource && logSource && (
         <NodeDetailsSidePanel
+          key={nodeName || 'empty'}
           metricSource={metricSource}
           logSource={logSource}
         />
       )}
       {metricSource && logSource && (
         <NamespaceDetailsSidePanel
+          key={namespaceName || 'empty'}
           metricSource={metricSource}
           logSource={logSource}
         />
