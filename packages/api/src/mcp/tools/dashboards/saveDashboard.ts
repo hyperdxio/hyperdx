@@ -328,12 +328,13 @@ async function updateDashboard({
   ).lean();
 
   if (!existingDashboard) {
-    // Same wording as the findOneAndUpdate miss below: this check can't tell
-    // "never existed" from "deleted after you read it" either, but it must
-    // still say "deleted" so an agent doesn't mistake this for a stale
-    // version conflict it could retry past.
+    // Unlike the findOneAndUpdate miss below, this request never confirmed
+    // the dashboard existed, so there is no basis to claim it was deleted —
+    // a bad or stale id looks identical to one that's since been removed.
+    // Still needs to read as "not a version conflict, don't just retry."
     return mcpUserError(
-      'Dashboard not found — it was deleted after you read it.',
+      'Dashboard not found. It may never have existed, or it may have ' +
+        'been deleted.',
     );
   }
 
