@@ -7414,7 +7414,7 @@ describe('External API v2 Dashboards - new format', () => {
       return created;
     };
 
-    it('emits an ETag on create, read, and update', async () => {
+    it('emits a matching ETag on create and read', async () => {
       const created = await seed();
       expect(created.headers.etag).toMatch(/^"\d{4}-\d{2}-\d{2}T[\d:.]+Z"$/);
 
@@ -7450,7 +7450,8 @@ describe('External API v2 Dashboards - new format', () => {
         })
         .expect(200);
 
-      expect(updated.headers.etag).toBeDefined();
+      expect(updated.headers.etag).toMatch(/^"\d{4}-\d{2}-\d{2}T[\d:.]+Z"$/);
+      expect(updated.headers.etag).not.toBe(created.headers.etag);
       expect(updated.body.data.name).toBe('Renamed With Matching Header');
     });
 
@@ -7497,7 +7498,7 @@ describe('External API v2 Dashboards - new format', () => {
         .expect(400);
     });
 
-    it('returns 404, not 412, when the dashboard was deleted', async () => {
+    it('returns 404 when the dashboard was already deleted before the request (pre-write existence check)', async () => {
       const created = await seed();
       const etag = created.headers.etag;
       await Dashboard.findByIdAndDelete(created.body.data.id);
@@ -7506,6 +7507,36 @@ describe('External API v2 Dashboards - new format', () => {
         .set('If-Match', etag)
         .send(createMockDashboard(traceSource._id.toString()))
         .expect(404);
+    });
+
+    // A sequential test can't reach the deleted branch inside the write-time
+    // miss handling: the handler's own pre-write existingDashboard read would
+    // already see any deletion made before the request and 404 there first.
+    // Spying on the single findOneAndUpdate call simulates the dashboard
+    // vanishing in the real gap between that read and the conditional write,
+    // which is what resolveDashboardWriteMiss's 'deleted' branch is for.
+    it('returns 404, not 412, when the dashboard is deleted between the read and the write (simulated race)', async () => {
+      const created = await seed();
+      const dashboardId = created.body.data.id;
+
+      const findOneAndUpdateSpy = jest
+        .spyOn(Dashboard, 'findOneAndUpdate')
+        .mockImplementationOnce((async () => {
+          await Dashboard.findByIdAndDelete(dashboardId);
+          return null;
+        }) as any);
+
+      try {
+        await authRequest('put', `${BASE_URL}/${dashboardId}`)
+          .set('If-Match', created.headers.etag)
+          .send({
+            ...createMockDashboard(traceSource._id.toString()),
+            name: 'Should Not Land',
+          })
+          .expect(404);
+      } finally {
+        findOneAndUpdateSpy.mockRestore();
+      }
     });
 
     // The provider copies the GET body straight into dashboard_json on

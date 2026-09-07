@@ -2554,6 +2554,15 @@ router.post('/validate', async (req, res, next) => {
  *     responses:
  *       '200':
  *         description: Successfully created dashboard
+ *         headers:
+ *           ETag:
+ *             description: >
+ *               Opaque version token for this dashboard. Send it back as
+ *               If-Match on a PUT to that dashboard to guard against
+ *               overwriting a concurrent edit.
+ *             schema:
+ *               type: string
+ *               example: '"2026-01-15T10:30:00.000Z"'
  *         content:
  *           application/json:
  *             schema:
