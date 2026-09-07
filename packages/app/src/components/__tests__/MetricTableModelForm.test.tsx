@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import {
   SourceKind,
+  TLogSource,
   TMetricSource,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
@@ -243,7 +244,7 @@ describe('MetricTableModelForm metric table autofill', () => {
   it('autofills for an existing source switched to the metrics kind', async () => {
     const { metricTables: _metricTables, ...savedSourceWithoutMetricTables } =
       SAVED_SOURCE;
-    savedSource = fromPartial<TSource>({
+    savedSource = fromPartial<TLogSource>({
       ...savedSourceWithoutMetricTables,
       kind: SourceKind.Log,
     });

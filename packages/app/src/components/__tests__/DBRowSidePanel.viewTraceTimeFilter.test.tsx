@@ -1,5 +1,9 @@
 import React from 'react';
-import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
+import {
+  SourceKind,
+  TLogSource,
+  TSource,
+} from '@hyperdx/common-utils/dist/types';
 import { MantineProvider } from '@mantine/core';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { fromPartial } from '@total-typescript/shoehorn';
@@ -158,7 +162,7 @@ import { DBRowSidePanelInner } from '@/components/DBRowSidePanel';
 import useSidePanelStack from '@/hooks/useSidePanelStack';
 import { getRowLookupWindow } from '@/utils/rowTimestamps';
 
-const ROOT_SOURCE = fromPartial<TSource>({
+const ROOT_SOURCE = fromPartial<TLogSource>({
   id: 'log-src',
   kind: SourceKind.Log,
   traceSourceId: 'trace-src',
