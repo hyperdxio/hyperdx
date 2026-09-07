@@ -27,6 +27,7 @@ const mutationConfigs: Array<{
 const mutationFnCalls: Array<(input: any) => any> = [];
 const setQueryData = jest.fn();
 const invalidateQueries = jest.fn();
+const getQueryData = jest.fn();
 jest.mock('@tanstack/react-query', () => ({
   useQuery: jest.fn(),
   useMutation: jest.fn((cfg: any) => {
@@ -34,7 +35,11 @@ jest.mock('@tanstack/react-query', () => ({
     mutationFnCalls.push(cfg.mutationFn);
     return { mutate: jest.fn(), mutateAsync: jest.fn() };
   }),
-  useQueryClient: jest.fn(() => ({ setQueryData, invalidateQueries })),
+  useQueryClient: jest.fn(() => ({
+    setQueryData,
+    invalidateQueries,
+    getQueryData,
+  })),
 }));
 jest.mock('@/utils', () => ({ hashCode: jest.fn(() => 0) }));
 
@@ -73,6 +78,8 @@ beforeEach(() => {
   mutationFnCalls.length = 0;
   setQueryData.mockReset();
   invalidateQueries.mockReset();
+  getQueryData.mockReset();
+  getQueryData.mockReturnValue(undefined);
 });
 
 describe('fetchDashboards (remote path)', () => {
@@ -304,9 +311,40 @@ describe('useUpdateDashboard concurrency', () => {
     updatedAt: '2026-09-04T01:02:03.456Z',
   };
 
-  it('sends the cached updatedAt as expectedVersion', async () => {
+  // Pins the fix for the back-to-back-save bug: mutationFn reads the
+  // token from the dashboards cache at execution time rather than from
+  // whichever value the caller's `dashboard.updatedAt` held when
+  // `mutate()` was invoked, so a save queued behind another one (same
+  // TanStack `scope`) picks up the predecessor's fresh token instead of
+  // the stale one it captured before waiting its turn.
+  it('reads expectedVersion from the dashboards cache at execution time, not from the argument', async () => {
     const json = jest.fn().mockResolvedValue({ ...dashboard });
     hdxServerMock.mockReturnValue({ json });
+    getQueryData.mockReturnValue([
+      { ...dashboard, updatedAt: '2026-09-04T09:00:00.000Z' },
+    ]);
+
+    useUpdateDashboard('d1');
+    // The stale token this call carries in its own `updatedAt` must be
+    // ignored in favour of the cache's fresher one.
+    await mutationFnCalls.at(-1)!({
+      ...dashboard,
+      updatedAt: '2026-09-04T01:02:03.456Z',
+    });
+
+    expect(getQueryData).toHaveBeenCalledWith(['dashboards']);
+    expect(hdxServerMock).toHaveBeenCalledWith('dashboards/d1', {
+      method: 'PATCH',
+      json: expect.objectContaining({
+        expectedVersion: '2026-09-04T09:00:00.000Z',
+      }),
+    });
+  });
+
+  it('falls back to the argument updatedAt when the cache has no entry for the dashboard', async () => {
+    const json = jest.fn().mockResolvedValue({ ...dashboard });
+    hdxServerMock.mockReturnValue({ json });
+    getQueryData.mockReturnValue(undefined);
 
     useUpdateDashboard('d1');
     await mutationFnCalls.at(-1)!(dashboard);

@@ -66,6 +66,21 @@ beforeEach(() => {
 describe('useDashboard 409 conflict handling', () => {
   const newDashboard = { id: 'd1', name: 'Edited', tiles: [], tags: [] };
 
+  // Pins that `setDashboard` actually carries a version token into the
+  // mutation at all — without this, deleting the `updatedAt` fallback
+  // from `dashboard.ts` would pass every other test in this file, since
+  // none of them inspect the mutation's variables (only its options).
+  it('sends the read dashboard updatedAt in the mutation variables', () => {
+    const { result } = renderHook(() => useDashboard({ dashboardId: 'd1' }));
+
+    act(() => {
+      result.current.setDashboard(newDashboard);
+    });
+
+    const variables = mutate.mock.calls.at(-1)![0];
+    expect(variables.updatedAt).toBe('2026-09-04T01:02:03.456Z');
+  });
+
   async function triggerOnError(err: unknown) {
     const { result } = renderHook(() => useDashboard({ dashboardId: 'd1' }));
 

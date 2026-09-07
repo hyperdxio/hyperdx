@@ -137,22 +137,40 @@ export function useUpdateDashboard(dashboardId?: string) {
 
   return useMutation({
     // TanStack runs same-scope mutations one at a time, so two saves fired
-    // back to back queue instead of racing (HDX-4159). The second picks up
-    // the token onSuccess wrote into the cache.
+    // back to back queue instead of racing (HDX-4159). That only fixes
+    // ordering though — the token itself is read from the cache inside
+    // mutationFn below, at execution time, not from the caller's closure,
+    // so the second queued save picks up the token the first save's
+    // onSuccess just wrote rather than the stale one it captured when
+    // `mutate()` was called.
     scope: dashboardId ? { id: `dashboard-${dashboardId}` } : undefined,
     mutationFn: async (
       dashboard: Partial<Dashboard> & { id: Dashboard['id'] },
     ) => {
-      const { updatedAt, ...rest } = dashboard;
+      const { updatedAt: fallbackUpdatedAt, ...rest } = dashboard;
       const normalized = normalizeDashboardTileColors(rest);
       if (IS_LOCAL_MODE) {
         const { id, ...updates } = normalized;
         localDashboards.update(id, updates);
         return undefined;
       }
+      // Read the token from the cache now rather than trusting whatever
+      // `dashboard.updatedAt` was when `mutate()` was called — that value
+      // was captured before this mutation's turn in the scope queue, so a
+      // second save fired right after the first would otherwise still
+      // carry the pre-save token and 409 against its own predecessor.
+      // Fall back to the caller-supplied value when the cache has no
+      // entry (local mode never reaches here, but a cold/evicted cache
+      // can).
+      const cachedUpdatedAt = queryClient
+        .getQueryData<Dashboard[]>(['dashboards'])
+        ?.find(d => d.id === normalized.id)?.updatedAt;
       return hdxServer(`dashboards/${normalized.id}`, {
         method: 'PATCH',
-        json: { ...normalized, expectedVersion: updatedAt },
+        json: {
+          ...normalized,
+          expectedVersion: cachedUpdatedAt ?? fallbackUpdatedAt,
+        },
       }).json<Dashboard>();
     },
     onSuccess: updated => {
@@ -263,6 +281,10 @@ export function useDashboard({
         onSuccess?.();
       } else {
         setIsSettingDashboard(true);
+        // `updatedAt` here is only the fallback `mutationFn` uses if the
+        // dashboards cache has no entry for this id (e.g. a cold cache);
+        // the cache is the source of truth for a save queued behind
+        // another one on the same scope.
         return updateDashboard.mutate(
           { ...newDashboard, updatedAt: remoteDashboard?.updatedAt },
           {
