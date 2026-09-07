@@ -182,7 +182,7 @@ describe('isAddressableTile', () => {
     expect(
       isAddressableTile([{ id: 'tile-1', config: { name: 123 } }], 'tile-1'),
     ).toBe(false);
-    expect(isAddressableTile('not an array' as any, 'tile-1')).toBe(false);
+    expect(isAddressableTile('not an array' as never, 'tile-1')).toBe(false);
   });
 });
 

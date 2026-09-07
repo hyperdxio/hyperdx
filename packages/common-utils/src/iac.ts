@@ -76,7 +76,7 @@ export type IacResourceRef = {
   /**
    * Set on an alert that watches a dashboard tile. It only decides which
    * provider version the file asks for — the address and the import id of a
-   * tile alert are the same as any other alert's.
+   * tile alert match every other alert's.
    */
   tileAlert?: boolean;
 };

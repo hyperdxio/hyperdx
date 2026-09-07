@@ -52,14 +52,11 @@ describe('unaddressableTileAlertIds', () => {
     // The failure this guards is MaxTimeMSExpired on a read sequenced last on
     // a shared budget. Reproducing that needs a slow collection, so the read
     // itself is made to reject instead.
-    const find = jest
-      .spyOn(Dashboard, 'find')
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      .mockReturnValue({
-        maxTimeMS: () => ({
-          lean: () => Promise.reject(new Error('MaxTimeMSExpired')),
-        }),
-      } as never);
+    const find = jest.spyOn(Dashboard, 'find').mockReturnValue({
+      maxTimeMS: () => ({
+        lean: () => Promise.reject(new Error('MaxTimeMSExpired')),
+      }),
+    } as never);
 
     try {
       const withheld = await unaddressableTileAlertIds({

@@ -84,25 +84,19 @@ function renderMenu(ui: React.ReactElement) {
   });
   return render(
     <QueryClientProvider client={queryClient}>
-      <MantineProvider>{ui}</MantineProvider>
+      {/* env="test" turns off Mantine's transitions and portals, so the
+          dropdown is in the DOM the moment the target is clicked instead of
+          arriving a transition later. */}
+      <MantineProvider env="test">{ui}</MantineProvider>
     </QueryClientProvider>,
   );
 }
 
-// Wait for the dropdown itself: Mantine mounts it through a transition, so a
-// bare click leaves the items absent and every "item is missing" assertion
-// passes for the wrong reason.
-// openMenu alone waits up to 5s for the dropdown, which is the whole default
-// per-test budget — under parallel workers a slow transition times out the
-// test before its assertions run. Give every test in this file headroom above
-// that internal wait.
-jest.setTimeout(15_000);
-
+// Wait for the dropdown itself, not just the click: every "item is missing"
+// assertion below would otherwise pass for the wrong reason.
 const openMenu = async (testId: string) => {
   await userEvent.click(screen.getByTestId(testId));
-  // Generous timeout: the transition competes with the rest of the suite
-  // under parallel workers, and a 1s default flaked there.
-  await screen.findByRole('menu', undefined, { timeout: 5000 });
+  await screen.findByRole('menu');
 };
 
 describe('AlertRowMenu', () => {
@@ -124,22 +118,9 @@ describe('AlertRowMenu', () => {
 
     expect(screen.queryByTestId('edit-alert-modal')).not.toBeInTheDocument();
     await openMenu('alert-row-menu-alert-1');
-    // Same rationale as openMenu's own wait: under parallel workers the
-    // dropdown's transition can lag behind the menu role appearing.
-    const editItem = await screen.findByTestId(
-      'alert-edit-alert-1',
-      undefined,
-      {
-        timeout: 5000,
-      },
-    );
-    await userEvent.click(editItem);
+    await userEvent.click(screen.getByTestId('alert-edit-alert-1'));
 
-    expect(
-      await screen.findByTestId('edit-alert-modal', undefined, {
-        timeout: 5000,
-      }),
-    ).toBeInTheDocument();
+    expect(await screen.findByTestId('edit-alert-modal')).toBeInTheDocument();
   });
 
   it('offers Terraform export for a saved-search alert', async () => {
@@ -157,17 +138,12 @@ describe('AlertRowMenu', () => {
   it('offers Terraform export for a tile alert and asks for the tile-alert provider', async () => {
     renderMenu(<AlertRowMenu alert={{ ...tileAlert, _id: TILE_ALERT_ID }} />);
     await openMenu(`alert-row-menu-${TILE_ALERT_ID}`);
-    const item = await screen.findByTestId(
-      `terraform-menu-item-${TILE_ALERT_ID}`,
-      undefined,
-      { timeout: 5000 },
+    await userEvent.click(
+      screen.getByTestId(`terraform-menu-item-${TILE_ALERT_ID}`),
     );
-    await userEvent.click(item);
 
     expect(
-      await screen.findByText(/version\s+= ">= 3.26.0"/, undefined, {
-        timeout: 5000,
-      }),
+      await screen.findByText(/version\s+= ">= 3.26.0"/),
     ).toBeInTheDocument();
   });
 
@@ -227,6 +203,9 @@ describe('AlertRowMenu', () => {
       />,
     );
     await openMenu('alert-row-menu-alert-1');
+
+    // Before the click: picking an item closes the dropdown, which unmounts it.
+    expect(screen.getByText('Open source')).toBeInTheDocument();
     await userEvent.click(screen.getByTestId('alert-delete-alert-1'));
 
     expect(confirm).toHaveBeenCalledWith(
@@ -234,7 +213,6 @@ describe('AlertRowMenu', () => {
       'Delete',
       expect.anything(),
     );
-    expect(screen.getByText('Open source')).toBeInTheDocument();
   });
 
   it('labels the menu button with the alert name', () => {
