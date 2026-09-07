@@ -1286,7 +1286,7 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
 
       expect(text).toContain('changed since you read it');
       const inDb = await Dashboard.findById(created.id);
-      expect((inDb!.tiles[0] as any).config.displayType).toBe('line');
+      expect(inDb!.tiles[0].config.displayType).toBe('line');
     });
 
     it('accepts a metadata-only patch with a current version', async () => {
@@ -1376,7 +1376,7 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
         .mockImplementationOnce((async () => {
           await Dashboard.findByIdAndDelete(created.id);
           return null;
-        }) as any);
+        }) as unknown as typeof Dashboard.findOneAndUpdate);
 
       try {
         const text = getFirstText(

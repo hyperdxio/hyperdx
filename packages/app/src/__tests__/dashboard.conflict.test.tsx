@@ -42,9 +42,19 @@ jest.mock('@tanstack/react-query', () => ({
 
 jest.mock('@/utils', () => ({ hashCode: jest.fn(() => 0) }));
 
+import { HTTPError } from 'ky';
 import { act, renderHook } from '@testing-library/react';
 
 import { useDashboard } from '@/dashboard';
+
+// Real ky's HTTPError takes (response, request, options); the mock accepts
+// fewer, but `dashboard.ts` now does `instanceof HTTPError`, so a plain
+// object literal won't satisfy the check. Build one against the mock's
+// prototype instead of casting past the real 3-arg constructor.
+const httpError = (status: number) =>
+  Object.assign(Object.create(HTTPError.prototype), {
+    response: { status },
+  }) as HTTPError;
 
 beforeEach(() => {
   mutate.mockClear();
@@ -69,7 +79,7 @@ describe('useDashboard 409 conflict handling', () => {
   }
 
   it('shows a distinct toast and refetches on a 409', async () => {
-    await triggerOnError({ response: { status: 409 } });
+    await triggerOnError(httpError(409));
 
     expect(invalidateQueries).toHaveBeenCalledWith({
       queryKey: ['dashboards'],
@@ -84,7 +94,19 @@ describe('useDashboard 409 conflict handling', () => {
   });
 
   it('shows the generic red toast for a non-409 error', async () => {
-    await triggerOnError({ message: 'boom', response: { status: 500 } });
+    await triggerOnError(httpError(500));
+
+    expect(notificationsShow).toHaveBeenCalledWith(
+      expect.objectContaining({
+        color: 'red',
+        title: 'Unable to save dashboard',
+      }),
+    );
+    expect(invalidateQueries).not.toHaveBeenCalled();
+  });
+
+  it('shows the generic red toast for a non-HTTP error', async () => {
+    await triggerOnError(new Error('boom'));
 
     expect(notificationsShow).toHaveBeenCalledWith(
       expect.objectContaining({

@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import type { HTTPError } from 'ky';
+import { HTTPError } from 'ky';
 import { parseAsJson, useQueryState } from 'nuqs';
 import {
   DashboardContainer,
@@ -272,7 +272,7 @@ export function useDashboard({
             },
             onError: async e => {
               setIsSettingDashboard(false);
-              if ((e as HTTPError)?.response?.status === 409) {
+              if (e instanceof HTTPError && e.response?.status === 409) {
                 await queryClient.invalidateQueries({
                   queryKey: ['dashboards'],
                 });

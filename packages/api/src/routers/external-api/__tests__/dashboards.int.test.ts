@@ -7524,7 +7524,7 @@ describe('External API v2 Dashboards - new format', () => {
         .mockImplementationOnce((async () => {
           await Dashboard.findByIdAndDelete(dashboardId);
           return null;
-        }) as any);
+        }) as unknown as typeof Dashboard.findOneAndUpdate);
 
       try {
         await authRequest('put', `${BASE_URL}/${dashboardId}`)
