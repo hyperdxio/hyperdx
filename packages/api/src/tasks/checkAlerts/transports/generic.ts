@@ -100,6 +100,7 @@ export const buildWebhookTemplateVariables = (message: Message) => ({
   status: escapeJsonString(message.status ?? ''),
   teamId: escapeJsonString(message.teamId ?? ''),
   threshold: message.threshold,
+  thresholdMax: message.thresholdMax,
   value: message.value,
 });
 

@@ -49,6 +49,7 @@ import {
 } from '@/tasks/checkAlerts/providers';
 import { createHandlebarsWithHelpers } from '@/tasks/checkAlerts/transports';
 import { unflattenObject } from '@/tasks/util';
+import { resolveAlertDisplayFields } from '@/utils/alerts';
 import { truncateString } from '@/utils/common';
 import { getCounter } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
@@ -134,6 +135,39 @@ const ALERT_TYPE_BY_SOURCE: Record<AlertSource, string> = {
   // Detached alert: the chart config lives on the alert itself, so there is
   // no saved search or tile behind it to open.
   [AlertSource.INLINE]: 'inline_query',
+};
+
+/**
+ * The persisted query behind an alert, as a receiver would route on it. Each
+ * alert source keeps it somewhere different: a saved search on the search
+ * itself, an inline alert on the alert, a tile on its dashboard.
+ */
+const getAlertSourceQuery = ({
+  alert,
+  dashboard,
+  savedSearch,
+}: AlertMessageTemplateDefaultView): string => {
+  if (alert.source === AlertSource.SAVED_SEARCH) {
+    return savedSearch?.where ?? '';
+  }
+
+  const chartConfig =
+    alert.source === AlertSource.INLINE
+      ? alert.chartConfig
+      : dashboard?.tiles.find(t => t.id === alert.tileId)?.config;
+  if (chartConfig == null) {
+    return '';
+  }
+  // Narrowed on `configType` rather than through isRawSqlSavedChartConfig /
+  // isPromqlSavedChartConfig: those predicate on SavedChartConfig, and an
+  // inline alert's AlertChartConfig is built from the without-alert variants,
+  // so the guards can't subtract a member from that union.
+  if ('configType' in chartConfig) {
+    // Raw SQL keeps the whole query in sqlTemplate. A PromQL chart can't be
+    // alerted on, but a tile's config is the full union, so it lands here.
+    return chartConfig.configType === 'sql' ? chartConfig.sqlTemplate : '';
+  }
+  return chartConfig.where ?? '';
 };
 
 const MAX_MESSAGE_LENGTH = 500;
@@ -259,16 +293,20 @@ export const buildAlertMessageTemplateHdxLink = (
 };
 
 export const buildAlertMessageTemplateTitle = ({
-  template,
   view,
   state,
 }: {
-  template?: string | null;
   view: AlertMessageTemplateDefaultView;
   state?: AlertState;
 }) => {
   const { alert, dashboard, savedSearch, value } = view;
   const handlebars = createHandlebarsWithHelpers();
+  // `alert.name` is an optional Handlebars template for the notification title.
+  const template = alert.name;
+  const { displayName } = resolveAlertDisplayFields(alert, {
+    savedSearch,
+    dashboard,
+  });
 
   // Add emoji prefix based on alert state
   const emoji = isAlertResolved(state) ? '✅ ' : '🚨 ';
@@ -280,7 +318,7 @@ export const buildAlertMessageTemplateTitle = ({
     // TODO: using template engine to render the title
     const baseTitle = template
       ? handlebars.compile(template)(view)
-      : `Alert for "${savedSearch.name}" - ${value} lines found`;
+      : `Alert for "${displayName}" - ${value} lines found`;
     return `${emoji}${baseTitle}`;
   } else if (alert.source === AlertSource.TILE) {
     if (dashboard == null) {
@@ -295,7 +333,7 @@ export const buildAlertMessageTemplateTitle = ({
     const formattedValue = formatValueToMatchThreshold(value, alert.threshold);
     const baseTitle = template
       ? handlebars.compile(template)(view)
-      : `Alert for "${tile.config.name}" in "${dashboard.name}" - ${formattedValue} ${
+      : `Alert for "${displayName}" - ${formattedValue} ${
           doesExceedThreshold(alert, value)
             ? describeThresholdViolation(alert.thresholdType)
             : describeThresholdResolution(alert.thresholdType)
@@ -304,11 +342,11 @@ export const buildAlertMessageTemplateTitle = ({
   } else if (alert.source === AlertSource.INLINE) {
     const formattedValue = formatValueToMatchThreshold(value, alert.threshold);
     // Inline alerts have no saved search/tile to name them; the alert's `name`
-    // doubles as the title template, so the default falls back to the chart
-    // config's name.
+    // doubles as the title template, so the default falls back to the resolved
+    // display name (itself derived from the chart config's name).
     const baseTitle = template
       ? handlebars.compile(template)(view)
-      : `Alert for "${alert.chartConfig?.name ?? 'chart'}" - ${formattedValue} ${
+      : `Alert for "${displayName}" - ${formattedValue} ${
           doesExceedThreshold(alert, value)
             ? describeThresholdViolation(alert.thresholdType)
             : describeThresholdResolution(alert.thresholdType)
@@ -556,9 +594,15 @@ export const renderAlertTemplate = async ({
         alertType: alert.source ? ALERT_TYPE_BY_SOURCE[alert.source] : '',
         comparator: COMPARATOR_BY_THRESHOLD_TYPE[alert.thresholdType],
         threshold: alert.threshold,
+        // Only a range comparator has an upper bound; leaving it undefined
+        // elsewhere renders the variable empty rather than as a bound that
+        // isn't part of the condition.
+        thresholdMax: isRangeThresholdType(alert.thresholdType)
+          ? alert.thresholdMax
+          : undefined,
         value,
         groupKey: group ?? '',
-        sourceQuery: savedSearch?.where ?? '',
+        sourceQuery: getAlertSourceQuery(view),
         teamId,
         note: alert.note ?? '',
       },

@@ -3,7 +3,9 @@ import {
   addDuplicateTileIdIssues,
   AggregateFunctionSchema,
   AlertChartConfigSchema,
+  alertDisplayNameSchema,
   alertNoteSchema,
+  alertTagsSchema,
   AlertThresholdType,
   BackgroundChartSchema,
   ChartPaletteTokenSchema,
@@ -1002,6 +1004,8 @@ const alertBaseSchema = z.object({
   name: z.string().min(1).max(512).nullish(),
   message: z.string().min(1).max(4096).nullish(),
   note: alertNoteSchema,
+  displayName: alertDisplayNameSchema,
+  tags: alertTagsSchema,
   numConsecutiveWindows: z.number().int().min(1).nullish(),
 });
 

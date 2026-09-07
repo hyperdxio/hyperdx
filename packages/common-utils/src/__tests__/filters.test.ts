@@ -16,6 +16,7 @@ import {
   isRenderablePinnedFilter,
   parseQuery,
   resolveFilterValuesWhere,
+  resolvePromqlLabelFilterMatch,
   serializeFilterState,
   validateDashboardFilterQueries,
   validateSavedFilterValues,
@@ -1023,6 +1024,75 @@ describe('filters', () => {
         [svc(['accounting'])],
       );
       expect(resolved.where).toBe("Body = '$notAVariable'");
+      expect(resolved.error).toBeUndefined();
+    });
+  });
+
+  describe('resolvePromqlLabelFilterMatch', () => {
+    const svc = (values: string[]): ChartVariable => ({
+      name: 'svc',
+      expression: 'ServiceName',
+      values,
+    });
+
+    it('reports no selector when there is none to send', () => {
+      expect(resolvePromqlLabelFilterMatch({}, [svc(['api'])])).toEqual({});
+      expect(
+        resolvePromqlLabelFilterMatch({ match: '   ' }, [svc(['api'])]),
+      ).toEqual({});
+    });
+
+    it('trims the selector', () => {
+      expect(
+        resolvePromqlLabelFilterMatch({ match: '  up{job="api"} ' }, undefined)
+          .match,
+      ).toBe('up{job="api"}');
+    });
+
+    it('returns the template as written when there is no variable context', () => {
+      expect(
+        resolvePromqlLabelFilterMatch({ match: 'up{job=~"$svc"}' }, undefined),
+      ).toEqual({ match: 'up{job=~"$svc"}' });
+    });
+
+    it('expands a reference as a regex alternation', () => {
+      expect(
+        resolvePromqlLabelFilterMatch({ match: 'up{job=~"$svc"}' }, [
+          svc(['api', 'ad']),
+        ]).match,
+      ).toBe('up{job=~"(api|ad)"}');
+    });
+
+    it('expands an empty selection to match everything', () => {
+      expect(
+        resolvePromqlLabelFilterMatch({ match: 'up{job=~"$svc"}' }, [svc([])])
+          .match,
+      ).toBe('up{job=~".*"}');
+    });
+
+    it('expands the csv format for a name rather than a matcher value', () => {
+      expect(
+        resolvePromqlLabelFilterMatch({ match: '${svc:csv}{code="200"}' }, [
+          svc(['up']),
+        ]).match,
+      ).toBe('up{code="200"}');
+    });
+
+    it('reports an unrecognized format without throwing', () => {
+      const resolved = resolvePromqlLabelFilterMatch(
+        { match: 'up{job=~"${svc:bogus}"}' },
+        [svc(['api'])],
+      );
+      expect(resolved.match).toBe('up{job=~"${svc:bogus}"}');
+      expect(resolved.error).toMatch(/Unknown variable format 'bogus'/);
+    });
+
+    it('leaves an undeclared bare reference alone', () => {
+      const resolved = resolvePromqlLabelFilterMatch(
+        { match: 'up{job=~"$nope"}' },
+        [svc(['api'])],
+      );
+      expect(resolved.match).toBe('up{job=~"$nope"}');
       expect(resolved.error).toBeUndefined();
     });
   });

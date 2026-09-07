@@ -6,8 +6,8 @@ import {
   countAlerts,
   createAlert,
   deleteAlert,
-  getAlertById,
-  getAlerts,
+  getAlertsWithDisplayRefs,
+  getAlertWithDisplayRefs,
   updateAlert,
   validateAlertInput,
 } from '@/controllers/alerts';
@@ -277,9 +277,34 @@ function toInternalAlertInput(body: ExternalAlertInput): InternalAlertInput {
  *           description: All notification channels to trigger when the alert fires or resolves.
  *         name:
  *           type: string
- *           description: Human-friendly alert name.
+ *           description: >-
+ *             Alert name template (Handlebars), rendered as the notification
+ *             title. When omitted, a default title is generated from the
+ *             display name, value and threshold.
  *           nullable: true
- *           example: "Test Alert"
+ *           example: "Errors for {{group}} hit {{value}}"
+ *         displayName:
+ *           type: string
+ *           description: >-
+ *             Display name shown in the alerts list and in notification titles.
+ *             Defaults to the name of the referenced saved search, dashboard
+ *             tile, or inline chart when omitted or null.
+ *           nullable: true
+ *           minLength: 1
+ *           maxLength: 512
+ *           example: "Checkout error spike"
+ *         tags:
+ *           type: array
+ *           items:
+ *             type: string
+ *             maxLength: 32
+ *           maxItems: 50
+ *           description: >-
+ *             Tags for the alert. Defaults to the tags of the referenced saved
+ *             search or dashboard when omitted or null; inline alerts have no
+ *             parent to inherit from and default to an empty list.
+ *           nullable: true
+ *           example: ["checkout", "p1"]
  *         message:
  *           type: string
  *           description: Alert message template.
@@ -303,7 +328,24 @@ function toInternalAlertInput(body: ExternalAlertInput): InternalAlertInput {
  *       allOf:
  *         - $ref: '#/components/schemas/Alert'
  *         - type: object
+ *           required:
+ *             - displayName
+ *             - tags
  *           properties:
+ *             displayName:
+ *               type: string
+ *               description: >-
+ *                 The display name for the alert in the UI. Derived from the saved search name,
+ *                 dashboard tile name, or inline chartConfig name when not explicitly set.
+ *               example: "Checkout error spike"
+ *             tags:
+ *               type: array
+ *               items:
+ *                 type: string
+ *               description: >-
+ *                 The tags for the alert. Derived from the tags of the referenced saved search or dashboard when not explicitly set;
+ *                 inline alerts default to an empty list.
+ *               example: ["checkout", "p1"]
  *             id:
  *               type: string
  *               description: Unique alert identifier.
@@ -440,6 +482,8 @@ const router = express.Router();
  *                     teamId: "65f5e4a3b9e77c001a345678"
  *                     tileId: "65f5e4a3b9e77c001a901234"
  *                     dashboardId: "65f5e4a3b9e77c001a567890"
+ *                     displayName: "Checkout error spike"
+ *                     tags: ["checkout", "p1"]
  *                     numConsecutiveWindows: 3
  *                     createdAt: "2023-03-15T10:20:30.000Z"
  *                     updatedAt: "2023-03-15T14:25:10.000Z"
@@ -476,7 +520,7 @@ router.get(
         return res.status(403).json({ message: 'Forbidden' });
       }
 
-      const alert = await getAlertById(req.params.id, teamId);
+      const alert = await getAlertWithDisplayRefs(req.params.id, teamId);
 
       if (alert == null) {
         return res.status(404).json({ message: 'Alert not found' });
@@ -545,6 +589,8 @@ router.get(
  *                       teamId: "65f5e4a3b9e77c001a345678"
  *                       tileId: "65f5e4a3b9e77c001a901234"
  *                       dashboardId: "65f5e4a3b9e77c001a567890"
+ *                       displayName: "Checkout error spike"
+ *                       tags: ["checkout", "p1"]
  *                       createdAt: "2023-01-01T00:00:00.000Z"
  *                       updatedAt: "2023-01-01T00:00:00.000Z"
  *                   meta:
@@ -578,7 +624,7 @@ router.get(
 
       const { limit, offset } = getPagination(req.query);
       const [alerts, total] = await Promise.all([
-        getAlerts(teamId, { limit, offset }),
+        getAlertsWithDisplayRefs(teamId, { limit, offset }),
         countAlerts(teamId),
       ]);
 
@@ -624,6 +670,8 @@ router.get(
  *                   webhookId: "65f5e4a3b9e77c001a789012"
  *                 name: "Error Spike Alert"
  *                 message: "Error rate has exceeded 100 in the last hour"
+ *                 displayName: "Checkout error spike"
+ *                 tags: ["checkout", "p1"]
  *                 numConsecutiveWindows: 3
  *             multiChannelAlert:
  *               summary: Create an alert that notifies several webhooks
@@ -696,9 +744,9 @@ router.post(
     }
     try {
       const alertInput = toInternalAlertInput(req.body);
-      await validateAlertInput(teamId, alertInput);
+      const refs = await validateAlertInput(teamId, alertInput);
 
-      const createdAlert = await createAlert(teamId, alertInput, userId);
+      const createdAlert = await createAlert(teamId, alertInput, userId, refs);
 
       return res.json({
         data: translateAlertDocumentToExternalAlertWithChartConfig(
@@ -748,6 +796,8 @@ router.post(
  *                   webhookId: "65f5e4a3b9e77c001a789012"
  *                 name: "Updated Alert Name"
  *                 message: "Updated threshold and interval"
+ *                 displayName: "Checkout error spike"
+ *                 tags: ["checkout", "p1"]
  *     responses:
  *       '200':
  *         description: Successfully updated alert
@@ -798,9 +848,9 @@ router.put(
       const { id } = req.params;
 
       const alertInput = toInternalAlertInput(req.body);
-      await validateAlertInput(teamId, alertInput);
+      const refs = await validateAlertInput(teamId, alertInput);
 
-      const alert = await updateAlert(id, teamId, alertInput);
+      const alert = await updateAlert(id, teamId, alertInput, refs);
 
       if (alert == null) {
         return res.status(404).json({ message: 'Alert not found' });

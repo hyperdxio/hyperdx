@@ -1971,6 +1971,13 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *             Label whose values populate the dropdown. Use "__name__" to list
  *             metric names.
  *           example: "pod"
+ *         match:
+ *           type: string
+ *           minLength: 1
+ *           description: |
+ *             Optional Prometheus series selector narrowing which series the
+ *             label values are read from.
+ *           example: 'up{job="api"}'
  *         isBroadcastEnabled:
  *           type: boolean
  *           enum: [false]

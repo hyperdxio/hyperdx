@@ -1494,7 +1494,7 @@ describe('checkAlerts', () => {
           view: defaultChartView,
         }),
       ).toMatchInlineSnapshot(
-        `"🚨 Alert for "Test Chart" in "My Dashboard" - 5 meets or exceeds 1"`,
+        `"🚨 Alert for "My Dashboard - Test Chart" - 5 meets or exceeds 1"`,
       );
       // Inline alerts default to the chart config's name
       expect(
@@ -1520,7 +1520,7 @@ describe('checkAlerts', () => {
           state: AlertState.ALERT,
         }),
       ).toMatchInlineSnapshot(
-        `"🚨 Alert for "Test Chart" in "My Dashboard" - 5 meets or exceeds 1"`,
+        `"🚨 Alert for "My Dashboard - Test Chart" - 5 meets or exceeds 1"`,
       );
 
       // Test OK state (should have ✅ emoji)
@@ -1536,7 +1536,7 @@ describe('checkAlerts', () => {
           state: AlertState.OK,
         }),
       ).toMatchInlineSnapshot(
-        `"✅ Alert for "Test Chart" in "My Dashboard" - 5 meets or exceeds 1"`,
+        `"✅ Alert for "My Dashboard - Test Chart" - 5 meets or exceeds 1"`,
       );
     });
 
@@ -1556,7 +1556,7 @@ describe('checkAlerts', () => {
           view: decimalChartView,
         }),
       ).toMatchInlineSnapshot(
-        `"🚨 Alert for "Test Chart" in "My Dashboard" - 1111.1 meets or exceeds 1.5"`,
+        `"🚨 Alert for "My Dashboard - Test Chart" - 1111.1 meets or exceeds 1.5"`,
       );
 
       // Test with multiple decimal places
@@ -1574,7 +1574,7 @@ describe('checkAlerts', () => {
           view: multiDecimalChartView,
         }),
       ).toMatchInlineSnapshot(
-        `"🚨 Alert for "Test Chart" in "My Dashboard" - 1.1235 meets or exceeds 0.1234"`,
+        `"🚨 Alert for "My Dashboard - Test Chart" - 1.1235 meets or exceeds 0.1234"`,
       );
 
       // Test with integer value and decimal threshold
@@ -1592,7 +1592,7 @@ describe('checkAlerts', () => {
           view: integerValueView,
         }),
       ).toMatchInlineSnapshot(
-        `"🚨 Alert for "Test Chart" in "My Dashboard" - 10.00 meets or exceeds 0.12"`,
+        `"🚨 Alert for "My Dashboard - Test Chart" - 10.00 meets or exceeds 0.12"`,
       );
     });
 
@@ -2843,12 +2843,12 @@ describe('checkAlerts', () => {
         1,
         'https://hooks.slack.com/services/123',
         {
-          text: '🚨 Alert for "Logs Count" in "My Dashboard" - 3 meets or exceeds 1',
+          text: '🚨 Alert for "My Dashboard - Logs Count" - 3 meets or exceeds 1',
           blocks: [
             {
               text: {
                 text: [
-                  `*<http://app:8080/dashboards/${dashboard._id}?from=1700170200000&granularity=5+minute&to=1700174700000&highlightedTileId=17quud | 🚨 Alert for "Logs Count" in "My Dashboard" - 3 meets or exceeds 1>*`,
+                  `*<http://app:8080/dashboards/${dashboard._id}?from=1700170200000&granularity=5+minute&to=1700174700000&highlightedTileId=17quud | 🚨 Alert for "My Dashboard - Logs Count" - 3 meets or exceeds 1>*`,
                   '',
                   '3 meets or exceeds 1',
                   'Time Range (UTC): [Nov 16 10:05:00 PM - Nov 16 10:10:00 PM)',
@@ -4811,7 +4811,7 @@ describe('checkAlerts', () => {
         method: 'POST',
         redirect: 'manual',
         body: JSON.stringify({
-          text: `http://app:8080/dashboards/${dashboard.id}?from=1700170200000&granularity=5+minute&to=1700174700000&highlightedTileId=17quud | 🚨 Alert for "Logs Count" in "My Dashboard" - 3 meets or exceeds 1`,
+          text: `http://app:8080/dashboards/${dashboard.id}?from=1700170200000&granularity=5+minute&to=1700174700000&highlightedTileId=17quud | 🚨 Alert for "My Dashboard - Logs Count" - 3 meets or exceeds 1`,
         }),
         // Idempotency-Key is always injected last (cannot be overridden by user headers)
         // and is a stable objectHash of {eventId, startTime, endTime, state}.
@@ -7145,12 +7145,12 @@ describe('checkAlerts', () => {
         1,
         'https://hooks.slack.com/services/123',
         {
-          text: '🚨 Alert for "CPU" in "My Dashboard" - 6 meets or exceeds 1',
+          text: '🚨 Alert for "My Dashboard - CPU" - 6 meets or exceeds 1',
           blocks: [
             {
               text: {
                 text: [
-                  `*<http://app:8080/dashboards/${dashboard._id}?from=1700170200000&granularity=5+minute&to=1700174700000&highlightedTileId=17quud | 🚨 Alert for "CPU" in "My Dashboard" - 6 meets or exceeds 1>*`,
+                  `*<http://app:8080/dashboards/${dashboard._id}?from=1700170200000&granularity=5+minute&to=1700174700000&highlightedTileId=17quud | 🚨 Alert for "My Dashboard - CPU" - 6 meets or exceeds 1>*`,
                   '',
                   '6 meets or exceeds 1',
                   'Time Range (UTC): [Nov 16 10:05:00 PM - Nov 16 10:10:00 PM)',

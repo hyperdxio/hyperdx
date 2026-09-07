@@ -1011,6 +1011,40 @@ export function resolveFilterValuesWhere(
   }
 }
 
+export type ResolvedPromqlLabelFilterMatch = {
+  /** The selector the values lookup actually sends, or undefined for none. */
+  match?: string;
+  /** Set when expansion failed; `match` is then the template as written. */
+  error?: string;
+};
+
+/**
+ * Expand the dashboard variables a Prometheus label filter's series selector
+ * references.
+ *
+ * Never throws. Failures (unknown variables, etc) leave the selector as
+ * written and report an `error`.
+ */
+export function resolvePromqlLabelFilterMatch(
+  filter: { match?: string },
+  variables: ChartVariable[] | undefined,
+): ResolvedPromqlLabelFilterMatch {
+  const match = filter.match?.trim();
+  if (!match) return {};
+  if (variables == null) return { match };
+
+  try {
+    return {
+      match: substituteVariables(match, {
+        variables,
+        inputLanguage: 'promql',
+      }),
+    };
+  } catch (e) {
+    return { match, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 /**
  * Variables whose selection a filter's dropdown-values query needs before it can
  * match anything.

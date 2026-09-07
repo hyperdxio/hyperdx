@@ -1,4 +1,4 @@
-import { useWatch } from 'react-hook-form';
+import { Controller, useWatch } from 'react-hook-form';
 import {
   DashboardFilter,
   isPromqlSource,
@@ -6,10 +6,15 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 
 import { AutocompleteControlled } from '@/components/InputControlled';
+import PromQLEditor from '@/components/PromQLEditor/PromQLEditor';
 import { SourceSelectControlled } from '@/components/SourceSelect';
-import { usePromqlLabelNames } from '@/hooks/usePromqlMetadata';
+import {
+  usePromqlLabelNames,
+  usePromqlMetricNames,
+} from '@/hooks/usePromqlMetadata';
 import { useSources } from '@/source';
 
+import { TOOLTIP_PORTAL_TARGET } from './constants';
 import { CustomInputWrapper } from './CustomInputWrapper';
 import { FilterFormControl } from './filterFormState';
 import { VariableNameInput } from './VariableNameInput';
@@ -41,6 +46,11 @@ export const PromqlLabelFilterEditForm = ({
   const source = sources?.find(s => s.id === sourceId);
   const promqlSource = source && isPromqlSource(source) ? source : undefined;
   const { data: labelNames } = usePromqlLabelNames(
+    promqlSource?.connection,
+    promqlSource?.from.databaseName,
+    promqlSource?.from.tableName,
+  );
+  const { data: metricNames } = usePromqlMetricNames(
     promqlSource?.connection,
     promqlSource?.from.databaseName,
     promqlSource?.from.tableName,
@@ -83,6 +93,27 @@ export const PromqlLabelFilterEditForm = ({
               'This field is required',
           }}
         />
+      </CustomInputWrapper>
+
+      <CustomInputWrapper
+        label="Series matchers"
+        tooltipText="Optional Prometheus series selector narrowing which series the label values are read from. May reference the dashboard's other variables."
+      >
+        <div data-testid="filter-match-input">
+          <Controller
+            control={control}
+            name="match"
+            render={({ field: { value, onChange } }) => (
+              <PromQLEditor
+                value={value ?? ''}
+                onChange={onChange}
+                placeholder={'e.g. up{job="api"}'}
+                metricNames={metricNames}
+                parentRef={TOOLTIP_PORTAL_TARGET}
+              />
+            )}
+          />
+        </div>
       </CustomInputWrapper>
 
       <VariableNameInput control={control} otherFilters={otherFilters} />

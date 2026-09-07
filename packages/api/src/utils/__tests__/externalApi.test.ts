@@ -54,6 +54,107 @@ describe('utils/externalApi', () => {
     });
   });
 
+  describe('displayName and tags', () => {
+    it('passes stored values through', () => {
+      const alert = createAlertDocument({
+        displayName: 'Checkout errors',
+        tags: ['checkout'],
+      });
+
+      const translated = translateAlertDocumentToExternalAlert(alert);
+
+      expect(translated.displayName).toBe('Checkout errors');
+      expect(translated.tags).toEqual(['checkout']);
+    });
+
+    it('derives from a populated saved search when unset', () => {
+      const alert = createAlertDocument({
+        savedSearch: {
+          _id: new Types.ObjectId(),
+          name: 'Payment 5xx',
+          tags: ['payments'],
+        },
+      });
+
+      const translated = translateAlertDocumentToExternalAlert(alert);
+
+      expect(translated.displayName).toBe('Payment 5xx');
+      expect(translated.tags).toEqual(['payments']);
+    });
+
+    it('derives from a populated dashboard tile when unset', () => {
+      const alert = createAlertDocument({
+        source: AlertSource.TILE,
+        tileId: 'tile-1',
+        savedSearch: undefined,
+        dashboard: {
+          _id: new Types.ObjectId(),
+          name: 'Checkout',
+          tags: ['team-checkout'],
+          tiles: [{ id: 'tile-1', config: { name: 'Error rate' } }],
+        },
+      });
+
+      const translated = translateAlertDocumentToExternalAlert(alert);
+
+      expect(translated.displayName).toBe('Checkout - Error rate');
+      expect(translated.tags).toEqual(['team-checkout']);
+    });
+
+    it('falls back when the refs are unpopulated and the fields are unset', () => {
+      const alert = createAlertDocument({ savedSearch: new Types.ObjectId() });
+
+      const translated = translateAlertDocumentToExternalAlert(alert);
+
+      expect(translated.displayName).toBe('Alert');
+      expect(translated.tags).toEqual([]);
+    });
+
+    it('derives from an inline chart config when unset', () => {
+      const alert = createAlertDocument({
+        source: AlertSource.INLINE,
+        savedSearch: undefined,
+        chartConfig: { name: 'p99 latency' },
+      });
+
+      const translated = translateAlertDocumentToExternalAlert(alert);
+
+      // Inline alerts have no parent entity, so tags stay empty rather than
+      // resolving to the generic fallback.
+      expect(translated.displayName).toBe('p99 latency');
+      expect(translated.tags).toEqual([]);
+    });
+
+    it('falls back for an inline alert whose chart config has no name', () => {
+      const alert = createAlertDocument({
+        source: AlertSource.INLINE,
+        savedSearch: undefined,
+        chartConfig: { displayType: 'line' },
+      });
+
+      const translated = translateAlertDocumentToExternalAlert(alert);
+
+      expect(translated.displayName).toBe('Alert');
+      expect(translated.tags).toEqual([]);
+    });
+
+    // A populated ref is a document, and documents don't override toString();
+    // stringifying one directly yields "[object Object]".
+    it('stringifies ids from populated refs', () => {
+      const savedSearchId = new Types.ObjectId();
+      const dashboardId = new Types.ObjectId();
+      const alert = createAlertDocument({
+        savedSearch: { _id: savedSearchId, name: 'S', tags: [] },
+        dashboard: { _id: dashboardId, name: 'D', tags: [], tiles: [] },
+      });
+
+      const translated = translateAlertDocumentToExternalAlert(alert);
+
+      expect(translated.savedSearchId).toBe(savedSearchId.toString());
+      expect(translated.dashboardId).toBe(dashboardId.toString());
+    });
+  });
+
   describe('note handling', () => {
     it('returns note as null when the value is null', () => {
       const alert = createAlertDocument({ note: null });

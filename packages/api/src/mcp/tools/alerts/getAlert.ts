@@ -12,42 +12,7 @@ import Alert from '@/models/alert';
 import type { IDashboard } from '@/models/dashboard';
 import type { ISavedSearch } from '@/models/savedSearch';
 import { translateAlertDocumentToExternalAlertWithChartConfig } from '@/routers/external-api/v2/utils/alertChartConfig';
-
-function deriveAlertName(alert: {
-  name?: string | null;
-  tileId?: string | null;
-  savedSearch?: ISavedSearch | null;
-  dashboard?: IDashboard | null;
-  chartConfig?: { name?: string } | null;
-}): string | null {
-  // Prefer explicit alert name
-  if (alert.name) {
-    return alert.name;
-  }
-
-  // Fall back to saved search name
-  if (alert.savedSearch?.name) {
-    return alert.savedSearch.name;
-  }
-
-  // Inline alerts: fall back to the persisted chart config's name
-  if (alert.chartConfig?.name) {
-    return alert.chartConfig.name;
-  }
-
-  // Fall back to dashboard tile name or dashboard name
-  if (alert.dashboard?.name) {
-    if (alert.tileId) {
-      const tile = alert.dashboard.tiles?.find(t => t.id === alert.tileId);
-      if (tile?.config?.name) {
-        return tile.config.name;
-      }
-    }
-    return alert.dashboard.name;
-  }
-
-  return null;
-}
+import { resolveAlertDisplayFields } from '@/utils/alerts';
 
 export function registerGetAlert({
   context,
@@ -63,10 +28,11 @@ export function registerGetAlert({
       annotations: { readOnlyHint: true },
       description:
         'Without an ID: list all alerts as a high-level summary ' +
-        '(id, name, state, source, interval). Optionally filter by state ' +
+        '(id, name, displayName, tags, state, source, interval). Optionally ' +
+        'filter by state ' +
         '(e.g. state="ALERT" for firing alerts). ' +
-        'With an ID: get full alert detail including configuration and ' +
-        'recent evaluation history.',
+        'With an ID: get full alert detail including configuration, ' +
+        'displayName, tags, and recent evaluation history.',
       inputSchema: z.object({
         id: z
           .string()
@@ -98,10 +64,15 @@ export function registerGetAlert({
         }>(['savedSearch', 'dashboard']);
 
         const output = alerts.map(alert => {
-          const name = deriveAlertName(alert);
+          const { displayName, tags } = resolveAlertDisplayFields(alert, {
+            savedSearch: alert.savedSearch,
+            dashboard: alert.dashboard,
+          });
           return {
             id: alert._id.toString(),
-            name,
+            name: alert.name,
+            displayName,
+            tags,
             state: alert.state,
             source: alert.source,
             interval: alert.interval,
@@ -124,15 +95,15 @@ export function registerGetAlert({
         return mcpUserError('Alert not found');
       }
 
-      const external =
-        translateAlertDocumentToExternalAlertWithChartConfig(alert);
-
-      // Populate refs so deriveAlertName can fall back to the
-      // saved search / dashboard name when the alert has no explicit name.
+      // Populate the refs the display name/tags derive from, so alerts written
+      // before those fields existed still resolve to something meaningful.
       const populated = await alert.populate<{
         savedSearch: ISavedSearch | null;
         dashboard: IDashboard | null;
       }>(['savedSearch', 'dashboard']);
+
+      const external =
+        translateAlertDocumentToExternalAlertWithChartConfig(populated);
 
       const history = await getRecentAlertHistories({
         alertId: new ObjectId(alert._id),
@@ -147,7 +118,6 @@ export function registerGetAlert({
             text: JSON.stringify(
               {
                 ...external,
-                name: deriveAlertName(populated) ?? external.name,
                 history,
                 ...(frontendUrl ? { url: `${frontendUrl}/alerts` } : {}),
               },

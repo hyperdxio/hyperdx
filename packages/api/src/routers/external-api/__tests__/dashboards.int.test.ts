@@ -5754,6 +5754,21 @@ describe('External API v2 Dashboards - new format', () => {
         expect(response.body.data.filters[0].label).toBe('k8s.pod.name');
       });
 
+      it('round-trips a series selector', async () => {
+        const response = await sendFilters([
+          promqlFilterInput({ match: 'up{job=~"$env"}' }),
+        ]);
+
+        expect(response.status).toBe(200);
+        expect(response.body.data.filters[0].match).toBe('up{job=~"$env"}');
+      });
+
+      it('rejects an empty series selector', async () => {
+        const response = await sendFilters([promqlFilterInput({ match: '' })]);
+
+        expect(response.status).toBe(400);
+      });
+
       // Each mode flag accepts exactly one value, so omitting it fills that
       // value in rather than falling back to the queried filter's defaults.
       it('defaults the mode flags when they are omitted', async () => {

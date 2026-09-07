@@ -59,6 +59,7 @@ describe('toFormValues', () => {
       name: 'Job',
       source: 'prom',
       label: 'job',
+      match: 'up{job="api"}',
       isBroadcastEnabled: false,
       isVariableEnabled: true,
       variableName: 'job',
@@ -69,6 +70,7 @@ describe('toFormValues', () => {
       type: 'PROMETHEUS_LABEL',
       source: 'prom',
       label: 'job',
+      match: 'up{job="api"}',
       variableName: 'job',
       expression: '',
       options: [],
@@ -150,6 +152,22 @@ describe('toSavedFilter', () => {
       isBroadcastEnabled: false,
       isVariableEnabled: true,
       variableName: 'Job',
+    });
+  });
+
+  it('trims a PromQL label filter selector and drops an empty one', () => {
+    const base = {
+      type: 'PROMETHEUS_LABEL' as const,
+      name: 'Job',
+      source: 'prom',
+      label: 'job',
+    };
+
+    expect(
+      toSavedFilter(formValues({ ...base, match: '  up{job="api"}  ' })),
+    ).toMatchObject({ match: 'up{job="api"}' });
+    expect(toSavedFilter(formValues({ ...base, match: '   ' }))).toMatchObject({
+      match: undefined,
     });
   });
 

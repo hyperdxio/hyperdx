@@ -597,12 +597,10 @@ type PrometheusLabelsResponse = {
   error?: string;
 };
 
-async function prometheusFetch<T>(
-  path: string,
-  searchParams: Record<string, string>,
-): Promise<T> {
+/** Reports the reason a Prometheus-shaped error body carries, not ky's. */
+async function withPrometheusError<T>(request: () => Promise<T>): Promise<T> {
   try {
-    return await server.post(path, { searchParams }).json();
+    return await request();
   } catch (e: any) {
     // ky throws HTTPError on non-2xx — read the response body for the real error
     if (e?.response) {
@@ -620,6 +618,21 @@ async function prometheusFetch<T>(
     throw e;
   }
 }
+
+/**
+ * Some Prometheus backends return the same label name or value more than once,
+ * de-dupe to prevent any duplicate option errors downstream.
+ */
+const uniqueLabels = (
+  resp: PrometheusLabelsResponse,
+): PrometheusLabelsResponse =>
+  resp.data ? { ...resp, data: [...new Set(resp.data)] } : resp;
+
+const prometheusFetch = <T>(
+  path: string,
+  searchParams: Record<string, string>,
+): Promise<T> =>
+  withPrometheusError(() => server.post(path, { searchParams }).json<T>());
 
 export const prometheusApi = {
   queryRange: (params: {
@@ -652,7 +665,8 @@ export const prometheusApi = {
       .get('v1/prometheus/labels', {
         searchParams: labelLookupSearchParams(params),
       })
-      .json(),
+      .json<PrometheusLabelsResponse>()
+      .then(uniqueLabels),
 
   labelValues: (params: {
     label: string;
@@ -661,12 +675,16 @@ export const prometheusApi = {
     table?: string;
     start?: number;
     end?: number;
+    match?: string;
   }): Promise<PrometheusLabelsResponse> =>
-    server
-      .get(`v1/prometheus/label/${params.label}/values`, {
-        searchParams: labelLookupSearchParams(params),
-      })
-      .json(),
+    withPrometheusError(() =>
+      server
+        .get(`v1/prometheus/label/${params.label}/values`, {
+          searchParams: labelLookupSearchParams(params),
+        })
+        .json<PrometheusLabelsResponse>()
+        .then(uniqueLabels),
+    ),
 };
 
 function labelLookupSearchParams(params: {
@@ -675,6 +693,7 @@ function labelLookupSearchParams(params: {
   table?: string;
   start?: number;
   end?: number;
+  match?: string;
 }): Record<string, string> {
   return {
     connectionId: params.connectionId,
@@ -682,5 +701,6 @@ function labelLookupSearchParams(params: {
     ...(params.table ? { table: params.table } : {}),
     ...(params.start != null ? { start: String(params.start) } : {}),
     ...(params.end != null ? { end: String(params.end) } : {}),
+    ...(params.match ? { 'match[]': params.match } : {}),
   };
 }
