@@ -51,6 +51,14 @@ export type DashboardWriteMiss =
   | { kind: 'deleted' }
   | { kind: 'conflict'; currentVersion: string };
 
+/** Thrown by the dashboard controller so the router can map it to a 409. */
+export class DashboardVersionConflictError extends Error {
+  constructor(public readonly currentVersion: string) {
+    super('Dashboard was modified by someone else');
+    this.name = 'DashboardVersionConflictError';
+  }
+}
+
 /**
  * Explains why a version-guarded `findOneAndUpdate` matched nothing. Without
  * this every conflict reports as "dashboard not found", which sends the

@@ -30,6 +30,10 @@ import {
   updatePresetDashboardFilter,
 } from '@/controllers/presetDashboardFilters';
 import { getNonNullUserWithTeam } from '@/middleware/auth';
+import {
+  DashboardVersionConflictError,
+  parseVersionToken,
+} from '@/utils/dashboardVersion';
 import { objectIdSchema } from '@/utils/zod';
 
 // create routes that will get and update dashboards
@@ -127,7 +131,13 @@ router.patch(
     params: z.object({
       id: objectIdSchema,
     }),
-    body: DashboardSchema.partial().superRefine(addFilterIssues),
+    body: DashboardSchema.partial()
+      .extend({
+        // Optional so existing internal callers are unaffected. Present means
+        // "only write if the dashboard is still at this version".
+        expectedVersion: z.string().optional(),
+      })
+      .superRefine(addFilterIssues),
   }),
   async (req, res, next) => {
     try {
@@ -140,18 +150,47 @@ router.patch(
         return res.sendStatus(404);
       }
 
+      const { expectedVersion } = req.body;
+      let expectedUpdatedAt: Date | undefined;
+      if (expectedVersion !== undefined) {
+        const parsed = parseVersionToken(expectedVersion);
+        if (parsed == null) {
+          return res
+            .status(400)
+            .json({ message: 'Malformed expectedVersion.' });
+        }
+        expectedUpdatedAt = parsed;
+      }
+
       // Only omit undefined values, keep null (which signals field removal)
       // `provisioned` is server-owned — see the POST handler above.
-      const updates = _.omitBy(_.omit(req.body, 'provisioned'), _.isUndefined);
-
-      const updatedDashboard = await updateDashboard(
-        dashboardId,
-        teamId,
-        updates,
-        userId,
+      // `expectedVersion` is a control field, not document state; `updates`
+      // is spread straight into the update, same reason `provisioned` is
+      // dropped.
+      const updates = _.omitBy(
+        _.omit(req.body, ['provisioned', 'expectedVersion']),
+        _.isUndefined,
       );
 
-      res.json(updatedDashboard);
+      try {
+        const updatedDashboard = await updateDashboard(
+          dashboardId,
+          teamId,
+          updates,
+          userId,
+          expectedUpdatedAt,
+        );
+        res.json(updatedDashboard);
+      } catch (e) {
+        if (e instanceof DashboardVersionConflictError) {
+          return res.status(409).json({
+            message:
+              'This dashboard was changed by someone else. Reload it and reapply your change.',
+            currentVersion: e.currentVersion,
+          });
+        }
+        throw e;
+      }
     } catch (e) {
       next(e);
     }

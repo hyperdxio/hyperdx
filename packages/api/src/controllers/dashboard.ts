@@ -17,6 +17,10 @@ import {
 import type { ObjectId } from '@/models';
 import type { AlertDocument, IAlert } from '@/models/alert';
 import Dashboard from '@/models/dashboard';
+import {
+  DashboardVersionConflictError,
+  resolveDashboardWriteMiss,
+} from '@/utils/dashboardVersion';
 
 function pickAlertsByTile(tiles: Tile[]) {
   return tiles.reduce((acc, tile) => {
@@ -199,6 +203,7 @@ export async function updateDashboard(
   teamId: ObjectId,
   updates: Partial<z.infer<typeof DashboardWithoutIdSchema>>,
   userId?: ObjectId,
+  expectedUpdatedAt?: Date,
 ) {
   const oldDashboard = await getDashboard(dashboardId, teamId);
 
@@ -210,6 +215,7 @@ export async function updateDashboard(
     {
       _id: dashboardId,
       team: teamId,
+      ...(expectedUpdatedAt ? { updatedAt: expectedUpdatedAt } : {}),
     },
     {
       ...updates,
@@ -219,6 +225,12 @@ export async function updateDashboard(
     { new: true },
   );
   if (updatedDashboard == null) {
+    if (expectedUpdatedAt != null) {
+      const miss = await resolveDashboardWriteMiss(dashboardId, teamId);
+      if (miss.kind === 'conflict') {
+        throw new DashboardVersionConflictError(miss.currentVersion);
+      }
+    }
     throw new Error('Could not update dashboard');
   }
 
