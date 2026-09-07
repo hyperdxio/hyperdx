@@ -1,0 +1,30 @@
+---
+'@hyperdx/api': minor
+'@hyperdx/app': minor
+---
+
+Dashboard writes are now guarded against concurrent edits, so a client
+working from stale state is rejected instead of silently overwriting
+someone else's change. The version token is the dashboard's existing
+`updatedAt`, so there's no new field and no migration.
+
+**Breaking for MCP clients:** `clickstack_get_dashboard` and
+`clickstack_save_dashboard` now return a `version`, and
+`clickstack_get_dashboard_tile` returns it as `dashboardVersion`.
+`clickstack_save_dashboard` (when updating) and `clickstack_patch_dashboard`
+(always) now require it — an agent that omits `version` on an update gets
+an error telling it to re-read and re-apply, where it previously got a
+silent clobber.
+
+The external API v2 `PUT /api/v2/dashboards/:id` endpoint honours an
+optional `If-Match` header, and `GET`/`POST`/`PUT` all return an `ETag`.
+A mismatch is a 412 and a malformed header is a 400, but omitting
+`If-Match` keeps the old last-write-wins behaviour, so the terraform
+provider is unaffected. The internal `PATCH /api/dashboards/:id` route
+accepts an optional `expectedVersion` and answers with a 409 and the
+current version on a mismatch.
+
+The app now sends this token on save, seeds its query cache from the
+response, serialises saves per dashboard, and on a 409 refetches and shows
+a toast explaining the change wasn't saved and the latest version has been
+loaded.
