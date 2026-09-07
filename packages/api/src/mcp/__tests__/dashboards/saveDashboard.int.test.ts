@@ -109,6 +109,7 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
             },
           ],
           tags: ['updated'],
+          version: created.version,
         },
       );
 
@@ -156,6 +157,9 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
             },
           },
         ],
+        // Well-formed but arbitrary: this dashboard doesn't exist, so the
+        // version guard never gets to compare it against anything real.
+        version: new Date().toISOString(),
       });
 
       expect(result.isError).toBe(true);
@@ -471,6 +475,7 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
                 }
               : t,
           ),
+          version: saved.version,
         },
       );
       expect(updateResult.isError).toBeFalsy();
@@ -602,6 +607,7 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
               config: { ...fetched.tiles[0].config, ...updatedConfig },
             },
           ],
+          version: saved.version,
         },
       );
       expect(updateResult.isError).toBeFalsy();
@@ -1050,6 +1056,7 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
           id: saved.id,
           name: 'Builder Display Fields (updated)',
           tiles: fetched.tiles,
+          version: saved.version,
         },
       );
       expect(updateResult.isError).toBeFalsy();
@@ -1141,6 +1148,7 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
             },
           },
         ],
+        version: saved.version,
       });
       expect(update.isError).toBe(true);
       const text = getFirstText(update);
@@ -1179,6 +1187,7 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
       const update = await callTool(ctx.client!, 'clickstack_save_dashboard', {
         id: saved.id,
         name: 'Heatmap re-pointed at Log',
+        version: saved.version,
         tiles: [
           {
             ...saved.tiles[0],
@@ -1290,6 +1299,115 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
         ),
       );
       expect(updated.version).not.toBe(created.version);
+    });
+  });
+
+  describe('version enforcement', () => {
+    const tileFor = (sourceId: string) => ({
+      name: 'Tile',
+      x: 0,
+      y: 0,
+      w: 12,
+      h: 4,
+      config: { displayType: 'line', sourceId, select: [{ aggFn: 'count' }] },
+    });
+
+    const createDashboard = async (name: string) => {
+      const sourceId = ctx.traceSource._id.toString();
+      return JSON.parse(
+        getFirstText(
+          await callTool(ctx.client!, 'clickstack_save_dashboard', {
+            name,
+            tiles: [tileFor(sourceId)],
+          }),
+        ),
+      );
+    };
+
+    it('rejects an update with no version', async () => {
+      const created = await createDashboard('No Version');
+      const sourceId = ctx.traceSource._id.toString();
+
+      const text = getFirstText(
+        await callTool(ctx.client!, 'clickstack_save_dashboard', {
+          id: created.id,
+          name: 'Renamed',
+          tiles: [{ ...tileFor(sourceId), id: created.tiles[0].id }],
+        }),
+      );
+
+      expect(text).toContain('version is required');
+      const inDb = await Dashboard.findById(created.id);
+      expect(inDb!.name).toBe('No Version');
+    });
+
+    it('rejects a stale version and leaves the document untouched', async () => {
+      const created = await createDashboard('Stale Version');
+      const sourceId = ctx.traceSource._id.toString();
+
+      await Dashboard.findByIdAndUpdate(created.id, {
+        $set: { name: 'Edited By Someone Else' },
+      });
+
+      const text = getFirstText(
+        await callTool(ctx.client!, 'clickstack_save_dashboard', {
+          id: created.id,
+          name: 'Agent Rename',
+          tiles: [{ ...tileFor(sourceId), id: created.tiles[0].id }],
+          version: created.version,
+        }),
+      );
+
+      expect(text).toContain('changed since you read it');
+      const inDb = await Dashboard.findById(created.id);
+      expect(inDb!.name).toBe('Edited By Someone Else');
+    });
+
+    it('rejects a malformed version', async () => {
+      const created = await createDashboard('Malformed Version');
+      const sourceId = ctx.traceSource._id.toString();
+
+      const text = getFirstText(
+        await callTool(ctx.client!, 'clickstack_save_dashboard', {
+          id: created.id,
+          name: 'Renamed',
+          tiles: [{ ...tileFor(sourceId), id: created.tiles[0].id }],
+          version: 'yesterday',
+        }),
+      );
+
+      expect(text).toContain('not a valid dashboard version');
+    });
+
+    it('reports a deleted dashboard as deleted, not as a conflict', async () => {
+      const created = await createDashboard('Deleted Dashboard');
+      const sourceId = ctx.traceSource._id.toString();
+      await Dashboard.findByIdAndDelete(created.id);
+
+      const text = getFirstText(
+        await callTool(ctx.client!, 'clickstack_save_dashboard', {
+          id: created.id,
+          name: 'Renamed',
+          tiles: [{ ...tileFor(sourceId), id: created.tiles[0].id }],
+          version: created.version,
+        }),
+      );
+
+      expect(text).toContain('deleted');
+    });
+
+    it('rejects a version on create, where it is meaningless', async () => {
+      const sourceId = ctx.traceSource._id.toString();
+
+      const text = getFirstText(
+        await callTool(ctx.client!, 'clickstack_save_dashboard', {
+          name: 'Create With Version',
+          tiles: [tileFor(sourceId)],
+          version: '2026-09-04T01:02:03.456Z',
+        }),
+      );
+
+      expect(text).toContain('version applies only to updates');
     });
   });
 
@@ -1433,6 +1551,7 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
               },
             },
           ],
+          version: created.version,
         },
       );
 
@@ -1603,6 +1722,7 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
           ],
           tags: ['containers-mcp'],
           containers: updatedContainers,
+          version: created.version,
         },
       );
 
@@ -1768,6 +1888,7 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
           name: 'PUT-without-containers fallback',
           tiles: created.tiles,
           // containers intentionally omitted
+          version: created.version,
         },
       );
       expect(updateResult.isError).toBeFalsy();
@@ -1810,6 +1931,7 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
           name: 'Wipe containers',
           tiles: [wipedTile],
           containers: [],
+          version: created.version,
         },
       );
       expect(updateResult.isError).toBeFalsy();
@@ -1966,6 +2088,7 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
               sourceId,
             },
           ],
+          version: created.version,
         },
       );
 
@@ -2065,6 +2188,7 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
               sourceId,
             },
           ],
+          version: created.version,
         },
       );
       expect(updateResult.isError).toBeFalsy();
@@ -2142,6 +2266,7 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
             name: fetched.name,
             tiles: [traceTile(sourceId)],
             filters: fetched.filters,
+            version: fetched.version,
           },
         );
         expect(updateResult.isError).toBeFalsy();
@@ -2219,6 +2344,7 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
             name: fetched.name,
             tiles: [traceTile(sourceId)],
             filters: fetched.filters,
+            version: fetched.version,
           },
         );
         expect(updateResult.isError).toBeFalsy();
@@ -2560,6 +2686,7 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
               id: created.id,
               name: 'Preserved variable filters',
               tiles: [tile],
+              version: created.version,
             },
           );
 
@@ -2595,6 +2722,7 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
               id: created.id,
               name: 'Preserved filters, bad reference',
               tiles: [macroTile(sourceId, connectionId, 'tenant')],
+              version: created.version,
             },
           );
 
@@ -3122,6 +3250,7 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
               },
             },
           ],
+          version: created.version,
         },
       );
 
