@@ -135,7 +135,7 @@ with:
 | `clickstack_sql`                 | Execute raw ClickHouse SQL for advanced queries (JOINs, CTEs, sub-queries)                   |
 | `clickstack_get_dashboard`       | List all dashboards, or get full detail for a specific dashboard including a `version` required by `clickstack_save_dashboard` and `clickstack_patch_dashboard` |
 | `clickstack_get_dashboard_tile`  | Fetch a single tile by ID, returning `{ dashboardId, dashboardVersion, tile }`; pass `dashboardVersion` to `clickstack_patch_dashboard` as its `version` |
-| `clickstack_save_dashboard`      | Create or update a dashboard with tiles (charts, tables, numbers, search, markdown); updating requires the `version` from the most recent read, and errors telling you to re-read and reapply if the dashboard changed since |
+| `clickstack_save_dashboard`      | Create or update a dashboard with tiles (charts, tables, numbers, search, markdown); updating requires the `version` from the most recent read and errors telling you to re-read and reapply if the dashboard changed since; creating rejects a `version` — omit it when there's no `id` |
 | `clickstack_patch_dashboard`     | Make a targeted update to a dashboard's name, tags, and/or a single tile without resubmitting the rest; always requires `version` and returns a fresh one for the next patch, or errors telling you to re-read and reapply on a mismatch |
 | `clickstack_delete_dashboard`    | Permanently delete a dashboard and its attached alerts                                       |
 | `clickstack_query_tile`          | Execute the query for a specific dashboard tile to validate results                          |

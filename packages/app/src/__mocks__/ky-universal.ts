@@ -34,4 +34,3 @@ class HTTPError extends Error {
 ky.HTTPError = HTTPError;
 
 module.exports = ky;
-module.exports.HTTPError = HTTPError;

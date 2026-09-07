@@ -49,9 +49,10 @@ import { useDashboard } from '@/dashboard';
 
 // Real ky's HTTPError takes (response, request, options); the mock accepts
 // fewer, but `dashboard.ts` now does `instanceof HTTPError`, so a plain
-// object literal won't satisfy the check. Build one against the mock's
-// prototype instead of casting past the real 3-arg constructor.
+// object literal won't satisfy the check. Fabricating the prototype chain
+// is the only way to satisfy `instanceof` without the real 3-arg constructor.
 const httpError = (status: number) =>
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
   Object.assign(Object.create(HTTPError.prototype), {
     response: { status },
   }) as HTTPError;
