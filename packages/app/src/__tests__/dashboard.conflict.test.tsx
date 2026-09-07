@@ -47,12 +47,12 @@ import { act, renderHook } from '@testing-library/react';
 
 import { useDashboard } from '@/dashboard';
 
-// Real ky's HTTPError takes (response, request, options); the mock accepts
-// fewer, but `dashboard.ts` now does `instanceof HTTPError`, so a plain
-// object literal won't satisfy the check. Fabricating the prototype chain
-// is the only way to satisfy `instanceof` without the real 3-arg constructor.
+// `dashboard.ts` does `instanceof HTTPError`, so the test needs a real
+// instance rather than a plain object literal. Real ky's constructor wants
+// (Response, Request, NormalizedOptions), but jsdom provides no `Response`
+// global, so calling it here dies with a ReferenceError. Fabricating the
+// prototype chain is what's left; the cast is the cost of that.
 const httpError = (status: number) =>
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
   Object.assign(Object.create(HTTPError.prototype), {
     response: { status },
   }) as HTTPError;
