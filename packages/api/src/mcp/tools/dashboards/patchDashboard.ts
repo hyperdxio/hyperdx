@@ -67,6 +67,10 @@ export function registerPatchDashboard({
           'tileId and tile must both be provided or both omitted.',
         );
       }
+      // `version` is non-optional on the Zod schema now, so the MCP SDK's
+      // generated JSON Schema lists it in `required` and the transport
+      // rejects a call missing it before this handler runs. Kept as
+      // belt-and-braces in case a caller bypasses schema validation.
       if (version === undefined) {
         return mcpUserError(
           'version is required. Call clickstack_get_dashboard (or ' +

@@ -11,6 +11,15 @@
  * millisecond both pass the guard. That is exactly today's behaviour, not a
  * regression. Upgrade path if it ever shows up in practice: an explicit
  * `version: Number` field with `$inc` at each write site.
+ *
+ * Known gap: tile alerts live in the separate `Alert` collection, so adding
+ * or editing one doesn't bump the dashboard's `updatedAt`. That's harmless on
+ * the MCP and v2 surfaces, but the internal PATCH route runs
+ * `syncDashboardAlerts` (`@/controllers/dashboard.ts`), which deletes alerts
+ * for any tile that had one in its fresh read and doesn't have one in the
+ * incoming payload. So a save whose guard passes cleanly can still delete an
+ * alert someone else added in between — the version token says nothing about
+ * alert state. Pre-existing, not introduced or worsened here.
  */
 
 import type { ObjectId } from '@/models';
