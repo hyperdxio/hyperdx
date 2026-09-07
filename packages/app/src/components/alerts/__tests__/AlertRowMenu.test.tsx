@@ -84,16 +84,14 @@ function renderMenu(ui: React.ReactElement) {
   });
   return render(
     <QueryClientProvider client={queryClient}>
-      {/* env="test" turns off Mantine's transitions and portals, so the
-          dropdown is in the DOM the moment the target is clicked instead of
-          arriving a transition later. */}
       <MantineProvider env="test">{ui}</MantineProvider>
     </QueryClientProvider>,
   );
 }
 
-// Wait for the dropdown itself, not just the click: every "item is missing"
-// assertion below would otherwise pass for the wrong reason.
+// renderMenu passes env="test", so the dropdown mounts synchronously with no
+// transition to wait on. The wait stays as a guard: if that ever stops holding,
+// every "item is missing" assertion would pass for the wrong reason.
 const openMenu = async (testId: string) => {
   await userEvent.click(screen.getByTestId(testId));
   await screen.findByRole('menu');
@@ -204,8 +202,9 @@ describe('AlertRowMenu', () => {
     );
     await openMenu('alert-row-menu-alert-1');
 
-    // Before the click: picking an item closes the dropdown, which unmounts it.
+    // Assert on the menu contents before clicking, which closes the dropdown.
     expect(screen.getByText('Open source')).toBeInTheDocument();
+
     await userEvent.click(screen.getByTestId('alert-delete-alert-1'));
 
     expect(confirm).toHaveBeenCalledWith(
