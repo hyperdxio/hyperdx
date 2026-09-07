@@ -16,7 +16,6 @@ import { useDisclosure } from '@mantine/hooks';
 import {
   IconChartLine,
   IconChevronDown,
-  IconChevronRight,
   IconHelpCircle,
   IconNote,
   IconTableRow,
@@ -28,12 +27,7 @@ import { AlertPropertiesSummary } from '@/components/alerts/AlertPropertiesSumma
 import { AlertRowMenu } from '@/components/alerts/AlertRowMenu';
 import { IS_ALERT_DETAILS_ENABLED } from '@/config';
 import type { AlertsPageItem } from '@/types';
-import {
-  getAlertDisplayName,
-  getAlertSourceLabel,
-  getAlertSourceUrl,
-  getAlertTags,
-} from '@/utils/alerts';
+import { getAlertSourceLabel, getAlertSourceUrl } from '@/utils/alerts';
 
 import styles from '@styles/AlertsPage.module.scss';
 
@@ -99,29 +93,7 @@ export const AlertDetails = React.memo(function AlertDetails({
 }: {
   alert: AlertsPageItem;
 }) {
-  const alertName = React.useMemo(() => {
-    if (alert.source === AlertSource.TILE && alert.dashboard) {
-      const tile = alert.dashboard?.tiles.find(
-        tile => tile.id === alert.tileId,
-      );
-      const tileName = tile?.config.name || 'Tile';
-      return (
-        <>
-          {alert.dashboard?.name}
-          {tileName ? (
-            <>
-              <IconChevronRight size={14} className="mx-1" />
-              {tileName}
-            </>
-          ) : null}
-        </>
-      );
-    }
-    if (alert.source === AlertSource.SAVED_SEARCH && alert.savedSearch) {
-      return alert.savedSearch?.name;
-    }
-    return '–';
-  }, [alert]);
+  const alertName = alert.displayName || '–';
 
   const alertUrl = React.useMemo(() => getAlertSourceUrl(alert), [alert]);
 
@@ -213,9 +185,9 @@ export const AlertDetails = React.memo(function AlertDetails({
               Created by {alert.createdBy.name || alert.createdBy.email}
             </Text>
           )}
-          {getAlertTags(alert).length > 0 && (
+          {alert.tags?.length > 0 && (
             <Group gap={4}>
-              {getAlertTags(alert).map(tag => (
+              {alert.tags.map(tag => (
                 <Badge key={tag} variant="light" color="gray" size="xs">
                   {tag}
                 </Badge>
@@ -238,7 +210,7 @@ export const AlertDetails = React.memo(function AlertDetails({
           alert={alert}
           alertUrl={IS_ALERT_DETAILS_ENABLED ? alertUrl : undefined}
           linkTitle={linkTitle}
-          alertName={getAlertDisplayName(alert)}
+          alertName={alert.displayName}
         />
       </Group>
     </div>

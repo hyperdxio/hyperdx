@@ -53,6 +53,39 @@ describe('MCP Dashboard Tools - clickstack_get_dashboard', () => {
     expect(output.tiles).toEqual([]);
   });
 
+  it('returns a static list filter saved outside MCP, with a derived variable name', async () => {
+    // Seeded directly through the model, i.e. as the UI/REST API persists it,
+    // to prove readability does not depend on the MCP save path.
+    const dashboard = await new Dashboard({
+      name: 'Static filter dashboard',
+      tiles: [],
+      team: ctx.team._id,
+      filters: [
+        {
+          id: 'static-1',
+          type: 'STATIC_LIST',
+          name: 'Deploy Env',
+          options: ['prod', 'staging'],
+          isBroadcastEnabled: false,
+          isVariableEnabled: true,
+        },
+      ],
+    }).save();
+
+    const result = await callTool(ctx.client!, 'clickstack_get_dashboard', {
+      id: dashboard._id.toString(),
+    });
+
+    expect(result.isError).toBeFalsy();
+    const output = JSON.parse(getFirstText(result));
+    expect(output.filters[0]).toMatchObject({
+      id: 'static-1',
+      type: 'STATIC_LIST',
+      options: ['prod', 'staging'],
+      variableName: 'Deploy_Env',
+    });
+  });
+
   it('should return error for non-existent dashboard id', async () => {
     const fakeId = '000000000000000000000000';
     const result = await callTool(ctx.client!, 'clickstack_get_dashboard', {

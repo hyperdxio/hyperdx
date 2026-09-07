@@ -1,5 +1,7 @@
 import { Locator, Page } from '@playwright/test';
 
+import { addTagViaPicker, removeTagViaPicker } from '../utils/tags';
+
 import { WebhookAlertModalComponent } from './WebhookAlertModalComponent';
 
 /**
@@ -114,6 +116,26 @@ export class SearchPageAlertModalComponent {
       state: 'detached',
       timeout: 10000,
     });
+  }
+
+  /**
+   * Set the alert's display name. Empty clears it, which makes the server
+   * re-derive it from the saved search.
+   */
+  async setDisplayName(name: string) {
+    await this.modal.getByTestId('alert-display-name-input').fill(name);
+  }
+
+  private get tagsButton() {
+    return this.modal.getByTestId('alert-tags-button');
+  }
+
+  async addTag(tag: string) {
+    await addTagViaPicker(this.page, this.tagsButton, tag);
+  }
+
+  async removeTag(tag: string) {
+    await removeTagViaPicker(this.page, this.tagsButton, tag);
   }
 
   /**

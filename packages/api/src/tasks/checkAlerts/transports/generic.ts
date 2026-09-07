@@ -1,6 +1,6 @@
 import { objectHash } from '@hyperdx/common-utils/dist/core/utils';
 import {
-  DEFAULT_WEBHOOK_TEMPLATE_VARIABLES,
+  DEFAULT_GENERIC_WEBHOOK_BODY,
   WebhookService,
   WebhookTemplateVariable,
 } from '@hyperdx/common-utils/dist/types';
@@ -62,14 +62,6 @@ export const logBlockedWebhookDelivery = (
     );
   }
 };
-
-// Fallback body for a generic/incidentio webhook persisted without one. Mirrors
-// the default template the UI form applies (WebhookForm.tsx) so a webhook
-// created via the API/MCP (where body is optional) still fires with a sensible
-// payload instead of crashing Handlebars.compile on an undefined template.
-const DEFAULT_GENERIC_WEBHOOK_BODY_TEMPLATE = `{"text": "${DEFAULT_WEBHOOK_TEMPLATE_VARIABLES.map(
-  v => `{{${v}}}`,
-).join(' | ')}"}`;
 
 // Renders a Unix-ms timestamp as an ISO-8601 string, or '' if it isn't a valid
 // time (so a template slot never becomes the literal "Invalid Date").
@@ -222,11 +214,10 @@ const sendGenericWebhook = async (
     const handlebars = createHandlebarsWithHelpers();
 
     // Handlebars.compile throws on undefined; the API/MCP create paths allow an
-    // absent body (the UI form applies the default). An explicit "" is honored.
+    // absent body (the UI form applies the same default). An explicit "" is
+    // honored.
     const bodyTemplate =
-      webhook.body == null
-        ? DEFAULT_GENERIC_WEBHOOK_BODY_TEMPLATE
-        : webhook.body;
+      webhook.body == null ? DEFAULT_GENERIC_WEBHOOK_BODY : webhook.body;
 
     body = handlebars.compile(bodyTemplate, {
       noEscape: true,

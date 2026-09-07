@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
-import { deriveVariableName } from '@hyperdx/common-utils/dist/filters';
+import {
+  deriveVariableName,
+  getFilterVariableName,
+} from '@hyperdx/common-utils/dist/filters';
 import {
   ChartVariable,
   DashboardFilter,
@@ -10,8 +13,10 @@ import {
 import { Alert, Button, Group, Modal, Stack, TextInput } from '@mantine/core';
 import { IconAlertTriangle } from '@tabler/icons-react';
 
+import { ErrorBoundary } from '@/components/Error/ErrorBoundary';
 import SelectControlled from '@/components/SelectControlled';
 import { SqlVariablesProvider } from '@/components/SQLEditor/variableCompletions';
+import { IS_PROMQL_ENABLED } from '@/config';
 import { useConfirm } from '@/useConfirm';
 import { useZIndex } from '@/zIndex';
 
@@ -22,6 +27,7 @@ import {
   toFormValues,
   toSavedFilter,
 } from './filterFormState';
+import { PromqlLabelFilterEditForm } from './PromqlLabelFilterEditForm';
 import { QueryExpressionFilterEditForm } from './QueryExpressionFilterEditForm';
 import { StaticListFilterEditForm } from './StaticListFilterEditForm';
 
@@ -31,6 +37,14 @@ const FILTER_TYPE_OPTIONS = [
     label: 'Queried values',
   },
   { value: DashboardFilterType.enum.STATIC_LIST, label: 'Static values' },
+  ...(IS_PROMQL_ENABLED
+    ? [
+        {
+          value: DashboardFilterType.enum.PROMETHEUS_LABEL,
+          label: 'PromQL label values',
+        },
+      ]
+    : []),
 ];
 
 interface DashboardFilterEditFormProps {
@@ -50,7 +64,7 @@ interface DashboardFilterEditFormProps {
 }
 
 /**
- * The editor for a single filter, of either type. One form covers both, so
+ * The editor for a single filter, of any type. One form covers them all, so
  * switching type keeps the fields they share. Which of the fields are actually
  * stored is settled by `toSavedFilter`, not by which editor happens to be
  * mounted.
@@ -140,9 +154,16 @@ export const DashboardFilterEditForm = ({
     [filters, filter?.id],
   );
 
+  // A filter referencing its own variable would narrow its dropdown to the
+  // values already selected in it, so don't offer that reference at all.
+  const otherVariables = useMemo(() => {
+    const ownName = filter && getFilterVariableName(filter);
+    if (!ownName) return variables;
+    return variables?.filter(variable => variable.name !== ownName);
+  }, [variables, filter]);
+
   const isNew = !filter;
-  const isStaticListTypeAvailable = !!showVariableOptions;
-  const showTypeInput = isStaticListTypeAvailable;
+  const showTypeInput = !!showVariableOptions;
 
   return (
     <Modal
@@ -188,23 +209,35 @@ export const DashboardFilterEditForm = ({
               {...register('name', { required: true, minLength: 1 })}
             />
           </CustomInputWrapper>
-
-          {formFilterType === 'STATIC_LIST' ? (
-            <StaticListFilterEditForm
-              control={control}
-              otherFilters={otherFilters}
-            />
-          ) : (
-            <SqlVariablesProvider variables={variables}>
-              <QueryExpressionFilterEditForm
+          <ErrorBoundary
+            key={formFilterType}
+            message="Failed to load filter"
+            showErrorMessage
+          >
+            {formFilterType === 'STATIC_LIST' ? (
+              <StaticListFilterEditForm
                 control={control}
-                trigger={trigger}
-                pinnedSource={presetSource}
                 otherFilters={otherFilters}
-                showVariableOptions={showVariableOptions}
               />
-            </SqlVariablesProvider>
-          )}
+            ) : formFilterType === 'PROMETHEUS_LABEL' ? (
+              <SqlVariablesProvider variables={otherVariables}>
+                <PromqlLabelFilterEditForm
+                  control={control}
+                  otherFilters={otherFilters}
+                />
+              </SqlVariablesProvider>
+            ) : (
+              <SqlVariablesProvider variables={otherVariables}>
+                <QueryExpressionFilterEditForm
+                  control={control}
+                  trigger={trigger}
+                  pinnedSource={presetSource}
+                  otherFilters={otherFilters}
+                  showVariableOptions={showVariableOptions}
+                />
+              </SqlVariablesProvider>
+            )}
+          </ErrorBoundary>
 
           {formState.errors.root && (
             <Alert

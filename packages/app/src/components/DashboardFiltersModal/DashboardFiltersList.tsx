@@ -14,6 +14,7 @@ import {
 } from '@mantine/core';
 import {
   IconBuildingBroadcastTower,
+  IconLabel,
   IconList,
   IconPencil,
   IconRefresh,
@@ -54,6 +55,14 @@ function getValuesAttribute(
         icon: <IconSearch size={14} />,
         tooltip: 'Source the dropdown values are queried from',
         label: sources?.find(s => s.id === filter.source)?.name ?? '',
+      };
+    case 'PROMETHEUS_LABEL':
+      return {
+        icon: <IconLabel size={14} />,
+        tooltip: 'PromQL source and label the dropdown values come from',
+        label: [sources?.find(s => s.id === filter.source)?.name, filter.label]
+          .filter(Boolean)
+          .join(' · '),
       };
     case 'STATIC_LIST': {
       const count = filter.options.length;

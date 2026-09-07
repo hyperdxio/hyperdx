@@ -97,9 +97,9 @@ describe('buildWebhookTemplateVariables', () => {
       alertId: 'alert-1',
       status: 'firing',
       alertType: 'search',
-      comparator: '>=',
+      comparator: 'between',
       threshold: 5,
-      thresholdMax: 20,
+      thresholdMax: 10,
       value: 42,
       groupKey: 'checkout',
       sourceQuery: 'Body: "error"',
@@ -113,9 +113,9 @@ describe('buildWebhookTemplateVariables', () => {
       alertId: 'alert-1',
       status: 'firing',
       alertType: 'search',
-      comparator: '>=',
+      comparator: 'between',
       threshold: 5,
-      thresholdMax: 20,
+      thresholdMax: 10,
       value: 42,
       groupKey: 'checkout',
       teamId: 'team-1',
@@ -131,8 +131,9 @@ describe('buildWebhookTemplateVariables', () => {
     expect(vars.alertId).toBe('');
     expect(vars.status).toBe('');
     expect(vars.note).toBe('');
-    expect(vars.thresholdMax).toBeUndefined();
     expect(vars.startTimeISO).toBe(new Date(0).toISOString());
+    // A raw number renders as an empty slot when absent, not "undefined".
+    expect(vars.thresholdMax).toBeUndefined();
   });
 });
 
@@ -143,6 +144,9 @@ describe('the documented guard for an optional numeric variable', () => {
   const render = (thresholdMax?: number) =>
     createHandlebarsWithHelpers().compile(
       '{"threshold": {{threshold}}{{#unless (eq thresholdMax undefined)}}, "threshold_max": {{thresholdMax}}{{/unless}}\n}',
+      // Same options as sendGenericWebhook: noEscape is load-bearing, because
+      // escapeJsonString already emits \" and HTML-escaping would mangle it.
+      { noEscape: true },
     )(
       buildWebhookTemplateVariables({ ...message, threshold: 5, thresholdMax }),
     );

@@ -2,6 +2,7 @@ import {
   type DashboardTemplate,
   DashboardTemplateSchema,
   DashboardWithoutIdSchema,
+  SourceKind,
 } from '@hyperdx/common-utils/dist/types';
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 
@@ -12,9 +13,10 @@ import { buildMappingFormSchema, Mapping } from '@/DBDashboardImportPage';
 // template tile with `source: 'Metrics'` resolves to `src-metrics`, etc. The
 // mock objects only need the fields the import path touches (id/name/kind).
 const mockSources = [
-  { id: 'src-metrics', name: 'Metrics', kind: 'metric' },
-  { id: 'src-traces', name: 'Traces', kind: 'trace' },
-  { id: 'src-logs', name: 'Logs', kind: 'log' },
+  { id: 'src-metrics', name: 'Metrics', kind: SourceKind.Metric },
+  { id: 'src-traces', name: 'Traces', kind: SourceKind.Trace },
+  { id: 'src-logs', name: 'Logs', kind: SourceKind.Log },
+  { id: 'src-promql', name: 'Prom', kind: SourceKind.Promql },
 ];
 const mockConnections = [{ id: 'conn-default', name: 'Default' }];
 const mockMutateAsync = jest.fn().mockResolvedValue({ id: 'dash-new' });
@@ -154,6 +156,65 @@ const unresolvedFilterSourceTemplate = DashboardTemplateSchema.parse({
   ],
 });
 
+// A PROMETHEUS_LABEL filter names its PromQL source the same way a queried
+// filter names a ClickHouse one, so the same name-matching auto-map applies.
+const promqlFilterTemplate = DashboardTemplateSchema.parse({
+  version: '0.1.0',
+  name: 'PromQL Label Filter',
+  tiles: [builderTile('tile-number', 'number', 'Metrics', 0)],
+  filters: [
+    {
+      id: 'filter-service',
+      type: 'PROMETHEUS_LABEL',
+      name: 'Service',
+      source: 'Prom',
+      label: 'service',
+      isBroadcastEnabled: false,
+      isVariableEnabled: true,
+      variableName: 'svc',
+    },
+  ],
+});
+
+// A PROMETHEUS_LABEL filter naming a source that exists but is a log source.
+// The name match resolves it, the kind check rejects it, and the narrowed
+// dropdown no longer offers it — so the row renders empty and flagged.
+const promqlFilterOnLogSourceTemplate = DashboardTemplateSchema.parse({
+  version: '0.1.0',
+  name: 'PromQL Label Filter On Log Source',
+  tiles: [builderTile('tile-number', 'number', 'Metrics', 0)],
+  filters: [
+    {
+      id: 'filter-service',
+      type: 'PROMETHEUS_LABEL',
+      name: 'Service',
+      source: 'Logs',
+      label: 'service',
+      isBroadcastEnabled: false,
+      isVariableEnabled: true,
+      variableName: 'svc',
+    },
+  ],
+});
+
+// The mirror of `promqlFilterTemplate`: a queried filter, whose dropdown query
+// is a SELECT and so cannot run against a PromQL source.
+const queriedFilterTemplate = DashboardTemplateSchema.parse({
+  version: '0.1.0',
+  name: 'Queried Filter',
+  tiles: [builderTile('tile-number', 'number', 'Metrics', 0)],
+  filters: [
+    {
+      id: 'filter-service',
+      type: 'QUERY_EXPRESSION',
+      name: 'Service',
+      expression: 'ServiceName',
+      source: 'Logs',
+      whereLanguage: 'sql',
+    },
+  ],
+});
+
 const markdownTileWithSource = (id: string, source: string, y: number) => ({
   id,
   x: 0,
@@ -280,6 +341,53 @@ describe('Dashboard import - all tile types', () => {
   });
 });
 
+describe('Dashboard import - PromQL label filter source', () => {
+  it('auto-maps the filter source by name and imports it as an id', async () => {
+    renderWithMantine(<Mapping input={promqlFilterTemplate} />);
+
+    const finish = await screen.findByRole('button', {
+      name: /finish import/i,
+    });
+    // The row's select shows the resolved source, not the "Select a source"
+    // placeholder, before anything is submitted.
+    expect(screen.getByDisplayValue('Prom')).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(finish);
+    });
+
+    await waitFor(() => expect(mockMutateAsync).toHaveBeenCalledTimes(1));
+    const payload = mockMutateAsync.mock.calls[0][0];
+    expect(payload.filters[0]).toMatchObject({
+      type: 'PROMETHEUS_LABEL',
+      source: 'src-promql',
+      label: 'service',
+    });
+  });
+
+  it('does not offer a non-PromQL source, and blocks the import if one is mapped', async () => {
+    renderWithMantine(<Mapping input={promqlFilterOnLogSourceTemplate} />);
+
+    const finish = await screen.findByRole('button', {
+      name: /finish import/i,
+    });
+    // The name matched a log source, but the row's dropdown is narrowed to
+    // PromQL sources, so nothing renders it as the selection.
+    expect(screen.queryByDisplayValue('Logs')).not.toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(finish);
+    });
+
+    await waitFor(() =>
+      expect(
+        screen.getByText('Select a PromQL source for this filter'),
+      ).toBeInTheDocument(),
+    );
+    expect(mockMutateAsync).not.toHaveBeenCalled();
+  });
+});
+
 describe('Dashboard import - queried filter source is required', () => {
   it('blocks the import and flags the filter row when its source is unmapped', async () => {
     renderWithMantine(<Mapping input={unresolvedFilterSourceTemplate} />);
@@ -385,5 +493,62 @@ describe('Dashboard import - cleared mapping selects', () => {
     expect(
       result.error?.issues.map(issue => [issue.path.join('.'), issue.message]),
     ).toEqual([['tileSourceMappings.0', 'Select a source for this tile']]);
+  });
+});
+
+describe('Dashboard import - filter source kind', () => {
+  /** Omit `sources` to stand in for a workspace whose sources have not loaded. */
+  const issuesFor = (
+    template: DashboardTemplate,
+    sourceId: string,
+    sources?: typeof mockSources,
+  ) =>
+    buildMappingFormSchema(template, sources)
+      .safeParse({
+        dashboardName: template.name,
+        tags: [],
+        tileSourceMappings: ['src-metrics'],
+        connectionMappings: [''],
+        filterSourceMappings: [sourceId],
+      })
+      .error?.issues.map(issue => [issue.path.join('.'), issue.message]);
+
+  it('rejects a non-PromQL source for a PromQL label filter', () => {
+    expect(issuesFor(promqlFilterTemplate, 'src-logs', mockSources)).toEqual([
+      ['filterSourceMappings.0', 'Select a PromQL source for this filter'],
+    ]);
+  });
+
+  it('rejects a PromQL source for a queried filter', () => {
+    // The TimeSeries engine does not support SELECT, so the dropdown query
+    // this filter runs could never succeed against it.
+    expect(issuesFor(queriedFilterTemplate, 'src-promql', mockSources)).toEqual(
+      [
+        [
+          'filterSourceMappings.0',
+          'Select a non-PromQL source for this filter',
+        ],
+      ],
+    );
+  });
+
+  it('accepts each type on the kind it can read', () => {
+    expect(
+      issuesFor(promqlFilterTemplate, 'src-promql', mockSources),
+    ).toBeUndefined();
+    expect(
+      issuesFor(queriedFilterTemplate, 'src-logs', mockSources),
+    ).toBeUndefined();
+  });
+
+  it('still reports an unpicked source as unpicked, not as the wrong kind', () => {
+    expect(issuesFor(promqlFilterTemplate, '', mockSources)).toEqual([
+      ['filterSourceMappings.0', 'Select a source for this filter'],
+    ]);
+  });
+
+  it('does not flag a kind it cannot resolve, so a loading workspace is not an error', () => {
+    // `sources` unavailable: the id is real, we just cannot say what it is yet.
+    expect(issuesFor(promqlFilterTemplate, 'src-logs')).toBeUndefined();
   });
 });

@@ -6,7 +6,10 @@ import {
   useWatch,
 } from 'react-hook-form';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
-import { hasFilterEffect } from '@hyperdx/common-utils/dist/filters';
+import {
+  hasFilterEffect,
+  QUERY_EXPRESSION_FILTER_SOURCE_KINDS,
+} from '@hyperdx/common-utils/dist/filters';
 import {
   DashboardFilter,
   MetricsDataType,
@@ -27,6 +30,7 @@ import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEdito
 import { useSource } from '@/source';
 import { getMetricTableName } from '@/utils';
 
+import { TOOLTIP_PORTAL_TARGET } from './constants';
 import { CustomInputWrapper } from './CustomInputWrapper';
 import { FilterFormControl, FilterFormValues } from './filterFormState';
 import { VariableNameInput } from './VariableNameInput';
@@ -41,13 +45,6 @@ interface QueryExpressionFilterEditFormProps {
   /** Whether the broadcast / variable controls are available. */
   showVariableOptions: boolean;
 }
-
-/**
- * The modal body scrolls, so an autocomplete popup rendered inside it is
- * clipped at the modal's edge. Portal it to the document body instead.
- */
-const TOOLTIP_PORTAL_TARGET =
-  typeof document !== 'undefined' ? document.body : null;
 
 /**
  * The fields describing where a filter's dropdown values are queried from.
@@ -138,12 +135,7 @@ export const QueryExpressionFilterEditForm = ({
           onSchemaPreview={() => setIsSourceSchemaPreviewOpen(true)}
           isSchemaPreviewEnabled={isSourceSchemaPreviewEnabled(source)}
           disabled={!!presetSource}
-          allowedSourceKinds={[
-            SourceKind.Log,
-            SourceKind.Trace,
-            SourceKind.Session,
-            SourceKind.Metric,
-          ]}
+          allowedSourceKinds={QUERY_EXPRESSION_FILTER_SOURCE_KINDS}
         />
         <SourceSchemaPreview
           source={source}
@@ -244,12 +236,7 @@ export const QueryExpressionFilterEditForm = ({
               data-testid="applies-to-source-selector"
               comboboxProps={{ withinPortal: true }}
               placeholder="All sources"
-              allowedSourceKinds={[
-                SourceKind.Log,
-                SourceKind.Trace,
-                SourceKind.Session,
-                SourceKind.Metric,
-              ]}
+              allowedSourceKinds={QUERY_EXPRESSION_FILTER_SOURCE_KINDS}
             />
           </CustomInputWrapper>
         </Box>
