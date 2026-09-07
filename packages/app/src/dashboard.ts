@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
+import type { HTTPError } from 'ky';
 import { parseAsJson, useQueryState } from 'nuqs';
 import {
   DashboardContainer,
@@ -53,6 +54,13 @@ export type Dashboard = {
 };
 
 const localDashboards = createEntityStore<Dashboard>('hdx-local-dashboards');
+
+/**
+ * `updatedAt` is the optimistic-concurrency token for dashboard writes. The
+ * API has always returned it; it is optional because IS_LOCAL_MODE
+ * dashboards live in URL state and have none.
+ */
+export type DashboardWithVersion = Dashboard & { updatedAt?: string };
 
 /**
  * Resolution policy shared by both the typed normalizer below and the
@@ -118,33 +126,47 @@ export function normalizeRawDashboardTileColors(input: unknown): unknown {
  * through `useDashboards` so React Query caching and invalidation
  * stays uniform.
  */
-export async function fetchDashboards(): Promise<Dashboard[]> {
+export async function fetchDashboards(): Promise<DashboardWithVersion[]> {
   if (IS_LOCAL_MODE) {
     return localDashboards.getAll().map(normalizeDashboardTileColors);
   }
-  const dashboards = await hdxServer('dashboards').json<Dashboard[]>();
+  const dashboards =
+    await hdxServer('dashboards').json<DashboardWithVersion[]>();
   return dashboards.map(normalizeDashboardTileColors);
 }
 
-export function useUpdateDashboard() {
+export function useUpdateDashboard(dashboardId?: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
+    // TanStack runs same-scope mutations one at a time, so two saves fired
+    // back to back queue instead of racing (HDX-4159). The second picks up
+    // the token onSuccess wrote into the cache.
+    scope: dashboardId ? { id: `dashboard-${dashboardId}` } : undefined,
     mutationFn: async (
-      dashboard: Partial<Dashboard> & { id: Dashboard['id'] },
+      dashboard: Partial<DashboardWithVersion> & { id: Dashboard['id'] },
     ) => {
-      const normalized = normalizeDashboardTileColors(dashboard);
+      const { updatedAt, ...rest } = dashboard;
+      const normalized = normalizeDashboardTileColors(rest);
       if (IS_LOCAL_MODE) {
         const { id, ...updates } = normalized;
         localDashboards.update(id, updates);
-        return;
+        return undefined;
       }
-      await hdxServer(`dashboards/${normalized.id}`, {
+      return hdxServer(`dashboards/${normalized.id}`, {
         method: 'PATCH',
-        json: normalized,
-      });
+        json: { ...normalized, expectedVersion: updatedAt },
+      }).json<DashboardWithVersion>();
     },
-    onSuccess: () => {
+    onSuccess: updated => {
+      // Seed the new token synchronously. invalidateQueries alone refetches
+      // asynchronously, leaving a window where the next save would send a
+      // stale token and 409 against its own predecessor.
+      if (updated != null) {
+        queryClient.setQueryData<DashboardWithVersion[]>(['dashboards'], prev =>
+          prev?.map(d => (d.id === updated.id ? { ...d, ...updated } : d)),
+        );
+      }
       queryClient.invalidateQueries({ queryKey: ['dashboards'] });
     },
   });
@@ -200,13 +222,14 @@ export function useDashboard({
     parseAsJson<Dashboard>(),
   );
 
-  const updateDashboard = useUpdateDashboard();
+  const queryClient = useQueryClient();
+  const updateDashboard = useUpdateDashboard(dashboardId);
 
   const { data: remoteDashboard, isFetching: isFetchingRemoteDashboard } =
     useQuery({
       queryKey: ['dashboards'],
       queryFn: fetchDashboards,
-      select: data => {
+      select: (data: DashboardWithVersion[]) => {
         return data.find(d => d.id === dashboardId);
       },
       enabled: dashboardId != null,
@@ -243,25 +266,47 @@ export function useDashboard({
         onSuccess?.();
       } else {
         setIsSettingDashboard(true);
-        return updateDashboard.mutate(newDashboard, {
-          onSuccess: () => {
-            setIsSettingDashboard(false);
-            onSuccess?.();
+        return updateDashboard.mutate(
+          { ...newDashboard, updatedAt: remoteDashboard?.updatedAt },
+          {
+            onSuccess: () => {
+              setIsSettingDashboard(false);
+              onSuccess?.();
+            },
+            onError: async e => {
+              setIsSettingDashboard(false);
+              if ((e as HTTPError)?.response?.status === 409) {
+                await queryClient.invalidateQueries({
+                  queryKey: ['dashboards'],
+                });
+                notifications.show({
+                  color: 'yellow',
+                  title: 'Dashboard changed elsewhere',
+                  message:
+                    'Your change was not saved. The latest version has been loaded — please reapply it.',
+                  autoClose: 8000,
+                });
+              } else {
+                notifications.show({
+                  color: 'red',
+                  title: 'Unable to save dashboard',
+                  message: e.message.slice(0, 100),
+                  autoClose: 5000,
+                });
+              }
+              onError?.();
+            },
           },
-          onError: e => {
-            setIsSettingDashboard(false);
-            notifications.show({
-              color: 'red',
-              title: 'Unable to save dashboard',
-              message: e.message.slice(0, 100),
-              autoClose: 5000,
-            });
-            onError?.();
-          },
-        });
+        );
       }
     },
-    [isLocalDashboard, setLocalDashboard, updateDashboard],
+    [
+      isLocalDashboard,
+      setLocalDashboard,
+      updateDashboard,
+      remoteDashboard,
+      queryClient,
+    ],
   );
 
   const dashboardHash =
