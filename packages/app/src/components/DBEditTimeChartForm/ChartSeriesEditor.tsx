@@ -454,6 +454,7 @@ export function ChartSeriesEditor({
                     setValue(`${namePrefix}metricType`, value)
                   }
                   metricSource={tableSource}
+                  dateRange={dateRange}
                   data-testid="metric-name-selector"
                   error={errors?.metricName?.message}
                   onFocus={() => clearErrors(`${namePrefix}metricName`)}
@@ -481,15 +482,13 @@ export function ChartSeriesEditor({
               onApply={applyExplorerMetric}
             />
             {metricType === 'gauge' && (
-              <Flex justify="end">
-                <CheckBoxControlled
-                  control={control}
-                  name={`${namePrefix}isDelta`}
-                  label="Delta"
-                  size="xs"
-                  className="mt-2"
-                />
-              </Flex>
+              <CheckBoxControlled
+                control={control}
+                name={`${namePrefix}isDelta`}
+                label="Delta"
+                size="xs"
+                className="mt-2"
+              />
             )}
           </div>
         )}

@@ -877,6 +877,145 @@ describe('Metadata', () => {
   // Each of the four fetch strategies emits a distinct SQL shape (map-text-
   // index, native-text-index, metadata-MV, raw-table). We assert against
   // those shapes rather than exposing the private methods.
+  // Metric names must be listed deterministically. The previous implementation
+  // reused getKeyValues, whose `groupUniqArray(limit)(MetricName)` keeps an
+  // arbitrary subset once a table exceeds `limit` distinct names — that is what
+  // silently hid metrics such as Prometheus' `up`.
+  describe('getMetricNames', () => {
+    const baseArgs = {
+      databaseName: 'default',
+      tableName: 'otel_metrics_gauge',
+      connectionId: 'test_connection',
+      dateRange: [new Date('2024-01-01'), new Date('2024-01-02')] as [
+        Date,
+        Date,
+      ],
+      timestampValueExpression: 'TimeUnix',
+    };
+
+    const mockNames = (names: string[]) => {
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
+        json: () =>
+          Promise.resolve({ data: names.map(MetricName => ({ MetricName })) }),
+      });
+    };
+
+    const lastQuery = () =>
+      (mockClickhouseClient.query as jest.Mock).mock.calls.at(-1)[0];
+
+    beforeEach(() => {
+      mockNames([]);
+    });
+
+    it('groups and orders by name instead of sampling', async () => {
+      await metadata.getMetricNames(baseArgs);
+
+      const { query } = lastQuery();
+      expect(query).toContain('GROUP BY MetricName');
+      expect(query).toContain('MetricName ASC');
+      expect(query).not.toContain('groupUniqArray');
+    });
+
+    it('requests one row beyond the limit so truncation is detectable', async () => {
+      await metadata.getMetricNames({ ...baseArgs, limit: 100 });
+
+      expect(Object.values(lastQuery().query_params)).toContain(101);
+    });
+
+    it('reports truncated and trims to the requested limit', async () => {
+      mockNames(['a', 'b', 'c']);
+
+      await expect(
+        metadata.getMetricNames({ ...baseArgs, limit: 2 }),
+      ).resolves.toEqual({ names: ['a', 'b'], truncated: true });
+    });
+
+    it('reports not truncated when the page is not full', async () => {
+      mockNames(['a', 'b']);
+
+      await expect(
+        metadata.getMetricNames({ ...baseArgs, limit: 5 }),
+      ).resolves.toEqual({ names: ['a', 'b'], truncated: false });
+    });
+
+    it('applies the shared time filter', async () => {
+      await metadata.getMetricNames(baseArgs);
+
+      expect(timeFilterExpr).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tableName: 'otel_metrics_gauge',
+          timestampValueExpression: 'TimeUnix',
+          dateRange: baseArgs.dateRange,
+        }),
+      );
+      expect(lastQuery().query).toContain('__TIME_FILTER__');
+    });
+
+    it('matches namePattern as a substring, server-side', async () => {
+      await metadata.getMetricNames({ ...baseArgs, namePattern: 'up' });
+
+      const { query, query_params } = lastQuery();
+      expect(query).toContain('MetricName ILIKE');
+      expect(Object.values(query_params)).toContain('%up%');
+    });
+
+    it('escapes ILIKE wildcards in namePattern', async () => {
+      await metadata.getMetricNames({
+        ...baseArgs,
+        namePattern: 'cpu_%usage',
+      });
+
+      expect(Object.values(lastQuery().query_params)).toContain(
+        '%cpu\\_\\%usage%',
+      );
+    });
+
+    // Without this, a short query is crowded off the page by the many names that
+    // merely contain it, which is the original bug in a new form.
+    it('ranks exact matches then earlier occurrences when searching', async () => {
+      await metadata.getMetricNames({ ...baseArgs, namePattern: 'up' });
+
+      const { query } = lastQuery();
+      expect(query).toContain('lower(MetricName) = lower(');
+      expect(query).toContain('positionCaseInsensitive(MetricName,');
+    });
+
+    it('adds no name predicate or ranking when browsing', async () => {
+      await metadata.getMetricNames(baseArgs);
+
+      expect(lastQuery().query).not.toContain('ILIKE');
+      expect(lastQuery().query).not.toContain('positionCaseInsensitive');
+    });
+
+    it('excludes empty names in SQL so truncation stays accurate', async () => {
+      await metadata.getMetricNames(baseArgs);
+
+      expect(lastQuery().query).toContain("MetricName != ''");
+    });
+
+    // `break` returns a partial aggregate as HTTP 200, which reads as a complete
+    // short list — the silent incompleteness this method replaced.
+    it('lets a timeout throw rather than returning a partial page', async () => {
+      await metadata.getMetricNames(baseArgs);
+
+      expect(lastQuery().clickhouse_settings).toMatchObject({
+        max_rows_to_read: '0',
+        timeout_overflow_mode: 'throw',
+      });
+      // Left to the client so the deployment's configured query timeout applies,
+      // matching the bound this path had before.
+      expect(
+        lastQuery().clickhouse_settings.max_execution_time,
+      ).toBeUndefined();
+    });
+
+    it('rejects a non-positive limit', async () => {
+      await expect(
+        metadata.getMetricNames({ ...baseArgs, limit: 0 }),
+      ).rejects.toThrow('limit must be a positive integer');
+    });
+  });
+
   describe('getAllKeyValues (router)', () => {
     const dateRange: [Date, Date] = [
       new Date('2024-01-01'),

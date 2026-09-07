@@ -112,6 +112,8 @@ Apply these before calling clickstack_save_dashboard. Each rule is enforced by t
 
 9c. TO CHAIN ONE DROPDOWN OFF ANOTHER, REFERENCE A VARIABLE IN THE DOWNSTREAM FILTER'S OWN where. A filter's where scopes the values ITS dropdown offers and is never applied to a tile, so a dashboard can pick a service and then offer only that service's endpoints: filters: [{ name: "Service", expression: "ServiceName", isVariableEnabled: true, variableName: "service", ... }, { name: "Endpoint", expression: "SpanName", whereLanguage: "sql", where: "$__filter(ServiceName, $service)", ... }]. Only the upstream filter needs isVariableEnabled, and it can keep broadcasting because its value is read by a dropdown rather than a tile. Use $__filter here too so the downstream dropdown lists everything until a service is picked; a bare $service leaves it empty.
 
+9d. USE A STATIC_LIST FILTER WHEN THE DROPDOWN SHOULD OFFER A FIXED HAND-AUTHORED LIST. When the values are a business list (environments, tenants, tiers) or a curated subset rather than derivable from the data, declare filters: [{ type: "STATIC_LIST", name, options: ["prod", "staging"], variableName }]. It takes no expression, sourceId, or where, and it is always variable-only (there is nothing to broadcast), so tiles must reference $variableName, typically via $__filter(<expression>, $<variableName>) with the column passed explicitly (the one-argument $__filter($var) form fails because the filter has no expression of its own).
+
 10. UPDATE IS REPLACE, NOT MERGE. clickstack_save_dashboard with an id overwrites tiles, containers, and filters in their entirety. Call clickstack_get_dashboard first when you only want to add or rename one entry; do not send a partial set or you will silently drop everything you omitted.
 
 11. GROUP RELATED TILES INTO CONTAINERS. REQUIRED at five or more tiles, no exceptions. An ungrouped wall of nine or ten tiles is a readability failure even when each tile is correct in isolation. Containers are the right way to introduce structure; markdown tiles for section labels are not.
@@ -172,7 +174,9 @@ Dashboards open with a 15-minute default window. There is no dashboard-level fie
 - Adding a redundant format specifier such as \${var:sqlstring}, or omitting a needed one such as \${var:regex} inside match() and \${var:csv} inside a literal.
 - Using $__filter or $__conditionalAll in a Lucene where (they are matched as literal text; switch to whereLanguage: "sql", or write ServiceName:$var).
 - Chaining a filter's where off a filter that is not variable-enabled. Only isVariableEnabled: true publishes the $variableName token; without it the reference resolves to nothing and the downstream dropdown is unscoped or empty.
-- Referencing a filter's OWN variable in its where. That narrows its dropdown to the values already picked, so the rest of the options vanish from a multi-select. Reference a sibling filter's variable instead.`;
+- Referencing a filter's OWN variable in its where. That narrows its dropdown to the values already picked, so the rest of the options vanish from a multi-select. Reference a sibling filter's variable instead.
+- Mixing filter-type fields: expression/sourceId/where belong to QUERY_EXPRESSION filters, options to STATIC_LIST filters.
+- Expecting a STATIC_LIST filter to broadcast. It cannot; a tile must reference its $variableName (via $__filter with the column passed explicitly) or nothing changes when the user picks a value.`;
 }
 
 export function buildDashboardExamplesPrompt(
@@ -1056,7 +1060,7 @@ Colors are palette tokens, not hex. Order rules from least to most severe so the
     ]
   }
 
-colorRules is for number builder tiles only. Raw SQL number tiles (configType: "sql") support color but not colorRules.
+Both color and colorRules work on builder number tiles and on raw SQL number tiles (configType: "sql").
 
 == NUMBER TILE BACKGROUND CHART ==
 
@@ -1125,7 +1129,9 @@ Rules:
 
 Optional dashboard-level filter declarations. Each entry adds a dropdown to the dashboard header. Use this for focused per-dimension dashboards (per-service, per-tenant, per-endpoint) instead of hardcoding the dimension into every tile's where clause.
 
-A filter does one of two things with the value the user picks, or both:
+Two filter types: QUERY_EXPRESSION queries its dropdown values from a source column, while STATIC_LIST declares them inline as a hand-authored options list and is always variable-only (see the static filter shape below).
+
+A QUERY_EXPRESSION filter does one of two things with the value the user picks, or both:
 
   BROADCAST (isBroadcastEnabled, ON by default)
     The value is ANDed onto every in-scope tile automatically. Tiles need no wiring at all. This is the right choice in most cases.
@@ -1135,10 +1141,10 @@ A filter does one of two things with the value the user picks, or both:
 
 Pick ONE. A filter with both modes on applies the value twice, once implicitly to every in-scope tile and once wherever a tile references it, which double-filters and is hard to reason about. Enable both only when you deliberately want the automatic scoping AND a tile that reads the raw value somewhere a plain AND cannot go, or when the variable is read only by another filter's dropdown query rather than by a tile (see DEPENDENT FILTERS).
 
-Filter shape:
-  { type, name, expression, sourceId, where?, whereLanguage?, appliesToSourceIds?, isBroadcastEnabled?, isVariableEnabled?, variableName? }
+Query-expression filter shape:
+  { type: "QUERY_EXPRESSION", name, expression, sourceId, where?, whereLanguage?, appliesToSourceIds?, isBroadcastEnabled?, isVariableEnabled?, variableName? }
 
-  type                 "QUERY_EXPRESSION" (the only currently supported type).
+  type                 "QUERY_EXPRESSION": the dropdown values are queried from a source column.
   name                 Human label shown in the filter dropdown (e.g. "Service").
   expression           Column or attribute path the filter scopes (e.g. "ServiceName" or "SpanAttributes['tenant.id']").
   sourceId             Which source the dropdown VALUES are queried from. Independent of which tiles get filtered (see appliesToSourceIds below).
@@ -1149,6 +1155,18 @@ Filter shape:
   isBroadcastEnabled   Omit or set to true to enable broadcasting. Set false for a variable-only filter.
   isVariableEnabled    Set true to expose the value as $variableName.
   variableName         The token tiles reference. Must match [a-zA-Z][a-zA-Z0-9_]* and be at most 64 characters, and must be unique across the dashboard's variable-enabled filters. Defaults to the display name with whitespace turned into underscores and remaining illegal characters dropped, so "Service Name" becomes $Service_Name and a label with nothing token-safe in it (a non-ASCII name, for instance) must set this field explicitly. Rejected when isVariableEnabled is not true.
+
+Static filter shape:
+  { type: "STATIC_LIST", name, options, variableName? }
+
+  options              1-1000 unique, non-empty strings the dropdown offers, in display order.
+
+  No expression, sourceId, where, or appliesToSourceIds: the list is hand-authored, nothing is queried. It has no mode flags either. A static filter is always variable-only, so tiles must reference $variableName for the selection to have any effect. Pass the column explicitly in macros ($__filter(<expression>, $<variableName>)); the one-argument $__filter($var) form fails because the filter has no expression of its own.
+
+Example (static list):
+  filters: [
+    { type: "STATIC_LIST", name: "Environment", options: ["prod", "staging", "dev"], variableName: "env" }
+  ]
 
 Example (broadcast to every tile, the common case):
   filters: [
@@ -1170,7 +1188,7 @@ When a value is picked in the dropdown, the renderer combines it with each in-sc
 
 == DASHBOARD VARIABLES ==
 
-A filter with isVariableEnabled: true publishes its selected value to tile queries under variableName. Nothing happens until a tile references it: variables are opt-in per tile, while broadcast is automatic.
+A filter with isVariableEnabled: true publishes its selected value to tile queries under variableName. STATIC_LIST filters are always variable-enabled, so every one of them publishes its selection this way. Nothing happens until a tile references it: variables are opt-in per tile, while broadcast is automatic.
 
 REACH FOR A VARIABLE WHEN BROADCAST CANNOT DO THE JOB. Broadcast plus a builder tile covers the ordinary "scope this dashboard to one service" case with no per-tile wiring and no way to get it wrong. A variable is worth the extra plumbing when:
   - the predicate is not a plain equality (NOT IN, LIKE, a regex match, a range)
@@ -1248,6 +1266,7 @@ VALIDATING
 
 clickstack_query_tile and clickstack_query_tiles expand variables with an EMPTY selection by default, which is what a freshly-opened dashboard looks like. Optionally, pass variableValues to check that a tile narrows correctly once something is picked:
   variableValues: [{ name: "service", values: ["checkout"] }]
+For a STATIC_LIST filter's variable, every supplied value must be one of the filter's declared options; the dashboard UI can never select anything else, so other values are rejected.
 Both tools report variable problems under "warnings". Alerts on a tile always evaluate with every variable empty, so a tile carrying an alert must stay correct with nothing selected.
 
 == TABLE TILE LINKING (config.onClick) ==

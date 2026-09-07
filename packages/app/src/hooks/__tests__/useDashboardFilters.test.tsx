@@ -2,6 +2,7 @@ import {
   DashboardFilter,
   DashboardFilterValue,
   Filter,
+  QueryExpressionDashboardFilter,
 } from '@hyperdx/common-utils/dist/types';
 import { act, renderHook } from '@testing-library/react';
 
@@ -32,7 +33,7 @@ jest.mock('nuqs', () => ({
 }));
 
 describe('useDashboardFilters', () => {
-  const mockFilters: DashboardFilter[] = [
+  const mockFilters: QueryExpressionDashboardFilter[] = [
     {
       id: 'filter1',
       type: 'QUERY_EXPRESSION',

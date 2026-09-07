@@ -19,12 +19,7 @@ import {
 import { AlertCardList } from '@/components/alerts/AlertCardList';
 import EmptyState from '@/components/EmptyState';
 import { PageHeader } from '@/components/PageHeader';
-import {
-  getAlertCreatorLabel,
-  getAlertDisplayName,
-  getAlertSourceLabel,
-  getAlertTags,
-} from '@/utils/alerts';
+import { getAlertCreatorLabel, getAlertSourceLabel } from '@/utils/alerts';
 
 import { useBrandDisplayName } from './theme/ThemeProvider';
 import api from './api';
@@ -43,7 +38,7 @@ export default function AlertsPage() {
 
   const allTags = React.useMemo(() => {
     const tags = new Set<string>();
-    alerts.forEach(a => getAlertTags(a).forEach(t => tags.add(t)));
+    alerts.forEach(a => a.tags?.forEach(t => tags.add(t)));
     return Array.from(tags).sort();
   }, [alerts]);
 
@@ -70,7 +65,7 @@ export default function AlertsPage() {
       result = result.filter(a => getAlertSourceLabel(a) === sourceFilter);
     }
     if (tagFilter) {
-      result = result.filter(a => getAlertTags(a).includes(tagFilter));
+      result = result.filter(a => a.tags?.includes(tagFilter));
     }
     if (creatorFilter) {
       result = result.filter(a => getAlertCreatorLabel(a) === creatorFilter);
@@ -79,14 +74,14 @@ export default function AlertsPage() {
       const q = search.toLowerCase();
       result = result.filter(
         a =>
-          getAlertDisplayName(a).toLowerCase().includes(q) ||
+          a.displayName?.toLowerCase().includes(q) ||
           // So "tile" / "saved search" narrow the list the same way the type
           // filter does, without having to reach for the dropdown.
           getAlertSourceLabel(a)
             .toLowerCase()
             .split(' ')
             .some(word => word.startsWith(q)) ||
-          getAlertTags(a).some(t => t.toLowerCase().includes(q)),
+          a.tags?.some(t => t.toLowerCase().includes(q)),
       );
     }
     return result;

@@ -918,7 +918,33 @@ export const scheduleStartAtSchema = z
     },
   );
 
+// --------------------------
+// TAGS
+// --------------------------
+// Shared limits + validator for user-supplied tag arrays. Any write path that
+// accepts tags (external API, MCP tools, internal routers) should validate with
+// `tagsSchema` so the caps stay consistent in one place. Read/model schemas keep
+// a bare `z.array(z.string())` so parsing existing documents never fails on
+// legacy data that predates these caps.
+export const MAX_TAG_LENGTH = 32;
+export const MAX_TAGS = 50;
+
+export const tagsSchema = z
+  .array(z.string().max(MAX_TAG_LENGTH))
+  .max(MAX_TAGS)
+  .optional();
+
 export const alertNoteSchema = z.string().min(1).max(4096).nullish();
+
+export const MAX_ALERT_DISPLAY_NAME_LENGTH = 512;
+export const alertDisplayNameSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(MAX_ALERT_DISPLAY_NAME_LENGTH)
+  .nullish();
+
+export const alertTagsSchema = tagsSchema.nullish();
 
 export const AlertBaseObjectSchema = z.object({
   id: z.string().optional(),
@@ -939,6 +965,8 @@ export const AlertBaseObjectSchema = z.object({
   name: z.string().min(1).max(512).nullish(),
   message: z.string().min(1).max(4096).nullish(),
   note: alertNoteSchema,
+  displayName: alertDisplayNameSchema,
+  tags: alertTagsSchema,
   silenced: z
     .object({
       by: z.string(),
@@ -1126,22 +1154,6 @@ export const DashboardFilterValueSchema = z.union([
 ]);
 
 export type DashboardFilterValue = z.infer<typeof DashboardFilterValueSchema>;
-
-// --------------------------
-// TAGS
-// --------------------------
-// Shared limits + validator for user-supplied tag arrays. Any write path that
-// accepts tags (external API, MCP tools, internal routers) should validate with
-// `tagsSchema` so the caps stay consistent in one place. Read/model schemas keep
-// a bare `z.array(z.string())` so parsing existing documents never fails on
-// legacy data that predates these caps.
-export const MAX_TAG_LENGTH = 32;
-export const MAX_TAGS = 50;
-
-export const tagsSchema = z
-  .array(z.string().max(MAX_TAG_LENGTH))
-  .max(MAX_TAGS)
-  .optional();
 
 // --------------------------
 // SAVED SEARCH
@@ -1670,6 +1682,8 @@ const RawSqlChartConfigSchema = RawSqlBaseChartConfigSchema.extend({
 
 export type RawSqlChartConfig = z.infer<typeof RawSqlChartConfigSchema>;
 
+export const MAX_LEGEND_TEMPLATE_LENGTH = 1024;
+
 /** Base schema for PromQL chart configs (persisted fields) */
 const PromqlBaseChartConfigSchema = SharedChartSettingsSchema.extend({
   configType: z.literal('promql'),
@@ -1677,6 +1691,7 @@ const PromqlBaseChartConfigSchema = SharedChartSettingsSchema.extend({
   connection: z.string(),
   source: z.string().optional(),
   step: z.string().optional(),
+  legendTemplate: z.string().max(MAX_LEGEND_TEMPLATE_LENGTH).optional(),
 });
 
 /** Schema describing PromQL chart configs with runtime-only fields */
@@ -1892,7 +1907,12 @@ export const DashboardContainerSchema = z.object({
 
 export type DashboardContainer = z.infer<typeof DashboardContainerSchema>;
 
-export const DashboardFilterType = z.enum(['QUERY_EXPRESSION']);
+/** Type of dashboard filter, determining how its dropdown values are populated. */
+export const DashboardFilterType = z.enum([
+  'QUERY_EXPRESSION',
+  'STATIC_LIST',
+  'PROMETHEUS_LABEL',
+]);
 
 /** Allowed variable names for dashboard filters. Alphanumeric + underscore, must start with a letter. */
 export const DASHBOARD_VARIABLE_NAME_PATTERN = '[a-zA-Z][a-zA-Z0-9_]*';
@@ -1900,32 +1920,12 @@ export const DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED = new RegExp(
   `^${DASHBOARD_VARIABLE_NAME_PATTERN}$`,
 );
 export const DASHBOARD_VARIABLE_NAME_MAX_LENGTH = 64;
+export const DASHBOARD_STATIC_FILTER_MAX_OPTIONS = 1000;
 
-export const DashboardFilterSchema = z.object({
+/** Fields carried by every dashboard filter, whatever its type. */
+const dashboardFilterBaseSchema = z.object({
   id: z.string(),
-  type: DashboardFilterType,
   name: z.string().min(1),
-  expression: z.string().min(1),
-  source: z.string().min(1),
-  sourceMetricType: z.nativeEnum(MetricsDataType).optional(),
-  where: z.string().optional(),
-  whereLanguage: SearchConditionTrimmedLanguageSchema,
-  // Sources this filter applies to. Undefined / missing means the filter
-  // applies to all tiles.
-  appliesToSourceIds: z.array(z.string().min(1)).optional(),
-  /**
-   * Whether the selected value is applied as a filter condition on matching
-   * tiles. Undefined / missing means ENABLED — every filter that predates this
-   * field broadcasts, and that must not change. Read it through
-   * `isFilterBroadcastEnabled` rather than defaulting at each call site.
-   */
-  isBroadcastEnabled: z.boolean().optional(),
-  /**
-   * Whether the selected value is exposed to tile queries as `$variableName`.
-   * Undefined / missing means DISABLED. Ignored while the dashboard-variables
-   * feature is off.
-   */
-  isVariableEnabled: z.boolean().optional(),
   /**
    * Token that tiles reference as `$variableName`. Defaults to the filter's display
    * name with illegal characters replaced by dashes (`deriveVariableName`).
@@ -1938,15 +1938,97 @@ export const DashboardFilterSchema = z.object({
     .optional(),
 });
 
+/**
+ * A filter whose dropdown values are queried from ClickHouse: `expression`
+ * names the column, `source` the table, and the selection can be broadcast
+ * into matching tiles' `WHERE` clauses.
+ */
+export const QueryExpressionDashboardFilterSchema =
+  dashboardFilterBaseSchema.extend({
+    type: z.literal(DashboardFilterType.enum.QUERY_EXPRESSION),
+    expression: z.string().min(1),
+    source: z.string().min(1),
+    sourceMetricType: z.nativeEnum(MetricsDataType).optional(),
+    where: z.string().optional(),
+    whereLanguage: SearchConditionTrimmedLanguageSchema,
+    // Sources this filter applies to. Undefined / missing means the filter
+    // applies to all tiles.
+    appliesToSourceIds: z.array(z.string().min(1)).optional(),
+    /**
+     * Whether the selected value is applied as a filter condition on matching
+     * tiles. Undefined / missing means ENABLED — every filter that predates this
+     * field broadcasts, and that must not change. Read it through
+     * `isFilterBroadcastEnabled` rather than defaulting at each call site.
+     */
+    isBroadcastEnabled: z.boolean().optional(),
+    /**
+     * Whether the selected value is exposed to tile queries as `$variableName`.
+     * Undefined / missing means DISABLED. Ignored while the dashboard-variables
+     * feature is off.
+     */
+    isVariableEnabled: z.boolean().optional(),
+  });
+
+/** A filter whose dropdown offers a hand-authored list. */
+export const StaticListDashboardFilterSchema = dashboardFilterBaseSchema.extend(
+  {
+    type: z.literal(DashboardFilterType.enum.STATIC_LIST),
+    options: z
+      .array(z.string().min(1).max(10000))
+      .min(1)
+      .max(DASHBOARD_STATIC_FILTER_MAX_OPTIONS),
+    isBroadcastEnabled: z.literal(false),
+    isVariableEnabled: z.literal(true),
+  },
+);
+
+/** Sanity bound on a persisted label name; Prometheus itself imposes no limit. */
+export const PROMETHEUS_LABEL_NAME_MAX_LENGTH = 1024;
+
+/** A filter whose dropdown lists the values of a Prometheus label */
+export const PromqlLabelDashboardFilterSchema =
+  dashboardFilterBaseSchema.extend({
+    type: z.literal(DashboardFilterType.enum.PROMETHEUS_LABEL),
+    /** ID of a PromQL source to query */
+    source: z.string().min(1),
+    /** Label whose values populate the dropdown. */
+    label: z.string().min(1).max(PROMETHEUS_LABEL_NAME_MAX_LENGTH),
+    /**
+     * Optional Prometheus series selector narrowing which series the label
+     * values are read from.
+     */
+    match: z.string().min(1).optional(),
+    // Variable-only: there is no SQL expression to broadcast
+    isBroadcastEnabled: z.literal(false),
+    isVariableEnabled: z.literal(true),
+  });
+
+export const DashboardFilterSchema = z.discriminatedUnion('type', [
+  QueryExpressionDashboardFilterSchema,
+  StaticListDashboardFilterSchema,
+  PromqlLabelDashboardFilterSchema,
+]);
+
+export type QueryExpressionDashboardFilter = z.infer<
+  typeof QueryExpressionDashboardFilterSchema
+>;
+export type StaticListDashboardFilter = z.infer<
+  typeof StaticListDashboardFilterSchema
+>;
+export type PromqlLabelDashboardFilter = z.infer<
+  typeof PromqlLabelDashboardFilterSchema
+>;
 export type DashboardFilter = z.infer<typeof DashboardFilterSchema>;
 
 export enum PresetDashboard {
   Services = 'services',
 }
 
-export const PresetDashboardFilterSchema = DashboardFilterSchema.extend({
-  presetDashboard: z.nativeEnum(PresetDashboard),
-});
+/** Preset-dashboard filters are broadcast-only, and therefore do not support static value filters. */
+export const PresetDashboardFilterSchema =
+  QueryExpressionDashboardFilterSchema.extend({
+    presetDashboard: z.nativeEnum(PresetDashboard),
+  });
 
 export type PresetDashboardFilter = z.infer<typeof PresetDashboardFilterSchema>;
 
@@ -2501,6 +2583,8 @@ export const AlertsPageItemSchema = z.object({
   chartConfig: AlertChartConfigSchema.optional(),
   groupBy: z.string().optional(),
   name: z.string().nullish(),
+  displayName: z.string(),
+  tags: z.array(z.string()),
   message: z.string().nullish(),
   note: alertNoteSchema,
   createdAt: z.string(),

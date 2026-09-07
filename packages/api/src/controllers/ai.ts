@@ -72,6 +72,28 @@ export function getAIModel(): LanguageModel {
   }
 }
 
+/**
+ * Vercel AI SDK telemetry settings for LLM calls. The SDK flattens each
+ * metadata entry onto every span of the call as
+ * `ai.telemetry.metadata.<key>`, which the LLM dashboard reads:
+ * `sessionId` groups the call's spans into a session on the Sessions tab
+ * (pass a stable conversation-scoped id, e.g. a notebook id) and `userId`
+ * feeds per-user attribution. Nullish values are dropped.
+ */
+export function llmTelemetry(metadata: Record<string, string | undefined>): {
+  isEnabled: boolean;
+  metadata: Record<string, string>;
+} {
+  return {
+    isEnabled: true,
+    metadata: Object.fromEntries(
+      Object.entries(metadata).filter(
+        (entry): entry is [string, string] => entry[1] != null,
+      ),
+    ),
+  };
+}
+
 export async function getAIMetadata(source: ISource) {
   const connectionId = source.connection.toString();
 

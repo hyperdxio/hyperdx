@@ -8,7 +8,6 @@ import {
 } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   DateRange,
-  MetricsDataType,
   SourceKind,
   TMetricSource,
 } from '@hyperdx/common-utils/dist/types';
@@ -16,18 +15,11 @@ import { useQuery } from '@tanstack/react-query';
 
 import { getClickhouseClient } from '@/clickhouse';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
+import { QUERYABLE_KINDS } from '@/utils/metricKinds';
 import {
   mergeMetricCatalog,
   type MetricCatalogEntry,
 } from '@/utils/metricNameTree';
-
-/** Metric kinds the query renderer can chart. `summary` is not one of them. */
-const QUERYABLE_KINDS: MetricsDataType[] = [
-  MetricsDataType.Gauge,
-  MetricsDataType.Sum,
-  MetricsDataType.Histogram,
-  MetricsDataType.ExponentialHistogram,
-];
 
 const MAX_METRICS_PER_KIND = 3000;
 

@@ -44,6 +44,7 @@ import {
   INTERESTING_FILTER_KEYS_SOURCE_NAME,
   METADATA_MV_LOGS_SOURCE_NAME,
 } from '../utils/constants';
+import { expectFiltersParam, rawFiltersParam } from '../utils/filters-param';
 
 const [ROW1, ROW2, ROW3] = INTERESTING_FILTER_KEYS_ROWS;
 const [MV_ROW1, MV_ROW2, MV_ROW3] = METADATA_MV_ROWS;
@@ -550,19 +551,15 @@ test.describe(
         });
         await expect(dashboardPage.getTileError()).toHaveCount(0);
 
-        await expect(async () => {
-          const raw = new URL(page.url()).searchParams.get('filters');
-          expect(raw).not.toBeNull();
-          expect(JSON.parse(decodeURIComponent(raw!))).toEqual([
-            {
-              type: 'variable',
-              name: 'mapkey',
-              values: [ROW1.resourceAttrValue],
-            },
-          ]);
-          // No bracket- or quote-bearing key anywhere in the param.
-          expect(raw).not.toContain('ResourceAttributes');
-        }).toPass({ timeout: 10000 });
+        await expectFiltersParam(page, [
+          {
+            type: 'variable',
+            name: 'mapkey',
+            values: [ROW1.resourceAttrValue],
+          },
+        ]);
+        // No bracket- or quote-bearing key anywhere in the param.
+        expect(rawFiltersParam(page)).not.toContain('ResourceAttributes');
       });
 
       await test.step('the selection survives a reload', async () => {

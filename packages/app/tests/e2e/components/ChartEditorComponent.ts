@@ -5,8 +5,13 @@
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import { expect, Locator, Page } from '@playwright/test';
 
-import { dismissSqlAutocomplete, getSqlEditor } from '../utils/locators';
+import {
+  dismissSqlAutocomplete,
+  getSqlEditor,
+  replaceEditorText,
+} from '../utils/locators';
 import { switchWhereToLucene } from '../utils/lucene-autocomplete';
+import { addTagViaPicker, removeTagViaPicker } from '../utils/tags';
 
 import { WebhookAlertModalComponent } from './WebhookAlertModalComponent';
 
@@ -434,13 +439,11 @@ export class ChartEditorComponent {
    * "Generated PromQL" accordion holds a second, read-only CodeMirror.
    */
   async replacePromqlExpression(expression: string) {
-    const content = this.page.locator('.cm-editor .cm-content').first();
-    await content.click();
-    await this.page.keyboard.press(
-      process.platform === 'darwin' ? 'Meta+A' : 'Control+A',
+    await replaceEditorText(
+      this.page,
+      this.page.locator('.cm-editor .cm-content').first(),
+      expression,
     );
-    await this.page.keyboard.press('Delete');
-    await this.page.keyboard.type(expression);
   }
 
   /** Read the current text of the PromQL expression editor. */
@@ -796,8 +799,8 @@ export class ChartEditorComponent {
    */
   async save() {
     await this.saveButton.click();
-    // Wait for save button to disappear (modal closes)
-    await this.saveButton.waitFor({ state: 'hidden', timeout: 2000 });
+    // The modal closes once the dashboard mutation resolves.
+    await this.saveButton.waitFor({ state: 'hidden', timeout: 10000 });
   }
 
   /**
@@ -918,6 +921,28 @@ export class ChartEditorComponent {
       .nth(1);
     await input.fill(String(value));
     await input.blur();
+  }
+
+  /** Set the alert's own display name in the tile alert editor. */
+  async setTileAlertDisplayName(name: string) {
+    await this.page
+      .getByTestId('alert-details')
+      .getByTestId('alert-display-name-input')
+      .fill(name);
+  }
+
+  private get tileAlertTagsButton() {
+    return this.page
+      .getByTestId('alert-details')
+      .getByTestId('alert-tags-button');
+  }
+
+  async addTileAlertTag(tag: string) {
+    await addTagViaPicker(this.page, this.tileAlertTagsButton, tag);
+  }
+
+  async removeTileAlertTag(tag: string) {
+    await removeTagViaPicker(this.page, this.tileAlertTagsButton, tag);
   }
 
   /**
@@ -1081,6 +1106,17 @@ export class ChartEditorComponent {
     await this.openDisplaySettings();
     const drawer = this.page.getByRole('dialog', { name: 'Display Settings' });
     await drawer.getByLabel('Series Limit').fill(String(limit));
+    await this.applyDisplaySettings();
+  }
+
+  /**
+   * Set the "Legend template" value in the Display Settings drawer (PromQL
+   * charts only). Opens the drawer, fills the input, then applies and closes.
+   */
+  async setLegendTemplate(template: string) {
+    await this.openDisplaySettings();
+    const drawer = this.page.getByRole('dialog', { name: 'Display Settings' });
+    await drawer.getByTestId('legend-template-input').fill(template);
     await this.applyDisplaySettings();
   }
 
