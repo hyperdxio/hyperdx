@@ -1255,18 +1255,24 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
       },
     });
 
+    // `version` is a required field on the Zod input schema, so an
+    // omitted call never reaches the handler's own check — it's rejected
+    // by the MCP SDK's schema validation, which reports it as a missing
+    // "version" field rather than the handler's prose message.
     it('rejects a patch with no version', async () => {
       const created = await seed('Patch No Version');
 
-      const text = getFirstText(
-        await callTool(ctx.client!, 'clickstack_patch_dashboard', {
-          dashboardId: created.id,
-          tileId: created.tiles[0].id,
-          tile: patchTile(sourceIdFor()),
-        }),
-      );
+      const result = await callTool(ctx.client!, 'clickstack_patch_dashboard', {
+        dashboardId: created.id,
+        tileId: created.tiles[0].id,
+        tile: patchTile(sourceIdFor()),
+      });
 
-      expect(text).toContain('version is required');
+      expect(result.isError).toBe(true);
+      const text = getFirstText(result);
+      expect(text).toContain('clickstack_patch_dashboard');
+      expect(text).toContain('"version"');
+      expect(text).toContain('Required');
     });
 
     it('rejects a stale version and leaves the tile untouched', async () => {

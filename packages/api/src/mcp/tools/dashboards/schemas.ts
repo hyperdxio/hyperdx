@@ -1342,7 +1342,6 @@ export const mcpPatchDashboardSchema = z.object({
     ),
   version: z
     .string()
-    .optional()
     .describe(
       'Required. The `version` from the most recent clickstack_get_dashboard ' +
         'response (or `dashboardVersion` from clickstack_get_dashboard_tile) ' +

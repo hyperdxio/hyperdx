@@ -1379,7 +1379,13 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
       expect(text).toContain('not a valid dashboard version');
     });
 
-    it('reports a deleted dashboard as deleted, not as a conflict', async () => {
+    // The dashboard is already gone before the handler's own pre-write
+    // `findOne` runs, so this exercises that early existence check, not
+    // `resolveDashboardWriteMiss`'s post-`findOneAndUpdate` "deleted"
+    // branch below — the two return different messages, and both contain
+    // the substring "deleted", so the assertion has to be specific enough
+    // to tell them apart.
+    it('reports a dashboard deleted before the read as not found (pre-write check)', async () => {
       const created = await createDashboard('Deleted Dashboard');
       const sourceId = ctx.traceSource._id.toString();
       await Dashboard.findByIdAndDelete(created.id);
@@ -1393,7 +1399,41 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
         }),
       );
 
-      expect(text).toContain('deleted');
+      expect(text).toContain('may never have existed');
+    });
+
+    // Same outcome, but reached through the other branch: the dashboard
+    // exists at the handler's read, then vanishes before the guarded
+    // `findOneAndUpdate` runs (`resolveDashboardWriteMiss`'s "deleted"
+    // branch). A sequential test can't desynchronise the read from the
+    // write, so this spies on the single findOneAndUpdate call to delete
+    // the document and simulate the race, mirroring the pattern in
+    // patchDashboard.int.test.ts.
+    it('reports a dashboard deleted between the read and the write as deleted (post-write check)', async () => {
+      const created = await createDashboard('Deleted Between Read And Write');
+      const sourceId = ctx.traceSource._id.toString();
+
+      const findOneAndUpdateSpy = jest
+        .spyOn(Dashboard, 'findOneAndUpdate')
+        .mockImplementationOnce((async () => {
+          await Dashboard.findByIdAndDelete(created.id);
+          return null;
+        }) as unknown as typeof Dashboard.findOneAndUpdate);
+
+      try {
+        const text = getFirstText(
+          await callTool(ctx.client!, 'clickstack_save_dashboard', {
+            id: created.id,
+            name: 'Renamed',
+            tiles: [{ ...tileFor(sourceId), id: created.tiles[0].id }],
+            version: created.version,
+          }),
+        );
+
+        expect(text).toContain('deleted after you read it');
+      } finally {
+        findOneAndUpdateSpy.mockRestore();
+      }
     });
 
     it('rejects a version on create, where it is meaningless', async () => {
