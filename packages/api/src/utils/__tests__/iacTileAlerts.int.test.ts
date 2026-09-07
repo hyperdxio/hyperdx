@@ -74,6 +74,33 @@ describe('unaddressableTileAlertIds', () => {
     }
   });
 
+  // A floor under the remaining budget was the alternative, and it would have
+  // let a request that already spent the ceiling run past it.
+  it('withholds every tile alert without reading when the budget is spent', async () => {
+    const teamId = randomMongoId();
+    const dashboard = await Dashboard.create({
+      name: 'Ops',
+      team: teamId,
+      tiles: [tile('tile-1', 'Errors')],
+    });
+    const alerts = [alert(dashboard._id, 'tile-1')];
+    const find = jest.spyOn(Dashboard, 'find');
+
+    try {
+      const withheld = await unaddressableTileAlertIds({
+        teamId,
+        alerts,
+        maxTimeMS: 0,
+      });
+
+      expect([...withheld]).toEqual([alerts[0]._id.toString()]);
+      // The point of skipping: mongo reads maxTimeMS 0 as "no limit".
+      expect(find).not.toHaveBeenCalled();
+    } finally {
+      find.mockRestore();
+    }
+  });
+
   it('withholds nothing addressable once the read succeeds', async () => {
     const teamId = randomMongoId();
     const dashboard = await Dashboard.create({

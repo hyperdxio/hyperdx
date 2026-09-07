@@ -163,10 +163,9 @@ router.get('/import-manifest', async (req, res, next) => {
         // What is left of the request's budget, not a second helping of it:
         // this read is sequenced after the six listings above, and a fresh
         // ceiling here would double the worst case the bound exists to cap.
-        maxTimeMS: Math.max(
-          1_000,
-          IAC_MANIFEST_MAX_TIME_MS - (Date.now() - startedAt),
-        ),
+        // Passed through unclamped for the same reason — a floor under it
+        // would let a request that already spent the ceiling run past it.
+        maxTimeMS: IAC_MANIFEST_MAX_TIME_MS - (Date.now() - startedAt),
       });
 
       const truncatedTypes = (
