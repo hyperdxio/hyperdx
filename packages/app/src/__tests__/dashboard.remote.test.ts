@@ -365,9 +365,10 @@ describe('useUpdateDashboard concurrency', () => {
     expect(updater([other])).toEqual([other]);
   });
 
-  // Same-scope mutations run one at a time, so two saves fired back to
-  // back queue instead of racing (HDX-4159).
-  it('scopes the mutation to the dashboard so saves serialise', () => {
+  // TanStack serialises mutations sharing the same `scope.id` (HDX-4159);
+  // under this wholesale mock we can only assert the key was passed, not
+  // that serialisation actually happens.
+  it('passes a per-dashboard scope key to the mutation', () => {
     useUpdateDashboard('d1');
     expect(mutationConfigs.at(-1)!.scope).toEqual({ id: 'dashboard-d1' });
   });

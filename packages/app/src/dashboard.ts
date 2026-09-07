@@ -42,6 +42,11 @@ export type Dashboard = {
   savedFilterValues?: DashboardFilterValue[];
   containers?: DashboardContainer[];
   createdAt?: string;
+  /**
+   * The optimistic-concurrency token for dashboard writes. The API has
+   * always returned it; it is optional because IS_LOCAL_MODE dashboards
+   * live in URL state and have none.
+   */
   updatedAt?: string;
   createdBy?: { email: string; name?: string };
   updatedBy?: { email: string; name?: string };
@@ -54,13 +59,6 @@ export type Dashboard = {
 };
 
 const localDashboards = createEntityStore<Dashboard>('hdx-local-dashboards');
-
-/**
- * `updatedAt` is the optimistic-concurrency token for dashboard writes. The
- * API has always returned it; it is optional because IS_LOCAL_MODE
- * dashboards live in URL state and have none.
- */
-export type DashboardWithVersion = Dashboard & { updatedAt?: string };
 
 /**
  * Resolution policy shared by both the typed normalizer below and the
@@ -126,12 +124,11 @@ export function normalizeRawDashboardTileColors(input: unknown): unknown {
  * through `useDashboards` so React Query caching and invalidation
  * stays uniform.
  */
-export async function fetchDashboards(): Promise<DashboardWithVersion[]> {
+export async function fetchDashboards(): Promise<Dashboard[]> {
   if (IS_LOCAL_MODE) {
     return localDashboards.getAll().map(normalizeDashboardTileColors);
   }
-  const dashboards =
-    await hdxServer('dashboards').json<DashboardWithVersion[]>();
+  const dashboards = await hdxServer('dashboards').json<Dashboard[]>();
   return dashboards.map(normalizeDashboardTileColors);
 }
 
@@ -144,7 +141,7 @@ export function useUpdateDashboard(dashboardId?: string) {
     // the token onSuccess wrote into the cache.
     scope: dashboardId ? { id: `dashboard-${dashboardId}` } : undefined,
     mutationFn: async (
-      dashboard: Partial<DashboardWithVersion> & { id: Dashboard['id'] },
+      dashboard: Partial<Dashboard> & { id: Dashboard['id'] },
     ) => {
       const { updatedAt, ...rest } = dashboard;
       const normalized = normalizeDashboardTileColors(rest);
@@ -156,14 +153,14 @@ export function useUpdateDashboard(dashboardId?: string) {
       return hdxServer(`dashboards/${normalized.id}`, {
         method: 'PATCH',
         json: { ...normalized, expectedVersion: updatedAt },
-      }).json<DashboardWithVersion>();
+      }).json<Dashboard>();
     },
     onSuccess: updated => {
       // Seed the new token synchronously. invalidateQueries alone refetches
       // asynchronously, leaving a window where the next save would send a
       // stale token and 409 against its own predecessor.
       if (updated != null) {
-        queryClient.setQueryData<DashboardWithVersion[]>(['dashboards'], prev =>
+        queryClient.setQueryData<Dashboard[]>(['dashboards'], prev =>
           prev?.map(d => (d.id === updated.id ? { ...d, ...updated } : d)),
         );
       }
@@ -229,7 +226,7 @@ export function useDashboard({
     useQuery({
       queryKey: ['dashboards'],
       queryFn: fetchDashboards,
-      select: (data: DashboardWithVersion[]) => {
+      select: (data: Dashboard[]) => {
         return data.find(d => d.id === dashboardId);
       },
       enabled: dashboardId != null,
