@@ -1306,9 +1306,10 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
       expect(result.version).not.toBe(created.version);
     });
 
-    // A removed tile and a concurrent edit are different problems with
-    // different fixes, and the agent needs to be able to tell them apart.
-    it('reports a removed tile as a missing tile, not as a conflict', async () => {
+    // A tile that's already gone by the time the handler's own read runs
+    // (the tiles array was emptied before this call) is caught by the
+    // pre-existing read-time lookup, not by the write-time miss branch below.
+    it('reports a tile that is already gone at read time, with the available tile IDs', async () => {
       const created = await seed('Patch Removed Tile');
       const tileId = created.tiles[0].id;
 
@@ -1327,8 +1328,70 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
         }),
       );
 
-      expect(text).toContain('Tile not found');
+      expect(text).toContain(`Tile not found: ${tileId}`);
+      expect(text).toContain('Available tile IDs:');
       expect(text).not.toContain('changed since you read it');
+    });
+
+    // A sequential test can't desynchronise the read from the write: the
+    // handler's own findOne would already see any mutation made before the
+    // call, and mongoose stamps updatedAt on every write so a stale version
+    // can't be forced from outside. Spying on the single findOneAndUpdate
+    // call simulates the tile vanishing in the real gap between the
+    // handler's read and its conditional write.
+    it('reports the tile as missing at write time when it vanishes between the read and the write (simulated race)', async () => {
+      const created = await seed('Patch Race Tile');
+      const tileId = created.tiles[0].id;
+
+      const findOneAndUpdateSpy = jest
+        .spyOn(Dashboard, 'findOneAndUpdate')
+        .mockResolvedValueOnce(null);
+
+      try {
+        const text = getFirstText(
+          await callTool(ctx.client!, 'clickstack_patch_dashboard', {
+            dashboardId: created.id,
+            tileId,
+            tile: patchTile(sourceIdFor()),
+            version: created.version,
+          }),
+        );
+
+        expect(text).toContain('was not found at write time');
+        expect(text).not.toContain('changed since you read it');
+      } finally {
+        findOneAndUpdateSpy.mockRestore();
+      }
+    });
+
+    // Same race, but the dashboard itself is gone (not just the tile) by
+    // write time — reuses the findOneAndUpdate spy to delete the document
+    // out from under the write, which resolveDashboardWriteMiss then finds.
+    it('reports a deleted dashboard as deleted when it vanishes between the read and the write (simulated race)', async () => {
+      const created = await seed('Patch Race Deleted');
+      const tileId = created.tiles[0].id;
+
+      const findOneAndUpdateSpy = jest
+        .spyOn(Dashboard, 'findOneAndUpdate')
+        .mockImplementationOnce((async () => {
+          await Dashboard.findByIdAndDelete(created.id);
+          return null;
+        }) as any);
+
+      try {
+        const text = getFirstText(
+          await callTool(ctx.client!, 'clickstack_patch_dashboard', {
+            dashboardId: created.id,
+            tileId,
+            tile: patchTile(sourceIdFor()),
+            version: created.version,
+          }),
+        );
+
+        expect(text).toContain('deleted after you read it');
+      } finally {
+        findOneAndUpdateSpy.mockRestore();
+      }
     });
   });
 });
