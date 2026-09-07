@@ -54,7 +54,7 @@ export function parseRelativeTimeQuery(interval: number): [Date, Date] {
   return [subMilliseconds(end, interval), end];
 }
 
-export function parseTimeQuery(
+function parseTimeQuery(
   timeQuery: string,
   isUTC: boolean,
 ): [Date | null, Date | null] {
