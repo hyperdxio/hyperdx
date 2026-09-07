@@ -415,7 +415,11 @@ async function updateDashboard({
   );
 
   if (!updatedDashboard) {
-    const miss = await resolveDashboardWriteMiss(dashboardId, teamId);
+    const miss = await resolveDashboardWriteMiss(
+      dashboardId,
+      teamId,
+      'mcp_save',
+    );
     if (miss.kind === 'deleted') {
       return mcpUserError(
         'Dashboard not found — it was deleted after you read it.',

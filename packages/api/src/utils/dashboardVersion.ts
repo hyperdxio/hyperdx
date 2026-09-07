@@ -24,6 +24,7 @@
 
 import type { ObjectId } from '@/models';
 import Dashboard from '@/models/dashboard';
+import { getCounter } from '@/utils/instrumentation';
 
 // Exactly the shape `Date.prototype.toISOString` produces. Deliberately
 // strict: `new Date('2026')` succeeds and would yield a token that can never
@@ -60,6 +61,13 @@ export type DashboardWriteMiss =
   | { kind: 'deleted' }
   | { kind: 'conflict'; currentVersion: string };
 
+/** The call sites of {@link resolveDashboardWriteMiss}, for the `surface` metric attribute. */
+export type DashboardWriteSurface =
+  | 'mcp_save'
+  | 'mcp_patch'
+  | 'v2_put'
+  | 'internal_patch';
+
 /** Thrown by the dashboard controller so the router can map it to a 409. */
 export class DashboardVersionConflictError extends Error {
   constructor(public readonly currentVersion: string) {
@@ -67,6 +75,14 @@ export class DashboardVersionConflictError extends Error {
     this.name = 'DashboardVersionConflictError';
   }
 }
+
+// Single choke point for the write-conflict/deletion outcome across all
+// three surfaces (MCP, v2, internal). kind/surface only — no dashboard or
+// team id, so this stays low-cardinality.
+const writeConflictsCounter = getCounter('hyperdx.dashboards.write_conflicts', {
+  description:
+    'Count of dashboard writes rejected by the optimistic-concurrency guard, labeled by kind (conflict vs. deleted) and surface.',
+});
 
 /**
  * Explains why a version-guarded `findOneAndUpdate` matched nothing. Without
@@ -77,11 +93,16 @@ export class DashboardVersionConflictError extends Error {
 export async function resolveDashboardWriteMiss(
   dashboardId: string,
   teamId: string | ObjectId,
+  surface: DashboardWriteSurface,
 ): Promise<DashboardWriteMiss> {
   const current = await Dashboard.findOne(
     { _id: dashboardId, team: teamId },
     { updatedAt: 1 },
   ).lean();
-  if (current == null) return { kind: 'deleted' };
-  return { kind: 'conflict', currentVersion: versionToken(current) };
+  const miss: DashboardWriteMiss =
+    current == null
+      ? { kind: 'deleted' }
+      : { kind: 'conflict', currentVersion: versionToken(current) };
+  writeConflictsCounter.add(1, { kind: miss.kind, surface });
+  return miss;
 }

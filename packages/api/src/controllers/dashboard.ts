@@ -226,7 +226,11 @@ export async function updateDashboard(
   );
   if (updatedDashboard == null) {
     if (expectedUpdatedAt != null) {
-      const miss = await resolveDashboardWriteMiss(dashboardId, teamId);
+      const miss = await resolveDashboardWriteMiss(
+        dashboardId,
+        teamId,
+        'internal_patch',
+      );
       if (miss.kind === 'conflict') {
         throw new DashboardVersionConflictError(miss.currentVersion);
       }

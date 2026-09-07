@@ -82,6 +82,7 @@ describe('dashboard version (integration)', () => {
       const miss = await resolveDashboardWriteMiss(
         dashboard._id.toString(),
         team._id,
+        'internal_patch',
       );
 
       expect(miss).toEqual({
@@ -95,7 +96,9 @@ describe('dashboard version (integration)', () => {
       const id = dashboard._id.toString();
       await Dashboard.deleteOne({ _id: id });
 
-      expect(await resolveDashboardWriteMiss(id, team._id)).toEqual({
+      expect(
+        await resolveDashboardWriteMiss(id, team._id, 'internal_patch'),
+      ).toEqual({
         kind: 'deleted',
       });
     });
@@ -108,7 +111,11 @@ describe('dashboard version (integration)', () => {
       const otherTeamId = new mongoose.Types.ObjectId();
 
       expect(
-        await resolveDashboardWriteMiss(dashboard._id.toString(), otherTeamId),
+        await resolveDashboardWriteMiss(
+          dashboard._id.toString(),
+          otherTeamId,
+          'internal_patch',
+        ),
       ).toEqual({ kind: 'deleted' });
     });
   });

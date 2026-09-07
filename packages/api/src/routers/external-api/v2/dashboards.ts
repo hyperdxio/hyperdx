@@ -2991,7 +2991,11 @@ router.put(
         if (expectedUpdatedAt == null) {
           return res.sendStatus(404);
         }
-        const miss = await resolveDashboardWriteMiss(dashboardId, teamId);
+        const miss = await resolveDashboardWriteMiss(
+          dashboardId,
+          teamId,
+          'v2_put',
+        );
         if (miss.kind === 'deleted') {
           return res.sendStatus(404);
         }
