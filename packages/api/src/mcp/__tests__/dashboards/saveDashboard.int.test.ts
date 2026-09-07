@@ -1255,6 +1255,42 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
       expect(fetchedByName['Line Tile'].config).toMatchObject(lineConfig);
       expect(fetchedByName['Number Tile'].config).toMatchObject(numberConfig);
     });
+
+    it('returns a version from create, and a newer one from update', async () => {
+      const sourceId = ctx.traceSource._id.toString();
+      const tile = {
+        name: 'Tile',
+        x: 0,
+        y: 0,
+        w: 12,
+        h: 4,
+        config: { displayType: 'line', sourceId, select: [{ aggFn: 'count' }] },
+      };
+
+      const created = JSON.parse(
+        getFirstText(
+          await callTool(ctx.client!, 'clickstack_save_dashboard', {
+            name: 'Version Write Dashboard',
+            tiles: [tile],
+          }),
+        ),
+      );
+      expect(created.version).toMatch(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/);
+
+      await new Promise(resolve => setTimeout(resolve, 5));
+
+      const updated = JSON.parse(
+        getFirstText(
+          await callTool(ctx.client!, 'clickstack_save_dashboard', {
+            id: created.id,
+            name: 'Renamed',
+            tiles: [{ ...tile, id: created.tiles[0].id }],
+            version: created.version,
+          }),
+        ),
+      );
+      expect(updated.version).not.toBe(created.version);
+    });
   });
 
   describe('raw SQL macro warnings', () => {

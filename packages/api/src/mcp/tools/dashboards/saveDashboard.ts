@@ -17,6 +17,7 @@ import {
   updateDashboardBodySchema,
   validateDashboardTiles,
 } from '@/routers/external-api/v2/utils/dashboards';
+import { versionToken } from '@/utils/dashboardVersion';
 import type {
   ExternalDashboardFilter,
   ExternalDashboardFilterWithId,
@@ -231,6 +232,7 @@ async function createDashboard({
             ...(frontendUrl
               ? { url: `${frontendUrl}/dashboards/${newDashboard._id}` }
               : {}),
+            version: versionToken(newDashboard),
             hint: 'Use clickstack_query_tiles to validate every tile in one call (or clickstack_query_tile for a single tile) before viewing the dashboard.',
             ...(macroWarnings.length > 0 ? { warnings: macroWarnings } : {}),
           },
@@ -394,6 +396,7 @@ async function updateDashboard({
             ...(frontendUrl
               ? { url: `${frontendUrl}/dashboards/${updatedDashboard._id}` }
               : {}),
+            version: versionToken(updatedDashboard),
             hint: 'Use clickstack_query_tiles to validate every tile in one call (or clickstack_query_tile for a single tile) before viewing the dashboard.',
             ...(macroWarnings.length > 0 ? { warnings: macroWarnings } : {}),
           },
