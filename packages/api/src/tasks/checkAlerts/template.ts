@@ -260,23 +260,35 @@ const zNotifyFnParams = z.object({
 });
 
 // should match the external alert schema
-export type AlertMessageTemplateDefaultView = {
+type AlertMessageTemplateDefaultViewBase = {
   alert: AlertInput;
   attributes: ReturnType<typeof unflattenObject>;
   dashboard?: IDashboard | null;
   endTime: Date;
   granularity: string;
   group?: string;
-  /** Flat group column/value pairs used to constrain notification samples. */
-  groupAttributes?: Record<string, unknown>;
-  /** Configured group expressions that could not be mapped to response columns. */
-  unsupportedGroupKeys?: string[];
-  isGroupedAlert: boolean;
   savedSearch?: ISavedSearch | null;
   source?: ISource | null;
   startTime: Date;
   value: number;
 };
+
+export type AlertMessageTemplateDefaultView =
+  AlertMessageTemplateDefaultViewBase &
+    (
+      | {
+          isGroupedAlert: true;
+          /** Flat group column/value pairs used to constrain notification samples. */
+          groupAttributes: Record<string, unknown>;
+          /** Configured group expressions that could not be mapped to response columns. */
+          unsupportedGroupKeys: string[];
+        }
+      | {
+          isGroupedAlert: false;
+          groupAttributes?: never;
+          unsupportedGroupKeys?: never;
+        }
+    );
 
 export const isAlertResolved = (state?: AlertState): boolean => {
   return state === AlertState.OK;
@@ -565,9 +577,7 @@ export const renderAlertTemplate = async ({
     dashboard,
     endTime,
     group,
-    groupAttributes,
     isGroupedAlert,
-    unsupportedGroupKeys: metadataUnsupportedGroupKeys,
     savedSearch,
     source,
     startTime,
@@ -824,12 +834,12 @@ ${targetTemplate}`;
     // fetch sample logs
     let truncatedResults = '';
     let unsupportedGroupKeys = isGroupedAlert
-      ? [...(metadataUnsupportedGroupKeys ?? [])]
+      ? [...view.unsupportedGroupKeys]
       : [];
     let chartConfig: ChartConfigWithOptDateRange | undefined;
     try {
       const filterResult = equalityFiltersToQuery(
-        isGroupedAlert ? (groupAttributes ?? {}) : {},
+        isGroupedAlert ? view.groupAttributes : {},
       );
       const groupFilters = filterResult.filters;
       unsupportedGroupKeys = Array.from(
@@ -901,7 +911,7 @@ ${targetTemplate}`;
         {
           savedSearchId: savedSearch.id,
           chartConfig,
-          groupAttributes,
+          groupAttributes: isGroupedAlert ? view.groupAttributes : undefined,
           error: serializeError(e),
         },
         'Failed to fetch sample logs',

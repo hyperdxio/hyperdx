@@ -110,50 +110,59 @@ type ViewOverrides = Partial<AlertMessageTemplateDefaultView> & {
 
 const makeSearchView = (
   overrides: ViewOverrides = {},
-): AlertMessageTemplateDefaultView => ({
-  alert: {
-    thresholdType: overrides.thresholdType ?? AlertThresholdType.ABOVE,
-    threshold: overrides.threshold ?? 5,
-    thresholdMax: overrides.thresholdMax,
-    source: AlertSource.SAVED_SEARCH,
-    channel: { type: null },
-    interval: '1m',
-  },
-  source: {
-    id: 'fake-source-id',
-    kind: SourceKind.Log,
-    team: 'team-123',
-    from: { databaseName: 'default', tableName: 'otel_logs' },
-    timestampValueExpression: 'Timestamp',
-    connection: 'connection-123',
-    name: 'Logs',
-    defaultTableSelectExpression: 'Timestamp, Body',
-  },
-  savedSearch: {
-    _id: 'fake-saved-search-id' as any,
-    team: 'team-123' as any,
-    id: 'fake-saved-search-id',
-    name: 'My Search',
-    select: 'Body',
-    where: overrides.where ?? 'Body: "error"',
-    whereLanguage: 'lucene',
-    ...(overrides.filters != null && { filters: overrides.filters }),
-    orderBy: 'timestamp',
-    source: 'fake-source-id' as any,
-    tags: ['test'],
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-  attributes: {},
-  granularity: '1m',
-  group: overrides.group,
-  groupAttributes: overrides.groupAttributes,
-  unsupportedGroupKeys: overrides.unsupportedGroupKeys,
-  isGroupedAlert: overrides.isGroupedAlert ?? false,
-  startTime,
-  endTime,
-  value: overrides.value ?? 10,
-});
+): AlertMessageTemplateDefaultView => {
+  const grouping =
+    overrides.isGroupedAlert === true
+      ? {
+          isGroupedAlert: true as const,
+          groupAttributes: overrides.groupAttributes ?? {},
+          unsupportedGroupKeys: overrides.unsupportedGroupKeys ?? [],
+        }
+      : { isGroupedAlert: false as const };
+
+  return {
+    alert: {
+      thresholdType: overrides.thresholdType ?? AlertThresholdType.ABOVE,
+      threshold: overrides.threshold ?? 5,
+      thresholdMax: overrides.thresholdMax,
+      source: AlertSource.SAVED_SEARCH,
+      channel: { type: null },
+      interval: '1m',
+    },
+    source: {
+      id: 'fake-source-id',
+      kind: SourceKind.Log,
+      team: 'team-123',
+      from: { databaseName: 'default', tableName: 'otel_logs' },
+      timestampValueExpression: 'Timestamp',
+      connection: 'connection-123',
+      name: 'Logs',
+      defaultTableSelectExpression: 'Timestamp, Body',
+    },
+    savedSearch: {
+      _id: 'fake-saved-search-id' as any,
+      team: 'team-123' as any,
+      id: 'fake-saved-search-id',
+      name: 'My Search',
+      select: 'Body',
+      where: overrides.where ?? 'Body: "error"',
+      whereLanguage: 'lucene',
+      ...(overrides.filters != null && { filters: overrides.filters }),
+      orderBy: 'timestamp',
+      source: 'fake-source-id' as any,
+      tags: ['test'],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+    attributes: {},
+    granularity: '1m',
+    group: overrides.group,
+    ...grouping,
+    startTime,
+    endTime,
+    value: overrides.value ?? 10,
+  };
+};
 
 const testTile = makeTile({ id: 'test-tile-id' });
 const makeTileView = (
@@ -462,10 +471,7 @@ describe('renderAlertTemplate', () => {
       });
 
       it('does not constrain samples when the alert is not grouped', async () => {
-        const view = makeSearchView({
-          groupAttributes: { ServiceName: 'checkout' },
-          isGroupedAlert: false,
-        });
+        const view = makeSearchView();
         mockClickhouseClient.query.mockClear();
 
         await render(view, AlertState.ALERT);

@@ -1191,7 +1191,7 @@ describe('checkAlerts', () => {
       });
     });
 
-    it('uses the trailing builder date column as the time bucket', () => {
+    it('uses the trailing builder date column as the time bucket and degrades a DateTime group visibly', () => {
       const meta = getResponseMetadata(
         makeMetadataChartConfig({
           sourceId: 'fake-source-id',
@@ -1206,7 +1206,7 @@ describe('checkAlerts', () => {
           data: [
             {
               cnt: '5',
-              DeploymentDate: '2023-11-01 00:00:00',
+              DeploymentDate: '2023-11-01T00:00:00Z',
               ts: '2023-11-16 22:12:00',
             },
           ],
@@ -1218,21 +1218,21 @@ describe('checkAlerts', () => {
       expect(meta).toMatchObject({
         timestampColumnName: 'ts',
         valueColumnNames: new Set(['cnt']),
-        unmappedGroupExpressions: [],
+        unmappedGroupExpressions: ['DeploymentDate'],
       });
       expect(
         parseAlertData(
           {
             cnt: '5',
-            DeploymentDate: '2023-11-01 00:00:00',
+            DeploymentDate: '2023-11-01T00:00:00Z',
             ts: '2023-11-16 22:12:00',
           },
           meta!,
         ),
       ).toEqual({
         value: 5,
-        groupFields: [['DeploymentDate', '2023-11-01 00:00:00']],
-        groupFilterFields: [['DeploymentDate', '2023-11-01 00:00:00']],
+        groupFields: [['DeploymentDate', '2023-11-01T00:00:00Z']],
+        groupFilterFields: [],
       });
     });
 
@@ -6934,6 +6934,73 @@ describe('checkAlerts', () => {
       expect(alertHistories[0].lastValues[0].count).toBe(3);
     });
 
+    it('uses the rendered response layout to keep a numeric group out of the alert value', async () => {
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        savedSearch,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
+
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      const eventMs = new Date('2023-11-16T22:05:00.000Z');
+      await bulkInsertLogs([
+        {
+          ServiceName: 'api',
+          SeverityNumber: 17,
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'first error',
+        },
+        {
+          ServiceName: 'api',
+          SeverityNumber: 17,
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'second error',
+        },
+      ]);
+
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 1,
+          savedSearchId: savedSearch.id,
+          groupBy: 'SeverityNumber',
+        },
+        {
+          taskType: AlertTaskType.SAVED_SEARCH,
+          savedSearch,
+        },
+      );
+
+      await processAlertAtTime(
+        now,
+        details,
+        clickhouseClient,
+        connection,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      const histories = await AlertHistory.find({ alert: details.alert.id });
+      expect(histories).toHaveLength(1);
+      expect(histories[0].group).toBe('SeverityNumber:17');
+      expect(histories[0].lastValues[0].count).toBe(2);
+      expect(histories[0].state).toBe(AlertState.ALERT);
+    });
+
     it('Group-by alerts that resolve (missing data case)', async () => {
       const {
         team,
@@ -8545,7 +8612,7 @@ describe('checkAlerts', () => {
       expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
     });
 
-    it('TILE alert (metrics, grouped ratio) - honors ratioMode share_of_total', async () => {
+    it('TILE alert (metrics, grouped ratio) - validates the rendered collapsed response layout and ratioMode', async () => {
       const now = new Date('2023-11-16T22:12:00.000Z');
       // Alert window is [22:05, 22:10)
       const eventMs = now.getTime() - ms('7m');

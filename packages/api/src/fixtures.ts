@@ -437,6 +437,7 @@ export const bulkInsertLogs = async (
     Body: string;
     LogAttributes?: Record<string, string>;
     ServiceName: string;
+    SeverityNumber?: number;
     SeverityText: string;
     Timestamp: Date;
   }[],

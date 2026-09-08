@@ -567,9 +567,13 @@ const fireChannelEvent = async ({
     endTime,
     granularity: `${windowSizeInMins} minute`,
     group,
-    groupAttributes,
-    unsupportedGroupKeys,
-    isGroupedAlert,
+    ...(isGroupedAlert
+      ? {
+          isGroupedAlert: true,
+          groupAttributes: groupAttributes ?? {},
+          unsupportedGroupKeys: unsupportedGroupKeys ?? [],
+        }
+      : { isGroupedAlert: false }),
     savedSearch,
     source,
     startTime,
@@ -978,7 +982,10 @@ export const getResponseMetadata = (
     const resultColumn = positionalGroupColumns.find(
       column => normalizeColumnName(column.name) === group.resultName,
     );
-    if (resultColumn != null) {
+    if (
+      resultColumn != null &&
+      resultColumn.jsType !== clickhouse.JSDataType.Date
+    ) {
       groupColumnExpressions.set(resultColumn.name, group.expression);
       matchedGroupExpressions.add(group.expression);
     }
