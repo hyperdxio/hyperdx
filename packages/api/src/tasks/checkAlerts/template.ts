@@ -7,7 +7,7 @@ import {
   resolveSearchOrderBy,
 } from '@hyperdx/common-utils/dist/core/searchChartConfig';
 import { formatDate, objectHash } from '@hyperdx/common-utils/dist/core/utils';
-import { filtersToQuery } from '@hyperdx/common-utils/dist/filters';
+import { equalityFiltersToQuery } from '@hyperdx/common-utils/dist/filters';
 import {
   isPromqlSavedChartConfig,
   isRawSqlSavedChartConfig,
@@ -255,7 +255,7 @@ export type AlertMessageTemplateDefaultView = {
   granularity: string;
   group?: string;
   /** Flat group column/value pairs used to constrain notification samples. */
-  groupAttributes?: Record<string, string>;
+  groupAttributes?: Record<string, string | number | null>;
   isGroupedAlert: boolean;
   savedSearch?: ISavedSearch | null;
   source?: ISource | null;
@@ -813,15 +813,9 @@ ${targetTemplate}`;
         ...ALERT_WINDOW_DATE_RANGE_BOUNDS,
         filters: [
           ...(savedSearch.filters?.map(filter => ({ ...filter })) ?? []),
-          ...filtersToQuery(
-            Object.fromEntries(
-              Object.entries(groupAttributes ?? {}).map(([column, value]) => [
-                column,
-                { included: new Set([value]), excluded: new Set() },
-              ]),
-            ),
-            { stringifyKeys: true },
-          ),
+          ...equalityFiltersToQuery(groupAttributes ?? {}, {
+            stringifyKeys: true,
+          }),
         ],
         orderBy: resolveSearchOrderBy(source, savedSearch.orderBy),
         select: savedSearch.select,

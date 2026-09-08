@@ -105,6 +105,28 @@ export const filtersToQuery = (
     });
 };
 
+export const equalityFiltersToQuery = (
+  values: Record<string, string | number | boolean | null>,
+  { stringifyKeys = false }: { stringifyKeys?: boolean } = {},
+): Filter[] =>
+  Object.entries(values).flatMap(([key, value]) => {
+    if (value == null) {
+      return [{ type: 'sql' as const, condition: `${key} IS NULL` }];
+    }
+
+    return filtersToQuery(
+      {
+        [key]: {
+          included: new Set([
+            typeof value === 'number' ? String(value) : value,
+          ]),
+          excluded: new Set(),
+        },
+      },
+      { stringifyKeys },
+    );
+  });
+
 /**
  * Render a FilterState as a single AND-joined SQL predicate, remapping every
  * key through `renderKey` first.

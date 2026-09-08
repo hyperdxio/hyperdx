@@ -481,6 +481,7 @@ const fireChannelEvent = async ({
   alert,
   alertProvider,
   attributes,
+  groupAttributes,
   clickhouseClient,
   dashboard,
   endTime,
@@ -498,6 +499,7 @@ const fireChannelEvent = async ({
   alert: IAlert;
   alertProvider: AlertProvider;
   attributes: Record<string, string>; // TODO: support other types than string
+  groupAttributes?: Record<string, AlertQueryValue>;
   clickhouseClient: ClickhouseClient;
   dashboard?: IDashboard | null;
   endTime: Date;
@@ -556,7 +558,7 @@ const fireChannelEvent = async ({
     endTime,
     granularity: `${windowSizeInMins} minute`,
     group,
-    groupAttributes: isGroupedAlert ? attributes : undefined,
+    groupAttributes: isGroupedAlert ? groupAttributes : undefined,
     isGroupedAlert,
     savedSearch,
     source,
@@ -885,9 +887,12 @@ type ResponseMetadata =
       valueColumnNames: Set<string>;
     };
 
+type AlertQueryValue = string | number | null;
+type AlertQueryRow = Record<string, AlertQueryValue>;
+
 const getResponseMetadata = (
   chartConfig: ChartConfigWithOptDateRange,
-  data: ResponseJSON<Record<string, string | number>>,
+  data: ResponseJSON<AlertQueryRow>,
 ): ResponseMetadata | undefined => {
   if (!data?.meta) {
     return undefined;
@@ -938,26 +943,27 @@ const getResponseMetadata = (
  *   from the last column in the result which is included in valueColumnNames
  * - `extraFields`: ordered `[columnName, value]` tuples for each column in the
  *   result which is neither the timestampColumnName nor a valueColumnName.
+ * - `groupFields`: the same tuples with their raw values preserved for sample
+ *   query filtering.
  */
-export const parseAlertData = (
-  data: Record<string, string | number>,
-  meta: ResponseMetadata,
-) => {
+export const parseAlertData = (data: AlertQueryRow, meta: ResponseMetadata) => {
   let value: number | null = null;
   const extraFields: Array<[string, string]> = [];
+  const groupFields: Array<[string, AlertQueryValue]> = [];
 
   for (const [k, v] of Object.entries(data)) {
     if (meta.valueColumnNames.has(k)) {
       // Due to output_format_json_quote_64bit_integers=1, 64-bit integers will be returned as strings.
       // Parse them as integers to ensure correct threshold comparison.
       // Floats are not returned as strings (unless output_format_json_quote_64bit_floats=1, which is not the default).
-      value = isString(v) ? parseInt(v) : v;
+      value = v == null ? null : isString(v) ? parseInt(v) : v;
     } else if (meta.type !== 'time_series' || k !== meta.timestampColumnName) {
       extraFields.push([k, `${v}`]);
+      groupFields.push([k, v]);
     }
   }
 
-  return { value, extraFields };
+  return { value, extraFields, groupFields };
 };
 
 export const processAlert = async (
@@ -1266,7 +1272,12 @@ export const processAlert = async (
     const histories = new Map<string, IAlertHistory>();
     const latestAlertContext = new Map<
       string,
-      { value: number; attributes: Record<string, string>; startTime: Date }
+      {
+        value: number;
+        attributes: Record<string, string>;
+        groupAttributes: Record<string, AlertQueryValue>;
+        startTime: Date;
+      }
     >();
 
     // Helper to get or create history for a group
@@ -1291,12 +1302,14 @@ export const processAlert = async (
       state,
       startTime = nowInMinsRoundDown,
       attributes = {},
+      groupAttributes,
     }: {
       state: AlertState;
       totalCount: number;
       group: string;
       startTime?: Date;
       attributes?: Record<string, string>;
+      groupAttributes?: Record<string, AlertQueryValue>;
     }) => {
       // KNOWN LIMITATION: Alert data (including silenced state) is fetched when
       // the task is queued via AlertProvider, not when it processes. If a user
@@ -1336,6 +1349,7 @@ export const processAlert = async (
           alert,
           alertProvider,
           attributes,
+          groupAttributes,
           clickhouseClient,
           dashboard: (details as any).dashboard,
           startTime,
@@ -1502,13 +1516,14 @@ export const processAlert = async (
     );
 
     // Group data by time bucket (grouped alerts may have multiple entries per time bucket)
-    const checkDataByBucket = new Map<
-      number,
-      Record<string, string | number>[]
-    >();
+    const checkDataByBucket = new Map<number, AlertQueryRow[]>();
 
     for (const checkData of checksData.data) {
-      const bucketStart = new Date(checkData[meta.timestampColumnName]);
+      const timestampValue = checkData[meta.timestampColumnName];
+      if (timestampValue == null) {
+        continue;
+      }
+      const bucketStart = new Date(timestampValue);
       if (!checkDataByBucket.has(bucketStart.getTime())) {
         checkDataByBucket.set(bucketStart.getTime(), []);
       }
@@ -1548,6 +1563,7 @@ export const processAlert = async (
             latestAlertContext.set('', {
               value: 0,
               attributes: {},
+              groupAttributes: {},
               startTime: bucketStart,
             });
           } else {
@@ -1573,10 +1589,18 @@ export const processAlert = async (
       // a subsequent OK row in the SAME bucket from overwriting an ALERT row.
       const bucketEvaluations = new Map<
         string,
-        { value: number; attributes: Record<string, string>; exceeds: boolean }
+        {
+          value: number;
+          attributes: Record<string, string>;
+          groupAttributes: Record<string, AlertQueryValue>;
+          exceeds: boolean;
+        }
       >();
       for (const checkData of dataForBucket) {
-        const { value, extraFields } = parseAlertData(checkData, meta);
+        const { value, extraFields, groupFields } = parseAlertData(
+          checkData,
+          meta,
+        );
 
         // NULL means no data: a metric series with no row at this bucket, or
         // a ratio with a missing/zero denominator. Skip the row instead of
@@ -1589,12 +1613,20 @@ export const processAlert = async (
           ? extraFields.map(([k, v]) => `${k}:${v}`).join(', ')
           : '';
         const attributes = hasGroupBy ? Object.fromEntries(extraFields) : {};
+        const groupAttributes = hasGroupBy
+          ? Object.fromEntries(groupFields)
+          : {};
 
         const exceeds = doesExceedThreshold(alert, value);
 
         const existing = bucketEvaluations.get(groupKey);
         if (!existing || !existing.exceeds || exceeds) {
-          bucketEvaluations.set(groupKey, { value, attributes, exceeds });
+          bucketEvaluations.set(groupKey, {
+            value,
+            attributes,
+            groupAttributes,
+            exceeds,
+          });
         }
       }
 
@@ -1609,6 +1641,7 @@ export const processAlert = async (
             latestAlertContext.set(groupKey, {
               value: evaluation.value,
               attributes: evaluation.attributes,
+              groupAttributes: evaluation.groupAttributes,
               startTime: bucketStart,
             });
           } else {
@@ -1681,6 +1714,7 @@ export const processAlert = async (
             totalCount: context.value,
             startTime: context.startTime,
             attributes: context.attributes,
+            groupAttributes: context.groupAttributes,
           });
 
           // Inject a mock previous history so the resolve check below catches it

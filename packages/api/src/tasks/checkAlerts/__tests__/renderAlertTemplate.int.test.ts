@@ -357,6 +357,22 @@ describe('renderAlertTemplate', () => {
         );
       });
 
+      it('uses IS NULL for a NULL firing-group value', async () => {
+        const view = makeSearchView({
+          group: 'ServiceName:null',
+          groupAttributes: { ServiceName: null },
+          isGroupedAlert: true,
+        });
+        view.alert.groupBy = 'ServiceName';
+        mockClickhouseClient.query.mockClear();
+
+        await render(view, AlertState.ALERT);
+
+        const sampleQuery = mockClickhouseClient.query.mock.calls[0][0].query;
+        expect(sampleQuery).toContain('ServiceName IS NULL');
+        expect(sampleQuery).not.toContain("IN ('null')");
+      });
+
       it('does not constrain samples when the alert is not grouped', async () => {
         const view = makeSearchView();
         mockClickhouseClient.query.mockClear();

@@ -1,6 +1,7 @@
 import {
   deriveVariableName,
   doesFilterApplyToSource,
+  equalityFiltersToQuery,
   FilterState,
   filterStateToPredicate,
   filtersToQuery,
@@ -39,6 +40,38 @@ import {
 } from '@/types';
 
 describe('filters', () => {
+  describe('equalityFiltersToQuery', () => {
+    it('stringifies keys and escapes scalar values', () => {
+      expect(
+        equalityFiltersToQuery(
+          {
+            "LogAttributes['status']": "can't\\stop",
+            StatusCode: 500,
+          },
+          { stringifyKeys: true },
+        ),
+      ).toEqual([
+        {
+          type: 'sql',
+          condition: "toString(LogAttributes['status']) IN ('can''t\\\\stop')",
+        },
+        { type: 'sql', condition: "toString(StatusCode) IN ('500')" },
+      ]);
+    });
+
+    it('uses IS NULL without conflating NULL with the string null', () => {
+      expect(
+        equalityFiltersToQuery(
+          { nullable: null, literal: 'null' },
+          { stringifyKeys: true },
+        ),
+      ).toEqual([
+        { type: 'sql', condition: 'nullable IS NULL' },
+        { type: 'sql', condition: "toString(literal) IN ('null')" },
+      ]);
+    });
+  });
+
   describe('filtersToQuery', () => {
     it('should return empty string when no filters', () => {
       const filters = {};

@@ -1031,12 +1031,23 @@ describe('checkAlerts', () => {
     });
 
     it('coerces numeric field values to strings', () => {
-      const { extraFields } = parseAlertData(
+      const { extraFields, groupFields } = parseAlertData(
         { ts: '2023-11-16T22:12:00.000Z', StatusCode: 500, cnt: 5 },
         timeSeriesMeta,
       );
 
       expect(extraFields).toEqual([['StatusCode', '500']]);
+      expect(groupFields).toEqual([['StatusCode', 500]]);
+    });
+
+    it('preserves NULL group values separately from display strings', () => {
+      const { extraFields, groupFields } = parseAlertData(
+        { ts: '2023-11-16T22:12:00.000Z', ServiceName: null, cnt: 5 },
+        timeSeriesMeta,
+      );
+
+      expect(extraFields).toEqual([['ServiceName', 'null']]);
+      expect(groupFields).toEqual([['ServiceName', null]]);
     });
 
     it('returns no fields when there are no group-by columns', () => {
