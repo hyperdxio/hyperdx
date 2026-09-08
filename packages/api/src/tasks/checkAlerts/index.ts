@@ -934,11 +934,28 @@ export const getResponseMetadata = (
     ...group,
     resultName: normalizeColumnName(group.resultName),
   }));
+  const timestampIndex = meta.findIndex(
+    column => column.name === timestampColumnName,
+  );
+  // Builder SELECT order is values, groups, timestamp. Value rendering may
+  // collapse ratios or formulas, so identify group columns from the response
+  // tail rather than assuming one response column per configured select.
+  const columnsBeforeTimestamp = meta
+    .slice(0, timestampIndex >= 0 ? timestampIndex : undefined)
+    .filter(
+      column => !(column.name === 'group' && column.type.startsWith('Array(')),
+    );
+  const positionalGroupColumns =
+    isBuilderChartConfig(chartConfig) &&
+    configuredGroups.length > 0 &&
+    columnsBeforeTimestamp.length > configuredGroups.length
+      ? columnsBeforeTimestamp.slice(-configuredGroups.length)
+      : [];
   // Match direct group columns by their configured expression names.
   const groupColumnExpressions = new Map<string, string>();
   const matchedGroupExpressions = new Set<string>();
   for (const group of configuredGroups) {
-    const resultColumn = meta.find(
+    const resultColumn = positionalGroupColumns.find(
       column =>
         column.jsType !== clickhouse.JSDataType.Date &&
         column.jsType !== clickhouse.JSDataType.Number &&
@@ -954,18 +971,6 @@ export const getResponseMetadata = (
   // remaining non-numeric columns by their stable projection order, while
   // keeping raw response names available for persisted history keys. Numeric
   // columns are ambiguous with the alert value and degrade explicitly below.
-  const selectColumnCount =
-    isBuilderChartConfig(chartConfig) && Array.isArray(chartConfig.select)
-      ? chartConfig.select.length
-      : 0;
-  const timestampIndex = meta.findIndex(
-    column => column.name === timestampColumnName,
-  );
-  const positionalGroupColumns = meta
-    .slice(selectColumnCount, timestampIndex >= 0 ? timestampIndex : undefined)
-    .filter(
-      column => !(column.name === 'group' && column.type.startsWith('Array(')),
-    );
   configuredGroups.forEach((group, index) => {
     if (matchedGroupExpressions.has(group.expression)) {
       return;
@@ -984,13 +989,15 @@ export const getResponseMetadata = (
   const unmappedGroupExpressions = configuredGroups
     .filter(group => !matchedGroupExpressions.has(group.expression))
     .map(group => group.expression);
-  // Builder projections put selected values before group columns. Restricting
-  // value detection to that slice prevents numeric group values from becoming
-  // the threshold value; numeric groups consequently join the persisted group
-  // key on the first evaluation after this fix. Raw SQL retains the established
-  // all-numeric behavior because its result shape is user-defined.
+  // Excluding the response-tail group columns prevents numeric group values
+  // from becoming the threshold value; numeric groups consequently join the
+  // persisted group key on the first evaluation after this fix. Raw SQL retains
+  // the established all-numeric behavior because its result shape is user-defined.
+  const builderGroupColumnNames = new Set(
+    positionalGroupColumns.map(column => column.name),
+  );
   const valueColumns = isBuilderChartConfig(chartConfig)
-    ? meta.slice(0, selectColumnCount)
+    ? meta.filter(column => !builderGroupColumnNames.has(column.name))
     : meta;
   const valueColumnNames = new Set(
     valueColumns
