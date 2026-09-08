@@ -333,8 +333,11 @@ describe('renderAlertTemplate', () => {
         await render(view, AlertState.ALERT);
 
         expect(mockClickhouseClient.query).toHaveBeenCalledTimes(1);
-        expect(mockClickhouseClient.query.mock.calls[0][0].query).toContain(
-          "ServiceName = 'checkout'",
+        const sampleQuery = mockClickhouseClient.query.mock.calls[0][0].query;
+        expect(sampleQuery).toContain("Body = 'error'");
+        expect(sampleQuery).toContain("ServiceName = 'checkout'");
+        expect(sampleQuery).toMatch(
+          /Timestamp >= fromUnixTimestamp64Milli\(.+\) AND Timestamp < fromUnixTimestamp64Milli\(.+\)/,
         );
       });
 

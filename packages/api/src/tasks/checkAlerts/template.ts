@@ -802,7 +802,9 @@ ${targetTemplate}`;
         connection: '', // no need for the connection id since clickhouse client is already initialized
         displayType: DisplayType.Search,
         dateRange: [startTime, endTime],
-        filters: savedSearch.filters?.map(filter => ({ ...filter })),
+        dateRangeStartInclusive: true,
+        dateRangeEndInclusive: false,
+        filters: savedSearch.filters,
         orderBy: savedSearch.orderBy,
         select: savedSearch.select,
         where: savedSearch.where,
