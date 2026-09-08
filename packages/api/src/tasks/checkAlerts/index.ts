@@ -16,6 +16,7 @@ import {
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
   ALERT_COUNT_DEFAULT_SELECT,
+  ALERT_WINDOW_DATE_RANGE_BOUNDS,
   buildSearchChartConfig,
 } from '@hyperdx/common-utils/dist/core/searchChartConfig';
 import {
@@ -767,8 +768,7 @@ const buildAlertChartConfigFromSavedConfig = ({
     return {
       connection,
       dateRange,
-      dateRangeStartInclusive: true,
-      dateRangeEndInclusive: false,
+      ...ALERT_WINDOW_DATE_RANGE_BOUNDS,
       displayType: savedConfig.displayType,
       from: source.from,
       granularity: `${windowSizeInMins} minute`,
@@ -823,8 +823,7 @@ const getChartConfigFromAlert = (
       displayType: DisplayType.Line,
       connection,
       dateRange,
-      dateRangeStartInclusive: true,
-      dateRangeEndInclusive: false,
+      ...ALERT_WINDOW_DATE_RANGE_BOUNDS,
       granularity: `${windowSizeInMins} minute`,
     });
   } else if (details.taskType === AlertTaskType.TILE) {

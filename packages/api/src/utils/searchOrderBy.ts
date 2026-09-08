@@ -1,7 +1,4 @@
-import {
-  getFirstTimestampValueExpression,
-  splitAndTrimWithBracket,
-} from '@hyperdx/common-utils/dist/core/utils';
+import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/core/utils';
 import type { TSource } from '@hyperdx/common-utils/dist/types';
 import { isLogSource, isTraceSource } from '@hyperdx/common-utils/dist/types';
 
@@ -47,9 +44,7 @@ export function resolveSearchOrderBy(
   }
 
   if (orderByParts.length === 0) {
-    orderByParts.push(
-      getFirstTimestampValueExpression(timestampExpr) ?? 'Timestamp',
-    );
+    orderByParts.push('Timestamp');
   }
 
   return orderByParts.length > 1

@@ -1,7 +1,10 @@
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
-import { buildSearchChartConfig } from '@hyperdx/common-utils/dist/core/searchChartConfig';
+import {
+  ALERT_WINDOW_DATE_RANGE_BOUNDS,
+  buildSearchChartConfig,
+} from '@hyperdx/common-utils/dist/core/searchChartConfig';
 import { formatDate, objectHash } from '@hyperdx/common-utils/dist/core/utils';
 import {
   isPromqlSavedChartConfig,
@@ -803,8 +806,7 @@ ${targetTemplate}`;
         connection: '', // no need for the connection id since clickhouse client is already initialized
         displayType: DisplayType.Search,
         dateRange: [startTime, endTime],
-        dateRangeStartInclusive: true,
-        dateRangeEndInclusive: false,
+        ...ALERT_WINDOW_DATE_RANGE_BOUNDS,
         filters: savedSearch.filters?.map(filter => ({ ...filter })),
         orderBy: resolveSearchOrderBy(source, savedSearch.orderBy),
         select: savedSearch.select,

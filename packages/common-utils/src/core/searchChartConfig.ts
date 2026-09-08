@@ -54,6 +54,14 @@ export const ALERT_COUNT_DEFAULT_SELECT: SelectList = [
   },
 ];
 
+// Alert evaluation and notification samples must use the same half-open
+// window so an event at the next bucket boundary is never counted or shown in
+// the preceding bucket.
+export const ALERT_WINDOW_DATE_RANGE_BOUNDS = {
+  dateRangeStartInclusive: true,
+  dateRangeEndInclusive: false,
+} as const;
+
 /**
  * Saved-search-shaped inputs for assembling a chart config.
  *
