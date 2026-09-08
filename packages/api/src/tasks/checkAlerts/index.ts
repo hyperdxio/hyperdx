@@ -931,9 +931,9 @@ export const getResponseMetadata = (
     : dateColumns[0]?.name;
   const groupBy = 'groupBy' in chartConfig ? chartConfig.groupBy : undefined;
   const normalizeColumnName = (name: string) => unquoteIdentifier(name.trim());
-  // Notification samples are only fetched for saved-search alerts, whose
-  // groupBy value is a comma-separated string. Tile/inline group aliases do
-  // not flow into this path.
+  // Saved-search notification samples consume this mapping. Tile/inline
+  // builder configs can also populate it when groupBy is a string, but those
+  // paths currently use only the response fields for history and display.
   const configuredGroups = (
     typeof groupBy === 'string'
       ? splitAndTrimWithBracket(groupBy).map(expression => ({

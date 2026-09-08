@@ -986,7 +986,7 @@ describe('checkAlerts', () => {
       });
 
     const timeSeriesMeta = {
-      type: 'time_series' as const,
+      type: 'time_series',
       timestampColumnName: 'ts',
       valueColumnNames: new Set(['cnt']),
       groupColumnExpressions: new Map([
@@ -994,7 +994,7 @@ describe('checkAlerts', () => {
         ['SeverityText', 'SeverityText'],
       ]),
       unmappedGroupExpressions: [],
-    };
+    } satisfies Parameters<typeof parseAlertData>[1];
 
     it('uses the selected value instead of a numeric group for the threshold', () => {
       const meta = getResponseMetadata(
@@ -1558,11 +1558,11 @@ describe('checkAlerts', () => {
       const { value, groupFields } = parseAlertData(
         { ts: '2023-11-16T22:12:00.000Z', cnt: 5 },
         {
-          type: 'single_value' as const,
+          type: 'single_value',
           valueColumnNames: new Set(['cnt']),
           groupColumnExpressions: new Map(),
           unmappedGroupExpressions: [],
-        },
+        } satisfies Parameters<typeof parseAlertData>[1],
       );
 
       expect(value).toBe(5);

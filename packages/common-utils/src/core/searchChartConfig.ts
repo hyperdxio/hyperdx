@@ -74,7 +74,10 @@ const IMPLICIT_DATETIME_PREFIXES = [
  * Resolve the search ordering shared by the app and server-side search paths.
  * A caller-provided order wins, followed by the source override. Otherwise the
  * source timestamp expressions are combined with timestamp-like sorting-key
- * columns when table metadata is available.
+ * columns when table metadata is available. Server-side callers that do not
+ * already have a sorting key deliberately omit it rather than adding a table-
+ * metadata round trip; their fallback ordering can therefore be less specific
+ * than the app's ordering for the same source.
  */
 export function resolveSearchOrderBy(
   source: TSource,
