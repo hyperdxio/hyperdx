@@ -371,6 +371,28 @@ describe('renderAlertTemplate', () => {
         );
       });
 
+      it('applies saved-search filters and ordering to trace samples', async () => {
+        const view = makeSearchView();
+        if (view.savedSearch == null || view.source == null) {
+          throw new Error('Expected a saved search and source');
+        }
+        view.savedSearch.filters = [
+          { type: 'sql', condition: "ServiceName = 'checkout'" },
+        ];
+        view.savedSearch.orderBy = undefined;
+        view.source.kind = SourceKind.Trace;
+        view.source.defaultTableSelectExpression = 'Timestamp, SpanName';
+        view.source.orderByExpression = 'Duration ASC';
+        mockClickhouseClient.query.mockClear();
+
+        await render(view, AlertState.ALERT);
+
+        expect(mockClickhouseClient.query).toHaveBeenCalledTimes(1);
+        const sampleQuery = mockClickhouseClient.query.mock.calls[0][0].query;
+        expect(sampleQuery).toContain("ServiceName = 'checkout'");
+        expect(sampleQuery).toContain('ORDER BY Duration ASC');
+      });
+
       it('uses the source order when the saved search has no order', async () => {
         const view = makeSearchView();
         if (view.savedSearch == null) {
