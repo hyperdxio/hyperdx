@@ -917,11 +917,14 @@ export const getResponseMetadata = (
     m => m.jsType === clickhouse.JSDataType.Date,
   )?.name;
   const groupBy = 'groupBy' in chartConfig ? chartConfig.groupBy : undefined;
-  const groupColumnCount = Array.isArray(groupBy)
-    ? groupBy.length
-    : typeof groupBy === 'string'
-      ? splitAndTrimWithBracket(groupBy).length
-      : 0;
+  const groupColumnCount =
+    'selectGroupBy' in chartConfig && chartConfig.selectGroupBy === false
+      ? 0
+      : Array.isArray(groupBy)
+        ? groupBy.length
+        : typeof groupBy === 'string'
+          ? splitAndTrimWithBracket(groupBy).length
+          : 0;
   // renderChartConfig emits value columns first, followed by group columns
   // and the time bucket. Use the returned metadata names so aliases and
   // expressions remain byte-identical to ClickHouse's result keys.

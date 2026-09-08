@@ -980,19 +980,27 @@ describe('checkAlerts', () => {
       groupColumnNames: new Set(['ServiceName', 'SeverityText']),
     };
 
-    it('classifies a numeric group-by column from real response metadata', () => {
+    it('classifies multiple group-by columns, including a numeric one, from real response metadata', () => {
       const meta = getResponseMetadata(
         makeAlertChartConfig({
           sourceId: 'fake-source-id',
-          groupBy: 'StatusCode',
+          groupBy: 'ServiceName, StatusCode',
         }) as ChartConfigWithOptDateRange,
         {
           meta: [
             { name: 'cnt', type: 'UInt64' },
+            { name: 'ServiceName', type: 'String' },
             { name: 'StatusCode', type: 'UInt16' },
             { name: 'ts', type: 'DateTime' },
           ],
-          data: [{ cnt: '5', StatusCode: 500, ts: '2023-11-16 22:12:00' }],
+          data: [
+            {
+              cnt: '5',
+              ServiceName: 'api',
+              StatusCode: 500,
+              ts: '2023-11-16 22:12:00',
+            },
+          ],
           rows: 1,
           statistics: { elapsed: 0, rows_read: 1, bytes_read: 1 },
         },
@@ -1002,13 +1010,43 @@ describe('checkAlerts', () => {
         type: 'time_series',
         timestampColumnName: 'ts',
         valueColumnNames: new Set(['cnt']),
-        groupColumnNames: new Set(['StatusCode']),
+        groupColumnNames: new Set(['ServiceName', 'StatusCode']),
       });
       expect(
-        parseAlertData({ cnt: 5, StatusCode: 500, ts: 'now' }, meta!),
+        parseAlertData(
+          { cnt: 5, ServiceName: 'api', StatusCode: 500, ts: 'now' },
+          meta!,
+        ),
       ).toMatchObject({
         value: 5,
-        groupFields: [['StatusCode', 500]],
+        groupFields: [
+          ['ServiceName', 'api'],
+          ['StatusCode', 500],
+        ],
+      });
+    });
+
+    it('does not infer projected groups when selectGroupBy is disabled', () => {
+      const chartConfig = {
+        ...makeAlertChartConfig({
+          sourceId: 'fake-source-id',
+          groupBy: 'StatusCode',
+        }),
+        selectGroupBy: false,
+      } as ChartConfigWithOptDateRange;
+      const meta = getResponseMetadata(chartConfig, {
+        meta: [
+          { name: 'cnt', type: 'UInt64' },
+          { name: 'ts', type: 'DateTime' },
+        ],
+        data: [{ cnt: '5', ts: '2023-11-16 22:12:00' }],
+        rows: 1,
+        statistics: { elapsed: 0, rows_read: 1, bytes_read: 1 },
+      });
+
+      expect(meta).toMatchObject({
+        valueColumnNames: new Set(['cnt']),
+        groupColumnNames: new Set(),
       });
     });
 

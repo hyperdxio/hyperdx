@@ -78,6 +78,12 @@ describe('filters', () => {
         equalityFiltersToQuery({ ServiceNames: ['api', 'worker'] }),
       ).toThrow('Unsupported equality-filter value for ServiceNames');
     });
+
+    it('keeps numeric values numeric when keys are not stringified', () => {
+      expect(equalityFiltersToQuery({ StatusCode: 500 })).toEqual([
+        { type: 'sql', condition: 'StatusCode IN (500)' },
+      ]);
+    });
   });
 
   describe('filtersToQuery', () => {

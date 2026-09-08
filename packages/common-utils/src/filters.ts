@@ -123,6 +123,9 @@ export const equalityFiltersToQuery = (
     ) {
       throw new TypeError(`Unsupported equality-filter value for ${key}`);
     }
+    if (!stringifyKeys && typeof value === 'number') {
+      return [{ type: 'sql' as const, condition: `${key} IN (${value})` }];
+    }
 
     return filtersToQuery(
       {
