@@ -940,17 +940,18 @@ export const getResponseMetadata = (
   // Builder SELECT order is values, groups, timestamp. Value rendering may
   // collapse ratios or formulas, so identify group columns from the response
   // tail rather than assuming one response column per configured select.
-  const columnsBeforeTimestamp = meta
-    .slice(0, timestampIndex >= 0 ? timestampIndex : undefined)
-    .filter(
-      column => !(column.name === 'group' && column.type.startsWith('Array(')),
-    );
+  const columnsBeforeTimestamp = meta.slice(
+    0,
+    timestampIndex >= 0 ? timestampIndex : undefined,
+  );
   const positionalGroupColumns =
     isBuilderChartConfig(chartConfig) &&
     configuredGroups.length > 0 &&
     columnsBeforeTimestamp.length > configuredGroups.length
       ? columnsBeforeTimestamp.slice(-configuredGroups.length)
       : [];
+  const isPackedGroupColumn = (column: (typeof meta)[number]) =>
+    column.name === 'group' && column.type.startsWith('Array(');
   // Match direct group columns by their configured expression names.
   const groupColumnExpressions = new Map<string, string>();
   const matchedGroupExpressions = new Set<string>();
@@ -959,6 +960,7 @@ export const getResponseMetadata = (
       column =>
         column.jsType !== clickhouse.JSDataType.Date &&
         column.jsType !== clickhouse.JSDataType.Number &&
+        !isPackedGroupColumn(column) &&
         normalizeColumnName(column.name) === group.resultName,
     );
     if (resultColumn != null) {
@@ -980,6 +982,7 @@ export const getResponseMetadata = (
       resultColumn != null &&
       resultColumn.jsType !== clickhouse.JSDataType.Date &&
       resultColumn.jsType !== clickhouse.JSDataType.Number &&
+      !isPackedGroupColumn(resultColumn) &&
       !groupColumnExpressions.has(resultColumn.name)
     ) {
       groupColumnExpressions.set(resultColumn.name, group.expression);
