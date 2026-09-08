@@ -1136,6 +1136,49 @@ describe('checkAlerts', () => {
       });
     });
 
+    it('ignores empty packed-group padding on scalar histogram rows', () => {
+      const meta = getResponseMetadata(
+        makeHistogramMetadataChartConfig('ServiceName'),
+        {
+          meta: [
+            { name: '__hdx_time_bucket', type: 'DateTime' },
+            { name: 'group', type: 'Array(String)' },
+            { name: 'ServiceName', type: 'String' },
+            { name: 'Value', type: 'Float64' },
+          ],
+          data: [
+            {
+              __hdx_time_bucket: '2023-11-16 22:12:00',
+              group: [],
+              ServiceName: 'api',
+              Value: 5,
+            },
+          ],
+          rows: 1,
+          statistics: { elapsed: 0, rows_read: 1, bytes_read: 1 },
+        },
+      );
+
+      expect(
+        parseAlertData(
+          {
+            __hdx_time_bucket: '2023-11-16 22:12:00',
+            group: [],
+            ServiceName: 'api',
+            Value: 5,
+          },
+          meta!,
+        ),
+      ).toEqual({
+        value: 5,
+        groupFields: [
+          ['group', []],
+          ['ServiceName', 'api'],
+        ],
+        groupFilterFields: [['ServiceName', 'api']],
+      });
+    });
+
     it('maps a numeric group for filtering while the last numeric column remains the value', () => {
       const meta = getResponseMetadata(
         makeMetadataChartConfig({

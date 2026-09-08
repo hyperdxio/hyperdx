@@ -1067,7 +1067,15 @@ export const parseAlertData = (data: AlertQueryRow, meta: ResponseMetadata) => {
       packedGroupExpressions?.forEach((expression, index) => {
         groupFilterFields.push([expression, packedGroupValue.at(index)]);
       });
-    } else if (meta.groupColumnNames.has(k)) {
+    } else if (
+      meta.groupColumnNames.has(k) &&
+      !(
+        k === GROUP_ALIAS &&
+        packedGroupExpressions != null &&
+        Array.isArray(v) &&
+        v.length === 0
+      )
+    ) {
       if (!usesPackedGroup) {
         groupFilterFields.push([meta.groupColumnExpressions?.get(k) ?? k, v]);
       }
