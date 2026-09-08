@@ -989,9 +989,14 @@ describe('checkAlerts', () => {
       timestampColumnName: 'ts',
       valueColumnNames: new Set(['cnt']),
       groupColumnNames: new Set(['ServiceName', 'SeverityText']),
+      groupColumnExpressions: new Map([
+        ['ServiceName', 'ServiceName'],
+        ['SeverityText', 'SeverityText'],
+      ]),
+      unmappedGroupExpressions: [],
     };
 
-    it('exposes numeric group filters without changing legacy value selection', () => {
+    it('does not filter by a numeric group omitted from the legacy group key', () => {
       const meta = getResponseMetadata(
         makeMetadataChartConfig({
           sourceId: 'fake-source-id',
@@ -1021,7 +1026,8 @@ describe('checkAlerts', () => {
         type: 'time_series',
         timestampColumnName: 'ts',
         valueColumnNames: new Set(['cnt', 'StatusCode']),
-        groupColumnNames: new Set(['ServiceName', 'StatusCode']),
+        groupColumnNames: new Set(['ServiceName']),
+        unmappedGroupExpressions: ['StatusCode'],
       });
       expect(
         parseAlertData(
@@ -1031,14 +1037,12 @@ describe('checkAlerts', () => {
       ).toMatchObject({
         value: 500,
         groupFields: [['ServiceName', 'api']],
-        groupFilterFields: [
-          ['ServiceName', 'api'],
-          ['StatusCode', 500],
-        ],
+        groupFilterFields: [['ServiceName', 'api']],
+        unsupportedGroupKeys: ['StatusCode'],
       });
     });
 
-    it('maps a numeric group for filtering while the last numeric column remains the value', () => {
+    it('reports a numeric group that cannot enter the legacy group key', () => {
       const meta = getResponseMetadata(
         makeMetadataChartConfig({
           sourceId: 'fake-source-id',
@@ -1066,7 +1070,8 @@ describe('checkAlerts', () => {
         type: 'time_series',
         timestampColumnName: '__hdx_time_bucket',
         valueColumnNames: new Set(['StatusCode', 'Value']),
-        groupColumnNames: new Set(['StatusCode']),
+        groupColumnNames: new Set(),
+        unmappedGroupExpressions: ['StatusCode'],
       });
       expect(
         parseAlertData(
@@ -1080,7 +1085,8 @@ describe('checkAlerts', () => {
       ).toEqual({
         value: 5,
         groupFields: [],
-        groupFilterFields: [['StatusCode', 500]],
+        groupFilterFields: [],
+        unsupportedGroupKeys: ['StatusCode'],
       });
     });
 
@@ -1199,7 +1205,56 @@ describe('checkAlerts', () => {
       ).toEqual({
         value: 500,
         groupFields: [],
-        groupFilterFields: [["ResourceAttributes['status.code']", []]],
+        groupFilterFields: [],
+        unsupportedGroupKeys: ["ResourceAttributes['status.code']"],
+      });
+    });
+
+    it('keeps positional group mapping aligned after an unsupported numeric group', () => {
+      const numericExpression = "toUInt64(LogAttributes['code'])";
+      const statusExpression = "LogAttributes['status']";
+      const numericResult = "toUInt64(arrayElement(LogAttributes, 'code'))";
+      const statusResult = "arrayElement(LogAttributes, 'status')";
+      const meta = getResponseMetadata(
+        makeMetadataChartConfig({
+          sourceId: 'fake-source-id',
+          groupBy: `${numericExpression}, ${statusExpression}`,
+        }),
+        {
+          meta: [
+            { name: 'cnt', type: 'UInt64' },
+            { name: numericResult, type: 'UInt64' },
+            { name: statusResult, type: 'String' },
+            { name: 'ts', type: 'DateTime' },
+          ],
+          data: [
+            {
+              cnt: '5',
+              [numericResult]: 500,
+              [statusResult]: 'checkout',
+              ts: '2023-11-16 22:12:00',
+            },
+          ],
+          rows: 1,
+          statistics: { elapsed: 0, rows_read: 1, bytes_read: 1 },
+        },
+      );
+
+      expect(
+        parseAlertData(
+          {
+            cnt: '5',
+            [numericResult]: 500,
+            [statusResult]: 'checkout',
+            ts: 'now',
+          },
+          meta!,
+        ),
+      ).toEqual({
+        value: 500,
+        groupFields: [[statusResult, 'checkout']],
+        groupFilterFields: [[statusExpression, 'checkout']],
+        unsupportedGroupKeys: [numericExpression],
       });
     });
 
@@ -1308,6 +1363,7 @@ describe('checkAlerts', () => {
       const numericGroupMeta = {
         ...timeSeriesMeta,
         groupColumnNames: new Set(['StatusCode']),
+        groupColumnExpressions: new Map([['StatusCode', 'StatusCode']]),
       };
       const { groupFields } = parseAlertData(
         { ts: '2023-11-16T22:12:00.000Z', StatusCode: 500, cnt: 5 },
@@ -1321,6 +1377,7 @@ describe('checkAlerts', () => {
       const nullableGroupMeta = {
         ...timeSeriesMeta,
         groupColumnNames: new Set(['ServiceName']),
+        groupColumnExpressions: new Map([['ServiceName', 'ServiceName']]),
       };
       const { groupFields } = parseAlertData(
         { ts: '2023-11-16T22:12:00.000Z', ServiceName: null, cnt: 5 },
@@ -1334,6 +1391,7 @@ describe('checkAlerts', () => {
       const booleanGroupMeta = {
         ...timeSeriesMeta,
         groupColumnNames: new Set(['IsError']),
+        groupColumnExpressions: new Map([['IsError', 'IsError']]),
       };
       const { groupFields } = parseAlertData(
         { ts: '2023-11-16T22:12:00.000Z', IsError: true, cnt: 5 },
@@ -1360,6 +1418,8 @@ describe('checkAlerts', () => {
           type: 'single_value' as const,
           valueColumnNames: new Set(['cnt']),
           groupColumnNames: new Set(),
+          groupColumnExpressions: new Map(),
+          unmappedGroupExpressions: [],
         },
       );
 

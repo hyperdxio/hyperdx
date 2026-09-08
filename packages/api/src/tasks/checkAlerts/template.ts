@@ -269,6 +269,8 @@ export type AlertMessageTemplateDefaultView = {
   group?: string;
   /** Flat group column/value pairs used to constrain notification samples. */
   groupAttributes?: Record<string, unknown>;
+  /** Configured group expressions that could not be mapped to response columns. */
+  unsupportedGroupKeys?: string[];
   isGroupedAlert: boolean;
   savedSearch?: ISavedSearch | null;
   source?: ISource | null;
@@ -565,6 +567,7 @@ export const renderAlertTemplate = async ({
     group,
     groupAttributes,
     isGroupedAlert,
+    unsupportedGroupKeys: metadataUnsupportedGroupKeys,
     savedSearch,
     source,
     startTime,
@@ -820,14 +823,18 @@ ${targetTemplate}`;
     // TODO: show group + total count for group-by alerts
     // fetch sample logs
     let truncatedResults = '';
-    let unsupportedGroupKeys: string[] = [];
+    let unsupportedGroupKeys = isGroupedAlert
+      ? [...(metadataUnsupportedGroupKeys ?? [])]
+      : [];
     let chartConfig: ChartConfigWithOptDateRange | undefined;
     try {
       const filterResult = equalityFiltersToQuery(
         isGroupedAlert ? (groupAttributes ?? {}) : {},
       );
       const groupFilters = filterResult.filters;
-      unsupportedGroupKeys = filterResult.unsupportedKeys;
+      unsupportedGroupKeys = Array.from(
+        new Set([...unsupportedGroupKeys, ...filterResult.unsupportedKeys]),
+      );
       for (const groupKey of unsupportedGroupKeys) {
         logger.warn(
           {

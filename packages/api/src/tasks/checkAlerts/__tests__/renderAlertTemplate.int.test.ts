@@ -148,6 +148,7 @@ const makeSearchView = (
   granularity: '1m',
   group: overrides.group,
   groupAttributes: overrides.groupAttributes,
+  unsupportedGroupKeys: overrides.unsupportedGroupKeys,
   isGroupedAlert: overrides.isGroupedAlert ?? false,
   startTime,
   endTime,
@@ -444,6 +445,23 @@ describe('renderAlertTemplate', () => {
 
         expect(result).toContain('[Some group filters could not be applied]');
         expect(result).toContain('[Sample fetch failed]');
+      });
+
+      it('reports group expressions that could not be mapped from query metadata', async () => {
+        const result = await render(
+          makeSearchView({
+            group: 'ServiceName:checkout',
+            groupAttributes: { ServiceName: 'checkout' },
+            isGroupedAlert: true,
+            unsupportedGroupKeys: ["LogAttributes['code']"],
+          }),
+          AlertState.ALERT,
+        );
+
+        expect(result).toContain('[Some group filters could not be applied]');
+        const sampleQuery = mockClickhouseClient.query.mock.calls[0][0].query;
+        expect(sampleQuery).toContain("toString(ServiceName) IN ('checkout')");
+        expect(sampleQuery).not.toContain("LogAttributes['code']");
       });
 
       it('does not constrain samples when the alert is not grouped', async () => {
