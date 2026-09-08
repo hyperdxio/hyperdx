@@ -805,7 +805,7 @@ ${targetTemplate}`;
         dateRangeStartInclusive: true,
         dateRangeEndInclusive: false,
         filters: savedSearch.filters,
-        orderBy: savedSearch.orderBy,
+        orderBy: savedSearch.orderBy || source.orderByExpression,
         select: savedSearch.select,
         where: savedSearch.where,
         whereLanguage: savedSearch.whereLanguage,
