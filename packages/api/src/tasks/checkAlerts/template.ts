@@ -245,6 +245,13 @@ const sampleFetchFailuresCounter = getCounter(
       'Count of alert notifications whose sample-event query failed.',
   },
 );
+const sampleFilterFailuresCounter = getCounter(
+  'hyperdx.alerts.sample_filter_failures',
+  {
+    description:
+      'Count of alert notifications whose sample-event query omitted unsupported group filters.',
+  },
+);
 
 const zNotifyFnParams = z.object({
   hash: z.object({
@@ -813,6 +820,26 @@ ${targetTemplate}`;
     // TODO: show group + total count for group-by alerts
     // fetch sample logs
     let truncatedResults = '';
+    const groupFilters: Filter[] = [];
+    const unsupportedGroupKeys: string[] = [];
+    for (const [key, groupValue] of Object.entries(groupAttributes ?? {})) {
+      try {
+        groupFilters.push(...equalityFiltersToQuery({ [key]: groupValue }));
+      } catch (error) {
+        unsupportedGroupKeys.push(key);
+        logger.warn(
+          {
+            savedSearchId: savedSearch.id,
+            groupKey: key,
+            error: serializeError(error),
+          },
+          'Omitting unsupported group value from alert sample filters',
+        );
+      }
+    }
+    if (unsupportedGroupKeys.length > 0) {
+      sampleFilterFailuresCounter.add(1);
+    }
     try {
       const chartConfig: ChartConfigWithOptDateRange = {
         ...buildSearchChartConfig(source, {
@@ -822,7 +849,7 @@ ${targetTemplate}`;
           ...ALERT_WINDOW_DATE_RANGE_BOUNDS,
           filters: [
             ...(savedSearch.filters?.map(filter => ({ ...filter })) ?? []),
-            ...equalityFiltersToQuery(groupAttributes ?? {}),
+            ...groupFilters,
           ],
           orderBy: resolveSearchOrderBy(source, savedSearch.orderBy),
           select: savedSearch.select,
@@ -857,8 +884,14 @@ ${targetTemplate}`;
 
       const lines = raw.split('\n');
 
+      const filterWarning =
+        unsupportedGroupKeys.length > 0
+          ? '[Some group filters could not be applied]\n'
+          : '';
       truncatedResults = truncateString(
-        lines.map(line => truncateString(line, MAX_MESSAGE_LENGTH)).join('\n'),
+        `${filterWarning}${lines
+          .map(line => truncateString(line, MAX_MESSAGE_LENGTH))
+          .join('\n')}`,
         2500,
       );
     } catch (e) {

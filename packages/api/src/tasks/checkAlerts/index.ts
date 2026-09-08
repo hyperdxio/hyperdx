@@ -913,35 +913,37 @@ export const getResponseMetadata = (
     m => m.jsType === clickhouse.JSDataType.Date,
   )?.name;
   const groupBy = 'groupBy' in chartConfig ? chartConfig.groupBy : undefined;
-  const groupColumnCount = Array.isArray(groupBy)
-    ? groupBy.length
-    : typeof groupBy === 'string'
-      ? splitAndTrimWithBracket(groupBy).length
-      : 0;
-  // renderChartConfig emits value columns first, followed by group columns
-  // and the time bucket. Use the returned metadata names so aliases and
-  // expressions remain byte-identical to ClickHouse's result keys.
-  const inferredGroupColumnNames = new Set(
-    groupColumnCount === 0
-      ? []
-      : meta
-          .filter(m => m.name !== timestampColumnName)
-          .slice(-groupColumnCount)
-          .map(m => m.name),
+  const normalizeColumnName = (name: string) => {
+    const trimmed = name.trim();
+    return (trimmed.startsWith('`') && trimmed.endsWith('`')) ||
+      (trimmed.startsWith('"') && trimmed.endsWith('"'))
+      ? trimmed.slice(1, -1)
+      : trimmed;
+  };
+  const configuredGroupColumnNames = new Set(
+    (typeof groupBy === 'string'
+      ? splitAndTrimWithBracket(groupBy)
+      : (groupBy ?? []).map(group =>
+          group.alias?.trim() ? group.alias : group.valueExpression,
+        )
+    ).map(normalizeColumnName),
   );
-  const numericColumnNames = meta
-    .filter(m => m.jsType === clickhouse.JSDataType.Number)
-    .map(m => m.name);
-  const inferredValueColumnNames = numericColumnNames.filter(
-    name => !inferredGroupColumnNames.has(name),
+  const hasPackedHistogramGroup =
+    configuredGroupColumnNames.size > 0 &&
+    meta.some(column => column.name === 'group');
+  // Match group columns by the names renderChartConfig actually assigns to
+  // the configured expressions/aliases. Positional inference is unsafe for
+  // histogram branches, which project their value after the packed `group`
+  // column, and for mixed metric charts whose group/value columns interleave.
+  const groupColumnNames = new Set(
+    meta
+      .filter(
+        column =>
+          configuredGroupColumnNames.has(normalizeColumnName(column.name)) ||
+          (hasPackedHistogramGroup && column.name === 'group'),
+      )
+      .map(column => column.name),
   );
-  // Histogram metric queries project their numeric value after their packed
-  // group column. If positional inference would remove every numeric value,
-  // retain the previous numeric classification instead of disabling alerts.
-  const groupColumnNames =
-    inferredValueColumnNames.length > 0
-      ? inferredGroupColumnNames
-      : new Set<string>();
   const valueColumnNames = new Set(
     meta
       .filter(
@@ -1657,7 +1659,9 @@ export const processAlert = async (
           ? groupFields.map(([k, v]) => `${k}:${v}`).join(', ')
           : '';
         const attributes = hasGroupBy
-          ? Object.fromEntries(groupFields.map(([k, v]) => [k, `${v}`]))
+          ? Object.fromEntries(
+              groupFields.map(([k, v]): [string, string] => [k, `${v}`]),
+            )
           : {};
         const groupAttributes = hasGroupBy
           ? Object.fromEntries(groupFields)

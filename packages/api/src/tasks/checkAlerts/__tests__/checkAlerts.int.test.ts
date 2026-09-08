@@ -1052,8 +1052,50 @@ describe('checkAlerts', () => {
 
       expect(meta).toMatchObject({
         valueColumnNames: new Set(['Value']),
-        groupColumnNames: new Set(),
+        groupColumnNames: new Set(['group']),
       });
+    });
+
+    it('classifies a numeric histogram group by name when the value is projected last', () => {
+      const meta = getResponseMetadata(
+        makeAlertChartConfig({
+          sourceId: 'fake-source-id',
+          groupBy: 'StatusCode',
+        }) as ChartConfigWithOptDateRange,
+        {
+          meta: [
+            { name: '__hdx_time_bucket', type: 'DateTime' },
+            { name: 'StatusCode', type: 'UInt16' },
+            { name: 'Value', type: 'Float64' },
+          ],
+          data: [
+            {
+              __hdx_time_bucket: '2023-11-16 22:12:00',
+              StatusCode: 500,
+              Value: 5,
+            },
+          ],
+          rows: 1,
+          statistics: { elapsed: 0, rows_read: 1, bytes_read: 1 },
+        },
+      );
+
+      expect(meta).toEqual({
+        type: 'time_series',
+        timestampColumnName: '__hdx_time_bucket',
+        valueColumnNames: new Set(['Value']),
+        groupColumnNames: new Set(['StatusCode']),
+      });
+      expect(
+        parseAlertData(
+          {
+            __hdx_time_bucket: '2023-11-16 22:12:00',
+            StatusCode: 500,
+            Value: 5,
+          },
+          meta!,
+        ),
+      ).toEqual({ value: 5, groupFields: [['StatusCode', 500]] });
     });
 
     it('returns the value and ordered [key, value] field pairs, excluding timestamp and value columns', () => {
@@ -2589,6 +2631,75 @@ describe('checkAlerts', () => {
             },
           ],
         },
+      );
+    });
+
+    it('SAVED_SEARCH grouped alert carries each firing group into its sample query', async () => {
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        savedSearch,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 0,
+          savedSearchId: savedSearch.id,
+          groupBy: 'ServiceName',
+        },
+        {
+          taskType: AlertTaskType.SAVED_SEARCH,
+          savedSearch,
+        },
+      );
+      const eventTime = new Date('2023-11-16T22:05:00.000Z');
+      await bulkInsertLogs([
+        {
+          ServiceName: 'checkout',
+          Timestamp: eventTime,
+          SeverityText: 'error',
+          Body: 'checkout failed',
+        },
+        {
+          ServiceName: 'billing',
+          Timestamp: eventTime,
+          SeverityText: 'error',
+          Body: 'billing failed',
+        },
+      ]);
+      const querySpy = jest.spyOn(clickhouseClient, 'query');
+
+      await processAlertAtTime(
+        new Date('2023-11-16T22:12:00.000Z'),
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      const sampleQueries = querySpy.mock.calls
+        .map(([input]) => input)
+        .filter(input => input.format === 'CSV')
+        .map(input => input.query);
+      expect(sampleQueries).toHaveLength(2);
+      expect(sampleQueries).toEqual(
+        expect.arrayContaining([
+          expect.stringContaining("toString(ServiceName) IN ('checkout')"),
+          expect.stringContaining("toString(ServiceName) IN ('billing')"),
+        ]),
       );
     });
 
