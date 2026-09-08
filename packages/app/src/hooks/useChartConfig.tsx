@@ -12,6 +12,10 @@ import {
   renderChartConfig,
 } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
+  renderSeriesNames,
+  SeriesNameInput,
+} from '@hyperdx/common-utils/dist/core/seriesNameTemplate';
+import {
   convertDateRangeToGranularityString,
   hasPositiveSeriesLimit,
 } from '@hyperdx/common-utils/dist/core/utils';
@@ -383,14 +387,25 @@ export function useQueriedChartConfig(
           if (vs.size > 1) distinguishingKeys.add(k);
         }
 
-        const data: Record<string, string | number>[] = [];
-        for (const series of allSeries) {
+        const seriesInputs: SeriesNameInput[] = allSeries.map(series => {
           const metricName = series.metric.__name__ ?? '';
           const labels = Object.entries(series.metric)
             .filter(([k]) => k !== '__name__' && distinguishingKeys.has(k))
             .map(([k, v]) => `${k}="${v}"`)
             .join(', ');
-          const seriesName = labels ? `${metricName}{${labels}}` : metricName;
+          return {
+            labels: series.metric,
+            fallback: labels ? `${metricName}{${labels}}` : metricName,
+          };
+        });
+        const legendTemplate = config.legendTemplate?.trim();
+        const seriesNames = legendTemplate
+          ? renderSeriesNames(legendTemplate, seriesInputs)
+          : seriesInputs.map(s => s.fallback);
+
+        const data: Record<string, string | number>[] = [];
+        for (const [i, series] of allSeries.entries()) {
+          const seriesName = seriesNames[i];
 
           for (const [ts, val] of series.values) {
             data.push({

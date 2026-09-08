@@ -477,12 +477,27 @@ export function resolveChartNumberFormats(
 }
 
 /**
+ * Below this magnitude (as displayed - see axisTickFormatter), a tick
+ * honors the chart's configured mantissa, capped at MAX_AXIS_MANTISSA; at
+ * or past it, a tick is always an integer. Mirrors
+ * packages/app/src/HDXMultiSeriesTimeChart.tsx's MAX_AXIS_MANTISSA /
+ * MAGNITUDE_THRESHOLD for behavioral parity with the web's y-axis - see
+ * that file's comment for the pixel-width reasoning behind these specific
+ * values (40px SVG axis column, 11px monospace font), which doesn't
+ * directly apply to a terminal chart's own width budget. Ported for
+ * consistency rather than independently derived for termchart's renderer.
+ */
+const MAX_AXIS_MANTISSA = 2;
+const MAGNITUDE_THRESHOLD = 10;
+
+/**
  * Build a termchart y-axis tick formatter from a chart's number format:
- * compact, no decimals — the same semantics as the web's y-axis.
- * Returns undefined (termchart default formatting) when the chart has
- * no number format.
+ * compact, decimals only under MAGNITUDE_THRESHOLD (capped at
+ * MAX_AXIS_MANTISSA) - the same semantics as the web's y-axis. Returns
+ * undefined (termchart default formatting) when the chart has no number
+ * format.
  *
- * @source packages/app/src/HDXMultiSeriesTimeChart.tsx (tickFormatter)
+ * @source packages/app/src/HDXMultiSeriesTimeChart.tsx (formatAxisTick)
  */
 export function axisTickFormatter(
   numberFormat: NumberFormat | undefined,
@@ -490,11 +505,16 @@ export function axisTickFormatter(
   if (!numberFormat) {
     return undefined;
   }
-  return (value: number) =>
-    formatNumber(value, {
+  return (value: number) => {
+    const displayed = numberFormat.output === 'percent' ? value * 100 : value;
+    return formatNumber(value, {
       ...numberFormat,
+      mantissa:
+        displayed === 0 || Math.abs(displayed) >= MAGNITUDE_THRESHOLD
+          ? 0
+          : Math.min(numberFormat.mantissa ?? 0, MAX_AXIS_MANTISSA),
       average: true,
-      mantissa: 0,
       unit: undefined,
     });
+  };
 }

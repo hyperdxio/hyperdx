@@ -1,13 +1,12 @@
+import { clearTemplateCache } from '@/core/handlebarsEnv';
 import {
-  clearLinkTemplateCache,
   LinkTemplateError,
   MissingTemplateVariableError,
   renderLinkTemplate,
-  validateTemplate,
 } from '@/core/linkTemplate';
 
 describe('renderLinkTemplate', () => {
-  beforeEach(() => clearLinkTemplateCache());
+  beforeEach(() => clearTemplateCache());
 
   it('substitutes row column values', () => {
     expect(
@@ -51,34 +50,5 @@ describe('renderLinkTemplate', () => {
 
   it('does not HTML-escape output', () => {
     expect(renderLinkTemplate('{{v}}', { v: '<&>' })).toBe('<&>');
-  });
-});
-
-describe('validateTemplate', () => {
-  it('accepts a plain string with no handlebars expressions', () => {
-    expect(() => validateTemplate('just a string')).not.toThrow();
-  });
-
-  it('accepts templates that reference variables without a known context', () => {
-    expect(() => validateTemplate('svc={{ServiceName}}')).not.toThrow();
-    expect(() => validateTemplate('{{a}} {{b}} {{c.d.e}}')).not.toThrow();
-  });
-
-  it('accepts templates using registered helpers', () => {
-    expect(() =>
-      validateTemplate('{{default missing "fallback"}}'),
-    ).not.toThrow();
-    expect(() => validateTemplate('{{floor n}}')).not.toThrow();
-  });
-
-  it('throws on malformed template syntax', () => {
-    expect(() => validateTemplate('{{#if')).toThrow();
-    expect(() => validateTemplate('{{unclosed')).toThrow();
-    expect(() => validateTemplate('{{#if x}}no-close')).toThrow();
-  });
-
-  it('does not throw when a referenced variable is absent (non-strict mode)', () => {
-    // Strict mode would throw MissingTemplateVariableError here; validate must not.
-    expect(() => validateTemplate('{{missing}}')).not.toThrow();
   });
 });

@@ -2,12 +2,21 @@ import express from 'express';
 import { performance } from 'perf_hooks';
 import { Readable } from 'stream';
 import { pipeline } from 'stream/promises';
+import z from 'zod';
 
 import { ClickhouseClient } from '@/clickhouse';
 import { getConnectionById } from '@/controllers/connection';
+import {
+  PROMETHEUS_MAX_EXECUTION_SEC,
+  PROMETHEUS_MAX_RESULT_ROWS,
+  queryLabelNames,
+  queryLabelValues,
+  TimeSeriesTagsQueryArgs,
+} from '@/controllers/timeseriesEngine';
 import { getNonNullUserWithTeam } from '@/middleware/auth';
 import { getCounter, getHistogram } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
+import { objectIdSchema } from '@/utils/zod';
 
 const router = express.Router();
 
@@ -152,8 +161,6 @@ export function formatVectorResponse(
 
 const PROMETHEUS_PROXY_TIMEOUT_MS = 90_000;
 const PROMETHEUS_CH_TIMEOUT_MS = 30_000;
-const PROMETHEUS_MAX_EXECUTION_SEC = 30;
-const PROMETHEUS_MAX_RESULT_ROWS = '100000';
 const PROMETHEUS_MAX_RESOLUTION = 11_000;
 // Widest window /query_exemplars will proxy. Prometheus's exemplar store is a
 // small circular buffer, so a wider range mostly costs a bigger streamed body
@@ -178,6 +185,61 @@ export function isClientDisconnect(err: unknown): boolean {
   );
 }
 
+/**
+ * Join a Connection host with an absolute Prometheus API path.
+ *
+ * `new URL('/api/v1/query_range', 'http://host:8481/select/0/prometheus')`
+ * discards `/select/0/prometheus` because an absolute path replaces the base
+ * pathname. VictoriaMetrics cluster (and any Prometheus-compatible server
+ * mounted under a prefix) needs that prefix kept. Host userinfo, query, and
+ * hash are left untouched.
+ *
+ * `path` must be an absolute path (every call site passes a literal starting
+ * with `/`) -- this is not a general-purpose URL joiner.
+ *
+ * @see https://github.com/hyperdxio/hyperdx/issues/3046
+ */
+export function joinPrometheusUpstreamUrl(
+  upstreamHost: string,
+  path: string,
+): URL {
+  const url = new URL(upstreamHost);
+  // `new URL('prometheus:9090')` succeeds with an opaque path (`prometheus:`
+  // scheme). The pathname setter is a no-op there, so without this guard the
+  // helper would return the host unchanged, `fetch` would fail, and the proxy
+  // would 502 / increment query_errors for a user misconfiguration. Same check
+  // as clickhouseProxy.ts.
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new TypeError('Connection host must be http(s)');
+  }
+  // Strip ALL trailing slashes, not just one -- a host saved with a doubled
+  // trailing slash (e.g. `http://prom:9090//`) would otherwise leave a `//`
+  // in the joined path, which most servers treat as a distinct (404) path.
+  const basePath = url.pathname.replace(/\/+$/, '');
+  url.pathname = `${basePath}${path}`;
+  return url;
+}
+
+// Only real Prometheus API params are ever caller-settable in
+// proxyToPrometheus's query merge below. `params` there is built upstream by
+// spreading the *entire* `req.query`/`req.body` with no allowlist (see
+// `getParams`), so without this, a request could supply an arbitrary key --
+// e.g. VictoriaMetrics's `extra_label`, which a Connection host may pin as a
+// tenant-isolation scope -- and un-pin or override it, even though no
+// legitimate caller ever sends that key.
+const CALLER_SETTABLE_PARAM_KEYS = new Set([
+  'query',
+  'time',
+  'start',
+  'end',
+  'step',
+  'match',
+  'match[]',
+  'limit',
+  'timeout',
+  'stats',
+]);
+
 // Forwards the response straight from the upstream Prometheus to the
 // HyperDX client. Returns the HTTP status it wrote, so callers can record an
 // error metric: this helper handles its own failures by writing 400/502/504 and
@@ -191,35 +253,63 @@ export function isClientDisconnect(err: unknown): boolean {
 async function proxyToPrometheus(
   upstreamHost: string,
   path: string,
-  params: Record<string, string>,
+  params: Record<string, string | string[] | undefined>,
   res: express.Response,
 ): Promise<number> {
   let url: URL;
   try {
-    url = new URL(path, upstreamHost);
-  } catch {
+    url = joinPrometheusUpstreamUrl(upstreamHost, path);
+  } catch (err) {
+    // Not echoing `upstreamHost` at all -- a redaction regex on an arbitrary
+    // (possibly malformed, since this is the failure branch) string can
+    // always be wrong for some shape (e.g. a `/` preceding the credentials).
+    // `err.message` is always safe to show: it's either this function's own
+    // fixed "Connection host must be http(s)", or `URL`'s parse-failure
+    // message, which is the fixed string "Invalid URL" and never echoes the
+    // input (verified against Node's URL implementation).
     res.status(400).json({
       status: 'error',
       errorType: 'bad_data',
-      error: `Connection host is not a valid URL: ${JSON.stringify(upstreamHost)}`,
+      error: `Invalid Connection host: ${err instanceof Error ? err.message : String(err)}`,
     });
     return 400;
   }
+  // For a key in CALLER_SETTABLE_PARAM_KEYS, the request always wins
+  // outright, including repeatable ones like `match[]` -- so a Connection
+  // host can never silently override (or, for `match[]`, narrow) a value
+  // the caller or this proxy explicitly sets. A host-only param outside
+  // that set (e.g. VictoriaMetrics's `extra_label`) is left as-is.
   for (const [k, v] of Object.entries(params)) {
-    if (['connectionId', 'database', 'table'].includes(k)) continue;
-    if (v != null) url.searchParams.set(k, v);
+    if (!CALLER_SETTABLE_PARAM_KEYS.has(k)) continue;
+    if (v == null) continue;
+    // Clear any host-pinned value at this key first: for a repeatable param
+    // this prevents an `append` from leaving the host's value(s) alongside
+    // the request's rather than replacing them. This also means a request's
+    // `limit=0` still clears a host-pinned `limit` (see below) even though
+    // it isn't itself re-set.
+    url.searchParams.delete(k);
+    // Prometheus reads a limit of 0 as "unlimited", the same as omitting the
+    // key entirely -- forward that by omission too, rather than a literal
+    // "0", so upstream sees the same request shape it always has.
+    if (k === 'limit' && v === '0') continue;
+    if (Array.isArray(v)) {
+      for (const item of v) url.searchParams.append(k, item);
+    } else {
+      url.searchParams.set(k, v);
+    }
   }
   const target = url.toString();
 
-  // A connection host may carry basic-auth credentials (`http://user:pw@host`),
-  // and the error bodies below are shown in the browser. Strip them for display
-  // only — `target` itself still needs them to authenticate.
-  const redactedTarget = (() => {
-    const safe = new URL(url);
-    safe.username = '';
-    safe.password = '';
-    return safe.toString();
-  })();
+  // A connection host may carry basic-auth credentials (`http://user:pw@host`)
+  // or a secret pinned in its own query string (e.g. VictoriaMetrics
+  // `?authKey=...`, preserved by the merge above for any key outside
+  // `CALLER_SETTABLE_PARAM_KEYS`), and the error bodies below are shown in
+  // the browser. `url.origin` never includes userinfo (WHATWG URL spec), and
+  // dropping the query/hash entirely -- rather than trying to redact only the
+  // secret-shaped parts of it -- means there's no query key to ever miss.
+  // `target` itself is unaffected and still carries everything needed to
+  // authenticate.
+  const redactedTarget = `${url.origin}${url.pathname}`;
 
   let upstreamResp: Response;
   try {
@@ -423,7 +513,7 @@ const queryRangeHandler: express.RequestHandler = async (req, res) => {
       clickhouse_settings: {
         allow_experimental_time_series_table: 1,
         max_execution_time: PROMETHEUS_MAX_EXECUTION_SEC,
-        max_result_rows: PROMETHEUS_MAX_RESULT_ROWS,
+        max_result_rows: String(PROMETHEUS_MAX_RESULT_ROWS),
       },
     });
 
@@ -537,7 +627,7 @@ const queryHandler: express.RequestHandler = async (req, res) => {
       clickhouse_settings: {
         allow_experimental_time_series_table: 1,
         max_execution_time: PROMETHEUS_MAX_EXECUTION_SEC,
-        max_result_rows: PROMETHEUS_MAX_RESULT_ROWS,
+        max_result_rows: String(PROMETHEUS_MAX_RESULT_ROWS),
       },
     });
 
@@ -710,7 +800,7 @@ router.get('/query_exemplars', queryExemplarsHandler);
 router.post('/query_exemplars', queryExemplarsHandler);
 
 // --------------------------
-// GET /label/:name/values
+// GET /labels, GET /label/:name/values
 // --------------------------
 
 // Prometheus label-name grammar — used to reject anything that could
@@ -719,30 +809,121 @@ router.post('/query_exemplars', queryExemplarsHandler);
 // https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels
 const PROMETHEUS_LABEL_NAME = /^[a-zA-Z_:][a-zA-Z0-9_:]*$/;
 
-router.get('/label/:name/values', async (req, res) => {
+/**
+ * Prometheus timestamps are either RFC3339 strings or unix seconds.
+ * This schema coerces them to unix seconds.
+ *
+ * `?start=` with no value means the same as no `start` at all. Without the
+ * empty-string arm it would not: `parseTimestamp('')` goes through `Number('')`,
+ * which is 0, pinning the bound to the epoch.
+ */
+const prometheusTimestampSchema = z
+  .union([z.string(), z.number()])
+  .transform((v, ctx) => {
+    if (v === '') return undefined;
+    try {
+      return parseTimestamp(v);
+    } catch {
+      ctx.addIssue({
+        code: 'custom',
+        message: `invalid timestamp, expected RFC3339 or unix seconds`,
+      });
+      return z.NEVER;
+    }
+  });
+
+/**
+ * Prometheus's series selector, spelled `match[]` and repeatable. Express's query
+ * parser drops the brackets, so both `match[]=up` and `match=up` land on a
+ * `match` key and a repeated one arrives as an array. The selectors themselves
+ * are never interpreted here — only Prometheus can — so an empty one is treated
+ * as absent rather than forwarded for upstream to reject.
+ */
+const prometheusMatchSchema = z
+  .union([z.string(), z.array(z.string())])
+  .transform(v => {
+    const selectors = (Array.isArray(v) ? v : [v]).filter(m => m !== '');
+    return selectors.length ? selectors : undefined;
+  });
+
+const labelLookupRequestQuerySchema = z
+  .object({
+    connectionId: objectIdSchema,
+    start: prometheusTimestampSchema.optional(),
+    end: prometheusTimestampSchema.optional(),
+    match: prometheusMatchSchema.optional(),
+    database: z.string().optional(),
+    table: z.string().optional(),
+    limit: z.preprocess(
+      v => (v === '' ? undefined : v),
+      z.coerce.number().int().nonnegative().optional(),
+    ),
+  })
+  .superRefine((params, ctx) => {
+    if (
+      params.start != null &&
+      params.end != null &&
+      params.end < params.start
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['end'],
+        message: 'end timestamp must not be before start time',
+      });
+    }
+  });
+
+// A Prometheus error body carries one human-readable string, so zod's own
+// `message` — a JSON dump of the issue list — is not usable as-is.
+function formatQueryParamIssues(error: z.ZodError): string {
+  return error.issues
+    .map(issue =>
+      issue.path.length
+        ? `${issue.path.join('.')}: ${issue.message}`
+        : issue.message,
+    )
+    .join(', ');
+}
+
+type LabelLookupSubject = 'labels' | 'label_values';
+
+type ClickHouseLabelLookup = (
+  args: TimeSeriesTagsQueryArgs,
+) => Promise<string[]>;
+
+/**
+ * Handles a Prometheus label lookup — `/labels` or `/label/:name/values` — from
+ * whichever backend the connection points at.
+ */
+async function handleLabelLookup(
+  req: express.Request,
+  res: express.Response,
+  {
+    subject,
+    proxyPath,
+    queryClickHouse,
+  }: {
+    subject: LabelLookupSubject;
+    proxyPath: string;
+    queryClickHouse: ClickHouseLabelLookup;
+  },
+) {
   const startedAt = performance.now();
   let backend: PrometheusBackend = 'unknown';
   try {
     const { teamId } = getNonNullUserWithTeam(req);
-    const labelName = req.params.name;
-    if (!PROMETHEUS_LABEL_NAME.test(labelName)) {
+
+    const parseResult = labelLookupRequestQuerySchema.safeParse(req.query);
+    if (!parseResult.success) {
       return res.status(400).json({
         status: 'error',
         errorType: 'bad_data',
-        error: 'Invalid label name',
-      });
-    }
-    const params = req.query as Record<string, string>;
-
-    const connectionId = params.connectionId;
-    if (!connectionId) {
-      return res.status(400).json({
-        status: 'error',
-        errorType: 'bad_data',
-        error: 'missing required parameter: connectionId',
+        error: formatQueryParamIssues(parseResult.error),
       });
     }
 
+    const params = parseResult.data;
+    const { connectionId, start, end, limit, match } = params;
     const connection = await getConnectionById(
       teamId.toString(),
       connectionId,
@@ -761,15 +942,27 @@ router.get('/label/:name/values', async (req, res) => {
       backend = 'prometheus';
       const status = await proxyToPrometheus(
         connection.host,
-        `/api/v1/label/${labelName}/values`,
-        params,
+        proxyPath,
+        {
+          ...(start != null ? { start: String(start) } : {}),
+          ...(end != null ? { end: String(end) } : {}),
+          // `limit` is 0 or absent when validation passes (see the schema
+          // above); 0 means "unlimited" to Prometheus and must still be
+          // forwarded (`v == null` is the merge loop's own absence check),
+          // otherwise a request explicitly asking for unlimited results
+          // silently loses to a host-pinned `limit`.
+          ...(limit != null ? { limit: String(limit) } : {}),
+          // Restored under the name Prometheus expects
+          ...(match != null ? { 'match[]': match } : {}),
+        },
         res,
       );
-      recordProxyOutcome(status, 'label_values', backend);
+      recordProxyOutcome(status, subject, backend);
       return;
     }
 
     backend = 'clickhouse';
+
     const database = params.database ?? 'default';
     const table = params.table;
     if (!table) {
@@ -787,28 +980,23 @@ router.get('/label/:name/values', async (req, res) => {
       requestTimeout: PROMETHEUS_CH_TIMEOUT_MS,
     });
 
-    const tagsQuery =
-      labelName === '__name__'
-        ? `SELECT DISTINCT metric_name AS val FROM timeSeriesTags({db:String}, {table:String}) ORDER BY val SETTINGS allow_experimental_time_series_table = 1`
-        : `SELECT DISTINCT all_tags[{label:String}] AS val FROM timeSeriesTags({db:String}, {table:String}) WHERE mapContains(all_tags, {label:String}) ORDER BY val SETTINGS allow_experimental_time_series_table = 1`;
-
-    const resp = await client.query({
-      query: tagsQuery,
-      query_params: { db: database, table, label: labelName },
-      format: 'JSON',
-      clickhouse_settings: {
-        allow_experimental_time_series_table: 1,
-        max_execution_time: PROMETHEUS_MAX_EXECUTION_SEC,
-        max_result_rows: PROMETHEUS_MAX_RESULT_ROWS,
-      },
+    const startMs = start != null ? Math.floor(start * 1000) : undefined;
+    const endMs = end != null ? Math.ceil(end * 1000) : undefined;
+    const values = await queryClickHouse({
+      client,
+      connectionId: connection.id,
+      databaseName: database,
+      tableName: table,
+      startMs,
+      endMs,
+      limit,
+      match,
     });
-    const json = await resp.json<any>();
-    const values: string[] = json.data.map((r: any) => r.val);
 
     return res.json({ status: 'success', data: values });
   } catch (e) {
-    prometheusQueryErrors.add(1, { endpoint: 'label_values', backend });
-    logger.error(e, 'Prometheus label values error');
+    prometheusQueryErrors.add(1, { endpoint: subject, backend });
+    logger.error(e, `Prometheus ${subject} error`);
     return res.status(400).json({
       status: 'error',
       errorType: 'bad_data',
@@ -816,10 +1004,35 @@ router.get('/label/:name/values', async (req, res) => {
     });
   } finally {
     prometheusQueryDuration.record(performance.now() - startedAt, {
-      endpoint: 'label_values',
+      endpoint: subject,
       backend,
     });
   }
+}
+
+router.get('/labels', (req, res) =>
+  handleLabelLookup(req, res, {
+    subject: 'labels',
+    proxyPath: '/api/v1/labels',
+    queryClickHouse: queryLabelNames,
+  }),
+);
+
+router.get('/label/:name/values', (req, res) => {
+  const labelName = req.params.name;
+  if (!PROMETHEUS_LABEL_NAME.test(labelName)) {
+    return res.status(400).json({
+      status: 'error',
+      errorType: 'bad_data',
+      error: 'Invalid label name',
+    });
+  }
+
+  return handleLabelLookup(req, res, {
+    subject: 'label_values',
+    proxyPath: `/api/v1/label/${labelName}/values`,
+    queryClickHouse: args => queryLabelValues({ ...args, labelName }),
+  });
 });
 
 export default router;

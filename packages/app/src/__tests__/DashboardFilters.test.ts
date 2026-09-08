@@ -3,6 +3,7 @@ import { DashboardFilter } from '@hyperdx/common-utils/dist/types';
 import {
   getFilterEffect,
   getPendingVariablesTooltip,
+  getRequiredFilterTooltip,
 } from '@/DashboardFilters';
 
 const baseFilter: DashboardFilter = {
@@ -88,6 +89,23 @@ describe('getFilterEffect', () => {
     ).toEqual('Filters 2 sources');
   });
 
+  it('describes a static filter as a variable only', () => {
+    expect(
+      getFilterEffect({
+        id: 'filter2',
+        type: 'STATIC_LIST',
+        name: 'Environment',
+        options: ['prod', 'staging', 'dev'],
+        isBroadcastEnabled: false,
+        isVariableEnabled: true,
+        variableName: 'env',
+      }),
+    ).toEqual({
+      hasEffect: true,
+      tooltip: 'Available as variable ($env)',
+    });
+  });
+
   it('ignores the stored scope while broadcasting is off', () => {
     expect(
       getFilterEffect({
@@ -112,5 +130,29 @@ describe('getPendingVariablesTooltip', () => {
     expect(getPendingVariablesTooltip(['svc', 'env'])).toContain(
       '$svc, $env, which have no selected value',
     );
+  });
+});
+
+describe('getRequiredFilterTooltip', () => {
+  it('warns only about the tiles that use the filter by default', () => {
+    for (const isGlobalRequirement of [undefined, false]) {
+      expect(
+        getRequiredFilterTooltip({
+          ...baseFilter,
+          minSelections: 1,
+          isGlobalRequirement,
+        }),
+      ).toContain('Tiles that use this filter do not load');
+    }
+  });
+
+  it('warns that the whole dashboard is held back by a global requirement', () => {
+    expect(
+      getRequiredFilterTooltip({
+        ...baseFilter,
+        minSelections: 1,
+        isGlobalRequirement: true,
+      }),
+    ).toContain('No tile on this dashboard loads');
   });
 });

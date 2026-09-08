@@ -282,6 +282,7 @@ export default function EditTimeChartForm({
     color,
     colorRules,
     backgroundChart,
+    legendTemplate,
   ] = useWatch({
     control,
     name: [
@@ -296,6 +297,7 @@ export default function EditTimeChartForm({
       'color',
       'colorRules',
       'backgroundChart',
+      'legendTemplate',
     ],
   });
 
@@ -326,6 +328,7 @@ export default function EditTimeChartForm({
       color,
       colorRules,
       backgroundChart,
+      legendTemplate,
     }),
     [
       alignDateRangeToGranularity,
@@ -339,6 +342,7 @@ export default function EditTimeChartForm({
       color,
       colorRules,
       backgroundChart,
+      legendTemplate,
     ],
   );
 
@@ -668,6 +672,7 @@ export default function EditTimeChartForm({
         color,
         colorRules,
         backgroundChart,
+        legendTemplate,
       }: ChartConfigDisplaySettings,
       isDirty: boolean,
     ) => {
@@ -690,6 +695,10 @@ export default function EditTimeChartForm({
       setValue('color', color);
       setValue('colorRules', colorRules);
       setValue('backgroundChart', backgroundChart);
+      // Empty string (not undefined) so the cleared state survives the URL round-trip.
+      if (configType === 'promql') {
+        setValue('legendTemplate', legendTemplate ?? '');
+      }
       // Display settings live in a separate drawer form, so RHF can't track
       // them. Latch dirty state only when the drawer reports actual changes.
       if (isDirty) {
@@ -698,7 +707,7 @@ export default function EditTimeChartForm({
       }
       onSubmit();
     },
-    [setValue, onDirtyChange, onSubmit],
+    [setValue, onDirtyChange, onSubmit, configType],
   );
 
   const handleUpdateHeatmapSettings = useCallback(

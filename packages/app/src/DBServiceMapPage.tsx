@@ -50,7 +50,7 @@ import { SourceSelectControlled } from './components/SourceSelect';
 import { TimePicker } from './components/TimePicker';
 import { useBrandDisplayName } from './theme/ThemeProvider';
 import { useSources } from './source';
-import { parseTimeQuery, useNewTimeQuery } from './timeQuery';
+import { useDefaultTimeRange, useNewTimeQuery } from './timeQuery';
 
 // The % of requests sampled is 1 / sampling factor
 const SAMPLING_FACTORS = [
@@ -77,10 +77,6 @@ const SAMPLING_FACTORS = [
 ];
 
 const DEFAULT_INTERVAL = 'Past 1h';
-const defaultTimeRange = parseTimeQuery(DEFAULT_INTERVAL, false) as [
-  Date,
-  Date,
-];
 
 const searchQueryStateMap = {
   where: parseAsStringEncoded,
@@ -89,6 +85,7 @@ const searchQueryStateMap = {
 };
 
 function DBServiceMapPage() {
+  const defaultTimeRange = useDefaultTimeRange(DEFAULT_INTERVAL);
   const brandName = useBrandDisplayName();
 
   const { data: sources } = useSources();

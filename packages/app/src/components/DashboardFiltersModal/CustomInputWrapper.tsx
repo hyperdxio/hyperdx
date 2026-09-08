@@ -1,4 +1,4 @@
-import { FieldError } from 'react-hook-form';
+import { FieldError, Merge } from 'react-hook-form';
 import { Input, Tooltip } from '@mantine/core';
 import { IconInfoCircle } from '@tabler/icons-react';
 
@@ -6,7 +6,7 @@ interface CustomInputWrapperProps {
   children: React.ReactNode;
   label: string;
   tooltipText?: string;
-  error?: FieldError;
+  error?: FieldError | Merge<FieldError, (FieldError | undefined)[]>;
 }
 
 export const CustomInputWrapper = ({

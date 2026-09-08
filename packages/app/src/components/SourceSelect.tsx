@@ -1,6 +1,6 @@
 import { memo, useCallback, useMemo } from 'react';
 import { UseControllerProps, useWatch } from 'react-hook-form';
-import { SourceKind } from '@hyperdx/common-utils/dist/types';
+import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
   ComboboxChevron,
@@ -160,6 +160,7 @@ function SourceSelectControlledComponent({
   isSchemaPreviewEnabled,
   allowedSourceKinds,
   connectionId,
+  isSourceAllowed,
   comboboxProps,
   ...props
 }: {
@@ -171,6 +172,8 @@ function SourceSelectControlledComponent({
   isSchemaPreviewEnabled?: boolean;
   allowedSourceKinds?: SourceKind[];
   connectionId?: string;
+  /** Extra per-source gate for restrictions a kind can't express. */
+  isSourceAllowed?: (source: TSource) => boolean;
 } & UseControllerProps<any> &
   SelectProps) {
   const { data } = useSources();
@@ -213,6 +216,7 @@ function SourceSelectControlledComponent({
     sources: data,
     allowedSourceKinds,
     connectionId,
+    isSourceAllowed,
     groupBySection: true,
   });
 

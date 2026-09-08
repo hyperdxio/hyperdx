@@ -551,6 +551,8 @@ export interface AlertItem {
   tileId?: string;
   name?: string | null;
   message?: string | null;
+  displayName?: string;
+  tags?: string[];
   createdAt: string;
   updatedAt: string;
   history: AlertHistoryItem[];

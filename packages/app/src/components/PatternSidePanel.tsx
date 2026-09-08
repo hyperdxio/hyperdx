@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { JSDataType } from '@hyperdx/common-utils/dist/clickhouse';
-import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
+import { TSource } from '@hyperdx/common-utils/dist/types';
 import { Button, Card, Drawer, Group, Stack, Text } from '@mantine/core';
 import { IconList } from '@tabler/icons-react';
 
@@ -12,9 +12,10 @@ import { RawLogTable } from '@/components/DBRowTable';
 import { DrawerBody, DrawerHeader } from '@/components/DrawerUtils';
 import { PatternTemplate } from '@/components/Patterns/PatternTemplate';
 import {
+  LEVEL_COLUMN_ALIAS,
   Pattern,
   PATTERN_COLUMN_ALIAS,
-  SEVERITY_TEXT_COLUMN_ALIAS,
+  SERVICE_NAME_COLUMN_ALIAS,
   TIMESTAMP_COLUMN_ALIAS,
 } from '@/hooks/usePatterns';
 import useRowWhere, { RowWhereResult } from '@/hooks/useRowWhere';
@@ -44,38 +45,35 @@ export default function PatternSidePanel({
   const [selectedRowWhere, setSelectedRowWhere] =
     React.useState<RowWhereResult | null>(null);
 
-  const serviceNameExpression =
-    ((source?.kind === SourceKind.Log || source?.kind === SourceKind.Trace) &&
-      source.serviceNameExpression) ||
-    'Service';
+  const columnTypeMap = React.useMemo(
+    () =>
+      new Map<string, { _type: JSDataType | null }>([
+        [TIMESTAMP_COLUMN_ALIAS, { _type: JSDataType.Date }],
+        [PATTERN_COLUMN_ALIAS, { _type: JSDataType.String }],
+        [LEVEL_COLUMN_ALIAS, { _type: JSDataType.String }],
+        [SERVICE_NAME_COLUMN_ALIAS, { _type: JSDataType.String }],
+      ]),
+    [],
+  );
 
-  const columnTypeMap = React.useMemo(() => {
-    const map = new Map<string, { _type: JSDataType | null }>([
-      [TIMESTAMP_COLUMN_ALIAS, { _type: JSDataType.Date }],
-      [PATTERN_COLUMN_ALIAS, { _type: JSDataType.String }],
-      [SEVERITY_TEXT_COLUMN_ALIAS, { _type: JSDataType.String }],
-      [serviceNameExpression, { _type: JSDataType.String }],
-    ]);
-    return map;
-  }, [serviceNameExpression]);
-
-  const columnNameMap = React.useMemo(() => {
-    return {
+  const columnNameMap = React.useMemo(
+    () => ({
       [TIMESTAMP_COLUMN_ALIAS]: 'Timestamp',
-      [serviceNameExpression]: 'Service',
-      [SEVERITY_TEXT_COLUMN_ALIAS]: 'level',
+      [SERVICE_NAME_COLUMN_ALIAS]: 'Service',
+      [LEVEL_COLUMN_ALIAS]: 'Level',
       [PATTERN_COLUMN_ALIAS]: 'Body',
-    };
-  }, [serviceNameExpression]);
+    }),
+    [],
+  );
 
   const displayedColumns = React.useMemo(() => {
     return [
       TIMESTAMP_COLUMN_ALIAS,
-      serviceNameExpression,
-      SEVERITY_TEXT_COLUMN_ALIAS,
+      SERVICE_NAME_COLUMN_ALIAS,
+      LEVEL_COLUMN_ALIAS,
       PATTERN_COLUMN_ALIAS,
     ];
-  }, [serviceNameExpression]);
+  }, []);
 
   const getRowWhere = useRowWhere({
     meta: [
@@ -133,7 +131,7 @@ export default function PatternSidePanel({
     >
       <ZIndexContext value={drawerZIndex}>
         <IsolatedChartSyncProvider>
-          <div className={styles.panel}>
+          <div className={styles.panel} data-testid="pattern-side-panel">
             <DrawerHeader
               header="Pattern"
               onClose={selectedRowWhere ? handleCloseRowSidePanel : onClose}
@@ -156,10 +154,7 @@ export default function PatternSidePanel({
                         View matching events
                       </Button>
                     )}
-                    <AISummarizePatternButton
-                      pattern={pattern}
-                      serviceNameExpression={serviceNameExpression}
-                    />
+                    <AISummarizePatternButton pattern={pattern} />
                   </Group>
                 </Card>
                 <Card p="md">

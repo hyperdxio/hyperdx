@@ -1,5 +1,19 @@
 # @hyperdx/common-utils
 
+## 0.28.1
+
+### Patch Changes
+
+- 74c28e7f: feat: Alerts now persist their own `displayName` and `tags`
+- b917308d: fix: metric names in the chart editor are now listed deterministically instead of sampled. The dropdown discovered names with `groupUniqArray(3000)(MetricName)`, which keeps an arbitrary subset once a metrics table holds more than 3000 distinct names — the survivors follow hash order, not name order — so metrics that exist and are actively reporting could be unselectable, with no warning and no way to search for what had been dropped. Names are now fetched with an ordered, paginated query and matched server-side, ranked so an exact match is always on the first page, and the dropdown says when the list is incomplete. Also fixes the metric list ignoring the chart's selected time range, which pinned it to the last 24 hours.
+- 55db91fa: feat: Support static filters in MCP
+- 89a897ec: Fixed single-series histogram charts failing with "Unknown expression or function identifier" when sorted by a group-by column or expression. The histogram translation packs group values into a single `group` Array, so the table default ORDER BY (the raw group-by text) referenced source columns that no longer exist in scope; matched sort items now address the packed array positionally.
+- f1062a7b: Fixed multi-series metric charts failing with "Unknown expression or function identifier" when sorted by an expression group-by (e.g. `ResourceAttributes['service.name']`). Table tiles default their ORDER BY to the group-by text, so any multi-series metric table grouped by a resource/attribute-derived expression failed to render. Such sort expressions are now evaluated inside each per-series branch through internal companion columns instead of being re-evaluated in the composed outer query, where the source columns no longer exist.
+- 4184a898: feat: Support dashboard filters based on Prometheus label values
+- 27360036: feat: Support series filter (matcher) in PromQL label dashboard filters
+- c7965927: feat: Support a custom template for PromQL series legends
+- cff6388c: feat: Add static filters to schemas and APIs
+
 ## 0.28.0
 
 ### Minor Changes

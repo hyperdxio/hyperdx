@@ -17,11 +17,7 @@ import {
   updateDashboardBodySchema,
   validateDashboardTiles,
 } from '@/routers/external-api/v2/utils/dashboards';
-import type {
-  ExternalDashboardFilter,
-  ExternalDashboardFilterWithId,
-  ExternalDashboardTileWithId,
-} from '@/utils/zod';
+import type { ExternalDashboardTileWithId } from '@/utils/zod';
 import {
   MAX_TAG_LENGTH,
   MAX_TAGS,
@@ -29,6 +25,7 @@ import {
   tagsSchema,
 } from '@/utils/zod';
 
+import type { McpDashboardFilter } from './schemas';
 import { mcpContainersParam, mcpFiltersParam, mcpTilesParam } from './schemas';
 import {
   getFilterVariableWarnings,
@@ -117,31 +114,24 @@ export function registerSaveDashboard({
 // response into a create payload (or omit the id on a new filter added
 // during update) without hitting a confusing strict-validation rejection.
 function stripFilterIds(
-  filters:
-    | (ExternalDashboardFilter | ExternalDashboardFilterWithId)[]
-    | undefined,
-): ExternalDashboardFilter[] | undefined {
+  filters: McpDashboardFilter[] | undefined,
+): McpDashboardFilter[] | undefined {
   if (!filters) return undefined;
   return filters.map(filter => {
-    const { id: _id, ...rest } = filter as ExternalDashboardFilterWithId;
-    return rest as ExternalDashboardFilter;
+    const { id: _id, ...rest } = filter;
+    return rest as McpDashboardFilter;
   });
 }
 
 function assignFilterIds(
-  filters:
-    | (ExternalDashboardFilter | ExternalDashboardFilterWithId)[]
-    | undefined,
-): ExternalDashboardFilterWithId[] | undefined {
+  filters: McpDashboardFilter[] | undefined,
+): McpDashboardFilter[] | undefined {
   if (!filters) return undefined;
-  return filters.map(filter => {
-    const withId = filter as ExternalDashboardFilterWithId;
-    if (typeof withId.id === 'string' && withId.id.length > 0) return withId;
-    return {
-      ...filter,
-      id: new mongoose.Types.ObjectId().toString(),
-    } as ExternalDashboardFilterWithId;
-  });
+  return filters.map(filter =>
+    typeof filter.id === 'string' && filter.id.length > 0
+      ? filter
+      : { ...filter, id: new mongoose.Types.ObjectId().toString() },
+  );
 }
 
 async function createDashboard({
@@ -159,9 +149,7 @@ async function createDashboard({
   inputTiles: unknown[];
   tags: string[] | undefined;
   containers: DashboardContainer[] | undefined;
-  inputFilters:
-    | (ExternalDashboardFilter | ExternalDashboardFilterWithId)[]
-    | undefined;
+  inputFilters: McpDashboardFilter[] | undefined;
 }) {
   const parsed = createDashboardBodySchema.safeParse({
     name,
@@ -261,9 +249,7 @@ async function updateDashboard({
   inputTiles: unknown[];
   tags: string[] | undefined;
   containers: DashboardContainer[] | undefined;
-  inputFilters:
-    | (ExternalDashboardFilter | ExternalDashboardFilterWithId)[]
-    | undefined;
+  inputFilters: McpDashboardFilter[] | undefined;
 }) {
   const parsed = updateDashboardBodySchema.safeParse({
     name,

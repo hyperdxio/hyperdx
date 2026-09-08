@@ -181,9 +181,19 @@ describe('SourceSelectControlled (grouped rendering + tag-style search)', () => 
     }),
   ];
 
-  function SelectHarness() {
+  function SelectHarness({
+    isSourceAllowed,
+  }: {
+    isSourceAllowed?: (source: TSource) => boolean;
+  } = {}) {
     const { control } = useForm();
-    return <SourceSelectControlled control={control} name="source" />;
+    return (
+      <SourceSelectControlled
+        control={control}
+        name="source"
+        isSourceAllowed={isSourceAllowed}
+      />
+    );
   }
 
   // The searchable Select reuses its placeholder input for typing.
@@ -219,6 +229,21 @@ describe('SourceSelectControlled (grouped rendering + tag-style search)', () => 
     expect(screen.getByText('Billing Logs')).toBeInTheDocument();
     expect(screen.getByText('Billing')).toBeInTheDocument();
     // "Prod Logs" matches "logs" but not "billing", so its whole section drops out.
+    expect(screen.queryByText('Prod Logs')).not.toBeInTheDocument();
+    expect(screen.queryByText('Control Plane Prod')).not.toBeInTheDocument();
+  });
+
+  it('hides sources rejected by isSourceAllowed, along with sections left empty', async () => {
+    asMock(useSources).mockReturnValue({ data: SECTIONED_SOURCES });
+    renderWithMantine(
+      <SelectHarness
+        isSourceAllowed={source => source.section === 'Billing'}
+      />,
+    );
+    await openSelect();
+
+    expect(await screen.findByText('Billing Logs')).toBeInTheDocument();
+    expect(screen.getByText('Refund Logs')).toBeInTheDocument();
     expect(screen.queryByText('Prod Logs')).not.toBeInTheDocument();
     expect(screen.queryByText('Control Plane Prod')).not.toBeInTheDocument();
   });

@@ -12,6 +12,10 @@ export const DEFAULT_CONNECTION_NAME = 'local';
 // tab, and the Kubernetes dashboard's correlation warning).
 export const K8S_LOGS_NO_METRICS_SOURCE_NAME = 'E2E K8s Logs No Metrics';
 
+// Log source with a a non-standard service name that is NOT part of the
+// backing table's sort/primary key.
+export const CUSTOM_SERVICE_LOGS_SOURCE_NAME = 'E2E Custom Service Logs';
+
 // Source backed by `otel_logs_interesting_filter_keys`, used by the filter-key
 // edge case tests to exercise identifier escaping (dotted/hyphenated column
 // names, Map keys, and JSON paths) in search and dashboard filters.
@@ -78,3 +82,6 @@ export const E2E_INTERESTING_FILTER_KEYS_TABLE =
 export const E2E_METADATA_MV_LOGS_TABLE = 'e2e_otel_logs_metadata_mv';
 export const E2E_METADATA_MV_KV_ROLLUP_TABLE = 'e2e_otel_logs_kv_rollup_15m';
 export const E2E_METADATA_MV_KEY_ROLLUP_TABLE = 'e2e_otel_logs_key_rollup_15m';
+// Table backing CUSTOM_SERVICE_LOGS_SOURCE_NAME. Created in
+// `docker/clickhouse/local/init-db-e2e.sh` and seeded in `seed-clickhouse.ts`.
+export const E2E_CUSTOM_SERVICE_LOGS_TABLE = 'e2e_custom_service_name';

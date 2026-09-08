@@ -1,13 +1,9 @@
-import { useEffect, useState } from 'react';
-import { isQueryExpressionFilter } from '@hyperdx/common-utils/dist/filters';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ChartVariable,
   DashboardFilter,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-
-import { getStoredLanguage } from '@/components/SearchInput/SearchWhereInput';
-import { SqlVariablesProvider } from '@/components/SQLEditor/variableCompletions';
 
 import { DashboardFilterEditForm } from './DashboardFilterEditForm';
 import { DashboardFiltersEmptyState } from './DashboardFiltersEmptyState';
@@ -20,6 +16,8 @@ interface DashboardFiltersEditModalProps {
   source?: TSource;
   /** Whether to offer the broadcast / variable controls. */
   showVariableOptions: boolean;
+  /** Whether to show the options for marking a filter as required. */
+  showRequiredFilterOptions: boolean;
   /** The dashboard's variables, if any */
   variables?: ChartVariable[];
   onClose: () => void;
@@ -27,90 +25,73 @@ interface DashboardFiltersEditModalProps {
   onRemoveFilter: (id: string) => void;
 }
 
-const NEW_FILTER_ID = 'new';
-
 const DashboardFiltersModal = ({
   opened,
   filters,
   isLoading,
   source,
   showVariableOptions,
+  showRequiredFilterOptions,
   variables,
   onClose,
   onSaveFilter,
   onRemoveFilter,
 }: DashboardFiltersEditModalProps) => {
-  const [selectedFilter, setSelectedFilter] = useState<DashboardFilter>();
+  // Undefined when not editing, set to the filter being edited when editing.
+  // The filter is undefined when creating a new one.
+  const [editState, setEditState] = useState<{ filter?: DashboardFilter }>();
+
+  const startEditing = useCallback(
+    (filter?: DashboardFilter) => setEditState({ filter }),
+    [],
+  );
+  const stopEditing = useCallback(() => setEditState(undefined), []);
 
   useEffect(() => {
     if (opened) {
-      setSelectedFilter(undefined);
+      setEditState(undefined);
     }
   }, [opened]);
 
-  const handleRemoveFilter = (id: string) => {
-    if (id === selectedFilter?.id) {
-      setSelectedFilter(filters.find(f => f.id !== id));
-    }
-    onRemoveFilter(id);
-  };
+  const handleAddNewFilter = useCallback(() => setEditState({}), []);
 
-  const handleAddNewFilter = () => {
-    setSelectedFilter({
-      id: NEW_FILTER_ID,
-      type: 'QUERY_EXPRESSION',
-      name: '',
-      expression: '',
-      source: source?.id ?? '',
-      where: '',
-      whereLanguage: getStoredLanguage() ?? 'sql',
-      isBroadcastEnabled: true,
-      isVariableEnabled: false,
-    });
-  };
-
-  const handleSaveFilter = (filter: DashboardFilter) => {
-    setSelectedFilter(undefined);
-    if (filter.id === NEW_FILTER_ID) {
-      const filterWithRealId = { ...filter, id: crypto.randomUUID() };
-      onSaveFilter(filterWithRealId);
-    } else {
+  const handleSaveFilter = useCallback(
+    (filter: DashboardFilter) => {
+      setEditState(undefined);
       onSaveFilter(filter);
-    }
-  };
-
-  const isEmpty = !selectedFilter && filters.length === 0;
+    },
+    [onSaveFilter],
+  );
 
   if (!opened) {
     return null;
-  } else if (isEmpty) {
+  } else if (editState) {
+    return (
+      <DashboardFilterEditForm
+        filter={editState.filter}
+        filters={filters}
+        source={source}
+        showVariableOptions={showVariableOptions}
+        showRequiredFilterOptions={showRequiredFilterOptions}
+        variables={variables}
+        onSave={handleSaveFilter}
+        onCancel={stopEditing}
+        onClose={onClose}
+      />
+    );
+  } else if (filters.length === 0) {
     return (
       <DashboardFiltersEmptyState
         onCreateFilter={handleAddNewFilter}
         onClose={onClose}
       />
     );
-  } else if (selectedFilter && isQueryExpressionFilter(selectedFilter)) {
-    return (
-      <SqlVariablesProvider variables={variables}>
-        <DashboardFilterEditForm
-          filter={selectedFilter}
-          onSave={handleSaveFilter}
-          onCancel={() => setSelectedFilter(undefined)}
-          onClose={onClose}
-          isNew={selectedFilter.id === NEW_FILTER_ID}
-          source={source}
-          filters={filters}
-          showVariableOptions={showVariableOptions}
-        />
-      </SqlVariablesProvider>
-    );
   } else {
     return (
       <DashboardFiltersList
         filters={filters}
-        onEdit={setSelectedFilter}
-        onRemove={handleRemoveFilter}
+        onEdit={startEditing}
+        onRemove={onRemoveFilter}
         onClose={onClose}
         onAddNew={handleAddNewFilter}
         isLoading={isLoading}

@@ -20,6 +20,11 @@ export class ServicesDashboardPage {
     await this.page.waitForLoadState('networkidle');
   }
 
+  /** Open the filters modal. Preset-dashboard filters are broadcast-only. */
+  async openEditFiltersModal() {
+    await this.page.getByTestId('edit-filters-button').click();
+  }
+
   /** The WHERE input's language switch (SQL / Lucene). */
   get whereLanguageSwitch(): Locator {
     return this.page.getByTestId('where-language-switch');

@@ -32,6 +32,8 @@ function makeAlert(id: string, state: AlertState): AlertsPageItem {
   return {
     _id: id,
     state,
+    displayName: 'Alert 1',
+    tags: [],
     interval: '5m',
     threshold: 3,
     thresholdType: AlertThresholdType.ABOVE,

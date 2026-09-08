@@ -6,6 +6,7 @@ import { expect, Locator, Page } from '@playwright/test';
 
 import { FilterComponent } from '../components/FilterComponent';
 import { InfrastructurePanelComponent } from '../components/InfrastructurePanelComponent';
+import { PatternSidePanelComponent } from '../components/PatternSidePanelComponent';
 import { SavedSearchModalComponent } from '../components/SavedSearchModalComponent';
 import { SearchPageAlertModalComponent } from '../components/SearchPageAlertModalComponent';
 import { SidePanelComponent } from '../components/SidePanelComponent';
@@ -21,6 +22,7 @@ export class SearchPage {
   readonly table: TableComponent;
   readonly timePicker: TimePickerComponent;
   readonly sidePanel: SidePanelComponent;
+  readonly patternSidePanel: PatternSidePanelComponent;
   readonly infrastructure: InfrastructurePanelComponent;
   readonly filters: FilterComponent;
   readonly savedSearchModal: SavedSearchModalComponent;
@@ -50,6 +52,7 @@ export class SearchPage {
     );
     this.timePicker = new TimePickerComponent(page);
     this.sidePanel = new SidePanelComponent(page, 'row-side-panel');
+    this.patternSidePanel = new PatternSidePanelComponent(page);
     this.infrastructure = new InfrastructurePanelComponent(page);
     this.filters = new FilterComponent(page);
     this.savedSearchModal = new SavedSearchModalComponent(page);
@@ -108,6 +111,56 @@ export class SearchPage {
     await this.page
       .getByRole('option', { name: sourceName, exact: true })
       .click();
+  }
+
+  /** The "Event Patterns" analysis-mode tab in the filters sidebar. */
+  get eventPatternsTab() {
+    return this.page.getByRole('tab', { name: 'Event Patterns' });
+  }
+
+  /**
+   * The pattern list table (the "Event Patterns" grid). It renders before the
+   * flyout in the DOM (the flyout is a portaled drawer), so `.first()` resolves
+   * the pattern list even after the flyout's sample table mounts.
+   */
+  get patternListTable() {
+    return this.page.getByTestId('search-results-table').first();
+  }
+
+  get patternListRows() {
+    return this.patternListTable.locator('[data-testid^="table-row-"]');
+  }
+
+  /**
+   * Switch to Event Patterns mode and wait for the (client-side, Drain-based)
+   * pattern list to finish clustering and render at least one pattern row.
+   */
+  async switchToEventPatterns(timeout = 60_000) {
+    await this.eventPatternsTab.click();
+    await this.patternListRows.first().waitFor({ state: 'visible', timeout });
+  }
+
+  /**
+   * The Level-column cell of a pattern-list row. The list renders its columns
+   * as sibling divs inside the row's content button (see PatternTable's
+   * displayedColumns: Trend, Count, Level, Pattern).
+   */
+  patternListLevelCell(rowIndex = 0) {
+    const PATTERN_LIST_LEVEL_COLUMN_INDEX = 2;
+    return this.patternListRows
+      .nth(rowIndex)
+      .locator('td > button > div')
+      .nth(PATTERN_LIST_LEVEL_COLUMN_INDEX);
+  }
+
+  /** Open the first pattern's sample flyout and wait for it to render. */
+  async openFirstPattern(timeout = 30_000) {
+    await this.patternListRows.first().click();
+    await this.patternSidePanel.container.waitFor({
+      state: 'visible',
+      timeout,
+    });
+    await this.patternSidePanel.firstRow.waitFor({ state: 'visible', timeout });
   }
 
   async openEditSourceModal() {

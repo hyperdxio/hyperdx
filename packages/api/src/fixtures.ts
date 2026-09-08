@@ -258,6 +258,118 @@ export const executeSqlCommand = async (sql: string) => {
   });
 };
 
+// The TimeSeries engine is experimental, and its flag is a *query* setting — it
+// cannot ride along in a CREATE's own SETTINGS clause, which only takes storage
+// settings. Every statement therefore carries it, which is why these tables
+// cannot go through `executeSqlCommand`.
+export const executeTimeSeriesSqlCommand = async (sql: string) => {
+  const client = await getTestFixtureClickHouseClient();
+  return await client.command({
+    query: sql,
+    clickhouse_settings: {
+      allow_experimental_time_series_table: 1,
+      wait_end_of_query: 1,
+    },
+  });
+};
+
+export const dropTimeSeriesTable = async ({
+  table,
+  database = DEFAULT_DATABASE,
+}: {
+  table: string;
+  database?: string;
+}) => executeTimeSeriesSqlCommand(`DROP TABLE IF EXISTS ${database}.${table}`);
+
+export type TimeSeriesFixtureSeries = {
+  metricName: string;
+  /** Labels other than `__name__`, which is derived from `metricName`. */
+  tags: Record<string, string>;
+  /** Series window in unix seconds; ignored when the table stores no bounds. */
+  startSec: number;
+  endSec: number;
+};
+
+/**
+ * (Re)creates a TimeSeries table and writes `series` straight into its tags
+ * inner table — Prometheus remote-write is the only other way in.
+ *
+ * `storeTimeBounds: false` creates the table with
+ * `store_min_time_and_max_time = 0`, which leaves the tags table without the
+ * min_time/max_time columns a time-bounded lookup reads.
+ *
+ * `withSamples: true` also writes a sample at each series' `startSec` and
+ * `endSec`. A `match[]` lookup matches only series that have a sample in the
+ * window, so on a tags-only table every selector answers nothing.
+ */
+export const seedTimeSeriesTagsTable = async ({
+  table,
+  series,
+  database = DEFAULT_DATABASE,
+  storeTimeBounds = true,
+  withSamples = false,
+}: {
+  table: string;
+  series: TimeSeriesFixtureSeries[];
+  database?: string;
+  storeTimeBounds?: boolean;
+  withSamples?: boolean;
+}) => {
+  if (withSamples && !storeTimeBounds) {
+    throw new Error(
+      'withSamples needs storeTimeBounds: sample timestamps come from min_time/max_time',
+    );
+  }
+
+  await dropTimeSeriesTable({ table, database });
+  await executeTimeSeriesSqlCommand(
+    `CREATE TABLE ${database}.${table} ENGINE = TimeSeries${
+      storeTimeBounds ? '' : ' SETTINGS store_min_time_and_max_time = 0'
+    }`,
+  );
+
+  const quoted = (v: string) => `'${v.replace(/'/g, "\\'")}'`;
+  const mapLiteral = (tags: Record<string, string>) =>
+    `map(${Object.entries(tags)
+      .flatMap(([k, v]) => [quoted(k), quoted(v)])
+      .join(', ')})`;
+
+  const columns = storeTimeBounds
+    ? '(metric_name, tags, all_tags, min_time, max_time)'
+    : '(metric_name, tags, all_tags)';
+  const values = series
+    .map(s => {
+      const row = [
+        quoted(s.metricName),
+        mapLiteral(s.tags),
+        mapLiteral({ __name__: s.metricName, ...s.tags }),
+      ];
+      if (storeTimeBounds) {
+        row.push(
+          `toDateTime64(${s.startSec}, 3)`,
+          `toDateTime64(${s.endSec}, 3)`,
+        );
+      }
+      return `(${row.join(', ')})`;
+    })
+    .join(', ');
+
+  await executeTimeSeriesSqlCommand(
+    `INSERT INTO TABLE FUNCTION timeSeriesTags('${database}', '${table}') ${columns} VALUES ${values}`,
+  );
+
+  // The engine derives `id` from the tags, so the samples are read back out of
+  // the tags table rather than recomputed here.
+  if (withSamples) {
+    await executeTimeSeriesSqlCommand(
+      `INSERT INTO TABLE FUNCTION timeSeriesData('${database}', '${table}')
+       SELECT id, ts AS timestamp, 1 AS value
+       FROM timeSeriesTags('${database}', '${table}')
+       ARRAY JOIN [min_time, max_time] AS ts`,
+    );
+  }
+};
+
 export const clearClickhouseTables = async () => {
   if (!config.IS_CI) {
     throw new Error('ONLY execute this in CI env 😈 !!!');
@@ -741,12 +853,16 @@ export const makeAlertInput = ({
   threshold = 8,
   tileId,
   webhookId = 'test-webhook-id',
+  displayName,
+  tags,
 }: {
   dashboardId: string;
   interval?: AlertInterval;
   threshold?: number;
   tileId: string;
   webhookId?: string;
+  displayName?: string | null;
+  tags?: string[] | null;
 }): Partial<AlertInput> => ({
   channel: {
     type: 'webhook',
@@ -758,6 +874,8 @@ export const makeAlertInput = ({
   source: AlertSource.TILE,
   dashboardId,
   tileId,
+  ...(displayName !== undefined && { displayName }),
+  ...(tags !== undefined && { tags }),
 });
 
 export const makeSavedSearchAlertInput = ({
@@ -765,11 +883,15 @@ export const makeSavedSearchAlertInput = ({
   interval = '15m',
   threshold = 8,
   webhookId = 'test-webhook-id',
+  displayName,
+  tags,
 }: {
   savedSearchId: string;
   interval?: AlertInterval;
   threshold?: number;
   webhookId?: string;
+  displayName?: string | null;
+  tags?: string[] | null;
 }): Partial<AlertInput> => ({
   channel: {
     type: 'webhook',
@@ -780,6 +902,8 @@ export const makeSavedSearchAlertInput = ({
   thresholdType: AlertThresholdType.ABOVE,
   source: AlertSource.SAVED_SEARCH,
   savedSearchId,
+  ...(displayName !== undefined && { displayName }),
+  ...(tags !== undefined && { tags }),
 });
 
 export const makeAlertChartConfig = (opts: {
@@ -810,11 +934,15 @@ export const makeInlineAlertInput = ({
   interval = '15m',
   threshold = 8,
   webhookId = 'test-webhook-id',
+  displayName,
+  tags,
 }: {
   chartConfig: AlertChartConfig;
   interval?: AlertInterval;
   threshold?: number;
   webhookId?: string;
+  displayName?: string | null;
+  tags?: string[] | null;
 }): Partial<AlertInput> => ({
   channel: {
     type: 'webhook',
@@ -825,4 +953,6 @@ export const makeInlineAlertInput = ({
   thresholdType: AlertThresholdType.ABOVE,
   source: AlertSource.INLINE,
   chartConfig,
+  ...(displayName !== undefined && { displayName }),
+  ...(tags !== undefined && { tags }),
 });

@@ -1,7 +1,9 @@
 import { AlertSource } from '@hyperdx/common-utils/dist/types';
 
+import type { AlertsPageItem } from '@/types';
 import {
   getAlertSourceLabel,
+  getDerivedAlertDisplayName,
   normalizeNoOpAlertScheduleFields,
   toAlertChannels,
 } from '@/utils/alerts';
@@ -182,5 +184,56 @@ describe('getAlertSourceLabel', () => {
   it('falls back for a missing source', () => {
     expect(getAlertSourceLabel({})).toBe('Unknown source');
     expect(getAlertSourceLabel({ source: null })).toBe('Unknown source');
+  });
+});
+
+// Only the fields the two helpers read; `any` keeps these off the
+// no-unsafe-type-assertion budget without spelling out the full page item.
+const asAlert = (partial: any): AlertsPageItem => partial;
+
+describe('getDerivedAlertDisplayName', () => {
+  it('formats a tile alert like the server does', () => {
+    expect(
+      getDerivedAlertDisplayName(
+        asAlert({
+          displayName: 'Custom',
+          source: AlertSource.TILE,
+          tileId: 'tile-1',
+          dashboard: {
+            name: 'Checkout',
+            tiles: [{ id: 'tile-1', config: { name: 'Error rate' } }],
+          },
+        }),
+      ),
+    ).toBe('Checkout - Error rate');
+  });
+
+  it('falls back to a generic tile name', () => {
+    expect(
+      getDerivedAlertDisplayName(
+        asAlert({
+          source: AlertSource.TILE,
+          tileId: 'tile-1',
+          dashboard: { name: 'Checkout', tiles: [] },
+        }),
+      ),
+    ).toBe('Checkout - Tile');
+  });
+
+  it('uses the saved search name', () => {
+    expect(
+      getDerivedAlertDisplayName(
+        asAlert({
+          source: AlertSource.SAVED_SEARCH,
+          savedSearch: { name: 'Checkout 5xx' },
+        }),
+      ),
+    ).toBe('Checkout 5xx');
+  });
+
+  it('is undefined when the source is not embedded', () => {
+    expect(
+      getDerivedAlertDisplayName(asAlert({ source: AlertSource.SAVED_SEARCH })),
+    ).toBeUndefined();
   });
 });

@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { deleteSavedSearchAlerts } from '@/controllers/alerts';
 import Alert from '@/models/alert';
 import { SavedSearch } from '@/models/savedSearch';
+import { resolveAlertDisplayFields } from '@/utils/alerts';
 import logger from '@/utils/logger';
 
 type SavedSearchWithoutId = Omit<z.infer<typeof SavedSearchSchema>, 'id'>;
@@ -27,9 +28,10 @@ export async function getSavedSearches(
 
   return savedSearches.map(savedSearch => ({
     ...savedSearch.toJSON(),
-    alerts: alertsBySavedSearchId[savedSearch._id.toString()]?.map(alert => {
-      return alert.toJSON();
-    }),
+    alerts: alertsBySavedSearchId[savedSearch._id.toString()]?.map(alert => ({
+      ...alert.toJSON(),
+      ...resolveAlertDisplayFields(alert, { savedSearch }),
+    })),
   }));
 }
 

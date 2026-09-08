@@ -114,6 +114,11 @@ ci-build:
 ci-lint:
 	npx nx run-many -t ci:lint
 	node scripts/ci/ratchet.mjs
+	scripts/ci/check-openapi-sync.sh
+
+.PHONY: ci-openapi
+ci-openapi:
+	scripts/ci/check-openapi-sync.sh
 
 .PHONY: dev-int-down
 dev-int-down:
