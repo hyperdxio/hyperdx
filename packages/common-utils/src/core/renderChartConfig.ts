@@ -180,7 +180,7 @@ const quotedColumnName = (name: string) => `"${name.replace(/"/g, '""')}"`;
 // column named GROUP_ALIAS instead of projecting them as individual columns
 // (see translateHistogram), so grouped histogram rows never share a merge key
 // with grouped gauge/sum rows.
-const isHistogramClassSelect = (select: {
+export const isHistogramClassSelect = (select: {
   metricType?: MetricsDataType;
 }): boolean =>
   select.metricType === MetricsDataType.Histogram ||

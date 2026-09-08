@@ -61,7 +61,7 @@ export const ALERT_COUNT_DEFAULT_SELECT: SelectList = [
 export const ALERT_WINDOW_DATE_RANGE_BOUNDS = {
   dateRangeStartInclusive: true,
   dateRangeEndInclusive: false,
-} as const;
+};
 
 const IMPLICIT_DATETIME_PREFIXES = [
   'toStartOf',

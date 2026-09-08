@@ -15,7 +15,10 @@ import {
   Metadata,
   unquoteIdentifier,
 } from '@hyperdx/common-utils/dist/core/metadata';
-import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
+import {
+  isHistogramClassSelect,
+  renderChartConfig,
+} from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
   ALERT_COUNT_DEFAULT_SELECT,
   ALERT_WINDOW_DATE_RANGE_BOUNDS,
@@ -900,30 +903,6 @@ type ResponseMetadata =
 
 type AlertQueryRow = Record<string, unknown>;
 
-const ALERT_GROUP_ALIAS_PREFIX = '__hdx_alert_group_';
-
-const aliasAlertGroupBy = (
-  chartConfig: ChartConfigWithOptDateRange,
-): ChartConfigWithOptDateRange => {
-  if (!isBuilderChartConfig(chartConfig) || chartConfig.groupBy == null) {
-    return chartConfig;
-  }
-  const groups =
-    typeof chartConfig.groupBy === 'string'
-      ? splitAndTrimWithBracket(chartConfig.groupBy).map(valueExpression => ({
-          aggCondition: '',
-          valueExpression,
-        }))
-      : chartConfig.groupBy;
-  return {
-    ...chartConfig,
-    groupBy: groups.map((group, index) => ({
-      ...group,
-      alias: `${ALERT_GROUP_ALIAS_PREFIX}${index}`,
-    })),
-  };
-};
-
 export const getResponseMetadata = (
   chartConfig: ChartConfigWithOptDateRange,
   data: ResponseJSON<AlertQueryRow>,
@@ -961,7 +940,13 @@ export const getResponseMetadata = (
   const configuredGroupColumnNames = new Set(
     configuredGroups.map(group => group.resultName),
   );
+  const chartSelect = isBuilderChartConfig(chartConfig)
+    ? chartConfig.select
+    : undefined;
+  const hasHistogramSelect =
+    Array.isArray(chartSelect) && chartSelect.some(isHistogramClassSelect);
   const hasPackedHistogramGroup =
+    hasHistogramSelect &&
     configuredGroupColumnNames.size > 0 &&
     meta.some(
       column => column.name === GROUP_ALIAS && column.type.startsWith('Array('),
@@ -970,36 +955,52 @@ export const getResponseMetadata = (
   // the configured expressions/aliases. Positional inference is unsafe for
   // histogram branches, which project their value after the packed `group`
   // column, and for mixed metric charts whose group/value columns interleave.
-  const groupColumnNames = new Set(
-    meta
-      .filter(
-        column =>
-          configuredGroupColumnNames.has(normalizeColumnName(column.name)) ||
-          (hasPackedHistogramGroup && column.name === GROUP_ALIAS),
-      )
-      .map(column => column.name),
+  const groupColumnExpressions = new Map<string, string>();
+  const matchedGroupExpressions = new Set<string>();
+  for (const group of configuredGroups) {
+    const resultColumn = meta.find(
+      column => normalizeColumnName(column.name) === group.resultName,
+    );
+    if (resultColumn != null) {
+      groupColumnExpressions.set(resultColumn.name, group.expression);
+      matchedGroupExpressions.add(group.expression);
+    }
+  }
+  // ClickHouse rewrites some unaliased expression names in response metadata
+  // (for example bracket access becomes arrayElement(...)). Match those
+  // remaining scalar columns by their stable projection order, while keeping
+  // their raw response names available for the persisted history key.
+  const unmatchedGroups = configuredGroups.filter(
+    group => !matchedGroupExpressions.has(group.expression),
   );
-  const groupColumnExpressions = new Map(
-    configuredGroups.flatMap(group => {
-      const resultColumn = meta.find(
-        column => normalizeColumnName(column.name) === group.resultName,
-      );
-      return resultColumn == null
-        ? []
-        : ([[resultColumn.name, group.expression]] as const);
-    }),
+  const unmatchedColumns = meta.filter(
+    column =>
+      column.jsType !== clickhouse.JSDataType.Date &&
+      column.jsType !== clickhouse.JSDataType.Number &&
+      !groupColumnExpressions.has(column.name) &&
+      !(column.name === GROUP_ALIAS && column.type.startsWith('Array(')),
   );
+  unmatchedGroups.forEach((group, index) => {
+    const resultColumn = unmatchedColumns.at(index);
+    if (resultColumn != null) {
+      groupColumnExpressions.set(resultColumn.name, group.expression);
+    }
+  });
+  const groupColumnNames = new Set(groupColumnExpressions.keys());
+  if (hasPackedHistogramGroup) {
+    groupColumnNames.add(GROUP_ALIAS);
+  }
   const packedGroupExpressions = hasPackedHistogramGroup
     ? configuredGroups.map(group => group.expression)
     : undefined;
+  // Preserve the established evaluator contract: the last numeric response
+  // column is the alert value. Group-expression mapping below is only for
+  // notification sample predicates and must not rewrite persisted group keys
+  // or alter existing alert/history behavior.
   const valueColumnNames = new Set(
     meta
-      .filter(
-        m =>
-          m.jsType === clickhouse.JSDataType.Number &&
-          !groupColumnNames.has(m.name),
-      )
-      .map(m => m.name),
+      .filter(column => column.jsType === clickhouse.JSDataType.Number)
+      .map(column => column.name),
   );
 
   if (valueColumnNames.size === 0) {
@@ -1041,12 +1042,15 @@ export const getResponseMetadata = (
  * Parses the following from the given alert query result:
  * - `value`: the numeric value to compare against the alert threshold, taken
  *   from the last column in the result which is included in valueColumnNames
- * - `groupFields`: ordered `[columnName, value]` tuples for each column in the
- *   result which is neither the timestampColumnName nor a valueColumnName.
+ * - `groupFields`: legacy response-column tuples used for persisted history
+ *   keys and notification display attributes.
+ * - `groupFilterFields`: configured group-expression tuples used only to
+ *   constrain notification sample queries.
  */
 export const parseAlertData = (data: AlertQueryRow, meta: ResponseMetadata) => {
   let value: number | null = null;
   const groupFields: Array<[string, unknown]> = [];
+  const groupFilterFields: Array<[string, unknown]> = [];
   const packedGroupValue = Reflect.get(data, GROUP_ALIAS);
   const packedGroupExpressions = meta.packedGroupExpressions;
   const usesPackedGroup =
@@ -1061,13 +1065,14 @@ export const parseAlertData = (data: AlertQueryRow, meta: ResponseMetadata) => {
       Array.isArray(packedGroupValue)
     ) {
       packedGroupExpressions?.forEach((expression, index) => {
-        groupFields.push([expression, packedGroupValue.at(index)]);
+        groupFilterFields.push([expression, packedGroupValue.at(index)]);
       });
     } else if (meta.groupColumnNames.has(k)) {
       if (!usesPackedGroup) {
-        groupFields.push([meta.groupColumnExpressions?.get(k) ?? k, v]);
+        groupFilterFields.push([meta.groupColumnExpressions?.get(k) ?? k, v]);
       }
-    } else if (meta.valueColumnNames.has(k)) {
+    }
+    if (meta.valueColumnNames.has(k)) {
       // Due to output_format_json_quote_64bit_integers=1, 64-bit integers will be returned as strings.
       // Parse them as integers to ensure correct threshold comparison.
       // Floats are not returned as strings (unless output_format_json_quote_64bit_floats=1, which is not the default).
@@ -1079,12 +1084,16 @@ export const parseAlertData = (data: AlertQueryRow, meta: ResponseMetadata) => {
             : typeof v === 'number'
               ? v
               : null;
-    } else if (meta.type !== 'time_series' || k !== meta.timestampColumnName) {
+    }
+    if (
+      !meta.valueColumnNames.has(k) &&
+      (meta.type !== 'time_series' || k !== meta.timestampColumnName)
+    ) {
       groupFields.push([k, v]);
     }
   }
 
-  return { value, groupFields };
+  return { value, groupFields, groupFilterFields };
 };
 
 export const processAlert = async (
@@ -1305,7 +1314,7 @@ export const processAlert = async (
             mvSource,
           )
         : chartConfig;
-    const alertQueryChartConfig = aliasAlertGroupBy(optimizedChartConfig);
+    const alertQueryChartConfig = optimizedChartConfig;
 
     // Readonly = 2 means the query is readonly but can still specify query settings.
     // This is done only for Raw SQL configs because it carries a minor risk of conflict with
@@ -1719,7 +1728,10 @@ export const processAlert = async (
         }
       >();
       for (const checkData of dataForBucket) {
-        const { value, groupFields } = parseAlertData(checkData, meta);
+        const { value, groupFields, groupFilterFields } = parseAlertData(
+          checkData,
+          meta,
+        );
 
         // NULL means no data: a metric series with no row at this bucket, or
         // a ratio with a missing/zero denominator. Skip the row instead of
@@ -1737,7 +1749,7 @@ export const processAlert = async (
             )
           : {};
         const groupAttributes = hasGroupBy
-          ? Object.fromEntries(groupFields)
+          ? Object.fromEntries(groupFilterFields)
           : {};
 
         const exceeds = doesExceedThreshold(alert, value);

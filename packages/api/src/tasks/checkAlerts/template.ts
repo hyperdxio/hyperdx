@@ -819,22 +819,24 @@ ${targetTemplate}`;
     // TODO: show group + total count for group-by alerts
     // fetch sample logs
     let truncatedResults = '';
-    const { filters: groupFilters, unsupportedKeys: unsupportedGroupKeys } =
-      equalityFiltersToQuery(groupAttributes ?? {});
-    for (const groupKey of unsupportedGroupKeys) {
-      logger.warn(
-        {
-          savedSearchId: savedSearch.id,
-          groupKey,
-        },
-        'Omitting unsupported group value from alert sample filters',
-      );
-    }
-    if (unsupportedGroupKeys.length > 0) {
-      sampleFilterFailuresCounter.add(1);
-    }
+    let unsupportedGroupKeys: string[] = [];
     let chartConfig: ChartConfigWithOptDateRange | undefined;
     try {
+      const filterResult = equalityFiltersToQuery(groupAttributes ?? {});
+      const groupFilters = filterResult.filters;
+      unsupportedGroupKeys = filterResult.unsupportedKeys;
+      for (const groupKey of unsupportedGroupKeys) {
+        logger.warn(
+          {
+            savedSearchId: savedSearch.id,
+            groupKey,
+          },
+          'Omitting unsupported group value from alert sample filters',
+        );
+      }
+      if (unsupportedGroupKeys.length > 0) {
+        sampleFilterFailuresCounter.add(1);
+      }
       chartConfig = {
         ...buildSearchChartConfig(source, {
           connection: '', // no need for the connection id since clickhouse client is already initialized
