@@ -960,18 +960,12 @@ export const getResponseMetadata = (
     columnsBeforeTimestamp.length > configuredGroupCount
       ? columnsBeforeTimestamp.slice(-configuredGroupCount)
       : [];
-  const isPackedGroupColumn = (column: (typeof meta)[number]) =>
-    column.name === 'group' && column.type.startsWith('Array(');
   // Match direct group columns by their configured expression names.
   const groupColumnExpressions = new Map<string, string>();
   const matchedGroupExpressions = new Set<string>();
   for (const group of configuredGroups) {
     const resultColumn = positionalGroupColumns.find(
-      column =>
-        column.jsType !== clickhouse.JSDataType.Date &&
-        column.jsType !== clickhouse.JSDataType.Number &&
-        !isPackedGroupColumn(column) &&
-        normalizeColumnName(column.name) === group.resultName,
+      column => normalizeColumnName(column.name) === group.resultName,
     );
     if (resultColumn != null) {
       groupColumnExpressions.set(resultColumn.name, group.expression);
@@ -992,7 +986,6 @@ export const getResponseMetadata = (
       resultColumn != null &&
       resultColumn.jsType !== clickhouse.JSDataType.Date &&
       resultColumn.jsType !== clickhouse.JSDataType.Number &&
-      !isPackedGroupColumn(resultColumn) &&
       !groupColumnExpressions.has(resultColumn.name)
     ) {
       groupColumnExpressions.set(resultColumn.name, group.expression);

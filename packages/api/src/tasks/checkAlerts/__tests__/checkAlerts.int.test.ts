@@ -1025,7 +1025,7 @@ describe('checkAlerts', () => {
         type: 'time_series',
         timestampColumnName: 'ts',
         valueColumnNames: new Set(['cnt']),
-        unmappedGroupExpressions: ['StatusCode'],
+        unmappedGroupExpressions: [],
       });
       expect(
         parseAlertData(
@@ -1038,7 +1038,10 @@ describe('checkAlerts', () => {
           ['ServiceName', 'api'],
           ['StatusCode', 500],
         ],
-        groupFilterFields: [['ServiceName', 'api']],
+        groupFilterFields: [
+          ['ServiceName', 'api'],
+          ['StatusCode', 500],
+        ],
       });
     });
 
@@ -1067,14 +1070,14 @@ describe('checkAlerts', () => {
 
       expect(meta).toMatchObject({
         valueColumnNames: new Set(['ratio']),
-        unmappedGroupExpressions: ['StatusCode'],
+        unmappedGroupExpressions: [],
       });
       expect(
         parseAlertData({ ratio: 0.5, StatusCode: 500, ts: 'now' }, meta!),
       ).toEqual({
         value: 0.5,
         groupFields: [['StatusCode', 500]],
-        groupFilterFields: [],
+        groupFilterFields: [['StatusCode', 500]],
       });
     });
 
@@ -1141,7 +1144,7 @@ describe('checkAlerts', () => {
       expect(meta).toMatchObject({
         timestampColumnName: 'ts',
         valueColumnNames: new Set(['cnt']),
-        unmappedGroupExpressions: ['DeploymentDate'],
+        unmappedGroupExpressions: [],
       });
       expect(
         parseAlertData(
@@ -1155,7 +1158,7 @@ describe('checkAlerts', () => {
       ).toEqual({
         value: 5,
         groupFields: [['DeploymentDate', '2023-11-01 00:00:00']],
-        groupFilterFields: [],
+        groupFilterFields: [['DeploymentDate', '2023-11-01 00:00:00']],
       });
     });
 
@@ -1187,7 +1190,7 @@ describe('checkAlerts', () => {
         type: 'time_series',
         timestampColumnName: '__hdx_time_bucket',
         valueColumnNames: new Set(['Value']),
-        unmappedGroupExpressions: ['StatusCode'],
+        unmappedGroupExpressions: [],
       });
       expect(
         parseAlertData(
@@ -1201,7 +1204,7 @@ describe('checkAlerts', () => {
       ).toEqual({
         value: 5,
         groupFields: [['StatusCode', 500]],
-        groupFilterFields: [],
+        groupFilterFields: [['StatusCode', 500]],
       });
     });
 
@@ -1370,54 +1373,6 @@ describe('checkAlerts', () => {
           [statusResult, 'checkout'],
         ],
         groupFilterFields: [[statusExpression, 'checkout']],
-      });
-    });
-
-    it('skips an unrelated array column when positionally mapping a group', () => {
-      const groupExpression = "LogAttributes['status']";
-      const groupResult = "arrayElement(LogAttributes, 'status')";
-      const meta = getResponseMetadata(
-        makeMetadataChartConfig({
-          sourceId: 'fake-source-id',
-          groupBy: groupExpression,
-        }),
-        {
-          meta: [
-            { name: 'cnt', type: 'UInt64' },
-            { name: 'group', type: 'Array(String)' },
-            { name: groupResult, type: 'String' },
-            { name: 'ts', type: 'DateTime' },
-          ],
-          data: [
-            {
-              cnt: '5',
-              group: ['unrelated'],
-              [groupResult]: 'api',
-              ts: '2023-11-16 22:12:00',
-            },
-          ],
-          rows: 1,
-          statistics: { elapsed: 0, rows_read: 1, bytes_read: 1 },
-        },
-      );
-
-      expect(
-        parseAlertData(
-          {
-            cnt: '5',
-            group: ['unrelated'],
-            [groupResult]: 'api',
-            ts: 'now',
-          },
-          meta!,
-        ),
-      ).toEqual({
-        value: 5,
-        groupFields: [
-          ['group', ['unrelated']],
-          [groupResult, 'api'],
-        ],
-        groupFilterFields: [[groupExpression, 'api']],
       });
     });
 
