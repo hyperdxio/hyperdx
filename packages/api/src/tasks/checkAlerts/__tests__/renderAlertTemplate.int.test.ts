@@ -357,14 +357,14 @@ describe('renderAlertTemplate', () => {
           throw new Error('Expected a log source');
         }
         view.savedSearch.orderBy = '';
-        view.source.orderByExpression = 'Timestamp DESC';
+        view.source.orderByExpression = 'SeverityText ASC';
         mockClickhouseClient.query.mockClear();
 
         await render(view, AlertState.ALERT);
 
         expect(mockClickhouseClient.query).toHaveBeenCalledTimes(1);
         expect(mockClickhouseClient.query.mock.calls[0][0].query).toContain(
-          'ORDER BY Timestamp DESC',
+          'ORDER BY SeverityText ASC',
         );
       });
 
