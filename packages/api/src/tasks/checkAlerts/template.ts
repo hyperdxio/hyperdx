@@ -806,7 +806,7 @@ ${targetTemplate}`;
         dateRangeStartInclusive: true,
         dateRangeEndInclusive: false,
         filters: savedSearch.filters?.map(filter => ({ ...filter })),
-        orderBy: savedSearch.orderBy?.trim() || resolveSearchOrderBy(source),
+        orderBy: resolveSearchOrderBy(source, savedSearch.orderBy),
         select: savedSearch.select,
         where: savedSearch.where,
         whereLanguage: savedSearch.whereLanguage,

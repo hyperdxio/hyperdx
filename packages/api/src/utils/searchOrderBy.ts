@@ -13,12 +13,18 @@ import { isLogSource, isTraceSource } from '@hyperdx/common-utils/dist/types';
 // pick up extra timestamp-like columns from the table's sort key. We skip that
 // step here to avoid an extra CH round-trip on the critical path. Sources that
 // need the full sorting-key-aware behaviour should set `orderByExpression`.
-export function resolveSearchOrderBy(source: TSource): string {
-  const explicit =
+export function resolveSearchOrderBy(
+  source: TSource,
+  orderBy?: string,
+): string {
+  const explicit = orderBy?.trim();
+  if (explicit) return explicit;
+
+  const sourceOrderBy =
     isLogSource(source) || isTraceSource(source)
       ? source.orderByExpression?.trim()
       : undefined;
-  if (explicit) return explicit;
+  if (sourceOrderBy) return sourceOrderBy;
 
   const timestampExpr = source.timestampValueExpression ?? '';
   const displayedExpr =

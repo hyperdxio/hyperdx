@@ -82,7 +82,7 @@ export async function runSearchConfig({
     whereLanguage: config.whereLanguage ?? 'lucene',
     select: config.select ?? null,
     displayType: DisplayType.Search,
-    orderBy: config.orderBy?.trim() || resolveSearchOrderBy(source),
+    orderBy: resolveSearchOrderBy(source, config.orderBy),
     dateRange: [startDate, endDate],
   });
 

@@ -328,6 +328,10 @@ describe('renderAlertTemplate', () => {
         view.savedSearch.filters = [
           { type: 'sql', condition: "ServiceName = 'checkout'" },
         ];
+        if (view.source?.kind !== SourceKind.Log) {
+          throw new Error('Expected a log source');
+        }
+        view.source.tableFilterExpression = "Environment = 'production'";
         mockClickhouseClient.query.mockClear();
 
         await render(view, AlertState.ALERT);
@@ -335,6 +339,7 @@ describe('renderAlertTemplate', () => {
         expect(mockClickhouseClient.query).toHaveBeenCalledTimes(1);
         const sampleQuery = mockClickhouseClient.query.mock.calls[0][0].query;
         expect(sampleQuery).toContain("Body = 'error'");
+        expect(sampleQuery).toContain("Environment = 'production'");
         expect(sampleQuery).toContain("ServiceName = 'checkout'");
         expect(sampleQuery).toMatch(
           /Timestamp >= fromUnixTimestamp64Milli\(.+\) AND Timestamp < fromUnixTimestamp64Milli\(.+\)/,
