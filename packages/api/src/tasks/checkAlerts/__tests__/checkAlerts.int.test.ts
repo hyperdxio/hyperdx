@@ -9901,6 +9901,7 @@ describe('checkAlerts', () => {
        * Period 2 - no data for either group
        */
 
+      const querySpy = jest.spyOn(clickhouseClient, 'query');
       const secondRunTime = new Date(period2Start.getTime() + ms('5m'));
       await processAlertAtTime(
         secondRunTime,
@@ -9925,6 +9926,9 @@ describe('checkAlerts', () => {
 
       // Verify that webhook was called for the alert
       expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(1);
+      expect(
+        querySpy.mock.calls.filter(([input]) => input.format === 'CSV'),
+      ).toHaveLength(1);
       expect(
         jest.mocked(slack.postMessageToWebhook).mock.calls[0][1].text,
       ).not.toContain('[Sample events unavailable for this group]');

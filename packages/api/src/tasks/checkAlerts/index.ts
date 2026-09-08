@@ -1413,6 +1413,7 @@ export const processAlert = async (
         value: number;
         attributes: Record<string, string>;
         groupAttributes: Record<string, unknown>;
+        isGroupedAlert: boolean;
         startTime: Date;
       }
     >();
@@ -1440,6 +1441,7 @@ export const processAlert = async (
       startTime = nowInMinsRoundDown,
       attributes = {},
       groupAttributes,
+      isGroupedAlert = hasGroupBy,
     }: {
       state: AlertState;
       totalCount: number;
@@ -1447,6 +1449,7 @@ export const processAlert = async (
       startTime?: Date;
       attributes?: Record<string, string>;
       groupAttributes?: Record<string, unknown>;
+      isGroupedAlert?: boolean;
     }) => {
       // KNOWN LIMITATION: Alert data (including silenced state) is fetched when
       // the task is queued via AlertProvider, not when it processes. If a user
@@ -1495,9 +1498,7 @@ export const processAlert = async (
           startTime,
           endTime: fns.addMinutes(startTime, windowSizeInMins),
           group,
-          // An empty group key represents the synthetic zero-data bucket used
-          // by grouped BELOW alerts, not an actual projected group.
-          isGroupedAlert: hasGroupBy && group !== '',
+          isGroupedAlert,
           metadata,
           savedSearch: (details as any).savedSearch,
           source,
@@ -1699,6 +1700,7 @@ export const processAlert = async (
               value: 0,
               attributes: {},
               groupAttributes: {},
+              isGroupedAlert: false,
               startTime: bucketStart,
             });
           } else {
@@ -1781,6 +1783,7 @@ export const processAlert = async (
               value: evaluation.value,
               attributes: evaluation.attributes,
               groupAttributes: evaluation.groupAttributes,
+              isGroupedAlert: hasGroupBy,
               startTime: bucketStart,
             });
           } else {
@@ -1854,6 +1857,7 @@ export const processAlert = async (
             startTime: context.startTime,
             attributes: context.attributes,
             groupAttributes: context.groupAttributes,
+            isGroupedAlert: context.isGroupedAlert,
           });
 
           // Inject a mock previous history so the resolve check below catches it
