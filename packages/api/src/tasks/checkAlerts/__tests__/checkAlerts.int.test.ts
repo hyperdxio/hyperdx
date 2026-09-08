@@ -9925,6 +9925,9 @@ describe('checkAlerts', () => {
 
       // Verify that webhook was called for the alert
       expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(1);
+      expect(
+        jest.mocked(slack.postMessageToWebhook).mock.calls[0][1].text,
+      ).not.toContain('[Sample events unavailable for this group]');
     });
 
     it('should not fire notifications when alert is silenced', async () => {

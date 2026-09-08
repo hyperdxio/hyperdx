@@ -200,8 +200,8 @@ const shouldProjectGroupBy = (
 
 /**
  * Describe the group portion of a builder query's response projection.
- * Renderers and consumers share this contract so response metadata does not
- * need to reverse-engineer projection rules independently.
+ * Builder renderers and alert response metadata share this contract. App and
+ * CLI chart shaping still use their legacy runtime-value inference paths.
  */
 export const getBuilderResponseLayout = (
   chartConfig: BuilderChartConfigWithOptDateRange,

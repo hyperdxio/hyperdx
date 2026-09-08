@@ -1495,7 +1495,9 @@ export const processAlert = async (
           startTime,
           endTime: fns.addMinutes(startTime, windowSizeInMins),
           group,
-          isGroupedAlert: hasGroupBy,
+          // An empty group key represents the synthetic zero-data bucket used
+          // by grouped BELOW alerts, not an actual projected group.
+          isGroupedAlert: hasGroupBy && group !== '',
           metadata,
           savedSearch: (details as any).savedSearch,
           source,
