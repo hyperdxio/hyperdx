@@ -1006,7 +1006,7 @@ describe('checkAlerts', () => {
         },
       );
 
-      expect(meta).toEqual({
+      expect(meta).toMatchObject({
         type: 'time_series',
         timestampColumnName: 'ts',
         valueColumnNames: new Set(['cnt']),
@@ -1054,6 +1054,16 @@ describe('checkAlerts', () => {
         valueColumnNames: new Set(['Value']),
         groupColumnNames: new Set(['group']),
       });
+      expect(
+        parseAlertData(
+          {
+            __hdx_time_bucket: '2023-11-16 22:12:00',
+            group: ['api'],
+            Value: 5,
+          },
+          meta!,
+        ),
+      ).toEqual({ value: 5, groupFields: [['ServiceName', 'api']] });
     });
 
     it('classifies a numeric histogram group by name when the value is projected last', () => {
@@ -1080,7 +1090,7 @@ describe('checkAlerts', () => {
         },
       );
 
-      expect(meta).toEqual({
+      expect(meta).toMatchObject({
         type: 'time_series',
         timestampColumnName: '__hdx_time_bucket',
         valueColumnNames: new Set(['Value']),
@@ -1096,6 +1106,72 @@ describe('checkAlerts', () => {
           meta!,
         ),
       ).toEqual({ value: 5, groupFields: [['StatusCode', 500]] });
+    });
+
+    it('does not steal a numeric value column named group', () => {
+      const meta = getResponseMetadata(
+        makeAlertChartConfig({
+          sourceId: 'fake-source-id',
+          groupBy: 'ServiceName',
+        }) as ChartConfigWithOptDateRange,
+        {
+          meta: [
+            { name: 'group', type: 'UInt64' },
+            { name: 'ServiceName', type: 'String' },
+            { name: 'ts', type: 'DateTime' },
+          ],
+          data: [{ group: '5', ServiceName: 'api', ts: 'now' }],
+          rows: 1,
+          statistics: { elapsed: 0, rows_read: 1, bytes_read: 1 },
+        },
+      );
+
+      expect(meta).toMatchObject({
+        valueColumnNames: new Set(['group']),
+        groupColumnNames: new Set(['ServiceName']),
+      });
+      expect(
+        parseAlertData({ group: '5', ServiceName: 'api', ts: 'now' }, meta!),
+      ).toEqual({ value: 5, groupFields: [['ServiceName', 'api']] });
+    });
+
+    it('maps an aliased expression group back to its query expression', () => {
+      const chartConfig = {
+        ...makeAlertChartConfig({ sourceId: 'fake-source-id' }),
+        groupBy: [
+          {
+            aggCondition: '',
+            valueExpression: "ResourceAttributes['status.code']",
+            alias: '__hdx_alert_group_0',
+          },
+        ],
+      } as ChartConfigWithOptDateRange;
+      const meta = getResponseMetadata(chartConfig, {
+        meta: [
+          { name: 'cnt', type: 'UInt64' },
+          { name: '__hdx_alert_group_0', type: 'UInt16' },
+          { name: 'ts', type: 'DateTime' },
+        ],
+        data: [
+          { cnt: '5', __hdx_alert_group_0: 500, ts: '2023-11-16 22:12:00' },
+        ],
+        rows: 1,
+        statistics: { elapsed: 0, rows_read: 1, bytes_read: 1 },
+      });
+
+      expect(meta).toMatchObject({
+        valueColumnNames: new Set(['cnt']),
+        groupColumnNames: new Set(['__hdx_alert_group_0']),
+      });
+      expect(
+        parseAlertData(
+          { cnt: '5', __hdx_alert_group_0: 500, ts: 'now' },
+          meta!,
+        ),
+      ).toEqual({
+        value: 5,
+        groupFields: [["ResourceAttributes['status.code']", 500]],
+      });
     });
 
     it('returns the value and ordered [key, value] field pairs, excluding timestamp and value columns', () => {

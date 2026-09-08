@@ -422,6 +422,24 @@ describe('renderAlertTemplate', () => {
         expect(sampleQuery).not.toContain('ResourceAttributes');
       });
 
+      it('reports unsupported filters and a sample-query failure independently', async () => {
+        mockClickhouseClient.query.mockRejectedValueOnce(
+          new Error('sample query failed'),
+        );
+
+        const result = await render(
+          makeSearchView({
+            group: 'ResourceAttributes:api',
+            groupAttributes: { ResourceAttributes: ['api'] },
+            isGroupedAlert: true,
+          }),
+          AlertState.ALERT,
+        );
+
+        expect(result).toContain('[Some group filters could not be applied]');
+        expect(result).toContain('[Sample fetch failed]');
+      });
+
       it('does not constrain samples when the alert is not grouped', async () => {
         const view = makeSearchView();
         mockClickhouseClient.query.mockClear();

@@ -896,7 +896,11 @@ ${targetTemplate}`;
       );
     } catch (e) {
       sampleFetchFailuresCounter.add(1);
-      truncatedResults = '[Sample fetch failed]';
+      truncatedResults = `${
+        unsupportedGroupKeys.length > 0
+          ? '[Some group filters could not be applied]\n'
+          : ''
+      }[Sample fetch failed]`;
       logger.error(
         {
           savedSearchId: savedSearch.id,

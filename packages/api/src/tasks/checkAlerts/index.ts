@@ -8,6 +8,7 @@ import {
   ResponseJSON,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
+import { GROUP_ALIAS } from '@hyperdx/common-utils/dist/core/histogram';
 import { tryOptimizeConfigWithMaterializedView } from '@hyperdx/common-utils/dist/core/materializedViews';
 import {
   getMetadata,
@@ -885,14 +886,42 @@ type ResponseMetadata =
       timestampColumnName: string;
       valueColumnNames: Set<string>;
       groupColumnNames: Set<string>;
+      groupColumnExpressions?: Map<string, string>;
+      packedGroupExpressions?: string[];
     }
   | {
       type: 'single_value';
       valueColumnNames: Set<string>;
       groupColumnNames: Set<string>;
+      groupColumnExpressions?: Map<string, string>;
+      packedGroupExpressions?: string[];
     };
 
 type AlertQueryRow = Record<string, unknown>;
+
+const ALERT_GROUP_ALIAS_PREFIX = '__hdx_alert_group_';
+
+const aliasAlertGroupBy = (
+  chartConfig: ChartConfigWithOptDateRange,
+): ChartConfigWithOptDateRange => {
+  if (!isBuilderChartConfig(chartConfig) || chartConfig.groupBy == null) {
+    return chartConfig;
+  }
+  const groups =
+    typeof chartConfig.groupBy === 'string'
+      ? splitAndTrimWithBracket(chartConfig.groupBy).map(valueExpression => ({
+          aggCondition: '',
+          valueExpression,
+        }))
+      : chartConfig.groupBy;
+  return {
+    ...chartConfig,
+    groupBy: groups.map((group, index) => ({
+      ...group,
+      alias: `${ALERT_GROUP_ALIAS_PREFIX}${index}`,
+    })),
+  };
+};
 
 export const getResponseMetadata = (
   chartConfig: ChartConfigWithOptDateRange,
@@ -920,17 +949,28 @@ export const getResponseMetadata = (
       ? trimmed.slice(1, -1)
       : trimmed;
   };
+  const configuredGroups = (
+    typeof groupBy === 'string'
+      ? splitAndTrimWithBracket(groupBy).map(expression => ({
+          expression,
+          resultName: expression,
+        }))
+      : (groupBy ?? []).map(group => ({
+          expression: group.valueExpression,
+          resultName: group.alias?.trim() ? group.alias : group.valueExpression,
+        }))
+  ).map(group => ({
+    ...group,
+    resultName: normalizeColumnName(group.resultName),
+  }));
   const configuredGroupColumnNames = new Set(
-    (typeof groupBy === 'string'
-      ? splitAndTrimWithBracket(groupBy)
-      : (groupBy ?? []).map(group =>
-          group.alias?.trim() ? group.alias : group.valueExpression,
-        )
-    ).map(normalizeColumnName),
+    configuredGroups.map(group => group.resultName),
   );
   const hasPackedHistogramGroup =
     configuredGroupColumnNames.size > 0 &&
-    meta.some(column => column.name === 'group');
+    meta.some(
+      column => column.name === GROUP_ALIAS && column.type.startsWith('Array('),
+    );
   // Match group columns by the names renderChartConfig actually assigns to
   // the configured expressions/aliases. Positional inference is unsafe for
   // histogram branches, which project their value after the packed `group`
@@ -940,10 +980,23 @@ export const getResponseMetadata = (
       .filter(
         column =>
           configuredGroupColumnNames.has(normalizeColumnName(column.name)) ||
-          (hasPackedHistogramGroup && column.name === 'group'),
+          (hasPackedHistogramGroup && column.name === GROUP_ALIAS),
       )
       .map(column => column.name),
   );
+  const groupColumnExpressions = new Map(
+    configuredGroups.flatMap(group => {
+      const resultColumn = meta.find(
+        column => normalizeColumnName(column.name) === group.resultName,
+      );
+      return resultColumn == null
+        ? []
+        : ([[resultColumn.name, group.expression]] as const);
+    }),
+  );
+  const packedGroupExpressions = hasPackedHistogramGroup
+    ? configuredGroups.map(group => group.expression)
+    : undefined;
   const valueColumnNames = new Set(
     meta
       .filter(
@@ -965,7 +1018,13 @@ export const getResponseMetadata = (
     isRawSqlChartConfig(chartConfig) &&
     chartConfig.displayType === DisplayType.Number
   ) {
-    return { type: 'single_value', valueColumnNames, groupColumnNames };
+    return {
+      type: 'single_value',
+      valueColumnNames,
+      groupColumnNames,
+      groupColumnExpressions,
+      packedGroupExpressions,
+    };
   } else {
     if (timestampColumnName == null) {
       logger.error({ meta }, 'Failed to find timestamp column');
@@ -977,6 +1036,8 @@ export const getResponseMetadata = (
       timestampColumnName,
       valueColumnNames,
       groupColumnNames,
+      groupColumnExpressions,
+      packedGroupExpressions,
     };
   }
 };
@@ -991,10 +1052,26 @@ export const getResponseMetadata = (
 export const parseAlertData = (data: AlertQueryRow, meta: ResponseMetadata) => {
   let value: number | null = null;
   const groupFields: Array<[string, unknown]> = [];
+  const packedGroupValue = data[GROUP_ALIAS];
+  const packedGroupExpressions = meta.packedGroupExpressions;
+  const usesPackedGroup =
+    packedGroupExpressions != null &&
+    Array.isArray(packedGroupValue) &&
+    packedGroupValue.length > 0;
 
   for (const [k, v] of Object.entries(data)) {
-    if (meta.groupColumnNames.has(k)) {
-      groupFields.push([k, v]);
+    if (
+      k === GROUP_ALIAS &&
+      usesPackedGroup &&
+      Array.isArray(packedGroupValue)
+    ) {
+      packedGroupExpressions?.forEach((expression, index) => {
+        groupFields.push([expression, packedGroupValue[index]]);
+      });
+    } else if (meta.groupColumnNames.has(k)) {
+      if (!usesPackedGroup) {
+        groupFields.push([meta.groupColumnExpressions?.get(k) ?? k, v]);
+      }
     } else if (meta.valueColumnNames.has(k)) {
       // Due to output_format_json_quote_64bit_integers=1, 64-bit integers will be returned as strings.
       // Parse them as integers to ensure correct threshold comparison.
@@ -1003,7 +1080,7 @@ export const parseAlertData = (data: AlertQueryRow, meta: ResponseMetadata) => {
         v == null
           ? null
           : isString(v)
-            ? parseInt(v)
+            ? parseInt(v, 10)
             : typeof v === 'number'
               ? v
               : null;
@@ -1233,12 +1310,13 @@ export const processAlert = async (
             mvSource,
           )
         : chartConfig;
+    const alertQueryChartConfig = aliasAlertGroupBy(optimizedChartConfig);
 
     // Readonly = 2 means the query is readonly but can still specify query settings.
     // This is done only for Raw SQL configs because it carries a minor risk of conflict with
     // existing settings (which may have readonly = 1) and is not required for builder
     // chart configs, which are always rendered as select statements.
-    const clickHouseSettings = isRawSqlChartConfig(optimizedChartConfig)
+    const clickHouseSettings = isRawSqlChartConfig(alertQueryChartConfig)
       ? { readonly: '2' }
       : {};
 
@@ -1248,7 +1326,7 @@ export const processAlert = async (
     const queryStartedAt = performance.now();
     try {
       checksData = await clickhouseClient.queryChartConfig({
-        config: optimizedChartConfig,
+        config: alertQueryChartConfig,
         metadata,
         opts: { clickhouse_settings: clickHouseSettings },
         querySettings: source?.querySettings,
@@ -1491,7 +1569,7 @@ export const processAlert = async (
       }
     };
 
-    const meta = getResponseMetadata(chartConfig, checksData);
+    const meta = getResponseMetadata(alertQueryChartConfig, checksData);
     if (!meta) {
       evalOutcome = 'error';
       logger.error({ alertId: alert.id }, 'Failed to get response metadata');
