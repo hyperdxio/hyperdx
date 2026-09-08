@@ -1078,6 +1078,42 @@ describe('checkAlerts', () => {
       });
     });
 
+    it('separates a numeric tile group from a collapsed multi-select value', () => {
+      const chartConfig = makeMetadataChartConfig({
+        sourceId: 'fake-source-id',
+      });
+      if (!('select' in chartConfig) || !Array.isArray(chartConfig.select)) {
+        throw new Error('Expected a builder chart config');
+      }
+      chartConfig.select = [...chartConfig.select, ...chartConfig.select];
+      chartConfig.groupBy = [
+        { aggCondition: '', valueExpression: 'StatusCode' },
+      ];
+
+      const meta = getResponseMetadata(chartConfig, {
+        meta: [
+          { name: 'ratio', type: 'Float64' },
+          { name: 'StatusCode', type: 'UInt16' },
+          { name: 'ts', type: 'DateTime' },
+        ],
+        data: [{ ratio: 0.5, StatusCode: 500, ts: 'now' }],
+        rows: 1,
+        statistics: { elapsed: 0, rows_read: 1, bytes_read: 1 },
+      });
+
+      expect(meta).toMatchObject({
+        valueColumnNames: new Set(['ratio']),
+        unmappedGroupExpressions: [],
+      });
+      expect(
+        parseAlertData({ ratio: 0.5, StatusCode: 500, ts: 'now' }, meta!),
+      ).toEqual({
+        value: 0.5,
+        groupFields: [['StatusCode', 500]],
+        groupFilterFields: [],
+      });
+    });
+
     it('preserves a numeric group in the legacy group key', () => {
       const meta = getResponseMetadata(
         makeMetadataChartConfig({

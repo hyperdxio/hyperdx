@@ -934,6 +934,12 @@ export const getResponseMetadata = (
     ...group,
     resultName: normalizeColumnName(group.resultName),
   }));
+  const configuredGroupCount =
+    typeof groupBy === 'string'
+      ? configuredGroups.length
+      : Array.isArray(groupBy)
+        ? groupBy.length
+        : 0;
   const timestampIndex = meta.findIndex(
     column => column.name === timestampColumnName,
   );
@@ -946,9 +952,9 @@ export const getResponseMetadata = (
   );
   const positionalGroupColumns =
     isBuilderChartConfig(chartConfig) &&
-    configuredGroups.length > 0 &&
-    columnsBeforeTimestamp.length > configuredGroups.length
-      ? columnsBeforeTimestamp.slice(-configuredGroups.length)
+    configuredGroupCount > 0 &&
+    columnsBeforeTimestamp.length > configuredGroupCount
+      ? columnsBeforeTimestamp.slice(-configuredGroupCount)
       : [];
   const isPackedGroupColumn = (column: (typeof meta)[number]) =>
     column.name === 'group' && column.type.startsWith('Array(');
