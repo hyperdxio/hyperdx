@@ -6,6 +6,7 @@ import {
   AlertThresholdType,
   ChartConfigSchema,
   ChartConfigWithOptDateRange,
+  MetricsDataType,
   SourceKind,
   Tile,
   WebhookService,
@@ -1113,6 +1114,79 @@ describe('checkAlerts', () => {
       ).toEqual({
         value: 0.5,
         groupFields: [['StatusCode', 500]],
+        groupFilterFields: [],
+      });
+    });
+
+    it('does not infer group columns when builder group projection is disabled', () => {
+      const chartConfig = makeMetadataChartConfig({
+        sourceId: 'fake-source-id',
+        groupBy: 'StatusCode',
+      });
+      if (!('select' in chartConfig) || !Array.isArray(chartConfig.select)) {
+        throw new Error('Expected a builder chart config');
+      }
+      chartConfig.select = [...chartConfig.select, ...chartConfig.select];
+      chartConfig.selectGroupBy = false;
+
+      const meta = getResponseMetadata(chartConfig, {
+        meta: [
+          { name: 'first', type: 'Float64' },
+          { name: 'second', type: 'Float64' },
+          { name: 'ts', type: 'DateTime' },
+        ],
+        data: [{ first: 1, second: 2, ts: 'now' }],
+        rows: 1,
+        statistics: { elapsed: 0, rows_read: 1, bytes_read: 1 },
+      });
+
+      expect(meta).toMatchObject({
+        valueColumnNames: new Set(['first', 'second']),
+        unmappedGroupExpressions: ['StatusCode'],
+      });
+      expect(parseAlertData({ first: 1, second: 2, ts: 'now' }, meta!)).toEqual(
+        { value: 2, groupFields: [], groupFilterFields: [] },
+      );
+    });
+
+    it('keeps packed histogram values out of positional group detection', () => {
+      const chartConfig = makeMetadataChartConfig({
+        sourceId: 'fake-source-id',
+        groupBy: 'StatusCode',
+      });
+      if (!('select' in chartConfig) || !Array.isArray(chartConfig.select)) {
+        throw new Error('Expected a builder chart config');
+      }
+      chartConfig.select = [...chartConfig.select, ...chartConfig.select].map(
+        select => ({ ...select, metricType: MetricsDataType.Histogram }),
+      );
+
+      const meta = getResponseMetadata(chartConfig, {
+        meta: [
+          { name: 'first', type: 'Float64' },
+          { name: 'second', type: 'Float64' },
+          { name: 'ts', type: 'DateTime' },
+          { name: 'group', type: 'Array(String)' },
+        ],
+        data: [
+          { first: 1, second: 2, ts: 'now', group: ['StatusCode', '500'] },
+        ],
+        rows: 1,
+        statistics: { elapsed: 0, rows_read: 1, bytes_read: 1 },
+      });
+
+      expect(meta).toMatchObject({
+        valueColumnNames: new Set(['first', 'second']),
+        unmappedGroupExpressions: ['StatusCode'],
+      });
+      expect(
+        parseAlertData(
+          { first: 1, second: 2, ts: 'now', group: ['StatusCode', '500'] },
+          meta!,
+        ),
+      ).toEqual({
+        value: 2,
+        groupFields: [['group', ['StatusCode', '500']]],
         groupFilterFields: [],
       });
     });

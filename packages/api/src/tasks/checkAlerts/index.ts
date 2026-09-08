@@ -14,7 +14,10 @@ import {
   Metadata,
   unquoteIdentifier,
 } from '@hyperdx/common-utils/dist/core/metadata';
-import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
+import {
+  isHistogramClassSelect,
+  renderChartConfig,
+} from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
   ALERT_COUNT_DEFAULT_SELECT,
   ALERT_WINDOW_DATE_RANGE_BOUNDS,
@@ -954,8 +957,16 @@ export const getResponseMetadata = (
     0,
     timestampIndex >= 0 ? timestampIndex : undefined,
   );
-  const positionalGroupColumns =
+  const groupsAreProjected =
     isBuilderChartConfig(chartConfig) &&
+    chartConfig.selectGroupBy !== false &&
+    !(
+      Array.isArray(chartConfig.select) &&
+      chartConfig.select.length > 0 &&
+      chartConfig.select.every(isHistogramClassSelect)
+    );
+  const positionalGroupColumns =
+    groupsAreProjected &&
     configuredGroupCount > 0 &&
     columnsBeforeTimestamp.length > configuredGroupCount
       ? columnsBeforeTimestamp.slice(-configuredGroupCount)

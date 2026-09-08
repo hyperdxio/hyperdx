@@ -328,7 +328,6 @@ describe('renderAlertTemplate', () => {
           groupAttributes: { ServiceName: "checkout's" },
           isGroupedAlert: true,
         });
-        view.alert.groupBy = 'ServiceName';
         mockClickhouseClient.query.mockClear();
 
         await render(view, AlertState.ALERT);
@@ -347,7 +346,6 @@ describe('renderAlertTemplate', () => {
           },
           isGroupedAlert: true,
         });
-        view.alert.groupBy = "LogAttributes['status']";
         mockClickhouseClient.query.mockClear();
 
         await render(view, AlertState.ALERT);
@@ -364,7 +362,6 @@ describe('renderAlertTemplate', () => {
           groupAttributes: { ServiceName: null },
           isGroupedAlert: true,
         });
-        view.alert.groupBy = 'ServiceName';
         mockClickhouseClient.query.mockClear();
 
         await render(view, AlertState.ALERT);
@@ -380,7 +377,6 @@ describe('renderAlertTemplate', () => {
           groupAttributes: { IsError: true },
           isGroupedAlert: true,
         });
-        view.alert.groupBy = 'IsError';
         mockClickhouseClient.query.mockClear();
 
         await render(view, AlertState.ALERT);
