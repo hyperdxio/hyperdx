@@ -25,7 +25,6 @@ import { DBTimeChart } from '@/components/DBTimeChart';
 import { DrawerBody, DrawerHeader } from '@/components/DrawerUtils';
 import { KubeTimeline, useV2LogBatch } from '@/components/KubeComponents';
 import { WithClause } from '@/hooks/useRowWhere';
-import { parseTimeQuery, useTimeQuery } from '@/timeQuery';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
@@ -35,7 +34,6 @@ import { getEventBody } from './source';
 import styles from '@styles/LogSidePanel.module.scss';
 
 const CHART_HEIGHT = 300;
-const defaultTimeRange = parseTimeQuery('Past 1h', false);
 
 const PodDetailsProperty = React.memo(
   ({ label, value }: { label: string; value?: string }) => {
@@ -213,18 +211,19 @@ function PodLogs({
   );
 }
 
-export default function PodDetailsSidePanel({
+function PodDetailsSidePanelInner({
   logSource,
   metricSource,
+  dateRange,
+  podName,
+  setPodName,
 }: {
   logSource: TLogSource;
   metricSource: TMetricSource;
+  dateRange: [Date, Date];
+  podName: string;
+  setPodName: (value: string | null) => void;
 }) {
-  const [podName, setPodName] = useQueryState(
-    'podName',
-    parseAsString.withDefault(''),
-  );
-
   const [rowId, setRowId] = React.useState<string | null>(null);
   const [aliasWith] = React.useState<WithClause[]>([]);
   const handleCloseRowSidePanel = React.useCallback(() => {
@@ -242,14 +241,6 @@ export default function PodDetailsSidePanel({
   const metricsWhere = React.useMemo(() => {
     return `${metricSource?.resourceAttributesExpression}.k8s.pod.name:"${podName}"`;
   }, [podName, metricSource]);
-
-  const { searchedTimeRange: dateRange } = useTimeQuery({
-    defaultValue: 'Past 1h',
-    defaultTimeRange: [
-      defaultTimeRange?.[0]?.getTime() ?? -1,
-      defaultTimeRange?.[1]?.getTime() ?? -1,
-    ],
-  });
 
   const { data: logsTableMetadata } = useTableMetadata(tcFromSource(logSource));
 
@@ -466,5 +457,25 @@ export default function PodDetailsSidePanel({
         </IsolatedChartSyncProvider>
       </ZIndexContext>
     </Drawer>
+  );
+}
+
+export default function PodDetailsSidePanel(props: {
+  logSource: TLogSource;
+  metricSource: TMetricSource;
+  dateRange: [Date, Date];
+}) {
+  const [podName, setPodName] = useQueryState(
+    'podName',
+    parseAsString.withDefault(''),
+  );
+
+  return (
+    <PodDetailsSidePanelInner
+      {...props}
+      key={podName || 'empty'}
+      podName={podName}
+      setPodName={setPodName}
+    />
   );
 }

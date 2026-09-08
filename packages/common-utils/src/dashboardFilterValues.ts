@@ -1,8 +1,12 @@
 import {
+  doesFilterApplyToSource,
   FilterState,
   filtersToQuery,
+  getDashboardVariableFilters,
   getFilterExpression,
   getFilterVariableName,
+  isFilterGlobalRequirement,
+  isFilterRequired,
   isFilterVariableEnabled,
   parseQuery,
 } from '@/filters';
@@ -157,4 +161,52 @@ export function resolveFilterSelection(
   const expression = getFilterExpression(filter);
   if (expression == null) return undefined;
   return new Map(Object.entries(parsed.byExpression)).get(expression);
+}
+
+/** The required filters that have nothing selected, in filter order. */
+export function getUnsatisfiedRequiredFilters<
+  T extends { id: string; minSelections?: number },
+>(
+  filters: T[] | undefined,
+  selectionByFilterId: ReadonlyMap<string, FilterSelection>,
+): T[] {
+  return (filters ?? []).filter(
+    filter =>
+      isFilterRequired(filter) &&
+      (selectionByFilterId.get(filter.id)?.included.size ?? 0) === 0,
+  );
+}
+
+/**
+ * The subset of `unsatisfiedRequiredFilters` that blocks the given tile.
+ *
+ * A tile is blocked if any of the following conditions hold:
+ * 1. The filter has isGlobalRequirement set.
+ * 2. The tile references the filter's variable.
+ * 3. The filter applies via broadcast to the tile's source, and the tile
+ *    applies broadcast conditions (`consumesBroadcastFilters`).
+ */
+export function getBlockingRequiredFilters(
+  unsatisfiedRequiredFilters: DashboardFilter[],
+  tile: {
+    sourceId?: string;
+    referencedVariableNames?: readonly string[];
+    /** Whether the tile's query applies broadcast filter conditions. */
+    consumesBroadcastFilters: boolean;
+  },
+): DashboardFilter[] {
+  const referencedNamesSet = new Set(tile.referencedVariableNames ?? []);
+  const referencedFilterIds = new Set(
+    getDashboardVariableFilters(unsatisfiedRequiredFilters)
+      .filter(({ name }) => referencedNamesSet.has(name))
+      .map(({ filter }) => filter.id),
+  );
+
+  return unsatisfiedRequiredFilters.filter(
+    filter =>
+      isFilterGlobalRequirement(filter) ||
+      referencedFilterIds.has(filter.id) ||
+      (tile.consumesBroadcastFilters &&
+        doesFilterApplyToSource(filter, tile.sourceId)),
+  );
 }

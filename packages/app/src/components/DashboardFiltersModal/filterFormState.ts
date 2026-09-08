@@ -2,6 +2,8 @@ import { Control } from 'react-hook-form';
 import {
   getFilterVariableName,
   isFilterBroadcastEnabled,
+  isFilterGlobalRequirement,
+  isFilterRequired,
   isFilterVariableEnabled,
 } from '@hyperdx/common-utils/dist/filters';
 import {
@@ -21,14 +23,29 @@ import { getStoredLanguage } from '@/components/SearchInput/SearchWhereInput';
  */
 export type FilterFormValues = {
   type: DashboardFilter['type'];
-} & Omit<QueryExpressionDashboardFilter, 'type'> &
+  /** Boolean version of the persisted numeric `minSelections`. */
+  isRequired: boolean;
+  /** Always set, unlike the stored field, whose default lives in `isFilterGlobalRequirement`. */
+  isGlobalRequirement: boolean;
+} & Omit<
+  QueryExpressionDashboardFilter,
+  'type' | 'minSelections' | 'isGlobalRequirement'
+> &
   Omit<
     StaticListDashboardFilter,
-    'type' | 'isBroadcastEnabled' | 'isVariableEnabled'
+    | 'type'
+    | 'isBroadcastEnabled'
+    | 'isVariableEnabled'
+    | 'minSelections'
+    | 'isGlobalRequirement'
   > &
   Omit<
     PromqlLabelDashboardFilter,
-    'type' | 'isBroadcastEnabled' | 'isVariableEnabled'
+    | 'type'
+    | 'isBroadcastEnabled'
+    | 'isVariableEnabled'
+    | 'minSelections'
+    | 'isGlobalRequirement'
   >;
 
 export type FilterFormControl = Control<FilterFormValues>;
@@ -48,6 +65,8 @@ export const toFormValues = (
     variableName: filter?.variableName ?? '',
     isBroadcastEnabled: filter ? isFilterBroadcastEnabled(filter) : true,
     isVariableEnabled: filter ? isFilterVariableEnabled(filter) : false,
+    isRequired: filter ? isFilterRequired(filter) : false,
+    isGlobalRequirement: filter ? isFilterGlobalRequirement(filter) : false,
 
     // QUERY_EXPRESSION fields
     expression: queried?.expression ?? '',
@@ -68,24 +87,35 @@ export const toFormValues = (
 
 /** Normalizes the form values into the filter that gets stored. */
 export const toSavedFilter = (values: FilterFormValues): DashboardFilter => {
+  // Pulled out of the spread below so neither key is stored unless it's relevant
+  const { isRequired, isGlobalRequirement, ...rest } = values;
+  const requirement = isRequired
+    ? {
+        minSelections: 1,
+        ...(isGlobalRequirement ? { isGlobalRequirement: true } : {}),
+      }
+    : {};
+
   if (values.type === 'STATIC_LIST') {
     return DashboardFilterSchema.parse({
-      ...values,
+      ...rest,
       options: values.options.map(option => option.trim()),
       isBroadcastEnabled: false,
       isVariableEnabled: true,
       variableName: getFilterVariableName(values),
+      ...requirement,
     });
   }
 
   if (values.type === 'PROMETHEUS_LABEL') {
     return DashboardFilterSchema.parse({
-      ...values,
+      ...rest,
       label: values.label.trim(),
       match: values.match?.trim() || undefined,
       isBroadcastEnabled: false,
       isVariableEnabled: true,
       variableName: getFilterVariableName(values),
+      ...requirement,
     });
   }
 
@@ -94,12 +124,13 @@ export const toSavedFilter = (values: FilterFormValues): DashboardFilter => {
   const isVariableEnabled = isFilterVariableEnabled(values);
 
   return DashboardFilterSchema.parse({
-    ...values,
+    ...rest,
     where: trimmedWhere || undefined,
     whereLanguage: trimmedWhere ? (values.whereLanguage ?? 'sql') : undefined,
     appliesToSourceIds: appliesTo?.length ? appliesTo : undefined,
     isBroadcastEnabled: isFilterBroadcastEnabled(values),
     isVariableEnabled,
     variableName: isVariableEnabled ? getFilterVariableName(values) : undefined,
+    ...requirement,
   });
 };
