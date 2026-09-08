@@ -10,10 +10,13 @@ import {
   isFilterVariableEnabled,
   parseQuery,
 } from '@/filters';
+import { isMissingFiltersMacro } from '@/macros';
 import {
+  ChartConfigWithOptDateRange,
   DashboardFilter,
   DashboardFilterValue,
   Filter,
+  SavedChartConfig,
   VariableFilterValue,
 } from '@/types';
 
@@ -175,6 +178,19 @@ export function getUnsatisfiedRequiredFilters<
       isFilterRequired(filter) &&
       (selectionByFilterId.get(filter.id)?.included.size ?? 0) === 0,
   );
+}
+
+/** Whether a dashboard's broadcast filters reach a tile with the given config. */
+export function configConsumesBroadcastFilters(
+  config: SavedChartConfig | ChartConfigWithOptDateRange,
+  sourceId: string | undefined,
+): boolean {
+  if (!('configType' in config)) return true;
+  if (config.configType === 'promql') return false;
+  if (config.configType === 'sql') {
+    return !!sourceId && !isMissingFiltersMacro(config.sqlTemplate);
+  }
+  return true;
 }
 
 /**

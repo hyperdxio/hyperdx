@@ -2331,8 +2331,8 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
           // the selection rather than the reference it was written with.
           await dashboardPage.chartEditor.typeLuceneWhere('ServiceName:$svc');
           await expect(
-            dashboardPage.page.getByText(/ServiceName.*accounting/i),
-          ).toBeVisible({ timeout: 10000 });
+            dashboardPage.chartEditor.searchQueryDescription(),
+          ).toHaveText(/ServiceName.*accounting/i, { timeout: 10000 });
 
           // Leave the input empty for the SQL steps below.
           await dashboardPage.chartEditor.typeLuceneWhere('');

@@ -34,7 +34,10 @@ import {
   Granularity,
   isTimeSeriesDisplayType,
 } from '@hyperdx/common-utils/dist/core/utils';
-import { getBlockingRequiredFilters } from '@hyperdx/common-utils/dist/dashboardFilterValues';
+import {
+  configConsumesBroadcastFilters,
+  getBlockingRequiredFilters,
+} from '@hyperdx/common-utils/dist/dashboardFilterValues';
 import {
   displayTypeRequiresSource,
   isBuilderChartConfig,
@@ -591,19 +594,10 @@ const Tile = ({
     [serializedTileVariables],
   );
 
-  // Whether a broadcast filter reaches this tile's query at all. PromQL tiles
-  // are handed no filters, and a raw-SQL tile drops them without a source or
-  // without a macro to apply them.
-  const consumesBroadcastFilters = useMemo(() => {
-    if (isPromqlSavedChartConfig(chart.config)) return false;
-    if (isRawSqlSavedChartConfig(chart.config)) {
-      return (
-        !!chart.config.source &&
-        !isMissingFiltersMacro(chart.config.sqlTemplate)
-      );
-    }
-    return true;
-  }, [chart.config]);
+  const consumesBroadcastFilters = useMemo(
+    () => configConsumesBroadcastFilters(chart.config, chart.config.source),
+    [chart.config],
+  );
 
   // Serialized for the same reason as `tileVariables`: any change to the
   // dashboard's filters hands this tile a new array, and only a change to the
@@ -1622,6 +1616,8 @@ const EditTileModal = ({
   isSaving,
   dateRange,
   variables,
+  getDashboardFilters,
+  unsatisfiedRequiredFilters,
 }: {
   dashboardId?: string;
   chart: Tile | undefined;
@@ -1630,6 +1626,8 @@ const EditTileModal = ({
   isSaving?: boolean;
   onSave: (chart: Tile) => void;
   variables?: ChartVariable[];
+  getDashboardFilters: (sourceId: string | undefined) => Filter[];
+  unsatisfiedRequiredFilters?: DashboardFilter[];
 }) => {
   const contextZIndex = useZIndex();
   const modalZIndex = contextZIndex + 10;
@@ -1689,6 +1687,8 @@ const EditTileModal = ({
                 dashboardId={dashboardId}
                 chartConfig={chart.config}
                 variables={variables}
+                getDashboardFilters={getDashboardFilters}
+                unsatisfiedRequiredFilters={unsatisfiedRequiredFilters}
                 dateRange={dateRange}
                 isSaving={isSaving}
                 onSave={config => {
@@ -2369,6 +2369,20 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     [dashboard, setDashboard],
   );
 
+  // The dashboard's search input plus the filter selections that broadcast to
+  // `sourceId`. Shared with the tile editor so its preview queries what the
+  // tile does.
+  const getTileFilters = useCallback(
+    (sourceId: string | undefined): Filter[] => [
+      {
+        type: whereLanguage === 'sql' ? 'sql' : 'lucene',
+        condition: where,
+      },
+      ...getFilterQueriesForSource(sourceId),
+    ],
+    [where, whereLanguage, getFilterQueriesForSource],
+  );
+
   const renderTileComponent = useCallback(
     (chart: Tile) => {
       // Resolve the tile's source ID so per-source-scoped filters can be
@@ -2387,13 +2401,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           granularity={
             isRefreshEnabled ? granularityOverride : (granularity ?? undefined)
           }
-          filters={[
-            {
-              type: whereLanguage === 'sql' ? 'sql' : 'lucene',
-              condition: where,
-            },
-            ...getFilterQueriesForSource(tileSourceId),
-          ]}
+          filters={getTileFilters(tileSourceId)}
           variables={variables}
           unsatisfiedRequiredFilters={unsatisfiedRequiredFilters}
           onTimeRangeSelect={onTimeRangeSelect}
@@ -2492,12 +2500,10 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       highlightedTileId,
       confirm,
       setDashboard,
-      where,
-      whereLanguage,
       onTimeRangeSelect,
       showAlertAnnotations,
       showReleaseAnnotations,
-      getFilterQueriesForSource,
+      getTileFilters,
       variables,
       unsatisfiedRequiredFilters,
       moveTargetContainers,
@@ -3189,6 +3195,8 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           }}
           dateRange={searchedTimeRange}
           variables={variables}
+          getDashboardFilters={getTileFilters}
+          unsatisfiedRequiredFilters={unsatisfiedRequiredFilters}
           isSaving={isSaving}
           onSave={newChart => {
             if (dashboard == null) {

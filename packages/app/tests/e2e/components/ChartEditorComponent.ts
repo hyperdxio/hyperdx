@@ -584,6 +584,56 @@ export class ChartEditorComponent {
     }
   }
 
+  /**
+   * The "Searching for:" summary of the focused search input, which renders
+   * the query in English. Assertions scope to it because the SQL the query
+   * expands to is also on the page, in the generated-SQL preview.
+   */
+  searchQueryDescription(): Locator {
+    return this.page.getByTestId('search-query-description');
+  }
+
+  /**
+   * The action bar's "Apply filters" control, present only for a tile being
+   * edited from a dashboard.
+   */
+  applyDashboardFilters(): Locator {
+    return this.page.getByTestId('apply-dashboard-filters');
+  }
+
+  applyDashboardFiltersSwitch(): Locator {
+    return this.applyDashboardFilters().getByRole('switch');
+  }
+
+  /** Turn the dashboard's filter selections on or off for the preview. */
+  async setApplyDashboardFilters(apply: boolean) {
+    const toggle = this.applyDashboardFiltersSwitch();
+    await toggle.waitFor({ state: 'visible', timeout: 10000 });
+    if ((await toggle.isChecked()) !== apply) {
+      await toggle.click();
+    }
+  }
+
+  /**
+   * Hover the switch's wrapper rather than the switch, so the tooltip opens
+   * even while the switch is disabled and emits no pointer events itself.
+   */
+  async hoverApplyDashboardFilters() {
+    await this.applyDashboardFilters().hover();
+  }
+
+  /** The placeholder shown while required dashboard filters are unselected. */
+  previewMissingRequiredFilters(): Locator {
+    return this.page.getByTestId('preview-missing-required-filters');
+  }
+
+  /** The rendered chart in the preview panel of the tile editor modal. */
+  tileEditorPreviewChart(): Locator {
+    return this.page
+      .getByTestId('tile-editor-form')
+      .locator('.recharts-responsive-container');
+  }
+
   /** CodeMirror content of the rendered "Generated SQL" preview. */
   generatedSqlContent(): Locator {
     return this.page.getByTestId('chart-sql-preview').locator('.cm-content');

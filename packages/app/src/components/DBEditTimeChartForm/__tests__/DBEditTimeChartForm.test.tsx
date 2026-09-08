@@ -1,5 +1,8 @@
 import React from 'react';
+// The `mock` prefix is required for a jest.mock factory to close over it.
+import { useController as mockUseController } from 'react-hook-form';
 import {
+  AlertThresholdType,
   DisplayType,
   MetricsDataType,
   SavedChartConfig,
@@ -80,6 +83,13 @@ jest.mock('@/source', () => ({
   useSources: jest.fn().mockReturnValue({ data: [] }),
 }));
 
+// The mock handle, read back through `requireMock`, is already typed as the
+// mocked shape. `jest.mocked` on the real import would instead demand a
+// complete `UseQueryResult` from a stub that only needs `data`.
+const mockUseSource = jest.requireMock<{ useSource: jest.Mock }>(
+  '@/source',
+).useSource;
+
 // Records every render's props so tests can assert what the form passes down.
 const metricNameSelectProps: any[] = [];
 
@@ -158,12 +168,23 @@ jest.mock('../../MetricNameSelect', () => ({
   },
 }));
 
+// Wired into form state rather than a static select, so tests can switch the
+// tile's source the way a user does.
 jest.mock('../../SourceSelect', () => ({
-  SourceSelectControlled: () => (
-    <select data-testid="source-selector" defaultValue="metric-source">
-      <option value="metric-source">Metric Source</option>
-    </select>
-  ),
+  SourceSelectControlled: ({ control, name }: any) => {
+    const { field } = mockUseController({ control, name });
+    return (
+      <select
+        data-testid="source-selector"
+        value={field.value ?? ''}
+        onChange={event => field.onChange(event.target.value)}
+      >
+        <option value="metric-source">Metric Source</option>
+        <option value="log-source">Logs</option>
+        <option value="other-source">Other Source</option>
+      </select>
+    );
+  },
 }));
 
 jest.mock('../../ChartSQLPreview', () => ({
@@ -1083,5 +1104,119 @@ describe('DBEditTimeChartForm - Metric formulas', () => {
 
     expect(screen.queryByTestId('add-formula-button')).not.toBeInTheDocument();
     expect(screen.queryByTestId('series-ref-badge')).not.toBeInTheDocument();
+  });
+});
+
+describe('DBEditTimeChartForm - dashboard filters', () => {
+  const getDashboardFilters = jest
+    .fn()
+    .mockReturnValue([{ type: 'sql', condition: "ServiceName IN ('api')" }]);
+
+  const filterSwitch = () =>
+    screen.getByRole('switch', { name: 'Apply filters' });
+
+  const logTileConfig: SavedChartConfig = {
+    ...defaultChartConfig,
+    source: 'log-source',
+    select: [
+      {
+        aggFn: 'count',
+        aggCondition: '',
+        aggConditionLanguage: 'lucene',
+        valueExpression: '',
+      },
+    ],
+  };
+
+  const configWithAlert: SavedChartConfig = {
+    ...logTileConfig,
+    alert: {
+      threshold: 1,
+      thresholdType: AlertThresholdType.ABOVE,
+      interval: '5m',
+      channels: [{ type: 'webhook', webhookId: 'w1' }],
+    },
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    // Earlier describes pin their own source with mockReturnValue, which
+    // survives clearAllMocks.
+    mockUseSource.mockReturnValue({
+      data: {
+        id: 'log-source',
+        kind: SourceKind.Log,
+        name: 'Logs',
+        from: { databaseName: 'default', tableName: 'otel_logs' },
+        connection: 'default',
+        timestampValueExpression: 'Timestamp',
+      },
+    });
+  });
+
+  it('is not offered outside a dashboard', () => {
+    renderComponent({ chartConfig: logTileConfig });
+
+    expect(
+      screen.queryByRole('switch', { name: 'Apply filters' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('applies the parent dashboard filters by default', () => {
+    renderComponent({ getDashboardFilters, chartConfig: logTileConfig });
+
+    expect(filterSwitch()).toBeChecked();
+    expect(filterSwitch()).toBeEnabled();
+  });
+
+  it('scopes the filters it applies to the tile source', async () => {
+    renderComponent({ getDashboardFilters, chartConfig: logTileConfig });
+
+    await userEvent.click(screen.getByTestId('chart-run-query-button'));
+
+    await waitFor(() =>
+      expect(getDashboardFilters).toHaveBeenCalledWith('log-source'),
+    );
+  });
+
+  it('keeps the filters scoped to the submitted source until the next run', async () => {
+    renderComponent({ getDashboardFilters, chartConfig: logTileConfig });
+
+    await userEvent.click(screen.getByTestId('chart-run-query-button'));
+    await waitFor(() =>
+      expect(getDashboardFilters).toHaveBeenCalledWith('log-source'),
+    );
+
+    getDashboardFilters.mockClear();
+    await userEvent.selectOptions(
+      screen.getByTestId('source-selector'),
+      'other-source',
+    );
+
+    // The preview still shows the log-source query, so it keeps that source's
+    // filters instead of rescoping to a source it never queried.
+    expect(getDashboardFilters).not.toHaveBeenCalledWith('other-source');
+
+    await userEvent.click(screen.getByTestId('chart-run-query-button'));
+
+    await waitFor(() =>
+      expect(getDashboardFilters).toHaveBeenCalledWith('other-source'),
+    );
+  });
+
+  it('cannot be turned on for a tile with an alert', () => {
+    renderComponent({ getDashboardFilters, chartConfig: configWithAlert });
+
+    expect(filterSwitch()).not.toBeChecked();
+    expect(filterSwitch()).toBeDisabled();
+  });
+
+  it('can be turned back on once the alert is removed', async () => {
+    renderComponent({ getDashboardFilters, chartConfig: configWithAlert });
+
+    await userEvent.click(screen.getByTestId('remove-alert-button'));
+
+    expect(filterSwitch()).toBeChecked();
+    expect(filterSwitch()).toBeEnabled();
   });
 });
