@@ -1,12 +1,14 @@
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
-import { buildSearchChartConfig } from '@hyperdx/common-utils/dist/core/searchChartConfig';
+import {
+  buildSearchChartConfig,
+  resolveSearchOrderBy,
+} from '@hyperdx/common-utils/dist/core/searchChartConfig';
 import type { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
 
 import { ClickhouseClient } from '@/clickhouse';
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
-import { resolveSearchOrderBy } from '@/utils/searchOrderBy';
 import type { ExternalDashboardSearchRequestConfig } from '@/utils/zod';
 
 export type SearchErrorCode = 'SOURCE_NOT_FOUND' | 'CONNECTION_NOT_FOUND';

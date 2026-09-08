@@ -31,7 +31,10 @@ import {
   ColumnMeta,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
-import { buildSearchChartConfig } from '@hyperdx/common-utils/dist/core/searchChartConfig';
+import {
+  buildSearchChartConfig,
+  resolveSearchOrderBy,
+} from '@hyperdx/common-utils/dist/core/searchChartConfig';
 import {
   aliasMapToWithClauses,
   isBrowser,
@@ -826,42 +829,6 @@ function useSearchedConfigToChartConfig(
   ]);
 }
 
-const implicitDateTimePrefixes = [
-  'toStartOf',
-  'toUnixTimestamp',
-  'toDateTime',
-  'Timestamp',
-] as const;
-
-function optimizeDefaultOrderBy(
-  timestampExpr: string,
-  displayedTimestampExpr: string | undefined,
-  sortingKey: string | undefined,
-) {
-  const orderByArr: string[] = [];
-
-  const timestampExprParts = splitAndTrimWithBracket(timestampExpr);
-  const keys = splitAndTrimWithBracket(sortingKey ?? '');
-  keys.push(...timestampExprParts);
-  if (displayedTimestampExpr) {
-    keys.push(displayedTimestampExpr.trim());
-  }
-  for (const key of keys) {
-    if (
-      !orderByArr.includes(key) &&
-      (implicitDateTimePrefixes.some(v => key.startsWith(v)) ||
-        timestampExprParts.includes(key) ||
-        displayedTimestampExpr?.trim() === key)
-    ) {
-      orderByArr.push(key);
-    }
-  }
-
-  return orderByArr.length > 1
-    ? `(${orderByArr.join(', ')}) DESC`
-    : `${orderByArr[0]} DESC`;
-}
-
 export function useDefaultOrderBy(sourceID: string | undefined | null) {
   const { data: source } = useSource({
     id: sourceID,
@@ -875,11 +842,7 @@ export function useDefaultOrderBy(sourceID: string | undefined | null) {
     if (!source) return undefined;
     const trimmedOrderBy = source.orderByExpression?.trim();
     if (trimmedOrderBy) return trimmedOrderBy;
-    return optimizeDefaultOrderBy(
-      source?.timestampValueExpression ?? '',
-      source.displayedTimestampValueExpression,
-      tableMetadata?.sorting_key,
-    );
+    return resolveSearchOrderBy(source, undefined, tableMetadata?.sorting_key);
   }, [source, tableMetadata]);
 }
 

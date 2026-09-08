@@ -556,6 +556,7 @@ const fireChannelEvent = async ({
     endTime,
     granularity: `${windowSizeInMins} minute`,
     group,
+    groupAttributes: isGroupedAlert ? attributes : undefined,
     isGroupedAlert,
     savedSearch,
     source,

@@ -4,8 +4,13 @@ import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartCo
 import {
   ALERT_WINDOW_DATE_RANGE_BOUNDS,
   buildSearchChartConfig,
+  resolveSearchOrderBy,
 } from '@hyperdx/common-utils/dist/core/searchChartConfig';
-import { formatDate, objectHash } from '@hyperdx/common-utils/dist/core/utils';
+import {
+  escapeSqlString,
+  formatDate,
+  objectHash,
+} from '@hyperdx/common-utils/dist/core/utils';
 import {
   isPromqlSavedChartConfig,
   isRawSqlSavedChartConfig,
@@ -62,7 +67,6 @@ import { resolveAlertDisplayFields } from '@/utils/alerts';
 import { truncateString } from '@/utils/common';
 import { getCounter } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
-import { resolveSearchOrderBy } from '@/utils/searchOrderBy';
 
 const describeThresholdViolation = (
   thresholdType: AlertThresholdType,
@@ -253,6 +257,8 @@ export type AlertMessageTemplateDefaultView = {
   endTime: Date;
   granularity: string;
   group?: string;
+  /** Flat group column/value pairs used to constrain notification samples. */
+  groupAttributes?: Record<string, string>;
   isGroupedAlert: boolean;
   savedSearch?: ISavedSearch | null;
   source?: ISource | null;
@@ -547,6 +553,7 @@ export const renderAlertTemplate = async ({
     dashboard,
     endTime,
     group,
+    groupAttributes,
     savedSearch,
     source,
     startTime,
@@ -807,7 +814,13 @@ ${targetTemplate}`;
         displayType: DisplayType.Search,
         dateRange: [startTime, endTime],
         ...ALERT_WINDOW_DATE_RANGE_BOUNDS,
-        filters: savedSearch.filters?.map(filter => ({ ...filter })),
+        filters: [
+          ...(savedSearch.filters?.map(filter => ({ ...filter })) ?? []),
+          ...Object.entries(groupAttributes ?? {}).map(([column, value]) => ({
+            type: 'sql' as const,
+            condition: `${column} = '${escapeSqlString(value)}'`,
+          })),
+        ],
         orderBy: resolveSearchOrderBy(source, savedSearch.orderBy),
         select: savedSearch.select,
         where: savedSearch.where,

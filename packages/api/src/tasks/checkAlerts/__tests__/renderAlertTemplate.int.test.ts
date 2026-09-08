@@ -147,7 +147,8 @@ const makeSearchView = (
   attributes: {},
   granularity: '1m',
   group: overrides.group,
-  isGroupedAlert: false,
+  groupAttributes: overrides.groupAttributes,
+  isGroupedAlert: overrides.isGroupedAlert ?? false,
   startTime,
   endTime,
   value: overrides.value ?? 10,
@@ -318,6 +319,23 @@ describe('renderAlertTemplate', () => {
           AlertState.ALERT,
         );
         expect(result).toMatchSnapshot();
+      });
+
+      it('constrains sample logs to the firing group', async () => {
+        const view = makeSearchView({
+          group: "ServiceName:checkout's",
+          groupAttributes: { ServiceName: "checkout's" },
+          isGroupedAlert: true,
+        });
+        view.alert.groupBy = 'ServiceName';
+        mockClickhouseClient.query.mockClear();
+
+        await render(view, AlertState.ALERT);
+
+        expect(mockClickhouseClient.query).toHaveBeenCalledTimes(1);
+        expect(mockClickhouseClient.query.mock.calls[0][0].query).toContain(
+          "ServiceName = 'checkout''s'",
+        );
       });
 
       it('applies saved-search filters when fetching sample logs', async () => {

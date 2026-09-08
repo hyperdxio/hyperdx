@@ -1,3 +1,4 @@
+import { splitAndTrimWithBracket } from '@/core/utils';
 import {
   BuilderChartConfig,
   DateRange,
@@ -61,6 +62,61 @@ export const ALERT_WINDOW_DATE_RANGE_BOUNDS = {
   dateRangeStartInclusive: true,
   dateRangeEndInclusive: false,
 } as const;
+
+const IMPLICIT_DATETIME_PREFIXES = [
+  'toStartOf',
+  'toUnixTimestamp',
+  'toDateTime',
+  'Timestamp',
+] as const;
+
+/**
+ * Resolve the search ordering shared by the app and server-side search paths.
+ * A caller-provided order wins, followed by the source override. Otherwise the
+ * source timestamp expressions are combined with timestamp-like sorting-key
+ * columns when table metadata is available.
+ */
+export function resolveSearchOrderBy(
+  source: TSource,
+  orderBy?: string,
+  sortingKey?: string,
+): string {
+  const explicit = orderBy?.trim();
+  if (explicit) return explicit;
+
+  const sourceOrderBy =
+    isLogSource(source) || isTraceSource(source)
+      ? source.orderByExpression?.trim()
+      : undefined;
+  if (sourceOrderBy) return sourceOrderBy;
+
+  const timestampParts = splitAndTrimWithBracket(
+    source.timestampValueExpression ?? '',
+  );
+  const displayedTimestamp =
+    isLogSource(source) || isTraceSource(source)
+      ? source.displayedTimestampValueExpression?.trim()
+      : undefined;
+  const candidates = [
+    ...splitAndTrimWithBracket(sortingKey ?? ''),
+    ...timestampParts,
+    ...(displayedTimestamp ? [displayedTimestamp] : []),
+  ];
+
+  const orderByParts = candidates.filter(
+    (key, index) =>
+      candidates.indexOf(key) === index &&
+      (IMPLICIT_DATETIME_PREFIXES.some(prefix => key.startsWith(prefix)) ||
+        timestampParts.includes(key) ||
+        displayedTimestamp === key),
+  );
+
+  if (orderByParts.length === 0) orderByParts.push('Timestamp');
+
+  return orderByParts.length > 1
+    ? `(${orderByParts.join(', ')}) DESC`
+    : `${orderByParts[0]} DESC`;
+}
 
 /**
  * Saved-search-shaped inputs for assembling a chart config.

@@ -1,7 +1,5 @@
-import type { TSource } from '@hyperdx/common-utils/dist/types';
-import { SourceKind } from '@hyperdx/common-utils/dist/types';
-
-import { resolveSearchOrderBy } from '@/utils/searchOrderBy';
+import { resolveSearchOrderBy } from '@hyperdx/common-utils/dist/core/searchChartConfig';
+import { SourceKind, type TSource } from '@hyperdx/common-utils/dist/types';
 
 const logSource: TSource = {
   id: 'log-source',
@@ -79,5 +77,15 @@ describe('resolveSearchOrderBy', () => {
     expect(
       resolveSearchOrderBy({ ...logSource, timestampValueExpression: '' }),
     ).toBe('Timestamp DESC');
+  });
+
+  it('includes only timestamp-like columns from an optional sorting key', () => {
+    expect(
+      resolveSearchOrderBy(
+        logSource,
+        undefined,
+        'ServiceName, toStartOfHour(Timestamp), Timestamp',
+      ),
+    ).toBe('(toStartOfHour(Timestamp), Timestamp) DESC');
   });
 });
