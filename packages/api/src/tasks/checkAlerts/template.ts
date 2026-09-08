@@ -17,7 +17,6 @@ import {
   AlertThresholdType,
   ChartConfigWithOptDateRange,
   DisplayType,
-  Filter,
   isRangeThresholdType,
   SavedChartConfig,
   SourceKind,
@@ -820,28 +819,23 @@ ${targetTemplate}`;
     // TODO: show group + total count for group-by alerts
     // fetch sample logs
     let truncatedResults = '';
-    const groupFilters: Filter[] = [];
-    const unsupportedGroupKeys: string[] = [];
-    for (const [key, groupValue] of Object.entries(groupAttributes ?? {})) {
-      try {
-        groupFilters.push(...equalityFiltersToQuery({ [key]: groupValue }));
-      } catch (error) {
-        unsupportedGroupKeys.push(key);
-        logger.warn(
-          {
-            savedSearchId: savedSearch.id,
-            groupKey: key,
-            error: serializeError(error),
-          },
-          'Omitting unsupported group value from alert sample filters',
-        );
-      }
+    const { filters: groupFilters, unsupportedKeys: unsupportedGroupKeys } =
+      equalityFiltersToQuery(groupAttributes ?? {});
+    for (const groupKey of unsupportedGroupKeys) {
+      logger.warn(
+        {
+          savedSearchId: savedSearch.id,
+          groupKey,
+        },
+        'Omitting unsupported group value from alert sample filters',
+      );
     }
     if (unsupportedGroupKeys.length > 0) {
       sampleFilterFailuresCounter.add(1);
     }
+    let chartConfig: ChartConfigWithOptDateRange | undefined;
     try {
-      const chartConfig: ChartConfigWithOptDateRange = {
+      chartConfig = {
         ...buildSearchChartConfig(source, {
           connection: '', // no need for the connection id since clickhouse client is already initialized
           displayType: DisplayType.Search,
@@ -904,6 +898,7 @@ ${targetTemplate}`;
       logger.error(
         {
           savedSearchId: savedSearch.id,
+          chartConfig,
           groupAttributes,
           error: serializeError(e),
         },

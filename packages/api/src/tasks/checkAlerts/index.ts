@@ -13,6 +13,7 @@ import { tryOptimizeConfigWithMaterializedView } from '@hyperdx/common-utils/dis
 import {
   getMetadata,
   Metadata,
+  unquoteIdentifier,
 } from '@hyperdx/common-utils/dist/core/metadata';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
@@ -942,13 +943,7 @@ export const getResponseMetadata = (
     m => m.jsType === clickhouse.JSDataType.Date,
   )?.name;
   const groupBy = 'groupBy' in chartConfig ? chartConfig.groupBy : undefined;
-  const normalizeColumnName = (name: string) => {
-    const trimmed = name.trim();
-    return (trimmed.startsWith('`') && trimmed.endsWith('`')) ||
-      (trimmed.startsWith('"') && trimmed.endsWith('"'))
-      ? trimmed.slice(1, -1)
-      : trimmed;
-  };
+  const normalizeColumnName = (name: string) => unquoteIdentifier(name.trim());
   const configuredGroups = (
     typeof groupBy === 'string'
       ? splitAndTrimWithBracket(groupBy).map(expression => ({

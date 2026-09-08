@@ -107,29 +107,37 @@ export const filtersToQuery = (
 
 export const equalityFiltersToQuery = (
   values: Record<string, unknown>,
-): Filter[] =>
-  Object.entries(values).flatMap(([key, value]) => {
+): { filters: Filter[]; unsupportedKeys: string[] } => {
+  const filters: Filter[] = [];
+  const unsupportedKeys: string[] = [];
+  for (const [key, value] of Object.entries(values)) {
     const actualKey = `toString(${key})`;
     if (value == null) {
-      return [{ type: 'sql' as const, condition: `${actualKey} IS NULL` }];
+      filters.push({ type: 'sql' as const, condition: `${actualKey} IS NULL` });
+      continue;
     }
     if (
       typeof value !== 'string' &&
       typeof value !== 'number' &&
       typeof value !== 'boolean'
     ) {
-      throw new TypeError(`Unsupported equality-filter value for ${key}`);
+      unsupportedKeys.push(key);
+      continue;
     }
-    return filtersToQuery(
-      {
-        [key]: {
-          included: new Set([String(value)]),
-          excluded: new Set(),
+    filters.push(
+      ...filtersToQuery(
+        {
+          [key]: {
+            included: new Set([String(value)]),
+            excluded: new Set(),
+          },
         },
-      },
-      { stringifyKeys: true },
+        { stringifyKeys: true },
+      ),
     );
-  });
+  }
+  return { filters, unsupportedKeys };
+};
 
 /**
  * Render a FilterState as a single AND-joined SQL predicate, remapping every

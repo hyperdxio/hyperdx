@@ -48,29 +48,44 @@ describe('filters', () => {
           StatusCode: 500,
           IsError: true,
         }),
-      ).toEqual([
-        {
-          type: 'sql',
-          condition: "toString(LogAttributes['status']) IN ('can''t\\\\stop')",
-        },
-        { type: 'sql', condition: "toString(StatusCode) IN ('500')" },
-        { type: 'sql', condition: "toString(IsError) IN ('true')" },
-      ]);
+      ).toEqual({
+        filters: [
+          {
+            type: 'sql',
+            condition:
+              "toString(LogAttributes['status']) IN ('can''t\\\\stop')",
+          },
+          { type: 'sql', condition: "toString(StatusCode) IN ('500')" },
+          { type: 'sql', condition: "toString(IsError) IN ('true')" },
+        ],
+        unsupportedKeys: [],
+      });
     });
 
     it('uses IS NULL without conflating NULL with the string null', () => {
       expect(
         equalityFiltersToQuery({ nullable: null, literal: 'null' }),
-      ).toEqual([
-        { type: 'sql', condition: 'toString(nullable) IS NULL' },
-        { type: 'sql', condition: "toString(literal) IN ('null')" },
-      ]);
+      ).toEqual({
+        filters: [
+          { type: 'sql', condition: 'toString(nullable) IS NULL' },
+          { type: 'sql', condition: "toString(literal) IN ('null')" },
+        ],
+        unsupportedKeys: [],
+      });
     });
 
-    it('rejects non-scalar values instead of rendering invalid SQL', () => {
-      expect(() =>
-        equalityFiltersToQuery({ ServiceNames: ['api', 'worker'] }),
-      ).toThrow('Unsupported equality-filter value for ServiceNames');
+    it('returns valid filters and reports non-scalar keys independently', () => {
+      expect(
+        equalityFiltersToQuery({
+          ServiceNames: ['api', 'worker'],
+          StatusCode: 500,
+        }),
+      ).toEqual({
+        filters: [
+          { type: 'sql', condition: "toString(StatusCode) IN ('500')" },
+        ],
+        unsupportedKeys: ['ServiceNames'],
+      });
     });
   });
 
