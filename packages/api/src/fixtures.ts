@@ -435,6 +435,7 @@ export const bulkInsertData = async (
 export const bulkInsertLogs = async (
   events: {
     Body: string;
+    LogAttributes?: Record<string, string>;
     ServiceName: string;
     SeverityText: string;
     Timestamp: Date;

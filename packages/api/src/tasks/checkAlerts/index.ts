@@ -8,17 +8,13 @@ import {
   ResponseJSON,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
-import { GROUP_ALIAS } from '@hyperdx/common-utils/dist/core/histogram';
 import { tryOptimizeConfigWithMaterializedView } from '@hyperdx/common-utils/dist/core/materializedViews';
 import {
   getMetadata,
   Metadata,
   unquoteIdentifier,
 } from '@hyperdx/common-utils/dist/core/metadata';
-import {
-  isHistogramClassSelect,
-  renderChartConfig,
-} from '@hyperdx/common-utils/dist/core/renderChartConfig';
+import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
   ALERT_COUNT_DEFAULT_SELECT,
   ALERT_WINDOW_DATE_RANGE_BOUNDS,
@@ -891,14 +887,14 @@ type ResponseMetadata =
       valueColumnNames: Set<string>;
       groupColumnNames: Set<string>;
       groupColumnExpressions?: Map<string, string>;
-      packedGroupExpressions?: string[];
+      unmappedGroupExpressions?: string[];
     }
   | {
       type: 'single_value';
       valueColumnNames: Set<string>;
       groupColumnNames: Set<string>;
       groupColumnExpressions?: Map<string, string>;
-      packedGroupExpressions?: string[];
+      unmappedGroupExpressions?: string[];
     };
 
 type AlertQueryRow = Record<string, unknown>;
@@ -923,38 +919,21 @@ export const getResponseMetadata = (
   )?.name;
   const groupBy = 'groupBy' in chartConfig ? chartConfig.groupBy : undefined;
   const normalizeColumnName = (name: string) => unquoteIdentifier(name.trim());
+  // Notification samples are only fetched for saved-search alerts, whose
+  // groupBy value is a comma-separated string. Tile/inline group aliases do
+  // not flow into this path.
   const configuredGroups = (
     typeof groupBy === 'string'
       ? splitAndTrimWithBracket(groupBy).map(expression => ({
           expression,
           resultName: expression,
         }))
-      : (groupBy ?? []).map(group => ({
-          expression: group.valueExpression,
-          resultName: group.alias?.trim() ? group.alias : group.valueExpression,
-        }))
+      : []
   ).map(group => ({
     ...group,
     resultName: normalizeColumnName(group.resultName),
   }));
-  const configuredGroupColumnNames = new Set(
-    configuredGroups.map(group => group.resultName),
-  );
-  const chartSelect = isBuilderChartConfig(chartConfig)
-    ? chartConfig.select
-    : undefined;
-  const hasHistogramSelect =
-    Array.isArray(chartSelect) && chartSelect.some(isHistogramClassSelect);
-  const hasPackedHistogramGroup =
-    hasHistogramSelect &&
-    configuredGroupColumnNames.size > 0 &&
-    meta.some(
-      column => column.name === GROUP_ALIAS && column.type.startsWith('Array('),
-    );
-  // Match group columns by the names renderChartConfig actually assigns to
-  // the configured expressions/aliases. Positional inference is unsafe for
-  // histogram branches, which project their value after the packed `group`
-  // column, and for mixed metric charts whose group/value columns interleave.
+  // Match direct group columns by their configured expression names.
   const groupColumnExpressions = new Map<string, string>();
   const matchedGroupExpressions = new Set<string>();
   for (const group of configuredGroups) {
@@ -968,8 +947,9 @@ export const getResponseMetadata = (
   }
   // ClickHouse rewrites some unaliased expression names in response metadata
   // (for example bracket access becomes arrayElement(...)). Match those
-  // remaining scalar columns by their stable projection order, while keeping
-  // their raw response names available for the persisted history key.
+  // remaining non-numeric columns by their stable projection order, while
+  // keeping raw response names available for persisted history keys. Numeric
+  // columns are ambiguous with the alert value and degrade explicitly below.
   const unmatchedGroups = configuredGroups.filter(
     group => !matchedGroupExpressions.has(group.expression),
   );
@@ -978,21 +958,19 @@ export const getResponseMetadata = (
       column.jsType !== clickhouse.JSDataType.Date &&
       column.jsType !== clickhouse.JSDataType.Number &&
       !groupColumnExpressions.has(column.name) &&
-      !(column.name === GROUP_ALIAS && column.type.startsWith('Array(')),
+      !(column.name === 'group' && column.type.startsWith('Array(')),
   );
   unmatchedGroups.forEach((group, index) => {
     const resultColumn = unmatchedColumns.at(index);
     if (resultColumn != null) {
       groupColumnExpressions.set(resultColumn.name, group.expression);
+      matchedGroupExpressions.add(group.expression);
     }
   });
   const groupColumnNames = new Set(groupColumnExpressions.keys());
-  if (hasPackedHistogramGroup) {
-    groupColumnNames.add(GROUP_ALIAS);
-  }
-  const packedGroupExpressions = hasPackedHistogramGroup
-    ? configuredGroups.map(group => group.expression)
-    : undefined;
+  const unmappedGroupExpressions = configuredGroups
+    .filter(group => !matchedGroupExpressions.has(group.expression))
+    .map(group => group.expression);
   // Preserve the established evaluator contract: the last numeric response
   // column is the alert value. Group-expression mapping below is only for
   // notification sample predicates and must not rewrite persisted group keys
@@ -1019,7 +997,7 @@ export const getResponseMetadata = (
       valueColumnNames,
       groupColumnNames,
       groupColumnExpressions,
-      packedGroupExpressions,
+      unmappedGroupExpressions,
     };
   } else {
     if (timestampColumnName == null) {
@@ -1033,7 +1011,7 @@ export const getResponseMetadata = (
       valueColumnNames,
       groupColumnNames,
       groupColumnExpressions,
-      packedGroupExpressions,
+      unmappedGroupExpressions,
     };
   }
 };
@@ -1051,34 +1029,10 @@ export const parseAlertData = (data: AlertQueryRow, meta: ResponseMetadata) => {
   let value: number | null = null;
   const groupFields: Array<[string, unknown]> = [];
   const groupFilterFields: Array<[string, unknown]> = [];
-  const packedGroupValue = Reflect.get(data, GROUP_ALIAS);
-  const packedGroupExpressions = meta.packedGroupExpressions;
-  const usesPackedGroup =
-    packedGroupExpressions != null &&
-    Array.isArray(packedGroupValue) &&
-    packedGroupValue.length > 0;
 
   for (const [k, v] of Object.entries(data)) {
-    if (
-      k === GROUP_ALIAS &&
-      usesPackedGroup &&
-      Array.isArray(packedGroupValue)
-    ) {
-      packedGroupExpressions?.forEach((expression, index) => {
-        groupFilterFields.push([expression, packedGroupValue.at(index)]);
-      });
-    } else if (
-      meta.groupColumnNames.has(k) &&
-      !(
-        k === GROUP_ALIAS &&
-        packedGroupExpressions != null &&
-        Array.isArray(v) &&
-        v.length === 0
-      )
-    ) {
-      if (!usesPackedGroup) {
-        groupFilterFields.push([meta.groupColumnExpressions?.get(k) ?? k, v]);
-      }
+    if (meta.groupColumnNames.has(k)) {
+      groupFilterFields.push([meta.groupColumnExpressions?.get(k) ?? k, v]);
     }
     if (meta.valueColumnNames.has(k)) {
       // Due to output_format_json_quote_64bit_integers=1, 64-bit integers will be returned as strings.
@@ -1099,6 +1053,11 @@ export const parseAlertData = (data: AlertQueryRow, meta: ResponseMetadata) => {
     ) {
       groupFields.push([k, v]);
     }
+  }
+  for (const expression of meta.unmappedGroupExpressions ?? []) {
+    // An empty array is deliberately unsupported by equalityFiltersToQuery,
+    // which keeps the sample query usable while surfacing partial filtering.
+    groupFilterFields.push([expression, []]);
   }
 
   return { value, groupFields, groupFilterFields };
@@ -1322,13 +1281,11 @@ export const processAlert = async (
             mvSource,
           )
         : chartConfig;
-    const alertQueryChartConfig = optimizedChartConfig;
-
     // Readonly = 2 means the query is readonly but can still specify query settings.
     // This is done only for Raw SQL configs because it carries a minor risk of conflict with
     // existing settings (which may have readonly = 1) and is not required for builder
     // chart configs, which are always rendered as select statements.
-    const clickHouseSettings = isRawSqlChartConfig(alertQueryChartConfig)
+    const clickHouseSettings = isRawSqlChartConfig(optimizedChartConfig)
       ? { readonly: '2' }
       : {};
 
@@ -1338,7 +1295,7 @@ export const processAlert = async (
     const queryStartedAt = performance.now();
     try {
       checksData = await clickhouseClient.queryChartConfig({
-        config: alertQueryChartConfig,
+        config: optimizedChartConfig,
         metadata,
         opts: { clickhouse_settings: clickHouseSettings },
         querySettings: source?.querySettings,
@@ -1581,7 +1538,7 @@ export const processAlert = async (
       }
     };
 
-    const meta = getResponseMetadata(alertQueryChartConfig, checksData);
+    const meta = getResponseMetadata(optimizedChartConfig, checksData);
     if (!meta) {
       evalOutcome = 'error';
       logger.error({ alertId: alert.id }, 'Failed to get response metadata');

@@ -416,6 +416,12 @@ describe('renderAlertTemplate', () => {
 
         expect(result).toContain('10 lines found');
         expect(result).toContain('[Some group filters could not be applied]');
+        expect(result).toContain(
+          '[Some group filters could not be applied]\n```',
+        );
+        expect(result).not.toContain(
+          '```\n[Some group filters could not be applied]',
+        );
         expect(mockClickhouseClient.query).toHaveBeenCalledTimes(1);
         const sampleQuery = mockClickhouseClient.query.mock.calls[0][0].query;
         expect(sampleQuery).toContain("toString(ServiceName) IN ('checkout')");
@@ -441,7 +447,10 @@ describe('renderAlertTemplate', () => {
       });
 
       it('does not constrain samples when the alert is not grouped', async () => {
-        const view = makeSearchView();
+        const view = makeSearchView({
+          groupAttributes: { ServiceName: 'checkout' },
+          isGroupedAlert: false,
+        });
         mockClickhouseClient.query.mockClear();
 
         await render(view, AlertState.ALERT);

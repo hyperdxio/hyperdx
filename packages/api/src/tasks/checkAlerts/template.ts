@@ -564,6 +564,7 @@ export const renderAlertTemplate = async ({
     endTime,
     group,
     groupAttributes,
+    isGroupedAlert,
     savedSearch,
     source,
     startTime,
@@ -822,7 +823,9 @@ ${targetTemplate}`;
     let unsupportedGroupKeys: string[] = [];
     let chartConfig: ChartConfigWithOptDateRange | undefined;
     try {
-      const filterResult = equalityFiltersToQuery(groupAttributes ?? {});
+      const filterResult = equalityFiltersToQuery(
+        isGroupedAlert ? (groupAttributes ?? {}) : {},
+      );
       const groupFilters = filterResult.filters;
       unsupportedGroupKeys = filterResult.unsupportedKeys;
       for (const groupKey of unsupportedGroupKeys) {
@@ -880,23 +883,13 @@ ${targetTemplate}`;
 
       const lines = raw.split('\n');
 
-      const filterWarning =
-        unsupportedGroupKeys.length > 0
-          ? '[Some group filters could not be applied]\n'
-          : '';
       truncatedResults = truncateString(
-        `${filterWarning}${lines
-          .map(line => truncateString(line, MAX_MESSAGE_LENGTH))
-          .join('\n')}`,
+        lines.map(line => truncateString(line, MAX_MESSAGE_LENGTH)).join('\n'),
         2500,
       );
     } catch (e) {
       sampleFetchFailuresCounter.add(1);
-      truncatedResults = `${
-        unsupportedGroupKeys.length > 0
-          ? '[Some group filters could not be applied]\n'
-          : ''
-      }[Sample fetch failed]`;
+      truncatedResults = '[Sample fetch failed]';
       logger.error(
         {
           savedSearchId: savedSearch.id,
@@ -911,11 +904,15 @@ ${targetTemplate}`;
     // Pass query results through the view so Handlebars syntax in log lines
     // is treated as literal text rather than parsed as template source.
     view.__hdx_query_results__ = truncatedResults;
+    const filterWarning =
+      unsupportedGroupKeys.length > 0
+        ? '[Some group filters could not be applied]\n'
+        : '';
 
     rawTemplateBody = `{{#if group}}Group: "{{{group}}}"{{/if}}
 ${value} lines found, which ${describeThresholdViolation(alert.thresholdType)} the threshold of ${describeThreshold(alert)} lines\n${timeRangeMessage}
 ${targetTemplate}
-\`\`\`
+${filterWarning}\`\`\`
 {{{__hdx_query_results__}}}
 \`\`\``;
   } else if (

@@ -46,6 +46,8 @@ const dateTimeValueExpr = (chType: string, quotedValue: string): string => {
   return `parseDateTime64BestEffort(${quotedValue}, 9)`;
 };
 
+const stringifyFilterKey = (key: string) => `toString(${key})`;
+
 export const filtersToQuery = (
   filters: FilterState,
   {
@@ -66,7 +68,7 @@ export const filtersToQuery = (
     )
     .flatMap(([key, values]) => {
       const conditions: Filter[] = [];
-      const actualKey = stringifyKeys ? `toString(${key})` : key;
+      const actualKey = stringifyKeys ? stringifyFilterKey(key) : key;
 
       // DateTime/DateTime64 columns can't be compared against a bare string
       // literal in ClickHouse, so wrap each value in a parse/convert expression whose
@@ -111,7 +113,7 @@ export const equalityFiltersToQuery = (
   const filters: Filter[] = [];
   const unsupportedKeys: string[] = [];
   for (const [key, value] of Object.entries(values)) {
-    const actualKey = `toString(${key})`;
+    const actualKey = stringifyFilterKey(key);
     if (value == null) {
       filters.push({ type: 'sql', condition: `${actualKey} IS NULL` });
       continue;
