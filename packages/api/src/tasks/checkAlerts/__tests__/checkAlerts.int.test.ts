@@ -1114,6 +1114,51 @@ describe('checkAlerts', () => {
       });
     });
 
+    it('uses the trailing builder date column as the time bucket', () => {
+      const meta = getResponseMetadata(
+        makeMetadataChartConfig({
+          sourceId: 'fake-source-id',
+          groupBy: 'DeploymentDate',
+        }),
+        {
+          meta: [
+            { name: 'cnt', type: 'UInt64' },
+            { name: 'DeploymentDate', type: 'DateTime' },
+            { name: 'ts', type: 'DateTime' },
+          ],
+          data: [
+            {
+              cnt: '5',
+              DeploymentDate: '2023-11-01 00:00:00',
+              ts: '2023-11-16 22:12:00',
+            },
+          ],
+          rows: 1,
+          statistics: { elapsed: 0, rows_read: 1, bytes_read: 1 },
+        },
+      );
+
+      expect(meta).toMatchObject({
+        timestampColumnName: 'ts',
+        valueColumnNames: new Set(['cnt']),
+        unmappedGroupExpressions: ['DeploymentDate'],
+      });
+      expect(
+        parseAlertData(
+          {
+            cnt: '5',
+            DeploymentDate: '2023-11-01 00:00:00',
+            ts: '2023-11-16 22:12:00',
+          },
+          meta!,
+        ),
+      ).toEqual({
+        value: 5,
+        groupFields: [['DeploymentDate', '2023-11-01 00:00:00']],
+        groupFilterFields: [],
+      });
+    });
+
     it('preserves a numeric group in the legacy group key', () => {
       const meta = getResponseMetadata(
         makeMetadataChartConfig({

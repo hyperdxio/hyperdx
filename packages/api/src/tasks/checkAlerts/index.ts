@@ -915,9 +915,13 @@ export const getResponseMetadata = (
       jsType: clickhouse.convertCHDataTypeToJSType(m.type),
     })) ?? [];
 
-  const timestampColumnName = meta.find(
-    m => m.jsType === clickhouse.JSDataType.Date,
-  )?.name;
+  const dateColumns = meta.filter(m => m.jsType === clickhouse.JSDataType.Date);
+  // Builder SELECT order ends with the rendered time bucket, after any group
+  // columns (which may themselves be Date/DateTime). Raw SQL keeps its
+  // established first-date-column convention because its shape is user-defined.
+  const timestampColumnName = isBuilderChartConfig(chartConfig)
+    ? dateColumns.at(-1)?.name
+    : dateColumns[0]?.name;
   const groupBy = 'groupBy' in chartConfig ? chartConfig.groupBy : undefined;
   const normalizeColumnName = (name: string) => unquoteIdentifier(name.trim());
   // Notification samples are only fetched for saved-search alerts, whose
