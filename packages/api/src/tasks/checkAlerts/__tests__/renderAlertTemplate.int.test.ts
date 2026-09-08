@@ -339,6 +339,13 @@ describe('renderAlertTemplate', () => {
         expect(sampleQuery).toMatch(
           /Timestamp >= fromUnixTimestamp64Milli\(.+\) AND Timestamp < fromUnixTimestamp64Milli\(.+\)/,
         );
+        expect(
+          Object.values(
+            mockClickhouseClient.query.mock.calls[0][0].query_params,
+          ),
+        ).toEqual(
+          expect.arrayContaining([startTime.getTime(), endTime.getTime()]),
+        );
       });
 
       it('uses the source order when the saved search has no order', async () => {
@@ -351,6 +358,26 @@ describe('renderAlertTemplate', () => {
         }
         view.savedSearch.orderBy = '';
         view.source.orderByExpression = 'Timestamp DESC';
+        mockClickhouseClient.query.mockClear();
+
+        await render(view, AlertState.ALERT);
+
+        expect(mockClickhouseClient.query).toHaveBeenCalledTimes(1);
+        expect(mockClickhouseClient.query.mock.calls[0][0].query).toContain(
+          'ORDER BY Timestamp DESC',
+        );
+      });
+
+      it('derives a timestamp order when no explicit order is configured', async () => {
+        const view = makeSearchView();
+        if (view.savedSearch == null) {
+          throw new Error('Expected a saved search');
+        }
+        if (view.source?.kind !== SourceKind.Log) {
+          throw new Error('Expected a log source');
+        }
+        view.savedSearch.orderBy = ' ';
+        view.source.orderByExpression = ' ';
         mockClickhouseClient.query.mockClear();
 
         await render(view, AlertState.ALERT);

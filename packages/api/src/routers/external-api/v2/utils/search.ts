@@ -1,22 +1,12 @@
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { buildSearchChartConfig } from '@hyperdx/common-utils/dist/core/searchChartConfig';
-import {
-  getFirstTimestampValueExpression,
-  splitAndTrimWithBracket,
-} from '@hyperdx/common-utils/dist/core/utils';
-import type {
-  ChartConfigWithDateRange,
-  TSource,
-} from '@hyperdx/common-utils/dist/types';
-import {
-  DisplayType,
-  isLogSource,
-  isTraceSource,
-} from '@hyperdx/common-utils/dist/types';
+import type { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
+import { DisplayType } from '@hyperdx/common-utils/dist/types';
 
 import { ClickhouseClient } from '@/clickhouse';
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
+import { resolveSearchOrderBy } from '@/utils/searchOrderBy';
 import type { ExternalDashboardSearchRequestConfig } from '@/utils/zod';
 
 export type SearchErrorCode = 'SOURCE_NOT_FOUND' | 'CONNECTION_NOT_FOUND';
@@ -31,52 +21,6 @@ type SearchResults = {
   isError: false;
   data: Record<string, unknown>[];
 };
-
-// Mirrors `optimizeDefaultOrderBy` + `useDefaultOrderBy` from DBSearchPage.tsx.
-// Uses `source.orderByExpression` when set, otherwise derives an ORDER BY string
-// from the source's timestamp expressions.
-//
-// The UI version also folds in `tableMetadata.sorting_key` (fetched from CH) to
-// pick up extra timestamp-like columns from the table's sort key. We skip that
-// step here to avoid an extra CH round-trip on the critical path. Sources that
-// need the full sorting-key-aware behaviour should set `orderByExpression`.
-function resolveSearchOrderBy(source: TSource): string {
-  const explicit =
-    isLogSource(source) || isTraceSource(source)
-      ? source.orderByExpression?.trim()
-      : undefined;
-  if (explicit) return explicit;
-
-  const timestampExpr = source.timestampValueExpression ?? '';
-  const displayedExpr =
-    isLogSource(source) || isTraceSource(source)
-      ? source.displayedTimestampValueExpression?.trim()
-      : undefined;
-
-  const timestampParts = splitAndTrimWithBracket(timestampExpr);
-  const candidates = displayedExpr
-    ? [...timestampParts, displayedExpr]
-    : [...timestampParts];
-
-  const seen = new Set<string>();
-  const orderByParts: string[] = [];
-  for (const key of candidates) {
-    if (!seen.has(key)) {
-      seen.add(key);
-      orderByParts.push(key);
-    }
-  }
-
-  if (orderByParts.length === 0) {
-    orderByParts.push(
-      getFirstTimestampValueExpression(timestampExpr) ?? 'Timestamp',
-    );
-  }
-
-  return orderByParts.length > 1
-    ? `(${orderByParts.join(', ')}) DESC`
-    : `${orderByParts[0]} DESC`;
-}
 
 export async function runSearchConfig({
   teamId,

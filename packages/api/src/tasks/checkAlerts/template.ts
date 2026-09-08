@@ -59,6 +59,7 @@ import { resolveAlertDisplayFields } from '@/utils/alerts';
 import { truncateString } from '@/utils/common';
 import { getCounter } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
+import { resolveSearchOrderBy } from '@/utils/searchOrderBy';
 
 const describeThresholdViolation = (
   thresholdType: AlertThresholdType,
@@ -805,7 +806,7 @@ ${targetTemplate}`;
         dateRangeStartInclusive: true,
         dateRangeEndInclusive: false,
         filters: savedSearch.filters,
-        orderBy: savedSearch.orderBy || source.orderByExpression,
+        orderBy: savedSearch.orderBy?.trim() || resolveSearchOrderBy(source),
         select: savedSearch.select,
         where: savedSearch.where,
         whereLanguage: savedSearch.whereLanguage,
