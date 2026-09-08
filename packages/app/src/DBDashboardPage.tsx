@@ -210,7 +210,7 @@ import {
 } from './source';
 import {
   dateRangeToString,
-  parseTimeQuery,
+  useDefaultTimeRange,
   useNewTimeQuery,
 } from './timeQuery';
 import { useConfirm } from './useConfirm';
@@ -374,9 +374,6 @@ const tileToLayoutItem = (chart: Tile): RGL.Layout => ({
   minH: 1,
   minW: 1,
 });
-
-// TODO: This is a hack to set the default time range
-const defaultTimeRange = parseTimeQuery('Past 1h', false) as [Date, Date];
 
 const whereLanguageParser = parseAsString.withDefault(
   typeof window !== 'undefined' ? (getStoredLanguage() ?? 'lucene') : 'lucene',
@@ -1767,7 +1764,10 @@ function DashboardContainerRow({
   );
 }
 
+const DEFAULT_INTERVAL = 'Past 1h';
+
 function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
+  const defaultTimeRange = useDefaultTimeRange(DEFAULT_INTERVAL);
   const brandName = useBrandDisplayName();
   const confirm = useConfirm();
 
@@ -1943,10 +1943,10 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   }, [router.isReady, watchedGranularity, granularity, setGranularity]);
 
   const [displayedTimeInputValue, setDisplayedTimeInputValue] =
-    useState('Past 1h');
+    useState(DEFAULT_INTERVAL);
 
   const { searchedTimeRange, onSearch, onTimeRangeSelect } = useNewTimeQuery({
-    initialDisplayValue: 'Past 1h',
+    initialDisplayValue: DEFAULT_INTERVAL,
     initialTimeRange: defaultTimeRange,
     setDisplayedTimeInputValue,
   });
