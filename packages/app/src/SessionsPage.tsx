@@ -47,7 +47,7 @@ import { SourceSelectControlled } from '@/components/SourceSelect';
 import { TimePicker } from '@/components/TimePicker';
 import { useDashboardRefresh } from '@/hooks/useDashboardRefresh';
 import { useResolvedSourceParam } from '@/hooks/useResolvedSourceParam';
-import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
+import { useDefaultTimeRange, useNewTimeQuery } from '@/timeQuery';
 
 import OnboardingModal from './components/OnboardingModal';
 import SearchWhereInput, {
@@ -226,9 +226,6 @@ function SessionCardList({
 // Clicks inside the session list keep the session side panel open (so users can
 // scroll or pick a different session); clicks anywhere else dismiss it.
 const SESSION_LIST_KEEP_OPEN_SELECTOR = '[data-testid="session-card-list"]';
-
-// TODO: This is a hack to set the default time range
-const defaultTimeRange = parseTimeQuery('Past 1h', false) as [Date, Date];
 const selectedSessionQueryStateMap = {
   sid: parseAsString,
   sfrom: parseAsFloat,
@@ -239,7 +236,10 @@ const appliedConfigMap = {
   where: parseAsString.withDefault(''),
   whereLanguage: parseAsStringEnum<'sql' | 'lucene'>(['sql', 'lucene']),
 };
+const DEFAULT_INTERVAL = 'Past 1h';
+
 function SessionsPage() {
+  const defaultTimeRange = useDefaultTimeRange(DEFAULT_INTERVAL);
   const brandName = useBrandDisplayName();
   const [appliedConfig, setAppliedConfig] = useQueryStates(appliedConfigMap);
   // `?sessionSource=` accepts a source name as well as a source ID. The form
@@ -302,7 +302,6 @@ function SessionsPage() {
     }
   }, [sources, appliedConfig.sessionSource, setValue]);
 
-  const DEFAULT_INTERVAL = 'Past 1h';
   const [displayedTimeInputValue, setDisplayedTimeInputValue] =
     useState(DEFAULT_INTERVAL);
 
