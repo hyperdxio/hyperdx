@@ -103,7 +103,6 @@ export function MetricNameSelect({
     hasError,
     hasNoMatches,
     isFetching: isSearching,
-    isSubset,
   } = useMetricNames(metricSource, dateRange, debouncedSearch);
 
   const options = useMemo(() => {
@@ -194,14 +193,21 @@ export function MetricNameSelect({
       // mid-session, and above the input it pushes the field down out of
       // alignment with the browse-metrics button beside it.
       inputWrapperOrder={['label', 'input', 'description', 'error']}
+      // Keyed off `activeSearch`, not the debounced value: the latter trails by
+      // 300ms, so every transition landed a beat after the list it describes —
+      // the notice popped in on open and lingered into the first keystroke.
+      // `isSearchPending` guards the truncation copy, which otherwise reports
+      // the previous pattern's page.
       description={
         hasError
           ? 'Some metrics failed to load'
-          : isTruncated || (!debouncedSearch && isSubset)
-            ? debouncedSearch
+          : activeSearch
+            ? isTruncated && !isSearchPending
               ? `Showing the first ${DEFAULT_METRIC_NAMES_LIMIT} matches — refine your search`
-              : 'Type to search all metrics'
-            : undefined
+              : undefined
+            : isTruncated
+              ? 'Type to search all metrics'
+              : undefined
       }
       // Replaces the chevron while names are still arriving, so a user who
       // cannot find a metric knows to wait — but only with no selection, since
