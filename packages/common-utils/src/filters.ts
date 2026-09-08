@@ -847,6 +847,24 @@ export function isFilterVariableEnabled(filter: {
   return filter.isVariableEnabled === true;
 }
 
+/**
+ * Whether a filter must have at least one value selected before the tiles it
+ * covers will load.
+ */
+export function isFilterRequired(filter: { minSelections?: number }): boolean {
+  return (filter.minSelections ?? 0) > 0;
+}
+
+/**
+ * Whether the given required filter blocks every tile on the dashboard,
+ * rather than only the tiles that read it.
+ */
+export function isFilterGlobalRequirement(filter: {
+  isGlobalRequirement?: boolean;
+}): boolean {
+  return !!filter.isGlobalRequirement;
+}
+
 /** The discriminant every dashboard-filter shape carries. */
 export type DashboardFilterKind = DashboardFilter['type'];
 
@@ -896,6 +914,22 @@ export function getFilterBroadcastTarget(
     expression: filter.expression,
     appliesToSourceIds: filter.appliesToSourceIds,
   };
+}
+
+/**
+ * Whether a filter broadcasts its selected value onto a tile whose source is
+ * `sourceId`. A broadcasting filter with no `appliesToSourceIds` reaches every
+ * tile, including one with no source of its own.
+ */
+export function doesFilterApplyToSource(
+  filter: DashboardFilter,
+  sourceId: string | undefined,
+): boolean {
+  const target = getFilterBroadcastTarget(filter);
+  if (!target) return false;
+  const appliesTo = target.appliesToSourceIds;
+  if (!appliesTo || appliesTo.length === 0) return true;
+  return !!sourceId && appliesTo.includes(sourceId);
 }
 
 /**
@@ -1008,6 +1042,40 @@ export function resolveFilterValuesWhere(
       whereLanguage,
       error: e instanceof Error ? e.message : String(e),
     };
+  }
+}
+
+export type ResolvedPromqlLabelFilterMatch = {
+  /** The selector the values lookup actually sends, or undefined for none. */
+  match?: string;
+  /** Set when expansion failed; `match` is then the template as written. */
+  error?: string;
+};
+
+/**
+ * Expand the dashboard variables a Prometheus label filter's series selector
+ * references.
+ *
+ * Never throws. Failures (unknown variables, etc) leave the selector as
+ * written and report an `error`.
+ */
+export function resolvePromqlLabelFilterMatch(
+  filter: { match?: string },
+  variables: ChartVariable[] | undefined,
+): ResolvedPromqlLabelFilterMatch {
+  const match = filter.match?.trim();
+  if (!match) return {};
+  if (variables == null) return { match };
+
+  try {
+    return {
+      match: substituteVariables(match, {
+        variables,
+        inputLanguage: 'promql',
+      }),
+    };
+  } catch (e) {
+    return { match, error: e instanceof Error ? e.message : String(e) };
   }
 }
 

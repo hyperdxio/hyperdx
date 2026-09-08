@@ -4,4 +4,4 @@
 '@hyperdx/app': patch
 ---
 
-feat: Support dashboard filters based on Prometheus label values
+feat: Allow configuring dashboard filters as required

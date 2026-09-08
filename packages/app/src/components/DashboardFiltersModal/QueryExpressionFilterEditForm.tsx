@@ -30,6 +30,7 @@ import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEdito
 import { useSource } from '@/source';
 import { getMetricTableName } from '@/utils';
 
+import { TOOLTIP_PORTAL_TARGET } from './constants';
 import { CustomInputWrapper } from './CustomInputWrapper';
 import { FilterFormControl, FilterFormValues } from './filterFormState';
 import { VariableNameInput } from './VariableNameInput';
@@ -44,13 +45,6 @@ interface QueryExpressionFilterEditFormProps {
   /** Whether the broadcast / variable controls are available. */
   showVariableOptions: boolean;
 }
-
-/**
- * The modal body scrolls, so an autocomplete popup rendered inside it is
- * clipped at the modal's edge. Portal it to the document body instead.
- */
-const TOOLTIP_PORTAL_TARGET =
-  typeof document !== 'undefined' ? document.body : null;
 
 /**
  * The fields describing where a filter's dropdown values are queried from.

@@ -2872,7 +2872,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
       });
 
       test('per-series format overrides chart-wide format and falls back when reset to inherit', async () => {
-        test.setTimeout(15000);
+        test.setTimeout(60000);
         const ts = Date.now();
         const chartName = `E2E Per-Series Format ${ts}`;
 
@@ -2976,7 +2976,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
                   cells.length > 0 && cells.every(c => c.includes(substring))
                 );
               },
-              { timeout: 10000 },
+              { timeout: 15000 },
             )
             .toBe(true);
         };

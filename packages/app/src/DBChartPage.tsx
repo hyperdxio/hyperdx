@@ -33,7 +33,7 @@ import { useResolvedSourceParam } from '@/hooks/useResolvedSourceParam';
 import { withAppNav } from '@/layout';
 import { useSources } from '@/source';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
-import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
+import { useDefaultTimeRange, useNewTimeQuery } from '@/timeQuery';
 import { useLocalStorage } from '@/utils';
 
 import OnboardingModal from './components/OnboardingModal';
@@ -41,9 +41,6 @@ import OnboardingModal from './components/OnboardingModal';
 // Autocomplete can focus on column/map keys
 
 // Sampled field discovery and full field discovery
-
-// TODO: This is a hack to set the default time range
-const defaultTimeRange = parseTimeQuery('Past 1h', false) as [Date, Date];
 
 function AIAssistant({
   setConfig,
@@ -201,7 +198,10 @@ function AIAssistant({
   );
 }
 
+const DEFAULT_INTERVAL = 'Past 1h';
+
 function DBChartExplorerPage() {
+  const defaultTimeRange = useDefaultTimeRange(DEFAULT_INTERVAL);
   const brandName = useBrandDisplayName();
   const {
     searchedTimeRange,
@@ -210,7 +210,7 @@ function DBChartExplorerPage() {
     onSearch,
     onTimeRangeSelect,
   } = useNewTimeQuery({
-    initialDisplayValue: 'Past 1h',
+    initialDisplayValue: DEFAULT_INTERVAL,
     initialTimeRange: defaultTimeRange,
     // showRelativeInterval: isLive,
   });
