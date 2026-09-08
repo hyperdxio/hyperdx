@@ -21,8 +21,6 @@ export type FilterState = {
   };
 };
 
-export type EqualityFilterValue = string | number | boolean | null;
-
 // Wrap a quoted string literal in a ClickHouse expression whose result type
 // matches the date column's type.
 const dateTimeValueExpr = (chType: string, quotedValue: string): string => {
@@ -109,10 +107,9 @@ export const filtersToQuery = (
 
 export const equalityFiltersToQuery = (
   values: Record<string, unknown>,
-  { stringifyKeys = false }: { stringifyKeys?: boolean } = {},
 ): Filter[] =>
   Object.entries(values).flatMap(([key, value]) => {
-    const actualKey = stringifyKeys ? `toString(${key})` : key;
+    const actualKey = `toString(${key})`;
     if (value == null) {
       return [{ type: 'sql' as const, condition: `${actualKey} IS NULL` }];
     }
@@ -123,20 +120,14 @@ export const equalityFiltersToQuery = (
     ) {
       throw new TypeError(`Unsupported equality-filter value for ${key}`);
     }
-    if (!stringifyKeys && typeof value === 'number') {
-      return [{ type: 'sql' as const, condition: `${key} IN (${value})` }];
-    }
-
     return filtersToQuery(
       {
         [key]: {
-          included: new Set([
-            stringifyKeys || typeof value === 'number' ? String(value) : value,
-          ]),
+          included: new Set([String(value)]),
           excluded: new Set(),
         },
       },
-      { stringifyKeys },
+      { stringifyKeys: true },
     );
   });
 

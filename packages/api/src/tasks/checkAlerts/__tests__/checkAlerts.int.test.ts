@@ -1026,32 +1026,38 @@ describe('checkAlerts', () => {
       });
     });
 
-    it('does not infer projected groups when selectGroupBy is disabled', () => {
-      const chartConfig = {
-        ...makeAlertChartConfig({
+    it('keeps a value-last histogram result evaluable', () => {
+      const meta = getResponseMetadata(
+        makeAlertChartConfig({
           sourceId: 'fake-source-id',
-          groupBy: 'StatusCode',
-        }),
-        selectGroupBy: false,
-      } as ChartConfigWithOptDateRange;
-      const meta = getResponseMetadata(chartConfig, {
-        meta: [
-          { name: 'cnt', type: 'UInt64' },
-          { name: 'ts', type: 'DateTime' },
-        ],
-        data: [{ cnt: '5', ts: '2023-11-16 22:12:00' }],
-        rows: 1,
-        statistics: { elapsed: 0, rows_read: 1, bytes_read: 1 },
-      });
+          groupBy: 'ServiceName',
+        }) as ChartConfigWithOptDateRange,
+        {
+          meta: [
+            { name: '__hdx_time_bucket', type: 'DateTime' },
+            { name: 'group', type: 'Array(String)' },
+            { name: 'Value', type: 'Float64' },
+          ],
+          data: [
+            {
+              __hdx_time_bucket: '2023-11-16 22:12:00',
+              group: ['api'],
+              Value: 5,
+            },
+          ],
+          rows: 1,
+          statistics: { elapsed: 0, rows_read: 1, bytes_read: 1 },
+        },
+      );
 
       expect(meta).toMatchObject({
-        valueColumnNames: new Set(['cnt']),
+        valueColumnNames: new Set(['Value']),
         groupColumnNames: new Set(),
       });
     });
 
     it('returns the value and ordered [key, value] field pairs, excluding timestamp and value columns', () => {
-      const { value, extraFields } = parseAlertData(
+      const { value, groupFields } = parseAlertData(
         {
           ts: '2023-11-16T22:12:00.000Z',
           ServiceName: 'web',
@@ -1063,14 +1069,14 @@ describe('checkAlerts', () => {
 
       expect(value).toBe(5);
       // Column order is preserved and the timestamp/value columns are excluded.
-      expect(extraFields).toEqual([
+      expect(groupFields).toEqual([
         ['ServiceName', 'web'],
         ['SeverityText', 'error'],
       ]);
     });
 
     it('derives a group string byte-identical to the old "k:v, k:v" format', () => {
-      const { extraFields } = parseAlertData(
+      const { groupFields } = parseAlertData(
         {
           ts: '2023-11-16T22:12:00.000Z',
           ServiceName: 'web',
@@ -1080,12 +1086,12 @@ describe('checkAlerts', () => {
         timeSeriesMeta,
       );
 
-      const groupKey = extraFields.map(([k, v]) => `${k}:${v}`).join(', ');
+      const groupKey = groupFields.map(([k, v]) => `${k}:${v}`).join(', ');
       expect(groupKey).toBe('ServiceName:web, SeverityText:error');
     });
 
     it('derives attributes via Object.fromEntries, preserving values that contain colons', () => {
-      const { extraFields } = parseAlertData(
+      const { groupFields } = parseAlertData(
         {
           ts: '2023-11-16T22:12:00.000Z',
           'k8s.pod.name': 'otel-collector-123',
@@ -1096,24 +1102,25 @@ describe('checkAlerts', () => {
         timeSeriesMeta,
       );
 
-      expect(Object.fromEntries(extraFields)).toEqual({
+      expect(
+        Object.fromEntries(groupFields.map(([k, v]) => [k, `${v}`])),
+      ).toEqual({
         'k8s.pod.name': 'otel-collector-123',
         firstSeen: '2023-11-16T22:12:00.000Z',
         url: 'https://example.com/path',
       });
     });
 
-    it('coerces numeric field values to strings', () => {
+    it('preserves numeric group values', () => {
       const numericGroupMeta = {
         ...timeSeriesMeta,
         groupColumnNames: new Set(['StatusCode']),
       };
-      const { extraFields, groupFields } = parseAlertData(
+      const { groupFields } = parseAlertData(
         { ts: '2023-11-16T22:12:00.000Z', StatusCode: 500, cnt: 5 },
         numericGroupMeta,
       );
 
-      expect(extraFields).toEqual([['StatusCode', '500']]);
       expect(groupFields).toEqual([['StatusCode', 500]]);
     });
 
@@ -1122,12 +1129,11 @@ describe('checkAlerts', () => {
         ...timeSeriesMeta,
         groupColumnNames: new Set(['ServiceName']),
       };
-      const { extraFields, groupFields } = parseAlertData(
+      const { groupFields } = parseAlertData(
         { ts: '2023-11-16T22:12:00.000Z', ServiceName: null, cnt: 5 },
         nullableGroupMeta,
       );
 
-      expect(extraFields).toEqual([['ServiceName', 'null']]);
       expect(groupFields).toEqual([['ServiceName', null]]);
     });
 
@@ -1136,27 +1142,26 @@ describe('checkAlerts', () => {
         ...timeSeriesMeta,
         groupColumnNames: new Set(['IsError']),
       };
-      const { extraFields, groupFields } = parseAlertData(
+      const { groupFields } = parseAlertData(
         { ts: '2023-11-16T22:12:00.000Z', IsError: true, cnt: 5 },
         booleanGroupMeta,
       );
 
-      expect(extraFields).toEqual([['IsError', 'true']]);
       expect(groupFields).toEqual([['IsError', true]]);
     });
 
     it('returns no fields when there are no group-by columns', () => {
-      const { value, extraFields } = parseAlertData(
+      const { value, groupFields } = parseAlertData(
         { ts: '2023-11-16T22:12:00.000Z', cnt: 5 },
         { ...timeSeriesMeta, groupColumnNames: new Set() },
       );
 
       expect(value).toBe(5);
-      expect(extraFields).toEqual([]);
+      expect(groupFields).toEqual([]);
     });
 
     it('does not treat the timestamp column as a field for single_value results', () => {
-      const { value, extraFields } = parseAlertData(
+      const { value, groupFields } = parseAlertData(
         { ts: '2023-11-16T22:12:00.000Z', cnt: 5 },
         {
           type: 'single_value' as const,
@@ -1167,7 +1172,7 @@ describe('checkAlerts', () => {
 
       expect(value).toBe(5);
       // single_value has no timestamp column, so `ts` is kept as a field.
-      expect(extraFields).toEqual([['ts', '2023-11-16T22:12:00.000Z']]);
+      expect(groupFields).toEqual([['ts', '2023-11-16T22:12:00.000Z']]);
     });
   });
 

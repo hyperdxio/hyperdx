@@ -7,10 +7,7 @@ import {
   resolveSearchOrderBy,
 } from '@hyperdx/common-utils/dist/core/searchChartConfig';
 import { formatDate, objectHash } from '@hyperdx/common-utils/dist/core/utils';
-import {
-  equalityFiltersToQuery,
-  EqualityFilterValue,
-} from '@hyperdx/common-utils/dist/filters';
+import { equalityFiltersToQuery } from '@hyperdx/common-utils/dist/filters';
 import {
   isPromqlSavedChartConfig,
   isRawSqlSavedChartConfig,
@@ -265,7 +262,7 @@ export type AlertMessageTemplateDefaultView = {
   granularity: string;
   group?: string;
   /** Flat group column/value pairs used to constrain notification samples. */
-  groupAttributes?: Record<string, EqualityFilterValue>;
+  groupAttributes?: Record<string, unknown>;
   isGroupedAlert: boolean;
   savedSearch?: ISavedSearch | null;
   source?: ISource | null;
@@ -815,31 +812,28 @@ ${targetTemplate}`;
     }
     // TODO: show group + total count for group-by alerts
     // fetch sample logs
-    const chartConfig: ChartConfigWithOptDateRange = {
-      ...buildSearchChartConfig(source, {
-        connection: '', // no need for the connection id since clickhouse client is already initialized
-        displayType: DisplayType.Search,
-        dateRange: [startTime, endTime],
-        ...ALERT_WINDOW_DATE_RANGE_BOUNDS,
-        filters: [
-          ...(savedSearch.filters?.map(filter => ({ ...filter })) ?? []),
-          ...equalityFiltersToQuery(groupAttributes ?? {}, {
-            stringifyKeys: true,
-          }),
-        ],
-        orderBy: resolveSearchOrderBy(source, savedSearch.orderBy),
-        select: savedSearch.select,
-        where: savedSearch.where,
-        whereLanguage: savedSearch.whereLanguage,
-      }),
-      limit: {
-        limit: 5,
-        offset: 0,
-      },
-    };
-
     let truncatedResults = '';
     try {
+      const chartConfig: ChartConfigWithOptDateRange = {
+        ...buildSearchChartConfig(source, {
+          connection: '', // no need for the connection id since clickhouse client is already initialized
+          displayType: DisplayType.Search,
+          dateRange: [startTime, endTime],
+          ...ALERT_WINDOW_DATE_RANGE_BOUNDS,
+          filters: [
+            ...(savedSearch.filters?.map(filter => ({ ...filter })) ?? []),
+            ...equalityFiltersToQuery(groupAttributes ?? {}),
+          ],
+          orderBy: resolveSearchOrderBy(source, savedSearch.orderBy),
+          select: savedSearch.select,
+          where: savedSearch.where,
+          whereLanguage: savedSearch.whereLanguage,
+        }),
+        limit: {
+          limit: 5,
+          offset: 0,
+        },
+      };
       const aliasWith = await computeAliasWithClauses(
         savedSearch,
         source,
@@ -873,7 +867,7 @@ ${targetTemplate}`;
       logger.error(
         {
           savedSearchId: savedSearch.id,
-          chartConfig,
+          groupAttributes,
           error: serializeError(e),
         },
         'Failed to fetch sample logs',

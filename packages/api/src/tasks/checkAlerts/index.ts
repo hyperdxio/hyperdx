@@ -28,10 +28,7 @@ import {
   splitAndTrimWithBracket,
   timeBucketByGranularity,
 } from '@hyperdx/common-utils/dist/core/utils';
-import {
-  EqualityFilterValue,
-  getDashboardVariableDeclarations,
-} from '@hyperdx/common-utils/dist/filters';
+import { getDashboardVariableDeclarations } from '@hyperdx/common-utils/dist/filters';
 import {
   isBuilderChartConfig,
   isBuilderSavedChartConfig,
@@ -505,7 +502,7 @@ const fireChannelEvent = async ({
   alert: IAlert;
   alertProvider: AlertProvider;
   attributes: Record<string, string>; // TODO: support other types than string
-  groupAttributes?: Record<string, AlertQueryValue>;
+  groupAttributes?: Record<string, unknown>;
   clickhouseClient: ClickhouseClient;
   dashboard?: IDashboard | null;
   endTime: Date;
@@ -895,8 +892,7 @@ type ResponseMetadata =
       groupColumnNames: Set<string>;
     };
 
-type AlertQueryValue = EqualityFilterValue;
-type AlertQueryRow = Record<string, AlertQueryValue>;
+type AlertQueryRow = Record<string, unknown>;
 
 export const getResponseMetadata = (
   chartConfig: ChartConfigWithOptDateRange,
@@ -917,18 +913,15 @@ export const getResponseMetadata = (
     m => m.jsType === clickhouse.JSDataType.Date,
   )?.name;
   const groupBy = 'groupBy' in chartConfig ? chartConfig.groupBy : undefined;
-  const groupColumnCount =
-    'selectGroupBy' in chartConfig && chartConfig.selectGroupBy === false
-      ? 0
-      : Array.isArray(groupBy)
-        ? groupBy.length
-        : typeof groupBy === 'string'
-          ? splitAndTrimWithBracket(groupBy).length
-          : 0;
+  const groupColumnCount = Array.isArray(groupBy)
+    ? groupBy.length
+    : typeof groupBy === 'string'
+      ? splitAndTrimWithBracket(groupBy).length
+      : 0;
   // renderChartConfig emits value columns first, followed by group columns
   // and the time bucket. Use the returned metadata names so aliases and
   // expressions remain byte-identical to ClickHouse's result keys.
-  const groupColumnNames = new Set(
+  const inferredGroupColumnNames = new Set(
     groupColumnCount === 0
       ? []
       : meta
@@ -936,6 +929,19 @@ export const getResponseMetadata = (
           .slice(-groupColumnCount)
           .map(m => m.name),
   );
+  const numericColumnNames = meta
+    .filter(m => m.jsType === clickhouse.JSDataType.Number)
+    .map(m => m.name);
+  const inferredValueColumnNames = numericColumnNames.filter(
+    name => !inferredGroupColumnNames.has(name),
+  );
+  // Histogram metric queries project their numeric value after their packed
+  // group column. If positional inference would remove every numeric value,
+  // retain the previous numeric classification instead of disabling alerts.
+  const groupColumnNames =
+    inferredValueColumnNames.length > 0
+      ? inferredGroupColumnNames
+      : new Set<string>();
   const valueColumnNames = new Set(
     meta
       .filter(
@@ -977,19 +983,15 @@ export const getResponseMetadata = (
  * Parses the following from the given alert query result:
  * - `value`: the numeric value to compare against the alert threshold, taken
  *   from the last column in the result which is included in valueColumnNames
- * - `extraFields`: ordered `[columnName, value]` tuples for each column in the
+ * - `groupFields`: ordered `[columnName, value]` tuples for each column in the
  *   result which is neither the timestampColumnName nor a valueColumnName.
- * - `groupFields`: the same tuples with their raw values preserved for sample
- *   query filtering.
  */
 export const parseAlertData = (data: AlertQueryRow, meta: ResponseMetadata) => {
   let value: number | null = null;
-  const extraFields: Array<[string, string]> = [];
-  const groupFields: Array<[string, AlertQueryValue]> = [];
+  const groupFields: Array<[string, unknown]> = [];
 
   for (const [k, v] of Object.entries(data)) {
     if (meta.groupColumnNames.has(k)) {
-      extraFields.push([k, `${v}`]);
       groupFields.push([k, v]);
     } else if (meta.valueColumnNames.has(k)) {
       // Due to output_format_json_quote_64bit_integers=1, 64-bit integers will be returned as strings.
@@ -1004,12 +1006,11 @@ export const parseAlertData = (data: AlertQueryRow, meta: ResponseMetadata) => {
               ? v
               : null;
     } else if (meta.type !== 'time_series' || k !== meta.timestampColumnName) {
-      extraFields.push([k, `${v}`]);
       groupFields.push([k, v]);
     }
   }
 
-  return { value, extraFields, groupFields };
+  return { value, groupFields };
 };
 
 export const processAlert = async (
@@ -1321,7 +1322,7 @@ export const processAlert = async (
       {
         value: number;
         attributes: Record<string, string>;
-        groupAttributes: Record<string, AlertQueryValue>;
+        groupAttributes: Record<string, unknown>;
         startTime: Date;
       }
     >();
@@ -1355,7 +1356,7 @@ export const processAlert = async (
       group: string;
       startTime?: Date;
       attributes?: Record<string, string>;
-      groupAttributes?: Record<string, AlertQueryValue>;
+      groupAttributes?: Record<string, unknown>;
     }) => {
       // KNOWN LIMITATION: Alert data (including silenced state) is fetched when
       // the task is queued via AlertProvider, not when it processes. If a user
@@ -1638,15 +1639,12 @@ export const processAlert = async (
         {
           value: number;
           attributes: Record<string, string>;
-          groupAttributes: Record<string, AlertQueryValue>;
+          groupAttributes: Record<string, unknown>;
           exceeds: boolean;
         }
       >();
       for (const checkData of dataForBucket) {
-        const { value, extraFields, groupFields } = parseAlertData(
-          checkData,
-          meta,
-        );
+        const { value, groupFields } = parseAlertData(checkData, meta);
 
         // NULL means no data: a metric series with no row at this bucket, or
         // a ratio with a missing/zero denominator. Skip the row instead of
@@ -1656,9 +1654,11 @@ export const processAlert = async (
         }
 
         const groupKey = hasGroupBy
-          ? extraFields.map(([k, v]) => `${k}:${v}`).join(', ')
+          ? groupFields.map(([k, v]) => `${k}:${v}`).join(', ')
           : '';
-        const attributes = hasGroupBy ? Object.fromEntries(extraFields) : {};
+        const attributes = hasGroupBy
+          ? Object.fromEntries(groupFields.map(([k, v]) => [k, `${v}`]))
+          : {};
         const groupAttributes = hasGroupBy
           ? Object.fromEntries(groupFields)
           : {};

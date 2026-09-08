@@ -400,6 +400,22 @@ describe('renderAlertTemplate', () => {
         expect(result).toContain('[Sample fetch failed]');
       });
 
+      it('still renders the alert for an unsupported group value', async () => {
+        mockClickhouseClient.query.mockClear();
+        const result = await render(
+          makeSearchView({
+            group: 'ResourceAttributes:api',
+            groupAttributes: { ResourceAttributes: ['api'] },
+            isGroupedAlert: true,
+          }),
+          AlertState.ALERT,
+        );
+
+        expect(result).toContain('10 lines found');
+        expect(result).toContain('[Sample fetch failed]');
+        expect(mockClickhouseClient.query).not.toHaveBeenCalled();
+      });
+
       it('does not constrain samples when the alert is not grouped', async () => {
         const view = makeSearchView();
         mockClickhouseClient.query.mockClear();

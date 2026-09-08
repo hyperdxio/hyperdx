@@ -43,14 +43,11 @@ describe('filters', () => {
   describe('equalityFiltersToQuery', () => {
     it('stringifies keys and escapes scalar values', () => {
       expect(
-        equalityFiltersToQuery(
-          {
-            "LogAttributes['status']": "can't\\stop",
-            StatusCode: 500,
-            IsError: true,
-          },
-          { stringifyKeys: true },
-        ),
+        equalityFiltersToQuery({
+          "LogAttributes['status']": "can't\\stop",
+          StatusCode: 500,
+          IsError: true,
+        }),
       ).toEqual([
         {
           type: 'sql',
@@ -63,10 +60,7 @@ describe('filters', () => {
 
     it('uses IS NULL without conflating NULL with the string null', () => {
       expect(
-        equalityFiltersToQuery(
-          { nullable: null, literal: 'null' },
-          { stringifyKeys: true },
-        ),
+        equalityFiltersToQuery({ nullable: null, literal: 'null' }),
       ).toEqual([
         { type: 'sql', condition: 'toString(nullable) IS NULL' },
         { type: 'sql', condition: "toString(literal) IN ('null')" },
@@ -77,12 +71,6 @@ describe('filters', () => {
       expect(() =>
         equalityFiltersToQuery({ ServiceNames: ['api', 'worker'] }),
       ).toThrow('Unsupported equality-filter value for ServiceNames');
-    });
-
-    it('keeps numeric values numeric when keys are not stringified', () => {
-      expect(equalityFiltersToQuery({ StatusCode: 500 })).toEqual([
-        { type: 'sql', condition: 'StatusCode IN (500)' },
-      ]);
     });
   });
 
