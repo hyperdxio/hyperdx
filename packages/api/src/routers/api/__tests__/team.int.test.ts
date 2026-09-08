@@ -96,8 +96,37 @@ describe('team router', () => {
         tags: ['test', 'test2'],
       })
       .expect(200);
+
+    await Alert.create({
+      team: team.id,
+      source: AlertSource.SAVED_SEARCH,
+      savedSearch: new mongoose.Types.ObjectId(),
+      threshold: 10,
+      thresholdType: AlertThresholdType.ABOVE,
+      interval: '5m',
+      channel: {
+        type: 'webhook',
+        webhookId: new mongoose.Types.ObjectId().toString(),
+      },
+      tags: ['test2', 'test3'],
+    });
+
+    await Alert.create({
+      team: new mongoose.Types.ObjectId(),
+      source: AlertSource.SAVED_SEARCH,
+      savedSearch: new mongoose.Types.ObjectId(),
+      threshold: 10,
+      thresholdType: AlertThresholdType.ABOVE,
+      interval: '5m',
+      channel: {
+        type: 'webhook',
+        webhookId: new mongoose.Types.ObjectId().toString(),
+      },
+      tags: ['other-team'],
+    });
+
     const resp = await agent.get('/team/tags').expect(200);
-    expect(resp.body.data).toStrictEqual(['test', 'test2']);
+    expect(resp.body.data.sort()).toStrictEqual(['test', 'test2', 'test3']);
   });
 
   it('GET /team/members', async () => {
