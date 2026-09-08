@@ -369,8 +369,35 @@ describe('renderAlertTemplate', () => {
         await render(view, AlertState.ALERT);
 
         const sampleQuery = mockClickhouseClient.query.mock.calls[0][0].query;
-        expect(sampleQuery).toContain('ServiceName IS NULL');
+        expect(sampleQuery).toContain('toString(ServiceName) IS NULL');
         expect(sampleQuery).not.toContain("IN ('null')");
+      });
+
+      it('stringifies a boolean firing-group value', async () => {
+        const view = makeSearchView({
+          group: 'IsError:true',
+          groupAttributes: { IsError: true },
+          isGroupedAlert: true,
+        });
+        view.alert.groupBy = 'IsError';
+        mockClickhouseClient.query.mockClear();
+
+        await render(view, AlertState.ALERT);
+
+        expect(mockClickhouseClient.query.mock.calls[0][0].query).toContain(
+          "toString(IsError) IN ('true')",
+        );
+      });
+
+      it('still renders the alert when fetching samples fails', async () => {
+        mockClickhouseClient.query.mockRejectedValueOnce(
+          new Error('sample query failed'),
+        );
+
+        const result = await render(makeSearchView(), AlertState.ALERT);
+
+        expect(result).toContain('10 lines found');
+        expect(result).toContain('[Sample fetch failed]');
       });
 
       it('does not constrain samples when the alert is not grouped', async () => {

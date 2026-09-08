@@ -47,6 +47,7 @@ describe('filters', () => {
           {
             "LogAttributes['status']": "can't\\stop",
             StatusCode: 500,
+            IsError: true,
           },
           { stringifyKeys: true },
         ),
@@ -56,6 +57,7 @@ describe('filters', () => {
           condition: "toString(LogAttributes['status']) IN ('can''t\\\\stop')",
         },
         { type: 'sql', condition: "toString(StatusCode) IN ('500')" },
+        { type: 'sql', condition: "toString(IsError) IN ('true')" },
       ]);
     });
 
@@ -66,9 +68,15 @@ describe('filters', () => {
           { stringifyKeys: true },
         ),
       ).toEqual([
-        { type: 'sql', condition: 'nullable IS NULL' },
+        { type: 'sql', condition: 'toString(nullable) IS NULL' },
         { type: 'sql', condition: "toString(literal) IN ('null')" },
       ]);
+    });
+
+    it('rejects non-scalar values instead of rendering invalid SQL', () => {
+      expect(() =>
+        equalityFiltersToQuery({ ServiceNames: ['api', 'worker'] }),
+      ).toThrow('Unsupported equality-filter value for ServiceNames');
     });
   });
 

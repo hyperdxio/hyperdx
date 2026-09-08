@@ -24,8 +24,14 @@ import {
   displayTypeSupportsRawSqlAlerts,
   isTimeSeriesDisplayType,
 } from '@hyperdx/common-utils/dist/core/utils';
-import { timeBucketByGranularity } from '@hyperdx/common-utils/dist/core/utils';
-import { getDashboardVariableDeclarations } from '@hyperdx/common-utils/dist/filters';
+import {
+  splitAndTrimWithBracket,
+  timeBucketByGranularity,
+} from '@hyperdx/common-utils/dist/core/utils';
+import {
+  EqualityFilterValue,
+  getDashboardVariableDeclarations,
+} from '@hyperdx/common-utils/dist/filters';
 import {
   isBuilderChartConfig,
   isBuilderSavedChartConfig,
@@ -558,7 +564,7 @@ const fireChannelEvent = async ({
     endTime,
     granularity: `${windowSizeInMins} minute`,
     group,
-    groupAttributes: isGroupedAlert ? groupAttributes : undefined,
+    groupAttributes,
     isGroupedAlert,
     savedSearch,
     source,
@@ -881,16 +887,18 @@ type ResponseMetadata =
       type: 'time_series';
       timestampColumnName: string;
       valueColumnNames: Set<string>;
+      groupColumnNames: Set<string>;
     }
   | {
       type: 'single_value';
       valueColumnNames: Set<string>;
+      groupColumnNames: Set<string>;
     };
 
-type AlertQueryValue = string | number | null;
+type AlertQueryValue = EqualityFilterValue;
 type AlertQueryRow = Record<string, AlertQueryValue>;
 
-const getResponseMetadata = (
+export const getResponseMetadata = (
   chartConfig: ChartConfigWithOptDateRange,
   data: ResponseJSON<AlertQueryRow>,
 ): ResponseMetadata | undefined => {
@@ -905,9 +913,33 @@ const getResponseMetadata = (
       jsType: clickhouse.convertCHDataTypeToJSType(m.type),
     })) ?? [];
 
+  const timestampColumnName = meta.find(
+    m => m.jsType === clickhouse.JSDataType.Date,
+  )?.name;
+  const groupBy = 'groupBy' in chartConfig ? chartConfig.groupBy : undefined;
+  const groupColumnCount = Array.isArray(groupBy)
+    ? groupBy.length
+    : typeof groupBy === 'string'
+      ? splitAndTrimWithBracket(groupBy).length
+      : 0;
+  // renderChartConfig emits value columns first, followed by group columns
+  // and the time bucket. Use the returned metadata names so aliases and
+  // expressions remain byte-identical to ClickHouse's result keys.
+  const groupColumnNames = new Set(
+    groupColumnCount === 0
+      ? []
+      : meta
+          .filter(m => m.name !== timestampColumnName)
+          .slice(-groupColumnCount)
+          .map(m => m.name),
+  );
   const valueColumnNames = new Set(
     meta
-      .filter(m => m.jsType === clickhouse.JSDataType.Number)
+      .filter(
+        m =>
+          m.jsType === clickhouse.JSDataType.Number &&
+          !groupColumnNames.has(m.name),
+      )
       .map(m => m.name),
   );
 
@@ -922,18 +954,19 @@ const getResponseMetadata = (
     isRawSqlChartConfig(chartConfig) &&
     chartConfig.displayType === DisplayType.Number
   ) {
-    return { type: 'single_value', valueColumnNames };
+    return { type: 'single_value', valueColumnNames, groupColumnNames };
   } else {
-    const timestampColumnName = meta.find(
-      m => m.jsType === clickhouse.JSDataType.Date,
-    )?.name;
-
     if (timestampColumnName == null) {
       logger.error({ meta }, 'Failed to find timestamp column');
       return undefined;
     }
 
-    return { type: 'time_series', timestampColumnName, valueColumnNames };
+    return {
+      type: 'time_series',
+      timestampColumnName,
+      valueColumnNames,
+      groupColumnNames,
+    };
   }
 };
 
@@ -952,11 +985,21 @@ export const parseAlertData = (data: AlertQueryRow, meta: ResponseMetadata) => {
   const groupFields: Array<[string, AlertQueryValue]> = [];
 
   for (const [k, v] of Object.entries(data)) {
-    if (meta.valueColumnNames.has(k)) {
+    if (meta.groupColumnNames.has(k)) {
+      extraFields.push([k, `${v}`]);
+      groupFields.push([k, v]);
+    } else if (meta.valueColumnNames.has(k)) {
       // Due to output_format_json_quote_64bit_integers=1, 64-bit integers will be returned as strings.
       // Parse them as integers to ensure correct threshold comparison.
       // Floats are not returned as strings (unless output_format_json_quote_64bit_floats=1, which is not the default).
-      value = v == null ? null : isString(v) ? parseInt(v) : v;
+      value =
+        v == null
+          ? null
+          : isString(v)
+            ? parseInt(v)
+            : typeof v === 'number'
+              ? v
+              : null;
     } else if (meta.type !== 'time_series' || k !== meta.timestampColumnName) {
       extraFields.push([k, `${v}`]);
       groupFields.push([k, v]);

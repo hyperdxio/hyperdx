@@ -7,7 +7,10 @@ import {
   resolveSearchOrderBy,
 } from '@hyperdx/common-utils/dist/core/searchChartConfig';
 import { formatDate, objectHash } from '@hyperdx/common-utils/dist/core/utils';
-import { equalityFiltersToQuery } from '@hyperdx/common-utils/dist/filters';
+import {
+  equalityFiltersToQuery,
+  EqualityFilterValue,
+} from '@hyperdx/common-utils/dist/filters';
 import {
   isPromqlSavedChartConfig,
   isRawSqlSavedChartConfig,
@@ -238,6 +241,13 @@ const notificationCapExceededCounter = getCounter(
       'Count of alert notification targets dropped because MAX_NOTIFICATIONS_PER_EVENT was reached, labeled by channel_type.',
   },
 );
+const sampleFetchFailuresCounter = getCounter(
+  'hyperdx.alerts.sample_fetch_failures',
+  {
+    description:
+      'Count of alert notifications whose sample-event query failed.',
+  },
+);
 
 const zNotifyFnParams = z.object({
   hash: z.object({
@@ -255,7 +265,7 @@ export type AlertMessageTemplateDefaultView = {
   granularity: string;
   group?: string;
   /** Flat group column/value pairs used to constrain notification samples. */
-  groupAttributes?: Record<string, string | number | null>;
+  groupAttributes?: Record<string, EqualityFilterValue>;
   isGroupedAlert: boolean;
   savedSearch?: ISavedSearch | null;
   source?: ISource | null;
@@ -858,6 +868,8 @@ ${targetTemplate}`;
         2500,
       );
     } catch (e) {
+      sampleFetchFailuresCounter.add(1);
+      truncatedResults = '[Sample fetch failed]';
       logger.error(
         {
           savedSearchId: savedSearch.id,

@@ -4,6 +4,7 @@ import {
   AlertErrorType,
   AlertState,
   AlertThresholdType,
+  ChartConfigWithOptDateRange,
   SourceKind,
   Tile,
   WebhookService,
@@ -41,6 +42,7 @@ import {
   doesExceedThreshold,
   getConsecutiveWindowHistories,
   getPreviousAlertHistories,
+  getResponseMetadata,
   getScheduledWindowStart,
   parseAlertData,
   processAlert,
@@ -975,7 +977,40 @@ describe('checkAlerts', () => {
       type: 'time_series' as const,
       timestampColumnName: 'ts',
       valueColumnNames: new Set(['cnt']),
+      groupColumnNames: new Set(['ServiceName', 'SeverityText']),
     };
+
+    it('classifies a numeric group-by column from real response metadata', () => {
+      const meta = getResponseMetadata(
+        makeAlertChartConfig({
+          sourceId: 'fake-source-id',
+          groupBy: 'StatusCode',
+        }) as ChartConfigWithOptDateRange,
+        {
+          meta: [
+            { name: 'cnt', type: 'UInt64' },
+            { name: 'StatusCode', type: 'UInt16' },
+            { name: 'ts', type: 'DateTime' },
+          ],
+          data: [{ cnt: '5', StatusCode: 500, ts: '2023-11-16 22:12:00' }],
+          rows: 1,
+          statistics: { elapsed: 0, rows_read: 1, bytes_read: 1 },
+        },
+      );
+
+      expect(meta).toEqual({
+        type: 'time_series',
+        timestampColumnName: 'ts',
+        valueColumnNames: new Set(['cnt']),
+        groupColumnNames: new Set(['StatusCode']),
+      });
+      expect(
+        parseAlertData({ cnt: 5, StatusCode: 500, ts: 'now' }, meta!),
+      ).toMatchObject({
+        value: 5,
+        groupFields: [['StatusCode', 500]],
+      });
+    });
 
     it('returns the value and ordered [key, value] field pairs, excluding timestamp and value columns', () => {
       const { value, extraFields } = parseAlertData(
@@ -1031,9 +1066,13 @@ describe('checkAlerts', () => {
     });
 
     it('coerces numeric field values to strings', () => {
+      const numericGroupMeta = {
+        ...timeSeriesMeta,
+        groupColumnNames: new Set(['StatusCode']),
+      };
       const { extraFields, groupFields } = parseAlertData(
         { ts: '2023-11-16T22:12:00.000Z', StatusCode: 500, cnt: 5 },
-        timeSeriesMeta,
+        numericGroupMeta,
       );
 
       expect(extraFields).toEqual([['StatusCode', '500']]);
@@ -1041,19 +1080,37 @@ describe('checkAlerts', () => {
     });
 
     it('preserves NULL group values separately from display strings', () => {
+      const nullableGroupMeta = {
+        ...timeSeriesMeta,
+        groupColumnNames: new Set(['ServiceName']),
+      };
       const { extraFields, groupFields } = parseAlertData(
         { ts: '2023-11-16T22:12:00.000Z', ServiceName: null, cnt: 5 },
-        timeSeriesMeta,
+        nullableGroupMeta,
       );
 
       expect(extraFields).toEqual([['ServiceName', 'null']]);
       expect(groupFields).toEqual([['ServiceName', null]]);
     });
 
+    it('preserves boolean group values for sample filtering', () => {
+      const booleanGroupMeta = {
+        ...timeSeriesMeta,
+        groupColumnNames: new Set(['IsError']),
+      };
+      const { extraFields, groupFields } = parseAlertData(
+        { ts: '2023-11-16T22:12:00.000Z', IsError: true, cnt: 5 },
+        booleanGroupMeta,
+      );
+
+      expect(extraFields).toEqual([['IsError', 'true']]);
+      expect(groupFields).toEqual([['IsError', true]]);
+    });
+
     it('returns no fields when there are no group-by columns', () => {
       const { value, extraFields } = parseAlertData(
         { ts: '2023-11-16T22:12:00.000Z', cnt: 5 },
-        timeSeriesMeta,
+        { ...timeSeriesMeta, groupColumnNames: new Set() },
       );
 
       expect(value).toBe(5);
@@ -1063,7 +1120,11 @@ describe('checkAlerts', () => {
     it('does not treat the timestamp column as a field for single_value results', () => {
       const { value, extraFields } = parseAlertData(
         { ts: '2023-11-16T22:12:00.000Z', cnt: 5 },
-        { type: 'single_value' as const, valueColumnNames: new Set(['cnt']) },
+        {
+          type: 'single_value' as const,
+          valueColumnNames: new Set(['cnt']),
+          groupColumnNames: new Set(),
+        },
       );
 
       expect(value).toBe(5);
