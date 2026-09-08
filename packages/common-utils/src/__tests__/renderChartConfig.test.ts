@@ -2,12 +2,14 @@ import { chSql, ColumnMeta, parameterizedQueryToSql } from '@/clickhouse';
 import { Metadata } from '@/core/metadata';
 import {
   ChartConfigWithOptDateRangeEx,
+  getBuilderResponseLayout,
   renderChartConfig,
   timeFilterExpr,
 } from '@/core/renderChartConfig';
 import { convertToCategoricalChartConfig } from '@/core/utils';
 import {
   BuilderChartConfig,
+  BuilderChartConfigWithOptDateRange,
   ChartConfigWithOptDateRange,
   DisplayType,
   MetricsDataType,
@@ -94,6 +96,67 @@ describe('renderChartConfig', () => {
     { setting: 'count_distinct_implementation', value: 'uniqCombined64' },
     { setting: 'async_insert_busy_timeout_min_ms', value: '20000' },
   ];
+
+  describe('builder response layout', () => {
+    const baseConfig: BuilderChartConfigWithOptDateRange = {
+      connection: 'test-connection',
+      displayType: DisplayType.Line,
+      from: { databaseName: 'default', tableName: 'otel_logs' },
+      select: [
+        {
+          aggFn: 'count',
+          aggCondition: '',
+          aggConditionLanguage: 'sql',
+          valueExpression: '',
+        },
+      ],
+      groupBy: 'ServiceName, SeverityNumber',
+      timestampValueExpression: 'Timestamp',
+      dateRange: [new Date('2025-02-12'), new Date('2025-02-14')],
+      granularity: '1 minute',
+      where: '',
+    };
+
+    it('reports scalar group columns projected before the time bucket', () => {
+      expect(getBuilderResponseLayout(baseConfig)).toEqual({
+        configuredGroupColumnCount: 2,
+        positionalGroupColumnCount: 2,
+        groupsArePacked: false,
+      });
+    });
+
+    it('reports no group columns when group projection is disabled', () => {
+      expect(
+        getBuilderResponseLayout({ ...baseConfig, selectGroupBy: false }),
+      ).toEqual({
+        configuredGroupColumnCount: 0,
+        positionalGroupColumnCount: 0,
+        groupsArePacked: false,
+      });
+    });
+
+    it('reports all-histogram groups as packed rather than positional', () => {
+      expect(
+        getBuilderResponseLayout({
+          ...baseConfig,
+          select: [
+            {
+              aggFn: 'count',
+              aggCondition: '',
+              aggConditionLanguage: 'sql',
+              valueExpression: '',
+              metricName: 'request.duration',
+              metricType: MetricsDataType.Histogram,
+            },
+          ],
+        }),
+      ).toEqual({
+        configuredGroupColumnCount: 2,
+        positionalGroupColumnCount: 0,
+        groupsArePacked: true,
+      });
+    });
+  });
 
   it('should generate sql for a single gauge metric', async () => {
     const generatedSql = await renderChartConfig(

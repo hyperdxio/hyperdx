@@ -15,7 +15,7 @@ import {
   unquoteIdentifier,
 } from '@hyperdx/common-utils/dist/core/metadata';
 import {
-  isHistogramClassSelect,
+  getBuilderResponseLayout,
   renderChartConfig,
 } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
@@ -945,12 +945,9 @@ export const getResponseMetadata = (
     ...group,
     resultName: normalizeColumnName(group.resultName),
   }));
-  const configuredGroupCount =
-    typeof groupBy === 'string'
-      ? configuredGroups.length
-      : Array.isArray(groupBy)
-        ? groupBy.length
-        : 0;
+  const responseLayout = isBuilderChartConfig(chartConfig)
+    ? getBuilderResponseLayout(chartConfig)
+    : undefined;
   const timestampIndex = meta.findIndex(
     column => column.name === timestampColumnName,
   );
@@ -961,19 +958,11 @@ export const getResponseMetadata = (
     0,
     timestampIndex >= 0 ? timestampIndex : undefined,
   );
-  const groupsAreProjected =
-    isBuilderChartConfig(chartConfig) &&
-    chartConfig.selectGroupBy !== false &&
-    !(
-      Array.isArray(chartConfig.select) &&
-      chartConfig.select.length > 0 &&
-      chartConfig.select.every(isHistogramClassSelect)
-    );
   const positionalGroupColumns =
-    groupsAreProjected &&
-    configuredGroupCount > 0 &&
-    columnsBeforeTimestamp.length > configuredGroupCount
-      ? columnsBeforeTimestamp.slice(-configuredGroupCount)
+    responseLayout != null &&
+    responseLayout.positionalGroupColumnCount > 0 &&
+    columnsBeforeTimestamp.length > responseLayout.positionalGroupColumnCount
+      ? columnsBeforeTimestamp.slice(-responseLayout.positionalGroupColumnCount)
       : [];
   // Match direct group columns by their configured expression names.
   const groupColumnExpressions = new Map<string, string>();

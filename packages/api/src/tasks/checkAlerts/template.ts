@@ -857,53 +857,59 @@ ${targetTemplate}`;
       if (unsupportedGroupKeys.length > 0) {
         sampleFilterFailuresCounter.add(1);
       }
-      chartConfig = {
-        ...buildSearchChartConfig(source, {
-          connection: '', // no need for the connection id since clickhouse client is already initialized
-          displayType: DisplayType.Search,
-          dateRange: [startTime, endTime],
-          ...ALERT_WINDOW_DATE_RANGE_BOUNDS,
-          filters: [
-            ...(savedSearch.filters?.map(filter => ({ ...filter })) ?? []),
-            ...groupFilters,
-          ],
-          orderBy: resolveSearchOrderBy(source, savedSearch.orderBy),
-          select: savedSearch.select,
-          where: savedSearch.where,
-          whereLanguage: savedSearch.whereLanguage,
-        }),
-        limit: {
-          limit: 5,
-          offset: 0,
-        },
-      };
-      const aliasWith = await computeAliasWithClauses(
-        savedSearch,
-        source,
-        metadata,
-      );
-      if (aliasWith) {
-        chartConfig.with = aliasWith;
+      if (isGroupedAlert && groupFilters.length === 0) {
+        truncatedResults = '[Sample events unavailable for this group]';
+      } else {
+        chartConfig = {
+          ...buildSearchChartConfig(source, {
+            connection: '', // no need for the connection id since clickhouse client is already initialized
+            displayType: DisplayType.Search,
+            dateRange: [startTime, endTime],
+            ...ALERT_WINDOW_DATE_RANGE_BOUNDS,
+            filters: [
+              ...(savedSearch.filters?.map(filter => ({ ...filter })) ?? []),
+              ...groupFilters,
+            ],
+            orderBy: resolveSearchOrderBy(source, savedSearch.orderBy),
+            select: savedSearch.select,
+            where: savedSearch.where,
+            whereLanguage: savedSearch.whereLanguage,
+          }),
+          limit: {
+            limit: 5,
+            offset: 0,
+          },
+        };
+        const aliasWith = await computeAliasWithClauses(
+          savedSearch,
+          source,
+          metadata,
+        );
+        if (aliasWith) {
+          chartConfig.with = aliasWith;
+        }
+        const query = await renderChartConfig(
+          chartConfig,
+          metadata,
+          source.querySettings,
+        );
+        const raw = await clickhouseClient
+          .query<'CSV'>({
+            query: query.sql,
+            query_params: query.params,
+            format: 'CSV',
+          })
+          .then(res => res.text());
+
+        const lines = raw.split('\n');
+
+        truncatedResults = truncateString(
+          lines
+            .map(line => truncateString(line, MAX_MESSAGE_LENGTH))
+            .join('\n'),
+          2500,
+        );
       }
-      const query = await renderChartConfig(
-        chartConfig,
-        metadata,
-        source.querySettings,
-      );
-      const raw = await clickhouseClient
-        .query<'CSV'>({
-          query: query.sql,
-          query_params: query.params,
-          format: 'CSV',
-        })
-        .then(res => res.text());
-
-      const lines = raw.split('\n');
-
-      truncatedResults = truncateString(
-        lines.map(line => truncateString(line, MAX_MESSAGE_LENGTH)).join('\n'),
-        2500,
-      );
     } catch (e) {
       sampleFetchFailuresCounter.add(1);
       truncatedResults = '[Sample fetch failed]';

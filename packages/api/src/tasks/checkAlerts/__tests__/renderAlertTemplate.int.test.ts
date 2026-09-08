@@ -111,14 +111,20 @@ type ViewOverrides = Partial<AlertMessageTemplateDefaultView> & {
 const makeSearchView = (
   overrides: ViewOverrides = {},
 ): AlertMessageTemplateDefaultView => {
-  const grouping =
+  const grouping:
+    | {
+        isGroupedAlert: true;
+        groupAttributes: Record<string, unknown>;
+        unsupportedGroupKeys: string[];
+      }
+    | { isGroupedAlert: false } =
     overrides.isGroupedAlert === true
       ? {
-          isGroupedAlert: true as const,
+          isGroupedAlert: true,
           groupAttributes: overrides.groupAttributes ?? {},
           unsupportedGroupKeys: overrides.unsupportedGroupKeys ?? [],
         }
-      : { isGroupedAlert: false as const };
+      : { isGroupedAlert: false };
 
   return {
     alert: {
@@ -441,8 +447,11 @@ describe('renderAlertTemplate', () => {
 
         const result = await render(
           makeSearchView({
-            group: 'ResourceAttributes:api',
-            groupAttributes: { ResourceAttributes: ['api'] },
+            group: 'ResourceAttributes:api, ServiceName:checkout',
+            groupAttributes: {
+              ResourceAttributes: ['api'],
+              ServiceName: 'checkout',
+            },
             isGroupedAlert: true,
           }),
           AlertState.ALERT,
@@ -468,6 +477,24 @@ describe('renderAlertTemplate', () => {
         const sampleQuery = mockClickhouseClient.query.mock.calls[0][0].query;
         expect(sampleQuery).toContain("toString(ServiceName) IN ('checkout')");
         expect(sampleQuery).not.toContain("LogAttributes['code']");
+      });
+
+      it('does not show cross-group samples when no group filter can be applied', async () => {
+        mockClickhouseClient.query.mockClear();
+        const result = await render(
+          makeSearchView({
+            group: "toUInt64(LogAttributes['code']):500",
+            groupAttributes: {},
+            isGroupedAlert: true,
+            unsupportedGroupKeys: ["toUInt64(LogAttributes['code'])"],
+          }),
+          AlertState.ALERT,
+        );
+
+        expect(mockClickhouseClient.query).not.toHaveBeenCalled();
+        expect(result).toContain('[Sample events unavailable for this group]');
+        expect(result).toContain('[Some group filters could not be applied]');
+        expect(result).not.toContain(sampleLogsCsv);
       });
 
       it('does not constrain samples when the alert is not grouped', async () => {

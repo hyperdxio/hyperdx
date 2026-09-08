@@ -180,11 +180,57 @@ const quotedColumnName = (name: string) => `"${name.replace(/"/g, '""')}"`;
 // column named GROUP_ALIAS instead of projecting them as individual columns
 // (see translateHistogram), so grouped histogram rows never share a merge key
 // with grouped gauge/sum rows.
-export const isHistogramClassSelect = (select: {
+const isHistogramClassSelect = (select: {
   metricType?: MetricsDataType;
 }): boolean =>
   select.metricType === MetricsDataType.Histogram ||
   select.metricType === MetricsDataType.ExponentialHistogram;
+
+export type BuilderResponseLayout = {
+  configuredGroupColumnCount: number;
+  positionalGroupColumnCount: number;
+  groupsArePacked: boolean;
+};
+
+const shouldProjectGroupBy = (
+  chartConfig: BuilderChartConfigWithOptDateRange,
+): chartConfig is Omit<BuilderChartConfigWithDateRange, 'groupBy'> & {
+  groupBy: NonNullable<BuilderChartConfigWithDateRange['groupBy']>;
+} => isUsingGroupBy(chartConfig) && chartConfig.selectGroupBy !== false;
+
+/**
+ * Describe the group portion of a builder query's response projection.
+ * Renderers and consumers share this contract so response metadata does not
+ * need to reverse-engineer projection rules independently.
+ */
+export const getBuilderResponseLayout = (
+  chartConfig: BuilderChartConfigWithOptDateRange,
+): BuilderResponseLayout => {
+  if (!shouldProjectGroupBy(chartConfig)) {
+    return {
+      configuredGroupColumnCount: 0,
+      positionalGroupColumnCount: 0,
+      groupsArePacked: false,
+    };
+  }
+
+  const configuredGroupColumnCount =
+    typeof chartConfig.groupBy === 'string'
+      ? splitAndTrimWithBracket(chartConfig.groupBy).length
+      : chartConfig.groupBy.length;
+  const groupsArePacked =
+    Array.isArray(chartConfig.select) &&
+    chartConfig.select.length > 0 &&
+    chartConfig.select.every(isHistogramClassSelect);
+
+  return {
+    configuredGroupColumnCount,
+    positionalGroupColumnCount: groupsArePacked
+      ? 0
+      : configuredGroupColumnCount,
+    groupsArePacked,
+  };
+};
 
 /**
  * Merge per-branch trailing SETTINGS clauses into one deduped item list for
@@ -1149,7 +1195,6 @@ async function renderSelect(
    *   select
    */
   const isIncludingTimeBucket = isUsingGranularity(chartConfig);
-  const isIncludingGroupBy = isUsingGroupBy(chartConfig);
 
   // Formulas over an array select compile inline on this single-query path
   // (event sources; see renderSelectListWithFormulas). Metric formula
@@ -1170,7 +1215,7 @@ async function renderSelect(
       : await renderSelectList(chartConfig.select, chartConfig, metadata, {
           mergeRatio: true,
         }),
-    isIncludingGroupBy && chartConfig.selectGroupBy !== false
+    shouldProjectGroupBy(chartConfig)
       ? await renderSelectList(chartConfig.groupBy, chartConfig, metadata, {
           mergeRatio: false,
         })
@@ -2726,17 +2771,14 @@ async function renderMultiSeriesMetricChartConfig(
   }
 
   const hasGranularity = isUsingGranularity(chartConfig);
-  const includeGroupBy =
-    isUsingGroupBy(chartConfig) && chartConfig.selectGroupBy !== false;
+  const includeGroupBy = shouldProjectGroupBy(chartConfig);
+
+  const responseLayout = getBuilderResponseLayout(chartConfig);
 
   // How many individual group-by columns a gauge/sum branch projects. Needed
   // only so histogram branches can pad the same number of NULL columns —
   // their names are never referenced.
-  const scalarGroupCount = !includeGroupBy
-    ? 0
-    : typeof chartConfig.groupBy === 'string'
-      ? splitAndTrimWithBracket(chartConfig.groupBy).length
-      : chartConfig.groupBy.length;
+  const scalarGroupCount = responseLayout.configuredGroupColumnCount;
 
   const branchIsHistogram = select.map(isHistogramClassSelect);
   const hasScalarGroups =
@@ -2771,10 +2813,7 @@ async function renderMultiSeriesMetricChartConfig(
   // With no scalar branch there are no individual group columns anywhere:
   // every branch packs the group values into the GROUP_ALIAS Array, and
   // matched sort items address it positionally instead of via companions.
-  const allGroupsPacked =
-    includeGroupBy &&
-    scalarGroupCount > 0 &&
-    branchIsHistogram.every(isHistogram => isHistogram);
+  const allGroupsPacked = responseLayout.groupsArePacked;
 
   // Rewrite ORDER BY items that reference a group-by expression verbatim —
   // convertToTableChartConfig defaults a table's orderBy to the raw groupBy
