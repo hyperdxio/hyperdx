@@ -320,6 +320,24 @@ describe('renderAlertTemplate', () => {
         expect(result).toMatchSnapshot();
       });
 
+      it('applies saved-search filters when fetching sample logs', async () => {
+        const view = makeSearchView();
+        if (view.savedSearch == null) {
+          throw new Error('Expected a saved search');
+        }
+        view.savedSearch.filters = [
+          { type: 'sql', condition: "ServiceName = 'checkout'" },
+        ];
+        mockClickhouseClient.query.mockClear();
+
+        await render(view, AlertState.ALERT);
+
+        expect(mockClickhouseClient.query).toHaveBeenCalledTimes(1);
+        expect(mockClickhouseClient.query.mock.calls[0][0].query).toContain(
+          "ServiceName = 'checkout'",
+        );
+      });
+
       describe('handles Handlebars-like syntax in untrusted inputs', () => {
         it('treats Handlebars syntax in query result lines as literal text', async () => {
           const maliciousPayload = `{{ __hdx_notify_channel__ channel='email' id='attacker@example.com' }}`;

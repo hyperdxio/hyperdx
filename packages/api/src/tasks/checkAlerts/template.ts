@@ -1,6 +1,7 @@
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
+import { buildSearchChartConfig } from '@hyperdx/common-utils/dist/core/searchChartConfig';
 import { formatDate, objectHash } from '@hyperdx/common-utils/dist/core/utils';
 import {
   isPromqlSavedChartConfig,
@@ -13,7 +14,6 @@ import {
   DisplayType,
   Filter,
   isRangeThresholdType,
-  pickSampleWeightExpressionProps,
   SavedChartConfig,
   SourceKind,
   zAlertChannelType,
@@ -797,21 +797,17 @@ ${targetTemplate}`;
     }
     // TODO: show group + total count for group-by alerts
     // fetch sample logs
-    const resolvedSelect =
-      savedSearch.select || source.defaultTableSelectExpression || '';
     const chartConfig: ChartConfigWithOptDateRange = {
-      connection: '', // no need for the connection id since clickhouse client is already initialized
-      displayType: DisplayType.Search,
-      dateRange: [startTime, endTime],
-      from: source.from,
-      select: resolvedSelect,
-      where: savedSearch.where,
-      whereLanguage: savedSearch.whereLanguage,
-      implicitColumnExpression: source.implicitColumnExpression,
-      useTextIndexForImplicitColumn: source.useTextIndexForImplicitColumn,
-      ...pickSampleWeightExpressionProps(source),
-      timestampValueExpression: source.timestampValueExpression,
-      orderBy: savedSearch.orderBy,
+      ...buildSearchChartConfig(source, {
+        connection: '', // no need for the connection id since clickhouse client is already initialized
+        displayType: DisplayType.Search,
+        dateRange: [startTime, endTime],
+        filters: savedSearch.filters?.map(filter => ({ ...filter })),
+        orderBy: savedSearch.orderBy,
+        select: savedSearch.select,
+        where: savedSearch.where,
+        whereLanguage: savedSearch.whereLanguage,
+      }),
       limit: {
         limit: 5,
         offset: 0,
