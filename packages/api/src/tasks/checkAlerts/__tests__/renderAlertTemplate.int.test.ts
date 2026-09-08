@@ -448,6 +448,7 @@ describe('renderAlertTemplate', () => {
       });
 
       it('reports group expressions that could not be mapped from query metadata', async () => {
+        mockClickhouseClient.query.mockClear();
         const result = await render(
           makeSearchView({
             group: 'ServiceName:checkout',

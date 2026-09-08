@@ -888,14 +888,12 @@ type ResponseMetadata =
       type: 'time_series';
       timestampColumnName: string;
       valueColumnNames: Set<string>;
-      groupColumnNames: Set<string>;
       groupColumnExpressions: Map<string, string>;
       unmappedGroupExpressions: string[];
     }
   | {
       type: 'single_value';
       valueColumnNames: Set<string>;
-      groupColumnNames: Set<string>;
       groupColumnExpressions: Map<string, string>;
       unmappedGroupExpressions: string[];
     };
@@ -963,10 +961,11 @@ export const getResponseMetadata = (
   const timestampIndex = meta.findIndex(
     column => column.name === timestampColumnName,
   );
-  const positionalGroupColumns = meta.slice(
-    selectColumnCount,
-    timestampIndex >= 0 ? timestampIndex : undefined,
-  );
+  const positionalGroupColumns = meta
+    .slice(selectColumnCount, timestampIndex >= 0 ? timestampIndex : undefined)
+    .filter(
+      column => !(column.name === 'group' && column.type.startsWith('Array(')),
+    );
   configuredGroups.forEach((group, index) => {
     if (matchedGroupExpressions.has(group.expression)) {
       return;
@@ -976,23 +975,25 @@ export const getResponseMetadata = (
       resultColumn != null &&
       resultColumn.jsType !== clickhouse.JSDataType.Date &&
       resultColumn.jsType !== clickhouse.JSDataType.Number &&
-      !groupColumnExpressions.has(resultColumn.name) &&
-      !(resultColumn.name === 'group' && resultColumn.type.startsWith('Array('))
+      !groupColumnExpressions.has(resultColumn.name)
     ) {
       groupColumnExpressions.set(resultColumn.name, group.expression);
       matchedGroupExpressions.add(group.expression);
     }
   });
-  const groupColumnNames = new Set(groupColumnExpressions.keys());
   const unmappedGroupExpressions = configuredGroups
     .filter(group => !matchedGroupExpressions.has(group.expression))
     .map(group => group.expression);
-  // Preserve the established evaluator contract: the last numeric response
-  // column is the alert value. Group-expression mapping below is only for
-  // notification sample predicates and must not rewrite persisted group keys
-  // or alter existing alert/history behavior.
+  // Builder projections put selected values before group columns. Restricting
+  // value detection to that slice prevents numeric group values from becoming
+  // the threshold value; numeric groups consequently join the persisted group
+  // key on the first evaluation after this fix. Raw SQL retains the established
+  // all-numeric behavior because its result shape is user-defined.
+  const valueColumns = isBuilderChartConfig(chartConfig)
+    ? meta.slice(0, selectColumnCount)
+    : meta;
   const valueColumnNames = new Set(
-    meta
+    valueColumns
       .filter(column => column.jsType === clickhouse.JSDataType.Number)
       .map(column => column.name),
   );
@@ -1011,7 +1012,6 @@ export const getResponseMetadata = (
     return {
       type: 'single_value',
       valueColumnNames,
-      groupColumnNames,
       groupColumnExpressions,
       unmappedGroupExpressions,
     };
@@ -1025,7 +1025,6 @@ export const getResponseMetadata = (
       type: 'time_series',
       timestampColumnName,
       valueColumnNames,
-      groupColumnNames,
       groupColumnExpressions,
       unmappedGroupExpressions,
     };
@@ -1047,11 +1046,9 @@ export const parseAlertData = (data: AlertQueryRow, meta: ResponseMetadata) => {
   const groupFilterFields: Array<[string, unknown]> = [];
 
   for (const [k, v] of Object.entries(data)) {
-    if (meta.groupColumnNames.has(k)) {
-      const groupExpression = meta.groupColumnExpressions.get(k);
-      if (groupExpression != null) {
-        groupFilterFields.push([groupExpression, v]);
-      }
+    const groupExpression = meta.groupColumnExpressions.get(k);
+    if (groupExpression != null) {
+      groupFilterFields.push([groupExpression, v]);
     }
     if (meta.valueColumnNames.has(k)) {
       // Due to output_format_json_quote_64bit_integers=1, 64-bit integers will be returned as strings.
@@ -1077,9 +1074,6 @@ export const parseAlertData = (data: AlertQueryRow, meta: ResponseMetadata) => {
     value,
     groupFields,
     groupFilterFields,
-    ...(meta.unmappedGroupExpressions.length > 0 && {
-      unsupportedGroupKeys: meta.unmappedGroupExpressions,
-    }),
   };
 };
 
@@ -1384,6 +1378,13 @@ export const processAlert = async (
       `Received alert metric [${alert.source} source]`,
     );
 
+    const meta = getResponseMetadata(optimizedChartConfig, checksData);
+    if (!meta) {
+      evalOutcome = 'error';
+      logger.error({ alertId: alert.id }, 'Failed to get response metadata');
+      return;
+    }
+
     // Track state per group (or one history if no groupBy)
     const histories = new Map<string, IAlertHistory>();
     const latestAlertContext = new Map<
@@ -1392,7 +1393,6 @@ export const processAlert = async (
         value: number;
         attributes: Record<string, string>;
         groupAttributes: Record<string, unknown>;
-        unsupportedGroupKeys: string[];
         startTime: Date;
       }
     >();
@@ -1420,7 +1420,6 @@ export const processAlert = async (
       startTime = nowInMinsRoundDown,
       attributes = {},
       groupAttributes,
-      unsupportedGroupKeys,
     }: {
       state: AlertState;
       totalCount: number;
@@ -1428,7 +1427,6 @@ export const processAlert = async (
       startTime?: Date;
       attributes?: Record<string, string>;
       groupAttributes?: Record<string, unknown>;
-      unsupportedGroupKeys?: string[];
     }) => {
       // KNOWN LIMITATION: Alert data (including silenced state) is fetched when
       // the task is queued via AlertProvider, not when it processes. If a user
@@ -1469,7 +1467,9 @@ export const processAlert = async (
           alertProvider,
           attributes,
           groupAttributes,
-          unsupportedGroupKeys,
+          unsupportedGroupKeys: hasGroupBy
+            ? meta.unmappedGroupExpressions
+            : undefined,
           clickhouseClient,
           dashboard: (details as any).dashboard,
           startTime,
@@ -1561,13 +1561,6 @@ export const processAlert = async (
         });
       }
     };
-
-    const meta = getResponseMetadata(optimizedChartConfig, checksData);
-    if (!meta) {
-      evalOutcome = 'error';
-      logger.error({ alertId: alert.id }, 'Failed to get response metadata');
-      return;
-    }
 
     // single_value type (Raw SQL Number charts) returns a single value with no
     // timestamp column, and are assumed to not have groups.
@@ -1684,7 +1677,6 @@ export const processAlert = async (
               value: 0,
               attributes: {},
               groupAttributes: {},
-              unsupportedGroupKeys: [],
               startTime: bucketStart,
             });
           } else {
@@ -1714,17 +1706,14 @@ export const processAlert = async (
           value: number;
           attributes: Record<string, string>;
           groupAttributes: Record<string, unknown>;
-          unsupportedGroupKeys: string[];
           exceeds: boolean;
         }
       >();
       for (const checkData of dataForBucket) {
-        const {
-          value,
-          groupFields,
-          groupFilterFields,
-          unsupportedGroupKeys = [],
-        } = parseAlertData(checkData, meta);
+        const { value, groupFields, groupFilterFields } = parseAlertData(
+          checkData,
+          meta,
+        );
 
         // NULL means no data: a metric series with no row at this bucket, or
         // a ratio with a missing/zero denominator. Skip the row instead of
@@ -1753,7 +1742,6 @@ export const processAlert = async (
             value,
             attributes,
             groupAttributes,
-            unsupportedGroupKeys,
             exceeds,
           });
         }
@@ -1771,7 +1759,6 @@ export const processAlert = async (
               value: evaluation.value,
               attributes: evaluation.attributes,
               groupAttributes: evaluation.groupAttributes,
-              unsupportedGroupKeys: evaluation.unsupportedGroupKeys,
               startTime: bucketStart,
             });
           } else {
@@ -1845,7 +1832,6 @@ export const processAlert = async (
             startTime: context.startTime,
             attributes: context.attributes,
             groupAttributes: context.groupAttributes,
-            unsupportedGroupKeys: context.unsupportedGroupKeys,
           });
 
           // Inject a mock previous history so the resolve check below catches it
