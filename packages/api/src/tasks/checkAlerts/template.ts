@@ -6,11 +6,8 @@ import {
   buildSearchChartConfig,
   resolveSearchOrderBy,
 } from '@hyperdx/common-utils/dist/core/searchChartConfig';
-import {
-  escapeSqlString,
-  formatDate,
-  objectHash,
-} from '@hyperdx/common-utils/dist/core/utils';
+import { formatDate, objectHash } from '@hyperdx/common-utils/dist/core/utils';
+import { filtersToQuery } from '@hyperdx/common-utils/dist/filters';
 import {
   isPromqlSavedChartConfig,
   isRawSqlSavedChartConfig,
@@ -816,10 +813,15 @@ ${targetTemplate}`;
         ...ALERT_WINDOW_DATE_RANGE_BOUNDS,
         filters: [
           ...(savedSearch.filters?.map(filter => ({ ...filter })) ?? []),
-          ...Object.entries(groupAttributes ?? {}).map(([column, value]) => ({
-            type: 'sql' as const,
-            condition: `${column} = '${escapeSqlString(value)}'`,
-          })),
+          ...filtersToQuery(
+            Object.fromEntries(
+              Object.entries(groupAttributes ?? {}).map(([column, value]) => [
+                column,
+                { included: new Set([value]), excluded: new Set() },
+              ]),
+            ),
+            { stringifyKeys: true },
+          ),
         ],
         orderBy: resolveSearchOrderBy(source, savedSearch.orderBy),
         select: savedSearch.select,

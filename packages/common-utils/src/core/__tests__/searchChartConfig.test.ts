@@ -1,6 +1,7 @@
 import {
   ALERT_COUNT_DEFAULT_SELECT,
   buildSearchChartConfig,
+  resolveSearchOrderBy,
 } from '@/core/searchChartConfig';
 import { DisplayType, Filter, SourceKind, TSource } from '@/types';
 
@@ -43,6 +44,70 @@ const makeMetricSource = (overrides: Record<string, unknown> = {}): TSource =>
     timestampValueExpression: 'TimeUnix',
     ...overrides,
   }) as unknown as TSource;
+
+describe('resolveSearchOrderBy', () => {
+  it('prefers and trims the caller override', () => {
+    expect(
+      resolveSearchOrderBy(
+        makeLogSource({ orderByExpression: 'Timestamp DESC' }),
+        ' SeverityText ASC ',
+      ),
+    ).toBe('SeverityText ASC');
+  });
+
+  it('uses a source order when no caller override is set', () => {
+    expect(
+      resolveSearchOrderBy(
+        makeTraceSource({ orderByExpression: 'Duration ASC' }),
+      ),
+    ).toBe('Duration ASC');
+  });
+
+  it('builds a tuple from multi-part timestamp expressions', () => {
+    expect(
+      resolveSearchOrderBy(
+        makeLogSource({
+          timestampValueExpression: 'TimestampTime, Timestamp',
+        }),
+      ),
+    ).toBe('(TimestampTime, Timestamp) DESC');
+  });
+
+  it('appends and deduplicates the displayed timestamp expression', () => {
+    expect(
+      resolveSearchOrderBy(
+        makeTraceSource({
+          timestampValueExpression: 'TimestampTime, Timestamp',
+          displayedTimestampValueExpression: 'ObservedTimestamp',
+        }),
+      ),
+    ).toBe('(TimestampTime, Timestamp, ObservedTimestamp) DESC');
+    expect(
+      resolveSearchOrderBy(
+        makeTraceSource({
+          timestampValueExpression: 'TimestampTime, Timestamp',
+          displayedTimestampValueExpression: 'Timestamp',
+        }),
+      ),
+    ).toBe('(TimestampTime, Timestamp) DESC');
+  });
+
+  it('falls back to Timestamp when no timestamp expression is available', () => {
+    expect(
+      resolveSearchOrderBy(makeLogSource({ timestampValueExpression: '' })),
+    ).toBe('Timestamp DESC');
+  });
+
+  it('includes only timestamp-like columns from an optional sorting key', () => {
+    expect(
+      resolveSearchOrderBy(
+        makeLogSource({ timestampValueExpression: 'Timestamp' }),
+        undefined,
+        'ServiceName, toStartOfHour(Timestamp), Timestamp',
+      ),
+    ).toBe('(toStartOfHour(Timestamp), Timestamp) DESC');
+  });
+});
 
 describe('buildSearchChartConfig', () => {
   describe('tableFilterExpression', () => {

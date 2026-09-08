@@ -334,8 +334,37 @@ describe('renderAlertTemplate', () => {
 
         expect(mockClickhouseClient.query).toHaveBeenCalledTimes(1);
         expect(mockClickhouseClient.query.mock.calls[0][0].query).toContain(
-          "ServiceName = 'checkout''s'",
+          "toString(ServiceName) IN ('checkout''s')",
         );
+      });
+
+      it('stringifies expression group keys and escapes their values', async () => {
+        const view = makeSearchView({
+          group: "LogAttributes['status']:can't\\stop",
+          groupAttributes: {
+            "LogAttributes['status']": "can't\\stop",
+          },
+          isGroupedAlert: true,
+        });
+        view.alert.groupBy = "LogAttributes['status']";
+        mockClickhouseClient.query.mockClear();
+
+        await render(view, AlertState.ALERT);
+
+        const sampleQuery = mockClickhouseClient.query.mock.calls[0][0].query;
+        expect(sampleQuery).toContain(
+          "toString(LogAttributes['status']) IN ('can''t\\\\stop')",
+        );
+      });
+
+      it('does not constrain samples when the alert is not grouped', async () => {
+        const view = makeSearchView();
+        mockClickhouseClient.query.mockClear();
+
+        await render(view, AlertState.ALERT);
+
+        const sampleQuery = mockClickhouseClient.query.mock.calls[0][0].query;
+        expect(sampleQuery).not.toContain('toString(ServiceName) IN');
       });
 
       it('applies saved-search filters when fetching sample logs', async () => {
@@ -380,9 +409,19 @@ describe('renderAlertTemplate', () => {
           { type: 'sql', condition: "ServiceName = 'checkout'" },
         ];
         view.savedSearch.orderBy = undefined;
-        view.source.kind = SourceKind.Trace;
-        view.source.defaultTableSelectExpression = 'Timestamp, SpanName';
-        view.source.orderByExpression = 'Duration ASC';
+        view.source = {
+          ...view.source,
+          kind: SourceKind.Trace,
+          defaultTableSelectExpression: 'Timestamp, SpanName',
+          durationExpression: 'Duration',
+          durationPrecision: 3,
+          orderByExpression: 'Duration ASC',
+          parentSpanIdExpression: 'ParentSpanId',
+          spanIdExpression: 'SpanId',
+          spanKindExpression: 'SpanKind',
+          spanNameExpression: 'SpanName',
+          traceIdExpression: 'TraceId',
+        };
         mockClickhouseClient.query.mockClear();
 
         await render(view, AlertState.ALERT);
