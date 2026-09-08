@@ -1047,7 +1047,7 @@ export const getResponseMetadata = (
 export const parseAlertData = (data: AlertQueryRow, meta: ResponseMetadata) => {
   let value: number | null = null;
   const groupFields: Array<[string, unknown]> = [];
-  const packedGroupValue = data[GROUP_ALIAS];
+  const packedGroupValue = Reflect.get(data, GROUP_ALIAS);
   const packedGroupExpressions = meta.packedGroupExpressions;
   const usesPackedGroup =
     packedGroupExpressions != null &&
@@ -1061,7 +1061,7 @@ export const parseAlertData = (data: AlertQueryRow, meta: ResponseMetadata) => {
       Array.isArray(packedGroupValue)
     ) {
       packedGroupExpressions?.forEach((expression, index) => {
-        groupFields.push([expression, packedGroupValue[index]]);
+        groupFields.push([expression, packedGroupValue.at(index)]);
       });
     } else if (meta.groupColumnNames.has(k)) {
       if (!usesPackedGroup) {

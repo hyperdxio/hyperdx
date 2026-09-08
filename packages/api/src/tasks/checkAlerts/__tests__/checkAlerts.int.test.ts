@@ -4,6 +4,7 @@ import {
   AlertErrorType,
   AlertState,
   AlertThresholdType,
+  ChartConfigSchema,
   ChartConfigWithOptDateRange,
   SourceKind,
   Tile,
@@ -973,6 +974,16 @@ describe('checkAlerts', () => {
   });
 
   describe('parseAlertData', () => {
+    const makeMetadataChartConfig = (
+      opts: Parameters<typeof makeAlertChartConfig>[0],
+    ): ChartConfigWithOptDateRange =>
+      ChartConfigSchema.parse({
+        ...makeAlertChartConfig(opts),
+        connection: 'fake-connection-id',
+        from: { databaseName: 'default', tableName: 'logs' },
+        timestampValueExpression: 'Timestamp',
+      });
+
     const timeSeriesMeta = {
       type: 'time_series' as const,
       timestampColumnName: 'ts',
@@ -982,10 +993,10 @@ describe('checkAlerts', () => {
 
     it('classifies multiple group-by columns, including a numeric one, from real response metadata', () => {
       const meta = getResponseMetadata(
-        makeAlertChartConfig({
+        makeMetadataChartConfig({
           sourceId: 'fake-source-id',
           groupBy: 'ServiceName, StatusCode',
-        }) as ChartConfigWithOptDateRange,
+        }),
         {
           meta: [
             { name: 'cnt', type: 'UInt64' },
@@ -1028,10 +1039,10 @@ describe('checkAlerts', () => {
 
     it('keeps a value-last histogram result evaluable', () => {
       const meta = getResponseMetadata(
-        makeAlertChartConfig({
+        makeMetadataChartConfig({
           sourceId: 'fake-source-id',
           groupBy: 'ServiceName',
-        }) as ChartConfigWithOptDateRange,
+        }),
         {
           meta: [
             { name: '__hdx_time_bucket', type: 'DateTime' },
@@ -1068,10 +1079,10 @@ describe('checkAlerts', () => {
 
     it('classifies a numeric histogram group by name when the value is projected last', () => {
       const meta = getResponseMetadata(
-        makeAlertChartConfig({
+        makeMetadataChartConfig({
           sourceId: 'fake-source-id',
           groupBy: 'StatusCode',
-        }) as ChartConfigWithOptDateRange,
+        }),
         {
           meta: [
             { name: '__hdx_time_bucket', type: 'DateTime' },
@@ -1110,10 +1121,10 @@ describe('checkAlerts', () => {
 
     it('does not steal a numeric value column named group', () => {
       const meta = getResponseMetadata(
-        makeAlertChartConfig({
+        makeMetadataChartConfig({
           sourceId: 'fake-source-id',
           groupBy: 'ServiceName',
-        }) as ChartConfigWithOptDateRange,
+        }),
         {
           meta: [
             { name: 'group', type: 'UInt64' },
@@ -1136,8 +1147,8 @@ describe('checkAlerts', () => {
     });
 
     it('maps an aliased expression group back to its query expression', () => {
-      const chartConfig = {
-        ...makeAlertChartConfig({ sourceId: 'fake-source-id' }),
+      const chartConfig = ChartConfigSchema.parse({
+        ...makeMetadataChartConfig({ sourceId: 'fake-source-id' }),
         groupBy: [
           {
             aggCondition: '',
@@ -1145,7 +1156,7 @@ describe('checkAlerts', () => {
             alias: '__hdx_alert_group_0',
           },
         ],
-      } as ChartConfigWithOptDateRange;
+      });
       const meta = getResponseMetadata(chartConfig, {
         meta: [
           { name: 'cnt', type: 'UInt64' },
