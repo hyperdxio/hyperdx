@@ -1,6 +1,7 @@
 import {
   configConsumesBroadcastFilters,
   filterSelectionKey,
+  getBlockingRequiredFilterNames,
   getBlockingRequiredFilters,
   getUnsatisfiedRequiredFilters,
   parseDashboardFilterValues,
@@ -797,6 +798,67 @@ describe('dashboardFilterValues', () => {
           'logs',
         ),
       ).toBe(true);
+    });
+  });
+
+  describe('getBlockingRequiredFilterNames', () => {
+    const builderTile: ChartConfigWithOptDateRange = {
+      select: 'count()',
+      from: { databaseName: 'default', tableName: 'logs' },
+      where: '',
+      timestampValueExpression: 'Timestamp',
+      connection: 'local',
+    };
+
+    const promqlTile: ChartConfigWithOptDateRange = {
+      configType: 'promql',
+      promqlExpression: 'up',
+      connection: 'local',
+    };
+
+    const unsatisfied = [
+      filter({ id: 'a', name: 'Broadcast', minSelections: 1 }),
+      staticFilter({ id: 'b', minSelections: 1 }),
+    ];
+
+    it('derives broadcast consumption from the config', () => {
+      expect(
+        getBlockingRequiredFilterNames({
+          config: builderTile,
+          sourceId: 'logs',
+          unsatisfiedRequiredFilters: unsatisfied,
+          referencedVariables: [{ name: 'env' }],
+        }),
+      ).toEqual(['Broadcast', 'Environment']);
+
+      expect(
+        getBlockingRequiredFilterNames({
+          config: promqlTile,
+          sourceId: 'logs',
+          unsatisfiedRequiredFilters: unsatisfied,
+          referencedVariables: [{ name: 'env' }],
+        }),
+      ).toEqual(['Environment']);
+    });
+
+    it('treats missing filters and variables as none', () => {
+      expect(
+        getBlockingRequiredFilterNames({
+          config: builderTile,
+          sourceId: 'logs',
+          unsatisfiedRequiredFilters: undefined,
+          referencedVariables: undefined,
+        }),
+      ).toEqual([]);
+
+      expect(
+        getBlockingRequiredFilterNames({
+          config: builderTile,
+          sourceId: 'logs',
+          unsatisfiedRequiredFilters: unsatisfied,
+          referencedVariables: undefined,
+        }),
+      ).toEqual(['Broadcast']);
     });
   });
 });
