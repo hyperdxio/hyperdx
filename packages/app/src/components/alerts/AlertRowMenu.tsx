@@ -15,6 +15,7 @@ import { useQueryClient } from '@tanstack/react-query';
 
 import api from '@/api';
 import { EditAlertModal } from '@/components/alerts/EditAlertModal';
+import { EditInlineAlertModal } from '@/components/alerts/EditInlineAlertModal';
 import { TerraformHelperPanel } from '@/components/Iac/TerraformHelperPanel';
 import { useTerraformSnippets } from '@/components/Iac/useTerraformSnippets';
 import { IS_IAC_EXPORT_ENABLED } from '@/config';
@@ -205,13 +206,24 @@ export function AlertRowMenu({
           </Menu.Item>
         </Menu.Dropdown>
       </Menu>
-      {/* Outside the dropdown, which unmounts on close. */}
-      <EditAlertModal
-        alert={alert}
-        opened={editOpened}
-        onClose={() => setEditOpened(false)}
-        dateRange={previewRange}
-      />
+      {/* Outside the dropdown, which unmounts on close. An inline alert owns
+          its query, so it is edited through the full chart editor rather than
+          the field-only modal. */}
+      {alert.source === AlertSource.INLINE ? (
+        <EditInlineAlertModal
+          alert={alert}
+          opened={editOpened}
+          onClose={() => setEditOpened(false)}
+          dateRange={previewRange}
+        />
+      ) : (
+        <EditAlertModal
+          alert={alert}
+          opened={editOpened}
+          onClose={() => setEditOpened(false)}
+          dateRange={previewRange}
+        />
+      )}
       <Modal
         opened={terraformOpened}
         onClose={() => setTerraformOpened(false)}

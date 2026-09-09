@@ -43,9 +43,13 @@ const NO_VALUES: FormValues = {};
 const Harness = ({
   initial = NO_VALUES,
   derivedDisplayName,
+  displayNameRequired,
+  tagsInherit,
 }: {
   initial?: FormValues;
   derivedDisplayName?: string;
+  displayNameRequired?: boolean;
+  tagsInherit?: boolean;
 }) => {
   const { control, handleSubmit } = useForm<FormValues>({
     defaultValues: initial,
@@ -58,6 +62,8 @@ const Harness = ({
         displayNameName="displayName"
         tagsName="tags"
         derivedDisplayName={derivedDisplayName}
+        displayNameRequired={displayNameRequired}
+        tagsInherit={tagsInherit}
       />
       <button type="submit">Submit</button>
     </form>
@@ -171,5 +177,27 @@ describe('AlertDisplayFields', () => {
     const button = screen.getByTestId('alert-tags-button');
     expect(button).toHaveTextContent('0');
     expect(button).not.toHaveTextContent('Inherited');
+  });
+
+  // An alert with no parent has nothing to inherit from, so an unset list is
+  // no tags rather than "whatever the tile has".
+  it('counts zero for an unset list where nothing is inherited', async () => {
+    renderWithMantine(<Harness tagsInherit={false} />);
+
+    const button = screen.getByTestId('alert-tags-button');
+    expect(button).toHaveTextContent('0');
+    expect(button).not.toHaveTextContent('Inherited');
+  });
+
+  it('marks the name required and drops the inherit-it placeholder', () => {
+    renderWithMantine(
+      <Harness displayNameRequired derivedDisplayName="Error rate" />,
+    );
+
+    expect(screen.getByText('*')).toBeInTheDocument();
+    expect(screen.getByTestId('alert-display-name-input')).toHaveAttribute(
+      'placeholder',
+      'Alert name',
+    );
   });
 });

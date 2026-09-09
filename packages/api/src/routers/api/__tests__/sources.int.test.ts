@@ -4,7 +4,7 @@ import {
   UseTextIndex,
 } from '@hyperdx/common-utils/dist/types';
 import express from 'express';
-import { Types } from 'mongoose';
+import mongoose, { Types } from 'mongoose';
 import request from 'supertest';
 
 import {
@@ -1177,6 +1177,92 @@ describe('sources router', () => {
         kvRollupTable: 'new_kv_rollup',
         granularity: '1 hour',
       });
+    });
+
+    it('GET / - is stable across requests for a source stored without a nested _id', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+
+      await mongoose.connection.collection('sources').insertOne({
+        ...MOCK_SOURCE,
+        connection: new Types.ObjectId(MOCK_SOURCE.connection),
+        team: team._id,
+        metadataMaterializedViews: {
+          keyRollupTable: 'test_table_key_rollup_15m',
+          kvRollupTable: 'test_table_kv_rollup_15m',
+          granularity: '15 minute',
+        },
+      });
+
+      const first = await agent.get('/sources').expect(200);
+      const second = await agent.get('/sources').expect(200);
+
+      expect(first.body[0].metadataMaterializedViews).toEqual({
+        keyRollupTable: 'test_table_key_rollup_15m',
+        kvRollupTable: 'test_table_kv_rollup_15m',
+        granularity: '15 minute',
+      });
+      expect(second.body).toEqual(first.body);
+      expect(second.headers.etag).toBe(first.headers.etag);
+    });
+
+    it('does not persist a nested _id', async () => {
+      const { team } = await getLoggedInAgent(server);
+
+      const source = await Source.create({
+        ...MOCK_SOURCE,
+        team: team._id,
+        metadataMaterializedViews: {
+          keyRollupTable: 'test_table_key_rollup_15m',
+          kvRollupTable: 'test_table_kv_rollup_15m',
+          granularity: '15 minute',
+        },
+      });
+
+      const stored = await mongoose.connection
+        .collection('sources')
+        .findOne({ _id: source._id });
+
+      expect(stored?.metadataMaterializedViews).not.toHaveProperty('_id');
+    });
+
+    it('GET / - is stable across requests after a source kind change', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+
+      const source = await Source.create({
+        ...MOCK_SOURCE,
+        team: team._id,
+      });
+
+      await agent
+        .put(`/sources/${source._id}`)
+        .send({
+          id: source._id.toString(),
+          kind: SourceKind.Trace,
+          name: 'Test Trace Source',
+          connection: MOCK_SOURCE.connection,
+          from: { databaseName: 'test_db', tableName: 'otel_traces' },
+          timestampValueExpression: 'Timestamp',
+          defaultTableSelectExpression: 'Timestamp, ServiceName',
+          durationExpression: 'Duration',
+          durationPrecision: 9,
+          traceIdExpression: 'TraceId',
+          spanIdExpression: 'SpanId',
+          parentSpanIdExpression: 'ParentSpanId',
+          spanNameExpression: 'SpanName',
+          spanKindExpression: 'SpanKind',
+          metadataMaterializedViews: {
+            keyRollupTable: 'test_table_key_rollup_15m',
+            kvRollupTable: 'test_table_kv_rollup_15m',
+            granularity: '15 minute',
+          },
+        })
+        .expect(200);
+
+      const first = await agent.get('/sources').expect(200);
+      const second = await agent.get('/sources').expect(200);
+
+      expect(second.body).toEqual(first.body);
+      expect(second.headers.etag).toBe(first.headers.etag);
     });
   });
 

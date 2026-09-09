@@ -34,10 +34,7 @@ import {
   Granularity,
   isTimeSeriesDisplayType,
 } from '@hyperdx/common-utils/dist/core/utils';
-import {
-  configConsumesBroadcastFilters,
-  getBlockingRequiredFilters,
-} from '@hyperdx/common-utils/dist/dashboardFilterValues';
+import { getBlockingRequiredFilterNames } from '@hyperdx/common-utils/dist/dashboardFilterValues';
 import {
   displayTypeRequiresSource,
   isBuilderChartConfig,
@@ -599,31 +596,20 @@ const Tile = ({
     [serializedTileVariables],
   );
 
-  const consumesBroadcastFilters = useMemo(
-    () => configConsumesBroadcastFilters(chart.config, chart.config.source),
-    [chart.config],
-  );
-
   // Serialized for the same reason as `tileVariables`: any change to the
   // dashboard's filters hands this tile a new array, and only a change to the
   // names this tile is blocked on should churn the render memo below.
   const serializedMissingRequiredFilterNames = useMemo(
     () =>
       JSON.stringify(
-        getBlockingRequiredFilters(unsatisfiedRequiredFilters ?? [], {
+        getBlockingRequiredFilterNames({
+          config: chart.config,
           sourceId: chart.config.source,
-          referencedVariableNames: tileVariables?.map(
-            variable => variable.name,
-          ),
-          consumesBroadcastFilters,
-        }).map(filter => filter.name),
+          unsatisfiedRequiredFilters,
+          referencedVariables: tileVariables,
+        }),
       ),
-    [
-      unsatisfiedRequiredFilters,
-      chart.config.source,
-      tileVariables,
-      consumesBroadcastFilters,
-    ],
+    [unsatisfiedRequiredFilters, chart.config, tileVariables],
   );
   const missingRequiredFilterNames = useMemo<string[]>(
     () => JSON.parse(serializedMissingRequiredFilterNames),
