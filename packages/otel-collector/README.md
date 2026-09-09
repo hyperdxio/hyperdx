@@ -323,14 +323,13 @@ run (`otelcontribcol --config ...`, not just `validate`): it reaches
 `span_metrics` connector, confirming `validate`'s static schema/graph
 checks aren't hiding a startup-only failure here.
 
-## Ingesting StatsD/DogStatsD metrics
+## Ingesting StatsD metrics
 
-`statsdreceiver` is compiled in so StatsD and DogStatsD-formatted metrics
-(e.g. from a Datadog Agent's local DogStatsD listener, or anything else
-speaking the StatsD wire protocol) can be ingested directly, without a
-separate StatsD-to-OTLP bridge. It understands DogStatsD's tag extension
-natively (`<metric>:<value>|<type>|#tag1:value1,tag2:value2`), so
-Datadog-originated StatsD traffic doesn't need any translation.
+`statsdreceiver` is compiled in so StatsD-formatted metrics can be ingested
+directly, without a separate StatsD-to-OTLP bridge — this covers any StatsD
+client, not just a particular vendor's dialect. It also understands the
+DogStatsD tag extension (`#tag1:value1,tag2:value2`) if the sender uses it,
+but doesn't require it.
 
 **This component does not support horizontally-scaled deployments.**
 That's not a HyperDX-specific limitation — it's stated directly in the
@@ -347,20 +346,9 @@ instead (standalone mode, as below).
 ```yaml
 receivers:
   statsd:
+    # Defaults to localhost:8125, which only accepts local traffic -
+    # override to 0.0.0.0 if metrics arrive from outside the container.
     endpoint: 0.0.0.0:8125
-    # DogStatsD supports bare tags with no value (`#mytag`, not just
-    # `#mytag:myvalue`) - without this, those get dropped.
-    enable_simple_tags: true
-    # Optional: route timer/histogram-type StatsD metrics to an
-    # exponential histogram (HyperDX's ClickHouse schema already has a
-    # dedicated otel_metrics_exponential_histogram table for these,
-    # verified elsewhere in this README) instead of the default
-    # explicit-bucket histogram.
-    timer_histogram_mapping:
-      - statsd_type: "timing"
-        observer_type: "histogram"
-        histogram:
-          max_size: 160
 service:
   pipelines:
     metrics:
