@@ -1201,7 +1201,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
 
       // Wait for success notification
       const notification = dashboardPage.page.locator(
-        'text=/Filter query and dropdown values/i',
+        'text=/Filter query, dropdown values, and relative time range/i',
       );
       await expect(notification).toBeVisible({ timeout: 5000 });
     });
@@ -1266,7 +1266,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
         // Wait for the save success notification rather than a blind sleep, so
         // we only read the URL once the save has actually landed.
         const notification = dashboardPage.page.locator(
-          'text=/Filter query and dropdown values/i',
+          'text=/Filter query, dropdown values, and relative time range/i',
         );
         await expect(notification).toBeVisible({ timeout: 5000 });
 
@@ -2649,7 +2649,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
 
         // Wait for success notification
         const notification = dashboardPage.page.locator(
-          'text=/Filter query and dropdown values/i',
+          'text=/Filter query, dropdown values, and relative time range/i',
         );
         await expect(notification).toBeVisible({ timeout: 5000 });
       });
@@ -2670,7 +2670,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
 
         // Wait for success notification
         const notification = dashboardPage.page.locator(
-          'text=/Filter query and dropdown values/i',
+          'text=/Filter query, dropdown values, and relative time range/i',
         );
         await expect(notification).toBeVisible({ timeout: 5000 });
       });
