@@ -3040,7 +3040,7 @@ describe('checkAlerts', () => {
         new Date('2023-11-16T22:12:00.000Z'),
         details,
         clickhouseClient,
-        connection.id,
+        connection,
         alertProvider,
         teamWebhooksById,
       );
@@ -9932,6 +9932,79 @@ describe('checkAlerts', () => {
       expect(
         jest.mocked(slack.postMessageToWebhook).mock.calls[0][1].text,
       ).not.toContain('[Sample events unavailable for this group]');
+    });
+
+    it('uses one eventId when an empty grouped bucket alerts and resolves', async () => {
+      const fetchMock = jest.fn(
+        async (_url: string | URL | Request, _request?: RequestInit) =>
+          new Response('', { status: 200 }),
+      );
+      global.fetch = fetchMock;
+
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        savedSearch,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest({
+        webhookSettings: {
+          service: WebhookService.Generic,
+          url: 'https://webhook.site/grouped-empty',
+          name: 'Generic Webhook',
+          body: JSON.stringify({ eventId: '{{eventId}}' }),
+        } as IWebhook,
+      });
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.BELOW,
+          threshold: 1,
+          savedSearchId: savedSearch.id,
+          groupBy: 'ServiceName',
+        },
+        {
+          taskType: AlertTaskType.SAVED_SEARCH,
+          savedSearch,
+        },
+      );
+
+      await processAlertAtTime(
+        new Date('2023-11-16T22:12:00.000Z'),
+        details,
+        clickhouseClient,
+        connection,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      details.alert.thresholdType = AlertThresholdType.ABOVE;
+      details.alert.threshold = 1;
+      await processAlertAtTime(
+        new Date('2023-11-16T22:17:00.000Z'),
+        details,
+        clickhouseClient,
+        connection,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      const eventIds = fetchMock.mock.calls.map(
+        ([, request]) =>
+          String(request?.body).match(/"eventId":"([^"]+)"/)?.[1],
+      );
+      expect(eventIds[0]).toBeTruthy();
+      expect(eventIds[1]).toBe(eventIds[0]);
     });
 
     it('should not fire notifications when alert is silenced', async () => {

@@ -484,17 +484,23 @@ const getAlertWindowStart = (alert: IAlert, now: Date): Date => {
   );
 };
 
+type AlertNotificationGrouping =
+  | {
+      isGroupedAlert: true;
+      groupAttributes: Record<string, unknown>;
+      unsupportedGroupKeys: string[];
+    }
+  | { isGroupedAlert: false };
+
 const fireChannelEvent = async ({
   alert,
   alertProvider,
   attributes,
-  groupAttributes,
-  unsupportedGroupKeys,
+  grouping,
   clickhouseClient,
   dashboard,
   endTime,
   group,
-  isGroupedAlert,
   metadata,
   savedSearch,
   source,
@@ -507,13 +513,11 @@ const fireChannelEvent = async ({
   alert: IAlert;
   alertProvider: AlertProvider;
   attributes: Record<string, string>; // TODO: support other types than string
-  groupAttributes?: Record<string, unknown>;
-  unsupportedGroupKeys?: string[];
+  grouping: AlertNotificationGrouping;
   clickhouseClient: ClickhouseClient;
   dashboard?: IDashboard | null;
   endTime: Date;
   group?: string;
-  isGroupedAlert: boolean;
   metadata: Metadata;
   savedSearch?: ISavedSearch | null;
   source?: ISource | null;
@@ -567,13 +571,7 @@ const fireChannelEvent = async ({
     endTime,
     granularity: `${windowSizeInMins} minute`,
     group,
-    ...(isGroupedAlert
-      ? {
-          isGroupedAlert: true,
-          groupAttributes: groupAttributes ?? {},
-          unsupportedGroupKeys: unsupportedGroupKeys ?? [],
-        }
-      : { isGroupedAlert: false }),
+    ...grouping,
     savedSearch,
     source,
     startTime,
@@ -1413,7 +1411,6 @@ export const processAlert = async (
         value: number;
         attributes: Record<string, string>;
         groupAttributes: Record<string, unknown>;
-        isGroupedAlert: boolean;
         startTime: Date;
       }
     >();
@@ -1441,7 +1438,6 @@ export const processAlert = async (
       startTime = nowInMinsRoundDown,
       attributes = {},
       groupAttributes,
-      isGroupedAlert = hasGroupBy,
     }: {
       state: AlertState;
       totalCount: number;
@@ -1449,7 +1445,6 @@ export const processAlert = async (
       startTime?: Date;
       attributes?: Record<string, string>;
       groupAttributes?: Record<string, unknown>;
-      isGroupedAlert?: boolean;
     }) => {
       // KNOWN LIMITATION: Alert data (including silenced state) is fetched when
       // the task is queued via AlertProvider, not when it processes. If a user
@@ -1485,20 +1480,24 @@ export const processAlert = async (
         // alert logic requiring large, nested objects. We should look at
         // cleaning this up next. fireChannelEvent guards against null values
         // for these properties.
+        const grouping: AlertNotificationGrouping =
+          hasGroupBy && group !== ''
+            ? {
+                isGroupedAlert: true,
+                groupAttributes: groupAttributes ?? {},
+                unsupportedGroupKeys: meta.unmappedGroupExpressions,
+              }
+            : { isGroupedAlert: false };
         const { failures, timings } = await fireChannelEvent({
           alert,
           alertProvider,
           attributes,
-          groupAttributes,
-          unsupportedGroupKeys: hasGroupBy
-            ? meta.unmappedGroupExpressions
-            : undefined,
+          grouping,
           clickhouseClient,
           dashboard: (details as any).dashboard,
           startTime,
           endTime: fns.addMinutes(startTime, windowSizeInMins),
           group,
-          isGroupedAlert,
           metadata,
           savedSearch: (details as any).savedSearch,
           source,
@@ -1700,7 +1699,6 @@ export const processAlert = async (
               value: 0,
               attributes: {},
               groupAttributes: {},
-              isGroupedAlert: false,
               startTime: bucketStart,
             });
           } else {
@@ -1783,7 +1781,6 @@ export const processAlert = async (
               value: evaluation.value,
               attributes: evaluation.attributes,
               groupAttributes: evaluation.groupAttributes,
-              isGroupedAlert: hasGroupBy,
               startTime: bucketStart,
             });
           } else {
@@ -1857,7 +1854,6 @@ export const processAlert = async (
             startTime: context.startTime,
             attributes: context.attributes,
             groupAttributes: context.groupAttributes,
-            isGroupedAlert: context.isGroupedAlert,
           });
 
           // Inject a mock previous history so the resolve check below catches it
