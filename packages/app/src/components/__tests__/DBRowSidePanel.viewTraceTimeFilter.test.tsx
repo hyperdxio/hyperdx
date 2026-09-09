@@ -1,12 +1,9 @@
 import React from 'react';
-import {
-  SourceKind,
-  TLogSource,
-  TSource,
-} from '@hyperdx/common-utils/dist/types';
+import { TSource } from '@hyperdx/common-utils/dist/types';
 import { MantineProvider } from '@mantine/core';
 import { fireEvent, render, screen } from '@testing-library/react';
-import { fromPartial } from '@total-typescript/shoehorn';
+
+import { makeLogSource } from '@/llm/__fixtures__/sources';
 
 // Controlled, in-memory replacement for nuqs' useQueryState so each side-panel
 // URL param can be seeded and its setter inspected independently. Values are
@@ -162,9 +159,8 @@ import { DBRowSidePanelInner } from '@/components/DBRowSidePanel';
 import useSidePanelStack from '@/hooks/useSidePanelStack';
 import { getRowLookupWindow } from '@/utils/rowTimestamps';
 
-const ROOT_SOURCE = fromPartial<TLogSource>({
+const ROOT_SOURCE = makeLogSource({
   id: 'log-src',
-  kind: SourceKind.Log,
   traceSourceId: 'trace-src',
   timestampValueExpression: 'Timestamp',
   resourceAttributesExpression: 'ResourceAttributes',

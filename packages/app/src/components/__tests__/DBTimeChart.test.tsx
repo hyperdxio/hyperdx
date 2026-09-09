@@ -17,6 +17,7 @@ import MVOptimizationIndicator from '@/components/MaterializedViews/MVOptimizati
 import { MAX_LOADABLE_TIME_CHART_SERIES } from '@/defaults';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
+import { makeLogSource } from '@/llm/__fixtures__/sources';
 import { useSource } from '@/source';
 
 // Mock dependencies
@@ -159,7 +160,7 @@ describe('DBTimeChart', () => {
     // Mock useSource to return a source so MVOptimizationIndicator is rendered
     jest.mocked(useSource).mockReturnValue(
       fromPartial<ReturnType<typeof useSource>>({
-        data: { id: 'test-source', name: 'Test Source' },
+        data: makeLogSource({ id: 'test-source', name: 'Test Source' }),
       }),
     );
 
@@ -189,7 +190,7 @@ describe('DBTimeChart', () => {
   it('disables the MV-optimization query when both MV and date-range indicators are hidden', () => {
     jest.mocked(useSource).mockReturnValue(
       fromPartial<ReturnType<typeof useSource>>({
-        data: { id: 'test-source', name: 'Test Source' },
+        data: makeLogSource({ id: 'test-source', name: 'Test Source' }),
       }),
     );
 
@@ -209,7 +210,7 @@ describe('DBTimeChart', () => {
   it('keeps the MV-optimization query enabled when only the date-range indicator is shown', () => {
     jest.mocked(useSource).mockReturnValue(
       fromPartial<ReturnType<typeof useSource>>({
-        data: { id: 'test-source', name: 'Test Source' },
+        data: makeLogSource({ id: 'test-source', name: 'Test Source' }),
       }),
     );
 

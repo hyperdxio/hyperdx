@@ -2,15 +2,14 @@ import React, { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import {
   SourceKind,
-  TLogSource,
   TMetricSource,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import { MantineProvider } from '@mantine/core';
 import { render, waitFor } from '@testing-library/react';
-import { fromPartial } from '@total-typescript/shoehorn';
 
 import { MetricTableModelForm } from '@/components/Sources/SourceForm/MetricTableModelForm';
+import { makeLogSource } from '@/llm/__fixtures__/sources';
 
 import '@testing-library/jest-dom';
 
@@ -128,18 +127,22 @@ function autofilledTables() {
     .map(([path, value]) => [path, value]);
 }
 
-const SAVED_SOURCE = fromPartial<TMetricSource>({
+const SAVED_SOURCE = {
   id: 'metric-source-1',
   kind: SourceKind.Metric,
   name: 'Metrics',
   connection: 'conn-1',
   from: { databaseName: 'otel_v2', tableName: '' },
   timestampValueExpression: 'TimeUnix',
+  resourceAttributesExpression: 'ResourceAttributes',
   metricTables: {
     gauge: 'otel_metrics_gauge',
     sum: 'otel_metrics_sum',
+    histogram: '',
+    summary: '',
+    'exponential histogram': '',
   },
-});
+} satisfies TMetricSource;
 
 describe('MetricTableModelForm metric table autofill', () => {
   beforeEach(() => {
@@ -242,11 +245,12 @@ describe('MetricTableModelForm metric table autofill', () => {
   // A saved source of another kind switched over to OTEL Metrics has no metric
   // tables to preserve, so it autofills like a new source.
   it('autofills for an existing source switched to the metrics kind', async () => {
-    const { metricTables: _metricTables, ...savedSourceWithoutMetricTables } =
-      SAVED_SOURCE;
-    savedSource = fromPartial<TLogSource>({
-      ...savedSourceWithoutMetricTables,
-      kind: SourceKind.Log,
+    savedSource = makeLogSource({
+      id: SAVED_SOURCE.id,
+      name: SAVED_SOURCE.name,
+      connection: SAVED_SOURCE.connection,
+      from: SAVED_SOURCE.from,
+      timestampValueExpression: SAVED_SOURCE.timestampValueExpression,
     });
 
     renderHarness(
