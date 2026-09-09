@@ -5,7 +5,7 @@ import {
 } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   configConsumesBroadcastFilters,
-  getBlockingRequiredFilters,
+  getBlockingRequiredFilterNames,
 } from '@hyperdx/common-utils/dist/dashboardFilterValues';
 import {
   isBuilderChartConfig,
@@ -237,16 +237,12 @@ export function resolveTilePreviewFilters({
   return {
     filters: consumesBroadcastFilters ? filters : undefined,
     variables: previewVariables,
-    missingRequiredFilterNames: getBlockingRequiredFilters(
-      unsatisfiedRequiredFilters ?? [],
-      {
-        sourceId,
-        referencedVariableNames: previewVariables?.map(
-          variable => variable.name,
-        ),
-        consumesBroadcastFilters,
-      },
-    ).map(filter => filter.name),
+    missingRequiredFilterNames: getBlockingRequiredFilterNames({
+      config,
+      sourceId,
+      unsatisfiedRequiredFilters,
+      referencedVariables: previewVariables,
+    }),
   };
 }
 
