@@ -226,3 +226,25 @@ export function getBlockingRequiredFilters(
         doesFilterApplyToSource(filter, tile.sourceId)),
   );
 }
+
+/** The names of the required filters that block a tile with the given config. */
+export function getBlockingRequiredFilterNames({
+  config,
+  sourceId,
+  unsatisfiedRequiredFilters,
+  referencedVariables,
+}: {
+  config: SavedChartConfig | ChartConfigWithOptDateRange;
+  sourceId: string | undefined;
+  unsatisfiedRequiredFilters: DashboardFilter[] | undefined;
+  /** The tile's variables, already narrowed to the ones it references. */
+  referencedVariables: readonly { name: string }[] | undefined;
+}): string[] {
+  return getBlockingRequiredFilters(unsatisfiedRequiredFilters ?? [], {
+    sourceId,
+    referencedVariableNames: referencedVariables?.map(
+      variable => variable.name,
+    ),
+    consumesBroadcastFilters: configConsumesBroadcastFilters(config, sourceId),
+  }).map(filter => filter.name);
+}
