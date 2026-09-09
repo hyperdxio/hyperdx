@@ -11,4 +11,6 @@ being mistaken for the threshold value. On the first evaluation after this
 upgrade, an already-firing numeric-group alert may emit one resolution for its
 legacy group key before emitting notifications under the corrected keys. The
 legacy key is empty for a numeric-only group, or lacks the numeric dimension
-for a composite group.
+for a composite group. Alerts configured with multiple consecutive windows
+must then accumulate the corrected key for the remaining windows before they
+can fire again (for example, two more windows when configured for three).
