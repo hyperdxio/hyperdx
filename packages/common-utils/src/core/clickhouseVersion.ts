@@ -141,6 +141,31 @@ export function supportsDirectReadMap(
 }
 
 /**
+ * First release where `JSONEachRowWithProgress` emits a leading `{"meta":[...]}`
+ * event (column names and types) and a trailing `{"exception":"..."}` event
+ * (ClickHouse PR #74181). Older servers emit only `row` and `progress` events,
+ * so a reader has no way to learn the result-set column types or to detect a
+ * mid-stream failure — both of which the search table needs.
+ */
+const JSON_EACH_ROW_WITH_PROGRESS_META_MIN: ClickHouseVersion = [25, 1, 0, 0];
+
+/**
+ * Returns true when `JSONEachRowWithProgress` carries the `meta` and
+ * `exception` events (>= 25.1), making it a safe replacement for
+ * `JSONCompactEachRowWithNamesAndTypes`. Returns false when the version is
+ * undefined or older, in which case callers should fall back to a format
+ * without progress reporting.
+ */
+export function supportsJSONEachRowWithProgressMeta(
+  version: ClickHouseVersion | undefined,
+): boolean {
+  return isClickHouseVersionAtLeast(
+    version,
+    JSON_EACH_ROW_WITH_PROGRESS_META_MIN,
+  );
+}
+
+/**
  * First release that shipped the `mergeTreeTextIndex(database, table, index)`
  * table function used to introspect text skip indices.
  */

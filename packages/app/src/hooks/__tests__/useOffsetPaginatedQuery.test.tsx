@@ -101,7 +101,7 @@ describe('useOffsetPaginatedQuery', () => {
   let mockClickhouseClient: any;
   let mockStream: any;
   let mockReader: any;
-  let mockMetadata: { getSetting: jest.Mock };
+  let mockMetadata: { getSetting: jest.Mock; getServerVersion: jest.Mock };
 
   beforeEach(() => {
     // Reset mocks
@@ -153,6 +153,8 @@ describe('useOffsetPaginatedQuery', () => {
     // Mock metadata with getSetting returning null by default
     mockMetadata = {
       getSetting: jest.fn().mockResolvedValue(null),
+      // Recent enough for JSONEachRowWithProgress to carry meta/exception.
+      getServerVersion: jest.fn().mockResolvedValue([25, 1, 0, 0]),
     };
     jest.mocked(useMetadataWithSettings).mockReturnValue(mockMetadata as any);
   });
@@ -1171,6 +1173,326 @@ describe('useOffsetPaginatedQuery', () => {
       ).toBeTruthy();
 
       expect(result2.current.data?.data).toHaveLength(1);
+    });
+  });
+  describe('Progress reporting (reportProgress)', () => {
+    const PROGRESS = {
+      read_rows: '5000',
+      read_bytes: '120000',
+      total_rows_to_read: '20000',
+      elapsed_ns: '250000000',
+    };
+
+    it('keeps the compact format and reports no progress by default', async () => {
+      const config = createMockChartConfig();
+
+      mockReader.read
+        .mockResolvedValueOnce({
+          done: false,
+          value: [
+            { json: () => ['Body'] },
+            { json: () => ['String'] },
+            { json: () => ['hello'] },
+          ],
+        })
+        .mockResolvedValueOnce({ done: true });
+
+      const { result } = renderHook(() => useOffsetPaginatedQuery(config), {
+        wrapper,
+      });
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      expect(mockClickhouseClient.query).toHaveBeenCalledWith(
+        expect.objectContaining({
+          format: 'JSONCompactEachRowWithNamesAndTypes',
+        }),
+      );
+      expect(mockMetadata.getServerVersion).not.toHaveBeenCalled();
+      expect(result.current.progress).toBeUndefined();
+    });
+
+    it('requests the progress format on ClickHouse >= 25.1', async () => {
+      const config = createMockChartConfig();
+
+      mockReader.read
+        .mockResolvedValueOnce({
+          done: false,
+          value: [
+            { json: () => ({ meta: [{ name: 'Body', type: 'String' }] }) },
+            { json: () => ({ row: { Body: 'hello' } }) },
+          ],
+        })
+        .mockResolvedValueOnce({ done: true });
+
+      const { result } = renderHook(
+        () => useOffsetPaginatedQuery(config, { reportProgress: true }),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      expect(mockClickhouseClient.query).toHaveBeenCalledWith(
+        expect.objectContaining({ format: 'JSONEachRowWithProgress' }),
+      );
+      expect(result.current.data?.data).toEqual([{ Body: 'hello' }]);
+      expect(result.current.data?.meta).toEqual([
+        { name: 'Body', type: 'String' },
+      ]);
+    });
+
+    it('falls back to the compact format on ClickHouse < 25.1', async () => {
+      mockMetadata.getServerVersion.mockResolvedValue([24, 12, 0, 0]);
+      const config = createMockChartConfig();
+
+      mockReader.read
+        .mockResolvedValueOnce({
+          done: false,
+          value: [
+            { json: () => ['Body'] },
+            { json: () => ['String'] },
+            { json: () => ['hello'] },
+          ],
+        })
+        .mockResolvedValueOnce({ done: true });
+
+      const { result } = renderHook(
+        () => useOffsetPaginatedQuery(config, { reportProgress: true }),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      expect(mockClickhouseClient.query).toHaveBeenCalledWith(
+        expect.objectContaining({
+          format: 'JSONCompactEachRowWithNamesAndTypes',
+        }),
+      );
+      expect(result.current.data?.data).toEqual([{ Body: 'hello' }]);
+    });
+
+    it('falls back to the compact format when the version is unknown', async () => {
+      mockMetadata.getServerVersion.mockResolvedValue(undefined);
+      const config = createMockChartConfig();
+
+      mockReader.read
+        .mockResolvedValueOnce({
+          done: false,
+          value: [{ json: () => ['Body'] }, { json: () => ['String'] }],
+        })
+        .mockResolvedValueOnce({ done: true });
+
+      const { result } = renderHook(
+        () => useOffsetPaginatedQuery(config, { reportProgress: true }),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      expect(mockClickhouseClient.query).toHaveBeenCalledWith(
+        expect.objectContaining({
+          format: 'JSONCompactEachRowWithNamesAndTypes',
+        }),
+      );
+    });
+
+    it('exposes progress while streaming and clears it once settled', async () => {
+      const config = createMockChartConfig();
+      let releaseSecondRead: (value: unknown) => void = () => {};
+
+      mockReader.read
+        .mockResolvedValueOnce({
+          done: false,
+          value: [
+            { json: () => ({ meta: [{ name: 'Body', type: 'String' }] }) },
+            { json: () => ({ progress: PROGRESS }) },
+          ],
+        })
+        .mockImplementationOnce(
+          () =>
+            new Promise(resolve => {
+              releaseSecondRead = resolve;
+            }),
+        );
+
+      const { result } = renderHook(
+        () => useOffsetPaginatedQuery(config, { reportProgress: true }),
+        { wrapper },
+      );
+
+      // 24h range, 15m first window, a quarter of the way through it:
+      // 15m * 0.25 / 24h. The in-flight window must be counted once, even
+      // though incremental streaming also pushed a placeholder page for it.
+      await waitFor(() =>
+        expect(result.current.progress).toEqual({
+          percent: expect.closeTo(((15 * 0.25) / (24 * 60)) * 100, 5),
+          readRows: 5000,
+          readBytes: 120000,
+          elapsedMs: expect.any(Number),
+        }),
+      );
+
+      await act(async () => {
+        releaseSecondRead({ done: true });
+      });
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+      expect(result.current.progress).toBeUndefined();
+    });
+
+    it('accumulates coverage across windows instead of restarting per page', async () => {
+      const config = createMockChartConfig({
+        dateRange: [
+          new Date('2024-01-01T00:00:00Z'),
+          new Date('2024-01-02T00:00:00Z'),
+        ] as [Date, Date],
+      });
+
+      // Window 0 (the last 15m) returns nothing, so pagination advances to
+      // window 1 (the preceding 6h), which streams progress and then stalls.
+      let releaseSecondWindow: (value: unknown) => void = () => {};
+      mockReader.read
+        .mockResolvedValueOnce({
+          done: false,
+          value: [
+            { json: () => ({ meta: [{ name: 'Body', type: 'String' }] }) },
+          ],
+        })
+        .mockResolvedValueOnce({ done: true })
+        .mockResolvedValueOnce({
+          done: false,
+          value: [
+            {
+              json: () => ({
+                progress: {
+                  read_rows: '500',
+                  read_bytes: '1000',
+                  total_rows_to_read: '1000',
+                  elapsed_ns: '1',
+                },
+              }),
+            },
+          ],
+        })
+        .mockImplementationOnce(
+          () =>
+            new Promise(resolve => {
+              releaseSecondWindow = resolve;
+            }),
+        );
+
+      const { result } = renderHook(
+        () => useOffsetPaginatedQuery(config, { reportProgress: true }),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+      expect(result.current.progress).toBeUndefined();
+
+      await act(async () => {
+        result.current.fetchNextPage();
+      });
+
+      // Window 0 (15m) fully covered, plus half of window 1 (6h), over 24h.
+      const expectedPercent = ((15 + 6 * 60 * 0.5) / (24 * 60)) * 100;
+      await waitFor(() =>
+        expect(result.current.progress?.percent).toBeCloseTo(
+          expectedPercent,
+          5,
+        ),
+      );
+
+      await act(async () => {
+        releaseSecondWindow({ done: true });
+      });
+      await waitFor(() => expect(result.current.isFetching).toBe(false));
+    });
+
+    it('keeps the bar visible across the gap between windows', async () => {
+      const config = createMockChartConfig({
+        dateRange: [
+          new Date('2024-01-01T00:00:00Z'),
+          new Date('2024-01-02T00:00:00Z'),
+        ] as [Date, Date],
+      });
+
+      // Window 0 reports progress and finishes. Window 1 then stalls before
+      // emitting anything, which is the moment the bar used to disappear.
+      let releaseSecondWindow: (value: unknown) => void = () => {};
+      mockReader.read
+        .mockResolvedValueOnce({
+          done: false,
+          value: [
+            {
+              json: () => ({
+                progress: {
+                  read_rows: '900',
+                  read_bytes: '9000',
+                  total_rows_to_read: '900',
+                  elapsed_ns: '1',
+                },
+              }),
+            },
+          ],
+        })
+        .mockResolvedValueOnce({ done: true })
+        .mockImplementationOnce(
+          () =>
+            new Promise(resolve => {
+              releaseSecondWindow = resolve;
+            }),
+        );
+
+      const { result } = renderHook(
+        () => useOffsetPaginatedQuery(config, { reportProgress: true }),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      await act(async () => {
+        result.current.fetchNextPage();
+      });
+
+      // Window 1 has reported nothing yet, so this is entirely carried over
+      // from window 0: 15m of the 24h range, and its rows.
+      await waitFor(() => expect(result.current.isFetching).toBe(true));
+      expect(result.current.progress).toBeDefined();
+      expect(result.current.progress?.readRows).toBe(900);
+      expect(result.current.progress?.percent).toBeCloseTo(
+        (15 / (24 * 60)) * 100,
+        5,
+      );
+
+      await act(async () => {
+        releaseSecondWindow({ done: true });
+      });
+      await waitFor(() => expect(result.current.isFetching).toBe(false));
+    });
+
+    it('surfaces a mid-stream exception event as a query error', async () => {
+      const config = createMockChartConfig();
+
+      // Not `once`: the hook retries the query once before settling on error.
+      mockReader.read.mockResolvedValue({
+        done: false,
+        value: [
+          { json: () => ({ meta: [{ name: 'Body', type: 'String' }] }) },
+          { json: () => ({ exception: 'Code: 241. Memory limit exceeded' }) },
+        ],
+      });
+
+      const { result } = renderHook(
+        () => useOffsetPaginatedQuery(config, { reportProgress: true }),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isError).toBe(true), {
+        timeout: 5000,
+      });
+      expect(result.current.error).toBeInstanceOf(ClickHouseQueryError);
+      expect(result.current.error?.message).toContain('Memory limit exceeded');
+      expect(result.current.progress).toBeUndefined();
     });
   });
 });

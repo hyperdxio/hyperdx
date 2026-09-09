@@ -279,6 +279,9 @@ const proxyMiddleware: RequestHandler =
         }
       },
       proxyRes: (proxyRes, _req, res) => {
+        // Installed before http-proxy pipes the upstream response into `res`.
+        flushEachChunk(res as Response);
+
         const startedAt = (res as Response).locals?.hdxProxyStartedAt;
         const statusCode = proxyRes.statusCode ?? 0;
         recordOperationOutcome({
@@ -318,10 +321,25 @@ const proxyMiddleware: RequestHandler =
             typeof startedAt === 'number' ? performance.now() - startedAt : 0,
         });
         console.error('Proxy error:', err);
-        (_res as Response).writeHead(500, {
+
+        const res = _res as Response;
+
+        // A streamed response (query progress, or any large result set) has
+        // already sent its status line and headers by the time an upstream
+        // failure can occur. Writing a 500 then throws ERR_HTTP_HEADERS_SENT
+        // from inside this listener — an uncaught exception that takes down
+        // the process in dev. Once the body is in flight the only way to
+        // signal failure is to break the connection, leaving the client with
+        // a truncated response.
+        if (res.headersSent) {
+          res.destroy(err);
+          return;
+        }
+
+        res.writeHead(500, {
           'Content-Type': 'application/json',
         });
-        _res.end(
+        res.end(
           JSON.stringify({
             success: false,
             error: err.message || 'Failed to connect to ClickHouse server',
@@ -338,6 +356,37 @@ const proxyMiddleware: RequestHandler =
 const markProxyStart: RequestHandler = (_req, res, next) => {
   res.locals.hdxProxyStartedAt = performance.now();
   next();
+};
+
+/**
+ * Forces each proxied chunk out through the global `compression()` middleware
+ * instead of letting it sit in zlib's input buffer.
+ *
+ * ClickHouse streams query progress as its own tiny NDJSON lines (a few dozen
+ * bytes each, via `JSONEachRowWithProgress`). Without an explicit flush, zlib
+ * holds them until enough bytes accumulate — typically until the first block of
+ * result rows arrives — which defeats the point of streaming progress at all.
+ * Row data only appears to stream today because those chunks are already large
+ * enough to spill the buffer on their own.
+ *
+ * The cost is a gzip flush point per chunk, which slightly reduces the
+ * compression ratio; responsiveness matters more here than a few percent of
+ * bandwidth.
+ */
+const flushEachChunk = (res: Response): void => {
+  // `flush` is installed by the compression middleware; absent if a response
+  // is not being compressed, in which case chunks already go straight out.
+  const flush = (res as Response & { flush?: () => void }).flush;
+  if (typeof flush !== 'function') {
+    return;
+  }
+
+  const write = res.write.bind(res);
+  res.write = ((...args: Parameters<Response['write']>) => {
+    const result = write(...args);
+    flush.call(res);
+    return result;
+  }) as Response['write'];
 };
 
 router.get(

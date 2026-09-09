@@ -93,6 +93,7 @@ import { DBTimeChart, type SeriesGroupFilter } from '@/components/DBTimeChart';
 import EmptyState from '@/components/EmptyState';
 import { ErrorBoundary } from '@/components/Error/ErrorBoundary';
 import { FavoriteButton } from '@/components/FavoriteButton';
+import { HistogramQueryProgress } from '@/components/HistogramQueryProgress';
 import ResourceTerraformPopover from '@/components/Iac/ResourceTerraformPopover';
 import { InputControlled } from '@/components/InputControlled';
 import OnboardingModal from '@/components/OnboardingModal';
@@ -356,6 +357,9 @@ export function SearchNumRows({
   searchElapsedMs,
   isSearching,
   isLiveTail = false,
+  histogramConfig,
+  queryKeyPrefix,
+  enableParallelQueries,
 }: {
   config: ChartConfigWithDateRange;
   sqlConfig?: ChartConfigWithDateRange;
@@ -363,6 +367,10 @@ export function SearchNumRows({
   searchElapsedMs: number | null;
   isSearching: boolean;
   isLiveTail?: boolean;
+  /** Histogram config, used to surface that query's live progress. */
+  histogramConfig?: BuilderChartConfigWithDateRange;
+  queryKeyPrefix?: string;
+  enableParallelQueries?: boolean;
 }) {
   const [statsOpened, { open: openStats, close: closeStats }] =
     useDisclosure(false);
@@ -418,6 +426,16 @@ export function SearchNumRows({
                 : `Elapsed Time: ${formatDurationMs(searchElapsedMs!)}`}
             </Text>
           </>
+        )}
+        {/* Suppressed during live tail, where the histogram refetches every
+            few seconds and a bar would only flicker — the same reason the
+            elapsed readout keeps its previous value there. */}
+        {histogramConfig != null && queryKeyPrefix != null && !isLiveTail && (
+          <HistogramQueryProgress
+            config={histogramConfig}
+            queryKeyPrefix={queryKeyPrefix}
+            enableParallelQueries={enableParallelQueries}
+          />
         )}
         {/* The generated-SQL preview is derived purely from config, not the
             explain query, so it renders unconditionally. Gating it on explain
@@ -2472,6 +2490,8 @@ export function DBSearchPage() {
                           searchElapsedMs={searchElapsedMs}
                           isSearching={isAnyQueryFetching}
                           isLiveTail={isLive ?? false}
+                          histogramConfig={histogramTimeChartConfig}
+                          queryKeyPrefix={QUERY_KEY_PREFIX}
                         />
                       </Group>
                     </Box>
@@ -2491,6 +2511,7 @@ export function DBSearchPage() {
                           queryKeyPrefix={QUERY_KEY_PREFIX}
                           onTimeRangeSelect={handleTimeRangeSelect}
                           onFocusSeries={handleFocusSeries}
+                          reportProgress
                         />
                       </Box>
                     )}
@@ -2571,6 +2592,9 @@ export function DBSearchPage() {
                               searchElapsedMs={searchElapsedMs}
                               isSearching={isAnyQueryFetching}
                               isLiveTail={isLive ?? false}
+                              histogramConfig={histogramTimeChartConfig}
+                              queryKeyPrefix={QUERY_KEY_PREFIX}
+                              enableParallelQueries
                             />
                           </Group>
                         </Group>
@@ -2592,6 +2616,7 @@ export function DBSearchPage() {
                             onTimeRangeSelect={handleTimeRangeSelect}
                             onFocusSeries={handleFocusSeries}
                             enableParallelQueries
+                            reportProgress
                           />
                         </Box>
                       )}

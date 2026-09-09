@@ -72,6 +72,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 
 import api from '@/api';
 import { useChartSyncId } from '@/chartSync';
+import { QueryProgressIndicator } from '@/components/QueryProgressIndicator';
 import { searchChartConfigDefaults } from '@/defaults';
 import {
   useAliasMapFromChartConfig,
@@ -102,6 +103,7 @@ import {
   useLocalStorage,
   usePrevious,
 } from '@/utils';
+import type { QueryProgressSummary } from '@/utils/queryProgress';
 
 import ChartErrorState, {
   ChartErrorStateVariant,
@@ -355,6 +357,7 @@ export const RawLogTable = memo(
     columnTypeMap,
     dateRange,
     loadingDate,
+    progress,
     config,
     onChildModalOpen,
     renderRowDetails,
@@ -391,6 +394,8 @@ export const RawLogTable = memo(
     errorVariant?: ChartErrorStateVariant;
     dateRange?: [Date, Date];
     loadingDate?: Date;
+    /** Live ClickHouse scan progress for the in-flight query, when available. */
+    progress?: QueryProgressSummary;
     config?: BuilderChartConfigWithDateRange;
     onChildModalOpen?: (open: boolean) => void;
     source?: TSource;
@@ -1248,38 +1253,44 @@ export const RawLogTable = memo(
                       )}
                     >
                       {isLoading ? (
-                        <div className="my-3">
-                          <div className="d-inline-block">
-                            <IconRefresh size={14} className="spin-animate" />
-                          </div>{' '}
-                          {loadingDate != null && (
-                            <>
-                              Searched <FormatTime value={loadingDate} />.{' '}
-                            </>
+                        <div className="my-3 d-flex flex-column align-items-center">
+                          <div>
+                            <div className="d-inline-block">
+                              <IconRefresh size={14} className="spin-animate" />
+                            </div>{' '}
+                            {loadingDate != null && (
+                              <>
+                                Searched <FormatTime value={loadingDate} />.{' '}
+                              </>
+                            )}
+                            Loading results
+                            {dateRange?.[0] != null &&
+                            dateRange?.[1] != null ? (
+                              <>
+                                {' '}
+                                across{' '}
+                                {formatDistance(
+                                  dateRange?.[1],
+                                  dateRange?.[0],
+                                )}{' '}
+                                {'('}
+                                <FormatTime
+                                  value={dateRange?.[0]}
+                                  format="withYear"
+                                />{' '}
+                                to{' '}
+                                <FormatTime
+                                  value={dateRange?.[1]}
+                                  format="withYear"
+                                />
+                                {')'}
+                              </>
+                            ) : null}
+                            ...
+                          </div>
+                          {progress != null && (
+                            <QueryProgressIndicator progress={progress} />
                           )}
-                          Loading results
-                          {dateRange?.[0] != null && dateRange?.[1] != null ? (
-                            <>
-                              {' '}
-                              across{' '}
-                              {formatDistance(
-                                dateRange?.[1],
-                                dateRange?.[0],
-                              )}{' '}
-                              {'('}
-                              <FormatTime
-                                value={dateRange?.[0]}
-                                format="withYear"
-                              />{' '}
-                              to{' '}
-                              <FormatTime
-                                value={dateRange?.[1]}
-                                format="withYear"
-                              />
-                              {')'}
-                            </>
-                          ) : null}
-                          ...
                         </div>
                       ) : hasNextPage == false &&
                         isLoading == false &&
@@ -1610,14 +1621,22 @@ function DBSqlRowTableComponent({
 
   const mergedConfig = useConfigWithAdditionalSelect(mergedConfigObj, sourceId);
 
-  const { data, fetchNextPage, hasNextPage, isFetching, isError, error } =
-    useOffsetPaginatedQuery(mergedConfig ?? config, {
-      enabled:
-        enabled && mergedConfig != null && getSelectLength(config.select) > 0,
-      isLive,
-      queryKeyPrefix,
-      enableSmallFirstWindow,
-    });
+  const {
+    data,
+    fetchNextPage,
+    hasNextPage,
+    isFetching,
+    isError,
+    error,
+    progress,
+  } = useOffsetPaginatedQuery(mergedConfig ?? config, {
+    enabled:
+      enabled && mergedConfig != null && getSelectLength(config.select) > 0,
+    isLive,
+    queryKeyPrefix,
+    enableSmallFirstWindow,
+    reportProgress: true,
+  });
 
   // The first N columns are the select columns from the user
   // We can't use names as CH may rewrite the names
@@ -1856,6 +1875,7 @@ function DBSqlRowTableComponent({
         columnTypeMap={columnMap}
         dateRange={config.dateRange}
         loadingDate={loadingDate}
+        progress={progress}
         config={mergedConfigObj}
         onChildModalOpen={onChildModalOpen}
         source={source}

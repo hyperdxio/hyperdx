@@ -296,6 +296,12 @@ type DBTimeChartComponentProps = {
   disableDrillDown?: boolean;
   enableParallelQueries?: boolean;
   enabled?: boolean;
+  /**
+   * Stream the chart query so ClickHouse progress events are recorded for the
+   * shared query key. Consumers read the progress with `useSearchTotalCount`
+   * (which shares this key) rather than from the chart itself.
+   */
+  reportProgress?: boolean;
   logReferenceTimestamp?: number;
   onSettled?: () => void;
   onTimeRangeSelect?: (start: Date, end: Date) => void;
@@ -332,6 +338,7 @@ function DBTimeChartComponent({
   disableDrillDown,
   enableParallelQueries,
   enabled = true,
+  reportProgress,
   logReferenceTimestamp,
   onTimeRangeSelect,
   queryKeyPrefix,
@@ -487,6 +494,7 @@ function DBTimeChartComponent({
       enableQueryChunking: !disableQueryChunking,
       enableParallelQueries:
         enableParallelQueries && me?.team?.parallelizeWhenPossible,
+      reportProgress,
     });
 
   const previousPeriodChartConfig: ChartConfigWithDateRange = useMemo(() => {
