@@ -17,6 +17,7 @@ import {
   AlertThresholdType,
   ChartConfigWithOptDateRange,
   DisplayType,
+  Filter,
   isRangeThresholdType,
   SavedChartConfig,
   SourceKind,
