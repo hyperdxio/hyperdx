@@ -5,6 +5,7 @@ import {
   validateRawSqlForAlert,
 } from '@hyperdx/common-utils/dist/core/utils';
 import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
+import { isRangeThresholdType } from '@hyperdx/common-utils/dist/types';
 import { groupBy } from 'lodash';
 import { Types } from 'mongoose';
 import { z } from 'zod';
@@ -281,7 +282,13 @@ export const makeAlert = (
     }),
     source: alert.source,
     threshold: alert.threshold,
-    thresholdMax: alert.thresholdMax,
+    // Omitted rather than set to undefined for a non-range comparator, so
+    // updateAlert can $unset the path. Writing null instead would surface on
+    // the create/update responses, which return the document directly, and a
+    // client round-tripping one back into an update would fail validation.
+    ...(isRangeThresholdType(alert.thresholdType) && {
+      thresholdMax: alert.thresholdMax,
+    }),
     thresholdType: alert.thresholdType,
     ...(userId && { createdBy: userId }),
 
@@ -314,6 +321,22 @@ export const makeAlert = (
   };
 };
 
+// makeAlert omits thresholdMax for a non-range comparator, and Mongoose drops
+// an omitted key from an update rather than clearing the path, so the bound has
+// to be unset explicitly or an alert edited off `between` keeps a stale one and
+// reports a range condition it no longer has. Every update path needs this;
+// $unset is ignored on an upsert insert, so it is safe there too.
+const makeAlertUpdate = (
+  alertInput: AlertInput,
+  userId?: ObjectId,
+  refs: AlertRefs = {},
+) => ({
+  $set: makeAlert(alertInput, userId, refs),
+  ...(!isRangeThresholdType(alertInput.thresholdType) && {
+    $unset: { thresholdMax: 1 },
+  }),
+});
+
 export const createAlert = async (
   teamId: ObjectId,
   alertInput: z.infer<typeof internalAlertSchema>,
@@ -339,7 +362,7 @@ export const updateAlert = async (
       _id: id,
       team: teamId,
     },
-    makeAlert(alertInput, undefined, refs),
+    makeAlertUpdate(alertInput, undefined, refs),
     {
       returnDocument: 'after',
     },
@@ -404,12 +427,12 @@ export const createOrUpdateDashboardAlerts = async (
         tileId,
       };
       const oldAlert = await Alert.findOne(filter);
-      const alertValues =
+      const alertUpdate =
         oldAlert && oldAlert.createdBy
-          ? makeAlert(alertInput, undefined, { dashboard })
-          : makeAlert(alertInput, userId, { dashboard });
+          ? makeAlertUpdate(alertInput, undefined, { dashboard })
+          : makeAlertUpdate(alertInput, userId, { dashboard });
 
-      return await Alert.findOneAndUpdate(filter, alertValues, {
+      return await Alert.findOneAndUpdate(filter, alertUpdate, {
         new: true,
         upsert: true,
       });

@@ -1,6 +1,8 @@
 import {
   getFilterBroadcastTarget,
   getFilterVariableName,
+  isFilterGlobalRequirement,
+  isFilterRequired,
   isFilterVariableEnabled,
 } from '@hyperdx/common-utils/dist/filters';
 import { DashboardFilter } from '@hyperdx/common-utils/dist/types';
@@ -13,6 +15,7 @@ import {
   UnstyledButton,
 } from '@mantine/core';
 import {
+  IconAsterisk,
   IconBuildingBroadcastTower,
   IconLabel,
   IconList,
@@ -130,6 +133,18 @@ export const DashboardFiltersList = ({
               tooltip: 'Sources this filter broadcasts to',
               label: broadcastTarget,
               testId: `dashboard-filter-applies-to-${filter.name}`,
+            });
+          }
+
+          if (isFilterRequired(filter)) {
+            const isGlobal = isFilterGlobalRequirement(filter);
+            attributes.push({
+              icon: <IconAsterisk size={14} />,
+              tooltip: isGlobal
+                ? 'Every tile is blocked until this filter has a selection'
+                : 'The tiles that use this filter are blocked until it has a selection',
+              label: 'Required',
+              testId: `dashboard-filter-required-attr-${filter.name}`,
             });
           }
 

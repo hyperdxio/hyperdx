@@ -16,7 +16,9 @@ import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
   ChartConfigWithDateRange,
   ChartVariable,
+  DashboardFilter,
   DisplayType,
+  Filter,
   SavedChartConfig,
   SourceKind,
   TSource,
@@ -81,7 +83,7 @@ import {
 } from '@/source';
 import { normalizeNoOpAlertScheduleFields } from '@/utils/alerts';
 
-import { ChartActionBar } from './ChartActionBar';
+import { ChartActionBar, DashboardFiltersToggleProps } from './ChartActionBar';
 import { ChartEditorControls } from './ChartEditorControls';
 import { ChartPreviewPanel } from './ChartPreviewPanel';
 import { ErrorNotificationMessage } from './ErrorNotificationMessage';
@@ -90,7 +92,7 @@ import {
   buildChartConfigForExplanations,
   computeDbTimeChartConfig,
   displayTypeToActiveTab,
-  resolvePreviewVariables,
+  resolveTilePreviewFilters,
   TABS_WITH_GENERATED_SQL,
   zSavedChartConfig,
 } from './utils';
@@ -100,6 +102,10 @@ type EditTimeChartFormProps = {
   chartConfig: SavedChartConfig;
   /** Variables and their selected values, from the parent dashboard (if one exists). */
   variables?: ChartVariable[];
+  /** Function returning the dashboard's broadcast filters for the given source, if any. */
+  getDashboardFilters?: (sourceId: string | undefined) => Filter[];
+  /** The dashboard's required filters that have nothing selected, if any */
+  unsatisfiedRequiredFilters?: DashboardFilter[];
   displayedTimeInputValue?: string;
   dateRange: [Date, Date];
   isSaving?: boolean;
@@ -115,6 +121,9 @@ type EditTimeChartFormProps = {
   isDashboardForm?: boolean;
   autoRun?: boolean;
 };
+
+const ALERT_IGNORES_DASHBOARD_FILTERS =
+  'Dashboard-level filter and variable selections cannot be applied when an alert is configured.';
 
 /** Populate form state with the standard heatmap series + duration numberFormat. */
 function applyHeatmapDefaults(
@@ -139,6 +148,8 @@ export default function EditTimeChartForm({
   dashboardId,
   chartConfig,
   variables,
+  getDashboardFilters,
+  unsatisfiedRequiredFilters,
   displayedTimeInputValue,
   dateRange,
   isSaving,
@@ -374,20 +385,63 @@ export default function EditTimeChartForm({
     [],
   );
 
-  // Attach variables so that variable references can be validated and expanded in the preview
+  // Alerts ignore dashboard-level filters and variables,
+  // so disable the toggle when an alert is configured.
+  const [applyFilters, setApplyFilters] = useState(true);
+  const resolvedApplyFilters = applyFilters && alert == null;
+
+  const dashboardFiltersToggleProps = useMemo<
+    DashboardFiltersToggleProps | undefined
+  >(
+    () =>
+      getDashboardFilters == null
+        ? undefined
+        : {
+            checked: resolvedApplyFilters,
+            disabledReason:
+              alert != null ? ALERT_IGNORES_DASHBOARD_FILTERS : undefined,
+            onChange: setApplyFilters,
+          },
+    [getDashboardFilters, resolvedApplyFilters, alert],
+  );
+
+  const previewDashboardFilters = useMemo(() => {
+    if (queriedConfig == null) {
+      return undefined;
+    }
+    // The submitted config carries the source it was built against. Resolving
+    // against that rather than the live selection keeps the filters consistent
+    // with the query on screen when the source is changed without a re-run.
+    const queriedSourceId = queriedConfig.source || undefined;
+
+    return resolveTilePreviewFilters({
+      config: queriedConfig,
+      sourceId: queriedSourceId,
+      filters: getDashboardFilters?.(queriedSourceId),
+      variables,
+      unsatisfiedRequiredFilters,
+      applySelections: resolvedApplyFilters,
+    });
+  }, [
+    queriedConfig,
+    getDashboardFilters,
+    variables,
+    unsatisfiedRequiredFilters,
+    resolvedApplyFilters,
+  ]);
+
+  // Attach the dashboard's filters and variables so that the preview queries
+  // what the tile will, and variable references can be validated.
   const previewConfig = useMemo(() => {
     if (queriedConfig == null) {
       return queriedConfig;
     }
     return {
       ...queriedConfig,
-      variables: resolvePreviewVariables({
-        config: queriedConfig,
-        variables,
-        hasAlert: alert != null,
-      }),
+      filters: previewDashboardFilters?.filters,
+      variables: previewDashboardFilters?.variables,
     };
-  }, [queriedConfig, variables, alert]);
+  }, [queriedConfig, previewDashboardFilters]);
 
   const dbTimeChartConfig = useMemo(
     () => computeDbTimeChartConfig(previewConfig, alert),
@@ -948,6 +1002,7 @@ export default function EditTimeChartForm({
           displayedTimeInputValue={displayedTimeInputValue}
           setDisplayedTimeInputValue={setDisplayedTimeInputValue}
           onTimeRangeSearch={onTimeRangeSearch}
+          filtersToggle={dashboardFiltersToggleProps}
           setSaveToDashboardModalOpen={setSaveToDashboardModalOpen}
         />
       </ErrorBoundary>
@@ -964,6 +1019,9 @@ export default function EditTimeChartForm({
         showSampleEvents={showSampleEvents}
         showGeneratedPromql={isPromqlInput}
         dbTimeChartConfig={dbTimeChartConfig}
+        missingRequiredFilterNames={
+          previewDashboardFilters?.missingRequiredFilterNames
+        }
         setValue={(name, value) => setValue(name, value)}
         onSubmit={onSubmit}
       />

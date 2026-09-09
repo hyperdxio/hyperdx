@@ -1201,7 +1201,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
 
       // Wait for success notification
       const notification = dashboardPage.page.locator(
-        'text=/Filter query and dropdown values/i',
+        'text=/Filter query, dropdown values, and relative time range/i',
       );
       await expect(notification).toBeVisible({ timeout: 5000 });
     });
@@ -1266,7 +1266,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
         // Wait for the save success notification rather than a blind sleep, so
         // we only read the URL once the save has actually landed.
         const notification = dashboardPage.page.locator(
-          'text=/Filter query and dropdown values/i',
+          'text=/Filter query, dropdown values, and relative time range/i',
         );
         await expect(notification).toBeVisible({ timeout: 5000 });
 
@@ -2331,8 +2331,8 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
           // the selection rather than the reference it was written with.
           await dashboardPage.chartEditor.typeLuceneWhere('ServiceName:$svc');
           await expect(
-            dashboardPage.page.getByText(/ServiceName.*accounting/i),
-          ).toBeVisible({ timeout: 10000 });
+            dashboardPage.chartEditor.searchQueryDescription(),
+          ).toHaveText(/ServiceName.*accounting/i, { timeout: 10000 });
 
           // Leave the input empty for the SQL steps below.
           await dashboardPage.chartEditor.typeLuceneWhere('');
@@ -2649,7 +2649,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
 
         // Wait for success notification
         const notification = dashboardPage.page.locator(
-          'text=/Filter query and dropdown values/i',
+          'text=/Filter query, dropdown values, and relative time range/i',
         );
         await expect(notification).toBeVisible({ timeout: 5000 });
       });
@@ -2670,7 +2670,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
 
         // Wait for success notification
         const notification = dashboardPage.page.locator(
-          'text=/Filter query and dropdown values/i',
+          'text=/Filter query, dropdown values, and relative time range/i',
         );
         await expect(notification).toBeVisible({ timeout: 5000 });
       });

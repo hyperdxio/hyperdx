@@ -10,10 +10,20 @@ import {
   DashboardFilterType,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import { Alert, Button, Group, Modal, Stack, TextInput } from '@mantine/core';
+import {
+  Alert,
+  Box,
+  Button,
+  Divider,
+  Group,
+  Modal,
+  Stack,
+  TextInput,
+} from '@mantine/core';
 import { IconAlertTriangle } from '@tabler/icons-react';
 
 import { ErrorBoundary } from '@/components/Error/ErrorBoundary';
+import { CheckBoxControlled } from '@/components/InputControlled';
 import SelectControlled from '@/components/SelectControlled';
 import { SqlVariablesProvider } from '@/components/SQLEditor/variableCompletions';
 import { IS_PROMQL_ENABLED } from '@/config';
@@ -56,6 +66,8 @@ interface DashboardFilterEditFormProps {
   source?: TSource;
   /** Whether the broadcast / variable controls are available. */
   showVariableOptions: boolean;
+  /** Whether to show the options for marking a filter as required. */
+  showRequiredFilterOptions: boolean;
   /** The dashboard's current variable state, if any */
   variables?: ChartVariable[];
   onSave: (filter: DashboardFilter) => void;
@@ -74,6 +86,7 @@ export const DashboardFilterEditForm = ({
   source: presetSource,
   filters,
   showVariableOptions,
+  showRequiredFilterOptions,
   variables,
   onSave,
   onClose,
@@ -131,9 +144,9 @@ export const DashboardFilterEditForm = ({
   const hasEditedVariableName =
     !!filter?.variableName || !!formState.dirtyFields.variableName;
 
-  const [formFilterType, formFilterName] = useWatch({
+  const [formFilterType, formFilterName, isRequired] = useWatch({
     control,
-    name: ['type', 'name'],
+    name: ['type', 'name', 'isRequired'],
   });
   const derivedVariableName = deriveVariableName(formFilterName ?? '');
 
@@ -238,6 +251,32 @@ export const DashboardFilterEditForm = ({
               </SqlVariablesProvider>
             )}
           </ErrorBoundary>
+
+          {showRequiredFilterOptions && (
+            <Stack gap="xs">
+              <Divider my="xs" />
+              <CheckBoxControlled
+                control={control}
+                name="isRequired"
+                size="xs"
+                label="Required"
+                description="Tiles will not load until this filter has a selection."
+                data-testid="filter-required-checkbox"
+              />
+              {!!isRequired && (
+                <Box ml={27}>
+                  <CheckBoxControlled
+                    control={control}
+                    name="isGlobalRequirement"
+                    size="xs"
+                    label="Block every tile"
+                    description="Block every tile until the filter has a selection, instead of just the tiles that use this filter's value."
+                    data-testid="filter-global-requirement-checkbox"
+                  />
+                </Box>
+              )}
+            </Stack>
+          )}
 
           {formState.errors.root && (
             <Alert

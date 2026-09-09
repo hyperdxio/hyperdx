@@ -70,6 +70,7 @@ const renderModal = (
       opened
       filters={[]}
       showVariableOptions
+      showRequiredFilterOptions
       onClose={jest.fn()}
       onSaveFilter={onSaveFilter}
       onRemoveFilter={jest.fn()}
@@ -320,5 +321,131 @@ describe('DashboardFiltersModal', () => {
     await user.click(screen.getByTestId('add-filter-button'));
 
     expect(screen.queryByTestId('filter-type-picker')).toBeNull();
+  });
+
+  it.each(['Queried values', 'Static values'] as const)(
+    'offers the required control on a %s filter',
+    async label => {
+      const { user } = renderModal();
+
+      await user.click(screen.getByTestId('add-filter-button'));
+      await selectFilterType(user, label);
+
+      expect(
+        screen.getByTestId('filter-required-checkbox'),
+      ).toBeInTheDocument();
+    },
+  );
+
+  // A dashboard that draws its tiles without consulting the filters enforces
+  // nothing, so offering the control there would promise something that never
+  // happens.
+  it('hides the required control where a requirement is not enforced', async () => {
+    const { user } = renderModal({ showRequiredFilterOptions: false });
+
+    await user.click(screen.getByTestId('add-filter-button'));
+
+    expect(screen.queryByTestId('filter-required-checkbox')).toBeNull();
+  });
+
+  // Requiring a value and publishing a variable are unrelated: a filter that
+  // only broadcasts can still be required.
+  it('offers the required control where variables are unavailable', async () => {
+    const { user } = renderModal({ showVariableOptions: false });
+
+    await user.click(screen.getByTestId('add-filter-button'));
+
+    expect(screen.getByTestId('filter-required-checkbox')).toBeInTheDocument();
+  });
+
+  it('saves a required filter and reopens it checked', async () => {
+    const { onSaveFilter, user } = renderModal();
+
+    await user.click(screen.getByTestId('add-filter-button'));
+    await selectFilterType(user, 'Static values');
+    await user.type(screen.getByTestId('filter-name-input'), 'Environment');
+    await user.type(screen.getByTestId('filter-options-input'), 'prod{Enter}');
+    await user.click(screen.getByTestId('filter-required-checkbox'));
+    await user.click(screen.getByTestId('save-filter-button'));
+
+    await waitFor(() => expect(onSaveFilter).toHaveBeenCalledTimes(1));
+    const saved: DashboardFilter = onSaveFilter.mock.calls[0][0];
+    expect(saved.minSelections).toBe(1);
+    expect(saved.isGlobalRequirement).toBeUndefined();
+
+    renderModal({ filters: [saved] });
+    await user.click(
+      screen.getAllByTestId(`edit-filter-button-${saved.name}`)[0],
+    );
+
+    expect(screen.getByTestId('filter-required-checkbox')).toBeChecked();
+  });
+
+  it('offers the requirement scope, unchecked, once the filter is required', async () => {
+    const { user } = renderModal();
+
+    await user.click(screen.getByTestId('add-filter-button'));
+    await selectFilterType(user, 'Static values');
+
+    expect(
+      screen.queryByTestId('filter-global-requirement-checkbox'),
+    ).toBeNull();
+
+    await user.click(screen.getByTestId('filter-required-checkbox'));
+
+    expect(
+      screen.getByTestId('filter-global-requirement-checkbox'),
+    ).not.toBeChecked();
+  });
+
+  it('saves a dashboard-wide requirement and reopens it checked', async () => {
+    const { onSaveFilter, user } = renderModal();
+
+    await user.click(screen.getByTestId('add-filter-button'));
+    await selectFilterType(user, 'Static values');
+    await user.type(screen.getByTestId('filter-name-input'), 'Environment');
+    await user.type(screen.getByTestId('filter-options-input'), 'prod{Enter}');
+    await user.click(screen.getByTestId('filter-required-checkbox'));
+    await user.click(screen.getByTestId('filter-global-requirement-checkbox'));
+    await user.click(screen.getByTestId('save-filter-button'));
+
+    await waitFor(() => expect(onSaveFilter).toHaveBeenCalledTimes(1));
+    const saved: DashboardFilter = onSaveFilter.mock.calls[0][0];
+    expect(saved.minSelections).toBe(1);
+    expect(saved.isGlobalRequirement).toBe(true);
+
+    renderModal({ filters: [saved] });
+    await user.click(
+      screen.getAllByTestId(`edit-filter-button-${saved.name}`)[0],
+    );
+
+    expect(
+      screen.getByTestId('filter-global-requirement-checkbox'),
+    ).toBeChecked();
+  });
+
+  it('marks a required filter in the list, whatever its reach', () => {
+    renderModal({
+      filters: [
+        { ...EXISTING_STATIC_FILTER, minSelections: 1 },
+        { ...EXISTING_FILTER, minSelections: 1, isGlobalRequirement: true },
+      ],
+    });
+
+    for (const { name } of [EXISTING_STATIC_FILTER, EXISTING_FILTER]) {
+      expect(
+        screen.getByTestId(`dashboard-filter-required-attr-${name}`),
+      ).toHaveTextContent(/^Required$/);
+    }
+  });
+
+  it('leaves an optional filter unmarked', () => {
+    renderModal({ filters: [EXISTING_STATIC_FILTER] });
+
+    expect(
+      screen.queryByTestId(
+        `dashboard-filter-required-attr-${EXISTING_STATIC_FILTER.name}`,
+      ),
+    ).toBeNull();
   });
 });

@@ -33,7 +33,7 @@ import { getAlertSourceLabel, getAlertSourceUrl } from '@/utils/alerts';
 import { useBrandDisplayName } from './theme/ThemeProvider';
 import api from './api';
 import { withAppNav } from './layout';
-import { parseTimeQuery, useNewTimeQuery } from './timeQuery';
+import { useDefaultTimeRange, useNewTimeQuery } from './timeQuery';
 import type { AlertsPageItem } from './types';
 
 import styles from '@styles/AlertsPage.module.scss';
@@ -84,10 +84,7 @@ function AlertDetailBody({ alert }: { alert: AlertsPageItem }) {
   // mounts once the alert has loaded, and useNewTimeQuery reads the initial
   // values once (a from/to in the URL still takes precedence).
   const defaultTimeRangeLabel = getDefaultTimeRangeLabel(alert.interval);
-  const defaultTimeRange = React.useMemo(
-    () => parseTimeQuery(defaultTimeRangeLabel, false) as [Date, Date],
-    [defaultTimeRangeLabel],
-  );
+  const defaultTimeRange = useDefaultTimeRange(defaultTimeRangeLabel);
   const [displayedTimeInputValue, setDisplayedTimeInputValue] = React.useState(
     defaultTimeRangeLabel,
   );
