@@ -414,6 +414,10 @@ describe('processClickhouseSettings - optimization settings', () => {
       // { name: 'use_top_k_dynamic_filtering', value: '1' },
       { name: 'use_skip_indexes_on_data_read', value: '1' },
       { name: 'use_skip_indexes_for_disjunctions', value: '1' },
+      {
+        name: 'allow_calculating_subcolumns_sizes_for_merge_tree_reading',
+        value: '1',
+      },
     ]);
 
     await client.query({
@@ -440,7 +444,29 @@ describe('processClickhouseSettings - optimization settings', () => {
       // use_top_k_dynamic_filtering: '1',
       use_skip_indexes_on_data_read: '1',
       use_skip_indexes_for_disjunctions: '1',
+      allow_calculating_subcolumns_sizes_for_merge_tree_reading: '0',
     });
+  });
+
+  // Pre-26.3 servers don't have the setting; sending it would fail the query.
+  it('should omit the subcolumn size setting when the server lacks it', async () => {
+    setupMockQuery([{ name: 'use_skip_indexes_for_top_k', value: '1' }]);
+
+    await client.query({
+      query: 'SELECT 1',
+      format: 'JSON',
+      connectionId: 'test-conn',
+    });
+
+    const actualQueryCall = mockQueryMethod.mock.calls.find(
+      (call: any) => call[0].query === 'SELECT 1',
+    );
+
+    expect(actualQueryCall).toBeDefined();
+    expect(
+      actualQueryCall[0].clickhouse_settings
+        .allow_calculating_subcolumns_sizes_for_merge_tree_reading,
+    ).toBeUndefined();
   });
 
   it('should only apply available optimization settings', async () => {
