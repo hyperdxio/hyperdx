@@ -141,15 +141,14 @@ describe('ChartSeriesTooltip', () => {
     expect(screen.getByText(/\+5 more/)).toBeInTheDocument();
   });
 
-  it('renders one Focus button per series when there is more than one series', () => {
+  it('renders one action menu per series when there is more than one series', () => {
     renderWithMantine(
       <ChartSeriesTooltip {...baseProps} activePayload={multiSeriesPayload} />,
     );
 
-    // One Focus button per series row.
     expect(
       screen.getAllByRole('button', {
-        name: /Focus/i,
+        name: /Actions for/i,
       }),
     ).toHaveLength(2);
   });
@@ -162,14 +161,29 @@ describe('ChartSeriesTooltip', () => {
     // A single series is covered by the header/footer; no per-series actions.
     expect(
       screen.queryByRole('button', {
-        name: /Focus/i,
+        name: /Actions for/i,
       }),
     ).not.toBeInTheDocument();
   });
 
-  it('focuses a series and dismisses the tooltip when Focus is clicked', () => {
+  it('keeps a single metric series actionable', () => {
+    renderWithMantine(
+      <ChartSeriesTooltip
+        {...baseProps}
+        activePayload={singleSeriesPayload}
+        showSingleSeriesActions
+      />,
+    );
+
+    expect(
+      screen.getByRole('button', { name: 'Actions for count' }),
+    ).toBeInTheDocument();
+  });
+
+  it('focuses a series and dismisses the tooltip from its menu', async () => {
     const onFocusSeries = jest.fn();
     const onDismiss = jest.fn();
+    const user = userEvent.setup();
 
     renderWithMantine(
       <ChartSeriesTooltip
@@ -180,17 +194,47 @@ describe('ChartSeriesTooltip', () => {
       />,
     );
 
-    const focusButtons = screen.getAllByRole('button', {
-      name: /Focus/i,
-    });
-    // Rows are sorted by value desc, so the first Focus button is "error".
-    fireEvent.click(focusButtons[0]);
+    await user.click(screen.getByRole('button', { name: 'Actions for error' }));
+    await user.click(
+      await screen.findByRole('menuitem', { name: 'Focus series' }),
+    );
 
     expect(onFocusSeries).toHaveBeenCalledWith({
       dataKey: 'error',
       name: 'error',
     });
     expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows metric correlation actions only when their URLs exist', async () => {
+    const user = userEvent.setup();
+    renderWithMantine(
+      <ChartSeriesTooltip
+        {...baseProps}
+        activePayload={multiSeriesPayload}
+        buildSearchUrl={key => `/explore?source=logs&series=${key}`}
+        buildRelatedTraceUrl={key =>
+          key ? `/explore?source=traces&series=${key}` : null
+        }
+        drillInLabel="View related logs"
+        focusLabel="Filter to this series"
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Actions for error' }));
+
+    expect(
+      await screen.findByRole('menuitem', { name: 'Filter to this series' }),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId('chart-view-events-link-error')).toHaveAttribute(
+      'href',
+      '/explore?source=logs&series=error',
+    );
+    expect(screen.getByTestId('chart-view-traces-link-error')).toHaveAttribute(
+      'href',
+      '/explore?source=traces&series=error',
+    );
+    expect(screen.getByTestId('chart-copy-name-error')).toBeInTheDocument();
   });
 
   it('shows the "Show All Series" footer action only when onShowAllSeries is provided', () => {

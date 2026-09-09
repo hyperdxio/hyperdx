@@ -68,6 +68,9 @@ export type ExploreQueryEditorProps = {
   rawSqlDisplayType?: DisplayType;
   searchFilters?: FilterStateHook;
   chartConfig?: BuilderChartConfigWithDateRange;
+  /** Overrides the example clause shown in an empty field. */
+  placeholder?: string;
+  containerTestId?: string;
   'data-testid'?: string;
 } & TableConnectionChoice &
   UseControllerProps<any>;
@@ -100,6 +103,8 @@ export function ExploreQueryEditor({
   rawSqlDisplayType = DisplayType.Table,
   searchFilters,
   chartConfig,
+  placeholder,
+  containerTestId,
   'data-testid': dataTestId,
 }: ExploreQueryEditorProps) {
   const [syntaxRefOpened, { open: openSyntaxRef, close: closeSyntaxRef }] =
@@ -259,15 +264,17 @@ export function ExploreQueryEditor({
         onRemoveLastFilter={handleRemoveLastFilter}
         fields={identifiers}
         placeholder={
-          language === 'sql'
+          placeholder ??
+          (language === 'sql'
             ? // The addon already says WHERE, so the placeholder spends its
               // width on an example instead of repeating the label.
               "ServiceName = 'checkout' AND SeverityText = 'error'"
-            : 'Search this source, e.g. service:checkout'
+            : 'Search this source, e.g. service:checkout')
         }
         onSubmit={handleSubmit}
         onBlur={() => ingestWhere(stringValue, true)}
         enableHotkey={enableHotkey}
+        containerTestId={containerTestId}
         data-testid={dataTestId}
       />
     </>

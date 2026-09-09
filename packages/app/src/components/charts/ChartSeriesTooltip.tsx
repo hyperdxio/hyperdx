@@ -2,17 +2,20 @@ import Link from 'next/link';
 import {
   ActionIcon,
   Group,
+  Menu,
   Stack,
   Text,
-  Tooltip,
   UnstyledButton,
 } from '@mantine/core';
 import { useClipboard } from '@mantine/hooks';
 import {
   IconArrowsMaximize,
   IconCheck,
+  IconConnection,
   IconCopy,
-  IconFocusCentered,
+  IconDotsVertical,
+  IconFilter,
+  IconLogs,
   IconSearch,
 } from '@tabler/icons-react';
 
@@ -32,12 +35,8 @@ import {
 } from './ChartTooltip';
 
 /**
- * One pinned-tooltip series row: the shared ChartTooltipItem plus, when
- * `actions` is set, the per-series action cluster (Search / Copy / Focus). The
- * cluster is flexShrink:0 so it doesn't shift as the name truncates or the copy
- * icon swaps to a check (which would move the buttons out from under the cursor).
- *
- * Search is hidden when `actions.drillInUrl` is undefined (source-less charts).
+ * One pinned-tooltip series row with a compact menu for investigation actions.
+ * Unsupported correlation targets are omitted so every visible action works.
  */
 function SeriesRow({
   name,
@@ -56,10 +55,13 @@ function SeriesRow({
   previousValue?: number;
   numberFormat?: NumberFormat;
   actions?: {
-    /** Drill-in URL; when undefined the Search action is hidden (no source). */
+    /** Primary event/log drill-in; hidden when the chart has no target source. */
     drillInUrl?: string;
+    drillInLabel: string;
+    relatedTracesUrl?: string;
     onDrillIn: () => void;
     onFocus: () => void;
+    focusLabel: string;
   };
   /** z-index for the action tooltips, so they sit above the pinned popover. */
   actionTooltipZIndex?: number;
@@ -84,73 +86,79 @@ function SeriesRow({
   return (
     <Group gap={8} wrap="nowrap" justify="space-between">
       <div style={{ minWidth: 0, flex: 1 }}>{item}</div>
-      <Group gap={2} wrap="nowrap" justify="flex-end" style={{ flexShrink: 0 }}>
-        {actions.drillInUrl != null && (
-          <Tooltip
-            label="Search (Opens in New Tab)"
-            withArrow
-            withinPortal
-            color="gray"
-            position="top"
-            zIndex={actionTooltipZIndex}
+      <Menu
+        withinPortal
+        position="bottom-end"
+        width={190}
+        zIndex={actionTooltipZIndex}
+      >
+        <Menu.Target>
+          <ActionIcon
+            variant="subtle"
+            size="xs"
+            aria-label={`Actions for ${name}`}
+            data-testid={`chart-series-actions-${dataKey}`}
           >
-            <ActionIcon
+            <IconDotsVertical size={13} />
+          </ActionIcon>
+        </Menu.Target>
+        <Menu.Dropdown data-tooltip-child-portal>
+          <Menu.Item
+            leftSection={<IconFilter size={14} />}
+            data-testid={`chart-focus-series-${dataKey}`}
+            onClick={actions.onFocus}
+          >
+            {actions.focusLabel}
+          </Menu.Item>
+          {actions.drillInUrl && (
+            <Menu.Item
               component={Link}
               href={actions.drillInUrl}
               target="_blank"
               rel="noopener noreferrer"
               prefetch={false}
-              variant="subtle"
-              size="xs"
+              leftSection={
+                actions.drillInLabel === 'View related logs' ? (
+                  <IconLogs size={14} />
+                ) : (
+                  <IconSearch size={14} />
+                )
+              }
               data-testid={`chart-view-events-link-${dataKey}`}
-              aria-label="Search (Opens in New Tab)"
               onClick={actions.onDrillIn}
             >
-              <IconSearch size={13} />
-            </ActionIcon>
-          </Tooltip>
-        )}
-        <Tooltip
-          label={clipboard.copied ? 'Copied!' : 'Copy Label'}
-          withArrow
-          withinPortal
-          color="gray"
-          position="top"
-          zIndex={actionTooltipZIndex}
-        >
-          <ActionIcon
-            variant="subtle"
-            size="xs"
-            aria-label="Copy Label"
+              {actions.drillInLabel}
+            </Menu.Item>
+          )}
+          {actions.relatedTracesUrl && (
+            <Menu.Item
+              component={Link}
+              href={actions.relatedTracesUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              prefetch={false}
+              leftSection={<IconConnection size={14} />}
+              data-testid={`chart-view-traces-link-${dataKey}`}
+              onClick={actions.onDrillIn}
+            >
+              View related traces
+            </Menu.Item>
+          )}
+          <Menu.Item
+            leftSection={
+              clipboard.copied ? (
+                <IconCheck size={14} />
+              ) : (
+                <IconCopy size={14} />
+              )
+            }
             data-testid={`chart-copy-name-${dataKey}`}
             onClick={() => clipboard.copy(name)}
           >
-            {clipboard.copied ? (
-              <IconCheck size={13} />
-            ) : (
-              <IconCopy size={13} />
-            )}
-          </ActionIcon>
-        </Tooltip>
-        <Tooltip
-          label="Focus"
-          withArrow
-          withinPortal
-          color="gray"
-          position="top"
-          zIndex={actionTooltipZIndex}
-        >
-          <ActionIcon
-            variant="subtle"
-            size="xs"
-            aria-label="Focus"
-            data-testid={`chart-focus-series-${dataKey}`}
-            onClick={actions.onFocus}
-          >
-            <IconFocusCentered size={13} />
-          </ActionIcon>
-        </Tooltip>
-      </Group>
+            {clipboard.copied ? 'Copied' : 'Copy series label'}
+          </Menu.Item>
+        </Menu.Dropdown>
+      </Menu>
     </Group>
   );
 }
@@ -166,6 +174,14 @@ export type ChartSeriesTooltipProps = {
   previousPeriodOffsetSeconds?: number;
   /** Drill-down URL for the whole bucket (no args) or one series (key + value). */
   buildSearchUrl?: (key?: string, value?: number) => string | null;
+  /** Metric-only trace pivot for the same bucket/series. */
+  buildRelatedTraceUrl?: (key?: string, value?: number) => string | null;
+  /** Label for the primary drill-in action. */
+  drillInLabel?: string;
+  /** Label for the in-place series action. */
+  focusLabel?: string;
+  /** Metric lines stay actionable even when only one series is rendered. */
+  showSingleSeriesActions?: boolean;
   /** Dismiss the tooltip (used by links + focus). */
   onDismiss?: () => void;
   /** Focus a series by its raw key + display name. */
@@ -217,6 +233,10 @@ export function ChartSeriesTooltip({
   numberFormatByKey,
   previousPeriodOffsetSeconds,
   buildSearchUrl,
+  buildRelatedTraceUrl,
+  drillInLabel = 'View events',
+  focusLabel = 'Focus series',
+  showSingleSeriesActions = false,
   onDismiss,
   onFocusSeries,
   onShowAllSeries,
@@ -256,7 +276,7 @@ export function ChartSeriesTooltip({
 
   // Per-series actions only make sense with more than one group (a single series
   // is covered by the header/footer).
-  const showPerSeriesActions = rows.length > 1;
+  const showPerSeriesActions = rows.length > 1 || showSingleSeriesActions;
 
   // buildSearchUrl is always supplied but returns null when drill-down isn't
   // possible (no source, or a raw-SQL/PromQL config). The whole-bucket URL is
@@ -284,7 +304,7 @@ export function ChartSeriesTooltip({
       >
         <Group gap={8} py={2}>
           <IconArrowsMaximize size={14} />
-          <Text size="xs">Show All Series</Text>
+          <Text size="xs">Show all series</Text>
         </Group>
       </UnstyledButton>
     ) : null;
@@ -300,8 +320,12 @@ export function ChartSeriesTooltip({
       style={{ textDecoration: 'none' }}
     >
       <Group gap={8} py={2}>
-        <IconSearch size={14} />
-        <Text size="xs">View All Events</Text>
+        {drillInLabel === 'View related logs' ? (
+          <IconLogs size={14} />
+        ) : (
+          <IconSearch size={14} />
+        )}
+        <Text size="xs">{drillInLabel}</Text>
       </Group>
     </Link>
   ) : null;
@@ -331,6 +355,13 @@ export function ChartSeriesTooltip({
                   Number.isFinite(payload.value) ? payload.value : undefined,
                 ) ?? bucketSearchUrl)
               : undefined;
+          const relatedTracesUrl =
+            showPerSeriesActions && canDrillDown
+              ? (buildRelatedTraceUrl?.(
+                  payload.dataKey,
+                  Number.isFinite(payload.value) ? payload.value : undefined,
+                ) ?? undefined)
+              : undefined;
           return (
             <SeriesRow
               key={payload.dataKey ?? name ?? idx}
@@ -345,6 +376,8 @@ export function ChartSeriesTooltip({
                 showPerSeriesActions
                   ? {
                       drillInUrl: seriesUrl ?? undefined,
+                      drillInLabel,
+                      relatedTracesUrl,
                       onDrillIn: () => onDismiss?.(),
                       onFocus: () => {
                         onFocusSeries?.({
@@ -353,6 +386,7 @@ export function ChartSeriesTooltip({
                         });
                         onDismiss?.();
                       },
+                      focusLabel,
                     }
                   : undefined
               }

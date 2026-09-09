@@ -13,7 +13,66 @@ import {
   exploreSeriesHaveValueExpressions,
   migrateLegacyAggToSeries,
   parseExploreSeries,
+  seriesAggCondition,
 } from '@/components/Search/SearchAggControls';
+
+describe('seriesAggCondition', () => {
+  const series = (patch: Partial<ExploreSeries>): ExploreSeries =>
+    ({
+      aggFn: 'count',
+      valueExpression: '',
+      aggCondition: '',
+      aggConditionLanguage: 'sql',
+      ...patch,
+    }) as ExploreSeries;
+
+  it('is the typed condition when nothing has been promoted', () => {
+    expect(seriesAggCondition(series({ aggCondition: 'Duration > 100' }))).toBe(
+      'Duration > 100',
+    );
+  });
+
+  it('is the pills when the field has been emptied into them', () => {
+    expect(
+      seriesAggCondition(
+        series({
+          filters: [{ type: 'sql', condition: "level IN ('error')" }],
+        }),
+      ),
+    ).toBe("level IN ('error')");
+  });
+
+  it('parenthesises so an OR-set pill cannot swallow what sits beside it', () => {
+    expect(
+      seriesAggCondition(
+        series({
+          aggCondition: 'Duration > 100',
+          filters: [
+            { type: 'sql', condition: "level IN ('error', 'fatal')" },
+            { type: 'sql', condition: "service NOT IN ('cron')" },
+          ],
+        }),
+      ),
+    ).toBe(
+      "(Duration > 100) AND (level IN ('error', 'fatal')) AND (service NOT IN ('cron'))",
+    );
+  });
+
+  it('ignores whitespace left behind when a clause is promoted', () => {
+    expect(
+      seriesAggCondition(
+        series({
+          aggCondition: '   ',
+          filters: [{ type: 'sql', condition: "level IN ('error')" }],
+        }),
+      ),
+    ).toBe("level IN ('error')");
+  });
+
+  it('is empty for a series that filters nothing', () => {
+    expect(seriesAggCondition(series({}))).toBe('');
+  });
+});
 
 describe('parseExploreSeries', () => {
   it('accepts a count series', () => {
@@ -36,6 +95,35 @@ describe('parseExploreSeries', () => {
         alias: 'errors',
       },
     ]);
+  });
+
+  it('restores the pills a shared link carries', () => {
+    expect(
+      parseExploreSeries([
+        {
+          aggFn: 'count',
+          valueExpression: '',
+          aggCondition: '',
+          filters: [{ type: 'sql', condition: "level IN ('error')" }],
+        },
+      ])?.[0].filters,
+    ).toEqual([{ type: 'sql', condition: "level IN ('error')" }]);
+  });
+
+  it('drops a malformed pill list rather than applying part of it', () => {
+    expect(
+      parseExploreSeries([
+        {
+          aggFn: 'count',
+          valueExpression: '',
+          aggCondition: '',
+          filters: [
+            { type: 'sql', condition: "level IN ('error')" },
+            { type: 'sql' },
+          ],
+        },
+      ])?.[0].filters,
+    ).toBeUndefined();
   });
 
   it('keeps an explicit lucene condition so old links still render', () => {

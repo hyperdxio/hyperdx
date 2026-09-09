@@ -37,7 +37,6 @@ import {
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import { substituteChartConfigVariables } from '@hyperdx/common-utils/dist/variables';
-import { notifications } from '@mantine/notifications';
 
 import DateRangeIndicator from './components/charts/DateRangeIndicator';
 import { MVOptimizationExplanationResult } from './hooks/useMVOptimizationExplanation';
@@ -1217,19 +1216,6 @@ export function buildEventsSearchUrl({
   });
 
   const isMetricChart = isMetricChartConfig(config);
-  if (isMetricChart) {
-    const logSourceId =
-      source.kind === SourceKind.Metric || source.kind === SourceKind.Trace
-        ? source.logSourceId
-        : undefined;
-    if (logSourceId == null) {
-      notifications.show({
-        color: 'yellow',
-        message: 'No log source is associated with the selected metric source.',
-      });
-      return null;
-    }
-  }
 
   let where = config.where;
   let whereLanguage = config.whereLanguage || 'lucene';
@@ -1292,6 +1278,9 @@ export function buildEventsSearchUrl({
   // the exception: it names an entity, and re-addressed against the target's
   // own attribute expression it is the whole point of the drill-down.
   if (isMetricChart) {
+    if (!targetSource?.id) {
+      return null;
+    }
     const { filters: pivotFilters } = translateMetricGroupFilters({
       groupFilters,
       metricSource: source,
@@ -1308,10 +1297,7 @@ export function buildEventsSearchUrl({
         condition: `${column} IN (${SqlString.escape(value)})`,
       })),
     );
-    params.source =
-      (source.kind === SourceKind.Metric || source.kind === SourceKind.Trace
-        ? source.logSourceId
-        : undefined) ?? '';
+    params.source = targetSource.id;
   }
 
   // Include the select parameter if provided to preserve custom columns

@@ -6,6 +6,7 @@ import {
   SourceKind,
   TLogSource,
   TMetricSource,
+  TTraceSource,
 } from '@hyperdx/common-utils/dist/types';
 
 import { buildEventsSearchUrl, buildTableRowSearchUrl } from '@/ChartUtils';
@@ -276,8 +277,54 @@ describe('buildEventsSearchUrl metric drill-down', () => {
     expect(params.get('to')).toBe(dateRange[1].getTime().toString());
   });
 
-  it('narrows by time alone when the target source is unknown', () => {
-    expect(JSON.parse(drillDown(undefined).get('filters') ?? '')).toEqual([]);
+  it('returns no pivot when the target source is unknown', () => {
+    expect(
+      buildEventsSearchUrl({
+        source: metricSource,
+        config: metricConfig,
+        dateRange,
+      }),
+    ).toBeNull();
+  });
+
+  it('can target a correlated trace source', () => {
+    const traceSource = {
+      ...logSourceWithAttributes,
+      id: 'traces',
+      name: 'Traces',
+      kind: SourceKind.Trace,
+      durationExpression: 'Duration',
+      durationPrecision: 3,
+      traceIdExpression: 'TraceId',
+      spanIdExpression: 'SpanId',
+      parentSpanIdExpression: 'ParentSpanId',
+      spanNameExpression: 'SpanName',
+      spanKindExpression: 'SpanKind',
+    } satisfies TTraceSource;
+
+    const params = searchParams(
+      buildEventsSearchUrl({
+        source: metricSource,
+        config: metricConfig,
+        dateRange,
+        groupFilters: [
+          {
+            column: "ResourceAttributes['k8s.pod.name']",
+            value: 'payment-7d9f4',
+          },
+        ],
+        targetSource: traceSource,
+        basePath: '/explore',
+      }),
+    );
+
+    expect(params.get('source')).toBe('traces');
+    expect(JSON.parse(params.get('filters') ?? '')).toEqual([
+      {
+        type: 'sql',
+        condition: "ResourceAttributes['k8s.pod.name'] IN ('payment-7d9f4')",
+      },
+    ]);
   });
 
   it('stays on Explore when asked, in SQL rather than Lucene', () => {

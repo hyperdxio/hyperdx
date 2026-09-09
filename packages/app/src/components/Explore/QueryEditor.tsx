@@ -68,6 +68,11 @@ export interface QueryEditorProps {
   enableHotkey?: boolean;
   /** Max body height (px) before the editor scrolls. Defaults to 200. */
   maxHeight?: number;
+  /**
+   * Identifies the whole editor, field and controls together. Series filters
+   * render their own editor beside the page's, so the two need different ids.
+   */
+  containerTestId?: string;
   'data-testid'?: string;
 }
 
@@ -94,6 +99,7 @@ export function QueryEditor({
   onBlur,
   enableHotkey,
   maxHeight = 200,
+  containerTestId = 'explore-query-editor',
   'data-testid': dataTestId,
 }: QueryEditorProps) {
   const { colorScheme } = useMantineColorScheme();
@@ -178,7 +184,7 @@ export function QueryEditor({
   }, []);
 
   return (
-    <Box className={styles.card} data-testid="explore-query-editor">
+    <Box className={styles.card} data-testid={containerTestId}>
       <Flex align="center" gap="sm" wrap="nowrap" className={styles.row}>
         <Box className={styles.field} data-testid={dataTestId}>
           {addonSlot}

@@ -91,6 +91,41 @@ describe('DBTimeChart', () => {
     });
   });
 
+  it('resolves metric pivots through the correlated log and trace sources', () => {
+    mockUseSource.mockImplementation(({ id }: { id?: string }) => {
+      if (id === 'metrics') {
+        return {
+          data: {
+            id: 'metrics',
+            kind: 'metric',
+            logSourceId: 'logs',
+          },
+        };
+      }
+      if (id === 'logs') {
+        return {
+          data: {
+            id: 'logs',
+            kind: 'log',
+            traceSourceId: 'traces',
+          },
+        };
+      }
+      if (id === 'traces') {
+        return { data: { id: 'traces', kind: 'trace' } };
+      }
+      return { data: undefined };
+    });
+
+    renderWithMantine(
+      <DBTimeChart config={baseTestConfig} sourceId="metrics" />,
+    );
+
+    expect(mockUseSource).toHaveBeenCalledWith({ id: 'metrics' });
+    expect(mockUseSource).toHaveBeenCalledWith({ id: 'logs' });
+    expect(mockUseSource).toHaveBeenCalledWith({ id: 'traces' });
+  });
+
   it('passes enabled: false to useQueriedChartConfig for previous period when compareToPreviousPeriod is undefined', () => {
     const config = {
       ...baseTestConfig,

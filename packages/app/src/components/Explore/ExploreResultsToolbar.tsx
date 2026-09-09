@@ -17,6 +17,7 @@ export function ExploreResultsToolbar({
   viewControls,
   groupByControl,
   addToDashboard,
+  chartSettings,
   overflowMenu,
   shapeControls,
   shapeActions,
@@ -38,6 +39,8 @@ export function ExploreResultsToolbar({
   groupByControl?: React.ReactNode;
   /** "Add to dashboard" action, shown only for chart-tile views. */
   addToDashboard?: React.ReactNode;
+  /** Display settings for the current chart view. */
+  chartSettings?: React.ReactNode;
   /** Overflow (3-dots) menu holding secondary actions (SQL, export). */
   overflowMenu?: React.ReactNode;
   /** Aggregation / series editor, rendered on its own row below. */
@@ -68,6 +71,7 @@ export function ExploreResultsToolbar({
         <Group gap="sm" align="center" wrap="nowrap" style={{ flexShrink: 0 }}>
           {shapeActions}
           {addToDashboard}
+          {chartSettings}
           {overflowMenu}
         </Group>
       </Group>

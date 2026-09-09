@@ -3,11 +3,18 @@ import {
   parseAsBoolean,
   parseAsInteger,
   parseAsString,
+  parseAsStringEnum,
   useQueryStates,
 } from 'nuqs';
-import { MetricsDataType } from '@hyperdx/common-utils/dist/types';
+import { Granularity } from '@hyperdx/common-utils/dist/core/utils';
+import {
+  Filter,
+  MetricsDataType,
+  NumberFormat,
+  NumberFormatSchema,
+} from '@hyperdx/common-utils/dist/types';
 
-import { SavedChartConfigWithSelectArray } from '@/components/ChartEditor/types';
+import { ChartEditorSeries } from '@/components/ChartEditor/types';
 import { parseAsJsonEncoded } from '@/utils/queryParsers';
 
 import { type ExploreFormula, parseExploreFormulas } from './exploreFormulas';
@@ -49,7 +56,25 @@ export type AggSortField = 'value' | 'name';
 type AggSortDirection = 'asc' | 'desc';
 type TimeseriesChartType = 'line' | 'bar';
 
-export type ExploreSeries = SavedChartConfigWithSelectArray['select'][number];
+export type ExploreSeries = ChartEditorSeries;
+
+/**
+ * A series' effective WHERE: whatever is still typed in its field, ANDed with
+ * the clauses that have been promoted into pills. Each clause is parenthesised
+ * so an OR-set pill (`x IN (...)`) cannot swallow the ones beside it.
+ */
+export function seriesAggCondition(series: ExploreSeries): string {
+  const clauses = [
+    series.aggCondition,
+    ...(series.filters ?? []).map(f => ('condition' in f ? f.condition : '')),
+  ]
+    .map(clause => clause?.trim())
+    .filter((clause): clause is string => Boolean(clause));
+
+  return clauses.length > 1
+    ? clauses.map(clause => `(${clause})`).join(' AND ')
+    : (clauses[0] ?? '');
+}
 
 const DEFAULT_EXPLORE_SERIES: ExploreSeries = {
   aggFn: 'count',
@@ -69,6 +94,12 @@ export interface SearchAggConfig {
   formulas: ExploreFormula[];
   /** When formulas exist: show operand series in the chart. Default on. */
   showOperandSeries: boolean;
+  granularity: Granularity | 'auto';
+  alignDateRangeToGranularity: boolean;
+  fillNulls: 0 | false;
+  compareToPreviousPeriod: boolean;
+  fitYAxisToData: boolean;
+  numberFormat?: NumberFormat;
 }
 
 /**
@@ -135,6 +166,24 @@ function optionalBoolean(value: unknown): boolean | undefined {
   return typeof value === 'boolean' ? value : undefined;
 }
 
+/**
+ * A series' promoted pills. Anything malformed drops the whole list rather
+ * than half of it: a partially applied filter set silently widens the query.
+ */
+function parseSeriesFilters(value: unknown): Filter[] | undefined {
+  if (!Array.isArray(value) || value.length === 0 || value.length > 50) {
+    return undefined;
+  }
+  const filters: Filter[] = [];
+  for (const item of value) {
+    if (!isRecord(item)) return undefined;
+    if (item.type !== 'sql' && item.type !== 'lucene') return undefined;
+    if (typeof item.condition !== 'string') return undefined;
+    filters.push({ type: item.type, condition: item.condition });
+  }
+  return filters;
+}
+
 /** Parse the `series` URL param into chart `select[]` items, or null if invalid. */
 export function parseExploreSeries(value: unknown): ExploreSeries[] | null {
   if (!Array.isArray(value) || value.length < 1 || value.length > 20) {
@@ -160,6 +209,7 @@ export function parseExploreSeries(value: unknown): ExploreSeries[] | null {
     const metricType = optionalString(item.metricType);
     const color = optionalString(item.color);
     const isDelta = optionalBoolean(item.isDelta);
+    const filters = parseSeriesFilters(item.filters);
 
     if (aggFn === 'quantile') {
       series.push({
@@ -175,6 +225,7 @@ export function parseExploreSeries(value: unknown): ExploreSeries[] | null {
           : {}),
         ...(color != null ? { color: color as ExploreSeries['color'] } : {}),
         ...(isDelta != null ? { isDelta } : {}),
+        ...(filters != null ? { filters } : {}),
       });
       continue;
     }
@@ -192,6 +243,7 @@ export function parseExploreSeries(value: unknown): ExploreSeries[] | null {
         : {}),
       ...(color != null ? { color: color as ExploreSeries['color'] } : {}),
       ...(isDelta != null ? { isDelta } : {}),
+      ...(filters != null ? { filters } : {}),
     } as ExploreSeries);
   }
   return series;
@@ -258,6 +310,15 @@ export function useSearchAggConfig(): [
     sort: parseAsString.withDefault('value'),
     sortDir: parseAsString.withDefault('desc'),
     ts: parseAsString.withDefault('bar'),
+    granularity: parseAsStringEnum<Granularity | 'auto'>([
+      'auto',
+      ...Object.values(Granularity),
+    ]).withDefault('auto'),
+    alignIntervals: parseAsBoolean.withDefault(false),
+    fillNulls: parseAsBoolean.withDefault(true),
+    comparePrevious: parseAsBoolean.withDefault(false),
+    fitYAxis: parseAsBoolean.withDefault(false),
+    numberFormat: parseAsJsonEncoded(NumberFormatSchema.parse),
   });
 
   const {
@@ -273,6 +334,12 @@ export function useSearchAggConfig(): [
     sort,
     sortDir,
     ts,
+    granularity,
+    alignIntervals,
+    fillNulls,
+    comparePrevious,
+    fitYAxis,
+    numberFormat,
   } = state;
 
   const series = useMemo<ExploreSeries[]>(() => {
@@ -300,8 +367,29 @@ export function useSearchAggConfig(): [
       chartType: ts as TimeseriesChartType,
       formulas,
       showOperandSeries,
+      granularity,
+      alignDateRangeToGranularity: alignIntervals,
+      fillNulls: fillNulls ? 0 : false,
+      compareToPreviousPeriod: comparePrevious,
+      fitYAxisToData: fitYAxis,
+      numberFormat: numberFormat ?? undefined,
     }),
-    [series, groupBy, limit, sort, sortDir, ts, formulas, showOperandSeries],
+    [
+      series,
+      groupBy,
+      limit,
+      sort,
+      sortDir,
+      ts,
+      formulas,
+      showOperandSeries,
+      granularity,
+      alignIntervals,
+      fillNulls,
+      comparePrevious,
+      fitYAxis,
+      numberFormat,
+    ],
   );
 
   const setConfig = useCallback(
@@ -331,6 +419,24 @@ export function useSearchAggConfig(): [
         ...(patch.sort != null ? { sort: patch.sort } : {}),
         ...(patch.sortDir != null ? { sortDir: patch.sortDir } : {}),
         ...(patch.chartType != null ? { ts: patch.chartType } : {}),
+        ...(patch.granularity != null
+          ? { granularity: patch.granularity }
+          : {}),
+        ...(patch.alignDateRangeToGranularity != null
+          ? { alignIntervals: patch.alignDateRangeToGranularity }
+          : {}),
+        ...(patch.fillNulls != null
+          ? { fillNulls: patch.fillNulls !== false }
+          : {}),
+        ...(patch.compareToPreviousPeriod != null
+          ? { comparePrevious: patch.compareToPreviousPeriod }
+          : {}),
+        ...(patch.fitYAxisToData != null
+          ? { fitYAxis: patch.fitYAxisToData }
+          : {}),
+        ...('numberFormat' in patch
+          ? { numberFormat: patch.numberFormat ?? null }
+          : {}),
       });
     },
     [setState],

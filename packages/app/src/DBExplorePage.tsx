@@ -93,6 +93,7 @@ import { keepPreviousData, useIsFetching } from '@tanstack/react-query';
 import { SortingState } from '@tanstack/react-table';
 import CodeMirror from '@uiw/react-codemirror';
 
+import { ChartConfigDisplaySettings } from '@/components/ChartDisplaySettingsDrawer';
 import { ContactSupportText } from '@/components/ContactSupportText';
 import { DBSearchPageFilters } from '@/components/DBSearchPageFilters';
 import { cleanClickHouseExpression } from '@/components/DBSearchPageFilters/utils';
@@ -128,11 +129,7 @@ import {
 import { useSearchPageFilterState } from '@/searchFilters';
 import { getEventBody, useSource, useSources } from '@/source';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
-import {
-  parseRelativeTimeQuery,
-  parseTimeQuery,
-  useNewTimeQuery,
-} from '@/timeQuery';
+import { parseRelativeTimeQuery, useNewTimeQuery } from '@/timeQuery';
 import { formatDurationMs, useLocalStorage, usePrevious } from '@/utils';
 import { metricTableConnections } from '@/utils/metricTableConnections';
 
@@ -143,6 +140,7 @@ import { DBPieChart } from './components/DBPieChart';
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import DBTableChart from './components/DBTableChart';
 import { DBTreemapChart } from './components/DBTreemapChart';
+import { ExploreChartSettings } from './components/Explore/ExploreChartSettings';
 import { ExploreContextBand } from './components/Explore/ExploreContextBand';
 import {
   defaultExploreGroupBy,
@@ -166,6 +164,7 @@ import {
   type AggSortField,
   exploreSeriesHaveMetricNames,
   exploreSeriesHaveValueExpressions,
+  seriesAggCondition,
   useSearchAggConfig,
 } from './components/Search/SearchAggControls';
 import { SearchColumnPicker } from './components/Search/SearchColumnPicker';
@@ -183,6 +182,7 @@ import SourceSchemaPreview, {
 import {
   getRelativeTimeOptionLabel,
   LIVE_TAIL_DURATION_MS,
+  parseTimeRangeInput,
 } from './components/TimePicker/utils';
 import {
   useColumns,
@@ -201,6 +201,7 @@ import {
   parseAsSortingStateString,
   parseAsStringEncoded,
 } from './utils/queryParsers';
+import { getPreviousDateRange } from './ChartUtils';
 import { LOCAL_STORE_CONNECTIONS_KEY } from './connection';
 import { DBSearchPageAlertModal } from './DBSearchPageAlertModal';
 import { SearchConfig } from './types';
@@ -874,7 +875,7 @@ function SaveSearchModalComponent({
 const SaveSearchModal = memo(SaveSearchModalComponent);
 
 // TODO: This is a hack to set the default time range
-const defaultTimeRange = parseTimeQuery('Past 15m', false) as [Date, Date];
+const defaultTimeRange = parseTimeRangeInput('Past 15m') as [Date, Date];
 
 function useLiveUpdate({
   isLive,
@@ -2191,9 +2192,12 @@ function DBExplorePage() {
         (isCategoricalLike && aggConfig.series.length === 1
           ? 'Value'
           : undefined);
+      // `filters` is Explore's own field: the pills fold into the WHERE here so
+      // the renderer, and anything saved from this config, sees only a series.
+      const { filters: _pills, ...seriesSelect } = series;
       return {
-        ...series,
-        aggCondition: series.aggCondition ?? '',
+        ...seriesSelect,
+        aggCondition: seriesAggCondition(series),
         aggConditionLanguage:
           series.aggConditionLanguage ?? getDefaultExploreLanguage(),
         valueExpression: searchedMetricSource
@@ -2229,7 +2233,7 @@ function DBExplorePage() {
       select,
       groupBy,
       orderBy,
-      granularity: view === 'timeseries' ? 'auto' : undefined,
+      granularity: view === 'timeseries' ? aggConfig.granularity : undefined,
       dateRange: searchedTimeRange,
       displayType:
         view === 'timeseries'
@@ -2239,7 +2243,11 @@ function DBExplorePage() {
           : searchViewToDisplayType(view),
       with: aliasWith,
       seriesLimit: view === 'timeseries' ? undefined : aggConfig.limit,
-      alignDateRangeToGranularity: false,
+      alignDateRangeToGranularity: aggConfig.alignDateRangeToGranularity,
+      fillNulls: aggConfig.fillNulls,
+      compareToPreviousPeriod: aggConfig.compareToPreviousPeriod,
+      fitYAxisToData: aggConfig.fitYAxisToData,
+      numberFormat: aggConfig.numberFormat,
       dateRangeEndInclusive: true,
       ...(formulas.length > 0
         ? {
@@ -2258,6 +2266,34 @@ function DBExplorePage() {
     aliasWith,
     searchedMetricSource,
   ]);
+
+  const exploreChartSettings = useMemo<ChartConfigDisplaySettings>(
+    () => ({
+      granularity: aggConfig.granularity,
+      alignDateRangeToGranularity: aggConfig.alignDateRangeToGranularity,
+      fillNulls: aggConfig.fillNulls,
+      compareToPreviousPeriod: aggConfig.compareToPreviousPeriod,
+      fitYAxisToData: aggConfig.fitYAxisToData,
+      numberFormat: aggConfig.numberFormat,
+    }),
+    [aggConfig],
+  );
+
+  const handleExploreChartSettingsChange = useCallback(
+    (settings: ChartConfigDisplaySettings) => {
+      setAggConfig({
+        granularity: settings.granularity ?? 'auto',
+        alignDateRangeToGranularity:
+          settings.alignDateRangeToGranularity ?? false,
+        fillNulls: settings.fillNulls === false ? false : 0,
+        compareToPreviousPeriod: settings.compareToPreviousPeriod ?? false,
+        fitYAxisToData: settings.fitYAxisToData ?? false,
+        numberFormat: settings.numberFormat,
+      });
+      onSubmit();
+    },
+    [onSubmit, setAggConfig],
+  );
 
   // Dashboard-tile config for the "Add to dashboard" action: reuses the
   // aggregated chart config but references the source by id (as tiles do) and
@@ -2279,6 +2315,12 @@ function DBExplorePage() {
       orderBy: aggViewChartConfig.orderBy,
       granularity: aggViewChartConfig.granularity,
       seriesLimit: aggViewChartConfig.seriesLimit,
+      alignDateRangeToGranularity:
+        aggViewChartConfig.alignDateRangeToGranularity,
+      fillNulls: aggViewChartConfig.fillNulls,
+      compareToPreviousPeriod: aggViewChartConfig.compareToPreviousPeriod,
+      fitYAxisToData: aggViewChartConfig.fitYAxisToData,
+      numberFormat: aggViewChartConfig.numberFormat,
       with: aggViewChartConfig.with,
       formulas: aggViewChartConfig.formulas,
       showOperandSeries: aggViewChartConfig.showOperandSeries,
@@ -3134,6 +3176,21 @@ function DBExplorePage() {
                                 />
                               )
                       }
+                      chartSettings={
+                        isMetricSource &&
+                        aggViewChartConfig && (
+                          <ExploreChartSettings
+                            settings={exploreChartSettings}
+                            displayType={
+                              aggViewChartConfig.displayType ?? DisplayType.Line
+                            }
+                            previousDateRange={getPreviousDateRange(
+                              searchedTimeRange,
+                            )}
+                            onChange={handleExploreChartSettingsChange}
+                          />
+                        )
+                      }
                       overflowMenu={
                         <ResultsOverflowMenu
                           config={
@@ -3161,6 +3218,10 @@ function DBExplorePage() {
                             onSubmit={onSubmit}
                             tableSource={searchedSource}
                             dateRange={searchedTimeRange}
+                            sharedWhere={searchedConfig.where}
+                            filtersChartConfig={filtersChartConfig}
+                            knownColumns={knownColumns}
+                            dateTimeColumns={dateTimeColumns}
                           />
                         ) : undefined
                       }
@@ -3556,6 +3617,7 @@ function DBExplorePage() {
                           }}
                           showMVOptimizationIndicator={false}
                           drillDownPath="/explore"
+                          onFocusSeries={handleFocusSeries}
                           queryKeyPrefix={QUERY_KEY_PREFIX}
                         />
                       )}

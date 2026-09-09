@@ -7,59 +7,65 @@ export function GranularityPicker({
   value,
   onChange,
   disabled,
+  label,
+  size,
 }: {
   value: Granularity | 'auto' | undefined;
   onChange: (granularity: Granularity | 'auto' | undefined) => void;
   disabled?: boolean;
+  label?: string;
+  size?: 'xs' | 'sm';
 }) {
   return (
     <Select
       disabled={disabled}
+      label={label}
+      size={size}
       data-testid="granularity-picker"
       data={[
         {
           value: 'auto' as const,
-          label: 'Auto Granularity',
+          label: 'Auto granularity',
         },
         {
           value: Granularity.ThirtySecond,
-          label: '30 Seconds Granularity',
+          label: '30 seconds',
         },
         {
           value: Granularity.OneMinute,
-          label: '1 Minute Granularity',
+          label: '1 minute',
         },
         {
           value: Granularity.FiveMinute,
-          label: '5 Minutes Granularity',
+          label: '5 minutes',
         },
         {
           value: Granularity.TenMinute,
-          label: '10 Minutes Granularity',
+          label: '10 minutes',
         },
         {
           value: Granularity.FifteenMinute,
-          label: '15 Minutes Granularity',
+          label: '15 minutes',
         },
         {
           value: Granularity.ThirtyMinute,
-          label: '30 Minutes Granularity',
+          label: '30 minutes',
         },
         {
           value: Granularity.OneHour,
-          label: '1 Hour Granularity',
+          label: '1 hour',
         },
         {
           value: Granularity.TwelveHour,
-          label: '12 Hours Granularity',
+          label: '12 hours',
         },
         {
           value: Granularity.OneDay,
-          label: '1 Day Granularity',
+          label: '1 day',
         },
         {
           value: Granularity.SevenDay,
-          label: '7 Day Granularity',
+          label: '7 days',
         },
       ]}
       onChange={v =>

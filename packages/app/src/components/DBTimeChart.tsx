@@ -22,6 +22,7 @@ import {
   ChartConfigWithDateRange,
   DisplayType,
   SourceKind,
+  TSource,
 } from '@hyperdx/common-utils/dist/types';
 import { Popover, Portal } from '@mantine/core';
 import { IconChartBar, IconChartLine } from '@tabler/icons-react';
@@ -140,6 +141,10 @@ export function decodeSeriesGroupFilters({
 function ChartTooltipOverlay({
   payload,
   buildSearchUrl,
+  buildRelatedTraceUrl,
+  drillInLabel,
+  focusLabel,
+  showSingleSeriesActions,
   onDismiss,
   onFocusSeries,
   onShowAllSeries,
@@ -152,6 +157,10 @@ function ChartTooltipOverlay({
 }: {
   payload: ActiveClickPayload | undefined;
   buildSearchUrl: (key?: string, value?: number) => string | null;
+  buildRelatedTraceUrl?: (key?: string, value?: number) => string | null;
+  drillInLabel?: string;
+  focusLabel?: string;
+  showSingleSeriesActions?: boolean;
   onDismiss: () => void;
   /** Focus a series by its raw series key (dataKey) and display name. */
   onFocusSeries: (payload: { dataKey?: string; name: string }) => void;
@@ -210,8 +219,17 @@ function ChartTooltipOverlay({
     if (!isOpen) return;
     const handleMouseDown = (e: MouseEvent) => {
       const target = e.target;
-      if (target instanceof Node && dropdownRef.current?.contains(target)) {
-        return;
+      if (target instanceof Node) {
+        if (dropdownRef.current?.contains(target)) return;
+        // Don't dismiss when clicking inside a portaled child of the tooltip
+        // (e.g. the per-series action Menu.Dropdown, which uses withinPortal
+        // and therefore renders outside dropdownRef.current in the DOM).
+        if (
+          target instanceof Element &&
+          target.closest('[data-tooltip-child-portal]')
+        ) {
+          return;
+        }
       }
       onDismiss();
     };
@@ -237,7 +255,7 @@ function ChartTooltipOverlay({
             onDismiss();
           }
         }}
-        closeOnClickOutside
+        closeOnClickOutside={false}
         closeOnEscape
         trapFocus={false}
         withinPortal
@@ -278,6 +296,10 @@ function ChartTooltipOverlay({
             numberFormatByKey={numberFormatByKey}
             previousPeriodOffsetSeconds={previousPeriodOffsetSeconds}
             buildSearchUrl={buildSearchUrl}
+            buildRelatedTraceUrl={buildRelatedTraceUrl}
+            drillInLabel={drillInLabel}
+            focusLabel={focusLabel}
+            showSingleSeriesActions={showSingleSeriesActions}
             onDismiss={onDismiss}
             onFocusSeries={onFocusSeries}
             onShowAllSeries={onShowAllSeries}
@@ -553,6 +575,13 @@ function DBTimeChartComponent({
         ? source.logSourceId
         : undefined,
   });
+  const { data: relatedTraceSource } = useSource({
+    id:
+      source?.kind === SourceKind.Metric &&
+      drillDownTargetSource?.kind === SourceKind.Log
+        ? drillDownTargetSource.traceSourceId
+        : undefined,
+  });
 
   const { formatByColumn, chartFormat: axisNumberFormat } =
     useChartNumberFormats(queriedConfig, data?.meta);
@@ -726,7 +755,11 @@ function DBTimeChartComponent({
   }, [activeClickPayload]);
 
   const buildSearchUrl = useCallback(
-    (seriesKey?: string, seriesValue?: number) => {
+    (
+      seriesKey?: string,
+      seriesValue?: number,
+      targetSource: TSource | undefined = drillDownTargetSource,
+    ) => {
       // Raw SQL charts are not supported for drill-down as we don't know the source which is being used.
       if (
         clickedActiveLabelDate == null ||
@@ -846,7 +879,7 @@ function DBTimeChartComponent({
         dateRange: [from, to],
         groupFilters,
         valueRangeFilter,
-        targetSource: drillDownTargetSource,
+        targetSource,
         basePath: drillDownPath,
       });
     },
@@ -861,6 +894,14 @@ function DBTimeChartComponent({
       valueColumns,
       isSingleValueColumn,
     ],
+  );
+
+  const buildRelatedTraceUrl = useCallback(
+    (seriesKey?: string, seriesValue?: number) =>
+      relatedTraceSource
+        ? buildSearchUrl(seriesKey, seriesValue, relatedTraceSource)
+        : null,
+    [buildSearchUrl, relatedTraceSource],
   );
 
   // Focus a series from the drill-down menu. When the consumer supplied an
@@ -1016,6 +1057,20 @@ function DBTimeChartComponent({
           <ChartTooltipOverlay
             payload={activeClickPayload}
             buildSearchUrl={buildSearchUrl}
+            buildRelatedTraceUrl={
+              source?.kind === SourceKind.Metric
+                ? buildRelatedTraceUrl
+                : undefined
+            }
+            drillInLabel={
+              source?.kind === SourceKind.Metric
+                ? 'View related logs'
+                : 'View events'
+            }
+            focusLabel={
+              onFocusSeries ? 'Filter to this series' : 'Focus series'
+            }
+            showSingleSeriesActions={source?.kind === SourceKind.Metric}
             // Stable reference so the overlay's scroll-dismissal effect doesn't
             // re-register its window listener on every re-render.
             onDismiss={dismissPinned}

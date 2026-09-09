@@ -8,7 +8,9 @@ import {
 } from 'react-hook-form';
 import { indexToSeriesRef } from '@hyperdx/common-utils/dist/core/formula';
 import {
+  BuilderChartConfigWithDateRange,
   DateRange,
+  Filter,
   isChartPaletteToken,
   MetricsDataType,
   SourceKind,
@@ -51,6 +53,7 @@ import {
   SeriesCardMenu,
 } from '@/components/ChartSeries/SeriesCard';
 import { SeriesColumnPicker } from '@/components/DBEditTimeChartForm/SeriesColumnPicker';
+import { ExploreQueryEditor } from '@/components/Explore/ExploreQueryEditor';
 import {
   CheckBoxControlled,
   TextInputControlled,
@@ -71,11 +74,14 @@ import {
   parseAttributeKeysFromSuggestions,
   useFetchMetricResourceAttrs,
 } from '@/hooks/useFetchMetricResourceAttrs';
+import { useSearchPageFilterState } from '@/searchFilters';
 import { COLORS, getColorFromCSSToken, getMetricTableName } from '@/utils';
 
 type SeriesItem = NonNullable<
   SavedChartConfigWithSelectArray['select']
 >[number];
+
+const NO_KNOWN_COLUMNS: Set<string> = new Set();
 
 type ChartSeriesEditorProps = {
   control: Control<ChartEditorFormState>;
@@ -109,6 +115,29 @@ type ChartSeriesEditorProps = {
   /** Commit URL/query immediately on agg and metric picks (Explore). */
   eagerSubmit?: boolean;
   groupByPlaceholder?: string;
+  /**
+   * The chart-level WHERE clause, when the page has one. A series condition is
+   * ANDed with it, so the label says so rather than offering a second,
+   * identically-named "Where" whose precedence the reader has to guess.
+   */
+  sharedWhere?: string;
+  /**
+   * Filter the series with Explore's query editor — the same SQL field as the
+   * page query bar — instead of `SearchWhereInput`. Explore is SQL-only, so its
+   * series have no use for the Lucene/SQL switch, and one filter field across
+   * the page beats two that look and behave differently. Dashboard tiles keep
+   * `SearchWhereInput`: they still author Lucene and `$variable` references,
+   * neither of which the query editor speaks.
+   */
+  useQueryEditor?: boolean;
+  /**
+   * Chart config the series' filter pills read to offer and format values.
+   * Without it the editor still promotes clauses, but renders no pills.
+   */
+  filtersChartConfig?: BuilderChartConfigWithDateRange;
+  /** Top-level columns, used to quote pill keys that need escaping. */
+  knownColumns?: Set<string>;
+  dateTimeColumns?: ReadonlyMap<string, string>;
   /** Override letter-badge visibility. Defaults to formula-capable sources. */
   showSeriesRef?: boolean;
   /** When set, the A/B badge inserts this letter into the focused formula. */
@@ -140,6 +169,11 @@ export function ChartSeriesEditor({
   clearErrors,
   eagerSubmit = false,
   groupByPlaceholder = 'SQL columns',
+  sharedWhere,
+  useQueryEditor = false,
+  filtersChartConfig,
+  knownColumns,
+  dateTimeColumns,
   showSeriesRef,
   onInsertSeriesRef,
 }: ChartSeriesEditorProps) {
@@ -226,6 +260,26 @@ export function ChartSeriesEditor({
     metricType,
     metricName,
     tableSource: metricTableSource,
+  });
+
+  const seriesFilters = useWatch({
+    control,
+    name: `${namePrefix}filters`,
+  });
+
+  const handleSeriesFiltersChange = useCallback(
+    (next: Filter[]) => {
+      setValue(`${namePrefix}filters`, next);
+      onSubmit();
+    },
+    [namePrefix, setValue, onSubmit],
+  );
+
+  const seriesFilterState = useSearchPageFilterState({
+    searchQuery: seriesFilters,
+    onFilterChange: handleSeriesFiltersChange,
+    dateTimeColumns,
+    knownColumns: knownColumns ?? NO_KNOWN_COLUMNS,
   });
 
   const handleAddToWhere = useCallback(
@@ -549,23 +603,42 @@ export function ChartSeriesEditor({
               align="center"
               style={{ flex: 1, minWidth: 240 }}
             >
-              <Text size="xs" c="dimmed">
-                Where
+              <Text size="xs" c="dimmed" style={{ whiteSpace: 'nowrap' }}>
+                {sharedWhere?.trim() ? 'And where' : 'Where'}
               </Text>
               <Box style={{ flex: 1, minWidth: 180 }}>
-                <SearchWhereInput
-                  tableConnection={tableConnection}
-                  sourceId={tableSource?.id}
-                  dateRange={dateRange}
-                  control={control}
-                  name={`${namePrefix}aggCondition`}
-                  onSubmit={onSubmit}
-                  showLabel={false}
-                  size="xs"
-                  additionalSuggestions={attributeSuggestions}
-                  data-testid="series-where-input"
-                  enableVariables
-                />
+                {useQueryEditor ? (
+                  <ExploreQueryEditor
+                    tableConnection={tableConnection}
+                    sourceId={tableSource?.id}
+                    dateRange={dateRange}
+                    control={control}
+                    name={`${namePrefix}aggCondition`}
+                    languageName={`${namePrefix}aggConditionLanguage`}
+                    onSubmit={onSubmit}
+                    additionalSuggestions={attributeSuggestions}
+                    placeholder="Filter this series"
+                    searchFilters={seriesFilterState}
+                    chartConfig={filtersChartConfig}
+                    dateTimeColumns={dateTimeColumns}
+                    containerTestId="series-query-editor"
+                    data-testid="series-where-input"
+                  />
+                ) : (
+                  <SearchWhereInput
+                    tableConnection={tableConnection}
+                    sourceId={tableSource?.id}
+                    dateRange={dateRange}
+                    control={control}
+                    name={`${namePrefix}aggCondition`}
+                    onSubmit={onSubmit}
+                    showLabel={false}
+                    size="xs"
+                    additionalSuggestions={attributeSuggestions}
+                    data-testid="series-where-input"
+                    enableVariables
+                  />
+                )}
               </Box>
             </Group>
           )}

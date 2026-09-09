@@ -4,6 +4,7 @@ import {
   UnknownTemplateHelperError,
   validateTemplate,
 } from '@hyperdx/common-utils/dist/core/handlebarsEnv';
+import { Granularity } from '@hyperdx/common-utils/dist/core/utils';
 import {
   ChartConfigWithDateRange,
   DisplayType,
@@ -25,6 +26,7 @@ import {
 
 import { shouldFillNullsWithZero } from '@/ChartUtils';
 import { MAX_RENDERED_TIME_CHART_SERIES } from '@/defaults';
+import { GranularityPicker } from '@/GranularityPicker';
 import { FormatTime } from '@/useFormatTime';
 
 import { BackgroundChartInput } from './BackgroundChartInput';
@@ -49,6 +51,7 @@ export type ChartConfigDisplaySettings = Pick<
   | 'colorRules'
   | 'backgroundChart'
 > & {
+  granularity?: Granularity | 'auto';
   groupByColumnsOnLeft?: boolean;
   alternateRowBackground?: boolean;
   // Per-tile series cap. On builder group-by/pie/bar charts it's a fetch cap
@@ -86,6 +89,8 @@ interface ChartDisplaySettingsDrawerProps {
   isPerSeriesNumberFormatAllowed?: boolean;
   /** Persistent tile-editor rail vs the original slide-over drawer. */
   variant?: 'drawer' | 'panel';
+  /** Explore owns no separate granularity control, unlike Chart Explorer. */
+  showGranularity?: boolean;
 }
 
 function applyDefaultSettings(
@@ -113,6 +118,7 @@ function applyDefaultSettings(
       ? attachLocalIds(settings.colorRules)
       : undefined,
     backgroundChart: settings.backgroundChart,
+    granularity: settings.granularity,
   };
 }
 
@@ -127,6 +133,7 @@ export default function ChartDisplaySettingsDrawer({
   previousDateRange,
   isPerSeriesNumberFormatAllowed = false,
   variant = 'drawer',
+  showGranularity = false,
 }: ChartDisplaySettingsDrawerProps) {
   const appliedDefaults = useMemo(
     () => applyDefaultSettings(settings, defaultNumberFormat),
@@ -158,7 +165,7 @@ export default function ChartDisplaySettingsDrawer({
   const applyChanges = useCallback(() => {
     handleSubmit(formValues => {
       // Strip client-side localIds before passing rules to the config.
-      const { colorRules, ...rest } = formValues;
+      const { colorRules, granularity, ...rest } = formValues;
       // Persist numberFormat only when the user actually chose one: either the
       // tile already had an explicit override (settings.numberFormat) or the
       // user changed the format control in this session (dirtyFields). Otherwise
@@ -174,6 +181,7 @@ export default function ChartDisplaySettingsDrawer({
             ? formValues.numberFormat
             : undefined,
           colorRules: colorRules ? stripLocalIds(colorRules) : undefined,
+          ...(showGranularity ? { granularity } : {}),
         },
         hasDirtyFields,
       );
@@ -189,6 +197,7 @@ export default function ChartDisplaySettingsDrawer({
     settings.numberFormat,
     dirtyFields,
     variant,
+    showGranularity,
   ]);
 
   const resetToDefaults = useCallback(() => {
@@ -246,6 +255,20 @@ export default function ChartDisplaySettingsDrawer({
     <Stack>
       {isTimeChart && (
         <>
+          {showGranularity && (
+            <Controller
+              control={control}
+              name="granularity"
+              render={({ field: { onChange, value } }) => (
+                <GranularityPicker
+                  value={value ?? 'auto'}
+                  onChange={onChange}
+                  label="Alignment"
+                  size="xs"
+                />
+              )}
+            />
+          )}
           <CheckBoxControlled
             control={control}
             name="alignDateRangeToGranularity"

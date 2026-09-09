@@ -1,7 +1,10 @@
 import { useCallback, useMemo } from 'react';
 import { useFieldArray, useForm } from 'react-hook-form';
 import { isFormulaSourceKind } from '@hyperdx/common-utils/dist/core/utils';
-import { TSource } from '@hyperdx/common-utils/dist/types';
+import {
+  BuilderChartConfigWithDateRange,
+  TSource,
+} from '@hyperdx/common-utils/dist/types';
 import { Button, Group, NumberInput, Stack, Text } from '@mantine/core';
 import { IconCirclePlus, IconMathFunction } from '@tabler/icons-react';
 
@@ -31,6 +34,10 @@ export function ExploreSeriesList({
   onSubmit,
   tableSource,
   dateRange,
+  sharedWhere,
+  filtersChartConfig,
+  knownColumns,
+  dateTimeColumns,
 }: {
   view: SearchView;
   config: SearchAggConfig;
@@ -38,6 +45,12 @@ export function ExploreSeriesList({
   onSubmit: () => void;
   tableSource?: TSource;
   dateRange?: [Date, Date];
+  /** The queried chart-level WHERE, ANDed into every series. */
+  sharedWhere?: string;
+  /** Read by each series' filter pills to offer and format values. */
+  filtersChartConfig?: BuilderChartConfigWithDateRange;
+  knownColumns?: Set<string>;
+  dateTimeColumns?: ReadonlyMap<string, string>;
 }) {
   const formValues = useMemo(
     () => ({
@@ -181,6 +194,11 @@ export function ExploreSeriesList({
           showColor={showColor}
           tableName={tableName}
           tableSource={tableSource}
+          sharedWhere={sharedWhere}
+          useQueryEditor
+          filtersChartConfig={filtersChartConfig}
+          knownColumns={knownColumns}
+          dateTimeColumns={dateTimeColumns}
           errors={
             formState.errors.series && Array.isArray(formState.errors.series)
               ? formState.errors.series[index]
