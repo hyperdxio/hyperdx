@@ -328,20 +328,25 @@ checks aren't hiding a startup-only failure here.
 `statsdreceiver` is compiled in so StatsD-formatted metrics can be ingested
 directly, without a separate StatsD-to-OTLP bridge — this covers any StatsD
 client, not just a particular vendor's dialect. It also understands the
-DogStatsD tag extension (`#tag1:value1,tag2:value2`) if the sender uses it,
-but doesn't require it.
+DogStatsD tag extension: valued tags (`#tag:value`) work with no extra
+config, but bare tags (`#mytag`, no value) need `enable_simple_tags: true`
+(set below) or they're silently dropped.
 
-**This component does not support horizontally-scaled deployments.**
-That's not a HyperDX-specific limitation — it's stated directly in the
-upstream component's own docs: aggregation state lives independently in
-each collector instance's memory, with no cross-replica coordination, so
-the same metric arriving at two different replicas (e.g. behind a
-load-balanced Service) would be aggregated separately by each one instead
-of together, silently splitting/undercounting it. HyperDX's own
-OpAMP-managed `otel-collector` Deployment runs multiple replicas for OTLP
-ingest availability — **do not** wire `statsd` into that Deployment's
-pipelines. Run it on a dedicated, single-replica collector instance
-instead (standalone mode, as below).
+**This component does not support horizontally-scaled deployments** — not
+a HyperDX-specific limitation, it's stated directly in the upstream
+component's own docs. Aggregation state lives independently in each
+collector instance's memory with no cross-replica coordination, so the
+same metric landing on two different replicas (e.g. behind a
+load-balanced Service) gets aggregated separately by each one instead of
+together, silently splitting/undercounting it. HyperDX's default
+deployments (`docker-compose.yml`, the all-in-one image) run the
+OpAMP-managed collector as a single instance, so this doesn't bite out of
+the box — it only matters once *some* collector instance ingesting
+`statsd` is scaled to multiple replicas, at which point that traffic
+needs to go to one dedicated single-replica instance instead.
+
+**In standalone mode**, `metrics` is a plain pipeline in your own config
+file, so add `statsd` to it directly:
 
 ```yaml
 receivers:
@@ -349,18 +354,42 @@ receivers:
     # Defaults to localhost:8125, which only accepts local traffic -
     # override to 0.0.0.0 if metrics arrive from outside the container.
     endpoint: 0.0.0.0:8125
+    enable_simple_tags: true
 service:
   pipelines:
     metrics:
       receivers: [otlp/hyperdx, statsd]
 ```
 
-Verified against the real compiled binary via `otelcontribcol validate
---config` and an actual startup run (`otelcontribcol --config ...`,
-reaching `"Everything is ready. Begin running and processing data."`),
-in both cases using the same multi-`--config` merge the container
-actually uses (base `config.yaml` + `standalone-config.yaml` + this
-fragment).
+**In OpAMP supervisor mode** (HyperDX's default), editing the `metrics`
+pipeline this way will not work: `receivers:`/`exporters:` on it are set
+dynamically by `opampController.ts`, and the remote config overwrites
+(not merges) those keys — see the [span metrics section
+above](#computing-span-metrics-from-ingested-traces) for the same
+behavior. Adding `statsd` to `metrics.receivers` from
+`CUSTOM_OTELCOL_CONFIG_FILE` gets silently dropped: no error, the receiver
+just starts and is wired to nothing. Use a separate pipeline name instead,
+which the remote config never touches:
+
+```yaml
+receivers:
+  statsd:
+    endpoint: 0.0.0.0:8125
+    enable_simple_tags: true
+service:
+  pipelines:
+    metrics/statsd:
+      receivers: [statsd]
+      exporters: [clickhouse]
+      processors: [memory_limiter, batch]
+```
+
+Both shapes are verified against the real compiled binary via
+`otelcontribcol validate --config`, and the standalone shape was also
+actually run (`otelcontribcol --config ...`, not just `validate`),
+reaching `"Everything is ready. Begin running and processing data."` —
+the same rigor as the span metrics section above, using the same
+multi-`--config` merge the container actually uses.
 
 ## Overriding base components via `CUSTOM_OTELCOL_CONFIG_FILE`
 
