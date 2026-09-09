@@ -1,5 +1,6 @@
 import { enableMapSet } from 'immer';
 import { filtersToQuery } from '@hyperdx/common-utils/dist/filters';
+import type { Filter } from '@hyperdx/common-utils/dist/types';
 import { act, renderHook } from '@testing-library/react';
 
 import {
@@ -13,6 +14,46 @@ enableMapSet();
 type ConditionFilter = { type: 'sql' | 'lucene'; condition: string };
 
 describe('searchFilters', () => {
+  it.each([
+    [
+      'ResourceAttributes',
+      'toString(ResourceAttributes.`k8s`.`namespace`.`name`)',
+    ],
+    ['LogAttributes', "LogAttributes['k8s.namespace.name']"],
+  ])('selects, reloads and clears a %s filter', (column, expression) => {
+    const key =
+      column === 'ResourceAttributes'
+        ? 'ResourceAttributes.k8s.namespace.name'
+        : expression;
+    const facetKey =
+      column === 'ResourceAttributes'
+        ? 'ResourceAttributes.`k8s`.`namespace`.`name`'
+        : key;
+    const onFilterChange = jest.fn();
+    const emptyQuery: Filter[] = [];
+    const { result, rerender } = renderHook(
+      ({ searchQuery }: { searchQuery: Filter[] }) =>
+        useSearchPageFilterState({
+          searchQuery,
+          onFilterChange,
+          knownColumns: new Set(['ResourceAttributes', 'LogAttributes']),
+          jsonColumns: new Set(['ResourceAttributes']),
+        }),
+      { initialProps: { searchQuery: emptyQuery } },
+    );
+    act(() => result.current.setFilterValue(facetKey, 'production'));
+    const searchQuery: Filter[] = [
+      { type: 'sql', condition: `${expression} IN ('production')` },
+    ];
+    expect(onFilterChange).toHaveBeenLastCalledWith(searchQuery);
+    rerender({ searchQuery });
+    expect(result.current.filters[key].included).toEqual(
+      new Set(['production']),
+    );
+    act(() => result.current.clearFilter(facetKey));
+    expect(onFilterChange).toHaveBeenLastCalledWith([]);
+  });
+
   describe('parseQuery', () => {
     it('empty query', () => {
       const result = parseQuery([]);

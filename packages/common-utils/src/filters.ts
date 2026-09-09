@@ -112,8 +112,8 @@ export const filtersToQuery = (
  * Callers that also emit the same keys elsewhere in the query (e.g. inside a
  * SELECT aggregate) must render both halves the same way, or the predicate
  * silently addresses a different expression than the one being aggregated.
- * `stringifyKeys` is deliberately false: a rendered JSON path already carries
- * the `.:String` type suffix, so it needs no `toString()` wrapper.
+ * `stringifyKeys` is deliberately false: rendered JSON paths already carry
+ * their own `toString()` wrapper.
  *
  * Returns undefined when nothing is selected, so callers can branch on
  * "constrained vs unconstrained" without inspecting the string.
