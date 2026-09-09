@@ -448,27 +448,9 @@ describe('processClickhouseSettings - optimization settings', () => {
     });
   });
 
-  // Pre-26.3 servers don't have the setting; sending it would fail the query.
-  it('should omit the subcolumn size setting when the server lacks it', async () => {
-    setupMockQuery([{ name: 'use_skip_indexes_for_top_k', value: '1' }]);
-
-    await client.query({
-      query: 'SELECT 1',
-      format: 'JSON',
-      connectionId: 'test-conn',
-    });
-
-    const actualQueryCall = mockQueryMethod.mock.calls.find(
-      (call: any) => call[0].query === 'SELECT 1',
-    );
-
-    expect(actualQueryCall).toBeDefined();
-    expect(
-      actualQueryCall[0].clickhouse_settings
-        .allow_calculating_subcolumns_sizes_for_merge_tree_reading,
-    ).toBeUndefined();
-  });
-
+  // The exact-equality assertion below is what keeps unavailable settings off
+  // the wire — e.g. a pre-26.3 server that would reject
+  // allow_calculating_subcolumns_sizes_for_merge_tree_reading as unknown.
   it('should only apply available optimization settings', async () => {
     setupMockQuery([
       { name: 'use_skip_indexes_for_top_k', value: '1' },
