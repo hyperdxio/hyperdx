@@ -431,7 +431,7 @@ describe('ChartPreviewPanel', () => {
 
       expect(
         screen.getByText(
-          'Missing required filters: Service, Environment. Select a value for each to preview this tile.',
+          'Missing required filters: Service, Environment. Select a value for each required filter, or turn off “Apply filters” to preview this tile without them.',
         ),
       ).toBeInTheDocument();
       expect(screen.queryByTestId('db-time-chart')).not.toBeInTheDocument();

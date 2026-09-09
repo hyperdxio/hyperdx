@@ -215,7 +215,7 @@ export function ChartPreviewPanel({
         <EmptyState
           description={`Missing required filters: ${blockingFilterNames.join(
             ', ',
-          )}. Select a value for each to preview this tile.`}
+          )}. Select a value for each required filter, or turn off “Apply filters” to preview this tile without them.`}
           variant="card"
           fullWidth
           data-testid="preview-missing-required-filters"
