@@ -30,6 +30,14 @@ type ProgressState = {
   pausedAt?: number;
   /** Time the query spent not fetching, excluded from the elapsed readout. */
   idleMs: number;
+  /**
+   * Counters from requests that have finished. A chunk's own counters describe
+   * only the request currently streaming it, so they are banked here when that
+   * request settles — several requests can share one chunk (the offset pages
+   * within a time window), and the later ones must not erase the earlier.
+   */
+  settledRows: number;
+  settledBytes: number;
   /** Keyed by chunk id so parallel chunks can report independently. */
   chunks: Record<string, ChunkProgress>;
 };
@@ -50,7 +58,15 @@ function updateProgress(
   update: (prev: ProgressState) => ProgressState,
 ) {
   queryClient.setQueryData<ProgressState>(progressKeyFn(queryKey), prev =>
-    update(prev ?? { startedAt: nowMs(), idleMs: 0, chunks: {} }),
+    update(
+      prev ?? {
+        startedAt: nowMs(),
+        idleMs: 0,
+        settledRows: 0,
+        settledBytes: 0,
+        chunks: {},
+      },
+    ),
   );
 }
 
@@ -120,20 +136,33 @@ export function writeChunkProgress(
 export function completeChunkProgress(
   queryClient: QueryClient,
   queryKey: readonly unknown[],
-  { chunkId, rangeMs }: { chunkId: string; rangeMs: number },
+  {
+    chunkId,
+    rangeMs,
+    isChunkExhausted = true,
+  }: { chunkId: string; rangeMs: number; isChunkExhausted?: boolean },
 ) {
   updateProgress(queryClient, queryKey, prev => {
     const existing = prev.chunks[chunkId];
     return {
       ...prev,
+      // Bank this request's counters, then zero the chunk's own so a follow-up
+      // request against the same chunk adds to the total instead of replacing
+      // it. Without this, paging deeper into a window would make the reported
+      // row count drop back to whatever the newest page had read.
+      settledRows: prev.settledRows + (existing?.readRows ?? 0),
+      settledBytes: prev.settledBytes + (existing?.readBytes ?? 0),
       chunks: {
         ...prev.chunks,
         [chunkId]: {
           rangeMs,
-          readRows: existing?.readRows ?? 0,
-          readBytes: existing?.readBytes ?? 0,
-          fraction: 1,
-          isComplete: true,
+          readRows: 0,
+          readBytes: 0,
+          // Only credit the chunk's whole range once nothing is left in it.
+          // A window that still has offset pages to serve has not been fully
+          // scanned, so it keeps the fraction its last progress event implied.
+          fraction: isChunkExhausted ? 1 : existing?.fraction,
+          isComplete: isChunkExhausted,
         },
       },
     };
@@ -241,6 +270,8 @@ export function useQueryProgress({
       chunks: Object.values(state.chunks),
       totalRangeMs,
       completedRangeMs,
+      completedRows: state.settledRows,
+      completedBytes: state.settledBytes,
       elapsedMs: Math.max(now - state.startedAt - state.idleMs, 0),
     });
   }, [active, state, totalRangeMs, completedRanges, now]);

@@ -330,11 +330,13 @@ function SearchResultsCountGroup({
   onExpandFilters,
   histogramTimeChartConfig,
   enableParallelQueries,
+  reportProgress,
 }: {
   isFilterSidebarCollapsed: boolean;
   onExpandFilters: () => void;
   histogramTimeChartConfig: BuilderChartConfigWithDateRange;
   enableParallelQueries?: boolean;
+  reportProgress?: boolean;
 }) {
   return (
     <Group gap={4} align="center">
@@ -345,6 +347,7 @@ function SearchResultsCountGroup({
         config={histogramTimeChartConfig}
         queryKeyPrefix={QUERY_KEY_PREFIX}
         enableParallelQueries={enableParallelQueries}
+        reportProgress={reportProgress}
       />
     </Group>
   );
@@ -2479,6 +2482,7 @@ export function DBSearchPage() {
                             setIsFilterSidebarCollapsed(false)
                           }
                           histogramTimeChartConfig={histogramTimeChartConfig}
+                          reportProgress
                         />
                         <SearchNumRows
                           config={{
@@ -2574,6 +2578,7 @@ export function DBSearchPage() {
                             }
                             histogramTimeChartConfig={histogramTimeChartConfig}
                             enableParallelQueries
+                            reportProgress
                           />
                           <Group gap="sm" align="center">
                             {shouldShowLiveModeHint &&

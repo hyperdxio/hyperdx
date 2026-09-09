@@ -119,9 +119,12 @@ function coverageFromPages(
       ? Math.max(end.getTime() - start.getTime(), 0)
       : 0;
 
+  // Only a page that came back empty proves its window is exhausted; a page
+  // that returned rows will be followed by another request at a higher offset
+  // in the same window.
   const completedRanges: Record<string, number> = {};
   for (const page of pages ?? []) {
-    if (page?.window != null) {
+    if (page?.window != null && page.data.length === 0) {
       completedRanges[windowChunkId(page.window.windowIndex)] = windowRangeMs(
         page.window,
       );
@@ -489,13 +492,19 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
     throw e;
   }
 
-  // This window is fully searched. The entry is not cleared here: pagination
-  // may immediately fetch the next window, and the bar should carry on rather
-  // than blink back to empty. The next run from page one clears it instead.
+  // Settle this request's progress. The entry is not cleared here: pagination
+  // may immediately fetch again, and the bar should carry on rather than blink
+  // back to empty. The next run from page one clears it instead.
+  //
+  // A page that returned rows means `getNextPageParam` will ask for a further
+  // offset *within this same window*, so the window is not finished and must
+  // not be credited its whole range yet — only an empty page proves it is
+  // exhausted.
   if (useProgressFormat) {
     completeChunkProgress(queryClient, queryKey, {
       chunkId: windowChunkId(timeWindow.windowIndex),
       rangeMs: windowRangeMs(timeWindow),
+      isChunkExhausted: queryResultData.length === 0,
     });
   }
 

@@ -1355,7 +1355,9 @@ describe('useChartConfig', () => {
 
       // Report half-scanned progress for each chunk before it resolves, and
       // hold the last one open so the in-flight state is observable.
-      let releaseLastChunk: (value: any) => void = () => {};
+      let releaseLastChunk: (
+        value: ResponseJSON<Record<string, string>>,
+      ) => void = () => {};
       const halfway = {
         read_rows: '50',
         read_bytes: '500',

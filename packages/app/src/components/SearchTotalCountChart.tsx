@@ -99,11 +99,18 @@ export default function SearchTotalCountChart({
   queryKeyPrefix,
   disableQueryChunking,
   enableParallelQueries,
+  reportProgress,
 }: {
   config: BuilderChartConfigWithDateRange;
   queryKeyPrefix: string;
   disableQueryChunking?: boolean;
   enableParallelQueries?: boolean;
+  /**
+   * Must match every other observer of this query key. `reportProgress` is not
+   * part of the key, so whichever observer wins the deduplicated fetch decides
+   * whether progress is emitted at all — and this one renders first.
+   */
+  reportProgress?: boolean;
 }) {
   const { totalCount, isLoading, isError } = useSearchTotalCount(
     config,
@@ -111,6 +118,7 @@ export default function SearchTotalCountChart({
     {
       disableQueryChunking,
       enableParallelQueries,
+      reportProgress,
     },
   );
 

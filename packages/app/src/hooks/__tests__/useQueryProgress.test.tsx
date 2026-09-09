@@ -91,6 +91,76 @@ describe('useQueryProgress', () => {
     expect(result.current).toBeUndefined();
   });
 
+  describe('several requests sharing one chunk', () => {
+    // A time window serves its results over multiple offset pages, each its
+    // own ClickHouse query reporting its own counters against the same chunk.
+
+    it('accumulates rows instead of replacing them', () => {
+      const { result, rerender } = renderProgress(true);
+
+      act(() => {
+        writeChunkProgress(queryClient, QUERY_KEY, {
+          chunkId: 'window-0',
+          rangeMs: ONE_HOUR_MS,
+          progress: progressEvent(500, 1000),
+        });
+        completeChunkProgress(queryClient, QUERY_KEY, {
+          chunkId: 'window-0',
+          rangeMs: ONE_HOUR_MS,
+          isChunkExhausted: false,
+        });
+        jest.advanceTimersByTime(1);
+      });
+      expect(result.current?.readRows).toBe(500);
+
+      // The next offset page against the same window.
+      act(() => {
+        writeChunkProgress(queryClient, QUERY_KEY, {
+          chunkId: 'window-0',
+          rangeMs: ONE_HOUR_MS,
+          progress: progressEvent(300, 1000),
+        });
+        jest.advanceTimersByTime(1);
+      });
+      rerender({ active: true });
+
+      expect(result.current?.readRows).toBe(800);
+    });
+
+    it("withholds the chunk's full range until it is exhausted", () => {
+      const { result, rerender } = renderProgress(true);
+
+      // Half-scanned, and the page returned rows, so more offsets follow.
+      act(() => {
+        writeChunkProgress(queryClient, QUERY_KEY, {
+          chunkId: 'window-0',
+          rangeMs: 2 * ONE_HOUR_MS,
+          progress: progressEvent(500, 1000),
+        });
+        completeChunkProgress(queryClient, QUERY_KEY, {
+          chunkId: 'window-0',
+          rangeMs: 2 * ONE_HOUR_MS,
+          isChunkExhausted: false,
+        });
+        jest.advanceTimersByTime(1);
+      });
+
+      // Still only half of the 2h window across a 4h range, not all of it.
+      expect(result.current?.percent).toBeCloseTo(25, 5);
+
+      act(() => {
+        completeChunkProgress(queryClient, QUERY_KEY, {
+          chunkId: 'window-0',
+          rangeMs: 2 * ONE_HOUR_MS,
+        });
+        jest.advanceTimersByTime(1);
+      });
+      rerender({ active: true });
+
+      expect(result.current?.percent).toBeCloseTo(50, 5);
+    });
+  });
+
   describe('gaps between fetches', () => {
     it('keeps accumulated progress across a short gap between windows', () => {
       const { result, rerender } = renderProgress(true);

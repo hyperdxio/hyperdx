@@ -1470,6 +1470,71 @@ describe('useOffsetPaginatedQuery', () => {
       await waitFor(() => expect(result.current.isFetching).toBe(false));
     });
 
+    it('does not credit a whole window while it still has offset pages', async () => {
+      const config = createMockChartConfig({
+        dateRange: [
+          new Date('2024-01-01T00:00:00Z'),
+          new Date('2024-01-02T00:00:00Z'),
+        ] as [Date, Date],
+      });
+
+      // Window 0 (the last 15m) returns a row, so pagination asks for a
+      // further offset in that same window rather than moving on. The second
+      // request then stalls, leaving the window's credit observable.
+      let releaseSecondPage: (value: unknown) => void = () => {};
+      mockReader.read
+        .mockResolvedValueOnce({
+          done: false,
+          value: [
+            { json: () => ({ meta: [{ name: 'Body', type: 'String' }] }) },
+            {
+              json: () => ({
+                progress: {
+                  read_rows: '400',
+                  read_bytes: '4000',
+                  total_rows_to_read: '1600',
+                  elapsed_ns: '1',
+                },
+              }),
+            },
+            { json: () => ({ row: { Body: 'hello' } }) },
+          ],
+        })
+        .mockResolvedValueOnce({ done: true })
+        .mockImplementationOnce(
+          () =>
+            new Promise(resolve => {
+              releaseSecondPage = resolve;
+            }),
+        );
+
+      const { result } = renderHook(
+        () => useOffsetPaginatedQuery(config, { reportProgress: true }),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      await act(async () => {
+        result.current.fetchNextPage();
+      });
+      await waitFor(() => expect(result.current.isFetching).toBe(true));
+
+      // A quarter of the 15m window over 24h — not the whole window, which
+      // would be (15 / (24 * 60)) * 100.
+      expect(result.current.progress?.percent).toBeCloseTo(
+        ((15 * 0.25) / (24 * 60)) * 100,
+        5,
+      );
+      // The finished request's rows are banked, not dropped.
+      expect(result.current.progress?.readRows).toBe(400);
+
+      await act(async () => {
+        releaseSecondPage({ done: true });
+      });
+      await waitFor(() => expect(result.current.isFetching).toBe(false));
+    });
+
     it('surfaces a mid-stream exception event as a query error', async () => {
       const config = createMockChartConfig();
 
