@@ -267,9 +267,7 @@ const defaultChartConfig: SavedChartConfig = {
  * needs a particular source has to set it back in its own beforeEach.
  */
 const mockUseSourceData = (data: unknown) => {
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-  const mocked = { data } as ReturnType<typeof useSource>;
-  jest.mocked(useSource).mockReturnValue(mocked);
+  mockUseSource.mockReturnValue({ data });
 };
 
 const renderComponent = (
