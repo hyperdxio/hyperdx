@@ -4,6 +4,7 @@ import SqlString from 'sqlstring';
 import {
   type Field,
   parseKeyPath,
+  renderJsonStringSubcolumn,
 } from '@hyperdx/common-utils/dist/core/metadata';
 import type { FilterState } from '@hyperdx/common-utils/dist/filters';
 
@@ -71,7 +72,9 @@ export function cleanClickHouseExpression(key: string): string {
 
   // Convert backtick dot notation to clean dot notation
   // e.g., `host`.`arch` -> host.arch
-  cleanKey = cleanKey.replace(/`([^`]+)`/g, '$1');
+  cleanKey = cleanKey.replace(/`((?:``|[^`])*)`/g, (_, identifier: string) =>
+    identifier.replace(/``/g, '`'),
+  );
 
   return cleanKey;
 }
@@ -301,11 +304,17 @@ function quoteIdentifierIfNeeded(id: string): string {
 export function toQuotedClickHouseKeyExpression(
   key: string,
   knownColumns: Set<string>,
+  jsonColumns?: ReadonlySet<string>,
 ): string {
   // A whole-key match against a real column wins: quote the entire name as one
   // identifier (handles flat columns whose name contains dots/hyphens/etc.).
   if (knownColumns.has(key)) {
     return quoteIdentifierIfNeeded(key);
+  }
+
+  const parsed = parseMapFieldName(key);
+  if (parsed && jsonColumns?.has(parsed.baseName)) {
+    return renderJsonStringSubcolumn(parsed.baseName, parsed.propertyPath);
   }
 
   // Normalize dot-form (ResourceAttributes.host.name) to map access form (ResourceAttributes['host.name'])

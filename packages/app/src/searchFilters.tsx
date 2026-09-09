@@ -26,10 +26,12 @@ export const IS_ROOT_SPAN_COLUMN_NAME = 'isRootSpan';
 export const escapeFilterStateKeys = (
   filters: FilterState,
   knownColumns: Set<string>,
+  jsonColumns?: ReadonlySet<string>,
 ): FilterState => {
   const escaped: FilterState = {};
   for (const [key, value] of Object.entries(filters)) {
-    escaped[toQuotedClickHouseKeyExpression(key, knownColumns)] = value;
+    escaped[toQuotedClickHouseKeyExpression(key, knownColumns, jsonColumns)] =
+      value;
   }
   return escaped;
 };
@@ -96,6 +98,7 @@ export const useSearchPageFilterState = ({
   onFilterChange,
   dateTimeColumns,
   knownColumns,
+  jsonColumns,
 }: {
   searchQuery?: Filter[];
   onFilterChange: (filters: Filter[]) => void;
@@ -106,11 +109,16 @@ export const useSearchPageFilterState = ({
    * (eg. service-name --> `service-name`).
    **/
   knownColumns: Set<string>;
+  jsonColumns?: ReadonlySet<string>;
 }) => {
   // Access knownColumns through a ref so the returned mutators (which depend on
   // updateFilterQuery) keep stable identities across knownColumns reference
   // changes. The known columns are only used by the mutators, which are called
   // on user input, not render, so avoid re-render by using a stable ref.
+  const jsonColumnsRef = useRef(jsonColumns);
+  useEffect(() => {
+    jsonColumnsRef.current = jsonColumns;
+  }, [jsonColumns]);
   const knownColumnsRef = useRef<Set<string>>(knownColumns);
   useEffect(() => {
     knownColumnsRef.current = knownColumns;
@@ -146,6 +154,7 @@ export const useSearchPageFilterState = ({
       const escapedFilters = escapeFilterStateKeys(
         newFilters,
         knownColumnsRef.current,
+        jsonColumnsRef.current,
       );
       onFilterChange(filtersToQuery(escapedFilters, { dateTimeColumns }));
     },
@@ -158,6 +167,7 @@ export const useSearchPageFilterState = ({
       value: string | boolean,
       action?: 'only' | 'exclude' | 'include',
     ) => {
+      property = cleanClickHouseExpression(property);
       setFilters(prevFilters => {
         const newFilters = produce(prevFilters, draft => {
           if (!draft[property]) {
@@ -212,7 +222,7 @@ export const useSearchPageFilterState = ({
       setFilters(prevFilters => {
         const newFilters = produce(prevFilters, draft => {
           for (const { property, value } of entries) {
-            draft[property] = {
+            draft[cleanClickHouseExpression(property)] = {
               included: new Set([value]),
               excluded: new Set(),
             };
@@ -227,6 +237,7 @@ export const useSearchPageFilterState = ({
 
   const setFilterRange = useCallback(
     (property: string, range: { min: number; max: number }) => {
+      property = cleanClickHouseExpression(property);
       setFilters(prevFilters => {
         const newFilters = produce(prevFilters, draft => {
           if (!draft[property]) {
@@ -243,6 +254,7 @@ export const useSearchPageFilterState = ({
 
   const clearFilter = useCallback(
     (property: string) => {
+      property = cleanClickHouseExpression(property);
       setFilters(prevFilters => {
         const newFilters = produce(prevFilters, draft => {
           delete draft[property];
@@ -264,6 +276,7 @@ export const useSearchPageFilterState = ({
       newValue: string | boolean,
       action: 'include' | 'exclude',
     ) => {
+      property = cleanClickHouseExpression(property);
       setFilters(prevFilters => {
         const newFilters = produce(prevFilters, draft => {
           if (!draft[property]) {
