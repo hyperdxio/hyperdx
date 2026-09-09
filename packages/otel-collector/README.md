@@ -68,6 +68,7 @@ custom OTel configurations without rebuilding the collector.
 | `k8scluster`    | contrib | user configs                                            |
 | `kubeletstats`  | contrib | user configs                                            |
 | `prometheus`    | contrib | OpAMP controller, smoke tests                           |
+| `statsd`        | contrib | user configs                                            |
 
 ### Processors
 
@@ -321,6 +322,57 @@ run (`otelcontribcol --config ...`, not just `validate`): it reaches
 `"Everything is ready. Begin running and processing data."` and starts the
 `span_metrics` connector, confirming `validate`'s static schema/graph
 checks aren't hiding a startup-only failure here.
+
+## Ingesting StatsD/DogStatsD metrics
+
+`statsdreceiver` is compiled in so StatsD and DogStatsD-formatted metrics
+(e.g. from a Datadog Agent's local DogStatsD listener, or anything else
+speaking the StatsD wire protocol) can be ingested directly, without a
+separate StatsD-to-OTLP bridge. It understands DogStatsD's tag extension
+natively (`<metric>:<value>|<type>|#tag1:value1,tag2:value2`), so
+Datadog-originated StatsD traffic doesn't need any translation.
+
+**This component does not support horizontally-scaled deployments.**
+That's not a HyperDX-specific limitation — it's stated directly in the
+upstream component's own docs: aggregation state lives independently in
+each collector instance's memory, with no cross-replica coordination, so
+the same metric arriving at two different replicas (e.g. behind a
+load-balanced Service) would be aggregated separately by each one instead
+of together, silently splitting/undercounting it. HyperDX's own
+OpAMP-managed `otel-collector` Deployment runs multiple replicas for OTLP
+ingest availability — **do not** wire `statsd` into that Deployment's
+pipelines. Run it on a dedicated, single-replica collector instance
+instead (standalone mode, as below).
+
+```yaml
+receivers:
+  statsd:
+    endpoint: 0.0.0.0:8125
+    # DogStatsD supports bare tags with no value (`#mytag`, not just
+    # `#mytag:myvalue`) - without this, those get dropped.
+    enable_simple_tags: true
+    # Optional: route timer/histogram-type StatsD metrics to an
+    # exponential histogram (HyperDX's ClickHouse schema already has a
+    # dedicated otel_metrics_exponential_histogram table for these,
+    # verified elsewhere in this README) instead of the default
+    # explicit-bucket histogram.
+    timer_histogram_mapping:
+      - statsd_type: "timing"
+        observer_type: "histogram"
+        histogram:
+          max_size: 160
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp/hyperdx, statsd]
+```
+
+Verified against the real compiled binary via `otelcontribcol validate
+--config` and an actual startup run (`otelcontribcol --config ...`,
+reaching `"Everything is ready. Begin running and processing data."`),
+in both cases using the same multi-`--config` merge the container
+actually uses (base `config.yaml` + `standalone-config.yaml` + this
+fragment).
 
 ## Overriding base components via `CUSTOM_OTELCOL_CONFIG_FILE`
 
