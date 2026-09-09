@@ -4,6 +4,10 @@ import {
   TableConnectionChoice,
 } from '@hyperdx/common-utils/dist/core/metadata';
 import {
+  configConsumesBroadcastFilters,
+  getBlockingRequiredFilters,
+} from '@hyperdx/common-utils/dist/dashboardFilterValues';
+import {
   isBuilderChartConfig,
   isPromqlChartConfig,
   isRawSqlChartConfig,
@@ -15,6 +19,7 @@ import {
   ChartConfigWithDateRange,
   ChartConfigWithOptTimestamp,
   ChartVariable,
+  DashboardFilter,
   DisplayType,
   Filter,
   SavedChartConfig,
@@ -121,6 +126,15 @@ export function displayTypeToActiveTab(displayType: DisplayType): string {
   }
 }
 
+/**
+ * Whether a tab queries data. Markdown is static content, so it gets no Run
+ * button, time range or dashboard filters, and no required filter can block
+ * its preview — the tab-level counterpart of `displayTypeRequiresSource`.
+ */
+export function tabQueriesData(activeTab: string): boolean {
+  return activeTab !== displayTypeToActiveTab(DisplayType.Markdown);
+}
+
 export const TABS_WITH_GENERATED_SQL = new Set([
   'table',
   'time',
@@ -150,24 +164,90 @@ export function computeDbTimeChartConfig(
 }
 
 /**
- * Returns the dashboard variables a chart preview should use.
- * - Alerts always run with empty variable selections, so they resolve to each referenced variable with an empty `values` array.
- * - Otherwise, variables are filtered to only those referenced by the chart config.
+ * Returns the dashboard variables a chart preview should use, narrowed to the
+ * ones the chart config references. When applySelections is false, return empty
+ * selections for each variable.
  */
 export function resolvePreviewVariables({
   config,
   variables,
-  hasAlert,
+  applySelections,
 }: {
   config: ChartConfigWithDateRange;
   variables: ChartVariable[] | undefined;
-  hasAlert: boolean;
+  applySelections: boolean;
 }): ChartVariable[] | undefined {
   if (!variables) return undefined;
   const referenced = filterReferencedVariables(config, variables);
-  return hasAlert
-    ? referenced.map(variable => ({ ...variable, values: [] }))
-    : referenced;
+  return applySelections
+    ? referenced
+    : referenced.map(variable => ({ ...variable, values: [] }));
+}
+
+/** What the dashboard's filter state contributes to a tile preview. */
+export type TilePreviewFilters = {
+  /** Broadcast filter conditions to query the preview with. */
+  filters: Filter[] | undefined;
+  /** The referenced variables, with or without their selections. */
+  variables: ChartVariable[] | undefined;
+  /** Names of the required filters that have nothing selected. */
+  missingRequiredFilterNames: string[];
+};
+
+/**
+ * Applies the parent dashboard's filter selections to a tile preview.
+ *
+ * With `applySelections` off, the preview runs as an alert would: no broadcast
+ * filters, empty variable selections, and no required-filter block.
+ */
+export function resolveTilePreviewFilters({
+  config,
+  sourceId,
+  filters,
+  variables,
+  unsatisfiedRequiredFilters,
+  applySelections,
+}: {
+  config: ChartConfigWithDateRange;
+  sourceId: string | undefined;
+  filters: Filter[] | undefined;
+  variables: ChartVariable[] | undefined;
+  unsatisfiedRequiredFilters: DashboardFilter[] | undefined;
+  applySelections: boolean;
+}): TilePreviewFilters {
+  const previewVariables = resolvePreviewVariables({
+    config,
+    variables,
+    applySelections,
+  });
+
+  if (!applySelections) {
+    return {
+      filters: undefined,
+      variables: previewVariables,
+      missingRequiredFilterNames: [],
+    };
+  }
+
+  const consumesBroadcastFilters = configConsumesBroadcastFilters(
+    config,
+    sourceId,
+  );
+
+  return {
+    filters: consumesBroadcastFilters ? filters : undefined,
+    variables: previewVariables,
+    missingRequiredFilterNames: getBlockingRequiredFilters(
+      unsatisfiedRequiredFilters ?? [],
+      {
+        sourceId,
+        referencedVariableNames: previewVariables?.map(
+          variable => variable.name,
+        ),
+        consumesBroadcastFilters,
+      },
+    ).map(filter => filter.name),
+  };
 }
 
 /** A PromQL tile's substituted expression, or why there isn't one. */
