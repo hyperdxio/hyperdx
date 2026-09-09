@@ -182,7 +182,7 @@ const identifierPattern = (identifier: string): string => {
 
 const JSON_STRING_TYPE_SUFFIX = '.:String';
 
-const renderJsonStringSubcolumn = (
+export const renderJsonStringSubcolumn = (
   column: string,
   jsonPath: string,
   options: { preserveStringTypeSuffix?: boolean } = {},
@@ -200,7 +200,7 @@ const renderJsonStringSubcolumn = (
     .map(quoteJsonPathSegment)
     .join('.');
 
-  return `${columnIdentifier}.${path}${JSON_STRING_TYPE_SUFFIX}`;
+  return `toString(${columnIdentifier}.${path})`;
 };
 
 export class MetadataCache {

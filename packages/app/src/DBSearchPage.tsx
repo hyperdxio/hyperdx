@@ -146,6 +146,7 @@ import {
 } from './components/TimePicker/utils';
 import {
   useColumns,
+  useJsonColumnNames,
   useResolvedDateTimeColumns,
   useTableMetadata,
 } from './hooks/useMetadata';
@@ -1317,6 +1318,11 @@ export function DBSearchPage() {
         : new Set<string>(),
     [inputSourceColumns],
   );
+  const jsonColumnNames = useJsonColumnNames(inputSourceColumns);
+  const jsonColumns = useMemo(
+    () => new Set(jsonColumnNames),
+    [jsonColumnNames],
+  );
 
   const watchedSource = useWatch({
     control,
@@ -1352,6 +1358,7 @@ export function DBSearchPage() {
     onFilterChange: handleSetFilters,
     dateTimeColumns,
     knownColumns,
+    jsonColumns,
   });
 
   useEffect(() => {
