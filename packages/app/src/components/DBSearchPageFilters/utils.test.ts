@@ -1,3 +1,4 @@
+import { renderJsonStringSubcolumn } from '@hyperdx/common-utils/dist/core/metadata';
 import type { FilterState } from '@hyperdx/common-utils/dist/filters';
 
 import {
@@ -9,6 +10,21 @@ import {
 } from './utils';
 
 describe('cleanClickHouseExpression', () => {
+  it.each(['nested.key', 'hyphen-key', 'back`tick', 'back\\slash', 'close)'])(
+    'round-trips the shared JSON renderer for %j',
+    path => {
+      const rendered = renderJsonStringSubcolumn('Attributes', path);
+      const clean = cleanClickHouseExpression(rendered);
+      expect(clean).toBe(`Attributes.${path}`);
+      expect(
+        toQuotedClickHouseKeyExpression(
+          clean,
+          new Set(['Attributes']),
+          new Set(['Attributes']),
+        ),
+      ).toBe(rendered);
+    },
+  );
   it('strips backticks from a bare quoted identifier', () => {
     expect(cleanClickHouseExpression('`service-name`')).toBe('service-name');
   });
@@ -17,6 +33,12 @@ describe('cleanClickHouseExpression', () => {
     expect(
       cleanClickHouseExpression('toString(ResourceAttributes.`hdx`.`sdk`)'),
     ).toBe('ResourceAttributes.hdx.sdk');
+  });
+
+  it('unescapes doubled backticks in quoted JSON path segments', () => {
+    expect(
+      cleanClickHouseExpression('toString(ResourceAttributes.`k8s`.`na``me`)'),
+    ).toBe('ResourceAttributes.k8s.na`me');
   });
 
   it('leaves a plain identifier unchanged', () => {
@@ -319,5 +341,25 @@ describe('toQuotedClickHouseKeyExpression', () => {
         toQuotedClickHouseKeyExpression("LogAttributes['host.name']", cols),
       ).toBe("LogAttributes['host.name']");
     });
+  });
+
+  it.each([
+    ['ResourceAttributes.region', 'toString(ResourceAttributes.`region`)'],
+    [
+      'ResourceAttributes.k8s.namespace.name',
+      'toString(ResourceAttributes.`k8s`.`namespace`.`name`)',
+    ],
+    [
+      'ResourceAttributes.k8s.na`me',
+      'toString(ResourceAttributes.`k8s`.`na``me`)',
+    ],
+  ])('renders JSON key %s as a string expression', (key, expected) => {
+    expect(
+      toQuotedClickHouseKeyExpression(
+        key,
+        new Set(['ResourceAttributes']),
+        new Set(['ResourceAttributes']),
+      ),
+    ).toBe(expected);
   });
 });
