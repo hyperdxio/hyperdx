@@ -1,7 +1,15 @@
 import { Control, UseFormHandleSubmit } from 'react-hook-form';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
 import { SavedChartConfig } from '@hyperdx/common-utils/dist/types';
-import { ActionIcon, Button, Flex, Menu } from '@mantine/core';
+import {
+  ActionIcon,
+  Box,
+  Button,
+  Flex,
+  Menu,
+  Switch,
+  Tooltip,
+} from '@mantine/core';
 import {
   IconDotsVertical,
   IconLayoutGrid,
@@ -13,6 +21,41 @@ import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEdito
 import { TimePicker } from '@/components/TimePicker';
 import { IS_LOCAL_MODE } from '@/config';
 import { GranularityPickerControlled } from '@/GranularityPicker';
+
+import { tabQueriesData } from './utils';
+
+export type DashboardFiltersToggleProps = {
+  checked: boolean;
+  disabledReason?: string;
+  onChange: (checked: boolean) => void;
+};
+
+function DashboardFiltersToggle({
+  checked,
+  disabledReason,
+  onChange,
+}: DashboardFiltersToggleProps) {
+  const isDisabled = disabledReason != null;
+  const tooltip = isDisabled
+    ? disabledReason
+    : 'Apply dashboard-level filter and variable selections to the chart preview';
+
+  return (
+    <Tooltip label={tooltip} position="top" multiline maw={320}>
+      <Box data-testid="apply-dashboard-filters">
+        <Switch
+          label="Apply filters"
+          size="sm"
+          labelPosition="left"
+          checked={checked}
+          disabled={isDisabled}
+          onChange={event => onChange(event.currentTarget.checked)}
+          style={isDisabled ? { pointerEvents: 'none' } : undefined}
+        />
+      </Box>
+    </Tooltip>
+  );
+}
 
 type ChartActionBarProps = {
   control: Control<ChartEditorFormState>;
@@ -31,6 +74,7 @@ type ChartActionBarProps = {
   displayedTimeInputValue?: string;
   setDisplayedTimeInputValue?: (value: string) => void;
   onTimeRangeSearch?: (value: string) => void;
+  filtersToggle?: DashboardFiltersToggleProps;
   setSaveToDashboardModalOpen: (open: boolean) => void;
 };
 
@@ -51,6 +95,7 @@ export function ChartActionBar({
   displayedTimeInputValue,
   setDisplayedTimeInputValue,
   onTimeRangeSearch,
+  filtersToggle,
   setSaveToDashboardModalOpen,
 }: ChartActionBarProps) {
   return (
@@ -78,6 +123,9 @@ export function ChartActionBar({
         )}
       </Flex>
       <Flex gap="sm" mb="sm" align="center" justify="end">
+        {filtersToggle != null && tabQueriesData(activeTab) && (
+          <DashboardFiltersToggle {...filtersToggle} />
+        )}
         {(activeTab === 'table' ||
           activeTab === 'pie' ||
           activeTab === 'bar') &&
@@ -97,7 +145,7 @@ export function ChartActionBar({
               />
             </div>
           )}
-        {activeTab !== 'markdown' &&
+        {tabQueriesData(activeTab) &&
           setDisplayedTimeInputValue != null &&
           displayedTimeInputValue != null &&
           onTimeRangeSearch != null && (
@@ -115,7 +163,7 @@ export function ChartActionBar({
         {activeTab === 'time' && (
           <GranularityPickerControlled control={control} name="granularity" />
         )}
-        {activeTab !== 'markdown' && (
+        {tabQueriesData(activeTab) && (
           <Button
             data-testid="chart-run-query-button"
             variant="primary"

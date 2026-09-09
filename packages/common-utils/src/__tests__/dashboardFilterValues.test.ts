@@ -1,4 +1,5 @@
 import {
+  configConsumesBroadcastFilters,
   filterSelectionKey,
   getBlockingRequiredFilters,
   getUnsatisfiedRequiredFilters,
@@ -8,6 +9,7 @@ import {
 } from '@/dashboardFilterValues';
 import { FilterState, filtersToQuery } from '@/filters';
 import type {
+  ChartConfigWithOptDateRange,
   DashboardFilter,
   DashboardFilterValue,
   PromqlLabelDashboardFilter,
@@ -736,6 +738,65 @@ describe('dashboardFilterValues', () => {
 
     it('returns nothing for an empty list', () => {
       expect(names([], { sourceId: 'logs' })).toEqual([]);
+    });
+  });
+
+  describe('configConsumesBroadcastFilters', () => {
+    const builderTile: ChartConfigWithOptDateRange = {
+      select: 'count()',
+      from: { databaseName: 'default', tableName: 'logs' },
+      where: '',
+      timestampValueExpression: 'Timestamp',
+      connection: 'local',
+    };
+
+    const rawSqlTile = (sqlTemplate: string): ChartConfigWithOptDateRange => ({
+      configType: 'sql',
+      sqlTemplate,
+      connection: 'local',
+    });
+
+    const promqlTile: ChartConfigWithOptDateRange = {
+      configType: 'promql',
+      promqlExpression: 'up',
+      connection: 'local',
+    };
+
+    it('applies to a builder tile', () => {
+      expect(configConsumesBroadcastFilters(builderTile, 'logs')).toBe(true);
+    });
+
+    it('never applies to a PromQL tile', () => {
+      expect(configConsumesBroadcastFilters(promqlTile, 'metrics')).toBe(false);
+    });
+
+    it('applies to a raw-SQL tile with a source and the filters macro', () => {
+      const tile = rawSqlTile('SELECT count() FROM logs WHERE $__filters');
+
+      expect(configConsumesBroadcastFilters(tile, 'logs')).toBe(true);
+      expect(configConsumesBroadcastFilters(tile, undefined)).toBe(false);
+    });
+
+    it('does not apply to a raw-SQL tile whose template drops the filters', () => {
+      expect(
+        configConsumesBroadcastFilters(
+          rawSqlTile('SELECT count() FROM logs'),
+          'logs',
+        ),
+      ).toBe(false);
+    });
+
+    // A variable macro applies the selection the tile names, which is enough to
+    // count as consuming the dashboard's filters.
+    it('applies to a raw-SQL tile that only uses a variable macro', () => {
+      expect(
+        configConsumesBroadcastFilters(
+          rawSqlTile(
+            'SELECT count() FROM logs WHERE $__filter(ServiceName, $svc)',
+          ),
+          'logs',
+        ),
+      ).toBe(true);
     });
   });
 });
