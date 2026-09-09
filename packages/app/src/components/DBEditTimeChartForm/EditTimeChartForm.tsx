@@ -496,7 +496,10 @@ export default function EditTimeChartForm({
 
   const validateAndNormalize = useCallback(
     (form: ChartEditorFormState) => {
-      const errors = validateChartForm(form, tableSource, setError);
+      const errors = validateChartForm(form, tableSource, setError, {
+        // An inline alert has no tile to inherit a name from.
+        requireAlertDisplayName: alertsEnabled && dashboardId == null,
+      });
       if (errors.length > 0) return { errors, config: null };
 
       const savedConfig = convertFormStateToSavedChartConfig(form, tableSource);
@@ -534,6 +537,8 @@ export default function EditTimeChartForm({
     [
       tableSource,
       setError,
+      alertsEnabled,
+      dashboardId,
       chartConfigAlert,
       dirtyFields.alert?.scheduleOffsetMinutes,
       dirtyFields.alert?.scheduleStartAt,

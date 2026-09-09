@@ -344,9 +344,10 @@ export type InlineAlert = z.infer<typeof ChartAlertBaseSchema> & {
  * fields live on the alert document, and everything else is persisted as its
  * `chartConfig`.
  *
- * `displayName` is left as the user set it, including unset — the server
- * derives an inline alert's name from its chart when none is given, so
- * forcing one here would freeze a copy that stops tracking the chart's name.
+ * `displayName` and `tags` pass through as the form holds them. The editor
+ * requires a name for an inline alert, since there is no tile or saved search
+ * to inherit one from; the server still derives one from the chart config for
+ * API and MCP callers that omit it.
  *
  * Returns undefined when the config carries no alert — the caller has nothing
  * to save, and the chart editor lets an alert be removed before saving.

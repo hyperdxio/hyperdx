@@ -1288,6 +1288,36 @@ describe('DBEditTimeChartForm - Inline alerts', () => {
     expect(screen.queryByTestId('alert-button')).not.toBeInTheDocument();
   });
 
+  it('requires a name, since there is no tile to inherit one from', async () => {
+    const onSaveAlert = jest.fn();
+    renderInlineAlertForm({
+      chartConfig: {
+        ...validNumberConfig,
+        alert: {
+          ...DEFAULT_TILE_ALERT,
+          channels: [{ type: 'webhook', webhookId: 'hook-1' }],
+        },
+      },
+      onSaveAlert,
+    });
+
+    await userEvent.click(screen.getByTestId('chart-save-alert-button'));
+
+    expect(await screen.findByText('Alert name is required')).toBeVisible();
+    expect(onSaveAlert).not.toHaveBeenCalled();
+  });
+
+  // Nothing to inherit, so an unset list is no tags rather than the tile's.
+  it('reports zero tags rather than inherited ones', async () => {
+    renderInlineAlertForm({
+      chartConfig: { ...validNumberConfig, alert: DEFAULT_TILE_ALERT },
+    });
+
+    const button = screen.getByTestId('alert-tags-button');
+    expect(button).toHaveTextContent('0');
+    expect(button).not.toHaveTextContent('Inherited');
+  });
+
   // A tile alert is named by the tile it hangs off; an inline alert has
   // nothing else to name it, and the name doubles as the notification title.
   // An inline alert has no tile or saved search to inherit a name from, so
