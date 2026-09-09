@@ -569,6 +569,55 @@ export enum WebhookService {
 }
 
 /**
+ * Every variable a Generic/incident.io webhook body template can reference.
+ * The one published list: `buildWebhookTemplateVariables` (packages/api) is
+ * typed against it so a variable cannot be built without appearing here, and
+ * the webhook form renders it as the in-product list. Documented in
+ * docs/alert-webhook-template-variables.md.
+ *
+ * The first seven are also the default body template the form applies.
+ */
+export const DEFAULT_WEBHOOK_TEMPLATE_VARIABLES = [
+  'title',
+  'body',
+  'link',
+  'state',
+  'startTime',
+  'endTime',
+  'eventId',
+] as const;
+
+export const WEBHOOK_TEMPLATE_VARIABLES = [
+  ...DEFAULT_WEBHOOK_TEMPLATE_VARIABLES,
+  'startTimeISO',
+  'endTimeISO',
+  'alertId',
+  'status',
+  'alertType',
+  'comparator',
+  'threshold',
+  'thresholdMax',
+  'value',
+  'groupKey',
+  'sourceQuery',
+  'teamId',
+  'note',
+] as const;
+
+export type WebhookTemplateVariable =
+  (typeof WEBHOOK_TEMPLATE_VARIABLES)[number];
+
+/**
+ * The body a Generic or incident.io webhook gets when it is saved without one.
+ * Published here so the form's default, the form's editor placeholder and the
+ * API's fallback are one string — the payload shape used to be respelled at
+ * each of those, and a change to it had to be repeated in all of them.
+ */
+export const DEFAULT_GENERIC_WEBHOOK_BODY = `{"text": "${DEFAULT_WEBHOOK_TEMPLATE_VARIABLES.map(
+  name => `{{${name}}}`,
+).join(' | ')}"}`;
+
+/**
  * Base webhook schema (matches backend IWebhook but with JSON-serialized types).
  * When making changes here, consider if they need to be made to the external
  * API schema as well (packages/api/src/utils/zod.ts).

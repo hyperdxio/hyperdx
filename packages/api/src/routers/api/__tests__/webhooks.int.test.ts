@@ -1235,6 +1235,39 @@ describe('webhooks router', () => {
       slackSpy.mockRestore();
     });
 
+    // The point of a test send is that a body written against the documented
+    // variables renders here exactly as it will on a real firing, so every
+    // enriched field has to be populated.
+    it('populates the enriched template variables on a test send', async () => {
+      const { agent } = await getLoggedInAgent(server);
+
+      await agent
+        .post('/webhooks/test')
+        .send({
+          service: WebhookService.Generic,
+          url: 'https://example.com/webhook',
+          body: '{"text": "test"}',
+        })
+        .expect(200);
+
+      expect(genericSpy).toHaveBeenCalledTimes(1);
+      // Pinned to the literals in the route, not expect.any: a regression that
+      // blanked sourceQuery back to '' is exactly what this guards.
+      expect(genericSpy.mock.calls[0][1]).toMatchObject({
+        alertId: 'test-alert-id',
+        status: 'firing',
+        alertType: 'search',
+        comparator: 'between',
+        threshold: 5,
+        thresholdMax: 10,
+        value: 7,
+        groupKey: 'test-group',
+        sourceQuery: 'SeverityText: "error"',
+        note: 'Test webhook — no runbook',
+        teamId: expect.any(String),
+      });
+    });
+
     it('resolves masked URL and headers when webhookId is provided', async () => {
       const { agent, team } = await getLoggedInAgent(server);
 
