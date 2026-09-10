@@ -486,7 +486,6 @@ describe('useQueriedDashboardFilterValues', () => {
   });
 
   it('should not query filters whose source is disabled', async () => {
-    // Arrange
     jest.spyOn(sourceModule, 'useSources').mockReturnValue({
       data: [
         ...mockSources,
@@ -503,7 +502,6 @@ describe('useQueriedDashboardFilterValues', () => {
       isLoading: false,
     } as unknown as ReturnType<typeof sourceModule.useSources>);
 
-    // Act
     const { result } = renderHook(
       () =>
         useQueriedDashboardFilterValues({
@@ -522,7 +520,6 @@ describe('useQueriedDashboardFilterValues', () => {
       { wrapper },
     );
 
-    // Assert
     await waitFor(() => expect(result.current.isFetching).toBe(false));
 
     // Only the enabled source's filter is queried.
