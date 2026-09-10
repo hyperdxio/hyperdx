@@ -74,11 +74,13 @@ export function recordOnboardingTaskCompletion(
   userId: string | ObjectId | undefined | null,
   taskId: OnboardingTaskId,
 ) {
-  // Skip when there's no user, or when the id isn't a real ObjectId. In local
-  // app mode the auth middleware injects a synthetic `_local_user_` id, which
-  // would make updateOne reject with a CastError and log a warning on every
+  // Skip when there's no user, or when the id isn't a canonical 24-hex-char
+  // ObjectId. In local app mode the auth middleware injects a synthetic
+  // `_local_user_` id; note mongoose.isValidObjectId() returns true for ANY
+  // 12-char string (including `_local_user_`), so a strict hex test is required
+  // to actually skip the write and avoid a pointless User.updateOne on every
   // dashboard save, alert save, and MCP tool call.
-  if (userId == null || !mongoose.isValidObjectId(userId)) {
+  if (userId == null || !/^[0-9a-fA-F]{24}$/.test(String(userId))) {
     return;
   }
   void User.updateOne(

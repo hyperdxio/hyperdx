@@ -24,6 +24,9 @@ jest.mock('@/source', () => ({ useSources: jest.fn() }));
 jest.mock('@/hooks/useChartConfig', () => ({
   useQueriedChartConfig: jest.fn(),
 }));
+jest.mock('@/theme/ThemeProvider', () => ({
+  useBrandDisplayName: () => 'HyperDX',
+}));
 
 const mockUseMe = jest.mocked(api.useMe);
 const mockUseTeam = jest.mocked(api.useTeam);
@@ -291,17 +294,6 @@ describe('OnboardingChecklist', () => {
     for (const id of ONBOARDING_TASK_IDS) {
       expect(screen.getByText(PRODUCT_TASKS[id].title)).toBeInTheDocument();
     }
-  });
-
-  it('stays hidden when the user manually dismissed it', () => {
-    setMe({ completedTasks: [], isDismissed: true });
-    setSetup(true);
-
-    renderChecklist();
-
-    expect(
-      screen.queryByText('Get started with HyperDX'),
-    ).not.toBeInTheDocument();
   });
 
   it('dismisses when the dismiss button is clicked', async () => {

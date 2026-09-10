@@ -5,6 +5,7 @@ import { NOW } from '@/config';
 import { useConnections } from '@/connection';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useSources } from '@/source';
+import { useBrandDisplayName } from '@/theme/ThemeProvider';
 
 import {
   OnboardingStep,
@@ -32,6 +33,8 @@ interface OnboardingCompletion {
 export function useOnboardingCompletion(
   onAddDataClick?: () => void,
 ): OnboardingCompletion {
+  // Brand-aware: a ClickStack deployment must never render "HyperDX".
+  const brandName = useBrandDisplayName();
   const { data: me, isLoading: isMeLoading } = api.useMe();
   const { data: team, isLoading: isTeamLoading } = api.useTeam();
   const { data: connections, isLoading: isConnectionsLoading } =
@@ -168,7 +171,7 @@ export function useOnboardingCompletion(
 
   const steps = isSetupComplete ? productSteps : setupSteps;
   const phaseLabel = isSetupComplete
-    ? 'Get started with HyperDX'
+    ? `Get started with ${brandName}`
     : 'Set up ClickHouse';
   const completedCount = steps.filter(step => step.isComplete).length;
   const isPhaseComplete = completedCount === steps.length;
