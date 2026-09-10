@@ -846,6 +846,17 @@ describe('buildAlertMessageTemplateTitle', () => {
 
       expect(result).toBe('🚨 10 over 5');
     });
+
+    it('uses a malformed template verbatim instead of failing', () => {
+      const view = makeSearchView();
+
+      const result = buildAlertMessageTemplateTitle({
+        view: { ...view, alert: { ...view.alert, name: 'Errors {{spike' } },
+        state: AlertState.ALERT,
+      });
+
+      expect(result).toBe('🚨 Errors {{spike');
+    });
   });
 
   describe('stored displayName', () => {
