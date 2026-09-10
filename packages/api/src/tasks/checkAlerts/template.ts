@@ -1,6 +1,7 @@
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
+import { buildSearchChartConfig } from '@hyperdx/common-utils/dist/core/searchChartConfig';
 import { formatDate, objectHash } from '@hyperdx/common-utils/dist/core/utils';
 import {
   isPromqlSavedChartConfig,
@@ -797,24 +798,18 @@ ${targetTemplate}`;
     }
     // TODO: show group + total count for group-by alerts
     // fetch sample logs
-    const resolvedSelect =
-      savedSearch.select || source.defaultTableSelectExpression || '';
     const chartConfig: ChartConfigWithOptDateRange = {
-      connection: '', // no need for the connection id since clickhouse client is already initialized
-      displayType: DisplayType.Search,
-      dateRange: [startTime, endTime],
-      from: source.from,
-      select: resolvedSelect,
-      where: savedSearch.where,
-      whereLanguage: savedSearch.whereLanguage,
-      // The alert evaluation counts the filtered row set, so the sample
-      // query must apply the same pinned filters or it shows unrelated lines.
-      filters: savedSearch.filters?.map(f => ({ ...f })),
-      implicitColumnExpression: source.implicitColumnExpression,
-      useTextIndexForImplicitColumn: source.useTextIndexForImplicitColumn,
-      ...pickSampleWeightExpressionProps(source),
-      timestampValueExpression: source.timestampValueExpression,
-      orderBy: savedSearch.orderBy,
+      ...buildSearchChartConfig(source, {
+        connection: '', // no need for the connection id since clickhouse client is already initialized
+        dateRange: [startTime, endTime],
+        select: savedSearch.select,
+        where: savedSearch.where,
+        whereLanguage: savedSearch.whereLanguage,
+        filters: savedSearch.filters,
+        orderBy: savedSearch.orderBy,
+        dateRangeStartInclusive: true,
+        dateRangeEndInclusive: false,
+      }),
       limit: {
         limit: 5,
         offset: 0,

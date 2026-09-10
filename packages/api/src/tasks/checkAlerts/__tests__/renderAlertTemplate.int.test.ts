@@ -5,6 +5,7 @@ import {
   SourceKind,
   Tile,
 } from '@hyperdx/common-utils/dist/types';
+import type { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import mongoose from 'mongoose';
 
 import {
@@ -716,7 +717,7 @@ describe('enriched message fields', () => {
   it('applies the saved search pinned filters to the sample log query', async () => {
     const seenQueries: string[] = [];
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    const capturingClickhouseClient = {
+    const capturingClickhouseClient: Pick<ClickhouseClient, 'query'> = {
       query: jest.fn().mockImplementation((args: { query: string }) => {
         seenQueries.push(args.query);
         return Promise.resolve({
