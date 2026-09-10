@@ -159,7 +159,7 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
         ],
         // Well-formed but arbitrary: this dashboard doesn't exist, so the
         // version guard never gets to compare it against anything real.
-        version: new Date().toISOString(),
+        version: '1',
       });
 
       expect(result.isError).toBe(true);
@@ -1284,9 +1284,7 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
           }),
         ),
       );
-      expect(created.version).toMatch(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/);
-
-      await new Promise(resolve => setTimeout(resolve, 5));
+      expect(created.version).toMatch(/^\d+$/);
 
       const updated = JSON.parse(
         getFirstText(
@@ -1443,7 +1441,7 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
         await callTool(ctx.client!, 'clickstack_save_dashboard', {
           name: 'Create With Version',
           tiles: [tileFor(sourceId)],
-          version: '2026-09-04T01:02:03.456Z',
+          version: '1',
         }),
       );
 

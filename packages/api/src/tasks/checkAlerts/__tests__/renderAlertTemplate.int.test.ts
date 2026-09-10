@@ -162,6 +162,7 @@ const makeTileView = (
     tags: ['test'],
     createdAt: new Date(),
     updatedAt: new Date(),
+    version: 0,
   },
   attributes: {},
   granularity: '5 minute',

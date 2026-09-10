@@ -1728,7 +1728,10 @@ describe('dashboard router', () => {
 
       const updated = await agent
         .patch(`/dashboards/${created.body.id}`)
-        .send({ name: 'Renamed', expectedVersion: created.body.updatedAt })
+        .send({
+          name: 'Renamed',
+          expectedVersion: String(created.body.version),
+        })
         .expect(200);
 
       expect(updated.body.name).toBe('Renamed');
@@ -1749,7 +1752,7 @@ describe('dashboard router', () => {
         .patch(`/dashboards/${created.body.id}`)
         .send({
           name: 'Should Not Land',
-          expectedVersion: created.body.updatedAt,
+          expectedVersion: String(created.body.version),
         })
         .expect(409);
 
@@ -1793,7 +1796,10 @@ describe('dashboard router', () => {
 
       await agent
         .patch(`/dashboards/${created.body.id}`)
-        .send({ name: 'Renamed', expectedVersion: created.body.updatedAt })
+        .send({
+          name: 'Renamed',
+          expectedVersion: String(created.body.version),
+        })
         .expect(200);
 
       const inDb = await Dashboard.findById(created.body.id).lean();

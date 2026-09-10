@@ -36,34 +36,19 @@ describe('dashboard version (integration)', () => {
       team: team._id,
     }).save();
 
-  describe('the updatedAt invariant', () => {
-    // The entire optimistic-concurrency scheme depends on updatedAt being
-    // server-owned. The internal PATCH body already echoes a stale
-    // updatedAt back from the client, so if mongoose ever honoured it the
-    // token would freeze and every guard would pass. Pin it here.
-    it('ignores a client-supplied updatedAt and sets its own', async () => {
+  describe('the version invariant', () => {
+    // The entire optimistic-concurrency scheme depends on `version` being
+    // bumped by the schema middleware on every write path, and on a
+    // client-supplied `version` being ignored rather than honoured (or
+    // erroring — `$set` and `$inc` on the same path is a hard Mongo error).
+    // This is the single most important test in the change: if the
+    // middleware silently stopped firing, every other test that exercises
+    // it through an API route would still pass, since they only ever send
+    // a version that happens to already be current.
+
+    it('bumps version on a findOneAndUpdate', async () => {
       const dashboard = await create();
-      const stale = new Date('2000-01-01T00:00:00.000Z');
-
-      const updated = await Dashboard.findOneAndUpdate(
-        { _id: dashboard._id, team: team._id },
-        { name: 'Renamed', updatedAt: stale },
-        { new: true },
-      );
-
-      expect(updated!.updatedAt.getTime()).not.toBe(stale.getTime());
-      expect(updated!.updatedAt.getTime()).toBeGreaterThanOrEqual(
-        dashboard.updatedAt.getTime(),
-      );
-    });
-
-    it('bumps updatedAt on a $set update', async () => {
-      const dashboard = await create();
-      const before = versionToken(dashboard);
-
-      // Mongo stores millisecond precision, so a same-millisecond write
-      // would produce an identical token and make this test flaky.
-      await new Promise(resolve => setTimeout(resolve, 5));
+      expect(dashboard.version).toBe(0);
 
       const updated = await Dashboard.findOneAndUpdate(
         { _id: dashboard._id, team: team._id },
@@ -71,7 +56,80 @@ describe('dashboard version (integration)', () => {
         { new: true },
       );
 
-      expect(versionToken(updated!)).not.toBe(before);
+      expect(updated!.version).toBe(1);
+    });
+
+    it('bumps version on save() of an existing document', async () => {
+      const dashboard = await create();
+      expect(dashboard.version).toBe(0);
+
+      dashboard.name = 'Renamed';
+      const saved = await dashboard.save();
+
+      expect(saved.version).toBe(1);
+    });
+
+    it('does not double-count version on save() of a new document', async () => {
+      const dashboard = await create();
+      expect(dashboard.version).toBe(0);
+    });
+
+    it('bumps version on a provisioning-style upsert', async () => {
+      const dashboard = await create();
+
+      const result = await Dashboard.findOneAndUpdate(
+        { name: dashboard.name, team: team._id },
+        {
+          $set: { tiles: [makeTile()] },
+          $setOnInsert: { name: dashboard.name, team: team._id },
+        },
+        { upsert: true, new: true },
+      );
+
+      expect(result!.version).toBe(1);
+    });
+
+    it('bumps version on a fresh insert via a provisioning-style upsert', async () => {
+      const result = await Dashboard.findOneAndUpdate(
+        { name: 'Never Existed', team: team._id },
+        {
+          $set: { tiles: [makeTile()] },
+          $setOnInsert: { name: 'Never Existed', team: team._id },
+        },
+        { upsert: true, new: true },
+      );
+
+      // $inc on a missing field sets it, so a freshly-inserted document
+      // starts at 1 rather than the schema default of 0. That's a
+      // cosmetic difference from a plain `new Dashboard().save()` (which
+      // starts at 0) — the token is opaque, so nothing depends on the
+      // starting value itself, only on it changing on every subsequent
+      // write.
+      expect(result!.version).toBe(1);
+    });
+
+    it('ignores a client-supplied version on $set and does not error', async () => {
+      const dashboard = await create();
+
+      const updated = await Dashboard.findOneAndUpdate(
+        { _id: dashboard._id, team: team._id },
+        { $set: { name: 'Renamed', version: 999 } },
+        { new: true },
+      );
+
+      expect(updated!.version).toBe(1);
+    });
+
+    it('ignores a client-supplied top-level version and does not error', async () => {
+      const dashboard = await create();
+
+      const updated = await Dashboard.findOneAndUpdate(
+        { _id: dashboard._id, team: team._id },
+        { name: 'Renamed', version: 999 },
+        { new: true },
+      );
+
+      expect(updated!.version).toBe(1);
     });
   });
 

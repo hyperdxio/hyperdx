@@ -308,40 +308,38 @@ describe('useUpdateDashboard concurrency', () => {
     name: 'A',
     tiles: [],
     tags: [],
-    updatedAt: '2026-09-04T01:02:03.456Z',
+    version: 1,
   };
 
   // Pins the fix for the back-to-back-save bug: mutationFn reads the
   // token from the dashboards cache at execution time rather than from
-  // whichever value the caller's `dashboard.updatedAt` held when
+  // whichever value the caller's `dashboard.version` held when
   // `mutate()` was invoked, so a save queued behind another one (same
   // TanStack `scope`) picks up the predecessor's fresh token instead of
   // the stale one it captured before waiting its turn.
   it('reads expectedVersion from the dashboards cache at execution time, not from the argument', async () => {
     const json = jest.fn().mockResolvedValue({ ...dashboard });
     hdxServerMock.mockReturnValue({ json });
-    getQueryData.mockReturnValue([
-      { ...dashboard, updatedAt: '2026-09-04T09:00:00.000Z' },
-    ]);
+    getQueryData.mockReturnValue([{ ...dashboard, version: 9 }]);
 
     useUpdateDashboard('d1');
-    // The stale token this call carries in its own `updatedAt` must be
+    // The stale token this call carries in its own `version` must be
     // ignored in favour of the cache's fresher one.
     await mutationFnCalls.at(-1)!({
       ...dashboard,
-      updatedAt: '2026-09-04T01:02:03.456Z',
+      version: 1,
     });
 
     expect(getQueryData).toHaveBeenCalledWith(['dashboards']);
     expect(hdxServerMock).toHaveBeenCalledWith('dashboards/d1', {
       method: 'PATCH',
       json: expect.objectContaining({
-        expectedVersion: '2026-09-04T09:00:00.000Z',
+        expectedVersion: '9',
       }),
     });
   });
 
-  it('falls back to the argument updatedAt when the cache has no entry for the dashboard', async () => {
+  it('falls back to the argument version when the cache has no entry for the dashboard', async () => {
     const json = jest.fn().mockResolvedValue({ ...dashboard });
     hdxServerMock.mockReturnValue({ json });
     getQueryData.mockReturnValue(undefined);
@@ -352,14 +350,14 @@ describe('useUpdateDashboard concurrency', () => {
     expect(hdxServerMock).toHaveBeenCalledWith('dashboards/d1', {
       method: 'PATCH',
       json: expect.objectContaining({
-        expectedVersion: '2026-09-04T01:02:03.456Z',
+        expectedVersion: '1',
       }),
     });
   });
 
-  // expectedVersion is a control field; sending updatedAt as document
+  // expectedVersion is a control field; sending version as document
   // state too would be noise the server has to strip.
-  it('does not send updatedAt as a document field', async () => {
+  it('does not send version as a document field', async () => {
     const json = jest.fn().mockResolvedValue({ ...dashboard });
     hdxServerMock.mockReturnValue({ json });
 
@@ -367,7 +365,7 @@ describe('useUpdateDashboard concurrency', () => {
     await mutationFnCalls.at(-1)!(dashboard);
 
     expect(hdxServerMock.mock.calls.at(-1)![1].json).not.toHaveProperty(
-      'updatedAt',
+      'version',
     );
   });
 
@@ -377,7 +375,7 @@ describe('useUpdateDashboard concurrency', () => {
   it('writes the response into the dashboards cache on success', () => {
     useUpdateDashboard('d1');
     const cfg = mutationConfigs.at(-1)!;
-    const updated = { ...dashboard, updatedAt: '2026-09-04T02:00:00.000Z' };
+    const updated = { ...dashboard, version: 2 };
 
     cfg.onSuccess!(updated);
 

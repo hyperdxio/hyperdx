@@ -159,7 +159,7 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
     const result = await callTool(ctx.client!, 'clickstack_patch_dashboard', {
       dashboardId: dashboard._id.toString(),
       name: 'New Name',
-      version: dashboard.updatedAt.toISOString(),
+      version: String(dashboard.version),
     });
 
     expect(result.isError).toBeFalsy();
@@ -184,7 +184,7 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
     const result = await callTool(ctx.client!, 'clickstack_patch_dashboard', {
       dashboardId: dashboard._id.toString(),
       tags: ['new1', 'new2'],
-      version: dashboard.updatedAt.toISOString(),
+      version: String(dashboard.version),
     });
 
     expect(result.isError).toBeFalsy();
@@ -249,7 +249,7 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
         name: 'Ghost',
         config: { displayType: 'markdown', markdown: 'hello' },
       },
-      version: dashboard.updatedAt.toISOString(),
+      version: String(dashboard.version),
     });
 
     expect(result.isError).toBe(true);
@@ -260,7 +260,7 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
     const result = await callTool(ctx.client!, 'clickstack_patch_dashboard', {
       dashboardId: '000000000000000000000000',
       name: 'Ghost',
-      version: new Date().toISOString(),
+      version: '1',
     });
 
     expect(result.isError).toBe(true);
@@ -1330,7 +1330,7 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
           dashboardId: created.id,
           tileId,
           tile: patchTile(sourceIdFor()),
-          version: current!.updatedAt.toISOString(),
+          version: String(current!.version),
         }),
       );
 
@@ -1341,8 +1341,8 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
 
     // A sequential test can't desynchronise the read from the write: the
     // handler's own findOne would already see any mutation made before the
-    // call, and mongoose stamps updatedAt on every write so a stale version
-    // can't be forced from outside. Spying on the single findOneAndUpdate
+    // call, and the schema middleware bumps version on every write so a
+    // stale version can't be forced from outside. Spying on the single findOneAndUpdate
     // call simulates the tile vanishing in the real gap between the
     // handler's read and its conditional write.
     it('reports the tile as missing at write time when it vanishes between the read and the write (simulated race)', async () => {

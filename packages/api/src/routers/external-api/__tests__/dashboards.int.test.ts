@@ -7416,7 +7416,7 @@ describe('External API v2 Dashboards - new format', () => {
 
     it('emits a matching ETag on create and read', async () => {
       const created = await seed();
-      expect(created.headers.etag).toMatch(/^"\d{4}-\d{2}-\d{2}T[\d:.]+Z"$/);
+      expect(created.headers.etag).toMatch(/^"\d+"$/);
 
       const read = await authRequest(
         'get',
@@ -7450,7 +7450,7 @@ describe('External API v2 Dashboards - new format', () => {
         })
         .expect(200);
 
-      expect(updated.headers.etag).toMatch(/^"\d{4}-\d{2}-\d{2}T[\d:.]+Z"$/);
+      expect(updated.headers.etag).toMatch(/^"\d+"$/);
       expect(updated.headers.etag).not.toBe(created.headers.etag);
       expect(updated.body.data.name).toBe('Renamed With Matching Header');
     });

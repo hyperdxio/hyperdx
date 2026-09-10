@@ -95,7 +95,7 @@ describe('MCP Dashboard Tools - clickstack_get_dashboard', () => {
       ),
     );
 
-    expect(detail.version).toMatch(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/);
+    expect(detail.version).toMatch(/^\d+$/);
     expect(detail.version).toBe(created.version);
   });
 

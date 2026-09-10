@@ -30,6 +30,7 @@ jest.mock('@tanstack/react-query', () => ({
       tiles: [],
       tags: [],
       updatedAt: '2026-09-04T01:02:03.456Z',
+      version: 3,
     },
     isFetching: false,
   })),
@@ -67,10 +68,10 @@ describe('useDashboard 409 conflict handling', () => {
   const newDashboard = { id: 'd1', name: 'Edited', tiles: [], tags: [] };
 
   // Pins that `setDashboard` actually carries a version token into the
-  // mutation at all — without this, deleting the `updatedAt` fallback
+  // mutation at all — without this, deleting the `version` fallback
   // from `dashboard.ts` would pass every other test in this file, since
   // none of them inspect the mutation's variables (only its options).
-  it('sends the read dashboard updatedAt in the mutation variables', () => {
+  it('sends the read dashboard version in the mutation variables', () => {
     const { result } = renderHook(() => useDashboard({ dashboardId: 'd1' }));
 
     act(() => {
@@ -78,7 +79,7 @@ describe('useDashboard 409 conflict handling', () => {
     });
 
     const variables = mutate.mock.calls.at(-1)![0];
-    expect(variables.updatedAt).toBe('2026-09-04T01:02:03.456Z');
+    expect(variables.version).toBe(3);
   });
 
   async function triggerOnError(err: unknown) {
