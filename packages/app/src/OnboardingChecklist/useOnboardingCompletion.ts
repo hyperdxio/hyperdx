@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import api from '@/api';
+import { NOW } from '@/config';
 import { useConnections } from '@/connection';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useSources } from '@/source';
@@ -10,6 +11,12 @@ import {
   PRODUCT_TASK_ORDER,
   PRODUCT_TASKS,
 } from './onboardingTasks';
+
+const DAY_MS = 1000 * 60 * 60 * 24;
+// The setup phase is offered to teams younger than this; the product-usage
+// phase to teams younger than the (larger) product window.
+const SETUP_MAX_TEAM_AGE_DAYS = 3;
+const PRODUCT_MAX_TEAM_AGE_DAYS = 7;
 
 interface OnboardingCompletion {
   steps: OnboardingStep[];
@@ -26,6 +33,7 @@ export function useOnboardingCompletion(
   onAddDataClick?: () => void,
 ): OnboardingCompletion {
   const { data: me, isLoading: isMeLoading } = api.useMe();
+  const { data: team, isLoading: isTeamLoading } = api.useTeam();
   const { data: connections, isLoading: isConnectionsLoading } =
     useConnections();
   const { data: sources, isLoading: isSourcesLoading } = useSources();
@@ -36,6 +44,17 @@ export function useOnboardingCompletion(
     () => new Set(onboardingData?.completedTasks ?? []),
     [onboardingData],
   );
+
+  // Age-gate the checklist so it only greets recently-created teams, not every
+  // long-established install. Two windows: the setup phase (connect ClickHouse,
+  // add data) is offered for the first SETUP_MAX_TEAM_AGE_DAYS, and the
+  // product-usage phase for the (longer) PRODUCT_MAX_TEAM_AGE_DAYS — a team
+  // still finishing setup on day 4 shouldn't see it, but a set-up team still has
+  // a few days to be nudged through first real usage.
+  const teamAgeDays =
+    team?.createdAt == null
+      ? null
+      : (NOW - new Date(team.createdAt).getTime()) / DAY_MS;
 
   const hasConnections = (connections?.length ?? 0) > 0;
   const hasSources = (sources?.length ?? 0) > 0;
@@ -63,14 +82,24 @@ export function useOnboardingCompletion(
     }),
     [firstConnectionSources, firstConnection],
   );
+  // The row-count query decides the setup phase's "Add data" step AND, by
+  // extension, whether setup is complete (which gates the product phase). Gate
+  // it so it never fires when NO checklist phase could render — otherwise every
+  // user, on every app load and window refocus, runs `sum(total_rows) FROM
+  // system.tables` (react-query's defaults refetch on focus). It runs only for
+  // a real signed-in user (not IS_LOCAL_MODE, where `me` is null), a team inside
+  // the outer (product) age window, with a connection, and not dismissed —
+  // i.e. teams older than PRODUCT_MAX_TEAM_AGE_DAYS never touch system.tables.
+  const isWithinAnyOnboardingWindow =
+    me != null &&
+    teamAgeDays != null &&
+    teamAgeDays < PRODUCT_MAX_TEAM_AGE_DAYS &&
+    !onboardingData?.isDismissed;
   const { data: sourceRowsData, isLoading: isSourceRowsLoading } =
     useQueriedChartConfig(sourceRowsConfig, {
-      // Skip the chart query when there's no connection to query against
-      // (without this guard it fires with `connection: ''` and fails Zod
-      // validation on the API's clickhouse-proxy), or once the user has
-      // dismissed the checklist — a dismissed card never renders, so there's
-      // no reason to keep polling `system.tables` on every window refocus.
-      enabled: !!firstConnection?.id && !onboardingData?.isDismissed,
+      // Also guards against firing with `connection: ''`, which fails Zod
+      // validation on the API's clickhouse-proxy.
+      enabled: !!firstConnection?.id && isWithinAnyOnboardingWindow,
     });
   const hasData = sourceRowsData?.data?.[0]?.total_rows > 0;
 
@@ -129,6 +158,14 @@ export function useOnboardingCompletion(
     [completedTasks],
   );
 
+  // Per-phase age gate: the setup phase closes after SETUP_MAX_TEAM_AGE_DAYS,
+  // the product phase after the longer PRODUCT_MAX_TEAM_AGE_DAYS. `null` age
+  // (team not loaded yet, or local mode with no team) is not eligible.
+  const isTeamAgeEligible =
+    teamAgeDays != null &&
+    teamAgeDays <
+      (isSetupComplete ? PRODUCT_MAX_TEAM_AGE_DAYS : SETUP_MAX_TEAM_AGE_DAYS);
+
   const steps = isSetupComplete ? productSteps : setupSteps;
   const phaseLabel = isSetupComplete
     ? 'Get started with HyperDX'
@@ -159,6 +196,7 @@ export function useOnboardingCompletion(
     !isMeLoading &&
     me != null &&
     onboardingData != null &&
+    !isTeamLoading &&
     !isConnectionsLoading &&
     !isSourcesLoading &&
     sourceRowsSettled;
@@ -207,6 +245,7 @@ export function useOnboardingCompletion(
   // celebration).
   const shouldShow =
     inputsReady &&
+    isTeamAgeEligible &&
     wasCompleteOnLoad !== null &&
     !onboardingData.isDismissed &&
     (!allTasksComplete || isCelebrating);

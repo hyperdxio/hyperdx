@@ -15,6 +15,7 @@ jest.mock('@/api', () => ({
   __esModule: true,
   default: {
     useMe: jest.fn(),
+    useTeam: jest.fn(),
     useDismissOnboarding: jest.fn(),
   },
 }));
@@ -25,12 +26,24 @@ jest.mock('@/hooks/useChartConfig', () => ({
 }));
 
 const mockUseMe = jest.mocked(api.useMe);
+const mockUseTeam = jest.mocked(api.useTeam);
 const mockUseDismiss = jest.mocked(api.useDismissOnboarding);
 const mockUseConnections = jest.mocked(useConnections);
 const mockUseSources = jest.mocked(useSources);
 const mockUseQueriedChartConfig = jest.mocked(useQueriedChartConfig);
 
 const dismissMutate = jest.fn();
+
+// Team age (in days) drives the eligibility gate: setup phase shows for teams
+// younger than 3 days, product phase for younger than 7. Default the mock to a
+// brand-new team so existing tests exercise the "eligible" path.
+function setTeamAgeDays(ageDays: number) {
+  const createdAt = new Date(Date.now() - ageDays * 86_400_000).toISOString();
+  mockUseTeam.mockReturnValue({
+    data: { createdAt },
+    isLoading: false,
+  } as unknown as ReturnType<typeof api.useTeam>);
+}
 
 function setMe(
   onboardingData: { completedTasks: string[]; isDismissed: boolean } | null,
@@ -95,6 +108,7 @@ function renderChecklist() {
 describe('OnboardingChecklist', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    setTeamAgeDays(0);
     mockUseDismiss.mockReturnValue({
       mutate: dismissMutate,
       isPending: false,
@@ -298,5 +312,37 @@ describe('OnboardingChecklist', () => {
 
     await userEvent.click(screen.getByText(/Dismiss and don't show again/));
     expect(dismissMutate).toHaveBeenCalledWith(true);
+  });
+
+  it('hides the setup phase for a team older than the setup window (>3 days)', () => {
+    setMe({ completedTasks: [], isDismissed: false });
+    setSetup(false);
+    setTeamAgeDays(5);
+
+    renderChecklist();
+
+    expect(screen.queryByText('Set up ClickHouse')).not.toBeInTheDocument();
+  });
+
+  it('still shows the product phase for a set-up team within the product window (3-7 days)', () => {
+    setMe({ completedTasks: ['advancedQuery'], isDismissed: false });
+    setSetup(true);
+    setTeamAgeDays(5);
+
+    renderChecklist();
+
+    expect(screen.getByText('Get started with HyperDX')).toBeInTheDocument();
+  });
+
+  it('hides the product phase for a team older than the product window (>7 days)', () => {
+    setMe({ completedTasks: ['advancedQuery'], isDismissed: false });
+    setSetup(true);
+    setTeamAgeDays(10);
+
+    renderChecklist();
+
+    expect(
+      screen.queryByText('Get started with HyperDX'),
+    ).not.toBeInTheDocument();
   });
 });

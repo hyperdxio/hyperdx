@@ -1,3 +1,8 @@
+// Over 300 lines by design: this is the integration test suite for the whole
+// `me` router (GET /me, accessKey rotation, and the onboarding routes), and
+// keeping every route's end-to-end coverage against one shared server fixture
+// in a single file is clearer than fragmenting it. The 300-line guideline
+// targets source modules, not cohesive test suites.
 import type { OnboardingTaskId } from '@hyperdx/common-utils/dist/types';
 import { AlertThresholdType } from '@hyperdx/common-utils/dist/types';
 

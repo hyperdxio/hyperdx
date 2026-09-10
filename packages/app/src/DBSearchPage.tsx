@@ -1256,13 +1256,6 @@ export function DBSearchPage() {
   const { data: me } = api.useMe();
   const hasExploredData =
     me?.onboardingData?.completedTasks.includes('advancedQuery') ?? false;
-  // Every real interactive search (Enter in the Lucene/SQL editor, applying a
-  // filter, clicking Run) funnels through onSubmit, so exploration is recorded
-  // there. The one path that must NOT count is the programmatic catch-up submit
-  // that fires when a source / saved search loads (it pushes loaded defaults
-  // into the search config without the user composing a query). That path sets
-  // this ref so onSubmit skips recording for exactly that one submit.
-  const suppressExplorationRecordRef = useRef(false);
 
   useEffect(() => {
     if (!isBrowser || !IS_LOCAL_MODE) return;
@@ -1278,51 +1271,63 @@ export function DBSearchPage() {
     };
   }, []);
 
-  const onSubmit = useCallback(() => {
-    onSearch(displayedTimeInputValue);
-    // Consume the suppression flag once, so only the catch-up submit that set it
-    // is skipped; the next interactive submit records normally.
-    const skipExplorationRecord = suppressExplorationRecordRef.current;
-    suppressExplorationRecordRef.current = false;
-    handleSubmit(
-      ({ select, where, whereLanguage, source, filters, orderBy }) => {
-        setSearchedConfig({
-          select,
-          where,
-          whereLanguage,
-          source,
-          filters,
-          orderBy,
-        });
-        // "Explored data" completes on a non-trivial search (see
-        // isNonTrivialSearch). One-time milestone, so skip once recorded to
-        // avoid a redundant (idempotent) POST.
-        if (
-          !IS_LOCAL_MODE &&
-          !skipExplorationRecord &&
-          !hasExploredData &&
-          isNonTrivialSearch(where, filters)
-        ) {
-          completeOnboardingTask.mutate('advancedQuery');
-        }
-      },
-    )();
-    setPatternColumn(draftPatternColumn || null);
-    // clear query errors
-    setQueryErrors({});
-  }, [
-    handleSubmit,
-    setSearchedConfig,
-    displayedTimeInputValue,
-    onSearch,
-    setQueryErrors,
-    draftPatternColumn,
-    setPatternColumn,
-    completeOnboardingTask,
-    hasExploredData,
-  ]);
+  // `recordExploration` distinguishes a genuine user-run search (Enter in the
+  // editor, applying a filter, clicking Run) from a programmatic catch-up submit
+  // that just pushes a loaded source / saved search into the config. Only the
+  // former should complete "Explore your data". It's an explicit argument (not a
+  // shared ref) so a concurrent interactive submit can't consume the catch-up's
+  // suppression, or vice-versa.
+  const onSubmit = useCallback(
+    ({ recordExploration = true }: { recordExploration?: boolean } = {}) => {
+      onSearch(displayedTimeInputValue);
+      handleSubmit(
+        ({ select, where, whereLanguage, source, filters, orderBy }) => {
+          setSearchedConfig({
+            select,
+            where,
+            whereLanguage,
+            source,
+            filters,
+            orderBy,
+          });
+          // "Explored data" completes on a non-trivial search (see
+          // isNonTrivialSearch). One-time milestone, so skip once recorded to
+          // avoid a redundant (idempotent) POST.
+          if (
+            recordExploration &&
+            !IS_LOCAL_MODE &&
+            !hasExploredData &&
+            isNonTrivialSearch(where, filters)
+          ) {
+            completeOnboardingTask.mutate('advancedQuery');
+          }
+        },
+      )();
+      setPatternColumn(draftPatternColumn || null);
+      // clear query errors
+      setQueryErrors({});
+    },
+    [
+      handleSubmit,
+      setSearchedConfig,
+      displayedTimeInputValue,
+      onSearch,
+      setQueryErrors,
+      draftPatternColumn,
+      setPatternColumn,
+      completeOnboardingTask,
+      hasExploredData,
+    ],
+  );
 
+  // Records exploration (interactive: filter apply, and the form/editor submit
+  // paths that call it with no args).
   const debouncedSubmit = useDebouncedCallback(onSubmit, 1000);
+  // Does NOT record: the source / saved-search catch-up submit.
+  const debouncedCatchUpSubmit = useDebouncedCallback(
+    () => onSubmit({ recordExploration: false }),
+    1000,
+  );
   const handleSetFilters = useCallback(
     (filters: Filter[]) => {
       setValue('filters', filters);
@@ -1438,10 +1443,9 @@ export function DBSearchPage() {
         // Push the new source to URL/searchedConfig so the chart re-queries.
         // Debounced so a later filter reconcile (which also submits) collapses
         // into a single run. This is a programmatic catch-up (loading a source /
-        // saved search), not the user composing a query, so it must not credit
-        // "Explore your data".
-        suppressExplorationRecordRef.current = true;
-        debouncedSubmit();
+        // saved search), not the user composing a query, so use the variant that
+        // does NOT credit "Explore your data".
+        debouncedCatchUpSubmit();
       }
     }
   }, [
@@ -1451,7 +1455,7 @@ export function DBSearchPage() {
     savedSearchId,
     inputSourceObjs,
     setLastSelectedSourceId,
-    debouncedSubmit,
+    debouncedCatchUpSubmit,
     searchedSource?.id,
     rawSearchedConfig.source,
     setSearchedConfig,
