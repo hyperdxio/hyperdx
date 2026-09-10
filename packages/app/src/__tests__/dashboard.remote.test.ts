@@ -309,6 +309,7 @@ describe('useUpdateDashboard concurrency', () => {
     tiles: [],
     tags: [],
     version: 1,
+    updatedAt: '2024-01-01T00:00:00.000Z',
   };
 
   // Pins the fix for the back-to-back-save bug: mutationFn reads the
@@ -357,7 +358,7 @@ describe('useUpdateDashboard concurrency', () => {
 
   // expectedVersion is a control field; sending version as document
   // state too would be noise the server has to strip.
-  it('does not send version as a document field', async () => {
+  it('does not send version or updatedAt as document fields', async () => {
     const json = jest.fn().mockResolvedValue({ ...dashboard });
     hdxServerMock.mockReturnValue({ json });
 
@@ -366,6 +367,9 @@ describe('useUpdateDashboard concurrency', () => {
 
     expect(hdxServerMock.mock.calls.at(-1)![1].json).not.toHaveProperty(
       'version',
+    );
+    expect(hdxServerMock.mock.calls.at(-1)![1].json).not.toHaveProperty(
+      'updatedAt',
     );
   });
 

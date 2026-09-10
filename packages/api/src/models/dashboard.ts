@@ -95,7 +95,19 @@ dashboardSchema.pre(
 // schema default; incrementing here too would start it at 1 instead.
 dashboardSchema.pre('save', function (next) {
   if (!this.isNew) {
-    this.version = (this.get('version') ?? 0) + 1;
+    // A document hydrated under a projection that excludes `version` would
+    // otherwise read back as `undefined`, defaulted to 0, and get written
+    // back at 1 — silently rewinding the counter. Fail loudly instead: no
+    // current call site saves such a document (see @/utils/dashboardVersion.ts),
+    // so this should never fire, but a default would make it fire quietly.
+    if (!this.isSelected('version')) {
+      return next(
+        new Error(
+          'Cannot save a Dashboard document loaded with a projection that excludes version',
+        ),
+      );
+    }
+    this.version = this.get('version') + 1;
   }
   next();
 });

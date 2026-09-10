@@ -44,10 +44,10 @@ export type Dashboard = {
   createdAt?: string;
   updatedAt?: string;
   /**
-   * The optimistic-concurrency token for dashboard writes. The API has
-   * always returned it; it is optional because IS_LOCAL_MODE dashboards
-   * live in URL state and have none. Opaque here even though it is an
-   * integer on the wire — send it back to `expectedVersion` verbatim.
+   * The optimistic-concurrency token for dashboard writes. Optional because
+   * IS_LOCAL_MODE dashboards live in URL state and have none. Opaque here
+   * even though it is an integer on the wire — send it back to
+   * `expectedVersion` verbatim.
    */
   version?: number;
   createdBy?: { email: string; name?: string };

@@ -121,10 +121,17 @@ export async function resolveDashboardWriteMiss(
     { _id: dashboardId, team: teamId },
     { version: 1 },
   ).lean();
+  // .lean() skips mongoose's defaults, so a pre-migration document with no
+  // `version` field comes back as `current.version === undefined` here —
+  // fall back to 0 so the token never surfaces the literal string
+  // "undefined" in a 409/412 body or an MCP conflict message.
   const miss: DashboardWriteMiss =
     current == null
       ? { kind: 'deleted' }
-      : { kind: 'conflict', currentVersion: versionToken(current) };
+      : {
+          kind: 'conflict',
+          currentVersion: versionToken({ version: current.version ?? 0 }),
+        };
   writeConflictsCounter.add(1, { kind: miss.kind, surface });
   return miss;
 }

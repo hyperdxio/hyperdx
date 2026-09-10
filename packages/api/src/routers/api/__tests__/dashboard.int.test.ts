@@ -1735,7 +1735,7 @@ describe('dashboard router', () => {
         .expect(200);
 
       expect(updated.body.name).toBe('Renamed');
-      expect(updated.body.updatedAt).not.toBe(created.body.updatedAt);
+      expect(updated.body.version).not.toBe(created.body.version);
     });
 
     it('rejects a stale expectedVersion with 409 and does not write', async () => {
