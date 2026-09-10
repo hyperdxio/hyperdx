@@ -1257,9 +1257,8 @@ export function DBSearchPage() {
 
   const completeOnboardingTask = useCompleteOnboardingTask();
   const { data: me } = api.useMe();
-  // Treat a non-recordable user (no real ObjectId — e.g. the noauth image) as
-  // "already explored" so we never fire the recording POST, which would never
-  // stick server-side and would re-fire on every search.
+  // A non-recordable user counts as "already explored" so the POST never fires
+  // (see isRecordableUserId).
   const hasExploredData =
     !isRecordableUserId(me?.id) ||
     (me?.onboardingData?.completedTasks.includes('advancedQuery') ?? false);
@@ -1278,12 +1277,10 @@ export function DBSearchPage() {
     };
   }, []);
 
-  // `recordExploration` distinguishes a genuine user-run search (Enter in the
-  // editor, applying a filter, clicking Run) from a programmatic catch-up submit
-  // that just pushes a loaded source / saved search into the config. Only the
-  // former should complete "Explore your data". It's an explicit argument (not a
-  // shared ref) so a concurrent interactive submit can't consume the catch-up's
-  // suppression, or vice-versa.
+  // recordExploration is false for the programmatic catch-up submit (loading a
+  // source / saved search), true for a genuine user search — so only the latter
+  // completes "Explore your data". An explicit arg, not a shared ref, so
+  // concurrent submits can't consume each other's suppression.
   const onSubmit = useCallback(
     ({ recordExploration = true }: { recordExploration?: boolean } = {}) => {
       onSearch(displayedTimeInputValue);
@@ -1297,9 +1294,6 @@ export function DBSearchPage() {
             filters,
             orderBy,
           });
-          // "Explored data" completes on a non-trivial search (see
-          // isNonTrivialSearch). One-time milestone, so skip once recorded to
-          // avoid a redundant (idempotent) POST.
           if (
             recordExploration &&
             !IS_LOCAL_MODE &&
@@ -1311,7 +1305,6 @@ export function DBSearchPage() {
         },
       )();
       setPatternColumn(draftPatternColumn || null);
-      // clear query errors
       setQueryErrors({});
     },
     [
@@ -1327,13 +1320,8 @@ export function DBSearchPage() {
     ],
   );
 
-  // Single debouncer so the catch-up submit and a filter-apply within the same
-  // window collapse into ONE run (no duplicate searches). useDebouncedCallback
-  // keeps the last call's args, so onSubmit receives the most recent caller's
-  // { recordExploration }: a catch-up passes false, interactive callers pass
-  // nothing (defaults to true). Whichever fired last within the window wins,
-  // which for the rare catch-up+interactive overlap only delays the one-time
-  // milestone to the next search.
+  // One debouncer so a catch-up and filter-apply in the same window collapse
+  // into one run; useDebouncedCallback keeps the last call's args.
   const debouncedSubmit = useDebouncedCallback(onSubmit, 1000);
   const debouncedCatchUpSubmit = useCallback(
     () => debouncedSubmit({ recordExploration: false }),
@@ -1451,11 +1439,8 @@ export function DBSearchPage() {
             // Don't clear filters - we're loading from saved search
           }
         }
-        // Push the new source to URL/searchedConfig so the chart re-queries.
-        // Debounced so a later filter reconcile (which also submits) collapses
-        // into a single run. This is a programmatic catch-up (loading a source /
-        // saved search), not the user composing a query, so use the variant that
-        // does NOT credit "Explore your data".
+        // Programmatic catch-up (loading a source / saved search), so use the
+        // variant that does NOT credit "Explore your data".
         debouncedCatchUpSubmit();
       }
     }

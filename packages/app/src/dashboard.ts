@@ -134,13 +134,8 @@ export async function fetchDashboards(): Promise<Dashboard[]> {
   return dashboards.map(normalizeDashboardTileColors);
 }
 
-// The backend records the 'dashboard' (and, for a tile that carries an alert,
-// 'alert') onboarding task on save. We patch just those ids into the `me` cache
-// rather than invalidating `['me']`, which would refetch for every useMe
-// consumer (useMetadata, clickhouse settings, AppNav, …). No-op in local mode.
-//
-// 'dashboard' completes only when the dashboard has a tile, matching the
-// backend: an empty dashboard shell does not count as charting your data.
+// Syncs the me cache after the backend records on save. 'dashboard' needs a
+// tile, matching the backend (an empty shell isn't charting your data).
 function markDashboardOnboarding(
   markOnboardingTaskComplete: (taskId: OnboardingTaskId) => void,
   tiles: Tile[] | undefined,
@@ -168,10 +163,8 @@ export function useUpdateDashboard() {
         localDashboards.update(id, updates);
         return undefined;
       }
-      // Return the persisted dashboard so onboarding keys off the server's
-      // saved tiles, not the (possibly partial) PATCH payload — a name/tag-only
-      // save omits `tiles`, which would otherwise leave the cache stale vs. the
-      // server, which records from persisted state.
+      // Return the persisted dashboard so onboarding keys off saved tiles, not
+      // the partial PATCH payload — a name/tag-only save omits `tiles`.
       return hdxServer(`dashboards/${normalized.id}`, {
         method: 'PATCH',
         json: normalized,
@@ -240,9 +233,8 @@ export function useDashboard({
   const updateDashboard = useUpdateDashboard();
   const completeOnboardingTask = useCompleteOnboardingTask();
   const { data: me } = api.useMe();
-  // A non-recordable user (no real ObjectId — e.g. the noauth image) counts as
-  // "already built" so the temp-dashboard recording POST never fires; it would
-  // never stick server-side and would re-fire on every layout edit.
+  // A non-recordable user counts as "already built" so the temp-dashboard POST
+  // never fires (see isRecordableUserId).
   const hasBuiltDashboard =
     !isRecordableUserId(me?.id) ||
     (me?.onboardingData?.completedTasks.includes('dashboard') ?? false);
@@ -285,12 +277,8 @@ export function useDashboard({
         // inserted via a preset literal) and matches the canonical hue
         // tokens used by the renderers.
         setLocalDashboard(normalizeDashboardTileColors(newDashboard));
-        // A temporary (URL-state) dashboard never hits the backend, so the
-        // server can't record the 'dashboard' onboarding task. Adding a tile
-        // here is still "built a chart", so record it directly. setDashboard
-        // runs on every local edit (move/resize/etc), so skip once already
-        // recorded — otherwise every edit fires a redundant POST. Skipped in
-        // local single-user mode where there is no `me` endpoint.
+        // Temp dashboards never hit the backend, so record here. Guarded on
+        // hasBuiltDashboard because setDashboard runs on every layout edit.
         if (
           !IS_LOCAL_MODE &&
           !hasBuiltDashboard &&

@@ -23,9 +23,7 @@ export function StepRow({
   const isActionable =
     !step.isComplete && (step.href != null || step.onClick != null);
 
-  // Semantic tokens (not raw Mantine palette colors) so the icons track the
-  // active brand and light/dark mode. ThemeIcon's `color` prop only takes
-  // palette names, so the tokens are applied via `style`.
+  // Tokens via `style` since ThemeIcon's `color` prop only takes palette names.
   const circle = step.isComplete ? (
     <ThemeIcon
       size={16}
@@ -71,8 +69,7 @@ export function StepRow({
     </Group>
   );
 
-  // The active (next) step is elevated onto a surface card; every other row is
-  // flush against the muted card background.
+  // The active step is elevated onto a surface card.
   const rowBody = isActive ? (
     <Paper withBorder radius="md" px="sm" py="xs" bg="var(--color-bg-surface)">
       {stepContent}
@@ -83,9 +80,7 @@ export function StepRow({
     </Group>
   );
 
-  // The row shows only the title; the description (what to do) surfaces on hover
-  // for a task that isn't done yet — a completed, struck-through task needs no
-  // instructions.
+  // Description surfaces on hover, only for incomplete tasks.
   const row =
     !step.isComplete && step.description ? (
       <Tooltip

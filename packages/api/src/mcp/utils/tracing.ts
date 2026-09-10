@@ -119,10 +119,7 @@ export function withToolTracing<TArgs>(
               { ...logContext, durationMs },
               `MCP tool completed: ${toolName}`,
             );
-            // A successful tool call is the only reliable signal that the user
-            // exercised the MCP server; there is no read-time artifact to detect
-            // later. Fire-and-forget: onboarding bookkeeping must never affect
-            // the tool response, and $addToSet makes repeated calls a no-op.
+            // Only reliable signal the user exercised the MCP server.
             recordOnboardingTaskCompletion(context.userId, 'mcp');
           }
 

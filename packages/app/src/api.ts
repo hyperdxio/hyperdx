@@ -86,9 +86,7 @@ export const hdxServer = (
   });
 };
 
-// Standalone (not just an `api.` method) so other mutation hooks in this file
-// can compose it — e.g. the alert/dashboard save hooks call it on success.
-// Idempotent on the server, seeds the `me` cache from the response.
+// Standalone export so other mutation hooks in this file can compose it.
 export function useCompleteOnboardingTask() {
   const queryClient = useQueryClient();
   return useMutation<
@@ -102,13 +100,9 @@ export function useCompleteOnboardingTask() {
         json: { taskId },
       }).json<OnboardingDataApiResponse>(),
     onSuccess: data => {
-      // Reconcile field-by-field against the cache rather than replacing the
-      // whole onboardingData. completedTasks is unioned so an older completion
-      // response landing last can't drop a newer task (both are persisted via
-      // $addToSet). isDismissed is kept from the cache, not this response: a
-      // dismiss can be in flight concurrently, and this response's isDismissed
-      // reflects state at request time — copying it could resurrect a dismissed
-      // checklist until the next `me` refetch.
+      // Union completedTasks (not replace) so an out-of-order response can't
+      // drop a newer task; keep isDismissed from the cache since a concurrent
+      // dismiss's state isn't reflected in this response.
       queryClient.setQueryData<MeApiResponse | null>(['me'], prev => {
         if (prev?.onboardingData == null) {
           return prev == null
@@ -131,22 +125,17 @@ export function useCompleteOnboardingTask() {
   });
 }
 
-// Patch ONLY `onboardingData.completedTasks` in the cached `me` object, with no
-// network request and no query invalidation. Use this when the backend has
-// already recorded a task (alerts/dashboards record server-side) and the client
-// just needs its cache kept in sync. Invalidating `['me']` instead would refetch
-// for every `useMe` consumer — useMetadata, clickhouse settings, AppNav, etc. —
-// which is a wide blast radius for a change only the sidebar checklist cares
-// about. Returns a stable callback; a no-op if the task is already recorded.
+// Patches the `me` cache in place (no request, no invalidation) after the
+// backend has already recorded a task server-side. Invalidating `['me']` would
+// refetch for every useMe consumer (metadata, clickhouse settings, AppNav) for
+// a change only the sidebar cares about.
 export function useMarkOnboardingTaskComplete() {
   const queryClient = useQueryClient();
   return useCallback(
     (taskId: OnboardingTaskId) => {
       queryClient.setQueryData<MeApiResponse | null>(['me'], prev => {
-        // Guard `onboardingData` with `?.`: a cached `me` from an API pod that
-        // predates this field has none, and this runs inside dashboard/alert
-        // mutation `onSuccess` — a throw here would flip the mutation to its
-        // error state and surface "Unable to save" for a save that succeeded.
+        // `?.`: this runs in dashboard/alert mutation onSuccess, and a throw
+        // would flip a succeeded save to "Unable to save".
         if (prev?.onboardingData == null) {
           return prev;
         }
@@ -175,9 +164,7 @@ const api = {
           method: 'POST',
           json: alert,
         }).json(),
-      // The backend records the 'alert' onboarding task on create (see
-      // createAlert). Patch just onboardingData in the `me` cache so the sidebar
-      // checklist updates without refetching `me` for every consumer.
+      // Backend records the task; just sync the cache.
       onSuccess: () => {
         if (!IS_LOCAL_MODE) {
           markOnboardingTaskComplete('alert');
@@ -193,10 +180,6 @@ const api = {
           method: 'PUT',
           json: alert,
         }).json(),
-      // The backend records the 'alert' onboarding task on update too (see
-      // updateAlert), so editing an existing alert completes the checklist.
-      // Patch just onboardingData in the `me` cache to avoid a full `me`
-      // refetch, matching useCreateAlert.
       onSuccess: () => {
         if (!IS_LOCAL_MODE) {
           markOnboardingTaskComplete('alert');

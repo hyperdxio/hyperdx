@@ -14,15 +14,9 @@ import {
 } from './onboardingTasks';
 
 const DAY_MS = 1000 * 60 * 60 * 24;
-// The setup phase is offered to teams younger than this; the product-usage
-// phase to teams younger than the (larger) product window.
+// Setup phase closes after 3 days, product-usage phase after 7.
 const SETUP_MAX_TEAM_AGE_DAYS = 3;
 const PRODUCT_MAX_TEAM_AGE_DAYS = 7;
-// staleTime for the system.tables row-count probe. The `enabled` gate can't be
-// tightened to "card is actually visible" without circularity (isSetupComplete
-// depends on this query's result), so a stale window keeps react-query from
-// refetching on every mount / window-focus for teams that are within the outer
-// age window but whose card is nonetheless hidden.
 const SETUP_ROW_COUNT_STALE_MS = 5 * 60 * 1000;
 
 interface OnboardingCompletion {
@@ -39,7 +33,7 @@ interface OnboardingCompletion {
 export function useOnboardingCompletion(
   onAddDataClick?: () => void,
 ): OnboardingCompletion {
-  // Brand-aware: a ClickStack deployment must never render "HyperDX".
+  // A ClickStack deployment must never render "HyperDX".
   const brandName = useBrandDisplayName();
   const { data: me, isLoading: isMeLoading } = api.useMe();
   const { data: team, isLoading: isTeamLoading } = api.useTeam();
@@ -54,12 +48,6 @@ export function useOnboardingCompletion(
     [onboardingData],
   );
 
-  // Age-gate the checklist so it only greets recently-created teams, not every
-  // long-established install. Two windows: the setup phase (connect ClickHouse,
-  // add data) is offered for the first SETUP_MAX_TEAM_AGE_DAYS, and the
-  // product-usage phase for the (longer) PRODUCT_MAX_TEAM_AGE_DAYS — a team
-  // still finishing setup on day 4 shouldn't see it, but a set-up team still has
-  // a few days to be nudged through first real usage.
   const teamAgeDays =
     team?.createdAt == null
       ? null
@@ -94,27 +82,15 @@ export function useOnboardingCompletion(
     }),
     [firstConnectionSources, firstConnection],
   );
-  // The row-count query decides the setup phase's "Add data" step AND, by
-  // extension, whether setup is complete (which gates the product phase). The
-  // `enabled` gate scopes it to the OUTER (product, 7-day) window — a real
-  // signed-in user (not IS_LOCAL_MODE, where `me` is null), a team inside that
-  // window, with a connection, and not dismissed. So teams older than
-  // PRODUCT_MAX_TEAM_AGE_DAYS never touch system.tables. It does NOT gate on the
-  // card actually being visible: a 3-7 day team still in setup (setup card
-  // age-gated to 3 days), or a team that finished all tasks, is inside this
-  // window but shows no card. Tightening the gate would be circular
-  // (isSetupComplete needs this query's hasData), so instead a staleTime stops
-  // the redundant refetch-on-focus for those hidden-card cases (see below).
+  // `me == null` in IS_LOCAL_MODE, so the probe is skipped there.
   const isWithinAnyOnboardingWindow =
     me != null &&
     teamAgeDays != null &&
     teamAgeDays < PRODUCT_MAX_TEAM_AGE_DAYS &&
     !onboardingData?.isDismissed;
-  // Also guards against firing with `connection: ''`, which fails Zod validation
-  // on the API's clickhouse-proxy. And skip when no enabled source remains on
-  // the connection (ported from #3107): the filters list would be empty,
-  // producing an unrestricted `system.tables` scan that could count unrelated
-  // tables and wrongly mark "Add data" complete.
+  // Empty `connection` fails clickhouse-proxy Zod validation; an empty filters
+  // list (no enabled sources) would scan all of system.tables and wrongly count
+  // unrelated tables as data.
   const isSourceRowsQueryEnabled =
     !!firstConnection?.id &&
     (firstConnectionSources?.length ?? 0) > 0 &&
@@ -122,13 +98,13 @@ export function useOnboardingCompletion(
   const { data: sourceRowsData, isLoading: isSourceRowsLoading } =
     useQueriedChartConfig(sourceRowsConfig, {
       enabled: isSourceRowsQueryEnabled,
-      // See SETUP_ROW_COUNT_STALE_MS: keeps focus/remount from re-running the
-      // probe for in-window teams whose checklist card is hidden anyway.
+      // Can't gate `enabled` on card visibility without circularity
+      // (isSetupComplete needs hasData), so staleTime avoids refetch-on-focus
+      // for in-window teams whose card is hidden.
       staleTime: SETUP_ROW_COUNT_STALE_MS,
     });
   const hasData = sourceRowsData?.data?.[0]?.total_rows > 0;
 
-  // Phase 1: setup steps, detected by reading team state.
   const setupSteps: OnboardingStep[] = useMemo(
     () => [
       {
@@ -169,8 +145,7 @@ export function useOnboardingCompletion(
 
   const isSetupComplete = setupSteps.every(step => step.isComplete);
 
-  // Phase 2: product-usage tasks, persisted per user. Only surfaced once the
-  // setup phase is done — setup first, then getting started using the product.
+  // Product-usage tasks are persisted per user, surfaced only after setup.
   const productSteps: OnboardingStep[] = useMemo(
     () =>
       PRODUCT_TASK_ORDER.map(id => ({
@@ -183,9 +158,6 @@ export function useOnboardingCompletion(
     [completedTasks],
   );
 
-  // Per-phase age gate: the setup phase closes after SETUP_MAX_TEAM_AGE_DAYS,
-  // the product phase after the longer PRODUCT_MAX_TEAM_AGE_DAYS. `null` age
-  // (team not loaded yet, or local mode with no team) is not eligible.
   const isTeamAgeEligible =
     teamAgeDays != null &&
     teamAgeDays <
@@ -197,24 +169,17 @@ export function useOnboardingCompletion(
     : 'Set up ClickHouse';
   const completedCount = steps.filter(step => step.isComplete).length;
   const isPhaseComplete = completedCount === steps.length;
-  // The first not-yet-complete step is the "active" one — highlighted like a
-  // call-to-action in the mockup.
+  // First incomplete step; rendered as the active call-to-action.
   const activeStepId = steps.find(step => !step.isComplete)?.id;
 
-  // "Done" is DERIVED from whether every current task is complete — we never
-  // persist a "completed" flag. This is deliberate: adding or changing a task
-  // in ONBOARDING_TASK_IDS later leaves a previously-finished user with an
-  // unmet task, so the checklist reappears on its own. (isDismissed is only for
-  // the manual X, when a user opts out early.)
+  // Derived, never persisted: adding a task to ONBOARDING_TASK_IDS reopens the
+  // checklist for previously-finished users. isDismissed is the manual opt-out.
   const allTasksComplete = isSetupComplete && isPhaseComplete;
 
-  // Every input that feeds `allTasksComplete` must be settled before we trust
-  // it. If we latched on `me` alone, the setup queries (connections/sources/
-  // row-count) could still be loading — making tasks look incomplete for a
-  // beat, then flipping to complete once they resolve, which reads as an
-  // "in-session completion" and wrongly shows + celebrates on load.
-  // A disabled query reports isLoading:true forever, so only wait on the
-  // row-count query when it's actually enabled.
+  // Wait for every input feeding allTasksComplete before trusting it — else a
+  // still-loading setup query flips complete mid-session and reads as an
+  // in-session completion (wrongly showing + celebrating on load). A disabled
+  // query reports isLoading forever, so only wait on the probe when enabled.
   const sourceRowsSettled = !isSourceRowsQueryEnabled || !isSourceRowsLoading;
   const inputsReady =
     !isMeLoading &&
@@ -225,19 +190,16 @@ export function useOnboardingCompletion(
     !isSourcesLoading &&
     sourceRowsSettled;
 
-  // Only celebrate for a completion that happens IN THIS SESSION. Latch the
-  // completion state the first time all inputs are ready: if the user was
-  // already done on arrival, that's past work — hide, no celebration. If they
-  // finish while the card is open, hold it up briefly to celebrate.
+  // Celebrate only for an in-session completion: latch the load-time state once,
+  // so a user already done on arrival sees nothing, but one who finishes while
+  // the card is open gets a brief celebration.
   const [celebrationDone, setCelebrationDone] = useState(false);
   const [wasCompleteOnLoad, setWasCompleteOnLoad] = useState<boolean | null>(
     null,
   );
 
-  // Read the latest completion state inside the latch effect without making it
-  // a dependency: the effect must run only when `inputsReady` flips, and
-  // `allTasksComplete` merely seeds the initial value. A ref keeps deps
-  // exhaustive without re-latching on every completion change.
+  // Ref so the latch effect reads the current value while depending only on
+  // inputsReady — it must latch once, not re-run on every completion change.
   const allTasksCompleteRef = useRef(allTasksComplete);
   useEffect(() => {
     allTasksCompleteRef.current = allTasksComplete;
@@ -263,10 +225,6 @@ export function useOnboardingCompletion(
 
   const isCelebrating = completedInSession && !celebrationDone;
 
-  // Don't render until inputs are ready and we've latched the load-time state —
-  // otherwise we'd flash the card during the setup-query load. Then hide when
-  // dismissed, or once all current tasks are complete (after any in-session
-  // celebration).
   const shouldShow =
     inputsReady &&
     isTeamAgeEligible &&

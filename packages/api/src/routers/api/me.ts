@@ -50,8 +50,7 @@ router.get('/', async (req, res: express.Response<MeApiResponse>, next) => {
       email,
       id,
       name,
-      // Parse through the schema so users created before onboardingData existed
-      // (and any partially-written subdocument) read back with defaults.
+      // Defaults for users predating the field.
       onboardingData: OnboardingDataSchema.parse(onboardingData ?? {}),
       team,
       usageStatsEnabled: USAGE_STATS_ENABLED,
@@ -91,9 +90,8 @@ router.patch('/accessKey', async (req, res: RotateAccessKeyExpRes, next) => {
 
 type OnboardingExpRes = express.Response<OnboardingDataApiResponse>;
 
-// Mark a product-usage onboarding task complete for the caller. The user id
-// comes from the session, never the request, so a caller can only ever mutate
-// their own onboarding state. Idempotent (see completeOnboardingTask).
+// User id comes from the session, never the request, so a caller can only
+// mutate their own onboarding state.
 router.post(
   '/onboarding/task',
   validateRequest({ body: CompleteOnboardingTaskApiBodySchema }),

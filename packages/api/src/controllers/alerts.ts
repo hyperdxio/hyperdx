@@ -371,9 +371,7 @@ export const updateAlert = async (
       returnDocument: 'after',
     },
   );
-  // Editing an existing alert is still "set up an alert" for onboarding —
-  // record it the same as create so the checklist completes from any edit,
-  // not only the initial create. No-op once already recorded.
+  // Editing an alert also completes "set up an alert", not just creating one.
   if (alert != null) {
     recordOnboardingTaskCompletion(userId, 'alert');
   }
@@ -450,8 +448,7 @@ export const createOrUpdateDashboardAlerts = async (
     }),
   );
 
-  // A tile alert never goes through the /alerts router, so this is the only
-  // place a dashboard-tile alert can complete the onboarding task.
+  // Tile alerts never hit the /alerts router, so record here.
   if (result.length > 0) {
     recordOnboardingTaskCompletion(userId, 'alert');
   }

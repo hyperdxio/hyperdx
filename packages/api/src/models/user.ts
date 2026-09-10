@@ -15,8 +15,7 @@ export interface IUser {
   createdAt: Date;
   email: string;
   name: string;
-  // Optional so documents written before this field existed read back cleanly;
-  // the `me` route fills in defaults for those legacy users.
+  // Optional for docs predating this field; the `me` route defaults it.
   onboardingData?: OnboardingData;
   team: ObjectId;
 }

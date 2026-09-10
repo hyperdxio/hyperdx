@@ -2881,15 +2881,10 @@ export type InstallationApiResponse = z.infer<
 
 // Onboarding
 //
-// Single source of truth for the product-usage onboarding tasks tracked per
-// user. Adding a key here is the ONLY change needed to the contract: the Zod
-// enum below rejects unknown ids at the API boundary, and the frontend task
-// registry is typed `Record<OnboardingTaskId, ...>` so the compiler forces UI
-// copy + a link for every new key. UI copy and hrefs live in the frontend, not
-// here, to keep this package free of presentation concerns.
-// Order is the product-usage checklist display order (the frontend renders
-// tasks in this sequence). Membership — not order — is what the API enum and
-// the persisted subdocument care about, so reordering here is safe.
+// SSOT for product-usage tasks. UI copy/hrefs live in the frontend registry
+// (typed Record<OnboardingTaskId>), which compile-errors until a new key gets
+// copy + a link. Declaration order is the checklist display order; membership
+// (not order) is what the API enum and persisted subdoc rely on.
 export const ONBOARDING_TASK_IDS = [
   'advancedQuery',
   'dashboard',
@@ -2902,12 +2897,9 @@ export type OnboardingTaskId = (typeof ONBOARDING_TASK_IDS)[number];
 const KNOWN_ONBOARDING_TASK_IDS: readonly string[] = ONBOARDING_TASK_IDS;
 
 export const OnboardingDataSchema = z.object({
-  // Read-tolerant / write-strict asymmetry: the READ path drops persisted ids
-  // that are no longer in ONBOARDING_TASK_IDS instead of throwing, so removing
-  // or renaming a task can't 500 GET /me for users who already completed it.
-  // The WRITE boundary (CompleteOnboardingTaskApiBodySchema) stays a strict
-  // z.enum, so the API still rejects unknown ids on POST. The transform keeps
-  // the inferred type as OnboardingTaskId[].
+  // Read-tolerant so removing/renaming a task can't 500 GET /me for users who
+  // completed it; the write boundary (CompleteOnboardingTaskApiBodySchema)
+  // stays a strict z.enum.
   completedTasks: z
     .array(z.string())
     .default([])

@@ -34,22 +34,17 @@ export function findUsersByTeam(team: string | ObjectId) {
   return User.find({ team }).sort({ createdAt: 1 });
 }
 
-// A real, persistable user id is a canonical 24-hex-char ObjectId. This
-// deliberately rejects the synthetic `_local_user_` id the auth middleware
-// injects in IS_LOCAL_APP_MODE: mongoose casts that 12-byte string to an
-// ObjectId that matches no document, so any write is a silent no-op — and
-// mongoose.isValidObjectId() returns true for it, so it can't be the guard.
+// Rejects the synthetic `_local_user_` id injected in IS_LOCAL_APP_MODE, which
+// mongoose casts to an ObjectId matching no document (and which
+// mongoose.isValidObjectId() wrongly accepts, so it can't be the guard).
 function isPersistableUserId(
   userId: string | ObjectId | undefined | null,
 ): userId is string | ObjectId {
   return userId != null && /^[0-9a-fA-F]{24}$/.test(String(userId));
 }
 
-// Idempotent: $addToSet means completing an already-completed task is a no-op,
-// so the frontend can fire optimistically without guarding against duplicates.
-// taskId is typed OnboardingTaskId so call sites can't pass an unknown key.
-// Returns null for a non-persistable user (local app mode) so the route reports
-// the unchanged default state instead of a write that silently matched nothing.
+// Returns null for a non-persistable user so the route reports unchanged
+// default state rather than a write that silently matched nothing.
 export function completeOnboardingTask(
   userId: string | ObjectId,
   taskId: OnboardingTaskId,
@@ -78,24 +73,14 @@ export function setOnboardingDismissed(
   );
 }
 
-// Fire-and-forget wrapper for recording a product-usage task from an unrelated
-// write path (creating an alert, saving a dashboard, an MCP tool call).
-// Onboarding bookkeeping must never fail or delay the operation that triggered
-// it, so errors are swallowed after logging. No-op when userId is absent (e.g.
-// a tile alert upserted without an owning user).
-//
-// Unlike completeOnboardingTask (which the /me/onboarding/task route calls and
-// whose returned doc seeds the client cache), this path ignores the result, so
-// it guards on $ne to skip the DB write entirely once the task is recorded.
-// These call sites fire on every save / every MCP tool call, so skipping the
-// redundant $addToSet avoids write amplification on hot paths.
+// Fire-and-forget recording from an unrelated write path (alert/dashboard save,
+// MCP tool call): must never fail or delay the triggering operation, so errors
+// are swallowed. The $ne skips the write once already recorded — these fire on
+// every save / tool call, so it avoids write amplification on hot paths.
 export function recordOnboardingTaskCompletion(
   userId: string | ObjectId | undefined | null,
   taskId: OnboardingTaskId,
 ) {
-  // Skip when there's no user, or the id isn't persistable (local app mode) —
-  // otherwise this fires a pointless User.updateOne on every dashboard save,
-  // alert save, and MCP tool call.
   if (!isPersistableUserId(userId)) {
     return;
   }
