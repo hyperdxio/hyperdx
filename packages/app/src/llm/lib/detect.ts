@@ -97,7 +97,7 @@ export function isLLMSpan(
  * Note this tests presence, where `!= ''` tested presence *and* non-emptiness.
  * A key explicitly set to '' now counts as present.
  */
-export function buildKeyExistsSql({
+function buildKeyExistsSql({
   attributeField,
   key,
   isJsonColumn,
