@@ -64,25 +64,30 @@ export function DistinctValueSelect({
   });
 
   const values = useMemo(() => {
-    const found =
+    const found: string[] =
       data?.data
         ?.map((d: any) => d.value)
         .filter(Boolean)
         .sort() || [];
-    return [{ value: '', label: allLabel }, ...found];
-  }, [data, allLabel]);
-
-  // Mantine does not clear the select if the value disappears from data
-  // (e.g. the searched window changed and the value is no longer in it).
-  const selected = values.some(d =>
-    typeof d === 'string' ? d === value : d.value === value,
-  );
+    // Keep the applied value selectable even when it is not in `found`, so the
+    // control can never read "all" while the charts are still filtered. It is
+    // missing in three cases, only one of which is staleness: the query has
+    // not resolved yet (deep link into a filtered URL), the value fell off the
+    // end of the row limit, or the searched window no longer contains it.
+    //
+    // Clearing the parent instead would silently discard a filter in the first
+    // two, and would mean writing to the URL from a render driven by fetch
+    // timing — which is what keeping these selects out of the search form is
+    // meant to avoid.
+    const applied = value && !found.includes(value) ? [value] : [];
+    return [{ value: '', label: allLabel }, ...applied, ...found];
+  }, [data, allLabel, value]);
 
   return (
     <Select
       {...props}
       data={values}
-      value={selected ? value : null}
+      value={value || null}
       onChange={v => onChange(v ?? '')}
       disabled={isLoading || isError}
       comboboxProps={{ withinPortal: false }}
