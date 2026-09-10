@@ -807,6 +807,9 @@ ${targetTemplate}`;
       select: resolvedSelect,
       where: savedSearch.where,
       whereLanguage: savedSearch.whereLanguage,
+      // The alert evaluation counts the filtered row set, so the sample
+      // query must apply the same pinned filters or it shows unrelated lines.
+      filters: savedSearch.filters?.map(f => ({ ...f })),
       implicitColumnExpression: source.implicitColumnExpression,
       useTextIndexForImplicitColumn: source.useTextIndexForImplicitColumn,
       ...pickSampleWeightExpressionProps(source),

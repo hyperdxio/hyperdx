@@ -713,6 +713,36 @@ describe('enriched message fields', () => {
     });
   });
 
+  it('applies the saved search pinned filters to the sample log query', async () => {
+    const seenQueries: string[] = [];
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const capturingClickhouseClient = {
+      query: jest.fn().mockImplementation((args: { query: string }) => {
+        seenQueries.push(args.query);
+        return Promise.resolve({
+          json: jest.fn().mockResolvedValue({ data: [] }),
+          text: jest.fn().mockResolvedValue(sampleLogsCsv),
+        });
+      }),
+    } as any;
+
+    await renderAlertTemplate({
+      alertProvider,
+      clickhouseClient: capturingClickhouseClient,
+      metadata: mockMetadata,
+      state: AlertState.ALERT,
+      template: null,
+      title: 'Test Alert Title',
+      view: makeSearchView({
+        filters: [{ type: 'sql', condition: "ServiceName = 'checkout'" }],
+      }),
+      teamId: TEST_TEAM_ID,
+      teamWebhooksById: new Map(),
+    });
+
+    expect(seenQueries.join('\n')).toContain("ServiceName = 'checkout'");
+  });
+
   it('reports an empty sourceQuery when the chart carries no condition', async () => {
     const { dispatched } = await renderWithWebhook(
       AlertState.ALERT,
