@@ -3,6 +3,7 @@ import {
   isClickHouseVersionAtLeast,
   parseClickHouseVersion,
   supportsDirectReadMap,
+  supportsJSONEachRowWithProgressMeta,
 } from '@/core/clickhouseVersion';
 
 type ClickHouseVersionTuple = readonly [number, number, number, number];
@@ -253,5 +254,23 @@ describe('supportsDirectReadMap', () => {
         expect(supportsDirectReadMap(version, true)).toBe(true);
       },
     );
+  });
+});
+
+describe('supportsJSONEachRowWithProgressMeta', () => {
+  it.each<readonly [ClickHouseVersionTuple, boolean]>([
+    [[25, 1, 0, 0], true],
+    [[25, 1, 0, 1], true],
+    [[25, 2, 0, 0], true],
+    [[26, 4, 1, 3], true],
+    [[25, 0, 99, 99], false],
+    [[24, 12, 0, 0], false],
+    [[23, 8, 0, 0], false],
+  ])('%j → %s', (version, expected) => {
+    expect(supportsJSONEachRowWithProgressMeta(version)).toBe(expected);
+  });
+
+  it('returns false when the version is unknown', () => {
+    expect(supportsJSONEachRowWithProgressMeta(undefined)).toBe(false);
   });
 });

@@ -1,3 +1,5 @@
+import { useMemo } from 'react';
+import type { ClickHouseProgress } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   chSqlToAliasMap,
   ClickHouseQueryError,
@@ -43,7 +45,14 @@ import { toStartOfInterval } from '@/ChartUtils';
 import { useClickhouseClient } from '@/clickhouse';
 import { IS_MTVIEWS_ENABLED } from '@/config';
 import { buildMTViewSelectQuery } from '@/hdxMTViews';
+import { queryChartConfigWithProgress } from '@/hooks/useChartConfig/queryChartConfigWithProgress';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
+import {
+  clearQueryProgress,
+  completeChunkProgress,
+  useQueryProgress,
+  writeChunkProgress,
+} from '@/hooks/useQueryProgress';
 import { useSource } from '@/source';
 import { generateTimeWindowsDescending } from '@/utils/searchWindows';
 
@@ -59,6 +68,12 @@ interface AdditionalUseQueriedChartConfigOptions {
    */
   enableQueryChunking?: boolean;
   enableParallelQueries?: boolean;
+  /**
+   * Stream the query so ClickHouse progress events can be surfaced as
+   * `progress`. Needs ClickHouse >= 25.1; older servers silently fall back to
+   * the non-streaming query with no progress reporting.
+   */
+  reportProgress?: boolean;
 }
 
 type TimeWindow = {
@@ -74,6 +89,51 @@ type TChunk = {
   chunk: ResponseJSON<Record<string, string | number>>;
   isComplete: boolean;
 };
+
+/**
+ * Reports the progress of one chunk of a chart query. `chunkId` is stable per
+ * window so parallel chunks each keep their own slot; `rangeMs` is how much of
+ * the chart's date range that window covers.
+ */
+export type ChunkProgressReporter = (update: {
+  chunkId: string;
+  rangeMs: number;
+  progress?: ClickHouseProgress;
+  isComplete?: boolean;
+}) => void;
+
+/** Milliseconds spanned by a chunk's window, or by the whole config's range. */
+function rangeMsOf(
+  window: TimeWindow | undefined,
+  config: ChartConfigWithOptDateRange,
+): number {
+  const [start, end] = window?.dateRange ?? config.dateRange ?? [];
+  if (start == null || end == null) return 0;
+  return Math.max(end.getTime() - start.getTime(), 0);
+}
+
+/**
+ * Binds a chunk's identity to the reporter so the query loop only has to say
+ * "progressed" or "done". Returns undefined when nobody is listening, which
+ * also switches the query back to the non-streaming path.
+ */
+function chunkReporterFor(
+  onChunkProgress: ChunkProgressReporter | undefined,
+  index: number,
+  window: TimeWindow | undefined,
+  config: ChartConfigWithOptDateRange,
+) {
+  if (onChunkProgress == null) return undefined;
+
+  const chunkId = `chunk-${index}`;
+  const rangeMs = rangeMsOf(window, config);
+
+  return {
+    onProgress: (progress: ClickHouseProgress) =>
+      onChunkProgress({ chunkId, rangeMs, progress }),
+    onComplete: () => onChunkProgress({ chunkId, rangeMs, isComplete: true }),
+  };
+}
 
 const shouldUseChunking = (
   config: ChartConfigWithOptDateRange,
@@ -147,6 +207,7 @@ async function* fetchDataInChunks({
   enableParallelQueries = false,
   metadata,
   querySettings,
+  onChunkProgress,
 }: {
   config: ChartConfigWithOptDateRange;
   clickhouseClient: ClickhouseClient;
@@ -155,6 +216,7 @@ async function* fetchDataInChunks({
   enableParallelQueries?: boolean;
   metadata: Metadata;
   querySettings: QuerySettings | undefined;
+  onChunkProgress?: ChunkProgressReporter;
 }) {
   const windows =
     enableQueryChunking && shouldUseChunking(config)
@@ -202,18 +264,18 @@ async function* fetchDataInChunks({
     // fetch in parallel
     const promises = windows.map(async (w, index) => {
       const windowedConfig = windowedConfigFor(w);
-      return {
-        index,
-        queryResult: await clickhouseClient.queryChartConfig({
-          config: windowedConfig,
-          metadata,
-          opts: {
-            abort_signal: signal,
-            clickhouse_settings: clickHouseSettings,
-          },
-          querySettings,
-        }),
-      };
+      const reportChunk = chunkReporterFor(onChunkProgress, index, w, config);
+      const queryResult = await queryChartConfigWithProgress({
+        config: windowedConfig,
+        clickhouseClient,
+        metadata,
+        querySettings,
+        signal,
+        clickhouseSettings: clickHouseSettings,
+        onProgress: reportChunk?.onProgress,
+      });
+      reportChunk?.onComplete();
+      return { index, queryResult };
     });
     const remainingPromises = [...promises];
     const bufferedChunks = new Array(windows.length);
@@ -241,15 +303,22 @@ async function* fetchDataInChunks({
   // fetch in series
   for (let i = 0; i < windows.length; i++) {
     const windowedConfig = windowedConfigFor(windows[i]);
+    const reportChunk = chunkReporterFor(
+      onChunkProgress,
+      i,
+      windows[i],
+      config,
+    );
 
-    const result = await clickhouseClient.queryChartConfig({
+    const result = await queryChartConfigWithProgress({
       config: windowedConfig,
+      clickhouseClient,
       metadata,
-      opts: {
-        abort_signal: signal,
-      },
       querySettings,
+      signal,
+      onProgress: reportChunk?.onProgress,
     });
+    reportChunk?.onComplete();
 
     yield { chunk: result, isComplete: i === windows.length - 1 };
   }
@@ -299,7 +368,7 @@ export function useQueriedChartConfig(
   options?: Partial<UseQueryOptions<TQueryFnData>> &
     AdditionalUseQueriedChartConfigOptions,
 ) {
-  const { enabled = true } = options ?? {};
+  const { enabled = true, reportProgress = false } = options ?? {};
   const clickhouseClient = useClickhouseClient();
   const queryClient = useQueryClient();
   const metadata = useMetadataWithSettings();
@@ -315,14 +384,18 @@ export function useQueriedChartConfig(
     id: config.source,
   });
 
+  // Include enableQueryChunking in the query key to ensure that queries with the
+  // same config but different enableQueryChunking values do not share a query.
+  // Callers may override it (DBTimeChart and SearchTotalCountChart pass a
+  // matching key so react-query de-dupes their identical histogram query).
+  const queryKey = options?.queryKey ?? [
+    config,
+    options?.enableQueryChunking ?? false,
+    options?.enableParallelQueries ?? false,
+  ];
+
   const query = useQuery<TQueryFnData, ClickHouseQueryError | Error>({
-    // Include enableQueryChunking in the query key to ensure that queries with the
-    // same config but different enableQueryChunking values do not share a query
-    queryKey: [
-      config,
-      options?.enableQueryChunking ?? false,
-      options?.enableParallelQueries ?? false,
-    ],
+    queryKey,
     // TODO: Replace this with `streamedQuery` when it is no longer experimental. Use 'replace' refetch mode.
     // https://tanstack.com/query/latest/docs/reference/streamedQuery
     queryFn: async context => {
@@ -441,6 +514,13 @@ export function useQueriedChartConfig(
         isComplete: false,
       };
 
+      // Progress outlives a settled query for a short grace period so the
+      // search table's bar survives the gap between windows; a rerun of this
+      // chart must not inherit the previous run's totals.
+      if (reportProgress) {
+        clearQueryProgress(queryClient, context.queryKey);
+      }
+
       const chunks = fetchDataInChunks({
         config: optimizedConfig,
         clickhouseClient,
@@ -449,6 +529,22 @@ export function useQueriedChartConfig(
         enableParallelQueries: options?.enableParallelQueries,
         metadata,
         querySettings: source?.querySettings,
+        onChunkProgress: reportProgress
+          ? ({ chunkId, rangeMs, progress, isComplete }) => {
+              if (isComplete) {
+                completeChunkProgress(queryClient, context.queryKey, {
+                  chunkId,
+                  rangeMs,
+                });
+              } else if (progress != null) {
+                writeChunkProgress(queryClient, context.queryKey, {
+                  chunkId,
+                  rangeMs,
+                  progress,
+                });
+              }
+            }
+          : undefined,
       });
 
       let accumulatedChunks: TQueryFnData = emptyValue;
@@ -486,9 +582,18 @@ export function useQueriedChartConfig(
   if (query.isError && options?.onError) {
     options.onError(query.error);
   }
+
+  const totalRangeMs = useMemo(() => rangeMsOf(undefined, config), [config]);
+  const progress = useQueryProgress({
+    queryKey,
+    active: reportProgress && query.isFetching,
+    totalRangeMs,
+  });
+
   return {
     ...query,
     isLoading: query.isLoading || isLoadingMVOptimization,
+    progress,
   };
 }
 

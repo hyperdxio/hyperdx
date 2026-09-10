@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { act } from 'react';
 import { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/browser';
 import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
@@ -17,6 +17,7 @@ import {
   getGranularityAlignedTimeWindows,
   useQueriedChartConfig,
 } from '@/hooks/useChartConfig';
+import { queryChartConfigWithProgress } from '@/hooks/useChartConfig/queryChartConfigWithProgress';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 
 // Mock DEFAULT_TIME_WINDOWS_SECONDS to remove the 15m window
@@ -54,6 +55,8 @@ jest.mock('@/metadata', () => ({
   getMetadata: jest.fn(() => ({
     sources: [],
     connections: {},
+    // Recent enough for JSONEachRowWithProgress to carry meta/exception.
+    getServerVersion: jest.fn().mockResolvedValue([26, 5, 0, 0]),
   })),
 }));
 
@@ -61,6 +64,17 @@ jest.mock('@/metadata', () => ({
 jest.mock('@/config', () => ({
   IS_MTVIEWS_ENABLED: false,
 }));
+
+// Spy on the chart query helper while keeping its real behavior (which
+// delegates to the mocked clickhouse client unless progress is requested).
+jest.mock('@/hooks/useChartConfig/queryChartConfigWithProgress', () => {
+  const actual = jest.requireActual(
+    '@/hooks/useChartConfig/queryChartConfigWithProgress',
+  );
+  return {
+    queryChartConfigWithProgress: jest.fn(actual.queryChartConfigWithProgress),
+  };
+});
 
 // Mock the MV optimization module
 jest.mock('../useMVOptimizationExplanation', () => ({
@@ -1334,6 +1348,76 @@ describe('useChartConfig', () => {
 
       return { config, mockResponse1, mockResponse2, mockResponse3 };
     };
+
+    it('aggregates progress across parallel chunks and clears it when done', async () => {
+      const { config, mockResponse1, mockResponse2, mockResponse3 } =
+        setupParallelQueries();
+
+      // Report half-scanned progress for each chunk before it resolves, and
+      // hold the last one open so the in-flight state is observable.
+      let releaseLastChunk: (
+        value: ResponseJSON<Record<string, string>>,
+      ) => void = () => {};
+      const halfway = {
+        read_rows: '50',
+        read_bytes: '500',
+        total_rows_to_read: '100',
+        elapsed_ns: '1',
+      };
+      jest
+        .mocked(queryChartConfigWithProgress)
+        .mockImplementationOnce(async ({ onProgress }) => {
+          onProgress?.(halfway);
+          return mockResponse1;
+        })
+        .mockImplementationOnce(async ({ onProgress }) => {
+          onProgress?.(halfway);
+          return mockResponse2;
+        })
+        .mockImplementationOnce(async ({ onProgress }) => {
+          onProgress?.(halfway);
+          return new Promise(resolve => {
+            releaseLastChunk = resolve;
+          });
+        });
+
+      const { result } = renderHook(
+        () =>
+          useQueriedChartConfig(config, {
+            enableQueryChunking: true,
+            enableParallelQueries: true,
+            reportProgress: true,
+          }),
+        { wrapper },
+      );
+
+      // The 24h range splits into 6h/6h/12h windows (see the searchWindows
+      // mock). Two finished chunks plus the third half-scanned:
+      // (6 + 6 + 12 * 0.5) / 24.
+      await waitFor(() =>
+        expect(result.current.progress?.percent).toBeCloseTo(75, 5),
+      );
+      expect(result.current.progress?.readRows).toBe(150);
+
+      await act(async () => {
+        releaseLastChunk(mockResponse3);
+      });
+
+      await waitFor(() => expect(result.current.isFetching).toBe(false));
+      expect(result.current.progress).toBeUndefined();
+    });
+
+    it('does not stream when reportProgress is not set', async () => {
+      const { config, mockResponse1 } = setupParallelQueries();
+      mockClickhouseClient.queryChartConfig.mockResolvedValue(mockResponse1);
+
+      const { result } = renderHook(() => useQueriedChartConfig(config), {
+        wrapper,
+      });
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      expect(result.current.progress).toBeUndefined();
+    });
 
     it('fetches data in parallel when enableParallelQueries is true', async () => {
       const { config, mockResponse1, mockResponse2, mockResponse3 } =

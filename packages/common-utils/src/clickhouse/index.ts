@@ -4,10 +4,12 @@ import type {
   ClickHouseSettings,
   DataFormat,
   Logger,
+  ProgressRow,
   ResponseHeaders,
   ResponseJSON,
   Row,
 } from '@clickhouse/client-common';
+import { isException, isProgressRow, isRow } from '@clickhouse/client-common';
 import type { ClickHouseClient as WebClickHouseClient } from '@clickhouse/client-web';
 import * as SQLParser from 'node-sql-parser';
 
@@ -31,9 +33,23 @@ export type {
   ClickHouseSettings,
   DataFormat,
   Logger,
+  ProgressRow,
   ResponseJSON,
   Row,
 };
+
+/**
+ * Query progress counters carried by a `{"progress":...}` event in the
+ * `JSONEachRowWithProgress` format. All counters are stringified UInt64s.
+ * `total_rows_to_read` is an estimate and is absent until ClickHouse has
+ * decided how much it needs to scan.
+ */
+export type ClickHouseProgress = ProgressRow['progress'];
+
+// Row-kind guards for the `JSONEachRowWithProgress` format. Re-exported here
+// because consumers (e.g. the app) depend on @hyperdx/common-utils rather than
+// on @clickhouse/client-* directly.
+export { isException, isProgressRow, isRow };
 
 export enum JSDataType {
   Array = 'array',

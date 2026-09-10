@@ -2,15 +2,15 @@ import { useMemo } from 'react';
 import { omit } from 'lodash';
 import ms from 'ms';
 import type {
+  ClickHouseProgress,
   ClickHouseSettings,
-  ResponseJSON,
-  Row,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   ChSql,
   ClickHouseQueryError,
   ColumnMetaType,
 } from '@hyperdx/common-utils/dist/clickhouse';
+import { supportsJSONEachRowWithProgressMeta } from '@hyperdx/common-utils/dist/core/clickhouseVersion';
 import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
@@ -38,7 +38,19 @@ import { getClickhouseClient } from '@/clickhouse';
 import { MAX_TABLE_ROWS } from '@/HDXMultiSeriesTableChart';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
+import {
+  clearQueryProgress,
+  completeChunkProgress,
+  startChunkProgress,
+  useQueryProgress,
+  writeChunkProgress,
+} from '@/hooks/useQueryProgress';
 import { useSource } from '@/source';
+import {
+  createCompactWithNamesAndTypesParser,
+  createEachRowWithProgressParser,
+  StreamParser,
+} from '@/utils/clickhouseStream';
 import {
   DEFAULT_TIME_WINDOWS_SECONDS,
   generateTimeWindowsAscending,
@@ -66,12 +78,61 @@ type TPageParam = {
   offset: number;
 };
 
+/** One NDJSON line from a ClickHouse result stream, before decoding. */
+type StreamedRow = { json: () => unknown };
+
 type TQueryFnData = {
   data: Record<string, any>[];
   meta: ColumnMetaType[];
   chSql: ChSql;
   window: TimeWindow;
 };
+
+/** Milliseconds of the search range covered by a window. */
+function windowRangeMs(window: TimeWindow): number {
+  return Math.max(window.endTime.getTime() - window.startTime.getTime(), 0);
+}
+
+/** Progress chunk id for a search window. Offset pages share their window. */
+function windowChunkId(windowIndex: number): string {
+  return `window-${windowIndex}`;
+}
+
+/**
+ * Total span of the search, and the windows earlier pages already covered.
+ *
+ * Pagination walks the range one window at a time, so progress for the window
+ * currently in flight only describes a slice of what the UI says it is
+ * searching ("across about 1 month"). Crediting the windows already finished
+ * makes the bar describe the whole search instead of restarting per page.
+ *
+ * Ranges are keyed by chunk id so the window currently streaming — which also
+ * has a placeholder page in the cache — is credited once, not twice.
+ */
+function coverageFromPages(
+  config: ChartConfigWithOptTimestamp,
+  pages: TQueryFnData[] | undefined,
+): { totalRangeMs: number; completedRanges: Record<string, number> } {
+  const [start, end] = config.dateRange ?? [];
+  const totalRangeMs =
+    start != null && end != null
+      ? Math.max(end.getTime() - start.getTime(), 0)
+      : 0;
+
+  // Only a page that came back empty proves its window is exhausted; a page
+  // that returned rows will be followed by another request at a higher offset
+  // in the same window.
+  const completedRanges: Record<string, number> = {};
+  for (const page of pages ?? []) {
+    if (page?.window != null && page.data.length === 0) {
+      completedRanges[windowChunkId(page.window.windowIndex)] = windowRangeMs(
+        page.window,
+      );
+    }
+  }
+
+  return { totalRangeMs, completedRanges };
+}
 
 type TData = {
   pages: TQueryFnData[];
@@ -85,6 +146,7 @@ type QueryMeta = {
   metadata: Metadata;
   optimizedConfig?: ChartConfigWithOptTimestamp;
   source: TSource | undefined;
+  reportProgress: boolean;
 };
 
 // Get time window from page param
@@ -179,7 +241,15 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
     hasPreviousQueries,
     optimizedConfig,
     source,
+    reportProgress,
   } = meta as QueryMeta;
+
+  // Progress is deliberately kept across the gap between windows, so a run
+  // that restarts at the first page — a refetch, or a re-search with identical
+  // params — has to drop what the previous run accumulated.
+  if (reportProgress && pageParam.windowIndex === 0 && pageParam.offset === 0) {
+    clearQueryProgress(queryClient, queryKey);
+  }
 
   // Only stream incrementally if this is a fresh query with no previous
   // response or if it's a paginated query
@@ -251,22 +321,41 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
     clickHouseSettings.result_overflow_mode = 'break';
   }
 
-  const resultSet =
-    await clickhouseClient.query<'JSONCompactEachRowWithNamesAndTypes'>({
-      query: query.sql,
-      query_params: query.params,
-      format: 'JSONCompactEachRowWithNamesAndTypes',
-      abort_signal: abortController?.signal || signal,
-      connectionId: config.connection,
-      clickhouse_settings: clickHouseSettings,
-    });
+  // `JSONEachRowWithProgress` interleaves `{"progress":...}` events with the
+  // rows, which is the only way to observe query progress from a browser:
+  // ClickHouse stops emitting `X-ClickHouse-Progress` headers once the response
+  // body starts, and `fetch` cannot surface headers incrementally anyway.
+  // Requires >= 25.1 for the `meta` and `exception` events.
+  const useProgressFormat =
+    reportProgress &&
+    supportsJSONEachRowWithProgressMeta(
+      await metadata.getServerVersion({ connectionId: config.connection }),
+    );
 
-  const stream = resultSet.stream();
+  const resultSet = useProgressFormat
+    ? await clickhouseClient.query<'JSONEachRowWithProgress'>({
+        query: query.sql,
+        query_params: query.params,
+        format: 'JSONEachRowWithProgress',
+        abort_signal: abortController?.signal || signal,
+        connectionId: config.connection,
+        clickhouse_settings: clickHouseSettings,
+      })
+    : await clickhouseClient.query<'JSONCompactEachRowWithNamesAndTypes'>({
+        query: query.sql,
+        query_params: query.params,
+        format: 'JSONCompactEachRowWithNamesAndTypes',
+        abort_signal: abortController?.signal || signal,
+        connectionId: config.connection,
+        clickhouse_settings: clickHouseSettings,
+      });
+
+  // The two formats yield different `Row<_, Format>` types whose `json()`
+  // return types do not unify into a callable signature. The parsers only need
+  // each line decoded, so narrow to that shared shape.
+  const stream: ReadableStream<StreamedRow[]> = resultSet.stream();
 
   const reader = stream.getReader();
-
-  const headerRows: Row<unknown[], 'JSONCompactEachRowWithNamesAndTypes'>[] =
-    [];
 
   if (isStreamingIncrementally) {
     queryClient.setQueryData<TData>(queryKey, (oldData): TData => {
@@ -290,9 +379,83 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
     });
   }
 
-  const queryResultMeta: NonNullable<ResponseJSON['meta']> = [];
+  let queryResultMeta: ColumnMetaType[] = [];
   // Buffer for all data rows for the current query
   const queryResultData: Record<string, unknown>[] = [];
+
+  // Appends to the in-progress page so partial results render as they stream.
+  // Called with no rows when only `meta` arrived, so the column types reach the
+  // table even for an empty result set.
+  function appendToStreamedPage(rowObjs: Record<string, unknown>[]) {
+    if (!isStreamingIncrementally) {
+      return;
+    }
+
+    queryClient.setQueryData<TData>(queryKey, oldData => {
+      if (oldData == null) {
+        return {
+          pages: [
+            {
+              data: rowObjs,
+              meta: queryResultMeta,
+              chSql: query,
+              window: timeWindow,
+            },
+          ],
+          pageParams: [pageParam],
+        };
+      }
+
+      const oldPages = oldData.pages.slice(0, -1);
+      const page = oldData.pages[oldData.pages.length - 1];
+
+      return {
+        pages: [
+          ...oldPages,
+          {
+            ...page,
+            data: [...(page.data ?? []), ...rowObjs],
+            meta: queryResultMeta,
+            chSql: query,
+            window: timeWindow,
+          },
+        ],
+        pageParams: oldData.pageParams,
+      };
+    });
+  }
+
+  const handlers = {
+    onMeta: (meta: ColumnMetaType[]) => {
+      queryResultMeta = meta;
+      appendToStreamedPage([]);
+    },
+    onRows: (rowObjs: Record<string, unknown>[]) => {
+      queryResultData.push(...rowObjs);
+      appendToStreamedPage(rowObjs);
+    },
+    onProgress: (progress: ClickHouseProgress) => {
+      writeChunkProgress(queryClient, queryKey, {
+        // Offset pages within one window refine the same slice of the range.
+        chunkId: windowChunkId(timeWindow.windowIndex),
+        progress,
+        rangeMs: windowRangeMs(timeWindow),
+      });
+    },
+  };
+
+  if (useProgressFormat) {
+    // Claim this window before reading, so it is not counted as already
+    // covered while it waits for its first progress event.
+    startChunkProgress(queryClient, queryKey, {
+      chunkId: windowChunkId(timeWindow.windowIndex),
+      rangeMs: windowRangeMs(timeWindow),
+    });
+  }
+
+  const parseBatch: StreamParser = useProgressFormat
+    ? createEachRowWithProgressParser(handlers, query.sql)
+    : createCompactWithNamesAndTypesParser(handlers);
 
   async function read(): Promise<void> {
     const { done, value } = await reader.read();
@@ -301,85 +464,13 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
       return;
     }
 
-    if (queryResultMeta.length === 0) {
-      headerRows.push(...value);
-    }
-
-    if (queryResultMeta.length > 0 || headerRows.length >= 2) {
-      let dataRows = value;
-      if (queryResultMeta.length === 0) {
-        const names = headerRows[0].json<string[]>();
-        const values = headerRows[1].json<string[]>();
-
-        if (names.length !== values.length) {
-          throw new Error(
-            'Invalid JSONCompactEachRowWithNamesAndTypes header rows',
-          );
-        }
-
-        for (let i = 0; i < names.length; i++) {
-          queryResultMeta.push({
-            name: names[i],
-            type: values[i],
-          });
-        }
-
-        dataRows = headerRows.slice(2);
-        headerRows.length = 0;
-      }
-
-      const rowObjs: Record<string, unknown>[] = [];
-      for (let i = 0; i < dataRows.length; i++) {
-        const rowArr = dataRows[i].json();
-        const rowObj: Record<string, unknown> = {};
-        for (let j = 0; j < rowArr.length; j++) {
-          rowObj[queryResultMeta[j].name] = rowArr[j];
-        }
-
-        rowObjs.push(rowObj);
-        queryResultData.push(rowObj);
-      }
-
-      if (isStreamingIncrementally) {
-        queryClient.setQueryData<TData>(queryKey, oldData => {
-          if (oldData == null) {
-            return {
-              pages: [
-                {
-                  data: rowObjs,
-                  meta: queryResultMeta,
-                  chSql: query,
-                  window: timeWindow,
-                },
-              ],
-              pageParams: [pageParam],
-            };
-          }
-
-          const oldPages = oldData.pages.slice(0, -1);
-          const page = oldData.pages[oldData.pages.length - 1];
-
-          return {
-            pages: [
-              ...oldPages,
-              {
-                ...page,
-                data: [...(page.data ?? []), ...rowObjs],
-                meta: queryResultMeta,
-                chSql: query,
-                window: timeWindow,
-              },
-            ],
-            pageParams: oldData.pageParams,
-          };
-        });
-      }
-    }
+    parseBatch(value.map(row => row.json()));
 
     return await read();
   }
 
-  function deleteProgressCache() {
+  // Drops the placeholder page that incremental streaming appended.
+  function deleteInProgressPage() {
     queryClient.setQueryData<TData>(queryKey, oldData => {
       if (oldData == null) {
         return;
@@ -396,9 +487,25 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
     await read();
   } catch (e) {
     if (isStreamingIncrementally) {
-      deleteProgressCache();
+      deleteInProgressPage();
     }
     throw e;
+  }
+
+  // Settle this request's progress. The entry is not cleared here: pagination
+  // may immediately fetch again, and the bar should carry on rather than blink
+  // back to empty. The next run from page one clears it instead.
+  //
+  // A page that returned rows means `getNextPageParam` will ask for a further
+  // offset *within this same window*, so the window is not finished and must
+  // not be credited its whole range yet — only an empty page proves it is
+  // exhausted.
+  if (useProgressFormat) {
+    completeChunkProgress(queryClient, queryKey, {
+      chunkId: windowChunkId(timeWindow.windowIndex),
+      rangeMs: windowRangeMs(timeWindow),
+      isChunkExhausted: queryResultData.length === 0,
+    });
   }
 
   if (!isStreamingIncrementally) {
@@ -418,7 +525,7 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
   const { pages } = cachedQueryData;
   const lastPage = pages[pages.length - 1];
 
-  deleteProgressCache();
+  deleteInProgressPage();
 
   return lastPage;
 };
@@ -447,11 +554,19 @@ export default function useOffsetPaginatedQuery(
     enabled = true,
     queryKeyPrefix = '',
     enableSmallFirstWindow,
+    reportProgress = false,
   }: {
     isLive?: boolean;
     enabled?: boolean;
     queryKeyPrefix?: string;
     enableSmallFirstWindow?: boolean;
+    /**
+     * Stream the query in a format that interleaves ClickHouse progress
+     * events, exposing them as `progress`. Costs a slightly larger response
+     * (rows repeat their column names) and needs ClickHouse >= 25.1; on older
+     * servers this is silently ignored.
+     */
+    reportProgress?: boolean;
   } = {},
 ) {
   const { data: meData, isLoading: isLoadingMe } = api.useMe();
@@ -520,6 +635,7 @@ export default function useOffsetPaginatedQuery(
       metadata,
       optimizedConfig: mvOptimizationData?.optimizedConfig,
       source,
+      reportProgress,
     } satisfies QueryMeta,
     queryFn,
     gcTime: isLive ? ms('30s') : ms('5m'), // more aggressive gc for live data, since it can end up holding lots of data
@@ -530,6 +646,18 @@ export default function useOffsetPaginatedQuery(
 
   const flattenedData = useMemo(() => flattenData(data), [data]);
 
+  const { totalRangeMs, completedRanges } = useMemo(
+    () => coverageFromPages(config, data?.pages),
+    [config, data?.pages],
+  );
+
+  const progress = useQueryProgress({
+    queryKey: key,
+    active: reportProgress && isFetching,
+    totalRangeMs,
+    completedRanges,
+  });
+
   return {
     isError,
     error,
@@ -538,5 +666,6 @@ export default function useOffsetPaginatedQuery(
     hasNextPage,
     isFetching: isFetching || isLoadingMe || isLoadingMVOptimization,
     isLoading: isLoading || isLoadingMe || isLoadingMVOptimization,
+    progress,
   };
 }

@@ -17,6 +17,23 @@ let mockExplainData: unknown[] | undefined = undefined;
 let mockExplainIsLoading = false;
 let mockExplainError: Error | null = null;
 
+let mockHistogramProgress:
+  | { percent?: number; readRows: number; readBytes: number; elapsedMs: number }
+  | undefined = undefined;
+
+jest.mock('@/components/SearchTotalCountChart', () => ({
+  __esModule: true,
+  default: () => <div />,
+  useSearchTotalCount: () => ({
+    totalCount: 0,
+    isLoading: false,
+    isError: false,
+    error: null,
+    isTotalCountComplete: true,
+    progress: mockHistogramProgress,
+  }),
+}));
+
 jest.mock('@/hooks/useExplainQuery', () => ({
   useExplainQuery: () => ({
     data: mockExplainData,
@@ -308,6 +325,7 @@ describe('SearchNumRows', () => {
     mockExplainData = undefined;
     mockExplainIsLoading = false;
     mockExplainError = null;
+    mockHistogramProgress = undefined;
   });
 
   it('renders nothing when enabled=false', () => {
@@ -554,5 +572,91 @@ describe('SearchNumRows', () => {
       screen.queryByText('Generated SQL (Timeline)'),
     ).not.toBeInTheDocument();
     expect(lastSQLPreviewConfig).toEqual(rowsConfig);
+  });
+  describe('histogram progress', () => {
+    const histogramConfig = { ...baseConfig };
+
+    it('shows the histogram progress while the chart query runs', () => {
+      mockHistogramProgress = {
+        percent: 42,
+        readRows: 1234,
+        readBytes: 5678,
+        elapsedMs: 1000,
+      };
+
+      renderWithMantine(
+        <SearchNumRows
+          config={baseConfig}
+          enabled
+          searchElapsedMs={null}
+          isSearching
+          histogramConfig={histogramConfig}
+          queryKeyPrefix="test"
+        />,
+      );
+
+      expect(screen.getByText(/42%/)).toBeInTheDocument();
+      expect(screen.getByText(/1,234 rows read/)).toBeInTheDocument();
+    });
+
+    it('shows nothing once the histogram query has finished', () => {
+      mockHistogramProgress = undefined;
+
+      renderWithMantine(
+        <SearchNumRows
+          config={baseConfig}
+          enabled
+          searchElapsedMs={200}
+          isSearching={false}
+          histogramConfig={histogramConfig}
+          queryKeyPrefix="test"
+        />,
+      );
+
+      expect(screen.queryByText(/rows read/)).not.toBeInTheDocument();
+    });
+
+    it('is suppressed during live tail', () => {
+      mockHistogramProgress = {
+        percent: 42,
+        readRows: 1234,
+        readBytes: 5678,
+        elapsedMs: 1000,
+      };
+
+      renderWithMantine(
+        <SearchNumRows
+          config={baseConfig}
+          enabled
+          searchElapsedMs={200}
+          isSearching
+          isLiveTail
+          histogramConfig={histogramConfig}
+          queryKeyPrefix="test"
+        />,
+      );
+
+      expect(screen.queryByText(/rows read/)).not.toBeInTheDocument();
+    });
+
+    it('shows nothing when no histogram config is provided', () => {
+      mockHistogramProgress = {
+        percent: 42,
+        readRows: 1234,
+        readBytes: 5678,
+        elapsedMs: 1000,
+      };
+
+      renderWithMantine(
+        <SearchNumRows
+          config={baseConfig}
+          enabled
+          searchElapsedMs={null}
+          isSearching
+        />,
+      );
+
+      expect(screen.queryByText(/rows read/)).not.toBeInTheDocument();
+    });
   });
 });

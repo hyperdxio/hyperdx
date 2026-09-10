@@ -30,9 +30,16 @@ export function useSearchTotalCount(
   {
     disableQueryChunking,
     enableParallelQueries,
+    reportProgress,
   }: {
     disableQueryChunking?: boolean;
     enableParallelQueries?: boolean;
+    /**
+     * Stream the query so ClickHouse progress is recorded and returned as
+     * `progress`. DBTimeChart shares this query key, so it must request
+     * streaming too — either observer's queryFn may be the one that runs.
+     */
+    reportProgress?: boolean;
   } = {},
 ) {
   const { data: me, isLoading: isLoadingMe } = api.useMe();
@@ -47,6 +54,7 @@ export function useSearchTotalCount(
     isLoading,
     isError,
     error,
+    progress,
   } = useQueriedChartConfig(queriedConfig, {
     queryKey: [
       queryKeyPrefix,
@@ -63,6 +71,7 @@ export function useSearchTotalCount(
     placeholderData: keepPreviousData, // no need to flash loading state when in live tail
     enableQueryChunking: true,
     enabled: !isLoadingMe,
+    reportProgress,
   });
 
   const isTotalCountComplete = !!totalCountData?.isComplete;
@@ -81,6 +90,7 @@ export function useSearchTotalCount(
     isError,
     error,
     isTotalCountComplete,
+    progress,
   };
 }
 
@@ -89,11 +99,18 @@ export default function SearchTotalCountChart({
   queryKeyPrefix,
   disableQueryChunking,
   enableParallelQueries,
+  reportProgress,
 }: {
   config: BuilderChartConfigWithDateRange;
   queryKeyPrefix: string;
   disableQueryChunking?: boolean;
   enableParallelQueries?: boolean;
+  /**
+   * Must match every other observer of this query key. `reportProgress` is not
+   * part of the key, so whichever observer wins the deduplicated fetch decides
+   * whether progress is emitted at all — and this one renders first.
+   */
+  reportProgress?: boolean;
 }) {
   const { totalCount, isLoading, isError } = useSearchTotalCount(
     config,
@@ -101,6 +118,7 @@ export default function SearchTotalCountChart({
     {
       disableQueryChunking,
       enableParallelQueries,
+      reportProgress,
     },
   );
 
