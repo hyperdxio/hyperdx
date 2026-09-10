@@ -17,10 +17,11 @@ from a 36s planning stall to 7ms, and a two-key filter dropped from 1,306
 granules to 3.
 
 Gates that pair with a value expression the dashboard groups by keep their
-non-empty check as a second conjunct, so an attribute set to `''` still cannot
-appear as a blank row. The presence term prunes granules; the value term
-preserves the meaning. It costs no extra per-part lookups, since it reads the
-same keys the group-by already reads.
+non-empty check, so an attribute set to `''` still cannot appear as a blank row.
+There the value term defines the result and the presence term is pruning only,
+so it is wrapped in `indexHint` — it reaches skip-index analysis without being
+re-evaluated per surviving row. The value term costs no extra per-part lookups,
+since it reads the same keys the group-by already reads.
 
 The one behavior change is LLM span detection, which is now presence-based: a
 span carrying `gen_ai.system` at all is treated as an LLM span whatever the

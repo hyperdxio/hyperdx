@@ -227,24 +227,36 @@ function getLLMAttributeExpressions({
     buildAnyKeyExistsSql({ attributeField, keys, isJsonColumn });
 
   /**
+   * Wrap a presence term that exists only to prune granules.
+   *
+   * `indexHint` feeds its argument to skip-index analysis but returns true at
+   * execution, so the keys are never re-tested per surviving row. This is the
+   * same thing queryParser.ts does with `mapKeyIndexExpression`.
+   *
+   * Only safe when a value term follows that already implies presence. A bare
+   * presence filter must not be wrapped — `indexHint` alone matches every row.
+   */
+  const prunableKeys = (keys: readonly string[]) =>
+    `indexHint(${anyKeyExists(keys)})`;
+
+  /**
    * Gate for "any of these keys holds a non-empty value".
    *
-   * The presence term is there so a mapKeys() index can prune granules; the
-   * value term is what preserves the meaning. Both are needed: presence alone
-   * would admit a key explicitly set to '', and every caller pairs this gate
-   * with a coalesced value expression it groups by, so such a row would show
-   * up as a blank bar/row whose drill-in link goes nowhere.
+   * Presence alone would admit a key explicitly set to '', and every caller
+   * pairs this gate with a coalesced value expression it groups by, so such a
+   * row would show up as a blank bar/row whose drill-in link goes nowhere.
+   * The value term is therefore what defines the result; the presence term is
+   * pruning only, and is implied by it (a non-empty value requires the key).
    *
    * The value term costs no extra per-part size lookups during planning: it
    * reads the same keys the paired group-by expression already reads.
    *
-   * On JSON columns presence and non-emptiness are the same test, so the
-   * presence term would only duplicate subcolumn reads — emit the value term
-   * alone.
+   * On JSON columns presence and non-emptiness are the same test and there is
+   * no key index to prune with, so emit the value term alone.
    */
   const anyKeyHasValue = (keys: readonly string[]) => {
     const hasValue = `${coalesceString(attributeField, keys, isJsonColumn)} != ''`;
-    return isJsonColumn ? hasValue : `(${anyKeyExists(keys)} AND ${hasValue})`;
+    return isJsonColumn ? hasValue : `(${prunableKeys(keys)} AND ${hasValue})`;
   };
 
   const model = coalesceString(attributeField, MODEL_KEYS, isJsonColumn);
@@ -340,13 +352,13 @@ function getLLMAttributeExpressions({
     hasReportedTokens: anyKeyHasValue(REPORTED_TOKEN_KEYS),
     hasSessionId: anyKeyHasValue(SESSION_ID_KEYS),
     // Numeric rather than non-empty: it feeds a latency percentile, and a
-    // zero would drag p50/p95 down. Same presence-plus-value shape as
-    // anyKeyHasValue, including skipping the presence term on JSON.
+    // zero would drag p50/p95 down. Same shape as anyKeyHasValue otherwise —
+    // `> 0` implies the key is present, so presence is pruning only.
     hasTtft: (() => {
       const isPositive = `${greatestNumber(attributeField, TTFT_MS_KEYS, isJsonColumn)} > 0`;
       return isJsonColumn
         ? isPositive
-        : `(${anyKeyExists(TTFT_MS_KEYS)} AND ${isPositive})`;
+        : `(${prunableKeys(TTFT_MS_KEYS)} AND ${isPositive})`;
     })(),
     hasUserId: anyKeyHasValue(USER_ID_KEYS),
     hasFinishReason: anyKeyHasValue(FINISH_REASON_KEYS),
