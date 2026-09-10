@@ -522,7 +522,6 @@ describe('useQueriedDashboardFilterValues', () => {
 
     await waitFor(() => expect(result.current.isFetching).toBe(false));
 
-    // Only the enabled source's filter is queried.
     expect(mockMetadata.getKeyValues).toHaveBeenCalledTimes(1);
     expect(mockMetadata.getKeyValues).toHaveBeenCalledWith(
       expect.objectContaining({
