@@ -164,9 +164,9 @@ describe('AlertRowMenu', () => {
     ).toBeInTheDocument();
   });
 
-  // `source = "tile"` only exists in provider 3.28.0, so the snippets this
-  // path generates have to ask for it — the bulk export's floor is asserted
-  // separately and the two must not drift.
+  // `source = "tile"` needs a newer provider than the base floor, so the
+  // snippets this path generates have to ask for it — the bulk export's floor
+  // is asserted separately and the two must not drift.
   it('offers Terraform export for a tile alert and asks for the tile-alert provider', async () => {
     renderMenu(<AlertRowMenu alert={{ ...tileAlert, _id: TILE_ALERT_ID }} />);
     await openMenu(`alert-row-menu-${TILE_ALERT_ID}`);

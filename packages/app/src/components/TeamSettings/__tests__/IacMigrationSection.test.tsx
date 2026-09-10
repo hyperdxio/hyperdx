@@ -43,7 +43,7 @@ const MANIFEST = {
       source: 'saved_search',
       savedSearchId: '4'.repeat(24),
     },
-    // Importable since provider 3.28.0.
+    // Importable: the provider models tile alerts.
     { id: '5'.repeat(24), name: 'A2', source: 'tile' },
     // Its tile has no unique, non-blank name, so the provider cannot address
     // it — the server marks it and the export withholds it.

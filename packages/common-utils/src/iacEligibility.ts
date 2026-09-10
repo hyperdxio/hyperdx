@@ -8,12 +8,12 @@ import { AlertSource, DisplayType, SourceKind } from './types';
 // disagree about what is eligible.
 
 /**
- * The provider models saved-search alerts and — since 3.28.0 — dashboard tile
- * alerts. Inline alerts (source: 'inline') stay excluded: although the
- * external API v2 can create and read them, the provider's alert resource does
- * not model a chartConfig yet, so importing one would generate a config it
- * cannot apply. Shared by the bulk export and the per-alert popover so the two
- * cannot disagree about what is eligible.
+ * The provider models saved-search alerts and dashboard tile alerts. Inline
+ * alerts (source: 'inline') stay excluded: although the external API v2 can
+ * create and read them, the provider's alert resource does not model a
+ * chartConfig yet, so importing one would generate a config it cannot apply.
+ * Shared by the bulk export and the per-alert popover so the two cannot
+ * disagree about what is eligible.
  */
 export function isImportableAlert(alert: {
   source?: string;

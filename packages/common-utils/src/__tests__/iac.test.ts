@@ -74,9 +74,8 @@ describe('isImportableAlert', () => {
     ).toBe(true);
   });
 
-  // Since provider 3.28.0 (#683) clickhouse_clickstack_alert models
-  // `source = "tile"`, so a tile alert is importable as long as its tile can
-  // be addressed.
+  // clickhouse_clickstack_alert models `source = "tile"` (provider #683), so
+  // a tile alert is importable as long as its tile can be addressed.
   it('accepts a tile alert whose tile is addressable', () => {
     expect(isImportableAlert({ source: 'tile' })).toBe(true);
   });
@@ -551,8 +550,8 @@ describe('buildImportFile', () => {
   });
 
   // The floor only rises for a file that carries a tile alert: `source =
-  // "tile"` is 3.28.0+, and demanding it of an export that has no tile alert
-  // would fail `terraform init` for nothing.
+  // "tile"` needs a newer provider than the base floor, and demanding it of an
+  // export that has none would fail `terraform init` for nothing.
   it('raises the provider version floor for a tile alert and explains the hand edit', () => {
     const file = buildImportFile({
       endpoint: 'https://hyperdx.example.com/api',
