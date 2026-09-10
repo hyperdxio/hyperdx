@@ -345,6 +345,12 @@ the box — it only matters once *some* collector instance ingesting
 `statsd` is scaled to multiple replicas, at which point that traffic
 needs to go to one dedicated single-replica instance instead.
 
+`docker-compose.yml`/`docker-compose.dev.yml` publish `8125:8125/udp` on
+the `otel-collector` service, and the standalone/all-in-one images
+`EXPOSE 8125/udp`, so the port is reachable from outside the container as
+soon as `statsd` is added to a pipeline below — no separate port-mapping
+step needed on top of these examples.
+
 **In standalone mode**, `metrics` is a plain pipeline in your own config
 file, so add `statsd` to it directly:
 
@@ -352,7 +358,9 @@ file, so add `statsd` to it directly:
 receivers:
   statsd:
     # Defaults to localhost:8125, which only accepts local traffic -
-    # override to 0.0.0.0 if metrics arrive from outside the container.
+    # 0.0.0.0 is required here since traffic arrives from outside the
+    # container (the published port above forwards to the container's
+    # own loopback otherwise).
     endpoint: 0.0.0.0:8125
     enable_simple_tags: true
 service:

@@ -42,6 +42,7 @@ services:
       - '4317:4317' # OTLP gRPC receiver
       - '4318:4318' # OTLP http receiver
       - '8888:8888' # metrics extension
+      - '8125:8125/udp' # statsd receiver (opt-in via CUSTOM_OTELCOL_CONFIG_FILE)
     restart: always
     networks:
       - internal

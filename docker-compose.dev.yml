@@ -55,6 +55,7 @@ services:
       - '${HDX_DEV_OTEL_GRPC_PORT:-4317}:4317' # OTLP gRPC receiver
       - '${HDX_DEV_OTEL_HTTP_PORT:-4318}:4318' # OTLP http receiver
       - '${HDX_DEV_OTEL_METRICS_PORT:-8888}:8888' # metrics extension
+      - '${HDX_DEV_OTEL_STATSD_PORT:-8125}:8125/udp' # statsd receiver (opt-in via custom.config.yaml)
     restart: always
     networks:
       - internal
