@@ -23,14 +23,30 @@ export function StepRow({
   const isActionable =
     !step.isComplete && (step.href != null || step.onClick != null);
 
+  // Semantic tokens (not raw Mantine palette colors) so the icons track the
+  // active brand and light/dark mode. ThemeIcon's `color` prop only takes
+  // palette names, so the tokens are applied via `style`.
   const circle = step.isComplete ? (
-    <ThemeIcon size={16} radius="xl" color="green" variant="filled">
-      <IconCheck size={11} stroke={3} color="#fff" />
+    <ThemeIcon
+      size={16}
+      radius="xl"
+      variant="filled"
+      style={{
+        backgroundColor: 'var(--color-bg-success-subtle)',
+        color: 'var(--color-text-success)',
+      }}
+    >
+      <IconCheck size={11} stroke={3} />
     </ThemeIcon>
   ) : step.isLoading ? (
-    <Loader size={16} color="gray" />
+    <Loader size={16} color="var(--color-text-muted)" />
   ) : (
-    <ThemeIcon size={16} radius="xl" variant="outline" color="gray.4" />
+    <ThemeIcon
+      size={16}
+      radius="xl"
+      variant="outline"
+      style={{ borderColor: 'var(--color-border)', color: 'transparent' }}
+    />
   );
 
   const stepContent = (

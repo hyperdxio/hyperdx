@@ -102,7 +102,6 @@ const OnboardingChecklist = ({
           c="dimmed"
           size="sm"
           underline="never"
-          aria-label="Dismiss checklist"
           onClick={() => dismiss()}
           disabled={isDismissing}
         >

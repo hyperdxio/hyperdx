@@ -102,12 +102,13 @@ export function useCompleteOnboardingTask() {
         json: { taskId },
       }).json<OnboardingDataApiResponse>(),
     onSuccess: data => {
-      // Union the returned completedTasks into the cache rather than replacing
-      // it. Two completions can be in flight at once, and if the older response
-      // (missing the newer task) lands last, a wholesale replace would drop the
-      // newer task from the checklist until the next `me` refetch. Both are
-      // persisted server-side ($addToSet), so a union keeps the cache correct
-      // regardless of response order.
+      // Reconcile field-by-field against the cache rather than replacing the
+      // whole onboardingData. completedTasks is unioned so an older completion
+      // response landing last can't drop a newer task (both are persisted via
+      // $addToSet). isDismissed is kept from the cache, not this response: a
+      // dismiss can be in flight concurrently, and this response's isDismissed
+      // reflects state at request time — copying it could resurrect a dismissed
+      // checklist until the next `me` refetch.
       queryClient.setQueryData<MeApiResponse | null>(['me'], prev => {
         if (prev?.onboardingData == null) {
           return prev == null
@@ -121,7 +122,7 @@ export function useCompleteOnboardingTask() {
         return {
           ...prev,
           onboardingData: {
-            ...data.onboardingData,
+            ...prev.onboardingData,
             completedTasks: [...merged],
           },
         };

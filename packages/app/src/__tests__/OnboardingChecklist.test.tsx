@@ -8,6 +8,7 @@ import api from '@/api';
 import { useConnections } from '@/connection';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import OnboardingChecklist from '@/OnboardingChecklist';
+import { PRODUCT_TASKS } from '@/OnboardingChecklist/onboardingTasks';
 import { useSources } from '@/source';
 
 jest.mock('@/api', () => ({
@@ -263,18 +264,19 @@ describe('OnboardingChecklist', () => {
     expect(screen.getByText('3/4')).toBeInTheDocument();
   });
 
-  it('renders one row per ONBOARDING_TASK_IDS entry (render order covers the SSOT)', () => {
-    // Guards the exhaustiveness contract: PRODUCT_TASK_ORDER is derived by
-    // sorting ONBOARDING_TASK_IDS, so the count of rendered product tasks must
-    // equal the SSOT size — a new id can't be silently dropped from the UI.
+  it('renders one row per ONBOARDING_TASK_IDS entry (SSOT is fully covered)', () => {
+    // Guards the exhaustiveness contract: every id in ONBOARDING_TASK_IDS must
+    // produce a rendered row via PRODUCT_TASKS, so a task can't be silently
+    // dropped from the UI. Asserting on the rendered titles (not the derived
+    // "n/N" badge, which is built from the same array and can't catch a drop).
     setMe({ completedTasks: [], isDismissed: false });
     setSetup(true);
 
     renderChecklist();
 
-    expect(
-      screen.getByText(`0/${ONBOARDING_TASK_IDS.length}`),
-    ).toBeInTheDocument();
+    for (const id of ONBOARDING_TASK_IDS) {
+      expect(screen.getByText(PRODUCT_TASKS[id].title)).toBeInTheDocument();
+    }
   });
 
   it('stays hidden when the user manually dismissed it', () => {
@@ -294,7 +296,7 @@ describe('OnboardingChecklist', () => {
 
     renderChecklist();
 
-    await userEvent.click(screen.getByLabelText('Dismiss checklist'));
+    await userEvent.click(screen.getByText(/Dismiss and don't show again/));
     expect(dismissMutate).toHaveBeenCalledWith(true);
   });
 });

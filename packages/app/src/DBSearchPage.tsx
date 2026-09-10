@@ -1283,17 +1283,6 @@ export function DBSearchPage() {
           filters,
           orderBy,
         });
-        // "Explored data" completes on any non-trivial user-run search (see
-        // isNonTrivialSearch). This runs on every search but the task is a
-        // one-time milestone, so skip once it's already recorded — otherwise
-        // every subsequent qualifying search fires a redundant (idempotent) POST.
-        if (
-          !IS_LOCAL_MODE &&
-          !hasExploredData &&
-          isNonTrivialSearch(where, filters)
-        ) {
-          completeOnboardingTask.mutate('advancedQuery');
-        }
       },
     )();
     setPatternColumn(draftPatternColumn || null);
@@ -1307,8 +1296,6 @@ export function DBSearchPage() {
     setQueryErrors,
     draftPatternColumn,
     setPatternColumn,
-    completeOnboardingTask,
-    hasExploredData,
   ]);
 
   const debouncedSubmit = useDebouncedCallback(onSubmit, 1000);
@@ -1883,9 +1870,24 @@ export function DBSearchPage() {
     e => {
       e.preventDefault();
       onSubmit();
+      // "Explored data" completes on a non-trivial search (see
+      // isNonTrivialSearch). Recorded only here, on a genuine user form submit —
+      // NOT in the shared onSubmit, which also runs on programmatic/catch-up
+      // submits (e.g. loading a saved search), which would credit the task for a
+      // sidebar link click rather than the user composing a query. One-time
+      // milestone, so skip once recorded to avoid a redundant (idempotent) POST.
+      handleSubmit(({ where, filters }) => {
+        if (
+          !IS_LOCAL_MODE &&
+          !hasExploredData &&
+          isNonTrivialSearch(where, filters)
+        ) {
+          completeOnboardingTask.mutate('advancedQuery');
+        }
+      })();
       return false;
     },
-    [onSubmit],
+    [onSubmit, handleSubmit, hasExploredData, completeOnboardingTask],
   );
 
   const onSortingChange = useCallback(
