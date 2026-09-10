@@ -1,5 +1,8 @@
 import React from 'react';
+// The `mock` prefix is required for a jest.mock factory to close over it.
+import { useController as mockUseController } from 'react-hook-form';
 import {
+  AlertThresholdType,
   DisplayType,
   MetricsDataType,
   SavedChartConfig,
@@ -11,6 +14,7 @@ import userEvent from '@testing-library/user-event';
 
 import DBEditTimeChartForm from '@/components/DBEditTimeChartForm';
 import { useSource } from '@/source';
+import { DEFAULT_TILE_ALERT } from '@/utils/alerts';
 
 /**
  * These render the whole chart editor and drive it through user events, so
@@ -79,6 +83,13 @@ jest.mock('@/source', () => ({
   getFirstSeriesNumberFormat: jest.fn().mockReturnValue(undefined),
   useSources: jest.fn().mockReturnValue({ data: [] }),
 }));
+
+// The mock handle, read back through `requireMock`, is already typed as the
+// mocked shape. `jest.mocked` on the real import would instead demand a
+// complete `UseQueryResult` from a stub that only needs `data`.
+const mockUseSource = jest.requireMock<{ useSource: jest.Mock }>(
+  '@/source',
+).useSource;
 
 // Records every render's props so tests can assert what the form passes down.
 const metricNameSelectProps: any[] = [];
@@ -158,12 +169,23 @@ jest.mock('../../MetricNameSelect', () => ({
   },
 }));
 
+// Wired into form state rather than a static select, so tests can switch the
+// tile's source the way a user does.
 jest.mock('../../SourceSelect', () => ({
-  SourceSelectControlled: () => (
-    <select data-testid="source-selector" defaultValue="metric-source">
-      <option value="metric-source">Metric Source</option>
-    </select>
-  ),
+  SourceSelectControlled: ({ control, name }: any) => {
+    const { field } = mockUseController({ control, name });
+    return (
+      <select
+        data-testid="source-selector"
+        value={field.value ?? ''}
+        onChange={event => field.onChange(event.target.value)}
+      >
+        <option value="metric-source">Metric Source</option>
+        <option value="log-source">Logs</option>
+        <option value="other-source">Other Source</option>
+      </select>
+    );
+  },
 }));
 
 jest.mock('../../ChartSQLPreview', () => ({
@@ -237,6 +259,15 @@ const defaultChartConfig: SavedChartConfig = {
   whereLanguage: 'lucene',
   granularity: 'auto',
   alignDateRangeToGranularity: true,
+};
+
+/**
+ * Pin what `useSource` resolves to. Earlier describes override the module-level
+ * mock with mockReturnValue (which survives clearAllMocks), so a describe that
+ * needs a particular source has to set it back in its own beforeEach.
+ */
+const mockUseSourceData = (data: unknown) => {
+  mockUseSource.mockReturnValue({ data });
 };
 
 const renderComponent = (
@@ -783,12 +814,6 @@ describe('DBEditTimeChartForm - Column color', () => {
 });
 
 describe('DBEditTimeChartForm - Metric formulas', () => {
-  const mockUseSourceData = (data: unknown) => {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    const mocked = { data } as ReturnType<typeof useSource>;
-    jest.mocked(useSource).mockReturnValue(mocked);
-  };
-
   beforeEach(() => {
     jest.clearAllMocks();
     // Earlier describes override the useSource mock with mockReturnValue
@@ -1083,5 +1108,271 @@ describe('DBEditTimeChartForm - Metric formulas', () => {
 
     expect(screen.queryByTestId('add-formula-button')).not.toBeInTheDocument();
     expect(screen.queryByTestId('series-ref-badge')).not.toBeInTheDocument();
+  });
+});
+
+describe('DBEditTimeChartForm - dashboard filters', () => {
+  const getDashboardFilters = jest
+    .fn()
+    .mockReturnValue([{ type: 'sql', condition: "ServiceName IN ('api')" }]);
+
+  const filterSwitch = () =>
+    screen.getByRole('switch', { name: 'Apply filters' });
+
+  const logTileConfig: SavedChartConfig = {
+    ...defaultChartConfig,
+    source: 'log-source',
+    select: [
+      {
+        aggFn: 'count',
+        aggCondition: '',
+        aggConditionLanguage: 'lucene',
+        valueExpression: '',
+      },
+    ],
+  };
+
+  const configWithAlert: SavedChartConfig = {
+    ...logTileConfig,
+    alert: {
+      threshold: 1,
+      thresholdType: AlertThresholdType.ABOVE,
+      interval: '5m',
+      channels: [{ type: 'webhook', webhookId: 'w1' }],
+    },
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    // Earlier describes pin their own source with mockReturnValue, which
+    // survives clearAllMocks.
+    mockUseSource.mockReturnValue({
+      data: {
+        id: 'log-source',
+        kind: SourceKind.Log,
+        name: 'Logs',
+        from: { databaseName: 'default', tableName: 'otel_logs' },
+        connection: 'default',
+        timestampValueExpression: 'Timestamp',
+      },
+    });
+  });
+
+  it('is not offered outside a dashboard', () => {
+    renderComponent({ chartConfig: logTileConfig });
+
+    expect(
+      screen.queryByRole('switch', { name: 'Apply filters' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('applies the parent dashboard filters by default', () => {
+    renderComponent({ getDashboardFilters, chartConfig: logTileConfig });
+
+    expect(filterSwitch()).toBeChecked();
+    expect(filterSwitch()).toBeEnabled();
+  });
+
+  it('scopes the filters it applies to the tile source', async () => {
+    renderComponent({ getDashboardFilters, chartConfig: logTileConfig });
+
+    await userEvent.click(screen.getByTestId('chart-run-query-button'));
+
+    await waitFor(() =>
+      expect(getDashboardFilters).toHaveBeenCalledWith('log-source'),
+    );
+  });
+
+  it('keeps the filters scoped to the submitted source until the next run', async () => {
+    renderComponent({ getDashboardFilters, chartConfig: logTileConfig });
+
+    await userEvent.click(screen.getByTestId('chart-run-query-button'));
+    await waitFor(() =>
+      expect(getDashboardFilters).toHaveBeenCalledWith('log-source'),
+    );
+
+    getDashboardFilters.mockClear();
+    await userEvent.selectOptions(
+      screen.getByTestId('source-selector'),
+      'other-source',
+    );
+
+    // The preview still shows the log-source query, so it keeps that source's
+    // filters instead of rescoping to a source it never queried.
+    expect(getDashboardFilters).not.toHaveBeenCalledWith('other-source');
+
+    await userEvent.click(screen.getByTestId('chart-run-query-button'));
+
+    await waitFor(() =>
+      expect(getDashboardFilters).toHaveBeenCalledWith('other-source'),
+    );
+  });
+
+  it('cannot be turned on for a tile with an alert', () => {
+    renderComponent({ getDashboardFilters, chartConfig: configWithAlert });
+
+    expect(filterSwitch()).not.toBeChecked();
+    expect(filterSwitch()).toBeDisabled();
+  });
+
+  it('can be turned back on once the alert is removed', async () => {
+    renderComponent({ getDashboardFilters, chartConfig: configWithAlert });
+
+    await userEvent.click(screen.getByTestId('remove-alert-button'));
+
+    expect(filterSwitch()).toBeChecked();
+    expect(filterSwitch()).toBeEnabled();
+  });
+});
+
+// Inline alerts (HDX-5192): the chart explorer has no dashboard behind it, so
+// the alert affordances are gated on `enableAlerts` rather than a dashboardId,
+// and the alert is saved on its own rather than as part of a tile.
+describe('DBEditTimeChartForm - Inline alerts', () => {
+  // A complete series: the save path validates the chart first, and the
+  // shared default config leaves the metric name blank.
+  const validNumberConfig: SavedChartConfig = {
+    ...defaultChartConfig,
+    displayType: DisplayType.Number,
+    select: [
+      {
+        aggFn: 'avg',
+        aggCondition: '',
+        aggConditionLanguage: 'lucene' as const,
+        valueExpression: 'Value',
+        metricType: MetricsDataType.Gauge,
+        metricName: 'test.metric.gauge',
+      },
+    ],
+  };
+
+  const renderInlineAlertForm = (
+    props: Partial<React.ComponentProps<typeof DBEditTimeChartForm>> = {},
+  ) =>
+    renderComponent({
+      chartConfig: validNumberConfig,
+      enableAlerts: true,
+      ...props,
+    });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    // Earlier describes override the useSource mock with mockReturnValue
+    // (which survives clearAllMocks), so pin the metric source back.
+    mockUseSourceData({
+      id: 'metric-source',
+      kind: SourceKind.Metric,
+      name: 'Test Metric Source',
+      from: { databaseName: 'default', tableName: '' },
+      connection: 'default',
+      timestampValueExpression: 'Timestamp',
+      metricTables: {
+        gauge: 'metrics.gauge',
+        sum: 'metrics.sum',
+        histogram: 'metrics.histogram',
+      },
+    });
+  });
+
+  it('offers an alert outside a dashboard when alerts are enabled', async () => {
+    renderInlineAlertForm();
+
+    await userEvent.click(screen.getByTestId('alert-button'));
+
+    expect(screen.getByTestId('alert-details')).toBeInTheDocument();
+  });
+
+  it('offers no alert without a dashboard or an explicit opt-in', () => {
+    renderComponent({ chartConfig: validNumberConfig });
+
+    expect(screen.queryByTestId('alert-button')).not.toBeInTheDocument();
+  });
+
+  it('requires a name, since there is no tile to inherit one from', async () => {
+    const onSaveAlert = jest.fn();
+    renderInlineAlertForm({
+      chartConfig: {
+        ...validNumberConfig,
+        alert: {
+          ...DEFAULT_TILE_ALERT,
+          channels: [{ type: 'webhook', webhookId: 'hook-1' }],
+        },
+      },
+      onSaveAlert,
+    });
+
+    await userEvent.click(screen.getByTestId('chart-save-alert-button'));
+
+    expect(await screen.findByText('Alert name is required')).toBeVisible();
+    expect(onSaveAlert).not.toHaveBeenCalled();
+  });
+
+  // Nothing to inherit, so an unset list is no tags rather than the tile's.
+  it('reports zero tags rather than inherited ones', async () => {
+    renderInlineAlertForm({
+      chartConfig: { ...validNumberConfig, alert: DEFAULT_TILE_ALERT },
+    });
+
+    const button = screen.getByTestId('alert-tags-button');
+    expect(button).toHaveTextContent('0');
+    expect(button).not.toHaveTextContent('Inherited');
+  });
+
+  // A tile alert is named by the tile it hangs off; an inline alert has
+  // nothing else to name it, and the name doubles as the notification title.
+  // An inline alert has no tile or saved search to inherit a name from, so
+  // the shared display-name field is how the alerts page gets a label for it.
+  it('carries the alert display name into the save payload', async () => {
+    const onSaveAlert = jest.fn();
+    // Seeded with a channel: an alert with no webhook fails validation before
+    // the save handler runs, which is what the picker is there to prevent.
+    renderInlineAlertForm({
+      chartConfig: {
+        ...validNumberConfig,
+        alert: {
+          ...DEFAULT_TILE_ALERT,
+          channels: [{ type: 'webhook', webhookId: 'hook-1' }],
+        },
+      },
+      onSaveAlert,
+    });
+
+    await userEvent.type(
+      screen.getByTestId('alert-display-name-input'),
+      'Prod error rate',
+    );
+    await userEvent.click(screen.getByTestId('chart-save-alert-button'));
+
+    await waitFor(() => expect(onSaveAlert).toHaveBeenCalledTimes(1));
+    expect(onSaveAlert.mock.calls[0][0].alert).toMatchObject({
+      displayName: 'Prod error rate',
+      threshold: 1,
+    });
+  });
+
+  // With no alert there is nothing to save, and the button would read as a
+  // second way to add one.
+  it('shows the alert save button only once an alert exists', async () => {
+    renderInlineAlertForm({ onSaveAlert: jest.fn() });
+
+    expect(
+      screen.queryByTestId('chart-save-alert-button'),
+    ).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByTestId('alert-button'));
+
+    expect(screen.getByTestId('chart-save-alert-button')).toBeInTheDocument();
+  });
+
+  // The editor requires an alert on this surface, so removing it would leave
+  // the save button with nothing to write.
+  it('hides the remove control when the alert is required', async () => {
+    renderInlineAlertForm({
+      chartConfig: { ...validNumberConfig, alert: DEFAULT_TILE_ALERT },
+      isAlertRequired: true,
+    });
+
+    expect(screen.getByTestId('alert-details')).toBeInTheDocument();
+    expect(screen.queryByTestId('remove-alert-button')).not.toBeInTheDocument();
   });
 });

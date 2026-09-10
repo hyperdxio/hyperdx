@@ -32,7 +32,6 @@ import SearchWhereInput, {
 } from '@/components/SearchInput/SearchWhereInput';
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { TimePicker } from '@/components/TimePicker';
-import { NOW } from '@/config';
 import { withAppNav } from '@/layout';
 import {
   useLLMDashboardExpressions,
@@ -41,7 +40,7 @@ import {
 import { getEffectiveTraceSourceId } from '@/ServicesDashboardPage';
 import { useSource, useSources } from '@/source';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
-import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
+import { useDefaultTimeRange, useNewTimeQuery } from '@/timeQuery';
 
 import { AgentToolCharts } from './AgentToolCharts';
 import { AttributionCharts } from './AttributionCharts';
@@ -58,11 +57,6 @@ import { TokenCostCharts } from './TokenCostCharts';
 import { LLMChartProps } from './types';
 
 const DEFAULT_INTERVAL = 'Past 1h';
-const parsedDefaultTimeRange = parseTimeQuery(DEFAULT_INTERVAL, false);
-const defaultTimeRange: [Date, Date] = [
-  parsedDefaultTimeRange[0] ?? new Date(NOW - 60 * 60 * 1000),
-  parsedDefaultTimeRange[1] ?? new Date(NOW),
-];
 
 const queryParamMap = {
   source: parseAsString.withDefault(''),
@@ -79,6 +73,7 @@ const queryParamMap = {
  * time — no ingestion changes required.
  */
 function LLMDashboardPage() {
+  const defaultTimeRange = useDefaultTimeRange(DEFAULT_INTERVAL);
   const brandName = useBrandDisplayName();
 
   const [rawTab, setTab] = useQueryState(

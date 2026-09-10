@@ -128,7 +128,7 @@ export default function AlertsPage() {
               >
                 created
               </a>{' '}
-              from dashboard charts and saved searches.
+              from dashboard charts, saved searches, and the chart explorer.
             </Alert>
             <Flex align="center" mt="md" gap="sm" data-testid="alerts-filters">
               <TextInput
@@ -210,10 +210,14 @@ export default function AlertsPage() {
                   Alerts can be created from{' '}
                   <Anchor component={Link} href="/dashboards">
                     dashboard charts
-                  </Anchor>{' '}
-                  and{' '}
+                  </Anchor>
+                  ,{' '}
                   <Anchor component={Link} href="/search">
                     saved searches
+                  </Anchor>
+                  , and the{' '}
+                  <Anchor component={Link} href="/chart">
+                    chart explorer
                   </Anchor>
                   .
                 </>

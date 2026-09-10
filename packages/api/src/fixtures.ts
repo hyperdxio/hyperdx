@@ -4,6 +4,7 @@ import {
   AlertThresholdType,
   BuilderSavedChartConfig,
   DisplayType,
+  Filter,
   RawSqlSavedChartConfig,
   SavedChartConfig,
   Tile,
@@ -699,6 +700,7 @@ export const makeTile = (opts?: {
   id?: string;
   alert?: BuilderSavedChartConfig['alert'];
   sourceId?: string;
+  where?: string;
 }): Tile => ({
   id: opts?.id ?? randomMongoId(),
   x: 1,
@@ -712,6 +714,7 @@ export const makeChartConfig = (opts?: {
   id?: string;
   alert?: BuilderSavedChartConfig['alert'];
   sourceId?: string;
+  where?: string;
 }): SavedChartConfig => ({
   name: 'Test Chart',
   source: opts?.sourceId ?? 'test-source',
@@ -724,7 +727,7 @@ export const makeChartConfig = (opts?: {
       valueExpression: '',
     },
   ],
-  where: '',
+  where: opts?.where ?? '',
   whereLanguage: 'lucene',
   granularity: 'auto',
   implicitColumnExpression: 'Body',
@@ -804,6 +807,19 @@ export const RAW_SQL_ALERT_TEMPLATE = [
   ' GROUP BY ts ORDER BY ts',
 ].join('');
 
+/** Raw SQL counterpart to {@link makeAlertChartConfig}. */
+export const makeRawSqlAlertChartConfig = (opts?: {
+  name?: string;
+  sqlTemplate?: string;
+  connectionId?: string;
+}): AlertChartConfig => ({
+  name: opts?.name ?? 'Raw SQL Alert Query',
+  configType: 'sql',
+  displayType: DisplayType.Line,
+  sqlTemplate: opts?.sqlTemplate ?? RAW_SQL_ALERT_TEMPLATE,
+  connection: opts?.connectionId ?? 'test-connection',
+});
+
 export const makeRawSqlAlertTile = (opts?: {
   id?: string;
   connectionId?: string;
@@ -814,12 +830,7 @@ export const makeRawSqlAlertTile = (opts?: {
   y: 1,
   w: 1,
   h: 1,
-  config: {
-    configType: 'sql',
-    displayType: DisplayType.Line,
-    sqlTemplate: opts?.sqlTemplate ?? RAW_SQL_ALERT_TEMPLATE,
-    connection: opts?.connectionId ?? 'test-connection',
-  } satisfies RawSqlSavedChartConfig,
+  config: makeRawSqlAlertChartConfig(opts),
 });
 
 export const RAW_SQL_NUMBER_ALERT_TEMPLATE = [
@@ -912,6 +923,8 @@ export const makeAlertChartConfig = (opts: {
   displayType?: DisplayType;
   aggCondition?: string;
   groupBy?: string;
+  where?: string;
+  filters?: Filter[];
 }): AlertChartConfig => ({
   name: opts.name ?? 'Chart Alert Query',
   source: opts.sourceId,
@@ -924,9 +937,10 @@ export const makeAlertChartConfig = (opts: {
       valueExpression: '',
     },
   ],
-  where: '',
+  where: opts.where ?? '',
   whereLanguage: 'lucene',
   ...(opts.groupBy != null && { groupBy: opts.groupBy }),
+  ...(opts.filters != null && { filters: opts.filters }),
 });
 
 export const makeInlineAlertInput = ({
