@@ -272,6 +272,17 @@ function getLLMAttributeExpressions({
   const anyKeyHasValue = (keys: readonly string[]) =>
     withKeyPruning(keys, anyKeyNonEmpty(keys));
 
+  const TOOL_SPAN_KEYS = [
+    'gen_ai.tool.name',
+    'gen_ai.tool.call.id',
+    'ai.toolCall.name',
+  ];
+  const isToolSpanMatch = `(${fieldAccess(
+    attributeField,
+    'openinference.span.kind',
+    isJsonColumn,
+  )} = 'TOOL' OR ${anyKeyNonEmpty(TOOL_SPAN_KEYS)})`;
+
   const model = coalesceString(attributeField, MODEL_KEYS, isJsonColumn);
   const inputTokens = greatestNumber(
     attributeField,
@@ -378,27 +389,30 @@ function getLLMAttributeExpressions({
     ),
     hasUserId: anyKeyHasValue(USER_ID_KEYS),
     hasFinishReason: anyKeyHasValue(FINISH_REASON_KEYS),
-    // The `= 'TOOL'` term stays a value comparison — it discriminates one
-    // OpenInference span kind from the others, and the query builder already
-    // rewrites equality onto the attribute-items index. The remaining terms
-    // gate a group-by on toolName, so they keep their value check too.
-    //
-    // The hint sits above the OR, not inside it: a skip index can only drop a
-    // granule when every arm of an OR is decidable by that same index, and the
-    // span-kind arm is not. Hoisting is sound because both arms imply one of
-    // the hinted keys.
-    isToolSpan: (() => {
-      const toolKeys = [
-        'gen_ai.tool.name',
-        'gen_ai.tool.call.id',
-        'ai.toolCall.name',
-      ];
-      const kindIsTool = `${fieldAccess(attributeField, 'openinference.span.kind', isJsonColumn)} = 'TOOL'`;
-      return withKeyPruning(
-        ['openinference.span.kind', ...toolKeys],
-        `(${kindIsTool} OR ${anyKeyNonEmpty(toolKeys)})`,
-      );
-    })(),
+    /**
+     * Tool-call rows, for WHERE position.
+     *
+     * The `= 'TOOL'` term stays a value comparison — it discriminates one
+     * OpenInference span kind from the others, and the query builder already
+     * rewrites equality onto the attribute-items index. The remaining terms
+     * gate a group-by on toolName, so they keep their value check too.
+     *
+     * The hint sits above the OR, not inside it: a skip index can only drop a
+     * granule when every arm of an OR is decidable by that same index, and the
+     * span-kind arm is not. Hoisting is sound because both arms imply one of
+     * the hinted keys.
+     */
+    isToolSpan: withKeyPruning(
+      ['openinference.span.kind', ...TOOL_SPAN_KEYS],
+      isToolSpanMatch,
+    ),
+    /**
+     * isToolSpan for select-list aggregate positions (`aggCondition`), which
+     * renderChartConfig emits inside countIf/sumIf. Skip-index analysis never
+     * reaches the select list, so the hint would fold to a constant while
+     * lengthening every query — see withKeyPruning.
+     */
+    isToolSpanUnhinted: isToolSpanMatch,
   };
 }
 

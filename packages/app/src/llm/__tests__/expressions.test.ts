@@ -236,6 +236,11 @@ describe('getLLMExpressions', () => {
         "nullif(SpanAttributes['gen_ai.tool.call.id'], ''), " +
         "nullif(SpanAttributes['ai.toolCall.name'], ''), '') != ''))",
     );
+    // SessionsTab uses this one as an aggCondition, where a hint folds to a
+    // constant. It must stay the bare match, and must still be the same
+    // predicate the hinted form wraps.
+    expect(expressions.isToolSpanUnhinted).not.toContain('indexHint');
+    expect(expressions.isToolSpan).toContain(expressions.isToolSpanUnhinted);
 
     expect(expressions.statusMessage).toBe('StatusMessage');
   });

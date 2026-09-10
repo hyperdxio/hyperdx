@@ -21,9 +21,10 @@ non-empty check, so an attribute set to `''` still cannot appear as a blank row.
 There the value term defines the result and the presence term is pruning only,
 so it is wrapped in `indexHint` — it reaches skip-index analysis without being
 re-evaluated per surviving row. The value term costs no extra per-part lookups,
-since it reads the same keys the group-by already reads. Gates used only inside
-select-list aggregates are left unhinted, since skip-index analysis does not
-reach them.
+since it reads the same keys the group-by already reads. Gates that land in a
+select-list aggregate are left unhinted, since skip-index analysis does not
+reach the select list; the tool-call gate is used in both positions and so is
+exposed in both forms.
 
 The one behavior change is LLM span detection, which is now presence-based: a
 span carrying `gen_ai.system` at all is treated as an LLM span whatever the
