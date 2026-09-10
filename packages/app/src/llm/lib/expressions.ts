@@ -240,24 +240,37 @@ function getLLMAttributeExpressions({
     `indexHint(${anyKeyExists(keys)})`;
 
   /**
+   * Pair a value term with a pruning hint over the keys it reads.
+   *
+   * `valueTerm` alone defines the result; the hint only lets the index drop
+   * granules, so it must be implied by `valueTerm` to be sound.
+   *
+   * Only worth adding in WHERE position — skip-index analysis does not look at
+   * the select list, so a gate used solely inside an aggregate should pass its
+   * value term through unhinted rather than pay the query-length cost.
+   *
+   * On JSON columns there is no key index to prune with, so the value term is
+   * emitted alone.
+   */
+  const withKeyPruning = (keys: readonly string[], valueTerm: string) =>
+    isJsonColumn ? valueTerm : `(${prunableKeys(keys)} AND ${valueTerm})`;
+
+  /** "Any of these keys holds a non-empty value", before any pruning hint. */
+  const anyKeyNonEmpty = (keys: readonly string[]) =>
+    `${coalesceString(attributeField, keys, isJsonColumn)} != ''`;
+
+  /**
    * Gate for "any of these keys holds a non-empty value".
    *
    * Presence alone would admit a key explicitly set to '', and every caller
    * pairs this gate with a coalesced value expression it groups by, so such a
    * row would show up as a blank bar/row whose drill-in link goes nowhere.
-   * The value term is therefore what defines the result; the presence term is
-   * pruning only, and is implied by it (a non-empty value requires the key).
    *
    * The value term costs no extra per-part size lookups during planning: it
    * reads the same keys the paired group-by expression already reads.
-   *
-   * On JSON columns presence and non-emptiness are the same test and there is
-   * no key index to prune with, so emit the value term alone.
    */
-  const anyKeyHasValue = (keys: readonly string[]) => {
-    const hasValue = `${coalesceString(attributeField, keys, isJsonColumn)} != ''`;
-    return isJsonColumn ? hasValue : `(${prunableKeys(keys)} AND ${hasValue})`;
-  };
+  const anyKeyHasValue = (keys: readonly string[]) =>
+    withKeyPruning(keys, anyKeyNonEmpty(keys));
 
   const model = coalesceString(attributeField, MODEL_KEYS, isJsonColumn);
   const inputTokens = greatestNumber(
@@ -348,32 +361,44 @@ function getLLMAttributeExpressions({
      * an app's own authoritative per-call reporters — see llmGatedSumExpr.
      */
     hasProvidedCost: `(${providedCost} > 0)`,
-    /** See REPORTED_TOKEN_KEYS: gates sums so wrapper spans don't double count. */
-    hasReportedTokens: anyKeyHasValue(REPORTED_TOKEN_KEYS),
+    /**
+     * See REPORTED_TOKEN_KEYS: gates sums so wrapper spans don't double count.
+     * Unhinted — perServiceElectionExpr only ever embeds this inside select-list
+     * aggregates, where a hint cannot prune and would just lengthen a query this
+     * file already keeps under max_query_size (see LLM_COST_SQL_ALIAS).
+     */
+    hasReportedTokens: anyKeyNonEmpty(REPORTED_TOKEN_KEYS),
     hasSessionId: anyKeyHasValue(SESSION_ID_KEYS),
     // Numeric rather than non-empty: it feeds a latency percentile, and a
     // zero would drag p50/p95 down. Same shape as anyKeyHasValue otherwise —
     // `> 0` implies the key is present, so presence is pruning only.
-    hasTtft: (() => {
-      const isPositive = `${greatestNumber(attributeField, TTFT_MS_KEYS, isJsonColumn)} > 0`;
-      return isJsonColumn
-        ? isPositive
-        : `(${prunableKeys(TTFT_MS_KEYS)} AND ${isPositive})`;
-    })(),
+    hasTtft: withKeyPruning(
+      TTFT_MS_KEYS,
+      `${greatestNumber(attributeField, TTFT_MS_KEYS, isJsonColumn)} > 0`,
+    ),
     hasUserId: anyKeyHasValue(USER_ID_KEYS),
     hasFinishReason: anyKeyHasValue(FINISH_REASON_KEYS),
     // The `= 'TOOL'` term stays a value comparison — it discriminates one
     // OpenInference span kind from the others, and the query builder already
     // rewrites equality onto the attribute-items index. The remaining terms
     // gate a group-by on toolName, so they keep their value check too.
-    isToolSpan: `(${[
-      `${fieldAccess(attributeField, 'openinference.span.kind', isJsonColumn)} = 'TOOL'`,
-      anyKeyHasValue([
+    //
+    // The hint sits above the OR, not inside it: a skip index can only drop a
+    // granule when every arm of an OR is decidable by that same index, and the
+    // span-kind arm is not. Hoisting is sound because both arms imply one of
+    // the hinted keys.
+    isToolSpan: (() => {
+      const toolKeys = [
         'gen_ai.tool.name',
         'gen_ai.tool.call.id',
         'ai.toolCall.name',
-      ]),
-    ].join(' OR ')})`,
+      ];
+      const kindIsTool = `${fieldAccess(attributeField, 'openinference.span.kind', isJsonColumn)} = 'TOOL'`;
+      return withKeyPruning(
+        ['openinference.span.kind', ...toolKeys],
+        `(${kindIsTool} OR ${anyKeyNonEmpty(toolKeys)})`,
+      );
+    })(),
   };
 }
 

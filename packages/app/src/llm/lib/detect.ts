@@ -1,3 +1,5 @@
+import SqlString from 'sqlstring';
+
 import { hasKeyWithPrefix } from './attributeUtils';
 import { LLMSpanEvent, SpanAttributeMap } from './types';
 
@@ -97,6 +99,12 @@ export function isLLMSpan(
  * This tests presence only. Callers that pair a gate with a value expression
  * they group by need non-emptiness as well, or a key set to '' becomes a blank
  * row — see `anyKeyHasValue` in expressions.ts.
+ *
+ * queryParser's private `buildMapContains` emits the same call, but it takes a
+ * rendered `col['key']` subscript and parses it back apart; the field and key
+ * are already separate here. `attributeField` stays raw because it holds a
+ * source's `eventAttributesExpression`, which may be a compound expression
+ * rather than an identifier — the same reason `fieldAccess` interpolates it.
  */
 function buildKeyExistsSql({
   attributeField,
@@ -109,7 +117,7 @@ function buildKeyExistsSql({
 }): string {
   return isJsonColumn
     ? `toString(${attributeField}.\`${key}\`) != ''`
-    : `mapContains(${attributeField}, '${key}')`;
+    : `mapContains(${attributeField}, ${SqlString.escape(key)})`;
 }
 
 /** SQL matching rows carrying any of the given attribute keys. */

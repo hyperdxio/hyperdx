@@ -102,20 +102,20 @@ describe('getLLMExpressions', () => {
     // The gate keys on authoritative usage reporters only — wrapper spans
     // carrying just ai.usage.* must not satisfy it.
     expect(expressions.hasReportedTokens).toContain(
-      "mapContains(SpanAttributes, 'gen_ai.usage.input_tokens')",
+      "nullif(SpanAttributes['gen_ai.usage.input_tokens'], '')",
     );
     expect(expressions.hasReportedTokens).toContain(
-      "mapContains(SpanAttributes, 'llm.token_count.total')",
+      "nullif(SpanAttributes['llm.token_count.total'], '')",
     );
     expect(expressions.hasReportedTokens).not.toContain('ai.usage.inputTokens');
     // This gate decides which rows enter every token and cost aggregate, so
-    // pin the ANDed shape: dropping the value term back to presence-only
-    // would let a key set to '' inflate the call count.
-    expect(expressions.hasReportedTokens).toContain(
-      "AND coalesce(nullif(SpanAttributes['gen_ai.usage.input_tokens'], '')",
-    );
-    expect(expressions.hasReportedTokens.startsWith('(indexHint(')).toBe(true);
-    expect(expressions.hasReportedTokens).toContain("), '') != '')");
+    // pin the value test: reverting it to presence-only would let a key set
+    // to '' inflate the call count.
+    expect(expressions.hasReportedTokens).toMatch(/^coalesce\(nullif\(/);
+    expect(expressions.hasReportedTokens).toContain("!= ''");
+    // Only ever embedded in select-list aggregates, where a hint cannot prune
+    // and would double the length of an already-long expression.
+    expect(expressions.hasReportedTokens).not.toContain('indexHint');
   });
 
   it('derives efficiency, attribution, and agent expressions', () => {
@@ -223,11 +223,15 @@ describe('getLLMExpressions', () => {
 
     // The span-kind term must stay an equality: widening it to a presence
     // check would pull every OpenInference span into the tool charts.
+    // The hint covers the span-kind key and sits above the OR: a skip index
+    // cannot prune an OR whose other arm it can't decide, so nesting it inside
+    // would silently stop pruning the tool charts.
     expect(expressions.isToolSpan).toBe(
-      "(SpanAttributes['openinference.span.kind'] = 'TOOL' OR " +
-        "(indexHint((mapContains(SpanAttributes, 'gen_ai.tool.name') OR " +
+      "(indexHint((mapContains(SpanAttributes, 'openinference.span.kind') OR " +
+        "mapContains(SpanAttributes, 'gen_ai.tool.name') OR " +
         "mapContains(SpanAttributes, 'gen_ai.tool.call.id') OR " +
         "mapContains(SpanAttributes, 'ai.toolCall.name'))) AND " +
+        "(SpanAttributes['openinference.span.kind'] = 'TOOL' OR " +
         "coalesce(nullif(SpanAttributes['gen_ai.tool.name'], ''), " +
         "nullif(SpanAttributes['gen_ai.tool.call.id'], ''), " +
         "nullif(SpanAttributes['ai.toolCall.name'], ''), '') != ''))",
