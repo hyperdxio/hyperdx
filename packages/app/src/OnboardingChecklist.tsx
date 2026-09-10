@@ -63,7 +63,10 @@ const OnboardingChecklist = ({
 
   const firstConnection = useMemo(() => connections?.[0], [connections]);
   const firstConnectionSources = useMemo(
-    () => sources?.filter(source => source.connection === firstConnection?.id),
+    () =>
+      sources?.filter(
+        source => source.connection === firstConnection?.id && !source.disabled,
+      ),
     [sources, firstConnection],
   );
 

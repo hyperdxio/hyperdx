@@ -485,6 +485,55 @@ describe('useQueriedDashboardFilterValues', () => {
     expect(mockMetadata.getKeyValues).toHaveBeenCalledTimes(3);
   });
 
+  it('should not query filters whose source is disabled', async () => {
+    // Arrange
+    jest.spyOn(sourceModule, 'useSources').mockReturnValue({
+      data: [
+        ...mockSources,
+        {
+          id: 'disabled-source',
+          kind: SourceKind.Log,
+          name: 'Disabled',
+          timestampValueExpression: 'timestamp',
+          connection: 'clickhouse-conn',
+          from: { databaseName: 'telemetry', tableName: 'disabled_logs' },
+          disabled: true,
+        },
+      ],
+      isLoading: false,
+    } as any);
+
+    // Act
+    const { result } = renderHook(
+      () =>
+        useQueriedDashboardFilterValues({
+          filters: [
+            mockFilters[0], // logs-source (enabled)
+            {
+              id: 'disabled-filter',
+              type: 'QUERY_EXPRESSION',
+              name: 'Disabled',
+              expression: 'environment',
+              source: 'disabled-source',
+            },
+          ],
+          dateRange: mockDateRange,
+        }),
+      { wrapper },
+    );
+
+    // Assert
+    await waitFor(() => expect(result.current.isFetching).toBe(false));
+
+    // Only the enabled source's filter is queried.
+    expect(mockMetadata.getKeyValues).toHaveBeenCalledTimes(1);
+    expect(mockMetadata.getKeyValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chartConfig: expect.objectContaining({ source: 'logs-source' }),
+      }),
+    );
+  });
+
   it('should handle errors when fetching key values', async () => {
     // Arrange
     jest.spyOn(sourceModule, 'useSources').mockReturnValue({
