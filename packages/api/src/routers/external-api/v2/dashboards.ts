@@ -41,7 +41,7 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
   // Feeds the ETag response header; deliberately not surfaced by
   // convertToExternalDashboard, since a new body field would show up as a
   // permanent diff in the terraform provider's imported state.
-  updatedAt: 1,
+  version: 1,
 } as const;
 
 /**
@@ -2885,7 +2885,7 @@ router.put(
       }
 
       const ifMatch = req.get('If-Match');
-      let expectedUpdatedAt: Date | undefined;
+      let expectedVersion: number | undefined;
       if (ifMatch !== undefined) {
         const parsed = parseIfMatch(ifMatch);
         if (parsed === null) {
@@ -2897,7 +2897,7 @@ router.put(
         // `*` means "any current representation", so existence is the only
         // precondition and the plain filter below already covers it.
         if (parsed !== '*') {
-          expectedUpdatedAt = parsed;
+          expectedVersion = parsed;
         }
       }
 
@@ -2981,14 +2981,14 @@ router.put(
         {
           _id: dashboardId,
           team: teamId,
-          ...(expectedUpdatedAt ? { updatedAt: expectedUpdatedAt } : {}),
+          ...(expectedVersion != null ? { version: expectedVersion } : {}),
         },
         { $set: setPayload },
         { new: true },
       );
 
       if (updatedDashboard == null) {
-        if (expectedUpdatedAt == null) {
+        if (expectedVersion == null) {
           return res.sendStatus(404);
         }
         const miss = await resolveDashboardWriteMiss(

@@ -77,8 +77,8 @@ export function registerPatchDashboard({
             'clickstack_get_dashboard_tile) to read the current state and obtain it.',
         );
       }
-      const expectedUpdatedAt = parseVersionToken(version);
-      if (expectedUpdatedAt == null) {
+      const expectedVersion = parseVersionToken(version);
+      if (expectedVersion == null) {
         return mcpUserError(
           `"${version}" is not a valid dashboard version. Use the value from a ` +
             'clickstack_get_dashboard response verbatim.',
@@ -100,7 +100,7 @@ export function registerPatchDashboard({
       const queryFilter: Record<string, unknown> = {
         _id: dashboardId,
         team: teamId,
-        updatedAt: expectedUpdatedAt,
+        version: expectedVersion,
       };
 
       if (name !== undefined) {

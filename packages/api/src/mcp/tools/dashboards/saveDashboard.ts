@@ -295,8 +295,8 @@ async function updateDashboard({
     | undefined;
   version: string;
 }) {
-  const expectedUpdatedAt = parseVersionToken(version);
-  if (expectedUpdatedAt == null) {
+  const expectedVersion = parseVersionToken(version);
+  if (expectedVersion == null) {
     return mcpUserError(
       `"${version}" is not a valid dashboard version. Use the \`version\` ` +
         'value from a clickstack_get_dashboard response verbatim.',
@@ -409,7 +409,7 @@ async function updateDashboard({
   }
 
   const updatedDashboard = await Dashboard.findOneAndUpdate(
-    { _id: dashboardId, team: teamId, updatedAt: expectedUpdatedAt },
+    { _id: dashboardId, team: teamId, version: expectedVersion },
     { $set: setPayload },
     { new: true },
   );

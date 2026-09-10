@@ -151,7 +151,7 @@ router.patch(
       }
 
       const { expectedVersion } = req.body;
-      let expectedUpdatedAt: Date | undefined;
+      let expectedVersionNumber: number | undefined;
       if (expectedVersion !== undefined) {
         const parsed = parseVersionToken(expectedVersion);
         if (parsed == null) {
@@ -159,16 +159,16 @@ router.patch(
             .status(400)
             .json({ message: 'Malformed expectedVersion.' });
         }
-        expectedUpdatedAt = parsed;
+        expectedVersionNumber = parsed;
       }
 
       // Only omit undefined values, keep null (which signals field removal)
       // `provisioned` is server-owned — see the POST handler above.
-      // `expectedVersion` is a control field, not document state; `updates`
-      // is spread straight into the update, same reason `provisioned` is
-      // dropped.
+      // `expectedVersion` is a control field, not document state; `version`
+      // is server-owned by the schema middleware. Neither belongs in
+      // `updates`, which is spread straight into the update.
       const updates = _.omitBy(
-        _.omit(req.body, ['provisioned', 'expectedVersion']),
+        _.omit(req.body, ['provisioned', 'expectedVersion', 'version']),
         _.isUndefined,
       );
 
@@ -178,7 +178,7 @@ router.patch(
           teamId,
           updates,
           userId,
-          expectedUpdatedAt,
+          expectedVersionNumber,
         );
         res.json(updatedDashboard);
       } catch (e) {

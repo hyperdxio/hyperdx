@@ -1,19 +1,27 @@
 /**
- * Optimistic concurrency for dashboard writes, keyed on `updatedAt`.
+ * Optimistic concurrency for dashboard writes, keyed on an explicit
+ * `version` counter.
  *
- * `updatedAt` is server-owned and needs no new field: mongoose's timestamp
- * plugin force-sets `$set.updatedAt` on every non-overwrite update and
- * deletes any client-supplied value, so a caller cannot pin it. A guarded
- * write puts the caller's token into the `findOneAndUpdate` filter, making
- * the write conditional on nobody else having written since they read.
+ * `version` is server-owned via schema middleware on `Dashboard`
+ * (`@/models/dashboard.ts`): every update operation gets an `$inc` and any
+ * client-supplied `version` is stripped, so a write path added later gets
+ * the guard for free without a call site having to remember to bump it
+ * itself. A guarded write puts the caller's token into the
+ * `findOneAndUpdate` filter, making the write conditional on nobody else
+ * having written since they read.
  *
- * ponytail: millisecond precision, so two writes landing inside the same
- * millisecond both pass the guard. That is exactly today's behaviour, not a
- * regression. Upgrade path if it ever shows up in practice: an explicit
- * `version: Number` field with `$inc` at each write site.
+ * This is deliberately not `updatedAt`. An integer counter is monotonic per
+ * write with no same-millisecond hole, whereas `updatedAt` overloads a
+ * display field with a correctness role and ties that correctness to
+ * mongoose's timestamp internals rather than to something this module
+ * controls directly.
+ *
+ * The token stays opaque at every boundary (a string, even though it is an
+ * integer underneath) so the representation can change again without
+ * breaking agents or API clients.
  *
  * Known gap: tile alerts live in the separate `Alert` collection, so adding
- * or editing one doesn't bump the dashboard's `updatedAt`. That's harmless on
+ * or editing one doesn't bump the dashboard's `version`. That's harmless on
  * the MCP and v2 surfaces, but the internal PATCH route runs
  * `syncDashboardAlerts` (`@/controllers/dashboard.ts`), which deletes alerts
  * for any tile that had one in its fresh read and doesn't have one in the
@@ -26,22 +34,23 @@ import type { ObjectId } from '@/models';
 import Dashboard from '@/models/dashboard';
 import { getCounter } from '@/utils/instrumentation';
 
-// Exactly the shape `Date.prototype.toISOString` produces. Deliberately
-// strict: `new Date('2026')` succeeds and would yield a token that can never
-// match a stored value, reporting a client's typo as somebody else's edit.
-const ISO_8601_MS = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+// Deliberately strict: a loose parse (e.g. accepting '1.5', leading
+// whitespace, or a leading zero that `versionToken` never emits) turns a
+// client's malformed token into a bogus "someone else edited this" instead
+// of the client error it is.
+const VERSION_TOKEN = /^(0|[1-9]\d*)$/;
 
-export function versionToken(doc: { updatedAt: Date }): string {
-  return doc.updatedAt.toISOString();
+export function versionToken(doc: { version: number }): string {
+  return String(doc.version);
 }
 
-export function parseVersionToken(raw: string): Date | null {
-  if (!ISO_8601_MS.test(raw)) return null;
-  const parsed = new Date(raw);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
+export function parseVersionToken(raw: string): number | null {
+  if (!VERSION_TOKEN.test(raw)) return null;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isSafeInteger(parsed) ? parsed : null;
 }
 
-export function dashboardETag(doc: { updatedAt: Date }): string {
+export function dashboardETag(doc: { version: number }): string {
   return `"${versionToken(doc)}"`;
 }
 
@@ -50,7 +59,7 @@ export function dashboardETag(doc: { updatedAt: Date }): string {
  * we accept one entry (or `*`) and reject a list, which surfaces as a 400
  * rather than quietly honouring only the first entry.
  */
-export function parseIfMatch(header: string): Date | '*' | null {
+export function parseIfMatch(header: string): number | '*' | null {
   const raw = header.trim();
   if (raw === '*') return '*';
   const unwrapped = raw.replace(/^W\//, '').replace(/^"(.*)"$/, '$1');
@@ -97,7 +106,7 @@ export async function resolveDashboardWriteMiss(
 ): Promise<DashboardWriteMiss> {
   const current = await Dashboard.findOne(
     { _id: dashboardId, team: teamId },
-    { updatedAt: 1 },
+    { version: 1 },
   ).lean();
   const miss: DashboardWriteMiss =
     current == null

@@ -203,7 +203,7 @@ export async function updateDashboard(
   teamId: ObjectId,
   updates: Partial<z.infer<typeof DashboardWithoutIdSchema>>,
   userId?: ObjectId,
-  expectedUpdatedAt?: Date,
+  expectedVersion?: number,
 ) {
   const oldDashboard = await getDashboard(dashboardId, teamId);
 
@@ -215,7 +215,7 @@ export async function updateDashboard(
     {
       _id: dashboardId,
       team: teamId,
-      ...(expectedUpdatedAt ? { updatedAt: expectedUpdatedAt } : {}),
+      ...(expectedVersion != null ? { version: expectedVersion } : {}),
     },
     {
       ...updates,
@@ -225,7 +225,7 @@ export async function updateDashboard(
     { new: true },
   );
   if (updatedDashboard == null) {
-    if (expectedUpdatedAt != null) {
+    if (expectedVersion != null) {
       const miss = await resolveDashboardWriteMiss(
         dashboardId,
         teamId,

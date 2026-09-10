@@ -42,12 +42,14 @@ export type Dashboard = {
   savedFilterValues?: DashboardFilterValue[];
   containers?: DashboardContainer[];
   createdAt?: string;
+  updatedAt?: string;
   /**
    * The optimistic-concurrency token for dashboard writes. The API has
    * always returned it; it is optional because IS_LOCAL_MODE dashboards
-   * live in URL state and have none.
+   * live in URL state and have none. Opaque here even though it is an
+   * integer on the wire — send it back to `expectedVersion` verbatim.
    */
-  updatedAt?: string;
+  version?: number;
   createdBy?: { email: string; name?: string };
   updatedBy?: { email: string; name?: string };
   /** Machine-managed by ProvisionDashboardsTask, whose name-keyed upsert
@@ -147,7 +149,13 @@ export function useUpdateDashboard(dashboardId?: string) {
     mutationFn: async (
       dashboard: Partial<Dashboard> & { id: Dashboard['id'] },
     ) => {
-      const { updatedAt: fallbackUpdatedAt, ...rest } = dashboard;
+      // `updatedAt` is a display-only field the API returns but doesn't
+      // accept back; drop it here too so it isn't echoed into the PATCH body.
+      const {
+        version: fallbackVersion,
+        updatedAt: _updatedAt,
+        ...rest
+      } = dashboard;
       const normalized = normalizeDashboardTileColors(rest);
       if (IS_LOCAL_MODE) {
         const { id, ...updates } = normalized;
@@ -155,21 +163,23 @@ export function useUpdateDashboard(dashboardId?: string) {
         return undefined;
       }
       // Read the token from the cache now rather than trusting whatever
-      // `dashboard.updatedAt` was when `mutate()` was called — that value
+      // `dashboard.version` was when `mutate()` was called — that value
       // was captured before this mutation's turn in the scope queue, so a
       // second save fired right after the first would otherwise still
       // carry the pre-save token and 409 against its own predecessor.
       // Fall back to the caller-supplied value when the cache has no
       // entry (local mode never reaches here, but a cold/evicted cache
       // can).
-      const cachedUpdatedAt = queryClient
+      const cachedVersion = queryClient
         .getQueryData<Dashboard[]>(['dashboards'])
-        ?.find(d => d.id === normalized.id)?.updatedAt;
+        ?.find(d => d.id === normalized.id)?.version;
+      const expectedVersion = cachedVersion ?? fallbackVersion;
       return hdxServer(`dashboards/${normalized.id}`, {
         method: 'PATCH',
         json: {
           ...normalized,
-          expectedVersion: cachedUpdatedAt ?? fallbackUpdatedAt,
+          expectedVersion:
+            expectedVersion != null ? String(expectedVersion) : undefined,
         },
       }).json<Dashboard>();
     },
@@ -281,12 +291,12 @@ export function useDashboard({
         onSuccess?.();
       } else {
         setIsSettingDashboard(true);
-        // `updatedAt` here is only the fallback `mutationFn` uses if the
+        // `version` here is only the fallback `mutationFn` uses if the
         // dashboards cache has no entry for this id (e.g. a cold cache);
         // the cache is the source of truth for a save queued behind
         // another one on the same scope.
         return updateDashboard.mutate(
-          { ...newDashboard, updatedAt: remoteDashboard?.updatedAt },
+          { ...newDashboard, version: remoteDashboard?.version },
           {
             onSuccess: () => {
               setIsSettingDashboard(false);
