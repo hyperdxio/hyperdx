@@ -272,11 +272,12 @@ function getLLMAttributeExpressions({
   const anyKeyHasValue = (keys: readonly string[]) =>
     withKeyPruning(keys, anyKeyNonEmpty(keys));
 
-  const TOOL_SPAN_KEYS = [
-    'gen_ai.tool.name',
-    'gen_ai.tool.call.id',
-    'ai.toolCall.name',
-  ];
+  // Derived from TOOL_NAME_KEYS rather than restated: a span whose tool name
+  // resolves is a tool call, so the two must not drift. Until now the flat
+  // `tool_name` (Claude Code, opencode) was missing here, so those spans got a
+  // resolvable toolName but never passed the gate. gen_ai.tool.call.id is the
+  // one addition — it marks a tool call without naming it.
+  const TOOL_SPAN_KEYS = [...TOOL_NAME_KEYS, 'gen_ai.tool.call.id'];
   const isToolSpanMatch = `(${fieldAccess(
     attributeField,
     'openinference.span.kind',

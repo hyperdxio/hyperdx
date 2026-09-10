@@ -26,9 +26,15 @@ select-list aggregate are left unhinted, since skip-index analysis does not
 reach the select list; the tool-call gate is used in both positions and so is
 exposed in both forms.
 
-The one behavior change is LLM span detection, which is now presence-based: a
-span carrying `gen_ai.system` at all is treated as an LLM span whatever the
-value. Nothing groups by that predicate.
+Two behavior changes. LLM span detection is now presence-based: a span carrying
+`gen_ai.system` at all is treated as an LLM span whatever the value. Nothing
+groups by that predicate.
+
+Tool-call detection now also accepts the flat `tool_name` key (Claude Code,
+opencode). The tool-name expression already resolved it, so such spans had a
+name the dashboard could display but were missing from the tool charts; the
+detection key set is now derived from the tool-name key set so the two cannot
+drift apart. Expect slightly higher tool-call counts where that key is emitted.
 
 JSON attribute columns are unchanged — their paths are real subcolumns, there is
 no key index to prune with, and a presence term would only duplicate reads.

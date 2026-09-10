@@ -238,13 +238,22 @@ describe('getLLMExpressions', () => {
     expect(expressions.isToolSpan).toBe(
       "(indexHint((mapContains(SpanAttributes, 'openinference.span.kind') OR " +
         "mapContains(SpanAttributes, 'gen_ai.tool.name') OR " +
-        "mapContains(SpanAttributes, 'gen_ai.tool.call.id') OR " +
-        "mapContains(SpanAttributes, 'ai.toolCall.name'))) AND " +
+        "mapContains(SpanAttributes, 'ai.toolCall.name') OR " +
+        "mapContains(SpanAttributes, 'tool_name') OR " +
+        "mapContains(SpanAttributes, 'gen_ai.tool.call.id'))) AND " +
         "(SpanAttributes['openinference.span.kind'] = 'TOOL' OR " +
         "coalesce(nullif(SpanAttributes['gen_ai.tool.name'], ''), " +
-        "nullif(SpanAttributes['gen_ai.tool.call.id'], ''), " +
-        "nullif(SpanAttributes['ai.toolCall.name'], ''), '') != ''))",
+        "nullif(SpanAttributes['ai.toolCall.name'], ''), " +
+        "nullif(SpanAttributes['tool_name'], ''), " +
+        "nullif(SpanAttributes['gen_ai.tool.call.id'], ''), '') != ''))",
     );
+    // Every key the tool-name expression can resolve must also satisfy the
+    // gate, or the span is dropped from the tool charts under a name the
+    // dashboard could have shown.
+    for (const key of ['gen_ai.tool.name', 'ai.toolCall.name', 'tool_name']) {
+      expect(expressions.toolName).toContain(`SpanAttributes['${key}']`);
+      expect(expressions.isToolSpan).toContain(`SpanAttributes['${key}']`);
+    }
     // SessionsTab uses this one as an aggCondition, where a hint folds to a
     // constant. It must stay the bare match, and must still be the same
     // predicate the hinted form wraps.
