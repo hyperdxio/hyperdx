@@ -18,6 +18,12 @@ const DAY_MS = 1000 * 60 * 60 * 24;
 // phase to teams younger than the (larger) product window.
 const SETUP_MAX_TEAM_AGE_DAYS = 3;
 const PRODUCT_MAX_TEAM_AGE_DAYS = 7;
+// staleTime for the system.tables row-count probe. The `enabled` gate can't be
+// tightened to "card is actually visible" without circularity (isSetupComplete
+// depends on this query's result), so a stale window keeps react-query from
+// refetching on every mount / window-focus for teams that are within the outer
+// age window but whose card is nonetheless hidden.
+const SETUP_ROW_COUNT_STALE_MS = 5 * 60 * 1000;
 
 interface OnboardingCompletion {
   steps: OnboardingStep[];
@@ -89,13 +95,16 @@ export function useOnboardingCompletion(
     [firstConnectionSources, firstConnection],
   );
   // The row-count query decides the setup phase's "Add data" step AND, by
-  // extension, whether setup is complete (which gates the product phase). Gate
-  // it so it never fires when NO checklist phase could render — otherwise every
-  // user, on every app load and window refocus, runs `sum(total_rows) FROM
-  // system.tables` (react-query's defaults refetch on focus). It runs only for
-  // a real signed-in user (not IS_LOCAL_MODE, where `me` is null), a team inside
-  // the outer (product) age window, with a connection, and not dismissed —
-  // i.e. teams older than PRODUCT_MAX_TEAM_AGE_DAYS never touch system.tables.
+  // extension, whether setup is complete (which gates the product phase). The
+  // `enabled` gate scopes it to the OUTER (product, 7-day) window — a real
+  // signed-in user (not IS_LOCAL_MODE, where `me` is null), a team inside that
+  // window, with a connection, and not dismissed. So teams older than
+  // PRODUCT_MAX_TEAM_AGE_DAYS never touch system.tables. It does NOT gate on the
+  // card actually being visible: a 3-7 day team still in setup (setup card
+  // age-gated to 3 days), or a team that finished all tasks, is inside this
+  // window but shows no card. Tightening the gate would be circular
+  // (isSetupComplete needs this query's hasData), so instead a staleTime stops
+  // the redundant refetch-on-focus for those hidden-card cases (see below).
   const isWithinAnyOnboardingWindow =
     me != null &&
     teamAgeDays != null &&
@@ -113,6 +122,9 @@ export function useOnboardingCompletion(
   const { data: sourceRowsData, isLoading: isSourceRowsLoading } =
     useQueriedChartConfig(sourceRowsConfig, {
       enabled: isSourceRowsQueryEnabled,
+      // See SETUP_ROW_COUNT_STALE_MS: keeps focus/remount from re-running the
+      // probe for in-window teams whose checklist card is hidden anyway.
+      staleTime: SETUP_ROW_COUNT_STALE_MS,
     });
   const hasData = sourceRowsData?.data?.[0]?.total_rows > 0;
 
