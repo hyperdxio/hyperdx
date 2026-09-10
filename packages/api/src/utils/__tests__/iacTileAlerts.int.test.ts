@@ -4,6 +4,8 @@ import { getServer, randomMongoId } from '@/fixtures';
 import { AlertSource } from '@/models/alert';
 import Dashboard from '@/models/dashboard';
 import { unaddressableTileAlertIds } from '@/utils/iacTileAlerts';
+import { getCounter } from '@/utils/instrumentation';
+import logger from '@/utils/logger';
 
 describe('unaddressableTileAlertIds', () => {
   const server = getServer();
@@ -98,6 +100,86 @@ describe('unaddressableTileAlertIds', () => {
       expect(find).not.toHaveBeenCalled();
     } finally {
       find.mockRestore();
+    }
+  });
+
+  // maxTimeMS only caps mongo's own execution, so a read stuck waiting on a
+  // pool connection or a socket would otherwise run past the request ceiling.
+  it('withholds every tile alert when the read outlasts the budget', async () => {
+    const teamId = randomMongoId();
+    const dashboard = await Dashboard.create({
+      name: 'Ops',
+      team: teamId,
+      tiles: [tile('tile-1', 'Errors')],
+    });
+    const alerts = [alert(dashboard._id, 'tile-1')];
+
+    // Never settles, which is the shape of a wait maxTimeMS cannot see.
+    const find = jest.spyOn(Dashboard, 'find').mockReturnValue({
+      maxTimeMS: () => ({ lean: () => new Promise(() => {}) }),
+    } as never);
+
+    try {
+      const withheld = await unaddressableTileAlertIds({
+        teamId,
+        alerts,
+        maxTimeMS: 50,
+      });
+
+      expect([...withheld]).toEqual([alerts[0]._id.toString()]);
+    } finally {
+      find.mockRestore();
+    }
+  });
+
+  // The timer gives up first and the read it raced rejects afterwards. One
+  // request withholds one export, so that is one counter tick — but two logs,
+  // because the late error names the failure the timeout could only guess at.
+  it('logs the late read failure but counts the request once', async () => {
+    const teamId = randomMongoId();
+    const dashboard = await Dashboard.create({
+      name: 'Ops',
+      team: teamId,
+      tiles: [tile('tile-1', 'Errors')],
+    });
+    const alerts = [alert(dashboard._id, 'tile-1')];
+
+    const find = jest.spyOn(Dashboard, 'find').mockReturnValue({
+      maxTimeMS: () => ({
+        lean: () =>
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('MongoNetworkError')), 100),
+          ),
+      }),
+    } as never);
+    // getCounter memoizes by name, so this is the instrument the module under
+    // test captured at import — no options, or it would warn about a mismatch.
+    const add = jest.spyOn(
+      getCounter('hyperdx.iac.tile_alert_lookup_failed'),
+      'add',
+    );
+    const warn = jest.spyOn(logger, 'warn');
+
+    try {
+      const withheld = await unaddressableTileAlertIds({
+        teamId,
+        alerts,
+        maxTimeMS: 20,
+      });
+      expect([...withheld]).toEqual([alerts[0]._id.toString()]);
+
+      // Outlive the rejection the timer already walked away from.
+      await new Promise(resolve => setTimeout(resolve, 250));
+
+      const withholds = warn.mock.calls.filter(([arg]) =>
+        JSON.stringify(arg).includes('tile-alert addressability'),
+      );
+      expect(withholds).toHaveLength(2);
+      expect(add).toHaveBeenCalledTimes(1);
+    } finally {
+      find.mockRestore();
+      add.mockRestore();
+      warn.mockRestore();
     }
   });
 

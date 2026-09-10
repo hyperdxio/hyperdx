@@ -36,9 +36,9 @@ type TileAlertRow = {
  * from the alerts listing, itself capped at IAC_MANIFEST_LIMIT. `maxTimeMS` is
  * the caller's remaining budget, not a fresh one — this read is sequenced
  * after the manifest's six concurrent listings, and the ceiling is meant to
- * bound the request, not each leg of it. If it fails, expires, or the budget
- * is already spent, every tile alert is reported unaddressable rather than
- * failing the manifest.
+ * bound the request, not each leg of it. If it fails, runs out of wall clock,
+ * or the budget is already spent, every tile alert is reported unaddressable
+ * rather than failing the manifest.
  */
 export async function unaddressableTileAlertIds({
   teamId,
@@ -65,6 +65,11 @@ export async function unaddressableTileAlertIds({
   // manifest with it — the other six listings are the export. It runs last on
   // what is left of the request's budget, so it is the leg most likely to be
   // short of time.
+  //
+  // One request withholds one export, so the counter must not tick twice when
+  // the read the timer gave up on rejects afterwards. The log still fires both
+  // times — that late error names the failure the timeout only guessed at.
+  let counted = false;
   const withhold = (message: string, error?: unknown) => {
     logger.warn({
       message,
@@ -72,6 +77,8 @@ export async function unaddressableTileAlertIds({
       teamId: teamId.toString(),
       tileAlerts: tileAlerts.length,
     });
+    if (counted) return;
+    counted = true;
     tileAlertLookupFailures.add(1);
   };
 
@@ -86,10 +93,28 @@ export async function unaddressableTileAlertIds({
     return allTileAlertIds();
   }
 
+  // maxTimeMS caps what mongo spends executing, not the wait for a pool
+  // connection, server selection or the socket, so on its own it cannot hold
+  // this leg inside the request's ceiling. The timer is the wall-clock half of
+  // the same bound.
+  let timer: NodeJS.Timeout | undefined;
+  const outOfTime = new Promise<null>(resolve => {
+    timer = setTimeout(() => {
+      withhold(
+        'Ran out of time resolving tile-alert addressability; withholding all',
+      );
+      resolve(null);
+    }, maxTimeMS);
+  });
+
+  // A read the timer gave up on is left to finish into the void: mongoose 6
+  // predates the driver's cancellable timeout, and maxTimeMS caps it only once
+  // it holds a connection — not the pool wait the timer is here for.
+  //
   // Handled with `then(ok, err)` rather than try/catch so the row type stays
   // inferred from the query — a `let` declared ahead of a try block widens to
   // any and the predicate below stops type-checking against the projection.
-  const dashboards = await Dashboard.find(
+  const read = Dashboard.find(
     { team: teamId, _id: { $in: dashboardIds } },
     // Only what isTileAlertUnaddressable reads. Keep in step with it.
     { provisioned: 1, 'tiles.id': 1, 'tiles.config.name': 1 },
@@ -106,6 +131,10 @@ export async function unaddressableTileAlertIds({
         return null;
       },
     );
+
+  const dashboards = await Promise.race([read, outOfTime]).finally(() =>
+    clearTimeout(timer),
+  );
   // Withheld rather than offered unchecked: the export comes up short, which
   // both the generated file and the UI report, instead of carrying an alert
   // whose reference cannot resolve.
