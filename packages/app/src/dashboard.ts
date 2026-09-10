@@ -14,6 +14,7 @@ import {
 import { notifications } from '@mantine/notifications';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
+import { isRecordableUserId } from '@/OnboardingChecklist/onboardingTasks';
 import { hashCode } from '@/utils';
 
 import api, {
@@ -165,16 +166,20 @@ export function useUpdateDashboard() {
       if (IS_LOCAL_MODE) {
         const { id, ...updates } = normalized;
         localDashboards.update(id, updates);
-        return;
+        return undefined;
       }
-      await hdxServer(`dashboards/${normalized.id}`, {
+      // Return the persisted dashboard so onboarding keys off the server's
+      // saved tiles, not the (possibly partial) PATCH payload — a name/tag-only
+      // save omits `tiles`, which would otherwise leave the cache stale vs. the
+      // server, which records from persisted state.
+      return hdxServer(`dashboards/${normalized.id}`, {
         method: 'PATCH',
         json: normalized,
-      });
+      }).json<Dashboard>();
     },
-    onSuccess: (_data, variables) => {
+    onSuccess: updated => {
       queryClient.invalidateQueries({ queryKey: ['dashboards'] });
-      markDashboardOnboarding(markOnboardingTaskComplete, variables.tiles);
+      markDashboardOnboarding(markOnboardingTaskComplete, updated?.tiles);
     },
   });
 }
@@ -194,9 +199,10 @@ export function useCreateDashboard() {
         json: normalized,
       }).json<Dashboard>();
     },
-    onSuccess: (_data, variables) => {
+    onSuccess: created => {
       queryClient.invalidateQueries({ queryKey: ['dashboards'] });
-      markDashboardOnboarding(markOnboardingTaskComplete, variables.tiles);
+      // Key off the server's persisted tiles (see useUpdateDashboard).
+      markDashboardOnboarding(markOnboardingTaskComplete, created?.tiles);
     },
   });
 }
@@ -234,8 +240,12 @@ export function useDashboard({
   const updateDashboard = useUpdateDashboard();
   const completeOnboardingTask = useCompleteOnboardingTask();
   const { data: me } = api.useMe();
+  // A non-recordable user (no real ObjectId — e.g. the noauth image) counts as
+  // "already built" so the temp-dashboard recording POST never fires; it would
+  // never stick server-side and would re-fire on every layout edit.
   const hasBuiltDashboard =
-    me?.onboardingData?.completedTasks.includes('dashboard') ?? false;
+    !isRecordableUserId(me?.id) ||
+    (me?.onboardingData?.completedTasks.includes('dashboard') ?? false);
 
   const { data: remoteDashboard, isFetching: isFetchingRemoteDashboard } =
     useQuery({

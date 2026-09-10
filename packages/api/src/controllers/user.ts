@@ -34,13 +34,29 @@ export function findUsersByTeam(team: string | ObjectId) {
   return User.find({ team }).sort({ createdAt: 1 });
 }
 
+// A real, persistable user id is a canonical 24-hex-char ObjectId. This
+// deliberately rejects the synthetic `_local_user_` id the auth middleware
+// injects in IS_LOCAL_APP_MODE: mongoose casts that 12-byte string to an
+// ObjectId that matches no document, so any write is a silent no-op — and
+// mongoose.isValidObjectId() returns true for it, so it can't be the guard.
+function isPersistableUserId(
+  userId: string | ObjectId | undefined | null,
+): userId is string | ObjectId {
+  return userId != null && /^[0-9a-fA-F]{24}$/.test(String(userId));
+}
+
 // Idempotent: $addToSet means completing an already-completed task is a no-op,
 // so the frontend can fire optimistically without guarding against duplicates.
 // taskId is typed OnboardingTaskId so call sites can't pass an unknown key.
+// Returns null for a non-persistable user (local app mode) so the route reports
+// the unchanged default state instead of a write that silently matched nothing.
 export function completeOnboardingTask(
   userId: string | ObjectId,
   taskId: OnboardingTaskId,
 ) {
+  if (!isPersistableUserId(userId)) {
+    return null;
+  }
   return User.findByIdAndUpdate(
     userId,
     { $addToSet: { 'onboardingData.completedTasks': taskId } },
@@ -52,6 +68,9 @@ export function setOnboardingDismissed(
   userId: string | ObjectId,
   isDismissed: boolean,
 ) {
+  if (!isPersistableUserId(userId)) {
+    return null;
+  }
   return User.findByIdAndUpdate(
     userId,
     { $set: { 'onboardingData.isDismissed': isDismissed } },
@@ -74,13 +93,10 @@ export function recordOnboardingTaskCompletion(
   userId: string | ObjectId | undefined | null,
   taskId: OnboardingTaskId,
 ) {
-  // Skip when there's no user, or when the id isn't a canonical 24-hex-char
-  // ObjectId. In local app mode the auth middleware injects a synthetic
-  // `_local_user_` id; note mongoose.isValidObjectId() returns true for ANY
-  // 12-char string (including `_local_user_`), so a strict hex test is required
-  // to actually skip the write and avoid a pointless User.updateOne on every
-  // dashboard save, alert save, and MCP tool call.
-  if (userId == null || !/^[0-9a-fA-F]{24}$/.test(String(userId))) {
+  // Skip when there's no user, or the id isn't persistable (local app mode) —
+  // otherwise this fires a pointless User.updateOne on every dashboard save,
+  // alert save, and MCP tool call.
+  if (!isPersistableUserId(userId)) {
     return;
   }
   void User.updateOne(

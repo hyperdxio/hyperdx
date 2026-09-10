@@ -10,8 +10,12 @@ const setLocalDashboard = jest.fn((v: unknown) => {
   localDashboardValue = v;
 });
 let meData: {
+  id: string;
   onboardingData: { completedTasks: string[]; isDismissed: boolean };
 } | null = null;
+
+// A real 24-hex ObjectId: recording is gated on the user id being persistable.
+const REAL_USER_ID = 'a1b2c3d4e5f6a1b2c3d4e5f6';
 
 jest.mock('../config', () => ({ IS_LOCAL_MODE: false }));
 jest.mock('@mantine/notifications', () => ({
@@ -53,7 +57,10 @@ describe('useDashboard local-dashboard onboarding', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     localDashboardValue = null;
-    meData = { onboardingData: { completedTasks: [], isDismissed: false } };
+    meData = {
+      id: REAL_USER_ID,
+      onboardingData: { completedTasks: [], isDismissed: false },
+    };
   });
 
   it('records the dashboard task when a tile is added to a temporary dashboard', () => {
@@ -74,7 +81,20 @@ describe('useDashboard local-dashboard onboarding', () => {
 
   it('does not re-record once the task is already completed', () => {
     meData = {
+      id: REAL_USER_ID,
       onboardingData: { completedTasks: ['dashboard'], isDismissed: false },
+    };
+    const { result } = renderHook(() => useDashboard({}));
+    act(() => {
+      result.current.setDashboard(makeDashboard([tile]));
+    });
+    expect(mutate).not.toHaveBeenCalled();
+  });
+
+  it('does not record when the user id is not a real ObjectId (noauth image)', () => {
+    meData = {
+      id: '_local_user_',
+      onboardingData: { completedTasks: [], isDismissed: false },
     };
     const { result } = renderHook(() => useDashboard({}));
     act(() => {

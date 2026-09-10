@@ -63,3 +63,14 @@ export function isNonTrivialSearch(
 ): boolean {
   return isNonEmptyWhereExpr(where) || (filters?.length ?? 0) > 0;
 }
+
+// Onboarding recording is only meaningful for a real persisted user. In the
+// all-in-one-noauth image the server runs in IS_LOCAL_APP_MODE (synthetic
+// `_local_user_` id) while the bundled app has NEXT_PUBLIC_IS_LOCAL_MODE=false,
+// so GET /me returns a normal 200 whose onboarding writes silently no-op —
+// completedTasks never advances, so an unguarded client would re-POST forever.
+// Gate recording on the id being a canonical 24-hex-char ObjectId (mirrors the
+// server's isPersistableUserId).
+export function isRecordableUserId(id: string | undefined): boolean {
+  return id != null && /^[0-9a-fA-F]{24}$/.test(id);
+}

@@ -112,7 +112,10 @@ import { useAliasMapFromChartConfig } from '@/hooks/useChartConfig';
 import { useExplainQuery } from '@/hooks/useExplainQuery';
 import { useResolvedSourceParam } from '@/hooks/useResolvedSourceParam';
 import { withAppNav } from '@/layout';
-import { isNonTrivialSearch } from '@/OnboardingChecklist/onboardingTasks';
+import {
+  isNonTrivialSearch,
+  isRecordableUserId,
+} from '@/OnboardingChecklist/onboardingTasks';
 import {
   useCreateSavedSearch,
   useDeleteSavedSearch,
@@ -1254,8 +1257,12 @@ export function DBSearchPage() {
 
   const completeOnboardingTask = useCompleteOnboardingTask();
   const { data: me } = api.useMe();
+  // Treat a non-recordable user (no real ObjectId — e.g. the noauth image) as
+  // "already explored" so we never fire the recording POST, which would never
+  // stick server-side and would re-fire on every search.
   const hasExploredData =
-    me?.onboardingData?.completedTasks.includes('advancedQuery') ?? false;
+    !isRecordableUserId(me?.id) ||
+    (me?.onboardingData?.completedTasks.includes('advancedQuery') ?? false);
 
   useEffect(() => {
     if (!isBrowser || !IS_LOCAL_MODE) return;
