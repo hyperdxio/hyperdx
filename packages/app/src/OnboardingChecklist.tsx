@@ -95,7 +95,15 @@ const OnboardingChecklist = ({
       // with no `x-hyperdx-connection-id` header and fails Zod validation
       // on the API. This blocks brand-new teams (< 3 days old) from using
       // the team settings page until they manually add a connection.
-      enabled: shouldShow && !!firstConnection?.id,
+      //
+      // Also skip when no enabled source remains on the connection: the
+      // filters list would be empty, producing no WHERE clause and an
+      // unrestricted `system.tables` scan that could count unrelated tables
+      // and wrongly mark the "Add Data" step complete.
+      enabled:
+        shouldShow &&
+        !!firstConnection?.id &&
+        (firstConnectionSources?.length ?? 0) > 0,
     });
   const hasData = sourceRowsData?.data?.[0]?.total_rows > 0;
   // const hasData = false;

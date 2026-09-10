@@ -501,7 +501,7 @@ describe('useQueriedDashboardFilterValues', () => {
         },
       ],
       isLoading: false,
-    } as any);
+    } as unknown as ReturnType<typeof sourceModule.useSources>);
 
     // Act
     const { result } = renderHook(
