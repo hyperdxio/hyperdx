@@ -8,6 +8,7 @@ import {
   dashboardETag,
   parseIfMatch,
   resolveDashboardWriteMiss,
+  versionFilter,
 } from '@/utils/dashboardVersion';
 import { processRequestWithEnhancedErrors as validateRequest } from '@/utils/enhancedErrors';
 import { ExternalDashboardTileWithId, objectIdSchema } from '@/utils/zod';
@@ -2981,7 +2982,7 @@ router.put(
         {
           _id: dashboardId,
           team: teamId,
-          ...(expectedVersion != null ? { version: expectedVersion } : {}),
+          ...(expectedVersion != null ? versionFilter(expectedVersion) : {}),
         },
         { $set: setPayload },
         { new: true },

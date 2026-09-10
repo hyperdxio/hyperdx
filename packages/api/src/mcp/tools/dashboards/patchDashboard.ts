@@ -14,6 +14,7 @@ import {
 import {
   parseVersionToken,
   resolveDashboardWriteMiss,
+  versionFilter,
   versionToken,
 } from '@/utils/dashboardVersion';
 import type { ExternalDashboardTileWithId } from '@/utils/zod';
@@ -100,7 +101,7 @@ export function registerPatchDashboard({
       const queryFilter: Record<string, unknown> = {
         _id: dashboardId,
         team: teamId,
-        version: expectedVersion,
+        ...versionFilter(expectedVersion),
       };
 
       if (name !== undefined) {

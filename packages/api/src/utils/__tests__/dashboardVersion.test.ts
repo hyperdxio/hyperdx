@@ -2,6 +2,7 @@ import {
   dashboardETag,
   parseIfMatch,
   parseVersionToken,
+  versionFilter,
   versionToken,
 } from '@/utils/dashboardVersion';
 
@@ -37,6 +38,19 @@ describe('parseVersionToken', () => {
     expect(parseVersionToken(String(Number.MAX_SAFE_INTEGER))).toBe(
       Number.MAX_SAFE_INTEGER,
     );
+  });
+});
+
+describe('versionFilter', () => {
+  // Token "0" has to match both a pre-migration document (no `version`
+  // field at all) and a backfilled one (`version: 0`) — only `null` matches
+  // a missing field in Mongo, so both are listed explicitly.
+  it('matches 0 or a missing field for token 0', () => {
+    expect(versionFilter(0)).toEqual({ version: { $in: [0, null] } });
+  });
+
+  it('matches exactly for a non-zero token', () => {
+    expect(versionFilter(V)).toEqual({ version: V });
   });
 });
 

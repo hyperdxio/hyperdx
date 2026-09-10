@@ -20,6 +20,7 @@ import Dashboard from '@/models/dashboard';
 import {
   DashboardVersionConflictError,
   resolveDashboardWriteMiss,
+  versionFilter,
 } from '@/utils/dashboardVersion';
 
 function pickAlertsByTile(tiles: Tile[]) {
@@ -215,7 +216,7 @@ export async function updateDashboard(
     {
       _id: dashboardId,
       team: teamId,
-      ...(expectedVersion != null ? { version: expectedVersion } : {}),
+      ...(expectedVersion != null ? versionFilter(expectedVersion) : {}),
     },
     {
       ...updates,

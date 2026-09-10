@@ -4,6 +4,7 @@ import { getLoggedInAgent, getServer, makeTile } from '@/fixtures';
 import Dashboard from '@/models/dashboard';
 import {
   resolveDashboardWriteMiss,
+  versionFilter,
   versionToken,
 } from '@/utils/dashboardVersion';
 
@@ -129,6 +130,38 @@ describe('dashboard version (integration)', () => {
         { new: true },
       );
 
+      expect(updated!.version).toBe(1);
+    });
+  });
+
+  describe('a document that predates the version field', () => {
+    // Inserted with the native driver so mongoose's `pre('save')`/schema
+    // default never runs — this is what every dashboard created before this
+    // change actually looks like in MongoDB, not what `new Dashboard().save()`
+    // would give us.
+    const insertPreVersionDashboard = async () => {
+      const { insertedId } = await Dashboard.collection.insertOne({
+        name: 'Pre-Version Dashboard',
+        tiles: [makeTile()],
+        tags: [],
+        team: team._id,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      return insertedId;
+    };
+
+    it('accepts a guarded write with token "0" and bumps version to 1', async () => {
+      const id = await insertPreVersionDashboard();
+
+      const updated = await Dashboard.findOneAndUpdate(
+        { _id: id, team: team._id, ...versionFilter(0) },
+        { $set: { name: 'Renamed' } },
+        { new: true },
+      );
+
+      expect(updated).not.toBeNull();
+      expect(updated!.name).toBe('Renamed');
       expect(updated!.version).toBe(1);
     });
   });

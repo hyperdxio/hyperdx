@@ -55,6 +55,19 @@ export function dashboardETag(doc: { version: number }): string {
 }
 
 /**
+ * Builds the `version` clause for a guarded write filter. A dashboard
+ * created before `version` existed has no such field in MongoDB, and
+ * hydration reports that as `0` (the schema default), but Mongo equality on
+ * `0` doesn't match a missing field — only `null` does. Matching `0` against
+ * `$in: [0, null]` lets token `"0"` land on both a pre-migration document and
+ * a backfilled one, so correctness never depends on the migration having
+ * run. Every non-zero token keeps exact-match semantics.
+ */
+export function versionFilter(v: number): Record<string, unknown> {
+  return v === 0 ? { version: { $in: [0, null] } } : { version: v };
+}
+
+/**
  * Parses a single `If-Match` value. RFC 9110 allows a comma-separated list;
  * we accept one entry (or `*`) and reject a list, which surfaces as a 400
  * rather than quietly honouring only the first entry.

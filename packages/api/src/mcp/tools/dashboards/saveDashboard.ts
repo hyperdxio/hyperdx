@@ -20,6 +20,7 @@ import {
 import {
   parseVersionToken,
   resolveDashboardWriteMiss,
+  versionFilter,
   versionToken,
 } from '@/utils/dashboardVersion';
 import type {
@@ -409,7 +410,7 @@ async function updateDashboard({
   }
 
   const updatedDashboard = await Dashboard.findOneAndUpdate(
-    { _id: dashboardId, team: teamId, version: expectedVersion },
+    { _id: dashboardId, team: teamId, ...versionFilter(expectedVersion) },
     { $set: setPayload },
     { new: true },
   );
