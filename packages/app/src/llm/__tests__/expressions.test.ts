@@ -54,6 +54,22 @@ describe('getLLMExpressions', () => {
     // mapContains does not apply to JSON paths.
     expect(expressions.isLLMSpan).not.toContain('mapContains');
     expect(expressions.hasReportedTokens).not.toContain('mapContains');
+    expect(expressions.hasSessionId).not.toContain('mapContains');
+    expect(expressions.isToolSpan).not.toContain('mapContains');
+
+    // On JSON there is no key index to prune with, so the gates carry the
+    // value test alone rather than doubling their subcolumn reads with a
+    // presence term that says the same thing.
+    expect(expressions.hasTtft).toBe(
+      'greatest(toFloat64OrZero(toString(SpanAttributes.`ttft_ms`)), ' +
+        'toFloat64OrZero(toString(SpanAttributes.`ai.response.msToFirstChunk`)), ' +
+        'toFloat64OrZero(toString(SpanAttributes.`copilot_chat.time_to_first_token`))) > 0',
+    );
+    expect(expressions.hasSessionId).toBe(
+      "coalesce(nullif(toString(SpanAttributes.`gen_ai.conversation.id`), ''), " +
+        "nullif(toString(SpanAttributes.`session.id`), ''), " +
+        "nullif(toString(SpanAttributes.`ai.telemetry.metadata.sessionId`), ''), '') != ''",
+    );
   });
 
   it('derives session id and reported-token gate expressions', () => {
@@ -68,12 +84,16 @@ describe('getLLMExpressions', () => {
     expect(expressions.sessionId).toContain(
       "nullif(SpanAttributes['ai.telemetry.metadata.sessionId'], '')",
     );
-    // The gate tests key presence so a mapKeys() index can serve it; the
-    // value expression above still coalesces.
+    // Presence terms for the index, value term for the meaning: a key set to
+    // '' must not pass, or SessionsTab groups it as a blank row whose link
+    // carries no session id.
     expect(expressions.hasSessionId).toBe(
-      "(mapContains(SpanAttributes, 'gen_ai.conversation.id') OR " +
+      "((mapContains(SpanAttributes, 'gen_ai.conversation.id') OR " +
         "mapContains(SpanAttributes, 'session.id') OR " +
-        "mapContains(SpanAttributes, 'ai.telemetry.metadata.sessionId'))",
+        "mapContains(SpanAttributes, 'ai.telemetry.metadata.sessionId')) AND " +
+        "coalesce(nullif(SpanAttributes['gen_ai.conversation.id'], ''), " +
+        "nullif(SpanAttributes['session.id'], ''), " +
+        "nullif(SpanAttributes['ai.telemetry.metadata.sessionId'], ''), '') != '')",
     );
 
     // The gate keys on authoritative usage reporters only — wrapper spans
@@ -135,11 +155,16 @@ describe('getLLMExpressions', () => {
     expect(expressions.ttftMs).toContain(
       "SpanAttributes['copilot_chat.time_to_first_token']",
     );
-    // Keeps its value comparison (a zero TTFT would skew the percentiles) and
-    // adds a presence conjunct purely so the key index can prune.
-    expect(expressions.hasTtft).toContain('> 0');
-    expect(expressions.hasTtft).toContain(
-      "mapContains(SpanAttributes, 'ttft_ms')",
+    // Pinned exactly: the terms must be ANDed. With OR, zero-TTFT rows reach
+    // the p50/p95 the value check exists to keep them out of, and a
+    // toContain-style assertion would not notice.
+    expect(expressions.hasTtft).toBe(
+      "((mapContains(SpanAttributes, 'ttft_ms') OR " +
+        "mapContains(SpanAttributes, 'ai.response.msToFirstChunk') OR " +
+        "mapContains(SpanAttributes, 'copilot_chat.time_to_first_token')) AND " +
+        "greatest(toFloat64OrZero(SpanAttributes['ttft_ms']), " +
+        "toFloat64OrZero(SpanAttributes['ai.response.msToFirstChunk']), " +
+        "toFloat64OrZero(SpanAttributes['copilot_chat.time_to_first_token'])) > 0)",
     );
 
     // Tool name coalesce includes the flat form.
@@ -151,8 +176,10 @@ describe('getLLMExpressions', () => {
     );
     expect(expressions.agentName).toContain("SpanAttributes['agent.name']");
     expect(expressions.hasAgentName).toBe(
-      "(mapContains(SpanAttributes, 'gen_ai.agent.name') OR " +
-        "mapContains(SpanAttributes, 'agent.name'))",
+      "((mapContains(SpanAttributes, 'gen_ai.agent.name') OR " +
+        "mapContains(SpanAttributes, 'agent.name')) AND " +
+        "coalesce(nullif(SpanAttributes['gen_ai.agent.name'], ''), " +
+        "nullif(SpanAttributes['agent.name'], ''), '') != '')",
     );
 
     // Finish reasons normalized out of their JSON-array encoding.
@@ -164,6 +191,22 @@ describe('getLLMExpressions', () => {
     expect(expressions.userId).toContain("SpanAttributes['enduser.id']");
     expect(expressions.hasUserId).toContain(
       "mapContains(SpanAttributes, 'user.email')",
+    );
+    // The value term keeps a blank user out of the Top Users group-by.
+    expect(expressions.hasUserId).toContain(
+      "AND coalesce(nullif(SpanAttributes['user.email'], '')",
+    );
+
+    // The span-kind term must stay an equality: widening it to a presence
+    // check would pull every OpenInference span into the tool charts.
+    expect(expressions.isToolSpan).toBe(
+      "(SpanAttributes['openinference.span.kind'] = 'TOOL' OR " +
+        "((mapContains(SpanAttributes, 'gen_ai.tool.name') OR " +
+        "mapContains(SpanAttributes, 'gen_ai.tool.call.id') OR " +
+        "mapContains(SpanAttributes, 'ai.toolCall.name')) AND " +
+        "coalesce(nullif(SpanAttributes['gen_ai.tool.name'], ''), " +
+        "nullif(SpanAttributes['gen_ai.tool.call.id'], ''), " +
+        "nullif(SpanAttributes['ai.toolCall.name'], ''), '') != ''))",
     );
 
     expect(expressions.statusMessage).toBe('StatusMessage');

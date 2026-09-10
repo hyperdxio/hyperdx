@@ -94,8 +94,9 @@ export function isLLMSpan(
  * JSON columns keep the comparison: their paths are real subcolumns, and
  * `mapContains` does not apply.
  *
- * Note this tests presence, where `!= ''` tested presence *and* non-emptiness.
- * A key explicitly set to '' now counts as present.
+ * This tests presence only. Callers that pair a gate with a value expression
+ * they group by need non-emptiness as well, or a key set to '' becomes a blank
+ * row — see `anyKeyHasValue` in expressions.ts.
  */
 function buildKeyExistsSql({
   attributeField,
@@ -128,6 +129,10 @@ export function buildAnyKeyExistsSql(args: {
  * Build a SQL predicate matching LLM spans, for use in search filters and
  * dashboard chart configs. Handles both `Map(String, String)` attribute
  * columns and JSON-typed columns.
+ *
+ * Presence is the right test here: a span carrying `gen_ai.system` at all was
+ * emitted by LLM instrumentation, whatever the value. Nothing groups by this
+ * predicate, so an empty value cannot produce a blank row.
  */
 export function buildLLMSpanSqlPredicate({
   attributeField,

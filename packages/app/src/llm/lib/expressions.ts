@@ -21,7 +21,7 @@ function fieldAccess(
 /** First non-empty string among the given attribute keys ('' when none). */
 function coalesceString(
   field: string,
-  keys: string[],
+  keys: readonly string[],
   isJsonColumn: boolean,
 ): string {
   const args = keys.map(
@@ -37,7 +37,7 @@ function coalesceString(
  */
 function greatestNumber(
   field: string,
-  keys: string[],
+  keys: readonly string[],
   isJsonColumn: boolean,
 ): string {
   const args = keys.map(
@@ -226,6 +226,27 @@ function getLLMAttributeExpressions({
   const anyKeyExists = (keys: readonly string[]) =>
     buildAnyKeyExistsSql({ attributeField, keys, isJsonColumn });
 
+  /**
+   * Gate for "any of these keys holds a non-empty value".
+   *
+   * The presence term is there so a mapKeys() index can prune granules; the
+   * value term is what preserves the meaning. Both are needed: presence alone
+   * would admit a key explicitly set to '', and every caller pairs this gate
+   * with a coalesced value expression it groups by, so such a row would show
+   * up as a blank bar/row whose drill-in link goes nowhere.
+   *
+   * The value term costs no extra per-part size lookups during planning: it
+   * reads the same keys the paired group-by expression already reads.
+   *
+   * On JSON columns presence and non-emptiness are the same test, so the
+   * presence term would only duplicate subcolumn reads — emit the value term
+   * alone.
+   */
+  const anyKeyHasValue = (keys: readonly string[]) => {
+    const hasValue = `${coalesceString(attributeField, keys, isJsonColumn)} != ''`;
+    return isJsonColumn ? hasValue : `(${anyKeyExists(keys)} AND ${hasValue})`;
+  };
+
   const model = coalesceString(attributeField, MODEL_KEYS, isJsonColumn);
   const inputTokens = greatestNumber(
     attributeField,
@@ -288,7 +309,7 @@ function getLLMAttributeExpressions({
     ttftMs: greatestNumber(attributeField, TTFT_MS_KEYS, isJsonColumn),
     toolName: coalesceString(attributeField, TOOL_NAME_KEYS, isJsonColumn),
     agentName: coalesceString(attributeField, AGENT_NAME_KEYS, isJsonColumn),
-    hasAgentName: anyKeyExists(AGENT_NAME_KEYS),
+    hasAgentName: anyKeyHasValue(AGENT_NAME_KEYS),
     // Emitters disagree on encoding ('stop' vs '["stop"]'); strip the JSON
     // array wrapper so the group-by buckets align.
     // The char class is written backslash-free (leading ] in an RE2 class
@@ -316,29 +337,30 @@ function getLLMAttributeExpressions({
      */
     hasProvidedCost: `(${providedCost} > 0)`,
     /** See REPORTED_TOKEN_KEYS: gates sums so wrapper spans don't double count. */
-    hasReportedTokens: anyKeyExists(REPORTED_TOKEN_KEYS),
-    hasSessionId: anyKeyExists(SESSION_ID_KEYS),
-    // Unlike the other gates this keeps its value comparison: it feeds a
-    // latency percentile, and a zero would drag p50/p95 down. The presence
-    // conjunct is redundant for correctness and there only to give the
-    // attribute-key index something to prune on.
-    hasTtft: `(${anyKeyExists(TTFT_MS_KEYS)} AND ${greatestNumber(
-      attributeField,
-      TTFT_MS_KEYS,
-      isJsonColumn,
-    )} > 0)`,
-    hasUserId: anyKeyExists(USER_ID_KEYS),
-    hasFinishReason: anyKeyExists(FINISH_REASON_KEYS),
+    hasReportedTokens: anyKeyHasValue(REPORTED_TOKEN_KEYS),
+    hasSessionId: anyKeyHasValue(SESSION_ID_KEYS),
+    // Numeric rather than non-empty: it feeds a latency percentile, and a
+    // zero would drag p50/p95 down. Same presence-plus-value shape as
+    // anyKeyHasValue, including skipping the presence term on JSON.
+    hasTtft: (() => {
+      const isPositive = `${greatestNumber(attributeField, TTFT_MS_KEYS, isJsonColumn)} > 0`;
+      return isJsonColumn
+        ? isPositive
+        : `(${anyKeyExists(TTFT_MS_KEYS)} AND ${isPositive})`;
+    })(),
+    hasUserId: anyKeyHasValue(USER_ID_KEYS),
+    hasFinishReason: anyKeyHasValue(FINISH_REASON_KEYS),
     // The `= 'TOOL'` term stays a value comparison — it discriminates one
     // OpenInference span kind from the others, and the query builder already
-    // rewrites equality onto the attribute-items index.
+    // rewrites equality onto the attribute-items index. The remaining terms
+    // gate a group-by on toolName, so they keep their value check too.
     isToolSpan: `(${[
       `${fieldAccess(attributeField, 'openinference.span.kind', isJsonColumn)} = 'TOOL'`,
-      buildAnyKeyExistsSql({
-        attributeField,
-        keys: ['gen_ai.tool.name', 'gen_ai.tool.call.id', 'ai.toolCall.name'],
-        isJsonColumn,
-      }),
+      anyKeyHasValue([
+        'gen_ai.tool.name',
+        'gen_ai.tool.call.id',
+        'ai.toolCall.name',
+      ]),
     ].join(' OR ')})`,
   };
 }
