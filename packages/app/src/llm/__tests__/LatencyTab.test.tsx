@@ -38,8 +38,13 @@ describe('LatencyTab', () => {
     jest.clearAllMocks();
   });
 
-  it('scopes the heatmap to LLM spans (and session) without the cost alias', () => {
-    renderWithMantine(<LatencyTab {...baseProps} sessionId="ses_123" />);
+  it('scopes the heatmap to LLM spans (and session/user) without the cost alias', () => {
+    // This tab passes the scopes into baseLLMChartConfig by hand rather than
+    // spreading props, and memoizes on them — a scope missing from either
+    // list leaves the heatmap silently unscoped.
+    renderWithMantine(
+      <LatencyTab {...baseProps} sessionId="ses_123" userId="alice@x.com" />,
+    );
 
     expect(screen.getByTestId('search-heatmap-chart')).toBeInTheDocument();
     const { chartConfig, source } = heatmapChartProps[0];
@@ -47,6 +52,7 @@ describe('LatencyTab', () => {
     const conditions = chartConfig.filters.map((f: any) => f.condition);
     expect(conditions[0]).toBe(expressions.isLLMSpan);
     expect(conditions[1]).toContain("'ses_123'");
+    expect(conditions[2]).toContain("'alice@x.com'");
     // Delta sampling queries never reference cost; the WITH binding is
     // skipped to keep them small.
     expect(chartConfig.with).toBeUndefined();
