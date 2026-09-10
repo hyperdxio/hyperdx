@@ -46,6 +46,16 @@ describe('SessionsTab', () => {
     expect(conditions).toContain(expressions.isLLMSpan);
     expect(conditions).toContain(expressions.hasSessionId);
 
+    // aggCondition is a select-list position, so it must use the unhinted
+    // gate: skip-index analysis never reaches the select list, and the hinted
+    // form would fold to a constant inside countIf while lengthening every
+    // Sessions query.
+    const toolCallsSelect = config.select.find(
+      (s: any) => s.alias === 'Tool Calls',
+    );
+    expect(toolCallsSelect.aggCondition).toBe(expressions.isToolSpanUnhinted);
+    expect(toolCallsSelect.aggCondition).not.toContain('indexHint');
+
     // Token/cost sums use the per-service provided-cost election so apps
     // emitting several instrumentation dialects in parallel don't double
     // count (and token-only apps aren't dropped by cost-reporting ones).

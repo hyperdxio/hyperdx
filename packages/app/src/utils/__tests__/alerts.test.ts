@@ -1,8 +1,14 @@
-import { AlertSource } from '@hyperdx/common-utils/dist/types';
+import {
+  AlertSource,
+  AlertThresholdType,
+  DisplayType,
+} from '@hyperdx/common-utils/dist/types';
 
 import type { AlertsPageItem } from '@/types';
 import {
+  buildInlineAlertPayload,
   getAlertSourceLabel,
+  getAlertSourceUrl,
   getDerivedAlertDisplayName,
   normalizeNoOpAlertScheduleFields,
   toAlertChannels,
@@ -176,6 +182,7 @@ describe('getAlertSourceLabel', () => {
     expect(getAlertSourceLabel({ source: AlertSource.TILE })).toBe(
       'Dashboard tile',
     );
+    expect(getAlertSourceLabel({ source: AlertSource.INLINE })).toBe('Chart');
   });
 
   // The row's tooltip, the alerts-page filter and free-text search all read
@@ -231,9 +238,111 @@ describe('getDerivedAlertDisplayName', () => {
     ).toBe('Checkout 5xx');
   });
 
+  // An inline alert references nothing, so the server derives its name from
+  // the chart it carries.
+  it('uses an inline alert’s chart name', () => {
+    expect(
+      getDerivedAlertDisplayName(
+        asAlert({
+          source: AlertSource.INLINE,
+          chartConfig: { name: 'Error rate' },
+        }),
+      ),
+    ).toBe('Error rate');
+  });
+
   it('is undefined when the source is not embedded', () => {
     expect(
       getDerivedAlertDisplayName(asAlert({ source: AlertSource.SAVED_SEARCH })),
+    ).toBeUndefined();
+    // The alerts list omits chartConfig, so a row cannot derive one either.
+    expect(
+      getDerivedAlertDisplayName(asAlert({ source: AlertSource.INLINE })),
+    ).toBeUndefined();
+  });
+});
+
+const inlineChartConfig = {
+  name: 'Error rate',
+  source: 'source-1',
+  displayType: DisplayType.Line,
+  select: [{ aggFn: 'count' as const, aggCondition: '', valueExpression: '' }],
+  where: '',
+};
+
+const inlineAlert = (overrides: Partial<AlertsPageItem> = {}): AlertsPageItem =>
+  asAlert({
+    _id: 'alert-1',
+    source: AlertSource.INLINE,
+    interval: '5m',
+    threshold: 1,
+    thresholdType: AlertThresholdType.ABOVE,
+    channel: { type: 'webhook', webhookId: 'hook-1' },
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    history: [],
+    ...overrides,
+  });
+
+describe('getAlertSourceUrl', () => {
+  // By id, not by an inlined config: the alerts list omits chartConfig, so a
+  // config-carrying link would leave every list row without one.
+  it('links an inline alert to the chart explorer by id', () => {
+    expect(
+      getAlertSourceUrl(inlineAlert({ chartConfig: inlineChartConfig })),
+    ).toBe('/chart?alertId=alert-1');
+    expect(getAlertSourceUrl(inlineAlert())).toBe('/chart?alertId=alert-1');
+  });
+});
+
+describe('buildInlineAlertPayload', () => {
+  const alert = {
+    interval: '5m' as const,
+    threshold: 10,
+    thresholdType: AlertThresholdType.ABOVE,
+    channels: [{ type: 'webhook' as const, webhookId: 'hook-1' }],
+  };
+
+  it('splits the alert off the chart config', () => {
+    const payload = buildInlineAlertPayload({
+      ...inlineChartConfig,
+      alert: { ...alert, displayName: 'Prod errors' },
+    });
+
+    expect(payload).toMatchObject({
+      source: AlertSource.INLINE,
+      threshold: 10,
+      displayName: 'Prod errors',
+      chartConfig: inlineChartConfig,
+    });
+    // The alert must not be persisted inside its own chart config: the
+    // evaluator reads the alert's fields off the alert document.
+    expect(payload?.chartConfig).not.toHaveProperty('alert');
+  });
+
+  // The server derives an inline alert's name from its chart when none is
+  // given; sending one anyway would freeze a copy that stops tracking it.
+  it('leaves an unset display name for the server to derive', () => {
+    expect(
+      buildInlineAlertPayload({ ...inlineChartConfig, alert }),
+    ).not.toHaveProperty('displayName');
+  });
+
+  it('returns nothing when there is no alert to save', () => {
+    expect(buildInlineAlertPayload(inlineChartConfig)).toBeUndefined();
+  });
+
+  // PromQL charts cannot be alerted on: the inline-alert schema has no PromQL
+  // variant, so a payload built from one would be rejected server-side.
+  it('returns nothing for a PromQL chart', () => {
+    expect(
+      buildInlineAlertPayload({
+        configType: 'promql',
+        promqlExpression: 'up',
+        connection: 'conn-1',
+        displayType: DisplayType.Line,
+        alert,
+      }),
     ).toBeUndefined();
   });
 });

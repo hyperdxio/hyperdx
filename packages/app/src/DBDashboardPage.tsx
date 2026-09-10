@@ -34,7 +34,7 @@ import {
   Granularity,
   isTimeSeriesDisplayType,
 } from '@hyperdx/common-utils/dist/core/utils';
-import { getBlockingRequiredFilters } from '@hyperdx/common-utils/dist/dashboardFilterValues';
+import { getBlockingRequiredFilterNames } from '@hyperdx/common-utils/dist/dashboardFilterValues';
 import {
   displayTypeRequiresSource,
   isBuilderChartConfig,
@@ -78,6 +78,7 @@ import {
   Group,
   Indicator,
   List,
+  Loader,
   Menu,
   Modal,
   Paper,
@@ -147,7 +148,10 @@ import { PageHeader } from '@/components/PageHeader';
 import { PageLayout } from '@/components/PageLayout';
 import { SqlVariablesProvider } from '@/components/SQLEditor/variableCompletions';
 import { TimePicker } from '@/components/TimePicker';
-import { parseTimeRangeInput } from '@/components/TimePicker/utils';
+import {
+  parseTimeRangeInput,
+  timeRangeInputToSeconds,
+} from '@/components/TimePicker/utils';
 import {
   Dashboard,
   type Tile,
@@ -211,6 +215,7 @@ import {
 } from './source';
 import {
   dateRangeToString,
+  parseRelativeTimeQuery,
   useDefaultTimeRange,
   useNewTimeQuery,
 } from './timeQuery';
@@ -591,40 +596,20 @@ const Tile = ({
     [serializedTileVariables],
   );
 
-  // Whether a broadcast filter reaches this tile's query at all. PromQL tiles
-  // are handed no filters, and a raw-SQL tile drops them without a source or
-  // without a macro to apply them.
-  const consumesBroadcastFilters = useMemo(() => {
-    if (isPromqlSavedChartConfig(chart.config)) return false;
-    if (isRawSqlSavedChartConfig(chart.config)) {
-      return (
-        !!chart.config.source &&
-        !isMissingFiltersMacro(chart.config.sqlTemplate)
-      );
-    }
-    return true;
-  }, [chart.config]);
-
   // Serialized for the same reason as `tileVariables`: any change to the
   // dashboard's filters hands this tile a new array, and only a change to the
   // names this tile is blocked on should churn the render memo below.
   const serializedMissingRequiredFilterNames = useMemo(
     () =>
       JSON.stringify(
-        getBlockingRequiredFilters(unsatisfiedRequiredFilters ?? [], {
+        getBlockingRequiredFilterNames({
+          config: chart.config,
           sourceId: chart.config.source,
-          referencedVariableNames: tileVariables?.map(
-            variable => variable.name,
-          ),
-          consumesBroadcastFilters,
-        }).map(filter => filter.name),
+          unsatisfiedRequiredFilters,
+          referencedVariables: tileVariables,
+        }),
       ),
-    [
-      unsatisfiedRequiredFilters,
-      chart.config.source,
-      tileVariables,
-      consumesBroadcastFilters,
-    ],
+    [unsatisfiedRequiredFilters, chart.config, tileVariables],
   );
   const missingRequiredFilterNames = useMemo<string[]>(
     () => JSON.parse(serializedMissingRequiredFilterNames),
@@ -1622,6 +1607,8 @@ const EditTileModal = ({
   isSaving,
   dateRange,
   variables,
+  getDashboardFilters,
+  unsatisfiedRequiredFilters,
 }: {
   dashboardId?: string;
   chart: Tile | undefined;
@@ -1630,6 +1617,8 @@ const EditTileModal = ({
   isSaving?: boolean;
   onSave: (chart: Tile) => void;
   variables?: ChartVariable[];
+  getDashboardFilters: (sourceId: string | undefined) => Filter[];
+  unsatisfiedRequiredFilters?: DashboardFilter[];
 }) => {
   const contextZIndex = useZIndex();
   const modalZIndex = contextZIndex + 10;
@@ -1689,6 +1678,8 @@ const EditTileModal = ({
                 dashboardId={dashboardId}
                 chartConfig={chart.config}
                 variables={variables}
+                getDashboardFilters={getDashboardFilters}
+                unsatisfiedRequiredFilters={unsatisfiedRequiredFilters}
                 dateRange={dateRange}
                 isSaving={isSaving}
                 onSave={config => {
@@ -1855,15 +1846,14 @@ function DashboardContainerRow({
 
 const DEFAULT_INTERVAL = 'Past 1h';
 
-function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
-  const defaultTimeRange = useDefaultTimeRange(DEFAULT_INTERVAL);
-  const brandName = useBrandDisplayName();
-  const confirm = useConfirm();
-
-  const router = useRouter();
-  const dashboardId = router.query.dashboardId as string | undefined;
-  const { enterKioskMode, exitKioskMode, isKioskMode } =
-    useDashboardKioskMode();
+function DBDashboardPage({
+  dashboardProps,
+  defaultTimeInput = DEFAULT_INTERVAL,
+}: {
+  dashboardProps: ReturnType<typeof useDashboard>;
+  defaultTimeInput?: string;
+}) {
+  const defaultTimeRange = useDefaultTimeRange(defaultTimeInput);
 
   const {
     dashboard,
@@ -1872,10 +1862,17 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     isLocalDashboard,
     isFetching: isFetchingDashboard,
     isSetting: isSavingDashboard,
-  } = useDashboard({
-    dashboardId: dashboardId as string | undefined,
-    presetConfig,
-  });
+  } = dashboardProps;
+  const brandName = useBrandDisplayName();
+  const confirm = useConfirm();
+  const {
+    userPreferences: { isUTC },
+  } = useUserPreferences();
+
+  const router = useRouter();
+  const dashboardId = router.query.dashboardId as string | undefined;
+  const { enterKioskMode, exitKioskMode, isKioskMode } =
+    useDashboardKioskMode();
 
   const { data: sources } = useSources();
   const { data: connections } = useConnections();
@@ -1889,7 +1886,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     for (const { config } of dashboard.tiles) {
       if (!isBuilderSavedChartConfig(config)) continue;
       const source = sources?.find(v => v.id === config.source);
-      if (!source) continue;
+      if (!source || source.disabled) continue;
       // TODO: will need to update this when we allow for multiple metrics per chart
       const firstSelect = config.select[0];
       const metricType =
@@ -2033,10 +2030,10 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   }, [router.isReady, watchedGranularity, granularity, setGranularity]);
 
   const [displayedTimeInputValue, setDisplayedTimeInputValue] =
-    useState(DEFAULT_INTERVAL);
+    useState(defaultTimeInput);
 
   const { searchedTimeRange, onSearch, onTimeRangeSelect } = useNewTimeQuery({
-    initialDisplayValue: DEFAULT_INTERVAL,
+    initialDisplayValue: defaultTimeInput,
     initialTimeRange: defaultTimeRange,
     setDisplayedTimeInputValue,
   });
@@ -2113,6 +2110,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     dashboard?.savedQuery,
     dashboard?.savedQueryLanguage,
     dashboard?.savedFilterValues,
+    dashboard?.savedDateRange,
     isLocalDashboard,
     isFetchingDashboard,
     router.isReady,
@@ -2121,6 +2119,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     setWhere,
     setWhereLanguage,
     setFilterValueEntries,
+    onTimeRangeSelect,
   ]);
 
   // Sync changes to the URL params into the form
@@ -2150,18 +2149,30 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       ? filterValueEntries
       : [];
 
+    const currentRelativeDateRange = timeRangeInputToSeconds(
+      displayedTimeInputValue,
+      isUTC,
+    );
+
     setDashboard(
       produce(dashboard, draft => {
         draft.savedQuery = currentWhere;
         draft.savedQueryLanguage = currentWhereLanguage;
         draft.savedFilterValues = currentFilterValues;
+        // Only supporting relative date range saving ATM
+        if (currentRelativeDateRange) {
+          draft.savedDateRange = {
+            type: 'relative',
+            value: currentRelativeDateRange,
+          };
+        }
       }),
       () => {
         notifications.show({
           color: 'green',
           title: 'Query saved and executed',
           message:
-            'Filter query and dropdown values have been saved with the dashboard',
+            'Filter query, dropdown values, and relative time range have been saved with the dashboard',
           autoClose: 3000,
         });
       },
@@ -2173,6 +2184,8 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     getValues,
     filterValueEntries,
     onSubmit,
+    isUTC,
+    displayedTimeInputValue,
   ]);
   const handleRemoveSavedQuery = useCallback(() => {
     if (!dashboard || isLocalDashboard) return;
@@ -2182,6 +2195,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         draft.savedQuery = null;
         draft.savedQueryLanguage = null;
         draft.savedFilterValues = [];
+        draft.savedDateRange = null;
       }),
       () => {
         notifications.show({
@@ -2369,6 +2383,20 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     [dashboard, setDashboard],
   );
 
+  // The dashboard's search input plus the filter selections that broadcast to
+  // `sourceId`. Shared with the tile editor so its preview queries what the
+  // tile does.
+  const getTileFilters = useCallback(
+    (sourceId: string | undefined): Filter[] => [
+      {
+        type: whereLanguage === 'sql' ? 'sql' : 'lucene',
+        condition: where,
+      },
+      ...getFilterQueriesForSource(sourceId),
+    ],
+    [where, whereLanguage, getFilterQueriesForSource],
+  );
+
   const renderTileComponent = useCallback(
     (chart: Tile) => {
       // Resolve the tile's source ID so per-source-scoped filters can be
@@ -2387,13 +2415,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           granularity={
             isRefreshEnabled ? granularityOverride : (granularity ?? undefined)
           }
-          filters={[
-            {
-              type: whereLanguage === 'sql' ? 'sql' : 'lucene',
-              condition: where,
-            },
-            ...getFilterQueriesForSource(tileSourceId),
-          ]}
+          filters={getTileFilters(tileSourceId)}
           variables={variables}
           unsatisfiedRequiredFilters={unsatisfiedRequiredFilters}
           onTimeRangeSelect={onTimeRangeSelect}
@@ -2492,12 +2514,10 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       highlightedTileId,
       confirm,
       setDashboard,
-      where,
-      whereLanguage,
       onTimeRangeSelect,
       showAlertAnnotations,
       showReleaseAnnotations,
-      getFilterQueriesForSource,
+      getTileFilters,
       variables,
       unsatisfiedRequiredFilters,
       moveTargetContainers,
@@ -3189,6 +3209,8 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           }}
           dateRange={searchedTimeRange}
           variables={variables}
+          getDashboardFilters={getTileFilters}
+          unsatisfiedRequiredFilters={unsatisfiedRequiredFilters}
           isSaving={isSaving}
           onSave={newChart => {
             if (dashboard == null) {
@@ -3484,7 +3506,46 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   );
 }
 
-const DBDashboardPageDynamic = dynamic(async () => DBDashboardPage, {
+function DBDashboardPageGuarded({
+  presetConfig,
+}: {
+  presetConfig?: Dashboard;
+}) {
+  const router = useRouter();
+  const dashboardId = router.query.dashboardId as string | undefined;
+  const dashboardProps = useDashboard({
+    dashboardId: dashboardId as string | undefined,
+    presetConfig,
+  });
+  const {
+    userPreferences: { isUTC },
+  } = useUserPreferences();
+
+  const savedDateRange = dashboardProps.dashboard?.savedDateRange;
+  // Keyed on the saved range, not the render: a relative range re-stringifies
+  // to a new value every render, and useNewTimeQuery resets the input on change.
+  // Valid URL from/to still win: useNewTimeQuery overwrites the input from them.
+  const defaultTimeInput = useMemo(() => {
+    if (!savedDateRange) return undefined;
+    const [start, end] =
+      savedDateRange.type === 'relative'
+        ? parseRelativeTimeQuery(savedDateRange.value * 1000)
+        : savedDateRange.value.map(v => new Date(v));
+    // TODO: show relative ranges as "Past Xh" via getRelativeInterval
+    return dateRangeToString([start, end], isUTC);
+  }, [savedDateRange, isUTC]);
+
+  if (!dashboardProps || !router.isReady) return <Loader size="lg" />;
+
+  return (
+    <DBDashboardPage
+      dashboardProps={dashboardProps}
+      defaultTimeInput={defaultTimeInput}
+    />
+  );
+}
+
+const DBDashboardPageDynamic = dynamic(async () => DBDashboardPageGuarded, {
   ssr: false,
 });
 

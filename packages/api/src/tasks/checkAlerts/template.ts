@@ -3,12 +3,18 @@ import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import { formatDate, objectHash } from '@hyperdx/common-utils/dist/core/utils';
 import {
+  isPromqlSavedChartConfig,
+  isRawSqlSavedChartConfig,
+} from '@hyperdx/common-utils/dist/guards';
+import {
   AlertChannelType,
   AlertThresholdType,
   ChartConfigWithOptDateRange,
   DisplayType,
+  Filter,
   isRangeThresholdType,
   pickSampleWeightExpressionProps,
+  SavedChartConfig,
   SourceKind,
   zAlertChannelType,
 } from '@hyperdx/common-utils/dist/types';
@@ -106,10 +112,75 @@ const describeThreshold = (alert: AlertInput): string => {
     : `${alert.threshold}`;
 };
 
+const describeFilter = (filter: Filter): string =>
+  filter.type === 'sql_ast'
+    ? `${filter.left} ${filter.operator} ${filter.right}`
+    : filter.condition;
+
+const joinConditions = (...parts: (string | undefined)[]): string => {
+  const present = parts
+    .map(part => part?.trim())
+    .filter((part): part is string => !!part);
+  // A lone condition needs no brackets; two or more do, so that a part
+  // carrying its own top-level OR keeps its precedence under the AND join.
+  // renderChartConfig brackets each group the same way before combining them.
+  return present.length > 1
+    ? present.map(part => `(${part})`).join(' AND ')
+    : (present[0] ?? '');
+};
+
+// Reports only the fields the alert query is actually built from.
+// buildAlertChartConfigFromSavedConfig assembles a chart alert field by field
+// and passes neither `filters` nor `having`, so a tile or inline alert never
+// narrows on those; naming them here would advertise a condition that never
+// fired, the same way a stale thresholdMax would.
+const describeChartConfigQuery = (config: SavedChartConfig): string => {
+  if (isRawSqlSavedChartConfig(config)) {
+    return config.sqlTemplate;
+  }
+  // Anticipatory: a PromQL chart cannot be alerted on today. The branch stays
+  // because a tile's config is the full union, and this guard is what narrows
+  // the builder case below.
+  if (isPromqlSavedChartConfig(config)) {
+    return config.promqlExpression;
+  }
+  const select = typeof config.select === 'string' ? [] : (config.select ?? []);
+  // Only the last series drives the value -- parseAlertData keeps the last
+  // value column it sees -- so an earlier series' condition is not the one
+  // that fired.
+  return joinConditions(config.where, select.at(-1)?.aggCondition);
+};
+
+// Only a saved-search alert states its query on the saved search. A tile
+// alert's lives on the dashboard tile and an inline alert's on the alert
+// itself, so both were reported as empty before.
+const describeSourceQuery = (
+  alert: AlertInput,
+  savedSearch?: ISavedSearch | null,
+  dashboard?: IDashboard | null,
+): string => {
+  if (alert.source === AlertSource.INLINE) {
+    return alert.chartConfig ? describeChartConfigQuery(alert.chartConfig) : '';
+  }
+  if (alert.source === AlertSource.TILE) {
+    const tile = dashboard?.tiles.find(t => t.id === alert.tileId);
+    return tile ? describeChartConfigQuery(tile.config) : '';
+  }
+  // A saved-search alert counts rows rather than aggregating a series, so it
+  // has no aggCondition -- but the query does apply its pinned filters.
+  return savedSearch
+    ? joinConditions(
+        savedSearch.where,
+        ...(savedSearch.filters ?? []).map(describeFilter),
+      )
+    : '';
+};
+
 // Mappings for the enriched webhook template variables. These turn internal
 // enums into stable, consumer-friendly strings a receiver can branch on
-// without knowing HyperDX's internals.
-const ALERT_STATUS_BY_STATE: Record<AlertState, string> = {
+// without knowing HyperDX's internals. Exported so the "Send test" sample
+// payload indexes them rather than restating the strings.
+export const ALERT_STATUS_BY_STATE: Record<AlertState, string> = {
   [AlertState.ALERT]: 'firing',
   [AlertState.OK]: 'resolved',
   [AlertState.INSUFFICIENT_DATA]: 'no_data',
@@ -118,18 +189,19 @@ const ALERT_STATUS_BY_STATE: Record<AlertState, string> = {
   [AlertState.ERROR]: 'error',
 };
 
-const COMPARATOR_BY_THRESHOLD_TYPE: Record<AlertThresholdType, string> = {
-  [AlertThresholdType.ABOVE]: '>=',
-  [AlertThresholdType.ABOVE_EXCLUSIVE]: '>',
-  [AlertThresholdType.BELOW]: '<',
-  [AlertThresholdType.BELOW_OR_EQUAL]: '<=',
-  [AlertThresholdType.EQUAL]: '=',
-  [AlertThresholdType.NOT_EQUAL]: '!=',
-  [AlertThresholdType.BETWEEN]: 'between',
-  [AlertThresholdType.NOT_BETWEEN]: 'outside',
-};
+export const COMPARATOR_BY_THRESHOLD_TYPE: Record<AlertThresholdType, string> =
+  {
+    [AlertThresholdType.ABOVE]: '>=',
+    [AlertThresholdType.ABOVE_EXCLUSIVE]: '>',
+    [AlertThresholdType.BELOW]: '<',
+    [AlertThresholdType.BELOW_OR_EQUAL]: '<=',
+    [AlertThresholdType.EQUAL]: '=',
+    [AlertThresholdType.NOT_EQUAL]: '!=',
+    [AlertThresholdType.BETWEEN]: 'between',
+    [AlertThresholdType.NOT_BETWEEN]: 'outside',
+  };
 
-const ALERT_TYPE_BY_SOURCE: Record<AlertSource, string> = {
+export const ALERT_TYPE_BY_SOURCE: Record<AlertSource, string> = {
   [AlertSource.SAVED_SEARCH]: 'search',
   [AlertSource.TILE]: 'dashboard_chart',
   // Detached alert: the chart config lives on the alert itself, so there is
@@ -137,40 +209,11 @@ const ALERT_TYPE_BY_SOURCE: Record<AlertSource, string> = {
   [AlertSource.INLINE]: 'inline_query',
 };
 
-/**
- * The persisted query behind an alert, as a receiver would route on it. Each
- * alert source keeps it somewhere different: a saved search on the search
- * itself, an inline alert on the alert, a tile on its dashboard.
- */
-const getAlertSourceQuery = ({
-  alert,
-  dashboard,
-  savedSearch,
-}: AlertMessageTemplateDefaultView): string => {
-  if (alert.source === AlertSource.SAVED_SEARCH) {
-    return savedSearch?.where ?? '';
-  }
-
-  const chartConfig =
-    alert.source === AlertSource.INLINE
-      ? alert.chartConfig
-      : dashboard?.tiles.find(t => t.id === alert.tileId)?.config;
-  if (chartConfig == null) {
-    return '';
-  }
-  // Narrowed on `configType` rather than through isRawSqlSavedChartConfig /
-  // isPromqlSavedChartConfig: those predicate on SavedChartConfig, and an
-  // inline alert's AlertChartConfig is built from the without-alert variants,
-  // so the guards can't subtract a member from that union.
-  if ('configType' in chartConfig) {
-    // Raw SQL keeps the whole query in sqlTemplate. A PromQL chart can't be
-    // alerted on, but a tile's config is the full union, so it lands here.
-    return chartConfig.configType === 'sql' ? chartConfig.sqlTemplate : '';
-  }
-  return chartConfig.where ?? '';
-};
-
 const MAX_MESSAGE_LENGTH = 500;
+// A raw SQL template or a long filter set is unbounded in the schema, and
+// {{sourceQuery}} goes straight into a webhook body, so cap it the way the
+// sample-log block is capped.
+const MAX_SOURCE_QUERY_LENGTH = 2000;
 const NOTIFY_FN_NAME = '__hdx_notify_channel__';
 const IS_MATCH_FN_NAME = 'is_match';
 
@@ -594,15 +637,18 @@ export const renderAlertTemplate = async ({
         alertType: alert.source ? ALERT_TYPE_BY_SOURCE[alert.source] : '',
         comparator: COMPARATOR_BY_THRESHOLD_TYPE[alert.thresholdType],
         threshold: alert.threshold,
-        // Only a range comparator has an upper bound; leaving it undefined
-        // elsewhere renders the variable empty rather than as a bound that
-        // isn't part of the condition.
+        // Gated on the comparator rather than trusting the stored field:
+        // makeAlertUpdate clears it going forward, but an alert written before
+        // that shipped still carries a bound from a range it no longer has.
         thresholdMax: isRangeThresholdType(alert.thresholdType)
           ? alert.thresholdMax
           : undefined,
         value,
         groupKey: group ?? '',
-        sourceQuery: getAlertSourceQuery(view),
+        sourceQuery: truncateString(
+          describeSourceQuery(alert, savedSearch, dashboard),
+          MAX_SOURCE_QUERY_LENGTH,
+        ),
         teamId,
         note: alert.note ?? '',
       },

@@ -522,9 +522,9 @@ export function useNewTimeQuery({
   };
 }
 
-function getRangeOrFallback(query: string): [Date, Date] {
+function getRangeOrFallback(query: string, isUTC: boolean): [Date, Date] {
   return (
-    parseValidTimeRange(query, false) ??
+    parseValidTimeRange(query, isUTC) ??
     // This fallback catches arbitrary inputs but shouldn't be reachable
     // for standard literal labels (e.g., 'Past 1h') since they are always valid.
     parseRelativeTimeQuery(60 * 60 * 1000)
@@ -532,17 +532,20 @@ function getRangeOrFallback(query: string): [Date, Date] {
 }
 
 export function useDefaultTimeRange(query: string): [Date, Date] {
+  const {
+    userPreferences: { isUTC },
+  } = useUserPreferences();
   const [state, setState] = useState<{ query: string; range: [Date, Date] }>(
     () => ({
       query,
-      range: getRangeOrFallback(query),
+      range: getRangeOrFallback(query, isUTC),
     }),
   );
 
   if (state.query !== query) {
     const newState = {
       query,
-      range: getRangeOrFallback(query),
+      range: getRangeOrFallback(query, isUTC),
     };
     setState(newState);
     return newState.range;
