@@ -9,7 +9,7 @@ import logger from '@/utils/logger';
 const BACKFILL_BATCH_SIZE = 500;
 
 const DISPLAY_NAME_MISSING_FILTER = { displayName: { $in: [null, ''] } };
-// Matches missing/null only; an existing [] means the user cleared the tags.
+// Matches missing/null only; a stored [] is already resolved and left alone.
 const TAGS_MISSING_FILTER = { tags: null };
 
 export async function backfillAlertDisplayFields() {
@@ -99,7 +99,8 @@ export async function backfillAlertDisplayFields() {
           update: { $set: { displayName: derived.displayName } },
         });
       }
-      if (!hasTags && derived.tags != null && derived.tags.length > 0) {
+
+      if (!hasTags && derived.tags != null) {
         ops.push({
           filter: {
             _id: alert._id,

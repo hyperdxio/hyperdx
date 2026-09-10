@@ -163,14 +163,17 @@ describe('backfillAlertDisplayFields', () => {
       displayName: 'Error spikes',
       tags: [],
     });
-    expect((await byId(inlineAlert._id))?.displayName).toBe('CPU usage');
+    expect(await byId(inlineAlert._id)).toMatchObject({
+      displayName: 'CPU usage',
+      tags: [],
+    });
     expect(await byId(legacyAlertId)).toMatchObject({
       displayName: 'Error spikes',
     });
 
     const untagged = await byId(untaggedSearchAlert._id);
     expect(untagged?.displayName).toBe('Untagged search');
-    expect(untagged?.tags).toBeUndefined();
+    expect(untagged?.tags).toEqual([]);
 
     expect((await byId(searchAlert._id))?.updatedAt).toEqual(
       searchAlert.updatedAt,
