@@ -482,15 +482,13 @@ export function ChartSeriesEditor({
               onApply={applyExplorerMetric}
             />
             {metricType === 'gauge' && (
-              <Flex justify="end">
-                <CheckBoxControlled
-                  control={control}
-                  name={`${namePrefix}isDelta`}
-                  label="Delta"
-                  size="xs"
-                  className="mt-2"
-                />
-              </Flex>
+              <CheckBoxControlled
+                control={control}
+                name={`${namePrefix}isDelta`}
+                label="Delta"
+                size="xs"
+                className="mt-2"
+              />
             )}
           </div>
         )}

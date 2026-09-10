@@ -1,5 +1,9 @@
 import { objectHash } from '@hyperdx/common-utils/dist/core/utils';
-import { WebhookService } from '@hyperdx/common-utils/dist/types';
+import {
+  DEFAULT_GENERIC_WEBHOOK_BODY,
+  WebhookService,
+  WebhookTemplateVariable,
+} from '@hyperdx/common-utils/dist/types';
 import Handlebars from 'handlebars';
 import { performance } from 'perf_hooks';
 import { serializeError } from 'serialize-error';
@@ -59,12 +63,47 @@ export const logBlockedWebhookDelivery = (
   }
 };
 
-// Fallback body for a generic/incidentio webhook persisted without one. Mirrors
-// the default template the UI form applies (WebhookForm.tsx) so a webhook
-// created via the API/MCP (where body is optional) still fires with a sensible
-// payload instead of crashing Handlebars.compile on an undefined template.
-const DEFAULT_GENERIC_WEBHOOK_BODY_TEMPLATE =
-  '{"text": "{{title}} | {{body}} | {{link}} | {{state}} | {{startTime}} | {{endTime}} | {{eventId}}"}';
+// Renders a Unix-ms timestamp as an ISO-8601 string, or '' if it isn't a valid
+// time (so a template slot never becomes the literal "Invalid Date").
+const toIsoTimestamp = (t: number): string => {
+  const d = new Date(t);
+  return Number.isNaN(d.getTime()) ? '' : d.toISOString();
+};
+
+/**
+ * The variable set exposed to user-editable webhook body templates. Strings
+ * are JSON-escaped; numbers are emitted raw for unquoted JSON slots.
+ * `startTime`/`endTime` are raw Unix ms; `startTimeISO`/`endTimeISO` are ISO
+ * strings for human-readable time ranges. The enriched variables (status,
+ * comparator, sourceQuery, …) enable routing/dedup in receivers without
+ * parsing the message body.
+ */
+// `satisfies` rather than a return type, so callers keep the precise value
+// types while the published variable list stays enforced in both directions: a
+// name added there must be built here, and one built here must be published.
+export const buildWebhookTemplateVariables = (message: Message) =>
+  ({
+    body: escapeJsonString(message.body),
+    endTime: message.endTime,
+    endTimeISO: escapeJsonString(toIsoTimestamp(message.endTime)),
+    eventId: message.eventId,
+    link: escapeJsonString(message.hdxLink),
+    startTime: message.startTime,
+    startTimeISO: escapeJsonString(toIsoTimestamp(message.startTime)),
+    state: message.state,
+    title: escapeJsonString(message.title),
+    alertId: escapeJsonString(message.alertId ?? ''),
+    alertType: escapeJsonString(message.alertType ?? ''),
+    comparator: escapeJsonString(message.comparator ?? ''),
+    groupKey: escapeJsonString(message.groupKey ?? ''),
+    note: escapeJsonString(message.note ?? ''),
+    sourceQuery: escapeJsonString(message.sourceQuery ?? ''),
+    status: escapeJsonString(message.status ?? ''),
+    teamId: escapeJsonString(message.teamId ?? ''),
+    threshold: message.threshold,
+    thresholdMax: message.thresholdMax,
+    value: message.value,
+  }) satisfies Record<WebhookTemplateVariable, string | number | undefined>;
 
 /**
  * Creates a Handlebars instance with common helpers registered.
@@ -175,23 +214,14 @@ const sendGenericWebhook = async (
     const handlebars = createHandlebarsWithHelpers();
 
     // Handlebars.compile throws on undefined; the API/MCP create paths allow an
-    // absent body (the UI form applies the default). An explicit "" is honored.
+    // absent body (the UI form applies the same default). An explicit "" is
+    // honored.
     const bodyTemplate =
-      webhook.body == null
-        ? DEFAULT_GENERIC_WEBHOOK_BODY_TEMPLATE
-        : webhook.body;
+      webhook.body == null ? DEFAULT_GENERIC_WEBHOOK_BODY : webhook.body;
 
     body = handlebars.compile(bodyTemplate, {
       noEscape: true,
-    })({
-      body: escapeJsonString(message.body),
-      endTime: message.endTime,
-      eventId: message.eventId,
-      link: escapeJsonString(message.hdxLink),
-      startTime: message.startTime,
-      state: message.state,
-      title: escapeJsonString(message.title),
-    });
+    })(buildWebhookTemplateVariables(message));
   } catch (e) {
     logger.error(
       {

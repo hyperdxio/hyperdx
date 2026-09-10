@@ -12,6 +12,8 @@ import type { AlertsPageItem } from '@/types';
 
 const makeAlert = (history: AlertHistory[]): AlertsPageItem => ({
   _id: 'alert-1',
+  displayName: 'Alert 1',
+  tags: [],
   interval: '5m',
   threshold: 1,
   thresholdType: AlertThresholdType.ABOVE,

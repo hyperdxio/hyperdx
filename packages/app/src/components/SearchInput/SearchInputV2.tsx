@@ -165,7 +165,10 @@ export default function SearchInputV2({
       aboveSuggestions={
         <>
           <div className={styles.searchingHeader}>Searching for:</div>
-          <div className={styles.searchingDescription}>
+          <div
+            className={styles.searchingDescription}
+            data-testid="search-query-description"
+          >
             {parsedEnglishQuery === ''
               ? 'Matching all events, enter a query to search.'
               : parsedEnglishQuery}

@@ -3,18 +3,20 @@ import mongoose from 'mongoose';
 import Alert, { IAlert } from '@/models/alert';
 import Dashboard from '@/models/dashboard';
 import { SavedSearch } from '@/models/savedSearch';
-import { deriveAlertNameAndTags } from '@/utils/alerts';
+import { deriveAlertDisplayFields } from '@/utils/alerts';
 import logger from '@/utils/logger';
 
 const BACKFILL_BATCH_SIZE = 500;
 
-const NAME_MISSING_FILTER = { name: { $in: [null, ''] } };
+const DISPLAY_NAME_MISSING_FILTER = { displayName: { $in: [null, ''] } };
+// Matches missing/null only: an existing [] means the user cleared the tags,
+// so it is left alone.
 const TAGS_MISSING_FILTER = { tags: null };
 
-export async function backfillAlertNameAndTags() {
+export async function backfillAlertDisplayFields() {
   const ids = (
     await Alert.find(
-      { $or: [NAME_MISSING_FILTER, TAGS_MISSING_FILTER] },
+      { $or: [DISPLAY_NAME_MISSING_FILTER, TAGS_MISSING_FILTER] },
       { _id: 1 },
     ).lean()
   ).map(doc => doc._id);
@@ -27,7 +29,7 @@ export async function backfillAlertNameAndTags() {
     const batch = await Alert.find(
       { _id: { $in: ids.slice(i, i + BACKFILL_BATCH_SIZE) } },
       {
-        name: 1,
+        displayName: 1,
         tags: 1,
         source: 1,
         savedSearch: 1,
@@ -64,19 +66,21 @@ export async function backfillAlertNameAndTags() {
 
     const ops: {
       filter: mongoose.FilterQuery<IAlert>;
-      update: { $set: { name: string } | { tags: string[] } };
+      update: { $set: { displayName: string } | { tags: string[] } };
     }[] = [];
     for (const alert of batch) {
-      const { name, tags } = deriveAlertNameAndTags(
-        alert,
-        alert.savedSearch != null
-          ? savedSearchById.get(String(alert.savedSearch))
-          : undefined,
-        alert.dashboard != null
-          ? dashboardById.get(String(alert.dashboard))
-          : undefined,
-      );
-      const hasName = typeof alert.name === 'string' && alert.name !== '';
+      const derived = deriveAlertDisplayFields(alert, {
+        savedSearch:
+          alert.savedSearch != null
+            ? savedSearchById.get(String(alert.savedSearch))
+            : undefined,
+        dashboard:
+          alert.dashboard != null
+            ? dashboardById.get(String(alert.dashboard))
+            : undefined,
+      });
+      const hasDisplayName =
+        typeof alert.displayName === 'string' && alert.displayName !== '';
       const hasTags = alert.tags != null;
 
       const inputsUnchangedFilter = {
@@ -86,29 +90,32 @@ export async function backfillAlertNameAndTags() {
         tileId: alert.tileId ?? null,
         'chartConfig.name': alert.chartConfig?.name ?? null,
       };
-      if (!hasName && name != null) {
+      if (!hasDisplayName && derived.displayName != null) {
         ops.push({
           filter: {
             _id: alert._id,
             ...inputsUnchangedFilter,
-            ...NAME_MISSING_FILTER,
+            ...DISPLAY_NAME_MISSING_FILTER,
           },
-          update: { $set: { name } },
+          update: { $set: { displayName: derived.displayName } },
         });
       }
-      if (!hasTags && tags.length > 0) {
+      if (!hasTags && derived.tags != null && derived.tags.length > 0) {
         ops.push({
           filter: {
             _id: alert._id,
             ...inputsUnchangedFilter,
             ...TAGS_MISSING_FILTER,
           },
-          update: { $set: { tags } },
+          update: { $set: { tags: derived.tags } },
         });
       }
     }
 
     if (ops.length > 0) {
+      // timestamps: false (per op — the bulkWrite-level option only covers
+      // inserts) keeps the backfill from bumping updatedAt, which is
+      // user-visible and implies a user edit.
       const result = await Alert.bulkWrite(
         ops.map(op => ({ updateOne: { ...op, timestamps: false } })),
         { ordered: false },
@@ -119,14 +126,14 @@ export async function backfillAlertNameAndTags() {
 
   logger.info(
     { scannedCount: ids.length, updatedCount },
-    'Backfilled alert names and tags',
+    'Backfilled alert display names and tags',
   );
 }
 
 export async function runStartupMigrations() {
   try {
-    await backfillAlertNameAndTags();
+    await backfillAlertDisplayFields();
   } catch (e) {
-    logger.error({ err: e }, 'Error backfilling alert names and tags');
+    logger.error({ err: e }, 'Error backfilling alert display names and tags');
   }
 }

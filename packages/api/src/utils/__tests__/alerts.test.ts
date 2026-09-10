@@ -1,101 +1,241 @@
+import {
+  MAX_TAG_LENGTH,
+  MAX_TAGS,
+  tagsSchema,
+} from '@hyperdx/common-utils/dist/types';
+
 import { AlertSource } from '@/models/alert';
-import { deriveAlertNameAndTags } from '@/utils/alerts';
+import {
+  deriveAlertDisplayFields,
+  isPopulatedRef,
+  resolveAlertDisplayFields,
+} from '@/utils/alerts';
 
-describe('deriveAlertNameAndTags', () => {
-  const savedSearch = { name: 'Error spikes', tags: ['errors', 'prod'] };
-  const dashboard = {
-    name: 'Service health',
-    tags: ['infra'],
-    tiles: [{ id: 'tile-1', config: { name: 'P95 latency' } }],
-  };
+const savedSearch = { name: 'Checkout errors', tags: ['checkout', 'p1'] };
+const dashboard = {
+  name: 'Checkout',
+  tags: ['team-checkout'],
+  tiles: [{ id: 'tile-1', config: { name: 'Error rate' } }],
+};
 
-  it('uses the saved search name and tags for saved-search alerts', () => {
+describe('deriveAlertDisplayFields', () => {
+  it('derives from the saved search', () => {
     expect(
-      deriveAlertNameAndTags(
+      deriveAlertDisplayFields(
         { source: AlertSource.SAVED_SEARCH },
-        savedSearch,
-        undefined,
+        { savedSearch },
       ),
-    ).toEqual({ name: 'Error spikes', tags: ['errors', 'prod'] });
+    ).toEqual({ displayName: 'Checkout errors', tags: ['checkout', 'p1'] });
   });
 
-  it('treats a missing source as a saved-search alert', () => {
-    expect(deriveAlertNameAndTags({}, savedSearch, undefined)).toEqual({
-      name: 'Error spikes',
-      tags: ['errors', 'prod'],
+  it('joins the dashboard and tile names for tile alerts', () => {
+    expect(
+      deriveAlertDisplayFields(
+        { source: AlertSource.TILE, tileId: 'tile-1' },
+        { dashboard },
+      ),
+    ).toEqual({
+      displayName: 'Checkout - Error rate',
+      tags: ['team-checkout'],
     });
   });
 
-  it('joins dashboard and tile names for tile alerts', () => {
+  it('falls back to "Tile" when the tile is gone or unnamed', () => {
     expect(
-      deriveAlertNameAndTags(
+      deriveAlertDisplayFields(
+        { source: AlertSource.TILE, tileId: 'deleted-tile' },
+        { dashboard },
+      ).displayName,
+    ).toBe('Checkout - Tile');
+    expect(
+      deriveAlertDisplayFields(
         { source: AlertSource.TILE, tileId: 'tile-1' },
-        undefined,
-        dashboard,
-      ),
-    ).toEqual({ name: 'Service health - P95 latency', tags: ['infra'] });
+        {
+          dashboard: {
+            name: 'Checkout',
+            tags: [],
+            tiles: [{ id: 'tile-1', config: {} }],
+          },
+        },
+      ).displayName,
+    ).toBe('Checkout - Tile');
   });
 
-  it('falls back to "Tile" when the tile is missing or unnamed', () => {
+  // The tile name alone would not say where the alert lives, so an unnamed
+  // dashboard makes the whole name underivable rather than half-derivable.
+  it('yields no name for a tile alert whose dashboard has no name', () => {
     expect(
-      deriveAlertNameAndTags(
-        { source: AlertSource.TILE, tileId: 'gone' },
-        undefined,
-        dashboard,
-      ).name,
-    ).toBe('Service health - Tile');
-    expect(
-      deriveAlertNameAndTags(
+      deriveAlertDisplayFields(
         { source: AlertSource.TILE, tileId: 'tile-1' },
-        undefined,
-        { name: 'Dash', tiles: [{ id: 'tile-1', config: {} }] },
-      ).name,
-    ).toBe('Dash - Tile');
-  });
-
-  it('uses the chart config name for inline alerts', () => {
-    expect(
-      deriveAlertNameAndTags(
-        { source: AlertSource.INLINE, chartConfig: { name: 'CPU usage' } },
-        undefined,
-        undefined,
+        {
+          dashboard: {
+            name: '  ',
+            tags: ['team-checkout'],
+            tiles: [{ id: 'tile-1', config: { name: 'Error rate' } }],
+          },
+        },
       ),
-    ).toEqual({ name: 'CPU usage', tags: [] });
+    ).toEqual({ displayName: null, tags: ['team-checkout'] });
   });
 
-  it('returns a null name for dangling references', () => {
+  it('derives from the inline chart config', () => {
     expect(
-      deriveAlertNameAndTags(
+      deriveAlertDisplayFields({
+        source: AlertSource.INLINE,
+        chartConfig: { name: 'p99 latency' },
+      }),
+    ).toEqual({ displayName: 'p99 latency', tags: [] });
+  });
+
+  // Null, not the generic fallback: writers persist this, and a document that
+  // stored "Alert" could never recover its real name once the ref is loaded.
+  it('yields null when the referenced entity is not at hand', () => {
+    expect(
+      deriveAlertDisplayFields({ source: AlertSource.SAVED_SEARCH }),
+    ).toEqual({ displayName: null, tags: null });
+    expect(deriveAlertDisplayFields({ source: AlertSource.TILE })).toEqual({
+      displayName: null,
+      tags: null,
+    });
+    expect(deriveAlertDisplayFields({ source: AlertSource.INLINE })).toEqual({
+      displayName: null,
+      tags: [],
+    });
+  });
+
+  it('treats an empty or blank name as missing', () => {
+    expect(
+      deriveAlertDisplayFields(
         { source: AlertSource.SAVED_SEARCH },
-        undefined,
-        undefined,
-      ),
-    ).toEqual({ name: null, tags: [] });
+        { savedSearch: { name: '', tags: [] } },
+      ).displayName,
+    ).toBeNull();
     expect(
-      deriveAlertNameAndTags(
-        { source: AlertSource.TILE, tileId: 'tile-1' },
-        undefined,
-        undefined,
-      ),
-    ).toEqual({ name: null, tags: [] });
-  });
-
-  it('normalizes malformed values', () => {
-    expect(
-      deriveAlertNameAndTags(
+      deriveAlertDisplayFields(
         { source: AlertSource.SAVED_SEARCH },
-        { name: '   ', tags: ['ok', 7, '', null] },
-        undefined,
-      ),
-    ).toEqual({ name: null, tags: ['ok'] });
+        { savedSearch: { name: '   ', tags: [] } },
+      ).displayName,
+    ).toBeNull();
   });
 
-  it('trims and truncates names to 512 characters', () => {
-    const result = deriveAlertNameAndTags(
+  it('trims the derived name', () => {
+    expect(
+      deriveAlertDisplayFields(
+        { source: AlertSource.SAVED_SEARCH },
+        { savedSearch: { name: '  Checkout errors  ', tags: [] } },
+      ).displayName,
+    ).toBe('Checkout errors');
+  });
+
+  // alertDisplayNameSchema caps user input at 512; a longer derived name would
+  // fail validation the first time the form that renders it is submitted.
+  it('truncates the derived name to 512 characters', () => {
+    expect(
+      deriveAlertDisplayFields(
+        { source: AlertSource.SAVED_SEARCH },
+        { savedSearch: { name: 'x'.repeat(600), tags: [] } },
+      ).displayName,
+    ).toBe('x'.repeat(512));
+  });
+
+  // Referenced documents predate these fields and are read straight from
+  // Mongo, so anything non-string has to survive derivation.
+  it('drops malformed tags', () => {
+    expect(
+      deriveAlertDisplayFields(
+        { source: AlertSource.SAVED_SEARCH },
+        { savedSearch: { name: 'S', tags: ['ok', 7, '', null, 'fine'] } },
+      ).tags,
+    ).toEqual(['ok', 'fine']);
+  });
+
+  it('truncates over-long tags and caps the count to the alert tag limits', () => {
+    const longTag = 'x'.repeat(MAX_TAG_LENGTH + 20);
+    const { tags } = deriveAlertDisplayFields(
       { source: AlertSource.SAVED_SEARCH },
-      { name: `  ${'x'.repeat(600)}  ` },
-      undefined,
+      {
+        savedSearch: {
+          name: 'S',
+          tags: [
+            longTag,
+            ...Array.from({ length: MAX_TAGS }, (_, i) => `t${i}`),
+          ],
+        },
+      },
     );
-    expect(result.name).toBe('x'.repeat(512));
+
+    expect(tags).toHaveLength(MAX_TAGS);
+    expect(tags?.[0]).toBe('x'.repeat(MAX_TAG_LENGTH));
+    expect(tagsSchema.safeParse(tags).success).toBe(true);
+  });
+
+  it('returns a copy of the tags so callers cannot mutate the referenced document', () => {
+    const refs = { savedSearch: { name: 'S', tags: ['a'] } };
+    const { tags } = deriveAlertDisplayFields(
+      { source: AlertSource.SAVED_SEARCH },
+      refs,
+    );
+    tags?.push('b');
+    expect(refs.savedSearch.tags).toEqual(['a']);
+  });
+});
+
+describe('resolveAlertDisplayFields', () => {
+  it('prefers the stored value per field', () => {
+    expect(
+      resolveAlertDisplayFields(
+        { source: AlertSource.SAVED_SEARCH, displayName: 'Custom' },
+        { savedSearch },
+      ),
+    ).toEqual({ displayName: 'Custom', tags: ['checkout', 'p1'] });
+
+    expect(
+      resolveAlertDisplayFields(
+        { source: AlertSource.SAVED_SEARCH, tags: ['own'] },
+        { savedSearch },
+      ),
+    ).toEqual({ displayName: 'Checkout errors', tags: ['own'] });
+  });
+
+  it('keeps a deliberately emptied tag list', () => {
+    expect(
+      resolveAlertDisplayFields(
+        { source: AlertSource.SAVED_SEARCH, tags: [] },
+        { savedSearch },
+      ).tags,
+    ).toEqual([]);
+  });
+
+  it('falls back to "Alert" and no tags when nothing is derivable', () => {
+    expect(
+      resolveAlertDisplayFields({ source: AlertSource.SAVED_SEARCH }),
+    ).toEqual({ displayName: 'Alert', tags: [] });
+  });
+
+  it('treats null as unset', () => {
+    expect(
+      resolveAlertDisplayFields(
+        { source: AlertSource.SAVED_SEARCH, displayName: null, tags: null },
+        { savedSearch },
+      ),
+    ).toEqual({ displayName: 'Checkout errors', tags: ['checkout', 'p1'] });
+  });
+
+  it('returns a copy of the stored tags', () => {
+    const alert = { source: AlertSource.SAVED_SEARCH, tags: ['a'] };
+    resolveAlertDisplayFields(alert).tags.push('b');
+    expect(alert.tags).toEqual(['a']);
+  });
+});
+
+describe('isPopulatedRef', () => {
+  it.each([
+    [{ _id: 'abc' }, true],
+    [{}, false],
+    [null, false],
+    [undefined, false],
+    ['abc', false],
+  ])('%p -> %p', (value, expected) => {
+    expect(isPopulatedRef(value)).toBe(expected);
   });
 });

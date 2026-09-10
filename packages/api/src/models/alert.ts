@@ -92,14 +92,17 @@ export interface IAlert {
   thresholdType: AlertThresholdType;
   createdBy?: ObjectId;
 
-  // Message template
+  // Message template (handlebars)
   name?: string | null;
   message?: string | null;
 
   // Freeform note (supports markdown)
   note?: string | null;
 
-  // Tags for filtering
+  // User-facing name shown in the alerts list and notification titles (when not overridden by name template).
+  // Unset means "derive from the referenced saved search / dashboard tile".
+  displayName?: string | null;
+  // Unset (not []) means "derive from the referenced entity".
   tags?: string[] | null;
 
   // SavedSearch alerts
@@ -212,10 +215,14 @@ const AlertSchema = new Schema<IAlert>(
       type: String,
       required: false,
     },
-    tags: {
-      type: [String],
-      default: undefined,
+    displayName: {
+      type: String,
+      required: false,
     },
+    // `default: undefined` stops Mongoose materializing [], which would make
+    // an un-backfilled document indistinguishable from one whose tags the user
+    // deliberately emptied.
+    tags: { type: [String], default: undefined },
 
     // Log alerts
     savedSearch: {

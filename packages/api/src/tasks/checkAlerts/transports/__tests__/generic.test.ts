@@ -3,6 +3,8 @@ import { ObjectId } from 'mongodb';
 
 import { AlertState } from '@/models/alert';
 import {
+  buildWebhookTemplateVariables,
+  createHandlebarsWithHelpers,
   getWebhookFetchTimeoutMs,
   handleSendGenericWebhook,
 } from '@/tasks/checkAlerts/transports/generic';
@@ -84,4 +86,77 @@ describe('handleSendGenericWebhook — per-attempt timeout', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
   }, 2000); // short test-level timeout: a regression here should fail fast, not stall on Jest's default 30s
+});
+
+describe('buildWebhookTemplateVariables', () => {
+  it('exposes the enriched variables alongside the original set', () => {
+    const vars = buildWebhookTemplateVariables({
+      ...message,
+      startTime: 1700000000000,
+      endTime: 1700000300000,
+      alertId: 'alert-1',
+      status: 'firing',
+      alertType: 'search',
+      comparator: 'between',
+      threshold: 5,
+      thresholdMax: 10,
+      value: 42,
+      groupKey: 'checkout',
+      sourceQuery: 'Body: "error"',
+      teamId: 'team-1',
+      note: 'Runbook: https://wiki.example/runbook',
+    });
+
+    expect(vars).toMatchObject({
+      eventId: 'evt-1',
+      state: AlertState.ALERT,
+      alertId: 'alert-1',
+      status: 'firing',
+      alertType: 'search',
+      comparator: 'between',
+      threshold: 5,
+      thresholdMax: 10,
+      value: 42,
+      groupKey: 'checkout',
+      teamId: 'team-1',
+      startTimeISO: new Date(1700000000000).toISOString(),
+      endTimeISO: new Date(1700000300000).toISOString(),
+    });
+    // Strings destined for JSON template slots are escaped.
+    expect(vars.sourceQuery).toBe('Body: \\"error\\"');
+  });
+
+  it('renders enriched fields as empty strings (never "undefined") when absent', () => {
+    const vars = buildWebhookTemplateVariables(message);
+    expect(vars.alertId).toBe('');
+    expect(vars.status).toBe('');
+    expect(vars.note).toBe('');
+    expect(vars.startTimeISO).toBe(new Date(0).toISOString());
+    // A raw number renders as an empty slot when absent, not "undefined".
+    expect(vars.thresholdMax).toBeUndefined();
+  });
+});
+
+// The guard published in docs/alert-webhook-template-variables.md is the only
+// way a receiver can put an optional number in an unquoted JSON slot, so a
+// change to the helper set that breaks it would break every template using it.
+describe('the documented guard for an optional numeric variable', () => {
+  const render = (thresholdMax?: number) =>
+    createHandlebarsWithHelpers().compile(
+      '{"threshold": {{threshold}}{{#unless (eq thresholdMax undefined)}}, "threshold_max": {{thresholdMax}}{{/unless}}\n}',
+      // Same options as sendGenericWebhook: noEscape is load-bearing, because
+      // escapeJsonString already emits \" and HTML-escaping would mangle it.
+      { noEscape: true },
+    )(
+      buildWebhookTemplateVariables({ ...message, threshold: 5, thresholdMax }),
+    );
+
+  it.each([
+    [undefined, { threshold: 5 }],
+    [20, { threshold: 5, threshold_max: 20 }],
+    // A range bounded at zero is real, and `{{#if}}` would drop it.
+    [0, { threshold: 5, threshold_max: 0 }],
+  ])('renders valid JSON for thresholdMax=%s', (thresholdMax, expected) => {
+    expect(JSON.parse(render(thresholdMax))).toEqual(expected);
+  });
 });

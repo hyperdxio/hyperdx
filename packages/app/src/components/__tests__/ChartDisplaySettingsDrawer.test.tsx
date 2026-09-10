@@ -1,5 +1,8 @@
 import React from 'react';
-import { DisplayType } from '@hyperdx/common-utils/dist/types';
+import {
+  DisplayType,
+  MAX_LEGEND_TEMPLATE_LENGTH,
+} from '@hyperdx/common-utils/dist/types';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
@@ -565,6 +568,76 @@ describe('ChartDisplaySettingsDrawer', () => {
         color: 'chart-blue',
         numberFormat: { output: 'currency' },
       });
+    });
+  });
+
+  describe('legend template', () => {
+    const promqlProps = {
+      ...baseProps,
+      configType: 'promql' as const,
+      displayType: DisplayType.Line,
+    };
+
+    it('blocks Apply when the template exceeds the persisted length cap', async () => {
+      const onChange = jest.fn();
+      const onClose = jest.fn();
+      const user = userEvent.setup();
+
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...promqlProps}
+          onChange={onChange}
+          onClose={onClose}
+        />,
+      );
+
+      const tooLong = 'a'.repeat(MAX_LEGEND_TEMPLATE_LENGTH + 1);
+      await user.click(screen.getByTestId('legend-template-input'));
+      await user.paste(tooLong);
+      await user.click(screen.getByRole('button', { name: /apply/i }));
+
+      expect(
+        screen.getByText(
+          `Template is too long (${MAX_LEGEND_TEMPLATE_LENGTH + 1} characters, max ${MAX_LEGEND_TEMPLATE_LENGTH})`,
+        ),
+      ).toBeInTheDocument();
+      expect(onChange).not.toHaveBeenCalled();
+      expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it('accepts a template exactly at the cap', async () => {
+      const onChange = jest.fn();
+      const user = userEvent.setup();
+
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer {...promqlProps} onChange={onChange} />,
+      );
+
+      const atCap = 'a'.repeat(MAX_LEGEND_TEMPLATE_LENGTH);
+      await user.click(screen.getByTestId('legend-template-input'));
+      await user.paste(atCap);
+      await user.click(screen.getByRole('button', { name: /apply/i }));
+
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(onChange.mock.calls[0][0]).toMatchObject({
+        legendTemplate: atCap,
+      });
+    });
+
+    it('measures the trimmed value, matching what gets persisted', async () => {
+      const onChange = jest.fn();
+      const user = userEvent.setup();
+
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer {...promqlProps} onChange={onChange} />,
+      );
+
+      const padded = `  ${'a'.repeat(MAX_LEGEND_TEMPLATE_LENGTH)}  `;
+      await user.click(screen.getByTestId('legend-template-input'));
+      await user.paste(padded);
+      await user.click(screen.getByRole('button', { name: /apply/i }));
+
+      expect(onChange).toHaveBeenCalledTimes(1);
     });
   });
 });

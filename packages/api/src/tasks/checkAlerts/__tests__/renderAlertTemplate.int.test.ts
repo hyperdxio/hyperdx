@@ -1,11 +1,19 @@
 import {
   AlertState,
   AlertThresholdType,
+  Filter,
   SourceKind,
+  Tile,
 } from '@hyperdx/common-utils/dist/types';
 import mongoose from 'mongoose';
 
-import { makeTile } from '@/fixtures';
+import {
+  makeAlertChartConfig,
+  makeRawSqlAlertChartConfig,
+  makeRawSqlAlertTile,
+  makeTile,
+  RAW_SQL_ALERT_TEMPLATE,
+} from '@/fixtures';
 import { AlertSource } from '@/models/alert';
 import type { IWebhook } from '@/models/webhook';
 import {
@@ -84,14 +92,24 @@ const mockClickhouseClient = {
 const startTime = new Date('2023-03-17T22:10:00.000Z');
 const endTime = new Date('2023-03-17T22:15:00.000Z');
 
+// Shared by the three view builders below, so a knob added for one is
+// accepted by renderWithWebhook's `makeView` parameter for all of them.
+type ViewOverrides = Partial<AlertMessageTemplateDefaultView> & {
+  thresholdType?: AlertThresholdType;
+  threshold?: number;
+  thresholdMax?: number;
+  value?: number;
+  group?: string;
+  where?: string;
+  chartName?: string;
+  aggCondition?: string;
+  filters?: Filter[];
+  rawSql?: boolean;
+  tile?: Tile;
+};
+
 const makeSearchView = (
-  overrides: Partial<AlertMessageTemplateDefaultView> & {
-    thresholdType?: AlertThresholdType;
-    threshold?: number;
-    thresholdMax?: number;
-    value?: number;
-    group?: string;
-  } = {},
+  overrides: ViewOverrides = {},
 ): AlertMessageTemplateDefaultView => ({
   alert: {
     thresholdType: overrides.thresholdType ?? AlertThresholdType.ABOVE,
@@ -117,8 +135,9 @@ const makeSearchView = (
     id: 'fake-saved-search-id',
     name: 'My Search',
     select: 'Body',
-    where: 'Body: "error"',
+    where: overrides.where ?? 'Body: "error"',
     whereLanguage: 'lucene',
+    ...(overrides.filters != null && { filters: overrides.filters }),
     orderBy: 'timestamp',
     source: 'fake-source-id' as any,
     tags: ['test'],
@@ -136,13 +155,7 @@ const makeSearchView = (
 
 const testTile = makeTile({ id: 'test-tile-id' });
 const makeTileView = (
-  overrides: Partial<AlertMessageTemplateDefaultView> & {
-    thresholdType?: AlertThresholdType;
-    threshold?: number;
-    thresholdMax?: number;
-    value?: number;
-    group?: string;
-  } = {},
+  overrides: ViewOverrides = {},
 ): AlertMessageTemplateDefaultView => ({
   alert: {
     thresholdType: overrides.thresholdType ?? AlertThresholdType.ABOVE,
@@ -151,13 +164,13 @@ const makeTileView = (
     source: AlertSource.TILE,
     channel: { type: null },
     interval: '1m',
-    tileId: 'test-tile-id',
+    tileId: (overrides.tile ?? testTile).id,
   },
   dashboard: {
     _id: new mongoose.Types.ObjectId(),
     id: 'id-123',
     name: 'My Dashboard',
-    tiles: [testTile],
+    tiles: [overrides.tile ?? testTile],
     team: 'team-123' as any,
     tags: ['test'],
     createdAt: new Date(),
@@ -165,6 +178,35 @@ const makeTileView = (
   },
   attributes: {},
   granularity: '5 minute',
+  group: overrides.group,
+  isGroupedAlert: false,
+  startTime,
+  endTime,
+  value: overrides.value ?? 10,
+});
+
+const makeInlineView = (
+  overrides: ViewOverrides = {},
+): AlertMessageTemplateDefaultView => ({
+  alert: {
+    thresholdType: overrides.thresholdType ?? AlertThresholdType.ABOVE,
+    threshold: overrides.threshold ?? 5,
+    thresholdMax: overrides.thresholdMax,
+    source: AlertSource.INLINE,
+    channel: { type: null },
+    interval: '1m',
+    chartConfig: overrides.rawSql
+      ? makeRawSqlAlertChartConfig()
+      : makeAlertChartConfig({
+          sourceId: 'fake-source-id',
+          name: overrides.chartName,
+          where: overrides.where ?? 'ServiceName: "checkout"',
+          aggCondition: overrides.aggCondition,
+          filters: overrides.filters,
+        }),
+  },
+  attributes: {},
+  granularity: '1m',
   group: overrides.group,
   isGroupedAlert: false,
   startTime,
@@ -430,6 +472,258 @@ describe('renderAlertTemplate', () => {
   });
 });
 
+// The enriched fields are what a receiver routes and dedupes on, so they have
+// to survive the render, not just the variable builder in isolation.
+describe('enriched message fields', () => {
+  const renderWithWebhook = async (
+    state: AlertState,
+    viewOverrides: ViewOverrides = {},
+    makeView: (
+      overrides: ViewOverrides,
+    ) => AlertMessageTemplateDefaultView = makeSearchView,
+  ) => {
+    const webhook = castWebhook({
+      _id: new mongoose.Types.ObjectId(),
+      team: new mongoose.Types.ObjectId(),
+      service: 'slack',
+      name: 'enriched-hook',
+      url: 'https://hooks.slack.com/services/x',
+    });
+    const { dispatcher, dispatched } = makeRecordingDispatcher();
+    const base = makeView(viewOverrides);
+
+    const result = await renderAlertTemplate({
+      alertProvider,
+      clickhouseClient: mockClickhouseClient,
+      metadata: mockMetadata,
+      state,
+      template: null,
+      title: 'Test Alert Title',
+      view: {
+        ...base,
+        alert: {
+          ...base.alert,
+          channel: { type: 'webhook', webhookId: webhook._id.toString() },
+          channels: [{ type: 'webhook', webhookId: webhook._id.toString() }],
+        },
+      },
+      teamId: TEST_TEAM_ID,
+      teamWebhooksById: new Map([[webhook._id.toString(), webhook]]),
+      dispatcher,
+    });
+    return { dispatched, result };
+  };
+
+  it('carries the alert identity and condition onto the dispatched job', async () => {
+    const { dispatched, result } = await renderWithWebhook(AlertState.ALERT, {
+      group: 'http',
+    });
+
+    expect(result.failures).toEqual([]);
+    expect(dispatched[0].message).toMatchObject({
+      status: 'firing',
+      alertType: 'search',
+      comparator: '>=',
+      threshold: 5,
+      groupKey: 'http',
+      sourceQuery: 'Body: "error"',
+      teamId: TEST_TEAM_ID,
+    });
+  });
+
+  it('reports a resolve as resolved', async () => {
+    const { dispatched } = await renderWithWebhook(AlertState.OK);
+
+    expect(dispatched[0].message).toMatchObject({ status: 'resolved' });
+  });
+
+  it('carries both bounds of a range condition', async () => {
+    const { dispatched } = await renderWithWebhook(AlertState.ALERT, {
+      thresholdType: AlertThresholdType.BETWEEN,
+      threshold: 5,
+      thresholdMax: 20,
+      value: 12,
+    });
+
+    expect(dispatched[0].message).toMatchObject({
+      comparator: 'between',
+      threshold: 5,
+      thresholdMax: 20,
+    });
+  });
+
+  // Switching an alert off a range comparator leaves the old bound on the
+  // document, and reporting it would advertise a range that no longer fires.
+  it('drops a stale thresholdMax for a single-bound condition', async () => {
+    const { dispatched } = await renderWithWebhook(AlertState.ALERT, {
+      thresholdType: AlertThresholdType.ABOVE,
+      threshold: 5,
+      thresholdMax: 20,
+    });
+
+    expect(dispatched[0].message).toMatchObject({ comparator: '>=' });
+    expect(dispatched[0].message.thresholdMax).toBeUndefined();
+  });
+
+  it("reports an inline alert's query from its own chart config", async () => {
+    const { dispatched } = await renderWithWebhook(
+      AlertState.ALERT,
+      {},
+      makeInlineView,
+    );
+
+    expect(dispatched[0].message).toMatchObject({
+      alertType: 'inline_query',
+      sourceQuery: 'ServiceName: "checkout"',
+    });
+  });
+
+  it('reports the SQL of a raw SQL inline alert', async () => {
+    const { dispatched } = await renderWithWebhook(
+      AlertState.ALERT,
+      { rawSql: true },
+      makeInlineView,
+    );
+
+    expect(dispatched[0].message).toMatchObject({
+      alertType: 'inline_query',
+      sourceQuery: RAW_SQL_ALERT_TEMPLATE,
+    });
+  });
+
+  it("reports a tile alert's query from its tile", async () => {
+    const { dispatched } = await renderWithWebhook(
+      AlertState.ALERT,
+      { tile: makeTile({ id: 'tile-1', where: 'SeverityText: "error"' }) },
+      makeTileView,
+    );
+
+    expect(dispatched[0].message).toMatchObject({
+      alertType: 'dashboard_chart',
+      sourceQuery: 'SeverityText: "error"',
+    });
+  });
+
+  it('reports the SQL of a raw SQL tile alert', async () => {
+    const { dispatched } = await renderWithWebhook(
+      AlertState.ALERT,
+      { tile: makeRawSqlAlertTile({ id: 'tile-1' }) },
+      makeTileView,
+    );
+
+    expect(dispatched[0].message).toMatchObject({
+      alertType: 'dashboard_chart',
+      sourceQuery: RAW_SQL_ALERT_TEMPLATE,
+    });
+  });
+
+  // A chart alert is commonly defined purely by the series condition, with the
+  // chart-level Where left blank. Reporting `where` alone called that
+  // unconditional.
+  it("reports a series aggCondition when the chart's where is blank", async () => {
+    const { dispatched } = await renderWithWebhook(
+      AlertState.ALERT,
+      { where: '', aggCondition: 'SeverityText: "error"' },
+      makeInlineView,
+    );
+
+    expect(dispatched[0].message).toMatchObject({
+      sourceQuery: 'SeverityText: "error"',
+    });
+  });
+
+  it('brackets the where and the series condition when it joins them', async () => {
+    const { dispatched } = await renderWithWebhook(
+      AlertState.ALERT,
+      {
+        where: 'ServiceName: "checkout"',
+        aggCondition: 'SeverityText: "error"',
+      },
+      makeInlineView,
+    );
+
+    expect(dispatched[0].message).toMatchObject({
+      sourceQuery: '(ServiceName: "checkout") AND (SeverityText: "error")',
+    });
+  });
+
+  // buildAlertChartConfigFromSavedConfig does not pass a chart's pinned
+  // filters into the alert query, so naming them would report a condition the
+  // alert never applied.
+  it("omits a chart's pinned filters, which the alert query does not apply", async () => {
+    const { dispatched } = await renderWithWebhook(
+      AlertState.ALERT,
+      {
+        where: 'ServiceName: "checkout"',
+        filters: [{ type: 'sql', condition: "Env = 'prod'" }],
+      },
+      makeInlineView,
+    );
+
+    expect(dispatched[0].message).toMatchObject({
+      sourceQuery: 'ServiceName: "checkout"',
+    });
+  });
+
+  // Only the last series drives the value, so an earlier series' condition is
+  // not the one that fired.
+  it('reports only the alerting series condition on a multi-series chart', async () => {
+    const view = makeInlineView({ where: '' });
+    const config = view.alert.chartConfig as { select: unknown[] };
+    config.select = [
+      {
+        aggFn: 'count',
+        aggCondition: 'SeverityText: "warn"',
+        aggConditionLanguage: 'lucene',
+        valueExpression: '',
+      },
+      {
+        aggFn: 'count',
+        aggCondition: 'SeverityText: "error"',
+        aggConditionLanguage: 'lucene',
+        valueExpression: '',
+      },
+    ];
+
+    const { dispatched } = await renderWithWebhook(
+      AlertState.ALERT,
+      {},
+      () => view,
+    );
+
+    expect(dispatched[0].message).toMatchObject({
+      sourceQuery: 'SeverityText: "error"',
+    });
+  });
+
+  // A saved search's pinned filters DO reach its alert query, unlike a chart's.
+  it("reports a saved search's pinned filters alongside its where", async () => {
+    const { dispatched } = await renderWithWebhook(AlertState.ALERT, {
+      where: 'Body: "error"',
+      filters: [
+        { type: 'sql', condition: "ServiceName = 'checkout'" },
+        { type: 'sql_ast', operator: '=', left: 'Region', right: "'us'" },
+      ] satisfies Filter[],
+    });
+
+    expect(dispatched[0].message).toMatchObject({
+      alertType: 'search',
+      sourceQuery:
+        "(Body: \"error\") AND (ServiceName = 'checkout') AND (Region = 'us')",
+    });
+  });
+
+  it('reports an empty sourceQuery when the chart carries no condition', async () => {
+    const { dispatched } = await renderWithWebhook(
+      AlertState.ALERT,
+      { where: '' },
+      makeInlineView,
+    );
+
+    expect(dispatched[0].message.sourceQuery).toBe('');
+  });
+});
+
 describe('buildAlertMessageTemplateTitle', () => {
   describe('saved search alerts', () => {
     describe('ALERT state', () => {
@@ -525,25 +819,121 @@ describe('buildAlertMessageTemplateTitle', () => {
     });
   });
 
-  describe('custom title template', () => {
-    it('renders template variables', () => {
+  // `alert.name` is the title override, read off the view rather than passed
+  // in separately -- these pin that wiring.
+  describe('alert.name as a title override', () => {
+    it('replaces the default title', () => {
+      const view = makeSearchView();
+
       const result = buildAlertMessageTemplateTitle({
-        template: '{{alert.threshold}} exceeded',
-        view: makeSearchView({ threshold: 5, value: 10 }),
+        view: { ...view, alert: { ...view.alert, name: 'Custom title' } },
         state: AlertState.ALERT,
       });
 
-      expect(result).toBe('🚨 5 exceeded');
+      expect(result).toBe('🚨 Custom title');
     });
 
-    it('falls back to the raw name when the template is malformed', () => {
+    it('renders Handlebars against the view', () => {
+      const view = makeSearchView({ threshold: 5, value: 10 });
+
       const result = buildAlertMessageTemplateTitle({
-        template: 'Errors {{spike',
-        view: makeSearchView({ threshold: 5, value: 10 }),
+        view: {
+          ...view,
+          alert: { ...view.alert, name: '{{value}} over {{alert.threshold}}' },
+        },
+        state: AlertState.ALERT,
+      });
+
+      expect(result).toBe('🚨 10 over 5');
+    });
+
+    it('uses a malformed template verbatim instead of failing', () => {
+      const view = makeSearchView();
+
+      const result = buildAlertMessageTemplateTitle({
+        view: { ...view, alert: { ...view.alert, name: 'Errors {{spike' } },
         state: AlertState.ALERT,
       });
 
       expect(result).toBe('🚨 Errors {{spike');
+    });
+  });
+
+  describe('stored displayName', () => {
+    it('names a saved-search alert', () => {
+      const view = makeSearchView();
+
+      const result = buildAlertMessageTemplateTitle({
+        view: {
+          ...view,
+          alert: { ...view.alert, displayName: 'Checkout errors' },
+        },
+        state: AlertState.ALERT,
+      });
+
+      expect(result).toBe('🚨 Alert for "Checkout errors" - 10 lines found');
+    });
+
+    it('names a tile alert', () => {
+      const view = makeTileView();
+
+      const result = buildAlertMessageTemplateTitle({
+        view: {
+          ...view,
+          alert: { ...view.alert, displayName: 'Error rate' },
+        },
+        state: AlertState.ALERT,
+      });
+
+      expect(result).toContain('Alert for "Error rate" -');
+      expect(result).not.toContain('My Dashboard');
+    });
+
+    it('names an inline alert', () => {
+      const view = makeInlineView({ where: 'level:error' });
+
+      const result = buildAlertMessageTemplateTitle({
+        view: { ...view, alert: { ...view.alert, displayName: 'p99 latency' } },
+        state: AlertState.ALERT,
+      });
+
+      expect(result).toContain('Alert for "p99 latency"');
+      expect(result).not.toContain('Inline Chart');
+    });
+  });
+
+  // Saved-search and tile derivation is pinned by the snapshots above; inline
+  // alerts have no referenced entity, so their name comes off the chart config.
+  describe('derived displayName', () => {
+    it('names an inline alert from its chart config', () => {
+      const result = buildAlertMessageTemplateTitle({
+        view: makeInlineView({
+          where: 'level:error',
+          chartName: 'Inline Chart',
+        }),
+        state: AlertState.ALERT,
+      });
+
+      expect(result).toBe(
+        '🚨 Alert for "Inline Chart" - 10 meets or exceeds 5',
+      );
+    });
+
+    it('falls back when an inline chart config has no name', () => {
+      const view = makeInlineView({ where: 'level:error' });
+
+      const result = buildAlertMessageTemplateTitle({
+        view: {
+          ...view,
+          alert: {
+            ...view.alert,
+            chartConfig: { ...view.alert.chartConfig!, name: undefined },
+          },
+        },
+        state: AlertState.ALERT,
+      });
+
+      expect(result).toBe('🚨 Alert for "Alert" - 10 meets or exceeds 5');
     });
   });
 });

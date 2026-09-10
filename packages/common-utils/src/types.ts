@@ -569,6 +569,55 @@ export enum WebhookService {
 }
 
 /**
+ * Every variable a Generic/incident.io webhook body template can reference.
+ * The one published list: `buildWebhookTemplateVariables` (packages/api) is
+ * typed against it so a variable cannot be built without appearing here, and
+ * the webhook form renders it as the in-product list. Documented in
+ * docs/alert-webhook-template-variables.md.
+ *
+ * The first seven are also the default body template the form applies.
+ */
+export const DEFAULT_WEBHOOK_TEMPLATE_VARIABLES = [
+  'title',
+  'body',
+  'link',
+  'state',
+  'startTime',
+  'endTime',
+  'eventId',
+] as const;
+
+export const WEBHOOK_TEMPLATE_VARIABLES = [
+  ...DEFAULT_WEBHOOK_TEMPLATE_VARIABLES,
+  'startTimeISO',
+  'endTimeISO',
+  'alertId',
+  'status',
+  'alertType',
+  'comparator',
+  'threshold',
+  'thresholdMax',
+  'value',
+  'groupKey',
+  'sourceQuery',
+  'teamId',
+  'note',
+] as const;
+
+export type WebhookTemplateVariable =
+  (typeof WEBHOOK_TEMPLATE_VARIABLES)[number];
+
+/**
+ * The body a Generic or incident.io webhook gets when it is saved without one.
+ * Published here so the form's default, the form's editor placeholder and the
+ * API's fallback are one string — the payload shape used to be respelled at
+ * each of those, and a change to it had to be repeated in all of them.
+ */
+export const DEFAULT_GENERIC_WEBHOOK_BODY = `{"text": "${DEFAULT_WEBHOOK_TEMPLATE_VARIABLES.map(
+  name => `{{${name}}}`,
+).join(' | ')}"}`;
+
+/**
  * Base webhook schema (matches backend IWebhook but with JSON-serialized types).
  * When making changes here, consider if they need to be made to the external
  * API schema as well (packages/api/src/utils/zod.ts).
@@ -918,7 +967,33 @@ export const scheduleStartAtSchema = z
     },
   );
 
+// --------------------------
+// TAGS
+// --------------------------
+// Shared limits + validator for user-supplied tag arrays. Any write path that
+// accepts tags (external API, MCP tools, internal routers) should validate with
+// `tagsSchema` so the caps stay consistent in one place. Read/model schemas keep
+// a bare `z.array(z.string())` so parsing existing documents never fails on
+// legacy data that predates these caps.
+export const MAX_TAG_LENGTH = 32;
+export const MAX_TAGS = 50;
+
+export const tagsSchema = z
+  .array(z.string().max(MAX_TAG_LENGTH))
+  .max(MAX_TAGS)
+  .optional();
+
 export const alertNoteSchema = z.string().min(1).max(4096).nullish();
+
+export const MAX_ALERT_DISPLAY_NAME_LENGTH = 512;
+export const alertDisplayNameSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(MAX_ALERT_DISPLAY_NAME_LENGTH)
+  .nullish();
+
+export const alertTagsSchema = tagsSchema.nullish();
 
 export const AlertBaseObjectSchema = z.object({
   id: z.string().optional(),
@@ -939,6 +1014,8 @@ export const AlertBaseObjectSchema = z.object({
   name: z.string().min(1).max(512).nullish(),
   message: z.string().min(1).max(4096).nullish(),
   note: alertNoteSchema,
+  displayName: alertDisplayNameSchema,
+  tags: alertTagsSchema,
   silenced: z
     .object({
       by: z.string(),
@@ -1126,22 +1203,6 @@ export const DashboardFilterValueSchema = z.union([
 ]);
 
 export type DashboardFilterValue = z.infer<typeof DashboardFilterValueSchema>;
-
-// --------------------------
-// TAGS
-// --------------------------
-// Shared limits + validator for user-supplied tag arrays. Any write path that
-// accepts tags (external API, MCP tools, internal routers) should validate with
-// `tagsSchema` so the caps stay consistent in one place. Read/model schemas keep
-// a bare `z.array(z.string())` so parsing existing documents never fails on
-// legacy data that predates these caps.
-export const MAX_TAG_LENGTH = 32;
-export const MAX_TAGS = 50;
-
-export const tagsSchema = z
-  .array(z.string().max(MAX_TAG_LENGTH))
-  .max(MAX_TAGS)
-  .optional();
 
 // --------------------------
 // SAVED SEARCH
@@ -1670,6 +1731,8 @@ const RawSqlChartConfigSchema = RawSqlBaseChartConfigSchema.extend({
 
 export type RawSqlChartConfig = z.infer<typeof RawSqlChartConfigSchema>;
 
+export const MAX_LEGEND_TEMPLATE_LENGTH = 1024;
+
 /** Base schema for PromQL chart configs (persisted fields) */
 const PromqlBaseChartConfigSchema = SharedChartSettingsSchema.extend({
   configType: z.literal('promql'),
@@ -1677,6 +1740,7 @@ const PromqlBaseChartConfigSchema = SharedChartSettingsSchema.extend({
   connection: z.string(),
   source: z.string().optional(),
   step: z.string().optional(),
+  legendTemplate: z.string().max(MAX_LEGEND_TEMPLATE_LENGTH).optional(),
 });
 
 /** Schema describing PromQL chart configs with runtime-only fields */
@@ -1893,7 +1957,11 @@ export const DashboardContainerSchema = z.object({
 export type DashboardContainer = z.infer<typeof DashboardContainerSchema>;
 
 /** Type of dashboard filter, determining how its dropdown values are populated. */
-export const DashboardFilterType = z.enum(['QUERY_EXPRESSION', 'STATIC_LIST']);
+export const DashboardFilterType = z.enum([
+  'QUERY_EXPRESSION',
+  'STATIC_LIST',
+  'PROMETHEUS_LABEL',
+]);
 
 /** Allowed variable names for dashboard filters. Alphanumeric + underscore, must start with a letter. */
 export const DASHBOARD_VARIABLE_NAME_PATTERN = '[a-zA-Z][a-zA-Z0-9_]*';
@@ -1901,6 +1969,7 @@ export const DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED = new RegExp(
   `^${DASHBOARD_VARIABLE_NAME_PATTERN}$`,
 );
 export const DASHBOARD_VARIABLE_NAME_MAX_LENGTH = 64;
+export const DASHBOARD_STATIC_FILTER_MAX_OPTIONS = 1000;
 
 /** Fields carried by every dashboard filter, whatever its type. */
 const dashboardFilterBaseSchema = z.object({
@@ -1916,6 +1985,18 @@ const dashboardFilterBaseSchema = z.object({
     .max(DASHBOARD_VARIABLE_NAME_MAX_LENGTH)
     .regex(DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED)
     .optional(),
+  /**
+   * How many values must be selected before tiles will load. `isGlobalRequirement`
+   * decides which tiles are blocked. Only 0 and 1 are currently allowed.
+   * undefined and 0 both imply no minimum selection requirement.
+   */
+  minSelections: z.number().int().min(0).max(1).optional(),
+  /**
+   * Whether an unsatisfied requirement blocks every tile on the dashboard,
+   * rather than only the tiles that read this filter (via variable or broadcast).
+   * Ignored unless `minSelections` marks the filter required.
+   */
+  isGlobalRequirement: z.boolean().optional(),
 });
 
 /**
@@ -1953,15 +2034,40 @@ export const QueryExpressionDashboardFilterSchema =
 export const StaticListDashboardFilterSchema = dashboardFilterBaseSchema.extend(
   {
     type: z.literal(DashboardFilterType.enum.STATIC_LIST),
-    options: z.array(z.string().min(1).max(10000)).min(1).max(1000),
+    options: z
+      .array(z.string().min(1).max(10000))
+      .min(1)
+      .max(DASHBOARD_STATIC_FILTER_MAX_OPTIONS),
     isBroadcastEnabled: z.literal(false),
     isVariableEnabled: z.literal(true),
   },
 );
 
+/** Sanity bound on a persisted label name; Prometheus itself imposes no limit. */
+export const PROMETHEUS_LABEL_NAME_MAX_LENGTH = 1024;
+
+/** A filter whose dropdown lists the values of a Prometheus label */
+export const PromqlLabelDashboardFilterSchema =
+  dashboardFilterBaseSchema.extend({
+    type: z.literal(DashboardFilterType.enum.PROMETHEUS_LABEL),
+    /** ID of a PromQL source to query */
+    source: z.string().min(1),
+    /** Label whose values populate the dropdown. */
+    label: z.string().min(1).max(PROMETHEUS_LABEL_NAME_MAX_LENGTH),
+    /**
+     * Optional Prometheus series selector narrowing which series the label
+     * values are read from.
+     */
+    match: z.string().min(1).optional(),
+    // Variable-only: there is no SQL expression to broadcast
+    isBroadcastEnabled: z.literal(false),
+    isVariableEnabled: z.literal(true),
+  });
+
 export const DashboardFilterSchema = z.discriminatedUnion('type', [
   QueryExpressionDashboardFilterSchema,
   StaticListDashboardFilterSchema,
+  PromqlLabelDashboardFilterSchema,
 ]);
 
 export type QueryExpressionDashboardFilter = z.infer<
@@ -1969,6 +2075,9 @@ export type QueryExpressionDashboardFilter = z.infer<
 >;
 export type StaticListDashboardFilter = z.infer<
   typeof StaticListDashboardFilterSchema
+>;
+export type PromqlLabelDashboardFilter = z.infer<
+  typeof PromqlLabelDashboardFilterSchema
 >;
 export type DashboardFilter = z.infer<typeof DashboardFilterSchema>;
 
@@ -2023,6 +2132,18 @@ export const DashboardSchema = z.object({
   savedQuery: z.string().nullable().optional(),
   savedQueryLanguage: SearchConditionLanguageSchema.nullable().optional(),
   savedFilterValues: z.array(DashboardFilterValueSchema).optional(),
+  savedDateRange: z
+    .discriminatedUnion('type', [
+      z.object({
+        type: z.literal('relative'),
+        value: z.number(),
+      }),
+      z.object({
+        type: z.literal('historical'),
+        value: z.array(z.number()).length(2),
+      }),
+    ])
+    .nullish(),
   containers: z
     .array(DashboardContainerSchema)
     .max(DASHBOARD_MAX_CONTAINERS)
@@ -2535,6 +2656,8 @@ export const AlertsPageItemSchema = z.object({
   chartConfig: AlertChartConfigSchema.optional(),
   groupBy: z.string().optional(),
   name: z.string().nullish(),
+  displayName: z.string(),
+  tags: z.array(z.string()),
   message: z.string().nullish(),
   note: alertNoteSchema,
   createdAt: z.string(),

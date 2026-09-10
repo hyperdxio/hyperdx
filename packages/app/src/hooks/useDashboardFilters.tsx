@@ -3,20 +3,20 @@ import { useQueryState } from 'nuqs';
 import {
   FilterSelection,
   filterSelectionKey,
+  getUnsatisfiedRequiredFilters,
   parseDashboardFilterValues,
   ParsedDashboardFilterValues,
   resolveFilterSelection,
   serializeDashboardFilterValues,
 } from '@hyperdx/common-utils/dist/dashboardFilterValues';
 import {
+  doesFilterApplyToSource,
   FilterState,
   filtersToQuery,
   getDashboardVariableFilters,
-  getFilterBroadcastTarget,
   getFilterExpression,
   isFilterBroadcastEnabled,
   isQueryExpressionFilter,
-  isStaticListFilter,
 } from '@hyperdx/common-utils/dist/filters';
 import {
   ChartVariable,
@@ -25,21 +25,6 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 
 import { dashboardFilterValuesParser } from '@/utils/queryParsers';
-
-/**
- * Whether a filter definition broadcasts its selected value onto a tile
- * whose source is `sourceId`.
- */
-const definitionAppliesToSource = (
-  definition: DashboardFilter,
-  sourceId: string | undefined,
-): boolean => {
-  const target = getFilterBroadcastTarget(definition);
-  if (!target) return false;
-  const appliesTo = target.appliesToSourceIds;
-  if (!appliesTo || appliesTo.length === 0) return true;
-  return !!sourceId && appliesTo.includes(sourceId);
-};
 
 const hasSelection = (selection: FilterSelection): boolean =>
   selection.included.size > 0 ||
@@ -156,11 +141,13 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
     ignoredExpressions,
     ignoredVariableNames,
     variables,
+    unsatisfiedRequiredFilters,
   } = useMemo<{
     selectionByFilterId: ReadonlyMap<string, FilterSelection>;
     ignoredExpressions: string[];
     ignoredVariableNames: string[];
     variables: ChartVariable[];
+    unsatisfiedRequiredFilters: DashboardFilter[];
   }>(() => {
     const parsed = parseDashboardFilterValues(filterValueEntries ?? []);
 
@@ -205,6 +192,10 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
       variables,
       ignoredExpressions,
       ignoredVariableNames,
+      unsatisfiedRequiredFilters: getUnsatisfiedRequiredFilters(
+        filters,
+        selectionByFilterId,
+      ),
     };
   }, [filterValueEntries, filters]);
 
@@ -215,13 +206,14 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
       const queries: Filter[] = [];
       for (const filter of filters) {
         if (!predicate(filter)) continue;
-        if (isStaticListFilter(filter)) continue;
+        const expression = getFilterExpression(filter);
+        if (expression == null) continue;
         const selection = selectionByFilterId.get(filter.id);
         if (!selection) continue;
         // Wrap keys in `toString()` to support JSON/Dynamic-type columns.
         // All keys can be stringified, since filter select values are stringified as well.
         const emitted = filtersToQuery(
-          { [filter.expression]: selection },
+          { [expression]: selection },
           { stringifyKeys: true },
         );
         for (const query of emitted) {
@@ -251,7 +243,7 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
   const getFilterQueriesForSource = useCallback(
     (sourceId: string | undefined): Filter[] =>
       getFiltersQueriesFor(definition =>
-        definitionAppliesToSource(definition, sourceId),
+        doesFilterApplyToSource(definition, sourceId),
       ),
     [getFiltersQueriesFor],
   );
@@ -292,6 +284,8 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
     getFilterQueriesForSource,
     /** The dashboard's variable-enabled filters and their currently selected values. */
     variables,
+    /** Filters marked required that have nothing selected, if any. */
+    unsatisfiedRequiredFilters,
   };
 };
 

@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 
 import { createTeam } from '@/controllers/team';
 import { clearDBCollections, closeDB, connectDB } from '@/fixtures';
-import { backfillAlertNameAndTags } from '@/migrations';
+import { backfillAlertDisplayFields } from '@/migrations';
 import Alert, { AlertSource, AlertThresholdType } from '@/models/alert';
 import Dashboard from '@/models/dashboard';
 import { SavedSearch } from '@/models/savedSearch';
@@ -28,7 +28,7 @@ const makeSavedSearch = (
     ...fields,
   }).save();
 
-describe('backfillAlertNameAndTags', () => {
+describe('backfillAlertDisplayFields', () => {
   beforeAll(async () => {
     await connectDB();
   });
@@ -99,7 +99,7 @@ describe('backfillAlertNameAndTags', () => {
         team: team._id,
         source: AlertSource.SAVED_SEARCH,
         savedSearch: savedSearch._id,
-        name: 'Custom name',
+        displayName: 'Custom name',
       },
       {
         ...baseAlert,
@@ -135,40 +135,42 @@ describe('backfillAlertNameAndTags', () => {
       savedSearch: savedSearch._id,
     });
 
-    await backfillAlertNameAndTags();
+    await backfillAlertDisplayFields();
 
     const byId = async (id: mongoose.Types.ObjectId | string) =>
       Alert.findById(id).lean();
 
     expect(await byId(searchAlert._id)).toMatchObject({
-      name: 'Error spikes',
+      displayName: 'Error spikes',
       tags: ['errors', 'prod'],
     });
     expect(await byId(tileAlert._id)).toMatchObject({
-      name: 'Service health - P95 latency',
+      displayName: 'Service health - P95 latency',
       tags: ['infra'],
     });
-    expect((await byId(missingTileAlert._id))?.name).toBe(
+    expect((await byId(missingTileAlert._id))?.displayName).toBe(
       'Service health - Tile',
     );
     expect(await byId(namedAlert._id)).toMatchObject({
-      name: 'Custom name',
+      displayName: 'Custom name',
       tags: ['errors', 'prod'],
     });
     expect(await byId(taggedAlert._id)).toMatchObject({
-      name: 'Error spikes',
+      displayName: 'Error spikes',
       tags: ['keep-me'],
     });
     // [] means the user cleared the tags; it must not be re-filled.
     expect(await byId(clearedTagsAlert._id)).toMatchObject({
-      name: 'Error spikes',
+      displayName: 'Error spikes',
       tags: [],
     });
-    expect((await byId(inlineAlert._id))?.name).toBe('CPU usage');
-    expect(await byId(legacyAlertId)).toMatchObject({ name: 'Error spikes' });
+    expect((await byId(inlineAlert._id))?.displayName).toBe('CPU usage');
+    expect(await byId(legacyAlertId)).toMatchObject({
+      displayName: 'Error spikes',
+    });
 
     const untagged = await byId(untaggedSearchAlert._id);
-    expect(untagged?.name).toBe('Untagged search');
+    expect(untagged?.displayName).toBe('Untagged search');
     expect(untagged?.tags).toBeUndefined();
 
     // The backfill is not a user edit; it must not bump updatedAt.
@@ -177,7 +179,7 @@ describe('backfillAlertNameAndTags', () => {
     );
 
     const dangling = await byId(danglingAlert._id);
-    expect(dangling?.name).toBeUndefined();
+    expect(dangling?.displayName).toBeUndefined();
     expect(dangling?.tags).toBeUndefined();
   });
 
@@ -199,18 +201,25 @@ describe('backfillAlertNameAndTags', () => {
       },
     ]);
 
-    await backfillAlertNameAndTags();
-    expect((await Alert.findById(alert._id).lean())?.name).toBe('First name');
+    await backfillAlertDisplayFields();
+    expect((await Alert.findById(alert._id).lean())?.displayName).toBe(
+      'First name',
+    );
 
     await SavedSearch.updateOne(
       { _id: savedSearch._id },
       { name: 'Second name' },
     );
-    await Alert.updateOne({ _id: otherAlert._id }, { $unset: { name: '' } });
+    await Alert.updateOne(
+      { _id: otherAlert._id },
+      { $unset: { displayName: '' } },
+    );
 
-    await backfillAlertNameAndTags();
-    expect((await Alert.findById(alert._id).lean())?.name).toBe('First name');
-    expect((await Alert.findById(otherAlert._id).lean())?.name).toBe(
+    await backfillAlertDisplayFields();
+    expect((await Alert.findById(alert._id).lean())?.displayName).toBe(
+      'First name',
+    );
+    expect((await Alert.findById(otherAlert._id).lean())?.displayName).toBe(
       'Second name',
     );
   });
