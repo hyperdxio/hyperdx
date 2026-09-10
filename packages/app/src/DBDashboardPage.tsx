@@ -1886,7 +1886,7 @@ function DBDashboardPage({
     for (const { config } of dashboard.tiles) {
       if (!isBuilderSavedChartConfig(config)) continue;
       const source = sources?.find(v => v.id === config.source);
-      if (!source) continue;
+      if (!source || source.disabled) continue;
       // TODO: will need to update this when we allow for multiple metrics per chart
       const firstSelect = config.select[0];
       const metricType =
