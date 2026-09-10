@@ -192,7 +192,7 @@ function useOptimizedKeyValuesCalls({
   const results: UseQueryResult<EnrichedCall[]>[] = useQueries({
     queries: Array.from(filtersByGroupKey.values())
       .filter(filtersInGroup =>
-        sources?.some(s => s.id === filtersInGroup[0].source),
+        sources?.some(s => s.id === filtersInGroup[0].source && !s.disabled),
       )
       .map(filtersInGroup => {
         const representative = filtersInGroup[0];

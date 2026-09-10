@@ -64,7 +64,10 @@ export function useOnboardingCompletion(
 
   const firstConnection = connections?.[0];
   const firstConnectionSources = useMemo(
-    () => sources?.filter(source => source.connection === firstConnection?.id),
+    () =>
+      sources?.filter(
+        source => source.connection === firstConnection?.id && !source.disabled,
+      ),
     [sources, firstConnection],
   );
 
@@ -98,11 +101,18 @@ export function useOnboardingCompletion(
     teamAgeDays != null &&
     teamAgeDays < PRODUCT_MAX_TEAM_AGE_DAYS &&
     !onboardingData?.isDismissed;
+  // Also guards against firing with `connection: ''`, which fails Zod validation
+  // on the API's clickhouse-proxy. And skip when no enabled source remains on
+  // the connection (ported from #3107): the filters list would be empty,
+  // producing an unrestricted `system.tables` scan that could count unrelated
+  // tables and wrongly mark "Add data" complete.
+  const isSourceRowsQueryEnabled =
+    !!firstConnection?.id &&
+    (firstConnectionSources?.length ?? 0) > 0 &&
+    isWithinAnyOnboardingWindow;
   const { data: sourceRowsData, isLoading: isSourceRowsLoading } =
     useQueriedChartConfig(sourceRowsConfig, {
-      // Also guards against firing with `connection: ''`, which fails Zod
-      // validation on the API's clickhouse-proxy.
-      enabled: !!firstConnection?.id && isWithinAnyOnboardingWindow,
+      enabled: isSourceRowsQueryEnabled,
     });
   const hasData = sourceRowsData?.data?.[0]?.total_rows > 0;
 
@@ -191,10 +201,9 @@ export function useOnboardingCompletion(
   // row-count) could still be loading — making tasks look incomplete for a
   // beat, then flipping to complete once they resolve, which reads as an
   // "in-session completion" and wrongly shows + celebrates on load.
-  // The row-count query is disabled until there's a connection to query; a
-  // disabled query reports isLoading:true forever, so only wait on it when it's
-  // actually enabled (i.e. a connection exists).
-  const sourceRowsSettled = !firstConnection?.id || !isSourceRowsLoading;
+  // A disabled query reports isLoading:true forever, so only wait on the
+  // row-count query when it's actually enabled.
+  const sourceRowsSettled = !isSourceRowsQueryEnabled || !isSourceRowsLoading;
   const inputsReady =
     !isMeLoading &&
     me != null &&
