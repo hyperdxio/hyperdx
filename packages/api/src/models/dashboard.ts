@@ -12,51 +12,92 @@ export interface IDashboard extends z.infer<typeof DashboardSchema> {
   provisioned?: boolean;
   createdAt: Date;
   updatedAt: Date;
+  version: number;
 }
 
 export type DashboardDocument = mongoose.HydratedDocument<IDashboard>;
 
-export default mongoose.model<IDashboard>(
-  'Dashboard',
-  new Schema<IDashboard>(
-    {
-      name: {
-        type: String,
-        required: true,
-      },
-      tiles: { type: mongoose.Schema.Types.Mixed, required: true },
-      team: { type: mongoose.Schema.Types.ObjectId, ref: 'Team' },
-      tags: {
-        type: [String],
-        default: [],
-      },
-      filters: { type: mongoose.Schema.Types.Array, default: [] },
-      savedQuery: { type: String, required: false },
-      savedQueryLanguage: { type: String, required: false },
-      savedFilterValues: { type: mongoose.Schema.Types.Array, required: false },
-      containers: { type: mongoose.Schema.Types.Array, required: false },
-      createdBy: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
-        required: false,
-      },
-      updatedBy: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
-        required: false,
-      },
-      provisioned: { type: Boolean, default: false },
+// Strips a client-supplied `version` from an update the way mongoose's own
+// timestamps plugin strips a client-supplied `updatedAt`: keeps the field
+// server-owned, and avoids a hard Mongo error, since `$set: { version: n }`
+// alongside the `$inc` below would conflict.
+function stripClientSuppliedVersion(
+  update: Record<string, any> | null | undefined,
+) {
+  if (update == null) return;
+  delete update.version;
+  if (update.$set) delete update.$set.version;
+  if (update.$setOnInsert) delete update.$setOnInsert.version;
+}
+
+const dashboardSchema = new Schema<IDashboard>(
+  {
+    name: {
+      type: String,
+      required: true,
     },
-    {
-      timestamps: true,
-      toJSON: { getters: true },
+    tiles: { type: mongoose.Schema.Types.Mixed, required: true },
+    team: { type: mongoose.Schema.Types.ObjectId, ref: 'Team' },
+    tags: {
+      type: [String],
+      default: [],
     },
+    filters: { type: mongoose.Schema.Types.Array, default: [] },
+    savedQuery: { type: String, required: false },
+    savedQueryLanguage: { type: String, required: false },
+    savedFilterValues: { type: mongoose.Schema.Types.Array, required: false },
+    containers: { type: mongoose.Schema.Types.Array, required: false },
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: false,
+    },
+    updatedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: false,
+    },
+    provisioned: { type: Boolean, default: false },
+    // Optimistic-concurrency counter. Server-owned via the middleware below
+    // rather than by discipline at each write call site — see
+    // `@/utils/dashboardVersion.ts` for why this replaced `updatedAt` as the
+    // guard token.
+    version: { type: Number, default: 0 },
+  },
+  {
+    timestamps: true,
+    toJSON: { getters: true },
+  },
+)
+  .index(
+    { name: 1, team: 1 },
+    { unique: true, partialFilterExpression: { provisioned: true } },
   )
-    .index(
-      { name: 1, team: 1 },
-      { unique: true, partialFilterExpression: { provisioned: true } },
-    )
-    // Serves team-scoped listings (IaC import manifest, external API list);
-    // the partial {name, team} index above only covers provisioned dashboards.
-    .index({ team: 1, _id: 1 }),
+  // Serves team-scoped listings (IaC import manifest, external API list);
+  // the partial {name, team} index above only covers provisioned dashboards.
+  .index({ team: 1, _id: 1 });
+
+// Every update operation bumps `version`, so a write path added later gets
+// the concurrency guard for free without having to remember to do it.
+dashboardSchema.pre(
+  ['findOneAndUpdate', 'updateOne', 'updateMany'],
+  function (next) {
+    const update = this.getUpdate() as Record<string, any> | null;
+    stripClientSuppliedVersion(update);
+    if (update != null) {
+      update.$inc = { ...update.$inc, version: 1 };
+    }
+    next();
+  },
 );
+
+// `save()` on a brand-new document already gets `version: 0` from the
+// schema default; incrementing here too would start it at 1 instead.
+dashboardSchema.pre('save', function (next) {
+  if (!this.isNew) {
+    this.version = (this.get('version') ?? 0) + 1;
+  }
+  next();
+});
+
+export default mongoose.model<IDashboard>('Dashboard', dashboardSchema);
