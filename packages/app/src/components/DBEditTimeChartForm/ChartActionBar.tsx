@@ -11,6 +11,7 @@ import {
   Tooltip,
 } from '@mantine/core';
 import {
+  IconBell,
   IconDotsVertical,
   IconLayoutGrid,
   IconPlayerPlay,
@@ -71,6 +72,18 @@ type ChartActionBarProps = {
   onSave?: (chart: SavedChartConfig) => void;
   onClose?: () => void;
   isSaving?: boolean;
+  /** Whether the edited chart currently carries an alert. */
+  hasAlert?: boolean;
+  handleSaveAlert?: (form: ChartEditorFormState) => void;
+  onSaveAlert?: (chart: SavedChartConfig) => void;
+  saveAlertLabel?: string;
+  isSavingAlert?: boolean;
+  /**
+   * Whether to offer "Save to dashboard". Defaults to "outside a dashboard".
+   * The inline-alert editor turns it off: saving that chart as a tile would
+   * copy its alert onto the tile, leaving two alerts on one query.
+   */
+  showSaveToDashboard?: boolean;
   displayedTimeInputValue?: string;
   setDisplayedTimeInputValue?: (value: string) => void;
   onTimeRangeSearch?: (value: string) => void;
@@ -92,6 +105,12 @@ export function ChartActionBar({
   onSave,
   onClose,
   isSaving,
+  hasAlert,
+  handleSaveAlert,
+  onSaveAlert,
+  saveAlertLabel = 'Save alert',
+  isSavingAlert,
+  showSaveToDashboard,
   displayedTimeInputValue,
   setDisplayedTimeInputValue,
   onTimeRangeSearch,
@@ -109,6 +128,19 @@ export function ChartActionBar({
             onClick={handleSubmit(handleSave)}
           >
             Save
+          </Button>
+        )}
+        {/* Only once an alert exists on the chart: with none there is nothing
+            to save, and the button would read as a second way to add one. */}
+        {onSaveAlert != null && handleSaveAlert != null && hasAlert && (
+          <Button
+            data-testid="chart-save-alert-button"
+            loading={isSavingAlert}
+            variant="primary"
+            leftSection={<IconBell size={16} />}
+            onClick={handleSubmit(handleSaveAlert)}
+          >
+            {saveAlertLabel}
           </Button>
         )}
         {onClose != null && (
@@ -175,7 +207,7 @@ export function ChartActionBar({
             Run
           </Button>
         )}
-        {!IS_LOCAL_MODE && !dashboardId && (
+        {!IS_LOCAL_MODE && (showSaveToDashboard ?? !dashboardId) && (
           <Menu width={250}>
             <Menu.Target>
               <ActionIcon variant="secondary" size="input-sm">

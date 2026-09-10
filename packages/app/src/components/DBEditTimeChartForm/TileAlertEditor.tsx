@@ -62,7 +62,8 @@ export function TileAlertEditor({
   setValue: UseFormSetValue<ChartEditorFormState>;
   alert: NonNullable<ChartEditorFormState['alert']>;
   dashboardId?: string;
-  onRemove: () => void;
+  /** Omit to hide the remove control, for surfaces that require an alert. */
+  onRemove?: () => void;
   error?: string;
   warning?: string;
   tooltip?: string;
@@ -96,6 +97,10 @@ export function TileAlertEditor({
   const derivedDisplayName = dashboardName
     ? formatTileAlertDisplayName(dashboardName, tileName)
     : undefined;
+  // No dashboard behind the editor means the alert is inline (the chart
+  // explorer, or the inline-alert modal). It has no tile to inherit a name or
+  // tags from, so the user names it and an unset tag list means none.
+  const isInline = dashboardId == null;
 
   return (
     <Paper data-testid="alert-details">
@@ -143,17 +148,19 @@ export function TileAlertEditor({
         <Group gap="xs">
           {alertItem && <AlertHistoryCardList alert={alertItem} />}
           {alertItem && <AckAlert alert={alertItem} />}
-          <Tooltip label="Remove alert">
-            <ActionIcon
-              variant="danger"
-              color="red"
-              size="sm"
-              onClick={onRemove}
-              data-testid="remove-alert-button"
-            >
-              <IconTrash size={14} />
-            </ActionIcon>
-          </Tooltip>
+          {onRemove && (
+            <Tooltip label="Remove alert">
+              <ActionIcon
+                variant="danger"
+                color="red"
+                size="sm"
+                onClick={onRemove}
+                data-testid="remove-alert-button"
+              >
+                <IconTrash size={14} />
+              </ActionIcon>
+            </Tooltip>
+          )}
         </Group>
       </Group>
       <Collapse expanded={opened}>
@@ -245,6 +252,8 @@ export function TileAlertEditor({
             displayNameName="alert.displayName"
             tagsName="alert.tags"
             derivedDisplayName={derivedDisplayName}
+            displayNameRequired={isInline}
+            tagsInherit={!isInline}
           />
           <AlertScheduleFields
             control={control}
