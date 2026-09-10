@@ -43,7 +43,7 @@ const MANIFEST = {
       source: 'saved_search',
       savedSearchId: '4'.repeat(24),
     },
-    // Importable since provider 3.26.0.
+    // Importable since provider 3.28.0.
     { id: '5'.repeat(24), name: 'A2', source: 'tile' },
     // Its tile has no unique, non-blank name, so the provider cannot address
     // it — the server marks it and the export withholds it.
@@ -149,7 +149,7 @@ describe('IacMigrationSection', () => {
     );
     // A tile alert in the file raises the provider floor to the version that
     // models `source = "tile"`.
-    expect(content).toContain('version = ">= 3.26.0"');
+    expect(content).toContain('version = ">= 3.28.0"');
     expect(content).not.toContain('7'.repeat(24)); // unaddressable tile alert excluded
     expect(content).not.toContain('6'.repeat(24)); // connections not selected by default
   });

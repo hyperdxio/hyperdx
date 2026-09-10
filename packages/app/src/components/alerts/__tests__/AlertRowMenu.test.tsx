@@ -164,7 +164,7 @@ describe('AlertRowMenu', () => {
     ).toBeInTheDocument();
   });
 
-  // `source = "tile"` only exists in provider 3.26.0, so the snippets this
+  // `source = "tile"` only exists in provider 3.28.0, so the snippets this
   // path generates have to ask for it — the bulk export's floor is asserted
   // separately and the two must not drift.
   it('offers Terraform export for a tile alert and asks for the tile-alert provider', async () => {
@@ -175,7 +175,7 @@ describe('AlertRowMenu', () => {
     );
 
     expect(
-      await screen.findByText(/version\s+= ">= 3.26.0"/),
+      await screen.findByText(/version\s+= ">= 3.28.0"/),
     ).toBeInTheDocument();
   });
 

@@ -246,7 +246,7 @@ describe('iac router', () => {
     ]);
   });
 
-  // Tile alerts are importable since provider 3.26.0, but only when the tile
+  // Tile alerts are importable since provider 3.28.0, but only when the tile
   // has a unique, non-blank name — the provider's `tile_ids` map is keyed by
   // name and omits the rest. The dashboards leg of the manifest cannot answer
   // this (it drops provisioned dashboards and caps at IAC_MANIFEST_LIMIT), so

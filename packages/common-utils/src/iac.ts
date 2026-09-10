@@ -37,13 +37,16 @@ const TERRAFORM_PROVIDER_SOURCE = 'ClickHouse/clickhouse';
 const TERRAFORM_PROVIDER_VERSION_CONSTRAINT = '>= 3.25.0';
 // `source = "tile"` with `dashboard_id`/`tile_id` on
 // clickhouse_clickstack_alert, and the `tile_ids` map on
-// clickhouse_clickstack_dashboard, arrive in 3.26.0 (provider #683). Only a
-// file that actually carries a tile alert asks for it — an export of anything
-// else still installs on 3.25.x, and raising the floor for everyone would
-// break those exports for no reason.
+// clickhouse_clickstack_dashboard, arrive in 3.28.0 (provider #683). It must
+// be the release #683 actually shipped in: 3.26.0 and 3.27.x published
+// without it, so a lower floor lets `terraform init` pick a provider that
+// rejects a tile alert at apply time. Only a file that actually carries a
+// tile alert asks for it — an export of anything else still installs on
+// 3.25.x, and raising the floor for everyone would break those exports for
+// no reason.
 // Exported: the per-alert popover names it in its copy, and a second literal
 // there would drift the moment this one moves.
-export const TERRAFORM_PROVIDER_TILE_ALERT_VERSION_CONSTRAINT = '>= 3.26.0';
+export const TERRAFORM_PROVIDER_TILE_ALERT_VERSION_CONSTRAINT = '>= 3.28.0';
 // `import {}` blocks and `-generate-config-out` both landed in Terraform 1.5.
 // Without this, an older CLI fails with a syntax error instead of saying so.
 const TERRAFORM_VERSION_CONSTRAINT = '>= 1.5.0';

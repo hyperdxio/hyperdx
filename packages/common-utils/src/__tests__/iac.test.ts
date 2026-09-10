@@ -74,7 +74,7 @@ describe('isImportableAlert', () => {
     ).toBe(true);
   });
 
-  // Since provider 3.26.0 (#683) clickhouse_clickstack_alert models
+  // Since provider 3.28.0 (#683) clickhouse_clickstack_alert models
   // `source = "tile"`, so a tile alert is importable as long as its tile can
   // be addressed.
   it('accepts a tile alert whose tile is addressable', () => {
@@ -551,7 +551,7 @@ describe('buildImportFile', () => {
   });
 
   // The floor only rises for a file that carries a tile alert: `source =
-  // "tile"` is 3.26.0+, and demanding it of an export that has no tile alert
+  // "tile"` is 3.28.0+, and demanding it of an export that has no tile alert
   // would fail `terraform init` for nothing.
   it('raises the provider version floor for a tile alert and explains the hand edit', () => {
     const file = buildImportFile({
@@ -562,10 +562,10 @@ describe('buildImportFile', () => {
       ],
     });
 
-    expect(file).toContain('version = ">= 3.26.0"');
+    expect(file).toContain('version = ">= 3.28.0"');
     expect(file).not.toContain('version = ">= 3.25.0"');
     expect(file).toContain('tile_ids["<tile name>"]');
-    expect(file).toContain('requires >= 3.26.0');
+    expect(file).toContain('requires >= 3.28.0');
   });
 
   // The floor is picked, not compared, so a bump to the base floor past the
@@ -582,9 +582,11 @@ describe('buildImportFile', () => {
       resources: [{ type: 'alert', id: ID, tileAlert: true }],
     });
     // Sortable, so this cannot pass on a string comparison of "3.9" vs "3.10".
+    // `^\s+` skips `required_version`, which is the Terraform CLI floor and
+    // would otherwise match first and make both sides read 1.5.0.
     const floor = (file: string) => {
       const [major, minor, patch] = (
-        file.match(/version = ">= ([\d.]+)"/)?.[1] ?? '0.0.0'
+        file.match(/^\s+version = ">= ([\d.]+)"$/m)?.[1] ?? '0.0.0'
       )
         .split('.')
         .map(Number);
