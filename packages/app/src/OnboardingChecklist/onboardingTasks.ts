@@ -1,3 +1,4 @@
+import { isNonEmptyWhereExpr } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import type { OnboardingTaskId } from '@hyperdx/common-utils/dist/types';
 import { ONBOARDING_TASK_IDS } from '@hyperdx/common-utils/dist/types';
 
@@ -37,8 +38,10 @@ export const PRODUCT_TASKS: Record<
   mcp: {
     title: 'Connect the MCP server',
     description: 'Query your data from an AI agent',
-    // The MCP setup lives on the "API & Agents" tab of team settings.
-    href: '/team',
+    // The MCP setup lives in the McpServerSection under the "API & Agents" tab
+    // of team settings; /team alone falls back to the Data tab (TeamPage reads
+    // ?tab and defaults to tabs[0]), so target the tab + section anchor.
+    href: '/team?tab=api-agents#team-api-agents-mcp-server',
   },
 };
 
@@ -58,5 +61,5 @@ export function isNonTrivialSearch(
   where: string,
   filters: unknown[] | undefined,
 ): boolean {
-  return where.trim() !== '' || (filters?.length ?? 0) > 0;
+  return isNonEmptyWhereExpr(where) || (filters?.length ?? 0) > 0;
 }

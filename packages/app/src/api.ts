@@ -395,11 +395,6 @@ const api = {
       },
     });
   },
-  // Marks a product-usage onboarding task complete. Idempotent on the server
-  // ($addToSet), so callers fire it optimistically without checking whether the
-  // task is already done. Seeds the `me` cache from the response so the sidebar
-  // checklist ticks instantly without a refetch.
-  useCompleteOnboardingTask,
   useDismissOnboarding() {
     const queryClient = useQueryClient();
     return useMutation<OnboardingDataApiResponse, Error | HTTPError, boolean>({

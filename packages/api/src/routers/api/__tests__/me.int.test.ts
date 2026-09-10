@@ -139,6 +139,10 @@ describe('me router', () => {
         .send({ name: 'Empty', tiles: [], tags: [] })
         .expect(200);
 
+      // Recording is fire-and-forget, so settle before the negative assertion —
+      // otherwise a wrongly-recorded create could simply not have landed yet.
+      // (The later waitForTask can't tell a late create-write from the patch.)
+      await new Promise(r => setTimeout(r, 200));
       expect(await completedTasksFor(user._id)).not.toContain('dashboard');
 
       // Adding a tile via update then completes it — the task means "built a

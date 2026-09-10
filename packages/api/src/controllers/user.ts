@@ -74,7 +74,11 @@ export function recordOnboardingTaskCompletion(
   userId: string | ObjectId | undefined | null,
   taskId: OnboardingTaskId,
 ) {
-  if (userId == null) {
+  // Skip when there's no user, or when the id isn't a real ObjectId. In local
+  // app mode the auth middleware injects a synthetic `_local_user_` id, which
+  // would make updateOne reject with a CastError and log a warning on every
+  // dashboard save, alert save, and MCP tool call.
+  if (userId == null || !mongoose.isValidObjectId(userId)) {
     return;
   }
   void User.updateOne(
