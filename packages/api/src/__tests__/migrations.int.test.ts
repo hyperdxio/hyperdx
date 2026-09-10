@@ -159,7 +159,6 @@ describe('backfillAlertDisplayFields', () => {
       displayName: 'Error spikes',
       tags: ['keep-me'],
     });
-    // [] means the user cleared the tags; it must not be re-filled.
     expect(await byId(clearedTagsAlert._id)).toMatchObject({
       displayName: 'Error spikes',
       tags: [],
@@ -173,7 +172,6 @@ describe('backfillAlertDisplayFields', () => {
     expect(untagged?.displayName).toBe('Untagged search');
     expect(untagged?.tags).toBeUndefined();
 
-    // The backfill is not a user edit; it must not bump updatedAt.
     expect((await byId(searchAlert._id))?.updatedAt).toEqual(
       searchAlert.updatedAt,
     );

@@ -9,8 +9,7 @@ import logger from '@/utils/logger';
 const BACKFILL_BATCH_SIZE = 500;
 
 const DISPLAY_NAME_MISSING_FILTER = { displayName: { $in: [null, ''] } };
-// Matches missing/null only: an existing [] means the user cleared the tags,
-// so it is left alone.
+// Matches missing/null only; an existing [] means the user cleared the tags.
 const TAGS_MISSING_FILTER = { tags: null };
 
 export async function backfillAlertDisplayFields() {
@@ -113,9 +112,8 @@ export async function backfillAlertDisplayFields() {
     }
 
     if (ops.length > 0) {
-      // timestamps: false (per op — the bulkWrite-level option only covers
-      // inserts) keeps the backfill from bumping updatedAt, which is
-      // user-visible and implies a user edit.
+      // Per-op timestamps because the bulkWrite-level option only covers
+      // inserts; without it the backfill bumps the user-visible updatedAt.
       const result = await Alert.bulkWrite(
         ops.map(op => ({ updateOne: { ...op, timestamps: false } })),
         { ordered: false },

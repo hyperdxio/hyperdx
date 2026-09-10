@@ -344,9 +344,7 @@ export const buildAlertMessageTemplateTitle = ({
 }) => {
   const { alert, dashboard, savedSearch, value } = view;
   const handlebars = createHandlebarsWithHelpers();
-  // `alert.name` is an optional Handlebars template for the notification
-  // title. It is user data, so a malformed template must not break the
-  // notification: fall back to the raw string.
+  // `alert.name` is an optional Handlebars template for the notification title.
   let renderedTemplate: string | null = null;
   if (alert.name) {
     try {
