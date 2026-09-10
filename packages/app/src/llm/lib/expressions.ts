@@ -1,7 +1,7 @@
 import { TLogSource, TTraceSource } from '@hyperdx/common-utils/dist/types';
 
 import { generateCostSqlExpression } from './cost';
-import { buildLLMSpanSqlPredicate } from './detect';
+import { buildAnyKeyExistsSql, buildLLMSpanSqlPredicate } from './detect';
 
 /**
  * SQL expression derivation for the LLM dashboard, mirroring
@@ -222,6 +222,10 @@ function getLLMAttributeExpressions({
   attributeField: string;
   isJsonColumn: boolean;
 }) {
+  /** Rows carrying any of these keys. Index-friendly — see buildKeyExistsSql. */
+  const anyKeyExists = (keys: readonly string[]) =>
+    buildAnyKeyExistsSql({ attributeField, keys, isJsonColumn });
+
   const model = coalesceString(attributeField, MODEL_KEYS, isJsonColumn);
   const inputTokens = greatestNumber(
     attributeField,
@@ -284,7 +288,7 @@ function getLLMAttributeExpressions({
     ttftMs: greatestNumber(attributeField, TTFT_MS_KEYS, isJsonColumn),
     toolName: coalesceString(attributeField, TOOL_NAME_KEYS, isJsonColumn),
     agentName: coalesceString(attributeField, AGENT_NAME_KEYS, isJsonColumn),
-    hasAgentName: `${coalesceString(attributeField, AGENT_NAME_KEYS, isJsonColumn)} != ''`,
+    hasAgentName: anyKeyExists(AGENT_NAME_KEYS),
     // Emitters disagree on encoding ('stop' vs '["stop"]'); strip the JSON
     // array wrapper so the group-by buckets align.
     // The char class is written backslash-free (leading ] in an RE2 class
@@ -312,20 +316,29 @@ function getLLMAttributeExpressions({
      */
     hasProvidedCost: `(${providedCost} > 0)`,
     /** See REPORTED_TOKEN_KEYS: gates sums so wrapper spans don't double count. */
-    hasReportedTokens: `(${REPORTED_TOKEN_KEYS.map(key =>
-      isJsonColumn
-        ? `toString(${attributeField}.\`${key}\`) != ''`
-        : `${attributeField}['${key}'] != ''`,
-    ).join(' OR ')})`,
-    hasSessionId: `${coalesceString(attributeField, SESSION_ID_KEYS, isJsonColumn)} != ''`,
-    hasTtft: `${greatestNumber(attributeField, TTFT_MS_KEYS, isJsonColumn)} > 0`,
-    hasUserId: `${coalesceString(attributeField, USER_ID_KEYS, isJsonColumn)} != ''`,
-    hasFinishReason: `${coalesceString(attributeField, FINISH_REASON_KEYS, isJsonColumn)} != ''`,
+    hasReportedTokens: anyKeyExists(REPORTED_TOKEN_KEYS),
+    hasSessionId: anyKeyExists(SESSION_ID_KEYS),
+    // Unlike the other gates this keeps its value comparison: it feeds a
+    // latency percentile, and a zero would drag p50/p95 down. The presence
+    // conjunct is redundant for correctness and there only to give the
+    // attribute-key index something to prune on.
+    hasTtft: `(${anyKeyExists(TTFT_MS_KEYS)} AND ${greatestNumber(
+      attributeField,
+      TTFT_MS_KEYS,
+      isJsonColumn,
+    )} > 0)`,
+    hasUserId: anyKeyExists(USER_ID_KEYS),
+    hasFinishReason: anyKeyExists(FINISH_REASON_KEYS),
+    // The `= 'TOOL'` term stays a value comparison — it discriminates one
+    // OpenInference span kind from the others, and the query builder already
+    // rewrites equality onto the attribute-items index.
     isToolSpan: `(${[
       `${fieldAccess(attributeField, 'openinference.span.kind', isJsonColumn)} = 'TOOL'`,
-      `${fieldAccess(attributeField, 'gen_ai.tool.name', isJsonColumn)} != ''`,
-      `${fieldAccess(attributeField, 'gen_ai.tool.call.id', isJsonColumn)} != ''`,
-      `${fieldAccess(attributeField, 'ai.toolCall.name', isJsonColumn)} != ''`,
+      buildAnyKeyExistsSql({
+        attributeField,
+        keys: ['gen_ai.tool.name', 'gen_ai.tool.call.id', 'ai.toolCall.name'],
+        isJsonColumn,
+      }),
     ].join(' OR ')})`,
   };
 }

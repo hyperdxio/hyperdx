@@ -30,7 +30,7 @@ describe('getLLMExpressions', () => {
       `${expressions.effectiveInputTokens} + ${expressions.outputTokens}`,
     );
     expect(expressions.isLLMSpan).toContain(
-      "SpanAttributes['gen_ai.operation.name'] != ''",
+      "mapContains(SpanAttributes, 'gen_ai.operation.name')",
     );
     expect(expressions.isError).toBe("lower(StatusCode) = 'error'");
     expect(expressions.durationInMillis).toBe('Duration/1e6');
@@ -51,6 +51,9 @@ describe('getLLMExpressions', () => {
     expect(expressions.isLLMSpan).toContain(
       "toString(SpanAttributes.`gen_ai.operation.name`) != ''",
     );
+    // mapContains does not apply to JSON paths.
+    expect(expressions.isLLMSpan).not.toContain('mapContains');
+    expect(expressions.hasReportedTokens).not.toContain('mapContains');
   });
 
   it('derives session id and reported-token gate expressions', () => {
@@ -65,15 +68,21 @@ describe('getLLMExpressions', () => {
     expect(expressions.sessionId).toContain(
       "nullif(SpanAttributes['ai.telemetry.metadata.sessionId'], '')",
     );
-    expect(expressions.hasSessionId).toContain("!= ''");
+    // The gate tests key presence so a mapKeys() index can serve it; the
+    // value expression above still coalesces.
+    expect(expressions.hasSessionId).toBe(
+      "(mapContains(SpanAttributes, 'gen_ai.conversation.id') OR " +
+        "mapContains(SpanAttributes, 'session.id') OR " +
+        "mapContains(SpanAttributes, 'ai.telemetry.metadata.sessionId'))",
+    );
 
     // The gate keys on authoritative usage reporters only — wrapper spans
     // carrying just ai.usage.* must not satisfy it.
     expect(expressions.hasReportedTokens).toContain(
-      "SpanAttributes['gen_ai.usage.input_tokens'] != ''",
+      "mapContains(SpanAttributes, 'gen_ai.usage.input_tokens')",
     );
     expect(expressions.hasReportedTokens).toContain(
-      "SpanAttributes['llm.token_count.total'] != ''",
+      "mapContains(SpanAttributes, 'llm.token_count.total')",
     );
     expect(expressions.hasReportedTokens).not.toContain('ai.usage.inputTokens');
   });
@@ -126,7 +135,12 @@ describe('getLLMExpressions', () => {
     expect(expressions.ttftMs).toContain(
       "SpanAttributes['copilot_chat.time_to_first_token']",
     );
+    // Keeps its value comparison (a zero TTFT would skew the percentiles) and
+    // adds a presence conjunct purely so the key index can prune.
     expect(expressions.hasTtft).toContain('> 0');
+    expect(expressions.hasTtft).toContain(
+      "mapContains(SpanAttributes, 'ttft_ms')",
+    );
 
     // Tool name coalesce includes the flat form.
     expect(expressions.toolName).toContain("SpanAttributes['tool_name']");
@@ -136,7 +150,10 @@ describe('getLLMExpressions', () => {
       "SpanAttributes['gen_ai.agent.name']",
     );
     expect(expressions.agentName).toContain("SpanAttributes['agent.name']");
-    expect(expressions.hasAgentName).toContain("!= ''");
+    expect(expressions.hasAgentName).toBe(
+      "(mapContains(SpanAttributes, 'gen_ai.agent.name') OR " +
+        "mapContains(SpanAttributes, 'agent.name'))",
+    );
 
     // Finish reasons normalized out of their JSON-array encoding.
     expect(expressions.finishReason).toMatch(/^replaceRegexpAll\(/);
@@ -145,7 +162,9 @@ describe('getLLMExpressions', () => {
     // User attribution coalesce.
     expect(expressions.userId).toContain("SpanAttributes['user.email']");
     expect(expressions.userId).toContain("SpanAttributes['enduser.id']");
-    expect(expressions.hasUserId).toContain("!= ''");
+    expect(expressions.hasUserId).toContain(
+      "mapContains(SpanAttributes, 'user.email')",
+    );
 
     expect(expressions.statusMessage).toBe('StatusMessage');
   });
@@ -247,7 +266,7 @@ describe('getLLMLogExpressions', () => {
       "nullif(LogAttributes['session.id'], '')",
     );
     expect(expressions.isLLMSpan).toContain(
-      "LogAttributes['gen_ai.provider.name'] != ''",
+      "mapContains(LogAttributes, 'gen_ai.provider.name')",
     );
     // LLM-related = LLM markers OR any session id, so tool_result /
     // lifecycle log events that only carry session.id are included.
