@@ -214,6 +214,10 @@ consistent:
 | `shared/chartData`    | `ChartUtils`                     | Response shaping ports            |
 | `shared/formatNumber` | `utils.ts` + `source.ts`         | formatNumber + format resolution  |
 
+Ported files carry an `@source packages/app/...` tag naming their origin. Keep
+the tag when you edit one and add a tag when you add a port — see
+[`agent_docs/code_style.md`](../../agent_docs/code_style.md#marking-a-whole-file-port).
+
 Key expression mappings from the web frontend's `getConfig()`:
 
 - `Timestamp` → `displayedTimestampValueExpression` (NOT

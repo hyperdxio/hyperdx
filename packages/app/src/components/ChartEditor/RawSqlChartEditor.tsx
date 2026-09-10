@@ -119,6 +119,8 @@ export default function RawSqlChartEditor({
   isDashboardForm,
   alert,
   additionalWarnings,
+  alertsEnabled,
+  isAlertRequired,
   dashboardId,
   variables,
 }: {
@@ -129,6 +131,10 @@ export default function RawSqlChartEditor({
   isDashboardForm: boolean;
   alert: ChartEditorFormState['alert'];
   additionalWarnings?: string[];
+  /** Whether this editor offers an alert (see EditTimeChartForm.enableAlerts). */
+  alertsEnabled?: boolean;
+  /** Hides the alert editor's remove control. */
+  isAlertRequired?: boolean;
   dashboardId?: string;
   variables?: ChartVariable[];
 }) {
@@ -140,6 +146,7 @@ export default function RawSqlChartEditor({
   const connection = useWatch({ control, name: 'connection' });
   const source = useWatch({ control, name: 'source' });
   const sqlTemplate = useWatch({ control, name: 'sqlTemplate' });
+  const chartName = useWatch({ control, name: 'name' });
   const sourceObject = sources?.find(s => s.id === source);
 
   const rawSqlConfig = useMemo(
@@ -290,7 +297,7 @@ export default function RawSqlChartEditor({
         </Group>
         <Group gap="xs">
           {displayTypeSupportsRawSqlAlerts(displayType) &&
-            dashboardId &&
+            alertsEnabled &&
             !alert &&
             !IS_LOCAL_MODE && (
               <Button
@@ -298,7 +305,12 @@ export default function RawSqlChartEditor({
                 data-testid="alert-button"
                 size="sm"
                 color={'gray'}
-                onClick={() => setValue('alert', DEFAULT_TILE_ALERT)}
+                onClick={() =>
+                  setValue('alert', {
+                    ...DEFAULT_TILE_ALERT,
+                    ...(chartName && { displayName: chartName }),
+                  })
+                }
               >
                 <IconBell size={14} className="me-2" />
                 Add Alert
@@ -361,7 +373,10 @@ export default function RawSqlChartEditor({
           control={control}
           setValue={setValue}
           alert={alert}
-          onRemove={() => setValue('alert', undefined)}
+          dashboardId={dashboardId}
+          onRemove={
+            isAlertRequired ? undefined : () => setValue('alert', undefined)
+          }
           error={alertErrorMessage}
           warning={alertWarningMessage}
           tooltip={alertTooltip}

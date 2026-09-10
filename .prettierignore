@@ -2,3 +2,7 @@
 dist
 coverage
 .volumes
+
+# docgen serialises with JSON.stringify; prettier would reformat ~1400 lines and
+# the two would fight, leaving check-openapi-sync.sh permanently red.
+packages/api/openapi.json

@@ -30,12 +30,12 @@ function PropertyRow({
 /**
  * Full alert metadata block for the alert detail page: the shared one-line
  * summary (threshold, schedule, targets) plus every other persisted
- * property — name, message template, group-by, schedule anchor/offset,
- * acknowledgement, tags, and created/updated timestamps. Rows render only
- * when the field is set.
+ * property — notification title, message template, group-by, schedule
+ * anchor/offset, acknowledgement, tags, and created/updated timestamps. Rows
+ * render only when the field is set.
  */
 export function AlertDetailProperties({ alert }: { alert: AlertsPageItem }) {
-  const tags = alert.dashboard?.tags ?? alert.savedSearch?.tags ?? [];
+  const tags = alert.tags ?? [];
   const hasScheduleAnchor = alert.scheduleStartAt != null;
   const hasScheduleOffset =
     alert.scheduleOffsetMinutes != null && alert.scheduleOffsetMinutes > 0;
@@ -45,7 +45,7 @@ export function AlertDetailProperties({ alert }: { alert: AlertsPageItem }) {
       <AlertPropertiesSummary alert={alert} variant="detail" />
       <div className="d-flex flex-column gap-1 mt-2">
         {alert.name && (
-          <PropertyRow label="Name" testId="alert-property-name">
+          <PropertyRow label="Notification title" testId="alert-property-name">
             {alert.name}
           </PropertyRow>
         )}

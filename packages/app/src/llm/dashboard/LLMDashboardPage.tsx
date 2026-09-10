@@ -32,7 +32,6 @@ import SearchWhereInput, {
 } from '@/components/SearchInput/SearchWhereInput';
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { TimePicker } from '@/components/TimePicker';
-import { NOW } from '@/config';
 import { withAppNav } from '@/layout';
 import {
   useLLMDashboardExpressions,
@@ -41,7 +40,7 @@ import {
 import { getEffectiveTraceSourceId } from '@/ServicesDashboardPage';
 import { useSource, useSources } from '@/source';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
-import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
+import { useDefaultTimeRange, useNewTimeQuery } from '@/timeQuery';
 
 import { AgentToolCharts } from './AgentToolCharts';
 import { AttributionCharts } from './AttributionCharts';
@@ -56,13 +55,9 @@ import { SessionSelect } from './SessionSelect';
 import { SessionsTab } from './SessionsTab';
 import { TokenCostCharts } from './TokenCostCharts';
 import { LLMChartProps } from './types';
+import { UserSelect } from './UserSelect';
 
 const DEFAULT_INTERVAL = 'Past 1h';
-const parsedDefaultTimeRange = parseTimeQuery(DEFAULT_INTERVAL, false);
-const defaultTimeRange: [Date, Date] = [
-  parsedDefaultTimeRange[0] ?? new Date(NOW - 60 * 60 * 1000),
-  parsedDefaultTimeRange[1] ?? new Date(NOW),
-];
 
 const queryParamMap = {
   source: parseAsString.withDefault(''),
@@ -70,6 +65,7 @@ const queryParamMap = {
   where: parseAsString.withDefault(''),
   whereLanguage: parseAsString.withDefault(''),
   sessionId: parseAsString.withDefault(''),
+  userId: parseAsString.withDefault(''),
 };
 
 /**
@@ -79,6 +75,7 @@ const queryParamMap = {
  * time — no ingestion changes required.
  */
 function LLMDashboardPage() {
+  const defaultTimeRange = useDefaultTimeRange(DEFAULT_INTERVAL);
   const brandName = useBrandDisplayName();
 
   const [rawTab, setTab] = useQueryState(
@@ -206,6 +203,7 @@ function LLMDashboardPage() {
           where: appliedConfig.where || '',
           whereLanguage: effectiveWhereLanguage,
           sessionId: appliedConfig.sessionId || undefined,
+          userId: appliedConfig.userId || undefined,
           logSource: logSource?.kind === SourceKind.Log ? logSource : undefined,
           logExpressions,
         }
@@ -304,6 +302,15 @@ function LLMDashboardPage() {
             dateRange={searchedTimeRange}
             size="sm"
             data-testid="llm-dashboard-session-select"
+          />
+          <UserSelect
+            value={appliedConfig.userId}
+            onChange={userId => setAppliedConfig({ userId })}
+            source={source}
+            expressions={expressions}
+            dateRange={searchedTimeRange}
+            size="sm"
+            data-testid="llm-dashboard-user-select"
           />
           <Box style={{ flexGrow: 1 }}>
             <SearchWhereInput

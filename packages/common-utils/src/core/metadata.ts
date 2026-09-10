@@ -96,7 +96,8 @@ const inlineNonNegativeInt = (value: number, label: string): string => {
   return String(value);
 };
 
-const unquoteIdentifier = (identifier: string): string => {
+/** Strip one level of `…` / "…" identifier quoting, if present. */
+export const unquoteIdentifier = (identifier: string): string => {
   if (
     (identifier.startsWith('`') && identifier.endsWith('`')) ||
     (identifier.startsWith('"') && identifier.endsWith('"'))

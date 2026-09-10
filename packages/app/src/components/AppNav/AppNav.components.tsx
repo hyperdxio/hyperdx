@@ -16,7 +16,9 @@ import { useDisclosure } from '@mantine/hooks';
 import {
   IconBook,
   IconBrandDiscord,
+  IconBug,
   IconBulb,
+  IconCheck,
   IconChevronDown,
   IconChevronRight,
   IconChevronUp,
@@ -27,6 +29,7 @@ import {
 } from '@tabler/icons-react';
 
 import { IS_LOCAL_MODE } from '@/config';
+import { copyTextToClipboard } from '@/utils/clipboard';
 
 import { HelpSparkle } from './HelpSparkle';
 import { KeyboardShortcutsModal } from './KeyboardShortcutsModal';
@@ -181,7 +184,41 @@ export const AppNavUserMenu = ({
   );
 };
 
-export const AppNavHelpMenu = ({ version }: { version?: string }) => {
+const AppNavVersionItem = ({ version }: { version?: string }) => {
+  const [copied, setCopied] = React.useState(false);
+
+  return (
+    <Menu.Item
+      data-testid="copy-debug-info-menu-item"
+      closeMenuOnClick={false}
+      leftSection={copied ? <IconCheck size={16} /> : <IconBug size={16} />}
+      onClick={async () => {
+        // window.hdx (installed in _app.tsx) builds the full report; copy via
+        // the shared util so the insecure-context textarea fallback applies and
+        // we get a real success boolean back. Only flip to "Copied" when the
+        // clipboard actually took the text.
+        const text = window.hdx?.report() ?? `frontend: ${version ?? 'dev'}`;
+        const ok = await copyTextToClipboard(text);
+        if (ok) {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        }
+      }}
+    >
+      {copied ? 'Copied debug info' : 'Copy debug info'}
+    </Menu.Item>
+  );
+};
+
+// `version` is the running build. `whatsNewVersion` is the newest release in
+// the notes and drives the sparkle — see useWhatsNewUnseen.
+export const AppNavHelpMenu = ({
+  version,
+  whatsNewVersion,
+}: {
+  version?: string;
+  whatsNewVersion?: string;
+}) => {
   const { isCollapsed } = React.use(AppNavContext);
   const [
     shortcutsOpened,
@@ -194,8 +231,10 @@ export const AppNavHelpMenu = ({ version }: { version?: string }) => {
     whatsNewDrawerOpened,
     { open: openWhatsNewDrawer, close: closeWhatsNewDrawer },
   ] = useDisclosure(false);
-  // Sparkle the Help button when there's a release this browser hasn't seen.
-  const [hasUnseenWhatsNew, markWhatsNewSeen] = useWhatsNewUnseen(version);
+  // Sparkle the Help button when a release newer than the one this browser
+  // acknowledged has been published.
+  const [hasUnseenWhatsNew, markWhatsNewSeen] =
+    useWhatsNewUnseen(whatsNewVersion);
   // Opening the menu marks the release seen, which clears hasUnseenWhatsNew in
   // the same tick — so the menu has to render off a snapshot taken at open time.
   // Passing hasUnseenWhatsNew straight down gives a sparkle that never appears.
@@ -279,6 +318,10 @@ export const AppNavHelpMenu = ({ version }: { version?: string }) => {
               openWhatsNewDrawer();
             }}
           />
+
+          <Menu.Divider />
+
+          <AppNavVersionItem version={version} />
         </Menu.Dropdown>
       </Menu>
       <KeyboardShortcutsModal

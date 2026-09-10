@@ -1,5 +1,6 @@
 import {
   McpSaveAlertInput,
+  mcpSaveAlertSchema,
   validateSaveAlertInput,
 } from '@/mcp/tools/alerts/schemas';
 
@@ -81,4 +82,130 @@ describe('validateSaveAlertInput channel comparison', () => {
 
     expect(result).toBeNull();
   });
+});
+
+describe('validateSaveAlertInput inline alerts', () => {
+  const chartConfig: NonNullable<McpSaveAlertInput['chartConfig']> = {
+    displayType: 'line',
+    sourceId: 'source-1',
+    select: [
+      {
+        aggFn: 'count',
+        where: '',
+        whereLanguage: 'lucene',
+      },
+    ],
+    fillNulls: true,
+  };
+
+  it('requires chartConfig when source is inline', () => {
+    const result = validateSaveAlertInput({
+      ...baseInput,
+      source: 'inline',
+      savedSearchId: undefined,
+      channel: wh('a'),
+    });
+
+    expect(result).toContain('chartConfig is required');
+  });
+
+  it('accepts an inline alert with a chartConfig', () => {
+    const result = validateSaveAlertInput({
+      ...baseInput,
+      source: 'inline',
+      savedSearchId: undefined,
+      chartConfig,
+      channel: wh('a'),
+    });
+
+    expect(result).toBeNull();
+  });
+
+  it('rejects a chartConfig on non-inline sources instead of silently dropping it', () => {
+    const result = validateSaveAlertInput({
+      ...baseInput,
+      chartConfig,
+      channel: wh('a'),
+    });
+
+    expect(result).toContain('only supported when source is "inline"');
+  });
+});
+
+describe('mcpSaveAlertSchema isDelta dialect bridge', () => {
+  const parseSelectItem = (selectItem: Record<string, unknown>) => {
+    const parsed = mcpSaveAlertSchema.parse({
+      ...baseInput,
+      source: 'inline',
+      savedSearchId: undefined,
+      channel: wh('a'),
+      chartConfig: {
+        displayType: 'line',
+        sourceId: 'source-1',
+        select: [selectItem],
+      },
+    });
+    const config = parsed.chartConfig;
+    if (!config || !('select' in config)) {
+      throw new Error('expected a builder chartConfig');
+    }
+    return config.select[0];
+  };
+
+  const gaugeItem = {
+    aggFn: 'avg',
+    metricType: 'gauge',
+    metricName: 'system.cpu.utilization',
+  };
+
+  // Both spellings are emitted in agreement: `isDelta` for direct MCP
+  // consumers, `periodAggFn` because the external REST schema this config is
+  // re-parsed through knows only that one and strips the other.
+  it.each([
+    ['periodAggFn: "delta"', { periodAggFn: 'delta' }],
+    ['isDelta: true', { isDelta: true }],
+  ])('emits both delta spellings for %s', (_label, deltaFlag) => {
+    expect(parseSelectItem({ ...gaugeItem, ...deltaFlag })).toMatchObject({
+      isDelta: true,
+      periodAggFn: 'delta',
+    });
+  });
+
+  it('emits neither spelling when the item is not a delta', () => {
+    const item = parseSelectItem(gaugeItem);
+    expect(item).not.toHaveProperty('isDelta');
+    expect(item).not.toHaveProperty('periodAggFn');
+  });
+
+  it('lets an explicit isDelta: false win over periodAggFn: "delta"', () => {
+    // The refinement and the transform must agree on precedence. When they
+    // disagreed, this body validated as non-delta (passing the gauge-only
+    // rule) and then persisted as a delta because the stale periodAggFn
+    // survived.
+    const item = parseSelectItem({
+      ...gaugeItem,
+      isDelta: false,
+      periodAggFn: 'delta',
+    });
+    expect(item).not.toHaveProperty('isDelta');
+    expect(item).not.toHaveProperty('periodAggFn');
+  });
+
+  it.each([
+    ['isDelta', { isDelta: true }],
+    ['periodAggFn', { periodAggFn: 'delta' }],
+  ])(
+    'rejects a delta on a non-gauge metric spelled via %s',
+    (_label, deltaFlag) => {
+      expect(() =>
+        parseSelectItem({
+          aggFn: 'sum',
+          metricType: 'sum',
+          metricName: 'http.server.requests',
+          valueExpression: 'Value',
+          ...deltaFlag,
+        }),
+      ).toThrow('isDelta is only valid for gauge metrics');
+    },
+  );
 });

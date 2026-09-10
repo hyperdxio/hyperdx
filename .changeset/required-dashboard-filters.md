@@ -4,4 +4,4 @@
 '@hyperdx/app': patch
 ---
 
-feat: Add static filters to schemas and APIs
+feat: Allow configuring dashboard filters as required

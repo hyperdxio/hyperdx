@@ -428,6 +428,10 @@ function formatExternalSource(source: SourceDocument) {
  *           description: This DateTime column is used to display and order search results.
  *           nullable: true
  *           example: TimestampTime
+ *         orderByExpression:
+ *           type: string
+ *           description: Custom ORDER BY expression that overrides the default ordering. Leave empty to use the auto-detected default.
+ *           example: Timestamp DESC
  *         metricSourceId:
  *           type: string
  *           description: HyperDX Source for metrics associated with logs. Optional
@@ -626,6 +630,10 @@ function formatExternalSource(source: SourceDocument) {
  *           description: Expression identifying the running release of a service. Defaults to the OpenTelemetry service.version resource attribute when unset. Where services carry the release on different attributes, fall back across them with coalesce(nullIf(a, ''), nullIf(b, '')).
  *           nullable: true
  *           example: ResourceAttributes['service.version']
+ *         sampleRateExpression:
+ *           type: string
+ *           description: Column or expression for upstream sampling weight (1/N). When set, aggregations (count, avg, sum, quantile) are corrected for sampling. Percentiles use quantileTDigestWeighted, which is an approximation. Leave empty if spans are not sampled.
+ *           example: SampleRate
  *         resourceAttributesExpression:
  *           type: string
  *           description: Expression to extract resource-level attributes.
@@ -641,6 +649,10 @@ function formatExternalSource(source: SourceDocument) {
  *           description: Expression to extract span events. Used to capture events associated with spans. Expected to be Nested ( Timestamp DateTime64(9), Name LowCardinality(String), Attributes Map(LowCardinality(String), String)
  *           nullable: true
  *           example: Events
+ *         spanLinksValueExpression:
+ *           type: string
+ *           description: Expression to extract span links. Used to capture links from a span to spans in other traces. Expected to be Nested ( TraceId String, SpanId String, TraceState String, Attributes Map(LowCardinality(String), String) )
+ *           example: Links
  *         implicitColumnExpression:
  *           type: string
  *           description: Column used for full text search if no property is specified in a Lucene-based search. Typically the message body of a log.
@@ -669,6 +681,14 @@ function formatExternalSource(source: SourceDocument) {
  *           items:
  *             $ref: '#/components/schemas/HighlightedAttributeExpression'
  *           nullable: true
+ *         displayedTimestampValueExpression:
+ *           type: string
+ *           description: This DateTime column is used to display and order search results.
+ *           example: Timestamp
+ *         orderByExpression:
+ *           type: string
+ *           description: Custom ORDER BY expression that overrides the default ordering. Leave empty to use the auto-detected default.
+ *           example: Timestamp DESC
  *         materializedViews:
  *           type: array
  *           description: Configure materialized views for query optimization. These pre-aggregated views can significantly improve query performance on aggregation queries.
@@ -811,6 +831,10 @@ function formatExternalSource(source: SourceDocument) {
  *           type: string
  *           description: HyperDX Source for traces associated with sessions.
  *           example: 507f1f77bcf86cd799439021
+ *         resourceAttributesExpression:
+ *           type: string
+ *           description: Expression to extract resource-level attributes.
+ *           example: ResourceAttributes
  *     PromqlSource:
  *       type: object
  *       description: A source backed by a Prometheus-compatible endpoint, queried with PromQL. The referenced connection should be a Prometheus connection (isPrometheusEndpoint set to true).

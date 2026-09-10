@@ -4,6 +4,7 @@ import {
   DashboardContainer,
   DashboardFilter,
   DashboardFilterValue,
+  DashboardWithoutId,
   OnboardingTaskId,
   resolveChartPaletteToken,
   SavedChartConfig,
@@ -44,6 +45,7 @@ export type Dashboard = {
   savedQuery?: string | null;
   savedQueryLanguage?: SearchConditionLanguage | null;
   savedFilterValues?: DashboardFilterValue[];
+  savedDateRange?: DashboardWithoutId['savedDateRange'];
   containers?: DashboardContainer[];
   createdAt?: string;
   updatedAt?: string;
