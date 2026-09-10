@@ -96,6 +96,15 @@ export function isLLMSpan(
  * JSON columns keep the comparison: their paths are real subcolumns, and
  * `mapContains` does not apply.
  *
+ * Trade-off: `fastifySQL` rewrites a `Col['key']` subscript onto a
+ * materialized column when one exists, and it matches on the subscript AST
+ * node, so it cannot see this form. On a table where an operator materialized
+ * one of these keys, the subscript would have read that column instead. The
+ * subscript is also not a subcolumn reference once rewritten, so such tables
+ * never had the planning problem — this form trades that rewrite for skip-index
+ * pruning, which is the better deal only where the columns do not exist (the
+ * default).
+ *
  * This tests presence only. Callers that pair a gate with a value expression
  * they group by need non-emptiness as well, or a key set to '' becomes a blank
  * row — see `anyKeyHasValue` in expressions.ts.

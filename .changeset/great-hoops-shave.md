@@ -26,15 +26,16 @@ select-list aggregate are left unhinted, since skip-index analysis does not
 reach the select list; the tool-call gate is used in both positions and so is
 exposed in both forms.
 
-Two behavior changes. LLM span detection is now presence-based: a span carrying
-`gen_ai.system` at all is treated as an LLM span whatever the value. Nothing
-groups by that predicate.
+The one behavior change is LLM span detection, which is now presence-based: a
+span carrying `gen_ai.system` at all is treated as an LLM span whatever the
+value. Nothing groups by that predicate.
 
-Tool-call detection now also accepts the flat `tool_name` key (Claude Code,
-opencode). The tool-name expression already resolved it, so such spans had a
-name the dashboard could display but were missing from the tool charts; the
-detection key set is now derived from the tool-name key set so the two cannot
-drift apart. Expect slightly higher tool-call counts where that key is emitted.
+One caveat for tables with materialized columns: a `SpanAttributes['key']`
+subscript gets rewritten onto a materialized column when an operator has created
+one, and `mapContains` is not matched by that rewrite. Such tables were never
+affected by the planning cost either, since a rewritten subscript is no longer a
+subcolumn reference — so this trades that rewrite for skip-index pruning, which
+is the better deal only where those columns do not exist.
 
 JSON attribute columns are unchanged — their paths are real subcolumns, there is
 no key index to prune with, and a presence term would only duplicate reads.
