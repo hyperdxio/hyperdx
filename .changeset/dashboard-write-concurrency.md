@@ -33,3 +33,11 @@ can change: tile alerts live in a separate collection that doesn't bump the
 dashboard's version, so a concurrent alert add/edit and dashboard save can still
 race on the internal PATCH route (pre-existing behaviour, unaffected by this
 change either way).
+
+A dashboard that predates this change has no `version` field in MongoDB, and
+the guard treats that the same as `version: 0` rather than as a permanent
+conflict, so every write path keeps working with or without the included
+migration having run. A `migrate-mongo` migration backfilling `version: 0` on
+those documents is included in `packages/api/migrations/mongo/`, but nothing
+in this repo invokes `migrate-mongo` automatically — it is optional tidy-up,
+not a deploy step this change depends on.
