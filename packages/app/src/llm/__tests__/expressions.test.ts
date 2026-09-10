@@ -53,16 +53,12 @@ describe('getLLMExpressions', () => {
     );
     // mapContains does not apply to JSON paths.
     expect(expressions.isLLMSpan).not.toContain('mapContains');
-    expect(expressions.hasReportedTokens).not.toContain('mapContains');
-    expect(expressions.hasSessionId).not.toContain('mapContains');
     expect(expressions.isToolSpan).not.toContain('mapContains');
-    // No key index to hint at either.
-    expect(expressions.hasTtft).not.toContain('indexHint');
-    expect(expressions.hasReportedTokens).not.toContain('indexHint');
 
     // On JSON there is no key index to prune with, so the gates carry the
     // value test alone rather than doubling their subcolumn reads with a
     // presence term that says the same thing.
+    expect(expressions.isToolSpan).not.toContain('indexHint');
     expect(expressions.hasTtft).toBe(
       'greatest(toFloat64OrZero(toString(SpanAttributes.`ttft_ms`)), ' +
         'toFloat64OrZero(toString(SpanAttributes.`ai.response.msToFirstChunk`)), ' +
@@ -72,6 +68,19 @@ describe('getLLMExpressions', () => {
       "coalesce(nullif(toString(SpanAttributes.`gen_ai.conversation.id`), ''), " +
         "nullif(toString(SpanAttributes.`session.id`), ''), " +
         "nullif(toString(SpanAttributes.`ai.telemetry.metadata.sessionId`), ''), '') != ''",
+    );
+    // Unhinted on both branches, so pin the JSON form itself — a
+    // not.toContain('indexHint') here would hold either way and prove nothing.
+    expect(expressions.hasReportedTokens).toBe(
+      "coalesce(nullif(toString(SpanAttributes.`gen_ai.usage.input_tokens`), ''), " +
+        "nullif(toString(SpanAttributes.`gen_ai.usage.prompt_tokens`), ''), " +
+        "nullif(toString(SpanAttributes.`gen_ai.usage.output_tokens`), ''), " +
+        "nullif(toString(SpanAttributes.`gen_ai.usage.completion_tokens`), ''), " +
+        "nullif(toString(SpanAttributes.`llm.token_count.prompt`), ''), " +
+        "nullif(toString(SpanAttributes.`llm.token_count.completion`), ''), " +
+        "nullif(toString(SpanAttributes.`llm.token_count.total`), ''), " +
+        "nullif(toString(SpanAttributes.`input_tokens`), ''), " +
+        "nullif(toString(SpanAttributes.`output_tokens`), ''), '') != ''",
     );
   });
 

@@ -425,4 +425,30 @@ describe('rewriteSqlFilterWithKvItems', () => {
       expect(result).not.toContain('hasAny(');
     });
   });
+
+  describe('indexHint', () => {
+    // The LLM dashboard gates pair a value term with indexHint(a OR b), which
+    // is the first caller to put a bare boolean OR in an argument position.
+    // This function bails to the input verbatim on a parse error, so a grammar
+    // that rejected that shape would silently stop rewriting the rest of the
+    // condition rather than fail — hence asserting the sibling rewrite here.
+    it('rewrites a sibling equality and leaves the hint intact', () => {
+      const result = rewriteSqlFilterWithKvItems(
+        "(indexHint((mapContains(LogAttributes, 'openinference.span.kind') OR " +
+          "mapContains(LogAttributes, 'gen_ai.tool.name'))) AND " +
+          "(LogAttributes['openinference.span.kind'] = 'TOOL' OR " +
+          "coalesce(nullif(LogAttributes['gen_ai.tool.name'], ''), '') != ''))",
+        defaultLookup,
+      );
+      expect(result).toContain(
+        "has(`LogAttributeItems`, concat('openinference.span.kind', '=', 'TOOL'))",
+      );
+      // The hint's own mapContains calls must survive untouched — rewriting
+      // them to has() would point the hint at the wrong index.
+      expect(result).toContain(
+        "indexHint((mapContains(LogAttributes, 'openinference.span.kind') OR " +
+          "mapContains(LogAttributes, 'gen_ai.tool.name')))",
+      );
+    });
+  });
 });
