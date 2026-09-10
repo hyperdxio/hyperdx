@@ -1320,13 +1320,17 @@ export function DBSearchPage() {
     ],
   );
 
-  // Records exploration (interactive: filter apply, and the form/editor submit
-  // paths that call it with no args).
+  // Single debouncer so the catch-up submit and a filter-apply within the same
+  // window collapse into ONE run (no duplicate searches). useDebouncedCallback
+  // keeps the last call's args, so onSubmit receives the most recent caller's
+  // { recordExploration }: a catch-up passes false, interactive callers pass
+  // nothing (defaults to true). Whichever fired last within the window wins,
+  // which for the rare catch-up+interactive overlap only delays the one-time
+  // milestone to the next search.
   const debouncedSubmit = useDebouncedCallback(onSubmit, 1000);
-  // Does NOT record: the source / saved-search catch-up submit.
-  const debouncedCatchUpSubmit = useDebouncedCallback(
-    () => onSubmit({ recordExploration: false }),
-    1000,
+  const debouncedCatchUpSubmit = useCallback(
+    () => debouncedSubmit({ recordExploration: false }),
+    [debouncedSubmit],
   );
   const handleSetFilters = useCallback(
     (filters: Filter[]) => {
