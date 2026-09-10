@@ -89,7 +89,10 @@ export function DistinctValueSelect({
       data={values}
       value={value || null}
       onChange={v => onChange(v ?? '')}
-      disabled={isLoading || isError}
+      // Never lock the control while a scope is applied: the options are of no
+      // use yet, but clearing the filter must stay possible. On a failing
+      // distinct query that is otherwise permanent.
+      disabled={(isLoading || isError) && !value}
       comboboxProps={{ withinPortal: false }}
       searchable
       clearable
