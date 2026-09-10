@@ -102,9 +102,30 @@ export function useCompleteOnboardingTask() {
         json: { taskId },
       }).json<OnboardingDataApiResponse>(),
     onSuccess: data => {
-      queryClient.setQueryData<MeApiResponse | null>(['me'], prev =>
-        prev == null ? prev : { ...prev, onboardingData: data.onboardingData },
-      );
+      // Union the returned completedTasks into the cache rather than replacing
+      // it. Two completions can be in flight at once, and if the older response
+      // (missing the newer task) lands last, a wholesale replace would drop the
+      // newer task from the checklist until the next `me` refetch. Both are
+      // persisted server-side ($addToSet), so a union keeps the cache correct
+      // regardless of response order.
+      queryClient.setQueryData<MeApiResponse | null>(['me'], prev => {
+        if (prev?.onboardingData == null) {
+          return prev == null
+            ? prev
+            : { ...prev, onboardingData: data.onboardingData };
+        }
+        const merged = new Set([
+          ...prev.onboardingData.completedTasks,
+          ...data.onboardingData.completedTasks,
+        ]);
+        return {
+          ...prev,
+          onboardingData: {
+            ...data.onboardingData,
+            completedTasks: [...merged],
+          },
+        };
+      });
     },
   });
 }
@@ -121,7 +142,11 @@ export function useMarkOnboardingTaskComplete() {
   return useCallback(
     (taskId: OnboardingTaskId) => {
       queryClient.setQueryData<MeApiResponse | null>(['me'], prev => {
-        if (prev == null) {
+        // Guard `onboardingData` with `?.`: a cached `me` from an API pod that
+        // predates this field has none, and this runs inside dashboard/alert
+        // mutation `onSuccess` — a throw here would flip the mutation to its
+        // error state and surface "Unable to save" for a save that succeeded.
+        if (prev?.onboardingData == null) {
           return prev;
         }
         if (prev.onboardingData.completedTasks.includes(taskId)) {

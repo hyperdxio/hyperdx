@@ -15,7 +15,6 @@ interface OnboardingCompletion {
   steps: OnboardingStep[];
   phaseLabel: string;
   completedCount: number;
-  isPhaseComplete: boolean;
   activeStepId?: string;
   isCelebrating: boolean;
   shouldShow: boolean;
@@ -66,10 +65,12 @@ export function useOnboardingCompletion(
   );
   const { data: sourceRowsData, isLoading: isSourceRowsLoading } =
     useQueriedChartConfig(sourceRowsConfig, {
-      // Skip the chart query when there's no connection to query against.
-      // Without this guard it fires with `connection: ''` and fails Zod
-      // validation on the API's clickhouse-proxy.
-      enabled: !!firstConnection?.id,
+      // Skip the chart query when there's no connection to query against
+      // (without this guard it fires with `connection: ''` and fails Zod
+      // validation on the API's clickhouse-proxy), or once the user has
+      // dismissed the checklist — a dismissed card never renders, so there's
+      // no reason to keep polling `system.tables` on every window refocus.
+      enabled: !!firstConnection?.id && !onboardingData?.isDismissed,
     });
   const hasData = sourceRowsData?.data?.[0]?.total_rows > 0;
 
@@ -214,7 +215,6 @@ export function useOnboardingCompletion(
     steps,
     phaseLabel,
     completedCount,
-    isPhaseComplete,
     activeStepId,
     isCelebrating,
     shouldShow,

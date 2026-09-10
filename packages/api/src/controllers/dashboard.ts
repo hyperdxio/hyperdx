@@ -30,9 +30,11 @@ function pickAlertsByTile(tiles: Tile[]) {
 
 // The 'dashboard' onboarding task means the user built something worth charting,
 // so it completes only once a dashboard actually has a tile — an empty
-// dashboard shell (created, then never filled in) does not count.
-function recordDashboardOnboardingIfHasTiles(
-  userId: ObjectId | undefined,
+// dashboard shell (created, then never filled in) does not count. Exported and
+// reused by every dashboard write path (internal controllers, external REST v2,
+// MCP tools) so the "counts as building a chart" rule lives in one place.
+export function recordDashboardOnboardingIfHasTiles(
+  userId: string | ObjectId | undefined | null,
   tiles: { length: number } | null | undefined,
 ) {
   if ((tiles?.length ?? 0) > 0) {

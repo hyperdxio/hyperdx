@@ -2764,11 +2764,14 @@ export type InstallationApiResponse = z.infer<
 // registry is typed `Record<OnboardingTaskId, ...>` so the compiler forces UI
 // copy + a link for every new key. UI copy and hrefs live in the frontend, not
 // here, to keep this package free of presentation concerns.
+// Order is the product-usage checklist display order (the frontend renders
+// tasks in this sequence). Membership — not order — is what the API enum and
+// the persisted subdocument care about, so reordering here is safe.
 export const ONBOARDING_TASK_IDS = [
   'advancedQuery',
-  'mcp',
   'dashboard',
   'alert',
+  'mcp',
 ] as const;
 
 export type OnboardingTaskId = (typeof ONBOARDING_TASK_IDS)[number];

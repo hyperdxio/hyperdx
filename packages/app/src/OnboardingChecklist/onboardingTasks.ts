@@ -42,18 +42,21 @@ export const PRODUCT_TASKS: Record<
   },
 };
 
-// UI render order for the product-usage phase, decoupled from the enum order in
-// common-utils. Typed as an exhaustive Record<OnboardingTaskId, number> so a new
-// id added to ONBOARDING_TASK_IDS is a compile error here until it's given a
-// weight — and because the order is derived by sorting ONBOARDING_TASK_IDS
-// (the SSOT), that new id always renders and can't be silently untracked.
-const PRODUCT_TASK_ORDER_WEIGHT: Record<OnboardingTaskId, number> = {
-  advancedQuery: 0,
-  dashboard: 1,
-  alert: 2,
-  mcp: 3,
-};
+// Render order for the product-usage phase is the declaration order of
+// ONBOARDING_TASK_IDS (the SSOT), so there's no separate order map to keep in
+// sync — a new id renders in the position it's added to the tuple.
+export const PRODUCT_TASK_ORDER: readonly OnboardingTaskId[] =
+  ONBOARDING_TASK_IDS;
 
-export const PRODUCT_TASK_ORDER: OnboardingTaskId[] = [
-  ...ONBOARDING_TASK_IDS,
-].sort((a, b) => PRODUCT_TASK_ORDER_WEIGHT[a] - PRODUCT_TASK_ORDER_WEIGHT[b]);
+// The 'advancedQuery' ("Explore your data") task completes on a non-trivial
+// user-run search: a non-empty where clause in either language (the search page
+// defaults to Lucene, so requiring SQL would make this practically
+// unreachable), or any applied filter. A blank default search does not count.
+// Kept as a pure helper so the rule is testable without rendering the search
+// page.
+export function isNonTrivialSearch(
+  where: string,
+  filters: unknown[] | undefined,
+): boolean {
+  return where.trim() !== '' || (filters?.length ?? 0) > 0;
+}

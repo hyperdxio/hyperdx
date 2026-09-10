@@ -1,3 +1,4 @@
+import type { OnboardingTaskId } from '@hyperdx/common-utils/dist/types';
 import { AlertThresholdType } from '@hyperdx/common-utils/dist/types';
 
 import {
@@ -8,6 +9,7 @@ import {
   makeTile,
   randomMongoId,
 } from '@/fixtures';
+import type { ObjectId } from '@/models';
 import User from '@/models/user';
 import Webhook, { WebhookService } from '@/models/webhook';
 
@@ -102,45 +104,56 @@ describe('me router', () => {
   // dashboard-tile alerts, which never hit the /alerts router). These verify
   // the recording end-to-end through GET /me.
   describe('onboarding task recording via product actions', () => {
+    // Recording is fire-and-forget (not awaited by the handler), so the write
+    // can land after the response. Poll rather than reading GET /me once.
+    const completedTasksFor = async (userId: ObjectId) =>
+      (await User.findById(userId))?.onboardingData?.completedTasks ?? [];
+
+    const waitForTask = async (userId: ObjectId, task: OnboardingTaskId) => {
+      for (let i = 0; i < 20; i++) {
+        if ((await completedTasksFor(userId)).includes(task)) return true;
+        await new Promise(r => setTimeout(r, 25));
+      }
+      return false;
+    };
+
     it('records the dashboard task when a dashboard with a tile is created', async () => {
-      const { agent } = await getLoggedInAgent(server);
+      const { agent, user } = await getLoggedInAgent(server);
 
       await agent
         .post('/dashboards')
         .send({ name: 'Dash', tiles: [makeTile()], tags: [] })
         .expect(200);
 
-      const resp = await agent.get('/me').expect(200);
-      expect(resp.body.onboardingData.completedTasks).toContain('dashboard');
-      expect(resp.body.onboardingData.completedTasks).not.toContain('alert');
+      expect(await waitForTask(user._id, 'dashboard')).toBe(true);
+      // Poll for 'dashboard' above guarantees the write cycle ran, so this
+      // negative assertion can't pass merely because the write hadn't landed.
+      expect(await completedTasksFor(user._id)).not.toContain('alert');
     });
 
     it('does NOT record the dashboard task for an empty (tileless) dashboard', async () => {
-      const { agent } = await getLoggedInAgent(server);
+      const { agent, user } = await getLoggedInAgent(server);
 
       const created = await agent
         .post('/dashboards')
         .send({ name: 'Empty', tiles: [], tags: [] })
         .expect(200);
 
-      let resp = await agent.get('/me').expect(200);
-      expect(resp.body.onboardingData.completedTasks).not.toContain(
-        'dashboard',
-      );
+      expect(await completedTasksFor(user._id)).not.toContain('dashboard');
 
       // Adding a tile via update then completes it — the task means "built a
-      // chart", not "created a shell".
+      // chart", not "created a shell". Waiting for it to appear also confirms
+      // the create above didn't record it late (the negative isn't vacuous).
       await agent
         .patch(`/dashboards/${created.body.id}`)
         .send({ ...created.body, tiles: [makeTile()] })
         .expect(200);
 
-      resp = await agent.get('/me').expect(200);
-      expect(resp.body.onboardingData.completedTasks).toContain('dashboard');
+      expect(await waitForTask(user._id, 'dashboard')).toBe(true);
     });
 
     it('records the alert task when a saved-search alert is created', async () => {
-      const { agent, team } = await getLoggedInAgent(server);
+      const { agent, team, user } = await getLoggedInAgent(server);
       const webhook = await Webhook.create({
         name: 'Test Webhook',
         service: WebhookService.Slack,
@@ -163,8 +176,7 @@ describe('me router', () => {
         )
         .expect(200);
 
-      const resp = await agent.get('/me').expect(200);
-      expect(resp.body.onboardingData.completedTasks).toContain('alert');
+      expect(await waitForTask(user._id, 'alert')).toBe(true);
     });
 
     it('records the alert task when an existing alert is edited (PUT /alerts/:id)', async () => {
@@ -210,12 +222,11 @@ describe('me router', () => {
         )
         .expect(200);
 
-      const resp = await agent.get('/me').expect(200);
-      expect(resp.body.onboardingData.completedTasks).toContain('alert');
+      expect(await waitForTask(user._id, 'alert')).toBe(true);
     });
 
     it('records the alert task for a dashboard-tile alert (never hits /alerts)', async () => {
-      const { agent, team } = await getLoggedInAgent(server);
+      const { agent, team, user } = await getLoggedInAgent(server);
       const webhook = await Webhook.create({
         name: 'Test Webhook',
         service: WebhookService.Slack,
@@ -238,12 +249,10 @@ describe('me router', () => {
         .send({ name: 'Dash', tiles: [tile], tags: [] })
         .expect(200);
 
-      const resp = await agent.get('/me').expect(200);
       // Saving the dashboard alone completes 'dashboard'; the inline tile alert
       // completes 'alert' via createOrUpdateDashboardAlerts.
-      expect(resp.body.onboardingData.completedTasks).toEqual(
-        expect.arrayContaining(['dashboard', 'alert']),
-      );
+      expect(await waitForTask(user._id, 'dashboard')).toBe(true);
+      expect(await waitForTask(user._id, 'alert')).toBe(true);
     });
   });
 

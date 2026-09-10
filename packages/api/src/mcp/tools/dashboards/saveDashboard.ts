@@ -4,7 +4,7 @@ import mongoose from 'mongoose';
 import { z } from 'zod';
 
 import * as config from '@/config';
-import { recordOnboardingTaskCompletion } from '@/controllers/user';
+import { recordDashboardOnboardingIfHasTiles } from '@/controllers/dashboard';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { formatZodIssues, mcpUserError } from '@/mcp/utils/errors';
 import Dashboard, { IDashboard } from '@/models/dashboard';
@@ -222,9 +222,7 @@ async function createDashboard({
     ...(parsedContainers !== undefined ? { containers: parsedContainers } : {}),
   }).save();
 
-  if (newDashboard.tiles.length > 0) {
-    recordOnboardingTaskCompletion(userId, 'dashboard');
-  }
+  recordDashboardOnboardingIfHasTiles(userId, newDashboard.tiles);
 
   const externalDashboard = convertToExternalDashboard(newDashboard);
   return {
@@ -391,9 +389,7 @@ async function updateDashboard({
     existingTileIds,
   });
 
-  if (updatedDashboard.tiles.length > 0) {
-    recordOnboardingTaskCompletion(userId, 'dashboard');
-  }
+  recordDashboardOnboardingIfHasTiles(userId, updatedDashboard.tiles);
 
   const externalDashboard = convertToExternalDashboard(updatedDashboard);
   return {

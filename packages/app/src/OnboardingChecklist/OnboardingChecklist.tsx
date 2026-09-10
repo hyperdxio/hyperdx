@@ -81,7 +81,14 @@ const OnboardingChecklist = ({
           ))}
 
           {isCelebrating && (
-            <Text size="sm" c="green" fw="bold" ta="center" mt="xs" p="xs">
+            <Text
+              size="sm"
+              variant="success"
+              fw="bold"
+              ta="center"
+              mt="xs"
+              p="xs"
+            >
               🎉 You&apos;re all set!
             </Text>
           )}

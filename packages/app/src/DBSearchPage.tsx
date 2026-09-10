@@ -112,6 +112,7 @@ import { useAliasMapFromChartConfig } from '@/hooks/useChartConfig';
 import { useExplainQuery } from '@/hooks/useExplainQuery';
 import { useResolvedSourceParam } from '@/hooks/useResolvedSourceParam';
 import { withAppNav } from '@/layout';
+import { isNonTrivialSearch } from '@/OnboardingChecklist/onboardingTasks';
 import {
   useCreateSavedSearch,
   useDeleteSavedSearch,
@@ -1283,16 +1284,15 @@ export function DBSearchPage() {
           filters,
           orderBy,
         });
-        // "Explored data" completes on any non-trivial user-run search:
-        // a non-empty where clause in either language (the search page
-        // defaults to Lucene, so requiring SQL made this practically
-        // unreachable), or any applied filter. A blank default search does
-        // not count. The task is a one-time milestone but this runs on every
-        // search, so skip the request once it's already recorded — otherwise
+        // "Explored data" completes on any non-trivial user-run search (see
+        // isNonTrivialSearch). This runs on every search but the task is a
+        // one-time milestone, so skip once it's already recorded — otherwise
         // every subsequent qualifying search fires a redundant (idempotent) POST.
-        const hasWhere = where.trim() !== '';
-        const hasFilters = (filters ?? []).length > 0;
-        if (!IS_LOCAL_MODE && !hasExploredData && (hasWhere || hasFilters)) {
+        if (
+          !IS_LOCAL_MODE &&
+          !hasExploredData &&
+          isNonTrivialSearch(where, filters)
+        ) {
           completeOnboardingTask.mutate('advancedQuery');
         }
       },

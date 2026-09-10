@@ -1,7 +1,7 @@
 import { uniq } from 'lodash';
 
 import * as config from '@/config';
-import { recordOnboardingTaskCompletion } from '@/controllers/user';
+import { recordDashboardOnboardingIfHasTiles } from '@/controllers/dashboard';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
 import Dashboard from '@/models/dashboard';
@@ -233,9 +233,7 @@ export function registerPatchDashboard({
         });
       }
 
-      if (updatedDashboard.tiles.length > 0) {
-        recordOnboardingTaskCompletion(userId, 'dashboard');
-      }
+      recordDashboardOnboardingIfHasTiles(userId, updatedDashboard.tiles);
 
       // Return a lightweight response: the patched tile (if any) plus
       // updated dashboard metadata, without the full tile array.
