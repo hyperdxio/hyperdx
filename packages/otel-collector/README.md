@@ -345,11 +345,15 @@ the box — it only matters once *some* collector instance ingesting
 `statsd` is scaled to multiple replicas, at which point that traffic
 needs to go to one dedicated single-replica instance instead.
 
-`docker-compose.yml`/`docker-compose.dev.yml` publish `8125:8125/udp` on
-the `otel-collector` service, and the standalone/all-in-one images
-`EXPOSE 8125/udp`, so the port is reachable from outside the container as
-soon as `statsd` is added to a pipeline below — no separate port-mapping
-step needed on top of these examples.
+`docker-compose.yml`/`docker-compose.dev.yml` have an `8125/udp` port
+mapping for the `otel-collector` service, commented out by default —
+uncomment it to enable statsd ingestion. It's opt-in rather than always
+on because a fixed host port mapping fails that service's entire startup
+if something else on the host (e.g. a local StatsD daemon or Datadog
+Agent) already owns 8125/udp, which would otherwise break the default
+stack for anyone not using this feature. The standalone/all-in-one images
+also `EXPOSE 8125/udp` (metadata only, doesn't reserve the host port on
+its own).
 
 **In standalone mode**, `metrics` is a plain pipeline in your own config
 file, so add `statsd` to it directly:

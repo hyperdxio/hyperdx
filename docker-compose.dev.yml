@@ -55,7 +55,12 @@ services:
       - '${HDX_DEV_OTEL_GRPC_PORT:-4317}:4317' # OTLP gRPC receiver
       - '${HDX_DEV_OTEL_HTTP_PORT:-4318}:4318' # OTLP http receiver
       - '${HDX_DEV_OTEL_METRICS_PORT:-8888}:8888' # metrics extension
-      - '${HDX_DEV_OTEL_STATSD_PORT:-8125}:8125/udp' # statsd receiver (opt-in via custom.config.yaml)
+      # Uncomment to enable statsd ingestion (also requires adding the
+      # `statsd` receiver to a pipeline in custom.config.yaml - see
+      # packages/otel-collector/README.md). Left commented out by default:
+      # a fixed host port mapping fails the whole service's startup if
+      # something else on the host already owns 8125/udp.
+      # - '${HDX_DEV_OTEL_STATSD_PORT:-8125}:8125/udp' # statsd receiver
     restart: always
     networks:
       - internal
