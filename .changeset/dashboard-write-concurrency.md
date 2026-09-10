@@ -5,8 +5,9 @@
 
 Dashboard writes are now guarded against concurrent edits, so a client working
 from stale state is rejected instead of silently overwriting someone else's
-change. The version token is the dashboard's existing `updatedAt`, so there's no
-new field and no migration.
+change. The version token is a new integer counter maintained by schema
+middleware, not the dashboard's `updatedAt` — that keeps the display field free
+of a correctness role and gives new write paths the guard automatically.
 
 **Breaking for MCP clients:** `clickstack_get_dashboard` and
 `clickstack_save_dashboard` now return a `version`, and
@@ -28,7 +29,7 @@ serialises saves per dashboard, and on a 409 refetches and shows a toast
 explaining the change wasn't saved and the latest version has been loaded.
 
 This guards dashboard-document writes specifically, not every way a dashboard
-can change: tile alerts live in a separate collection that doesn't bump
-`updatedAt`, so a concurrent alert add/edit and dashboard save can still race on
-the internal PATCH route (pre-existing behaviour, unaffected by this change
-either way).
+can change: tile alerts live in a separate collection that doesn't bump the
+dashboard's version, so a concurrent alert add/edit and dashboard save can still
+race on the internal PATCH route (pre-existing behaviour, unaffected by this
+change either way).
