@@ -114,7 +114,8 @@ export function SessionsTab(props: LLMChartProps) {
                   alias: 'Tool Calls',
                   aggFn: 'count',
                   valueExpression: '',
-                  aggCondition: expressions.isToolSpan,
+                  // Select-list position: the hinted form cannot prune here.
+                  aggCondition: expressions.isToolSpanUnhinted,
                   aggConditionLanguage: 'sql',
                   numberFormat: INTEGER_NUMBER_FORMAT,
                 },
