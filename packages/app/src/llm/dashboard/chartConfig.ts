@@ -9,18 +9,21 @@ import { LLM_COST_SQL_ALIAS } from '@/llm/lib/expressions';
 
 import { LLMChartProps } from './types';
 
-/** `sessionIdExpr = 'value'` condition, SQL-escaped. */
-export function buildSessionCondition(
-  sessionIdExpr: string,
-  sessionId: string,
-): string {
-  return SqlString.format('? = ?', [SqlString.raw(sessionIdExpr), sessionId]);
+/**
+ * `scopeExpr = 'value'` condition, SQL-escaped.
+ *
+ * Used for the dashboard-wide scope filters (session, user), whose values are
+ * matched exactly against a cross-dialect coalesced expression — the same
+ * expression the corresponding dropdown selected them from.
+ */
+export function buildScopeCondition(scopeExpr: string, value: string): string {
+  return SqlString.format('? = ?', [SqlString.raw(scopeExpr), value]);
 }
 
 /**
  * Base chart-config fields shared by every LLM dashboard chart: source
  * binding, the user's where clause, the LLM-span scope filter, the optional
- * session-id scope, and the searched date range.
+ * session-id and user scopes, and the searched date range.
  */
 export function baseLLMChartConfig({
   source,
@@ -29,6 +32,7 @@ export function baseLLMChartConfig({
   where,
   whereLanguage,
   sessionId,
+  userId,
   extraFilters = [],
   withCostAlias = IS_LLM_COST_ENABLED,
 }: LLMChartProps & {
@@ -72,10 +76,15 @@ export function baseLLMChartConfig({
         ? [
             {
               type: 'sql' as const,
-              condition: buildSessionCondition(
-                expressions.sessionId,
-                sessionId,
-              ),
+              condition: buildScopeCondition(expressions.sessionId, sessionId),
+            },
+          ]
+        : []),
+      ...(userId
+        ? [
+            {
+              type: 'sql' as const,
+              condition: buildScopeCondition(expressions.userId, userId),
             },
           ]
         : []),
