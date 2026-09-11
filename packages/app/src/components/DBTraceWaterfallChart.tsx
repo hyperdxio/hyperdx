@@ -66,6 +66,7 @@ import { useFormatTime } from '@/useFormatTime';
 import {
   CATEGORICAL_PALETTE_TOKENS,
   COLORS,
+  formatDurationMs,
   getChartColorError,
   getChartColorSuccess,
   getChartColorSuccessHighlight,
@@ -145,6 +146,38 @@ const SERVICE_COLORS = COLORS.filter(
     CATEGORICAL_PALETTE_TOKENS[i] !== 'chart-green' &&
     CATEGORICAL_PALETTE_TOKENS[i] !== 'chart-red',
 );
+
+// Per-window (before/after focus date) row cap applied in `getConfig` below.
+// Exported for the truncation check in `useEventsAroundFocus`.
+export const TRACE_WATERFALL_ROW_LIMIT = 50000;
+// Fetch one extra row so a window that contains *exactly* the cap is not
+// mistaken for truncation. A full page of LIMIT is ambiguous; LIMIT+1 is not.
+const TRACE_WATERFALL_FETCH_LIMIT = TRACE_WATERFALL_ROW_LIMIT + 1;
+
+export function TraceTotalDurationStat({
+  totalDurationMs,
+  isTruncated,
+}: {
+  totalDurationMs: number;
+  isTruncated: boolean;
+}) {
+  return (
+    <Tooltip
+      label={
+        isTruncated
+          ? `This trace has more than ${TRACE_WATERFALL_ROW_LIMIT.toLocaleString()} spans in a fetch window, so the duration is a lower bound across the spans that were loaded.`
+          : 'Wall-clock duration from the earliest fetched span start to the latest span end. Independent of the visible count, chips, and collapse state.'
+      }
+      position="bottom"
+    >
+      <span data-testid="trace-total-stats">
+        {' '}
+        &middot; Total duration: {formatDurationMs(totalDurationMs)}
+        {isTruncated ? '+' : ''}
+      </span>
+    </Tooltip>
+  );
+}
 
 function getTableBody(tableModel: TSource) {
   if (tableModel?.kind === SourceKind.Trace) {
@@ -302,7 +335,7 @@ function getConfig(
     from: source.from,
     timestampValueExpression: source.timestampValueExpression,
     where: `${alias.TraceId} = ${SqlString.escape(traceId)}`,
-    limit: { limit: 50000 },
+    limit: { limit: TRACE_WATERFALL_FETCH_LIMIT },
     connection: source.connection,
   };
   return { config, alias, type: source.kind };
@@ -383,16 +416,27 @@ export function useEventsAroundFocus({
   const isFetching = isBeforeSpanFetching || isAfterSpanFetching;
   const meta = beforeSpanData?.meta ?? afterSpanData?.meta;
   const error = beforeSpanError || afterSpanError;
+  // LIMIT+1 is a sentinel: a complete window of exactly TRACE_WATERFALL_ROW_LIMIT
+  // rows must not show as a lower bound. Drop the extra row so the chart still
+  // renders at most the cap.
+  const beforeRows = beforeSpanData?.data ?? [];
+  const afterRows = afterSpanData?.data ?? [];
+  const beforeTruncated = beforeRows.length > TRACE_WATERFALL_ROW_LIMIT;
+  const afterTruncated = afterRows.length > TRACE_WATERFALL_ROW_LIMIT;
+  const isTruncated = beforeTruncated || afterTruncated;
+  const trimmedBefore = beforeTruncated
+    ? beforeRows.slice(0, TRACE_WATERFALL_ROW_LIMIT)
+    : beforeRows;
+  const trimmedAfter = afterTruncated
+    ? afterRows.slice(0, TRACE_WATERFALL_ROW_LIMIT)
+    : afterRows;
 
   const getRowWhere = useRowWhere({ meta, aliasMap: alias });
   const rows = useMemo(() => {
     // Sometimes meta has not loaded yet
     // DO NOT REMOVE, useRowWhere will error if no meta
     if (!meta || meta.length === 0) return [];
-    return [
-      ...(beforeSpanData?.data ?? []),
-      ...(afterSpanData?.data ?? []),
-    ].map(cd => {
+    return [...trimmedBefore, ...trimmedAfter].map(cd => {
       // Omit SpanAttributes, SpanEvents and __hdx_hidden from rowWhere id generation.
       // SpanAttributes and SpanEvents can be large objects, and __hdx_hidden may be a lucene expression.
       const rowWhereResult = getRowWhere(
@@ -414,13 +458,14 @@ export function useEventsAroundFocus({
         aliasWith: [],
       };
     });
-  }, [afterSpanData, beforeSpanData, meta, getRowWhere, type]);
+  }, [trimmedAfter, trimmedBefore, meta, getRowWhere, type]);
 
   return {
     rows,
     meta,
     isFetching,
     error,
+    isTruncated,
   };
 }
 
@@ -445,6 +490,7 @@ function useFilteredEventsAroundFocus(
       isFetching: filtered.isFetching || fallback.isFetching,
       filterError: fallback.error ? undefined : filtered.error,
       fatalError: fallback.error,
+      isTruncated: fallback.isTruncated,
     };
   }
 
@@ -454,6 +500,7 @@ function useFilteredEventsAroundFocus(
     isFetching: filtered.isFetching,
     filterError: undefined,
     fatalError: filtered.error,
+    isTruncated: filtered.isTruncated,
   };
 }
 
@@ -666,6 +713,7 @@ export function DBTraceWaterfallChartContainer({
     meta: traceRowsMeta,
     filterError: traceFilterError,
     fatalError: traceError,
+    isTruncated: traceIsTruncated,
   } = useFilteredEventsAroundFocus({
     tableSource: traceTableSource,
     focusDate,
@@ -722,6 +770,33 @@ export function DBTraceWaterfallChartContainer({
 
     return nextRows;
   }, [traceRowsData, logRowsData]);
+
+  // Wall-clock duration across every fetched span (min start to max end), not
+  // the visible/collapsed subset. Waterfall search filters only flag rows via
+  // `__hdx_hidden`, so they do not change this figure (#3038).
+  //
+  // This is not the same as MCP `trace_waterfall`'s `totalDurationMs`, which is
+  // the longest single span. Clock skew or async children that outlive the root
+  // make the two disagree; the UI number is the envelope of the timeline.
+  //
+  // If a fetch window exceeded TRACE_WATERFALL_ROW_LIMIT, this is a lower bound.
+  const traceTotalStats = useMemo(() => {
+    let minStartMs = Number.MAX_SAFE_INTEGER;
+    let maxEndMs = 0;
+    let spanCount = 0;
+    for (const row of traceRowsData) {
+      spanCount++;
+      const startMs = parseTimestampToMs(row.Timestamp);
+      const endMs = startMs + (row.Duration || 0) * 1000;
+      if (startMs < minStartMs) minStartMs = startMs;
+      if (endMs > maxEndMs) maxEndMs = endMs;
+    }
+    if (spanCount === 0) return null;
+    return {
+      totalDurationMs: maxEndMs - minStartMs,
+      isTruncated: traceIsTruncated,
+    };
+  }, [traceRowsData, traceIsTruncated]);
 
   // Map each distinct span service to a stable color. Sorting the names first
   // keeps a service's color stable across renders regardless of row ordering.
@@ -1412,6 +1487,12 @@ export function DBTraceWaterfallChartContainer({
             <span className={errorCount ? 'text-danger' : ''}>
               {errorCountString}
             </span>
+            {traceTotalStats && (
+              <TraceTotalDurationStat
+                totalDurationMs={traceTotalStats.totalDurationMs}
+                isTruncated={traceTotalStats.isTruncated}
+              />
+            )}
           </Text>
           <Group gap="xs" align="center">
             <Text size="xs" c="dimmed">
