@@ -9,6 +9,7 @@ import { connectDBWithRetry, mongooseConnection } from '@/models';
 import opampApp from '@/opamp/app';
 import { setupTeamDefaults } from '@/setupDefaults';
 import logger from '@/utils/logger';
+import { verifyTokenEncryption } from '@/utils/tokenEncryption';
 
 export default class Server {
   protected shouldHandleGracefulShutdown = true;
@@ -84,6 +85,10 @@ export default class Server {
         });
       });
     }
+
+    // Checked before Mongo so a bad encryption key or KMS policy is reported
+    // even while the Mongo connect below is still retrying.
+    await verifyTokenEncryption();
 
     // The HTTP servers above are already listening so that `/health`
     // (liveness) responds while we connect; `/ready` (readiness) stays 503
