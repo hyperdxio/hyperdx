@@ -54,6 +54,7 @@ import { performance } from 'perf_hooks';
 import { serializeError } from 'serialize-error';
 
 import { ALERT_HISTORY_QUERY_CONCURRENCY } from '@/controllers/alertHistory';
+import { getConnectionById } from '@/controllers/connection';
 import { AlertState, IAlert, IAlertError } from '@/models/alert';
 import AlertHistory, {
   IAlertHistory,
@@ -63,6 +64,7 @@ import { IDashboard } from '@/models/dashboard';
 import { ISavedSearch } from '@/models/savedSearch';
 import { ISource } from '@/models/source';
 import { IWebhook } from '@/models/webhook';
+import { joinPrometheusUpstreamUrl } from '@/routers/api/prometheus';
 import {
   isClientTimeoutOrAbortError,
   isQueryTimeoutError,
@@ -735,9 +737,10 @@ const buildAlertChartConfigFromSavedConfig = ({
     return undefined;
   }
 
-  // PromQL charts don't support alerts yet
+  // PromQL tile alerts are evaluated separately via evaluatePromqlAlert;
+  // return null here so the shared ClickHouse path is skipped.
   if (isPromqlSavedChartConfig(savedConfig)) {
-    return undefined;
+    return null;
   }
 
   if (!source) {
@@ -959,6 +962,115 @@ export const parseAlertData = (
 
   return { value, extraFields };
 };
+
+/**
+ * Execute a PromQL alert tile's expression for the given window and return the
+ * last bucket's numeric value, or null when the query returns no data.
+ *
+ * Supports both Prometheus-endpoint connections (HTTP proxy to /api/v1/query)
+ * and ClickHouse backed connections (prometheusQuery table function).
+ */
+export async function evaluatePromqlAlert({
+  savedConfig,
+  connectionId,
+  teamId,
+  dateRange,
+  windowSizeInMins,
+}: {
+  savedConfig: PromqlSavedChartConfig;
+  connectionId: string;
+  teamId: string;
+  dateRange: [Date, Date];
+  windowSizeInMins: number;
+}): Promise<number | null> {
+  const connection = await getConnectionById(teamId, connectionId, true);
+  if (connection == null) {
+    throw new Error(`Connection ${connectionId} not found for PromQL alert`);
+  }
+
+  const endSec = dateRange[1].getTime() / 1000;
+  const startSec = dateRange[0].getTime() / 1000;
+  const stepSec = windowSizeInMins * 60;
+
+  if (connection.isPrometheusEndpoint) {
+    // Proxy to the real Prometheus /api/v1/query_range
+    const url = joinPrometheusUpstreamUrl(
+      connection.host,
+      '/api/v1/query_range',
+    );
+    const params = new URLSearchParams({
+      query: savedConfig.promqlExpression,
+      start: String(startSec),
+      end: String(endSec),
+      step: String(stepSec),
+    });
+    const resp = await fetch(`${url.toString()}?${params.toString()}`, {
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!resp.ok) {
+      throw new Error(
+        `Prometheus query_range returned HTTP ${resp.status} for PromQL alert`,
+      );
+    }
+    const json = (await resp.json()) as {
+      status: string;
+      data: { result: { values: [number, string][] }[] };
+    };
+    if (json.status !== 'success' || !json.data?.result?.length) {
+      return null;
+    }
+    // Take the value from the last data point of the first series
+    const series = json.data.result[0];
+    const lastPoint = series.values[series.values.length - 1];
+    if (lastPoint == null) return null;
+    const parsed = parseFloat(lastPoint[1]);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  // ClickHouse prometheusQueryRange path
+  const { ClickhouseClient: ChClient } = await import(
+    '@hyperdx/common-utils/dist/clickhouse/node'
+  );
+  const client = new ChClient({
+    host: connection.host,
+    username: connection.username,
+    password: connection.password,
+    requestTimeout: 30_000,
+  });
+
+  const startMs = Math.floor(startSec * 1000);
+  const endMs = Math.floor(endSec * 1000);
+
+  const resp = await client.query({
+    query: `SELECT tags, time_series FROM prometheusQueryRange({db:String}, {table:String}, {expr:String}, fromUnixTimestamp64Milli({startMs:Int64}), fromUnixTimestamp64Milli({endMs:Int64}), toIntervalSecond({stepSec:UInt32})) SETTINGS allow_experimental_time_series_table = 1`,
+    query_params: {
+      db: savedConfig.source ?? 'default',
+      table: savedConfig.promqlExpression.match(/^[\w.]+$/)
+        ? savedConfig.promqlExpression
+        : '__hdx_metric__',
+      expr: savedConfig.promqlExpression,
+      startMs,
+      endMs,
+      stepSec,
+    },
+    format: 'JSON',
+    clickhouse_settings: {
+      allow_experimental_time_series_table: 1,
+      max_execution_time: 30,
+    },
+  });
+
+  const json = await resp.json<{
+    data: { time_series: [string, number][] }[];
+  }>();
+  if (!json.data?.length) return null;
+  const series = json.data[0].time_series;
+  if (!series?.length) return null;
+  const lastPoint = series[series.length - 1];
+  return lastPoint != null && Number.isFinite(lastPoint[1])
+    ? lastPoint[1]
+    : null;
+}
 
 export const processAlert = async (
   now: Date,

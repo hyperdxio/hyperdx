@@ -1870,12 +1870,12 @@ export const SavedChartConfigSchema = z.union([
 /**
  * The chart config an inline-source alert persists (see `zInlineAlert`). Same
  * shape as a dashboard tile's config, but without the embedded `alert` field
- * (the alert's own document carries those fields) and without the PromQL
- * variant (PromQL charts cannot be alerted on).
+ * (the alert's own document carries those fields).
  */
 export const AlertChartConfigSchema = z.union([
   BuilderSavedChartConfigWithoutAlertSchema,
   RawSqlSavedChartConfigWithoutAlertSchema,
+  PromqlSavedChartConfigWithoutAlertSchema,
 ]);
 
 export type AlertChartConfig = z.infer<typeof AlertChartConfigSchema>;
