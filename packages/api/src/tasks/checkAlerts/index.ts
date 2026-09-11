@@ -1329,8 +1329,6 @@ export const processAlert = async (
       );
 
       const notificationStartedAt = performance.now();
-      // Set by the render call below; whatever is left of the wall time is
-      // message render (title/link building, the log-line query, Handlebars).
       let dispatchedForMs = 0;
       try {
         // Casts to any here because this is where I stopped unraveling the
@@ -1382,10 +1380,8 @@ export const processAlert = async (
         );
         executionErrors.push(makeWebhookAlertError(e));
       } finally {
-        // Total wall time spent notifying in this evaluation (summed across
-        // groups/resolves, includes retries and failures), split into the
-        // render and dispatch phases so the UI breakdown accounts for all of
-        // it. A render-level failure never dispatched, so it is all render.
+        // Summed across groups/resolves. Whatever the dispatch didn't account
+        // for is render, so a pre-dispatch throw books the whole total there.
         const totalMs = Math.round(performance.now() - notificationStartedAt);
         evaluationAnalytics.webhookDurationMs =
           (evaluationAnalytics.webhookDurationMs ?? 0) + totalMs;

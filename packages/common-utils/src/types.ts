@@ -1110,22 +1110,14 @@ export const AlertHistoryAnalyticsSchema = z.object({
   queryDurationMs: z.number().optional(),
   /** Total wall time notifying in the evaluation — message render plus delivery, including retries (ms). */
   webhookDurationMs: z.number().optional(),
-  /**
-   * The share of `webhookDurationMs` spent rendering the message before any
-   * dispatch (ms) — building the title and links, fetching log lines for the
-   * body, compiling the template. Absent on records written before the split
-   * existed.
-   */
+  /** The share of `webhookDurationMs` spent building the message before any dispatch (ms). Absent on records written before the split existed. */
   renderDurationMs: z.number().optional(),
   /** Earlier buckets backfilled in this run after missed ticks (expected buckets − 1). */
   backfilledBuckets: z.number().optional(),
   /**
-   * Per-target breakdown of the delivery share of `webhookDurationMs`,
-   * highest duration first. These do not sum to `webhookDurationMs`:
-   * `renderDurationMs` is not attributable to a target, and targets are
-   * dispatched concurrently, so the slowest one in each round sets the
-   * delivery time. Absent on evaluations that sent nothing, and on records
-   * written before per-target timing existed.
+   * Per-target breakdown of the delivery share, highest first. These do not
+   * sum to `webhookDurationMs`: the render share belongs to no target, and
+   * concurrent dispatches overlap. Absent when nothing was dispatched.
    */
   notificationTargets: z
     .array(AlertNotificationTargetTimingSchema)

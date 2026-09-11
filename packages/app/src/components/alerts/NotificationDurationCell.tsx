@@ -13,12 +13,9 @@ import { IconChevronDown, IconChevronRight } from '@tabler/icons-react';
 import { formatDurationMs } from '@/utils';
 
 /**
- * The evaluation's notification wall time, expandable in place into a
- * per-target breakdown plus the render time that precedes any dispatch.
- *
- * It expands *within* the cell rather than adding child rows: the parent row
- * already owns a chevron for groups and errors, and a second row-level
- * expander competing with it would be ambiguous to click.
+ * The evaluation's notification wall time, expandable into the render share
+ * and a per-target breakdown. It expands within the cell because the parent
+ * row already owns a chevron, and two would be ambiguous to click.
  */
 export function NotificationDurationCell({
   analytics,
@@ -28,19 +25,16 @@ export function NotificationDurationCell({
   const [expanded, setExpanded] = React.useState(false);
   const total = analytics?.webhookDurationMs;
   const targets = analytics?.notificationTargets ?? [];
-  // Rendering the message (title and links, the log-line query, the template)
-  // happens before any dispatch and belongs to no target, so without a row of
-  // its own the breakdown reads as far quicker than the total — most visibly
-  // with a single target, where the two figures should otherwise match.
+  // Belongs to no target, so without a row of its own a single-target
+  // breakdown reads as far quicker than the total it explains.
   const renderMs = analytics?.renderDurationMs ?? 0;
 
   if (total == null) {
     return <>–</>;
   }
 
-  // Nothing to expand into: records written before per-target timing existed
-  // have the total but no breakdown, and an evaluation whose every target
-  // failed before dispatch has no timing to attribute either.
+  // Nothing to expand into: records predating per-target timing, and
+  // evaluations where every target failed before dispatch.
   if (targets.length === 0 && renderMs === 0) {
     return <Text size="sm">{formatDurationMs(total)}</Text>;
   }
@@ -71,7 +65,7 @@ export function NotificationDurationCell({
           {renderMs > 0 && (
             <Group gap="xs" wrap="nowrap">
               <Tooltip
-                label="Building the message before any target is dispatched: the title and links, the query for log lines in the body, and the template render. Summed over every notification this evaluation sent, like the per-target figures."
+                label="Building the message before any dispatch — title, links, the query for log lines, the template render. Summed over every notification this evaluation sent."
                 multiline
                 maw={320}
                 withArrow

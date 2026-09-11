@@ -502,11 +502,7 @@ export type RenderedAlert = {
    * time — so this is not the complement of `failures`.
    */
   timings: NotificationTiming[];
-  /**
-   * Wall time of the dispatch phase (ms). Dispatches run concurrently, so the
-   * slowest target sets this. The caller subtracts it from its own
-   * measurement of the whole call to get the message render time.
-   */
+  /** Wall time of the concurrent dispatch phase (ms); the caller subtracts it to get the render share. */
   dispatchDurationMs: number;
 };
 

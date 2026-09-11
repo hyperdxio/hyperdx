@@ -3656,12 +3656,9 @@ describe('checkAlerts', () => {
         expect(targets![0].durationMs).toEqual(expect.any(Number));
         expect(targets![0].dispatches).toBe(1);
         expect(targets![0].failures).toBe(0);
-        // Rendering the message belongs to no target, so it is reported on its
-        // own — otherwise a single-target breakdown reads as much quicker than
-        // the total it is meant to explain. A saved-search alert queries the
-        // log lines for the message body while rendering, so the share is
-        // never zero here. With one target the two phases reconstruct the
-        // total, give or take each figure's own rounding.
+        // With one target the two phases reconstruct the total, give or take
+        // each figure's own rounding. A saved-search render queries the log
+        // lines for the body, so its share is never zero here.
         const { renderDurationMs, webhookDurationMs } =
           normalHistories[0].analytics!;
         expect(renderDurationMs).toBeGreaterThan(0);
@@ -3673,9 +3670,7 @@ describe('checkAlerts', () => {
         );
       });
 
-      // A render-level failure throws before any target is dispatched, so the
-      // whole notification wall time is the render share and no target has a
-      // timing to report. An unclosed Handlebars block fails at compile.
+      // An unclosed Handlebars block throws at compile, before any dispatch.
       it('books the whole notification time as render when the message fails to compile', async () => {
         const {
           team,

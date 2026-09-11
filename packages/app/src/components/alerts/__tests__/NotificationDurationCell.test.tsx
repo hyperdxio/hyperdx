@@ -115,8 +115,6 @@ describe('NotificationDurationCell', () => {
     expect(breakdown).toHaveTextContent('×50');
   });
 
-  // The render phase precedes any dispatch and belongs to no target, so
-  // without a row of its own the breakdown reads as quicker than the total.
   it('accounts for the render time in the breakdown', () => {
     renderWithMantine(
       <NotificationDurationCell
@@ -141,9 +139,6 @@ describe('NotificationDurationCell', () => {
     expect(breakdown).toHaveTextContent('2.69s');
   });
 
-  // An evaluation whose every target failed before dispatch has no per-target
-  // timing, and the render share is then the whole total — the one case where
-  // the breakdown is worth expanding with no targets in it.
   it('expands into the render row when no target was dispatched', () => {
     renderWithMantine(
       <NotificationDurationCell
