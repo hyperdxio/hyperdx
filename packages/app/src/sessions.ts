@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import produce from 'immer';
 import type { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
-import { chSql } from '@hyperdx/common-utils/dist/clickhouse';
+import {
+  chSql,
+  streamToAsyncIterator,
+} from '@hyperdx/common-utils/dist/clickhouse';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
   DateRange,
@@ -290,21 +293,6 @@ function isAbortError(e: unknown): boolean {
   return (
     e instanceof Error && (e.name === 'AbortError' || /abort/i.test(e.message))
   );
-}
-
-async function* streamToAsyncIterator<T = any>(
-  stream: ReadableStream<T>,
-): AsyncIterableIterator<T> {
-  const reader = stream.getReader();
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) return;
-      yield value;
-    }
-  } finally {
-    reader.releaseLock();
-  }
 }
 
 // OPTIMIZATION STRATEGY

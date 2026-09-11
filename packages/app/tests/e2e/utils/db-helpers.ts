@@ -1,5 +1,5 @@
 /**
- * Direct MongoDB access helpers for full-stack E2E tests. Only usable in
+ * Direct MongoDB and ClickHouse access helpers for full-stack E2E tests. Only usable in
  * full-stack mode (real Mongo via docker-compose) — there is no database in
  * local mode, so callers must gate on `{ tag: ['@full-stack'] }`.
  */
@@ -69,4 +69,33 @@ export function setTeamFlag(flagName: string, value: boolean): void {
 use('hyperdx-e2e');
 db.teams.updateOne({}, { $set: { [${JSON.stringify(flagName)}]: ${JSON.stringify(value)} } });
 `);
+}
+
+const CLICKHOUSE_HOST =
+  process.env.CLICKHOUSE_HOST ||
+  `http://localhost:${process.env.HDX_E2E_CH_PORT || '20500'}`;
+
+/** ClickHouse HTTP endpoint with credentials, as the E2E stack exposes it. */
+function clickhouseUrl(): string {
+  const url = new URL(CLICKHOUSE_HOST);
+  url.searchParams.set('user', process.env.CLICKHOUSE_USER || 'default');
+  if (process.env.CLICKHOUSE_PASSWORD) {
+    url.searchParams.set('password', process.env.CLICKHOUSE_PASSWORD);
+  }
+  return url.toString();
+}
+
+/** Runs a SELECT and returns one trimmed line per row (TSV). */
+export async function clickhouseSelect(sql: string): Promise<string[]> {
+  const response = await fetch(clickhouseUrl(), {
+    method: 'POST',
+    body: `${sql} FORMAT TSV`,
+    headers: { 'Content-Type': 'text/plain' },
+  });
+  if (!response.ok) {
+    throw new Error(
+      `ClickHouse query failed (${response.status}): ${await response.text()}`,
+    );
+  }
+  return (await response.text()).trim().split('\n').filter(Boolean);
 }
