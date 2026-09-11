@@ -209,3 +209,40 @@ describe('mcpSaveAlertSchema isDelta dialect bridge', () => {
     },
   );
 });
+
+describe('validateSaveAlertInput per-type channel id pairing', () => {
+  const ag = (id: string) => ({ type: 'agent' as const, agentId: id });
+
+  it('accepts a webhook channel with a webhookId and an agent channel with an agentId', () => {
+    expect(
+      validateSaveAlertInput({ ...baseInput, channels: [wh('a'), ag('b')] }),
+    ).toBeNull();
+  });
+
+  it('rejects a webhook channel missing webhookId', () => {
+    expect(
+      validateSaveAlertInput({
+        ...baseInput,
+        channel: foreignChannel({ type: 'webhook' }),
+      }),
+    ).toBe('webhookId is required for a webhook channel');
+  });
+
+  it('rejects an agent channel missing agentId', () => {
+    expect(
+      validateSaveAlertInput({
+        ...baseInput,
+        channel: foreignChannel({ type: 'agent' }),
+      }),
+    ).toBe('agentId is required for an agent channel');
+  });
+
+  it('rejects when any entry in channels misses its per-type id', () => {
+    expect(
+      validateSaveAlertInput({
+        ...baseInput,
+        channels: [wh('a'), foreignChannel({ type: 'agent' })],
+      }),
+    ).toBe('agentId is required for an agent channel');
+  });
+});

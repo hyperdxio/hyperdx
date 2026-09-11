@@ -132,13 +132,9 @@ function toInternalAlertInput(body: ExternalAlertInput): InternalAlertInput {
  *       type: string
  *       enum: [ALERT, OK, INSUFFICIENT_DATA, DISABLED, PENDING]
  *       description: Current alert state.
- *     AlertChannelType:
- *       type: string
- *       enum: [webhook]
- *       description: Channel type.
  *     AlertErrorType:
  *       type: string
- *       enum: [QUERY_ERROR, QUERY_TIMEOUT, WEBHOOK_ERROR, INVALID_ALERT, UNKNOWN]
+ *       enum: [QUERY_ERROR, QUERY_TIMEOUT, WEBHOOK_ERROR, AGENT_ERROR, INVALID_ALERT, UNKNOWN]
  *       description: Category of error recorded during alert execution.
  *     AlertExecutionError:
  *       type: object
@@ -187,15 +183,37 @@ function toInternalAlertInput(body: ExternalAlertInput): InternalAlertInput {
  *         - webhookId
  *       properties:
  *         type:
- *           $ref: '#/components/schemas/AlertChannelType'
+ *           type: string
+ *           enum: [webhook]
  *           description: Channel type. Must be "webhook" for webhook alerts.
+ *           example: "webhook"
  *         webhookId:
  *           type: string
  *           description: Webhook destination ID.
  *           example: "65f5e4a3b9e77c001a789012"
+ *     AlertChannelAgent:
+ *       type: object
+ *       description: >-
+ *         AI agent notification target. A firing alert starts an
+ *         investigation session on the referenced managed agent. Only
+ *         available on deployments with managed agents enabled.
+ *       required:
+ *         - type
+ *         - agentId
+ *       properties:
+ *         type:
+ *           type: string
+ *           enum: [agent]
+ *           description: Channel type. Must be "agent" for agent alerts.
+ *           example: "agent"
+ *         agentId:
+ *           type: string
+ *           description: Managed agent ID.
+ *           example: "65f5e4a3b9e77c001a789014"
  *     AlertChannel:
  *       oneOf:
  *         - $ref: '#/components/schemas/AlertChannelWebhook'
+ *         - $ref: '#/components/schemas/AlertChannelAgent'
  *       discriminator:
  *         propertyName: type
  *     AlertChannels:

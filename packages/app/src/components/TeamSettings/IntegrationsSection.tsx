@@ -1,5 +1,6 @@
 import { Box, Card, Divider, Stack, Text } from '@mantine/core';
 
+import AgentsSection from './AgentsSection';
 import WebhooksSection from './WebhooksSection';
 
 export default function IntegrationsSection() {
@@ -12,6 +13,8 @@ export default function IntegrationsSection() {
           <WebhooksSection />
         </Stack>
       </Card>
+      {/* Renders nothing unless managed agents are enabled on the deployment. */}
+      <AgentsSection />
     </Box>
   );
 }

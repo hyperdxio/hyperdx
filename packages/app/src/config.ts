@@ -82,6 +82,8 @@ export const IS_METRICS_ENABLED = true;
 export const IS_MTVIEWS_ENABLED = false;
 export const IS_SESSIONS_ENABLED = true;
 export const IS_PROMQL_ENABLED = env('NEXT_PUBLIC_ENABLE_PROMQL') === 'true';
+export const IS_MANAGED_AGENTS_ENABLED =
+  env('NEXT_PUBLIC_HDX_MANAGED_AGENTS_ENABLED') === 'true';
 // Alert detail page (/alerts/:id). Default off — currently enabled only in
 // dev (.env.development) and CI (e2e webserver) while the feature bakes.
 export const IS_ALERT_DETAILS_ENABLED =

@@ -50,7 +50,6 @@ import {
   toFormAlertChannels,
 } from '@/utils/alerts';
 import {
-  ALERT_CHANNEL_OPTIONS,
   ALERT_INTERVAL_OPTIONS,
   ALERT_THRESHOLD_TYPE_OPTIONS,
   intervalToMinutes,
@@ -383,20 +382,6 @@ export function EditAlertModal({
               render={({ field }) => (
                 <NativeSelect
                   data={optionsToSelectData(intervalOptions)}
-                  size="xs"
-                  {...field}
-                />
-              )}
-            />
-            <Text size="sm" opacity={0.7}>
-              via
-            </Text>
-            <Controller
-              control={control}
-              name="channels.0.type"
-              render={({ field }) => (
-                <NativeSelect
-                  data={optionsToSelectData(ALERT_CHANNEL_OPTIONS)}
                   size="xs"
                   {...field}
                 />

@@ -700,6 +700,8 @@ export enum AlertErrorType {
   /** The alert query did not complete within the evaluation timeout. */
   QUERY_TIMEOUT = 'QUERY_TIMEOUT',
   WEBHOOK_ERROR = 'WEBHOOK_ERROR',
+  /** An AI agent investigation could not be started for a firing alert. */
+  AGENT_ERROR = 'AGENT_ERROR',
   INVALID_ALERT = 'INVALID_ALERT',
   UNKNOWN = 'UNKNOWN',
 }
@@ -747,14 +749,26 @@ export const ALERT_INTERVAL_TO_MINUTES: Record<AlertInterval, number> = {
   '1d': 1440,
 };
 
-export const zAlertChannelType = z.literal('webhook');
+export const zAlertChannelType = z.enum(['webhook', 'agent']);
 
 export type AlertChannelType = z.infer<typeof zAlertChannelType>;
 
-export const zAlertChannel = z.object({
-  type: zAlertChannelType,
+export const zWebhookAlertChannel = z.object({
+  type: z.literal('webhook'),
   webhookId: z.string().nonempty("Webhook ID can't be empty"),
 });
+
+// An AI agent notification target: a firing alert starts an investigation
+// session on the referenced managed agent instead of POSTing a payload.
+export const zAgentAlertChannel = z.object({
+  type: z.literal('agent'),
+  agentId: z.string().nonempty("Agent ID can't be empty"),
+});
+
+export const zAlertChannel = z.discriminatedUnion('type', [
+  zWebhookAlertChannel,
+  zAgentAlertChannel,
+]);
 
 export const MAX_ALERT_CHANNELS = 10;
 
@@ -2633,6 +2647,7 @@ export type AssistantResponseConfigSchema = z.infer<
 const alertsPageItemChannelSchema = z.object({
   type: z.string().optional().nullable(),
   webhookId: z.string().optional(),
+  agentId: z.string().optional(),
 });
 
 export const AlertsPageItemSchema = z.object({

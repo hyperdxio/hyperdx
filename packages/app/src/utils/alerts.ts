@@ -12,7 +12,6 @@ import { isPromqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
   type Alert,
   ALERT_INTERVAL_TO_MINUTES,
-  AlertChannelType,
   AlertChartConfig,
   AlertInterval,
   AlertSource,
@@ -130,10 +129,6 @@ export const TILE_ALERT_INTERVAL_OPTIONS = _.pick(ALERT_INTERVAL_OPTIONS, [
   '12h',
   '1d',
 ]);
-
-export const ALERT_CHANNEL_OPTIONS: Record<AlertChannelType, string> = {
-  webhook: 'Webhook',
-};
 
 const EMPTY_ALERT_CHANNEL = { type: 'webhook', webhookId: '' } as const;
 

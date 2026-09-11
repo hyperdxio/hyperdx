@@ -12,8 +12,9 @@ export interface Message {
   startTime: number;
   endTime: number;
   eventId: string;
-  // Enriched fields exposed as Generic/incident.io template variables.
-  // Optional so existing callers and non-enriched templates are unaffected.
+  // Enriched fields for structured payloads (agent investigations and the
+  // extra Generic-webhook template variables). Optional so existing callers
+  // and non-enriched templates are unaffected.
   alertId?: string;
   status?: string; // firing | resolved | no_data | pending
   alertType?: string; // search | dashboard_chart | inline_query

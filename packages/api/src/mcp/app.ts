@@ -3,6 +3,7 @@ import { createMcpExpressApp } from '@modelcontextprotocol/sdk/server/express.js
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import express from 'express';
 
+import * as config from '@/config';
 import { validateUserAccessKey } from '@/middleware/auth';
 import logger from '@/utils/logger';
 import rateLimiter, { rateLimiterKeyGenerator } from '@/utils/rateLimiter';
@@ -11,7 +12,34 @@ import { createServer } from './mcpServer';
 import { McpContext } from './tools/types';
 import { userAgentClientInfo } from './utils/mcpClient';
 
-const app = createMcpExpressApp();
+// The SDK applies localhost-only DNS-rebinding protection by default, which
+// rejects any request whose Host header isn't localhost. Managed agents (and
+// any remote MCP client) reach us over a public tunnel/domain, so allowlist the
+// configured public hosts alongside localhost. Matching is port-agnostic, so we
+// pass bare hostnames.
+export const buildAllowedHosts = (urls: (string | undefined)[]): string[] => {
+  const hosts = ['localhost', '127.0.0.1', '[::1]'];
+  for (const url of urls) {
+    if (!url) continue;
+    try {
+      hosts.push(new URL(url).hostname);
+    } catch {
+      // ignore a malformed URL — it just won't be allowlisted
+    }
+  }
+  return hosts;
+};
+
+const app = createMcpExpressApp({
+  // The managed-agents URL is only added when the feature is on, so a
+  // deployment that never enables it keeps the SDK's narrower default.
+  allowedHosts: buildAllowedHosts([
+    config.IS_MANAGED_AGENTS_ENABLED
+      ? config.getManagedAgentsMcpUrl()
+      : undefined,
+    config.FRONTEND_URL,
+  ]),
+});
 
 const mcpRateLimiter = rateLimiter({
   windowMs: 60 * 1000, // 1 minute

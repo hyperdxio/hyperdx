@@ -1,4 +1,5 @@
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
+import { AlertErrorType } from '@hyperdx/common-utils/dist/types';
 import mongoose from 'mongoose';
 
 import * as config from '@/config';
@@ -6,6 +7,7 @@ import { ObjectId } from '@/models';
 import { AlertSource, AlertThresholdType, IAlert } from '@/models/alert';
 import { ISource } from '@/models/source';
 import { IWebhook } from '@/models/webhook';
+import { AnthropicApiError } from '@/services/anthropicAgents';
 import * as checkAlerts from '@/tasks/checkAlerts';
 import CheckAlertTask from '@/tasks/checkAlerts';
 import {
@@ -440,5 +442,49 @@ describe('CheckAlertTask', () => {
         expect(mockAlertProvider.recordAlertErrors).not.toHaveBeenCalled();
       });
     });
+  });
+});
+
+describe('makeNotificationAlertError', () => {
+  const { makeNotificationAlertError } = checkAlerts;
+
+  it('maps an agent failure to AGENT_ERROR with the transport-authored reason', () => {
+    const err = makeNotificationAlertError({
+      target: '66f0c0ffee66f0c0ffee66f0',
+      type: 'agent',
+      error: new Error(
+        "Managed agent not found. The agent may have been deleted — update the alert's notification channel.",
+      ),
+    });
+
+    expect(err.type).toBe(AlertErrorType.AGENT_ERROR);
+    expect(err.message).toContain('agent "66f0c0ffee66f0c0ffee66f0"');
+    expect(err.message).toContain('Managed agent not found');
+  });
+
+  it('hides upstream Anthropic response bodies behind a generic line', () => {
+    const err = makeNotificationAlertError({
+      target: '66f0c0ffee66f0c0ffee66f0',
+      type: 'agent',
+      error: new AnthropicApiError(
+        'Anthropic API POST /v1/sessions failed (429): {"secret":"upstream body"}',
+        429,
+      ),
+    });
+
+    expect(err.type).toBe(AlertErrorType.AGENT_ERROR);
+    expect(err.message).toContain('The Anthropic API request failed.');
+    expect(err.message).not.toContain('upstream body');
+  });
+
+  it('keeps webhook failures on the webhook message', () => {
+    const err = makeNotificationAlertError({
+      target: 'Ops hook',
+      type: 'webhook',
+      error: new Error('connect ECONNREFUSED'),
+    });
+
+    expect(err.type).toBe(AlertErrorType.WEBHOOK_ERROR);
+    expect(err.message).toContain('Check the webhook configuration');
   });
 });

@@ -31,6 +31,7 @@ export const ALERT_ERROR_TYPE_LABELS: Record<AlertErrorType, string> = {
   [AlertErrorType.QUERY_ERROR]: 'Query Error',
   [AlertErrorType.QUERY_TIMEOUT]: 'Query Timeout',
   [AlertErrorType.WEBHOOK_ERROR]: 'Webhook Error',
+  [AlertErrorType.AGENT_ERROR]: 'AI agent error',
   [AlertErrorType.UNKNOWN]: 'Unknown Error',
 };
 

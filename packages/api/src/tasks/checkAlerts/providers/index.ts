@@ -20,8 +20,13 @@ export enum AlertTaskType {
   INLINE,
 }
 
-// Discriminated union of possible alert channel types with populated channel data
-export type PopulatedAlertChannel = { type: 'webhook' } & { channel: IWebhook };
+// Discriminated union of possible alert channel types with populated channel
+// data. The agent variant carries only the reference: the agent transport has
+// to hit MongoDB and Anthropic at delivery time anyway, so the document is
+// resolved (team-scoped) there rather than threaded through every render call.
+export type PopulatedAlertChannel =
+  | { type: 'webhook'; channel: IWebhook }
+  | { type: 'agent'; channel: { agentId: string } };
 
 // Details about the alert and the source for the alert. Depending on
 // the taskType either:

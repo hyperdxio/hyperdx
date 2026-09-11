@@ -141,7 +141,7 @@ with:
 | `clickstack_get_saved_search`    | List all saved searches or get full detail for a specific saved search                       |
 | `clickstack_save_saved_search`   | Create or update a saved search (reusable query against a data source)                       |
 | `clickstack_get_alert`           | List alerts (summary) or get full detail with evaluation history; filter by state             |
-| `clickstack_save_alert`          | Create a new alert or update an existing one                                                 |
+| `clickstack_save_alert`          | Create a new alert or update an existing one (notify via webhooks, or AI agent channels on deployments with managed agents enabled) |
 | `clickstack_trace_waterfall`     | Fetch all spans in a single trace as a parent/child waterfall tree with optional correlated logs |
 | `clickstack_trace_top_time_consuming_operations` | Aggregate breakdown of child operations by cumulative time across matching parent traces |
 | `clickstack_get_webhook`         | List available webhook destinations for use as alert notification channels                    |
