@@ -6,6 +6,167 @@ PR — keep the `hyperdx-release-notes` comment marker intact when editing so yo
 edits survive regeneration. Per-package detail lives in each
 `packages/*/CHANGELOG.md`.
 
+## v2.39.0 — 2026-09-11
+
+<!-- hyperdx-release-notes version=2.39.0 inputs=5302084a7358 -->
+
+**Chart alerts and required dashboard filters**
+
+You can now create an alert directly from a chart in the explorer, without first
+saving it to a dashboard tile or a saved search — build the query, add an alert,
+and it carries its own chart config with it. Dashboard filters can now be
+configured as required rather than optional, so a dashboard that is only
+meaningful once it has been scoped can say so, and a dashboard's time range can
+now be saved as a relative window such as the last hour instead of the dates it
+happened to be showing. The bundled OpenTelemetry collector also ships with the
+spanmetrics connector compiled in, so you can derive call-count and duration
+metrics from the spans it already receives — that matters most if you ingest
+Datadog Agent traces through the existing `datadogreceiver`, where until now
+there was no way to get RED metrics out of that trace data once it had landed.
+Alert webhooks now report the condition an alert actually evaluates, so
+`{{sourceQuery}}` no longer arrives empty for alerts defined by a per-series
+condition. The LLM dashboard gains an end-user filter and much faster tiles.
+
+### ✨ New Features
+
+- **Alerts straight from the chart explorer**: build a chart on `/chart` — logs,
+  traces or metrics, in the builder or in raw SQL — then add an alert, name it
+  and create it, with no saved search or dashboard tile in the way. The alert
+  persists its own chart config; on the alerts page it shows its name with a
+  chart icon and links back to the explorer seeded with its query, and its detail
+  page renders that query and edits both the alert's fields and the chart behind
+  it in the full chart editor (#3069).
+- **Dashboard filters can be marked required**: a dashboard filter can now be
+  configured as required instead of optional, so a dashboard that only makes
+  sense scoped to a particular value carries that expectation with it. The
+  setting is carried through the schemas and APIs as well as the app, so a
+  filter defined this way survives a round trip through the API (#3078, thanks
+  @pulpdrew!).
+- **Dashboards remember relative date ranges**: a dashboard can now be saved
+  with a relative time range — the last hour, the last day — rather than the
+  fixed dates it was showing when you saved it, so it reopens on a window
+  anchored to now every time you come back to it. Like the filter settings, the
+  range is carried through the schemas and APIs as well as the app (#3073,
+  thanks @knudtty!).
+- **Span metrics from your own collector pipeline**: the OTel collector now has
+  the `spanmetricsconnector` compiled in, ready to reference from a custom
+  pipeline supplied via `CUSTOM_OTELCOL_CONFIG_FILE` to compute call-count and
+  duration (RED) metrics from spans — including the Datadog Agent traces the
+  `datadogreceiver` ingests. The change is purely additive: no default pipeline
+  or behaviour changes on its own (#3044, thanks @arj22!).
+- **Filter the LLM dashboard by end user**: a user filter now sits alongside the
+  existing session filter, listing the distinct users seen on LLM spans in the
+  searched range and scoping every tab to the one you pick, including the Errors
+  tab's correlated log events. Users are resolved the same way the "Top Users"
+  chart groups them, so a value from the dropdown always matches the rows that
+  produced it, and the selection lives in the URL so a filtered view can be
+  shared (#3104).
+
+### 🔧 Improvements
+
+- **The metric name picker fills from the table's primary index**: opening the
+  metric select no longer waits on an aggregation over your metrics data — names
+  now stream out of the table's sparse primary index, so on a source reporting
+  around 4,900 gauge metrics the first options appear in about 30ms rather than
+  770ms, and the rest arrive progressively while a small spinner sits in place of
+  the dropdown chevron. Browsing shows a subset weighted towards the metrics that
+  actually carry data; typing switches to the exhaustive, relevance-ranked
+  search, so any metric the index leaves out is still reachable by name. Where
+  the index cannot be read at all — a server older than 24.2, a Distributed or
+  non-MergeTree metrics table, or a primary key without `MetricName` — the picker
+  falls back to the exhaustive listing, so no deployment loses it (#3025, thanks
+  @MikeShi42!).
+- **Tile previews can follow the dashboard's filters**: the tile editor can now
+  apply the dashboard's current filter selections to its preview, so you edit a
+  tile against the data the dashboard is actually showing rather than an
+  unfiltered version of it (#3093, thanks @pulpdrew!).
+- **"Send test" fills in every webhook template variable**: the test payload now
+  carries a sample value for every variable the form lists, so a body template
+  can be checked before an alert ever fires. The documented guard for an
+  optional number is now `{{#unless (eq thresholdMax undefined)}}` rather than
+  `{{#if thresholdMax}}`, which treats a legitimate bound of `0` as absent
+  (#3068, thanks @jordan-simonovski!).
+- **Alert tags are included in the tags API**: the tags applied to an alert are
+  now returned by the tags API alongside the tags on your other resources, so
+  they are listed and suggested wherever tags are (#3092, thanks @pulpdrew!).
+- **Newly seeded trace schemas come with text indexes**: the collector now adds
+  text indexes when it seeds the trace schema, so searches over trace text are
+  backed by an index from the start. Seeding only runs when the schema is
+  created, so a deployment whose trace tables already exist is unchanged
+  (#3096, thanks @knudtty!).
+- **Much faster LLM dashboard tiles**: the dashboard tested whether a span
+  attribute was present in a way no ClickHouse skip index could serve, so every
+  tile scanned the whole table; those filters now lead with `mapContains`, which
+  the trace schema's key index answers. On a staging trace table the LLM span
+  predicate went from a 36 second planning stall to 7ms, and a two-key filter
+  dropped from 1,306 granules to 3. One behaviour change comes with it: a span
+  carrying `gen_ai.system` at all now counts as an LLM span, whatever the value.
+  Tables with operator-created materialised columns for those attributes were
+  never affected by the planning cost and trade that rewrite for index pruning;
+  JSON attribute columns are unchanged (#3104).
+- **Queries no longer stall in planning on ClickHouse 26.3 and later**:
+  ClickHouse 26.3 turns on
+  `allow_calculating_subcolumns_sizes_for_merge_tree_reading` by default, which
+  makes PREWHERE planning fetch per-part sizes for every map key a query
+  references — on SharedMergeTree that is one S3 GET per key and active part, it
+  runs before a single row is read, and `max_execution_time` does not interrupt
+  it, so a query touching many attribute keys (the LLM dashboard reads around 64)
+  could spend minutes getting started. Queries now send that setting as `0`
+  wherever the server supports it (#3102).
+
+### 🐛 Bug Fixes
+
+- **`{{sourceQuery}}` reports the condition the alert evaluates**: the webhook
+  template variable read only a chart's top-level `where`, so an alert defined
+  by a per-series `aggCondition` — a common shape — rendered it empty. It now
+  reports every part of the condition the alert query applies: a chart's `where`
+  plus the `aggCondition` of the series the alert reads, and a saved search's
+  `where` plus its pinned filters, truncated at 2000 characters. A chart's
+  pinned filters are deliberately excluded, since a tile or inline alert does
+  not apply them. Editing an alert off a `between` or `outside` comparator also
+  clears the stored `thresholdMax` now, instead of leaving a bound that the
+  alerts APIs would go on serving to advertise a range that no longer fires
+  (#3068, thanks @jordan-simonovski!).
+- **The default time range no longer goes stale in a long-lived tab**: the
+  default search time range was resolved once when the app first loaded, so a
+  browser tab left open for hours kept falling back to a window anchored to that
+  original load. It is now resolved against the current time instead (#3087,
+  thanks @Aryainguz!).
+- **The Help menu stops sparkling on every deploy**: the "you haven't read the
+  latest release notes" indicator compared your browser's last acknowledgement
+  against `NEXT_PUBLIC_APP_VERSION`, so any deployment that stamps a build id
+  into it — a git short SHA, a CI build number — nudged every user on every
+  deploy whether a release had been published or not. It now keys on the newest
+  release in the changelog and nudges only when that release is strictly newer
+  than the one you have already acknowledged, so a rollback no longer re-nudges
+  everyone either (#3042, thanks @jordan-simonovski!).
+- **`/api/sources` responses stay stable for older sources**: a source whose
+  stored `metadataMaterializedViews` carries no nested `_id` is now returned
+  consistently from one request to the next, so tooling that reads the sources
+  API no longer sees the same source come back looking different each time
+  (#3099, thanks @pulpdrew!).
+- **LLM dashboard scope filters stay clearable**: the session and user dropdowns
+  were disabled whenever their list of distinct values was loading or had
+  failed, leaving you looking at a scope you could see but could not remove —
+  permanently, if the query kept failing. They now stay interactive whenever a
+  value is applied (#3105).
+- **Disabled sources no longer run queries on page load**: a source you have
+  turned off is now excluded from the metadata and field autocomplete lookups
+  and the dashboard filter-value lookups that fire as a page loads, so opening a
+  page no longer issues source-settings queries — `SELECT name, value FROM
+  system.settings` and the like — against sources that are switched off (#3107).
+
+<!-- hyperdx-package-list -->
+
+### 📦 Package changelogs
+
+- `@hyperdx/api` 2.38.0 → 2.39.0 — [changelog](https://github.com/hyperdxio/hyperdx/blob/main/packages/api/CHANGELOG.md#2390)
+- `@hyperdx/app` 2.38.0 → 2.39.0 — [changelog](https://github.com/hyperdxio/hyperdx/blob/main/packages/app/CHANGELOG.md#2390)
+- `@hyperdx/common-utils` 0.28.1 → 0.29.0 — [changelog](https://github.com/hyperdxio/hyperdx/blob/main/packages/common-utils/CHANGELOG.md#0290)
+- `@hyperdx/otel-collector` 2.38.0 → 2.39.0 — [changelog](https://github.com/hyperdxio/hyperdx/blob/main/packages/otel-collector/CHANGELOG.md#2390)
+
+<!-- /hyperdx-package-list -->
+
 ## v2.38.0 — 2026-09-04
 
 <!-- hyperdx-release-notes version=2.38.0 inputs=c2af4f77b513 -->
