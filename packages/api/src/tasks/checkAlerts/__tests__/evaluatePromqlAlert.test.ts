@@ -63,12 +63,49 @@ describe('evaluatePromqlAlert', () => {
         windowSizeInMins: mockWindowSizeInMins,
       });
 
-      expect(result).toBe(42.5);
+      expect(result).toEqual([{ group: '', value: 42.5 }]);
       expect(global.fetch).toHaveBeenCalledWith(
         'http://prometheus:9090/api/v1/query_range?query=up&start=1704067200&end=1704067500&step=300',
         expect.any(Object),
       );
     });
+
+
+    it('should return multiple series for Prometheus endpoint', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          status: 'success',
+          data: {
+            result: [
+              {
+                metric: { host: 'A' },
+                values: [[1704067500, '42.5']],
+              },
+              {
+                metric: { host: 'B' },
+                values: [[1704067500, '10.5']],
+              },
+            ],
+          },
+        }),
+      });
+
+      const result = await evaluatePromqlAlert({
+        savedConfig: mockSavedConfig,
+        connectionId: mockConnectionId,
+        teamId: mockTeamId,
+        dateRange: mockDateRange,
+        windowSizeInMins: mockWindowSizeInMins,
+      });
+
+      expect(result).toEqual([
+        { group: 'host:"A"', value: 42.5 },
+        { group: 'host:"B"', value: 10.5 },
+      ]);
+    });
+
+
 
     it('should return null when no data is returned', async () => {
       (global.fetch as jest.Mock).mockResolvedValue({
@@ -106,6 +143,47 @@ describe('evaluatePromqlAlert', () => {
       }));
     });
 
+    it('should return multiple series for ClickHouse endpoint with proper db/table', async () => {
+      mockQuery.mockResolvedValue({
+        json: async () => ({
+          data: [
+            {
+              tags: { host: 'A' },
+              time_series: [['2024-01-01 00:05:00', 42.5]],
+            },
+            {
+              tags: { host: 'B' },
+              time_series: [['2024-01-01 00:05:00', 10.5]],
+            },
+          ],
+        }),
+      });
+
+      const result = await evaluatePromqlAlert({
+        savedConfig: mockSavedConfig,
+        source: { from: { databaseName: 'my_db', tableName: 'my_table' } } as any,
+        connectionId: mockConnectionId,
+        teamId: mockTeamId,
+        dateRange: mockDateRange,
+        windowSizeInMins: mockWindowSizeInMins,
+      });
+
+      expect(result).toEqual([
+        { group: 'host:"A"', value: 42.5 },
+        { group: 'host:"B"', value: 10.5 },
+      ]);
+
+      expect(mockQuery).toHaveBeenCalledWith(
+        expect.objectContaining({
+          query_params: expect.objectContaining({
+            expr: 'up',
+            db: 'my_db',
+            table: 'my_table',
+          }),
+        }),
+      );
+    });
+
     it('should query ClickHouse and return the last value', async () => {
       mockQuery.mockResolvedValue({
         json: async () => ({
@@ -128,7 +206,7 @@ describe('evaluatePromqlAlert', () => {
         windowSizeInMins: mockWindowSizeInMins,
       });
 
-      expect(result).toBe(42.5);
+      expect(result).toEqual([{ group: '', value: 42.5 }]);
       expect(mockQuery).toHaveBeenCalledWith(
         expect.objectContaining({
           query_params: expect.objectContaining({

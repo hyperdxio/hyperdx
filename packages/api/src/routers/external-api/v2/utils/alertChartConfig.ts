@@ -143,6 +143,9 @@ export const KNOWN_LOSSY_CONFIG_KEYS: ReadonlySet<string> = new Set([
   'bodyExpression',
   'useTextIndexForImplicitColumn',
   'metricTables',
+  'promqlExpression',
+  'step',
+  'legendTemplate',
 ]);
 
 /** Select-item fields the external dialect round-trips. */
