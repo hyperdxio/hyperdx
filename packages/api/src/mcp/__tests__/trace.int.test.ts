@@ -598,7 +598,7 @@ describe('MCP Trace Tools', () => {
     // first-seen — so a trace whose spans span more than an hour is returned
     // whole, spans and correlated logs alike.
     describe('long-running trace window', () => {
-      const LONG_TRACE_ID = 'aaaa1111bbbb2222cccc3333dddd4444';
+      const LONG_TRACE_ID = 'a1b2c3d4e5f60000111122223333long';
       const LONG_SVC = 'wf-longtrace-svc';
       const now = new Date();
       // Root two days ago; a child span ~2h later. A fixed first-seen + 1h lead
@@ -716,6 +716,54 @@ describe('MCP Trace Tools', () => {
         expect(output.spanCount).toBe(2);
         expect(output.spans.filter((s: any) => s.depth === 0)).toHaveLength(1);
         expect(output.rootSpan.spanId).toBe('pick_root_span01');
+      });
+
+      it('probes in auto-pick even with an explicit startTime (pick window, not a fetch bound)', async () => {
+        // Own trace + service so it's isolated from the sibling test (the
+        // traces table is not cleared between tests). startTime here is the
+        // pick window; the picked trace's root predates it, so the fetch must
+        // still probe the trace's real extent rather than honoring startTime.
+        const PICK2_TRACE_ID = 'cccc3333dddd4444eeee5555ffff6666';
+        const PICK2_SVC = 'wf-autopick-window-svc';
+        await bulkInsertTraces([
+          {
+            Timestamp: rootTs,
+            TraceId: PICK2_TRACE_ID,
+            SpanId: 'pick2_root_span01',
+            ParentSpanId: '',
+            SpanName: 'GET /wf-autopick2/root',
+            SpanKind: 'SPAN_KIND_SERVER',
+            ServiceName: PICK2_SVC,
+            Duration: 2_400_000_000_000,
+            StatusCode: 'STATUS_CODE_OK',
+          },
+          {
+            Timestamp: childTs,
+            TraceId: PICK2_TRACE_ID,
+            SpanId: 'pick2_child_span1',
+            ParentSpanId: 'pick2_root_span01',
+            SpanName: 'wf-autopick2-child',
+            SpanKind: 'SPAN_KIND_CLIENT',
+            ServiceName: PICK2_SVC,
+            Duration: 100_000_000,
+            StatusCode: 'STATUS_CODE_OK',
+          },
+        ]);
+
+        const result = await callTool(client, 'clickstack_trace_waterfall', {
+          sourceId: traceSource._id.toString(),
+          pickFilter: `ServiceName:${PICK2_SVC}`,
+          pickBy: 'slowest',
+          includeLogs: false,
+          startTime: new Date(now.getTime() - 10 * 60 * 1000).toISOString(),
+          endTime: new Date(now.getTime() + 60 * 1000).toISOString(),
+        });
+
+        expect(result.isError).toBeFalsy();
+        const output = JSON.parse(getFirstText(result));
+        expect(output.traceId).toBe(PICK2_TRACE_ID);
+        expect(output.spanCount).toBe(2);
+        expect(output.rootSpan.spanId).toBe('pick2_root_span01');
       });
     });
 

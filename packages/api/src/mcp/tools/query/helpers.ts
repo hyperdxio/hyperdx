@@ -908,7 +908,10 @@ export function errorHint(msg: string, error?: unknown): string | null {
       'The result row count is too large to serialize back to the agent.'
     );
   }
-  if (/TIMEOUT_EXCEEDED|Timeout exceeded|max_execution_time/i.test(msg)) {
+  // Match only real timeouts. A bare `max_execution_time` substring would also
+  // hijack SETTING_CONSTRAINT_VIOLATION / readonly errors ("Setting
+  // max_execution_time shouldn't be greater than…"), which need a different fix.
+  if (/TIMEOUT_EXCEEDED|Timeout exceeded/i.test(msg)) {
     return (
       'The query exceeded its execution-time limit. Narrow the time range so ' +
       'ClickHouse can prune partitions, add filters to reduce the rows scanned, ' +

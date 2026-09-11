@@ -1,4 +1,5 @@
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
+import { getFirstTimestampValueExpression } from '@hyperdx/common-utils/dist/core/utils';
 import {
   type BuilderChartConfigWithDateRange,
   type ChartConfigWithDateRange,
@@ -360,6 +361,11 @@ export function registerTraceWaterfall({
       const spanKindExpr = source.spanKindExpression;
       const durationExpr = source.durationExpression;
       const tsExpr = source.timestampValueExpression;
+      // A source's timestampValueExpression may be a comma-separated list (e.g.
+      // "EventDate, EventTime"). Raw-SQL uses that aggregate or compare on it —
+      // min()/max() and the WHERE bounds — need a single column; only the
+      // queryChartConfig picker (which splits it itself) gets the full form.
+      const tsExprFirst = getFirstTimestampValueExpression(tsExpr);
       const serviceNameExpr = source.serviceNameExpression ?? "''";
       const statusCodeExpr = source.statusCodeExpression ?? "''";
       const statusMessageExpr = source.statusMessageExpression ?? "''";
@@ -395,8 +401,8 @@ export function registerTraceWaterfall({
           input.pickBy === 'slowest'
             ? `max(${durationExpr}) DESC`
             : input.pickBy === 'first_error'
-              ? `min(${tsExpr}) ASC`
-              : `max(${tsExpr}) DESC`;
+              ? `min(${tsExprFirst}) ASC`
+              : `max(${tsExprFirst}) DESC`;
 
         const pickConfig: BuilderChartConfigWithDateRange = {
           displayType: DisplayType.Table,
@@ -468,26 +474,34 @@ export function registerTraceWaterfall({
       }
 
       // The fetch must be time-bounded so ClickHouse prunes partitions, but the
-      // default 15-min window is too narrow: an explicit traceId may be older
-      // than it, and an auto-picked trace is only guaranteed one span inside it
-      // (its root/tail can lie outside, giving a partial tree). So when the
-      // window was defaulted, probe the trace's real [min, max] extent instead.
+      // [startDate, endDate] window is often too narrow to bound it safely:
+      //   - an explicit traceId with the default window may be for an older
+      //     trace outside it;
+      //   - in auto-pick mode startTime is the *pick* window ("find a slow
+      //     trace from the last hour"), not a fetch bound — the picked trace is
+      //     only guaranteed one span inside it, so its root/tail can lie outside
+      //     and the fetch would return a partial tree.
+      // Probe the trace's real [min, max] extent in both cases. The only time
+      // we honor the window verbatim is an explicit traceId WITH an explicit
+      // startTime, where the caller has deliberately set a fetch bound.
       let fetchStart = startDate;
       let fetchEnd = endDate;
       let probeFailed = false;
       let windowClamped = false;
+      const isAutoPick = input.traceId == null;
       const usedDefaultWindow = input.startTime == null;
-      if (usedDefaultWindow) {
-        const probeStart = input.traceId
-          ? new Date(endDate.getTime() - TRACE_PROBE_MAX_LOOKBACK_MS)
-          : new Date(startDate.getTime() - TRACE_PROBE_AUTOPICK_LOOKBACK_MS);
+      if (isAutoPick || usedDefaultWindow) {
+        const probeStart =
+          input.traceId && usedDefaultWindow
+            ? new Date(endDate.getTime() - TRACE_PROBE_MAX_LOOKBACK_MS)
+            : new Date(startDate.getTime() - TRACE_PROBE_AUTOPICK_LOOKBACK_MS);
         try {
           const probed = await probeTraceWindow(clickhouseClient, {
             databaseName: source.from.databaseName,
             tableName: source.from.tableName,
             connectionId: source.connection.toString(),
             traceIdExpr,
-            tsExpr,
+            tsExpr: tsExprFirst,
             traceId: pickedTraceId,
             startDate: probeStart,
             endDate,
@@ -516,13 +530,13 @@ export function registerTraceWaterfall({
           ${durationExpr} / {divisor:Float64} AS durationMs,
           ${statusCodeExpr} AS statusCode,
           ${statusMessageExpr} AS statusMessage,
-          ${tsExpr} AS timestamp,
+          ${tsExprFirst} AS timestamp,
           ${attrsExpr} AS spanAttributes
         FROM {db:Identifier}.{tbl:Identifier}
         WHERE ${traceIdExpr} = {tid:String}
-          AND ${tsExpr} >= fromUnixTimestamp64Milli({startMs:Int64})
-          AND ${tsExpr} <= fromUnixTimestamp64Milli({endMs:Int64})
-        ORDER BY ${tsExpr} ASC
+          AND ${tsExprFirst} >= fromUnixTimestamp64Milli({startMs:Int64})
+          AND ${tsExprFirst} <= fromUnixTimestamp64Milli({endMs:Int64})
+        ORDER BY ${tsExprFirst} ASC
         LIMIT {n:UInt32}
       `;
 
@@ -647,7 +661,9 @@ export function registerTraceWaterfall({
         } else {
           const logTraceIdExpr = logSource.traceIdExpression ?? 'TraceId';
           const logSpanIdExpr = logSource.spanIdExpression ?? "''";
-          const logTsExpr = logSource.timestampValueExpression;
+          const logTsExpr = getFirstTimestampValueExpression(
+            logSource.timestampValueExpression,
+          );
           const logBodyExpr = logSource.bodyExpression ?? "''";
           const logSevExpr = logSource.severityTextExpression ?? "''";
           const logSvcExpr = logSource.serviceNameExpression ?? "''";

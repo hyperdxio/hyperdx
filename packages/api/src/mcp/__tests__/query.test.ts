@@ -318,6 +318,14 @@ describe('errorHint', () => {
     expect(hint).toContain('constraint');
   });
 
+  it('routes a max_execution_time constraint error to the constraint hint, not the timeout hint', () => {
+    const hint = errorHint(
+      "Setting max_execution_time shouldn't be greater than 10. (SETTING_CONSTRAINT_VIOLATION)",
+    );
+    expect(hint).toContain('constraint');
+    expect(hint).not.toContain('execution-time limit');
+  });
+
   it('should return null for unrecognized errors', () => {
     const hint = errorHint('Connection refused');
     expect(hint).toBeNull();
