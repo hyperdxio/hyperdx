@@ -588,6 +588,9 @@ describe('MCP Trace Tools', () => {
           'sentinel_old_span',
         );
         expect(output.spans.filter((s: any) => s.depth === 0)).toHaveLength(1);
+        // The clamp dropped earlier spans, so the output must say so rather than
+        // silently promise the whole tree.
+        expect(output.windowNote).toContain('fetch-window cap');
       });
     });
 
@@ -653,6 +656,8 @@ describe('MCP Trace Tools', () => {
         expect(output.spans.filter((s: any) => s.depth === 0)).toHaveLength(1);
         // A fixed first-seen + 1h lead would have cut off this late child's log.
         expect(output.logsCount).toBe(1);
+        // An 85-min spread is under the fetch-window cap, so no clamp warning.
+        expect(output.windowNote).toBeUndefined();
       });
     });
 

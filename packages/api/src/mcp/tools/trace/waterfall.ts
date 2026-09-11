@@ -113,8 +113,6 @@ const traceSchema = z.object({
 
 type TraceInput = z.infer<typeof traceSchema>;
 
-// ─── Safety limits ───────────────────────────────────────────────────────────
-
 // Probe-window tuning. The span/log fetch is time-bounded to the
 // trace's probed [min, max] extent so ClickHouse prunes partitions. The pads
 // absorb clock skew between emitters; they do NOT cover trace duration — the
@@ -197,6 +195,8 @@ function parseProbeTimestamp(value: string | undefined): number | null {
   return isNaN(ms) || ms <= 0 ? null : ms;
 }
 
+type ProbedWindow = { start: Date; end: Date; clamped: boolean };
+
 /**
  * Probe a trace's [min, max] span timestamps within [startDate, endDate] and
  * return a fetch window covering that extent (padded, then width-clamped).
@@ -204,7 +204,10 @@ function parseProbeTimestamp(value: string | undefined): number | null {
  * and keeps a long trace from being truncated by a fixed lead. The probe is
  * time-bounded so it prunes partitions; the caller sets [startDate, endDate].
  *
- * Returns null when no span is found, so the caller falls back to its window.
+ * `clamped` is true when the trace's extent exceeded TRACE_MAX_FETCH_WINDOW_MS
+ * and the window was capped to the recent tail — the returned tree may then be
+ * missing early spans. Returns null when no span is found, so the caller falls
+ * back to its window.
  */
 async function probeTraceWindow(
   clickhouseClient: ClickhouseClient,
@@ -218,7 +221,7 @@ async function probeTraceWindow(
     startDate: Date;
     endDate: Date;
   },
-): Promise<[Date, Date] | null> {
+): Promise<ProbedWindow | null> {
   const probeQuery = `
     SELECT
       min(${params.tsExpr}) AS firstSeen,
@@ -254,11 +257,14 @@ async function probeTraceWindow(
   const fetchEnd = lastSeen + TRACE_PROBE_TRAIL_PAD_MS;
   // Anchor to the recent tail and clamp the width so a wide-spread/reused
   // TraceId can't balloon the fetch back toward the 90-day probe range.
-  const fetchStart = Math.max(
-    firstSeen - TRACE_PROBE_LEAD_PAD_MS,
-    fetchEnd - TRACE_MAX_FETCH_WINDOW_MS,
-  );
-  return [new Date(fetchStart), new Date(fetchEnd)];
+  const unclampedStart = firstSeen - TRACE_PROBE_LEAD_PAD_MS;
+  const clampFloor = fetchEnd - TRACE_MAX_FETCH_WINDOW_MS;
+  const fetchStart = Math.max(unclampedStart, clampFloor);
+  return {
+    start: new Date(fetchStart),
+    end: new Date(fetchEnd),
+    clamped: unclampedStart < clampFloor,
+  };
 }
 
 // ─── Tool definition ─────────────────────────────────────────────────────────
@@ -469,6 +475,7 @@ export function registerTraceWaterfall({
       let fetchStart = startDate;
       let fetchEnd = endDate;
       let probeFailed = false;
+      let windowClamped = false;
       const usedDefaultWindow = input.startTime == null;
       if (usedDefaultWindow) {
         const probeStart = input.traceId
@@ -486,7 +493,9 @@ export function registerTraceWaterfall({
             endDate,
           });
           if (probed) {
-            [fetchStart, fetchEnd] = probed;
+            fetchStart = probed.start;
+            fetchEnd = probed.end;
+            windowClamped = probed.clamped;
           }
         } catch {
           // probeTraceWindow returns null (not throws) for the empty case, so a
@@ -532,13 +541,15 @@ export function registerTraceWaterfall({
           },
           format: 'JSONEachRow',
           connectionId: source.connection.toString(),
+          // MCP settings win over source.querySettings so a source can't relax
+          // the max_execution_time / readonly ceiling this tool depends on.
           clickhouse_settings: {
-            ...MCP_CLICKHOUSE_SETTINGS,
             ...(source.querySettings
               ? Object.fromEntries(
                   source.querySettings.map(s => [s.setting, s.value]),
                 )
               : {}),
+            ...MCP_CLICKHOUSE_SETTINGS,
           },
         });
         rows =
@@ -594,6 +605,24 @@ export function registerTraceWaterfall({
       const tree = buildPreOrderTree(spans);
       const root = tree.find(s => s.depth === 0) ?? tree[0];
       const totalDuration = Math.max(...spans.map(s => s.durationMs));
+
+      // When the extent probe failed we fell back to the default window, which
+      // may not cover the whole trace — so spans that came back could be a
+      // partial tree with a false root. Warn rather than present it as complete.
+      const probeNote = probeFailed
+        ? 'The span-extent probe failed (likely a query timeout), so the fetch ' +
+          'used the default window and this tree may be incomplete. Retry, or ' +
+          'pass an explicit startTime/endTime around when the trace ran.'
+        : undefined;
+
+      // The fetch window is capped so a wide-spread trace can't scan the world;
+      // that cap can drop the earliest spans of a trace that ran longer than
+      // the cap. Say so rather than promising the whole tree.
+      const windowNote = windowClamped
+        ? 'This trace spans longer than the fetch-window cap, so the earliest ' +
+          'spans may be missing. Pass an explicit startTime covering the ' +
+          "trace's start to see the full tree."
+        : undefined;
 
       // ── Step 3: fetch correlated logs (when logSourceId is configured) ──
       type LogRow = {
@@ -673,13 +702,14 @@ export function registerTraceWaterfall({
                 },
                 format: 'JSONEachRow',
                 connectionId: logSource.connection.toString(),
+                // MCP settings win over source.querySettings (see span fetch).
                 clickhouse_settings: {
-                  ...MCP_CLICKHOUSE_SETTINGS,
                   ...(logSource.querySettings
                     ? Object.fromEntries(
                         logSource.querySettings.map(s => [s.setting, s.value]),
                       )
                     : {}),
+                  ...MCP_CLICKHOUSE_SETTINGS,
                 },
               });
               const allLogs =
@@ -721,6 +751,8 @@ export function registerTraceWaterfall({
             }
           : {}),
         ...(logsNote ? { logsNote } : {}),
+        ...(probeNote ? { probeNote } : {}),
+        ...(windowNote ? { windowNote } : {}),
         ...(truncated
           ? {
               note: `Result truncated to ${input.maxSpans} spans. Increase maxSpans (max 2000) or narrow the trace if needed.`,
