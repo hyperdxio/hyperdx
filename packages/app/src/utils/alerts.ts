@@ -8,7 +8,6 @@ import _ from 'lodash';
 import { z } from 'zod';
 import { formatTileAlertDisplayName } from '@hyperdx/common-utils/dist/alerts';
 import { Granularity } from '@hyperdx/common-utils/dist/core/utils';
-import { isPromqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
   type Alert,
   ALERT_INTERVAL_TO_MINUTES,
@@ -355,9 +354,7 @@ export type InlineAlert = z.infer<typeof ChartAlertBaseSchema> & {
 export function buildInlineAlertPayload(
   config: SavedChartConfig,
 ): InlineAlert | undefined {
-  // PromQL configs have no inline-alert representation (the schema has no
-  // PromQL variant), and the editor never offers an alert on one.
-  if (config.alert == null || isPromqlSavedChartConfig(config)) {
+  if (config.alert == null) {
     return undefined;
   }
   const { alert, ...chartConfig } = config;

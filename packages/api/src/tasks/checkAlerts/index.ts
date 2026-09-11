@@ -25,6 +25,7 @@ import {
 } from '@hyperdx/common-utils/dist/core/utils';
 import { timeBucketByGranularity } from '@hyperdx/common-utils/dist/core/utils';
 import { getDashboardVariableDeclarations } from '@hyperdx/common-utils/dist/filters';
+import { substitutePromqlChartConfigVariables } from '@hyperdx/common-utils/dist/variables';
 import {
   isBuilderChartConfig,
   isBuilderSavedChartConfig,
@@ -33,6 +34,7 @@ import {
   isRawSqlSavedChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
 import {
+  ChartVariable,
   ALERT_NOTIFICATION_TARGETS_LIMIT,
   AlertErrorType,
   AlertNotificationTargetTiming,
@@ -160,6 +162,13 @@ export const alertHasGroupBy = (details: AlertDetails): boolean => {
     savedConfig.groupBy &&
     savedConfig.groupBy.length > 0
   ) {
+    return true;
+  }
+
+  if (isPromqlSavedChartConfig(savedConfig)) {
+    // PromQL /query_range always returns one result-set entry per label-set.
+    // Treating it as grouped ensures the missing-series recovery loop runs
+    // when a previously-firing series disappears from the response.
     return true;
   }
 
@@ -978,6 +987,7 @@ export async function evaluatePromqlAlert({
   teamId,
   dateRange,
   windowSizeInMins,
+  variables,
 }: {
   savedConfig: PromqlSavedChartConfig;
   source?: ISource | null;
@@ -985,6 +995,7 @@ export async function evaluatePromqlAlert({
   teamId: string;
   dateRange: [Date, Date];
   windowSizeInMins: number;
+  variables?: ChartVariable[];
 }): Promise<Array<{ group: string; value: number }> | null> {
   const connection = await getConnectionById(teamId, connectionId, true);
   if (connection == null) {
@@ -994,6 +1005,9 @@ export async function evaluatePromqlAlert({
   const endSec = dateRange[1].getTime() / 1000;
   const startSec = dateRange[0].getTime() / 1000;
   const stepSec = windowSizeInMins * 60;
+  const promqlExpression = variables && variables.length > 0
+    ? substitutePromqlChartConfigVariables({ ...savedConfig, variables }).promqlExpression
+    : savedConfig.promqlExpression;
 
   if (connection.isPrometheusEndpoint) {
     // Proxy to the real Prometheus /api/v1/query_range
@@ -1002,12 +1016,14 @@ export async function evaluatePromqlAlert({
       '/api/v1/query_range',
     );
     const params = new URLSearchParams({
-      query: savedConfig.promqlExpression,
+      query: promqlExpression,
       start: String(startSec),
       end: String(endSec),
       step: String(stepSec),
     });
-    url.search = params.toString();
+    for (const [key, value] of params.entries()) {
+      url.searchParams.set(key, value);
+    }
     const resp = await fetch(url.toString(), {
       signal: AbortSignal.timeout(30_000),
     });
@@ -1058,9 +1074,11 @@ export async function evaluatePromqlAlert({
   const resp = await client.query({
     query: `SELECT tags, time_series FROM prometheusQueryRange({db:String}, {table:String}, {expr:String}, fromUnixTimestamp64Milli({startMs:Int64}), fromUnixTimestamp64Milli({endMs:Int64}), toIntervalSecond({stepSec:UInt32})) SETTINGS allow_experimental_time_series_table = 1`,
     query_params: {
-      db: (source as any)?.from?.databaseName ?? 'default',
-      table: (source as any)?.from?.tableName ?? 'otel_metrics_gauge',
-      expr: savedConfig.promqlExpression,
+      // ISource always has `from` (it is on BaseSourceSchema); the nullable
+      // source param covers the case where no source is wired to the alert.
+      db: source?.from.databaseName ?? 'default',
+      table: source?.from.tableName ?? 'otel_metrics_gauge',
+      expr: promqlExpression,
       startMs,
       endMs,
       stepSec,
@@ -1414,52 +1432,72 @@ export const processAlert = async (
       details.taskType === AlertTaskType.INLINE
         ? isPromqlSavedChartConfig(details.chartConfig)
         : details.taskType === AlertTaskType.TILE
-          ? isPromqlSavedChartConfig((details as any).tile?.config)
+          ? isPromqlSavedChartConfig(details.tile.config)
           : false;
 
     if (isPromQL) {
       const savedConfig =
         details.taskType === AlertTaskType.INLINE
           ? details.chartConfig
-          : (details as any).tile?.config;
+          : details.taskType === AlertTaskType.TILE
+            ? details.tile.config
+            : undefined;
 
-      const promqlResults = await evaluatePromqlAlert({
-        savedConfig: savedConfig as any,
-        source: details.source,
-        connectionId,
-        teamId: alert.team._id.toString(),
-        dateRange,
-        windowSizeInMins,
-      });
+      try {
+        const promqlResults = await evaluatePromqlAlert({
+          savedConfig: savedConfig as PromqlSavedChartConfig,
+          source: details.source,
+          connectionId,
+          teamId: alert.team._id.toString(),
+          dateRange,
+          windowSizeInMins,
+          variables:
+            details.taskType === AlertTaskType.TILE
+              ? getDashboardVariableDeclarations(details.dashboard.filters).map(
+                declaration => ({
+                  ...declaration,
+                  values: [],
+                }),
+              )
+              : undefined,
+        });
 
-      if (promqlResults != null) {
-        for (const res of promqlResults) {
-          const groupKey = res.group;
-          const value = res.value;
+        if (promqlResults != null) {
+          for (const res of promqlResults) {
+            const groupKey = res.group;
+            const value = res.value;
 
-          const history = getOrCreateHistory(groupKey);
-          history.lastValues.push({ count: value, startTime: dateRange[1] });
-          const previous = previousMap.get(computeHistoryMapKey(alert.id, groupKey));
+            const history = getOrCreateHistory(groupKey);
+            history.lastValues.push({ count: value, startTime: dateRange[1] });
+            const previous = previousMap.get(computeHistoryMapKey(alert.id, groupKey));
 
-          if (doesExceedThreshold(alert, value)) {
-            history.counts += 1;
-            if (shouldFireBasedOnConsecutiveWindows(groupKey)) {
-              history.state = AlertState.ALERT;
-              history.fired = true;
-              await trySendNotification({
-                state: AlertState.ALERT,
-                group: groupKey,
-                totalCount: value,
-                startTime: dateRange[1],
-              });
-            } else {
-              history.state = AlertState.PENDING;
-              history.fired = previous?.fired === true;
+            if (doesExceedThreshold(alert, value)) {
+              history.counts += 1;
+              if (shouldFireBasedOnConsecutiveWindows(groupKey)) {
+                history.state = AlertState.ALERT;
+                history.fired = true;
+                await trySendNotification({
+                  state: AlertState.ALERT,
+                  group: groupKey,
+                  totalCount: value,
+                  startTime: dateRange[1],
+                });
+              } else {
+                history.state = AlertState.PENDING;
+                history.fired = previous?.fired === true;
+              }
             }
-          }
 
-          await sendNotificationIfResolved(previous, history, groupKey);
+            await sendNotificationIfResolved(previous, history, groupKey);
+          }
         }
+      } catch (e) {
+        logger.error(
+          { alertId: alert.id, err: e },
+          'Failed to evaluate PromQL alert',
+        );
+        evalOutcome = 'error';
+        return;
       }
 
       // If no data returned but we had alerts before, check auto-resolve

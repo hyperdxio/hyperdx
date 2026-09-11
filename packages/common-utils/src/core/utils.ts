@@ -1432,11 +1432,6 @@ export const isFormulaSourceKind = (
   kind === SourceKind.Log ||
   kind === SourceKind.Trace;
 
-export function displayTypeSupportsPromQLAlerts(
-  displayType: DisplayType | undefined,
-): boolean {
-  return displayType === DisplayType.Line || displayType === DisplayType.Number;
-}
 
 /** Expand the chart's macros, returning failures instead of throwing. */
 function resolveRawSqlMacros(
