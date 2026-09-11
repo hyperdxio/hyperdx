@@ -5,6 +5,7 @@ import { NotificationDurationCell } from '@/components/alerts/NotificationDurati
 
 const analytics = {
   webhookDurationMs: 4120,
+  renderDurationMs: 900,
   notificationTargets: [
     {
       targetId: 'hook-1',
@@ -112,6 +113,73 @@ describe('NotificationDurationCell', () => {
     // Repeated dispatches are marked, so a 50-group total doesn't read as one
     // slow send.
     expect(breakdown).toHaveTextContent('×50');
+  });
+
+  // The render phase precedes any dispatch and belongs to no target, so
+  // without a row of its own the breakdown reads as quicker than the total.
+  it('accounts for the render time in the breakdown', () => {
+    renderWithMantine(
+      <NotificationDurationCell
+        analytics={{
+          webhookDurationMs: 2690,
+          renderDurationMs: 2686,
+          notificationTargets: [
+            {
+              targetId: 'hook-1',
+              target: 'eng-infra',
+              durationMs: 4,
+              dispatches: 1,
+              failures: 0,
+            },
+          ],
+        }}
+      />,
+    );
+
+    const breakdown = screen.getByTestId('notification-duration-breakdown');
+    expect(breakdown).toHaveTextContent('Message render');
+    expect(breakdown).toHaveTextContent('2.69s');
+  });
+
+  // An evaluation whose every target failed before dispatch has no per-target
+  // timing, and the render share is then the whole total — the one case where
+  // the breakdown is worth expanding with no targets in it.
+  it('expands into the render row when no target was dispatched', () => {
+    renderWithMantine(
+      <NotificationDurationCell
+        analytics={{ webhookDurationMs: 2690, renderDurationMs: 2690 }}
+      />,
+    );
+
+    expect(
+      screen.getByTestId('notification-duration-toggle'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId('notification-duration-breakdown'),
+    ).toHaveTextContent('Message render');
+  });
+
+  it('omits the render row when nothing was spent rendering', () => {
+    renderWithMantine(
+      <NotificationDurationCell
+        analytics={{
+          webhookDurationMs: 210,
+          notificationTargets: [
+            {
+              targetId: 'hook-1',
+              target: 'eng-infra',
+              durationMs: 210,
+              dispatches: 1,
+              failures: 0,
+            },
+          ],
+        }}
+      />,
+    );
+
+    expect(
+      screen.getByTestId('notification-duration-breakdown'),
+    ).not.toHaveTextContent('Message render');
   });
 
   // The parent row toggles its own expansion on click, so the cell's expander

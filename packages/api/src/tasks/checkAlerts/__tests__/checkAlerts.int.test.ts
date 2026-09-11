@@ -3656,6 +3656,95 @@ describe('checkAlerts', () => {
         expect(targets![0].durationMs).toEqual(expect.any(Number));
         expect(targets![0].dispatches).toBe(1);
         expect(targets![0].failures).toBe(0);
+        // Rendering the message belongs to no target, so it is reported on its
+        // own — otherwise a single-target breakdown reads as much quicker than
+        // the total it is meant to explain. A saved-search alert queries the
+        // log lines for the message body while rendering, so the share is
+        // never zero here. With one target the two phases reconstruct the
+        // total, give or take each figure's own rounding.
+        const { renderDurationMs, webhookDurationMs } =
+          normalHistories[0].analytics!;
+        expect(renderDurationMs).toBeGreaterThan(0);
+        expect(
+          renderDurationMs! + targets![0].durationMs,
+        ).toBeGreaterThanOrEqual(webhookDurationMs! - 2);
+        expect(renderDurationMs! + targets![0].durationMs).toBeLessThanOrEqual(
+          webhookDurationMs! + 2,
+        );
+      });
+
+      // A render-level failure throws before any target is dispatched, so the
+      // whole notification wall time is the render share and no target has a
+      // timing to report. An unclosed Handlebars block fails at compile.
+      it('books the whole notification time as render when the message fails to compile', async () => {
+        const {
+          team,
+          webhook,
+          connection,
+          source,
+          savedSearch,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
+
+        await bulkInsertLogs([
+          {
+            ServiceName: 'api',
+            Timestamp: new Date('2023-11-16T22:05:00.000Z'),
+            SeverityText: 'error',
+            Body: 'oh no',
+          },
+          {
+            ServiceName: 'api',
+            Timestamp: new Date('2023-11-16T22:05:00.000Z'),
+            SeverityText: 'error',
+            Body: 'oh no',
+          },
+        ]);
+
+        const details = await createAlertDetails(
+          team,
+          source,
+          {
+            source: AlertSource.SAVED_SEARCH,
+            channel: {
+              type: 'webhook',
+              webhookId: webhook._id.toString(),
+            },
+            interval: '5m',
+            thresholdType: AlertThresholdType.ABOVE,
+            threshold: 1,
+            savedSearchId: savedSearch.id,
+            message: '{{#if}}',
+          },
+          {
+            taskType: AlertTaskType.SAVED_SEARCH,
+            savedSearch,
+          },
+        );
+
+        await processAlertAtTime(
+          new Date('2023-11-16T22:10:00.000Z'),
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        const errorHistories = await AlertHistory.find({
+          alert: details.alert.id,
+          state: AlertState.ERROR,
+        });
+        expect(errorHistories).toHaveLength(1);
+        expect(errorHistories[0].errors![0].type).toBe(
+          AlertErrorType.WEBHOOK_ERROR,
+        );
+        const { renderDurationMs, webhookDurationMs, notificationTargets } =
+          errorHistories[0].analytics!;
+        expect(notificationTargets).toBeUndefined();
+        expect(renderDurationMs).toBe(webhookDurationMs);
+        expect(renderDurationMs).toBeGreaterThan(0);
       });
 
       it('keeps ERROR rows from older windows when a later window succeeds', async () => {

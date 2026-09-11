@@ -1,13 +1,20 @@
 import * as React from 'react';
 import type { AlertHistoryAnalytics } from '@hyperdx/common-utils/dist/types';
-import { Collapse, Group, Stack, Text, UnstyledButton } from '@mantine/core';
+import {
+  Collapse,
+  Group,
+  Stack,
+  Text,
+  Tooltip,
+  UnstyledButton,
+} from '@mantine/core';
 import { IconChevronDown, IconChevronRight } from '@tabler/icons-react';
 
 import { formatDurationMs } from '@/utils';
 
 /**
  * The evaluation's notification wall time, expandable in place into a
- * per-target breakdown.
+ * per-target breakdown plus the render time that precedes any dispatch.
  *
  * It expands *within* the cell rather than adding child rows: the parent row
  * already owns a chevron for groups and errors, and a second row-level
@@ -21,14 +28,20 @@ export function NotificationDurationCell({
   const [expanded, setExpanded] = React.useState(false);
   const total = analytics?.webhookDurationMs;
   const targets = analytics?.notificationTargets ?? [];
+  // Rendering the message (title and links, the log-line query, the template)
+  // happens before any dispatch and belongs to no target, so without a row of
+  // its own the breakdown reads as far quicker than the total — most visibly
+  // with a single target, where the two figures should otherwise match.
+  const renderMs = analytics?.renderDurationMs ?? 0;
 
   if (total == null) {
     return <>–</>;
   }
 
-  // Records written before per-target timing existed have the total but no
-  // breakdown, so there is nothing to expand into.
-  if (targets.length === 0) {
+  // Nothing to expand into: records written before per-target timing existed
+  // have the total but no breakdown, and an evaluation whose every target
+  // failed before dispatch has no timing to attribute either.
+  if (targets.length === 0 && renderMs === 0) {
     return <Text size="sm">{formatDurationMs(total)}</Text>;
   }
 
@@ -55,6 +68,22 @@ export function NotificationDurationCell({
       </UnstyledButton>
       <Collapse expanded={expanded}>
         <Stack gap={2} pt={2} data-testid="notification-duration-breakdown">
+          {renderMs > 0 && (
+            <Group gap="xs" wrap="nowrap">
+              <Tooltip
+                label="Building the message before any target is dispatched: the title and links, the query for log lines in the body, and the template render. Summed over every notification this evaluation sent, like the per-target figures."
+                multiline
+                maw={320}
+                withArrow
+                color="dark"
+              >
+                <Text size="xs" c="dimmed" span>
+                  Message render
+                </Text>
+              </Tooltip>
+              <Text size="xs">{formatDurationMs(renderMs)}</Text>
+            </Group>
+          )}
           {targets.map(target => (
             // Keyed on the id, not the label: two webhooks can share a name.
             <Group key={target.targetId} gap="xs" wrap="nowrap">

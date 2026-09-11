@@ -502,6 +502,12 @@ export type RenderedAlert = {
    * time — so this is not the complement of `failures`.
    */
   timings: NotificationTiming[];
+  /**
+   * Wall time of the dispatch phase (ms). Dispatches run concurrently, so the
+   * slowest target sets this. The caller subtracts it from its own
+   * measurement of the whole call to get the message render time.
+   */
+  dispatchDurationMs: number;
 };
 
 // this method will build the body of the alert message and will be used to send the alert to the channel
@@ -913,6 +919,7 @@ ${targetTemplate}`;
     // reports delivery outcomes through its own logs/metrics instead (see
     // agent_docs/observability.md).
     const timings: NotificationTiming[] = [];
+    const dispatchStartedAt = performance.now();
     await Promise.all(
       jobs.map(async job => {
         // Per-job, not around the Promise.all: the whole point is attributing
@@ -947,7 +954,12 @@ ${targetTemplate}`;
       }),
     );
 
-    return { body, failures, timings };
+    return {
+      body,
+      failures,
+      timings,
+      dispatchDurationMs: Math.round(performance.now() - dispatchStartedAt),
+    };
   }
 
   throw new Error(`Unsupported alert source: ${alert.source}`);
