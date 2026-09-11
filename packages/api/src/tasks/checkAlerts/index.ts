@@ -1328,8 +1328,6 @@ export const processAlert = async (
           : `Alert resolved for group "${group}", triggering ${alert.channel.type} notification`,
       );
 
-      const notificationStartedAt = performance.now();
-      let dispatchedForMs = 0;
       try {
         // Casts to any here because this is where I stopped unraveling the
         // alert logic requiring large, nested objects. We should look at
@@ -1354,7 +1352,10 @@ export const processAlert = async (
             windowSizeInMins,
             teamWebhooksById,
           });
-        dispatchedForMs = dispatchDurationMs;
+        // Only the dispatch phase: the column reports how long the targets
+        // took to respond, not the time spent building the message.
+        evaluationAnalytics.webhookDurationMs =
+          (evaluationAnalytics.webhookDurationMs ?? 0) + dispatchDurationMs;
         recordNotificationTimings(timings);
         // Each entry is a target that didn't end up delivered: unresolvable,
         // capped, or (for the inline dispatcher) an actual send rejection —
@@ -1379,15 +1380,6 @@ export const processAlert = async (
           'Failed to fire channel event',
         );
         executionErrors.push(makeWebhookAlertError(e));
-      } finally {
-        // Summed across groups/resolves. Whatever the dispatch didn't account
-        // for is render, so a pre-dispatch throw books the whole total there.
-        const totalMs = Math.round(performance.now() - notificationStartedAt);
-        evaluationAnalytics.webhookDurationMs =
-          (evaluationAnalytics.webhookDurationMs ?? 0) + totalMs;
-        evaluationAnalytics.renderDurationMs =
-          (evaluationAnalytics.renderDurationMs ?? 0) +
-          Math.max(totalMs - dispatchedForMs, 0);
       }
     };
 

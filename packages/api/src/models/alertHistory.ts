@@ -21,16 +21,14 @@ export interface IAlertHistoryAnalytics {
    * is approximately the configured evaluation timeout.
    */
   queryDurationMs?: number;
-  /** Total wall time notifying in the evaluation — render plus delivery, including retries (ms). */
+  /** Wall time delivering the evaluation's notifications (ms) — dispatch only, including retries. */
   webhookDurationMs?: number;
-  /** The share of `webhookDurationMs` spent building the message before any dispatch (ms). */
-  renderDurationMs?: number;
   /**
    * Earlier buckets backfilled in this run after missed ticks
    * (expected buckets − 1). 0 in steady state.
    */
   backfilledBuckets?: number;
-  /** Per-target breakdown of the delivery share, slowest first. See AlertHistoryAnalyticsSchema for why these do not sum to the total. */
+  /** Per-target breakdown, slowest first. See AlertHistoryAnalyticsSchema for why these do not sum to the total. */
   notificationTargets?: AlertNotificationTargetTiming[];
 }
 
@@ -108,7 +106,6 @@ const AlertHistorySchema = new Schema<IAlertHistory>({
       _id: false,
       queryDurationMs: { type: Number, required: false },
       webhookDurationMs: { type: Number, required: false },
-      renderDurationMs: { type: Number, required: false },
       backfilledBuckets: { type: Number, required: false },
       notificationTargets: {
         type: [

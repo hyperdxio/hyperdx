@@ -3656,22 +3656,20 @@ describe('checkAlerts', () => {
         expect(targets![0].durationMs).toEqual(expect.any(Number));
         expect(targets![0].dispatches).toBe(1);
         expect(targets![0].failures).toBe(0);
-        // With one target the two phases reconstruct the total, give or take
-        // each figure's own rounding. A saved-search render queries the log
-        // lines for the body, so its share is never zero here.
-        const { renderDurationMs, webhookDurationMs } =
-          normalHistories[0].analytics!;
-        expect(renderDurationMs).toBeGreaterThan(0);
-        expect(
-          renderDurationMs! + targets![0].durationMs,
-        ).toBeGreaterThanOrEqual(webhookDurationMs! - 2);
-        expect(renderDurationMs! + targets![0].durationMs).toBeLessThanOrEqual(
-          webhookDurationMs! + 2,
+        // The figure is the dispatch phase alone — with one target it is that
+        // target's own response time, give or take each figure's rounding.
+        // Time spent building the message is deliberately excluded.
+        const { webhookDurationMs } = normalHistories[0].analytics!;
+        expect(webhookDurationMs).toBeGreaterThanOrEqual(
+          targets![0].durationMs - 2,
+        );
+        expect(webhookDurationMs).toBeLessThanOrEqual(
+          targets![0].durationMs + 2,
         );
       });
 
       // An unclosed Handlebars block throws at compile, before any dispatch.
-      it('books the whole notification time as render when the message fails to compile', async () => {
+      it('records no delivery time when the message fails to compile', async () => {
         const {
           team,
           webhook,
@@ -3735,11 +3733,12 @@ describe('checkAlerts', () => {
         expect(errorHistories[0].errors![0].type).toBe(
           AlertErrorType.WEBHOOK_ERROR,
         );
-        const { renderDurationMs, webhookDurationMs, notificationTargets } =
+        // Nothing reached a target, so there is no delivery time to report —
+        // the time spent rendering is not it.
+        const { webhookDurationMs, notificationTargets } =
           errorHistories[0].analytics!;
         expect(notificationTargets).toBeUndefined();
-        expect(renderDurationMs).toBe(webhookDurationMs);
-        expect(renderDurationMs).toBeGreaterThan(0);
+        expect(webhookDurationMs).toBeUndefined();
       });
 
       it('keeps ERROR rows from older windows when a later window succeeds', async () => {

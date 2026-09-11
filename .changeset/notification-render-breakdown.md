@@ -3,13 +3,6 @@
 '@hyperdx/api': patch
 ---
 
-fix: account for message render time in the alert notification breakdown
+fix: show only the delivery time in an alert's notification duration
 
-The notification duration on an alert's evaluation list measures the whole
-notification phase, but the expanded breakdown only listed per-target dispatch
-times. With a single target the two figures should match, and instead the
-target read as milliseconds against a multi-second total — the missing time was
-spent building the message (title, links, the query for log lines in the body)
-before anything was dispatched. That share is now recorded and shown as its own
-row, so the expansion accounts for the total and a slow notification points at
-whichever phase is actually slow.
+The notification duration on an alert's evaluation list was timing everything an alert does once it decides to fire: building the message title and links, querying the log lines that go in the body, rendering the template, and then delivering it. That made the column read in seconds while the webhook underneath it answered in milliseconds — the column and its own per-target breakdown disagreed, and the figure was dominated by work that has nothing to do with how fast the notification target responded. It now times the delivery alone. Evaluations already recorded keep their old figure and will read high.
