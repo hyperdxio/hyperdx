@@ -1,3 +1,4 @@
+import { isTileAlertUnaddressable } from '@hyperdx/common-utils/dist/iac';
 import type {
   AlertApiResponse,
   AlertEvaluationsApiResponse,
@@ -26,7 +27,7 @@ import {
   updateAlert,
   validateAlertInput,
 } from '@/controllers/alerts';
-import { getAlertChannels } from '@/models/alert';
+import { AlertSource, getAlertChannels } from '@/models/alert';
 import { IAlertHistory } from '@/models/alertHistory';
 import { resolveAlertDisplayFields } from '@/utils/alerts';
 import { PreSerialized, sendJson } from '@/utils/serialization';
@@ -65,6 +66,16 @@ const formatAlertResponse = (
     // team members via GET /webhooks.
     channel: pick(alert.channel, ['type', 'webhookId']),
     channels: getAlertChannels(alert).map(c => pick(c, ['type', 'webhookId'])),
+    // Computed here rather than on the client: `dashboard.tiles` below is
+    // filtered to this alert's own tile, so the response cannot show whether a
+    // sibling tile shares its name — which is what decides Terraform
+    // eligibility. Outside the `alert.dashboard` spread on purpose: a deleted
+    // dashboard populates as null, and that alert is the least addressable of
+    // the lot. Omitted rather than `false` when fine, matching the manifest.
+    ...(alert.source === AlertSource.TILE &&
+    isTileAlertUnaddressable(alert.dashboard ?? undefined, alert.tileId)
+      ? { unaddressableTile: true }
+      : {}),
     ...(alert.dashboard && {
       dashboardId: alert.dashboard._id,
       dashboard: {

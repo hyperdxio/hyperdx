@@ -23,6 +23,7 @@ import {
 import Alert, { AlertSource, AlertState } from '@/models/alert';
 import AlertHistory from '@/models/alertHistory';
 import Connection from '@/models/connection';
+import Dashboard from '@/models/dashboard';
 import { SavedSearch } from '@/models/savedSearch';
 import { Source } from '@/models/source';
 import Webhook, { WebhookDocument, WebhookService } from '@/models/webhook';
@@ -859,6 +860,87 @@ describe('alerts router', () => {
     for (const alert of alerts.body.data) {
       expect(alert.tileId).toBeDefined();
       expect(alert.dashboard).toBeDefined();
+    }
+  });
+
+  // The row menu's Terraform export gates on this, and it can only come from
+  // the server: the response filters `dashboard.tiles` down to the alert's own
+  // tile, so the client cannot see a sibling tile sharing its name.
+  it('marks a tile alert whose tile name is not unique', async () => {
+    // Every makeTile() carries the same config.name, so all five collide.
+    const duplicated = await agent
+      .post('/dashboards')
+      .send(MOCK_DASHBOARD)
+      .expect(200);
+    const unique = await agent
+      .post('/dashboards')
+      .send({
+        id: randomMongoId(),
+        name: 'Unique tiles',
+        tags: [],
+        tiles: [makeTile()],
+      })
+      .expect(200);
+
+    for (const dashboard of [duplicated, unique]) {
+      await agent
+        .post('/alerts')
+        .send(
+          makeAlertInput({
+            dashboardId: dashboard.body.id,
+            tileId: dashboard.body.tiles[0].id,
+            webhookId: webhook._id.toString(),
+          }),
+        )
+        .expect(200);
+    }
+
+    const resp = await agent.get('/alerts').expect(200);
+    const byDashboard = Object.fromEntries(
+      resp.body.data.map((a: { dashboard: { name: string } }) => [
+        a.dashboard.name,
+        a,
+      ]),
+    );
+
+    expect(byDashboard['Test Dashboard'].unaddressableTile).toBe(true);
+    // Absent rather than `false` when fine, matching the IaC manifest.
+    expect(byDashboard['Unique tiles']).not.toHaveProperty('unaddressableTile');
+  });
+
+  // Both legs of the rule the manifest also applies. The provisioned case
+  // works only because getAlertsEnhanced populates the dashboard whole — a
+  // projection added there would break it silently — and the deleted case
+  // only because the marker sits outside the `alert.dashboard` spread.
+  it('marks a tile alert on a provisioned dashboard, and one whose dashboard is gone', async () => {
+    const tile = makeTile();
+    const provisioned = await Dashboard.create({
+      name: 'Provisioned',
+      team: team._id,
+      provisioned: true,
+      tiles: [tile],
+    });
+
+    const tileAlert = async (dashboardId: unknown, tileId: string) =>
+      Alert.create({
+        team: team._id,
+        channel: { type: 'webhook', webhookId: webhook._id.toString() },
+        interval: '15m',
+        threshold: 8,
+        thresholdType: AlertThresholdType.ABOVE,
+        source: AlertSource.TILE,
+        dashboard: dashboardId,
+        tileId,
+      });
+
+    await tileAlert(provisioned._id, tile.id);
+    await tileAlert(randomMongoId(), tile.id);
+
+    const resp = await agent.get('/alerts').expect(200);
+
+    expect(resp.body.data).toHaveLength(2);
+    for (const alert of resp.body.data) {
+      expect(alert.unaddressableTile).toBe(true);
     }
   });
 
