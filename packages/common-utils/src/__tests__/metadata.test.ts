@@ -5,6 +5,7 @@ import {
   Metadata,
   MetadataCache,
   parseKeyPath,
+  quoteResultColumnNameIfNeeded,
 } from '@/core/metadata';
 import * as renderChartConfigModule from '@/core/renderChartConfig';
 import { timeFilterExpr } from '@/core/renderChartConfig';
@@ -3251,6 +3252,46 @@ describe('parseKeyPath', () => {
     expect(parseKeyPath("ResourceAttributes['service.name")).toEqual([
       "ResourceAttributes['service.name",
     ]);
+  });
+});
+
+describe('quoteResultColumnNameIfNeeded', () => {
+  it('leaves bare identifiers alone', () => {
+    expect(quoteResultColumnNameIfNeeded('Timestamp')).toBe('Timestamp');
+    expect(quoteResultColumnNameIfNeeded('__hdx_timestamp')).toBe(
+      '__hdx_timestamp',
+    );
+  });
+
+  it('quotes names that are not valid bare identifiers', () => {
+    expect(quoteResultColumnNameIfNeeded('x-host-header')).toBe(
+      '`x-host-header`',
+    );
+    expect(quoteResultColumnNameIfNeeded('my col')).toBe('`my col`');
+  });
+
+  it('leaves expression-shaped names alone', () => {
+    // ClickHouse names unaliased projections after the formatted expression.
+    expect(
+      quoteResultColumnNameIfNeeded("ResourceAttributes['service.name']"),
+    ).toBe("ResourceAttributes['service.name']");
+    expect(quoteResultColumnNameIfNeeded('plus(a, b)')).toBe('plus(a, b)');
+    expect(quoteResultColumnNameIfNeeded('json.a.b')).toBe('json.a.b');
+    expect(quoteResultColumnNameIfNeeded("'literal'")).toBe("'literal'");
+  });
+
+  it('leaves projected literals alone', () => {
+    // `SELECT 1, -1, 0x10, 1.5, 'lit'` -> names `1`, `-1`, `16`, `1.5`, `'lit'`
+    expect(quoteResultColumnNameIfNeeded('1')).toBe('1');
+    expect(quoteResultColumnNameIfNeeded('-1')).toBe('-1');
+    expect(quoteResultColumnNameIfNeeded('16')).toBe('16');
+    expect(quoteResultColumnNameIfNeeded('1.5')).toBe('1.5');
+  });
+
+  it('is idempotent on already-quoted names', () => {
+    expect(quoteResultColumnNameIfNeeded('`x-host-header`')).toBe(
+      '`x-host-header`',
+    );
   });
 });
 
