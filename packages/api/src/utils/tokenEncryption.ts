@@ -50,8 +50,24 @@ const disabledCounter = getCounter('hyperdx.token_encryption.disabled', {
     'Incremented at startup when token encryption is turned off, so the state is alertable.',
 });
 
+/**
+ * Stores tokens verbatim, for self-hosted deployments that would rather not
+ * manage a key. The payload is left as plain text so that `v1:none:xoxb-…` in
+ * the database is obviously unencrypted to anyone auditing it.
+ *
+ * Stays registered even when another provider is active, since that is what
+ * keeps rows written while encryption was off readable afterwards.
+ */
+const noneProvider: TokenEncryptionProvider = {
+  name: NONE_PROVIDER,
+  encrypt: async plaintext => plaintext,
+  decrypt: async payload => payload,
+};
+
 const providers = new Map<string, TokenEncryptionProvider>();
-let activeProviderName: string = NONE_PROVIDER;
+// Resolved at startup and not meant to change afterwards, so the write path
+// holds the provider rather than looking it up on every call.
+let activeProvider: TokenEncryptionProvider = noneProvider;
 
 export function registerTokenEncryptionProvider(
   provider: TokenEncryptionProvider,
@@ -72,12 +88,13 @@ export function registerTokenEncryptionProvider(
 
 /** Selects the provider `encryptToken` writes with. Decryption is unaffected. */
 export function setActiveTokenEncryptionProvider(name: string): void {
-  if (!providers.has(name)) {
+  const provider = providers.get(name);
+  if (!provider) {
     throw new Error(
       `Cannot activate unregistered token encryption provider "${name}"; registered: ${[...providers.keys()].join(', ')}`,
     );
   }
-  activeProviderName = name;
+  activeProvider = provider;
 }
 
 function getProvider(name: string): TokenEncryptionProvider {
@@ -100,8 +117,7 @@ export async function encryptToken(plaintext: string): Promise<string> {
   if (isTokenEnvelope(plaintext)) {
     throw new Error('Value is already a token encryption envelope');
   }
-  const provider = getProvider(activeProviderName);
-  return `${ENVELOPE_VERSION}:${provider.name}:${await provider.encrypt(plaintext)}`;
+  return `${ENVELOPE_VERSION}:${activeProvider.name}:${await activeProvider.encrypt(plaintext)}`;
 }
 
 export async function decryptToken(envelope: string): Promise<string> {
@@ -114,7 +130,7 @@ export async function decryptToken(envelope: string): Promise<string> {
   if (version !== ENVELOPE_VERSION) {
     throw new Error(`Unsupported token envelope version "${version}"`);
   }
-  if (name === NONE_PROVIDER && activeProviderName !== NONE_PROVIDER) {
+  if (name === NONE_PROVIDER && activeProvider.name !== NONE_PROVIDER) {
     plaintextReadCounter.add(1);
     logger.warn(
       'Read a token stored without encryption; re-save it to encrypt at rest',
@@ -202,19 +218,7 @@ registerTokenEncryptionProvider(
   createAesGcmProvider(LOCAL_PROVIDER, getLocalKey),
 );
 
-/**
- * Stores tokens verbatim, for self-hosted deployments that would rather not
- * manage a key. The payload is left as plain text so that `v1:none:xoxb-…` in
- * the database is obviously unencrypted to anyone auditing it.
- *
- * Stays registered even when another provider is active, since that is what
- * keeps rows written while encryption was off readable afterwards.
- */
-registerTokenEncryptionProvider({
-  name: NONE_PROVIDER,
-  encrypt: async plaintext => plaintext,
-  decrypt: async payload => payload,
-});
+registerTokenEncryptionProvider(noneProvider);
 
 /**
  * Having a key is the whole opt-in: no key means no encryption. Deployments
@@ -244,14 +248,14 @@ setActiveTokenEncryptionProvider(
  * written earlier — a key swapped since the last deploy still verifies.
  */
 export async function verifyTokenEncryption(): Promise<void> {
-  if (activeProviderName === NONE_PROVIDER) {
+  if (activeProvider.name === NONE_PROVIDER) {
     disabledCounter.add(1);
     logger.warn(
       'Token encryption is disabled: third-party tokens will be stored in plain text (set TOKEN_ENCRYPTION_KEY to enable)',
     );
     return;
   }
-  if (activeProviderName === LOCAL_PROVIDER) {
+  if (activeProvider.name === LOCAL_PROVIDER) {
     getLocalKey();
   }
   try {
@@ -277,10 +281,10 @@ export async function verifyTokenEncryption(): Promise<void> {
         throw new Error('Decrypted value did not match the original');
       }
     });
-    logger.info({ provider: activeProviderName }, 'Token encryption verified');
+    logger.info({ provider: activeProvider.name }, 'Token encryption verified');
   } catch (err) {
     logger.error(
-      { err: serializeError(err), provider: activeProviderName },
+      { err: serializeError(err), provider: activeProvider.name },
       'Token encryption verification failed; stored tokens cannot be read or written',
     );
   }
