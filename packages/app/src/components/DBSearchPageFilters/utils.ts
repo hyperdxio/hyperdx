@@ -1,10 +1,9 @@
 // Utility functions for parsing and grouping map-like field names
 
-import SqlString from 'sqlstring';
 import { parseKeyPath } from '@hyperdx/common-utils/dist/core/metadata';
 import type { FilterState } from '@hyperdx/common-utils/dist/filters';
 
-import { mergePath } from '@/utils';
+import { mergePath, quoteIdentifierIfNeeded } from '@/utils';
 
 // Clean ClickHouse expressions to extract clean property paths
 export function cleanClickHouseExpression(key: string): string {
@@ -185,17 +184,6 @@ export function toClickHouseKeyExpression(key: string): string {
     [],
     [parsed.baseName],
   );
-}
-
-/**
- * Quote a single identifier if it isn't already a valid bare ClickHouse identifier.
- * @param id - The identifier to quote
- * @returns The quoted identifier if needed, otherwise the original identifier
- */
-function quoteIdentifierIfNeeded(id: string): string {
-  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(id)
-    ? id
-    : SqlString.escapeId(id, true);
 }
 
 /**

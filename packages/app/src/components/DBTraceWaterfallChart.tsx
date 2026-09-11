@@ -1486,7 +1486,10 @@ export function DBTraceWaterfallChartContainer({
         </Group>
       </Group>
       {!isFetching && !error && highlightedAttributeValues?.length > 0 && (
-        <DBHighlightedAttributesList attributes={highlightedAttributeValues} />
+        <DBHighlightedAttributesList
+          attributes={highlightedAttributeValues}
+          pivotToAttributeSource
+        />
       )}
       <div
         ref={timelineWrapperRef}
