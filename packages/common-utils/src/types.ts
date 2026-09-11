@@ -2894,6 +2894,15 @@ export const ONBOARDING_TASK_IDS = [
 
 export type OnboardingTaskId = (typeof ONBOARDING_TASK_IDS)[number];
 
+// True only for a real 24-hex Mongo ObjectId. The all-in-one-noauth image
+// injects a synthetic `_local_user_` id server-side, which mongoose casts to an
+// ObjectId matching no document — and which mongoose.isValidObjectId() wrongly
+// accepts (any 12-char string passes) — so this string check is the guard both
+// packages use to skip onboarding writes/rendering for that non-persistable user.
+export function isPersistableUserId(id: string | null | undefined): boolean {
+  return id != null && /^[0-9a-fA-F]{24}$/.test(id);
+}
+
 const KNOWN_ONBOARDING_TASK_IDS: readonly string[] = ONBOARDING_TASK_IDS;
 
 export const OnboardingDataSchema = z.object({

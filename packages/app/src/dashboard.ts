@@ -5,6 +5,7 @@ import {
   DashboardFilter,
   DashboardFilterValue,
   DashboardWithoutId,
+  isPersistableUserId,
   OnboardingTaskId,
   resolveChartPaletteToken,
   SavedChartConfig,
@@ -14,7 +15,6 @@ import {
 import { notifications } from '@mantine/notifications';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { isRecordableUserId } from '@/OnboardingChecklist/onboardingTasks';
 import { hashCode } from '@/utils';
 
 import api, {
@@ -233,10 +233,10 @@ export function useDashboard({
   const updateDashboard = useUpdateDashboard();
   const completeOnboardingTask = useCompleteOnboardingTask();
   const { data: me } = api.useMe();
-  // A non-recordable user counts as "already built" so the temp-dashboard POST
-  // never fires (see isRecordableUserId).
+  // A non-persistable user counts as "already built" so the temp-dashboard POST
+  // never fires (see isPersistableUserId).
   const hasBuiltDashboard =
-    !isRecordableUserId(me?.id) ||
+    !isPersistableUserId(me?.id) ||
     (me?.onboardingData?.completedTasks.includes('dashboard') ?? false);
 
   const { data: remoteDashboard, isFetching: isFetchingRemoteDashboard } =

@@ -1,4 +1,5 @@
 import type { OnboardingTaskId } from '@hyperdx/common-utils/dist/types';
+import { isPersistableUserId as isPersistableUserIdHex } from '@hyperdx/common-utils/dist/types';
 import mongoose from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -34,13 +35,12 @@ export function findUsersByTeam(team: string | ObjectId) {
   return User.find({ team }).sort({ createdAt: 1 });
 }
 
-// Rejects the synthetic `_local_user_` id injected in IS_LOCAL_APP_MODE, which
-// mongoose casts to an ObjectId matching no document (and which
-// mongoose.isValidObjectId() wrongly accepts, so it can't be the guard).
+// Type-guard wrapper over the shared 24-hex check; rejects the synthetic
+// `_local_user_` id injected in IS_LOCAL_APP_MODE (see isPersistableUserIdHex).
 function isPersistableUserId(
   userId: string | ObjectId | undefined | null,
 ): userId is string | ObjectId {
-  return userId != null && /^[0-9a-fA-F]{24}$/.test(String(userId));
+  return userId != null && isPersistableUserIdHex(String(userId));
 }
 
 // Returns null for a non-persistable user so the route reports unchanged

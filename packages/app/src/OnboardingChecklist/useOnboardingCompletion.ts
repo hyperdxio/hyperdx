@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { isPersistableUserId } from '@hyperdx/common-utils/dist/types';
 
 import api from '@/api';
 import { NOW } from '@/config';
@@ -225,8 +226,11 @@ export function useOnboardingCompletion(
 
   const isCelebrating = completedInSession && !celebrationDone;
 
+  // In the all-in-one-noauth image `me.id` is the synthetic `_local_user_`:
+  // tasks never persist and dismiss no-ops, so hide the whole checklist there.
   const shouldShow =
     inputsReady &&
+    isPersistableUserId(me.id) &&
     isTeamAgeEligible &&
     wasCompleteOnLoad !== null &&
     !onboardingData.isDismissed &&

@@ -53,11 +53,3 @@ export function isNonTrivialSearch(
 ): boolean {
   return isNonEmptyWhereExpr(where) || (filters?.length ?? 0) > 0;
 }
-
-// The all-in-one-noauth image runs the server in IS_LOCAL_APP_MODE (synthetic
-// `_local_user_` id) with a non-local client, so onboarding writes silently
-// no-op and completedTasks never advances — an unguarded client re-POSTs
-// forever. Mirrors the server's isPersistableUserId.
-export function isRecordableUserId(id: string | undefined): boolean {
-  return id != null && /^[0-9a-fA-F]{24}$/.test(id);
-}

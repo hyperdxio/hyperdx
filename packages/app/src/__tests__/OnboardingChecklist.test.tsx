@@ -48,15 +48,20 @@ function setTeamAgeDays(ageDays: number) {
   } as unknown as ReturnType<typeof api.useTeam>);
 }
 
+// A real authenticated user carries a 24-hex ObjectId; the all-in-one-noauth
+// image instead injects the synthetic `_local_user_` id (see isPersistableUserId).
+const REAL_USER_ID = '507f1f77bcf86cd799439011';
+
 function setMe(
   onboardingData: { completedTasks: string[]; isDismissed: boolean } | null,
+  id: string = REAL_USER_ID,
 ) {
   mockUseMe.mockReturnValue({
     data:
       onboardingData === null
         ? null
         : {
-            id: 'u1',
+            id,
             email: 'a@b.com',
             accessKey: 'k',
             name: 'User',
@@ -160,6 +165,20 @@ describe('OnboardingChecklist', () => {
 
   it('is hidden when dismissed', () => {
     setMe({ completedTasks: [], isDismissed: true });
+    setSetup(true);
+
+    renderChecklist();
+
+    expect(
+      screen.queryByText('Get started with HyperDX'),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText('Set up ClickHouse')).not.toBeInTheDocument();
+  });
+
+  it('is hidden in the all-in-one-noauth image (synthetic user id)', () => {
+    // `_local_user_` can't persist tasks or dismissal, so the whole checklist
+    // is hidden rather than rendering a non-functional card.
+    setMe({ completedTasks: [], isDismissed: false }, '_local_user_');
     setSetup(true);
 
     renderChecklist();

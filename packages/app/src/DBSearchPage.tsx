@@ -42,6 +42,7 @@ import {
   ChartConfigWithDateRange,
   DisplayType,
   Filter,
+  isPersistableUserId,
   isTraceSource,
   SourceKind,
   TSource,
@@ -112,10 +113,7 @@ import { useAliasMapFromChartConfig } from '@/hooks/useChartConfig';
 import { useExplainQuery } from '@/hooks/useExplainQuery';
 import { useResolvedSourceParam } from '@/hooks/useResolvedSourceParam';
 import { withAppNav } from '@/layout';
-import {
-  isNonTrivialSearch,
-  isRecordableUserId,
-} from '@/OnboardingChecklist/onboardingTasks';
+import { isNonTrivialSearch } from '@/OnboardingChecklist/onboardingTasks';
 import {
   useCreateSavedSearch,
   useDeleteSavedSearch,
@@ -1257,10 +1255,10 @@ export function DBSearchPage() {
 
   const completeOnboardingTask = useCompleteOnboardingTask();
   const { data: me } = api.useMe();
-  // A non-recordable user counts as "already explored" so the POST never fires
-  // (see isRecordableUserId).
+  // A non-persistable user counts as "already explored" so the POST never fires
+  // (see isPersistableUserId).
   const hasExploredData =
-    !isRecordableUserId(me?.id) ||
+    !isPersistableUserId(me?.id) ||
     (me?.onboardingData?.completedTasks.includes('advancedQuery') ?? false);
 
   useEffect(() => {
