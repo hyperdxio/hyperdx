@@ -21,21 +21,14 @@ export interface IAlertHistoryAnalytics {
    * is approximately the configured evaluation timeout.
    */
   queryDurationMs?: number;
-  /**
-   * Total wall time delivering webhook notifications in the evaluation,
-   * including retries (ms).
-   */
+  /** Wall time delivering the evaluation's notifications (ms) — dispatch only, including retries. */
   webhookDurationMs?: number;
   /**
    * Earlier buckets backfilled in this run after missed ticks
    * (expected buckets − 1). 0 in steady state.
    */
   backfilledBuckets?: number;
-  /**
-   * Per-target breakdown of `webhookDurationMs`, one entry per distinct
-   * target, slowest first. Targets dispatch concurrently, so these do not sum
-   * to `webhookDurationMs`. Absent when the evaluation sent nothing.
-   */
+  /** Per-target breakdown, slowest first. See AlertHistoryAnalyticsSchema for why these do not sum to the total. */
   notificationTargets?: AlertNotificationTargetTiming[];
 }
 

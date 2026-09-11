@@ -1108,16 +1108,14 @@ export type AlertNotificationTargetTiming = z.infer<
 export const AlertHistoryAnalyticsSchema = z.object({
   /** ClickHouse query duration for the evaluation (ms). On query-failure ERROR records, the time until the query failed. */
   queryDurationMs: z.number().optional(),
-  /** Total wall time delivering webhook notifications in the evaluation, including retries (ms). */
+  /** Wall time delivering the evaluation's notifications (ms) — dispatch only, including retries. Absent when nothing was dispatched. */
   webhookDurationMs: z.number().optional(),
   /** Earlier buckets backfilled in this run after missed ticks (expected buckets − 1). */
   backfilledBuckets: z.number().optional(),
   /**
-   * Per-target breakdown of `webhookDurationMs`, highest duration first.
-   * Targets are dispatched concurrently, so these do not sum to
-   * `webhookDurationMs` — the slowest target in each dispatch round sets the
-   * total. Absent on evaluations that sent nothing, and on records written
-   * before per-target timing existed.
+   * Per-target breakdown, highest first. Targets in a dispatch round run
+   * concurrently, so the slowest of each round sets `webhookDurationMs` and
+   * these do not sum to it. Absent when nothing was dispatched.
    */
   notificationTargets: z
     .array(AlertNotificationTargetTimingSchema)

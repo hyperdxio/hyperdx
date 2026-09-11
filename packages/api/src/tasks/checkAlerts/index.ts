@@ -510,7 +510,9 @@ const fireChannelEvent = async ({
   totalCount: number;
   windowSizeInMins: number;
   teamWebhooksById: Map<string, IWebhook>;
-}): Promise<Pick<RenderedAlert, 'failures' | 'timings'>> => {
+}): Promise<
+  Pick<RenderedAlert, 'failures' | 'timings' | 'dispatchDurationMs'>
+> => {
   const team = alert.team;
   if (team == null) {
     throw new Error('Team not found');
@@ -562,7 +564,7 @@ const fireChannelEvent = async ({
     value: totalCount,
   };
 
-  const { failures, timings } = await renderAlertTemplate({
+  const { failures, timings, dispatchDurationMs } = await renderAlertTemplate({
     alertProvider,
     clickhouseClient,
     metadata,
@@ -576,7 +578,7 @@ const fireChannelEvent = async ({
     teamId,
     teamWebhooksById,
   });
-  return { failures, timings };
+  return { failures, timings, dispatchDurationMs };
 };
 
 // Use a delimiter that's unlikely to appear in alert IDs or group names
@@ -1326,30 +1328,34 @@ export const processAlert = async (
           : `Alert resolved for group "${group}", triggering ${alert.channel.type} notification`,
       );
 
-      const notificationStartedAt = performance.now();
       try {
         // Casts to any here because this is where I stopped unraveling the
         // alert logic requiring large, nested objects. We should look at
         // cleaning this up next. fireChannelEvent guards against null values
         // for these properties.
-        const { failures, timings } = await fireChannelEvent({
-          alert,
-          alertProvider,
-          attributes,
-          clickhouseClient,
-          dashboard: (details as any).dashboard,
-          startTime,
-          endTime: fns.addMinutes(startTime, windowSizeInMins),
-          group,
-          isGroupedAlert: hasGroupBy,
-          metadata,
-          savedSearch: (details as any).savedSearch,
-          source,
-          state,
-          totalCount,
-          windowSizeInMins,
-          teamWebhooksById,
-        });
+        const { failures, timings, dispatchDurationMs } =
+          await fireChannelEvent({
+            alert,
+            alertProvider,
+            attributes,
+            clickhouseClient,
+            dashboard: (details as any).dashboard,
+            startTime,
+            endTime: fns.addMinutes(startTime, windowSizeInMins),
+            group,
+            isGroupedAlert: hasGroupBy,
+            metadata,
+            savedSearch: (details as any).savedSearch,
+            source,
+            state,
+            totalCount,
+            windowSizeInMins,
+            teamWebhooksById,
+          });
+        // Only the dispatch phase: the column reports how long the targets
+        // took to respond, not the time spent building the message.
+        evaluationAnalytics.webhookDurationMs =
+          (evaluationAnalytics.webhookDurationMs ?? 0) + dispatchDurationMs;
         recordNotificationTimings(timings);
         // Each entry is a target that didn't end up delivered: unresolvable,
         // capped, or (for the inline dispatcher) an actual send rejection —
@@ -1374,12 +1380,6 @@ export const processAlert = async (
           'Failed to fire channel event',
         );
         executionErrors.push(makeWebhookAlertError(e));
-      } finally {
-        // Total wall time spent delivering notifications in this evaluation
-        // (summed across groups/resolves, includes retries and failures).
-        evaluationAnalytics.webhookDurationMs =
-          (evaluationAnalytics.webhookDurationMs ?? 0) +
-          Math.round(performance.now() - notificationStartedAt);
       }
     };
 

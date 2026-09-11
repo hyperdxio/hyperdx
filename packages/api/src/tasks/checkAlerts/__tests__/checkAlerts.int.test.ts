@@ -3656,6 +3656,89 @@ describe('checkAlerts', () => {
         expect(targets![0].durationMs).toEqual(expect.any(Number));
         expect(targets![0].dispatches).toBe(1);
         expect(targets![0].failures).toBe(0);
+        // The figure is the dispatch phase alone — with one target it is that
+        // target's own response time, give or take each figure's rounding.
+        // Time spent building the message is deliberately excluded.
+        const { webhookDurationMs } = normalHistories[0].analytics!;
+        expect(webhookDurationMs).toBeGreaterThanOrEqual(
+          targets![0].durationMs - 2,
+        );
+        expect(webhookDurationMs).toBeLessThanOrEqual(
+          targets![0].durationMs + 2,
+        );
+      });
+
+      // An unclosed Handlebars block throws at compile, before any dispatch.
+      it('records no delivery time when the message fails to compile', async () => {
+        const {
+          team,
+          webhook,
+          connection,
+          source,
+          savedSearch,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
+
+        await bulkInsertLogs([
+          {
+            ServiceName: 'api',
+            Timestamp: new Date('2023-11-16T22:05:00.000Z'),
+            SeverityText: 'error',
+            Body: 'oh no',
+          },
+          {
+            ServiceName: 'api',
+            Timestamp: new Date('2023-11-16T22:05:00.000Z'),
+            SeverityText: 'error',
+            Body: 'oh no',
+          },
+        ]);
+
+        const details = await createAlertDetails(
+          team,
+          source,
+          {
+            source: AlertSource.SAVED_SEARCH,
+            channel: {
+              type: 'webhook',
+              webhookId: webhook._id.toString(),
+            },
+            interval: '5m',
+            thresholdType: AlertThresholdType.ABOVE,
+            threshold: 1,
+            savedSearchId: savedSearch.id,
+            message: '{{#if}}',
+          },
+          {
+            taskType: AlertTaskType.SAVED_SEARCH,
+            savedSearch,
+          },
+        );
+
+        await processAlertAtTime(
+          new Date('2023-11-16T22:10:00.000Z'),
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        const errorHistories = await AlertHistory.find({
+          alert: details.alert.id,
+          state: AlertState.ERROR,
+        });
+        expect(errorHistories).toHaveLength(1);
+        expect(errorHistories[0].errors![0].type).toBe(
+          AlertErrorType.WEBHOOK_ERROR,
+        );
+        // Nothing reached a target, so there is no delivery time to report —
+        // the time spent rendering is not it.
+        const { webhookDurationMs, notificationTargets } =
+          errorHistories[0].analytics!;
+        expect(notificationTargets).toBeUndefined();
+        expect(webhookDurationMs).toBeUndefined();
       });
 
       it('keeps ERROR rows from older windows when a later window succeeds', async () => {

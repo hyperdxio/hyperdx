@@ -6,12 +6,9 @@ import { IconChevronDown, IconChevronRight } from '@tabler/icons-react';
 import { formatDurationMs } from '@/utils';
 
 /**
- * The evaluation's notification wall time, expandable in place into a
- * per-target breakdown.
- *
- * It expands *within* the cell rather than adding child rows: the parent row
- * already owns a chevron for groups and errors, and a second row-level
- * expander competing with it would be ambiguous to click.
+ * The evaluation's notification delivery time, expandable into a per-target
+ * breakdown. It expands within the cell because the parent row already owns a
+ * chevron, and two would be ambiguous to click.
  */
 export function NotificationDurationCell({
   analytics,
@@ -21,13 +18,11 @@ export function NotificationDurationCell({
   const [expanded, setExpanded] = React.useState(false);
   const total = analytics?.webhookDurationMs;
   const targets = analytics?.notificationTargets ?? [];
-
   if (total == null) {
     return <>–</>;
   }
 
-  // Records written before per-target timing existed have the total but no
-  // breakdown, so there is nothing to expand into.
+  // Records written before per-target timing have the total but no breakdown.
   if (targets.length === 0) {
     return <Text size="sm">{formatDurationMs(total)}</Text>;
   }
