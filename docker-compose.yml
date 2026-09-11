@@ -42,6 +42,14 @@ services:
       - '4317:4317' # OTLP gRPC receiver
       - '4318:4318' # OTLP http receiver
       - '8888:8888' # metrics extension
+      # Uncomment to enable statsd ingestion (also requires adding the
+      # `statsd` receiver to a pipeline via CUSTOM_OTELCOL_CONFIG_FILE - see
+      # packages/otel-collector/README.md). Left commented out by default:
+      # a fixed host port mapping fails the whole service's startup if
+      # something else on the host (e.g. a local StatsD daemon or Datadog
+      # Agent) already owns 8125/udp, which would otherwise break the
+      # default stack for anyone not using this feature.
+      # - '8125:8125/udp' # statsd receiver
     restart: always
     networks:
       - internal
