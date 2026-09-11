@@ -6,15 +6,20 @@ import { json, jsonParseLinter } from '@codemirror/lang-json';
 import { linter } from '@codemirror/lint';
 import {
   AlertState,
+  DEFAULT_GENERIC_WEBHOOK_BODY,
+  WEBHOOK_TEMPLATE_VARIABLES,
   WebhookApiData,
   WebhookService,
+  WebhookTemplateVariable,
 } from '@hyperdx/common-utils/dist/types';
 import { isValidSlackUrl } from '@hyperdx/common-utils/dist/validation';
 import {
   Alert,
   Button,
+  Code,
   Group,
   Radio,
+  SimpleGrid,
   Stack,
   Text,
   TextInput,
@@ -30,17 +35,45 @@ import api from '@/api';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import { isValidUrl } from '@/utils';
 
-const DEFAULT_GENERIC_WEBHOOK_BODY = [
-  '{{title}}',
-  '{{body}}',
-  '{{link}}',
-  '{{state}}',
-  '{{startTime}}',
-  '{{endTime}}',
-  '{{eventId}}',
-];
-const DEFAULT_GENERIC_WEBHOOK_BODY_TEMPLATE =
-  DEFAULT_GENERIC_WEBHOOK_BODY.join(' | ');
+// The default body and the variable list both come from common-utils, so this
+// form and the API's fallback cannot drift. The docs page restates them by
+// hand; a unit test in common-utils keeps that table honest.
+// Keyed by WebhookTemplateVariable so a variable added in common-utils cannot
+// reach the transports without a description here.
+const describeTemplateVariable = (
+  brandName: string,
+): Record<WebhookTemplateVariable, string> => ({
+  title: 'Alert title',
+  body: 'Rendered message body (markdown)',
+  link: `Deep link back into ${brandName}`,
+  state: 'Raw internal alert state',
+  status: 'firing, resolved, no_data, pending or error',
+  eventId: 'Unique id for this firing',
+  alertId: 'Stable id of the alert — the key to dedupe on',
+  alertType: 'search, dashboard_chart or inline_query',
+  comparator: '>=, >, <, <=, =, !=, between or outside',
+  threshold: 'The configured threshold (number)',
+  thresholdMax: 'Upper bound of a between/outside range (number)',
+  value: 'Value that triggered or resolved the alert (number)',
+  groupKey: 'The breaching group, if grouped',
+  sourceQuery: 'Search expression or SQL behind the alert',
+  startTime: 'Window start, Unix ms (number)',
+  endTime: 'Window end, Unix ms (number)',
+  startTimeISO: 'Window start, ISO-8601',
+  endTimeISO: 'Window end, ISO-8601',
+  teamId: 'Team the alert belongs to',
+  note: "Alert's note, commonly a runbook link",
+});
+
+export const getWebhookTemplateVariables = (
+  brandName: string,
+): { name: string; description: string }[] => {
+  const descriptions = describeTemplateVariable(brandName);
+  return WEBHOOK_TEMPLATE_VARIABLES.map(name => ({
+    name: `{{${name}}}`,
+    description: descriptions[name],
+  }));
+};
 
 const jsonLinterWithEmptyCheck = () => (editorView: EditorView) => {
   const text = editorView.state.doc.toString().trim();
@@ -126,7 +159,7 @@ export function WebhookForm({
     let defaultBody = body;
     if (!body) {
       if (service === WebhookService.Generic) {
-        defaultBody = `{"text": "${DEFAULT_GENERIC_WEBHOOK_BODY_TEMPLATE}"}`;
+        defaultBody = DEFAULT_GENERIC_WEBHOOK_BODY;
       } else if (service === WebhookService.IncidentIO) {
         defaultBody = `{
   "title": "{{title}}",
@@ -200,7 +233,7 @@ export function WebhookForm({
       let defaultBody = body;
       if (!body) {
         if (service === WebhookService.Generic) {
-          defaultBody = `{"text": "${DEFAULT_GENERIC_WEBHOOK_BODY_TEMPLATE}"}`;
+          defaultBody = DEFAULT_GENERIC_WEBHOOK_BODY;
         } else if (service === WebhookService.IncidentIO) {
           defaultBody = `{
   "title": "{{title}}",
@@ -277,6 +310,7 @@ export function WebhookForm({
   };
 
   const service = useWatch({ control: form.control, name: 'service' });
+  const templateVariables = getWebhookTemplateVariables(brandName);
   const headersText = useWatch({ control: form.control, name: 'headers' });
   const hasMaskedHeaders = isEditing && !!headersText?.includes('****');
 
@@ -384,9 +418,7 @@ export function WebhookForm({
                   extensions={[
                     json(),
                     linter(jsonLinterWithEmptyCheck()),
-                    placeholder(
-                      `{\n\t"text": "${DEFAULT_GENERIC_WEBHOOK_BODY_TEMPLATE}"\n}`,
-                    ),
+                    placeholder(DEFAULT_GENERIC_WEBHOOK_BODY),
                   ]}
                   theme="dark"
                   value={field.value}
@@ -401,19 +433,30 @@ export function WebhookForm({
             className="mb-4"
             color="gray"
           >
-            <span>
-              Currently the body supports the following message template
-              variables:
-            </span>
-            <br />
-            <span>
-              {DEFAULT_GENERIC_WEBHOOK_BODY.map((body, index) => (
-                <span key={index}>
-                  <code>{body}</code>
-                  {index < DEFAULT_GENERIC_WEBHOOK_BODY.length - 1 && ', '}
-                </span>
+            <Text size="sm">
+              The body supports the following template variables:
+            </Text>
+            <SimpleGrid
+              cols={{ base: 1, sm: 2 }}
+              spacing="xs"
+              verticalSpacing={4}
+              mt="xs"
+              data-testid="webhook-template-variables"
+            >
+              {templateVariables.map(({ name, description }) => (
+                <Group key={name} gap="xs" wrap="nowrap" align="baseline">
+                  <Code>{name}</Code>
+                  <Text size="xs" c="dimmed">
+                    {description}
+                  </Text>
+                </Group>
               ))}
-            </span>
+            </SimpleGrid>
+            <Text size="xs" c="dimmed" mt="xs">
+              Strings are JSON-escaped, so they are safe inside quotes. Numbers
+              are emitted raw for unquoted slots. A variable the alert
+              doesn&apos;t carry renders as an empty string.
+            </Text>
           </Alert>,
         ]}
         <Group justify="space-between">

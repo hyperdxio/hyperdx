@@ -576,6 +576,15 @@ export abstract class BaseClickhouseClient {
     // Enables full-text (inverted index) search.
     applySettingIfAvailable('enable_full_text_index', '1');
 
+    // 26.3 turned this on by default. On SharedMergeTree it makes PREWHERE
+    // planning fetch per-part sizes for every map key referenced — one S3 GET
+    // each, not interruptible by max_execution_time. The sizes only reorder
+    // PREWHERE conditions, so the pre-26.3 approximation is fine.
+    applySettingIfAvailable(
+      'allow_calculating_subcolumns_sizes_for_merge_tree_reading',
+      '0',
+    );
+
     return {
       ...defaultSettings,
       ...clickhouse_settings,

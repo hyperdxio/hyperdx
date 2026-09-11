@@ -1,5 +1,6 @@
 import {
   ChartConfigWithDateRange,
+  DashboardFilter,
   DisplayType,
   SavedChartConfig,
   SourceKind,
@@ -15,7 +16,9 @@ import {
   displayTypeToActiveTab,
   isQueryReady,
   resolvePreviewVariables,
+  resolveTilePreviewFilters,
   seriesToFilters,
+  tabQueriesData,
   TABS_WITH_GENERATED_SQL,
 } from '@/components/DBEditTimeChartForm/utils';
 
@@ -230,6 +233,14 @@ describe('displayTypeToActiveTab', () => {
 // TABS_WITH_GENERATED_SQL
 // ---------------------------------------------------------------------------
 
+describe('tabQueriesData', () => {
+  it('is false only for the markdown tab', () => {
+    expect(tabQueriesData('markdown')).toBe(false);
+    expect(tabQueriesData('time')).toBe(true);
+    expect(tabQueriesData('search')).toBe(true);
+  });
+});
+
 describe('TABS_WITH_GENERATED_SQL', () => {
   it('includes table, time, number, pie, bar, heatmap', () => {
     expect(TABS_WITH_GENERATED_SQL.has('table')).toBe(true);
@@ -309,7 +320,7 @@ describe('resolvePreviewVariables', () => {
       resolvePreviewVariables({
         config: promqlConfig,
         variables: undefined,
-        hasAlert: false,
+        applySelections: true,
       }),
     ).toBeUndefined();
   });
@@ -319,19 +330,150 @@ describe('resolvePreviewVariables', () => {
       resolvePreviewVariables({
         config: promqlConfig,
         variables,
-        hasAlert: false,
+        applySelections: true,
       }),
     ).toEqual([{ name: 'service', values: ['api'] }]);
   });
 
-  it('drops the selections when the tile has an alert', () => {
+  it('drops the selections when they are not being applied', () => {
     expect(
       resolvePreviewVariables({
         config: promqlConfig,
         variables,
-        hasAlert: true,
+        applySelections: false,
       }),
     ).toEqual([{ name: 'service', values: [] }]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveTilePreviewFilters
+// ---------------------------------------------------------------------------
+
+describe('resolveTilePreviewFilters', () => {
+  const dashboardFilters = [
+    { type: 'sql' as const, condition: "ServiceName IN ('api')" },
+  ];
+  const variables = [{ name: 'service', values: ['api'] }];
+
+  const promqlConfig: ChartConfigWithDateRange = {
+    configType: 'promql',
+    promqlExpression: 'up{service=~"$service"}',
+    connection: 'local',
+    dateRange,
+  };
+
+  const rawSqlWithFiltersMacro: ChartConfigWithDateRange = {
+    configType: 'sql',
+    sqlTemplate: 'SELECT count() FROM logs WHERE $__filters',
+    connection: 'clickhouse',
+    dateRange,
+  };
+
+  const requiredFilter: DashboardFilter = {
+    id: 'f1',
+    type: 'QUERY_EXPRESSION',
+    name: 'Service',
+    expression: 'ServiceName',
+    source: 'log-source',
+    minSelections: 1,
+  };
+
+  const resolve = (
+    overrides: Partial<Parameters<typeof resolveTilePreviewFilters>[0]> = {},
+  ) =>
+    resolveTilePreviewFilters({
+      config: builderConfig,
+      sourceId: 'log-source',
+      filters: dashboardFilters,
+      variables,
+      unsatisfiedRequiredFilters: undefined,
+      applySelections: true,
+      ...overrides,
+    });
+
+  it('applies the filters to a builder tile', () => {
+    expect(resolve()).toEqual({
+      filters: dashboardFilters,
+      variables: [],
+      missingRequiredFilterNames: [],
+    });
+  });
+
+  it('keeps the selected values of the variables a tile references', () => {
+    expect(resolve({ config: promqlConfig }).variables).toEqual(variables);
+  });
+
+  it('drops the filters and empties the selections when turned off', () => {
+    expect(resolve({ config: promqlConfig, applySelections: false })).toEqual({
+      filters: undefined,
+      variables: [{ name: 'service', values: [] }],
+      missingRequiredFilterNames: [],
+    });
+  });
+
+  it('never hands filters to a PromQL tile', () => {
+    expect(resolve({ config: promqlConfig }).filters).toBeUndefined();
+  });
+
+  it('drops the filters a raw-SQL template would not apply', () => {
+    expect(resolve({ config: rawSqlWithFiltersMacro }).filters).toEqual(
+      dashboardFilters,
+    );
+    expect(resolve({ config: rawSqlConfig }).filters).toBeUndefined();
+  });
+
+  it('reports the required filters that block the preview', () => {
+    expect(
+      resolve({ unsatisfiedRequiredFilters: [requiredFilter] })
+        .missingRequiredFilterNames,
+    ).toEqual(['Service']);
+  });
+
+  // A static-list filter broadcasts nothing, so only a tile referencing its
+  // variable is blocked by it.
+  it('reports a required filter the tile references as a variable', () => {
+    const requiredVariable: DashboardFilter = {
+      id: 'f2',
+      type: 'STATIC_LIST',
+      name: 'Environment',
+      options: ['prod'],
+      isBroadcastEnabled: false,
+      isVariableEnabled: true,
+      variableName: 'service',
+      minSelections: 1,
+    };
+
+    expect(
+      resolve({
+        config: promqlConfig,
+        unsatisfiedRequiredFilters: [requiredVariable],
+      }).missingRequiredFilterNames,
+    ).toEqual(['Environment']);
+    expect(
+      resolve({ unsatisfiedRequiredFilters: [requiredVariable] })
+        .missingRequiredFilterNames,
+    ).toEqual([]);
+  });
+
+  it('reports no block for a tile the required filter does not reach', () => {
+    expect(
+      resolve({
+        sourceId: 'other-source',
+        unsatisfiedRequiredFilters: [
+          { ...requiredFilter, appliesToSourceIds: ['log-source'] },
+        ],
+      }).missingRequiredFilterNames,
+    ).toEqual([]);
+  });
+
+  it('reports no block while the filters are turned off', () => {
+    expect(
+      resolve({
+        unsatisfiedRequiredFilters: [requiredFilter],
+        applySelections: false,
+      }).missingRequiredFilterNames,
+    ).toEqual([]);
   });
 });
 

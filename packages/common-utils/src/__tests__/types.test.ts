@@ -829,6 +829,28 @@ describe('DashboardFilterValueSchema', () => {
   });
 });
 
+describe('DashboardSchema.savedDateRange', () => {
+  const base = { id: 'd1', name: 'Dashboard', tiles: [], tags: [] };
+  const parse = (savedDateRange: unknown) =>
+    DashboardSchema.safeParse({ ...base, savedDateRange }).success;
+
+  it('accepts relative, historical, null, or absent', () => {
+    expect(parse({ type: 'relative', value: 3600 })).toBe(true);
+    expect(parse({ type: 'historical', value: [1700000000, 1700003600] })).toBe(
+      true,
+    );
+    expect(parse(null)).toBe(true);
+    expect(parse(undefined)).toBe(true);
+  });
+
+  it('rejects malformed values', () => {
+    expect(parse({ type: 'relative', value: '1h' })).toBe(false);
+    expect(parse({ type: 'historical', value: [1700000000] })).toBe(false);
+    expect(parse({ type: 'other', value: 1 })).toBe(false);
+    expect(parse(3600)).toBe(false);
+  });
+});
+
 describe('MetricFormulaSchema', () => {
   it('parses an expression-only formula', () => {
     const result = MetricFormulaSchema.safeParse({

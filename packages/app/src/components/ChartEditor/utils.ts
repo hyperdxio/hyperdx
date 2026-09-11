@@ -194,6 +194,7 @@ export function convertFormStateToSavedChartConfig(
         'displayType',
         'numberFormat',
         'color',
+        'colorRules',
         'granularity',
         'compareToPreviousPeriod',
         'fillNulls',
@@ -218,6 +219,7 @@ export function convertFormStateToSavedChartConfig(
         'displayType',
         'numberFormat',
         'color',
+        'colorRules',
         'granularity',
         'compareToPreviousPeriod',
         'fillNulls',
@@ -276,6 +278,7 @@ export function convertFormStateToChartConfig(
         'displayType',
         'numberFormat',
         'color',
+        'colorRules',
         'granularity',
         'compareToPreviousPeriod',
         'fillNulls',
@@ -300,6 +303,7 @@ export function convertFormStateToChartConfig(
         'displayType',
         'numberFormat',
         'color',
+        'colorRules',
         'granularity',
         'compareToPreviousPeriod',
         'fillNulls',
@@ -416,6 +420,16 @@ export const validateChartForm = (
   form: ChartEditorFormState,
   source: TSource | undefined,
   setError: UseFormSetError<ChartEditorFormState>,
+  {
+    requireAlertDisplayName = false,
+  }: {
+    /**
+     * Whether the alert must carry a name. Set for inline alerts, which have
+     * no dashboard tile to inherit one from: left blank, the server would
+     * name the alert after whatever the chart happens to be called.
+     */
+    requireAlertDisplayName?: boolean;
+  } = {},
 ) => {
   const errors: { path: Path<ChartEditorFormState>; message: string }[] = [];
 
@@ -530,6 +544,17 @@ export const validateChartForm = (
         message: alertErrors.join(' '),
       });
     }
+  }
+
+  if (
+    requireAlertDisplayName &&
+    form.alert &&
+    !form.alert.displayName?.trim()
+  ) {
+    errors.push({
+      path: 'alert.displayName',
+      message: 'Alert name is required',
+    });
   }
 
   // Validate thresholdMax for range threshold types (between / not between)
