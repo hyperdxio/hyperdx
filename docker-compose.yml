@@ -71,6 +71,9 @@ services:
       USAGE_STATS_ENABLED: ${USAGE_STATS_ENABLED:-true}
       # Comma-separated hostnames or exact IP literals that may receive webhooks.
       WEBHOOK_HOSTNAME_ALLOWLIST: ${WEBHOOK_HOSTNAME_ALLOWLIST:-}
+      # 32-byte base64 or hex key. Setting it encrypts stored Slack and OAuth
+      # tokens; unset means they are stored in plain text.
+      TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY:-}
       # Uncomment the next two lines to enable PromQL (Prometheus-compatible metrics)
       # ENABLE_PROMQL: 'true'
       # NEXT_PUBLIC_ENABLE_PROMQL: 'true'
