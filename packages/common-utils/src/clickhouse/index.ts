@@ -11,7 +11,11 @@ import type {
 import type { ClickHouseClient as WebClickHouseClient } from '@clickhouse/client-web';
 import * as SQLParser from 'node-sql-parser';
 
-import { getMetadata, Metadata } from '@/core/metadata';
+import {
+  getMetadata,
+  Metadata,
+  quoteIdentifierIfNeeded,
+} from '@/core/metadata';
 import {
   renderChartConfig,
   setChartSelectsAlias,
@@ -19,7 +23,10 @@ import {
 import {
   extractSettingsClauseFromEnd,
   hashCode,
+  type QuotedIdentifierReplacements,
+  replaceBacktickedIdentifiers,
   replaceJsonExpressions,
+  restoreReplacements,
   splitAndTrimWithBracket,
 } from '@/core/utils';
 import { isBuilderChartConfig } from '@/guards';
@@ -777,6 +784,7 @@ const ALIAS_FALLBACK_TABLE = '__hdx_alias_src';
 function selectColumnsToAliasMap(
   parsedSql: string,
   jsonReplacements: Map<string, string>,
+  identifierReplacements: QuotedIdentifierReplacements,
 ): Record<string, string> {
   const aliasMap: Record<string, string> = {};
   const parser = new SQLParser.Parser();
@@ -791,12 +799,15 @@ function selectColumnsToAliasMap(
     ast.columns.forEach(column => {
       if (column.as != null) {
         if (column.type === 'expr' && column.expr.type === 'column_ref') {
+          const escapedColumnName = quoteIdentifierIfNeeded(
+            column.expr.column.expr.value,
+          );
           aliasMap[column.as] =
             column.expr.array_index && column.expr.array_index[0]?.brackets
               ? // alias with brackets, ex: ResourceAttributes['service.name'] as service_name
-                `${column.expr.column.expr.value}['${column.expr.array_index[0].index.value}']`
+                `${escapedColumnName}['${column.expr.array_index[0].index.value}']`
               : // normal alias
-                column.expr.column.expr.value;
+                escapedColumnName;
         } else if (column.expr.loc != null) {
           aliasMap[column.as] = parsedSql.slice(
             column.expr.loc.start.offset,
@@ -818,7 +829,14 @@ function selectColumnsToAliasMap(
     }
   }
 
-  return aliasMap;
+  // Replace the backticked identifier replacements with the original quoted identifiers
+  const { quotedText, names } = identifierReplacements;
+  return Object.fromEntries(
+    Object.entries(aliasMap).map(([alias, aliasExpression]) => [
+      names.get(alias) ?? alias,
+      restoreReplacements(aliasExpression, quotedText),
+    ]),
+  );
 }
 
 /**
@@ -931,14 +949,22 @@ export function chSqlToAliasMap(
     // Remove the SETTINGS clause because `SQLParser` doesn't understand it.
     const [sqlWithoutSettingsClause] = extractSettingsClauseFromEnd(sql);
 
+    // Replace backtick-quoted identifiers with placeholder tokens so that a
+    // quoted alias doesn't fail the parse
+    const {
+      sqlWithReplacements: sqlWithoutBackticks,
+      replacements: identifierReplacementsToExpressions,
+    } = replaceBacktickedIdentifiers(sqlWithoutSettingsClause);
+
     // Replace JSON expressions with replacement tokens so that node-sql-parser can parse the SQL
     const { sqlWithReplacements, replacements: jsonReplacementsToExpressions } =
-      replaceJsonExpressions(sqlWithoutSettingsClause);
+      replaceJsonExpressions(sqlWithoutBackticks);
 
     try {
       return selectColumnsToAliasMap(
         sqlWithReplacements,
         jsonReplacementsToExpressions,
+        identifierReplacementsToExpressions,
       );
     } catch (fullParseError) {
       // node-sql-parser's Postgresql dialect rejects some ClickHouse-specific
@@ -952,6 +978,7 @@ export function chSqlToAliasMap(
       return selectColumnsToAliasMap(
         `SELECT ${projection} FROM ${ALIAS_FALLBACK_TABLE}`,
         jsonReplacementsToExpressions,
+        identifierReplacementsToExpressions,
       );
     }
   } catch (e) {
