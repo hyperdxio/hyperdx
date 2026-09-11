@@ -1,5 +1,47 @@
 # @hyperdx/api
 
+## 2.39.0
+
+### Minor Changes
+
+- 972634d2: Report the whole alert condition in the `{{sourceQuery}}` webhook template
+  variable. It read only a chart's top-level `where`, so an alert defined by a
+  per-series `aggCondition` — a common shape — still rendered empty. The variable
+  now reports every part of the condition the alert query actually applies: a
+  chart's `where` plus the `aggCondition` of the series the alert reads, and a
+  saved search's `where` plus its pinned filters. A chart's pinned filters are
+  deliberately excluded, since a tile or inline alert does not apply them. The
+  value is truncated at 2000 characters.
+
+  Editing an alert off a `between` or `outside` comparator now clears the stored
+  `thresholdMax` instead of leaving the old bound on the document, where it was
+  also served by the alerts APIs and would advertise a range that no longer
+  fires. Webhook templates already guarded against this on read.
+
+  The webhook form's variable list and the API's fallback body template both
+  derive from one list in common-utils, which `buildWebhookTemplateVariables` is
+  typed against, so a variable cannot be added without appearing in both places.
+  The "Send test" payload carries a sample value for every variable, so a body
+  template can be checked before an alert fires.
+
+  The documented guard for an optional number is now
+  `{{#unless (eq thresholdMax undefined)}}` rather than `{{#if thresholdMax}}`,
+  which treats a legitimate bound of `0` as absent.
+
+### Patch Changes
+
+- c8cc8e5e: feat: Include alert tags in the tags API response
+- cfacdbe5: feat: relative date ranges for dashboards can now be saved
+- 78a33ba4: feat: Allow configuring dashboard filters as required
+- 0a371980: fix: Keep `/api/sources` responses stable for sources whose stored `metadataMaterializedViews` has no nested `_id`
+- Updated dependencies [96ac6b1b]
+- Updated dependencies [cfacdbe5]
+- Updated dependencies [78a33ba4]
+- Updated dependencies [3876d6b9]
+- Updated dependencies [b4840573]
+- Updated dependencies [972634d2]
+  - @hyperdx/common-utils@0.29.0
+
 ## 2.38.0
 
 ### Minor Changes
