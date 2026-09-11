@@ -432,6 +432,288 @@ describe('MCP Trace Tools', () => {
       });
     });
 
+    // The span/log fetches are time-bounded for partition pruning.
+    // Pins both edges — the bound is honored, yet an explicit traceId older
+    // than the default window is still rescued by the first-seen probe.
+    describe('time-bounding', () => {
+      const OLD_TRACE_ID = 'dead0000beef1111cafe2222f00d3333';
+      const OLD_SVC = 'wf-oldtrace-svc';
+      const now = new Date();
+      // Two days old — far outside the default 15-minute window, but within the
+      // probe's 90-day widened range.
+      const twoDaysAgo = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000);
+
+      beforeEach(async () => {
+        await bulkInsertTraces([
+          {
+            Timestamp: twoDaysAgo,
+            TraceId: OLD_TRACE_ID,
+            SpanId: 'old_root_span01',
+            ParentSpanId: '',
+            SpanName: 'GET /wf-old/root',
+            SpanKind: 'SPAN_KIND_SERVER',
+            ServiceName: OLD_SVC,
+            Duration: 300_000_000,
+            StatusCode: 'STATUS_CODE_OK',
+          },
+          {
+            Timestamp: new Date(twoDaysAgo.getTime() + 10),
+            TraceId: OLD_TRACE_ID,
+            SpanId: 'old_child_span1',
+            ParentSpanId: 'old_root_span01',
+            SpanName: 'wf-old-child',
+            SpanKind: 'SPAN_KIND_CLIENT',
+            ServiceName: OLD_SVC,
+            Duration: 100_000_000,
+            StatusCode: 'STATUS_CODE_OK',
+          },
+        ]);
+      });
+
+      it('resolves an explicit traceId older than the default window via the first-seen probe', async () => {
+        // No startTime/endTime: the 15-min default excludes this 2-day-old
+        // trace, so only the probe can rescue it.
+        const result = await callTool(client, 'clickstack_trace_waterfall', {
+          sourceId: traceSource._id.toString(),
+          traceId: OLD_TRACE_ID,
+          includeLogs: false,
+        });
+
+        expect(result.isError).toBeFalsy();
+        const output = JSON.parse(getFirstText(result));
+        expect(output.traceId).toBe(OLD_TRACE_ID);
+        expect(output.spanCount).toBe(2);
+      });
+
+      it('honors an explicit window that excludes the trace (returns no-spans hint)', async () => {
+        // Explicit window the old trace falls outside of: no spans come back,
+        // proving the time predicate is applied rather than ignored.
+        const result = await callTool(client, 'clickstack_trace_waterfall', {
+          sourceId: traceSource._id.toString(),
+          traceId: OLD_TRACE_ID,
+          includeLogs: false,
+          startTime: new Date(now.getTime() - 10 * 60 * 1000).toISOString(),
+          endTime: new Date(now.getTime() + 60 * 1000).toISOString(),
+        });
+
+        expect(result.isError).toBeFalsy();
+        const output = JSON.parse(getFirstText(result));
+        expect(output.result).toBeNull();
+        expect(output.hint).toContain('widen the window');
+      });
+
+      it('points an explicit-traceId miss at startTime, not "widen the window"', async () => {
+        // A traceId that does not exist: the default window is probed back 90
+        // days, finds nothing, and the hint must name the recoverable action
+        // (pass an explicit startTime) rather than the auto-pick advice.
+        const result = await callTool(client, 'clickstack_trace_waterfall', {
+          sourceId: traceSource._id.toString(),
+          traceId: 'ffffffffffffffffffffffffffffffff',
+          includeLogs: false,
+        });
+
+        expect(result.isError).toBeFalsy();
+        const output = JSON.parse(getFirstText(result));
+        expect(output.result).toBeNull();
+        expect(output.hint).toContain('90 days');
+        expect(output.hint).toContain('startTime');
+      });
+    });
+
+    // A reused/sentinel TraceId (e.g. an all-zero id from an uninstrumented
+    // emitter) can have occurrences days apart. The probe's [min, max] window
+    // is width-clamped to the recent tail so the fetch stays bounded — it must
+    // NOT balloon back toward the 90-day probe range or stitch the old and new
+    // occurrences into one nonsense tree.
+    describe('wide-spread TraceId window clamp', () => {
+      const SENTINEL_TRACE_ID = '00000000000000000000000000000000';
+      const SENTINEL_SVC = 'wf-sentinel-svc';
+      const now = new Date();
+      const tenDaysAgo = new Date(now.getTime() - 10 * 24 * 60 * 60 * 1000);
+      const fiveMinAgo = new Date(now.getTime() - 5 * 60 * 1000);
+
+      beforeEach(async () => {
+        await bulkInsertTraces([
+          // Old occurrence — outside the 24h clamp off the recent tail.
+          {
+            Timestamp: tenDaysAgo,
+            TraceId: SENTINEL_TRACE_ID,
+            SpanId: 'sentinel_old_span',
+            ParentSpanId: '',
+            SpanName: 'GET /sentinel/old',
+            SpanKind: 'SPAN_KIND_SERVER',
+            ServiceName: SENTINEL_SVC,
+            Duration: 100_000_000,
+            StatusCode: 'STATUS_CODE_OK',
+          },
+          // Recent occurrence — a distinct 2-span tree.
+          {
+            Timestamp: fiveMinAgo,
+            TraceId: SENTINEL_TRACE_ID,
+            SpanId: 'sentinel_new_root',
+            ParentSpanId: '',
+            SpanName: 'GET /sentinel/new',
+            SpanKind: 'SPAN_KIND_SERVER',
+            ServiceName: SENTINEL_SVC,
+            Duration: 200_000_000,
+            StatusCode: 'STATUS_CODE_OK',
+          },
+          {
+            Timestamp: new Date(fiveMinAgo.getTime() + 10),
+            TraceId: SENTINEL_TRACE_ID,
+            SpanId: 'sentinel_new_child',
+            ParentSpanId: 'sentinel_new_root',
+            SpanName: 'sentinel-new-child',
+            SpanKind: 'SPAN_KIND_CLIENT',
+            ServiceName: SENTINEL_SVC,
+            Duration: 50_000_000,
+            StatusCode: 'STATUS_CODE_OK',
+          },
+        ]);
+      });
+
+      it('clamps the fetch window to the recent tail, excluding the far-past occurrence', async () => {
+        const result = await callTool(client, 'clickstack_trace_waterfall', {
+          sourceId: traceSource._id.toString(),
+          traceId: SENTINEL_TRACE_ID,
+          includeLogs: false,
+        });
+
+        expect(result.isError).toBeFalsy();
+        const output = JSON.parse(getFirstText(result));
+        // Only the recent 2-span occurrence is returned; the 10-day-old span is
+        // outside the clamped window, so it is not stitched into the tree.
+        expect(output.spanCount).toBe(2);
+        expect(output.spans.map((s: any) => s.spanId)).not.toContain(
+          'sentinel_old_span',
+        );
+        expect(output.spans.filter((s: any) => s.depth === 0)).toHaveLength(1);
+      });
+    });
+
+    // The probe fetches the trace's [min, max] extent, not a fixed lead off
+    // first-seen — so a trace whose spans span more than an hour is returned
+    // whole, spans and correlated logs alike.
+    describe('long-running trace window', () => {
+      const LONG_TRACE_ID = 'aaaa1111bbbb2222cccc3333dddd4444';
+      const LONG_SVC = 'wf-longtrace-svc';
+      const now = new Date();
+      // Root two days ago; a child span ~2h later. A fixed first-seen + 1h lead
+      // would truncate that child; the [min, max] probe keeps it.
+      const rootTs = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000);
+      const lateTs = new Date(rootTs.getTime() + 2 * 60 * 60 * 1000);
+
+      beforeEach(async () => {
+        await bulkInsertTraces([
+          {
+            Timestamp: rootTs,
+            TraceId: LONG_TRACE_ID,
+            SpanId: 'long_root_span01',
+            ParentSpanId: '',
+            SpanName: 'GET /wf-long/root',
+            SpanKind: 'SPAN_KIND_SERVER',
+            ServiceName: LONG_SVC,
+            Duration: 7_200_000_000_000, // ~2h in ns
+            StatusCode: 'STATUS_CODE_OK',
+          },
+          {
+            Timestamp: lateTs,
+            TraceId: LONG_TRACE_ID,
+            SpanId: 'long_late_span01',
+            ParentSpanId: 'long_root_span01',
+            SpanName: 'wf-long-late-child',
+            SpanKind: 'SPAN_KIND_CLIENT',
+            ServiceName: LONG_SVC,
+            Duration: 100_000_000,
+            StatusCode: 'STATUS_CODE_OK',
+          },
+        ]);
+        await bulkInsertLogs([
+          {
+            Timestamp: lateTs,
+            TraceId: LONG_TRACE_ID,
+            SpanId: 'long_late_span01',
+            Body: 'late log line',
+            ServiceName: LONG_SVC,
+            SeverityText: 'INFO',
+          },
+        ]);
+      });
+
+      it('returns the full tree and a late log for a trace spanning > 1h', async () => {
+        const result = await callTool(client, 'clickstack_trace_waterfall', {
+          sourceId: traceSource._id.toString(),
+          traceId: LONG_TRACE_ID,
+        });
+
+        expect(result.isError).toBeFalsy();
+        const output = JSON.parse(getFirstText(result));
+        expect(output.traceId).toBe(LONG_TRACE_ID);
+        expect(output.spanCount).toBe(2);
+        expect(output.spans.filter((s: any) => s.depth === 0)).toHaveLength(1);
+        // A fixed first-seen + 1h lead would have cut off this late child's log.
+        expect(output.logsCount).toBe(1);
+      });
+    });
+
+    // Auto-pick is also probed: a picked trace is only guaranteed one span in
+    // the default window, so its root/tail can lie outside it.
+    describe('auto-pick window', () => {
+      const PICK_TRACE_ID = 'bbbb2222cccc3333dddd4444eeee5555';
+      const PICK_SVC = 'wf-autopick-old-svc';
+      const now = new Date();
+      // Root predates the default 15-min window; a child is inside it. Auto-pick
+      // finds the trace via the in-window child, but the fetch must cover the
+      // out-of-window root too.
+      const rootTs = new Date(now.getTime() - 40 * 60 * 1000);
+      const childTs = new Date(now.getTime() - 5 * 60 * 1000);
+
+      beforeEach(async () => {
+        await bulkInsertTraces([
+          {
+            Timestamp: rootTs,
+            TraceId: PICK_TRACE_ID,
+            SpanId: 'pick_root_span01',
+            ParentSpanId: '',
+            SpanName: 'GET /wf-autopick/root',
+            SpanKind: 'SPAN_KIND_SERVER',
+            ServiceName: PICK_SVC,
+            Duration: 2_400_000_000_000, // 40m in ns → picked as slowest
+            StatusCode: 'STATUS_CODE_OK',
+          },
+          {
+            Timestamp: childTs,
+            TraceId: PICK_TRACE_ID,
+            SpanId: 'pick_child_span1',
+            ParentSpanId: 'pick_root_span01',
+            SpanName: 'wf-autopick-child',
+            SpanKind: 'SPAN_KIND_CLIENT',
+            ServiceName: PICK_SVC,
+            Duration: 100_000_000,
+            StatusCode: 'STATUS_CODE_OK',
+          },
+        ]);
+      });
+
+      it('returns the whole tree when the picked trace root predates the window', async () => {
+        const result = await callTool(client, 'clickstack_trace_waterfall', {
+          sourceId: traceSource._id.toString(),
+          pickFilter: `ServiceName:${PICK_SVC}`,
+          pickBy: 'slowest',
+          includeLogs: false,
+        });
+
+        expect(result.isError).toBeFalsy();
+        const output = JSON.parse(getFirstText(result));
+        expect(output.traceId).toBe(PICK_TRACE_ID);
+        // Without the auto-pick probe, only the in-window child would return,
+        // producing a false root and a spanCount of 1.
+        expect(output.spanCount).toBe(2);
+        expect(output.spans.filter((s: any) => s.depth === 0)).toHaveLength(1);
+        expect(output.rootSpan.spanId).toBe('pick_root_span01');
+      });
+    });
+
     describe('first_error pick mode', () => {
       const ERROR_TRACE_ID = 'ffff0000eeee1111dddd2222cccc3333';
       const now = new Date();

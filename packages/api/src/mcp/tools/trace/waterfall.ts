@@ -12,6 +12,8 @@ import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
 import {
   clickHouseErrorResult,
+  MCP_CLICKHOUSE_SETTINGS,
+  MCP_REQUEST_TIMEOUT,
   parseTimeRange,
 } from '@/mcp/tools/query/helpers';
 import type { ToolRegistrar } from '@/mcp/tools/types';
@@ -31,8 +33,10 @@ const traceSchema = z.object({
     .optional()
     .describe(
       'Specific TraceId to look up. When provided, the tool fetches every span ' +
-        'in this trace and returns them as a parent/child tree. ' +
-        'When omitted, the tool auto-picks one trace using pickFilter + pickBy.',
+        'in this trace and returns them as a parent/child tree. When omitted, ' +
+        'the tool auto-picks one trace using pickFilter + pickBy. With an ' +
+        'explicit traceId and no startTime, the tool probes the trace back to ' +
+        '90 days; pass startTime only to reach a trace older than that.',
     ),
   pickFilter: z
     .string()
@@ -65,7 +69,10 @@ const traceSchema = z.object({
     .string()
     .optional()
     .describe(
-      'Start of the search window as ISO 8601. Default: 15 minutes ago.',
+      'Start of the search window as ISO 8601. Default: 15 minutes ago for ' +
+        'auto-pick. When traceId is set, the window is instead derived from ' +
+        "the trace's own span timestamps (probed back to 90 days), so pass " +
+        'startTime only to look up a trace older than 90 days.',
     ),
   endTime: z
     .string()
@@ -105,6 +112,25 @@ const traceSchema = z.object({
 });
 
 type TraceInput = z.infer<typeof traceSchema>;
+
+// ─── Safety limits ───────────────────────────────────────────────────────────
+
+// Probe-window tuning. The span/log fetch is time-bounded to the
+// trace's probed [min, max] extent so ClickHouse prunes partitions. The pads
+// absorb clock skew between emitters; they do NOT cover trace duration — the
+// [min, max] extent already does. MAX_FETCH_WINDOW clamps the width so a
+// reused/sentinel id (e.g. an all-zero TraceId) whose min and max are days
+// apart can't widen the scan back toward the retention edge or stitch two
+// occurrences into one tree. A trace older than these bounds needs an explicit
+// startTime.
+const TRACE_PROBE_LEAD_PAD_MS = 1 * 60 * 60 * 1000;
+const TRACE_PROBE_TRAIL_PAD_MS = 1 * 60 * 60 * 1000;
+const TRACE_PROBE_MAX_LOOKBACK_MS = 90 * 24 * 60 * 60 * 1000;
+const TRACE_MAX_FETCH_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+// Auto-pick guarantees only one span inside the default window; the root can
+// predate it, so probe a bounded distance before startDate to cover it.
+const TRACE_PROBE_AUTOPICK_LOOKBACK_MS = 6 * 60 * 60 * 1000;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -162,6 +188,77 @@ function durationDivisor(precision: number): number {
   // precision=9 → ns (divide by 1e6 for ms), precision=6 → µs (divide by 1e3),
   // precision=3 → already ms (divide by 1).
   return Math.pow(10, Math.max(0, precision - 3));
+}
+
+// ClickHouse renders min()/max() over an empty set as the epoch / a zero date.
+function parseProbeTimestamp(value: string | undefined): number | null {
+  if (!value) return null;
+  const ms = new Date(value).getTime();
+  return isNaN(ms) || ms <= 0 ? null : ms;
+}
+
+/**
+ * Probe a trace's [min, max] span timestamps within [startDate, endDate] and
+ * return a fetch window covering that extent (padded, then width-clamped).
+ * Rescues explicit `traceId` lookups older than the default 15-minute window
+ * and keeps a long trace from being truncated by a fixed lead. The probe is
+ * time-bounded so it prunes partitions; the caller sets [startDate, endDate].
+ *
+ * Returns null when no span is found, so the caller falls back to its window.
+ */
+async function probeTraceWindow(
+  clickhouseClient: ClickhouseClient,
+  params: {
+    databaseName: string;
+    tableName: string;
+    connectionId: string;
+    traceIdExpr: string;
+    tsExpr: string;
+    traceId: string;
+    startDate: Date;
+    endDate: Date;
+  },
+): Promise<[Date, Date] | null> {
+  const probeQuery = `
+    SELECT
+      min(${params.tsExpr}) AS firstSeen,
+      max(${params.tsExpr}) AS lastSeen
+    FROM {db:Identifier}.{tbl:Identifier}
+    WHERE ${params.traceIdExpr} = {tid:String}
+      AND ${params.tsExpr} >= fromUnixTimestamp64Milli({startMs:Int64})
+      AND ${params.tsExpr} <= fromUnixTimestamp64Milli({endMs:Int64})
+  `;
+  const result = await clickhouseClient.query({
+    query: probeQuery,
+    query_params: {
+      db: params.databaseName,
+      tbl: params.tableName,
+      tid: params.traceId,
+      startMs: params.startDate.getTime(),
+      endMs: params.endDate.getTime(),
+    },
+    format: 'JSONEachRow',
+    connectionId: params.connectionId,
+    clickhouse_settings: MCP_CLICKHOUSE_SETTINGS,
+  });
+  const rows =
+    (await (
+      result as {
+        json: () => Promise<{ firstSeen: string; lastSeen: string }[]>;
+      }
+    ).json()) ?? [];
+  const firstSeen = parseProbeTimestamp(rows[0]?.firstSeen);
+  const lastSeen = parseProbeTimestamp(rows[0]?.lastSeen);
+  if (firstSeen == null || lastSeen == null) return null;
+
+  const fetchEnd = lastSeen + TRACE_PROBE_TRAIL_PAD_MS;
+  // Anchor to the recent tail and clamp the width so a wide-spread/reused
+  // TraceId can't balloon the fetch back toward the 90-day probe range.
+  const fetchStart = Math.max(
+    firstSeen - TRACE_PROBE_LEAD_PAD_MS,
+    fetchEnd - TRACE_MAX_FETCH_WINDOW_MS,
+  );
+  return [new Date(fetchStart), new Date(fetchEnd)];
 }
 
 // ─── Tool definition ─────────────────────────────────────────────────────────
@@ -246,6 +343,7 @@ export function registerTraceWaterfall({
         host: connection.host,
         username: connection.username,
         password: connection.password,
+        requestTimeout: MCP_REQUEST_TIMEOUT,
       });
       const metadata = getMetadata(clickhouseClient);
 
@@ -363,6 +461,41 @@ export function registerTraceWaterfall({
         pickedTraceId = String(candidate[1]);
       }
 
+      // The fetch must be time-bounded so ClickHouse prunes partitions, but the
+      // default 15-min window is too narrow: an explicit traceId may be older
+      // than it, and an auto-picked trace is only guaranteed one span inside it
+      // (its root/tail can lie outside, giving a partial tree). So when the
+      // window was defaulted, probe the trace's real [min, max] extent instead.
+      let fetchStart = startDate;
+      let fetchEnd = endDate;
+      let probeFailed = false;
+      const usedDefaultWindow = input.startTime == null;
+      if (usedDefaultWindow) {
+        const probeStart = input.traceId
+          ? new Date(endDate.getTime() - TRACE_PROBE_MAX_LOOKBACK_MS)
+          : new Date(startDate.getTime() - TRACE_PROBE_AUTOPICK_LOOKBACK_MS);
+        try {
+          const probed = await probeTraceWindow(clickhouseClient, {
+            databaseName: source.from.databaseName,
+            tableName: source.from.tableName,
+            connectionId: source.connection.toString(),
+            traceIdExpr,
+            tsExpr,
+            traceId: pickedTraceId,
+            startDate: probeStart,
+            endDate,
+          });
+          if (probed) {
+            [fetchStart, fetchEnd] = probed;
+          }
+        } catch {
+          // probeTraceWindow returns null (not throws) for the empty case, so a
+          // throw means the probe genuinely didn't complete. The fallback window
+          // will likely also come back empty, so flag it for an accurate hint.
+          probeFailed = true;
+        }
+      }
+
       // ── Step 2: fetch the full span tree ──
       const treeQuery = `
         SELECT
@@ -378,6 +511,8 @@ export function registerTraceWaterfall({
           ${attrsExpr} AS spanAttributes
         FROM {db:Identifier}.{tbl:Identifier}
         WHERE ${traceIdExpr} = {tid:String}
+          AND ${tsExpr} >= fromUnixTimestamp64Milli({startMs:Int64})
+          AND ${tsExpr} <= fromUnixTimestamp64Milli({endMs:Int64})
         ORDER BY ${tsExpr} ASC
         LIMIT {n:UInt32}
       `;
@@ -390,14 +525,15 @@ export function registerTraceWaterfall({
             db: source.from.databaseName,
             tbl: source.from.tableName,
             tid: pickedTraceId,
+            startMs: fetchStart.getTime(),
+            endMs: fetchEnd.getTime(),
             n: input.maxSpans + 1, // +1 to detect truncation
             divisor,
           },
           format: 'JSONEachRow',
           connectionId: source.connection.toString(),
           clickhouse_settings: {
-            readonly: '1',
-            // Per-query timeout matches the rest of the MCP for consistency.
+            ...MCP_CLICKHOUSE_SETTINGS,
             ...(source.querySettings
               ? Object.fromEntries(
                   source.querySettings.map(s => [s.setting, s.value]),
@@ -418,6 +554,25 @@ export function registerTraceWaterfall({
       const spans = truncated ? rows.slice(0, input.maxSpans) : rows;
 
       if (spans.length === 0) {
+        // The window was often chosen by the probe, not the caller, so the hint
+        // must reflect what actually ran rather than tell the user to widen a
+        // window they never set.
+        let hint: string;
+        if (probeFailed) {
+          hint =
+            'TraceId picked, but the timestamp probe failed (likely a query ' +
+            'timeout) and no spans were found in the fallback window. Retry, ' +
+            'or pass an explicit startTime/endTime around when the trace ran.';
+        } else if (input.traceId && usedDefaultWindow) {
+          hint =
+            'No spans found for this traceId within the last 90 days (the ' +
+            'probe ceiling). If the trace is older, pass an explicit startTime ' +
+            '(ISO 8601) covering when it ran.';
+        } else {
+          hint =
+            'TraceId picked, but no spans exist in the time window. The trace ' +
+            'may have spans outside startTime/endTime — widen the window.';
+        }
         return {
           content: [
             {
@@ -426,7 +581,7 @@ export function registerTraceWaterfall({
                 {
                   result: null,
                   traceId: pickedTraceId,
-                  hint: 'TraceId picked, but no spans exist in the time window. The trace may have spans outside startTime/endTime — widen the window.',
+                  hint,
                 },
                 null,
                 2,
@@ -485,6 +640,7 @@ export function registerTraceWaterfall({
                 host: logConn.host,
                 username: logConn.username,
                 password: logConn.password,
+                requestTimeout: MCP_REQUEST_TIMEOUT,
               });
             }
           }
@@ -499,6 +655,8 @@ export function registerTraceWaterfall({
                 ${logSpanIdExpr} AS spanId
               FROM {db:Identifier}.{tbl:Identifier}
               WHERE ${logTraceIdExpr} = {tid:String}
+                AND ${logTsExpr} >= fromUnixTimestamp64Milli({startMs:Int64})
+                AND ${logTsExpr} <= fromUnixTimestamp64Milli({endMs:Int64})
               ORDER BY ${logTsExpr} ASC
               LIMIT {n:UInt32}
             `;
@@ -509,12 +667,14 @@ export function registerTraceWaterfall({
                   db: logSource.from.databaseName,
                   tbl: logSource.from.tableName,
                   tid: pickedTraceId,
+                  startMs: fetchStart.getTime(),
+                  endMs: fetchEnd.getTime(),
                   n: input.maxLogs + 1, // +1 to detect truncation
                 },
                 format: 'JSONEachRow',
                 connectionId: logSource.connection.toString(),
                 clickhouse_settings: {
-                  readonly: '1',
+                  ...MCP_CLICKHOUSE_SETTINGS,
                   ...(logSource.querySettings
                     ? Object.fromEntries(
                         logSource.querySettings.map(s => [s.setting, s.value]),

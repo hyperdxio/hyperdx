@@ -300,6 +300,15 @@ describe('errorHint', () => {
     expect(hint).toContain('too many rows');
   });
 
+  it('should match TIMEOUT_EXCEEDED errors', () => {
+    const hint = errorHint(
+      'Code: 159. DB::Exception: Timeout exceeded: elapsed 30s (TIMEOUT_EXCEEDED)',
+    );
+    expect(hint).not.toBeNull();
+    expect(hint).toContain('execution-time limit');
+    expect(hint).toContain('Narrow the time range');
+  });
+
   it('should match SETTING_CONSTRAINT_VIOLATION errors', () => {
     const hint = errorHint(
       "Setting max_result_rows shouldn't be greater than 1000. (SETTING_CONSTRAINT_VIOLATION)",
@@ -414,6 +423,17 @@ describe('isServerError', () => {
     });
     const err = new Error('query failed', { cause });
     expect(isServerError(err)).toBe(false);
+  });
+
+  it('returns true for TIMEOUT_EXCEEDED (max_execution_time overrun)', () => {
+    // Query timeouts are a resource failure, not a user mistake.
+    const cause = new ClickHouseError({
+      message: 'Timeout exceeded: elapsed 30s',
+      code: '159',
+      type: 'TIMEOUT_EXCEEDED',
+    });
+    const err = new Error('query failed', { cause });
+    expect(isServerError(err)).toBe(true);
   });
 
   it('returns true for ECONNREFUSED (TCP connection failure)', () => {
