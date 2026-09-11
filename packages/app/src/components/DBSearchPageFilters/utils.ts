@@ -78,6 +78,7 @@ export function groupFacetsByBaseName(
     }
   > = new Map();
   const nonGrouped: { key: string; value: (string | boolean)[] }[] = [];
+  const orderedKeys: string[] = [];
 
   for (const facet of facets) {
     const parsed = parseMapFieldName(facet.key);
@@ -89,6 +90,7 @@ export function groupFacetsByBaseName(
           value: [], // Base name doesn't have direct values
           children: [],
         });
+        orderedKeys.push(baseName);
       }
       const group = grouped.get(baseName)!;
       const existing = group.children.find(
@@ -116,10 +118,11 @@ export function groupFacetsByBaseName(
       }
     } else {
       nonGrouped.push(facet);
+      orderedKeys.push(facet.key);
     }
   }
 
-  return { grouped: Array.from(grouped.values()), nonGrouped };
+  return { grouped: Array.from(grouped.values()), nonGrouped, orderedKeys };
 }
 
 // Look up a filterState entry by either bracket-form or dot-form map sub-key.
