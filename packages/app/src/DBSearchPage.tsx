@@ -42,6 +42,7 @@ import {
   ChartConfigWithDateRange,
   DisplayType,
   Filter,
+  isPersistableUserId,
   isTraceSource,
   SourceKind,
   TSource,
@@ -84,6 +85,7 @@ import { keepPreviousData, useIsFetching } from '@tanstack/react-query';
 import { SortingState } from '@tanstack/react-table';
 import CodeMirror from '@uiw/react-codemirror';
 
+import api, { useCompleteOnboardingTask } from '@/api';
 import { ActiveFilterPills } from '@/components/ActiveFilterPills';
 import { AlertStatusIcon } from '@/components/AlertStatusIcon';
 import { ContactSupportText } from '@/components/ContactSupportText';
@@ -111,6 +113,7 @@ import { useAliasMapFromChartConfig } from '@/hooks/useChartConfig';
 import { useExplainQuery } from '@/hooks/useExplainQuery';
 import { useResolvedSourceParam } from '@/hooks/useResolvedSourceParam';
 import { withAppNav } from '@/layout';
+import { isNonTrivialSearch } from '@/OnboardingChecklist/onboardingTasks';
 import {
   useCreateSavedSearch,
   useDeleteSavedSearch,
@@ -1250,6 +1253,14 @@ export function DBSearchPage() {
     [key: string]: Error | ClickHouseQueryError;
   }>({});
 
+  const completeOnboardingTask = useCompleteOnboardingTask();
+  const { data: me } = api.useMe();
+  // A non-persistable user counts as "already explored" so the POST never fires
+  // (see isPersistableUserId).
+  const hasExploredData =
+    !isPersistableUserId(me?.id) ||
+    (me?.onboardingData?.completedTasks.includes('advancedQuery') ?? false);
+
   useEffect(() => {
     if (!isBrowser || !IS_LOCAL_MODE) return;
     const nullQueryErrors = (event: StorageEvent) => {
@@ -1264,34 +1275,56 @@ export function DBSearchPage() {
     };
   }, []);
 
-  const onSubmit = useCallback(() => {
-    onSearch(displayedTimeInputValue);
-    handleSubmit(
-      ({ select, where, whereLanguage, source, filters, orderBy }) => {
-        setSearchedConfig({
-          select,
-          where,
-          whereLanguage,
-          source,
-          filters,
-          orderBy,
-        });
-      },
-    )();
-    setPatternColumn(draftPatternColumn || null);
-    // clear query errors
-    setQueryErrors({});
-  }, [
-    handleSubmit,
-    setSearchedConfig,
-    displayedTimeInputValue,
-    onSearch,
-    setQueryErrors,
-    draftPatternColumn,
-    setPatternColumn,
-  ]);
+  // recordExploration is false for the programmatic catch-up submit (loading a
+  // source / saved search), true for a genuine user search — so only the latter
+  // completes "Explore your data". An explicit arg, not a shared ref, so
+  // concurrent submits can't consume each other's suppression.
+  const onSubmit = useCallback(
+    ({ recordExploration = true }: { recordExploration?: boolean } = {}) => {
+      onSearch(displayedTimeInputValue);
+      handleSubmit(
+        ({ select, where, whereLanguage, source, filters, orderBy }) => {
+          setSearchedConfig({
+            select,
+            where,
+            whereLanguage,
+            source,
+            filters,
+            orderBy,
+          });
+          if (
+            recordExploration &&
+            !IS_LOCAL_MODE &&
+            !hasExploredData &&
+            isNonTrivialSearch(where, filters)
+          ) {
+            completeOnboardingTask.mutate('advancedQuery');
+          }
+        },
+      )();
+      setPatternColumn(draftPatternColumn || null);
+      setQueryErrors({});
+    },
+    [
+      handleSubmit,
+      setSearchedConfig,
+      displayedTimeInputValue,
+      onSearch,
+      setQueryErrors,
+      draftPatternColumn,
+      setPatternColumn,
+      completeOnboardingTask,
+      hasExploredData,
+    ],
+  );
 
+  // One debouncer so a catch-up and filter-apply in the same window collapse
+  // into one run; useDebouncedCallback keeps the last call's args.
   const debouncedSubmit = useDebouncedCallback(onSubmit, 1000);
+  const debouncedCatchUpSubmit = useCallback(
+    () => debouncedSubmit({ recordExploration: false }),
+    [debouncedSubmit],
+  );
   const handleSetFilters = useCallback(
     (filters: Filter[]) => {
       setValue('filters', filters);
@@ -1404,10 +1437,9 @@ export function DBSearchPage() {
             // Don't clear filters - we're loading from saved search
           }
         }
-        // Push the new source to URL/searchedConfig so the chart re-queries.
-        // Debounced so a later filter reconcile (which also submits) collapses
-        // into a single run.
-        debouncedSubmit();
+        // Programmatic catch-up (loading a source / saved search), so use the
+        // variant that does NOT credit "Explore your data".
+        debouncedCatchUpSubmit();
       }
     }
   }, [
@@ -1417,7 +1449,7 @@ export function DBSearchPage() {
     savedSearchId,
     inputSourceObjs,
     setLastSelectedSourceId,
-    debouncedSubmit,
+    debouncedCatchUpSubmit,
     searchedSource?.id,
     rawSearchedConfig.source,
     setSearchedConfig,

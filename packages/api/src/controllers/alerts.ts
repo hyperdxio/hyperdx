@@ -10,6 +10,7 @@ import { groupBy } from 'lodash';
 import { Types } from 'mongoose';
 import { z } from 'zod';
 
+import { recordOnboardingTaskCompletion } from '@/controllers/user';
 import type { ObjectId } from '@/models';
 import Alert, {
   AlertChannel,
@@ -343,10 +344,12 @@ export const createAlert = async (
   userId: ObjectId,
   refs: AlertRefs = {},
 ) => {
-  return new Alert({
+  const alert = await new Alert({
     ...makeAlert(alertInput, userId, refs),
     team: teamId,
   }).save();
+  recordOnboardingTaskCompletion(userId, 'alert');
+  return alert;
 };
 
 // create an update alert function based off of the above create alert function
@@ -355,9 +358,10 @@ export const updateAlert = async (
   teamId: ObjectId,
   alertInput: AlertInput,
   refs: AlertRefs = {},
+  userId?: ObjectId,
 ) => {
   // should consider clearing AlertHistory when updating an alert?
-  return Alert.findOneAndUpdate(
+  const alert = await Alert.findOneAndUpdate(
     {
       _id: id,
       team: teamId,
@@ -367,6 +371,11 @@ export const updateAlert = async (
       returnDocument: 'after',
     },
   );
+  // Editing an alert also completes "set up an alert", not just creating one.
+  if (alert != null) {
+    recordOnboardingTaskCompletion(userId, 'alert');
+  }
+  return alert;
 };
 
 export const countAlerts = async (teamId: ObjectId) => {
@@ -412,7 +421,7 @@ export const createOrUpdateDashboardAlerts = async (
   userId?: ObjectId,
 ) => {
   const dashboardId = dashboard._id;
-  return Promise.all(
+  const result = await Promise.all(
     Object.entries(alertsByTile).map(async ([tileId, alert]) => {
       const filter = {
         dashboard: dashboardId,
@@ -438,6 +447,13 @@ export const createOrUpdateDashboardAlerts = async (
       });
     }),
   );
+
+  // Tile alerts never hit the /alerts router, so record here.
+  if (result.length > 0) {
+    recordOnboardingTaskCompletion(userId, 'alert');
+  }
+
+  return result;
 };
 
 export const deleteDashboardAlerts = async (

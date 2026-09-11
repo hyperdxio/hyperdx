@@ -142,6 +142,7 @@ export function registerSaveAlert({
           mongoTeamId,
           alertInput,
           refs,
+          mongoUserId,
         );
         if (!updated) {
           return mcpUserError('Alert not found');

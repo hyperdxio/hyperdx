@@ -1,5 +1,6 @@
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
+import { recordOnboardingTaskCompletion } from '@/controllers/user';
 import type { McpContext, ToolResult } from '@/mcp/tools/types';
 import type { McpErrorCategory, McpErrorResult } from '@/mcp/utils/errors';
 import { getErrorCategory } from '@/mcp/utils/errors';
@@ -118,6 +119,8 @@ export function withToolTracing<TArgs>(
               { ...logContext, durationMs },
               `MCP tool completed: ${toolName}`,
             );
+            // Only reliable signal the user exercised the MCP server.
+            recordOnboardingTaskCompletion(context.userId, 'mcp');
           }
 
           span.setAttribute('mcp.tool.duration_ms', durationMs);

@@ -244,6 +244,7 @@ jest.mock('../api', () => ({
       isSuccess: true,
     }),
   },
+  useCompleteOnboardingTask: () => ({ mutate: jest.fn() }),
 }));
 
 jest.mock('@/utils', () => ({

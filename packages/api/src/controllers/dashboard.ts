@@ -14,6 +14,7 @@ import {
   getDashboardAlertsByTile,
   getTeamDashboardAlertsByDashboardAndTile,
 } from '@/controllers/alerts';
+import { recordOnboardingTaskCompletion } from '@/controllers/user';
 import type { ObjectId } from '@/models';
 import type { AlertDocument, IAlert } from '@/models/alert';
 import Dashboard, { IDashboard } from '@/models/dashboard';
@@ -26,6 +27,17 @@ function pickAlertsByTile(tiles: Tile[]) {
     }
     return acc;
   }, {});
+}
+
+// Completes only when a dashboard has a tile (an empty shell isn't charting).
+// Shared by every dashboard write path (controllers, external REST v2, MCP).
+export function recordDashboardOnboardingIfHasTiles(
+  userId: string | ObjectId | undefined | null,
+  tiles: { length: number } | null | undefined,
+) {
+  if ((tiles?.length ?? 0) > 0) {
+    recordOnboardingTaskCompletion(userId, 'dashboard');
+  }
 }
 
 /**
@@ -206,6 +218,8 @@ export async function createDashboard(
     userId,
   );
 
+  recordDashboardOnboardingIfHasTiles(userId, newDashboard.tiles);
+
   return newDashboard;
 }
 
@@ -256,6 +270,8 @@ export async function updateDashboard(
       userId,
     );
   }
+
+  recordDashboardOnboardingIfHasTiles(userId, updatedDashboard.tiles);
 
   return updatedDashboard;
 }

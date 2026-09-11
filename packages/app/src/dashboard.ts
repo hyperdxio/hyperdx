@@ -5,6 +5,8 @@ import {
   DashboardFilter,
   DashboardFilterValue,
   DashboardWithoutId,
+  isPersistableUserId,
+  OnboardingTaskId,
   resolveChartPaletteToken,
   SavedChartConfig,
   SearchConditionLanguage,
@@ -15,7 +17,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { hashCode } from '@/utils';
 
-import { hdxServer } from './api';
+import api, {
+  hdxServer,
+  useCompleteOnboardingTask,
+  useMarkOnboardingTaskComplete,
+} from './api';
 import { IS_LOCAL_MODE } from './config';
 import { createEntityStore } from './localStore';
 
@@ -128,8 +134,24 @@ export async function fetchDashboards(): Promise<Dashboard[]> {
   return dashboards.map(normalizeDashboardTileColors);
 }
 
+// Syncs the me cache after the backend records on save. 'dashboard' needs a
+// tile, matching the backend (an empty shell isn't charting your data).
+function markDashboardOnboarding(
+  markOnboardingTaskComplete: (taskId: OnboardingTaskId) => void,
+  tiles: Tile[] | undefined,
+) {
+  if (IS_LOCAL_MODE || !tiles?.length) {
+    return;
+  }
+  markOnboardingTaskComplete('dashboard');
+  if (tiles.some(tile => tile.config.alert != null)) {
+    markOnboardingTaskComplete('alert');
+  }
+}
+
 export function useUpdateDashboard() {
   const queryClient = useQueryClient();
+  const markOnboardingTaskComplete = useMarkOnboardingTaskComplete();
 
   return useMutation({
     mutationFn: async (
@@ -139,21 +161,25 @@ export function useUpdateDashboard() {
       if (IS_LOCAL_MODE) {
         const { id, ...updates } = normalized;
         localDashboards.update(id, updates);
-        return;
+        return undefined;
       }
-      await hdxServer(`dashboards/${normalized.id}`, {
+      // Return the persisted dashboard so onboarding keys off saved tiles, not
+      // the partial PATCH payload — a name/tag-only save omits `tiles`.
+      return hdxServer(`dashboards/${normalized.id}`, {
         method: 'PATCH',
         json: normalized,
-      });
+      }).json<Dashboard>();
     },
-    onSuccess: () => {
+    onSuccess: updated => {
       queryClient.invalidateQueries({ queryKey: ['dashboards'] });
+      markDashboardOnboarding(markOnboardingTaskComplete, updated?.tiles);
     },
   });
 }
 
 export function useCreateDashboard() {
   const queryClient = useQueryClient();
+  const markOnboardingTaskComplete = useMarkOnboardingTaskComplete();
 
   return useMutation({
     mutationFn: async (dashboard: Omit<Dashboard, 'id'>) => {
@@ -166,8 +192,10 @@ export function useCreateDashboard() {
         json: normalized,
       }).json<Dashboard>();
     },
-    onSuccess: () => {
+    onSuccess: created => {
       queryClient.invalidateQueries({ queryKey: ['dashboards'] });
+      // Key off the server's persisted tiles (see useUpdateDashboard).
+      markDashboardOnboarding(markOnboardingTaskComplete, created?.tiles);
     },
   });
 }
@@ -203,6 +231,13 @@ export function useDashboard({
   );
 
   const updateDashboard = useUpdateDashboard();
+  const completeOnboardingTask = useCompleteOnboardingTask();
+  const { data: me } = api.useMe();
+  // A non-persistable user counts as "already built" so the temp-dashboard POST
+  // never fires (see isPersistableUserId).
+  const hasBuiltDashboard =
+    !isPersistableUserId(me?.id) ||
+    (me?.onboardingData?.completedTasks.includes('dashboard') ?? false);
 
   const { data: remoteDashboard, isFetching: isFetchingRemoteDashboard } =
     useQuery({
@@ -242,6 +277,15 @@ export function useDashboard({
         // inserted via a preset literal) and matches the canonical hue
         // tokens used by the renderers.
         setLocalDashboard(normalizeDashboardTileColors(newDashboard));
+        // Temp dashboards never hit the backend, so record here. Guarded on
+        // hasBuiltDashboard because setDashboard runs on every layout edit.
+        if (
+          !IS_LOCAL_MODE &&
+          !hasBuiltDashboard &&
+          (newDashboard.tiles?.length ?? 0) > 0
+        ) {
+          completeOnboardingTask.mutate('dashboard');
+        }
         onSuccess?.();
       } else {
         setIsSettingDashboard(true);
@@ -263,7 +307,13 @@ export function useDashboard({
         });
       }
     },
-    [isLocalDashboard, setLocalDashboard, updateDashboard],
+    [
+      isLocalDashboard,
+      setLocalDashboard,
+      updateDashboard,
+      completeOnboardingTask,
+      hasBuiltDashboard,
+    ],
   );
 
   const dashboardHash =
