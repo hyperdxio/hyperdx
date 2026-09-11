@@ -200,7 +200,7 @@ export function convertFormStateToSavedChartConfig(
         'fillNulls',
         'alignDateRangeToGranularity',
         'alternateRowBackground',
-        // 'alert', // TODO: Support alerts on PromQL (HDX-4636)
+        'alert',
       ]),
       promqlExpression: form.promqlExpression ?? '',
       connection: form.connection ?? '',

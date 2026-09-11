@@ -29,7 +29,6 @@ import {
 import {
   convertToDashboardTemplate,
   displayTypeSupportsBuilderAlerts,
-  displayTypeSupportsPromQLAlerts,
   displayTypeSupportsRawSqlAlerts,
   Granularity,
   isTimeSeriesDisplayType,
@@ -845,7 +844,7 @@ const Tile = ({
     const displayTypeSupportsAlerts = isRawSql
       ? displayTypeSupportsRawSqlAlerts(chart.config.displayType)
       : isPromQL
-        ? displayTypeSupportsPromQLAlerts(chart.config.displayType)
+        ? false // PromQL alert UI not yet implemented (HDX-4636)
         : displayTypeSupportsBuilderAlerts(chart.config.displayType);
     const canMoveToGroup =
       onMoveToGroup && moveTargets && moveTargets.length > 0;
@@ -1056,7 +1055,7 @@ const Tile = ({
     const showAlerts = isRawSql
       ? displayTypeSupportsRawSqlAlerts(chart.config.displayType)
       : isPromQL
-        ? displayTypeSupportsPromQLAlerts(chart.config.displayType)
+        ? false // PromQL alert UI not yet implemented (HDX-4636)
         : displayTypeSupportsBuilderAlerts(chart.config.displayType);
     const canMoveToGroup =
       onMoveToGroup && moveTargets && moveTargets.length > 0;
