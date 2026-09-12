@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import { JSDataType } from '@hyperdx/common-utils/dist/clickhouse';
 import {
+  defaultFieldMetadataDateRange,
   Field,
   parseKeyPath,
   TableConnection,
@@ -11,7 +12,6 @@ import {
   resolveTableConnection,
   useFetchFacets,
 } from '@/components/DBSearchPageFilters/hooks';
-import { NOW } from '@/config';
 import { deduplicate2dArray } from '@/hooks/useMetadata';
 import { useSource } from '@/source';
 import { mergePath, useDebounce } from '@/utils';
@@ -198,7 +198,7 @@ export function useAutoCompleteOptions(
   const value = useDebounce(_value, 300);
 
   const effectiveDateRange: [Date, Date] = useMemo(
-    () => dateRange ?? [new Date(NOW - 24 * 60 * 60 * 1000), new Date(NOW)],
+    () => dateRange ?? defaultFieldMetadataDateRange(),
     [dateRange],
   );
   const tableConnection = _tableConnection

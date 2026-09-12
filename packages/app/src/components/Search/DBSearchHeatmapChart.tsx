@@ -189,6 +189,8 @@ export function DBSearchHeatmapChart({
         opened={settingsOpened}
         onClose={settingsHandlers.close}
         connection={tcFromSource(source)}
+        sourceId={source.id}
+        dateRange={chartConfig.dateRange}
         parentRef={container}
         defaultValues={heatmapSettingsDefaults}
         onSubmit={data => {
