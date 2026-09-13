@@ -1435,7 +1435,11 @@ export const isFormulaSourceKind = (
 export function displayTypeSupportsPromQLAlerts(
   displayType: DisplayType | undefined,
 ): boolean {
-  return displayType === DisplayType.Line;
+  return (
+    displayType === DisplayType.Line ||
+    displayType === DisplayType.StackedBar ||
+    displayType === DisplayType.Number
+  );
 }
 
 /** Expand the chart's macros, returning failures instead of throwing. */
