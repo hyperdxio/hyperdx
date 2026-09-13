@@ -74,7 +74,7 @@ describe('evaluatePromqlAlert (ClickHouse endpoint)', () => {
       savedConfig: mockSavedConfig,
       source: {
         from: { databaseName: 'my_db', tableName: 'my_table' },
-      } as any,
+      } as unknown as ISource,
       connectionId: mockConnectionId,
       teamId: mockTeamId,
       dateRange: mockDateRange,
