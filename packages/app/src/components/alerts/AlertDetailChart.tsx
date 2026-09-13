@@ -18,6 +18,7 @@ import {
   getSampleWeightExpression,
   isLogSource,
   isTraceSource,
+  PromqlConfigWithDateRange,
   SavedChartConfig,
   SourceKind,
   TSource,
@@ -143,8 +144,21 @@ export function buildAlertChartConfig({
   dateRange: [Date, Date];
   granularity: Granularity;
 }): ChartConfigWithDateRange | undefined {
-  if (!savedConfig || isPromqlSavedChartConfig(savedConfig)) {
+  if (!savedConfig) {
     return undefined;
+  }
+
+  if (isPromqlSavedChartConfig(savedConfig)) {
+    if (savedConfig.source && !source) {
+      return undefined;
+    }
+    return {
+      ...savedConfig,
+      ...(source ? { from: source.from, connection: source.connection } : {}),
+      dateRange,
+      granularity,
+      variables,
+    } as PromqlConfigWithDateRange;
   }
 
   // Raw SQL: only time-series display types can be charted over the alert

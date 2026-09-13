@@ -1432,7 +1432,6 @@ export const isFormulaSourceKind = (
   kind === SourceKind.Log ||
   kind === SourceKind.Trace;
 
-
 /** Expand the chart's macros, returning failures instead of throwing. */
 function resolveRawSqlMacros(
   chartConfig: RawSqlChartConfig,

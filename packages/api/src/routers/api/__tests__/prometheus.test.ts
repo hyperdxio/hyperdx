@@ -8,11 +8,11 @@ jest.mock('@/utils/instrumentation', () => {
   };
 });
 
+import { joinPrometheusUpstreamUrl } from '@/controllers/timeseriesEngine';
 import {
   formatMatrixResponse,
   formatVectorResponse,
   isClientDisconnect,
-  joinPrometheusUpstreamUrl,
   parseDuration,
   parseTimestamp,
   recordProxyOutcome,

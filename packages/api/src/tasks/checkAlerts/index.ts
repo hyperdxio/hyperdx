@@ -58,7 +58,11 @@ import { serializeError } from 'serialize-error';
 import { ClickhouseClient } from '@/clickhouse';
 import { ALERT_HISTORY_QUERY_CONCURRENCY } from '@/controllers/alertHistory';
 import { getConnectionById } from '@/controllers/connection';
-import { queryPrometheusRangeFromClickHouse } from '@/controllers/timeseriesEngine';
+import {
+  joinPrometheusUpstreamUrl,
+  PROMETHEUS_CH_TIMEOUT_MS,
+  queryPrometheusRangeFromClickHouse,
+} from '@/controllers/timeseriesEngine';
 import { AlertState, IAlert, IAlertError } from '@/models/alert';
 import AlertHistory, {
   IAlertHistory,
@@ -69,8 +73,8 @@ import { ISavedSearch } from '@/models/savedSearch';
 import { ISource } from '@/models/source';
 import { IWebhook } from '@/models/webhook';
 import {
-  joinPrometheusUpstreamUrl,
-  PROMETHEUS_CH_TIMEOUT_MS,
+  formatMatrixResponse,
+  PrometheusMatrixResult,
 } from '@/routers/api/prometheus';
 import {
   isClientTimeoutOrAbortError,
@@ -978,11 +982,17 @@ export const parseAlertData = (
 };
 
 /**
- * Execute a PromQL alert tile's expression for the given window and return the
- * last bucket's numeric value, or null when the query returns no data.
+ * Execute a PromQL alert's expression for the given window and return all
+ * series with their full time-series data as {@link PrometheusMatrixResult}[],
+ * or `null` when the query returns no data.
  *
- * Supports both Prometheus-endpoint connections (HTTP proxy to /api/v1/query)
- * and ClickHouse backed connections (prometheusQuery table function).
+ * Returning all time-points (not just the last) allows the caller to evaluate
+ * every expected time bucket individually, enabling correct backfill support
+ * when multiple windows have been skipped.
+ *
+ * Supports both Prometheus-endpoint connections (HTTP proxy to
+ * `/api/v1/query_range`) and ClickHouse-backed connections
+ * (`prometheusQueryRange` table function).
  */
 export async function evaluatePromqlAlert({
   savedConfig,
@@ -1000,7 +1010,7 @@ export async function evaluatePromqlAlert({
   dateRange: [Date, Date];
   windowSizeInMins: number;
   variables?: ChartVariable[];
-}): Promise<Array<{ group: string; value: number }> | null> {
+}): Promise<PrometheusMatrixResult[] | null> {
   const connection = await getConnectionById(teamId, connectionId, true);
   if (connection == null) {
     throw new Error(`Connection ${connectionId} not found for PromQL alert`);
@@ -1056,23 +1066,14 @@ export async function evaluatePromqlAlert({
       return null;
     }
 
-    const results: Array<{ group: string; value: number }> = [];
-    for (const series of json.data.result) {
-      if (!series.values?.length) continue;
-      const lastPoint = series.values[series.values.length - 1];
-      if (lastPoint == null) continue;
-      const parsed = parseFloat(lastPoint[1]);
-      if (Number.isFinite(parsed)) {
-        // Format Prometheus metric object as a HyperDX group key: key1:"val1", key2:"val2"
-        const group = series.metric
-          ? Object.entries(series.metric)
-              .filter(([k]) => k !== '__name__')
-              .map(([k, v]) => `${k}:"${v}"`)
-              .join(', ')
-          : '';
-        results.push({ group, value: parsed });
-      }
-    }
+    // Return all series with all time-points so the caller can evaluate each
+    // window bucket individually (backfill support).
+    const results: PrometheusMatrixResult[] = json.data.result
+      .filter(s => s.values && s.values.length > 0)
+      .map(s => ({
+        metric: s.metric ?? {},
+        values: s.values!,
+      }));
     return results.length > 0 ? results : null;
   }
 
@@ -1089,35 +1090,40 @@ export async function evaluatePromqlAlert({
   const endMs = Math.floor(endSec * 1000);
   const stepSecRounded = Math.max(Math.floor(stepSec), 1);
 
+  const tableName = source?.from.tableName;
+  if (!tableName) {
+    throw new Error(
+      'A PromQL alert routed to ClickHouse must have a source with a valid TimeSeries table name. ' +
+        'Assign a source to this alert or switch to a Prometheus connection.',
+    );
+  }
+
+  const databaseName = source.from.databaseName;
+  if (!databaseName) {
+    throw new Error(
+      'A PromQL alert routed to ClickHouse must have a source with a valid database name. ' +
+        'Assign a source to this alert or switch to a Prometheus connection.',
+    );
+  }
+
   const resp = await queryPrometheusRangeFromClickHouse({
     client,
-    // ISource always has `from` (it is on BaseSourceSchema); the nullable
-    // source param covers the case where no source is wired to the alert.
-    databaseName: source?.from.databaseName ?? 'default',
-    tableName: source?.from.tableName ?? 'otel_metrics_gauge',
+    databaseName,
+    tableName,
     expr: promqlExpression,
     startMs,
     endMs,
     stepSec: stepSecRounded,
   });
 
-  const json = await resp.json<any>();
-  if (!Array.isArray(json?.data)) return null;
+  const json = (await resp.json()) as {
+    data?: { tags: [string, string][]; time_series: [string, number][] }[];
+  };
+  if (!Array.isArray(json?.data) || json.data.length === 0) return null;
 
-  const results: Array<{ group: string; value: number }> = [];
-  for (const series of json.data) {
-    if (!series.time_series?.length) continue;
-    const lastPoint = series.time_series[series.time_series.length - 1];
-    if (lastPoint != null && Number.isFinite(lastPoint[1])) {
-      const group = series.tags
-        ? series.tags
-            .filter(([k]: any) => k !== '__name__')
-            .map(([k, v]: any) => `${k}:"${v}"`)
-            .join(', ')
-        : '';
-      results.push({ group, value: lastPoint[1] });
-    }
-  }
+  // Reuse formatMatrixResponse to convert { tags, time_series } rows into
+  // PrometheusMatrixResult[] — the same shape as the real Prometheus path.
+  const results = formatMatrixResponse(json.data);
   return results.length > 0 ? results : null;
 }
 
@@ -1453,8 +1459,10 @@ export const processAlert = async (
             ? details.tile.config
             : undefined;
 
+      let promqlResults: PrometheusMatrixResult[] | null = null;
+      const queryStartedAt = performance.now();
       try {
-        const promqlResults = await evaluatePromqlAlert({
+        promqlResults = await evaluatePromqlAlert({
           savedConfig: savedConfig as PromqlSavedChartConfig,
           source: details.source,
           connectionId,
@@ -1472,39 +1480,16 @@ export const processAlert = async (
               : undefined,
         });
 
-        if (promqlResults != null) {
-          for (const res of promqlResults) {
-            const groupKey = res.group;
-            const value = res.value;
-
-            const history = getOrCreateHistory(groupKey);
-            history.lastValues.push({ count: value, startTime: dateRange[1] });
-            const previous = previousMap.get(
-              computeHistoryMapKey(alert.id, groupKey),
-            );
-
-            if (doesExceedThreshold(alert, value)) {
-              history.counts += 1;
-              if (shouldFireBasedOnConsecutiveWindows(groupKey)) {
-                history.state = AlertState.ALERT;
-                history.fired = true;
-                await trySendNotification({
-                  state: AlertState.ALERT,
-                  group: groupKey,
-                  totalCount: value,
-                  startTime: dateRange[1],
-                });
-              } else {
-                history.state = AlertState.PENDING;
-                history.fired = previous?.fired === true;
-              }
-            }
-
-            await sendNotificationIfResolved(previous, history, groupKey);
-          }
-        }
+        const queryDurationMs = performance.now() - queryStartedAt;
+        evaluationAnalytics.queryDurationMs = Math.round(queryDurationMs);
+        recordOperationOutcome({
+          operation: 'alerts.query',
+          outcome: 'success',
+          durationMs: queryDurationMs,
+          attributes: { alert_source: alert.source ?? 'unknown' },
+        });
       } catch (e) {
-        const queryDurationMs = performance.now() - evalStartedAt;
+        const queryDurationMs = performance.now() - queryStartedAt;
         evaluationAnalytics.queryDurationMs = Math.round(queryDurationMs);
         recordOperationOutcome({
           operation: 'alerts.query',
@@ -1537,7 +1522,151 @@ export const processAlert = async (
         return;
       }
 
-      // If no data returned but we had alerts before, check auto-resolve
+      // ── PromQL time-series evaluation — iterate every expected bucket ──
+      // This mirrors the builder time-series path so backfilled windows are
+      // evaluated and consecutive-window tracking works correctly.
+      const expectedBuckets = timeBucketByGranularity(
+        dateRange[0],
+        dateRange[1],
+        `${windowSizeInMins} minute`,
+      );
+      evaluationAnalytics.backfilledBuckets = Math.max(
+        0,
+        expectedBuckets.length - 1,
+      );
+
+      // Build a per-bucket lookup: timestamp (seconds) → per-series value map.
+      // key: series group string, value: numeric value at that bucket.
+      // Format group keys as k:v (consistent with builder alerts, not k:"v").
+      const bucketSeriesValues = new Map<
+        number,
+        Map<string, { value: number; attributes: Record<string, string> }>
+      >();
+
+      if (promqlResults != null) {
+        for (const series of promqlResults) {
+          // Build group key from labels — k:v format matches builder alerts.
+          const labelEntries = Object.entries(series.metric).filter(
+            ([k]) => k !== '__name__',
+          );
+          const groupKey = labelEntries.map(([k, v]) => `${k}:${v}`).join(', ');
+          const attributes = Object.fromEntries(labelEntries);
+
+          for (const [tsSec, rawVal] of series.values) {
+            const tsMs = Math.round(tsSec * 1000);
+            const parsed = parseFloat(rawVal);
+            if (!Number.isFinite(parsed)) continue;
+
+            if (!bucketSeriesValues.has(tsMs)) {
+              bucketSeriesValues.set(tsMs, new Map());
+            }
+            // Keep the highest value if the same series appears twice in a bucket
+            const existing = bucketSeriesValues.get(tsMs)!.get(groupKey);
+            if (existing == null || parsed > existing.value) {
+              bucketSeriesValues.get(tsMs)!.set(groupKey, {
+                value: parsed,
+                attributes,
+              });
+            }
+          }
+        }
+      }
+
+      for (const bucketStart of expectedBuckets) {
+        // Prometheus query_range aligns response timestamps to step boundaries,
+        // so we can do an exact ms lookup rather than a tolerance scan.
+        const seriesForBucket = bucketSeriesValues.get(bucketStart.getTime());
+
+        if (!seriesForBucket || seriesForBucket.size === 0) {
+          alertEvaluationsCounter.add(1, { outcome: 'empty_bucket' });
+          logger.info(
+            { alertId: alert.id, bucketStart },
+            'No PromQL data for time bucket',
+          );
+
+          const zeroValueIsAlert = doesExceedThreshold(alert, 0);
+          const hasAlertsInPreviousMap = previousMap
+            .values()
+            .some(
+              h =>
+                h.state === AlertState.ALERT || h.state === AlertState.PENDING,
+            );
+
+          if (zeroValueIsAlert) {
+            const history = getOrCreateHistory('');
+            history.lastValues.push({ count: 0, startTime: bucketStart });
+            history.counts += 1;
+            if (shouldFireBasedOnConsecutiveWindows()) {
+              history.state = AlertState.ALERT;
+              history.fired = true;
+              latestAlertContext.set('', {
+                value: 0,
+                attributes: {},
+                startTime: bucketStart,
+              });
+            } else {
+              history.state = AlertState.PENDING;
+              history.fired =
+                previousMap.get(computeHistoryMapKey(alert.id, ''))?.fired ===
+                true;
+            }
+          } else if (!hasGroupBy || !hasAlertsInPreviousMap) {
+            const history = getOrCreateHistory('');
+            history.lastValues.push({ count: 0, startTime: bucketStart });
+          }
+          continue;
+        }
+
+        const bucketEvaluations = new Map<
+          string,
+          {
+            value: number;
+            attributes: Record<string, string>;
+            exceeds: boolean;
+          }
+        >();
+        for (const [
+          groupKey,
+          { value, attributes },
+        ] of seriesForBucket.entries()) {
+          const exceeds = doesExceedThreshold(alert, value);
+          const existing = bucketEvaluations.get(groupKey);
+          if (!existing || (!existing.exceeds && exceeds)) {
+            bucketEvaluations.set(groupKey, { value, attributes, exceeds });
+          }
+        }
+
+        for (const [groupKey, evaluation] of bucketEvaluations.entries()) {
+          const history = getOrCreateHistory(groupKey);
+
+          if (evaluation.exceeds) {
+            history.counts += 1;
+            if (shouldFireBasedOnConsecutiveWindows(groupKey)) {
+              history.state = AlertState.ALERT;
+              history.fired = true;
+              latestAlertContext.set(groupKey, {
+                value: evaluation.value,
+                attributes: evaluation.attributes,
+                startTime: bucketStart,
+              });
+            } else {
+              history.state = AlertState.PENDING;
+              history.fired =
+                previousMap.get(computeHistoryMapKey(alert.id, groupKey))
+                  ?.fired === true;
+            }
+          } else {
+            history.state = AlertState.OK;
+            history.counts = 0;
+          }
+          history.lastValues.push({
+            count: evaluation.value,
+            startTime: bucketStart,
+          });
+        }
+      }
+
+      // Auto-resolve: groups that were alerting/pending but absent from this run
       if (hasGroupBy && previousMap && previousMap.size > 0) {
         for (const [previousKey, previousHistory] of previousMap.entries()) {
           const groupKey = extractGroupKeyFromMapKey(previousKey, alert.id);
@@ -1548,12 +1677,10 @@ export const processAlert = async (
             !doesExceedThreshold(alert, 0)
           ) {
             const history = getOrCreateHistory(groupKey);
-            history.lastValues.push({ count: 0, startTime: dateRange[1] });
-            await sendNotificationIfResolved(
-              previousHistory,
-              history,
-              groupKey,
-            );
+            history.lastValues.push({
+              count: 0,
+              startTime: expectedBuckets[0] ?? dateRange[1],
+            });
           }
         }
       }
@@ -1562,7 +1689,33 @@ export const processAlert = async (
         getOrCreateHistory('');
       }
 
-      evaluationAnalytics.backfilledBuckets = 0;
+      // Send notifications for state transitions
+      for (const [groupKey, history] of histories.entries()) {
+        const previousKey = computeHistoryMapKey(alert.id, groupKey);
+        let groupPrevious = previousMap.get(previousKey);
+
+        const hitAlertThisRun = latestAlertContext.has(groupKey);
+        if (hitAlertThisRun) {
+          const context = latestAlertContext.get(groupKey);
+          if (context) {
+            await trySendNotification({
+              state: AlertState.ALERT,
+              group: groupKey,
+              totalCount: context.value,
+              startTime: context.startTime,
+              attributes: context.attributes,
+            });
+            groupPrevious = {
+              ...(groupPrevious ?? {}),
+              state: AlertState.ALERT,
+              fired: true,
+            } as AggregatedAlertHistory;
+          }
+        }
+
+        await sendNotificationIfResolved(groupPrevious, history, groupKey);
+      }
+
       flushNotificationTimings();
       const historyRecords = Array.from(histories.values());
       for (const record of historyRecords) {

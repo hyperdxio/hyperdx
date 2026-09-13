@@ -13,6 +13,42 @@ import logger from '@/utils/logger';
 
 export const PROMETHEUS_MAX_EXECUTION_SEC = 30;
 export const PROMETHEUS_MAX_RESULT_ROWS = 100000;
+export const PROMETHEUS_CH_TIMEOUT_MS = 30_000;
+
+/**
+ * Join a Connection host with an absolute Prometheus API path.
+ *
+ * `new URL('/api/v1/query_range', 'http://host:8481/select/0/prometheus')`
+ * discards `/select/0/prometheus` because an absolute path replaces the base
+ * pathname. VictoriaMetrics cluster (and any Prometheus-compatible server
+ * mounted under a prefix) needs that prefix kept. Host userinfo, query, and
+ * hash are left untouched.
+ *
+ * `path` must be an absolute path (every call site passes a literal starting
+ * with `/`) -- this is not a general-purpose URL joiner.
+ *
+ * @see https://github.com/hyperdxio/hyperdx/issues/3046
+ */
+export function joinPrometheusUpstreamUrl(
+  upstreamHost: string,
+  path: string,
+): URL {
+  const url = new URL(upstreamHost);
+  // `new URL('prometheus:9090')` succeeds with an opaque path (`prometheus:`
+  // scheme). The pathname setter is a no-op there, so without this guard the
+  // helper would return the host unchanged, `fetch` would fail, and the proxy
+  // would 502 / increment query_errors for a user misconfiguration. Same check
+  // as clickhouseProxy.ts.
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new TypeError('Connection host must be http(s)');
+  }
+  // Strip ALL trailing slashes, not just one -- a host saved with a doubled
+  // trailing slash (e.g. `http://prom:9090//`) would otherwise leave a `//`
+  // in the joined path, which most servers treat as a distinct (404) path.
+  const basePath = url.pathname.replace(/\/+$/, '');
+  url.pathname = `${basePath}${path}`;
+  return url;
+}
 
 export type TimeSeriesTagsQueryArgs = {
   client: ClickhouseClient;

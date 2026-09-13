@@ -844,7 +844,7 @@ const Tile = ({
     const displayTypeSupportsAlerts = isRawSql
       ? displayTypeSupportsRawSqlAlerts(chart.config.displayType)
       : isPromQL
-        ? false // PromQL alert UI not yet implemented (HDX-4636)
+        ? true
         : displayTypeSupportsBuilderAlerts(chart.config.displayType);
     const canMoveToGroup =
       onMoveToGroup && moveTargets && moveTargets.length > 0;

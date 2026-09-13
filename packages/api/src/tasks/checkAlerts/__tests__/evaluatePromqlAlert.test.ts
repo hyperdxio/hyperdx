@@ -2,10 +2,20 @@ import mongoose from 'mongoose';
 
 import { getConnectionById } from '@/controllers/connection';
 import { queryPrometheusRangeFromClickHouse } from '@/controllers/timeseriesEngine';
+import type { ISource } from '@/models/source';
 import { evaluatePromqlAlert } from '@/tasks/checkAlerts';
 
 jest.mock('@/controllers/connection');
-jest.mock('@/controllers/timeseriesEngine');
+jest.mock('@/controllers/timeseriesEngine', () => {
+  const actual = jest.requireActual<
+    typeof import('@/controllers/timeseriesEngine')
+  >('@/controllers/timeseriesEngine');
+  return {
+    ...actual,
+    // Only mock the function that makes real network calls
+    queryPrometheusRangeFromClickHouse: jest.fn(),
+  };
+});
 jest.mock('@/clickhouse');
 
 describe('evaluatePromqlAlert', () => {
@@ -23,6 +33,13 @@ describe('evaluatePromqlAlert', () => {
     connection: mockConnectionId,
   };
 
+  const mockSource = {
+    from: {
+      databaseName: 'default',
+      tableName: 'otel_metrics_ts',
+    },
+  } as unknown as ISource;
+
   afterEach(() => {
     jest.clearAllMocks();
   });
@@ -38,7 +55,7 @@ describe('evaluatePromqlAlert', () => {
       global.fetch = jest.fn();
     });
 
-    it('should query Prometheus API and return the last value', async () => {
+    it('should return all time-series values for a single unlabeled series', async () => {
       (global.fetch as jest.Mock).mockResolvedValue({
         ok: true,
         json: async () => ({
@@ -46,6 +63,7 @@ describe('evaluatePromqlAlert', () => {
           data: {
             result: [
               {
+                metric: {},
                 values: [
                   [1704067200, '0'],
                   [1704067500, '42.5'],
@@ -64,14 +82,25 @@ describe('evaluatePromqlAlert', () => {
         windowSizeInMins: mockWindowSizeInMins,
       });
 
-      expect(result).toEqual([{ group: '', value: 42.5 }]);
+      // Returns full PrometheusMatrixResult[] — all points, not just the last.
+      // This enables the caller (processAlert) to evaluate each window bucket
+      // individually for backfill support.
+      expect(result).toEqual([
+        {
+          metric: {},
+          values: [
+            [1704067200, '0'],
+            [1704067500, '42.5'],
+          ],
+        },
+      ]);
       expect(global.fetch).toHaveBeenCalledWith(
         'http://prometheus:9090/api/v1/query_range?query=up&start=1704067200&end=1704067500&step=300',
         expect.any(Object),
       );
     });
 
-    it('should return multiple series for Prometheus endpoint', async () => {
+    it('should return multiple series with all time-points', async () => {
       (global.fetch as jest.Mock).mockResolvedValue({
         ok: true,
         json: async () => ({
@@ -100,8 +129,8 @@ describe('evaluatePromqlAlert', () => {
       });
 
       expect(result).toEqual([
-        { group: 'host:"A"', value: 42.5 },
-        { group: 'host:"B"', value: 10.5 },
+        { metric: { host: 'A' }, values: [[1704067500, '42.5']] },
+        { metric: { host: 'B' }, values: [[1704067500, '10.5']] },
       ]);
     });
 
@@ -118,6 +147,7 @@ describe('evaluatePromqlAlert', () => {
       await expect(
         evaluatePromqlAlert({
           savedConfig: mockSavedConfig,
+          source: mockSource,
           connectionId: mockConnectionId,
           teamId: mockTeamId,
           dateRange: mockDateRange,
@@ -159,7 +189,7 @@ describe('evaluatePromqlAlert', () => {
       });
     });
 
-    it('should return multiple series with tags as tuples', async () => {
+    it('should return multiple series with all time-points via formatMatrixResponse', async () => {
       // tags is an array of [key, value] tuples — as returned by ClickHouse
       (queryPrometheusRangeFromClickHouse as jest.Mock).mockResolvedValue({
         json: async () => ({
@@ -187,9 +217,17 @@ describe('evaluatePromqlAlert', () => {
         windowSizeInMins: mockWindowSizeInMins,
       });
 
+      // formatMatrixResponse converts tags tuples to metric dict
+      // and time_series to [ts_seconds, string_value] tuples.
       expect(result).toEqual([
-        { group: 'host:"A"', value: 42.5 },
-        { group: 'host:"B"', value: 10.5 },
+        {
+          metric: { host: 'A' },
+          values: expect.arrayContaining([[expect.any(Number), '42.5']]),
+        },
+        {
+          metric: { host: 'B' },
+          values: expect.arrayContaining([[expect.any(Number), '10.5']]),
+        },
       ]);
 
       expect(queryPrometheusRangeFromClickHouse).toHaveBeenCalledWith(
@@ -201,7 +239,7 @@ describe('evaluatePromqlAlert', () => {
       );
     });
 
-    it('should filter __name__ from tags tuples', async () => {
+    it('should have __name__ stripped from metric map', async () => {
       (queryPrometheusRangeFromClickHouse as jest.Mock).mockResolvedValue({
         json: async () => ({
           data: [
@@ -218,47 +256,52 @@ describe('evaluatePromqlAlert', () => {
 
       const result = await evaluatePromqlAlert({
         savedConfig: mockSavedConfig,
+        source: mockSource,
         connectionId: mockConnectionId,
         teamId: mockTeamId,
         dateRange: mockDateRange,
         windowSizeInMins: mockWindowSizeInMins,
       });
 
-      // __name__ is stripped
-      expect(result).toEqual([{ group: 'host:"A"', value: 42.5 }]);
+      // formatMatrixResponse includes __name__ in metric — the caller
+      // (processAlert) strips __name__ when building the group key.
+      expect(result).toEqual([
+        {
+          metric: { __name__: 'up', host: 'A' },
+          values: expect.arrayContaining([[expect.any(Number), '42.5']]),
+        },
+      ]);
     });
 
-    it('should use defaults when no source is provided', async () => {
-      (queryPrometheusRangeFromClickHouse as jest.Mock).mockResolvedValue({
-        json: async () => ({
-          data: [
-            {
-              time_series: [
-                ['2024-01-01 00:00:00', 0],
-                ['2024-01-01 00:05:00', 42.5],
-              ],
-            },
-          ],
+    it('should throw an error when no source tableName is provided', async () => {
+      await expect(
+        evaluatePromqlAlert({
+          savedConfig: mockSavedConfig,
+          source: undefined,
+          connectionId: mockConnectionId,
+          teamId: mockTeamId,
+          dateRange: mockDateRange,
+          windowSizeInMins: mockWindowSizeInMins,
         }),
-      });
+      ).rejects.toThrow(
+        'A PromQL alert routed to ClickHouse must have a source with a valid TimeSeries table name.',
+      );
+    });
 
-      const result = await evaluatePromqlAlert({
-        savedConfig: mockSavedConfig,
-        connectionId: mockConnectionId,
-        teamId: mockTeamId,
-        dateRange: mockDateRange,
-        windowSizeInMins: mockWindowSizeInMins,
-      });
-
-      expect(result).toEqual([{ group: '', value: 42.5 }]);
-      expect(queryPrometheusRangeFromClickHouse).toHaveBeenCalledWith(
-        expect.objectContaining({
-          databaseName: 'default',
-          tableName: 'otel_metrics_gauge',
-          startMs: 1704067200000,
-          endMs: 1704067500000,
-          stepSec: 300,
+    it('should throw when source has no databaseName (prevents silently querying wrong DB)', async () => {
+      await expect(
+        evaluatePromqlAlert({
+          savedConfig: mockSavedConfig,
+          source: {
+            from: { databaseName: '', tableName: 'otel_metrics_ts' },
+          } as unknown as ISource,
+          connectionId: mockConnectionId,
+          teamId: mockTeamId,
+          dateRange: mockDateRange,
+          windowSizeInMins: mockWindowSizeInMins,
         }),
+      ).rejects.toThrow(
+        'A PromQL alert routed to ClickHouse must have a source with a valid database name.',
       );
     });
 
@@ -271,6 +314,7 @@ describe('evaluatePromqlAlert', () => {
 
       const result = await evaluatePromqlAlert({
         savedConfig: mockSavedConfig,
+        source: mockSource,
         connectionId: mockConnectionId,
         teamId: mockTeamId,
         dateRange: mockDateRange,
