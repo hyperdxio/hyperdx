@@ -302,8 +302,6 @@ export default function EditTimeChartForm({
     }
   }, [configType, displayType, isPromqlInput, previousDisplayType, setValue]);
 
-
-
   const showGeneratedSql =
     TABS_WITH_GENERATED_SQL.has(activeTab) && !isPromqlInput;
 
