@@ -158,7 +158,7 @@ export function buildAlertChartConfig({
       dateRange,
       granularity,
       variables,
-    } as PromqlConfigWithDateRange;
+    } satisfies PromqlConfigWithDateRange;
   }
 
   // Raw SQL: only time-series display types can be charted over the alert
