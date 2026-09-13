@@ -293,12 +293,6 @@ export default function EditTimeChartForm({
   const previousDisplayType = usePrevious(displayType);
   useEffect(() => {
     if (displayType === previousDisplayType) return;
-    // PromQL charts have no alert UI yet — always clear to avoid a stale
-    // carry-over from a previous Builder/SQL mode triggering a bad POST.
-    if (isPromqlInput) {
-      setValue('alert', undefined);
-      return;
-    }
     const displayTypeSupportsAlerts =
       configType === 'sql'
         ? displayTypeSupportsRawSqlAlerts(displayType)
@@ -308,15 +302,7 @@ export default function EditTimeChartForm({
     }
   }, [configType, displayType, isPromqlInput, previousDisplayType, setValue]);
 
-  // Also clear the alert whenever the user flips the config type to PromQL,
-  // since the display-type effect above only runs on displayType changes.
-  const previousConfigType = usePrevious(configType);
-  useEffect(() => {
-    if (configType === previousConfigType) return;
-    if (configType === 'promql') {
-      setValue('alert', undefined);
-    }
-  }, [configType, previousConfigType, setValue]);
+
 
   const showGeneratedSql =
     TABS_WITH_GENERATED_SQL.has(activeTab) && !isPromqlInput;

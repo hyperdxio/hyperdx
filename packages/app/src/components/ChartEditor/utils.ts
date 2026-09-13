@@ -198,9 +198,7 @@ export function convertFormStateToSavedChartConfig(
         'fillNulls',
         'alignDateRangeToGranularity',
         'alternateRowBackground',
-        // 'alert' intentionally excluded — no alert UI exists for PromQL yet
-        // (HDX-4636). Keeping it out prevents a stale carry-over from a
-        // Builder/SQL form from triggering a bad POST on save.
+        'alert',
       ]),
       promqlExpression: form.promqlExpression ?? '',
       connection: form.connection ?? '',

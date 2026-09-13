@@ -115,7 +115,7 @@ export default function PromqlChartEditor({
               }
             >
               <IconBell size={14} className="me-2" />
-              Add Alert
+              Add alert
             </Button>
           )}
         </Group>
@@ -124,7 +124,7 @@ export default function PromqlChartEditor({
           size="compact-sm"
           variant="secondary"
         >
-          Display Settings
+          Display settings
         </Button>
       </Flex>
       {alert && (
