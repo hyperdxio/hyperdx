@@ -372,11 +372,7 @@ export const extractColumnReferencesFromKey = (expr: string): string[] => {
 
       return [...new Set([...parsedColumnList, ...jsonPaths, ...mapAccesses])];
     } catch (e) {
-      console.error(
-        'Error parsing column references from key',
-        e instanceof Error ? e.message : e,
-        expr,
-      );
+      console.error('Error parsing column references from key', e, expr);
       return [];
     }
   });
@@ -961,7 +957,7 @@ export function chSqlToAliasMap(
   } catch (e) {
     console.error(
       'Error parsing alias map with JSON removed',
-      e instanceof Error ? e.message : e,
+      e,
       'for query',
       chSql,
     );
