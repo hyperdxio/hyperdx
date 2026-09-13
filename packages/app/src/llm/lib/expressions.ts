@@ -1,7 +1,7 @@
 import { TLogSource, TTraceSource } from '@hyperdx/common-utils/dist/types';
 
 import { generateCostSqlExpression } from './cost';
-import { buildLLMSpanSqlPredicate } from './detect';
+import { buildAnyKeyExistsSql, buildLLMSpanSqlPredicate } from './detect';
 
 /**
  * SQL expression derivation for the LLM dashboard, mirroring
@@ -21,7 +21,7 @@ function fieldAccess(
 /** First non-empty string among the given attribute keys ('' when none). */
 function coalesceString(
   field: string,
-  keys: string[],
+  keys: readonly string[],
   isJsonColumn: boolean,
 ): string {
   const args = keys.map(
@@ -37,7 +37,7 @@ function coalesceString(
  */
 function greatestNumber(
   field: string,
-  keys: string[],
+  keys: readonly string[],
   isJsonColumn: boolean,
 ): string {
   const args = keys.map(
@@ -222,6 +222,71 @@ function getLLMAttributeExpressions({
   attributeField: string;
   isJsonColumn: boolean;
 }) {
+  /** Rows carrying any of these keys. Index-friendly — see buildKeyExistsSql. */
+  const anyKeyExists = (keys: readonly string[]) =>
+    buildAnyKeyExistsSql({ attributeField, keys, isJsonColumn });
+
+  /**
+   * Wrap a presence term that exists only to prune granules.
+   *
+   * `indexHint` feeds its argument to skip-index analysis but returns true at
+   * execution, so the keys are never re-tested per surviving row. This is the
+   * same thing queryParser.ts does with `mapKeyIndexExpression`.
+   *
+   * Only safe when a value term follows that already implies presence. A bare
+   * presence filter must not be wrapped — `indexHint` alone matches every row.
+   */
+  const prunableKeys = (keys: readonly string[]) =>
+    `indexHint(${anyKeyExists(keys)})`;
+
+  /**
+   * Pair a value term with a pruning hint over the keys it reads.
+   *
+   * `valueTerm` alone defines the result; the hint only lets the index drop
+   * granules, so it must be implied by `valueTerm` to be sound.
+   *
+   * Only worth adding in WHERE position — skip-index analysis does not look at
+   * the select list, so a gate used solely inside an aggregate should pass its
+   * value term through unhinted rather than pay the query-length cost.
+   *
+   * On JSON columns there is no key index to prune with, so the value term is
+   * emitted alone.
+   */
+  const withKeyPruning = (keys: readonly string[], valueTerm: string) =>
+    isJsonColumn ? valueTerm : `(${prunableKeys(keys)} AND ${valueTerm})`;
+
+  /** "Any of these keys holds a non-empty value", before any pruning hint. */
+  const anyKeyNonEmpty = (keys: readonly string[]) =>
+    `${coalesceString(attributeField, keys, isJsonColumn)} != ''`;
+
+  /**
+   * Gate for "any of these keys holds a non-empty value".
+   *
+   * Presence alone would admit a key explicitly set to '', and every caller
+   * pairs this gate with a coalesced value expression it groups by, so such a
+   * row would show up as a blank bar/row whose drill-in link goes nowhere.
+   *
+   * The value term costs no extra per-part size lookups during planning: it
+   * reads the same keys the paired group-by expression already reads.
+   */
+  const anyKeyHasValue = (keys: readonly string[]) =>
+    withKeyPruning(keys, anyKeyNonEmpty(keys));
+
+  // Derived from TOOL_NAME_KEYS rather than restated: a span whose tool name
+  // resolves is a tool call, so the two must not drift. gen_ai.tool.call.id is
+  // the one addition — it marks a tool call without naming it.
+  //
+  // Deriving currently changes nothing observable: the flat `tool_name` it
+  // picks up is not in LLM_MARKER_ATTRIBUTE_KEYS, and every caller ANDs
+  // isLLMSpan, so a span carrying only that key is dropped before this gate is
+  // reached. Widening LLM detection to a key that generic is its own decision.
+  const TOOL_SPAN_KEYS = [...TOOL_NAME_KEYS, 'gen_ai.tool.call.id'];
+  const isToolSpanMatch = `(${fieldAccess(
+    attributeField,
+    'openinference.span.kind',
+    isJsonColumn,
+  )} = 'TOOL' OR ${anyKeyNonEmpty(TOOL_SPAN_KEYS)})`;
+
   const model = coalesceString(attributeField, MODEL_KEYS, isJsonColumn);
   const inputTokens = greatestNumber(
     attributeField,
@@ -284,7 +349,7 @@ function getLLMAttributeExpressions({
     ttftMs: greatestNumber(attributeField, TTFT_MS_KEYS, isJsonColumn),
     toolName: coalesceString(attributeField, TOOL_NAME_KEYS, isJsonColumn),
     agentName: coalesceString(attributeField, AGENT_NAME_KEYS, isJsonColumn),
-    hasAgentName: `${coalesceString(attributeField, AGENT_NAME_KEYS, isJsonColumn)} != ''`,
+    hasAgentName: anyKeyHasValue(AGENT_NAME_KEYS),
     // Emitters disagree on encoding ('stop' vs '["stop"]'); strip the JSON
     // array wrapper so the group-by buckets align.
     // The char class is written backslash-free (leading ] in an RE2 class
@@ -311,22 +376,47 @@ function getLLMAttributeExpressions({
      * an app's own authoritative per-call reporters — see llmGatedSumExpr.
      */
     hasProvidedCost: `(${providedCost} > 0)`,
-    /** See REPORTED_TOKEN_KEYS: gates sums so wrapper spans don't double count. */
-    hasReportedTokens: `(${REPORTED_TOKEN_KEYS.map(key =>
-      isJsonColumn
-        ? `toString(${attributeField}.\`${key}\`) != ''`
-        : `${attributeField}['${key}'] != ''`,
-    ).join(' OR ')})`,
-    hasSessionId: `${coalesceString(attributeField, SESSION_ID_KEYS, isJsonColumn)} != ''`,
-    hasTtft: `${greatestNumber(attributeField, TTFT_MS_KEYS, isJsonColumn)} > 0`,
-    hasUserId: `${coalesceString(attributeField, USER_ID_KEYS, isJsonColumn)} != ''`,
-    hasFinishReason: `${coalesceString(attributeField, FINISH_REASON_KEYS, isJsonColumn)} != ''`,
-    isToolSpan: `(${[
-      `${fieldAccess(attributeField, 'openinference.span.kind', isJsonColumn)} = 'TOOL'`,
-      `${fieldAccess(attributeField, 'gen_ai.tool.name', isJsonColumn)} != ''`,
-      `${fieldAccess(attributeField, 'gen_ai.tool.call.id', isJsonColumn)} != ''`,
-      `${fieldAccess(attributeField, 'ai.toolCall.name', isJsonColumn)} != ''`,
-    ].join(' OR ')})`,
+    /**
+     * See REPORTED_TOKEN_KEYS: gates sums so wrapper spans don't double count.
+     * Unhinted — perServiceElectionExpr only ever embeds this inside select-list
+     * aggregates, where a hint cannot prune and would just lengthen a query this
+     * file already keeps under max_query_size (see LLM_COST_SQL_ALIAS).
+     */
+    hasReportedTokens: anyKeyNonEmpty(REPORTED_TOKEN_KEYS),
+    hasSessionId: anyKeyHasValue(SESSION_ID_KEYS),
+    // Numeric rather than non-empty: it feeds a latency percentile, and a
+    // zero would drag p50/p95 down. Same shape as anyKeyHasValue otherwise —
+    // `> 0` implies the key is present, so presence is pruning only.
+    hasTtft: withKeyPruning(
+      TTFT_MS_KEYS,
+      `${greatestNumber(attributeField, TTFT_MS_KEYS, isJsonColumn)} > 0`,
+    ),
+    hasUserId: anyKeyHasValue(USER_ID_KEYS),
+    hasFinishReason: anyKeyHasValue(FINISH_REASON_KEYS),
+    /**
+     * Tool-call rows, for WHERE position.
+     *
+     * The `= 'TOOL'` term stays a value comparison — it discriminates one
+     * OpenInference span kind from the others, and the query builder already
+     * rewrites equality onto the attribute-items index. The remaining terms
+     * gate a group-by on toolName, so they keep their value check too.
+     *
+     * The hint sits above the OR, not inside it: a skip index can only drop a
+     * granule when every arm of an OR is decidable by that same index, and the
+     * span-kind arm is not. Hoisting is sound because both arms imply one of
+     * the hinted keys.
+     */
+    isToolSpan: withKeyPruning(
+      ['openinference.span.kind', ...TOOL_SPAN_KEYS],
+      isToolSpanMatch,
+    ),
+    /**
+     * isToolSpan for select-list aggregate positions (`aggCondition`), which
+     * renderChartConfig emits inside countIf/sumIf. Skip-index analysis never
+     * reaches the select list, so the hint would fold to a constant while
+     * lengthening every query — see withKeyPruning.
+     */
+    isToolSpanUnhinted: isToolSpanMatch,
   };
 }
 
