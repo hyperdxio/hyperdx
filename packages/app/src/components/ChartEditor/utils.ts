@@ -161,12 +161,14 @@ export const isPromqlDisplayType = (
   | DisplayType.StackedBar
   | DisplayType.Pie
   | DisplayType.Bar
-  | DisplayType.Number =>
+  | DisplayType.Number
+  | DisplayType.Table =>
   displayType === DisplayType.Line ||
   displayType === DisplayType.StackedBar ||
   displayType === DisplayType.Pie ||
   displayType === DisplayType.Bar ||
-  displayType === DisplayType.Number;
+  displayType === DisplayType.Number ||
+  displayType === DisplayType.Table;
 
 const isCustomOrderByDisplayType = (
   displayType: DisplayType | undefined,

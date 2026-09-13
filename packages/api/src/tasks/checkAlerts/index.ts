@@ -59,8 +59,11 @@ import { ClickhouseClient } from '@/clickhouse';
 import { ALERT_HISTORY_QUERY_CONCURRENCY } from '@/controllers/alertHistory';
 import { getConnectionById } from '@/controllers/connection';
 import {
-  joinPrometheusUpstreamUrl,
   PROMETHEUS_CH_TIMEOUT_MS,
+  PROMETHEUS_MAX_RESULT_ROWS,
+  PrometheusMatrixResult,
+  formatMatrixResponse,
+  joinPrometheusUpstreamUrl,
   queryPrometheusRangeFromClickHouse,
 } from '@/controllers/timeseriesEngine';
 import { AlertState, IAlert, IAlertError } from '@/models/alert';
@@ -72,10 +75,7 @@ import { IDashboard } from '@/models/dashboard';
 import { ISavedSearch } from '@/models/savedSearch';
 import { ISource } from '@/models/source';
 import { IWebhook } from '@/models/webhook';
-import {
-  formatMatrixResponse,
-  PrometheusMatrixResult,
-} from '@/routers/api/prometheus';
+
 import {
   isClientTimeoutOrAbortError,
   isQueryTimeoutError,
@@ -1016,9 +1016,11 @@ export async function evaluatePromqlAlert({
     throw new Error(`Connection ${connectionId} not found for PromQL alert`);
   }
 
-  const endSec = dateRange[1].getTime() / 1000;
-  const startSec = dateRange[0].getTime() / 1000;
   const stepSec = windowSizeInMins * 60;
+  const endSec = dateRange[1].getTime() / 1000;
+  // PromQL evaluates exactly at the given timestamps. We want the evaluation 
+  // for the window [T, T+step) to happen at T+step, using the freshest data.
+  const startSec = dateRange[0].getTime() / 1000 + stepSec;
   const promqlExpression =
     variables && variables.length > 0
       ? substitutePromqlChartConfigVariables({ ...savedConfig, variables })
@@ -1524,11 +1526,15 @@ export const processAlert = async (
 
       // Evaluate all series over the expected buckets so that missed or
       // delayed execution windows can be backfilled correctly.
-      const expectedBuckets = timeBucketByGranularity(
-        dateRange[0],
-        dateRange[1],
-        `${windowSizeInMins} minute`,
-      );
+      const expectedBuckets: Date[] = [];
+      const windowMs = windowSizeInMins * 60 * 1000;
+      for (
+        let t = dateRange[0].getTime();
+        t <= dateRange[1].getTime() - windowMs;
+        t += windowMs
+      ) {
+        expectedBuckets.push(new Date(t));
+      }
       evaluationAnalytics.backfilledBuckets = Math.max(
         0,
         expectedBuckets.length - 1,
@@ -1545,14 +1551,16 @@ export const processAlert = async (
       if (promqlResults != null) {
         for (const series of promqlResults) {
           // Build group key from labels — k:v format matches builder alerts.
-          const labelEntries = Object.entries(series.metric).filter(
-            ([k]) => k !== '__name__',
-          );
+          // Keep __name__ in the group key to avoid collapsing distinct series.
+          const labelEntries = Object.entries(series.metric);
           const groupKey = labelEntries.map(([k, v]) => `${k}:${v}`).join(', ');
-          const attributes = Object.fromEntries(labelEntries);
+          const attributes = Object.fromEntries(
+            labelEntries.filter(([k]) => k !== '__name__'),
+          );
 
           for (const [tsSec, rawVal] of series.values) {
-            const tsMs = Math.round(tsSec * 1000);
+            // Shift the evaluation instant back to the start of the bucket
+            const tsMs = Math.round(tsSec * 1000) - windowMs;
             const parsed = parseFloat(rawVal);
             if (!Number.isFinite(parsed)) continue;
 

@@ -5,6 +5,7 @@ import {
   UseFormSetValue,
   useWatch,
 } from 'react-hook-form';
+import { displayTypeSupportsPromQLAlerts } from '@hyperdx/common-utils/dist/core/utils';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { Box, Button, Flex, Group, Stack, Text } from '@mantine/core';
 import { IconBell } from '@tabler/icons-react';
@@ -28,6 +29,7 @@ export default function PromqlChartEditor({
   isAlertRequired,
   dashboardId,
   setValue,
+  additionalAlertWarnings,
 }: {
   control: Control<ChartEditorFormState>;
   onSubmit: (suppressErrorNotification?: boolean) => void;
@@ -39,6 +41,7 @@ export default function PromqlChartEditor({
   /** Hides the alert editor's remove control for surfaces that require an alert. */
   isAlertRequired?: boolean;
   dashboardId?: string;
+  additionalAlertWarnings?: string[];
 }) {
   const { field: expressionField } = useController({
     control,
@@ -73,6 +76,7 @@ export default function PromqlChartEditor({
   );
 
   const chartName = useWatch({ control, name: 'name' });
+  const displayType = useWatch({ control, name: 'displayType' });
 
   return (
     <Stack gap="sm">
@@ -101,7 +105,10 @@ export default function PromqlChartEditor({
       </Box>
       <Flex justify="space-between" align="center">
         <Group gap="xs">
-          {alertsEnabled && !alert && !IS_LOCAL_MODE && (
+          {alertsEnabled &&
+            !alert &&
+            !IS_LOCAL_MODE &&
+            displayTypeSupportsPromQLAlerts(displayType) && (
             <Button
               variant="subtle"
               data-testid="alert-button"
@@ -135,6 +142,11 @@ export default function PromqlChartEditor({
           dashboardId={dashboardId}
           onRemove={
             isAlertRequired ? undefined : () => setValue('alert', undefined)
+          }
+          warning={
+            additionalAlertWarnings?.length
+              ? additionalAlertWarnings.join(' ')
+              : undefined
           }
           tooltip="The threshold will be evaluated against the last value returned by the PromQL expression"
         />

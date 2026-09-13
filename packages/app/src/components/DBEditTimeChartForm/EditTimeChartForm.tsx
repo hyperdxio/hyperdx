@@ -1039,6 +1039,7 @@ export default function EditTimeChartForm({
             isAlertRequired={isAlertRequired}
             dashboardId={dashboardId}
             setValue={setValue}
+            additionalAlertWarnings={additionalAlertWarnings}
           />
         ) : isRawSqlInput ? (
           <RawSqlChartEditor

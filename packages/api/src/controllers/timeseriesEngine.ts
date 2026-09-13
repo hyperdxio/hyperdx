@@ -323,3 +323,52 @@ export async function queryPrometheusRangeFromClickHouse({
     },
   });
 }
+
+// Prometheus-compatible response types
+export type PrometheusMetric = Record<string, string>;
+export type PrometheusMatrixResult = {
+  metric: PrometheusMetric;
+  values: [number, string][];
+};
+export type PrometheusVectorResult = {
+  metric: PrometheusMetric;
+  value: [number, string];
+};
+
+// ClickHouse → Prometheus response formatters
+export function formatMatrixResponse(
+  rows: { tags: [string, string][]; time_series: [string, number][] }[],
+): PrometheusMatrixResult[] {
+  return rows.map(row => {
+    const metric: PrometheusMetric = {};
+    for (const [key, value] of row.tags) {
+      metric[key] = value;
+    }
+    const values: [number, string][] = row.time_series.map(
+      ([timestamp, value]) => {
+        const ts =
+          typeof timestamp === 'string'
+            ? new Date(timestamp).getTime() / 1000
+            : Number(timestamp);
+        return [ts, String(value)];
+      },
+    );
+    return { metric, values };
+  });
+}
+
+export function formatVectorResponse(
+  rows: { tags: [string, string][]; timestamp: string; value: number }[],
+): PrometheusVectorResult[] {
+  return rows.map(row => {
+    const metric: PrometheusMetric = {};
+    for (const [key, value] of row.tags) {
+      metric[key] = value;
+    }
+    const ts =
+      typeof row.timestamp === 'string'
+        ? new Date(row.timestamp).getTime() / 1000
+        : Number(row.timestamp);
+    return { metric, value: [ts, String(row.value)] };
+  });
+}

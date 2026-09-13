@@ -284,9 +284,7 @@ function TileAlertChart({
   const tile = dashboard?.tiles?.find(t => t.id === alert.tileId);
 
   const tileSourceId =
-    tile != null && !isPromqlSavedChartConfig(tile.config)
-      ? tile.config.source
-      : undefined;
+    tile != null && 'source' in tile.config ? tile.config.source : undefined;
   const { data: source, isLoading: isSourceLoading } = useSource({
     id: tileSourceId,
   });
