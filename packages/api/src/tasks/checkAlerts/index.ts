@@ -1522,9 +1522,8 @@ export const processAlert = async (
         return;
       }
 
-      // ── PromQL time-series evaluation — iterate every expected bucket ──
-      // This mirrors the builder time-series path so backfilled windows are
-      // evaluated and consecutive-window tracking works correctly.
+      // Evaluate all series over the expected buckets so that missed or
+      // delayed execution windows can be backfilled correctly.
       const expectedBuckets = timeBucketByGranularity(
         dateRange[0],
         dateRange[1],
@@ -1940,7 +1939,7 @@ export const processAlert = async (
       return;
     }
 
-    // ── Time-series path (Line/StackedBar charts) ──
+    // Standard time-series alert evaluation (Line/StackedBar charts).
     const expectedBuckets = timeBucketByGranularity(
       dateRange[0],
       dateRange[1],
