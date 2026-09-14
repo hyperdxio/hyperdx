@@ -1,5 +1,6 @@
 import { WebhookService } from '@hyperdx/common-utils/dist/types';
 
+import { handleStartAgentInvestigation } from './agent';
 import { handleSendGenericWebhook } from './generic';
 import { handleSendSlackWebhook } from './slack';
 import type { ChannelTransport, WebhookTransport } from './types';
@@ -47,6 +48,7 @@ const deliverWebhook: ChannelTransport = async (channel, message, ctx) => {
  */
 export const channelTransports: Record<string, ChannelTransport> = {
   webhook: deliverWebhook,
+  agent: handleStartAgentInvestigation,
 };
 
 export const deliverToChannel: ChannelTransport = async (

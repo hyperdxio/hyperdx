@@ -134,7 +134,7 @@ function toInternalAlertInput(body: ExternalAlertInput): InternalAlertInput {
  *       description: Current alert state.
  *     AlertErrorType:
  *       type: string
- *       enum: [QUERY_ERROR, QUERY_TIMEOUT, WEBHOOK_ERROR, INVALID_ALERT, UNKNOWN]
+ *       enum: [QUERY_ERROR, QUERY_TIMEOUT, WEBHOOK_ERROR, AGENT_ERROR, INVALID_ALERT, UNKNOWN]
  *       description: Category of error recorded during alert execution.
  *     AlertExecutionError:
  *       type: object

@@ -16,7 +16,6 @@ import {
   isRangeThresholdType,
   SavedChartConfig,
   SourceKind,
-  zAlertChannelType,
 } from '@hyperdx/common-utils/dist/types';
 import Handlebars, { HelperOptions } from 'handlebars';
 import _ from 'lodash';
@@ -205,8 +204,8 @@ export const COMPARATOR_BY_THRESHOLD_TYPE: Record<AlertThresholdType, string> =
 export const ALERT_TYPE_BY_SOURCE: Record<AlertSource, string> = {
   [AlertSource.SAVED_SEARCH]: 'search',
   [AlertSource.TILE]: 'dashboard_chart',
-  // Detached alert: the chart config lives on the alert itself, so there is
-  // no saved search or tile behind it to open.
+  // Detached alert: the chart config lives on the alert itself, so there is no
+  // saved search or tile behind it for an agent to open.
   [AlertSource.INLINE]: 'inline_query',
 };
 
@@ -235,9 +234,13 @@ const notificationCapExceededCounter = getCounter(
   },
 );
 
+// Webhook, not zAlertChannelType: an @-mention in an alert body can only name
+// a webhook, and accepting 'agent' here routes a typo'd mention into the agent
+// dispatch path, where it surfaces as "AI agent error" instead of telling the
+// user the mention is unsupported.
 const zNotifyFnParams = z.object({
   hash: z.object({
-    channel: zAlertChannelType,
+    channel: z.literal('webhook'),
     id: z.string(),
   }),
 });
@@ -469,15 +472,22 @@ export type NotificationFailure = {
   error: unknown;
 };
 
-// PopulatedAlertChannel only has a `webhook` variant in this repo, but a
-// downstream build adds more (e.g. `email`) without a `channel` field at all.
-// Narrowing here — rather than assuming `.channel` exists — keeps this
-// mechanical for that merge instead of a judgement call, and keeps an error
-// handler from throwing on an unrecognized channel type.
+// Narrow on the channel type per variant — a downstream build adds more
+// (e.g. `email`, possibly without a `channel` field at all), so the fallbacks
+// keep this mechanical for that merge and keep an error handler from throwing
+// on an unrecognized channel type.
 const channelKey = (c: PopulatedAlertChannel) =>
-  c.type === 'webhook' ? c.channel._id.toString() : JSON.stringify(c);
+  c.type === 'webhook'
+    ? c.channel._id.toString()
+    : c.type === 'agent'
+      ? `agent:${c.channel.agentId}`
+      : JSON.stringify(c);
 const channelLabel = (c: PopulatedAlertChannel) =>
-  c.type === 'webhook' ? c.channel.name : c.type;
+  c.type === 'webhook'
+    ? c.channel.name
+    : c.type === 'agent'
+      ? c.channel.agentId
+      : JSON.stringify(c);
 
 /**
  * One dispatch's wall time. Emitted per target per event, so a grouped alert
@@ -707,7 +717,10 @@ export const renderAlertTemplate = async ({
       alertId: alert.id,
       channel: {
         type: channel.type,
-        id: channel.channel._id.toString(),
+        id:
+          channel.type === 'webhook'
+            ? channel.channel._id.toString()
+            : channel.channel.agentId,
       },
       // Explicitly track if this is a grouped alert
       isGrouped: view.isGroupedAlert,
@@ -728,7 +741,8 @@ export const renderAlertTemplate = async ({
         startTime: view.startTime.getTime(),
         endTime: view.endTime.getTime(),
         eventId,
-        // Enriched fields, exposed to Generic/incident.io body templates.
+        // Enriched fields for structured payloads (agent kickoff prompts and
+        // the extra Generic-webhook template variables).
         alertId: alert.id ?? '',
         status: ALERT_STATUS_BY_STATE[state],
         alertType: alert.source ? ALERT_TYPE_BY_SOURCE[alert.source] : '',
@@ -762,6 +776,16 @@ export const renderAlertTemplate = async ({
   const resolveConfiguredChannel = (
     channel: AlertChannel,
   ): PopulatedAlertChannel[] => {
+    if (channel.type === 'agent') {
+      // Agent investigations only make sense on the firing edge — a resolve
+      // (or no-data) event is not something to investigate, so it isn't
+      // queued and isn't a failure either. The agent document is resolved
+      // (team-scoped) by the transport at delivery time.
+      if (state !== AlertState.ALERT) {
+        return [];
+      }
+      return [{ type: 'agent', channel: { agentId: channel.agentId } }];
+    }
     // Anything this build cannot dispatch is reported as a failed target
     // rather than dropped: an alert whose only channel is unsupported would
     // otherwise fire, notify nobody, and record nothing.

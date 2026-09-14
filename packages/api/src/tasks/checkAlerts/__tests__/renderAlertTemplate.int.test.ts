@@ -1015,7 +1015,11 @@ describe('per-event notification cap', () => {
     });
 
     expect(
-      dispatched.map(j => j.populatedChannel.channel._id.toString()),
+      dispatched.map(j =>
+        j.populatedChannel.type === 'webhook'
+          ? j.populatedChannel.channel._id.toString()
+          : j.populatedChannel.type,
+      ),
     ).toContain(configured._id.toString());
   });
 
@@ -1265,5 +1269,99 @@ describe('notification targets are resolved once per webhook', () => {
     expect(dispatched).toHaveLength(1);
     expect(failures).toHaveLength(1);
     expect(String(failures[0].error)).toContain('not a webhook channel');
+  });
+
+  // An @-mention can only ever name a webhook. When the channel-type enum
+  // gained 'agent', `@agent-<id>` started parsing and fell through to the
+  // agent dispatch path, surfacing as "AI agent error" — which tells the user
+  // their investigation failed rather than that the mention is unsupported.
+  it('reports an @agent mention as an unsupported mention, not an agent failure', async () => {
+    const webhook = makeWebhook('ok-hook');
+    const id = webhook._id.toString();
+    const { dispatcher, dispatched } = makeRecordingDispatcher();
+
+    const { failures } = await renderAlertTemplate({
+      alertProvider,
+      clickhouseClient: mockClickhouseClient,
+      metadata: mockMetadata,
+      state: AlertState.ALERT,
+      template: `@agent-${new mongoose.Types.ObjectId().toString()} take a look`,
+      title: 'Test Alert Title',
+      view: {
+        ...makeSearchView(),
+        alert: {
+          ...makeSearchView().alert,
+          channels: [{ type: 'webhook', webhookId: id }],
+        },
+      },
+      teamId: TEST_TEAM_ID,
+      teamWebhooksById: new Map([[id, webhook]]),
+      dispatcher,
+    });
+
+    expect(dispatched).toHaveLength(1);
+    expect(failures).toHaveLength(1);
+    expect(String(failures[0].error)).toContain('not a webhook channel');
+  });
+});
+
+// Agent channels start an AI investigation instead of POSTing a payload. They
+// are queued only on the firing edge and carry the enriched message fields the
+// agent prompt is built from.
+describe('agent notification channels', () => {
+  const agentId = new mongoose.Types.ObjectId().toString();
+
+  const renderWithAgentChannel = async (state: AlertState) => {
+    const { dispatcher, dispatched } = makeRecordingDispatcher();
+    const view = makeSearchView();
+    const result = await renderAlertTemplate({
+      alertProvider,
+      clickhouseClient: mockClickhouseClient,
+      metadata: mockMetadata,
+      state,
+      template: null,
+      title: 'Test Alert Title',
+      view: {
+        ...view,
+        alert: {
+          ...view.alert,
+          channel: { type: 'agent', agentId },
+          channels: [{ type: 'agent', agentId }],
+        },
+      },
+      teamId: TEST_TEAM_ID,
+      teamWebhooksById: new Map(),
+      dispatcher,
+    });
+    return { dispatched, result };
+  };
+
+  it('queues an agent job with the enriched message fields when firing', async () => {
+    const { dispatched, result } = await renderWithAgentChannel(
+      AlertState.ALERT,
+    );
+
+    expect(result.failures).toEqual([]);
+    expect(dispatched).toHaveLength(1);
+    const job = dispatched[0];
+    expect(job.populatedChannel).toEqual({
+      type: 'agent',
+      channel: { agentId },
+    });
+    expect(job.message).toMatchObject({
+      status: 'firing',
+      alertType: 'search',
+      comparator: '>=',
+      threshold: 5,
+      sourceQuery: 'Body: "error"',
+      teamId: TEST_TEAM_ID,
+    });
+  });
+
+  it('does not queue an agent job on resolve, and records no failure', async () => {
+    const { dispatched, result } = await renderWithAgentChannel(AlertState.OK);
+
+    expect(dispatched).toHaveLength(0);
+    expect(result.failures).toEqual([]);
   });
 });

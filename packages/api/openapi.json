@@ -179,6 +179,7 @@
           "QUERY_ERROR",
           "QUERY_TIMEOUT",
           "WEBHOOK_ERROR",
+          "AGENT_ERROR",
           "INVALID_ALERT",
           "UNKNOWN"
         ],

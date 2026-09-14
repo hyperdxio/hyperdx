@@ -700,6 +700,8 @@ export enum AlertErrorType {
   /** The alert query did not complete within the evaluation timeout. */
   QUERY_TIMEOUT = 'QUERY_TIMEOUT',
   WEBHOOK_ERROR = 'WEBHOOK_ERROR',
+  /** An AI agent investigation could not be started for a firing alert. */
+  AGENT_ERROR = 'AGENT_ERROR',
   INVALID_ALERT = 'INVALID_ALERT',
   UNKNOWN = 'UNKNOWN',
 }

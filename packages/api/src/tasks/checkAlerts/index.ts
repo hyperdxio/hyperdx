@@ -63,6 +63,7 @@ import { IDashboard } from '@/models/dashboard';
 import { ISavedSearch } from '@/models/savedSearch';
 import { ISource } from '@/models/source';
 import { IWebhook } from '@/models/webhook';
+import { AnthropicApiError } from '@/services/anthropicAgents';
 import {
   isClientTimeoutOrAbortError,
   isQueryTimeoutError,
@@ -288,7 +289,9 @@ const makeWebhookAlertError = (error: unknown): IAlertError => {
 // inline dispatcher, an actual delivery rejection. Raw upstream detail stays
 // hidden (same policy as makeWebhookAlertError); timeout and not-found
 // messages are authored by us.
-const makeNotificationAlertError = (
+// Exported for unit testing the per-target error mapping (see
+// checkAlertsTask.test.ts) — otherwise only used internally.
+export const makeNotificationAlertError = (
   failure: NotificationFailure,
 ): IAlertError => {
   const target = `${failure.type} "${failure.target}"`;
@@ -328,6 +331,25 @@ const makeNotificationAlertError = (
       timestamp,
       type: AlertErrorType.WEBHOOK_ERROR,
       message: `${WEBHOOK_REDIRECT_ERROR_MESSAGE} (${target})`.slice(0, 10000),
+    };
+  }
+  // Agent-channel failures are not webhook problems: the transport's own
+  // messages (feature flag off, agent deleted, no Anthropic key) are authored
+  // by us and safe to surface; an AnthropicApiError carries upstream response
+  // text, which stays hidden per the same policy as webhook bodies.
+  if (failure.type === 'agent') {
+    const detail =
+      failure.error instanceof AnthropicApiError
+        ? 'The Anthropic API request failed.'
+        : getErrorMessage(failure.error);
+    return {
+      timestamp,
+      type: AlertErrorType.AGENT_ERROR,
+      message:
+        `Failed to start an AI agent investigation for ${target}. ${detail}`.slice(
+          0,
+          10000,
+        ),
     };
   }
   // A delivery rejection from the inline dispatcher — the only case left.
@@ -552,6 +574,9 @@ const fireChannelEvent = async ({
       name: alert.name,
       displayName: alert.displayName,
       tags: alert.tags,
+      // Surfaced to agent investigations as context.runbook and to webhook
+      // bodies as {{note}}.
+      note: alert.note,
       savedSearchId: savedSearch?.id,
       silenced: alert.silenced,
       source: alert.source,
