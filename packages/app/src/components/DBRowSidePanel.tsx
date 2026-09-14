@@ -559,6 +559,9 @@ export const DBRowSidePanelInner = ({
       ? source.id
       : undefined;
   const enableTraceLogs = !!traceId && !!traceLogSourceId;
+  // The displayed row is itself one of the logs the tab lists, so picking one
+  // is a row change rather than a source hop, and the current row is in view.
+  const isOwnTraceLogSource = traceLogSourceId === source.id;
 
   const enableServiceMap = traceId && traceSourceId;
 
@@ -627,9 +630,7 @@ export const DBRowSidePanelInner = ({
       if (traceLogSourceId == null) {
         return;
       }
-      // Viewing a log already: its trace siblings live in this same source, so
-      // this is a row change, not a source hop.
-      if (traceLogSourceId === source.id) {
+      if (isOwnTraceLogSource) {
         handleNavigateToRow(rowId, aliasWith, label, SourceKind.Log);
         return;
       }
@@ -645,7 +646,7 @@ export const DBRowSidePanelInner = ({
     },
     [
       traceLogSourceId,
-      source.id,
+      isOwnTraceLogSource,
       handleNavigateToRow,
       handleSourceStackPush,
       rowFocusTimestamp,
@@ -1164,8 +1165,9 @@ export const DBRowSidePanelInner = ({
             logSourceId={traceLogSourceId}
             traceId={traceId}
             dateRange={oneHourRange}
-            highlightedRowId={
-              traceLogSourceId === source.id ? activeRowId : undefined
+            highlightedRowId={isOwnTraceLogSource ? activeRowId : undefined}
+            searchTableConfig={
+              isOwnTraceLogSource ? dbSqlRowTableConfig : undefined
             }
             onNavigateToLog={handleTraceLogNavigate}
           />

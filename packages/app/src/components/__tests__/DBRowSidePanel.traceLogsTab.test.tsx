@@ -52,7 +52,12 @@ jest.mock('../DBRowDataPanel', () => ({
   getMapColumnNames: () => [],
 }));
 
-const TRACE_SOURCE_WITH_LOGS = {
+// Test fixtures carry only the fields the panel reads; TSource's full shape is
+// irrelevant here and spelling it out would bury the gating under boilerplate.
+const asSource = (source: Record<string, unknown>) =>
+  source as unknown as TSource;
+
+const TRACE_SOURCE_WITH_LOGS = asSource({
   id: 'trace-src',
   kind: 'trace',
   traceIdExpression: 'TraceId',
@@ -60,16 +65,16 @@ const TRACE_SOURCE_WITH_LOGS = {
   logSourceId: 'log-src',
   timestampValueExpression: 'Timestamp',
   resourceAttributesExpression: 'ResourceAttributes',
-};
+});
 
-const LOG_SOURCE = {
+const LOG_SOURCE = asSource({
   id: 'log-src',
   kind: 'log',
   traceSourceId: 'trace-src',
   traceIdExpression: 'TraceId',
   timestampValueExpression: 'Timestamp',
   resourceAttributesExpression: 'ResourceAttributes',
-};
+});
 
 jest.mock('@/source', () => ({
   __esModule: true,
@@ -239,8 +244,7 @@ describe('DBRowSidePanelInner — trace logs tab', () => {
 
   it('offers the tab on a span, pointed at the correlated log source', () => {
     mockQueryStore.sidePanelTab = Tab.Logs;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    renderPanel(TRACE_SOURCE_WITH_LOGS as TSource);
+    renderPanel(TRACE_SOURCE_WITH_LOGS);
 
     expect(tabValues()).toContain(Tab.Logs);
     expect(mockTraceLogsProps.current.logSourceId).toBe('log-src');
@@ -251,8 +255,7 @@ describe('DBRowSidePanelInner — trace logs tab', () => {
 
   it('offers the tab on a log, pointed at its own source and highlighting it', () => {
     mockQueryStore.sidePanelTab = Tab.Logs;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    renderPanel(LOG_SOURCE as TSource);
+    renderPanel(LOG_SOURCE);
 
     expect(tabValues()).toContain(Tab.Logs);
     expect(mockTraceLogsProps.current.logSourceId).toBe('log-src');
@@ -260,12 +263,9 @@ describe('DBRowSidePanelInner — trace logs tab', () => {
   });
 
   it('hides the tab when the trace source has no correlated log source', () => {
-    const traceSourceWithoutLogs = {
-      ...TRACE_SOURCE_WITH_LOGS,
-      logSourceId: undefined,
-    };
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    renderPanel(traceSourceWithoutLogs as TSource);
+    renderPanel(
+      asSource({ ...TRACE_SOURCE_WITH_LOGS, logSourceId: undefined }),
+    );
 
     expect(tabValues()).not.toContain(Tab.Logs);
   });
@@ -274,16 +274,14 @@ describe('DBRowSidePanelInner — trace logs tab', () => {
     mockUseRowData.mockReturnValue(
       rowResult({ ...ROW_WITH_TRACE, __hdx_trace_id: '' }),
     );
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    renderPanel(LOG_SOURCE as TSource);
+    renderPanel(LOG_SOURCE);
 
     expect(tabValues()).not.toContain(Tab.Logs);
   });
 
   it('pushes a cross-source frame when a log is picked from a span', () => {
     mockQueryStore.sidePanelTab = Tab.Logs;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    renderPanel(TRACE_SOURCE_WITH_LOGS as TSource);
+    renderPanel(TRACE_SOURCE_WITH_LOGS);
 
     clickLogRow("TraceId='abc' AND SpanId='def'");
 
@@ -304,8 +302,7 @@ describe('DBRowSidePanelInner — trace logs tab', () => {
 
   it('stays in the same source when a log is picked from another log', () => {
     mockQueryStore.sidePanelTab = Tab.Logs;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    renderPanel(LOG_SOURCE as TSource);
+    renderPanel(LOG_SOURCE);
 
     clickLogRow('row-2');
 
@@ -318,10 +315,11 @@ describe('DBRowSidePanelInner — trace logs tab', () => {
     expect(setterFor('sidePanelSourceStack')).toHaveBeenCalledWith([]);
   });
 
+  // That Tab.Logs never *becomes* the remembered reading view is pinned in
+  // hooks/__tests__/useSidePanelStack.test.tsx; this covers the wiring.
   it('lands the picked log on a reading view, not on another logs list', () => {
     mockQueryStore.sidePanelTab = Tab.Logs;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    renderPanel(LOG_SOURCE as TSource);
+    renderPanel(LOG_SOURCE);
 
     clickLogRow('row-2');
 

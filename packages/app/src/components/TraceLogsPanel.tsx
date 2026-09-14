@@ -1,8 +1,11 @@
-import { use, useCallback, useMemo } from 'react';
+import { use, useCallback, useEffect, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import SqlString from 'sqlstring';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
-import { SourceKind } from '@hyperdx/common-utils/dist/types';
+import {
+  BuilderChartConfigWithDateRange,
+  SourceKind,
+} from '@hyperdx/common-utils/dist/types';
 import { Box, Flex } from '@mantine/core';
 import { IconLogs } from '@tabler/icons-react';
 
@@ -33,6 +36,7 @@ export default function TraceLogsPanel({
   traceId,
   dateRange,
   highlightedRowId,
+  searchTableConfig,
   onNavigateToLog,
   'data-testid': dataTestId,
 }: {
@@ -41,6 +45,12 @@ export default function TraceLogsPanel({
   dateRange: [Date, Date];
   /** Row id of the log this panel was opened from, when it is one of these logs. */
   highlightedRowId?: string;
+  /**
+   * The searched table's config, when this panel's logs come from that same
+   * source. Its `select` is reused so these rows carry the same ids the search
+   * built `highlightedRowId` from, and so the columns track the reader's.
+   */
+  searchTableConfig?: BuilderChartConfigWithDateRange;
   onNavigateToLog: (
     rowId: string,
     aliasWith: WithClause[],
@@ -59,20 +69,36 @@ export default function TraceLogsPanel({
     onSubmit: submitFilters,
   } = useWaterfallSearchState({ hasLogSource: true });
 
-  const logFilterLanguage: 'lucene' | 'sql' =
-    logWhereLanguage === 'sql' ? 'sql' : 'lucene';
+  const urlLanguage =
+    logWhereLanguage === 'sql' || logWhereLanguage === 'lucene'
+      ? logWhereLanguage
+      : undefined;
 
-  const { control, handleSubmit, setValue } = useForm({
+  // The query language follows the URL alone, defaulting to Lucene, so a filter
+  // shared with the waterfall runs the same way in both places even if a link
+  // carries `logWhere` without its language.
+  const logFilterLanguage: 'lucene' | 'sql' = urlLanguage ?? 'lucene';
+
+  // The input shows the language the filter actually runs in. With no filter
+  // there is nothing to interpret, so the user's stored editor preference wins.
+  const displayedLanguage =
+    urlLanguage ?? (logWhere ? 'lucene' : (getStoredLanguage() ?? 'lucene'));
+
+  const { control, handleSubmit, setValue, reset } = useForm({
     defaultValues: {
       logWhere: logWhere ?? '',
-      // Prefer the URL language so a shared link / reload shows the language
-      // the filter runs in; fall back to the stored preference.
-      logWhereLanguage:
-        logWhereLanguage === 'sql' || logWhereLanguage === 'lucene'
-          ? logWhereLanguage
-          : (getStoredLanguage() ?? 'lucene'),
+      logWhereLanguage: displayedLanguage,
     },
   });
+
+  // The filter is URL state, which can change without this form touching it
+  // (browser back/forward, a shared link). Re-seed the input so what's on
+  // screen is what the table is querying — and so a submit can't write a stale
+  // value back over the restored one. Submitting is a no-op here: it moves the
+  // URL to what the form already holds.
+  useEffect(() => {
+    reset({ logWhere: logWhere ?? '', logWhereLanguage: displayedLanguage });
+  }, [logWhere, displayedLanguage, reset]);
 
   const onSubmitFilter = useCallback(
     (data: { logWhere: string; logWhereLanguage: string }) => {
@@ -90,14 +116,7 @@ export default function TraceLogsPanel({
     if (logSource == null || !traceIdExpression) {
       return undefined;
     }
-    return {
-      connection: logSource.connection,
-      from: logSource.from,
-      timestampValueExpression: logSource.timestampValueExpression,
-      implicitColumnExpression: logSource.implicitColumnExpression,
-      bodyExpression: logSource.bodyExpression,
-      useTextIndexForImplicitColumn: logSource.useTextIndexForImplicitColumn,
-      select: logSource.defaultTableSelectExpression ?? '',
+    const scope = {
       // The trace scope goes in `filters` so the user's filter keeps the whole
       // `where` slot to itself — the two run in independent languages.
       filters: [
@@ -116,6 +135,19 @@ export default function TraceLogsPanel({
       limit: { limit: 200 },
       dateRange,
     };
+    if (searchTableConfig != null) {
+      return { ...searchTableConfig, ...scope };
+    }
+    return {
+      connection: logSource.connection,
+      from: logSource.from,
+      timestampValueExpression: logSource.timestampValueExpression,
+      implicitColumnExpression: logSource.implicitColumnExpression,
+      bodyExpression: logSource.bodyExpression,
+      useTextIndexForImplicitColumn: logSource.useTextIndexForImplicitColumn,
+      select: logSource.defaultTableSelectExpression ?? '',
+      ...scope,
+    };
   }, [
     logSource,
     traceIdExpression,
@@ -123,6 +155,7 @@ export default function TraceLogsPanel({
     logWhere,
     logFilterLanguage,
     dateRange,
+    searchTableConfig,
   ]);
 
   const handleRowDetailsClick = useCallback(
@@ -144,13 +177,18 @@ export default function TraceLogsPanel({
   // opened from, so rebind search-url generation to them and drop the
   // filter/column actions that only make sense against the searched source.
   const parentContext = use(RowSidePanelContext);
-  const rowSidePanelContextValue = useMemo(
-    () =>
-      logSource
-        ? deriveRowSidePanelContextForSource(parentContext, logSource)
-        : parentContext,
-    [parentContext, logSource],
-  );
+  const rowSidePanelContextValue = useMemo(() => {
+    const derived = logSource
+      ? deriveRowSidePanelContextForSource(parentContext, logSource)
+      : parentContext;
+    if (searchTableConfig != null) {
+      return derived;
+    }
+    // These columns are this table's own, not the searched table's, so the
+    // header's remove-column action would drop whatever column sits at that
+    // index in the *search* results. Take it away.
+    return { ...derived, displayedColumns: undefined, toggleColumn: undefined };
+  }, [parentContext, logSource, searchTableConfig]);
 
   if (isLoading) {
     return null;
