@@ -23,6 +23,7 @@ import {
 import Alert, { AlertSource, AlertState } from '@/models/alert';
 import AlertHistory from '@/models/alertHistory';
 import Connection from '@/models/connection';
+import ManagedAgent from '@/models/managedAgent';
 import { SavedSearch } from '@/models/savedSearch';
 import { Source } from '@/models/source';
 import Webhook, { WebhookDocument, WebhookService } from '@/models/webhook';
@@ -2188,6 +2189,94 @@ describe('alerts router', () => {
         configType: 'sql',
         connection: connection._id.toString(),
       });
+    });
+  });
+
+  describe('agent notification channels', () => {
+    const seedManagedAgent = (teamId: mongoose.Types.ObjectId) =>
+      ManagedAgent.create({
+        team: teamId,
+        name: 'SRE Responder',
+        model: 'claude-opus-4-8',
+        anthropicAgentId: 'agent_1',
+        vaultId: 'vlt_1',
+        environmentId: 'env_1',
+        mcpServerUrl: 'https://mcp.example.test/api/mcp',
+      });
+
+    const agentAlertInput = (
+      dashboardId: string,
+      tileId: string,
+      agentId: string,
+    ) => ({
+      ...makeAlertInput({ dashboardId, tileId }),
+      channel: { type: 'agent' as const, agentId },
+    });
+
+    it('accepts an agent channel referencing a team agent and round-trips agentId', async () => {
+      const dashboard = await agent
+        .post('/dashboards')
+        .send(MOCK_DASHBOARD)
+        .expect(200);
+      const managedAgent = await seedManagedAgent(team._id);
+
+      await agent
+        .post('/alerts')
+        .send(
+          agentAlertInput(
+            dashboard.body.id,
+            dashboard.body.tiles[0].id,
+            managedAgent._id.toString(),
+          ),
+        )
+        .expect(200);
+
+      const alerts = await agent.get('/alerts').expect(200);
+      expect(alerts.body.data[0].channel).toEqual({
+        type: 'agent',
+        agentId: managedAgent._id.toString(),
+      });
+    });
+
+    it("rejects an agent channel referencing another team's agent", async () => {
+      const dashboard = await agent
+        .post('/dashboards')
+        .send(MOCK_DASHBOARD)
+        .expect(200);
+      const foreignAgent = await seedManagedAgent(
+        new mongoose.Types.ObjectId(),
+      );
+
+      const resp = await agent
+        .post('/alerts')
+        .send(
+          agentAlertInput(
+            dashboard.body.id,
+            dashboard.body.tiles[0].id,
+            foreignAgent._id.toString(),
+          ),
+        )
+        .expect(400);
+      expect(resp.text).toContain('Agent not found');
+    });
+
+    it('rejects a malformed agent id', async () => {
+      const dashboard = await agent
+        .post('/dashboards')
+        .send(MOCK_DASHBOARD)
+        .expect(200);
+
+      const resp = await agent
+        .post('/alerts')
+        .send(
+          agentAlertInput(
+            dashboard.body.id,
+            dashboard.body.tiles[0].id,
+            'not-an-object-id',
+          ),
+        )
+        .expect(400);
+      expect(resp.text).toContain('Invalid agent ID');
     });
   });
 });

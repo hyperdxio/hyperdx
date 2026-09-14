@@ -60,11 +60,13 @@ const formatAlertResponse = (
     createdBy: alert.createdBy
       ? pick(alert.createdBy, ['email', 'name'])
       : undefined,
-    // webhookId is included so edit surfaces (e.g. the alert detail page) can
-    // prefill the notification channel; webhook ids are already visible to
-    // team members via GET /webhooks.
-    channel: pick(alert.channel, ['type', 'webhookId']),
-    channels: getAlertChannels(alert).map(c => pick(c, ['type', 'webhookId'])),
+    // webhookId/agentId are included so edit surfaces (e.g. the alert detail
+    // page) can prefill the notification channel; both id kinds are already
+    // visible to team members via GET /webhooks and GET /managed-agents.
+    channel: pick(alert.channel, ['type', 'webhookId', 'agentId']),
+    channels: getAlertChannels(alert).map(c =>
+      pick(c, ['type', 'webhookId', 'agentId']),
+    ),
     ...(alert.dashboard && {
       dashboardId: alert.dashboard._id,
       dashboard: {

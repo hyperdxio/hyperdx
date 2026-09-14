@@ -133,6 +133,7 @@ export const TILE_ALERT_INTERVAL_OPTIONS = _.pick(ALERT_INTERVAL_OPTIONS, [
 
 export const ALERT_CHANNEL_OPTIONS: Record<AlertChannelType, string> = {
   webhook: 'Webhook',
+  agent: 'AI agent',
 };
 
 const EMPTY_ALERT_CHANNEL = { type: 'webhook', webhookId: '' } as const;

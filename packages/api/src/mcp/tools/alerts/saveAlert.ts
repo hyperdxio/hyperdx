@@ -15,7 +15,7 @@ import {
   mcpUserError,
   validateObjectId,
 } from '@/mcp/utils/errors';
-import { AlertSource } from '@/models/alert';
+import { AlertChannel, AlertSource } from '@/models/alert';
 import {
   convertExternalAlertChartConfigToInternal,
   translateAlertDocumentToExternalAlertWithChartConfig,
@@ -48,11 +48,13 @@ export function registerSaveAlert({
         'Alerts monitor a saved search, a dashboard tile, or an inline chart ' +
         'config (source "inline" + chartConfig — no saved search or dashboard ' +
         'needed) and fire when the metric crosses a threshold. At least one ' +
-        'webhook notification channel ' +
-        'is required: pass "channels" for 1-10 targets, or the legacy singular ' +
-        '"channel" for one. Updates replace the alert configuration rather than ' +
-        'merging it, so read the alert first and resend its full "channels" ' +
-        'array to avoid dropping channels you did not mean to remove.',
+        'notification channel is required — a webhook ' +
+        '({type:"webhook", webhookId}) or, on deployments with managed agents ' +
+        'enabled, an AI agent investigation ({type:"agent", agentId}). Pass ' +
+        '"channels" for 1-10 targets, or the legacy singular "channel" for ' +
+        'one. Updates replace the alert configuration rather than merging it, ' +
+        'so read the alert first and resend its full "channels" array to ' +
+        'avoid dropping channels you did not mean to remove.',
       inputSchema: mcpSaveAlertSchema,
     },
     async input => {
@@ -95,10 +97,24 @@ export function registerSaveAlert({
 
       // Build the alert input matching the shape expected by controllers.
       const source = MCP_SOURCE_TO_ALERT_SOURCE[input.source];
+      // The MCP schema keeps webhookId/agentId both optional on one object
+      // shape (the per-type pairing is enforced in validateSaveAlertInput), so
+      // narrow into the discriminated AlertChannel here.
+      const toAlertChannel = (c: {
+        type: 'webhook' | 'agent';
+        webhookId?: string;
+        agentId?: string;
+      }): AlertChannel =>
+        c.type === 'agent'
+          ? { type: 'agent', agentId: c.agentId ?? '' }
+          : { type: 'webhook', webhookId: c.webhookId ?? '' };
+
       const alertInput: AlertInput = {
         source,
         // `channel` is omitted; makeAlert mirrors it from channels[0].
-        channels: input.channels ?? (input.channel ? [input.channel] : []),
+        channels: (
+          input.channels ?? (input.channel ? [input.channel] : [])
+        ).map(toAlertChannel),
         interval: input.interval,
         threshold: input.threshold,
         thresholdType: input.thresholdType as AlertThresholdType,

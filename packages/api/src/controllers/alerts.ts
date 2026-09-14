@@ -10,6 +10,7 @@ import { groupBy } from 'lodash';
 import { Types } from 'mongoose';
 import { z } from 'zod';
 
+import { IS_MANAGED_AGENTS_ENABLED } from '@/config';
 import type { ObjectId } from '@/models';
 import Alert, {
   AlertChannel,
@@ -19,6 +20,7 @@ import Alert, {
 } from '@/models/alert';
 import Connection from '@/models/connection';
 import Dashboard, { IDashboard } from '@/models/dashboard';
+import ManagedAgent from '@/models/managedAgent';
 import { ISavedSearch, SavedSearch } from '@/models/savedSearch';
 import { Source } from '@/models/source';
 import { IUser } from '@/models/user';
@@ -230,6 +232,28 @@ export const validateAlertInput = async (
   });
   if (found !== uniqueIds.length) {
     throw new Api400Error('Webhook not found');
+  }
+
+  const agentIds = channels.filter(c => c.type === 'agent').map(c => c.agentId);
+  if (agentIds.length > 0) {
+    // The alert editor is flag-gated too; this rejects an agent channel saved
+    // via the API on a deployment where dispatch would silently do nothing.
+    if (!IS_MANAGED_AGENTS_ENABLED) {
+      throw new Api400Error(
+        'AI agent notification channels are not enabled on this deployment (set HDX_MANAGED_AGENTS_ENABLED)',
+      );
+    }
+    for (const agentId of agentIds) {
+      validateObjectId(agentId, 'Invalid agent ID');
+    }
+    const uniqueAgentIds = [...new Set(agentIds)];
+    const foundAgents = await ManagedAgent.countDocuments({
+      _id: { $in: uniqueAgentIds },
+      team: teamId,
+    });
+    if (foundAgents !== uniqueAgentIds.length) {
+      throw new Api400Error('Agent not found');
+    }
   }
 
   return refs;
