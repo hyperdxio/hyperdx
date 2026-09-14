@@ -3668,6 +3668,75 @@ describe('checkAlerts', () => {
         );
       });
 
+      // Every target unresolvable (the webhook was deleted) queues no job, and
+      // an empty dispatch finishes instantly — 0ms would read as a target that
+      // answered at once.
+      it('records no delivery time when the webhook no longer exists', async () => {
+        const {
+          team,
+          webhook,
+          connection,
+          source,
+          savedSearch,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
+
+        await bulkInsertLogs([
+          {
+            ServiceName: 'api',
+            Timestamp: new Date('2023-11-16T22:05:00.000Z'),
+            SeverityText: 'error',
+            Body: 'oh no',
+          },
+          {
+            ServiceName: 'api',
+            Timestamp: new Date('2023-11-16T22:05:00.000Z'),
+            SeverityText: 'error',
+            Body: 'oh no',
+          },
+        ]);
+
+        const details = await createAlertDetails(
+          team,
+          source,
+          {
+            source: AlertSource.SAVED_SEARCH,
+            channel: {
+              type: 'webhook',
+              webhookId: webhook._id.toString(),
+            },
+            interval: '5m',
+            thresholdType: AlertThresholdType.ABOVE,
+            threshold: 1,
+            savedSearchId: savedSearch.id,
+          },
+          {
+            taskType: AlertTaskType.SAVED_SEARCH,
+            savedSearch,
+          },
+        );
+
+        await processAlertAtTime(
+          new Date('2023-11-16T22:10:00.000Z'),
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          // The alert still points at a webhook the team no longer has.
+          new Map(),
+        );
+
+        const normalHistories = await AlertHistory.find({
+          alert: details.alert.id,
+          state: { $ne: AlertState.ERROR },
+        });
+        expect(normalHistories).toHaveLength(1);
+        const { webhookDurationMs, notificationTargets } =
+          normalHistories[0].analytics!;
+        expect(notificationTargets).toBeUndefined();
+        expect(webhookDurationMs).toBeUndefined();
+      });
+
       // An unclosed Handlebars block throws at compile, before any dispatch.
       it('records no delivery time when the message fails to compile', async () => {
         const {

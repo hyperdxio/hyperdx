@@ -1353,9 +1353,13 @@ export const processAlert = async (
             teamWebhooksById,
           });
         // Only the dispatch phase: the column reports how long the targets
-        // took to respond, not the time spent building the message.
-        evaluationAnalytics.webhookDurationMs =
-          (evaluationAnalytics.webhookDurationMs ?? 0) + dispatchDurationMs;
+        // took to respond, not the time spent building the message. A round
+        // that queued no job (every target unresolvable) resolves instantly,
+        // so it must not report 0ms as though a target answered at once.
+        if (timings.length > 0) {
+          evaluationAnalytics.webhookDurationMs =
+            (evaluationAnalytics.webhookDurationMs ?? 0) + dispatchDurationMs;
+        }
         recordNotificationTimings(timings);
         // Each entry is a target that didn't end up delivered: unresolvable,
         // capped, or (for the inline dispatcher) an actual send rejection —
