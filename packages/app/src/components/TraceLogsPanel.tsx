@@ -14,6 +14,7 @@ import { IconLogs } from '@tabler/icons-react';
 import EmptyState from '@/components/EmptyState';
 import SearchWhereInput, {
   getStoredLanguage,
+  resolveWhereLanguage,
 } from '@/components/SearchInput/SearchWhereInput';
 import { RowWhereResult, WithClause } from '@/hooks/useRowWhere';
 import useWaterfallSearchState from '@/hooks/useWaterfallSearchState';
@@ -72,10 +73,7 @@ export default function TraceLogsPanel({
     onSubmit: submitFilters,
   } = useWaterfallSearchState({ hasLogSource: true });
 
-  const urlLanguage =
-    logWhereLanguage === 'sql' || logWhereLanguage === 'lucene'
-      ? logWhereLanguage
-      : undefined;
+  const urlLanguage = resolveWhereLanguage(logWhereLanguage);
 
   // The query language follows the URL alone, defaulting to Lucene, so a filter
   // shared with the waterfall runs the same way in both places even if a link

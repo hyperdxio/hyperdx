@@ -303,7 +303,7 @@ describe('DBRowSidePanelInner — trace logs tab', () => {
 
   it("keeps the search's columns after drilling into another log", () => {
     // A drilldown changes which row is shown, not which columns the reader
-    // chose — and the row id it produced was built from those columns.
+    // chose, so the list must not silently switch column sets.
     mockQueryStore.sidePanelTab = Tab.Logs;
     mockQueryStore.sidePanelStackRoot = 'row-1';
     mockQueryStore.sidePanelNavStack = [
@@ -314,7 +314,10 @@ describe('DBRowSidePanelInner — trace logs tab', () => {
     expect(mockTraceLogsProps.current.selectOverride).toBe(
       SEARCH_TABLE_CONFIG.select,
     );
-    expect(mockTraceLogsProps.current.highlightedRowId).toBe('row-2');
+    // The highlight goes, though: a nested row's id may have been built by
+    // another panel selecting other columns (Surrounding Context falls back to
+    // the source's own), and an unmatchable id costs a paging hunt.
+    expect(mockTraceLogsProps.current.highlightedRowId).toBeUndefined();
   });
 
   it('withholds the highlight when the tab selects its own columns', () => {

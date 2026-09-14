@@ -85,6 +85,8 @@ jest.mock('@/components/SearchInput/SearchWhereInput', () => ({
     <div data-testid={dataTestId ?? `${name}-input`}>{name}</div>
   ),
   getStoredLanguage: () => 'lucene',
+  resolveWhereLanguage: (v: unknown) =>
+    v === 'sql' || v === 'lucene' ? v : undefined,
 }));
 
 const makeWaterfallSearchState = () => ({

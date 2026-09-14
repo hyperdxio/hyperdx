@@ -47,6 +47,7 @@ import { ContactSupportText } from '@/components/ContactSupportText';
 import { ErrorCollapse } from '@/components/Error/ErrorCollapse';
 import SearchWhereInput, {
   getStoredLanguage,
+  resolveWhereLanguage,
 } from '@/components/SearchInput/SearchWhereInput';
 import {
   TimelineChart,
@@ -609,12 +610,12 @@ export function DBTraceWaterfallChartContainer({
     hasLogSource: !!logTableSource,
   });
 
-  // Each filter runs in its own language. Defaults come from the URL (shared
-  // link / reload fidelity), falling back to the stored preference.
-  const traceFilterLanguage: 'lucene' | 'sql' =
-    traceWhereLanguage === 'sql' ? 'sql' : 'lucene';
-  const logFilterLanguage: 'lucene' | 'sql' =
-    logWhereLanguage === 'sql' ? 'sql' : 'lucene';
+  // Each filter runs in its own language, read from the URL by the same helper
+  // the Trace logs tab uses, so a shared `logWhere` runs identically in both.
+  const traceUrlLanguage = resolveWhereLanguage(traceWhereLanguage);
+  const logUrlLanguage = resolveWhereLanguage(logWhereLanguage);
+  const traceFilterLanguage: 'lucene' | 'sql' = traceUrlLanguage ?? 'lucene';
+  const logFilterLanguage: 'lucene' | 'sql' = logUrlLanguage ?? 'lucene';
 
   const { control, handleSubmit, setValue } = useForm({
     defaultValues: {
@@ -622,14 +623,8 @@ export function DBTraceWaterfallChartContainer({
       logWhere: logWhere ?? '',
       // Prefer each input's URL language so a shared link / reload shows the
       // same language the filter runs in; fall back to the stored preference.
-      traceWhereLanguage:
-        traceWhereLanguage === 'sql' || traceWhereLanguage === 'lucene'
-          ? traceWhereLanguage
-          : (getStoredLanguage() ?? 'lucene'),
-      logWhereLanguage:
-        logWhereLanguage === 'sql' || logWhereLanguage === 'lucene'
-          ? logWhereLanguage
-          : (getStoredLanguage() ?? 'lucene'),
+      traceWhereLanguage: traceUrlLanguage ?? getStoredLanguage() ?? 'lucene',
+      logWhereLanguage: logUrlLanguage ?? getStoredLanguage() ?? 'lucene',
     },
   });
 

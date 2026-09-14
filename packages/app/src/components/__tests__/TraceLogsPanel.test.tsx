@@ -93,6 +93,8 @@ jest.mock('../SearchInput/SearchWhereInput', () => {
       );
     },
     getStoredLanguage: () => mockStoredLanguage,
+    resolveWhereLanguage: (v: unknown) =>
+      v === 'sql' || v === 'lucene' ? v : undefined,
   };
 });
 
@@ -150,12 +152,14 @@ function renderPanel({
   onNavigateToLog = jest.fn(),
   selectOverride,
   traceId = TRACE_ID,
+  highlightedRowId,
 }: {
   /** Null for a source that no longer resolves. */
   source?: TLogSource | null;
   onNavigateToLog?: jest.Mock;
   selectOverride?: string;
   traceId?: string;
+  highlightedRowId?: string;
 } = {}) {
   mockUseSource.mockReturnValue({
     data: source ?? undefined,
@@ -169,6 +173,7 @@ function renderPanel({
         traceId={traceId}
         dateRange={DATE_RANGE}
         selectOverride={selectOverride}
+        highlightedRowId={highlightedRowId}
         onNavigateToLog={onNavigateToLog}
       />
     </MantineProvider>
@@ -349,6 +354,14 @@ describe('TraceLogsPanel', () => {
     );
 
     expect(onNavigateToLog).toHaveBeenCalledWith('row-2', [], 'Log');
+  });
+
+  it('hands the row to highlight to the table', () => {
+    renderPanel({ highlightedRowId: "Timestamp='2024-05-01 10:00:00'" });
+
+    expect(mockRowTableProps.current.highlightedLineId).toBe(
+      "Timestamp='2024-05-01 10:00:00'",
+    );
   });
 
   it('escapes a trace id that carries SQL metacharacters', () => {
