@@ -106,11 +106,18 @@ const mcpAlertChartConfigSchema = z
 const mcpAlertChannelSchema = z
   .object({
     type: z
-      .literal('webhook')
+      .enum(['webhook', 'agent'])
       .describe('Channel type for alert notifications.'),
     webhookId: z
       .string()
+      .optional()
       .describe('Webhook destination ID (required for webhook channel).'),
+    agentId: z
+      .string()
+      .optional()
+      .describe(
+        'Managed agent ID (required for agent channel; a firing alert starts an AI investigation on this agent).',
+      ),
   })
   .describe('Alert notification channel configuration.');
 
@@ -242,6 +249,18 @@ export function validateSaveAlertInput(data: McpSaveAlertInput): string | null {
         return 'When both "channel" and "channels" are provided, "channel" must match the first entry of "channels"';
       case 'duplicate':
         return 'Duplicate notification channels are not allowed';
+    }
+  }
+
+  // Per-type required channel id (the Zod schema keeps both ids optional so
+  // one object shape serves both types; enforce the pairing here).
+  for (const channel of [data.channel, ...(data.channels ?? [])]) {
+    if (!channel) continue;
+    if (channel.type === 'webhook' && !channel.webhookId) {
+      return 'webhookId is required for a webhook channel';
+    }
+    if (channel.type === 'agent' && !channel.agentId) {
+      return 'agentId is required for an agent channel';
     }
   }
 

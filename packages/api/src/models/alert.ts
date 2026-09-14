@@ -48,6 +48,12 @@ export type AlertChannel =
       webhookId: string;
     }
   | {
+      // A firing alert starts an investigation session on the referenced
+      // managed agent (see models/managedAgent.ts) instead of POSTing a payload.
+      type: 'agent';
+      agentId: string;
+    }
+  | {
       type: null;
     };
 
