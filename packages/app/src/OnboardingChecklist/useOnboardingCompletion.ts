@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { escapeSqlString } from '@hyperdx/common-utils/dist/core/utils';
 import { isPersistableUserId } from '@hyperdx/common-utils/dist/types';
 
 import api from '@/api';
@@ -75,9 +76,11 @@ export function useOnboardingCompletion(
       },
       where: '',
       filtersLogicalOperator: 'OR' as const,
+      // tableName/databaseName come from user-configured Source docs and this
+      // `type: 'sql'` condition renders via UNSAFE_RAW_SQL, so escape both.
       filters: (firstConnectionSources ?? []).map(source => ({
         type: 'sql' as const,
-        condition: `table = '${source.from.tableName}' AND database = '${source.from.databaseName}'`,
+        condition: `table = '${escapeSqlString(source.from.tableName)}' AND database = '${escapeSqlString(source.from.databaseName)}'`,
       })),
       connection: firstConnection?.id ?? '',
     }),
