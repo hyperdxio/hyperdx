@@ -560,8 +560,15 @@ export const DBRowSidePanelInner = ({
       : undefined;
   const enableTraceLogs = !!traceId && !!traceLogSourceId;
   // The displayed row is itself one of the logs the tab lists, so picking one
-  // is a row change rather than a source hop, and the current row is in view.
+  // is a row change rather than a source hop.
   const isOwnTraceLogSource = traceLogSourceId === source.id;
+  // Only the search page hands down a table config, and only at the root frame.
+  // When it's there, the tab can share the reader's columns; without it the tab
+  // falls back to the source's own, and nothing about the opening table carries
+  // over — including a comparable row id.
+  const traceLogsSearchConfig = isOwnTraceLogSource
+    ? dbSqlRowTableConfig
+    : undefined;
 
   const enableServiceMap = traceId && traceSourceId;
 
@@ -1165,9 +1172,12 @@ export const DBRowSidePanelInner = ({
             logSourceId={traceLogSourceId}
             traceId={traceId}
             dateRange={oneHourRange}
-            highlightedRowId={isOwnTraceLogSource ? activeRowId : undefined}
-            searchTableConfig={
-              isOwnTraceLogSource ? dbSqlRowTableConfig : undefined
+            searchTableConfig={traceLogsSearchConfig}
+            // Row ids are built from the selected columns, so the id this
+            // panel was opened with is only comparable to the tab's rows when
+            // the tab is selecting the same columns.
+            highlightedRowId={
+              traceLogsSearchConfig != null ? activeRowId : undefined
             }
             onNavigateToLog={handleTraceLogNavigate}
           />

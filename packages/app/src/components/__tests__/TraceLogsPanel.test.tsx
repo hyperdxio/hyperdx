@@ -176,6 +176,24 @@ describe('TraceLogsPanel', () => {
     expect(config.dateRange).toBe(DATE_RANGE);
   });
 
+  it("keeps the source's mandatory table filter ahead of the trace scope", () => {
+    renderPanel({
+      source: asLogSource({
+        ...LOG_SOURCE,
+        tableFilterExpression: "ServiceName != 'internal'",
+      }),
+    });
+
+    const config = mockRowTableProps.current.config!;
+    // Rows the source is configured to hide must stay hidden here too.
+    expect(config.filters).toEqual([
+      { type: 'sql', condition: "ServiceName != 'internal'" },
+      { type: 'sql', condition: `TraceId='${TRACE_ID}'` },
+    ]);
+    // And the source id, which is how its querySettings reach the query.
+    expect(config.source).toBe('log-src');
+  });
+
   it('applies the waterfall log filter and its language from the URL', () => {
     mockQueryStore.logWhere = "SeverityText = 'error'";
     mockQueryStore.logWhereLanguage = 'sql';
@@ -232,6 +250,8 @@ describe('TraceLogsPanel', () => {
       expect(config.where).toBe('');
       expect(config.orderBy).toBe('Timestamp ASC');
       expect(config.dateRange).toBe(DATE_RANGE);
+      // Source-level fields still come from the log source, not the config.
+      expect(config.source).toBe('log-src');
     });
 
     it('leaves the remove-column action in place, since the columns are shared', () => {

@@ -105,6 +105,7 @@ type TraceLogsPanelProps = {
   logSourceId?: string;
   traceId?: string;
   highlightedRowId?: string;
+  searchTableConfig?: unknown;
   onNavigateToLog?: (
     rowId: string,
     aliasWith: unknown[],
@@ -175,7 +176,10 @@ jest.mock('@/useFormatTime', () => ({
 }));
 
 // NOTE: imported after the mock factories above.
-import { DBRowSidePanelInner } from '@/components/DBRowSidePanel';
+import {
+  DBRowSidePanelInner,
+  RowSidePanelContext,
+} from '@/components/DBRowSidePanel';
 import { Tab } from '@/components/DBRowSidePanel.types';
 import useSidePanelStack from '@/hooks/useSidePanelStack';
 
@@ -204,17 +208,40 @@ const ROW_WITH_TRACE = {
   __hdx_body: 'a log line',
 };
 
-function renderPanel(source: TSource, rowId = 'row-1') {
+// What the search page provides: the table config behind the row, whose
+// `select` decides what a row id is made of.
+const SEARCH_TABLE_CONFIG = {
+  connection: 'conn',
+  from: { databaseName: 'default', tableName: 'otel_logs' },
+  timestampValueExpression: 'Timestamp',
+  select: 'Timestamp, Body',
+  where: '',
+  whereLanguage: 'lucene' as const,
+  dateRange: [new Date(0), new Date(1)] as [Date, Date],
+};
+
+function renderPanel(
+  source: TSource,
+  { rowId = 'row-1', withSearchTableConfig = false } = {},
+) {
   function Harness() {
     const sidePanelStack = useSidePanelStack({ initialRowId: rowId });
     return (
-      <DBRowSidePanelInner
-        source={source}
-        rowId={rowId}
-        aliasWith={[]}
-        onClose={jest.fn()}
-        sidePanelStack={sidePanelStack}
-      />
+      <RowSidePanelContext
+        value={{
+          dbSqlRowTableConfig: withSearchTableConfig
+            ? SEARCH_TABLE_CONFIG
+            : undefined,
+        }}
+      >
+        <DBRowSidePanelInner
+          source={source}
+          rowId={rowId}
+          aliasWith={[]}
+          onClose={jest.fn()}
+          sidePanelStack={sidePanelStack}
+        />
+      </RowSidePanelContext>
     );
   }
   return render(
@@ -253,13 +280,33 @@ describe('DBRowSidePanelInner — trace logs tab', () => {
     expect(mockTraceLogsProps.current.highlightedRowId).toBeUndefined();
   });
 
-  it('offers the tab on a log, pointed at its own source and highlighting it', () => {
+  it('offers the tab on a log, pointed at its own source', () => {
     mockQueryStore.sidePanelTab = Tab.Logs;
     renderPanel(LOG_SOURCE);
 
     expect(tabValues()).toContain(Tab.Logs);
     expect(mockTraceLogsProps.current.logSourceId).toBe('log-src');
+  });
+
+  it("shares the search's table config, and the row id built from it", () => {
+    mockQueryStore.sidePanelTab = Tab.Logs;
+    renderPanel(LOG_SOURCE, { withSearchTableConfig: true });
+
+    expect(mockTraceLogsProps.current.searchTableConfig).toBe(
+      SEARCH_TABLE_CONFIG,
+    );
     expect(mockTraceLogsProps.current.highlightedRowId).toBe('row-1');
+  });
+
+  it('withholds the highlight when the tab selects its own columns', () => {
+    // A row id is built from the selected columns, so an id from a table
+    // selecting something else can never match one of these rows — and the
+    // table would page through the window hunting for it.
+    mockQueryStore.sidePanelTab = Tab.Logs;
+    renderPanel(LOG_SOURCE);
+
+    expect(mockTraceLogsProps.current.searchTableConfig).toBeUndefined();
+    expect(mockTraceLogsProps.current.highlightedRowId).toBeUndefined();
   });
 
   it('hides the tab when the trace source has no correlated log source', () => {

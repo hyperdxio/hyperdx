@@ -2,6 +2,7 @@ import { use, useCallback, useEffect, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import SqlString from 'sqlstring';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
+import { buildSearchChartConfig } from '@hyperdx/common-utils/dist/core/searchChartConfig';
 import {
   BuilderChartConfigWithDateRange,
   SourceKind,
@@ -84,7 +85,7 @@ export default function TraceLogsPanel({
   const displayedLanguage =
     urlLanguage ?? (logWhere ? 'lucene' : (getStoredLanguage() ?? 'lucene'));
 
-  const { control, handleSubmit, setValue, reset } = useForm({
+  const { control, handleSubmit, setValue, reset, getValues } = useForm({
     defaultValues: {
       logWhere: logWhere ?? '',
       logWhereLanguage: displayedLanguage,
@@ -96,9 +97,16 @@ export default function TraceLogsPanel({
   // screen is what the table is querying — and so a submit can't write a stale
   // value back over the restored one. Submitting is a no-op here: it moves the
   // URL to what the form already holds.
+  //
+  // Keyed on the URL alone: the stored language preference changes the moment
+  // the reader flips the language switch, and re-seeding on that would blank a
+  // filter they are halfway through typing.
   useEffect(() => {
-    reset({ logWhere: logWhere ?? '', logWhereLanguage: displayedLanguage });
-  }, [logWhere, displayedLanguage, reset]);
+    reset({
+      logWhere: logWhere ?? '',
+      logWhereLanguage: urlLanguage ?? getValues('logWhereLanguage'),
+    });
+  }, [logWhere, urlLanguage, reset, getValues]);
 
   const onSubmitFilter = useCallback(
     (data: { logWhere: string; logWhereLanguage: string }) => {
@@ -112,41 +120,37 @@ export default function TraceLogsPanel({
 
   const traceIdExpression = logSource?.traceIdExpression;
 
-  const config = useMemo(() => {
+  const config = useMemo((): BuilderChartConfigWithDateRange | undefined => {
     if (logSource == null || !traceIdExpression) {
       return undefined;
     }
-    const scope = {
-      // The trace scope goes in `filters` so the user's filter keeps the whole
-      // `where` slot to itself — the two run in independent languages.
-      filters: [
-        {
-          type: 'sql' as const,
-          condition: SqlString.format('?=?', [
-            SqlString.raw(traceIdExpression),
-            traceId,
-          ]),
-        },
-      ],
-      where: logWhere ?? '',
-      whereLanguage: logFilterLanguage,
-      // Ascending: inside a trace, chronological order is execution order.
-      orderBy: `${logSource.timestampValueExpression} ASC`,
+    return {
+      // Assembled through the shared builder so this query sees the same row
+      // set as the search page and alerts do — it carries the source's
+      // `tableFilterExpression`, sample weighting, and `source` id (which is
+      // how the source's `querySettings` reach the query).
+      ...buildSearchChartConfig(logSource, {
+        // The trace scope goes in `filters` so the user's filter keeps the
+        // whole `where` slot to itself — the two run in independent languages.
+        filters: [
+          {
+            type: 'sql',
+            condition: SqlString.format('?=?', [
+              SqlString.raw(traceIdExpression),
+              traceId,
+            ]),
+          },
+        ],
+        where: logWhere ?? '',
+        whereLanguage: logFilterLanguage,
+        // Falls back to the source's default columns when these logs aren't
+        // the searched table's rows.
+        select: searchTableConfig?.select ?? null,
+        // Ascending: inside a trace, chronological order is execution order.
+        orderBy: `${logSource.timestampValueExpression} ASC`,
+      }),
       limit: { limit: 200 },
       dateRange,
-    };
-    if (searchTableConfig != null) {
-      return { ...searchTableConfig, ...scope };
-    }
-    return {
-      connection: logSource.connection,
-      from: logSource.from,
-      timestampValueExpression: logSource.timestampValueExpression,
-      implicitColumnExpression: logSource.implicitColumnExpression,
-      bodyExpression: logSource.bodyExpression,
-      useTextIndexForImplicitColumn: logSource.useTextIndexForImplicitColumn,
-      select: logSource.defaultTableSelectExpression ?? '',
-      ...scope,
     };
   }, [
     logSource,
