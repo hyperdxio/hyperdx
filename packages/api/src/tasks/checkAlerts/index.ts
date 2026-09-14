@@ -93,6 +93,7 @@ import {
 import {
   AlertMessageTemplateDefaultView,
   buildAlertMessageTemplateTitle,
+  fetchSampleLines,
   NotificationFailure,
   NotificationTiming,
   renderAlertTemplate,
@@ -511,6 +512,7 @@ const fireChannelEvent = async ({
   totalCount,
   windowSizeInMins,
   teamWebhooksById,
+  sampleLines,
 }: {
   alert: IAlert;
   alertProvider: AlertProvider;
@@ -528,7 +530,10 @@ const fireChannelEvent = async ({
   totalCount: number;
   windowSizeInMins: number;
   teamWebhooksById: Map<string, IWebhook>;
-}): Promise<Pick<RenderedAlert, 'failures' | 'timings'>> => {
+  sampleLines?: () => Promise<string>;
+}): Promise<
+  Pick<RenderedAlert, 'failures' | 'timings' | 'dispatchDurationMs'>
+> => {
   const team = alert.team;
   if (team == null) {
     throw new Error('Team not found');
@@ -580,7 +585,7 @@ const fireChannelEvent = async ({
     value: totalCount,
   };
 
-  const { failures, timings } = await renderAlertTemplate({
+  const { failures, timings, dispatchDurationMs } = await renderAlertTemplate({
     alertProvider,
     clickhouseClient,
     metadata,
@@ -593,8 +598,9 @@ const fireChannelEvent = async ({
     view: templateView,
     teamId,
     teamWebhooksById,
+    sampleLines,
   });
-  return { failures, timings };
+  return { failures, timings, dispatchDurationMs };
 };
 
 // Use a delimiter that's unlikely to appear in alert IDs or group names
@@ -1278,6 +1284,10 @@ export const processAlert = async (
     }
 
     const metadata = getMetadata(clickhouseClient);
+    // Populated below for SAVED_SEARCH alerts; referenced by the shared
+    // sampleLinesFor closure that may be called after the non-PromQL query path.
+    let aliasWithClauses: BuilderChartConfigWithOptDateRange['with'];
+
     // Track state per group (or one history if no groupBy)
     const histories = new Map<string, IAlertHistory>();
     const latestAlertContext = new Map<
@@ -1299,6 +1309,32 @@ export const processAlert = async (
       }
       return histories.get(groupKey)!;
     };
+
+    // The sample rows a saved-search body quotes depend on the window, not on
+    // the group or the state, so every group notifying for one window shares a
+    // fetch instead of repeating it. Backfilled buckets each notify for their
+    // own window, hence the key. A failed fetch is shared too — the body falls
+    // back to no sample lines rather than re-running the query per group.
+    const sampleLinesByWindow = new Map<number, Promise<string>>();
+    const sampleLinesFor =
+      details.taskType === AlertTaskType.SAVED_SEARCH
+        ? (startTime: Date) => () => {
+            const key = startTime.getTime();
+            const pending =
+              sampleLinesByWindow.get(key) ??
+              fetchSampleLines({
+                aliasWith: aliasWithClauses,
+                clickhouseClient,
+                endTime: fns.addMinutes(startTime, windowSizeInMins),
+                metadata,
+                savedSearch: details.savedSearch,
+                source: details.source,
+                startTime,
+              });
+            sampleLinesByWindow.set(key, pending);
+            return pending;
+          }
+        : undefined;
 
     // Helper to send a notification, catching and logging any errors.
     const trySendNotification = async ({
@@ -1342,30 +1378,39 @@ export const processAlert = async (
           : `Alert resolved for group "${group}", triggering ${alert.channel.type} notification`,
       );
 
-      const notificationStartedAt = performance.now();
       try {
         // Casts to any here because this is where I stopped unraveling the
         // alert logic requiring large, nested objects. We should look at
         // cleaning this up next. fireChannelEvent guards against null values
         // for these properties.
-        const { failures, timings } = await fireChannelEvent({
-          alert,
-          alertProvider,
-          attributes,
-          clickhouseClient,
-          dashboard: (details as any).dashboard,
-          startTime,
-          endTime: fns.addMinutes(startTime, windowSizeInMins),
-          group,
-          isGroupedAlert: hasGroupBy,
-          metadata,
-          savedSearch: (details as any).savedSearch,
-          source,
-          state,
-          totalCount,
-          windowSizeInMins,
-          teamWebhooksById,
-        });
+        const { failures, timings, dispatchDurationMs } =
+          await fireChannelEvent({
+            alert,
+            alertProvider,
+            attributes,
+            clickhouseClient,
+            dashboard: (details as any).dashboard,
+            startTime,
+            endTime: fns.addMinutes(startTime, windowSizeInMins),
+            group,
+            isGroupedAlert: hasGroupBy,
+            metadata,
+            savedSearch: (details as any).savedSearch,
+            source,
+            state,
+            totalCount,
+            windowSizeInMins,
+            teamWebhooksById,
+            sampleLines: sampleLinesFor?.(startTime),
+          });
+        // Only the dispatch phase: the column reports how long the targets
+        // took to respond, not the time spent building the message. A round
+        // that queued no job (every target unresolvable) resolves instantly,
+        // so it must not report 0ms as though a target answered at once.
+        if (timings.length > 0) {
+          evaluationAnalytics.webhookDurationMs =
+            (evaluationAnalytics.webhookDurationMs ?? 0) + dispatchDurationMs;
+        }
         recordNotificationTimings(timings);
         // Each entry is a target that didn't end up delivered: unresolvable,
         // capped, or (for the inline dispatcher) an actual send rejection —
@@ -1390,12 +1435,6 @@ export const processAlert = async (
           'Failed to fire channel event',
         );
         executionErrors.push(makeWebhookAlertError(e));
-      } finally {
-        // Total wall time spent delivering notifications in this evaluation
-        // (summed across groups/resolves, includes retries and failures).
-        evaluationAnalytics.webhookDurationMs =
-          (evaluationAnalytics.webhookDurationMs ?? 0) +
-          Math.round(performance.now() - notificationStartedAt);
       }
     };
 
