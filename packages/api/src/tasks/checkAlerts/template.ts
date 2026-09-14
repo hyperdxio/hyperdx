@@ -9,6 +9,7 @@ import {
 import {
   AlertChannelType,
   AlertThresholdType,
+  BuilderChartConfigWithOptDateRange,
   ChartConfigWithOptDateRange,
   DisplayType,
   Filter,
@@ -504,6 +505,103 @@ export type RenderedAlert = {
   timings: NotificationTiming[];
 };
 
+/**
+ * The sample rows a saved-search alert quotes in its message body. Keyed to
+ * the evaluation window and the saved search's own filter — not to the group
+ * or the alert state — so one evaluation's notifications can share a result.
+ *
+ * Returns '' when the query fails: a message without its sample lines still
+ * carries the count and the link, so this never fails the notification.
+ */
+export const fetchSampleLines = async ({
+  aliasWith,
+  clickhouseClient,
+  endTime,
+  metadata,
+  savedSearch,
+  source,
+  startTime,
+}: {
+  /** Reuses the evaluation's clauses; recomputed here when absent. */
+  aliasWith?: BuilderChartConfigWithOptDateRange['with'];
+  clickhouseClient: ClickhouseClient;
+  endTime: Date;
+  metadata: Metadata;
+  savedSearch: Pick<
+    ISavedSearch,
+    'id' | 'select' | 'where' | 'whereLanguage' | 'orderBy'
+  >;
+  source: ISource;
+  startTime: Date;
+}): Promise<string> => {
+  const isEventSource =
+    source.kind === SourceKind.Log || source.kind === SourceKind.Trace;
+  const chartConfig: ChartConfigWithOptDateRange = {
+    connection: '', // no need for the connection id since clickhouse client is already initialized
+    displayType: DisplayType.Search,
+    dateRange: [startTime, endTime],
+    from: source.from,
+    select:
+      savedSearch.select ||
+      (isEventSource && source.defaultTableSelectExpression) ||
+      '',
+    where: savedSearch.where,
+    whereLanguage: savedSearch.whereLanguage,
+    implicitColumnExpression: isEventSource
+      ? source.implicitColumnExpression
+      : undefined,
+    useTextIndexForImplicitColumn: isEventSource
+      ? source.useTextIndexForImplicitColumn
+      : undefined,
+    ...pickSampleWeightExpressionProps(source),
+    timestampValueExpression: source.timestampValueExpression,
+    orderBy: savedSearch.orderBy,
+    limit: {
+      limit: 5,
+      offset: 0,
+    },
+  };
+
+  try {
+    const withClauses =
+      aliasWith ??
+      (await computeAliasWithClauses(savedSearch, source, metadata));
+    if (withClauses) {
+      chartConfig.with = withClauses;
+    }
+    const query = await renderChartConfig(
+      chartConfig,
+      metadata,
+      source.querySettings,
+    );
+    const raw = await clickhouseClient
+      .query<'CSV'>({
+        query: query.sql,
+        query_params: query.params,
+        format: 'CSV',
+      })
+      .then(res => res.text());
+
+    return truncateString(
+      raw
+        .split('\n')
+        .map(line => truncateString(line, MAX_MESSAGE_LENGTH))
+        .join('\n'),
+      2500,
+    );
+  } catch (e) {
+    logger.error(
+      {
+        savedSearchId: savedSearch.id,
+        chartConfig,
+        error: serializeError(e),
+      },
+      'Failed to fetch sample logs',
+    );
+    return '';
+  }
+};
+
 // this method will build the body of the alert message and will be used to send the alert to the channel
 export const renderAlertTemplate = async ({
   alertProvider,
@@ -516,6 +614,7 @@ export const renderAlertTemplate = async ({
   teamId,
   teamWebhooksById,
   dispatcher = inlineNotificationDispatcher,
+  sampleLines,
 }: {
   alertProvider: AlertProvider;
   clickhouseClient: ClickhouseClient;
@@ -527,6 +626,12 @@ export const renderAlertTemplate = async ({
   teamId: string;
   teamWebhooksById: Map<string, IWebhook>;
   dispatcher?: NotificationDispatcher;
+  /**
+   * Supplies the sample rows for a saved-search body. The evaluation passes a
+   * memoised provider so a grouped alert fetches them once rather than once
+   * per group; without one they are fetched here.
+   */
+  sampleLines?: () => Promise<string>;
 }): Promise<RenderedAlert> => {
   // Internal mutable view with __hdx_query_results__ populated on the
   // saved-search path. Untrusted values must flow through the view so
@@ -796,71 +901,20 @@ ${targetTemplate}`;
       );
     }
     // TODO: show group + total count for group-by alerts
-    // fetch sample logs
-    const resolvedSelect =
-      savedSearch.select || source.defaultTableSelectExpression || '';
-    const chartConfig: ChartConfigWithOptDateRange = {
-      connection: '', // no need for the connection id since clickhouse client is already initialized
-      displayType: DisplayType.Search,
-      dateRange: [startTime, endTime],
-      from: source.from,
-      select: resolvedSelect,
-      where: savedSearch.where,
-      whereLanguage: savedSearch.whereLanguage,
-      implicitColumnExpression: source.implicitColumnExpression,
-      useTextIndexForImplicitColumn: source.useTextIndexForImplicitColumn,
-      ...pickSampleWeightExpressionProps(source),
-      timestampValueExpression: source.timestampValueExpression,
-      orderBy: savedSearch.orderBy,
-      limit: {
-        limit: 5,
-        offset: 0,
-      },
-    };
-
-    let truncatedResults = '';
-    try {
-      const aliasWith = await computeAliasWithClauses(
-        savedSearch,
-        source,
-        metadata,
-      );
-      if (aliasWith) {
-        chartConfig.with = aliasWith;
-      }
-      const query = await renderChartConfig(
-        chartConfig,
-        metadata,
-        source.querySettings,
-      );
-      const raw = await clickhouseClient
-        .query<'CSV'>({
-          query: query.sql,
-          query_params: query.params,
-          format: 'CSV',
-        })
-        .then(res => res.text());
-
-      const lines = raw.split('\n');
-
-      truncatedResults = truncateString(
-        lines.map(line => truncateString(line, MAX_MESSAGE_LENGTH)).join('\n'),
-        2500,
-      );
-    } catch (e) {
-      logger.error(
-        {
-          savedSearchId: savedSearch.id,
-          chartConfig,
-          error: serializeError(e),
-        },
-        'Failed to fetch sample logs',
-      );
-    }
-
     // Pass query results through the view so Handlebars syntax in log lines
     // is treated as literal text rather than parsed as template source.
-    view.__hdx_query_results__ = truncatedResults;
+    view.__hdx_query_results__ = await (
+      sampleLines ??
+      (() =>
+        fetchSampleLines({
+          clickhouseClient,
+          endTime,
+          metadata,
+          savedSearch,
+          source,
+          startTime,
+        }))
+    )();
 
     rawTemplateBody = `{{#if group}}Group: "{{{group}}}"{{/if}}
 ${value} lines found, which ${describeThresholdViolation(alert.thresholdType)} the threshold of ${describeThreshold(alert)} lines\n${timeRangeMessage}

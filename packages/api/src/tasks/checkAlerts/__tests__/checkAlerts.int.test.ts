@@ -6512,6 +6512,89 @@ describe('checkAlerts', () => {
       expect(resolutionCall).toBeDefined();
     });
 
+    // The sample rows quoted in the message body carry no group predicate, so
+    // every group's notification used to re-run the identical query.
+    it('fetches the message body sample rows once for all groups in a window', async () => {
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        savedSearch,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
+
+      const eventMs = new Date('2023-11-16T22:05:00.000Z');
+      await bulkInsertLogs([
+        {
+          ServiceName: 'service-a',
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'Error from service-a',
+        },
+        {
+          ServiceName: 'service-a',
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'Error from service-a',
+        },
+        {
+          ServiceName: 'service-b',
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'Error from service-b',
+        },
+        {
+          ServiceName: 'service-b',
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'Error from service-b',
+        },
+      ]);
+
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 1,
+          savedSearchId: savedSearch.id,
+          groupBy: 'ServiceName',
+        },
+        {
+          taskType: AlertTaskType.SAVED_SEARCH,
+          savedSearch,
+        },
+      );
+
+      // The sample fetch is the only CSV query in an evaluation.
+      const querySpy = jest.spyOn(clickhouseClient, 'query');
+
+      await processAlertAtTime(
+        new Date('2023-11-16T22:12:00.000Z'),
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      const histories = await AlertHistory.find({ alert: details.alert.id });
+      expect(histories).toHaveLength(2);
+      expect(histories.every(h => h.state === AlertState.ALERT)).toBe(true);
+      const sampleQueries = querySpy.mock.calls.filter(
+        ([input]) => input.format === 'CSV',
+      );
+      expect(sampleQueries).toHaveLength(1);
+    });
+
     it('Group-by alerts skip logic - should skip when any group history exists in current window', async () => {
       const {
         team,
