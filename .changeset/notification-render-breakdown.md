@@ -1,6 +1,7 @@
 ---
 '@hyperdx/app': patch
 '@hyperdx/api': patch
+'@hyperdx/common-utils': patch
 ---
 
 fix: show only the delivery time in an alert's notification duration
