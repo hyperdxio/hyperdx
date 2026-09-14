@@ -1,6 +1,7 @@
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
+import { buildSearchChartConfig } from '@hyperdx/common-utils/dist/core/searchChartConfig';
 import { formatDate, objectHash } from '@hyperdx/common-utils/dist/core/utils';
 import {
   isPromqlSavedChartConfig,
@@ -11,10 +12,8 @@ import {
   AlertThresholdType,
   BuilderChartConfigWithOptDateRange,
   ChartConfigWithOptDateRange,
-  DisplayType,
   Filter,
   isRangeThresholdType,
-  pickSampleWeightExpressionProps,
   SavedChartConfig,
   SourceKind,
   zAlertChannelType,
@@ -531,33 +530,23 @@ export const fetchSampleLines = async ({
   metadata: Metadata;
   savedSearch: Pick<
     ISavedSearch,
-    'id' | 'select' | 'where' | 'whereLanguage' | 'orderBy'
+    'id' | 'select' | 'where' | 'whereLanguage' | 'orderBy' | 'filters'
   >;
   source: ISource;
   startTime: Date;
 }): Promise<string> => {
-  const isEventSource =
-    source.kind === SourceKind.Log || source.kind === SourceKind.Trace;
   const chartConfig: ChartConfigWithOptDateRange = {
-    connection: '', // no need for the connection id since clickhouse client is already initialized
-    displayType: DisplayType.Search,
-    dateRange: [startTime, endTime],
-    from: source.from,
-    select:
-      savedSearch.select ||
-      (isEventSource && source.defaultTableSelectExpression) ||
-      '',
-    where: savedSearch.where,
-    whereLanguage: savedSearch.whereLanguage,
-    implicitColumnExpression: isEventSource
-      ? source.implicitColumnExpression
-      : undefined,
-    useTextIndexForImplicitColumn: isEventSource
-      ? source.useTextIndexForImplicitColumn
-      : undefined,
-    ...pickSampleWeightExpressionProps(source),
-    timestampValueExpression: source.timestampValueExpression,
-    orderBy: savedSearch.orderBy,
+    ...buildSearchChartConfig(source, {
+      connection: '', // no need for the connection id since clickhouse client is already initialized
+      dateRange: [startTime, endTime],
+      select: savedSearch.select,
+      where: savedSearch.where,
+      whereLanguage: savedSearch.whereLanguage,
+      filters: savedSearch.filters,
+      orderBy: savedSearch.orderBy,
+      dateRangeStartInclusive: true,
+      dateRangeEndInclusive: false,
+    }),
     limit: {
       limit: 5,
       offset: 0,
