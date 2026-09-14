@@ -55,6 +55,7 @@ export const DBRowTableIconButton: React.FC<DBRowTableIconButtonProps> = ({
         className={baseClasses}
         tabIndex={tabIndex}
         role="button"
+        aria-label={title}
       >
         {isActive ? <IconCheck size={iconSize} /> : children}
       </UnstyledButton>

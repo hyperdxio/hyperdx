@@ -63,8 +63,8 @@ export const ExpandedLogRow = memo(
                       styles.expandButton,
                     )}
                     onClick={() => openSidebar(rowId, source?.id)}
-                    title="Open in sidebar"
-                    aria-label="Open in sidebar"
+                    title="Open in side panel"
+                    aria-label="Open in side panel"
                     style={{
                       zIndex: 1,
                       fontSize: '12px',

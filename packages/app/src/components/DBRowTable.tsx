@@ -94,7 +94,10 @@ import {
   UNDEFINED_WIDTH,
 } from '@/tableUtils';
 import { FormatTime } from '@/useFormatTime';
-import { useUserPreferences } from '@/useUserPreferences';
+import {
+  DEFAULT_ROW_CLICK_ACTION,
+  useUserPreferences,
+} from '@/useUserPreferences';
 import {
   getChartColorInfo,
   getLogLevelClass,
@@ -440,8 +443,19 @@ export const RawLogTable = memo(
     );
 
     const {
-      userPreferences: { isUTC },
+      userPreferences: { isUTC, rowClickAction },
     } = useUserPreferences();
+
+    // Inline expansion is owned by the expand-button column, so tables that hide
+    // it (surrounding context, patterns) always fall back to the side panel.
+    const prefersInlineExpand =
+      showExpandButton &&
+      (rowClickAction ?? DEFAULT_ROW_CLICK_ACTION) === 'expand';
+
+    // Once the side panel is open it stays the active surface, so clicks keep
+    // moving it from row to row instead of expanding rows behind it.
+    const expandInlineOnRowClick =
+      prefersInlineExpand && highlightedLineId == null;
 
     const [columnSizeStorage, setColumnSizeStorage] = useLocalStorage<
       Record<string, number>
@@ -1140,9 +1154,23 @@ export const RawLogTable = memo(
                               [styles.isTruncated]: !wrapLinesEnabled,
                             })}
                             onClick={() => {
-                              _onRowExpandClick(row.original);
+                              if (expandInlineOnRowClick) {
+                                toggleRowExpansion(rowId);
+                              } else {
+                                _onRowExpandClick(row.original);
+                              }
                             }}
-                            aria-label="View details for log entry"
+                            aria-expanded={
+                              expandInlineOnRowClick ? isExpanded : undefined
+                            }
+                            // Deliberately distinct from the chevron's "Expand log
+                            // details" so the two hit targets stay addressable
+                            // apart in tests and assistive tech.
+                            aria-label={
+                              expandInlineOnRowClick
+                                ? `${isExpanded ? 'Collapse' : 'Expand'} log row`
+                                : 'View details for log entry'
+                            }
                           >
                             {row
                               .getVisibleCells()
@@ -1209,6 +1237,11 @@ export const RawLogTable = memo(
                                 isWrapped={wrapLinesEnabled}
                                 onToggleWrap={() =>
                                   setWrapLinesEnabled(!wrapLinesEnabled)
+                                }
+                                onOpenSidePanel={
+                                  prefersInlineExpand
+                                    ? () => _onRowExpandClick(row.original)
+                                    : undefined
                                 }
                               />
                             )}
