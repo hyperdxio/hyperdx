@@ -325,7 +325,7 @@ export async function queryPrometheusRangeFromClickHouse({
 }
 
 // Prometheus-compatible response types
-export type PrometheusMetric = Record<string, string>;
+type PrometheusMetric = Record<string, string>;
 export type PrometheusMatrixResult = {
   metric: PrometheusMetric;
   values: [number, string][];

@@ -83,8 +83,7 @@ describe('buildAlertChartConfig', () => {
     expect(build(undefined)).toBeUndefined();
   });
 
-  // PromQL charts cannot be alerted on at all.
-  it('refuses a PromQL config', () => {
+  it('builds a PromQL config', () => {
     expect(
       build({
         configType: 'promql',
@@ -92,7 +91,19 @@ describe('buildAlertChartConfig', () => {
         connection: 'conn-1',
         displayType: DisplayType.Line,
       }),
-    ).toBeUndefined();
+    ).toEqual({
+      configType: 'promql',
+      promqlExpression: 'up',
+      connection: 'conn-1',
+      from: {
+        databaseName: 'default',
+        tableName: 'otel_logs',
+      },
+      displayType: DisplayType.Line,
+      dateRange: expect.any(Array),
+      granularity: expect.any(String),
+      variables: [],
+    });
   });
 
   describe('raw SQL', () => {

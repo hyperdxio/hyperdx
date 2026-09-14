@@ -7,14 +7,12 @@ import z from 'zod';
 import { ClickhouseClient } from '@/clickhouse';
 import { getConnectionById } from '@/controllers/connection';
 import {
+  formatMatrixResponse,
+  formatVectorResponse,
   joinPrometheusUpstreamUrl,
   PROMETHEUS_CH_TIMEOUT_MS,
   PROMETHEUS_MAX_EXECUTION_SEC,
   PROMETHEUS_MAX_RESULT_ROWS,
-  PrometheusMatrixResult,
-  PrometheusVectorResult,
-  formatMatrixResponse,
-  formatVectorResponse,
   queryLabelNames,
   queryLabelValues,
   queryPrometheusRangeFromClickHouse,
@@ -106,8 +104,6 @@ function getParams(req: express.Request): Record<string, string> {
     ...(req.body as Record<string, string>),
   };
 }
-
-
 
 // --------------------------
 // Prometheus proxy (for real Prometheus backends)

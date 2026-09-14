@@ -59,11 +59,10 @@ import { ClickhouseClient } from '@/clickhouse';
 import { ALERT_HISTORY_QUERY_CONCURRENCY } from '@/controllers/alertHistory';
 import { getConnectionById } from '@/controllers/connection';
 import {
-  PROMETHEUS_CH_TIMEOUT_MS,
-  PROMETHEUS_MAX_RESULT_ROWS,
-  PrometheusMatrixResult,
   formatMatrixResponse,
   joinPrometheusUpstreamUrl,
+  PROMETHEUS_CH_TIMEOUT_MS,
+  PrometheusMatrixResult,
   queryPrometheusRangeFromClickHouse,
 } from '@/controllers/timeseriesEngine';
 import { AlertState, IAlert, IAlertError } from '@/models/alert';
@@ -75,7 +74,6 @@ import { IDashboard } from '@/models/dashboard';
 import { ISavedSearch } from '@/models/savedSearch';
 import { ISource } from '@/models/source';
 import { IWebhook } from '@/models/webhook';
-
 import {
   isClientTimeoutOrAbortError,
   isQueryTimeoutError,
@@ -1018,7 +1016,7 @@ export async function evaluatePromqlAlert({
 
   const stepSec = windowSizeInMins * 60;
   const endSec = dateRange[1].getTime() / 1000;
-  // PromQL evaluates exactly at the given timestamps. We want the evaluation 
+  // PromQL evaluates exactly at the given timestamps. We want the evaluation
   // for the window [T, T+step) to happen at T+step, using the freshest data.
   const startSec = dateRange[0].getTime() / 1000 + stepSec;
   const promqlExpression =
@@ -1552,7 +1550,9 @@ export const processAlert = async (
         for (const series of promqlResults) {
           // Build group key from labels — k:v format matches builder alerts.
           // Keep __name__ in the group key to avoid collapsing distinct series.
-          const labelEntries = Object.entries(series.metric);
+          const labelEntries = Object.entries(series.metric).sort(([a], [b]) =>
+            a.localeCompare(b),
+          );
           const groupKey = labelEntries.map(([k, v]) => `${k}:${v}`).join(', ');
           const attributes = Object.fromEntries(
             labelEntries.filter(([k]) => k !== '__name__'),

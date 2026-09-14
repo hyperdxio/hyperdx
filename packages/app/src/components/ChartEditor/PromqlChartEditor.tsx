@@ -109,22 +109,22 @@ export default function PromqlChartEditor({
             !alert &&
             !IS_LOCAL_MODE &&
             displayTypeSupportsPromQLAlerts(displayType) && (
-            <Button
-              variant="subtle"
-              data-testid="alert-button"
-              size="sm"
-              color="gray"
-              onClick={() =>
-                setValue('alert', {
-                  ...DEFAULT_TILE_ALERT,
-                  ...(chartName && { displayName: chartName }),
-                })
-              }
-            >
-              <IconBell size={14} className="me-2" />
-              Add alert
-            </Button>
-          )}
+              <Button
+                variant="subtle"
+                data-testid="alert-button"
+                size="sm"
+                color="gray"
+                onClick={() =>
+                  setValue('alert', {
+                    ...DEFAULT_TILE_ALERT,
+                    ...(chartName && { displayName: chartName }),
+                  })
+                }
+              >
+                <IconBell size={14} className="me-2" />
+                Add alert
+              </Button>
+            )}
         </Group>
         <Button
           onClick={onOpenDisplaySettings}

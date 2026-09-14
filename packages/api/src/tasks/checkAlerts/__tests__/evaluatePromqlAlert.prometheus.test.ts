@@ -1,22 +1,12 @@
 import mongoose from 'mongoose';
 
 import { getConnectionById } from '@/controllers/connection';
-import { queryPrometheusRangeFromClickHouse } from '@/controllers/timeseriesEngine';
 import type { ISource } from '@/models/source';
 import { evaluatePromqlAlert } from '@/tasks/checkAlerts';
 
-jest.mock('@/controllers/connection');
-jest.mock('@/controllers/timeseriesEngine', () => {
-  const actual = jest.requireActual<
-    typeof import('@/controllers/timeseriesEngine')
-  >('@/controllers/timeseriesEngine');
-  return {
-    ...actual,
-    // Only mock the function that makes real network calls
-    queryPrometheusRangeFromClickHouse: jest.fn(),
-  };
-});
-jest.mock('@/clickhouse');
+jest.mock('@/controllers/connection', () => ({
+  getConnectionById: jest.fn(),
+}));
 
 describe('evaluatePromqlAlert (Prometheus endpoint)', () => {
   const mockTeamId = new mongoose.Types.ObjectId().toString();
@@ -94,7 +84,7 @@ describe('evaluatePromqlAlert (Prometheus endpoint)', () => {
       },
     ]);
     expect(global.fetch).toHaveBeenCalledWith(
-      'http://prometheus:9090/api/v1/query_range?query=up&start=1704067200&end=1704067500&step=300',
+      'http://prometheus:9090/api/v1/query_range?query=up&start=1704067500&end=1704067500&step=300',
       expect.any(Object),
     );
   });
