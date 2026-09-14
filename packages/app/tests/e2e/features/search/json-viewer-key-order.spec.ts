@@ -3,6 +3,9 @@ import { expect, test } from '../../utils/base-test';
 
 const VIEWER_OPTIONS_KEY = 'hdx_json_viewer_options';
 
+// HDX-5115: the viewer sorts keys alphabetically, which is the right default
+// for wide ClickHouse Map columns but hides the stored column order. The view
+// options menu makes the order a choice.
 test.describe('JSON viewer key order', { tag: ['@search'] }, () => {
   async function openParsedTab(searchPage: SearchPage) {
     await searchPage.goto();
@@ -16,43 +19,32 @@ test.describe('JSON viewer key order', { tag: ['@search'] }, () => {
     page,
   }) => {
     const searchPage = new SearchPage(page);
+    const { sidePanel } = searchPage;
     await openParsedTab(searchPage);
 
-    // Default is A–Z. Assert keys equal their own sorted copy to pin this.
-    // Sort is evaluated in the browser so the collation matches the viewer.
-    const ascKeys = await searchPage.sidePanel.getJsonViewerTopLevelKeys();
-    const sorted = await searchPage.sidePanel.sortKeysInBrowser(ascKeys);
-    expect(ascKeys).toEqual(sorted);
+    const ascKeys = await sidePanel.getJsonViewerTopLevelKeys();
+    expect(ascKeys).toEqual(await sidePanel.sortKeysLikeViewer(ascKeys));
 
-    // Switch to Z–A and poll until the viewer re-renders.
-    await searchPage.sidePanel.selectJsonKeyOrder('desc');
+    await sidePanel.selectJsonKeyOrder('desc');
     await expect
-      .poll(() => searchPage.sidePanel.getJsonViewerTopLevelKeys(), {
-        timeout: 5000,
-      })
+      .poll(() => sidePanel.getJsonViewerTopLevelKeys(), { timeout: 5000 })
       .toEqual([...ascKeys].reverse());
 
-    // Switch to original order and wait for the view to update.
-    await searchPage.sidePanel.selectJsonKeyOrder('original');
+    await sidePanel.selectJsonKeyOrder('original');
     await expect
-      .poll(() => searchPage.sidePanel.getJsonViewerTopLevelKeys(), {
-        timeout: 5000,
-      })
+      .poll(() => sidePanel.getJsonViewerTopLevelKeys(), { timeout: 5000 })
       .not.toEqual([...ascKeys].reverse());
 
-    const originalKeys = await searchPage.sidePanel.getJsonViewerTopLevelKeys();
-
-    // Same set of keys, but the seeded column order (Timestamp, TraceId,
-    // SpanId, …) is not alphabetical, so original != sorted.
+    // The seeded logs table's column order (Timestamp, TraceId, SpanId, …) is
+    // not alphabetical, so the same keys come back in a different sequence.
+    const originalKeys = await sidePanel.getJsonViewerTopLevelKeys();
     expect(new Set(originalKeys)).toEqual(new Set(ascKeys));
-    expect(originalKeys).not.toEqual(sorted);
+    expect(originalKeys).not.toEqual(ascKeys);
 
-    // Confirm the choice was persisted.
     const stored = await page.evaluate(
       key => localStorage.getItem(key),
       VIEWER_OPTIONS_KEY,
     );
-    const parsedOptions = JSON.parse(stored!);
-    expect(parsedOptions.keyOrder).toBe('original');
+    expect(JSON.parse(stored!).keyOrder).toBe('original');
   });
 });

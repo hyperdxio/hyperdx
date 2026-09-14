@@ -238,48 +238,31 @@ export class SidePanelComponent {
   }
 
   /**
-   * All top-level (depth-0) key labels in the JSON viewer.
-   * The component sets `style="margin-left: <depth*16>px"` on each line.
-   * Depth-0 rows have 0px; nested rows have a positive value. The
-   * `nestedLine` CSS-module class has no entry in HyperJson.module.scss so
-   * it resolves to `undefined` at runtime and cannot be used as a selector.
+   * Key labels of the JSON viewer's depth-0 rows. Nested rows are excluded so
+   * the list is a flat sequence that reverses cleanly when the order flips —
+   * nested children stay grouped under their parent, so a full-tree list does
+   * not.
    */
   get jsonViewerTopLevelKeys() {
-    // Rows with style="margin-left: 0px;" are at depth 0.
     return this.panelContainer.locator(
-      '[data-testid="json-viewer-line"][style="margin-left: 0px;"] [class*="keyContainer"] > [class*="key"]',
+      '[data-testid="json-viewer-line"][data-depth="0"] [class*="keyContainer"] > [class*="key"]',
     );
   }
 
-  /** Collect the visible top-level key name strings from the JSON viewer. */
   async getJsonViewerTopLevelKeys(): Promise<string[]> {
-    const allLines = this.panelContainer.locator(
-      '[data-testid="json-viewer-line"]',
-    );
-    await allLines.first().waitFor({ state: 'visible', timeout: 10_000 });
-
-    // evaluateAll runs in the browser so the margin comparison is exact.
-    return allLines.evaluateAll(lines =>
-      lines
-        .filter(
-          line => getComputedStyle(line as HTMLElement).marginLeft === '0px',
-        )
-        .map(line => {
-          const keyEl = (line as HTMLElement).querySelector(
-            '[class*="keyContainer"] > [class*="key"]',
-          );
-          return ((keyEl as HTMLElement)?.innerText ?? '').trim();
-        })
-        .filter(Boolean),
-    );
+    await this.jsonViewerTopLevelKeys
+      .first()
+      .waitFor({ state: 'visible', timeout: 10_000 });
+    const keys = await this.jsonViewerTopLevelKeys.allInnerTexts();
+    return keys.map(key => key.trim()).filter(Boolean);
   }
 
   /**
-   * Sort strings using the browser's localeCompare with { numeric: true } —
-   * the same collation the JSON viewer uses — so test comparisons are
-   * consistent with what the viewer itself renders.
+   * Sort in the browser, where the viewer's own `localeCompare` runs — Node's
+   * ICU orders mixed-case keys differently, so sorting test-side would compare
+   * against a different collation than the one under test.
    */
-  async sortKeysInBrowser(keys: string[]): Promise<string[]> {
+  async sortKeysLikeViewer(keys: string[]): Promise<string[]> {
     return this.page.evaluate(
       (ks: string[]) =>
         [...ks].sort((a, b) =>
@@ -289,16 +272,11 @@ export class SidePanelComponent {
     );
   }
 
-  /** Open the gear options menu on the JSON viewer toolbar. */
-  async openJsonViewerOptionsMenu() {
+  /** Pick a key-order option from the JSON viewer's view options menu. */
+  async selectJsonKeyOrder(order: 'asc' | 'desc' | 'original') {
     await this.panelContainer
       .getByTestId('json-viewer-options-menu')
       .click({ timeout: this.defaultTimeout });
-  }
-
-  /** Pick a key-order option from the JSON viewer options menu. */
-  async selectJsonKeyOrder(order: 'asc' | 'desc' | 'original') {
-    await this.openJsonViewerOptionsMenu();
     await this.panelContainer
       .getByTestId(`json-viewer-key-order-${order}`)
       .click({ timeout: this.defaultTimeout });

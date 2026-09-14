@@ -285,6 +285,7 @@ const Line = React.memo(
         <div
           ref={ref}
           data-testid="json-viewer-line"
+          data-depth={nestedLevel}
           onClick={handleToggle}
           className={cx(styles.line, {
             [styles.nestedLine]: nestedLevel > 0,
