@@ -126,15 +126,54 @@ function rampFill(hue: number, intensity: number) {
   return { s, l, css: `hsl(${hue} ${s}% ${l}%)` };
 }
 
+/** Error rate at or above which a service is considered badly broken. */
+export const ERROR_RATE_HIGH = 5;
+
+/**
+ * Error-rate color is absolute, not max-normalized: a node's shade has to mean
+ * the same thing regardless of how bad the worst service on the graph happens
+ * to be, otherwise a map whose worst service sits at 0.3% paints it the same
+ * deep red as one at 60%. Each bucket's lower bound is inclusive; zero is not
+ * a bucket, it gets a neutral fill so "no errors" is legible at a glance.
+ */
+const ERROR_RATE_BUCKETS = [
+  { min: 0, intensity: 0.35 },
+  { min: 1, intensity: 0.7 },
+  { min: ERROR_RATE_HIGH, intensity: 1 },
+];
+
+// A hue shift rather than plain desaturation: at 32px a cool grey reads as a
+// different kind of thing, where a washed-out red just reads as a little red.
+const NEUTRAL = { hue: 220, s: 8, l: 82 };
+const NEUTRAL_CSS = `hsl(${NEUTRAL.hue} ${NEUTRAL.s}% ${NEUTRAL.l}%)`;
+
+/** Ramp position for an error rate, or null when there are no errors at all. */
+function getErrorRateIntensity(errorPercentage: number): number | null {
+  if (errorPercentage <= 0) {
+    return null;
+  }
+  return (
+    ERROR_RATE_BUCKETS.findLast(b => errorPercentage >= b.min)?.intensity ?? 0
+  );
+}
+
 export function getNodeColors(
   value: number,
   max: number,
   isSelected: boolean,
   metric: ServiceMapMetric = 'errorRate',
 ) {
-  const intensity = max > 0 ? Math.min(value, max) / max : 0;
-  const hue = SERVICE_MAP_METRIC_HUE[metric];
-  const { s, l, css } = rampFill(hue, intensity);
+  const isNoErrors = metric === 'errorRate' && value <= 0;
+  const intensity =
+    metric === 'errorRate'
+      ? (getErrorRateIntensity(value) ?? 0)
+      : max > 0
+        ? Math.min(value, max) / max
+        : 0;
+  const hue = isNoErrors ? NEUTRAL.hue : SERVICE_MAP_METRIC_HUE[metric];
+  const { s, l, css } = isNoErrors
+    ? { ...NEUTRAL, css: NEUTRAL_CSS }
+    : rampFill(hue, intensity);
   const borderLightness = Math.max(
     l - BORDER_LIGHTNESS_STEP,
     BORDER_MIN_LIGHTNESS,
@@ -151,10 +190,23 @@ export function getNodeColors(
 
 /**
  * CSS `linear-gradient` for a metric's legend swatch, built from the same ramp
- * endpoints as the node fills so the legend and the graph always agree.
+ * stops as the node fills so the legend and the graph always agree. Error rate
+ * emits hard stops rather than a blend because its scale is bucketed, so a
+ * continuous bar would imply precision the coloring doesn't have.
  */
 export function getMetricGradientCss(metric: ServiceMapMetric): string {
   const hue = SERVICE_MAP_METRIC_HUE[metric];
+  if (metric === 'errorRate') {
+    const stops = [
+      NEUTRAL_CSS,
+      ...ERROR_RATE_BUCKETS.map(b => rampFill(hue, b.intensity).css),
+    ];
+    const segments = stops.map(
+      (css, i) =>
+        `${css} ${(i / stops.length) * 100}% ${((i + 1) / stops.length) * 100}%`,
+    );
+    return `linear-gradient(to right, ${segments.join(', ')})`;
+  }
   return `linear-gradient(to right, ${rampFill(hue, 0).css}, ${rampFill(hue, 1).css})`;
 }
 

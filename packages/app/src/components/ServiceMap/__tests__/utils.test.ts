@@ -3,6 +3,7 @@ import { SourceKind, TTraceSource } from '@hyperdx/common-utils/dist/types';
 
 import {
   deriveDisplayMetrics,
+  ERROR_RATE_HIGH,
   formatApproximateNumber,
   formatRate,
   getMetricGradientCss,
@@ -254,10 +255,16 @@ function parseHsl(color: string | undefined): {
 }
 
 describe('getNodeColors', () => {
+  // Latency and throughput stay max-normalized; error rate is bucketed on
+  // absolute thresholds and is covered separately below.
   describe('sequential ramp', () => {
     it('goes from a light tint at zero intensity to a dark shade at max', () => {
-      const low = parseHsl(getNodeColors(0, 20, false).backgroundColor);
-      const high = parseHsl(getNodeColors(20, 20, false).backgroundColor);
+      const low = parseHsl(
+        getNodeColors(0, 20, false, 'throughput').backgroundColor,
+      );
+      const high = parseHsl(
+        getNodeColors(20, 20, false, 'throughput').backgroundColor,
+      );
       // Light -> dark: lightness decreases, saturation increases as the metric
       // value climbs (a proper sequential scale, not a grey->color ramp).
       expect(high.l).toBeLessThan(low.l);
@@ -265,27 +272,83 @@ describe('getNodeColors', () => {
     });
 
     it('increases intensity monotonically with the value', () => {
-      const l0 = parseHsl(getNodeColors(0, 20, false).backgroundColor).l;
-      const l5 = parseHsl(getNodeColors(5, 20, false).backgroundColor).l;
-      const l10 = parseHsl(getNodeColors(10, 20, false).backgroundColor).l;
-      const l20 = parseHsl(getNodeColors(20, 20, false).backgroundColor).l;
-      expect(l0).toBeGreaterThanOrEqual(l5);
-      expect(l5).toBeGreaterThanOrEqual(l10);
-      expect(l10).toBeGreaterThanOrEqual(l20);
+      const lightnessAt = (value: number) =>
+        parseHsl(getNodeColors(value, 20, false, 'throughput').backgroundColor)
+          .l;
+      expect(lightnessAt(0)).toBeGreaterThanOrEqual(lightnessAt(5));
+      expect(lightnessAt(5)).toBeGreaterThanOrEqual(lightnessAt(10));
+      expect(lightnessAt(10)).toBeGreaterThanOrEqual(lightnessAt(20));
     });
 
     it('caps at the max value even when the value is higher', () => {
-      expect(getNodeColors(30, 20, false)).toEqual(
-        getNodeColors(20, 20, false),
+      expect(getNodeColors(30, 20, false, 'throughput')).toEqual(
+        getNodeColors(20, 20, false, 'throughput'),
       );
     });
 
     it('treats a non-positive max as zero intensity', () => {
-      expect(getNodeColors(5, 0, false)).toEqual(getNodeColors(0, 20, false));
+      expect(getNodeColors(5, 0, false, 'throughput')).toEqual(
+        getNodeColors(0, 20, false, 'throughput'),
+      );
     });
 
     it('renders the border a fixed step darker than the fill', () => {
-      const { backgroundColor, borderColor } = getNodeColors(10, 20, false);
+      const { backgroundColor, borderColor } = getNodeColors(
+        10,
+        20,
+        false,
+        'throughput',
+      );
+      expect(parseHsl(borderColor).l).toBeLessThan(parseHsl(backgroundColor).l);
+      expect(parseHsl(borderColor).h).toBe(parseHsl(backgroundColor).h);
+    });
+  });
+
+  describe('absolute error-rate buckets', () => {
+    const fillAt = (errorPercentage: number, max = 100) =>
+      parseHsl(
+        getNodeColors(errorPercentage, max, false, 'errorRate').backgroundColor,
+      );
+
+    it('paints zero errors a neutral color, not the low end of the red ramp', () => {
+      const none = fillAt(0);
+      const lowest = fillAt(0.1);
+      expect(none.h).not.toBe(SERVICE_MAP_METRIC_HUE.errorRate);
+      expect(none.s).toBeLessThan(lowest.s);
+      expect(none).not.toEqual(lowest);
+    });
+
+    it('keeps zero neutral no matter what the graph-wide max is', () => {
+      expect(fillAt(0, 0)).toEqual(fillAt(0, 100));
+    });
+
+    it('ignores the graph-wide max so a shade always means the same rate', () => {
+      // The bug this replaces: a 0.3%-error service painted full-intensity red
+      // just because it was the worst on the graph.
+      expect(fillAt(0.3, 0.3)).toEqual(fillAt(0.3, 100));
+      expect(fillAt(0.3, 0.3)).not.toEqual(fillAt(60, 100));
+    });
+
+    it('darkens across the low, elevated and high buckets', () => {
+      expect(fillAt(0.5).l).toBeGreaterThan(fillAt(3).l);
+      expect(fillAt(3).l).toBeGreaterThan(fillAt(20).l);
+    });
+
+    it('treats each threshold as an inclusive lower bound', () => {
+      expect(fillAt(0.99)).toEqual(fillAt(0.01));
+      expect(fillAt(1)).toEqual(fillAt(4.99));
+      expect(fillAt(1)).not.toEqual(fillAt(0.99));
+      expect(fillAt(ERROR_RATE_HIGH)).toEqual(fillAt(100));
+      expect(fillAt(ERROR_RATE_HIGH)).not.toEqual(fillAt(4.99));
+    });
+
+    it('renders the border darker than the fill for the neutral state too', () => {
+      const { backgroundColor, borderColor } = getNodeColors(
+        0,
+        100,
+        false,
+        'errorRate',
+      );
       expect(parseHsl(borderColor).l).toBeLessThan(parseHsl(backgroundColor).l);
       expect(parseHsl(borderColor).h).toBe(parseHsl(backgroundColor).h);
     });
@@ -314,8 +377,8 @@ describe('getNodeColors', () => {
     });
 
     it('returns different colors for different inputs', () => {
-      expect(getNodeColors(5, 20, false)).not.toEqual(
-        getNodeColors(10, 20, false),
+      expect(getNodeColors(5, 20, false, 'throughput')).not.toEqual(
+        getNodeColors(10, 20, false, 'throughput'),
       );
     });
   });
@@ -340,7 +403,7 @@ describe('getNodeColors', () => {
 
 describe('getMetricGradientCss', () => {
   it('builds a left-to-right gradient from the ramp endpoints', () => {
-    const css = getMetricGradientCss('errorRate');
+    const css = getMetricGradientCss('latency');
     const stops = css.match(/hsl\([^)]+\)/g) ?? [];
     expect(css).toContain('linear-gradient(to right,');
     expect(stops).toHaveLength(2);
@@ -353,6 +416,19 @@ describe('getMetricGradientCss', () => {
       getMetricGradientCss('throughput').match(/hsl\([^)]+\)/g) ?? [];
     expect(parseHsl(stops[0]).h).toBe(SERVICE_MAP_METRIC_HUE.throughput);
     expect(parseHsl(stops[1]).h).toBe(SERVICE_MAP_METRIC_HUE.throughput);
+  });
+
+  it('emits hard stops for error rate, one per bucket plus the neutral', () => {
+    const css = getMetricGradientCss('errorRate');
+    const stops = css.match(/hsl\([^)]+\)/g) ?? [];
+    expect(stops).toHaveLength(4);
+    // Hard stops, not a blend: each color carries an explicit start and end.
+    expect(css).toContain('0% 25%');
+    expect(css).toContain('75% 100%');
+    expect(parseHsl(stops[0]).h).not.toBe(SERVICE_MAP_METRIC_HUE.errorRate);
+    for (const stop of stops.slice(1)) {
+      expect(parseHsl(stop).h).toBe(SERVICE_MAP_METRIC_HUE.errorRate);
+    }
   });
 });
 
