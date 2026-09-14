@@ -223,7 +223,7 @@ export default function RawSqlChartEditor({
   const tableConnections: TableConnection[] = useMemo(() => {
     if (!sources) return [];
     return sources
-      .filter(s => s.connection === connection)
+      .filter(s => s.connection === connection && !s.disabled)
       .flatMap(source => {
         const tables: TableConnection[] = getAllMetricTables(source);
 

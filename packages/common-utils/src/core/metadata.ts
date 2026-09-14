@@ -9,8 +9,11 @@ import {
   ColumnMeta,
   concatChSql,
   convertCHDataTypeToJSType,
+  extractColumnReferencesFromKey,
   filterColumnMetaByType,
   JSDataType,
+  Row,
+  streamToAsyncIterator,
   tableExpr,
 } from '@/clickhouse';
 import { renderChartConfig, timeFilterExpr } from '@/core/renderChartConfig';
@@ -35,6 +38,7 @@ import { isLogSource, isTraceSource, SourceKind } from '@/types';
 import {
   ClickHouseVersion,
   parseClickHouseVersion,
+  supportsMergeTreeIndex,
   supportsMergeTreeTextIndex,
 } from './clickhouseVersion';
 import {
@@ -47,6 +51,7 @@ import {
   getDistributedTableArgs,
   MetadataMVQueryOptions,
   objectHash,
+  splitAndTrimWithBracket,
   TextIndexColumnQueryOptions,
   TextIndexMapColumnQueryOptions,
 } from './utils';
@@ -58,6 +63,21 @@ const DEFAULT_MAX_KEYS = 1000;
 
 // Cap keys per dispatched query: each key is another operation for the db to fetch, and simply fetching all keys at once can be too much for the db to handle.
 export const GET_ALL_KEY_VALUES_CHUNK_SIZE = 100;
+
+/**
+ * The index read could not be scoped to the requested date range, so it was
+ * refused in favour of a path that can. Not a failure — an expected property
+ * of tables whose partition key is not time-derived.
+ */
+export class UnprunableIndexReadError extends Error {
+  constructor(reason: string) {
+    super(`Cannot scope the primary index read: ${reason}`);
+    this.name = 'UnprunableIndexReadError';
+  }
+}
+
+// Runaway guard, not a tuning knob.
+const DEFAULT_MAX_INDEX_VALUES = 10_000;
 
 type KeyFetchingStrategies = {
   mapTextIndexLookup: TextIndexInfo[];
@@ -105,6 +125,24 @@ export const unquoteIdentifier = (identifier: string): string => {
     return identifier.slice(1, -1);
   }
   return identifier;
+};
+
+/**
+ * Whether a table's partition key derives from its timestamp column, which is
+ * what decides whether `system.parts.min_time` is populated and so whether
+ * part-level pruning can work at all.
+ */
+const partitionKeyCoversTimestamp = (
+  partitionKey: string,
+  timestampValueExpression: string,
+): boolean => {
+  if (!partitionKey) return false;
+  const partitionColumns = new Set(
+    extractColumnReferencesFromKey(partitionKey).map(unquoteIdentifier),
+  );
+  return extractColumnReferencesFromKey(timestampValueExpression)
+    .map(unquoteIdentifier)
+    .some(column => partitionColumns.has(column));
 };
 
 const quoteJsonPathSegment = (segment: string): string => {
@@ -684,6 +722,156 @@ export class Metadata {
         AND active=1
         AND ((min_time >= ${startTime} AND min_time <= ${endTime}) OR (max_time <= ${endTime} AND max_time >= ${startTime}) OR (min_time <= ${startTime} AND max_time >= ${endTime}))
     )`;
+  }
+
+  /** Rejects what `mergeTreeIndex` cannot read; callers fall back to a scan. */
+  private async assertIndexReadable({
+    databaseName,
+    tableName,
+    column,
+    connectionId,
+  }: {
+    databaseName: string;
+    tableName: string;
+    column: string;
+    connectionId: string;
+  }): Promise<TableMetadata> {
+    const reject = (reason: string) => {
+      throw new Error(`Cannot read the primary index: ${reason}`);
+    };
+
+    if (
+      !supportsMergeTreeIndex(await this.getServerVersion({ connectionId }))
+    ) {
+      reject('the server predates the mergeTreeIndex table function (< 24.2)');
+    }
+
+    const tableMetadata = await this.getTableMetadata({
+      databaseName,
+      tableName,
+      connectionId,
+    });
+    if (!tableMetadata) {
+      return reject(`table ${databaseName}.${tableName} was not found`);
+    }
+    // Distributed/Merge tables route elsewhere and have no index of their own.
+    if (tableMetadata.isPointerTable) {
+      reject(
+        `${tableMetadata.engine} tables have no primary index of their own`,
+      );
+    }
+    if (!tableMetadata.engine.includes('MergeTree')) {
+      reject(`engine ${tableMetadata.engine} is not a MergeTree`);
+    }
+    // Only primary key columns exist in the index; check for a usable message.
+    const primaryKeyColumns = splitAndTrimWithBracket(
+      tableMetadata.primary_key,
+    ).map(unquoteIdentifier);
+    if (!primaryKeyColumns.includes(unquoteIdentifier(column))) {
+      reject(
+        `${column} is not in the primary key (${tableMetadata.primary_key})`,
+      );
+    }
+
+    return tableMetadata;
+  }
+
+  /**
+   * Streams the distinct values of a primary key column, read from the table's
+   * sparse primary index instead of the data — one row per granule mark rather
+   * than a full column scan.
+   *
+   * **Returns a subset.** The index only records the value at each granule
+   * boundary, so a value confined to one granule never appears; callers need a
+   * full-scan path for completeness.
+   *
+   * Unordered on purpose: `DISTINCT` streams, `ORDER BY` would have to finish
+   * before the first row. The caller sorts. Not cached — `MetadataCache`
+   * resolves a single value and cannot hold a stream.
+   */
+  async *streamDistinctIndexValues({
+    databaseName,
+    tableName,
+    column,
+    connectionId,
+    dateRange,
+    timestampValueExpression,
+    limit = DEFAULT_MAX_INDEX_VALUES,
+    signal,
+  }: {
+    databaseName: string;
+    tableName: string;
+    /** Must be a primary key column. */
+    column: string;
+    connectionId: string;
+    /** Prunes to overlapping parts; needs `timestampValueExpression` too. */
+    dateRange?: [Date, Date];
+    timestampValueExpression?: string;
+    limit?: number;
+    signal?: AbortSignal;
+  }): AsyncGenerator<string[], void, undefined> {
+    const tableMetadata = await this.assertIndexReadable({
+      databaseName,
+      tableName,
+      column,
+      connectionId,
+    });
+
+    // Part pruning is the only range restriction this read can express —
+    // `mergeTreeIndex` exposes primary key columns and part metadata, not the
+    // timestamp — and `system.parts.min_time` is only populated for time-based
+    // partition keys. Rather than quietly returning names from outside the
+    // requested window (which would disagree with the exhaustive search the
+    // caller falls back to), refuse the read and let that path answer.
+    if (
+      dateRange &&
+      timestampValueExpression &&
+      !partitionKeyCoversTimestamp(
+        tableMetadata.partition_key,
+        timestampValueExpression,
+      )
+    ) {
+      throw new UnprunableIndexReadError(
+        `partition key ${tableMetadata.partition_key || '(none)'} is not derived from ${timestampValueExpression}, so the read cannot be scoped to the date range`,
+      );
+    }
+
+    const partsFilter = await this.partsOverlapFilter({
+      databaseName,
+      tableName,
+      dateRange,
+      timestampValueExpression,
+    });
+
+    const sql = chSql`
+      SELECT DISTINCT ${{ Identifier: column }} AS value
+      FROM mergeTreeIndex(${{ String: databaseName }}, ${{ String: tableName }})
+      WHERE ${partsFilter}
+      LIMIT ${{ Int32: limit }}`;
+
+    const resultSet = await this.clickhouseClient.query<'JSONEachRow'>({
+      query: sql.sql,
+      query_params: sql.params,
+      format: 'JSONEachRow',
+      connectionId,
+      clickhouse_settings: this.getClickHouseSettings(),
+      abort_signal: signal,
+    });
+
+    for await (const chunk of streamToAsyncIterator(resultSet.stream())) {
+      // `stream()` is typed as an unparameterized ReadableStream; narrow here.
+      const rows: Row<unknown, 'JSONEachRow'>[] = chunk;
+      const values: string[] = [];
+      for (const row of rows) {
+        const { value } = row.json<{ value: unknown }>();
+        if (typeof value === 'string' && value !== '') {
+          values.push(value);
+        }
+      }
+      if (values.length > 0) {
+        yield values;
+      }
+    }
   }
 
   async getMapKeys({
