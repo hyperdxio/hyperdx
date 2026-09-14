@@ -17,6 +17,7 @@ import { notifications } from '@mantine/notifications';
 import api from '@/api';
 import { CopySnippet } from '@/components/ClickStackOnboarding/CopySnippet';
 import { notifyError } from '@/components/TeamSettings/agentForms';
+import { BASE_PATH } from '@/config';
 
 // Creates only the agent object: the environment and vault are provisioned on
 // import, so the copied text never contains a ClickStack access key. The
@@ -149,7 +150,9 @@ export default function ImportAgentForm({
             auto-approved, there is no shell, and fetching a runbook link is
             evaluated per call.
           </Text>
-          <CopySnippet snippet={buildManualSetupScript(`${origin}/api/mcp`)} />
+          <CopySnippet
+            snippet={buildManualSetupScript(`${origin}${BASE_PATH}/api/mcp`)}
+          />
         </Box>
       )}
     </Stack>

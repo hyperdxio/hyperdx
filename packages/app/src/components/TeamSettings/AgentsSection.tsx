@@ -169,7 +169,7 @@ function AgentsSectionInner() {
               disabled
               leftSection={provider.icon}
               rightSection={
-                <Badge size="xs" variant="light" color="gray">
+                <Badge size="xs" variant="light">
                   Coming soon
                 </Badge>
               }
