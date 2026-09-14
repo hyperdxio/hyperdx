@@ -82,6 +82,7 @@ import {
 import {
   AlertMessageTemplateDefaultView,
   buildAlertMessageTemplateTitle,
+  fetchSampleLines,
   NotificationFailure,
   NotificationTiming,
   renderAlertTemplate,
@@ -493,6 +494,7 @@ const fireChannelEvent = async ({
   totalCount,
   windowSizeInMins,
   teamWebhooksById,
+  sampleLines,
 }: {
   alert: IAlert;
   alertProvider: AlertProvider;
@@ -510,6 +512,7 @@ const fireChannelEvent = async ({
   totalCount: number;
   windowSizeInMins: number;
   teamWebhooksById: Map<string, IWebhook>;
+  sampleLines?: () => Promise<string>;
 }): Promise<
   Pick<RenderedAlert, 'failures' | 'timings' | 'dispatchDurationMs'>
 > => {
@@ -577,6 +580,7 @@ const fireChannelEvent = async ({
     view: templateView,
     teamId,
     teamWebhooksById,
+    sampleLines,
   });
   return { failures, timings, dispatchDurationMs };
 };
@@ -1138,6 +1142,9 @@ export const processAlert = async (
     // The alert query itself uses count(*), not the saved search's select,
     // so we render the saved search's select separately to discover aliases
     // and inject them as WITH clauses into the alert query.
+    // Reused by the notification body's sample-row query, which resolves the
+    // same aliases against the same source.
+    let aliasWithClauses: BuilderChartConfigWithOptDateRange['with'];
     if (details.taskType === AlertTaskType.SAVED_SEARCH) {
       if (!isBuilderChartConfig(chartConfig)) {
         logger.error({
@@ -1153,6 +1160,7 @@ export const processAlert = async (
           details.source,
           metadata,
         );
+        aliasWithClauses = withClauses;
         if (withClauses) {
           chartConfig.with = withClauses;
         }
@@ -1286,6 +1294,32 @@ export const processAlert = async (
       return histories.get(groupKey)!;
     };
 
+    // The sample rows a saved-search body quotes depend on the window, not on
+    // the group or the state, so every group notifying for one window shares a
+    // fetch instead of repeating it. Backfilled buckets each notify for their
+    // own window, hence the key. A failed fetch is shared too — the body falls
+    // back to no sample lines rather than re-running the query per group.
+    const sampleLinesByWindow = new Map<number, Promise<string>>();
+    const sampleLinesFor =
+      details.taskType === AlertTaskType.SAVED_SEARCH
+        ? (startTime: Date) => () => {
+            const key = startTime.getTime();
+            const pending =
+              sampleLinesByWindow.get(key) ??
+              fetchSampleLines({
+                aliasWith: aliasWithClauses,
+                clickhouseClient,
+                endTime: fns.addMinutes(startTime, windowSizeInMins),
+                metadata,
+                savedSearch: details.savedSearch,
+                source: details.source,
+                startTime,
+              });
+            sampleLinesByWindow.set(key, pending);
+            return pending;
+          }
+        : undefined;
+
     // Helper to send a notification, catching and logging any errors.
     const trySendNotification = async ({
       group,
@@ -1351,6 +1385,7 @@ export const processAlert = async (
             totalCount,
             windowSizeInMins,
             teamWebhooksById,
+            sampleLines: sampleLinesFor?.(startTime),
           });
         // Only the dispatch phase: the column reports how long the targets
         // took to respond, not the time spent building the message. A round
