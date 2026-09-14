@@ -335,11 +335,14 @@ export const makeNotificationAlertError = (
   }
   // Agent-channel failures are not webhook problems: the transport's own
   // messages (feature flag off, agent deleted, no Anthropic key) are authored
-  // by us and safe to surface; an AnthropicApiError carries upstream response
-  // text, which stays hidden per the same policy as webhook bodies.
+  // by us and safe to surface. Only an error carrying an upstream response
+  // body is redacted, per the same policy as webhook bodies — keying on the
+  // error class alone hid the authored half, so "no Anthropic key configured"
+  // reached the user as "the Anthropic API request failed", describing a
+  // request that never happened.
   if (failure.type === 'agent') {
     const detail =
-      failure.error instanceof AnthropicApiError
+      failure.error instanceof AnthropicApiError && failure.error.fromUpstream
         ? 'The Anthropic API request failed.'
         : getErrorMessage(failure.error);
     return {

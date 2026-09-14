@@ -469,12 +469,31 @@ describe('makeNotificationAlertError', () => {
       error: new AnthropicApiError(
         'Anthropic API POST /v1/sessions failed (429): {"secret":"upstream body"}',
         429,
+        true,
       ),
     });
 
     expect(err.type).toBe(AlertErrorType.AGENT_ERROR);
     expect(err.message).toContain('The Anthropic API request failed.');
     expect(err.message).not.toContain('upstream body');
+  });
+
+  // Not every AnthropicApiError came from Anthropic. The ones we raise before
+  // any request are the actionable half, and redacting them told the operator
+  // a request failed that was never made.
+  it('surfaces an AnthropicApiError we authored ourselves', () => {
+    const err = makeNotificationAlertError({
+      target: '66f0c0ffee66f0c0ffee66f0',
+      type: 'agent',
+      error: new AnthropicApiError(
+        'No Anthropic API key configured for this team',
+        400,
+      ),
+    });
+
+    expect(err.type).toBe(AlertErrorType.AGENT_ERROR);
+    expect(err.message).toContain('No Anthropic API key configured');
+    expect(err.message).not.toContain('The Anthropic API request failed.');
   });
 
   it('keeps webhook failures on the webhook message', () => {
