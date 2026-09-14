@@ -5,6 +5,7 @@ import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { buildSearchChartConfig } from '@hyperdx/common-utils/dist/core/searchChartConfig';
 import {
   BuilderChartConfigWithDateRange,
+  SelectList,
   SourceKind,
 } from '@hyperdx/common-utils/dist/types';
 import { Box, Flex } from '@mantine/core';
@@ -16,13 +17,14 @@ import SearchWhereInput, {
 } from '@/components/SearchInput/SearchWhereInput';
 import { RowWhereResult, WithClause } from '@/hooks/useRowWhere';
 import useWaterfallSearchState from '@/hooks/useWaterfallSearchState';
-import { getEventBody, useSource } from '@/source';
+import { useSource } from '@/source';
 
 import {
   deriveRowSidePanelContextForSource,
   RowSidePanelContext,
 } from './DBRowSidePanel';
 import { DBSqlRowTable } from './DBRowTable';
+import { getTableRowLabel } from './rowLabel';
 
 /**
  * Every log in one trace, as a flat chronological table.
@@ -37,7 +39,7 @@ export default function TraceLogsPanel({
   traceId,
   dateRange,
   highlightedRowId,
-  searchTableConfig,
+  selectOverride,
   onNavigateToLog,
   'data-testid': dataTestId,
 }: {
@@ -47,11 +49,11 @@ export default function TraceLogsPanel({
   /** Row id of the log this panel was opened from, when it is one of these logs. */
   highlightedRowId?: string;
   /**
-   * The searched table's config, when this panel's logs come from that same
-   * source. Its `select` is reused so these rows carry the same ids the search
-   * built `highlightedRowId` from, and so the columns track the reader's.
+   * The searched table's SELECT, when this panel's logs are that table's rows.
+   * Reused so these rows carry the same ids `highlightedRowId` was built from,
+   * and so the columns track the ones the reader picked.
    */
-  searchTableConfig?: BuilderChartConfigWithDateRange;
+  selectOverride?: SelectList;
   onNavigateToLog: (
     rowId: string,
     aliasWith: WithClause[],
@@ -145,7 +147,7 @@ export default function TraceLogsPanel({
         whereLanguage: logFilterLanguage,
         // Falls back to the source's default columns when these logs aren't
         // the searched table's rows.
-        select: searchTableConfig?.select ?? null,
+        select: selectOverride ?? null,
         // Ascending: inside a trace, chronological order is execution order.
         orderBy: `${logSource.timestampValueExpression} ASC`,
       }),
@@ -159,19 +161,15 @@ export default function TraceLogsPanel({
     logWhere,
     logFilterLanguage,
     dateRange,
-    searchTableConfig,
+    selectOverride,
   ]);
 
   const handleRowDetailsClick = useCallback(
     (rowWhere: RowWhereResult, row: Record<string, unknown>) => {
-      // The table selects the source's own columns, so the body lands under
-      // its expression rather than a normalized alias.
-      const bodyExpression = logSource ? getEventBody(logSource) : undefined;
-      const body = bodyExpression ? row[bodyExpression] : undefined;
       onNavigateToLog(
         rowWhere.where,
         rowWhere.aliasWith,
-        typeof body === 'string' && body.length > 0 ? body : 'Log',
+        logSource ? getTableRowLabel(logSource, row) : 'Log',
       );
     },
     [logSource, onNavigateToLog],
@@ -185,14 +183,14 @@ export default function TraceLogsPanel({
     const derived = logSource
       ? deriveRowSidePanelContextForSource(parentContext, logSource)
       : parentContext;
-    if (searchTableConfig != null) {
+    if (selectOverride != null) {
       return derived;
     }
     // These columns are this table's own, not the searched table's, so the
     // header's remove-column action would drop whatever column sits at that
     // index in the *search* results. Take it away.
     return { ...derived, displayedColumns: undefined, toggleColumn: undefined };
-  }, [parentContext, logSource, searchTableConfig]);
+  }, [parentContext, logSource, selectOverride]);
 
   if (isLoading) {
     return null;

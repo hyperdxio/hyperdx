@@ -30,6 +30,7 @@ import {
 import { ROW_DATA_ALIASES } from './DBRowDataPanel';
 import { RowSidePanelContext } from './DBRowSidePanel';
 import { DBSqlRowTable } from './DBRowTable';
+import { getTableRowLabel } from './rowLabel';
 
 interface ContextSubpanelProps {
   source: TSource;
@@ -77,16 +78,13 @@ export default function ContextSubpanel({
   const { setChildModalOpen } = use(RowSidePanelContext);
 
   const handleRowExpandClick = useCallback(
-    (rowWhere: RowWhereResult, row: Record<string, any>) => {
-      const body = row?.[ROW_DATA_ALIASES.BODY];
-      const fallback = isTraceSource(source) ? 'Span' : 'Log';
-      const label =
-        typeof body === 'string' && body.length > 0
-          ? body
-          : body != null
-            ? JSON.stringify(body)
-            : fallback;
-      onNavigateToRow?.(rowWhere.where, rowWhere.aliasWith, label, source.kind);
+    (rowWhere: RowWhereResult, row: Record<string, unknown>) => {
+      onNavigateToRow?.(
+        rowWhere.where,
+        rowWhere.aliasWith,
+        getTableRowLabel(source, row),
+        source.kind,
+      );
     },
     [onNavigateToRow, source],
   );

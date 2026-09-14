@@ -562,13 +562,16 @@ export const DBRowSidePanelInner = ({
   // The displayed row is itself one of the logs the tab lists, so picking one
   // is a row change rather than a source hop.
   const isOwnTraceLogSource = traceLogSourceId === source.id;
-  // Only the search page hands down a table config, and only at the root frame.
-  // When it's there, the tab can share the reader's columns; without it the tab
-  // falls back to the source's own, and nothing about the opening table carries
-  // over — including a comparable row id.
-  const traceLogsSearchConfig = isOwnTraceLogSource
-    ? dbSqlRowTableConfig
-    : undefined;
+  // The columns the reader picked on the search page, handed to the tab
+  // whenever these logs are that search's rows. Read from the parent context
+  // rather than `dbSqlRowTableConfig`, which is nulled for nested rows: a
+  // drilldown changes which row is shown, not which columns the reader chose or
+  // which select their ids were built from. Undefined once the searched source
+  // is no longer the one the logs come from, where neither would hold.
+  const traceLogsSelect =
+    isOwnTraceLogSource && parentContext.source?.id === traceLogSourceId
+      ? parentContext.dbSqlRowTableConfig?.select
+      : undefined;
 
   const enableServiceMap = traceId && traceSourceId;
 
@@ -1172,13 +1175,11 @@ export const DBRowSidePanelInner = ({
             logSourceId={traceLogSourceId}
             traceId={traceId}
             dateRange={oneHourRange}
-            searchTableConfig={traceLogsSearchConfig}
+            selectOverride={traceLogsSelect}
             // Row ids are built from the selected columns, so the id this
             // panel was opened with is only comparable to the tab's rows when
             // the tab is selecting the same columns.
-            highlightedRowId={
-              traceLogsSearchConfig != null ? activeRowId : undefined
-            }
+            highlightedRowId={traceLogsSelect != null ? activeRowId : undefined}
             onNavigateToLog={handleTraceLogNavigate}
           />
         </ErrorBoundary>

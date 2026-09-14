@@ -5,14 +5,23 @@ import {
   TLogSource,
 } from '@hyperdx/common-utils/dist/types';
 import { MantineProvider } from '@mantine/core';
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 
 const mockQueryStore: Record<string, unknown> = {};
+const mockSetters: Record<string, jest.Mock> = {};
+function setterFor(key: string) {
+  if (!mockSetters[key]) mockSetters[key] = jest.fn();
+  return mockSetters[key];
+}
+
 jest.mock('nuqs', () => {
   const actual = jest.requireActual('nuqs');
   return {
     ...actual,
-    useQueryState: (key: string) => [mockQueryStore[key] ?? null, jest.fn()],
+    useQueryState: (key: string) => {
+      if (!mockSetters[key]) mockSetters[key] = jest.fn();
+      return [mockQueryStore[key] ?? null, mockSetters[key]];
+    },
   };
 });
 
@@ -57,9 +66,11 @@ jest.mock('../SearchInput/SearchWhereInput', () => {
     default: ({
       control,
       name,
+      onSubmit,
     }: {
       control: Control<FilterForm>;
       name: keyof FilterForm;
+      onSubmit?: () => void;
     }) => {
       // Surface the form's live value so a test can see what the user would.
       const value = rhf.useWatch({ control, name });
@@ -70,6 +81,14 @@ jest.mock('../SearchInput/SearchWhereInput', () => {
           <span data-testid="log-filter-language">
             {String(language ?? '')}
           </span>
+          {/* Stands in for pressing enter in the real input. */}
+          <button
+            type="button"
+            data-testid="submit-log-filter"
+            onClick={onSubmit}
+          >
+            submit
+          </button>
         </>
       );
     },
@@ -129,11 +148,11 @@ const LOG_SOURCE = asLogSource({
 function renderPanel({
   source = LOG_SOURCE,
   onNavigateToLog = jest.fn(),
-  searchTableConfig,
+  selectOverride,
 }: {
   source?: TLogSource;
   onNavigateToLog?: jest.Mock;
-  searchTableConfig?: BuilderChartConfigWithDateRange;
+  selectOverride?: string;
 } = {}) {
   mockUseSource.mockReturnValue({ data: source, isLoading: false });
   // A fresh element per render: React bails out of re-rendering an identical one.
@@ -143,7 +162,7 @@ function renderPanel({
         logSourceId="log-src"
         traceId={TRACE_ID}
         dateRange={DATE_RANGE}
-        searchTableConfig={searchTableConfig}
+        selectOverride={selectOverride}
         onNavigateToLog={onNavigateToLog}
       />
     </MantineProvider>
@@ -155,6 +174,7 @@ function renderPanel({
 describe('TraceLogsPanel', () => {
   beforeEach(() => {
     Object.keys(mockQueryStore).forEach(k => delete mockQueryStore[k]);
+    Object.keys(mockSetters).forEach(k => delete mockSetters[k]);
     mockRowTableProps.current = {};
     mockUseSource.mockReset();
     mockRowTableContext.current = {};
@@ -225,24 +245,14 @@ describe('TraceLogsPanel', () => {
   });
 
   describe('when the logs come from the searched source', () => {
-    const SEARCH_CONFIG: BuilderChartConfigWithDateRange = {
-      connection: 'conn',
-      from: { databaseName: 'default', tableName: 'otel_logs' },
-      timestampValueExpression: 'Timestamp',
-      // The reader's chosen columns, which differ from the source default.
-      select: 'Timestamp, Body',
-      where: 'ServiceName:"cart"',
-      whereLanguage: 'lucene',
-      filters: [{ type: 'sql' as const, condition: "ServiceName = 'cart'" }],
-      orderBy: 'Timestamp DESC',
-      dateRange: [new Date(0), new Date(1)] as [Date, Date],
-    };
+    // The reader's chosen columns, which differ from the source default.
+    const SEARCH_SELECT = 'Timestamp, Body';
 
     it("reuses the search's columns so row ids match the highlighted row", () => {
-      renderPanel({ searchTableConfig: SEARCH_CONFIG });
+      renderPanel({ selectOverride: SEARCH_SELECT });
 
       const config = mockRowTableProps.current.config!;
-      expect(config.select).toBe('Timestamp, Body');
+      expect(config.select).toBe(SEARCH_SELECT);
       // ...while the trace scope and ordering still come from this panel.
       expect(config.filters).toEqual([
         { type: 'sql', condition: `TraceId='${TRACE_ID}'` },
@@ -255,7 +265,7 @@ describe('TraceLogsPanel', () => {
     });
 
     it('leaves the remove-column action in place, since the columns are shared', () => {
-      renderPanel({ searchTableConfig: SEARCH_CONFIG });
+      renderPanel({ selectOverride: SEARCH_SELECT });
 
       expect(mockRowTableContext.current.toggleColumn).toBe(mockToggleColumn);
     });
@@ -285,6 +295,22 @@ describe('TraceLogsPanel', () => {
       'ServiceName:"cart"',
     );
     expect(mockRowTableProps.current.config?.where).toBe('ServiceName:"cart"');
+  });
+
+  it('submits the log filter without touching the spans filter', async () => {
+    mockQueryStore.logWhere = 'SeverityText:"error"';
+    mockQueryStore.logWhereLanguage = 'sql';
+    renderPanel();
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('submit-log-filter'));
+    });
+
+    expect(setterFor('logWhere')).toHaveBeenCalledWith('SeverityText:"error"');
+    expect(setterFor('logWhereLanguage')).toHaveBeenCalledWith('sql');
+    // The waterfall's own filter is not this form's to write.
+    expect(setterFor('traceWhere')).not.toHaveBeenCalled();
+    expect(setterFor('traceWhereLanguage')).not.toHaveBeenCalled();
   });
 
   it("labels a picked row with the log's body", () => {
