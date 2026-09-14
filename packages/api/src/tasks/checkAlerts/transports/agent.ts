@@ -46,6 +46,11 @@ export const buildAgentPrompt = (message: Message): string => {
     condition: {
       comparator: message.comparator,
       threshold: message.threshold,
+      // Only a range comparator has one, and without it "between 5" is not a
+      // condition the agent can reconstruct or re-run.
+      ...(message.thresholdMax != null
+        ? { threshold_max: message.thresholdMax }
+        : {}),
       current_value: message.value,
     },
     context: {

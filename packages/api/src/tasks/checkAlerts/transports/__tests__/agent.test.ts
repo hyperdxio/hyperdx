@@ -16,8 +16,11 @@ jest.mock('@/services/anthropicAgents', () => ({
 // namespace import is wrapped in getters, so the factory also exposes a setter
 // closing over the underlying object for the flag-off test below.
 jest.mock('@/config', () => {
-  const mock: any = {
-    ...jest.requireActual('@/config'),
+  const mock: Record<string, unknown> & {
+    IS_MANAGED_AGENTS_ENABLED: boolean;
+    __setManagedAgentsEnabled?: (v: boolean) => void;
+  } = {
+    ...jest.requireActual<Record<string, unknown>>('@/config'),
     IS_MANAGED_AGENTS_ENABLED: true,
   };
   mock.__setManagedAgentsEnabled = (v: boolean) => {
@@ -58,6 +61,24 @@ const message: Message = {
 const agentChannel = { type: 'agent' as const, channel: { agentId } };
 
 describe('buildAgentPrompt', () => {
+  // "between 5" is not a condition. A range alert's upper bound has to reach
+  // the agent or it cannot reconstruct what fired, let alone re-run it.
+  it('carries the upper bound of a range condition', () => {
+    const payload = JSON.parse(
+      buildAgentPrompt({ ...message, comparator: 'between', thresholdMax: 9 }),
+    );
+    expect(payload.condition).toMatchObject({
+      comparator: 'between',
+      threshold: message.threshold,
+      threshold_max: 9,
+    });
+  });
+
+  it('omits the upper bound when the condition has none', () => {
+    const payload = JSON.parse(buildAgentPrompt(message));
+    expect(payload.condition).not.toHaveProperty('threshold_max');
+  });
+
   it('serializes the alert context as structured JSON', () => {
     const payload = JSON.parse(buildAgentPrompt(message));
     expect(payload.source).toBe('clickstack');
