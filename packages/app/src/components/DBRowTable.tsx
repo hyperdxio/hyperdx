@@ -388,7 +388,7 @@ export const RawLogTable = memo(
     rows: Record<string, any>[];
     isLoading?: boolean;
     fetchNextPage?: (options?: FetchNextPageOptions | undefined) => any;
-    onRowDetailsClick: (row: Record<string, any>) => void;
+    onRowDetailsClick?: (row: Record<string, any>) => void;
     generateRowId: (row: Record<string, any>) => RowWhereResult;
     hasNextPage?: boolean;
     highlightedLineId?: string;
@@ -459,16 +459,21 @@ export const RawLogTable = memo(
       userPreferences: { isUTC, rowClickAction },
     } = useUserPreferences();
 
+    // The ClickHouse dashboard's slow-query list has no side panel to open, so
+    // inline expansion is the only thing a row click can do there.
+    const canOpenSidePanel = onRowDetailsClick != null;
+
     // Inline expansion is owned by the expand-button column, so tables that hide
     // it (surrounding context, patterns) always fall back to the side panel.
     const prefersInlineExpand =
       showExpandButton &&
-      (rowClickAction ?? DEFAULT_ROW_CLICK_ACTION) === 'expand';
+      (!canOpenSidePanel ||
+        (rowClickAction ?? DEFAULT_ROW_CLICK_ACTION) === 'expand');
 
     // Once the side panel is open it stays the active surface, so clicks keep
     // moving it from row to row instead of expanding rows behind it.
     const expandInlineOnRowClick =
-      prefersInlineExpand && highlightedLineId == null;
+      prefersInlineExpand && (!canOpenSidePanel || highlightedLineId == null);
 
     const [columnSizeStorage, setColumnSizeStorage] = useLocalStorage<
       Record<string, number>
@@ -1285,7 +1290,7 @@ export const RawLogTable = memo(
                                   setWrapLinesEnabled(!wrapLinesEnabled)
                                 }
                                 onOpenSidePanel={
-                                  prefersInlineExpand
+                                  prefersInlineExpand && canOpenSidePanel
                                     ? () => _onRowExpandClick(row.original)
                                     : undefined
                                 }
@@ -1934,7 +1939,9 @@ function DBSqlRowTableComponent({
         fetchNextPage={fetchNextPage}
         // onPropertySearchClick={onPropertySearchClick}
         hasNextPage={hasNextPage}
-        onRowDetailsClick={_onRowDetailsClick}
+        // Passed through conditionally so tables with no side panel (the
+        // ClickHouse dashboard's slow-query list) don't offer to open one.
+        onRowDetailsClick={onRowDetailsClick ? _onRowDetailsClick : undefined}
         onScroll={onScroll}
         generateRowId={getRowWhere}
         isError={isError}
