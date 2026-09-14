@@ -81,7 +81,11 @@ const DateInputCmp = ({
     variant="filled"
     dateParser={dateParser}
     onKeyDown={e => {
-      if (e.key === 'Enter' && e.target instanceof HTMLInputElement) {
+      if (
+        e.key === 'Enter' &&
+        !e.nativeEvent.isComposing &&
+        e.target instanceof HTMLInputElement
+      ) {
         e.target.blur();
       }
     }}
@@ -302,7 +306,11 @@ const TimePickerComponent = ({
           size={size}
           w={width}
           onKeyDown={e => {
-            if (e.key === 'Enter' && e.target instanceof HTMLInputElement) {
+            if (
+              e.key === 'Enter' &&
+              !e.nativeEvent.isComposing &&
+              e.target instanceof HTMLInputElement
+            ) {
               onSubmit?.(e.target.value);
               close();
             }

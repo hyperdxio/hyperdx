@@ -64,7 +64,7 @@ export const Tags = React.memo(
 
     const handleSearchKeyDown = React.useCallback(
       (event: React.KeyboardEvent<HTMLInputElement>) => {
-        if (event.key === 'Enter') {
+        if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
           if (allowCreate && q.length > 0) {
             // Check if tag already exists (case insensitive)
             const newTag = event.currentTarget.value;

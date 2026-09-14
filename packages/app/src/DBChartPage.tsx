@@ -170,8 +170,14 @@ function AIAssistant({
       </Group>
       <Collapse expanded={opened}>
         {opened && (
-          // eslint-disable-next-line react-hooks/refs
-          <form onSubmit={handleSubmit(onSubmit)}>
+          <form
+            onSubmit={handleSubmit(onSubmit)}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && e.nativeEvent.isComposing) {
+                e.preventDefault();
+              }
+            }}
+          >
             <Group mb="md">
               <SourceSelectControlled
                 autoFocus

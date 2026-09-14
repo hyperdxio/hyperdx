@@ -317,7 +317,7 @@ function FilterPill({
           // Picking a suggestion commits immediately.
           onOptionSubmit={commitValue}
           onKeyDown={e => {
-            if (e.key !== 'Enter') {
+            if (e.key !== 'Enter' || e.nativeEvent.isComposing) {
               return;
             }
             // If the user is keyboard-navigating the dropdown, an option is

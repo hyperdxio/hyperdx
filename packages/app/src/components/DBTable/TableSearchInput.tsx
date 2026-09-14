@@ -168,7 +168,11 @@ export const TableSearchInput = ({
 
   const handleSearchKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
-      if (e.key === 'Enter' && matchIndices.length > 0) {
+      if (
+        e.key === 'Enter' &&
+        !e.nativeEvent.isComposing &&
+        matchIndices.length > 0
+      ) {
         if (e.shiftKey) {
           // Shift+Enter: previous match
           onPreviousMatch();

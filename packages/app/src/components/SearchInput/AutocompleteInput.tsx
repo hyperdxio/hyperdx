@@ -269,6 +269,7 @@ export default function AutocompleteInput({
               }
               if (
                 e.key === 'Enter' &&
+                !e.nativeEvent.isComposing &&
                 e.target instanceof HTMLTextAreaElement
               ) {
                 if (

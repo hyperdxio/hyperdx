@@ -97,7 +97,7 @@ export function VirtualMultiSelect({
       return;
     }
 
-    if (event.key === 'Enter') {
+    if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
       const trimmed = search.trim();
       // When the user has explicitly highlighted a dropdown option with the
       // arrow keys, defer to the combobox's default behavior of selecting it.

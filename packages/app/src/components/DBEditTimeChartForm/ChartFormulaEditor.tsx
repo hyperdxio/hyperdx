@@ -147,7 +147,7 @@ export function ChartFormulaEditor({
               input: { fontFamily: 'var(--mantine-font-family-monospace)' },
             }}
             onKeyDown={e => {
-              if (e.key === 'Enter') {
+              if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
                 onSubmit();
               }
             }}
