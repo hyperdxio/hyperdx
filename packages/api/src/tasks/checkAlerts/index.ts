@@ -67,6 +67,7 @@ import {
   isClientTimeoutOrAbortError,
   isQueryTimeoutError,
   NotificationCapExceededError,
+  UnsupportedChannelError,
   UnsupportedMentionError,
   WEBHOOK_REDIRECT_ERROR_MESSAGE,
   WebhookNotFoundError,
@@ -300,6 +301,13 @@ const makeNotificationAlertError = (
     };
   }
   if (failure.error instanceof NotificationCapExceededError) {
+    return {
+      timestamp,
+      type: AlertErrorType.WEBHOOK_ERROR,
+      message: `${failure.error.message} (${target})`.slice(0, 10000),
+    };
+  }
+  if (failure.error instanceof UnsupportedChannelError) {
     return {
       timestamp,
       type: AlertErrorType.WEBHOOK_ERROR,

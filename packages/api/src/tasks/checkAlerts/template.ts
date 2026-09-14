@@ -41,6 +41,7 @@ import {
 } from '@/tasks/checkAlerts';
 import {
   NotificationCapExceededError,
+  UnsupportedChannelError,
   UnsupportedMentionError,
   WebhookNotFoundError,
 } from '@/tasks/checkAlerts/errors';
@@ -766,15 +767,11 @@ export const renderAlertTemplate = async ({
     // otherwise fire, notify nobody, and record nothing.
     if (channel.type !== 'webhook') {
       // A pre-multi-channel row can carry a null type; label it rather than
-      // rendering "null" at the user.
+      // rendering "null" at the user. The kind is the whole target here — a
+      // channel this build has no transport for has no id shape we can read
+      // without inventing one.
       const kind = channel.type ?? 'unknown';
-      recordPreFailure(
-        kind,
-        kind,
-        new Error(
-          `This deployment cannot notify a "${kind}" channel. Update the alert's notification channel.`,
-        ),
-      );
+      recordPreFailure(kind, kind, new UnsupportedChannelError(kind));
       return [];
     }
     const webhook = teamWebhooksById.get(channel.webhookId);
