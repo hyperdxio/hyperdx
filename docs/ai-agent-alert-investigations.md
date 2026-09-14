@@ -64,6 +64,18 @@ new**. This provisions, on your Anthropic account:
   `clickstack_patch_dashboard`, which stay at `always_ask` and therefore never
   run in a session nobody is watching.
 
+Anthropic's built-in toolset is configured tool by tool rather than left at
+its defaults, which auto-allow everything — including a shell. There is no
+shell: the sandbox has network access, and a per-call check cannot reliably
+judge a command that runs a script the agent wrote a moment earlier.
+Investigating is querying, which the MCP tools do. `web_search` is off for the
+same reason and because nothing asks the agent to search the web. `web_fetch`
+is set to `auto` so the agent can follow a runbook you linked in the alert's
+note, with Anthropic evaluating each fetch; a fetch it won't clear stops that
+investigation, since nothing here answers an approval prompt. The file tools
+stay on — the container is per-session and holds only what the agent puts in
+it.
+
 Pick a **type** to give the agent a starting brief — database, Kubernetes,
 application errors, latency, or a general responder that adds nothing beyond
 the standing prompt. The brief is shown under the picker and appended to that
@@ -84,7 +96,10 @@ reason.
 To control the agent's system prompt, model or tools beyond what the form
 offers, create it on Anthropic yourself — **Add agent** → **Import existing**
 hides a `curl` that does it behind "Don't have one?" — and paste the returned
-agent ID into that same tab.
+agent ID into that same tab. That `curl` carries the same tool policy HyperDX
+provisions with, and it is the only thing that sets it: nothing inspects or
+rewrites an imported agent's toolset, so an agent built with a looser policy
+keeps it, and whatever you create is what runs unattended.
 
 Only the ID is asked for, plus an optional label. The name and model are read
 from the agent object itself rather than retyped, so they can't drift from what

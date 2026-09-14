@@ -2,6 +2,10 @@
 // packages/api/src/extensions/index.ts for the contract.
 import '@/extensions';
 
+import {
+  AGENT_TOOLSET,
+  AUTO_ALLOWED_MCP_TOOLS,
+} from '@hyperdx/common-utils/dist/managedAgents';
 import { serializeError } from 'serialize-error';
 
 import * as config from '@/config';
@@ -32,34 +36,6 @@ const ANTHROPIC_REQUEST_TIMEOUT_MS = 20_000;
 const SRE_SYSTEM_PROMPT = `You are an SRE agent for ClickStack/HyperDX. A ClickStack alert has fired. Investigate the root cause using the clickstack MCP server (logs, traces, metrics, and alert history). Reconstruct and re-run the alert's source query over its time range, inspect related logs, traces, and metrics, follow any linked runbook, and check recent deploys. Produce a concise, evidence-linked root-cause summary and suggested next steps. Do not make changes to production systems.`;
 
 // ClickStack MCP tools an alert-triggered agent may run without approval.
-// Read-only only: the same MCP server also exposes clickstack_save_*,
-// clickstack_delete_* and clickstack_patch_dashboard, which must never fire
-// from an unattended investigation. clickstack_sql is safe to include because
-// that tool pins ClickHouse `readonly=2`.
-const AUTO_ALLOWED_MCP_TOOLS = [
-  'clickstack_describe_metric',
-  'clickstack_describe_source',
-  'clickstack_emerging_signals',
-  'clickstack_event_deltas',
-  'clickstack_event_patterns',
-  'clickstack_get_alert',
-  'clickstack_get_dashboard',
-  'clickstack_get_dashboard_tile',
-  'clickstack_get_saved_search',
-  'clickstack_get_webhook',
-  'clickstack_list_metrics',
-  'clickstack_list_sources',
-  'clickstack_query_tile',
-  'clickstack_query_tiles',
-  'clickstack_search',
-  'clickstack_search_dashboards',
-  'clickstack_sql',
-  'clickstack_table',
-  'clickstack_timeseries',
-  'clickstack_trace_top_time_consuming_operations',
-  'clickstack_trace_waterfall',
-];
-
 // An orphan is a vault or environment nothing points at any more — the vault
 // case leaves a live ClickStack credential on Anthropic, so it needs to be
 // alertable, not just greppable in the logs.
@@ -351,15 +327,17 @@ const provisionClickStackAgentImpl = async ({
       system: systemPrompt,
       mcp_servers: [{ type: 'url', name: 'clickstack', url: mcpServerUrl }],
       tools: [
-        { type: 'agent_toolset_20260401' },
+        AGENT_TOOLSET,
         {
           type: 'mcp_toolset',
           mcp_server_name: 'clickstack',
           // An unattended session can never answer an approval prompt, so
-          // anything left at `always_ask` simply never runs. That makes the
-          // default the safe setting and the allowlist the deliberate one:
-          // only read tools are auto-approved, so the MCP server's
-          // save_*/delete_*/patch_* tools cannot fire from an alert.
+          // anything left at `always_ask` simply never runs: only the
+          // allowlisted read tools fire from an alert, and the MCP server's
+          // save_*/delete_*/patch_* tools stall instead. `always_ask` is this
+          // toolset's default, but that is not a general rule — the built-in
+          // toolset defaults the other way, which is why AGENT_TOOLSET above
+          // spells its policy out.
           default_config: { permission_policy: { type: 'always_ask' } },
           configs: AUTO_ALLOWED_MCP_TOOLS.map(toolName => ({
             name: toolName,
@@ -498,7 +476,9 @@ const importAnthropicAgentImpl = async ({
       createdBy: userId,
     });
   } catch (e) {
-    await deleteAnthropicResources(apiKey, { environmentId, vaultId });
+    reportOrphans(
+      await deleteAnthropicResources(apiKey, { environmentId, vaultId }),
+    );
     throw e;
   }
   return { agent, verified };
@@ -569,6 +549,7 @@ const deleteSessionBestEffort = async (
   try {
     await anthropicRequest(apiKey, 'DELETE', `/v1/sessions/${sessionId}`);
   } catch (e) {
+    orphanedResourceCounter.add(1);
     logger.warn(
       { error: serializeError(e), sessionId },
       'Failed to delete an untracked agent session; it may keep running',
@@ -606,6 +587,7 @@ const deleteAnthropicAgentImpl = async (
     ...resources,
   });
   if (orphaned.length > 0) {
+    orphanedResourceCounter.add(orphaned.length);
     throw new AnthropicApiError(
       `Anthropic still holds: ${orphaned.join(', ')}. The agent was kept so you can retry; deleting again resumes where this left off.`,
       502,
@@ -619,6 +601,10 @@ const deleteAnthropicAgentImpl = async (
 // reuse the run; a firing in a later window (a persisting or recurring
 // incident) gets a fresh investigation. ponytail: fixed 1h cooldown; tie to the
 // alert interval only if a fixed window proves too coarse.
+// Placeholder while a run reserves its dedupe key, before the Anthropic
+// session exists. Never surfaced: nothing outside this module reads the field.
+const PENDING_SESSION_ID = 'pending';
+
 const AGENT_DEDUPE_WINDOW_MS = 60 * 60 * 1000;
 
 // Kicks off a managed-agent investigation for a firing alert: starts an
@@ -650,9 +636,8 @@ const startAgentSessionImpl = async ({
   // Anthropic sessions every window — unbounded spend on high-cardinality
   // group-bys. One investigation per alert per window covers the incident (the
   // payload names the triggering group); eventId is only the fallback for a
-  // caller with no alertId. The findOne avoids the redundant Anthropic calls
-  // in the common case; the unique index (+ duplicate key catch below) is the
-  // real race guard.
+  // caller with no alertId. The findOne is the cheap common-case check; the
+  // unique index on the reservation below is the real race guard.
   const dedupeWindow = Math.floor(Date.now() / AGENT_DEDUPE_WINDOW_MS);
   // `||`, not `??`: the caller passes '' for an alert without an id, and an
   // empty discriminator would collapse every such alert into one dedupe bucket.
@@ -676,25 +661,45 @@ const startAgentSessionImpl = async ({
     );
   }
 
-  const session = await anthropicRequest(apiKey, 'POST', '/v1/sessions', {
-    agent: agent.anthropicAgentId,
-    environment_id: agent.environmentId,
-    vault_ids: [agent.vaultId],
-    title,
-  });
-
-  // Everything after session creation is wrapped so ANY failure (a failed
-  // kickoff events POST, a lost dedup race, or any other create error) cleans
-  // up the session rather than leaving it running untracked and consuming
-  // quota. Only a genuine duplicate-key race resolves to the winning run.
+  // Claim the key before spending, so a concurrent firing loses here rather
+  // than after paying for a session it discards. Session id filled in below.
+  let run: AgentRunDocument;
   try {
+    run = await AgentRun.create({
+      team: teamId,
+      managedAgent: agent._id,
+      anthropicSessionId: PENDING_SESSION_ID,
+      alertId,
+      dedupeKey,
+      title,
+    });
+  } catch (e) {
+    // Lost the race — the winner owns the investigation.
+    if (isDuplicateKeyError(e)) {
+      return {
+        run: await AgentRun.findOne({ team: teamId, dedupeKey }),
+        deduped: true,
+      };
+    }
+    throw e;
+  }
+
+  let session: { id: string } | undefined;
+  try {
+    session = await anthropicRequest(apiKey, 'POST', '/v1/sessions', {
+      agent: agent.anthropicAgentId,
+      environment_id: agent.environmentId,
+      vault_ids: [agent.vaultId],
+      title,
+    });
+
     // Extension seam: downstream may replace the kickoff payload wholesale,
     // append instructions, and stash run metadata (fail-open — a broken
     // extension contributes nothing and the investigation proceeds).
     const ext = await runSessionStartExtensions({
       teamId: teamId.toString(),
       agent,
-      anthropicSessionId: session.id,
+      anthropicSessionId: session!.id,
       title,
       prompt,
     });
@@ -702,7 +707,7 @@ const startAgentSessionImpl = async ({
     await anthropicRequest(
       apiKey,
       'POST',
-      `/v1/sessions/${session.id}/events`,
+      `/v1/sessions/${session!.id}/events`,
       {
         events: [
           {
@@ -713,27 +718,26 @@ const startAgentSessionImpl = async ({
       },
     );
 
-    const run = await AgentRun.create({
-      team: teamId,
-      managedAgent: agent._id,
-      anthropicSessionId: session.id,
-      alertId,
-      dedupeKey,
-      title,
-      ...(ext.runMetadata ? { metadata: ext.runMetadata } : {}),
-    });
+    run.anthropicSessionId = session!.id;
+    if (ext.runMetadata) run.metadata = ext.runMetadata;
+    await run.save();
     return { run, deduped: false };
   } catch (e) {
-    await deleteSessionBestEffort(apiKey, session.id);
-    // Lost a race to a concurrent firing — the other run owns the
-    // investigation (the findOne above avoids this in the common case; this
-    // only fires on a genuine race).
-    if (isDuplicateKeyError(e)) {
-      return {
-        run: await AgentRun.findOne({ team: teamId, dedupeKey }),
-        deduped: true,
-      };
-    }
+    // Clean up in both directions: the session would otherwise keep running
+    // untracked, and the reservation would dedupe away the next evaluation's
+    // retry of an investigation that never actually started.
+    if (session) await deleteSessionBestEffort(apiKey, session.id);
+    // Releasing the reservation matters more than the session cleanup: a row
+    // left behind dedupes this alert away for the rest of the window, so the
+    // next firing silently never investigates. Count it like any other
+    // leftover rather than swallowing it.
+    await AgentRun.deleteOne({ _id: run._id }).catch(cleanupError => {
+      orphanedResourceCounter.add(1);
+      logger.error(
+        { error: serializeError(cleanupError), dedupeKey },
+        'Failed to release an agent-run reservation; this alert will not investigate again until the dedupe window rolls',
+      );
+    });
     throw e;
   }
 };

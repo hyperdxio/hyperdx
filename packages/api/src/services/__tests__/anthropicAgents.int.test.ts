@@ -1,3 +1,4 @@
+import { AGENT_TOOLSET } from '@hyperdx/common-utils/dist/managedAgents';
 import mongoose from 'mongoose';
 
 import { getServer } from '@/fixtures';
@@ -139,6 +140,14 @@ describe('anthropicAgents service', () => {
         /^clickstack_(save|delete|patch)_/.test(name),
       ),
     ).toEqual([]);
+
+    // Sent configured, not bare — AGENT_TOOLSET's docblock has the why, and
+    // agentToolPolicy.test.ts pins its contents. What matters here is that
+    // provisioning actually sends it.
+    const builtinToolset = agentBody.tools.find(
+      (t: any) => t.type === 'agent_toolset_20260401',
+    );
+    expect(builtinToolset).toEqual(AGENT_TOOLSET);
 
     // Beta header is sent.
     const agentHeaders = calls.find(([u]) =>
@@ -576,6 +585,56 @@ describe('anthropicAgents service', () => {
       expect(second.run!._id.toString()).toBe(first.run!._id.toString());
       expect(sessionPosts()).toBe(1); // no new session created
       expect(await AgentRun.countDocuments({})).toBe(1);
+    });
+
+    // The sequential test above is served by the findOne fast path; this one
+    // exercises the unique index underneath it.
+    it('spends one session when two firings race, not one each', async () => {
+      fetchSpy = mockSessions();
+      const { teamId, agentId } = await seedAgent();
+
+      const [first, second] = await Promise.all([
+        startAgentSession(startArgs(teamId, agentId)),
+        startAgentSession(startArgs(teamId, agentId)),
+      ]);
+
+      const sessionPosts = fetchSpy.mock.calls.filter(([u]: any) =>
+        String(u).endsWith('/v1/sessions'),
+      ).length;
+      expect(sessionPosts).toBe(1);
+      expect(await AgentRun.countDocuments({})).toBe(1);
+      // Exactly one winner, and the loser resolves to the winner's run rather
+      // than erroring — the caller has an investigation either way.
+      expect([first.deduped, second.deduped].sort()).toEqual([false, true]);
+      expect(first.run!._id.toString()).toBe(second.run!._id.toString());
+    });
+
+    // The other failure test kills the events POST, by which point a session
+    // exists. This kills session creation itself, so the reservation has to be
+    // released with nothing to tear down on Anthropic's side.
+    it('releases the reservation when session creation itself fails', async () => {
+      const { teamId, agentId } = await seedAgent();
+      fetchSpy = jest
+        .spyOn(global, 'fetch')
+        .mockImplementation(async (url: any) => {
+          if (String(url).endsWith('/v1/sessions')) {
+            return new Response('nope', { status: 500 });
+          }
+          throw new Error(`unexpected fetch to ${url}`);
+        });
+
+      await expect(
+        startAgentSession(startArgs(teamId, agentId)),
+      ).rejects.toBeInstanceOf(AnthropicApiError);
+
+      // No reservation left to dedupe the next firing away, and no DELETE
+      // attempted for a session that never existed.
+      expect(await AgentRun.countDocuments({})).toBe(0);
+      expect(
+        fetchSpy.mock.calls.filter(
+          ([, init]: any) => init?.method === 'DELETE',
+        ),
+      ).toEqual([]);
     });
 
     it('collapses different events (groups) of the same alert into one session per window', async () => {

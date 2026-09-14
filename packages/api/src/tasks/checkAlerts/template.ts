@@ -16,7 +16,6 @@ import {
   pickSampleWeightExpressionProps,
   SavedChartConfig,
   SourceKind,
-  zAlertChannelType,
 } from '@hyperdx/common-utils/dist/types';
 import Handlebars, { HelperOptions } from 'handlebars';
 import _ from 'lodash';
@@ -234,9 +233,13 @@ const notificationCapExceededCounter = getCounter(
   },
 );
 
+// Webhook, not zAlertChannelType: an @-mention in an alert body can only name
+// a webhook, and accepting 'agent' here routes a typo'd mention into the agent
+// dispatch path, where it surfaces as "AI agent error" instead of telling the
+// user the mention is unsupported.
 const zNotifyFnParams = z.object({
   hash: z.object({
-    channel: zAlertChannelType,
+    channel: z.literal('webhook'),
     id: z.string(),
   }),
 });

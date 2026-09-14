@@ -96,6 +96,11 @@ export interface AgentRunExtension {
   ): Promise<AgentKeyResolutionResult | void>;
 }
 
+type HookName =
+  | 'on_provision_agent'
+  | 'on_session_start'
+  | 'on_resolve_anthropic_key';
+
 const extensions: AgentRunExtension[] = [];
 
 const extensionEventsCounter = getCounter(
@@ -114,11 +119,55 @@ export const resetAgentRunExtensionsForTests = (): void => {
   extensions.length = 0;
 };
 
+// Session start runs inside the check-alerts sweep, whose queue has no timeout
+// and whose cron waits for completion — so a hook that never settles would
+// stall alert evaluation for every team, not just the one that triggered it.
+// Fail-open has to cover hanging, not only throwing.
+const EXTENSION_HOOK_TIMEOUT_MS = 5_000;
+
+// Key resolution gets longer: it is the one hook expected to make its own
+// network call (a secret manager), and timing it out doesn't skip a
+// contribution — it silently falls back to the deployment-wide key, which is
+// the wrong credential rather than a missing embellishment.
+const KEY_RESOLUTION_TIMEOUT_MS = 20_000;
+
+const timeoutFor = (hook: HookName) =>
+  hook === 'on_resolve_anthropic_key'
+    ? KEY_RESOLUTION_TIMEOUT_MS
+    : EXTENSION_HOOK_TIMEOUT_MS;
+
+// Named for what it bounds, not what it does: `withDeadline` is already taken
+// by the tile-query helper, which races a thunk against an absolute deadline
+// and aborts its signal. This one takes a promise it cannot cancel.
+const withHookTimeout = async <T>(
+  work: Promise<T>,
+  extensionName: string,
+  timeoutMs: number,
+): Promise<T> => {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      work,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () =>
+            reject(
+              new Error(`Extension "${extensionName}" exceeded ${timeoutMs}ms`),
+            ),
+          timeoutMs,
+        );
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
 // Runs one hook across every registered extension. Each invocation is its own
-// wide event; a throwing extension contributes nothing rather than failing
-// the core flow.
+// wide event; an extension that throws or overruns its deadline contributes
+// nothing rather than failing the core flow.
 const runHook = async <TCtx, TResult>(
-  hook: 'on_provision_agent' | 'on_session_start' | 'on_resolve_anthropic_key',
+  hook: HookName,
   pick: (
     ext: AgentRunExtension,
   ) => ((ctx: TCtx) => Promise<TResult | void>) | undefined,
@@ -131,7 +180,11 @@ const runHook = async <TCtx, TResult>(
     try {
       const result = await withSpan(`agent_extension.${hook}`, async span => {
         span.setAttribute('agent_extension.name', ext.name);
-        return fn.call(ext, ctx);
+        return withHookTimeout(
+          Promise.resolve(fn.call(ext, ctx)),
+          ext.name,
+          timeoutFor(hook),
+        );
       });
       extensionEventsCounter.add(1, { hook, outcome: 'ok' });
       if (result) results.push(result);

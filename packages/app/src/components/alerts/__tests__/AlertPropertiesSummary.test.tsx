@@ -16,6 +16,9 @@ jest.mock('@/api', () => ({
         ],
       },
     }),
+    useManagedAgents: () => ({
+      data: { data: [{ _id: 'agent-1', name: 'SRE Responder' }] },
+    }),
   },
 }));
 
@@ -151,6 +154,40 @@ describe('AlertPropertiesSummary notification targets', () => {
       );
 
       expect(targetsText()).toBe('Notify viaWebhook');
+    });
+
+    // Named, not labelled "Webhook": an agent channel is a different kind of
+    // target, and calling it a webhook misreports where the alert goes.
+    it('names an agent target', () => {
+      renderWithMantine(
+        <AlertPropertiesSummary
+          alert={
+            {
+              ...baseAlert,
+              channels: [{ type: 'agent', agentId: 'agent-1' }],
+            } satisfies AlertsPageItem
+          }
+          variant="detail"
+        />,
+      );
+
+      expect(targetsText()).toBe('Notify viaSRE Responder');
+    });
+
+    it('falls back to a generic agent label for a deleted agent', () => {
+      renderWithMantine(
+        <AlertPropertiesSummary
+          alert={
+            {
+              ...baseAlert,
+              channels: [{ type: 'agent', agentId: 'gone' }],
+            } satisfies AlertsPageItem
+          }
+          variant="detail"
+        />,
+      );
+
+      expect(targetsText()).toBe('Notify viaAI agent');
     });
   });
 });

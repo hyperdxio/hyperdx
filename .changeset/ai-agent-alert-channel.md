@@ -30,8 +30,10 @@ keeps the record if any of that fails so the teardown can be retried.
 Agents are provisioned from Team settings → Integrations (environment + vault
 holding the user's ClickStack access key + agent, with rollback on partial
 failure). The agent auto-approves only the read-only ClickStack MCP tools, so
-an unattended investigation cannot save or delete anything; deleting an agent
-is refused while an alert still targets it. Everything is gated behind `HDX_MANAGED_AGENTS_ENABLED` (off by default), and
+an unattended investigation cannot save or delete anything; it has no shell,
+and its one outbound fetch — following a runbook link from the alert's note —
+is evaluated per call rather than auto-approved; deleting an agent is refused
+while an alert still targets it. Everything is gated behind `HDX_MANAGED_AGENTS_ENABLED` (off by default), and
 provisioning a new agent needs a second opt-in,
 `HDX_MANAGED_AGENTS_ALLOW_CREATE`, since it spends on the deployment's
 Anthropic account and writes a user's ClickStack key into a vault — importing

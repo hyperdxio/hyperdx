@@ -1193,6 +1193,39 @@ describe('notification targets are resolved once per webhook', () => {
     expect(failures).toHaveLength(1);
     expect(String(failures[0].error)).toContain('not a webhook channel');
   });
+
+  // An @-mention can only ever name a webhook. When the channel-type enum
+  // gained 'agent', `@agent-<id>` started parsing and fell through to the
+  // agent dispatch path, surfacing as "AI agent error" — which tells the user
+  // their investigation failed rather than that the mention is unsupported.
+  it('reports an @agent mention as an unsupported mention, not an agent failure', async () => {
+    const webhook = makeWebhook('ok-hook');
+    const id = webhook._id.toString();
+    const { dispatcher, dispatched } = makeRecordingDispatcher();
+
+    const { failures } = await renderAlertTemplate({
+      alertProvider,
+      clickhouseClient: mockClickhouseClient,
+      metadata: mockMetadata,
+      state: AlertState.ALERT,
+      template: `@agent-${new mongoose.Types.ObjectId().toString()} take a look`,
+      title: 'Test Alert Title',
+      view: {
+        ...makeSearchView(),
+        alert: {
+          ...makeSearchView().alert,
+          channels: [{ type: 'webhook', webhookId: id }],
+        },
+      },
+      teamId: TEST_TEAM_ID,
+      teamWebhooksById: new Map([[id, webhook]]),
+      dispatcher,
+    });
+
+    expect(dispatched).toHaveLength(1);
+    expect(failures).toHaveLength(1);
+    expect(String(failures[0].error)).toContain('not a webhook channel');
+  });
 });
 
 // Agent channels start an AI investigation instead of POSTing a payload. They

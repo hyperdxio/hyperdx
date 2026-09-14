@@ -1,5 +1,9 @@
 import { useState } from 'react';
 import {
+  AGENT_TOOLSET,
+  AUTO_ALLOWED_MCP_TOOLS,
+} from '@hyperdx/common-utils/dist/managedAgents';
+import {
   Box,
   Button,
   Code,
@@ -18,6 +22,10 @@ import { notifyError } from '@/components/TeamSettings/agentForms';
 // import, so the copied text never contains a ClickStack access key. The
 // payload is assembled with `jq -n` rather than inlined into one -d argument so
 // every line stays short enough to read in the dialog without wrapping.
+//
+// Both toolset configs come from the same constants the API provisions with,
+// because nothing inspects or rewrites an imported agent's toolset — whatever
+// this snippet creates is what runs unattended.
 const buildManualSetupScript = (mcpUrl: string) =>
   `# Creates the agent and prints its ID. Edit SYSTEM to change how it works.
 export ANTHROPIC_API_KEY="sk-ant-..."
@@ -27,17 +35,22 @@ SYSTEM='You are an SRE agent. Investigate the ClickStack alert via the
 clickstack MCP server and produce a root-cause summary.
 Do not make changes to production systems.'
 
-jq -n --arg system "$SYSTEM" --arg url "$MCP_URL" '{
+READ_TOOLS='${JSON.stringify(AUTO_ALLOWED_MCP_TOOLS)}'
+BUILTIN_TOOLS='${JSON.stringify(AGENT_TOOLSET)}'
+
+jq -n --arg system "$SYSTEM" --arg url "$MCP_URL" \\
+  --argjson read "$READ_TOOLS" --argjson builtin "$BUILTIN_TOOLS" '{
   name: "ClickStack SRE Responder",
   model: "claude-opus-4-8",
   system: $system,
   mcp_servers: [{ type: "url", name: "clickstack", url: $url }],
   tools: [
-    { type: "agent_toolset_20260401" },
+    $builtin,
     {
       type: "mcp_toolset",
       mcp_server_name: "clickstack",
-      default_config: { permission_policy: { type: "always_allow" } }
+      default_config: { permission_policy: { type: "always_ask" } },
+      configs: [$read[] | { name: ., permission_policy: { type: "always_allow" } }]
     }
   ]
 }' | curl -s https://api.anthropic.com/v1/agents \\
@@ -131,7 +144,10 @@ export default function ImportAgentForm({
           <Text size="xs" c="dimmed" mb="xs">
             Requires jq. Anthropic&apos;s sandbox reaches <Code>MCP_URL</Code>{' '}
             directly, so it has to be public HTTPS — replace it if you&apos;re
-            running locally.
+            running locally. The tool policy matters: nothing is watching to
+            approve anything, so only read-only ClickStack tools are
+            auto-approved, there is no shell, and fetching a runbook link is
+            evaluated per call.
           </Text>
           <CopySnippet snippet={buildManualSetupScript(`${origin}/api/mcp`)} />
         </Box>

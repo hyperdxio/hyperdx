@@ -122,6 +122,30 @@ describe('agentRunExtensions', () => {
     );
   });
 
+  // A hook that never settles is the case fail-open would otherwise miss:
+  // this runs inside the check-alerts sweep, so an unbounded await stalls
+  // alert evaluation for every team until the process restarts.
+  it('isolates a hanging extension on a deadline and keeps later ones', async () => {
+    jest.useFakeTimers();
+    try {
+      registerAgentRunExtension({
+        name: 'hangs',
+        onSessionStart: () => new Promise(() => {}),
+      });
+      registerAgentRunExtension({
+        name: 'ok',
+        onSessionStart: async () => ({ promptSuffix: 'OK' }),
+      });
+
+      const pending = runSessionStartExtensions(sessionCtx);
+      await jest.advanceTimersByTimeAsync(5_000);
+
+      expect((await pending).prompt).toBe('{"source":"clickstack"}OK');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('treats a void hook result as no contribution', async () => {
     registerAgentRunExtension({
       name: 'noop',
