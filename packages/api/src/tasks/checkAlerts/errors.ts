@@ -19,6 +19,19 @@ export class UnsupportedMentionError extends Error {
   }
 }
 
+// A channel kind this build has no transport for — a downstream channel type,
+// or one whose dispatch lands in a later change. Its own class so the message
+// survives makeNotificationAlertError instead of being rewritten as a generic
+// webhook failure.
+export class UnsupportedChannelError extends Error {
+  constructor(kind: string) {
+    super(
+      `This deployment cannot notify a "${kind}" channel. Update the alert's notification channel.`,
+    );
+    this.name = 'UnsupportedChannelError';
+  }
+}
+
 // MAX_NOTIFICATIONS_PER_EVENT was reached; this target was dropped before
 // dispatch rather than silently skipped, so it's still visible as an error.
 export class NotificationCapExceededError extends Error {

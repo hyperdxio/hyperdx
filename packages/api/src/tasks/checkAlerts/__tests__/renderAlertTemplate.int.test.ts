@@ -16,6 +16,7 @@ import {
 } from '@/fixtures';
 import { AlertChannel, AlertSource } from '@/models/alert';
 import type { IWebhook } from '@/models/webhook';
+import { UnsupportedChannelError } from '@/tasks/checkAlerts/errors';
 import {
   NotificationDispatcher,
   NotificationJob,
@@ -1230,6 +1231,9 @@ describe('notification targets are resolved once per webhook', () => {
     expect(dispatched).toHaveLength(0);
     expect(failures).toHaveLength(1);
     expect(failures[0].type).toBe('email');
+    // Its own class, so makeNotificationAlertError keeps the message instead
+    // of rewriting it as a generic webhook failure the operator can't act on.
+    expect(failures[0].error).toBeInstanceOf(UnsupportedChannelError);
     expect(String(failures[0].error)).toContain('cannot notify');
   });
 
