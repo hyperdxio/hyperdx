@@ -197,7 +197,7 @@ export class SearchPage {
     await this.timePicker.selectRelativeTime('Last 1 days');
     await this.performSearch(`TraceId:"${traceId}"`);
     await expect(this.table.firstRow).toBeVisible();
-    await this.table.clickFirstRow();
+    await this.table.openFirstRowSidePanel();
     await expect(this.sidePanel.tabs).toBeVisible();
   }
 

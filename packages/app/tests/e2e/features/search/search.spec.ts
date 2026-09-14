@@ -50,7 +50,7 @@ test.describe('Search', { tag: '@search' }, () => {
 
         // Use table component
         await expect(searchPage.table.firstRow).toBeVisible();
-        await searchPage.table.clickFirstRow();
+        await searchPage.table.openFirstRowSidePanel();
 
         // Verify side panel opens
         await expect(searchPage.sidePanel.tabs).toBeVisible();
@@ -84,6 +84,32 @@ test.describe('Search', { tag: '@search' }, () => {
           prefix: 'Servi',
           field: 'ServiceName',
         });
+      });
+    });
+
+    test('should expand a result row inline when its body is clicked', async () => {
+      await test.step('Perform search', async () => {
+        await searchPage.submitEmptySearch();
+        await expect(searchPage.table.firstRow).toBeVisible();
+      });
+
+      await test.step('Clicking the row body expands it in place', async () => {
+        await searchPage.table.expandRowByBodyClick(0);
+
+        await expect(searchPage.table.firstExpandedRow).toBeVisible();
+        await expect(searchPage.sidePanel.container).toBeHidden();
+      });
+
+      await test.step('Clicking it again collapses the row', async () => {
+        await searchPage.table.clickRowBody(0);
+
+        await expect(searchPage.table.expandedRows).toHaveCount(0);
+      });
+
+      await test.step('The row hover button still opens the side panel', async () => {
+        await searchPage.table.openFirstRowSidePanel();
+
+        await expect(searchPage.sidePanel.container).toBeVisible();
       });
     });
   });
@@ -120,8 +146,8 @@ test.describe('Search', { tag: '@search' }, () => {
         const resultsTable = searchPage.getSearchResultsTable();
         await expect(resultsTable).toBeVisible();
 
-        // Click second row (index 1) using component method
-        await searchPage.table.clickRow(1);
+        // Open the second row (index 1) in the side panel
+        await searchPage.table.openRowSidePanel(1);
 
         // Verify side panel opens
         await expect(searchPage.sidePanel.container).toBeVisible();
@@ -177,7 +203,7 @@ test.describe('Search', { tag: '@search' }, () => {
           'ResourceAttributes.service.name:"api-server"',
         );
         await expect(searchPage.table.firstRow).toBeVisible();
-        await searchPage.table.clickFirstRow();
+        await searchPage.table.openFirstRowSidePanel();
         await expect(searchPage.sidePanel.tabs).toBeVisible();
       });
 

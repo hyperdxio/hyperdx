@@ -20,8 +20,9 @@ test.describe('Correlated Metric Source', { tag: ['@full-stack'] }, () => {
     // Search for K8s events that have k8s.pod.uid resource attribute
     await searchPage.performSearch('ResourceAttributes.k8s.pod.uid:*');
 
-    // Click on first row to open side panel
-    await searchPage.table.clickFirstRow();
+    // Open the row in the side panel via its hover button; clicking the row
+    // body expands it inline instead.
+    await searchPage.table.openFirstRowSidePanel();
 
     // Click the Infrastructure tab
     await searchPage.sidePanel.clickTab('infrastructure');
