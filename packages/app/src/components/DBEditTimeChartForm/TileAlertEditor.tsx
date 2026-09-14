@@ -42,7 +42,6 @@ import { ChartEditorFormState } from '@/components/ChartEditor/types';
 import { useDashboards } from '@/dashboard';
 import { optionsToSelectData } from '@/utils';
 import {
-  ALERT_CHANNEL_OPTIONS,
   intervalToMinutes,
   TILE_ALERT_INTERVAL_OPTIONS,
   TILE_ALERT_THRESHOLD_TYPE_OPTIONS,
@@ -222,20 +221,6 @@ export function TileAlertEditor({
               render={({ field }) => (
                 <NativeSelect
                   data={optionsToSelectData(TILE_ALERT_INTERVAL_OPTIONS)}
-                  size="xs"
-                  {...field}
-                />
-              )}
-            />
-            <Text size="sm" opacity={0.7}>
-              via
-            </Text>
-            <Controller
-              control={control}
-              name="alert.channels.0.type"
-              render={({ field }) => (
-                <NativeSelect
-                  data={optionsToSelectData(ALERT_CHANNEL_OPTIONS)}
                   size="xs"
                   {...field}
                 />

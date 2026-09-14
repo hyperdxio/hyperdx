@@ -54,7 +54,6 @@ import { useSavedSearch } from '@/savedSearch';
 import { useSource } from '@/source';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import {
-  ALERT_CHANNEL_OPTIONS,
   ALERT_INTERVAL_OPTIONS,
   ALERT_THRESHOLD_TYPE_OPTIONS,
   intervalToMinutes,
@@ -278,20 +277,6 @@ const AlertForm = ({
               render={({ field }) => (
                 <NativeSelect
                   data={optionsToSelectData(ALERT_INTERVAL_OPTIONS)}
-                  size="xs"
-                  {...field}
-                />
-              )}
-            />
-            <Text size="sm" opacity={0.7}>
-              via
-            </Text>
-            <Controller
-              control={control}
-              name="channels.0.type"
-              render={({ field }) => (
-                <NativeSelect
-                  data={optionsToSelectData(ALERT_CHANNEL_OPTIONS)}
                   size="xs"
                   {...field}
                 />

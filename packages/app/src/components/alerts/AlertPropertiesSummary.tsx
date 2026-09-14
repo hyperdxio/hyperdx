@@ -6,6 +6,8 @@ import {
 import { Group, Tooltip, UnstyledButton, VisuallyHidden } from '@mantine/core';
 
 import api from '@/api';
+import { IS_MANAGED_AGENTS_ENABLED } from '@/config';
+import { ClaudeCodeIcon } from '@/SVGIcons';
 import type { AlertsPageItem } from '@/types';
 import {
   TILE_ALERT_THRESHOLD_TYPE_OPTIONS,
@@ -35,14 +37,14 @@ type AlertPropertiesSummaryProps = {
 type NotificationTarget = {
   key: string;
   name: string;
-  /** Webhook service, for the icon. Undefined until the webhooks load. */
-  service?: WebhookService;
+  /** Resolved per channel type; undefined for a webhook until the fetch lands. */
+  icon: React.ReactNode;
 };
 
 /**
  * Resolve an alert's notification channels to display targets. The alert only
- * stores webhook ids, so names and service icons come from the team's webhooks.
- * The query key is shared, so every row on the alerts page reads one fetch.
+ * stores ids, so names and icons come from the team's webhooks and agents.
+ * Both query keys are shared, so every row on the alerts page reads one fetch.
  */
 function useNotificationTargets(alert: AlertsPageItem): NotificationTarget[] {
   const { data: webhooks } = api.useWebhooks([
@@ -50,23 +52,38 @@ function useNotificationTargets(alert: AlertsPageItem): NotificationTarget[] {
     WebhookService.Generic,
     WebhookService.IncidentIO,
   ]);
+  const { data: agents } = api.useManagedAgents({
+    enabled: IS_MANAGED_AGENTS_ENABLED,
+  });
 
   return React.useMemo(() => {
     return toAlertChannels(alert).map((channel, index) => {
+      // `in` rather than a property read: toAlertChannels' empty-form fallback
+      // arm is webhook-shaped and carries no agentId.
+      const agentId = 'agentId' in channel ? channel.agentId : undefined;
+      // Index-qualified: rows written before the API rejected duplicate
+      // channels can repeat an id.
+      const key = `${channel.webhookId || agentId || channel.type}-${index}`;
+      if (channel.type === 'agent') {
+        const agent = agents?.data?.find(a => a._id === agentId);
+        return {
+          key,
+          name: agent?.name ?? 'AI agent',
+          icon: <ClaudeCodeIcon width={16} />,
+        };
+      }
       const webhook = channel.webhookId
         ? webhooks?.data?.find(w => w._id === channel.webhookId)
         : undefined;
       return {
-        // Index-qualified: rows written before the API rejected duplicate
-        // channels can repeat a webhookId.
-        key: `${channel.webhookId || channel.type}-${index}`,
+        key,
         // Falls back to the generic label while the webhooks load, and for
         // webhooks that have since been deleted.
         name: webhook?.name ?? 'Webhook',
-        service: webhook?.service,
+        icon: getWebhookChannelIcon(webhook?.service),
       };
     });
-  }, [alert, webhooks]);
+  }, [alert, webhooks, agents]);
 }
 
 /**
@@ -99,9 +116,7 @@ function NotificationTargets({
         >
           Notify via
           {targets.map(target => (
-            <React.Fragment key={target.key}>
-              {getWebhookChannelIcon(target.service)}
-            </React.Fragment>
+            <React.Fragment key={target.key}>{target.icon}</React.Fragment>
           ))}
           {/* The names are otherwise hover-only. An aria-label on the
               wrapper would sit on a role-less div, which isn't reliably
@@ -124,7 +139,7 @@ function NotificationTargets({
       Notify via
       {inline.map((target, index) => (
         <React.Fragment key={target.key}>
-          {getWebhookChannelIcon(target.service)}
+          {target.icon}
           <span>
             {index < inline.length - 1 || overflow > 0
               ? `${target.name},`

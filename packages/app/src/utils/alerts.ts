@@ -130,15 +130,6 @@ export const TILE_ALERT_INTERVAL_OPTIONS = _.pick(ALERT_INTERVAL_OPTIONS, [
   '1d',
 ]);
 
-// Only the channel types this control can actually produce. An agent channel
-// needs an agentId, which a bare type picker cannot collect, so agents are
-// offered by the notification target picker instead — not here. Deliberately
-// not keyed on AlertChannelType: widening that union must not silently add an
-// unfillable option to the editors that read this.
-export const ALERT_CHANNEL_OPTIONS: Record<'webhook', string> = {
-  webhook: 'Webhook',
-};
-
 const EMPTY_ALERT_CHANNEL = { type: 'webhook', webhookId: '' } as const;
 
 /**

@@ -16,10 +16,13 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import { ActionIcon, Button, Group, Modal, Stack, Text } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { IconPlus, IconTrash, IconWebhook } from '@tabler/icons-react';
+import { IconBellPlus, IconPlus, IconTrash } from '@tabler/icons-react';
 
 import api from '@/api';
-import { WebhookChannelForm } from '@/components/alerts/WebhookChannelForm';
+import {
+  channelTargetKey,
+  NotificationTargetSelect,
+} from '@/components/alerts/NotificationTargetSelect';
 import { WebhookForm } from '@/components/TeamSettings/WebhookForm';
 
 const useAlertWebhooks = () =>
@@ -54,52 +57,61 @@ export const AlertChannelForm = <T extends FieldValues>({
   // `fields` holds the values from the last render, so watch for the live ones
   // the duplicate check (and the per-row type discriminant below) need.
   const channels = useWatch({ control, name: channelsName }) as
-    | { type?: string | null; webhookId?: string }[]
+    | { type?: string | null; webhookId?: string; agentId?: string }[]
     | undefined;
   const { refetch: refetchWebhooks } = useAlertWebhooks();
   const [opened, { open, close }] = useDisclosure(false);
 
-  const selectedWebhookIds = useMemo(
-    () => (channels ?? []).map(c => c?.webhookId ?? ''),
+  // Composite `kind:id` per row (null for unset rows), for cross-row dedupe.
+  const selectedTargetKeys = useMemo(
+    () => (channels ?? []).map(c => channelTargetKey(c)),
     [channels],
   );
 
   const newChannel = () => makeWebhookChannel<T>('');
 
-  // A webhook created from here lands in the first empty row, or a new one if
-  // every row is already filled — so the user never has to re-pick it.
-  const handleWebhookCreated = async (webhookId?: string) => {
-    await refetchWebhooks();
-    if (webhookId) {
-      const emptyIndex = selectedWebhookIds.findIndex(id => !id);
-      const value = makeWebhookChannel<T>(webhookId);
-      if (emptyIndex >= 0) {
-        update(emptyIndex, value);
-      } else if (fields.length < MAX_ALERT_CHANNELS) {
-        append(value);
-      }
+  // A target created from here lands in the first row with nothing selected,
+  // or a new row if every row is already filled — so the user never has to
+  // re-pick it. Emptiness is keyed on the composite target key, so a
+  // configured agent row (which has no webhookId) is never mistaken for a
+  // free slot, and vice versa.
+  const placeCreatedTarget = (value: FieldArray<T, ArrayPath<T>>) => {
+    const emptyIndex = selectedTargetKeys.findIndex(key => key == null);
+    if (emptyIndex >= 0) {
+      update(emptyIndex, value);
+    } else if (fields.length < MAX_ALERT_CHANNELS) {
+      append(value);
     }
     close();
+  };
+
+  const handleWebhookCreated = async (webhookId?: string) => {
+    await refetchWebhooks();
+    if (!webhookId) {
+      close();
+      return;
+    }
+    placeCreatedTarget(makeWebhookChannel<T>(webhookId));
   };
 
   return (
     <Stack gap="xs">
       {fields.map((field, index) => {
-        // The discriminant is per-row, not per-array: a downstream fork can
-        // mix channel types (e.g. webhook + email) in one alert. A row whose
-        // type this repo doesn't render (anything but webhook) is skipped so
-        // the rest of the list still works.
+        // The discriminant is per-row, not per-array: webhook and agent rows
+        // (and, in a downstream fork, other types like email) can mix in one
+        // alert. A row whose type this repo doesn't render is skipped so the
+        // rest of the list still works.
         const channelType = channels?.[index]?.type;
-        if (channelType !== 'webhook') {
+        if (channelType !== 'webhook' && channelType !== 'agent') {
           return null;
         }
         return (
           <Group key={field.id} gap="md" align="flex-start" wrap="nowrap">
-            <WebhookChannelForm
+            <NotificationTargetSelect
               control={control}
-              namePrefix={`${channelsName}.${index}.`}
-              takenWebhookIds={selectedWebhookIds.filter(
-                (id, i) => i !== index && !!id,
+              name={`${channelsName}.${index}`}
+              takenKeys={selectedTargetKeys.filter(
+                (key, i): key is string => i !== index && key != null,
               )}
             />
             {/* A single channel is not removable: an alert with no target
@@ -128,21 +140,21 @@ export const AlertChannelForm = <T extends FieldValues>({
           disabled={fields.length >= MAX_ALERT_CHANNELS}
           onClick={() => append(newChannel())}
         >
-          Add another channel
+          Add another target
         </Button>
         <Button
           data-testid="add-new-webhook-button"
           size="xs"
           variant="subtle"
           color="gray"
-          leftSection={<IconWebhook size={14} />}
+          leftSection={<IconBellPlus size={14} />}
           onClick={open}
         >
-          Add New Incoming Webhook
+          Add new notification target
         </Button>
         {fields.length >= MAX_ALERT_CHANNELS && (
           <Text size="xs" opacity={0.5}>
-            Limit of {MAX_ALERT_CHANNELS} channels reached
+            Limit of {MAX_ALERT_CHANNELS} notification targets reached
           </Text>
         )}
       </Group>
@@ -151,7 +163,7 @@ export const AlertChannelForm = <T extends FieldValues>({
         data-testid="alert-modal"
         opened={opened}
         onClose={close}
-        title="Add New Webhook"
+        title="Create a webhook"
         centered
         zIndex={9999}
         size="lg"

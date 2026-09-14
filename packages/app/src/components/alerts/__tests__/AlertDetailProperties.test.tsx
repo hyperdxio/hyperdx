@@ -10,6 +10,7 @@ import type { AlertsPageItem } from '@/types';
 jest.mock('@/api', () => ({
   __esModule: true,
   default: {
+    useManagedAgents: () => ({ data: { data: [] } }),
     useWebhooks: () => ({
       data: {
         data: [
