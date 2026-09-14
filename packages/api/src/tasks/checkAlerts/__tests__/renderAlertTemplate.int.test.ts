@@ -14,7 +14,7 @@ import {
   makeTile,
   RAW_SQL_ALERT_TEMPLATE,
 } from '@/fixtures';
-import { AlertSource } from '@/models/alert';
+import { AlertChannel, AlertSource } from '@/models/alert';
 import type { IWebhook } from '@/models/webhook';
 import {
   NotificationDispatcher,
@@ -1195,6 +1195,42 @@ describe('notification targets are resolved once per webhook', () => {
 
     expect(dispatched).toHaveLength(1);
     expect(failures).toHaveLength(0);
+  });
+
+  // A channel kind this build has no transport for — the downstream 'email'
+  // case the transport table anticipates. Typed loosely on purpose: the point
+  // is a value the union does not describe.
+  const foreignChannel = (value: any): AlertChannel => value;
+
+  // An unsupported channel type must cost the alert a visible failure, not
+  // vanish. An alert whose only target is one would otherwise fire and notify
+  // nobody, with nothing recorded to notice.
+  it('records a channel this build cannot dispatch as a failed target', async () => {
+    const { dispatcher, dispatched } = makeRecordingDispatcher();
+
+    const { failures } = await renderAlertTemplate({
+      alertProvider,
+      clickhouseClient: mockClickhouseClient,
+      metadata: mockMetadata,
+      state: AlertState.ALERT,
+      template: null,
+      title: 'Test Alert Title',
+      view: {
+        ...makeSearchView(),
+        alert: {
+          ...makeSearchView().alert,
+          channels: [foreignChannel({ type: 'email', address: 'a@b.c' })],
+        },
+      },
+      teamId: TEST_TEAM_ID,
+      teamWebhooksById: new Map(),
+      dispatcher,
+    });
+
+    expect(dispatched).toHaveLength(0);
+    expect(failures).toHaveLength(1);
+    expect(failures[0].type).toBe('email');
+    expect(String(failures[0].error)).toContain('cannot notify');
   });
 
   it('keeps firing configured channels when the message has a plain @mention', async () => {

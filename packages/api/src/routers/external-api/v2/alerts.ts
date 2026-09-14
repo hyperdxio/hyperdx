@@ -216,6 +216,9 @@ function toInternalAlertInput(body: ExternalAlertInput): InternalAlertInput {
  *         - $ref: '#/components/schemas/AlertChannelAgent'
  *       discriminator:
  *         propertyName: type
+ *         mapping:
+ *           webhook: '#/components/schemas/AlertChannelWebhook'
+ *           agent: '#/components/schemas/AlertChannelAgent'
  *     AlertChannels:
  *       type: array
  *       description: >
