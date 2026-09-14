@@ -169,7 +169,10 @@ describe('agentRunExtensions', () => {
   });
 
   it('resolves the anthropic key from the last extension that returns one; null when none', async () => {
-    expect(await runAnthropicKeyExtensions({ teamId: 't1' })).toBeNull();
+    expect(await runAnthropicKeyExtensions({ teamId: 't1' })).toEqual({
+      key: null,
+      resolverFailed: false,
+    });
 
     registerAgentRunExtension({
       name: 'k1',
@@ -179,16 +182,35 @@ describe('agentRunExtensions', () => {
       name: 'k2',
       resolveAnthropicKey: async () => ({ apiKey: 'sk-b' }),
     });
-    expect(await runAnthropicKeyExtensions({ teamId: 't1' })).toBe('sk-b');
+    expect(await runAnthropicKeyExtensions({ teamId: 't1' })).toEqual({
+      key: 'sk-b',
+    });
   });
 
-  it('is fail-open for key resolution (a throwing resolver yields null)', async () => {
+  // Unlike the prompt seams, this one fails closed: the caller must be able to
+  // tell a broken resolver from one that simply has no key for this team, or
+  // the team's agents run on the operator's Anthropic account.
+  it('reports a throwing key resolver as a failure, not an absence', async () => {
     registerAgentRunExtension({
       name: 'boom',
       resolveAnthropicKey: async () => {
         throw new Error('boom');
       },
     });
-    expect(await runAnthropicKeyExtensions({ teamId: 't1' })).toBeNull();
+    expect(await runAnthropicKeyExtensions({ teamId: 't1' })).toEqual({
+      key: null,
+      resolverFailed: true,
+    });
+  });
+
+  it('treats a resolver that opts out as an absence, not a failure', async () => {
+    registerAgentRunExtension({
+      name: 'no-key-for-this-team',
+      resolveAnthropicKey: async () => undefined,
+    });
+    expect(await runAnthropicKeyExtensions({ teamId: 't1' })).toEqual({
+      key: null,
+      resolverFailed: false,
+    });
   });
 });

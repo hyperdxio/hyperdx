@@ -59,6 +59,12 @@ const ManagedAgentSchema = new Schema<IManagedAgent>(
   { timestamps: true },
 );
 
+// Import checks for an existing record before provisioning, which is a
+// check-then-act: two simultaneous imports of the same Anthropic agent would
+// both pass and each leave behind a vault holding a live ClickStack key, with
+// only one of them reachable to tear down. The index makes the loser fail.
+ManagedAgentSchema.index({ team: 1, anthropicAgentId: 1 }, { unique: true });
+
 export type ManagedAgentDocument = mongoose.HydratedDocument<IManagedAgent>;
 
 export default mongoose.model<IManagedAgent>(

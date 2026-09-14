@@ -237,6 +237,32 @@ describe('managed agents router', () => {
       expect(await ManagedAgent.countDocuments({})).toBe(1);
     });
 
+    // The preflight check is check-then-act. Two imports of the same agent can
+    // both pass it, and each provisions a vault holding a live ClickStack key
+    // — only one of which stays reachable to tear down.
+    it('lets only one of two concurrent imports of the same agent win', async () => {
+      const deleted: string[] = [];
+      fetchSpy = mockAnthropic((url, init) => {
+        if (init?.method === 'DELETE') {
+          deleted.push(url);
+          return new Response('{}');
+        }
+        return null;
+      });
+
+      const [a, b] = await Promise.all([
+        agent.post('/managed-agents/import').send(body),
+        agent.post('/managed-agents/import').send(body),
+      ]);
+
+      expect([a.status, b.status].sort()).toEqual([200, 409]);
+      expect(await ManagedAgent.countDocuments({})).toBe(1);
+      // The loser tore its own environment and vault down rather than leaving
+      // a credential behind that nothing points at.
+      expect(deleted.some(u => u.includes('/v1/vaults/'))).toBe(true);
+      expect(deleted.some(u => u.includes('/v1/environments/'))).toBe(true);
+    });
+
     it('rolls the vault back if the environment or credential fails', async () => {
       const deleted: string[] = [];
       fetchSpy = mockAnthropic((url, init) => {

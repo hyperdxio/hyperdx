@@ -116,13 +116,20 @@ const resolveEnvAnthropicKey = (): string | null => {
 // OSS resolves it from the environment; a downstream distribution can register
 // a `resolveAnthropicKey` extension to supply a per-team key, which takes
 // precedence (see services/agentRunExtensions.ts).
+//
+// A registered resolver that fails is an error, not an absence: falling back
+// to the deployment key would put the team's spend and its ClickStack
+// credential on the operator's Anthropic account. Callers surface this as "no
+// key", so the operation stops instead of running against the wrong account.
 export const getTeamAnthropicKey = async (
   teamId: ObjectId,
 ): Promise<string | null> => {
-  const fromExtension = await runAnthropicKeyExtensions({
+  const { key, resolverFailed } = await runAnthropicKeyExtensions({
     teamId: teamId.toString(),
   });
-  return fromExtension ?? resolveEnvAnthropicKey();
+  if (key) return key;
+  if (resolverFailed) return null;
+  return resolveEnvAnthropicKey();
 };
 
 // Confirms the agent will actually be able to reach the ClickStack MCP server
@@ -479,6 +486,15 @@ const importAnthropicAgentImpl = async ({
     reportOrphans(
       await deleteAnthropicResources(apiKey, { environmentId, vaultId }),
     );
+    // Lost a race with a concurrent import of the same agent. Its resources
+    // are torn down above, so report it the way the preflight check does
+    // rather than surfacing a duplicate-key error.
+    if (isDuplicateKeyError(e)) {
+      throw new AnthropicApiError(
+        'That agent was just added to the list.',
+        409,
+      );
+    }
     throw e;
   }
   return { agent, verified };

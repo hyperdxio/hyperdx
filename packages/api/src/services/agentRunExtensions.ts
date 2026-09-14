@@ -85,12 +85,12 @@ export interface AgentRunExtension {
   ): Promise<AgentSessionStartResult | void>;
   // Resolves the team's Anthropic API key. OSS resolves the key from env
   // (see getTeamAnthropicKey); a downstream distribution can register this to
-  // provide a per-team key instead (last registered wins). Fail-open: a
-  // throwing resolver contributes nothing and the caller falls back to the env
-  // key — so a transient failure resolving a per-team key degrades to the
-  // operator's global key rather than failing closed. Implement the resolver
-  // robustly (return void to opt out, never throw for an expected "no key")
-  // if per-team key isolation must be strict.
+  // provide a per-team key instead (last registered wins). Unlike the prompt
+  // seams this one fails CLOSED: a resolver that throws or overruns its
+  // deadline stops the operation rather than letting it run on the
+  // deployment's own Anthropic account. Return void to opt out of resolving a
+  // given team — that is an absence, not a failure, and does fall back to the
+  // env key.
   resolveAnthropicKey?(
     ctx: AgentKeyResolutionContext,
   ): Promise<AgentKeyResolutionResult | void>;
@@ -172,8 +172,9 @@ const runHook = async <TCtx, TResult>(
     ext: AgentRunExtension,
   ) => ((ctx: TCtx) => Promise<TResult | void>) | undefined,
   ctx: TCtx,
-): Promise<TResult[]> => {
+): Promise<{ results: TResult[]; failed: boolean }> => {
   const results: TResult[] = [];
+  let failed = false;
   for (const ext of extensions) {
     const fn = pick(ext);
     if (!fn) continue;
@@ -189,6 +190,7 @@ const runHook = async <TCtx, TResult>(
       extensionEventsCounter.add(1, { hook, outcome: 'ok' });
       if (result) results.push(result);
     } catch (e) {
+      failed = true;
       extensionEventsCounter.add(1, { hook, outcome: 'error' });
       logger.error(
         {
@@ -200,7 +202,7 @@ const runHook = async <TCtx, TResult>(
       );
     }
   }
-  return results;
+  return { results, failed };
 };
 
 // Picks the winning override when several extensions return one: last
@@ -224,7 +226,7 @@ const pickLastOverride = (
 export const runProvisionExtensions = async (
   ctx: AgentProvisionContext,
 ): Promise<{ systemPrompt: string }> => {
-  const results = await runHook(
+  const { results } = await runHook(
     'on_provision_agent',
     ext => ext.onProvisionAgent,
     ctx,
@@ -247,7 +249,7 @@ export const runSessionStartExtensions = async (
   prompt: string;
   runMetadata?: Record<string, unknown>;
 }> => {
-  const results = await runHook(
+  const { results } = await runHook(
     'on_session_start',
     ext => ext.onSessionStart,
     ctx,
@@ -281,8 +283,8 @@ export const runSessionStartExtensions = async (
 // returns null and the caller falls back to the env-configured key.
 export const runAnthropicKeyExtensions = async (
   ctx: AgentKeyResolutionContext,
-): Promise<string | null> => {
-  const results = await runHook(
+): Promise<{ key: string | null; resolverFailed?: boolean }> => {
+  const { results, failed } = await runHook(
     'on_resolve_anthropic_key',
     ext => ext.resolveAnthropicKey,
     ctx,
@@ -290,5 +292,12 @@ export const runAnthropicKeyExtensions = async (
   const keys = results
     .map(r => r.apiKey)
     .filter((k): k is string => typeof k === 'string' && k.length > 0);
-  return keys.at(-1) ?? null;
+  const key = keys.at(-1);
+  if (key) return { key };
+  // Key resolution is the one seam that does not fail open. Falling back to
+  // the deployment's own key after a registered resolver failed would run the
+  // team's agents — and their spend, and a vault holding their ClickStack
+  // credential — on the operator's Anthropic account. A resolver that has
+  // nothing to say returns void and is not a failure.
+  return { key: null, resolverFailed: failed };
 };
