@@ -520,11 +520,16 @@ const api = {
     });
   },
   useManagedAgents(opts?: { enabled?: boolean }) {
-    return useQuery<{ data: ManagedAgentData[] }, Error>({
-      queryKey: ['managed-agents'],
-      queryFn: () => hdxServer('managed-agents').json(),
-      enabled: opts?.enabled ?? true,
-    });
+    // `mcpServerUrl` is the URL this instance binds a vault credential to —
+    // reported by the server because a client deriving it from its own origin
+    // gets it wrong wherever HDX_MANAGED_AGENTS_MCP_URL is set.
+    return useQuery<{ data: ManagedAgentData[]; mcpServerUrl?: string }, Error>(
+      {
+        queryKey: ['managed-agents'],
+        queryFn: () => hdxServer('managed-agents').json(),
+        enabled: opts?.enabled ?? true,
+      },
+    );
   },
   useCreateManagedAgent() {
     return useMutation<

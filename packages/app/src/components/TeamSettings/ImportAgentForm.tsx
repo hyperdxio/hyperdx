@@ -70,6 +70,10 @@ export default function ImportAgentForm({
   onImported: VoidFunction;
 }) {
   const importAgent = api.useImportManagedAgent();
+  // The server reports the URL it binds the vault credential to; falling back
+  // to this origin only covers the default, not a configured
+  // HDX_MANAGED_AGENTS_MCP_URL.
+  const { data: agents } = api.useManagedAgents();
   const [name, setName] = useState('');
   const [anthropicAgentId, setAnthropicAgentId] = useState('');
   const [showScript, setShowScript] = useState(false);
@@ -151,7 +155,9 @@ export default function ImportAgentForm({
             evaluated per call.
           </Text>
           <CopySnippet
-            snippet={buildManualSetupScript(`${origin}${BASE_PATH}/api/mcp`)}
+            snippet={buildManualSetupScript(
+              agents?.mcpServerUrl ?? `${origin}${BASE_PATH}/api/mcp`,
+            )}
           />
         </Box>
       )}

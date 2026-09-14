@@ -106,7 +106,7 @@ export const NotificationTargetSelect = ({
       const value = toValue('agent', a._id);
       keywordsByValue.set(
         value,
-        `ai agent claude anthropic ${a.model}`.toLowerCase(),
+        `ai agent claude anthropic ${a.model ?? ''}`.trim().toLowerCase(),
       );
       iconByValue.set(value, <ClaudeCodeIcon width={16} />);
       return { value, label: a.name, disabled: taken.has(value) };
@@ -123,7 +123,40 @@ export const NotificationTargetSelect = ({
     return { data, keywordsByValue, iconByValue };
   }, [webhookList, agentList, takenKeys]);
 
-  const hasTargets = data.length > 0;
+  const selectedValue = channelTargetKey(field.value);
+
+  // A stored target that isn't in `data` — a deleted webhook, or an agent
+  // channel written through the API while this build has agents switched off
+  // — would otherwise render as a blank required row, and the next pick would
+  // silently overwrite it. Show it instead, so replacing it is a choice.
+  const { options, isDangling } = useMemo(() => {
+    if (!selectedValue) return { options: data, isDangling: false };
+    const known = data.some(group =>
+      group.items.some(item => item.value === selectedValue),
+    );
+    if (known) return { options: data, isDangling: false };
+    const { kind } = fromValue(selectedValue);
+    return {
+      options: [
+        ...data,
+        {
+          group: 'Currently set',
+          items: [
+            {
+              value: selectedValue,
+              label:
+                kind === 'agent'
+                  ? 'AI agent (unavailable)'
+                  : 'Webhook (unavailable)',
+            },
+          ],
+        },
+      ],
+      isDangling: true,
+    };
+  }, [data, selectedValue]);
+
+  const hasTargets = options.length > 0;
 
   // Matches the visible name OR the hidden kind keywords ("slack", "ai", ...).
   const filter: SelectProps['filter'] = ({ options, search }) => {
@@ -143,8 +176,6 @@ export const NotificationTargetSelect = ({
     }, []);
   };
 
-  const selectedValue = channelTargetKey(field.value);
-
   return (
     <Select
       // Keeps the testid the E2E page objects already target; the row now
@@ -160,7 +191,7 @@ export const NotificationTargetSelect = ({
       placeholder={
         hasTargets ? 'Select a notification target' : 'No targets available'
       }
-      data={data}
+      data={options}
       value={selectedValue}
       onChange={value => {
         if (!value) return;
@@ -173,7 +204,11 @@ export const NotificationTargetSelect = ({
       }}
       onBlur={field.onBlur}
       leftSection={
-        selectedValue ? iconByValue.get(selectedValue) : <IconBell size={16} />
+        selectedValue && !isDangling ? (
+          iconByValue.get(selectedValue)
+        ) : (
+          <IconBell size={16} />
+        )
       }
       renderOption={({ option }) => (
         <Group gap="xs" wrap="nowrap">
