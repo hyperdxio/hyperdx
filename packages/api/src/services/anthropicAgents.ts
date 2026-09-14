@@ -196,7 +196,7 @@ export const verifyMcpReachable = async (
 // reaches it directly). In real deployments FRONTEND_URL is already HTTPS; for
 // local testing point HDX_MANAGED_AGENTS_MCP_URL at a public tunnel (e.g.
 // ngrok) to your instance's /api/mcp.
-const resolveMcpServerUrl = (): string => {
+export const resolveMcpServerUrl = (): string => {
   const mcpServerUrl =
     config.getManagedAgentsMcpUrl() || `${config.FRONTEND_URL}/api/mcp`;
   if (!mcpServerUrl.startsWith('https://')) {

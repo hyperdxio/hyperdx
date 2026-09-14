@@ -13,6 +13,7 @@ import {
   deleteAnthropicAgent,
   importAnthropicAgent,
   provisionClickStackAgent,
+  resolveMcpServerUrl,
 } from '@/services/anthropicAgents';
 import logger from '@/utils/logger';
 
@@ -58,6 +59,19 @@ router.get('/', async (req, res, next) => {
           ? pick(agent.createdBy, ['name', 'email'])
           : undefined,
       })),
+      // The URL this instance binds a vault credential to. Returned so the
+      // client never has to guess it from its own origin — an operator who
+      // sets HDX_MANAGED_AGENTS_MCP_URL makes that guess wrong, and an agent
+      // built against the wrong URL is rejected on import. Omitted rather
+      // than fatal when it cannot be resolved: listing existing agents does
+      // not depend on being able to provision a new one.
+      ...(() => {
+        try {
+          return { mcpServerUrl: resolveMcpServerUrl() };
+        } catch {
+          return {};
+        }
+      })(),
     });
   } catch (e) {
     next(e);
