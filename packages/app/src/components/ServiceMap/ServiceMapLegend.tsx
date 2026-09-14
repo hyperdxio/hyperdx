@@ -86,6 +86,13 @@ export default function ServiceMapLegend({
         <Text size="xxs" c="var(--color-text-muted)">
           {metric === 'errorRate' ? 'none' : 'low'}
         </Text>
+        {/* Lands on the right stop only while the bar has four equal
+            segments, which puts the 1% threshold at its midpoint. */}
+        {metric === 'errorRate' && (
+          <Text size="xxs" c="var(--color-text-muted)">
+            1%
+          </Text>
+        )}
         <Text size="xxs" c="var(--color-text)">
           {formatMax(metric, max, source, dateRange, isSingleTrace)}
         </Text>

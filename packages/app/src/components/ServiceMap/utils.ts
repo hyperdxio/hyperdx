@@ -146,14 +146,16 @@ const ERROR_RATE_BUCKETS = [
 // different kind of thing, where a washed-out red just reads as a little red.
 const NEUTRAL = { hue: 220, s: 8, l: 82 };
 const NEUTRAL_CSS = `hsl(${NEUTRAL.hue} ${NEUTRAL.s}% ${NEUTRAL.l}%)`;
+const NO_DATA_BORDER = `hsl(${NEUTRAL.hue} ${NEUTRAL.s}% 58%)`;
 
-/** Ramp position for an error rate, or null when there are no errors at all. */
-function getErrorRateIntensity(errorPercentage: number): number | null {
-  if (errorPercentage <= 0) {
-    return null;
-  }
+/**
+ * Ramp position for an error rate above zero. Exactly zero is neutral and is
+ * handled by the caller, so the first bucket's bound of 0 is a catch-all.
+ */
+function getErrorRateIntensity(errorPercentage: number): number {
   return (
-    ERROR_RATE_BUCKETS.findLast(b => errorPercentage >= b.min)?.intensity ?? 0
+    ERROR_RATE_BUCKETS.findLast(b => errorPercentage >= b.min)?.intensity ??
+    ERROR_RATE_BUCKETS[0].intensity
   );
 }
 
@@ -162,18 +164,30 @@ export function getNodeColors(
   max: number,
   isSelected: boolean,
   metric: ServiceMapMetric = 'errorRate',
+  hasRequests = true,
 ) {
+  // A caller-only service (no Server/Consumer spans in the window) carries no
+  // error data at all. A solid neutral fill would claim "no errors" for it, so
+  // it renders outline-only: nothing measured, rather than nothing wrong.
+  if (metric === 'errorRate' && !hasRequests) {
+    return {
+      backgroundColor: 'transparent',
+      borderColor: isSelected ? 'white' : NO_DATA_BORDER,
+    };
+  }
+
   const isNoErrors = metric === 'errorRate' && value <= 0;
-  const intensity =
-    metric === 'errorRate'
-      ? (getErrorRateIntensity(value) ?? 0)
-      : max > 0
-        ? Math.min(value, max) / max
-        : 0;
   const hue = isNoErrors ? NEUTRAL.hue : SERVICE_MAP_METRIC_HUE[metric];
   const { s, l, css } = isNoErrors
     ? { ...NEUTRAL, css: NEUTRAL_CSS }
-    : rampFill(hue, intensity);
+    : rampFill(
+        hue,
+        metric === 'errorRate'
+          ? getErrorRateIntensity(value)
+          : max > 0
+            ? Math.min(value, max) / max
+            : 0,
+      );
   const borderLightness = Math.max(
     l - BORDER_LIGHTNESS_STEP,
     BORDER_MIN_LIGHTNESS,

@@ -342,6 +342,26 @@ describe('getNodeColors', () => {
       expect(fillAt(ERROR_RATE_HIGH)).not.toEqual(fillAt(4.99));
     });
 
+    it('renders a service with no measured requests outline-only', () => {
+      // A caller-only service has errorPercentage 0 but no error data at all;
+      // a solid neutral would read as a clean record.
+      const noData = getNodeColors(0, 100, false, 'errorRate', false);
+      expect(noData.backgroundColor).toBe('transparent');
+      expect(noData).not.toEqual(getNodeColors(0, 100, false, 'errorRate'));
+    });
+
+    it('keeps the white border on a selected no-data node', () => {
+      expect(getNodeColors(0, 100, true, 'errorRate', false).borderColor).toBe(
+        'white',
+      );
+    });
+
+    it('does not treat other metrics as no-data', () => {
+      expect(getNodeColors(10, 20, false, 'throughput', false)).toEqual(
+        getNodeColors(10, 20, false, 'throughput'),
+      );
+    });
+
     it('renders the border darker than the fill for the neutral state too', () => {
       const { backgroundColor, borderColor } = getNodeColors(
         0,
@@ -416,6 +436,14 @@ describe('getMetricGradientCss', () => {
       getMetricGradientCss('throughput').match(/hsl\([^)]+\)/g) ?? [];
     expect(parseHsl(stops[0]).h).toBe(SERVICE_MAP_METRIC_HUE.throughput);
     expect(parseHsl(stops[1]).h).toBe(SERVICE_MAP_METRIC_HUE.throughput);
+  });
+
+  it('reuses the node fills verbatim as its error-rate stops', () => {
+    const stops =
+      getMetricGradientCss('errorRate').match(/hsl\([^)]+\)/g) ?? [];
+    const fillAt = (errorPercentage: number) =>
+      getNodeColors(errorPercentage, 100, false, 'errorRate').backgroundColor;
+    expect(stops).toEqual([fillAt(0), fillAt(0.5), fillAt(3), fillAt(10)]);
   });
 
   it('emits hard stops for error rate, one per bucket plus the neutral', () => {

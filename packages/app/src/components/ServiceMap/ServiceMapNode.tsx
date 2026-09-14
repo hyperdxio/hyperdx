@@ -60,6 +60,7 @@ export default function ServiceMapNode(
     metricMax[metric],
     props.selected,
     metric,
+    totalIncomingRequestCount > 0,
   );
 
   // Fallback matches the schema default (3 = ms); in practice the field is
