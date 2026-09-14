@@ -345,7 +345,7 @@ describe('MetricExplorerModal', () => {
     });
   });
 
-  it('applies staged filters and group bys alongside the metric', async () => {
+  it('applies a staged group by alongside the metric', async () => {
     mockParseAttributeKeys.mockReturnValue([
       { name: 'host.name', category: 'ResourceAttributes' },
     ]);
@@ -357,25 +357,97 @@ describe('MetricExplorerModal', () => {
     await clickRow('memory');
     await clickRow('usage');
     await userEvent.click(screen.getByText('host.name'));
-    await userEvent.click(screen.getAllByText('Where')[0]);
     await userEvent.click(screen.getByText('Group By'));
     await userEvent.click(screen.getByTestId('metric-explorer-apply'));
 
     expect(onApply).toHaveBeenCalledWith({
       name: 'system.memory.usage',
       type: MetricsDataType.Gauge,
-      where: ["ResourceAttributes['host.name'] = 'host-a'"],
       groupBy: ["ResourceAttributes['host.name']"],
+    });
+  });
+
+  // Filtering is the series' job, done from the attribute panel under the card
+  // where the condition it edits is visible. The explorer only finds a metric.
+  it('offers no filter action when browsing a tag', async () => {
+    mockParseAttributeKeys.mockReturnValue([
+      { name: 'host.name', category: 'ResourceAttributes' },
+    ]);
+    mockAttributeValues({ tagValues: ['host-a'] });
+
+    renderModal();
+    await clickRow('system');
+    await clickRow('memory');
+    await clickRow('usage');
+    await userEvent.click(screen.getByText('host.name'));
+
+    expect(screen.getByText('host-a')).toBeInTheDocument();
+    expect(screen.queryByText('Where')).toBeNull();
+  });
+
+  describe('overwrite warning', () => {
+    // Applying reaches controls that are not visible from inside the modal, so
+    // it has to say what it will discard before the user commits.
+    const selectOtherMetric = async () => {
+      await clickRow('system');
+      await clickRow('memory');
+      await clickRow('usage');
+    };
+
+    it('warns that a swap discards the series filter', async () => {
+      renderModal({ currentWhere: "Attributes['env'] = 'prod'" });
+      await selectOtherMetric();
+
+      expect(
+        screen.getByTestId('metric-explorer-overwrites'),
+      ).toHaveTextContent("Switching metrics clears the series' filter.");
+    });
+
+    it('stays quiet when the metric is unchanged, since the filter survives', () => {
+      renderModal({
+        value: {
+          metricName: 'system.memory.usage',
+          metricType: MetricsDataType.Gauge,
+        },
+        currentWhere: "Attributes['env'] = 'prod'",
+      });
+
+      expect(screen.queryByTestId('metric-explorer-overwrites')).toBeNull();
+    });
+
+    it('stays quiet when there is nothing to discard', async () => {
+      renderModal();
+      await selectOtherMetric();
+
+      expect(screen.queryByTestId('metric-explorer-overwrites')).toBeNull();
+    });
+
+    it('warns about the chart group by only once one is staged', async () => {
+      mockParseAttributeKeys.mockReturnValue([
+        { name: 'host.name', category: 'ResourceAttributes' },
+      ]);
+      mockAttributeValues({ tagValues: ['host-a'] });
+
+      renderModal({ currentGroupBy: 'ServiceName' });
+      await selectOtherMetric();
+      expect(screen.queryByTestId('metric-explorer-overwrites')).toBeNull();
+
+      await userEvent.click(screen.getByText('host.name'));
+      await userEvent.click(screen.getByText('Group By'));
+
+      expect(
+        screen.getByTestId('metric-explorer-overwrites'),
+      ).toHaveTextContent("Replaces the chart's group by.");
     });
   });
 
   it('removes a staged clause when its pill is dismissed', async () => {
     await openHostNameTag();
-    await userEvent.click(screen.getAllByText('Where')[0]);
+    await userEvent.click(screen.getByText('Group By'));
 
     await userEvent.click(
       screen.getByRole('button', {
-        name: "Remove ResourceAttributes['host.name'] = 'host-a'",
+        name: "Remove Group by ResourceAttributes['host.name']",
       }),
     );
 
@@ -396,18 +468,6 @@ describe('MetricExplorerModal', () => {
     await userEvent.click(screen.getByText('host.name'));
   };
 
-  it('stages a tag value as a filter and applies it with the metric', async () => {
-    await openHostNameTag();
-    expect(screen.getByText('host-a')).toBeInTheDocument();
-
-    await userEvent.click(screen.getAllByText('Where')[0]);
-
-    const staged = screen.getByTestId('metric-explorer-staged');
-    expect(
-      within(staged).getByText("ResourceAttributes['host.name'] = 'host-a'"),
-    ).toBeInTheDocument();
-  });
-
   it('stages a tag key as a group by', async () => {
     await openHostNameTag();
     await userEvent.click(screen.getByText('Group By'));
@@ -418,34 +478,15 @@ describe('MetricExplorerModal', () => {
     ).toBeInTheDocument();
   });
 
-  it('drops staged filters when a different metric is selected', async () => {
+  it('drops a staged group by when a different metric is selected', async () => {
     await openHostNameTag();
-    await userEvent.click(screen.getAllByText('Where')[0]);
+    await userEvent.click(screen.getByText('Group By'));
     expect(screen.getByTestId('metric-explorer-staged')).toBeInTheDocument();
 
-    // A clause written against one metric's attributes is meaningless on another.
+    // A tag key belongs to one metric and is meaningless on another.
     await clickRow('cpu');
     await clickRow('utilization');
     expect(screen.queryByTestId('metric-explorer-staged')).toBeNull();
-  });
-
-  it('renders tag filters in the requested language', async () => {
-    mockParseAttributeKeys.mockReturnValue([
-      { name: 'host.name', category: 'ResourceAttributes' },
-    ]);
-    mockAttributeValues({ tagValues: ['host-a'] });
-
-    renderModal({ language: 'lucene' });
-    await clickRow('system');
-    await clickRow('memory');
-    await clickRow('usage');
-    await userEvent.click(screen.getByText('host.name'));
-    await userEvent.click(screen.getAllByText('Where')[0]);
-
-    const staged = screen.getByTestId('metric-explorer-staged');
-    expect(
-      within(staged).getByText('ResourceAttributes.host.name:"host-a"'),
-    ).toBeInTheDocument();
   });
 
   /** Switch the browser into flat-list mode. */
@@ -522,7 +563,6 @@ describe('MetricExplorerModal', () => {
     expect(onApply).toHaveBeenCalledWith({
       name: 'system.cpu.time',
       type: MetricsDataType.Sum,
-      where: [],
       groupBy: [],
     });
   });
@@ -571,7 +611,6 @@ describe('MetricExplorerModal', () => {
     expect(onApply).toHaveBeenCalledWith({
       name: 'system.cpu.utilization',
       type: MetricsDataType.Gauge,
-      where: [],
       groupBy: [],
     });
     expect(onClose).toHaveBeenCalled();
@@ -588,7 +627,6 @@ describe('MetricExplorerModal', () => {
     expect(onApply).toHaveBeenCalledWith({
       name: 'system.cpu.time',
       type: MetricsDataType.Sum,
-      where: [],
       groupBy: [],
     });
   });

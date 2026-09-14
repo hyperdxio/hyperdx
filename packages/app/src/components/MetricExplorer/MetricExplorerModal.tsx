@@ -6,6 +6,7 @@ import {
   TMetricSource,
 } from '@hyperdx/common-utils/dist/types';
 import { Box, Button, Group, Modal, Pill, Stack, Text } from '@mantine/core';
+import { IconAlertTriangle } from '@tabler/icons-react';
 
 import type { MetricCatalogEntry } from '@/utils/metricNameTree';
 
@@ -24,8 +25,6 @@ const MODAL_WIDTH = 'min(1500px, 94vw)';
 export type MetricExplorerSelection = {
   name: string;
   type: MetricsDataType;
-  /** Tag filters staged while browsing, in the requested `language`. */
-  where: string[];
   /** Tag keys staged for grouping, always SQL. */
   groupBy: string[];
 };
@@ -37,8 +36,10 @@ type MetricExplorerModalProps = {
   dateRange?: DateRange['dateRange'];
   /** The series' current metric, preselected when the modal opens. */
   value?: { metricName?: string | null; metricType?: MetricsDataType | null };
-  /** Syntax for staged filter clauses, matching the series' own setting. */
-  language?: 'sql' | 'lucene';
+  /** The series' current condition, so the footer can warn before clearing it. */
+  currentWhere?: string;
+  /** The chart's current grouping, likewise. */
+  currentGroupBy?: string;
   onApply: (selection: MetricExplorerSelection) => void;
 };
 
@@ -53,7 +54,8 @@ export function MetricExplorerModal({
   metricSource,
   dateRange,
   value,
-  language = 'sql',
+  currentWhere,
+  currentGroupBy,
   onApply,
 }: MetricExplorerModalProps) {
   return (
@@ -97,7 +99,8 @@ export function MetricExplorerModal({
           metricSource={metricSource}
           dateRange={dateRange}
           value={value}
-          language={language}
+          currentWhere={currentWhere}
+          currentGroupBy={currentGroupBy}
           onClose={onClose}
           onApply={onApply}
         />
@@ -110,7 +113,8 @@ function MetricExplorerModalBody({
   metricSource,
   dateRange,
   value,
-  language = 'sql',
+  currentWhere,
+  currentGroupBy,
   onClose,
   onApply,
 }: Omit<MetricExplorerModalProps, 'opened'>) {
@@ -119,27 +123,19 @@ function MetricExplorerModalBody({
       ? { name: value.metricName, type: value.metricType }
       : null,
   );
-  const [where, setWhere] = useState<string[]>([]);
   const [groupBy, setGroupBy] = useState<string[]>([]);
 
-  // A tag filter is written against one metric's attributes, so switching
-  // metrics has to drop whatever was staged for the previous one. Compared
-  // outside the updater: an impure updater double-fires under StrictMode.
+  // A tag key is one metric's, so switching metrics has to drop whatever was
+  // staged for the previous one. Compared outside the updater: an impure
+  // updater double-fires under StrictMode.
   const handleSelectedChange = useCallback(
     (entry: MetricCatalogEntry) => {
       if (selected?.name !== entry.name || selected?.type !== entry.type) {
-        setWhere([]);
         setGroupBy([]);
       }
       setSelected(entry);
     },
     [selected],
-  );
-
-  const handleAddWhere = useCallback(
-    (clause: string) =>
-      setWhere(prev => (prev.includes(clause) ? prev : [...prev, clause])),
-    [],
   );
 
   const handleAddGroupBy = useCallback(
@@ -149,14 +145,25 @@ function MetricExplorerModalBody({
   );
 
   const handleApply = (entry: MetricCatalogEntry) => {
-    onApply({ name: entry.name, type: entry.type, where, groupBy });
+    onApply({ name: entry.name, type: entry.type, groupBy });
     onClose();
   };
 
-  const staged = [
-    ...where.map(clause => ({ clause, kind: 'where' as const })),
-    ...groupBy.map(clause => ({ clause, kind: 'groupBy' as const })),
-  ];
+  // Applying reaches past the metric name into controls the user cannot see
+  // from here: the series filter below the card, and a group by that lives in
+  // the page toolbar. Neither is visible from the modal, so it has to say what
+  // it will take with it before the user commits.
+  const isSwap =
+    !!selected &&
+    (selected.name !== value?.metricName ||
+      selected.type !== value?.metricType);
+  const notices: string[] = [];
+  if (isSwap && currentWhere?.trim()) {
+    notices.push("Switching metrics clears the series' filter.");
+  }
+  if (groupBy.length > 0 && currentGroupBy?.trim()) {
+    notices.push("Replaces the chart's group by.");
+  }
 
   return (
     <>
@@ -167,23 +174,21 @@ function MetricExplorerModalBody({
           selected={selected}
           onSelectedChange={handleSelectedChange}
           onApply={handleApply}
-          language={language}
-          onAddWhere={handleAddWhere}
           onAddGroupBy={handleAddGroupBy}
         />
       </Box>
 
       <Stack gap="xs" mt="md">
-        {staged.length > 0 && (
+        {groupBy.length > 0 && (
           <Group gap="xs" data-testid="metric-explorer-staged">
             <Text size="xs" style={{ color: 'var(--color-text-muted)' }}>
               Applying with
             </Text>
-            {staged.map(({ clause, kind }) => {
-              const label = kind === 'where' ? clause : `Group by ${clause}`;
+            {groupBy.map(clause => {
+              const label = `Group by ${clause}`;
               return (
                 <Pill
-                  key={`${kind}:${clause}`}
+                  key={clause}
                   size="sm"
                   withRemoveButton
                   // Mantine hides a Pill's remove button from assistive tech
@@ -197,9 +202,7 @@ function MetricExplorerModalBody({
                     'aria-label': `Remove ${label}`,
                   }}
                   onRemove={() =>
-                    (kind === 'where' ? setWhere : setGroupBy)(prev =>
-                      prev.filter(c => c !== clause),
-                    )
+                    setGroupBy(prev => prev.filter(c => c !== clause))
                   }
                 >
                   {label}
@@ -207,6 +210,24 @@ function MetricExplorerModalBody({
               );
             })}
           </Group>
+        )}
+        {notices.length > 0 && (
+          <Stack gap={4} data-testid="metric-explorer-overwrites">
+            {notices.map(notice => (
+              <Group key={notice} gap={6} wrap="nowrap">
+                <IconAlertTriangle
+                  size={14}
+                  style={{
+                    flexShrink: 0,
+                    color: 'var(--color-text-warning)',
+                  }}
+                />
+                <Text size="xs" style={{ color: 'var(--color-text-muted)' }}>
+                  {notice}
+                </Text>
+              </Group>
+            ))}
+          </Stack>
         )}
         <Group justify="flex-end">
           <Button variant="secondary" onClick={onClose}>

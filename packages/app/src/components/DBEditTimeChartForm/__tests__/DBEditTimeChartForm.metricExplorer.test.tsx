@@ -87,7 +87,6 @@ jest.mock('@/source', () => ({
 
 // What the stubbed explorer reports as staged when a metric is applied. The
 // `mock` prefix is required for a jest.mock factory to close over it.
-let mockStagedWhere: string[] = [];
 let mockStagedGroupBy: string[] = [];
 
 // The explorer has its own suite (MetricExplorer.test.tsx). Here it is stubbed
@@ -103,7 +102,6 @@ jest.mock('@/components/MetricExplorer/MetricExplorerModal', () => ({
     onApply: (selection: {
       name: string;
       type: string;
-      where: string[];
       groupBy: string[];
     }) => void;
   }) =>
@@ -120,14 +118,7 @@ jest.mock('@/components/MetricExplorer/MetricExplorerModal', () => ({
             key={type}
             type="button"
             data-testid={`metric-explorer-pick-${type}`}
-            onClick={() =>
-              onApply({
-                name,
-                type,
-                where: mockStagedWhere,
-                groupBy: mockStagedGroupBy,
-              })
-            }
+            onClick={() => onApply({ name, type, groupBy: mockStagedGroupBy })}
           >
             {name}
           </button>
@@ -138,7 +129,7 @@ jest.mock('@/components/MetricExplorer/MetricExplorerModal', () => ({
 
 jest.mock('../../MetricNameSelect', () => ({
   MetricNameSelect: (props: any) => {
-    const { error, onFocus, setMetricName, metricName, rightAddon } = props;
+    const { error, onFocus, setMetricName, metricName } = props;
     const testId = props['data-testid'];
     return (
       <div>
@@ -153,7 +144,6 @@ jest.mock('../../MetricNameSelect', () => ({
           <option value="test.metric.gauge">test.metric.gauge</option>
           <option value="test.metric.sum">test.metric.sum</option>
         </select>
-        {rightAddon}
         {error && <div data-testid="metric-name-error">{error}</div>}
       </div>
     );
@@ -258,7 +248,6 @@ const renderComponent = (
 describe('DBEditTimeChartForm - Metric explorer', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockStagedWhere = [];
     mockStagedGroupBy = [];
     // No re-pinning of the useSource mock needed: this file has a single
     // describe, and jest.clearAllMocks only clears calls, so the factory's
@@ -279,6 +268,16 @@ describe('DBEditTimeChartForm - Metric explorer', () => {
     expect(
       screen.queryByTestId('metric-explorer-stub'),
     ).not.toBeInTheDocument();
+  });
+
+  // It rewrites the aggregation, clears the series filter and can set the
+  // chart's group by, so it has to read as an action on the series rather than
+  // on the name field.
+  it('labels the browse control rather than leaving it an icon', () => {
+    renderComponent();
+    expect(screen.getByTestId('metric-explorer-open')).toHaveTextContent(
+      'Browse metrics',
+    );
   });
 
   it('opens the explorer from the browse control', async () => {
@@ -306,45 +305,25 @@ describe('DBEditTimeChartForm - Metric explorer', () => {
     });
   });
 
-  it('replaces the series filter with the tag filters staged in the explorer', async () => {
+  it('applies the group by staged in the explorer', async () => {
     const onSave = jest.fn();
-    renderComponent({
-      onSave,
-      chartConfig: {
-        ...defaultChartConfig,
-        select: [
-          {
-            aggFn: 'avg',
-            aggCondition: "Attributes['stale'] = 'yes'",
-            aggConditionLanguage: 'lucene' as const,
-            valueExpression: '',
-            metricType: MetricsDataType.Gauge,
-            metricName: '',
-          },
-        ],
-      },
-    });
+    renderComponent({ onSave });
 
     // The stub stands in for the explorer's own staging UI.
-    mockStagedWhere = ["ResourceAttributes['host.name'] = 'host-a'"];
     mockStagedGroupBy = ["ResourceAttributes['host.name']"];
     await pickMetric('gauge');
     await userEvent.click(screen.getByTestId('chart-save-button'));
 
     await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
-    const saved = onSave.mock.calls[0][0];
-    // Filters belong to the newly chosen metric, so the stale one is gone.
-    expect(saved.select[0].aggCondition).toBe(
-      "ResourceAttributes['host.name'] = 'host-a'",
+    expect(onSave.mock.calls[0][0].groupBy).toBe(
+      "ResourceAttributes['host.name']",
     );
-    expect(saved.groupBy).toBe("ResourceAttributes['host.name']");
   });
 
-  it('clears a stale filter when the new metric stages none', async () => {
-    // Regression: the write was guarded on `where.length > 0`, so switching
-    // metric without staging filters left the previous metric's condition
-    // attached to the new one — an empty chart rather than an error, because a
-    // Map lookup for an absent key yields '' instead of failing.
+  it('clears a stale filter when a different metric is applied', async () => {
+    // The previous metric's condition would otherwise stay attached to the new
+    // one — an empty chart rather than an error, because a Map lookup for an
+    // absent key yields '' instead of failing.
     const onSave = jest.fn();
     renderComponent({
       onSave,
@@ -363,12 +342,42 @@ describe('DBEditTimeChartForm - Metric explorer', () => {
       },
     });
 
-    mockStagedWhere = [];
     await pickMetric('gauge');
     await userEvent.click(screen.getByTestId('chart-save-button'));
 
     await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
     expect(onSave.mock.calls[0][0].select[0].aggCondition).toBe('');
+  });
+
+  it('keeps the series filter when the applied metric is the one already set', async () => {
+    // Re-picking the same metric is an edit, not a swap: its attributes still
+    // exist, so the staleness that justifies clearing does not apply and a
+    // hand-written condition must survive.
+    const onSave = jest.fn();
+    renderComponent({
+      onSave,
+      chartConfig: {
+        ...defaultChartConfig,
+        select: [
+          {
+            aggFn: 'avg',
+            aggCondition: "Attributes['env'] = 'prod'",
+            aggConditionLanguage: 'lucene' as const,
+            valueExpression: '',
+            metricType: MetricsDataType.Gauge,
+            metricName: 'test.metric.gauge',
+          },
+        ],
+      },
+    });
+
+    await pickMetric('gauge');
+    await userEvent.click(screen.getByTestId('chart-save-button'));
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(onSave.mock.calls[0][0].select[0].aggCondition).toBe(
+      "Attributes['env'] = 'prod'",
+    );
   });
 
   it('clears the required-metric error on apply', async () => {

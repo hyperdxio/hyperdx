@@ -14,8 +14,6 @@ import {
   type QueryableMetricKind,
 } from '@/utils/metricKinds';
 
-import styles from './MetricNameSelect.module.scss';
-
 const SEPARATOR = ':::::::';
 const SEARCH_DEBOUNCE_MS = 300;
 
@@ -61,7 +59,6 @@ export function MetricNameSelect({
   dateRange,
   error,
   onFocus,
-  rightAddon,
   'data-testid': dataTestId,
 }: {
   metricType: MetricsDataType;
@@ -74,8 +71,6 @@ export function MetricNameSelect({
   dateRange?: DateRange['dateRange'];
   error?: string;
   onFocus?: () => void;
-  /** Trailing control drawn into the field's frame, e.g. the metric explorer. */
-  rightAddon?: React.ReactNode;
   'data-testid'?: string;
 }) {
   const [searchValue, setSearchValue] = useState('');
@@ -158,11 +153,10 @@ export function MetricNameSelect({
   const currentValue =
     metricName && metricType ? `${metricName}${SEPARATOR}${metricType}` : null;
 
-  const select = (
+  return (
     <Select
       disabled={isLoading || isError}
       variant="filled"
-      classNames={rightAddon ? { input: styles.joinedInput } : undefined}
       placeholder={
         isLoading
           ? 'Loading...'
@@ -192,8 +186,8 @@ export function MetricNameSelect({
       }
       // Reported in the description rather than the `error` slot, which belongs
       // to form validation for this field. Kept below the input: it appears
-      // mid-session, and above the input it pushes the field down out of
-      // alignment with the browse-metrics button beside it.
+      // mid-session, and above the input it pushes the whole field down, out of
+      // alignment with the rest of the series row.
       inputWrapperOrder={['label', 'input', 'description', 'error']}
       description={
         hasError
@@ -221,16 +215,5 @@ export function MetricNameSelect({
       error={error}
       data-testid={dataTestId}
     />
-  );
-
-  if (!rightAddon) {
-    return select;
-  }
-
-  return (
-    <div className={styles.group}>
-      <div className={styles.select}>{select}</div>
-      <div className={styles.addon}>{rightAddon}</div>
-    </div>
   );
 }

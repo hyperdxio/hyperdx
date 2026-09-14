@@ -17,9 +17,9 @@ import {
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
-  ActionIcon,
   Badge,
   Box,
+  Button,
   Flex,
   Group,
   Menu,
@@ -53,6 +53,10 @@ import {
   SeriesCardMenu,
 } from '@/components/ChartSeries/SeriesCard';
 import { SeriesColumnPicker } from '@/components/DBEditTimeChartForm/SeriesColumnPicker';
+import {
+  formatGroupByFields,
+  parseGroupByFields,
+} from '@/components/Explore/exploreGroupBy';
 import { ExploreQueryEditor } from '@/components/Explore/ExploreQueryEditor';
 import {
   CheckBoxControlled,
@@ -82,6 +86,24 @@ type SeriesItem = NonNullable<
 >[number];
 
 const NO_KNOWN_COLUMNS: Set<string> = new Set();
+
+const asText = (value: unknown) => (typeof value === 'string' ? value : '');
+
+/**
+ * AND clauses onto an existing condition, skipping any already in it. The
+ * duplicate check is a substring match rather than a parse: the condition is
+ * free text in either SQL or Lucene, and the only clauses compared against it
+ * are generated ones, which are reproduced verbatim.
+ */
+function appendWhereClauses(current: string, clauses: string[]) {
+  return clauses
+    .filter(Boolean)
+    .reduce(
+      (acc, clause) =>
+        acc.includes(clause) ? acc : acc ? `${acc} AND ${clause}` : clause,
+      current.trim(),
+    );
+}
 
 type ChartSeriesEditorProps = {
   control: Control<ChartEditorFormState>;
@@ -232,11 +254,16 @@ export function ChartSeriesEditor({
       : _tableName;
 
   const metricName = useWatch({ control, name: `${namePrefix}metricName` });
-  const aggCondition = useWatch({
+  // `useWatch` widens these paths to every field they could match, which
+  // includes the series array itself. Narrowed once so the readers below get
+  // the string each path actually resolves to.
+  const watchedAggCondition = useWatch({
     control,
     name: `${namePrefix}aggCondition`,
   });
-  const groupBy = useWatch({ control, name: 'groupBy' });
+  const watchedGroupBy = useWatch({ control, name: 'groupBy' });
+  const aggCondition = asText(watchedAggCondition);
+  const groupBy = asText(watchedGroupBy);
 
   const metricTableSource =
     tableSource?.kind === SourceKind.Metric ? tableSource : undefined;
@@ -284,10 +311,10 @@ export function ChartSeriesEditor({
 
   const handleAddToWhere = useCallback(
     (clause: string) => {
-      const currentValue = aggCondition || '';
-
-      const newValue = currentValue ? `${currentValue} AND ${clause}` : clause;
-      setValue(`${namePrefix}aggCondition`, newValue);
+      setValue(
+        `${namePrefix}aggCondition`,
+        appendWhereClauses(aggCondition, [clause]),
+      );
       onSubmit();
     },
     [aggCondition, namePrefix, setValue, onSubmit],
@@ -303,12 +330,9 @@ export function ChartSeriesEditor({
   // the previous metric used. The coercion effects above accept every value
   // `defaultAggFnForMetricType` can return.
   const applyExplorerMetric = useCallback(
-    ({
-      name,
-      type,
-      where,
-      groupBy: stagedGroupBy,
-    }: MetricExplorerSelection) => {
+    ({ name, type, groupBy: stagedGroupBy }: MetricExplorerSelection) => {
+      const isSwap = name !== metricName || type !== metricType;
+
       setValue(`${namePrefix}metricName`, name);
       setValue(`${namePrefix}metricType`, type);
       setValue(`${namePrefix}valueExpression`, 'Value');
@@ -318,32 +342,50 @@ export function ChartSeriesEditor({
         setValue(`${namePrefix}level`, level);
       }
 
-      // Filters were written against this metric's attributes, so they replace
-      // the series' condition rather than stacking onto the previous metric's.
-      // Unconditionally, including when nothing was staged: leaving the old
-      // condition in place would silently apply the previous metric's
-      // attributes to the new one, which reads as an empty chart rather than
-      // an error (a Map lookup for an absent key yields '', not a failure).
-      setValue(`${namePrefix}aggCondition`, where.join(' AND '));
+      // Swapping the metric invalidates whatever was filtering the old one:
+      // its attributes do not exist on the new metric, and a Map lookup for an
+      // absent key yields '' rather than failing, so a stale condition charts
+      // nothing instead of erroring. Re-picking the metric already on the
+      // series is an edit rather than a swap, so its condition still holds.
+      if (isSwap) {
+        setValue(`${namePrefix}aggCondition`, '');
+      }
 
-      // Staged group-bys replace the chart's, same as the filters above: they
-      // were chosen against this metric's tags. Only when something was staged
-      // though — group by is chart-level, so clearing it on every apply would
-      // discard a grouping the user set by hand elsewhere.
+      // Group by is chart-level, so a clear here would discard a grouping set
+      // elsewhere on the page — only written when something was staged.
       if (stagedGroupBy.length > 0) {
-        setValue('groupBy', stagedGroupBy.join(', '));
+        setValue(
+          'groupBy',
+          formatGroupByFields(
+            isSwap
+              ? stagedGroupBy
+              : [
+                  ...new Set([
+                    ...parseGroupByFields(groupBy),
+                    ...stagedGroupBy,
+                  ]),
+                ],
+          ),
+        );
       }
 
       clearErrors(`${namePrefix}metricName`);
       onSubmit();
     },
-    [namePrefix, setValue, clearErrors, onSubmit],
+    [
+      namePrefix,
+      metricName,
+      metricType,
+      groupBy,
+      setValue,
+      clearErrors,
+      onSubmit,
+    ],
   );
 
   const handleAddToGroupBy = useCallback(
     (clause: string) => {
-      const currentValue = groupBy || '';
-      const newValue = currentValue ? `${currentValue}, ${clause}` : clause;
+      const newValue = groupBy ? `${groupBy}, ${clause}` : clause;
       setValue('groupBy', newValue);
       onSubmit();
     },
@@ -516,60 +558,66 @@ export function ChartSeriesEditor({
             />
           </Box>
           {tableSource?.kind === SourceKind.Metric && metricType && (
-            <Box miw={220}>
-              <MetricNameSelect
-                metricName={metricName}
-                metricType={metricType}
-                setMetricName={value => {
-                  setValue(`${namePrefix}metricName`, value);
-                  setValue(`${namePrefix}valueExpression`, 'Value');
-                  if (eagerSubmit) onSubmit();
-                }}
-                setMetricType={value => {
-                  setValue(`${namePrefix}metricType`, value);
-                  if (eagerSubmit) onSubmit();
-                }}
-                metricSource={tableSource}
-                dateRange={dateRange}
-                data-testid="metric-name-selector"
-                error={errors?.metricName?.message}
-                onFocus={() => clearErrors(`${namePrefix}metricName`)}
-                rightAddon={
-                  <Tooltip label="Browse metrics" withArrow>
-                    <ActionIcon
-                      variant="subtle"
-                      size="input-sm"
-                      radius={0}
-                      onClick={openMetricExplorer}
-                      aria-label="Browse metrics"
-                      data-testid="metric-explorer-open"
-                    >
-                      <IconListSearch size={16} />
-                    </ActionIcon>
-                  </Tooltip>
-                }
-              />
+            <>
+              <Box miw={220}>
+                <MetricNameSelect
+                  metricName={metricName}
+                  metricType={metricType}
+                  setMetricName={value => {
+                    setValue(`${namePrefix}metricName`, value);
+                    setValue(`${namePrefix}valueExpression`, 'Value');
+                    if (eagerSubmit) onSubmit();
+                  }}
+                  setMetricType={value => {
+                    setValue(`${namePrefix}metricType`, value);
+                    if (eagerSubmit) onSubmit();
+                  }}
+                  metricSource={tableSource}
+                  dateRange={dateRange}
+                  data-testid="metric-name-selector"
+                  error={errors?.metricName?.message}
+                  onFocus={() => clearErrors(`${namePrefix}metricName`)}
+                />
+                {metricType === 'gauge' && (
+                  <Flex justify="end">
+                    <CheckBoxControlled
+                      control={control}
+                      name={`${namePrefix}isDelta`}
+                      label="Delta"
+                      size="xs"
+                      className="mt-2"
+                    />
+                  </Flex>
+                )}
+              </Box>
+              {/*
+                A peer of the metric field rather than an addon on it: applying
+                also rewrites the aggregation, the series condition and the
+                chart's group by, which a control drawn into the field's frame
+                reads as scoped to that one value. Labelled rather than an icon
+                because browsing is how a metric is found when its name is not
+                already known, not an advanced escape hatch.
+              */}
+              <Button
+                variant="secondary"
+                size="sm"
+                leftSection={<IconListSearch size={16} />}
+                onClick={openMetricExplorer}
+                data-testid="metric-explorer-open"
+              >
+                Browse metrics
+              </Button>
               <MetricExplorerModal
                 opened={isMetricExplorerOpen}
                 onClose={closeMetricExplorer}
                 metricSource={tableSource}
                 dateRange={dateRange}
                 value={{ metricName, metricType }}
-                language={aggConditionLanguage === 'sql' ? 'sql' : 'lucene'}
+                currentWhere={aggCondition}
+                currentGroupBy={groupBy}
                 onApply={applyExplorerMetric}
               />
-              {metricType === 'gauge' && (
-                <Flex justify="end">
-                  <CheckBoxControlled
-                    control={control}
-                    name={`${namePrefix}isDelta`}
-                    label="Delta"
-                    size="xs"
-                    className="mt-2"
-                  />
-                </Flex>
-              )}
-            </Box>
+            </>
           )}
           {tableSource?.kind !== SourceKind.Metric &&
             aggFn !== 'count' &&

@@ -32,10 +32,7 @@ const MAX_SERVICES_SHOWN = 4;
 type MetricDetailPanelProps = {
   metricSource: TMetricSource;
   metric: MetricCatalogEntry | null;
-  /** Syntax for clauses handed to `onAddWhere`. @default 'sql' */
-  language?: 'sql' | 'lucene';
-  /** Omit to browse tags read-only, with no filter or group-by actions. */
-  onAddWhere?: (clause: string) => void;
+  /** Omit to browse tags read-only, with no group-by action. */
   onAddGroupBy?: (clause: string) => void;
 };
 
@@ -69,8 +66,6 @@ export function MetricDetailPanel({
 function MetricDetail({
   metricSource,
   metric,
-  language,
-  onAddWhere,
   onAddGroupBy,
 }: MetricDetailPanelProps & { metric: MetricCatalogEntry }) {
   const [selectedAttribute, setSelectedAttribute] =
@@ -182,8 +177,6 @@ function MetricDetail({
             tableSource={metricSource}
             attribute={selectedAttribute}
             onBack={handleBack}
-            language={language}
-            onAddToWhere={onAddWhere}
             onAddToGroupBy={onAddGroupBy}
           />
         ) : (
