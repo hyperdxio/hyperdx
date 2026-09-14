@@ -126,6 +126,8 @@ function rampFill(hue: number, intensity: number) {
   return { s, l, css: `hsl(${hue} ${s}% ${l}%)` };
 }
 
+/** Error rate above which errors stop being background noise. */
+export const ERROR_RATE_ELEVATED = 1;
 /** Error rate at or above which a service is considered badly broken. */
 export const ERROR_RATE_HIGH = 5;
 
@@ -138,7 +140,7 @@ export const ERROR_RATE_HIGH = 5;
  */
 const ERROR_RATE_BUCKETS = [
   { min: 0, intensity: 0.35 },
-  { min: 1, intensity: 0.7 },
+  { min: ERROR_RATE_ELEVATED, intensity: 0.7 },
   { min: ERROR_RATE_HIGH, intensity: 1 },
 ];
 
@@ -147,16 +149,20 @@ const ERROR_RATE_BUCKETS = [
 const NEUTRAL = { hue: 220, s: 8, l: 82 };
 const NEUTRAL_CSS = `hsl(${NEUTRAL.hue} ${NEUTRAL.s}% ${NEUTRAL.l}%)`;
 const NO_DATA_BORDER = `hsl(${NEUTRAL.hue} ${NEUTRAL.s}% 58%)`;
+// Selection can't use the usual white ring on a hollow node: the light-mode
+// canvas is white (--color-bg-body), so the node would vanish entirely.
+// --color-text inverts with the theme and so contrasts with either canvas.
+const NO_DATA_BORDER_SELECTED = 'var(--color-text)';
 
-/**
- * Ramp position for an error rate above zero. Exactly zero is neutral and is
- * handled by the caller, so the first bucket's bound of 0 is a catch-all.
- */
+/** Ramp position for an error rate above zero; zero is neutral, handled by the caller. */
 function getErrorRateIntensity(errorPercentage: number): number {
-  return (
-    ERROR_RATE_BUCKETS.findLast(b => errorPercentage >= b.min)?.intensity ??
-    ERROR_RATE_BUCKETS[0].intensity
-  );
+  let intensity = ERROR_RATE_BUCKETS[0].intensity;
+  for (const bucket of ERROR_RATE_BUCKETS) {
+    if (errorPercentage >= bucket.min) {
+      intensity = bucket.intensity;
+    }
+  }
+  return intensity;
 }
 
 export function getNodeColors(
@@ -172,7 +178,7 @@ export function getNodeColors(
   if (metric === 'errorRate' && !hasRequests) {
     return {
       backgroundColor: 'transparent',
-      borderColor: isSelected ? 'white' : NO_DATA_BORDER,
+      borderColor: isSelected ? NO_DATA_BORDER_SELECTED : NO_DATA_BORDER,
     };
   }
 

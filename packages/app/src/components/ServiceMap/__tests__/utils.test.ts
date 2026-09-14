@@ -350,10 +350,19 @@ describe('getNodeColors', () => {
       expect(noData).not.toEqual(getNodeColors(0, 100, false, 'errorRate'));
     });
 
-    it('keeps the white border on a selected no-data node', () => {
-      expect(getNodeColors(0, 100, true, 'errorRate', false).borderColor).toBe(
-        'white',
+    it('keeps a selected no-data node visible on a white canvas', () => {
+      // The usual white selection ring would vanish: the fill is transparent
+      // and the light-mode canvas is --color-bg-body, which is white.
+      const { backgroundColor, borderColor } = getNodeColors(
+        0,
+        100,
+        true,
+        'errorRate',
+        false,
       );
+      expect(backgroundColor).toBe('transparent');
+      expect(borderColor).not.toBe('white');
+      expect(borderColor).toBe('var(--color-text)');
     });
 
     it('does not treat other metrics as no-data', () => {

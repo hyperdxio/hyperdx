@@ -5,6 +5,7 @@ import { formatDurationMs } from '@/utils';
 
 import type { ServiceMapMetricMax } from './ServiceMapMetricContext';
 import {
+  ERROR_RATE_ELEVATED,
   ERROR_RATE_HIGH,
   formatRate,
   getMetricGradientCss,
@@ -90,13 +91,18 @@ export default function ServiceMapLegend({
             segments, which puts the 1% threshold at its midpoint. */}
         {metric === 'errorRate' && (
           <Text size="xxs" c="var(--color-text-muted)">
-            1%
+            {ERROR_RATE_ELEVATED}%
           </Text>
         )}
         <Text size="xxs" c="var(--color-text)">
           {formatMax(metric, max, source, dateRange, isSingleTrace)}
         </Text>
       </Group>
+      {metric === 'errorRate' && (
+        <Text size="xxs" c="var(--color-text-muted)">
+          Hollow = no data
+        </Text>
+      )}
       <Text size="xxs" c="var(--color-text-muted)">
         Node size = throughput
       </Text>
