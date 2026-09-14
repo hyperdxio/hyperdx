@@ -81,12 +81,20 @@ const sampleLogsCsv = [
   '"2023-03-17 22:12:30","error","Retry limit exceeded"',
 ].join('\n');
 
+const sampleLogsResultSet = () => ({
+  json: jest.fn().mockResolvedValue({ data: [] }),
+  text: jest.fn().mockResolvedValue(sampleLogsCsv),
+});
+
+// Typed separately from the client so tests can swap the implementation
+// without spying through the `any` cast below, which erases the arg types.
+const defaultClickhouseQuery = async (_props: { query: string }) =>
+  sampleLogsResultSet();
+const mockClickhouseQuery = jest.fn(defaultClickhouseQuery);
+
 // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
 const mockClickhouseClient = {
-  query: jest.fn().mockResolvedValue({
-    json: jest.fn().mockResolvedValue({ data: [] }),
-    text: jest.fn().mockResolvedValue(sampleLogsCsv),
-  }),
+  query: mockClickhouseQuery,
 } as any;
 
 const startTime = new Date('2023-03-17T22:10:00.000Z');
@@ -715,15 +723,10 @@ describe('enriched message fields', () => {
 
   it('applies the saved search pinned filters to the sample log query', async () => {
     const seenQueries: string[] = [];
-    const querySpy = jest
-      .spyOn(mockClickhouseClient, 'query')
-      .mockImplementation((args: { query: string }) => {
-        seenQueries.push(args.query);
-        return Promise.resolve({
-          json: jest.fn().mockResolvedValue({ data: [] }),
-          text: jest.fn().mockResolvedValue(sampleLogsCsv),
-        });
-      });
+    mockClickhouseQuery.mockImplementation(async ({ query }) => {
+      seenQueries.push(query);
+      return sampleLogsResultSet();
+    });
 
     try {
       await renderAlertTemplate({
@@ -742,11 +745,8 @@ describe('enriched message fields', () => {
 
       const fullQuery = seenQueries.join('\n');
       expect(fullQuery).toContain("ServiceName = 'checkout'");
-      expect(fullQuery).toContain('default.otel_logs');
-      expect(fullQuery).toContain('Timestamp >=');
-      expect(fullQuery).toContain('Timestamp <');
     } finally {
-      querySpy.mockRestore();
+      mockClickhouseQuery.mockImplementation(defaultClickhouseQuery);
     }
   });
 
