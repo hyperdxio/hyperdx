@@ -49,10 +49,17 @@ const orphanedResourceCounter = getCounter(
 
 export class AnthropicApiError extends Error {
   status: number;
-  constructor(message: string, status: number) {
+  /**
+   * True only when the message carries an upstream response body. Callers
+   * redact those before showing them; the ones we author (no key configured,
+   * agent points elsewhere) are the actionable half and must survive.
+   */
+  fromUpstream: boolean;
+  constructor(message: string, status: number, fromUpstream = false) {
     super(message);
     this.name = 'AnthropicApiError';
     this.status = status;
+    this.fromUpstream = fromUpstream;
   }
 }
 
@@ -84,6 +91,7 @@ const anthropicRequest = async (
     throw new AnthropicApiError(
       `Anthropic API ${method} ${path} failed: ${e instanceof Error ? e.message : String(e)}`,
       504,
+      true,
     );
   }
   if (!res.ok) {
@@ -91,6 +99,7 @@ const anthropicRequest = async (
     throw new AnthropicApiError(
       `Anthropic API ${method} ${path} failed (${res.status}): ${text}`,
       res.status,
+      true,
     );
   }
   // DELETE may return an empty body.
@@ -465,9 +474,15 @@ const importAnthropicAgentImpl = async ({
   // and gets no credential — a silent loss of ClickStack access that only
   // shows up when an alert fires. Outside the try: this is a rejection, not a
   // failed verification, so the catch above must not turn it into a warning.
-  if (typeof agentMcpUrl === 'string' && agentMcpUrl !== mcpServerUrl) {
+  // `verified` means the agent object was read, so its toolset is knowable and
+  // a mismatch is a decision we can make. An agent with no MCP server at all
+  // is rejected for the same reason as a wrong one: the credential this
+  // instance provisions would go unused.
+  if (verified && agentMcpUrl !== mcpServerUrl) {
     throw new AnthropicApiError(
-      `That agent points at ${agentMcpUrl}, but this instance provisions its credential for ${mcpServerUrl}. It would run with no ClickStack access. Point the agent at this URL, or set HDX_MANAGED_AGENTS_MCP_URL to the one it already uses.`,
+      agentMcpUrl
+        ? `That agent points at ${agentMcpUrl}, but this instance provisions its credential for ${mcpServerUrl}. It would run with no ClickStack access. Point the agent at this URL, or set HDX_MANAGED_AGENTS_MCP_URL to the one it already uses.`
+        : `That agent has no MCP server configured, so it has no way to reach ClickStack. Add ${mcpServerUrl} to its mcp_servers and import it again.`,
       400,
     );
   }

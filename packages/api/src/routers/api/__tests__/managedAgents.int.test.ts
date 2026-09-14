@@ -121,7 +121,19 @@ describe('managed agents router', () => {
           if (!u.startsWith('https://api.anthropic.com')) {
             return new Response('{}'); // the MCP initialize probe
           }
-          return handler(u, init) ?? new Response('{"id":"generated"}');
+          const handled = handler(u, init);
+          if (handled) return handled;
+          // A correctly-configured agent points at this instance's MCP server;
+          // import rejects one that doesn't, so the default has to.
+          if (init?.method !== 'DELETE' && /\/v1\/agents\/[^/]+$/.test(u)) {
+            return new Response(
+              JSON.stringify({
+                id: 'agent_remote',
+                mcp_servers: [{ url: MCP_URL }],
+              }),
+            );
+          }
+          return new Response('{"id":"generated"}');
         });
 
     it('links the agent and provisions the vault and environment it needs', async () => {
@@ -133,7 +145,12 @@ describe('managed agents router', () => {
         if (url.endsWith('/v1/vaults')) return new Response('{"id":"vlt_new"}');
         if (url.includes('/v1/agents/'))
           return new Response(
-            '{"id":"agent_ext","name":"Hand-rolled responder","model":"claude-opus-4-8"}',
+            JSON.stringify({
+              id: 'agent_ext',
+              name: 'Hand-rolled responder',
+              model: 'claude-opus-4-8',
+              mcp_servers: [{ url: MCP_URL }],
+            }),
           );
         return new Response('{}');
       });
@@ -178,7 +195,12 @@ describe('managed agents router', () => {
     it('prefers a name the user supplied', async () => {
       fetchSpy = mockAnthropic(url =>
         url.includes('/v1/agents/')
-          ? new Response('{"name":"Anthropic name"}')
+          ? new Response(
+              JSON.stringify({
+                name: 'Anthropic name',
+                mcp_servers: [{ url: MCP_URL }],
+              }),
+            )
           : null,
       );
 
@@ -285,6 +307,23 @@ describe('managed agents router', () => {
         .expect(400);
 
       expect(resp.body.message).toMatch(/other-instance\.test/);
+      expect(await ManagedAgent.countDocuments({})).toBe(0);
+    });
+
+    it('refuses a verified agent with no MCP server at all', async () => {
+      fetchSpy = mockAnthropic(url => {
+        if (url.includes('/v1/agents/')) {
+          return new Response(JSON.stringify({ id: 'agent_x', name: 'Bare' }));
+        }
+        return null;
+      });
+
+      const resp = await agent
+        .post('/managed-agents/import')
+        .send(body)
+        .expect(400);
+
+      expect(resp.body.message).toMatch(/no MCP server/);
       expect(await ManagedAgent.countDocuments({})).toBe(0);
     });
 
