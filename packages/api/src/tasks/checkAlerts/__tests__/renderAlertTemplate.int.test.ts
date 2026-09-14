@@ -5,7 +5,6 @@ import {
   SourceKind,
   Tile,
 } from '@hyperdx/common-utils/dist/types';
-import type { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import mongoose from 'mongoose';
 
 import {
@@ -716,32 +715,39 @@ describe('enriched message fields', () => {
 
   it('applies the saved search pinned filters to the sample log query', async () => {
     const seenQueries: string[] = [];
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    const capturingClickhouseClient: Pick<ClickhouseClient, 'query'> = {
-      query: jest.fn().mockImplementation((args: { query: string }) => {
+    const querySpy = jest
+      .spyOn(mockClickhouseClient, 'query')
+      .mockImplementation((args: { query: string }) => {
         seenQueries.push(args.query);
         return Promise.resolve({
           json: jest.fn().mockResolvedValue({ data: [] }),
           text: jest.fn().mockResolvedValue(sampleLogsCsv),
         });
-      }),
-    } as any;
+      });
 
-    await renderAlertTemplate({
-      alertProvider,
-      clickhouseClient: capturingClickhouseClient,
-      metadata: mockMetadata,
-      state: AlertState.ALERT,
-      template: null,
-      title: 'Test Alert Title',
-      view: makeSearchView({
-        filters: [{ type: 'sql', condition: "ServiceName = 'checkout'" }],
-      }),
-      teamId: TEST_TEAM_ID,
-      teamWebhooksById: new Map(),
-    });
+    try {
+      await renderAlertTemplate({
+        alertProvider,
+        clickhouseClient: mockClickhouseClient,
+        metadata: mockMetadata,
+        state: AlertState.ALERT,
+        template: null,
+        title: 'Test Alert Title',
+        view: makeSearchView({
+          filters: [{ type: 'sql', condition: "ServiceName = 'checkout'" }],
+        }),
+        teamId: TEST_TEAM_ID,
+        teamWebhooksById: new Map(),
+      });
 
-    expect(seenQueries.join('\n')).toContain("ServiceName = 'checkout'");
+      const fullQuery = seenQueries.join('\n');
+      expect(fullQuery).toContain("ServiceName = 'checkout'");
+      expect(fullQuery).toContain('default.otel_logs');
+      expect(fullQuery).toContain('Timestamp >=');
+      expect(fullQuery).toContain('Timestamp <');
+    } finally {
+      querySpy.mockRestore();
+    }
   });
 
   it('reports an empty sourceQuery when the chart carries no condition', async () => {
