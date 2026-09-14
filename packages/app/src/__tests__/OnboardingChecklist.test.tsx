@@ -356,4 +356,33 @@ describe('OnboardingChecklist', () => {
       screen.queryByText('Get started with HyperDX'),
     ).not.toBeInTheDocument();
   });
+
+  it('escapes quotes and backslashes in source names in the has-data probe condition', () => {
+    // The probe's `type: 'sql'` filter renders via UNSAFE_RAW_SQL, so source
+    // names must be escaped or they break out of the string literal and inject
+    // arbitrary SQL run against ClickHouse for teammates. ClickHouse also honors
+    // C-style backslash escapes inside single-quoted literals, so a lone
+    // backslash must be doubled too — the table/database values below exercise
+    // both the quote and backslash paths independently.
+    setMe({ completedTasks: [], isDismissed: false });
+    setSetup(true);
+    mockUseSources.mockReturnValue({
+      data: [
+        {
+          id: 's1',
+          connection: 'c1',
+          from: { databaseName: 'db\\x', tableName: "t' OR 1=1 --" },
+        },
+      ],
+      isLoading: false,
+    } as unknown as ReturnType<typeof useSources>);
+
+    renderChecklist();
+
+    const filter =
+      mockUseQueriedChartConfig.mock.calls.at(-1)?.[0]?.filters?.[0];
+    const condition =
+      filter && 'condition' in filter ? filter.condition : undefined;
+    expect(condition).toBe("table = 't'' OR 1=1 --' AND database = 'db\\\\x'");
+  });
 });
