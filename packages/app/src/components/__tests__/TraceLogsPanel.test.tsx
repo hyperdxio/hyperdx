@@ -17,7 +17,7 @@ jest.mock('nuqs', () => {
 });
 
 type RowTableProps = {
-  config?: Record<string, any>;
+  config?: BuilderChartConfigWithDateRange;
   sourceId?: string;
   highlightedLineId?: string;
   onRowDetailsClick?: (

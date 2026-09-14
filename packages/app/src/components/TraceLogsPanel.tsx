@@ -159,7 +159,7 @@ export default function TraceLogsPanel({
   ]);
 
   const handleRowDetailsClick = useCallback(
-    (rowWhere: RowWhereResult, row: Record<string, any>) => {
+    (rowWhere: RowWhereResult, row: Record<string, unknown>) => {
       // The table selects the source's own columns, so the body lands under
       // its expression rather than a normalized alias.
       const bodyExpression = logSource ? getEventBody(logSource) : undefined;
