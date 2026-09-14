@@ -423,6 +423,11 @@ describe('RawLogTable', () => {
       await userEvent.click(rowBody);
 
       expect(await screen.findByTestId(`expanded-row-${ROW_ID}`)).toBeVisible();
+      // The expanded row's maximize button would only write URL params nothing
+      // reads, so it stays hidden here too.
+      expect(
+        screen.queryByRole('button', { name: 'Open in side panel' }),
+      ).not.toBeInTheDocument();
     });
 
     // With the panel open it stays the active surface, so a row click moves it
