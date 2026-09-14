@@ -16,10 +16,11 @@ export const LAST_TAB_STORAGE_KEY = 'hdx-side-panel-last-tab';
 /**
  * Tabs that are a way to *find* another row rather than a way to read the
  * current one, so they never become the remembered preference. Opening
- * Surrounding Context to pick out a neighbour shouldn't cost you the reading
- * view you had chosen, nor strand you on another context list once you land.
+ * Surrounding Context or the trace's logs to pick out a row shouldn't cost you
+ * the reading view you had chosen, nor strand you on another list once you
+ * land.
  */
-const NAVIGATIONAL_TABS: readonly Tab[] = [Tab.Context];
+const NAVIGATIONAL_TABS: readonly Tab[] = [Tab.Context, Tab.Logs];
 
 const EMPTY_SOURCE_STACK: SourceFrame[] = [];
 const EMPTY_NAV_STACK: NavEntry[] = [];
