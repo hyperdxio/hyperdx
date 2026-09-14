@@ -10,6 +10,7 @@ import {
 import { IconArrowDown, IconArrowUp, IconX } from '@tabler/icons-react';
 
 import { isElementClickable } from '@/utils';
+import { isImeCompositionKey } from '@/utils/ime';
 
 interface HighlightTextSettings {
   isCurrentMatch: boolean;
@@ -170,7 +171,7 @@ export const TableSearchInput = ({
     (e: React.KeyboardEvent<HTMLInputElement>) => {
       if (
         e.key === 'Enter' &&
-        !e.nativeEvent.isComposing &&
+        !isImeCompositionKey(e) &&
         matchIndices.length > 0
       ) {
         if (e.shiftKey) {

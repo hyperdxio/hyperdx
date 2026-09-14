@@ -23,6 +23,7 @@ import { ChartEditorFormState } from '@/components/ChartEditor/types';
 import { TextInputControlled } from '@/components/InputControlled';
 import { FORMAT_ICONS } from '@/components/NumberFormat';
 import SeriesNumberFormatDrawer from '@/components/SeriesNumberFormatDrawer';
+import { isImeCompositionKey } from '@/utils/ime';
 
 type ChartFormulaEditorProps = {
   control: Control<ChartEditorFormState>;
@@ -147,7 +148,7 @@ export function ChartFormulaEditor({
               input: { fontFamily: 'var(--mantine-font-family-monospace)' },
             }}
             onKeyDown={e => {
-              if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+              if (e.key === 'Enter' && !isImeCompositionKey(e)) {
                 onSubmit();
               }
             }}
