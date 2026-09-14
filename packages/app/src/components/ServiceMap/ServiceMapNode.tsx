@@ -55,13 +55,14 @@ export default function ServiceMapNode(
 
   const { metric, metricMax } = use(ServiceMapMetricContext);
 
-  const { backgroundColor, borderColor } = getNodeColors(
-    getServiceMetricValue(data, metric),
-    metricMax[metric],
-    props.selected,
-    metric,
-    totalIncomingRequestCount > 0,
-  );
+  const { backgroundColor, borderColor, borderStyle, borderWidth } =
+    getNodeColors(
+      getServiceMetricValue(data, metric),
+      metricMax[metric],
+      props.selected,
+      metric,
+      totalIncomingRequestCount > 0,
+    );
 
   // Fallback matches the schema default (3 = ms); in practice the field is
   // always present on a parsed source.
@@ -117,6 +118,8 @@ export default function ServiceMapNode(
             style={{
               backgroundColor,
               borderColor,
+              borderStyle,
+              borderWidth,
               width: size,
               height: size,
             }}

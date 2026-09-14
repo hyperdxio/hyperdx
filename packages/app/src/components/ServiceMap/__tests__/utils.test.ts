@@ -347,22 +347,27 @@ describe('getNodeColors', () => {
       // a solid neutral would read as a clean record.
       const noData = getNodeColors(0, 100, false, 'errorRate', false);
       expect(noData.backgroundColor).toBe('transparent');
-      expect(noData).not.toEqual(getNodeColors(0, 100, false, 'errorRate'));
+      expect(noData.borderColor).toBe('var(--color-chart-gray)');
+    });
+
+    it('separates no-data from no-errors by border style, not colour', () => {
+      // chart-gray sits within two points of the neutral node's derived
+      // border, so the dash is what actually distinguishes the two states.
+      const noData = getNodeColors(0, 100, false, 'errorRate', false);
+      const noErrors = getNodeColors(0, 100, false, 'errorRate');
+      expect(noData.borderStyle).toBe('dashed');
+      expect(noErrors.borderStyle).toBe('solid');
     });
 
     it('keeps a selected no-data node visible on a white canvas', () => {
       // The usual white selection ring would vanish: the fill is transparent
-      // and the light-mode canvas is --color-bg-body, which is white.
-      const { backgroundColor, borderColor } = getNodeColors(
-        0,
-        100,
-        true,
-        'errorRate',
-        false,
+      // and the light-mode canvas is --color-bg-body, which is white. Width
+      // carries the selection instead.
+      const selected = getNodeColors(0, 100, true, 'errorRate', false);
+      expect(selected.borderColor).not.toBe('white');
+      expect(selected.borderWidth).toBeGreaterThan(
+        getNodeColors(0, 100, false, 'errorRate', false).borderWidth,
       );
-      expect(backgroundColor).toBe('transparent');
-      expect(borderColor).not.toBe('white');
-      expect(borderColor).toBe('var(--color-text)');
     });
 
     it('does not treat other metrics as no-data', () => {

@@ -148,11 +148,11 @@ const ERROR_RATE_BUCKETS = [
 // different kind of thing, where a washed-out red just reads as a little red.
 const NEUTRAL = { hue: 220, s: 8, l: 82 };
 const NEUTRAL_CSS = `hsl(${NEUTRAL.hue} ${NEUTRAL.s}% ${NEUTRAL.l}%)`;
-const NO_DATA_BORDER = `hsl(${NEUTRAL.hue} ${NEUTRAL.s}% 58%)`;
-// Selection can't use the usual white ring on a hollow node: the light-mode
-// canvas is white (--color-bg-body), so the node would vanish entirely.
-// --color-text inverts with the theme and so contrasts with either canvas.
-const NO_DATA_BORDER_SELECTED = 'var(--color-text)';
+// Dashed, not merely a different grey: chart-gray is within two points of the
+// neutral node's derived border, so colour alone cannot separate "no errors"
+// from "no data". Selection thickens the ring, because the usual white one
+// would vanish against the white light-mode canvas on a transparent fill.
+const NO_DATA_BORDER = 'var(--color-chart-gray)';
 
 /** Ramp position for an error rate above zero; zero is neutral, handled by the caller. */
 function getErrorRateIntensity(errorPercentage: number): number {
@@ -178,7 +178,9 @@ export function getNodeColors(
   if (metric === 'errorRate' && !hasRequests) {
     return {
       backgroundColor: 'transparent',
-      borderColor: isSelected ? NO_DATA_BORDER_SELECTED : NO_DATA_BORDER,
+      borderColor: NO_DATA_BORDER,
+      borderStyle: 'dashed',
+      borderWidth: isSelected ? 3 : 1,
     };
   }
 
@@ -205,6 +207,8 @@ export function getNodeColors(
   return {
     backgroundColor: css,
     borderColor,
+    borderStyle: 'solid',
+    borderWidth: 1,
   };
 }
 
