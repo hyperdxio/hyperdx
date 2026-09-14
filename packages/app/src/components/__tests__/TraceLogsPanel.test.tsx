@@ -194,6 +194,8 @@ describe('TraceLogsPanel', () => {
     // Chronological: inside a trace that is execution order.
     expect(config.orderBy).toBe('Timestamp ASC');
     expect(config.dateRange).toBe(DATE_RANGE);
+    // One page to start; the table pages on scroll from here.
+    expect(config.limit).toEqual({ limit: 200 });
   });
 
   it("keeps the source's mandatory table filter ahead of the trace scope", () => {
@@ -343,12 +345,19 @@ describe('TraceLogsPanel', () => {
     expect(onNavigateToLog).toHaveBeenCalledWith('row-2', [], 'Log');
   });
 
-  it('explains itself instead of querying when the log source has no trace id column', () => {
-    renderPanel({
-      source: { ...LOG_SOURCE, traceIdExpression: undefined } as TLogSource,
-    });
+  it.each([
+    ['undefined', undefined],
+    // `min(1)` accepts a space, so this reaches the panel from a source config.
+    ['whitespace', '   '],
+  ])(
+    'explains itself instead of querying when the trace id column is %s',
+    (_label, traceIdExpression) => {
+      renderPanel({
+        source: asLogSource({ ...LOG_SOURCE, traceIdExpression }),
+      });
 
-    expect(screen.getByText('No trace ID column configured')).toBeVisible();
-    expect(mockRowTableProps.current.config).toBeUndefined();
-  });
+      expect(screen.getByText('No trace ID column configured')).toBeVisible();
+      expect(mockRowTableProps.current.config).toBeUndefined();
+    },
+  );
 });
