@@ -219,20 +219,35 @@ export const validateAlertInput = async (
     throw new Api400Error('At least one notification channel is required');
   }
 
-  const webhookIds = channels
-    .filter(c => c.type === 'webhook')
-    .map(c => c.webhookId);
-  for (const webhookId of webhookIds) {
-    validateObjectId(webhookId, 'Invalid webhook ID');
-  }
-  const uniqueIds = [...new Set(webhookIds)];
-  const found = await Webhook.countDocuments({
-    _id: { $in: uniqueIds },
-    team: teamId,
-  });
-  if (found !== uniqueIds.length) {
-    throw new Api400Error('Webhook not found');
-  }
+  // Each channel kind names a row in a different collection; the check is the
+  // same either way — the ids parse, and every distinct one belongs to this
+  // team. Kept as one pass so a third channel kind cannot arrive with a
+  // subtly different rule.
+  const assertChannelRefsExist = async (
+    ids: string[],
+    model: { countDocuments: (f: object) => PromiseLike<number> },
+    label: string,
+  ) => {
+    for (const id of ids) {
+      validateObjectId(id, `Invalid ${label} ID`);
+    }
+    const unique = [...new Set(ids)];
+    const found = await model.countDocuments({
+      _id: { $in: unique },
+      team: teamId,
+    });
+    if (found !== unique.length) {
+      throw new Api400Error(
+        `${label[0].toUpperCase()}${label.slice(1)} not found`,
+      );
+    }
+  };
+
+  await assertChannelRefsExist(
+    channels.filter(c => c.type === 'webhook').map(c => c.webhookId),
+    Webhook,
+    'webhook',
+  );
 
   const agentIds = channels.filter(c => c.type === 'agent').map(c => c.agentId);
   if (agentIds.length > 0) {
@@ -243,17 +258,7 @@ export const validateAlertInput = async (
         'AI agent notification channels are not enabled on this deployment (set HDX_MANAGED_AGENTS_ENABLED)',
       );
     }
-    for (const agentId of agentIds) {
-      validateObjectId(agentId, 'Invalid agent ID');
-    }
-    const uniqueAgentIds = [...new Set(agentIds)];
-    const foundAgents = await ManagedAgent.countDocuments({
-      _id: { $in: uniqueAgentIds },
-      team: teamId,
-    });
-    if (foundAgents !== uniqueAgentIds.length) {
-      throw new Api400Error('Agent not found');
-    }
+    await assertChannelRefsExist(agentIds, ManagedAgent, 'agent');
   }
 
   return refs;

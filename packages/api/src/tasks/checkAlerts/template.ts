@@ -761,7 +761,20 @@ export const renderAlertTemplate = async ({
   const resolveConfiguredChannel = (
     channel: AlertChannel,
   ): PopulatedAlertChannel[] => {
+    // Anything this build cannot dispatch is reported as a failed target
+    // rather than dropped: an alert whose only channel is unsupported would
+    // otherwise fire, notify nobody, and record nothing.
     if (channel.type !== 'webhook') {
+      // A pre-multi-channel row can carry a null type; label it rather than
+      // rendering "null" at the user.
+      const kind = channel.type ?? 'unknown';
+      recordPreFailure(
+        kind,
+        kind,
+        new Error(
+          `This deployment cannot notify a "${kind}" channel. Update the alert's notification channel.`,
+        ),
+      );
       return [];
     }
     const webhook = teamWebhooksById.get(channel.webhookId);
