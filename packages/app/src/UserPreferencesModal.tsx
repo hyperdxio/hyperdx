@@ -123,6 +123,7 @@ export const UserPreferencesModal = ({
           description="What clicking a result row does. The chevron always expands inline."
         >
           <Select
+            data-testid="row-click-action-select"
             value={userPreferences.rowClickAction ?? DEFAULT_ROW_CLICK_ACTION}
             onChange={value =>
               value &&

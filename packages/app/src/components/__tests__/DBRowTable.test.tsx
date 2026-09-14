@@ -367,6 +367,23 @@ describe('RawLogTable', () => {
       expect(onRowDetailsClick).toHaveBeenCalledTimes(1);
     });
 
+    // The ClickHouse dashboard's slow-query list renders inline details with no
+    // side panel behind them.
+    it('expands inline regardless of the preference when there is no side panel', async () => {
+      renderTable(<RawLogTable {...baseProps} />, 'sidePanel');
+
+      const rowBody = await screen.findByRole('button', {
+        name: 'Expand log row',
+      });
+      expect(
+        screen.queryByRole('button', { name: 'Open in side panel' }),
+      ).not.toBeInTheDocument();
+
+      await userEvent.click(rowBody);
+
+      expect(await screen.findByTestId(`expanded-row-${ROW_ID}`)).toBeVisible();
+    });
+
     // With the panel open it stays the active surface, so a row click moves it
     // rather than expanding rows behind it.
     it('moves the open side panel on row click instead of expanding', async () => {
