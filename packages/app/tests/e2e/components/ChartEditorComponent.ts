@@ -5,8 +5,13 @@
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import { expect, Locator, Page } from '@playwright/test';
 
-import { dismissSqlAutocomplete, getSqlEditor } from '../utils/locators';
+import {
+  dismissSqlAutocomplete,
+  getSqlEditor,
+  replaceEditorText,
+} from '../utils/locators';
 import { switchWhereToLucene } from '../utils/lucene-autocomplete';
+import { addTagViaPicker, removeTagViaPicker } from '../utils/tags';
 
 import { WebhookAlertModalComponent } from './WebhookAlertModalComponent';
 
@@ -434,13 +439,11 @@ export class ChartEditorComponent {
    * "Generated PromQL" accordion holds a second, read-only CodeMirror.
    */
   async replacePromqlExpression(expression: string) {
-    const content = this.page.locator('.cm-editor .cm-content').first();
-    await content.click();
-    await this.page.keyboard.press(
-      process.platform === 'darwin' ? 'Meta+A' : 'Control+A',
+    await replaceEditorText(
+      this.page,
+      this.page.locator('.cm-editor .cm-content').first(),
+      expression,
     );
-    await this.page.keyboard.press('Delete');
-    await this.page.keyboard.type(expression);
   }
 
   /** Read the current text of the PromQL expression editor. */
@@ -579,6 +582,56 @@ export class ChartEditorComponent {
     if ((await control.getAttribute('aria-expanded')) !== 'true') {
       await control.click();
     }
+  }
+
+  /**
+   * The "Searching for:" summary of the focused search input, which renders
+   * the query in English. Assertions scope to it because the SQL the query
+   * expands to is also on the page, in the generated-SQL preview.
+   */
+  searchQueryDescription(): Locator {
+    return this.page.getByTestId('search-query-description');
+  }
+
+  /**
+   * The action bar's "Apply filters" control, present only for a tile being
+   * edited from a dashboard.
+   */
+  applyDashboardFilters(): Locator {
+    return this.page.getByTestId('apply-dashboard-filters');
+  }
+
+  applyDashboardFiltersSwitch(): Locator {
+    return this.applyDashboardFilters().getByRole('switch');
+  }
+
+  /** Turn the dashboard's filter selections on or off for the preview. */
+  async setApplyDashboardFilters(apply: boolean) {
+    const toggle = this.applyDashboardFiltersSwitch();
+    await toggle.waitFor({ state: 'visible', timeout: 10000 });
+    if ((await toggle.isChecked()) !== apply) {
+      await toggle.click();
+    }
+  }
+
+  /**
+   * Hover the switch's wrapper rather than the switch, so the tooltip opens
+   * even while the switch is disabled and emits no pointer events itself.
+   */
+  async hoverApplyDashboardFilters() {
+    await this.applyDashboardFilters().hover();
+  }
+
+  /** The placeholder shown while required dashboard filters are unselected. */
+  previewMissingRequiredFilters(): Locator {
+    return this.page.getByTestId('preview-missing-required-filters');
+  }
+
+  /** The rendered chart in the preview panel of the tile editor modal. */
+  tileEditorPreviewChart(): Locator {
+    return this.page
+      .getByTestId('tile-editor-form')
+      .locator('.recharts-responsive-container');
   }
 
   /** CodeMirror content of the rendered "Generated SQL" preview. */
@@ -796,8 +849,8 @@ export class ChartEditorComponent {
    */
   async save() {
     await this.saveButton.click();
-    // Wait for save button to disappear (modal closes)
-    await this.saveButton.waitFor({ state: 'hidden', timeout: 2000 });
+    // The modal closes once the dashboard mutation resolves.
+    await this.saveButton.waitFor({ state: 'hidden', timeout: 10000 });
   }
 
   /**
@@ -918,6 +971,28 @@ export class ChartEditorComponent {
       .nth(1);
     await input.fill(String(value));
     await input.blur();
+  }
+
+  /** Set the alert's own display name in the tile alert editor. */
+  async setTileAlertDisplayName(name: string) {
+    await this.page
+      .getByTestId('alert-details')
+      .getByTestId('alert-display-name-input')
+      .fill(name);
+  }
+
+  private get tileAlertTagsButton() {
+    return this.page
+      .getByTestId('alert-details')
+      .getByTestId('alert-tags-button');
+  }
+
+  async addTileAlertTag(tag: string) {
+    await addTagViaPicker(this.page, this.tileAlertTagsButton, tag);
+  }
+
+  async removeTileAlertTag(tag: string) {
+    await removeTagViaPicker(this.page, this.tileAlertTagsButton, tag);
   }
 
   /**

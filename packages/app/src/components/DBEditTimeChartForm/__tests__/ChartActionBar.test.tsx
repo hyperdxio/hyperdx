@@ -5,7 +5,10 @@ import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { ChartEditorFormState } from '@/components/ChartEditor/types';
-import { ChartActionBar } from '@/components/DBEditTimeChartForm/ChartActionBar';
+import {
+  ChartActionBar,
+  DashboardFiltersToggleProps,
+} from '@/components/DBEditTimeChartForm/ChartActionBar';
 
 jest.mock('@/components/SQLEditor/SQLInlineEditor', () => ({
   SQLInlineEditorControlled: (props: any) => (
@@ -98,9 +101,64 @@ const renderActionBar = (
   };
 };
 
+const filterSwitch = () =>
+  screen.getByRole('switch', { name: 'Apply filters' });
+
+const queryFilterSwitch = () =>
+  screen.queryByRole('switch', { name: 'Apply filters' });
+
+const toggle = (overrides: Partial<DashboardFiltersToggleProps> = {}) => ({
+  checked: true,
+  onChange: jest.fn(),
+  ...overrides,
+});
+
 describe('ChartActionBar', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  describe('dashboard filter toggle', () => {
+    it('is absent off a dashboard', () => {
+      renderActionBar();
+
+      expect(queryFilterSwitch()).not.toBeInTheDocument();
+    });
+
+    it('is absent for a markdown tile, which queries nothing', () => {
+      renderActionBar({
+        activeTab: 'markdown',
+        filtersToggle: toggle(),
+      });
+
+      expect(queryFilterSwitch()).not.toBeInTheDocument();
+    });
+
+    it('reports a flip of the switch', async () => {
+      const onChange = jest.fn();
+      renderActionBar({ filtersToggle: toggle({ onChange }) });
+
+      expect(filterSwitch()).toBeChecked();
+      await userEvent.click(filterSwitch());
+
+      expect(onChange).toHaveBeenCalledWith(false);
+    });
+
+    it('says why it cannot be changed', async () => {
+      const disabledReason = 'Not while this tile has an alert';
+      renderActionBar({
+        filtersToggle: toggle({ checked: false, disabledReason }),
+      });
+
+      expect(filterSwitch()).not.toBeChecked();
+      expect(filterSwitch()).toBeDisabled();
+
+      // Hovering the wrapper, not the control: a disabled Switch emits none of
+      // the pointer events the tooltip opens on.
+      await userEvent.hover(screen.getByTestId('apply-dashboard-filters'));
+
+      expect(await screen.findByText(disabledReason)).toBeInTheDocument();
+    });
   });
 
   it('should render Save button when onSave is provided', () => {

@@ -1627,6 +1627,52 @@ describe('color round-trip (sql/promql Number tile)', () => {
     expect((result as any).color).toBe('chart-error');
   });
 
+  it('preserves colorRules through both conversions for sql Number tile', () => {
+    const form: ChartEditorFormState = {
+      configType: 'sql',
+      displayType: DisplayType.Number,
+      sqlTemplate: 'SELECT count() FROM logs',
+      connection: 'conn-1',
+      colorRules: [
+        { operator: 'lt', value: 4, color: 'chart-error' },
+        { operator: 'gte', value: 4, color: 'chart-success' },
+      ],
+      series: [],
+    };
+
+    expect(convertFormStateToSavedChartConfig(form, undefined)).toMatchObject({
+      colorRules: form.colorRules,
+    });
+    expect(
+      convertFormStateToChartConfig(form, dateRange, undefined),
+    ).toMatchObject({
+      colorRules: form.colorRules,
+    });
+  });
+
+  it('preserves colorRules through both conversions for promql Number tile', () => {
+    const form: ChartEditorFormState = {
+      configType: 'promql',
+      displayType: DisplayType.Number,
+      promqlExpression: 'up',
+      connection: 'conn-1',
+      colorRules: [
+        { operator: 'lt', value: 1, color: 'chart-error' },
+        { operator: 'gte', value: 1, color: 'chart-success' },
+      ],
+      series: [],
+    };
+
+    expect(convertFormStateToSavedChartConfig(form, undefined)).toMatchObject({
+      colorRules: form.colorRules,
+    });
+    expect(
+      convertFormStateToChartConfig(form, dateRange, undefined),
+    ).toMatchObject({
+      colorRules: form.colorRules,
+    });
+  });
+
   it('omits color when not set on sql Number tile', () => {
     const form: ChartEditorFormState = {
       configType: 'sql',

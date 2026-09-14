@@ -1,5 +1,10 @@
 import { useMemo } from 'react';
 import {
+  ResolvedPromqlLabelFilterMatch,
+  resolvePromqlLabelFilterMatch,
+} from '@hyperdx/common-utils/dist/filters';
+import {
+  ChartVariable,
   isPromqlSource,
   PromqlLabelDashboardFilter,
 } from '@hyperdx/common-utils/dist/types';
@@ -19,6 +24,7 @@ type LabelValuesCall = {
   database?: string;
   table?: string;
   label: string;
+  match?: string;
 };
 
 const SOURCE_ERROR =
@@ -27,9 +33,12 @@ const SOURCE_ERROR =
 export function usePromqlLabelFilterValues({
   filters,
   dateRange,
+  variables,
 }: {
   filters: PromqlLabelDashboardFilter[];
   dateRange: [Date, Date];
+  /** The dashboard's variables and their current selections, if any */
+  variables?: ChartVariable[];
 }) {
   const { data: sources, isLoading: isLoadingSources } = useSources();
   const sourcesById = useMemo(() => mapKeyBy(sources ?? [], 'id'), [sources]);
@@ -37,6 +46,16 @@ export function usePromqlLabelFilterValues({
   // Round the date range, since the API accepts whole seconds
   const startSec = Math.floor(dateRange[0].getTime() / 1000);
   const endSec = Math.ceil(dateRange[1].getTime() / 1000);
+
+  // A filter's selector may reference the dashboard's variables. Expand them
+  // here so react-query keys on the resolved selector rather than the template.
+  const resolvedByFilterId = useMemo(() => {
+    const byId = new Map<string, ResolvedPromqlLabelFilterMatch>();
+    for (const filter of filters) {
+      byId.set(filter.id, resolvePromqlLabelFilterMatch(filter, variables));
+    }
+    return byId;
+  }, [filters, variables]);
 
   const { calls, unresolvedFilterIds } = useMemo(() => {
     const resolved: LabelValuesCall[] = [];
@@ -50,17 +69,22 @@ export function usePromqlLabelFilterValues({
         if (!isLoadingSources) unresolved.push(filter.id);
         continue;
       }
+      // An unexpanded `$var` left in the selector is certain to be rejected
+      // upstream, and the expansion failure is the better message, so don't call
+      const resolvedMatch = resolvedByFilterId.get(filter.id);
+      if (resolvedMatch?.error) continue;
       resolved.push({
         filterId: filter.id,
         connectionId: source.connection,
         database: source.from.databaseName,
         table: source.from.tableName,
         label: filter.label,
+        match: resolvedMatch?.match,
       });
     }
 
     return { calls: resolved, unresolvedFilterIds: unresolved };
-  }, [filters, sourcesById, isLoadingSources]);
+  }, [filters, sourcesById, isLoadingSources, resolvedByFilterId]);
 
   const queryClient = useQueryClient();
 
@@ -74,6 +98,7 @@ export function usePromqlLabelFilterValues({
         call.database,
         call.table,
         call.label,
+        call.match,
       ];
       return {
         queryKey: [...queryKeyPrefix, startSec, endSec],
@@ -100,6 +125,7 @@ export function usePromqlLabelFilterValues({
             table: call.table,
             start: startSec,
             end: endSec,
+            match: call.match,
           });
           if (resp.status === 'error') {
             throw new Error(resp.error ?? 'Label values query failed');
@@ -136,6 +162,13 @@ export function usePromqlLabelFilterValues({
       filterErrorMessages.set(filterId, SOURCE_ERROR);
     }
 
+    for (const [filterId, resolved] of resolvedByFilterId) {
+      if (!resolved.error) continue;
+      data.set(filterId, { values: [], isLoading: false });
+      erroredFilterIds.add(filterId);
+      filterErrorMessages.set(filterId, resolved.error);
+    }
+
     return {
       data,
       erroredFilterIds,
@@ -144,5 +177,11 @@ export function usePromqlLabelFilterValues({
       isFetching: isLoadingSources || results.some(r => r.isFetching),
       isError: erroredFilterIds.size > 0,
     };
-  }, [results, calls, unresolvedFilterIds, isLoadingSources]);
+  }, [
+    results,
+    calls,
+    unresolvedFilterIds,
+    isLoadingSources,
+    resolvedByFilterId,
+  ]);
 }

@@ -240,7 +240,7 @@ describe('dashboard router', () => {
       .send({
         name: 'Test Dashboard',
         tiles: [makeTile({ alert: mockAlert })],
-        tags: [],
+        tags: ['ops'],
       })
       .expect(200);
 
@@ -261,6 +261,68 @@ describe('dashboard router', () => {
     expect(storedAlert).not.toBeNull();
     expect(storedAlert?.savedSearch).toBeNull();
     expect(storedAlert?.groupBy).toBeNull();
+    // Neither field was sent, so they derive from the tile and dashboard.
+    expect(storedAlert?.displayName).toBe('Test Dashboard - Test Chart');
+    expect(storedAlert?.tags).toEqual(['ops']);
+  });
+
+  it('resolves displayName and tags on GET for a tile alert stored without them', async () => {
+    const mockAlert = makeMockAlert(webhook._id.toString());
+    const dashboard = await agent
+      .post('/dashboards')
+      .send({
+        name: 'Test Dashboard',
+        tiles: [makeTile({ alert: mockAlert })],
+        tags: ['ops'],
+      })
+      .expect(200);
+    // Alerts written before the fields existed.
+    await Alert.updateMany(
+      { dashboard: dashboard.body.id },
+      { $set: { displayName: null, tags: null } },
+    );
+
+    const list = await agent.get('/dashboards').expect(200);
+    const fromList = list.body.find(d => d._id === dashboard.body.id);
+    expect(fromList.tiles[0].config.alert).toMatchObject({
+      displayName: 'Test Dashboard - Test Chart',
+      tags: ['ops'],
+    });
+  });
+
+  it('persists a tile alert displayName sent through the dashboard PATCH', async () => {
+    const mockAlert = makeMockAlert(webhook._id.toString());
+    const dashboard = await agent
+      .post('/dashboards')
+      .send({
+        name: 'Test Dashboard',
+        tiles: [makeTile({ alert: mockAlert })],
+        tags: ['ops'],
+      })
+      .expect(200);
+
+    await agent
+      .patch(`/dashboards/${dashboard.body.id}`)
+      .send({
+        tiles: [
+          {
+            ...dashboard.body.tiles[0],
+            config: {
+              ...dashboard.body.tiles[0].config,
+              alert: { ...mockAlert, displayName: 'Checkout errors' },
+            },
+          },
+        ],
+      })
+      .expect(200);
+
+    const storedAlert = await Alert.findOne({
+      team: team._id,
+      dashboard: dashboard.body.id,
+      tileId: dashboard.body.tiles[0].id,
+      source: AlertSource.TILE,
+    });
+    expect(storedAlert?.displayName).toBe('Checkout errors');
   });
 
   // A tile alert must always end up with a resolvable notification target.
@@ -301,6 +363,51 @@ describe('dashboard router', () => {
       type: 'webhook',
       webhookId: webhook._id.toString(),
     });
+  });
+
+  // The dashboard editor only ever sets thresholdMax, so switching a tile alert
+  // off a range comparator has to clear the stored bound on this path too.
+  it('clears thresholdMax when a tile alert is moved off a range comparator', async () => {
+    const mockAlert = makeMockAlert(webhook._id.toString());
+    const tile = makeTile({
+      alert: {
+        ...mockAlert,
+        thresholdType: AlertThresholdType.BETWEEN,
+        threshold: 5,
+        thresholdMax: 20,
+      },
+    });
+    const dashboard = await agent
+      .post('/dashboards')
+      .send({ name: 'Test Dashboard', tiles: [tile], tags: [] })
+      .expect(200);
+
+    const created = await agent.get(`/alerts`).expect(200);
+    expect(created.body.data[0].thresholdMax).toBe(20);
+
+    await agent
+      .patch(`/dashboards/${dashboard.body.id}`)
+      .send({
+        ...dashboard.body,
+        tiles: [
+          {
+            ...dashboard.body.tiles[0],
+            config: {
+              ...dashboard.body.tiles[0].config,
+              alert: {
+                ...mockAlert,
+                thresholdType: AlertThresholdType.ABOVE,
+                threshold: 5,
+              },
+            },
+          },
+        ],
+      })
+      .expect(200);
+
+    const updated = await agent.get(`/alerts`).expect(200);
+    expect(updated.body.data[0].thresholdType).toBe(AlertThresholdType.ABOVE);
+    expect(updated.body.data[0].thresholdMax).toBeUndefined();
   });
 
   it('rejects a tile alert with no notification channel', async () => {
@@ -1038,6 +1145,116 @@ describe('dashboard router', () => {
     });
   });
 
+  describe('required filters', () => {
+    const makeFilter = (overrides = {}) => ({
+      id: new Types.ObjectId().toString(),
+      type: 'QUERY_EXPRESSION' as const,
+      name: 'Service Name',
+      expression: 'ServiceName',
+      source: new Types.ObjectId().toString(),
+      ...overrides,
+    });
+
+    it('persists minSelections on create', async () => {
+      const filter = makeFilter({ minSelections: 1 });
+
+      const created = await agent
+        .post('/dashboards')
+        .send({ ...MOCK_DASHBOARD, filters: [filter] })
+        .expect(200);
+
+      expect(created.body.filters).toEqual([filter]);
+
+      const stored = await Dashboard.findById(created.body.id).lean();
+      expect(stored?.filters).toEqual([filter]);
+    });
+
+    it('persists minSelections on patch', async () => {
+      const created = await agent
+        .post('/dashboards')
+        .send({ ...MOCK_DASHBOARD, filters: [makeFilter()] })
+        .expect(200);
+
+      const filter = makeFilter({
+        id: created.body.filters[0].id,
+        minSelections: 1,
+      });
+      await agent
+        .patch(`/dashboards/${created.body.id}`)
+        .send({ filters: [filter] })
+        .expect(200);
+
+      const stored = await Dashboard.findById(created.body.id).lean();
+      expect(stored?.filters?.[0].minSelections).toBe(1);
+    });
+
+    // Absence is meaningful: the client reads a missing value as not required,
+    // so the server must not materialize one.
+    it('leaves minSelections absent when it is not sent', async () => {
+      const created = await agent
+        .post('/dashboards')
+        .send({ ...MOCK_DASHBOARD, filters: [makeFilter()] })
+        .expect(200);
+
+      const stored = await Dashboard.findById(created.body.id).lean();
+      expect(stored?.filters?.[0]).not.toHaveProperty('minSelections');
+    });
+
+    it.each([2, -1, 1.5, '1'])('rejects minSelections %s', async value => {
+      await agent
+        .post('/dashboards')
+        .send({
+          ...MOCK_DASHBOARD,
+          filters: [makeFilter({ minSelections: value })],
+        })
+        .expect(400);
+    });
+
+    it('persists a dashboard-wide requirement', async () => {
+      const filter = makeFilter({
+        minSelections: 1,
+        isGlobalRequirement: true,
+      });
+
+      const created = await agent
+        .post('/dashboards')
+        .send({ ...MOCK_DASHBOARD, filters: [filter] })
+        .expect(200);
+
+      expect(created.body.filters).toEqual([filter]);
+
+      const stored = await Dashboard.findById(created.body.id).lean();
+      expect(stored?.filters).toEqual([filter]);
+    });
+
+    // Absence is what scopes the block to the filter's own tiles, so the server
+    // must not materialize the flag.
+    it('leaves the scope absent when it is not sent', async () => {
+      const created = await agent
+        .post('/dashboards')
+        .send({
+          ...MOCK_DASHBOARD,
+          filters: [makeFilter({ minSelections: 1 })],
+        })
+        .expect(200);
+
+      const stored = await Dashboard.findById(created.body.id).lean();
+      expect(stored?.filters?.[0]).not.toHaveProperty('isGlobalRequirement');
+    });
+
+    it('rejects a non-boolean scope', async () => {
+      await agent
+        .post('/dashboards')
+        .send({
+          ...MOCK_DASHBOARD,
+          filters: [
+            makeFilter({ minSelections: 1, isGlobalRequirement: 'true' }),
+          ],
+        })
+        .expect(400);
+    });
+  });
+
   describe('static-list filters', () => {
     const makeStaticFilter = (overrides = {}) => ({
       id: new Types.ObjectId().toString(),
@@ -1285,6 +1502,27 @@ describe('dashboard router', () => {
         .expect(200);
 
       expect(created.body.filters).toEqual([filter]);
+    });
+
+    it('persists a series selector', async () => {
+      const filter = makePromqlFilter({ match: 'up{job=~"$env"}' });
+
+      const created = await agent
+        .post('/dashboards')
+        .send({ ...MOCK_DASHBOARD, filters: [filter] })
+        .expect(200);
+
+      expect(created.body.filters).toEqual([filter]);
+    });
+
+    it('rejects an empty series selector', async () => {
+      await agent
+        .post('/dashboards')
+        .send({
+          ...MOCK_DASHBOARD,
+          filters: [makePromqlFilter({ match: '' })],
+        })
+        .expect(400);
     });
 
     it('persists an updated label on PATCH', async () => {

@@ -4,6 +4,7 @@ import {
   UseFormSetValue,
   useWatch,
 } from 'react-hook-form';
+import { formatTileAlertDisplayName } from '@hyperdx/common-utils/dist/alerts';
 import {
   AlertThresholdType,
   isRangeThresholdType,
@@ -31,12 +32,14 @@ import {
 } from '@tabler/icons-react';
 
 import api from '@/api';
+import { AlertDisplayFields } from '@/components/AlertDisplayFields';
 import { AlertNoteField } from '@/components/AlertNoteField';
 import { AlertChannelForm } from '@/components/Alerts';
 import { AckAlert } from '@/components/alerts/AckAlert';
 import { AlertHistoryCardList } from '@/components/alerts/AlertHistoryCards';
 import { AlertScheduleFields } from '@/components/AlertScheduleFields';
 import { ChartEditorFormState } from '@/components/ChartEditor/types';
+import { useDashboards } from '@/dashboard';
 import { optionsToSelectData } from '@/utils';
 import {
   ALERT_CHANNEL_OPTIONS,
@@ -49,6 +52,7 @@ export function TileAlertEditor({
   control,
   setValue,
   alert,
+  dashboardId,
   onRemove,
   error,
   warning,
@@ -57,7 +61,9 @@ export function TileAlertEditor({
   control: Control<ChartEditorFormState>;
   setValue: UseFormSetValue<ChartEditorFormState>;
   alert: NonNullable<ChartEditorFormState['alert']>;
-  onRemove: () => void;
+  dashboardId?: string;
+  /** Omit to hide the remove control, for surfaces that require an alert. */
+  onRemove?: () => void;
   error?: string;
   warning?: string;
   tooltip?: string;
@@ -84,6 +90,17 @@ export function TileAlertEditor({
 
   const { data: alertData } = api.useAlert(alert.id);
   const alertItem = alertData?.data;
+
+  const tileName = useWatch({ control, name: 'name' });
+  const { data: dashboards } = useDashboards();
+  const dashboardName = dashboards?.find(d => d.id === dashboardId)?.name;
+  const derivedDisplayName = dashboardName
+    ? formatTileAlertDisplayName(dashboardName, tileName)
+    : undefined;
+  // No dashboard behind the editor means the alert is inline (the chart
+  // explorer, or the inline-alert modal). It has no tile to inherit a name or
+  // tags from, so the user names it and an unset tag list means none.
+  const isInline = dashboardId == null;
 
   return (
     <Paper data-testid="alert-details">
@@ -131,17 +148,19 @@ export function TileAlertEditor({
         <Group gap="xs">
           {alertItem && <AlertHistoryCardList alert={alertItem} />}
           {alertItem && <AckAlert alert={alertItem} />}
-          <Tooltip label="Remove alert">
-            <ActionIcon
-              variant="danger"
-              color="red"
-              size="sm"
-              onClick={onRemove}
-              data-testid="remove-alert-button"
-            >
-              <IconTrash size={14} />
-            </ActionIcon>
-          </Tooltip>
+          {onRemove && (
+            <Tooltip label="Remove alert">
+              <ActionIcon
+                variant="danger"
+                color="red"
+                size="sm"
+                onClick={onRemove}
+                data-testid="remove-alert-button"
+              >
+                <IconTrash size={14} />
+              </ActionIcon>
+            </Tooltip>
+          )}
         </Group>
       </Group>
       <Collapse expanded={opened}>
@@ -228,6 +247,14 @@ export function TileAlertEditor({
               Created by {alert.createdBy.name || alert.createdBy.email}
             </Text>
           )}
+          <AlertDisplayFields
+            control={control}
+            displayNameName="alert.displayName"
+            tagsName="alert.tags"
+            derivedDisplayName={derivedDisplayName}
+            displayNameRequired={isInline}
+            tagsInherit={!isInline}
+          />
           <AlertScheduleFields
             control={control}
             setValue={setValue}

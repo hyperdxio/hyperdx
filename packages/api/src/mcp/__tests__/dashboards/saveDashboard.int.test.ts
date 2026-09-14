@@ -816,34 +816,42 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
       expect(result.isError).toBe(true);
     });
 
-    it('should keep color but drop colorRules on a raw SQL number tile', async () => {
+    it('should round-trip color and colorRules on a raw SQL number tile', async () => {
       const connectionId = ctx.connection._id.toString();
+      const sqlConfig = {
+        configType: 'sql',
+        displayType: 'number',
+        connectionId,
+        sqlTemplate: 'SELECT 0.99 AS value LIMIT 1',
+        color: 'chart-success',
+        colorRules: [
+          { operator: 'lt', value: 0.95, color: 'chart-error', label: 'Down' },
+          { operator: 'between', value: [0.95, 0.99], color: 'chart-warning' },
+        ],
+      };
+
       const saveResult = await callTool(
         ctx.client!,
         'clickstack_save_dashboard',
         {
           name: 'SQL Number Color',
-          tiles: [
-            {
-              name: 'SLO',
-              config: {
-                configType: 'sql',
-                displayType: 'number',
-                connectionId,
-                sqlTemplate: 'SELECT 0.99 AS value LIMIT 1',
-                color: 'chart-success',
-                colorRules: [
-                  { operator: 'gte', value: 1, color: 'chart-error' },
-                ],
-              },
-            },
-          ],
+          tiles: [{ name: 'SLO', config: sqlConfig }],
         },
       );
       expect(saveResult.isError).toBeFalsy();
       const saved = JSON.parse(getFirstText(saveResult));
-      expect(saved.tiles[0].config.color).toBe('chart-success');
-      expect(saved.tiles[0].config.colorRules).toBeUndefined();
+      expect(saved.tiles[0].config).toMatchObject(sqlConfig);
+
+      const getResult = await callTool(
+        ctx.client!,
+        'clickstack_get_dashboard',
+        {
+          id: saved.id,
+        },
+      );
+      expect(getResult.isError).toBeFalsy();
+      const fetched = JSON.parse(getFirstText(getResult));
+      expect(fetched.tiles[0].config).toMatchObject(sqlConfig);
     });
 
     it('should round-trip number-tile backgroundChart through save and get', async () => {
@@ -1847,6 +1855,14 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
       },
     });
 
+    const staticFilter = (overrides: Record<string, unknown> = {}) => ({
+      type: 'STATIC_LIST' as const,
+      name: 'Environment',
+      options: ['prod', 'staging', 'dev'],
+      variableName: 'env',
+      ...overrides,
+    });
+
     it('should round-trip filters on create, get, and update', async () => {
       const sourceId = ctx.traceSource._id.toString();
 
@@ -2571,15 +2587,144 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
       });
     });
 
-    describe('static list filters', () => {
-      const staticFilter = (overrides: Record<string, unknown> = {}) => ({
-        type: 'STATIC_LIST' as const,
-        name: 'Environment',
-        options: ['prod', 'staging', 'dev'],
-        variableName: 'env',
+    describe('required filters', () => {
+      const queryFilter = (overrides: Record<string, unknown> = {}) => ({
+        type: 'QUERY_EXPRESSION' as const,
+        name: 'Service',
+        expression: 'ServiceName',
+        sourceId: ctx.traceSource._id.toString(),
         ...overrides,
       });
 
+      it.each([
+        ['QUERY_EXPRESSION', queryFilter],
+        ['STATIC_LIST', staticFilter],
+      ] as const)(
+        'round-trips a required %s filter through create, get, and update',
+        async (_label, makeFilter) => {
+          const sourceId = ctx.traceSource._id.toString();
+
+          const createResult = await callTool(
+            ctx.client!,
+            'clickstack_save_dashboard',
+            {
+              name: 'Required filter round-trip',
+              tiles: [traceTile(sourceId)],
+              filters: [makeFilter({ minSelections: 1 })],
+            },
+          );
+          expect(createResult.isError).toBeFalsy();
+          const created = JSON.parse(getFirstText(createResult));
+          expect(created.filters[0].minSelections).toBe(1);
+
+          const getResult = await callTool(
+            ctx.client!,
+            'clickstack_get_dashboard',
+            { id: created.id },
+          );
+          const fetched = JSON.parse(getFirstText(getResult));
+          expect(fetched.filters[0].minSelections).toBe(1);
+
+          const updateResult = await callTool(
+            ctx.client!,
+            'clickstack_save_dashboard',
+            {
+              id: created.id,
+              name: fetched.name,
+              tiles: fetched.tiles,
+              filters: fetched.filters,
+            },
+          );
+          expect(updateResult.isError).toBeFalsy();
+          expect(
+            JSON.parse(getFirstText(updateResult)).filters[0].minSelections,
+          ).toBe(1);
+        },
+      );
+
+      it('omits minSelections for a filter that is not required', async () => {
+        const sourceId = ctx.traceSource._id.toString();
+        const result = await callTool(
+          ctx.client!,
+          'clickstack_save_dashboard',
+          {
+            name: 'Optional filter',
+            tiles: [traceTile(sourceId)],
+            filters: [queryFilter(), queryFilter({ minSelections: 0 })],
+          },
+        );
+
+        expect(result.isError).toBeFalsy();
+        const created = JSON.parse(getFirstText(result));
+        for (const filter of created.filters) {
+          expect(filter).not.toHaveProperty('minSelections');
+        }
+      });
+
+      it.each([2, -1, 1.5])('rejects minSelections %s', async value => {
+        const sourceId = ctx.traceSource._id.toString();
+        const result = await callTool(
+          ctx.client!,
+          'clickstack_save_dashboard',
+          {
+            name: 'Bad minSelections',
+            tiles: [traceTile(sourceId)],
+            filters: [queryFilter({ minSelections: value })],
+          },
+        );
+
+        expect(result.isError).toBe(true);
+        expect(getFirstText(result)).toContain('minSelections');
+      });
+
+      it('round-trips a dashboard-wide requirement through create and get', async () => {
+        const sourceId = ctx.traceSource._id.toString();
+
+        const createResult = await callTool(
+          ctx.client!,
+          'clickstack_save_dashboard',
+          {
+            name: 'Dashboard-wide requirement',
+            tiles: [traceTile(sourceId)],
+            filters: [
+              queryFilter({ minSelections: 1, isGlobalRequirement: true }),
+            ],
+          },
+        );
+        expect(createResult.isError).toBeFalsy();
+        const created = JSON.parse(getFirstText(createResult));
+        expect(created.filters[0].isGlobalRequirement).toBe(true);
+
+        const getResult = await callTool(
+          ctx.client!,
+          'clickstack_get_dashboard',
+          { id: created.id },
+        );
+        expect(
+          JSON.parse(getFirstText(getResult)).filters[0].isGlobalRequirement,
+        ).toBe(true);
+      });
+
+      it('omits the scope for a filter that is not required', async () => {
+        const sourceId = ctx.traceSource._id.toString();
+        const result = await callTool(
+          ctx.client!,
+          'clickstack_save_dashboard',
+          {
+            name: 'Optional filter with a scope',
+            tiles: [traceTile(sourceId)],
+            filters: [queryFilter({ isGlobalRequirement: true })],
+          },
+        );
+
+        expect(result.isError).toBeFalsy();
+        expect(JSON.parse(getFirstText(result)).filters[0]).not.toHaveProperty(
+          'isGlobalRequirement',
+        );
+      });
+    });
+
+    describe('static list filters', () => {
       it('round-trips a static filter through create, get, and save', async () => {
         const sourceId = ctx.traceSource._id.toString();
 
@@ -3353,6 +3498,98 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
       const text = getFirstText(updateResult);
       expect(text).toContain('onClick dashboard');
       expect(text).toContain(ghostDashboardId);
+    });
+  });
+
+  describe('metric tiles', () => {
+    const makeMetricSource = () =>
+      Source.create({
+        kind: SourceKind.Metric,
+        team: ctx.team._id,
+        from: { databaseName: DEFAULT_DATABASE, tableName: '' },
+        metricTables: {
+          [MetricsDataType.Gauge.toLowerCase()]: 'otel_metrics_gauge',
+          [MetricsDataType.Sum.toLowerCase()]: 'otel_metrics_sum',
+          [MetricsDataType.Histogram.toLowerCase()]: 'otel_metrics_histogram',
+        },
+        timestampValueExpression: 'TimeUnix',
+        connection: ctx.connection._id,
+        name: 'Metrics',
+      });
+
+    const gaugeTile = (
+      selectItem: Record<string, unknown>,
+      sourceId: string,
+    ) => ({
+      name: 'CPU delta',
+      x: 0,
+      y: 0,
+      w: 12,
+      h: 4,
+      config: {
+        displayType: 'line',
+        sourceId,
+        select: [
+          {
+            aggFn: 'avg',
+            metricType: 'gauge',
+            metricName: 'system.cpu.utilization',
+            valueExpression: 'Value',
+            where: '',
+            ...selectItem,
+          },
+        ],
+      },
+    });
+
+    it.each([
+      ['isDelta', { isDelta: true }],
+      ['periodAggFn', { periodAggFn: 'delta' }],
+    ])(
+      'persists the gauge delta flag on a saved tile spelled via %s',
+      async (_label, deltaFlag) => {
+        // The tool accepts both spellings and the conversion to the internal
+        // tile config must keep the flag: a dropped isDelta silently makes
+        // the tile chart raw gauge values instead of per-bucket deltas.
+        const metricSource = await makeMetricSource();
+        const result = await callTool(
+          ctx.client!,
+          'clickstack_save_dashboard',
+          {
+            name: `Gauge delta dashboard (${_label})`,
+            tiles: [gaugeTile(deltaFlag, metricSource._id.toString())],
+          },
+        );
+
+        expect(result.isError).toBeFalsy();
+        const output = JSON.parse(getFirstText(result));
+
+        const stored = await Dashboard.findById(output.id);
+        expect(stored!.tiles[0].config).toMatchObject({
+          select: [{ isDelta: true }],
+        });
+      },
+    );
+
+    it('rejects a delta on a non-gauge metric', async () => {
+      const metricSource = await makeMetricSource();
+      const result = await callTool(ctx.client!, 'clickstack_save_dashboard', {
+        name: 'Sum delta dashboard',
+        tiles: [
+          gaugeTile(
+            {
+              metricType: 'sum',
+              metricName: 'http.server.requests',
+              aggFn: 'sum',
+              isDelta: true,
+            },
+            metricSource._id.toString(),
+          ),
+        ],
+      });
+
+      expect(result.isError).toBe(true);
+      expect(getFirstText(result)).toContain('only valid for gauge metrics');
     });
   });
 });

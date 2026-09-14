@@ -655,6 +655,65 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
     ]);
   });
 
+  it('should preserve raw SQL number tile colorRules across a get/patch round trip', async () => {
+    const connectionId = ctx.connection._id.toString();
+    const colorRules = [
+      { operator: 'lt', value: 0.95, color: 'chart-error', label: 'Down' },
+      { operator: 'between', value: [0.95, 0.99], color: 'chart-warning' },
+    ];
+    const createResult = await callTool(
+      ctx.client!,
+      'clickstack_save_dashboard',
+      {
+        name: 'SQL ColorRules Patch Test',
+        tiles: [
+          {
+            name: 'SLO',
+            config: {
+              configType: 'sql',
+              displayType: 'number',
+              connectionId,
+              sqlTemplate: 'SELECT 0.99 AS value LIMIT 1',
+              color: 'chart-success',
+              colorRules,
+            },
+          },
+        ],
+      },
+    );
+    const created = JSON.parse(getFirstText(createResult));
+    const tileId = created.tiles[0].id;
+
+    const getDashboardResult = await callTool(
+      ctx.client!,
+      'clickstack_get_dashboard',
+      { id: created.id },
+    );
+    const fetched = JSON.parse(getFirstText(getDashboardResult));
+
+    // Feed the fetched tile straight back in, the way an agent editing an
+    // existing tile would; the config must survive the round trip intact.
+    const patchResult = await callTool(
+      ctx.client!,
+      'clickstack_patch_dashboard',
+      {
+        dashboardId: created.id,
+        tileId,
+        tile: { name: 'SLO (patched)', config: fetched.tiles[0].config },
+      },
+    );
+    expect(patchResult.isError).toBeFalsy();
+
+    const getResult = await callTool(
+      ctx.client!,
+      'clickstack_get_dashboard_tile',
+      { dashboardId: created.id, tileId },
+    );
+    const tile = JSON.parse(getFirstText(getResult));
+    expect(tile.config.color).toBe('chart-success');
+    expect(tile.config.colorRules).toEqual(colorRules);
+  });
+
   it('should round-trip backgroundChart: patch then get_dashboard_tile', async () => {
     const sourceId = ctx.traceSource._id.toString();
     const createResult = await callTool(

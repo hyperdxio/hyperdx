@@ -10,8 +10,11 @@ import { AlertSource, DisplayType, SourceKind } from './types';
 /**
  * The provider models only saved-search alerts — a tile alert has no
  * corresponding resource, so offering one for import produces a command that
- * fails. Shared by the bulk export and the per-alert popover so the two cannot
- * disagree about what is eligible.
+ * fails. Inline alerts (source: 'inline') are excluded for the same reason:
+ * although the external API v2 can now create/read them, the provider's alert
+ * resource does not model a chartConfig yet, so importing one would generate
+ * a config the provider cannot apply. Shared by the bulk export and the
+ * per-alert popover so the two cannot disagree about what is eligible.
  */
 export function isImportableAlert(alert: {
   source?: string;

@@ -1,4 +1,24 @@
-import { Page } from '@playwright/test';
+import { Locator, Page } from '@playwright/test';
+
+/**
+ * Replace everything in a CodeMirror editor, given its `.cm-content` node.
+ *
+ * Select-all then Delete rather than `fill()`: CodeMirror's content node is
+ * contenteditable, not an input, so the editor only sees text that arrives as
+ * key events.
+ */
+export const replaceEditorText = async (
+  page: Page,
+  content: Locator,
+  text: string,
+) => {
+  await content.click();
+  await page.keyboard.press(
+    process.platform === 'darwin' ? 'Meta+A' : 'Control+A',
+  );
+  await page.keyboard.press('Delete');
+  await page.keyboard.type(text);
+};
 
 export const getSqlEditor = (page: Page, placeholder?: string) => {
   const locator = placeholder

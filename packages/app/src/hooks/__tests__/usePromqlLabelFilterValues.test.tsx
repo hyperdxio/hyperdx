@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+  ChartVariable,
   PromqlLabelDashboardFilter,
   SourceKind,
   TSource,
@@ -43,9 +44,17 @@ const DATE_RANGE: [Date, Date] = [
 describe('usePromqlLabelFilterValues', () => {
   let wrapper: React.ComponentType<{ children: React.ReactNode }>;
 
-  const renderFilters = (filters: PromqlLabelDashboardFilter[]) =>
+  const renderFilters = (
+    filters: PromqlLabelDashboardFilter[],
+    variables?: ChartVariable[],
+  ) =>
     renderHook(
-      () => usePromqlLabelFilterValues({ filters, dateRange: DATE_RANGE }),
+      () =>
+        usePromqlLabelFilterValues({
+          filters,
+          dateRange: DATE_RANGE,
+          variables,
+        }),
       { wrapper },
     );
 
@@ -175,6 +184,59 @@ describe('usePromqlLabelFilterValues', () => {
       new Set(['missing', 'wrong-kind']),
     );
     expect(result.current.data.get('missing')).toEqual({
+      values: [],
+      isLoading: false,
+    });
+  });
+
+  it('sends the selector under match', async () => {
+    const { result } = renderFilters([filter({ match: 'up{job="api"}' })]);
+
+    await waitFor(() => expect(result.current.isFetching).toBe(false));
+
+    expect(mockLabelValues).toHaveBeenCalledWith(
+      expect.objectContaining({ match: 'up{job="api"}' }),
+    );
+  });
+
+  it('expands the dashboard variables a selector references', async () => {
+    const { result } = renderFilters(
+      [filter({ match: 'up{service=~"$svc"}' })],
+      [{ name: 'svc', expression: 'ServiceName', values: ['api', 'web'] }],
+    );
+
+    await waitFor(() => expect(result.current.isFetching).toBe(false));
+
+    expect(mockLabelValues).toHaveBeenCalledWith(
+      expect.objectContaining({ match: 'up{service=~"(api|web)"}' }),
+    );
+  });
+
+  it('queries separately for two filters differing only in their selector', async () => {
+    const { result } = renderFilters([
+      filter({ match: 'up{job="api"}' }),
+      filter({ id: 'promql2', match: 'up{job="web"}' }),
+    ]);
+
+    await waitFor(() => expect(result.current.isFetching).toBe(false));
+
+    expect(mockLabelValues).toHaveBeenCalledTimes(2);
+  });
+
+  it('errors a filter whose selector cannot be expanded, without querying', async () => {
+    const { result } = renderFilters(
+      [filter({ match: 'up{service=~"${svc:bogus}"}' })],
+      [{ name: 'svc', expression: 'ServiceName', values: ['api'] }],
+    );
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+
+    expect(mockLabelValues).not.toHaveBeenCalled();
+    expect(result.current.erroredFilterIds).toEqual(new Set(['promql1']));
+    expect(result.current.filterErrorMessages.get('promql1')).toMatch(
+      /Unknown variable format 'bogus'/,
+    );
+    expect(result.current.data.get('promql1')).toEqual({
       values: [],
       isLoading: false,
     });

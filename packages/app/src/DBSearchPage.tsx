@@ -122,7 +122,7 @@ import { getEventBody, useSource, useSources } from '@/source';
 import { useAppTheme, useBrandDisplayName } from '@/theme/ThemeProvider';
 import {
   parseRelativeTimeQuery,
-  parseTimeQuery,
+  useDefaultTimeRange,
   useNewTimeQuery,
 } from '@/timeQuery';
 import {
@@ -706,9 +706,6 @@ function SaveSearchModalComponent({
 }
 const SaveSearchModal = memo(SaveSearchModalComponent);
 
-// TODO: This is a hack to set the default time range
-const defaultTimeRange = parseTimeQuery('Past 15m', false) as [Date, Date];
-
 function useLiveUpdate({
   isLive,
   interval, // ms ago to refresh from
@@ -1004,6 +1001,8 @@ export function useSearchTelemetry({
 
 export function DBSearchPage() {
   const brandName = useBrandDisplayName();
+  const defaultTimeRange = useDefaultTimeRange('Past 15m');
+
   // Next router is laggy behind window.location, which causes race
   // conditions with useQueryStates, so we'll parse it directly
   const paths = window.location.pathname.split('/');

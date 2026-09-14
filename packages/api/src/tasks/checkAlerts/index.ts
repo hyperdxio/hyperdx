@@ -82,6 +82,7 @@ import {
 import {
   AlertMessageTemplateDefaultView,
   buildAlertMessageTemplateTitle,
+  fetchSampleLines,
   NotificationFailure,
   NotificationTiming,
   renderAlertTemplate,
@@ -95,6 +96,7 @@ import {
   roundDownToXMinutes,
   unflattenObject,
 } from '@/tasks/util';
+import { isPopulatedRef } from '@/utils/alerts';
 import {
   getCounter,
   type OperationOutcome,
@@ -492,6 +494,7 @@ const fireChannelEvent = async ({
   totalCount,
   windowSizeInMins,
   teamWebhooksById,
+  sampleLines,
 }: {
   alert: IAlert;
   alertProvider: AlertProvider;
@@ -509,20 +512,18 @@ const fireChannelEvent = async ({
   totalCount: number;
   windowSizeInMins: number;
   teamWebhooksById: Map<string, IWebhook>;
-}): Promise<Pick<RenderedAlert, 'failures' | 'timings'>> => {
+  sampleLines?: () => Promise<string>;
+}): Promise<
+  Pick<RenderedAlert, 'failures' | 'timings' | 'dispatchDurationMs'>
+> => {
   const team = alert.team;
   if (team == null) {
     throw new Error('Team not found');
   }
   // alert.team is typed as a bare ObjectId, but a caller that populated it
   // (int-test setups do `.populate(['team', ...])`; the production path never
-  // does) hands us a full Team document instead — Mongoose documents don't
-  // override toString(), so calling it directly would silently stringify to
-  // "[object Object]" rather than the hex id. Prefer the populated
-  // document's own _id when present.
-  const isPopulatedWithId = (value: unknown): value is { _id: ObjectId } =>
-    typeof value === 'object' && value !== null && '_id' in value;
-  const teamId = (isPopulatedWithId(team) ? team._id : team).toString();
+  // does) hands us a full Team document instead. Prefer its own _id.
+  const teamId = (isPopulatedRef(team) ? team._id : team).toString();
 
   const attributesNested = unflattenObject(attributes);
   const templateView: AlertMessageTemplateDefaultView = {
@@ -541,6 +542,8 @@ const fireChannelEvent = async ({
       }),
       message: alert.message,
       name: alert.name,
+      displayName: alert.displayName,
+      tags: alert.tags,
       savedSearchId: savedSearch?.id,
       silenced: alert.silenced,
       source: alert.source,
@@ -564,13 +567,12 @@ const fireChannelEvent = async ({
     value: totalCount,
   };
 
-  const { failures, timings } = await renderAlertTemplate({
+  const { failures, timings, dispatchDurationMs } = await renderAlertTemplate({
     alertProvider,
     clickhouseClient,
     metadata,
     state,
     title: buildAlertMessageTemplateTitle({
-      template: alert.name,
       view: templateView,
       state,
     }),
@@ -578,8 +580,9 @@ const fireChannelEvent = async ({
     view: templateView,
     teamId,
     teamWebhooksById,
+    sampleLines,
   });
-  return { failures, timings };
+  return { failures, timings, dispatchDurationMs };
 };
 
 // Use a delimiter that's unlikely to appear in alert IDs or group names
@@ -1139,6 +1142,9 @@ export const processAlert = async (
     // The alert query itself uses count(*), not the saved search's select,
     // so we render the saved search's select separately to discover aliases
     // and inject them as WITH clauses into the alert query.
+    // Reused by the notification body's sample-row query, which resolves the
+    // same aliases against the same source.
+    let aliasWithClauses: BuilderChartConfigWithOptDateRange['with'];
     if (details.taskType === AlertTaskType.SAVED_SEARCH) {
       if (!isBuilderChartConfig(chartConfig)) {
         logger.error({
@@ -1154,6 +1160,7 @@ export const processAlert = async (
           details.source,
           metadata,
         );
+        aliasWithClauses = withClauses;
         if (withClauses) {
           chartConfig.with = withClauses;
         }
@@ -1287,6 +1294,32 @@ export const processAlert = async (
       return histories.get(groupKey)!;
     };
 
+    // The sample rows a saved-search body quotes depend on the window, not on
+    // the group or the state, so every group notifying for one window shares a
+    // fetch instead of repeating it. Backfilled buckets each notify for their
+    // own window, hence the key. A failed fetch is shared too — the body falls
+    // back to no sample lines rather than re-running the query per group.
+    const sampleLinesByWindow = new Map<number, Promise<string>>();
+    const sampleLinesFor =
+      details.taskType === AlertTaskType.SAVED_SEARCH
+        ? (startTime: Date) => () => {
+            const key = startTime.getTime();
+            const pending =
+              sampleLinesByWindow.get(key) ??
+              fetchSampleLines({
+                aliasWith: aliasWithClauses,
+                clickhouseClient,
+                endTime: fns.addMinutes(startTime, windowSizeInMins),
+                metadata,
+                savedSearch: details.savedSearch,
+                source: details.source,
+                startTime,
+              });
+            sampleLinesByWindow.set(key, pending);
+            return pending;
+          }
+        : undefined;
+
     // Helper to send a notification, catching and logging any errors.
     const trySendNotification = async ({
       group,
@@ -1329,30 +1362,39 @@ export const processAlert = async (
           : `Alert resolved for group "${group}", triggering ${alert.channel.type} notification`,
       );
 
-      const notificationStartedAt = performance.now();
       try {
         // Casts to any here because this is where I stopped unraveling the
         // alert logic requiring large, nested objects. We should look at
         // cleaning this up next. fireChannelEvent guards against null values
         // for these properties.
-        const { failures, timings } = await fireChannelEvent({
-          alert,
-          alertProvider,
-          attributes,
-          clickhouseClient,
-          dashboard: (details as any).dashboard,
-          startTime,
-          endTime: fns.addMinutes(startTime, windowSizeInMins),
-          group,
-          isGroupedAlert: hasGroupBy,
-          metadata,
-          savedSearch: (details as any).savedSearch,
-          source,
-          state,
-          totalCount,
-          windowSizeInMins,
-          teamWebhooksById,
-        });
+        const { failures, timings, dispatchDurationMs } =
+          await fireChannelEvent({
+            alert,
+            alertProvider,
+            attributes,
+            clickhouseClient,
+            dashboard: (details as any).dashboard,
+            startTime,
+            endTime: fns.addMinutes(startTime, windowSizeInMins),
+            group,
+            isGroupedAlert: hasGroupBy,
+            metadata,
+            savedSearch: (details as any).savedSearch,
+            source,
+            state,
+            totalCount,
+            windowSizeInMins,
+            teamWebhooksById,
+            sampleLines: sampleLinesFor?.(startTime),
+          });
+        // Only the dispatch phase: the column reports how long the targets
+        // took to respond, not the time spent building the message. A round
+        // that queued no job (every target unresolvable) resolves instantly,
+        // so it must not report 0ms as though a target answered at once.
+        if (timings.length > 0) {
+          evaluationAnalytics.webhookDurationMs =
+            (evaluationAnalytics.webhookDurationMs ?? 0) + dispatchDurationMs;
+        }
         recordNotificationTimings(timings);
         // Each entry is a target that didn't end up delivered: unresolvable,
         // capped, or (for the inline dispatcher) an actual send rejection —
@@ -1377,12 +1419,6 @@ export const processAlert = async (
           'Failed to fire channel event',
         );
         executionErrors.push(makeWebhookAlertError(e));
-      } finally {
-        // Total wall time spent delivering notifications in this evaluation
-        // (summed across groups/resolves, includes retries and failures).
-        evaluationAnalytics.webhookDurationMs =
-          (evaluationAnalytics.webhookDurationMs ?? 0) +
-          Math.round(performance.now() - notificationStartedAt);
       }
     };
 

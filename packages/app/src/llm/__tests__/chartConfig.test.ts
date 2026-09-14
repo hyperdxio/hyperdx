@@ -3,7 +3,7 @@ import {
   appendWhereClause,
   baseLLMChartConfig,
   buildDeltaFilterClause,
-  buildSessionCondition,
+  buildScopeCondition,
   buildTrimmedDeltaSelect,
   DELTA_ATTRIBUTE_VALUE_MAX_LENGTH,
 } from '@/llm/dashboard/chartConfig';
@@ -21,14 +21,23 @@ const baseProps = {
   whereLanguage: 'sql' as const,
 };
 
-describe('buildSessionCondition', () => {
+describe('buildScopeCondition', () => {
   it('escapes the session id value', () => {
-    const condition = buildSessionCondition(
+    const condition = buildScopeCondition(
       expressions.sessionId,
       "ses_1'; DROP TABLE x --",
     );
     expect(condition).toContain(expressions.sessionId);
     expect(condition).toContain("'ses_1\\'; DROP TABLE x --'");
+  });
+
+  it('escapes the user value', () => {
+    const condition = buildScopeCondition(
+      expressions.userId,
+      "alice'; DROP TABLE x --",
+    );
+    expect(condition).toContain(expressions.userId);
+    expect(condition).toContain("'alice\\'; DROP TABLE x --'");
   });
 });
 
@@ -123,7 +132,7 @@ describe('baseLLMChartConfig session scoping', () => {
     expect(config.filters).toHaveLength(2);
     expect(config.filters[1]).toEqual({
       type: 'sql',
-      condition: buildSessionCondition(expressions.sessionId, 'ses_123'),
+      condition: buildScopeCondition(expressions.sessionId, 'ses_123'),
     });
   });
 
@@ -135,6 +144,47 @@ describe('baseLLMChartConfig session scoping', () => {
     });
     expect(config.filters).toHaveLength(3);
     expect(config.filters[2]).toEqual({ type: 'sql', condition: '1=1' });
+  });
+});
+
+describe('baseLLMChartConfig user scoping', () => {
+  it('adds no user filter by default', () => {
+    const config = baseLLMChartConfig(baseProps);
+    expect(config.filters).toEqual([
+      { type: 'sql', condition: expressions.isLLMSpan },
+    ]);
+  });
+
+  it('appends the user filter to every chart when userId is set', () => {
+    const config = baseLLMChartConfig({ ...baseProps, userId: 'alice@x.com' });
+    expect(config.filters).toHaveLength(2);
+    expect(config.filters[1]).toEqual({
+      type: 'sql',
+      condition: buildScopeCondition(expressions.userId, 'alice@x.com'),
+    });
+  });
+
+  // The two scopes are independent, so both must survive together and keep a
+  // stable order — extra filters are appended relative to them.
+  it('applies session and user together, session first, extras last', () => {
+    const config = baseLLMChartConfig({
+      ...baseProps,
+      sessionId: 'ses_123',
+      userId: 'alice@x.com',
+      extraFilters: [{ type: 'sql', condition: '1=1' }],
+    });
+    expect(config.filters).toEqual([
+      { type: 'sql', condition: expressions.isLLMSpan },
+      {
+        type: 'sql',
+        condition: buildScopeCondition(expressions.sessionId, 'ses_123'),
+      },
+      {
+        type: 'sql',
+        condition: buildScopeCondition(expressions.userId, 'alice@x.com'),
+      },
+      { type: 'sql', condition: '1=1' },
+    ]);
   });
 
   it('binds the cost expression once as a WITH expression alias when opted in', () => {

@@ -4,6 +4,7 @@ import { ObjectId } from 'mongodb';
 import { AlertState } from '@/models/alert';
 import {
   buildWebhookTemplateVariables,
+  createHandlebarsWithHelpers,
   getWebhookFetchTimeoutMs,
   handleSendGenericWebhook,
 } from '@/tasks/checkAlerts/transports/generic';
@@ -96,8 +97,9 @@ describe('buildWebhookTemplateVariables', () => {
       alertId: 'alert-1',
       status: 'firing',
       alertType: 'search',
-      comparator: '>=',
+      comparator: 'between',
       threshold: 5,
+      thresholdMax: 10,
       value: 42,
       groupKey: 'checkout',
       sourceQuery: 'Body: "error"',
@@ -111,8 +113,9 @@ describe('buildWebhookTemplateVariables', () => {
       alertId: 'alert-1',
       status: 'firing',
       alertType: 'search',
-      comparator: '>=',
+      comparator: 'between',
       threshold: 5,
+      thresholdMax: 10,
       value: 42,
       groupKey: 'checkout',
       teamId: 'team-1',
@@ -129,5 +132,31 @@ describe('buildWebhookTemplateVariables', () => {
     expect(vars.status).toBe('');
     expect(vars.note).toBe('');
     expect(vars.startTimeISO).toBe(new Date(0).toISOString());
+    // A raw number renders as an empty slot when absent, not "undefined".
+    expect(vars.thresholdMax).toBeUndefined();
+  });
+});
+
+// The guard published in docs/alert-webhook-template-variables.md is the only
+// way a receiver can put an optional number in an unquoted JSON slot, so a
+// change to the helper set that breaks it would break every template using it.
+describe('the documented guard for an optional numeric variable', () => {
+  const render = (thresholdMax?: number) =>
+    createHandlebarsWithHelpers().compile(
+      '{"threshold": {{threshold}}{{#unless (eq thresholdMax undefined)}}, "threshold_max": {{thresholdMax}}{{/unless}}\n}',
+      // Same options as sendGenericWebhook: noEscape is load-bearing, because
+      // escapeJsonString already emits \" and HTML-escaping would mangle it.
+      { noEscape: true },
+    )(
+      buildWebhookTemplateVariables({ ...message, threshold: 5, thresholdMax }),
+    );
+
+  it.each([
+    [undefined, { threshold: 5 }],
+    [20, { threshold: 5, threshold_max: 20 }],
+    // A range bounded at zero is real, and `{{#if}}` would drop it.
+    [0, { threshold: 5, threshold_max: 0 }],
+  ])('renders valid JSON for thresholdMax=%s', (thresholdMax, expected) => {
+    expect(JSON.parse(render(thresholdMax))).toEqual(expected);
   });
 });
