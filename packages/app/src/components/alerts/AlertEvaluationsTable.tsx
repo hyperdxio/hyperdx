@@ -113,7 +113,7 @@ export function AlertEvaluationsTable({
             <Table.Th>Query duration</Table.Th>
             <Table.Th>
               <Tooltip
-                label="Wall time delivering notifications in this evaluation, including retries. Targets are dispatched concurrently, so the slowest one sets this figure."
+                label="Wall time delivering this evaluation's notifications, including retries. Targets are dispatched concurrently, so the slowest one in each dispatch round sets this figure."
                 multiline
                 maw={320}
                 withArrow
