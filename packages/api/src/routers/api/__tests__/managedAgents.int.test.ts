@@ -237,6 +237,65 @@ describe('managed agents router', () => {
       expect(await ManagedAgent.countDocuments({})).toBe(1);
     });
 
+    // validateRequest validates without replacing req.body, so anything the
+    // handler spreads from it outranks what the session established.
+    it('ignores team, user and access key supplied in the request body', async () => {
+      const victimTeam = randomMongoId();
+      const credentials: string[] = [];
+      fetchSpy = mockAnthropic((url, init) => {
+        if (url.includes('/credentials')) {
+          credentials.push(String(JSON.parse(String(init?.body)).auth.token));
+          return new Response('{"id":"cred_1"}');
+        }
+        return null;
+      });
+
+      await agent
+        .post('/managed-agents/import')
+        .send({
+          ...body,
+          teamId: victimTeam,
+          userAccessKey: 'attacker-chosen-token',
+        })
+        .expect(200);
+
+      // Landed in the caller's own team, with the caller's own key.
+      expect(await ManagedAgent.countDocuments({ team: victimTeam })).toBe(0);
+      expect(await ManagedAgent.countDocuments({ team: team._id })).toBe(1);
+      expect(credentials).not.toContain('attacker-chosen-token');
+    });
+
+    it('refuses an agent pointed at a different MCP server', async () => {
+      fetchSpy = mockAnthropic(url => {
+        if (url.includes('/v1/agents/')) {
+          return new Response(
+            JSON.stringify({
+              id: 'agent_x',
+              name: 'Elsewhere',
+              mcp_servers: [{ url: 'https://other-instance.test/api/mcp' }],
+            }),
+          );
+        }
+        return null;
+      });
+
+      const resp = await agent
+        .post('/managed-agents/import')
+        .send(body)
+        .expect(400);
+
+      expect(resp.body.message).toMatch(/other-instance\.test/);
+      expect(await ManagedAgent.countDocuments({})).toBe(0);
+    });
+
+    it('rejects an agent id that is not a flat identifier', async () => {
+      await agent
+        .post('/managed-agents/import')
+        .send({ ...body, anthropicAgentId: '../vaults/vlt_other' })
+        .expect(400);
+      expect(await ManagedAgent.countDocuments({})).toBe(0);
+    });
+
     // The preflight check is check-then-act. Two imports of the same agent can
     // both pass it, and each provisions a vault holding a live ClickStack key
     // — only one of which stays reachable to tear down.

@@ -17,7 +17,10 @@ import { userAgentClientInfo } from './utils/mcpClient';
 // any remote MCP client) reach us over a public tunnel/domain, so allowlist the
 // configured public hosts alongside localhost. Matching is port-agnostic, so we
 // pass bare hostnames.
-export const buildAllowedHosts = (urls: (string | undefined)[]): string[] => {
+export const buildAllowedHosts = (
+  urls: (string | undefined)[],
+  extraHosts = '',
+): string[] => {
   const hosts = ['localhost', '127.0.0.1', '[::1]'];
   for (const url of urls) {
     if (!url) continue;
@@ -27,18 +30,29 @@ export const buildAllowedHosts = (urls: (string | undefined)[]): string[] => {
       // ignore a malformed URL — it just won't be allowlisted
     }
   }
+  // Bare hostnames rather than URLs, so an operator can name the API's own
+  // host without inventing a scheme for it.
+  for (const host of extraHosts.split(',')) {
+    const trimmed = host.trim();
+    if (trimmed) hosts.push(trimmed);
+  }
   return hosts;
 };
 
 const app = createMcpExpressApp({
-  // The managed-agents URL is only added when the feature is on, so a
-  // deployment that never enables it keeps the SDK's narrower default.
-  allowedHosts: buildAllowedHosts([
-    config.IS_MANAGED_AGENTS_ENABLED
-      ? config.getManagedAgentsMcpUrl()
-      : undefined,
-    config.FRONTEND_URL,
-  ]),
+  // FRONTEND_URL is always allowlisted — the endpoint is reachable through the
+  // app origin in every deployment. The managed-agents URL is added only when
+  // that feature is on, and HDX_MCP_ALLOWED_HOSTS covers a deployment that
+  // serves the API on a hostname of its own.
+  allowedHosts: buildAllowedHosts(
+    [
+      config.IS_MANAGED_AGENTS_ENABLED
+        ? config.getManagedAgentsMcpUrl()
+        : undefined,
+      config.FRONTEND_URL,
+    ],
+    config.MCP_ALLOWED_HOSTS,
+  ),
 });
 
 const mcpRateLimiter = rateLimiter({

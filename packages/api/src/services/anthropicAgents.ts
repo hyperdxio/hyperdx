@@ -433,6 +433,7 @@ const importAnthropicAgentImpl = async ({
   let verified = false;
   let remoteName: string | undefined;
   let model: string | undefined;
+  let agentMcpUrl: string | undefined;
   try {
     const info = await anthropicRequest(
       apiKey,
@@ -442,6 +443,9 @@ const importAnthropicAgentImpl = async ({
     verified = true;
     remoteName = typeof info?.name === 'string' ? info.name : undefined;
     model = typeof info?.model === 'string' ? info.model : undefined;
+    agentMcpUrl = Array.isArray(info?.mcp_servers)
+      ? info.mcp_servers.find((m: unknown) => (m as { url?: string })?.url)?.url
+      : undefined;
   } catch (e) {
     if (e instanceof AnthropicApiError && e.status === 404) {
       throw new AnthropicApiError(
@@ -452,6 +456,19 @@ const importAnthropicAgentImpl = async ({
     logger.warn(
       { error: serializeError(e), anthropicAgentId },
       'Could not verify an imported agent with Anthropic; importing unverified',
+    );
+  }
+
+  // The vault credential provisioned below is bound to this instance's MCP
+  // URL, and Anthropic supplies it by matching that URL. An agent pointed at a
+  // different instance or a stale tunnel imports cleanly, dials its own URL,
+  // and gets no credential — a silent loss of ClickStack access that only
+  // shows up when an alert fires. Outside the try: this is a rejection, not a
+  // failed verification, so the catch above must not turn it into a warning.
+  if (typeof agentMcpUrl === 'string' && agentMcpUrl !== mcpServerUrl) {
+    throw new AnthropicApiError(
+      `That agent points at ${agentMcpUrl}, but this instance provisions its credential for ${mcpServerUrl}. It would run with no ClickStack access. Point the agent at this URL, or set HDX_MANAGED_AGENTS_MCP_URL to the one it already uses.`,
+      400,
     );
   }
 
@@ -545,14 +562,22 @@ const deleteAnthropicResources = async (
       orphaned.push(label);
     }
   };
-  if (agentId) await cleanup('agent', `/v1/agents/${agentId}`);
+  // Escaped, not interpolated raw: the agent id is whatever the importer
+  // typed, and `../` in a path segment is resolved away by URL normalisation
+  // before the request leaves — which would point a DELETE at a resource this
+  // team does not own on the shared Anthropic account.
+  if (agentId)
+    await cleanup('agent', `/v1/agents/${encodeURIComponent(agentId)}`);
   if (vaultId)
     await cleanup(
       'vault (holds the ClickStack access key)',
-      `/v1/vaults/${vaultId}`,
+      `/v1/vaults/${encodeURIComponent(vaultId)}`,
     );
   if (environmentId)
-    await cleanup('environment', `/v1/environments/${environmentId}`);
+    await cleanup(
+      'environment',
+      `/v1/environments/${encodeURIComponent(environmentId)}`,
+    );
   return orphaned;
 };
 

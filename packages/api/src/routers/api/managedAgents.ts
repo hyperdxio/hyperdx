@@ -118,7 +118,13 @@ router.post(
   validateRequest({
     body: z.object({
       name: z.string().max(120).optional(),
-      anthropicAgentId: z.string().min(1).max(200),
+      // Anthropic agent ids are opaque but flat. Constraining the shape here
+      // keeps path separators out of the id before it ever reaches a URL.
+      anthropicAgentId: z
+        .string()
+        .min(1)
+        .max(200)
+        .regex(/^[A-Za-z0-9_-]+$/, 'Invalid agent ID'),
     }),
   }),
   async (req, res, next) => {
@@ -129,11 +135,16 @@ router.post(
       if (teamId == null || userId == null || !userAccessKey) {
         return res.sendStatus(403);
       }
+      // Named explicitly, never spread: validateRequest only validates, it
+      // does not replace req.body with the stripped parse, so a spread would
+      // let the caller's body override the authenticated team and key above.
+      const { name, anthropicAgentId } = req.body;
       const { agent, verified } = await importAnthropicAgent({
         teamId,
         userId,
         userAccessKey,
-        ...req.body,
+        ...(name ? { name } : {}),
+        anthropicAgentId,
       });
       res.json({ data: agent, verified });
     } catch (e) {

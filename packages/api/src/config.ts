@@ -108,3 +108,9 @@ export const IS_MANAGED_AGENT_CREATE_ENABLED =
 // load, so test suites can set it per-suite without mocking this module.
 export const getManagedAgentsMcpUrl = (): string | undefined =>
   process.env.HDX_MANAGED_AGENTS_MCP_URL;
+
+// Extra hostnames the MCP endpoint will answer to, comma-separated. The
+// endpoint is mounted on the API app, so a deployment that serves the API on
+// its own hostname needs that host allowlisted — FRONTEND_URL alone does not
+// cover it, and the SDK's default is localhost only.
+export const MCP_ALLOWED_HOSTS = (env.HDX_MCP_ALLOWED_HOSTS as string) || '';

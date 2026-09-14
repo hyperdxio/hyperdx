@@ -39,6 +39,18 @@ describe('buildAllowedHosts', () => {
     expect(hosts).not.toContain('localhost:30287');
   });
 
+  it('adds bare hostnames from the extra-hosts list', () => {
+    // The MCP endpoint is mounted on the API app, so a deployment serving the
+    // API on its own hostname has to be able to name it.
+    const hosts = buildAllowedHosts(
+      ['https://app.example.com'],
+      'api.example.com, mcp.example.com',
+    );
+    expect(hosts).toContain('api.example.com');
+    expect(hosts).toContain('mcp.example.com');
+    expect(hosts).toContain('app.example.com');
+  });
+
   it('ignores undefined and malformed URLs rather than throwing', () => {
     expect(() => buildAllowedHosts([undefined, 'not a url', ''])).not.toThrow();
     expect(buildAllowedHosts([undefined, 'not a url'])).toEqual([
