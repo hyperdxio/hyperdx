@@ -121,8 +121,7 @@ export default function TraceLogsPanel({
   );
 
   // Trimmed so a whitespace-only expression falls into the empty state below
-  // rather than rendering as a bare `=` in the trace filter. The schema allows
-  // it: `min(1)` accepts ' '.
+  // rather than rendering as a bare `=` in the trace filter.
   const traceIdExpression = logSource?.traceIdExpression?.trim();
 
   const config = useMemo((): BuilderChartConfigWithDateRange | undefined => {

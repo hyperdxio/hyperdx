@@ -149,18 +149,24 @@ function renderPanel({
   source = LOG_SOURCE,
   onNavigateToLog = jest.fn(),
   selectOverride,
+  traceId = TRACE_ID,
 }: {
-  source?: TLogSource;
+  /** Null for a source that no longer resolves. */
+  source?: TLogSource | null;
   onNavigateToLog?: jest.Mock;
   selectOverride?: string;
+  traceId?: string;
 } = {}) {
-  mockUseSource.mockReturnValue({ data: source, isLoading: false });
+  mockUseSource.mockReturnValue({
+    data: source ?? undefined,
+    isLoading: false,
+  });
   // A fresh element per render: React bails out of re-rendering an identical one.
   const tree = () => (
     <MantineProvider>
       <TraceLogsPanel
         logSourceId="log-src"
-        traceId={TRACE_ID}
+        traceId={traceId}
         dateRange={DATE_RANGE}
         selectOverride={selectOverride}
         onNavigateToLog={onNavigateToLog}
@@ -345,9 +351,23 @@ describe('TraceLogsPanel', () => {
     expect(onNavigateToLog).toHaveBeenCalledWith('row-2', [], 'Log');
   });
 
+  it('escapes a trace id that carries SQL metacharacters', () => {
+    renderPanel({ traceId: "abc' OR 1=1--" });
+
+    expect(mockRowTableProps.current.config?.filters).toEqual([
+      { type: 'sql', condition: "TraceId='abc\\' OR 1=1--'" },
+    ]);
+  });
+
+  it('explains itself when the correlated log source no longer resolves', () => {
+    renderPanel({ source: null });
+
+    expect(screen.getByText('Correlated log source not found')).toBeVisible();
+    expect(mockRowTableProps.current.config).toBeUndefined();
+  });
+
   it.each([
     ['undefined', undefined],
-    // `min(1)` accepts a space, so this reaches the panel from a source config.
     ['whitespace', '   '],
   ])(
     'explains itself instead of querying when the trace id column is %s',
