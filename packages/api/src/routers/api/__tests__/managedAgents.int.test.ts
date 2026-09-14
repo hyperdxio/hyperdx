@@ -327,6 +327,22 @@ describe('managed agents router', () => {
       expect(await ManagedAgent.countDocuments({})).toBe(0);
     });
 
+    it('refuses a verified agent whose mcp_servers list is empty', async () => {
+      fetchSpy = mockAnthropic(url =>
+        url.includes('/v1/agents/')
+          ? new Response(JSON.stringify({ id: 'agent_x', mcp_servers: [] }))
+          : null,
+      );
+
+      const resp = await agent
+        .post('/managed-agents/import')
+        .send(body)
+        .expect(400);
+
+      expect(resp.body.message).toMatch(/no MCP server/);
+      expect(await ManagedAgent.countDocuments({})).toBe(0);
+    });
+
     it('rejects an agent id that is not a flat identifier', async () => {
       await agent
         .post('/managed-agents/import')
