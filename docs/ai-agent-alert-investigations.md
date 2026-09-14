@@ -125,9 +125,10 @@ dispatch.
 
 ### 3. Add the agent to an alert
 
-In any alert editor, add a notification channel and pick the 🤖 agent (or
-switch the channel type to "AI agent"). On each firing the agent receives a
-structured payload:
+In any alert editor, add a notification target and pick the agent from the
+list — webhooks and agents share one picker, so an alert can page a webhook
+and hand the investigation to an agent at the same time. On each firing the
+agent receives a structured payload:
 
 ```json
 {
