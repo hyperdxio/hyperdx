@@ -1261,6 +1261,7 @@ export const RawLogTable = memo(
                           rowId={rowId}
                           measureElement={rowVirtualizer.measureElement}
                           virtualIndex={virtualRow.index}
+                          canOpenSidePanel={canOpenSidePanel}
                         >
                           {renderRowDetails?.({
                             id: rowId,

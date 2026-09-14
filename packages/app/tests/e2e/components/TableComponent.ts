@@ -54,21 +54,6 @@ export class TableComponent {
   }
 
   /**
-   * Click on a specific row. On tables that support inline expansion this
-   * expands the row in place; use {@link openRowSidePanel} for the side panel.
-   */
-  async clickRow(index: number) {
-    await this.getRow(index).click();
-  }
-
-  /**
-   * Click on the first row
-   */
-  async clickFirstRow() {
-    await this.firstRow.click();
-  }
-
-  /**
    * Open a row in the side panel via its hover button. Clicking the row body
    * expands it inline instead (unless the side panel is already open, in which
    * case a row click moves the panel to that row).
