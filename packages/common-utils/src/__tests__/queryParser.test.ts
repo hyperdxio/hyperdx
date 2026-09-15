@@ -3293,3 +3293,87 @@ describe('CustomSchemaSQLSerializerV2 - KV items version gate', () => {
     expect(sql).toContain(HAS_FORM);
   });
 });
+
+describe('BinaryAST operator precedence and grouping in emitted SQL', () => {
+  const metadata = getMetadata(
+    new ClickhouseClient({ host: 'http://localhost:8123' }),
+  );
+  metadata.getColumn = jest.fn().mockImplementation(async ({ column }) => {
+    return { name: column, type: 'String' };
+  });
+  metadata.getColumns = jest.fn().mockImplementation(async () => []);
+  metadata.getMaterializedColumnsLookupTable = jest
+    .fn()
+    .mockImplementation(async () => new Map());
+  metadata.getSkipIndices = jest.fn().mockImplementation(async () => []);
+  metadata.getSetting = jest.fn().mockImplementation(async () => '0');
+  metadata.getServerVersion = jest.fn().mockImplementation(async () => undefined);
+  metadata.isClickHouseCloud = jest.fn().mockImplementation(async () => false);
+
+  const serializer = new CustomSchemaSQLSerializerV2({
+    metadata,
+    databaseName: 'testDb',
+    tableName: 'testTable',
+    connectionId: 'testConn',
+    implicitColumnExpression: 'Body',
+  });
+
+  it('groups inner OR when mixed with AND without explicit parentheses', async () => {
+    const actual = await new SearchQueryBuilder(
+      'a:"1" AND b:"2" OR c:"3"',
+      serializer,
+    ).build();
+    expect(actual).toBe("((a = '1') AND ((b = '2') OR (c = '3')))");
+  });
+
+  it('groups inner AND when mixed with OR without explicit parentheses', async () => {
+    const actual = await new SearchQueryBuilder(
+      'a:"1" OR b:"2" AND c:"3"',
+      serializer,
+    ).build();
+    expect(actual).toBe("((a = '1') OR ((b = '2') AND (c = '3')))");
+  });
+
+  it('keeps chained identical AND operators flat', async () => {
+    const actual = await new SearchQueryBuilder(
+      'a:"1" AND b:"2" AND c:"3"',
+      serializer,
+    ).build();
+    expect(actual).toBe("((a = '1') AND (b = '2') AND (c = '3'))");
+  });
+
+  it('keeps chained identical OR operators flat', async () => {
+    const actual = await new SearchQueryBuilder(
+      'a:"1" OR b:"2" OR c:"3"',
+      serializer,
+    ).build();
+    expect(actual).toBe("((a = '1') OR (b = '2') OR (c = '3'))");
+  });
+
+  it('preserves explicitly parenthesized left-grouped expressions', async () => {
+    const actual = await new SearchQueryBuilder(
+      '(a:"1" AND b:"2") OR c:"3"',
+      serializer,
+    ).build();
+    expect(actual).toBe("(((a = '1') AND (b = '2')) OR (c = '3'))");
+  });
+
+  it('preserves explicitly parenthesized right-grouped expressions', async () => {
+    const actual = await new SearchQueryBuilder(
+      'a:"1" AND (b:"2" OR c:"3")',
+      serializer,
+    ).build();
+    expect(actual).toBe("((a = '1') AND ((b = '2') OR (c = '3')))");
+  });
+
+  it('handles multi-level operator nesting correctly', async () => {
+    const actual = await new SearchQueryBuilder(
+      'a:"1" AND b:"2" OR c:"3" AND d:"4"',
+      serializer,
+    ).build();
+    expect(actual).toBe(
+      "((a = '1') AND ((b = '2') OR ((c = '3') AND (d = '4'))))",
+    );
+  });
+});
+
