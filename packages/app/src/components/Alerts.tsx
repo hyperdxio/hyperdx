@@ -109,7 +109,10 @@ export const AlertChannelForm = <T extends FieldValues>({
           <Group key={field.id} gap="md" align="flex-start" wrap="nowrap">
             <NotificationTargetSelect
               control={control}
-              name={`${channelsName}.${index}`}
+              // react-hook-form cannot express "element of this array path"
+              // as a Path<T>, so the one dynamic path is narrowed here rather
+              // than widening the component's control to any.
+              name={`${channelsName}.${index}` as Path<T>}
               takenKeys={selectedTargetKeys.filter(
                 (key, i): key is string => i !== index && key != null,
               )}

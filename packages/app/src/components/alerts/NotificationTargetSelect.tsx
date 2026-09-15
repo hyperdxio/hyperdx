@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import _ from 'lodash';
-import { Control, useController } from 'react-hook-form';
+import { Control, FieldValues, Path, useController } from 'react-hook-form';
 import { WebhookService } from '@hyperdx/common-utils/dist/types';
 import {
   ComboboxItem,
@@ -25,12 +25,14 @@ type TargetKind = 'webhook' | 'agent';
 
 const toValue = (kind: TargetKind, id: string) => `${kind}:${id}`;
 
-const fromValue = (value: string): { kind: TargetKind; id: string } => {
+// Returns null for anything that isn't one of our composite values, so a
+// stored row we don't recognise can't be read as a kind we do.
+const fromValue = (value: string): { kind: TargetKind; id: string } | null => {
   const sep = value.indexOf(':');
-  return {
-    kind: value.slice(0, sep) as TargetKind,
-    id: value.slice(sep + 1),
-  };
+  if (sep < 0) return null;
+  const kind = value.slice(0, sep);
+  if (kind !== 'webhook' && kind !== 'agent') return null;
+  return { kind, id: value.slice(sep + 1) };
 };
 
 /** Composite `kind:id` for a channel row, or null for an unset/foreign row. */
@@ -52,14 +54,14 @@ export const channelTargetKey = (channel?: {
 // re-render loop) on every render.
 const NO_TAKEN_KEYS: string[] = [];
 
-export const NotificationTargetSelect = ({
+export const NotificationTargetSelect = <T extends FieldValues>({
   control,
   name,
   takenKeys = NO_TAKEN_KEYS,
 }: {
-  control: Control<any>;
+  control: Control<T>;
   /** Path of the channel row object, e.g. "channels.0". */
-  name: string;
+  name: Path<T>;
   /** Composite keys (`kind:id`) already chosen by the alert's other rows. */
   takenKeys?: string[];
 }) => {
@@ -135,7 +137,7 @@ export const NotificationTargetSelect = ({
       group.items.some(item => item.value === selectedValue),
     );
     if (known) return { options: data, isDangling: false };
-    const { kind } = fromValue(selectedValue);
+    const parsed = fromValue(selectedValue);
     return {
       options: [
         ...data,
@@ -145,7 +147,7 @@ export const NotificationTargetSelect = ({
             {
               value: selectedValue,
               label:
-                kind === 'agent'
+                parsed?.kind === 'agent'
                   ? 'AI agent (unavailable)'
                   : 'Webhook (unavailable)',
             },
@@ -195,11 +197,12 @@ export const NotificationTargetSelect = ({
       value={selectedValue}
       onChange={value => {
         if (!value) return;
-        const { kind, id } = fromValue(value);
+        const parsed = fromValue(value);
+        if (!parsed) return;
         field.onChange(
-          kind === 'agent'
-            ? { type: 'agent', agentId: id }
-            : { type: 'webhook', webhookId: id },
+          parsed.kind === 'agent'
+            ? { type: 'agent', agentId: parsed.id }
+            : { type: 'webhook', webhookId: parsed.id },
         );
       }}
       onBlur={field.onBlur}
