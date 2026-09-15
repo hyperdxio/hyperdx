@@ -18,6 +18,7 @@ import {
   convertCHDataTypeToJSType,
   JSDataType,
 } from '@hyperdx/common-utils/dist/clickhouse';
+import { quoteResultColumnNameIfNeeded } from '@hyperdx/common-utils/dist/core/metadata';
 import { aliasMapToWithClauses } from '@hyperdx/common-utils/dist/core/utils';
 import type { BuilderChartConfig } from '@hyperdx/common-utils/dist/types';
 
@@ -96,7 +97,7 @@ function processRowToWhereClause(
           // Handle case for json element, ex: json.c
           // Currently we can't distinguish null or 'null'
           if (value == null || strValue === 'null') {
-            return SqlString.format(`isNull(??)`, [valueExpr]);
+            return SqlString.format(`isNull(?)`, [SqlString.raw(valueExpr)]);
           }
           if ((strValue?.length ?? 0) > 1000 || column.length > 1000) {
             console.warn('Search value/object key too large.');
@@ -140,9 +141,11 @@ export function buildColumnMap(
   return new Map(
     meta?.map(c => {
       // if aliasMap is provided, use the alias as the valueExpr
-      // but if the alias is not found, use the column name as the valueExpr
+      // but if the alias is not found, fall back to the column name.
+      // Alias entries are already SQL expressions; a result column name
+      // needs quoting when it isn't one (e.g. `x-host-header`).
       const valueExpr =
-        aliasMap != null ? (aliasMap[c.name] ?? c.name) : c.name;
+        aliasMap?.[c.name] ?? quoteResultColumnNameIfNeeded(c.name);
 
       return [
         c.name,
