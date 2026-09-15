@@ -443,6 +443,7 @@ const importAnthropicAgentImpl = async ({
   let remoteName: string | undefined;
   let model: string | undefined;
   let agentMcpUrl: string | undefined;
+  let pointsHere = false;
   try {
     const info = await anthropicRequest(
       apiKey,
@@ -452,9 +453,15 @@ const importAnthropicAgentImpl = async ({
     verified = true;
     remoteName = typeof info?.name === 'string' ? info.name : undefined;
     model = typeof info?.model === 'string' ? info.model : undefined;
-    agentMcpUrl = Array.isArray(info?.mcp_servers)
-      ? info.mcp_servers.find((m: unknown) => (m as { url?: string })?.url)?.url
-      : undefined;
+    const servers: unknown[] = Array.isArray(info?.mcp_servers)
+      ? info.mcp_servers
+      : [];
+    const urls = servers
+      .map(m => (m as { url?: string })?.url)
+      .filter((u): u is string => typeof u === 'string' && u.length > 0);
+    // An agent may reach several MCP servers; ours only has to be one of them.
+    pointsHere = urls.includes(mcpServerUrl);
+    agentMcpUrl = urls[0];
   } catch (e) {
     if (e instanceof AnthropicApiError && e.status === 404) {
       throw new AnthropicApiError(
@@ -478,7 +485,7 @@ const importAnthropicAgentImpl = async ({
   // a mismatch is a decision we can make. An agent with no MCP server at all
   // is rejected for the same reason as a wrong one: the credential this
   // instance provisions would go unused.
-  if (verified && agentMcpUrl !== mcpServerUrl) {
+  if (verified && !pointsHere) {
     throw new AnthropicApiError(
       agentMcpUrl
         ? `That agent points at ${agentMcpUrl}, but this instance provisions its credential for ${mcpServerUrl}. It would run with no ClickStack access. Point the agent at this URL, or set HDX_MANAGED_AGENTS_MCP_URL to the one it already uses.`

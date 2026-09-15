@@ -310,6 +310,44 @@ describe('managed agents router', () => {
       expect(await ManagedAgent.countDocuments({})).toBe(0);
     });
 
+    it('accepts an agent that lists this instance alongside other MCP servers', async () => {
+      fetchSpy = mockAnthropic(url =>
+        url.includes('/v1/agents/')
+          ? new Response(
+              JSON.stringify({
+                id: 'agent_multi',
+                mcp_servers: [
+                  { url: 'https://mcp.github.example/mcp' },
+                  { url: MCP_URL },
+                ],
+              }),
+            )
+          : null,
+      );
+
+      await agent.post('/managed-agents/import').send(body).expect(200);
+      expect(await ManagedAgent.countDocuments({})).toBe(1);
+    });
+
+    it('redacts an upstream Anthropic body but keeps our own message', async () => {
+      // Provisioning, not the verify read: a non-404 on the read imports
+      // unverified by design, so it never reaches the client as an error.
+      fetchSpy = mockAnthropic(url =>
+        url.endsWith('/v1/environments')
+          ? new Response('{"detail":"upstream secret"}', { status: 400 })
+          : null,
+      );
+
+      const resp = await agent
+        .post('/managed-agents/import')
+        .send(body)
+        .expect(400);
+
+      // 400 passes through as a status, but the body is Anthropic's, not ours.
+      expect(resp.body.message).not.toContain('upstream secret');
+      expect(resp.body.message).toContain('Anthropic API request failed');
+    });
+
     it('refuses a verified agent with no MCP server at all', async () => {
       fetchSpy = mockAnthropic(url => {
         if (url.includes('/v1/agents/')) {

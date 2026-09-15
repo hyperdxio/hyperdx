@@ -41,6 +41,12 @@ const HYPERDX_AUTHORED_STATUSES = new Set([400, 404, 409]);
 const clientFacingStatus = (status: number) =>
   HYPERDX_AUTHORED_STATUSES.has(status) ? status : 502;
 
+// An AnthropicApiError either carries an upstream response body or a message
+// we wrote. Only the second is safe to show, and only the second is useful:
+// upstream text is the caller's own request echoed back at them.
+const clientFacingMessage = (e: AnthropicApiError) =>
+  e.fromUpstream ? 'The Anthropic API request failed.' : e.message;
+
 router.get('/', async (req, res, next) => {
   try {
     const teamId = req.user?.team;
@@ -118,7 +124,7 @@ router.post(
           'Managed agent provisioning failed',
         );
         const status = clientFacingStatus(e.status);
-        return res.status(status).json({ message: e.message });
+        return res.status(status).json({ message: clientFacingMessage(e) });
       }
       next(e);
     }
@@ -168,7 +174,7 @@ router.post(
           'Managed agent import failed',
         );
         const status = clientFacingStatus(e.status);
-        return res.status(status).json({ message: e.message });
+        return res.status(status).json({ message: clientFacingMessage(e) });
       }
       next(e);
     }
@@ -229,7 +235,7 @@ router.delete(
             'Managed agent deletion failed; keeping the local record',
           );
           const status = clientFacingStatus(e.status);
-          return res.status(status).json({ message: e.message });
+          return res.status(status).json({ message: clientFacingMessage(e) });
         }
         throw e;
       }

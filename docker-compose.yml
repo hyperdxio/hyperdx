@@ -79,6 +79,19 @@ services:
       # NEXT_PUBLIC_ENABLE_PROMQL: 'true'
       # Uncomment to enable the alert detail page (in development)
       # NEXT_PUBLIC_ENABLE_ALERT_DETAILS: 'true'
+      # Extra hostnames the MCP endpoint answers to, comma-separated. Needed
+      # when clients reach /api/mcp on a host other than HYPERDX_APP_URL's.
+      HDX_MCP_ALLOWED_HOSTS: ${HDX_MCP_ALLOWED_HOSTS:-}
+      # Uncomment the next four lines to enable AI agent alert investigations.
+      # Provisioning spends on your Anthropic account, so it needs the second
+      # flag as well; importing an existing agent needs only the first.
+      # HDX_MANAGED_AGENTS_ENABLED: 'true'
+      # NEXT_PUBLIC_HDX_MANAGED_AGENTS_ENABLED: 'true'
+      # HDX_MANAGED_AGENTS_ALLOW_CREATE: 'true'
+      # NEXT_PUBLIC_HDX_MANAGED_AGENTS_ALLOW_CREATE: 'true'
+      # Public HTTPS URL of this instance's MCP server, if it is not
+      # HYPERDX_APP_URL + /api/mcp. Anthropic's sandbox reaches it directly.
+      # HDX_MANAGED_AGENTS_MCP_URL: 'https://example.com/api/mcp'
       DEFAULT_CONNECTIONS:
         '[{"name":"Local
         ClickHouse","host":"http://ch-server:8123","username":"default","password":""}]'
