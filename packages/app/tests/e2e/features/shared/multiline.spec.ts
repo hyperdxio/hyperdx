@@ -67,12 +67,16 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
     expect(expandedVisibleHeight).toBeGreaterThan(singleLineVisibleHeight);
 
     // Both lines stay on screen once focus moves away.
-    await page.evaluate(() =>
-      (document.activeElement as HTMLElement | null)?.blur(),
-    );
-    await expect
-      .poll(async () => (await visibleBox.boundingBox())?.height || 0)
-      .toBeGreaterThanOrEqual(expandedVisibleHeight);
+    await page.evaluate(() => {
+      const el = document.activeElement;
+      if (el instanceof HTMLElement) {
+        el.blur();
+      }
+    });
+    await expect(editor).not.toBeFocused();
+    expect(
+      (await visibleBox.boundingBox())?.height || 0,
+    ).toBeGreaterThanOrEqual(expandedVisibleHeight);
   };
 
   /**
@@ -213,21 +217,32 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
     const searchPage = new SearchPage(page);
     await searchPage.goto();
 
-    for (const label of ['SELECT', 'ORDER BY']) {
-      const paper = page
-        .getByText(label, { exact: true })
-        .locator(
-          'xpath=ancestor::div[contains(@class, "mantine-Paper-root")][1]',
-        );
-      const editor = paper.locator('.cm-editor');
+    const selectPaper = page
+      .getByText('SELECT', { exact: true })
+      .locator(
+        'xpath=ancestor::div[contains(@class, "mantine-Paper-root")][1]',
+      );
+    const selectEditor = selectPaper.locator('.cm-editor');
+    await expect(selectEditor).toBeVisible();
+    await selectEditor.locator('.cm-content').press('ControlOrMeta+A');
+    await page.keyboard.press('Backspace');
+    await testInputExpansion(page, selectEditor, undefined, {
+      growthLocator: selectEditor.locator('.cm-content'),
+      visibleBoxLocator: selectPaper,
+    });
 
-      await expect(editor).toBeVisible();
-      await editor.locator('.cm-content').press('ControlOrMeta+A');
-      await page.keyboard.press('Backspace');
-      await testInputExpansion(page, editor, undefined, {
-        growthLocator: editor.locator('.cm-content'),
-        visibleBoxLocator: paper,
-      });
-    }
+    const orderByPaper = page
+      .getByText('ORDER BY', { exact: true })
+      .locator(
+        'xpath=ancestor::div[contains(@class, "mantine-Paper-root")][1]',
+      );
+    const orderByEditor = orderByPaper.locator('.cm-editor');
+    await expect(orderByEditor).toBeVisible();
+    await orderByEditor.locator('.cm-content').press('ControlOrMeta+A');
+    await page.keyboard.press('Backspace');
+    await testInputExpansion(page, orderByEditor, undefined, {
+      growthLocator: orderByEditor.locator('.cm-content'),
+      visibleBoxLocator: orderByPaper,
+    });
   });
 });

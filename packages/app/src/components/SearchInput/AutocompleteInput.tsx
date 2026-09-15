@@ -30,6 +30,7 @@ export default function AutocompleteInput({
   language,
   onSubmit,
   queryHistoryType,
+  allowMultiline = true,
   'data-testid': dataTestId,
 }: {
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
@@ -52,6 +53,7 @@ export default function AutocompleteInput({
   onLanguageChange?: (language: 'sql' | 'lucene') => void;
   language?: 'sql' | 'lucene';
   queryHistoryType?: string;
+  allowMultiline?: boolean;
   'data-testid'?: string;
 }) {
   const suggestionsLimit = 10;
@@ -236,7 +238,7 @@ export default function AutocompleteInput({
             size={size}
             autosize
             minRows={1}
-            maxRows={maxVisibleRows}
+            maxRows={allowMultiline ? maxVisibleRows : 1}
             data-testid={dataTestId}
             onChange={e => onChange(e.target.value)}
             onFocus={() => {
@@ -283,15 +285,12 @@ export default function AutocompleteInput({
                   e.preventDefault();
                   const selected = suggestions[selectedAutocompleteIndex];
                   onAcceptSuggestion(selected.value, selected.isVariable);
-                } else {
-                  // Allow shift+enter to still create new lines
-                  if (!e.shiftKey) {
-                    e.preventDefault();
-                    if (queryHistoryType && value) {
-                      setQueryHistory(value);
-                    }
-                    onSubmit?.();
+                } else if (!e.shiftKey || !allowMultiline) {
+                  e.preventDefault();
+                  if (queryHistoryType && value) {
+                    setQueryHistory(value);
                   }
+                  onSubmit?.();
                 }
               }
               if (

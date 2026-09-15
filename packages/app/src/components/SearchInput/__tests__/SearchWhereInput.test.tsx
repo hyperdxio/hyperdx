@@ -105,6 +105,30 @@ describe('SearchWhereInput', () => {
         expect(input).toHaveValue('level:error');
       });
     });
+
+    it('does not insert a newline in Lucene when allowMultiline is false', async () => {
+      const user = userEvent.setup();
+      renderWithMantine(
+        <TestWrapper defaultLanguage="lucene">
+          {({ control }) => (
+            <SearchWhereInput
+              tableConnection={mockTableConnection}
+              control={control}
+              name="where"
+              allowMultiline={false}
+            />
+          )}
+        </TestWrapper>,
+      );
+
+      const input = screen.getByPlaceholderText(
+        /Search your events w\/ Lucene/i,
+      );
+      await user.click(input);
+      await user.keyboard('first{Shift>}{Enter}{/Shift}second');
+
+      expect(input).toHaveValue('firstsecond');
+    });
   });
 
   describe('SQL Mode', () => {

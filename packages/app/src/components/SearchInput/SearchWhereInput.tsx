@@ -251,6 +251,7 @@ export default function SearchWhereInput({
               placeholder={lucenePlaceholder}
               queryHistoryType={luceneQueryHistoryType}
               enableHotkey={enableHotkey}
+              allowMultiline={allowMultiline}
               size={size}
               data-testid={dataTestId}
               additionalSuggestions={additionalSuggestions}

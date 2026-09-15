@@ -206,7 +206,6 @@ export default function PromQLEditor({
     <div
       className={styles.wrapper}
       style={{ ['--editor-base-height' as string]: `${baseHeight}px` }}
-      data-expanded={isExpanded ? 'true' : undefined}
     >
       {isExpanded && <div className={styles.placeholder} aria-hidden="true" />}
       <Paper
