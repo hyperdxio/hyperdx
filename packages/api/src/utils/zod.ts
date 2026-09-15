@@ -43,6 +43,20 @@ export const objectIdSchema = z.string().refine(val => {
   return Types.ObjectId.isValid(val);
 }, 'Invalid ObjectId');
 
+/**
+ * A repeatable query param. Express's parser yields a bare string for a single
+ * occurrence and an array for several, and `?p[]=x` lands on the same key as
+ * `?p=x`. Normalizes both to an array, dropping empty values — `?p=` means
+ * "absent", not "match the empty string" — and collapsing to `undefined` when
+ * nothing is left, so `.optional()` covers both spellings of "not supplied".
+ */
+export const stringListQueryParam = z
+  .union([z.string(), z.array(z.string())])
+  .transform(v => {
+    const values = (Array.isArray(v) ? v : [v]).filter(s => s !== '');
+    return values.length ? values : undefined;
+  });
+
 // ================================
 // Charts & Dashboards (old format)
 // ================================

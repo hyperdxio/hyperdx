@@ -2697,8 +2697,8 @@ export const AlertsPageItemSchema = z.object({
   // tile. See isTileAlertUnaddressable.
   unaddressableTile: z.boolean().optional(),
   // Inline alerts: the persisted chart config. Only present on the
-  // single-alert (detail) response — the unpaginated list omits it so every
-  // alerts-page load doesn't carry every alert's full query definition.
+  // single-alert (detail) response — the list omits it so a page doesn't carry
+  // every alert's full query definition.
   chartConfig: AlertChartConfigSchema.optional(),
   groupBy: z.string().optional(),
   name: z.string().nullish(),
@@ -2711,10 +2711,7 @@ export const AlertsPageItemSchema = z.object({
   history: z.array(AlertHistorySchema),
   dashboard: z
     .object({
-      _id: z.string(),
       name: z.string(),
-      updatedAt: z.string(),
-      tags: z.array(z.string()),
       tiles: z.array(
         z.object({
           id: z.string(),
@@ -2725,11 +2722,7 @@ export const AlertsPageItemSchema = z.object({
     .optional(),
   savedSearch: z
     .object({
-      _id: z.string(),
-      createdAt: z.string(),
       name: z.string(),
-      updatedAt: z.string(),
-      tags: z.array(z.string()),
     })
     .optional(),
   createdBy: z
@@ -2753,6 +2746,14 @@ export type AlertsPageItem = z.infer<typeof AlertsPageItemSchema>;
 
 export const AlertsApiResponseSchema = z.object({
   data: z.array(AlertsPageItemSchema),
+  /** True when more alerts match the request beyond the returned page. */
+  hasMore: z.boolean(),
+  /**
+   * Keyset cursor for the next page: pass it back unchanged as `cursor`
+   * (alongside `limit`) to continue get the next page. Absent on the last
+   * page and on unpaginated responses.
+   */
+  nextCursor: z.string().optional(),
 });
 
 export type AlertsApiResponse = z.infer<typeof AlertsApiResponseSchema>;
