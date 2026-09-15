@@ -29,7 +29,8 @@ up your connection with ClickHouse.
 
 Before deploying into production, set the `EXPRESS_SESSION_SECRET` environment
 variable to a random string (e.g. `openssl rand -hex 32`). Without it the API
-generates one per process, which signs users out on every restart.
+generates one per process, which signs users out on every restart and prevents
+replicas from sharing sessions.
 
 To customize the frontend URL, set the `FRONTEND_URL` environment variable to
 the URL your HyperDX instance is hosted on.
