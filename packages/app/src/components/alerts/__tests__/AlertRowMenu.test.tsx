@@ -17,7 +17,8 @@ jest.mock('@/api', () => ({
   __esModule: true,
   default: {
     useDeleteAlert: () => ({ mutateAsync }),
-    useMe: () => ({ data: { team: { id: 'team-1' } } }),
+    // Literal, not TEAM_ID below: jest hoists this factory above the consts.
+    useMe: () => ({ data: { team: { id: '7a1c0de5b2f34c9d8e0a1b2c' } } }),
     getAlertsQueryKey: () => ['alerts'],
   },
 }));
@@ -47,6 +48,10 @@ jest.mock('@/useConfirm', () => ({ useConfirm: () => confirm }));
 jest.mock('@/theme/ThemeProvider', () => ({
   useBrandDisplayName: () => 'HyperDX',
 }));
+
+// ObjectId hex: buildImportBlock refuses to emit Terraform for anything else,
+// so a placeholder id would throw the moment the export panel opens.
+const TILE_ALERT_ID = '655b1b7d9143aa1b1b73f4f4';
 
 const savedSearchAlert = {
   _id: 'alert-1',
@@ -79,6 +84,15 @@ const inlineAlert: AlertsPageItem = {
   displayName: 'Prod error rate',
 };
 
+// The server decides whether a tile alert's tile can be addressed in
+// generated Terraform, because this response carries only the alert's own
+// tile — see isTileAlertUnaddressable.
+const unaddressableTileAlert: AlertsPageItem = {
+  ...tileAlert,
+  _id: 'alert-4',
+  unaddressableTile: true,
+};
+
 function renderMenu(ui: React.ReactElement) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -107,9 +121,9 @@ describe('AlertRowMenu', () => {
   // The whole point of the menu: the row's trailing control is unconditional
   // even when everything inside it is gated.
   it('renders for an alert with no source link and no import eligibility', () => {
-    renderMenu(<AlertRowMenu alert={tileAlert} />);
+    renderMenu(<AlertRowMenu alert={unaddressableTileAlert} />);
 
-    expect(screen.getByTestId('alert-row-menu-alert-2')).toBeInTheDocument();
+    expect(screen.getByTestId('alert-row-menu-alert-4')).toBeInTheDocument();
   });
 
   it('opens the edit modal from the menu', async () => {
@@ -150,17 +164,33 @@ describe('AlertRowMenu', () => {
     ).toBeInTheDocument();
   });
 
-  // Tile alerts have no Terraform resource, so offering import would generate
-  // a block that cannot apply.
-  it('withholds Terraform export for a tile alert', async () => {
-    renderMenu(<AlertRowMenu alert={tileAlert} />);
-    await openMenu('alert-row-menu-alert-2');
+  // `source = "tile"` needs a newer provider than the base floor, so the
+  // snippets this path generates have to ask for it — the bulk export's floor
+  // is asserted separately and the two must not drift.
+  it('offers Terraform export for a tile alert and asks for the tile-alert provider', async () => {
+    renderMenu(<AlertRowMenu alert={{ ...tileAlert, _id: TILE_ALERT_ID }} />);
+    await openMenu(`alert-row-menu-${TILE_ALERT_ID}`);
+    await userEvent.click(
+      screen.getByTestId(`terraform-menu-item-${TILE_ALERT_ID}`),
+    );
+
+    expect(
+      await screen.findByText(/version\s+= ">= 3.28.0"/),
+    ).toBeInTheDocument();
+  });
+
+  // A tile with a blank or duplicated name is absent from the provider's
+  // `tile_ids` map, so the alert could only be pinned to a literal id the next
+  // dashboard apply can re-mint.
+  it('withholds Terraform export for an unaddressable tile alert', async () => {
+    renderMenu(<AlertRowMenu alert={unaddressableTileAlert} />);
+    await openMenu('alert-row-menu-alert-4');
 
     // Assert a sibling item is present too, so this cannot pass by the menu
     // simply having failed to open.
-    expect(screen.getByTestId('alert-delete-alert-2')).toBeInTheDocument();
+    expect(screen.getByTestId('alert-delete-alert-4')).toBeInTheDocument();
     expect(
-      screen.queryByTestId('terraform-menu-item-alert-2'),
+      screen.queryByTestId('terraform-menu-item-alert-4'),
     ).not.toBeInTheDocument();
   });
 

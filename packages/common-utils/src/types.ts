@@ -2648,6 +2648,11 @@ export const AlertsPageItemSchema = z.object({
   dashboardId: z.string().optional(),
   savedSearchId: z.string().optional(),
   tileId: z.string().optional(),
+  // Tile alerts only: set when the tile this alert watches cannot be
+  // addressed in generated Terraform, so the row's export action is withheld.
+  // Server-computed — `dashboard.tiles` below carries only this alert's own
+  // tile. See isTileAlertUnaddressable.
+  unaddressableTile: z.boolean().optional(),
   // Inline alerts: the persisted chart config. Only present on the
   // single-alert (detail) response — the unpaginated list omits it so every
   // alerts-page load doesn't carry every alert's full query definition.
@@ -2877,6 +2882,49 @@ export type InstallationApiResponse = z.infer<
   typeof InstallationApiResponseSchema
 >;
 
+// Onboarding
+//
+// SSOT for product-usage tasks. UI copy/hrefs live in the frontend registry
+// (typed Record<OnboardingTaskId>), which compile-errors until a new key gets
+// copy + a link. Declaration order is the checklist display order; membership
+// (not order) is what the API enum and persisted subdoc rely on.
+export const ONBOARDING_TASK_IDS = [
+  'advancedQuery',
+  'dashboard',
+  'alert',
+  'mcp',
+] as const;
+
+export type OnboardingTaskId = (typeof ONBOARDING_TASK_IDS)[number];
+
+// True only for a real 24-hex Mongo ObjectId. The all-in-one-noauth image
+// injects a synthetic `_local_user_` id server-side, which mongoose casts to an
+// ObjectId matching no document — and which mongoose.isValidObjectId() wrongly
+// accepts (any 12-char string passes) — so this string check is the guard both
+// packages use to skip onboarding writes/rendering for that non-persistable user.
+export function isPersistableUserId(id: string | null | undefined): boolean {
+  return id != null && /^[0-9a-fA-F]{24}$/.test(id);
+}
+
+const KNOWN_ONBOARDING_TASK_IDS: readonly string[] = ONBOARDING_TASK_IDS;
+
+export const OnboardingDataSchema = z.object({
+  // Read-tolerant so removing/renaming a task can't 500 GET /me for users who
+  // completed it; the write boundary (CompleteOnboardingTaskApiBodySchema)
+  // stays a strict z.enum.
+  completedTasks: z
+    .array(z.string())
+    .default([])
+    .transform(ids =>
+      ids.filter((id): id is OnboardingTaskId =>
+        KNOWN_ONBOARDING_TASK_IDS.includes(id),
+      ),
+    ),
+  isDismissed: z.boolean().default(false),
+});
+
+export type OnboardingData = z.infer<typeof OnboardingDataSchema>;
+
 // Me
 export const MeApiResponseSchema = z.object({
   accessKey: z.string(),
@@ -2884,6 +2932,7 @@ export const MeApiResponseSchema = z.object({
   email: z.string(),
   id: z.string(),
   name: z.string(),
+  onboardingData: OnboardingDataSchema,
   team: TeamSchema.pick({
     id: true,
     name: true,
@@ -2895,6 +2944,34 @@ export const MeApiResponseSchema = z.object({
 });
 
 export type MeApiResponse = z.infer<typeof MeApiResponseSchema>;
+
+// Body for `POST /me/onboarding/task`.
+export const CompleteOnboardingTaskApiBodySchema = z.object({
+  taskId: z.enum(ONBOARDING_TASK_IDS),
+});
+
+export type CompleteOnboardingTaskApiBody = z.infer<
+  typeof CompleteOnboardingTaskApiBodySchema
+>;
+
+// Body for `PATCH /me/onboarding/dismiss`.
+export const DismissOnboardingApiBodySchema = z.object({
+  isDismissed: z.boolean(),
+});
+
+export type DismissOnboardingApiBody = z.infer<
+  typeof DismissOnboardingApiBodySchema
+>;
+
+// Response for both onboarding mutations: the updated onboarding state, so the
+// client can seed its `me` cache without a refetch.
+export const OnboardingDataApiResponseSchema = z.object({
+  onboardingData: OnboardingDataSchema,
+});
+
+export type OnboardingDataApiResponse = z.infer<
+  typeof OnboardingDataApiResponseSchema
+>;
 
 // Response for `PATCH /me/accessKey`.
 //
@@ -2935,9 +3012,15 @@ export const IacImportManifestSchema = z.object({
   ),
   alerts: z.array(
     IacManifestEntrySchema.extend({
-      // Only saved-search alerts are modelled by the Terraform provider.
+      // The provider models saved-search and dashboard tile alerts, not
+      // inline ones, so the client needs the discriminator to filter.
       source: z.string().optional(),
       savedSearchId: z.string().optional(),
+      // Tile alerts only: set when the provider could not address the tile
+      // this alert watches. Computed server-side — the tile lives on a
+      // dashboard this manifest may not even list. See
+      // isTileAlertUnaddressable.
+      unaddressableTile: z.boolean().optional(),
     }),
   ),
   savedSearches: z.array(IacManifestEntrySchema),

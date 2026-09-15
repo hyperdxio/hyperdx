@@ -1,3 +1,4 @@
+import { useCallback } from 'react';
 import Router from 'next/router';
 import type { HTTPError, Options, ResponsePromise } from 'ky';
 import ky from 'ky-universal';
@@ -9,6 +10,8 @@ import type {
   AlertsApiResponse,
   InstallationApiResponse,
   MeApiResponse,
+  OnboardingDataApiResponse,
+  OnboardingTaskId,
   PresetDashboard,
   PresetDashboardFilter,
   RotateAccessKeyApiResponse,
@@ -83,23 +86,105 @@ export const hdxServer = (
   });
 };
 
+// Standalone export so other mutation hooks in this file can compose it.
+export function useCompleteOnboardingTask() {
+  const queryClient = useQueryClient();
+  return useMutation<
+    OnboardingDataApiResponse,
+    Error | HTTPError,
+    OnboardingTaskId
+  >({
+    mutationFn: async (taskId: OnboardingTaskId) =>
+      hdxServer('me/onboarding/task', {
+        method: 'POST',
+        json: { taskId },
+      }).json<OnboardingDataApiResponse>(),
+    onSuccess: data => {
+      // Union completedTasks (not replace) so an out-of-order response can't
+      // drop a newer task; keep isDismissed from the cache since a concurrent
+      // dismiss's state isn't reflected in this response.
+      queryClient.setQueryData<MeApiResponse | null>(['me'], prev => {
+        if (prev?.onboardingData == null) {
+          return prev == null
+            ? prev
+            : { ...prev, onboardingData: data.onboardingData };
+        }
+        const merged = new Set([
+          ...prev.onboardingData.completedTasks,
+          ...data.onboardingData.completedTasks,
+        ]);
+        return {
+          ...prev,
+          onboardingData: {
+            ...prev.onboardingData,
+            completedTasks: [...merged],
+          },
+        };
+      });
+    },
+  });
+}
+
+// Patches the `me` cache in place (no request, no invalidation) after the
+// backend has already recorded a task server-side. Invalidating `['me']` would
+// refetch for every useMe consumer (metadata, clickhouse settings, AppNav) for
+// a change only the sidebar cares about.
+export function useMarkOnboardingTaskComplete() {
+  const queryClient = useQueryClient();
+  return useCallback(
+    (taskId: OnboardingTaskId) => {
+      queryClient.setQueryData<MeApiResponse | null>(['me'], prev => {
+        // `?.`: this runs in dashboard/alert mutation onSuccess, and a throw
+        // would flip a succeeded save to "Unable to save".
+        if (prev?.onboardingData == null) {
+          return prev;
+        }
+        if (prev.onboardingData.completedTasks.includes(taskId)) {
+          return prev;
+        }
+        return {
+          ...prev,
+          onboardingData: {
+            ...prev.onboardingData,
+            completedTasks: [...prev.onboardingData.completedTasks, taskId],
+          },
+        };
+      });
+    },
+    [queryClient],
+  );
+}
+
 const api = {
   useCreateAlert() {
+    const markOnboardingTaskComplete = useMarkOnboardingTaskComplete();
     return useMutation<{ data: Alert }, Error, Alert>({
       mutationFn: async alert =>
         server('alerts', {
           method: 'POST',
           json: alert,
         }).json(),
+      // Backend records the task; just sync the cache.
+      onSuccess: () => {
+        if (!IS_LOCAL_MODE) {
+          markOnboardingTaskComplete('alert');
+        }
+      },
     });
   },
   useUpdateAlert() {
+    const markOnboardingTaskComplete = useMarkOnboardingTaskComplete();
     return useMutation<{ data: Alert }, Error, { id: string } & Alert>({
       mutationFn: async alert =>
         server(`alerts/${alert.id}`, {
           method: 'PUT',
           json: alert,
         }).json(),
+      onSuccess: () => {
+        if (!IS_LOCAL_MODE) {
+          markOnboardingTaskComplete('alert');
+        }
+      },
     });
   },
   useDeleteAlert() {
@@ -289,6 +374,23 @@ const api = {
       onSuccess: data => {
         queryClient.setQueryData<MeApiResponse | null>(['me'], prev =>
           prev == null ? prev : { ...prev, accessKey: data.newAccessKey },
+        );
+      },
+    });
+  },
+  useDismissOnboarding() {
+    const queryClient = useQueryClient();
+    return useMutation<OnboardingDataApiResponse, Error | HTTPError, boolean>({
+      mutationFn: async (isDismissed: boolean) =>
+        hdxServer('me/onboarding/dismiss', {
+          method: 'PATCH',
+          json: { isDismissed },
+        }).json<OnboardingDataApiResponse>(),
+      onSuccess: data => {
+        queryClient.setQueryData<MeApiResponse | null>(['me'], prev =>
+          prev == null
+            ? prev
+            : { ...prev, onboardingData: data.onboardingData },
         );
       },
     });
