@@ -47,7 +47,7 @@
   /* An editor that keeps its height can't change border width on focus without
      nudging everything below it, so recolor instead. Leave error/warning
      borders alone so they stay visible while editing. */
-  &.expanded:not(.overlay):not(.error):not(.warning).focused {
+  &.expanded:not(.overlay, .error, .warning).focused {
     border-color: var(--color-bg-brand);
   }
 }
