@@ -1112,25 +1112,29 @@ export async function evaluatePromqlAlert({
     );
   }
 
-  const resp = await queryPrometheusRangeFromClickHouse({
-    client,
-    databaseName,
-    tableName,
-    expr: promqlExpression,
-    startMs,
-    endMs,
-    stepSec: stepSecRounded,
-  });
+  try {
+    const resp = await queryPrometheusRangeFromClickHouse({
+      client,
+      databaseName,
+      tableName,
+      expr: promqlExpression,
+      startMs,
+      endMs,
+      stepSec: stepSecRounded,
+    });
 
-  const json = (await resp.json()) as {
-    data?: { tags: [string, string][]; time_series: [string, number][] }[];
-  };
-  if (!Array.isArray(json?.data) || json.data.length === 0) return null;
+    const json = (await resp.json()) as {
+      data?: { tags: [string, string][]; time_series: [string, number][] }[];
+    };
+    if (!Array.isArray(json?.data) || json.data.length === 0) return null;
 
-  // Reuse formatMatrixResponse to convert { tags, time_series } rows into
-  // PrometheusMatrixResult[] — the same shape as the real Prometheus path.
-  const results = formatMatrixResponse(json.data);
-  return results.length > 0 ? results : null;
+    // Reuse formatMatrixResponse to convert { tags, time_series } rows into
+    // PrometheusMatrixResult[] — the same shape as the real Prometheus path.
+    const results = formatMatrixResponse(json.data);
+    return results.length > 0 ? results : null;
+  } finally {
+    await client.close();
+  }
 }
 
 export const processAlert = async (
@@ -1599,7 +1603,17 @@ export const processAlert = async (
 
           for (const [tsSec, rawVal] of series.values) {
             // Shift the evaluation instant back to the start of the bucket
-            const tsMs = Math.round(tsSec * 1000) - windowMs;
+            let tsMs = Math.round(tsSec * 1000) - windowMs;
+            let nearestBucketMs = tsMs;
+            let minDiff = Infinity;
+            for (const b of expectedBuckets) {
+              const diff = Math.abs(b.getTime() - tsMs);
+              if (diff < minDiff && diff <= windowMs) {
+                minDiff = diff;
+                nearestBucketMs = b.getTime();
+              }
+            }
+            tsMs = nearestBucketMs;
             const parsed = parseFloat(rawVal);
             if (!Number.isFinite(parsed)) continue;
 

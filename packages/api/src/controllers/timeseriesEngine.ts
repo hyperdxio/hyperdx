@@ -348,7 +348,7 @@ export function formatMatrixResponse(
       ([timestamp, value]) => {
         const ts =
           typeof timestamp === 'string'
-            ? new Date(timestamp).getTime() / 1000
+            ? new Date(timestamp + 'Z').getTime() / 1000
             : Number(timestamp);
         return [ts, String(value)];
       },
@@ -367,7 +367,7 @@ export function formatVectorResponse(
     }
     const ts =
       typeof row.timestamp === 'string'
-        ? new Date(row.timestamp).getTime() / 1000
+        ? new Date(row.timestamp + 'Z').getTime() / 1000
         : Number(row.timestamp);
     return { metric, value: [ts, String(row.value)] };
   });
