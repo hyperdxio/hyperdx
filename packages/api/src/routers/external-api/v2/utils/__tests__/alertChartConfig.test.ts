@@ -602,9 +602,11 @@ describe('internal schema field classification', () => {
 
   it.each(
     AlertChartConfigSchema.options.flatMap((member, i) =>
-      Object.keys(member.shape).map(
-        key => [i === 0 ? 'builder' : 'raw SQL', key] as const,
-      ),
+      Object.keys(member.shape).map(key => {
+        const variantName =
+          i === 0 ? 'builder' : i === 1 ? 'raw SQL' : 'promql';
+        return [variantName, key] as const;
+      }),
     ),
   )('classifies the internal %s config field "%s"', (_variant, key) => {
     const classified =

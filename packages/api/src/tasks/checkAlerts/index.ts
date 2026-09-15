@@ -7,7 +7,6 @@ import {
   chSqlToAliasMap,
   ResponseJSON,
 } from '@hyperdx/common-utils/dist/clickhouse';
-import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { tryOptimizeConfigWithMaterializedView } from '@hyperdx/common-utils/dist/core/materializedViews';
 import {
   getMetadata,
@@ -39,12 +38,15 @@ import {
   AlertThresholdType,
   BuilderChartConfigWithOptDateRange,
   ChartConfigWithOptDateRange,
+  ChartVariable,
   DisplayType,
   getSampleWeightExpression,
   pickSampleWeightExpressionProps,
+  PromqlSavedChartConfig,
   SavedChartConfig,
   SourceKind,
 } from '@hyperdx/common-utils/dist/types';
+import { substitutePromqlChartConfigVariables } from '@hyperdx/common-utils/dist/variables';
 import * as fns from 'date-fns';
 import { isString, pick } from 'lodash';
 import { ObjectId } from 'mongoose';
@@ -53,7 +55,16 @@ import ms from 'ms';
 import { performance } from 'perf_hooks';
 import { serializeError } from 'serialize-error';
 
+import { ClickhouseClient } from '@/clickhouse';
 import { ALERT_HISTORY_QUERY_CONCURRENCY } from '@/controllers/alertHistory';
+import { getConnectionById } from '@/controllers/connection';
+import {
+  formatMatrixResponse,
+  joinPrometheusUpstreamUrl,
+  PROMETHEUS_CH_TIMEOUT_MS,
+  PrometheusMatrixResult,
+  queryPrometheusRangeFromClickHouse,
+} from '@/controllers/timeseriesEngine';
 import { AlertState, IAlert, IAlertError } from '@/models/alert';
 import AlertHistory, {
   IAlertHistory,
@@ -158,6 +169,13 @@ export const alertHasGroupBy = (details: AlertDetails): boolean => {
     savedConfig.groupBy &&
     savedConfig.groupBy.length > 0
   ) {
+    return true;
+  }
+
+  if (isPromqlSavedChartConfig(savedConfig)) {
+    // PromQL /query_range always returns one result-set entry per label-set.
+    // Treating it as grouped ensures the missing-series recovery loop runs
+    // when a previously-firing series disappears from the response.
     return true;
   }
 
@@ -741,7 +759,8 @@ const buildAlertChartConfigFromSavedConfig = ({
     return undefined;
   }
 
-  // PromQL charts don't support alerts yet
+  // PromQL tile alerts are evaluated separately via evaluatePromqlAlert;
+  // return undefined here so the shared ClickHouse path is skipped.
   if (isPromqlSavedChartConfig(savedConfig)) {
     return undefined;
   }
@@ -966,6 +985,158 @@ export const parseAlertData = (
   return { value, extraFields };
 };
 
+/**
+ * Execute a PromQL alert's expression for the given window and return all
+ * series with their full time-series data as {@link PrometheusMatrixResult}[],
+ * or `null` when the query returns no data.
+ *
+ * Returning all time-points (not just the last) allows the caller to evaluate
+ * every expected time bucket individually, enabling correct backfill support
+ * when multiple windows have been skipped.
+ *
+ * Supports both Prometheus-endpoint connections (HTTP proxy to
+ * `/api/v1/query_range`) and ClickHouse-backed connections
+ * (`prometheusQueryRange` table function).
+ */
+export async function evaluatePromqlAlert({
+  savedConfig,
+  source,
+  connectionId,
+  teamId,
+  dateRange,
+  windowSizeInMins,
+  variables,
+}: {
+  savedConfig: PromqlSavedChartConfig;
+  source?: ISource | null;
+  connectionId: string;
+  teamId: string;
+  dateRange: [Date, Date];
+  windowSizeInMins: number;
+  variables?: ChartVariable[];
+}): Promise<PrometheusMatrixResult[] | null> {
+  const connection = await getConnectionById(teamId, connectionId, true);
+  if (connection == null) {
+    throw new Error(`Connection ${connectionId} not found for PromQL alert`);
+  }
+
+  const stepSec = windowSizeInMins * 60;
+  const endSec = dateRange[1].getTime() / 1000;
+  // PromQL evaluates exactly at the given timestamps. We want the evaluation
+  // for the window [T, T+step) to happen at T+step, using the freshest data.
+  const startSec = dateRange[0].getTime() / 1000 + stepSec;
+  const promqlExpression =
+    variables && variables.length > 0
+      ? substitutePromqlChartConfigVariables({ ...savedConfig, variables })
+          .promqlExpression
+      : savedConfig.promqlExpression;
+
+  if (connection.isPrometheusEndpoint) {
+    // Proxy to the real Prometheus /api/v1/query_range
+    const url = joinPrometheusUpstreamUrl(
+      connection.host,
+      '/api/v1/query_range',
+    );
+    const params = new URLSearchParams({
+      query: promqlExpression,
+      start: String(startSec),
+      end: String(endSec),
+      step: String(stepSec),
+    });
+    for (const [key, value] of params.entries()) {
+      url.searchParams.set(key, value);
+    }
+    const resp = await fetch(url.toString(), {
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!resp.ok) {
+      throw new Error(
+        `Prometheus query_range returned HTTP ${resp.status} for PromQL alert`,
+      );
+    }
+    const json = (await resp.json()) as {
+      status?: string;
+      data?: {
+        result?: {
+          metric?: Record<string, string>;
+          values?: [number, string][];
+        }[];
+      };
+    };
+    if (json?.status !== 'success') {
+      throw new Error(
+        `Prometheus query_range returned status '${json?.status}' for PromQL alert`,
+      );
+    }
+    if (!Array.isArray(json?.data?.result)) {
+      return null;
+    }
+
+    // Return all series with all time-points so the caller can evaluate each
+    // window bucket individually (backfill support).
+    const results: PrometheusMatrixResult[] = json.data.result
+      .filter(s => s.values && s.values.length > 0)
+      .map(s => ({
+        metric: s.metric ?? {},
+        values: s.values!,
+      }));
+    return results.length > 0 ? results : null;
+  }
+
+  // ClickHouse prometheusQueryRange path — use the API ClickhouseClient so
+  // request-scoped logger/telemetry wiring is included.
+  const client = new ClickhouseClient({
+    host: connection.host,
+    username: connection.username,
+    password: connection.password,
+    requestTimeout: PROMETHEUS_CH_TIMEOUT_MS,
+  });
+
+  const startMs = Math.floor(startSec * 1000);
+  const endMs = Math.floor(endSec * 1000);
+  const stepSecRounded = Math.max(Math.floor(stepSec), 1);
+
+  const tableName = source?.from.tableName;
+  if (!tableName) {
+    throw new Error(
+      'A PromQL alert routed to ClickHouse must have a source with a valid TimeSeries table name. ' +
+        'Assign a source to this alert or switch to a Prometheus connection.',
+    );
+  }
+
+  const databaseName = source.from.databaseName;
+  if (!databaseName) {
+    throw new Error(
+      'A PromQL alert routed to ClickHouse must have a source with a valid database name. ' +
+        'Assign a source to this alert or switch to a Prometheus connection.',
+    );
+  }
+
+  try {
+    const resp = await queryPrometheusRangeFromClickHouse({
+      client,
+      databaseName,
+      tableName,
+      expr: promqlExpression,
+      startMs,
+      endMs,
+      stepSec: stepSecRounded,
+    });
+
+    const json = (await resp.json()) as {
+      data?: { tags: [string, string][]; time_series: [string, number][] }[];
+    };
+    if (!Array.isArray(json?.data) || json.data.length === 0) return null;
+
+    // Reuse formatMatrixResponse to convert { tags, time_series } rows into
+    // PrometheusMatrixResult[] — the same shape as the real Prometheus path.
+    const results = formatMatrixResponse(json.data);
+    return results.length > 0 ? results : null;
+  } finally {
+    await client.close();
+  }
+}
+
 export const processAlert = async (
   now: Date,
   details: AlertDetails,
@@ -1116,161 +1287,10 @@ export const processAlert = async (
       return;
     }
 
-    const chartConfig = getChartConfigFromAlert(
-      details,
-      connectionId,
-      dateRange,
-      windowSizeInMins,
-    );
-
-    if (chartConfig == null) {
-      evalOutcome = 'error';
-      logger.error(
-        {
-          chartConfig,
-          alertId: alert.id,
-        },
-        'Failed to build chart config',
-      );
-      return;
-    }
-
     const metadata = getMetadata(clickhouseClient);
-
-    // For saved search alerts, the WHERE clause may reference aliased columns
-    // from the saved search's select expression (e.g. `toString(Body) AS body`).
-    // The alert query itself uses count(*), not the saved search's select,
-    // so we render the saved search's select separately to discover aliases
-    // and inject them as WITH clauses into the alert query.
-    // Reused by the notification body's sample-row query, which resolves the
-    // same aliases against the same source.
+    // Populated below for SAVED_SEARCH alerts; referenced by the shared
+    // sampleLinesFor closure that may be called after the non-PromQL query path.
     let aliasWithClauses: BuilderChartConfigWithOptDateRange['with'];
-    if (details.taskType === AlertTaskType.SAVED_SEARCH) {
-      if (!isBuilderChartConfig(chartConfig)) {
-        logger.error({
-          chartConfig,
-          message:
-            'Found non-builder chart config for saved search alert, cannot compute WITH clauses',
-        });
-        throw new Error('Expected builder chart config for saved search alert');
-      }
-      try {
-        const withClauses = await computeAliasWithClauses(
-          details.savedSearch,
-          details.source,
-          metadata,
-        );
-        aliasWithClauses = withClauses;
-        if (withClauses) {
-          chartConfig.with = withClauses;
-        }
-      } catch (e) {
-        logger.warn(
-          { error: serializeError(e), alertId: alert.id },
-          'Failed to compute alias WITH clauses for alert check',
-        );
-      }
-    }
-
-    // Optimize chart config with materialized views, if available.
-    // materializedViews exists on Log and Trace sources.
-    const mvSource =
-      source?.kind === SourceKind.Log || source?.kind === SourceKind.Trace
-        ? source
-        : undefined;
-    const optimizedChartConfig =
-      isBuilderChartConfig(chartConfig) && mvSource?.materializedViews?.length
-        ? await tryOptimizeConfigWithMaterializedView(
-            chartConfig,
-            metadata,
-            clickhouseClient,
-            undefined,
-            mvSource,
-          )
-        : chartConfig;
-
-    // Readonly = 2 means the query is readonly but can still specify query settings.
-    // This is done only for Raw SQL configs because it carries a minor risk of conflict with
-    // existing settings (which may have readonly = 1) and is not required for builder
-    // chart configs, which are always rendered as select statements.
-    const clickHouseSettings = isRawSqlChartConfig(optimizedChartConfig)
-      ? { readonly: '2' }
-      : {};
-
-    // Query for alert data. If the query fails, record the error and exit
-    // without touching alert state or creating an AlertHistory.
-    let checksData;
-    const queryStartedAt = performance.now();
-    try {
-      checksData = await clickhouseClient.queryChartConfig({
-        config: optimizedChartConfig,
-        metadata,
-        opts: { clickhouse_settings: clickHouseSettings },
-        querySettings: source?.querySettings,
-      });
-      // SLO signal for alert data fetching (distinct from the end-to-end
-      // evaluation SLI): did ClickHouse serve the alert query, and how fast.
-      const queryDurationMs = performance.now() - queryStartedAt;
-      evaluationAnalytics.queryDurationMs = Math.round(queryDurationMs);
-      recordOperationOutcome({
-        operation: 'alerts.query',
-        outcome: 'success',
-        durationMs: queryDurationMs,
-        attributes: { alert_source: alert.source ?? 'unknown' },
-      });
-    } catch (e) {
-      const queryDurationMs = performance.now() - queryStartedAt;
-      // Time-to-failure — for QUERY_TIMEOUT this is roughly the configured
-      // evaluation timeout.
-      evaluationAnalytics.queryDurationMs = Math.round(queryDurationMs);
-      recordOperationOutcome({
-        operation: 'alerts.query',
-        outcome: 'error',
-        durationMs: queryDurationMs,
-        attributes: { alert_source: alert.source ?? 'unknown' },
-      });
-      evalOutcome = 'error';
-      const alertError = makeQueryAlertError(
-        e,
-        clickhouseClient.requestTimeoutMs,
-      );
-      alertQueryFailuresCounter.add(1, {
-        error_type:
-          alertError.type === AlertErrorType.QUERY_TIMEOUT
-            ? 'timeout'
-            : 'error',
-      });
-      logger.error(
-        {
-          alertId: alert.id,
-          errorType: alertError.type,
-          error: serializeError(e),
-        },
-        'Alert query failed, skipping state/history update',
-      );
-      // Record the error on the alert and as an ERROR history row for this
-      // window. ERROR rows are excluded from the due-ness gate and date-range
-      // computation, so the failed window is still retried/backfilled.
-      await alertProvider.recordAlertErrors(
-        alert.id,
-        [alertError],
-        nowInMinsRoundDown,
-        evaluationAnalytics,
-      );
-      return;
-    }
-
-    logger.info(
-      {
-        alertId: alert.id,
-        chartConfig,
-        optimizedChartConfig,
-        checksData,
-        checkStartTime: dateRange[0],
-        checkEndTime: dateRange[1],
-      },
-      `Received alert metric [${alert.source} source]`,
-    );
 
     // Track state per group (or one history if no groupBy)
     const histories = new Map<string, IAlertHistory>();
@@ -1467,6 +1487,459 @@ export const processAlert = async (
       }
     };
 
+    const isPromQL =
+      details.taskType === AlertTaskType.INLINE
+        ? isPromqlSavedChartConfig(details.chartConfig)
+        : details.taskType === AlertTaskType.TILE
+          ? isPromqlSavedChartConfig(details.tile.config)
+          : false;
+
+    if (isPromQL) {
+      const savedConfig =
+        details.taskType === AlertTaskType.INLINE
+          ? details.chartConfig
+          : details.taskType === AlertTaskType.TILE
+            ? details.tile.config
+            : undefined;
+
+      let promqlResults: PrometheusMatrixResult[] | null = null;
+      const queryStartedAt = performance.now();
+      try {
+        promqlResults = await evaluatePromqlAlert({
+          savedConfig: savedConfig as PromqlSavedChartConfig,
+          source: details.source,
+          connectionId,
+          teamId: alert.team._id.toString(),
+          dateRange,
+          windowSizeInMins,
+          variables:
+            details.taskType === AlertTaskType.TILE
+              ? getDashboardVariableDeclarations(details.dashboard.filters).map(
+                  declaration => ({
+                    ...declaration,
+                    values: [],
+                  }),
+                )
+              : undefined,
+        });
+
+        const queryDurationMs = performance.now() - queryStartedAt;
+        evaluationAnalytics.queryDurationMs = Math.round(queryDurationMs);
+        recordOperationOutcome({
+          operation: 'alerts.query',
+          outcome: 'success',
+          durationMs: queryDurationMs,
+          attributes: { alert_source: alert.source ?? 'unknown' },
+        });
+      } catch (e) {
+        const queryDurationMs = performance.now() - queryStartedAt;
+        evaluationAnalytics.queryDurationMs = Math.round(queryDurationMs);
+        recordOperationOutcome({
+          operation: 'alerts.query',
+          outcome: 'error',
+          durationMs: queryDurationMs,
+          attributes: { alert_source: alert.source ?? 'unknown' },
+        });
+        evalOutcome = 'error';
+        const alertError = makeQueryAlertError(e, PROMETHEUS_CH_TIMEOUT_MS);
+        alertQueryFailuresCounter.add(1, {
+          error_type:
+            alertError.type === AlertErrorType.QUERY_TIMEOUT
+              ? 'timeout'
+              : 'error',
+        });
+        logger.error(
+          {
+            alertId: alert.id,
+            errorType: alertError.type,
+            error: serializeError(e),
+          },
+          'PromQL alert query failed, skipping state/history update',
+        );
+        await alertProvider.recordAlertErrors(
+          alert.id,
+          [alertError],
+          nowInMinsRoundDown,
+          evaluationAnalytics,
+        );
+        return;
+      }
+
+      // Evaluate all series over the expected buckets so that missed or
+      // delayed execution windows can be backfilled correctly.
+      const expectedBuckets: Date[] = [];
+      const windowMs = windowSizeInMins * 60 * 1000;
+      for (
+        let t = dateRange[0].getTime();
+        t <= dateRange[1].getTime() - windowMs;
+        t += windowMs
+      ) {
+        expectedBuckets.push(new Date(t));
+      }
+      evaluationAnalytics.backfilledBuckets = Math.max(
+        0,
+        expectedBuckets.length - 1,
+      );
+
+      // Build a per-bucket lookup: timestamp (seconds) → per-series value map.
+      // key: series group string, value: numeric value at that bucket.
+      // Format group keys as k:v (consistent with builder alerts, not k:"v").
+      const bucketSeriesValues = new Map<
+        number,
+        Map<string, { value: number; attributes: Record<string, string> }>
+      >();
+
+      if (promqlResults != null) {
+        for (const series of promqlResults) {
+          // Build group key from labels — k:v format matches builder alerts.
+          // Keep __name__ in the group key to avoid collapsing distinct series.
+          const labelEntries = Object.entries(series.metric).sort(([a], [b]) =>
+            a.localeCompare(b),
+          );
+          const groupKey = labelEntries.map(([k, v]) => `${k}:${v}`).join(', ');
+          const attributes = Object.fromEntries(
+            labelEntries.filter(([k]) => k !== '__name__'),
+          );
+
+          for (const [tsSec, rawVal] of series.values) {
+            // Shift the evaluation instant back to the start of the bucket
+            let tsMs = Math.round(tsSec * 1000) - windowMs;
+            let nearestBucketMs = tsMs;
+            let minDiff = Infinity;
+            for (const b of expectedBuckets) {
+              const diff = Math.abs(b.getTime() - tsMs);
+              if (diff < minDiff && diff <= windowMs) {
+                minDiff = diff;
+                nearestBucketMs = b.getTime();
+              }
+            }
+            tsMs = nearestBucketMs;
+            const parsed = parseFloat(rawVal);
+            if (!Number.isFinite(parsed)) continue;
+
+            if (!bucketSeriesValues.has(tsMs)) {
+              bucketSeriesValues.set(tsMs, new Map());
+            }
+            // Keep the highest value if the same series appears twice in a bucket
+            const existing = bucketSeriesValues.get(tsMs)!.get(groupKey);
+            if (existing == null || parsed > existing.value) {
+              bucketSeriesValues.get(tsMs)!.set(groupKey, {
+                value: parsed,
+                attributes,
+              });
+            }
+          }
+        }
+      }
+
+      for (const bucketStart of expectedBuckets) {
+        // Prometheus query_range aligns response timestamps to step boundaries,
+        // so we can do an exact ms lookup rather than a tolerance scan.
+        const seriesForBucket = bucketSeriesValues.get(bucketStart.getTime());
+
+        if (!seriesForBucket || seriesForBucket.size === 0) {
+          alertEvaluationsCounter.add(1, { outcome: 'empty_bucket' });
+          logger.info(
+            { alertId: alert.id, bucketStart },
+            'No PromQL data for time bucket',
+          );
+
+          const zeroValueIsAlert = doesExceedThreshold(alert, 0);
+          const hasAlertsInPreviousMap = previousMap
+            .values()
+            .some(
+              h =>
+                h.state === AlertState.ALERT || h.state === AlertState.PENDING,
+            );
+
+          if (zeroValueIsAlert) {
+            const history = getOrCreateHistory('');
+            history.lastValues.push({ count: 0, startTime: bucketStart });
+            history.counts += 1;
+            if (shouldFireBasedOnConsecutiveWindows()) {
+              history.state = AlertState.ALERT;
+              history.fired = true;
+              latestAlertContext.set('', {
+                value: 0,
+                attributes: {},
+                startTime: bucketStart,
+              });
+            } else {
+              history.state = AlertState.PENDING;
+              history.fired =
+                previousMap.get(computeHistoryMapKey(alert.id, ''))?.fired ===
+                true;
+            }
+          } else if (!hasGroupBy || !hasAlertsInPreviousMap) {
+            const history = getOrCreateHistory('');
+            history.lastValues.push({ count: 0, startTime: bucketStart });
+          }
+          continue;
+        }
+
+        const bucketEvaluations = new Map<
+          string,
+          {
+            value: number;
+            attributes: Record<string, string>;
+            exceeds: boolean;
+          }
+        >();
+        for (const [
+          groupKey,
+          { value, attributes },
+        ] of seriesForBucket.entries()) {
+          const exceeds = doesExceedThreshold(alert, value);
+          const existing = bucketEvaluations.get(groupKey);
+          if (!existing || (!existing.exceeds && exceeds)) {
+            bucketEvaluations.set(groupKey, { value, attributes, exceeds });
+          }
+        }
+
+        for (const [groupKey, evaluation] of bucketEvaluations.entries()) {
+          const history = getOrCreateHistory(groupKey);
+
+          if (evaluation.exceeds) {
+            history.counts += 1;
+            if (shouldFireBasedOnConsecutiveWindows(groupKey)) {
+              history.state = AlertState.ALERT;
+              history.fired = true;
+              latestAlertContext.set(groupKey, {
+                value: evaluation.value,
+                attributes: evaluation.attributes,
+                startTime: bucketStart,
+              });
+            } else {
+              history.state = AlertState.PENDING;
+              history.fired =
+                previousMap.get(computeHistoryMapKey(alert.id, groupKey))
+                  ?.fired === true;
+            }
+          } else {
+            history.state = AlertState.OK;
+            history.counts = 0;
+          }
+          history.lastValues.push({
+            count: evaluation.value,
+            startTime: bucketStart,
+          });
+        }
+      }
+
+      // Auto-resolve: groups that were alerting/pending but absent from this run
+      if (hasGroupBy && previousMap && previousMap.size > 0) {
+        for (const [previousKey, previousHistory] of previousMap.entries()) {
+          const groupKey = extractGroupKeyFromMapKey(previousKey, alert.id);
+          if (
+            (previousHistory.state === AlertState.ALERT ||
+              previousHistory.state === AlertState.PENDING) &&
+            !histories.has(groupKey) &&
+            !doesExceedThreshold(alert, 0)
+          ) {
+            const history = getOrCreateHistory(groupKey);
+            history.lastValues.push({
+              count: 0,
+              startTime: expectedBuckets[0] ?? dateRange[1],
+            });
+          }
+        }
+      }
+
+      if (histories.size === 0) {
+        getOrCreateHistory('');
+      }
+
+      // Send notifications for state transitions
+      for (const [groupKey, history] of histories.entries()) {
+        const previousKey = computeHistoryMapKey(alert.id, groupKey);
+        let groupPrevious = previousMap.get(previousKey);
+
+        const hitAlertThisRun = latestAlertContext.has(groupKey);
+        if (hitAlertThisRun) {
+          const context = latestAlertContext.get(groupKey);
+          if (context) {
+            await trySendNotification({
+              state: AlertState.ALERT,
+              group: groupKey,
+              totalCount: context.value,
+              startTime: context.startTime,
+              attributes: context.attributes,
+            });
+            groupPrevious = {
+              ...(groupPrevious ?? {}),
+              state: AlertState.ALERT,
+              fired: true,
+            } as AggregatedAlertHistory;
+          }
+        }
+
+        await sendNotificationIfResolved(groupPrevious, history, groupKey);
+      }
+
+      flushNotificationTimings();
+      const historyRecords = Array.from(histories.values());
+      for (const record of historyRecords) {
+        record.analytics = evaluationAnalytics;
+      }
+      await alertProvider.updateAlertState(
+        alert.id,
+        historyRecords,
+        executionErrors,
+        dateRange,
+      );
+      return;
+    }
+
+    const chartConfig = getChartConfigFromAlert(
+      details,
+      connectionId,
+      dateRange,
+      windowSizeInMins,
+    );
+
+    if (chartConfig == null) {
+      evalOutcome = 'error';
+      logger.error(
+        {
+          chartConfig,
+          alertId: alert.id,
+        },
+        'Failed to build chart config',
+      );
+      return;
+    }
+
+    // For saved search alerts, the WHERE clause may reference aliased columns
+    // from the saved search's select expression (e.g. `toString(Body) AS body`).
+    // The alert query itself uses count(*), not the saved search's select,
+    // so we render the saved search's select separately to discover aliases
+    // and inject them as WITH clauses into the alert query.
+    if (details.taskType === AlertTaskType.SAVED_SEARCH) {
+      if (!isBuilderChartConfig(chartConfig)) {
+        logger.error({
+          chartConfig,
+          message:
+            'Found non-builder chart config for saved search alert, cannot compute WITH clauses',
+        });
+        throw new Error('Expected builder chart config for saved search alert');
+      }
+      try {
+        const withClauses = await computeAliasWithClauses(
+          details.savedSearch,
+          details.source,
+          metadata,
+        );
+        if (withClauses) {
+          chartConfig.with = withClauses;
+        }
+      } catch (e) {
+        logger.warn(
+          { error: serializeError(e), alertId: alert.id },
+          'Failed to compute alias WITH clauses for alert check',
+        );
+      }
+    }
+
+    // Optimize chart config with materialized views, if available.
+    // materializedViews exists on Log and Trace sources.
+    const mvSource =
+      source?.kind === SourceKind.Log || source?.kind === SourceKind.Trace
+        ? source
+        : undefined;
+    const optimizedChartConfig =
+      isBuilderChartConfig(chartConfig) && mvSource?.materializedViews?.length
+        ? await tryOptimizeConfigWithMaterializedView(
+            chartConfig,
+            metadata,
+            clickhouseClient,
+            undefined,
+            mvSource,
+          )
+        : chartConfig;
+
+    // Readonly = 2 means the query is readonly but can still specify query settings.
+    // This is done only for Raw SQL configs because it carries a minor risk of conflict with
+    // existing settings (which may have readonly = 1) and is not required for builder
+    // chart configs, which are always rendered as select statements.
+    const clickHouseSettings = isRawSqlChartConfig(optimizedChartConfig)
+      ? { readonly: '2' }
+      : {};
+
+    // Query for alert data. If the query fails, record the error and exit
+    // without touching alert state or creating an AlertHistory.
+    let checksData;
+    const queryStartedAt = performance.now();
+    try {
+      checksData = await clickhouseClient.queryChartConfig({
+        config: optimizedChartConfig,
+        metadata,
+        opts: { clickhouse_settings: clickHouseSettings },
+        querySettings: source?.querySettings,
+      });
+      // SLO signal for alert data fetching (distinct from the end-to-end
+      // evaluation SLI): did ClickHouse serve the alert query, and how fast.
+      const queryDurationMs = performance.now() - queryStartedAt;
+      evaluationAnalytics.queryDurationMs = Math.round(queryDurationMs);
+      recordOperationOutcome({
+        operation: 'alerts.query',
+        outcome: 'success',
+        durationMs: queryDurationMs,
+        attributes: { alert_source: alert.source ?? 'unknown' },
+      });
+    } catch (e) {
+      const queryDurationMs = performance.now() - queryStartedAt;
+      // Time-to-failure — for QUERY_TIMEOUT this is roughly the configured
+      // evaluation timeout.
+      evaluationAnalytics.queryDurationMs = Math.round(queryDurationMs);
+      recordOperationOutcome({
+        operation: 'alerts.query',
+        outcome: 'error',
+        durationMs: queryDurationMs,
+        attributes: { alert_source: alert.source ?? 'unknown' },
+      });
+      evalOutcome = 'error';
+      const alertError = makeQueryAlertError(
+        e,
+        clickhouseClient.requestTimeoutMs,
+      );
+      alertQueryFailuresCounter.add(1, {
+        error_type:
+          alertError.type === AlertErrorType.QUERY_TIMEOUT
+            ? 'timeout'
+            : 'error',
+      });
+      logger.error(
+        {
+          alertId: alert.id,
+          errorType: alertError.type,
+          error: serializeError(e),
+        },
+        'Alert query failed, skipping state/history update',
+      );
+      // Record the error on the alert and as an ERROR history row for this
+      // window. ERROR rows are excluded from the due-ness gate and date-range
+      // computation, so the failed window is still retried/backfilled.
+      await alertProvider.recordAlertErrors(
+        alert.id,
+        [alertError],
+        nowInMinsRoundDown,
+        evaluationAnalytics,
+      );
+      return;
+    }
+
+    logger.info(
+      {
+        alertId: alert.id,
+        chartConfig,
+        optimizedChartConfig,
+        checksData,
+        checkStartTime: dateRange[0],
+        checkEndTime: dateRange[1],
+      },
+      `Received alert metric [${alert.source} source]`,
+    );
+
     const meta = getResponseMetadata(chartConfig, checksData);
     if (!meta) {
       evalOutcome = 'error';
@@ -1527,7 +2000,7 @@ export const processAlert = async (
       return;
     }
 
-    // ── Time-series path (Line/StackedBar charts) ──
+    // Standard time-series alert evaluation (Line/StackedBar charts).
     const expectedBuckets = timeBucketByGranularity(
       dateRange[0],
       dateRange[1],
