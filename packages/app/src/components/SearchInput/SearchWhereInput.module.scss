@@ -65,36 +65,3 @@
     height: 34px;
   }
 }
-
-/* Height is the input's first line, so the hint stays there as it grows. */
-.shortcutHint {
-  position: absolute;
-  top: 0;
-  right: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  pointer-events: none;
-
-  &.sizeXs {
-    height: 30px;
-  }
-
-  &.sizeSm {
-    height: 36px;
-  }
-
-  /* Perfect square Kbd: Mantine Kbd renders as <kbd> */
-  /* stylelint-disable-next-line selector-pseudo-class-no-unknown */
-  :global(kbd) {
-    width: 22px;
-    height: 22px;
-    min-width: 22px;
-    min-height: 22px;
-    padding: 0;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    box-sizing: border-box;
-  }
-}

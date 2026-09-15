@@ -79,13 +79,17 @@ describe('SearchWhereInput', () => {
 
   describe('Lucene Mode', () => {
     it('renders Lucene input when whereLanguage is lucene', () => {
-      renderWithMantine(<TestWrapper defaultLanguage="lucene" />);
+      const { container } = renderWithMantine(
+        <TestWrapper defaultLanguage="lucene" />,
+      );
 
       // Lucene mode uses a textarea from AutocompleteInput
       const input = screen.getByPlaceholderText(
         /Search your events w\/ Lucene/i,
       );
       expect(input).toBeInTheDocument();
+      // `/` and `s` still focus the input; the overlay keycap is gone.
+      expect(container.querySelector('kbd')).not.toBeInTheDocument();
     });
 
     it('allows typing in Lucene mode', async () => {

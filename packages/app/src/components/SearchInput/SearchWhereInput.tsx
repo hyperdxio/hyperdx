@@ -1,6 +1,6 @@
 import { FieldPath, useController, UseControllerProps } from 'react-hook-form';
 import { TableConnectionChoice } from '@hyperdx/common-utils/dist/core/metadata';
-import { ActionIcon, Box, Flex, Kbd, Tooltip } from '@mantine/core';
+import { ActionIcon, Box, Flex, Tooltip } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { IconHelp } from '@tabler/icons-react';
 
@@ -259,15 +259,6 @@ export default function SearchWhereInput({
               sourceId={sourceId}
               enableVariables={enableVariables}
             />
-          )}
-          {enableHotkey && (
-            <Box
-              className={`${styles.shortcutHint} ${sizeClass}`}
-              title="Press / or s to focus search"
-              aria-hidden
-            >
-              <Kbd size="xs">/</Kbd>
-            </Box>
           )}
         </Box>
       </Box>
