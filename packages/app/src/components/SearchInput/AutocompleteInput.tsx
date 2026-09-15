@@ -5,6 +5,7 @@ import { Loader, Popover, Textarea, UnstyledButton } from '@mantine/core';
 
 import type { TokenInfo } from '@/hooks/useAutoCompleteOptions';
 import { useQueryHistory } from '@/utils';
+import { isImeCompositionKey } from '@/utils/ime';
 
 import InputLanguageSwitch from './InputLanguageSwitch';
 
@@ -269,6 +270,7 @@ export default function AutocompleteInput({
               }
               if (
                 e.key === 'Enter' &&
+                !isImeCompositionKey(e) &&
                 e.target instanceof HTMLTextAreaElement
               ) {
                 if (
