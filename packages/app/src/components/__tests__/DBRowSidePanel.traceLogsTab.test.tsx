@@ -1,5 +1,10 @@
 import React from 'react';
-import { TSource } from '@hyperdx/common-utils/dist/types';
+import {
+  SourceKind,
+  TLogSource,
+  TSource,
+  TTraceSource,
+} from '@hyperdx/common-utils/dist/types';
 import { MantineProvider } from '@mantine/core';
 import { act, render } from '@testing-library/react';
 
@@ -52,29 +57,37 @@ jest.mock('../DBRowDataPanel', () => ({
   getMapColumnNames: () => [],
 }));
 
-// Test fixtures carry only the fields the panel reads; TSource's full shape is
-// irrelevant here and spelling it out would bury the gating under boilerplate.
-const asSource = (source: Record<string, unknown>) =>
-  source as unknown as TSource;
-
-const TRACE_SOURCE_WITH_LOGS = asSource({
+const TRACE_SOURCE_WITH_LOGS: TTraceSource = {
   id: 'trace-src',
-  kind: 'trace',
+  kind: SourceKind.Trace,
+  name: 'Demo traces',
+  connection: 'conn',
+  from: { databaseName: 'default', tableName: 'otel_traces' },
+  timestampValueExpression: 'Timestamp',
+  defaultTableSelectExpression: 'Timestamp, ServiceName, SpanName',
+  durationExpression: 'Duration',
+  durationPrecision: 9,
   traceIdExpression: 'TraceId',
   spanIdExpression: 'SpanId',
+  parentSpanIdExpression: 'ParentSpanId',
+  spanNameExpression: 'SpanName',
+  spanKindExpression: 'SpanKind',
+  resourceAttributesExpression: 'ResourceAttributes',
   logSourceId: 'log-src',
-  timestampValueExpression: 'Timestamp',
-  resourceAttributesExpression: 'ResourceAttributes',
-});
+};
 
-const LOG_SOURCE = asSource({
+const LOG_SOURCE: TLogSource = {
   id: 'log-src',
-  kind: 'log',
-  traceSourceId: 'trace-src',
-  traceIdExpression: 'TraceId',
+  kind: SourceKind.Log,
+  name: 'Demo logs',
+  connection: 'conn',
+  from: { databaseName: 'default', tableName: 'otel_logs' },
   timestampValueExpression: 'Timestamp',
+  defaultTableSelectExpression: 'Timestamp, ServiceName, SeverityText, Body',
+  traceIdExpression: 'TraceId',
+  traceSourceId: 'trace-src',
   resourceAttributesExpression: 'ResourceAttributes',
-});
+};
 
 jest.mock('@/source', () => ({
   __esModule: true,
@@ -259,9 +272,7 @@ describe('DBRowSidePanelInner — trace logs tab', () => {
   });
 
   it('hides the tab when the trace source has no correlated log source', () => {
-    renderPanel(
-      asSource({ ...TRACE_SOURCE_WITH_LOGS, logSourceId: undefined }),
-    );
+    renderPanel({ ...TRACE_SOURCE_WITH_LOGS, logSourceId: undefined });
 
     expect(tabValues()).not.toContain(Tab.Logs);
   });

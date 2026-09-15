@@ -1,6 +1,9 @@
 import React from 'react';
-import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
-import { TLogSource } from '@hyperdx/common-utils/dist/types';
+import {
+  BuilderChartConfigWithDateRange,
+  SourceKind,
+  TLogSource,
+} from '@hyperdx/common-utils/dist/types';
 import { MantineProvider } from '@mantine/core';
 import { act, render, screen } from '@testing-library/react';
 
@@ -99,13 +102,9 @@ const DATE_RANGE: [Date, Date] = [
   new Date('2024-05-01T11:00:00Z'),
 ];
 
-// Only the fields the panel reads; the rest of TLogSource is irrelevant here.
-const asLogSource = (source: Record<string, unknown>) =>
-  source as unknown as TLogSource;
-
-const LOG_SOURCE = asLogSource({
+const LOG_SOURCE: TLogSource = {
   id: 'log-src',
-  kind: 'log',
+  kind: SourceKind.Log,
   name: 'Demo logs',
   connection: 'conn',
   from: { databaseName: 'default', tableName: 'otel_logs' },
@@ -114,7 +113,7 @@ const LOG_SOURCE = asLogSource({
   bodyExpression: 'Body',
   implicitColumnExpression: 'Body',
   traceIdExpression: 'TraceId',
-});
+};
 
 function renderPanel({
   source = LOG_SOURCE,
@@ -177,10 +176,10 @@ describe('TraceLogsPanel', () => {
 
   it("keeps the source's mandatory table filter ahead of the trace scope", () => {
     renderPanel({
-      source: asLogSource({
+      source: {
         ...LOG_SOURCE,
         tableFilterExpression: "ServiceName != 'internal'",
-      }),
+      },
     });
 
     const config = mockRowTableProps.current.config!;
@@ -281,12 +280,12 @@ describe('TraceLogsPanel', () => {
     ['the source no longer resolves', { source: null }],
     [
       'the source has no trace id column',
-      { source: asLogSource({ ...LOG_SOURCE, traceIdExpression: undefined }) },
+      { source: { ...LOG_SOURCE, traceIdExpression: undefined } },
     ],
     // `min(1)` on the schema accepts a space, so this reaches the panel.
     [
       'the trace id column is whitespace',
-      { source: asLogSource({ ...LOG_SOURCE, traceIdExpression: '  ' }) },
+      { source: { ...LOG_SOURCE, traceIdExpression: '  ' } },
     ],
   ])('explains itself instead of querying when %s', (_label, props) => {
     renderPanel(props);
