@@ -243,10 +243,14 @@ test.describe('Alert Creation', { tag: ['@alerts', '@full-stack'] }, () => {
             .getByRole('link')
             .filter({ hasText: tileName }),
         ).toBeVisible({ timeout: 10000 });
-        // Tile alerts have no Terraform resource, so they must not be offered
-        // for import — this is the eligibility branch in AlertRowMenu.
+        // This tile's name is unique and non-blank on a dashboard nothing else
+        // manages, so the provider can address it and the export is offered.
+        // The withheld cases (blank or duplicated tile name, provisioned or
+        // missing dashboard) are covered in iac.int.test.ts and iac.test.ts —
+        // reproducing them here would mean driving the tile editor twice for a
+        // branch that never reaches the browser.
         await alertsPage.openRowMenu(alertsPage.getAlertCardByName(tileName));
-        await expect(alertsPage.terraformMenuItem).toBeHidden();
+        await expect(alertsPage.terraformMenuItem).toBeVisible();
       });
     },
   );
