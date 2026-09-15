@@ -31,20 +31,6 @@ export function getStoredLanguage(): 'sql' | 'lucene' | null {
   return null;
 }
 
-/**
- * The WHERE language a URL param names, or undefined when it names none.
- *
- * One reading of the param for every view that shares it, so the same URL can't
- * run as Lucene in one and SQL in another. Callers supply their own fallback:
- * `?? 'lucene'` for what a query runs as, `?? getStoredLanguage()` for what an
- * input offers when the URL is silent.
- */
-export function resolveWhereLanguage(
-  urlValue: string | null | undefined,
-): 'sql' | 'lucene' | undefined {
-  return urlValue === 'sql' || urlValue === 'lucene' ? urlValue : undefined;
-}
-
 function setStoredLanguage(lang: 'sql' | 'lucene'): void {
   try {
     if (typeof window !== 'undefined')

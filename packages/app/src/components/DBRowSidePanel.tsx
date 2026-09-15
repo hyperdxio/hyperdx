@@ -562,16 +562,6 @@ export const DBRowSidePanelInner = ({
   // The displayed row is itself one of the logs the tab lists, so picking one
   // is a row change rather than a source hop.
   const isOwnTraceLogSource = traceLogSourceId === source.id;
-  // The columns the reader picked on the search page, handed to the tab
-  // whenever these logs are that search's rows. Read from the parent context
-  // rather than `dbSqlRowTableConfig`, which is nulled for nested rows: a
-  // drilldown changes which row is shown, not which columns the reader chose or
-  // which select their ids were built from. Undefined once the searched source
-  // is no longer the one the logs come from, where neither would hold.
-  const traceLogsSelect =
-    isOwnTraceLogSource && parentContext.source?.id === traceLogSourceId
-      ? parentContext.dbSqlRowTableConfig?.select
-      : undefined;
 
   const enableServiceMap = traceId && traceSourceId;
 
@@ -1175,20 +1165,6 @@ export const DBRowSidePanelInner = ({
             logSourceId={traceLogSourceId}
             traceId={traceId}
             dateRange={oneHourRange}
-            selectOverride={traceLogsSelect}
-            // Row ids are built from the selected columns, so the row on screen
-            // is only findable among the tab's rows when the table that
-            // produced its id selected the same ones. That holds at the root
-            // frame — the search's table, whose select the tab reuses. Deeper
-            // in, the id could have come from any panel that pushed a frame
-            // (Surrounding Context falls back to the source's own columns for
-            // nested rows), and an id that cannot match leaves the table paging
-            // through the window hunting for it.
-            highlightedRowId={
-              traceLogsSelect != null && !hasActiveStacks
-                ? activeRowId
-                : undefined
-            }
             onNavigateToLog={handleTraceLogNavigate}
           />
         </ErrorBoundary>

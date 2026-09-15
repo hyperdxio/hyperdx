@@ -1,34 +1,37 @@
 import React from 'react';
-import type { Control } from 'react-hook-form';
-import {
-  BuilderChartConfigWithDateRange,
-  TLogSource,
-} from '@hyperdx/common-utils/dist/types';
+import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
+import { TLogSource } from '@hyperdx/common-utils/dist/types';
 import { MantineProvider } from '@mantine/core';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 
 const mockQueryStore: Record<string, unknown> = {};
-const mockSetters: Record<string, jest.Mock> = {};
-function setterFor(key: string) {
-  if (!mockSetters[key]) mockSetters[key] = jest.fn();
-  return mockSetters[key];
-}
-
 jest.mock('nuqs', () => {
   const actual = jest.requireActual('nuqs');
   return {
     ...actual,
-    useQueryState: (key: string) => {
-      if (!mockSetters[key]) mockSetters[key] = jest.fn();
-      return [mockQueryStore[key] ?? null, mockSetters[key]];
-    },
+    useQueryState: (key: string) => [mockQueryStore[key] ?? null, jest.fn()],
   };
 });
+
+jest.mock('next/link', () => ({
+  __esModule: true,
+  default: ({
+    href,
+    children,
+    ...rest
+  }: {
+    href: string;
+    children: React.ReactNode;
+  }) => (
+    <a href={href} {...rest}>
+      {children}
+    </a>
+  ),
+}));
 
 type RowTableProps = {
   config?: BuilderChartConfigWithDateRange;
   sourceId?: string;
-  highlightedLineId?: string;
   onRowDetailsClick?: (
     rowWhere: { where: string; aliasWith: unknown[] },
     row: Record<string, unknown>,
@@ -54,61 +57,27 @@ jest.mock('../DBRowTable', () => {
   };
 });
 
-type FilterForm = { logWhere: string; logWhereLanguage: string };
-
-let mockStoredLanguage = 'lucene';
-
-jest.mock('../SearchInput/SearchWhereInput', () => {
-  const rhf =
-    jest.requireActual<typeof import('react-hook-form')>('react-hook-form');
-  return {
-    __esModule: true,
-    default: ({
-      control,
-      name,
-      onSubmit,
-    }: {
-      control: Control<FilterForm>;
-      name: keyof FilterForm;
-      onSubmit?: () => void;
-    }) => {
-      // Surface the form's live value so a test can see what the user would.
-      const value = rhf.useWatch({ control, name });
-      const language = rhf.useWatch({ control, name: 'logWhereLanguage' });
-      return (
-        <>
-          <span data-testid="log-filter-value">{String(value ?? '')}</span>
-          <span data-testid="log-filter-language">
-            {String(language ?? '')}
-          </span>
-          {/* Stands in for pressing enter in the real input. */}
-          <button
-            type="button"
-            data-testid="submit-log-filter"
-            onClick={onSubmit}
-          >
-            submit
-          </button>
-        </>
-      );
-    },
-    getStoredLanguage: () => mockStoredLanguage,
-    resolveWhereLanguage: (v: unknown) =>
-      v === 'sql' || v === 'lucene' ? v : undefined,
-  };
-});
-
 // A real context so `use(RowSidePanelContext)` works without pulling in the
 // side panel (which imports this component back).
-const mockToggleColumn = jest.fn();
 jest.mock('../DBRowSidePanel', () => {
   const react = jest.requireActual<typeof React>('react');
   return {
     __esModule: true,
     RowSidePanelContext: react.createContext({
-      // What the search page hands down: its own columns and their toggle.
+      // What the search page hands down: its own columns and their toggle, and
+      // a builder for links back into the full search.
       displayedColumns: ['Timestamp', 'Body'],
-      toggleColumn: mockToggleColumn,
+      toggleColumn: jest.fn(),
+      generateSearchUrl: ({
+        where,
+        whereLanguage,
+        source,
+      }: {
+        where: string;
+        whereLanguage: string;
+        source?: { id: string };
+      }) =>
+        `/search?where=${encodeURIComponent(where)}&whereLanguage=${whereLanguage}&source=${source?.id}`,
     }),
     deriveRowSidePanelContextForSource: (parent: unknown) => parent,
   };
@@ -150,47 +119,45 @@ const LOG_SOURCE = asLogSource({
 function renderPanel({
   source = LOG_SOURCE,
   onNavigateToLog = jest.fn(),
-  selectOverride,
   traceId = TRACE_ID,
-  highlightedRowId,
 }: {
   /** Null for a source that no longer resolves. */
   source?: TLogSource | null;
   onNavigateToLog?: jest.Mock;
-  selectOverride?: string;
   traceId?: string;
-  highlightedRowId?: string;
 } = {}) {
   mockUseSource.mockReturnValue({
     data: source ?? undefined,
     isLoading: false,
   });
-  // A fresh element per render: React bails out of re-rendering an identical one.
-  const tree = () => (
+  render(
     <MantineProvider>
       <TraceLogsPanel
         logSourceId="log-src"
         traceId={traceId}
         dateRange={DATE_RANGE}
-        selectOverride={selectOverride}
-        highlightedRowId={highlightedRowId}
         onNavigateToLog={onNavigateToLog}
       />
-    </MantineProvider>
+    </MantineProvider>,
   );
-  const { rerender } = render(tree());
-  return { onNavigateToLog, rerender: () => rerender(tree()) };
+  return { onNavigateToLog };
+}
+
+function searchWhere() {
+  const href = screen
+    .getByTestId('trace-logs-open-in-search')
+    .getAttribute('href')!;
+  return decodeURIComponent(
+    new URLSearchParams(href.split('?')[1]).get('where')!,
+  );
 }
 
 describe('TraceLogsPanel', () => {
   beforeEach(() => {
     Object.keys(mockQueryStore).forEach(k => delete mockQueryStore[k]);
-    Object.keys(mockSetters).forEach(k => delete mockSetters[k]);
     mockRowTableProps.current = {};
-    mockUseSource.mockReset();
     mockRowTableContext.current = {};
-    mockToggleColumn.mockReset();
-    mockStoredLanguage = 'lucene';
+    mockUseSource.mockReset();
   });
 
   it('scopes the table to the trace without spending the where clause', () => {
@@ -205,7 +172,6 @@ describe('TraceLogsPanel', () => {
     // Chronological: inside a trace that is execution order.
     expect(config.orderBy).toBe('Timestamp ASC');
     expect(config.dateRange).toBe(DATE_RANGE);
-    // One page to start; the table pages on scroll from here.
     expect(config.limit).toEqual({ limit: 200 });
   });
 
@@ -227,7 +193,7 @@ describe('TraceLogsPanel', () => {
     expect(config.source).toBe('log-src');
   });
 
-  it('applies the waterfall log filter and its language from the URL', () => {
+  it("applies the waterfall's log filter and its language", () => {
     mockQueryStore.logWhere = "SeverityText = 'error'";
     mockQueryStore.logWhereLanguage = 'sql';
     renderPanel();
@@ -237,93 +203,21 @@ describe('TraceLogsPanel', () => {
     expect(config.whereLanguage).toBe('sql');
   });
 
-  it('runs a URL filter that carries no language as Lucene, as the waterfall does', () => {
-    // A SQL editor preference must not reinterpret a filter the URL left
-    // unlabelled — the waterfall would run it as Lucene.
-    mockStoredLanguage = 'sql';
-    mockQueryStore.logWhere = 'SeverityText:"error"';
-    renderPanel();
+  it('escapes a trace id that carries SQL metacharacters', () => {
+    renderPanel({ traceId: "abc' OR 1=1--" });
 
-    expect(mockRowTableProps.current.config?.whereLanguage).toBe('lucene');
-    expect(screen.getByTestId('log-filter-language')).toHaveTextContent(
-      'lucene',
-    );
+    expect(mockRowTableProps.current.config?.filters).toEqual([
+      { type: 'sql', condition: "TraceId='abc\\' OR 1=1--'" },
+    ]);
   });
 
-  it('offers the stored editor preference when there is no filter to interpret', () => {
-    mockStoredLanguage = 'sql';
-    renderPanel();
-
-    expect(screen.getByTestId('log-filter-language')).toHaveTextContent('sql');
-  });
-
-  describe('when the logs come from the searched source', () => {
-    // The reader's chosen columns, which differ from the source default.
-    const SEARCH_SELECT = 'Timestamp, Body';
-
-    it("reuses the search's columns so row ids match the highlighted row", () => {
-      renderPanel({ selectOverride: SEARCH_SELECT });
-
-      const config = mockRowTableProps.current.config!;
-      expect(config.select).toBe(SEARCH_SELECT);
-      // ...while the trace scope and ordering still come from this panel.
-      expect(config.filters).toEqual([
-        { type: 'sql', condition: `TraceId='${TRACE_ID}'` },
-      ]);
-      expect(config.where).toBe('');
-      expect(config.orderBy).toBe('Timestamp ASC');
-      expect(config.dateRange).toBe(DATE_RANGE);
-      // Source-level fields still come from the log source, not the config.
-      expect(config.source).toBe('log-src');
-    });
-
-    it('leaves the remove-column action in place, since the columns are shared', () => {
-      renderPanel({ selectOverride: SEARCH_SELECT });
-
-      expect(mockRowTableContext.current.toggleColumn).toBe(mockToggleColumn);
-    });
-  });
-
-  it('drops the remove-column action when showing its own columns', () => {
-    // Otherwise the header's × maps by index onto the *search* table's select
-    // and drops an unrelated column from the search results.
+  it('drops the remove-column action, which belongs to the searched table', () => {
+    // Otherwise the header's × maps by index onto the search table's select and
+    // drops an unrelated column from the search results.
     renderPanel();
 
     expect(mockRowTableContext.current.toggleColumn).toBeUndefined();
     expect(mockRowTableContext.current.displayedColumns).toBeUndefined();
-  });
-
-  it('re-seeds the filter input when the URL filter changes underneath it', () => {
-    mockQueryStore.logWhere = 'SeverityText:"error"';
-    const { rerender } = renderPanel();
-    expect(screen.getByTestId('log-filter-value')).toHaveTextContent(
-      'SeverityText:"error"',
-    );
-
-    // Browser back restores an earlier filter without this form touching it.
-    mockQueryStore.logWhere = 'ServiceName:"cart"';
-    act(() => rerender());
-
-    expect(screen.getByTestId('log-filter-value')).toHaveTextContent(
-      'ServiceName:"cart"',
-    );
-    expect(mockRowTableProps.current.config?.where).toBe('ServiceName:"cart"');
-  });
-
-  it('submits the log filter without touching the spans filter', async () => {
-    mockQueryStore.logWhere = 'SeverityText:"error"';
-    mockQueryStore.logWhereLanguage = 'sql';
-    renderPanel();
-
-    await act(async () => {
-      fireEvent.click(screen.getByTestId('submit-log-filter'));
-    });
-
-    expect(setterFor('logWhere')).toHaveBeenCalledWith('SeverityText:"error"');
-    expect(setterFor('logWhereLanguage')).toHaveBeenCalledWith('sql');
-    // The waterfall's own filter is not this form's to write.
-    expect(setterFor('traceWhere')).not.toHaveBeenCalled();
-    expect(setterFor('traceWhereLanguage')).not.toHaveBeenCalled();
   });
 
   it("labels a picked row with the log's body", () => {
@@ -356,41 +250,48 @@ describe('TraceLogsPanel', () => {
     expect(onNavigateToLog).toHaveBeenCalledWith('row-2', [], 'Log');
   });
 
-  it('hands the row to highlight to the table', () => {
-    renderPanel({ highlightedRowId: "Timestamp='2024-05-01 10:00:00'" });
+  describe('open in search', () => {
+    it('carries the trace scope in the filter language, with the filter', () => {
+      mockQueryStore.logWhere = 'SeverityText:"error"';
+      renderPanel();
 
-    expect(mockRowTableProps.current.highlightedLineId).toBe(
-      "Timestamp='2024-05-01 10:00:00'",
-    );
-  });
+      expect(searchWhere()).toBe(
+        `TraceId:"${TRACE_ID}" AND (SeverityText:"error")`,
+      );
+    });
 
-  it('escapes a trace id that carries SQL metacharacters', () => {
-    renderPanel({ traceId: "abc' OR 1=1--" });
+    it('scopes to the trace alone when no filter is set', () => {
+      renderPanel();
 
-    expect(mockRowTableProps.current.config?.filters).toEqual([
-      { type: 'sql', condition: "TraceId='abc\\' OR 1=1--'" },
-    ]);
-  });
+      expect(searchWhere()).toBe(`TraceId:"${TRACE_ID}"`);
+    });
 
-  it('explains itself when the correlated log source no longer resolves', () => {
-    renderPanel({ source: null });
+    it('writes the trace scope as SQL when the filter runs as SQL', () => {
+      mockQueryStore.logWhereLanguage = 'sql';
+      mockQueryStore.logWhere = "SeverityText = 'error'";
+      renderPanel();
 
-    expect(screen.getByText('Correlated log source not found')).toBeVisible();
-    expect(mockRowTableProps.current.config).toBeUndefined();
+      expect(searchWhere()).toBe(
+        `TraceId='${TRACE_ID}' AND (SeverityText = 'error')`,
+      );
+    });
   });
 
   it.each([
-    ['undefined', undefined],
-    ['whitespace', '   '],
-  ])(
-    'explains itself instead of querying when the trace id column is %s',
-    (_label, traceIdExpression) => {
-      renderPanel({
-        source: asLogSource({ ...LOG_SOURCE, traceIdExpression }),
-      });
+    ['the source no longer resolves', { source: null }],
+    [
+      'the source has no trace id column',
+      { source: asLogSource({ ...LOG_SOURCE, traceIdExpression: undefined }) },
+    ],
+    // `min(1)` on the schema accepts a space, so this reaches the panel.
+    [
+      'the trace id column is whitespace',
+      { source: asLogSource({ ...LOG_SOURCE, traceIdExpression: '  ' }) },
+    ],
+  ])('explains itself instead of querying when %s', (_label, props) => {
+    renderPanel(props);
 
-      expect(screen.getByText('No trace ID column configured')).toBeVisible();
-      expect(mockRowTableProps.current.config).toBeUndefined();
-    },
-  );
+    expect(screen.getByText('Correlated logs unavailable')).toBeVisible();
+    expect(mockRowTableProps.current.config).toBeUndefined();
+  });
 });

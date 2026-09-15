@@ -1,5 +1,5 @@
 import React from 'react';
-import { TLogSource, TSource } from '@hyperdx/common-utils/dist/types';
+import { TSource } from '@hyperdx/common-utils/dist/types';
 import { MantineProvider } from '@mantine/core';
 import { act, render } from '@testing-library/react';
 
@@ -54,8 +54,8 @@ jest.mock('../DBRowDataPanel', () => ({
 
 // Test fixtures carry only the fields the panel reads; TSource's full shape is
 // irrelevant here and spelling it out would bury the gating under boilerplate.
-const asSource = <T = TSource,>(source: Record<string, unknown>) =>
-  source as unknown as T;
+const asSource = (source: Record<string, unknown>) =>
+  source as unknown as TSource;
 
 const TRACE_SOURCE_WITH_LOGS = asSource({
   id: 'trace-src',
@@ -104,8 +104,6 @@ jest.mock('@/TabBar', () => ({
 type TraceLogsPanelProps = {
   logSourceId?: string;
   traceId?: string;
-  highlightedRowId?: string;
-  selectOverride?: unknown;
   onNavigateToLog?: (
     rowId: string,
     aliasWith: unknown[],
@@ -176,10 +174,7 @@ jest.mock('@/useFormatTime', () => ({
 }));
 
 // NOTE: imported after the mock factories above.
-import {
-  DBRowSidePanelInner,
-  RowSidePanelContext,
-} from '@/components/DBRowSidePanel';
+import { DBRowSidePanelInner } from '@/components/DBRowSidePanel';
 import { Tab } from '@/components/DBRowSidePanel.types';
 import useSidePanelStack from '@/hooks/useSidePanelStack';
 
@@ -208,43 +203,17 @@ const ROW_WITH_TRACE = {
   __hdx_body: 'a log line',
 };
 
-// What the search page provides: the table config behind the row, whose
-// `select` decides what a row id is made of.
-const SEARCH_TABLE_CONFIG = {
-  connection: 'conn',
-  from: { databaseName: 'default', tableName: 'otel_logs' },
-  timestampValueExpression: 'Timestamp',
-  select: 'Timestamp, Body',
-  where: '',
-  whereLanguage: 'lucene' as const,
-  dateRange: [new Date(0), new Date(1)] as [Date, Date],
-};
-
-function renderPanel(
-  source: TSource,
-  { rowId = 'row-1', withSearchTableConfig = false } = {},
-) {
+function renderPanel(source: TSource, { rowId = 'row-1' } = {}) {
   function Harness() {
     const sidePanelStack = useSidePanelStack({ initialRowId: rowId });
     return (
-      <RowSidePanelContext
-        value={{
-          source: withSearchTableConfig
-            ? asSource<TLogSource>(LOG_SOURCE)
-            : undefined,
-          dbSqlRowTableConfig: withSearchTableConfig
-            ? SEARCH_TABLE_CONFIG
-            : undefined,
-        }}
-      >
-        <DBRowSidePanelInner
-          source={source}
-          rowId={rowId}
-          aliasWith={[]}
-          onClose={jest.fn()}
-          sidePanelStack={sidePanelStack}
-        />
-      </RowSidePanelContext>
+      <DBRowSidePanelInner
+        source={source}
+        rowId={rowId}
+        aliasWith={[]}
+        onClose={jest.fn()}
+        sidePanelStack={sidePanelStack}
+      />
     );
   }
   return render(
@@ -279,8 +248,6 @@ describe('DBRowSidePanelInner — trace logs tab', () => {
     expect(tabValues()).toContain(Tab.Logs);
     expect(mockTraceLogsProps.current.logSourceId).toBe('log-src');
     expect(mockTraceLogsProps.current.traceId).toBe(TRACE_ID);
-    // Nothing to highlight: the row on screen is a span, not one of these logs.
-    expect(mockTraceLogsProps.current.highlightedRowId).toBeUndefined();
   });
 
   it('offers the tab on a log, pointed at its own source', () => {
@@ -289,46 +256,6 @@ describe('DBRowSidePanelInner — trace logs tab', () => {
 
     expect(tabValues()).toContain(Tab.Logs);
     expect(mockTraceLogsProps.current.logSourceId).toBe('log-src');
-  });
-
-  it("shares the search's columns, and the row id built from them", () => {
-    mockQueryStore.sidePanelTab = Tab.Logs;
-    renderPanel(LOG_SOURCE, { withSearchTableConfig: true });
-
-    expect(mockTraceLogsProps.current.selectOverride).toBe(
-      SEARCH_TABLE_CONFIG.select,
-    );
-    expect(mockTraceLogsProps.current.highlightedRowId).toBe('row-1');
-  });
-
-  it("keeps the search's columns after drilling into another log", () => {
-    // A drilldown changes which row is shown, not which columns the reader
-    // chose, so the list must not silently switch column sets.
-    mockQueryStore.sidePanelTab = Tab.Logs;
-    mockQueryStore.sidePanelStackRoot = 'row-1';
-    mockQueryStore.sidePanelNavStack = [
-      { rowId: 'row-2', aliasWith: [], label: 'another log line' },
-    ];
-    renderPanel(LOG_SOURCE, { withSearchTableConfig: true });
-
-    expect(mockTraceLogsProps.current.selectOverride).toBe(
-      SEARCH_TABLE_CONFIG.select,
-    );
-    // The highlight goes, though: a nested row's id may have been built by
-    // another panel selecting other columns (Surrounding Context falls back to
-    // the source's own), and an unmatchable id costs a paging hunt.
-    expect(mockTraceLogsProps.current.highlightedRowId).toBeUndefined();
-  });
-
-  it('withholds the highlight when the tab selects its own columns', () => {
-    // A row id is built from the selected columns, so an id from a table
-    // selecting something else can never match one of these rows — and the
-    // table would page through the window hunting for it.
-    mockQueryStore.sidePanelTab = Tab.Logs;
-    renderPanel(LOG_SOURCE);
-
-    expect(mockTraceLogsProps.current.selectOverride).toBeUndefined();
-    expect(mockTraceLogsProps.current.highlightedRowId).toBeUndefined();
   });
 
   it('hides the tab when the trace source has no correlated log source', () => {
