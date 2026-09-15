@@ -215,7 +215,7 @@ export default function PromQLEditor({
           styles.paper,
           variableIssues.errors.length > 0 ? styles.error : undefined,
           isVariableWarningOnly ? styles.warning : undefined,
-          isExpanded ? styles.expanded : undefined,
+          isExpanded ? cx(styles.expanded, styles.overlay) : undefined,
           !isExpanded ? styles.collapseFade : undefined,
         )}
         ps="4px"

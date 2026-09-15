@@ -27,35 +27,14 @@
   }
 
   &.focused {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    z-index: 100;
-    box-shadow: var(--mb-shadow, var(--mantine-shadow-xs));
-    border-bottom: 2px solid var(--color-bg-brand) !important;
+    border-color: var(--color-bg-brand);
   }
+}
 
-  /* Fade at the bottom when collapsed (single-line, not focused); applied to textarea */
-  &.collapseFade {
-    position: relative;
-
-    &::after {
-      content: '';
-      position: absolute;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      height: 12px;
-      background: linear-gradient(
-        to bottom,
-        transparent,
-        var(--color-bg-field)
-      );
-      pointer-events: none;
-      border-radius: var(--mantine-radius-default);
-    }
-  }
+/* An empty textarea is one row tall while a long placeholder wraps to two, so
+   it would otherwise show a scrollbar with nothing to scroll. */
+.root[data-empty='true'] .textarea textarea {
+  overflow: hidden;
 }
 
 /* Dropdown content */

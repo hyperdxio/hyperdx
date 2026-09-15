@@ -8,10 +8,18 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
   const testInputExpansion = async (
     page: Page,
     editor: Locator,
-    /** For CodeMirror, pass the content element that grows (e.g. .cm-content); for textarea, omit to use editor. */
-    measureLocator?: Locator,
+    {
+      growthLocator,
+      visibleBoxLocator,
+    }: {
+      /** For CodeMirror, the content element that grows (e.g. .cm-content); defaults to the editor. */
+      growthLocator?: Locator;
+      /** The bordered box the user actually sees; defaults to the editor. */
+      visibleBoxLocator?: Locator;
+    } = {},
   ): Promise<void> => {
-    const measureEl = measureLocator ?? editor;
+    const measureEl = growthLocator ?? editor;
+    const visibleBox = visibleBoxLocator ?? editor;
     // Scroll into view then focus (more reliable than click for textarea/input in CI)
     await editor.scrollIntoViewIfNeeded();
     await editor.focus();
@@ -20,6 +28,8 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
     // Get initial single line height from the element that reflects content height
     const singleLineBox = await measureEl.boundingBox();
     const singleLineHeight = singleLineBox?.height || 0;
+    const singleLineVisibleHeight =
+      (await visibleBox.boundingBox())?.height || 0;
 
     // Add a line break and type second line
     await page.keyboard.press('Shift+Enter');
@@ -41,6 +51,18 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
     const multiLineBox = await measureEl.boundingBox();
     const multiLineHeight = multiLineBox?.height || 0;
     expect(multiLineHeight).toBeGreaterThanOrEqual(singleLineHeight);
+
+    // The visible box has to actually grow, not clip the second line.
+    const expandedVisibleHeight = (await visibleBox.boundingBox())?.height || 0;
+    expect(expandedVisibleHeight).toBeGreaterThan(singleLineVisibleHeight);
+
+    // Both lines stay on screen once focus moves away.
+    await page.evaluate(() =>
+      (document.activeElement as HTMLElement | null)?.blur(),
+    );
+    await expect
+      .poll(async () => (await visibleBox.boundingBox())?.height || 0)
+      .toBeGreaterThanOrEqual(expandedVisibleHeight);
   };
 
   const getEditor = (
@@ -104,9 +126,15 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
 
       const editor = getEditor(page, 'SQL', formSelector, whereText);
       await expect(editor).toBeVisible();
-      // CodeMirror: .cm-editor can stay fixed; .cm-content height reflects line count
-      const measureEl = editor.locator('.cm-content').first();
-      await testInputExpansion(page, editor, measureEl);
+      await testInputExpansion(page, editor, {
+        // CodeMirror: .cm-editor can stay fixed; .cm-content height reflects line count
+        growthLocator: editor.locator('.cm-content').first(),
+        // The Paper wrapping this editor is the box that clips it, so measure
+        // that rather than any Paper on the page.
+        visibleBoxLocator: editor.locator(
+          'xpath=ancestor::div[contains(@class, "mantine-Paper-root")][1]',
+        ),
+      });
     });
 
     test(`should expand Lucene input on line break on ${name}`, async ({

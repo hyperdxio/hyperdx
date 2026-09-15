@@ -55,6 +55,8 @@ export default function AutocompleteInput({
   'data-testid'?: string;
 }) {
   const suggestionsLimit = 10;
+  // Rows the query is shown across before the textarea starts scrolling.
+  const maxVisibleRows = 4;
 
   const [isSearchInputFocused, _setIsSearchInputFocused] = useState(false);
   const [isInputDropdownOpen, setIsInputDropdownOpen] = useState(false);
@@ -200,7 +202,7 @@ export default function AutocompleteInput({
     <div
       className={styles.root}
       style={{ ['--autocomplete-base-height' as string]: `${baseHeight}px` }}
-      data-expanded={isSearchInputFocused ? 'true' : undefined}
+      data-empty={value ? undefined : 'true'}
     >
       <Popover
         opened={isInputDropdownOpen}
@@ -225,14 +227,13 @@ export default function AutocompleteInput({
             placeholder={placeholder}
             className={cx(
               styles.textarea,
-              !isSearchInputFocused && styles.collapseFade,
               isSearchInputFocused && styles.focused,
             )}
             value={value}
             size={size}
             autosize
             minRows={1}
-            maxRows={isSearchInputFocused ? 4 : 1}
+            maxRows={maxVisibleRows}
             data-testid={dataTestId}
             onChange={e => onChange(e.target.value)}
             onFocus={() => {

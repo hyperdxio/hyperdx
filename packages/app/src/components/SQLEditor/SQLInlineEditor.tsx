@@ -68,6 +68,13 @@ type SQLInlineEditorProps = {
   queryHistoryType?: string;
   parentRef?: HTMLElement | null;
   allowMultiline?: boolean;
+  /**
+   * Keep every line of the expression on screen instead of collapsing back to
+   * the first one on blur. For a query bar, where the expression is the thing
+   * being read; a narrow field like ORDER BY is better off collapsing, since
+   * its value wraps and would permanently take the space.
+   */
+  keepExpanded?: boolean;
   dateRange?: [Date, Date];
   sourceId?: string;
   // With multiple tableConnections, offer only fields present in ALL of them
@@ -101,6 +108,7 @@ export default function SQLInlineEditor({
   queryHistoryType,
   parentRef,
   allowMultiline = true,
+  keepExpanded = false,
   dateRange,
   sourceId,
   intersectFields,
@@ -337,8 +345,10 @@ export default function SQLInlineEditor({
     }
   }, []);
 
-  // Only apply expanded styling when multiline is enabled and focused
-  const isExpanded = allowMultiline && isFocused;
+  const isExpanded = allowMultiline && (keepExpanded || isFocused);
+  // Expanding only for as long as focus lasts floats over the content below;
+  // staying expanded has to occupy real space instead.
+  const isOverlay = isExpanded && !keepExpanded;
 
   const isVariableWarningOnly =
     variableIssues.errors.length === 0 && variableIssues.warnings.length > 0;
@@ -348,10 +358,10 @@ export default function SQLInlineEditor({
     <div
       className={styles.wrapper}
       style={{ ['--editor-base-height' as string]: `${baseHeight}px` }}
-      data-expanded={isExpanded ? 'true' : undefined}
+      data-expanded={isOverlay ? 'true' : undefined}
     >
-      {/* When expanded, Paper is absolute; this keeps the wrapper width stable */}
-      {isExpanded && <div className={styles.placeholder} aria-hidden="true" />}
+      {/* While overlaid, Paper is absolute; this keeps the wrapper width stable */}
+      {isOverlay && <div className={styles.placeholder} aria-hidden="true" />}
       <Paper
         shadow="none"
         className={cx(
@@ -359,6 +369,8 @@ export default function SQLInlineEditor({
           error || variableIssues.errors.length > 0 ? styles.error : undefined,
           isVariableWarningOnly ? styles.warning : undefined,
           isExpanded ? styles.expanded : undefined,
+          isOverlay ? styles.overlay : undefined,
+          isFocused ? styles.focused : undefined,
           allowMultiline && !isExpanded ? styles.collapseFade : undefined,
         )}
         ps="4px"
@@ -386,8 +398,7 @@ export default function SQLInlineEditor({
           className={cx(
             styles.cmWrapper,
             size === 'xs' ? styles.sizeXs : undefined,
-            !isExpanded ? styles.collapsed : undefined,
-            isExpanded ? 'cm-editor-multiline' : undefined,
+            isExpanded ? 'cm-editor-multiline' : styles.collapsed,
           )}
         >
           <CodeMirror

@@ -208,26 +208,31 @@ export default function SearchWhereInput({
         }}
       >
         <Flex
-          align="center"
+          align="flex-start"
           className={`${styles.languageSwitch} ${sizeClass}`}
           data-testid="where-language-switch"
           onMouseDown={e => e.preventDefault()}
         >
-          <InputLanguageSwitch
-            language={language}
-            onLanguageChange={handleLanguageChange}
-          />
-          <Tooltip label="Syntax reference" withArrow position="top">
-            <ActionIcon
-              variant="subtle"
-              size="xs"
-              aria-label="Open syntax reference"
-              onClick={openSyntaxRef}
-              style={{ marginRight: 4 }}
-            >
-              <IconHelp size={14} />
-            </ActionIcon>
-          </Tooltip>
+          <Flex
+            align="center"
+            className={`${styles.languageSwitchRow} ${sizeClass}`}
+          >
+            <InputLanguageSwitch
+              language={language}
+              onLanguageChange={handleLanguageChange}
+            />
+            <Tooltip label="Syntax reference" withArrow position="top">
+              <ActionIcon
+                variant="subtle"
+                size="xs"
+                aria-label="Open syntax reference"
+                onClick={openSyntaxRef}
+                style={{ marginRight: 4 }}
+              >
+                <IconHelp size={14} />
+              </ActionIcon>
+            </Tooltip>
+          </Flex>
         </Flex>
         <Box className={`${styles.inputWrapper} ${sizeClass}`}>
           {isSql ? (
@@ -241,6 +246,7 @@ export default function SearchWhereInput({
               queryHistoryType={sqlQueryHistoryType}
               enableHotkey={enableHotkey}
               allowMultiline={allowMultiline}
+              keepExpanded
               size={size}
               additionalSuggestions={additionalSuggestions}
               dateRange={dateRange}
@@ -267,7 +273,7 @@ export default function SearchWhereInput({
           )}
           {enableHotkey && (
             <Box
-              className={styles.shortcutHint}
+              className={`${styles.shortcutHint} ${sizeClass}`}
               title="Press / or s to focus search"
               aria-hidden
             >
