@@ -24,7 +24,7 @@ test.describe('Span links', { tag: '@traces' }, () => {
   async function openSpanDetail(spanId: string, spanName: string) {
     await searchPage.performSearch(`SpanId:"${spanId}"`);
     await expect(searchPage.table.firstRow).toBeVisible();
-    await searchPage.table.clickFirstRow();
+    await searchPage.table.openFirstRowSidePanel();
     await expect(searchPage.sidePanel.container).toBeVisible();
     await searchPage.sidePanel.clickWaterfallSpan(spanName);
   }

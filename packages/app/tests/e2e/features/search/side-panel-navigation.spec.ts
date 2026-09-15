@@ -15,7 +15,7 @@ test.describe('Search side panel navigation', { tag: '@search' }, () => {
       // to traces), so the first row of an unfiltered search is a non-trace log.
       await searchPage.submitEmptySearch();
       await expect(searchPage.table.firstRow).toBeVisible();
-      await searchPage.table.clickFirstRow();
+      await searchPage.table.openFirstRowSidePanel();
       await expect(searchPage.sidePanel.tabs).toBeVisible();
     });
 

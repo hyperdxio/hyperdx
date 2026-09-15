@@ -32,6 +32,7 @@ export const ExpandedLogRow = memo(
     rowId,
     measureElement,
     virtualIndex,
+    canOpenSidePanel,
   }: {
     children: React.ReactNode;
     columnsLength: number;
@@ -40,6 +41,8 @@ export const ExpandedLogRow = memo(
     rowId: string;
     measureElement?: (element: HTMLElement | null) => void;
     virtualIndex?: number;
+    /** False on tables that render no side panel, so the URL params go nowhere. */
+    canOpenSidePanel?: boolean;
   }) => {
     const openSidebar = useSidebarOpener();
 
@@ -55,7 +58,7 @@ export const ExpandedLogRow = memo(
           <div className={cx('mx-2 mb-2 rounded', styles.expandedRowContent)}>
             <div className="position-relative">
               <div className="px-3 pt-2 position-relative">
-                {openSidebar && (
+                {canOpenSidePanel && (
                   <button
                     type="button"
                     className={cx(
@@ -63,8 +66,8 @@ export const ExpandedLogRow = memo(
                       styles.expandButton,
                     )}
                     onClick={() => openSidebar(rowId, source?.id)}
-                    title="Open in sidebar"
-                    aria-label="Open in sidebar"
+                    title="Open in side panel"
+                    aria-label="Open in side panel"
                     style={{
                       zIndex: 1,
                       fontSize: '12px',
