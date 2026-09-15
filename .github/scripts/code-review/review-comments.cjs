@@ -105,6 +105,35 @@ function seenFingerprints(existingComments) {
   return seen;
 }
 
+/**
+ * Review threads that are ours and that this run's findings no longer mention.
+ *
+ * Absence from the current findings is deliberately NOT sufficient. The reviewer measures
+ * ~40% recall, so a finding disappears either because the author fixed it or because the
+ * model missed it this time, and resolving on absence alone would silently launder a real
+ * critical into "resolved". `isOutdated` is GitHub's own answer to "the hunk this thread
+ * anchors to is no longer in the diff" -- pairing the two means the flagged line actually
+ * moved AND the reviewer no longer flags it.
+ *
+ * A human reply also disqualifies a thread: someone is engaged with it, and closing their
+ * conversation on the model's say-so is not ours to do.
+ */
+function threadsToResolve({ threads, findings, botLogin }) {
+  const current = new Set((findings || []).map(fingerprint));
+  const ids = [];
+  for (const t of threads || []) {
+    if (t.isResolved || !t.isOutdated || t.viewerCanResolve === false) continue;
+    const nodes = (t.comments && t.comments.nodes) || [];
+    const authored = c => (c.author && c.author.login) || '';
+    // The first comment carries the fingerprint; the rest tell us whether a human joined.
+    if (!nodes.length || authored(nodes[0]) !== botLogin) continue;
+    if (nodes.some(c => authored(c) !== botLogin)) continue;
+    const m = FINGERPRINT_RE.exec(nodes[0].body || '');
+    if (m && !current.has(m[1])) ids.push(t.id);
+  }
+  return ids;
+}
+
 function commentBody(finding) {
   const sev = severityOf(finding);
   const marker = `<!-- hdxr:${fingerprint(finding)} -->`;
@@ -190,6 +219,7 @@ function renderSummary({
   skipped,
   duplicates,
   posted,
+  resolved,
   healthy,
   reason,
   diffHash,
@@ -199,6 +229,11 @@ function renderSummary({
     ? `<!-- claude-review-state: diff=${diffHash}; prompt=${promptHash} -->`
     : `<!-- claude-review-state: omitted (review unhealthy) -->`;
   const lines = ['<!-- claude-code-review -->', marker, '## PR Review', ''];
+  // Reported in both branches below: the run that resolves the most threads is usually the
+  // one that finds nothing left, and that branch returns early.
+  const resolvedNote = resolved
+    ? `${resolved} previously-reported finding(s) auto-resolved.`
+    : '';
 
   if (!healthy) {
     lines.push(
@@ -209,7 +244,7 @@ function renderSummary({
     return lines.join('\n');
   }
   if (!findings || findings.length === 0) {
-    lines.push('✅ No issues found.');
+    lines.push(['✅ No issues found.', resolvedNote].filter(Boolean).join(' '));
     return lines.join('\n');
   }
 
@@ -246,9 +281,15 @@ function renderSummary({
     // Skipped findings are counted above but appear nowhere in this comment -- they are
     // already on the PR as inline comments from an earlier push. Say so, or the totals
     // look like they lost something.
-    nSkipped
-      ? `${delivery} ${nSkipped} unchanged from an earlier push (already inline above).`
-      : delivery,
+    [
+      delivery,
+      nSkipped
+        ? `${nSkipped} unchanged from an earlier push (already inline above).`
+        : '',
+      resolvedNote,
+    ]
+      .filter(Boolean)
+      .join(' '),
     '',
   );
 
@@ -298,6 +339,7 @@ module.exports = {
   parseCommentableLines,
   fingerprint,
   seenFingerprints,
+  threadsToResolve,
   commentBody,
   buildInlineComments,
   renderSummary,

@@ -596,6 +596,95 @@ jobs:
             core.setOutput('duplicates', String(duplicates.length));
             core.info(`${findings.length} findings: ${posted} inline, ${unanchored.length} in summary, ${skipped.length} already posted`);
 
+      # A finding the author fixed leaves its inline thread open forever: the fingerprint
+      # dedup suppresses a re-post but never closes the thread, so stale bot conversations
+      # accumulate and block any branch protection requiring them resolved.
+      #
+      # Resolve one of ours only when this run's findings no longer mention it AND GitHub
+      # marks the thread outdated. Absence alone is not enough -- see threadsToResolve.
+      #
+      # Fail-soft, unlike every other step in this job. Resolution is cosmetic: a GraphQL
+      # hiccup must not fail a review that already posted, and the next push retries for
+      # free. It runs after the trusted-tree verification, so the helper it require()s is
+      # already covered by that check.
+      - name: Resolve fixed review threads
+        id: resolve
+        if:
+          steps.health.outputs.healthy == 'true' && steps.inline.outcome ==
+          'success'
+        continue-on-error: true
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const helpers = require(
+              path.join(process.env.GITHUB_WORKSPACE, '.trusted/.github/scripts/code-review/review-comments.cjs'),
+            );
+            const prNumber = Number('${{ steps.pr.outputs.number }}');
+            const { findings } = JSON.parse(fs.readFileSync('.hdx/findings.json', 'utf8'));
+
+            // Thread identity and resolution state exist only in GraphQL; the REST review
+            // comment endpoints expose neither a thread id nor isResolved/isOutdated.
+            const QUERY = `
+              query($owner: String!, $repo: String!, $pr: Int!, $cursor: String) {
+                repository(owner: $owner, name: $repo) {
+                  pullRequest(number: $pr) {
+                    reviewThreads(first: 100, after: $cursor) {
+                      pageInfo { hasNextPage endCursor }
+                      nodes {
+                        id
+                        isResolved
+                        isOutdated
+                        viewerCanResolve
+                        comments(first: 50) { nodes { body author { login } } }
+                      }
+                    }
+                  }
+                }
+              }`;
+
+            const threads = [];
+            let cursor = null;
+            try {
+              for (;;) {
+                const page = await github.graphql(QUERY, {
+                  owner: context.repo.owner, repo: context.repo.repo, pr: prNumber, cursor,
+                });
+                const t = page.repository.pullRequest.reviewThreads;
+                threads.push(...t.nodes);
+                if (!t.pageInfo.hasNextPage) break;
+                cursor = t.pageInfo.endCursor;
+              }
+            } catch (err) {
+              core.warning(`could not list review threads (${err.message}); skipping auto-resolve`);
+              core.setOutput('resolved', '0');
+              return;
+            }
+
+            const ids = helpers.threadsToResolve({
+              threads, findings, botLogin: process.env.BOT_LOGIN,
+            });
+
+            const MUTATION = `
+              mutation($id: ID!) {
+                resolveReviewThread(input: { threadId: $id }) { thread { id isResolved } }
+              }`;
+
+            let resolved = 0;
+            for (const id of ids) {
+              try {
+                await github.graphql(MUTATION, { id });
+                resolved++;
+              } catch (err) {
+                // Per-thread, so one rejection does not strand the rest.
+                core.warning(`could not resolve thread ${id}: ${err.message}`);
+              }
+            }
+            core.setOutput('resolved', String(resolved));
+            core.info(`auto-resolved ${resolved}/${ids.length} fixed thread(s)`);
+
       - name: Render review summary
         id: summary
         # !cancelled() rather than always(): on cancel-in-progress the superseding run is
@@ -628,6 +717,7 @@ jobs:
               duplicates: new Array(
                 Number('${{ steps.inline.outputs.duplicates || 0 }}'),
               ),
+              resolved: Number('${{ steps.resolve.outputs.resolved || 0 }}'),
               healthy,
               reason: ${{ toJSON(steps.health.outputs.reason) }} || 'the review step did not complete',
               diffHash: '${{ steps.diff.outputs.diff_hash }}',

@@ -697,6 +697,186 @@ test('an oversized single finding is capped so it cannot 422 the whole batch', (
   );
 });
 
+// Auto-resolve closes threads on the author's behalf, so every guard that keeps a real
+// finding open is load-bearing. Build the thread from commentBody, never a hand-written
+// marker, for the same reason the dedup tests do.
+const BOT = 'github-actions[bot]';
+
+function botThread(finding, overrides = {}) {
+  return {
+    id: 'THREAD_1',
+    isResolved: false,
+    isOutdated: true,
+    viewerCanResolve: true,
+    comments: {
+      nodes: [{ body: helpers.commentBody(finding), author: { login: BOT } }],
+    },
+    ...overrides,
+  };
+}
+
+const FIXED = {
+  file: 'src/a.ts',
+  line: 11,
+  severity: 'major',
+  title: 'the author fixed this',
+  body: 'b',
+};
+
+test('resolves an outdated bot thread the reviewer no longer reports', () => {
+  assert.deepEqual(
+    helpers.threadsToResolve({
+      threads: [botThread(FIXED)],
+      findings: [],
+      botLogin: BOT,
+    }),
+    ['THREAD_1'],
+  );
+});
+
+test('keeps a thread whose finding is still reported', () => {
+  assert.deepEqual(
+    helpers.threadsToResolve({
+      // Reworded body, same fingerprint -- the finding is still live.
+      threads: [botThread(FIXED)],
+      findings: [{ ...FIXED, body: 'worded differently' }],
+      botLogin: BOT,
+    }),
+    [],
+  );
+});
+
+test('keeps a current thread even when the reviewer stops reporting it', () => {
+  // The whole point of pairing with isOutdated: at ~40% recall a finding vanishes as often
+  // from a missed pass as from a fix, and the line here never moved.
+  assert.deepEqual(
+    helpers.threadsToResolve({
+      threads: [botThread(FIXED, { isOutdated: false })],
+      findings: [],
+      botLogin: BOT,
+    }),
+    [],
+  );
+});
+
+test('keeps a thread a human replied to', () => {
+  const thread = botThread(FIXED);
+  thread.comments.nodes.push({
+    body: 'disagree, this is intentional',
+    author: { login: 'a-human' },
+  });
+  assert.deepEqual(
+    helpers.threadsToResolve({
+      threads: [thread],
+      findings: [],
+      botLogin: BOT,
+    }),
+    [],
+  );
+});
+
+test('ignores threads that are not ours', () => {
+  const human = botThread(FIXED, {
+    comments: {
+      nodes: [{ body: 'this looks wrong', author: { login: 'a-human' } }],
+    },
+  });
+  const unmarked = botThread(FIXED, {
+    comments: {
+      nodes: [{ body: 'no fingerprint here', author: { login: BOT } }],
+    },
+  });
+  assert.deepEqual(
+    helpers.threadsToResolve({
+      threads: [human, unmarked],
+      findings: [],
+      botLogin: BOT,
+    }),
+    [],
+  );
+});
+
+test('skips threads already resolved or that we cannot resolve', () => {
+  assert.deepEqual(
+    helpers.threadsToResolve({
+      threads: [
+        botThread(FIXED, { isResolved: true }),
+        botThread(FIXED, { viewerCanResolve: false }),
+      ],
+      findings: [],
+      botLogin: BOT,
+    }),
+    [],
+  );
+});
+
+test('threadsToResolve tolerates missing and malformed input', () => {
+  assert.deepEqual(helpers.threadsToResolve({}), []);
+  assert.deepEqual(
+    helpers.threadsToResolve({
+      threads: [
+        { id: 'x', isOutdated: true, comments: { nodes: [] } },
+        { id: 'y', isOutdated: true },
+      ],
+      findings: [],
+      botLogin: BOT,
+    }),
+    [],
+  );
+});
+
+test('the summary reports auto-resolved threads on an otherwise clean run', () => {
+  // The clean branch returns early, and it is the branch most likely to carry a resolve
+  // count -- every finding fixed is exactly when the reviewer finds nothing.
+  const body = helpers.renderSummary({
+    findings: [],
+    unanchored: [],
+    posted: 0,
+    resolved: 2,
+    healthy: true,
+    diffHash: HASH,
+    promptHash: HASH,
+  });
+  assert.match(body, /No issues found/);
+  assert.match(body, /2 previously-reported finding\(s\) auto-resolved/);
+});
+
+test('the summary reports auto-resolved threads alongside live findings', () => {
+  const body = helpers.renderSummary({
+    findings: [
+      { file: 'a', line: 1, severity: 'major', title: 't', body: 'b' },
+    ],
+    unanchored: [],
+    skipped: [],
+    duplicates: [],
+    posted: 1,
+    resolved: 1,
+    healthy: true,
+    diffHash: HASH,
+    promptHash: HASH,
+  });
+  assert.match(body, /1 posted as inline comment\(s\)/);
+  assert.match(body, /1 previously-reported finding\(s\) auto-resolved/);
+});
+
+test('the summary says nothing about resolution when nothing was resolved', () => {
+  for (const findings of [
+    [],
+    [{ file: 'a', line: 1, severity: 'major', title: 't', body: 'b' }],
+  ]) {
+    const body = helpers.renderSummary({
+      findings,
+      unanchored: [],
+      posted: findings.length,
+      resolved: 0,
+      healthy: true,
+      diffHash: HASH,
+      promptHash: HASH,
+    });
+    assert.doesNotMatch(body, /auto-resolved/);
+  }
+});
+
 test('the summary renders the finding body, not just the title', () => {
   // Unanchored findings are the only place a human reads the body in the summary; every
   // other test asserted the title alone, so dropping the body render stayed green.
