@@ -217,7 +217,7 @@ WORKDIR /app
 # Add hosts entry in entrypoint script instead of here
 
 # Expose ports
-EXPOSE 8080 4317 4318 13133 8123 9000
+EXPOSE 8080 4317 4318 13133 8123 9000 8125/udp
 
 # all-in-one no auth ############################################################################################
 FROM all-in-one-base AS all-in-one-noauth
