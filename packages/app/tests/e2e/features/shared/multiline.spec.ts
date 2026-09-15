@@ -95,23 +95,21 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
    */
   const expectSeamFlush = async (row: Locator): Promise<void> => {
     const heights = await row.evaluate(el => {
-      const addon = el.querySelector(
-        '[data-testid="where-language-switch"]',
-      ) as HTMLElement;
+      const addon = el.querySelector('[data-testid="where-language-switch"]');
       // The box the user sees a border around: the SQL editor's Paper, or the
       // Lucene textarea's wrapper.
       const bordered = Array.from(el.querySelectorAll('*')).find(
         node =>
-          node !== addon &&
-          !addon.contains(node) &&
+          addon?.contains(node) === false &&
           parseFloat(getComputedStyle(node).borderTopWidth) > 0,
       );
       return {
-        addon: addon.getBoundingClientRect().height,
+        addon: addon?.getBoundingClientRect().height ?? 0,
         input: bordered?.getBoundingClientRect().height ?? 0,
       };
     });
 
+    expect(heights.addon).toBeGreaterThan(0);
     expect(heights.input).toBeGreaterThan(0);
     expect(heights.addon).toBe(heights.input);
   };
