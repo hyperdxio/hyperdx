@@ -8,8 +8,8 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
   const testInputExpansion = async (
     page: Page,
     editor: Locator,
-    /** The WHERE input as a whole, for the seam check. */
-    seamRow: Locator,
+    /** The WHERE input as a whole, when its addon seam also needs checking. */
+    seamRow?: Locator,
     {
       growthLocator,
       visibleBoxLocator,
@@ -31,7 +31,9 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
     // state where a row reserving more space than its bordered box shows up.
     // An empty input is no good for this: the placeholder wraps at narrow
     // widths and the content then drives the height.
-    await expectSeamFlush(seamRow);
+    if (seamRow != null) {
+      await expectSeamFlush(seamRow);
+    }
 
     // Get initial single line height from the element that reflects content height
     const singleLineBox = await measureEl.boundingBox();
@@ -203,5 +205,29 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
       await expect(editor).toBeVisible();
       await testInputExpansion(page, editor, getWhereRow(page, formSelector));
     });
+  });
+
+  test('should keep SELECT and ORDER BY expanded after blur', async ({
+    page,
+  }) => {
+    const searchPage = new SearchPage(page);
+    await searchPage.goto();
+
+    for (const label of ['SELECT', 'ORDER BY']) {
+      const paper = page
+        .getByText(label, { exact: true })
+        .locator(
+          'xpath=ancestor::div[contains(@class, "mantine-Paper-root")][1]',
+        );
+      const editor = paper.locator('.cm-editor');
+
+      await expect(editor).toBeVisible();
+      await editor.locator('.cm-content').press('ControlOrMeta+A');
+      await page.keyboard.press('Backspace');
+      await testInputExpansion(page, editor, undefined, {
+        growthLocator: editor.locator('.cm-content'),
+        visibleBoxLocator: paper,
+      });
+    }
   });
 });
