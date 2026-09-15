@@ -2,6 +2,7 @@ import { SourceKind } from '@hyperdx/common-utils/dist/types';
 
 import {
   resolveSourceParam,
+  resolveSourcesParam,
   SourceForParamResolution,
 } from '@/utils/sourceParams';
 
@@ -171,6 +172,68 @@ describe('resolveSourceParam', () => {
     expect(resolveSourceParam('Old Logs', SOURCES)).toEqual({
       status: 'resolved',
       source: OLD_LOGS_DISABLED,
+    });
+  });
+});
+
+describe('resolveSourcesParam', () => {
+  it('resolves a list by ID and by name', () => {
+    expect(resolveSourcesParam(['log-1', 'Traces'], SOURCES)).toEqual({
+      status: 'resolved',
+      sources: [LOGS_1, TRACES],
+      unresolved: [],
+    });
+  });
+
+  it('reports pending while sources are loading', () => {
+    expect(resolveSourcesParam(['log-1'], undefined)).toEqual({
+      status: 'pending',
+    });
+  });
+
+  it('resolves an empty selection without waiting on the source list', () => {
+    expect(resolveSourcesParam([], undefined)).toEqual({
+      status: 'resolved',
+      sources: [],
+      unresolved: [],
+    });
+  });
+
+  it('keeps what resolves and reports the rest, so one bad entry does not sink the selection', () => {
+    expect(resolveSourcesParam(['log-1', 'Nope', 'Traces'], SOURCES)).toEqual({
+      status: 'resolved',
+      sources: [LOGS_1, TRACES],
+      unresolved: ['Nope'],
+    });
+  });
+
+  it('reports an entry naming a source of the wrong kind', () => {
+    expect(
+      resolveSourcesParam(['log-1', 'Traces'], SOURCES, {
+        kinds: [SourceKind.Log],
+      }),
+    ).toEqual({
+      status: 'resolved',
+      sources: [LOGS_1],
+      unresolved: ['Traces'],
+    });
+  });
+
+  it('dedupes entries that resolve to the same source', () => {
+    expect(resolveSourcesParam(['log-1', 'log-1'], SOURCES)).toEqual({
+      status: 'resolved',
+      sources: [LOGS_1],
+      unresolved: [],
+    });
+  });
+
+  it('caps the selection at `max`, keeping the first entries', () => {
+    expect(
+      resolveSourcesParam(['log-1', 'Traces', 'Old Logs'], SOURCES, { max: 2 }),
+    ).toEqual({
+      status: 'resolved',
+      sources: [LOGS_1, TRACES],
+      unresolved: [],
     });
   });
 });

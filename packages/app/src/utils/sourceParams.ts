@@ -55,6 +55,51 @@ export type SourceParamResolution<T extends SourceForParamResolution> =
  * lowest ID, so the same link always resolves to the same source no matter what
  * order the API returns them in.
  */
+/**
+ * Resolve a list of source params (IDs or names) for multi-source search.
+ * Each element resolves with the same rules as `resolveSourceParam`; results
+ * are deduped by ID and capped at `max`. Elements that can't be resolved (or
+ * resolve to a source of the wrong kind) are reported in `unresolved` so the
+ * caller can warn without failing the rest of the selection.
+ */
+export function resolveSourcesParam<T extends SourceForParamResolution>(
+  paramValues: string[] | null | undefined,
+  sources: T[] | undefined,
+  { kinds, max }: { kinds?: SourceKind[]; max?: number } = {},
+):
+  | { status: 'pending' }
+  | { status: 'resolved'; sources: T[]; unresolved: string[] } {
+  if (paramValues == null || paramValues.length === 0) {
+    return { status: 'resolved', sources: [], unresolved: [] };
+  }
+  if (sources == null) return { status: 'pending' };
+
+  const resolved: T[] = [];
+  const seenIds = new Set<string>();
+  const unresolved: string[] = [];
+
+  for (const value of paramValues) {
+    const resolution = resolveSourceParam(value, sources, { kinds });
+    if (resolution.status === 'resolved') {
+      if (!seenIds.has(resolution.source.id)) {
+        seenIds.add(resolution.source.id);
+        resolved.push(resolution.source);
+      }
+    } else if (
+      resolution.status === 'not-found' ||
+      resolution.status === 'wrong-kind'
+    ) {
+      unresolved.push(value);
+    }
+  }
+
+  return {
+    status: 'resolved',
+    sources: max != null ? resolved.slice(0, max) : resolved,
+    unresolved,
+  };
+}
+
 export function resolveSourceParam<T extends SourceForParamResolution>(
   paramValue: string | null | undefined,
   sources: T[] | undefined,
