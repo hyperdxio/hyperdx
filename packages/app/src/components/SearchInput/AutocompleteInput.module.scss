@@ -17,9 +17,13 @@
   border: 1px solid var(--color-border);
   border-radius: var(--mantine-radius-default);
 
+  /* !important overrides the inline min-height react-textarea-autosize sets,
+     so one line is exactly the height .root reserves for it. Without this the
+     row is taller than the bordered box and anything beside it overhangs. */
   textarea {
     border: none !important;
     word-break: break-all;
+    min-height: calc(var(--autocomplete-base-height, 36px) - 2px) !important;
   }
 
   textarea::placeholder {

@@ -8,6 +8,8 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
   const testInputExpansion = async (
     page: Page,
     editor: Locator,
+    /** The WHERE input as a whole, for the seam check. */
+    seamRow: Locator,
     {
       growthLocator,
       visibleBoxLocator,
@@ -24,6 +26,12 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
     await editor.scrollIntoViewIfNeeded();
     await editor.focus();
     await page.keyboard.type('first line');
+
+    // One short line puts the input at its minimum height, which is the only
+    // state where a row reserving more space than its bordered box shows up.
+    // An empty input is no good for this: the placeholder wraps at narrow
+    // widths and the content then drives the height.
+    await expectSeamFlush(seamRow);
 
     // Get initial single line height from the element that reflects content height
     const singleLineBox = await measureEl.boundingBox();
@@ -76,6 +84,36 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
       .getByTestId('where-language-switch')
       .first()
       .locator('xpath=..');
+  };
+
+  /**
+   * The language switch sits flush against the input, sharing a seam, so the
+   * two have to be the same height. They are sized independently — the switch
+   * from its own SCSS, the input from whichever editor the language selects —
+   * and an editor that reserved a taller row than its bordered box left the
+   * switch overhanging it.
+   */
+  const expectSeamFlush = async (row: Locator): Promise<void> => {
+    const heights = await row.evaluate(el => {
+      const addon = el.querySelector(
+        '[data-testid="where-language-switch"]',
+      ) as HTMLElement;
+      // The box the user sees a border around: the SQL editor's Paper, or the
+      // Lucene textarea's wrapper.
+      const bordered = Array.from(el.querySelectorAll('*')).find(
+        node =>
+          node !== addon &&
+          !addon.contains(node) &&
+          parseFloat(getComputedStyle(node).borderTopWidth) > 0,
+      );
+      return {
+        addon: addon.getBoundingClientRect().height,
+        input: bordered?.getBoundingClientRect().height ?? 0,
+      };
+    });
+
+    expect(heights.input).toBeGreaterThan(0);
+    expect(heights.addon).toBe(heights.input);
   };
 
   const getEditor = (
@@ -131,7 +169,7 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
 
       const editor = getEditor(page, 'SQL', formSelector);
       await expect(editor).toBeVisible();
-      await testInputExpansion(page, editor, {
+      await testInputExpansion(page, editor, getWhereRow(page, formSelector), {
         // CodeMirror: .cm-editor can stay fixed; .cm-content height reflects line count
         growthLocator: editor.locator('.cm-content').first(),
         // The Paper wrapping this editor is the box that clips it, so measure
@@ -165,7 +203,7 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
 
       const editor = getEditor(page, 'Lucene', formSelector);
       await expect(editor).toBeVisible();
-      await testInputExpansion(page, editor);
+      await testInputExpansion(page, editor, getWhereRow(page, formSelector));
     });
   });
 });

@@ -195,8 +195,11 @@ export default function AutocompleteInput({
     }
   }, [language, onLanguageChange, rightAdornment, inputRef]);
 
-  // Height including the 2px border from .textarea (1px top + 1px bottom)
-  const baseHeight = size === 'xs' ? 30 : size === 'lg' ? 44 : 38;
+  // Outer height of the first line, including the 2px border from .textarea
+  // (1px top + 1px bottom). Matches SQLInlineEditor's heights so a search bar
+  // that switches between the two languages keeps one height, and any addon
+  // sitting beside it lines up with the input in both.
+  const baseHeight = size === 'xs' ? 30 : size === 'lg' ? 44 : 36;
 
   return (
     <div

@@ -224,7 +224,7 @@ export default function SearchWhereInput({
             </Tooltip>
           </Flex>
         </Flex>
-        <Box className={`${styles.inputWrapper} ${sizeClass}`}>
+        <Box className={styles.inputWrapper}>
           {isSql ? (
             <SQLInlineEditorControlled
               {...tc}
