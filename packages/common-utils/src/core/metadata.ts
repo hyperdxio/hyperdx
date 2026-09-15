@@ -150,12 +150,30 @@ const quoteJsonPathSegment = (segment: string): string => {
   return `\`${unquoted.replace(/`/g, '``')}\``;
 };
 
-const quoteIdentifierIfNeeded = (identifier: string): string => {
+/**
+ * Backtick-quote an identifier unless it is already a valid bare ClickHouse
+ * identifier. Strips one level of existing quoting first, so it is idempotent.
+ */
+export const quoteIdentifierIfNeeded = (identifier: string): string => {
   const unquoted = unquoteIdentifier(identifier);
   return /^[A-Za-z_][A-Za-z0-9_]*$/.test(unquoted)
     ? unquoted
     : quoteJsonPathSegment(unquoted);
 };
+
+/**
+ * Quote a query result column name so it can be referenced in raw SQL.
+ *
+ * Most result column names do not need quoting:
+ * - Bare identifiers (alphanumeric and underscore, starting with a letter or underscore)
+ * - Numeric literals (e.g., `1`, `0x10`)
+ * - Dotted column names (e.g., `my.col`)
+ * - Function calls (e.g., `plus(a, b)`, `arrayElement(m, 'key')`)
+ */
+export const quoteResultColumnNameIfNeeded = (name: string): string =>
+  /^[^`'"()[\],.]+$/.test(name) && !Number.isFinite(Number(name))
+    ? quoteIdentifierIfNeeded(name)
+    : name;
 
 const columnAppearsInMvSelect = (sql: string, columnName: string): boolean => {
   const escaped = columnName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
