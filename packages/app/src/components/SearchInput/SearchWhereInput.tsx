@@ -59,14 +59,6 @@ export type SearchWhereInputProps = {
    */
   size?: 'xs' | 'sm';
   /**
-   * Show label on SQL input (default true). Use label to customize text (e.g. "GLOBAL WHERE").
-   */
-  showLabel?: boolean;
-  /**
-   * Label text when showLabel is true (default "WHERE")
-   */
-  label?: string;
-  /**
    * Enable multiline for SQL input
    */
   allowMultiline?: boolean;
@@ -154,8 +146,6 @@ export default function SearchWhereInput({
   onLanguageChange,
   enableHotkey,
   size = 'sm',
-  showLabel = true,
-  label: labelText = 'WHERE',
   allowMultiline = true,
   sqlQueryHistoryType,
   luceneQueryHistoryType,
@@ -242,7 +232,6 @@ export default function SearchWhereInput({
               name={name}
               placeholder={sqlPlaceholder}
               onSubmit={onSubmit}
-              label={showLabel ? labelText : undefined}
               queryHistoryType={sqlQueryHistoryType}
               enableHotkey={enableHotkey}
               allowMultiline={allowMultiline}

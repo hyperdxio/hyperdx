@@ -65,18 +65,26 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
       .toBeGreaterThanOrEqual(expandedVisibleHeight);
   };
 
+  /**
+   * The WHERE input as a whole, located from its language switch — the one part
+   * present in both languages, and the only stable handle now that the input
+   * carries no visible label.
+   */
+  const getWhereRow = (page: Page, formSelector?: string): Locator => {
+    const container = formSelector ? page.locator(formSelector) : page;
+    return container
+      .getByTestId('where-language-switch')
+      .first()
+      .locator('xpath=..');
+  };
+
   const getEditor = (
     page: Page,
     mode: 'SQL' | 'Lucene',
     formSelector?: string,
-    whereText = 'WHERE',
   ): Locator => {
     if (mode === 'SQL') {
-      const container = formSelector ? page.locator(formSelector) : page;
-      const whereContainer = container.locator(
-        `div:has(div.mantine-Text-root:has-text("${whereText}"))`,
-      );
-      return whereContainer.locator('.cm-editor').first();
+      return getWhereRow(page, formSelector).locator('.cm-editor').first();
     }
     // Target the textarea so the click hits the typing area, not the Query language Select in the right section
     return page
@@ -91,17 +99,15 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
       path: '/search',
       name: 'Search Page',
       formSelector: '[data-testid="search-form"]',
-      whereText: 'WHERE',
     },
     {
       path: '/dashboards',
       name: 'Dashboard Page',
       formSelector: undefined,
-      whereText: 'WHERE',
     },
   ];
 
-  tests.forEach(({ path, name, formSelector, whereText }) => {
+  tests.forEach(({ path, name, formSelector }) => {
     test(`should expand SQL input on line break on ${name}`, async ({
       page,
     }) => {
@@ -115,7 +121,6 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
         const dashboardsListPage = new DashboardsListPage(page);
         await dashboardsListPage.goto();
         await dashboardsListPage.createNewDashboard();
-        // Dashboard uses Controller + SQL/SearchInputV2 directly (no where-language-switch wrapper)
         await page.getByRole('combobox', { name: 'Query language' }).click();
         await page.getByRole('option', { name: 'SQL', exact: true }).click();
         // Wait for dropdown to close so the WHERE input is not covered
@@ -124,7 +129,7 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
           .waitFor({ state: 'hidden', timeout: 5000 });
       }
 
-      const editor = getEditor(page, 'SQL', formSelector, whereText);
+      const editor = getEditor(page, 'SQL', formSelector);
       await expect(editor).toBeVisible();
       await testInputExpansion(page, editor, {
         // CodeMirror: .cm-editor can stay fixed; .cm-content height reflects line count
@@ -150,7 +155,6 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
         const dashboardsListPage = new DashboardsListPage(page);
         await dashboardsListPage.goto();
         await dashboardsListPage.createNewDashboard();
-        // Dashboard has no where-language-switch wrapper; use Query language textbox directly
         await page.getByRole('combobox', { name: 'Query language' }).click();
         await page.getByRole('option', { name: 'Lucene', exact: true }).click();
         // Wait for dropdown to close so the search input is not covered
@@ -159,7 +163,7 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
           .waitFor({ state: 'hidden', timeout: 5000 });
       }
 
-      const editor = getEditor(page, 'Lucene', formSelector, whereText);
+      const editor = getEditor(page, 'Lucene', formSelector);
       await expect(editor).toBeVisible();
       await testInputExpansion(page, editor);
     });
