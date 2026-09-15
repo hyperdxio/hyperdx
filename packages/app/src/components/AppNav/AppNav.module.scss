@@ -134,13 +134,25 @@ $transition-slow: 0.2s ease;
   height: 100%;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+}
+
+.viewport {
+  // Force the ScrollArea's content wrapper to fill the viewport height so the
+  // nav links can flex-grow and pin the onboarding section to the bottom.
+  > div {
+    display: flex !important;
+    flex-direction: column;
+    min-height: 100%;
+  }
 }
 
 .footer {
   flex-shrink: 0;
   position: relative;
 
+  // Scroll-fade cue fixed above the footer. Works on small screens where the
+  // whole nav (including the pinned onboarding banner) scrolls: content fading
+  // off the bottom of the viewport gets the cue regardless of layout.
   &::before {
     content: '';
     position: absolute;
@@ -154,6 +166,7 @@ $transition-slow: 0.2s ease;
       transparent 100%
     );
     pointer-events: none;
+    z-index: 1;
   }
 }
 
@@ -165,6 +178,7 @@ $transition-slow: 0.2s ease;
   gap: 2px;
   padding-inline: $spacing-lg;
   margin-top: $spacing-sm;
+  flex: 1 1 auto;
 }
 
 .navItem {
@@ -520,11 +534,13 @@ $transition-slow: 0.2s ease;
 /* Onboarding Section */
 
 .onboardingSection {
+  flex-shrink: 0;
+  position: relative;
+  z-index: 2; // Sit above the footer's scroll-fade so the banner isn't shaded.
+  background: var(--color-bg-sidenav);
   padding-left: $spacing-sm;
   padding-right: $spacing-md;
-  margin-bottom: $spacing-sm;
   margin-top: $spacing-lg;
-  padding-bottom: $spacing-sm;
 }
 
 /* Feedback */

@@ -13,6 +13,7 @@ import {
 import { formatDurationMs } from '@/utils';
 
 import {
+  ERROR_RATE_HIGH,
   formatApproximateNumber,
   formatRate,
   navigateToTraceSearch,
@@ -56,7 +57,7 @@ export default function ServiceMapTooltip({
   // Only alarm (red) once errors are non-trivial; a fraction of a percent reads
   // as amber and a clean service stays neutral-danger-free.
   const errorColor =
-    errorPercentage >= 5
+    errorPercentage >= ERROR_RATE_HIGH
       ? 'var(--color-text-danger)'
       : 'var(--color-chart-warning)';
 
