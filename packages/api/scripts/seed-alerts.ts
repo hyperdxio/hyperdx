@@ -15,6 +15,7 @@
  * MONGO_URI. The dev stack must be up (`yarn dev`) and registered once, since
  * the script attaches everything to the existing team and log source.
  */
+import { formatTileAlertDisplayName } from '@hyperdx/common-utils/dist/alerts';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import { execFileSync } from 'child_process';
 import mongoose from 'mongoose';
@@ -183,6 +184,8 @@ function makeAlertDoc({
   teamId,
   channel,
   index,
+  displayName,
+  tags,
   savedSearchId,
   dashboardId,
   tileId,
@@ -190,6 +193,8 @@ function makeAlertDoc({
   teamId: unknown;
   channel: { type: 'webhook'; webhookId: string };
   index: number;
+  displayName: string;
+  tags: string[];
   savedSearchId?: string;
   dashboardId?: string;
   tileId?: string;
@@ -197,6 +202,10 @@ function makeAlertDoc({
   return {
     team: teamId,
     source: savedSearchId ? AlertSource.SAVED_SEARCH : AlertSource.TILE,
+    // Stored on the alert rather than left to derive from the referenced
+    // saved search or dashboard tile, matching what writers persist now.
+    displayName,
+    tags,
     savedSearch: savedSearchId ?? null,
     groupBy: null,
     dashboard: dashboardId ?? null,
@@ -320,24 +329,32 @@ async function seed(count: number, tag: string) {
   ];
 
   // --- Saved searches: up to MAX_ALERTS_PER_SAVED_SEARCH alerts each --------
-  const savedSearchPlans: { doc: Record<string, unknown>; alerts: number }[] =
-    [];
+  const savedSearchPlans: {
+    doc: Record<string, unknown>;
+    alerts: number;
+    name: string;
+    tags: string[];
+  }[] = [];
   for (let remaining = savedSearchAlertTotal; remaining > 0; ) {
     const alerts = Math.min(
       remaining,
       randomInt(1, MAX_ALERTS_PER_SAVED_SEARCH),
     );
     const index = savedSearchPlans.length;
+    const name = `Seeded search ${stamp}-${index}`;
+    const tags = tagsFor(index);
     savedSearchPlans.push({
       alerts,
+      name,
+      tags,
       doc: {
         team: teamId,
-        name: `Seeded search ${stamp}-${index}`,
+        name,
         select: '',
         where: '',
         whereLanguage: 'lucene',
         source: sourceId,
-        tags: tagsFor(index),
+        tags,
       },
     });
     remaining -= alerts;
@@ -355,6 +372,8 @@ async function seed(count: number, tag: string) {
           teamId,
           channel,
           index: alertDocs.length,
+          displayName: plan.name,
+          tags: plan.tags,
           savedSearchId,
         }),
       );
@@ -364,7 +383,8 @@ async function seed(count: number, tag: string) {
   // --- Dashboards: up to MAX_TILES_PER_DASHBOARD tiles, <=1 alert per tile --
   const dashboardPlans: {
     doc: Record<string, unknown>;
-    alertedTileIds: string[];
+    alertedTiles: { id: string; displayName: string }[];
+    tags: string[];
   }[] = [];
   for (let remaining = tileAlertTotal; remaining > 0; ) {
     const index = dashboardPlans.length;
@@ -374,13 +394,19 @@ async function seed(count: number, tag: string) {
     );
     // Some tiles are left un-alerted, which is the normal case on a dashboard.
     const alertedCount = Math.min(remaining, randomInt(1, tileCount));
+    const name = `Seeded dashboard ${stamp}-${index}`;
+    const tags = tagsFor(index);
     dashboardPlans.push({
-      alertedTileIds: tiles.slice(0, alertedCount).map(tile => tile.id),
+      alertedTiles: tiles.slice(0, alertedCount).map(tile => ({
+        id: tile.id,
+        displayName: formatTileAlertDisplayName(name, tile.config.name),
+      })),
+      tags,
       doc: {
         team: teamId,
-        name: `Seeded dashboard ${stamp}-${index}`,
+        name,
         tiles,
-        tags: tagsFor(index),
+        tags,
         filters: [],
       },
     });
@@ -392,14 +418,16 @@ async function seed(count: number, tag: string) {
   );
 
   for (const [plan, dashboardId] of zip(dashboardPlans, dashboardIds)) {
-    for (const tileId of plan.alertedTileIds) {
+    for (const tile of plan.alertedTiles) {
       alertDocs.push(
         makeAlertDoc({
           teamId,
           channel,
           index: alertDocs.length,
+          displayName: tile.displayName,
+          tags: plan.tags,
           dashboardId,
-          tileId,
+          tileId: tile.id,
         }),
       );
     }
