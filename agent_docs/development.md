@@ -292,7 +292,7 @@ deployment serves both the app and the API.
 |---|---|
 | `HDX_PREVIEW_INLINE_API` | `true` — turns on the inline path |
 | `MONGO_URI` | Preview MongoDB connection string |
-| `EXPRESS_SESSION_SECRET` | Random 32+ char string |
+| `EXPRESS_SESSION_SECRET` | Random 32+ char string. Unset means each serverless instance generates its own, so a session from one instance is rejected by the next |
 | `DISABLED_AUTH_METHODS` | `google,saml` (avoids per-preview OAuth callback URL config) |
 | `AI_PROVIDER`, `AI_API_KEY`, `AI_MODEL_NAME` | Optional, only if AI features should work |
 | `FRONTEND_URL` | Optional. Leave unset to use host-only cookies on the preview URL |

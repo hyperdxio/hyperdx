@@ -27,8 +27,9 @@ You'll need to set the `MONGO_URI` environment variable to the URI of your
 MongoDB instance. Afterwards, you'll want to visit http://localhost:8080 to set
 up your connection with ClickHouse.
 
-Before deploying into production, you'll want to set the
-`EXPRESS_SESSION_SECRET` environment variable to a random string.
+Before deploying into production, set the `EXPRESS_SESSION_SECRET` environment
+variable to a random string (e.g. `openssl rand -hex 32`). Without it the API
+generates one per process, which signs users out on every restart.
 
 To customize the frontend URL, set the `FRONTEND_URL` environment variable to
 the URL your HyperDX instance is hosted on.
@@ -55,8 +56,9 @@ such as ufw. See the
 [Docker docs](https://docs.docker.com/engine/network/packet-filtering-firewalls/#docker-and-ufw)
 for more information.
 
-Additionally, you'll want to set the `EXPRESS_SESSION_SECRET` environment
-variable to a random string.
+Additionally, set the `EXPRESS_SESSION_SECRET` environment variable to a random
+string (e.g. `openssl rand -hex 32`). Without it the API generates one per
+process, which signs users out on every restart.
 
 ## Local Development Mode
 
