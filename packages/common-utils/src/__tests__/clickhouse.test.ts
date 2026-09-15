@@ -179,6 +179,22 @@ describe('chSqlToAliasMap - alias unit test', () => {
     expect(res).toEqual(aliasMap);
   });
 
+  it('NULL literal alias (multi-source padding column)', () => {
+    const chSqlInput: ChSql = {
+      sql: 'SELECT Timestamp as "__hdx_timestamp", NULL as "__hdx_duration_ms" FROM {HYPERDX_PARAM_1544803905:Identifier}.{HYPERDX_PARAM_129845054:Identifier} ORDER BY Timestamp DESC LIMIT {HYPERDX_PARAM_49586:Int32}',
+      params: {
+        HYPERDX_PARAM_1544803905: 'default',
+        HYPERDX_PARAM_129845054: 'otel_logs',
+        HYPERDX_PARAM_49586: 200,
+      },
+    };
+    const res = chSqlToAliasMap(chSqlInput);
+    expect(res).toEqual({
+      __hdx_timestamp: 'Timestamp',
+      __hdx_duration_ms: 'NULL',
+    });
+  });
+
   it('Normal alias, with brackets', () => {
     const chSqlInput: ChSql = {
       sql: "SELECT Timestamp as ts,ResourceAttributes['service.name'] as serviceTest,Body,TimestampTime,ServiceName,TimestampTime FROM {HYPERDX_PARAM_1544803905:Identifier}.{HYPERDX_PARAM_129845054:Identifier} WHERE (TimestampTime >= fromUnixTimestamp64Milli({HYPERDX_PARAM_1456399765:Int64}) AND TimestampTime <= fromUnixTimestamp64Milli({HYPERDX_PARAM_1719057412:Int64})) ORDER BY TimestampTime DESC LIMIT {HYPERDX_PARAM_49586:Int32} OFFSET {HYPERDX_PARAM_48:Int32}",
