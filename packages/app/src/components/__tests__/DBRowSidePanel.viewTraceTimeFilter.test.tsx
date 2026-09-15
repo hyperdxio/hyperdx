@@ -3,6 +3,8 @@ import { TSource } from '@hyperdx/common-utils/dist/types';
 import { MantineProvider } from '@mantine/core';
 import { fireEvent, render, screen } from '@testing-library/react';
 
+import { makeLogSource } from '@/llm/__fixtures__/sources';
+
 // Controlled, in-memory replacement for nuqs' useQueryState so each side-panel
 // URL param can be seeded and its setter inspected independently. Values are
 // the already-parsed shapes the component consumes (arrays / strings), not URL
@@ -157,14 +159,12 @@ import { DBRowSidePanelInner } from '@/components/DBRowSidePanel';
 import useSidePanelStack from '@/hooks/useSidePanelStack';
 import { getRowLookupWindow } from '@/utils/rowTimestamps';
 
-// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-const ROOT_SOURCE = {
+const ROOT_SOURCE = makeLogSource({
   id: 'log-src',
-  kind: 'log',
   traceSourceId: 'trace-src',
   timestampValueExpression: 'Timestamp',
   resourceAttributesExpression: 'ResourceAttributes',
-} as TSource;
+});
 
 const TRACE_ID = '7316d5a2ab0dc2efa72258f64a98a405';
 const SPAN_ID = 'e3748131832d6176';
@@ -278,7 +278,7 @@ describe('DBRowSidePanelInner, "View Trace" row lookup time filter', () => {
     const compositeSource = {
       ...ROOT_SOURCE,
       timestampValueExpression: 'EventDate, EventTime',
-    } as TSource;
+    };
 
     mockUseRowData.mockReturnValue(
       rowResult({
