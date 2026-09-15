@@ -170,6 +170,17 @@ export function useResolvedDateTimeColumns(
   return { dateTimeColumns, onResolvedColumnsChange: setResultColumns };
 }
 
+const getJsonColumnNames = (columns: ColumnMetaType[]): string[] =>
+  filterColumnMetaByType(columns, [JSDataType.JSON])?.map(
+    column => column.name,
+  ) ?? [];
+
+export function useJsonColumnNames(
+  columns: ColumnMetaType[] | undefined,
+): string[] {
+  return useMemo(() => getJsonColumnNames(columns ?? []), [columns]);
+}
+
 export function useJsonColumns(
   tableConnection: TableConnection | undefined,
   options?: Partial<UseQueryOptions<string[]>>,
@@ -180,11 +191,7 @@ export function useJsonColumns(
     queryFn: async () => {
       if (!tableConnection) return [];
       const columns = await metadata.getColumns(tableConnection);
-      return (
-        filterColumnMetaByType(columns, [JSDataType.JSON])?.map(
-          column => column.name,
-        ) ?? []
-      );
+      return getJsonColumnNames(columns);
     },
     enabled:
       tableConnection &&
