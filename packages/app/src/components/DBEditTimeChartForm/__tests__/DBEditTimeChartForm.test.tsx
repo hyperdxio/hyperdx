@@ -224,8 +224,20 @@ jest.mock('../../MaterializedViews/MVOptimizationIndicator', () => ({
   default: () => <div>MV Indicator</div>,
 }));
 
+// Records every render's props so tests can assert what reaches the editor
+// that drives Map-key autocomplete.
+type SQLInlineEditorCall = {
+  name?: string;
+  sourceId?: string;
+  dateRange?: [Date, Date];
+  tableConnection?: { metadataMVs?: unknown };
+};
+const sqlInlineEditorProps: SQLInlineEditorCall[] = [];
 jest.mock('../../SQLEditor/SQLInlineEditor', () => ({
-  SQLInlineEditorControlled: () => <div>SQL Editor</div>,
+  SQLInlineEditorControlled: (props: SQLInlineEditorCall) => {
+    sqlInlineEditorProps.push(props);
+    return <div>SQL Editor</div>;
+  },
 }));
 
 jest.mock('@/HDXMarkdownChart', () => ({
@@ -1374,5 +1386,51 @@ describe('DBEditTimeChartForm - Inline alerts', () => {
 
     expect(screen.getByTestId('alert-details')).toBeInTheDocument();
     expect(screen.queryByTestId('remove-alert-button')).not.toBeInTheDocument();
+  });
+});
+
+describe('DBEditTimeChartForm - Map key autocomplete wiring', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    sqlInlineEditorProps.length = 0;
+    mockUseSourceData({
+      id: 'metric-source',
+      kind: SourceKind.Metric,
+      name: 'Test Metric Source',
+      from: { databaseName: 'default', tableName: '' },
+      connection: 'default',
+      timestampValueExpression: 'Timestamp',
+      metricTables: {
+        gauge: 'metrics.gauge',
+        sum: 'metrics.sum',
+        histogram: 'metrics.histogram',
+      },
+    });
+  });
+
+  it('passes the source id and date range down to the series Group By editor', async () => {
+    const dateRange: [Date, Date] = [
+      new Date('2024-01-01'),
+      new Date('2024-01-02'),
+    ];
+
+    renderComponent({ dateRange });
+
+    await waitFor(() =>
+      expect(
+        sqlInlineEditorProps.some(
+          (p: SQLInlineEditorCall) => p.name === 'groupBy',
+        ),
+      ).toBe(true),
+    );
+
+    const groupByEditorCall = sqlInlineEditorProps.find(
+      (p: SQLInlineEditorCall) => p.name === 'groupBy',
+    );
+    if (!groupByEditorCall) {
+      throw new Error('expected a groupBy editor call to be recorded');
+    }
+    expect(groupByEditorCall.sourceId).toBe('metric-source');
+    expect(groupByEditorCall.dateRange).toEqual(dateRange);
   });
 });
