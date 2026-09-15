@@ -1,0 +1,19 @@
+{
+  "minLines": 5,
+  "minTokens": 70,
+  "format": ["typescript", "tsx"],
+  "ignore": [
+    "**/__tests__/**",
+    "**/__mocks__/**",
+    "**/__snapshots__/**",
+    "**/__fixtures__/**",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.spec.ts",
+    "**/*.spec.tsx",
+    "**/*.stories.tsx",
+    "**/*.d.ts",
+    "packages/app/tests/e2e/**",
+    "packages/api/migrations/**"
+  ]
+}
