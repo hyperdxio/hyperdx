@@ -1,6 +1,5 @@
 import { use, useCallback, useMemo } from 'react';
 import Link from 'next/link';
-import SqlString from 'sqlstring';
 import { buildSearchChartConfig } from '@hyperdx/common-utils/dist/core/searchChartConfig';
 import {
   BuilderChartConfigWithDateRange,
@@ -11,22 +10,18 @@ import { IconExternalLink, IconLogs } from '@tabler/icons-react';
 
 import EmptyState from '@/components/EmptyState';
 import { RowWhereResult, WithClause } from '@/hooks/useRowWhere';
-import useWaterfallSearchState from '@/hooks/useWaterfallSearchState';
 import { getEventBody, useSource } from '@/source';
+import { buildDirectTraceWhereClause } from '@/utils/directTrace';
 
-import {
-  deriveRowSidePanelContextForSource,
-  RowSidePanelContext,
-} from './DBRowSidePanel';
+import { RowSidePanelContext } from './DBRowSidePanel';
 import { DBSqlRowTable } from './DBRowTable';
 
 /**
  * One trace's logs, as a flat chronological table.
  *
  * Sibling view to the waterfall's interleaved log rows, for when a trace logs
- * enough that reading them inside the span tree stops working. The waterfall
- * owns the log filter; this honours whatever is set there, and hands the same
- * query to the search page for anything more.
+ * enough that reading them inside the span tree stops working. Shows the whole
+ * trace, unfiltered — "Open in search" is the way on to anything narrower.
  */
 export default function TraceLogsPanel({
   logSourceId,
@@ -50,24 +45,20 @@ export default function TraceLogsPanel({
     kinds: [SourceKind.Log],
   });
 
-  // Read-only: the waterfall's Logs filter is the one input for both views.
-  const { logWhere, logWhereLanguage } = useWaterfallSearchState({});
-  const logFilterLanguage = logWhereLanguage === 'sql' ? 'sql' : 'lucene';
-
   // Trimmed so a whitespace-only expression counts as unconfigured rather than
   // rendering as a bare `=` in the trace filter.
   const traceIdExpression = logSource?.traceIdExpression?.trim();
 
-  const traceFilter = useMemo(
+  const traceWhere = useMemo(
     () =>
       traceIdExpression
-        ? SqlString.format('?=?', [SqlString.raw(traceIdExpression), traceId])
+        ? buildDirectTraceWhereClause(traceIdExpression, traceId)
         : undefined,
     [traceIdExpression, traceId],
   );
 
   const config = useMemo((): BuilderChartConfigWithDateRange | undefined => {
-    if (logSource == null || traceFilter == null) {
+    if (logSource == null || traceWhere == null) {
       return undefined;
     }
     return {
@@ -76,46 +67,34 @@ export default function TraceLogsPanel({
       // `tableFilterExpression`, sample weighting, and `source` id (which is
       // how the source's `querySettings` reach the query).
       ...buildSearchChartConfig(logSource, {
-        // The trace scope goes in `filters` so the filter keeps the whole
-        // `where` slot to itself — the two run in independent languages.
-        filters: [{ type: 'sql', condition: traceFilter }],
-        where: logWhere ?? '',
-        whereLanguage: logFilterLanguage,
+        where: traceWhere,
+        whereLanguage: 'sql',
         // Ascending: inside a trace, chronological order is execution order.
         orderBy: `${logSource.timestampValueExpression} ASC`,
       }),
       limit: { limit: 200 },
       dateRange,
     };
-  }, [logSource, traceFilter, logWhere, logFilterLanguage, dateRange]);
+  }, [logSource, traceWhere, dateRange]);
 
-  const parentContext = use(RowSidePanelContext);
-
-  // The same rows in the full search page: the trace scope plus whatever
-  // filter is set, in the language that filter runs in so the two combine.
+  // The same rows in the full search page. Built here rather than through the
+  // context's `generateSearchUrl`, which stamps the search page's own time
+  // range and re-applies its filter pills — both would land the reader on a
+  // different row set than the tab is showing.
   const searchUrl = useMemo(() => {
-    const { generateSearchUrl } = parentContext;
-    if (generateSearchUrl == null || logSource == null || !traceIdExpression) {
+    if (logSource == null || traceWhere == null) {
       return undefined;
     }
-    const traceCondition =
-      logFilterLanguage === 'sql'
-        ? traceFilter
-        : `${traceIdExpression}:"${traceId}"`;
-    return generateSearchUrl({
-      where: logWhere ? `${traceCondition} AND (${logWhere})` : traceCondition,
-      whereLanguage: logFilterLanguage,
-      source: logSource,
+    const params = new URLSearchParams({
+      source: logSource.id,
+      where: traceWhere,
+      whereLanguage: 'sql',
+      from: dateRange[0].getTime().toString(),
+      to: dateRange[1].getTime().toString(),
+      isLive: 'false',
     });
-  }, [
-    parentContext,
-    logSource,
-    traceIdExpression,
-    traceFilter,
-    traceId,
-    logFilterLanguage,
-    logWhere,
-  ]);
+    return `/search?${params.toString()}`;
+  }, [logSource, traceWhere, dateRange]);
 
   const handleRowDetailsClick = useCallback(
     (rowWhere: RowWhereResult, row: Record<string, unknown>) => {
@@ -131,21 +110,18 @@ export default function TraceLogsPanel({
     [logSource, onNavigateToLog],
   );
 
-  // These logs come from a different source than the search this panel was
-  // opened from, so rebind search-url generation to them. The column actions go
-  // regardless: this table selects the source's own columns, so the header's
+  const parentContext = use(RowSidePanelContext);
+
+  // This table selects the log source's own columns, so the header's
   // remove-column action would drop whatever column sits at that index in the
-  // searched table instead.
+  // searched table instead. Take it away.
   const rowSidePanelContextValue = useMemo(
-    () =>
-      logSource
-        ? {
-            ...deriveRowSidePanelContextForSource(parentContext, logSource),
-            displayedColumns: undefined,
-            toggleColumn: undefined,
-          }
-        : parentContext,
-    [parentContext, logSource],
+    () => ({
+      ...parentContext,
+      displayedColumns: undefined,
+      toggleColumn: undefined,
+    }),
+    [parentContext],
   );
 
   if (isLoading) {

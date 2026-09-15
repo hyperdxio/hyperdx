@@ -7,15 +7,6 @@ import {
 import { MantineProvider } from '@mantine/core';
 import { act, render, screen } from '@testing-library/react';
 
-const mockQueryStore: Record<string, unknown> = {};
-jest.mock('nuqs', () => {
-  const actual = jest.requireActual('nuqs');
-  return {
-    ...actual,
-    useQueryState: (key: string) => [mockQueryStore[key] ?? null, jest.fn()],
-  };
-});
-
 jest.mock('next/link', () => ({
   __esModule: true,
   default: ({
@@ -142,31 +133,26 @@ function renderPanel({
   return { onNavigateToLog };
 }
 
-function searchWhere() {
+function searchParams() {
   const href = screen
     .getByTestId('trace-logs-open-in-search')
     .getAttribute('href')!;
-  return decodeURIComponent(
-    new URLSearchParams(href.split('?')[1]).get('where')!,
-  );
+  return new URLSearchParams(href.split('?')[1]);
 }
 
 describe('TraceLogsPanel', () => {
   beforeEach(() => {
-    Object.keys(mockQueryStore).forEach(k => delete mockQueryStore[k]);
     mockRowTableProps.current = {};
     mockRowTableContext.current = {};
     mockUseSource.mockReset();
   });
 
-  it('scopes the table to the trace without spending the where clause', () => {
+  it('scopes the table to the trace', () => {
     renderPanel();
 
     const config = mockRowTableProps.current.config!;
-    expect(config.filters).toEqual([
-      { type: 'sql', condition: `TraceId='${TRACE_ID}'` },
-    ]);
-    expect(config.where).toBe('');
+    expect(config.where).toBe(`TraceId = '${TRACE_ID}'`);
+    expect(config.whereLanguage).toBe('sql');
     expect(config.select).toBe(LOG_SOURCE.defaultTableSelectExpression);
     // Chronological: inside a trace that is execution order.
     expect(config.orderBy).toBe('Timestamp ASC');
@@ -174,7 +160,7 @@ describe('TraceLogsPanel', () => {
     expect(config.limit).toEqual({ limit: 200 });
   });
 
-  it("keeps the source's mandatory table filter ahead of the trace scope", () => {
+  it("keeps the source's mandatory table filter", () => {
     renderPanel({
       source: {
         ...LOG_SOURCE,
@@ -186,28 +172,17 @@ describe('TraceLogsPanel', () => {
     // Rows the source is configured to hide must stay hidden here too.
     expect(config.filters).toEqual([
       { type: 'sql', condition: "ServiceName != 'internal'" },
-      { type: 'sql', condition: `TraceId='${TRACE_ID}'` },
     ]);
     // And the source id, which is how its querySettings reach the query.
     expect(config.source).toBe('log-src');
   });
 
-  it("applies the waterfall's log filter and its language", () => {
-    mockQueryStore.logWhere = "SeverityText = 'error'";
-    mockQueryStore.logWhereLanguage = 'sql';
-    renderPanel();
-
-    const config = mockRowTableProps.current.config!;
-    expect(config.where).toBe("SeverityText = 'error'");
-    expect(config.whereLanguage).toBe('sql');
-  });
-
   it('escapes a trace id that carries SQL metacharacters', () => {
     renderPanel({ traceId: "abc' OR 1=1--" });
 
-    expect(mockRowTableProps.current.config?.filters).toEqual([
-      { type: 'sql', condition: "TraceId='abc\\' OR 1=1--'" },
-    ]);
+    expect(mockRowTableProps.current.config?.where).toBe(
+      "TraceId = 'abc\\' OR 1=1--'",
+    );
   });
 
   it('drops the remove-column action, which belongs to the searched table', () => {
@@ -249,31 +224,16 @@ describe('TraceLogsPanel', () => {
     expect(onNavigateToLog).toHaveBeenCalledWith('row-2', [], 'Log');
   });
 
-  describe('open in search', () => {
-    it('carries the trace scope in the filter language, with the filter', () => {
-      mockQueryStore.logWhere = 'SeverityText:"error"';
-      renderPanel();
+  it('links to a search that reproduces the table', () => {
+    renderPanel();
 
-      expect(searchWhere()).toBe(
-        `TraceId:"${TRACE_ID}" AND (SeverityText:"error")`,
-      );
-    });
-
-    it('scopes to the trace alone when no filter is set', () => {
-      renderPanel();
-
-      expect(searchWhere()).toBe(`TraceId:"${TRACE_ID}"`);
-    });
-
-    it('writes the trace scope as SQL when the filter runs as SQL', () => {
-      mockQueryStore.logWhereLanguage = 'sql';
-      mockQueryStore.logWhere = "SeverityText = 'error'";
-      renderPanel();
-
-      expect(searchWhere()).toBe(
-        `TraceId='${TRACE_ID}' AND (SeverityText = 'error')`,
-      );
-    });
+    const params = searchParams();
+    expect(params.get('where')).toBe(`TraceId = '${TRACE_ID}'`);
+    expect(params.get('whereLanguage')).toBe('sql');
+    expect(params.get('source')).toBe('log-src');
+    // The tab's window, not whatever range the search page was left on.
+    expect(params.get('from')).toBe(DATE_RANGE[0].getTime().toString());
+    expect(params.get('to')).toBe(DATE_RANGE[1].getTime().toString());
   });
 
   it.each([
