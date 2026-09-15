@@ -79,13 +79,17 @@ describe('SearchWhereInput', () => {
 
   describe('Lucene Mode', () => {
     it('renders Lucene input when whereLanguage is lucene', () => {
-      renderWithMantine(<TestWrapper defaultLanguage="lucene" />);
+      const { container } = renderWithMantine(
+        <TestWrapper defaultLanguage="lucene" />,
+      );
 
       // Lucene mode uses a textarea from AutocompleteInput
       const input = screen.getByPlaceholderText(
         /Search your events w\/ Lucene/i,
       );
       expect(input).toBeInTheDocument();
+      // `/` and `s` still focus the input; the overlay keycap is gone.
+      expect(container.querySelector('kbd')).not.toBeInTheDocument();
     });
 
     it('allows typing in Lucene mode', async () => {
@@ -101,24 +105,48 @@ describe('SearchWhereInput', () => {
         expect(input).toHaveValue('level:error');
       });
     });
+
+    it('does not insert a newline in Lucene when allowMultiline is false', async () => {
+      const user = userEvent.setup();
+      renderWithMantine(
+        <TestWrapper defaultLanguage="lucene">
+          {({ control }) => (
+            <SearchWhereInput
+              tableConnection={mockTableConnection}
+              control={control}
+              name="where"
+              allowMultiline={false}
+            />
+          )}
+        </TestWrapper>,
+      );
+
+      const input = screen.getByPlaceholderText(
+        /Search your events w\/ Lucene/i,
+      );
+      await user.click(input);
+      await user.keyboard('first{Shift>}{Enter}{/Shift}second');
+
+      expect(input).toHaveValue('firstsecond');
+    });
   });
 
   describe('SQL Mode', () => {
-    it('renders SQL input with WHERE label when whereLanguage is sql', () => {
+    it('renders the SQL editor when whereLanguage is sql', () => {
       renderWithMantine(<TestWrapper defaultLanguage="sql" />);
 
-      // SQL mode shows the WHERE label
-      expect(screen.getByText('WHERE')).toBeInTheDocument();
+      expect(
+        screen.getByRole('combobox', { name: 'Query language' }),
+      ).toHaveValue('SQL');
+      expect(
+        screen.queryByPlaceholderText(/Search your events w\/ Lucene/i),
+      ).not.toBeInTheDocument();
     });
 
     it('renders SQL placeholder', () => {
       renderWithMantine(<TestWrapper defaultLanguage="sql" />);
 
-      // Check for placeholder text in the CodeMirror editor
-      // Note: CodeMirror may render placeholder differently
-      screen.queryByText(/SQL WHERE clause/i);
-      // If placeholder is not directly visible, the component should still render
-      expect(screen.getByText('WHERE')).toBeInTheDocument();
+      expect(screen.getByText(/SQL WHERE clause/i)).toBeInTheDocument();
     });
   });
 
@@ -152,7 +180,7 @@ describe('SearchWhereInput', () => {
 
   describe('Component Props', () => {
     it('respects width prop in SQL mode', () => {
-      renderWithMantine(
+      const { container } = renderWithMantine(
         <TestWrapper defaultLanguage="sql">
           {({ control }) => (
             <SearchWhereInput
@@ -165,25 +193,9 @@ describe('SearchWhereInput', () => {
         </TestWrapper>,
       );
 
-      // The Box wrapper should have the width style
-      expect(screen.getByText('WHERE')).toBeInTheDocument();
-    });
-
-    it('hides label when showLabel is false', () => {
-      renderWithMantine(
-        <TestWrapper defaultLanguage="sql">
-          {({ control }) => (
-            <SearchWhereInput
-              tableConnection={mockTableConnection}
-              control={control}
-              name="where"
-              showLabel={false}
-            />
-          )}
-        </TestWrapper>,
-      );
-
-      expect(screen.queryByText('WHERE')).not.toBeInTheDocument();
+      expect(
+        container.querySelector('[style*="width: 50%"]'),
+      ).toBeInTheDocument();
     });
 
     it('uses custom placeholders when provided', () => {

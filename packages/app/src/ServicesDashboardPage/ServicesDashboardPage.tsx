@@ -341,8 +341,15 @@ function ServicesDashboardPage() {
           return false;
         }}
       >
-        <Group gap="xs">
-          <Group justify="space-between" gap="xs" wrap="nowrap" flex={1}>
+        <Group gap="xs" align="flex-start">
+          {/* Stays level with the search bar's first line as it grows */}
+          <Group
+            justify="space-between"
+            gap="xs"
+            wrap="nowrap"
+            flex={1}
+            align="flex-start"
+          >
             <SourceSelectControlled
               control={control}
               name="source"

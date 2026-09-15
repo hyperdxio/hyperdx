@@ -337,9 +337,6 @@ export default function SQLInlineEditor({
     }
   }, []);
 
-  // Only apply expanded styling when multiline is enabled and focused
-  const isExpanded = allowMultiline && isFocused;
-
   const isVariableWarningOnly =
     variableIssues.errors.length === 0 && variableIssues.warnings.length > 0;
   const baseHeight = size === 'xs' ? 30 : 36;
@@ -348,18 +345,15 @@ export default function SQLInlineEditor({
     <div
       className={styles.wrapper}
       style={{ ['--editor-base-height' as string]: `${baseHeight}px` }}
-      data-expanded={isExpanded ? 'true' : undefined}
     >
-      {/* When expanded, Paper is absolute; this keeps the wrapper width stable */}
-      {isExpanded && <div className={styles.placeholder} aria-hidden="true" />}
       <Paper
         shadow="none"
         className={cx(
           styles.paper,
           error || variableIssues.errors.length > 0 ? styles.error : undefined,
           isVariableWarningOnly ? styles.warning : undefined,
-          isExpanded ? styles.expanded : undefined,
-          allowMultiline && !isExpanded ? styles.collapseFade : undefined,
+          allowMultiline ? styles.expanded : undefined,
+          isFocused ? styles.focused : undefined,
         )}
         ps="4px"
       >
@@ -386,8 +380,7 @@ export default function SQLInlineEditor({
           className={cx(
             styles.cmWrapper,
             size === 'xs' ? styles.sizeXs : undefined,
-            !isExpanded ? styles.collapsed : undefined,
-            isExpanded ? 'cm-editor-multiline' : undefined,
+            allowMultiline ? 'cm-editor-multiline' : styles.collapsed,
           )}
         >
           <CodeMirror

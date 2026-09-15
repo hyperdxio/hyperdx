@@ -463,7 +463,6 @@ export default function SessionSubpanel({
               control={control}
               name="where"
               size="xs"
-              showLabel={false}
               enableHotkey
               onSubmit={handleSubmit(handleWhereSubmit)}
               onLanguageChange={onLanguageChange}

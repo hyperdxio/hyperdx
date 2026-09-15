@@ -5,34 +5,12 @@
   display: flex;
   flex-direction: row;
   align-items: stretch;
-
-  /* visible so expanded SQL editor (position:absolute overlay) is not clipped */
-  overflow: visible;
 }
 
 .inputWrapper {
   position: relative;
   flex: 1;
   min-width: 0;
-
-  /* When SQLInlineEditor is expanded, round the Paper bottom-left corner */
-  /* stylelint-disable-next-line selector-pseudo-class-no-unknown */
-  :global([data-expanded='true']) :global(.mantine-Paper-root) {
-    border-bottom-left-radius: var(--mantine-radius-default);
-    min-height: 38px;
-    border-bottom: 2px solid var(--color-bg-brand) !important;
-  }
-
-  /* When AutocompleteInput (Lucene) is expanded, round the input wrapper bottom-left corner */
-  /* stylelint-disable-next-line selector-pseudo-class-no-unknown */
-  :global([data-expanded='true']) :global(.mantine-InputWrapper-root) {
-    border-bottom-left-radius: var(--mantine-radius-default);
-    border-bottom: 2px solid var(--color-bg-brand);
-
-    textarea {
-      min-height: 38px !important;
-    }
-  }
 
   /* target only the SQLInlineEditor Paper (not the AutocompleteInput) */
   /* stylelint-disable-next-line selector-pseudo-class-no-unknown */
@@ -50,31 +28,15 @@
     textarea {
       border-radius: 0 var(--mantine-radius-default)
         var(--mantine-radius-default) 0;
-
-      /* Prevent scrollbar when placeholder text wraps in narrow containers (maxRows=1 when unfocused) */
-      overflow: hidden;
     }
-  }
-
-  /* !important overrides the inline min-height set by react-textarea-autosize.
-     Inner textarea is 2px shorter than the wrapper because the wrapper adds
-     a 1px border top/bottom, so 28px + 2px border = 30px outer (matches the
-     SQL inline editor's xs height). */
-  /* stylelint-disable-next-line selector-pseudo-class-no-unknown */
-  &.sizeXs :global(.mantine-InputWrapper-root) textarea {
-    min-height: 28px !important;
-  }
-
-  /* stylelint-disable-next-line selector-pseudo-class-no-unknown */
-  &.sizeSm :global(.mantine-InputWrapper-root) textarea {
-    min-height: 34px !important;
   }
 }
 
+/* Stretches with the input so the seam between the two stays flush however
+   many lines the query takes. */
 .languageSwitch {
   position: relative;
   flex-shrink: 0;
-  align-items: center;
   padding-left: 4px;
   border: 1px solid var(--color-border);
   border-right: none;
@@ -82,35 +44,24 @@
   background-color: var(--color-bg-field-addon);
 
   &.sizeXs {
-    height: 30px;
+    min-height: 30px;
   }
 
   &.sizeSm {
-    height: 36px;
+    min-height: 36px;
   }
 }
 
-.shortcutHint {
-  position: absolute;
-  top: 50%;
-  right: 8px;
-  transform: translateY(-50%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  pointer-events: none;
+/* Heights are the switch's own minus its 1px top and bottom border, so the
+   controls line up with the input's first line. */
+.languageSwitchRow {
+  flex-shrink: 0;
 
-  /* Perfect square Kbd: Mantine Kbd renders as <kbd> */
-  /* stylelint-disable-next-line selector-pseudo-class-no-unknown */
-  :global(kbd) {
-    width: 22px;
-    height: 22px;
-    min-width: 22px;
-    min-height: 22px;
-    padding: 0;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    box-sizing: border-box;
+  &.sizeXs {
+    height: 28px;
+  }
+
+  &.sizeSm {
+    height: 34px;
   }
 }

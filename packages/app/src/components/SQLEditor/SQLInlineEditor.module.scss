@@ -26,7 +26,9 @@
     border-color: var(--color-bg-warning);
   }
 
-  &.expanded {
+  /* Floats over whatever is below so expanding on focus doesn't shift the page.
+     Only for an editor that collapses again on blur. */
+  &.overlay {
     position: absolute;
     top: 0;
     left: 0;
@@ -40,6 +42,13 @@
     position: relative;
     max-height: var(--editor-base-height, 36px);
     overflow: hidden;
+  }
+
+  /* An editor that keeps its height can't change border width on focus without
+     nudging everything below it, so recolor instead. Leave error/warning
+     borders alone so they stay visible while editing. */
+  &.expanded:not(.overlay, .error, .warning).focused {
+    border-color: var(--color-bg-brand);
   }
 }
 
@@ -71,10 +80,11 @@
   }
 }
 
+/* Pinned to the first line so it stays put as the editor grows. */
 .languageSwitchWrapper {
   display: flex;
   align-items: center;
-  min-height: 100%;
+  min-height: var(--editor-base-height, 36px);
 }
 
 /* Fade at the bottom when allowMultiline and collapsed (single-line) so text doesn't appear hard-cut */
@@ -87,8 +97,4 @@
   height: 12px;
   background: linear-gradient(to bottom, transparent, var(--color-bg-field));
   pointer-events: none;
-}
-
-.expanded {
-  /* Expanded state: no fade, full height */
 }

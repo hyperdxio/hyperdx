@@ -533,7 +533,6 @@ export function ChartSeriesEditor({
                     control={control}
                     name={`${namePrefix}aggCondition`}
                     onSubmit={onSubmit}
-                    showLabel={false}
                     additionalSuggestions={attributeSuggestions}
                     data-testid="series-where-input"
                     enableVariables

@@ -30,6 +30,7 @@ export default function AutocompleteInput({
   language,
   onSubmit,
   queryHistoryType,
+  allowMultiline = true,
   'data-testid': dataTestId,
 }: {
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
@@ -52,9 +53,12 @@ export default function AutocompleteInput({
   onLanguageChange?: (language: 'sql' | 'lucene') => void;
   language?: 'sql' | 'lucene';
   queryHistoryType?: string;
+  allowMultiline?: boolean;
   'data-testid'?: string;
 }) {
   const suggestionsLimit = 10;
+  // Rows the query is shown across before the textarea starts scrolling.
+  const maxVisibleRows = 4;
 
   const [isSearchInputFocused, _setIsSearchInputFocused] = useState(false);
   const [isInputDropdownOpen, setIsInputDropdownOpen] = useState(false);
@@ -193,14 +197,17 @@ export default function AutocompleteInput({
     }
   }, [language, onLanguageChange, rightAdornment, inputRef]);
 
-  // Height including the 2px border from .textarea (1px top + 1px bottom)
-  const baseHeight = size === 'xs' ? 30 : size === 'lg' ? 44 : 38;
+  // Outer height of the first line, including the 2px border from .textarea
+  // (1px top + 1px bottom). Matches SQLInlineEditor's heights so a search bar
+  // that switches between the two languages keeps one height, and any addon
+  // sitting beside it lines up with the input in both.
+  const baseHeight = size === 'xs' ? 30 : size === 'lg' ? 44 : 36;
 
   return (
     <div
       className={styles.root}
       style={{ ['--autocomplete-base-height' as string]: `${baseHeight}px` }}
-      data-expanded={isSearchInputFocused ? 'true' : undefined}
+      data-empty={value ? undefined : 'true'}
     >
       <Popover
         opened={isInputDropdownOpen}
@@ -225,14 +232,13 @@ export default function AutocompleteInput({
             placeholder={placeholder}
             className={cx(
               styles.textarea,
-              !isSearchInputFocused && styles.collapseFade,
               isSearchInputFocused && styles.focused,
             )}
             value={value}
             size={size}
             autosize
             minRows={1}
-            maxRows={isSearchInputFocused ? 4 : 1}
+            maxRows={allowMultiline ? maxVisibleRows : 1}
             data-testid={dataTestId}
             onChange={e => onChange(e.target.value)}
             onFocus={() => {
@@ -279,15 +285,12 @@ export default function AutocompleteInput({
                   e.preventDefault();
                   const selected = suggestions[selectedAutocompleteIndex];
                   onAcceptSuggestion(selected.value, selected.isVariable);
-                } else {
-                  // Allow shift+enter to still create new lines
-                  if (!e.shiftKey) {
-                    e.preventDefault();
-                    if (queryHistoryType && value) {
-                      setQueryHistory(value);
-                    }
-                    onSubmit?.();
+                } else if (!e.shiftKey || !allowMultiline) {
+                  e.preventDefault();
+                  if (queryHistoryType && value) {
+                    setQueryHistory(value);
                   }
+                  onSubmit?.();
                 }
               }
               if (

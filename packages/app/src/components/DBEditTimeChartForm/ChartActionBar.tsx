@@ -154,9 +154,11 @@ export function ChartActionBar({
           </Button>
         )}
       </Flex>
-      <Flex gap="sm" mb="sm" align="center" justify="end">
+      <Flex gap="sm" mb="sm" align="flex-start" justify="end">
         {filtersToggle != null && tabQueriesData(activeTab) && (
-          <DashboardFiltersToggle {...filtersToggle} />
+          <Flex h={36} align="center">
+            <DashboardFiltersToggle {...filtersToggle} />
+          </Flex>
         )}
         {(activeTab === 'table' ||
           activeTab === 'pie' ||
