@@ -26,6 +26,8 @@ jest.mock('next/link', () => ({
 type RowTableProps = {
   config?: BuilderChartConfigWithDateRange;
   sourceId?: string;
+  tableId?: string;
+  initialSortBy?: { id: string; desc: boolean }[];
   onRowDetailsClick?: (
     rowWhere: { where: string; aliasWith: unknown[] },
     row: Record<string, unknown>,
@@ -245,6 +247,19 @@ describe('TraceLogsPanel', () => {
     expect(decodeURIComponent(params.get('select')!)).toBe(
       LOG_SOURCE.defaultTableSelectExpression,
     );
+    // And the tab's order, so the linked page doesn't reverse it.
+    expect(decodeURIComponent(params.get('orderBy')!)).toBe('Timestamp ASC');
+  });
+
+  it('tells the table its own identity and sort state', () => {
+    renderPanel();
+
+    // Persisted column widths belong to this table, not the unnamed bucket.
+    expect(mockRowTableProps.current.tableId).toBe('trace-logs');
+    // The header shows the order the query already runs in.
+    expect(mockRowTableProps.current.initialSortBy).toEqual([
+      { id: 'Timestamp', desc: false },
+    ]);
   });
 
   it.each([

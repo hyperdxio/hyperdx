@@ -12,6 +12,7 @@ import EmptyState from '@/components/EmptyState';
 import { RowWhereResult, WithClause } from '@/hooks/useRowWhere';
 import { getEventBody, useSource } from '@/source';
 import { buildDirectTraceWhereClause } from '@/utils/directTrace';
+import { parseAsSortingStateString } from '@/utils/queryParsers';
 
 import { RowSidePanelContext } from './DBRowSidePanel';
 import { DBSqlRowTable } from './DBRowTable';
@@ -57,6 +58,11 @@ export default function TraceLogsPanel({
     [traceIdExpression, traceId],
   );
 
+  // Ascending: inside a trace, chronological order is execution order.
+  const orderBy = logSource
+    ? `${logSource.timestampValueExpression} ASC`
+    : undefined;
+
   const config = useMemo((): BuilderChartConfigWithDateRange | undefined => {
     if (logSource == null || traceWhere == null) {
       return undefined;
@@ -69,13 +75,12 @@ export default function TraceLogsPanel({
       ...buildSearchChartConfig(logSource, {
         where: traceWhere,
         whereLanguage: 'sql',
-        // Ascending: inside a trace, chronological order is execution order.
-        orderBy: `${logSource.timestampValueExpression} ASC`,
+        orderBy,
       }),
       limit: { limit: 200 },
       dateRange,
     };
-  }, [logSource, traceWhere, dateRange]);
+  }, [logSource, traceWhere, orderBy, dateRange]);
 
   const handleRowDetailsClick = useCallback(
     (rowWhere: RowWhereResult, row: Record<string, unknown>) => {
@@ -124,6 +129,9 @@ export default function TraceLogsPanel({
     );
   }
 
+  const parsedSort = parseAsSortingStateString.parse(orderBy ?? '');
+  const sortBy = parsedSort ? [parsedSort] : undefined;
+
   // The same rows in the full search page. Built here rather than through the
   // context's `generateSearchUrl`, which stamps the search page's own time
   // range and re-applies its filter pills — both would land the reader on a
@@ -140,6 +148,7 @@ export default function TraceLogsPanel({
     select: encodeURIComponent(logSource.defaultTableSelectExpression),
     where: encodeURIComponent(traceWhere),
     whereLanguage: 'sql',
+    orderBy: encodeURIComponent(orderBy ?? ''),
     from: dateRange[0].getTime().toString(),
     to: dateRange[1].getTime().toString(),
     isLive: 'false',
@@ -171,6 +180,14 @@ export default function TraceLogsPanel({
             sourceId={logSource.id}
             config={config}
             queryKeyPrefix="trace-logs"
+            // Scopes the persisted column widths and wrap-lines preference to
+            // this table; without it they land in the bucket shared by every
+            // table that doesn't name itself.
+            tableId="trace-logs"
+            // So the timestamp header shows the order the query already runs
+            // in, and the reader's first click flips it rather than re-asserting
+            // it.
+            initialSortBy={sortBy}
             isLive={false}
             showExpandButton={false}
             onRowDetailsClick={handleRowDetailsClick}
