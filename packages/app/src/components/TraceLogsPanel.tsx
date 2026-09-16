@@ -128,9 +128,17 @@ export default function TraceLogsPanel({
   // context's `generateSearchUrl`, which stamps the search page's own time
   // range and re-applies its filter pills — both would land the reader on a
   // different row set than the tab is showing.
+  //
+  // `where` and `select` are read back by `parseAsStringEncoded`, which decodes
+  // one level beyond the query string's own, so they go in pre-encoded the way
+  // nuqs writes them. `select` is passed rather than left to the page's
+  // fallback: the query defaults to the source's columns either way, but the
+  // SELECT input is seeded from the URL, so omitting it lands the reader on a
+  // blank one.
   const searchUrl = `/search?${new URLSearchParams({
     source: logSource.id,
-    where: traceWhere,
+    select: encodeURIComponent(logSource.defaultTableSelectExpression),
+    where: encodeURIComponent(traceWhere),
     whereLanguage: 'sql',
     from: dateRange[0].getTime().toString(),
     to: dateRange[1].getTime().toString(),

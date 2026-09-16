@@ -231,12 +231,20 @@ describe('TraceLogsPanel', () => {
     renderPanel();
 
     const params = searchParams();
-    expect(params.get('where')).toBe(`TraceId = '${TRACE_ID}'`);
-    expect(params.get('whereLanguage')).toBe('sql');
     expect(params.get('source')).toBe('log-src');
+    expect(params.get('whereLanguage')).toBe('sql');
     // The tab's window, not whatever range the search page was left on.
     expect(params.get('from')).toBe(DATE_RANGE[0].getTime().toString());
     expect(params.get('to')).toBe(DATE_RANGE[1].getTime().toString());
+    // One level of encoding beyond the query string's own, which is what
+    // `parseAsStringEncoded` decodes on the way in.
+    expect(decodeURIComponent(params.get('where')!)).toBe(
+      `TraceId = '${TRACE_ID}'`,
+    );
+    // Carried explicitly so the page's SELECT input isn't blank.
+    expect(decodeURIComponent(params.get('select')!)).toBe(
+      LOG_SOURCE.defaultTableSelectExpression,
+    );
   });
 
   it.each([
