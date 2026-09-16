@@ -84,12 +84,12 @@ describe('formatMatrixResponse', () => {
           ['method', 'GET'],
         ] as [string, string][],
         time_series: [
-          [1700000000, 5],
-          [1700000060, 7],
-        ] as [string | number, number][],
+          [1700000000 as unknown as string, 5],
+          [1700000060 as unknown as string, 7],
+        ] as [string, number][],
       },
     ];
-    expect(formatMatrixResponse(rows as any)).toEqual([
+    expect(formatMatrixResponse(rows)).toEqual([
       {
         metric: { __name__: 'http_requests_total', method: 'GET' },
         values: [
@@ -105,12 +105,12 @@ describe('formatMatrixResponse', () => {
       {
         tags: [] as [string, string][],
         time_series: [['2023-11-14T22:13:20.000Z', 1]] as [
-          string | number,
+          string,
           number,
         ][],
       },
     ];
-    expect(formatMatrixResponse(rows as any)[0].values[0]).toEqual([
+    expect(formatMatrixResponse(rows)[0].values[0]).toEqual([
       1700000000,
       '1',
     ]);
@@ -121,12 +121,12 @@ describe('formatMatrixResponse', () => {
       {
         tags: [] as [string, string][],
         time_series: [['2023-11-14 22:13:20', 1]] as [
-          string | number,
+          string,
           number,
         ][],
       },
     ];
-    expect(formatMatrixResponse(rows as any)[0].values[0]).toEqual([
+    expect(formatMatrixResponse(rows)[0].values[0]).toEqual([
       1700000000,
       '1',
     ]);
@@ -146,7 +146,7 @@ describe('formatVectorResponse', () => {
         value: 42,
       },
     ];
-    expect(formatVectorResponse(rows as any)).toEqual([
+    expect(formatVectorResponse(rows)).toEqual([
       { metric: { service: 'api' }, value: [1700000000, '42'] },
     ]);
   });
@@ -159,7 +159,7 @@ describe('formatVectorResponse', () => {
         value: 3,
       },
     ];
-    expect(formatVectorResponse(rows as any)[0].value).toEqual([
+    expect(formatVectorResponse(rows)[0].value).toEqual([
       1700000000,
       '3',
     ]);
@@ -173,7 +173,7 @@ describe('formatVectorResponse', () => {
         value: 3,
       },
     ];
-    expect(formatVectorResponse(rows as any)[0].value).toEqual([
+    expect(formatVectorResponse(rows)[0].value).toEqual([
       1700000000,
       '3',
     ]);
