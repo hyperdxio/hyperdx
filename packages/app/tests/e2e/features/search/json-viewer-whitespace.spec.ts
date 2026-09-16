@@ -10,7 +10,7 @@ test.describe('JSON Viewer WhiteSpace Toggle', { tag: ['@search'] }, () => {
     await searchPage.goto();
     await searchPage.submitEmptySearch();
     await expect(searchPage.table.firstRow).toBeVisible({ timeout: 10000 });
-    await searchPage.table.openFirstRowSidePanel();
+    await searchPage.table.clickFirstRow();
     await searchPage.sidePanel.clickTab('parsed');
   }
 

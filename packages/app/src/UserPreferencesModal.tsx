@@ -29,8 +29,8 @@ const OPTIONS_COLOR_MODE = [
 ];
 
 const OPTIONS_ROW_CLICK_ACTION = [
-  { label: 'Expand inline', value: 'expand' },
   { label: 'Open side panel', value: 'sidePanel' },
+  { label: 'Expand inline', value: 'expand' },
 ];
 
 // Brand theme options (generated from theme registry)

@@ -32,7 +32,7 @@ test.describe(
     });
 
     test('the row side panel shows the Known Columns List hint', async () => {
-      await searchPage.table.openFirstRowSidePanel();
+      await searchPage.table.clickFirstRow();
 
       await expect(searchPage.sidePanel.container).toBeVisible();
       await expect(searchPage.sidePanel.errorState).toBeVisible();

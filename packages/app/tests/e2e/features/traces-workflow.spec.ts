@@ -48,8 +48,9 @@ test.describe('Advanced Search Workflow - Traces', { tag: '@traces' }, () => {
     });
 
     await test.step('Click on first trace result and open side panel', async () => {
+      // Use table component to click first row
       await expect(searchPage.table.firstRow).toBeVisible();
-      await searchPage.table.openFirstRowSidePanel();
+      await searchPage.table.clickFirstRow();
 
       // Verify side panel opens
       await expect(searchPage.sidePanel.container).toBeVisible();

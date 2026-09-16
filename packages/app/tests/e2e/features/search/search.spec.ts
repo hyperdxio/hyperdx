@@ -50,7 +50,7 @@ test.describe('Search', { tag: '@search' }, () => {
 
         // Use table component
         await expect(searchPage.table.firstRow).toBeVisible();
-        await searchPage.table.openFirstRowSidePanel();
+        await searchPage.table.clickFirstRow();
 
         // Verify side panel opens
         await expect(searchPage.sidePanel.tabs).toBeVisible();
@@ -86,6 +86,21 @@ test.describe('Search', { tag: '@search' }, () => {
         });
       });
     });
+  });
+
+  // A row click opens the side panel by default; inline expansion is opt-in.
+  test.describe('Row click set to expand inline', () => {
+    test.beforeEach(async ({ page }) => {
+      await page.addInitScript(() => {
+        window.localStorage.setItem(
+          'hdx-user-preferences',
+          // `colorMode` is what marks stored preferences as already migrated.
+          JSON.stringify({ colorMode: 'dark', rowClickAction: 'expand' }),
+        );
+      });
+      searchPage = new SearchPage(page);
+      await searchPage.goto();
+    });
 
     test('should expand a result row inline when its body is clicked', async () => {
       await test.step('Perform search', async () => {
@@ -106,7 +121,7 @@ test.describe('Search', { tag: '@search' }, () => {
         await expect(searchPage.table.expandedRows).toHaveCount(0);
       });
 
-      await test.step('The row hover button still opens the side panel', async () => {
+      await test.step('The row hover button opens the side panel', async () => {
         await searchPage.table.openFirstRowSidePanel();
 
         await expect(searchPage.sidePanel.container).toBeVisible();
@@ -146,8 +161,8 @@ test.describe('Search', { tag: '@search' }, () => {
         const resultsTable = searchPage.getSearchResultsTable();
         await expect(resultsTable).toBeVisible();
 
-        // Open the second row (index 1) in the side panel
-        await searchPage.table.openRowSidePanel(1);
+        // Click second row (index 1) using component method
+        await searchPage.table.clickRow(1);
 
         // Verify side panel opens
         await expect(searchPage.sidePanel.container).toBeVisible();
@@ -203,7 +218,7 @@ test.describe('Search', { tag: '@search' }, () => {
           'ResourceAttributes.service.name:"api-server"',
         );
         await expect(searchPage.table.firstRow).toBeVisible();
-        await searchPage.table.openFirstRowSidePanel();
+        await searchPage.table.clickFirstRow();
         await expect(searchPage.sidePanel.tabs).toBeVisible();
       });
 

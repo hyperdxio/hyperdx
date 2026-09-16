@@ -38,7 +38,7 @@ test.describe(
 
       // Open the row, then add a filter on the nested JSON value from the
       // parsed tab. This builds JSONExtractString(Body, 'app.user.currency').
-      await searchPage.table.openFirstRowSidePanel();
+      await searchPage.table.clickFirstRow();
       await searchPage.sidePanel.addParsedJsonFieldToFilter(
         'Body',
         JSON_BODY_LOG.jsonKey,
