@@ -1509,7 +1509,7 @@ export const processAlert = async (
           savedConfig: savedConfig as PromqlSavedChartConfig,
           source: details.source,
           connectionId,
-          teamId: alert.team._id.toString(),
+          teamId: (isPopulatedRef(alert.team) ? alert.team._id : alert.team).toString(),
           dateRange,
           windowSizeInMins,
           variables:
@@ -1603,27 +1603,24 @@ export const processAlert = async (
 
           for (const [tsSec, rawVal] of series.values) {
             // Shift the evaluation instant back to the start of the bucket
-            let tsMs = Math.round(tsSec * 1000) - windowMs;
-            let nearestBucketMs = tsMs;
-            let minDiff = Infinity;
-            for (const b of expectedBuckets) {
-              const diff = Math.abs(b.getTime() - tsMs);
-              if (diff < minDiff && diff <= windowMs) {
-                minDiff = diff;
-                nearestBucketMs = b.getTime();
-              }
-            }
-            tsMs = nearestBucketMs;
+            const tsMs = Math.round(tsSec * 1000) - windowMs;
+            
+            if (expectedBuckets.length === 0) continue;
+            const startMs = expectedBuckets[0].getTime();
+            const index = Math.round((tsMs - startMs) / windowMs);
+            if (index < 0 || index >= expectedBuckets.length) continue;
+            
+            const nearestBucketMs = expectedBuckets[index].getTime();
             const parsed = parseFloat(rawVal);
             if (!Number.isFinite(parsed)) continue;
 
-            if (!bucketSeriesValues.has(tsMs)) {
-              bucketSeriesValues.set(tsMs, new Map());
+            if (!bucketSeriesValues.has(nearestBucketMs)) {
+              bucketSeriesValues.set(nearestBucketMs, new Map());
             }
             // Keep the highest value if the same series appears twice in a bucket
-            const existing = bucketSeriesValues.get(tsMs)!.get(groupKey);
+            const existing = bucketSeriesValues.get(nearestBucketMs)!.get(groupKey);
             if (existing == null || parsed > existing.value) {
-              bucketSeriesValues.get(tsMs)!.set(groupKey, {
+              bucketSeriesValues.get(nearestBucketMs)!.set(groupKey, {
                 value: parsed,
                 attributes,
               });
@@ -1644,7 +1641,6 @@ export const processAlert = async (
             'No PromQL data for time bucket',
           );
 
-          const zeroValueIsAlert = doesExceedThreshold(alert, 0);
           const hasAlertsInPreviousMap = previousMap
             .values()
             .some(
@@ -1652,25 +1648,7 @@ export const processAlert = async (
                 h.state === AlertState.ALERT || h.state === AlertState.PENDING,
             );
 
-          if (zeroValueIsAlert) {
-            const history = getOrCreateHistory('');
-            history.lastValues.push({ count: 0, startTime: bucketStart });
-            history.counts += 1;
-            if (shouldFireBasedOnConsecutiveWindows()) {
-              history.state = AlertState.ALERT;
-              history.fired = true;
-              latestAlertContext.set('', {
-                value: 0,
-                attributes: {},
-                startTime: bucketStart,
-              });
-            } else {
-              history.state = AlertState.PENDING;
-              history.fired =
-                previousMap.get(computeHistoryMapKey(alert.id, ''))?.fired ===
-                true;
-            }
-          } else if (!hasGroupBy || !hasAlertsInPreviousMap) {
+          if (!hasGroupBy || !hasAlertsInPreviousMap) {
             const history = getOrCreateHistory('');
             history.lastValues.push({ count: 0, startTime: bucketStart });
           }
@@ -1733,8 +1711,7 @@ export const processAlert = async (
           if (
             (previousHistory.state === AlertState.ALERT ||
               previousHistory.state === AlertState.PENDING) &&
-            !histories.has(groupKey) &&
-            !doesExceedThreshold(alert, 0)
+            !histories.has(groupKey)
           ) {
             const history = getOrCreateHistory(groupKey);
             history.lastValues.push({

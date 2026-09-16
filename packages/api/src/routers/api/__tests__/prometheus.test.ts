@@ -116,6 +116,22 @@ describe('formatMatrixResponse', () => {
     ]);
   });
 
+  it('converts space-separated string timestamps to unix seconds as UTC', () => {
+    const rows = [
+      {
+        tags: [] as [string, string][],
+        time_series: [['2023-11-14 22:13:20', 1]] as [
+          string | number,
+          number,
+        ][],
+      },
+    ];
+    expect(formatMatrixResponse(rows as any)[0].values[0]).toEqual([
+      1700000000,
+      '1',
+    ]);
+  });
+
   it('returns empty array for empty input', () => {
     expect(formatMatrixResponse([])).toEqual([]);
   });
@@ -140,6 +156,20 @@ describe('formatVectorResponse', () => {
       {
         tags: [] as [string, string][],
         timestamp: '2023-11-14T22:13:20.000Z',
+        value: 3,
+      },
+    ];
+    expect(formatVectorResponse(rows as any)[0].value).toEqual([
+      1700000000,
+      '3',
+    ]);
+  });
+
+  it('converts space-separated string timestamps to unix seconds as UTC', () => {
+    const rows = [
+      {
+        tags: [] as [string, string][],
+        timestamp: '2023-11-14 22:13:20',
         value: 3,
       },
     ];
