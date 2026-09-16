@@ -17,6 +17,9 @@
   :global(.mantine-Paper-root) {
     border-top-left-radius: 0;
     border-bottom-left-radius: 0;
+
+    /* The Paper theme sets `border` inline, which outranks this rule. */
+    border-left: none !important;
   }
 
   /* target only the AutocompleteInput Paper (not the SQLInlineEditor) */
@@ -24,6 +27,7 @@
   :global(.mantine-InputWrapper-root) {
     border-top-left-radius: 0;
     border-bottom-left-radius: 0;
+    border-left: none;
 
     textarea {
       border-radius: 0 var(--mantine-radius-default)
@@ -50,6 +54,13 @@
   &.sizeSm {
     min-height: 36px;
   }
+}
+
+/* The switch and the input meet at a seam, so a focus border on only one of
+   them reads as half-focused. Keyed off focus inside the input specifically:
+   tabbing to the syntax-reference button shouldn't light up the switch alone. */
+.root:has(.inputWrapper :focus) .languageSwitch {
+  border-color: var(--color-bg-brand);
 }
 
 /* Heights are the switch's own minus its 1px top and bottom border, so the

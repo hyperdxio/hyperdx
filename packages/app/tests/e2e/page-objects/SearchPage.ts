@@ -313,10 +313,74 @@ export class SearchPage {
   }
 
   /**
+   * The WHERE control as a whole: the language switch plus the input beside it.
+   * Located from the switch, the one part present in both languages.
+   */
+  get whereRow() {
+    return this.page
+      .getByTestId('where-language-switch')
+      .first()
+      .locator('xpath=..');
+  }
+
+  /** Move focus into the WHERE input, whichever language it is rendering. */
+  async focusWhereInput() {
+    const sqlContent = this.whereRow.locator('.cm-content').first();
+    if ((await sqlContent.count()) > 0) {
+      await sqlContent.focus();
+      return;
+    }
+    await this.searchInput.focus();
+  }
+
+  /**
+   * Border colors of the two halves of the WHERE control. They sit flush
+   * against each other, so a focus state on only one reads as half-focused.
+   */
+  async getWhereBorderColors(): Promise<{
+    languageSwitch: string;
+    input: string;
+  }> {
+    return this.whereRow.evaluate(el => {
+      const addon = el.querySelector('[data-testid="where-language-switch"]');
+      // The box the user sees a border around: the SQL editor's Paper, or the
+      // Lucene textarea's wrapper.
+      const input = Array.from(el.querySelectorAll('*')).find(
+        node =>
+          addon?.contains(node) === false &&
+          parseFloat(getComputedStyle(node).borderTopWidth) > 0,
+      );
+      return {
+        languageSwitch: addon ? getComputedStyle(addon).borderTopColor : '',
+        input: input ? getComputedStyle(input).borderTopColor : '',
+      };
+    });
+  }
+
+  /**
    * Get SELECT editor (CodeMirror)
    */
   getSELECTEditor() {
     return this.page.locator('.cm-content').first();
+  }
+
+  /** The bordered box drawn around a CodeMirror editor. */
+  private editorBox(editor: Locator) {
+    return editor.locator(
+      'xpath=ancestor::div[contains(@class, "mantine-Paper-root")][1]',
+    );
+  }
+
+  async getSelectBorderColor(): Promise<string> {
+    return this.editorBox(this.getSELECTEditor()).evaluate(
+      el => getComputedStyle(el).borderTopColor,
+    );
+  }
+
+  async getOrderByBorderColor(): Promise<string> {
+    return this.editorBox(this.getOrderByEditor()).evaluate(
+      el => getComputedStyle(el).borderTopColor,
+    );
   }
 
   /**
