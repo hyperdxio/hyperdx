@@ -617,6 +617,8 @@ jobs:
 
                 **Testing gaps:** (include only if substantive) one-line bullets.
 
+                <sub>No finding blocks merge automatically. A maintainer will expect P0/P1 findings in code this PR changes to be fixed; P2/P3 are your call -- fix or reply. Never fix findings about surrounding code here; reply instead. Do not widen the PR. [How to respond](https://github.com/hyperdxio/hyperdx/blob/main/AGENTS.md#responding-to-review-feedback)</sub>
+
             Style rules:
             - Wrap every file path in an inline code span.
             - Keep the issue line and fix line each to a single sentence;

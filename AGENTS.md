@@ -335,6 +335,31 @@ The generator calls the Claude Code CLI, not
 and rejects `push`, and everything it adds on top of the CLI — a token, entity
 context, PR comments — is what this job deliberately does without.
 
+## Responding to review feedback
+
+Two bots review every PR (Claude Code Review inline + summary, Deep Review
+summary). No finding blocks merge automatically; a maintainer decides what
+lands. Severity tells you what they will expect.
+
+1. **Triage before you touch code.** Two questions per comment: is it about
+   code this PR adds or changes, and how severe is it?
+   - Critical or major (P0/P1) in this PR's own code: fix it before asking for
+     review. A maintainer will require it if it is real.
+   - Minor (P2/P3) in this PR's own code: your call. Fix if small, else reply.
+   - About code the PR touches but did not create, or a suggestion to widen the
+     change (hoist, dedupe, refactor neighbours, fix other call sites): never
+     fix here, whatever the severity. Reply in the thread with one sentence; if
+     it is critical, say so plainly so a maintainer sees it. The reviewer reads
+     replies and does not re-report what a human has answered.
+2. **Do not touch files the PR did not already touch** unless fixing a defect
+   in this PR's own change requires it.
+3. **Push review fixes as new commits, not a force-push.** The repo
+   squash-merges, so commit count never reaches `main`; review history does.
+4. **After two rounds of bot findings, stop.** Ask a maintainer to look at the
+   scope instead of addressing more automated comments. A PR that keeps
+   growing to satisfy a bot is drifting from its purpose.
+5. A finding you disagree with is not a defect. Say so and move on.
+
 ## GitHub Action Workflow (when invoked via @claude)
 
 When working on issues or PRs through the GitHub Action:
