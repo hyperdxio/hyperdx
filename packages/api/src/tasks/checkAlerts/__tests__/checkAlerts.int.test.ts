@@ -5274,10 +5274,10 @@ describe('checkAlerts', () => {
 
         // Group key order is non-deterministic depending on Map iterators, so find them.
         const node1History = alertHistories.find(
-          h => h.group === 'host:node-1',
+          h => h.group === '__name__:up, host:node-1',
         )!;
         const node2History = alertHistories.find(
-          h => h.group === 'host:node-2',
+          h => h.group === '__name__:up, host:node-2',
         )!;
 
         expect(node1History).toBeDefined();
