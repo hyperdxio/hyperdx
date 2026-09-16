@@ -6,7 +6,7 @@
 // Run by claude-code-review.yml before the (expensive) review step.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -186,6 +186,9 @@ test('duplicate findings within one run collapse to a single comment', () => {
 // catch. Lift the `RE=` line out of the workflow and run the real `sed`.
 const WORKFLOW = fileURLToPath(
   new URL('../../../workflows/claude-code-review.yml', import.meta.url),
+);
+const DEEP_REVIEW = fileURLToPath(
+  new URL('../../../workflows/deep-review.yml', import.meta.url),
 );
 
 function gateParse(body) {
@@ -452,7 +455,19 @@ test('the guide link points at a heading that exists in AGENTS.md, in both bots'
   // Every posted comment links here. Renaming the heading would dead-link all of them
   // with no failing check anywhere else, so derive the anchor from the heading text.
   const root = p => fileURLToPath(new URL(p, import.meta.url));
-  const agents = readFileSync(root('../../../../AGENTS.md'), 'utf8');
+  // CI runs this file from the sparse `.trusted` checkout in claude-code-review.yml,
+  // where AGENTS.md exists only because that sparse-checkout list names it.
+  const agentsPath = root('../../../../AGENTS.md');
+  assert.ok(
+    existsSync(agentsPath),
+    `${agentsPath} is missing: keep AGENTS.md in the sparse-checkout list of claude-code-review.yml`,
+  );
+  assert.match(
+    readFileSync(WORKFLOW, 'utf8'),
+    /^\s+AGENTS\.md$/m,
+    'claude-code-review.yml must sparse-checkout AGENTS.md for this test to run in CI',
+  );
+  const agents = readFileSync(agentsPath, 'utf8');
   const heading = '## Responding to review feedback';
   assert.ok(
     agents.split('\n').includes(heading),
@@ -464,13 +479,40 @@ test('the guide link points at a heading that exists in AGENTS.md, in both bots'
     `GUIDE_URL must end with ${anchor}`,
   );
   // deep-review.yml appends its own copy of the footer in shell; keep it on the same anchor.
-  const deepReview = readFileSync(
-    root('../../../workflows/deep-review.yml'),
-    'utf8',
-  );
+  const deepReview = readFileSync(DEEP_REVIEW, 'utf8');
   assert.ok(
     deepReview.includes(`AGENTS.md${anchor}`),
     `deep-review.yml must link ${anchor}`,
+  );
+  assert.match(
+    deepReview,
+    /FOOTER='<sub>[^\n]*Do not widen the PR/,
+    "deep-review.yml's FOOTER must carry the scope rule the other footers carry",
+  );
+});
+
+test("deep-review's prior-comments filter recognizes our own inline comments", () => {
+  // deep-review.yml drops our output from prior-comments.md by marker. Inline comments
+  // carry only the dedup marker, so OURS must match what commentBody emits, or every
+  // finding flows back to the previous-comments persona as "unaddressed feedback".
+  const wf = readFileSync(DEEP_REVIEW, 'utf8');
+  const ours = [
+    ...wf.match(/const OURS = \[([\s\S]*?)\];/)[1].matchAll(/'([^']+)'/g),
+  ].map(m => m[1]);
+  const inline = helpers.commentBody({
+    file: 'src/a.ts',
+    line: 11,
+    title: 'x',
+    body: 'y',
+  });
+  assert.ok(
+    ours.some(m => inline.includes(m)),
+    `OURS ${JSON.stringify(ours)} must match an inline comment`,
+  );
+  const humanReply = 'Pre-existing, out of scope for this PR.';
+  assert.ok(
+    !ours.some(m => humanReply.includes(m)),
+    'a human reply must still pass the filter',
   );
 });
 

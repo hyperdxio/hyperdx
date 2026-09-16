@@ -274,8 +274,11 @@ jobs:
       # the roster, so fetch the threads here in trusted shell instead.
       #
       # Bodies are author-controllable: sanitized, capped and fenced like the
-      # PR body. Our own sticky reviews are excluded, or the persona re-reports
-      # our findings as "unaddressed feedback".
+      # PR body. Our own output is excluded, or the persona re-reports our
+      # findings as "unaddressed feedback": the three sticky markers, plus the
+      # sibling reviewer's inline comments, which carry only the per-finding
+      # dedup marker from review-comments.cjs. Human replies in those threads
+      # have no marker and still flow through.
       - name: Materialize prior review comments
         id: prior
         if: steps.gate.outputs.should_review == 'true'
@@ -291,15 +294,11 @@ jobs:
               '<!-- deep-review -->',
               '<!-- claude-code-review -->',
               '<!-- deep-resolve -->',
+              '<!-- hdxr:',
             ];
 
-            // Keep \n and \t; blank every other control/format char. Drop <sub>
-            // blocks first: the sibling reviewer's inline comments each carry a
-            // ~250-byte advisory footer aimed at the author, and inline comments
-            // are pushed last, so under TOTAL_LIMIT that boilerplate would evict
-            // human replies before anything else.
+            // Keep \n and \t; blank every other control/format char.
             const clean = (s) => (s || '')
-              .replace(/<sub>[\s\S]*?<\/sub>/g, '')
               .replace(/[^\S\n\t]/gu, ' ')
               .replace(/[\p{Cc}\p{Cf}\u2028\u2029]/gu, (c) =>
                 (c === '\n' || c === '\t') ? c : ' ')
@@ -852,10 +851,16 @@ jobs:
           # in .github/scripts/code-review/review-comments.cjs; the anchor test
           # there pins both to the AGENTS.md heading.
           FOOTER='<sub>No finding blocks merge automatically. A maintainer will expect P0/P1 findings in code this PR changes to be fixed; P2/P3 are your call -- fix or reply. Never fix findings about surrounding code here; reply instead. Do not widen the PR. [How to respond](https://github.com/hyperdxio/hyperdx/blob/main/AGENTS.md#responding-to-review-feedback)</sub>'
+          # Only when there is something to triage, as renderSummary does for its
+          # notice: a clean review or a zero-coverage (unhealthy-sandbox) one gets
+          # no footer. A finding is a `- **path:line**` bullet per the prompt.
+          if [ "${SANDBOX_BROKEN:-}" = "false" ] && printf '%s' "$REVIEW" | grep -qE '^[[:space:]]*- \*\*`'; then
+            REVIEW="$REVIEW"$'\n\n'"$FOOTER"
+          fi
           {
             echo 'review<<DEEP_REVIEW_EOF'
             printf '%s\n' "$MARKER"
-            printf '%s\n\n%s\n' "$REVIEW" "$FOOTER"
+            printf '%s\n' "$REVIEW"
             echo 'DEEP_REVIEW_EOF'
           } >> "$GITHUB_OUTPUT"
 
