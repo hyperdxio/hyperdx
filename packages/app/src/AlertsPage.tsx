@@ -52,7 +52,7 @@ export default function AlertsPage() {
   );
 
   const { data: me, isPending: isMePending } = api.useMe();
-  const { data: tagsData } = api.useTags();
+  const { data: tagsData } = api.useTags('alert');
 
   const {
     data,

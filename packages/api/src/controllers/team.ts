@@ -1,4 +1,7 @@
-import { TeamClickHouseSettingsUpdate } from '@hyperdx/common-utils/dist/types';
+import {
+  TagResourceType,
+  TeamClickHouseSettingsUpdate,
+} from '@hyperdx/common-utils/dist/types';
 import mongoose from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -120,18 +123,40 @@ export function updateTeamClickhouseSettings(
   return Team.findByIdAndUpdate(teamId, update, { new: true });
 }
 
-export async function getTags(teamId: ObjectId) {
+function getCollectionsWithTags(
+  resourceType?: TagResourceType,
+): Pick<mongoose.Model<unknown>, 'aggregate'>[] {
+  switch (resourceType) {
+    case 'alert':
+      return [Alert];
+    case 'dashboard':
+      return [Dashboard];
+    case 'savedSearch':
+      return [SavedSearch];
+    default:
+      return [Alert, Dashboard, SavedSearch];
+  }
+}
+
+/**
+ * Distinct tags applied to the team's entities. Scoped to one kind of entity
+ * when `resourceType` is given.
+ */
+export async function getTags(
+  teamId: ObjectId,
+  resourceType?: TagResourceType,
+) {
   const distinctTagsPipeline: mongoose.PipelineStage[] = [
     { $match: { team: teamId } },
     { $unwind: '$tags' },
     { $group: { _id: '$tags' } },
   ];
 
-  const tagGroups = await Promise.all([
-    Dashboard.aggregate<{ _id: string }>(distinctTagsPipeline),
-    SavedSearch.aggregate<{ _id: string }>(distinctTagsPipeline),
-    Alert.aggregate<{ _id: string }>(distinctTagsPipeline),
-  ]);
+  const tagGroups = await Promise.all(
+    getCollectionsWithTags(resourceType).map(collection =>
+      collection.aggregate<{ _id: string }>(distinctTagsPipeline),
+    ),
+  );
 
   return [...new Set(tagGroups.flat().map(t => t._id))];
 }

@@ -9,7 +9,7 @@ import {
   UseQueryOptions,
 } from '@tanstack/react-query';
 
-import { hdxServer } from './api';
+import { hdxServer, useInvalidateTags } from './api';
 import { IS_LOCAL_MODE } from './config';
 import { localSavedSearches } from './localStore';
 
@@ -45,6 +45,7 @@ export function useSavedSearch(
 
 export function useCreateSavedSearch() {
   const queryClient = useQueryClient();
+  const invalidateTags = useInvalidateTags();
 
   return useMutation({
     mutationFn: (data: Omit<SavedSearch, 'id'>) => {
@@ -57,6 +58,7 @@ export function useCreateSavedSearch() {
       }).json<SavedSearch>();
     },
     onSuccess: () => {
+      invalidateTags();
       return queryClient.invalidateQueries({ queryKey: ['saved-search'] });
     },
   });
@@ -64,6 +66,7 @@ export function useCreateSavedSearch() {
 
 export function useUpdateSavedSearch() {
   const queryClient = useQueryClient();
+  const invalidateTags = useInvalidateTags();
 
   return useMutation({
     mutationFn: (data: Partial<SavedSearch> & { id: SavedSearch['id'] }) => {
@@ -78,12 +81,14 @@ export function useUpdateSavedSearch() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['saved-search'] });
+      invalidateTags();
     },
   });
 }
 
 export function useDeleteSavedSearch() {
   const queryClient = useQueryClient();
+  const invalidateTags = useInvalidateTags();
 
   return useMutation({
     mutationFn: (id: string) => {
@@ -95,6 +100,7 @@ export function useDeleteSavedSearch() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['saved-search'] });
+      invalidateTags();
     },
   });
 }

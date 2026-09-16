@@ -16,6 +16,7 @@ import type {
   PresetDashboardFilter,
   RotateAccessKeyApiResponse,
   RotateApiKeyApiResponse,
+  TagResourceType,
   TeamApiResponse,
   TeamClickHouseSettingsUpdate,
   TeamInvitationsApiResponse,
@@ -185,9 +186,21 @@ function normalizeAlertsQueryParams(params: AlertsQueryParams) {
   };
 }
 
+const TAGS_QUERY_KEY_PREFIX = ['team/tags'] as const;
+
+/** Invalidates every cached tag list */
+export function useInvalidateTags() {
+  const queryClient = useQueryClient();
+  return useCallback(
+    () => queryClient.invalidateQueries({ queryKey: TAGS_QUERY_KEY_PREFIX }),
+    [queryClient],
+  );
+}
+
 const api = {
   useCreateAlert() {
     const markOnboardingTaskComplete = useMarkOnboardingTaskComplete();
+    const invalidateTags = useInvalidateTags();
     return useMutation<{ data: Alert }, Error, Alert>({
       mutationFn: async alert =>
         server('alerts', {
@@ -196,6 +209,7 @@ const api = {
         }).json(),
       // Backend records the task; just sync the cache.
       onSuccess: () => {
+        invalidateTags();
         if (!IS_LOCAL_MODE) {
           markOnboardingTaskComplete('alert');
         }
@@ -204,6 +218,7 @@ const api = {
   },
   useUpdateAlert() {
     const markOnboardingTaskComplete = useMarkOnboardingTaskComplete();
+    const invalidateTags = useInvalidateTags();
     return useMutation<{ data: Alert }, Error, { id: string } & Alert>({
       mutationFn: async alert =>
         server(`alerts/${alert.id}`, {
@@ -211,6 +226,7 @@ const api = {
           json: alert,
         }).json(),
       onSuccess: () => {
+        invalidateTags();
         if (!IS_LOCAL_MODE) {
           markOnboardingTaskComplete('alert');
         }
@@ -218,11 +234,15 @@ const api = {
     });
   },
   useDeleteAlert() {
+    const invalidateTags = useInvalidateTags();
     return useMutation<void, Error, string>({
       mutationFn: async (alertId: string) => {
         await server(`alerts/${alertId}`, {
           method: 'DELETE',
         });
+      },
+      onSuccess: () => {
+        invalidateTags();
       },
     });
   },
@@ -560,12 +580,24 @@ const api = {
         }).json<UpdateClickHouseSettingsApiResponse>(),
     });
   },
-  useTags() {
+  getTagsQueryKey: (resourceType?: TagResourceType) =>
+    [...TAGS_QUERY_KEY_PREFIX, resourceType ?? null] as const,
+  /** Tags that have been added to resources, optionally narrowed to one resource type. */
+  useTags(resourceType?: TagResourceType) {
     return useQuery({
-      queryKey: [`team/tags`],
+      queryKey: api.getTagsQueryKey(resourceType),
       queryFn: IS_LOCAL_MODE
-        ? async () => ({ data: getLocalDashboardTags() })
-        : () => hdxServer(`team/tags`).json<TeamTagsApiResponse>(),
+        ? // Local mode only persists dashboards, so nothing else has tags.
+          async () => ({
+            data:
+              resourceType == null || resourceType === 'dashboard'
+                ? getLocalDashboardTags()
+                : [],
+          })
+        : () =>
+            hdxServer('team/tags', {
+              searchParams: resourceType ? { resourceType } : undefined,
+            }).json<TeamTagsApiResponse>(),
     });
   },
   useSaveWebhook() {
