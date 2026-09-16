@@ -365,6 +365,19 @@ const queryRangeHandler: express.RequestHandler = async (req, res) => {
       });
     }
 
+    const start = parseTimestamp(params.start);
+    const end = parseTimestamp(params.end);
+    const step = parseDuration(params.step ?? '60s');
+
+    if (step <= 0 || (end - start) / step > PROMETHEUS_MAX_RESOLUTION) {
+      return res.status(400).json({
+        status: 'error',
+        errorType: 'bad_data',
+        error: `exceeded maximum resolution of ${PROMETHEUS_MAX_RESOLUTION.toLocaleString('en-US')} points per timeseries. Try decreasing the query resolution (?step=XX)`,
+      });
+    }
+
+
     // If the connection points at a Prometheus-compatible endpoint, proxy
     // directly to connection.host instead of running a ClickHouse query.
     if (connection.isPrometheusEndpoint) {
@@ -381,9 +394,6 @@ const queryRangeHandler: express.RequestHandler = async (req, res) => {
 
     // Otherwise, use ClickHouse prometheusQuery()
     backend = 'clickhouse';
-    const start = parseTimestamp(params.start);
-    const end = parseTimestamp(params.end);
-    const step = parseDuration(params.step ?? '60s');
     const database = params.database ?? 'default';
     const table = params.table;
     if (!table) {
@@ -394,13 +404,6 @@ const queryRangeHandler: express.RequestHandler = async (req, res) => {
       });
     }
 
-    if (step <= 0 || (end - start) / step > PROMETHEUS_MAX_RESOLUTION) {
-      return res.status(400).json({
-        status: 'error',
-        errorType: 'bad_data',
-        error: `exceeded maximum resolution of ${PROMETHEUS_MAX_RESOLUTION.toLocaleString('en-US')} points per timeseries. Try decreasing the query resolution (?step=XX)`,
-      });
-    }
 
     const client = new ClickhouseClient({
       host: connection.host,
