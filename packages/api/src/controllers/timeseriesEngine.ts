@@ -11,8 +11,8 @@ import {
 import { ClickhouseClient } from '@/clickhouse';
 import logger from '@/utils/logger';
 
-export const PROMETHEUS_MAX_EXECUTION_SEC = 30;
-export const PROMETHEUS_MAX_RESULT_ROWS = 100000;
+const PROMETHEUS_MAX_EXECUTION_SEC = 30;
+const PROMETHEUS_MAX_RESULT_ROWS = 100000;
 
 export type TimeSeriesTagsQueryArgs = {
   client: ClickhouseClient;
@@ -241,8 +241,8 @@ export async function queryLabelNames({
   limit,
   ...args
 }: TimeSeriesTagsQueryArgs): Promise<string[]> {
-  // `all_tags` is EPHEMERAL by default, so the label names come from `tags`,
-  // which the engine strips `__name__` out of. It is folded back in explicitly.
+  // The engine keeps `__name__` in `metric_name`, not `tags`, so it is folded
+  // back in explicitly.
   const value = chSql`arrayJoin(arrayConcat([${{ String: '__name__' }}], mapKeys(${{ Identifier: 'tags' }})))`;
   const conditions = await getSeriesFilterConditions(args);
 
