@@ -11,8 +11,8 @@ import {
 import { ClickhouseClient } from '@/clickhouse';
 import logger from '@/utils/logger';
 
-const PROMETHEUS_MAX_EXECUTION_SEC = 30;
-const PROMETHEUS_MAX_RESULT_ROWS = 100000;
+export const PROMETHEUS_MAX_EXECUTION_SEC = 30;
+export const PROMETHEUS_MAX_RESULT_ROWS = 100000;
 
 export type TimeSeriesTagsQueryArgs = {
   client: ClickhouseClient;

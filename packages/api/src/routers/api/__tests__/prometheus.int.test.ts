@@ -714,11 +714,40 @@ describe('prometheus router', () => {
       );
       expect(calledUrl).toContain('database=otel');
       expect(calledUrl).toContain('table=metrics_ts');
+      expect(calledUrl).toContain('max_execution_time=30');
+      expect(calledUrl).toContain('max_result_rows=100000');
       expect(calledUrl).not.toContain('connectionId');
       expect(init?.headers).toMatchObject({
         'X-ClickHouse-User': config.CLICKHOUSE_USER,
         'X-ClickHouse-Key': config.CLICKHOUSE_PASSWORD,
       });
+    });
+
+    it('does not let the request loosen the pinned ClickHouse limits', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedClickHouseConnection(team._id);
+
+      await agent
+        .get('/v1/prometheus/query_range')
+        .query({
+          query: 'up',
+          start: '1700000000',
+          end: '1700000060',
+          step: '15s',
+          table: 'metrics_ts',
+          max_execution_time: '9999',
+          max_result_rows: '0',
+          connectionId: conn._id.toString(),
+        })
+        .expect(200);
+
+      const calledUrl = new URL(String(mockFetch.mock.calls[0][0]));
+      expect(calledUrl.searchParams.getAll('max_execution_time')).toEqual([
+        '30',
+      ]);
+      expect(calledUrl.searchParams.getAll('max_result_rows')).toEqual([
+        '100000',
+      ]);
     });
 
     it('returns 400 before proxying when a ClickHouse connection has no table', async () => {
@@ -837,6 +866,8 @@ describe('prometheus router', () => {
         `${config.CLICKHOUSE_HOST}/prometheus/api/v1/query?`,
       );
       expect(calledUrl).toContain('table=metrics_ts');
+      expect(calledUrl).toContain('max_execution_time=30');
+      expect(calledUrl).toContain('max_result_rows=100000');
       expect(init?.headers).toMatchObject({
         'X-ClickHouse-User': config.CLICKHOUSE_USER,
       });

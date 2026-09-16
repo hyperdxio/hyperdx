@@ -7,6 +7,8 @@ import z from 'zod';
 import { ClickhouseClient } from '@/clickhouse';
 import { getConnectionById } from '@/controllers/connection';
 import {
+  PROMETHEUS_MAX_EXECUTION_SEC,
+  PROMETHEUS_MAX_RESULT_ROWS,
   queryLabelNames,
   queryLabelValues,
   TimeSeriesTagsQueryArgs,
@@ -190,6 +192,25 @@ const CALLER_SETTABLE_PARAM_KEYS = new Set([
 // ClickHouse serves the Prometheus HTTP API under this prefix on its main HTTP
 // port when the `prometheus_api_v1` handler is configured (26.8+).
 const CLICKHOUSE_PROMETHEUS_API_PREFIX = '/prometheus/api/v1';
+
+/**
+ * The ClickHouse connection host with the query limits pinned as ClickHouse
+ * HTTP settings. The prometheus_api_v1 handler honours settings given in the
+ * URL and reports a breach as a Prometheus 400, so this is the only place to
+ * bound a PromQL evaluation — the request carries no SQL to attach SETTINGS to.
+ * Pinned on the host rather than passed as params so the merge in
+ * proxyToPrometheus (which lets the caller override any allowlisted key) can't
+ * loosen them.
+ */
+function clickhousePrometheusUpstream(host: string): string {
+  const url = new URL(host);
+  url.searchParams.set(
+    'max_execution_time',
+    String(PROMETHEUS_MAX_EXECUTION_SEC),
+  );
+  url.searchParams.set('max_result_rows', String(PROMETHEUS_MAX_RESULT_ROWS));
+  return url.toString();
+}
 
 function clickhouseAuthHeaders(connection: {
   username: string;
@@ -451,7 +472,7 @@ const queryRangeHandler: express.RequestHandler = async (req, res) => {
       });
     }
     const status = await proxyToPrometheus(
-      connection.host,
+      clickhousePrometheusUpstream(connection.host),
       `${CLICKHOUSE_PROMETHEUS_API_PREFIX}/query_range`,
       params,
       res,
@@ -540,7 +561,7 @@ const queryHandler: express.RequestHandler = async (req, res) => {
       });
     }
     const status = await proxyToPrometheus(
-      connection.host,
+      clickhousePrometheusUpstream(connection.host),
       `${CLICKHOUSE_PROMETHEUS_API_PREFIX}/query`,
       params,
       res,
