@@ -26,7 +26,6 @@ import { timeBucketByGranularity } from '@hyperdx/common-utils/dist/core/utils';
 import { getDashboardVariableDeclarations } from '@hyperdx/common-utils/dist/filters';
 import {
   isBuilderChartConfig,
-  isBuilderSavedChartConfig,
   isPromqlSavedChartConfig,
   isRawSqlChartConfig,
   isRawSqlSavedChartConfig,
@@ -107,7 +106,7 @@ import {
   roundDownToXMinutes,
   unflattenObject,
 } from '@/tasks/util';
-import { isPopulatedRef } from '@/utils/alerts';
+import { alertConfigHasGroupBy, isPopulatedRef } from '@/utils/alerts';
 import {
   getCounter,
   type OperationOutcome,
@@ -146,11 +145,6 @@ const alertBatchFailuresCounter = getCounter('hyperdx.alerts.batch_failures', {
  * For tile and inline alerts, groupBy is on the chart config.
  */
 export const alertHasGroupBy = (details: AlertDetails): boolean => {
-  const { alert } = details;
-  if (alert.groupBy && alert.groupBy.length > 0) {
-    return true;
-  }
-
   // AlertChartConfig members are the tile config types minus the embedded
   // alert field, so they're assignable to SavedChartConfig (which the
   // chart-config guards narrow on).
@@ -160,33 +154,7 @@ export const alertHasGroupBy = (details: AlertDetails): boolean => {
       : details.taskType === AlertTaskType.INLINE
         ? details.chartConfig
         : undefined;
-  if (savedConfig == null) {
-    return false;
-  }
-
-  if (
-    isBuilderSavedChartConfig(savedConfig) &&
-    savedConfig.groupBy &&
-    savedConfig.groupBy.length > 0
-  ) {
-    return true;
-  }
-
-  if (isPromqlSavedChartConfig(savedConfig)) {
-    // PromQL /query_range always returns one result-set entry per label-set.
-    // Treating it as grouped ensures the missing-series recovery loop runs
-    // when a previously-firing series disappears from the response.
-    return true;
-  }
-
-  // Without a reliable parser, it's difficult to tell if the raw sql contains a
-  // group by (besides the group by on the interval), so we'll assume it might
-  // in the case of time series charts, and assume it will not in the case of number charts.
-  // Group name will just be blank if there are no group by values.
-  if (isRawSqlSavedChartConfig(savedConfig)) {
-    return savedConfig.displayType !== DisplayType.Number;
-  }
-  return false;
+  return alertConfigHasGroupBy(details.alert.groupBy, savedConfig);
 };
 
 /**
