@@ -681,7 +681,7 @@ export default api;
 // Prometheus API
 // --------------------------
 type PrometheusMetric = Record<string, string>;
-type PrometheusMatrixResult = {
+export type PrometheusMatrixResult = {
   metric: PrometheusMetric;
   values: [number, string][];
 };

@@ -1731,13 +1731,43 @@ export type RawSqlChartConfig = z.infer<typeof RawSqlChartConfigSchema>;
 
 export const MAX_LEGEND_TEMPLATE_LENGTH = 1024;
 
+// Caps how many expressions one PromQL tile plots. Each one is a separate
+// query_range request, and a legend past a handful of series is unreadable.
+export const MAX_PROMQL_EXPRESSIONS = 10;
+
+/** One of the expressions a PromQL chart plots. */
+export const PromqlSeriesSchema = z.object({
+  expression: z.string(),
+  /** Prefixed to every series name this expression produces. */
+  alias: z.string().optional(),
+  /** Overrides the chart-level `legendTemplate` for this expression. */
+  legendTemplate: z.string().max(MAX_LEGEND_TEMPLATE_LENGTH).optional(),
+});
+
+export type PromqlSeries = z.infer<typeof PromqlSeriesSchema>;
+
+/**
+ * What a PromQL chart plots: a list of expressions, or a bare expression
+ * string as tiles were saved before multi-expression support (the same
+ * arrangement `select` has with `SelectListSchema`). Read it through
+ * `getPromqlSeries`, which normalizes the two.
+ */
+export const PromqlExpressionListSchema = z
+  .array(PromqlSeriesSchema)
+  .min(1)
+  .max(MAX_PROMQL_EXPRESSIONS)
+  .or(z.string());
+
+export type PromqlExpressionList = z.infer<typeof PromqlExpressionListSchema>;
+
 /** Base schema for PromQL chart configs (persisted fields) */
 const PromqlBaseChartConfigSchema = SharedChartSettingsSchema.extend({
   configType: z.literal('promql'),
-  promqlExpression: z.string(),
+  promqlExpression: PromqlExpressionListSchema,
   connection: z.string(),
   source: z.string().optional(),
   step: z.string().optional(),
+  /** Default legend template; an expression's own template wins over it. */
   legendTemplate: z.string().max(MAX_LEGEND_TEMPLATE_LENGTH).optional(),
 });
 

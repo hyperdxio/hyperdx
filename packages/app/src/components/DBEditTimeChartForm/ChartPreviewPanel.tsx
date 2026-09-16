@@ -10,7 +10,7 @@ import {
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import { Accordion, Divider, Stack, Text } from '@mantine/core';
+import { Accordion, Box, Divider, Stack, Text } from '@mantine/core';
 import { IconList } from '@tabler/icons-react';
 import { SortingState } from '@tanstack/react-table';
 
@@ -475,7 +475,21 @@ export function ChartPreviewPanel({
               renderedPromql == null ? RUN_TO_PREVIEW : renderedPromql.error
             }
           >
-            <PromQLPreview expression={renderedPromql?.expression ?? ''} />
+            <Stack gap="xs">
+              {(renderedPromql?.expressions ?? []).map((entry, index, all) => (
+                // Keyed by content: the list is positional, and two rows
+                // holding the same alias and expression render identically.
+                <Box key={`${entry.alias ?? ''}|${entry.expression}`}>
+                  {all.length > 1 && (
+                    <Text size="xxs" c="dimmed" mb={2}>
+                      {entry.alias ?? `Expression ${index + 1}`}
+                      {entry.ignored && ' — not queried'}
+                    </Text>
+                  )}
+                  <PromQLPreview expression={entry.expression} />
+                </Box>
+              ))}
+            </Stack>
           </QueryPreviewAccordion>
         </>
       )}

@@ -1,13 +1,8 @@
 import { useCallback, useEffect, useMemo } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import {
-  UnknownTemplateHelperError,
-  validateTemplate,
-} from '@hyperdx/common-utils/dist/core/handlebarsEnv';
-import {
   ChartConfigWithDateRange,
   DisplayType,
-  MAX_LEGEND_TEMPLATE_LENGTH,
   NumberFormat,
 } from '@hyperdx/common-utils/dist/types';
 import {
@@ -26,6 +21,7 @@ import {
 import { shouldFillNullsWithZero } from '@/ChartUtils';
 import { MAX_RENDERED_TIME_CHART_SERIES } from '@/defaults';
 import { FormatTime } from '@/useFormatTime';
+import { validateLegendTemplateInput } from '@/utils/legendTemplate';
 
 import { BackgroundChartInput } from './BackgroundChartInput';
 import {
@@ -317,26 +313,10 @@ export default function ChartDisplaySettingsDrawer({
                 name="legendTemplate"
                 size="xs"
                 label="Legend template"
-                description="Handlebars template rendered with each series' Prometheus labels. Leave empty for the default legend. Additional labels will be added if the template does not produce unique labels for each series."
+                description="Handlebars template rendered with each series' Prometheus labels, for the expressions that don't set their own. Leave empty for the default legend. Additional labels will be added if the template does not produce unique labels for each series."
                 placeholder="e.g. {{namespace}} - {{pod}}"
                 data-testid="legend-template-input"
-                rules={{
-                  validate: value => {
-                    if (typeof value !== 'string' || !value) return true;
-                    const trimmed = value.trim();
-                    if (trimmed.length > MAX_LEGEND_TEMPLATE_LENGTH) {
-                      return `Template is too long (${trimmed.length} characters, max ${MAX_LEGEND_TEMPLATE_LENGTH})`;
-                    }
-                    try {
-                      validateTemplate(trimmed);
-                      return true;
-                    } catch (err) {
-                      return err instanceof UnknownTemplateHelperError
-                        ? err.message
-                        : 'Invalid Handlebars template';
-                    }
-                  },
-                }}
+                rules={{ validate: validateLegendTemplateInput }}
               />
             </Box>
             <Divider />

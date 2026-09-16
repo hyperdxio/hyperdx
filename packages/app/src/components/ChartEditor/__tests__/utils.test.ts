@@ -586,6 +586,131 @@ describe('convertSavedChartConfigToFormState', () => {
   });
 });
 
+describe('PromQL expressions', () => {
+  const promqlForm = (
+    promqlExpressions: ChartEditorFormState['promqlExpressions'],
+  ): ChartEditorFormState => ({
+    configType: 'promql',
+    displayType: DisplayType.Line,
+    connection: 'conn-1',
+    source: 'source-promql',
+    promqlExpressions,
+    series: [],
+  });
+
+  it('saves the form rows as the expression list', () => {
+    expect(
+      convertFormStateToSavedChartConfig(
+        promqlForm([
+          { expression: 'up', alias: 'up', legendTemplate: '{{pod}}' },
+          { expression: 'rate(errors[5m])' },
+        ]),
+        undefined,
+      ),
+    ).toMatchObject({
+      promqlExpression: [
+        { expression: 'up', alias: 'up', legendTemplate: '{{pod}}' },
+        { expression: 'rate(errors[5m])' },
+      ],
+    });
+  });
+
+  it('trims aliases and templates, dropping blank ones', () => {
+    const result = convertFormStateToSavedChartConfig(
+      promqlForm([{ expression: 'up', alias: '  up  ', legendTemplate: '  ' }]),
+      undefined,
+    );
+    expect(result).toMatchObject({
+      promqlExpression: [
+        { expression: 'up', alias: 'up', legendTemplate: undefined },
+      ],
+    });
+  });
+
+  it('drops unfinished rows but always keeps one', () => {
+    expect(
+      convertFormStateToSavedChartConfig(
+        promqlForm([{ expression: 'up' }, { expression: '  ' }]),
+        undefined,
+      ),
+    ).toMatchObject({ promqlExpression: [{ expression: 'up' }] });
+    expect(
+      convertFormStateToSavedChartConfig(promqlForm([]), undefined),
+    ).toMatchObject({ promqlExpression: [{ expression: '' }] });
+  });
+
+  it('threads the expression list into the rendered config', () => {
+    expect(
+      convertFormStateToChartConfig(
+        promqlForm([{ expression: 'up' }, { expression: 'rate(errors[5m])' }]),
+        dateRange,
+        undefined,
+      ),
+    ).toMatchObject({
+      promqlExpression: [
+        { expression: 'up' },
+        { expression: 'rate(errors[5m])' },
+      ],
+    });
+  });
+
+  it('loads a legacy single-expression config into one row', () => {
+    const result = convertSavedChartConfigToFormState({
+      configType: 'promql',
+      displayType: DisplayType.Line,
+      promqlExpression: 'up',
+      connection: 'conn-1',
+      legendTemplate: '{{pod}}',
+    });
+    expect(result.configType).toBe('promql');
+    // Blank rather than absent: an undefined value would leave the alias and
+    // legend inputs uncontrolled until the first keystroke.
+    expect(result.promqlExpressions).toEqual([
+      { expression: 'up', alias: '', legendTemplate: '' },
+    ]);
+    // The chart-level default stays chart-level.
+    expect(result.legendTemplate).toBe('{{pod}}');
+  });
+
+  it('gives a config with no expressions an empty row to edit', () => {
+    expect(
+      convertSavedChartConfigToFormState({
+        configType: 'promql',
+        displayType: DisplayType.Line,
+        connection: 'conn-1',
+        promqlExpression: [],
+      }).promqlExpressions,
+    ).toEqual([{ expression: '', alias: '', legendTemplate: '' }]);
+  });
+
+  // Switching a builder tile into PromQL mode edits this same form state, so
+  // the row has to exist before the config is a PromQL one.
+  it('gives a builder config an empty row too', () => {
+    expect(
+      convertSavedChartConfigToFormState({
+        source: 'source-1',
+        displayType: DisplayType.Line,
+        select: [seriesItem],
+        where: '',
+      }).promqlExpressions,
+    ).toEqual([{ expression: '', alias: '', legendTemplate: '' }]);
+  });
+
+  it('drops the expression fields from builder configs', () => {
+    const result = convertFormStateToSavedChartConfig(
+      {
+        displayType: DisplayType.Line,
+        series: [seriesItem],
+        promqlExpression: 'up',
+        promqlExpressions: [{ expression: 'up' }],
+      },
+      logSource,
+    );
+    expect(result).not.toHaveProperty('promqlExpression');
+    expect(result).not.toHaveProperty('promqlExpressions');
+  });
+});
+
 describe('validateChartForm', () => {
   const metricSeriesItem = {
     ...seriesItem,

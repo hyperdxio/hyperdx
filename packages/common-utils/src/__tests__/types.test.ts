@@ -10,6 +10,7 @@ import {
   DashboardSchema,
   DerivedColumnSchema,
   MAX_LEGEND_TEMPLATE_LENGTH,
+  MAX_PROMQL_EXPRESSIONS,
   MetricFormulaSchema,
   PresetDashboard,
   PresetDashboardFilterSchema,
@@ -928,12 +929,59 @@ describe('formulas on saved chart configs', () => {
   });
 });
 
-describe('PromQL legend templates on saved chart configs', () => {
+describe('PromQL expressions on saved chart configs', () => {
   const promqlConfig = (legendTemplate: string) => ({
     configType: 'promql' as const,
     promqlExpression: 'up',
     connection: 'conn-1',
     legendTemplate,
+  });
+
+  const withExpressions = (promqlExpression: unknown) => ({
+    configType: 'promql' as const,
+    connection: 'conn-1',
+    promqlExpression,
+  });
+
+  it('accepts a list of expressions with aliases and templates', () => {
+    expect(
+      SavedChartConfigSchema.safeParse(
+        withExpressions([
+          { expression: 'up', alias: 'up', legendTemplate: '{{pod}}' },
+          { expression: 'rate(errors[5m])' },
+        ]),
+      ).success,
+    ).toBe(true);
+  });
+
+  it('rejects an empty list and more expressions than the cap', () => {
+    expect(SavedChartConfigSchema.safeParse(withExpressions([])).success).toBe(
+      false,
+    );
+    const atCap = Array.from({ length: MAX_PROMQL_EXPRESSIONS }, () => ({
+      expression: 'up',
+    }));
+    expect(
+      SavedChartConfigSchema.safeParse(withExpressions(atCap)).success,
+    ).toBe(true);
+    expect(
+      SavedChartConfigSchema.safeParse(
+        withExpressions([...atCap, { expression: 'up' }]),
+      ).success,
+    ).toBe(false);
+  });
+
+  it('caps a per-expression legendTemplate the same way', () => {
+    expect(
+      SavedChartConfigSchema.safeParse(
+        withExpressions([
+          {
+            expression: 'up',
+            legendTemplate: 'a'.repeat(MAX_LEGEND_TEMPLATE_LENGTH + 1),
+          },
+        ]),
+      ).success,
+    ).toBe(false);
   });
 
   // The editor rejects an over-long template inline using the same constant;

@@ -3,6 +3,8 @@ import {
   TableConnection,
   TableConnectionChoice,
 } from '@hyperdx/common-utils/dist/core/metadata';
+import { getPromqlSeries } from '@hyperdx/common-utils/dist/core/promql';
+import { isTimeSeriesDisplayType } from '@hyperdx/common-utils/dist/core/utils';
 import {
   configConsumesBroadcastFilters,
   getBlockingRequiredFilterNames,
@@ -53,7 +55,10 @@ export const isQueryReady = (
 ) => {
   if (!queriedConfig) return false;
   if (isPromqlChartConfig(queriedConfig)) {
-    return !!(queriedConfig.promqlExpression && queriedConfig.connection);
+    return !!(
+      getPromqlSeries(queriedConfig).some(series => series.expression) &&
+      queriedConfig.connection
+    );
   }
   if (isRawSqlChartConfig(queriedConfig)) {
     return !!(queriedConfig.sqlTemplate && queriedConfig.connection);
@@ -246,12 +251,20 @@ export function resolveTilePreviewFilters({
   };
 }
 
-/** A PromQL tile's substituted expression, or why there isn't one. */
-export type RenderedPromqlExpression =
-  | { expression: string; error?: never }
-  | { expression?: never; error: string };
+/** One expression as a PromQL tile queries it. */
+export type RenderedPromqlEntry = {
+  expression: string;
+  alias?: string;
+  /** Set when the display type plots only the first expression. */
+  ignored?: boolean;
+};
 
-/** The expression a PromQL tile is queried with, with variables substituted. */
+/** A PromQL tile's substituted expressions, or why there aren't any. */
+export type RenderedPromqlExpression =
+  | { expressions: RenderedPromqlEntry[]; error?: never }
+  | { expressions?: never; error: string };
+
+/** The expressions a PromQL tile is queried with, with variables substituted. */
 export function buildRenderedPromqlExpression(
   queriedConfig: ChartConfigWithDateRange | undefined,
 ): RenderedPromqlExpression | undefined {
@@ -260,9 +273,17 @@ export function buildRenderedPromqlExpression(
   }
 
   try {
+    const substituted = substitutePromqlChartConfigVariables(queriedConfig);
+    // Matches the query path: only time series charts plot every expression.
+    const plotsEveryExpression = isTimeSeriesDisplayType(
+      queriedConfig.displayType,
+    );
     return {
-      expression:
-        substitutePromqlChartConfigVariables(queriedConfig).promqlExpression,
+      expressions: getPromqlSeries(substituted).map((series, index) => ({
+        expression: series.expression,
+        alias: series.alias?.trim() || undefined,
+        ignored: !plotsEveryExpression && index > 0,
+      })),
     };
   } catch (e) {
     // Substitution throws on an unrecognized format such as `${svc:json}`. The

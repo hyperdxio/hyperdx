@@ -1,12 +1,18 @@
-import { Control, useController, useWatch } from 'react-hook-form';
-import { SourceKind } from '@hyperdx/common-utils/dist/types';
+import { Control, useFieldArray, useWatch } from 'react-hook-form';
+import { isTimeSeriesDisplayType } from '@hyperdx/common-utils/dist/core/utils';
+import {
+  DisplayType,
+  MAX_PROMQL_EXPRESSIONS,
+  SourceKind,
+} from '@hyperdx/common-utils/dist/types';
 import { Box, Button, Flex, Stack, Text } from '@mantine/core';
+import { IconCirclePlus } from '@tabler/icons-react';
 
-import PromQLEditor from '@/components/PromQLEditor/PromQLEditor';
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { usePromqlMetricNames } from '@/hooks/usePromqlMetadata';
 import { useSource } from '@/source';
 
+import PromqlExpressionEditor from './PromqlExpressionEditor';
 import { ChartEditorFormState } from './types';
 
 export default function PromqlChartEditor({
@@ -18,12 +24,14 @@ export default function PromqlChartEditor({
   onSubmit: (suppressErrorNotification?: boolean) => void;
   onOpenDisplaySettings: () => void;
 }) {
-  const { field: expressionField } = useController({
+  const { fields, append, remove, swap } = useFieldArray({
     control,
-    name: 'promqlExpression',
+    name: 'promqlExpressions',
   });
 
   const sourceId = useWatch({ control, name: 'source' });
+  const displayType = useWatch({ control, name: 'displayType' });
+  const chartLegendTemplate = useWatch({ control, name: 'legendTemplate' });
   const { data: source } = useSource({ id: sourceId });
   // The form can still hold a non-PromQL source right after switching a tile
   // into PromQL mode (the picker above only restricts future selections), and
@@ -35,6 +43,10 @@ export default function PromqlChartEditor({
     promqlSource?.from.databaseName,
     promqlSource?.from.tableName,
   );
+
+  // Several result sets only make sense on a time series; the other display
+  // types plot the first expression and ignore the rest.
+  const plotsEveryExpression = isTimeSeriesDisplayType(displayType);
 
   return (
     <Stack gap="sm">
@@ -49,19 +61,39 @@ export default function PromqlChartEditor({
           allowedSourceKinds={[SourceKind.Promql]}
         />
       </Box>
-      <Box>
-        <Text size="sm" mb={4}>
-          PromQL Expression
-        </Text>
-        <PromQLEditor
-          value={expressionField.value ?? ''}
-          onChange={expressionField.onChange}
-          onSubmit={() => onSubmit()}
-          placeholder="rate(http_requests_total{service='api'}[5m])"
+      {fields.map((field, index) => (
+        <PromqlExpressionEditor
+          key={field.id}
+          control={control}
+          index={index}
+          length={fields.length}
           metricNames={metricNames}
+          // Number tiles show a single value, so they have no legend to name
+          // (mirrors the display settings drawer's chart-level template).
+          showLegendTemplate={displayType !== DisplayType.Number}
+          chartLegendTemplate={chartLegendTemplate?.trim() || undefined}
+          isIgnored={!plotsEveryExpression && index > 0}
+          onSubmit={onSubmit}
+          onSwap={swap}
+          onRemove={remove}
         />
-      </Box>
-      <Flex justify="end">
+      ))}
+      <Flex justify="space-between">
+        {plotsEveryExpression && fields.length < MAX_PROMQL_EXPRESSIONS ? (
+          <Button
+            variant="subtle"
+            size="sm"
+            onClick={() =>
+              append({ expression: '', alias: '', legendTemplate: '' })
+            }
+            data-testid="promql-add-expression-button"
+          >
+            <IconCirclePlus size={14} className="me-2" />
+            Add expression
+          </Button>
+        ) : (
+          <Box />
+        )}
         <Button
           onClick={onOpenDisplaySettings}
           size="compact-sm"
