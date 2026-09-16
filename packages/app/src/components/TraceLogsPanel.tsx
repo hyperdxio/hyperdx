@@ -77,25 +77,6 @@ export default function TraceLogsPanel({
     };
   }, [logSource, traceWhere, dateRange]);
 
-  // The same rows in the full search page. Built here rather than through the
-  // context's `generateSearchUrl`, which stamps the search page's own time
-  // range and re-applies its filter pills — both would land the reader on a
-  // different row set than the tab is showing.
-  const searchUrl = useMemo(() => {
-    if (logSource == null || traceWhere == null) {
-      return undefined;
-    }
-    const params = new URLSearchParams({
-      source: logSource.id,
-      where: traceWhere,
-      whereLanguage: 'sql',
-      from: dateRange[0].getTime().toString(),
-      to: dateRange[1].getTime().toString(),
-      isLive: 'false',
-    });
-    return `/search?${params.toString()}`;
-  }, [logSource, traceWhere, dateRange]);
-
   const handleRowDetailsClick = useCallback(
     (rowWhere: RowWhereResult, row: Record<string, unknown>) => {
       // The table selects the source's own expressions, so the body sits under
@@ -112,12 +93,15 @@ export default function TraceLogsPanel({
 
   const parentContext = use(RowSidePanelContext);
 
-  // This table selects the log source's own columns, so the header's
-  // remove-column action would drop whatever column sits at that index in the
-  // searched table instead. Take it away.
+  // Both of the searched table's row actions are wrong for this table, which
+  // lists another source's rows with its own columns: the cell popover's
+  // filter buttons would write a log column into the searched source's
+  // filters, and the header's remove-column action maps by index onto the
+  // searched select. Filtering lives in search, which the link below opens.
   const rowSidePanelContextValue = useMemo(
     () => ({
       ...parentContext,
+      onPropertyAddClick: undefined,
       displayedColumns: undefined,
       toggleColumn: undefined,
     }),
@@ -128,7 +112,7 @@ export default function TraceLogsPanel({
     return null;
   }
 
-  if (config == null || logSource == null) {
+  if (config == null || logSource == null || traceWhere == null) {
     return (
       <EmptyState
         icon={<IconLogs size={24} />}
@@ -140,6 +124,19 @@ export default function TraceLogsPanel({
     );
   }
 
+  // The same rows in the full search page. Built here rather than through the
+  // context's `generateSearchUrl`, which stamps the search page's own time
+  // range and re-applies its filter pills — both would land the reader on a
+  // different row set than the tab is showing.
+  const searchUrl = `/search?${new URLSearchParams({
+    source: logSource.id,
+    where: traceWhere,
+    whereLanguage: 'sql',
+    from: dateRange[0].getTime().toString(),
+    to: dateRange[1].getTime().toString(),
+    isLive: 'false',
+  }).toString()}`;
+
   return (
     <RowSidePanelContext value={rowSidePanelContextValue}>
       <Flex
@@ -149,20 +146,18 @@ export default function TraceLogsPanel({
         style={{ flexGrow: 1 }}
         data-testid={dataTestId}
       >
-        {searchUrl && (
-          <Group justify="flex-end" py="xs">
-            <Button
-              variant="link"
-              size="xs"
-              component={Link}
-              href={searchUrl}
-              rightSection={<IconExternalLink size={14} />}
-              data-testid="trace-logs-open-in-search"
-            >
-              Open in search
-            </Button>
-          </Group>
-        )}
+        <Group justify="flex-end" py="xs">
+          <Button
+            variant="link"
+            size="xs"
+            component={Link}
+            href={searchUrl}
+            rightSection={<IconExternalLink size={14} />}
+            data-testid="trace-logs-open-in-search"
+          >
+            Open in search
+          </Button>
+        </Group>
         <div style={{ height: '100%', overflow: 'auto' }}>
           <DBSqlRowTable
             sourceId={logSource.id}

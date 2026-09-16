@@ -62,6 +62,7 @@ jest.mock('../DBRowSidePanel', () => {
       // a builder for links back into the full search.
       displayedColumns: ['Timestamp', 'Body'],
       toggleColumn: jest.fn(),
+      onPropertyAddClick: jest.fn(),
       generateSearchUrl: ({
         where,
         whereLanguage,
@@ -185,13 +186,15 @@ describe('TraceLogsPanel', () => {
     );
   });
 
-  it('drops the remove-column action, which belongs to the searched table', () => {
-    // Otherwise the header's × maps by index onto the search table's select and
-    // drops an unrelated column from the search results.
+  it("drops the searched table's row actions", () => {
+    // The header's × maps by index onto the search table's select, and the
+    // cell popover's filter buttons write into the searched source's filters —
+    // a log column against a trace search, from a span row.
     renderPanel();
 
     expect(mockRowTableContext.current.toggleColumn).toBeUndefined();
     expect(mockRowTableContext.current.displayedColumns).toBeUndefined();
+    expect(mockRowTableContext.current.onPropertyAddClick).toBeUndefined();
   });
 
   it("labels a picked row with the log's body", () => {
