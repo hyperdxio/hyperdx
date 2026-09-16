@@ -27,7 +27,9 @@ import type {
   WebhookTestApiResponse,
   WebhookUpdateApiResponse,
 } from '@hyperdx/common-utils/dist/types';
+import { AlertSource, AlertState } from '@hyperdx/common-utils/dist/types';
 import {
+  keepPreviousData,
   useInfiniteQuery,
   useMutation,
   useQuery,
@@ -155,6 +157,34 @@ export function useMarkOnboardingTaskComplete() {
   );
 }
 
+const ALERTS_PAGE_SIZE = 100;
+
+type AlertsQueryParams = {
+  /** Case-insensitive substring of the alert's display name. */
+  search?: string | null;
+  tag?: string | null;
+  source?: AlertSource | null;
+  state?: AlertState | null;
+  /** A user id; narrows the list to alerts that user created. */
+  createdBy?: string | null;
+};
+
+/**
+ * Drops blank filters so the query key is a function of what is actually sent:
+ * the several spellings of "no filter" (`undefined`, `null`, `''`) can't each
+ * open their own cache entry.
+ */
+function normalizeAlertsQueryParams(params: AlertsQueryParams) {
+  const search = params.search?.trim();
+  return {
+    ...(search ? { search } : {}),
+    ...(params.tag ? { tag: params.tag } : {}),
+    ...(params.source ? { source: params.source } : {}),
+    ...(params.state ? { state: params.state } : {}),
+    ...(params.createdBy ? { createdBy: params.createdBy } : {}),
+  };
+}
+
 const api = {
   useCreateAlert() {
     const markOnboardingTaskComplete = useMarkOnboardingTaskComplete();
@@ -269,10 +299,26 @@ const api = {
   getAlertsQueryKey: () => ['alerts'] as const,
   getAlertQueryKey: (alertId: string | undefined) =>
     ['alert', alertId] as const,
-  useAlerts() {
-    return useQuery({
-      queryKey: api.getAlertsQueryKey(),
-      queryFn: () => hdxServer(`alerts`).json<AlertsApiResponse>(),
+  useAlerts(
+    params: AlertsQueryParams = {},
+    { enabled = true }: { enabled?: boolean } = {},
+  ) {
+    const normalized = normalizeAlertsQueryParams(params);
+    return useInfiniteQuery({
+      enabled,
+      queryKey: ['alerts', normalized] as const,
+      queryFn: ({ pageParam: cursor }) =>
+        hdxServer(`alerts`, {
+          searchParams: {
+            limit: ALERTS_PAGE_SIZE,
+            ...normalized,
+            ...(cursor != null && { cursor }),
+          },
+        }).json<AlertsApiResponse>(),
+      initialPageParam: undefined as string | undefined,
+      getNextPageParam: lastPage =>
+        lastPage.hasMore ? lastPage.nextCursor : undefined,
+      placeholderData: keepPreviousData,
     });
   },
   useAlert(alertId: string | undefined) {
@@ -353,11 +399,17 @@ const api = {
     });
   },
   useRotateTeamApiKey() {
+    const queryClient = useQueryClient();
     return useMutation<RotateApiKeyApiResponse, Error | HTTPError>({
       mutationFn: async () =>
         hdxServer(`team/apiKey`, {
           method: 'PATCH',
         }).json<RotateApiKeyApiResponse>(),
+      // The API key exists on both the me and team response
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ['me'] });
+        queryClient.invalidateQueries({ queryKey: ['team'] });
+      },
     });
   },
   useRotatePersonalAccessKey() {
@@ -458,6 +510,8 @@ const api = {
         }
         return hdxServer(`me`).json<MeApiResponse>();
       },
+      staleTime: 1000 * 60,
+      refetchOnWindowFocus: 'always',
     });
   },
   useTeam() {
@@ -479,12 +533,18 @@ const api = {
     });
   },
   useSetTeamName() {
+    const queryClient = useQueryClient();
     return useMutation<{ name: string }, HTTPError, { name: string }>({
       mutationFn: async ({ name }) =>
         hdxServer(`team/name`, {
           method: 'PATCH',
           json: { name },
         }).json<{ name: string }>(),
+      // The name lives in both the `team` and `me` responses
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ['me'] });
+        queryClient.invalidateQueries({ queryKey: ['team'] });
+      },
     });
   },
   useUpdateClickhouseSettings() {
@@ -509,6 +569,7 @@ const api = {
     });
   },
   useSaveWebhook() {
+    const queryClient = useQueryClient();
     return useMutation<
       WebhookCreateApiResponse,
       Error | HTTPError,
@@ -543,9 +604,13 @@ const api = {
             body,
           },
         }).json<WebhookCreateApiResponse>(),
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ['webhooks'] });
+      },
     });
   },
   useUpdateWebhook() {
+    const queryClient = useQueryClient();
     return useMutation<
       WebhookUpdateApiResponse,
       Error | HTTPError,
@@ -582,19 +647,25 @@ const api = {
             body,
           },
         }).json<WebhookUpdateApiResponse>(),
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ['webhooks'] });
+      },
     });
   },
   useWebhooks(services: string[]) {
     return useQuery<WebhooksApiResponse, Error>({
-      queryKey: [...services],
+      // Prefixed so webhook mutations can invalidate every service variant.
+      queryKey: ['webhooks', ...services],
       queryFn: () =>
         hdxServer('webhooks', {
           method: 'GET',
           searchParams: [...services.map(service => ['service', service])],
         }).json<WebhooksApiResponse>(),
+      staleTime: 1000 * 60,
     });
   },
   useDeleteWebhook() {
+    const queryClient = useQueryClient();
     return useMutation<
       Record<string, never>,
       Error | HTTPError,
@@ -604,6 +675,9 @@ const api = {
         hdxServer(`webhooks/${id}`, {
           method: 'DELETE',
         }).json(),
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ['webhooks'] });
+      },
     });
   },
   useTestWebhook() {
