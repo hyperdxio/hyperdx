@@ -32,15 +32,15 @@ describe('UserPreferencesModal', () => {
       renderModal();
 
       expect(screen.getByTestId('row-click-action-select')).toHaveValue(
-        'Expand inline',
+        'Open side panel',
       );
     });
 
     it('reflects a stored preference', () => {
-      renderModal({ rowClickAction: 'sidePanel' });
+      renderModal({ rowClickAction: 'expand' });
 
       expect(screen.getByTestId('row-click-action-select')).toHaveValue(
-        'Open side panel',
+        'Expand inline',
       );
     });
 
@@ -50,15 +50,15 @@ describe('UserPreferencesModal', () => {
       await userEvent.click(screen.getByTestId('row-click-action-select'));
       await userEvent.click(
         await screen.findByRole('option', {
-          name: 'Open side panel',
+          name: 'Expand inline',
           hidden: true,
         }),
       );
 
       expect(screen.getByTestId('row-click-action-select')).toHaveValue(
-        'Open side panel',
+        'Expand inline',
       );
-      expect(readStoredPreferences().rowClickAction).toBe('sidePanel');
+      expect(readStoredPreferences().rowClickAction).toBe('expand');
     });
   });
 });

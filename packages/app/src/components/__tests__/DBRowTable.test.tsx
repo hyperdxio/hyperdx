@@ -275,11 +275,36 @@ describe('RawLogTable', () => {
       return renderWithMantine(<Provider>{ui}</Provider>);
     };
 
+    it('opens the side panel on row click by default', async () => {
+      const onRowDetailsClick = jest.fn();
+
+      renderTable(
+        <RawLogTable {...baseProps} onRowDetailsClick={onRowDetailsClick} />,
+      );
+
+      await userEvent.click(
+        await screen.findByRole('button', {
+          name: 'View details for log entry',
+        }),
+      );
+
+      expect(onRowDetailsClick).toHaveBeenCalledTimes(1);
+      expect(
+        screen.queryByTestId(`expanded-row-${ROW_ID}`),
+      ).not.toBeInTheDocument();
+      // A row click already opens the panel, so the hover button would be a
+      // second way to do the same thing.
+      expect(
+        screen.queryByRole('button', { name: 'Open in side panel' }),
+      ).not.toBeInTheDocument();
+    });
+
     it('expands the row inline when its body is clicked', async () => {
       const onRowDetailsClick = jest.fn();
 
       renderTable(
         <RawLogTable {...baseProps} onRowDetailsClick={onRowDetailsClick} />,
+        'expand',
       );
 
       await userEvent.click(
@@ -291,7 +316,10 @@ describe('RawLogTable', () => {
     });
 
     it('collapses an expanded row when its body is clicked again', async () => {
-      renderTable(<RawLogTable {...baseProps} onRowDetailsClick={() => {}} />);
+      renderTable(
+        <RawLogTable {...baseProps} onRowDetailsClick={() => {}} />,
+        'expand',
+      );
 
       await userEvent.click(
         await screen.findByRole('button', { name: 'Expand log row' }),
@@ -310,6 +338,7 @@ describe('RawLogTable', () => {
 
       renderTable(
         <RawLogTable {...baseProps} onRowDetailsClick={onRowDetailsClick} />,
+        'expand',
       );
 
       await userEvent.click(
@@ -319,29 +348,6 @@ describe('RawLogTable', () => {
       expect(onRowDetailsClick).toHaveBeenCalledTimes(1);
       expect(
         screen.queryByTestId(`expanded-row-${ROW_ID}`),
-      ).not.toBeInTheDocument();
-    });
-
-    it('opens the side panel on row click when the preference says so', async () => {
-      const onRowDetailsClick = jest.fn();
-
-      renderTable(
-        <RawLogTable {...baseProps} onRowDetailsClick={onRowDetailsClick} />,
-        'sidePanel',
-      );
-
-      await userEvent.click(
-        await screen.findByRole('button', {
-          name: 'View details for log entry',
-        }),
-      );
-
-      expect(onRowDetailsClick).toHaveBeenCalledTimes(1);
-      expect(
-        screen.queryByTestId(`expanded-row-${ROW_ID}`),
-      ).not.toBeInTheDocument();
-      expect(
-        screen.queryByRole('button', { name: 'Open in side panel' }),
       ).not.toBeInTheDocument();
     });
 
@@ -356,6 +362,7 @@ describe('RawLogTable', () => {
           showExpandButton={false}
           onRowDetailsClick={onRowDetailsClick}
         />,
+        'expand',
       );
 
       await userEvent.click(
@@ -400,6 +407,7 @@ describe('RawLogTable', () => {
           highlightedLineId="some-other-row"
           onRowDetailsClick={onRowDetailsClick}
         />,
+        'expand',
       );
 
       await userEvent.click(
