@@ -853,8 +853,15 @@ jobs:
           FOOTER='<sub>No finding blocks merge automatically. A maintainer will expect P0/P1 findings in code this PR changes to be fixed; P2/P3 are your call -- fix or reply. Never fix findings about surrounding code here; reply instead. Do not widen the PR. [How to respond](https://github.com/hyperdxio/hyperdx/blob/main/AGENTS.md#responding-to-review-feedback)</sub>'
           # Only when there is something to triage, as renderSummary does for its
           # notice: a clean review or a zero-coverage (unhealthy-sandbox) one gets
-          # no footer. A finding is a `- **path:line**` bullet per the prompt.
-          if [ "${SANDBOX_BROKEN:-}" = "false" ] && printf '%s' "$REVIEW" | grep -qE '^[[:space:]]*- \*\*`'; then
+          # no footer. Findings sit under a `### ` severity heading or, for P3
+          # only, inside a <details> block; the prompt mandates both shapes and a
+          # clean review has neither. Keyed on those, not on bullet shape, which
+          # the model varies. The test suite lifts HAS_FINDINGS_RE= and runs real
+          # grep against sample bodies, so keep the variable name.
+          # Here-string, not a pipe: under pipefail an early `grep -q` match can
+          # SIGPIPE a printf still writing a large review and flip the condition.
+          HAS_FINDINGS_RE='^### |^<details>'
+          if [ "${SANDBOX_BROKEN:-}" = "false" ] && grep -qE "$HAS_FINDINGS_RE" <<<"$REVIEW"; then
             REVIEW="$REVIEW"$'\n\n'"$FOOTER"
           fi
           {

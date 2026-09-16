@@ -480,14 +480,52 @@ test('the guide link points at a heading that exists in AGENTS.md, in both bots'
   );
   // deep-review.yml appends its own copy of the footer in shell; keep it on the same anchor.
   const deepReview = readFileSync(DEEP_REVIEW, 'utf8');
+  // The whole URL, not just the anchor: the two hardcoded copies must point at the same
+  // repo and branch, or one bot's link 404s while the other's works.
   assert.ok(
-    deepReview.includes(`AGENTS.md${anchor}`),
-    `deep-review.yml must link ${anchor}`,
+    deepReview.includes(helpers.GUIDE_URL),
+    `deep-review.yml must link ${helpers.GUIDE_URL} verbatim`,
   );
   assert.match(
     deepReview,
     /FOOTER='<sub>[^\n]*Do not widen the PR/,
     "deep-review.yml's FOOTER must carry the scope rule the other footers carry",
+  );
+});
+
+test("deep-review's footer gate fires on findings of any shape and not on a clean review", () => {
+  // Same rule as gateParse: lift the pattern out of the workflow and run real grep, or a
+  // drift between the prompt's finding format and the gate silently drops every footer.
+  const line = readFileSync(DEEP_REVIEW, 'utf8')
+    .split('\n')
+    .find(l => l.trim().startsWith('HAS_FINDINGS_RE='));
+  assert.ok(line, 'could not find HAS_FINDINGS_RE= in deep-review.yml');
+  const re = line.trim().slice('HAS_FINDINGS_RE='.length).replace(/^'|'$/g, '');
+  const matches = body => {
+    try {
+      execFileSync('grep', ['-qE', re], { input: body });
+      return true;
+    } catch (e) {
+      if (e.status === 1) return false;
+      throw e;
+    }
+  };
+  const head = '<!-- deep-review -->\n## Deep Review\n\n';
+  const clean = `${head}✅ No critical issues found.\n\n---\n**Reviewers (5):** a, b.\n`;
+  const p2 = `${head}✅ No critical issues found.\n\n### 🟡 P2 -- recommended\n\n- **\`a/b.ts:3\`** -- issue.\n`;
+  const p3Only = `${head}✅ No critical issues found.\n\n<details>\n<summary>🔵 P3 nitpicks (1)</summary>\n\n- **\`a/b.ts:3\`** -- nit.\n\n</details>\n`;
+  const numbered = `${head}### 🔴 P0/P1 -- must fix\n\n1. a/b.ts:3 -- issue.\n`;
+  assert.equal(matches(clean), false, 'a clean review gets no footer');
+  assert.equal(
+    matches(p2),
+    true,
+    'P2 advice under a clean headline still gets the footer',
+  );
+  assert.equal(matches(p3Only), true, 'a P3-only review gets the footer');
+  assert.equal(
+    matches(numbered),
+    true,
+    'the gate must not depend on bullet shape',
   );
 });
 
