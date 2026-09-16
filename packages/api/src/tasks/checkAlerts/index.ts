@@ -1477,7 +1477,10 @@ export const processAlert = async (
           savedConfig: savedConfig as PromqlSavedChartConfig,
           source: details.source,
           connectionId,
-          teamId: (isPopulatedRef(alert.team) ? alert.team._id : alert.team).toString(),
+          teamId: (isPopulatedRef(alert.team)
+            ? alert.team._id
+            : alert.team
+          ).toString(),
           dateRange,
           windowSizeInMins,
           variables:
@@ -1572,12 +1575,12 @@ export const processAlert = async (
           for (const [tsSec, rawVal] of series.values) {
             // Shift the evaluation instant back to the start of the bucket
             const tsMs = Math.round(tsSec * 1000) - windowMs;
-            
+
             if (expectedBuckets.length === 0) continue;
             const startMs = expectedBuckets[0].getTime();
             const index = Math.round((tsMs - startMs) / windowMs);
             if (index < 0 || index >= expectedBuckets.length) continue;
-            
+
             const nearestBucketMs = expectedBuckets[index].getTime();
             const parsed = parseFloat(rawVal);
             if (!Number.isFinite(parsed)) continue;
@@ -1586,7 +1589,9 @@ export const processAlert = async (
               bucketSeriesValues.set(nearestBucketMs, new Map());
             }
             // Keep the highest value if the same series appears twice in a bucket
-            const existing = bucketSeriesValues.get(nearestBucketMs)!.get(groupKey);
+            const existing = bucketSeriesValues
+              .get(nearestBucketMs)!
+              .get(groupKey);
             if (existing == null || parsed > existing.value) {
               bucketSeriesValues.get(nearestBucketMs)!.set(groupKey, {
                 value: parsed,
@@ -1609,6 +1614,8 @@ export const processAlert = async (
             'No PromQL data for time bucket',
           );
 
+          const zeroValueIsAlert = doesExceedThreshold(alert, 0);
+
           const hasAlertsInPreviousMap = previousMap
             .values()
             .some(
@@ -1616,7 +1623,25 @@ export const processAlert = async (
                 h.state === AlertState.ALERT || h.state === AlertState.PENDING,
             );
 
-          if (!hasGroupBy || !hasAlertsInPreviousMap) {
+          if (zeroValueIsAlert) {
+            const history = getOrCreateHistory('');
+            history.lastValues.push({ count: 0, startTime: bucketStart });
+            history.counts += 1;
+            if (shouldFireBasedOnConsecutiveWindows('')) {
+              history.state = AlertState.ALERT;
+              history.fired = true;
+              latestAlertContext.set('', {
+                value: 0,
+                attributes: {},
+                startTime: bucketStart,
+              });
+            } else {
+              history.state = AlertState.PENDING;
+              history.fired =
+                previousMap.get(computeHistoryMapKey(alert.id, ''))?.fired ===
+                true;
+            }
+          } else if (!hasGroupBy || !hasAlertsInPreviousMap) {
             const history = getOrCreateHistory('');
             history.lastValues.push({ count: 0, startTime: bucketStart });
           }
@@ -1679,7 +1704,8 @@ export const processAlert = async (
           if (
             (previousHistory.state === AlertState.ALERT ||
               previousHistory.state === AlertState.PENDING) &&
-            !histories.has(groupKey)
+            !histories.has(groupKey) &&
+            !doesExceedThreshold(alert, 0)
           ) {
             const history = getOrCreateHistory(groupKey);
             history.lastValues.push({
