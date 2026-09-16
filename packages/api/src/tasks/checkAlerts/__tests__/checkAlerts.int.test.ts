@@ -5223,6 +5223,8 @@ describe('checkAlerts', () => {
         const now = new Date('2023-11-16T22:12:00.000Z');
         // Backfilled evaluation (worker was delayed). Expected bucket is 22:05:00.
         const bucketStartMs = new Date('2023-11-16T22:05:00.000Z').getTime();
+        // Prometheus evaluates exactly at the step, so the returned timestamp for the 22:05 bucket is 22:10
+        const prometheusReturnedMs = bucketStartMs + 5 * 60 * 1000;
 
         // We need to mock the timeseriesEngine call rather than evaluatePromqlAlert directly
         // because processAlert calls the local evaluatePromqlAlert inside index.ts
@@ -5236,14 +5238,18 @@ describe('checkAlerts', () => {
                     ['__name__', 'up'],
                     ['host', 'node-1'],
                   ],
-                  time_series: [[new Date(bucketStartMs).toISOString(), 42]],
+                  time_series: [
+                    [new Date(prometheusReturnedMs).toISOString(), 42],
+                  ],
                 },
                 {
                   tags: [
                     ['__name__', 'up'],
                     ['host', 'node-2'],
                   ],
-                  time_series: [[new Date(bucketStartMs).toISOString(), 5]], // Below threshold
+                  time_series: [
+                    [new Date(prometheusReturnedMs).toISOString(), 5],
+                  ], // Below threshold
                 },
               ],
             }),
