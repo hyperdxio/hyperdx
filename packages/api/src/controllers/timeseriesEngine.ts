@@ -349,7 +349,9 @@ export function formatMatrixResponse(
         const ts =
           typeof timestamp === 'string'
             ? new Date(
-                timestamp.endsWith('Z') ? timestamp : timestamp.replace(' ', 'T') + 'Z',
+                timestamp.endsWith('Z')
+                  ? timestamp
+                  : timestamp.replace(' ', 'T') + 'Z',
               ).getTime() / 1000
             : Number(timestamp);
         return [ts, String(value)];

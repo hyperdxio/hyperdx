@@ -104,32 +104,20 @@ describe('formatMatrixResponse', () => {
     const rows = [
       {
         tags: [] as [string, string][],
-        time_series: [['2023-11-14T22:13:20.000Z', 1]] as [
-          string,
-          number,
-        ][],
+        time_series: [['2023-11-14T22:13:20.000Z', 1]] as [string, number][],
       },
     ];
-    expect(formatMatrixResponse(rows)[0].values[0]).toEqual([
-      1700000000,
-      '1',
-    ]);
+    expect(formatMatrixResponse(rows)[0].values[0]).toEqual([1700000000, '1']);
   });
 
   it('converts space-separated string timestamps to unix seconds as UTC', () => {
     const rows = [
       {
         tags: [] as [string, string][],
-        time_series: [['2023-11-14 22:13:20', 1]] as [
-          string,
-          number,
-        ][],
+        time_series: [['2023-11-14 22:13:20', 1]] as [string, number][],
       },
     ];
-    expect(formatMatrixResponse(rows)[0].values[0]).toEqual([
-      1700000000,
-      '1',
-    ]);
+    expect(formatMatrixResponse(rows)[0].values[0]).toEqual([1700000000, '1']);
   });
 
   it('returns empty array for empty input', () => {
@@ -159,10 +147,7 @@ describe('formatVectorResponse', () => {
         value: 3,
       },
     ];
-    expect(formatVectorResponse(rows)[0].value).toEqual([
-      1700000000,
-      '3',
-    ]);
+    expect(formatVectorResponse(rows)[0].value).toEqual([1700000000, '3']);
   });
 
   it('converts space-separated string timestamps to unix seconds as UTC', () => {
@@ -173,10 +158,7 @@ describe('formatVectorResponse', () => {
         value: 3,
       },
     ];
-    expect(formatVectorResponse(rows)[0].value).toEqual([
-      1700000000,
-      '3',
-    ]);
+    expect(formatVectorResponse(rows)[0].value).toEqual([1700000000, '3']);
   });
 });
 
