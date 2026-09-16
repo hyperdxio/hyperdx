@@ -24,7 +24,7 @@ import api, {
   useMarkOnboardingTaskComplete,
 } from './api';
 import { IS_LOCAL_MODE } from './config';
-import { createEntityStore } from './localStore';
+import { collectTags, createEntityStore } from './localStore';
 
 // TODO: Move to types
 export type Tile = {
@@ -341,11 +341,7 @@ export function fetchLocalDashboards(): Dashboard[] {
 }
 
 export function getLocalDashboardTags(): string[] {
-  const tagSet = new Set<string>();
-  localDashboards
-    .getAll()
-    .forEach(d => (d.tags ?? []).forEach(t => tagSet.add(t)));
-  return Array.from(tagSet);
+  return collectTags(localDashboards.getAll());
 }
 
 export function useDeleteDashboard() {

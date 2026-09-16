@@ -11,7 +11,7 @@ import {
 
 import { hdxServer, useInvalidateTags } from './api';
 import { IS_LOCAL_MODE } from './config';
-import { localSavedSearches } from './localStore';
+import { collectTags, localSavedSearches } from './localStore';
 
 async function fetchSavedSearches(): Promise<SavedSearchListApiResponse[]> {
   if (IS_LOCAL_MODE) {
@@ -19,6 +19,10 @@ async function fetchSavedSearches(): Promise<SavedSearchListApiResponse[]> {
     return localSavedSearches.getAll() as SavedSearchListApiResponse[];
   }
   return hdxServer('saved-search').json<SavedSearchListApiResponse[]>();
+}
+
+export function getLocalSavedSearchTags(): string[] {
+  return collectTags(localSavedSearches.getAll());
 }
 
 export function useSavedSearches() {

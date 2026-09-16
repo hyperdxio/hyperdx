@@ -126,6 +126,10 @@ export function updateTeamClickhouseSettings(
 function getCollectionsWithTags(
   resourceType?: TagResourceType,
 ): Pick<mongoose.Model<unknown>, 'aggregate'>[] {
+  if (resourceType == null) {
+    return [Alert, Dashboard, SavedSearch];
+  }
+
   switch (resourceType) {
     case 'alert':
       return [Alert];
@@ -134,7 +138,8 @@ function getCollectionsWithTags(
     case 'savedSearch':
       return [SavedSearch];
     default:
-      return [Alert, Dashboard, SavedSearch];
+      resourceType satisfies never;
+      throw new Error(`${resourceType} is not a valid TagResourceType`);
   }
 }
 

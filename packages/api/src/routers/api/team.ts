@@ -312,7 +312,7 @@ router.delete(
 type TeamTagsExpRes = express.Response<TeamTagsApiResponse>;
 router.get(
   '/tags',
-  validateRequest({
+  processRequest({
     query: z.object({
       /** Limits the response to tags applied to this kind of entity */
       resourceType: TagResourceTypeSchema.optional(),

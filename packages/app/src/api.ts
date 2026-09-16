@@ -39,6 +39,7 @@ import {
 
 import { IS_LOCAL_MODE } from './config';
 import { getLocalDashboardTags } from './dashboard';
+import { getLocalSavedSearchTags } from './savedSearch';
 type ServicesResponse = {
   data: Record<
     string,
@@ -195,6 +196,22 @@ export function useInvalidateTags() {
     () => queryClient.invalidateQueries({ queryKey: TAGS_QUERY_KEY_PREFIX }),
     [queryClient],
   );
+}
+
+/**
+ * Tags on locally persisted resources. Alerts are cloud-only, so local mode
+ * never has alert tags.
+ */
+function getLocalTags(resourceType?: TagResourceType): string[] {
+  const tags = [
+    ...(resourceType == null || resourceType === 'dashboard'
+      ? getLocalDashboardTags()
+      : []),
+    ...(resourceType == null || resourceType === 'savedSearch'
+      ? getLocalSavedSearchTags()
+      : []),
+  ];
+  return Array.from(new Set(tags));
 }
 
 const api = {
@@ -587,13 +604,7 @@ const api = {
     return useQuery({
       queryKey: api.getTagsQueryKey(resourceType),
       queryFn: IS_LOCAL_MODE
-        ? // Local mode only persists dashboards, so nothing else has tags.
-          async () => ({
-            data:
-              resourceType == null || resourceType === 'dashboard'
-                ? getLocalDashboardTags()
-                : [],
-          })
+        ? async () => ({ data: getLocalTags(resourceType) })
         : () =>
             hdxServer('team/tags', {
               searchParams: resourceType ? { resourceType } : undefined,
