@@ -20,7 +20,10 @@ const ICON = { critical: '🔴', major: '🟠', minor: '🔵' };
 /** GitHub rejects a comment body over this with a 422 on the whole post. */
 const MAX_BODY = 65536;
 
-/** Where the triage rule lives; the footers and notice below link here. */
+/**
+ * Where the triage rule lives; the footers and notice below link here. deep-review.yml's
+ * FOOTER repeats the rule and this anchor; the anchor test pins both to the AGENTS.md heading.
+ */
 const GUIDE_URL =
   'https://github.com/hyperdxio/hyperdx/blob/main/AGENTS.md#responding-to-review-feedback';
 const GUIDE_LINK = `[How to respond](${GUIDE_URL})`;
@@ -52,7 +55,7 @@ function inlineFooter(finding) {
   return INLINE_FOOTER_BY_SEVERITY[severityOf(finding)];
 }
 
-/** Leads the summary: the footers' rule as one table, plus what a per-comment line cannot say. */
+/** Leads the summary: the footers' rule as a blockquoted list, plus what one comment cannot say. */
 const AGENT_NOTICE = [
   '> **If you are a coding agent acting for the author, read this first.**',
   '> Nothing below blocks merge automatically; a maintainer decides. What they will expect:',

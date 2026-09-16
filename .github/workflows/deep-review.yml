@@ -293,8 +293,13 @@ jobs:
               '<!-- deep-resolve -->',
             ];
 
-            // Keep \n and \t; blank every other control/format char.
+            // Keep \n and \t; blank every other control/format char. Drop <sub>
+            // blocks first: the sibling reviewer's inline comments each carry a
+            // ~250-byte advisory footer aimed at the author, and inline comments
+            // are pushed last, so under TOTAL_LIMIT that boilerplate would evict
+            // human replies before anything else.
             const clean = (s) => (s || '')
+              .replace(/<sub>[\s\S]*?<\/sub>/g, '')
               .replace(/[^\S\n\t]/gu, ' ')
               .replace(/[\p{Cc}\p{Cf}\u2028\u2029]/gu, (c) =>
                 (c === '\n' || c === '\t') ? c : ' ')
@@ -617,8 +622,6 @@ jobs:
 
                 **Testing gaps:** (include only if substantive) one-line bullets.
 
-                <sub>No finding blocks merge automatically. A maintainer will expect P0/P1 findings in code this PR changes to be fixed; P2/P3 are your call -- fix or reply. Never fix findings about surrounding code here; reply instead. Do not widen the PR. [How to respond](https://github.com/hyperdxio/hyperdx/blob/main/AGENTS.md#responding-to-review-feedback)</sub>
-
             Style rules:
             - Wrap every file path in an inline code span.
             - Keep the issue line and fix line each to a single sentence;
@@ -843,11 +846,16 @@ jobs:
           if [ "${SANDBOX_BROKEN:-}" != "false" ]; then
             MARKER="<!-- deep-review-state: omitted (reviewer sandbox unhealthy) -->"
           fi
+          # Appended here rather than asked of the model: a prompt-template line
+          # gets paraphrased, dropped on a clean review, or emitted inside the
+          # collapsed P3 block. Twin of INLINE_FOOTER_BY_SEVERITY / AGENT_NOTICE
+          # in .github/scripts/code-review/review-comments.cjs; the anchor test
+          # there pins both to the AGENTS.md heading.
+          FOOTER='<sub>No finding blocks merge automatically. A maintainer will expect P0/P1 findings in code this PR changes to be fixed; P2/P3 are your call -- fix or reply. Never fix findings about surrounding code here; reply instead. Do not widen the PR. [How to respond](https://github.com/hyperdxio/hyperdx/blob/main/AGENTS.md#responding-to-review-feedback)</sub>'
           {
             echo 'review<<DEEP_REVIEW_EOF'
             printf '%s\n' "$MARKER"
-            printf '%s' "$REVIEW"
-            echo
+            printf '%s\n\n%s\n' "$REVIEW" "$FOOTER"
             echo 'DEEP_REVIEW_EOF'
           } >> "$GITHUB_OUTPUT"
 

@@ -441,7 +441,37 @@ test('every inline comment carries the advisory footer, with the dedup marker la
     /^<!-- hdxr:[0-9a-f]{16} -->$/,
     'marker must be the last line',
   );
-  assert.ok(lines.indexOf(helpers.inlineFooter(f)) < lines.length - 1);
+  const footerAt = lines.indexOf(helpers.inlineFooter(f));
+  assert.ok(
+    footerAt >= 0 && footerAt < lines.length - 1,
+    'footer must precede the marker',
+  );
+});
+
+test('the guide link points at a heading that exists in AGENTS.md, in both bots', () => {
+  // Every posted comment links here. Renaming the heading would dead-link all of them
+  // with no failing check anywhere else, so derive the anchor from the heading text.
+  const root = p => fileURLToPath(new URL(p, import.meta.url));
+  const agents = readFileSync(root('../../../../AGENTS.md'), 'utf8');
+  const heading = '## Responding to review feedback';
+  assert.ok(
+    agents.split('\n').includes(heading),
+    `AGENTS.md must contain the line "${heading}"`,
+  );
+  const anchor = `#${heading.slice(3).toLowerCase().replace(/\s+/g, '-')}`;
+  assert.ok(
+    helpers.GUIDE_URL.endsWith(anchor),
+    `GUIDE_URL must end with ${anchor}`,
+  );
+  // deep-review.yml appends its own copy of the footer in shell; keep it on the same anchor.
+  const deepReview = readFileSync(
+    root('../../../workflows/deep-review.yml'),
+    'utf8',
+  );
+  assert.ok(
+    deepReview.includes(`AGENTS.md${anchor}`),
+    `deep-review.yml must link ${anchor}`,
+  );
 });
 
 test('the footer is severity-aware: critical and major say a maintainer will expect a fix, minor says your call', () => {
