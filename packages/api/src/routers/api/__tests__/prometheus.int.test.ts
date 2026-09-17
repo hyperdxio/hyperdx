@@ -799,6 +799,121 @@ describe('prometheus router', () => {
       expect(res.body.error).toMatch(/no_such_table_for_fallback/);
     });
 
+    // The one place the proxy meets a real prometheus_api_v1 handler: the CI
+    // ClickHouse (26.8, docker/clickhouse/local/config.xml) serves it, so the
+    // stubbed fetch is swapped for the real one and the answer has to be
+    // Prometheus-shaped data from a seeded table. Every other proxy test only
+    // pins the request shape.
+    describe('against the CI ClickHouse prometheus_api_v1 handler', () => {
+      const TABLE = 'prom_http_api_live';
+      const START = 1700000000;
+
+      beforeAll(async () => {
+        await seedTimeSeriesTagsTable({
+          table: TABLE,
+          series: [
+            {
+              metricName: 'live_up',
+              tags: { job: 'api' },
+              startSec: START,
+              endSec: START + 60,
+            },
+            {
+              metricName: 'live_up',
+              tags: { job: 'web' },
+              startSec: START,
+              endSec: START + 60,
+            },
+          ],
+          withSamples: true,
+        });
+      });
+
+      afterAll(async () => {
+        await dropTimeSeriesTable({ table: TABLE });
+      });
+
+      beforeEach(() => {
+        mockFetch.mockImplementation(globalThis.realFetch);
+      });
+
+      it('answers a range query with the series from the requested table', async () => {
+        const { agent, team } = await getLoggedInAgent(server);
+        const conn = await seedClickHouseConnection(team._id);
+
+        const res = await agent
+          .get('/v1/prometheus/query_range')
+          .query({
+            query: 'sum by (job) (live_up)',
+            start: String(START),
+            end: String(START + 60),
+            step: '60s',
+            database: DEFAULT_DATABASE,
+            table: TABLE,
+            connectionId: conn._id.toString(),
+          })
+          .expect(200);
+
+        expect(res.headers['content-type']).toMatch(/application\/json/);
+        expect(res.body.status).toBe('success');
+        expect(res.body.data.resultType).toBe('matrix');
+        const byJob = Object.fromEntries(
+          res.body.data.result.map((r: any) => [r.metric.job, r.values]),
+        );
+        expect(Object.keys(byJob).sort()).toEqual(['api', 'web']);
+        expect(byJob.api).toEqual(
+          expect.arrayContaining([
+            [START, '1'],
+            [START + 60, '1'],
+          ]),
+        );
+      });
+
+      it('answers an instant query', async () => {
+        const { agent, team } = await getLoggedInAgent(server);
+        const conn = await seedClickHouseConnection(team._id);
+
+        const res = await agent
+          .get('/v1/prometheus/query')
+          .query({
+            query: 'count(live_up)',
+            time: String(START + 60),
+            database: DEFAULT_DATABASE,
+            table: TABLE,
+            connectionId: conn._id.toString(),
+          })
+          .expect(200);
+
+        expect(res.body).toEqual({
+          status: 'success',
+          data: {
+            resultType: 'vector',
+            result: [{ metric: {}, value: [START + 60, '2'] }],
+          },
+        });
+      });
+
+      it('relays a PromQL parse error as a Prometheus 400', async () => {
+        const { agent, team } = await getLoggedInAgent(server);
+        const conn = await seedClickHouseConnection(team._id);
+
+        const res = await agent
+          .get('/v1/prometheus/query')
+          .query({
+            query: 'live_up(',
+            table: TABLE,
+            connectionId: conn._id.toString(),
+          })
+          .expect(400);
+
+        expect(res.body).toMatchObject({
+          status: 'error',
+          errorType: 'bad_data',
+          error: expect.stringContaining('PromQL'),
+        });
+      });
+    });
+
     describe('on ClickHouse without the Prometheus HTTP API (< 26.6)', () => {
       const TABLE = 'prom_query_range_fallback';
       const START = 1700000000;
