@@ -7,7 +7,10 @@ import {
 import { DashboardsListPage } from '../../page-objects/DashboardsListPage';
 import { SearchPage } from '../../page-objects/SearchPage';
 import { expect, test } from '../../utils/base-test';
-import { expectExpandsAndStaysExpanded } from '../../utils/multiline-input';
+import {
+  expectExpandsAndStaysExpanded,
+  expectStaysOneRow,
+} from '../../utils/multiline-input';
 
 test.describe('Multiline Input', { tag: '@search' }, () => {
   /** Pages that render a WHERE input, and how to get to one. */
@@ -64,6 +67,21 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
       await expect(field.focusTarget).toBeVisible();
       await searchPage.clearClause(field);
       await expectExpandsAndStaysExpanded(page, field);
+    }
+  });
+
+  test('should keep a single-line WHERE one row after blur', async ({
+    page,
+  }) => {
+    const searchPage = new SearchPage(page);
+    await searchPage.goto();
+    const whereInput = await searchPage.openTraceSpansFilter();
+
+    for (const language of languages) {
+      await whereInput.selectLanguage(language);
+      const field = whereInput.field(language);
+      await expect(field.focusTarget).toBeVisible();
+      await expectStaysOneRow(page, field);
     }
   });
 });

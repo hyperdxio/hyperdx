@@ -118,3 +118,35 @@ export const expectExpandsAndStaysExpanded = async (
     expandedVisibleHeight,
   );
 };
+
+/**
+ * A value long enough that a wrapping editor would grow past one row at the
+ * compact (`xs`) size used by the waterfall filters.
+ */
+export const WRAPPING_SINGLE_LINE_QUERY =
+  'StatusCode:"Error" AND ServiceName:"checkout-service" AND SpanName:"GET /api/v1/checkout"';
+
+/**
+ * Type a long value with no newline and assert the field stays one row while
+ * focused and after blur. Guards `allowMultiline={false}` against growing on
+ * focus and clipping on blur.
+ */
+export const expectStaysOneRow = async (
+  page: Page,
+  { focusTarget, visibleBox }: MultilineField,
+): Promise<void> => {
+  await focusTarget.scrollIntoViewIfNeeded();
+  await focusTarget.focus();
+  await page.keyboard.type('short');
+  const oneRowHeight = await settledHeight(visibleBox);
+
+  await page.keyboard.press('ControlOrMeta+A');
+  await page.keyboard.type(WRAPPING_SINGLE_LINE_QUERY);
+
+  expect(await settledHeight(visibleBox)).toBeLessThanOrEqual(oneRowHeight + 1);
+
+  await blurActiveElement(page);
+  await expect(focusTarget).not.toBeFocused();
+
+  expect(await settledHeight(visibleBox)).toBeLessThanOrEqual(oneRowHeight + 1);
+};

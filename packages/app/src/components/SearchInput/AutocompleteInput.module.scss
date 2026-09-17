@@ -36,11 +36,18 @@
   }
 }
 
-/* Nothing useful to scroll vertically: an empty textarea, or a single-line one
-   that holds one row however long the query is. */
-.root[data-empty='true'] .textarea textarea,
-.root[data-single-line='true'] .textarea textarea {
+/* Empty placeholders can wrap; hide the unused scrollbar that wrapping creates. */
+.root[data-empty='true'] .textarea textarea {
   overflow: hidden;
+}
+
+/* Single-line Lucene: one visual row, like SQL without line wrapping. A long
+   query scrolls horizontally instead of wrapping under the clip. */
+.root[data-single-line='true'] .textarea textarea {
+  white-space: pre;
+  word-break: normal;
+  overflow-wrap: normal;
+  overflow: auto hidden;
 }
 
 .root[data-validation-state='error'] .textarea {

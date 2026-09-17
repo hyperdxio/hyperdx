@@ -13,6 +13,7 @@ import { SidePanelComponent } from '../components/SidePanelComponent';
 import { TableComponent } from '../components/TableComponent';
 import { TimePickerComponent } from '../components/TimePickerComponent';
 import { WhereInputComponent } from '../components/WhereInputComponent';
+import { DEFAULT_TRACES_SOURCE_NAME } from '../utils/constants';
 import { borderedBox, dismissSqlAutocomplete } from '../utils/locators';
 import type { MultilineField } from '../utils/multiline-input';
 
@@ -198,6 +199,27 @@ export class SearchPage {
     await expect(this.table.firstRow).toBeVisible();
     await this.table.clickFirstRow();
     await expect(this.sidePanel.tabs).toBeVisible();
+  }
+
+  /**
+   * Open the waterfall's spans filter — a `SearchWhereInput` with
+   * `allowMultiline={false}` in both SQL and Lucene.
+   */
+  async openTraceSpansFilter(): Promise<WhereInputComponent> {
+    await this.selectSource(DEFAULT_TRACES_SOURCE_NAME);
+    await this.timePicker.selectRelativeTime('Last 1 days');
+    await this.submitEmptySearch();
+    await expect(this.table.firstRow).toBeVisible();
+    await this.table.clickFirstRow();
+    await expect(this.sidePanel.container).toBeVisible();
+    await expect(this.sidePanel.getTab('trace')).toBeVisible({
+      timeout: 15_000,
+    });
+    await this.sidePanel.clickTab('trace');
+    await this.sidePanel.toggleTraceFilters();
+    const whereInput = this.sidePanel.traceSpansWhereInput;
+    await expect(whereInput.languageSwitch).toBeVisible();
+    return whereInput;
   }
 
   /**
