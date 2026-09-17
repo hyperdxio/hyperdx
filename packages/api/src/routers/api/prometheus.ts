@@ -19,7 +19,7 @@ import {
 import { getNonNullUserWithTeam } from '@/middleware/auth';
 import { getCounter, getHistogram } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
-import { objectIdSchema } from '@/utils/zod';
+import { objectIdSchema, stringListQueryParam } from '@/utils/zod';
 
 const router = express.Router();
 
@@ -864,26 +864,18 @@ const prometheusTimestampSchema = z
     }
   });
 
-/**
- * Prometheus's series selector, spelled `match[]` and repeatable. Express's query
- * parser drops the brackets, so both `match[]=up` and `match=up` land on a
- * `match` key and a repeated one arrives as an array. The selectors themselves
- * are never interpreted here — only Prometheus can — so an empty one is treated
- * as absent rather than forwarded for upstream to reject.
- */
-const prometheusMatchSchema = z
-  .union([z.string(), z.array(z.string())])
-  .transform(v => {
-    const selectors = (Array.isArray(v) ? v : [v]).filter(m => m !== '');
-    return selectors.length ? selectors : undefined;
-  });
-
 const labelLookupRequestQuerySchema = z
   .object({
     connectionId: objectIdSchema,
     start: prometheusTimestampSchema.optional(),
     end: prometheusTimestampSchema.optional(),
-    match: prometheusMatchSchema.optional(),
+    /**
+     * Prometheus's series selector, spelled `match[]` and repeatable. The
+     * selectors themselves are never interpreted here — only Prometheus can —
+     * so an empty one is treated as absent (see `stringListQueryParam`) rather
+     * than forwarded for upstream to reject.
+     */
+    match: stringListQueryParam.optional(),
     database: z.string().optional(),
     table: z.string().optional(),
     limit: z.preprocess(
