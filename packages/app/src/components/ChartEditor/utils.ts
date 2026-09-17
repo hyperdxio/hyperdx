@@ -157,18 +157,18 @@ export const isStringSelectDisplayType = (
 export const isPromqlDisplayType = (
   displayType: DisplayType | undefined,
 ): displayType is
-  | DisplayType.Table
   | DisplayType.Line
   | DisplayType.StackedBar
   | DisplayType.Pie
   | DisplayType.Bar
-  | DisplayType.Number =>
-  displayType === DisplayType.Table ||
+  | DisplayType.Number
+  | DisplayType.Table =>
   displayType === DisplayType.Line ||
   displayType === DisplayType.StackedBar ||
   displayType === DisplayType.Pie ||
   displayType === DisplayType.Bar ||
-  displayType === DisplayType.Number;
+  displayType === DisplayType.Number ||
+  displayType === DisplayType.Table;
 
 const isCustomOrderByDisplayType = (
   displayType: DisplayType | undefined,
@@ -200,7 +200,7 @@ export function convertFormStateToSavedChartConfig(
         'fillNulls',
         'alignDateRangeToGranularity',
         'alternateRowBackground',
-        // 'alert', // TODO: Support alerts on PromQL (HDX-4636)
+        'alert',
       ]),
       promqlExpression: form.promqlExpression ?? '',
       connection: form.connection ?? '',

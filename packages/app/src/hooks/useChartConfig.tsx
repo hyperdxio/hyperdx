@@ -355,14 +355,17 @@ export function useQueriedChartConfig(
           stepStr = `${granToSec[config.granularity] ?? 60}s`;
         }
 
+        const database = config.from?.databaseName ?? source?.from.databaseName;
+        const table = config.from?.tableName ?? source?.from.tableName;
+
         const resp = await prometheusApi.queryRange({
           query: promqlExpression,
           start: startSec,
           end: endSec,
           step: stepStr,
           connectionId: config.connection,
-          database: config.from?.databaseName,
-          table: config.from?.tableName,
+          database,
+          table,
         });
 
         if (resp.status !== 'success' || !resp.data) {

@@ -7,10 +7,15 @@ import z from 'zod';
 import { ClickhouseClient } from '@/clickhouse';
 import { getConnectionById } from '@/controllers/connection';
 import {
+  formatMatrixResponse,
+  formatVectorResponse,
+  joinPrometheusUpstreamUrl,
+  PROMETHEUS_CH_TIMEOUT_MS,
   PROMETHEUS_MAX_EXECUTION_SEC,
   PROMETHEUS_MAX_RESULT_ROWS,
   queryLabelNames,
   queryLabelValues,
+  queryPrometheusRangeFromClickHouse,
   TimeSeriesTagsQueryArgs,
 } from '@/controllers/timeseriesEngine';
 import { getNonNullUserWithTeam } from '@/middleware/auth';
@@ -101,66 +106,10 @@ function getParams(req: express.Request): Record<string, string> {
 }
 
 // --------------------------
-// Prometheus-compatible response types
-// --------------------------
-
-type PrometheusMetric = Record<string, string>;
-type PrometheusMatrixResult = {
-  metric: PrometheusMetric;
-  values: [number, string][];
-};
-type PrometheusVectorResult = {
-  metric: PrometheusMetric;
-  value: [number, string];
-};
-
-// --------------------------
-// ClickHouse → Prometheus response formatters
-// --------------------------
-
-export function formatMatrixResponse(
-  rows: { tags: [string, string][]; time_series: [string, number][] }[],
-): PrometheusMatrixResult[] {
-  return rows.map(row => {
-    const metric: PrometheusMetric = {};
-    for (const [key, value] of row.tags) {
-      metric[key] = value;
-    }
-    const values: [number, string][] = row.time_series.map(
-      ([timestamp, value]) => {
-        const ts =
-          typeof timestamp === 'string'
-            ? new Date(timestamp).getTime() / 1000
-            : Number(timestamp);
-        return [ts, String(value)];
-      },
-    );
-    return { metric, values };
-  });
-}
-
-export function formatVectorResponse(
-  rows: { tags: [string, string][]; timestamp: string; value: number }[],
-): PrometheusVectorResult[] {
-  return rows.map(row => {
-    const metric: PrometheusMetric = {};
-    for (const [key, value] of row.tags) {
-      metric[key] = value;
-    }
-    const ts =
-      typeof row.timestamp === 'string'
-        ? new Date(row.timestamp).getTime() / 1000
-        : Number(row.timestamp);
-    return { metric, value: [ts, String(row.value)] };
-  });
-}
-
-// --------------------------
 // Prometheus proxy (for real Prometheus backends)
 // --------------------------
 
 const PROMETHEUS_PROXY_TIMEOUT_MS = 90_000;
-const PROMETHEUS_CH_TIMEOUT_MS = 30_000;
 const PROMETHEUS_MAX_RESOLUTION = 11_000;
 // Widest window /query_exemplars will proxy. Prometheus's exemplar store is a
 // small circular buffer, so a wider range mostly costs a bigger streamed body
@@ -183,41 +132,6 @@ export function isClientDisconnect(err: unknown): boolean {
     err instanceof Error &&
     (err as NodeJS.ErrnoException).code === 'ERR_STREAM_PREMATURE_CLOSE'
   );
-}
-
-/**
- * Join a Connection host with an absolute Prometheus API path.
- *
- * `new URL('/api/v1/query_range', 'http://host:8481/select/0/prometheus')`
- * discards `/select/0/prometheus` because an absolute path replaces the base
- * pathname. VictoriaMetrics cluster (and any Prometheus-compatible server
- * mounted under a prefix) needs that prefix kept. Host userinfo, query, and
- * hash are left untouched.
- *
- * `path` must be an absolute path (every call site passes a literal starting
- * with `/`) -- this is not a general-purpose URL joiner.
- *
- * @see https://github.com/hyperdxio/hyperdx/issues/3046
- */
-export function joinPrometheusUpstreamUrl(
-  upstreamHost: string,
-  path: string,
-): URL {
-  const url = new URL(upstreamHost);
-  // `new URL('prometheus:9090')` succeeds with an opaque path (`prometheus:`
-  // scheme). The pathname setter is a no-op there, so without this guard the
-  // helper would return the host unchanged, `fetch` would fail, and the proxy
-  // would 502 / increment query_errors for a user misconfiguration. Same check
-  // as clickhouseProxy.ts.
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-    throw new TypeError('Connection host must be http(s)');
-  }
-  // Strip ALL trailing slashes, not just one -- a host saved with a doubled
-  // trailing slash (e.g. `http://prom:9090//`) would otherwise leave a `//`
-  // in the joined path, which most servers treat as a distinct (404) path.
-  const basePath = url.pathname.replace(/\/+$/, '');
-  url.pathname = `${basePath}${path}`;
-  return url;
 }
 
 // Only real Prometheus API params are ever caller-settable in
@@ -499,22 +413,14 @@ const queryRangeHandler: express.RequestHandler = async (req, res) => {
     const endMs = Math.floor(end * 1000);
     const stepSec = Math.max(Math.floor(step), 1);
 
-    const resp = await client.query({
-      query: `SELECT tags, time_series FROM prometheusQueryRange({db:String}, {table:String}, {expr:String}, fromUnixTimestamp64Milli({startMs:Int64}), fromUnixTimestamp64Milli({endMs:Int64}), toIntervalSecond({stepSec:UInt32})) SETTINGS allow_experimental_time_series_table = 1`,
-      query_params: {
-        db: database,
-        table,
-        expr: query,
-        startMs,
-        endMs,
-        stepSec,
-      },
-      format: 'JSON',
-      clickhouse_settings: {
-        allow_experimental_time_series_table: 1,
-        max_execution_time: PROMETHEUS_MAX_EXECUTION_SEC,
-        max_result_rows: String(PROMETHEUS_MAX_RESULT_ROWS),
-      },
+    const resp = await queryPrometheusRangeFromClickHouse({
+      client,
+      databaseName: database,
+      tableName: table,
+      expr: query,
+      startMs,
+      endMs,
+      stepSec,
     });
 
     const json = await resp.json<any>();

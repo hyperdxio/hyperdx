@@ -11,8 +11,10 @@ jest.mock('@/utils/instrumentation', () => {
 import {
   formatMatrixResponse,
   formatVectorResponse,
-  isClientDisconnect,
   joinPrometheusUpstreamUrl,
+} from '@/controllers/timeseriesEngine';
+import {
+  isClientDisconnect,
   parseDuration,
   parseTimestamp,
   recordProxyOutcome,
@@ -82,12 +84,12 @@ describe('formatMatrixResponse', () => {
           ['method', 'GET'],
         ] as [string, string][],
         time_series: [
-          [1700000000, 5],
-          [1700000060, 7],
-        ] as [string | number, number][],
+          [1700000000 as unknown as string, 5],
+          [1700000060 as unknown as string, 7],
+        ] as [string, number][],
       },
     ];
-    expect(formatMatrixResponse(rows as any)).toEqual([
+    expect(formatMatrixResponse(rows)).toEqual([
       {
         metric: { __name__: 'http_requests_total', method: 'GET' },
         values: [
@@ -102,16 +104,20 @@ describe('formatMatrixResponse', () => {
     const rows = [
       {
         tags: [] as [string, string][],
-        time_series: [['2023-11-14T22:13:20.000Z', 1]] as [
-          string | number,
-          number,
-        ][],
+        time_series: [['2023-11-14T22:13:20.000Z', 1]] as [string, number][],
       },
     ];
-    expect(formatMatrixResponse(rows as any)[0].values[0]).toEqual([
-      1700000000,
-      '1',
-    ]);
+    expect(formatMatrixResponse(rows)[0].values[0]).toEqual([1700000000, '1']);
+  });
+
+  it('converts space-separated string timestamps to unix seconds as UTC', () => {
+    const rows = [
+      {
+        tags: [] as [string, string][],
+        time_series: [['2023-11-14 22:13:20', 1]] as [string, number][],
+      },
+    ];
+    expect(formatMatrixResponse(rows)[0].values[0]).toEqual([1700000000, '1']);
   });
 
   it('returns empty array for empty input', () => {
@@ -128,7 +134,7 @@ describe('formatVectorResponse', () => {
         value: 42,
       },
     ];
-    expect(formatVectorResponse(rows as any)).toEqual([
+    expect(formatVectorResponse(rows)).toEqual([
       { metric: { service: 'api' }, value: [1700000000, '42'] },
     ]);
   });
@@ -141,10 +147,18 @@ describe('formatVectorResponse', () => {
         value: 3,
       },
     ];
-    expect(formatVectorResponse(rows as any)[0].value).toEqual([
-      1700000000,
-      '3',
-    ]);
+    expect(formatVectorResponse(rows)[0].value).toEqual([1700000000, '3']);
+  });
+
+  it('converts space-separated string timestamps to unix seconds as UTC', () => {
+    const rows = [
+      {
+        tags: [] as [string, string][],
+        timestamp: '2023-11-14 22:13:20',
+        value: 3,
+      },
+    ];
+    expect(formatVectorResponse(rows)[0].value).toEqual([1700000000, '3']);
   });
 });
 
