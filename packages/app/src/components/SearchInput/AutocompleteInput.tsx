@@ -11,6 +11,8 @@ import InputLanguageSwitch from './InputLanguageSwitch';
 
 import styles from './AutocompleteInput.module.scss';
 
+export type AutocompleteInputValidationState = 'error' | 'warning';
+
 export default function AutocompleteInput({
   inputRef,
   value,
@@ -24,6 +26,7 @@ export default function AutocompleteInput({
   aboveSuggestions,
   belowSuggestions,
   rightAdornment,
+  validationState,
   showSuggestionsOnEmpty,
   suggestionsHeader = 'Properties',
   zIndex = 999,
@@ -48,6 +51,7 @@ export default function AutocompleteInput({
   belowSuggestions?: React.ReactNode;
   /** Rendered at the right edge of the input, left of the language switch. */
   rightAdornment?: React.ReactNode;
+  validationState?: AutocompleteInputValidationState;
   showSuggestionsOnEmpty?: boolean;
   suggestionsHeader?: string;
   zIndex?: number;
@@ -206,6 +210,7 @@ export default function AutocompleteInput({
       style={{ ['--editor-base-height' as string]: `${baseHeight}px` }}
       data-empty={value ? undefined : 'true'}
       data-single-line={allowMultiline ? undefined : 'true'}
+      data-validation-state={validationState}
     >
       <Popover
         opened={isInputDropdownOpen}
@@ -236,7 +241,9 @@ export default function AutocompleteInput({
             size={size}
             autosize
             minRows={1}
-            maxRows={allowMultiline ? maxVisibleRows : 1}
+            maxRows={
+              allowMultiline || isSearchInputFocused ? maxVisibleRows : 1
+            }
             data-testid={dataTestId}
             onChange={e => onChange(e.target.value)}
             onFocus={() => {
@@ -283,12 +290,14 @@ export default function AutocompleteInput({
                   e.preventDefault();
                   const selected = suggestions[selectedAutocompleteIndex];
                   onAcceptSuggestion(selected.value, selected.isVariable);
-                } else if (!e.shiftKey || !allowMultiline) {
+                } else if (!e.shiftKey) {
                   e.preventDefault();
                   if (queryHistoryType && value) {
                     setQueryHistory(value);
                   }
                   onSubmit?.();
+                } else if (!allowMultiline) {
+                  e.preventDefault();
                 }
               }
               if (

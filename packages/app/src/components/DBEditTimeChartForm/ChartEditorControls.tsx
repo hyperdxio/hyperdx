@@ -324,10 +324,12 @@ export function ChartEditorControls({
             <>
               <Divider mt="md" mb="sm" />
               <div
-                className="gap-2 align-items-center"
+                className="gap-2"
                 style={{
                   display: 'grid',
                   gridTemplateColumns: 'auto minmax(0, 1fr)',
+                  // Labels stay level with each editor's first line as it grows
+                  alignItems: 'start',
                 }}
               >
                 <div>

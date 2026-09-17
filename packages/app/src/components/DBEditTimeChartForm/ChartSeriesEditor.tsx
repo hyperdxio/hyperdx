@@ -511,10 +511,12 @@ export function ChartSeriesEditor({
         )}
         {(showWhere || showGroupBy || showHaving) && (
           <div
-            className="flex-grow-1 gap-2 align-items-center"
+            className="flex-grow-1 gap-2"
             style={{
               display: 'grid',
               gridTemplateColumns: 'auto 1fr auto 1fr',
+              // Labels stay level with each editor's first line as it grows
+              alignItems: 'start',
             }}
           >
             {showWhere && (

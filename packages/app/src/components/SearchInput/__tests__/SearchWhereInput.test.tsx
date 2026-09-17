@@ -108,6 +108,7 @@ describe('SearchWhereInput', () => {
 
     it('does not insert a newline in Lucene when allowMultiline is false', async () => {
       const user = userEvent.setup();
+      const onSubmit = jest.fn();
       renderWithMantine(
         <TestWrapper defaultLanguage="lucene">
           {({ control }) => (
@@ -116,6 +117,7 @@ describe('SearchWhereInput', () => {
               control={control}
               name="where"
               allowMultiline={false}
+              onSubmit={onSubmit}
             />
           )}
         </TestWrapper>,
@@ -132,6 +134,7 @@ describe('SearchWhereInput', () => {
       await user.keyboard('first{Shift>}{Enter}{/Shift}second');
 
       expect(input).toHaveValue('firstsecond');
+      expect(onSubmit).not.toHaveBeenCalled();
     });
   });
 
@@ -376,6 +379,11 @@ describe('SearchWhereInput', () => {
           'This expression references unknown variable $srvice. Available variables: svc.',
         ),
       );
+      expect(
+        screen
+          .getByTestId('variable-validation')
+          .closest('[data-validation-state]'),
+      ).toHaveAttribute('data-validation-state', 'warning');
     });
 
     it('errors when a SQL reference is wrapped in quotes', async () => {

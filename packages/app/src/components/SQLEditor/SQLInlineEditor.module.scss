@@ -1,5 +1,4 @@
 .wrapper {
-  position: relative;
   flex: 1 1 0%;
   width: 100%;
   min-width: 0;
@@ -10,7 +9,7 @@
   border: 1px solid var(--color-border);
   display: flex;
   align-items: flex-start;
-  min-height: var(--editor-base-height);
+  min-height: var(--editor-base-height, 36px);
   box-shadow: none;
 
   /* The Paper theme gives every Paper an inline `border`, and an inline
@@ -26,8 +25,7 @@
 
   /* Single-line editors only: hold one row and hide the rest. */
   &.clamped {
-    position: relative;
-    max-height: var(--editor-base-height);
+    max-height: var(--editor-base-height, 36px);
     overflow: hidden;
   }
 
@@ -60,9 +58,5 @@
   &.sizeXs {
     padding-top: 2.4px;
     font-size: var(--mantine-font-size-xs);
-  }
-
-  &.collapsed {
-    overflow: hidden;
   }
 }

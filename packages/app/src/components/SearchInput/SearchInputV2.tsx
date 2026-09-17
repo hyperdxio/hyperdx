@@ -24,7 +24,9 @@ import {
 } from '@/hooks/useAutoCompleteOptions';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
 
-import AutocompleteInput from './AutocompleteInput';
+import AutocompleteInput, {
+  type AutocompleteInputValidationState,
+} from './AutocompleteInput';
 
 import styles from './SearchInputV2.module.scss';
 
@@ -98,6 +100,12 @@ export default function SearchInputV2({
       language: 'lucene',
     },
   );
+  const validationState: AutocompleteInputValidationState | undefined =
+    variableIssues.errors.length > 0
+      ? 'error'
+      : variableIssues.warnings.length > 0
+        ? 'warning'
+        : undefined;
 
   const {
     options: autoCompleteOptions,
@@ -160,6 +168,7 @@ export default function SearchInputV2({
       queryHistoryType={queryHistoryType}
       allowMultiline={allowMultiline}
       data-testid={dataTestId}
+      validationState={validationState}
       rightAdornment={
         hasVariableIssues(variableIssues) ? (
           <VariableIssueIndicator issues={variableIssues} />

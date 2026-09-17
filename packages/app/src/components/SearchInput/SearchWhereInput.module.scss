@@ -1,5 +1,6 @@
 .root {
-  position: relative;
+  --editor-border-inset: 2px;
+
   flex: 1 1 0%;
   min-width: 0;
   display: flex;
@@ -8,7 +9,6 @@
 }
 
 .inputWrapper {
-  position: relative;
   flex: 1;
   min-width: 0;
 
@@ -39,7 +39,6 @@
 /* Stretches with the input so the seam between the two stays flush however
    many lines the query takes. */
 .languageSwitch {
-  position: relative;
   flex-shrink: 0;
   padding-left: 4px;
   border: 1px solid var(--color-border);
@@ -67,5 +66,5 @@
 /* Subtract the switch's borders so its controls align with the first row. */
 .languageSwitchRow {
   flex-shrink: 0;
-  height: calc(var(--editor-base-height) - 2px);
+  height: calc(var(--editor-base-height) - var(--editor-border-inset, 2px));
 }

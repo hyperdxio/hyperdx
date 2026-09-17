@@ -397,7 +397,8 @@ export default function DBTracePanel({
       {!traceId && parentSourceId != null && (
         <Stack gap="xs" mb="sm">
           <Text size="xs">Trace ID Expression</Text>
-          <Flex align="center">
+          {/* The submit button stays level with the editor's first line as it grows */}
+          <Flex align="flex-start">
             <SQLInlineEditorControlled
               tableConnection={tcFromSource(parentSourceData)}
               name="traceIdExpression"

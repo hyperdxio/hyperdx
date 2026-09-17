@@ -8,6 +8,7 @@ import {
   IconTrash,
 } from '@tabler/icons-react';
 
+import { EDITOR_INPUT_HEIGHTS } from '@/components/editorInputHeights';
 import { ErrorCollapse } from '@/components/Error/ErrorCollapse';
 import { InputControlled } from '@/components/InputControlled';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
@@ -83,34 +84,39 @@ function HighlightedAttributeRow({
         </div>
       </Grid.Col>
       <Grid.Col span={2} ps="xs">
-        <Flex align="center" gap="sm">
-          <Text c="gray">AS</Text>
+        {/* The label and icons stay level with the editors' first line as they grow */}
+        <Flex align="flex-start" gap="sm">
+          <Flex h={EDITOR_INPUT_HEIGHTS.sm} align="center">
+            <Text c="gray">AS</Text>
+          </Flex>
           <SQLInlineEditorControlled
             control={control}
             name={`${name}.${index}.alias`}
             placeholder="Optional Alias"
             disableKeywordAutocomplete
           />
-          <Tooltip label="Validate expression">
+          <Flex h={EDITOR_INPUT_HEIGHTS.sm} align="center" gap="sm">
+            <Tooltip label="Validate expression">
+              <ActionIcon
+                size="xs"
+                variant="subtle"
+                color="gray"
+                loading={isExplainLoading}
+                disabled={!expressionInput || isExplainLoading}
+                onClick={validateNow}
+              >
+                <IconCheck size={16} />
+              </ActionIcon>
+            </Tooltip>
             <ActionIcon
               size="xs"
               variant="subtle"
               color="gray"
-              loading={isExplainLoading}
-              disabled={!expressionInput || isExplainLoading}
-              onClick={validateNow}
+              onClick={() => removeHighlightedAttribute(index)}
             >
-              <IconCheck size={16} />
+              <IconTrash size={16} />
             </ActionIcon>
-          </Tooltip>
-          <ActionIcon
-            size="xs"
-            variant="subtle"
-            color="gray"
-            onClick={() => removeHighlightedAttribute(index)}
-          >
-            <IconTrash size={16} />
-          </ActionIcon>
+          </Flex>
         </Flex>
       </Grid.Col>
 

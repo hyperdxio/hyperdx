@@ -126,13 +126,15 @@ export class WhereInputComponent {
    * overhanging it.
    */
   async expectSeamFlush(): Promise<void> {
-    const seam = await this.readSeam();
-
-    expect(seam.languageSwitch.height).toBeGreaterThan(0);
-    expect(seam.input.height).toBeGreaterThan(0);
-    expect(
-      Math.abs(seam.languageSwitch.height - seam.input.height),
-    ).toBeLessThanOrEqual(SEAM_TOLERANCE_PX);
+    await expect
+      .poll(async () => {
+        const seam = await this.readSeam();
+        if (seam.languageSwitch.height <= 0 || seam.input.height <= 0) {
+          return Number.POSITIVE_INFINITY;
+        }
+        return Math.abs(seam.languageSwitch.height - seam.input.height);
+      })
+      .toBeLessThanOrEqual(SEAM_TOLERANCE_PX);
   }
 
   async borderColors(): Promise<{ languageSwitch: string; input: string }> {

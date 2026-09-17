@@ -340,13 +340,13 @@ export class SearchPage {
   }
 
   async getSelectBorderColor(): Promise<string> {
-    return borderedBox(this.getSELECTEditor()).evaluate(
+    return this.selectClauseField().visibleBox.evaluate(
       el => getComputedStyle(el).borderTopColor,
     );
   }
 
   async getOrderByBorderColor(): Promise<string> {
-    return borderedBox(this.getOrderByEditor()).evaluate(
+    return this.orderByClauseField().visibleBox.evaluate(
       el => getComputedStyle(el).borderTopColor,
     );
   }

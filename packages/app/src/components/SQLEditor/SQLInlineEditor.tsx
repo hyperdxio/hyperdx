@@ -332,12 +332,10 @@ export default function SQLInlineEditor({
     }
   }, []);
 
-  const isVariableWarningOnly =
-    variableIssues.errors.length === 0 && variableIssues.warnings.length > 0;
   const validationState =
     error || variableIssues.errors.length > 0
       ? 'error'
-      : isVariableWarningOnly
+      : variableIssues.warnings.length > 0
         ? 'warning'
         : undefined;
   const baseHeight =
@@ -354,7 +352,7 @@ export default function SQLInlineEditor({
         className={cx(
           styles.paper,
           validationState === 'error' ? styles.error : undefined,
-          isVariableWarningOnly ? styles.warning : undefined,
+          validationState === 'warning' ? styles.warning : undefined,
           !allowMultiline ? styles.clamped : undefined,
           isFocused ? styles.focused : undefined,
         )}
@@ -383,7 +381,6 @@ export default function SQLInlineEditor({
           className={cx(
             styles.cmWrapper,
             size === 'xs' ? styles.sizeXs : undefined,
-            !allowMultiline ? styles.collapsed : undefined,
             allowMultiline ? 'cm-editor-multiline' : undefined,
           )}
         >

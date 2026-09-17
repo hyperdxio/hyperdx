@@ -7,5 +7,5 @@
   cursor: help;
 
   /* Keep the icon on the editor's first row as multiline content grows. */
-  min-height: var(--editor-base-height);
+  min-height: var(--editor-base-height, 100%);
 }

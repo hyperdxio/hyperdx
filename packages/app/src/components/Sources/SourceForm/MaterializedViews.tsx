@@ -6,6 +6,7 @@ import {
   Box,
   Button,
   Divider,
+  Flex,
   Grid,
   Group,
   Select,
@@ -19,6 +20,7 @@ import { IconCirclePlus, IconHelpCircle, IconTrash } from '@tabler/icons-react';
 
 import { DatabaseSelectControlled } from '@/components/DatabaseSelect';
 import { DBTableSelectControlled } from '@/components/DBTableSelect';
+import { EDITOR_INPUT_HEIGHTS } from '@/components/editorInputHeights';
 import SelectControlled from '@/components/SelectControlled';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
@@ -556,7 +558,7 @@ function AggregatedColumnRow({
         </Grid.Col>
       )}
       <Grid.Col span={!isCount ? 4 : 8}>
-        <Group wrap="nowrap">
+        <Group wrap="nowrap" align="flex-start">
           <Box flex={1}>
             <SQLInlineEditorControlled
               tableConnection={{
@@ -570,9 +572,12 @@ function AggregatedColumnRow({
               disableKeywordAutocomplete
             />
           </Box>
-          <ActionIcon size="sm" onClick={onRemove}>
-            <IconTrash size={16} />
-          </ActionIcon>
+          {/* Stays level with the editor's first line as it grows */}
+          <Flex h={EDITOR_INPUT_HEIGHTS.sm} align="center">
+            <ActionIcon size="sm" onClick={onRemove}>
+              <IconTrash size={16} />
+            </ActionIcon>
+          </Flex>
         </Group>
       </Grid.Col>
     </>
