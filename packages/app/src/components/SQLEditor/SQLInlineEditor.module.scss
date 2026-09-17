@@ -5,14 +5,6 @@
   min-width: 0;
 }
 
-/* Pins the row to its collapsed height while the editor overlays, so the
-   content below doesn't shift. The Paper overflows this box instead of being
-   positioned out of the flow — out of the flow it no longer contributes any
-   width, and a parent that sizes to its content collapses to nothing. */
-.overlayHost {
-  height: var(--editor-base-height);
-}
-
 .paper {
   background-color: var(--color-bg-field);
   border: 1px solid var(--color-border);
@@ -32,26 +24,17 @@
     border-color: var(--color-bg-warning) !important;
   }
 
-  /* Floats over whatever is below so expanding on focus doesn't shift the page.
-     Only for an editor that collapses again on blur. */
-  &.overlay {
-    position: relative;
-    z-index: 100;
-    box-shadow: var(--mb-shadow, var(--mantine-shadow-xs));
-    border-bottom: 2px solid var(--color-bg-brand) !important;
-  }
-
+  /* Single-line editors only: hold one row and hide the rest. */
   &.clamped {
     position: relative;
     max-height: var(--editor-base-height);
     overflow: hidden;
   }
 
-  /* An editor that holds its height can't change border width on focus without
-     nudging everything below it, so recolor instead. Leave error/warning
-     borders alone so they stay visible while editing, and .overlay alone since
-     it marks focus with its own bottom border. */
-  &:not(.overlay, .error, .warning).focused {
+  /* An editor that grows with its content can't change border width on focus
+     without nudging everything below it, so recolor instead. Leave
+     error/warning borders alone so they stay visible while editing. */
+  &:not(.error, .warning).focused {
     border-color: var(--color-bg-brand) !important;
   }
 }
@@ -82,16 +65,4 @@
   &.collapsed {
     overflow: hidden;
   }
-}
-
-/* Fade at the bottom when multiline content is clamped so text doesn't appear hard-cut. */
-.collapseFade::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 12px;
-  background: linear-gradient(to bottom, transparent, var(--color-bg-field));
-  pointer-events: none;
 }

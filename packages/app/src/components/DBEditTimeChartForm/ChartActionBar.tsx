@@ -176,7 +176,6 @@ export function ChartActionBar({
                 disableKeywordAutocomplete
                 onSubmit={onSubmit}
                 label="ORDER BY"
-                keepMultilineVisible
                 enableVariables
               />
             </div>

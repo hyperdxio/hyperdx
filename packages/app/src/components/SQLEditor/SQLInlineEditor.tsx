@@ -66,8 +66,6 @@ type SQLInlineEditorProps = {
   queryHistoryType?: string;
   parentRef?: HTMLElement | null;
   allowMultiline?: boolean;
-  /** Keep wrapped content visible while blurred instead of using the focus overlay. */
-  keepMultilineVisible?: boolean;
   dateRange?: [Date, Date];
   sourceId?: string;
   // With multiple tableConnections, offer only fields present in ALL of them
@@ -99,7 +97,6 @@ export default function SQLInlineEditor({
   queryHistoryType,
   parentRef,
   allowMultiline = true,
-  keepMultilineVisible = false,
   dateRange,
   sourceId,
   intersectFields,
@@ -343,18 +340,12 @@ export default function SQLInlineEditor({
       : isVariableWarningOnly
         ? 'warning'
         : undefined;
-  const showMultilineContent =
-    allowMultiline && (keepMultilineVisible || isFocused);
-  const isOverlayExpanded = showMultilineContent && !keepMultilineVisible;
   const baseHeight =
     size === 'xs' ? EDITOR_INPUT_HEIGHTS.xs : EDITOR_INPUT_HEIGHTS.sm;
 
   return (
     <div
-      className={cx(
-        styles.wrapper,
-        isOverlayExpanded ? styles.overlayHost : undefined,
-      )}
+      className={styles.wrapper}
       style={{ ['--editor-base-height' as string]: `${baseHeight}px` }}
       data-validation-state={validationState}
     >
@@ -364,11 +355,7 @@ export default function SQLInlineEditor({
           styles.paper,
           validationState === 'error' ? styles.error : undefined,
           isVariableWarningOnly ? styles.warning : undefined,
-          isOverlayExpanded ? styles.overlay : undefined,
-          !showMultilineContent ? styles.clamped : undefined,
-          allowMultiline && !showMultilineContent
-            ? styles.collapseFade
-            : undefined,
+          !allowMultiline ? styles.clamped : undefined,
           isFocused ? styles.focused : undefined,
         )}
         ps="4px"
@@ -396,8 +383,8 @@ export default function SQLInlineEditor({
           className={cx(
             styles.cmWrapper,
             size === 'xs' ? styles.sizeXs : undefined,
-            !showMultilineContent ? styles.collapsed : undefined,
-            showMultilineContent ? 'cm-editor-multiline' : undefined,
+            !allowMultiline ? styles.collapsed : undefined,
+            allowMultiline ? 'cm-editor-multiline' : undefined,
           )}
         >
           <CodeMirror

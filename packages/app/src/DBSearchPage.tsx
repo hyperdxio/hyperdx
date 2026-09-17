@@ -2284,7 +2284,6 @@ export function DBSearchPage() {
               label="SELECT"
               size="xs"
               allowMultiline
-              keepMultilineVisible
               dateRange={searchedTimeRange}
               sourceId={inputSource}
             />
@@ -2298,7 +2297,6 @@ export function DBSearchPage() {
               onSubmit={onSubmit}
               label="ORDER BY"
               size="xs"
-              keepMultilineVisible
               dateRange={searchedTimeRange}
               sourceId={inputSource}
             />

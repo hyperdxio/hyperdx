@@ -198,17 +198,13 @@ export default function PromQLEditor({
     }
   }, []);
 
-  const isExpanded = isFocused;
   const isVariableWarningOnly =
     variableIssues.errors.length === 0 && variableIssues.warnings.length > 0;
   const baseHeight = EDITOR_INPUT_HEIGHTS.sm;
 
   return (
     <div
-      className={cx(
-        styles.wrapper,
-        isExpanded ? styles.overlayHost : undefined,
-      )}
+      className={styles.wrapper}
       style={{ ['--editor-base-height' as string]: `${baseHeight}px` }}
     >
       <Paper
@@ -217,18 +213,11 @@ export default function PromQLEditor({
           styles.paper,
           variableIssues.errors.length > 0 ? styles.error : undefined,
           isVariableWarningOnly ? styles.warning : undefined,
-          isExpanded ? styles.overlay : styles.clamped,
-          !isExpanded ? styles.collapseFade : undefined,
+          isFocused ? styles.focused : undefined,
         )}
         ps="4px"
       >
-        <div
-          className={cx(
-            styles.cmWrapper,
-            !isExpanded ? styles.collapsed : undefined,
-            isExpanded ? 'cm-editor-multiline' : undefined,
-          )}
-        >
+        <div className={cx(styles.cmWrapper, 'cm-editor-multiline')}>
           <CodeMirror
             indentWithTab={false}
             ref={ref}

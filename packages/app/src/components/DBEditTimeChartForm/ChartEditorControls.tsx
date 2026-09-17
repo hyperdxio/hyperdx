@@ -547,7 +547,6 @@ export function ChartEditorControls({
             }
             onSubmit={onSubmit}
             label="SELECT"
-            keepMultilineVisible
             enableVariables
           />
           <SearchWhereInput

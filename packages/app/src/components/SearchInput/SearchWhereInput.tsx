@@ -235,7 +235,6 @@ export default function SearchWhereInput({
               queryHistoryType={sqlQueryHistoryType}
               enableHotkey={enableHotkey}
               allowMultiline={allowMultiline}
-              keepMultilineVisible={allowMultiline}
               size={size}
               additionalSuggestions={additionalSuggestions}
               dateRange={dateRange}
