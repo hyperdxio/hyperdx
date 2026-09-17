@@ -14,25 +14,9 @@ import {
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import {
-  ActionIcon,
-  Badge,
-  Button,
-  Divider,
-  Flex,
-  Group,
-  Text,
-  Tooltip,
-} from '@mantine/core';
+import { ActionIcon, Badge, Flex, Group, Text, Tooltip } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import {
-  IconArrowDown,
-  IconArrowUp,
-  IconCopy,
-  IconListSearch,
-  IconPalette,
-  IconTrash,
-} from '@tabler/icons-react';
+import { IconListSearch, IconPalette } from '@tabler/icons-react';
 
 import { AGG_FNS } from '@/ChartUtils';
 import {
@@ -40,22 +24,19 @@ import {
   defaultAggFnForMetricType,
   HISTOGRAM_SUPPORTED_AGG_FNS,
 } from '@/components/AggFnSelect';
+import { ChartSeriesControls } from '@/components/ChartEditor/ChartSeriesControls';
 import {
   ChartEditorFormState,
   SavedChartConfigWithSelectArray,
 } from '@/components/ChartEditor/types';
 import { isFormulaSourceKind } from '@/components/ChartEditor/utils';
-import {
-  CheckBoxControlled,
-  TextInputControlled,
-} from '@/components/InputControlled';
+import { CheckBoxControlled } from '@/components/InputControlled';
 import { MetricAttributeHelperPanel } from '@/components/MetricAttributeHelperPanel';
 import {
   MetricExplorerModal,
   type MetricExplorerSelection,
 } from '@/components/MetricExplorer/MetricExplorerModal';
 import { MetricNameSelect } from '@/components/MetricNameSelect';
-import { FORMAT_ICONS } from '@/components/NumberFormat';
 import SearchWhereInput from '@/components/SearchInput/SearchWhereInput';
 import SeriesColorDrawer from '@/components/SeriesColorDrawer';
 import SeriesNumberFormatDrawer from '@/components/SeriesNumberFormatDrawer';
@@ -307,120 +288,56 @@ export function ChartSeriesEditor({
 
   return (
     <>
-      <Divider
-        label={
-          <Group gap="xs">
-            {/* Formula series reference (HDX-5080): formulas address series
-                positionally by letter (`A` = series 1, ...), so surface the
-                letter on each row of formula-capable sources (metric and
-                log/trace events). */}
-            {isFormulaSourceKind(tableSource?.kind) && (
-              <Tooltip label="Reference this series in a formula by this letter">
-                <Badge
-                  size="sm"
-                  radius="sm"
-                  variant="light"
-                  color="gray"
-                  data-testid="series-ref-badge"
-                >
-                  {indexToSeriesRef(index) ?? index + 1}
-                </Badge>
-              </Tooltip>
-            )}
-            <Text size="xxs">Alias</Text>
-
-            <div style={{ width: 150 }}>
-              <TextInputControlled
-                name={`${namePrefix}alias`}
-                control={control}
-                placeholder="Series alias"
-                onChange={() => onSubmit()}
-                size="xs"
-                data-testid="series-alias-input"
-              />
-            </div>
-            {(index ?? -1) > 0 && (
-              <Button
-                variant="subtle"
+      <ChartSeriesControls
+        control={control}
+        aliasName={`${namePrefix}alias`}
+        aliasPlaceholder="Series alias"
+        index={index}
+        length={length}
+        numberFormat={seriesNumberFormat}
+        onSubmit={onSubmit}
+        onSwap={onSwapSeries}
+        onRemove={onRemoveSeries}
+        onDuplicate={showDuplicate ? onDuplicateSeries : undefined}
+        onOpenNumberFormat={openSeriesNumberFormat}
+        leadingSection={
+          isFormulaSourceKind(tableSource?.kind) ? (
+            <Tooltip label="Reference this series in a formula by this letter">
+              <Badge
+                size="sm"
+                radius="sm"
+                variant="light"
                 color="gray"
-                size="xxs"
-                onClick={() => onSwapSeries(index, index - 1)}
-                title="Move up"
+                data-testid="series-ref-badge"
               >
-                <IconArrowUp size={14} />
-              </Button>
-            )}
-            {(index ?? -1) < length - 1 && (
-              <Button
-                variant="subtle"
-                color="gray"
-                size="xxs"
-                onClick={() => onSwapSeries(index, index + 1)}
-                title="Move down"
-              >
-                <IconArrowDown size={14} />
-              </Button>
-            )}
-            {showDuplicate && (
-              <Button
-                variant="subtle"
-                color="gray"
-                size="xxs"
-                onClick={() => onDuplicateSeries(index)}
-                title="Duplicate series"
-                data-testid="series-duplicate-button"
-              >
-                <IconCopy size={14} />
-              </Button>
-            )}
-            {((index ?? -1) > 0 || length > 1) && (
-              <Button
-                variant="subtle"
-                color="gray"
-                size="xs"
-                onClick={() => onRemoveSeries(index)}
-              >
-                <IconTrash size={14} className="me-2" />
-                Remove Series
-              </Button>
-            )}
-            <Tooltip label="Edit series display format">
+                {indexToSeriesRef(index) ?? index + 1}
+              </Badge>
+            </Tooltip>
+          ) : undefined
+        }
+        trailingSection={
+          showColor ? (
+            <Tooltip label="Edit column color">
               <ActionIcon
                 variant="subtle"
                 color="gray"
                 size="xs"
-                onClick={openSeriesNumberFormat}
-                aria-label="Edit series display format"
+                onClick={openSeriesColor}
+                aria-label="Edit column color"
+                data-testid="series-color-button"
               >
-                {FORMAT_ICONS[seriesNumberFormat?.output ?? 'number']}
+                <IconPalette
+                  size={16}
+                  color={
+                    seriesColor && isChartPaletteToken(seriesColor)
+                      ? getColorFromCSSToken(seriesColor)
+                      : undefined
+                  }
+                />
               </ActionIcon>
             </Tooltip>
-            {showColor && (
-              <Tooltip label="Edit column color">
-                <ActionIcon
-                  variant="subtle"
-                  color="gray"
-                  size="xs"
-                  onClick={openSeriesColor}
-                  aria-label="Edit column color"
-                  data-testid="series-color-button"
-                >
-                  <IconPalette
-                    size={16}
-                    color={
-                      seriesColor && isChartPaletteToken(seriesColor)
-                        ? getColorFromCSSToken(seriesColor)
-                        : undefined
-                    }
-                  />
-                </ActionIcon>
-              </Tooltip>
-            )}
-          </Group>
+          ) : undefined
         }
-        labelPosition="right"
-        mb={8}
-        mt="sm"
       />
       <Flex gap="sm" mt="xs" align="start">
         <div
