@@ -3,6 +3,7 @@ import {
   TableConnection,
   TableConnectionChoice,
 } from '@hyperdx/common-utils/dist/core/metadata';
+import { getQueriedPromqlSeries } from '@hyperdx/common-utils/dist/core/promql';
 import {
   configConsumesBroadcastFilters,
   getBlockingRequiredFilterNames,
@@ -53,7 +54,10 @@ export const isQueryReady = (
 ) => {
   if (!queriedConfig) return false;
   if (isPromqlChartConfig(queriedConfig)) {
-    return !!(queriedConfig.promqlExpression && queriedConfig.connection);
+    return !!(
+      getQueriedPromqlSeries(queriedConfig).length > 0 &&
+      queriedConfig.connection
+    );
   }
   if (isRawSqlChartConfig(queriedConfig)) {
     return !!(queriedConfig.sqlTemplate && queriedConfig.connection);
@@ -246,12 +250,19 @@ export function resolveTilePreviewFilters({
   };
 }
 
-/** A PromQL tile's substituted expression, or why there isn't one. */
-export type RenderedPromqlExpression =
-  | { expression: string; error?: never }
-  | { expression?: never; error: string };
+/** One expression as a PromQL tile queries it. */
+type RenderedPromqlEntry = {
+  id: string;
+  expression: string;
+  alias?: string;
+};
 
-/** The expression a PromQL tile is queried with, with variables substituted. */
+/** A PromQL tile's substituted expressions, or why there aren't any. */
+export type RenderedPromqlExpression =
+  | { expressions: RenderedPromqlEntry[]; error?: never }
+  | { expressions?: never; error: string };
+
+/** The expressions a PromQL tile is queried with, with variables substituted. */
 export function buildRenderedPromqlExpression(
   queriedConfig: ChartConfigWithDateRange | undefined,
 ): RenderedPromqlExpression | undefined {
@@ -260,9 +271,13 @@ export function buildRenderedPromqlExpression(
   }
 
   try {
+    const substituted = substitutePromqlChartConfigVariables(queriedConfig);
     return {
-      expression:
-        substitutePromqlChartConfigVariables(queriedConfig).promqlExpression,
+      expressions: getQueriedPromqlSeries(substituted).map((series, index) => ({
+        id: String(index),
+        expression: series.expression,
+        alias: series.alias?.trim() || undefined,
+      })),
     };
   } catch (e) {
     // Substitution throws on an unrecognized format such as `${svc:json}`. The

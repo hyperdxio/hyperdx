@@ -1003,6 +1003,7 @@ export default function EditTimeChartForm({
         ) : isPromqlInput ? (
           <PromqlChartEditor
             control={control}
+            getValues={getValues}
             onSubmit={onSubmit}
             onOpenDisplaySettings={openDisplaySettings}
           />
