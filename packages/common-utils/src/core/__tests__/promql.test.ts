@@ -5,6 +5,7 @@ describe('promqlStep', () => {
     expect(promqlStep('15 second')).toBe('15s');
     expect(promqlStep('5 minute')).toBe('300s');
     expect(promqlStep('1 day')).toBe('86400s');
+    expect(promqlStep('7 day')).toBe('604800s');
   });
 
   it('defaults to a minute when the granularity is absent or unknown', () => {

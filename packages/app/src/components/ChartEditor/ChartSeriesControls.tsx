@@ -26,7 +26,7 @@ export function ChartSeriesControls({
   aliasName,
   aliasPlaceholder,
   index,
-  length,
+  length = 1,
   numberFormat,
   onSubmit,
   onSwap,
@@ -40,11 +40,11 @@ export function ChartSeriesControls({
   aliasName: Path<ChartEditorFormState>;
   aliasPlaceholder: string;
   index: number;
-  length: number;
+  length?: number;
   numberFormat?: NumberFormat;
   onSubmit: () => void;
-  onSwap: (from: number, to: number) => void;
-  onRemove: (index: number) => void;
+  onSwap?: (from: number, to: number) => void;
+  onRemove?: (index: number) => void;
   onDuplicate?: (index: number) => void;
   /** Absent where the row has no format of its own. */
   onOpenNumberFormat?: () => void;
@@ -73,7 +73,7 @@ export function ChartSeriesControls({
               data-testid="series-alias-input"
             />
           </div>
-          {!isFirst && (
+          {onSwap && !isFirst && (
             <Button
               variant="subtle"
               color="gray"
@@ -84,7 +84,7 @@ export function ChartSeriesControls({
               <IconArrowUp size={14} />
             </Button>
           )}
-          {!isLast && (
+          {onSwap && !isLast && (
             <Button
               variant="subtle"
               color="gray"
@@ -107,12 +107,13 @@ export function ChartSeriesControls({
               <IconCopy size={14} />
             </Button>
           )}
-          {length > 1 && (
+          {onRemove && (
             <Button
               variant="subtle"
               color="gray"
               size="xs"
               onClick={() => onRemove(index)}
+              data-testid="series-remove-button"
             >
               <IconTrash size={14} className="me-2" />
               Remove

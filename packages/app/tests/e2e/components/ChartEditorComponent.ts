@@ -1241,7 +1241,9 @@ export class ChartEditorComponent {
   /**
    * Click the "Add Formula" button (metric sources only) to append a formula
    * row, and fill its expression (and optional alias). Targets the last
-   * formula row so multiple formulas can be added in sequence.
+   * formula row so multiple formulas can be added in sequence. Formula rows
+   * reuse the shared series controls, so the alias input carries the series
+   * test id and is last on the page (formulas render after the series).
    */
   async addFormula(expression: string, alias?: string) {
     await this.page.getByTestId('add-formula-button').click();
@@ -1250,7 +1252,7 @@ export class ChartEditorComponent {
       .last();
     await expressionInput.fill(expression);
     if (alias !== undefined) {
-      await this.page.getByTestId('formula-alias-input').last().fill(alias);
+      await this.page.getByTestId('series-alias-input').last().fill(alias);
     }
     await expressionInput.blur();
   }

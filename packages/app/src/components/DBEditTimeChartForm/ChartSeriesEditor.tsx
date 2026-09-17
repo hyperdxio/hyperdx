@@ -297,7 +297,7 @@ export function ChartSeriesEditor({
         numberFormat={seriesNumberFormat}
         onSubmit={onSubmit}
         onSwap={onSwapSeries}
-        onRemove={onRemoveSeries}
+        onRemove={length > 1 ? onRemoveSeries : undefined}
         onDuplicate={showDuplicate ? onDuplicateSeries : undefined}
         onOpenNumberFormat={openSeriesNumberFormat}
         leadingSection={

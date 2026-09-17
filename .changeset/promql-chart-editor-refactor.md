@@ -3,4 +3,4 @@
 '@hyperdx/app': patch
 ---
 
-refactor: Share the series controls row between the builder and PromQL chart editors
+refactor: Extract PromQL functions, PromqlExpressionEditor, and ChartSeriesControls
