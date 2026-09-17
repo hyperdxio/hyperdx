@@ -20,6 +20,10 @@ import {
 
 const mockFetch = jest.mocked(global.fetch);
 
+// Set by jest.setup.ts before it stubs `fetch`, for tests that must reach a
+// live service.
+const { realFetch } = globalThis as unknown as { realFetch: typeof fetch };
+
 const matchQueryString = (selectors: string[]) =>
   selectors.map(s => `match[]=${encodeURIComponent(s)}`).join('&');
 
@@ -839,7 +843,7 @@ describe('prometheus router', () => {
       });
 
       beforeEach(() => {
-        mockFetch.mockImplementation(globalThis.realFetch);
+        mockFetch.mockImplementation(realFetch);
       });
 
       it('answers a range query with the series from the requested table', async () => {
@@ -921,7 +925,7 @@ describe('prometheus router', () => {
         })) {
           url.searchParams.set(k, v);
         }
-        const resp = await globalThis.realFetch(url, {
+        const resp = await realFetch(url, {
           headers: {
             'X-ClickHouse-User': config.CLICKHOUSE_USER,
             'X-ClickHouse-Key': config.CLICKHOUSE_PASSWORD,

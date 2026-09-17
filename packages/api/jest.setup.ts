@@ -34,11 +34,7 @@ jest.mock('@/utils/slack', () => ({
 // `globalThis.realFetch` so a test that needs to reach a live service (e.g.
 // ClickHouse's Prometheus API) can `mockFetch.mockImplementation(realFetch)`
 // for its duration.
-declare global {
-  // eslint-disable-next-line no-var
-  var realFetch: typeof fetch;
-}
-globalThis.realFetch = global.fetch;
+Object.assign(globalThis, { realFetch: global.fetch });
 global.fetch = jest.fn().mockResolvedValue({
   ok: true,
   text: jest.fn().mockResolvedValue(''),
