@@ -15,6 +15,7 @@ import {
   AlertChartConfig,
   AlertInterval,
   AlertSource,
+  AlertState,
   AlertThresholdType,
   ChartAlertBaseSchema,
   SavedChartConfig,
@@ -261,11 +262,7 @@ export function normalizeNoOpAlertScheduleFields<
   return normalizedAlert as T;
 }
 
-/**
- * Human label for what an alert watches. Shared by the row's source icon
- * tooltip, the alerts-page source filter, and free-text search, so all three
- * agree on the wording a user sees and types.
- */
+/** Human label for what an alert watches. */
 export function getAlertSourceLabel(alert: {
   source?: AlertSource | null;
 }): string {
@@ -280,6 +277,33 @@ export function getAlertSourceLabel(alert: {
       return 'Unknown source';
   }
 }
+
+/** Human label for an alert's state. */
+export const ALERT_STATE_LABELS: Record<AlertState, string> = {
+  [AlertState.ALERT]: 'Alert',
+  [AlertState.PENDING]: 'Pending',
+  [AlertState.OK]: 'Ok',
+  [AlertState.DISABLED]: 'Disabled',
+  [AlertState.INSUFFICIENT_DATA]: 'No data',
+  [AlertState.ERROR]: 'Error',
+};
+
+/**
+ * States the alerts-page filter offers. ERROR is only ever recorded on an
+ * evaluation, never on the alert itself, and DISABLED and INSUFFICIENT_DATA
+ * are not yet assigned by the scheduler — filtering on either would always
+ * come back empty.
+ */
+export const ALERT_STATE_FILTER_OPTIONS = [
+  AlertState.ALERT,
+  AlertState.PENDING,
+  AlertState.OK,
+].map(state => ({ value: state, label: ALERT_STATE_LABELS[state] }));
+
+/** Options for the alerts-page source filter. */
+export const ALERT_SOURCE_FILTER_OPTIONS = Object.values(AlertSource).map(
+  source => ({ value: source, label: getAlertSourceLabel({ source }) }),
+);
 
 /**
  * The name the server would derive if the alert had none of its own. Only for
@@ -363,11 +387,4 @@ export function buildInlineAlertPayload(
     source: AlertSource.INLINE,
     chartConfig,
   };
-}
-
-export function getAlertCreatorLabel(
-  alert: AlertsPageItem,
-): string | undefined {
-  if (!alert.createdBy) return undefined;
-  return alert.createdBy.name || alert.createdBy.email;
 }
