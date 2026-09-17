@@ -241,9 +241,7 @@ export default function AutocompleteInput({
             size={size}
             autosize
             minRows={1}
-            maxRows={
-              allowMultiline || isSearchInputFocused ? maxVisibleRows : 1
-            }
+            maxRows={allowMultiline ? maxVisibleRows : 1}
             data-testid={dataTestId}
             onChange={e => onChange(e.target.value)}
             onFocus={() => {

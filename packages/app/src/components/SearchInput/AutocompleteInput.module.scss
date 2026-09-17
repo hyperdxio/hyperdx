@@ -36,8 +36,10 @@
   }
 }
 
-/* Empty textareas have nothing useful to scroll vertically. */
-.root[data-empty='true'] .textarea textarea {
+/* Nothing useful to scroll vertically: an empty textarea, or a single-line one
+   that holds one row however long the query is. */
+.root[data-empty='true'] .textarea textarea,
+.root[data-single-line='true'] .textarea textarea {
   overflow: hidden;
 }
 

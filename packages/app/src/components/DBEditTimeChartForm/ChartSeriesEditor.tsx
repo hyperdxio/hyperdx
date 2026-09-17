@@ -45,6 +45,7 @@ import {
   SavedChartConfigWithSelectArray,
 } from '@/components/ChartEditor/types';
 import { isFormulaSourceKind } from '@/components/ChartEditor/utils';
+import { EDITOR_INPUT_HEIGHTS } from '@/components/editorInputHeights';
 import {
   CheckBoxControlled,
   TextInputControlled,
@@ -521,7 +522,9 @@ export function ChartSeriesEditor({
           >
             {showWhere && (
               <>
-                <Text size="sm">Where</Text>
+                <Flex h={EDITOR_INPUT_HEIGHTS.sm} align="center">
+                  <Text size="sm">Where</Text>
+                </Flex>
                 <div
                   style={{
                     gridColumn:
@@ -544,9 +547,11 @@ export function ChartSeriesEditor({
             )}
             {showGroupBy && (
               <>
-                <Text size="sm" style={{ whiteSpace: 'nowrap' }}>
-                  Group By
-                </Text>
+                <Flex h={EDITOR_INPUT_HEIGHTS.sm} align="center">
+                  <Text size="sm" style={{ whiteSpace: 'nowrap' }}>
+                    Group By
+                  </Text>
+                </Flex>
                 <div
                   style={{
                     minWidth: 200,
@@ -568,9 +573,11 @@ export function ChartSeriesEditor({
                 </div>
                 {showHaving && (
                   <>
-                    <Text size="sm" style={{ whiteSpace: 'nowrap' }}>
-                      Having
-                    </Text>
+                    <Flex h={EDITOR_INPUT_HEIGHTS.sm} align="center">
+                      <Text size="sm" style={{ whiteSpace: 'nowrap' }}>
+                        Having
+                      </Text>
+                    </Flex>
                     <div style={{ minWidth: 300, maxWidth: '100%' }}>
                       <SQLInlineEditorControlled
                         tableConnection={tableConnection}

@@ -4,11 +4,11 @@
  *
  * Shared by every page that renders one (search, dashboards, sessions), so the
  * traversal to the input — which carries no visible label and, in SQL, no test
- * id — lives here rather than in each spec.
+ * id — lives here rather than in each page object or spec.
  */
 import { expect, Locator, Page } from '@playwright/test';
 
-import { borderedBox } from '../utils/locators';
+import { borderedBox, replaceEditorText } from '../utils/locators';
 import { switchWhereLanguage } from '../utils/lucene-autocomplete';
 import type { MultilineField } from '../utils/multiline-input';
 
@@ -40,12 +40,20 @@ export class WhereInputComponent {
    */
   readonly row: Locator;
 
-  constructor(page: Page, root: Page | Locator = page) {
+  /**
+   * `pick` chooses among several WHERE inputs under the same `root` (a chart
+   * editor renders one per series, then the chart-level input).
+   */
+  constructor(
+    page: Page,
+    root: Page | Locator = page,
+    pick: 'first' | 'last' = 'first',
+  ) {
     this.page = page;
-    this.row = root
-      .getByTestId('where-language-switch')
-      .first()
-      .locator('xpath=..');
+    const languageSwitch = root.getByTestId('where-language-switch');
+    this.row = (
+      pick === 'last' ? languageSwitch.last() : languageSwitch.first()
+    ).locator('xpath=..');
   }
 
   get languageSwitch(): Locator {
@@ -68,6 +76,29 @@ export class WhereInputComponent {
     await this.page
       .getByRole('option', { name: language, exact: true })
       .waitFor({ state: 'hidden', timeout: 5000 });
+  }
+
+  /** Replace the SQL editor's contents. The input must already be in SQL mode. */
+  async fillSql(expression: string): Promise<void> {
+    await replaceEditorText(
+      this.page,
+      this.sqlEditor.locator('.cm-content').first(),
+      expression,
+    );
+  }
+
+  /**
+   * Type into the Lucene textarea, leaving the suggestion dropdown open.
+   * The input must already be in Lucene mode.
+   */
+  async typeLucene(text: string): Promise<void> {
+    await this.luceneInput.click();
+    await this.luceneInput.fill(text);
+  }
+
+  /** The warning icon this WHERE input shows about the variables it references. */
+  get variableWarning(): Locator {
+    return this.row.getByTestId('variable-validation');
   }
 
   /** The input for `language`, as the growth assertions need it. */

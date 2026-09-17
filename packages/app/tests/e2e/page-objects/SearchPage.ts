@@ -39,10 +39,7 @@ export class SearchPage {
   private readonly searchInput: Locator;
   private readonly searchButton: Locator;
   private readonly saveSearchButton: Locator;
-  private readonly languageSelect: Locator;
   private readonly updateSearchButton: Locator;
-  private readonly luceneTab: Locator;
-  private readonly sqlTab: Locator;
   private readonly sourceSelector: Locator;
 
   constructor(page: Page, defaultTimeout: number = 3000) {
@@ -58,7 +55,6 @@ export class SearchPage {
     this.patternSidePanel = new PatternSidePanelComponent(page);
     this.infrastructure = new InfrastructurePanelComponent(page);
     this.filters = new FilterComponent(page);
-    this.whereInput = new WhereInputComponent(page);
     this.savedSearchModal = new SavedSearchModalComponent(page);
     this.alertModal = new SearchPageAlertModalComponent(page);
     this.alertsButtonLocator = page.getByTestId('alerts-button');
@@ -68,16 +64,11 @@ export class SearchPage {
 
     // Define page-specific locators
     this.searchForm = page.getByTestId('search-form');
+    this.whereInput = new WhereInputComponent(page, this.searchForm);
     this.searchInput = page.getByTestId('search-input');
     this.searchButton = page.getByTestId('search-submit-button');
     this.saveSearchButton = page.getByTestId('save-search-button');
     this.updateSearchButton = page.getByTestId('update-search-button');
-    const whereLanguageSwitch = page.getByTestId('where-language-switch');
-    this.languageSelect = whereLanguageSwitch.getByRole('combobox', {
-      name: 'Query language',
-    });
-    this.sqlTab = page.getByRole('option', { name: 'SQL', exact: true });
-    this.luceneTab = page.getByRole('option', { name: 'Lucene', exact: true });
     this.sourceSelector = page.getByTestId('source-selector');
   }
 
@@ -220,16 +211,14 @@ export class SearchPage {
    * Switch to SQL mode
    */
   async switchToSQLMode() {
-    await this.languageSelect.click();
-    await this.sqlTab.click();
+    await this.whereInput.selectLanguage('SQL');
   }
 
   /**
    * Switch to Lucene mode
    */
   async switchToLuceneMode() {
-    await this.languageSelect.click();
-    await this.luceneTab.click();
+    await this.whereInput.selectLanguage('Lucene');
   }
 
   /**
@@ -478,11 +467,11 @@ export class SearchPage {
   }
 
   get luceneModeTab() {
-    return this.luceneTab;
+    return this.page.getByRole('option', { name: 'Lucene', exact: true });
   }
 
   get sqlModeTab() {
-    return this.sqlTab;
+    return this.page.getByRole('option', { name: 'SQL', exact: true });
   }
 
   get sourceDropdown() {
