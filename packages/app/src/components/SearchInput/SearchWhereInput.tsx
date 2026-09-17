@@ -4,6 +4,7 @@ import { ActionIcon, Box, Flex, Tooltip } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { IconHelp } from '@tabler/icons-react';
 
+import { EDITOR_INPUT_HEIGHTS } from '@/components/editorInputHeights';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 
 import InputLanguageSwitch from './InputLanguageSwitch';
@@ -180,7 +181,8 @@ export default function SearchWhereInput({
   };
 
   const tc = tableConnection ? { tableConnection } : { tableConnections };
-  const sizeClass = size === 'xs' ? styles.sizeXs : styles.sizeSm;
+  const baseHeight =
+    size === 'xs' ? EDITOR_INPUT_HEIGHTS.xs : EDITOR_INPUT_HEIGHTS.sm;
 
   return (
     <>
@@ -195,18 +197,16 @@ export default function SearchWhereInput({
           width,
           maxWidth,
           minWidth,
+          ['--editor-base-height' as string]: `${baseHeight}px`,
         }}
       >
         <Flex
           align="flex-start"
-          className={`${styles.languageSwitch} ${sizeClass}`}
+          className={styles.languageSwitch}
           data-testid="where-language-switch"
           onMouseDown={e => e.preventDefault()}
         >
-          <Flex
-            align="center"
-            className={`${styles.languageSwitchRow} ${sizeClass}`}
-          >
+          <Flex align="center" className={styles.languageSwitchRow}>
             <InputLanguageSwitch
               language={language}
               onLanguageChange={handleLanguageChange}
@@ -235,6 +235,7 @@ export default function SearchWhereInput({
               queryHistoryType={sqlQueryHistoryType}
               enableHotkey={enableHotkey}
               allowMultiline={allowMultiline}
+              keepMultilineVisible={allowMultiline}
               size={size}
               additionalSuggestions={additionalSuggestions}
               dateRange={dateRange}

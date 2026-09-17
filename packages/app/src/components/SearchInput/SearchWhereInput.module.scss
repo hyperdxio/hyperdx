@@ -46,14 +46,7 @@
   border-right: none;
   border-radius: var(--mantine-radius-default) 0 0 var(--mantine-radius-default);
   background-color: var(--color-bg-field-addon);
-
-  &.sizeXs {
-    min-height: 30px;
-  }
-
-  &.sizeSm {
-    min-height: 36px;
-  }
+  min-height: var(--editor-base-height);
 }
 
 /* The switch and the input meet at a seam, so a focus border on only one of
@@ -63,16 +56,16 @@
   border-color: var(--color-bg-brand);
 }
 
-/* Heights are the switch's own minus its 1px top and bottom border, so the
-   controls line up with the input's first line. */
+.root:has(.inputWrapper [data-validation-state='error']) .languageSwitch {
+  border-color: var(--color-bg-danger);
+}
+
+.root:has(.inputWrapper [data-validation-state='warning']) .languageSwitch {
+  border-color: var(--color-bg-warning);
+}
+
+/* Subtract the switch's borders so its controls align with the first row. */
 .languageSwitchRow {
   flex-shrink: 0;
-
-  &.sizeXs {
-    height: 28px;
-  }
-
-  &.sizeSm {
-    height: 34px;
-  }
+  height: calc(var(--editor-base-height) - 2px);
 }

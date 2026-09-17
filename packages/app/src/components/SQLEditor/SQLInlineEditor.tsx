@@ -30,7 +30,7 @@ import CodeMirror, {
   tooltips,
 } from '@uiw/react-codemirror';
 
-import InputLanguageSwitch from '@/components/SearchInput/InputLanguageSwitch';
+import { EDITOR_INPUT_HEIGHTS } from '@/components/editorInputHeights';
 import { useMultipleAllFields } from '@/hooks/useMetadata';
 import { useSource } from '@/source';
 import { useQueryHistory } from '@/utils';
@@ -55,8 +55,6 @@ type SQLInlineEditorProps = {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
-  onLanguageChange?: (language: 'sql' | 'lucene') => void;
-  language?: 'sql' | 'lucene';
   onSubmit?: () => void;
   error?: React.ReactNode;
   size?: string;
@@ -68,6 +66,8 @@ type SQLInlineEditorProps = {
   queryHistoryType?: string;
   parentRef?: HTMLElement | null;
   allowMultiline?: boolean;
+  /** Keep wrapped content visible while blurred instead of using the focus overlay. */
+  keepMultilineVisible?: boolean;
   dateRange?: [Date, Date];
   sourceId?: string;
   // With multiple tableConnections, offer only fields present in ALL of them
@@ -87,8 +87,6 @@ export default function SQLInlineEditor({
   filterField,
   onChange,
   placeholder,
-  onLanguageChange,
-  language,
   onSubmit,
   error,
   value,
@@ -101,6 +99,7 @@ export default function SQLInlineEditor({
   queryHistoryType,
   parentRef,
   allowMultiline = true,
+  keepMultilineVisible = false,
   dateRange,
   sourceId,
   intersectFields,
@@ -162,9 +161,8 @@ export default function SQLInlineEditor({
     };
   }, [queryHistory, onSelectSearchHistory]);
 
-  // Dashboard variables in scope, offered alongside the column identifiers, and
-  // checked for the references that won't expand. This editor's content is
-  // always SQL — `language` only drives the switch.
+  // Dashboard variables in scope, offered alongside the column identifiers,
+  // and checked for the references that won't expand.
   const variableCompletions = useSqlVariableCompletions({
     enabled: enableVariables,
   });
@@ -339,20 +337,38 @@ export default function SQLInlineEditor({
 
   const isVariableWarningOnly =
     variableIssues.errors.length === 0 && variableIssues.warnings.length > 0;
-  const baseHeight = size === 'xs' ? 30 : 36;
+  const validationState =
+    error || variableIssues.errors.length > 0
+      ? 'error'
+      : isVariableWarningOnly
+        ? 'warning'
+        : undefined;
+  const showMultilineContent =
+    allowMultiline && (keepMultilineVisible || isFocused);
+  const isOverlayExpanded = showMultilineContent && !keepMultilineVisible;
+  const baseHeight =
+    size === 'xs' ? EDITOR_INPUT_HEIGHTS.xs : EDITOR_INPUT_HEIGHTS.sm;
 
   return (
     <div
       className={styles.wrapper}
       style={{ ['--editor-base-height' as string]: `${baseHeight}px` }}
+      data-validation-state={validationState}
     >
+      {isOverlayExpanded && (
+        <div className={styles.placeholder} aria-hidden="true" />
+      )}
       <Paper
         shadow="none"
         className={cx(
           styles.paper,
-          error || variableIssues.errors.length > 0 ? styles.error : undefined,
+          validationState === 'error' ? styles.error : undefined,
           isVariableWarningOnly ? styles.warning : undefined,
-          allowMultiline ? styles.expanded : undefined,
+          isOverlayExpanded ? styles.overlay : undefined,
+          !showMultilineContent ? styles.clamped : undefined,
+          allowMultiline && !showMultilineContent
+            ? styles.collapseFade
+            : undefined,
           isFocused ? styles.focused : undefined,
         )}
         ps="4px"
@@ -380,7 +396,8 @@ export default function SQLInlineEditor({
           className={cx(
             styles.cmWrapper,
             size === 'xs' ? styles.sizeXs : undefined,
-            allowMultiline ? 'cm-editor-multiline' : styles.collapsed,
+            !showMultilineContent ? styles.collapsed : undefined,
+            showMultilineContent ? 'cm-editor-multiline' : undefined,
           )}
         >
           <CodeMirror
@@ -403,14 +420,6 @@ export default function SQLInlineEditor({
           />
         </div>
         <VariableIssueIndicator issues={variableIssues} />
-        {onLanguageChange != null && language != null && (
-          <div className={styles.languageSwitchWrapper}>
-            <InputLanguageSwitch
-              language={language}
-              onLanguageChange={onLanguageChange}
-            />
-          </div>
-        )}
       </Paper>
     </div>
   );

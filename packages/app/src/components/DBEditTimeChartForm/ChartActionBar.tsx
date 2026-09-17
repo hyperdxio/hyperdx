@@ -18,6 +18,7 @@ import {
 } from '@tabler/icons-react';
 
 import { ChartEditorFormState } from '@/components/ChartEditor/types';
+import { EDITOR_INPUT_HEIGHTS } from '@/components/editorInputHeights';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { TimePicker } from '@/components/TimePicker';
 import { IS_LOCAL_MODE } from '@/config';
@@ -156,7 +157,7 @@ export function ChartActionBar({
       </Flex>
       <Flex gap="sm" mb="sm" align="flex-start" justify="end">
         {filtersToggle != null && tabQueriesData(activeTab) && (
-          <Flex h={36} align="center">
+          <Flex h={EDITOR_INPUT_HEIGHTS.sm} align="center">
             <DashboardFiltersToggle {...filtersToggle} />
           </Flex>
         )}
@@ -175,6 +176,7 @@ export function ChartActionBar({
                 disableKeywordAutocomplete
                 onSubmit={onSubmit}
                 label="ORDER BY"
+                keepMultilineVisible
                 enableVariables
               />
             </div>

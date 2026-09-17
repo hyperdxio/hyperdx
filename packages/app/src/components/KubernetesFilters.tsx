@@ -316,7 +316,14 @@ export const KubernetesFilters: React.FC<KubernetesFiltersProps> = ({
   };
 
   return (
-    <Group mt="md" mb="xs" wrap="wrap" gap="xxs">
+    <Group
+      mt="md"
+      mb="xs"
+      wrap="wrap"
+      gap="xxs"
+      // Stays level with the search bar's first line as it grows
+      align="flex-start"
+    >
       {K8S_FILTER_FIELDS.map(({ field, placeholder, dataTestId }) => (
         <FilterSelect
           key={field}

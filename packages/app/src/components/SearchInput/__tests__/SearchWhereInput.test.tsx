@@ -124,6 +124,10 @@ describe('SearchWhereInput', () => {
       const input = screen.getByPlaceholderText(
         /Search your events w\/ Lucene/i,
       );
+      expect(input.closest('[data-single-line]')).toHaveAttribute(
+        'data-single-line',
+        'true',
+      );
       await user.click(input);
       await user.keyboard('first{Shift>}{Enter}{/Shift}second');
 
@@ -354,6 +358,11 @@ describe('SearchWhereInput', () => {
           'This expression references unknown variable $srvice. Available variables: svc.',
         ),
       );
+      expect(
+        screen
+          .getByTestId('variable-validation')
+          .closest('[data-validation-state]'),
+      ).toHaveAttribute('data-validation-state', 'warning');
     });
 
     it('warns that a Lucene expression references a variable that does not exist', async () => {
@@ -378,6 +387,11 @@ describe('SearchWhereInput', () => {
       await waitFor(() =>
         expect(issueMessages()).toContain('is wrapped in quotes'),
       );
+      expect(
+        screen
+          .getByTestId('variable-validation')
+          .closest('[data-validation-state]'),
+      ).toHaveAttribute('data-validation-state', 'error');
     });
 
     it('leaves a quoted reference alone in Lucene, where each value is quoted anyway', async () => {

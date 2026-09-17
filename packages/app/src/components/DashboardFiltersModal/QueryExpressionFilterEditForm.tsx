@@ -181,7 +181,6 @@ export const QueryExpressionFilterEditForm = ({
           control={control}
           name="expression"
           placeholder="SQL column or expression"
-          language="sql"
           enableHotkey
           rules={{ required: true }}
           parentRef={TOOLTIP_PORTAL_TARGET}

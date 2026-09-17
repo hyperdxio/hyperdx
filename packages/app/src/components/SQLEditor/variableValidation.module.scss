@@ -6,8 +6,6 @@
   line-height: 1;
   cursor: help;
 
-  /* In the SQL editor, centers the icon on the collapsed input's first line so
-     it stays put when the editor expands to multiple lines. Elsewhere (the
-     Lucene input's right section) it just fills its host. */
-  min-height: var(--editor-base-height, 100%);
+  /* Keep the icon on the editor's first row as multiline content grows. */
+  min-height: var(--editor-base-height);
 }

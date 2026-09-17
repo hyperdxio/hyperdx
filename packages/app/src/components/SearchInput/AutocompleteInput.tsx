@@ -3,6 +3,7 @@ import cx from 'classnames';
 import Fuse from 'fuse.js';
 import { Loader, Popover, Textarea, UnstyledButton } from '@mantine/core';
 
+import { EDITOR_INPUT_HEIGHTS } from '@/components/editorInputHeights';
 import type { TokenInfo } from '@/hooks/useAutoCompleteOptions';
 import { useQueryHistory } from '@/utils';
 
@@ -197,17 +198,14 @@ export default function AutocompleteInput({
     }
   }, [language, onLanguageChange, rightAdornment, inputRef]);
 
-  // Outer height of the first line, including the 2px border from .textarea
-  // (1px top + 1px bottom). Matches SQLInlineEditor's heights so a search bar
-  // that switches between the two languages keeps one height, and any addon
-  // sitting beside it lines up with the input in both.
-  const baseHeight = size === 'xs' ? 30 : size === 'lg' ? 44 : 36;
+  const baseHeight = EDITOR_INPUT_HEIGHTS[size];
 
   return (
     <div
       className={styles.root}
-      style={{ ['--autocomplete-base-height' as string]: `${baseHeight}px` }}
+      style={{ ['--editor-base-height' as string]: `${baseHeight}px` }}
       data-empty={value ? undefined : 'true'}
+      data-single-line={allowMultiline ? undefined : 'true'}
     >
       <Popover
         opened={isInputDropdownOpen}

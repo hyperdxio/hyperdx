@@ -10,8 +10,11 @@
   justify-content: space-between;
   line-height: 1;
 
-  /* Match Search page toolbar: DBSearchPage uses Mantine `px="sm"` */
-  padding: 0 var(--mantine-spacing-sm);
+  /* Match Search page toolbar: DBSearchPage uses Mantine `px="sm"`. The block
+     padding is absorbed by `min-height` at rest, and only takes effect once
+     the toolbar outgrows the header — a multi-line search bar would otherwise
+     sit flush against the top and bottom edges. */
+  padding: var(--mantine-spacing-xs) var(--mantine-spacing-sm);
   position: sticky;
   top: 0;
 

@@ -1,7 +1,7 @@
 .root {
   position: relative;
   flex: 1;
-  min-height: var(--autocomplete-base-height, 36px);
+  min-height: var(--editor-base-height);
 }
 
 /* The measured right section: an optional adornment, then the language switch */
@@ -23,7 +23,7 @@
   textarea {
     border: none !important;
     word-break: break-all;
-    min-height: calc(var(--autocomplete-base-height, 36px) - 2px) !important;
+    min-height: calc(var(--editor-base-height) - 2px) !important;
   }
 
   textarea::placeholder {
@@ -35,9 +35,9 @@
   }
 }
 
-/* An empty textarea is one row tall while a long placeholder wraps to two, so
-   it would otherwise show a scrollbar with nothing to scroll. */
-.root[data-empty='true'] .textarea textarea {
+/* Empty and explicitly single-line textareas have nothing useful to scroll
+   vertically, even when a placeholder or long query wraps. */
+.root:is([data-empty='true'], [data-single-line='true']) .textarea textarea {
   overflow: hidden;
 }
 

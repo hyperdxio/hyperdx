@@ -12,7 +12,9 @@ import { SearchPageAlertModalComponent } from '../components/SearchPageAlertModa
 import { SidePanelComponent } from '../components/SidePanelComponent';
 import { TableComponent } from '../components/TableComponent';
 import { TimePickerComponent } from '../components/TimePickerComponent';
-import { dismissSqlAutocomplete } from '../utils/locators';
+import { WhereInputComponent } from '../components/WhereInputComponent';
+import { borderedBox, dismissSqlAutocomplete } from '../utils/locators';
+import type { MultilineField } from '../utils/multiline-input';
 
 type SaveSearchModalProps = {
   update: boolean;
@@ -25,6 +27,7 @@ export class SearchPage {
   readonly patternSidePanel: PatternSidePanelComponent;
   readonly infrastructure: InfrastructurePanelComponent;
   readonly filters: FilterComponent;
+  readonly whereInput: WhereInputComponent;
   readonly savedSearchModal: SavedSearchModalComponent;
   readonly savedSearchNameTitle: Locator;
   readonly alertModal: SearchPageAlertModalComponent;
@@ -55,6 +58,7 @@ export class SearchPage {
     this.patternSidePanel = new PatternSidePanelComponent(page);
     this.infrastructure = new InfrastructurePanelComponent(page);
     this.filters = new FilterComponent(page);
+    this.whereInput = new WhereInputComponent(page);
     this.savedSearchModal = new SavedSearchModalComponent(page);
     this.alertModal = new SearchPageAlertModalComponent(page);
     this.alertsButtonLocator = page.getByTestId('alerts-button');
@@ -312,25 +316,9 @@ export class SearchPage {
     return this.page.getByText(/Error loading/i);
   }
 
-  /**
-   * The WHERE control as a whole: the language switch plus the input beside it.
-   * Located from the switch, the one part present in both languages.
-   */
-  get whereRow() {
-    return this.page
-      .getByTestId('where-language-switch')
-      .first()
-      .locator('xpath=..');
-  }
-
   /** Move focus into the WHERE input, whichever language it is rendering. */
   async focusWhereInput() {
-    const sqlContent = this.whereRow.locator('.cm-content').first();
-    if ((await sqlContent.count()) > 0) {
-      await sqlContent.focus();
-      return;
-    }
-    await this.searchInput.focus();
+    await this.whereInput.focus();
   }
 
   /**
@@ -341,20 +329,7 @@ export class SearchPage {
     languageSwitch: string;
     input: string;
   }> {
-    return this.whereRow.evaluate(el => {
-      const addon = el.querySelector('[data-testid="where-language-switch"]');
-      // The box the user sees a border around: the SQL editor's Paper, or the
-      // Lucene textarea's wrapper.
-      const input = Array.from(el.querySelectorAll('*')).find(
-        node =>
-          addon?.contains(node) === false &&
-          parseFloat(getComputedStyle(node).borderTopWidth) > 0,
-      );
-      return {
-        languageSwitch: addon ? getComputedStyle(addon).borderTopColor : '',
-        input: input ? getComputedStyle(input).borderTopColor : '',
-      };
-    });
+    return this.whereInput.borderColors();
   }
 
   /**
@@ -364,23 +339,43 @@ export class SearchPage {
     return this.page.locator('.cm-content').first();
   }
 
-  /** The bordered box drawn around a CodeMirror editor. */
-  private editorBox(editor: Locator) {
-    return editor.locator(
-      'xpath=ancestor::div[contains(@class, "mantine-Paper-root")][1]',
-    );
-  }
-
   async getSelectBorderColor(): Promise<string> {
-    return this.editorBox(this.getSELECTEditor()).evaluate(
+    return borderedBox(this.getSELECTEditor()).evaluate(
       el => getComputedStyle(el).borderTopColor,
     );
   }
 
   async getOrderByBorderColor(): Promise<string> {
-    return this.editorBox(this.getOrderByEditor()).evaluate(
+    return borderedBox(this.getOrderByEditor()).evaluate(
       el => getComputedStyle(el).borderTopColor,
     );
+  }
+
+  /**
+   * The SELECT / ORDER BY clause editors as growth-assertable fields.
+   *
+   * Located from their labels rather than by `.cm-content` index, which shifts
+   * with the WHERE language: in SQL mode the WHERE input is a CodeMirror editor
+   * too, and it comes first.
+   */
+  selectClauseField(): MultilineField {
+    return this.clauseField('SELECT');
+  }
+
+  orderByClauseField(): MultilineField {
+    return this.clauseField('ORDER BY');
+  }
+
+  /** Empty a clause editor so it starts from one short line. */
+  async clearClause(field: MultilineField) {
+    await field.focusTarget.press('ControlOrMeta+A');
+    await field.focusTarget.press('Backspace');
+  }
+
+  private clauseField(label: 'SELECT' | 'ORDER BY'): MultilineField {
+    const paper = borderedBox(this.page.getByText(label, { exact: true }));
+    const content = paper.locator('.cm-content').first();
+    return { focusTarget: content, growthBox: content, visibleBox: paper };
   }
 
   /**

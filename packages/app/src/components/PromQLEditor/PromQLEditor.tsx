@@ -18,6 +18,7 @@ import CodeMirror, {
   tooltips,
 } from '@uiw/react-codemirror';
 
+import { EDITOR_INPUT_HEIGHTS } from '@/components/editorInputHeights';
 import {
   createCodeMirrorStyleTheme,
   DEFAULT_CODE_MIRROR_BASIC_SETUP,
@@ -200,7 +201,7 @@ export default function PromQLEditor({
   const isExpanded = isFocused;
   const isVariableWarningOnly =
     variableIssues.errors.length === 0 && variableIssues.warnings.length > 0;
-  const baseHeight = 36;
+  const baseHeight = EDITOR_INPUT_HEIGHTS.sm;
 
   return (
     <div
@@ -214,7 +215,7 @@ export default function PromQLEditor({
           styles.paper,
           variableIssues.errors.length > 0 ? styles.error : undefined,
           isVariableWarningOnly ? styles.warning : undefined,
-          isExpanded ? cx(styles.expanded, styles.overlay) : undefined,
+          isExpanded ? styles.overlay : styles.clamped,
           !isExpanded ? styles.collapseFade : undefined,
         )}
         ps="4px"
