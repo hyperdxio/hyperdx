@@ -579,35 +579,41 @@ describe('externalDashboardSelectItemSchema metric selects', () => {
     ).toBe(false);
   });
 
-  it('rejects a metric type the renderer has no query support for', () => {
-    const res = externalDashboardSelectItemSchema.safeParse({
-      ...metricSelect,
-      metricType: MetricsDataType.Summary,
+  it('accepts the select convertToExternalDashboard emits for a metric tile', () => {
+    // The round trip this fix exists for: what GET returns has to pass
+    // /validate. Parsing a hand-built select cannot catch
+    // convertToExternalSelectItem dropping the metric fields on the way out.
+    const doc = makeDoc({
+      tiles: [
+        makeTile({
+          config: {
+            displayType: DisplayType.Line,
+            source: new mongoose.Types.ObjectId().toString(),
+            where: '',
+            name: 'Metric tile',
+            select: [
+              {
+                aggFn: 'avg',
+                metricName: 'nodejs.eventloop.delay.p99',
+                metricType: MetricsDataType.Gauge,
+                valueExpression: '',
+                aggCondition: '',
+              },
+            ],
+          },
+        }),
+      ],
     });
-    expect(res.success).toBe(false);
-    expect(res.error?.issues[0].message).toBe(
-      "No query support for metric type 'summary'",
-    );
-  });
-
-  it("rejects 'increase' on a metric that is not a counter", () => {
-    const res = externalDashboardSelectItemSchema.safeParse({
-      ...metricSelect,
-      aggFn: 'increase',
+    const config = convertToExternalDashboard(doc).tiles[0].config;
+    if (config == null || !('select' in config) || config.select == null) {
+      throw new Error('expected a select on the converted tile');
+    }
+    expect(config.select[0]).toMatchObject({
+      metricName: 'nodejs.eventloop.delay.p99',
+      metricType: MetricsDataType.Gauge,
     });
-    expect(res.success).toBe(false);
-    expect(res.error?.issues[0].message).toBe(
-      "Aggregation function 'increase' is only supported for Sum (counter) metrics",
-    );
-  });
-
-  it("accepts 'increase' on a Sum metric", () => {
     expect(
-      externalDashboardSelectItemSchema.safeParse({
-        ...metricSelect,
-        aggFn: 'increase',
-        metricType: MetricsDataType.Sum,
-      }).success,
+      externalDashboardSelectItemSchema.safeParse(config.select[0]).success,
     ).toBe(true);
   });
 
