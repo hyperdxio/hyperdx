@@ -130,7 +130,7 @@ export default function PromqlChartEditor({
           size="compact-sm"
           variant="secondary"
         >
-          Display settings
+          Display Settings
         </Button>
       </Flex>
       {alert && (
