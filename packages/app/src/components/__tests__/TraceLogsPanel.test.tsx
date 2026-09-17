@@ -247,8 +247,9 @@ describe('TraceLogsPanel', () => {
     expect(decodeURIComponent(params.get('select')!)).toBe(
       LOG_SOURCE.defaultTableSelectExpression,
     );
-    // And the tab's order, so the linked page doesn't reverse it.
-    expect(decodeURIComponent(params.get('orderBy')!)).toBe('Timestamp ASC');
+    // No ordering: the search page derives its own from the table's sorting
+    // key, which is the idiom there and the cheaper scan.
+    expect(params.get('orderBy')).toBeNull();
   });
 
   it('tells the table its own identity and sort state', () => {

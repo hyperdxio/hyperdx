@@ -143,12 +143,16 @@ export default function TraceLogsPanel({
   // fallback: the query defaults to the source's columns either way, but the
   // SELECT input is seeded from the URL, so omitting it lands the reader on a
   // blank one.
+  //
+  // No `orderBy`: the search page derives its own from the table's sorting key
+  // (`optimizeDefaultOrderBy`), which is both the idiom there and the cheaper
+  // scan. This tab's ascending order is a reading aid for one trace, not a
+  // property of the row set the link hands over.
   const searchUrl = `/search?${new URLSearchParams({
     source: logSource.id,
     select: encodeURIComponent(logSource.defaultTableSelectExpression),
     where: encodeURIComponent(traceWhere),
     whereLanguage: 'sql',
-    orderBy: encodeURIComponent(orderBy ?? ''),
     from: dateRange[0].getTime().toString(),
     to: dateRange[1].getTime().toString(),
     isLive: 'false',
