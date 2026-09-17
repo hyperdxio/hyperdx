@@ -205,10 +205,12 @@ export default function PromQLEditor({
 
   return (
     <div
-      className={styles.wrapper}
+      className={cx(
+        styles.wrapper,
+        isExpanded ? styles.overlayHost : undefined,
+      )}
       style={{ ['--editor-base-height' as string]: `${baseHeight}px` }}
     >
-      {isExpanded && <div className={styles.placeholder} aria-hidden="true" />}
       <Paper
         shadow="none"
         className={cx(

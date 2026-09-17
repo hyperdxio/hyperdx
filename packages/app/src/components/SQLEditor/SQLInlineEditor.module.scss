@@ -5,9 +5,12 @@
   min-width: 0;
 }
 
-.placeholder {
-  min-height: var(--editor-base-height);
-  width: 100%;
+/* Pins the row to its collapsed height while the editor overlays, so the
+   content below doesn't shift. The Paper overflows this box instead of being
+   positioned out of the flow — out of the flow it no longer contributes any
+   width, and a parent that sizes to its content collapses to nothing. */
+.overlayHost {
+  height: var(--editor-base-height);
 }
 
 .paper {
@@ -32,10 +35,7 @@
   /* Floats over whatever is below so expanding on focus doesn't shift the page.
      Only for an editor that collapses again on blur. */
   &.overlay {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
+    position: relative;
     z-index: 100;
     box-shadow: var(--mb-shadow, var(--mantine-shadow-xs));
     border-bottom: 2px solid var(--color-bg-brand) !important;

@@ -351,13 +351,13 @@ export default function SQLInlineEditor({
 
   return (
     <div
-      className={styles.wrapper}
+      className={cx(
+        styles.wrapper,
+        isOverlayExpanded ? styles.overlayHost : undefined,
+      )}
       style={{ ['--editor-base-height' as string]: `${baseHeight}px` }}
       data-validation-state={validationState}
     >
-      {isOverlayExpanded && (
-        <div className={styles.placeholder} aria-hidden="true" />
-      )}
       <Paper
         shadow="none"
         className={cx(
