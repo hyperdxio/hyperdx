@@ -5,7 +5,6 @@ import {
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { supportsPrometheusHttpApi } from '@hyperdx/common-utils/dist/core/clickhouseVersion';
 import {
-  getMetadata,
   Metadata,
   MetadataCache,
 } from '@hyperdx/common-utils/dist/core/metadata';
@@ -292,7 +291,8 @@ export function formatMatrixResponse(
  * `time_series` to `samples` in TimeSeries schema version 3. The rename
  * follows the table's pinned version, not the server's, so a v2 table on a new
  * server still reads `time_series`. `prometheusQueryRange` returns whichever
- * the table uses.
+ * the table uses. Looked up fresh each call: a throwaway cache, so a table
+ * dropped and recreated at a new version is seen at once.
  */
 async function timeSeriesSamplesColumn({
   client,
@@ -305,7 +305,8 @@ async function timeSeriesSamplesColumn({
   databaseName: string;
   tableName: string;
 }): Promise<'samples' | 'time_series'> {
-  const version = await getMetadata(client).getTimeSeriesTableVersion({
+  const metadata = new Metadata(client, new MetadataCache());
+  const version = await metadata.getTimeSeriesTableVersion({
     connectionId,
     databaseName,
     tableName,
@@ -394,9 +395,10 @@ export async function queryInstantViaTableFunction({
 }
 
 /**
- * Whether the connection's ClickHouse serves the Prometheus HTTP API. The
- * version is cached per connection in the process-wide metadata cache; an
- * unknown version is treated as old, matching the other version-gated features.
+ * Whether the connection's ClickHouse is new enough for the Prometheus HTTP
+ * API. `SELECT version()` runs each call (throwaway cache) so an upgraded
+ * server is picked up without a restart; an unknown version is treated as
+ * old, matching the other version-gated features.
  */
 export async function connectionSupportsPrometheusHttpApi({
   client,
@@ -405,7 +407,8 @@ export async function connectionSupportsPrometheusHttpApi({
   client: ClickhouseClient;
   connectionId: string;
 }): Promise<boolean> {
+  const metadata = new Metadata(client, new MetadataCache());
   return supportsPrometheusHttpApi(
-    await getMetadata(client).getServerVersion({ connectionId }),
+    await metadata.getServerVersion({ connectionId }),
   );
 }

@@ -11,7 +11,12 @@ import {
   seedTimeSeriesTagsTable,
 } from '@/fixtures';
 import Connection from '@/models/connection';
-import { PROMETHEUS_MAX_EXEMPLAR_WINDOW_SEC } from '@/routers/api/prometheus';
+import {
+  CLICKHOUSE_PROMETHEUS_API_PREFIX,
+  clickhousePrometheusUpstream,
+  joinPrometheusUpstreamUrl,
+  PROMETHEUS_MAX_EXEMPLAR_WINDOW_SEC,
+} from '@/routers/api/prometheus';
 
 const mockFetch = jest.mocked(global.fetch);
 
@@ -891,6 +896,66 @@ describe('prometheus router', () => {
             result: [{ metric: {}, value: [START + 60, '2'] }],
           },
         });
+      });
+
+      // The router's limits are compile-time constants far above anything a
+      // test can exceed, so the same URL builder is driven at tiny values
+      // straight at the handler. This pins the property the router relies on:
+      // settings in the URL are applied to the PromQL evaluation and a breach
+      // comes back as a Prometheus 400, not as a truncated 200.
+      const liveRangeQuery = async (limits: {
+        maxExecutionSec?: number;
+        maxResultRows?: number;
+      }) => {
+        const url = joinPrometheusUpstreamUrl(
+          clickhousePrometheusUpstream(config.CLICKHOUSE_HOST, limits),
+          `${CLICKHOUSE_PROMETHEUS_API_PREFIX}/query_range`,
+        );
+        for (const [k, v] of Object.entries({
+          query: 'live_up',
+          start: String(START),
+          end: String(START + 60),
+          step: '60',
+          database: DEFAULT_DATABASE,
+          table: TABLE,
+        })) {
+          url.searchParams.set(k, v);
+        }
+        const resp = await globalThis.realFetch(url, {
+          headers: {
+            'X-ClickHouse-User': config.CLICKHOUSE_USER,
+            'X-ClickHouse-Key': config.CLICKHOUSE_PASSWORD,
+          },
+        });
+        return { status: resp.status, body: await resp.json() };
+      };
+
+      it('enforces max_result_rows pinned on the upstream URL', async () => {
+        const { status, body } = await liveRangeQuery({ maxResultRows: 1 });
+        expect(status).toBe(400);
+        expect(body).toMatchObject({
+          status: 'error',
+          errorType: 'bad_data',
+          error: expect.stringMatching(/Limit for result exceeded/),
+        });
+      });
+
+      it('enforces max_execution_time pinned on the upstream URL', async () => {
+        const { status, body } = await liveRangeQuery({
+          maxExecutionSec: 0.0001,
+        });
+        expect(status).toBe(400);
+        expect(body).toMatchObject({
+          status: 'error',
+          errorType: 'bad_data',
+          error: expect.stringMatching(/Timeout exceeded/),
+        });
+      });
+
+      it('answers in full at the limits the router pins', async () => {
+        const { status, body } = await liveRangeQuery({});
+        expect(status).toBe(200);
+        expect(body.data.result).toHaveLength(2);
       });
 
       it('relays a PromQL parse error as a Prometheus 400', async () => {
