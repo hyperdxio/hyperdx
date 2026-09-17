@@ -377,7 +377,6 @@ const queryRangeHandler: express.RequestHandler = async (req, res) => {
       });
     }
 
-
     // If the connection points at a Prometheus-compatible endpoint, proxy
     // directly to connection.host instead of running a ClickHouse query.
     if (connection.isPrometheusEndpoint) {
@@ -403,7 +402,6 @@ const queryRangeHandler: express.RequestHandler = async (req, res) => {
         error: `table parameter required for querying clickhouse via promql`,
       });
     }
-
 
     const client = new ClickhouseClient({
       host: connection.host,
