@@ -3,7 +3,7 @@ import {
   validateDashboardTileContainerRefs,
 } from '@hyperdx/common-utils/dist/dashboardValidation';
 import { isBuilderSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
-import { DisplayType } from '@hyperdx/common-utils/dist/types';
+import { DisplayType, MetricsDataType } from '@hyperdx/common-utils/dist/types';
 import mongoose from 'mongoose';
 import { z } from 'zod';
 
@@ -539,5 +539,55 @@ describe('convertToExternalDashboard stale aggregation params', () => {
       alias: 'errors',
       where: "ServiceName = 'api'",
     });
+  });
+});
+
+describe('externalDashboardSelectItemSchema metric selects', () => {
+  // A metric select names its value with metricName; renderChartConfig builds
+  // the aggregate from that, and never reads valueExpression. Requiring one
+  // rejected dashboards the editor itself writes.
+  const metricSelect = {
+    aggFn: 'avg',
+    metricName: 'nodejs.eventloop.delay.p99',
+    metricType: MetricsDataType.Gauge,
+    where: '',
+    whereLanguage: 'lucene',
+  };
+
+  it('accepts a metric select whose valueExpression is empty', () => {
+    const res = externalDashboardSelectItemSchema.safeParse({
+      ...metricSelect,
+      valueExpression: '',
+    });
+    expect(res.success).toBe(true);
+  });
+
+  it('accepts a metric select with no valueExpression at all', () => {
+    expect(
+      externalDashboardSelectItemSchema.safeParse(metricSelect).success,
+    ).toBe(true);
+  });
+
+  it('still requires a valueExpression when metricType is missing', () => {
+    // renderChartConfig dispatches on metricType and throws without it, so a
+    // bare metricName is not enough to earn the exemption.
+    expect(
+      externalDashboardSelectItemSchema.safeParse({
+        ...metricSelect,
+        metricType: undefined,
+      }).success,
+    ).toBe(false);
+  });
+
+  it('still requires a valueExpression on a non-count select with no metric', () => {
+    const res = externalDashboardSelectItemSchema.safeParse({
+      aggFn: 'avg',
+      valueExpression: '',
+      where: '',
+    });
+    expect(res.success).toBe(false);
+    expect(res.error?.issues[0].message).toBe(
+      'Value expression is required for non-count aggregation functions',
+    );
   });
 });
