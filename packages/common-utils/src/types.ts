@@ -695,6 +695,49 @@ export enum AlertState {
   PENDING = 'PENDING',
 }
 
+/**
+ * The body an incident.io webhook gets when it is saved without one. Lives
+ * here rather than beside the other webhook constants because it interpolates
+ * AlertState, which is declared above.
+ *
+ * incident.io accepts only `firing` or `resolved` in `status`, so HyperDX's
+ * own status rides in `metadata` instead, and everything there is quoted: a
+ * variable the alert doesn't carry renders empty, which is not valid JSON in
+ * an unquoted numeric slot. Only an OK maps to `resolved`: a state that is
+ * neither should leave the incident open rather than close one that was never
+ * known to recover.
+ *
+ * `deduplication_key` is the event id, which is stable per alert, group and
+ * channel across a firing and its resolve, so incident.io closes the alert it
+ * opened. `alertId` is in `metadata` for grouping every one of an alert's
+ * groups together.
+ */
+export const DEFAULT_INCIDENT_IO_WEBHOOK_BODY = `{
+  "title": "{{title}}",
+  "description": "{{body}}",
+  "deduplication_key": "{{eventId}}",
+  "status": "{{#if (eq state "${AlertState.OK}")}}resolved{{else}}firing{{/if}}",
+  "source_url": "{{link}}",
+  "metadata": {
+    "alert_id": "{{alertId}}",
+    "hyperdx_status": "{{status}}",
+    "alert_type": "{{alertType}}",
+    "comparator": "{{comparator}}",
+    "threshold": "{{threshold}}",
+    "threshold_max": "{{thresholdMax}}",
+    "value": "{{value}}",
+    "group_key": "{{groupKey}}",
+    "window_start": "{{startTimeISO}}",
+    "window_end": "{{endTimeISO}}"
+  }
+}`;
+
+/** The body a webhook saved without one is given, by service. */
+export const getDefaultWebhookBody = (service: WebhookService): string =>
+  service === WebhookService.IncidentIO
+    ? DEFAULT_INCIDENT_IO_WEBHOOK_BODY
+    : DEFAULT_GENERIC_WEBHOOK_BODY;
+
 export enum AlertErrorType {
   QUERY_ERROR = 'QUERY_ERROR',
   /** The alert query did not complete within the evaluation timeout. */
