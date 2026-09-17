@@ -579,6 +579,38 @@ describe('externalDashboardSelectItemSchema metric selects', () => {
     ).toBe(false);
   });
 
+  it('rejects a metric type the renderer has no query support for', () => {
+    const res = externalDashboardSelectItemSchema.safeParse({
+      ...metricSelect,
+      metricType: MetricsDataType.Summary,
+    });
+    expect(res.success).toBe(false);
+    expect(res.error?.issues[0].message).toBe(
+      "No query support for metric type 'summary'",
+    );
+  });
+
+  it("rejects 'increase' on a metric that is not a counter", () => {
+    const res = externalDashboardSelectItemSchema.safeParse({
+      ...metricSelect,
+      aggFn: 'increase',
+    });
+    expect(res.success).toBe(false);
+    expect(res.error?.issues[0].message).toBe(
+      "Aggregation function 'increase' is only supported for Sum (counter) metrics",
+    );
+  });
+
+  it("accepts 'increase' on a Sum metric", () => {
+    expect(
+      externalDashboardSelectItemSchema.safeParse({
+        ...metricSelect,
+        aggFn: 'increase',
+        metricType: MetricsDataType.Sum,
+      }).success,
+    ).toBe(true);
+  });
+
   it('still requires a valueExpression on a non-count select with no metric', () => {
     const res = externalDashboardSelectItemSchema.safeParse({
       aggFn: 'avg',

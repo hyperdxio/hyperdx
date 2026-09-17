@@ -243,6 +243,16 @@ const externalOnClickSchema = z.discriminatedUnion('type', [
   externalOnClickExternalSchema,
 ]);
 
+// Metric types renderChartConfig has a query branch for. Anything else falls
+// through to its "no query support" throw, so reject it here rather than at
+// render time.
+const renderableMetricTypes: ReadonlySet<MetricsDataType> = new Set([
+  MetricsDataType.Gauge,
+  MetricsDataType.Sum,
+  MetricsDataType.Histogram,
+  MetricsDataType.ExponentialHistogram,
+]);
+
 export const externalDashboardSelectItemSchema = z
   .object({
     // For logs, traces, and metrics
@@ -267,6 +277,21 @@ export const externalDashboardSelectItemSchema = z
       });
     }
 
+    if (data.metricType && !renderableMetricTypes.has(data.metricType)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `No query support for metric type '${data.metricType}'`,
+      });
+    }
+
+    if (data.aggFn === 'increase' && data.metricType !== MetricsDataType.Sum) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "Aggregation function 'increase' is only supported for Sum (counter) metrics",
+      });
+    }
+
     if (data.valueExpression && data.aggFn === 'count') {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -278,8 +303,8 @@ export const externalDashboardSelectItemSchema = z
       data.aggFn !== 'count' &&
       // A metric select names its value with metricName, which is what
       // renderChartConfig aggregates; there is no expression to require.
-      // Both fields: renderChartConfig dispatches on metricType and throws
-      // when it is absent, so metricName alone is not a renderable select.
+      // Both fields, because the renderer dispatches on metricType; whether
+      // that type is renderable is checked above.
       !(data.metricName && data.metricType)
     ) {
       ctx.addIssue({
