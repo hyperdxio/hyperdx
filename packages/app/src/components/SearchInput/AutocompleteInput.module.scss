@@ -1,13 +1,12 @@
 .root {
-  position: relative;
   flex: 1;
-  min-height: var(--autocomplete-base-height, 36px);
+  min-height: var(--editor-base-height, 36px);
 }
 
 /* The measured right section: an optional adornment, then the language switch */
 .rightSection {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   height: 100%;
 }
 
@@ -17,9 +16,15 @@
   border: 1px solid var(--color-border);
   border-radius: var(--mantine-radius-default);
 
+  /* !important overrides the inline min-height react-textarea-autosize sets,
+     so one line is exactly the height .root reserves for it. Without this the
+     row is taller than the bordered box and anything beside it overhangs. */
   textarea {
     border: none !important;
     word-break: break-all;
+    min-height: calc(
+      var(--editor-base-height, 36px) - var(--editor-border-inset, 2px)
+    ) !important;
   }
 
   textarea::placeholder {
@@ -27,35 +32,30 @@
   }
 
   &.focused {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    z-index: 100;
-    box-shadow: var(--mb-shadow, var(--mantine-shadow-xs));
-    border-bottom: 2px solid var(--color-bg-brand) !important;
+    border-color: var(--color-bg-brand);
   }
+}
 
-  /* Fade at the bottom when collapsed (single-line, not focused); applied to textarea */
-  &.collapseFade {
-    position: relative;
+/* Empty placeholders can wrap; hide the unused scrollbar that wrapping creates. */
+.root[data-empty='true'] .textarea textarea {
+  overflow: hidden;
+}
 
-    &::after {
-      content: '';
-      position: absolute;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      height: 12px;
-      background: linear-gradient(
-        to bottom,
-        transparent,
-        var(--color-bg-field)
-      );
-      pointer-events: none;
-      border-radius: var(--mantine-radius-default);
-    }
-  }
+/* Single-line Lucene: one visual row, like SQL without line wrapping. A long
+   query scrolls horizontally instead of wrapping under the clip. */
+.root[data-single-line='true'] .textarea textarea {
+  white-space: pre;
+  word-break: normal;
+  overflow-wrap: normal;
+  overflow: auto hidden;
+}
+
+.root[data-validation-state='error'] .textarea {
+  border-color: var(--color-bg-danger);
+}
+
+.root[data-validation-state='warning'] .textarea {
+  border-color: var(--color-bg-warning);
 }
 
 /* Dropdown content */

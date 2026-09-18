@@ -24,7 +24,9 @@ import {
 } from '@/hooks/useAutoCompleteOptions';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
 
-import AutocompleteInput from './AutocompleteInput';
+import AutocompleteInput, {
+  type AutocompleteInputValidationState,
+} from './AutocompleteInput';
 
 import styles from './SearchInputV2.module.scss';
 
@@ -53,6 +55,7 @@ export default function SearchInputV2({
   onSubmit,
   additionalSuggestions,
   queryHistoryType,
+  allowMultiline = true,
   dateRange,
   sourceId,
   enableVariables = false,
@@ -68,6 +71,7 @@ export default function SearchInputV2({
   onSubmit?: () => void;
   additionalSuggestions?: string[];
   queryHistoryType?: string;
+  allowMultiline?: boolean;
   dateRange?: [Date, Date];
   sourceId?: string;
   enableVariables?: boolean;
@@ -96,6 +100,12 @@ export default function SearchInputV2({
       language: 'lucene',
     },
   );
+  const validationState: AutocompleteInputValidationState | undefined =
+    variableIssues.errors.length > 0
+      ? 'error'
+      : variableIssues.warnings.length > 0
+        ? 'warning'
+        : undefined;
 
   const {
     options: autoCompleteOptions,
@@ -156,7 +166,9 @@ export default function SearchInputV2({
       onLanguageChange={onLanguageChange}
       onSubmit={onSubmit}
       queryHistoryType={queryHistoryType}
+      allowMultiline={allowMultiline}
       data-testid={dataTestId}
+      validationState={validationState}
       rightAdornment={
         hasVariableIssues(variableIssues) ? (
           <VariableIssueIndicator issues={variableIssues} />
