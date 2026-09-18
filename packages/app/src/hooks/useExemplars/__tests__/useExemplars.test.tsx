@@ -18,7 +18,9 @@ import {
   capExemplarsPerBucket,
   normalizePrometheusExemplars,
   useExemplars,
+  useExemplarTraceMeta,
 } from '@/hooks/useExemplars';
+import { EXEMPLAR_TRACE_WINDOW_MS } from '@/hooks/useExemplars/traceWindow';
 
 // Flipped per-test to exercise the deployment feature gate. A getter (rather
 // than a literal) so the hook reads the current value on each render.
@@ -55,6 +57,7 @@ jest.mock('@/hooks/useMetadata', () => ({
 jest.mock('@/source', () => ({
   __esModule: true,
   getDurationMsExpression: jest.fn().mockReturnValue('Duration / 1e6'),
+  getFirstTimestampValueExpression: (expr: string) => expr.split(',')[0].trim(),
 }));
 
 const NEVER_SETTLES = () => {
@@ -791,5 +794,84 @@ describe('useExemplars', () => {
       });
       expect(result.current.exemplars).toEqual([]);
     });
+  });
+});
+
+describe('useExemplarTraceMeta', () => {
+  const mockQuery = jest.fn();
+  const wrapper = ({ children }: { children: React.ReactNode }) => (
+    <QueryClientProvider
+      client={
+        new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      }
+    >
+      {children}
+    </QueryClientProvider>
+  );
+
+  const traceSource = {
+    kind: SourceKind.Trace,
+    connection: 'test-connection',
+    from: { databaseName: 'default', tableName: 'otel_traces' },
+    timestampValueExpression: 'Timestamp',
+  } as TSource;
+
+  const timestamp = new Date('2025-02-13T10:00:00Z').getTime();
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (useClickhouseClient as jest.Mock).mockReturnValue({ query: mockQuery });
+    mockQuery.mockResolvedValue({ json: async () => ({ data: [] }) });
+  });
+
+  it('bounds the lookup to a window around the exemplar, not the whole table', async () => {
+    renderHook(() => useExemplarTraceMeta('abc123', traceSource, timestamp), {
+      wrapper,
+    });
+
+    await waitFor(() => expect(mockQuery).toHaveBeenCalled());
+    const { query, query_params } = mockQuery.mock.calls[0][0];
+    expect(query).toContain('fromUnixTimestamp64Milli({fromMs:Int64})');
+    expect(query).toContain('fromUnixTimestamp64Milli({toMs:Int64})');
+    expect(query_params).toEqual({
+      traceId: 'abc123',
+      fromMs: timestamp - EXEMPLAR_TRACE_WINDOW_MS,
+      toMs: timestamp + EXEMPLAR_TRACE_WINDOW_MS,
+    });
+  });
+
+  it('bounds on the first column of a composite timestamp expression', async () => {
+    // 'EventDate, EventTime' is legal in SELECT and ORDER BY but a syntax error
+    // inside a WHERE conjunct.
+    renderHook(
+      () =>
+        useExemplarTraceMeta(
+          'abc123',
+          {
+            ...traceSource,
+            timestampValueExpression: 'EventDate, EventTime',
+          } as TSource,
+          timestamp,
+        ),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(mockQuery).toHaveBeenCalled());
+    const { query } = mockQuery.mock.calls[0][0];
+    expect(query).toContain(
+      'AND EventDate >= fromUnixTimestamp64Milli({fromMs:Int64})',
+    );
+    expect(query).not.toContain('EventDate, EventTime >=');
+  });
+
+  it('does not query without a timestamp to bound on', async () => {
+    renderHook(() => useExemplarTraceMeta('abc123', traceSource, undefined), {
+      wrapper,
+    });
+
+    await act(async () => {
+      // Flush: the assertion is that nothing was fetched.
+    });
+    expect(mockQuery).not.toHaveBeenCalled();
   });
 });
