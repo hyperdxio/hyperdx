@@ -136,6 +136,11 @@ jobs:
             CODE_VERSION=${{ env.IMAGE_NIGHTLY_TAG }}
           tags: |
             ${{ env.IMAGE_NAME_DOCKERHUB }}:${{ env.IMAGE_NIGHTLY_TAG }}-${{ matrix.arch }}
+          # Re-resolve the floating upstream base tags (node:*-alpine,
+          # clickhouse-server:*-alpine) instead of reusing whatever the runner
+          # already has. Those tags get re-pointed on upstream patch releases,
+          # and this nightly is the first thing that should notice.
+          pull: true
           push: true
           sbom: true
           provenance: true
@@ -218,6 +223,11 @@ jobs:
           tags: |
             ${{ env.LOCAL_IMAGE_NAME_DOCKERHUB }}:${{ env.IMAGE_NIGHTLY_TAG }}-${{ matrix.arch }}
             ${{ env.NEXT_LOCAL_IMAGE_NAME_DOCKERHUB }}:${{ env.IMAGE_NIGHTLY_TAG }}-${{ matrix.arch }}
+          # Re-resolve the floating upstream base tags (node:*-alpine,
+          # clickhouse-server:*-alpine) instead of reusing whatever the runner
+          # already has. Those tags get re-pointed on upstream patch releases,
+          # and this nightly is the first thing that should notice.
+          pull: true
           push: true
           sbom: true
           provenance: true
@@ -301,6 +311,11 @@ jobs:
           tags: |
             ${{ env.ALL_IN_ONE_IMAGE_NAME_DOCKERHUB }}:${{ env.IMAGE_NIGHTLY_TAG }}-${{ matrix.arch }}
             ${{ env.NEXT_ALL_IN_ONE_IMAGE_NAME_DOCKERHUB }}:${{ env.IMAGE_NIGHTLY_TAG }}-${{ matrix.arch }}
+          # Re-resolve the floating upstream base tags (node:*-alpine,
+          # clickhouse-server:*-alpine) instead of reusing whatever the runner
+          # already has. Those tags get re-pointed on upstream patch releases,
+          # and this nightly is the first thing that should notice.
+          pull: true
           push: true
           sbom: true
           provenance: true
