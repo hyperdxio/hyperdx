@@ -1864,3 +1864,5 @@ exports[`renderChartConfig should limit aggFn=increase + groupBy to the top 20 g
 `;
 
 exports[`renderChartConfig should not generate invalid SQL when primary key wraps toStartOfInterval 1`] = `"SELECT timestamp, cluster_id, service_id FROM default.http_request_logs WHERE (timestamp >= fromUnixTimestamp64Milli(1739319154000) AND timestamp <= fromUnixTimestamp64Milli(1739491954000)) LIMIT 200 OFFSET 0 SETTINGS optimize_read_in_order = 0, cast_keep_nullable = 1, additional_result_filter = 'x != 2', count_distinct_implementation = 'uniqCombined64', async_insert_busy_timeout_min_ms = 20000"`;
+
+exports[`renderChartConfig trace scope does not alter the span-scope SQL of a two-predicate search @AC-FR003-02 1`] = `"SELECT count() FROM default.otel_traces WHERE (Timestamp >= fromUnixTimestamp64Milli(1735689600000) AND Timestamp <= fromUnixTimestamp64Milli(1735776000000)) AND ((ServiceName = 'api') AND (SpanName = 'checkout'))"`;

@@ -1,3 +1,5 @@
+import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
+import { MantineProvider } from '@mantine/core';
 import { UseQueryResult } from '@tanstack/react-query';
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -6,6 +8,7 @@ import {
   cleanedFacetName,
   FilterGroup,
   type FilterGroupProps,
+  SearchScopeControl,
 } from '@/components/DBSearchPageFilters';
 import { NestedFilterGroup } from '@/components/DBSearchPageFilters/NestedFilterGroup';
 import {
@@ -721,5 +724,177 @@ describe('NestedFilterGroup', () => {
     // Reopen the group — should not be stuck closed
     await userEvent.click(control);
     expect(panel).toHaveAttribute('aria-hidden', 'false');
+  });
+});
+
+describe('SearchScopeControl', () => {
+  const traceSource = {
+    id: 'trace-src',
+    kind: SourceKind.Trace,
+    name: 'Traces',
+    connection: 'conn',
+    from: { databaseName: 'db', tableName: 'otel_traces' },
+    timestampValueExpression: 'Timestamp',
+    traceIdExpression: 'TraceId',
+  } as unknown as TSource;
+
+  const logSource = {
+    id: 'log-src',
+    kind: SourceKind.Log,
+    name: 'Logs',
+    connection: 'conn',
+    from: { databaseName: 'db', tableName: 'otel_logs' },
+    timestampValueExpression: 'Timestamp',
+  } as unknown as TSource;
+
+  const traceSourceNoExpr = {
+    ...traceSource,
+    traceIdExpression: '   ',
+  } as unknown as TSource;
+
+  const getScope = () =>
+    screen.getByRole('radiogroup', { name: 'Search scope' });
+
+  it('@AC-FR002-01 renders a visible span/trace scope control', () => {
+    renderWithMantine(
+      <SearchScopeControl
+        source={traceSource}
+        value="span"
+        onChange={jest.fn()}
+      />,
+    );
+
+    const scope = getScope();
+    expect(scope).toBeInTheDocument();
+    expect(within(scope).getByText('Span')).toBeInTheDocument();
+    expect(within(scope).getByText('Trace')).toBeInTheDocument();
+  });
+
+  it('@AC-FR002-02 defaults to span when no value is provided', () => {
+    renderWithMantine(
+      <SearchScopeControl source={traceSource} onChange={jest.fn()} />,
+    );
+
+    const spanRadio = screen.getByRole('radio', { name: /span/i });
+    expect(spanRadio).toBeChecked();
+  });
+
+  it('@AC-FR002-04 switches scope on a single interaction for a trace source', async () => {
+    const onChange = jest.fn();
+    renderWithMantine(
+      <SearchScopeControl
+        source={traceSource}
+        value="span"
+        onChange={onChange}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole('radio', { name: /trace/i }));
+    expect(onChange).toHaveBeenCalledWith('trace');
+  });
+
+  it('@AC-FR005-01 disables trace with a visible reason for a non-trace source', () => {
+    renderWithMantine(
+      <SearchScopeControl
+        source={logSource}
+        value="span"
+        onChange={jest.fn()}
+      />,
+    );
+
+    const traceRadio = screen.getByRole('radio', { name: /trace/i });
+    expect(traceRadio).toBeDisabled();
+    expect(
+      screen.getByText(/isn't available for this source/i),
+    ).toBeInTheDocument();
+  });
+
+  it('@AC-FR005-01 disables trace with a visible reason when the trace id expression is missing', () => {
+    renderWithMantine(
+      <SearchScopeControl
+        source={traceSourceNoExpr}
+        value="span"
+        onChange={jest.fn()}
+      />,
+    );
+
+    const traceRadio = screen.getByRole('radio', { name: /trace/i });
+    expect(traceRadio).toBeDisabled();
+    expect(
+      screen.getByText(/isn't available for this source/i),
+    ).toBeInTheDocument();
+  });
+
+  it('@AC-FR005-04 keeps scope on span and does not enable trace on a non-trace source', () => {
+    const onChange = jest.fn();
+    renderWithMantine(
+      <SearchScopeControl
+        source={logSource}
+        value="span"
+        onChange={onChange}
+      />,
+    );
+
+    expect(screen.getByRole('radio', { name: /span/i })).toBeChecked();
+    expect(screen.getByRole('radio', { name: /trace/i })).not.toBeChecked();
+  });
+
+  it('@AC-FR005-03 reverts to span when the active source becomes non-trace while trace is selected', () => {
+    const onChange = jest.fn();
+    const { rerender } = renderWithMantine(
+      <SearchScopeControl
+        source={traceSource}
+        value="trace"
+        onChange={onChange}
+      />,
+    );
+
+    expect(onChange).not.toHaveBeenCalled();
+
+    rerender(
+      <MantineProvider>
+        <SearchScopeControl
+          source={logSource}
+          value="trace"
+          onChange={onChange}
+        />
+      </MantineProvider>,
+    );
+
+    expect(onChange).toHaveBeenCalledWith('span');
+  });
+
+  it('@AC-FR002-05 exposes the disabled reason to assistive tech, not by color alone', () => {
+    renderWithMantine(
+      <SearchScopeControl
+        source={logSource}
+        value="span"
+        onChange={jest.fn()}
+      />,
+    );
+
+    const scope = getScope();
+    const describedBy = scope.getAttribute('aria-describedby');
+    expect(describedBy).toBeTruthy();
+    const description = document.getElementById(describedBy as string);
+    expect(description).toHaveTextContent(/isn't available for this source/i);
+  });
+
+  it('@AC-FR002-05 is keyboard operable and announces the selected state', async () => {
+    const onChange = jest.fn();
+    renderWithMantine(
+      <SearchScopeControl
+        source={traceSource}
+        value="span"
+        onChange={onChange}
+      />,
+    );
+
+    const spanRadio = screen.getByRole('radio', { name: /span/i });
+    spanRadio.focus();
+    expect(spanRadio).toHaveFocus();
+
+    await userEvent.keyboard('{ArrowRight}');
+    expect(onChange).toHaveBeenCalledWith('trace');
   });
 });
