@@ -73,6 +73,22 @@ sample is a `between` alert, so `{{thresholdMax}}` is populated there — a test
 send will not catch a template that breaks when an optional number is absent,
 which is what the guard above is for.
 
+## incident.io
+
+incident.io accepts only `firing` or `resolved` in `status`, so the default
+body maps HyperDX's state onto those two and carries `{{status}}` in
+`metadata.hyperdx_status`, alongside the alert id, condition and evaluation
+window. Only a firing and a resolve are delivered today, so that key reads
+`firing` or `resolved` as well. `metadata` is free-form, but incident.io only
+surfaces the keys its alert source is configured to parse.
+
+`deduplication_key` is `{{eventId}}`, which is stable per alert, group and
+channel across a firing and its resolve, so incident.io closes the alert it
+opened rather than opening a second one. It is derived from those three, so
+changing the alert's group-by or deleting and recreating the webhook starts a
+new key and leaves anything already open unresolved. Dedupe on `{{alertId}}`
+instead if every group of a grouped alert should collapse into one incident.
+
 ## Example
 
 Routing by severity and deduping on the alert rather than the firing:

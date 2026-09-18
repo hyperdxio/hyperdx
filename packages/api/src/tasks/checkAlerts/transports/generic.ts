@@ -1,6 +1,6 @@
 import { objectHash } from '@hyperdx/common-utils/dist/core/utils';
 import {
-  DEFAULT_GENERIC_WEBHOOK_BODY,
+  getDefaultWebhookBody,
   WebhookService,
   WebhookTemplateVariable,
 } from '@hyperdx/common-utils/dist/types';
@@ -215,9 +215,12 @@ const sendGenericWebhook = async (
 
     // Handlebars.compile throws on undefined; the API/MCP create paths allow an
     // absent body (the UI form applies the same default). An explicit "" is
-    // honored.
+    // honored. The default is per service: incident.io rejects the generic
+    // {"text": ...} payload.
     const bodyTemplate =
-      webhook.body == null ? DEFAULT_GENERIC_WEBHOOK_BODY : webhook.body;
+      webhook.body == null
+        ? getDefaultWebhookBody(webhook.service ?? WebhookService.Generic)
+        : webhook.body;
 
     body = handlebars.compile(bodyTemplate, {
       noEscape: true,
