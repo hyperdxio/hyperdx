@@ -57,6 +57,14 @@ jobs:
       # so the gate can't be silently skipped for a PR that touches few projects.
       - name: Escape-hatch ratchet tests
         run: node --test scripts/ci/__tests__/ratchet.test.mjs
+      # Also unconditional, and against the PR's own tree. claude-code-review.yml
+      # runs this file too, but from a base-branch checkout, so a PR that breaks
+      # what it pins (the AGENTS.md heading every review footer links to) passes
+      # there and would fail every later PR's review job instead of its own.
+      - name: Review helper tests
+        run:
+          node --test
+          .github/scripts/code-review/__tests__/review-comments.test.mjs
       - name: Escape-hatch ratchet
         run: node scripts/ci/ratchet.mjs
       # Also unconditional: the api's own `ci:lint` regenerates the spec but

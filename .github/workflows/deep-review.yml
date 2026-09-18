@@ -274,8 +274,11 @@ jobs:
       # the roster, so fetch the threads here in trusted shell instead.
       #
       # Bodies are author-controllable: sanitized, capped and fenced like the
-      # PR body. Our own sticky reviews are excluded, or the persona re-reports
-      # our findings as "unaddressed feedback".
+      # PR body. Our own output is excluded, or the persona re-reports our
+      # findings as "unaddressed feedback": the three sticky markers, plus the
+      # sibling reviewer's inline comments, which carry only the per-finding
+      # dedup marker from review-comments.cjs. Human replies in those threads
+      # have no marker and still flow through.
       - name: Materialize prior review comments
         id: prior
         if: steps.gate.outputs.should_review == 'true'
@@ -291,6 +294,7 @@ jobs:
               '<!-- deep-review -->',
               '<!-- claude-code-review -->',
               '<!-- deep-resolve -->',
+              '<!-- hdxr:',
             ];
 
             // Keep \n and \t; blank every other control/format char.
@@ -841,11 +845,29 @@ jobs:
           if [ "${SANDBOX_BROKEN:-}" != "false" ]; then
             MARKER="<!-- deep-review-state: omitted (reviewer sandbox unhealthy) -->"
           fi
+          # Appended here rather than asked of the model: a prompt-template line
+          # gets paraphrased, dropped on a clean review, or emitted inside the
+          # collapsed P3 block. Twin of INLINE_FOOTER_BY_SEVERITY / AGENT_NOTICE
+          # in .github/scripts/code-review/review-comments.cjs; the anchor test
+          # there pins both to the AGENTS.md heading.
+          FOOTER='<sub>No finding blocks merge automatically. A maintainer will expect P0/P1 findings in code this PR changes to be fixed; P2/P3 are your call -- fix or reply. Never fix findings about surrounding code here; reply instead. Do not widen the PR. [How to respond](https://github.com/hyperdxio/hyperdx/blob/main/AGENTS.md#responding-to-review-feedback)</sub>'
+          # Only when there is something to triage, as renderSummary does for its
+          # notice: a clean review or a zero-coverage (unhealthy-sandbox) one gets
+          # no footer. Findings sit under a `### ` severity heading or, for P3
+          # only, inside a <details> block; the prompt mandates both shapes and a
+          # clean review has neither. Keyed on those, not on bullet shape, which
+          # the model varies. The test suite lifts HAS_FINDINGS_RE= and runs real
+          # grep against sample bodies, so keep the variable name.
+          # Here-string, not a pipe: under pipefail an early `grep -q` match can
+          # SIGPIPE a printf still writing a large review and flip the condition.
+          HAS_FINDINGS_RE='^### |^<details>'
+          if [ "${SANDBOX_BROKEN:-}" = "false" ] && grep -qE "$HAS_FINDINGS_RE" <<<"$REVIEW"; then
+            REVIEW="$REVIEW"$'\n\n'"$FOOTER"
+          fi
           {
             echo 'review<<DEEP_REVIEW_EOF'
             printf '%s\n' "$MARKER"
-            printf '%s' "$REVIEW"
-            echo
+            printf '%s\n' "$REVIEW"
             echo 'DEEP_REVIEW_EOF'
           } >> "$GITHUB_OUTPUT"
 
