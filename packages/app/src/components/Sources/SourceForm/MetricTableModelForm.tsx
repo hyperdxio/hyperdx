@@ -1,6 +1,5 @@
 import { useEffect, useRef } from 'react';
 import { useController, useWatch } from 'react-hook-form';
-import { Granularity } from '@hyperdx/common-utils/dist/core/utils';
 import { MetricsDataType, SourceKind } from '@hyperdx/common-utils/dist/types';
 import { Select, Stack, Text } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
@@ -13,6 +12,7 @@ import { useMetadataWithSettings } from '@/hooks/useMetadata';
 import { useMetricsSeriesTableAvailability } from '@/hooks/useMetricsSeriesTableAvailability';
 import { isValidMetricTable, useSource } from '@/source';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
+import { MV_GRANULARITY_OPTIONS } from '@/utils/materializedViews';
 import {
   matchMetricTables,
   matchSeriesTable,
@@ -22,19 +22,14 @@ import { DEFAULT_DATABASE, OTEL_CLICKHOUSE_EXPRESSIONS } from './constants';
 import { FormRow } from './FormRow';
 import { TableModelProps } from './types';
 
-// Deliberately excludes 'auto' (this floors auto-inference, it doesn't
-// replace it) and stops at 1 hour - a source reported that infrequently is
-// past the point where a fixed minimum bucket size is a sane default.
+// Reuses MV_GRANULARITY_OPTIONS (rather than restating the ladder here)
+// because it's already curated to match what convertDateRangeToGranularityString
+// can actually return (e.g. it omits '10 minute', which the auto-inference
+// algorithm skips in favor of '15 minute' - a hand-rolled list that included
+// it would silently floor a "10 minute" choice to 15 minutes instead).
 const MIN_AUTO_GRANULARITY_OPTIONS = [
   { value: '', label: 'No minimum' },
-  { value: Granularity.FifteenSecond, label: '15 Seconds' },
-  { value: Granularity.ThirtySecond, label: '30 Seconds' },
-  { value: Granularity.OneMinute, label: '1 Minute' },
-  { value: Granularity.FiveMinute, label: '5 Minutes' },
-  { value: Granularity.TenMinute, label: '10 Minutes' },
-  { value: Granularity.FifteenMinute, label: '15 Minutes' },
-  { value: Granularity.ThirtyMinute, label: '30 Minutes' },
-  { value: Granularity.OneHour, label: '1 Hour' },
+  ...MV_GRANULARITY_OPTIONS,
 ];
 
 export function MetricTableModelForm({

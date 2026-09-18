@@ -99,8 +99,18 @@ const shouldUseChunking = (
   return true;
 };
 
-/** Floor for "auto" granularity resolution, from the source's own setting. */
-function getMinGranularitySeconds(
+/**
+ * Floor for "auto" granularity resolution, from the source's own setting.
+ *
+ * Exported because `'auto'` is resolved to a concrete granularity by
+ * `convertToTimeChartConfig`/`useTimeChartSettings` (ChartUtils.tsx) before a
+ * time-chart's config ever reaches `useQueriedChartConfig` below - callers
+ * that build a chart config outside of this hook (DBTimeChart and its
+ * siblings) need to compute the same floor and apply it earlier, or the
+ * floor set here never takes effect (granularity is no longer `'auto'` by
+ * the time this hook's queryFn runs).
+ */
+export function getMinGranularitySeconds(
   source: TSource | undefined,
 ): number | undefined {
   if (!source || !isMetricSource(source) || !source.minAutoGranularity) {

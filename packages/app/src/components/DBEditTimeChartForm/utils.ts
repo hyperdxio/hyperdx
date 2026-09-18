@@ -41,6 +41,7 @@ import {
   tryExpandConfigVariables,
 } from '@/ChartUtils';
 import { ChartEditorFormState } from '@/components/ChartEditor/types';
+import { getMinGranularitySeconds } from '@/hooks/useChartConfig';
 import { getFirstTimestampValueExpression } from '@/source';
 import { getMetricTableName } from '@/utils';
 import {
@@ -385,7 +386,10 @@ export function buildChartConfigForExplanations({
   // other at runtime, so the SQL preview transforms `config` itself into
   // both queries on render and the MV indicator is suppressed for this
   // tab.  Returning `config` unchanged is intentional.
-  const builderConfig = config as BuilderChartConfigWithDateRange;
+  const builderConfig: BuilderChartConfigWithDateRange = {
+    ...(config as BuilderChartConfigWithDateRange),
+    minGranularitySeconds: getMinGranularitySeconds(tableSource),
+  };
 
   if (activeTab === 'time') {
     return convertToTimeChartConfig(builderConfig);

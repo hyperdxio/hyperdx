@@ -20,6 +20,7 @@ import { useSource } from '@/source';
 // Mock dependencies
 jest.mock('@/hooks/useChartConfig', () => ({
   useQueriedChartConfig: jest.fn(),
+  getMinGranularitySeconds: jest.fn().mockReturnValue(undefined),
 }));
 
 jest.mock('@/hooks/useMVOptimizationExplanation', () => ({
