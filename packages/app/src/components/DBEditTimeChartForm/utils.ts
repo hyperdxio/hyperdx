@@ -387,7 +387,7 @@ export function buildChartConfigForExplanations({
   // both queries on render and the MV indicator is suppressed for this
   // tab.  Returning `config` unchanged is intentional.
   const builderConfig: BuilderChartConfigWithDateRange = {
-    ...(config as BuilderChartConfigWithDateRange),
+    ...config,
     minGranularitySeconds: getMinGranularitySeconds(tableSource),
   };
 
