@@ -101,14 +101,8 @@ const shouldUseChunking = (
 
 /**
  * Floor for "auto" granularity resolution, from the source's own setting.
- *
- * Exported because `'auto'` is resolved to a concrete granularity by
- * `convertToTimeChartConfig`/`useTimeChartSettings` (ChartUtils.tsx) before a
- * time-chart's config ever reaches `useQueriedChartConfig` below - callers
- * that build a chart config outside of this hook (DBTimeChart and its
- * siblings) need to compute the same floor and apply it earlier, or the
- * floor set here never takes effect (granularity is no longer `'auto'` by
- * the time this hook's queryFn runs).
+ * Exported so callers that resolve 'auto' before reaching useQueriedChartConfig
+ * (DBTimeChart and siblings, via ChartUtils.tsx) can apply it themselves.
  */
 export function getMinGranularitySeconds(
   source: TSource | undefined,
@@ -346,13 +340,7 @@ export function useQueriedChartConfig(
   const query = useQuery<TQueryFnData, ClickHouseQueryError | Error>({
     // Include enableQueryChunking in the query key to ensure that queries with the
     // same config but different enableQueryChunking values do not share a query.
-    // minGranularitySeconds is included for the same reason: it changes the
-    // emitted SQL whenever config.granularity is still 'auto' at this point
-    // (current real callers resolve 'auto' before reaching this hook, so this
-    // is a no-op for them today, but the source's own setting can still
-    // change independently of `config` - e.g. an admin edits it on the
-    // Source - and a stale cache entry should not be served from a key that
-    // never reflected it).
+    // minGranularitySeconds too: it can change independently of `config`.
     queryKey: [
       config,
       options?.enableQueryChunking ?? false,

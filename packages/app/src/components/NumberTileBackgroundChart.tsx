@@ -100,9 +100,8 @@ function NumberTileBackgroundChartInner({
   config: ChartConfigWithDateRange;
   backgroundChart: BackgroundChart;
 }) {
-  // Resolved before useTimeChartSettings/convertToTimeChartConfig below -
-  // both resolve 'auto' to a concrete granularity, so the source's
-  // minAutoGranularity floor has to be applied before that happens.
+  // useTimeChartSettings/convertToTimeChartConfig below resolve 'auto', so
+  // the minimum has to be applied before that happens.
   const { data: source } = useSource({ id: config.source });
   const minGranularitySeconds = getMinGranularitySeconds(source);
 

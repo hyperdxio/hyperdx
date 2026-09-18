@@ -284,15 +284,9 @@ export const MetricSource = Source.discriminator<IMetricSource>(
     logSourceId: String,
     // Unified metrics series table. Available only when `isMetricsSeriesTableEnabled` is set on the team document.
     seriesTable: String,
-    // Floor for "Auto Granularity" on charts querying this source - see
-    // MetricSourceSchema.minAutoGranularity in @hyperdx/common-utils. The
-    // Zod schema's own '' -> undefined preprocess only runs where a caller
-    // parses through it directly - the sources router's `validateRequest`
-    // middleware validates req.body against that schema but (unlike
-    // `processRequest`) never writes the parsed/transformed result back to
-    // it, so a raw '' from the form would otherwise reach here unprocessed.
-    // A setter is the one place every write path (POST, PUT, MCP) funnels
-    // through, so it's done here instead of relying on that being fixed.
+    // See MetricSourceSchema.minAutoGranularity in @hyperdx/common-utils.
+    // The setter mirrors that schema's '' -> undefined preprocess, since
+    // validateRequest doesn't write the parsed body back to req.body.
     minAutoGranularity: {
       type: String,
       set: (v: string | null | undefined) => (v === '' ? undefined : v),

@@ -402,20 +402,12 @@ function DBTimeChartComponent({
     [],
   );
 
-  // Resolved before useTimeChartSettings/convertToTimeChartConfig below (not
-  // at their previous spot further down) - both resolve 'auto' to a concrete
-  // granularity, so the source's minAutoGranularity floor has to be in
-  // `config` before that happens, not after.
   const { data: source } = useSource({
     id: sourceId || config.source,
   });
   const minGranularitySeconds = getMinGranularitySeconds(source);
-  // Hoisted so useTimeChartSettings/convertToTimeChartConfig below see a
-  // stable reference (both memoize on their config argument) - an inline
-  // `{ ...config, minGranularitySeconds }` at each call site would be a new
-  // object every render, invalidating those memos (and, downstream, the
-  // formatResponseForTimeChart memo that depends on their dateRange output)
-  // on every render regardless of whether anything actually changed.
+  // Both useTimeChartSettings and convertToTimeChartConfig resolve 'auto', so the
+  // minimum has to be in `config` before they run.
   const configWithFloor = useMemo(
     () => ({ ...config, minGranularitySeconds }),
     [config, minGranularitySeconds],

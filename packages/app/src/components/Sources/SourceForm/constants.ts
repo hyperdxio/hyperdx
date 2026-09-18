@@ -27,14 +27,9 @@ export const OTEL_CLICKHOUSE_EXPRESSIONS = {
   resourceAttributesExpression: 'ResourceAttributes',
 };
 
-// Reuses MV_GRANULARITY_OPTIONS (rather than restating the ladder here)
-// because it's already curated to match what convertDateRangeToGranularityString
-// can actually return (e.g. it omits '10 minute', which the auto-inference
-// algorithm skips in favor of '15 minute' - a hand-rolled list that included
-// it would silently floor a "10 minute" choice to 15 minutes instead).
-// '1 second' is filtered out separately: it's a valid MV granularity but
-// below the auto-inference ladder's own floor (its smallest branch is '15
-// second'), so picking it as a minimum would never change anything.
+// Reuses MV_GRANULARITY_OPTIONS since it's already curated to match what
+// convertDateRangeToGranularityString can return; '1 second' is excluded
+// because that function's own floor is '15 second'.
 export const MIN_AUTO_GRANULARITY_OPTIONS = [
   { value: '', label: 'No minimum' },
   ...MV_GRANULARITY_OPTIONS.filter(option => option.value !== '1 second'),

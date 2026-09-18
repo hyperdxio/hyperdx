@@ -40,9 +40,8 @@ export function useSearchTotalCount(
   } = {},
 ) {
   const { data: me, isLoading: isLoadingMe } = api.useMe();
-  // Resolved before convertToTimeChartConfig below, which resolves 'auto' to
-  // a concrete granularity - the source's minAutoGranularity floor has to be
-  // applied before that happens.
+  // convertToTimeChartConfig below resolves 'auto', so the minimum has to
+  // be applied before that happens.
   const { data: source } = useSource({ id: config.source });
   const minGranularitySeconds = getMinGranularitySeconds(source);
 
