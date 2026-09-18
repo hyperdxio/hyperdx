@@ -59,21 +59,15 @@ jobs:
           files: |
             docker/otel-collector/**
             packages/otel-collector/**
-      # Path filtering applies to pull requests only; see the header comment.
-      - name: Decide whether to build
-        id: gate
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          ANY_CHANGED: ${{ steps.changed-files.outputs.any_changed }}
-        run: |
-          if [ "$EVENT_NAME" != "pull_request" ] || [ "$ANY_CHANGED" = "true" ]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          fi
       - name: Setup Docker Buildx
-        if: steps.gate.outputs.run == 'true'
+        if:
+          github.event_name != 'pull_request' ||
+          steps.changed-files.outputs.any_changed == 'true'
         uses: docker/setup-buildx-action@v3
       - name: Build (no push)
-        if: steps.gate.outputs.run == 'true'
+        if:
+          github.event_name != 'pull_request' ||
+          steps.changed-files.outputs.any_changed == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -114,21 +108,15 @@ jobs:
             .prettierignore
             tsconfig.base.json
             nx.json
-      # Path filtering applies to pull requests only; see the header comment.
-      - name: Decide whether to build
-        id: gate
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          ANY_CHANGED: ${{ steps.changed-files.outputs.any_changed }}
-        run: |
-          if [ "$EVENT_NAME" != "pull_request" ] || [ "$ANY_CHANGED" = "true" ]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          fi
       - name: Setup Docker Buildx
-        if: steps.gate.outputs.run == 'true'
+        if:
+          github.event_name != 'pull_request' ||
+          steps.changed-files.outputs.any_changed == 'true'
         uses: docker/setup-buildx-action@v3
       - name: Build (no push)
-        if: steps.gate.outputs.run == 'true'
+        if:
+          github.event_name != 'pull_request' ||
+          steps.changed-files.outputs.any_changed == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -181,23 +169,15 @@ jobs:
             docker/clickhouse/**
             docker/otel-collector/**
             .vex/**
-      # Path filtering applies to pull requests only; see the header comment.
-      # This is the job that guards against upstream base-image drift, so on
-      # main it must run even when the diff touches nothing it lists.
-      - name: Decide whether to build
-        id: gate
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          ANY_CHANGED: ${{ steps.changed-files.outputs.any_changed }}
-        run: |
-          if [ "$EVENT_NAME" != "pull_request" ] || [ "$ANY_CHANGED" = "true" ]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          fi
       - name: Setup Docker Buildx
-        if: steps.gate.outputs.run == 'true'
+        if:
+          github.event_name != 'pull_request' ||
+          steps.changed-files.outputs.any_changed == 'true'
         uses: docker/setup-buildx-action@v3
       - name: Build all-in-one-auth (no push)
-        if: steps.gate.outputs.run == 'true'
+        if:
+          github.event_name != 'pull_request' ||
+          steps.changed-files.outputs.any_changed == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -205,9 +185,6 @@ jobs:
           target: all-in-one-auth
           platforms: linux/amd64
           push: false
-          # Re-resolve the floating upstream tags rather than trusting whatever
-          # the runner happens to have; this job exists to notice when they move.
-          pull: true
           build-contexts: |
             clickhouse=./docker/clickhouse
             otel-collector=./docker/otel-collector
@@ -224,7 +201,9 @@ jobs:
       # already in buildx's local cache from the step above, so this only builds
       # the final noauth COPY layer.
       - name: Build all-in-one-noauth / Local (no push)
-        if: steps.gate.outputs.run == 'true'
+        if:
+          github.event_name != 'pull_request' ||
+          steps.changed-files.outputs.any_changed == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -248,6 +227,8 @@ jobs:
       # Boot the freshly built Local image and push one OTLP log end-to-end into
       # ClickHouse. Proves the artefact we ship actually runs, not just builds.
       - name: Smoke test the built image
-        if: steps.gate.outputs.run == 'true'
+        if:
+          github.event_name != 'pull_request' ||
+          steps.changed-files.outputs.any_changed == 'true'
         timeout-minutes: 10
         run: scripts/ci/smoke-all-in-one.sh hyperdx-aio-smoke:pr
