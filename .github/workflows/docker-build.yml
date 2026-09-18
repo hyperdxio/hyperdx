@@ -25,9 +25,10 @@ on:
     branches: [main]
   workflow_dispatch:
 concurrency:
-  # Keyed on the event as well as the ref so that pushes to main and pull
-  # request runs never share a group: `github.ref` alone would let a merge
-  # cancel an in-flight PR run, or vice versa.
+  # Keyed on the event as well as the ref to separate a manual run on main from
+  # a merge: both carry `refs/heads/main`, so they would otherwise contend for
+  # one group. (A pull request run never collides with either — its ref is
+  # `refs/pull/<n>/merge`.)
   #
   # Pushes to main do not cancel in progress, so a merge cannot kill the build
   # verifying the commit before it. This guarantees the tip of main gets built,
