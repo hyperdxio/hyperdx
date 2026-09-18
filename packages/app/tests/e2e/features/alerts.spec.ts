@@ -1046,6 +1046,8 @@ test.describe('Alert Filtering', { tag: ['@alerts', '@full-stack'] }, () => {
     tags: [`team-alpha-${ts}`, `staging-${ts}`],
   };
   const webhookUrl = `https://example.com/filter-${ts}`;
+  /** Applied to a dashboard and nothing else, so no alert can match it. */
+  const dashboardOnlyTag = `dashboard-only-${ts}`;
 
   async function seedFilterTestData(page: import('@playwright/test').Page) {
     const apiUrl = getApiUrl();
@@ -1090,6 +1092,14 @@ test.describe('Alert Filtering', { tag: ['@alerts', '@full-stack'] }, () => {
         },
       });
     }
+
+    await page.request.post(`${apiUrl}/dashboards`, {
+      data: {
+        name: `E2E Filter Dashboard ${ts}`,
+        tiles: [],
+        tags: [dashboardOnlyTag],
+      },
+    });
   }
 
   test.beforeAll(async ({ browser }) => {
@@ -1241,6 +1251,18 @@ test.describe('Alert Filtering', { tag: ['@alerts', '@full-stack'] }, () => {
         alertsPage.getAlertCardByName(searchBeta.name),
       ).toBeVisible();
     });
+  });
+
+  test('should only offer tags that are applied to alerts', async () => {
+    await expect(alertsPage.getAlertCardByName(searchAlpha.name)).toBeVisible({
+      timeout: 10000,
+    });
+
+    await alertsPage.openTagFilter();
+    await expect(alertsPage.getTagOption(`team-alpha-${ts}`)).toBeVisible();
+    // Tagging a dashboard must not add the tag here: filtering alerts by it
+    // would return nothing.
+    await expect(alertsPage.getTagOption(dashboardOnlyTag)).toHaveCount(0);
   });
 
   test('should filter alerts by tag shared across sources', async () => {

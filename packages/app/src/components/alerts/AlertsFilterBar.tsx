@@ -84,10 +84,10 @@ export function AlertsFilterBar({
         style={{ maxWidth: 180 }}
         data-testid="alerts-source-filter"
       />
-      {tags.length > 0 && (
+      {(tags.length > 0 || tag != null) && (
         <Select
           placeholder="Filter by tag"
-          data={tags}
+          data={tag != null && !tags.includes(tag) ? [...tags, tag] : tags}
           value={tag}
           onChange={value => onTagChange(value)}
           clearable
