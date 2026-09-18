@@ -153,6 +153,32 @@ test.describe('Search row multi-select', { tag: '@search' }, () => {
   );
 
   test(
+    'does not restore the selection when the query reverts',
+    { tag: ['@local-mode'] },
+    async () => {
+      // Pin an absolute window first. In live tail every submit re-parses
+      // "Live Tail" into a fresh range, so the reset key would differ on the
+      // way back for reasons other than the query.
+      await searchPage.timePicker.selectRelativeTime('Last 1 days');
+      await searchPage.performSearch('SeverityText:info');
+
+      await searchPage.table.selectRows([0, 1]);
+      await expect(searchPage.selectionCount).toHaveText('2 selected');
+
+      await searchPage.performSearch('SeverityText:warn');
+      await expect(searchPage.selectionCount).toBeHidden();
+
+      // Back to the query the rows were selected under: the same result set is
+      // on screen, but the selection stays gone.
+      await searchPage.performSearch('SeverityText:info');
+
+      await expect(searchPage.table.firstRow).toBeVisible();
+      await expect(searchPage.selectionCount).toBeHidden();
+      expect(await searchPage.table.getSelectedRowCount()).toBe(0);
+    },
+  );
+
+  test(
     'checking a row does not open the side panel',
     { tag: ['@local-mode'] },
     async () => {

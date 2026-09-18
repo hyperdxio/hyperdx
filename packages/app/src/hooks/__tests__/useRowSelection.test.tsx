@@ -174,6 +174,20 @@ describe('useRowSelection', () => {
     expect(result.current.selectedCount).toBe(0);
   });
 
+  it('does not restore the selection when the reset key reverts', () => {
+    const rows = makeRows(3);
+    const { result, rerender } = renderHook(
+      ({ resetKey }) => useRowSelection(rows, { resetKey }),
+      { initialProps: { resetKey: 'search-a' } },
+    );
+
+    act(() => result.current.toggleRow('id-0'));
+    rerender({ resetKey: 'search-b' });
+    rerender({ resetKey: 'search-a' });
+
+    expect(result.current.selectedCount).toBe(0);
+  });
+
   it('reports whether a selection exists', () => {
     const rows = makeRows(3);
     const onSelectionChange = jest.fn();

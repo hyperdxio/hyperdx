@@ -1,10 +1,16 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useState } from 'react';
 
 import { getRowId } from '@/hooks/useRowWhere';
 
 type SelectableRow = Record<string, unknown>;
 
 const EMPTY_SELECTION: ReadonlyMap<string, SelectableRow> = new Map();
+
+interface Selection {
+  resetKey?: string;
+  anchorId: string | null;
+  rows: Map<string, SelectableRow>;
+}
 
 interface UseRowSelectionResult {
   selectedCount: number;
@@ -21,9 +27,10 @@ interface UseRowSelectionResult {
 /**
  * Tracks selected table rows by `__hyperdx_id`.
  *
- * `resetKey` identifies the result set the selection belongs to. A selection
- * captured under a different key reads as empty rather than being cleared in an
- * effect, so a new search cannot report rows the user can no longer see.
+ * `resetKey` identifies the result set the selection belongs to. When it
+ * changes the selection is dropped during render rather than in an effect, so a
+ * new search cannot report rows the user can no longer see, and returning to an
+ * earlier query does not resurrect the rows selected under it.
  */
 export function useRowSelection(
   rows: SelectableRow[],
@@ -37,19 +44,21 @@ export function useRowSelection(
     onSelectionChange?: (hasSelection: boolean) => void;
   } = {},
 ): UseRowSelectionResult {
-  const [selection, setSelection] = useState<{
-    resetKey?: string;
-    rows: Map<string, SelectableRow>;
-  }>(() => ({ resetKey, rows: new Map() }));
-  // Used to track the anchor row for range selection (shift-click).
-  const anchorIdRef = useRef<string | null>(null);
+  const [selection, setSelection] = useState<Selection>(() => ({
+    resetKey,
+    // Anchor row for range selection (shift-click)
+    anchorId: null,
+    rows: new Map(),
+  }));
 
   const isCurrent = selection.resetKey === resetKey;
+  if (!isCurrent) {
+    setSelection({ resetKey, anchorId: null, rows: new Map() });
+  }
   const selected = enabled && isCurrent ? selection.rows : EMPTY_SELECTION;
 
   const clearSelection = useCallback(() => {
-    anchorIdRef.current = null;
-    setSelection({ resetKey, rows: new Map() });
+    setSelection({ resetKey, anchorId: null, rows: new Map() });
     onSelectionChange?.(false);
   }, [onSelectionChange, resetKey]);
 
@@ -63,15 +72,13 @@ export function useRowSelection(
       }
       const indexOf = (id: string) =>
         rows.findIndex(row => getRowId(row) === id);
-      const anchorId = isCurrent ? anchorIdRef.current : null;
-      const anchorIndex = anchorId != null ? indexOf(anchorId) : -1;
       const targetIndex = indexOf(rowId);
-      anchorIdRef.current = rowId;
 
       setSelection(prev => {
-        const next = new Map(
-          prev.resetKey === resetKey ? prev.rows : EMPTY_SELECTION,
-        );
+        const prevIsCurrent = prev.resetKey === resetKey;
+        const next = new Map(prevIsCurrent ? prev.rows : []);
+        const anchorId = prevIsCurrent ? prev.anchorId : null;
+        const anchorIndex = anchorId != null ? indexOf(anchorId) : -1;
 
         // Shift-click "extend range" behavior
         if (extendRange && anchorIndex !== -1 && targetIndex !== -1) {
@@ -89,10 +96,10 @@ export function useRowSelection(
         }
 
         onSelectionChange?.(next.size > 0);
-        return { resetKey, rows: next };
+        return { resetKey, anchorId: rowId, rows: next };
       });
     },
-    [enabled, isCurrent, onSelectionChange, resetKey, rows],
+    [enabled, onSelectionChange, resetKey, rows],
   );
 
   const isSelected = useCallback(
