@@ -484,6 +484,7 @@ type SeriesResult = {
  *               properties:
  *                 error:
  *                   type: string
+ *                   description: Human-readable error message.
  *             examples:
  *               invalidParams:
  *                 value:
@@ -500,6 +501,7 @@ type SeriesResult = {
  *               properties:
  *                 error:
  *                   type: string
+ *                   description: Human-readable error message.
  *             example:
  *               error: "Team context missing"
  *       '404':
@@ -511,6 +513,7 @@ type SeriesResult = {
  *               properties:
  *                 error:
  *                   type: string
+ *                   description: Human-readable error message.
  *             example:
  *               error: "Source not found"
  *       '500':
@@ -522,6 +525,7 @@ type SeriesResult = {
  *               properties:
  *                 error:
  *                   type: string
+ *                   description: Human-readable error message.
  *             example:
  *               error: "Internal server error"
  */
