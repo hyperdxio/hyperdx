@@ -6,6 +6,7 @@ import { ActionIcon, Box, Flex, Text, Tooltip } from '@mantine/core';
 import { useDebouncedCallback, useDidUpdate } from '@mantine/hooks';
 import { IconCheck } from '@tabler/icons-react';
 
+import { EDITOR_INPUT_HEIGHTS } from '@/components/editorInputHeights';
 import { ErrorCollapse } from '@/components/Error/ErrorCollapse';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { useExplainQuery } from '@/hooks/useExplainQuery';
@@ -73,7 +74,7 @@ export function OrderByFormRow({
         label="Default Order By"
         helpText="Custom ORDER BY expression that overrides the default ordering. Leave empty to use the auto-detected default. (This can be customized per search later)"
       >
-        <Flex align="center" gap="sm">
+        <Flex align="flex-start" gap="sm">
           <Box flex={1}>
             <SQLInlineEditorControlled
               tableConnection={{
@@ -87,18 +88,21 @@ export function OrderByFormRow({
               disableKeywordAutocomplete
             />
           </Box>
-          <Tooltip label="Validate expression">
-            <ActionIcon
-              size="xs"
-              variant="subtle"
-              color="gray"
-              loading={explainLoading}
-              disabled={!orderByInput || explainLoading}
-              onClick={runValidation}
-            >
-              <IconCheck size={16} />
-            </ActionIcon>
-          </Tooltip>
+          {/* Stays level with the editor's first line as it grows */}
+          <Flex h={EDITOR_INPUT_HEIGHTS.sm} align="center">
+            <Tooltip label="Validate expression">
+              <ActionIcon
+                size="xs"
+                variant="subtle"
+                color="gray"
+                loading={explainLoading}
+                disabled={!orderByInput || explainLoading}
+                onClick={runValidation}
+              >
+                <IconCheck size={16} />
+              </ActionIcon>
+            </Tooltip>
+          </Flex>
         </Flex>
         {shouldShowResult && (
           <Box>

@@ -2394,7 +2394,8 @@ export function DBSearchPage() {
           <Flex
             gap="sm"
             style={{ flex: '0 1 500px', minWidth: 0 }}
-            align="center"
+            // Stays level with the search bar's first line as it grows
+            align="flex-start"
           >
             <TimePicker
               data-testid="time-picker"
