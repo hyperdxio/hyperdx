@@ -201,6 +201,62 @@ export class SearchPage {
     await expect(this.sidePanel.tabs).toBeVisible();
   }
 
+  /** The selection menu button in the table header, once rows are selected. */
+  get selectionCount() {
+    return this.page.getByTestId('row-selection-count');
+  }
+
+  /** Only rendered while live tail is stopped. */
+  get resumeLiveTailButton() {
+    return this.page.getByRole('button', { name: 'Resume Live Tail' });
+  }
+
+  async resumeLiveTail() {
+    await this.resumeLiveTailButton.click();
+  }
+
+  /** Opens the selection menu and picks one of its actions. */
+  private async clickSelectionMenuItem(testId: string) {
+    await this.selectionCount.click();
+    await this.page.getByTestId(testId).click();
+  }
+
+  async copySelectedRows(format: 'csv' | 'json' = 'csv') {
+    await this.clickSelectionMenuItem(`row-selection-copy-${format}`);
+  }
+
+  /** The toast confirming a clipboard copy of the selected rows. */
+  getCopiedSelectionToast() {
+    return this.page.getByText(/copied \d+ rows? as (CSV|JSON)/i);
+  }
+
+  async clearRowSelection() {
+    await this.clickSelectionMenuItem('row-selection-clear');
+  }
+
+  /**
+   * Download the selected rows and return the CSV text. The export triggers a
+   * client-side anchor download, so capture the Playwright download event and
+   * read its stream.
+   */
+  async downloadSelectedRowsCsv(): Promise<{
+    filename: string;
+    content: string;
+  }> {
+    const downloadPromise = this.page.waitForEvent('download');
+    await this.clickSelectionMenuItem('row-selection-download-csv');
+    const download = await downloadPromise;
+    const stream = await download.createReadStream();
+    const chunks: Buffer[] = [];
+    for await (const chunk of stream) {
+      chunks.push(Buffer.from(chunk));
+    }
+    return {
+      filename: download.suggestedFilename(),
+      content: Buffer.concat(chunks).toString('utf-8'),
+    };
+  }
+
   /**
    * Open the waterfall's spans filter — a `SearchWhereInput` with
    * `allowMultiline={false}` in both SQL and Lucene.
