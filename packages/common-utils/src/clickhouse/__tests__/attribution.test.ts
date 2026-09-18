@@ -64,7 +64,7 @@ describe('buildLogComment', () => {
 
   it('drops a surface that is not in the closed set', () => {
     const comment = buildLogComment({
-      surface: 'definitely-not-a-surface' as QuerySurface,
+      surface: 'definitely-not-a-surface' as unknown as QuerySurface,
       search: 'search-1',
     });
 
