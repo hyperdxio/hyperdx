@@ -1474,6 +1474,9 @@ async function renderWhere(
         chSql`${tid} IN (SELECT ${tid} FROM ${from} WHERE ${concatChSql(' AND ', predicate, timeFilter)})`,
     );
 
+    // Trace scope is search-only by contract, so (unlike the span path below)
+    // it deliberately omits the `$__filters` raw-SQL-template expansion: it is
+    // never rendered in a dashboard raw-SQL context.
     return concatChSql(' AND ', timeFilter, ...membershipSubqueries);
   }
 

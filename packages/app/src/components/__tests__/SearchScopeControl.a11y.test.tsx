@@ -4,7 +4,6 @@ import userEvent from '@testing-library/user-event';
 
 import { SearchScopeControl } from '@/components/DBSearchPageFilters';
 import {
-  getResultViewState,
   getScopeIndicatorLabel,
   getTraceZeroEmptyDescription,
 } from '@/DBSearchPage';
@@ -147,24 +146,5 @@ describe('result-scope surface states', () => {
 
     expect(screen.getByText(description)).toBeInTheDocument();
     expect(description.toLowerCase()).toContain('trace');
-  });
-
-  it('@AC-FR004-04 keeps a trace-scoped query error distinct from the trace-zero empty', () => {
-    const errored = getResultViewState({
-      hasQueryError: true,
-      isLoading: false,
-      rowCount: 0,
-      scope: 'trace',
-    });
-    const empty = getResultViewState({
-      hasQueryError: false,
-      isLoading: false,
-      rowCount: 0,
-      scope: 'trace',
-    });
-
-    expect(errored).toBe('error');
-    expect(empty).toBe('empty-trace');
-    expect(errored).not.toBe(empty);
   });
 });

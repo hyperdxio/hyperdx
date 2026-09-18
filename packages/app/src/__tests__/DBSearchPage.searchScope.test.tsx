@@ -1,5 +1,4 @@
 import {
-  getResultViewState,
   getScopeIndicatorLabel,
   getTraceZeroEmptyDescription,
   resolveSearchScope,
@@ -91,88 +90,6 @@ describe('getScopeIndicatorLabel', () => {
   it('states the span scope in text', () => {
     // @AC-FR004-03
     expect(getScopeIndicatorLabel('span')).toBe('Scope: Span');
-  });
-});
-
-describe('getResultViewState', () => {
-  it('reports error when a query error is present, regardless of row count', () => {
-    // @AC-FR004-04
-    expect(
-      getResultViewState({
-        hasQueryError: true,
-        isLoading: false,
-        rowCount: 0,
-        scope: 'trace',
-      }),
-    ).toBe('error');
-    expect(
-      getResultViewState({
-        hasQueryError: true,
-        isLoading: false,
-        rowCount: 5,
-        scope: 'span',
-      }),
-    ).toBe('error');
-  });
-
-  it('reports the trustworthy trace-zero empty for a trace-scoped zero result', () => {
-    // @AC-FR004-02
-    expect(
-      getResultViewState({
-        hasQueryError: false,
-        isLoading: false,
-        rowCount: 0,
-        scope: 'trace',
-      }),
-    ).toBe('empty-trace');
-  });
-
-  it('reports a generic empty for a span-scoped zero result', () => {
-    // @AC-FR004-02
-    expect(
-      getResultViewState({
-        hasQueryError: false,
-        isLoading: false,
-        rowCount: 0,
-        scope: 'span',
-      }),
-    ).toBe('empty');
-  });
-
-  it('reports results when rows are present', () => {
-    // @AC-FR004-03
-    expect(
-      getResultViewState({
-        hasQueryError: false,
-        isLoading: false,
-        rowCount: 3,
-        scope: 'trace',
-      }),
-    ).toBe('results');
-  });
-
-  it('does not report empty while loading', () => {
-    // @AC-FR004-02
-    expect(
-      getResultViewState({
-        hasQueryError: false,
-        isLoading: true,
-        rowCount: 0,
-        scope: 'trace',
-      }),
-    ).toBe('loading');
-  });
-
-  it('never reports a zero-result empty when an error is present at trace scope', () => {
-    // @AC-FR004-04
-    expect(
-      getResultViewState({
-        hasQueryError: true,
-        isLoading: false,
-        rowCount: 0,
-        scope: 'trace',
-      }),
-    ).not.toBe('empty-trace');
   });
 });
 

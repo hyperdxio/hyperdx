@@ -91,7 +91,10 @@ import api, { useCompleteOnboardingTask } from '@/api';
 import { ActiveFilterPills } from '@/components/ActiveFilterPills';
 import { AlertStatusIcon } from '@/components/AlertStatusIcon';
 import { ContactSupportText } from '@/components/ContactSupportText';
-import { DBSearchPageFilters } from '@/components/DBSearchPageFilters';
+import {
+  DBSearchPageFilters,
+  type SearchScope,
+} from '@/components/DBSearchPageFilters';
 import { cleanClickHouseExpression } from '@/components/DBSearchPageFilters/utils';
 import { DBTimeChart, type SeriesGroupFilter } from '@/components/DBTimeChart';
 import EmptyState from '@/components/EmptyState';
@@ -208,8 +211,6 @@ export const SearchConfigSchema = z.object({
 
 type SearchConfigFromSchema = z.infer<typeof SearchConfigSchema>;
 
-type SearchScope = 'span' | 'trace';
-
 export function resolveSearchScope(
   scope: string | null | undefined,
 ): SearchScope {
@@ -227,29 +228,6 @@ export function getScopeIndicatorLabel(scope: SearchScope): string {
 
 export function getTraceZeroEmptyDescription(): string {
   return 'No traces match all predicates at trace scope.';
-}
-
-export function getResultViewState({
-  hasQueryError,
-  isLoading,
-  rowCount,
-  scope,
-}: {
-  hasQueryError: boolean;
-  isLoading: boolean;
-  rowCount: number;
-  scope: SearchScope;
-}): 'error' | 'loading' | 'empty-trace' | 'empty' | 'results' {
-  if (hasQueryError) {
-    return 'error';
-  }
-  if (isLoading) {
-    return 'loading';
-  }
-  if (rowCount > 0) {
-    return 'results';
-  }
-  return scope === 'trace' ? 'empty-trace' : 'empty';
 }
 
 const QUERY_KEY_PREFIX = 'search';

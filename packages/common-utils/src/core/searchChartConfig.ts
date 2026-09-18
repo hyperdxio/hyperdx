@@ -189,6 +189,8 @@ export function buildSearchChartConfig(
       ? { dateRangeEndInclusive: input.dateRangeEndInclusive }
       : {}),
     ...(input.granularity != null ? { granularity: input.granularity } : {}),
+    // The search-level `searchScope` maps onto the chart-config `filtersScope`,
+    // which is how `renderChartConfig` refers to the same span-vs-trace choice.
     ...(input.searchScope ? { filtersScope: input.searchScope } : {}),
     ...(traceScope.applicable
       ? { traceIdExpression: traceScope.traceIdExpression }
