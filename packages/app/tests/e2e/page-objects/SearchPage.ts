@@ -362,19 +362,13 @@ export class SearchPage {
     );
   }
 
-  /**
-   * The SELECT / ORDER BY clause editors as growth-assertable fields.
-   *
-   * Located from their labels rather than by `.cm-content` index, which shifts
-   * with the WHERE language: in SQL mode the WHERE input is a CodeMirror editor
-   * too, and it comes first.
-   */
+  /** The SELECT / ORDER BY clause editors as growth-assertable fields. */
   selectClauseField(): MultilineField {
-    return this.clauseField('SELECT');
+    return this.clauseField(this.getSELECTEditor());
   }
 
   orderByClauseField(): MultilineField {
-    return this.clauseField('ORDER BY');
+    return this.clauseField(this.getOrderByEditor());
   }
 
   /** Empty a clause editor so it starts from one short line. */
@@ -383,10 +377,12 @@ export class SearchPage {
     await field.focusTarget.press('Backspace');
   }
 
-  private clauseField(label: 'SELECT' | 'ORDER BY'): MultilineField {
-    const paper = borderedBox(this.page.getByText(label, { exact: true }));
-    const content = paper.locator('.cm-content').first();
-    return { focusTarget: content, growthBox: content, visibleBox: paper };
+  private clauseField(content: Locator): MultilineField {
+    return {
+      focusTarget: content,
+      growthBox: content,
+      visibleBox: borderedBox(content),
+    };
   }
 
   /**

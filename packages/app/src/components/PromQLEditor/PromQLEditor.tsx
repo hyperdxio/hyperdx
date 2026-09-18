@@ -27,6 +27,7 @@ import { usePromqlVariableCompletions } from '@/components/SQLEditor/variableCom
 import {
   useVariableValidation,
   VariableIssueIndicator,
+  variableValidationState,
 } from '@/components/SQLEditor/variableValidation';
 
 import { createVariableCompletionSource } from './variableCompletionSource';
@@ -198,8 +199,7 @@ export default function PromQLEditor({
     }
   }, []);
 
-  const isVariableWarningOnly =
-    variableIssues.errors.length === 0 && variableIssues.warnings.length > 0;
+  const validationState = variableValidationState(variableIssues);
   const baseHeight = EDITOR_INPUT_HEIGHTS.sm;
 
   return (
@@ -211,8 +211,8 @@ export default function PromQLEditor({
         shadow="none"
         className={cx(
           styles.paper,
-          variableIssues.errors.length > 0 ? styles.error : undefined,
-          isVariableWarningOnly ? styles.warning : undefined,
+          validationState === 'error' ? styles.error : undefined,
+          validationState === 'warning' ? styles.warning : undefined,
           isFocused ? styles.focused : undefined,
         )}
         ps="4px"

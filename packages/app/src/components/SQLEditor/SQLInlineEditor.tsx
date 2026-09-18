@@ -46,6 +46,7 @@ import { useSqlVariableCompletions } from './variableCompletions';
 import {
   useVariableValidation,
   VariableIssueIndicator,
+  variableValidationState,
 } from './variableValidation';
 
 import styles from './SQLInlineEditor.module.scss';
@@ -332,12 +333,7 @@ export default function SQLInlineEditor({
     }
   }, []);
 
-  const validationState =
-    error || variableIssues.errors.length > 0
-      ? 'error'
-      : variableIssues.warnings.length > 0
-        ? 'warning'
-        : undefined;
+  const validationState = variableValidationState(variableIssues, !!error);
   const baseHeight =
     size === 'xs' ? EDITOR_INPUT_HEIGHTS.xs : EDITOR_INPUT_HEIGHTS.sm;
 

@@ -133,20 +133,43 @@ export const WRAPPING_SINGLE_LINE_QUERY =
  */
 export const expectStaysOneRow = async (
   page: Page,
-  { focusTarget, visibleBox }: MultilineField,
+  { focusTarget, growthBox, visibleBox }: MultilineField,
 ): Promise<void> => {
   await focusTarget.scrollIntoViewIfNeeded();
   await focusTarget.focus();
   await page.keyboard.type('short');
   const oneRowHeight = await settledHeight(visibleBox);
+  const oneRowContentHeight = await settledHeight(growthBox);
 
   await page.keyboard.press('ControlOrMeta+A');
   await page.keyboard.type(WRAPPING_SINGLE_LINE_QUERY);
 
+  // The bordered box alone can't carry this: a single-line SQL field clamps it
+  // to one row with `overflow: hidden`, so it would hold even if the content
+  // wrapped and the second line were clipped out of sight. Measuring the
+  // content too is what pins the value to one row.
+  await expectOneLine(focusTarget, growthBox, oneRowContentHeight);
   expect(await settledHeight(visibleBox)).toBeLessThanOrEqual(oneRowHeight + 1);
 
   await blurActiveElement(page);
   await expect(focusTarget).not.toBeFocused();
 
+  await expectOneLine(focusTarget, growthBox, oneRowContentHeight);
   expect(await settledHeight(visibleBox)).toBeLessThanOrEqual(oneRowHeight + 1);
+};
+
+/** Assert the content itself still occupies one row, whichever editor renders it. */
+const expectOneLine = async (
+  focusTarget: Locator,
+  growthBox: Locator,
+  oneRowContentHeight: number,
+): Promise<void> => {
+  const lines = focusTarget.locator('.cm-line');
+  if ((await lines.count()) > 0) {
+    await expect(lines).toHaveCount(1, { timeout: 2000 });
+    return;
+  }
+  expect(await settledHeight(growthBox)).toBeLessThanOrEqual(
+    oneRowContentHeight + 1,
+  );
 };

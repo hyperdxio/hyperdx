@@ -4,14 +4,11 @@ import Fuse from 'fuse.js';
 import { Loader, Popover, Textarea, UnstyledButton } from '@mantine/core';
 
 import { EDITOR_INPUT_HEIGHTS } from '@/components/editorInputHeights';
+import type { VariableValidationState } from '@/components/SQLEditor/variableValidation';
 import type { TokenInfo } from '@/hooks/useAutoCompleteOptions';
 import { useQueryHistory } from '@/utils';
 
-import InputLanguageSwitch from './InputLanguageSwitch';
-
 import styles from './AutocompleteInput.module.scss';
-
-export type AutocompleteInputValidationState = 'error' | 'warning';
 
 export default function AutocompleteInput({
   inputRef,
@@ -30,8 +27,6 @@ export default function AutocompleteInput({
   showSuggestionsOnEmpty,
   suggestionsHeader = 'Properties',
   zIndex = 999,
-  onLanguageChange,
-  language,
   onSubmit,
   queryHistoryType,
   allowMultiline = true,
@@ -49,14 +44,12 @@ export default function AutocompleteInput({
   tokenInfo?: TokenInfo;
   aboveSuggestions?: React.ReactNode;
   belowSuggestions?: React.ReactNode;
-  /** Rendered at the right edge of the input, left of the language switch. */
+  /** Rendered at the right edge of the input. */
   rightAdornment?: React.ReactNode;
-  validationState?: AutocompleteInputValidationState;
+  validationState?: VariableValidationState;
   showSuggestionsOnEmpty?: boolean;
   suggestionsHeader?: string;
   zIndex?: number;
-  onLanguageChange?: (language: 'sql' | 'lucene') => void;
-  language?: 'sql' | 'lucene';
   queryHistoryType?: string;
   allowMultiline?: boolean;
   'data-testid'?: string;
@@ -200,7 +193,7 @@ export default function AutocompleteInput({
     if (inputRef.current) {
       setInputWidth(inputRef.current.clientWidth);
     }
-  }, [language, onLanguageChange, rightAdornment, inputRef]);
+  }, [rightAdornment, inputRef]);
 
   const baseHeight = EDITOR_INPUT_HEIGHTS[size];
 
@@ -327,16 +320,9 @@ export default function AutocompleteInput({
             }}
             rightSectionWidth={rightSectionWidth}
             rightSection={
-              rightAdornment != null ||
-              (language != null && onLanguageChange != null) ? (
+              rightAdornment != null ? (
                 <div ref={ref} className={styles.rightSection}>
                   {rightAdornment}
-                  {language != null && onLanguageChange != null && (
-                    <InputLanguageSwitch
-                      language={language}
-                      onLanguageChange={onLanguageChange}
-                    />
-                  )}
                 </div>
               ) : undefined
             }

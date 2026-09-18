@@ -17,6 +17,7 @@ import {
   hasVariableIssues,
   useVariableValidation,
   VariableIssueIndicator,
+  variableValidationState,
 } from '@/components/SQLEditor/variableValidation';
 import {
   ILanguageFormatter,
@@ -24,9 +25,7 @@ import {
 } from '@/hooks/useAutoCompleteOptions';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
 
-import AutocompleteInput, {
-  type AutocompleteInputValidationState,
-} from './AutocompleteInput';
+import AutocompleteInput from './AutocompleteInput';
 
 import styles from './SearchInputV2.module.scss';
 
@@ -49,8 +48,6 @@ export default function SearchInputV2({
   placeholder = 'Search your events for anything...',
   size = 'sm',
   zIndex,
-  language,
-  onLanguageChange,
   enableHotkey,
   onSubmit,
   additionalSuggestions,
@@ -65,8 +62,6 @@ export default function SearchInputV2({
   placeholder?: string;
   size?: 'xs' | 'sm' | 'lg';
   zIndex?: number;
-  onLanguageChange?: (language: 'sql' | 'lucene') => void;
-  language?: 'sql' | 'lucene';
   enableHotkey?: boolean;
   onSubmit?: () => void;
   additionalSuggestions?: string[];
@@ -100,12 +95,7 @@ export default function SearchInputV2({
       language: 'lucene',
     },
   );
-  const validationState: AutocompleteInputValidationState | undefined =
-    variableIssues.errors.length > 0
-      ? 'error'
-      : variableIssues.warnings.length > 0
-        ? 'warning'
-        : undefined;
+  const validationState = variableValidationState(variableIssues);
 
   const {
     options: autoCompleteOptions,
@@ -162,8 +152,6 @@ export default function SearchInputV2({
       tokenInfo={tokenInfo}
       size={size}
       zIndex={zIndex}
-      language={language}
-      onLanguageChange={onLanguageChange}
       onSubmit={onSubmit}
       queryHistoryType={queryHistoryType}
       allowMultiline={allowMultiline}
