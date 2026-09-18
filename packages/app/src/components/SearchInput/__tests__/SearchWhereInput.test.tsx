@@ -101,24 +101,50 @@ describe('SearchWhereInput', () => {
         expect(input).toHaveValue('level:error');
       });
     });
+
+    it('does not insert a newline in Lucene when allowMultiline is false', async () => {
+      const user = userEvent.setup();
+      const onSubmit = jest.fn();
+      renderWithMantine(
+        <TestWrapper defaultLanguage="lucene">
+          {({ control }) => (
+            <SearchWhereInput
+              tableConnection={mockTableConnection}
+              control={control}
+              name="where"
+              allowMultiline={false}
+              onSubmit={onSubmit}
+            />
+          )}
+        </TestWrapper>,
+      );
+
+      const input = screen.getByPlaceholderText(
+        /Search your events w\/ Lucene/i,
+      );
+      expect(input.closest('[data-single-line]')).toHaveAttribute(
+        'data-single-line',
+        'true',
+      );
+      await user.click(input);
+      await user.keyboard('first{Shift>}{Enter}{/Shift}second');
+
+      expect(input).toHaveValue('firstsecond');
+      expect(onSubmit).not.toHaveBeenCalled();
+    });
   });
 
   describe('SQL Mode', () => {
     it('renders SQL input with WHERE label when whereLanguage is sql', () => {
       renderWithMantine(<TestWrapper defaultLanguage="sql" />);
 
-      // SQL mode shows the WHERE label
       expect(screen.getByText('WHERE')).toBeInTheDocument();
     });
 
     it('renders SQL placeholder', () => {
       renderWithMantine(<TestWrapper defaultLanguage="sql" />);
 
-      // Check for placeholder text in the CodeMirror editor
-      // Note: CodeMirror may render placeholder differently
-      screen.queryByText(/SQL WHERE clause/i);
-      // If placeholder is not directly visible, the component should still render
-      expect(screen.getByText('WHERE')).toBeInTheDocument();
+      expect(screen.getByText(/SQL WHERE clause/i)).toBeInTheDocument();
     });
   });
 
@@ -152,7 +178,7 @@ describe('SearchWhereInput', () => {
 
   describe('Component Props', () => {
     it('respects width prop in SQL mode', () => {
-      renderWithMantine(
+      const { container } = renderWithMantine(
         <TestWrapper defaultLanguage="sql">
           {({ control }) => (
             <SearchWhereInput
@@ -165,8 +191,9 @@ describe('SearchWhereInput', () => {
         </TestWrapper>,
       );
 
-      // The Box wrapper should have the width style
-      expect(screen.getByText('WHERE')).toBeInTheDocument();
+      expect(
+        container.querySelector('[style*="width: 50%"]'),
+      ).toBeInTheDocument();
     });
 
     it('hides label when showLabel is false', () => {
@@ -342,6 +369,11 @@ describe('SearchWhereInput', () => {
           'This expression references unknown variable $srvice. Available variables: svc.',
         ),
       );
+      expect(
+        screen
+          .getByTestId('variable-validation')
+          .closest('[data-validation-state]'),
+      ).toHaveAttribute('data-validation-state', 'warning');
     });
 
     it('warns that a Lucene expression references a variable that does not exist', async () => {
@@ -355,6 +387,11 @@ describe('SearchWhereInput', () => {
           'This expression references unknown variable $srvice. Available variables: svc.',
         ),
       );
+      expect(
+        screen
+          .getByTestId('variable-validation')
+          .closest('[data-validation-state]'),
+      ).toHaveAttribute('data-validation-state', 'warning');
     });
 
     it('errors when a SQL reference is wrapped in quotes', async () => {
@@ -366,6 +403,11 @@ describe('SearchWhereInput', () => {
       await waitFor(() =>
         expect(issueMessages()).toContain('is wrapped in quotes'),
       );
+      expect(
+        screen
+          .getByTestId('variable-validation')
+          .closest('[data-validation-state]'),
+      ).toHaveAttribute('data-validation-state', 'error');
     });
 
     it('leaves a quoted reference alone in Lucene, where each value is quoted anyway', async () => {
