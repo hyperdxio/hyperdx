@@ -32,7 +32,12 @@ import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import { Popover } from '@mantine/core';
 
 import type { NumberFormat } from '@/types';
-import { COLORS, formatNumber, truncateMiddle } from '@/utils';
+import {
+  COLORS,
+  formatDurationMsCompact,
+  formatNumber,
+  truncateMiddle,
+} from '@/utils';
 
 import {
   AnnotationHitLayer,
@@ -836,6 +841,21 @@ export function formatAxisTick(
       notation: 'compact',
       compactDisplay: 'short',
     }).format(value);
+  }
+
+  // 'duration' is handled separately from the numbro-based formatting below:
+  // formatNumber's own 'duration' branch returns early with formatDurationMs,
+  // before ever looking at the mantissa/average/unit overrides this function
+  // passes in - so none of MAX_AXIS_MANTISSA/MAGNITUDE_THRESHOLD's width
+  // safety applies to it, and formatDurationMs has no width budget of its own
+  // (e.g. "13.33min", 8 chars, well past what Y_AXIS_WIDTH fits). Route
+  // through formatDurationMsCompact instead - already used for this exact
+  // reason by DBHeatmapChart's axis - which uses a single-character unit for
+  // minutes ("m" vs "min") and significant-figure precision that shrinks as
+  // the value grows, keeping labels short at any magnitude.
+  if (axisNumberFormat.output === 'duration') {
+    const factor = axisNumberFormat.factor ?? 1;
+    return formatDurationMsCompact(value * factor * 1000);
   }
 
   const displayed = axisNumberFormat.output === 'percent' ? value * 100 : value;

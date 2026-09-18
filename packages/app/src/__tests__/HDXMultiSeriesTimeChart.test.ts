@@ -134,6 +134,44 @@ describe('formatAxisTick', () => {
   it('uses compact Intl formatting when no axisNumberFormat is set', () => {
     expect(formatAxisTick(1234)).toBe('1.2K');
   });
+
+  describe('duration output', () => {
+    // Regression: 'duration' hits formatNumber's own early-return branch
+    // (`if (options.output === 'duration') return formatDurationMs(ms)`),
+    // before the mantissa/average/unit overrides above are ever consulted -
+    // so none of this formatter's width safety (MAX_AXIS_MANTISSA,
+    // MAGNITUDE_THRESHOLD) applied to it, and formatDurationMs has no width
+    // budget of its own: a value like 799.8s rendered as "13.33min" (8
+    // chars), well past what the axis's label budget fits (measured
+    // elsewhere in this file at up to ~5 chars). Fixed by routing 'duration'
+    // through formatDurationMsCompact instead - already used for the same
+    // reason by DBHeatmapChart's own axis - which uses a single-character
+    // minute unit ("m", not "min") and significant-figure precision that
+    // shrinks as the value grows.
+    it('renders minutes with a single-character unit, not "min"', () => {
+      // 799.8s = 13.33min old-formatter would render "13.33min" (8 chars).
+      expect(formatAxisTick(799.8, { output: 'duration' })).toBe('13m');
+    });
+
+    it('renders seconds compactly', () => {
+      expect(formatAxisTick(39.51, { output: 'duration' })).toBe('39.5s');
+    });
+
+    it('respects a configured factor, matching formatNumber`s own duration math', () => {
+      // A raw value already in milliseconds (e.g. this dashboard's ClickHouse
+      // latency columns) is passed with factor: 0.001 so formatNumber's own
+      // `value * factor * 1000` nets out to the raw ms - same convention
+      // this formatter's duration branch has to honor.
+      expect(
+        formatAxisTick(442_800, { output: 'duration', factor: 0.001 }),
+      ).toBe('7.4m');
+    });
+
+    it('renders sub-millisecond and hour-scale values compactly too', () => {
+      expect(formatAxisTick(0.0000005, { output: 'duration' })).toBe('500ns');
+      expect(formatAxisTick(7500, { output: 'duration' })).toBe('2.1h');
+    });
+  });
 });
 
 describe('collectMemoChartGradientHexes', () => {
