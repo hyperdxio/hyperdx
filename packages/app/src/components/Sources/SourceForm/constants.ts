@@ -1,6 +1,9 @@
 import { UseTextIndex } from '@hyperdx/common-utils/dist/types';
 
-import { MV_AGGREGATE_FUNCTIONS } from '@/utils/materializedViews';
+import {
+  MV_AGGREGATE_FUNCTIONS,
+  MV_GRANULARITY_OPTIONS,
+} from '@/utils/materializedViews';
 
 export const DEFAULT_DATABASE = 'default';
 export const KNOWN_COLUMNS_EXPRESSION_HELP_TEXT =
@@ -23,6 +26,16 @@ export const OTEL_CLICKHOUSE_EXPRESSIONS = {
   timestampValueExpression: 'TimeUnix',
   resourceAttributesExpression: 'ResourceAttributes',
 };
+
+// Reuses MV_GRANULARITY_OPTIONS (rather than restating the ladder here)
+// because it's already curated to match what convertDateRangeToGranularityString
+// can actually return (e.g. it omits '10 minute', which the auto-inference
+// algorithm skips in favor of '15 minute' - a hand-rolled list that included
+// it would silently floor a "10 minute" choice to 15 minutes instead).
+export const MIN_AUTO_GRANULARITY_OPTIONS = [
+  { value: '', label: 'No minimum' },
+  ...MV_GRANULARITY_OPTIONS,
+];
 
 export const USE_TEXT_INDEX_OPTIONS = [
   {

@@ -2500,8 +2500,15 @@ export const MetricSourceSchema = BaseSourceSchema.extend({
    * series. Unset preserves the previous unfloored behavior. Only
    * constrains auto-inference - an explicit (non-"auto") granularity
    * picked on a tile is never overridden.
+   *
+   * Preprocessed so the form's "No minimum" option (stored as `''`, since a
+   * Mantine Select needs a string value for every entry including the unset
+   * one) round-trips through the schema as `undefined`.
    */
-  minAutoGranularity: SQLIntervalSchema.optional(),
+  minAutoGranularity: z.preprocess(
+    v => (v === '' ? undefined : v),
+    SQLIntervalSchema.optional(),
+  ),
 });
 
 // PromQL source form schema

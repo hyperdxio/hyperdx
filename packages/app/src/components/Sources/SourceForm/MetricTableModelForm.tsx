@@ -1,49 +1,36 @@
 import { useEffect, useRef } from 'react';
-import { useController, useWatch } from 'react-hook-form';
+import { useWatch } from 'react-hook-form';
 import { MetricsDataType, SourceKind } from '@hyperdx/common-utils/dist/types';
-import { Select, Stack, Text } from '@mantine/core';
+import { Stack, Text } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 
 import api from '@/api';
 import { useTablesDirect } from '@/clickhouse';
 import { DBTableSelectControlled } from '@/components/DBTableSelect';
+import SelectControlled from '@/components/SelectControlled';
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
 import { useMetricsSeriesTableAvailability } from '@/hooks/useMetricsSeriesTableAvailability';
 import { isValidMetricTable, useSource } from '@/source';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
-import { MV_GRANULARITY_OPTIONS } from '@/utils/materializedViews';
 import {
   matchMetricTables,
   matchSeriesTable,
 } from '@/utils/metricTableAutofill';
 
-import { DEFAULT_DATABASE, OTEL_CLICKHOUSE_EXPRESSIONS } from './constants';
+import {
+  DEFAULT_DATABASE,
+  MIN_AUTO_GRANULARITY_OPTIONS,
+  OTEL_CLICKHOUSE_EXPRESSIONS,
+} from './constants';
 import { FormRow } from './FormRow';
 import { TableModelProps } from './types';
-
-// Reuses MV_GRANULARITY_OPTIONS (rather than restating the ladder here)
-// because it's already curated to match what convertDateRangeToGranularityString
-// can actually return (e.g. it omits '10 minute', which the auto-inference
-// algorithm skips in favor of '15 minute' - a hand-rolled list that included
-// it would silently floor a "10 minute" choice to 15 minutes instead).
-const MIN_AUTO_GRANULARITY_OPTIONS = [
-  { value: '', label: 'No minimum' },
-  ...MV_GRANULARITY_OPTIONS,
-];
 
 export function MetricTableModelForm({
   control,
   setValue,
   sourceId,
 }: TableModelProps) {
-  // Metric-only field, not present on every TSource union member (same
-  // reason DBTableSelectControlled/SourceSelectControlled below type their
-  // own `name` prop loosely rather than as `Path<TSource>`).
-  const { field: minAutoGranularityField } = useController({
-    control,
-    name: 'minAutoGranularity' as any,
-  });
   const brandName = useBrandDisplayName();
   const { data: team } = api.useTeam();
   const isMetricsSeriesTableEnabled = !!team?.isMetricsSeriesTableEnabled;
@@ -339,13 +326,14 @@ export function MetricTableModelForm({
           <SourceSelectControlled control={control} name="logSourceId" />
         </FormRow>
         <FormRow
-          label="Minimum Auto Granularity"
-          helpText="Floor for 'Auto Granularity' on charts querying this source. Set this to your metrics' scrape/report interval to avoid sparse-looking charts on short time ranges. Doesn't affect an explicitly chosen (non-Auto) granularity."
+          label="Minimum auto granularity"
+          helpText="Floor for 'auto granularity' on charts querying this source. Set this to your metrics' scrape/report interval to avoid sparse-looking charts on short time ranges. Doesn't affect an explicitly chosen (non-auto) granularity."
         >
-          <Select
+          <SelectControlled
+            control={control}
+            name="minAutoGranularity"
             data={MIN_AUTO_GRANULARITY_OPTIONS}
-            value={minAutoGranularityField.value ?? ''}
-            onChange={v => minAutoGranularityField.onChange(v ? v : undefined)}
+            allowDeselect={false}
           />
         </FormRow>
       </Stack>
