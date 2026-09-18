@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react';
-import { useWatch } from 'react-hook-form';
+import { useController, useWatch } from 'react-hook-form';
+import { Granularity } from '@hyperdx/common-utils/dist/core/utils';
 import { MetricsDataType, SourceKind } from '@hyperdx/common-utils/dist/types';
-import { Stack, Text } from '@mantine/core';
+import { Select, Stack, Text } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 
 import api from '@/api';
@@ -21,11 +22,33 @@ import { DEFAULT_DATABASE, OTEL_CLICKHOUSE_EXPRESSIONS } from './constants';
 import { FormRow } from './FormRow';
 import { TableModelProps } from './types';
 
+// Deliberately excludes 'auto' (this floors auto-inference, it doesn't
+// replace it) and stops at 1 hour - a source reported that infrequently is
+// past the point where a fixed minimum bucket size is a sane default.
+const MIN_AUTO_GRANULARITY_OPTIONS = [
+  { value: '', label: 'No minimum' },
+  { value: Granularity.FifteenSecond, label: '15 Seconds' },
+  { value: Granularity.ThirtySecond, label: '30 Seconds' },
+  { value: Granularity.OneMinute, label: '1 Minute' },
+  { value: Granularity.FiveMinute, label: '5 Minutes' },
+  { value: Granularity.TenMinute, label: '10 Minutes' },
+  { value: Granularity.FifteenMinute, label: '15 Minutes' },
+  { value: Granularity.ThirtyMinute, label: '30 Minutes' },
+  { value: Granularity.OneHour, label: '1 Hour' },
+];
+
 export function MetricTableModelForm({
   control,
   setValue,
   sourceId,
 }: TableModelProps) {
+  // Metric-only field, not present on every TSource union member (same
+  // reason DBTableSelectControlled/SourceSelectControlled below type their
+  // own `name` prop loosely rather than as `Path<TSource>`).
+  const { field: minAutoGranularityField } = useController({
+    control,
+    name: 'minAutoGranularity' as any,
+  });
   const brandName = useBrandDisplayName();
   const { data: team } = api.useTeam();
   const isMetricsSeriesTableEnabled = !!team?.isMetricsSeriesTableEnabled;
@@ -319,6 +342,16 @@ export function MetricTableModelForm({
           helpText={`${brandName} Source for logs associated with metrics. Optional`}
         >
           <SourceSelectControlled control={control} name="logSourceId" />
+        </FormRow>
+        <FormRow
+          label="Minimum Auto Granularity"
+          helpText="Floor for 'Auto Granularity' on charts querying this source. Set this to your metrics' scrape/report interval to avoid sparse-looking charts on short time ranges. Doesn't affect an explicitly chosen (non-Auto) granularity."
+        >
+          <Select
+            data={MIN_AUTO_GRANULARITY_OPTIONS}
+            value={minAutoGranularityField.value ?? ''}
+            onChange={v => minAutoGranularityField.onChange(v ? v : undefined)}
+          />
         </FormRow>
       </Stack>
     </>

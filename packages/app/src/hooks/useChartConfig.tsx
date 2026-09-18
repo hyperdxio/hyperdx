@@ -17,6 +17,7 @@ import {
 } from '@hyperdx/common-utils/dist/core/seriesNameTemplate';
 import {
   convertDateRangeToGranularityString,
+  convertGranularityToSeconds,
   hasPositiveSeriesLimit,
 } from '@hyperdx/common-utils/dist/core/utils';
 import {
@@ -29,7 +30,9 @@ import {
   BuilderChartConfigWithOptDateRange,
   ChartConfigWithDateRange,
   ChartConfigWithOptDateRange,
+  isMetricSource,
   QuerySettings,
+  TSource,
 } from '@hyperdx/common-utils/dist/types';
 import { substitutePromqlChartConfigVariables } from '@hyperdx/common-utils/dist/variables';
 import {
@@ -96,6 +99,16 @@ const shouldUseChunking = (
   return true;
 };
 
+/** Floor for "auto" granularity resolution, from the source's own setting. */
+function getMinGranularitySeconds(
+  source: TSource | undefined,
+): number | undefined {
+  if (!source || !isMetricSource(source) || !source.minAutoGranularity) {
+    return undefined;
+  }
+  return convertGranularityToSeconds(source.minAutoGranularity);
+}
+
 export const getGranularityAlignedTimeWindows = (
   config: ChartConfigWithDateRange & { granularity: string },
   windowDurationsSeconds?: number[],
@@ -109,7 +122,11 @@ export const getGranularityAlignedTimeWindows = (
 
   const granularity =
     config.granularity === 'auto'
-      ? convertDateRangeToGranularityString(config.dateRange)
+      ? convertDateRangeToGranularityString(
+          config.dateRange,
+          undefined,
+          config.minGranularitySeconds,
+        )
       : config.granularity;
 
   const windows = [];
@@ -428,7 +445,10 @@ export function useQueriedChartConfig(
         };
       }
 
-      const optimizedConfig = mvOptimizationData?.optimizedConfig ?? config;
+      const optimizedConfig = {
+        ...(mvOptimizationData?.optimizedConfig ?? config),
+        minGranularitySeconds: getMinGranularitySeconds(source),
+      };
       const query = queryClient
         .getQueryCache()
         .find({ queryKey: context.queryKey, exact: true });
@@ -514,7 +534,10 @@ export function useRenderedSqlChartConfig(
   const query = useQuery({
     queryKey: ['renderedSql', config],
     queryFn: async () => {
-      const optimizedConfig = mvOptimizationData?.optimizedConfig ?? config;
+      const optimizedConfig = {
+        ...(mvOptimizationData?.optimizedConfig ?? config),
+        minGranularitySeconds: getMinGranularitySeconds(source),
+      };
       const query = await renderChartConfig(
         optimizedConfig,
         metadata,

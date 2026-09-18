@@ -1812,6 +1812,11 @@ export type DateRange = {
   // `__hdx_series_limit` CTE so every chunk ranks (and keeps) the same
   // top-N series. Never persisted.
   seriesLimitDateRange?: [Date, Date];
+  // Runtime-only, populated from the queried MetricSource's
+  // `minAutoGranularity` (when set) by whichever caller resolves the source
+  // before rendering. Floors "auto" granularity resolution; see
+  // `convertDateRangeToGranularityString`. Never persisted.
+  minGranularitySeconds?: number;
 };
 
 export type ChartConfigWithDateRange = ChartConfig & DateRange;
@@ -2488,6 +2493,15 @@ export const MetricSourceSchema = BaseSourceSchema.extend({
   logSourceId: z.string().optional(),
   // Unified metrics series table. Available only when `isMetricsSeriesTableEnabled` is set on the team document.
   seriesTable: z.string().optional(),
+  /**
+   * Floor for "Auto Granularity" on charts querying this source. Without
+   * this, a short selected date range can auto-infer a bucket smaller than
+   * the metric's actual scrape/report interval, producing sparse/steppy
+   * series. Unset preserves the previous unfloored behavior. Only
+   * constrains auto-inference - an explicit (non-"auto") granularity
+   * picked on a tile is never overridden.
+   */
+  minAutoGranularity: SQLIntervalSchema.optional(),
 });
 
 // PromQL source form schema
