@@ -32,7 +32,12 @@ import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import { Popover } from '@mantine/core';
 
 import type { NumberFormat } from '@/types';
-import { COLORS, formatNumber, truncateMiddle } from '@/utils';
+import {
+  COLORS,
+  formatDurationMsCompact,
+  formatNumber,
+  truncateMiddle,
+} from '@/utils';
 
 import {
   AnnotationHitLayer,
@@ -836,6 +841,14 @@ export function formatAxisTick(
       notation: 'compact',
       compactDisplay: 'short',
     }).format(value);
+  }
+
+  // formatNumber returns early for 'duration', before the mantissa/width
+  // safety below ever runs, and formatDurationMs has no width budget of its
+  // own - use the compact formatter instead, as DBHeatmapChart's axis does.
+  if (axisNumberFormat.output === 'duration') {
+    const factor = axisNumberFormat.factor ?? 1;
+    return formatDurationMsCompact(value * factor * 1000);
   }
 
   const displayed = axisNumberFormat.output === 'percent' ? value * 100 : value;
