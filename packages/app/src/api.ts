@@ -815,6 +815,18 @@ type PrometheusLabelsResponse = {
   data?: string[];
   error?: string;
 };
+// Native Prometheus /query_exemplars shape: one entry per series, each with its
+// own exemplar list. `labels` carries the trace/span id (label naming varies by
+// exporter, e.g. trace_id vs traceID — normalized downstream).
+export type PrometheusExemplarsResult = {
+  seriesLabels: PrometheusMetric;
+  exemplars: { labels: PrometheusMetric; value: string; timestamp: number }[];
+};
+type PrometheusQueryExemplarsResponse = {
+  status: 'success' | 'error';
+  data?: PrometheusExemplarsResult[];
+  error?: string;
+};
 
 /** Reports the reason a Prometheus-shaped error body carries, not ky's. */
 async function withPrometheusError<T>(request: () => Promise<T>): Promise<T> {
@@ -847,11 +859,17 @@ const uniqueLabels = (
 ): PrometheusLabelsResponse =>
   resp.data ? { ...resp, data: [...new Set(resp.data)] } : resp;
 
+// `signal` is forwarded so a superseded or unmounted caller's request is
+// cancelled rather than left running against the API's 90s Prometheus proxy
+// timeout.
 const prometheusFetch = <T>(
   path: string,
   searchParams: Record<string, string>,
+  signal?: AbortSignal,
 ): Promise<T> =>
-  withPrometheusError(() => server.post(path, { searchParams }).json<T>());
+  withPrometheusError(() =>
+    server.post(path, { searchParams, signal }).json<T>(),
+  );
 
 export const prometheusApi = {
   queryRange: (params: {
@@ -886,6 +904,32 @@ export const prometheusApi = {
       })
       .json<PrometheusLabelsResponse>()
       .then(uniqueLabels),
+
+  // The exemplar query key includes the chart's dateRange, so live-tail charts
+  // supersede this request on every tick; `signal` cancels the superseded one.
+  queryExemplars: (
+    params: {
+      query: string;
+      start: number;
+      end: number;
+      connectionId: string;
+      database?: string;
+      table?: string;
+    },
+    signal?: AbortSignal,
+  ): Promise<PrometheusQueryExemplarsResponse> =>
+    prometheusFetch(
+      'v1/prometheus/query_exemplars',
+      {
+        query: params.query,
+        start: String(params.start),
+        end: String(params.end),
+        connectionId: params.connectionId,
+        ...(params.database ? { database: params.database } : {}),
+        ...(params.table ? { table: params.table } : {}),
+      },
+      signal,
+    ),
 
   labelValues: (params: {
     label: string;

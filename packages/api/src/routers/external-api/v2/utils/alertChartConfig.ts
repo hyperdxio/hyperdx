@@ -109,6 +109,12 @@ export const EVALUATION_INERT_CONFIG_KEYS: ReadonlySet<string> = new Set([
   'alternateRowBackground',
   // Client-side null-bucket rendering; the alert task ignores it.
   'fillNulls',
+  // Exemplar markers are a chart-rendering overlay; the alert task never reads
+  // them. Needed even where the tile dialect carries them: neither the number
+  // schema nor the raw SQL schemas an alert can use derive from
+  // externalDashboardTimeChartConfigSchema.
+  'enableExemplars',
+  'exemplarTraceSourceId',
   // Evaluation-relevant only with a groupBy, which (on variants whose shape
   // lacks seriesLimit, i.e. number) is itself refused when present.
   'seriesLimit',

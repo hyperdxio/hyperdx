@@ -328,6 +328,33 @@ describe('convertAlertChartConfigToExternal', () => {
     }
   });
 
+  it('still emits a number config carrying exemplar settings', () => {
+    // The chart explorer can author an inline alert off a chart with the
+    // exemplar overlay switched on. Markers are drawn client-side and the
+    // alert task never reads either field, so dropping them beats blanking
+    // chartConfig. Asserted on the number variant because its schema has no
+    // spelling for either field however the line/bar dialect evolves.
+    const external = convertAlertChartConfigToExternal(
+      baseInternal({
+        displayType: DisplayType.Number,
+        enableExemplars: true,
+        exemplarTraceSourceId: '65f5e4a3b9e77c001a222222',
+        select: [
+          {
+            aggFn: 'count',
+            aggCondition: '',
+            aggConditionLanguage: 'lucene',
+            valueExpression: '',
+          },
+        ],
+      }),
+    );
+
+    expect(external).toMatchObject({ displayType: DisplayType.Number });
+    expect(external).not.toHaveProperty('enableExemplars');
+    expect(external).not.toHaveProperty('exemplarTraceSourceId');
+  });
+
   it.each([
     [
       'filters',
