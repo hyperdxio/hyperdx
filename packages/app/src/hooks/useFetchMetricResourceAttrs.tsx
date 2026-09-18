@@ -1,5 +1,6 @@
 import {
   chSql,
+  mergeQueryAttribution,
   ResponseJSON,
   tableExpr,
 } from '@hyperdx/common-utils/dist/clickhouse';
@@ -160,7 +161,11 @@ export const useFetchMetricResourceAttrs = ({
       tableSource?.kind === SourceKind.Metric,
   );
 
-  const attribution = useQueryAttribution();
+  // Page context first so its ids are kept, then `metadata` pinned over the
+  // top: these are metric lookups, not the page's own chart queries.
+  const attribution = mergeQueryAttribution(useQueryAttribution(), {
+    surface: 'metadata',
+  });
 
   return useQuery({
     queryKey: ['metric-attributes', metricType, metricName, isSql, tableSource],

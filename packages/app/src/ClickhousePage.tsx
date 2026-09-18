@@ -871,6 +871,9 @@ const ClickhousePageDynamic = dynamic(async () => ClickhousePage, {
 });
 
 // @ts-expect-error next/dynamic component type does not include the getLayout static
-ClickhousePageDynamic.getLayout = withAppNavForSurface('metrics-explorer');
+ClickhousePageDynamic.getLayout = withAppNavForSurface(
+  'dashboard',
+  'clickhouse',
+);
 
 export default ClickhousePageDynamic;

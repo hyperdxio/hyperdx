@@ -40,11 +40,10 @@ export type QuerySurface = (typeof QUERY_SURFACES)[number];
  * whatever they have.
  *
  * These key names end up in the log, so people write queries against them.
- * Renaming one breaks those queries, which is what `v` is for.
+ * Renaming one breaks those queries, which is what `QUERY_ATTRIBUTION_VERSION`
+ * is for.
  */
 export type QueryAttribution = {
-  /** Key-name version. Bump when a key changes meaning. */
-  v?: number;
   surface?: QuerySurface;
   dashboard?: string;
   tile?: string;
@@ -56,7 +55,9 @@ export type QueryAttribution = {
   label?: string;
 };
 
-/** Written as `v` into every log comment. */
+/**
+ * Written as `v` into every log comment. Callers cannot set it per query.
+ */
 export const QUERY_ATTRIBUTION_VERSION = 1;
 
 /**
@@ -154,7 +155,6 @@ export function mergeQueryAttribution(
     if (!layer) continue;
 
     // Field by field: a spread would copy an `undefined` over a real value.
-    if (layer.v !== undefined) merged.v = layer.v;
     if (layer.surface) merged.surface = layer.surface;
     if (layer.dashboard) merged.dashboard = layer.dashboard;
     if (layer.tile) merged.tile = layer.tile;

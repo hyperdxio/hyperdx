@@ -1762,6 +1762,9 @@ const KubernetesDashboardPageDynamic = dynamic(
 );
 
 // @ts-expect-error next/dynamic component type does not include the getLayout static
-KubernetesDashboardPageDynamic.getLayout = withAppNavForSurface('dashboard');
+KubernetesDashboardPageDynamic.getLayout = withAppNavForSurface(
+  'dashboard',
+  'kubernetes',
+);
 
 export default KubernetesDashboardPageDynamic;

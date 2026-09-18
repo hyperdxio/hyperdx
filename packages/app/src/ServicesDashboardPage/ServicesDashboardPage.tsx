@@ -473,7 +473,9 @@ const ServicesDashboardPageDynamic = dynamic(
 );
 
 // @ts-expect-error Next.js layout typing
-ServicesDashboardPageDynamic.getLayout =
-  withAppNavForSurface('service-dashboard');
+ServicesDashboardPageDynamic.getLayout = withAppNavForSurface(
+  'service-dashboard',
+  'services',
+);
 
 export default ServicesDashboardPageDynamic;

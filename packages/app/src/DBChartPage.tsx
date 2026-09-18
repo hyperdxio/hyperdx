@@ -362,6 +362,9 @@ const DBChartExplorerPageDynamic = dynamic(async () => DBChartExplorerPage, {
 });
 
 // @ts-expect-error next/dynamic component type does not include the getLayout static
-DBChartExplorerPageDynamic.getLayout = withAppNavForSurface('metrics-explorer');
+DBChartExplorerPageDynamic.getLayout = withAppNavForSurface(
+  'metrics-explorer',
+  'chart-explorer',
+);
 
 export default DBChartExplorerPageDynamic;

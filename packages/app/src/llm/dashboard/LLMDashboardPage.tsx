@@ -377,6 +377,6 @@ const LLMDashboardPageDynamic = dynamic(async () => LLMDashboardPage, {
 });
 
 // @ts-expect-error Next.js layout typing
-LLMDashboardPageDynamic.getLayout = withAppNavForSurface('dashboard');
+LLMDashboardPageDynamic.getLayout = withAppNavForSurface('dashboard', 'llm');
 
 export default LLMDashboardPageDynamic;

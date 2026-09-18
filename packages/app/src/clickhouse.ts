@@ -107,7 +107,7 @@ export function useTablesDirect(
 ) {
   const clickhouseClient = getClickhouseClient({
     // Page context first so its ids are kept, then `metadata` pinned over the
-    // top: SHOW DATABASES is schema browsing whichever page asked for it.
+    // top: SHOW TABLES is schema browsing whichever page asked for it.
     attribution: mergeQueryAttribution(useQueryAttribution(), {
       surface: 'metadata',
     }),

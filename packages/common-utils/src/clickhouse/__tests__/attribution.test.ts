@@ -196,9 +196,9 @@ describe('buildQueryId', () => {
   it('falls back to unknown without a surface', () => {
     expect(buildQueryId(undefined)).toMatch(/^hdx-unknown-/);
 
-    expect(buildQueryId({ surface: 'nope' as QuerySurface })).toMatch(
-      /^hdx-unknown-/,
-    );
+    expect(
+      buildQueryId({ surface: 'nope' as unknown as QuerySurface }),
+    ).toMatch(/^hdx-unknown-/);
   });
 
   it('is unique per call', () => {
