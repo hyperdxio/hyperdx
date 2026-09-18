@@ -15,6 +15,7 @@ jest.mock('../utils', () => ({
 }));
 
 import {
+  collectTags,
   createEntityStore,
   generateDeterministicId,
   localSavedSearches,
@@ -369,5 +370,30 @@ describe('localSavedSearches', () => {
 
     localSavedSearches.delete(created.id);
     expect(localSavedSearches.getAll()).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// collectTags
+// ---------------------------------------------------------------------------
+
+describe('collectTags', () => {
+  it('returns empty array for an empty collection', () => {
+    expect(collectTags([])).toEqual([]);
+  });
+
+  it('ignores items without tags', () => {
+    expect(collectTags([{}, { tags: [] }, { tags: ['ops'] }])).toEqual(['ops']);
+  });
+
+  it('deduplicates tags across items', () => {
+    const tags = collectTags([
+      { tags: ['production', 'infra'] },
+      { tags: ['production', 'billing'] },
+    ]);
+    expect(tags).toHaveLength(3);
+    expect(tags).toEqual(
+      expect.arrayContaining(['production', 'infra', 'billing']),
+    );
   });
 });

@@ -6,6 +6,7 @@ import {
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/browser';
 import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
+import { promqlStep } from '@hyperdx/common-utils/dist/core/promql';
 import {
   isMetricChartConfig,
   isUsingGranularity,
@@ -31,6 +32,7 @@ import {
   ChartConfigWithDateRange,
   ChartConfigWithOptDateRange,
   isMetricSource,
+  PromqlChartConfig,
   QuerySettings,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
@@ -41,7 +43,7 @@ import {
   UseQueryOptions,
 } from '@tanstack/react-query';
 
-import { prometheusApi } from '@/api';
+import { prometheusApi, PrometheusMatrixResult } from '@/api';
 import { toStartOfInterval } from '@/ChartUtils';
 import { useClickhouseClient } from '@/clickhouse';
 import { IS_MTVIEWS_ENABLED } from '@/config';
@@ -299,6 +301,98 @@ export function appendChunk(
 }
 
 /**
+ * Default legend names for a result set, Grafana-style: only the labels whose
+ * values differ across the series are shown.
+ */
+function buildPromqlSeriesNameInputs(
+  result: PrometheusMatrixResult[],
+): SeriesNameInput[] {
+  const labelValues = new Map<string, Set<string>>();
+  for (const series of result) {
+    for (const [key, value] of Object.entries(series.metric)) {
+      if (key === '__name__') continue;
+      if (!labelValues.has(key)) labelValues.set(key, new Set());
+      labelValues.get(key)!.add(value);
+    }
+  }
+
+  // Find labels that have more than one distinct value across all series
+  const distinguishingKeys = new Set<string>();
+  for (const [k, vs] of labelValues) {
+    if (vs.size > 1) distinguishingKeys.add(k);
+  }
+
+  return result.map(series => {
+    const metricName = series.metric.__name__ ?? '';
+    const labels = Object.entries(series.metric)
+      .filter(([key]) => key !== '__name__' && distinguishingKeys.has(key))
+      .map(([key, value]) => `${key}="${value}"`)
+      .join(', ');
+    return {
+      labels: series.metric,
+      fallback: labels ? `${metricName}{${labels}}` : metricName,
+    };
+  });
+}
+
+/**
+ * Run a PromQL tile's expression and shape the result like a ClickHouse
+ * response, so the chart formatters treat it like every other time series.
+ */
+async function queryPromqlChartConfig(
+  config: PromqlChartConfig,
+  dateRange: [Date, Date],
+): Promise<TQueryFnData> {
+  // Expand dashboard variables in the expression before sending to Prometheus.
+  const { promqlExpression } = substitutePromqlChartConfigVariables(config);
+  const [startDate, endDate] = dateRange;
+
+  const response = await prometheusApi.queryRange({
+    query: promqlExpression,
+    start: startDate.getTime() / 1000,
+    end: endDate.getTime() / 1000,
+    step: promqlStep(config.granularity),
+    connectionId: config.connection,
+    database: config.from?.databaseName,
+    table: config.from?.tableName,
+  });
+
+  if (response.status !== 'success' || !response.data) {
+    throw new Error(response.error ?? 'PromQL query failed');
+  }
+
+  const result = response.data.result;
+  const seriesInputs = buildPromqlSeriesNameInputs(result);
+  const legendTemplate = config.legendTemplate?.trim();
+  const seriesNames = legendTemplate
+    ? renderSeriesNames(legendTemplate, seriesInputs)
+    : seriesInputs.map(input => input.fallback);
+
+  const data: Record<string, string | number>[] = [];
+  for (const [index, series] of result.entries()) {
+    const seriesName = seriesNames[index];
+    for (const [ts, value] of series.values) {
+      data.push({
+        __hdx_time_bucket: new Date(ts * 1000).toISOString(),
+        value: parseFloat(value),
+        series_name: seriesName,
+      });
+    }
+  }
+
+  return {
+    data,
+    meta: [
+      { name: '__hdx_time_bucket', type: 'DateTime64(3)' },
+      { name: 'value', type: 'Float64' },
+      { name: 'series_name', type: 'String' },
+    ],
+    rows: data.length,
+    isComplete: true,
+  };
+}
+
+/**
  * A hook providing data queried based on the provided chart config.
  *
  * If all of the following are true, the query will be chunked into multiple smaller queries:
@@ -352,104 +446,7 @@ export function useQueriedChartConfig(
     queryFn: async context => {
       // PromQL queries go through the Prometheus API route, not ClickHouse proxy
       if (isPromqlChartConfig(config) && config.dateRange) {
-        // Expand dashboard variables in the PromQL expression before sending to Prometheus API.
-        const { promqlExpression } =
-          substitutePromqlChartConfigVariables(config);
-        const [startDate, endDate] = config.dateRange;
-        const startSec = startDate.getTime() / 1000;
-        const endSec = endDate.getTime() / 1000;
-
-        // Convert HyperDX granularity ("5 minute") to Prometheus step ("300s")
-        let stepStr = '60s';
-        if (config.granularity && config.granularity !== 'auto') {
-          const granToSec: Record<string, number> = {
-            '15 second': 15,
-            '30 second': 30,
-            '1 minute': 60,
-            '5 minute': 300,
-            '10 minute': 600,
-            '15 minute': 900,
-            '30 minute': 1800,
-            '1 hour': 3600,
-            '2 hour': 7200,
-            '6 hour': 21600,
-            '12 hour': 43200,
-            '1 day': 86400,
-          };
-          stepStr = `${granToSec[config.granularity] ?? 60}s`;
-        }
-
-        const resp = await prometheusApi.queryRange({
-          query: promqlExpression,
-          start: startSec,
-          end: endSec,
-          step: stepStr,
-          connectionId: config.connection,
-          database: config.from?.databaseName,
-          table: config.from?.tableName,
-        });
-
-        if (resp.status !== 'success' || !resp.data) {
-          throw new Error(resp.error ?? 'PromQL query failed');
-        }
-
-        // Transform Prometheus matrix response into chart-compatible format.
-        // Use Grafana-style legends: only show labels that differ across series.
-        const allSeries = resp.data.result;
-
-        // Find labels that have more than one distinct value across all series
-        const labelValueSets = new Map<string, Set<string>>();
-        for (const s of allSeries) {
-          for (const [k, v] of Object.entries(s.metric)) {
-            if (k === '__name__') continue;
-            if (!labelValueSets.has(k)) labelValueSets.set(k, new Set());
-            labelValueSets.get(k)!.add(v);
-          }
-        }
-        const distinguishingKeys = new Set<string>();
-        for (const [k, vs] of labelValueSets) {
-          if (vs.size > 1) distinguishingKeys.add(k);
-        }
-
-        const seriesInputs: SeriesNameInput[] = allSeries.map(series => {
-          const metricName = series.metric.__name__ ?? '';
-          const labels = Object.entries(series.metric)
-            .filter(([k]) => k !== '__name__' && distinguishingKeys.has(k))
-            .map(([k, v]) => `${k}="${v}"`)
-            .join(', ');
-          return {
-            labels: series.metric,
-            fallback: labels ? `${metricName}{${labels}}` : metricName,
-          };
-        });
-        const legendTemplate = config.legendTemplate?.trim();
-        const seriesNames = legendTemplate
-          ? renderSeriesNames(legendTemplate, seriesInputs)
-          : seriesInputs.map(s => s.fallback);
-
-        const data: Record<string, string | number>[] = [];
-        for (const [i, series] of allSeries.entries()) {
-          const seriesName = seriesNames[i];
-
-          for (const [ts, val] of series.values) {
-            data.push({
-              __hdx_time_bucket: new Date(ts * 1000).toISOString(),
-              value: parseFloat(val),
-              series_name: seriesName,
-            });
-          }
-        }
-
-        return {
-          data,
-          meta: [
-            { name: '__hdx_time_bucket', type: 'DateTime64(3)' },
-            { name: 'value', type: 'Float64' },
-            { name: 'series_name', type: 'String' },
-          ],
-          rows: data.length,
-          isComplete: true,
-        };
+        return queryPromqlChartConfig(config, config.dateRange);
       }
 
       const optimizedConfig = {
