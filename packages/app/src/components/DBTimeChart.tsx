@@ -410,6 +410,16 @@ function DBTimeChartComponent({
     id: sourceId || config.source,
   });
   const minGranularitySeconds = getMinGranularitySeconds(source);
+  // Hoisted so useTimeChartSettings/convertToTimeChartConfig below see a
+  // stable reference (both memoize on their config argument) - an inline
+  // `{ ...config, minGranularitySeconds }` at each call site would be a new
+  // object every render, invalidating those memos (and, downstream, the
+  // formatResponseForTimeChart memo that depends on their dateRange output)
+  // on every render regardless of whether anything actually changed.
+  const configWithFloor = useMemo(
+    () => ({ ...config, minGranularitySeconds }),
+    [config, minGranularitySeconds],
+  );
 
   const originalDateRange = config.dateRange;
   const {
@@ -417,13 +427,13 @@ function DBTimeChartComponent({
     dateRange,
     granularity,
     fillNulls,
-  } = useTimeChartSettings({ ...config, minGranularitySeconds });
+  } = useTimeChartSettings(configWithFloor);
 
   const { data: me, isLoading: isLoadingMe } = api.useMe();
 
   const queriedConfig = useMemo(
-    () => convertToTimeChartConfig({ ...config, minGranularitySeconds }),
-    [config, minGranularitySeconds],
+    () => convertToTimeChartConfig(configWithFloor),
+    [configWithFloor],
   );
 
   // Stable identity for the query's SHAPE, excluding the sliding time window.

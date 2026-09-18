@@ -341,14 +341,23 @@ export function useQueriedChartConfig(
   const { data: source, isLoading: isSourceLoading } = useSource({
     id: config.source,
   });
+  const minGranularitySeconds = getMinGranularitySeconds(source);
 
   const query = useQuery<TQueryFnData, ClickHouseQueryError | Error>({
     // Include enableQueryChunking in the query key to ensure that queries with the
-    // same config but different enableQueryChunking values do not share a query
+    // same config but different enableQueryChunking values do not share a query.
+    // minGranularitySeconds is included for the same reason: it changes the
+    // emitted SQL whenever config.granularity is still 'auto' at this point
+    // (current real callers resolve 'auto' before reaching this hook, so this
+    // is a no-op for them today, but the source's own setting can still
+    // change independently of `config` - e.g. an admin edits it on the
+    // Source - and a stale cache entry should not be served from a key that
+    // never reflected it).
     queryKey: [
       config,
       options?.enableQueryChunking ?? false,
       options?.enableParallelQueries ?? false,
+      minGranularitySeconds,
     ],
     // TODO: Replace this with `streamedQuery` when it is no longer experimental. Use 'replace' refetch mode.
     // https://tanstack.com/query/latest/docs/reference/streamedQuery
@@ -457,7 +466,7 @@ export function useQueriedChartConfig(
 
       const optimizedConfig = {
         ...(mvOptimizationData?.optimizedConfig ?? config),
-        minGranularitySeconds: getMinGranularitySeconds(source),
+        minGranularitySeconds,
       };
       const query = queryClient
         .getQueryCache()
@@ -540,13 +549,15 @@ export function useRenderedSqlChartConfig(
   const { data: source, isLoading: isSourceLoading } = useSource({
     id: config.source,
   });
+  const minGranularitySeconds = getMinGranularitySeconds(source);
 
   const query = useQuery({
-    queryKey: ['renderedSql', config],
+    // See the analogous queryKey comment on useQueriedChartConfig above.
+    queryKey: ['renderedSql', config, minGranularitySeconds],
     queryFn: async () => {
       const optimizedConfig = {
         ...(mvOptimizationData?.optimizedConfig ?? config),
-        minGranularitySeconds: getMinGranularitySeconds(source),
+        minGranularitySeconds,
       };
       const query = await renderChartConfig(
         optimizedConfig,
