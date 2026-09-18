@@ -1026,6 +1026,15 @@ export const tagsSchema = z
   .max(MAX_TAGS)
   .optional();
 
+// The kinds of entity that carry tags.
+export const TagResourceTypeSchema = z.enum([
+  'alert',
+  'dashboard',
+  'savedSearch',
+]);
+
+export type TagResourceType = z.infer<typeof TagResourceTypeSchema>;
+
 export const alertNoteSchema = z.string().min(1).max(4096).nullish();
 
 export const MAX_ALERT_DISPLAY_NAME_LENGTH = 512;

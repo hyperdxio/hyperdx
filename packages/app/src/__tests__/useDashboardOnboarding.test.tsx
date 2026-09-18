@@ -35,6 +35,7 @@ jest.mock('../api', () => ({
   default: { useMe: () => ({ data: meData }) },
   hdxServer: jest.fn(),
   useMarkOnboardingTaskComplete: () => jest.fn(),
+  useInvalidateTags: () => jest.fn(),
   useCompleteOnboardingTask: () => ({ mutate }),
 }));
 

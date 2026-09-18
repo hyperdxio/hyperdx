@@ -341,7 +341,6 @@ export const KubernetesFilters: React.FC<KubernetesFiltersProps> = ({
           sourceId={metricSource.id}
           dateRange={dateRange}
           placeholder="Search your events w/ Lucene ex. column:foo"
-          language="lucene"
           name="searchQuery"
           control={control}
           size="xs"
