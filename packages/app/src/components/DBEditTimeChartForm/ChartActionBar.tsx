@@ -18,6 +18,7 @@ import {
 } from '@tabler/icons-react';
 
 import { ChartEditorFormState } from '@/components/ChartEditor/types';
+import { EDITOR_INPUT_HEIGHTS } from '@/components/editorInputHeights';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { TimePicker } from '@/components/TimePicker';
 import { IS_LOCAL_MODE } from '@/config';
@@ -154,9 +155,11 @@ export function ChartActionBar({
           </Button>
         )}
       </Flex>
-      <Flex gap="sm" mb="sm" align="center" justify="end">
+      <Flex gap="sm" mb="sm" align="flex-start" justify="end">
         {filtersToggle != null && tabQueriesData(activeTab) && (
-          <DashboardFiltersToggle {...filtersToggle} />
+          <Flex h={EDITOR_INPUT_HEIGHTS.sm} align="center">
+            <DashboardFiltersToggle {...filtersToggle} />
+          </Flex>
         )}
         {(activeTab === 'table' ||
           activeTab === 'pie' ||
