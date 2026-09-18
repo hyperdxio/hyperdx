@@ -4,11 +4,11 @@
 // not specific querying/functionality logic
 // please move app-specific functions elsewhere in the app
 // ================================
-
 import {
   chSql,
   ClickhouseClientOptions,
   ColumnMeta,
+  mergeQueryAttribution,
   ResponseJSON,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/browser';
@@ -16,6 +16,7 @@ import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 
 import { IS_LOCAL_MODE } from '@/config';
 import { getLocalConnections } from '@/connection';
+import { useQueryAttribution } from '@/queryAttribution';
 
 import api from './api';
 import { DEFAULT_QUERY_TIMEOUT } from './defaults';
@@ -51,14 +52,18 @@ export const useClickhouseClient = (
   options: ClickhouseClientOptions = {},
 ): ClickhouseClient => {
   const { data: me } = api.useMe();
-  const teamQueryTimeout = me?.team?.queryTimeout;
-  if (teamQueryTimeout !== undefined) {
-    options.queryTimeout = teamQueryTimeout;
-  } else {
-    options.queryTimeout = DEFAULT_QUERY_TIMEOUT;
-  }
+  // The team's timeout wins over anything the caller passed, as it always has.
+  const queryTimeout = me?.team?.queryTimeout ?? DEFAULT_QUERY_TIMEOUT;
 
-  return getClickhouseClient(options);
+  // Set on the client, not at each query: everything reaches ClickHouse
+  // through a client from here or from the factory above.
+  const surfaceAttribution = useQueryAttribution();
+  const attribution = mergeQueryAttribution(
+    surfaceAttribution,
+    options.attribution,
+  );
+
+  return getClickhouseClient({ ...options, queryTimeout, attribution });
 };
 
 export function useDatabasesDirect(

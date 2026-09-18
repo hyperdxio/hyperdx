@@ -1,0 +1,231 @@
+/**
+ * Tags each ClickHouse query with what asked for it, so a row in
+ * `system.query_log` points back to a tile, a search, or an alert.
+ *
+ * Records what was asked for, never who asked. No team, user or session id
+ * goes in here.
+ *
+ * Two places carry the tag. `log_comment` holds the JSON and is what you query
+ * later. `query_id` gets an `hdx-<surface>-<uuid>` prefix, which is readable in
+ * `system.processes` while the query is still running.
+ *
+ * None of this changes what a query returns, so it must never throw.
+ *
+ * One exception: queries that set `shouldSkipApplySettings` have their
+ * settings dropped, so they get a `query_id` but no `log_comment`.
+ */
+
+/**
+ * Which part of the product sent the query.
+ */
+export const QUERY_SURFACES = [
+  'alert',
+  'api',
+  'chart-preview',
+  'dashboard',
+  'mcp',
+  'metadata',
+  'metrics-explorer',
+  'search',
+  'service-dashboard',
+  'session-replay',
+  'unknown',
+] as const;
+
+export type QuerySurface = (typeof QUERY_SURFACES)[number];
+
+/**
+ * What we know about one query. Everything is optional; callers fill in
+ * whatever they have.
+ *
+ * These key names end up in the log, so people write queries against them.
+ * Renaming one breaks those queries, which is what `v` is for.
+ */
+export type QueryAttribution = {
+  /** Key-name version. Bump when a key changes meaning. */
+  v?: number;
+  surface?: QuerySurface;
+  dashboard?: string;
+  tile?: string;
+  search?: string;
+  alert?: string;
+  source?: string;
+  trace?: string;
+  /** Anything more specific than the surface, e.g. an MCP tool name. */
+  label?: string;
+};
+
+/** Written as `v` into every log comment. */
+export const QUERY_ATTRIBUTION_VERSION = 1;
+
+/**
+ * ClickHouse allows far more, but the browser sends settings in the URL, and a
+ * long URL pushes the request onto a path some proxies reject.
+ */
+const MAX_LOG_COMMENT_BYTES = 1024;
+
+/** Longest any single value may be. */
+const MAX_FIELD_LENGTH = 128;
+
+/**
+ * Most useful first. If the payload runs out of room, fields at the end are
+ * dropped whole, so the result is still valid JSON.
+ *
+ * Today's fields cannot fill the budget even at full length, so nothing is
+ * ever dropped. This keeps that true if fields are added later.
+ */
+const ID_FIELDS = [
+  'dashboard',
+  'tile',
+  'search',
+  'alert',
+  'source',
+  'trace',
+  'label',
+] as const satisfies readonly (keyof QueryAttribution)[];
+
+/**
+ * Drop control characters and cap the length.
+ *
+ * Browser callers control these values. They only ever become JSON strings,
+ * never SQL, so the risk is a messy log rather than an exploit.
+ */
+function sanitizeField(value: string | undefined): string | undefined {
+  if (typeof value !== 'string') return undefined;
+
+  // By code point, not a regex: a stray control byte in the pattern would
+  // make this file read as binary to grep.
+  let stripped = '';
+  for (const char of value) {
+    const code = char.codePointAt(0) ?? 0;
+    if (code >= 0x20 && code !== 0x7f) stripped += char;
+  }
+
+  const cleaned = stripped.trim();
+  if (!cleaned) return undefined;
+  return cleaned.slice(0, MAX_FIELD_LENGTH);
+}
+
+function isQuerySurface(value: unknown): value is QuerySurface {
+  return (
+    typeof value === 'string' &&
+    (QUERY_SURFACES as readonly string[]).includes(value)
+  );
+}
+
+/**
+ * Later layers win, but only where they have a value. So a tile can add its own
+ * id without erasing the dashboard id it sits inside.
+ */
+export function mergeQueryAttribution(
+  ...layers: (QueryAttribution | undefined)[]
+): QueryAttribution {
+  const merged: QueryAttribution = {};
+  for (const layer of layers) {
+    if (!layer) continue;
+
+    // Field by field: a spread would copy an `undefined` over a real value.
+    if (layer.v !== undefined) merged.v = layer.v;
+    if (layer.surface) merged.surface = layer.surface;
+    for (const field of ID_FIELDS) {
+      // eslint-disable-next-line security/detect-object-injection
+      const value = layer[field];
+      // eslint-disable-next-line security/detect-object-injection
+      if (value) merged[field] = value;
+    }
+  }
+  return merged;
+}
+
+/** Returns undefined when there is nothing worth recording. */
+export function buildLogComment(
+  attribution: QueryAttribution | undefined,
+): string | undefined {
+  if (!attribution) return undefined;
+
+  const payload: Record<string, string | number> = {
+    v: QUERY_ATTRIBUTION_VERSION,
+  };
+
+  const surface = isQuerySurface(attribution.surface)
+    ? attribution.surface
+    : undefined;
+  if (surface) {
+    payload.surface = surface;
+  }
+
+  let serialized = safeStringify(payload);
+  if (serialized === undefined) return undefined;
+
+  for (const field of ID_FIELDS) {
+    // eslint-disable-next-line security/detect-object-injection
+    const cleaned = sanitizeField(attribution[field]);
+    if (!cleaned) continue;
+
+    // eslint-disable-next-line security/detect-object-injection
+    payload[field] = cleaned;
+    const candidate = safeStringify(payload);
+    if (
+      candidate === undefined ||
+      byteLength(candidate) > MAX_LOG_COMMENT_BYTES
+    ) {
+      // eslint-disable-next-line security/detect-object-injection
+      delete payload[field];
+      continue;
+    }
+    serialized = candidate;
+  }
+
+  // Only the version survived, so there is nothing to say.
+  return Object.keys(payload).length > 1 ? serialized : undefined;
+}
+
+function safeStringify(payload: Record<string, string | number>) {
+  try {
+    return JSON.stringify(payload);
+  } catch {
+    return undefined;
+  }
+}
+
+function byteLength(value: string): number {
+  if (typeof TextEncoder !== 'undefined') {
+    return new TextEncoder().encode(value).length;
+  }
+  return value.length;
+}
+
+/**
+ * Browsers hide `crypto.randomUUID` on plain HTTP, which is how plenty of
+ * self-hosted HyperDX is reached, hence the fallback. These ids only need to
+ * be distinct, not unguessable.
+ */
+function randomId(): string {
+  const cryptoObj =
+    typeof globalThis !== 'undefined' ? globalThis.crypto : undefined;
+  if (cryptoObj?.randomUUID) {
+    try {
+      return cryptoObj.randomUUID();
+    } catch {
+      // fall through
+    }
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, char => {
+    const rand = (Math.random() * 16) | 0;
+    const value = char === 'x' ? rand : (rand & 0x3) | 0x8;
+    return value.toString(16);
+  });
+}
+
+/**
+ * The random part is required: ClickHouse rejects a query whose id matches one
+ * already running.
+ */
+export function buildQueryId(
+  attribution: QueryAttribution | undefined,
+): string {
+  const surface = isQuerySurface(attribution?.surface)
+    ? attribution.surface
+    : 'unknown';
+  return `hdx-${surface}-${randomId()}`;
+}
