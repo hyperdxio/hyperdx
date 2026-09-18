@@ -45,6 +45,7 @@ import {
   SavedChartConfigWithSelectArray,
 } from '@/components/ChartEditor/types';
 import { isFormulaSourceKind } from '@/components/ChartEditor/utils';
+import { EDITOR_INPUT_HEIGHTS } from '@/components/editorInputHeights';
 import {
   CheckBoxControlled,
   TextInputControlled,
@@ -511,15 +512,19 @@ export function ChartSeriesEditor({
         )}
         {(showWhere || showGroupBy || showHaving) && (
           <div
-            className="flex-grow-1 gap-2 align-items-center"
+            className="flex-grow-1 gap-2"
             style={{
               display: 'grid',
               gridTemplateColumns: 'auto 1fr auto 1fr',
+              // Labels stay level with each editor's first line as it grows
+              alignItems: 'start',
             }}
           >
             {showWhere && (
               <>
-                <Text size="sm">Where</Text>
+                <Flex h={EDITOR_INPUT_HEIGHTS.sm} align="center">
+                  <Text size="sm">Where</Text>
+                </Flex>
                 <div
                   style={{
                     gridColumn:
@@ -533,7 +538,6 @@ export function ChartSeriesEditor({
                     control={control}
                     name={`${namePrefix}aggCondition`}
                     onSubmit={onSubmit}
-                    showLabel={false}
                     additionalSuggestions={attributeSuggestions}
                     data-testid="series-where-input"
                     enableVariables
@@ -543,9 +547,11 @@ export function ChartSeriesEditor({
             )}
             {showGroupBy && (
               <>
-                <Text size="sm" style={{ whiteSpace: 'nowrap' }}>
-                  Group By
-                </Text>
+                <Flex h={EDITOR_INPUT_HEIGHTS.sm} align="center">
+                  <Text size="sm" style={{ whiteSpace: 'nowrap' }}>
+                    Group By
+                  </Text>
+                </Flex>
                 <div
                   style={{
                     minWidth: 200,
@@ -567,9 +573,11 @@ export function ChartSeriesEditor({
                 </div>
                 {showHaving && (
                   <>
-                    <Text size="sm" style={{ whiteSpace: 'nowrap' }}>
-                      Having
-                    </Text>
+                    <Flex h={EDITOR_INPUT_HEIGHTS.sm} align="center">
+                      <Text size="sm" style={{ whiteSpace: 'nowrap' }}>
+                        Having
+                      </Text>
+                    </Flex>
                     <div style={{ minWidth: 300, maxWidth: '100%' }}>
                       <SQLInlineEditorControlled
                         tableConnection={tableConnection}
