@@ -434,7 +434,7 @@ function SessionsPage() {
         <PageLayout
           data-testid="sessions-page"
           header={
-            <PageHeader>
+            <PageHeader growing>
               <Group
                 justify="space-between"
                 gap="xs"
