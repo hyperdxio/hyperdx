@@ -11,6 +11,7 @@ jest.mock('../api', () => ({
   default: { useMe: () => ({ data: null }) },
   hdxServer: jest.fn(),
   useMarkOnboardingTaskComplete: () => jest.fn(),
+  useInvalidateTags: () => jest.fn(),
   useCompleteOnboardingTask: () => ({ mutate: jest.fn() }),
 }));
 jest.mock('@mantine/notifications', () => ({
