@@ -7,6 +7,7 @@ import { SourceKind, TMetricSource } from '@hyperdx/common-utils/dist/types';
 import { useQuery } from '@tanstack/react-query';
 
 import { getClickhouseClient } from '@/clickhouse';
+import { useQueryAttribution } from '@/queryAttribution';
 import { getMetricTableName } from '@/utils';
 
 export interface MetricMetadata {
@@ -45,6 +46,8 @@ export const useFetchMetricMetadata = ({
       tableSource?.kind === SourceKind.Metric,
   );
 
+  const attribution = useQueryAttribution();
+
   return useQuery({
     queryKey: ['metric-metadata', databaseName, metricType, metricName],
     queryFn: async ({ signal }) => {
@@ -52,7 +55,7 @@ export const useFetchMetricMetadata = ({
         return null;
       }
 
-      const clickhouseClient = getClickhouseClient();
+      const clickhouseClient = getClickhouseClient({ attribution });
       const sql = chSql`
         SELECT
           MetricUnit,

@@ -9,6 +9,7 @@ import {
   ClickhouseClientOptions,
   ColumnMeta,
   mergeQueryAttribution,
+  type QueryAttribution,
   ResponseJSON,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/browser';
@@ -23,8 +24,14 @@ import { DEFAULT_QUERY_TIMEOUT } from './defaults';
 
 const PROXY_CLICKHOUSE_HOST = '/api/clickhouse-proxy';
 
+/**
+ * `attribution` is required, not optional, on purpose. This cannot read React
+ * context the way `useClickhouseClient` below does, so a caller that forgot it
+ * would silently produce queries with no `log_comment` and an
+ * `hdx-unknown-*` id. Making it required means the compiler asks instead.
+ */
 export const getClickhouseClient = (
-  options: ClickhouseClientOptions = {},
+  options: ClickhouseClientOptions & { attribution: QueryAttribution },
 ): ClickhouseClient => {
   if (IS_LOCAL_MODE) {
     const localConnections = getLocalConnections();
@@ -70,7 +77,13 @@ export function useDatabasesDirect(
   { connectionId }: { connectionId: string },
   options?: Omit<UseQueryOptions<any, Error>, 'queryKey'>,
 ) {
-  const clickhouseClient = getClickhouseClient();
+  const clickhouseClient = getClickhouseClient({
+    // Page context first so its ids are kept, then `metadata` pinned over the
+    // top: SHOW DATABASES is schema browsing whichever page asked for it.
+    attribution: mergeQueryAttribution(useQueryAttribution(), {
+      surface: 'metadata',
+    }),
+  });
   return useQuery<ResponseJSON<ColumnMeta>, Error>({
     queryKey: [`direct_datasources/databases`, connectionId],
     queryFn: async () => {
@@ -92,7 +105,13 @@ export function useTablesDirect(
   { database, connectionId }: { database: string; connectionId: string },
   options?: Omit<UseQueryOptions<any, Error>, 'queryKey'>,
 ) {
-  const clickhouseClient = getClickhouseClient();
+  const clickhouseClient = getClickhouseClient({
+    // Page context first so its ids are kept, then `metadata` pinned over the
+    // top: SHOW DATABASES is schema browsing whichever page asked for it.
+    attribution: mergeQueryAttribution(useQueryAttribution(), {
+      surface: 'metadata',
+    }),
+  });
   return useQuery<ResponseJSON<ColumnMeta>, Error>({
     queryKey: [`direct_datasources/databases/${database}/tables`, connectionId],
     queryFn: async () => {

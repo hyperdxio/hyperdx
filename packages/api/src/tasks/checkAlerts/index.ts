@@ -951,6 +951,11 @@ export const parseAlertData = (
  * queries. Per evaluation rather than per client, because one client is shared
  * by every alert on a connection.
  */
+const sourceId = (source: AlertDetails['source']): string | undefined => {
+  if (typeof source?.id === 'string') return source.id;
+  return isPopulatedRef(source) ? source._id.toString() : undefined;
+};
+
 export const alertQueryAttribution = (
   details: AlertDetails,
 ): QueryAttribution => ({
@@ -960,14 +965,10 @@ export const alertQueryAttribution = (
   alert: details.alert?.id,
   trace: getActiveTraceId(),
   // `id` is a mongoose virtual and the tile path goes through `toObject()`,
-  // which leaves virtuals out, so that source only has `_id`. Try both.
-  source:
-    'source' in details
-      ? (details.source?.id ??
-        (isPopulatedRef(details.source)
-          ? details.source._id.toString()
-          : undefined))
-      : undefined,
+  // which leaves virtuals out, so that source only has `_id`. Try both, and
+  // check the type: a bare ObjectId has an `id` of its own that is a byte
+  // array, which would satisfy `??` and then be discarded.
+  source: 'source' in details ? sourceId(details.source) : undefined,
   ...(details.taskType === AlertTaskType.SAVED_SEARCH
     ? { search: details.savedSearch?.id }
     : {}),

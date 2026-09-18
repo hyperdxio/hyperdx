@@ -73,6 +73,43 @@ describe('buildLogComment', () => {
     });
   });
 
+  /**
+   * From the browser this rides in the URL query string. The proxy decodes it
+   * before re-parsing, so an `&` surviving here would truncate the value and
+   * inject a bogus parameter, failing every query on the page.
+   */
+  it('drops characters that would break the URL it travels in', () => {
+    const comment = buildLogComment({
+      surface: 'search',
+      search: 'a&b?c=d#e%f+g',
+    });
+
+    expect(JSON.parse(comment!).search).toBe('abcdefg');
+  });
+
+  it('keeps the characters real ids and routes are made of', () => {
+    const comment = buildLogComment({
+      surface: 'api',
+      source: '68b2f4c1a9e3d7b5c2a10f51',
+      tile: '0f7c9a2e-4d1b-4a6f-9c3e-2b8d5f1a7c40',
+      label: '/api/v2/charts',
+    });
+
+    const parsed = JSON.parse(comment!);
+    expect(parsed.source).toBe('68b2f4c1a9e3d7b5c2a10f51');
+    expect(parsed.tile).toBe('0f7c9a2e-4d1b-4a6f-9c3e-2b8d5f1a7c40');
+    expect(parsed.label).toBe('/api/v2/charts');
+  });
+
+  it('drops non-ASCII rather than risk splitting it at the length cap', () => {
+    const comment = buildLogComment({
+      surface: 'search',
+      label: `x${String.fromCodePoint(0x1f600)}y`,
+    });
+
+    expect(JSON.parse(comment!).label).toBe('xy');
+  });
+
   it('strips control characters so the payload stays parseable', () => {
     const comment = buildLogComment({
       surface: 'search',
@@ -92,9 +129,10 @@ describe('buildLogComment', () => {
   });
 
   /**
-   * Every field at its longest, with the longest surface name. Fails if a
-   * field is added or a cap is raised without checking the size budget, which
-   * the browser spends on the query string of every request.
+   * Every field at its longest, with the longest surface name. Exact rather
+   * than approximate because the allowlist is ASCII, so the per-field cap
+   * counts bytes too. Fails if a field is added or a cap raised without
+   * checking the budget the browser spends on every request's query string.
    */
   it('cannot exceed the size cap even when every field is at its longest', () => {
     const tooLong = 'x'.repeat(500);
@@ -139,11 +177,13 @@ describe('buildLogComment', () => {
   it('produces valid JSON for values that need escaping', () => {
     const comment = buildLogComment({
       surface: 'search',
-      label: 'quote " brace } backslash \\',
+      label: 'quote " brace } backslash \\ ok',
     });
 
+    // The quote, brace and backslash are not on the allowlist, so they never
+    // reach JSON.stringify in the first place.
     expect(() => JSON.parse(comment!)).not.toThrow();
-    expect(JSON.parse(comment!).label).toBe('quote " brace } backslash \\');
+    expect(JSON.parse(comment!).label).toBe('quote  brace  backslash  ok');
   });
 });
 

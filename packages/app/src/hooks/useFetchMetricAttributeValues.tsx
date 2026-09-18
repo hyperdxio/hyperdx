@@ -7,6 +7,7 @@ import { SourceKind, TMetricSource } from '@hyperdx/common-utils/dist/types';
 import { useQuery } from '@tanstack/react-query';
 
 import { getClickhouseClient } from '@/clickhouse';
+import { useQueryAttribution } from '@/queryAttribution';
 import { getMetricTableName } from '@/utils';
 
 import { AttributeCategory } from './useFetchMetricResourceAttrs';
@@ -54,6 +55,8 @@ export const useFetchMetricAttributeValues = ({
       tableSource?.kind === SourceKind.Metric,
   );
 
+  const attribution = useQueryAttribution();
+
   return useQuery({
     queryKey: [
       'metric-attribute-values',
@@ -69,7 +72,7 @@ export const useFetchMetricAttributeValues = ({
         return [];
       }
 
-      const clickhouseClient = getClickhouseClient();
+      const clickhouseClient = getClickhouseClient({ attribution });
 
       // Build optional search filter
       const searchFilter = searchTerm

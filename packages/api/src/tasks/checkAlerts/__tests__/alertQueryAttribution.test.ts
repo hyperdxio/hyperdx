@@ -59,6 +59,22 @@ describe('alertQueryAttribution', () => {
     ).toBe(_id.toString());
   });
 
+  // A bare ObjectId has an `id` of its own, a byte array, which used to
+  // satisfy the `??` and then get thrown away as a non-string.
+  it('falls back to _id when the source is an unpopulated ref', () => {
+    const _id = new Types.ObjectId();
+    expect(
+      alertQueryAttribution(
+        details({
+          taskType: AlertTaskType.TILE,
+          dashboard: { id: 'dash-1' },
+          tile: { id: 'tile-1' },
+          source: _id,
+        }),
+      ).source,
+    ).toBe(_id.toString());
+  });
+
   it('omits the source when the alert has none', () => {
     expect(
       alertQueryAttribution(
