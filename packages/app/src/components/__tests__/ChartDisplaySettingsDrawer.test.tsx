@@ -17,6 +17,14 @@ jest.mock('@/useFormatTime', () => ({
   FormatTime: jest.fn(() => null),
 }));
 
+// The trace-source picker reads the sources query; the drawer renders outside a
+// QueryClientProvider here.
+jest.mock('@/components/SourceSelect', () => ({
+  SourceSelectControlled: jest.fn(() => (
+    <div data-testid="exemplar-trace-source-select" />
+  )),
+}));
+
 describe('ChartDisplaySettingsDrawer', () => {
   const baseProps = {
     opened: true,
@@ -176,6 +184,89 @@ describe('ChartDisplaySettingsDrawer', () => {
       expect(onChange).toHaveBeenCalledTimes(1);
       expect(onChange.mock.calls[0][0]).toMatchObject({
         fitYAxisToData: true,
+      });
+    });
+  });
+
+  describe('exemplar overlay settings', () => {
+    const lineProps = {
+      ...baseProps,
+      configType: 'builder' as const,
+      displayType: DisplayType.Line,
+    };
+
+    it('hides the toggle on a chart that cannot carry exemplars', () => {
+      renderWithMantine(<ChartDisplaySettingsDrawer {...lineProps} />);
+
+      expect(
+        screen.queryByRole('checkbox', { name: /show exemplars/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('disables the toggle and gives the reason when the chart is ineligible', () => {
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...lineProps}
+          showExemplars
+          exemplarIneligibleReason="Available on a single non-ratio histogram series."
+        />,
+      );
+
+      expect(
+        screen.getByRole('checkbox', { name: /show exemplars/i }),
+      ).toBeDisabled();
+      expect(
+        screen.getByText(/single non-ratio histogram series/i),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByTestId('exemplar-trace-source-select'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('leaves an already-enabled toggle switchable once the chart turns ineligible', () => {
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...lineProps}
+          settings={{ enableExemplars: true } as ChartConfigDisplaySettings}
+          showExemplars
+          exemplarIneligibleReason="Available on a single non-ratio histogram series."
+        />,
+      );
+
+      // Otherwise the setting is one-way: the chart keeps reporting a suppressed
+      // overlay the user has no way to withdraw.
+      const checkbox = screen.getByRole('checkbox', {
+        name: /show exemplars/i,
+      });
+      expect(checkbox).toBeChecked();
+      expect(checkbox).toBeEnabled();
+    });
+
+    it('calls onChange with enableExemplars = true and no trace source override', async () => {
+      const onChange = jest.fn();
+      const user = userEvent.setup();
+
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...lineProps}
+          showExemplars
+          onChange={onChange}
+        />,
+      );
+
+      await user.click(
+        screen.getByRole('checkbox', { name: /show exemplars/i }),
+      );
+      expect(
+        screen.getByTestId('exemplar-trace-source-select'),
+      ).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: /apply/i }));
+
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(onChange.mock.calls[0][0]).toMatchObject({
+        enableExemplars: true,
+        exemplarTraceSourceId: undefined,
       });
     });
   });

@@ -200,6 +200,11 @@ export function convertFormStateToSavedChartConfig(
         'fillNulls',
         'alignDateRangeToGranularity',
         'alternateRowBackground',
+        // Exemplar overlay settings, authored in the display-settings drawer.
+        // PromQL is the one path that rebuilds its config from an allowlist, so
+        // a field missing here is silently dropped on save.
+        'enableExemplars',
+        'exemplarTraceSourceId',
         // 'alert', // TODO: Support alerts on PromQL (HDX-4636)
       ]),
       promqlExpression: form.promqlExpression ?? '',
@@ -284,6 +289,8 @@ export function convertFormStateToChartConfig(
         'fillNulls',
         'alignDateRangeToGranularity',
         'alternateRowBackground',
+        'enableExemplars',
+        'exemplarTraceSourceId',
       ]),
       promqlExpression: form.promqlExpression ?? '',
       connection: source?.connection ?? form.connection ?? '',

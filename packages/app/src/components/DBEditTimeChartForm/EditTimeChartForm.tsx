@@ -68,13 +68,14 @@ import {
 } from '@/components/ChartEditor/utils';
 import type { HeatmapScaleType } from '@/components/DBHeatmapChart';
 import { ErrorBoundary } from '@/components/Error/ErrorBoundary';
+import { getExemplarToggleState } from '@/components/Exemplars';
 import HeatmapSettingsDrawer, {
   HeatmapSettingsValues,
 } from '@/components/HeatmapSettingsDrawer';
 import { InputControlled } from '@/components/InputControlled';
 import SaveToDashboardModal from '@/components/SaveToDashboardModal';
 import { getStoredLanguage } from '@/components/SearchInput/SearchWhereInput';
-import { IS_PROMQL_ENABLED } from '@/config';
+import { IS_EXEMPLARS_ENABLED, IS_PROMQL_ENABLED } from '@/config';
 import HDXMarkdownChart from '@/HDXMarkdownChart';
 import {
   getDurationMsExpression,
@@ -265,6 +266,7 @@ export default function EditTimeChartForm({
   const displayType =
     useWatch({ control, name: 'displayType' }) ?? DisplayType.Line;
   const markdown = useWatch({ control, name: 'markdown' });
+  const promqlExpression = useWatch({ control, name: 'promqlExpression' });
   const granularity = useWatch({ control, name: 'granularity' });
   const configType = useWatch({ control, name: 'configType' });
 
@@ -321,6 +323,8 @@ export default function EditTimeChartForm({
     colorRules,
     backgroundChart,
     legendTemplate,
+    enableExemplars,
+    exemplarTraceSourceId,
   ] = useWatch({
     control,
     name: [
@@ -336,6 +340,8 @@ export default function EditTimeChartForm({
       'colorRules',
       'backgroundChart',
       'legendTemplate',
+      'enableExemplars',
+      'exemplarTraceSourceId',
     ],
   });
 
@@ -353,6 +359,16 @@ export default function EditTimeChartForm({
     [series, tableSource],
   );
 
+  const { showExemplars, exemplarIneligibleReason } = getExemplarToggleState({
+    enabled: IS_EXEMPLARS_ENABLED,
+    configType,
+    sourceKind: tableSource?.kind,
+    promqlExpression,
+    series,
+    seriesReturnType,
+    groupBy,
+  });
+
   const displaySettings: ChartConfigDisplaySettings = useMemo(
     () => ({
       alignDateRangeToGranularity,
@@ -367,6 +383,8 @@ export default function EditTimeChartForm({
       colorRules,
       backgroundChart,
       legendTemplate,
+      enableExemplars,
+      exemplarTraceSourceId,
     }),
     [
       alignDateRangeToGranularity,
@@ -381,6 +399,8 @@ export default function EditTimeChartForm({
       colorRules,
       backgroundChart,
       legendTemplate,
+      enableExemplars,
+      exemplarTraceSourceId,
     ],
   );
 
@@ -794,6 +814,8 @@ export default function EditTimeChartForm({
         colorRules,
         backgroundChart,
         legendTemplate,
+        enableExemplars,
+        exemplarTraceSourceId,
       }: ChartConfigDisplaySettings,
       isDirty: boolean,
     ) => {
@@ -816,6 +838,8 @@ export default function EditTimeChartForm({
       setValue('color', color);
       setValue('colorRules', colorRules);
       setValue('backgroundChart', backgroundChart);
+      setValue('enableExemplars', enableExemplars);
+      setValue('exemplarTraceSourceId', exemplarTraceSourceId);
       // Empty string (not undefined) so the cleared state survives the URL round-trip.
       if (configType === 'promql') {
         setValue('legendTemplate', legendTemplate ?? '');
@@ -1115,6 +1139,8 @@ export default function EditTimeChartForm({
         onChange={handleUpdateDisplaySettings}
         onClose={closeDisplaySettings}
         isPerSeriesNumberFormatAllowed={configType !== 'sql'}
+        showExemplars={showExemplars}
+        exemplarIneligibleReason={exemplarIneligibleReason}
       />
       <HeatmapSettingsDrawer
         opened={heatmapSettingsOpened}
