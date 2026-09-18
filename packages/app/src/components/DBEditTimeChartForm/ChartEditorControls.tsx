@@ -34,6 +34,7 @@ import {
   isFormulaDisplayType,
   isFormulaSourceKind,
 } from '@/components/ChartEditor/utils';
+import { EDITOR_INPUT_HEIGHTS } from '@/components/editorInputHeights';
 import MVOptimizationIndicator from '@/components/MaterializedViews/MVOptimizationIndicator';
 import SearchWhereInput from '@/components/SearchInput/SearchWhereInput';
 import SourceSchemaPreview, {
@@ -325,13 +326,15 @@ export function ChartEditorControls({
             <>
               <Divider mt="md" mb="sm" />
               <div
-                className="gap-2 align-items-center"
+                className="gap-2"
                 style={{
                   display: 'grid',
                   gridTemplateColumns: 'auto minmax(0, 1fr)',
+                  // Labels stay level with each editor's first line as it grows
+                  alignItems: 'start',
                 }}
               >
-                <div>
+                <Flex h={EDITOR_INPUT_HEIGHTS.sm} align="center">
                   <Text
                     me="sm"
                     size="sm"
@@ -341,7 +344,7 @@ export function ChartEditorControls({
                   >
                     Group By
                   </Text>
-                </div>
+                </Flex>
                 <div>
                   <SQLInlineEditorControlled
                     {...groupByConnectionProps}
@@ -355,7 +358,7 @@ export function ChartEditorControls({
                 </div>
                 {displayType === DisplayType.Table && (
                   <>
-                    <div>
+                    <Flex h={EDITOR_INPUT_HEIGHTS.sm} align="center">
                       <Text
                         me="sm"
                         size="sm"
@@ -365,7 +368,7 @@ export function ChartEditorControls({
                       >
                         Having
                       </Text>
-                    </div>
+                    </Flex>
                     <div>
                       <SQLInlineEditorControlled
                         tableConnection={tableConnection}
