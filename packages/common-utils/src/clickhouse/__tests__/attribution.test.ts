@@ -7,6 +7,7 @@ import {
   mergeQueryAttribution,
   QUERY_ATTRIBUTION_VERSION,
   QueryAttribution,
+  QuerySurface,
 } from '@/clickhouse/attribution';
 
 describe('mergeQueryAttribution', () => {
@@ -63,7 +64,7 @@ describe('buildLogComment', () => {
 
   it('drops a surface that is not in the closed set', () => {
     const comment = buildLogComment({
-      surface: 'definitely-not-a-surface' as any,
+      surface: 'definitely-not-a-surface' as QuerySurface,
       search: 'search-1',
     });
 
@@ -195,7 +196,9 @@ describe('buildQueryId', () => {
   it('falls back to unknown without a surface', () => {
     expect(buildQueryId(undefined)).toMatch(/^hdx-unknown-/);
 
-    expect(buildQueryId({ surface: 'nope' as any })).toMatch(/^hdx-unknown-/);
+    expect(buildQueryId({ surface: 'nope' as QuerySurface })).toMatch(
+      /^hdx-unknown-/,
+    );
   });
 
   it('is unique per call', () => {

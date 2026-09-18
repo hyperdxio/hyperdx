@@ -84,8 +84,7 @@ describe('alertQueryAttribution', () => {
   });
 
   it('does not throw on a partially populated alert', () => {
-    expect(() =>
-      alertQueryAttribution({ taskType: AlertTaskType.SAVED_SEARCH } as any),
-    ).not.toThrow();
+    const partial: any = { taskType: AlertTaskType.SAVED_SEARCH };
+    expect(() => alertQueryAttribution(partial)).not.toThrow();
   });
 });

@@ -74,16 +74,23 @@ const MAX_FIELD_LENGTH = 128;
  *
  * Today's fields cannot fill the budget even at full length, so nothing is
  * ever dropped. This keeps that true if fields are added later.
+ *
+ * Pairs rather than a list of key names, so nothing below has to read a field
+ * out of the attribution through a variable key.
  */
-const ID_FIELDS = [
-  'dashboard',
-  'tile',
-  'search',
-  'alert',
-  'source',
-  'trace',
-  'label',
-] as const satisfies readonly (keyof QueryAttribution)[];
+function idFields(
+  attribution: QueryAttribution,
+): readonly (readonly [string, string | undefined])[] {
+  return [
+    ['dashboard', attribution.dashboard],
+    ['tile', attribution.tile],
+    ['search', attribution.search],
+    ['alert', attribution.alert],
+    ['source', attribution.source],
+    ['trace', attribution.trace],
+    ['label', attribution.label],
+  ];
+}
 
 /**
  * Keep an allowlist of characters and cap the length.
@@ -149,12 +156,13 @@ export function mergeQueryAttribution(
     // Field by field: a spread would copy an `undefined` over a real value.
     if (layer.v !== undefined) merged.v = layer.v;
     if (layer.surface) merged.surface = layer.surface;
-    for (const field of ID_FIELDS) {
-      // eslint-disable-next-line security/detect-object-injection
-      const value = layer[field];
-      // eslint-disable-next-line security/detect-object-injection
-      if (value) merged[field] = value;
-    }
+    if (layer.dashboard) merged.dashboard = layer.dashboard;
+    if (layer.tile) merged.tile = layer.tile;
+    if (layer.search) merged.search = layer.search;
+    if (layer.alert) merged.alert = layer.alert;
+    if (layer.source) merged.source = layer.source;
+    if (layer.trace) merged.trace = layer.trace;
+    if (layer.label) merged.label = layer.label;
   }
   return merged;
 }
@@ -165,46 +173,45 @@ export function buildLogComment(
 ): string | undefined {
   if (!attribution) return undefined;
 
-  const payload: Record<string, string | number> = {
-    v: QUERY_ATTRIBUTION_VERSION,
-  };
+  // A Map, not an object literal: insertion order is the drop order, and
+  // nothing here is written through a variable key.
+  const payload = new Map<string, string | number>([
+    ['v', QUERY_ATTRIBUTION_VERSION],
+  ]);
 
   const surface = isQuerySurface(attribution.surface)
     ? attribution.surface
     : undefined;
   if (surface) {
-    payload.surface = surface;
+    payload.set('surface', surface);
   }
 
   let serialized = safeStringify(payload);
   if (serialized === undefined) return undefined;
 
-  for (const field of ID_FIELDS) {
-    // eslint-disable-next-line security/detect-object-injection
-    const cleaned = sanitizeField(attribution[field]);
+  for (const [field, raw] of idFields(attribution)) {
+    const cleaned = sanitizeField(raw);
     if (!cleaned) continue;
 
-    // eslint-disable-next-line security/detect-object-injection
-    payload[field] = cleaned;
+    payload.set(field, cleaned);
     const candidate = safeStringify(payload);
     if (
       candidate === undefined ||
       byteLength(candidate) > MAX_LOG_COMMENT_BYTES
     ) {
-      // eslint-disable-next-line security/detect-object-injection
-      delete payload[field];
+      payload.delete(field);
       continue;
     }
     serialized = candidate;
   }
 
   // Only the version survived, so there is nothing to say.
-  return Object.keys(payload).length > 1 ? serialized : undefined;
+  return payload.size > 1 ? serialized : undefined;
 }
 
-function safeStringify(payload: Record<string, string | number>) {
+function safeStringify(payload: Map<string, string | number>) {
   try {
-    return JSON.stringify(payload);
+    return JSON.stringify(Object.fromEntries(payload));
   } catch {
     return undefined;
   }

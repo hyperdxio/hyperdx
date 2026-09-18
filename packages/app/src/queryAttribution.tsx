@@ -34,12 +34,14 @@ export function QueryAttributionProvider({
   // Comparing the serialized value instead avoids re-rendering every chart
   // below. Serializing beats listing the fields, which we would forget to
   // update when a field is added.
+  //
+  // The memo reads the string back rather than closing over `attribution`, so
+  // its dependencies are the whole truth.
   const attributionKey = JSON.stringify(attribution);
-  const merged = useMemo(
-    () => mergeQueryAttribution(parent, attribution),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [parent, attributionKey],
-  );
+  const merged = useMemo(() => {
+    const parsed: QueryAttribution = JSON.parse(attributionKey);
+    return mergeQueryAttribution(parent, parsed);
+  }, [parent, attributionKey]);
 
   return (
     <QueryAttributionContext value={merged}>{children}</QueryAttributionContext>
