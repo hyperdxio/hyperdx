@@ -1241,7 +1241,9 @@ export class ChartEditorComponent {
   /**
    * Click the "Add Formula" button (metric sources only) to append a formula
    * row, and fill its expression (and optional alias). Targets the last
-   * formula row so multiple formulas can be added in sequence.
+   * formula row so multiple formulas can be added in sequence. Formula rows
+   * reuse the shared series controls, so the alias input carries the series
+   * test id and is last on the page (formulas render after the series).
    */
   async addFormula(expression: string, alias?: string) {
     await this.page.getByTestId('add-formula-button').click();
@@ -1250,7 +1252,7 @@ export class ChartEditorComponent {
       .last();
     await expressionInput.fill(expression);
     if (alias !== undefined) {
-      await this.page.getByTestId('formula-alias-input').last().fill(alias);
+      await this.page.getByTestId('series-alias-input').last().fill(alias);
     }
     await expressionInput.blur();
   }
@@ -1354,13 +1356,18 @@ export class ChartEditorComponent {
    */
   async openSeriesNumberFormat(seriesIndex: number) {
     await this.page
-      .getByRole('button', { name: 'Edit series display format' })
+      .getByRole('button', { name: 'Edit display format' })
       .nth(seriesIndex)
       .click();
-    const drawer = this.page.getByRole('dialog', {
-      name: 'Series Display Settings',
+    await this.seriesDisplaySettingsDrawer().waitFor({
+      state: 'visible',
+      timeout: 5000,
     });
-    await drawer.waitFor({ state: 'visible', timeout: 5000 });
+  }
+
+  /** The per-series display settings drawer (number format, legend template). */
+  seriesDisplaySettingsDrawer(): Locator {
+    return this.page.getByRole('dialog', { name: 'Series Display Settings' });
   }
 
   /**
@@ -1368,10 +1375,9 @@ export class ChartEditorComponent {
    * "Series Display Settings" drawer.
    */
   async setSeriesFormatMode(mode: 'Inherit' | 'Custom') {
-    const drawer = this.page.getByRole('dialog', {
-      name: 'Series Display Settings',
-    });
-    await drawer.getByText(mode, { exact: true }).click();
+    await this.seriesDisplaySettingsDrawer()
+      .getByText(mode, { exact: true })
+      .click();
   }
 
   /**
@@ -1379,11 +1385,13 @@ export class ChartEditorComponent {
    * the drawer to close.
    */
   async applySeriesNumberFormat() {
-    const drawer = this.page.getByRole('dialog', {
-      name: 'Series Display Settings',
+    await this.seriesDisplaySettingsDrawer()
+      .getByRole('button', { name: 'Apply', exact: true })
+      .click();
+    await this.seriesDisplaySettingsDrawer().waitFor({
+      state: 'hidden',
+      timeout: 5000,
     });
-    await drawer.getByRole('button', { name: 'Apply', exact: true }).click();
-    await drawer.waitFor({ state: 'hidden', timeout: 5000 });
   }
 
   /**

@@ -154,7 +154,35 @@ describe('processRowToWhereClause', () => {
     const row = { dynamic_field: 'null' };
     const result = processRowToWhereClause(row, columnMap);
 
-    expect(result).toBe('isNull(`dynamic_field`)');
+    expect(result).toBe('isNull(dynamic_field)');
+  });
+
+  it('should handle Dynamic columns with a null value on a quoted name', () => {
+    const columnMap = new Map([
+      [
+        'x-host-header',
+        {
+          name: 'x-host-header',
+          type: 'Dynamic',
+          valueExpr: '`x-host-header`',
+          jsType: JSDataType.Dynamic,
+        },
+      ],
+      [
+        'lowered',
+        {
+          name: 'lowered',
+          type: 'Dynamic',
+          valueExpr: 'lower(Body)',
+          jsType: JSDataType.Dynamic,
+        },
+      ],
+    ]);
+
+    const row = { 'x-host-header': 'null', lowered: 'null' };
+    const result = processRowToWhereClause(row, columnMap);
+
+    expect(result).toBe('isNull(`x-host-header`) AND isNull(lower(Body))');
   });
 
   it('should handle Dynamic columns with quoted string', () => {
@@ -503,6 +531,54 @@ describe('useRowWhere', () => {
     expect(rowWhereResult.where).toBe("users.id='123' AND status='active'");
     expect(rowWhereResult.aliasWith).toEqual([
       { name: 'id', sql: { sql: 'users.id', params: {} }, isSubquery: false },
+    ]);
+  });
+
+  it('should quote column names that are not bare identifiers', () => {
+    const meta: ColumnMetaType[] = [
+      { name: 'x-host-header', type: 'String' },
+      { name: "ResourceAttributes['service.name']", type: 'String' },
+    ];
+
+    const { result } = renderHook(() => useRowWhere({ meta, aliasMap: {} }));
+
+    const row = {
+      'x-host-header': '136.124.33.174',
+      "ResourceAttributes['service.name']": 'api',
+    };
+    const rowWhereResult = result.current(row);
+
+    expect(rowWhereResult.where).toBe(
+      "`x-host-header`='136.124.33.174' AND ResourceAttributes['service.name']='api'",
+    );
+  });
+
+  it('should not quote a projected literal', () => {
+    const meta: ColumnMetaType[] = [{ name: '1', type: 'Int32' }];
+
+    const { result } = renderHook(() => useRowWhere({ meta, aliasMap: {} }));
+
+    expect(result.current({ '1': 1 }).where).toBe('1=1');
+  });
+
+  it('should prefer the alias expression over quoting the column name', () => {
+    const meta: ColumnMetaType[] = [{ name: 'x-host-header', type: 'String' }];
+
+    const aliasMap = { 'x-host-header': 'client_ip' };
+
+    const { result } = renderHook(() => useRowWhere({ meta, aliasMap }));
+
+    const rowWhereResult = result.current({
+      'x-host-header': '136.124.33.174',
+    });
+
+    expect(rowWhereResult.where).toBe("client_ip='136.124.33.174'");
+    expect(rowWhereResult.aliasWith).toEqual([
+      {
+        name: 'x-host-header',
+        sql: { sql: 'client_ip', params: {} },
+        isSubquery: false,
+      },
     ]);
   });
 
