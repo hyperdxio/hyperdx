@@ -25,10 +25,18 @@ on:
     branches: [main]
   workflow_dispatch:
 concurrency:
-  # Keyed on the event as well as the ref: on main `github.ref` is identical for
-  # every push, so a shared group with cancel-in-progress would let each merge
-  # cancel the previous one and leave that commit unverified. PRs keep
-  # cancel-on-new-push; pushes to main queue instead.
+  # Keyed on the event as well as the ref so that pushes to main and pull
+  # request runs never share a group: `github.ref` alone would let a merge
+  # cancel an in-flight PR run, or vice versa.
+  #
+  # Pushes to main do not cancel in progress, so a merge cannot kill the build
+  # verifying the commit before it. This guarantees the tip of main gets built,
+  # not that every individual commit does: GitHub holds only one pending run per
+  # group, so a third merge arriving during a long build supersedes the queued
+  # one. That is fine for what this job is for — an upstream base-image move
+  # affects every commit equally, and a Dockerfile break in a superseded commit
+  # is still present at the tip. Per-commit attribution comes from the pull
+  # request run, not from here.
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 permissions:
