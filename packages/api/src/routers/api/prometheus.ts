@@ -7,15 +7,13 @@ import z from 'zod';
 import { ClickhouseClient } from '@/clickhouse';
 import { getConnectionById } from '@/controllers/connection';
 import {
-  formatMatrixResponse,
-  formatVectorResponse,
-  joinPrometheusUpstreamUrl,
-  PROMETHEUS_CH_TIMEOUT_MS,
+  connectionSupportsPrometheusHttpApi,
   PROMETHEUS_MAX_EXECUTION_SEC,
   PROMETHEUS_MAX_RESULT_ROWS,
+  queryInstantViaTableFunction,
   queryLabelNames,
   queryLabelValues,
-  queryPrometheusRangeFromClickHouse,
+  queryRangeViaTableFunction,
   TimeSeriesTagsQueryArgs,
 } from '@/controllers/timeseriesEngine';
 import { getNonNullUserWithTeam } from '@/middleware/auth';
@@ -110,6 +108,7 @@ function getParams(req: express.Request): Record<string, string> {
 // --------------------------
 
 const PROMETHEUS_PROXY_TIMEOUT_MS = 90_000;
+const PROMETHEUS_CH_TIMEOUT_MS = 30_000;
 const PROMETHEUS_MAX_RESOLUTION = 11_000;
 // Widest window /query_exemplars will proxy. Prometheus's exemplar store is a
 // small circular buffer, so a wider range mostly costs a bigger streamed body
@@ -134,6 +133,41 @@ export function isClientDisconnect(err: unknown): boolean {
   );
 }
 
+/**
+ * Join a Connection host with an absolute Prometheus API path.
+ *
+ * `new URL('/api/v1/query_range', 'http://host:8481/select/0/prometheus')`
+ * discards `/select/0/prometheus` because an absolute path replaces the base
+ * pathname. VictoriaMetrics cluster (and any Prometheus-compatible server
+ * mounted under a prefix) needs that prefix kept. Host userinfo, query, and
+ * hash are left untouched.
+ *
+ * `path` must be an absolute path (every call site passes a literal starting
+ * with `/`) -- this is not a general-purpose URL joiner.
+ *
+ * @see https://github.com/hyperdxio/hyperdx/issues/3046
+ */
+export function joinPrometheusUpstreamUrl(
+  upstreamHost: string,
+  path: string,
+): URL {
+  const url = new URL(upstreamHost);
+  // `new URL('prometheus:9090')` succeeds with an opaque path (`prometheus:`
+  // scheme). The pathname setter is a no-op there, so without this guard the
+  // helper would return the host unchanged, `fetch` would fail, and the proxy
+  // would 502 / increment query_errors for a user misconfiguration. Same check
+  // as clickhouseProxy.ts.
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new TypeError('Connection host must be http(s)');
+  }
+  // Strip ALL trailing slashes, not just one -- a host saved with a doubled
+  // trailing slash (e.g. `http://prom:9090//`) would otherwise leave a `//`
+  // in the joined path, which most servers treat as a distinct (404) path.
+  const basePath = url.pathname.replace(/\/+$/, '');
+  url.pathname = `${basePath}${path}`;
+  return url;
+}
+
 // Only real Prometheus API params are ever caller-settable in
 // proxyToPrometheus's query merge below. `params` there is built upstream by
 // spreading the *entire* `req.query`/`req.body` with no allowlist (see
@@ -152,7 +186,103 @@ const CALLER_SETTABLE_PARAM_KEYS = new Set([
   'limit',
   'timeout',
   'stats',
+  // ClickHouse's prometheus_api_v1 handler selects the TimeSeries table from
+  // these; a real Prometheus ignores them.
+  'database',
+  'table',
 ]);
+
+// ClickHouse serves the Prometheus HTTP API under this prefix on its main HTTP
+// port when the `prometheus_api_v1` handler is configured (26.6+).
+export const CLICKHOUSE_PROMETHEUS_API_PREFIX = '/prometheus/api/v1';
+
+/**
+ * The ClickHouse connection host with the query limits pinned as ClickHouse
+ * HTTP settings. The prometheus_api_v1 handler honours settings given in the
+ * URL and reports a breach as a Prometheus 400 (pinned by the live int test),
+ * so this is the only place to bound a PromQL evaluation — the request carries
+ * no SQL to attach SETTINGS to. Pinned on the host rather than passed as params
+ * so the merge in proxyToPrometheus (which lets the caller override any
+ * allowlisted key) can't loosen them.
+ */
+export function clickhousePrometheusUpstream(
+  host: string,
+  {
+    maxExecutionSec = PROMETHEUS_MAX_EXECUTION_SEC,
+    maxResultRows = PROMETHEUS_MAX_RESULT_ROWS,
+  } = {},
+): string {
+  const url = new URL(host);
+  url.searchParams.set('max_execution_time', String(maxExecutionSec));
+  url.searchParams.set('max_result_rows', String(maxResultRows));
+  return url.toString();
+}
+
+function newClickhouseClient(connection: {
+  host: string;
+  username: string;
+  password?: string;
+}) {
+  return new ClickhouseClient({
+    host: connection.host,
+    username: connection.username,
+    password: connection.password,
+    requestTimeout: PROMETHEUS_CH_TIMEOUT_MS,
+  });
+}
+
+/**
+ * Whether a ClickHouse connection answers PromQL over HTTP. Two conditions,
+ * cheapest first: the server is new enough (26.6+), and the prometheus_api_v1
+ * handler is actually configured — a self-managed server needs an
+ * `<http_handlers>` rule for that, which a stock install lacks. The handler
+ * answers every request, error or not, with Prometheus JSON (`{status, ...}`);
+ * a server without it answers a plain-text 404. `format_query` is used as the
+ * probe because it is the one endpoint that needs no table.
+ *
+ * Probed on every request, like the version check, so a handler enabled or
+ * removed on the server is reflected immediately.
+ */
+const PROBE_TIMEOUT_MS = 5_000;
+
+async function clickhouseServesPrometheusHttpApi(
+  client: ClickhouseClient,
+  connection: { id: string; host: string; username: string; password?: string },
+): Promise<boolean> {
+  if (
+    !(await connectionSupportsPrometheusHttpApi({
+      client,
+      connectionId: connection.id,
+    }))
+  ) {
+    return false;
+  }
+
+  try {
+    const url = joinPrometheusUpstreamUrl(
+      connection.host,
+      `${CLICKHOUSE_PROMETHEUS_API_PREFIX}/format_query`,
+    );
+    url.searchParams.set('query', 'up');
+    const resp = await fetch(url, {
+      headers: clickhouseAuthHeaders(connection),
+      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+    });
+    return typeof JSON.parse(await resp.text())?.status === 'string';
+  } catch {
+    return false;
+  }
+}
+
+function clickhouseAuthHeaders(connection: {
+  username: string;
+  password?: string;
+}): Record<string, string> {
+  return {
+    'X-ClickHouse-User': connection.username,
+    'X-ClickHouse-Key': connection.password ?? '',
+  };
+}
 
 // Forwards the response straight from the upstream Prometheus to the
 // HyperDX client. Returns the HTTP status it wrote, so callers can record an
@@ -169,6 +299,7 @@ async function proxyToPrometheus(
   path: string,
   params: Record<string, string | string[] | undefined>,
   res: express.Response,
+  headers?: Record<string, string>,
 ): Promise<number> {
   let url: URL;
   try {
@@ -228,6 +359,7 @@ async function proxyToPrometheus(
   let upstreamResp: Response;
   try {
     upstreamResp = await fetch(target, {
+      headers,
       signal: AbortSignal.timeout(PROMETHEUS_PROXY_TIMEOUT_MS),
     });
   } catch (err) {
@@ -379,12 +511,7 @@ const queryRangeHandler: express.RequestHandler = async (req, res) => {
       return;
     }
 
-    // Otherwise, use ClickHouse prometheusQuery()
     backend = 'clickhouse';
-    const start = parseTimestamp(params.start);
-    const end = parseTimestamp(params.end);
-    const step = parseDuration(params.step ?? '60s');
-    const database = params.database ?? 'default';
     const table = params.table;
     if (!table) {
       return res.status(400).json({
@@ -393,7 +520,9 @@ const queryRangeHandler: express.RequestHandler = async (req, res) => {
         error: `table parameter required for querying clickhouse via promql`,
       });
     }
-
+    const start = parseTimestamp(params.start);
+    const end = parseTimestamp(params.end);
+    const step = parseDuration(params.step ?? '60s');
     if (step <= 0 || (end - start) / step > PROMETHEUS_MAX_RESOLUTION) {
       return res.status(400).json({
         status: 'error',
@@ -402,36 +531,37 @@ const queryRangeHandler: express.RequestHandler = async (req, res) => {
       });
     }
 
-    const client = new ClickhouseClient({
-      host: connection.host,
-      username: connection.username,
-      password: connection.password,
-      requestTimeout: PROMETHEUS_CH_TIMEOUT_MS,
-    });
+    const client = newClickhouseClient(connection);
 
-    const startMs = Math.floor(start * 1000);
-    const endMs = Math.floor(end * 1000);
-    const stepSec = Math.max(Math.floor(step), 1);
+    // The Prometheus HTTP API is the only surface ClickHouse holds
+    // forward-compatible while TimeSeries is in preview, so it is preferred
+    // wherever the server has it (26.6+); the table function is the fallback.
+    if (await clickhouseServesPrometheusHttpApi(client, connection)) {
+      const status = await proxyToPrometheus(
+        clickhousePrometheusUpstream(connection.host),
+        `${CLICKHOUSE_PROMETHEUS_API_PREFIX}/query_range`,
+        params,
+        res,
+        clickhouseAuthHeaders(connection),
+      );
+      recordProxyOutcome(status, 'query_range', backend);
+      return;
+    }
 
-    const resp = await queryPrometheusRangeFromClickHouse({
+    // fallback for clickhouse version < 26.6
+    const result = await queryRangeViaTableFunction({
       client,
-      databaseName: database,
+      connectionId,
+      databaseName: params.database ?? 'default',
       tableName: table,
       expr: query,
-      startMs,
-      endMs,
-      stepSec,
+      startMs: Math.floor(start * 1000),
+      endMs: Math.floor(end * 1000),
+      stepSec: Math.max(Math.floor(step), 1),
     });
-
-    const json = await resp.json<any>();
-    const result = formatMatrixResponse(json.data);
-
     return res.json({
       status: 'success',
-      data: {
-        resultType: 'matrix',
-        result,
-      },
+      data: { resultType: 'matrix', result },
     });
   } catch (e) {
     prometheusQueryErrors.add(1, { endpoint: 'query_range', backend });
@@ -506,8 +636,6 @@ const queryHandler: express.RequestHandler = async (req, res) => {
     }
 
     backend = 'clickhouse';
-    const time = params.time ? parseTimestamp(params.time) : undefined;
-    const database = params.database ?? 'default';
     const table = params.table;
     if (!table) {
       return res.status(400).json({
@@ -517,35 +645,33 @@ const queryHandler: express.RequestHandler = async (req, res) => {
       });
     }
 
-    const client = new ClickhouseClient({
-      host: connection.host,
-      username: connection.username,
-      password: connection.password,
-      requestTimeout: PROMETHEUS_CH_TIMEOUT_MS,
+    const client = newClickhouseClient(connection);
+
+    if (await clickhouseServesPrometheusHttpApi(client, connection)) {
+      const status = await proxyToPrometheus(
+        clickhousePrometheusUpstream(connection.host),
+        `${CLICKHOUSE_PROMETHEUS_API_PREFIX}/query`,
+        params,
+        res,
+        clickhouseAuthHeaders(connection),
+      );
+      recordProxyOutcome(status, 'query', backend);
+      return;
+    }
+
+    // fallback for clickhouse version < 26.6
+    const result = await queryInstantViaTableFunction({
+      client,
+      databaseName: params.database ?? 'default',
+      tableName: table,
+      expr: query,
+      evalMs: params.time
+        ? Math.floor(parseTimestamp(params.time) * 1000)
+        : Date.now(),
     });
-
-    const evalMs = time ? Math.floor(time * 1000) : Date.now();
-
-    const resp = await client.query({
-      query: `SELECT tags, timestamp, value FROM prometheusQuery({db:String}, {table:String}, {expr:String}, fromUnixTimestamp64Milli({evalMs:Int64})) SETTINGS allow_experimental_time_series_table = 1`,
-      query_params: { db: database, table, expr: query, evalMs },
-      format: 'JSON',
-      clickhouse_settings: {
-        allow_experimental_time_series_table: 1,
-        max_execution_time: PROMETHEUS_MAX_EXECUTION_SEC,
-        max_result_rows: String(PROMETHEUS_MAX_RESULT_ROWS),
-      },
-    });
-
-    const json = await resp.json<any>();
-    const result = formatVectorResponse(json.data);
-
     return res.json({
       status: 'success',
-      data: {
-        resultType: 'vector',
-        result,
-      },
+      data: { resultType: 'vector', result },
     });
   } catch (e) {
     prometheusQueryErrors.add(1, { endpoint: 'query', backend });
@@ -871,12 +997,7 @@ async function handleLabelLookup(
       });
     }
 
-    const client = new ClickhouseClient({
-      host: connection.host,
-      username: connection.username,
-      password: connection.password,
-      requestTimeout: PROMETHEUS_CH_TIMEOUT_MS,
-    });
+    const client = newClickhouseClient(connection);
 
     const startMs = start != null ? Math.floor(start * 1000) : undefined;
     const endMs = end != null ? Math.ceil(end * 1000) : undefined;

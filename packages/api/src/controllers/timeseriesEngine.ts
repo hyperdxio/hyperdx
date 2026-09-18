@@ -3,6 +3,7 @@ import {
   chSql,
   concatChSql,
 } from '@hyperdx/common-utils/dist/clickhouse';
+import { supportsPrometheusHttpApi } from '@hyperdx/common-utils/dist/core/clickhouseVersion';
 import {
   Metadata,
   MetadataCache,
@@ -13,42 +14,6 @@ import logger from '@/utils/logger';
 
 export const PROMETHEUS_MAX_EXECUTION_SEC = 30;
 export const PROMETHEUS_MAX_RESULT_ROWS = 100000;
-export const PROMETHEUS_CH_TIMEOUT_MS = 30_000;
-
-/**
- * Join a Connection host with an absolute Prometheus API path.
- *
- * `new URL('/api/v1/query_range', 'http://host:8481/select/0/prometheus')`
- * discards `/select/0/prometheus` because an absolute path replaces the base
- * pathname. VictoriaMetrics cluster (and any Prometheus-compatible server
- * mounted under a prefix) needs that prefix kept. Host userinfo, query, and
- * hash are left untouched.
- *
- * `path` must be an absolute path (every call site passes a literal starting
- * with `/`) -- this is not a general-purpose URL joiner.
- *
- * @see https://github.com/hyperdxio/hyperdx/issues/3046
- */
-export function joinPrometheusUpstreamUrl(
-  upstreamHost: string,
-  path: string,
-): URL {
-  const url = new URL(upstreamHost);
-  // `new URL('prometheus:9090')` succeeds with an opaque path (`prometheus:`
-  // scheme). The pathname setter is a no-op there, so without this guard the
-  // helper would return the host unchanged, `fetch` would fail, and the proxy
-  // would 502 / increment query_errors for a user misconfiguration. Same check
-  // as clickhouseProxy.ts.
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-    throw new TypeError('Connection host must be http(s)');
-  }
-  // Strip ALL trailing slashes, not just one -- a host saved with a doubled
-  // trailing slash (e.g. `http://prom:9090//`) would otherwise leave a `//`
-  // in the joined path, which most servers treat as a distinct (404) path.
-  const basePath = url.pathname.replace(/\/+$/, '');
-  url.pathname = `${basePath}${path}`;
-  return url;
-}
 
 export type TimeSeriesTagsQueryArgs = {
   client: ClickhouseClient;
@@ -277,54 +242,23 @@ export async function queryLabelNames({
   limit,
   ...args
 }: TimeSeriesTagsQueryArgs): Promise<string[]> {
-  // `all_tags` is EPHEMERAL by default, so the label names come from `tags`,
-  // which the engine strips `__name__` out of. It is folded back in explicitly.
+  // The engine keeps `__name__` in `metric_name`, not `tags`, so it is folded
+  // back in explicitly.
   const value = chSql`arrayJoin(arrayConcat([${{ String: '__name__' }}], mapKeys(${{ Identifier: 'tags' }})))`;
   const conditions = await getSeriesFilterConditions(args);
 
   return queryDistinctTagsValues({ ...args, value, conditions, limit });
 }
 
-/**
- * Runs the prometheusQueryRange table function for a given ClickHouse connection.
- */
-export async function queryPrometheusRangeFromClickHouse({
-  client,
-  databaseName,
-  tableName,
-  expr,
-  startMs,
-  endMs,
-  stepSec,
-}: {
-  client: ClickhouseClient;
-  databaseName: string;
-  tableName: string;
-  expr: string;
-  startMs: number;
-  endMs: number;
-  stepSec: number;
-}) {
-  return client.query({
-    query: `SELECT tags, time_series FROM prometheusQueryRange({db:String}, {table:String}, {expr:String}, fromUnixTimestamp64Milli({startMs:Int64}), fromUnixTimestamp64Milli({endMs:Int64}), toIntervalSecond({stepSec:UInt32})) SETTINGS allow_experimental_time_series_table = 1`,
-    query_params: {
-      db: databaseName,
-      table: tableName,
-      expr,
-      startMs,
-      endMs,
-      stepSec,
-    },
-    format: 'JSON',
-    clickhouse_settings: {
-      allow_experimental_time_series_table: 1,
-      max_execution_time: PROMETHEUS_MAX_EXECUTION_SEC,
-      max_result_rows: String(PROMETHEUS_MAX_RESULT_ROWS),
-    },
-  });
-}
+// --------------------------
+// PromQL via table functions (ClickHouse < 26.6)
+// --------------------------
+//
+// Servers without the `prometheus_api_v1` HTTP handler can still evaluate
+// PromQL through `prometheusQuery`/`prometheusQueryRange`. ClickHouse only
+// holds the HTTP API forward-compatible while TimeSeries is in preview, so
+// this path is a fallback for old servers, not the primary route.
 
-// Prometheus-compatible response types
 type PrometheusMetric = Record<string, string>;
 export type PrometheusMatrixResult = {
   metric: PrometheusMetric;
@@ -335,48 +269,146 @@ export type PrometheusVectorResult = {
   value: [number, string];
 };
 
-// ClickHouse → Prometheus response formatters
+const toUnixSeconds = (timestamp: string | number) =>
+  typeof timestamp === 'string'
+    ? new Date(timestamp).getTime() / 1000
+    : Number(timestamp);
+
 export function formatMatrixResponse(
-  rows: { tags: [string, string][]; time_series: [string, number][] }[],
+  rows: { tags: [string, string][]; samples: [string, number][] }[],
 ): PrometheusMatrixResult[] {
-  return rows.map(row => {
-    const metric: PrometheusMetric = {};
-    for (const [key, value] of row.tags) {
-      metric[key] = value;
-    }
-    const values: [number, string][] = row.time_series.map(
-      ([timestamp, value]) => {
-        const ts =
-          typeof timestamp === 'string'
-            ? new Date(
-                timestamp.endsWith('Z')
-                  ? timestamp
-                  : timestamp.replace(' ', 'T') + 'Z',
-              ).getTime() / 1000
-            : Number(timestamp);
-        return [ts, String(value)];
-      },
-    );
-    return { metric, values };
+  return rows.map(row => ({
+    metric: Object.fromEntries(row.tags),
+    values: row.samples.map(([ts, value]) => [
+      toUnixSeconds(ts),
+      String(value),
+    ]),
+  }));
+}
+
+/**
+ * The name of the per-series samples column, which the engine renamed from
+ * `time_series` to `samples` in TimeSeries schema version 3. The rename
+ * follows the table's pinned version, not the server's, so a v2 table on a new
+ * server still reads `time_series`. `prometheusQueryRange` returns whichever
+ * the table uses. Looked up fresh each call: a throwaway cache, so a table
+ * dropped and recreated at a new version is seen at once.
+ */
+async function timeSeriesSamplesColumn({
+  client,
+  connectionId,
+  databaseName,
+  tableName,
+}: {
+  client: ClickhouseClient;
+  connectionId: string;
+  databaseName: string;
+  tableName: string;
+}): Promise<'samples' | 'time_series'> {
+  const metadata = new Metadata(client, new MetadataCache());
+  const version = await metadata.getTimeSeriesTableVersion({
+    connectionId,
+    databaseName,
+    tableName,
   });
+  return version >= 3 ? 'samples' : 'time_series';
 }
 
 export function formatVectorResponse(
   rows: { tags: [string, string][]; timestamp: string; value: number }[],
 ): PrometheusVectorResult[] {
-  return rows.map(row => {
-    const metric: PrometheusMetric = {};
-    for (const [key, value] of row.tags) {
-      metric[key] = value;
-    }
-    const ts =
-      typeof row.timestamp === 'string'
-        ? new Date(
-            row.timestamp.endsWith('Z')
-              ? row.timestamp
-              : row.timestamp.replace(' ', 'T') + 'Z',
-          ).getTime() / 1000
-        : Number(row.timestamp);
-    return { metric, value: [ts, String(row.value)] };
+  return rows.map(row => ({
+    metric: Object.fromEntries(row.tags),
+    value: [toUnixSeconds(row.timestamp), String(row.value)],
+  }));
+}
+
+const PROMQL_TABLE_FUNCTION_SETTINGS = {
+  allow_experimental_time_series_table: 1,
+  max_execution_time: PROMETHEUS_MAX_EXECUTION_SEC,
+  max_result_rows: String(PROMETHEUS_MAX_RESULT_ROWS),
+} as const;
+
+export async function queryRangeViaTableFunction({
+  client,
+  connectionId,
+  databaseName,
+  tableName,
+  expr,
+  startMs,
+  endMs,
+  stepSec,
+}: {
+  client: ClickhouseClient;
+  connectionId: string;
+  databaseName: string;
+  tableName: string;
+  expr: string;
+  startMs: number;
+  endMs: number;
+  stepSec: number;
+}): Promise<PrometheusMatrixResult[]> {
+  const samplesColumn = await timeSeriesSamplesColumn({
+    client,
+    connectionId,
+    databaseName,
+    tableName,
   });
+  const resp = await client.query({
+    query: `SELECT tags, ${samplesColumn} AS samples FROM prometheusQueryRange({db:String}, {table:String}, {expr:String}, fromUnixTimestamp64Milli({startMs:Int64}), fromUnixTimestamp64Milli({endMs:Int64}), toIntervalSecond({stepSec:UInt32})) SETTINGS allow_experimental_time_series_table = 1`,
+    query_params: {
+      db: databaseName,
+      table: tableName,
+      expr,
+      startMs,
+      endMs,
+      stepSec,
+    },
+    format: 'JSON',
+    clickhouse_settings: PROMQL_TABLE_FUNCTION_SETTINGS,
+  });
+  const json = await resp.json<any>();
+  return formatMatrixResponse(json.data);
+}
+
+export async function queryInstantViaTableFunction({
+  client,
+  databaseName,
+  tableName,
+  expr,
+  evalMs,
+}: {
+  client: ClickhouseClient;
+  databaseName: string;
+  tableName: string;
+  expr: string;
+  evalMs: number;
+}): Promise<PrometheusVectorResult[]> {
+  const resp = await client.query({
+    query: `SELECT tags, timestamp, value FROM prometheusQuery({db:String}, {table:String}, {expr:String}, fromUnixTimestamp64Milli({evalMs:Int64})) SETTINGS allow_experimental_time_series_table = 1`,
+    query_params: { db: databaseName, table: tableName, expr, evalMs },
+    format: 'JSON',
+    clickhouse_settings: PROMQL_TABLE_FUNCTION_SETTINGS,
+  });
+  const json = await resp.json<any>();
+  return formatVectorResponse(json.data);
+}
+
+/**
+ * Whether the connection's ClickHouse is new enough for the Prometheus HTTP
+ * API. `SELECT version()` runs each call (throwaway cache) so an upgraded
+ * server is picked up without a restart; an unknown version is treated as
+ * old, matching the other version-gated features.
+ */
+export async function connectionSupportsPrometheusHttpApi({
+  client,
+  connectionId,
+}: {
+  client: ClickhouseClient;
+  connectionId: string;
+}): Promise<boolean> {
+  const metadata = new Metadata(client, new MetadataCache());
+  return supportsPrometheusHttpApi(
+    await metadata.getServerVersion({ connectionId }),
+  );
 }
