@@ -1647,7 +1647,7 @@ describe('useChartConfig', () => {
           from: { databaseName: 'default', tableName: 'otel_logs' },
           timestampValueExpression: 'TimestampTime',
           defaultTableSelectExpression: 'Body',
-        } as TSource),
+        } satisfies TSource),
       ).toBeUndefined();
     });
 

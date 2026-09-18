@@ -334,6 +334,12 @@ export function MetricTableModelForm({
             name="minAutoGranularity"
             data={MIN_AUTO_GRANULARITY_OPTIONS}
             allowDeselect={false}
+            // An existing source's minAutoGranularity is undefined when
+            // unset, which matches no entry in `data` (the "No minimum"
+            // entry's value is '', not undefined) - SelectControlled then
+            // renders blank rather than that option's label. The
+            // placeholder covers exactly that unset state.
+            placeholder="No minimum"
           />
         </FormRow>
       </Stack>
