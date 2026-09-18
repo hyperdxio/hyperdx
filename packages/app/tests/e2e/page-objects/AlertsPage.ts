@@ -292,11 +292,20 @@ export class AlertsPage {
     await this.waitForListSettled();
   }
 
+  async openTagFilter() {
+    await this.tagFilter.click();
+  }
+
+  /** An option in the tag filter's dropdown; only resolves once it is open. */
+  getTagOption(tag: string) {
+    return this.page.getByRole('option', { name: tag, exact: true });
+  }
+
   async selectTag(tag: string) {
     // In Mantine v9, data-testid on Select is applied to the <input> element
     // directly (via ...others spread). Fill opens the dropdown and filters options.
     await this.tagFilter.fill(tag);
-    await this.page.getByRole('option', { name: tag, exact: true }).click();
+    await this.getTagOption(tag).click();
     await this.waitForListSettled();
   }
 
