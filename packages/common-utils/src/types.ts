@@ -1673,6 +1673,12 @@ export const _ChartConfigSchema = SharedChartSettingsSchema.extend({
   sampleWeightExpression: z.string().optional(),
   markdown: z.string().optional(),
   filtersLogicalOperator: z.enum(['AND', 'OR']).optional(),
+  // Whether multi-predicate AND is evaluated per span (default) or across all
+  // spans of a trace. Absence resolves to span, preserving existing output.
+  filtersScope: z.enum(['span', 'trace']).optional(),
+  // Trace-id expression carried from the source; only trace scope reads it.
+  // Absence disables the trace-scope rewrite (fail-closed to span).
+  traceIdExpression: z.string().optional(),
   filters: z.array(FilterSchema).optional(),
   connection: z.string(),
   selectGroupBy: z.boolean().optional(),
@@ -2537,6 +2543,14 @@ export function isLogSource(source: TSource): source is TLogSource {
 export function isTraceSource(source: TSource): source is TTraceSource {
   return source.kind === SourceKind.Trace;
 }
+// Whether a source can back trace-scoped AND, and the trace-id expression to
+// intersect on when it can; otherwise why it cannot.
+export type TraceScopeResolution =
+  | { applicable: true; traceIdExpression: string }
+  | {
+      applicable: false;
+      reason: 'non-trace-source' | 'missing-trace-id-expression';
+    };
 export function isSessionSource(source: TSource): source is TSessionSource {
   return source.kind === SourceKind.Session;
 }

@@ -22,6 +22,7 @@ export type SearchConfig = {
   source?: string | null;
   where?: BuilderChartConfig['where'] | null;
   whereLanguage?: BuilderChartConfig['whereLanguage'] | null;
+  searchScope?: 'span' | 'trace' | null;
   filters?: Filter[] | null;
   orderBy?: string | null;
 };

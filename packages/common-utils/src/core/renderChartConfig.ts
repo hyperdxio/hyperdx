@@ -1433,10 +1433,9 @@ async function renderWhere(
     }),
   );
 
-  return concatChSql(
-    ' AND ',
+  const timeFilter: ChSql | [] =
     chartConfig.dateRange != null &&
-      chartConfig.timestampValueExpression != null
+    chartConfig.timestampValueExpression != null
       ? await timeFilterExpr({
           timestampValueExpression: chartConfig.timestampValueExpression,
           dateRange: chartConfig.dateRange,
@@ -1450,7 +1449,40 @@ async function renderWhere(
           with: chartConfig.with,
           includedDataInterval: chartConfig.includedDataInterval,
         })
-      : [],
+      : [];
+
+  const traceIdExpression = chartConfig.traceIdExpression?.trim();
+  if (chartConfig.filtersScope === 'trace' && traceIdExpression) {
+    const aggConditionGroup = wrapChSqlIfNotEmpty(
+      concatChSql(' OR ', selectSearchConditions),
+      '(',
+      ')',
+    );
+    const searchPredicates = [
+      whereSearchCondition,
+      aggConditionGroup,
+      ...filterConditions,
+    ].filter((p): p is ChSql => !Array.isArray(p) && p.sql.length > 0);
+
+    const tid = chSql`${{ UNSAFE_RAW_SQL: traceIdExpression }}`;
+    const from = renderFrom({
+      from: chartConfig.from,
+      isRenderingRawSqlTemplate: chartConfig.isRenderingRawSqlTemplate,
+    });
+    const membershipSubqueries = searchPredicates.map(
+      predicate =>
+        chSql`${tid} IN (SELECT ${tid} FROM ${from} WHERE ${concatChSql(' AND ', predicate, timeFilter)})`,
+    );
+
+    // Trace scope is search-only by contract, so (unlike the span path below)
+    // it deliberately omits the `$__filters` raw-SQL-template expansion: it is
+    // never rendered in a dashboard raw-SQL context.
+    return concatChSql(' AND ', timeFilter, ...membershipSubqueries);
+  }
+
+  return concatChSql(
+    ' AND ',
+    timeFilter,
     whereSearchCondition,
     // Add aggConditions to where clause to utilize index
     wrapChSqlIfNotEmpty(concatChSql(' OR ', selectSearchConditions), '(', ')'),
