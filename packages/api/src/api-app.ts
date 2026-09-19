@@ -42,6 +42,12 @@ const sess: session.SessionOptions & { cookie: session.CookieOptions } = {
   store: new MongoStore({ mongoUrl: config.MONGO_URI }),
 };
 
+if (config.IS_EXPRESS_SESSION_SECRET_GENERATED) {
+  logger.warn(
+    'EXPRESS_SESSION_SECRET is not set: generated a random secret for this process. Users are signed out whenever it restarts, and replicas do not share sessions. Set it to a random string to keep sessions.',
+  );
+}
+
 app.set('trust proxy', 1);
 if (!config.IS_CI && config.FRONTEND_URL) {
   const feUrl = new URL(config.FRONTEND_URL);
