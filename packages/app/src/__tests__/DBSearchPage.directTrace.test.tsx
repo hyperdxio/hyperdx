@@ -1,6 +1,7 @@
 import React from 'react';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { MantineProvider } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
 import { act, render, screen, waitFor } from '@testing-library/react';
 
 import { DBSearchPage } from '@/DBSearchPage';
@@ -19,6 +20,8 @@ let mockSources: any[] = [];
 // When true, useSources() reports the list as still loading, so tests can
 // exercise what the page does before and after the source list arrives.
 let mockSourcesLoading = false;
+// Stands in for the `hdx-last-selected-source-id` localStorage value.
+let mockLastSelectedSourceId = '';
 let latestDirectTracePanelProps: Record<string, any> | null = null;
 
 jest.mock('@/layout', () => ({
@@ -249,8 +252,10 @@ jest.mock('../api', () => ({
 
 jest.mock('@/utils', () => ({
   QUERY_LOCAL_STORAGE: 'query-local-storage',
-  useLocalStorage: (_key: string, initialValue: unknown) => [
-    initialValue,
+  useLocalStorage: (key: string, initialValue: unknown) => [
+    key === 'hdx-last-selected-source-id'
+      ? mockLastSelectedSourceId
+      : initialValue,
     jest.fn(),
   ],
   usePrevious: (value: unknown) => value,
@@ -265,6 +270,7 @@ describe('DBSearchPage direct trace flow', () => {
     jest.clearAllMocks();
     latestDirectTracePanelProps = null;
     mockSourcesLoading = false;
+    mockLastSelectedSourceId = '';
     mockDirectTraceId = 'trace-123';
     mockSearchedConfig = {
       source: undefined,
@@ -524,6 +530,70 @@ describe('DBSearchPage direct trace flow', () => {
     expect(mockSetSearchedConfig).toHaveBeenCalledWith(
       expect.objectContaining({ source: 'trace-source' }),
     );
+  });
+
+  it('falls back silently when the remembered source no longer exists', async () => {
+    // A plain load must never put an id the source list cannot satisfy into the
+    // URL, and must never greet the visitor with an error toast: the remembered
+    // source is the app's own state, not something the user navigated to.
+    const showNotification = jest
+      .spyOn(notifications, 'show')
+      .mockImplementation(() => '');
+    mockDirectTraceId = null;
+    mockSourcesLoading = true;
+    mockLastSelectedSourceId = 'source-from-an-older-demo-config';
+    mockSearchedConfig = {
+      source: null,
+      where: '',
+      select: '',
+      whereLanguage: undefined,
+      filters: [],
+      orderBy: '',
+    };
+    window.history.pushState({}, '', '/search');
+
+    await renderThroughSourceLoad();
+
+    expect(mockSetSearchedConfig).toHaveBeenCalledWith(
+      expect.objectContaining({ source: 'trace-source' }),
+    );
+    for (const [config] of mockSetSearchedConfig.mock.calls) {
+      expect(config).not.toMatchObject({
+        source: 'source-from-an-older-demo-config',
+      });
+    }
+    expect(showNotification).not.toHaveBeenCalled();
+    showNotification.mockRestore();
+  });
+
+  it('warns when the URL names a source that is really gone', async () => {
+    // The counterpart to the silent fallback above: an id the visitor actually
+    // navigated to still has to be reported, rather than swapped out from
+    // under them for a source they did not ask for.
+    const showNotification = jest
+      .spyOn(notifications, 'show')
+      .mockImplementation(() => '');
+    mockDirectTraceId = null;
+    mockSourcesLoading = true;
+    mockSearchedConfig = {
+      source: 'deleted-source',
+      where: '',
+      select: '',
+      whereLanguage: undefined,
+      filters: [],
+      orderBy: '',
+    };
+    window.history.pushState({}, '', '/search?source=deleted-source');
+
+    await renderThroughSourceLoad();
+
+    expect(showNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'source-param-unresolved-deleted-source',
+        title: 'Source not found',
+      }),
+    );
+    showNotification.mockRestore();
   });
 
   it('submits on a saved search route without discarding the config the link carried', async () => {
