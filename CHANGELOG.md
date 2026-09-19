@@ -6,6 +6,46 @@ PR — keep the `hyperdx-release-notes` comment marker intact when editing so yo
 edits survive regeneration. Per-package detail lives in each
 `packages/*/CHANGELOG.md`.
 
+## v2.39.1 — 2026-09-19
+
+<!-- hyperdx-release-notes version=2.39.1 inputs=75536f4ab390 -->
+
+**Chart label clipping and image build fixes**
+
+This release unblocks the all-in-one and local Docker images, which copied node's
+entire `/usr/lib` over the ClickHouse base image and stopped building altogether
+once the two landed on different Alpine point releases. Charts whose Y axis is
+formatted as a duration could also render a label wider than the axis has room
+for, leaving a value like "13.33min" cut off; those ticks now fit the space
+available.
+
+### 🐛 Bug Fixes
+
+- **Duration axis-tick labels keep within the chart's width budget**:
+  duration-formatted Y-axis labels, for example "13.33min", could render wider
+  than the axis area allows and get clipped. They now use the same compact
+  formatter already used by the heatmap chart's axis (#3148, thanks @arj22!).
+
+### 📦 Build / Packaging
+
+- **All-in-one and local images stop clobbering the base image's libraries**:
+  the images copied the whole `/usr/lib` out of the node base image, overwriting
+  ClickHouse's own `libapk.so`, `libssl`, `libcrypto` and `libz` and failing
+  every build with `Error relocating /sbin/apk` once the two Alpine versions
+  drifted apart. Only `libstdc++` and `libgcc` are now installed, from the
+  image's own Alpine release, which also stops ClickHouse's OpenSSL being
+  silently swapped for node's (#3157).
+
+<!-- hyperdx-package-list -->
+
+### 📦 Package changelogs
+
+- `@hyperdx/api` 2.39.0 → 2.39.1 — [changelog](https://github.com/hyperdxio/hyperdx/blob/main/packages/api/CHANGELOG.md#2391)
+- `@hyperdx/app` 2.39.0 → 2.39.1 — [changelog](https://github.com/hyperdxio/hyperdx/blob/main/packages/app/CHANGELOG.md#2391)
+- `@hyperdx/otel-collector` 2.39.0 → 2.39.1 — [changelog](https://github.com/hyperdxio/hyperdx/blob/main/packages/otel-collector/CHANGELOG.md#2391)
+
+<!-- /hyperdx-package-list -->
+
 ## v2.39.0 — 2026-09-18
 
 <!-- hyperdx-release-notes version=2.39.0 inputs=2256f8233039 -->

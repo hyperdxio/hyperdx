@@ -1,5 +1,7 @@
 # @hyperdx/otel-collector
 
+## 2.39.1
+
 ## 2.39.0
 
 ### Minor Changes
