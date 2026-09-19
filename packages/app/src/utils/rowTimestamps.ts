@@ -99,12 +99,17 @@ export function resolveRowTimestampAnchor({
  *
  * Asymmetric because the window is derived from the *origin* row's instant but
  * filtered against the *destination* source's `timestampValueExpression`. The
- * only push that carries an anchor today is "View Trace" (log → the span the log
- * belongs to), and a span always starts at or before the logs that reference it
- * while the traces schema's `Timestamp` is the span's *start* — so a symmetric
- * window silently drops any span that ran longer than the window and logged late
- * in its life. The lookback is therefore longer, and the lead only has to
- * cover clock skew between the log and span emitters.
+ * lookback is sized for "View Trace" (log → the span the log belongs to): a span
+ * always starts at or before the logs that reference it, while the traces
+ * schema's `Timestamp` is the span's *start*, so a symmetric window silently
+ * drops any span that ran longer than the window and logged late in its life.
+ *
+ * The lead carries the opposite direction — the Trace logs tab's span → log push,
+ * where the destination log is at or after the origin span's start. It is enough
+ * because that tab only lists logs inside its own ±1h window
+ * (`oneHourRange` in `DBRowSidePanel`), so every log it can hand over lands
+ * within the lead. Shrink the lead and those hops fall back to `useRowData`'s
+ * unbounded scan.
  */
 export const ROW_LOOKUP_WINDOW_LOOKBACK_HOURS = 4;
 export const ROW_LOOKUP_WINDOW_LEAD_HOURS = 1;
