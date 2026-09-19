@@ -7,6 +7,7 @@ import { EDITOR_INPUT_HEIGHTS } from '@/components/editorInputHeights';
 import type { VariableValidationState } from '@/components/SQLEditor/variableValidation';
 import type { TokenInfo } from '@/hooks/useAutoCompleteOptions';
 import { useQueryHistory } from '@/utils';
+import { isImeCompositionKey } from '@/utils/ime';
 
 import styles from './AutocompleteInput.module.scss';
 
@@ -271,6 +272,7 @@ export default function AutocompleteInput({
               }
               if (
                 e.key === 'Enter' &&
+                !isImeCompositionKey(e) &&
                 e.target instanceof HTMLTextAreaElement
               ) {
                 if (

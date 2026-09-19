@@ -12,6 +12,7 @@ import { useDisclosure } from '@mantine/hooks';
 import { ChartSeriesControls } from '@/components/ChartEditor/ChartSeriesControls';
 import { ChartEditorFormState } from '@/components/ChartEditor/types';
 import SeriesNumberFormatDrawer from '@/components/SeriesNumberFormatDrawer';
+import { isImeCompositionKey } from '@/utils/ime';
 
 type ChartFormulaEditorProps = {
   control: Control<ChartEditorFormState>;
@@ -107,7 +108,7 @@ export function ChartFormulaEditor({
               input: { fontFamily: 'var(--mantine-font-family-monospace)' },
             }}
             onKeyDown={e => {
-              if (e.key === 'Enter') {
+              if (e.key === 'Enter' && !isImeCompositionKey(e)) {
                 onSubmit();
               }
             }}

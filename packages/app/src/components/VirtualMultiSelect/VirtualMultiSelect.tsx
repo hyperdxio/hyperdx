@@ -18,6 +18,8 @@ import {
 } from '@mantine/core';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
+import { isImeCompositionKey } from '@/utils/ime';
+
 type VirtualMultiSelectProps = {
   data: string[];
   disabled?: boolean;
@@ -97,7 +99,7 @@ export function VirtualMultiSelect({
       return;
     }
 
-    if (event.key === 'Enter') {
+    if (event.key === 'Enter' && !isImeCompositionKey(event)) {
       const trimmed = search.trim();
       // When the user has explicitly highlighted a dropdown option with the
       // arrow keys, defer to the combobox's default behavior of selecting it.
