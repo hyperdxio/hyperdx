@@ -50,20 +50,25 @@ describe('formatAxisTick', () => {
     );
   });
 
-  it('forces 0 decimals for any tick >= 10, regardless of configured mantissa', () => {
-    // Regression (caught in review): HyperDX's own bundled dashboard
-    // templates (e.g. go-runtime.json) set mantissa on tiles whose values
-    // are well above the threshold, for tooltip readability, unrelated to
-    // the near-zero problem this formatter fixes - honoring it there
-    // instead of forcing 0 would turn shipped ticks like `200`/`1k` into
-    // `200.00`/`1.23k`, wide enough to overflow the axis's label budget for
-    // an ordinary value, not just an extreme one.
+  it('honors configured mantissa for a tick >= 10 as long as it still fits the axis budget', () => {
+    // Regression: a tick at or past MAGNITUDE_THRESHOLD used to always force
+    // 0 decimals, discarding precision the abbreviated (k/m/b/t) form had
+    // room for - "1.08k" fits the same 5-char budget "1k" does. A round
+    // number still comes out clean ("200", not "200.00") because trailing
+    // zeros are trimmed, not because mantissa is forced to 0.
     expect(formatAxisTick(200, { output: 'number', mantissa: 2 })).toBe('200');
-    expect(formatAxisTick(1234, { output: 'number', mantissa: 10 })).toBe('1k');
+    expect(formatAxisTick(1234, { output: 'number', mantissa: 10 })).toBe(
+      '1.23k',
+    );
     expect(formatAxisTick(10, { output: 'number', mantissa: 2 })).toBe('10');
-    // A negative tick is still `>= 10` in magnitude (Math.abs), so it's
-    // integer too.
+    // A negative tick is still `>= 10` in magnitude (Math.abs).
     expect(formatAxisTick(-15, { output: 'number', mantissa: 2 })).toBe('-15');
+    // Backs off a decimal at a time when the fully-precise form would
+    // overflow the budget (e.g. "12.34k" is 6 chars), rather than jumping
+    // straight to 0 decimals.
+    expect(formatAxisTick(12340, { output: 'number', mantissa: 2 })).toBe(
+      '12.3k',
+    );
   });
 
   it('honors configured mantissa up to 9.99 in magnitude, positive or negative', () => {
@@ -128,7 +133,7 @@ describe('formatAxisTick', () => {
         mantissa: 2,
         unit: 'req/s',
       }),
-    ).toBe('1k');
+    ).toBe('1.23k');
   });
 
   it('uses compact Intl formatting when no axisNumberFormat is set', () => {
