@@ -2249,6 +2249,7 @@ export const TeamClickHouseSettingsSchema = z.object({
   metadataMaxRowsToRead: z.number().optional(),
   parallelizeWhenPossible: z.boolean().optional(),
   filterKeysFetchLimit: z.number().optional(),
+  traceSpanLimit: z.number().optional(),
 });
 
 /** Accepts null to unset (reset to default) a setting. */
@@ -2259,6 +2260,7 @@ export const TeamClickHouseSettingsUpdateSchema = z.object({
   metadataMaxRowsToRead: z.number().nullish(),
   parallelizeWhenPossible: z.boolean().nullish(),
   filterKeysFetchLimit: z.number().nullish(),
+  traceSpanLimit: z.number().nullish(),
 });
 export type TeamClickHouseSettingsUpdate = z.infer<
   typeof TeamClickHouseSettingsUpdateSchema
