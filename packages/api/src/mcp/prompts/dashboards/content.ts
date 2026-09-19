@@ -96,7 +96,7 @@ Apply these before calling clickstack_save_dashboard. Each rule is enforced by t
 
 3. GROUP BY HAS NO ALIAS HOOK. The chart config's groupBy is a single expression string and the renderer uses it verbatim as the column header (tables) and as the raw column name everywhere else (CSV export, tooltips, orderBy references, onClick template references). Grouping a table by SpanAttributes['http.route'] produces a column header that reads literally as arrayElement(SpanAttributes, 'http.route'). When a top-level column carries the same semantic, prefer it: SpanName for operation, ServiceName for service, SeverityText for log severity. When the dimension exists only as a Map attribute and the column header matters, drop to a raw SQL tile (configType: "sql") and write the column with AS alias. Line, stacked_bar, and pie tiles legend by the value not the column name, so the issue is invisible on the chart itself but still bites CSV export and onClick template references.
 
-4. INVENTORY-STYLE TABLES PUT THE GROUP BY ON THE LEFT. Set groupByColumnsOnLeft: true on tables that read like a list of things (one row per service, per endpoint, per tenant).
+4. INVENTORY-STYLE TABLES PUT THE GROUP BY ON THE LEFT. Set groupByColumnsOnLeft: true on tables that read like a list of things (one row per service, per endpoint, per tenant). For wide tables that are hard to scan, set alternateRowBackground: true to zebra-stripe the rows (default false).
 
 5. RED COLUMNS FOR SERVICE / ENDPOINT TABLES. Request rate (count), Error rate (count with where: "StatusCode:STATUS_CODE_ERROR"), Duration (quantile P95 on the Duration column). Three columns, all aliased.
 

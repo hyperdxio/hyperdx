@@ -191,6 +191,7 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
               select: [{ aggFn: 'count' }],
               groupBy: 'SpanName',
               groupByColumnsOnLeft: true,
+              alternateRowBackground: true,
             },
           },
           {
@@ -251,6 +252,7 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
       );
       expect(tableTile).toBeDefined();
       expect(tableTile.config.groupByColumnsOnLeft).toBe(true);
+      expect(tableTile.config.alternateRowBackground).toBe(true);
     });
 
     it('should create a dashboard with a raw SQL tile', async () => {
@@ -424,6 +426,7 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
                 displayType: 'table' as const,
                 connectionId,
                 sqlTemplate: 'SELECT 1 AS value LIMIT 1',
+                alternateRowBackground: true,
               },
             },
           ],
@@ -439,6 +442,13 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
         (t: { name: string }) => t.name === 'SLO',
       );
       expect(savedSqlNumberTile.config).toMatchObject(sqlNumberConfig);
+      // Raw SQL table tile: the zebra-stripe flag must survive the MCP save
+      // path. It was silently stripped before the raw SQL MCP tile schema
+      // declared alternateRowBackground.
+      const savedSqlTableTile = saved.tiles.find(
+        (t: { name: string }) => t.name === 'Other Tile',
+      );
+      expect(savedSqlTableTile.config.alternateRowBackground).toBe(true);
 
       const getResult = await callTool(
         ctx.client!,
@@ -490,6 +500,12 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
         (t: { name: string }) => t.name === 'SLO',
       );
       expect(refetchedSqlNumberTile.config).toMatchObject(sqlNumberConfig);
+      // "Other Tile" was the one updated (new sqlTemplate); its zebra-stripe
+      // flag must survive the MCP update (patch) path too.
+      const refetchedSqlTableTile = refetched.tiles.find(
+        (t: { name: string }) => t.name === 'Other Tile',
+      );
+      expect(refetchedSqlTableTile.config.alternateRowBackground).toBe(true);
     });
 
     it('should create a dashboard with a heatmap tile on a Trace source', async () => {
