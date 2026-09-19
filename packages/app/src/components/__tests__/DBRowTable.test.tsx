@@ -1,3 +1,5 @@
+import { Provider } from 'jotai';
+import type { ReactElement } from 'react';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
@@ -7,6 +9,14 @@ import {
 } from '@/components/DBRowTable';
 import * as useChartConfigModule from '@/hooks/useChartConfig';
 import { RowWhereResult } from '@/hooks/useRowWhere';
+import { RowClickAction, UserPreferences } from '@/useUserPreferences';
+
+// The inline expanded row reads the row query params through nuqs, which needs
+// a mounted Next router.
+jest.mock('nuqs', () => ({
+  ...jest.requireActual('nuqs'),
+  useQueryState: () => [null, jest.fn()],
+}));
 
 const mockRowWhereResult: RowWhereResult = { where: '', aliasWith: [] };
 
@@ -235,6 +245,222 @@ describe('RawLogTable', () => {
       const headers = container.querySelectorAll('th');
       expect(headers).toHaveLength(2);
       expect((headers[0] as HTMLElement).style.width).not.toBe('250px');
+    });
+  });
+
+  describe('Row click behavior', () => {
+    const ROW_ID = 'Timestamp = 1';
+    const VIEWPORT_HEIGHT = 900;
+
+    // The table is virtualized and jsdom performs no layout, so every element
+    // measures 0px and the virtualizer renders no rows at all. Fake just enough
+    // geometry for one screenful. Same approach as the MetricExplorer tests.
+    let rectSpy: jest.SpyInstance;
+    let clientHeightSpy: jest.SpyInstance;
+
+    beforeAll(() => {
+      rectSpy = jest
+        .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+        .mockImplementation(function (this: HTMLElement) {
+          const height =
+            this.dataset.testid === 'search-results-table'
+              ? VIEWPORT_HEIGHT
+              : 23;
+          return {
+            width: 580,
+            height,
+            top: 0,
+            left: 0,
+            right: 580,
+            bottom: height,
+            x: 0,
+            y: 0,
+            toJSON: () => ({}),
+          };
+        });
+      clientHeightSpy = jest
+        .spyOn(HTMLElement.prototype, 'clientHeight', 'get')
+        .mockReturnValue(VIEWPORT_HEIGHT);
+    });
+
+    afterAll(() => {
+      rectSpy.mockRestore();
+      clientHeightSpy.mockRestore();
+    });
+
+    const baseProps = {
+      displayedColumns: ['col1'],
+      rows: [{ col1: 'value1' }],
+      isLoading: false,
+      dedupRows: false,
+      hasNextPage: false,
+      generateRowId: () => ({ where: ROW_ID, aliasWith: [] }),
+      getRowWhere: () => ({ where: ROW_ID, aliasWith: [] }),
+      columnTypeMap: new Map(),
+      renderRowDetails: () => <div>row details</div>,
+    };
+
+    // A fresh jotai store per render keeps the stored preference from leaking
+    // into the next test through the module-level preferences atom.
+    const renderTable = (ui: ReactElement, rowClickAction?: RowClickAction) => {
+      window.localStorage.clear();
+      if (rowClickAction) {
+        window.localStorage.setItem(
+          'hdx-user-preferences',
+          JSON.stringify({
+            colorMode: 'dark',
+            rowClickAction,
+          } satisfies Partial<UserPreferences>),
+        );
+      }
+      return renderWithMantine(<Provider>{ui}</Provider>);
+    };
+
+    it('opens the side panel on row click by default', async () => {
+      const onRowDetailsClick = jest.fn();
+
+      renderTable(
+        <RawLogTable {...baseProps} onRowDetailsClick={onRowDetailsClick} />,
+      );
+
+      await userEvent.click(
+        await screen.findByRole('button', {
+          name: 'View details for log entry',
+        }),
+      );
+
+      expect(onRowDetailsClick).toHaveBeenCalledTimes(1);
+      expect(
+        screen.queryByTestId(`expanded-row-${ROW_ID}`),
+      ).not.toBeInTheDocument();
+      // A row click already opens the panel, so the hover button would be a
+      // second way to do the same thing.
+      expect(
+        screen.queryByRole('button', { name: 'Open in side panel' }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('expands the row inline when its body is clicked', async () => {
+      const onRowDetailsClick = jest.fn();
+
+      renderTable(
+        <RawLogTable {...baseProps} onRowDetailsClick={onRowDetailsClick} />,
+        'expand',
+      );
+
+      await userEvent.click(
+        await screen.findByRole('button', { name: 'Expand log row' }),
+      );
+
+      expect(await screen.findByTestId(`expanded-row-${ROW_ID}`)).toBeVisible();
+      expect(onRowDetailsClick).not.toHaveBeenCalled();
+    });
+
+    it('collapses an expanded row when its body is clicked again', async () => {
+      renderTable(
+        <RawLogTable {...baseProps} onRowDetailsClick={() => {}} />,
+        'expand',
+      );
+
+      await userEvent.click(
+        await screen.findByRole('button', { name: 'Expand log row' }),
+      );
+      await userEvent.click(
+        await screen.findByRole('button', { name: 'Collapse log row' }),
+      );
+
+      expect(
+        screen.queryByTestId(`expanded-row-${ROW_ID}`),
+      ).not.toBeInTheDocument();
+    });
+
+    it('opens the side panel from the row hover button', async () => {
+      const onRowDetailsClick = jest.fn();
+
+      renderTable(
+        <RawLogTable {...baseProps} onRowDetailsClick={onRowDetailsClick} />,
+        'expand',
+      );
+
+      await userEvent.click(
+        await screen.findByRole('button', { name: 'Open in side panel' }),
+      );
+
+      expect(onRowDetailsClick).toHaveBeenCalledTimes(1);
+      expect(
+        screen.queryByTestId(`expanded-row-${ROW_ID}`),
+      ).not.toBeInTheDocument();
+    });
+
+    // The expanded row is rendered by the expand-button column, so tables that
+    // hide it have nowhere to put inline details.
+    it('opens the side panel on row click when the expand button is hidden', async () => {
+      const onRowDetailsClick = jest.fn();
+
+      renderTable(
+        <RawLogTable
+          {...baseProps}
+          showExpandButton={false}
+          onRowDetailsClick={onRowDetailsClick}
+        />,
+        'expand',
+      );
+
+      await userEvent.click(
+        await screen.findByRole('button', {
+          name: 'View details for log entry',
+        }),
+      );
+
+      expect(onRowDetailsClick).toHaveBeenCalledTimes(1);
+    });
+
+    // The ClickHouse dashboard's slow-query list renders inline details with no
+    // side panel behind them.
+    it('expands inline regardless of the preference when there is no side panel', async () => {
+      renderTable(<RawLogTable {...baseProps} />, 'sidePanel');
+
+      const rowBody = await screen.findByRole('button', {
+        name: 'Expand log row',
+      });
+      expect(
+        screen.queryByRole('button', { name: 'Open in side panel' }),
+      ).not.toBeInTheDocument();
+
+      await userEvent.click(rowBody);
+
+      expect(await screen.findByTestId(`expanded-row-${ROW_ID}`)).toBeVisible();
+      // The expanded row's maximize button would only write URL params nothing
+      // reads, so it stays hidden here too.
+      expect(
+        screen.queryByRole('button', { name: 'Open in side panel' }),
+      ).not.toBeInTheDocument();
+    });
+
+    // With the panel open it stays the active surface, so a row click moves it
+    // rather than expanding rows behind it.
+    it('moves the open side panel on row click instead of expanding', async () => {
+      const onRowDetailsClick = jest.fn();
+
+      renderTable(
+        <RawLogTable
+          {...baseProps}
+          highlightedLineId="some-other-row"
+          onRowDetailsClick={onRowDetailsClick}
+        />,
+        'expand',
+      );
+
+      await userEvent.click(
+        await screen.findByRole('button', {
+          name: 'View details for log entry',
+        }),
+      );
+
+      expect(onRowDetailsClick).toHaveBeenCalledTimes(1);
+      expect(
+        screen.queryByTestId(`expanded-row-${ROW_ID}`),
+      ).not.toBeInTheDocument();
     });
   });
 

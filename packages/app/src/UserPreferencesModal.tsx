@@ -16,12 +16,21 @@ import { IconFlask } from '@tabler/icons-react';
 import { OPTIONS_FONTS } from './config/fonts';
 import { useAppTheme } from './theme/ThemeProvider';
 import { isValidThemeName, themes } from './theme';
-import { UserPreferences, useUserPreferences } from './useUserPreferences';
+import {
+  DEFAULT_ROW_CLICK_ACTION,
+  UserPreferences,
+  useUserPreferences,
+} from './useUserPreferences';
 
 const OPTIONS_COLOR_MODE = [
   { label: 'System', value: 'system' },
   { label: 'Light', value: 'light' },
   { label: 'Dark', value: 'dark' },
+];
+
+const OPTIONS_ROW_CLICK_ACTION = [
+  { label: 'Open side panel', value: 'sidePanel' },
+  { label: 'Expand inline', value: 'expand' },
 ];
 
 // Brand theme options (generated from theme registry)
@@ -105,6 +114,25 @@ export const UserPreferencesModal = ({
                 isUTC: e.currentTarget.checked,
               })
             }
+          />
+        </SettingContainer>
+
+        <Divider label="Search results" labelPosition="left" mt="sm" />
+        <SettingContainer
+          label="Row click"
+          description="What clicking a result row does. The chevron always expands inline."
+        >
+          <Select
+            data-testid="row-click-action-select"
+            value={userPreferences.rowClickAction ?? DEFAULT_ROW_CLICK_ACTION}
+            onChange={value =>
+              value &&
+              setUserPreference({
+                rowClickAction: value as UserPreferences['rowClickAction'],
+              })
+            }
+            data={OPTIONS_ROW_CLICK_ACTION}
+            allowDeselect={false}
           />
         </SettingContainer>
 
