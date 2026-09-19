@@ -542,7 +542,7 @@ export function axisTickFormatter(
 
     const displayed = numberFormat.output === 'percent' ? value * 100 : value;
 
-    if (displayed === 0 || Math.abs(displayed) < MAGNITUDE_THRESHOLD) {
+    if (Math.abs(displayed) < MAGNITUDE_THRESHOLD) {
       return formatNumber(value, {
         ...numberFormat,
         mantissa:
