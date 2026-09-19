@@ -24,12 +24,16 @@ rules:
   # example, etc.), which is invalid in OAS 3.0 but a known tooling limitation.
   no-$ref-siblings: off
 
-  # Require descriptions on schema properties. Uses resolved: false so that
-  # properties with $ref + description siblings are evaluated before $ref
+  # Require descriptions on path/query parameters
+  oas3-parameter-description: error
+
+  # Require descriptions on every schema property, at any depth, in both
+  # component schemas and schemas inlined under paths. Uses resolved: false so
+  # that properties with $ref + description siblings are evaluated before $ref
   # resolution drops the sibling description.
-  component-schema-property-description:
+  schema-property-description:
     description: Schema properties must have a description.
-    given: $.components.schemas[*].properties[*]
+    given: $..properties[*]
     severity: error
     resolved: false
     then:

@@ -216,6 +216,7 @@ router.get('/invitations', async (req, res, next) => {
  *     parameters:
  *       - name: id
  *         in: path
+ *         description: Team invitation ID
  *         required: true
  *         schema:
  *           type: string
@@ -262,6 +263,7 @@ router.delete(
  *     parameters:
  *       - name: id
  *         in: path
+ *         description: Team member ID
  *         required: true
  *         schema:
  *           type: string

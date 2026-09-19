@@ -5956,7 +5956,8 @@
                   "type": "object",
                   "properties": {
                     "error": {
-                      "type": "string"
+                      "type": "string",
+                      "description": "Human-readable error message."
                     }
                   }
                 },
@@ -5983,7 +5984,8 @@
                   "type": "object",
                   "properties": {
                     "error": {
-                      "type": "string"
+                      "type": "string",
+                      "description": "Human-readable error message."
                     }
                   }
                 },
@@ -6001,7 +6003,8 @@
                   "type": "object",
                   "properties": {
                     "error": {
-                      "type": "string"
+                      "type": "string",
+                      "description": "Human-readable error message."
                     }
                   }
                 },
@@ -6019,7 +6022,8 @@
                   "type": "object",
                   "properties": {
                     "error": {
-                      "type": "string"
+                      "type": "string",
+                      "description": "Human-readable error message."
                     }
                   }
                 },
@@ -7599,7 +7603,8 @@
                   "type": "object",
                   "properties": {
                     "message": {
-                      "type": "string"
+                      "type": "string",
+                      "description": "Human-readable error message."
                     }
                   }
                 }
@@ -7617,7 +7622,8 @@
                   "type": "object",
                   "properties": {
                     "message": {
-                      "type": "string"
+                      "type": "string",
+                      "description": "Human-readable error message."
                     }
                   }
                 }
@@ -7632,7 +7638,8 @@
                   "type": "object",
                   "properties": {
                     "message": {
-                      "type": "string"
+                      "type": "string",
+                      "description": "Human-readable error message."
                     }
                   }
                 }
@@ -8061,6 +8068,7 @@
           {
             "name": "id",
             "in": "path",
+            "description": "Team invitation ID",
             "required": true,
             "schema": {
               "type": "string"
@@ -8089,6 +8097,7 @@
           {
             "name": "id",
             "in": "path",
+            "description": "Team member ID",
             "required": true,
             "schema": {
               "type": "string"

@@ -324,6 +324,7 @@ const searchRequestSchema = z.object({
  *               properties:
  *                 message:
  *                   type: string
+ *                   description: Human-readable error message.
  *       '401':
  *         description: Missing or invalid API key
  *       '404':
@@ -335,6 +336,7 @@ const searchRequestSchema = z.object({
  *               properties:
  *                 message:
  *                   type: string
+ *                   description: Human-readable error message.
  *       '500':
  *         description: Server error
  *         content:
@@ -344,6 +346,7 @@ const searchRequestSchema = z.object({
  *               properties:
  *                 message:
  *                   type: string
+ *                   description: Human-readable error message.
  */
 
 function codeToStatus(code: SearchErrorCode): number {
