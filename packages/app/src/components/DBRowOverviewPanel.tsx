@@ -6,6 +6,7 @@ import { Accordion, Box, Flex, Text } from '@mantine/core';
 
 import { WithClause } from '@/hooks/useRowWhere';
 import { getEventBody } from '@/source';
+import { mergePath } from '@/utils';
 import { getHighlightedAttributesFromData } from '@/utils/highlightedAttributes';
 import { resolveRowTimestampAnchor } from '@/utils/rowTimestamps';
 
@@ -47,8 +48,17 @@ export function RowOverviewPanel({
 }) {
   const contentPx = flush ? 0 : 'md';
   const { data } = useRowData({ source, rowId, aliasWith, dateRange });
-  const { onPropertyAddClick, generateSearchUrl, onOpenLinkedTrace } =
-    use(RowSidePanelContext);
+  const {
+    onPropertyAddClick,
+    generateSearchUrl,
+    onOpenLinkedTrace,
+    source: contextSource,
+  } = use(RowSidePanelContext);
+
+  // Whether this row's source differs from the one the surrounding search was
+  // built for (e.g. a log event opened from a trace search).
+  const isCrossSourceEvent =
+    contextSource != null && contextSource.id !== source.id;
 
   const highlightedAttributeValues = useMemo(() => {
     const attributeExpressions =
@@ -403,36 +413,52 @@ export function RowOverviewPanel({
             </Accordion.Control>
             <Accordion.Panel>
               <Flex wrap="wrap" gap="2px" mx={contentPx} mb="lg">
-                {Object.entries(resourceAttributes).map(([key, value]) => (
-                  <EventTag
-                    {...(onPropertyAddClick
-                      ? {
-                          onPropertyAddClick,
-                          sqlExpression:
-                            'resourceAttributesExpression' in source &&
-                            source.resourceAttributesExpression &&
-                            jsonColumns?.includes(
-                              source.resourceAttributesExpression,
-                            )
-                              ? // If resource attributes is a JSON column, we need to cast the key to a string so we can run where X in Y queries
-                                `toString(${source.resourceAttributesExpression}.${key})`
-                              : 'resourceAttributesExpression' in source
-                                ? `${source.resourceAttributesExpression}['${key}']`
-                                : '',
-                        }
-                      : {
-                          onPropertyAddClick: undefined,
-                          sqlExpression: undefined,
-                        })}
-                    generateSearchUrl={
-                      generateSearchUrl ? _generateSearchUrl : undefined
-                    }
-                    displayedKey={key}
-                    name={`${'resourceAttributesExpression' in source ? source.resourceAttributesExpression : ''}.${key}`}
-                    value={value as string}
-                    key={key}
-                  />
-                ))}
+                {Object.entries(resourceAttributes).map(([key, value]) => {
+                  const resourceAttributesExpression =
+                    'resourceAttributesExpression' in source
+                      ? source.resourceAttributesExpression
+                      : undefined;
+                  const sqlExpression = !resourceAttributesExpression
+                    ? ''
+                    : jsonColumns?.includes(resourceAttributesExpression)
+                      ? // If resource attributes is a JSON column, we need to cast the key to a string so we can run where X in Y queries
+                        `toString(${mergePath([resourceAttributesExpression, key], jsonColumns, mapColumns)})`
+                      : // Not a JSON column: assume Map access. Force mergePath's map
+                        // branch so the key is escaped and a numeric-looking key stays
+                        // a map subscript instead of an array index.
+                        mergePath(
+                          [resourceAttributesExpression, key],
+                          [],
+                          [resourceAttributesExpression],
+                        );
+                  return (
+                    <EventTag
+                      {...(onPropertyAddClick
+                        ? {
+                            onPropertyAddClick,
+                            sqlExpression,
+                          }
+                        : {
+                            onPropertyAddClick: undefined,
+                            sqlExpression: undefined,
+                          })}
+                      generateSearchUrl={
+                        generateSearchUrl ? _generateSearchUrl : undefined
+                      }
+                      displayedKey={key}
+                      // Cross-source conditions are composed into raw SQL
+                      // against the event's table, so emit the SQL form —
+                      // lucene text can't be embedded in SQL.
+                      {...(isCrossSourceEvent && sqlExpression
+                        ? { name: sqlExpression, nameLanguage: 'sql' as const }
+                        : {
+                            name: `${resourceAttributesExpression ?? ''}.${key}`,
+                          })}
+                      value={value as string}
+                      key={key}
+                    />
+                  );
+                })}
               </Flex>
             </Accordion.Panel>
           </Accordion.Item>
