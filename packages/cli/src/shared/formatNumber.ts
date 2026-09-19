@@ -527,9 +527,8 @@ export function axisTickFormatter(
     return undefined;
   }
   return (value: number) => {
-    // formatNumber returns early for 'duration', before the mantissa/width
-    // safety below ever runs - use the compact formatter instead, matching
-    // packages/app/src/HDXMultiSeriesTimeChart.tsx's formatAxisTick.
+    // formatNumber returns early for 'duration' - use the compact formatter
+    // instead, matching the web's formatAxisTick.
     if (numberFormat.output === 'duration') {
       const factor = numberFormat.factor ?? 1;
       return formatDurationMsCompact(value * factor * 1000);
