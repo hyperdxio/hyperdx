@@ -775,8 +775,7 @@ export function collectMemoChartGradientHexes(
  * A tick under MAGNITUDE_THRESHOLD gets at most this many decimal places,
  * regardless of a chart's configured Decimals (which can go up to 10 - see
  * NumberFormat.tsx). A tick >= MAGNITUDE_THRESHOLD searches downward from
- * this cap instead (see formatAxisTick) - both branches share the same
- * width ceiling, just reached differently.
+ * this same cap instead (see formatAxisTick).
  *
  * `<YAxis width={Y_AXIS_WIDTH}>` leaves a few dozen px for the label itself
  * after Recharts' own tickSize + tickMargin. Measured in Chrome at 11px IBM
@@ -801,14 +800,8 @@ const MAGNITUDE_THRESHOLD = 10;
 /** Same width ceiling as MAX_AXIS_MANTISSA's comment, in characters. */
 const AXIS_CHAR_BUDGET = 5;
 
-/**
- * Strips an insignificant trailing run of zero digits (and the decimal
- * point itself, once nothing follows it) from a formatted number - e.g.
- * "1.00k" -> "1k", "200.0" -> "200", "-1.50" -> "-1.5". Only matches a
- * trailing run at the true end of the numeric portion, before any unit
- * suffix/percent sign/end of string, so a meaningful trailing digit is
- * left alone ("1.08k", "0.02" are untouched).
- */
+// Strips insignificant trailing zeros from a formatted number, e.g.
+// "1.00k" -> "1k", "200.0" -> "200"; leaves "1.08k" untouched.
 function trimTrailingZeros(formatted: string): string {
   return formatted
     .replace(/(\.\d*?)0+(?=\D*$)/, '$1')
@@ -849,16 +842,9 @@ function trimTrailingZeros(formatted: string): string {
  * under it) - a deliberate difference in both the threshold and whether
  * configured mantissa is honored at all, not an oversight.
  *
- * At or past MAGNITUDE_THRESHOLD, `average` (forced below) makes numbro
- * abbreviate to k/m/b/t, which already bounds the integer part to 1-3
- * digits - so the width risk this threshold exists to guard against is
- * bounded by the abbreviated form, not the raw value. Forcing mantissa to
- * 0 across the board (the previous behavior) threw away precision the
- * abbreviated form had room for - "1.08k" fits the same 5-char budget as
- * "1k" - so instead this searches downward from the configured (capped)
- * mantissa for the most precision that still fits, trimming any
- * insignificant trailing zeros along the way (so a round number still
- * reads as "1k"/"200", not "1.00k"/"200.00").
+ * Above MAGNITUDE_THRESHOLD, `average` abbreviates to k/m/b/t (bounding
+ * width), so this searches downward from the configured mantissa instead of
+ * always forcing 0.
  */
 export function formatAxisTick(
   value: number,
