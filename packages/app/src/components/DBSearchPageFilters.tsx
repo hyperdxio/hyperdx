@@ -881,6 +881,21 @@ function FilterGroupActions({
 
 const voidFunc = () => {};
 
+function orderFacetElements(
+  fragment: React.ReactElement<{
+    children: [React.ReactElement[], React.ReactElement[]];
+  }>,
+  orderedKeys: string[],
+  keyPrefix: string,
+) {
+  const elementsByKey = new Map(
+    fragment.props.children
+      .flat()
+      .map(element => [element.key, element] as const),
+  );
+  return orderedKeys.map(key => elementsByKey.get(`${keyPrefix}${key}`));
+}
+
 export const FilterGroup = ({
   name,
   options,
@@ -1301,20 +1316,6 @@ const DBSearchPageFiltersComponent = ({
       return aIsPk && !bIsPk ? -1 : bIsPk && !aIsPk ? 1 : 0;
     });
 
-    // prioritize facets that are pinned (either personal or shared)
-    _facets.sort((a, b) => {
-      const aPinned = isFieldPinned(a.key) || isSharedFieldPinned(a.key);
-      const bPinned = isFieldPinned(b.key) || isSharedFieldPinned(b.key);
-      return aPinned && !bPinned ? -1 : bPinned && !aPinned ? 1 : 0;
-    });
-
-    // among pinned, prioritize shared over personal
-    _facets.sort((a, b) => {
-      const aShared = isSharedFieldPinned(a.key);
-      const bShared = isSharedFieldPinned(b.key);
-      return aShared && !bShared ? -1 : bShared && !aShared ? 1 : 0;
-    });
-
     // prioritize facets that have checked items
     _facets.sort((a, b) => {
       const aChecked = filterState?.[a.key]?.included.size > 0;
@@ -1329,6 +1330,20 @@ const DBSearchPageFiltersComponent = ({
       if (aRange && !bRange) return -1;
       if (!aRange && bRange) return 1;
       return 0;
+    });
+
+    // prioritize facets that are pinned (either personal or shared)
+    _facets.sort((a, b) => {
+      const aPinned = isFieldPinned(a.key) || isSharedFieldPinned(a.key);
+      const bPinned = isFieldPinned(b.key) || isSharedFieldPinned(b.key);
+      return aPinned && !bPinned ? -1 : bPinned && !aPinned ? 1 : 0;
+    });
+
+    // among pinned, prioritize shared over personal
+    _facets.sort((a, b) => {
+      const aShared = isSharedFieldPinned(a.key);
+      const bShared = isSharedFieldPinned(b.key);
+      return aShared && !bShared ? -1 : bShared && !aShared ? 1 : 0;
     });
 
     return _facets;
@@ -1425,7 +1440,8 @@ const DBSearchPageFiltersComponent = ({
     ) => {
       const { keyPrefix = '', isDefaultExpanded: forceExpanded } =
         options ?? {};
-      const { grouped, nonGrouped } = groupFacetsByBaseName(facets);
+      const { grouped, nonGrouped, orderedKeys } =
+        groupFacetsByBaseName(facets);
 
       const makeValuePins = (key: string): ValuePinHandlers => ({
         onPinClick: (value: string | boolean) => toggleFilterPin(key, value),
@@ -1443,7 +1459,7 @@ const DBSearchPageFiltersComponent = ({
         isSharedFieldPinned: isSharedFieldPinned(key),
       });
 
-      return (
+      return orderFacetElements(
         <>
           {grouped.map(group => (
             <NestedFilterGroup
@@ -1577,7 +1593,9 @@ const DBSearchPageFiltersComponent = ({
               />
             );
           })}
-        </>
+        </>,
+        orderedKeys,
+        keyPrefix,
       );
     },
     [
