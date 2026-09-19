@@ -58,4 +58,27 @@ describe('axisTickFormatter', () => {
       axisTickFormatter({ output: 'throughput', mantissa: 2 })?.(1234567),
     ).toBe('1234567');
   });
+
+  describe('duration output', () => {
+    it('renders minutes with a single-character unit, not "min"', () => {
+      expect(axisTickFormatter({ output: 'duration' })?.(799.8)).toBe('13m');
+    });
+
+    it('renders seconds compactly', () => {
+      expect(axisTickFormatter({ output: 'duration' })?.(39.51)).toBe('39.5s');
+    });
+
+    it('respects a configured factor, matching formatNumber`s own duration math', () => {
+      expect(
+        axisTickFormatter({ output: 'duration', factor: 0.001 })?.(442_800),
+      ).toBe('7.4m');
+    });
+
+    it('renders sub-millisecond and hour-scale values compactly too', () => {
+      expect(axisTickFormatter({ output: 'duration' })?.(0.0000005)).toBe(
+        '500ns',
+      );
+      expect(axisTickFormatter({ output: 'duration' })?.(7500)).toBe('2.1h');
+    });
+  });
 });
