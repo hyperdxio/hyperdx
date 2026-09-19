@@ -4,6 +4,7 @@ import {
   ChartConfigWithOptDateRangeEx,
   renderChartConfig,
   timeFilterExpr,
+  withMapSubscriptAliases,
 } from '@/core/renderChartConfig';
 import { convertToCategoricalChartConfig } from '@/core/utils';
 import {
@@ -5209,6 +5210,213 @@ describe('renderChartConfig', () => {
       ).rejects.toThrow(
         'Invalid formula "A / C": Unknown series "C" — this chart only has series A through B',
       );
+    });
+  });
+
+  describe('Map subscript aliases in a string select (#3095)', () => {
+    describe('withMapSubscriptAliases', () => {
+      it('aliases a bare Map subscript after its key', () => {
+        expect(
+          withMapSubscriptAliases(
+            "Timestamp, LogAttributes['constructor.index_builder_ac_res_id'], ResourceAttributes['service.name']",
+          ),
+        ).toBe(
+          'Timestamp, ' +
+            'LogAttributes[\'constructor.index_builder_ac_res_id\'] AS "constructor.index_builder_ac_res_id", ' +
+            'ResourceAttributes[\'service.name\'] AS "service.name"',
+        );
+      });
+
+      it('escapes a backslash in the key', () => {
+        expect(
+          withMapSubscriptAliases(String.raw`LogAttributes['dir\\name']`),
+        ).toBe(String.raw`LogAttributes['dir\\name'] AS "dir\\name"`);
+      });
+
+      it('keeps the derived name for a key containing a double quote', () => {
+        // node-sql-parser, which builds the app's alias map from the rendered
+        // SQL, rejects a doubled quote in an alias and drops every alias in
+        // the statement with it.
+        const select = `LogAttributes['say "hi"'], LogAttributes['other']`;
+        expect(withMapSubscriptAliases(select)).toBe(
+          `LogAttributes['say "hi"'], LogAttributes['other'] AS "other"`,
+        );
+      });
+
+      it('unescapes the single-quote forms of the key literal', () => {
+        expect(
+          withMapSubscriptAliases(
+            String.raw`LogAttributes['it\'s'], SpanAttributes['won''t']`,
+          ),
+        ).toBe(
+          String.raw`LogAttributes['it\'s'] AS "it's", SpanAttributes['won''t'] AS "won't"`,
+        );
+      });
+
+      it('leaves an already aliased subscript alone', () => {
+        const select =
+          "LogAttributes['a'] AS \"a\", LogAttributes['b'] as b, LogAttributes['c'] AS `c d`";
+        expect(withMapSubscriptAliases(select)).toBe(select);
+      });
+
+      it('leaves plain columns and other expressions alone, byte for byte', () => {
+        const select =
+          "Timestamp,ServiceName , toString(LogAttributes['x']), LogAttributes['a']['b'], *";
+        expect(withMapSubscriptAliases(select)).toBe(select);
+      });
+
+      it('handles a backtick-quoted map column', () => {
+        expect(withMapSubscriptAliases("`Log Attributes`['k']")).toBe(
+          '`Log Attributes`[\'k\'] AS "k"',
+        );
+      });
+
+      it('prefixes the map when the same key is selected from two maps', () => {
+        expect(
+          withMapSubscriptAliases(
+            "LogAttributes['http.method'], SpanAttributes['http.method'], LogAttributes['other']",
+          ),
+        ).toBe(
+          'LogAttributes[\'http.method\'] AS "LogAttributes.http.method", ' +
+            'SpanAttributes[\'http.method\'] AS "SpanAttributes.http.method", ' +
+            'LogAttributes[\'other\'] AS "other"',
+        );
+      });
+
+      it('keeps the derived name when the key is a reserved column', () => {
+        // ClickHouse resolves an identifier to an alias before a column, so
+        // `AS "ServiceName"` would hijack a `WHERE ServiceName = ...`.
+        const select = "Timestamp, ResourceAttributes['ServiceName']";
+        expect(withMapSubscriptAliases(select, ['ServiceName'])).toBe(select);
+      });
+
+      it('keeps the derived name when the key is referenced elsewhere in the list', () => {
+        for (const select of [
+          "ServiceName, ResourceAttributes['ServiceName']",
+          "LogAttributes['x'] AS y, SpanAttributes['y']",
+          "LogAttributes['x'] AS \"y\", SpanAttributes['y']",
+          "concat(host, '-'), ResourceAttributes['host']",
+        ]) {
+          expect(withMapSubscriptAliases(select)).toBe(select);
+        }
+      });
+
+      it('still aliases a key that only appears inside a string literal', () => {
+        expect(
+          withMapSubscriptAliases(
+            "concat(ServiceName, 'host'), ResourceAttributes['host']",
+          ),
+        ).toBe(
+          "concat(ServiceName, 'host'), ResourceAttributes['host'] AS \"host\"",
+        );
+      });
+    });
+
+    describe('renderChartConfig', () => {
+      const searchConfig = (
+        select: string,
+        overrides: Partial<ChartConfigWithOptDateRange> = {},
+      ): ChartConfigWithOptDateRange => ({
+        connection: 'test-connection',
+        from: { databaseName: 'default', tableName: 'otel_logs' },
+        select,
+        where: '',
+        whereLanguage: 'sql',
+        timestampValueExpression: 'timestamp',
+        dateRange: [new Date('2025-01-01'), new Date('2025-01-02')],
+        ...overrides,
+      });
+
+      it('names the result columns after the selected keys', async () => {
+        const sql = parameterizedQueryToSql(
+          await renderChartConfig(
+            searchConfig(
+              "Timestamp, LogAttributes['constructor.index_builder_ac_res_id'], ResourceAttributes['service.name']",
+            ),
+            mockMetadata,
+            querySettings,
+          ),
+        );
+        expect(sql).toContain(
+          'SELECT Timestamp, ' +
+            'LogAttributes[\'constructor.index_builder_ac_res_id\'] AS "constructor.index_builder_ac_res_id", ' +
+            'ResourceAttributes[\'service.name\'] AS "service.name" ' +
+            'FROM default.otel_logs',
+        );
+        expect(mockMetadata.getColumns).toHaveBeenCalledWith({
+          databaseName: 'default',
+          tableName: 'otel_logs',
+          connectionId: 'test-connection',
+        });
+      });
+
+      it('does not alias a key that names a column of the source table', async () => {
+        // mockMetadata.getColumns lists a `value` column.
+        const sql = parameterizedQueryToSql(
+          await renderChartConfig(
+            searchConfig("LogAttributes['value'], LogAttributes['other']"),
+            mockMetadata,
+            querySettings,
+          ),
+        );
+        expect(sql).toContain(
+          "SELECT LogAttributes['value'], LogAttributes['other'] AS \"other\" FROM",
+        );
+      });
+
+      it('does not alias a key that names an alias CTE', async () => {
+        const sql = parameterizedQueryToSql(
+          await renderChartConfig(
+            searchConfig("ResourceAttributes['service']", {
+              with: [
+                { name: 'service', sql: chSql`ServiceName`, isSubquery: false },
+              ],
+            }),
+            mockMetadata,
+            querySettings,
+          ),
+        );
+        expect(sql).toContain("SELECT ResourceAttributes['service'] FROM");
+      });
+
+      it('never aliases a string groupBy', async () => {
+        const sql = parameterizedQueryToSql(
+          await renderChartConfig(
+            searchConfig('count()', {
+              groupBy: "ResourceAttributes['service.name']",
+            }),
+            mockMetadata,
+            querySettings,
+          ),
+        );
+        expect(sql).toContain(
+          "SELECT count(),ResourceAttributes['service.name'] FROM",
+        );
+        expect(sql).toContain("GROUP BY ResourceAttributes['service.name']");
+        expect(sql).not.toContain('AS "service.name"');
+      });
+
+      it('renders the list as written when the table columns are unknown', async () => {
+        mockMetadata.getColumns.mockRejectedValueOnce(new Error('no access'));
+        const select = "LogAttributes['k']";
+        const sql = parameterizedQueryToSql(
+          await renderChartConfig(
+            searchConfig(select),
+            mockMetadata,
+            querySettings,
+          ),
+        );
+        expect(sql).toContain(`SELECT ${select} FROM`);
+      });
+
+      it('skips the column lookup when nothing needs an alias', async () => {
+        await renderChartConfig(
+          searchConfig('Timestamp, ServiceName, Body'),
+          mockMetadata,
+          querySettings,
+        );
+        expect(mockMetadata.getColumns).not.toHaveBeenCalled();
+      });
     });
   });
 });
