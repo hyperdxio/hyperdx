@@ -5,9 +5,13 @@ import PQueue from '@esm2cjs/p-queue';
 import * as clickhouse from '@hyperdx/common-utils/dist/clickhouse';
 import {
   chSqlToAliasMap,
+  type QueryAttribution,
   ResponseJSON,
 } from '@hyperdx/common-utils/dist/clickhouse';
-import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
+import {
+  ClickhouseClient,
+  withQueryAttribution,
+} from '@hyperdx/common-utils/dist/clickhouse/node';
 import { tryOptimizeConfigWithMaterializedView } from '@hyperdx/common-utils/dist/core/materializedViews';
 import {
   getMetadata,
@@ -97,6 +101,7 @@ import {
 } from '@/tasks/util';
 import { alertConfigHasGroupBy, isPopulatedRef } from '@/utils/alerts';
 import {
+  getActiveTraceId,
   getCounter,
   type OperationOutcome,
   recordOperationOutcome,
@@ -941,6 +946,37 @@ export const parseAlertData = (
   return { value, extraFields };
 };
 
+/**
+ * Names the alert, and the tile or search it came from, on each of its
+ * queries. Per evaluation rather than per client, because one client is shared
+ * by every alert on a connection.
+ */
+const sourceId = (source: AlertDetails['source']): string | undefined => {
+  if (typeof source?.id === 'string') return source.id;
+  return isPopulatedRef(source) ? source._id.toString() : undefined;
+};
+
+export const alertQueryAttribution = (
+  details: AlertDetails,
+): QueryAttribution => ({
+  // `?.` everywhere, even where the type says otherwise: a tag must never be
+  // the reason an alert fails to run.
+  surface: 'alert',
+  alert: details.alert?.id,
+  trace: getActiveTraceId(),
+  // `id` is a mongoose virtual and the tile path goes through `toObject()`,
+  // which leaves virtuals out, so that source only has `_id`. Try both, and
+  // check the type: a bare ObjectId has an `id` of its own that is a byte
+  // array, which would satisfy `??` and then be discarded.
+  source: 'source' in details ? sourceId(details.source) : undefined,
+  ...(details.taskType === AlertTaskType.SAVED_SEARCH
+    ? { search: details.savedSearch?.id }
+    : {}),
+  ...(details.taskType === AlertTaskType.TILE
+    ? { dashboard: details.dashboard?.id, tile: details.tile?.id }
+    : {}),
+});
+
 export const processAlert = async (
   now: Date,
   details: AlertDetails,
@@ -1582,7 +1618,6 @@ export const processAlert = async (
       }
 
       // We have at least one data point for this bucket
-
       // Track the worst-case state for each group in this bucket to prevent
       // a subsequent OK row in the SAME bucket from overwriting an ALERT row.
       const bucketEvaluations = new Map<
@@ -2016,13 +2051,19 @@ export default class CheckAlertTask implements HdxTask {
               'processAlert',
               async () => {
                 setBusinessContext({ teamId: conn.team.toString() });
-                await processAlert(
-                  alertTask.now,
-                  alert,
-                  clickhouseClient,
-                  conn.id,
-                  this.provider,
-                  teamWebhooksById,
+                // Set once here, so the alert's own query, the EXPLAIN
+                // probes and the notification's sample rows all get tagged.
+                await withQueryAttribution(
+                  alertQueryAttribution(alert),
+                  async () =>
+                    processAlert(
+                      alertTask.now,
+                      alert,
+                      clickhouseClient,
+                      conn.id,
+                      this.provider,
+                      teamWebhooksById,
+                    ),
                 );
               },
               {

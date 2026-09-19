@@ -1,11 +1,13 @@
 import React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
+import type { QuerySurface } from '@hyperdx/common-utils/dist/clickhouse';
 import { Button, Center, Group, Text } from '@mantine/core';
 import { IconX } from '@tabler/icons-react';
 
 import AppNav from '@/components/AppNav';
 import { IS_CLICKHOUSE_BUILD } from '@/config';
+import { QueryAttributionProvider } from '@/queryAttribution';
 
 import { HDXSpotlightProvider } from './Spotlights';
 import { useLocalStorage } from './utils';
@@ -105,3 +107,24 @@ export const withAppNav = (page: React.ReactNode): React.ReactNode => {
     </HDXSpotlightProvider>
   );
 };
+
+/**
+ * `withAppNav`, and tags the page's ClickHouse queries so they stand out from
+ * other pages' in `system.query_log`.
+ *
+ * Use it when "which page" is all you need. A page with ids of its own, like a
+ * dashboard tile, adds `QueryAttributionProvider` further in instead.
+ *
+ * `label` tells a page apart from something else using the same surface, such
+ * as the alert detail page and the alert checker.
+ *
+ * @example KubernetesPage.getLayout = withAppNavForSurface('dashboard');
+ */
+export const withAppNavForSurface =
+  (surface: QuerySurface, label?: string) =>
+  (page: React.ReactNode): React.ReactNode =>
+    withAppNav(
+      <QueryAttributionProvider attribution={{ surface, label }}>
+        {page}
+      </QueryAttributionProvider>,
+    );

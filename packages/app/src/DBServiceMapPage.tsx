@@ -37,7 +37,7 @@ import SearchWhereInput, {
 import { IS_LOCAL_MODE } from '@/config';
 import { useGetKeyValues } from '@/hooks/useMetadata';
 import { useResolvedSourceParam } from '@/hooks/useResolvedSourceParam';
-import { withAppNav } from '@/layout';
+import { withAppNavForSurface } from '@/layout';
 import { parseAsStringEncoded } from '@/utils/queryParsers';
 
 import OnboardingModal from './components/OnboardingModal';
@@ -410,6 +410,9 @@ const DBServiceMapPageDynamic = dynamic(async () => DBServiceMapPage, {
 });
 
 // @ts-expect-error next/dynamic component type does not include the getLayout static
-DBServiceMapPageDynamic.getLayout = withAppNav;
+DBServiceMapPageDynamic.getLayout = withAppNavForSurface(
+  'service-dashboard',
+  'service-map',
+);
 
 export default DBServiceMapPageDynamic;
