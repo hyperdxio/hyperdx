@@ -289,6 +289,27 @@ function formatDurationMs(ms: number): string {
   return `${parseFloat((ms / 3_600_000).toFixed(2))}h`;
 }
 
+/**
+ * Compact duration labels for axis ticks — fewer decimals, shorter units.
+ *
+ * @source packages/app/src/utils.ts (formatDurationMsCompact)
+ */
+function formatDurationMsCompact(ms: number): string {
+  if (ms < 0) return `-${formatDurationMsCompact(-ms)}`;
+  if (ms === 0) return '0';
+  if (ms < 0.001) return `${+(ms * 1e6).toPrecision(2)}ns`;
+  if (ms < 1) {
+    const µs = ms * 1000;
+    return µs < 10 ? `${+µs.toPrecision(2)}µs` : `${Math.round(µs)}µs`;
+  }
+  if (ms < 1000) {
+    return ms < 10 ? `${+ms.toPrecision(2)}ms` : `${Math.round(ms)}ms`;
+  }
+  if (ms < 120_000) return `${+(ms / 1000).toPrecision(3)}s`;
+  if (ms < 3_600_000) return `${+(ms / 60_000).toPrecision(2)}m`;
+  return `${+(ms / 3_600_000).toPrecision(2)}h`;
+}
+
 // ---- Number-format resolution (de-hooked from packages/app/src/source.ts) --
 
 // Aggregate functions whose output preserves the unit of the input value.
@@ -506,6 +527,14 @@ export function axisTickFormatter(
     return undefined;
   }
   return (value: number) => {
+    // formatNumber returns early for 'duration', before the mantissa/width
+    // safety below ever runs - use the compact formatter instead, matching
+    // packages/app/src/HDXMultiSeriesTimeChart.tsx's formatAxisTick.
+    if (numberFormat.output === 'duration') {
+      const factor = numberFormat.factor ?? 1;
+      return formatDurationMsCompact(value * factor * 1000);
+    }
+
     const displayed = numberFormat.output === 'percent' ? value * 100 : value;
     return formatNumber(value, {
       ...numberFormat,
