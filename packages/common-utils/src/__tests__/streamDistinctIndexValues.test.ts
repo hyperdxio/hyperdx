@@ -144,6 +144,28 @@ describe('Metadata.streamDistinctIndexValues', () => {
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
+  it('does not prune on a date range alone, since it cannot check whether the partition key supports it', async () => {
+    // Without timestampValueExpression, filtering on dateRange alone risks
+    // matching against a partition key that isn't time-derived.
+    const metadata = buildMetadata({
+      tableMetadata: {
+        ...GAUGE_TABLE_METADATA,
+        partition_key: 'ServiceName',
+      } as TableMetadata,
+    });
+    mockQuery.mockResolvedValue(resultSetOf([[{ value: 'ok' }]]));
+
+    const result = await drain(
+      metadata.streamDistinctIndexValues({
+        ...ARGS,
+        dateRange: [new Date('2026-08-01'), new Date('2026-08-02')],
+      }),
+    );
+
+    expect(result).toEqual([['ok']]);
+    expect(mockQuery.mock.calls[0][0].query).not.toContain('part_name IN');
+  });
+
   it('reads without pruning when no range is requested', async () => {
     const metadata = buildMetadata({
       tableMetadata: {

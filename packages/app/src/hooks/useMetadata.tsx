@@ -259,9 +259,15 @@ export function useMultipleAllFields(
         return [];
       }
 
+      // getMapKeys defaults an absent dateRange itself, identically —
+      // getJSONKeys, the other consumer, ignores it entirely.
       const promiseResults = await Promise.allSettled(
         tableConnections.map(tc =>
-          metadata.getAllFields({ ...tc, dateRange, timestampValueExpression }),
+          metadata.getAllFields({
+            ...tc,
+            dateRange,
+            timestampValueExpression,
+          }),
         ),
       );
 

@@ -465,6 +465,27 @@ describe('useMultipleAllFields', () => {
 
     expect(result.current.data).toEqual(fieldsA);
   });
+
+  it('passes an absent dateRange through unchanged, without a timestamp expression', async () => {
+    // getMapKeys supplies the default window itself now; only the raw scan
+    // needs the expression, and getMapKeys gates that too.
+    const getAllFields = jest
+      .spyOn(mockMetadata, 'getAllFields')
+      .mockResolvedValue(fieldsA);
+
+    const { result } = renderHook(() => useMultipleAllFields([tcA]), {
+      wrapper,
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(getAllFields).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dateRange: undefined,
+        timestampValueExpression: undefined,
+      }),
+    );
+  });
 });
 
 describe('deduplicate2dArray', () => {

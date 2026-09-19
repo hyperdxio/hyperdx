@@ -31,6 +31,7 @@ import type {
   BuilderChartConfig,
   BuilderChartConfigWithDateRange,
   MetadataMaterializedViews,
+  SQLInterval,
   TSource,
 } from '@/types';
 import { isLogSource, isTraceSource, SourceKind } from '@/types';
@@ -49,6 +50,7 @@ import {
 import {
   getAlignedDateRange,
   getDistributedTableArgs,
+  isDateRangeEqual,
   MetadataMVQueryOptions,
   objectHash,
   splitAndTrimWithBracket,
@@ -224,6 +226,7 @@ const renderJsonStringSubcolumn = (
 export class MetadataCache {
   private cache = new Map<string, any>();
   private pendingQueries = new Map<string, Promise<any>>();
+  private seenKeys = new Set<string>();
 
   // this should be getOrUpdate... or just query to follow react query
   get<T>(key: string): T | undefined {
@@ -256,6 +259,12 @@ export class MetadataCache {
       // Clean up the pending query map
       this.pendingQueries.delete(key);
     }
+  }
+
+  firstSeen(key: string): boolean {
+    if (this.seenKeys.has(key)) return false;
+    this.seenKeys.add(key);
+    return true;
   }
 
   set<T>(key: string, value: T) {
@@ -321,6 +330,25 @@ export type SkipIndexMetadata = {
   expression: string; // e.g., "tokens(lower(Body))"
   granularity: number;
 };
+
+const FIELD_METADATA_LOOKBACK_MS = 24 * 60 * 60 * 1000;
+const FIELD_METADATA_BUCKET: SQLInterval = '1 hour';
+
+// Twin of clampCatalogDateRange in useMetricCatalog.ts; that one caps long
+// ranges at 3 days, which this doesn't need since it never feeds a raw scan.
+function widenToLookback([start, end]: [Date, Date]): [Date, Date] {
+  const earliest = new Date(end.getTime() - FIELD_METADATA_LOOKBACK_MS);
+  return [start < earliest ? start : earliest, end];
+}
+
+// Hour-aligned: the cache keys on the exact range and never evicts.
+export function defaultFieldMetadataDateRange(): [Date, Date] {
+  const now = new Date();
+  return getAlignedDateRange(
+    [new Date(now.getTime() - FIELD_METADATA_LOOKBACK_MS), now],
+    FIELD_METADATA_BUCKET,
+  );
+}
 
 export class Metadata {
   private readonly clickhouseClient: BaseClickhouseClient;
@@ -749,14 +777,11 @@ export class Metadata {
     databaseName,
     tableName,
     dateRange,
-    timestampValueExpression,
   }: {
     databaseName: string;
     tableName: string;
-    dateRange?: [Date, Date];
-    timestampValueExpression?: string;
+    dateRange: [Date, Date];
   }): Promise<ChSql> {
-    if (!dateRange || !timestampValueExpression) return chSql`1`;
     const startTime = chSql`fromUnixTimestamp64Milli(${{ Int64: dateRange[0].getTime() }})`;
     const endTime = chSql`fromUnixTimestamp64Milli(${{ Int64: dateRange[1].getTime() }})`;
     return chSql`part_name IN (
@@ -880,12 +905,12 @@ export class Metadata {
       );
     }
 
-    const partsFilter = await this.partsOverlapFilter({
-      databaseName,
-      tableName,
-      dateRange,
-      timestampValueExpression,
-    });
+    // Gated on both: without timestampValueExpression, dateRange alone
+    // could filter on an unset min_time/max_time and match nothing.
+    const partsFilter =
+      dateRange && timestampValueExpression
+        ? await this.partsOverlapFilter({ databaseName, tableName, dateRange })
+        : chSql`1`;
 
     const sql = chSql`
       SELECT DISTINCT ${{ Identifier: column }} AS value
@@ -926,7 +951,7 @@ export class Metadata {
     connectionId,
     metricName,
     metadataMVs,
-    dateRange,
+    dateRange: callerDateRange,
     timestampValueExpression,
     signal,
   }: {
@@ -943,22 +968,54 @@ export class Metadata {
   }) {
     inlineNonNegativeInt(maxKeys, 'maxKeys');
 
-    // Align date range to rollup granularity for consistent cache keys
-    const alignedDateRange =
-      metadataMVs && dateRange
-        ? getAlignedDateRange(dateRange, metadataMVs.granularity)
-        : undefined;
+    // Defaulted here, not just by callers, so one that forgets to pass a
+    // range gets this instead of silently discovering no Map keys at all.
+    const rawDateRange = callerDateRange ?? defaultFieldMetadataDateRange();
 
-    const dateRangeCacheSuffix =
-      dateRange && timestampValueExpression
-        ? `${dateRange[0].getTime()}-${dateRange[1].getTime()}-${timestampValueExpression}`
-        : '';
-    const cacheKey = metricName
-      ? `${connectionId}.${databaseName}.${tableName}.${column}.${metricName}.${dateRangeCacheSuffix}.keys`
-      : metadataMVs && alignedDateRange
-        ? `${connectionId}.${databaseName}.${tableName}.${column}.${alignedDateRange[0].getTime()}.${alignedDateRange[1].getTime()}.keys`
-        : `${connectionId}.${databaseName}.${tableName}.${column}.${dateRangeCacheSuffix}.keys`;
-    const cachedKeys = this.cache.get<string[]>(cacheKey);
+    // Widened for index/rollup only — a narrow picker shouldn't yield fewer
+    // keys than no picker at all.
+    const discoveryRange = widenToLookback(rawDateRange);
+    const dateRange = getAlignedDateRange(
+      discoveryRange,
+      FIELD_METADATA_BUCKET,
+    );
+
+    // Keyed on the exact range the scan queries, so two different windows
+    // never collide and serve each other's answer.
+    const scanDateRangeCacheSuffix = `${rawDateRange[0].getTime()}-${rawDateRange[1].getTime()}-${timestampValueExpression ?? ''}`;
+    const keyPrefix = metricName
+      ? `${connectionId}.${databaseName}.${tableName}.${column}.${metricName}.${maxKeys}`
+      : `${connectionId}.${databaseName}.${tableName}.${column}.${maxKeys}`;
+    const cacheKey = `${keyPrefix}.${scanDateRangeCacheSuffix}.keys`;
+    // Index reads ignore the timestamp expression, so they key without it.
+    const indexCacheKey = `${keyPrefix}.${dateRange[0].getTime()}-${dateRange[1].getTime()}.index.keys`;
+    // Aligned to the MV bucket, not dateRange; metadataMVs rides along so
+    // the block below narrows one variable instead of two that always agree.
+    const rollup = metadataMVs
+      ? (() => {
+          const alignedDateRange = getAlignedDateRange(
+            discoveryRange,
+            metadataMVs.granularity,
+          );
+          return {
+            metadataMVs,
+            alignedDateRange,
+            cacheKey: `${keyPrefix}.${alignedDateRange[0].getTime()}.${alignedDateRange[1].getTime()}.keys`,
+          };
+        })()
+      : undefined;
+    const cachedRollupKeys = rollup
+      ? this.cache.get<string[]>(rollup.cacheKey)
+      : undefined;
+    // An MV caller must try its own rollup before falling back to cacheKey;
+    // cachedRollupKeys being defined means that's already happened.
+    const cachedKeys =
+      this.cache.get<string[]>(indexCacheKey) ??
+      (metadataMVs && cachedRollupKeys === undefined
+        ? undefined
+        : cachedRollupKeys?.length
+          ? cachedRollupKeys
+          : this.cache.get<string[]>(cacheKey));
 
     if (cachedKeys != null) {
       return cachedKeys;
@@ -973,6 +1030,7 @@ export class Metadata {
     const clickhouseVersion = await this.getServerVersion({ connectionId });
     const canQueryMergeTreeTextIndex =
       supportsMergeTreeTextIndex(clickhouseVersion);
+
     // Text Index path: query the key rollup index
     const textIndexInfo = textIndexInfoLookup.get(column);
     if (textIndexInfo?.key?.indexName && canQueryMergeTreeTextIndex) {
@@ -980,7 +1038,6 @@ export class Metadata {
         databaseName,
         tableName,
         dateRange,
-        timestampValueExpression,
       });
       const index = textIndexInfo.key.indexName;
       const sql = chSql`
@@ -1000,7 +1057,7 @@ export class Metadata {
           .then(r => r.json<{ key: string }>())
           .then(d => d.data.map(r => r.key).filter(Boolean));
         if (keys.length > 0) {
-          this.cache.set(cacheKey, keys);
+          this.cache.set(indexCacheKey, keys);
           return keys;
         }
       } catch (e) {
@@ -1015,7 +1072,6 @@ export class Metadata {
         databaseName,
         tableName,
         dateRange,
-        timestampValueExpression,
       });
       const index = textIndexInfo.kv.indexName;
       const separator = textIndexInfo.kv.separator;
@@ -1036,7 +1092,7 @@ export class Metadata {
           .then(r => r.json<{ key: string }>())
           .then(d => d.data.map(r => r.key).filter(Boolean));
         if (keys.length > 0) {
-          this.cache.set(cacheKey, keys);
+          this.cache.set(indexCacheKey, keys);
           return keys;
         }
       } catch (e) {
@@ -1049,25 +1105,25 @@ export class Metadata {
     }
 
     // Rollup path: query the key rollup table filtered by ColumnIdentifier and date range
-    if (metadataMVs && alignedDateRange) {
+    if (rollup) {
       const rollupKeys = await this.cache.getOrFetch<string[]>(
-        cacheKey,
+        rollup.cacheKey,
         async () => {
           try {
             const startExpr = renderStartOfBucketExpr(
-              metadataMVs.granularity,
-              chSql`fromUnixTimestamp64Milli(${{ Int64: alignedDateRange[0].getTime() }})`,
+              rollup.metadataMVs.granularity,
+              chSql`fromUnixTimestamp64Milli(${{ Int64: rollup.alignedDateRange[0].getTime() }})`,
             );
             const endExpr = renderStartOfBucketExpr(
-              metadataMVs.granularity,
-              chSql`fromUnixTimestamp64Milli(${{ Int64: alignedDateRange[1].getTime() }})`,
+              rollup.metadataMVs.granularity,
+              chSql`fromUnixTimestamp64Milli(${{ Int64: rollup.alignedDateRange[1].getTime() }})`,
             );
             const timeFilter = chSql`AND Timestamp >= ${startExpr} AND Timestamp <= ${endExpr}`;
             let sql: ChSql;
-            if (metadataMVs.keyRollupTable) {
+            if (rollup.metadataMVs.keyRollupTable) {
               sql = chSql`
                 SELECT Key
-                FROM ${tableExpr({ database: databaseName, table: metadataMVs.keyRollupTable })}
+                FROM ${tableExpr({ database: databaseName, table: rollup.metadataMVs.keyRollupTable })}
                 WHERE ColumnIdentifier = ${{ String: column }}
                   ${timeFilter}
                 GROUP BY Key
@@ -1077,7 +1133,7 @@ export class Metadata {
             } else {
               sql = chSql`
                 SELECT Key
-                FROM ${tableExpr({ database: databaseName, table: metadataMVs.kvRollupTable })}
+                FROM ${tableExpr({ database: databaseName, table: rollup.metadataMVs.kvRollupTable })}
                 WHERE ColumnIdentifier = ${{ String: column }}
                   ${timeFilter}
                 GROUP BY Key
@@ -1111,7 +1167,30 @@ export class Metadata {
       if (rollupKeys.length > 0) return rollupKeys;
     }
 
-    // Original path: scan main table
+    // Original path: scan main table. Unlike dateRange, the timestamp
+    // expression can't be defaulted — without it there's no WHERE. #3037
+    if (!timestampValueExpression) {
+      if (
+        this.cache.firstSeen(
+          `unbounded:${connectionId}.${databaseName}.${tableName}.${column}`,
+        )
+      ) {
+        console.warn(
+          `Skipping Map key discovery for ${databaseName}.${tableName}.${column}: ` +
+            'no timestampValueExpression to bound the scan',
+        );
+      }
+      // An index's empty read isn't cached above since it can catch up
+      // later — only freeze cacheKey when there's no index to retry.
+      if (
+        !canQueryMergeTreeTextIndex ||
+        !(textIndexInfo?.key?.indexName || textIndexInfo?.kv?.indexName)
+      ) {
+        this.cache.set(cacheKey, []);
+      }
+      return [];
+    }
+
     const colMeta = await this.getColumn({
       databaseName,
       tableName,
@@ -1131,72 +1210,67 @@ export class Metadata {
       strategy = 'lowCardinalityKeys';
     }
 
-    const timeFilterCondition =
-      dateRange && timestampValueExpression
-        ? await timeFilterExpr({
-            connectionId,
-            databaseName,
-            tableName,
-            dateRange,
-            dateRangeStartInclusive: true,
-            dateRangeEndInclusive: true,
-            timestampValueExpression,
-            metadata: this,
-          })
-        : null;
-    const whereConditions: ChSql[] = [
-      ...(metricName ? [chSql`MetricName=${{ String: metricName }}`] : []),
-      ...(timeFilterCondition ? [timeFilterCondition] : []),
-    ];
-    const where = whereConditions.length
-      ? chSql`WHERE ${concatChSql(' AND ', ...whereConditions)}`
-      : '';
-
     // NOTE: getSubcolumn(col, 'keys') is used instead of the `col.keys` dot
     // form because, on a multi-shard Distributed read of a Map subcolumn, some
     // ClickHouse builds name that plan column inconsistently across the
     // distributed hop (one side `col.keys`, the other `getSubcolumn(col,'keys')`),
     // failing with THERE_IS_NO_COLUMN / NOT_FOUND_COLUMN_IN_BLOCK. The explicit
     // function form serializes to a single consistent name and avoids it.
-    let sql: ChSql;
-    if (strategy === 'groupUniqArrayArray') {
-      sql = chSql`
-        WITH sampledKeys as (
-          SELECT getSubcolumn(${{
-            Identifier: column,
-          }}, 'keys') AS keys
-          FROM ${tableExpr({ database: databaseName, table: tableName })} ${where}
-          LIMIT ${{
-            Int32: this.getClickHouseSettings().max_rows_to_read
-              ? Number(this.getClickHouseSettings().max_rows_to_read)
-              : DEFAULT_METADATA_MAX_ROWS_TO_READ,
-          }}
-        )
-        SELECT groupUniqArrayArray(${{ UNSAFE_RAW_SQL: inlineNonNegativeInt(maxKeys, 'maxKeys') }})(keys) as keysArr
-        FROM sampledKeys`;
-    } else {
-      sql = chSql`
-        WITH sampledKeys as (
-          SELECT getSubcolumn(${{
-            Identifier: column,
-          }}, 'keys') AS keysArr
-          FROM ${tableExpr({ database: databaseName, table: tableName })} ${where}
-          LIMIT ${{
-            Int32: this.getClickHouseSettings().max_rows_to_read
-              ? Number(this.getClickHouseSettings().max_rows_to_read)
-              : DEFAULT_METADATA_MAX_ROWS_TO_READ,
-          }}
-        )
-        SELECT DISTINCT lowCardinalityKeys(arrayJoin(keysArr)) as key
-        FROM sampledKeys
-        LIMIT ${{
-          Int32: maxKeys,
-        }}
-      `;
-    }
+    const runScan = async (scanRange: [Date, Date]): Promise<string[]> => {
+      const timeFilterCondition = await timeFilterExpr({
+        connectionId,
+        databaseName,
+        tableName,
+        dateRange: scanRange,
+        dateRangeStartInclusive: true,
+        dateRangeEndInclusive: true,
+        timestampValueExpression,
+        metadata: this,
+      });
+      const whereConditions: ChSql[] = [
+        ...(metricName ? [chSql`MetricName=${{ String: metricName }}`] : []),
+        timeFilterCondition,
+      ];
+      const where = chSql`WHERE ${concatChSql(' AND ', ...whereConditions)}`;
 
-    return this.cache.getOrFetch<string[]>(cacheKey, async () => {
-      const keys = await this.clickhouseClient
+      let sql: ChSql;
+      if (strategy === 'groupUniqArrayArray') {
+        sql = chSql`
+          WITH sampledKeys as (
+            SELECT getSubcolumn(${{
+              Identifier: column,
+            }}, 'keys') AS keys
+            FROM ${tableExpr({ database: databaseName, table: tableName })} ${where}
+            LIMIT ${{
+              Int32: this.getClickHouseSettings().max_rows_to_read
+                ? Number(this.getClickHouseSettings().max_rows_to_read)
+                : DEFAULT_METADATA_MAX_ROWS_TO_READ,
+            }}
+          )
+          SELECT groupUniqArrayArray(${{ UNSAFE_RAW_SQL: inlineNonNegativeInt(maxKeys, 'maxKeys') }})(keys) as keysArr
+          FROM sampledKeys`;
+      } else {
+        sql = chSql`
+          WITH sampledKeys as (
+            SELECT getSubcolumn(${{
+              Identifier: column,
+            }}, 'keys') AS keysArr
+            FROM ${tableExpr({ database: databaseName, table: tableName })} ${where}
+            LIMIT ${{
+              Int32: this.getClickHouseSettings().max_rows_to_read
+                ? Number(this.getClickHouseSettings().max_rows_to_read)
+                : DEFAULT_METADATA_MAX_ROWS_TO_READ,
+            }}
+          )
+          SELECT DISTINCT lowCardinalityKeys(arrayJoin(keysArr)) as key
+          FROM sampledKeys
+          LIMIT ${{
+            Int32: maxKeys,
+          }}
+        `;
+      }
+
+      return this.clickhouseClient
         .query<'JSON'>({
           query: sql.sql,
           query_params: sql.params,
@@ -1224,7 +1298,19 @@ export class Metadata {
 
           return output.filter(r => r);
         });
-      return keys;
+    };
+
+    return this.cache.getOrFetch<string[]>(cacheKey, async () => {
+      const narrow = await runScan(rawDateRange);
+      if (narrow.length > 0) return narrow;
+      // Already the widened bounds (no range given, or the caller's own
+      // range already spans ≥24h) — retrying would rerun the identical scan.
+      if (isDateRangeEqual(discoveryRange, rawDateRange)) {
+        return narrow;
+      }
+      // The caller's own window found nothing to dilute, so there's no
+      // downside to falling back to the widened one here too.
+      return runScan(discoveryRange);
     });
   }
 
@@ -1479,7 +1565,6 @@ export class Metadata {
             databaseName,
             tableName,
             dateRange,
-            timestampValueExpression,
           });
           const valueSql = chSql`substring(token, position(token, ${{ String: info.separator }}) + ${{ Int32: info.separator.length }})`;
           const sql = chSql`
@@ -1558,7 +1643,6 @@ export class Metadata {
             databaseName,
             tableName,
             dateRange,
-            timestampValueExpression,
           });
           const sql = chSql`
         SELECT * FROM (
