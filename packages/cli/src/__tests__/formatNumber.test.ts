@@ -26,11 +26,16 @@ describe('axisTickFormatter', () => {
     expect(format?.(0.14)).toBe('0.14');
   });
 
-  it('forces 0 decimals for any tick >= 10, regardless of configured mantissa', () => {
+  it('honors configured mantissa for a tick >= 10 as long as it fits the axis budget', () => {
     const format = axisTickFormatter({ output: 'number', mantissa: 2 });
     expect(format?.(200)).toBe('200');
     expect(format?.(10)).toBe('10');
     expect(format?.(-15)).toBe('-15');
+    expect(axisTickFormatter({ output: 'number', mantissa: 10 })?.(1234)).toBe(
+      '1.23k',
+    );
+    // Backs off a decimal at a time when full precision would overflow.
+    expect(format?.(12340)).toBe('12.3k');
   });
 
   it('honors configured mantissa up to 9.99 in magnitude, positive or negative', () => {

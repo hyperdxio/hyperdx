@@ -500,20 +500,26 @@ export function resolveChartNumberFormats(
 /**
  * Below this magnitude (as displayed - see axisTickFormatter), a tick
  * honors the chart's configured mantissa, capped at MAX_AXIS_MANTISSA; at
- * or past it, a tick is always an integer. Mirrors
- * packages/app/src/HDXMultiSeriesTimeChart.tsx's MAX_AXIS_MANTISSA /
- * MAGNITUDE_THRESHOLD for behavioral parity with the web's y-axis - see
- * that file's comment for the pixel-width reasoning behind these specific
- * values (40px SVG axis column, 11px monospace font), which doesn't
- * directly apply to a terminal chart's own width budget. Ported for
- * consistency rather than independently derived for termchart's renderer.
+ * or past it, a tick searches downward from that same cap. Mirrors
+ * packages/app/src/HDXMultiSeriesTimeChart.tsx's constants/algorithm for
+ * behavioral parity with the web's y-axis - ported for consistency rather
+ * than independently derived for termchart's own (wider) width budget.
  */
 const MAX_AXIS_MANTISSA = 2;
 const MAGNITUDE_THRESHOLD = 10;
+const AXIS_CHAR_BUDGET = 5;
+
+// Strips insignificant trailing zeros from a formatted number, e.g.
+// "1.00k" -> "1k", "200.0" -> "200"; leaves "1.08k" untouched.
+function trimTrailingZeros(formatted: string): string {
+  return formatted
+    .replace(/(\.\d*?)0+(?=\D*$)/, '$1')
+    .replace(/\.(?=\D*$)/, '');
+}
 
 /**
  * Build a termchart y-axis tick formatter from a chart's number format:
- * compact, decimals only under MAGNITUDE_THRESHOLD (capped at
+ * compact, most precision that fits under MAGNITUDE_THRESHOLD (capped at
  * MAX_AXIS_MANTISSA) - the same semantics as the web's y-axis. Returns
  * undefined (termchart default formatting) when the chart has no number
  * format.
@@ -535,12 +541,36 @@ export function axisTickFormatter(
     }
 
     const displayed = numberFormat.output === 'percent' ? value * 100 : value;
+
+    if (displayed === 0 || Math.abs(displayed) < MAGNITUDE_THRESHOLD) {
+      return formatNumber(value, {
+        ...numberFormat,
+        mantissa:
+          displayed === 0
+            ? 0
+            : Math.min(numberFormat.mantissa ?? 0, MAX_AXIS_MANTISSA),
+        average: true,
+        unit: undefined,
+      });
+    }
+
+    const maxMantissa = Math.min(numberFormat.mantissa ?? 0, MAX_AXIS_MANTISSA);
+    for (let mantissa = maxMantissa; mantissa > 0; mantissa--) {
+      const candidate = trimTrailingZeros(
+        formatNumber(value, {
+          ...numberFormat,
+          mantissa,
+          average: true,
+          unit: undefined,
+        }),
+      );
+      if (candidate.length <= AXIS_CHAR_BUDGET) {
+        return candidate;
+      }
+    }
     return formatNumber(value, {
       ...numberFormat,
-      mantissa:
-        displayed === 0 || Math.abs(displayed) >= MAGNITUDE_THRESHOLD
-          ? 0
-          : Math.min(numberFormat.mantissa ?? 0, MAX_AXIS_MANTISSA),
+      mantissa: 0,
       average: true,
       unit: undefined,
     });
