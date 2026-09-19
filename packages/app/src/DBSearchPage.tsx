@@ -1647,6 +1647,19 @@ export function DBSearchPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [updateRelativeTimeInputValue, searchedConfig.source, isReady]);
 
+  // Row selection is scoped to one result set, so anything that re-queries
+  // or changes the result set should reset the selection.
+  const selectionResetKey = useMemo(
+    () =>
+      JSON.stringify([
+        searchedConfig,
+        searchedTimeRange[0].getTime(),
+        searchedTimeRange[1].getTime(),
+        denoiseResults,
+      ]),
+    [searchedConfig, searchedTimeRange, denoiseResults],
+  );
+
   useLiveUpdate({
     isLive,
     interval,
@@ -1661,6 +1674,18 @@ export function DBSearchPage() {
   useEffect(() => {
     setShouldShowLiveModeHint(isLive === false);
   }, [isLive]);
+
+  // Selected rows belong to one result set, so a live refresh would churn the
+  // table under them. Same treatment as expanding a row: leave live tail, which
+  // surfaces the Resume Live Tail button so the exit is visible and undoable.
+  const onSelectedRowsChange = useCallback(
+    (hasSelectedRows: boolean) => {
+      if (hasSelectedRows && isLive) {
+        setIsLive(false);
+      }
+    },
+    [isLive, setIsLive],
+  );
 
   // Callback to handle when rows are expanded - kick user out of live tail
   const onExpandedRowsChange = useCallback(
@@ -2779,6 +2804,9 @@ export function DBSearchPage() {
                             onSortingChange={onSortingChange}
                             initialSortBy={initialSortBy}
                             enableSmallFirstWindow
+                            enableRowSelection
+                            selectionResetKey={selectionResetKey}
+                            onSelectedRowsChange={onSelectedRowsChange}
                             onResolvedColumnsChange={onResolvedColumnsChange}
                           />
                         )}

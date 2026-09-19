@@ -1,13 +1,11 @@
 .root {
-  position: relative;
+  --editor-border-inset: 2px;
+
   flex: 1 1 0%;
   min-width: 0;
   display: flex;
   flex-direction: row;
   align-items: stretch;
-
-  /* visible so expanded SQL editor (position:absolute overlay) is not clipped */
-  overflow: visible;
 }
 
 .inputWrapper {
@@ -15,30 +13,14 @@
   flex: 1;
   min-width: 0;
 
-  /* When SQLInlineEditor is expanded, round the Paper bottom-left corner */
-  /* stylelint-disable-next-line selector-pseudo-class-no-unknown */
-  :global([data-expanded='true']) :global(.mantine-Paper-root) {
-    border-bottom-left-radius: var(--mantine-radius-default);
-    min-height: 38px;
-    border-bottom: 2px solid var(--color-bg-brand) !important;
-  }
-
-  /* When AutocompleteInput (Lucene) is expanded, round the input wrapper bottom-left corner */
-  /* stylelint-disable-next-line selector-pseudo-class-no-unknown */
-  :global([data-expanded='true']) :global(.mantine-InputWrapper-root) {
-    border-bottom-left-radius: var(--mantine-radius-default);
-    border-bottom: 2px solid var(--color-bg-brand);
-
-    textarea {
-      min-height: 38px !important;
-    }
-  }
-
   /* target only the SQLInlineEditor Paper (not the AutocompleteInput) */
   /* stylelint-disable-next-line selector-pseudo-class-no-unknown */
   :global(.mantine-Paper-root) {
     border-top-left-radius: 0;
     border-bottom-left-radius: 0;
+
+    /* The Paper theme sets `border` inline, which outranks this rule. */
+    border-left: none !important;
   }
 
   /* target only the AutocompleteInput Paper (not the SQLInlineEditor) */
@@ -46,48 +28,46 @@
   :global(.mantine-InputWrapper-root) {
     border-top-left-radius: 0;
     border-bottom-left-radius: 0;
+    border-left: none;
 
     textarea {
       border-radius: 0 var(--mantine-radius-default)
         var(--mantine-radius-default) 0;
-
-      /* Prevent scrollbar when placeholder text wraps in narrow containers (maxRows=1 when unfocused) */
-      overflow: hidden;
     }
-  }
-
-  /* !important overrides the inline min-height set by react-textarea-autosize.
-     Inner textarea is 2px shorter than the wrapper because the wrapper adds
-     a 1px border top/bottom, so 28px + 2px border = 30px outer (matches the
-     SQL inline editor's xs height). */
-  /* stylelint-disable-next-line selector-pseudo-class-no-unknown */
-  &.sizeXs :global(.mantine-InputWrapper-root) textarea {
-    min-height: 28px !important;
-  }
-
-  /* stylelint-disable-next-line selector-pseudo-class-no-unknown */
-  &.sizeSm :global(.mantine-InputWrapper-root) textarea {
-    min-height: 34px !important;
   }
 }
 
+/* Stretches with the input so the seam between the two stays flush however
+   many lines the query takes. */
 .languageSwitch {
-  position: relative;
   flex-shrink: 0;
-  align-items: center;
   padding-left: 4px;
   border: 1px solid var(--color-border);
   border-right: none;
   border-radius: var(--mantine-radius-default) 0 0 var(--mantine-radius-default);
   background-color: var(--color-bg-field-addon);
+  min-height: var(--editor-base-height);
+}
 
-  &.sizeXs {
-    height: 30px;
-  }
+/* The switch and the input meet at a seam, so a focus border on only one of
+   them reads as half-focused. Keyed off focus inside the input specifically:
+   tabbing to the syntax-reference button shouldn't light up the switch alone. */
+.root:has(.inputWrapper :focus) .languageSwitch {
+  border-color: var(--color-bg-brand);
+}
 
-  &.sizeSm {
-    height: 36px;
-  }
+.root:has(.inputWrapper [data-validation-state='error']) .languageSwitch {
+  border-color: var(--color-bg-danger);
+}
+
+.root:has(.inputWrapper [data-validation-state='warning']) .languageSwitch {
+  border-color: var(--color-bg-warning);
+}
+
+/* Subtract the switch's borders so its controls align with the first row. */
+.languageSwitchRow {
+  flex-shrink: 0;
+  height: calc(var(--editor-base-height) - var(--editor-border-inset, 2px));
 }
 
 .shortcutHint {

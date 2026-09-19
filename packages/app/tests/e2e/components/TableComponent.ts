@@ -116,12 +116,31 @@ export class TableComponent {
   }
 
   /**
+   * The multi-select checkbox of a row. Only rendered where row selection is
+   * enabled (the search results table).
+   */
+  getRowCheckbox(index: number) {
+    return this.getRow(index).getByTestId('row-select-checkbox');
+  }
+
+  /**
    * Select multiple rows by indices
    */
   async selectRows(indices: number[]) {
     for (const index of indices) {
-      await this.getRow(index).locator('[type="checkbox"]').check();
+      await this.getRowCheckbox(index).click();
     }
+  }
+
+  /**
+   * Extend the selection from the last clicked row to this one.
+   */
+  async shiftSelectRow(index: number) {
+    await this.getRowCheckbox(index).click({ modifiers: ['Shift'] });
+  }
+
+  async getSelectedRowCount() {
+    return this.getRows().locator('input:checked').count();
   }
 
   /**
