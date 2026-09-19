@@ -95,9 +95,10 @@ export const DEFAULT_CHART_CONFIG: Omit<
 function getTimeChartGranularity(
   granularity: string | undefined,
   dateRange: [Date, Date],
+  minGranularitySeconds?: number,
 ) {
   return granularity === 'auto' || granularity == null
-    ? convertDateRangeToGranularityString(dateRange, 80)
+    ? convertDateRangeToGranularityString(dateRange, 80, minGranularitySeconds)
     : granularity;
 }
 
@@ -129,6 +130,7 @@ export function convertToTimeChartConfig(
   const granularity = getTimeChartGranularity(
     config.granularity,
     config.dateRange,
+    config.minGranularitySeconds,
   );
 
   const dateRange = getTimeChartDateRange(
@@ -173,12 +175,14 @@ export function useTimeChartSettings(
     | 'fillNulls'
     | 'granularity'
     | 'alignDateRangeToGranularity'
+    | 'minGranularitySeconds'
   >,
 ) {
   return useMemo(() => {
     const granularity = getTimeChartGranularity(
       config.granularity,
       config.dateRange,
+      config.minGranularitySeconds,
     );
 
     const dateRange = getTimeChartDateRange(

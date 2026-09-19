@@ -1456,6 +1456,42 @@ describe('MCP Source Tools', () => {
   });
 
   describe('clickstack_save_source (update)', () => {
+    it('preserves minAutoGranularity through a describe -> rename -> save round trip', async () => {
+      const created = await Source.create({
+        kind: SourceKind.Metric,
+        team: team._id,
+        from: { databaseName: DEFAULT_DATABASE, tableName: '' },
+        timestampValueExpression: 'TimeUnix',
+        resourceAttributesExpression: 'ResourceAttributes',
+        metricTables: { gauge: 'otel_metrics_gauge' },
+        connection: connection._id,
+        name: 'Rename Me',
+        minAutoGranularity: '1 minute',
+      });
+
+      // Regression: an agent renaming a source via describe -> save (the
+      // documented clone/update flow) must not silently drop fields that
+      // extractSourceConfig/mcpSaveSourceSchema haven't been told about -
+      // findOneAndReplace below would otherwise wipe them with no warning.
+      const described = await callTool(client, 'clickstack_describe_source', {
+        sourceId: created._id.toString(),
+      });
+      const config = JSON.parse(getFirstText(described)).source.config;
+      expect(config.minAutoGranularity).toBe('1 minute');
+
+      const { id: _id, ...renameInput } = config;
+      const result = await callTool(client, 'clickstack_save_source', {
+        ...renameInput,
+        id: created._id.toString(),
+        name: 'Renamed',
+      });
+      expect(result.isError).toBeFalsy();
+
+      const stored = await Source.findById(created._id);
+      expect(stored?.name).toBe('Renamed');
+      expect(stored?.get('minAutoGranularity')).toBe('1 minute');
+    });
+
     it('updates an existing log source (full replace)', async () => {
       const created = await Source.create({
         kind: SourceKind.Log,

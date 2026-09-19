@@ -18,6 +18,7 @@ import {
 } from '@hyperdx/common-utils/dist/core/seriesNameTemplate';
 import {
   convertDateRangeToGranularityString,
+  convertGranularityToSeconds,
   hasPositiveSeriesLimit,
 } from '@hyperdx/common-utils/dist/core/utils';
 import {
@@ -30,8 +31,10 @@ import {
   BuilderChartConfigWithOptDateRange,
   ChartConfigWithDateRange,
   ChartConfigWithOptDateRange,
+  isMetricSource,
   PromqlChartConfig,
   QuerySettings,
+  TSource,
 } from '@hyperdx/common-utils/dist/types';
 import { substitutePromqlChartConfigVariables } from '@hyperdx/common-utils/dist/variables';
 import {
@@ -98,6 +101,20 @@ const shouldUseChunking = (
   return true;
 };
 
+/**
+ * Floor for "auto" granularity resolution, from the source's own setting.
+ * Exported so callers that resolve 'auto' before reaching useQueriedChartConfig
+ * (DBTimeChart and siblings, via ChartUtils.tsx) can apply it themselves.
+ */
+export function getMinGranularitySeconds(
+  source: TSource | undefined,
+): number | undefined {
+  if (!source || !isMetricSource(source) || !source.minAutoGranularity) {
+    return undefined;
+  }
+  return convertGranularityToSeconds(source.minAutoGranularity);
+}
+
 export const getGranularityAlignedTimeWindows = (
   config: ChartConfigWithDateRange & { granularity: string },
   windowDurationsSeconds?: number[],
@@ -111,7 +128,11 @@ export const getGranularityAlignedTimeWindows = (
 
   const granularity =
     config.granularity === 'auto'
-      ? convertDateRangeToGranularityString(config.dateRange)
+      ? convertDateRangeToGranularityString(
+          config.dateRange,
+          undefined,
+          config.minGranularitySeconds,
+        )
       : config.granularity;
 
   const windows = [];
@@ -408,14 +429,17 @@ export function useQueriedChartConfig(
   const { data: source, isLoading: isSourceLoading } = useSource({
     id: config.source,
   });
+  const minGranularitySeconds = getMinGranularitySeconds(source);
 
   const query = useQuery<TQueryFnData, ClickHouseQueryError | Error>({
     // Include enableQueryChunking in the query key to ensure that queries with the
-    // same config but different enableQueryChunking values do not share a query
+    // same config but different enableQueryChunking values do not share a query.
+    // minGranularitySeconds too: it can change independently of `config`.
     queryKey: [
       config,
       options?.enableQueryChunking ?? false,
       options?.enableParallelQueries ?? false,
+      minGranularitySeconds,
     ],
     // TODO: Replace this with `streamedQuery` when it is no longer experimental. Use 'replace' refetch mode.
     // https://tanstack.com/query/latest/docs/reference/streamedQuery
@@ -425,7 +449,10 @@ export function useQueriedChartConfig(
         return queryPromqlChartConfig(config, config.dateRange);
       }
 
-      const optimizedConfig = mvOptimizationData?.optimizedConfig ?? config;
+      const optimizedConfig = {
+        ...(mvOptimizationData?.optimizedConfig ?? config),
+        minGranularitySeconds,
+      };
       const query = queryClient
         .getQueryCache()
         .find({ queryKey: context.queryKey, exact: true });
@@ -507,11 +534,16 @@ export function useRenderedSqlChartConfig(
   const { data: source, isLoading: isSourceLoading } = useSource({
     id: config.source,
   });
+  const minGranularitySeconds = getMinGranularitySeconds(source);
 
   const query = useQuery({
-    queryKey: ['renderedSql', config],
+    // See the analogous queryKey comment on useQueriedChartConfig above.
+    queryKey: ['renderedSql', config, minGranularitySeconds],
     queryFn: async () => {
-      const optimizedConfig = mvOptimizationData?.optimizedConfig ?? config;
+      const optimizedConfig = {
+        ...(mvOptimizationData?.optimizedConfig ?? config),
+        minGranularitySeconds,
+      };
       const query = await renderChartConfig(
         optimizedConfig,
         metadata,
