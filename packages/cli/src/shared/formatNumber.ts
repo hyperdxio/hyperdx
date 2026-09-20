@@ -497,16 +497,16 @@ export function resolveChartNumberFormats(
   return { formatByColumn, chartFormat };
 }
 
-/**
- * A tick's decimal places search downward from the chart's configured
- * mantissa, capped at this, for the most precision that still fits
- * AXIS_CHAR_BUDGET. Mirrors packages/app/src/HDXMultiSeriesTimeChart.tsx's
- * constants/algorithm for behavioral parity with the web's y-axis - ported
- * for consistency rather than independently derived for termchart's own
- * (wider) width budget.
- */
+// A tick's decimal places search downward from the configured mantissa,
+// capped at this, for the most precision that fits axisLabelBudget below.
+// Mirrors HDXMultiSeriesTimeChart.tsx's constants/algorithm for parity.
 const MAX_AXIS_MANTISSA = 2;
 const AXIS_CHAR_BUDGET = 5;
+
+// Extra chars a unit suffix (byte/data_rate/throughput) may add on top of
+// AXIS_CHAR_BUDGET - covers common short suffixes with a decimal; long ones
+// like "Gibit/s" still exceed it and fall back toward fewer decimals.
+const SUFFIX_CHAR_ALLOWANCE = 5;
 
 // Strips insignificant trailing zeros from a formatted number, e.g.
 // "1.00k" -> "1k", "200.0" -> "200"; leaves "1.08k" untouched.
@@ -516,12 +516,15 @@ function trimTrailingZeros(formatted: string): string {
     .replace(/\.(?=\D*$)/, '');
 }
 
-// Width to enforce AXIS_CHAR_BUDGET against: up to the first space, since a
-// space always precedes a genuine unit suffix (byte/data_rate/throughput),
-// never a k/m/b/t abbreviation or percent sign.
-function axisLabelWidth(formatted: string): number {
-  const spaceIndex = formatted.indexOf(' ');
-  return spaceIndex === -1 ? formatted.length : spaceIndex;
+// Total budget for a candidate label: a space-separated unit suffix gets
+// its own allowance (not exempt); a negative percent needs +1 for sign+%.
+function axisLabelBudget(formatted: string): number {
+  if (formatted.includes(' ')) {
+    return AXIS_CHAR_BUDGET + SUFFIX_CHAR_ALLOWANCE;
+  }
+  const isNegativePercent =
+    formatted.startsWith('-') && formatted.endsWith('%');
+  return AXIS_CHAR_BUDGET + (isNegativePercent ? 1 : 0);
 }
 
 /**
@@ -557,7 +560,7 @@ export function axisTickFormatter(
           unit: undefined,
         }),
       );
-      if (axisLabelWidth(candidate) <= AXIS_CHAR_BUDGET) {
+      if (candidate.length <= axisLabelBudget(candidate)) {
         return candidate;
       }
     }

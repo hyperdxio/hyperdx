@@ -1,5 +1,7 @@
 import { describe, expect, it } from '@jest/globals';
 
+import { NumericUnit } from '@hyperdx/common-utils/dist/types';
+
 import { axisTickFormatter } from '@/shared/formatNumber';
 
 // Mirrors packages/app/src/__tests__/HDXMultiSeriesTimeChart.test.ts's
@@ -73,6 +75,25 @@ describe('axisTickFormatter', () => {
     expect(axisTickFormatter({ output: 'byte', mantissa: 1 })?.(1.4 * GB)).toBe(
       '1.4 GB',
     );
+  });
+
+  it('falls back toward fewer decimals for a long unit suffix instead of overflowing', () => {
+    // Regression: exempting the suffix outright let "1.25 Gibit/s" (12
+    // chars) pass just because "1.25" alone fit.
+    const GIBIT = 1024 ** 3;
+    const format = axisTickFormatter({
+      output: 'data_rate',
+      numericUnit: NumericUnit.BitsSecIEC,
+      mantissa: 2,
+    });
+    expect(format?.(1.25 * GIBIT)).toBe('1 Gibit/s');
+  });
+
+  it('keeps a small negative percentage distinguishable from 0', () => {
+    // Regression: budget 5 rejected "-0.01%" (sign+suffix together need 6),
+    // falling to 1 decimal, which trimmed "-0.0%" to "-0%".
+    const format = axisTickFormatter({ output: 'percent', mantissa: 2 });
+    expect(format?.(-0.0001)).toBe('-0.01%');
   });
 
   describe('duration output', () => {

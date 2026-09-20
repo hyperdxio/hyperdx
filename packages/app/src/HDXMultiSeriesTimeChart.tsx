@@ -774,22 +774,20 @@ export function collectMemoChartGradientHexes(
 /**
  * A tick's decimal places search downward from a chart's configured
  * Decimals (which can go up to 10 - see NumberFormat.tsx), capped at this,
- * for the most precision that still fits AXIS_CHAR_BUDGET (see
- * formatAxisTick).
- *
- * `<YAxis width={Y_AXIS_WIDTH}>` leaves a few dozen px for the label itself
- * after Recharts' own tickSize + tickMargin. Measured in Chrome at 11px IBM
- * Plex Mono (the tick font, monospace): every character costs ~6.6px, and
- * 5 characters is the most that fits. At 2 decimals, "9.99" (4 chars) fits
- * with room to spare, and adding a single extra character - a negative
- * sign ("-9.99") or a percent suffix ("9.99%") - still exactly fits at 5.
- * 2 decimals is also enough to keep any value >= 0.005 distinguishable
- * from 0.
+ * for the most precision that still fits the axis budget (see
+ * axisLabelBudget). 5 chars is the most a bare signed number fits at 11px
+ * IBM Plex Mono in the 40px-wide axis; 2 decimals keeps values >= 0.005
+ * distinguishable from 0.
  */
 const MAX_AXIS_MANTISSA = 2;
 
-/** Same width ceiling as MAX_AXIS_MANTISSA's comment, in characters. */
+/** Base width ceiling for a bare signed number - see MAX_AXIS_MANTISSA's comment. */
 const AXIS_CHAR_BUDGET = 5;
+
+// Extra chars a unit suffix (byte/data_rate/throughput) may add on top of
+// AXIS_CHAR_BUDGET - covers common short suffixes with a decimal; long ones
+// like "Gibit/s" still exceed it and fall back toward fewer decimals.
+const SUFFIX_CHAR_ALLOWANCE = 5;
 
 // Strips insignificant trailing zeros from a formatted number, e.g.
 // "1.00k" -> "1k", "200.0" -> "200"; leaves "1.08k" untouched.
@@ -799,12 +797,15 @@ function trimTrailingZeros(formatted: string): string {
     .replace(/\.(?=\D*$)/, '');
 }
 
-// Width to enforce AXIS_CHAR_BUDGET against: up to the first space, since a
-// space always precedes a genuine unit suffix (byte/data_rate/throughput),
-// never a k/m/b/t abbreviation or percent sign.
-function axisLabelWidth(formatted: string): number {
-  const spaceIndex = formatted.indexOf(' ');
-  return spaceIndex === -1 ? formatted.length : spaceIndex;
+// Total budget for a candidate label: a space-separated unit suffix gets
+// its own allowance (not exempt); a negative percent needs +1 for sign+%.
+function axisLabelBudget(formatted: string): number {
+  if (formatted.includes(' ')) {
+    return AXIS_CHAR_BUDGET + SUFFIX_CHAR_ALLOWANCE;
+  }
+  const isNegativePercent =
+    formatted.startsWith('-') && formatted.endsWith('%');
+  return AXIS_CHAR_BUDGET + (isNegativePercent ? 1 : 0);
 }
 
 /**
@@ -814,13 +815,8 @@ function axisLabelWidth(formatted: string): number {
  * `average` and `unit` are always forced (compact abbreviation like `1.2k`
  * reads better on an axis than a series' configured unit repeated on every
  * tick). Searches downward from the configured mantissa (capped at
- * MAX_AXIS_MANTISSA) for the most precision that still fits
- * AXIS_CHAR_BUDGET, trimming insignificant trailing zeros along the way,
- * and falling back to 0 only when nothing fits - so a chart whose
- * configured Decimals produces correct tooltip/legend values (e.g. `0.14`)
- * doesn't round every axis tick to `0`, and `1234` renders `1.23k`, not
- * always `1k`. A byte tile like `256 MB` still searches, but its unit
- * suffix (after the first space) doesn't count against AXIS_CHAR_BUDGET.
+ * MAX_AXIS_MANTISSA) for the most precision that fits axisLabelBudget,
+ * trimming trailing zeros, falling back to 0 only when nothing fits.
  *
  * This diverges from DBHeatmapChart's tickFormatter (magnitude-aware at a
  * >= 1 threshold, but ignoring configured mantissa entirely for values
@@ -858,7 +854,7 @@ export function formatAxisTick(
         unit: undefined,
       }),
     );
-    if (axisLabelWidth(candidate) <= AXIS_CHAR_BUDGET) {
+    if (candidate.length <= axisLabelBudget(candidate)) {
       return candidate;
     }
   }

@@ -6,6 +6,8 @@
 // #2362 where a semantic-hex `lineData[].color` (e.g. the output of
 // `getChartColorInfo()` on HyperDX) would not have a matching gradient
 // def after the `COLORS` palette was unified to Observable 10.
+import { NumericUnit } from '@hyperdx/common-utils/dist/types';
+
 import type { LineData } from '@/ChartUtils';
 import type { ActiveClickSeries } from '@/HDXMultiSeriesTimeChart';
 import {
@@ -123,6 +125,27 @@ describe('formatAxisTick', () => {
     );
     expect(formatAxisTick(1.4 * GB, { output: 'byte', mantissa: 1 })).toBe(
       '1.4 GB',
+    );
+  });
+
+  it('falls back toward fewer decimals for a long unit suffix instead of overflowing', () => {
+    // Regression: exempting the unit suffix from the budget outright made
+    // "1.25 Gibit/s" (12 chars) pass just because "1.25" alone fit.
+    const GIBIT = 1024 ** 3;
+    expect(
+      formatAxisTick(1.25 * GIBIT, {
+        output: 'data_rate',
+        numericUnit: NumericUnit.BitsSecIEC,
+        mantissa: 2,
+      }),
+    ).toBe('1 Gibit/s');
+  });
+
+  it('keeps a small negative percentage distinguishable from 0', () => {
+    // Regression: budget 5 rejected "-0.01%" (6 chars, sign+suffix
+    // together), falling to 1 decimal, which trimmed "-0.0%" to "-0%".
+    expect(formatAxisTick(-0.0001, { output: 'percent', mantissa: 2 })).toBe(
+      '-0.01%',
     );
   });
 
