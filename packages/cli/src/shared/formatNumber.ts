@@ -503,24 +503,24 @@ export function resolveChartNumberFormats(
 const MAX_AXIS_MANTISSA = 2;
 const AXIS_CHAR_BUDGET = 5;
 
-// Extra chars a unit suffix (byte/data_rate/throughput) may add on top of
-// AXIS_CHAR_BUDGET - covers common short suffixes with a decimal; long ones
-// like "Gibit/s" still exceed it and fall back toward fewer decimals.
-const SUFFIX_CHAR_ALLOWANCE = 5;
+// Only the separator, not a flat suffix allowance - the suffix itself
+// still counts toward AXIS_CHAR_BUDGET like any other candidate width.
+const SEPARATOR_CHAR_ALLOWANCE = 1;
 
-// Strips insignificant trailing zeros from a formatted number, e.g.
-// "1.00k" -> "1k", "200.0" -> "200"; leaves "1.08k" untouched.
+// Trims insignificant trailing zeros ("1.00k" -> "1k") and a sign left
+// over from a value that rounded to zero ("-0"/"-0%" -> "0"/"0%").
 function trimTrailingZeros(formatted: string): string {
-  return formatted
+  const trimmed = formatted
     .replace(/(\.\d*?)0+(?=\D*$)/, '$1')
     .replace(/\.(?=\D*$)/, '');
+  return trimmed.replace(/^-(0%?)$/, '$1');
 }
 
 // Total budget for a candidate label: a space-separated unit suffix gets
 // its own allowance (not exempt); a negative percent needs +1 for sign+%.
 function axisLabelBudget(formatted: string): number {
   if (formatted.includes(' ')) {
-    return AXIS_CHAR_BUDGET + SUFFIX_CHAR_ALLOWANCE;
+    return AXIS_CHAR_BUDGET + SEPARATOR_CHAR_ALLOWANCE;
   }
   const isNegativePercent =
     formatted.startsWith('-') && formatted.endsWith('%');
@@ -550,8 +550,11 @@ export function axisTickFormatter(
       return formatDurationMsCompact(value * factor * 1000);
     }
 
-    const maxMantissa = Math.min(numberFormat.mantissa ?? 0, MAX_AXIS_MANTISSA);
-    for (let mantissa = maxMantissa; mantissa > 0; mantissa--) {
+    const maxMantissa = Math.max(
+      0,
+      Math.min(numberFormat.mantissa ?? 0, MAX_AXIS_MANTISSA),
+    );
+    for (let mantissa = maxMantissa; mantissa >= 0; mantissa--) {
       const candidate = trimTrailingZeros(
         formatNumber(value, {
           ...numberFormat,
@@ -560,17 +563,11 @@ export function axisTickFormatter(
           unit: undefined,
         }),
       );
-      if (candidate.length <= axisLabelBudget(candidate)) {
+      if (mantissa === 0 || candidate.length <= axisLabelBudget(candidate)) {
         return candidate;
       }
     }
-    return trimTrailingZeros(
-      formatNumber(value, {
-        ...numberFormat,
-        mantissa: 0,
-        average: true,
-        unit: undefined,
-      }),
-    );
+    // Unreachable: the mantissa === 0 case above always returns.
+    return '';
   };
 }

@@ -89,11 +89,27 @@ describe('axisTickFormatter', () => {
     expect(format?.(1.25 * GIBIT)).toBe('1 Gibit/s');
   });
 
+  it('does not overflow a shipped byte tile by over-budgeting the unit suffix', () => {
+    // Regression: a flat +5 suffix allowance let "281.6 MB" (8 chars)
+    // pass, overflowing the terminal gutter on a byte tile.
+    expect(
+      axisTickFormatter({ output: 'byte', mantissa: 1 })?.(295_279_001),
+    ).toBe('282 MB');
+  });
+
   it('keeps a small negative percentage distinguishable from 0', () => {
     // Regression: budget 5 rejected "-0.01%" (sign+suffix together need 6),
     // falling to 1 decimal, which trimmed "-0.0%" to "-0%".
     const format = axisTickFormatter({ output: 'percent', mantissa: 2 });
     expect(format?.(-0.0001)).toBe('-0.01%');
+  });
+
+  it('drops the sign from a negative tick that rounds to zero', () => {
+    // Regression: throughput's raw toFixed (not numbro) yields "-0.00",
+    // trimming to a bare "-0" instead of an unambiguous "0".
+    expect(
+      axisTickFormatter({ output: 'throughput', mantissa: 2 })?.(-0.001),
+    ).toBe('0');
   });
 
   describe('duration output', () => {

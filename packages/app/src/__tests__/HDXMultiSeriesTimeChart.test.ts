@@ -141,11 +141,27 @@ describe('formatAxisTick', () => {
     ).toBe('1 Gibit/s');
   });
 
+  it('does not clip a shipped byte tile by over-budgeting the unit suffix', () => {
+    // Regression: a flat +5 suffix allowance let "281.6 MB" (8 chars)
+    // pass, clipping the 40px axis on a shipped go-runtime.json tile.
+    expect(formatAxisTick(295_279_001, { output: 'byte', mantissa: 1 })).toBe(
+      '282 MB',
+    );
+  });
+
   it('keeps a small negative percentage distinguishable from 0', () => {
     // Regression: budget 5 rejected "-0.01%" (6 chars, sign+suffix
     // together), falling to 1 decimal, which trimmed "-0.0%" to "-0%".
     expect(formatAxisTick(-0.0001, { output: 'percent', mantissa: 2 })).toBe(
       '-0.01%',
+    );
+  });
+
+  it('drops the sign from a negative tick that rounds to zero', () => {
+    // Regression: throughput's raw toFixed (not numbro) yields "-0.00",
+    // trimming to a bare "-0" instead of an unambiguous "0".
+    expect(formatAxisTick(-0.001, { output: 'throughput', mantissa: 2 })).toBe(
+      '0',
     );
   });
 
