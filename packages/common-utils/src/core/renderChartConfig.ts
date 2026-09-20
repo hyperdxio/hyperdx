@@ -232,10 +232,13 @@ function identifierTokens(entry: string): string[] {
  * ClickHouse rejects two expressions under one alias; an entry whose alias
  * is still taken keeps its derived name.
  *
- * A key containing a double quote also keeps its derived name: the app's
+ * A key containing a double quote or a backslash also keeps its derived
+ * name, because neither survives the round trip back to the key. The app's
  * alias map (chSqlToAliasMap) parses the rendered statement with
- * node-sql-parser, which rejects a doubled quote inside an alias, and an
- * unparseable statement drops every alias in the query, not just that one.
+ * node-sql-parser, which rejects a doubled quote inside an alias — and an
+ * unparseable statement drops every alias in the query, not just that one —
+ * and leaves a backslash escape as written rather than unescaping it, so the
+ * recovered name never matches the column name ClickHouse reports.
  *
  * Returns the input untouched when nothing is aliased; otherwise the entries
  * are re-joined with `, `.
@@ -247,7 +250,7 @@ export function withMapSubscriptAliases(
   const entries = splitAndTrimWithBracket(select).map(entry => {
     const match = entry.match(BARE_MAP_SUBSCRIPT_RE);
     const key = match == null ? undefined : unescapeSqlStringLiteral(match[2]);
-    return match == null || key == null || key.includes('"')
+    return match == null || key == null || /["\\]/.test(key)
       ? { entry }
       : {
           entry,
@@ -843,7 +846,29 @@ type RenderSelectListOptions = {
    * group-by rows up by ClickHouse's derived names.
    */
   aliasMapSubscripts?: boolean;
+  /**
+   * Extra names a Map-subscript alias must not take, on top of the source
+   * table's columns and the alias CTEs. Used for the aliases the structured
+   * group-by binds, which are not visible in the select list itself.
+   */
+  reservedNames?: Iterable<string>;
 };
+
+/**
+ * Output names a structured select list binds. A group-by list is projected
+ * into the same SELECT as the select list, so its aliases are names a
+ * Map-subscript alias must not reuse: ClickHouse rejects one alias standing
+ * for two different expressions.
+ */
+function selectListAliases(selectList: SelectList | undefined): string[] {
+  return typeof selectList === 'string' || selectList == null
+    ? []
+    : selectList.flatMap(select =>
+        select.alias != null && select.alias.trim() !== ''
+          ? [select.alias]
+          : [],
+      );
+}
 
 /**
  * withMapSubscriptAliases over a chart's string select list, reserving the
@@ -856,6 +881,7 @@ async function aliasStringSelectList(
   selectList: string,
   chartConfig: BuilderChartConfigWithOptDateRangeEx,
   metadata: Metadata,
+  reservedNames: Iterable<string>,
 ): Promise<string> {
   const { from, with: withClauses } = chartConfig;
   if (
@@ -876,6 +902,7 @@ async function aliasStringSelectList(
     return withMapSubscriptAliases(selectList, [
       ...columns.map(c => c.name),
       ...(withClauses ?? []).map(w => w.name),
+      ...reservedNames,
     ]);
   } catch {
     return selectList;
@@ -886,12 +913,21 @@ async function renderSelectList(
   selectList: SelectList,
   chartConfig: BuilderChartConfigWithOptDateRangeEx,
   metadata: Metadata,
-  { mergeRatio, aliasMapSubscripts = false }: RenderSelectListOptions,
+  {
+    mergeRatio,
+    aliasMapSubscripts = false,
+    reservedNames = [],
+  }: RenderSelectListOptions,
 ) {
   if (typeof selectList === 'string') {
     return chSql`${{
       UNSAFE_RAW_SQL: aliasMapSubscripts
-        ? await aliasStringSelectList(selectList, chartConfig, metadata)
+        ? await aliasStringSelectList(
+            selectList,
+            chartConfig,
+            metadata,
+            reservedNames,
+          )
         : selectList,
     }}`;
   }
@@ -1328,6 +1364,9 @@ async function renderSelect(
       : await renderSelectList(chartConfig.select, chartConfig, metadata, {
           mergeRatio: true,
           aliasMapSubscripts: true,
+          reservedNames: isIncludingGroupBy
+            ? selectListAliases(chartConfig.groupBy)
+            : [],
         }),
     isIncludingGroupBy && chartConfig.selectGroupBy !== false
       ? await renderSelectList(chartConfig.groupBy, chartConfig, metadata, {

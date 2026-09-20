@@ -1,4 +1,9 @@
-import { chSql, ColumnMeta, parameterizedQueryToSql } from '@/clickhouse';
+import {
+  chSql,
+  chSqlToAliasMap,
+  ColumnMeta,
+  parameterizedQueryToSql,
+} from '@/clickhouse';
 import { Metadata } from '@/core/metadata';
 import {
   ChartConfigWithOptDateRangeEx,
@@ -5141,6 +5146,21 @@ describe('renderChartConfig', () => {
       expect(sql).toContain('AS "errors__2"');
     });
 
+    it('escapes backslashes in the formula column name', async () => {
+      const generatedSql = await renderChartConfig(
+        {
+          ...baseEventFormulaConfig,
+          formulas: [{ expression: 'A / B', alias: String.raw`dir\name` }],
+        },
+        mockMetadata,
+        querySettings,
+      );
+      const sql = parameterizedQueryToSql(generatedSql);
+      // ClickHouse reads a double-quoted identifier like a string literal, so
+      // a lone backslash would escape the character after it.
+      expect(sql).toContain(String.raw`AS "dir\\name"`);
+    });
+
     it('escapes double quotes in the formula column name', async () => {
       const generatedSql = await renderChartConfig(
         {
@@ -5227,10 +5247,14 @@ describe('renderChartConfig', () => {
         );
       });
 
-      it('escapes a backslash in the key', () => {
-        expect(
-          withMapSubscriptAliases(String.raw`LogAttributes['dir\\name']`),
-        ).toBe(String.raw`LogAttributes['dir\\name'] AS "dir\\name"`);
+      it('keeps the derived name for a key containing a backslash', () => {
+        // Same round trip as a double quote: node-sql-parser hands the alias
+        // back with its escape still in place, so the app's alias map never
+        // matches the name ClickHouse reports for the column.
+        const select = String.raw`LogAttributes['dir\\name'], LogAttributes['other']`;
+        expect(withMapSubscriptAliases(select)).toBe(
+          String.raw`LogAttributes['dir\\name'], LogAttributes['other'] AS "other"`,
+        );
       });
 
       it('keeps the derived name for a key containing a double quote', () => {
@@ -5407,6 +5431,45 @@ describe('renderChartConfig', () => {
           ),
         );
         expect(sql).toContain(`SELECT ${select} FROM`);
+      });
+
+      it('does not alias a key that a group-by projection already names', async () => {
+        const sql = parameterizedQueryToSql(
+          await renderChartConfig(
+            searchConfig("LogAttributes['service'], LogAttributes['other']", {
+              groupBy: [
+                {
+                  aggCondition: '',
+                  valueExpression: 'Region',
+                  alias: 'service',
+                },
+              ],
+            }),
+            mockMetadata,
+            querySettings,
+          ),
+        );
+        expect(sql).toContain(
+          "SELECT LogAttributes['service'], LogAttributes['other'] AS \"other\"",
+        );
+        expect(sql).toContain('Region AS "service"');
+      });
+
+      it('renders aliases the app can map back to their expressions', async () => {
+        // The feature needs no app change only because chSqlToAliasMap
+        // recovers the expression behind each alias from the rendered SQL.
+        const query = await renderChartConfig(
+          searchConfig(
+            "Timestamp, LogAttributes['constructor.index_builder_ac_res_id'], ResourceAttributes['service.name']",
+          ),
+          mockMetadata,
+          querySettings,
+        );
+        expect(chSqlToAliasMap(query)).toEqual({
+          'constructor.index_builder_ac_res_id':
+            "LogAttributes['constructor.index_builder_ac_res_id']",
+          'service.name': "ResourceAttributes['service.name']",
+        });
       });
 
       it('skips the column lookup when nothing needs an alias', async () => {
