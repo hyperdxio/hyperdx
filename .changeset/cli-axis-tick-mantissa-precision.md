@@ -4,4 +4,4 @@
 
 fix: stop discarding terminal chart axis-tick decimals for large numbers
 
-`axisTickFormatter` is a documented port of the web's `formatAxisTick` and is expected to stay in sync with it, but still forced 0 decimal places for any tick at or above magnitude 10 even after the web side (see the `@hyperdx/app` release in this same PR) started searching for the most precision that fits. `hdx chart` now matches the web's tick labels again (e.g. `1234` at `mantissa: 2` renders `1.23k` on both, not `1k` in the terminal).
+`axisTickFormatter` is a documented port of the web's `formatAxisTick` and is expected to stay in sync with it, but still forced 0 decimal places for any tick at or above magnitude 10 even after the web side (see the `@hyperdx/app` release in this same PR) started searching for the most precision that fits. `hdx chart` now matches the web's tick labels again (e.g. `1234` at `mantissa: 2` renders `1.23k` on both, not `1k` in the terminal), including the same fix for byte tiles whose `MB`/`GB` unit suffix was throwing off the search's width check.
