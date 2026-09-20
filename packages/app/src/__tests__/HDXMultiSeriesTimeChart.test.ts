@@ -41,27 +41,26 @@ describe('formatAxisTick', () => {
     );
   });
 
-  it('caps a sub-1 tick`s mantissa at 2 instead of honoring it outright', () => {
+  it('caps mantissa at 2 instead of honoring the Decimals setting outright', () => {
     // The Decimals setting allows up to 10, which would badly overflow the
-    // axis's label budget for a sub-1 tick (measured: "0.1400000000" is far
-    // wider than "0.14" fits) if honored outright.
+    // axis's label budget (measured: "0.1400000000" is far wider than
+    // "0.14") if honored outright.
     expect(formatAxisTick(0.14, { output: 'number', mantissa: 10 })).toBe(
       '0.14',
     );
   });
 
-  it('honors configured mantissa for a tick >= 10 as long as it still fits the axis budget', () => {
-    // Regression: a tick at or past MAGNITUDE_THRESHOLD used to always force
-    // 0 decimals, discarding precision the abbreviated (k/m/b/t) form had
-    // room for - "1.08k" fits the same 5-char budget "1k" does. A round
-    // number still comes out clean ("200", not "200.00") because trailing
-    // zeros are trimmed, not because mantissa is forced to 0.
+  it('searches downward for the most precision that still fits the axis budget', () => {
+    // Regression: a large tick used to always force 0 decimals, discarding
+    // precision the abbreviated (k/m/b/t) form had room for - "1.08k" fits
+    // the same 5-char budget "1k" does. A round number still comes out
+    // clean ("200", not "200.00") because trailing zeros are trimmed, not
+    // because mantissa is forced to 0.
     expect(formatAxisTick(200, { output: 'number', mantissa: 2 })).toBe('200');
     expect(formatAxisTick(1234, { output: 'number', mantissa: 10 })).toBe(
       '1.23k',
     );
     expect(formatAxisTick(10, { output: 'number', mantissa: 2 })).toBe('10');
-    // A negative tick is still `>= 10` in magnitude (Math.abs).
     expect(formatAxisTick(-15, { output: 'number', mantissa: 2 })).toBe('-15');
     // Backs off a decimal at a time when the fully-precise form would
     // overflow the budget (e.g. "12.34k" is 6 chars), rather than jumping
@@ -69,60 +68,61 @@ describe('formatAxisTick', () => {
     expect(formatAxisTick(12340, { output: 'number', mantissa: 2 })).toBe(
       '12.3k',
     );
-  });
-
-  it('honors configured mantissa up to 9.99 in magnitude, positive or negative', () => {
-    // Raised from a >= 1 threshold to >= 10: at a 2-decimal cap, a single
-    // extra character - a negative sign or a percent suffix - still fits
-    // the axis's label budget up to one integer digit (measured: "-9.99"
-    // and "9.99%" are both the same width as "99.99", which fits). This
-    // also mostly avoids the mixed-precision-on-one-axis problem a >= 1
-    // threshold had: ticks 0, 0.5, 1, 1.5, 2 on one chart no longer collapse
-    // 1.5 and 2 into the identical label "2".
+    // Trims only the insignificant trailing zero, keeping the "5".
+    expect(formatAxisTick(1500, { output: 'number', mantissa: 2 })).toBe(
+      '1.5k',
+    );
+    // A single extra character - a negative sign or a percent suffix -
+    // still fits at 2 decimals up to one integer digit.
     expect(formatAxisTick(9.99, { output: 'number', mantissa: 2 })).toBe(
       '9.99',
     );
     expect(formatAxisTick(-1.5, { output: 'number', mantissa: 2 })).toBe(
-      '-1.50',
+      '-1.5',
     );
   });
 
   it('always renders exactly 0 as a bare integer', () => {
-    // Regression (caught in review): 0 has magnitude 0, which is under any
-    // positive threshold, so it took the capped-mantissa branch and
-    // rendered `0.00`/`0.0 B` - on essentially every chart, since the
-    // y-axis domain defaults to starting at 0. 0 is already unambiguous;
-    // it doesn't need the decimal rescue this formatter exists to provide.
+    // 0 needs no decimal rescue - it's already unambiguous - and the search
+    // naturally produces this by trimming "0.00"/"0.0 B" down to "0"/"0 B".
     expect(formatAxisTick(0, { output: 'number', mantissa: 2 })).toBe('0');
     expect(formatAxisTick(0, { output: 'byte', mantissa: 1 })).toBe('0 B');
   });
 
-  it('checks a percent tick`s magnitude against its displayed (x100) value', () => {
-    // Regression (caught in review): formatNumber multiplies a percent
-    // value by 100 before applying mantissa, since a percent tile's raw
-    // value is a 0-1 ratio. Checking the raw value's magnitude instead of
-    // the displayed one meant every percent tick took the capped-mantissa
-    // branch regardless of the rendered percentage - go-runtime.json's
-    // process.cpu.utilization tile (`{output: 'percent', mantissa: 1}`)
-    // would go from `25%` to `25.00%` for an ordinary, not-near-zero value.
+  it('applies mantissa to a percent tick`s displayed (x100) value', () => {
+    // formatNumber multiplies a percent value by 100 before applying
+    // mantissa, since a percent tile's raw value is a 0-1 ratio.
     expect(formatAxisTick(0.25, { output: 'percent', mantissa: 2 })).toBe(
       '25%',
     );
-    // A genuinely near-zero percent (0.1%) still gets the decimal rescue.
     expect(formatAxisTick(0.001, { output: 'percent', mantissa: 2 })).toBe(
-      '0.10%',
+      '0.1%',
     );
   });
 
   it('preserves shipped byte/throughput tiles that configure a mantissa', () => {
     // go-runtime.json's "Memory: Used vs Limit vs GC Target" tile ships as
-    // { output: 'byte', mantissa: 1 } - a raw byte count is always >= 1, so
-    // this hits the forced-integer branch and stays `256 MB`, not `256.0 MB`.
+    // { output: 'byte', mantissa: 1 }.
     expect(formatAxisTick(268435456, { output: 'byte', mantissa: 1 })).toBe(
       '256 MB',
     );
     expect(formatAxisTick(1234567, { output: 'throughput', mantissa: 2 })).toBe(
       '1234567',
+    );
+  });
+
+  it('distinguishes nearby byte values instead of collapsing them like the pre-fix number axis did', () => {
+    // Regression: AXIS_CHAR_BUDGET was being measured against the whole
+    // formatted string, including byte's " MB"/"GB" unit suffix, so any
+    // candidate with a decimal was always too wide (e.g. "1.2 GB" is 6
+    // chars) and the search always fell through to mantissa 0 - the exact
+    // collapse this formatter exists to prevent, just for byte tiles.
+    const GB = 1024 ** 3;
+    expect(formatAxisTick(1.2 * GB, { output: 'byte', mantissa: 1 })).toBe(
+      '1.2 GB',
+    );
+    expect(formatAxisTick(1.4 * GB, { output: 'byte', mantissa: 1 })).toBe(
+      '1.4 GB',
     );
   });
 

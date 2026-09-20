@@ -498,15 +498,14 @@ export function resolveChartNumberFormats(
 }
 
 /**
- * Below this magnitude (as displayed - see axisTickFormatter), a tick
- * honors the chart's configured mantissa, capped at MAX_AXIS_MANTISSA; at
- * or past it, a tick searches downward from that same cap. Mirrors
- * packages/app/src/HDXMultiSeriesTimeChart.tsx's constants/algorithm for
- * behavioral parity with the web's y-axis - ported for consistency rather
- * than independently derived for termchart's own (wider) width budget.
+ * A tick's decimal places search downward from the chart's configured
+ * mantissa, capped at this, for the most precision that still fits
+ * AXIS_CHAR_BUDGET. Mirrors packages/app/src/HDXMultiSeriesTimeChart.tsx's
+ * constants/algorithm for behavioral parity with the web's y-axis - ported
+ * for consistency rather than independently derived for termchart's own
+ * (wider) width budget.
  */
 const MAX_AXIS_MANTISSA = 2;
-const MAGNITUDE_THRESHOLD = 10;
 const AXIS_CHAR_BUDGET = 5;
 
 // Strips insignificant trailing zeros from a formatted number, e.g.
@@ -517,12 +516,20 @@ function trimTrailingZeros(formatted: string): string {
     .replace(/\.(?=\D*$)/, '');
 }
 
+// Width to enforce AXIS_CHAR_BUDGET against: up to the first space, since a
+// space always precedes a genuine unit suffix (byte/data_rate/throughput),
+// never a k/m/b/t abbreviation or percent sign.
+function axisLabelWidth(formatted: string): number {
+  const spaceIndex = formatted.indexOf(' ');
+  return spaceIndex === -1 ? formatted.length : spaceIndex;
+}
+
 /**
  * Build a termchart y-axis tick formatter from a chart's number format:
- * compact, capped at MAX_AXIS_MANTISSA under MAGNITUDE_THRESHOLD, most
- * precision that fits at or above it - the same semantics as the web's
- * y-axis. Returns undefined (termchart default formatting) when the chart
- * has no number format.
+ * compact, most precision that fits AXIS_CHAR_BUDGET (capped at
+ * MAX_AXIS_MANTISSA) - the same semantics as the web's y-axis. Returns
+ * undefined (termchart default formatting) when the chart has no number
+ * format.
  *
  * @source packages/app/src/HDXMultiSeriesTimeChart.tsx (formatAxisTick)
  */
@@ -540,20 +547,6 @@ export function axisTickFormatter(
       return formatDurationMsCompact(value * factor * 1000);
     }
 
-    const displayed = numberFormat.output === 'percent' ? value * 100 : value;
-
-    if (Math.abs(displayed) < MAGNITUDE_THRESHOLD) {
-      return formatNumber(value, {
-        ...numberFormat,
-        mantissa:
-          displayed === 0
-            ? 0
-            : Math.min(numberFormat.mantissa ?? 0, MAX_AXIS_MANTISSA),
-        average: true,
-        unit: undefined,
-      });
-    }
-
     const maxMantissa = Math.min(numberFormat.mantissa ?? 0, MAX_AXIS_MANTISSA);
     for (let mantissa = maxMantissa; mantissa > 0; mantissa--) {
       const candidate = trimTrailingZeros(
@@ -564,15 +557,17 @@ export function axisTickFormatter(
           unit: undefined,
         }),
       );
-      if (candidate.length <= AXIS_CHAR_BUDGET) {
+      if (axisLabelWidth(candidate) <= AXIS_CHAR_BUDGET) {
         return candidate;
       }
     }
-    return formatNumber(value, {
-      ...numberFormat,
-      mantissa: 0,
-      average: true,
-      unit: undefined,
-    });
+    return trimTrailingZeros(
+      formatNumber(value, {
+        ...numberFormat,
+        mantissa: 0,
+        average: true,
+        unit: undefined,
+      }),
+    );
   };
 }

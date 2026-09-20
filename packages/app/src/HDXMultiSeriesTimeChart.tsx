@@ -772,10 +772,10 @@ export function collectMemoChartGradientHexes(
 }
 
 /**
- * A tick under MAGNITUDE_THRESHOLD gets at most this many decimal places,
- * regardless of a chart's configured Decimals (which can go up to 10 - see
- * NumberFormat.tsx). A tick >= MAGNITUDE_THRESHOLD searches downward from
- * this same cap instead (see formatAxisTick).
+ * A tick's decimal places search downward from a chart's configured
+ * Decimals (which can go up to 10 - see NumberFormat.tsx), capped at this,
+ * for the most precision that still fits AXIS_CHAR_BUDGET (see
+ * formatAxisTick).
  *
  * `<YAxis width={Y_AXIS_WIDTH}>` leaves a few dozen px for the label itself
  * after Recharts' own tickSize + tickMargin. Measured in Chrome at 11px IBM
@@ -783,19 +783,10 @@ export function collectMemoChartGradientHexes(
  * 5 characters is the most that fits. At 2 decimals, "9.99" (4 chars) fits
  * with room to spare, and adding a single extra character - a negative
  * sign ("-9.99") or a percent suffix ("9.99%") - still exactly fits at 5.
- * A 2-digit integer part pushes either of those over (6 chars, e.g.
- * "-99.99"/"99.99%" both clip), which is why MAGNITUDE_THRESHOLD is 10, not
- * 100: it trades a wider decimal-preserving range for values that are both
- * negative and percent-formatted (out of scope here) for one that's safe
- * for plain positive numbers, percent, and negative numbers each on their
- * own - the only combination this codebase's charts have needed decimals
- * for so far. 2 decimals is also enough to keep any value >= 0.005
- * distinguishable from 0, the failure this cap exists to fix.
+ * 2 decimals is also enough to keep any value >= 0.005 distinguishable
+ * from 0.
  */
 const MAX_AXIS_MANTISSA = 2;
-
-/** See MAX_AXIS_MANTISSA's comment for the width math behind this value. */
-const MAGNITUDE_THRESHOLD = 10;
 
 /** Same width ceiling as MAX_AXIS_MANTISSA's comment, in characters. */
 const AXIS_CHAR_BUDGET = 5;
@@ -808,37 +799,32 @@ function trimTrailingZeros(formatted: string): string {
     .replace(/\.(?=\D*$)/, '');
 }
 
+// Width to enforce AXIS_CHAR_BUDGET against: up to the first space, since a
+// space always precedes a genuine unit suffix (byte/data_rate/throughput),
+// never a k/m/b/t abbreviation or percent sign.
+function axisLabelWidth(formatted: string): number {
+  const spaceIndex = formatted.indexOf(' ');
+  return spaceIndex === -1 ? formatted.length : spaceIndex;
+}
+
 /**
  * Y-axis tick label formatter. Exported so a unit test can pin the
  * mantissa-precedence behavior without rendering recharts.
  *
  * `average` and `unit` are always forced (compact abbreviation like `1.2k`
  * reads better on an axis than a series' configured unit repeated on every
- * tick). Below MAGNITUDE_THRESHOLD, an explicit axisNumberFormat.mantissa is
- * honored (capped at MAX_AXIS_MANTISSA). Without that, a chart whose
+ * tick). Searches downward from the configured mantissa (capped at
+ * MAX_AXIS_MANTISSA) for the most precision that still fits
+ * AXIS_CHAR_BUDGET, trimming insignificant trailing zeros along the way,
+ * and falling back to 0 only when nothing fits - so a chart whose
  * configured Decimals produces correct tooltip/legend values (e.g. `0.14`)
- * would still round every axis tick to `0` for any series whose values live
- * under 1 (fractional Prometheus gauges, ratios, etc.). A tick of exactly 0
- * always short-circuits to an integer too - it's already unambiguous, and
- * doesn't need the decimal rescue this formatter exists to provide.
- *
- * At or past MAGNITUDE_THRESHOLD, a tick searches downward from that same
- * capped mantissa for the most precision that still fits AXIS_CHAR_BUDGET
- * (trimming insignificant trailing zeros), falling back to 0 only when
- * nothing fits - so `1234` renders `1.23k`, not always `1k`, but a byte tile
- * like `256 MB` is unaffected (numbro forces `average: false` for `byte`, so
- * its width comes from KB/MB unit scaling, not this search).
- *
- * `formatNumber` multiplies a percent-output value by 100 before applying
- * mantissa (a percent tile's raw value is a 0-1 ratio, e.g. `0.25` for
- * "25%"), so the magnitude check runs against that same displayed value,
- * not the raw one - otherwise every percent tile would take the small-
- * magnitude branch regardless of how large the rendered percentage is.
+ * doesn't round every axis tick to `0`, and `1234` renders `1.23k`, not
+ * always `1k`. A byte tile like `256 MB` still searches, but its unit
+ * suffix (after the first space) doesn't count against AXIS_CHAR_BUDGET.
  *
  * This diverges from DBHeatmapChart's tickFormatter (magnitude-aware at a
  * >= 1 threshold, but ignoring configured mantissa entirely for values
- * under it) - a deliberate difference in both the threshold and whether
- * configured mantissa is honored at all, not an oversight.
+ * under it) - a deliberate difference, not an oversight.
  */
 export function formatAxisTick(
   value: number,
@@ -859,20 +845,6 @@ export function formatAxisTick(
     return formatDurationMsCompact(value * factor * 1000);
   }
 
-  const displayed = axisNumberFormat.output === 'percent' ? value * 100 : value;
-
-  if (Math.abs(displayed) < MAGNITUDE_THRESHOLD) {
-    return formatNumber(value, {
-      ...axisNumberFormat,
-      mantissa:
-        displayed === 0
-          ? 0
-          : Math.min(axisNumberFormat.mantissa ?? 0, MAX_AXIS_MANTISSA),
-      average: true,
-      unit: undefined,
-    });
-  }
-
   const maxMantissa = Math.min(
     axisNumberFormat.mantissa ?? 0,
     MAX_AXIS_MANTISSA,
@@ -886,16 +858,18 @@ export function formatAxisTick(
         unit: undefined,
       }),
     );
-    if (candidate.length <= AXIS_CHAR_BUDGET) {
+    if (axisLabelWidth(candidate) <= AXIS_CHAR_BUDGET) {
       return candidate;
     }
   }
-  return formatNumber(value, {
-    ...axisNumberFormat,
-    mantissa: 0,
-    average: true,
-    unit: undefined,
-  });
+  return trimTrailingZeros(
+    formatNumber(value, {
+      ...axisNumberFormat,
+      mantissa: 0,
+      average: true,
+      unit: undefined,
+    }),
+  );
 }
 
 export const MemoChart = memo(function MemoChart({

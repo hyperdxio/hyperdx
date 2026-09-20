@@ -16,17 +16,17 @@ describe('axisTickFormatter', () => {
     expect(format?.(1234)).toBe('1k');
   });
 
-  it('honors an explicit mantissa for a tick under the magnitude threshold', () => {
+  it('honors an explicit mantissa instead of always rounding to 0', () => {
     const format = axisTickFormatter({ output: 'number', mantissa: 2 });
     expect(format?.(0.14)).toBe('0.14');
   });
 
-  it('caps a small tick`s mantissa at 2 instead of honoring it outright', () => {
+  it('caps mantissa at 2 instead of honoring the Decimals setting outright', () => {
     const format = axisTickFormatter({ output: 'number', mantissa: 10 });
     expect(format?.(0.14)).toBe('0.14');
   });
 
-  it('honors configured mantissa for a tick >= 10 as long as it fits the axis budget', () => {
+  it('searches downward for the most precision that still fits the axis budget', () => {
     const format = axisTickFormatter({ output: 'number', mantissa: 2 });
     expect(format?.(200)).toBe('200');
     expect(format?.(10)).toBe('10');
@@ -36,12 +36,10 @@ describe('axisTickFormatter', () => {
     );
     // Backs off a decimal at a time when full precision would overflow.
     expect(format?.(12340)).toBe('12.3k');
-  });
-
-  it('honors configured mantissa up to 9.99 in magnitude, positive or negative', () => {
-    const format = axisTickFormatter({ output: 'number', mantissa: 2 });
+    // Trims only the insignificant trailing zero, keeping the "5".
+    expect(format?.(1500)).toBe('1.5k');
     expect(format?.(9.99)).toBe('9.99');
-    expect(format?.(-1.5)).toBe('-1.50');
+    expect(format?.(-1.5)).toBe('-1.5');
   });
 
   it('always renders exactly 0 as a bare integer', () => {
@@ -49,10 +47,10 @@ describe('axisTickFormatter', () => {
     expect(axisTickFormatter({ output: 'byte', mantissa: 1 })?.(0)).toBe('0 B');
   });
 
-  it('checks a percent tick`s magnitude against its displayed (x100) value', () => {
+  it('applies mantissa to a percent tick`s displayed (x100) value', () => {
     const format = axisTickFormatter({ output: 'percent', mantissa: 2 });
     expect(format?.(0.25)).toBe('25%');
-    expect(format?.(0.001)).toBe('0.10%');
+    expect(format?.(0.001)).toBe('0.1%');
   });
 
   it('preserves shipped byte/throughput tiles that configure a mantissa', () => {
@@ -62,6 +60,19 @@ describe('axisTickFormatter', () => {
     expect(
       axisTickFormatter({ output: 'throughput', mantissa: 2 })?.(1234567),
     ).toBe('1234567');
+  });
+
+  it('distinguishes nearby byte values instead of collapsing them', () => {
+    // Regression: the axis budget was measured against the whole string,
+    // including byte's " MB"/"GB" suffix, so a decimal candidate was
+    // always too wide and the search always fell back to mantissa 0.
+    const GB = 1024 ** 3;
+    expect(axisTickFormatter({ output: 'byte', mantissa: 1 })?.(1.2 * GB)).toBe(
+      '1.2 GB',
+    );
+    expect(axisTickFormatter({ output: 'byte', mantissa: 1 })?.(1.4 * GB)).toBe(
+      '1.4 GB',
+    );
   });
 
   describe('duration output', () => {
