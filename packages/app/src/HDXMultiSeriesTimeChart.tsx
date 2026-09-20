@@ -814,22 +814,20 @@ function trimTrailingZeros(formatted: string): string {
  *
  * `average` and `unit` are always forced (compact abbreviation like `1.2k`
  * reads better on an axis than a series' configured unit repeated on every
- * tick). For a tick at or past MAGNITUDE_THRESHOLD, mantissa is always 0 -
- * large numbers stay `200`/`1k`/`256 MB`, never `200.00`/`1.23k`/`256.0 MB`,
- * however many decimals the chart's Number Format configures. Below the
- * threshold, an explicit axisNumberFormat.mantissa is honored (capped at
- * MAX_AXIS_MANTISSA) rather than forced to 0. Without that, a chart whose
+ * tick). Below MAGNITUDE_THRESHOLD, an explicit axisNumberFormat.mantissa is
+ * honored (capped at MAX_AXIS_MANTISSA). Without that, a chart whose
  * configured Decimals produces correct tooltip/legend values (e.g. `0.14`)
  * would still round every axis tick to `0` for any series whose values live
  * under 1 (fractional Prometheus gauges, ratios, etc.). A tick of exactly 0
  * always short-circuits to an integer too - it's already unambiguous, and
  * doesn't need the decimal rescue this formatter exists to provide.
  *
- * An explicit mantissa is the common case, not a rare one, which is why the
- * large-magnitude branch can't just honor it: HyperDX's own bundled
- * dashboard templates (go-runtime.json et al.) set mantissa on lines/byte/
- * percent tiles for tooltip readability, with values well above the
- * near-zero problem this formatter fixes.
+ * At or past MAGNITUDE_THRESHOLD, a tick searches downward from that same
+ * capped mantissa for the most precision that still fits AXIS_CHAR_BUDGET
+ * (trimming insignificant trailing zeros), falling back to 0 only when
+ * nothing fits - so `1234` renders `1.23k`, not always `1k`, but a byte tile
+ * like `256 MB` is unaffected (numbro forces `average: false` for `byte`, so
+ * its width comes from KB/MB unit scaling, not this search).
  *
  * `formatNumber` multiplies a percent-output value by 100 before applying
  * mantissa (a percent tile's raw value is a 0-1 ratio, e.g. `0.25` for
@@ -841,10 +839,6 @@ function trimTrailingZeros(formatted: string): string {
  * >= 1 threshold, but ignoring configured mantissa entirely for values
  * under it) - a deliberate difference in both the threshold and whether
  * configured mantissa is honored at all, not an oversight.
- *
- * Above MAGNITUDE_THRESHOLD, `average` abbreviates to k/m/b/t (bounding
- * width), so this searches downward from the configured mantissa instead of
- * always forcing 0.
  */
 export function formatAxisTick(
   value: number,

@@ -519,10 +519,10 @@ function trimTrailingZeros(formatted: string): string {
 
 /**
  * Build a termchart y-axis tick formatter from a chart's number format:
- * compact, most precision that fits under MAGNITUDE_THRESHOLD (capped at
- * MAX_AXIS_MANTISSA) - the same semantics as the web's y-axis. Returns
- * undefined (termchart default formatting) when the chart has no number
- * format.
+ * compact, capped at MAX_AXIS_MANTISSA under MAGNITUDE_THRESHOLD, most
+ * precision that fits at or above it - the same semantics as the web's
+ * y-axis. Returns undefined (termchart default formatting) when the chart
+ * has no number format.
  *
  * @source packages/app/src/HDXMultiSeriesTimeChart.tsx (formatAxisTick)
  */
