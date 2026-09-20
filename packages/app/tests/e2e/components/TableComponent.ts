@@ -124,6 +124,19 @@ export class TableComponent {
   }
 
   /**
+   * The cell holding a row's multi-select checkbox. It is the element that
+   * fades the checkbox in and out, so assert visibility on it rather than on
+   * the checkbox itself.
+   */
+  getRowCheckboxCell(index: number) {
+    return this.getRow(index).getByTestId('row-select-cell');
+  }
+
+  async hoverRow(index: number) {
+    await this.getRow(index).hover();
+  }
+
+  /**
    * Select multiple rows by indices
    */
   async selectRows(indices: number[]) {

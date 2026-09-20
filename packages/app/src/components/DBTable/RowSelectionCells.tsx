@@ -23,12 +23,17 @@ export const RowSelectionCell = memo(
     isSelected: boolean;
     onToggle: (rowId: string, options: { extendRange: boolean }) => void;
   }) => (
-    <td className={styles.selectCell} style={CELL_WIDTH_STYLE}>
+    <td
+      className={styles.selectCell}
+      style={CELL_WIDTH_STYLE}
+      data-testid="row-select-cell"
+    >
       <Checkbox
         className={styles.selectCheckbox}
         size="xs"
         checked={isSelected}
         aria-label="Select row"
+        title="Select row, shift-click to select a range"
         data-testid="row-select-checkbox"
         // The row body is a single button that opens the side panel.
         onClick={e => e.stopPropagation()}

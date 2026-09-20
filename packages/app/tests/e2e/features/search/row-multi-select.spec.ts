@@ -10,6 +10,38 @@ test.describe('Search row multi-select', { tag: '@search' }, () => {
   });
 
   test(
+    'reveals a row checkbox only while the row is hovered',
+    { tag: ['@local-mode'] },
+    async () => {
+      const checkbox = searchPage.table.getRowCheckboxCell(0);
+      await expect(checkbox).toHaveCSS('opacity', '0');
+
+      await searchPage.table.hoverRow(0);
+      await expect(checkbox).toHaveCSS('opacity', '1');
+
+      await searchPage.table.hoverRow(3);
+      await expect(checkbox).toHaveCSS('opacity', '0');
+    },
+  );
+
+  test(
+    'shows every checkbox while a selection exists',
+    { tag: ['@local-mode'] },
+    async () => {
+      // Row 3 is never hovered here, so it can only be visible because the
+      // table is in selection mode — which is what keeps shift-click aimable.
+      const unhovered = searchPage.table.getRowCheckboxCell(3);
+      await expect(unhovered).toHaveCSS('opacity', '0');
+
+      await searchPage.table.selectRows([0]);
+      await expect(unhovered).toHaveCSS('opacity', '1');
+
+      await searchPage.clearRowSelection();
+      await expect(unhovered).toHaveCSS('opacity', '0');
+    },
+  );
+
+  test(
     'selects rows and reports the count',
     { tag: ['@local-mode'] },
     async () => {

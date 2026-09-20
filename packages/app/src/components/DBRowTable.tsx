@@ -1009,7 +1009,9 @@ export const RawLogTable = memo(
               />
             )}
             <table
-              className={styles.table}
+              className={cx(styles.table, {
+                [styles.selectionActive]: rowSelection.selectedCount > 0,
+              })}
               style={{ minWidth: tableMinWidth }}
               id={tableId}
             >
