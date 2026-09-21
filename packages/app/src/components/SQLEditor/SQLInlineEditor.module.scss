@@ -23,10 +23,13 @@
     border-color: var(--color-bg-warning) !important;
   }
 
-  /* Single-line editors only: hold one row and hide the rest. */
+  /* Collapsed editors hold one row and hide the rest. `clip` rather than
+     `hidden` because a scrollable box gets scrolled when the caret moves —
+     pasting a long query scrolled the label and the toggle out of view along
+     with the first line. `clip` cannot be scrolled at all. */
   &.clamped {
     max-height: var(--editor-base-height, 36px);
-    overflow: hidden;
+    overflow: clip;
   }
 
   /* An editor that grows with its content can't change border width on focus
@@ -50,15 +53,26 @@
 }
 
 .cmWrapper {
+  --cm-padding-top: 3.4px;
+
   min-width: 10px;
   width: 100%;
-  padding-top: 3.4px;
+  padding-top: var(--cm-padding-top);
   font-size: var(--mantine-font-size-sm);
 
   &.sizeXs {
-    padding-top: 2.4px;
+    --cm-padding-top: 2.4px;
+
     font-size: var(--mantine-font-size-xs);
   }
+}
+
+/* A clamped editor shows exactly its first line. The clip lands just below
+   that line — CodeMirror's 1.4 line-height plus the 4px it pads .cm-content
+   with — so no sliver of the next line shows under the border. */
+.paper.clamped .cmWrapper {
+  max-height: calc(var(--cm-padding-top) + 4px + 1.4em);
+  overflow: clip;
 }
 
 .actions {

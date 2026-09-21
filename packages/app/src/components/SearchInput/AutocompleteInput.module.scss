@@ -41,8 +41,17 @@
   overflow: hidden;
 }
 
+/* Collapsed: `clip` keeps the one visible row pinned to the first line. With
+   `hidden` the textarea scrolls to wherever the caret is, so pasting a long
+   query left a middle line showing. Stretching the line box over the whole row
+   puts the second line past the clip edge, so no sliver of it shows through,
+   and centres the visible line without padding. */
 .root[data-collapsed='true'] .textarea textarea {
-  overflow: hidden;
+  overflow: clip;
+  padding-block: 0;
+  line-height: calc(
+    var(--editor-base-height, 36px) - var(--editor-border-inset, 2px)
+  );
 }
 
 /* Single-line Lucene: one visual row, like SQL without line wrapping. A long

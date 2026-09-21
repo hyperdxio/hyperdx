@@ -380,7 +380,9 @@ export default function SQLInlineEditor({
           className={cx(
             styles.cmWrapper,
             size === 'xs' ? styles.sizeXs : undefined,
-            allowMultiline ? 'cm-editor-multiline' : undefined,
+            // Only an expanded editor scrolls its own content. Collapsed, it
+            // renders at full height behind the clip so the first line shows.
+            allowMultiline && isExpanded ? 'cm-editor-multiline' : undefined,
           )}
         >
           <CodeMirror
