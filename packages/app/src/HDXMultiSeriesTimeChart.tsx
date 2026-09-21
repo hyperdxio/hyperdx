@@ -18,7 +18,6 @@ import {
   BarProps,
   CartesianGrid,
   Customized,
-  getNiceTickValues,
   Legend,
   ReferenceArea,
   ReferenceLine,
@@ -27,6 +26,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import { getTickValuesFixedDomain } from 'recharts/lib/util/scale/getNiceTickValues';
 import { AxisDomain } from 'recharts/types/util/types';
 import { convertGranularityToSeconds } from '@hyperdx/common-utils/dist/core/utils';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
@@ -779,9 +779,9 @@ const MAX_AXIS_MANTISSA = 2;
 /** Base width ceiling for a bare signed number - see MAX_AXIS_MANTISSA's comment. */
 const AXIS_CHAR_BUDGET = 5;
 
-// Flat, not suffix-length-scaled - IBM Plex Mono is monospace, so a longer
-// suffix costs the same per character as a digit and earns no extra room.
-const SEPARATOR_CHAR_ALLOWANCE = 1;
+// Matches the widest label the mantissa-0 fallback below already renders
+// unchecked (e.g. "256 MiB") - a decimal candidate shouldn't be held tighter.
+const SEPARATOR_CHAR_ALLOWANCE = 2;
 
 // Trims insignificant trailing zeros ("1.00k" -> "1k") and a sign left
 // over from a value that rounded to zero ("-0"/"-0%" -> "0"/"0%").
@@ -866,16 +866,14 @@ export function dedupeAxisTicks(
   return deduped;
 }
 
-// "Nice" candidates can land just outside [min, max] (Recharts' own
-// fixed-domain path avoids that); clamp so nothing renders off-scale.
+// Recharts' own fixed-domain generator - unlike getNiceTickValues, it
+// never returns a value outside [min, max], so no clamping is needed.
 export function getYAxisTicks(
   min: number,
   max: number,
   formatTick: (value: number) => string,
 ): number[] {
-  const candidates = getNiceTickValues([min, max], 5, true, 'adaptive').map(v =>
-    Math.min(max, Math.max(min, v)),
-  );
+  const candidates = getTickValuesFixedDomain([min, max], 5, true);
   const deduped = dedupeAxisTicks(candidates, formatTick);
   // If every candidate collapsed to one label, the axis can't distinguish
   // this range at this mantissa - keep the redundant ticks, not just one.

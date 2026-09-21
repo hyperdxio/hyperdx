@@ -123,17 +123,17 @@ describe('formatAxisTick', () => {
     );
   });
 
-  it('backs off to an integer for a numericUnit suffix too wide to fit a decimal', () => {
-    // "GiB" leaves no room under axisLabelBudget for a decimal - collapsing
-    // both to "1 GiB" is the safe outcome, not the byte-suffix bug this fixes.
+  it('distinguishes nearby byte values on the numericUnit path the UI defaults to', () => {
+    // The mantissa-0 fallback already tolerates this width unchecked (e.g.
+    // "256 MiB"), so a decimal candidate of the same width should too.
     const GB = 1024 ** 3;
     const config = {
       output: 'byte' as const,
       numericUnit: NumericUnit.BytesIEC,
       mantissa: 1,
     };
-    expect(formatAxisTick(1.2 * GB, config)).toBe('1 GiB');
-    expect(formatAxisTick(1.4 * GB, config)).toBe('1 GiB');
+    expect(formatAxisTick(1.2 * GB, config)).toBe('1.2 GiB');
+    expect(formatAxisTick(1.4 * GB, config)).toBe('1.4 GiB');
   });
 
   it('falls back toward fewer decimals for a long unit suffix instead of overflowing', () => {
@@ -157,18 +157,21 @@ describe('formatAxisTick', () => {
     );
   });
 
-  it('collapses a sub-1 numericUnit value to 0 rather than clip the axis', () => {
-    // A right-anchored SVG label past the 40px budget clips off-canvas
-    // (showing e.g. "25 cps" for 0.25), which is worse than a bare "0".
-    const config = { output: 'throughput' as const, mantissa: 2 };
-    expect(
-      formatAxisTick(0.25, { ...config, numericUnit: NumericUnit.Cps }),
-    ).toBe('0 cps');
+  it('backs off a sub-1 numericUnit value only as far as the axis needs', () => {
+    // A short suffix ("cps") fits a decimal within the same width the
+    // mantissa-0 fallback already tolerates; a long one ("Gibit/s") doesn't.
     expect(
       formatAxisTick(0.25, {
-        ...config,
+        output: 'throughput',
+        numericUnit: NumericUnit.Cps,
+        mantissa: 2,
+      }),
+    ).toBe('0.3 cps');
+    expect(
+      formatAxisTick(0.25, {
         output: 'data_rate',
         numericUnit: NumericUnit.GibibitsSec,
+        mantissa: 2,
       }),
     ).toBe('0 Gibit/s');
   });
@@ -272,7 +275,7 @@ describe('getYAxisTicks', () => {
     expect(ticks.map(format)).toEqual(['3.3 GB', '3.4 GB', '3.5 GB']);
   });
 
-  it('clamps a nice candidate that would otherwise land outside the domain', () => {
+  it('never returns a tick outside the given domain', () => {
     const format = (v: number) => v.toFixed(1);
     const ticks = getYAxisTicks(12.3, 45.6, format);
     expect(ticks[0]).toBe(12.3);
@@ -280,18 +283,10 @@ describe('getYAxisTicks', () => {
   });
 
   it('keeps the redundant ticks instead of collapsing to just one', () => {
-    // A domain entirely under 1 can't be distinguished at this mantissa at
-    // all - deduping down to a single "0 cps" tick would look like a flat
-    // line, worse than several ticks that are at least honestly redundant.
-    const format = (v: number) =>
-      formatAxisTick(v, {
-        output: 'throughput',
-        numericUnit: NumericUnit.Cps,
-        mantissa: 2,
-      });
-    const ticks = getYAxisTicks(0.085, 0.415, format);
-    expect(ticks).toHaveLength(5);
-    expect(ticks.map(format)).toEqual(Array(5).fill('0 cps'));
+    // If every candidate renders identically, deduping to one tick would
+    // misrepresent a real, varying range as a flat line.
+    const ticks = getYAxisTicks(1, 5, () => 'same');
+    expect(ticks.length).toBeGreaterThan(1);
   });
 });
 
