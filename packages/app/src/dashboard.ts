@@ -203,7 +203,20 @@ export function useUpdateDashboard(dashboardId?: string) {
       // stale token and 409 against its own predecessor.
       if (updated != null) {
         queryClient.setQueryData<Dashboard[]>(['dashboards'], prev =>
-          prev?.map(d => (d.id === updated.id ? { ...d, ...updated } : d)),
+          prev?.map(d =>
+            d.id === updated.id
+              ? {
+                  ...d,
+                  ...updated,
+                  // The PATCH response comes straight from findOneAndUpdate
+                  // with no populate, so these arrive as bare ObjectIds and
+                  // would blank the author names the list query resolved,
+                  // until the refetch below lands.
+                  createdBy: d.createdBy,
+                  updatedBy: d.updatedBy,
+                }
+              : d,
+          ),
         );
       }
       queryClient.invalidateQueries({ queryKey: ['dashboards'] });
