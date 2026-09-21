@@ -76,8 +76,10 @@ $button-height: 18px;
   opacity: 0;
   transition: opacity 0.15s ease-in-out;
 
-  // Tab still reaches the checkbox while it is transparent.
-  &:focus-within {
+  // Tab still reaches the checkbox while it is transparent. Deliberately not
+  // :focus-within — a mouse click leaves focus on the checkbox, which would
+  // strand it on screen after the row is unchecked.
+  &:has(:focus-visible) {
     opacity: 1;
   }
 }

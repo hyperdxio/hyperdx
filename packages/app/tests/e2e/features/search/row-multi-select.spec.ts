@@ -25,6 +25,30 @@ test.describe('Search row multi-select', { tag: '@search' }, () => {
   );
 
   test(
+    'hides the checkbox again once the row is unchecked',
+    { tag: ['@local-mode'] },
+    async ({ page }) => {
+      const checkbox = searchPage.table.getRowCheckboxCell(0);
+
+      await searchPage.table.selectRows([0]);
+      await expect(searchPage.selectionCount).toBeVisible();
+      // Clicking again unchecks it, and leaves focus on the checkbox.
+      await searchPage.table.selectRows([0]);
+      await expect(searchPage.selectionCount).toBeHidden();
+
+      await searchPage.table.hoverRow(5);
+      await expect(checkbox).toHaveCSS('opacity', '0');
+
+      // That focus must still reveal the checkbox once it is keyboard focus:
+      // shift-tab walks back from the row's expand button to its checkbox.
+      await searchPage.table.expandRow(0);
+      await searchPage.table.hoverRow(5);
+      await page.keyboard.press('Shift+Tab');
+      await expect(checkbox).toHaveCSS('opacity', '1');
+    },
+  );
+
+  test(
     'shows every checkbox while a selection exists',
     { tag: ['@local-mode'] },
     async () => {

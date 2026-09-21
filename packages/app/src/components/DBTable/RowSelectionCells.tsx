@@ -3,7 +3,12 @@ import { Checkbox } from '@mantine/core';
 
 import styles from '@styles/LogTable.module.scss';
 
-export const ROW_SELECTION_COLUMN_WIDTH = 24;
+// Slimmer than Mantine's xs (16px): the column is pure overhead on a table
+// that is already short of horizontal room. Plus the 4px edge gap the
+// checkbox carries in `.selectCheckbox`.
+const CHECKBOX_SIZE = 14;
+
+export const ROW_SELECTION_COLUMN_WIDTH = CHECKBOX_SIZE + 4;
 
 const CELL_WIDTH_STYLE = {
   width: ROW_SELECTION_COLUMN_WIDTH,
@@ -30,7 +35,7 @@ export const RowSelectionCell = memo(
     >
       <Checkbox
         className={styles.selectCheckbox}
-        size="xs"
+        size={`${CHECKBOX_SIZE}px`}
         checked={isSelected}
         aria-label="Select row"
         title="Select row, shift-click to select a range"
