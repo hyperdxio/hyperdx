@@ -876,7 +876,10 @@ export function getYAxisTicks(
   const candidates = getNiceTickValues([min, max], 5, true, 'adaptive').map(v =>
     Math.min(max, Math.max(min, v)),
   );
-  return dedupeAxisTicks(candidates, formatTick);
+  const deduped = dedupeAxisTicks(candidates, formatTick);
+  // If every candidate collapsed to one label, the axis can't distinguish
+  // this range at this mantissa - keep the redundant ticks, not just one.
+  return deduped.length > 1 ? deduped : candidates;
 }
 
 export const MemoChart = memo(function MemoChart({

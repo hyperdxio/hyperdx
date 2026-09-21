@@ -278,6 +278,21 @@ describe('getYAxisTicks', () => {
     expect(ticks[0]).toBe(12.3);
     expect(ticks[ticks.length - 1]).toBe(45.6);
   });
+
+  it('keeps the redundant ticks instead of collapsing to just one', () => {
+    // A domain entirely under 1 can't be distinguished at this mantissa at
+    // all - deduping down to a single "0 cps" tick would look like a flat
+    // line, worse than several ticks that are at least honestly redundant.
+    const format = (v: number) =>
+      formatAxisTick(v, {
+        output: 'throughput',
+        numericUnit: NumericUnit.Cps,
+        mantissa: 2,
+      });
+    const ticks = getYAxisTicks(0.085, 0.415, format);
+    expect(ticks).toHaveLength(5);
+    expect(ticks.map(format)).toEqual(Array(5).fill('0 cps'));
+  });
 });
 
 describe('collectMemoChartGradientHexes', () => {
