@@ -779,9 +779,9 @@ const MAX_AXIS_MANTISSA = 2;
 /** Base width ceiling for a bare signed number - see MAX_AXIS_MANTISSA's comment. */
 const AXIS_CHAR_BUDGET = 5;
 
-// Matches the widest label the mantissa-0 fallback below already renders
-// unchecked (e.g. "256 MiB") - a decimal candidate shouldn't be held tighter.
-const SEPARATOR_CHAR_ALLOWANCE = 2;
+// Flat, not suffix-length-scaled - IBM Plex Mono is monospace, so a longer
+// suffix costs the same per character as a digit and earns no extra room.
+const SEPARATOR_CHAR_ALLOWANCE = 1;
 
 // Trims insignificant trailing zeros ("1.00k" -> "1k") and a sign left
 // over from a value that rounded to zero ("-0"/"-0%" -> "0"/"0%").

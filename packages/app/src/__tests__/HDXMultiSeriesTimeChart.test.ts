@@ -123,17 +123,17 @@ describe('formatAxisTick', () => {
     );
   });
 
-  it('distinguishes nearby byte values on the numericUnit path the UI defaults to', () => {
-    // The mantissa-0 fallback already tolerates this width unchecked (e.g.
-    // "256 MiB"), so a decimal candidate of the same width should too.
+  it('backs off to an integer for a numericUnit suffix too wide to fit a decimal', () => {
+    // "GiB" leaves no room under axisLabelBudget for a decimal - collapsing
+    // both to "1 GiB" is the safe outcome, not the byte-suffix bug this fixes.
     const GB = 1024 ** 3;
     const config = {
       output: 'byte' as const,
       numericUnit: NumericUnit.BytesIEC,
       mantissa: 1,
     };
-    expect(formatAxisTick(1.2 * GB, config)).toBe('1.2 GiB');
-    expect(formatAxisTick(1.4 * GB, config)).toBe('1.4 GiB');
+    expect(formatAxisTick(1.2 * GB, config)).toBe('1 GiB');
+    expect(formatAxisTick(1.4 * GB, config)).toBe('1 GiB');
   });
 
   it('falls back toward fewer decimals for a long unit suffix instead of overflowing', () => {
@@ -157,16 +157,16 @@ describe('formatAxisTick', () => {
     );
   });
 
-  it('backs off a sub-1 numericUnit value only as far as the axis needs', () => {
-    // A short suffix ("cps") fits a decimal within the same width the
-    // mantissa-0 fallback already tolerates; a long one ("Gibit/s") doesn't.
+  it('collapses a sub-1 numericUnit value to 0 rather than clip the axis', () => {
+    // A right-anchored SVG label past the 40px budget clips off-canvas
+    // (showing e.g. "25 cps" for 0.25), which is worse than a bare "0".
     expect(
       formatAxisTick(0.25, {
         output: 'throughput',
         numericUnit: NumericUnit.Cps,
         mantissa: 2,
       }),
-    ).toBe('0.3 cps');
+    ).toBe('0 cps');
     expect(
       formatAxisTick(0.25, {
         output: 'data_rate',
