@@ -134,6 +134,30 @@ describe('formatAxisTick', () => {
   it('uses compact Intl formatting when no axisNumberFormat is set', () => {
     expect(formatAxisTick(1234)).toBe('1.2K');
   });
+
+  describe('duration output', () => {
+    // Regression: 'duration' bypasses this formatter's width safety entirely
+    // (formatNumber returns early for it), and formatDurationMs has no width
+    // budget of its own - e.g. "13.33min" is 8 characters.
+    it('renders minutes with a single-character unit, not "min"', () => {
+      expect(formatAxisTick(799.8, { output: 'duration' })).toBe('13m');
+    });
+
+    it('renders seconds compactly', () => {
+      expect(formatAxisTick(39.51, { output: 'duration' })).toBe('39.5s');
+    });
+
+    it('respects a configured factor, matching formatNumber`s own duration math', () => {
+      expect(
+        formatAxisTick(442_800, { output: 'duration', factor: 0.001 }),
+      ).toBe('7.4m');
+    });
+
+    it('renders sub-millisecond and hour-scale values compactly too', () => {
+      expect(formatAxisTick(0.0000005, { output: 'duration' })).toBe('500ns');
+      expect(formatAxisTick(7500, { output: 'duration' })).toBe('2.1h');
+    });
+  });
 });
 
 describe('collectMemoChartGradientHexes', () => {

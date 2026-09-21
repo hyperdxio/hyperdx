@@ -116,12 +116,44 @@ export class TableComponent {
   }
 
   /**
+   * The multi-select checkbox of a row. Only rendered where row selection is
+   * enabled (the search results table).
+   */
+  getRowCheckbox(index: number) {
+    return this.getRow(index).getByTestId('row-select-checkbox');
+  }
+
+  /**
+   * The cell holding a row's multi-select checkbox. It is the element that
+   * fades the checkbox in and out, so assert visibility on it rather than on
+   * the checkbox itself.
+   */
+  getRowCheckboxCell(index: number) {
+    return this.getRow(index).getByTestId('row-select-cell');
+  }
+
+  async hoverRow(index: number) {
+    await this.getRow(index).hover();
+  }
+
+  /**
    * Select multiple rows by indices
    */
   async selectRows(indices: number[]) {
     for (const index of indices) {
-      await this.getRow(index).locator('[type="checkbox"]').check();
+      await this.getRowCheckbox(index).click();
     }
+  }
+
+  /**
+   * Extend the selection from the last clicked row to this one.
+   */
+  async shiftSelectRow(index: number) {
+    await this.getRowCheckbox(index).click({ modifiers: ['Shift'] });
+  }
+
+  async getSelectedRowCount() {
+    return this.getRows().locator('input:checked').count();
   }
 
   /**

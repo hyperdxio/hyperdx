@@ -22,6 +22,9 @@ export const INTERNAL_ROW_FIELDS = {
   ALIAS_WITH: '__hyperdx_alias_with',
 } as const;
 
+export const getRowId = (row: Record<string, any>): string =>
+  row[INTERNAL_ROW_FIELDS.ID];
+
 // Result type for row WHERE clause with alias support
 export type RowWhereResult = {
   where: string;

@@ -316,7 +316,7 @@ export const KubernetesFilters: React.FC<KubernetesFiltersProps> = ({
   };
 
   return (
-    <Group mt="md" mb="xs" wrap="wrap" gap="xxs">
+    <Group mt="md" mb="xs" wrap="wrap" gap="xxs" align="flex-start">
       {K8S_FILTER_FIELDS.map(({ field, placeholder, dataTestId }) => (
         <FilterSelect
           key={field}
@@ -341,7 +341,6 @@ export const KubernetesFilters: React.FC<KubernetesFiltersProps> = ({
           sourceId={metricSource.id}
           dateRange={dateRange}
           placeholder="Search your events w/ Lucene ex. column:foo"
-          language="lucene"
           name="searchQuery"
           control={control}
           size="xs"

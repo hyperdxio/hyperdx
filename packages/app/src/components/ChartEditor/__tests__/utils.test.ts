@@ -586,6 +586,151 @@ describe('convertSavedChartConfigToFormState', () => {
   });
 });
 
+describe('PromQL expressions', () => {
+  const promqlForm = (
+    promqlExpressions: ChartEditorFormState['promqlExpressions'],
+  ): ChartEditorFormState => ({
+    configType: 'promql',
+    displayType: DisplayType.Line,
+    connection: 'conn-1',
+    source: 'source-promql',
+    promqlExpressions,
+    series: [],
+  });
+
+  it('saves the form rows as the expression list', () => {
+    expect(
+      convertFormStateToSavedChartConfig(
+        promqlForm([
+          { expression: 'up', alias: 'up' },
+          { expression: 'rate(errors[5m])' },
+        ]),
+        undefined,
+      ),
+    ).toMatchObject({
+      promqlExpression: [
+        { expression: 'up', alias: 'up' },
+        { expression: 'rate(errors[5m])' },
+      ],
+    });
+  });
+
+  it('trims aliases, dropping blank ones', () => {
+    const result = convertFormStateToSavedChartConfig(
+      promqlForm([{ expression: 'up', alias: '  up  ' }]),
+      undefined,
+    );
+    expect(result).toMatchObject({
+      promqlExpression: [{ expression: 'up', alias: 'up' }],
+    });
+    expect(
+      convertFormStateToSavedChartConfig(
+        promqlForm([{ expression: 'up', alias: '   ' }]),
+        undefined,
+      ),
+    ).toMatchObject({
+      promqlExpression: [{ expression: 'up', alias: undefined }],
+    });
+  });
+
+  // The submitted config round-trips through the URL back into the form on the
+  // chart explorer, so a row dropped here vanishes from the editor.
+  it('keeps unfinished rows, and gives an empty form one row', () => {
+    expect(
+      convertFormStateToSavedChartConfig(
+        promqlForm([{ expression: 'up' }, { expression: '  ' }]),
+        undefined,
+      ),
+    ).toMatchObject({
+      promqlExpression: [{ expression: 'up' }, { expression: '  ' }],
+    });
+    expect(
+      convertFormStateToSavedChartConfig(promqlForm([]), undefined),
+    ).toMatchObject({ promqlExpression: [{ expression: '' }] });
+  });
+
+  it('keeps unfinished rows in the queried config too', () => {
+    expect(
+      convertFormStateToChartConfig(
+        promqlForm([{ expression: 'up' }, { expression: '' }]),
+        dateRange,
+        undefined,
+      ),
+    ).toMatchObject({
+      promqlExpression: [{ expression: 'up' }, { expression: '' }],
+    });
+  });
+
+  it('threads the expression list into the rendered config', () => {
+    expect(
+      convertFormStateToChartConfig(
+        promqlForm([{ expression: 'up' }, { expression: 'rate(errors[5m])' }]),
+        dateRange,
+        undefined,
+      ),
+    ).toMatchObject({
+      promqlExpression: [
+        { expression: 'up' },
+        { expression: 'rate(errors[5m])' },
+      ],
+    });
+  });
+
+  it('loads a legacy single-expression config into one row', () => {
+    const result = convertSavedChartConfigToFormState({
+      configType: 'promql',
+      displayType: DisplayType.Line,
+      promqlExpression: 'up',
+      connection: 'conn-1',
+      legendTemplate: '{{pod}}',
+    });
+    expect(result.configType).toBe('promql');
+    // Blank rather than absent: an undefined value would leave the alias
+    // input uncontrolled until the first keystroke.
+    expect(result.promqlExpressions).toEqual([{ expression: 'up', alias: '' }]);
+    // The chart-level default stays chart-level.
+    expect(result.legendTemplate).toBe('{{pod}}');
+  });
+
+  it('gives a config with no expressions an empty row to edit', () => {
+    expect(
+      convertSavedChartConfigToFormState({
+        configType: 'promql',
+        displayType: DisplayType.Line,
+        connection: 'conn-1',
+        promqlExpression: [],
+      }).promqlExpressions,
+    ).toEqual([{ expression: '', alias: '' }]);
+  });
+
+  // Switching a builder tile into PromQL mode edits this same form state, so
+  // the row has to exist before the config is a PromQL one.
+  it('gives a builder config an empty row too', () => {
+    expect(
+      convertSavedChartConfigToFormState({
+        source: 'source-1',
+        displayType: DisplayType.Line,
+        select: [seriesItem],
+        where: '',
+      }).promqlExpressions,
+    ).toEqual([{ expression: '', alias: '' }]);
+  });
+
+  it('drops the expression fields from builder configs', () => {
+    const result = convertFormStateToSavedChartConfig(
+      {
+        displayType: DisplayType.Line,
+        series: [seriesItem],
+        promqlExpression: 'up',
+        promqlExpressions: [{ expression: 'up' }],
+      },
+      logSource,
+    );
+    expect(result).not.toHaveProperty('promqlExpression');
+    expect(result).not.toHaveProperty('promqlExpressions');
+  });
+});
+
 describe('validateChartForm', () => {
   const metricSeriesItem = {
     ...seriesItem,
