@@ -18,6 +18,7 @@ import { useAppTheme } from './theme/ThemeProvider';
 import { isValidThemeName, themes } from './theme';
 import {
   DEFAULT_ROW_CLICK_ACTION,
+  RowClickAction,
   UserPreferences,
   useUserPreferences,
 } from './useUserPreferences';
@@ -28,7 +29,7 @@ const OPTIONS_COLOR_MODE = [
   { label: 'Dark', value: 'dark' },
 ];
 
-const OPTIONS_ROW_CLICK_ACTION = [
+const OPTIONS_ROW_CLICK_ACTION: { label: string; value: RowClickAction }[] = [
   { label: 'Open side panel', value: 'sidePanel' },
   { label: 'Expand inline', value: 'expand' },
 ];
@@ -125,12 +126,14 @@ export const UserPreferencesModal = ({
           <Select
             data-testid="row-click-action-select"
             value={userPreferences.rowClickAction ?? DEFAULT_ROW_CLICK_ACTION}
-            onChange={value =>
-              value &&
-              setUserPreference({
-                rowClickAction: value as UserPreferences['rowClickAction'],
-              })
-            }
+            onChange={value => {
+              const option = OPTIONS_ROW_CLICK_ACTION.find(
+                o => o.value === value,
+              );
+              if (option) {
+                setUserPreference({ rowClickAction: option.value });
+              }
+            }}
             data={OPTIONS_ROW_CLICK_ACTION}
             allowDeselect={false}
           />

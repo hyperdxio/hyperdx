@@ -40,7 +40,8 @@ export const RowSelectionCell = memo(
         aria-label="Select row"
         title="Select row, shift-click to select a range"
         data-testid="row-select-checkbox"
-        // The row body is a single button that opens the side panel.
+        // The row body is a single button that opens the side panel or expands
+        // the row, depending on the `rowClickAction` preference.
         onClick={e => e.stopPropagation()}
         onChange={e =>
           onToggle(rowId, {
