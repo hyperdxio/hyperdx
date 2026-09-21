@@ -79,13 +79,17 @@ describe('SearchWhereInput', () => {
 
   describe('Lucene Mode', () => {
     it('renders Lucene input when whereLanguage is lucene', () => {
-      renderWithMantine(<TestWrapper defaultLanguage="lucene" />);
+      const { container } = renderWithMantine(
+        <TestWrapper defaultLanguage="lucene" />,
+      );
 
       // Lucene mode uses a textarea from AutocompleteInput
       const input = screen.getByPlaceholderText(
         /Search your events w\/ Lucene/i,
       );
       expect(input).toBeInTheDocument();
+      // `/` and `s` still focus the input; the overlay keycap is gone.
+      expect(container.querySelector('kbd')).not.toBeInTheDocument();
     });
 
     it('allows typing in Lucene mode', async () => {
@@ -138,10 +142,15 @@ describe('SearchWhereInput', () => {
   });
 
   describe('SQL Mode', () => {
-    it('renders SQL input with WHERE label when whereLanguage is sql', () => {
+    it('renders the SQL editor when whereLanguage is sql', () => {
       renderWithMantine(<TestWrapper defaultLanguage="sql" />);
 
-      expect(screen.getByText('WHERE')).toBeInTheDocument();
+      expect(
+        screen.getByRole('combobox', { name: 'Query language' }),
+      ).toHaveValue('SQL');
+      expect(
+        screen.queryByPlaceholderText(/Search your events w\/ Lucene/i),
+      ).not.toBeInTheDocument();
     });
 
     it('renders SQL placeholder', () => {
@@ -232,23 +241,6 @@ describe('SearchWhereInput', () => {
       expect(
         container.querySelector('[style*="width: 50%"]'),
       ).toBeInTheDocument();
-    });
-
-    it('hides label when showLabel is false', () => {
-      renderWithMantine(
-        <TestWrapper defaultLanguage="sql">
-          {({ control }) => (
-            <SearchWhereInput
-              tableConnection={mockTableConnection}
-              control={control}
-              name="where"
-              showLabel={false}
-            />
-          )}
-        </TestWrapper>,
-      );
-
-      expect(screen.queryByText('WHERE')).not.toBeInTheDocument();
     });
 
     it('uses custom placeholders when provided', () => {

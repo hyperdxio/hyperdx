@@ -38,7 +38,6 @@ export function HeatmapSeriesEditor({
         onLanguageChange={(lang: 'sql' | 'lucene') =>
           setValue('whereLanguage', lang)
         }
-        showLabel={false}
         enableVariables
       />
       <Divider />
