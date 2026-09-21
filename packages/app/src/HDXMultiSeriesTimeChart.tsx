@@ -37,6 +37,7 @@ import {
   COLORS,
   formatDurationMsCompact,
   formatNumber,
+  isFixedNumericUnit,
   truncateMiddle,
 } from '@/utils';
 
@@ -831,14 +832,19 @@ export function formatAxisTick(
     0,
     Math.min(axisNumberFormat.mantissa ?? 0, MAX_AXIS_MANTISSA),
   );
+  // A fixed unit's suffix is identical on every tick, so it's dropped here
+  // (unlike an auto-scale one) to spend the whole budget on precision.
+  const isFixedUnit = isFixedNumericUnit(axisNumberFormat.numericUnit);
   for (let mantissa = maxMantissa; mantissa >= 0; mantissa--) {
     const candidate = trimTrailingZeros(
-      formatNumber(value, {
-        ...axisNumberFormat,
-        mantissa,
-        average: true,
-        unit: undefined,
-      }),
+      isFixedUnit
+        ? value.toFixed(mantissa)
+        : formatNumber(value, {
+            ...axisNumberFormat,
+            mantissa,
+            average: true,
+            unit: undefined,
+          }),
     );
     if (mantissa === 0 || candidate.length <= axisLabelBudget(candidate)) {
       return candidate;

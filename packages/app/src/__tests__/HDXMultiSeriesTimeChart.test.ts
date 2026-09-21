@@ -157,23 +157,31 @@ describe('formatAxisTick', () => {
     );
   });
 
-  it('collapses a sub-1 numericUnit value to 0 rather than clip the axis', () => {
-    // A right-anchored SVG label past the 40px budget clips off-canvas
-    // (showing e.g. "25 cps" for 0.25), which is worse than a bare "0".
+  it('drops a fixed unit suffix from the axis to spend the budget on precision', () => {
+    // "cps"/"Gibit/s" is identical on every tick of a fixed-unit axis, so it
+    // carries no information there - unlike an auto-scale suffix (KiB/MiB/...).
     expect(
       formatAxisTick(0.25, {
         output: 'throughput',
         numericUnit: NumericUnit.Cps,
         mantissa: 2,
       }),
-    ).toBe('0 cps');
+    ).toBe('0.25');
     expect(
       formatAxisTick(0.25, {
         output: 'data_rate',
         numericUnit: NumericUnit.GibibitsSec,
         mantissa: 2,
       }),
-    ).toBe('0 Gibit/s');
+    ).toBe('0.25');
+    // A byte tile pinned to a fixed unit (rather than auto-scaling) too.
+    expect(
+      formatAxisTick(512.5, {
+        output: 'byte',
+        numericUnit: NumericUnit.Kibibytes,
+        mantissa: 1,
+      }),
+    ).toBe('512.5');
   });
 
   it('keeps a small negative percentage distinguishable from 0', () => {
