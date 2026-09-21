@@ -97,6 +97,15 @@ export class TableComponent {
   }
 
   /**
+   * Collapse a row expanded by {@link expandRow}, via the same chevron.
+   */
+  async collapseRow(index: number) {
+    await this.getRow(index)
+      .getByRole('button', { name: 'Collapse log details' })
+      .click();
+  }
+
+  /**
    * Click a row's body — the large hit target covering everything but the
    * chevron. Requires the `expand` row-click preference, under which it toggles
    * inline expansion, so calling it twice collapses the row.
@@ -113,6 +122,44 @@ export class TableComponent {
   async expandRowByBodyClick(index: number) {
     await this.clickRowBody(index);
     await this.firstExpandedRow.waitFor({ state: 'visible', timeout: 10_000 });
+  }
+
+  /**
+   * Scroll the virtualized container to an absolute offset.
+   */
+  async scrollTo(top: number) {
+    await this.tableContainer.evaluate(
+      (el, offset) => el.scrollTo({ top: offset }),
+      top,
+    );
+  }
+
+  /**
+   * Layout readings for the virtualized scroll container.
+   *
+   * `visibleGapPx` is the empty space between the bottom of the last rendered
+   * row and the bottom of the viewport. While rows remain below, a healthy
+   * table overfills the viewport and this is negative; it turns positive when
+   * the virtualizer holds stale row heights and stops rendering enough rows to
+   * cover the screen.
+   */
+  async getVirtualizationMetrics() {
+    return this.tableContainer.evaluate(el => {
+      const rows = el.querySelectorAll('[data-testid^="table-row-"]');
+      const last = rows[rows.length - 1];
+      return {
+        renderedRows: rows.length,
+        scrollHeight: el.scrollHeight,
+        clientHeight: el.clientHeight,
+        visibleGapPx: Math.round(
+          el.getBoundingClientRect().bottom -
+            (last ? last.getBoundingClientRect().bottom : 0),
+        ),
+        remainingBelowPx: Math.round(
+          el.scrollHeight - el.scrollTop - el.clientHeight,
+        ),
+      };
+    });
   }
 
   /**
