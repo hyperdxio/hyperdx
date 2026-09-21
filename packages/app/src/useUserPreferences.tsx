@@ -240,7 +240,15 @@ export const useContentFontSize = () => {
   } = useUserPreferences();
 
   const size = contentFontSize ?? DEFAULT_CONTENT_FONT_SIZE;
-  return { contentFontSize: size, ...CONTENT_FONT_SIZES[size] };
+  const { base, compact } = CONTENT_FONT_SIZES[size];
+
+  return {
+    contentFontSize: size,
+    base,
+    compact,
+    /** Ratio against the default, for px sizing that must grow with the text. */
+    scale: base / CONTENT_FONT_SIZES[DEFAULT_CONTENT_FONT_SIZE].base,
+  };
 };
 
 /**

@@ -29,6 +29,7 @@ describe('useContentFontSize', () => {
     expect(result.current.resolved).toEqual({
       contentFontSize: 'sm',
       ...CONTENT_FONT_SIZES.sm,
+      scale: 1,
     });
   });
 
@@ -58,6 +59,7 @@ describe('useContentFontSize', () => {
     expect(result.current.resolved).toEqual({
       contentFontSize: 'lg',
       ...CONTENT_FONT_SIZES.lg,
+      scale: CONTENT_FONT_SIZES.lg.base / CONTENT_FONT_SIZES.sm.base,
     });
     expect(
       JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? '{}'),
