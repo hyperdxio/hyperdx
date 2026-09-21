@@ -18,6 +18,7 @@ import {
   getSelectedLineData,
   getVisibleLineData,
   getVisibleTooltipRows,
+  getYAxisTicks,
   HARD_LINES_LIMIT,
   sameActiveClickSeries,
 } from '@/HDXMultiSeriesTimeChart';
@@ -156,26 +157,18 @@ describe('formatAxisTick', () => {
     );
   });
 
-  it('keeps a sub-1 numericUnit value from collapsing to a bare 0', () => {
-    // Regression: the suffix budget rejected any decimal for a value under
-    // 1 ("0.25 cps" is 8 chars), forcing it down to the misleading "0 cps".
+  it('collapses a sub-1 numericUnit value to 0 rather than clip the axis', () => {
+    // A right-anchored SVG label past the 40px budget clips off-canvas
+    // (showing e.g. "25 cps" for 0.25), which is worse than a bare "0".
+    const config = { output: 'throughput' as const, mantissa: 2 };
+    expect(
+      formatAxisTick(0.25, { ...config, numericUnit: NumericUnit.Cps }),
+    ).toBe('0 cps');
     expect(
       formatAxisTick(0.25, {
-        output: 'throughput',
-        numericUnit: NumericUnit.Cps,
-        mantissa: 2,
-      }),
-    ).toBe('0.25 cps');
-  });
-
-  it('still backs off a sub-1 value with a suffix too long for the bypass', () => {
-    // "Gibit/s" (7 chars) is past SUB1_SUFFIX_LIMIT, so a fixed-unit tile
-    // pinned to it doesn't get the sub-1 rescue - the overflow isn't worth it.
-    expect(
-      formatAxisTick(0.25, {
+        ...config,
         output: 'data_rate',
         numericUnit: NumericUnit.GibibitsSec,
-        mantissa: 2,
       }),
     ).toBe('0 Gibit/s');
   });
@@ -265,6 +258,25 @@ describe('dedupeAxisTicks', () => {
       '3.4 GB',
       '3.5 GB',
     ]);
+  });
+});
+
+describe('getYAxisTicks', () => {
+  it('resolves the reported duplicate-tick regression end-to-end', () => {
+    // Runs the real getNiceTickValues generator (not a hand-built array)
+    // through clamping and dedup, on the domain the repro tile computes.
+    const GB = 1024 ** 3;
+    const format = (v: number) =>
+      formatAxisTick(v, { output: 'byte', mantissa: 1 });
+    const ticks = getYAxisTicks(3.269 * GB, 3.511 * GB, format);
+    expect(ticks.map(format)).toEqual(['3.3 GB', '3.4 GB', '3.5 GB']);
+  });
+
+  it('clamps a nice candidate that would otherwise land outside the domain', () => {
+    const format = (v: number) => v.toFixed(1);
+    const ticks = getYAxisTicks(12.3, 45.6, format);
+    expect(ticks[0]).toBe(12.3);
+    expect(ticks[ticks.length - 1]).toBe(45.6);
   });
 });
 

@@ -783,10 +783,6 @@ const AXIS_CHAR_BUDGET = 5;
 // suffix costs the same per character as a digit and earns no extra room.
 const SEPARATOR_CHAR_ALLOWANCE = 1;
 
-// Longest suffix ("KiB/s", 5) the sub-1 rescue below will fully bypass the
-// budget for; "Gibit/s" (7) is long enough that overflow isn't worth it.
-const SUB1_SUFFIX_LIMIT = 5;
-
 // Trims insignificant trailing zeros ("1.00k" -> "1k") and a sign left
 // over from a value that rounded to zero ("-0"/"-0%" -> "0"/"0%").
 function trimTrailingZeros(formatted: string): string {
@@ -796,19 +792,11 @@ function trimTrailingZeros(formatted: string): string {
   return trimmed.replace(/^-(0%?)$/, '$1');
 }
 
-// A space-separated unit suffix gets its own allowance, unless the value is
-// under 1 with a short suffix - then a misleading "0" is worse than overflow.
+// A space-separated unit suffix gets its own allowance - an overflowing
+// right-anchored SVG label clips off-canvas, so there's no safe rescue here.
 function axisLabelBudget(formatted: string): number {
   const spaceIndex = formatted.indexOf(' ');
   if (spaceIndex !== -1) {
-    const numericPart = formatted.slice(0, spaceIndex);
-    const suffixLength = formatted.length - spaceIndex - 1;
-    if (
-      /^-?0(\.\d+)?$/.test(numericPart) &&
-      suffixLength <= SUB1_SUFFIX_LIMIT
-    ) {
-      return Infinity;
-    }
     return AXIS_CHAR_BUDGET + SEPARATOR_CHAR_ALLOWANCE;
   }
   const isNegativePercent =
@@ -876,6 +864,19 @@ export function dedupeAxisTicks(
     }
   }
   return deduped;
+}
+
+// "Nice" candidates can land just outside [min, max] (Recharts' own
+// fixed-domain path avoids that); clamp so nothing renders off-scale.
+export function getYAxisTicks(
+  min: number,
+  max: number,
+  formatTick: (value: number) => string,
+): number[] {
+  const candidates = getNiceTickValues([min, max], 5, true, 'adaptive').map(v =>
+    Math.min(max, Math.max(min, v)),
+  );
+  return dedupeAxisTicks(candidates, formatTick);
 }
 
 export const MemoChart = memo(function MemoChart({
@@ -1238,8 +1239,7 @@ export const MemoChart = memo(function MemoChart({
     if (typeof min !== 'number' || typeof max !== 'number') {
       return undefined;
     }
-    const candidates = getNiceTickValues([min, max], 5, true, 'adaptive');
-    return dedupeAxisTicks(candidates, tickFormatter);
+    return getYAxisTicks(min, max, tickFormatter);
   }, [yAxisDomain, tickFormatter]);
 
   const [highlightStart, setHighlightStart] = useState<string | undefined>();
