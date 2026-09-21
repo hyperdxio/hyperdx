@@ -97,7 +97,6 @@ export default function HeatmapSettingsDrawer({
             size="xs"
             tooltipText="Controls the Y axis range and scale — defines the metric plotted vertically."
             placeholder="SQL expression"
-            language="sql"
             onSubmit={form.handleSubmit(onSubmit)}
             label="Value"
             error={form.formState.errors.value?.message}
@@ -111,7 +110,6 @@ export default function HeatmapSettingsDrawer({
             control={form.control}
             name="count"
             placeholder="SQL expression"
-            language="sql"
             size="xs"
             tooltipText="Controls the color intensity (Z axis) — shows how frequently or strongly each value occurs."
             onSubmit={form.handleSubmit(onSubmit)}

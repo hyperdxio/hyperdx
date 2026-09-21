@@ -265,6 +265,17 @@ describe('chSqlToAliasMap - resilient parsing of ClickHouse-specific SQL', () =>
     });
   });
 
+  it('recovers a quoted alias through the fallback', () => {
+    const chSqlInput: ChSql = {
+      sql: `${samplingCte} SELECT client_ip as \`x-host-header\`, ServiceName as service FROM db.t WHERE ${samplingWhere}`,
+      params: {},
+    };
+    expect(chSqlToAliasMap(chSqlInput)).toEqual({
+      'x-host-header': 'client_ip',
+      service: 'ServiceName',
+    });
+  });
+
   it('restores JSON-path aliases recovered through the fallback', () => {
     const chSqlInput: ChSql = {
       sql: `${samplingCte} SELECT ResourceAttributes.service.name as service, Timestamp as ts FROM db.t WHERE ${samplingWhere}`,
@@ -303,6 +314,98 @@ describe('chSqlToAliasMap - resilient parsing of ClickHouse-specific SQL', () =>
       params: {},
     };
     expect(chSqlToAliasMap(chSqlInput)).toEqual({});
+  });
+});
+
+describe('chSqlToAliasMap - backtick-quoted identifiers', () => {
+  it('resolves an alias whose name needs quoting, keeping its siblings', () => {
+    const res = chSqlToAliasMap({
+      sql: 'SELECT client_ip AS `x-host-header`,time AS `__hdx_timestamp`,ServiceName AS svc FROM otel.logs WHERE time > 1 LIMIT 10',
+      params: {},
+    });
+    expect(res).toEqual({
+      'x-host-header': 'client_ip',
+      __hdx_timestamp: 'time',
+      svc: 'ServiceName',
+    });
+  });
+
+  it('keeps the quoting on a column whose name needs it', () => {
+    const res = chSqlToAliasMap({
+      sql: "SELECT `x-host-header` AS host,`M-1`['a'] AS mapped FROM otel.logs LIMIT 10",
+      params: {},
+    });
+    expect(res).toEqual({
+      host: '`x-host-header`',
+      mapped: "`M-1`['a']",
+    });
+  });
+
+  it('records no entry for a quoted column selected without an alias', () => {
+    const res = chSqlToAliasMap({
+      sql: 'SELECT `x-host-header`,ServiceName AS svc FROM otel.logs LIMIT 10',
+      params: {},
+    });
+    expect(res).toEqual({ svc: 'ServiceName' });
+  });
+
+  it('keeps aliases when the only quoted identifier is in the WHERE', () => {
+    const res = chSqlToAliasMap({
+      sql: "SELECT ServiceName AS svc FROM otel.logs WHERE `x-host-header`='v' LIMIT 10",
+      params: {},
+    });
+    expect(res).toEqual({ svc: 'ServiceName' });
+  });
+
+  it('preserves quoting inside an aliased expression', () => {
+    const res = chSqlToAliasMap({
+      sql: 'SELECT lower(`x-host-header`) AS host,multiIf(`a-b` > 1, `c-d`, 0) AS m FROM otel.logs LIMIT 10',
+      params: {},
+    });
+    expect(res).toEqual({
+      host: 'lower(`x-host-header`)',
+      m: 'multiIf(`a-b` > 1, `c-d`, 0)',
+    });
+  });
+
+  it('re-quotes a double-quoted column name', () => {
+    const res = chSqlToAliasMap({
+      sql: 'SELECT "x-host-header" AS host FROM otel.logs LIMIT 10',
+      params: {},
+    });
+    expect(res).toEqual({ host: '`x-host-header`' });
+  });
+
+  it('restores more than ten quoted identifiers', () => {
+    const select = Array.from(
+      { length: 12 },
+      (_, i) => `\`c-${i}\` AS a${i}`,
+    ).join(',');
+    const res = chSqlToAliasMap({
+      sql: `SELECT ${select} FROM otel.logs LIMIT 10`,
+      params: {},
+    });
+    expect(res).toEqual(
+      Object.fromEntries(
+        Array.from({ length: 12 }, (_, i) => [`a${i}`, `\`c-${i}\``]),
+      ),
+    );
+  });
+
+  it('restores quoted identifiers alongside a JSON path', () => {
+    const res = chSqlToAliasMap({
+      sql: 'SELECT concat(j.p0, `c-1`, `c-10`) AS m FROM otel.logs LIMIT 10',
+      params: {},
+    });
+    expect(res).toEqual({ m: 'concat(j.p0, `c-1`, `c-10`)' });
+  });
+
+  it('leaves backticks inside string literals alone', () => {
+    const res = chSqlToAliasMap({
+      sql: "SELECT Body AS body FROM otel.logs WHERE Body = 'a `b` c' LIMIT 10",
+      params: {},
+    });
+    expect(res).toEqual({ body: 'Body' });
   });
 });
 

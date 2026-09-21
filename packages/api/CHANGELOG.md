@@ -1,5 +1,96 @@
 # @hyperdx/api
 
+## 2.39.1
+
+## 2.39.0
+
+### Minor Changes
+
+- ff1e77ce: Backfill alert `displayName` and `tags` from the referenced saved search or dashboard on API startup. Alerts that already have a display name or tags are skipped.
+- e31e5d8d: Offer dashboard tile alerts for Terraform import. `clickhouse_clickstack_alert`
+  gained `source = "tile"` with `dashboard_id`/`tile_id` in provider 3.28.0, so
+  the bulk export and the per-alert menu now include tile alerts instead of
+  skipping every alert that is not a saved-search one. A file carrying a tile
+  alert asks for `>= 3.28.0` and explains the hand edit its generated config
+  needs; an export without one still installs on 3.25.x. A tile alert is withheld
+  when its tile has a blank or duplicated name — the provider's `tile_ids` map is
+  keyed by tile name and omits those, so the alert could only be pinned to a
+  literal id the next dashboard apply can re-mint — or when its dashboard is
+  provisioned, since ProvisionDashboardsTask rewrites those tiles wholesale. Both
+  decisions are made server-side, on the import manifest and on the alerts
+  listing, because neither response carries a dashboard's sibling tile names.
+- f007c37f: Add a context-aware getting-started checklist to the sidebar for recently-created teams. After the setup steps (connect ClickHouse, add data) complete, a second phase tracks product-usage milestones persisted per user on `user.onboardingData`: exploring data, building a dashboard, setting up an alert, and using the MCP server. Completion is recorded server-side so it counts from the UI, the external REST API v2, or an MCP tool; the card can be dismissed and reappears if a new task is added to the registry.
+- b2174306: feat: run PromQL against ClickHouse through its Prometheus HTTP API
+
+  ClickHouse-backed `/query` and `/query_range` now proxy to the connection's `/prometheus/api/v1/*` endpoint (the `prometheus_api_v1` HTTP handler, ClickHouse 26.8+) instead of calling the `prometheusQuery`/`prometheusQueryRange` table functions. The `database` and `table` query parameters are forwarded so one handler serves any TimeSeries table. ClickHouse holds the Prometheus API forward-compatible while the TimeSeries engine is in preview; the table functions and inner-table schema are not. Bundled ClickHouse images move to 26.8.
+
+- 972634d2: Report the whole alert condition in the `{{sourceQuery}}` webhook template
+  variable. It read only a chart's top-level `where`, so an alert defined by a
+  per-series `aggCondition` — a common shape — still rendered empty. The variable
+  now reports every part of the condition the alert query actually applies: a
+  chart's `where` plus the `aggCondition` of the series the alert reads, and a
+  saved search's `where` plus its pinned filters. A chart's pinned filters are
+  deliberately excluded, since a tile or inline alert does not apply them. The
+  value is truncated at 2000 characters.
+
+  Editing an alert off a `between` or `outside` comparator now clears the stored
+  `thresholdMax` instead of leaving the old bound on the document, where it was
+  also served by the alerts APIs and would advertise a range that no longer
+  fires. Webhook templates already guarded against this on read.
+
+  The webhook form's variable list and the API's fallback body template both
+  derive from one list in common-utils, which `buildWebhookTemplateVariables` is
+  typed against, so a variable cannot be added without appearing in both places.
+  The "Send test" payload carries a sample value for every variable, so a body
+  template can be checked before an alert fires.
+
+  The documented guard for an optional number is now
+  `{{#unless (eq thresholdMax undefined)}}` rather than `{{#if thresholdMax}}`,
+  which treats a legitimate bound of `0` as absent.
+
+### Patch Changes
+
+- 4d18cb09: fix: fetch a grouped alert's example log lines once per window
+
+  A saved-search alert puts a handful of example log lines into the notification it sends, and fetching them takes a second query. That query was being made while building each message, so an alert grouped by service asked ClickHouse for the same lines once per breaching service — ten services meant ten identical queries over the same data, because the query only filters by the saved search and the time window, never by the group. It now runs once and every notification for that window shares the answer. An alert catching up on skipped ticks still fetches lines for each window it backfills, since those genuinely differ. Ungrouped alerts are unaffected; they only ever asked once.
+
+- c8cc8e5e: feat: Include alert tags in the tags API response
+- 482d2cb0: feat: Paginate the alerts page
+- 5311d63c: fix: give incident.io webhooks a body incident.io accepts
+
+  An incident.io webhook saved without a body was sent the generic `{"text": ...}` payload, which has neither of the two fields incident.io requires, so every delivery was rejected and no alert was ever raised. It now gets an incident.io payload carrying a deduplication key that is stable across a firing and its resolve, so incident.io closes the alert it opened, plus the alert id, status, condition and evaluation window in `metadata` for routing. The webhook body editor and its list of template variables are also available when incident.io is the selected service, not only for Generic, so the payload can be tailored to an alert source's configured fields.
+
+- 6b391715: Accept metric selects without a value expression on the external dashboards API. A tile that aggregates a metric names its value with `metricName` and has no expression to give, so `/api/v2/dashboards/validate` was rejecting dashboards the editor itself writes, and Terraform could not import them.
+- 84c67f4b: fix: show only the delivery time in an alert's notification duration
+
+  The notification duration on an alert's evaluation list was timing everything an alert does once it decides to fire: building the message title and links, querying the log lines that go in the body, rendering the template, and then delivering it. That made the column read in seconds while the webhook underneath it answered in milliseconds — the column and its own per-target breakdown disagreed, and the figure was dominated by work that has nothing to do with how fast the notification target responded. It now times the delivery alone. Evaluations already recorded keep their old figure and will read high.
+
+- cfacdbe5: feat: relative date ranges for dashboards can now be saved
+- 806d242e: feat: page and filter GET /alerts server-side
+- b19fa12a: refactor(api): backport alertConfigHasGroupBy helper
+- 78a33ba4: feat: Allow configuring dashboard filters as required
+- edb693a6: Apply saved-search pinned filters to alert notification sample queries so sample
+  log lines come from the same row set the alert counted.
+- 0a371980: fix: Keep `/api/sources` responses stable for sources whose stored `metadataMaterializedViews` has no nested `_id`
+- bef61fbc: feat: Scope tags endpoint by resource type
+- 6c85ca02: feat: add a pluggable token encryption service for stored third-party tokens. Set `TOKEN_ENCRYPTION_KEY` to a 32-byte key (base64 or hex) to encrypt them with AES-256-GCM; without it they are stored unencrypted.
+- Updated dependencies [482d2cb0]
+- Updated dependencies [e31e5d8d]
+- Updated dependencies [5311d63c]
+- Updated dependencies [96ac6b1b]
+- Updated dependencies [84c67f4b]
+- Updated dependencies [f007c37f]
+- Updated dependencies [cfacdbe5]
+- Updated dependencies [806d242e]
+- Updated dependencies [f7ae72c2]
+- Updated dependencies [b1e48b99]
+- Updated dependencies [78a33ba4]
+- Updated dependencies [3876d6b9]
+- Updated dependencies [bef61fbc]
+- Updated dependencies [b4840573]
+- Updated dependencies [972634d2]
+  - @hyperdx/common-utils@0.29.0
+
 ## 2.38.0
 
 ### Minor Changes
