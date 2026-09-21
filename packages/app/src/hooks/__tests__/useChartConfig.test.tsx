@@ -7,6 +7,8 @@ import {
   ChartConfigWithOptDateRange,
   DisplayType,
   MetricsDataType,
+  SourceKind,
+  TSource,
 } from '@hyperdx/common-utils/dist/types';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
@@ -16,6 +18,7 @@ import { useClickhouseClient } from '@/clickhouse';
 import {
   appendChunk,
   getGranularityAlignedTimeWindows,
+  getMinGranularitySeconds,
   useQueriedChartConfig,
 } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
@@ -1879,6 +1882,56 @@ describe('useChartConfig', () => {
       expect(queryCall.config.from.tableName).toBe('metrics_rollup_1h');
 
       expect(result2.current.data?.data).toBeDefined();
+    });
+  });
+
+  describe('getMinGranularitySeconds', () => {
+    const baseMetricSource = {
+      id: 'source-1',
+      kind: SourceKind.Metric,
+      name: 'Test Metrics',
+      connection: 'conn-1',
+      from: { databaseName: 'default', tableName: '' },
+      timestampValueExpression: 'TimeUnix',
+      resourceAttributesExpression: 'ResourceAttributes',
+      metricTables: {
+        gauge: 'otel_metrics_gauge',
+        histogram: 'otel_metrics_histogram',
+        sum: 'otel_metrics_sum',
+        summary: 'otel_metrics_summary',
+        'exponential histogram': 'otel_metrics_exponential_histogram',
+      },
+    } satisfies Extract<TSource, { kind: SourceKind.Metric }>;
+
+    it('converts the source minAutoGranularity setting to seconds', () => {
+      expect(
+        getMinGranularitySeconds({
+          ...baseMetricSource,
+          minAutoGranularity: '5 minute',
+        }),
+      ).toBe(300);
+    });
+
+    it('returns undefined when the source has no minAutoGranularity set', () => {
+      expect(getMinGranularitySeconds(baseMetricSource)).toBeUndefined();
+    });
+
+    it('returns undefined for a non-metric source', () => {
+      expect(
+        getMinGranularitySeconds({
+          id: 'source-2',
+          kind: SourceKind.Log,
+          name: 'Test Logs',
+          connection: 'conn-1',
+          from: { databaseName: 'default', tableName: 'otel_logs' },
+          timestampValueExpression: 'TimestampTime',
+          defaultTableSelectExpression: 'Body',
+        } satisfies TSource),
+      ).toBeUndefined();
+    });
+
+    it('returns undefined when the source is undefined', () => {
+      expect(getMinGranularitySeconds(undefined)).toBeUndefined();
     });
   });
 

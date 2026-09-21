@@ -133,6 +133,26 @@ describe('renderRawSqlChartConfig', () => {
         expect(result.params.intervalSeconds).toBe(60);
         expect(result.params.intervalMilliseconds).toBe(60000);
       });
+
+      it('floors intervalSeconds to minGranularitySeconds when the auto-inferred bucket is smaller', async () => {
+        // 15-minute range: auto-granularity alone would be 15 seconds
+        const start = new Date('2024-01-01T00:00:00.000Z');
+        const end = new Date('2024-01-01T00:15:00.000Z');
+        const result = await renderRawSqlChartConfig(
+          {
+            configType: 'sql',
+            sqlTemplate: 'SELECT ts, count() FROM logs GROUP BY ts',
+            connection: 'conn-1',
+            granularity: 'auto',
+            displayType: DisplayType.Line,
+            dateRange: [start, end],
+            minGranularitySeconds: 60,
+          },
+          mockMetadata,
+        );
+        expect(result.params.intervalSeconds).toBe(60);
+        expect(result.params.intervalMilliseconds).toBe(60000);
+      });
     });
 
     it('defaults to Table display type when displayType is not specified', async () => {
