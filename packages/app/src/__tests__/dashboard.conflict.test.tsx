@@ -111,7 +111,7 @@ describe('useDashboard 409 conflict handling', () => {
     expect(notificationsShow).toHaveBeenCalledWith(
       expect.objectContaining({
         color: 'yellow',
-        title: 'Dashboard changed elsewhere',
+        title: 'Dashboard has newer changes',
         message: expect.stringContaining('Your change was not saved'),
       }),
     );

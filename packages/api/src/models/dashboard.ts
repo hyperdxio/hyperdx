@@ -1,5 +1,5 @@
 import { DashboardSchema } from '@hyperdx/common-utils/dist/types';
-import mongoose, { Schema } from 'mongoose';
+import mongoose, { Schema, UpdateQuery } from 'mongoose';
 import { z } from 'zod';
 
 import type { ObjectId } from '.';
@@ -22,7 +22,7 @@ export type DashboardDocument = mongoose.HydratedDocument<IDashboard>;
 // server-owned, and avoids a hard Mongo error, since `$set: { version: n }`
 // alongside the `$inc` below would conflict.
 function stripClientSuppliedVersion(
-  update: Record<string, any> | null | undefined,
+  update: UpdateQuery<IDashboard> | null | undefined,
 ) {
   if (update == null) return;
   delete update.version;
@@ -86,7 +86,18 @@ const dashboardSchema = new Schema<IDashboard>(
 dashboardSchema.pre(
   ['findOneAndUpdate', 'updateOne', 'updateMany'],
   function (next) {
-    const update = this.getUpdate() as Record<string, any> | null;
+    const update = this.getUpdate();
+    // An aggregation-pipeline update is an array, with nowhere to hang the
+    // `$inc` below, so the counter would silently stop advancing and stale
+    // writes would start passing the guard. No call site uses one; fail
+    // loudly rather than let a future one slip past.
+    if (Array.isArray(update)) {
+      return next(
+        new Error(
+          'Dashboard updates cannot use an aggregation pipeline: the version counter needs $inc',
+        ),
+      );
+    }
     stripClientSuppliedVersion(update);
     if (update != null) {
       update.$inc = { ...update.$inc, version: 1 };

@@ -346,7 +346,10 @@ export function useDashboard({
                 });
                 notifications.show({
                   color: 'yellow',
-                  title: 'Dashboard changed elsewhere',
+                  // Describes the state rather than blaming another person:
+                  // a rejected save is just as often the user's own second
+                  // edit made against a render the first save superseded.
+                  title: 'Dashboard has newer changes',
                   message:
                     'Your change was not saved. The latest version has been loaded — please reapply it.',
                   autoClose: 8000,
