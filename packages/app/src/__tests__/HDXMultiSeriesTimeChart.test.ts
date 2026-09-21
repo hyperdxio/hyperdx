@@ -128,25 +128,17 @@ describe('formatAxisTick', () => {
     );
   });
 
-  it('distinguishes nearby byte values on the numericUnit path the UI defaults to', () => {
-    // Regression: a flat 1-char suffix bonus fit only "MB"/"GB" (2 chars),
-    // so every numericUnit tile (e.g. default byte output's "GiB") always
-    // fell back to mantissa 0, never reaching this formatter's own fix.
+  it('backs off to an integer for a numericUnit suffix too wide to fit a decimal', () => {
+    // "GiB" leaves no room under axisLabelBudget for a decimal - collapsing
+    // both to "1 GiB" is the safe outcome, not the byte-suffix bug this fixes.
     const GB = 1024 ** 3;
-    expect(
-      formatAxisTick(1.2 * GB, {
-        output: 'byte',
-        numericUnit: NumericUnit.BytesIEC,
-        mantissa: 1,
-      }),
-    ).toBe('1.2 GiB');
-    expect(
-      formatAxisTick(1.4 * GB, {
-        output: 'byte',
-        numericUnit: NumericUnit.BytesIEC,
-        mantissa: 1,
-      }),
-    ).toBe('1.4 GiB');
+    const config = {
+      output: 'byte' as const,
+      numericUnit: NumericUnit.BytesIEC,
+      mantissa: 1,
+    };
+    expect(formatAxisTick(1.2 * GB, config)).toBe('1 GiB');
+    expect(formatAxisTick(1.4 * GB, config)).toBe('1 GiB');
   });
 
   it('falls back toward fewer decimals for a long unit suffix instead of overflowing', () => {

@@ -498,15 +498,13 @@ export function resolveChartNumberFormats(
 }
 
 // A tick's decimal places search downward from the configured mantissa,
-// capped at this, for the most precision that fits axisLabelBudget below.
-// Mirrors HDXMultiSeriesTimeChart.tsx's constants/algorithm for parity.
+// capped at this - mirrors HDXMultiSeriesTimeChart.tsx for parity.
 const MAX_AXIS_MANTISSA = 2;
 const AXIS_CHAR_BUDGET = 5;
 
-// Separator plus a longer-suffix bonus, capped at +2 beyond the 2-char
-// ("MB"/"GB") budget already proven safe against a real shipped tile.
+// Flat, not suffix-length-scaled - the terminal is fixed-width, so a longer
+// suffix costs the same per character as a digit and earns no extra room.
 const SEPARATOR_CHAR_ALLOWANCE = 1;
-const MAX_SUFFIX_BONUS = 2;
 
 // Trims insignificant trailing zeros ("1.00k" -> "1k") and a sign left
 // over from a value that rounded to zero ("-0"/"-0%" -> "0"/"0%").
@@ -518,16 +516,10 @@ function trimTrailingZeros(formatted: string): string {
 }
 
 // Total budget for a candidate label: a space-separated unit suffix gets
-// its own (length-capped) allowance; a negative percent needs +1 for sign+%.
+// its own allowance (not exempt); a negative percent needs +1 for sign+%.
 function axisLabelBudget(formatted: string): number {
-  const spaceIndex = formatted.indexOf(' ');
-  if (spaceIndex !== -1) {
-    const suffixLength = formatted.length - spaceIndex - 1;
-    const suffixBonus = Math.min(
-      Math.max(suffixLength - 2, 0),
-      MAX_SUFFIX_BONUS,
-    );
-    return AXIS_CHAR_BUDGET + SEPARATOR_CHAR_ALLOWANCE + suffixBonus;
+  if (formatted.includes(' ')) {
+    return AXIS_CHAR_BUDGET + SEPARATOR_CHAR_ALLOWANCE;
   }
   const isNegativePercent =
     formatted.startsWith('-') && formatted.endsWith('%');
@@ -535,11 +527,8 @@ function axisLabelBudget(formatted: string): number {
 }
 
 /**
- * Build a termchart y-axis tick formatter from a chart's number format:
- * compact, most precision that fits AXIS_CHAR_BUDGET (capped at
- * MAX_AXIS_MANTISSA) - the same semantics as the web's y-axis. Returns
- * undefined (termchart default formatting) when the chart has no number
- * format.
+ * Termchart y-axis tick formatter: same mantissa-search/axisLabelBudget
+ * semantics as the web's y-axis; undefined when the chart is unconfigured.
  *
  * @source packages/app/src/HDXMultiSeriesTimeChart.tsx (formatAxisTick)
  */

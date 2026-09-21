@@ -771,23 +771,16 @@ export function collectMemoChartGradientHexes(
   );
 }
 
-/**
- * A tick's decimal places search downward from a chart's configured
- * Decimals (which can go up to 10 - see NumberFormat.tsx), capped at this,
- * for the most precision that still fits the axis budget (see
- * axisLabelBudget). 5 chars is the most a bare signed number fits at 11px
- * IBM Plex Mono in the 40px-wide axis; 2 decimals keeps values >= 0.005
- * distinguishable from 0.
- */
+// Cap on the axis mantissa search - configured Decimals can go up to 10
+// (NumberFormat.tsx), but 2 already distinguishes values >= 0.005 from 0.
 const MAX_AXIS_MANTISSA = 2;
 
 /** Base width ceiling for a bare signed number - see MAX_AXIS_MANTISSA's comment. */
 const AXIS_CHAR_BUDGET = 5;
 
-// Separator plus a longer-suffix bonus, capped at +2 beyond the 2-char
-// ("MB"/"GB") budget already proven safe against a real shipped tile.
+// Flat, not suffix-length-scaled - IBM Plex Mono is monospace, so a longer
+// suffix costs the same per character as a digit and earns no extra room.
 const SEPARATOR_CHAR_ALLOWANCE = 1;
-const MAX_SUFFIX_BONUS = 2;
 
 // Trims insignificant trailing zeros ("1.00k" -> "1k") and a sign left
 // over from a value that rounded to zero ("-0"/"-0%" -> "0"/"0%").
@@ -799,16 +792,10 @@ function trimTrailingZeros(formatted: string): string {
 }
 
 // Total budget for a candidate label: a space-separated unit suffix gets
-// its own (length-capped) allowance; a negative percent needs +1 for sign+%.
+// its own allowance (not exempt); a negative percent needs +1 for sign+%.
 function axisLabelBudget(formatted: string): number {
-  const spaceIndex = formatted.indexOf(' ');
-  if (spaceIndex !== -1) {
-    const suffixLength = formatted.length - spaceIndex - 1;
-    const suffixBonus = Math.min(
-      Math.max(suffixLength - 2, 0),
-      MAX_SUFFIX_BONUS,
-    );
-    return AXIS_CHAR_BUDGET + SEPARATOR_CHAR_ALLOWANCE + suffixBonus;
+  if (formatted.includes(' ')) {
+    return AXIS_CHAR_BUDGET + SEPARATOR_CHAR_ALLOWANCE;
   }
   const isNegativePercent =
     formatted.startsWith('-') && formatted.endsWith('%');
@@ -816,18 +803,8 @@ function axisLabelBudget(formatted: string): number {
 }
 
 /**
- * Y-axis tick label formatter. Exported so a unit test can pin the
- * mantissa-precedence behavior without rendering recharts.
- *
- * `average` and `unit` are always forced (compact abbreviation like `1.2k`
- * reads better on an axis than a series' configured unit repeated on every
- * tick). Searches downward from the configured mantissa (capped at
- * MAX_AXIS_MANTISSA) for the most precision that fits axisLabelBudget,
- * trimming trailing zeros, falling back to 0 only when nothing fits.
- *
- * This diverges from DBHeatmapChart's tickFormatter (magnitude-aware at a
- * >= 1 threshold, but ignoring configured mantissa entirely for values
- * under it) - a deliberate difference, not an oversight.
+ * Searches downward from the configured mantissa for the tightest fit
+ * (axisLabelBudget); diverges from DBHeatmapChart's tickFormatter deliberately.
  */
 export function formatAxisTick(
   value: number,
