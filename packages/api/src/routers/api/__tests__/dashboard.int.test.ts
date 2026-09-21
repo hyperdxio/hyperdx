@@ -240,7 +240,7 @@ describe('dashboard router', () => {
       .send({
         name: 'Test Dashboard',
         tiles: [makeTile({ alert: mockAlert })],
-        tags: [],
+        tags: ['ops'],
       })
       .expect(200);
 
@@ -261,6 +261,68 @@ describe('dashboard router', () => {
     expect(storedAlert).not.toBeNull();
     expect(storedAlert?.savedSearch).toBeNull();
     expect(storedAlert?.groupBy).toBeNull();
+    // Neither field was sent, so they derive from the tile and dashboard.
+    expect(storedAlert?.displayName).toBe('Test Dashboard - Test Chart');
+    expect(storedAlert?.tags).toEqual(['ops']);
+  });
+
+  it('resolves displayName and tags on GET for a tile alert stored without them', async () => {
+    const mockAlert = makeMockAlert(webhook._id.toString());
+    const dashboard = await agent
+      .post('/dashboards')
+      .send({
+        name: 'Test Dashboard',
+        tiles: [makeTile({ alert: mockAlert })],
+        tags: ['ops'],
+      })
+      .expect(200);
+    // Alerts written before the fields existed.
+    await Alert.updateMany(
+      { dashboard: dashboard.body.id },
+      { $set: { displayName: null, tags: null } },
+    );
+
+    const list = await agent.get('/dashboards').expect(200);
+    const fromList = list.body.find(d => d._id === dashboard.body.id);
+    expect(fromList.tiles[0].config.alert).toMatchObject({
+      displayName: 'Test Dashboard - Test Chart',
+      tags: ['ops'],
+    });
+  });
+
+  it('persists a tile alert displayName sent through the dashboard PATCH', async () => {
+    const mockAlert = makeMockAlert(webhook._id.toString());
+    const dashboard = await agent
+      .post('/dashboards')
+      .send({
+        name: 'Test Dashboard',
+        tiles: [makeTile({ alert: mockAlert })],
+        tags: ['ops'],
+      })
+      .expect(200);
+
+    await agent
+      .patch(`/dashboards/${dashboard.body.id}`)
+      .send({
+        tiles: [
+          {
+            ...dashboard.body.tiles[0],
+            config: {
+              ...dashboard.body.tiles[0].config,
+              alert: { ...mockAlert, displayName: 'Checkout errors' },
+            },
+          },
+        ],
+      })
+      .expect(200);
+
+    const storedAlert = await Alert.findOne({
+      team: team._id,
+      dashboard: dashboard.body.id,
+      tileId: dashboard.body.tiles[0].id,
+      source: AlertSource.TILE,
+    });
+    expect(storedAlert?.displayName).toBe('Checkout errors');
   });
 
   // A tile alert must always end up with a resolvable notification target.
@@ -301,6 +363,51 @@ describe('dashboard router', () => {
       type: 'webhook',
       webhookId: webhook._id.toString(),
     });
+  });
+
+  // The dashboard editor only ever sets thresholdMax, so switching a tile alert
+  // off a range comparator has to clear the stored bound on this path too.
+  it('clears thresholdMax when a tile alert is moved off a range comparator', async () => {
+    const mockAlert = makeMockAlert(webhook._id.toString());
+    const tile = makeTile({
+      alert: {
+        ...mockAlert,
+        thresholdType: AlertThresholdType.BETWEEN,
+        threshold: 5,
+        thresholdMax: 20,
+      },
+    });
+    const dashboard = await agent
+      .post('/dashboards')
+      .send({ name: 'Test Dashboard', tiles: [tile], tags: [] })
+      .expect(200);
+
+    const created = await agent.get(`/alerts`).expect(200);
+    expect(created.body.data[0].thresholdMax).toBe(20);
+
+    await agent
+      .patch(`/dashboards/${dashboard.body.id}`)
+      .send({
+        ...dashboard.body,
+        tiles: [
+          {
+            ...dashboard.body.tiles[0],
+            config: {
+              ...dashboard.body.tiles[0].config,
+              alert: {
+                ...mockAlert,
+                thresholdType: AlertThresholdType.ABOVE,
+                threshold: 5,
+              },
+            },
+          },
+        ],
+      })
+      .expect(200);
+
+    const updated = await agent.get(`/alerts`).expect(200);
+    expect(updated.body.data[0].thresholdType).toBe(AlertThresholdType.ABOVE);
+    expect(updated.body.data[0].thresholdMax).toBeUndefined();
   });
 
   it('rejects a tile alert with no notification channel', async () => {
@@ -1038,6 +1145,116 @@ describe('dashboard router', () => {
     });
   });
 
+  describe('required filters', () => {
+    const makeFilter = (overrides = {}) => ({
+      id: new Types.ObjectId().toString(),
+      type: 'QUERY_EXPRESSION' as const,
+      name: 'Service Name',
+      expression: 'ServiceName',
+      source: new Types.ObjectId().toString(),
+      ...overrides,
+    });
+
+    it('persists minSelections on create', async () => {
+      const filter = makeFilter({ minSelections: 1 });
+
+      const created = await agent
+        .post('/dashboards')
+        .send({ ...MOCK_DASHBOARD, filters: [filter] })
+        .expect(200);
+
+      expect(created.body.filters).toEqual([filter]);
+
+      const stored = await Dashboard.findById(created.body.id).lean();
+      expect(stored?.filters).toEqual([filter]);
+    });
+
+    it('persists minSelections on patch', async () => {
+      const created = await agent
+        .post('/dashboards')
+        .send({ ...MOCK_DASHBOARD, filters: [makeFilter()] })
+        .expect(200);
+
+      const filter = makeFilter({
+        id: created.body.filters[0].id,
+        minSelections: 1,
+      });
+      await agent
+        .patch(`/dashboards/${created.body.id}`)
+        .send({ filters: [filter] })
+        .expect(200);
+
+      const stored = await Dashboard.findById(created.body.id).lean();
+      expect(stored?.filters?.[0].minSelections).toBe(1);
+    });
+
+    // Absence is meaningful: the client reads a missing value as not required,
+    // so the server must not materialize one.
+    it('leaves minSelections absent when it is not sent', async () => {
+      const created = await agent
+        .post('/dashboards')
+        .send({ ...MOCK_DASHBOARD, filters: [makeFilter()] })
+        .expect(200);
+
+      const stored = await Dashboard.findById(created.body.id).lean();
+      expect(stored?.filters?.[0]).not.toHaveProperty('minSelections');
+    });
+
+    it.each([2, -1, 1.5, '1'])('rejects minSelections %s', async value => {
+      await agent
+        .post('/dashboards')
+        .send({
+          ...MOCK_DASHBOARD,
+          filters: [makeFilter({ minSelections: value })],
+        })
+        .expect(400);
+    });
+
+    it('persists a dashboard-wide requirement', async () => {
+      const filter = makeFilter({
+        minSelections: 1,
+        isGlobalRequirement: true,
+      });
+
+      const created = await agent
+        .post('/dashboards')
+        .send({ ...MOCK_DASHBOARD, filters: [filter] })
+        .expect(200);
+
+      expect(created.body.filters).toEqual([filter]);
+
+      const stored = await Dashboard.findById(created.body.id).lean();
+      expect(stored?.filters).toEqual([filter]);
+    });
+
+    // Absence is what scopes the block to the filter's own tiles, so the server
+    // must not materialize the flag.
+    it('leaves the scope absent when it is not sent', async () => {
+      const created = await agent
+        .post('/dashboards')
+        .send({
+          ...MOCK_DASHBOARD,
+          filters: [makeFilter({ minSelections: 1 })],
+        })
+        .expect(200);
+
+      const stored = await Dashboard.findById(created.body.id).lean();
+      expect(stored?.filters?.[0]).not.toHaveProperty('isGlobalRequirement');
+    });
+
+    it('rejects a non-boolean scope', async () => {
+      await agent
+        .post('/dashboards')
+        .send({
+          ...MOCK_DASHBOARD,
+          filters: [
+            makeFilter({ minSelections: 1, isGlobalRequirement: 'true' }),
+          ],
+        })
+        .expect(400);
+    });
+  });
+
   describe('static-list filters', () => {
     const makeStaticFilter = (overrides = {}) => ({
       id: new Types.ObjectId().toString(),
@@ -1225,6 +1442,335 @@ describe('dashboard router', () => {
         ]);
       },
     );
+  });
+
+  describe('promql-label filters', () => {
+    const createPromqlSource = () =>
+      Source.create({
+        kind: SourceKind.Promql,
+        name: 'Test PromQL Source',
+        team: team._id,
+        connection: new Types.ObjectId().toString(),
+        from: { databaseName: 'test_db', tableName: 'timeseries_table' },
+        timestampValueExpression: 'timestamp',
+      });
+
+    // The route rejects a filter naming anything but a live PromQL source, so
+    // every case here needs a real one.
+    let promqlSourceId: string;
+    beforeEach(async () => {
+      promqlSourceId = (await createPromqlSource())._id.toString();
+    });
+
+    const makePromqlFilter = (overrides = {}) => ({
+      id: new Types.ObjectId().toString(),
+      type: 'PROMETHEUS_LABEL' as const,
+      name: 'Pod',
+      source: promqlSourceId,
+      label: 'pod',
+      isBroadcastEnabled: false,
+      isVariableEnabled: true,
+      variableName: 'pod',
+      ...overrides,
+    });
+
+    it('persists a promql-label filter on create and returns it on GET', async () => {
+      const filter = makePromqlFilter();
+
+      const created = await agent
+        .post('/dashboards')
+        .send({ ...MOCK_DASHBOARD, filters: [filter] })
+        .expect(200);
+
+      expect(created.body.filters).toEqual([filter]);
+
+      const stored = await Dashboard.findById(created.body.id).lean();
+      expect(stored?.filters).toEqual([filter]);
+      // Same reason as the static variant: an absent `expression` is what makes
+      // `$__filter($pod)` report that the expression must be passed explicitly.
+      expect(stored?.filters?.[0]).not.toHaveProperty('expression');
+    });
+
+    // Prometheus 3 allows UTF-8 label names, and a ClickHouse-backed source's
+    // tags map holds whatever the collector ingested.
+    it('persists a dotted OTel-shaped label', async () => {
+      const filter = makePromqlFilter({ label: 'k8s.pod.name' });
+
+      const created = await agent
+        .post('/dashboards')
+        .send({ ...MOCK_DASHBOARD, filters: [filter] })
+        .expect(200);
+
+      expect(created.body.filters).toEqual([filter]);
+    });
+
+    it('persists a series selector', async () => {
+      const filter = makePromqlFilter({ match: 'up{job=~"$env"}' });
+
+      const created = await agent
+        .post('/dashboards')
+        .send({ ...MOCK_DASHBOARD, filters: [filter] })
+        .expect(200);
+
+      expect(created.body.filters).toEqual([filter]);
+    });
+
+    it('rejects an empty series selector', async () => {
+      await agent
+        .post('/dashboards')
+        .send({
+          ...MOCK_DASHBOARD,
+          filters: [makePromqlFilter({ match: '' })],
+        })
+        .expect(400);
+    });
+
+    it('persists an updated label on PATCH', async () => {
+      const filter = makePromqlFilter();
+      const created = await agent
+        .post('/dashboards')
+        .send({ ...MOCK_DASHBOARD, filters: [filter] })
+        .expect(200);
+
+      const updatedFilter = { ...filter, label: 'namespace' };
+      await agent
+        .patch(`/dashboards/${created.body.id}`)
+        .send({ filters: [updatedFilter] })
+        .expect(200);
+
+      const stored = await Dashboard.findById(created.body.id).lean();
+      expect(stored?.filters).toEqual([updatedFilter]);
+    });
+
+    it.each([
+      ['broadcast enabled', { isBroadcastEnabled: true }],
+      ['broadcast unset', { isBroadcastEnabled: undefined }],
+      ['not variable-enabled', { isVariableEnabled: false }],
+      ['variables unset', { isVariableEnabled: undefined }],
+      ['no source', { source: undefined }],
+      ['no label', { label: undefined }],
+      ['an empty label', { label: '' }],
+    ])('rejects a promql-label filter with %s', async (_label, overrides) => {
+      await agent
+        .post('/dashboards')
+        .send({ ...MOCK_DASHBOARD, filters: [makePromqlFilter(overrides)] })
+        .expect(400);
+    });
+
+    // Resolving one of these reads the source's connection and db/table, which
+    // only a PromQL source carries — so unlike every other source reference on
+    // this route, a bad id is rejected rather than saved.
+    describe('source validation', () => {
+      it('rejects a filter naming a source that does not exist', async () => {
+        const source = new Types.ObjectId().toString();
+
+        const response = await agent
+          .post('/dashboards')
+          .send({ ...MOCK_DASHBOARD, filters: [makePromqlFilter({ source })] })
+          .expect(400);
+
+        expect(response.body.message).toContain(source);
+      });
+
+      it('rejects a filter naming a source of the wrong kind', async () => {
+        const logSource = await Source.create({
+          kind: SourceKind.Log,
+          name: 'Test Log Source',
+          team: team._id,
+          connection: new Types.ObjectId().toString(),
+          from: { databaseName: 'test_db', tableName: 'logs_table' },
+          timestampValueExpression: 'timestamp',
+          defaultTableSelectExpression: 'body',
+        });
+
+        const response = await agent
+          .post('/dashboards')
+          .send({
+            ...MOCK_DASHBOARD,
+            filters: [makePromqlFilter({ source: logSource._id.toString() })],
+          })
+          .expect(400);
+
+        expect(response.body.message).toContain(logSource._id.toString());
+      });
+
+      // The lookup is team-scoped, so another team's PromQL source is as good
+      // as absent.
+      it("rejects another team's PromQL source", async () => {
+        const otherTeamSource = await Source.create({
+          kind: SourceKind.Promql,
+          name: 'Other Team PromQL Source',
+          team: new Types.ObjectId(),
+          connection: new Types.ObjectId().toString(),
+          from: { databaseName: 'test_db', tableName: 'timeseries_table' },
+          timestampValueExpression: 'timestamp',
+        });
+
+        await agent
+          .post('/dashboards')
+          .send({
+            ...MOCK_DASHBOARD,
+            filters: [
+              makePromqlFilter({ source: otherTeamSource._id.toString() }),
+            ],
+          })
+          .expect(400);
+      });
+
+      it('rejects the source when PATCH introduces it, leaving the stored filter alone', async () => {
+        const filter = makePromqlFilter();
+        const created = await agent
+          .post('/dashboards')
+          .send({ ...MOCK_DASHBOARD, filters: [filter] })
+          .expect(200);
+
+        await agent
+          .patch(`/dashboards/${created.body.id}`)
+          .send({
+            filters: [{ ...filter, source: new Types.ObjectId().toString() }],
+          })
+          .expect(400);
+
+        const stored = await Dashboard.findById(created.body.id).lean();
+        expect(stored?.filters).toEqual([filter]);
+      });
+
+      // The app PATCHes the whole dashboard on every edit, so re-checking a
+      // filter that was already accepted would let a deleted source block
+      // every later save. The dangling reference is surfaced per-filter at
+      // query time instead.
+      it("lets unrelated edits through after the filter's source is deleted", async () => {
+        const filter = makePromqlFilter();
+        const created = await agent
+          .post('/dashboards')
+          .send({ ...MOCK_DASHBOARD, filters: [filter] })
+          .expect(200);
+
+        await Source.findByIdAndDelete(promqlSourceId);
+
+        await agent
+          .patch(`/dashboards/${created.body.id}`)
+          .send({ name: 'Renamed', filters: [filter] })
+          .expect(200);
+
+        const stored = await Dashboard.findById(created.body.id).lean();
+        expect(stored?.name).toBe('Renamed');
+        expect(stored?.filters).toEqual([filter]);
+      });
+
+      // Only the source is exempt once accepted — everything else about the
+      // filter is still the client's to change, and still validated.
+      it('lets the label change while the source stays dangling', async () => {
+        const filter = makePromqlFilter();
+        const created = await agent
+          .post('/dashboards')
+          .send({ ...MOCK_DASHBOARD, filters: [filter] })
+          .expect(200);
+
+        await Source.findByIdAndDelete(promqlSourceId);
+
+        await agent
+          .patch(`/dashboards/${created.body.id}`)
+          .send({ filters: [{ ...filter, label: 'namespace' }] })
+          .expect(200);
+      });
+
+      it('still rejects a filter added by the PATCH itself', async () => {
+        const created = await agent
+          .post('/dashboards')
+          .send(MOCK_DASHBOARD)
+          .expect(200);
+
+        const source = new Types.ObjectId().toString();
+        const response = await agent
+          .patch(`/dashboards/${created.body.id}`)
+          .send({ filters: [makePromqlFilter({ source })] })
+          .expect(400);
+
+        expect(response.body.message).toContain(source);
+      });
+
+      // Converting a filter to this type is the same as adding one, as far as
+      // the gate is concerned: its source has never been through it.
+      it('still rejects a filter PATCHed over from another type', async () => {
+        const id = new Types.ObjectId().toString();
+        const created = await agent
+          .post('/dashboards')
+          .send({
+            ...MOCK_DASHBOARD,
+            filters: [
+              {
+                id,
+                type: 'QUERY_EXPRESSION' as const,
+                name: 'Service',
+                expression: 'ServiceName',
+                source: promqlSourceId,
+              },
+            ],
+          })
+          .expect(200);
+
+        const logSource = await Source.create({
+          kind: SourceKind.Log,
+          name: 'Converted Log Source',
+          team: team._id,
+          connection: new Types.ObjectId().toString(),
+          from: { databaseName: 'test_db', tableName: 'logs_table' },
+          timestampValueExpression: 'timestamp',
+          defaultTableSelectExpression: 'body',
+        });
+
+        await agent
+          .patch(`/dashboards/${created.body.id}`)
+          .send({
+            filters: [
+              makePromqlFilter({ id, source: logSource._id.toString() }),
+            ],
+          })
+          .expect(400);
+      });
+
+      // The fetch is skipped entirely when no filter of this type is present,
+      // so a queried filter naming a missing source still saves as before.
+      it('leaves other filter types unvalidated', async () => {
+        await agent
+          .post('/dashboards')
+          .send({
+            ...MOCK_DASHBOARD,
+            filters: [
+              {
+                id: new Types.ObjectId().toString(),
+                type: 'QUERY_EXPRESSION' as const,
+                name: 'Service',
+                expression: 'ServiceName',
+                source: new Types.ObjectId().toString(),
+              },
+            ],
+          })
+          .expect(200);
+      });
+    });
+
+    it('rejects a variable name it shares with another filter', async () => {
+      await agent
+        .post('/dashboards')
+        .send({
+          ...MOCK_DASHBOARD,
+          filters: [
+            makePromqlFilter({ variableName: 'pod' }),
+            {
+              id: new Types.ObjectId().toString(),
+              type: 'QUERY_EXPRESSION' as const,
+              name: 'Pod (logs)',
+              expression: 'PodName',
+              source: new Types.ObjectId().toString(),
+              isVariableEnabled: true,
+              variableName: 'pod',
+            },
+          ],
+        })
+        .expect(400);
+    });
   });
 
   describe('preset dashboards', () => {

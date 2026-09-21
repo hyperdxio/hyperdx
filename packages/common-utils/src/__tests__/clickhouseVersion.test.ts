@@ -3,6 +3,8 @@ import {
   isClickHouseVersionAtLeast,
   parseClickHouseVersion,
   supportsDirectReadMap,
+  supportsMergeTreeIndex,
+  supportsPrometheusHttpApi,
 } from '@/core/clickhouseVersion';
 
 type ClickHouseVersionTuple = readonly [number, number, number, number];
@@ -253,5 +255,49 @@ describe('supportsDirectReadMap', () => {
         expect(supportsDirectReadMap(version, true)).toBe(true);
       },
     );
+  });
+});
+
+describe('supportsMergeTreeIndex', () => {
+  it.each<readonly [ClickHouseVersionTuple]>([
+    [[24, 2, 0, 0]],
+    [[24, 3, 1, 2]],
+    [[26, 3, 0, 0]],
+  ])('accepts %j', version => {
+    expect(supportsMergeTreeIndex(version)).toBe(true);
+  });
+
+  it.each<readonly [ClickHouseVersionTuple]>([
+    [[24, 1, 99, 99]],
+    [[23, 12, 0, 0]],
+  ])('rejects %j', version => {
+    expect(supportsMergeTreeIndex(version)).toBe(false);
+  });
+
+  it('returns false when the version is unknown', () => {
+    expect(supportsMergeTreeIndex(undefined)).toBe(false);
+  });
+});
+
+describe('supportsPrometheusHttpApi', () => {
+  it.each<readonly [ClickHouseVersionTuple]>([
+    [[26, 6, 0, 0]],
+    [[26, 6, 8, 7]],
+    [[26, 8, 6, 5]],
+    [[27, 0, 0, 0]],
+  ])('accepts %j', version => {
+    expect(supportsPrometheusHttpApi(version)).toBe(true);
+  });
+
+  it.each<readonly [ClickHouseVersionTuple]>([
+    [[26, 5, 5, 8]],
+    [[26, 5, 99, 99]],
+    [[25, 12, 0, 0]],
+  ])('rejects %j', version => {
+    expect(supportsPrometheusHttpApi(version)).toBe(false);
+  });
+
+  it('returns false when the version is unknown', () => {
+    expect(supportsPrometheusHttpApi(undefined)).toBe(false);
   });
 });

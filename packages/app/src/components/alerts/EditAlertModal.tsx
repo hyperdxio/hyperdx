@@ -5,8 +5,10 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   type Alert,
+  alertDisplayNameSchema,
   AlertIntervalSchema,
   AlertSource,
+  alertTagsSchema,
   AlertThresholdType,
   isRangeThresholdType,
   scheduleStartAtSchema,
@@ -32,6 +34,7 @@ import { IconChartLine, IconInfoCircleFilled } from '@tabler/icons-react';
 import { useQueryClient } from '@tanstack/react-query';
 
 import api from '@/api';
+import { AlertDisplayFields } from '@/components/AlertDisplayFields';
 import { AlertNoteField } from '@/components/AlertNoteField';
 import { AlertChannelForm } from '@/components/Alerts';
 import { AlertDetailChart } from '@/components/alerts/AlertDetailChart';
@@ -42,7 +45,10 @@ import { useSource } from '@/source';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import type { AlertsPageItem } from '@/types';
 import { optionsToSelectData } from '@/utils';
-import { toAlertChannels } from '@/utils/alerts';
+import {
+  getDerivedAlertDisplayName,
+  toFormAlertChannels,
+} from '@/utils/alerts';
 import {
   ALERT_CHANNEL_OPTIONS,
   ALERT_INTERVAL_OPTIONS,
@@ -66,6 +72,8 @@ const EditAlertFormSchema = z
     thresholdType: z.nativeEnum(AlertThresholdType),
     channel: zAlertChannel.optional(),
     channels: zAlertChannels.optional(),
+    displayName: alertDisplayNameSchema,
+    tags: alertTagsSchema,
     // nullish() (not optional()): persisted alerts store this as null, which
     // optional() would reject.
     numConsecutiveWindows: z.number().int().min(1).nullish(),
@@ -80,6 +88,10 @@ const EditAlertFormSchema = z
  * the source discriminator fields (savedSearchId / dashboardId + tileId) and
  * the fields this form does not edit (name, message) so a save round-trips
  * them instead of clearing them server-side.
+ *
+ * Inline alerts are edited through EditInlineAlertModal, which also carries
+ * their chartConfig — routing one here would drop the config and rewrite the
+ * alert as a saved-search alert with no saved search.
  */
 function alertToFormValues(alert: AlertsPageItem): Alert {
   const base = {
@@ -95,17 +107,12 @@ function alertToFormValues(alert: AlertsPageItem): Alert {
         : typeof alert.scheduleStartAt === 'string'
           ? alert.scheduleStartAt
           : alert.scheduleStartAt.toISOString(),
-    // AlertsPageItem types a channel loosely (type?: string | null) while the
-    // form carries the strict Alert shape. Copy channels through rather than
-    // rebuilding them, so a fork's extra channel fields survive an edit; only
-    // webhookId is coerced, because the picker needs a string.
-    channels: toAlertChannels(alert).map(c => ({
-      ...c,
-      webhookId: c.webhookId ?? '',
-    })) as Alert['channels'],
+    channels: toFormAlertChannels(alert),
     name: alert.name ?? null,
     message: alert.message ?? null,
     note: alert.note ?? null,
+    displayName: alert.displayName,
+    tags: alert.tags,
     // Persisted null -> undefined for the NumberInput.
     numConsecutiveWindows: alert.numConsecutiveWindows ?? undefined,
   };
@@ -116,6 +123,18 @@ function alertToFormValues(alert: AlertsPageItem): Alert {
       source: AlertSource.TILE,
       dashboardId: alert.dashboardId ?? '',
       tileId: alert.tileId ?? '',
+    };
+  }
+
+  if (alert.source === AlertSource.INLINE && alert.chartConfig) {
+    // Defensive: AlertRowMenu routes inline alerts to EditInlineAlertModal,
+    // which is the only surface that can edit their query. Should one reach
+    // here, echo the config back rather than falling through to the
+    // saved-search branch, which would rewrite the alert's source.
+    return {
+      ...base,
+      source: AlertSource.INLINE,
+      chartConfig: alert.chartConfig,
     };
   }
 
@@ -149,13 +168,17 @@ export function EditAlertModal({
   const queryClient = useQueryClient();
   const updateAlert = api.useUpdateAlert();
 
-  const isTileAlert = alert.source === AlertSource.TILE;
+  // Chart-shaped alerts (tile and inline) evaluate a chart's value; a
+  // saved-search alert counts matching lines. That difference drives the
+  // copy, the interval/threshold options, and whether a group-by is offered.
+  const isChartAlert =
+    alert.source === AlertSource.TILE || alert.source === AlertSource.INLINE;
 
   // The group-by SQL editor needs the saved search's source table for
   // autocomplete (same lookup as the detail chart).
   const { data: savedSearch } = useSavedSearch(
     { id: alert.savedSearchId ?? '' },
-    { enabled: !isTileAlert && alert.savedSearchId != null },
+    { enabled: !isChartAlert && alert.savedSearchId != null },
   );
   const { data: source } = useSource({ id: savedSearch?.source });
 
@@ -198,10 +221,10 @@ export function EditAlertModal({
     intervalToMinutes(interval ?? '5m') - 1,
     0,
   );
-  const intervalOptions = isTileAlert
+  const intervalOptions = isChartAlert
     ? TILE_ALERT_INTERVAL_OPTIONS
     : ALERT_INTERVAL_OPTIONS;
-  const thresholdTypeOptions = isTileAlert
+  const thresholdTypeOptions = isChartAlert
     ? TILE_ALERT_THRESHOLD_TYPE_OPTIONS
     : ALERT_THRESHOLD_TYPE_OPTIONS;
   const intervalLabel = ALERT_INTERVAL_OPTIONS[interval ?? '5m'];
@@ -217,7 +240,7 @@ export function EditAlertModal({
       threshold: threshold ?? alert.threshold,
       thresholdMax,
       thresholdType: thresholdType ?? alert.thresholdType,
-      ...(!isTileAlert && { groupBy: groupBy || undefined }),
+      ...(!isChartAlert && { groupBy: groupBy || undefined }),
     }),
     [
       alert,
@@ -226,7 +249,7 @@ export function EditAlertModal({
       thresholdMax,
       thresholdType,
       groupBy,
-      isTileAlert,
+      isChartAlert,
     ],
   );
 
@@ -303,7 +326,7 @@ export function EditAlertModal({
           </Text>
           <Group gap="xs">
             <Text size="sm" opacity={0.7}>
-              {isTileAlert ? 'Alert when the value' : 'Alert when'}
+              {isChartAlert ? 'Alert when the value' : 'Alert when'}
             </Text>
             <Controller
               control={control}
@@ -352,7 +375,7 @@ export function EditAlertModal({
               </>
             )}
             <Text size="sm" opacity={0.7}>
-              {isTileAlert ? 'over' : 'lines appear within'}
+              {isChartAlert ? 'over' : 'lines appear within'}
             </Text>
             <Controller
               control={control}
@@ -380,6 +403,12 @@ export function EditAlertModal({
               )}
             />
           </Group>
+          <AlertDisplayFields
+            control={control}
+            displayNameName="displayName"
+            tagsName="tags"
+            derivedDisplayName={getDerivedAlertDisplayName(alert)}
+          />
           <AlertScheduleFields
             control={control}
             setValue={setValue}
@@ -391,7 +420,7 @@ export function EditAlertModal({
             numConsecutiveWindowsName="numConsecutiveWindows"
             numConsecutiveWindows={numConsecutiveWindows ?? undefined}
           />
-          {!isTileAlert && (
+          {!isChartAlert && (
             <>
               <Text size="xxs" opacity={0.5} mb={4} mt="xs">
                 grouped by
@@ -411,7 +440,7 @@ export function EditAlertModal({
           </Text>
           <AlertChannelForm control={control} channelsName="channels" />
           <AlertNoteField control={control} name="note" />
-          {!isTileAlert &&
+          {!isChartAlert &&
             groupBy &&
             (thresholdType === AlertThresholdType.BELOW ||
               thresholdType === AlertThresholdType.BELOW_OR_EQUAL ||

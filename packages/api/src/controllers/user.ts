@@ -1,9 +1,12 @@
+import type { OnboardingTaskId } from '@hyperdx/common-utils/dist/types';
+import { isPersistableUserId as isPersistableUserIdHex } from '@hyperdx/common-utils/dist/types';
 import mongoose from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
 
 import type { ObjectId } from '@/models';
 import Alert from '@/models/alert';
 import User from '@/models/user';
+import logger from '@/utils/logger';
 export function findUserByAccessKey(accessKey: string) {
   return User.findOne({ accessKey });
 }
@@ -30,6 +33,66 @@ export function findUserByEmail(email: string) {
 
 export function findUsersByTeam(team: string | ObjectId) {
   return User.find({ team }).sort({ createdAt: 1 });
+}
+
+// Type-guard wrapper over the shared 24-hex check; rejects the synthetic
+// `_local_user_` id injected in IS_LOCAL_APP_MODE (see isPersistableUserIdHex).
+function isPersistableUserId(
+  userId: string | ObjectId | undefined | null,
+): userId is string | ObjectId {
+  return userId != null && isPersistableUserIdHex(String(userId));
+}
+
+// Returns null for a non-persistable user so the route reports unchanged
+// default state rather than a write that silently matched nothing.
+export function completeOnboardingTask(
+  userId: string | ObjectId,
+  taskId: OnboardingTaskId,
+) {
+  if (!isPersistableUserId(userId)) {
+    return null;
+  }
+  return User.findByIdAndUpdate(
+    userId,
+    { $addToSet: { 'onboardingData.completedTasks': taskId } },
+    { new: true },
+  );
+}
+
+export function setOnboardingDismissed(
+  userId: string | ObjectId,
+  isDismissed: boolean,
+) {
+  if (!isPersistableUserId(userId)) {
+    return null;
+  }
+  return User.findByIdAndUpdate(
+    userId,
+    { $set: { 'onboardingData.isDismissed': isDismissed } },
+    { new: true },
+  );
+}
+
+// Fire-and-forget recording from an unrelated write path (alert/dashboard save,
+// MCP tool call): must never fail or delay the triggering operation, so errors
+// are swallowed. The $ne skips the write once already recorded — these fire on
+// every save / tool call, so it avoids write amplification on hot paths.
+export function recordOnboardingTaskCompletion(
+  userId: string | ObjectId | undefined | null,
+  taskId: OnboardingTaskId,
+) {
+  if (!isPersistableUserId(userId)) {
+    return;
+  }
+  void User.updateOne(
+    { _id: userId, 'onboardingData.completedTasks': { $ne: taskId } },
+    { $addToSet: { 'onboardingData.completedTasks': taskId } },
+  ).catch(err => {
+    logger.warn(
+      { error: err, userId: userId.toString(), taskId },
+      'Failed to record onboarding task completion',
+    );
+  });
 }
 
 export async function deleteTeamMember(

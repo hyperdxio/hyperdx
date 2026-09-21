@@ -16,6 +16,8 @@ interface DashboardFiltersEditModalProps {
   source?: TSource;
   /** Whether to offer the broadcast / variable controls. */
   showVariableOptions: boolean;
+  /** Whether to show the options for marking a filter as required. */
+  showRequiredFilterOptions: boolean;
   /** The dashboard's variables, if any */
   variables?: ChartVariable[];
   onClose: () => void;
@@ -29,6 +31,7 @@ const DashboardFiltersModal = ({
   isLoading,
   source,
   showVariableOptions,
+  showRequiredFilterOptions,
   variables,
   onClose,
   onSaveFilter,
@@ -69,6 +72,7 @@ const DashboardFiltersModal = ({
         filters={filters}
         source={source}
         showVariableOptions={showVariableOptions}
+        showRequiredFilterOptions={showRequiredFilterOptions}
         variables={variables}
         onSave={handleSaveFilter}
         onCancel={stopEditing}

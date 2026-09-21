@@ -418,4 +418,44 @@ describe('ChartPreviewPanel', () => {
       ).not.toBeInTheDocument();
     });
   });
+
+  describe('when required dashboard filters are unsatisfied', () => {
+    const blockedProps = {
+      queriedConfig: baseBuilderConfig,
+      dbTimeChartConfig: baseBuilderConfig,
+      missingRequiredFilterNames: ['Service', 'Environment'],
+    };
+
+    it('names them instead of querying', () => {
+      renderPanel(blockedProps);
+
+      expect(
+        screen.getByText(
+          'Missing required filters: Service, Environment. Select a value for each required filter, or turn off “Apply filters” to preview this tile without them.',
+        ),
+      ).toBeInTheDocument();
+      expect(screen.queryByTestId('db-time-chart')).not.toBeInTheDocument();
+      // The block is the reason, not "you haven't run a query yet".
+      expect(
+        screen.queryByText(/please start by defining/i),
+      ).not.toBeInTheDocument();
+    });
+
+    it('does not block a markdown tile, which queries nothing', () => {
+      renderPanel({ ...blockedProps, activeTab: 'markdown' });
+
+      expect(
+        screen.queryByTestId('preview-missing-required-filters'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('renders the chart once one is selected', () => {
+      renderPanel({ ...blockedProps, missingRequiredFilterNames: [] });
+
+      expect(screen.getByTestId('db-time-chart')).toBeInTheDocument();
+      expect(
+        screen.queryByText(/Missing required filters/),
+      ).not.toBeInTheDocument();
+    });
+  });
 });

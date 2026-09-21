@@ -74,6 +74,10 @@ type ChartEditorControlsProps = {
   ratioMode: ChartEditorFormState['ratioMode'];
   alert: ChartEditorFormState['alert'];
   additionalWarnings?: string[];
+  /** Whether this editor offers an alert (see EditTimeChartForm.enableAlerts). */
+  alertsEnabled?: boolean;
+  /** Hides the alert editor's remove control. */
+  isAlertRequired?: boolean;
   isRawSqlInput: boolean;
   dashboardId?: string;
   parentRef: HTMLElement | null;
@@ -105,6 +109,8 @@ export function ChartEditorControls({
   ratioMode,
   alert,
   additionalWarnings,
+  alertsEnabled,
+  isAlertRequired,
   isRawSqlInput,
   dashboardId,
   parentRef,
@@ -176,6 +182,7 @@ export function ChartEditorControls({
   // Grouped ratios can divide two ways (see RatioModeSchema); the mode toggle
   // is only meaningful when a Group By is set, so gate it on a non-empty value.
   const groupBy = useWatch({ control, name: 'groupBy' });
+  const chartName = useWatch({ control, name: 'name' });
   const hasGroupBy = typeof groupBy === 'string' && groupBy.trim().length > 0;
 
   return (
@@ -483,14 +490,19 @@ export function ChartEditorControls({
               {(displayType === DisplayType.Line ||
                 displayType === DisplayType.StackedBar ||
                 displayType === DisplayType.Number) &&
-                dashboardId &&
+                alertsEnabled &&
                 !alert &&
                 !IS_LOCAL_MODE && (
                   <Button
                     variant="subtle"
                     data-testid="alert-button"
                     size="sm"
-                    onClick={() => setValue('alert', DEFAULT_TILE_ALERT)}
+                    onClick={() =>
+                      setValue('alert', {
+                        ...DEFAULT_TILE_ALERT,
+                        ...(chartName && { displayName: chartName }),
+                      })
+                    }
                   >
                     <IconBell size={14} className="me-2" />
                     Add Alert
@@ -559,7 +571,10 @@ export function ChartEditorControls({
             control={control}
             setValue={setValue}
             alert={alert}
-            onRemove={() => setValue('alert', undefined)}
+            dashboardId={dashboardId}
+            onRemove={
+              isAlertRequired ? undefined : () => setValue('alert', undefined)
+            }
             warning={
               additionalWarnings?.length
                 ? additionalWarnings.join(' ')

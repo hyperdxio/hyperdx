@@ -28,16 +28,12 @@ import EmptyState from '@/components/EmptyState';
 import { PageHeader } from '@/components/PageHeader';
 import { TimePicker } from '@/components/TimePicker';
 import { IS_ALERT_DETAILS_ENABLED } from '@/config';
-import {
-  getAlertDisplayName,
-  getAlertSourceLabel,
-  getAlertSourceUrl,
-} from '@/utils/alerts';
+import { getAlertSourceLabel, getAlertSourceUrl } from '@/utils/alerts';
 
 import { useBrandDisplayName } from './theme/ThemeProvider';
 import api from './api';
 import { withAppNav } from './layout';
-import { parseTimeQuery, useNewTimeQuery } from './timeQuery';
+import { useDefaultTimeRange, useNewTimeQuery } from './timeQuery';
 import type { AlertsPageItem } from './types';
 
 import styles from '@styles/AlertsPage.module.scss';
@@ -88,10 +84,7 @@ function AlertDetailBody({ alert }: { alert: AlertsPageItem }) {
   // mounts once the alert has loaded, and useNewTimeQuery reads the initial
   // values once (a from/to in the URL still takes precedence).
   const defaultTimeRangeLabel = getDefaultTimeRangeLabel(alert.interval);
-  const defaultTimeRange = React.useMemo(
-    () => parseTimeQuery(defaultTimeRangeLabel, false) as [Date, Date],
-    [defaultTimeRangeLabel],
-  );
+  const defaultTimeRange = useDefaultTimeRange(defaultTimeRangeLabel);
   const [displayedTimeInputValue, setDisplayedTimeInputValue] = React.useState(
     defaultTimeRangeLabel,
   );
@@ -135,14 +128,16 @@ function AlertDetailBody({ alert }: { alert: AlertsPageItem }) {
               Alerts
             </Anchor>
             <Text fz="sm" c="dimmed">
-              {getAlertDisplayName(alert) || 'Alert'}
+              {alert.displayName || 'Alert'}
             </Text>
           </Breadcrumbs>
         }
         leading={
           <Group gap="sm">
             {alert.state != null && <AlertStateBadge state={alert.state} />}
-            <Text fw={500}>{getAlertDisplayName(alert)}</Text>
+            <Text fw={500} data-testid="alert-detail-name">
+              {alert.displayName}
+            </Text>
             {alertUrl && (
               /* Next to the name rather than in the actions row: it navigates
                  to what the alert watches, so it belongs with the identity,
@@ -174,7 +169,7 @@ function AlertDetailBody({ alert }: { alert: AlertsPageItem }) {
                 this page carries that link next to the title instead. */}
             <AlertRowMenu
               alert={alert}
-              alertName={getAlertDisplayName(alert)}
+              alertName={alert.displayName}
               dateRange={searchedTimeRange}
               onDeleted={() => router.push('/alerts')}
             />
@@ -255,8 +250,7 @@ export default function AlertDetailPage() {
     >
       <Head>
         <title>
-          {alert ? `${getAlertDisplayName(alert)} - Alerts` : 'Alerts'} -{' '}
-          {brandName}
+          {alert ? `${alert.displayName} - Alerts` : 'Alerts'} - {brandName}
         </title>
       </Head>
       {isLoading && (

@@ -4,6 +4,7 @@ import mongoose from 'mongoose';
 import { z } from 'zod';
 
 import * as config from '@/config';
+import { recordDashboardOnboardingIfHasTiles } from '@/controllers/dashboard';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { formatZodIssues, mcpUserError } from '@/mcp/utils/errors';
 import Dashboard, { IDashboard } from '@/models/dashboard';
@@ -23,11 +24,7 @@ import {
   versionFilter,
   versionToken,
 } from '@/utils/dashboardVersion';
-import type {
-  ExternalDashboardFilter,
-  ExternalDashboardFilterWithId,
-  ExternalDashboardTileWithId,
-} from '@/utils/zod';
+import type { ExternalDashboardTileWithId } from '@/utils/zod';
 import {
   MAX_TAG_LENGTH,
   MAX_TAGS,
@@ -35,6 +32,7 @@ import {
   tagsSchema,
 } from '@/utils/zod';
 
+import type { McpDashboardFilter } from './schemas';
 import { mcpContainersParam, mcpFiltersParam, mcpTilesParam } from './schemas';
 import {
   getFilterVariableWarnings,
@@ -48,7 +46,7 @@ export function registerSaveDashboard({
   context,
   registerTool,
 }: ToolRegistrar): void {
-  const { teamId } = context;
+  const { teamId, userId } = context;
   const frontendUrl = config.FRONTEND_URL;
 
   registerTool(
@@ -105,6 +103,7 @@ export function registerSaveDashboard({
         }
         return createDashboard({
           teamId,
+          userId,
           frontendUrl,
           name,
           inputTiles,
@@ -121,6 +120,7 @@ export function registerSaveDashboard({
       }
       return updateDashboard({
         teamId,
+        userId,
         frontendUrl,
         dashboardId,
         name,
@@ -145,35 +145,29 @@ export function registerSaveDashboard({
 // response into a create payload (or omit the id on a new filter added
 // during update) without hitting a confusing strict-validation rejection.
 function stripFilterIds(
-  filters:
-    | (ExternalDashboardFilter | ExternalDashboardFilterWithId)[]
-    | undefined,
-): ExternalDashboardFilter[] | undefined {
+  filters: McpDashboardFilter[] | undefined,
+): McpDashboardFilter[] | undefined {
   if (!filters) return undefined;
   return filters.map(filter => {
-    const { id: _id, ...rest } = filter as ExternalDashboardFilterWithId;
-    return rest as ExternalDashboardFilter;
+    const { id: _id, ...rest } = filter;
+    return rest as McpDashboardFilter;
   });
 }
 
 function assignFilterIds(
-  filters:
-    | (ExternalDashboardFilter | ExternalDashboardFilterWithId)[]
-    | undefined,
-): ExternalDashboardFilterWithId[] | undefined {
+  filters: McpDashboardFilter[] | undefined,
+): McpDashboardFilter[] | undefined {
   if (!filters) return undefined;
-  return filters.map(filter => {
-    const withId = filter as ExternalDashboardFilterWithId;
-    if (typeof withId.id === 'string' && withId.id.length > 0) return withId;
-    return {
-      ...filter,
-      id: new mongoose.Types.ObjectId().toString(),
-    } as ExternalDashboardFilterWithId;
-  });
+  return filters.map(filter =>
+    typeof filter.id === 'string' && filter.id.length > 0
+      ? filter
+      : { ...filter, id: new mongoose.Types.ObjectId().toString() },
+  );
 }
 
 async function createDashboard({
   teamId,
+  userId,
   frontendUrl,
   name,
   inputTiles,
@@ -182,14 +176,13 @@ async function createDashboard({
   inputFilters,
 }: {
   teamId: string;
+  userId: string | undefined;
   frontendUrl: string | undefined;
   name: string;
   inputTiles: unknown[];
   tags: string[] | undefined;
   containers: DashboardContainer[] | undefined;
-  inputFilters:
-    | (ExternalDashboardFilter | ExternalDashboardFilterWithId)[]
-    | undefined;
+  inputFilters: McpDashboardFilter[] | undefined;
 }) {
   const parsed = createDashboardBodySchema.safeParse({
     name,
@@ -245,6 +238,8 @@ async function createDashboard({
     ...(parsedContainers !== undefined ? { containers: parsedContainers } : {}),
   }).save();
 
+  recordDashboardOnboardingIfHasTiles(userId, newDashboard.tiles);
+
   const externalDashboard = convertToExternalDashboard(newDashboard);
   return {
     content: [
@@ -275,6 +270,7 @@ async function createDashboard({
 
 async function updateDashboard({
   teamId,
+  userId,
   frontendUrl,
   dashboardId,
   name,
@@ -285,15 +281,14 @@ async function updateDashboard({
   version,
 }: {
   teamId: string;
+  userId: string | undefined;
   frontendUrl: string | undefined;
   dashboardId: string;
   name: string;
   inputTiles: unknown[];
   tags: string[] | undefined;
   containers: DashboardContainer[] | undefined;
-  inputFilters:
-    | (ExternalDashboardFilter | ExternalDashboardFilterWithId)[]
-    | undefined;
+  inputFilters: McpDashboardFilter[] | undefined;
   version: string;
 }) {
   const expectedVersion = parseVersionToken(version);
@@ -440,6 +435,8 @@ async function updateDashboard({
     internalTiles,
     existingTileIds,
   });
+
+  recordDashboardOnboardingIfHasTiles(userId, updatedDashboard.tiles);
 
   const externalDashboard = convertToExternalDashboard(updatedDashboard);
   return {

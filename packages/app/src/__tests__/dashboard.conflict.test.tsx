@@ -4,7 +4,14 @@
 // wrapper where the toast lives. Kept in its own file, with its own mocks,
 // so this doesn't disturb the 28 tests already passing in the other file.
 jest.mock('../config', () => ({ IS_LOCAL_MODE: false }));
-jest.mock('../api', () => ({ hdxServer: jest.fn() }));
+jest.mock('../api', () => ({
+  __esModule: true,
+  default: { useMe: () => ({ data: null }) },
+  hdxServer: jest.fn(),
+  useMarkOnboardingTaskComplete: () => jest.fn(),
+  useInvalidateTags: () => jest.fn(),
+  useCompleteOnboardingTask: () => ({ mutate: jest.fn() }),
+}));
 
 const notificationsShow = jest.fn();
 jest.mock('@mantine/notifications', () => ({

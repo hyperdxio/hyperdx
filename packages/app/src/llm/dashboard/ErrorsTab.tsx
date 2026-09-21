@@ -9,7 +9,7 @@ import { ChartCard } from '@/components/charts/ChartCard';
 import ChartContainer from '@/components/charts/ChartContainer';
 import DBSqlRowTableWithSideBar from '@/components/DBSqlRowTableWithSidebar';
 
-import { baseLLMChartConfig, buildSessionCondition } from './chartConfig';
+import { baseLLMChartConfig, buildScopeCondition } from './chartConfig';
 import { LLMChartProps } from './types';
 
 const TILE_HEIGHT = 450;
@@ -27,6 +27,7 @@ export function ErrorsTab(props: LLMChartProps) {
     logSource,
     logExpressions,
     sessionId,
+    userId,
     where,
     whereLanguage,
   } = props;
@@ -58,10 +59,18 @@ export function ErrorsTab(props: LLMChartProps) {
             ? [
                 {
                   type: 'sql' as const,
-                  condition: buildSessionCondition(
+                  condition: buildScopeCondition(
                     logExpressions.sessionId,
                     sessionId,
                   ),
+                },
+              ]
+            : []),
+          ...(userId
+            ? [
+                {
+                  type: 'sql' as const,
+                  condition: buildScopeCondition(logExpressions.userId, userId),
                 },
               ]
             : []),

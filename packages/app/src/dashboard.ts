@@ -5,6 +5,9 @@ import {
   DashboardContainer,
   DashboardFilter,
   DashboardFilterValue,
+  DashboardWithoutId,
+  isPersistableUserId,
+  OnboardingTaskId,
   resolveChartPaletteToken,
   SavedChartConfig,
   SearchConditionLanguage,
@@ -15,9 +18,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { hashCode } from '@/utils';
 
-import { hdxServer } from './api';
+import api, {
+  hdxServer,
+  useCompleteOnboardingTask,
+  useInvalidateTags,
+  useMarkOnboardingTaskComplete,
+} from './api';
 import { IS_LOCAL_MODE } from './config';
-import { createEntityStore } from './localStore';
+import { collectTags, createEntityStore } from './localStore';
 
 // TODO: Move to types
 export type Tile = {
@@ -40,6 +48,7 @@ export type Dashboard = {
   savedQuery?: string | null;
   savedQueryLanguage?: SearchConditionLanguage | null;
   savedFilterValues?: DashboardFilterValue[];
+  savedDateRange?: DashboardWithoutId['savedDateRange'];
   containers?: DashboardContainer[];
   createdAt?: string;
   updatedAt?: string;
@@ -134,8 +143,25 @@ export async function fetchDashboards(): Promise<Dashboard[]> {
   return dashboards.map(normalizeDashboardTileColors);
 }
 
+// Syncs the me cache after the backend records on save. 'dashboard' needs a
+// tile, matching the backend (an empty shell isn't charting your data).
+function markDashboardOnboarding(
+  markOnboardingTaskComplete: (taskId: OnboardingTaskId) => void,
+  tiles: Tile[] | undefined,
+) {
+  if (IS_LOCAL_MODE || !tiles?.length) {
+    return;
+  }
+  markOnboardingTaskComplete('dashboard');
+  if (tiles.some(tile => tile.config.alert != null)) {
+    markOnboardingTaskComplete('alert');
+  }
+}
+
 export function useUpdateDashboard(dashboardId?: string) {
   const queryClient = useQueryClient();
+  const markOnboardingTaskComplete = useMarkOnboardingTaskComplete();
+  const invalidateTags = useInvalidateTags();
 
   return useMutation({
     // TanStack runs same-scope mutations one at a time, so two saves fired
@@ -174,6 +200,8 @@ export function useUpdateDashboard(dashboardId?: string) {
         .getQueryData<Dashboard[]>(['dashboards'])
         ?.find(d => d.id === normalized.id)?.version;
       const expectedVersion = cachedVersion ?? fallbackVersion;
+      // Return the persisted dashboard so onboarding keys off saved tiles, not
+      // the partial PATCH payload — a name/tag-only save omits `tiles`.
       return hdxServer(`dashboards/${normalized.id}`, {
         method: 'PATCH',
         json: {
@@ -193,12 +221,16 @@ export function useUpdateDashboard(dashboardId?: string) {
         );
       }
       queryClient.invalidateQueries({ queryKey: ['dashboards'] });
+      invalidateTags();
+      markDashboardOnboarding(markOnboardingTaskComplete, updated?.tiles);
     },
   });
 }
 
 export function useCreateDashboard() {
   const queryClient = useQueryClient();
+  const markOnboardingTaskComplete = useMarkOnboardingTaskComplete();
+  const invalidateTags = useInvalidateTags();
 
   return useMutation({
     mutationFn: async (dashboard: Omit<Dashboard, 'id'>) => {
@@ -211,8 +243,11 @@ export function useCreateDashboard() {
         json: normalized,
       }).json<Dashboard>();
     },
-    onSuccess: () => {
+    onSuccess: created => {
       queryClient.invalidateQueries({ queryKey: ['dashboards'] });
+      invalidateTags();
+      // Key off the server's persisted tiles (see useUpdateDashboard).
+      markDashboardOnboarding(markOnboardingTaskComplete, created?.tiles);
     },
   });
 }
@@ -249,6 +284,13 @@ export function useDashboard({
 
   const queryClient = useQueryClient();
   const updateDashboard = useUpdateDashboard(dashboardId);
+  const completeOnboardingTask = useCompleteOnboardingTask();
+  const { data: me } = api.useMe();
+  // A non-persistable user counts as "already built" so the temp-dashboard POST
+  // never fires (see isPersistableUserId).
+  const hasBuiltDashboard =
+    !isPersistableUserId(me?.id) ||
+    (me?.onboardingData?.completedTasks.includes('dashboard') ?? false);
 
   const { data: remoteDashboard, isFetching: isFetchingRemoteDashboard } =
     useQuery({
@@ -288,6 +330,15 @@ export function useDashboard({
         // inserted via a preset literal) and matches the canonical hue
         // tokens used by the renderers.
         setLocalDashboard(normalizeDashboardTileColors(newDashboard));
+        // Temp dashboards never hit the backend, so record here. Guarded on
+        // hasBuiltDashboard because setDashboard runs on every layout edit.
+        if (
+          !IS_LOCAL_MODE &&
+          !hasBuiltDashboard &&
+          (newDashboard.tiles?.length ?? 0) > 0
+        ) {
+          completeOnboardingTask.mutate('dashboard');
+        }
         onSuccess?.();
       } else {
         setIsSettingDashboard(true);
@@ -335,6 +386,8 @@ export function useDashboard({
       updateDashboard,
       remoteDashboard,
       queryClient,
+      completeOnboardingTask,
+      hasBuiltDashboard,
     ],
   );
 
@@ -358,15 +411,12 @@ export function fetchLocalDashboards(): Dashboard[] {
 }
 
 export function getLocalDashboardTags(): string[] {
-  const tagSet = new Set<string>();
-  localDashboards
-    .getAll()
-    .forEach(d => (d.tags ?? []).forEach(t => tagSet.add(t)));
-  return Array.from(tagSet);
+  return collectTags(localDashboards.getAll());
 }
 
 export function useDeleteDashboard() {
   const queryClient = useQueryClient();
+  const invalidateTags = useInvalidateTags();
 
   return useMutation({
     mutationFn: (id: string) => {
@@ -378,6 +428,7 @@ export function useDeleteDashboard() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['dashboards'] });
+      invalidateTags();
     },
   });
 }

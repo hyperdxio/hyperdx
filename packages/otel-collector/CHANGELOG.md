@@ -1,5 +1,28 @@
 # @hyperdx/otel-collector
 
+## 2.39.1
+
+## 2.39.0
+
+### Minor Changes
+
+- 7651bc34: feat: add text indexes for seeding the trace schema
+- fc4d5878: feat(otel-collector): compile in spanmetricsconnector
+
+  Available for a user's own pipeline config (e.g. via
+  `CUSTOM_OTELCOL_CONFIG_FILE`) to compute call-count and duration
+  metrics from spans - most useful alongside the existing
+  `datadogreceiver` support for ingesting Datadog Agent traces, where
+  there was previously no way to derive RED metrics from that trace data
+  once ingested. Purely additive: being compiled in changes no default
+  pipeline or behavior on its own.
+
+## 2.38.0
+
+### Patch Changes
+
+- 808b3453: Accept `Bearer `-prefixed Authorization header values on the OTLP receiver in standalone mode (`OTLP_AUTH_TOKEN`). Previously only the bare-token form of the header was accepted, rejecting RFC 6750 clients that send `Authorization: Bearer <token>`. The `Bearer`, `bearer`, and `BEARER` prefixed forms are now accepted alongside the bare token.
+
 ## 2.37.0
 
 ## 2.36.0

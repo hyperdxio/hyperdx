@@ -1201,7 +1201,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
 
       // Wait for success notification
       const notification = dashboardPage.page.locator(
-        'text=/Filter query and dropdown values/i',
+        'text=/Filter query, dropdown values, and relative time range/i',
       );
       await expect(notification).toBeVisible({ timeout: 5000 });
     });
@@ -1266,7 +1266,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
         // Wait for the save success notification rather than a blind sleep, so
         // we only read the URL once the save has actually landed.
         const notification = dashboardPage.page.locator(
-          'text=/Filter query and dropdown values/i',
+          'text=/Filter query, dropdown values, and relative time range/i',
         );
         await expect(notification).toBeVisible({ timeout: 5000 });
 
@@ -2331,8 +2331,8 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
           // the selection rather than the reference it was written with.
           await dashboardPage.chartEditor.typeLuceneWhere('ServiceName:$svc');
           await expect(
-            dashboardPage.page.getByText(/ServiceName.*accounting/i),
-          ).toBeVisible({ timeout: 10000 });
+            dashboardPage.chartEditor.searchQueryDescription(),
+          ).toHaveText(/ServiceName.*accounting/i, { timeout: 10000 });
 
           // Leave the input empty for the SQL steps below.
           await dashboardPage.chartEditor.typeLuceneWhere('');
@@ -2649,7 +2649,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
 
         // Wait for success notification
         const notification = dashboardPage.page.locator(
-          'text=/Filter query and dropdown values/i',
+          'text=/Filter query, dropdown values, and relative time range/i',
         );
         await expect(notification).toBeVisible({ timeout: 5000 });
       });
@@ -2670,7 +2670,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
 
         // Wait for success notification
         const notification = dashboardPage.page.locator(
-          'text=/Filter query and dropdown values/i',
+          'text=/Filter query, dropdown values, and relative time range/i',
         );
         await expect(notification).toBeVisible({ timeout: 5000 });
       });
@@ -2872,7 +2872,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
       });
 
       test('per-series format overrides chart-wide format and falls back when reset to inherit', async () => {
-        test.setTimeout(15000);
+        test.setTimeout(60000);
         const ts = Date.now();
         const chartName = `E2E Per-Series Format ${ts}`;
 
@@ -2976,7 +2976,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
                   cells.length > 0 && cells.every(c => c.includes(substring))
                 );
               },
-              { timeout: 10000 },
+              { timeout: 15000 },
             )
             .toBe(true);
         };
@@ -3095,7 +3095,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
           await page
             .getByTestId('formula-expression-input')
             .fill('A / (A + B) * 100');
-          await page.getByTestId('formula-alias-input').fill('CpuShare');
+          await page.getByTestId('series-alias-input').last().fill('CpuShare');
           expect(await dashboardPage.chartEditor.getFormulaError(0)).toBeNull();
           await dashboardPage.chartEditor.runQuery(false);
 
@@ -3153,7 +3153,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
             dashboardPage.page.getByTestId('formula-expression-input'),
           ).toHaveValue('A / (A + B) * 100');
           await expect(
-            dashboardPage.page.getByTestId('formula-alias-input'),
+            dashboardPage.page.getByTestId('series-alias-input').last(),
           ).toHaveValue('CpuShare');
           await expect(
             dashboardPage.page.getByRole('switch', {

@@ -1,103 +1,111 @@
 import * as React from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
-import { useQueryState } from 'nuqs';
+import { parseAsBoolean, parseAsStringEnum, useQueryState } from 'nuqs';
+import { AlertSource, AlertState } from '@hyperdx/common-utils/dist/types';
 import {
   Alert,
   Anchor,
+  Button,
   Container,
   Flex,
-  Select,
-  TextInput,
+  Group,
+  Skeleton,
 } from '@mantine/core';
-import {
-  IconBell,
-  IconInfoCircleFilled,
-  IconSearch,
-} from '@tabler/icons-react';
+import { useDebouncedValue, useMounted } from '@mantine/hooks';
+import { IconBell, IconInfoCircleFilled } from '@tabler/icons-react';
 
 import { AlertCardList } from '@/components/alerts/AlertCardList';
+import { AlertsFilterBar } from '@/components/alerts/AlertsFilterBar';
 import EmptyState from '@/components/EmptyState';
 import { PageHeader } from '@/components/PageHeader';
-import {
-  getAlertCreatorLabel,
-  getAlertDisplayName,
-  getAlertSourceLabel,
-  getAlertTags,
-} from '@/utils/alerts';
+import { ALERT_STATE_FILTER_OPTIONS } from '@/utils/alerts';
 
 import { useBrandDisplayName } from './theme/ThemeProvider';
 import api from './api';
 import { withAppNav } from './layout';
 
+const SEARCH_DEBOUNCE_MS = 300;
+
 export default function AlertsPage() {
   const brandName = useBrandDisplayName();
-  const { data, isError, isLoading } = api.useAlerts();
-
-  const alerts = React.useMemo(() => data?.data || [], [data?.data]);
+  const mounted = useMounted();
 
   const [search, setSearch] = useQueryState('search');
   const [tagFilter, setTagFilter] = useQueryState('tag');
-  const [creatorFilter, setCreatorFilter] = useQueryState('creator');
-  const [sourceFilter, setSourceFilter] = useQueryState('alertSource');
+  const [sourceFilter, setSourceFilter] = useQueryState(
+    'alertSource',
+    parseAsStringEnum<AlertSource>(Object.values(AlertSource)),
+  );
+  const [stateFilter, setStateFilter] = useQueryState(
+    'state',
+    parseAsStringEnum<AlertState>(
+      ALERT_STATE_FILTER_OPTIONS.map(option => option.value),
+    ),
+  );
+  const [mine, setMine] = useQueryState('mine', parseAsBoolean);
 
-  const allTags = React.useMemo(() => {
-    const tags = new Set<string>();
-    alerts.forEach(a => getAlertTags(a).forEach(t => tags.add(t)));
-    return Array.from(tags).sort();
-  }, [alerts]);
+  const trimmedSearch = search?.trim() ?? '';
+  const [debouncedSearch] = useDebouncedValue(
+    trimmedSearch,
+    SEARCH_DEBOUNCE_MS,
+  );
 
-  const allCreators = React.useMemo(() => {
-    const creators = new Set<string>();
-    alerts.forEach(a => {
-      const label = getAlertCreatorLabel(a);
-      if (label) creators.add(label);
-    });
-    return Array.from(creators).sort();
-  }, [alerts]);
+  const { data: me, isPending: isMePending } = api.useMe();
+  const { data: tagsData } = api.useTags('alert');
 
-  // Only the source types actually present, so the filter never offers an
-  // option that yields an empty list.
-  const allSources = React.useMemo(() => {
-    const sources = new Set<string>();
-    alerts.forEach(a => sources.add(getAlertSourceLabel(a)));
-    return Array.from(sources).sort();
-  }, [alerts]);
+  const {
+    data,
+    isPending,
+    isError,
+    isPlaceholderData,
+    hasNextPage,
+    isFetchingNextPage,
+    isFetchNextPageError,
+    fetchNextPage,
+    refetch,
+  } = api.useAlerts(
+    {
+      search: debouncedSearch,
+      tag: tagFilter,
+      source: sourceFilter,
+      state: stateFilter,
+      createdBy: mine ? me?.id : undefined,
+    },
+    {
+      enabled: !isMePending,
+    },
+  );
 
-  const filteredAlerts = React.useMemo(() => {
-    let result = alerts;
-    if (sourceFilter) {
-      result = result.filter(a => getAlertSourceLabel(a) === sourceFilter);
-    }
-    if (tagFilter) {
-      result = result.filter(a => getAlertTags(a).includes(tagFilter));
-    }
-    if (creatorFilter) {
-      result = result.filter(a => getAlertCreatorLabel(a) === creatorFilter);
-    }
-    if (search?.trim()) {
-      const q = search.toLowerCase();
-      result = result.filter(
-        a =>
-          getAlertDisplayName(a).toLowerCase().includes(q) ||
-          // So "tile" / "saved search" narrow the list the same way the type
-          // filter does, without having to reach for the dropdown.
-          getAlertSourceLabel(a)
-            .toLowerCase()
-            .split(' ')
-            .some(word => word.startsWith(q)) ||
-          getAlertTags(a).some(t => t.toLowerCase().includes(q)),
-      );
-    }
-    return result;
-  }, [alerts, search, tagFilter, creatorFilter, sourceFilter]);
+  const alerts = React.useMemo(
+    () => data?.pages.flatMap(page => page.data) ?? [],
+    [data?.pages],
+  );
+
+  const onLoadMore = React.useCallback(() => {
+    fetchNextPage({ cancelRefetch: false });
+  }, [fetchNextPage]);
+
+  const allTags = React.useMemo(
+    () => [...(tagsData?.data ?? [])].sort(),
+    [tagsData?.data],
+  );
 
   const hasFilters = !!(
-    search?.trim() ||
+    trimmedSearch ||
     tagFilter ||
-    creatorFilter ||
-    sourceFilter
+    sourceFilter ||
+    stateFilter ||
+    mine
   );
+
+  // The rows on screen don't reflect the current filters yet: either they are
+  // the previous filter's (placeholder) rows while the new query is in flight,
+  // or the search debounce hasn't fired so the query isn't even asked for yet.
+  const isSettling = isPlaceholderData || trimmedSearch !== debouncedSearch;
+
+  const hasNoAlertsAtAll =
+    !isPending && !isError && !isSettling && !hasFilters && !alerts.length;
 
   return (
     <div
@@ -113,11 +121,33 @@ export default function AlertsPage() {
         className="my-4"
         style={{ flex: 1, display: 'flex', flexDirection: 'column' }}
       >
-        {isLoading ? (
-          <div className="text-center my-4 fs-8">Loading...</div>
-        ) : isError ? (
-          <div className="text-center my-4 fs-8">Error</div>
-        ) : alerts?.length ? (
+        {hasNoAlertsAtAll ? (
+          // A percentage height cannot resolve through the min-height-sized
+          // page root, so center with a growing flex wrapper instead.
+          <Flex align="center" justify="center" style={{ flex: 1 }}>
+            <EmptyState
+              icon={<IconBell size={32} />}
+              title="No alerts created yet"
+              description={
+                <>
+                  Alerts can be created from{' '}
+                  <Anchor component={Link} href="/dashboards">
+                    dashboard charts
+                  </Anchor>
+                  ,{' '}
+                  <Anchor component={Link} href="/search">
+                    saved searches
+                  </Anchor>
+                  , and the{' '}
+                  <Anchor component={Link} href="/chart">
+                    chart explorer
+                  </Anchor>
+                  .
+                </>
+              }
+            />
+          </Flex>
+        ) : (
           <Container maw={1500} w="100%">
             <Alert
               icon={<IconInfoCircleFilled size={16} />}
@@ -133,98 +163,76 @@ export default function AlertsPage() {
               >
                 created
               </a>{' '}
-              from dashboard charts and saved searches.
+              from dashboard charts, saved searches, and the chart explorer.
             </Alert>
-            <Flex align="center" mt="md" gap="sm" data-testid="alerts-filters">
-              <TextInput
-                placeholder="Search by name"
-                leftSection={<IconSearch size={16} />}
-                value={search ?? ''}
-                onChange={e => setSearch(e.currentTarget.value || null)}
-                style={{ flex: 1, maxWidth: 400 }}
-                miw={100}
-                data-testid="alerts-search-input"
-              />
-              {(allSources.length > 1 || sourceFilter) && (
-                <Select
-                  placeholder="Filter by alert source"
-                  // A filter carried in from the URL may name a source no
-                  // current alert has; keep it selectable so it can be cleared.
-                  data={
-                    sourceFilter && !allSources.includes(sourceFilter)
-                      ? [...allSources, sourceFilter]
-                      : allSources
-                  }
-                  value={sourceFilter}
-                  onChange={v => setSourceFilter(v)}
-                  clearable
-                  style={{ maxWidth: 220 }}
-                  data-testid="alerts-source-filter"
-                />
-              )}
-              {allTags.length > 0 && (
-                <Select
-                  placeholder="Filter by tag"
-                  data={allTags}
-                  value={tagFilter}
-                  onChange={v => setTagFilter(v)}
-                  clearable
-                  searchable
-                  style={{ maxWidth: 200 }}
-                  data-testid="alerts-tag-filter"
-                />
-              )}
-              {allCreators.length > 0 && (
-                <Select
-                  placeholder="Filter by creator"
-                  data={allCreators}
-                  value={creatorFilter}
-                  onChange={v => setCreatorFilter(v)}
-                  clearable
-                  searchable
-                  style={{ maxWidth: 250 }}
-                  data-testid="alerts-creator-filter"
-                />
-              )}
-            </Flex>
-            {filteredAlerts.length > 0 ? (
-              <AlertCardList alerts={filteredAlerts} />
+            {!mounted ? (
+              // SSR Hydration fails for the filter bar when there are nuqs filter values in
+              // the URL, so render this skeleton until the component is mounted.
+              <Skeleton h={36} mt="md" />
             ) : (
-              <EmptyState
-                variant="card"
-                mt="md"
-                icon={<IconBell size={32} />}
-                title={hasFilters ? 'No matching alerts' : 'No alerts'}
-                description={
-                  hasFilters
-                    ? 'Try adjusting your search or filters.'
-                    : 'All alerts in OK state will appear here.'
-                }
+              <AlertsFilterBar
+                search={search}
+                onSearchChange={setSearch}
+                state={stateFilter}
+                onStateChange={setStateFilter}
+                source={sourceFilter}
+                onSourceChange={setSourceFilter}
+                tag={tagFilter}
+                onTagChange={setTagFilter}
+                tags={allTags}
+                mine={!!mine}
+                onMineChange={value => setMine(value || null)}
+                canFilterByCreator={me?.id != null}
+                isSettling={isSettling}
               />
             )}
+            <div
+              data-testid="alerts-list"
+              data-fetching={isSettling ? 'true' : 'false'}
+              style={{ opacity: isPlaceholderData ? 0.6 : 1 }}
+            >
+              {isPending ? (
+                <Skeleton h={100} mt="md" />
+              ) : isError && !alerts.length ? (
+                <Alert
+                  variant="danger"
+                  title="Failed to load alerts"
+                  mt="md"
+                  data-testid="alerts-error"
+                >
+                  <Group gap="xs">
+                    Something went wrong fetching your alerts.
+                    <Button
+                      variant="secondary"
+                      size="compact-xs"
+                      onClick={() => refetch()}
+                    >
+                      Retry
+                    </Button>
+                  </Group>
+                </Alert>
+              ) : alerts.length ? (
+                <AlertCardList
+                  alerts={alerts}
+                  // Placeholder data belongs to the previous filters; letting
+                  // its hasNextPage through would page the outgoing query
+                  // while the new one's first page is still in flight.
+                  hasNextPage={hasNextPage && !isPlaceholderData}
+                  isFetchingNextPage={isFetchingNextPage}
+                  isFetchNextPageError={isFetchNextPageError}
+                  onLoadMore={onLoadMore}
+                />
+              ) : (
+                <EmptyState
+                  variant="card"
+                  mt="md"
+                  icon={<IconBell size={32} />}
+                  title="No matching alerts"
+                  description="Try adjusting your search or filters."
+                />
+              )}
+            </div>
           </Container>
-        ) : (
-          // A percentage height cannot resolve through the min-height-sized
-          // page root, so center with a growing flex wrapper instead.
-          <Flex align="center" justify="center" style={{ flex: 1 }}>
-            <EmptyState
-              icon={<IconBell size={32} />}
-              title="No alerts created yet"
-              description={
-                <>
-                  Alerts can be created from{' '}
-                  <Anchor component={Link} href="/dashboards">
-                    dashboard charts
-                  </Anchor>{' '}
-                  and{' '}
-                  <Anchor component={Link} href="/search">
-                    saved searches
-                  </Anchor>
-                  .
-                </>
-              }
-            />
-          </Flex>
         )}
       </div>
     </div>

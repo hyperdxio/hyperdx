@@ -83,4 +83,56 @@ describe('makeAlert', () => {
     expect(result.chartConfig).toBeNull();
     expect(result.savedSearch).toBe('saved-search-id');
   });
+
+  describe('displayName and tags', () => {
+    const base = {
+      interval: '5m' as const,
+      threshold: 1,
+      thresholdType: AlertThresholdType.ABOVE,
+      channels: [{ type: 'webhook' as const, webhookId: 'webhook-id' }],
+      source: AlertSource.SAVED_SEARCH,
+      savedSearchId: 'saved-search-id',
+    };
+    const refs = {
+      savedSearch: { name: 'Checkout errors', tags: ['checkout'] },
+    };
+
+    it('derives from the referenced entity when omitted', () => {
+      const result = makeAlert(base, undefined, refs);
+
+      expect(result.displayName).toBe('Checkout errors');
+      expect(result.tags).toEqual(['checkout']);
+    });
+
+    it('stores explicit values', () => {
+      const result = makeAlert(
+        { ...base, displayName: 'Custom', tags: [] },
+        undefined,
+        refs,
+      );
+
+      expect(result.displayName).toBe('Custom');
+      expect(result.tags).toEqual([]);
+    });
+
+    // Storing the read-path fallback would freeze "Alert" onto a document
+    // whose saved search is perfectly nameable.
+    it('stores null when the referenced entity was not loaded', () => {
+      const result = makeAlert(base);
+
+      expect(result.displayName).toBeNull();
+      expect(result.tags).toBeNull();
+    });
+
+    it('treats null as "derive"', () => {
+      const result = makeAlert(
+        { ...base, displayName: null, tags: null },
+        undefined,
+        refs,
+      );
+
+      expect(result.displayName).toBe('Checkout errors');
+      expect(result.tags).toEqual(['checkout']);
+    });
+  });
 });

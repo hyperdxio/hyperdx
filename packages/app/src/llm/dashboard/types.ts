@@ -18,6 +18,12 @@ export interface LLMChartProps {
    * via the cross-dialect session expression).
    */
   sessionId?: string;
+  /**
+   * When set, every chart is additionally scoped to this end user (matched
+   * via the cross-dialect user expression, which coalesces user.email,
+   * enduser.id, user.id and ai.telemetry.metadata.userId).
+   */
+  userId?: string;
   /** Correlated log source for LLM log events, when one is selected. */
   logSource?: TLogSource;
   logExpressions?: LLMLogExpressions;

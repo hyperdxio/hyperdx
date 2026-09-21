@@ -3,7 +3,9 @@ import {
   validateDashboardFilterOptionUniqueness,
   validateDashboardFilterVariableNames,
 } from '@hyperdx/common-utils/dist/dashboardValidation';
+import { isPrometheusLabelFilter } from '@hyperdx/common-utils/dist/filters';
 import {
+  DashboardFilter,
   DashboardSchema,
   DashboardWithoutIdSchema,
   PresetDashboard,
@@ -29,7 +31,10 @@ import {
   getPresetDashboardFilters,
   updatePresetDashboardFilter,
 } from '@/controllers/presetDashboardFilters';
+import { getSources } from '@/controllers/sources';
 import { getNonNullUserWithTeam } from '@/middleware/auth';
+import type { ObjectId } from '@/models';
+import { getPromqlLabelFilterSourceError } from '@/routers/external-api/v2/utils/dashboards';
 import {
   DashboardVersionConflictError,
   parseVersionToken,
@@ -58,6 +63,42 @@ const addFilterIssues = (
   validateDashboardFilterModes(data.filters ?? [], ctx);
   validateDashboardFilterOptionUniqueness(data.filters ?? [], ctx);
 };
+
+/** Returns new and updated PROMETHEUS_LABEL filters. */
+function filterChangedPromqlLabelFilters(
+  filters: DashboardFilter[],
+  existingFilters: DashboardFilter[],
+) {
+  const existingSourceById = new Map(
+    existingFilters
+      .filter(isPrometheusLabelFilter)
+      .map(filter => [filter.id, filter.source]),
+  );
+  return filters
+    .filter(isPrometheusLabelFilter)
+    .filter(filter => existingSourceById.get(filter.id) !== filter.source);
+}
+
+/**
+ * Rejects PROMETHEUS_LABEL filters whose `source` is missing or is not a PromQL
+ * source. Returns an error message, or null when there is nothing to reject.
+ */
+async function validatePromqlLabelFilterSources(
+  teamId: ObjectId,
+  filters: DashboardFilter[] = [],
+  existingFilters?: DashboardFilter[],
+): Promise<string | null> {
+  const promqlLabelFilters = existingFilters
+    ? filterChangedPromqlLabelFilters(filters, existingFilters)
+    : filters.filter(isPrometheusLabelFilter);
+  if (promqlLabelFilters.length === 0) return null;
+
+  const sources = await getSources(teamId.toString());
+  return getPromqlLabelFilterSourceError(
+    sources,
+    promqlLabelFilters.map(filter => filter.source),
+  );
+}
 
 /**
  * Heal legacy `chart-1`..`chart-10` tile colors from #2265 on the request
@@ -115,6 +156,14 @@ router.post(
       // dashboard to the provisioner.
       const dashboard = _.omit(req.body, 'provisioned');
 
+      const sourceError = await validatePromqlLabelFilterSources(
+        teamId,
+        req.body.filters,
+      );
+      if (sourceError != null) {
+        return res.status(400).json({ message: sourceError });
+      }
+
       const newDashboard = await createDashboard(teamId, dashboard, userId);
 
       res.json(newDashboard.toJSON());
@@ -171,6 +220,15 @@ router.patch(
         _.omit(req.body, ['provisioned', 'expectedVersion', 'version']),
         _.isUndefined,
       );
+
+      const sourceError = await validatePromqlLabelFilterSources(
+        teamId,
+        req.body.filters,
+        dashboard.filters ?? [],
+      );
+      if (sourceError != null) {
+        return res.status(400).json({ message: sourceError });
+      }
 
       try {
         const updatedDashboard = await updateDashboard(

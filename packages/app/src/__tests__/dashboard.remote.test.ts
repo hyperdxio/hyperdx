@@ -6,7 +6,14 @@
 // `jest.isolateModules` did not override the hoisted `jest.mock` factory
 // reliably enough to share a file.
 jest.mock('../config', () => ({ IS_LOCAL_MODE: false }));
-jest.mock('../api', () => ({ hdxServer: jest.fn() }));
+jest.mock('../api', () => ({
+  __esModule: true,
+  default: { useMe: () => ({ data: null }) },
+  hdxServer: jest.fn(),
+  useMarkOnboardingTaskComplete: () => jest.fn(),
+  useInvalidateTags: () => jest.fn(),
+  useCompleteOnboardingTask: () => ({ mutate: jest.fn() }),
+}));
 jest.mock('@mantine/notifications', () => ({
   notifications: { show: jest.fn() },
 }));
@@ -312,41 +319,22 @@ describe('useUpdateDashboard concurrency', () => {
     updatedAt: '2024-01-01T00:00:00.000Z',
   };
 
-  // Pins the fix for the back-to-back-save bug: mutationFn reads the
-  // token from the dashboards cache at execution time rather than from
-  // whichever value the caller's `dashboard.version` held when
-  // `mutate()` was invoked, so a save queued behind another one (same
-  // TanStack `scope`) picks up the predecessor's fresh token instead of
-  // the stale one it captured before waiting its turn.
-  it('reads expectedVersion from the dashboards cache at execution time, not from the argument', async () => {
+  // Regression guard for a real bug: mutationFn used to re-read the
+  // dashboards cache for the token instead of trusting the version that
+  // came in with the payload. That let a save whose payload was built from
+  // an older render pass the guard with a sibling save's fresher cache
+  // entry, silently overwriting the sibling's write with stale data. The
+  // payload's own version must go out even when the cache holds a newer one.
+  it('sends the version from the mutation payload, not a fresher one from the cache', async () => {
     const json = jest.fn().mockResolvedValue({ ...dashboard });
     hdxServerMock.mockReturnValue({ json });
     getQueryData.mockReturnValue([{ ...dashboard, version: 9 }]);
 
     useUpdateDashboard('d1');
-    // The stale token this call carries in its own `version` must be
-    // ignored in favour of the cache's fresher one.
     await mutationFnCalls.at(-1)!({
       ...dashboard,
       version: 1,
     });
-
-    expect(getQueryData).toHaveBeenCalledWith(['dashboards']);
-    expect(hdxServerMock).toHaveBeenCalledWith('dashboards/d1', {
-      method: 'PATCH',
-      json: expect.objectContaining({
-        expectedVersion: '9',
-      }),
-    });
-  });
-
-  it('falls back to the argument version when the cache has no entry for the dashboard', async () => {
-    const json = jest.fn().mockResolvedValue({ ...dashboard });
-    hdxServerMock.mockReturnValue({ json });
-    getQueryData.mockReturnValue(undefined);
-
-    useUpdateDashboard('d1');
-    await mutationFnCalls.at(-1)!(dashboard);
 
     expect(hdxServerMock).toHaveBeenCalledWith('dashboards/d1', {
       method: 'PATCH',

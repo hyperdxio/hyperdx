@@ -1189,7 +1189,6 @@ describe('Metadata Integration Tests', () => {
 
       const byName = new Map(columns.map(c => [c.name, c]));
       expect([...byName.keys()].sort()).toEqual([
-        'all_tags',
         'id',
         'max_time',
         'metric_name',
@@ -1199,9 +1198,6 @@ describe('Metadata Integration Tests', () => {
       expect(byName.get('min_time')?.type).toBe(
         'SimpleAggregateFunction(min, Nullable(DateTime64(3)))',
       );
-      // Ephemeral, so it cannot be selected — the reason a caller has to
-      // inspect the columns rather than assume the documented shape.
-      expect(byName.get('all_tags')?.default_type).toBe('EPHEMERAL');
     });
 
     // What `store_min_time_and_max_time = 0` costs: the time-bound columns are

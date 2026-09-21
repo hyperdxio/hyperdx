@@ -8,7 +8,7 @@
   "app": {
     "as-any": 213,
     "ts-ignore": 0,
-    "eslint-disable": 146,
+    "eslint-disable": 145,
     "@source": 0
   },
   "cli": {

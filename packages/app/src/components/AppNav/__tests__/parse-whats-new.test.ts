@@ -257,3 +257,41 @@ describe('whats-new.json contract', () => {
     expect(whatsNewSchema.parse(payload).releases.length).toBeGreaterThan(0);
   });
 });
+
+// The Help-button sparkle is keyed on releases[0].version (next.config.mjs
+// inlines it as NEXT_PUBLIC_WHATS_NEW_VERSION), and it nudges only when that
+// version is strictly newer than the one the browser acknowledged. So the payload
+// leading with the NEWEST release is what makes the nudge fire at all — if the
+// order ever inverted, the key would go backwards and no one would be nudged
+// again. Nothing above pins the ordering.
+describe('whats-new.json release ordering', () => {
+  const numeric = (v: string) =>
+    v.split('.').map(n => Number.parseInt(n, 10) || 0);
+
+  const isDescending = (a: string, b: string) => {
+    const [x, y] = [numeric(a), numeric(b)];
+    for (let i = 0; i < 3; i++) {
+      if (x[i] !== y[i]) return x[i] > y[i];
+    }
+    return false;
+  };
+
+  it('leads with the newest release in the real changelog', () => {
+    const changelog = readFileSync(join(REPO_ROOT, 'CHANGELOG.md'), 'utf-8');
+    const { releases } = parseWhatsNew(changelog, { maxReleases: 5 });
+
+    expect(releases.length).toBeGreaterThan(1);
+    releases.slice(1).forEach(older => {
+      expect(isDescending(releases[0].version, older.version)).toBe(true);
+    });
+  });
+
+  it('keeps every version in descending order', () => {
+    const changelog = readFileSync(join(REPO_ROOT, 'CHANGELOG.md'), 'utf-8');
+    const { releases } = parseWhatsNew(changelog, { maxReleases: 5 });
+
+    releases.slice(1).forEach((release, i) => {
+      expect(isDescending(releases[i].version, release.version)).toBe(true);
+    });
+  });
+});

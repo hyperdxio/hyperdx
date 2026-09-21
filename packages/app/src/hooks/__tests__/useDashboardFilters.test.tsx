@@ -940,4 +940,91 @@ describe('useDashboardFilters', () => {
       ]);
     });
   });
+
+  describe('unsatisfiedRequiredFilters', () => {
+    const required = (
+      overrides: Partial<QueryExpressionDashboardFilter> = {},
+    ): QueryExpressionDashboardFilter => ({
+      ...mockFilters[0],
+      minSelections: 1,
+      ...overrides,
+    });
+
+    it('is empty when nothing is required', () => {
+      const { result } = renderHook(() => useDashboardFilters(mockFilters));
+
+      expect(result.current.unsatisfiedRequiredFilters).toEqual([]);
+    });
+
+    it('reports a required filter with no selection', () => {
+      const { result } = renderHook(() =>
+        useDashboardFilters([required(), mockFilters[1]]),
+      );
+
+      expect(result.current.unsatisfiedRequiredFilters.map(f => f.id)).toEqual([
+        'filter1',
+      ]);
+    });
+
+    it('clears once an expression-keyed value arrives', () => {
+      const filters = [required()];
+      const { result, rerender } = renderHook(() =>
+        useDashboardFilters(filters),
+      );
+
+      act(() => {
+        result.current.setFilterValue('filter1', ['prod']);
+      });
+      rerender();
+
+      expect(result.current.unsatisfiedRequiredFilters).toEqual([]);
+    });
+
+    it('clears once a variable-keyed value arrives', () => {
+      const filters = [
+        required({ isVariableEnabled: true, variableName: 'env' }),
+      ];
+      const { result, rerender } = renderHook(() =>
+        useDashboardFilters(filters),
+      );
+
+      act(() => {
+        result.current.setFilterValue('filter1', ['prod']);
+      });
+      rerender();
+
+      expect(mockState).toEqual([
+        { type: 'variable', name: 'env', values: ['prod'] },
+      ]);
+      expect(result.current.unsatisfiedRequiredFilters).toEqual([]);
+    });
+
+    // An exclusion narrows the data but chooses nothing, so it cannot satisfy
+    // "at least one value selected".
+    it('still reports a filter whose only value is an exclusion', () => {
+      mockState = [{ type: 'sql', condition: "environment NOT IN ('dev')" }];
+
+      const { result } = renderHook(() => useDashboardFilters([required()]));
+
+      expect(selectionFor(result, 'filter1')?.excluded.size).toBe(1);
+      expect(result.current.unsatisfiedRequiredFilters.map(f => f.id)).toEqual([
+        'filter1',
+      ]);
+    });
+
+    it('reports every unsatisfied filter in declaration order', () => {
+      const { result } = renderHook(() =>
+        useDashboardFilters([
+          required({ id: 'filter1' }),
+          mockFilters[1],
+          required({ ...mockFilters[2], minSelections: 1 }),
+        ]),
+      );
+
+      expect(result.current.unsatisfiedRequiredFilters.map(f => f.id)).toEqual([
+        'filter1',
+        'filter3',
+      ]);
+    });
+  });
 });

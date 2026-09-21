@@ -15,8 +15,10 @@ import CodeMirror, {
   keymap,
   Prec,
   ReactCodeMirrorRef,
+  tooltips,
 } from '@uiw/react-codemirror';
 
+import { EDITOR_INPUT_HEIGHTS } from '@/components/editorInputHeights';
 import {
   createCodeMirrorStyleTheme,
   DEFAULT_CODE_MIRROR_BASIC_SETUP,
@@ -25,6 +27,7 @@ import { usePromqlVariableCompletions } from '@/components/SQLEditor/variableCom
 import {
   useVariableValidation,
   VariableIssueIndicator,
+  variableValidationState,
 } from '@/components/SQLEditor/variableValidation';
 
 import { createVariableCompletionSource } from './variableCompletionSource';
@@ -39,6 +42,11 @@ type PromQLEditorProps = {
   placeholder?: string;
   onSubmit?: () => void;
   metricNames?: string[];
+  /**
+   * Where to render the completion popup. Set it to `document.body` inside a
+   * modal or other scroll container, which would otherwise clip the popup.
+   */
+  parentRef?: HTMLElement | null;
 };
 
 const MAX_EDITOR_HEIGHT = '150px';
@@ -104,6 +112,7 @@ export default function PromQLEditor({
   placeholder,
   onSubmit,
   metricNames,
+  parentRef,
 }: PromQLEditorProps) {
   const { colorScheme } = useMantineColorScheme();
   const ref = useRef<ReactCodeMirrorRef>(null);
@@ -147,6 +156,7 @@ export default function PromQLEditor({
 
   const cmExtensions = useMemo(
     () => [
+      ...(parentRef ? [tooltips({ parent: parentRef })] : []),
       createCodeMirrorStyleTheme(MAX_EDITOR_HEIGHT),
       EditorView.lineWrapping,
 
@@ -180,7 +190,7 @@ export default function PromQLEditor({
         },
       ]),
     ],
-    [onSubmit],
+    [onSubmit, parentRef],
   );
 
   const onClickCodeMirror = useCallback(() => {
@@ -189,36 +199,25 @@ export default function PromQLEditor({
     }
   }, []);
 
-  const isExpanded = isFocused;
-  const isVariableWarningOnly =
-    variableIssues.errors.length === 0 && variableIssues.warnings.length > 0;
-  const baseHeight = 36;
+  const validationState = variableValidationState(variableIssues);
+  const baseHeight = EDITOR_INPUT_HEIGHTS.sm;
 
   return (
     <div
       className={styles.wrapper}
       style={{ ['--editor-base-height' as string]: `${baseHeight}px` }}
-      data-expanded={isExpanded ? 'true' : undefined}
     >
-      {isExpanded && <div className={styles.placeholder} aria-hidden="true" />}
       <Paper
         shadow="none"
         className={cx(
           styles.paper,
-          variableIssues.errors.length > 0 ? styles.error : undefined,
-          isVariableWarningOnly ? styles.warning : undefined,
-          isExpanded ? styles.expanded : undefined,
-          !isExpanded ? styles.collapseFade : undefined,
+          validationState === 'error' ? styles.error : undefined,
+          validationState === 'warning' ? styles.warning : undefined,
+          isFocused ? styles.focused : undefined,
         )}
         ps="4px"
       >
-        <div
-          className={cx(
-            styles.cmWrapper,
-            !isExpanded ? styles.collapsed : undefined,
-            isExpanded ? 'cm-editor-multiline' : undefined,
-          )}
-        >
+        <div className={cx(styles.cmWrapper, 'cm-editor-multiline')}>
           <CodeMirror
             indentWithTab={false}
             ref={ref}

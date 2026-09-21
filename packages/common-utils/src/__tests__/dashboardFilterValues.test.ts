@@ -1,12 +1,19 @@
 import {
+  configConsumesBroadcastFilters,
   filterSelectionKey,
+  getBlockingRequiredFilterNames,
+  getBlockingRequiredFilters,
+  getUnsatisfiedRequiredFilters,
   parseDashboardFilterValues,
   resolveFilterSelection,
   serializeDashboardFilterValues,
 } from '@/dashboardFilterValues';
 import { FilterState, filtersToQuery } from '@/filters';
 import type {
+  ChartConfigWithOptDateRange,
+  DashboardFilter,
   DashboardFilterValue,
+  PromqlLabelDashboardFilter,
   QueryExpressionDashboardFilter,
   StaticListDashboardFilter,
 } from '@/types';
@@ -32,6 +39,20 @@ const staticFilter = (
   isBroadcastEnabled: false,
   isVariableEnabled: true,
   variableName: 'env',
+  ...overrides,
+});
+
+const promqlFilter = (
+  overrides: Partial<PromqlLabelDashboardFilter> = {},
+): PromqlLabelDashboardFilter => ({
+  id: 'f1',
+  type: 'PROMETHEUS_LABEL',
+  name: 'Pod',
+  source: 'promql',
+  label: 'pod',
+  isBroadcastEnabled: false,
+  isVariableEnabled: true,
+  variableName: 'pod',
   ...overrides,
 });
 
@@ -346,6 +367,13 @@ describe('dashboardFilterValues', () => {
       });
     });
 
+    it('keys a promql-label filter by its variable name', () => {
+      expect(filterSelectionKey(promqlFilter())).toEqual({
+        kind: 'variable',
+        name: 'pod',
+      });
+    });
+
     // Unreachable through the write paths — a static filter is variable-only by
     // construction — but it has no expression to fall back to, so the key stays
     // variable-kind even when no name can be derived from it.
@@ -425,13 +453,29 @@ describe('dashboardFilterValues', () => {
       );
     });
 
-    it('returns undefined for an expressionless filter with no variable entry', () => {
+    it('resolves a promql-label filter from its variable entry', () => {
       const parsed = parseDashboardFilterValues([
-        { type: 'sql', condition: "ServiceName IN ('legacy')" },
+        { type: 'variable', name: 'pod', values: ['api-0'] },
       ]);
 
-      expect(resolveFilterSelection(staticFilter(), parsed)).toBeUndefined();
+      expect(resolveFilterSelection(promqlFilter(), parsed)).toEqual(
+        included('api-0'),
+      );
     });
+
+    it.each([
+      ['static-list', staticFilter()],
+      ['promql-label', promqlFilter()],
+    ])(
+      'returns undefined for an expressionless %s filter with no variable entry',
+      (_label, expressionless) => {
+        const parsed = parseDashboardFilterValues([
+          { type: 'sql', condition: "ServiceName IN ('legacy')" },
+        ]);
+
+        expect(resolveFilterSelection(expressionless, parsed)).toBeUndefined();
+      },
+    );
 
     it('resolves two filters sharing an expression independently', () => {
       const parsed = parseDashboardFilterValues([
@@ -445,6 +489,376 @@ describe('dashboardFilterValues', () => {
       expect(resolveFilterSelection(filter({ id: 'f2' }), parsed)).toEqual(
         included('plain'),
       );
+    });
+  });
+
+  describe('getUnsatisfiedRequiredFilters', () => {
+    const required = (
+      overrides: Partial<QueryExpressionDashboardFilter> = {},
+    ) => filter({ minSelections: 1, ...overrides });
+
+    it.each([
+      ['no minimum', undefined],
+      ['an explicit zero minimum', 0],
+    ])('returns nothing for a filter with %s', (_label, minSelections) => {
+      expect(
+        getUnsatisfiedRequiredFilters(
+          [filter({ minSelections }), staticFilter({ minSelections })],
+          new Map(),
+        ),
+      ).toEqual([]);
+    });
+
+    // The scope is only ever read for a filter that is required, so a payload
+    // carrying it alone must still leave the filter optional.
+    it('returns nothing for a filter that is only scoped', () => {
+      expect(
+        getUnsatisfiedRequiredFilters(
+          [filter({ isGlobalRequirement: true })],
+          new Map(),
+        ),
+      ).toEqual([]);
+    });
+
+    it('returns nothing for a missing or empty filter list', () => {
+      expect(getUnsatisfiedRequiredFilters(undefined, new Map())).toEqual([]);
+      expect(getUnsatisfiedRequiredFilters([], new Map())).toEqual([]);
+    });
+
+    it('returns a required filter with no selection', () => {
+      expect(getUnsatisfiedRequiredFilters([required()], new Map())).toEqual([
+        required(),
+      ]);
+    });
+
+    it('omits a required filter once a value is included', () => {
+      expect(
+        getUnsatisfiedRequiredFilters(
+          [required()],
+          new Map([['f1', included('api')]]),
+        ),
+      ).toEqual([]);
+    });
+
+    // A `NOT IN` narrows the data without choosing a value.
+    it('still reports a filter whose selection only excludes', () => {
+      expect(
+        getUnsatisfiedRequiredFilters(
+          [required()],
+          new Map([
+            [
+              'f1',
+              {
+                included: new Set<string | boolean>(),
+                excluded: new Set(['api']),
+              },
+            ],
+          ]),
+        ),
+      ).toEqual([required()]);
+    });
+
+    it('preserves filter order and skips optional filters', () => {
+      const filters = [
+        required({ id: 'a', name: 'A' }),
+        filter({ id: 'b', name: 'B' }),
+        required({ id: 'c', name: 'C' }),
+      ];
+
+      expect(
+        getUnsatisfiedRequiredFilters(filters, new Map()).map(f => f.name),
+      ).toEqual(['A', 'C']);
+    });
+  });
+
+  describe('getBlockingRequiredFilters', () => {
+    const names = (
+      filters: DashboardFilter[],
+      tile: {
+        sourceId?: string;
+        referencedVariableNames?: string[];
+        consumesBroadcastFilters?: boolean;
+      },
+    ) =>
+      getBlockingRequiredFilters(filters, {
+        consumesBroadcastFilters: true,
+        ...tile,
+      }).map(f => f.name);
+
+    it('blocks any tile on a global requirement', () => {
+      const filters = [
+        filter({ minSelections: 1, isGlobalRequirement: true }),
+        staticFilter({ minSelections: 1, isGlobalRequirement: true }),
+      ];
+
+      expect(
+        names(filters, { sourceId: 'unrelated', referencedVariableNames: [] }),
+      ).toEqual(['Service', 'Environment']);
+      expect(names(filters, {})).toEqual(['Service', 'Environment']);
+    });
+
+    it('blocks only the tiles that reference the filter by default', () => {
+      const filters = [staticFilter({ minSelections: 1 })];
+
+      expect(
+        names(filters, { sourceId: 'logs', referencedVariableNames: ['env'] }),
+      ).toEqual(['Environment']);
+      expect(
+        names(filters, { sourceId: 'logs', referencedVariableNames: ['tier'] }),
+      ).toEqual([]);
+      expect(names(filters, {})).toEqual([]);
+    });
+
+    it('treats an explicit false the same as an absent flag', () => {
+      const filters = [
+        staticFilter({ minSelections: 1, isGlobalRequirement: false }),
+      ];
+
+      expect(names(filters, { referencedVariableNames: ['env'] })).toEqual([
+        'Environment',
+      ]);
+      expect(names(filters, { referencedVariableNames: [] })).toEqual([]);
+    });
+
+    // A filter with no explicit variableName is still referenced by the token
+    // derived from its display name.
+    it('matches a filter by its derived variable name', () => {
+      const filters = [
+        staticFilter({ minSelections: 1, variableName: undefined }),
+      ];
+
+      expect(
+        names(filters, { referencedVariableNames: ['Environment'] }),
+      ).toEqual(['Environment']);
+    });
+
+    it('ignores a variable reference to a filter that publishes no variable', () => {
+      const filters = [
+        filter({
+          minSelections: 1,
+          isBroadcastEnabled: false,
+          isVariableEnabled: false,
+          variableName: 'svc',
+        }),
+      ];
+
+      expect(names(filters, { referencedVariableNames: ['svc'] })).toEqual([]);
+    });
+
+    it('blocks a tile a broadcast reaches', () => {
+      const unscoped = filter({ minSelections: 1 });
+      const scoped = filter({
+        minSelections: 1,
+        appliesToSourceIds: ['logs'],
+      });
+
+      expect(names([unscoped], { sourceId: 'traces' })).toEqual(['Service']);
+      expect(names([scoped], { sourceId: 'logs' })).toEqual(['Service']);
+      expect(names([scoped], { sourceId: 'traces' })).toEqual([]);
+      expect(names([scoped], {})).toEqual([]);
+    });
+
+    it('preserves filter order across the two scopes', () => {
+      const filters = [
+        staticFilter({
+          id: 'a',
+          name: 'A',
+          variableName: 'a',
+          minSelections: 1,
+        }),
+        filter({
+          id: 'b',
+          name: 'B',
+          minSelections: 1,
+          isGlobalRequirement: true,
+        }),
+        staticFilter({
+          id: 'c',
+          name: 'C',
+          variableName: 'c',
+          minSelections: 1,
+        }),
+      ];
+
+      expect(names(filters, { referencedVariableNames: ['c', 'a'] })).toEqual([
+        'A',
+        'B',
+        'C',
+      ]);
+    });
+
+    // Both modes at once is what "Applies to sources" plus a variable looks
+    // like, and either path on its own is enough to block.
+    it('blocks through either path when a filter does both', () => {
+      const filters = [
+        filter({
+          minSelections: 1,
+          isVariableEnabled: true,
+          variableName: 'svc',
+          appliesToSourceIds: ['logs'],
+        }),
+      ];
+
+      expect(names(filters, { sourceId: 'logs' })).toEqual(['Service']);
+      expect(
+        names(filters, {
+          sourceId: 'traces',
+          referencedVariableNames: ['svc'],
+        }),
+      ).toEqual(['Service']);
+      expect(
+        names(filters, {
+          sourceId: 'traces',
+          referencedVariableNames: ['other'],
+        }),
+      ).toEqual([]);
+    });
+
+    // A PromQL tile is handed no filters, and a raw-SQL tile can drop them, so
+    // sharing a source with a broadcast does not mean the tile reads it.
+    it('does not block on broadcast when the tile ignores broadcast filters', () => {
+      const filters = [
+        filter({ id: 'a', minSelections: 1 }),
+        filter({
+          id: 'b',
+          name: 'Global',
+          minSelections: 1,
+          isGlobalRequirement: true,
+        }),
+        staticFilter({ id: 'c', minSelections: 1 }),
+      ];
+
+      expect(
+        names(filters, {
+          sourceId: 'logs',
+          referencedVariableNames: ['env'],
+          consumesBroadcastFilters: false,
+        }),
+      ).toEqual(['Global', 'Environment']);
+    });
+
+    it('returns nothing for an empty list', () => {
+      expect(names([], { sourceId: 'logs' })).toEqual([]);
+    });
+  });
+
+  describe('configConsumesBroadcastFilters', () => {
+    const builderTile: ChartConfigWithOptDateRange = {
+      select: 'count()',
+      from: { databaseName: 'default', tableName: 'logs' },
+      where: '',
+      timestampValueExpression: 'Timestamp',
+      connection: 'local',
+    };
+
+    const rawSqlTile = (sqlTemplate: string): ChartConfigWithOptDateRange => ({
+      configType: 'sql',
+      sqlTemplate,
+      connection: 'local',
+    });
+
+    const promqlTile: ChartConfigWithOptDateRange = {
+      configType: 'promql',
+      promqlExpression: 'up',
+      connection: 'local',
+    };
+
+    it('applies to a builder tile', () => {
+      expect(configConsumesBroadcastFilters(builderTile, 'logs')).toBe(true);
+    });
+
+    it('never applies to a PromQL tile', () => {
+      expect(configConsumesBroadcastFilters(promqlTile, 'metrics')).toBe(false);
+    });
+
+    it('applies to a raw-SQL tile with a source and the filters macro', () => {
+      const tile = rawSqlTile('SELECT count() FROM logs WHERE $__filters');
+
+      expect(configConsumesBroadcastFilters(tile, 'logs')).toBe(true);
+      expect(configConsumesBroadcastFilters(tile, undefined)).toBe(false);
+    });
+
+    it('does not apply to a raw-SQL tile whose template drops the filters', () => {
+      expect(
+        configConsumesBroadcastFilters(
+          rawSqlTile('SELECT count() FROM logs'),
+          'logs',
+        ),
+      ).toBe(false);
+    });
+
+    // A variable macro applies the selection the tile names, which is enough to
+    // count as consuming the dashboard's filters.
+    it('applies to a raw-SQL tile that only uses a variable macro', () => {
+      expect(
+        configConsumesBroadcastFilters(
+          rawSqlTile(
+            'SELECT count() FROM logs WHERE $__filter(ServiceName, $svc)',
+          ),
+          'logs',
+        ),
+      ).toBe(true);
+    });
+  });
+
+  describe('getBlockingRequiredFilterNames', () => {
+    const builderTile: ChartConfigWithOptDateRange = {
+      select: 'count()',
+      from: { databaseName: 'default', tableName: 'logs' },
+      where: '',
+      timestampValueExpression: 'Timestamp',
+      connection: 'local',
+    };
+
+    const promqlTile: ChartConfigWithOptDateRange = {
+      configType: 'promql',
+      promqlExpression: 'up',
+      connection: 'local',
+    };
+
+    const unsatisfied = [
+      filter({ id: 'a', name: 'Broadcast', minSelections: 1 }),
+      staticFilter({ id: 'b', minSelections: 1 }),
+    ];
+
+    it('derives broadcast consumption from the config', () => {
+      expect(
+        getBlockingRequiredFilterNames({
+          config: builderTile,
+          sourceId: 'logs',
+          unsatisfiedRequiredFilters: unsatisfied,
+          referencedVariables: [{ name: 'env' }],
+        }),
+      ).toEqual(['Broadcast', 'Environment']);
+
+      expect(
+        getBlockingRequiredFilterNames({
+          config: promqlTile,
+          sourceId: 'logs',
+          unsatisfiedRequiredFilters: unsatisfied,
+          referencedVariables: [{ name: 'env' }],
+        }),
+      ).toEqual(['Environment']);
+    });
+
+    it('treats missing filters and variables as none', () => {
+      expect(
+        getBlockingRequiredFilterNames({
+          config: builderTile,
+          sourceId: 'logs',
+          unsatisfiedRequiredFilters: undefined,
+          referencedVariables: undefined,
+        }),
+      ).toEqual([]);
+
+      expect(
+        getBlockingRequiredFilterNames({
+          config: builderTile,
+          sourceId: 'logs',
+          unsatisfiedRequiredFilters: unsatisfied,
+          referencedVariables: undefined,
+        }),
+      ).toEqual(['Broadcast']);
     });
   });
 });
