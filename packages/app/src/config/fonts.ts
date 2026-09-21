@@ -70,6 +70,10 @@ export const CONTENT_FONT_SIZES: Record<
 
 export const DEFAULT_CONTENT_FONT_SIZE: ContentFontSize = 'sm';
 
+export function isContentFontSize(value: string): value is ContentFontSize {
+  return value in CONTENT_FONT_SIZES;
+}
+
 export const OPTIONS_CONTENT_FONT_SIZE = [
   { label: 'Small', value: 'sm' },
   { label: 'Medium', value: 'md' },

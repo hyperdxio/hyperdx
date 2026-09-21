@@ -782,7 +782,9 @@ export function collectMemoChartGradientHexes(
  * `<YAxis width={Y_AXIS_WIDTH}>` leaves a few dozen px for the label itself
  * after Recharts' own tickSize + tickMargin. Measured in Chrome at 11px IBM
  * Plex Mono (the tick font, monospace): every character costs ~6.6px, and
- * 5 characters is the most that fits. At 2 decimals, "9.99" (4 chars) fits
+ * 5 characters is the most that fits. The rendered width scales with the
+ * content font size preference, so that 5-character budget holds at every
+ * setting rather than only the default. At 2 decimals, "9.99" (4 chars) fits
  * with room to spare, and adding a single extra character - a negative
  * sign ("-9.99") or a percent suffix ("9.99%") - still exactly fits at 5.
  * A 2-digit integer part pushes either of those over (6 chars, e.g.
@@ -934,6 +936,12 @@ export const MemoChart = memo(function MemoChart({
 }) {
   const _id = useId();
   const id = _id.replace(/:/g, '');
+
+  // The y-axis width budget is expressed in characters (see MAX_AXIS_MANTISSA),
+  // so it has to grow with the tick font or the widest labels clip.
+  const { compact: axisTickFontSize, scale: contentFontScale } =
+    useContentFontSize();
+  const yAxisWidth = Math.round(Y_AXIS_WIDTH * contentFontScale);
 
   // recharts sync group, scoped via context (see chartSync).
   const syncId = useChartSyncId();
@@ -1194,16 +1202,14 @@ export const MemoChart = memo(function MemoChart({
     if (graphResults.length !== 1) return undefined;
     const drawableWidth = Math.max(
       0,
-      containerWidth - Y_AXIS_WIDTH - SINGLE_POINT_BAR_RIGHT_PADDING,
+      containerWidth - yAxisWidth - SINGLE_POINT_BAR_RIGHT_PADDING,
     );
     if (drawableWidth <= 0) return undefined;
     return Math.max(
       1,
       Math.floor(drawableWidth * SINGLE_POINT_BAR_WIDTH_RATIO),
     );
-  }, [displayType, graphResults.length, containerWidth]);
-
-  const { compact: axisTickFontSize } = useContentFontSize();
+  }, [displayType, graphResults.length, containerWidth, yAxisWidth]);
 
   const formatTime = useFormatTime();
   const xTickFormatter = useCallback(
@@ -1539,9 +1545,9 @@ export const MemoChart = memo(function MemoChart({
     }
     return layoutAnnotations(coloredAnnotations, {
       domain: xAxisDomain,
-      plotWidth: Math.max(0, containerWidth - Y_AXIS_WIDTH),
+      plotWidth: Math.max(0, containerWidth - yAxisWidth),
     });
-  }, [coloredAnnotations, xAxisDomain, containerWidth]);
+  }, [coloredAnnotations, xAxisDomain, containerWidth, yAxisWidth]);
 
   const [hoveredAnnotation, setHoveredAnnotation] =
     useState<HoveredAnnotation | null>(null);
@@ -1555,9 +1561,9 @@ export const MemoChart = memo(function MemoChart({
       // Drawable width, so markers too close together share one label. Zero on
       // the first paint (before ResponsiveContainer measures), which the
       // renderer treats as "label everything".
-      plotWidth: Math.max(0, containerWidth - Y_AXIS_WIDTH),
+      plotWidth: Math.max(0, containerWidth - yAxisWidth),
     });
-  }, [coloredAnnotations, xAxisDomain, containerWidth]);
+  }, [coloredAnnotations, xAxisDomain, containerWidth, yAxisWidth]);
 
   return (
     <div
@@ -1671,7 +1677,7 @@ export const MemoChart = memo(function MemoChart({
             }}
           />
           <YAxis
-            width={Y_AXIS_WIDTH}
+            width={yAxisWidth}
             minTickGap={25}
             tickFormatter={tickFormatter}
             tick={{

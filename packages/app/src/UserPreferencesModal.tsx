@@ -14,7 +14,7 @@ import {
 import { IconFlask } from '@tabler/icons-react';
 
 import {
-  type ContentFontSize,
+  isContentFontSize,
   OPTIONS_CONTENT_FONT_SIZE,
   OPTIONS_FONTS,
 } from './config/fonts';
@@ -155,9 +155,8 @@ export const UserPreferencesModal = ({
             value={contentFontSize}
             onChange={value =>
               value &&
-              setUserPreference({
-                contentFontSize: value as ContentFontSize,
-              })
+              isContentFontSize(value) &&
+              setUserPreference({ contentFontSize: value })
             }
             data={OPTIONS_CONTENT_FONT_SIZE}
             allowDeselect={false}
