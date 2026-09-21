@@ -165,49 +165,35 @@ export function useUpdateDashboard(dashboardId?: string) {
 
   return useMutation({
     // TanStack runs same-scope mutations one at a time, so two saves fired
-    // back to back queue instead of racing (HDX-4159). That only fixes
-    // ordering though — the token itself is read from the cache inside
-    // mutationFn below, at execution time, not from the caller's closure,
-    // so the second queued save picks up the token the first save's
-    // onSuccess just wrote rather than the stale one it captured when
-    // `mutate()` was called.
+    // back to back queue instead of racing (HDX-4159). That buys ordering
+    // and a deterministic loser: whichever save is queued second still
+    // carries the version its payload was built from, so it 409s against
+    // the first save's write rather than silently overwriting it.
     scope: dashboardId ? { id: `dashboard-${dashboardId}` } : undefined,
     mutationFn: async (
       dashboard: Partial<Dashboard> & { id: Dashboard['id'] },
     ) => {
       // `updatedAt` is a display-only field the API returns but doesn't
       // accept back; drop it here too so it isn't echoed into the PATCH body.
-      const {
-        version: fallbackVersion,
-        updatedAt: _updatedAt,
-        ...rest
-      } = dashboard;
+      const { version, updatedAt: _updatedAt, ...rest } = dashboard;
       const normalized = normalizeDashboardTileColors(rest);
       if (IS_LOCAL_MODE) {
         const { id, ...updates } = normalized;
         localDashboards.update(id, updates);
         return undefined;
       }
-      // Read the token from the cache now rather than trusting whatever
-      // `dashboard.version` was when `mutate()` was called — that value
-      // was captured before this mutation's turn in the scope queue, so a
-      // second save fired right after the first would otherwise still
-      // carry the pre-save token and 409 against its own predecessor.
-      // Fall back to the caller-supplied value when the cache has no
-      // entry (local mode never reaches here, but a cold/evicted cache
-      // can).
-      const cachedVersion = queryClient
-        .getQueryData<Dashboard[]>(['dashboards'])
-        ?.find(d => d.id === normalized.id)?.version;
-      const expectedVersion = cachedVersion ?? fallbackVersion;
+      // Send the version the payload itself was built from, not whatever
+      // is newest in the cache. Re-reading the cache here would let a save
+      // whose payload predates a sibling's write pass the guard with the
+      // sibling's fresher token, silently reverting the sibling's change
+      // with the stale document this save still carries.
       // Return the persisted dashboard so onboarding keys off saved tiles, not
       // the partial PATCH payload — a name/tag-only save omits `tiles`.
       return hdxServer(`dashboards/${normalized.id}`, {
         method: 'PATCH',
         json: {
           ...normalized,
-          expectedVersion:
-            expectedVersion != null ? String(expectedVersion) : undefined,
+          expectedVersion: version != null ? String(version) : undefined,
         },
       }).json<Dashboard>();
     },
@@ -342,10 +328,9 @@ export function useDashboard({
         onSuccess?.();
       } else {
         setIsSettingDashboard(true);
-        // `version` here is only the fallback `mutationFn` uses if the
-        // dashboards cache has no entry for this id (e.g. a cold cache);
-        // the cache is the source of truth for a save queued behind
-        // another one on the same scope.
+        // `remoteDashboard` is the render this payload was built from, so
+        // its version describes what the payload assumes is still current —
+        // that's the token the write needs to check against.
         return updateDashboard.mutate(
           { ...newDashboard, version: remoteDashboard?.version },
           {
