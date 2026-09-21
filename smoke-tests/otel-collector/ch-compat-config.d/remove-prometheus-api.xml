@@ -1,0 +1,7 @@
+<!-- The shared local config.xml declares a `prometheus_api_v1` HTTP handler,
+     which only exists in ClickHouse >= 26.2. On the older compat server the
+     unknown handler type aborts the whole HTTP listener (port 8123 never
+     opens, so the healthcheck fails), so drop the block here. -->
+<clickhouse>
+    <http_handlers remove="1"/>
+</clickhouse>
