@@ -18,6 +18,7 @@ import {
   BarProps,
   CartesianGrid,
   Customized,
+  getNiceTickValues,
   Legend,
   ReferenceArea,
   ReferenceLine,
@@ -859,6 +860,24 @@ export function formatAxisTick(
   return '';
 }
 
+// Drops a candidate tick whose formatted label repeats the previous
+// surviving tick's label - "nice" values can round to the same string.
+export function dedupeAxisTicks(
+  values: number[],
+  formatTick: (value: number) => string,
+): number[] {
+  const deduped: number[] = [];
+  let previousLabel: string | undefined;
+  for (const value of values) {
+    const label = formatTick(value);
+    if (label !== previousLabel) {
+      deduped.push(value);
+      previousLabel = label;
+    }
+  }
+  return deduped;
+}
+
 export const MemoChart = memo(function MemoChart({
   graphResults,
   setIsClickActive,
@@ -1211,6 +1230,17 @@ export const MemoChart = memo(function MemoChart({
     (value: number) => formatAxisTick(value, axisNumberFormat),
     [axisNumberFormat],
   );
+
+  // Only overrides Recharts' own tick generation when the domain is a
+  // concrete range - a bare 'auto' bound has no fixed interval to work from.
+  const yAxisTicks = useMemo(() => {
+    const [min, max] = yAxisDomain;
+    if (typeof min !== 'number' || typeof max !== 'number') {
+      return undefined;
+    }
+    const candidates = getNiceTickValues([min, max], 5, true, 'adaptive');
+    return dedupeAxisTicks(candidates, tickFormatter);
+  }, [yAxisDomain, tickFormatter]);
 
   const [highlightStart, setHighlightStart] = useState<string | undefined>();
   const [highlightEnd, setHighlightEnd] = useState<string | undefined>();
@@ -1665,6 +1695,7 @@ export const MemoChart = memo(function MemoChart({
             tickFormatter={tickFormatter}
             tick={{ fontSize: 11, fontFamily: 'IBM Plex Mono, monospace' }}
             domain={yAxisDomain}
+            ticks={yAxisTicks}
           />
           {lines}
           {/* HOVER tooltip (also drives cross-chart shadow tooltips via syncId).
