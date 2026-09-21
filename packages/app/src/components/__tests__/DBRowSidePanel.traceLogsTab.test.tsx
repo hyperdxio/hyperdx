@@ -298,12 +298,8 @@ describe('DBRowSidePanelInner — trace logs tab', () => {
       rowId: "TraceId='abc' AND SpanId='def'",
       label: 'another log line',
       sourceKind: 'log',
-      // Anchors the destination's row lookup: every log in a trace sits within
-      // seconds of the span we came from.
       focusTimestamp: new Date(TIMESTAMP_VALUE).toISOString(),
     });
-    // A source hop resets the same-source drilldown trail rather than adding
-    // to it.
     expect(setterFor('sidePanelNavStack')).toHaveBeenCalledWith([]);
   });
 
@@ -318,12 +314,9 @@ describe('DBRowSidePanelInner — trace logs tab', () => {
       label: 'another log line',
       sourceKind: 'log',
     });
-    // No source hop: the cross-source trail is rewritten unchanged (empty).
     expect(setterFor('sidePanelSourceStack')).toHaveBeenCalledWith([]);
   });
 
-  // That Tab.Logs never *becomes* the remembered reading view is pinned in
-  // hooks/__tests__/useSidePanelStack.test.tsx; this covers the wiring.
   it('lands the picked log on a reading view, not on another logs list', () => {
     mockQueryStore.sidePanelTab = Tab.Logs;
     renderPanel(LOG_SOURCE);

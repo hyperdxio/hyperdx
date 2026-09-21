@@ -103,13 +103,9 @@ export function resolveRowTimestampAnchor({
  * always starts at or before the logs that reference it, while the traces
  * schema's `Timestamp` is the span's *start*, so a symmetric window silently
  * drops any span that ran longer than the window and logged late in its life.
- *
- * The lead carries the opposite direction — the Trace logs tab's span → log push,
- * where the destination log is at or after the origin span's start. It is enough
- * because that tab only lists logs inside its own ±1h window
- * (`oneHourRange` in `DBRowSidePanel`), so every log it can hand over lands
- * within the lead. Shrink the lead and those hops fall back to `useRowData`'s
- * unbounded scan.
+ * The lead carries the opposite direction, the Trace logs tab's span → log
+ * push, and is enough only because that tab lists logs within its own ±1h
+ * window.
  */
 export const ROW_LOOKUP_WINDOW_LOOKBACK_HOURS = 4;
 export const ROW_LOOKUP_WINDOW_LEAD_HOURS = 1;

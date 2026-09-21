@@ -46,22 +46,17 @@ jest.mock('../DBRowTable', () => {
     __esModule: true,
     DBSqlRowTable: (props: RowTableProps) => {
       mockRowTableProps.current = props;
-      // The real table reads these off the context, not its props.
       mockRowTableContext.current = react.use(panel.RowSidePanelContext);
       return null;
     },
   };
 });
 
-// A real context so `use(RowSidePanelContext)` works without pulling in the
-// side panel (which imports this component back).
 jest.mock('../DBRowSidePanel', () => {
   const react = jest.requireActual<typeof React>('react');
   return {
     __esModule: true,
     RowSidePanelContext: react.createContext({
-      // What the search page hands down: its own columns and their toggle, and
-      // a builder for links back into the full search.
       displayedColumns: ['Timestamp', 'Body'],
       toggleColumn: jest.fn(),
       onPropertyAddClick: jest.fn(),
@@ -157,7 +152,6 @@ describe('TraceLogsPanel', () => {
     expect(config.where).toBe(`TraceId = '${TRACE_ID}'`);
     expect(config.whereLanguage).toBe('sql');
     expect(config.select).toBe(LOG_SOURCE.defaultTableSelectExpression);
-    // Chronological: inside a trace that is execution order.
     expect(config.orderBy).toBe('Timestamp ASC');
     expect(config.dateRange).toBe(DATE_RANGE);
     expect(config.limit).toEqual({ limit: 200 });
@@ -172,11 +166,9 @@ describe('TraceLogsPanel', () => {
     });
 
     const config = mockRowTableProps.current.config!;
-    // Rows the source is configured to hide must stay hidden here too.
     expect(config.filters).toEqual([
       { type: 'sql', condition: "ServiceName != 'internal'" },
     ]);
-    // And the source id, which is how its querySettings reach the query.
     expect(config.source).toBe('log-src');
   });
 
@@ -189,9 +181,6 @@ describe('TraceLogsPanel', () => {
   });
 
   it("drops the searched table's row actions", () => {
-    // The header's × maps by index onto the search table's select, and the
-    // cell popover's filter buttons write into the searched source's filters —
-    // a log column against a trace search, from a span row.
     renderPanel();
 
     expect(mockRowTableContext.current.toggleColumn).toBeUndefined();
@@ -235,29 +224,22 @@ describe('TraceLogsPanel', () => {
     const params = searchParams();
     expect(params.get('source')).toBe('log-src');
     expect(params.get('whereLanguage')).toBe('sql');
-    // The tab's window, not whatever range the search page was left on.
     expect(params.get('from')).toBe(DATE_RANGE[0].getTime().toString());
     expect(params.get('to')).toBe(DATE_RANGE[1].getTime().toString());
-    // One level of encoding beyond the query string's own, which is what
-    // `parseAsStringEncoded` decodes on the way in.
+    // `parseAsStringEncoded` decodes one level past the query string's own.
     expect(decodeURIComponent(params.get('where')!)).toBe(
       `TraceId = '${TRACE_ID}'`,
     );
-    // Carried explicitly so the page's SELECT input isn't blank.
     expect(decodeURIComponent(params.get('select')!)).toBe(
       LOG_SOURCE.defaultTableSelectExpression,
     );
-    // No ordering: the search page derives its own from the table's sorting
-    // key, which is the idiom there and the cheaper scan.
     expect(params.get('orderBy')).toBeNull();
   });
 
   it('tells the table its own identity and sort state', () => {
     renderPanel();
 
-    // Persisted column widths belong to this table, not the unnamed bucket.
     expect(mockRowTableProps.current.tableId).toBe('trace-logs');
-    // The header shows the order the query already runs in.
     expect(mockRowTableProps.current.initialSortBy).toEqual([
       { id: 'Timestamp', desc: false },
     ]);
@@ -269,7 +251,7 @@ describe('TraceLogsPanel', () => {
       'the source has no trace id column',
       { source: { ...LOG_SOURCE, traceIdExpression: undefined } },
     ],
-    // `min(1)` on the schema accepts a space, so this reaches the panel.
+    // `min(1)` on the schema accepts a space.
     [
       'the trace id column is whitespace',
       { source: { ...LOG_SOURCE, traceIdExpression: '  ' } },
