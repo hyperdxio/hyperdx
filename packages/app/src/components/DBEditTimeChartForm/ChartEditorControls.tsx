@@ -270,7 +270,6 @@ export function ChartEditorControls({
             onLanguageChange={(lang: 'sql' | 'lucene') =>
               setValue('whereLanguage', lang)
             }
-            showLabel={false}
             enableVariables
           />
         </Flex>
@@ -562,7 +561,6 @@ export function ChartEditorControls({
             onLanguageChange={(lang: 'sql' | 'lucene') =>
               setValue('whereLanguage', lang)
             }
-            showLabel={false}
             enableVariables
           />
         </Flex>
