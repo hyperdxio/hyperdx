@@ -231,7 +231,7 @@ export function ChartSeriesEditor({
 
       // Staged group-bys replace the chart's, same as the filters above: they
       // were chosen against this metric's tags. Only when something was staged
-      // though — group by is chart-level, so clearing it on every apply would
+      // though â€” group by is chart-level, so clearing it on every apply would
       // discard a grouping the user set by hand elsewhere.
       if (stagedGroupBy.length > 0) {
         setValue('groupBy', stagedGroupBy.join(', '));
