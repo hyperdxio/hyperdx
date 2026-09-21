@@ -1,6 +1,6 @@
 import { Provider } from 'jotai';
 import type { ReactElement } from 'react';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import {
@@ -11,11 +11,17 @@ import * as useChartConfigModule from '@/hooks/useChartConfig';
 import { RowWhereResult } from '@/hooks/useRowWhere';
 import { RowClickAction, UserPreferences } from '@/useUserPreferences';
 
+const mockSetQueryState = jest.fn();
+
 // The inline expanded row reads the row query params through nuqs, which needs
-// a mounted Next router.
+// a mounted Next router. Routing every setter through one mock lets tests assert
+// which param the expanded row's side panel button writes.
 jest.mock('nuqs', () => ({
   ...jest.requireActual('nuqs'),
-  useQueryState: () => [null, jest.fn()],
+  useQueryState: (key: string) => [
+    null,
+    (value: unknown) => mockSetQueryState(key, value),
+  ],
 }));
 
 const mockRowWhereResult: RowWhereResult = { where: '', aliasWith: [] };
@@ -352,8 +358,19 @@ describe('RawLogTable', () => {
         await screen.findByRole('button', { name: 'Expand log row' }),
       );
 
-      expect(await screen.findByTestId(`expanded-row-${ROW_ID}`)).toBeVisible();
+      const expandedRow = await screen.findByTestId(`expanded-row-${ROW_ID}`);
+      expect(expandedRow).toBeVisible();
       expect(onRowDetailsClick).not.toHaveBeenCalled();
+
+      // The expanded row keeps the side panel one click away, via URL params
+      // rather than `onRowDetailsClick`.
+      await userEvent.click(
+        within(expandedRow).getByRole('button', {
+          name: 'Open in side panel',
+        }),
+      );
+
+      expect(mockSetQueryState).toHaveBeenCalledWith('rowWhere', ROW_ID);
     });
 
     it('collapses an expanded row when its body is clicked again', async () => {
