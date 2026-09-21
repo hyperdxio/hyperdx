@@ -2395,7 +2395,7 @@ router.get('/', async (req, res, next) => {
  *               overwriting a concurrent edit.
  *             schema:
  *               type: string
- *               example: '"2026-01-15T10:30:00.000Z"'
+ *               example: '"7"'
  *         content:
  *           application/json:
  *             schema:
@@ -2701,7 +2701,7 @@ router.post('/validate', async (req, res, next) => {
  *               overwriting a concurrent edit.
  *             schema:
  *               type: string
- *               example: '"2026-01-15T10:30:00.000Z"'
+ *               example: '"7"'
  *         content:
  *           application/json:
  *             schema:
@@ -2855,7 +2855,7 @@ router.post(
  *           to require the dashboard to exist without pinning a version.
  *           When provided, the update fails with 412 if the dashboard was
  *           modified since that ETag was issued.
- *         example: '"2026-01-15T10:30:00.000Z"'
+ *         example: '"7"'
  *     requestBody:
  *       required: true
  *       content:
@@ -2909,7 +2909,7 @@ router.post(
  *               update. Use it as the next If-Match value.
  *             schema:
  *               type: string
- *               example: '"2026-01-15T10:31:00.000Z"'
+ *               example: '"8"'
  *         content:
  *           application/json:
  *             schema:
@@ -2988,7 +2988,7 @@ router.post(
  *             description: The dashboard's current version token.
  *             schema:
  *               type: string
- *               example: '"2026-01-15T10:31:00.000Z"'
+ *               example: '"8"'
  *         content:
  *           application/json:
  *             schema:

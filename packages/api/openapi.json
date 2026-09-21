@@ -6575,7 +6575,7 @@
                 "description": "Opaque version token for this dashboard. Send it back as If-Match on a PUT to that dashboard to guard against overwriting a concurrent edit.\n",
                 "schema": {
                   "type": "string",
-                  "example": "\"2026-01-15T10:30:00.000Z\""
+                  "example": "\"7\""
                 }
               }
             },
@@ -6701,7 +6701,7 @@
                 "description": "Opaque version token for this dashboard. Send it back as If-Match on a PUT to that dashboard to guard against overwriting a concurrent edit.\n",
                 "schema": {
                   "type": "string",
-                  "example": "\"2026-01-15T10:30:00.000Z\""
+                  "example": "\"7\""
                 }
               }
             },
@@ -6831,7 +6831,7 @@
               "type": "string"
             },
             "description": "Optional. The ETag from a prior GET on this dashboard, or \"*\" to require the dashboard to exist without pinning a version. When provided, the update fails with 412 if the dashboard was modified since that ETag was issued.\n",
-            "example": "\"2026-01-15T10:30:00.000Z\""
+            "example": "\"7\""
           }
         ],
         "requestBody": {
@@ -6911,7 +6911,7 @@
                 "description": "Opaque version token for the dashboard as stored after this update. Use it as the next If-Match value.\n",
                 "schema": {
                   "type": "string",
-                  "example": "\"2026-01-15T10:31:00.000Z\""
+                  "example": "\"8\""
                 }
               }
             },
@@ -7031,7 +7031,7 @@
                 "description": "The dashboard's current version token.",
                 "schema": {
                   "type": "string",
-                  "example": "\"2026-01-15T10:31:00.000Z\""
+                  "example": "\"8\""
                 }
               }
             },
