@@ -10,6 +10,7 @@ import {
   ResponseJSON,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { isMetricChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
+import { SERIES_KEY_JOINER } from '@hyperdx/common-utils/dist/core/seriesNameTemplate';
 import {
   convertDateRangeToGranularityString,
   convertGranularityToSeconds,
@@ -200,7 +201,7 @@ export function useTimeChartSettings(
   }, [config]);
 }
 
-export const ChartKeyJoiner = ' · ';
+export const ChartKeyJoiner = SERIES_KEY_JOINER;
 const PreviousPeriodSuffix = ' (previous)';
 
 /**
