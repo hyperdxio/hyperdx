@@ -38,6 +38,12 @@ type NestedFilterGroupProps = {
   loadMoreLoading: Record<string, boolean>;
   hasLoadedMore: Record<string, boolean>;
   isDefaultExpanded?: boolean;
+  /**
+   * Holds the group open for as long as it is true, without touching the
+   * user's own expand/collapse state — so a filter-name search can reveal
+   * matching children and the group snaps back when the search is cleared.
+   */
+  isForceExpanded?: boolean;
   'data-testid'?: string;
   chartConfig: any; // Using any to avoid importing ChartConfigWithDateRange
   isLive?: boolean;
@@ -69,6 +75,7 @@ export const NestedFilterGroup = ({
   loadMoreLoading,
   hasLoadedMore,
   isDefaultExpanded,
+  isForceExpanded,
   'data-testid': dataTestId,
   chartConfig,
   isLive,
@@ -91,15 +98,21 @@ export const NestedFilterGroup = ({
   const [isExpanded, setExpanded] = useState(
     isDefaultExpanded ?? hasSelections,
   );
+  const expanded = isExpanded || !!isForceExpanded;
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const rowVirtualizer = useVirtualizer({
-    count: isExpanded ? childFilters.length : 0,
+    count: expanded ? childFilters.length : 0,
     getScrollElement: () => scrollContainerRef.current,
     estimateSize: () => VIRTUAL_ITEM_HEIGHT_ESTIMATE,
     overscan: 10,
     getItemKey: index => childFilters[index]?.key ?? index,
+    // Collapsing the whole Filters section measures every row at 0 while it is
+    // hidden; that zero is cached, so the total size stays 0 and the group
+    // reopens empty. Fall back to the estimate rather than cache a zero.
+    measureElement: el =>
+      el.getBoundingClientRect().height || VIRTUAL_ITEM_HEIGHT_ESTIMATE,
   });
 
   return (
@@ -107,7 +120,7 @@ export const NestedFilterGroup = ({
       variant="unstyled"
       chevronPosition="left"
       classNames={{ chevron: classes.chevron }}
-      value={isExpanded ? name : null}
+      value={expanded ? name : null}
       onChange={v => setExpanded(v === name)}
     >
       <Accordion.Item value={name} data-testid={dataTestId}>

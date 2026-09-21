@@ -35,6 +35,15 @@ const INITIAL_LOAD_LIMIT = 20;
 /* The maximum number of values per filter to load when "Load More" is clicked */
 const LOAD_MORE_LOAD_LIMIT = 10000;
 
+/* The maximum number of matched fields a filter-name search fetches values for */
+const SEARCH_MAX_KEYS = 50;
+
+/* Shorter than this matches most of the schema, so it isn't worth a query */
+const MIN_SEARCH_LENGTH = 2;
+
+/* Free-text bodies and the timestamp are never useful as faceted filters */
+const NON_FACET_PATHS = ['body', 'timestamp', '_hdx_body'];
+
 /**
  * Decide which table key-value discovery reads from.
  *
@@ -68,6 +77,7 @@ function useFacets({
   dateRange,
   filterState,
   showMoreFields,
+  searchQuery,
   enabled,
   disableValues,
 }: {
@@ -82,6 +92,8 @@ function useFacets({
   dateRange: [Date, Date];
   filterState?: FilterState;
   showMoreFields?: boolean;
+  /** Debounced filter-name search; fetches values for fields matching it. */
+  searchQuery?: string;
   enabled?: boolean;
   disableValues?: boolean;
 }) {
@@ -152,10 +164,7 @@ function useFacets({
           isSharedFieldPinned(field.path), // keep team-shared fields
       )
       .map(({ path }) => path)
-      .filter(
-        path =>
-          !['body', 'timestamp', '_hdx_body'].includes(path.toLowerCase()),
-      );
+      .filter(path => !NON_FACET_PATHS.includes(path.toLowerCase()));
     return strings;
   }, [
     allFields,
@@ -167,21 +176,66 @@ function useFacets({
     isSharedFieldPinned,
   ]);
 
-  const { escapedKeysToFetch, sqlKeyToUiKey } = useMemo(() => {
-    // Don't fetch any keys until the column list is loaded,
-    // since we need the real column names to escape correctly.
-    if (isColumnsLoading) {
-      return { escapedKeysToFetch: [], sqlKeyToUiKey: new Map() };
+  // Searched over every string field rather than `keysToFetch`, which is the
+  // point: the browse list deliberately omits high-cardinality columns, and
+  // those are exactly the filters a user resorts to searching for.
+  const searchKeysToFetch = useMemo(() => {
+    const needle = searchQuery?.trim().toLowerCase() ?? '';
+    if (!allFields || needle.length < MIN_SEARCH_LENGTH) {
+      return [];
     }
+    return allFields
+      .filter(field => field.jsType === 'string')
+      .map(({ path }) => {
+        const merged = mergePath(path, jsonColumns ?? [], mapColumns ?? []);
+        return {
+          path: merged,
+          // JSON sub-paths arrive backtick-quoted (Body.`user`.`id`), which no
+          // one types. Matched against the bare text the sidebar displays.
+          haystack: merged.toLowerCase().replaceAll('`', ''),
+        };
+      })
+      .filter(
+        ({ path, haystack }) =>
+          !NON_FACET_PATHS.includes(path.toLowerCase()) &&
+          haystack.includes(needle),
+      )
+      .sort((a, b) => {
+        // SEARCH_MAX_KEYS is a hard cutoff, so this order decides which matches
+        // get values at all — prefix matches are the likelier intent.
+        const aPrefix = a.haystack.startsWith(needle);
+        const bPrefix = b.haystack.startsWith(needle);
+        if (aPrefix !== bPrefix) return aPrefix ? -1 : 1;
+        return a.path.localeCompare(b.path);
+      })
+      .slice(0, SEARCH_MAX_KEYS)
+      .map(({ path }) => path);
+  }, [allFields, jsonColumns, mapColumns, searchQuery]);
 
-    const sqlKeyToUiKey = new Map<string, string>();
-    const escapedKeysToFetch = keysToFetch.map(key => {
-      const sqlKey = toQuotedClickHouseKeyExpression(key, knownColumns);
-      sqlKeyToUiKey.set(sqlKey, key);
-      return sqlKey;
-    });
-    return { escapedKeysToFetch, sqlKeyToUiKey };
-  }, [isColumnsLoading, keysToFetch, knownColumns]);
+  const { escapedKeysToFetch, escapedSearchKeys, sqlKeyToUiKey } =
+    useMemo(() => {
+      // Don't fetch any keys until the column list is loaded,
+      // since we need the real column names to escape correctly.
+      if (isColumnsLoading) {
+        return {
+          escapedKeysToFetch: [],
+          escapedSearchKeys: [],
+          sqlKeyToUiKey: new Map(),
+        };
+      }
+
+      const sqlKeyToUiKey = new Map<string, string>();
+      const escape = (key: string) => {
+        const sqlKey = toQuotedClickHouseKeyExpression(key, knownColumns);
+        sqlKeyToUiKey.set(sqlKey, key);
+        return sqlKey;
+      };
+      return {
+        escapedKeysToFetch: keysToFetch.map(escape),
+        escapedSearchKeys: searchKeysToFetch.map(escape),
+        sqlKeyToUiKey,
+      };
+    }, [isColumnsLoading, keysToFetch, searchKeysToFetch, knownColumns]);
 
   const facetsChartConfig = useMemo(
     () =>
@@ -201,15 +255,52 @@ function useFacets({
     { enabled: enabled && !disableValues },
   );
 
-  // Map the (escaped) result keys back to the original UI keys.
-  const facets = useMemo<Facet[] | undefined>(
-    () =>
-      rawFacets?.map(f => ({
-        ...f,
-        key: sqlKeyToUiKey.get(f.key) ?? f.key,
-      })),
-    [rawFacets, sqlKeyToUiKey],
-  );
+  // A second query rather than widening the one above: the browse list must
+  // survive typing untouched, so clearing the search costs nothing and each
+  // search term caches on its own.
+  const { data: lastSearchFacets, isFetching: isSearchFetching } =
+    useGetKeyValues(
+      {
+        chartConfig: facetsChartConfig,
+        limit: INITIAL_LOAD_LIMIT,
+        keys: escapedSearchKeys,
+        mode,
+      },
+      { enabled: enabled && !disableValues && escapedSearchKeys.length > 0 },
+    );
+
+  // `keepPreviousData` keeps serving the last search's page even once the query
+  // is disabled, which would leave fields the browse list never asked for
+  // sitting in the sidebar after the search box is cleared.
+  const rawSearchFacets =
+    escapedSearchKeys.length > 0 ? lastSearchFacets : undefined;
+
+  // Map the (escaped) result keys back to the original UI keys, and union the
+  // search results in. Search and browse can ask for the same key, and while a
+  // new search is in flight `rawSearchFacets` still holds the previous term's
+  // page — harmless, since the caller filters by the typed text anyway.
+  const facets = useMemo<Facet[] | undefined>(() => {
+    if (rawFacets === undefined && rawSearchFacets === undefined) {
+      return undefined;
+    }
+    const byKey = new Map<string, Facet>();
+    for (const facet of [...(rawFacets ?? []), ...(rawSearchFacets ?? [])]) {
+      const key = sqlKeyToUiKey.get(facet.key) ?? facet.key;
+      const existing = byKey.get(key);
+      if (!existing) {
+        byKey.set(key, { key, value: [...facet.value] });
+        continue;
+      }
+      const seen = new Set(existing.value);
+      for (const value of facet.value) {
+        if (!seen.has(value)) {
+          seen.add(value);
+          existing.value.push(value);
+        }
+      }
+    }
+    return [...byKey.values()];
+  }, [rawFacets, rawSearchFacets, sqlKeyToUiKey]);
 
   const metadata = useMetadataWithSettings();
   const loadMoreFacetsForKey = useCallback(
@@ -292,6 +383,7 @@ function useFacets({
     error: allFieldsError ?? rest.error,
     data: { keys: allFields, keyValues: facets },
     isLoading: isAllFieldsLoading || rest.isLoading,
+    isSearchFetching,
     loadMoreFacetsForKey,
   };
 }
@@ -304,6 +396,7 @@ export function useFetchFacets({
   mode,
   filterState,
   showMoreFields,
+  searchQuery,
   disableValues,
 }: {
   chartConfig: BuilderChartConfigWithDateRange;
@@ -317,6 +410,8 @@ export function useFetchFacets({
   mode: 'all' | 'exact';
   filterState?: FilterState;
   showMoreFields?: boolean;
+  /** Debounced filter-name search; fetches values for fields matching it. */
+  searchQuery?: string;
   disableValues?: boolean;
 }) {
   const facetsQuery = useFacets({
@@ -327,6 +422,7 @@ export function useFetchFacets({
     dateRange,
     filterState,
     showMoreFields,
+    searchQuery,
     enabled: true,
     disableValues,
   });
