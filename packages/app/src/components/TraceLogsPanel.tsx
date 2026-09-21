@@ -1,5 +1,4 @@
 import { use, useCallback, useMemo } from 'react';
-import Link from 'next/link';
 import { buildSearchChartConfig } from '@hyperdx/common-utils/dist/core/searchChartConfig';
 import {
   BuilderChartConfigWithDateRange,
@@ -145,7 +144,7 @@ export default function TraceLogsPanel({
           <Button
             variant="link"
             size="xs"
-            component={Link}
+            component="a"
             href={searchUrl}
             rightSection={<IconExternalLink size={14} />}
             data-testid="trace-logs-open-in-search"

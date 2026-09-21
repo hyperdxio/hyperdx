@@ -7,22 +7,6 @@ import {
 import { MantineProvider } from '@mantine/core';
 import { act, render, screen } from '@testing-library/react';
 
-jest.mock('next/link', () => ({
-  __esModule: true,
-  default: ({
-    href,
-    children,
-    ...rest
-  }: {
-    href: string;
-    children: React.ReactNode;
-  }) => (
-    <a href={href} {...rest}>
-      {children}
-    </a>
-  ),
-}));
-
 type RowTableProps = {
   config?: BuilderChartConfigWithDateRange;
   sourceId?: string;

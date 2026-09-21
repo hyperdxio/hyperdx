@@ -1063,7 +1063,7 @@ export const DBRowSidePanelInner = ({
           ...(enableTraceLogs
             ? [
                 {
-                  text: 'Trace logs',
+                  text: 'Trace Logs',
                   value: Tab.Logs,
                 },
               ]

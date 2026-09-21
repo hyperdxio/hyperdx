@@ -103,7 +103,7 @@ export function resolveRowTimestampAnchor({
  * always starts at or before the logs that reference it, while the traces
  * schema's `Timestamp` is the span's *start*, so a symmetric window silently
  * drops any span that ran longer than the window and logged late in its life.
- * The lead carries the opposite direction, the Trace logs tab's span → log
+ * The lead carries the opposite direction, the Trace Logs tab's span → log
  * push, and is enough only because that tab lists logs within its own ±1h
  * window.
  */
