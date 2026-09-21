@@ -784,9 +784,10 @@ const MAX_AXIS_MANTISSA = 2;
 /** Base width ceiling for a bare signed number - see MAX_AXIS_MANTISSA's comment. */
 const AXIS_CHAR_BUDGET = 5;
 
-// Only the separator, not a flat suffix allowance - the suffix itself
-// still counts toward AXIS_CHAR_BUDGET like any other candidate width.
+// Separator plus a longer-suffix bonus, capped at +2 beyond the 2-char
+// ("MB"/"GB") budget already proven safe against a real shipped tile.
 const SEPARATOR_CHAR_ALLOWANCE = 1;
+const MAX_SUFFIX_BONUS = 2;
 
 // Trims insignificant trailing zeros ("1.00k" -> "1k") and a sign left
 // over from a value that rounded to zero ("-0"/"-0%" -> "0"/"0%").
@@ -798,10 +799,16 @@ function trimTrailingZeros(formatted: string): string {
 }
 
 // Total budget for a candidate label: a space-separated unit suffix gets
-// its own allowance (not exempt); a negative percent needs +1 for sign+%.
+// its own (length-capped) allowance; a negative percent needs +1 for sign+%.
 function axisLabelBudget(formatted: string): number {
-  if (formatted.includes(' ')) {
-    return AXIS_CHAR_BUDGET + SEPARATOR_CHAR_ALLOWANCE;
+  const spaceIndex = formatted.indexOf(' ');
+  if (spaceIndex !== -1) {
+    const suffixLength = formatted.length - spaceIndex - 1;
+    const suffixBonus = Math.min(
+      Math.max(suffixLength - 2, 0),
+      MAX_SUFFIX_BONUS,
+    );
+    return AXIS_CHAR_BUDGET + SEPARATOR_CHAR_ALLOWANCE + suffixBonus;
   }
   const isNegativePercent =
     formatted.startsWith('-') && formatted.endsWith('%');
