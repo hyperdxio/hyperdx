@@ -126,6 +126,9 @@ describe('SearchWhereInput', () => {
         'data-single-line',
         'true',
       );
+      expect(
+        screen.queryByRole('button', { name: 'Show all lines' }),
+      ).not.toBeInTheDocument();
       await user.click(input);
       await user.keyboard('first{Shift>}{Enter}{/Shift}second');
 
@@ -146,6 +149,41 @@ describe('SearchWhereInput', () => {
 
       expect(screen.getByText(/SQL WHERE clause/i)).toBeInTheDocument();
     });
+  });
+
+  describe('Multiline display', () => {
+    it.each(['lucene', 'sql'] as const)(
+      'starts collapsed and expands the %s input',
+      async defaultLanguage => {
+        const user = userEvent.setup();
+        renderWithMantine(
+          <TestWrapper
+            defaultLanguage={defaultLanguage}
+            defaultWhere={'first line\nsecond line'}
+          />,
+        );
+
+        const expand = screen.getByRole('button', {
+          name: 'Show all lines',
+        });
+        expect(expand).toHaveAttribute('aria-expanded', 'false');
+        expect(expand.closest('[data-multiline-expanded]')).toHaveAttribute(
+          'data-multiline-expanded',
+          'false',
+        );
+
+        await user.click(expand);
+
+        const collapse = screen.getByRole('button', {
+          name: 'Show first line',
+        });
+        expect(collapse).toHaveAttribute('aria-expanded', 'true');
+        expect(collapse.closest('[data-multiline-expanded]')).toHaveAttribute(
+          'data-multiline-expanded',
+          'true',
+        );
+      },
+    );
   });
 
   describe('Form Integration', () => {

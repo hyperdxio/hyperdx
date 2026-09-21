@@ -3,11 +3,11 @@
   min-height: var(--editor-base-height, 36px);
 }
 
-/* The measured right section: an optional adornment, then the language switch */
+/* Measuring the right-side controls keeps the textarea text clear of them. */
 .rightSection {
   display: flex;
-  align-items: flex-start;
-  height: 100%;
+  align-items: center;
+  height: var(--editor-base-height, 36px);
 }
 
 .textarea {
@@ -38,6 +38,10 @@
 
 /* Empty placeholders can wrap; hide the unused scrollbar that wrapping creates. */
 .root[data-empty='true'] .textarea textarea {
+  overflow: hidden;
+}
+
+.root[data-collapsed='true'] .textarea textarea {
   overflow: hidden;
 }
 

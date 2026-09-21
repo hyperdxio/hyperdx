@@ -60,3 +60,10 @@
     font-size: var(--mantine-font-size-xs);
   }
 }
+
+.actions {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  min-height: calc(var(--editor-base-height, 36px) - 2px);
+}

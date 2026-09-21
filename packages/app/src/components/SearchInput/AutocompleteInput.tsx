@@ -4,6 +4,7 @@ import Fuse from 'fuse.js';
 import { Loader, Popover, Textarea, UnstyledButton } from '@mantine/core';
 
 import { EDITOR_INPUT_HEIGHTS } from '@/components/editorInputHeights';
+import EditorMultilineToggle from '@/components/EditorMultilineToggle';
 import type { VariableValidationState } from '@/components/SQLEditor/variableValidation';
 import type { TokenInfo } from '@/hooks/useAutoCompleteOptions';
 import { useQueryHistory } from '@/utils';
@@ -60,6 +61,7 @@ export default function AutocompleteInput({
 
   const [isSearchInputFocused, _setIsSearchInputFocused] = useState(false);
   const [isInputDropdownOpen, setIsInputDropdownOpen] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
   const setIsSearchInputFocused = useCallback(
     (state: boolean) => {
       _setIsSearchInputFocused(state);
@@ -203,6 +205,8 @@ export default function AutocompleteInput({
       style={{ ['--editor-base-height' as string]: `${baseHeight}px` }}
       data-empty={value ? undefined : 'true'}
       data-single-line={allowMultiline ? undefined : 'true'}
+      data-multiline-expanded={allowMultiline ? isExpanded : undefined}
+      data-collapsed={allowMultiline && !isExpanded ? 'true' : undefined}
       data-validation-state={validationState}
     >
       <Popover
@@ -234,7 +238,7 @@ export default function AutocompleteInput({
             size={size}
             autosize
             minRows={1}
-            maxRows={allowMultiline ? maxVisibleRows : 1}
+            maxRows={allowMultiline && isExpanded ? maxVisibleRows : 1}
             data-testid={dataTestId}
             onChange={e => onChange(e.target.value)}
             onFocus={() => {
@@ -320,9 +324,15 @@ export default function AutocompleteInput({
             }}
             rightSectionWidth={rightSectionWidth}
             rightSection={
-              rightAdornment != null ? (
+              allowMultiline || rightAdornment != null ? (
                 <div ref={ref} className={styles.rightSection}>
                   {rightAdornment}
+                  {allowMultiline && (
+                    <EditorMultilineToggle
+                      expanded={isExpanded}
+                      onToggle={() => setIsExpanded(expanded => !expanded)}
+                    />
+                  )}
                 </div>
               ) : undefined
             }

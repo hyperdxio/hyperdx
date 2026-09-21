@@ -31,6 +31,7 @@ import CodeMirror, {
 } from '@uiw/react-codemirror';
 
 import { EDITOR_INPUT_HEIGHTS } from '@/components/editorInputHeights';
+import EditorMultilineToggle from '@/components/EditorMultilineToggle';
 import { useMultipleAllFields } from '@/hooks/useMetadata';
 import { useSource } from '@/source';
 import { useQueryHistory } from '@/utils';
@@ -170,6 +171,7 @@ export default function SQLInlineEditor({
   });
 
   const [isFocused, setIsFocused] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   const ref = useRef<ReactCodeMirrorRef>(null);
 
@@ -342,6 +344,7 @@ export default function SQLInlineEditor({
       className={styles.wrapper}
       style={{ ['--editor-base-height' as string]: `${baseHeight}px` }}
       data-validation-state={validationState}
+      data-multiline-expanded={allowMultiline ? isExpanded : undefined}
     >
       <Paper
         shadow="none"
@@ -349,7 +352,7 @@ export default function SQLInlineEditor({
           styles.paper,
           validationState === 'error' ? styles.error : undefined,
           validationState === 'warning' ? styles.warning : undefined,
-          !allowMultiline ? styles.clamped : undefined,
+          !allowMultiline || !isExpanded ? styles.clamped : undefined,
           isFocused ? styles.focused : undefined,
         )}
         ps="4px"
@@ -399,7 +402,15 @@ export default function SQLInlineEditor({
             onClick={onClickCodeMirror}
           />
         </div>
-        <VariableIssueIndicator issues={variableIssues} />
+        <div className={styles.actions}>
+          {allowMultiline && (
+            <EditorMultilineToggle
+              expanded={isExpanded}
+              onToggle={() => setIsExpanded(expanded => !expanded)}
+            />
+          )}
+          <VariableIssueIndicator issues={variableIssues} />
+        </div>
       </Paper>
     </div>
   );
