@@ -505,6 +505,10 @@ const MAX_AXIS_MANTISSA = 2;
 // timeseries.ts), not the web's 40px/5-char SVG-pixel math - unrelated media.
 const AXIS_CHAR_BUDGET = 10;
 
+// Longest suffix ("KiB/s", 5) the sub-1 rescue below will fully bypass the
+// budget for; "Gibit/s" (7) is long enough that overflow isn't worth it.
+const SUB1_SUFFIX_LIMIT = 5;
+
 // Trims insignificant trailing zeros ("1.00k" -> "1k") and a sign left
 // over from a value that rounded to zero ("-0"/"-0%" -> "0"/"0%").
 function trimTrailingZeros(formatted: string): string {
@@ -515,12 +519,16 @@ function trimTrailingZeros(formatted: string): string {
 }
 
 // The fixed-width gutter fits a suffix the same as any other character,
-// unless the value is under 1 - then skip the gate (see the web twin).
+// unless the value is under 1 with a short suffix (see the web twin).
 function axisLabelBudget(formatted: string): number {
   const spaceIndex = formatted.indexOf(' ');
   if (spaceIndex !== -1) {
     const numericPart = formatted.slice(0, spaceIndex);
-    if (/^-?0(\.\d+)?$/.test(numericPart)) {
+    const suffixLength = formatted.length - spaceIndex - 1;
+    if (
+      /^-?0(\.\d+)?$/.test(numericPart) &&
+      suffixLength <= SUB1_SUFFIX_LIMIT
+    ) {
       return Infinity;
     }
   }

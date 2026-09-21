@@ -53,20 +53,16 @@ describe('formatAxisTick', () => {
   });
 
   it('searches downward for the most precision that still fits the axis budget', () => {
-    // Regression: a large tick used to always force 0 decimals, discarding
-    // precision the abbreviated (k/m/b/t) form had room for - "1.08k" fits
-    // the same 5-char budget "1k" does. A round number still comes out
-    // clean ("200", not "200.00") because trailing zeros are trimmed, not
-    // because mantissa is forced to 0.
+    // Regression: a large tick used to force 0 decimals even though the
+    // abbreviated (k/m/b/t) form had room for precision ("1.08k" fits "1k"'s budget).
     expect(formatAxisTick(200, { output: 'number', mantissa: 2 })).toBe('200');
     expect(formatAxisTick(1234, { output: 'number', mantissa: 10 })).toBe(
       '1.23k',
     );
     expect(formatAxisTick(10, { output: 'number', mantissa: 2 })).toBe('10');
     expect(formatAxisTick(-15, { output: 'number', mantissa: 2 })).toBe('-15');
-    // Backs off a decimal at a time when the fully-precise form would
-    // overflow the budget (e.g. "12.34k" is 6 chars), rather than jumping
-    // straight to 0 decimals.
+    // Backs off a decimal at a time when full precision would overflow
+    // the budget (e.g. "12.34k" is 6 chars), rather than jumping to 0.
     expect(formatAxisTick(12340, { output: 'number', mantissa: 2 })).toBe(
       '12.3k',
     );
@@ -114,11 +110,8 @@ describe('formatAxisTick', () => {
   });
 
   it('distinguishes nearby byte values instead of collapsing them like the pre-fix number axis did', () => {
-    // Regression: AXIS_CHAR_BUDGET was being measured against the whole
-    // formatted string, including byte's " MB"/"GB" unit suffix, so any
-    // candidate with a decimal was always too wide (e.g. "1.2 GB" is 6
-    // chars) and the search always fell through to mantissa 0 - the exact
-    // collapse this formatter exists to prevent, just for byte tiles.
+    // Regression: the budget was measured against the whole string
+    // including byte's " GB" suffix, so any decimal was always too wide.
     const GB = 1024 ** 3;
     expect(formatAxisTick(1.2 * GB, { output: 'byte', mantissa: 1 })).toBe(
       '1.2 GB',
@@ -172,6 +165,18 @@ describe('formatAxisTick', () => {
         mantissa: 2,
       }),
     ).toBe('0.25 cps');
+  });
+
+  it('still backs off a sub-1 value with a suffix too long for the bypass', () => {
+    // "Gibit/s" (7 chars) is past SUB1_SUFFIX_LIMIT, so a fixed-unit tile
+    // pinned to it doesn't get the sub-1 rescue - the overflow isn't worth it.
+    expect(
+      formatAxisTick(0.25, {
+        output: 'data_rate',
+        numericUnit: NumericUnit.GibibitsSec,
+        mantissa: 2,
+      }),
+    ).toBe('0 Gibit/s');
   });
 
   it('keeps a small negative percentage distinguishable from 0', () => {

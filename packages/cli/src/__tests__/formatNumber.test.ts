@@ -66,9 +66,8 @@ describe('axisTickFormatter', () => {
   });
 
   it('distinguishes nearby byte values instead of collapsing them', () => {
-    // Regression: the axis budget was measured against the whole string,
-    // including byte's " MB"/"GB" suffix, so a decimal candidate was
-    // always too wide and the search always fell back to mantissa 0.
+    // Regression: the budget was measured against the whole string
+    // including byte's " GB" suffix, so any decimal was always too wide.
     const GB = 1024 ** 3;
     expect(axisTickFormatter({ output: 'byte', mantissa: 1 })?.(1.2 * GB)).toBe(
       '1.2 GB',
@@ -119,6 +118,17 @@ describe('axisTickFormatter', () => {
       mantissa: 2,
     });
     expect(format?.(0.25)).toBe('0.25 cps');
+  });
+
+  it('still backs off a sub-1 value with a suffix too long for the bypass', () => {
+    // "Gibit/s" (7 chars) is past SUB1_SUFFIX_LIMIT, so a fixed-unit tile
+    // pinned to it doesn't get the sub-1 rescue - the overflow isn't worth it.
+    const format = axisTickFormatter({
+      output: 'data_rate',
+      numericUnit: NumericUnit.GibibitsSec,
+      mantissa: 2,
+    });
+    expect(format?.(0.25)).toBe('0 Gibit/s');
   });
 
   it('keeps a small negative percentage distinguishable from 0', () => {

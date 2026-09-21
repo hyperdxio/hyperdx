@@ -782,6 +782,10 @@ const AXIS_CHAR_BUDGET = 5;
 // suffix costs the same per character as a digit and earns no extra room.
 const SEPARATOR_CHAR_ALLOWANCE = 1;
 
+// Longest suffix ("KiB/s", 5) the sub-1 rescue below will fully bypass the
+// budget for; "Gibit/s" (7) is long enough that overflow isn't worth it.
+const SUB1_SUFFIX_LIMIT = 5;
+
 // Trims insignificant trailing zeros ("1.00k" -> "1k") and a sign left
 // over from a value that rounded to zero ("-0"/"-0%" -> "0"/"0%").
 function trimTrailingZeros(formatted: string): string {
@@ -791,13 +795,17 @@ function trimTrailingZeros(formatted: string): string {
   return trimmed.replace(/^-(0%?)$/, '$1');
 }
 
-// A space-separated unit suffix gets its own allowance, unless the value
-// is under 1 - then the alternative is a misleading "0", so skip the gate.
+// A space-separated unit suffix gets its own allowance, unless the value is
+// under 1 with a short suffix - then a misleading "0" is worse than overflow.
 function axisLabelBudget(formatted: string): number {
   const spaceIndex = formatted.indexOf(' ');
   if (spaceIndex !== -1) {
     const numericPart = formatted.slice(0, spaceIndex);
-    if (/^-?0(\.\d+)?$/.test(numericPart)) {
+    const suffixLength = formatted.length - spaceIndex - 1;
+    if (
+      /^-?0(\.\d+)?$/.test(numericPart) &&
+      suffixLength <= SUB1_SUFFIX_LIMIT
+    ) {
       return Infinity;
     }
     return AXIS_CHAR_BUDGET + SEPARATOR_CHAR_ALLOWANCE;
