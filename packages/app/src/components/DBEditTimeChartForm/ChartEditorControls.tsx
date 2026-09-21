@@ -330,11 +330,10 @@ export function ChartEditorControls({
                 style={{
                   display: 'grid',
                   gridTemplateColumns: 'auto minmax(0, 1fr)',
-                  // Labels stay level with each editor's first line as it grows
                   alignItems: 'start',
                 }}
               >
-                <Flex h={EDITOR_INPUT_HEIGHTS.sm} align="center">
+                <Flex h={`${EDITOR_INPUT_HEIGHTS.sm}px`} align="center">
                   <Text
                     me="sm"
                     size="sm"
@@ -358,7 +357,7 @@ export function ChartEditorControls({
                 </div>
                 {displayType === DisplayType.Table && (
                   <>
-                    <Flex h={EDITOR_INPUT_HEIGHTS.sm} align="center">
+                    <Flex h={`${EDITOR_INPUT_HEIGHTS.sm}px`} align="center">
                       <Text
                         me="sm"
                         size="sm"

@@ -572,8 +572,7 @@ function AggregatedColumnRow({
               disableKeywordAutocomplete
             />
           </Box>
-          {/* Stays level with the editor's first line as it grows */}
-          <Flex h={EDITOR_INPUT_HEIGHTS.sm} align="center">
+          <Flex h={`${EDITOR_INPUT_HEIGHTS.sm}px`} align="center">
             <ActionIcon size="sm" onClick={onRemove}>
               <IconTrash size={16} />
             </ActionIcon>

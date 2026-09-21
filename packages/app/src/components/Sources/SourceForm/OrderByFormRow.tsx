@@ -88,8 +88,7 @@ export function OrderByFormRow({
               disableKeywordAutocomplete
             />
           </Box>
-          {/* Stays level with the editor's first line as it grows */}
-          <Flex h={EDITOR_INPUT_HEIGHTS.sm} align="center">
+          <Flex h={`${EDITOR_INPUT_HEIGHTS.sm}px`} align="center">
             <Tooltip label="Validate expression">
               <ActionIcon
                 size="xs"

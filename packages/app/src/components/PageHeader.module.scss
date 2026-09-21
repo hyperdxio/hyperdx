@@ -26,7 +26,7 @@
    Block padding is absorbed at rest and only shows once the row outgrows the
    header — otherwise the query sits flush against the edges. Other pages keep
    the zero block padding above so a title-only bar does not shift. */
-.header.growing {
+.header.growing:not(.notSticky) {
   padding-block: var(--mantine-spacing-xs);
 }
 

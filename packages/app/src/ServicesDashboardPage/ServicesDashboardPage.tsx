@@ -347,7 +347,6 @@ function ServicesDashboardPage() {
             gap="xs"
             wrap="nowrap"
             flex={1}
-            // Stays level with the search bar's first line as it grows
             align="flex-start"
           >
             <SourceSelectControlled

@@ -84,9 +84,8 @@ function HighlightedAttributeRow({
         </div>
       </Grid.Col>
       <Grid.Col span={2} ps="xs">
-        {/* The label and icons stay level with the editors' first line as they grow */}
         <Flex align="flex-start" gap="sm">
-          <Flex h={EDITOR_INPUT_HEIGHTS.sm} align="center">
+          <Flex h={`${EDITOR_INPUT_HEIGHTS.sm}px`} align="center">
             <Text c="gray">AS</Text>
           </Flex>
           <SQLInlineEditorControlled
@@ -95,7 +94,7 @@ function HighlightedAttributeRow({
             placeholder="Optional Alias"
             disableKeywordAutocomplete
           />
-          <Flex h={EDITOR_INPUT_HEIGHTS.sm} align="center" gap="sm">
+          <Flex h={`${EDITOR_INPUT_HEIGHTS.sm}px`} align="center" gap="sm">
             <Tooltip label="Validate expression">
               <ActionIcon
                 size="xs"

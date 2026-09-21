@@ -157,7 +157,7 @@ export function ChartActionBar({
       </Flex>
       <Flex gap="sm" mb="sm" align="flex-start" justify="end">
         {filtersToggle != null && tabQueriesData(activeTab) && (
-          <Flex h={EDITOR_INPUT_HEIGHTS.sm} align="center">
+          <Flex h={`${EDITOR_INPUT_HEIGHTS.sm}px`} align="center">
             <DashboardFiltersToggle {...filtersToggle} />
           </Flex>
         )}

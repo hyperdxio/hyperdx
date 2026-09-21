@@ -440,7 +440,6 @@ function SessionsPage() {
                 gap="xs"
                 wrap="nowrap"
                 w="100%"
-                // Stays level with the search bar's first line as it grows
                 align="flex-start"
                 className={styles.toolbar}
               >

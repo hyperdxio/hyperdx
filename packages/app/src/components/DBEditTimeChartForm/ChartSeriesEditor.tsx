@@ -231,7 +231,7 @@ export function ChartSeriesEditor({
 
       // Staged group-bys replace the chart's, same as the filters above: they
       // were chosen against this metric's tags. Only when something was staged
-      // though â€” group by is chart-level, so clearing it on every apply would
+      // though — group by is chart-level, so clearing it on every apply would
       // discard a grouping the user set by hand elsewhere.
       if (stagedGroupBy.length > 0) {
         setValue('groupBy', stagedGroupBy.join(', '));
@@ -433,13 +433,12 @@ export function ChartSeriesEditor({
             style={{
               display: 'grid',
               gridTemplateColumns: 'auto 1fr auto 1fr',
-              // Labels stay level with each editor's first line as it grows
               alignItems: 'start',
             }}
           >
             {showWhere && (
               <>
-                <Flex h={EDITOR_INPUT_HEIGHTS.sm} align="center">
+                <Flex h={`${EDITOR_INPUT_HEIGHTS.sm}px`} align="center">
                   <Text size="sm">Where</Text>
                 </Flex>
                 <div
@@ -465,7 +464,7 @@ export function ChartSeriesEditor({
             )}
             {showGroupBy && (
               <>
-                <Flex h={EDITOR_INPUT_HEIGHTS.sm} align="center">
+                <Flex h={`${EDITOR_INPUT_HEIGHTS.sm}px`} align="center">
                   <Text size="sm" style={{ whiteSpace: 'nowrap' }}>
                     Group By
                   </Text>
@@ -491,7 +490,7 @@ export function ChartSeriesEditor({
                 </div>
                 {showHaving && (
                   <>
-                    <Flex h={EDITOR_INPUT_HEIGHTS.sm} align="center">
+                    <Flex h={`${EDITOR_INPUT_HEIGHTS.sm}px`} align="center">
                       <Text size="sm" style={{ whiteSpace: 'nowrap' }}>
                         Having
                       </Text>
