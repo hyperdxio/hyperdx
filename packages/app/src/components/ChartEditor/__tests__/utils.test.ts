@@ -9,6 +9,7 @@ import {
   AlertThresholdType,
   DisplayType,
   MetricsDataType,
+  PromqlReducer,
   SourceKind,
 } from '@hyperdx/common-utils/dist/types';
 
@@ -589,9 +590,10 @@ describe('convertSavedChartConfigToFormState', () => {
 describe('PromQL expressions', () => {
   const promqlForm = (
     promqlExpressions: ChartEditorFormState['promqlExpressions'],
+    displayType: DisplayType = DisplayType.Line,
   ): ChartEditorFormState => ({
     configType: 'promql',
-    displayType: DisplayType.Line,
+    displayType,
     connection: 'conn-1',
     source: 'source-promql',
     promqlExpressions,
@@ -647,6 +649,69 @@ describe('PromQL expressions', () => {
     expect(
       convertFormStateToSavedChartConfig(promqlForm([]), undefined),
     ).toMatchObject({ promqlExpression: [{ expression: '' }] });
+  });
+
+  it('keeps the query type and reducer a single-value chart supports', () => {
+    expect(
+      convertFormStateToSavedChartConfig(
+        promqlForm(
+          [
+            {
+              expression: 'up',
+              queryType: 'range',
+              reducer: PromqlReducer.Max,
+            },
+          ],
+          DisplayType.Number,
+        ),
+        undefined,
+      ),
+    ).toMatchObject({
+      promqlExpression: [
+        { expression: 'up', queryType: 'range', reducer: PromqlReducer.Max },
+      ],
+    });
+  });
+
+  // A stale `instant` on a time series tile would hide its granularity picker,
+  // and a reducer it never applies is dead weight in the saved config.
+  it('drops the query type and reducer a time series chart cannot offer', () => {
+    expect(
+      convertFormStateToSavedChartConfig(
+        promqlForm([
+          {
+            expression: 'up',
+            queryType: 'instant',
+            reducer: PromqlReducer.Max,
+          },
+        ]),
+        undefined,
+      ),
+    ).toMatchObject({
+      promqlExpression: [
+        { expression: 'up', queryType: undefined, reducer: undefined },
+      ],
+    });
+  });
+
+  it('drops them from the queried config too', () => {
+    expect(
+      convertFormStateToChartConfig(
+        promqlForm([
+          {
+            expression: 'up',
+            queryType: 'instant',
+            reducer: PromqlReducer.Max,
+          },
+        ]),
+        dateRange,
+        undefined,
+      ),
+    ).toMatchObject({
+      promqlExpression: [
+        { expression: 'up', queryType: undefined, reducer: undefined },
+      ],
+    });
   });
 
   it('keeps unfinished rows in the queried config too', () => {

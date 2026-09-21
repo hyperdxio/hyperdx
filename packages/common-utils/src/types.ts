@@ -1786,11 +1786,53 @@ export const MAX_LEGEND_TEMPLATE_LENGTH = 1024;
 // Caps the number of expressions on one PromQL tile
 export const MAX_PROMQL_EXPRESSIONS = 10;
 
+/**
+ * Whether a PromQL expression is evaluated at a single moment (`instant`)
+ * or at intervals over a range of time (`range`).
+ */
+export const PromqlQueryTypeSchema = z.enum(['instant', 'range']);
+
+export type PromqlQueryType = z.infer<typeof PromqlQueryTypeSchema>;
+
+/** A Prometheus series' label set, `__name__` included. */
+export type PrometheusMetric = Record<string, string>;
+
+/**
+ * One series of a Prometheus matrix result: its samples over time. Values
+ * cross the wire as strings, as the Prometheus HTTP API returns them.
+ */
+export type PrometheusMatrixResult = {
+  metric: PrometheusMetric;
+  values: [number, string][];
+};
+
+/** One series of a Prometheus vector result: a single `[unix seconds, value]`. */
+export type PrometheusVectorResult = {
+  metric: PrometheusMetric;
+  value: [number, string];
+};
+
+/** How a range query's samples are client-side aggregated to a single value. */
+export enum PromqlReducer {
+  LastNotNull = 'lastNotNull',
+  Min = 'min',
+  Max = 'max',
+  Mean = 'mean',
+  Sum = 'sum',
+  Count = 'count',
+}
+
+export const PromqlReducerSchema = z.nativeEnum(PromqlReducer);
+
 /** One of the expressions a PromQL chart plots. */
 export const PromqlSeriesSchema = z.object({
   expression: z.string(),
   /** Prefixed to every series name this expression produces. */
   alias: z.string().optional(),
+  /** Whether to evaluate with query or query_range. Instant is not supported for timeseries charts */
+  queryType: PromqlQueryTypeSchema.optional(),
+  /** Only read when `queryType` is `range`. Defaults to last non-null. */
+  reducer: PromqlReducerSchema.optional(),
 });
 
 export type PromqlSeries = z.infer<typeof PromqlSeriesSchema>;
