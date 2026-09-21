@@ -162,6 +162,18 @@ describe('formatAxisTick', () => {
     );
   });
 
+  it('keeps a sub-1 numericUnit value from collapsing to a bare 0', () => {
+    // Regression: the suffix budget rejected any decimal for a value under
+    // 1 ("0.25 cps" is 8 chars), forcing it down to the misleading "0 cps".
+    expect(
+      formatAxisTick(0.25, {
+        output: 'throughput',
+        numericUnit: NumericUnit.Cps,
+        mantissa: 2,
+      }),
+    ).toBe('0.25 cps');
+  });
+
   it('keeps a small negative percentage distinguishable from 0', () => {
     // Regression: budget 5 rejected "-0.01%" (6 chars, sign+suffix
     // together), falling to 1 decimal, which trimmed "-0.0%" to "-0%".

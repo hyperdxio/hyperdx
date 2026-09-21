@@ -36,8 +36,9 @@ describe('axisTickFormatter', () => {
     expect(axisTickFormatter({ output: 'number', mantissa: 10 })?.(1234)).toBe(
       '1.23k',
     );
-    // Backs off a decimal at a time when full precision would overflow.
-    expect(format?.(12340)).toBe('12.3k');
+    // Fits at full precision - the 10-column gutter has more room than
+    // the point where the web axis (5-char budget) would back off here.
+    expect(format?.(12340)).toBe('12.34k');
     // Trims only the insignificant trailing zero, keeping the "5".
     expect(format?.(1500)).toBe('1.5k');
     expect(format?.(9.99)).toBe('9.99');
@@ -77,17 +78,17 @@ describe('axisTickFormatter', () => {
     );
   });
 
-  it('backs off to an integer for a numericUnit suffix too wide to fit a decimal', () => {
-    // "GiB" leaves no room under axisLabelBudget for a decimal - collapsing
-    // both to "1 GiB" is the safe outcome, not the byte-suffix bug this fixes.
+  it('distinguishes nearby byte values on the numericUnit path the UI defaults to', () => {
+    // The 10-column termchart gutter (unlike the web's 40px axis) has room
+    // for this, so it shouldn't inherit the web's tighter budget.
     const GB = 1024 ** 3;
     const format = axisTickFormatter({
       output: 'byte',
       numericUnit: NumericUnit.BytesIEC,
       mantissa: 1,
     });
-    expect(format?.(1.2 * GB)).toBe('1 GiB');
-    expect(format?.(1.4 * GB)).toBe('1 GiB');
+    expect(format?.(1.2 * GB)).toBe('1.2 GiB');
+    expect(format?.(1.4 * GB)).toBe('1.4 GiB');
   });
 
   it('falls back toward fewer decimals for a long unit suffix instead of overflowing', () => {
@@ -102,12 +103,22 @@ describe('axisTickFormatter', () => {
     expect(format?.(1.25 * GIBIT)).toBe('1 Gibit/s');
   });
 
-  it('does not overflow a shipped byte tile by over-budgeting the unit suffix', () => {
-    // Regression: a flat +5 suffix allowance let "281.6 MB" (8 chars)
-    // pass, overflowing the terminal gutter on a byte tile.
+  it('fits a shipped byte tile the 10-column gutter has room for', () => {
+    // Unlike the web's 40px axis, "281.6 MB" (8 chars) fits comfortably.
     expect(
       axisTickFormatter({ output: 'byte', mantissa: 1 })?.(295_279_001),
-    ).toBe('282 MB');
+    ).toBe('281.6 MB');
+  });
+
+  it('keeps a sub-1 numericUnit value from collapsing to a bare 0', () => {
+    // Regression: the suffix budget rejected any decimal for a value under
+    // 1 ("0.25 cps" is 8 chars), forcing it down to the misleading "0 cps".
+    const format = axisTickFormatter({
+      output: 'throughput',
+      numericUnit: NumericUnit.Cps,
+      mantissa: 2,
+    });
+    expect(format?.(0.25)).toBe('0.25 cps');
   });
 
   it('keeps a small negative percentage distinguishable from 0', () => {

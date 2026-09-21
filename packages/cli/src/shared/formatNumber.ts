@@ -500,11 +500,10 @@ export function resolveChartNumberFormats(
 // A tick's decimal places search downward from the configured mantissa,
 // capped at this - mirrors HDXMultiSeriesTimeChart.tsx for parity.
 const MAX_AXIS_MANTISSA = 2;
-const AXIS_CHAR_BUDGET = 5;
 
-// Flat, not suffix-length-scaled - the terminal is fixed-width, so a longer
-// suffix costs the same per character as a digit and earns no extra room.
-const SEPARATOR_CHAR_ALLOWANCE = 1;
+// The termchart gutter is a fixed 10-column labelWidth (termchart/
+// timeseries.ts), not the web's 40px/5-char SVG-pixel math - unrelated media.
+const AXIS_CHAR_BUDGET = 10;
 
 // Trims insignificant trailing zeros ("1.00k" -> "1k") and a sign left
 // over from a value that rounded to zero ("-0"/"-0%" -> "0"/"0%").
@@ -515,15 +514,17 @@ function trimTrailingZeros(formatted: string): string {
   return trimmed.replace(/^-(0%?)$/, '$1');
 }
 
-// Total budget for a candidate label: a space-separated unit suffix gets
-// its own allowance (not exempt); a negative percent needs +1 for sign+%.
+// The fixed-width gutter fits a suffix the same as any other character,
+// unless the value is under 1 - then skip the gate (see the web twin).
 function axisLabelBudget(formatted: string): number {
-  if (formatted.includes(' ')) {
-    return AXIS_CHAR_BUDGET + SEPARATOR_CHAR_ALLOWANCE;
+  const spaceIndex = formatted.indexOf(' ');
+  if (spaceIndex !== -1) {
+    const numericPart = formatted.slice(0, spaceIndex);
+    if (/^-?0(\.\d+)?$/.test(numericPart)) {
+      return Infinity;
+    }
   }
-  const isNegativePercent =
-    formatted.startsWith('-') && formatted.endsWith('%');
-  return AXIS_CHAR_BUDGET + (isNegativePercent ? 1 : 0);
+  return AXIS_CHAR_BUDGET;
 }
 
 /**

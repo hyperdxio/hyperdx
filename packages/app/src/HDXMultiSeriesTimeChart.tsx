@@ -791,10 +791,15 @@ function trimTrailingZeros(formatted: string): string {
   return trimmed.replace(/^-(0%?)$/, '$1');
 }
 
-// Total budget for a candidate label: a space-separated unit suffix gets
-// its own allowance (not exempt); a negative percent needs +1 for sign+%.
+// A space-separated unit suffix gets its own allowance, unless the value
+// is under 1 - then the alternative is a misleading "0", so skip the gate.
 function axisLabelBudget(formatted: string): number {
-  if (formatted.includes(' ')) {
+  const spaceIndex = formatted.indexOf(' ');
+  if (spaceIndex !== -1) {
+    const numericPart = formatted.slice(0, spaceIndex);
+    if (/^-?0(\.\d+)?$/.test(numericPart)) {
+      return Infinity;
+    }
     return AXIS_CHAR_BUDGET + SEPARATOR_CHAR_ALLOWANCE;
   }
   const isNegativePercent =
