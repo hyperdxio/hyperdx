@@ -13,10 +13,18 @@ import {
 } from '@mantine/core';
 import { IconFlask } from '@tabler/icons-react';
 
-import { OPTIONS_FONTS } from './config/fonts';
+import {
+  type ContentFontSize,
+  OPTIONS_CONTENT_FONT_SIZE,
+  OPTIONS_FONTS,
+} from './config/fonts';
 import { useAppTheme } from './theme/ThemeProvider';
 import { isValidThemeName, themes } from './theme';
-import { UserPreferences, useUserPreferences } from './useUserPreferences';
+import {
+  useContentFontSize,
+  UserPreferences,
+  useUserPreferences,
+} from './useUserPreferences';
 
 const OPTIONS_COLOR_MODE = [
   { label: 'System', value: 'system' },
@@ -62,6 +70,7 @@ export const UserPreferencesModal = ({
   onClose: () => void;
 }) => {
   const { userPreferences, setUserPreference } = useUserPreferences();
+  const { contentFontSize } = useContentFontSize();
   const { themeName, setTheme, isDev } = useAppTheme();
 
   return (
@@ -133,6 +142,24 @@ export const UserPreferencesModal = ({
               })
             }
             data={OPTIONS_COLOR_MODE}
+            allowDeselect={false}
+          />
+        </SettingContainer>
+
+        <SettingContainer
+          label="Content font size"
+          description="Text size for log tables, data tables, and charts"
+        >
+          <Select
+            data-testid="content-font-size-select"
+            value={contentFontSize}
+            onChange={value =>
+              value &&
+              setUserPreference({
+                contentFontSize: value as ContentFontSize,
+              })
+            }
+            data={OPTIONS_CONTENT_FONT_SIZE}
             allowDeselect={false}
           />
         </SettingContainer>

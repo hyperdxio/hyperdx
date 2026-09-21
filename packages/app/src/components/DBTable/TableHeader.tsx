@@ -36,7 +36,7 @@ export default function TableHeader({
     >
       <Group wrap="nowrap" gap={0} align="center">
         {!header.column.getCanSort() ? (
-          <Text truncate="end" size="xs" flex="1">
+          <Text truncate="end" fz="var(--hdx-content-font-size)" flex="1">
             {flexRender(header.column.columnDef.header, header.getContext())}
           </Text>
         ) : (
@@ -48,7 +48,7 @@ export default function TableHeader({
           >
             <>
               {header.isPlaceholder ? null : (
-                <Text truncate="end" size="xs" flex="1">
+                <Text truncate="end" fz="var(--hdx-content-font-size)" flex="1">
                   {flexRender(
                     header.column.columnDef.header,
                     header.getContext(),

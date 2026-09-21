@@ -11,6 +11,7 @@ import {
 import { Flex } from '@mantine/core';
 
 import type { NumberFormat } from '@/types';
+import { useContentFontSize } from '@/useUserPreferences';
 import { formatNumber } from '@/utils';
 
 import {
@@ -69,6 +70,7 @@ export const DBBarChart = (props: CategoricalChartProps) => {
     chartData,
     responseFormatError,
   } = useCategoricalChart(props);
+  const { base: axisTickFontSize } = useContentFontSize();
 
   return (
     <ChartContainer title={props.title} toolbarItems={toolbarItems}>
@@ -108,7 +110,10 @@ export const DBBarChart = (props: CategoricalChartProps) => {
                 textAnchor="end"
                 height={BAR_LABEL_AXIS_HEIGHT}
                 tickFormatter={truncateBarLabel}
-                tick={{ fontSize: 12, fontFamily: 'IBM Plex Mono, monospace' }}
+                tick={{
+                  fontSize: axisTickFontSize,
+                  fontFamily: 'IBM Plex Mono, monospace',
+                }}
               />
               <YAxis
                 width={40}
@@ -121,7 +126,10 @@ export const DBBarChart = (props: CategoricalChartProps) => {
                         compactDisplay: 'short',
                       }).format(value)
                 }
-                tick={{ fontSize: 12, fontFamily: 'IBM Plex Mono, monospace' }}
+                tick={{
+                  fontSize: axisTickFontSize,
+                  fontFamily: 'IBM Plex Mono, monospace',
+                }}
               />
               <Bar dataKey="value">
                 {chartData.map(entry => (

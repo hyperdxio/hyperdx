@@ -29,6 +29,7 @@ import { NextApiConfigResponseData } from '@/types';
 import { ConfirmProvider } from '@/useConfirm';
 import {
   SystemColorSchemeScript,
+  useContentFontSize,
   useResolvedColorScheme,
   useUserPreferences,
 } from '@/useUserPreferences';
@@ -94,6 +95,8 @@ function AppContent({
   const { userPreferences } = useUserPreferences();
   const resolvedColorScheme = useResolvedColorScheme();
   const { themeName } = useAppTheme();
+  const { base: contentFontSize, compact: compactContentFontSize } =
+    useContentFontSize();
 
   // ClickStack theme always uses Inter font - user preference is ignored
   // HyperDX theme allows user to select font preference
@@ -110,6 +113,21 @@ function AppContent({
       document.documentElement.style.setProperty('--app-font-family', fontVar);
     }
   }, [effectiveFont]);
+
+  useEffect(() => {
+    // Single write point for the content font size preference; tables and
+    // chart CSS read these vars (see styles/app.scss for the defaults).
+    if (typeof document !== 'undefined') {
+      document.documentElement.style.setProperty(
+        '--hdx-content-font-size',
+        `${contentFontSize}px`,
+      );
+      document.documentElement.style.setProperty(
+        '--hdx-content-font-size-compact',
+        `${compactContentFontSize}px`,
+      );
+    }
+  }, [contentFontSize, compactContentFontSize]);
 
   const getLayout = Component.getLayout ?? (page => page);
 

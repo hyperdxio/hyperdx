@@ -19,7 +19,7 @@
 }
 
 .legendItem {
-  font-size: 11px;
+  font-size: var(--hdx-content-font-size-compact);
   margin-right: 8px;
   margin-bottom: 4px;
   display: flex;
@@ -57,7 +57,7 @@
   background-color: var(--color-bg-surface);
   border: 1px solid var(--color-border);
   border-radius: 2px;
-  font-size: 11px;
+  font-size: var(--hdx-content-font-size-compact);
 
   // Fixed width so hover and pinned tooltips match and don't reflow when a row's
   // content changes (e.g. the pinned copy icon swapping to a check).

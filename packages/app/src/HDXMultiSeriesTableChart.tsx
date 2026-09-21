@@ -403,7 +403,10 @@ export const Table = ({
   );
 
   return (
-    <div className="overflow-auto h-100 fs-8" ref={tableContainerRef}>
+    <div
+      className={cx('overflow-auto h-100', styles.tableWrapper)}
+      ref={tableContainerRef}
+    >
       <table
         className="w-100"
         style={{

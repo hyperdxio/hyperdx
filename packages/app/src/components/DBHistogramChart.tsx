@@ -16,6 +16,7 @@ import { buildMVDateRangeIndicator, INTEGER_NUMBER_FORMAT } from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useSource } from '@/source';
+import { useContentFontSize } from '@/useUserPreferences';
 import { getColorFromCSSToken } from '@/utils';
 
 import ChartContainer from './charts/ChartContainer';
@@ -64,6 +65,7 @@ function HistogramChart({ graphResults }: { graphResults: any[] }) {
   // tooltip is forced active on that bar via the controlled `active` +
   // `defaultIndex` props below; `undefined` lets the tooltip follow hover.
   const [pinnedIndex, setPinnedIndex] = useState<number | undefined>(undefined);
+  const { base: axisTickFontSize } = useContentFontSize();
 
   useHotkeys(['esc'], () => {
     setPinnedIndex(undefined);
@@ -110,7 +112,10 @@ function HistogramChart({ graphResults }: { graphResults: any[] }) {
             }).format(value)
           }
           // minTickGap={50}
-          tick={{ fontSize: 12, fontFamily: 'IBM Plex Mono, monospace' }}
+          tick={{
+            fontSize: axisTickFontSize,
+            fontFamily: 'IBM Plex Mono, monospace',
+          }}
         />
         <YAxis
           width={35}
@@ -121,7 +126,10 @@ function HistogramChart({ graphResults }: { graphResults: any[] }) {
               compactDisplay: 'short',
             }).format(value)
           }
-          tick={{ fontSize: 12, fontFamily: 'IBM Plex Mono, monospace' }}
+          tick={{
+            fontSize: axisTickFontSize,
+            fontFamily: 'IBM Plex Mono, monospace',
+          }}
         />
         <Tooltip
           // Remount when the pinned bar changes so `defaultIndex` re-seeds on a

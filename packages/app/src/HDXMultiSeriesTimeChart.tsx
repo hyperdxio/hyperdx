@@ -67,6 +67,7 @@ import {
   toStartOfInterval,
 } from './ChartUtils';
 import { useFormatTime } from './useFormatTime';
+import { useContentFontSize } from './useUserPreferences';
 
 import styles from '@styles/HDXLineChart.module.scss';
 
@@ -1202,6 +1203,8 @@ export const MemoChart = memo(function MemoChart({
     );
   }, [displayType, graphResults.length, containerWidth]);
 
+  const { compact: axisTickFontSize } = useContentFontSize();
+
   const formatTime = useFormatTime();
   const xTickFormatter = useCallback(
     (value: number, index: number) => {
@@ -1662,13 +1665,19 @@ export const MemoChart = memo(function MemoChart({
             type="number"
             tickFormatter={xTickFormatter}
             minTickGap={100}
-            tick={{ fontSize: 11, fontFamily: 'IBM Plex Mono, monospace' }}
+            tick={{
+              fontSize: axisTickFontSize,
+              fontFamily: 'IBM Plex Mono, monospace',
+            }}
           />
           <YAxis
             width={Y_AXIS_WIDTH}
             minTickGap={25}
             tickFormatter={tickFormatter}
-            tick={{ fontSize: 11, fontFamily: 'IBM Plex Mono, monospace' }}
+            tick={{
+              fontSize: axisTickFontSize,
+              fontFamily: 'IBM Plex Mono, monospace',
+            }}
             domain={yAxisDomain}
           />
           {lines}
