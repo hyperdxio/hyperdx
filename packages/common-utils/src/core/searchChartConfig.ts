@@ -9,6 +9,7 @@ import {
   pickSampleWeightExpressionProps,
   SearchCondition,
   SearchConditionLanguage,
+  SearchScope,
   SelectList,
   SortSpecificationList,
   SQLInterval,
@@ -86,7 +87,7 @@ export type SearchChartConfigInput = {
    * Whether multi-predicate AND is evaluated per span (default) or across all
    * spans of a trace. Omitted resolves to span downstream.
    */
-  searchScope?: 'span' | 'trace';
+  searchScope?: SearchScope;
 };
 
 /**

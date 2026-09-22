@@ -54,6 +54,7 @@ interface Props {
   // it. Enabled by default; pass `false` to opt out.
   closeOnClickOutside?: boolean;
   keepOpenSelector?: string;
+  noResultsMessage?: React.ReactNode;
 }
 
 // Clicking the results table (selecting/switching rows, scrolling) keeps the
@@ -84,6 +85,7 @@ export default function DBSqlRowTableWithSideBar({
   onResolvedColumnsChange,
   closeOnClickOutside = true,
   keepOpenSelector = DEFAULT_KEEP_OPEN_SELECTOR,
+  noResultsMessage,
 }: Props) {
   const { data: sourceData } = useSource({ id: sourceId });
   const [rowId, setRowId] = useQueryState('rowWhere', parseAsStringEncoded);
@@ -156,6 +158,7 @@ export default function DBSqlRowTableWithSideBar({
         selectionResetKey={selectionResetKey}
         onSelectedRowsChange={onSelectedRowsChange}
         onResolvedColumnsChange={onResolvedColumnsChange}
+        noResultsMessage={noResultsMessage}
       />
     </RowSidePanelContext>
   );

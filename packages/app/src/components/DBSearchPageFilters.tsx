@@ -8,6 +8,7 @@ import { resolveTraceScope } from '@hyperdx/common-utils/dist/core/traceScope';
 import { FilterState } from '@hyperdx/common-utils/dist/filters';
 import {
   BuilderChartConfigWithDateRange,
+  SearchScope,
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
@@ -1059,8 +1060,6 @@ export const FilterGroup = ({
   );
 };
 
-export type SearchScope = 'span' | 'trace';
-
 const TRACE_SCOPE_UNAVAILABLE_REASON =
   "Trace scope isn't available for this source.";
 
@@ -1078,10 +1077,14 @@ export const SearchScopeControl = ({
   const reasonId = useId();
 
   useEffect(() => {
-    if (!traceApplicable && value === 'trace') {
+    // Only fall back to span once the source has actually resolved. While it is
+    // still loading (`source` undefined), `traceApplicable` is false, and
+    // resetting here would discard a trace scope restored from the URL or a
+    // saved link before the trace source arrives.
+    if (source && !traceApplicable && value === 'trace') {
       onChange('span');
     }
-  }, [traceApplicable, value, onChange]);
+  }, [source, traceApplicable, value, onChange]);
 
   const scopeValue = traceApplicable ? value : 'span';
 

@@ -32,6 +32,7 @@ import {
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { buildSearchChartConfig } from '@hyperdx/common-utils/dist/core/searchChartConfig';
+import { resolveTraceScope } from '@hyperdx/common-utils/dist/core/traceScope';
 import {
   aliasMapToWithClauses,
   isBrowser,
@@ -44,6 +45,8 @@ import {
   Filter,
   isPersistableUserId,
   isTraceSource,
+  SearchScope,
+  SearchScopeSchema,
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
@@ -91,10 +94,7 @@ import api, { useCompleteOnboardingTask } from '@/api';
 import { ActiveFilterPills } from '@/components/ActiveFilterPills';
 import { AlertStatusIcon } from '@/components/AlertStatusIcon';
 import { ContactSupportText } from '@/components/ContactSupportText';
-import {
-  DBSearchPageFilters,
-  type SearchScope,
-} from '@/components/DBSearchPageFilters';
+import { DBSearchPageFilters } from '@/components/DBSearchPageFilters';
 import { cleanClickHouseExpression } from '@/components/DBSearchPageFilters/utils';
 import { DBTimeChart, type SeriesGroupFilter } from '@/components/DBTimeChart';
 import EmptyState from '@/components/EmptyState';
@@ -191,7 +191,7 @@ export const SearchConfigSchema = z.object({
   source: z.string(),
   where: z.string(),
   whereLanguage: z.enum(['sql', 'lucene']),
-  searchScope: z.enum(['span', 'trace']).default('span'),
+  searchScope: SearchScopeSchema.default('span'),
   orderBy: z.string(),
   filters: z.array(
     z.union([
@@ -1577,11 +1577,19 @@ export function DBSearchPage() {
     return { hasQueryError, queryError };
   }, [_queryErrors]);
   const executedSearchScope = resolveSearchScope(searchedConfig.searchScope);
+  // Reflect what the query actually did: trace scope only takes effect on a
+  // trace source that exposes a trace-id expression. The badge/copy key off
+  // this so they never claim Trace when the rewrite silently fell back to span
+  // (e.g. scope left at trace while the sidebar was collapsed on a log source).
+  const traceScopeActive =
+    executedSearchScope === 'trace' &&
+    searchedSource != null &&
+    resolveTraceScope(searchedSource).applicable;
   const inputWhere = useWatch({ name: 'where', control });
   const inputWhereLanguage = useWatch({ name: 'whereLanguage', control });
   const inputSearchScope = useWatch({ name: 'searchScope', control });
   const onSearchScopeChange = useCallback(
-    (scope: 'span' | 'trace') => {
+    (scope: SearchScope) => {
       setValue('searchScope', scope, { shouldDirty: true });
     },
     [setValue],
@@ -2670,20 +2678,16 @@ export function DBSearchPage() {
                             enableParallelQueries
                           />
                           <Group gap="sm" align="center">
-                            <Badge
-                              variant="light"
-                              color={
-                                executedSearchScope === 'trace'
-                                  ? 'blue'
-                                  : 'gray'
-                              }
-                              radius="sm"
-                              aria-label={getScopeIndicatorLabel(
-                                executedSearchScope,
-                              )}
-                            >
-                              {getScopeIndicatorLabel(executedSearchScope)}
-                            </Badge>
+                            {traceScopeActive && (
+                              <Badge
+                                variant="light"
+                                color="blue"
+                                radius="sm"
+                                aria-label={getScopeIndicatorLabel('trace')}
+                              >
+                                {getScopeIndicatorLabel('trace')}
+                              </Badge>
+                            )}
                             {shouldShowLiveModeHint &&
                               denoiseResults != true && (
                                 <ResumeLiveTailButton
@@ -2730,7 +2734,7 @@ export function DBSearchPage() {
                     <>
                       <div className="h-100 w-100 px-4 mt-4 align-items-center justify-content-center text-muted overflow-auto">
                         <Alert
-                          color="red"
+                          variant="danger"
                           title="Query failed"
                           mb="md"
                           data-testid="search-query-error"
@@ -2738,8 +2742,10 @@ export function DBSearchPage() {
                           <Group justify="space-between" align="center">
                             <Text size="sm">
                               The query didn't complete, so this is not a
-                              zero-result.{' '}
-                              {getScopeIndicatorLabel(executedSearchScope)}.
+                              zero-result.
+                              {traceScopeActive
+                                ? ` ${getScopeIndicatorLabel('trace')}.`
+                                : ''}
                             </Text>
                             <Button
                               variant="secondary"
@@ -2902,7 +2908,7 @@ export function DBSearchPage() {
                             onSelectedRowsChange={onSelectedRowsChange}
                             onResolvedColumnsChange={onResolvedColumnsChange}
                             noResultsMessage={
-                              executedSearchScope === 'trace'
+                              traceScopeActive
                                 ? getTraceZeroEmptyDescription()
                                 : undefined
                             }

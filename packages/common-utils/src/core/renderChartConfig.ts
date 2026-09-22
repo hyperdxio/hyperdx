@@ -1458,6 +1458,15 @@ async function renderWhere(
       '(',
       ')',
     );
+    // MVP limitation: each predicate becomes an existential trace-membership
+    // test ("some span of the trace satisfies it"), which is the intended
+    // semantics for positive predicates AND-ed across spans. A negated /
+    // exclusion predicate (e.g. `ServiceName NOT IN (...)`) is therefore
+    // satisfied by any trace that merely has one other span, so exclusions do
+    // not exclude at trace scope. Predicate polarity is not recoverable from
+    // the already-rendered SQL here; handling negation correctly (as
+    // `TraceId NOT IN (SELECT ... WHERE <positive form>)`) needs the structured
+    // filter and is left to a follow-up.
     const searchPredicates = [
       whereSearchCondition,
       aggConditionGroup,

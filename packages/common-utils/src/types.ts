@@ -1662,6 +1662,11 @@ const SharedChartSettingsSchema = z.object({
 export const RatioModeSchema = z.enum(['per_group', 'share_of_total']);
 export type RatioMode = z.infer<typeof RatioModeSchema>;
 
+// Single source of truth for the span-vs-trace search scope. Imported wherever
+// the union is needed so the enum has one canonical definition.
+export const SearchScopeSchema = z.enum(['span', 'trace']);
+export type SearchScope = z.infer<typeof SearchScopeSchema>;
+
 export const _ChartConfigSchema = SharedChartSettingsSchema.extend({
   timestampValueExpression: z.string(),
   implicitColumnExpression: z.string().optional(),
@@ -1675,7 +1680,7 @@ export const _ChartConfigSchema = SharedChartSettingsSchema.extend({
   filtersLogicalOperator: z.enum(['AND', 'OR']).optional(),
   // Whether multi-predicate AND is evaluated per span (default) or across all
   // spans of a trace. Absence resolves to span, preserving existing output.
-  filtersScope: z.enum(['span', 'trace']).optional(),
+  filtersScope: SearchScopeSchema.optional(),
   // Trace-id expression carried from the source; only trace scope reads it.
   // Absence disables the trace-scope rewrite (fail-closed to span).
   traceIdExpression: z.string().optional(),
