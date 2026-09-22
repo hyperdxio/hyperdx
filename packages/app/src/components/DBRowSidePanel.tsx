@@ -80,6 +80,7 @@ import {
 import LogLevel from './LogLevel';
 import SidePanelBreadcrumbs, { BreadcrumbItem } from './SidePanelBreadcrumbs';
 import { SpanLinkData } from './SpanLinksSubpanel';
+import TraceLogsPanel from './TraceLogsPanel';
 import { ViewTraceCalloutButton } from './ViewTraceCalloutButton';
 
 import styles from '@/../styles/LogSidePanel.module.scss';
@@ -549,6 +550,14 @@ export const DBRowSidePanelInner = ({
         ? source.traceSourceId
         : undefined;
 
+  const traceLogSourceId = isTraceSource(source)
+    ? childSourceId
+    : isLogSource(source)
+      ? source.id
+      : undefined;
+  const enableTraceLogs = !!traceId && !!traceLogSourceId;
+  const isOwnTraceLogSource = traceLogSourceId === source.id;
+
   const enableServiceMap = traceId && traceSourceId;
 
   const { data: traceSourceData } = useSource({ id: traceSourceId });
@@ -609,6 +618,35 @@ export const DBRowSidePanelInner = ({
       }
     },
     [traceSourceData, handleSourceStackPush, mainContent],
+  );
+
+  const handleTraceLogNavigate = useCallback(
+    (rowId: string, aliasWith: WithClause[], label: string) => {
+      if (traceLogSourceId == null) {
+        return;
+      }
+      // The row on screen is one of the logs listed, so this is a row change.
+      if (isOwnTraceLogSource) {
+        handleNavigateToRow(rowId, aliasWith, label, SourceKind.Log);
+        return;
+      }
+      handleSourceStackPush({
+        sourceId: traceLogSourceId,
+        rowId,
+        aliasWith,
+        label,
+        sourceKind: SourceKind.Log,
+        // Every log in the trace is within seconds of the origin span.
+        focusTimestamp: rowFocusTimestamp,
+      });
+    },
+    [
+      traceLogSourceId,
+      isOwnTraceLogSource,
+      handleNavigateToRow,
+      handleSourceStackPush,
+      rowFocusTimestamp,
+    ],
   );
 
   // "Open trace" on a span link: the link carries only the linked span's
@@ -786,6 +824,7 @@ export const DBRowSidePanelInner = ({
     if (hasOverviewPanel && !sourceIsTrace) tabs.push(Tab.Overview);
     if (!sourceIsTrace) tabs.push(Tab.Parsed);
     if (sourceIsTrace) tabs.push(Tab.Trace);
+    if (enableTraceLogs) tabs.push(Tab.Logs);
     if (enableServiceMap) tabs.push(Tab.ServiceMap);
     tabs.push(Tab.Context);
     if (rumSessionId != null) tabs.push(Tab.Replay);
@@ -794,6 +833,7 @@ export const DBRowSidePanelInner = ({
   }, [
     hasOverviewPanel,
     sourceIsTrace,
+    enableTraceLogs,
     enableServiceMap,
     rumSessionId,
     hasK8sContext,
@@ -1020,6 +1060,14 @@ export const DBRowSidePanelInner = ({
                 },
               ]
             : []),
+          ...(enableTraceLogs
+            ? [
+                {
+                  text: 'Trace Logs',
+                  value: Tab.Logs,
+                },
+              ]
+            : []),
           ...(enableServiceMap
             ? [
                 {
@@ -1095,6 +1143,26 @@ export const DBRowSidePanelInner = ({
               initialRowHighlightHint={initialRowHighlightHint}
             />
           </Box>
+        </ErrorBoundary>
+      )}
+      {displayedTab === Tab.Logs && traceLogSourceId && traceId && (
+        <ErrorBoundary
+          onError={err => {
+            console.error(err);
+          }}
+          fallbackRender={() => (
+            <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
+              An error occurred while rendering this event.
+            </div>
+          )}
+        >
+          <TraceLogsPanel
+            data-testid="side-panel-tab-logs"
+            logSourceId={traceLogSourceId}
+            traceId={traceId}
+            dateRange={oneHourRange}
+            onNavigateToLog={handleTraceLogNavigate}
+          />
         </ErrorBoundary>
       )}
       {displayedTab === Tab.ServiceMap && enableServiceMap && (

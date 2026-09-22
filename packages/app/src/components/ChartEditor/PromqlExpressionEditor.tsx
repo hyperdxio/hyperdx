@@ -4,6 +4,7 @@ import { Box, Text } from '@mantine/core';
 import PromQLEditor from '@/components/PromQLEditor/PromQLEditor';
 
 import { ChartSeriesControls } from './ChartSeriesControls';
+import PromqlQueryTypeControls from './PromqlQueryTypeControls';
 import { ChartEditorFormState } from './types';
 
 export default function PromqlExpressionEditor({
@@ -12,6 +13,10 @@ export default function PromqlExpressionEditor({
   length,
   metricNames,
   isIgnored,
+  isInstantQuerySupported,
+  isReducerSupported,
+  isQueryTypeControlOpen,
+  onToggleQueryTypeControlOpen,
   onSubmit,
   onSwap,
   onRemove,
@@ -23,6 +28,12 @@ export default function PromqlExpressionEditor({
   metricNames: string[] | undefined;
   /** Whether the display type leaves this expression unqueried. */
   isIgnored: boolean;
+  /** Whether the display type lets this expression choose between instant and range queries. */
+  isInstantQuerySupported: boolean;
+  /** Whether the user can specify a reducer for this expression; Requires isInstantQuerySupported: true. */
+  isReducerSupported: boolean;
+  isQueryTypeControlOpen: boolean;
+  onToggleQueryTypeControlOpen: () => void;
   onSubmit: (suppressErrorNotification?: boolean) => void;
   onSwap: (from: number, to: number) => void;
   onRemove?: (index: number) => void;
@@ -55,10 +66,21 @@ export default function PromqlExpressionEditor({
           metricNames={metricNames}
         />
       </Box>
-      {isIgnored && (
+      {isIgnored ? (
         <Text size="xxs" c="dimmed" mt={4}>
           Not queried — only time series charts plot more than one expression.
         </Text>
+      ) : (
+        isInstantQuerySupported && (
+          <PromqlQueryTypeControls
+            control={control}
+            index={index}
+            isReducerSupported={isReducerSupported}
+            isOpen={isQueryTypeControlOpen}
+            onToggle={onToggleQueryTypeControlOpen}
+            onSubmit={onSubmit}
+          />
+        )
       )}
     </Box>
   );

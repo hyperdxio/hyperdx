@@ -1149,6 +1149,31 @@ export class ChartEditorComponent {
   }
 
   /**
+   * Choose how a PromQL expression is evaluated, from the toggle under the
+   * expression editor. `reducer` is the visible label (e.g. "Max"), and only
+   * applies to a range query.
+   */
+  async setPromqlQueryType(
+    queryType: 'Instant' | 'Range',
+    { index = 0, reducer }: { index?: number; reducer?: string } = {},
+  ) {
+    const group = this.page.getByTestId(`promql-query-type-input-${index}`);
+    if (!(await group.isVisible())) {
+      await this.page.getByTestId(`promql-query-type-control-${index}`).click();
+    }
+    await group.getByText(queryType, { exact: true }).click();
+
+    if (reducer) {
+      await this.page
+        .getByRole('combobox', { name: 'PromQL range reducer' })
+        .click();
+      await this.page
+        .getByRole('option', { name: reducer, exact: true })
+        .click();
+    }
+  }
+
+  /**
    * Open the Display Settings drawer and wait for it to become visible.
    */
   async openDisplaySettings() {
