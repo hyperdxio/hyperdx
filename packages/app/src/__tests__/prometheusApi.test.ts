@@ -16,6 +16,10 @@ import { prometheusApi } from '@/api';
 const requestedParams = () =>
   new URLSearchParams(get.mock.calls[0][1].searchParams);
 
+/** As `requestedParams`, for the calls this module issues over POST. */
+const postedParams = () =>
+  new URLSearchParams(post.mock.calls[0][1].searchParams);
+
 describe('prometheusApi.labelValues', () => {
   beforeEach(() => {
     get.mockReset();
@@ -94,5 +98,76 @@ describe('prometheusApi.labels', () => {
     const resp = await prometheusApi.labels({ connectionId: 'conn' });
 
     expect(resp).toEqual({ status: 'error', error: 'nope' });
+  });
+});
+
+describe('prometheusApi.query', () => {
+  beforeEach(() => {
+    post.mockReset();
+    post.mockReturnValue({
+      json: () =>
+        Promise.resolve({
+          status: 'success',
+          data: { resultType: 'vector', result: [] },
+        }),
+    });
+  });
+
+  it('asks the instant endpoint for a single evaluation time', async () => {
+    await prometheusApi.query({
+      query: 'sum(up)',
+      time: 1700000000,
+      connectionId: 'conn',
+      database: 'db',
+      table: 'tbl',
+    });
+
+    expect(post).toHaveBeenCalledWith('v1/prometheus/query', expect.anything());
+    const params = postedParams();
+    expect(params.get('query')).toBe('sum(up)');
+    expect(params.get('time')).toBe('1700000000');
+    expect(params.get('connectionId')).toBe('conn');
+    expect(params.get('database')).toBe('db');
+    expect(params.get('table')).toBe('tbl');
+    // The instant endpoint takes no range, and sending one would be forwarded
+    // upstream as an unrecognized param.
+    expect(params.has('start')).toBe(false);
+    expect(params.has('end')).toBe(false);
+    expect(params.has('step')).toBe(false);
+  });
+
+  it('omits the table params a Prometheus-backed connection has no use for', async () => {
+    await prometheusApi.query({
+      query: 'up',
+      time: 1,
+      connectionId: 'conn',
+    });
+
+    const params = postedParams();
+    expect(params.has('database')).toBe(false);
+    expect(params.has('table')).toBe(false);
+  });
+
+  it('reports the error a failed instant query carries', async () => {
+    post.mockReturnValue({
+      json: () =>
+        Promise.resolve({
+          status: 'error',
+          errorType: 'bad_data',
+          error: 'parse error',
+        }),
+    });
+
+    const resp = await prometheusApi.query({
+      query: 'sum(',
+      time: 1,
+      connectionId: 'conn',
+    });
+
+    expect(resp).toEqual({
+      status: 'error',
+      errorType: 'bad_data',
+      error: 'parse error',
+    });
   });
 });
