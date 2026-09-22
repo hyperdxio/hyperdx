@@ -798,7 +798,7 @@ export default api;
 // Prometheus API
 // --------------------------
 type PrometheusMetric = Record<string, string>;
-export type PrometheusMatrixResult = {
+type PrometheusMatrixResult = {
   metric: PrometheusMetric;
   values: [number, string][];
 };
@@ -850,8 +850,11 @@ const uniqueLabels = (
 const prometheusFetch = <T>(
   path: string,
   searchParams: Record<string, string>,
+  signal?: AbortSignal,
 ): Promise<T> =>
-  withPrometheusError(() => server.post(path, { searchParams }).json<T>());
+  withPrometheusError(() =>
+    server.post(path, { searchParams, signal }).json<T>(),
+  );
 
 export const prometheusApi = {
   queryRange: (params: {
@@ -862,16 +865,21 @@ export const prometheusApi = {
     connectionId: string;
     database?: string;
     table?: string;
+    signal?: AbortSignal;
   }): Promise<PrometheusQueryRangeResponse> =>
-    prometheusFetch('v1/prometheus/query_range', {
-      query: params.query,
-      start: String(params.start),
-      end: String(params.end),
-      step: params.step,
-      connectionId: params.connectionId,
-      ...(params.database ? { database: params.database } : {}),
-      ...(params.table ? { table: params.table } : {}),
-    }),
+    prometheusFetch(
+      'v1/prometheus/query_range',
+      {
+        query: params.query,
+        start: String(params.start),
+        end: String(params.end),
+        step: params.step,
+        connectionId: params.connectionId,
+        ...(params.database ? { database: params.database } : {}),
+        ...(params.table ? { table: params.table } : {}),
+      },
+      params.signal,
+    ),
 
   labels: (params: {
     connectionId: string;

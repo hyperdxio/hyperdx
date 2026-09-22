@@ -61,6 +61,12 @@ export type PageHeaderProps = {
    * When omitted, the header behaves as a single sticky block.
    */
   stickyRow?: React.ReactNode;
+  /**
+   * Add block padding that only shows once the toolbar outgrows `min-height`.
+   * Use for a header that can grow (Sessions' multi-line search); omit on
+   * title-only pages so they keep a flush 60px bar.
+   */
+  growing?: boolean;
 };
 
 export function PageHeader({
@@ -72,6 +78,7 @@ export function PageHeader({
   className,
   'data-testid': testId,
   stickyRow,
+  growing = false,
 }: PageHeaderProps) {
   const hasToolbar = title != null || leading != null || actions != null;
   const hasBreadcrumbs = breadcrumbs != null;
@@ -101,6 +108,12 @@ export function PageHeader({
   // than the chrome `<header>`, which lets it stay pinned for the full
   // length of the page rather than only the height of the header.
   const chromeStickyClass = hasStickyRow ? styles.notSticky : undefined;
+  const chromeClassName = classNames(
+    styles.header,
+    growing && styles.growing,
+    chromeStickyClass,
+    className,
+  );
 
   const toolbarInner = (
     <>
@@ -118,21 +131,13 @@ export function PageHeader({
       // it. A page with only a `stickyRow` (no breadcrumbs, no title)
       // skips the empty chrome entirely.
       children != null ? (
-        <header
-          className={classNames(styles.header, chromeStickyClass, className)}
-          data-testid={testId}
-        >
+        <header className={chromeClassName} data-testid={testId}>
           {children}
         </header>
       ) : null
     ) : hasBreadcrumbs && hasToolbar ? (
       <header
-        className={classNames(
-          styles.header,
-          styles.headerStacked,
-          chromeStickyClass,
-          className,
-        )}
+        className={classNames(chromeClassName, styles.headerStacked)}
         data-testid={testId}
       >
         <div className={styles.breadcrumbsRow}>{breadcrumbs}</div>
@@ -140,22 +145,14 @@ export function PageHeader({
       </header>
     ) : hasBreadcrumbs && !hasToolbar ? (
       <header
-        className={classNames(
-          styles.header,
-          styles.headerStacked,
-          chromeStickyClass,
-          className,
-        )}
+        className={classNames(chromeClassName, styles.headerStacked)}
         data-testid={testId}
       >
         <div className={styles.breadcrumbsRow}>{breadcrumbs}</div>
         {children}
       </header>
     ) : (
-      <header
-        className={classNames(styles.header, chromeStickyClass, className)}
-        data-testid={testId}
-      >
+      <header className={chromeClassName} data-testid={testId}>
         {toolbarInner}
       </header>
     );

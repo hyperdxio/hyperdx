@@ -2394,7 +2394,7 @@ export function DBSearchPage() {
           <Flex
             gap="sm"
             style={{ flex: '0 1 500px', minWidth: 0 }}
-            align="center"
+            align="flex-start"
           >
             <TimePicker
               data-testid="time-picker"
