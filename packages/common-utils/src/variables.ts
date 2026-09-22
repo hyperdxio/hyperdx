@@ -1,5 +1,6 @@
 import lucene from '@hyperdx/lucene';
 
+import { getPromqlSeries } from './core/promql';
 import {
   escapeSqlString,
   isQuoteEscapedByBackslash,
@@ -20,6 +21,7 @@ import {
   ChartVariable,
   DASHBOARD_VARIABLE_NAME_PATTERN,
   DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED,
+  PromqlExpressionList,
   SavedChartConfig,
   SearchConditionLanguage,
   SelectList,
@@ -985,24 +987,33 @@ export function substituteChartConfigVariables<
 }
 
 /**
- * Expand the variable references in a PromQL config's expression, returning it
+ * Expand the variable references in a PromQL config's expression(s), returning it
  * with `variables` consumed. `variables` being undefined means this is a no-op.
  *
  * Dropping `variables` from the result ensures a config can't be substituted
  * twice, the same way `substituteChartConfigVariables` does.
  */
 export function substitutePromqlChartConfigVariables<
-  T extends { promqlExpression: string; variables?: ChartVariable[] },
+  T extends {
+    promqlExpression: PromqlExpressionList;
+    variables?: ChartVariable[];
+  },
 >(config: T): T {
-  const { variables } = config;
+  const { promqlExpression, variables } = config;
   if (variables == null) return config;
+
+  const substitute = (expression: string) =>
+    substituteVariables(expression, { variables, inputLanguage: 'promql' });
 
   return {
     ...config,
-    promqlExpression: substituteVariables(config.promqlExpression, {
-      variables,
-      inputLanguage: 'promql',
-    }),
+    promqlExpression:
+      typeof promqlExpression === 'string'
+        ? substitute(promqlExpression)
+        : promqlExpression.map(series => ({
+            ...series,
+            expression: substitute(series.expression),
+          })),
     variables: undefined,
   };
 }
@@ -1315,7 +1326,9 @@ export function filterReferencedVariables(
   if ('configType' in config && config.configType === 'sql') {
     names = getReferencedVariableNames(config.sqlTemplate);
   } else if ('configType' in config && config.configType === 'promql') {
-    names = getReferencedVariableNames(config.promqlExpression);
+    names = getPromqlSeries(config).flatMap(series =>
+      getReferencedVariableNames(series.expression),
+    );
   } else {
     names = getBuilderVariableReferences(config).map(
       reference => reference.name,

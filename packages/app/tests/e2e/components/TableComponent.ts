@@ -79,6 +79,53 @@ export class TableComponent {
   }
 
   /**
+   * Collapse a row expanded by {@link expandRow}, via the same chevron.
+   */
+  async collapseRow(index: number) {
+    await this.getRow(index)
+      .getByRole('button', { name: 'Collapse log details' })
+      .click();
+  }
+
+  /**
+   * Scroll the virtualized container to an absolute offset.
+   */
+  async scrollTo(top: number) {
+    await this.tableContainer.evaluate(
+      (el, offset) => el.scrollTo({ top: offset }),
+      top,
+    );
+  }
+
+  /**
+   * Layout readings for the virtualized scroll container.
+   *
+   * `visibleGapPx` is the empty space between the bottom of the last rendered
+   * row and the bottom of the viewport. While rows remain below, a healthy
+   * table overfills the viewport and this is negative; it turns positive when
+   * the virtualizer holds stale row heights and stops rendering enough rows to
+   * cover the screen.
+   */
+  async getVirtualizationMetrics() {
+    return this.tableContainer.evaluate(el => {
+      const rows = el.querySelectorAll('[data-testid^="table-row-"]');
+      const last = rows[rows.length - 1];
+      return {
+        renderedRows: rows.length,
+        scrollHeight: el.scrollHeight,
+        clientHeight: el.clientHeight,
+        visibleGapPx: Math.round(
+          el.getBoundingClientRect().bottom -
+            (last ? last.getBoundingClientRect().bottom : 0),
+        ),
+        remainingBelowPx: Math.round(
+          el.scrollHeight - el.scrollTop - el.clientHeight,
+        ),
+      };
+    });
+  }
+
+  /**
    * All inline expanded rows currently rendered. Each carries
    * `data-testid="expanded-row-<rowWhere>"`, where rowWhere is a SQL fragment,
    * so match on the prefix rather than the full id.
@@ -121,6 +168,19 @@ export class TableComponent {
    */
   getRowCheckbox(index: number) {
     return this.getRow(index).getByTestId('row-select-checkbox');
+  }
+
+  /**
+   * The cell holding a row's multi-select checkbox. It is the element that
+   * fades the checkbox in and out, so assert visibility on it rather than on
+   * the checkbox itself.
+   */
+  getRowCheckboxCell(index: number) {
+    return this.getRow(index).getByTestId('row-select-cell');
+  }
+
+  async hoverRow(index: number) {
+    await this.getRow(index).hover();
   }
 
   /**
