@@ -60,6 +60,7 @@ import {
   Group,
   Modal,
   Paper,
+  SegmentedControl,
   Select,
   Stack,
   Text,
@@ -140,7 +141,10 @@ import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import PatternTable from './components/PatternTable';
 import { DBSearchHeatmapChart } from './components/Search/DBSearchHeatmapChart';
 import DirectTraceSidePanel from './components/Search/DirectTraceSidePanel';
-import { TraceRedMetricsChart } from './components/Search/TraceRedMetricsChart';
+import {
+  type TraceChartMode,
+  TraceRedMetricsChart,
+} from './components/Search/TraceRedMetricsChart';
 import SourceSchemaPreview, {
   isSourceSchemaPreviewEnabled,
 } from './components/SourceSchemaPreview';
@@ -1069,6 +1073,14 @@ export function DBSearchPage() {
     ]).withDefault('results'),
   );
 
+  // RED metrics vs heatmap for the trace results chart area. URL state (like
+  // the other view toggles on this page) so a reload or shared link keeps the
+  // chosen view; the switch lives inline in the search stats row.
+  const [traceChartMode, setTraceChartMode] = useQueryState(
+    'traceChartMode',
+    parseAsStringEnum<TraceChartMode>(['red', 'heatmap']).withDefault('red'),
+  );
+
   const [patternColumn, setPatternColumn] = useQueryState(
     'patternColumn',
     parseAsString,
@@ -1883,16 +1895,33 @@ export function DBSearchPage() {
 
   const aliasWith = useMemo(() => aliasMapToWithClauses(aliasMap), [aliasMap]);
 
-  // The trace results chart shows RED metrics only for a trace source that
-  // exposes a duration column; otherwise the single histogram stays. Derived
-  // once, as the narrowed source or null, so the callers can't drift apart on
-  // which one renders.
+  // The trace results chart shows RED metrics (and a heatmap) only for a trace
+  // source that exposes a duration column; otherwise the single histogram
+  // stays. Derived once, as the narrowed source or null, so the stats-row
+  // toggle and the chart branch can't drift apart on which one renders.
   const traceRedMetricsSource =
     searchedSource != null &&
     isTraceSource(searchedSource) &&
     searchedSource.durationExpression
       ? searchedSource
       : null;
+
+  // Reset to the default RED view when the source actually changes, so
+  // returning to a trace source after viewing another one doesn't silently
+  // reopen in Heatmap. The ref starts undefined and is only compared once a
+  // real id has been seen, so the async source resolution on first load
+  // (undefined -> id) doesn't count as a change and a shared link that pins
+  // ?traceChartMode=heatmap survives.
+  const prevSourceIdRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (
+      prevSourceIdRef.current !== undefined &&
+      prevSourceIdRef.current !== searchedSource?.id
+    ) {
+      setTraceChartMode('red');
+    }
+    prevSourceIdRef.current = searchedSource?.id;
+  }, [searchedSource?.id, setTraceChartMode]);
 
   const histogramTimeChartConfig = useMemo(() => {
     if (chartConfig == null) {
@@ -2638,6 +2667,21 @@ export function DBSearchPage() {
                             enableParallelQueries
                           />
                           <Group gap="sm" align="center">
+                            {traceRedMetricsSource != null && (
+                              <SegmentedControl
+                                size="xs"
+                                value={traceChartMode}
+                                onChange={v =>
+                                  setTraceChartMode(
+                                    v === 'heatmap' ? 'heatmap' : 'red',
+                                  )
+                                }
+                                data={[
+                                  { label: 'RED', value: 'red' },
+                                  { label: 'Heatmap', value: 'heatmap' },
+                                ]}
+                              />
+                            )}
                             {shouldShowLiveModeHint &&
                               denoiseResults != true && (
                                 <ResumeLiveTailButton
@@ -2666,9 +2710,15 @@ export function DBSearchPage() {
                             h={240}
                           >
                             <TraceRedMetricsChart
+                              mode={traceChartMode}
                               histogramTimeChartConfig={
                                 histogramTimeChartConfig
                               }
+                              heatmapChartConfig={{
+                                ...chartConfig,
+                                dateRange: searchedTimeRange,
+                                with: aliasWith,
+                              }}
                               source={traceRedMetricsSource}
                               isReady={isReady}
                               queryKeyPrefix={RED_QUERY_KEY_PREFIX}
