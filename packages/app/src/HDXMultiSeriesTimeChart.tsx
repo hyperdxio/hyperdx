@@ -966,7 +966,9 @@ export function computeYAxisBounds(
     // Recharts widens an explicit domain to fit out-of-range data, so
     // negative data must be reflected here, not just pinned at zero.
     const lowerBound = cleanNumber(Math.min(0, min));
-    const upperBound = cleanNumber(max * 1.05);
+    // max * 1.05 would shrink the upper bound below max for negative data;
+    // padding away from zero keeps headroom regardless of max's sign.
+    const upperBound = cleanNumber(max + Math.abs(max) * 0.05);
     if (upperBound <= lowerBound) {
       return DEFAULT_Y_AXIS_BOUNDS;
     }

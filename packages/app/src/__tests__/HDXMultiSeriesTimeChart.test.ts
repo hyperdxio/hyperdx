@@ -286,6 +286,23 @@ describe('computeYAxisBounds', () => {
     });
   });
 
+  it('pads an all-negative series away from zero, not toward it', () => {
+    // Regression: max * 1.05 made the upper bound *more* negative than max
+    // itself (-900 * 1.05 = -945), excluding the data's own maximum.
+    const bounds = computeYAxisBounds(
+      [{ a: -1000 }, { a: -900 }],
+      [series('a')],
+      false,
+      false,
+      DisplayType.Line,
+      false,
+    );
+    expect(bounds).toEqual({
+      domain: [-1000, -855],
+      ticks: [-1000, -950, -900],
+    });
+  });
+
   it('omits explicit ticks when a reference line can extend the domain', () => {
     // A ReferenceArea's ifOverflow="extendDomain" can silently widen the
     // domain past what these ticks were computed from - defer to Recharts.
