@@ -390,7 +390,7 @@ const externalDashboardBarRawSqlChartConfigSchema =
     seriesLimit: z.number().int().nonnegative().optional(),
   });
 
-const externalDashboardTableChartConfigSchema = z.object({
+export const externalDashboardTableChartConfigSchema = z.object({
   displayType: z.literal('table'),
   sourceId: objectIdSchema,
   select: z.array(externalDashboardSelectItemSchema).min(1).max(20),
@@ -406,7 +406,7 @@ const externalDashboardTableChartConfigSchema = z.object({
   showOperandSeries: externalShowOperandSeriesSchema,
 });
 
-const externalDashboardTableRawSqlChartConfigSchema =
+export const externalDashboardTableRawSqlChartConfigSchema =
   externalDashboardRawSqlChartConfigBaseSchema.extend({
     displayType: z.literal('table'),
     alternateRowBackground: z.boolean().optional(),

@@ -714,6 +714,125 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
     expect(tile.config.colorRules).toEqual(colorRules);
   });
 
+  it('should round-trip alternateRowBackground on a builder table tile: patch then get_dashboard_tile', async () => {
+    const sourceId = ctx.traceSource._id.toString();
+    const createResult = await callTool(
+      ctx.client!,
+      'clickstack_save_dashboard',
+      {
+        name: 'Alternate Row Background Patch Test',
+        tiles: [
+          {
+            name: 'Original',
+            config: {
+              displayType: 'table',
+              sourceId,
+              select: [{ aggFn: 'count' }],
+              groupBy: 'ServiceName',
+            },
+          },
+        ],
+      },
+    );
+    const created = JSON.parse(getFirstText(createResult));
+    expect(created.tiles[0].config).not.toHaveProperty(
+      'alternateRowBackground',
+    );
+    const tileId = created.tiles[0].id;
+
+    const patchResult = await callTool(
+      ctx.client!,
+      'clickstack_patch_dashboard',
+      {
+        dashboardId: created.id,
+        tileId,
+        tile: {
+          name: 'Patched',
+          config: {
+            displayType: 'table',
+            sourceId,
+            select: [{ aggFn: 'count' }],
+            groupBy: 'ServiceName',
+            alternateRowBackground: true,
+          },
+        },
+      },
+    );
+    expect(patchResult.isError).toBeFalsy();
+
+    const getResult = await callTool(
+      ctx.client!,
+      'clickstack_get_dashboard_tile',
+      { dashboardId: created.id, tileId },
+    );
+
+    expect(getResult.isError).toBeFalsy();
+    const tile = JSON.parse(getFirstText(getResult));
+    expect(tile.config.displayType).toBe('table');
+    expect(tile.config.alternateRowBackground).toBe(true);
+  });
+
+  it('should round-trip alternateRowBackground on a raw SQL table tile: patch then get_dashboard_tile', async () => {
+    const connectionId = ctx.connection._id.toString();
+    const createResult = await callTool(
+      ctx.client!,
+      'clickstack_save_dashboard',
+      {
+        name: 'Raw SQL Alternate Row Background Patch Test',
+        tiles: [
+          {
+            name: 'Original',
+            config: {
+              configType: 'sql',
+              displayType: 'table',
+              connectionId,
+              sqlTemplate: 'SELECT 1 AS value LIMIT 1',
+            },
+          },
+        ],
+      },
+    );
+    const created = JSON.parse(getFirstText(createResult));
+    expect(created.tiles[0].config).not.toHaveProperty(
+      'alternateRowBackground',
+    );
+    const tileId = created.tiles[0].id;
+
+    // The patch tool replaces config wholesale rather than deep-merging it,
+    // so the flag has to come in on the patch body to survive.
+    const patchResult = await callTool(
+      ctx.client!,
+      'clickstack_patch_dashboard',
+      {
+        dashboardId: created.id,
+        tileId,
+        tile: {
+          name: 'Patched',
+          config: {
+            configType: 'sql',
+            displayType: 'table',
+            connectionId,
+            sqlTemplate: 'SELECT 1 AS value LIMIT 1',
+            alternateRowBackground: true,
+          },
+        },
+      },
+    );
+    expect(patchResult.isError).toBeFalsy();
+
+    const getResult = await callTool(
+      ctx.client!,
+      'clickstack_get_dashboard_tile',
+      { dashboardId: created.id, tileId },
+    );
+
+    expect(getResult.isError).toBeFalsy();
+    const tile = JSON.parse(getFirstText(getResult));
+    expect(tile.name).toBe('Patched');
+    expect(tile.config.displayType).toBe('table');
+    expect(tile.config.alternateRowBackground).toBe(true);
+  });
+
   it('should round-trip backgroundChart: patch then get_dashboard_tile', async () => {
     const sourceId = ctx.traceSource._id.toString();
     const createResult = await callTool(
