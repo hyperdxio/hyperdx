@@ -933,6 +933,46 @@ export function getNiceYAxisTicks(
   return [];
 }
 
+export interface ExpandableYAxisTicks {
+  max: number;
+  ticks: number[];
+}
+
+// For the plain default branch (domain may expand, as [0,'auto'] did
+// pre-PR): rounds the upper bound up to fill slack under maxTicks.
+export function getExpandableYAxisTicks(
+  min: number,
+  max: number,
+  maxTicks = 5,
+  formatTick?: (value: number) => string,
+): ExpandableYAxisTicks {
+  if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
+    return { max, ticks: [] };
+  }
+  const steps = niceStepsNear((max - min) / (maxTicks - 1));
+  for (const step of steps) {
+    const tightTicks = ticksWithinRange(step, min, max);
+    if (
+      !tightTicks ||
+      tightTicks.length > maxTicks ||
+      !hasDistinctLabels(tightTicks, formatTick)
+    ) {
+      continue;
+    }
+    const expandedMax = cleanNumber(Math.ceil(max / step) * step);
+    const expandedTicks = ticksWithinRange(step, min, expandedMax);
+    if (
+      expandedTicks &&
+      expandedTicks.length <= maxTicks &&
+      hasDistinctLabels(expandedTicks, formatTick)
+    ) {
+      return { max: expandedMax, ticks: expandedTicks };
+    }
+    return { max, ticks: tightTicks };
+  }
+  return { max, ticks: [] };
+}
+
 // Shared by every yAxisDomain branch below. Callers pass only the series
 // actually drawn (already selection- and HARD_LINES_LIMIT-filtered).
 export function scanYAxisValueRange(
@@ -1003,10 +1043,15 @@ export function computeYAxisBounds(
     if (upperBound <= lowerBound) {
       return DEFAULT_Y_AXIS_BOUNDS;
     }
-    const ticks = getNiceYAxisTicks(lowerBound, upperBound, 5, formatTick);
+    const expanded = getExpandableYAxisTicks(
+      lowerBound,
+      upperBound,
+      5,
+      formatTick,
+    );
     return {
-      domain: [lowerBound, upperBound],
-      ticks: ticks.length === 0 ? undefined : ticks,
+      domain: [lowerBound, expanded.max],
+      ticks: expanded.ticks.length === 0 ? undefined : expanded.ticks,
     };
   }
 

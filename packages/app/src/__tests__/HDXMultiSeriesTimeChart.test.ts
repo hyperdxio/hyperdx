@@ -243,7 +243,7 @@ describe('computeYAxisBounds', () => {
     color: '#a',
   });
 
-  it('rounds ticks to clean, non-duplicating values without expanding the domain', () => {
+  it('rounds ticks to clean, non-duplicating values, expanding for slack', () => {
     // A peak of 3 divided into raw quarters rounds (mantissa 0) to
     // 0/1/2/2/3 - two ticks reading "2" at different heights.
     const bounds = computeYAxisBounds(
@@ -255,8 +255,8 @@ describe('computeYAxisBounds', () => {
       false,
     );
     expect(bounds).toEqual({
-      domain: [0, 3.15],
-      ticks: [0, 1, 2, 3],
+      domain: [0, 4],
+      ticks: [0, 1, 2, 3, 4],
     });
   });
 
@@ -272,8 +272,25 @@ describe('computeYAxisBounds', () => {
       false,
     );
     expect(bounds).toEqual({
-      domain: [0, 12.6],
-      ticks: [0, 5, 10],
+      domain: [0, 15],
+      ticks: [0, 5, 10, 15],
+    });
+  });
+
+  it('expands past padding to avoid a sparse, dead-space-heavy axis', () => {
+    // Regression: a step landing between two step levels left only 3
+    // ticks (0/500/1000) over domain [0,1260], 20% dead space at the top.
+    const bounds = computeYAxisBounds(
+      [{ a: 1200 }],
+      [series('a')],
+      false,
+      false,
+      DisplayType.Line,
+      false,
+    );
+    expect(bounds).toEqual({
+      domain: [0, 1500],
+      ticks: [0, 500, 1000, 1500],
     });
   });
 
@@ -306,8 +323,8 @@ describe('computeYAxisBounds', () => {
       false,
     );
     expect(bounds).toEqual({
-      domain: [-1000, -855],
-      ticks: [-1000, -950, -900],
+      domain: [-1000, -850],
+      ticks: [-1000, -950, -900, -850],
     });
   });
 
