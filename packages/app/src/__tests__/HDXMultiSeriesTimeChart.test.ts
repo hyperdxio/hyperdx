@@ -243,7 +243,7 @@ describe('computeYAxisBounds', () => {
     color: '#a',
   });
 
-  it('rounds ticks to clean, non-duplicating values, expanding for slack', () => {
+  it('rounds ticks to clean, non-duplicating values', () => {
     // A peak of 3 divided into raw quarters rounds (mantissa 0) to
     // 0/1/2/2/3 - two ticks reading "2" at different heights.
     const bounds = computeYAxisBounds(
@@ -255,8 +255,8 @@ describe('computeYAxisBounds', () => {
       false,
     );
     expect(bounds).toEqual({
-      domain: [0, 4],
-      ticks: [0, 1, 2, 3, 4],
+      domain: [0, 3.15],
+      ticks: [0, 1, 2, 3],
     });
   });
 
@@ -446,7 +446,9 @@ describe('computeYAxisBounds', () => {
     });
   });
 
-  it('defers entirely to Recharts when a reference line is present, fitted or selected', () => {
+  it('keeps the fitted/selected domain when a reference line is present, only dropping ticks', () => {
+    // Regression: bailing out to the auto fallback (instead of just
+    // omitting ticks) disabled Fit-to-Data/legend-isolate on alert charts.
     const bounds = computeYAxisBounds(
       [{ a: 100 }, { a: 200 }],
       [series('a')],
@@ -455,12 +457,12 @@ describe('computeYAxisBounds', () => {
       DisplayType.Line,
       true,
     );
-    expect(bounds).toEqual({ domain: ['auto', 'auto'], ticks: undefined });
+    expect(bounds).toEqual({ domain: [95, 205], ticks: undefined });
   });
 
   it('rejects a step whose formatted labels collide, even if the count fits', () => {
-    // Regression: a step of 500 gives ticks 0/500/1000/1500/2000, which
-    // formatAxisTick's compact averaging renders as "0,500,1k,2k,2k".
+    // Regression: step 500's "0,500,1k,2k,2k" labels collide; step 1000
+    // was then wrongly expanded to domain 3000, a third of it empty.
     const bounds = computeYAxisBounds(
       [{ a: 2000 }],
       [series('a')],
@@ -470,10 +472,10 @@ describe('computeYAxisBounds', () => {
       false,
       { output: 'number' },
     );
-    const labels = (bounds.ticks ?? []).map(t =>
-      formatAxisTick(t, { output: 'number' }),
-    );
-    expect(new Set(labels).size).toBe(labels.length);
+    expect(bounds).toEqual({
+      domain: [0, 2100],
+      ticks: [0, 1000, 2000],
+    });
   });
 });
 

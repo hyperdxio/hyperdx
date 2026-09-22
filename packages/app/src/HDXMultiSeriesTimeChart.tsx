@@ -960,6 +960,11 @@ export function getExpandableYAxisTicks(
       continue;
     }
     const expandedMax = cleanNumber(Math.ceil(max / step) * step);
+    // Filling a step's worth of dead space is fine, but not at the cost
+    // of a large fraction of the range - keep the tight result instead.
+    if (expandedMax - max > (max - min) * 0.25) {
+      return { max, ticks: tightTicks };
+    }
     const expandedTicks = ticksWithinRange(step, min, expandedMax);
     if (
       expandedTicks &&
@@ -1060,9 +1065,6 @@ export function computeYAxisBounds(
   const degenerateFallback = shouldFitYAxis
     ? FIT_Y_AXIS_BOUNDS
     : DEFAULT_Y_AXIS_BOUNDS;
-  if (hasReferenceLines) {
-    return degenerateFallback;
-  }
   const { min, max } = scanYAxisValueRange(graphResults, visibleLineData);
   if (min === Infinity || max === -Infinity) {
     return degenerateFallback;
@@ -1077,7 +1079,11 @@ export function computeYAxisBounds(
   if (upperBound <= lowerBound) {
     return degenerateFallback;
   }
-  const ticks = getNiceYAxisTicks(lowerBound, upperBound, 5, formatTick);
+  // A reference line can extend this domain further (stale ticks), but
+  // Fit-to-Data/selection still need the tight domain itself to work.
+  const ticks = hasReferenceLines
+    ? []
+    : getNiceYAxisTicks(lowerBound, upperBound, 5, formatTick);
   return {
     domain: [lowerBound, upperBound],
     ticks: ticks.length === 0 ? undefined : ticks,
