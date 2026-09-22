@@ -1,7 +1,11 @@
 import { omit, pick } from 'lodash';
 import { Path, UseFormSetError } from 'react-hook-form';
 import { validateFormula } from '@hyperdx/common-utils/dist/core/formula';
-import { getPromqlSeries } from '@hyperdx/common-utils/dist/core/promql';
+import {
+  displayTypeSupportsInstantQuery,
+  displayTypeSupportsReducer,
+  getPromqlSeries,
+} from '@hyperdx/common-utils/dist/core/promql';
 import {
   isFormulaDisplayType,
   isFormulaSourceKind,
@@ -496,11 +500,19 @@ const toPromqlFormRows = (expressions: PromqlSeries[]): PromqlSeries[] =>
  * explorer the submitted config round-trips through the URL back into the
  * form, so dropping a row here would delete an expression the user had just
  * added. `getQueriedPromqlSeries` skips them at query time instead.
+ *
+ * Fields the display type does not offer are dropped, so a tile never carries
+ * a choice its editor cannot show.
  */
 function formPromqlExpressions(form: ChartEditorFormState): PromqlSeries[] {
+  const { displayType } = form;
+  const keepQueryType = displayTypeSupportsInstantQuery({ displayType });
+  const keepReducer = displayTypeSupportsReducer({ displayType });
   return toPromqlFormRows(form.promqlExpressions ?? []).map(series => ({
     ...series,
     alias: series.alias?.trim() || undefined,
+    queryType: keepQueryType ? series.queryType : undefined,
+    reducer: keepReducer ? series.reducer : undefined,
   }));
 }
 
