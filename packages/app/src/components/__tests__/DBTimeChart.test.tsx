@@ -1,4 +1,5 @@
 import React from 'react';
+import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { MantineProvider } from '@mantine/core';
 import { Notifications } from '@mantine/notifications';
 import { screen, waitFor } from '@testing-library/react';
@@ -718,11 +719,12 @@ describe('DBTimeChart', () => {
       ...(alias != null ? { alias } : {}),
     });
 
-    const configWith = (overrides: Record<string, unknown>) =>
-      ({
-        ...baseTestConfig,
-        ...overrides,
-      }) as any;
+    const configWith = (
+      overrides: Partial<BuilderChartConfigWithDateRange>,
+    ): BuilderChartConfigWithDateRange => ({
+      ...baseTestConfig,
+      ...overrides,
+    });
 
     const twoSeriesConfig = configWith({
       select: [
