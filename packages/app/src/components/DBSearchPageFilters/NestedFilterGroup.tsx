@@ -1,9 +1,11 @@
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useRef } from 'react';
 import { FilterState } from '@hyperdx/common-utils/dist/filters';
 import { Accordion, Group, Text, Tooltip, UnstyledButton } from '@mantine/core';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
 import { FilterGroup } from '@/components/DBSearchPageFilters';
+
+import { useGroupExpansion } from './useGroupExpansion';
 
 import classes from '@styles/SearchPage.module.scss';
 
@@ -95,10 +97,10 @@ export const NestedFilterGroup = ({
   );
 
   const hasSelections = totalFiltersSize > 0;
-  const [isExpanded, setExpanded] = useState(
+  const [expanded, setExpanded] = useGroupExpansion(
     isDefaultExpanded ?? hasSelections,
+    isForceExpanded,
   );
-  const expanded = isExpanded || !!isForceExpanded;
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 

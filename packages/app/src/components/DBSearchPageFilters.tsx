@@ -75,6 +75,7 @@ import {
   PinShareMenu,
 } from './DBSearchPageFilters/PinShareMenu';
 import { SharedFiltersSection } from './DBSearchPageFilters/SharedFilters';
+import { useGroupExpansion } from './DBSearchPageFilters/useGroupExpansion';
 import {
   getFilterStateEntry,
   groupFacetsByBaseName,
@@ -917,8 +918,10 @@ export const FilterGroup = ({
   distributionKey,
   onRangeChange,
 }: FilterGroupProps) => {
-  const [isExpanded, setExpanded] = useState(isDefaultExpanded ?? false);
-  const expanded = isExpanded || !!isForceExpanded;
+  const [expanded, setExpanded] = useGroupExpansion(
+    isDefaultExpanded ?? false,
+    isForceExpanded,
+  );
   const [showDistributions, setShowDistributions] = useState(false);
   const [isFetchingDistribution, setIsFetchingDistribution] = useState(false);
 
@@ -936,7 +939,7 @@ export const FilterGroup = ({
       }
       return !prev;
     });
-  }, []);
+  }, [setExpanded]);
 
   const onDistributionError = useCallback(() => {
     setShowDistributions(false);
@@ -946,7 +949,7 @@ export const FilterGroup = ({
     if (isDefaultExpanded) {
       setExpanded(true);
     }
-  }, [isDefaultExpanded]);
+  }, [isDefaultExpanded, setExpanded]);
 
   const totalAppliedFiltersSize =
     selectedValues.included.size +
