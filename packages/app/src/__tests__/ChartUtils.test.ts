@@ -1,5 +1,8 @@
+import { DEFAULT_PROMQL_REDUCER } from '@hyperdx/common-utils/dist/core/promql';
 import {
   BuilderChartConfigWithDateRange,
+  DisplayType,
+  PromqlReducer,
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
@@ -7,6 +10,7 @@ import {
 import {
   ChartKeyJoiner,
   convertToNumberChartConfig,
+  convertToPromqlNumberChartConfig,
   convertToTableChartConfig,
   convertToTimeChartConfig,
   findNearestSeriesKey,
@@ -20,6 +24,7 @@ import {
   resolveRenderedSeriesCap,
 } from '@/defaults';
 import { COLORS } from '@/utils';
+import { stripClientSideConfigFields } from '@/utils/chartConfig';
 
 // Anchor info/error to concrete hexes rather than `getChartColorInfo()` /
 // `getChartColorError()` so a regression that breaks the helpers can't
@@ -1276,6 +1281,124 @@ describe('ChartUtils', () => {
 
       expect(convertedConfig.granularity).toBeUndefined();
       expect(convertedConfig.groupBy).toBeUndefined();
+    });
+  });
+
+  describe('convertToPromqlNumberChartConfig', () => {
+    const promqlConfig = {
+      configType: 'promql' as const,
+      displayType: DisplayType.Number,
+      connection: 'conn',
+      promqlExpression: [
+        { expression: 'up', queryType: 'range' as const },
+        { expression: 'down', queryType: 'range' as const },
+      ],
+      dateRange: [
+        new Date('2025-11-26T00:00:14.076Z'),
+        new Date('2025-11-26T01:00:14.076Z'),
+      ] as [Date, Date],
+    };
+
+    // Prometheus answers at `start + k * step`, so an unaligned start or an
+    // unresolved step puts the samples between the buckets the sparkline plots
+    // on -- which the empty-bucket filler then fills with zeros.
+    it('aligns the date range and resolves the granularity', () => {
+      const result = convertToPromqlNumberChartConfig(promqlConfig, {
+        withReducer: true,
+      });
+
+      expect(result.dateRange).toEqual([
+        new Date('2025-11-26T00:00:00Z'),
+        new Date('2025-11-26T01:01:00Z'),
+      ]);
+      expect(result.granularity).toBe('1 minute');
+    });
+
+    it('leaves the date range unaligned for an instant query', () => {
+      const result = convertToPromqlNumberChartConfig(
+        {
+          ...promqlConfig,
+          promqlExpression: [{ expression: 'up', queryType: 'instant' }],
+          dateRange: [
+            new Date('2025-11-26T00:00:14.076Z'),
+            new Date('2025-11-27T00:00:14.076Z'),
+          ],
+        },
+        { withReducer: true },
+      );
+
+      expect(result.dateRange).toEqual([
+        new Date('2025-11-26T00:00:14.076Z'),
+        new Date('2025-11-27T00:00:14.076Z'),
+      ]);
+      expect(result.granularity).toBe('30 minute');
+    });
+
+    it('names the reducer, defaulting it, and queries one expression', () => {
+      const result = convertToPromqlNumberChartConfig(promqlConfig, {
+        withReducer: true,
+      });
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          promqlExpression: [
+            {
+              expression: 'up',
+              queryType: 'range',
+              reducer: DEFAULT_PROMQL_REDUCER,
+            },
+          ],
+        }),
+      );
+    });
+
+    it('keeps a chosen reducer', () => {
+      const result = convertToPromqlNumberChartConfig(
+        {
+          ...promqlConfig,
+          promqlExpression: [
+            {
+              expression: 'up',
+              queryType: 'range' as const,
+              reducer: PromqlReducer.Max,
+            },
+          ],
+        },
+        { withReducer: true },
+      );
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          promqlExpression: [
+            {
+              expression: 'up',
+              queryType: 'range',
+              reducer: PromqlReducer.Max,
+            },
+          ],
+        }),
+      );
+    });
+
+    // Without a reducer named, the hook leaves the buckets alone -- which is
+    // how the sparkline reads the same response as the value.
+    it('names no reducer for the sparkline, otherwise matching the value', () => {
+      const value = convertToPromqlNumberChartConfig(promqlConfig, {
+        withReducer: true,
+      });
+      const sparkline = convertToPromqlNumberChartConfig(promqlConfig, {
+        withReducer: false,
+      });
+
+      expect(sparkline).toEqual({
+        ...value,
+        promqlExpression: [
+          { expression: 'up', queryType: 'range', reducer: undefined },
+        ],
+      });
+      expect(stripClientSideConfigFields(sparkline)).toEqual(
+        stripClientSideConfigFields(value),
+      );
     });
   });
 

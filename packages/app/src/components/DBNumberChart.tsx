@@ -18,6 +18,7 @@ import { Flex, Text } from '@mantine/core';
 import {
   buildMVDateRangeIndicator,
   convertToNumberChartConfig,
+  convertToPromqlNumberChartConfig,
 } from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
@@ -221,13 +222,13 @@ export default function DBNumberChart({
   showMVOptimizationIndicator?: boolean;
   errorVariant?: ChartErrorStateVariant;
 }) {
-  const queriedConfig = useMemo(
-    () =>
-      isBuilderChartConfig(config)
-        ? convertToNumberChartConfig(config)
-        : config,
-    [config],
-  );
+  const queriedConfig = useMemo(() => {
+    if (isBuilderChartConfig(config)) return convertToNumberChartConfig(config);
+    if (isPromqlChartConfig(config)) {
+      return convertToPromqlNumberChartConfig(config, { withReducer: true });
+    }
+    return config;
+  }, [config]);
 
   const builderQueriedConfig = isBuilderChartConfig(queriedConfig)
     ? queriedConfig
@@ -262,6 +263,11 @@ export default function DBNumberChart({
   const promqlSeriesCount = new Set(
     promqlRows.map((row: Record<string, unknown>) => row.series_name),
   ).size;
+
+  // Several series leave the value ambiguous (see the warning) and the tile
+  // shows whichever came first, so a trend behind it would mislead. Whether
+  // the config can be bucketed at all is the sparkline's own call.
+  const showSparkline = config.backgroundChart != null && promqlValueCount <= 1;
 
   const resolvedNumberFormat = useSingleSeriesNumberFormat(queriedConfig);
 
@@ -388,10 +394,12 @@ export default function DBNumberChart({
         </div>
       ) : (
         <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-          {config.backgroundChart && (
+          {showSparkline && config.backgroundChart && (
             <NumberTileBackgroundChart
               config={config}
               backgroundChart={config.backgroundChart}
+              queryKeyPrefix={queryKeyPrefix}
+              enabled={enabled}
             />
           )}
           <div style={{ position: 'relative', zIndex: 1, height: '100%' }}>

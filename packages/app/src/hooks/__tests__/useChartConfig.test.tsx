@@ -1,6 +1,7 @@
 import React from 'react';
 import { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/browser';
+import { DEFAULT_PROMQL_REDUCER } from '@hyperdx/common-utils/dist/core/promql';
 import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
   ChartConfigWithDateRange,
@@ -966,7 +967,10 @@ describe('useChartConfig', () => {
 
         it('collapses the buckets to one row per series', async () => {
           const { result } = renderHook(
-            () => useQueriedChartConfig(rangeNumberConfig()),
+            () =>
+              useQueriedChartConfig(
+                rangeNumberConfig({ reducer: DEFAULT_PROMQL_REDUCER }),
+              ),
             { wrapper },
           );
 
@@ -1042,6 +1046,46 @@ describe('useChartConfig', () => {
             expect(result.current.data?.data[0].value).toBe(2),
           );
           expect(prometheusApi.queryRange).toHaveBeenCalledTimes(1);
+        });
+
+        // The whole point of keeping the reducer out of the key: a number tile
+        // names one and reads the value, the sparkline behind it names none and
+        // reads the buckets, and Prometheus is asked once.
+        it('serves the value and the buckets from one request', async () => {
+          const valueConfig = rangeNumberConfig({
+            reducer: PromqlReducer.Max,
+          });
+          const bucketConfig = rangeNumberConfig();
+          const { result } = renderHook(
+            () => ({
+              value: useQueriedChartConfig(valueConfig),
+              buckets: useQueriedChartConfig(bucketConfig),
+            }),
+            { wrapper },
+          );
+
+          await waitFor(() =>
+            expect(result.current.buckets.isSuccess).toBe(true),
+          );
+          expect(
+            result.current.value.data?.data.map((r: any) => r.value),
+          ).toEqual([8, 3]);
+          expect(
+            result.current.buckets.data?.data.map((r: any) => r.value),
+          ).toEqual([2, 8, 5, 1, 3]);
+          expect(prometheusApi.queryRange).toHaveBeenCalledTimes(1);
+        });
+
+        it('leaves the buckets alone when no reducer is named', async () => {
+          const { result } = renderHook(
+            () => useQueriedChartConfig(rangeNumberConfig()),
+            { wrapper },
+          );
+
+          await waitFor(() => expect(result.current.isSuccess).toBe(true));
+          expect(result.current.data?.data.map((r: any) => r.value)).toEqual([
+            2, 8, 5, 1, 3,
+          ]);
         });
 
         it('re-queries when a field other than the reducer changes', async () => {

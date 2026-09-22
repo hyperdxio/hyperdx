@@ -8,9 +8,8 @@ import {
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/browser';
 import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import {
-  displayTypeSupportsReducer,
+  appliesPromqlReducer,
   getQueriedPromqlSeries,
-  isRangeQuery,
 } from '@hyperdx/common-utils/dist/core/promql';
 import {
   isMetricChartConfig,
@@ -346,12 +345,11 @@ export function useQueriedChartConfig(
   });
   const minGranularitySeconds = getMinGranularitySeconds(source);
 
-  // A PromQL range query keeps every bucket in the cache and is reduced to a
-  // single value per series on read.
+  // A PromQL range query keeps every bucket in the cache. An observer whose
+  // config names a reducer collapses them to a single value per series on
+  // read; the sparkline behind a number tile names none, so it plots them.
   const reducesRangeBuckets =
-    isPromqlChartConfig(config) &&
-    displayTypeSupportsReducer(config) &&
-    isRangeQuery(config);
+    isPromqlChartConfig(config) && appliesPromqlReducer(config);
   const rangeReducer = reducesRangeBuckets
     ? getQueriedPromqlSeries(config)[0]?.reducer
     : undefined;
