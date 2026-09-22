@@ -1254,10 +1254,16 @@ describe('useFetchFacets', () => {
     it('drops the last search page once the search is cleared', () => {
       setupDefaultMocks({ withMVs: false });
       mockAllFields(FIELDS);
-      // Stands in for `keepPreviousData`, which keeps serving the last page
-      // even after the query is disabled.
-      useGetKeyValues.mockReturnValue(
-        settledKeyValues([{ key: 'TraceId', value: ['abc'] }]),
+      // Browse answers with ServiceName; the search query answers with
+      // TraceId and keeps doing so after it is disabled, standing in for
+      // `keepPreviousData` still serving the last page. Distinct facets, so
+      // dropping the guard fails this test rather than passing by overlap.
+      useGetKeyValues.mockImplementation(({ keys }) =>
+        settledKeyValues(
+          keys.includes('ServiceName')
+            ? [{ key: 'ServiceName', value: ['api'] }]
+            : [{ key: 'TraceId', value: ['abc'] }],
+        ),
       );
 
       const { wrapper } = makeWrapper();
@@ -1273,12 +1279,15 @@ describe('useFetchFacets', () => {
         { wrapper, initialProps: { searchQuery: 'trace' } },
       );
 
-      expect(result.current.data.keyValues).toHaveLength(1);
+      expect(result.current.data.keyValues).toEqual([
+        { key: 'ServiceName', value: ['api'] },
+        { key: 'TraceId', value: ['abc'] },
+      ]);
 
       rerender({ searchQuery: '' });
 
       expect(result.current.data.keyValues).toEqual([
-        { key: 'TraceId', value: ['abc'] },
+        { key: 'ServiceName', value: ['api'] },
       ]);
       expect(lastSearchCall()?.[1]?.enabled).toBe(false);
     });

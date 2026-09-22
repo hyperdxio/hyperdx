@@ -258,16 +258,19 @@ function useFacets({
   // A second query rather than widening the one above: the browse list must
   // survive typing untouched, so clearing the search costs nothing and each
   // search term caches on its own.
-  const { data: lastSearchFacets, isFetching: isSearchFetching } =
-    useGetKeyValues(
-      {
-        chartConfig: facetsChartConfig,
-        limit: INITIAL_LOAD_LIMIT,
-        keys: escapedSearchKeys,
-        mode,
-      },
-      { enabled: enabled && !disableValues && escapedSearchKeys.length > 0 },
-    );
+  const {
+    data: lastSearchFacets,
+    isFetching: isSearchFetching,
+    error: searchError,
+  } = useGetKeyValues(
+    {
+      chartConfig: facetsChartConfig,
+      limit: INITIAL_LOAD_LIMIT,
+      keys: escapedSearchKeys,
+      mode,
+    },
+    { enabled: enabled && !disableValues && escapedSearchKeys.length > 0 },
+  );
 
   // `keepPreviousData` keeps serving the last search's page even once the query
   // is disabled, which would leave fields the browse list never asked for
@@ -380,7 +383,10 @@ function useFacets({
 
   return {
     ...rest,
-    error: allFieldsError ?? rest.error,
+    // A failed search must not read as "no matching filters": the caller
+    // reports this, so a field that exists but could not be looked up is
+    // distinguishable from one that genuinely has no values.
+    error: allFieldsError ?? rest.error ?? searchError,
     data: { keys: allFields, keyValues: facets },
     isLoading: isAllFieldsLoading || rest.isLoading,
     isSearchFetching,

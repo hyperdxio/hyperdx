@@ -1037,7 +1037,7 @@ export const FilterGroup = ({
                 onRangeChange={onRangeChange}
               />
             ) : (
-              isExpanded && (
+              expanded && (
                 <FilterGroupBody
                   name={name}
                   options={options}
