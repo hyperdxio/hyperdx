@@ -13,7 +13,6 @@ import type { ActiveClickSeries } from '@/HDXMultiSeriesTimeChart';
 import {
   buildActiveClickSeries,
   collectMemoChartGradientHexes,
-  dedupeAxisTicks,
   formatAxisTick,
   getSelectedLineData,
   getVisibleLineData,
@@ -239,43 +238,10 @@ describe('formatAxisTick', () => {
   });
 });
 
-describe('dedupeAxisTicks', () => {
-  it('keeps every value when all labels are already distinct', () => {
-    const format = (v: number) => String(v);
-    expect(dedupeAxisTicks([1, 2, 3], format)).toEqual([1, 2, 3]);
-  });
-
-  it('drops a value whose label repeats the previous surviving label', () => {
-    const format = (v: number) => String(Math.round(v));
-    expect(dedupeAxisTicks([1.1, 1.4, 2.1, 2.4], format)).toEqual([1.1, 2.1]);
-  });
-
-  it('resolves the reported duplicate-tick regression on a real byte axis', () => {
-    // A narrow fitYAxisToData domain at mantissa 1 gives Recharts' own
-    // "nice" ticks too little room - two pairs collapsed to "3.3 GB"/"3.5 GB".
-    const GB = 1024 ** 3;
-    const rawTicks = [3.2689, 3.3295, 3.39, 3.4506, 3.5111].map(gb => gb * GB);
-    const format = (v: number) =>
-      formatAxisTick(v, { output: 'byte', mantissa: 1 });
-    expect(rawTicks.map(format)).toEqual([
-      '3.3 GB',
-      '3.3 GB',
-      '3.4 GB',
-      '3.5 GB',
-      '3.5 GB',
-    ]);
-    expect(dedupeAxisTicks(rawTicks, format).map(format)).toEqual([
-      '3.3 GB',
-      '3.4 GB',
-      '3.5 GB',
-    ]);
-  });
-});
-
 describe('getYAxisTicks', () => {
-  it('resolves the reported duplicate-tick regression end-to-end', () => {
-    // Runs the real getNiceTickValues generator (not a hand-built array)
-    // through clamping and dedup, on the domain the repro tile computes.
+  it('resolves the reported duplicate-tick regression with evenly spaced ticks', () => {
+    // 5 ticks collide ("3.3/3.3/3.4/3.5/3.5 GB"); dropping duplicates would
+    // leave uneven gaps, so this retries at fewer, evenly spaced ticks.
     const GB = 1024 ** 3;
     const format = (v: number) =>
       formatAxisTick(v, { output: 'byte', mantissa: 1 });
@@ -291,8 +257,8 @@ describe('getYAxisTicks', () => {
   });
 
   it('keeps the redundant ticks instead of collapsing to just one', () => {
-    // If every candidate renders identically, deduping to one tick would
-    // misrepresent a real, varying range as a flat line.
+    // If every count still renders identically, keep the full set rather
+    // than misrepresent a varying range as a flat line.
     const ticks = getYAxisTicks(1, 5, () => 'same');
     expect(ticks.length).toBeGreaterThan(1);
   });

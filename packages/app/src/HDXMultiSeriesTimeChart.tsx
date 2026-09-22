@@ -854,36 +854,23 @@ export function formatAxisTick(
   return '';
 }
 
-// Drops a candidate tick whose formatted label repeats the previous
-// surviving tick's label - "nice" values can round to the same string.
-export function dedupeAxisTicks(
-  values: number[],
-  formatTick: (value: number) => string,
-): number[] {
-  const deduped: number[] = [];
-  let previousLabel: string | undefined;
-  for (const value of values) {
-    const label = formatTick(value);
-    if (label !== previousLabel) {
-      deduped.push(value);
-      previousLabel = label;
-    }
-  }
-  return deduped;
-}
-
-// Recharts' own fixed-domain generator - unlike getNiceTickValues, it
-// never returns a value outside [min, max], so no clamping is needed.
+// Retries with fewer ticks until every label is distinct, so survivors
+// stay evenly spaced instead of an uneven subset of a fixed-size set.
 export function getYAxisTicks(
   min: number,
   max: number,
   formatTick: (value: number) => string,
 ): number[] {
-  const candidates = getTickValuesFixedDomain([min, max], 5, true);
-  const deduped = dedupeAxisTicks(candidates, formatTick);
-  // If every candidate collapsed to one label, the axis can't distinguish
-  // this range at this mantissa - keep the redundant ticks, not just one.
-  return deduped.length > 1 ? deduped : candidates;
+  for (let tickCount = 5; tickCount >= 2; tickCount--) {
+    const candidates = getTickValuesFixedDomain([min, max], tickCount, true);
+    const labels = candidates.map(formatTick);
+    if (new Set(labels).size === labels.length) {
+      return candidates;
+    }
+  }
+  // Nothing distinguishes this range at this mantissa - fall back to the
+  // full set, redundant labels and all, rather than misrepresent it as flat.
+  return getTickValuesFixedDomain([min, max], 5, true);
 }
 
 export const MemoChart = memo(function MemoChart({
