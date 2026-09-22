@@ -5013,6 +5013,110 @@ describe('External API v2 Dashboards - new format', () => {
       );
     });
 
+    it('omits alternateRowBackground on update when not provided, and persists explicit false', async () => {
+      const connectionId = connection._id.toString();
+      const sourceId = traceSource._id.toString();
+      const sqlTemplate = 'SELECT count() FROM otel_logs WHERE {timeFilter}';
+
+      const builderNoStripe: ExternalDashboardTileWithId = {
+        id: new ObjectId().toString(),
+        name: 'Table without stripe setting',
+        x: 0,
+        y: 0,
+        w: 6,
+        h: 3,
+        config: {
+          displayType: 'table',
+          sourceId,
+          select: [
+            { aggFn: 'count', alias: 'Count', where: '', whereLanguage: 'sql' },
+          ],
+          groupBy: 'ServiceName',
+        },
+      };
+
+      const builderStripeOff: ExternalDashboardTileWithId = {
+        id: new ObjectId().toString(),
+        name: 'Table with stripe explicitly off',
+        x: 6,
+        y: 0,
+        w: 6,
+        h: 3,
+        config: {
+          displayType: 'table',
+          sourceId,
+          select: [
+            { aggFn: 'count', alias: 'Count', where: '', whereLanguage: 'sql' },
+          ],
+          groupBy: 'ServiceName',
+          alternateRowBackground: false,
+        },
+      };
+
+      const rawSqlNoStripe: ExternalDashboardTileWithId = {
+        id: new ObjectId().toString(),
+        name: 'Raw SQL table without stripe setting',
+        x: 12,
+        y: 0,
+        w: 6,
+        h: 3,
+        config: {
+          configType: 'sql',
+          displayType: 'table',
+          connectionId,
+          sqlTemplate,
+          sourceId,
+        },
+      };
+
+      const rawSqlStripeOff: ExternalDashboardTileWithId = {
+        id: new ObjectId().toString(),
+        name: 'Raw SQL table with stripe explicitly off',
+        x: 18,
+        y: 0,
+        w: 6,
+        h: 3,
+        config: {
+          configType: 'sql',
+          displayType: 'table',
+          connectionId,
+          sqlTemplate,
+          sourceId,
+          alternateRowBackground: false,
+        },
+      };
+
+      const initialDashboard = await createTestDashboard();
+
+      const response = await authRequest(
+        'put',
+        `${BASE_URL}/${initialDashboard._id}`,
+      )
+        .send({
+          name: 'Dashboard table stripe defaults on update',
+          tiles: [
+            builderNoStripe,
+            builderStripeOff,
+            rawSqlNoStripe,
+            rawSqlStripeOff,
+          ],
+        })
+        .expect(200);
+
+      expect(response.body.data.tiles[0].config).not.toHaveProperty(
+        'alternateRowBackground',
+      );
+      expect(response.body.data.tiles[1].config.alternateRowBackground).toBe(
+        false,
+      );
+      expect(response.body.data.tiles[2].config).not.toHaveProperty(
+        'alternateRowBackground',
+      );
+      expect(response.body.data.tiles[3].config.alternateRowBackground).toBe(
+        false,
+      );
+    });
+
     it('should return 400 when source IDs do not exist', async () => {
       const dashboard = await createTestDashboard();
       const nonExistentSourceId = new ObjectId().toString();
