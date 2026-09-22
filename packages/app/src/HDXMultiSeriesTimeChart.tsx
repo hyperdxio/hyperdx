@@ -864,15 +864,115 @@ export function formatAxisTick(
   });
 }
 
-const Y_AXIS_TICK_CANDIDATES = 5;
+/** Round `x` to the nearest "nice" step: 1/2/2.5/5 x10^n. */
+function niceAxisStep(x: number): number {
+  const exp = Math.floor(Math.log10(x));
+  const frac = x / 10 ** exp;
+  const nice =
+    frac < 1.5 ? 1 : frac < 2.25 ? 2 : frac < 3.75 ? 2.5 : frac < 7.5 ? 5 : 10;
+  return nice * 10 ** exp;
+}
 
-// Recharts' minTickGap thinning drops ticks without re-spacing survivors;
-// feeding it a uniform set keeps thinning's tick count but even spacing.
-export function getEvenlySpacedTicks(min: number, max: number): number[] {
-  return Array.from(
-    { length: Y_AXIS_TICK_CANDIDATES },
-    (_, i) => min + ((max - min) * i) / (Y_AXIS_TICK_CANDIDATES - 1),
-  );
+export interface NiceYAxisBounds {
+  min: number;
+  max: number;
+  ticks: number[];
+}
+
+// Ported from packages/cli/src/termchart/scale.ts's niceTicks (Graphics
+// Gems nice numbers) - rounds to a clean step, not a raw range fraction.
+export function getNiceYAxisBounds(
+  min: number,
+  max: number,
+  maxTicks = 5,
+): NiceYAxisBounds {
+  if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
+    return { min, max, ticks: [] };
+  }
+  const step = niceAxisStep((max - min) / (maxTicks - 1));
+  const niceMin = Math.floor(min / step) * step;
+  const niceMax = Math.ceil(max / step) * step;
+  const count = Math.round((niceMax - niceMin) / step);
+  return {
+    min: niceMin,
+    max: niceMax,
+    ticks: Array.from({ length: count + 1 }, (_, i) => niceMin + i * step),
+  };
+}
+
+// Shared by every yAxisDomain branch - callers decide which series count
+// and how the resulting range becomes a domain.
+export function scanYAxisValueRange(
+  graphResults: any[],
+  lineData: LineData[],
+  isVisible: (seriesName: string) => boolean,
+): { min: number; max: number } {
+  let min = Infinity;
+  let max = -Infinity;
+  graphResults.forEach(dataPoint => {
+    lineData.forEach(ld => {
+      const seriesName = ld.displayName || ld.dataKey;
+      if (!isVisible(seriesName)) return;
+      const value = dataPoint[ld.dataKey];
+      if (typeof value === 'number' && !isNaN(value)) {
+        min = Math.min(min, value);
+        max = Math.max(max, value);
+      }
+    });
+  });
+  return { min, max };
+}
+
+export interface YAxisBounds {
+  domain: AxisDomain;
+  ticks: number[] | undefined;
+}
+
+// An empty ticks array (flat data) must become undefined, not [] - an
+// empty array renders no ticks at all; undefined lets Recharts decide.
+function toYAxisBounds(bounds: NiceYAxisBounds): YAxisBounds {
+  return {
+    domain: [bounds.min, bounds.max],
+    ticks: bounds.ticks.length > 0 ? bounds.ticks : undefined,
+  };
+}
+
+// A stacked bar's rendered height sums its series at each timestamp, not
+// any single one - leave that case entirely to Recharts, as before.
+export function computeYAxisBounds(
+  graphResults: any[],
+  lineData: LineData[],
+  selectedSeriesNames: Set<string> | undefined,
+  fitYAxisToData: boolean,
+  displayType: DisplayType,
+): YAxisBounds {
+  const hasSelection = hasSeriesSelection(selectedSeriesNames);
+  const shouldFitYAxis =
+    fitYAxisToData && displayType !== DisplayType.StackedBar;
+  const isVisible = (seriesName: string): boolean =>
+    !hasSelection || selectedSeriesNames.has(seriesName);
+
+  if (!hasSelection && !shouldFitYAxis) {
+    if (displayType === DisplayType.StackedBar) {
+      return { domain: [0, 'auto'], ticks: undefined };
+    }
+    const { max } = scanYAxisValueRange(graphResults, lineData, () => true);
+    if (max === -Infinity) {
+      return { domain: [0, 'auto'], ticks: undefined };
+    }
+    return toYAxisBounds(getNiceYAxisBounds(0, max * 1.05));
+  }
+
+  const { min, max } = scanYAxisValueRange(graphResults, lineData, isVisible);
+  if (min === Infinity || max === -Infinity) {
+    return { domain: ['auto', 'auto'], ticks: undefined };
+  }
+  const padding = (max - min) * 0.05;
+  // When fitting to data, allow the lower bound to follow the data
+  // minimum below zero; otherwise keep it pinned at zero either way.
+  const lowerBound =
+    shouldFitYAxis && min < 0 ? min - padding : Math.max(0, min - padding);
+  return toYAxisBounds(getNiceYAxisBounds(lowerBound, max + padding));
 }
 
 export const MemoChart = memo(function MemoChart({
@@ -1053,72 +1153,18 @@ export const MemoChart = memo(function MemoChart({
     );
   }, [nearestSeriesKey, visibleLineData.length, id]);
 
-  const yAxisDomain: AxisDomain = useMemo(() => {
-    const hasSelection = hasSeriesSelection(selectedSeriesNames);
-
-    // Fitting the y-axis lower bound to the data only applies to line charts.
-    // Bar charts are always anchored at zero so the bar lengths stay
-    // proportional to their values.
-    const shouldFitYAxis =
-      fitYAxisToData && displayType !== DisplayType.StackedBar;
-
-    // The lower bound stays pinned at zero unless selecting/fitting to
-    // data (below), so only the max is needed here, with the same headroom.
-    if (!hasSelection && !shouldFitYAxis) {
-      let maxValue = -Infinity;
-      graphResults.forEach(dataPoint => {
-        lineData.forEach(ld => {
-          const value = dataPoint[ld.dataKey];
-          if (typeof value === 'number' && !isNaN(value)) {
-            maxValue = Math.max(maxValue, value);
-          }
-        });
-      });
-      return maxValue === -Infinity ? [0, 'auto'] : [0, maxValue * 1.05];
-    }
-
-    // Calculate domain based on visible series (all series when there's no
-    // explicit selection).
-    let minValue = Infinity;
-    let maxValue = -Infinity;
-
-    graphResults.forEach(dataPoint => {
-      lineData.forEach(ld => {
-        const seriesName = ld.displayName || ld.dataKey;
-        // Only consider visible series
-        if (!hasSelection || selectedSeriesNames.has(seriesName)) {
-          const value = dataPoint[ld.dataKey];
-          if (typeof value === 'number' && !isNaN(value)) {
-            minValue = Math.min(minValue, value);
-            maxValue = Math.max(maxValue, value);
-          }
-        }
-      });
-    });
-
-    // If we found valid values, return them with some padding
-    if (minValue !== Infinity && maxValue !== -Infinity) {
-      const padding = (maxValue - minValue) * 0.05; // 5% padding
-      // When fitting to data, allow the lower bound to follow the data
-      // minimum; otherwise keep it pinned at zero. The 5% padding must not
-      // drag the axis below zero unless the data itself is negative, so
-      // clamp at zero whenever the minimum is non-negative.
-      const lowerBound =
-        shouldFitYAxis && minValue < 0
-          ? minValue - padding
-          : Math.max(0, minValue - padding);
-      const upperBound = maxValue + padding;
-      return [lowerBound, upperBound];
-    }
-
-    return ['auto', 'auto'];
-  }, [
-    graphResults,
-    lineData,
-    selectedSeriesNames,
-    fitYAxisToData,
-    displayType,
-  ]);
+  const yAxisBounds = useMemo(
+    () =>
+      computeYAxisBounds(
+        graphResults,
+        lineData,
+        selectedSeriesNames,
+        fitYAxisToData,
+        displayType,
+      ),
+    [graphResults, lineData, selectedSeriesNames, fitYAxisToData, displayType],
+  );
+  const yAxisDomain = yAxisBounds.domain;
 
   const [containerWidth, setContainerWidth] = useState(0);
 
@@ -1236,14 +1282,7 @@ export const MemoChart = memo(function MemoChart({
     [axisNumberFormat],
   );
 
-  // Only overrides Recharts' own candidates for a concrete domain - a bare
-  // 'auto' bound has no fixed range to divide evenly.
-  const yAxisTicks = useMemo(() => {
-    const [min, max] = yAxisDomain;
-    return typeof min === 'number' && typeof max === 'number'
-      ? getEvenlySpacedTicks(min, max)
-      : undefined;
-  }, [yAxisDomain]);
+  const yAxisTicks = yAxisBounds.ticks;
 
   const [highlightStart, setHighlightStart] = useState<string | undefined>();
   const [highlightEnd, setHighlightEnd] = useState<string | undefined>();

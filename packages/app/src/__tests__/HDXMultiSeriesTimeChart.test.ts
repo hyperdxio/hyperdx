@@ -6,18 +6,22 @@
 // #2362 where a semantic-hex `lineData[].color` (e.g. the output of
 // `getChartColorInfo()` on HyperDX) would not have a matching gradient
 // def after the `COLORS` palette was unified to Observable 10.
+import { DisplayType } from '@hyperdx/common-utils/dist/types';
+
 import type { LineData } from '@/ChartUtils';
 import type { ActiveClickSeries } from '@/HDXMultiSeriesTimeChart';
 import {
   buildActiveClickSeries,
   collectMemoChartGradientHexes,
+  computeYAxisBounds,
   formatAxisTick,
-  getEvenlySpacedTicks,
+  getNiceYAxisBounds,
   getSelectedLineData,
   getVisibleLineData,
   getVisibleTooltipRows,
   HARD_LINES_LIMIT,
   sameActiveClickSeries,
+  scanYAxisValueRange,
 } from '@/HDXMultiSeriesTimeChart';
 import { COLORS } from '@/utils';
 
@@ -161,22 +165,117 @@ describe('formatAxisTick', () => {
   });
 });
 
-describe('getEvenlySpacedTicks', () => {
-  it('divides the domain into 5 uniform steps', () => {
-    expect(getEvenlySpacedTicks(0, 1000)).toEqual([0, 250, 500, 750, 1000]);
+describe('getNiceYAxisBounds', () => {
+  it('rounds to a clean step instead of dividing the raw range', () => {
+    // Regression: evenly dividing an unrounded range into quarters gave
+    // fractional labels (341/683/1k) or, worse, duplicate rounded ones.
+    expect(getNiceYAxisBounds(0, 1000)).toEqual({
+      min: 0,
+      max: 1000,
+      ticks: [0, 250, 500, 750, 1000],
+    });
   });
 
   it('works for a non-zero lower bound', () => {
-    expect(getEvenlySpacedTicks(10, 30)).toEqual([10, 15, 20, 25, 30]);
+    expect(getNiceYAxisBounds(10, 30)).toEqual({
+      min: 10,
+      max: 30,
+      ticks: [10, 15, 20, 25, 30],
+    });
   });
 
-  it('reproduces the reported uneven-spacing case with a uniform set', () => {
-    // Regression: Recharts' own "nice" ticks for this domain rendered as
-    // 0/300/1k (gaps of 300 then 700) after minTickGap thinning.
-    const ticks = getEvenlySpacedTicks(0, 950);
-    for (let i = 1; i < ticks.length; i++) {
-      expect(ticks[i] - ticks[i - 1]).toBeCloseTo(ticks[1] - ticks[0]);
-    }
+  it('returns no ticks for a degenerate (flat) range', () => {
+    expect(getNiceYAxisBounds(5, 5)).toEqual({ min: 5, max: 5, ticks: [] });
+  });
+});
+
+describe('scanYAxisValueRange', () => {
+  const series = (dataKey: string): LineData => ({
+    dataKey,
+    currentPeriodKey: dataKey,
+    previousPeriodKey: `${dataKey}.prev`,
+    displayName: dataKey,
+    valueColumnName: dataKey,
+    color: '#a',
+  });
+
+  it('finds the min/max across every series when all are visible', () => {
+    const lineData = [series('a'), series('b')];
+    const graphResults = [{ a: 10, b: 40 }, { a: -5 }];
+    expect(scanYAxisValueRange(graphResults, lineData, () => true)).toEqual({
+      min: -5,
+      max: 40,
+    });
+  });
+
+  it('ignores a series the visibility predicate excludes', () => {
+    const lineData = [series('a'), series('b')];
+    const graphResults = [{ a: 10, b: 40 }];
+    expect(
+      scanYAxisValueRange(graphResults, lineData, name => name === 'a'),
+    ).toEqual({ min: 10, max: 10 });
+  });
+});
+
+describe('computeYAxisBounds', () => {
+  const series = (dataKey: string): LineData => ({
+    dataKey,
+    currentPeriodKey: dataKey,
+    previousPeriodKey: `${dataKey}.prev`,
+    displayName: dataKey,
+    valueColumnName: dataKey,
+    color: '#a',
+  });
+
+  it('rounds the default domain to nice, non-duplicating ticks', () => {
+    // A peak of 3 divided into raw quarters rounds (mantissa 0) to
+    // 0/1/2/2/3 - two ticks reading "2" at different heights.
+    const bounds = computeYAxisBounds(
+      [{ a: 3 }],
+      [series('a')],
+      undefined,
+      false,
+      DisplayType.Line,
+    );
+    expect(bounds).toEqual({
+      domain: [0, 4],
+      ticks: [0, 1, 2, 3, 4],
+    });
+  });
+
+  it('leaves a stacked bar`s max to Recharts instead of one series`', () => {
+    // Regression: bars sharing a stackId sum at each timestamp, so 60 and
+    // 40 individually reach a stack height of 100, not 63.
+    const bounds = computeYAxisBounds(
+      [{ a: 60, b: 40 }],
+      [series('a'), series('b')],
+      undefined,
+      false,
+      DisplayType.StackedBar,
+    );
+    expect(bounds).toEqual({ domain: [0, 'auto'], ticks: undefined });
+  });
+
+  it('falls back to auto when there is no numeric data', () => {
+    const bounds = computeYAxisBounds(
+      [],
+      [],
+      undefined,
+      false,
+      DisplayType.Line,
+    );
+    expect(bounds).toEqual({ domain: [0, 'auto'], ticks: undefined });
+  });
+
+  it('lets a fitted axis follow a negative minimum, still nicely rounded', () => {
+    const bounds = computeYAxisBounds(
+      [{ a: -50 }, { a: 200 }],
+      [series('a')],
+      undefined,
+      true,
+      DisplayType.Line,
+    );
+    expect(bounds.domain).toEqual([-100, 250]);
   });
 });
 
