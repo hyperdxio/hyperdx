@@ -1,4 +1,11 @@
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import cx from 'classnames';
 import Fuse from 'fuse.js';
 import { Loader, Popover, Textarea, UnstyledButton } from '@mantine/core';
@@ -31,6 +38,7 @@ export default function AutocompleteInput({
   onSubmit,
   queryHistoryType,
   allowMultiline = true,
+  floatOnOpen = true,
   'data-testid': dataTestId,
 }: {
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
@@ -53,6 +61,12 @@ export default function AutocompleteInput({
   zIndex?: number;
   queryHistoryType?: string;
   allowMultiline?: boolean;
+  /**
+   * Whether an open field floats over the content below. Set false when an
+   * ancestor floats the whole field instead, so its own chrome (the
+   * SearchWhereInput language picker) grows with the field.
+   */
+  floatOnOpen?: boolean;
   'data-testid'?: string;
 }) {
   const suggestionsLimit = 10;
@@ -62,13 +76,14 @@ export default function AutocompleteInput({
   const [isSearchInputFocused, _setIsSearchInputFocused] = useState(false);
   const [isInputDropdownOpen, setIsInputDropdownOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
-  const setIsSearchInputFocused = useCallback(
-    (state: boolean) => {
-      _setIsSearchInputFocused(state);
-      setIsInputDropdownOpen(state);
-    },
-    [_setIsSearchInputFocused],
-  );
+  // Focus opens a temporary overlay; the pin toggle keeps it open after blur.
+  const isOpen = allowMultiline && (isSearchInputFocused || isExpanded);
+  const isFloating = isOpen && floatOnOpen;
+
+  const setIsSearchInputFocused = useCallback((state: boolean) => {
+    _setIsSearchInputFocused(state);
+    setIsInputDropdownOpen(state);
+  }, []);
   const [rightSectionWidth, setRightSectionWidth] = useState<number | 'auto'>(
     'auto',
   );
@@ -197,6 +212,11 @@ export default function AutocompleteInput({
     }
   }, [rightAdornment, inputRef]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    if (inputRef.current) inputRef.current.scrollTop = 0;
+  }, [isOpen, inputRef]);
+
   const baseHeight = EDITOR_INPUT_HEIGHTS[size];
 
   return (
@@ -205,8 +225,11 @@ export default function AutocompleteInput({
       style={{ ['--editor-base-height' as string]: `${baseHeight}px` }}
       data-empty={value ? undefined : 'true'}
       data-single-line={allowMultiline ? undefined : 'true'}
-      data-multiline-expanded={allowMultiline ? isExpanded : undefined}
-      data-collapsed={allowMultiline && !isExpanded ? 'true' : undefined}
+      data-multiline-expanded={allowMultiline ? isOpen : undefined}
+      data-multiline-pinned={allowMultiline ? isExpanded : undefined}
+      data-collapsed={allowMultiline && !isOpen ? 'true' : undefined}
+      data-floating={isFloating ? 'true' : undefined}
+      data-focused={isSearchInputFocused ? 'true' : undefined}
       data-validation-state={validationState}
     >
       <Popover
@@ -234,11 +257,12 @@ export default function AutocompleteInput({
               styles.textarea,
               isSearchInputFocused && styles.focused,
             )}
+            classNames={{ section: styles.section }}
             value={value}
             size={size}
             autosize
             minRows={1}
-            maxRows={allowMultiline && isExpanded ? maxVisibleRows : 1}
+            maxRows={isOpen ? maxVisibleRows : 1}
             data-testid={dataTestId}
             onChange={e => onChange(e.target.value)}
             onFocus={() => {

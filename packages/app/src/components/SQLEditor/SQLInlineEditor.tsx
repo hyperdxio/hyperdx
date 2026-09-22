@@ -68,6 +68,12 @@ type SQLInlineEditorProps = {
   queryHistoryType?: string;
   parentRef?: HTMLElement | null;
   allowMultiline?: boolean;
+  /**
+   * Whether an open editor floats over the content below. Set false when an
+   * ancestor floats the whole field instead, so its own chrome (the
+   * SearchWhereInput language picker) grows with the editor.
+   */
+  floatOnOpen?: boolean;
   dateRange?: [Date, Date];
   sourceId?: string;
   // With multiple tableConnections, offer only fields present in ALL of them
@@ -99,6 +105,7 @@ export default function SQLInlineEditor({
   queryHistoryType,
   parentRef,
   allowMultiline = true,
+  floatOnOpen = true,
   dateRange,
   sourceId,
   intersectFields,
@@ -172,8 +179,21 @@ export default function SQLInlineEditor({
 
   const [isFocused, setIsFocused] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
+  // Focus opens a temporary overlay; the pin toggle keeps it open after blur.
+  // Either way the layout still holds one row — the open editor spills over it.
+  const isOpen = allowMultiline && (isFocused || isExpanded);
+  const isFloating = isOpen && floatOnOpen;
 
   const ref = useRef<ReactCodeMirrorRef>(null);
+
+  // Opening from collapsed should start at the first line. CodeMirror otherwise
+  // keeps a mid-document scroll (from a previous caret), which made the overlay
+  // open on a middle line instead of the start of the query.
+  useEffect(() => {
+    if (!isOpen) return;
+    const scroller = ref.current?.view?.scrollDOM;
+    if (scroller) scroller.scrollTop = 0;
+  }, [isOpen]);
 
   const compartmentRef = useRef<Compartment>(new Compartment());
 
@@ -341,10 +361,14 @@ export default function SQLInlineEditor({
 
   return (
     <div
-      className={styles.wrapper}
+      className={cx(
+        styles.wrapper,
+        isFloating ? styles.pinnedHeight : undefined,
+      )}
       style={{ ['--editor-base-height' as string]: `${baseHeight}px` }}
       data-validation-state={validationState}
-      data-multiline-expanded={allowMultiline ? isExpanded : undefined}
+      data-multiline-expanded={allowMultiline ? isOpen : undefined}
+      data-multiline-pinned={allowMultiline ? isExpanded : undefined}
     >
       <Paper
         shadow="none"
@@ -352,14 +376,17 @@ export default function SQLInlineEditor({
           styles.paper,
           validationState === 'error' ? styles.error : undefined,
           validationState === 'warning' ? styles.warning : undefined,
-          !allowMultiline || !isExpanded ? styles.clamped : undefined,
+          !isOpen ? styles.clamped : styles.open,
+          isFloating ? styles.floating : undefined,
+          isFloating && isFocused ? styles.elevated : undefined,
           isFocused ? styles.focused : undefined,
         )}
-        ps="4px"
+        // A label is an addon flush against the frame, so it supplies its own
+        // inline padding instead of sitting inside the field's.
+        ps={label != null ? 0 : '4px'}
       >
         {label != null && (
           <Text
-            mx="4px"
             size="xs"
             fw="bold"
             className={cx(
@@ -380,9 +407,9 @@ export default function SQLInlineEditor({
           className={cx(
             styles.cmWrapper,
             size === 'xs' ? styles.sizeXs : undefined,
-            // Only an expanded editor scrolls its own content. Collapsed, it
+            // Only an open editor scrolls its own content. Collapsed, it
             // renders at full height behind the clip so the first line shows.
-            allowMultiline && isExpanded ? 'cm-editor-multiline' : undefined,
+            isOpen ? 'cm-editor-multiline' : undefined,
           )}
         >
           <CodeMirror
@@ -393,10 +420,10 @@ export default function SQLInlineEditor({
             theme={colorScheme === 'dark' ? 'dark' : 'light'}
             onFocus={useCallback(() => {
               setIsFocused(true);
-            }, [setIsFocused])}
+            }, [])}
             onBlur={useCallback(() => {
               setIsFocused(false);
-            }, [setIsFocused])}
+            }, [])}
             extensions={cmExtensions}
             onCreateEditor={updateAutocompleteColumns}
             basicSetup={DEFAULT_CODE_MIRROR_BASIC_SETUP}

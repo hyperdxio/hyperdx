@@ -53,6 +53,7 @@ export default function SearchInputV2({
   additionalSuggestions,
   queryHistoryType,
   allowMultiline = true,
+  floatOnOpen = true,
   dateRange,
   sourceId,
   enableVariables = false,
@@ -67,6 +68,7 @@ export default function SearchInputV2({
   additionalSuggestions?: string[];
   queryHistoryType?: string;
   allowMultiline?: boolean;
+  floatOnOpen?: boolean;
   dateRange?: [Date, Date];
   sourceId?: string;
   enableVariables?: boolean;
@@ -155,6 +157,7 @@ export default function SearchInputV2({
       onSubmit={onSubmit}
       queryHistoryType={queryHistoryType}
       allowMultiline={allowMultiline}
+      floatOnOpen={floatOnOpen}
       data-testid={dataTestId}
       validationState={validationState}
       rightAdornment={

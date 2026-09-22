@@ -11,7 +11,8 @@ export default function EditorMultilineToggle({
   expanded: boolean;
   onToggle: () => void;
 }) {
-  const label = expanded ? 'Show first line' : 'Show all lines';
+  // Focus already opens a temporary overlay; this pin keeps it open after blur.
+  const label = expanded ? 'Collapse after blur' : 'Keep expanded';
 
   return (
     <Tooltip label={label} withArrow>

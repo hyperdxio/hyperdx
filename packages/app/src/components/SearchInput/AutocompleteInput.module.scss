@@ -3,6 +3,20 @@
   min-height: var(--editor-base-height, 36px);
 }
 
+/* Holds one row while the open field spills over it, so the row below keeps its
+   place. `max-height` is what pins it: as a flex item `flex-basis: 0%` replaces
+   `height`, which then resolves to the content size. */
+.root[data-floating='true'] {
+  height: var(--editor-base-height, 36px);
+  max-height: var(--editor-base-height, 36px);
+}
+
+/* Mantine centres its input sections; the controls belong level with the first
+   line, not halfway down a grown field. */
+.section {
+  align-items: flex-start;
+}
+
 /* Measuring the right-side controls keeps the textarea text clear of them. */
 .rightSection {
   display: flex;
@@ -34,6 +48,19 @@
   &.focused {
     border-color: var(--color-bg-brand);
   }
+}
+
+/* Stacks the open query over the content it spills onto. Stays in flow so it
+   keeps its width — going absolute collapses it in shrink-to-fit parents. A
+   parent that grows the whole field opts out of this. */
+.root[data-floating='true'] .textarea {
+  position: relative;
+  z-index: var(--mantine-z-index-popover);
+}
+
+/* Only while editing — a pinned-open field sits flat against the page. */
+.root[data-floating='true'][data-focused='true'] .textarea {
+  box-shadow: 0 4px 16px rgb(0 0 0 / 15%);
 }
 
 /* Empty placeholders can wrap; hide the unused scrollbar that wrapping creates. */

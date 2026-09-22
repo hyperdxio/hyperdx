@@ -131,7 +131,7 @@ describe('SearchWhereInput', () => {
         'true',
       );
       expect(
-        screen.queryByRole('button', { name: 'Show all lines' }),
+        screen.queryByRole('button', { name: 'Keep expanded' }),
       ).not.toBeInTheDocument();
       await user.click(input);
       await user.keyboard('first{Shift>}{Enter}{/Shift}second');
@@ -162,7 +162,7 @@ describe('SearchWhereInput', () => {
 
   describe('Multiline display', () => {
     it.each(['lucene', 'sql'] as const)(
-      'starts collapsed and expands the %s input',
+      'opens the %s input on focus and pins it open after blur',
       async defaultLanguage => {
         const user = userEvent.setup();
         renderWithMantine(
@@ -172,25 +172,31 @@ describe('SearchWhereInput', () => {
           />,
         );
 
-        const expand = screen.getByRole('button', {
-          name: 'Show all lines',
-        });
-        expect(expand).toHaveAttribute('aria-expanded', 'false');
-        expect(expand.closest('[data-multiline-expanded]')).toHaveAttribute(
-          'data-multiline-expanded',
-          'false',
-        );
+        const pin = screen.getByRole('button', { name: 'Keep expanded' });
+        const root = pin.closest('[data-multiline-expanded]');
+        expect(root).toHaveAttribute('data-multiline-expanded', 'false');
+        expect(root).toHaveAttribute('data-multiline-pinned', 'false');
 
-        await user.click(expand);
+        if (defaultLanguage === 'lucene') {
+          await user.click(
+            screen.getByPlaceholderText(/Search your events w\/ Lucene/i),
+          );
+        } else {
+          await user.click(
+            document.querySelector('.cm-content') as HTMLElement,
+          );
+        }
 
-        const collapse = screen.getByRole('button', {
-          name: 'Show first line',
-        });
-        expect(collapse).toHaveAttribute('aria-expanded', 'true');
-        expect(collapse.closest('[data-multiline-expanded]')).toHaveAttribute(
-          'data-multiline-expanded',
-          'true',
-        );
+        expect(root).toHaveAttribute('data-multiline-expanded', 'true');
+        expect(root).toHaveAttribute('data-multiline-pinned', 'false');
+
+        await user.click(pin);
+
+        expect(
+          screen.getByRole('button', { name: 'Collapse after blur' }),
+        ).toHaveAttribute('aria-expanded', 'true');
+        expect(root).toHaveAttribute('data-multiline-pinned', 'true');
+        expect(root).toHaveAttribute('data-multiline-expanded', 'true');
       },
     );
   });
