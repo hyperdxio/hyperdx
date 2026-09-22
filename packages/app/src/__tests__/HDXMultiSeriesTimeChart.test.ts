@@ -269,6 +269,23 @@ describe('computeYAxisBounds', () => {
     });
   });
 
+  it('extends the zero-pinned domain to cover negative data too', () => {
+    // Regression: Recharts widens a [0, upperBound] domain to fit negative
+    // data, stranding a domain-only tick list in a sliver at the top.
+    const bounds = computeYAxisBounds(
+      [{ a: -100 }, { a: 1 }],
+      [series('a')],
+      false,
+      false,
+      DisplayType.Line,
+      false,
+    );
+    expect(bounds).toEqual({
+      domain: [-100, 1.05],
+      ticks: [-100, -75, -50, -25, 0],
+    });
+  });
+
   it('omits explicit ticks when a reference line can extend the domain', () => {
     // A ReferenceArea's ifOverflow="extendDomain" can silently widen the
     // domain past what these ticks were computed from - defer to Recharts.

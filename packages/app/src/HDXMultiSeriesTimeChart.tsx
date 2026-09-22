@@ -959,14 +959,20 @@ export function computeYAxisBounds(
   const shouldFitYAxis = fitYAxisToData;
 
   if (!hasSelection && !shouldFitYAxis) {
-    const { max } = scanYAxisValueRange(graphResults, visibleLineData);
-    const upperBound = cleanNumber(max * 1.05);
-    if (max === -Infinity || upperBound <= 0) {
+    const { min, max } = scanYAxisValueRange(graphResults, visibleLineData);
+    if (max === -Infinity) {
       return DEFAULT_Y_AXIS_BOUNDS;
     }
-    const ticks = getNiceYAxisTicks(0, upperBound);
+    // Recharts widens an explicit domain to fit out-of-range data, so
+    // negative data must be reflected here, not just pinned at zero.
+    const lowerBound = cleanNumber(Math.min(0, min));
+    const upperBound = cleanNumber(max * 1.05);
+    if (upperBound <= lowerBound) {
+      return DEFAULT_Y_AXIS_BOUNDS;
+    }
+    const ticks = getNiceYAxisTicks(lowerBound, upperBound);
     return {
-      domain: [0, upperBound],
+      domain: [lowerBound, upperBound],
       // A reference line's ReferenceArea can silently extend this domain
       // (extendDomain) at render time, making static ticks go stale.
       ticks: hasReferenceLines || ticks.length === 0 ? undefined : ticks,
