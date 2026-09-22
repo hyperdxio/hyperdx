@@ -12,30 +12,32 @@
   align-items: stretch;
 }
 
-/* An open field spills over the content below instead of pushing it down: the
-   root holds one row, so the taller bar overflows it. The bar stays in flow so
-   it keeps its width — floating it collapses the width in shrink-to-fit
-   ancestors. The whole bar grows, not just the editor, so the language picker
-   grows with the query the way the SQL label does. */
-.root:has(.inputWrapper [data-multiline-expanded='true']) {
+/* Focus peeks at the query: the root holds one row and the taller bar spills
+   over the content below, so nothing reflows while you dip into a long query.
+   Expanding is deliberate and reflows instead, growing this box and pushing the
+   content down, so the matched state here excludes it. The bar stays in flow
+   either way — floating it collapses its width in shrink-to-fit ancestors. The
+   whole bar grows, not just the editor, so the language picker grows with the
+   query the way the SQL label does. */
+.root:has(
+    .inputWrapper
+      [data-multiline-expanded='true'][data-multiline-pinned='false']
+  ) {
   /* `max-height` is what pins it: as a flex item `flex-basis: 0%` replaces
      `height`, which then resolves to the content size. */
   height: var(--editor-base-height);
   max-height: var(--editor-base-height);
-}
 
-.root:has(.inputWrapper [data-multiline-expanded='true']) .bar {
-  position: relative;
-  z-index: var(--mantine-z-index-popover);
-}
-
-/* Only while editing — a pinned-open field sits flat against the page. */
-.root:has(.inputWrapper [data-multiline-expanded='true']):has(
-    .inputWrapper :focus
-  )
   .bar {
-  box-shadow: 0 4px 16px rgb(0 0 0 / 15%);
-  border-radius: var(--mantine-radius-default);
+    position: relative;
+    z-index: var(--mantine-z-index-popover);
+  }
+
+  /* Raised only while it spills over something. */
+  &:has(.inputWrapper :focus) .bar {
+    box-shadow: 0 4px 16px rgb(0 0 0 / 15%);
+    border-radius: var(--mantine-radius-default);
+  }
 }
 
 .inputWrapper {

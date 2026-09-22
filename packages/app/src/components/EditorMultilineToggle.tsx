@@ -11,7 +11,8 @@ export default function EditorMultilineToggle({
   expanded: boolean;
   onToggle: () => void;
 }) {
-  // Focus already opens a temporary overlay; this pin keeps it open after blur.
+  // Focus already peeks at the query over the content below; this opens the
+  // field for good, reflowing the page so nothing sits underneath it.
   const label = expanded ? 'Collapse after blur' : 'Keep expanded';
 
   return (

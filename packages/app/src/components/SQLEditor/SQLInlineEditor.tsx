@@ -179,10 +179,11 @@ export default function SQLInlineEditor({
 
   const [isFocused, setIsFocused] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
-  // Focus opens a temporary overlay; the pin toggle keeps it open after blur.
-  // Either way the layout still holds one row — the open editor spills over it.
+  // Focus peeks at the query: the editor spills over the content below so the
+  // layout still holds one row. Expanding is deliberate, so it reflows instead,
+  // growing the row and pushing the content down.
   const isOpen = allowMultiline && (isFocused || isExpanded);
-  const isFloating = isOpen && floatOnOpen;
+  const isFloating = isOpen && floatOnOpen && !isExpanded;
 
   const ref = useRef<ReactCodeMirrorRef>(null);
 

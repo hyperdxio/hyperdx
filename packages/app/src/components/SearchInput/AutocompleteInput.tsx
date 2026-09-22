@@ -76,9 +76,11 @@ export default function AutocompleteInput({
   const [isSearchInputFocused, _setIsSearchInputFocused] = useState(false);
   const [isInputDropdownOpen, setIsInputDropdownOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
-  // Focus opens a temporary overlay; the pin toggle keeps it open after blur.
+  // Focus peeks at the query: the field spills over the content below so the
+  // layout still holds one row. Expanding is deliberate, so it reflows instead,
+  // growing the row and pushing the content down.
   const isOpen = allowMultiline && (isSearchInputFocused || isExpanded);
-  const isFloating = isOpen && floatOnOpen;
+  const isFloating = isOpen && floatOnOpen && !isExpanded;
 
   const setIsSearchInputFocused = useCallback((state: boolean) => {
     _setIsSearchInputFocused(state);
