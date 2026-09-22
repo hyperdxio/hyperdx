@@ -1251,6 +1251,41 @@ describe('useFetchFacets', () => {
       expect(lastBrowseCall()?.[1]?.enabled).toBe(true);
     });
 
+    it('does not re-request keys the browse query already answered', () => {
+      setupDefaultMocks({ withMVs: false });
+      mockAllFields(FIELDS);
+      // Browse answered for ServiceName, so searching for it must not ask
+      // again; TraceId is absent from the browse page and still must.
+      useGetKeyValues.mockImplementation(({ keys }) =>
+        settledKeyValues(
+          keys.includes('ServiceName')
+            ? [{ key: 'ServiceName', value: ['api'] }]
+            : [],
+        ),
+      );
+
+      const { wrapper } = makeWrapper();
+      const { rerender } = renderHook(
+        (props: { searchQuery: string }) =>
+          useFetchFacets({
+            chartConfig: CHART_CONFIG,
+            sourceId: 'source1',
+            dateRange: DATE_RANGE,
+            mode: 'all',
+            searchQuery: props.searchQuery,
+          }),
+        { wrapper, initialProps: { searchQuery: 'ServiceName' } },
+      );
+
+      expect(lastSearchCall()?.[0]?.keys).toEqual([]);
+      expect(lastSearchCall()?.[1]?.enabled).toBe(false);
+
+      rerender({ searchQuery: 'trace' });
+
+      expect(lastSearchCall()?.[0]?.keys).toEqual(['TraceId']);
+      expect(lastSearchCall()?.[1]?.enabled).toBe(true);
+    });
+
     it('drops the last search page once the search is cleared', () => {
       setupDefaultMocks({ withMVs: false });
       mockAllFields(FIELDS);

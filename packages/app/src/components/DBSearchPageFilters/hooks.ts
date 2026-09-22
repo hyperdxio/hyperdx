@@ -212,14 +212,14 @@ function useFacets({
       .map(({ path }) => path);
   }, [allFields, jsonColumns, mapColumns, searchQuery]);
 
-  const { escapedKeysToFetch, escapedSearchKeys, sqlKeyToUiKey } =
+  const { escapedKeysToFetch, escapedSearchMatches, sqlKeyToUiKey } =
     useMemo(() => {
       // Don't fetch any keys until the column list is loaded,
       // since we need the real column names to escape correctly.
       if (isColumnsLoading) {
         return {
           escapedKeysToFetch: [],
-          escapedSearchKeys: [],
+          escapedSearchMatches: [],
           sqlKeyToUiKey: new Map(),
         };
       }
@@ -232,7 +232,7 @@ function useFacets({
       };
       return {
         escapedKeysToFetch: keysToFetch.map(escape),
-        escapedSearchKeys: searchKeysToFetch.map(escape),
+        escapedSearchMatches: searchKeysToFetch.map(escape),
         sqlKeyToUiKey,
       };
     }, [isColumnsLoading, keysToFetch, searchKeysToFetch, knownColumns]);
@@ -253,6 +253,21 @@ function useFacets({
       mode,
     },
     { enabled: enabled && !disableValues },
+  );
+
+  // Whatever browse already returned needs no second lookup — same keys, same
+  // limit, same scope. Without this, searching for a field that is already on
+  // screen costs a round trip that answers with what we are holding, which is
+  // the most common search there is. Keyed off what came back rather than what
+  // was asked for: the browse query truncates at `maxKeys`, so "we requested
+  // it" does not mean "we have it".
+  const browseKeys = useMemo(
+    () => new Set((rawFacets ?? []).map(facet => facet.key)),
+    [rawFacets],
+  );
+  const escapedSearchKeys = useMemo(
+    () => escapedSearchMatches.filter(key => !browseKeys.has(key)),
+    [escapedSearchMatches, browseKeys],
   );
 
   // A second query rather than widening the one above: the browse list must
