@@ -1232,6 +1232,11 @@ export const FilterSchema = z.union([
   z.object({
     type: z.enum(['lucene', 'sql']),
     condition: z.string(),
+    // Marks the condition as an exclusion (e.g. the sidebar's `NOT IN`). The
+    // condition string is self-contained, so most call sites can ignore this;
+    // trace-scope search reads it to keep exclusions out of the existential
+    // trace-membership rewrite (see renderWhere in renderChartConfig).
+    negated: z.boolean().optional(),
   }),
   SqlAstFilterSchema,
 ]);

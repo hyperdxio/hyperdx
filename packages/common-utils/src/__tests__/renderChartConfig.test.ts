@@ -5316,6 +5316,33 @@ describe('renderChartConfig', () => {
       expect(uniqueInt64.size).toBe(2);
     });
 
+    it('keeps an exclusion filter out of the membership subqueries so it still excludes @AC-FR002-01', async () => {
+      const sql = await renderSql(
+        buildTraceConfig({
+          filters: [
+            { type: 'sql', condition: "SpanName = 'checkout'" },
+            {
+              type: 'sql',
+              condition: "ServiceName NOT IN ('api')",
+              negated: true,
+            },
+          ],
+        }),
+      );
+
+      // Only the positive predicate is rewritten into a trace-membership
+      // subquery. Wrapping the exclusion as `TraceId IN (SELECT ... WHERE
+      // ServiceName NOT IN ('api'))` would mean "some span is not api" — true
+      // for almost any trace — so the exclusion is applied to the outer rows
+      // instead and excluded values genuinely disappear from the results.
+      const subqueryCount = (
+        sql.match(/TraceId IN \(SELECT TraceId FROM/g) ?? []
+      ).length;
+      expect(subqueryCount).toBe(1);
+      expect(sql).toContain("SpanName = 'checkout'");
+      expect(sql).toContain("ServiceName NOT IN ('api')");
+    });
+
     it('emits identical SQL for span scope and for absent scope @AC-FR003-01', async () => {
       const filters = [
         { type: 'sql' as const, condition: "ServiceName = 'api'" },

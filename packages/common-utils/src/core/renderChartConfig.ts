@@ -1398,40 +1398,52 @@ async function renderWhere(
     ).filter(v => v !== null) as ChSql[];
   }
 
-  const filterConditions = await Promise.all(
-    (chartConfig.filters ?? []).map(async filter => {
-      if (filter.type === 'sql_ast') {
-        return wrapChSqlIfNotEmpty(
-          chSql`${{ UNSAFE_RAW_SQL: filter.left }} ${filter.operator} ${{ UNSAFE_RAW_SQL: filter.right }}`,
-          '(',
-          ')',
-        );
-      } else if (filter.type === 'lucene' || filter.type === 'sql') {
-        const condition =
-          filter.type === 'sql'
-            ? rewriteSqlFilterWithKvItems(filter.condition, textIndexInfoLookup)
-            : filter.condition;
-        return wrapChSqlIfNotEmpty(
-          await renderWhereExpression({
-            condition,
-            from: chartConfig.from,
-            language: filter.type,
-            implicitColumnExpression: chartConfig.implicitColumnExpression,
-            bodyExpression: chartConfig.bodyExpression,
-            useTextIndexForImplicitColumn:
-              chartConfig.useTextIndexForImplicitColumn,
-            metadata,
-            connectionId: chartConfig.connection,
-            with: chartConfig.with,
-          }),
-          '(',
-          ')',
-        );
-      }
+  const renderedFilters: { condition: ChSql | []; negated: boolean }[] =
+    await Promise.all(
+      (chartConfig.filters ?? []).map(async filter => {
+        if (filter.type === 'sql_ast') {
+          return {
+            condition: wrapChSqlIfNotEmpty(
+              chSql`${{ UNSAFE_RAW_SQL: filter.left }} ${filter.operator} ${{ UNSAFE_RAW_SQL: filter.right }}`,
+              '(',
+              ')',
+            ),
+            negated: false,
+          };
+        } else if (filter.type === 'lucene' || filter.type === 'sql') {
+          const condition =
+            filter.type === 'sql'
+              ? rewriteSqlFilterWithKvItems(
+                  filter.condition,
+                  textIndexInfoLookup,
+                )
+              : filter.condition;
+          return {
+            condition: wrapChSqlIfNotEmpty(
+              await renderWhereExpression({
+                condition,
+                from: chartConfig.from,
+                language: filter.type,
+                implicitColumnExpression: chartConfig.implicitColumnExpression,
+                bodyExpression: chartConfig.bodyExpression,
+                useTextIndexForImplicitColumn:
+                  chartConfig.useTextIndexForImplicitColumn,
+                metadata,
+                connectionId: chartConfig.connection,
+                with: chartConfig.with,
+              }),
+              '(',
+              ')',
+            ),
+            negated: filter.negated ?? false,
+          };
+        }
 
-      throw new Error(`Unknown filter type: ${filter.type}`);
-    }),
-  );
+        throw new Error(`Unknown filter type: ${filter.type}`);
+      }),
+    );
+
+  const filterConditions = renderedFilters.map(f => f.condition);
 
   const timeFilter: ChSql | [] =
     chartConfig.dateRange != null &&
@@ -1458,27 +1470,30 @@ async function renderWhere(
       '(',
       ')',
     );
-    // MVP limitation: each predicate becomes an existential trace-membership
-    // test ("some span of the trace satisfies it"), which is the intended
-    // semantics for positive predicates AND-ed across spans. A negated /
-    // exclusion predicate (e.g. `ServiceName NOT IN (...)`) is therefore
-    // satisfied by any trace that merely has one other span, so exclusions do
-    // not exclude at trace scope. Predicate polarity is not recoverable from
-    // the already-rendered SQL here; handling negation correctly (as
-    // `TraceId NOT IN (SELECT ... WHERE <positive form>)`) needs the structured
-    // filter and is left to a follow-up.
-    const searchPredicates = [
+    // Positive predicates become existential trace-membership tests ("a trace
+    // matches when *some* span satisfies the predicate"), AND-ed together so a
+    // trace must satisfy each across (possibly different) spans. The search bar
+    // and aggConditions are treated as positive.
+    const membershipPredicates = [
       whereSearchCondition,
       aggConditionGroup,
-      ...filterConditions,
+      ...renderedFilters.filter(f => !f.negated).map(f => f.condition),
     ].filter((p): p is ChSql => !Array.isArray(p) && p.sql.length > 0);
+
+    // Exclusion filters must NOT be wrapped in a membership subquery: "some
+    // span is NOT x" is true for almost any multi-span trace, so the exclusion
+    // would stop excluding. Apply them to the returned rows instead, so an
+    // excluded value genuinely disappears from the results.
+    const exclusionConditions = renderedFilters
+      .filter(f => f.negated)
+      .map(f => f.condition);
 
     const tid = chSql`${{ UNSAFE_RAW_SQL: traceIdExpression }}`;
     const from = renderFrom({
       from: chartConfig.from,
       isRenderingRawSqlTemplate: chartConfig.isRenderingRawSqlTemplate,
     });
-    const membershipSubqueries = searchPredicates.map(
+    const membershipSubqueries = membershipPredicates.map(
       predicate =>
         chSql`${tid} IN (SELECT ${tid} FROM ${from} WHERE ${concatChSql(' AND ', predicate, timeFilter)})`,
     );
@@ -1486,7 +1501,12 @@ async function renderWhere(
     // Trace scope is search-only by contract, so (unlike the span path below)
     // it deliberately omits the `$__filters` raw-SQL-template expansion: it is
     // never rendered in a dashboard raw-SQL context.
-    return concatChSql(' AND ', timeFilter, ...membershipSubqueries);
+    return concatChSql(
+      ' AND ',
+      timeFilter,
+      ...membershipSubqueries,
+      ...exclusionConditions,
+    );
   }
 
   return concatChSql(

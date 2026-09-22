@@ -77,7 +77,7 @@ describe('filters', () => {
       };
       expect(filtersToQuery(filters)).toEqual([
         { type: 'sql', condition: "a IN ('b')" },
-        { type: 'sql', condition: "a NOT IN ('c')" },
+        { type: 'sql', condition: "a NOT IN ('c')", negated: true },
       ]);
     });
 
@@ -90,7 +90,11 @@ describe('filters', () => {
       };
       expect(filtersToQuery(filters, { stringifyKeys: true })).toEqual([
         { type: 'sql', condition: "toString(json.key) IN ('value')" },
-        { type: 'sql', condition: "toString(json.key) NOT IN ('other value')" },
+        {
+          type: 'sql',
+          condition: "toString(json.key) NOT IN ('other value')",
+          negated: true,
+        },
       ]);
     });
 
@@ -107,7 +111,11 @@ describe('filters', () => {
       };
       expect(filtersToQuery(filters)).toEqual([
         { type: 'sql', condition: 'isRootSpan IN (true)' },
-        { type: 'sql', condition: 'another_column NOT IN (true, false)' },
+        {
+          type: 'sql',
+          condition: 'another_column NOT IN (true, false)',
+          negated: true,
+        },
       ]);
     });
 
@@ -137,6 +145,7 @@ describe('filters', () => {
         {
           type: 'sql',
           condition: "message NOT IN ('it''s a test')",
+          negated: true,
         },
       ]);
     });
@@ -182,6 +191,7 @@ describe('filters', () => {
         {
           type: 'sql',
           condition: "FilePath NOT IN ('C:\\\\path\\\\to\\\\file')",
+          negated: true,
         },
       ]);
     });
@@ -221,6 +231,7 @@ describe('filters', () => {
             type: 'sql',
             condition:
               "Timestamp NOT IN (parseDateTime64BestEffort('2026-06-16T15:35:16.731000000Z', 9))",
+            negated: true,
           },
         ]);
       });
@@ -307,6 +318,7 @@ describe('filters', () => {
             type: 'sql',
             condition:
               "Timestamp NOT IN (parseDateTime64BestEffort('2026-06-16', 9), parseDateTime64BestEffort('2026-06-17', 9))",
+            negated: true,
           },
         ]);
       });
@@ -328,6 +340,7 @@ describe('filters', () => {
             type: 'sql',
             condition:
               "Timestamp NOT IN (parseDateTime64BestEffort('2026-06-17', 9))",
+            negated: true,
           },
         ]);
       });
@@ -345,6 +358,7 @@ describe('filters', () => {
           {
             type: 'sql',
             condition: "toString(Timestamp) NOT IN ('2026-06-16')",
+            negated: true,
           },
         ]);
       });
@@ -381,7 +395,11 @@ describe('filters', () => {
           },
         };
         expect(filtersToQuery(filters)).toEqual([
-          { type: 'sql', condition: "Timestamp NOT IN ('2026-06-16')" },
+          {
+            type: 'sql',
+            condition: "Timestamp NOT IN ('2026-06-16')",
+            negated: true,
+          },
         ]);
       });
     });
