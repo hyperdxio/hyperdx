@@ -30,26 +30,22 @@ export const ExpandedLogRow = memo(
     virtualKey,
     source,
     rowId,
-    measureElement,
-    virtualIndex,
   }: {
     children: React.ReactNode;
     columnsLength: number;
     virtualKey: string;
     source?: TSource;
     rowId: string;
-    measureElement?: (element: HTMLElement | null) => void;
-    virtualIndex?: number;
   }) => {
     const openSidebar = useSidebarOpener();
 
     return (
+      // Deliberately not measured by the virtualizer: the enclosing `tbody` is
+      // the element registered for this row's virtual index.
       <tr
         data-testid={`expanded-row-${rowId}`}
         key={`${virtualKey}-expanded`}
         className={styles.expandedRow}
-        data-index={virtualIndex}
-        ref={measureElement}
       >
         <td colSpan={columnsLength} className="p-0 border-0">
           <div className={cx('mx-2 mb-2 rounded', styles.expandedRowContent)}>
