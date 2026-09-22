@@ -518,7 +518,7 @@ function trimTrailingZeros(formatted: string): string {
   return trimmed.replace(/^-(0%?)$/, '$1');
 }
 
-// The fixed-width gutter fits a suffix the same as any other character,
+// The fixed-width gutter budgets a suffix like every other character,
 // unless the value is under 1 with a short suffix (see the web twin).
 function axisLabelBudget(formatted: string): number {
   const spaceIndex = formatted.indexOf(' ');
