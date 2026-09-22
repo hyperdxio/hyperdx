@@ -93,9 +93,6 @@ export const filtersToQuery = (
           condition: `${actualKey} NOT IN (${Array.from(values.excluded)
             .map(formatValue)
             .join(', ')})`,
-          // Exclusion: kept out of the trace-scope existential membership
-          // rewrite, where "some span is NOT x" would match almost every trace.
-          negated: true,
         });
       }
       if (values.range != null) {

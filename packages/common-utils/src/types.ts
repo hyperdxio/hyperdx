@@ -1232,11 +1232,6 @@ export const FilterSchema = z.union([
   z.object({
     type: z.enum(['lucene', 'sql']),
     condition: z.string(),
-    // Marks the condition as an exclusion (e.g. the sidebar's `NOT IN`). The
-    // condition string is self-contained, so most call sites can ignore this;
-    // trace-scope search reads it to keep exclusions out of the existential
-    // trace-membership rewrite (see renderWhere in renderChartConfig).
-    negated: z.boolean().optional(),
   }),
   SqlAstFilterSchema,
 ]);
@@ -1861,6 +1856,11 @@ export type DateRange = {
   // `__hdx_series_limit` CTE so every chunk ranks (and keeps) the same
   // top-N series. Never persisted.
   seriesLimitDateRange?: [Date, Date];
+  // Set when the query is chunked into time windows (see useOffsetPaginatedQuery):
+  // the user's full selected range, so trace-scope membership subqueries can
+  // match spans that straddle a window boundary instead of only seeing the
+  // current chunk's window. Never persisted.
+  traceScopeDateRange?: [Date, Date];
 };
 
 export type ChartConfigWithDateRange = ChartConfig & DateRange;

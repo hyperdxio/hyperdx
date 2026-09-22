@@ -5316,16 +5316,14 @@ describe('renderChartConfig', () => {
       expect(uniqueInt64.size).toBe(2);
     });
 
-    it('keeps an exclusion filter out of the membership subqueries so it still excludes @AC-FR002-01', async () => {
+    it('keeps a NOT IN exclusion filter out of the membership subqueries so it still excludes @AC-FR002-01', async () => {
+      // No `negated` marker: negation is derived from the condition at render
+      // time, so exclusions from saved searches / older URLs are handled too.
       const sql = await renderSql(
         buildTraceConfig({
           filters: [
             { type: 'sql', condition: "SpanName = 'checkout'" },
-            {
-              type: 'sql',
-              condition: "ServiceName NOT IN ('api')",
-              negated: true,
-            },
+            { type: 'sql', condition: "ServiceName NOT IN ('api')" },
           ],
         }),
       );
@@ -5341,6 +5339,78 @@ describe('renderChartConfig', () => {
       expect(subqueryCount).toBe(1);
       expect(sql).toContain("SpanName = 'checkout'");
       expect(sql).toContain("ServiceName NOT IN ('api')");
+    });
+
+    it('keeps a sql_ast != filter and a negated search bar off the membership rewrite @AC-FR002-02', async () => {
+      const sql = await renderSql(
+        buildTraceConfig({
+          where: "ServiceName != 'cart'",
+          whereLanguage: 'sql',
+          filters: [
+            { type: 'sql', condition: "SpanName = 'checkout'" },
+            {
+              type: 'sql_ast',
+              operator: '!=',
+              left: 'ServiceName',
+              right: "'api'",
+            },
+          ],
+        }),
+      );
+
+      // Only the one positive predicate (SpanName = checkout) is a membership
+      // subquery; both negations stay on the outer WHERE.
+      const subqueryCount = (
+        sql.match(/TraceId IN \(SELECT TraceId FROM/g) ?? []
+      ).length;
+      expect(subqueryCount).toBe(1);
+      expect(sql).toContain("SpanName = 'checkout'");
+      expect(sql).toContain("ServiceName != 'api'");
+      expect(sql).toContain("ServiceName != 'cart'");
+    });
+
+    it('scans each membership subquery over the full range, not the paginated window @AC-FR001-05', async () => {
+      const fullRange: [Date, Date] = [
+        new Date('2025-01-01T00:00:00Z'),
+        new Date('2025-01-02T00:00:00Z'),
+      ];
+      const windowRange: [Date, Date] = [
+        new Date('2025-01-01T10:00:00Z'),
+        new Date('2025-01-01T10:01:00Z'),
+      ];
+      const filters = [
+        { type: 'sql' as const, condition: "ServiceName = 'api'" },
+        { type: 'sql' as const, condition: "SpanName = 'checkout'" },
+      ];
+
+      // dateRange is the (narrow) current window; traceScopeDateRange is the
+      // user's full selected range the membership subqueries must use, so a
+      // trace whose predicates sit in different windows is still matched. The
+      // full-range bound is only introduced by the subqueries (the outer query
+      // uses the window), so its presence proves the subqueries were pinned.
+      const withFullRange = await renderChartConfig(
+        buildTraceConfig({
+          dateRange: windowRange,
+          traceScopeDateRange: fullRange,
+          filters,
+        }),
+        mockMetadata,
+        undefined,
+      );
+      expect(Object.values(withFullRange.params)).toContain(
+        fullRange[1].getTime(),
+      );
+
+      // Without traceScopeDateRange the subqueries fall back to the window, so
+      // the full-range bound never appears.
+      const windowedOnly = await renderChartConfig(
+        buildTraceConfig({ dateRange: windowRange, filters }),
+        mockMetadata,
+        undefined,
+      );
+      expect(Object.values(windowedOnly.params)).not.toContain(
+        fullRange[1].getTime(),
+      );
     });
 
     it('emits identical SQL for span scope and for absent scope @AC-FR003-01', async () => {

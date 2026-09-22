@@ -1293,6 +1293,37 @@ async function renderWhereExpression(
   return chSql`${{ UNSAFE_RAW_SQL: _condition }}`;
 }
 
+/**
+ * Best-effort detection of a predicate that is a single top-level exclusion /
+ * negation, derived from the raw condition (the source of truth) rather than an
+ * out-of-band flag saved searches and older URLs don't carry.
+ *
+ * Trace scope must keep such predicates off the existential trace-membership
+ * rewrite: `TraceId IN (SELECT ... WHERE <col> NOT IN (...))` asks for a trace
+ * with *some* other span, which is true for almost every multi-span trace, so
+ * the exclusion would stop excluding. Detected negations are applied to the
+ * outer rows instead.
+ *
+ * Conservative: a predicate that combines terms at the top level (`AND`/`OR`)
+ * is treated as positive so a mixed filter is never mis-routed — the residual
+ * case is a hand-written mixed search-bar query, documented as a limitation.
+ */
+export function isNegatedFilterCondition(
+  condition: string | null | undefined,
+  language: string,
+): boolean {
+  const c = (condition ?? '').trim();
+  if (!c) return false;
+  if (/\b(AND|OR)\b/i.test(c)) return false;
+  if (language === 'lucene') {
+    // Lucene exclusion on the sole term: a leading `-` or `NOT `.
+    return /^-\S/.test(c) || /^NOT\s/i.test(c);
+  }
+  // SQL: the deterministic sidebar exclusion (`col NOT IN (...)`), a leading
+  // `NOT`, or a single `!=` / `<>` comparison.
+  return /^NOT\s/i.test(c) || /\bNOT\s+IN\b/i.test(c) || /!=|<>/.test(c);
+}
+
 async function renderWhere(
   chartConfig: BuilderChartConfigWithOptDateRangeEx,
   metadata: Metadata,
@@ -1408,7 +1439,7 @@ async function renderWhere(
               '(',
               ')',
             ),
-            negated: false,
+            negated: filter.operator === '!=',
           };
         } else if (filter.type === 'lucene' || filter.type === 'sql') {
           const condition =
@@ -1435,7 +1466,7 @@ async function renderWhere(
               '(',
               ')',
             ),
-            negated: filter.negated ?? false,
+            negated: isNegatedFilterCondition(filter.condition, filter.type),
           };
         }
 
@@ -1470,23 +1501,58 @@ async function renderWhere(
       '(',
       ')',
     );
+    // The search bar is one predicate; treat it as positive (membership) unless
+    // it is itself a single negation (e.g. `-ServiceName:"cart"`), which — like
+    // an exclusion filter — must stay on the outer WHERE, never in a membership
+    // subquery.
+    const searchBarNegated = isNegatedFilterCondition(
+      chartConfig.where,
+      chartConfig.whereLanguage ?? 'sql',
+    );
+
     // Positive predicates become existential trace-membership tests ("a trace
     // matches when *some* span satisfies the predicate"), AND-ed together so a
-    // trace must satisfy each across (possibly different) spans. The search bar
-    // and aggConditions are treated as positive.
+    // trace must satisfy each across (possibly different) spans.
     const membershipPredicates = [
-      whereSearchCondition,
+      searchBarNegated ? [] : whereSearchCondition,
       aggConditionGroup,
       ...renderedFilters.filter(f => !f.negated).map(f => f.condition),
     ].filter((p): p is ChSql => !Array.isArray(p) && p.sql.length > 0);
 
-    // Exclusion filters must NOT be wrapped in a membership subquery: "some
-    // span is NOT x" is true for almost any multi-span trace, so the exclusion
-    // would stop excluding. Apply them to the returned rows instead, so an
-    // excluded value genuinely disappears from the results.
-    const exclusionConditions = renderedFilters
-      .filter(f => f.negated)
-      .map(f => f.condition);
+    // Exclusion/negated predicates must NOT be wrapped in a membership subquery:
+    // "some span is NOT x" is true for almost any multi-span trace, so the
+    // exclusion would stop excluding. Apply them to the returned rows instead,
+    // so an excluded value genuinely disappears from the results. Negation is
+    // derived from the condition at render time, so exclusions from saved
+    // searches / older URLs (which carry no marker) are handled too.
+    const exclusionConditions = [
+      searchBarNegated ? whereSearchCondition : [],
+      ...renderedFilters.filter(f => f.negated).map(f => f.condition),
+    ].filter((p): p is ChSql => !Array.isArray(p) && p.sql.length > 0);
+
+    // Membership must be evaluated over the user's full selected range, not the
+    // paginated window the outer query uses: predicate A and predicate B can sit
+    // in spans that fall in different windows, so a per-window subquery would
+    // never intersect them. `traceScopeDateRange` carries that full range when
+    // the query is chunked (see useOffsetPaginatedQuery); absent it, dateRange
+    // already is the full range.
+    const membershipTimeFilter: ChSql | [] =
+      chartConfig.traceScopeDateRange != null &&
+      chartConfig.timestampValueExpression != null
+        ? await timeFilterExpr({
+            timestampValueExpression: chartConfig.timestampValueExpression,
+            dateRange: chartConfig.traceScopeDateRange,
+            dateRangeStartInclusive: true,
+            dateRangeEndInclusive: true,
+            isRenderingRawSqlTemplate: chartConfig.isRenderingRawSqlTemplate,
+            metadata,
+            connectionId: chartConfig.connection,
+            databaseName: chartConfig.from.databaseName,
+            tableName: chartConfig.from.tableName,
+            with: chartConfig.with,
+            includedDataInterval: chartConfig.includedDataInterval,
+          })
+        : timeFilter;
 
     const tid = chSql`${{ UNSAFE_RAW_SQL: traceIdExpression }}`;
     const from = renderFrom({
@@ -1495,7 +1561,7 @@ async function renderWhere(
     });
     const membershipSubqueries = membershipPredicates.map(
       predicate =>
-        chSql`${tid} IN (SELECT ${tid} FROM ${from} WHERE ${concatChSql(' AND ', predicate, timeFilter)})`,
+        chSql`${tid} IN (SELECT ${tid} FROM ${from} WHERE ${concatChSql(' AND ', predicate, membershipTimeFilter)})`,
     );
 
     // Trace scope is search-only by contract, so (unlike the span path below)
