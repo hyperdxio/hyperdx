@@ -11,6 +11,7 @@ import {
 import { Flex } from '@mantine/core';
 
 import type { NumberFormat } from '@/types';
+import { useContentFontSize } from '@/useUserPreferences';
 import { formatNumber } from '@/utils';
 
 import {
@@ -23,6 +24,7 @@ import { ChartTooltipContainer, ChartTooltipItem } from './charts/ChartTooltip';
 
 const MAX_BAR_LABEL_LENGTH = 14;
 const BAR_LABEL_AXIS_HEIGHT = 80; // increased height to accommodate rotated + truncated labels
+const Y_AXIS_WIDTH = 40;
 
 const truncateBarLabel = (value: string) =>
   value.length > MAX_BAR_LABEL_LENGTH
@@ -69,6 +71,14 @@ export const DBBarChart = (props: CategoricalChartProps) => {
     chartData,
     responseFormatError,
   } = useCategoricalChart(props);
+  // Both axis allocations are character budgets at the default tick font, so
+  // they scale with it rather than clipping the labels.
+  const { base: axisTickFontSize, scale: contentFontScale } =
+    useContentFontSize();
+  const barLabelAxisHeight = Math.round(
+    BAR_LABEL_AXIS_HEIGHT * contentFontScale,
+  );
+  const yAxisWidth = Math.round(Y_AXIS_WIDTH * contentFontScale);
 
   return (
     <ChartContainer title={props.title} toolbarItems={toolbarItems}>
@@ -106,12 +116,15 @@ export const DBBarChart = (props: CategoricalChartProps) => {
                 interval={0}
                 angle={-45}
                 textAnchor="end"
-                height={BAR_LABEL_AXIS_HEIGHT}
+                height={barLabelAxisHeight}
                 tickFormatter={truncateBarLabel}
-                tick={{ fontSize: 12, fontFamily: 'IBM Plex Mono, monospace' }}
+                tick={{
+                  fontSize: axisTickFontSize,
+                  fontFamily: 'IBM Plex Mono, monospace',
+                }}
               />
               <YAxis
-                width={40}
+                width={yAxisWidth}
                 minTickGap={25}
                 tickFormatter={(value: number) =>
                   resolvedNumberFormat
@@ -121,7 +134,10 @@ export const DBBarChart = (props: CategoricalChartProps) => {
                         compactDisplay: 'short',
                       }).format(value)
                 }
-                tick={{ fontSize: 12, fontFamily: 'IBM Plex Mono, monospace' }}
+                tick={{
+                  fontSize: axisTickFontSize,
+                  fontFamily: 'IBM Plex Mono, monospace',
+                }}
               />
               <Bar dataKey="value">
                 {chartData.map(entry => (

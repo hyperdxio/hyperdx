@@ -3,6 +3,12 @@ import produce from 'immer';
 import { useAtom } from 'jotai';
 import { atomWithStorage } from 'jotai/utils';
 
+import {
+  CONTENT_FONT_SIZES,
+  type ContentFontSize,
+  DEFAULT_CONTENT_FONT_SIZE,
+} from '@/config/fonts';
+
 type ColorModePreference = 'light' | 'dark' | 'system';
 
 export type UserPreferences = {
@@ -12,6 +18,11 @@ export type UserPreferences = {
   colorMode: ColorModePreference;
   font: 'IBM Plex Mono' | 'Roboto Mono' | 'Inter' | 'Roboto';
   expandSidebarHeader?: boolean;
+  /**
+   * Font size for content surfaces (tables, charts). Optional so preferences
+   * saved before it existed keep working; read it via `useContentFontSize`.
+   */
+  contentFontSize?: ContentFontSize;
 };
 
 // Legacy type for migration
@@ -215,6 +226,29 @@ export const useUserPreferences = () => {
   );
 
   return { userPreferences, setUserPreference };
+};
+
+/**
+ * Resolved content font size. CSS surfaces should read the
+ * `--hdx-content-font-size` / `--hdx-content-font-size-compact` custom
+ * properties set from this in `_app.tsx`; the numbers are for the charts,
+ * which take numeric `fontSize` props rather than CSS.
+ */
+export const useContentFontSize = () => {
+  const {
+    userPreferences: { contentFontSize },
+  } = useUserPreferences();
+
+  const size = contentFontSize ?? DEFAULT_CONTENT_FONT_SIZE;
+  const { base, compact } = CONTENT_FONT_SIZES[size];
+
+  return {
+    contentFontSize: size,
+    base,
+    compact,
+    /** Ratio against the default, for px sizing that must grow with the text. */
+    scale: base / CONTENT_FONT_SIZES[DEFAULT_CONTENT_FONT_SIZE].base,
+  };
 };
 
 /**
