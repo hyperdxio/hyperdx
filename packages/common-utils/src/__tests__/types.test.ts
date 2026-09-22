@@ -11,6 +11,7 @@ import {
   DerivedColumnSchema,
   MAX_LEGEND_TEMPLATE_LENGTH,
   MetricFormulaSchema,
+  MetricSourceSchema,
   PresetDashboard,
   PresetDashboardFilterSchema,
   SavedChartConfigSchema,
@@ -848,6 +849,39 @@ describe('DashboardSchema.savedDateRange', () => {
     expect(parse({ type: 'historical', value: [1700000000] })).toBe(false);
     expect(parse({ type: 'other', value: 1 })).toBe(false);
     expect(parse(3600)).toBe(false);
+  });
+});
+
+describe('MetricSourceSchema.minAutoGranularity', () => {
+  const base = {
+    id: 'source-1',
+    kind: 'metric' as const,
+    name: 'Metrics',
+    connection: 'conn-1',
+    from: { databaseName: 'default', tableName: '' },
+    timestampValueExpression: 'TimeUnix',
+    resourceAttributesExpression: 'ResourceAttributes',
+    metricTables: { gauge: 'otel_metrics_gauge' },
+  };
+  const parse = (minAutoGranularity: unknown) =>
+    MetricSourceSchema.safeParse({ ...base, minAutoGranularity });
+
+  it('accepts a valid interval or absent', () => {
+    expect(parse('1 minute').success).toBe(true);
+    expect(parse(undefined).success).toBe(true);
+  });
+
+  it("coerces the form's \"No minimum\" value ('') to undefined", () => {
+    const result = parse('');
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.minAutoGranularity).toBeUndefined();
+    }
+  });
+
+  it('rejects a malformed interval', () => {
+    expect(parse('1 fortnight').success).toBe(false);
+    expect(parse('minute').success).toBe(false);
   });
 });
 
