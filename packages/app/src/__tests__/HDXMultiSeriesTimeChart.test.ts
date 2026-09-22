@@ -196,13 +196,12 @@ describe('getNiceYAxisTicks', () => {
     expect(getNiceYAxisTicks(0, 1480).length).toBeLessThanOrEqual(5);
   });
 
-  it('terminates instead of looping forever at extreme magnitudes', () => {
-    // Regression: cleanNumber's 12-significant-digit rounding can make
-    // t + step round back to t, so the generation loop never advanced.
-    expect(() => getNiceYAxisTicks(999999999999, 1000000000030)).not.toThrow();
-    expect(
-      getNiceYAxisTicks(999999999999, 1000000000030).length,
-    ).toBeLessThanOrEqual(5);
+  it('rejects a precision-collapsed step instead of looping or truncating', () => {
+    // Regression: accepting the truncated result of a precision-collapsed
+    // step gave a one-tick axis instead of trying a coarser step.
+    expect(getNiceYAxisTicks(999999999999, 1000000000030)).toEqual([
+      1000000000000, 1000000000010, 1000000000020, 1000000000030,
+    ]);
   });
 
   it('avoids a step that formatAxisTick would round unevenly (12.5 -> "13")', () => {

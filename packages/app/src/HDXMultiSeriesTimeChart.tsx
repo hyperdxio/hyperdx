@@ -877,16 +877,22 @@ function niceStepsNear(target: number): number[] {
     .sort((a, b) => a - b);
 }
 
-function ticksWithinRange(step: number, min: number, max: number): number[] {
+// null means the step is unusable at this magnitude (see below), which
+// getNiceYAxisTicks must treat as a rejection, not as a short tick list.
+function ticksWithinRange(
+  step: number,
+  min: number,
+  max: number,
+): number[] | null {
   const ticks: number[] = [];
   let t = cleanNumber(Math.ceil(min / step) * step);
   while (t <= max + step * 1e-9) {
     ticks.push(t);
     const next = cleanNumber(t + step);
     // At extreme magnitudes, float precision can make this step a no-op -
-    // stop rather than push the same value forever.
+    // reject it rather than accept a truncated, collapsed tick list.
     if (next <= t) {
-      break;
+      return null;
     }
     t = next;
   }
@@ -916,7 +922,11 @@ export function getNiceYAxisTicks(
   const steps = niceStepsNear((max - min) / (maxTicks - 1));
   for (const step of steps) {
     const ticks = ticksWithinRange(step, min, max);
-    if (ticks.length <= maxTicks && hasDistinctLabels(ticks, formatTick)) {
+    if (
+      ticks &&
+      ticks.length <= maxTicks &&
+      hasDistinctLabels(ticks, formatTick)
+    ) {
       return ticks;
     }
   }
