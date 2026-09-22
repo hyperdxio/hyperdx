@@ -1,6 +1,8 @@
 /* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
 import React from 'react';
 import { enableMapSet } from 'immer';
+import { JSDataType } from '@hyperdx/common-utils/dist/clickhouse';
+import type { Field } from '@hyperdx/common-utils/dist/core/metadata';
 import { FilterState } from '@hyperdx/common-utils/dist/filters';
 import {
   BuilderChartConfigWithDateRange,
@@ -10,6 +12,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react';
 
 import api from '@/api';
+import type { Facet } from '@/hooks/useMetadata';
 import * as useMetadataModule from '@/hooks/useMetadata';
 import * as searchFiltersModule from '@/searchFilters';
 import * as sourceModule from '@/source';
@@ -134,6 +137,24 @@ const mockSourceQuery = (data: SourceQueryResult['data']) =>
 
 const mockMetadata = (metadata: Partial<MetadataWithSettings>) =>
   useMetadataWithSettings.mockReturnValue(metadata as MetadataWithSettings);
+
+type AllFieldsResult = ReturnType<typeof useMetadataModule.useAllFields>;
+type MapColumnsResult = ReturnType<typeof useMetadataModule.useMapColumns>;
+type KeyValuesResult = ReturnType<typeof useMetadataModule.useGetKeyValues>;
+
+const mockAllFields = (data: Field[]) =>
+  useAllFields.mockReturnValue({ data } as AllFieldsResult);
+
+const mockMapColumns = (data: string[]) =>
+  useMapColumns.mockReturnValue({ data } as MapColumnsResult);
+
+const settledKeyValues = (data: Facet[]) =>
+  ({
+    data,
+    isLoading: false,
+    isFetching: false,
+    error: null,
+  }) as KeyValuesResult;
 
 function makeWrapper() {
   const queryClient = new QueryClient({
@@ -1155,26 +1176,26 @@ describe('useFetchFacets', () => {
   // typing untouched, and it looks at every string field rather than the
   // low-cardinality subset the browse list narrows to.
   describe('searchQuery', () => {
-    const FIELDS = [
+    const FIELDS: Field[] = [
       {
         path: ['ServiceName'],
         type: 'LowCardinality(String)',
-        jsType: 'string',
+        jsType: JSDataType.String,
       },
-      { path: ['TraceId'], type: 'String', jsType: 'string' },
-      { path: ['SpanId'], type: 'String', jsType: 'string' },
-      { path: ['Duration'], type: 'UInt64', jsType: 'number' },
+      { path: ['TraceId'], type: 'String', jsType: JSDataType.String },
+      { path: ['SpanId'], type: 'String', jsType: JSDataType.String },
+      { path: ['Duration'], type: 'UInt64', jsType: JSDataType.Number },
       {
         path: ['LogAttributes', 'service.version'],
         type: 'String',
-        jsType: 'string',
+        jsType: JSDataType.String,
       },
     ];
 
     const renderWithSearch = (searchQuery?: string) => {
       setupDefaultMocks({ withMVs: false });
-      useAllFields.mockReturnValue({ data: FIELDS } as any);
-      useMapColumns.mockReturnValue({ data: ['LogAttributes'] } as any);
+      mockAllFields(FIELDS);
+      mockMapColumns(['LogAttributes']);
       const { wrapper } = makeWrapper();
       return renderHook(
         () =>
@@ -1232,15 +1253,12 @@ describe('useFetchFacets', () => {
 
     it('drops the last search page once the search is cleared', () => {
       setupDefaultMocks({ withMVs: false });
-      useAllFields.mockReturnValue({ data: FIELDS } as any);
+      mockAllFields(FIELDS);
       // Stands in for `keepPreviousData`, which keeps serving the last page
       // even after the query is disabled.
-      useGetKeyValues.mockReturnValue({
-        data: [{ key: 'TraceId', value: ['abc'] }],
-        isLoading: false,
-        isFetching: false,
-        error: null,
-      } as any);
+      useGetKeyValues.mockReturnValue(
+        settledKeyValues([{ key: 'TraceId', value: ['abc'] }]),
+      );
 
       const { wrapper } = makeWrapper();
       const { result, rerender } = renderHook(
@@ -1267,15 +1285,14 @@ describe('useFetchFacets', () => {
 
     it('unions search results into the facet list without duplicating keys', () => {
       setupDefaultMocks({ withMVs: false });
-      useAllFields.mockReturnValue({ data: FIELDS } as any);
-      useGetKeyValues.mockImplementation(((args: { keys: string[] }) => ({
-        data: args.keys.includes('TraceId')
-          ? [{ key: 'TraceId', value: ['abc'] }]
-          : [{ key: 'ServiceName', value: ['api'] }],
-        isLoading: false,
-        isFetching: false,
-        error: null,
-      })) as any);
+      mockAllFields(FIELDS);
+      useGetKeyValues.mockImplementation(({ keys }) =>
+        settledKeyValues(
+          keys.includes('TraceId')
+            ? [{ key: 'TraceId', value: ['abc'] }]
+            : [{ key: 'ServiceName', value: ['api'] }],
+        ),
+      );
 
       const { wrapper } = makeWrapper();
       const { result } = renderHook(
