@@ -914,6 +914,33 @@ function formatTickAtMantissa(
   });
 }
 
+// Mirrors formatDurationMsCompact's unit selection, but with an escalatable
+// significant-digit count instead of a fixed 2-3 per unit.
+function formatDurationAtPrecision(ms: number, precision: number): string {
+  if (ms < 0) {
+    return `-${formatDurationAtPrecision(-ms, precision)}`;
+  }
+  if (ms === 0) {
+    return '0';
+  }
+  if (ms < 0.001) {
+    return `${+(ms * 1e6).toPrecision(precision)}ns`;
+  }
+  if (ms < 1) {
+    return `${+(ms * 1000).toPrecision(precision)}µs`;
+  }
+  if (ms < 1000) {
+    return `${+ms.toPrecision(precision)}ms`;
+  }
+  if (ms < 120_000) {
+    return `${+(ms / 1000).toPrecision(precision)}s`;
+  }
+  if (ms < 3_600_000) {
+    return `${+(ms / 60_000).toPrecision(precision)}m`;
+  }
+  return `${+(ms / 3_600_000).toPrecision(precision)}h`;
+}
+
 // Ticks must never carry duplicate labels (Grafana/Chronosphere never do).
 const MAX_TICK_MANTISSA_ESCALATION = 4;
 
@@ -942,14 +969,21 @@ function resolveDistinctTickLabels(
     return isDistinct(ticks, fullPrecision) ? fullPrecision : null;
   }
   if (axisNumberFormat.output === 'duration') {
+    // formatDurationMsCompact has no mantissa - escalate its own fixed
+    // 2-3 significant digits instead, past whichever unit it picks.
+    const factor = axisNumberFormat.factor ?? 1;
+    for (let p = 3; p <= 3 + MAX_TICK_MANTISSA_ESCALATION; p++) {
+      const escalated = (value: number) =>
+        formatDurationAtPrecision(value * factor * 1000, p);
+      if (isDistinct(ticks, escalated)) {
+        return escalated;
+      }
+    }
     return null;
   }
-  const baseMantissa = Math.max(0, axisNumberFormat.mantissa ?? 0);
-  for (
-    let m = baseMantissa + 1;
-    m <= baseMantissa + MAX_TICK_MANTISSA_ESCALATION;
-    m++
-  ) {
+  // formatAxisTick can force mantissa down to 0 regardless of what's
+  // configured, so escalation must start from 1, not the configured value.
+  for (let m = 1; m <= MAX_TICK_MANTISSA_ESCALATION; m++) {
     const escalated = (value: number) =>
       formatTickAtMantissa(value, axisNumberFormat, m);
     if (isDistinct(ticks, escalated)) {

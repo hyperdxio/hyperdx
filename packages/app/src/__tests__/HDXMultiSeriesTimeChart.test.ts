@@ -15,6 +15,7 @@ import {
   collectMemoChartGradientHexes,
   computeYAxisBounds,
   formatAxisTick,
+  getExpandableYAxisTicks,
   getNiceYAxisTicks,
   getSelectedLineData,
   getVisibleLineData,
@@ -234,6 +235,31 @@ describe('getNiceYAxisTicks', () => {
     // Regression: with no mantissa to escalate, close-together magnitudes
     // collapsed under Intl's compact notation (e.g. "1T") instead.
     const result = getNiceYAxisTicks(999999999999, 1000000000030);
+    const labels = result.ticks.map(t => result.tickFormatter!(t));
+    expect(new Set(labels).size).toBe(labels.length);
+  });
+
+  it('escalates from the minimal precision, not past the configured mantissa', () => {
+    // Regression: formatAxisTick forces mantissa to 0 regardless of what's
+    // configured, so escalation from "configured+1" skipped a sufficient 1.
+    const result = getExpandableYAxisTicks(0, 2100, 5, {
+      output: 'number',
+      mantissa: 2,
+    });
+    expect(result.ticks.map(t => result.tickFormatter!(t))).toEqual([
+      '0.0',
+      '0.5k',
+      '1.0k',
+      '1.5k',
+      '2.0k',
+    ]);
+  });
+
+  it('escalates a duration format past its fixed significant-digit count', () => {
+    // Regression: duration collisions returned null unconditionally,
+    // discarding the tick list instead of trying more precision.
+    const result = getNiceYAxisTicks(3600, 3700, 5, { output: 'duration' });
+    expect(result.tickFormatter).toBeDefined();
     const labels = result.ticks.map(t => result.tickFormatter!(t));
     expect(new Set(labels).size).toBe(labels.length);
   });
