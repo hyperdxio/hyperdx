@@ -187,6 +187,15 @@ describe('getNiceYAxisBounds', () => {
   it('returns no ticks for a degenerate (flat) range', () => {
     expect(getNiceYAxisBounds(5, 5)).toEqual({ min: 5, max: 5, ticks: [] });
   });
+
+  it('cleans up float dust from a fractional step', () => {
+    // Regression: without rounding, a 0.1-ish step gave 0.6000000000000001.
+    expect(getNiceYAxisBounds(0, 0.42)).toEqual({
+      min: 0,
+      max: 0.6,
+      ticks: [0, 0.2, 0.4, 0.6],
+    });
+  });
 });
 
 describe('scanYAxisValueRange', () => {

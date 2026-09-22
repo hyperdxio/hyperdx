@@ -890,13 +890,17 @@ export function getNiceYAxisBounds(
     return { min, max, ticks: [] };
   }
   const step = niceAxisStep((max - min) / (maxTicks - 1));
-  const niceMin = Math.floor(min / step) * step;
-  const niceMax = Math.ceil(max / step) * step;
+  // Rounds off float dust (e.g. a 0.1 step giving 0.6000000000000001).
+  const clean = (v: number) => Number(v.toPrecision(12));
+  const niceMin = clean(Math.floor(min / step) * step);
+  const niceMax = clean(Math.ceil(max / step) * step);
   const count = Math.round((niceMax - niceMin) / step);
   return {
     min: niceMin,
     max: niceMax,
-    ticks: Array.from({ length: count + 1 }, (_, i) => niceMin + i * step),
+    ticks: Array.from({ length: count + 1 }, (_, i) =>
+      clean(niceMin + i * step),
+    ),
   };
 }
 
