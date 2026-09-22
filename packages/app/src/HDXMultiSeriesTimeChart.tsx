@@ -889,12 +889,22 @@ function ticksWithinRange(step: number, min: number, max: number): number[] {
   return ticks;
 }
 
-// Ported from packages/cli/src/termchart/scale.ts's niceTicks, but picks the
-// smallest nice step that still fits within [min, max] and maxTicks.
+// A coarser step can still format two ticks to the same label (e.g. 1500
+// and 2000 both averaging to "2k") even though the raw numbers differ.
+function hasDistinctLabels(
+  ticks: number[],
+  formatTick?: (value: number) => string,
+): boolean {
+  return !formatTick || new Set(ticks.map(formatTick)).size === ticks.length;
+}
+
+// Ported from packages/cli/src/termchart/scale.ts's niceTicks: the smallest
+// step that fits within [min, max]/maxTicks and formats to distinct labels.
 export function getNiceYAxisTicks(
   min: number,
   max: number,
   maxTicks = 5,
+  formatTick?: (value: number) => string,
 ): number[] {
   if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
     return [];
@@ -902,11 +912,11 @@ export function getNiceYAxisTicks(
   const steps = niceStepsNear((max - min) / (maxTicks - 1));
   for (const step of steps) {
     const ticks = ticksWithinRange(step, min, max);
-    if (ticks.length <= maxTicks) {
+    if (ticks.length <= maxTicks && hasDistinctLabels(ticks, formatTick)) {
       return ticks;
     }
   }
-  return ticksWithinRange(steps[steps.length - 1], min, max);
+  return [];
 }
 
 // Shared by every yAxisDomain branch below. Callers pass only the series
@@ -952,13 +962,20 @@ export function computeYAxisBounds(
   fitYAxisToData: boolean,
   displayType: DisplayType,
   hasReferenceLines: boolean,
+  axisNumberFormat?: NumberFormat,
 ): YAxisBounds {
   if (displayType === DisplayType.StackedBar) {
     return DEFAULT_Y_AXIS_BOUNDS;
   }
   const shouldFitYAxis = fitYAxisToData;
+  const formatTick = (value: number) => formatAxisTick(value, axisNumberFormat);
 
   if (!hasSelection && !shouldFitYAxis) {
+    // A fully numeric domain skips Recharts' own nice rounding, and a
+    // reference line can extend it further - defer to Recharts entirely.
+    if (hasReferenceLines) {
+      return DEFAULT_Y_AXIS_BOUNDS;
+    }
     const { min, max } = scanYAxisValueRange(graphResults, visibleLineData);
     if (max === -Infinity) {
       return DEFAULT_Y_AXIS_BOUNDS;
@@ -972,12 +989,10 @@ export function computeYAxisBounds(
     if (upperBound <= lowerBound) {
       return DEFAULT_Y_AXIS_BOUNDS;
     }
-    const ticks = getNiceYAxisTicks(lowerBound, upperBound);
+    const ticks = getNiceYAxisTicks(lowerBound, upperBound, 5, formatTick);
     return {
       domain: [lowerBound, upperBound],
-      // A reference line's ReferenceArea can silently extend this domain
-      // (extendDomain) at render time, making static ticks go stale.
-      ticks: hasReferenceLines || ticks.length === 0 ? undefined : ticks,
+      ticks: ticks.length === 0 ? undefined : ticks,
     };
   }
 
@@ -986,24 +1001,27 @@ export function computeYAxisBounds(
   const degenerateFallback = shouldFitYAxis
     ? FIT_Y_AXIS_BOUNDS
     : DEFAULT_Y_AXIS_BOUNDS;
+  if (hasReferenceLines) {
+    return degenerateFallback;
+  }
   const { min, max } = scanYAxisValueRange(graphResults, visibleLineData);
   if (min === Infinity || max === -Infinity) {
     return degenerateFallback;
   }
   const padding = (max - min) * 0.05;
-  // When fitting to data, allow the lower bound to follow the data
-  // minimum below zero; otherwise keep it pinned at zero either way.
+  // Recharts widens the domain to actual negative data regardless of fit
+  // mode, so the lower bound must follow it whenever min itself is negative.
   const lowerBound = cleanNumber(
-    shouldFitYAxis && min < 0 ? min - padding : Math.max(0, min - padding),
+    min < 0 ? min - padding : Math.max(0, min - padding),
   );
   const upperBound = cleanNumber(max + padding);
   if (upperBound <= lowerBound) {
     return degenerateFallback;
   }
-  const ticks = getNiceYAxisTicks(lowerBound, upperBound);
+  const ticks = getNiceYAxisTicks(lowerBound, upperBound, 5, formatTick);
   return {
     domain: [lowerBound, upperBound],
-    ticks: hasReferenceLines || ticks.length === 0 ? undefined : ticks,
+    ticks: ticks.length === 0 ? undefined : ticks,
   };
 }
 
@@ -1196,6 +1214,7 @@ export const MemoChart = memo(function MemoChart({
         Array.isArray(referenceLines)
           ? referenceLines.length > 0
           : referenceLines != null,
+        axisNumberFormat,
       ),
     [
       graphResults,
@@ -1204,6 +1223,7 @@ export const MemoChart = memo(function MemoChart({
       fitYAxisToData,
       displayType,
       referenceLines,
+      axisNumberFormat,
     ],
   );
   const yAxisDomain = yAxisBounds.domain;

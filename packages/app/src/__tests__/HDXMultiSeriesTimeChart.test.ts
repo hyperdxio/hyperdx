@@ -303,9 +303,9 @@ describe('computeYAxisBounds', () => {
     });
   });
 
-  it('omits explicit ticks when a reference line can extend the domain', () => {
-    // A ReferenceArea's ifOverflow="extendDomain" can silently widen the
-    // domain past what these ticks were computed from - defer to Recharts.
+  it('defers entirely to Recharts when a reference line is present', () => {
+    // A fully numeric domain reproduces the exact uneven spacing this PR
+    // fixes, and a reference line can extend it further - fall back to auto.
     const bounds = computeYAxisBounds(
       [{ a: 1000 }],
       [series('a')],
@@ -314,7 +314,7 @@ describe('computeYAxisBounds', () => {
       DisplayType.Line,
       true,
     );
-    expect(bounds).toEqual({ domain: [0, 1050], ticks: undefined });
+    expect(bounds).toEqual({ domain: [0, 'auto'], ticks: undefined });
   });
 
   it('leaves a stacked bar`s max to Recharts, selection or not', () => {
@@ -402,6 +402,53 @@ describe('computeYAxisBounds', () => {
       domain: [-62.5, 212.5],
       ticks: [0, 100, 200],
     });
+  });
+
+  it('extends a selection`s lower bound to negative data even without fitting', () => {
+    // Regression: `Math.max(0, ...)` pinned this at 0 even though min < 0,
+    // but Recharts widens the domain to the real minimum regardless.
+    const bounds = computeYAxisBounds(
+      [{ a: -100 }, { a: 100 }],
+      [series('a')],
+      true,
+      false,
+      DisplayType.Line,
+      false,
+    );
+    expect(bounds).toEqual({
+      domain: [-110, 110],
+      ticks: [-100, -50, 0, 50, 100],
+    });
+  });
+
+  it('defers entirely to Recharts when a reference line is present, fitted or selected', () => {
+    const bounds = computeYAxisBounds(
+      [{ a: 100 }, { a: 200 }],
+      [series('a')],
+      false,
+      true,
+      DisplayType.Line,
+      true,
+    );
+    expect(bounds).toEqual({ domain: ['auto', 'auto'], ticks: undefined });
+  });
+
+  it('rejects a step whose formatted labels collide, even if the count fits', () => {
+    // Regression: a step of 500 gives ticks 0/500/1000/1500/2000, which
+    // formatAxisTick's compact averaging renders as "0,500,1k,2k,2k".
+    const bounds = computeYAxisBounds(
+      [{ a: 2000 }],
+      [series('a')],
+      false,
+      false,
+      DisplayType.Line,
+      false,
+      { output: 'number' },
+    );
+    const labels = (bounds.ticks ?? []).map(t =>
+      formatAxisTick(t, { output: 'number' }),
+    );
+    expect(new Set(labels).size).toBe(labels.length);
   });
 });
 
