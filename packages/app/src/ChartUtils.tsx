@@ -10,6 +10,7 @@ import {
   ResponseJSON,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { isMetricChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
+import { SERIES_KEY_JOINER } from '@hyperdx/common-utils/dist/core/seriesNameTemplate';
 import {
   convertDateRangeToGranularityString,
   convertGranularityToSeconds,
@@ -95,9 +96,10 @@ export const DEFAULT_CHART_CONFIG: Omit<
 function getTimeChartGranularity(
   granularity: string | undefined,
   dateRange: [Date, Date],
+  minGranularitySeconds?: number,
 ) {
   return granularity === 'auto' || granularity == null
-    ? convertDateRangeToGranularityString(dateRange, 80)
+    ? convertDateRangeToGranularityString(dateRange, 80, minGranularitySeconds)
     : granularity;
 }
 
@@ -129,6 +131,7 @@ export function convertToTimeChartConfig(
   const granularity = getTimeChartGranularity(
     config.granularity,
     config.dateRange,
+    config.minGranularitySeconds,
   );
 
   const dateRange = getTimeChartDateRange(
@@ -173,12 +176,14 @@ export function useTimeChartSettings(
     | 'fillNulls'
     | 'granularity'
     | 'alignDateRangeToGranularity'
+    | 'minGranularitySeconds'
   >,
 ) {
   return useMemo(() => {
     const granularity = getTimeChartGranularity(
       config.granularity,
       config.dateRange,
+      config.minGranularitySeconds,
     );
 
     const dateRange = getTimeChartDateRange(
@@ -196,7 +201,7 @@ export function useTimeChartSettings(
   }, [config]);
 }
 
-export const ChartKeyJoiner = ' · ';
+export const ChartKeyJoiner = SERIES_KEY_JOINER;
 const PreviousPeriodSuffix = ' (previous)';
 
 /**

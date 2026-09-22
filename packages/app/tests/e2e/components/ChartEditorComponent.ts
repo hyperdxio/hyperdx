@@ -400,23 +400,29 @@ export class ChartEditorComponent {
   }
 
   /**
-   * Replace the entire contents of the PromQL expression editor.
+   * Replace the entire contents of one PromQL expression editor.
    *
-   * The same `.cm-editor` locator as the SQL template, and `.first()` for the
-   * same reason: the expression input is above the preview panel, whose
-   * "Generated PromQL" accordion holds a second, read-only CodeMirror.
+   * The same `.cm-editor` locator as the SQL template, indexed for the same
+   * reason: the expression inputs come before the preview panel, whose
+   * "Generated PromQL" accordion holds read-only CodeMirrors of its own. So
+   * `index` addresses the nth expression row, counting from the top.
    */
-  async replacePromqlExpression(expression: string) {
+  async replacePromqlExpression(expression: string, index = 0) {
     await replaceEditorText(
       this.page,
-      this.page.locator('.cm-editor .cm-content').first(),
+      this.page.locator('.cm-editor .cm-content').nth(index),
       expression,
     );
   }
 
-  /** Read the current text of the PromQL expression editor. */
-  async getPromqlEditorText(): Promise<string> {
-    return this.page.locator('.cm-editor .cm-content').first().innerText();
+  /** Read the current text of a PromQL expression editor. */
+  async getPromqlEditorText(index = 0): Promise<string> {
+    return this.page.locator('.cm-editor .cm-content').nth(index).innerText();
+  }
+
+  /** Append an empty PromQL expression row (time series charts only). */
+  async addPromqlExpression() {
+    await this.page.getByTestId('promql-add-expression-button').click();
   }
 
   /**
@@ -645,22 +651,26 @@ export class ChartEditorComponent {
   }
 
   /**
-   * CodeMirror content of the "Generated PromQL" preview.
+   * CodeMirror content of the nth expression in the "Generated PromQL"
+   * preview, which holds one per expression the tile plots.
    *
    * Its own test id rather than `.cm-editor` with an index: the editor page
    * can hold several CodeMirror instances, and which ordinal this one takes
    * depends on the mode the editor is in.
    */
-  generatedPromqlContent(): Locator {
-    return this.page.getByTestId('chart-promql-preview').locator('.cm-content');
+  generatedPromqlContent(index = 0): Locator {
+    return this.page
+      .getByTestId('chart-promql-preview')
+      .nth(index)
+      .locator('.cm-content');
   }
 
   /**
    * The generated PromQL as a single whitespace-collapsed line. Substitution is
    * debounced by 300ms, so assert on it with `toPass` or an expect timeout.
    */
-  async getGeneratedPromqlText(): Promise<string> {
-    const text = await this.generatedPromqlContent().innerText();
+  async getGeneratedPromqlText(index = 0): Promise<string> {
+    const text = await this.generatedPromqlContent(index).innerText();
     return text.replace(/\s+/g, ' ').trim();
   }
 
@@ -1261,7 +1271,12 @@ export class ChartEditorComponent {
    * default `count()` series distinct column names in a multi-series table.
    */
   async setSeriesAlias(index: number, alias: string) {
-    await this.page.getByTestId('series-alias-input').nth(index).fill(alias);
+    await this.seriesAliasInput(index).fill(alias);
+  }
+
+  /** The alias input of the series (or PromQL expression) row at `index`. */
+  seriesAliasInput(index: number): Locator {
+    return this.page.getByTestId('series-alias-input').nth(index);
   }
 
   /**

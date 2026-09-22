@@ -6,18 +6,19 @@ import {
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/browser';
 import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
-import { promqlStep } from '@hyperdx/common-utils/dist/core/promql';
+import {
+  getQueriedPromqlSeries,
+  promqlStep,
+} from '@hyperdx/common-utils/dist/core/promql';
 import {
   isMetricChartConfig,
   isUsingGranularity,
   renderChartConfig,
 } from '@hyperdx/common-utils/dist/core/renderChartConfig';
-import {
-  renderSeriesNames,
-  SeriesNameInput,
-} from '@hyperdx/common-utils/dist/core/seriesNameTemplate';
+import { renderPromqlSeriesNames } from '@hyperdx/common-utils/dist/core/seriesNameTemplate';
 import {
   convertDateRangeToGranularityString,
+  convertGranularityToSeconds,
   hasPositiveSeriesLimit,
 } from '@hyperdx/common-utils/dist/core/utils';
 import {
@@ -30,8 +31,10 @@ import {
   BuilderChartConfigWithOptDateRange,
   ChartConfigWithDateRange,
   ChartConfigWithOptDateRange,
+  isMetricSource,
   PromqlChartConfig,
   QuerySettings,
+  TSource,
 } from '@hyperdx/common-utils/dist/types';
 import { substitutePromqlChartConfigVariables } from '@hyperdx/common-utils/dist/variables';
 import {
@@ -40,7 +43,7 @@ import {
   UseQueryOptions,
 } from '@tanstack/react-query';
 
-import { prometheusApi, PrometheusMatrixResult } from '@/api';
+import { prometheusApi } from '@/api';
 import { toStartOfInterval } from '@/ChartUtils';
 import { useClickhouseClient } from '@/clickhouse';
 import { IS_MTVIEWS_ENABLED } from '@/config';
@@ -98,6 +101,20 @@ const shouldUseChunking = (
   return true;
 };
 
+/**
+ * Floor for "auto" granularity resolution, from the source's own setting.
+ * Exported so callers that resolve 'auto' before reaching useQueriedChartConfig
+ * (DBTimeChart and siblings, via ChartUtils.tsx) can apply it themselves.
+ */
+export function getMinGranularitySeconds(
+  source: TSource | undefined,
+): number | undefined {
+  if (!source || !isMetricSource(source) || !source.minAutoGranularity) {
+    return undefined;
+  }
+  return convertGranularityToSeconds(source.minAutoGranularity);
+}
+
 export const getGranularityAlignedTimeWindows = (
   config: ChartConfigWithDateRange & { granularity: string },
   windowDurationsSeconds?: number[],
@@ -111,7 +128,11 @@ export const getGranularityAlignedTimeWindows = (
 
   const granularity =
     config.granularity === 'auto'
-      ? convertDateRangeToGranularityString(config.dateRange)
+      ? convertDateRangeToGranularityString(
+          config.dateRange,
+          undefined,
+          config.minGranularitySeconds,
+        )
       : config.granularity;
 
   const windows = [];
@@ -280,84 +301,61 @@ export function appendChunk(
 }
 
 /**
- * Default legend names for a result set, Grafana-style: only the labels whose
- * values differ across the series are shown.
- */
-function buildPromqlSeriesNameInputs(
-  result: PrometheusMatrixResult[],
-): SeriesNameInput[] {
-  const labelValues = new Map<string, Set<string>>();
-  for (const series of result) {
-    for (const [key, value] of Object.entries(series.metric)) {
-      if (key === '__name__') continue;
-      if (!labelValues.has(key)) labelValues.set(key, new Set());
-      labelValues.get(key)!.add(value);
-    }
-  }
-
-  // Find labels that have more than one distinct value across all series
-  const distinguishingKeys = new Set<string>();
-  for (const [k, vs] of labelValues) {
-    if (vs.size > 1) distinguishingKeys.add(k);
-  }
-
-  return result.map(series => {
-    const metricName = series.metric.__name__ ?? '';
-    const labels = Object.entries(series.metric)
-      .filter(([key]) => key !== '__name__' && distinguishingKeys.has(key))
-      .map(([key, value]) => `${key}="${value}"`)
-      .join(', ');
-    return {
-      labels: series.metric,
-      fallback: labels ? `${metricName}{${labels}}` : metricName,
-    };
-  });
-}
-
-/**
  * Run a PromQL tile's expression and shape the result like a ClickHouse
  * response, so the chart formatters treat it like every other time series.
  */
 async function queryPromqlChartConfig(
   config: PromqlChartConfig,
   dateRange: [Date, Date],
+  signal: AbortSignal,
 ): Promise<TQueryFnData> {
-  // Expand dashboard variables in the expression before sending to Prometheus.
-  const { promqlExpression } = substitutePromqlChartConfigVariables(config);
-  const [startDate, endDate] = dateRange;
+  // Expand dashboard variables in the expressions before sending to Prometheus.
+  const substituted = substitutePromqlChartConfigVariables(config);
 
-  const response = await prometheusApi.queryRange({
-    query: promqlExpression,
-    start: startDate.getTime() / 1000,
-    end: endDate.getTime() / 1000,
-    step: promqlStep(config.granularity),
-    connectionId: config.connection,
-    database: config.from?.databaseName,
-    table: config.from?.tableName,
+  // Depending on displayType, not all series may be queried
+  const series = getQueriedPromqlSeries(substituted);
+
+  const [startDate, endDate] = dateRange;
+  const responses = await Promise.all(
+    series.map(({ expression }) =>
+      prometheusApi.queryRange({
+        query: expression,
+        start: startDate.getTime() / 1000,
+        end: endDate.getTime() / 1000,
+        step: promqlStep(config.granularity),
+        connectionId: config.connection,
+        database: config.from?.databaseName,
+        table: config.from?.tableName,
+        signal,
+      }),
+    ),
+  );
+
+  const results = responses.map((response, index) => {
+    if (response.status !== 'success' || !response.data) {
+      throw new Error(response.error ?? 'PromQL query failed');
+    }
+    return { ...series[index], result: response.data.result };
   });
 
-  if (response.status !== 'success' || !response.data) {
-    throw new Error(response.error ?? 'PromQL query failed');
-  }
-
-  const result = response.data.result;
-  const seriesInputs = buildPromqlSeriesNameInputs(result);
-  const legendTemplate = config.legendTemplate?.trim();
-  const seriesNames = legendTemplate
-    ? renderSeriesNames(legendTemplate, seriesInputs)
-    : seriesInputs.map(input => input.fallback);
+  const seriesNames = renderPromqlSeriesNames(
+    results,
+    config.legendTemplate?.trim() || undefined,
+  );
 
   const data: Record<string, string | number>[] = [];
-  for (const [index, series] of result.entries()) {
-    const seriesName = seriesNames[index];
-    for (const [ts, value] of series.values) {
-      data.push({
-        __hdx_time_bucket: new Date(ts * 1000).toISOString(),
-        value: parseFloat(value),
-        series_name: seriesName,
-      });
-    }
-  }
+  results.forEach(({ result }, expressionIndex) => {
+    result.forEach((series, seriesIndex) => {
+      const seriesName = seriesNames[expressionIndex][seriesIndex];
+      for (const [ts, value] of series.values) {
+        data.push({
+          __hdx_time_bucket: new Date(ts * 1000).toISOString(),
+          value: parseFloat(value),
+          series_name: seriesName,
+        });
+      }
+    });
+  });
 
   return {
     data,
@@ -408,24 +406,30 @@ export function useQueriedChartConfig(
   const { data: source, isLoading: isSourceLoading } = useSource({
     id: config.source,
   });
+  const minGranularitySeconds = getMinGranularitySeconds(source);
 
   const query = useQuery<TQueryFnData, ClickHouseQueryError | Error>({
     // Include enableQueryChunking in the query key to ensure that queries with the
-    // same config but different enableQueryChunking values do not share a query
+    // same config but different enableQueryChunking values do not share a query.
+    // minGranularitySeconds too: it can change independently of `config`.
     queryKey: [
       config,
       options?.enableQueryChunking ?? false,
       options?.enableParallelQueries ?? false,
+      minGranularitySeconds,
     ],
     // TODO: Replace this with `streamedQuery` when it is no longer experimental. Use 'replace' refetch mode.
     // https://tanstack.com/query/latest/docs/reference/streamedQuery
     queryFn: async context => {
       // PromQL queries go through the Prometheus API route, not ClickHouse proxy
       if (isPromqlChartConfig(config) && config.dateRange) {
-        return queryPromqlChartConfig(config, config.dateRange);
+        return queryPromqlChartConfig(config, config.dateRange, context.signal);
       }
 
-      const optimizedConfig = mvOptimizationData?.optimizedConfig ?? config;
+      const optimizedConfig = {
+        ...(mvOptimizationData?.optimizedConfig ?? config),
+        minGranularitySeconds,
+      };
       const query = queryClient
         .getQueryCache()
         .find({ queryKey: context.queryKey, exact: true });
@@ -507,11 +511,16 @@ export function useRenderedSqlChartConfig(
   const { data: source, isLoading: isSourceLoading } = useSource({
     id: config.source,
   });
+  const minGranularitySeconds = getMinGranularitySeconds(source);
 
   const query = useQuery({
-    queryKey: ['renderedSql', config],
+    // See the analogous queryKey comment on useQueriedChartConfig above.
+    queryKey: ['renderedSql', config, minGranularitySeconds],
     queryFn: async () => {
-      const optimizedConfig = mvOptimizationData?.optimizedConfig ?? config;
+      const optimizedConfig = {
+        ...(mvOptimizationData?.optimizedConfig ?? config),
+        minGranularitySeconds,
+      };
       const query = await renderChartConfig(
         optimizedConfig,
         metadata,

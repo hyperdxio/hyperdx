@@ -79,7 +79,6 @@ function SearchOnClickFields({ control }: { control: DrawerControl }) {
           name="onClick.whereTemplate"
           languageName="onClick.whereLanguage"
           allowMultiline
-          showLabel={false}
           sqlPlaceholder="ServiceName = '{{ServiceName}}'"
           lucenePlaceholder="ServiceName:{{ServiceName}}"
         />
@@ -162,7 +161,6 @@ function DashboardOnClickFields({
           name="onClick.whereTemplate"
           languageName="onClick.whereLanguage"
           allowMultiline
-          showLabel={false}
           sqlPlaceholder="ServiceName = '{{ServiceName}}'"
           lucenePlaceholder="ServiceName:{{ServiceName}}"
         />
