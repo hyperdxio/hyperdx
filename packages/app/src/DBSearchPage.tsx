@@ -140,6 +140,7 @@ import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import PatternTable from './components/PatternTable';
 import { DBSearchHeatmapChart } from './components/Search/DBSearchHeatmapChart';
 import DirectTraceSidePanel from './components/Search/DirectTraceSidePanel';
+import { TraceRedMetricsChart } from './components/Search/TraceRedMetricsChart';
 import SourceSchemaPreview, {
   isSourceSchemaPreviewEnabled,
 } from './components/SourceSchemaPreview';
@@ -206,6 +207,13 @@ const SearchConfigSchema = z.object({
 type SearchConfigFromSchema = z.infer<typeof SearchConfigSchema>;
 
 const QUERY_KEY_PREFIX = 'search';
+// The RED tiles are auxiliary viz, not the results query, so they key their
+// queries under a separate prefix to stay out of the `search executed`
+// telemetry (which matches [QUERY_KEY_PREFIX] only). Otherwise the slow
+// avg/p95/p99 duration query would become what the reported search latency
+// measures. The live-tail pause, on the other hand, does wait on this prefix
+// (see the pause signal below) so live ticks don't stack fresh quantile scans.
+const RED_QUERY_KEY_PREFIX = `${QUERY_KEY_PREFIX}-red`;
 
 // Clicks inside the results panel keep the row side panel open (so users can
 // scroll the table or select a different row); clicks anywhere else on the page
@@ -1611,6 +1619,16 @@ export function DBSearchPage() {
       queryKey: [QUERY_KEY_PREFIX],
     }) > 0;
 
+  // Live tail also waits on the RED metric queries. They live under a separate
+  // prefix (kept out of the search-latency telemetry above), so without this
+  // each ~10s tick would fire a fresh avg/p95/p99 scan without waiting for the
+  // previous one, stacking slow quantile queries while live tail runs. Resolves
+  // to 0 when the RED tiles aren't mounted, so it's a no-op off the trace view.
+  const isRedQueryFetching =
+    useIsFetching({
+      queryKey: [RED_QUERY_KEY_PREFIX],
+    }) > 0;
+
   const { searchElapsedMs } = useSearchTelemetry({
     isAnyQueryFetching,
     isLive: isLive ?? false,
@@ -1665,7 +1683,8 @@ export function DBSearchPage() {
     interval,
     refreshFrequency,
     onTimeRangeSelect,
-    pause: isAnyQueryFetching || !queryReady || !isTabVisible,
+    pause:
+      isAnyQueryFetching || isRedQueryFetching || !queryReady || !isTabVisible,
   });
 
   // This ensures we only render this conditionally on the client
@@ -1863,6 +1882,17 @@ export function DBSearchPage() {
   const { data: aliasMap } = useAliasMapFromChartConfig(dbSqlRowTableConfig);
 
   const aliasWith = useMemo(() => aliasMapToWithClauses(aliasMap), [aliasMap]);
+
+  // The trace results chart shows RED metrics only for a trace source that
+  // exposes a duration column; otherwise the single histogram stays. Derived
+  // once, as the narrowed source or null, so the callers can't drift apart on
+  // which one renders.
+  const traceRedMetricsSource =
+    searchedSource != null &&
+    isTraceSource(searchedSource) &&
+    searchedSource.durationExpression
+      ? searchedSource
+      : null;
 
   const histogramTimeChartConfig = useMemo(() => {
     if (chartConfig == null) {
@@ -2491,11 +2521,7 @@ export function DBSearchPage() {
                     setAnalysisMode={setAnalysisMode}
                     chartConfig={filtersChartConfig}
                     sourceId={inputSourceObj?.id}
-                    showDelta={
-                      !!(searchedSource?.kind === SourceKind.Trace
-                        ? searchedSource.durationExpression
-                        : undefined)
-                    }
+                    showDelta={traceRedMetricsSource != null}
                     onColumnToggle={toggleColumn}
                     displayedColumns={displayedColumns}
                     onCollapse={() => setIsFilterSidebarCollapsed(true)}
@@ -2632,26 +2658,44 @@ export function DBSearchPage() {
                           </Group>
                         </Group>
                       </Box>
-                      {!hasQueryError && (
-                        <Box
-                          className={searchPageStyles.timeChartContainer}
-                          mih="0"
-                        >
-                          <DBTimeChart
-                            sourceId={searchedConfig.source ?? undefined}
-                            showLegend={false}
-                            config={histogramTimeChartConfig}
-                            enabled={isReady}
-                            showDisplaySwitcher={false}
-                            showMVOptimizationIndicator={false}
-                            showDateRangeIndicator={false}
-                            queryKeyPrefix={QUERY_KEY_PREFIX}
-                            onTimeRangeSelect={handleTimeRangeSelect}
-                            onFocusSeries={handleFocusSeries}
-                            enableParallelQueries
-                          />
-                        </Box>
-                      )}
+                      {!hasQueryError &&
+                        (traceRedMetricsSource != null ? (
+                          <Box
+                            className={searchPageStyles.timeChartContainer}
+                            mih="0"
+                            h={240}
+                          >
+                            <TraceRedMetricsChart
+                              histogramTimeChartConfig={
+                                histogramTimeChartConfig
+                              }
+                              source={traceRedMetricsSource}
+                              isReady={isReady}
+                              queryKeyPrefix={RED_QUERY_KEY_PREFIX}
+                              onTimeRangeSelect={handleTimeRangeSelect}
+                              onFocusSeries={handleFocusSeries}
+                            />
+                          </Box>
+                        ) : (
+                          <Box
+                            className={searchPageStyles.timeChartContainer}
+                            mih="0"
+                          >
+                            <DBTimeChart
+                              sourceId={searchedConfig.source ?? undefined}
+                              showLegend={false}
+                              config={histogramTimeChartConfig}
+                              enabled={isReady}
+                              showDisplaySwitcher={false}
+                              showMVOptimizationIndicator={false}
+                              showDateRangeIndicator={false}
+                              queryKeyPrefix={QUERY_KEY_PREFIX}
+                              onTimeRangeSelect={handleTimeRangeSelect}
+                              onFocusSeries={handleFocusSeries}
+                              enableParallelQueries
+                            />
+                          </Box>
+                        ))}
                     </>
                   )}
                   {hasQueryError && queryError ? (
