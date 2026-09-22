@@ -821,6 +821,82 @@ describe('useChartConfig', () => {
           expect(result.current.error?.message).toMatch(/returned a string/);
         });
 
+        it('shows a scalar result as one unlabelled row', async () => {
+          jest.mocked(prometheusApi.query).mockResolvedValue({
+            status: 'success',
+            data: { resultType: 'scalar', result: [1673312400, '42'] },
+          });
+
+          const config = createPromqlConfig({
+            displayType: DisplayType.Number,
+            promqlExpression: [
+              { expression: 'scalar(e2e_service_up)', queryType: 'instant' },
+            ],
+          });
+          const { result } = renderHook(() => useQueriedChartConfig(config), {
+            wrapper,
+          });
+
+          await waitFor(() => expect(result.current.isSuccess).toBe(true));
+          // A scalar carries no labels, so it is named after its expression.
+          expect(result.current.data?.data).toEqual([
+            { series_name: 'scalar(e2e_service_up)', value: 42 },
+          ]);
+          expect(result.current.data?.meta).toEqual([
+            { name: 'value', type: 'Float64' },
+            { name: 'series_name', type: 'String' },
+          ]);
+        });
+
+        it('keeps the buckets of a matrix the instant endpoint answers with', async () => {
+          // A range-vector selector evaluates to a matrix even at the instant
+          // endpoint, so the rows span time and carry a bucket column.
+          jest.mocked(prometheusApi.query).mockResolvedValue({
+            status: 'success',
+            data: {
+              resultType: 'matrix',
+              result: [
+                {
+                  metric: { __name__: 'e2e_service_up' },
+                  values: [
+                    [1673308800, '1'],
+                    [1673308860, '2'],
+                  ] as [number, string][],
+                },
+              ],
+            },
+          });
+
+          const config = createPromqlConfig({
+            displayType: DisplayType.Number,
+            promqlExpression: [
+              { expression: 'e2e_service_up[5m]', queryType: 'instant' },
+            ],
+          });
+          const { result } = renderHook(() => useQueriedChartConfig(config), {
+            wrapper,
+          });
+
+          await waitFor(() => expect(result.current.isSuccess).toBe(true));
+          expect(result.current.data?.meta).toEqual([
+            { name: '__hdx_time_bucket', type: 'DateTime64(3)' },
+            { name: 'value', type: 'Float64' },
+            { name: 'series_name', type: 'String' },
+          ]);
+          expect(result.current.data?.data).toEqual([
+            {
+              __hdx_time_bucket: new Date(1673308800 * 1000).toISOString(),
+              series_name: 'e2e_service_up',
+              value: 1,
+            },
+            {
+              __hdx_time_bucket: new Date(1673308860 * 1000).toISOString(),
+              series_name: 'e2e_service_up',
+              value: 2,
+            },
+          ]);
+        });
+
         it('ranges a time series chart whatever its expressions ask for', async () => {
           jest
             .mocked(prometheusApi.queryRange)

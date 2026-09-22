@@ -1,8 +1,9 @@
 /**
- * PromQL number tiles evaluate their expression as an instant query, so the
- * tile shows the series' current value rather than a bucket from somewhere in
- * the range. An expression that resolves to several series cannot be reduced
- * to one number on the user's behalf, so the tile shows the first and warns.
+ * A PromQL number tile defaults to a range query reduced to its last non-null
+ * sample, and the user can switch an expression to an instant query instead.
+ * Either way the tile shows one value per series, so an expression that
+ * resolves to several cannot be reduced to one number on the user's behalf:
+ * the tile shows the first and warns.
  *
  * The seed gives `e2e_service_up` one series per `SERVICES` entry, labelled
  * `service`, so the bare metric is the multi-series case and a `service`

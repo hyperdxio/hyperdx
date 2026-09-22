@@ -1,3 +1,4 @@
+import { useCallback } from 'react';
 import {
   chSqlToAliasMap,
   ClickHouseQueryError,
@@ -351,6 +352,14 @@ export function useQueriedChartConfig(
     isPromqlChartConfig(config) &&
     displayTypeSupportsReducer(config) &&
     isRangeQuery(config);
+  const rangeReducer = reducesRangeBuckets
+    ? getQueriedPromqlSeries(config)[0]?.reducer
+    : undefined;
+
+  const selectRangeReduced = useCallback(
+    (result: TQueryFnData) => reduceBucketRows(result, rangeReducer),
+    [rangeReducer],
+  );
 
   const query = useQuery<TQueryFnData, ClickHouseQueryError | Error>({
     // Include enableQueryChunking in the query key to ensure that queries with the
@@ -426,10 +435,7 @@ export function useQueriedChartConfig(
       return queryClient.getQueryData(context.queryKey)!;
     },
     // PromQL reducer is applied as a client-side react-query select function
-    select: reducesRangeBuckets
-      ? result =>
-          reduceBucketRows(result, getQueriedPromqlSeries(config)[0]?.reducer)
-      : undefined,
+    select: reducesRangeBuckets ? selectRangeReduced : undefined,
     retry: 1,
     refetchOnWindowFocus: false,
     ...options,

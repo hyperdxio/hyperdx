@@ -19,6 +19,7 @@ import {
 } from '@tabler/icons-react';
 
 import { ChartEditorFormState } from '@/components/ChartEditor/types';
+import { isPromqlDisplayType } from '@/components/ChartEditor/utils';
 import { EDITOR_INPUT_HEIGHTS } from '@/components/editorInputHeights';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { TimePicker } from '@/components/TimePicker';
@@ -129,6 +130,7 @@ export function ChartActionBar({
   const showGranularity =
     activeTab === 'time' ||
     (configType === 'promql' &&
+      isPromqlDisplayType(displayType) &&
       isRangeQuery({
         promqlExpression: promqlExpressions,
         displayType,
