@@ -719,7 +719,6 @@ export abstract class BaseClickhouseClient {
     opts?: {
       abort_signal?: AbortSignal;
       clickhouse_settings?: Record<string, any>;
-      attribution?: QueryAttribution;
     };
     querySettings: QuerySettings | undefined;
   }): Promise<ResponseJSON<Record<string, string | number>>> {
@@ -735,10 +734,7 @@ export abstract class BaseClickhouseClient {
       abort_signal: opts?.abort_signal,
       connectionId: config.connection,
       clickhouse_settings: opts?.clickhouse_settings,
-      attribution: mergeQueryAttribution(
-        { source: config.source },
-        opts?.attribution,
-      ),
+      attribution: { source: config.source },
     });
     return resp.json<any>();
   }
@@ -758,7 +754,6 @@ export abstract class BaseClickhouseClient {
     opts?: {
       abort_signal?: AbortSignal;
       clickhouse_settings?: Record<string, any>;
-      attribution?: QueryAttribution;
     };
     querySettings: QuerySettings | undefined;
   }): Promise<{ isValid: boolean; rowEstimate?: number; error?: string }> {
@@ -779,10 +774,7 @@ export abstract class BaseClickhouseClient {
         clickhouse_settings: opts?.clickhouse_settings,
         // No label: it would overwrite the one naming who asked, and an
         // EXPLAIN is recognisable from the query text anyway.
-        attribution: mergeQueryAttribution(
-          { source: config.source },
-          opts?.attribution,
-        ),
+        attribution: { source: config.source },
       });
 
       const jsonResult = await result.json<{ rows: string | number }>();
