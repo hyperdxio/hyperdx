@@ -879,12 +879,16 @@ function niceStepsNear(target: number): number[] {
 
 function ticksWithinRange(step: number, min: number, max: number): number[] {
   const ticks: number[] = [];
-  for (
-    let t = cleanNumber(Math.ceil(min / step) * step);
-    t <= max + step * 1e-9;
-    t = cleanNumber(t + step)
-  ) {
+  let t = cleanNumber(Math.ceil(min / step) * step);
+  while (t <= max + step * 1e-9) {
     ticks.push(t);
+    const next = cleanNumber(t + step);
+    // At extreme magnitudes, float precision can make this step a no-op -
+    // stop rather than push the same value forever.
+    if (next <= t) {
+      break;
+    }
+    t = next;
   }
   return ticks;
 }
