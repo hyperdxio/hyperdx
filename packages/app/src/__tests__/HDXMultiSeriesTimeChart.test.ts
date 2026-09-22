@@ -335,6 +335,20 @@ describe('computeYAxisBounds', () => {
     expect(bounds).toEqual({ domain: ['auto', 'auto'], ticks: undefined });
   });
 
+  it('keeps the zero-pinned fallback for flat selected data when not fitting', () => {
+    // Regression: this case used the fit fallback (`['auto','auto']`)
+    // even though only fit-to-data, not selection, should opt out of it.
+    const bounds = computeYAxisBounds(
+      [{ a: 100 }, { a: 100 }],
+      [series('a')],
+      true,
+      false,
+      DisplayType.Line,
+      false,
+    );
+    expect(bounds).toEqual({ domain: [0, 'auto'], ticks: undefined });
+  });
+
   it('lets a fitted axis follow a negative minimum without expanding the domain', () => {
     const bounds = computeYAxisBounds(
       [{ a: -50 }, { a: 200 }],

@@ -975,9 +975,14 @@ export function computeYAxisBounds(
     };
   }
 
+  // A selection with fit-to-data off still keeps the zero-pinned fallback,
+  // not the unpinned fit fallback - only fitting itself opts out of it.
+  const degenerateFallback = shouldFitYAxis
+    ? FIT_Y_AXIS_BOUNDS
+    : DEFAULT_Y_AXIS_BOUNDS;
   const { min, max } = scanYAxisValueRange(graphResults, visibleLineData);
   if (min === Infinity || max === -Infinity) {
-    return FIT_Y_AXIS_BOUNDS;
+    return degenerateFallback;
   }
   const padding = (max - min) * 0.05;
   // When fitting to data, allow the lower bound to follow the data
@@ -987,7 +992,7 @@ export function computeYAxisBounds(
   );
   const upperBound = cleanNumber(max + padding);
   if (upperBound <= lowerBound) {
-    return FIT_Y_AXIS_BOUNDS;
+    return degenerateFallback;
   }
   const ticks = getNiceYAxisTicks(lowerBound, upperBound);
   return {
