@@ -864,44 +864,51 @@ export function formatAxisTick(
   });
 }
 
-// Round `x` up to a "nice" step: 1/2/5 x10^n - no 2.5, since formatAxisTick
-// forces integers past its magnitude threshold, rounding "12.5" to "13".
+// Rounds off float dust (e.g. 3 * 1.05 giving 3.1500000000000004).
+const cleanNumber = (v: number) => Number(v.toPrecision(12));
+
+// Round `x` up to a "nice" step: 1/2/(2.5)/5 x10^n. Only a step of exactly
+// 2.5 is excluded - it's non-integer and formatAxisTick rounds "12.5" to "13".
 function niceAxisStep(x: number): number {
   const exp = Math.floor(Math.log10(x));
   const frac = x / 10 ** exp;
-  const nice = frac <= 1 ? 1 : frac <= 2 ? 2 : frac <= 5 ? 5 : 10;
+  if (exp === 0) {
+    const nice = frac <= 1 ? 1 : frac <= 2 ? 2 : frac <= 5 ? 5 : 10;
+    return nice * 10 ** exp;
+  }
+  const nice =
+    frac <= 1
+      ? 1
+      : frac <= 2.25
+        ? 2
+        : frac <= 3.75
+          ? 2.5
+          : frac <= 7.5
+            ? 5
+            : 10;
   return nice * 10 ** exp;
 }
 
-export interface NiceYAxisBounds {
-  min: number;
-  max: number;
-  ticks: number[];
-}
-
-// Ported from packages/cli/src/termchart/scale.ts's niceTicks (Graphics
-// Gems nice numbers) - rounds to a clean step, not a raw range fraction.
-export function getNiceYAxisBounds(
+// Ported from packages/cli/src/termchart/scale.ts's niceTicks. Ticks stay
+// within the given [min, max] rather than expanding it to the step boundary.
+export function getNiceYAxisTicks(
   min: number,
   max: number,
   maxTicks = 5,
-): NiceYAxisBounds {
+): number[] {
   if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
-    return { min, max, ticks: [] };
+    return [];
   }
   const step = niceAxisStep((max - min) / (maxTicks - 1));
-  // Rounds off float dust (e.g. a 0.1 step giving 0.6000000000000001).
-  const clean = (v: number) => Number(v.toPrecision(12));
-  const niceMin = clean(Math.floor(min / step) * step);
-  const niceMax = clean(Math.ceil(max / step) * step);
-  const count = Math.round((niceMax - niceMin) / step);
-  return {
-    min: niceMin,
-    max: niceMax,
-    ticks: Array.from({ length: count + 1 }, (_, i) =>
-      clean(niceMin + i * step),
-    ),
-  };
+  const ticks: number[] = [];
+  for (
+    let t = cleanNumber(Math.ceil(min / step) * step);
+    t <= max + step * 1e-9;
+    t = cleanNumber(t + step)
+  ) {
+    ticks.push(t);
+  }
+  return ticks;
 }
 
 // Shared by every yAxisDomain branch below. Callers pass only the series
@@ -938,17 +945,6 @@ const FIT_Y_AXIS_BOUNDS: YAxisBounds = {
   ticks: undefined,
 };
 
-// An empty ticks array (flat data) must fall back, not become a
-// degenerate/inverted domain - use this branch's own no-data sentinel.
-function toYAxisBounds(
-  bounds: NiceYAxisBounds,
-  fallback: YAxisBounds,
-): YAxisBounds {
-  return bounds.ticks.length > 0
-    ? { domain: [bounds.min, bounds.max], ticks: bounds.ticks }
-    : fallback;
-}
-
 // A stacked bar's rendered height sums its series at each timestamp - leave
 // that entirely to Recharts, regardless of selection/fit-to-data state.
 export function computeYAxisBounds(
@@ -957,6 +953,7 @@ export function computeYAxisBounds(
   hasSelection: boolean,
   fitYAxisToData: boolean,
   displayType: DisplayType,
+  hasReferenceLines: boolean,
 ): YAxisBounds {
   if (displayType === DisplayType.StackedBar) {
     return DEFAULT_Y_AXIS_BOUNDS;
@@ -965,9 +962,17 @@ export function computeYAxisBounds(
 
   if (!hasSelection && !shouldFitYAxis) {
     const { max } = scanYAxisValueRange(graphResults, visibleLineData);
-    return max === -Infinity
-      ? DEFAULT_Y_AXIS_BOUNDS
-      : toYAxisBounds(getNiceYAxisBounds(0, max * 1.05), DEFAULT_Y_AXIS_BOUNDS);
+    const upperBound = cleanNumber(max * 1.05);
+    if (max === -Infinity || upperBound <= 0) {
+      return DEFAULT_Y_AXIS_BOUNDS;
+    }
+    const ticks = getNiceYAxisTicks(0, upperBound);
+    return {
+      domain: [0, upperBound],
+      // A reference line's ReferenceArea can silently extend this domain
+      // (extendDomain) at render time, making static ticks go stale.
+      ticks: hasReferenceLines || ticks.length === 0 ? undefined : ticks,
+    };
   }
 
   const { min, max } = scanYAxisValueRange(graphResults, visibleLineData);
@@ -977,12 +982,18 @@ export function computeYAxisBounds(
   const padding = (max - min) * 0.05;
   // When fitting to data, allow the lower bound to follow the data
   // minimum below zero; otherwise keep it pinned at zero either way.
-  const lowerBound =
-    shouldFitYAxis && min < 0 ? min - padding : Math.max(0, min - padding);
-  return toYAxisBounds(
-    getNiceYAxisBounds(lowerBound, max + padding),
-    FIT_Y_AXIS_BOUNDS,
+  const lowerBound = cleanNumber(
+    shouldFitYAxis && min < 0 ? min - padding : Math.max(0, min - padding),
   );
+  const upperBound = cleanNumber(max + padding);
+  if (upperBound <= lowerBound) {
+    return FIT_Y_AXIS_BOUNDS;
+  }
+  const ticks = getNiceYAxisTicks(lowerBound, upperBound);
+  return {
+    domain: [lowerBound, upperBound],
+    ticks: hasReferenceLines || ticks.length === 0 ? undefined : ticks,
+  };
 }
 
 export const MemoChart = memo(function MemoChart({
@@ -1171,6 +1182,9 @@ export const MemoChart = memo(function MemoChart({
         hasSeriesSelection(selectedSeriesNames),
         fitYAxisToData,
         displayType,
+        Array.isArray(referenceLines)
+          ? referenceLines.length > 0
+          : referenceLines != null,
       ),
     [
       graphResults,
@@ -1178,6 +1192,7 @@ export const MemoChart = memo(function MemoChart({
       selectedSeriesNames,
       fitYAxisToData,
       displayType,
+      referenceLines,
     ],
   );
   const yAxisDomain = yAxisBounds.domain;

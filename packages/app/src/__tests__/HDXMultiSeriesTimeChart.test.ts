@@ -15,7 +15,7 @@ import {
   collectMemoChartGradientHexes,
   computeYAxisBounds,
   formatAxisTick,
-  getNiceYAxisBounds,
+  getNiceYAxisTicks,
   getSelectedLineData,
   getVisibleLineData,
   getVisibleTooltipRows,
@@ -165,36 +165,35 @@ describe('formatAxisTick', () => {
   });
 });
 
-describe('getNiceYAxisBounds', () => {
+describe('getNiceYAxisTicks', () => {
   it('rounds to a clean step instead of dividing the raw range', () => {
     // Regression: evenly dividing an unrounded range into quarters gave
     // fractional labels (341/683/1k) or, worse, duplicate rounded ones.
-    expect(getNiceYAxisBounds(0, 1000)).toEqual({
-      min: 0,
-      max: 1000,
-      ticks: [0, 500, 1000],
-    });
+    expect(getNiceYAxisTicks(0, 1000)).toEqual([0, 250, 500, 750, 1000]);
   });
 
   it('works for a non-zero lower bound', () => {
-    expect(getNiceYAxisBounds(10, 30)).toEqual({
-      min: 10,
-      max: 30,
-      ticks: [10, 15, 20, 25, 30],
-    });
+    expect(getNiceYAxisTicks(10, 30)).toEqual([10, 15, 20, 25, 30]);
+  });
+
+  it('never expands past the given range, even if it clips ticks short', () => {
+    // A tight/fitted range shouldn't gain extra ticks beyond its own bounds.
+    expect(getNiceYAxisTicks(95, 205)).toEqual([100, 125, 150, 175, 200]);
   });
 
   it('returns no ticks for a degenerate (flat) range', () => {
-    expect(getNiceYAxisBounds(5, 5)).toEqual({ min: 5, max: 5, ticks: [] });
+    expect(getNiceYAxisTicks(5, 5)).toEqual([]);
   });
 
   it('cleans up float dust from a fractional step', () => {
     // Regression: without rounding, a 0.1-ish step gave 0.6000000000000001.
-    expect(getNiceYAxisBounds(0, 0.42)).toEqual({
-      min: 0,
-      max: 0.6,
-      ticks: [0, 0.2, 0.4, 0.6],
-    });
+    expect(getNiceYAxisTicks(0, 0.42)).toEqual([0, 0.2, 0.4]);
+  });
+
+  it('avoids a step that formatAxisTick would round unevenly (12.5 -> "13")', () => {
+    // At this magnitude (exp === 0), a 2.5 step yields non-integer ticks
+    // that straddle formatAxisTick's forced-integer threshold of 10.
+    expect(getNiceYAxisTicks(0, 12.6)).toEqual([0, 5, 10]);
   });
 });
 
@@ -230,7 +229,7 @@ describe('computeYAxisBounds', () => {
     color: '#a',
   });
 
-  it('rounds the default domain to nice, non-duplicating ticks', () => {
+  it('rounds ticks to clean, non-duplicating values without expanding the domain', () => {
     // A peak of 3 divided into raw quarters rounds (mantissa 0) to
     // 0/1/2/2/3 - two ticks reading "2" at different heights.
     const bounds = computeYAxisBounds(
@@ -239,27 +238,43 @@ describe('computeYAxisBounds', () => {
       false,
       false,
       DisplayType.Line,
+      false,
     );
     expect(bounds).toEqual({
-      domain: [0, 4],
-      ticks: [0, 1, 2, 3, 4],
+      domain: [0, 3.15],
+      ticks: [0, 1, 2, 3],
     });
   });
 
   it('never picks a step that formatAxisTick would round unevenly', () => {
-    // Regression: a 2.5 step gives "12.5", which formatAxisTick rounds to
-    // "13" past its magnitude threshold - an uneven-looking progression.
+    // Regression: a 2.5 step at this magnitude gives "12.5", which
+    // formatAxisTick rounds to "13" - an uneven-looking progression.
     const bounds = computeYAxisBounds(
       [{ a: 12 }],
       [series('a')],
       false,
       false,
       DisplayType.Line,
+      false,
     );
     expect(bounds).toEqual({
-      domain: [0, 15],
-      ticks: [0, 5, 10, 15],
+      domain: [0, 12.6],
+      ticks: [0, 5, 10],
     });
+  });
+
+  it('omits explicit ticks when a reference line can extend the domain', () => {
+    // A ReferenceArea's ifOverflow="extendDomain" can silently widen the
+    // domain past what these ticks were computed from - defer to Recharts.
+    const bounds = computeYAxisBounds(
+      [{ a: 1000 }],
+      [series('a')],
+      false,
+      false,
+      DisplayType.Line,
+      true,
+    );
+    expect(bounds).toEqual({ domain: [0, 1050], ticks: undefined });
   });
 
   it('leaves a stacked bar`s max to Recharts, selection or not', () => {
@@ -275,25 +290,33 @@ describe('computeYAxisBounds', () => {
           hasSelection,
           false,
           DisplayType.StackedBar,
+          false,
         ),
       ).toEqual({ domain: [0, 'auto'], ticks: undefined });
     }
   });
 
   it('falls back to auto when there is no numeric data', () => {
-    const bounds = computeYAxisBounds([], [], false, false, DisplayType.Line);
+    const bounds = computeYAxisBounds(
+      [],
+      [],
+      false,
+      false,
+      DisplayType.Line,
+      false,
+    );
     expect(bounds).toEqual({ domain: [0, 'auto'], ticks: undefined });
   });
 
   it('falls back to auto for flat data instead of a degenerate domain', () => {
-    // Regression: getNiceYAxisBounds(0, 0) hit its max<=min guard and
-    // returned a literal [0, 0] domain, collapsing the axis to one point.
+    // Regression: an all-zero domain ([0, 0]) collapsed the axis to one point.
     const bounds = computeYAxisBounds(
       [{ a: 0 }, { a: 0 }],
       [series('a')],
       false,
       false,
       DisplayType.Line,
+      false,
     );
     expect(bounds).toEqual({ domain: [0, 'auto'], ticks: undefined });
   });
@@ -307,19 +330,24 @@ describe('computeYAxisBounds', () => {
       false,
       true,
       DisplayType.Line,
+      false,
     );
     expect(bounds).toEqual({ domain: ['auto', 'auto'], ticks: undefined });
   });
 
-  it('lets a fitted axis follow a negative minimum, still nicely rounded', () => {
+  it('lets a fitted axis follow a negative minimum without expanding the domain', () => {
     const bounds = computeYAxisBounds(
       [{ a: -50 }, { a: 200 }],
       [series('a')],
       false,
       true,
       DisplayType.Line,
+      false,
     );
-    expect(bounds.domain).toEqual([-100, 300]);
+    expect(bounds).toEqual({
+      domain: [-62.5, 212.5],
+      ticks: [-50, 0, 50, 100, 150, 200],
+    });
   });
 });
 
