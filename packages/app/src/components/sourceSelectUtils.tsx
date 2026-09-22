@@ -114,6 +114,21 @@ export function useFilteredSortedSourceItems({
 }
 
 /**
+ * Value of the first option the selector renders, whether the items came back
+ * grouped by section or flat. Skips groups with no items, which Mantine
+ * accepts and renders as a bare header. Undefined when nothing is selectable.
+ */
+export function firstSourceItemValue(
+  items: ComboboxItem[] | SourceSelectGroup[],
+): string | undefined {
+  for (const item of items) {
+    const value = 'group' in item ? item.items[0]?.value : item.value;
+    if (value != null) return value;
+  }
+  return undefined;
+}
+
+/**
  * Implicit-tag search for the source selector. A source's match text is its
  * own label plus the section header it sits under, so the section behaves as
  * a tag: "Billing" returns every source under the Billing header, and

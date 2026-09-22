@@ -33,7 +33,7 @@ test.describe(
         await expect(editor.nameInput).toBeVisible();
         await editor.waitForDataToLoad();
         await editor.switchToPromqlMode();
-        await editor.selectPromqlSource(PROMQL_SOURCE_NAME);
+        await editor.selectSource(PROMQL_SOURCE_NAME);
         await editor.setChartName('PromQL multi-expression tile');
         await editor.replacePromqlExpression(ACCOUNTING);
         await editor.addPromqlExpression();
