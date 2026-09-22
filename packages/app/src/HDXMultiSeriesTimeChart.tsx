@@ -951,6 +951,18 @@ function isDistinct(
   return new Set(ticks.map(formatTick)).size === ticks.length;
 }
 
+// MAX_AXIS_MANTISSA's width budget only covers plain numbers/percent (see
+// its docblock) - byte/currency add a suffix it never accounted for.
+const WIDTH_BUDGETED_OUTPUTS = new Set(['number', 'percent']);
+const MAX_TICK_LABEL_LENGTH = 5;
+
+function fitsLabelBudget(
+  ticks: number[],
+  formatTick: (value: number) => string,
+): boolean {
+  return ticks.every(t => formatTick(t).length <= MAX_TICK_LABEL_LENGTH);
+}
+
 // Prefers formatAxisTick's normal output, but escalates precision past the
 // configured mantissa when that's the only way to keep labels distinct.
 function resolveDistinctTickLabels(
@@ -983,10 +995,16 @@ function resolveDistinctTickLabels(
   }
   // formatAxisTick can force mantissa down to 0 regardless of what's
   // configured, so escalation must start from 1, not the configured value.
+  const isWidthBudgeted = WIDTH_BUDGETED_OUTPUTS.has(
+    axisNumberFormat.output ?? 'number',
+  );
   for (let m = 1; m <= MAX_TICK_MANTISSA_ESCALATION; m++) {
     const escalated = (value: number) =>
       formatTickAtMantissa(value, axisNumberFormat, m);
-    if (isDistinct(ticks, escalated)) {
+    if (
+      isDistinct(ticks, escalated) &&
+      (!isWidthBudgeted || fitsLabelBudget(ticks, escalated))
+    ) {
       return escalated;
     }
   }

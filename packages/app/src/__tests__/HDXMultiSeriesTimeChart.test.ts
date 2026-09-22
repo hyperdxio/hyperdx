@@ -263,6 +263,17 @@ describe('getNiceYAxisTicks', () => {
     const labels = result.ticks.map(t => result.tickFormatter!(t));
     expect(new Set(labels).size).toBe(labels.length);
   });
+
+  it('rejects a plain-number escalation that would overflow the axis label budget', () => {
+    // Regression: mantissa 3 was needed for distinctness but rendered
+    // "1.0500k" (7 chars) - must be rejected in favor of a coarser step.
+    const result = getExpandableYAxisTicks(1050, 1050.315, 5, {
+      output: 'number',
+      mantissa: 3,
+    });
+    const labels = result.ticks.map(t => result.tickFormatter!(t));
+    expect(labels.every(l => l.length <= 5)).toBe(true);
+  });
 });
 
 describe('scanYAxisValueRange', () => {
