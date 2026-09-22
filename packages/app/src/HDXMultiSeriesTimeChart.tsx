@@ -864,6 +864,17 @@ export function formatAxisTick(
   });
 }
 
+const Y_AXIS_TICK_CANDIDATES = 5;
+
+// Recharts' minTickGap thinning drops ticks without re-spacing survivors;
+// feeding it a uniform set keeps thinning's tick count but even spacing.
+export function getEvenlySpacedTicks(min: number, max: number): number[] {
+  return Array.from(
+    { length: Y_AXIS_TICK_CANDIDATES },
+    (_, i) => min + ((max - min) * i) / (Y_AXIS_TICK_CANDIDATES - 1),
+  );
+}
+
 export const MemoChart = memo(function MemoChart({
   graphResults,
   setIsClickActive,
@@ -1051,11 +1062,19 @@ export const MemoChart = memo(function MemoChart({
     const shouldFitYAxis =
       fitYAxisToData && displayType !== DisplayType.StackedBar;
 
-    // The data min/max is only needed to either zoom into a selection or to
-    // fit the lower bound to the data. When neither applies, let Recharts
-    // auto-calculate the upper bound while pinning the lower bound to zero.
+    // The lower bound stays pinned at zero unless selecting/fitting to
+    // data (below), so only the max is needed here, with the same headroom.
     if (!hasSelection && !shouldFitYAxis) {
-      return [0, 'auto'];
+      let maxValue = -Infinity;
+      graphResults.forEach(dataPoint => {
+        lineData.forEach(ld => {
+          const value = dataPoint[ld.dataKey];
+          if (typeof value === 'number' && !isNaN(value)) {
+            maxValue = Math.max(maxValue, value);
+          }
+        });
+      });
+      return maxValue === -Infinity ? [0, 'auto'] : [0, maxValue * 1.05];
     }
 
     // Calculate domain based on visible series (all series when there's no
@@ -1216,6 +1235,15 @@ export const MemoChart = memo(function MemoChart({
     (value: number) => formatAxisTick(value, axisNumberFormat),
     [axisNumberFormat],
   );
+
+  // Only overrides Recharts' own candidates for a concrete domain - a bare
+  // 'auto' bound has no fixed range to divide evenly.
+  const yAxisTicks = useMemo(() => {
+    const [min, max] = yAxisDomain;
+    return typeof min === 'number' && typeof max === 'number'
+      ? getEvenlySpacedTicks(min, max)
+      : undefined;
+  }, [yAxisDomain]);
 
   const [highlightStart, setHighlightStart] = useState<string | undefined>();
   const [highlightEnd, setHighlightEnd] = useState<string | undefined>();
@@ -1670,6 +1698,7 @@ export const MemoChart = memo(function MemoChart({
             tickFormatter={tickFormatter}
             tick={{ fontSize: 11, fontFamily: 'IBM Plex Mono, monospace' }}
             domain={yAxisDomain}
+            ticks={yAxisTicks}
           />
           {lines}
           {/* HOVER tooltip (also drives cross-chart shadow tooltips via syncId).

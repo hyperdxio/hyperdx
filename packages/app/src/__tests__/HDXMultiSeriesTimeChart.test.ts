@@ -12,6 +12,7 @@ import {
   buildActiveClickSeries,
   collectMemoChartGradientHexes,
   formatAxisTick,
+  getEvenlySpacedTicks,
   getSelectedLineData,
   getVisibleLineData,
   getVisibleTooltipRows,
@@ -157,6 +158,25 @@ describe('formatAxisTick', () => {
       expect(formatAxisTick(0.0000005, { output: 'duration' })).toBe('500ns');
       expect(formatAxisTick(7500, { output: 'duration' })).toBe('2.1h');
     });
+  });
+});
+
+describe('getEvenlySpacedTicks', () => {
+  it('divides the domain into 5 uniform steps', () => {
+    expect(getEvenlySpacedTicks(0, 1000)).toEqual([0, 250, 500, 750, 1000]);
+  });
+
+  it('works for a non-zero lower bound', () => {
+    expect(getEvenlySpacedTicks(10, 30)).toEqual([10, 15, 20, 25, 30]);
+  });
+
+  it('reproduces the reported uneven-spacing case with a uniform set', () => {
+    // Regression: Recharts' own "nice" ticks for this domain rendered as
+    // 0/300/1k (gaps of 300 then 700) after minTickGap thinning.
+    const ticks = getEvenlySpacedTicks(0, 950);
+    for (let i = 1; i < ticks.length; i++) {
+      expect(ticks[i] - ticks[i - 1]).toBeCloseTo(ticks[1] - ticks[0]);
+    }
   });
 });
 
