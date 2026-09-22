@@ -59,6 +59,12 @@ jest.mock('../DBRowSidePanel', () => {
   };
 });
 
+let mockBasePath = '';
+jest.mock('next/router', () => ({
+  __esModule: true,
+  useRouter: () => ({ basePath: mockBasePath }),
+}));
+
 const mockUseSource = jest.fn();
 jest.mock('@/source', () => ({
   __esModule: true,
@@ -127,6 +133,7 @@ describe('TraceLogsPanel', () => {
     mockRowTableProps.current = {};
     mockRowTableContext.current = {};
     mockUseSource.mockReset();
+    mockBasePath = '';
   });
 
   it('scopes the table to the trace', () => {
@@ -218,6 +225,20 @@ describe('TraceLogsPanel', () => {
       LOG_SOURCE.defaultTableSelectExpression,
     );
     expect(params.get('orderBy')).toBeNull();
+  });
+
+  it("prefixes the link with the deployment's base path", () => {
+    // A hard navigation isn't prefixed the way `next/link` would be, and the
+    // ClickHouse build mounts the app under /clickstack.
+    mockBasePath = '/clickstack';
+    renderPanel();
+
+    expect(
+      screen
+        .getByTestId('trace-logs-open-in-search')
+        .getAttribute('href')
+        ?.startsWith('/clickstack/search?'),
+    ).toBe(true);
   });
 
   it('tells the table its own identity and sort state', () => {

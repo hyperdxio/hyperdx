@@ -1,4 +1,5 @@
 import { use, useCallback, useMemo } from 'react';
+import { useRouter } from 'next/router';
 import { buildSearchChartConfig } from '@hyperdx/common-utils/dist/core/searchChartConfig';
 import {
   BuilderChartConfigWithDateRange,
@@ -84,6 +85,7 @@ export default function TraceLogsPanel({
   );
 
   const parentContext = use(RowSidePanelContext);
+  const router = useRouter();
 
   // These rows aren't the searched table's: its cell filter would write a log
   // column into that source's filters, and its column removal maps by index.
@@ -121,7 +123,9 @@ export default function TraceLogsPanel({
   // read by `parseAsStringEncoded`, which decodes one level past the query
   // string's own; `select` also seeds the page's SELECT input, which is blank
   // without it.
-  const searchUrl = `/search?${new URLSearchParams({
+  // `router.basePath` rather than a root-relative path: a hard navigation isn't
+  // prefixed for the /clickstack build the way `next/link` would be.
+  const searchUrl = `${router.basePath}/search?${new URLSearchParams({
     source: logSource.id,
     select: encodeURIComponent(logSource.defaultTableSelectExpression),
     where: encodeURIComponent(traceWhere),
