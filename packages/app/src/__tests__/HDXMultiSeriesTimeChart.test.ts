@@ -172,7 +172,7 @@ describe('getNiceYAxisBounds', () => {
     expect(getNiceYAxisBounds(0, 1000)).toEqual({
       min: 0,
       max: 1000,
-      ticks: [0, 250, 500, 750, 1000],
+      ticks: [0, 500, 1000],
     });
   });
 
@@ -199,21 +199,15 @@ describe('scanYAxisValueRange', () => {
     color: '#a',
   });
 
-  it('finds the min/max across every series when all are visible', () => {
+  it('finds the min/max across every series it is given', () => {
+    // Callers pass only the drawn series (already selection- and
+    // HARD_LINES_LIMIT-filtered), so no visibility filtering happens here.
     const lineData = [series('a'), series('b')];
     const graphResults = [{ a: 10, b: 40 }, { a: -5 }];
-    expect(scanYAxisValueRange(graphResults, lineData, () => true)).toEqual({
+    expect(scanYAxisValueRange(graphResults, lineData)).toEqual({
       min: -5,
       max: 40,
     });
-  });
-
-  it('ignores a series the visibility predicate excludes', () => {
-    const lineData = [series('a'), series('b')];
-    const graphResults = [{ a: 10, b: 40 }];
-    expect(
-      scanYAxisValueRange(graphResults, lineData, name => name === 'a'),
-    ).toEqual({ min: 10, max: 10 });
   });
 });
 
@@ -233,7 +227,7 @@ describe('computeYAxisBounds', () => {
     const bounds = computeYAxisBounds(
       [{ a: 3 }],
       [series('a')],
-      undefined,
+      false,
       false,
       DisplayType.Line,
     );
@@ -243,39 +237,80 @@ describe('computeYAxisBounds', () => {
     });
   });
 
-  it('leaves a stacked bar`s max to Recharts instead of one series`', () => {
-    // Regression: bars sharing a stackId sum at each timestamp, so 60 and
-    // 40 individually reach a stack height of 100, not 63.
+  it('never picks a step that formatAxisTick would round unevenly', () => {
+    // Regression: a 2.5 step gives "12.5", which formatAxisTick rounds to
+    // "13" past its magnitude threshold - an uneven-looking progression.
     const bounds = computeYAxisBounds(
-      [{ a: 60, b: 40 }],
-      [series('a'), series('b')],
-      undefined,
+      [{ a: 12 }],
+      [series('a')],
       false,
-      DisplayType.StackedBar,
+      false,
+      DisplayType.Line,
     );
-    expect(bounds).toEqual({ domain: [0, 'auto'], ticks: undefined });
+    expect(bounds).toEqual({
+      domain: [0, 15],
+      ticks: [0, 5, 10, 15],
+    });
+  });
+
+  it('leaves a stacked bar`s max to Recharts, selection or not', () => {
+    // Regression: 60 and 40 individually reach a stack height of 100, not
+    // 63 - the guard must apply regardless of hasSelection.
+    const lineData = [series('a'), series('b')];
+    const graphResults = [{ a: 60, b: 40 }];
+    for (const hasSelection of [false, true]) {
+      expect(
+        computeYAxisBounds(
+          graphResults,
+          lineData,
+          hasSelection,
+          false,
+          DisplayType.StackedBar,
+        ),
+      ).toEqual({ domain: [0, 'auto'], ticks: undefined });
+    }
   });
 
   it('falls back to auto when there is no numeric data', () => {
+    const bounds = computeYAxisBounds([], [], false, false, DisplayType.Line);
+    expect(bounds).toEqual({ domain: [0, 'auto'], ticks: undefined });
+  });
+
+  it('falls back to auto for flat data instead of a degenerate domain', () => {
+    // Regression: getNiceYAxisBounds(0, 0) hit its max<=min guard and
+    // returned a literal [0, 0] domain, collapsing the axis to one point.
     const bounds = computeYAxisBounds(
-      [],
-      [],
-      undefined,
+      [{ a: 0 }, { a: 0 }],
+      [series('a')],
+      false,
       false,
       DisplayType.Line,
     );
     expect(bounds).toEqual({ domain: [0, 'auto'], ticks: undefined });
+  });
+
+  it('falls back to auto for flat negative data on a fitted axis', () => {
+    // Regression: the same guard could also invert the domain (e.g.
+    // [0, -5]) for all-negative data padded past zero.
+    const bounds = computeYAxisBounds(
+      [{ a: -50 }, { a: -50 }],
+      [series('a')],
+      false,
+      true,
+      DisplayType.Line,
+    );
+    expect(bounds).toEqual({ domain: ['auto', 'auto'], ticks: undefined });
   });
 
   it('lets a fitted axis follow a negative minimum, still nicely rounded', () => {
     const bounds = computeYAxisBounds(
       [{ a: -50 }, { a: 200 }],
       [series('a')],
-      undefined,
+      false,
       true,
       DisplayType.Line,
     );
-    expect(bounds.domain).toEqual([-100, 250]);
+    expect(bounds.domain).toEqual([-100, 300]);
   });
 });
 
