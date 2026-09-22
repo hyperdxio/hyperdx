@@ -186,8 +186,14 @@ describe('getNiceYAxisTicks', () => {
   });
 
   it('cleans up float dust from a fractional step', () => {
-    // Regression: without rounding, a 0.1-ish step gave 0.6000000000000001.
-    expect(getNiceYAxisTicks(0, 0.42)).toEqual([0, 0.2, 0.4]);
+    // Regression: without rounding, a 0.1 step gave 0.30000000000000004.
+    expect(getNiceYAxisTicks(0, 0.42)).toEqual([0, 0.1, 0.2, 0.3, 0.4]);
+  });
+
+  it('never returns more than maxTicks ticks', () => {
+    // Regression: rounding to the nearest step could pick one below the
+    // raw target, overflowing to 6 ticks here instead of capping at 5.
+    expect(getNiceYAxisTicks(0, 1480).length).toBeLessThanOrEqual(5);
   });
 
   it('avoids a step that formatAxisTick would round unevenly (12.5 -> "13")', () => {
@@ -360,7 +366,7 @@ describe('computeYAxisBounds', () => {
     );
     expect(bounds).toEqual({
       domain: [-62.5, 212.5],
-      ticks: [-50, 0, 50, 100, 150, 200],
+      ticks: [0, 100, 200],
     });
   });
 });

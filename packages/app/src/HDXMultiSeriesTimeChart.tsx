@@ -867,39 +867,17 @@ export function formatAxisTick(
 // Rounds off float dust (e.g. 3 * 1.05 giving 3.1500000000000004).
 const cleanNumber = (v: number) => Number(v.toPrecision(12));
 
-// Round `x` up to a "nice" step: 1/2/(2.5)/5 x10^n. Only a step of exactly
-// 2.5 is excluded - it's non-integer and formatAxisTick rounds "12.5" to "13".
-function niceAxisStep(x: number): number {
-  const exp = Math.floor(Math.log10(x));
-  const frac = x / 10 ** exp;
-  if (exp === 0) {
-    const nice = frac <= 1 ? 1 : frac <= 2 ? 2 : frac <= 5 ? 5 : 10;
-    return nice * 10 ** exp;
-  }
-  const nice =
-    frac <= 1
-      ? 1
-      : frac <= 2.25
-        ? 2
-        : frac <= 3.75
-          ? 2.5
-          : frac <= 7.5
-            ? 5
-            : 10;
-  return nice * 10 ** exp;
+// Every 1/2/5 x10^n step, plus 2.5 x10^n (excluding the bare value 2.5,
+// which is non-integer and formatAxisTick rounds "12.5" to "13").
+function niceStepsNear(target: number): number[] {
+  const exp = Math.floor(Math.log10(target));
+  return [exp - 1, exp, exp + 1]
+    .flatMap(e => [1, 2, 2.5, 5, 10].map(m => m * 10 ** e))
+    .filter(step => step > 0 && step !== 2.5)
+    .sort((a, b) => a - b);
 }
 
-// Ported from packages/cli/src/termchart/scale.ts's niceTicks. Ticks stay
-// within the given [min, max] rather than expanding it to the step boundary.
-export function getNiceYAxisTicks(
-  min: number,
-  max: number,
-  maxTicks = 5,
-): number[] {
-  if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
-    return [];
-  }
-  const step = niceAxisStep((max - min) / (maxTicks - 1));
+function ticksWithinRange(step: number, min: number, max: number): number[] {
   const ticks: number[] = [];
   for (
     let t = cleanNumber(Math.ceil(min / step) * step);
@@ -909,6 +887,26 @@ export function getNiceYAxisTicks(
     ticks.push(t);
   }
   return ticks;
+}
+
+// Ported from packages/cli/src/termchart/scale.ts's niceTicks, but picks the
+// smallest nice step that still fits within [min, max] and maxTicks.
+export function getNiceYAxisTicks(
+  min: number,
+  max: number,
+  maxTicks = 5,
+): number[] {
+  if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
+    return [];
+  }
+  const steps = niceStepsNear((max - min) / (maxTicks - 1));
+  for (const step of steps) {
+    const ticks = ticksWithinRange(step, min, max);
+    if (ticks.length <= maxTicks) {
+      return ticks;
+    }
+  }
+  return ticksWithinRange(steps[steps.length - 1], min, max);
 }
 
 // Shared by every yAxisDomain branch below. Callers pass only the series
