@@ -899,13 +899,69 @@ function ticksWithinRange(
   return ticks;
 }
 
-// A coarser step can still format two ticks to the same label (e.g. 1500
-// and 2000 both averaging to "2k") even though the raw numbers differ.
-function hasDistinctLabels(
+// Escalates precision past the configured mantissa, bypassing
+// formatAxisTick's own selection (which can force 0 regardless).
+function formatTickAtMantissa(
+  value: number,
+  axisNumberFormat: NumberFormat,
+  mantissa: number,
+): string {
+  return formatNumber(value, {
+    ...axisNumberFormat,
+    mantissa,
+    average: true,
+    unit: undefined,
+  });
+}
+
+// Ticks must never carry duplicate labels (Grafana/Chronosphere never do).
+const MAX_TICK_MANTISSA_ESCALATION = 4;
+
+function isDistinct(
   ticks: number[],
-  formatTick?: (value: number) => string,
+  formatTick: (value: number) => string,
 ): boolean {
-  return !formatTick || new Set(ticks.map(formatTick)).size === ticks.length;
+  return new Set(ticks.map(formatTick)).size === ticks.length;
+}
+
+// Prefers formatAxisTick's normal output, but escalates precision past the
+// configured mantissa when that's the only way to keep labels distinct.
+function resolveDistinctTickLabels(
+  ticks: number[],
+  axisNumberFormat: NumberFormat | undefined,
+): ((value: number) => string) | null {
+  const base = (value: number) => formatAxisTick(value, axisNumberFormat);
+  if (isDistinct(ticks, base)) {
+    return base;
+  }
+  if (!axisNumberFormat) {
+    // No configured mantissa to escalate - fall back to full, non-compact
+    // precision, which always distinguishes any two different numbers.
+    const fullPrecision = (value: number) =>
+      new Intl.NumberFormat('en-US').format(value);
+    return isDistinct(ticks, fullPrecision) ? fullPrecision : null;
+  }
+  if (axisNumberFormat.output === 'duration') {
+    return null;
+  }
+  const baseMantissa = Math.max(0, axisNumberFormat.mantissa ?? 0);
+  for (
+    let m = baseMantissa + 1;
+    m <= baseMantissa + MAX_TICK_MANTISSA_ESCALATION;
+    m++
+  ) {
+    const escalated = (value: number) =>
+      formatTickAtMantissa(value, axisNumberFormat, m);
+    if (isDistinct(ticks, escalated)) {
+      return escalated;
+    }
+  }
+  return null;
+}
+
+export interface NiceYAxisTicks {
+  ticks: number[];
+  tickFormatter?: (value: number) => string;
 }
 
 // Ported from packages/cli/src/termchart/scale.ts's niceTicks: the smallest
@@ -914,28 +970,31 @@ export function getNiceYAxisTicks(
   min: number,
   max: number,
   maxTicks = 5,
-  formatTick?: (value: number) => string,
-): number[] {
+  axisNumberFormat?: NumberFormat,
+): NiceYAxisTicks {
   if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
-    return [];
+    return { ticks: [] };
   }
   const steps = niceStepsNear((max - min) / (maxTicks - 1));
   for (const step of steps) {
     const ticks = ticksWithinRange(step, min, max);
-    if (
-      ticks &&
-      ticks.length <= maxTicks &&
-      hasDistinctLabels(ticks, formatTick)
-    ) {
-      return ticks;
+    // A single tick conveys no scale at all - never accept it, even
+    // though its "labels" are trivially distinct from one another.
+    if (!ticks || ticks.length < 2 || ticks.length > maxTicks) {
+      continue;
+    }
+    const tickFormatter = resolveDistinctTickLabels(ticks, axisNumberFormat);
+    if (tickFormatter) {
+      return { ticks, tickFormatter };
     }
   }
-  return [];
+  return { ticks: [] };
 }
 
 export interface ExpandableYAxisTicks {
   max: number;
   ticks: number[];
+  tickFormatter?: (value: number) => string;
 }
 
 // For the plain default branch (domain may expand, as [0,'auto'] did
@@ -944,7 +1003,7 @@ export function getExpandableYAxisTicks(
   min: number,
   max: number,
   maxTicks = 5,
-  formatTick?: (value: number) => string,
+  axisNumberFormat?: NumberFormat,
 ): ExpandableYAxisTicks {
   if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
     return { max, ticks: [] };
@@ -952,28 +1011,38 @@ export function getExpandableYAxisTicks(
   const steps = niceStepsNear((max - min) / (maxTicks - 1));
   for (const step of steps) {
     const tightTicks = ticksWithinRange(step, min, max);
-    if (
-      !tightTicks ||
-      tightTicks.length > maxTicks ||
-      !hasDistinctLabels(tightTicks, formatTick)
-    ) {
+    // A single tick conveys no scale at all - never accept it, even
+    // though its "labels" are trivially distinct from one another.
+    if (!tightTicks || tightTicks.length < 2 || tightTicks.length > maxTicks) {
+      continue;
+    }
+    const tightFormatter = resolveDistinctTickLabels(
+      tightTicks,
+      axisNumberFormat,
+    );
+    if (!tightFormatter) {
       continue;
     }
     const expandedMax = cleanNumber(Math.ceil(max / step) * step);
     // Filling a step's worth of dead space is fine, but not at the cost
     // of a large fraction of the range - keep the tight result instead.
-    if (expandedMax - max > (max - min) * 0.25) {
-      return { max, ticks: tightTicks };
+    if (expandedMax - max <= (max - min) * 0.25) {
+      const expandedTicks = ticksWithinRange(step, min, expandedMax);
+      if (expandedTicks && expandedTicks.length <= maxTicks) {
+        const expandedFormatter = resolveDistinctTickLabels(
+          expandedTicks,
+          axisNumberFormat,
+        );
+        if (expandedFormatter) {
+          return {
+            max: expandedMax,
+            ticks: expandedTicks,
+            tickFormatter: expandedFormatter,
+          };
+        }
+      }
     }
-    const expandedTicks = ticksWithinRange(step, min, expandedMax);
-    if (
-      expandedTicks &&
-      expandedTicks.length <= maxTicks &&
-      hasDistinctLabels(expandedTicks, formatTick)
-    ) {
-      return { max: expandedMax, ticks: expandedTicks };
-    }
-    return { max, ticks: tightTicks };
+    return { max, ticks: tightTicks, tickFormatter: tightFormatter };
   }
   return { max, ticks: [] };
 }
@@ -1001,6 +1070,7 @@ export function scanYAxisValueRange(
 export interface YAxisBounds {
   domain: AxisDomain;
   ticks: number[] | undefined;
+  tickFormatter?: (value: number) => string;
 }
 
 const DEFAULT_Y_AXIS_BOUNDS: YAxisBounds = {
@@ -1027,7 +1097,6 @@ export function computeYAxisBounds(
     return DEFAULT_Y_AXIS_BOUNDS;
   }
   const shouldFitYAxis = fitYAxisToData;
-  const formatTick = (value: number) => formatAxisTick(value, axisNumberFormat);
 
   if (!hasSelection && !shouldFitYAxis) {
     // A fully numeric domain skips Recharts' own nice rounding, and a
@@ -1052,11 +1121,12 @@ export function computeYAxisBounds(
       lowerBound,
       upperBound,
       5,
-      formatTick,
+      axisNumberFormat,
     );
     return {
       domain: [lowerBound, expanded.max],
       ticks: expanded.ticks.length === 0 ? undefined : expanded.ticks,
+      tickFormatter: expanded.tickFormatter,
     };
   }
 
@@ -1081,12 +1151,13 @@ export function computeYAxisBounds(
   }
   // A reference line can extend this domain further (stale ticks), but
   // Fit-to-Data/selection still need the tight domain itself to work.
-  const ticks = hasReferenceLines
-    ? []
-    : getNiceYAxisTicks(lowerBound, upperBound, 5, formatTick);
+  const { ticks, tickFormatter } = hasReferenceLines
+    ? { ticks: [], tickFormatter: undefined }
+    : getNiceYAxisTicks(lowerBound, upperBound, 5, axisNumberFormat);
   return {
     domain: [lowerBound, upperBound],
     ticks: ticks.length === 0 ? undefined : ticks,
+    tickFormatter,
   };
 }
 
@@ -1410,6 +1481,9 @@ export const MemoChart = memo(function MemoChart({
   );
 
   const yAxisTicks = yAxisBounds.ticks;
+  // Explicit ticks may need a precision-escalated formatter to stay
+  // distinct - see resolveDistinctTickLabels - so prefer it when present.
+  const yAxisTickFormatter = yAxisBounds.tickFormatter ?? tickFormatter;
 
   const [highlightStart, setHighlightStart] = useState<string | undefined>();
   const [highlightEnd, setHighlightEnd] = useState<string | undefined>();
@@ -1861,7 +1935,7 @@ export const MemoChart = memo(function MemoChart({
           <YAxis
             width={Y_AXIS_WIDTH}
             minTickGap={25}
-            tickFormatter={tickFormatter}
+            tickFormatter={yAxisTickFormatter}
             tick={{ fontSize: 11, fontFamily: 'IBM Plex Mono, monospace' }}
             domain={yAxisDomain}
             ticks={yAxisTicks}

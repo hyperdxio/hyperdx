@@ -169,37 +169,37 @@ describe('getNiceYAxisTicks', () => {
   it('rounds to a clean step instead of dividing the raw range', () => {
     // Regression: evenly dividing an unrounded range into quarters gave
     // fractional labels (341/683/1k) or, worse, duplicate rounded ones.
-    expect(getNiceYAxisTicks(0, 1000)).toEqual([0, 250, 500, 750, 1000]);
+    expect(getNiceYAxisTicks(0, 1000).ticks).toEqual([0, 250, 500, 750, 1000]);
   });
 
   it('works for a non-zero lower bound', () => {
-    expect(getNiceYAxisTicks(10, 30)).toEqual([10, 15, 20, 25, 30]);
+    expect(getNiceYAxisTicks(10, 30).ticks).toEqual([10, 15, 20, 25, 30]);
   });
 
   it('never expands past the given range, even if it clips ticks short', () => {
     // A tight/fitted range shouldn't gain extra ticks beyond its own bounds.
-    expect(getNiceYAxisTicks(95, 205)).toEqual([100, 125, 150, 175, 200]);
+    expect(getNiceYAxisTicks(95, 205).ticks).toEqual([100, 125, 150, 175, 200]);
   });
 
   it('returns no ticks for a degenerate (flat) range', () => {
-    expect(getNiceYAxisTicks(5, 5)).toEqual([]);
+    expect(getNiceYAxisTicks(5, 5).ticks).toEqual([]);
   });
 
   it('cleans up float dust from a fractional step', () => {
     // Regression: without rounding, a 0.1 step gave 0.30000000000000004.
-    expect(getNiceYAxisTicks(0, 0.42)).toEqual([0, 0.1, 0.2, 0.3, 0.4]);
+    expect(getNiceYAxisTicks(0, 0.42).ticks).toEqual([0, 0.1, 0.2, 0.3, 0.4]);
   });
 
   it('never returns more than maxTicks ticks', () => {
     // Regression: rounding to the nearest step could pick one below the
     // raw target, overflowing to 6 ticks here instead of capping at 5.
-    expect(getNiceYAxisTicks(0, 1480).length).toBeLessThanOrEqual(5);
+    expect(getNiceYAxisTicks(0, 1480).ticks.length).toBeLessThanOrEqual(5);
   });
 
   it('rejects a precision-collapsed step instead of looping or truncating', () => {
     // Regression: accepting the truncated result of a precision-collapsed
     // step gave a one-tick axis instead of trying a coarser step.
-    expect(getNiceYAxisTicks(999999999999, 1000000000030)).toEqual([
+    expect(getNiceYAxisTicks(999999999999, 1000000000030).ticks).toEqual([
       1000000000000, 1000000000010, 1000000000020, 1000000000030,
     ]);
   });
@@ -207,7 +207,35 @@ describe('getNiceYAxisTicks', () => {
   it('avoids a step that formatAxisTick would round unevenly (12.5 -> "13")', () => {
     // At this magnitude (exp === 0), a 2.5 step yields non-integer ticks
     // that straddle formatAxisTick's forced-integer threshold of 10.
-    expect(getNiceYAxisTicks(0, 12.6)).toEqual([0, 5, 10]);
+    expect(getNiceYAxisTicks(0, 12.6).ticks).toEqual([0, 5, 10]);
+  });
+
+  it('never accepts a single tick, even though it is trivially "distinct"', () => {
+    // Regression: a lone survivor's label can't collide with anything,
+    // so a naive distinctness check accepted a one-tick, no-scale axis.
+    const result = getNiceYAxisTicks(999999999999, 1000000000000.001);
+    expect(result.ticks.length === 0 || result.ticks.length >= 2).toBe(true);
+  });
+
+  it('escalates precision past the configured mantissa to keep labels distinct', () => {
+    // Regression: Grafana/Chronosphere never show two ticks with the same
+    // label - 0 decimals collapses a narrow byte range entirely to "3 GB".
+    const GB = 1024 ** 3;
+    const result = getNiceYAxisTicks(2.825 * GB, 3.45 * GB, 5, {
+      output: 'byte',
+      mantissa: 0,
+    });
+    const labels = result.ticks.map(t => result.tickFormatter!(t));
+    expect(result.ticks.length).toBeGreaterThanOrEqual(2);
+    expect(new Set(labels).size).toBe(labels.length);
+  });
+
+  it('falls back to full, non-compact precision when no format is configured', () => {
+    // Regression: with no mantissa to escalate, close-together magnitudes
+    // collapsed under Intl's compact notation (e.g. "1T") instead.
+    const result = getNiceYAxisTicks(999999999999, 1000000000030);
+    const labels = result.ticks.map(t => result.tickFormatter!(t));
+    expect(new Set(labels).size).toBe(labels.length);
   });
 });
 
@@ -257,6 +285,7 @@ describe('computeYAxisBounds', () => {
     expect(bounds).toEqual({
       domain: [0, 3.15],
       ticks: [0, 1, 2, 3],
+      tickFormatter: expect.any(Function),
     });
   });
 
@@ -274,6 +303,7 @@ describe('computeYAxisBounds', () => {
     expect(bounds).toEqual({
       domain: [0, 15],
       ticks: [0, 5, 10, 15],
+      tickFormatter: expect.any(Function),
     });
   });
 
@@ -291,6 +321,7 @@ describe('computeYAxisBounds', () => {
     expect(bounds).toEqual({
       domain: [0, 1500],
       ticks: [0, 500, 1000, 1500],
+      tickFormatter: expect.any(Function),
     });
   });
 
@@ -308,6 +339,7 @@ describe('computeYAxisBounds', () => {
     expect(bounds).toEqual({
       domain: [-100, 1.05],
       ticks: [-100, -75, -50, -25, 0],
+      tickFormatter: expect.any(Function),
     });
   });
 
@@ -325,6 +357,7 @@ describe('computeYAxisBounds', () => {
     expect(bounds).toEqual({
       domain: [-1000, -850],
       ticks: [-1000, -950, -900, -850],
+      tickFormatter: expect.any(Function),
     });
   });
 
@@ -426,6 +459,7 @@ describe('computeYAxisBounds', () => {
     expect(bounds).toEqual({
       domain: [-62.5, 212.5],
       ticks: [0, 100, 200],
+      tickFormatter: expect.any(Function),
     });
   });
 
@@ -443,6 +477,7 @@ describe('computeYAxisBounds', () => {
     expect(bounds).toEqual({
       domain: [-110, 110],
       ticks: [-100, -50, 0, 50, 100],
+      tickFormatter: expect.any(Function),
     });
   });
 
@@ -460,9 +495,9 @@ describe('computeYAxisBounds', () => {
     expect(bounds).toEqual({ domain: [95, 205], ticks: undefined });
   });
 
-  it('rejects a step whose formatted labels collide, even if the count fits', () => {
-    // Regression: step 500's "0,500,1k,2k,2k" labels collide; step 1000
-    // was then wrongly expanded to domain 3000, a third of it empty.
+  it('escalates precision instead of dropping a step whose labels collide', () => {
+    // Regression: step 500's "0,500,1k,2k,2k" labels collide - escalating
+    // precision keeps the denser step instead of falling back to a coarser one.
     const bounds = computeYAxisBounds(
       [{ a: 2000 }],
       [series('a')],
@@ -472,10 +507,29 @@ describe('computeYAxisBounds', () => {
       false,
       { output: 'number' },
     );
-    expect(bounds).toEqual({
-      domain: [0, 2100],
-      ticks: [0, 1000, 2000],
-    });
+    expect(bounds.domain).toEqual([0, 2100]);
+    expect(bounds.ticks).toEqual([0, 500, 1000, 1500, 2000]);
+    const labels = bounds.ticks!.map(t => bounds.tickFormatter!(t));
+    expect(new Set(labels).size).toBe(labels.length);
+  });
+
+  it('never collapses to a single tick, escalating precision or a wider step instead', () => {
+    // Regression: a narrow byte range at 0 decimals (2.9-3.4GB) all rounds
+    // to "3 GB" - never show duplicate ticks or a no-scale single tick.
+    const GB = 1024 ** 3;
+    const bounds = computeYAxisBounds(
+      [{ a: 2.9 * GB }, { a: 3.4 * GB }],
+      [series('a')],
+      false,
+      true,
+      DisplayType.Line,
+      false,
+      { output: 'byte', mantissa: 0 },
+    );
+    expect(bounds.ticks).toBeDefined();
+    expect(bounds.ticks!.length).toBeGreaterThanOrEqual(2);
+    const labels = bounds.ticks!.map(t => bounds.tickFormatter!(t));
+    expect(new Set(labels).size).toBe(labels.length);
   });
 });
 
