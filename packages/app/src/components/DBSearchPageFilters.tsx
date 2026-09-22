@@ -1821,12 +1821,6 @@ const DBSearchPageFiltersComponent = ({
             </Flex>
             <Collapse expanded={isFiltersExpanded}>
               <Stack gap="sm">
-                <FilterKeySearch
-                  value={filterSearch}
-                  onChange={setFilterSearch}
-                  isFetching={isSearchBusy}
-                />
-
                 {analysisMode === 'results' && (
                   <Checkbox
                     size={13 as any}
@@ -1889,6 +1883,12 @@ const DBSearchPageFiltersComponent = ({
                       onChange={event => setRootSpansOnly(event.target.checked)}
                     />
                   )}
+
+                <FilterKeySearch
+                  value={filterSearch}
+                  onChange={setFilterSearch}
+                  isFetching={isSearchBusy}
+                />
 
                 {isFacetsLoading ? (
                   <Flex align="center" justify="center">

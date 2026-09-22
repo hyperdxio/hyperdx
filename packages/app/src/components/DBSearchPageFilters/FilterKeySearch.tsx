@@ -18,8 +18,8 @@ export function FilterKeySearch({
   return (
     <TextInput
       size="xs"
-      placeholder="Search filters..."
-      aria-label="Search filters"
+      placeholder="Search filter column/properties"
+      aria-label="Search filter column/properties"
       data-testid="filter-key-search"
       value={value}
       onChange={event => onChange(event.currentTarget.value)}
