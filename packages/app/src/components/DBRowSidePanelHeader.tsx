@@ -100,6 +100,7 @@ export default function DBRowSidePanelHeader({
             overflowWrap: 'break-word',
           }}
           ref={setHeaderElement}
+          data-testid="side-panel-body"
         >
           <Flex justify="space-between" mb="xs">
             <Text size="xs">{mainContentHeader}</Text>
