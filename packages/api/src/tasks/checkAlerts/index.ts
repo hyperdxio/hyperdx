@@ -59,7 +59,9 @@ import { ClickhouseClient } from '@/clickhouse';
 import { ALERT_HISTORY_QUERY_CONCURRENCY } from '@/controllers/alertHistory';
 import { getConnectionById } from '@/controllers/connection';
 import {
+  CLICKHOUSE_PROMETHEUS_API_PREFIX,
   clickhouseAuthHeaders,
+  clickhousePrometheusUpstream,
   clickhouseServesPrometheusHttpApi,
   joinPrometheusUpstreamUrl,
   PROMETHEUS_CH_TIMEOUT_MS,
@@ -1004,16 +1006,22 @@ export async function evaluatePromqlAlert({
       ? substitutePromqlChartConfigVariables({ ...savedConfig, variables })
       : savedConfig;
   const rawExpression = resolvedConfig.promqlExpression;
-  const promqlExpression = Array.isArray(rawExpression)
-    ? rawExpression[rawExpression.length - 1].expression
-    : rawExpression;
+  let promqlExpression = typeof rawExpression === 'string' ? rawExpression : '';
+  if (Array.isArray(rawExpression)) {
+    const validExpressions = rawExpression.filter(
+      e => e.expression && e.expression.trim() !== '',
+    );
+    if (validExpressions.length > 0) {
+      promqlExpression =
+        validExpressions[validExpressions.length - 1].expression;
+    }
+  }
 
   // Shared helper for querying a Prometheus-compatible HTTP endpoint.
   async function queryPrometheusHttp(
-    upstreamHost: string,
+    url: URL,
     headers?: Record<string, string>,
   ): Promise<PrometheusMatrixResult[] | null> {
-    const url = joinPrometheusUpstreamUrl(upstreamHost, '/api/v1/query_range');
     url.searchParams.set('query', promqlExpression);
     url.searchParams.set('start', String(startSec));
     url.searchParams.set('end', String(endSec));
@@ -1056,7 +1064,27 @@ export async function evaluatePromqlAlert({
   }
 
   if (connection.isPrometheusEndpoint) {
-    return queryPrometheusHttp(connection.host);
+    const url = joinPrometheusUpstreamUrl(
+      connection.host,
+      '/api/v1/query_range',
+    );
+    return queryPrometheusHttp(url);
+  }
+
+  const tableName = source?.from.tableName;
+  if (!tableName) {
+    throw new Error(
+      'A PromQL alert routed to ClickHouse must have a source with a valid TimeSeries table name. ' +
+        'Assign a source to this alert or switch to a Prometheus connection.',
+    );
+  }
+
+  const databaseName = source.from.databaseName;
+  if (!databaseName) {
+    throw new Error(
+      'A PromQL alert routed to ClickHouse must have a source with a valid database name. ' +
+        'Assign a source to this alert or switch to a Prometheus connection.',
+    );
   }
 
   // ClickHouse path — create a client for both the HTTP API probe and the
@@ -1077,13 +1105,18 @@ export async function evaluatePromqlAlert({
     })
   ) {
     // ClickHouse 26.6+ with the prometheus_api_v1 handler configured.
-    const chUpstream = new URL(connection.host);
-    chUpstream.searchParams.set(
-      'max_execution_time',
-      String(Math.round(PROMETHEUS_CH_TIMEOUT_MS / 1000)),
+    const chUpstream = clickhousePrometheusUpstream(connection.host, {
+      maxExecutionSec: Math.round(PROMETHEUS_CH_TIMEOUT_MS / 1000),
+    });
+    const url = joinPrometheusUpstreamUrl(
+      chUpstream,
+      `${CLICKHOUSE_PROMETHEUS_API_PREFIX}/query_range`,
     );
+    url.searchParams.set('database', databaseName);
+    url.searchParams.set('table', tableName);
+
     return queryPrometheusHttp(
-      chUpstream.toString(),
+      url,
       clickhouseAuthHeaders({
         username: connection.username,
         password: connection.password,
@@ -1094,22 +1127,6 @@ export async function evaluatePromqlAlert({
   const startMs = Math.floor(startSec * 1000);
   const endMs = Math.floor(endSec * 1000);
   const stepSecRounded = Math.max(Math.floor(stepSec), 1);
-
-  const tableName = source?.from.tableName;
-  if (!tableName) {
-    throw new Error(
-      'A PromQL alert routed to ClickHouse must have a source with a valid TimeSeries table name. ' +
-        'Assign a source to this alert or switch to a Prometheus connection.',
-    );
-  }
-
-  const databaseName = source.from.databaseName;
-  if (!databaseName) {
-    throw new Error(
-      'A PromQL alert routed to ClickHouse must have a source with a valid database name. ' +
-        'Assign a source to this alert or switch to a Prometheus connection.',
-    );
-  }
 
   try {
     const results = await queryRangeViaTableFunction({
