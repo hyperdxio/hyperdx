@@ -5236,18 +5236,14 @@ describe('checkAlerts', () => {
                 __name__: 'up',
                 host: 'node-1',
               },
-              values: [
-                [prometheusReturnedMs / 1000, '42'],
-              ],
+              values: [[prometheusReturnedMs / 1000, '42']],
             },
             {
               metric: {
                 __name__: 'up',
                 host: 'node-2',
               },
-              values: [
-                [prometheusReturnedMs / 1000, '5'],
-              ], // Below threshold
+              values: [[prometheusReturnedMs / 1000, '5']], // Below threshold
             },
           ]);
 

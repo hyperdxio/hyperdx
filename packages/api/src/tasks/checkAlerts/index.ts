@@ -45,6 +45,7 @@ import {
   SavedChartConfig,
   SourceKind,
 } from '@hyperdx/common-utils/dist/types';
+import { PrometheusMatrixResult } from '@hyperdx/common-utils/dist/types';
 import { substitutePromqlChartConfigVariables } from '@hyperdx/common-utils/dist/variables';
 import * as fns from 'date-fns';
 import { isString, pick } from 'lodash';
@@ -65,7 +66,6 @@ import {
   PROMETHEUS_CH_TIMEOUT_MS,
   queryRangeViaTableFunction,
 } from '@/controllers/timeseriesEngine';
-import { PrometheusMatrixResult } from '@hyperdx/common-utils/dist/types';
 import { AlertState, IAlert, IAlertError } from '@/models/alert';
 import AlertHistory, {
   IAlertHistory,
