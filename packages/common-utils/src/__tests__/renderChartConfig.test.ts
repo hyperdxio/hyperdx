@@ -122,11 +122,28 @@ describe('renderChartConfig', () => {
       querySettings,
     );
     const sql = rendered.sql.replace(/\s+/g, ' ');
-    expect(sql).toContain('AS AttributesHash, `host.name`, `region` FROM');
+    expect(sql).toContain(
+      'cityHash64(ScopeAttributes, ResourceAttributes, Attributes) AS AttributesHash, `host.name`, `region` FROM',
+    );
     expect(sql).toContain(
       'any(`host.name`) AS `host.name`, any(`region`) AS `region`',
     );
     expect(sql).not.toContain('`LastValue`');
+  });
+
+  it('hashes grouped-by computed columns into AttributesHash', async () => {
+    mockMetadata.getColumns = jest.fn().mockResolvedValue([
+      { name: 'host.name', type: 'String', default_type: 'MATERIALIZED' },
+      { name: 'region', type: 'String', default_type: 'ALIAS' },
+    ]);
+    const rendered = await renderChartConfig(
+      { ...gaugeConfiguration, groupBy: '`host.name`' },
+      mockMetadata,
+      querySettings,
+    );
+    expect(rendered.sql.replace(/\s+/g, ' ')).toContain(
+      'cityHash64(ScopeAttributes, ResourceAttributes, Attributes, tuple(`host.name`)) AS AttributesHash',
+    );
   });
 
   it('should generate sql for a single gauge metric with a delta() function applied', async () => {

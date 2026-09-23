@@ -527,11 +527,17 @@ describe('renderChartConfig', () => {
         await executeSqlCommand(
           `ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS \`host.name\` String MATERIALIZED ResourceAttributes['host']`,
         );
+        await executeSqlCommand(
+          `ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS value_band String ALIAS if(Value > 20, 'high', 'low')`,
+        );
       });
 
       afterEach(async () => {
         await executeSqlCommand(
           `ALTER TABLE ${table} DROP COLUMN IF EXISTS \`host.name\``,
+        );
+        await executeSqlCommand(
+          `ALTER TABLE ${table} DROP COLUMN IF EXISTS value_band`,
         );
       });
 
@@ -562,6 +568,69 @@ describe('renderChartConfig', () => {
         expect(await queryData(query)).toEqual(
           Array(2).fill(expect.objectContaining({ 'host.name': 'host1' })),
         );
+      });
+
+      it('keeps a group per value of a column that varies within a series', async () => {
+        const query = await renderChartConfig(
+          {
+            select: [
+              {
+                aggFn: 'max',
+                metricName: 'test.cpu',
+                metricType: MetricsDataType.Gauge,
+                valueExpression: 'Value',
+              },
+            ],
+            from: metricSource.from,
+            where: 'host.name:"host1"',
+            whereLanguage: 'lucene',
+            metricTables: TEST_METRIC_TABLES,
+            dateRange: [new Date(now), new Date(now + ms('10m'))],
+            granularity: '5 minute',
+            groupBy: 'value_band',
+            timestampValueExpression: metricSource.timestampValueExpression,
+            connection: connection.id,
+          },
+          metadata,
+          querySettings,
+        );
+        const rows = await queryData(query);
+        expect(rows.map(r => r.value_band).sort()).toEqual([
+          'high',
+          'high',
+          'low',
+          'low',
+        ]);
+      });
+
+      it('does not split series by a computed column the chart does not group by', async () => {
+        const query = await renderChartConfig(
+          {
+            select: [
+              {
+                aggFn: 'max',
+                metricName: 'test.cpu',
+                metricType: MetricsDataType.Gauge,
+                valueExpression: 'Value',
+              },
+            ],
+            from: metricSource.from,
+            where: 'host.name:"host1"',
+            whereLanguage: 'lucene',
+            metricTables: TEST_METRIC_TABLES,
+            dateRange: [new Date(now), new Date(now + ms('10m'))],
+            granularity: '5 minute',
+            timestampValueExpression: metricSource.timestampValueExpression,
+            connection: connection.id,
+          },
+          metadata,
+          querySettings,
+        );
+        expect(
+          (await queryData(query)).map(
+            r => r['max(toFloat64OrDefault(toString(LastValue)))'],
+          ),
+        ).toEqual([6.25, 80]);
       });
     });
   });
@@ -745,12 +814,52 @@ describe('renderChartConfig', () => {
         await executeSqlCommand(
           `ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS \`host.name\` String MATERIALIZED ResourceAttributes['host']`,
         );
+        await executeSqlCommand(
+          `ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS value_band String ALIAS if(Value > 8, 'high', 'low')`,
+        );
       });
 
       afterEach(async () => {
         await executeSqlCommand(
           `ALTER TABLE ${table} DROP COLUMN IF EXISTS \`host.name\``,
         );
+        await executeSqlCommand(
+          `ALTER TABLE ${table} DROP COLUMN IF EXISTS value_band`,
+        );
+      });
+
+      it('keeps a group per value of a column that varies within a series', async () => {
+        const query = await renderChartConfig(
+          {
+            select: [
+              {
+                aggFn: 'sum',
+                metricName: 'test.users',
+                metricType: MetricsDataType.Sum,
+                valueExpression: 'Value',
+              },
+            ],
+            from: metricSource.from,
+            where: 'host.name:"host1"',
+            whereLanguage: 'lucene',
+            metricTables: TEST_METRIC_TABLES,
+            dateRange: [new Date(now), new Date(now + ms('20m'))],
+            granularity: '5 minute',
+            groupBy: 'value_band',
+            timestampValueExpression: metricSource.timestampValueExpression,
+            connection: connection.id,
+          },
+          metadata,
+          querySettings,
+        );
+        const rows = await queryData(query);
+        const secondBucket = rows.filter(
+          r => new Date(r.__hdx_time_bucket).getTime() === now + ms('5m'),
+        );
+        expect(secondBucket.map(r => r.value_band).sort()).toEqual([
+          'high',
+          'low',
+        ]);
       });
 
       it('filters and groups on the column', async () => {
