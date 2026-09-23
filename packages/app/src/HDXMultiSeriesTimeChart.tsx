@@ -930,7 +930,7 @@ function formatTickAtMantissa(
   );
 }
 
-// Ticks must never carry duplicate labels (Grafana/Chronosphere never do).
+// Ticks must never carry duplicate labels.
 const MAX_TICK_MANTISSA_ESCALATION = 4;
 
 function isDistinct(

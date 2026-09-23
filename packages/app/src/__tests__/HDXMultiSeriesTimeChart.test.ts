@@ -295,8 +295,8 @@ describe('getNiceYAxisTicks', () => {
   });
 
   it('escalates precision past the configured mantissa to keep labels distinct', () => {
-    // Regression: Grafana/Chronosphere never show two ticks with the same
-    // label - 0 decimals collapses a narrow byte range entirely to "3 GB".
+    // Regression: two ticks must never show the same label - 0 decimals
+    // collapses a narrow byte range entirely to "3 GB".
     const GB = 1024 ** 3;
     const result = getNiceYAxisTicks(2.825 * GB, 3.45 * GB, 5, {
       output: 'byte',
