@@ -76,7 +76,7 @@ export function DashboardsListToolbar({
         </Tabs.List>
       </Tabs>
 
-      <Group gap="xs" mb="lg" wrap="nowrap">
+      <Group gap="xs" mb="lg">
         <TextInput
           placeholder="Search by name"
           leftSection={<IconSearch size={16} />}
@@ -85,7 +85,9 @@ export function DashboardsListToolbar({
           style={{ flex: 1 }}
           miw={100}
         />
-        {tags.length > 0 && (
+        {/* Stays mounted while a filter is set, even when no loaded dashboard
+            carries a tag, so a stale ?tag= link can still be cleared. */}
+        {(tags.length > 0 || tagFilter.length > 0) && (
           <Tags
             values={tagFilter}
             onChange={onTagFilterChange}

@@ -99,7 +99,7 @@ const PRESET_DASHBOARDS = [
 export default function DashboardsListPage() {
   const brandName = useBrandDisplayName();
   const { data: dashboards, isLoading, isError } = useDashboards();
-  const { data: me } = api.useMe();
+  const { data: me, isPending: isMePending } = api.useMe();
   const confirm = useConfirm();
   const createDashboard = useCreateDashboard();
   const deleteDashboard = useDeleteDashboard();
@@ -108,7 +108,7 @@ export default function DashboardsListPage() {
     'tag',
     parseAsArrayOf(parseAsString).withDefault([]),
   );
-  const [tab, setTab] = useQueryState(
+  const [requestedTab, setTab] = useQueryState(
     'tab',
     parseAsStringEnum<DashboardTab>(DASHBOARD_TAB_VALUES).withDefault('all'),
   );
@@ -123,7 +123,16 @@ export default function DashboardsListPage() {
     defaultValue: 'grid',
   });
 
-  const { data: favorites } = useFavorites();
+  const { data: favorites, isPending: isFavoritesPending } = useFavorites();
+
+  // Treat an in-flight `me` as eligible so the tab does not flip to All and
+  // back while the request settles.
+  const canFilterByCreator = isMePending || me?.email != null;
+  // Local mode has no user, so a shared ?tab=mine link would otherwise select
+  // a tab the toolbar never renders and filter every dashboard away.
+  const tab =
+    requestedTab === 'mine' && !canFilterByCreator ? 'all' : requestedTab;
+
   const favoriteIds = useMemo(
     () =>
       new Set(
@@ -280,7 +289,7 @@ export default function DashboardsListPage() {
         <DashboardsListToolbar
           tab={tab}
           onTabChange={setTab}
-          canFilterByCreator={me?.email != null}
+          canFilterByCreator={canFilterByCreator}
           search={search}
           onSearchChange={setSearch}
           tags={allTags}
@@ -292,7 +301,7 @@ export default function DashboardsListPage() {
           onViewModeChange={setViewMode}
         />
 
-        {isLoading ? (
+        {isLoading || isMePending || isFavoritesPending ? (
           <Text size="sm" c="dimmed" ta="center" py="xl">
             Loading dashboards...
           </Text>

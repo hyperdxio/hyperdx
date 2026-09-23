@@ -8,6 +8,7 @@ const mockQueryState = new Map<string, unknown>();
 let mockDashboards: Dashboard[] = [];
 let mockFavorites: Favorite[] = [];
 let mockMe: { email: string } | null = null;
+let mockMePending = false;
 let mockTeamTags: string[] = [];
 
 jest.mock('next/head', () => ({
@@ -31,7 +32,7 @@ jest.mock('nuqs', () => {
 jest.mock('@/api', () => ({
   __esModule: true,
   default: {
-    useMe: () => ({ data: mockMe }),
+    useMe: () => ({ data: mockMe, isPending: mockMePending }),
     useTags: () => ({ data: { data: mockTeamTags }, refetch: jest.fn() }),
   },
 }));
@@ -82,6 +83,7 @@ describe('DashboardsListPage', () => {
     mockDashboards = [];
     mockFavorites = [];
     mockMe = { email: 'me@hyperdx.io' };
+    mockMePending = false;
     mockTeamTags = [];
   });
 
@@ -220,6 +222,55 @@ describe('DashboardsListPage', () => {
 
     expect(
       screen.queryByTestId('dashboards-tag-filter'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('keeps the tag filter reachable when a shared filter matches no tag', () => {
+    mockQueryState.set('tag', ['deleted-tag']);
+    mockDashboards = [makeDashboard({ id: 'a', name: 'Checkout' })];
+
+    renderWithMantine(<DashboardsListPage />);
+
+    expect(screen.getByTestId('dashboards-tag-filter')).toBeInTheDocument();
+  });
+
+  it('falls back to the all tab when a shared mine link has no current user', () => {
+    mockQueryState.set('tab', 'mine');
+    mockMe = null;
+    mockDashboards = [
+      makeDashboard({
+        id: 'a',
+        name: 'Checkout',
+        createdBy: { email: 'someone@hyperdx.io' },
+      }),
+    ];
+
+    renderWithMantine(<DashboardsListPage />);
+
+    expect(screen.getByTestId('dashboards-tab-all')).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(screen.getByText('Checkout')).toBeInTheDocument();
+  });
+
+  it('waits for the current user before judging the mine tab empty', () => {
+    mockQueryState.set('tab', 'mine');
+    mockMe = null;
+    mockMePending = true;
+    mockDashboards = [
+      makeDashboard({
+        id: 'a',
+        name: 'Checkout',
+        createdBy: { email: 'me@hyperdx.io' },
+      }),
+    ];
+
+    renderWithMantine(<DashboardsListPage />);
+
+    expect(screen.getByText('Loading dashboards...')).toBeInTheDocument();
+    expect(
+      screen.queryByText('No dashboards created by you yet'),
     ).not.toBeInTheDocument();
   });
 });
