@@ -76,8 +76,10 @@ describe('config', () => {
       if (env.flag) process.env.HDX_DIAGNOSTICS_ENABLED = env.flag;
       let enabled: boolean | undefined;
       jest.isolateModules(() => {
-        // eslint-disable-next-line @typescript-eslint/no-require-imports, n/no-missing-require
-        enabled = require('@/config').DIAGNOSTICS_ENABLED;
+        enabled =
+          jest.requireActual<typeof import('@/config')>(
+            '@/config',
+          ).DIAGNOSTICS_ENABLED;
       });
       return enabled;
     };
