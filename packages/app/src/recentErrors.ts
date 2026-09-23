@@ -94,9 +94,8 @@ export function recordRecentError(error: unknown): void {
   const endpoint = endpointOf(err);
 
   const entry: RecentError = {
-    // Not a render path: each error needs its own timestamp.
-    // eslint-disable-next-line no-restricted-syntax
-    at: new Date().toISOString(),
+    // Each error needs its own timestamp; same clock as directTrace.ts.
+    at: new Date(performance.timeOrigin + performance.now()).toISOString(),
     route: typeof window !== 'undefined' ? window.location.pathname : '',
     name: err.name,
     ...(typeof status === 'number' ? { status } : {}),
