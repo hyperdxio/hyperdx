@@ -357,4 +357,40 @@ describe('recentErrors', () => {
       jest.useRealTimers();
     }
   });
+
+  it.each([
+    [
+      'a bare word that is a customer value',
+      "Code: 36. DB::Exception: Unexpected value 'alice'",
+      "Code: 36. DB::Exception: Unexpected value '?'",
+    ],
+    [
+      'a parsed value that looks like an identifier',
+      "Code: 6. DB::Exception: Cannot parse string 'alice' as UInt64",
+      "Code: 6. DB::Exception: Cannot parse string '?' as UInt64",
+    ],
+  ])('blanks %s', (_case, message, expected) => {
+    recordRecentError(new Error(message));
+
+    expect(getRecentErrors()[0].message).toBe(expected);
+  });
+
+  it.each([
+    [
+      'every name in a missing-columns list',
+      "Code: 47. DB::Exception: Missing columns: 'ServiceName', 'SpanName'",
+    ],
+    [
+      'a table expression identifier',
+      "Code: 60. DB::Exception: Unknown table expression identifier 'otel_logs'",
+    ],
+    [
+      'a function name',
+      "Code: 46. DB::Exception: Function with name 'toStartOfFoo' does not exist",
+    ],
+  ])('keeps %s', (_case, message) => {
+    recordRecentError(new Error(message));
+
+    expect(getRecentErrors()[0].message).toBe(message);
+  });
 });

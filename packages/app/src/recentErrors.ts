@@ -32,19 +32,29 @@ const AFTER_VALUE_CONTEXT = new RegExp(
   'gi',
 );
 const IDENTIFIER = /^'[A-Za-z_][\w.]*'$/;
+// Words ClickHouse puts right before a quoted name, optionally as a list:
+// "Missing columns: 'a', 'b'", "identifier 'otel_logs'", "name 'fn'".
+const NAMES_IDENTIFIER = new RegExp(
+  `\\b(?:columns?|identifiers?|tables?|databases?|functions?|settings?|name)\\s*:?\\s*(?:${QUOTED}\\s*,\\s*)*$`,
+  'i',
+);
 
-// With the query cut off, what is left can still quote values. Blank every
-// value in an IN list, after a comparison or a failed parse, and any other
-// quoted text that is not an identifier. Identifiers such as a missing
-// column stay: they are what a ticket needs.
+// With the query cut off, what is left can still quote values, and a value
+// can look like an identifier ('alice'). So quoted text is blanked unless it
+// directly follows a word that names an identifier, such as a missing column:
+// that name is what a ticket needs.
 function scrubMessage(message: string): string {
   const blank = "'?'";
   return message
     .replace(QUERY_FRAGMENT, '')
     .replace(IN_LIST, list => list.replace(new RegExp(QUOTED, 'g'), blank))
     .replace(AFTER_VALUE_CONTEXT, `$1${blank}`)
-    .replace(new RegExp(QUOTED, 'g'), quoted =>
-      IDENTIFIER.test(quoted) ? quoted : blank,
+    .replace(
+      new RegExp(QUOTED, 'g'),
+      (quoted: string, offset: number, text: string) =>
+        IDENTIFIER.test(quoted) && NAMES_IDENTIFIER.test(text.slice(0, offset))
+          ? quoted
+          : blank,
     );
 }
 
