@@ -1,3 +1,4 @@
+import { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   Alert,
   AlertsPageItem as _AlertsPageItem,
@@ -8,6 +9,18 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 
 export type NumberFormat = _NumberFormat;
+
+/**
+ * The rows and column metadata a chart query resolves to. Shaped like a
+ * ClickHouse response so the chart formatters can read a source that isn't SQL
+ * at all. `isComplete` is false while a chunked query is still streaming in.
+ */
+export type ChartQueryResult = Pick<
+  ResponseJSON<any>,
+  'data' | 'meta' | 'rows'
+> & {
+  isComplete: boolean;
+};
 
 export type AlertsPageItem = _AlertsPageItem;
 

@@ -1,3 +1,4 @@
+import { useCallback } from 'react';
 import {
   chSqlToAliasMap,
   ClickHouseQueryError,
@@ -7,15 +8,15 @@ import {
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/browser';
 import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import {
+  displayTypeSupportsReducer,
   getQueriedPromqlSeries,
-  promqlStep,
+  isRangeQuery,
 } from '@hyperdx/common-utils/dist/core/promql';
 import {
   isMetricChartConfig,
   isUsingGranularity,
   renderChartConfig,
 } from '@hyperdx/common-utils/dist/core/renderChartConfig';
-import { renderPromqlSeriesNames } from '@hyperdx/common-utils/dist/core/seriesNameTemplate';
 import {
   convertDateRangeToGranularityString,
   convertGranularityToSeconds,
@@ -32,24 +33,27 @@ import {
   ChartConfigWithDateRange,
   ChartConfigWithOptDateRange,
   isMetricSource,
-  PromqlChartConfig,
   QuerySettings,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import { substitutePromqlChartConfigVariables } from '@hyperdx/common-utils/dist/variables';
 import {
   useQuery,
   useQueryClient,
   UseQueryOptions,
 } from '@tanstack/react-query';
 
-import { prometheusApi } from '@/api';
 import { toStartOfInterval } from '@/ChartUtils';
 import { useClickhouseClient } from '@/clickhouse';
 import { IS_MTVIEWS_ENABLED } from '@/config';
 import { buildMTViewSelectQuery } from '@/hdxMTViews';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
 import { useSource } from '@/source';
+import { ChartQueryResult } from '@/types';
+import { stripClientSideConfigFields } from '@/utils/chartConfig';
+import {
+  queryPromqlChartConfig,
+  reduceBucketRows,
+} from '@/utils/promqlChartQuery';
 import { generateTimeWindowsDescending } from '@/utils/searchWindows';
 
 import { useMVOptimizationExplanation } from './useMVOptimizationExplanation';
@@ -64,6 +68,11 @@ interface AdditionalUseQueriedChartConfigOptions {
    */
   enableQueryChunking?: boolean;
   enableParallelQueries?: boolean;
+  /**
+   * Scopes the hook's own query key. Prefer this to passing `queryKey`, which
+   * replaces the key the hook builds from the config.
+   */
+  queryKeyPrefix?: string;
 }
 
 type TimeWindow = {
@@ -71,9 +80,7 @@ type TimeWindow = {
   dateRangeEndInclusive?: boolean;
 };
 
-type TQueryFnData = Pick<ResponseJSON<any>, 'data' | 'meta' | 'rows'> & {
-  isComplete: boolean;
-};
+type TQueryFnData = ChartQueryResult;
 
 type TChunk = {
   chunk: ResponseJSON<Record<string, string | number>>;
@@ -305,75 +312,6 @@ export function appendChunk(
 }
 
 /**
- * Run a PromQL tile's expression and shape the result like a ClickHouse
- * response, so the chart formatters treat it like every other time series.
- */
-async function queryPromqlChartConfig(
-  config: PromqlChartConfig,
-  dateRange: [Date, Date],
-  signal: AbortSignal,
-): Promise<TQueryFnData> {
-  // Expand dashboard variables in the expressions before sending to Prometheus.
-  const substituted = substitutePromqlChartConfigVariables(config);
-
-  // Depending on displayType, not all series may be queried
-  const series = getQueriedPromqlSeries(substituted);
-
-  const [startDate, endDate] = dateRange;
-  const responses = await Promise.all(
-    series.map(({ expression }) =>
-      prometheusApi.queryRange({
-        query: expression,
-        start: startDate.getTime() / 1000,
-        end: endDate.getTime() / 1000,
-        step: promqlStep(config.granularity),
-        connectionId: config.connection,
-        database: config.from?.databaseName,
-        table: config.from?.tableName,
-        signal,
-      }),
-    ),
-  );
-
-  const results = responses.map((response, index) => {
-    if (response.status !== 'success' || !response.data) {
-      throw new Error(response.error ?? 'PromQL query failed');
-    }
-    return { ...series[index], result: response.data.result };
-  });
-
-  const seriesNames = renderPromqlSeriesNames(
-    results,
-    config.legendTemplate?.trim() || undefined,
-  );
-
-  const data: Record<string, string | number>[] = [];
-  results.forEach(({ result }, expressionIndex) => {
-    result.forEach((series, seriesIndex) => {
-      const seriesName = seriesNames[expressionIndex][seriesIndex];
-      for (const [ts, value] of series.values) {
-        data.push({
-          __hdx_time_bucket: new Date(ts * 1000).toISOString(),
-          value: parseFloat(value),
-          series_name: seriesName,
-        });
-      }
-    });
-  });
-
-  return {
-    data,
-    meta: [
-      { name: '__hdx_time_bucket', type: 'DateTime64(3)' },
-      { name: 'value', type: 'Float64' },
-      { name: 'series_name', type: 'String' },
-    ],
-    rows: data.length,
-    isComplete: true,
-  };
-}
-
-/**
  * A hook providing data queried based on the provided chart config.
  *
  * If all of the following are true, the query will be chunked into multiple smaller queries:
@@ -412,12 +350,30 @@ export function useQueriedChartConfig(
   });
   const minGranularitySeconds = getMinGranularitySeconds(source);
 
+  // A PromQL range query keeps every bucket in the cache and is reduced to a
+  // single value per series on read.
+  const reducesRangeBuckets =
+    isPromqlChartConfig(config) &&
+    displayTypeSupportsReducer(config) &&
+    isRangeQuery(config);
+  const rangeReducer = reducesRangeBuckets
+    ? getQueriedPromqlSeries(config)[0]?.reducer
+    : undefined;
+
+  const selectRangeReduced = useCallback(
+    (result: TQueryFnData) => reduceBucketRows(result, rangeReducer),
+    [rangeReducer],
+  );
+
   const query = useQuery<TQueryFnData, ClickHouseQueryError | Error>({
     // Include enableQueryChunking in the query key to ensure that queries with the
     // same config but different enableQueryChunking values do not share a query.
     // minGranularitySeconds too: it can change independently of `config`.
+    // Strip fields that only affect the client-side processing and thus should not
+    // trigger a requery when changed.
     queryKey: [
-      config,
+      ...(options?.queryKeyPrefix ? [options?.queryKeyPrefix] : []),
+      stripClientSideConfigFields(config),
       options?.enableQueryChunking ?? false,
       options?.enableParallelQueries ?? false,
       minGranularitySeconds,
@@ -482,6 +438,8 @@ export function useQueriedChartConfig(
 
       return queryClient.getQueryData(context.queryKey)!;
     },
+    // PromQL reducer is applied as a client-side react-query select function
+    select: reducesRangeBuckets ? selectRangeReduced : undefined,
     retry: 1,
     refetchOnWindowFocus: false,
     ...options,

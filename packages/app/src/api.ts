@@ -14,6 +14,8 @@ import type {
   OnboardingTaskId,
   PresetDashboard,
   PresetDashboardFilter,
+  PrometheusMatrixResult,
+  PrometheusVectorResult,
   RotateAccessKeyApiResponse,
   RotateApiKeyApiResponse,
   TagResourceType,
@@ -797,17 +799,30 @@ export default api;
 // --------------------------
 // Prometheus API
 // --------------------------
-type PrometheusMetric = Record<string, string>;
-type PrometheusMatrixResult = {
-  metric: PrometheusMetric;
-  values: [number, string][];
-};
-type PrometheusQueryRangeResponse = {
+export type PrometheusQueryRangeResponse = {
   status: 'success' | 'error';
   data?: {
     resultType: 'matrix';
     result: PrometheusMatrixResult[];
   };
+  error?: string;
+};
+/**
+ * An instant query's result. `vector` carries one sample per series; `scalar`
+ * is a bare sample with no labels at all, which `scalar(...)`, `1 + 1` and
+ * `time()` all return.
+ *
+ * `matrix` is reachable here too -- a range-vector selector (`up[5m]`) or a
+ * subquery evaluates to one even on this endpoint -- and carries a series of
+ * samples rather than a single value. `string` carries nothing numeric.
+ */
+export type PrometheusInstantQueryResponse = {
+  status: 'success' | 'error';
+  data?:
+    | { resultType: 'vector'; result: PrometheusVectorResult[] }
+    | { resultType: 'scalar'; result: [number, string] }
+    | { resultType: 'matrix'; result: PrometheusMatrixResult[] }
+    | { resultType: 'string'; result: unknown };
   error?: string;
 };
 type PrometheusLabelsResponse = {
@@ -874,6 +889,26 @@ export const prometheusApi = {
         start: String(params.start),
         end: String(params.end),
         step: params.step,
+        connectionId: params.connectionId,
+        ...(params.database ? { database: params.database } : {}),
+        ...(params.table ? { table: params.table } : {}),
+      },
+      params.signal,
+    ),
+
+  query: (params: {
+    query: string;
+    time: number;
+    connectionId: string;
+    database?: string;
+    table?: string;
+    signal?: AbortSignal;
+  }): Promise<PrometheusInstantQueryResponse> =>
+    prometheusFetch(
+      'v1/prometheus/query',
+      {
+        query: params.query,
+        time: String(params.time),
         connectionId: params.connectionId,
         ...(params.database ? { database: params.database } : {}),
         ...(params.table ? { table: params.table } : {}),
