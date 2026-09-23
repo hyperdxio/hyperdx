@@ -17,18 +17,35 @@ export type RecentError = {
 };
 
 const MAX_ERRORS = 20;
+const REASON_TIMEOUT_MS = 5_000;
 const MAX_MESSAGE_LENGTH = 300;
 
 // ClickHouse quotes the failing query in its messages, filter values included.
 const QUERY_FRAGMENT =
   /(\s*In scope |\s*:?\s*while processing\b|\s*\(in query:|\s*failed at position).*$/is;
 
-// Quoted identifiers such as a missing column stay: they are what a ticket
-// needs. Only values compared in what is left of the message are blanked.
-const COMPARED_VALUE = /((?:[=<>]|\b(?:LIKE|IN)\b)\s*\(?\s*)'[^']*'/gi;
+// A quoted run, with '' as an escaped quote inside it.
+const QUOTED = "'(?:[^']|'')*'";
+const IN_LIST = /\bIN\s*\([^)]*\)/gi;
+const AFTER_VALUE_CONTEXT = new RegExp(
+  `((?:[=<>]|\\bLIKE\\b|\\b(?:parse|convert)\\s+\\w+)\\s*)${QUOTED}`,
+  'gi',
+);
+const IDENTIFIER = /^'[A-Za-z_][\w.]*'$/;
 
+// With the query cut off, what is left can still quote values. Blank every
+// value in an IN list, after a comparison or a failed parse, and any other
+// quoted text that is not an identifier. Identifiers such as a missing
+// column stay: they are what a ticket needs.
 function scrubMessage(message: string): string {
-  return message.replace(QUERY_FRAGMENT, '').replace(COMPARED_VALUE, "$1'?'");
+  const blank = "'?'";
+  return message
+    .replace(QUERY_FRAGMENT, '')
+    .replace(IN_LIST, list => list.replace(new RegExp(QUOTED, 'g'), blank))
+    .replace(AFTER_VALUE_CONTEXT, `$1${blank}`)
+    .replace(new RegExp(QUOTED, 'g'), quoted =>
+      IDENTIFIER.test(quoted) ? quoted : blank,
+    );
 }
 
 // The report is one line per error.
@@ -73,9 +90,9 @@ const sameFailure = (a: RecentError, b: RecentError) =>
 // A refreshing dashboard repeats the same failure; fold it into the earlier
 // entry so it cannot push the other errors out of the buffer.
 function add(entry: RecentError): void {
-  const previous = errors.find(e => e !== entry && sameFailure(e, entry));
+  const previous = errors.find(e => sameFailure(e, entry));
   if (previous) entry.count += previous.count;
-  errors = errors.filter(e => e !== previous && e !== entry);
+  errors = errors.filter(e => e !== previous);
   errors.push(entry);
   if (errors.length > MAX_ERRORS) errors = errors.slice(-MAX_ERRORS);
 }
@@ -119,22 +136,32 @@ export function recordRecentError(error: unknown): void {
     add(entry); // body already read: no reason to wait for
     return;
   }
+  const settle = () => {
+    if (!pending.includes(entry)) return; // already settled, or cleared
+    pending = pending.filter(e => e !== entry);
+    add(entry);
+  };
   pending.push(entry);
+  // Too many waiting at once: settle the oldest without its reason.
+  if (pending.length > MAX_ERRORS) {
+    const oldest = pending.shift();
+    if (oldest) add(oldest);
+  }
+  // A body that never finishes must not keep its entry pending forever.
+  setTimeout(settle, REASON_TIMEOUT_MS);
   getApiErrorMessage({ response: clone }, '')
     .then(reason => {
-      if (reason) entry.reason = oneLine(reason);
+      if (reason && pending.includes(entry)) entry.reason = oneLine(reason);
     })
     .catch(() => {})
-    .finally(() => {
-      if (!pending.includes(entry)) return; // cleared meanwhile
-      pending = pending.filter(e => e !== entry);
-      add(entry);
-    });
+    .finally(settle);
 }
 
 export function getRecentErrors(): RecentError[] {
   // Pending entries show up briefly before they fold into the buffer.
-  return [...errors, ...pending];
+  return [...errors, ...pending]
+    .sort((a, b) => a.at.localeCompare(b.at))
+    .slice(-MAX_ERRORS);
 }
 
 export function clearRecentErrors(): void {

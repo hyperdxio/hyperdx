@@ -290,8 +290,71 @@ describe('recentErrors', () => {
       );
     }
 
-    expect(getRecentErrors().filter(e => e.code === 60)).toHaveLength(5);
     await new Promise(resolve => setTimeout(resolve, 0));
-    expect(getRecentErrors().map(e => e.count)).toEqual([1, 1, 1, 1, 1, 25]);
+
+    // The 5 overflowed past the pending cap settle without their reason; the
+    // rest fold together once theirs arrives. No earlier error is evicted.
+    const errors = getRecentErrors();
+    expect(errors.filter(e => e.code === 60)).toHaveLength(5);
+    expect(
+      errors.filter(e => e.status === 500).reduce((n, e) => n + e.count, 0),
+    ).toBe(25);
+  });
+
+  it.each([
+    [
+      'every value in an IN list',
+      "Code: 60. DB::Exception: No data for id IN ('customer-a', 'customer-b')",
+      "Code: 60. DB::Exception: No data for id IN ('?', '?')",
+    ],
+    [
+      'escaped quotes inside a value',
+      "Code: 60. DB::Exception: No rows for name = 'O''Brien'",
+      "Code: 60. DB::Exception: No rows for name = '?'",
+    ],
+    [
+      'a value ClickHouse failed to parse',
+      "Code: 6. DB::Exception: Cannot parse string 'alice@example.com' as UInt64: syntax error at begin of string.",
+      "Code: 6. DB::Exception: Cannot parse string '?' as UInt64: syntax error at begin of string.",
+    ],
+    [
+      'any quoted text that is not an identifier',
+      "Code: 36. DB::Exception: Unexpected value 'alice@example.com'",
+      "Code: 36. DB::Exception: Unexpected value '?'",
+    ],
+  ])('blanks %s', (_case, message, expected) => {
+    recordRecentError(new Error(message));
+
+    expect(getRecentErrors()[0].message).toBe(expected);
+  });
+
+  it('caps pending entries and lists everything in time order', async () => {
+    // Real performance: its timeOrigin is what timestamps are built from.
+    jest.useFakeTimers({
+      doNotFake: ['nextTick', 'queueMicrotask', 'performance'],
+    });
+    try {
+      for (let i = 0; i < 25; i++) {
+        recordRecentError(
+          Object.assign(new Error(`Request failed ${i}`), {
+            name: 'HTTPError',
+            request: { method: 'GET', url: `http://localhost/api/s/${i}` },
+            // A body whose json() never settles must not stay pending forever.
+            response: {
+              status: 500,
+              clone: () => ({ json: () => new Promise(() => {}) }),
+            },
+          }),
+        );
+      }
+      expect(getRecentErrors()).toHaveLength(20);
+
+      await jest.advanceTimersByTimeAsync(10_000);
+      const errors = getRecentErrors();
+      expect(errors).toHaveLength(20);
+      expect(errors.map(e => e.at)).toEqual([...errors.map(e => e.at)].sort());
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });
