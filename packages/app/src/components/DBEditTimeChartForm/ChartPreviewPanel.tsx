@@ -209,6 +209,16 @@ export function ChartPreviewPanel({
     [queriedConfig, tableSource, dateRange, queryReady],
   );
 
+  const referenceLineValues = useMemo(
+    () =>
+      alert
+        ? [alert.threshold, alert.thresholdMax].filter(
+            (v): v is number => v != null,
+          )
+        : undefined,
+    [alert],
+  );
+
   return (
     <>
       {isBlockedByRequiredFilters ? (
@@ -263,6 +273,7 @@ export function ChartPreviewPanel({
                 thresholdType: alert.thresholdType,
               })
             }
+            referenceLineValues={referenceLineValues}
             errorVariant="inline"
             showMVOptimizationIndicator={false}
             // Preview doesn't need the MV indicators; disabling both lets

@@ -369,14 +369,21 @@ describe('getNiceYAxisTicks', () => {
     expect(new Set(labels).size).toBe(labels.length);
   });
 
-  it('excludes a 2.5-scaled step below 1, not just the bare value', () => {
+  it('excludes a 2.5-scaled step below 1 only when the format forces integers', () => {
     // Regression: step 0.25 (2.5x10^-1) survived the bare-2.5 filter,
     // rounding to an uneven 0.3/0.2/0.3/0.2 progression at mantissa 0.
-    const result = getNiceYAxisTicks(0, 1.1, 5, {
+    const forcedInteger = getNiceYAxisTicks(0, 1.1, 5, {
       output: 'number',
       mantissa: 0,
     });
-    expect(result.ticks).toEqual([0, 0.5, 1]);
+    expect(forcedInteger.ticks).toEqual([0, 0.5, 1]);
+
+    // With decimals to spend, 0.25 renders exactly - keep the denser step.
+    const withDecimals = getNiceYAxisTicks(0, 1.1, 5, {
+      output: 'number',
+      mantissa: 2,
+    });
+    expect(withDecimals.ticks).toEqual([0, 0.25, 0.5, 0.75, 1]);
   });
 });
 
@@ -421,7 +428,7 @@ describe('computeYAxisBounds', () => {
       false,
       false,
       DisplayType.Line,
-      false,
+      [],
     );
     expect(bounds).toEqual({
       domain: [0, 3.15],
@@ -439,7 +446,7 @@ describe('computeYAxisBounds', () => {
       false,
       false,
       DisplayType.Line,
-      false,
+      [],
     );
     expect(bounds).toEqual({
       domain: [0, 15],
@@ -457,7 +464,7 @@ describe('computeYAxisBounds', () => {
       false,
       false,
       DisplayType.Line,
-      false,
+      [],
     );
     expect(bounds).toEqual({
       domain: [0, 1500],
@@ -475,7 +482,7 @@ describe('computeYAxisBounds', () => {
       false,
       false,
       DisplayType.Line,
-      false,
+      [],
     );
     expect(bounds).toEqual({
       domain: [-100, 1.05],
@@ -493,7 +500,7 @@ describe('computeYAxisBounds', () => {
       false,
       false,
       DisplayType.Line,
-      false,
+      [],
     );
     expect(bounds).toEqual({
       domain: [-1000, -850],
@@ -511,7 +518,7 @@ describe('computeYAxisBounds', () => {
       false,
       false,
       DisplayType.Line,
-      true,
+      [1500],
     );
     expect(bounds).toEqual({ domain: [0, 'auto'], ticks: undefined });
   });
@@ -529,7 +536,7 @@ describe('computeYAxisBounds', () => {
           hasSelection,
           false,
           DisplayType.StackedBar,
-          false,
+          [],
         ),
       ).toEqual({ domain: [0, 'auto'], ticks: undefined });
     }
@@ -542,7 +549,7 @@ describe('computeYAxisBounds', () => {
       false,
       false,
       DisplayType.Line,
-      false,
+      [],
     );
     expect(bounds).toEqual({ domain: [0, 'auto'], ticks: undefined });
   });
@@ -555,7 +562,7 @@ describe('computeYAxisBounds', () => {
       false,
       false,
       DisplayType.Line,
-      false,
+      [],
     );
     expect(bounds).toEqual({ domain: [0, 'auto'], ticks: undefined });
   });
@@ -569,7 +576,7 @@ describe('computeYAxisBounds', () => {
       false,
       true,
       DisplayType.Line,
-      false,
+      [],
     );
     expect(bounds).toEqual({ domain: ['auto', 'auto'], ticks: undefined });
   });
@@ -583,7 +590,7 @@ describe('computeYAxisBounds', () => {
       true,
       false,
       DisplayType.Line,
-      false,
+      [],
     );
     expect(bounds).toEqual({ domain: [0, 'auto'], ticks: undefined });
   });
@@ -595,7 +602,7 @@ describe('computeYAxisBounds', () => {
       false,
       true,
       DisplayType.Line,
-      false,
+      [],
     );
     expect(bounds).toEqual({
       domain: [-62.5, 212.5],
@@ -613,7 +620,7 @@ describe('computeYAxisBounds', () => {
       true,
       false,
       DisplayType.Line,
-      false,
+      [],
     );
     expect(bounds).toEqual({
       domain: [-110, 110],
@@ -622,7 +629,7 @@ describe('computeYAxisBounds', () => {
     });
   });
 
-  it('keeps ticks deduped via getYAxisTicks when a reference line is present', () => {
+  it('nice-steps normally when a reference line already sits inside the range', () => {
     // Regression: bailing to ticks: undefined dropped the duplicate-label
     // dedup an alert chart (always has a reference line) used to get.
     const bounds = computeYAxisBounds(
@@ -631,12 +638,31 @@ describe('computeYAxisBounds', () => {
       false,
       true,
       DisplayType.Line,
-      true,
+      [150],
     );
-    expect(bounds.domain).toEqual([95, 205]);
-    expect(bounds.ticks).toBeDefined();
-    const labels = bounds.ticks!.map(t => bounds.tickFormatter!(t));
-    expect(new Set(labels).size).toBe(labels.length);
+    expect(bounds).toEqual({
+      domain: [95, 205],
+      ticks: [100, 125, 150, 175, 200],
+      tickFormatter: expect.any(Function),
+    });
+  });
+
+  it('extends the domain to include an out-of-range reference line, then nice-steps it', () => {
+    // A threshold beyond the data (e.g. Alerts.tsx's ifOverflow="extendDomain")
+    // widens the rendered domain - ticking it up front avoids stale ticks.
+    const bounds = computeYAxisBounds(
+      [{ a: 100 }, { a: 200 }],
+      [series('a')],
+      false,
+      true,
+      DisplayType.Line,
+      [300],
+    );
+    expect(bounds).toEqual({
+      domain: [95, 300],
+      ticks: [100, 150, 200, 250, 300],
+      tickFormatter: expect.any(Function),
+    });
   });
 
   it('escalates precision instead of dropping a step whose labels collide', () => {
@@ -648,7 +674,7 @@ describe('computeYAxisBounds', () => {
       false,
       false,
       DisplayType.Line,
-      false,
+      [],
       { output: 'number' },
     );
     expect(bounds.domain).toEqual([0, 2100]);
@@ -667,7 +693,7 @@ describe('computeYAxisBounds', () => {
       false,
       true,
       DisplayType.Line,
-      false,
+      [],
       { output: 'byte', mantissa: 0 },
     );
     expect(bounds.ticks).toBeDefined();
@@ -686,7 +712,7 @@ describe('computeYAxisBounds', () => {
       false,
       true,
       DisplayType.Line,
-      false,
+      [],
       { output: 'byte', mantissa: 1 },
     );
     expect(bounds.ticks).toBeDefined();

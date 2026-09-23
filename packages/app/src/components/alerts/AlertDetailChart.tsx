@@ -244,7 +244,7 @@ const SINGLE_VALUE_RAW_SQL_MESSAGE =
   'This alert runs a raw SQL query that returns one value per window, so it has no chart over time.';
 
 function useAlertReferenceLines(alert: AlertsPageItem) {
-  return React.useMemo(
+  const referenceLines = React.useMemo(
     () =>
       getAlertReferenceLines({
         threshold: alert.threshold,
@@ -253,6 +253,14 @@ function useAlertReferenceLines(alert: AlertsPageItem) {
       }),
     [alert.threshold, alert.thresholdMax, alert.thresholdType],
   );
+  const referenceLineValues = React.useMemo(
+    () =>
+      [alert.threshold, alert.thresholdMax].filter(
+        (v): v is number => v != null,
+      ),
+    [alert.threshold, alert.thresholdMax],
+  );
+  return { referenceLines, referenceLineValues };
 }
 
 function TileAlertChart({
@@ -294,7 +302,7 @@ function TileAlertChart({
     [tile, source, dashboard?.filters, dateRange, granularity],
   );
 
-  const referenceLines = useAlertReferenceLines(alert);
+  const { referenceLines, referenceLineValues } = useAlertReferenceLines(alert);
 
   if (isDashboardsLoading || (tileSourceId != null && isSourceLoading)) {
     return <Skeleton h={CHART_HEIGHT} w="100%" />;
@@ -321,6 +329,7 @@ function TileAlertChart({
         showMVOptimizationIndicator={false}
         showDateRangeIndicator={false}
         referenceLines={referenceLines}
+        referenceLineValues={referenceLineValues}
         annotations={annotations}
         config={config}
       />
@@ -364,7 +373,7 @@ function InlineAlertChart({
     [chartConfig, source, dateRange, granularity],
   );
 
-  const referenceLines = useAlertReferenceLines(alert);
+  const { referenceLines, referenceLineValues } = useAlertReferenceLines(alert);
 
   if (configSourceId != null && isSourceLoading) {
     return <Skeleton h={CHART_HEIGHT} w="100%" />;
@@ -391,6 +400,7 @@ function InlineAlertChart({
         showMVOptimizationIndicator={false}
         showDateRangeIndicator={false}
         referenceLines={referenceLines}
+        referenceLineValues={referenceLineValues}
         annotations={annotations}
         config={config}
       />

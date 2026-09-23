@@ -304,6 +304,8 @@ type DBTimeChartComponentProps = {
   onTimeRangeSelect?: (start: Date, end: Date) => void;
   queryKeyPrefix?: string;
   referenceLines?: React.ReactNode;
+  /** Raw numeric value(s) backing referenceLines, for Y-axis domain sizing. */
+  referenceLineValues?: number[];
   /** Event markers (e.g. alert firing/recovery) drawn as dashed lines with labels. */
   annotations?: ChartAnnotation[];
   setDisplayType?: (type: DisplayType) => void;
@@ -339,6 +341,7 @@ function DBTimeChartComponent({
   onTimeRangeSelect,
   queryKeyPrefix,
   referenceLines,
+  referenceLineValues,
   annotations,
   setDisplayType,
   showDisplaySwitcher = true,
@@ -1035,6 +1038,7 @@ function DBTimeChartComponent({
             tooltipNumberFormatsByKey={formatByColumn}
             onTimeRangeSelect={onTimeRangeSelect}
             referenceLines={referenceLines}
+            referenceLineValues={referenceLineValues}
             annotations={annotations}
             setIsClickActive={setPinnedPayload}
             refreshClickActive={refreshPinnedPayload}

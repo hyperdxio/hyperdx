@@ -876,13 +876,28 @@ export function getYAxisTicks(
 // Rounds off float dust (e.g. 3 * 1.05 giving 3.1500000000000004).
 const cleanNumber = (v: number) => Number(v.toPrecision(12));
 
-// Every 1/2/5 x10^n step, plus 2.5 x10^n only for n > 0 (25, 250, ... are
-// exact integers; 2.5, 0.25, 0.025, ... round unevenly at any precision).
-function niceStepsNear(target: number): number[] {
+// A format with no decimals to spend forces every tick to an integer,
+// where a 2.5x10^n step (n <= 0) rounds unevenly - see niceStepsNear.
+function forcesIntegerTicks(axisNumberFormat?: NumberFormat): boolean {
+  if (!axisNumberFormat) return true;
+  if (axisNumberFormat.output === 'duration') return false;
+  return (axisNumberFormat.mantissa ?? 0) === 0;
+}
+
+// Every 1/2/5 x10^n step, plus 2.5x10^n for n > 0 (integers like 250 are
+// always safe; 2.5, 0.25, ... round unevenly with no decimals to spare).
+function niceStepsNear(
+  target: number,
+  axisNumberFormat?: NumberFormat,
+): number[] {
   const exp = Math.floor(Math.log10(target));
+  const excludeSmall2_5 = forcesIntegerTicks(axisNumberFormat);
   return [exp - 1, exp, exp + 1]
     .flatMap(e => {
-      const multipliers = e > 0 ? [1, 2, 2.5, 5, 10] : [1, 2, 5, 10];
+      const includeQuarterStep = e > 0 || !excludeSmall2_5;
+      const multipliers = includeQuarterStep
+        ? [1, 2, 2.5, 5, 10]
+        : [1, 2, 5, 10];
       return multipliers.map(m => m * 10 ** e);
     })
     .filter(step => step > 0)
@@ -1016,7 +1031,7 @@ export function getNiceYAxisTicks(
   if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
     return { ticks: [] };
   }
-  const steps = niceStepsNear((max - min) / (maxTicks - 1));
+  const steps = niceStepsNear((max - min) / (maxTicks - 1), axisNumberFormat);
   for (const step of steps) {
     const ticks = ticksWithinRange(step, min, max);
     // A single tick conveys no scale at all - never accept it, even
@@ -1049,7 +1064,7 @@ export function getExpandableYAxisTicks(
   if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
     return { max, ticks: [] };
   }
-  const steps = niceStepsNear((max - min) / (maxTicks - 1));
+  const steps = niceStepsNear((max - min) / (maxTicks - 1), axisNumberFormat);
   for (const step of steps) {
     const tightTicks = ticksWithinRange(step, min, max);
     // A single tick conveys no scale at all - never accept it, even
@@ -1114,6 +1129,10 @@ export interface YAxisBounds {
   tickFormatter?: (value: number) => string;
 }
 
+// Stable identity for the referenceLineValues default - a fresh `[]` literal
+// as a default prop value defeats memoization and can loop React's compiler.
+const EMPTY_REFERENCE_LINE_VALUES: number[] = [];
+
 const DEFAULT_Y_AXIS_BOUNDS: YAxisBounds = {
   domain: [0, 'auto'],
   ticks: undefined,
@@ -1131,7 +1150,7 @@ export function computeYAxisBounds(
   hasSelection: boolean,
   fitYAxisToData: boolean,
   displayType: DisplayType,
-  hasReferenceLines: boolean,
+  referenceLineValues: number[],
   axisNumberFormat?: NumberFormat,
 ): YAxisBounds {
   if (displayType === DisplayType.StackedBar) {
@@ -1142,7 +1161,7 @@ export function computeYAxisBounds(
   if (!hasSelection && !shouldFitYAxis) {
     // A fully numeric domain skips Recharts' own nice rounding, and a
     // reference line can extend it further - defer to Recharts entirely.
-    if (hasReferenceLines) {
+    if (referenceLineValues.length > 0) {
       return DEFAULT_Y_AXIS_BOUNDS;
     }
     const { min, max } = scanYAxisValueRange(graphResults, visibleLineData);
@@ -1201,14 +1220,33 @@ export function computeYAxisBounds(
   if (upperBound <= lowerBound) {
     return degenerateFallback;
   }
-  // A reference line can widen the rendered domain, so precomputed nice-step
-  // ticks could go stale - use getYAxisTicks' dedup instead of skipping it.
-  if (hasReferenceLines) {
+  // A reference line can widen the domain (extendDomain) - extend it up
+  // front and nice-step the result, instead of ticking a stale domain.
+  if (referenceLineValues.length > 0) {
+    const extendedLower = cleanNumber(
+      Math.min(lowerBound, ...referenceLineValues),
+    );
+    const extendedUpper = cleanNumber(
+      Math.max(upperBound, ...referenceLineValues),
+    );
+    const expanded = getExpandableYAxisTicks(
+      extendedLower,
+      extendedUpper,
+      5,
+      axisNumberFormat,
+    );
+    if (expanded.ticks.length > 0) {
+      return {
+        domain: [extendedLower, expanded.max],
+        ticks: expanded.ticks,
+        tickFormatter: expanded.tickFormatter,
+      };
+    }
     const baseFormat = (value: number) =>
       formatAxisTick(value, axisNumberFormat);
     return {
-      domain: [lowerBound, upperBound],
-      ticks: getYAxisTicks(lowerBound, upperBound, baseFormat),
+      domain: [extendedLower, extendedUpper],
+      ticks: getYAxisTicks(extendedLower, extendedUpper, baseFormat),
       tickFormatter: baseFormat,
     };
   }
@@ -1244,6 +1282,7 @@ export const MemoChart = memo(function MemoChart({
   dateRange,
   lineData,
   referenceLines,
+  referenceLineValues = EMPTY_REFERENCE_LINE_VALUES,
   annotations,
   logReferenceTimestamp,
   displayType = DisplayType.Line,
@@ -1274,6 +1313,9 @@ export const MemoChart = memo(function MemoChart({
   dateRange: [Date, Date] | Readonly<[Date, Date]>;
   lineData: LineData[];
   referenceLines?: React.ReactNode;
+  // Raw numeric value(s) backing referenceLines (pre-rendered JSX the axis
+  // math can't read), used to size the Y-axis domain around them.
+  referenceLineValues?: number[];
   /**
    * Event markers (alerts, releases, …) drawn as dashed vertical lines with a
    * label above. Passed as data rather than pre-rendered elements so the chart
@@ -1414,12 +1456,6 @@ export const MemoChart = memo(function MemoChart({
     );
   }, [nearestSeriesKey, visibleLineData.length, id]);
 
-  // A boolean, not the ReactNode itself - some callers rebuild that node's
-  // identity every render, which would otherwise bust this memo each time.
-  const hasReferenceLines = Array.isArray(referenceLines)
-    ? referenceLines.length > 0
-    : referenceLines != null;
-
   const yAxisBounds = useMemo(
     () =>
       computeYAxisBounds(
@@ -1428,7 +1464,7 @@ export const MemoChart = memo(function MemoChart({
         hasSeriesSelection(selectedSeriesNames),
         fitYAxisToData,
         displayType,
-        hasReferenceLines,
+        referenceLineValues,
         axisNumberFormat,
       ),
     [
@@ -1437,7 +1473,7 @@ export const MemoChart = memo(function MemoChart({
       selectedSeriesNames,
       fitYAxisToData,
       displayType,
-      hasReferenceLines,
+      referenceLineValues,
       axisNumberFormat,
     ],
   );

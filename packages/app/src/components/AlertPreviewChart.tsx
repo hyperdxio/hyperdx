@@ -119,6 +119,10 @@ export const AlertPreviewChart = ({
       }),
     [threshold, thresholdMax, thresholdType],
   );
+  const referenceLineValues = useMemo(
+    () => [threshold, thresholdMax].filter((v): v is number => v != null),
+    [threshold, thresholdMax],
+  );
 
   return (
     <Paper w="100%" h={height}>
@@ -128,6 +132,7 @@ export const AlertPreviewChart = ({
         showMVOptimizationIndicator={false}
         showDateRangeIndicator={false}
         referenceLines={referenceLines}
+        referenceLineValues={referenceLineValues}
         annotations={annotations}
         config={config}
       />
