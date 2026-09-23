@@ -1852,6 +1852,52 @@ function renderDeltaExpression(
   return `IF(${timeDiffInSeconds} > 0, ${valueDiff} * ${intervalInSeconds} / ${timeDiffInSeconds}, 0)`;
 }
 
+/**
+ * `SELECT *` skips MATERIALIZED and ALIAS columns, so the metric CTEs select
+ * them explicitly to keep them usable in the outer select and group-by.
+ */
+/**
+ * `SELECT *` skips MATERIALIZED and ALIAS columns, so the metric CTEs select
+ * them explicitly to keep them usable in the outer select and group-by.
+ * Names the CTE already defines are skipped to avoid a clash.
+ */
+async function getComputedMetricColumns(
+  metadata: Metadata,
+  {
+    databaseName,
+    tableName,
+    connectionId,
+    reservedNames,
+  }: {
+    databaseName: string;
+    tableName: string;
+    connectionId: string;
+    reservedNames: string[];
+  },
+): Promise<{ select: string; aggregate: string }> {
+  let names: string[] = [];
+  try {
+    const columns = await metadata.getColumns({
+      databaseName,
+      tableName,
+      connectionId,
+    });
+    names = columns
+      .filter(
+        c =>
+          (c.default_type === 'MATERIALIZED' || c.default_type === 'ALIAS') &&
+          !reservedNames.includes(c.name),
+      )
+      .map(c => SqlString.escapeId(c.name, true));
+  } catch {
+    // fall back to the fixed projection
+  }
+  return {
+    select: names.map(c => `, ${c}`).join(''),
+    aggregate: names.map(c => `, any(${c}) AS ${c}`).join(''),
+  };
+}
+
 async function translateMetricChartConfig(
   chartConfig: BuilderChartConfigWithOptDateRangeEx,
   metadata: Metadata,
@@ -1932,6 +1978,12 @@ async function translateMetricChartConfig(
     const bucketValueExpr = _select.isDelta
       ? renderDeltaExpression(chartConfig, 'Value')
       : `last_value(Value)`;
+    const computedColumns = await getComputedMetricColumns(metadata, {
+      databaseName: from.databaseName,
+      tableName: metricTables[MetricsDataType.Gauge],
+      connectionId: chartConfig.connection,
+      reservedNames: ['AttributesHash', 'LastValue', timeBucketCol],
+    });
 
     return {
       ...restChartConfig,
@@ -1941,7 +1993,7 @@ async function translateMetricChartConfig(
           sql: chSql`
             SELECT
               *,
-              cityHash64(ScopeAttributes, ResourceAttributes, Attributes) AS AttributesHash
+              cityHash64(ScopeAttributes, ResourceAttributes, Attributes) AS AttributesHash${{ UNSAFE_RAW_SQL: computedColumns.select }}
             FROM ${renderFrom({ from: { ...from, tableName: metricTables[MetricsDataType.Gauge] }, isRenderingRawSqlTemplate: chartConfig.isRenderingRawSqlTemplate, metricType: MetricsDataType.Gauge })}
             WHERE ${where}
           `,
@@ -1965,7 +2017,7 @@ async function translateMetricChartConfig(
               any(MetricDescription) AS MetricDescription,
               any(MetricUnit) AS MetricUnit,
               any(StartTimeUnix) AS StartTimeUnix,
-              any(Flags) AS Flags
+              any(Flags) AS Flags${{ UNSAFE_RAW_SQL: computedColumns.aggregate }}
             FROM Source
             GROUP BY AttributesHash, ${timeBucketCol}
             ORDER BY AttributesHash, ${timeBucketCol}
@@ -2036,6 +2088,13 @@ async function translateMetricChartConfig(
       metadata,
     );
 
+    const computedColumns = await getComputedMetricColumns(metadata, {
+      databaseName: from.databaseName,
+      tableName: metricTables[MetricsDataType.Sum],
+      connectionId: chartConfig.connection,
+      reservedNames: ['AttributesHash', 'Rate', 'Sum', timeBucketCol],
+    });
+
     /**
      * See: https://github.com/open-telemetry/opentelemetry-proto/blob/main/opentelemetry/proto/metrics/v1/metrics.proto
      * AGGREGATION_TEMPORALITY_DELTA = 1;
@@ -2071,7 +2130,7 @@ async function translateMetricChartConfig(
                     AggregationTemporality = 1,
                     SUM(Value) OVER (PARTITION BY AttributesHash ORDER BY TimeUnix ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW),
                     Value
-                  ) AS Sum
+                  ) AS Sum${{ UNSAFE_RAW_SQL: computedColumns.select }}
                 FROM ${renderFrom({ from: { ...from, tableName: metricTables[MetricsDataType.Sum] }, isRenderingRawSqlTemplate: chartConfig.isRenderingRawSqlTemplate, metricType: MetricsDataType.Sum })}
                 WHERE ${where}`,
       },
@@ -2102,7 +2161,7 @@ async function translateMetricChartConfig(
               StartTimeUnix,
               Flags,
               AggregationTemporality,
-              IsMonotonic
+              IsMonotonic${{ UNSAFE_RAW_SQL: computedColumns.select }}
             FROM (
               SELECT
                 ${timeExpr},
@@ -2130,7 +2189,7 @@ async function translateMetricChartConfig(
                 any(StartTimeUnix) AS StartTimeUnix,
                 any(Flags) AS Flags,
                 any(AggregationTemporality) AS AggregationTemporality,
-                any(IsMonotonic) AS IsMonotonic
+                any(IsMonotonic) AS IsMonotonic${{ UNSAFE_RAW_SQL: computedColumns.aggregate }}
               FROM Source
               GROUP BY AttributesHash, \`${timeBucketCol}\`
               ORDER BY AttributesHash, \`${timeBucketCol}\`

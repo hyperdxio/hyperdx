@@ -519,6 +519,51 @@ describe('renderChartConfig', () => {
       );
       expect(await queryData(query)).toMatchSnapshot();
     });
+
+    describe('with a dotted materialized column', () => {
+      const table = `${DEFAULT_DATABASE}.${DEFAULT_METRICS_TABLE.GAUGE}`;
+
+      beforeEach(async () => {
+        await executeSqlCommand(
+          `ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS \`host.name\` String MATERIALIZED ResourceAttributes['host']`,
+        );
+      });
+
+      afterEach(async () => {
+        await executeSqlCommand(
+          `ALTER TABLE ${table} DROP COLUMN IF EXISTS \`host.name\``,
+        );
+      });
+
+      it('filters and groups on the column', async () => {
+        const query = await renderChartConfig(
+          {
+            select: [
+              {
+                aggFn: 'max',
+                metricName: 'test.cpu',
+                metricType: MetricsDataType.Gauge,
+                valueExpression: 'Value',
+              },
+            ],
+            from: metricSource.from,
+            where: 'host.name:"host1"',
+            whereLanguage: 'lucene',
+            metricTables: TEST_METRIC_TABLES,
+            dateRange: [new Date(now), new Date(now + ms('10m'))],
+            granularity: '5 minute',
+            groupBy: '`host.name`',
+            timestampValueExpression: metricSource.timestampValueExpression,
+            connection: connection.id,
+          },
+          metadata,
+          querySettings,
+        );
+        const rows = await queryData(query);
+        expect(rows).toHaveLength(2);
+        expect(rows.every(r => r['host.name'] === 'host1')).toBe(true);
+      });
+    });
   });
 
   describe('Query Metrics - Sum', () => {
@@ -691,6 +736,51 @@ describe('renderChartConfig', () => {
         querySettings,
       );
       expect(await queryData(query)).toMatchSnapshot();
+    });
+
+    describe('with a dotted materialized column', () => {
+      const table = `${DEFAULT_DATABASE}.${DEFAULT_METRICS_TABLE.SUM}`;
+
+      beforeEach(async () => {
+        await executeSqlCommand(
+          `ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS \`host.name\` String MATERIALIZED ResourceAttributes['host']`,
+        );
+      });
+
+      afterEach(async () => {
+        await executeSqlCommand(
+          `ALTER TABLE ${table} DROP COLUMN IF EXISTS \`host.name\``,
+        );
+      });
+
+      it('filters and groups on the column', async () => {
+        const query = await renderChartConfig(
+          {
+            select: [
+              {
+                aggFn: 'sum',
+                metricName: 'test.users',
+                metricType: MetricsDataType.Sum,
+                valueExpression: 'Value',
+              },
+            ],
+            from: metricSource.from,
+            where: 'host.name:"host1"',
+            whereLanguage: 'lucene',
+            metricTables: TEST_METRIC_TABLES,
+            dateRange: [new Date(now), new Date(now + ms('20m'))],
+            granularity: '5 minute',
+            groupBy: '`host.name`',
+            timestampValueExpression: metricSource.timestampValueExpression,
+            connection: connection.id,
+          },
+          metadata,
+          querySettings,
+        );
+        const rows = await queryData(query);
+        expect(rows).toHaveLength(4);
+        expect(rows.every(r => r['host.name'] === 'host1')).toBe(true);
+      });
     });
 
     it('sum values as without rate computation', async () => {

@@ -105,6 +105,30 @@ describe('renderChartConfig', () => {
     expect(actual).toMatchSnapshot();
   });
 
+  it('carries computed columns through the gauge CTEs, skipping CTE alias names', async () => {
+    mockMetadata.getColumns = jest.fn().mockResolvedValue([
+      { name: 'Value', type: 'Float64', default_type: '' },
+      {
+        name: 'host.name',
+        type: 'String',
+        default_type: 'MATERIALIZED',
+      },
+      { name: 'region', type: 'String', default_type: 'ALIAS' },
+      { name: 'LastValue', type: 'Float64', default_type: 'MATERIALIZED' },
+    ]);
+    const rendered = await renderChartConfig(
+      gaugeConfiguration,
+      mockMetadata,
+      querySettings,
+    );
+    const sql = rendered.sql.replace(/\s+/g, ' ');
+    expect(sql).toContain('AS AttributesHash, `host.name`, `region` FROM');
+    expect(sql).toContain(
+      'any(`host.name`) AS `host.name`, any(`region`) AS `region`',
+    );
+    expect(sql).not.toContain('`LastValue`');
+  });
+
   it('should generate sql for a single gauge metric with a delta() function applied', async () => {
     const generatedSql = await renderChartConfig(
       {
