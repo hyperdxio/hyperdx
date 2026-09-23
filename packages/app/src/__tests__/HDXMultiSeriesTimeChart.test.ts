@@ -320,11 +320,11 @@ describe('getNiceYAxisTicks', () => {
     // skipped a sufficient mantissa, producing needlessly wide labels.
     const result = getExpandableYAxisTicks(0, 2100, 5, { output: 'number' });
     expect(result.ticks.map(t => result.tickFormatter!(t))).toEqual([
-      '0.0',
+      '0',
       '0.5k',
-      '1.0k',
+      '1k',
       '1.5k',
-      '2.0k',
+      '2k',
     ]);
   });
 
@@ -346,6 +346,20 @@ describe('getNiceYAxisTicks', () => {
     });
     const labels = result.ticks.map(t => result.tickFormatter!(t));
     expect(labels.every(l => l.length <= 5)).toBe(true);
+  });
+
+  it('escalates a fixed-unit axis without reintroducing the suffix it drops', () => {
+    // Regression: escalation called formatNumber directly, restoring the
+    // "cps" suffix formatAxisTick strips - overflowing the label budget.
+    const result = getExpandableYAxisTicks(1.15, 1.150115, 5, {
+      output: 'throughput',
+      numericUnit: NumericUnit.Cps,
+      mantissa: 2,
+    });
+    expect(result.ticks.map(t => result.tickFormatter!(t))).toEqual([
+      '1.1',
+      '1.2',
+    ]);
   });
 });
 

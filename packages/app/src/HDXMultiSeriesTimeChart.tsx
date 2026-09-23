@@ -915,39 +915,19 @@ function formatTickAtMantissa(
   axisNumberFormat: NumberFormat,
   mantissa: number,
 ): string {
-  return formatNumber(value, {
-    ...axisNumberFormat,
-    mantissa,
-    average: true,
-    unit: undefined,
-  });
-}
-
-// Mirrors formatDurationMsCompact's unit selection, but with an escalatable
-// significant-digit count instead of a fixed 2-3 per unit.
-function formatDurationAtPrecision(ms: number, precision: number): string {
-  if (ms < 0) {
-    return `-${formatDurationAtPrecision(-ms, precision)}`;
+  // Mirrors formatAxisTick's fixed-unit handling - re-adding the suffix it
+  // drops would make budget checks reject a label that never actually renders that wide.
+  if (isFixedNumericUnit(axisNumberFormat.numericUnit)) {
+    return trimTrailingZeros(value.toFixed(mantissa));
   }
-  if (ms === 0) {
-    return '0';
-  }
-  if (ms < 0.001) {
-    return `${+(ms * 1e6).toPrecision(precision)}ns`;
-  }
-  if (ms < 1) {
-    return `${+(ms * 1000).toPrecision(precision)}µs`;
-  }
-  if (ms < 1000) {
-    return `${+ms.toPrecision(precision)}ms`;
-  }
-  if (ms < 120_000) {
-    return `${+(ms / 1000).toPrecision(precision)}s`;
-  }
-  if (ms < 3_600_000) {
-    return `${+(ms / 60_000).toPrecision(precision)}m`;
-  }
-  return `${+(ms / 3_600_000).toPrecision(precision)}h`;
+  return trimTrailingZeros(
+    formatNumber(value, {
+      ...axisNumberFormat,
+      mantissa,
+      average: true,
+      unit: undefined,
+    }),
+  );
 }
 
 // Ticks must never carry duplicate labels (Grafana/Chronosphere never do).
@@ -995,8 +975,8 @@ function resolveDistinctTickLabels(
     const factor = axisNumberFormat.factor ?? 1;
     for (let p = 3; p <= 3 + MAX_TICK_MANTISSA_ESCALATION; p++) {
       const escalated = (value: number) =>
-        formatDurationAtPrecision(value * factor * 1000, p);
-      if (isDistinct(ticks, escalated)) {
+        formatDurationMsCompact(value * factor * 1000, p);
+      if (isDistinct(ticks, escalated) && fitsLabelBudget(ticks, escalated)) {
         return escalated;
       }
     }
@@ -1178,9 +1158,14 @@ export function computeYAxisBounds(
       5,
       axisNumberFormat,
     );
+    // No step at this domain could be nicely ticked - a raw numeric domain
+    // is worse than deferring to Recharts entirely (same reasoning as above).
+    if (expanded.ticks.length === 0) {
+      return DEFAULT_Y_AXIS_BOUNDS;
+    }
     return {
       domain: [lowerBound, expanded.max],
-      ticks: expanded.ticks.length === 0 ? undefined : expanded.ticks,
+      ticks: expanded.ticks,
       tickFormatter: expanded.tickFormatter,
     };
   }
@@ -1394,6 +1379,12 @@ export const MemoChart = memo(function MemoChart({
     );
   }, [nearestSeriesKey, visibleLineData.length, id]);
 
+  // A boolean, not the ReactNode itself - some callers rebuild that node's
+  // identity every render, which would otherwise bust this memo each time.
+  const hasReferenceLines = Array.isArray(referenceLines)
+    ? referenceLines.length > 0
+    : referenceLines != null;
+
   const yAxisBounds = useMemo(
     () =>
       computeYAxisBounds(
@@ -1402,9 +1393,7 @@ export const MemoChart = memo(function MemoChart({
         hasSeriesSelection(selectedSeriesNames),
         fitYAxisToData,
         displayType,
-        Array.isArray(referenceLines)
-          ? referenceLines.length > 0
-          : referenceLines != null,
+        hasReferenceLines,
         axisNumberFormat,
       ),
     [
@@ -1413,7 +1402,7 @@ export const MemoChart = memo(function MemoChart({
       selectedSeriesNames,
       fitYAxisToData,
       displayType,
-      referenceLines,
+      hasReferenceLines,
       axisNumberFormat,
     ],
   );
