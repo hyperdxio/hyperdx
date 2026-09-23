@@ -171,6 +171,9 @@ describe('renderChartConfig', () => {
   it.each([
     'lower(region), ServiceName',
     "region ILIKE '%a%'",
+    'Bucketed.region',
+    'region.1',
+    '"region"',
     [{ valueExpression: 'ServiceName' }, { valueExpression: '`region`' }],
   ])('hashes a computed column referenced by group-by %p', async groupBy => {
     mockMetadata.getColumns = jest

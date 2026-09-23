@@ -1,4 +1,3 @@
-import escapeRegExp from 'lodash/escapeRegExp';
 import isPlainObject from 'lodash/isPlainObject';
 import * as SQLParser from 'node-sql-parser';
 import SqlString from 'sqlstring';
@@ -1894,20 +1893,27 @@ async function getComputedMetricColumns(
     // Charts still render, but group-by on a computed column will fail.
     console.warn('Failed to list computed metric columns', e);
   }
-  // Whole-identifier match with string literals removed; the SQL parser
-  // rejects valid group-bys such as ILIKE and would drop their columns.
-  const groupByText = (
+  // Whole identifiers outside string literals, plus every dotted slice so
+  // `Bucketed.region` and `region.1` count. Over-matching only splits series.
+  const groupByText =
     typeof groupBy === 'string'
       ? groupBy
-      : (groupBy ?? []).map(g => g.valueExpression).join(',')
-  ).replace(/'(?:[^'\\]|\\.)*'/g, "''");
+      : (groupBy ?? []).map(g => g.valueExpression).join(',');
+  const referenced = new Set(
+    (
+      groupByText
+        .replace(/'(?:[^'\\]|\\.)*'/g, "''")
+        .match(/`[^`]+`|"[^"]+"|[\p{L}\p{N}_$.]+/gu) ?? []
+    ).flatMap(token => {
+      const parts = token.replace(/^[`"]|[`"]$/g, '').split('.');
+      return parts.flatMap((_, i) =>
+        parts.slice(i).map((__, j) => parts.slice(i, i + j + 1).join('.')),
+      );
+    }),
+  );
   const escape = (c: string) => SqlString.escapeId(c, true);
   const names = columnNames.map(escape);
-  const hashed = columnNames
-    .filter(c =>
-      new RegExp(`(?<![\\w.])${escapeRegExp(c)}(?!\\w)`).test(groupByText),
-    )
-    .map(escape);
+  const hashed = columnNames.filter(c => referenced.has(c)).map(escape);
   return {
     select: names.map(c => `, ${c}`).join(''),
     aggregate: names.map(c => `, any(${c}) AS ${c}`).join(''),
