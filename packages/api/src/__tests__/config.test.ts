@@ -84,22 +84,30 @@ describe('config', () => {
       return enabled;
     };
 
-    it('is on by default', () => {
-      expect(enabledWith({})).toBe(true);
-    });
-
-    it('is off by default in local app mode, where auth is skipped', () => {
+    it('is off by default', () => {
+      expect(enabledWith({})).toBe(false);
       expect(enabledWith({ local: true })).toBe(false);
     });
 
-    it('accepts 1 and 0 as well as true and false', () => {
-      expect(enabledWith({ local: true, flag: '1' })).toBe(true);
-      expect(enabledWith({ flag: '0' })).toBe(false);
+    it('turns on only for true or 1', () => {
+      expect(enabledWith({ flag: 'true' })).toBe(true);
+      expect(enabledWith({ flag: 'TRUE' })).toBe(true);
+      expect(enabledWith({ flag: '1' })).toBe(true);
+      expect(enabledWith({ flag: 'false' })).toBe(false);
+      // A typo must not turn on an endpoint the operator meant to leave off.
+      expect(enabledWith({ flag: 'fales' })).toBe(false);
     });
 
-    it('follows an explicit setting either way', () => {
-      expect(enabledWith({ local: true, flag: 'true' })).toBe(true);
-      expect(enabledWith({ flag: 'false' })).toBe(false);
+    it('parses the heap snapshot flag the same way', () => {
+      process.env.HDX_DIAGNOSTICS_HEAP_SNAPSHOT = '1';
+      let enabled: boolean | undefined;
+      jest.isolateModules(() => {
+        enabled =
+          jest.requireActual<typeof import('@/config')>(
+            '@/config',
+          ).DIAGNOSTICS_HEAP_SNAPSHOT_ENABLED;
+      });
+      expect(enabled).toBe(true);
     });
   });
 });

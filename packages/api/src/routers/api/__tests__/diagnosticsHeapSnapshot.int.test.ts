@@ -4,6 +4,7 @@ import { getLoggedInAgent, getServer } from '@/fixtures';
 
 jest.mock('@/config', () => ({
   ...jest.requireActual('@/config'),
+  DIAGNOSTICS_ENABLED: true,
   DIAGNOSTICS_HEAP_SNAPSHOT_ENABLED: true,
 }));
 

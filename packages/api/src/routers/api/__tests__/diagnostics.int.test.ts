@@ -5,6 +5,11 @@ import { Worker } from 'node:worker_threads';
 import { getAgent, getLoggedInAgent, getServer } from '@/fixtures';
 import * as instrumentation from '@/utils/instrumentation';
 
+jest.mock('@/config', () => ({
+  ...jest.requireActual('@/config'),
+  DIAGNOSTICS_ENABLED: true,
+}));
+
 describe('diagnostics router', () => {
   const server = getServer();
 
@@ -165,9 +170,20 @@ describe('diagnostics router', () => {
 
     await agent.post('/diagnostics/heap-profile?seconds=1').expect(200);
 
-    const outcomes = recordOutcome.mock.calls.map(([args]) => args.outcome);
-    expect(outcomes).toEqual(['success']);
-    recordOutcome.mockRestore();
+    try {
+      const outcomes = recordOutcome.mock.calls
+        .map(([args]) => args)
+        .filter(args => args.operation === 'diagnostics.collect');
+      expect(outcomes).toEqual([
+        expect.objectContaining({
+          operation: 'diagnostics.collect',
+          outcome: 'success',
+          attributes: { kind: 'heap-profile' },
+        }),
+      ]);
+    } finally {
+      recordOutcome.mockRestore();
+    }
   });
 
   it('keeps heap snapshots off unless enabled', async () => {
