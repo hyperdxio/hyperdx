@@ -3,7 +3,7 @@ import {
   Completion,
   CompletionContext,
 } from '@codemirror/autocomplete';
-import { EditorView } from '@uiw/react-codemirror';
+import { EditorView, Extension } from '@uiw/react-codemirror';
 
 import { clickhouseSql } from '@/utils/codeMirror';
 
@@ -113,7 +113,19 @@ export const DEFAULT_CODE_MIRROR_BASIC_SETUP = {
   highlightActiveLineGutter: false,
 };
 
-export const createCodeMirrorStyleTheme = (maxEditorHeight?: string) =>
+// CodeMirror never removes a theme's CSS rules, so each distinct theme is built once.
+const styleThemeCache = new Map<string | undefined, Extension>();
+
+export const createCodeMirrorStyleTheme = (maxEditorHeight?: string) => {
+  let theme = styleThemeCache.get(maxEditorHeight);
+  if (theme == null) {
+    theme = buildCodeMirrorStyleTheme(maxEditorHeight);
+    styleThemeCache.set(maxEditorHeight, theme);
+  }
+  return theme;
+};
+
+const buildCodeMirrorStyleTheme = (maxEditorHeight?: string) =>
   EditorView.baseTheme({
     '&.cm-editor.cm-focused': {
       outline: '0px solid transparent',
