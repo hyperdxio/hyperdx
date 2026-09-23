@@ -12,6 +12,7 @@ import { appErrorHandler } from './middleware/error';
 import routers from './routers/api';
 import clickhouseProxyRouter from './routers/api/clickhouseProxy';
 import connectionsRouter from './routers/api/connections';
+import diagnosticsRouter from './routers/api/diagnostics';
 import favoritesRouter from './routers/api/favorites';
 import iacRouter from './routers/api/iac';
 import pinnedFiltersRouter from './routers/api/pinnedFilters';
@@ -100,6 +101,9 @@ app.use('/mcp', mcpRouter);
 app.use('/ai', isUserAuthenticated, routers.aiRouter);
 app.use('/alerts', isUserAuthenticated, routers.alertsRouter);
 app.use('/dashboards', isUserAuthenticated, routers.dashboardRouter);
+if (config.DIAGNOSTICS_ENABLED) {
+  app.use('/diagnostics', isUserAuthenticated, diagnosticsRouter);
+}
 app.use('/me', isUserAuthenticated, routers.meRouter);
 app.use('/team', isUserAuthenticated, routers.teamRouter);
 app.use('/webhooks', isUserAuthenticated, routers.webhooksRouter);
