@@ -559,9 +559,9 @@ describe('renderChartConfig', () => {
           metadata,
           querySettings,
         );
-        const rows = await queryData(query);
-        expect(rows).toHaveLength(2);
-        expect(rows.every(r => r['host.name'] === 'host1')).toBe(true);
+        expect(await queryData(query)).toEqual(
+          Array(2).fill(expect.objectContaining({ 'host.name': 'host1' })),
+        );
       });
     });
   });
@@ -777,9 +777,40 @@ describe('renderChartConfig', () => {
           metadata,
           querySettings,
         );
-        const rows = await queryData(query);
-        expect(rows).toHaveLength(4);
-        expect(rows.every(r => r['host.name'] === 'host1')).toBe(true);
+        expect(await queryData(query)).toEqual(
+          Array(4).fill(expect.objectContaining({ 'host.name': 'host1' })),
+        );
+      });
+
+      it('ranks increase groups by the column', async () => {
+        const query = await renderChartConfig(
+          {
+            select: [
+              {
+                aggFn: 'increase',
+                metricName: 'test.users',
+                metricType: MetricsDataType.Sum,
+                valueExpression: 'Value',
+              },
+            ],
+            from: metricSource.from,
+            where: '',
+            metricTables: TEST_METRIC_TABLES,
+            dateRange: [new Date(now), new Date(now + ms('20m'))],
+            granularity: '5 minute',
+            groupBy: '`host.name`',
+            timestampValueExpression: metricSource.timestampValueExpression,
+            connection: connection.id,
+          },
+          metadata,
+          querySettings,
+        );
+        expect(await queryData(query)).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ 'host.name': 'host1' }),
+            expect.objectContaining({ 'host.name': 'host2' }),
+          ]),
+        );
       });
     });
 

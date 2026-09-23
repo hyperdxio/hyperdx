@@ -1855,10 +1855,6 @@ function renderDeltaExpression(
 /**
  * `SELECT *` skips MATERIALIZED and ALIAS columns, so the metric CTEs select
  * them explicitly to keep them usable in the outer select and group-by.
- */
-/**
- * `SELECT *` skips MATERIALIZED and ALIAS columns, so the metric CTEs select
- * them explicitly to keep them usable in the outer select and group-by.
  * Names the CTE already defines are skipped to avoid a clash.
  */
 async function getComputedMetricColumns(
@@ -1889,8 +1885,9 @@ async function getComputedMetricColumns(
           !reservedNames.includes(c.name),
       )
       .map(c => SqlString.escapeId(c.name, true));
-  } catch {
-    // fall back to the fixed projection
+  } catch (e) {
+    // Charts still render, but group-by on a computed column will fail.
+    console.warn('Failed to list computed metric columns', e);
   }
   return {
     select: names.map(c => `, ${c}`).join(''),
