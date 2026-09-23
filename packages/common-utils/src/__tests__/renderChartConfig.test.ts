@@ -146,6 +146,48 @@ describe('renderChartConfig', () => {
     );
   });
 
+  it.each([
+    ['a column whose name is a prefix of the grouped one', 'regionName'],
+    [
+      'a column only named inside a string literal',
+      "concat('region', ServiceName)",
+    ],
+  ])('does not hash %s', async (_, groupBy) => {
+    mockMetadata.getColumns = jest
+      .fn()
+      .mockResolvedValue([
+        { name: 'region', type: 'String', default_type: 'ALIAS' },
+      ]);
+    const rendered = await renderChartConfig(
+      { ...gaugeConfiguration, groupBy },
+      mockMetadata,
+      querySettings,
+    );
+    expect(rendered.sql.replace(/\s+/g, ' ')).toContain(
+      'cityHash64(ScopeAttributes, ResourceAttributes, Attributes) AS AttributesHash',
+    );
+  });
+
+  it.each([
+    'lower(region), ServiceName',
+    "region ILIKE '%a%'",
+    [{ valueExpression: 'ServiceName' }, { valueExpression: '`region`' }],
+  ])('hashes a computed column referenced by group-by %p', async groupBy => {
+    mockMetadata.getColumns = jest
+      .fn()
+      .mockResolvedValue([
+        { name: 'region', type: 'String', default_type: 'ALIAS' },
+      ]);
+    const rendered = await renderChartConfig(
+      { ...gaugeConfiguration, groupBy },
+      mockMetadata,
+      querySettings,
+    );
+    expect(rendered.sql.replace(/\s+/g, ' ')).toContain(
+      'Attributes, tuple(`region`)) AS AttributesHash',
+    );
+  });
+
   it('should generate sql for a single gauge metric with a delta() function applied', async () => {
     const generatedSql = await renderChartConfig(
       {
