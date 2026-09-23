@@ -1808,12 +1808,13 @@ program
           getApiUrl: () => client.getApiUrl(),
           get: (path, signal) => client.get(path, signal),
           post: (path, signal) => client.post(path, undefined, signal),
-          getConnections: () => client.getConnections(),
-          query: async (connectionId, sql) => {
+          getConnections: signal => client.getConnections(signal),
+          query: async (connectionId, sql, signal) => {
             const resultSet = await chClient.query({
               query: sql,
               format: 'JSON',
               connectionId,
+              abort_signal: signal,
             });
             const json = (await resultSet.json()) as { data?: unknown[] };
             return json.data ?? [];
@@ -1833,7 +1834,7 @@ program
       _origError(chalk.red(`Support bundle failed: ${msg}\n`));
       process.exit(1);
     }
-    const { dir, archive, manifest } = result;
+    const { dir, archive, archiveError, manifest } = result;
 
     for (const s of manifest.steps) {
       _origError(
@@ -1842,7 +1843,9 @@ program
           : `${chalk.red('fail')} ${s.name}: ${s.error}\n`,
       );
     }
-    if (!archive) _origError(`\ntar failed; files are in ${dir}\n`);
+    if (!archive) {
+      _origError(`\ntar failed (${archiveError}); files are in ${dir}\n`);
+    }
     // The path is the result, on stdout like other commands, so
     // BUNDLE=$(hdx support-bundle) works.
     process.stdout.write(`${archive ?? dir}\n`);

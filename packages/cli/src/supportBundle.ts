@@ -1,5 +1,5 @@
 import { execFile } from 'child_process';
-import { createWriteStream, mkdirSync, writeFileSync } from 'fs';
+import { createWriteStream, mkdirSync, rmSync, writeFileSync } from 'fs';
 import { basename, dirname, join } from 'path';
 import { Readable } from 'stream';
 import { pipeline } from 'stream/promises';
@@ -12,10 +12,16 @@ export type BundleClient = {
   getApiUrl(): string;
   get(path: string, signal?: AbortSignal): Promise<Response>;
   post(path: string, signal?: AbortSignal): Promise<Response>;
-  getConnections(): Promise<
+  getConnections(
+    signal?: AbortSignal,
+  ): Promise<
     Pick<ConnectionResponse, 'id' | 'name' | 'isPrometheusEndpoint'>[]
   >;
-  query(connectionId: string, sql: string): Promise<unknown[]>;
+  query(
+    connectionId: string,
+    sql: string,
+    signal?: AbortSignal,
+  ): Promise<unknown[]>;
 };
 
 type BundleStep = {
@@ -30,6 +36,8 @@ export type Manifest = {
   createdAt: string;
   cliVersion: string;
   apiUrl: string;
+  // ClickHouse files are named by connection id; this maps them to names.
+  connections: { id: string; name: string }[];
   steps: BundleStep[];
 };
 
@@ -92,7 +100,12 @@ function checkApi(res: Response, notFound: string): Response {
 export async function runSupportBundle(
   client: BundleClient,
   opts: BundleOptions,
-): Promise<{ dir: string; archive?: string; manifest: Manifest }> {
+): Promise<{
+  dir: string;
+  archive?: string;
+  archiveError?: string;
+  manifest: Manifest;
+}> {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   const dir = join(opts.outDir, `hdx-support-${stamp}`);
   mkdirSync(dir, { recursive: true });
@@ -101,6 +114,7 @@ export async function runSupportBundle(
     createdAt: new Date().toISOString(),
     cliVersion: process.env.npm_package_version ?? '0.0.0',
     apiUrl: client.getApiUrl(),
+    connections: [],
     steps: [],
   };
 
@@ -132,6 +146,9 @@ export async function runSupportBundle(
       }
       manifest.steps.push({ name, file, ok: true, ...(source && { source }) });
     } catch (err) {
+      // A stream that failed part way leaves a truncated file; drop it so the
+      // bundle only holds files the manifest vouches for.
+      rmSync(join(dir, file), { force: true });
       const error = err instanceof Error ? err.message : String(err);
       manifest.steps.push({ name, ok: false, error });
     }
@@ -201,7 +218,7 @@ export async function runSupportBundle(
 
   let connections: Awaited<ReturnType<BundleClient['getConnections']>> = [];
   try {
-    connections = await client.getConnections();
+    connections = await client.getConnections(timeoutSignal(30_000));
   } catch (err) {
     manifest.steps.push({
       name: 'ch-connections',
@@ -210,10 +227,16 @@ export async function runSupportBundle(
     });
   }
   // Prometheus/Thanos connections can't run ClickHouse SQL.
-  for (const { id } of connections.filter(c => !c.isPrometheusEndpoint)) {
+  const clickhouse = connections.filter(c => !c.isPrometheusEndpoint);
+  manifest.connections = clickhouse.map(({ id, name }) => ({ id, name }));
+  for (const { id } of clickhouse) {
     for (const [key, sql] of Object.entries(CLICKHOUSE_QUERIES)) {
       await step(`ch-${id}-${key}`, `ch-${id}-${key}.json`, async () =>
-        JSON.stringify(await client.query(id, sql), null, 2),
+        JSON.stringify(
+          await client.query(id, sql, timeoutSignal(60_000)),
+          null,
+          2,
+        ),
       );
     }
   }
@@ -230,7 +253,11 @@ export async function runSupportBundle(
       basename(dir),
     ]);
     return { dir, archive, manifest };
-  } catch {
-    return { dir, manifest };
+  } catch (err) {
+    return {
+      dir,
+      manifest,
+      archiveError: err instanceof Error ? err.message : String(err),
+    };
   }
 }

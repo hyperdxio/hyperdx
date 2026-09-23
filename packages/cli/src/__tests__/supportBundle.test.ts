@@ -188,11 +188,12 @@ describe('runSupportBundle', () => {
 
   it('collects collector pprof only when a URL is given', async () => {
     const fetched: string[] = [];
-    const realFetch = globalThis.fetch;
-    globalThis.fetch = (async (url: string) => {
-      fetched.push(url);
-      return new Response('pprof-bytes');
-    }) as typeof fetch;
+    const fetchMock = jest
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async input => {
+        fetched.push(String(input));
+        return new Response('pprof-bytes');
+      });
     try {
       const { manifest, dir } = await run(fakeClient(), {
         collectorPprofUrl: 'http://127.0.0.1:1777/',
@@ -207,7 +208,7 @@ describe('runSupportBundle', () => {
         'pprof-bytes',
       );
     } finally {
-      globalThis.fetch = realFetch;
+      fetchMock.mockRestore();
     }
   });
 
@@ -296,8 +297,8 @@ describe('runSupportBundle', () => {
 
   describe('timeouts', () => {
     // Resolves only when the caller's signal aborts, like a wedged server.
-    const hang = (signal?: AbortSignal) =>
-      new Promise<Response>((_, reject) =>
+    const hang = <T = Response>(signal?: AbortSignal) =>
+      new Promise<T>((_, reject) =>
         signal?.addEventListener('abort', () => reject(signal.reason)),
       );
 
@@ -337,7 +338,6 @@ describe('runSupportBundle', () => {
     });
 
     it('fails collector steps on an unreachable collector', async () => {
-      const realFetch = globalThis.fetch;
       // Collector fetches start only after the API files are written, so the
       // clock is advanced once each fetch is actually waiting.
       let fetchStarted: () => void = () => {};
@@ -346,10 +346,12 @@ describe('runSupportBundle', () => {
           fetchStarted = resolve;
         });
       let started = nextFetch();
-      globalThis.fetch = ((_url: string, init?: RequestInit) => {
-        fetchStarted();
-        return hang(init?.signal ?? undefined);
-      }) as typeof fetch;
+      const fetchMock = jest
+        .spyOn(globalThis, 'fetch')
+        .mockImplementation((_input, init) => {
+          fetchStarted();
+          return hang(init?.signal ?? undefined);
+        });
       try {
         const done = run(fakeClient(), {
           collectorPprofUrl: 'http://127.0.0.1:1777',
@@ -368,8 +370,51 @@ describe('runSupportBundle', () => {
           error: expect.stringContaining('timed out'),
         });
       } finally {
-        globalThis.fetch = realFetch;
+        fetchMock.mockRestore();
       }
+    });
+
+    it('fails ClickHouse steps on a hung connection list or query', async () => {
+      // Each call starts only after earlier files hit the disk, so the clock
+      // is advanced once the call is actually waiting.
+      const waitingCalls: (() => void)[] = [];
+      const hangAndSignal = <T>(signal?: AbortSignal) => {
+        waitingCalls.shift()?.();
+        return hang<T>(signal);
+      };
+      const nextCall = () =>
+        new Promise<void>(resolve => waitingCalls.push(resolve));
+
+      let called = nextCall();
+      const done = run(
+        fakeClient({ query: (_id, _sql, signal) => hangAndSignal(signal) }),
+      );
+      for (let i = 0; i < 4; i++) {
+        await called;
+        called = nextCall();
+        await jest.advanceTimersByTimeAsync(60_000);
+      }
+      const { manifest } = await done;
+      expect(
+        manifest.steps.find(s => s.name === 'ch-c1-version'),
+      ).toMatchObject({
+        ok: false,
+        error: expect.stringContaining('timed out'),
+      });
+
+      waitingCalls.length = 0; // the loop above queued one waiter too many
+      called = nextCall();
+      const listed = run(
+        fakeClient({ getConnections: signal => hangAndSignal(signal) }),
+      );
+      await called;
+      await jest.advanceTimersByTimeAsync(30_000);
+      expect(
+        (await listed).manifest.steps.find(s => s.name === 'ch-connections'),
+      ).toMatchObject({
+        ok: false,
+        error: expect.stringContaining('timed out'),
+      });
     });
   });
 
@@ -389,12 +434,41 @@ describe('runSupportBundle', () => {
     });
   });
 
+  it('removes a partial file when a stream fails part way', async () => {
+    const body = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('{"nodes":['));
+        controller.error(new Error('connection reset'));
+      },
+    });
+    const { dir, manifest } = await run(
+      fakeClient({
+        post: async path =>
+          path.startsWith('/diagnostics/cpu-profile')
+            ? new Response(body)
+            : json({}),
+      }),
+    );
+
+    expect(manifest.steps.find(s => s.name === 'api-cpu-profile')?.ok).toBe(
+      false,
+    );
+    expect(existsSync(join(dir, 'api-cpu.cpuprofile'))).toBe(false);
+  });
+
+  it('writes which connection each ClickHouse file belongs to', async () => {
+    const { manifest } = await run(fakeClient());
+
+    expect(manifest.connections).toEqual([{ id: 'c1', name: 'Local' }]);
+  });
+
   it('keeps the directory when tar is unavailable', async () => {
-    const { dir, archive } = await run(fakeClient(), {
+    const { dir, archive, archiveError } = await run(fakeClient(), {
       tarCommand: 'definitely-not-tar',
     });
 
     expect(archive).toBeUndefined();
+    expect(archiveError).toContain('ENOENT');
     expect(existsSync(join(dir, 'manifest.json'))).toBe(true);
   });
 });

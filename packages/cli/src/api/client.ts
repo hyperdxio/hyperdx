@@ -231,8 +231,8 @@ export class ApiClient {
     return res.json() as Promise<SourceResponse[]>;
   }
 
-  async getConnections(): Promise<ConnectionResponse[]> {
-    const res = await this.get('/connections');
+  async getConnections(signal?: AbortSignal): Promise<ConnectionResponse[]> {
+    const res = await this.get('/connections', signal);
     if (!res.ok) throw new Error(`GET /connections failed: ${res.status}`);
     return res.json() as Promise<ConnectionResponse[]>;
   }
