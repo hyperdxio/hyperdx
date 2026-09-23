@@ -1104,11 +1104,8 @@ export function formatDurationMs(ms: number): string {
   return `${parseFloat((ms / 3_600_000).toFixed(2))}h`;
 }
 
-/**
- * Compact duration labels for axis ticks — fewer decimals, shorter units.
- * An explicit `precision` overrides each branch's own default significant-
- * digit count, e.g. to escalate past a collision on the default precision.
- */
+// Compact duration labels for axis ticks. An explicit `precision` overrides
+// each branch's own default significant-digit count.
 export function formatDurationMsCompact(
   ms: number,
   precision?: number,

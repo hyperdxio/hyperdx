@@ -655,6 +655,25 @@ describe('computeYAxisBounds', () => {
     const labels = bounds.ticks!.map(t => bounds.tickFormatter!(t));
     expect(new Set(labels).size).toBe(labels.length);
   });
+
+  it('falls back to getYAxisTicks when no nice step fits, instead of a raw duplicate-prone domain', () => {
+    // Regression: no nice step fit this range, leaving ticks undefined for
+    // Recharts' raw domain-division default - which collides.
+    const GB = 1024 ** 3;
+    const bounds = computeYAxisBounds(
+      [{ a: 3.269 * GB }, { a: 3.511 * GB }],
+      [series('a')],
+      false,
+      true,
+      DisplayType.Line,
+      false,
+      { output: 'byte', mantissa: 1 },
+    );
+    expect(bounds.ticks).toBeDefined();
+    expect(bounds.ticks!.length).toBeGreaterThanOrEqual(2);
+    const labels = bounds.ticks!.map(t => bounds.tickFormatter!(t));
+    expect(new Set(labels).size).toBe(labels.length);
+  });
 });
 
 describe('getYAxisTicks', () => {

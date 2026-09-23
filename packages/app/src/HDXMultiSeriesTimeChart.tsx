@@ -1158,10 +1158,16 @@ export function computeYAxisBounds(
       5,
       axisNumberFormat,
     );
-    // No step at this domain could be nicely ticked - a raw numeric domain
-    // is worse than deferring to Recharts entirely (same reasoning as above).
+    // No nice step fits - fall back to getYAxisTicks' reduce-tick-count
+    // dedup instead of Recharts' raw, collision-prone default.
     if (expanded.ticks.length === 0) {
-      return DEFAULT_Y_AXIS_BOUNDS;
+      const baseFormat = (value: number) =>
+        formatAxisTick(value, axisNumberFormat);
+      return {
+        domain: [lowerBound, upperBound],
+        ticks: getYAxisTicks(lowerBound, upperBound, baseFormat),
+        tickFormatter: baseFormat,
+      };
     }
     return {
       domain: [lowerBound, expanded.max],
@@ -1191,12 +1197,29 @@ export function computeYAxisBounds(
   }
   // A reference line can extend this domain further (stale ticks), but
   // Fit-to-Data/selection still need the tight domain itself to work.
-  const { ticks, tickFormatter } = hasReferenceLines
-    ? { ticks: [], tickFormatter: undefined }
-    : getNiceYAxisTicks(lowerBound, upperBound, 5, axisNumberFormat);
+  if (hasReferenceLines) {
+    return { domain: [lowerBound, upperBound], ticks: undefined };
+  }
+  const { ticks, tickFormatter } = getNiceYAxisTicks(
+    lowerBound,
+    upperBound,
+    5,
+    axisNumberFormat,
+  );
+  // Same fallback as the default branch above - reduce tick count via
+  // getYAxisTicks rather than leaving this to Recharts' raw default.
+  if (ticks.length === 0) {
+    const baseFormat = (value: number) =>
+      formatAxisTick(value, axisNumberFormat);
+    return {
+      domain: [lowerBound, upperBound],
+      ticks: getYAxisTicks(lowerBound, upperBound, baseFormat),
+      tickFormatter: baseFormat,
+    };
+  }
   return {
     domain: [lowerBound, upperBound],
-    ticks: ticks.length === 0 ? undefined : ticks,
+    ticks,
     tickFormatter,
   };
 }
@@ -1525,9 +1548,7 @@ export const MemoChart = memo(function MemoChart({
   );
 
   const yAxisTicks = yAxisBounds.ticks;
-  // computeYAxisBounds already resolves ticks+formatter together (nice
-  // steps, escalated for distinctness) for every numeric domain, so this
-  // takes precedence over the plain getYAxisTicks pass used elsewhere.
+  // computeYAxisBounds already resolves ticks+formatter together per domain.
   const yAxisTickFormatter = yAxisBounds.tickFormatter ?? tickFormatter;
 
   const [highlightStart, setHighlightStart] = useState<string | undefined>();
