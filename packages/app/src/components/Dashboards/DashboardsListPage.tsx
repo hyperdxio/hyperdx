@@ -342,43 +342,51 @@ export default function DashboardsListPage() {
             </EmptyState>
           </Flex>
         ) : viewMode === 'list' ? (
-          <Table highlightOnHover>
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th w={40} />
-                <Table.Th>Name</Table.Th>
-                <Table.Th>Tags</Table.Th>
-                <Table.Th>Created By</Table.Th>
-                <Table.Th>Last Updated</Table.Th>
-                <Table.Th w={50} />
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {visibleDashboards.map(d => (
-                <ListingRow
-                  key={d.id}
-                  id={d.id}
-                  name={d.name}
-                  href={`/dashboards/${d.id}`}
-                  tags={d.tags}
-                  onDelete={handleDelete}
-                  createdBy={d.createdBy?.name || d.createdBy?.email}
-                  updatedAt={d.updatedAt}
-                  updatedBy={d.updatedBy?.name || d.updatedBy?.email}
-                  leftSection={
-                    <Group gap={0} ps={4} justify="space-between" wrap="nowrap">
-                      <FavoriteButton
-                        resourceType="dashboard"
-                        resourceId={d.id}
-                        size="xs"
-                      />
-                      <AlertStatusIcon alerts={getDashboardAlerts(d.tiles)} />
-                    </Group>
-                  }
-                />
-              ))}
-            </Table.Tbody>
-          </Table>
+          // Native scrollbars so the columns stay reachable by touch.
+          <Table.ScrollContainer minWidth={700} type="native">
+            <Table highlightOnHover>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th w={40} />
+                  <Table.Th>Name</Table.Th>
+                  <Table.Th>Tags</Table.Th>
+                  <Table.Th>Created By</Table.Th>
+                  <Table.Th>Last Updated</Table.Th>
+                  <Table.Th w={50} />
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {visibleDashboards.map(d => (
+                  <ListingRow
+                    key={d.id}
+                    id={d.id}
+                    name={d.name}
+                    href={`/dashboards/${d.id}`}
+                    tags={d.tags}
+                    onDelete={handleDelete}
+                    createdBy={d.createdBy?.name || d.createdBy?.email}
+                    updatedAt={d.updatedAt}
+                    updatedBy={d.updatedBy?.name || d.updatedBy?.email}
+                    leftSection={
+                      <Group
+                        gap={0}
+                        ps={4}
+                        justify="space-between"
+                        wrap="nowrap"
+                      >
+                        <FavoriteButton
+                          resourceType="dashboard"
+                          resourceId={d.id}
+                          size="xs"
+                        />
+                        <AlertStatusIcon alerts={getDashboardAlerts(d.tiles)} />
+                      </Group>
+                    }
+                  />
+                ))}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
         ) : (
           <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }}>
             {visibleDashboards.map(d => (
