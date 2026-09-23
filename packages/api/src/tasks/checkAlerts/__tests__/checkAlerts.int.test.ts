@@ -1111,6 +1111,7 @@ describe('checkAlerts', () => {
     ): AlertDetails => {
       const base = {
         alert: { groupBy: overrides.alertGroupBy } as any,
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         source: {} as any,
         previousMap: new Map(),
       };
@@ -1122,6 +1123,7 @@ describe('checkAlerts', () => {
           tile: {
             config: { groupBy: overrides.tileGroupBy ?? '' },
           } as any,
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
           dashboard: {} as any,
         };
       }
@@ -1140,6 +1142,7 @@ describe('checkAlerts', () => {
       return {
         ...base,
         taskType: AlertTaskType.SAVED_SEARCH,
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         savedSearch: {} as any,
       };
     };
@@ -1227,6 +1230,7 @@ describe('checkAlerts', () => {
           SeverityText: { name: 'SeverityText', type: 'String' },
           ServiceName: { name: 'ServiceName', type: 'String' },
         };
+        // eslint-disable-next-line security/detect-object-injection
         return Promise.resolve(columnMap[column]);
       }),
       getColumns: jest.fn().mockResolvedValue([]),
@@ -1274,7 +1278,9 @@ describe('checkAlerts', () => {
         defaultTableSelectExpression: 'Timestamp, Body',
       },
       savedSearch: {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         _id: 'fake-saved-search-id' as any,
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         team: 'team-123' as any,
         id: 'fake-saved-search-id',
         name: 'My Search',
@@ -1282,6 +1288,7 @@ describe('checkAlerts', () => {
         where: 'Body: "error"',
         whereLanguage: 'lucene',
         orderBy: 'timestamp',
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         source: 'fake-source-id' as any,
         tags: ['test'],
         createdAt: new Date(),
@@ -1314,6 +1321,7 @@ describe('checkAlerts', () => {
         id: 'id-123',
         name: 'My Dashboard',
         tiles: [testTile],
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         team: 'team-123' as any,
         tags: ['test'],
         createdAt: new Date(),
@@ -1359,6 +1367,7 @@ describe('checkAlerts', () => {
     beforeEach(async () => {
       jest
         .spyOn(slack, 'postMessageToWebhook')
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         .mockResolvedValueOnce(null as any);
     });
 
@@ -2016,6 +2025,7 @@ describe('checkAlerts', () => {
       );
 
       // Verify the message includes the time range but not detailed logs
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const callArgs = (slack.postMessageToWebhook as any).mock.calls[0][1];
       const messageText = callArgs.blocks[0].text.text;
       expect(messageText).toContain('The alert has been resolved');
@@ -2042,6 +2052,7 @@ describe('checkAlerts', () => {
             SeverityText: { name: 'SeverityText', type: 'String' },
             ServiceName: { name: 'ServiceName', type: 'String' },
           };
+          // eslint-disable-next-line security/detect-object-injection
           return Promise.resolve(columnMap[column]);
         }),
       };
@@ -2054,6 +2065,7 @@ describe('checkAlerts', () => {
 
       jest
         .spyOn(slack, 'postMessageToWebhook')
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         .mockResolvedValueOnce(null as any);
 
       jest.spyOn(checkAlert, 'handleSendGenericWebhook');
@@ -2197,7 +2209,7 @@ describe('checkAlerts', () => {
           recentHistoryMap,
         },
         clickhouseClient,
-        connection.id,
+        connection,
         alertProvider,
         teamWebhooksById,
       );
@@ -3006,6 +3018,7 @@ describe('checkAlerts', () => {
     it('INLINE alert (group by) - notifies per group', async () => {
       // Two groups fire, so two notifications go out (the shared beforeEach
       // only mocks a single call).
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       jest.spyOn(slack, 'postMessageToWebhook').mockResolvedValue(null as any);
 
       const {
@@ -3180,6 +3193,7 @@ describe('checkAlerts', () => {
         webhookSettings: Partial<IWebhook>;
       }> = {}) => {
         const fixture = await setupSavedSearchAlertTest({
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
           webhookSettings: webhookSettings as IWebhook,
         });
         const dashboard = await new Dashboard({
@@ -4117,6 +4131,7 @@ describe('checkAlerts', () => {
               headers: status === 302 ? { Location: redirectTarget } : {},
             });
           });
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
           global.fetch = fetchMock as any;
 
           const {
@@ -4330,6 +4345,7 @@ describe('checkAlerts', () => {
             status: 500,
             text: jest.fn().mockResolvedValue('resolve send failed'),
           });
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         global.fetch = fetchMock as any;
 
         const {
@@ -4505,6 +4521,7 @@ describe('checkAlerts', () => {
           status: 500,
           text: jest.fn().mockResolvedValue('group webhook failed'),
         });
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         global.fetch = fetchMock as any;
 
         const {
@@ -4516,6 +4533,7 @@ describe('checkAlerts', () => {
           teamWebhooksById,
           clickhouseClient,
         } = await setupSavedSearchAlertTest({
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
           webhookSettings: {
             service: WebhookService.Generic,
             url: 'https://webhook.site/group-fail',
@@ -4998,6 +5016,7 @@ describe('checkAlerts', () => {
         teamWebhooksById,
         clickhouseClient,
       } = await setupSavedSearchAlertTest({
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         webhookSettings: {
           service: WebhookService.Generic,
           url: 'https://webhook.site/no-body',
@@ -5236,14 +5255,20 @@ describe('checkAlerts', () => {
                 __name__: 'up',
                 host: 'node-1',
               },
-              values: [[prometheusReturnedMs / 1000, '42']],
+              values: [
+                [(prometheusReturnedMs - 5 * 60 * 1000) / 1000, '42'],
+                [prometheusReturnedMs / 1000, '42'],
+              ],
             },
             {
               metric: {
                 __name__: 'up',
                 host: 'node-2',
               },
-              values: [[prometheusReturnedMs / 1000, '5']], // Below threshold
+              values: [
+                [(prometheusReturnedMs - 5 * 60 * 1000) / 1000, '5'],
+                [prometheusReturnedMs / 1000, '5'],
+              ], // Below threshold
             },
           ]);
 
@@ -5275,6 +5300,8 @@ describe('checkAlerts', () => {
         expect(node1History).toBeDefined();
         expect(node1History.state).toBe('ALERT');
         expect(node1History.lastValues[0].count).toBe(42);
+        // Expect one backfilled bucket because we returned two buckets.
+        expect(node1History.analytics?.backfilledBuckets).toBe(1);
 
         expect(node2History).toBeDefined();
         expect(node2History.state).toBe('OK');
@@ -5857,6 +5884,7 @@ describe('checkAlerts', () => {
       // rendered title/body must resolve {{attributes.ServiceName}} to the
       // firing group's value ("web"), not an empty string.
       expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(1);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const [, payload] = (slack.postMessageToWebhook as jest.Mock).mock
         .calls[0];
 
@@ -6780,6 +6808,7 @@ describe('checkAlerts', () => {
       expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(4);
 
       // Verify the resolution notification was sent for service-b
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const calls = (slack.postMessageToWebhook as jest.Mock).mock.calls;
       const resolutionCall = calls.find(call =>
         call[1].text.includes('My Search'),
@@ -7339,6 +7368,7 @@ describe('checkAlerts', () => {
       expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(4);
 
       // Verify the resolution notification was sent for service-b
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const calls = (slack.postMessageToWebhook as jest.Mock).mock.calls;
       const resolutionCall = calls.find(call =>
         call[1].text.includes('My Search'),
@@ -7671,6 +7701,7 @@ describe('checkAlerts', () => {
       expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(2);
 
       // Validate webhook messages contain correct group names
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const calls = (slack.postMessageToWebhook as jest.Mock).mock.calls;
       const messages = calls.map((call: any) => ({
         url: call[0],
@@ -11160,6 +11191,7 @@ describe('checkAlerts', () => {
       expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
       expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(2);
 
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const calls = (slack.postMessageToWebhook as jest.Mock).mock.calls;
       expect(JSON.stringify(calls[0][1])).toContain('Alert for');
       expect(JSON.stringify(calls[1][1])).toContain(
@@ -11232,6 +11264,7 @@ describe('checkAlerts', () => {
 
         jest
           .spyOn(slack, 'postMessageToWebhook')
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
           .mockResolvedValue(null as any);
 
         const details = await createAlertDetails(
@@ -11333,6 +11366,7 @@ describe('checkAlerts', () => {
 
         jest
           .spyOn(slack, 'postMessageToWebhook')
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
           .mockResolvedValue(null as any);
 
         const details = await createAlertDetails(
@@ -11420,6 +11454,7 @@ describe('checkAlerts', () => {
 
         jest
           .spyOn(slack, 'postMessageToWebhook')
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
           .mockResolvedValue(null as any);
 
         const details = await createAlertDetails(
@@ -11509,6 +11544,104 @@ describe('checkAlerts', () => {
         expect(serviceBHistories).toHaveLength(1);
         expect(serviceBHistories[0].state).toBe('PENDING');
         expect(serviceBHistories[0].fired).toBeFalsy();
+      });
+
+      it('should route PromQL queries to the ClickHouse Prometheus HTTP API if supported', async () => {
+        const {
+          team,
+          webhook,
+          connection,
+          source,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
+
+        const dashboard = await new Dashboard({
+          name: 'PromQL Dashboard',
+          team: team._id,
+          tiles: [
+            {
+              id: 'promql1',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 4,
+              config: {
+                configType: 'promql',
+                displayType: 'line',
+                promqlExpression: 'sum(up)',
+                connection: connection.id,
+              },
+            },
+          ],
+        }).save();
+
+        const tile = dashboard.tiles?.find((t: any) => t.id === 'promql1');
+        const details = await createAlertDetails(
+          team,
+          source,
+          {
+            source: AlertSource.TILE,
+            channel: {
+              type: 'webhook',
+              webhookId: webhook._id.toString(),
+            },
+            interval: '5m',
+            thresholdType: AlertThresholdType.ABOVE,
+            threshold: 10,
+            dashboardId: dashboard.id,
+            tileId: 'promql1',
+          },
+          {
+            taskType: AlertTaskType.TILE,
+            tile: tile!,
+            dashboard,
+          },
+        );
+
+        jest
+          .spyOn(timeseriesEngine, 'clickhouseServesPrometheusHttpApi')
+          .mockResolvedValueOnce(true);
+
+        const fetchMock = jest.fn().mockResolvedValue({
+          ok: true,
+          json: async () => ({
+            status: 'success',
+            data: {
+              result: [
+                {
+                  metric: {},
+                  values: [[Date.now() / 1000, '42']],
+                },
+              ],
+            },
+          }),
+        });
+        const originalFetch = global.fetch;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        global.fetch = fetchMock as any;
+
+        try {
+          await processAlertAtTime(
+            new Date(),
+            details,
+            clickhouseClient,
+            connection,
+            alertProvider,
+            teamWebhooksById,
+          );
+
+          expect(fetchMock).toHaveBeenCalled();
+          const callUrl = new URL(fetchMock.mock.calls[0][0]);
+          expect(callUrl.pathname).toBe('/prometheus/api/v1/query_range');
+          expect(callUrl.searchParams.get('database')).toBe(
+            source.from.databaseName,
+          );
+          expect(callUrl.searchParams.get('table')).toBe(source.from.tableName);
+          expect(callUrl.searchParams.get('query')).toBe('sum(up)');
+        } finally {
+          global.fetch = originalFetch;
+        }
       });
     });
   });

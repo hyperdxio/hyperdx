@@ -57,7 +57,6 @@ import { serializeError } from 'serialize-error';
 
 import { ClickhouseClient } from '@/clickhouse';
 import { ALERT_HISTORY_QUERY_CONCURRENCY } from '@/controllers/alertHistory';
-import { getConnectionById } from '@/controllers/connection';
 import {
   CLICKHOUSE_PROMETHEUS_API_PREFIX,
   clickhouseAuthHeaders,
@@ -72,6 +71,7 @@ import AlertHistory, {
   IAlertHistory,
   IAlertHistoryAnalytics,
 } from '@/models/alertHistory';
+import { IConnection } from '@/models/connection';
 import { IDashboard } from '@/models/dashboard';
 import { ISavedSearch } from '@/models/savedSearch';
 import { ISource } from '@/models/source';
@@ -223,6 +223,7 @@ const makeAlertError = (
 ): IAlertError => ({
   timestamp: new Date(),
   type,
+  // eslint-disable-next-line security/detect-object-injection
   message: (HARDCODED_ALERT_ERROR_MESSAGES[type] ?? message).slice(0, 10000),
 });
 
@@ -972,25 +973,22 @@ export const parseAlertData = (
 export async function evaluatePromqlAlert({
   savedConfig,
   source,
-  connectionId,
-  teamId,
+  connection,
+  clickhouseClient,
+  clickhouseCapabilityMemo,
   dateRange,
   windowSizeInMins,
   variables,
 }: {
   savedConfig: PromqlSavedChartConfig;
   source?: ISource | null;
-  connectionId: string;
-  teamId: string;
+  connection: IConnection;
+  clickhouseClient: ClickhouseClient;
+  clickhouseCapabilityMemo?: Map<string, boolean>;
   dateRange: [Date, Date];
   windowSizeInMins: number;
   variables?: ChartVariable[];
 }): Promise<PrometheusMatrixResult[] | null> {
-  const connection = await getConnectionById(teamId, connectionId, true);
-  if (connection == null) {
-    throw new Error(`Connection ${connectionId} not found for PromQL alert`);
-  }
-
   const stepSec = windowSizeInMins * 60;
   const endSec = dateRange[1].getTime() / 1000;
   // PromQL evaluates exactly at the given timestamps. We want the evaluation
@@ -1012,8 +1010,17 @@ export async function evaluatePromqlAlert({
       e => e.expression && e.expression.trim() !== '',
     );
     if (validExpressions.length > 0) {
-      promqlExpression =
-        validExpressions[validExpressions.length - 1].expression;
+      if (
+        resolvedConfig.displayType === 'number' ||
+        resolvedConfig.displayType === 'table' ||
+        resolvedConfig.displayType === 'bar' ||
+        resolvedConfig.displayType === 'pie'
+      ) {
+        promqlExpression = validExpressions[0].expression;
+      } else {
+        promqlExpression =
+          validExpressions[validExpressions.length - 1].expression;
+      }
     }
   }
 
@@ -1035,6 +1042,7 @@ export async function evaluatePromqlAlert({
         `Prometheus query_range returned HTTP ${resp.status} for PromQL alert`,
       );
     }
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const json = (await resp.json()) as {
       status?: string;
       data?: {
@@ -1087,23 +1095,26 @@ export async function evaluatePromqlAlert({
     );
   }
 
-  // ClickHouse path — create a client for both the HTTP API probe and the
+  // ClickHouse path — use the batch client for both the HTTP API probe and the
   // table function fallback.
-  const client = new ClickhouseClient({
-    host: connection.host,
-    username: connection.username,
-    password: connection.password,
-    requestTimeout: PROMETHEUS_CH_TIMEOUT_MS,
-  });
 
-  if (
-    await clickhouseServesPrometheusHttpApi(client, {
-      id: connectionId,
-      host: connection.host,
-      username: connection.username,
-      password: connection.password,
-    })
-  ) {
+  let servesHttpApi = false;
+  if (clickhouseCapabilityMemo) {
+    if (!clickhouseCapabilityMemo.has(connection.id)) {
+      clickhouseCapabilityMemo.set(
+        connection.id,
+        await clickhouseServesPrometheusHttpApi(clickhouseClient, connection),
+      );
+    }
+    servesHttpApi = clickhouseCapabilityMemo.get(connection.id)!;
+  } else {
+    servesHttpApi = await clickhouseServesPrometheusHttpApi(
+      clickhouseClient,
+      connection,
+    );
+  }
+
+  if (servesHttpApi) {
     // ClickHouse 26.6+ with the prometheus_api_v1 handler configured.
     const chUpstream = clickhousePrometheusUpstream(connection.host, {
       maxExecutionSec: Math.round(PROMETHEUS_CH_TIMEOUT_MS / 1000),
@@ -1128,31 +1139,28 @@ export async function evaluatePromqlAlert({
   const endMs = Math.floor(endSec * 1000);
   const stepSecRounded = Math.max(Math.floor(stepSec), 1);
 
-  try {
-    const results = await queryRangeViaTableFunction({
-      client,
-      connectionId,
-      databaseName,
-      tableName,
-      expr: promqlExpression,
-      startMs,
-      endMs,
-      stepSec: stepSecRounded,
-    });
+  const results = await queryRangeViaTableFunction({
+    client: clickhouseClient,
+    connectionId: connection.id,
+    databaseName,
+    tableName,
+    expr: promqlExpression,
+    startMs,
+    endMs,
+    stepSec: stepSecRounded,
+  });
 
-    return results.length > 0 ? results : null;
-  } finally {
-    await client.close();
-  }
+  return results.length > 0 ? results : null;
 }
 
 export const processAlert = async (
   now: Date,
   details: AlertDetails,
   clickhouseClient: ClickhouseClient,
-  connectionId: string,
+  connection: IConnection,
   alertProvider: AlertProvider,
   teamWebhooksById: Map<string, IWebhook>,
+  clickhouseCapabilityMemo?: Map<string, boolean>,
 ) => {
   const { alert, previousMap, recentHistoryMap } = details;
   const source = 'source' in details ? details.source : undefined;
@@ -1402,12 +1410,14 @@ export const processAlert = async (
             alertProvider,
             attributes,
             clickhouseClient,
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
             dashboard: (details as any).dashboard,
             startTime,
             endTime: fns.addMinutes(startTime, windowSizeInMins),
             group,
             isGroupedAlert: hasGroupBy,
             metadata,
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
             savedSearch: (details as any).savedSearch,
             source,
             state,
@@ -1515,13 +1525,12 @@ export const processAlert = async (
       const queryStartedAt = performance.now();
       try {
         promqlResults = await evaluatePromqlAlert({
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
           savedConfig: savedConfig as PromqlSavedChartConfig,
           source: details.source,
-          connectionId,
-          teamId: (isPopulatedRef(alert.team)
-            ? alert.team._id
-            : alert.team
-          ).toString(),
+          connection,
+          clickhouseClient,
+          clickhouseCapabilityMemo,
           dateRange,
           windowSizeInMins,
           variables:
@@ -1622,6 +1631,7 @@ export const processAlert = async (
             const index = Math.round((tsMs - startMs) / windowMs);
             if (index < 0 || index >= expectedBuckets.length) continue;
 
+            // eslint-disable-next-line security/detect-object-injection
             const nearestBucketMs = expectedBuckets[index].getTime();
             const parsed = parseFloat(rawVal);
             if (!Number.isFinite(parsed)) continue;
@@ -1777,6 +1787,7 @@ export const processAlert = async (
               startTime: context.startTime,
               attributes: context.attributes,
             });
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
             groupPrevious = {
               ...(groupPrevious ?? {}),
               state: AlertState.ALERT,
@@ -1804,7 +1815,7 @@ export const processAlert = async (
 
     const chartConfig = getChartConfigFromAlert(
       details,
-      connectionId,
+      connection.id,
       dateRange,
       windowSizeInMins,
     );
@@ -2209,6 +2220,7 @@ export const processAlert = async (
 
           // Inject a mock previous history so the resolve check below catches it
           // if the final state for this group is OK (i.e. it breached then resolved).
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
           groupPrevious = {
             ...(groupPrevious || {}),
             state: AlertState.ALERT,
@@ -2494,6 +2506,7 @@ export default class CheckAlertTask implements HdxTask {
   async processAlertTask(
     alertTask: AlertTask,
     teamWebhooksById: Map<string, IWebhook>,
+    clickhouseCapabilityMemo: Map<string, boolean>,
   ): Promise<boolean> {
     return tasksTracer.startActiveSpan('processAlertTask', async span => {
       setBusinessContext({ teamId: alertTask.conn.team.toString() });
@@ -2530,9 +2543,10 @@ export default class CheckAlertTask implements HdxTask {
                   alertTask.now,
                   alert,
                   clickhouseClient,
-                  conn.id,
+                  conn,
                   this.provider,
                   teamWebhooksById,
+                  clickhouseCapabilityMemo,
                 );
               },
               {
@@ -2612,11 +2626,16 @@ export default class CheckAlertTask implements HdxTask {
     );
 
     let failedBatchCount = 0;
+    const clickhouseCapabilityMemo = new Map<string, boolean>();
     for (const task of alertTasks) {
       const teamWebhooksById =
         teamToWebhooks.get(task.conn.team.toString()) ?? new Map();
       this.task_queue.add(async () => {
-        const success = await this.processAlertTask(task, teamWebhooksById);
+        const success = await this.processAlertTask(
+          task,
+          teamWebhooksById,
+          clickhouseCapabilityMemo,
+        );
         if (!success) {
           failedBatchCount++;
         }

@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 
 import { getConnectionById } from '@/controllers/connection';
+import type { IConnection } from '@/models/connection';
 import type { ISource } from '@/models/source';
 import { evaluatePromqlAlert } from '@/tasks/checkAlerts';
 
@@ -9,7 +10,6 @@ jest.mock('@/controllers/connection', () => ({
 }));
 
 describe('evaluatePromqlAlert (Prometheus endpoint)', () => {
-  const mockTeamId = new mongoose.Types.ObjectId().toString();
   const mockConnectionId = new mongoose.Types.ObjectId().toString();
   const mockDateRange: [Date, Date] = [
     new Date('2024-01-01T00:00:00Z'),
@@ -23,6 +23,7 @@ describe('evaluatePromqlAlert (Prometheus endpoint)', () => {
     connection: mockConnectionId,
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
   const mockSource = {
     from: {
       databaseName: 'default',
@@ -35,6 +36,7 @@ describe('evaluatePromqlAlert (Prometheus endpoint)', () => {
   });
 
   beforeEach(() => {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     (getConnectionById as jest.Mock).mockResolvedValue({
       host: 'http://prometheus:9090',
       isPrometheusEndpoint: true,
@@ -45,6 +47,7 @@ describe('evaluatePromqlAlert (Prometheus endpoint)', () => {
   });
 
   it('should return all time-series values for a single unlabeled series', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     (global.fetch as jest.Mock).mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -65,8 +68,14 @@ describe('evaluatePromqlAlert (Prometheus endpoint)', () => {
 
     const result = await evaluatePromqlAlert({
       savedConfig: mockSavedConfig,
-      connectionId: mockConnectionId,
-      teamId: mockTeamId,
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      connection: {
+        id: mockConnectionId,
+        host: 'http://prometheus:9090',
+        isPrometheusEndpoint: true,
+      } as unknown as IConnection,
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      clickhouseClient: {} as any,
       dateRange: mockDateRange,
       windowSizeInMins: mockWindowSizeInMins,
     });
@@ -90,6 +99,7 @@ describe('evaluatePromqlAlert (Prometheus endpoint)', () => {
   });
 
   it('should return multiple series with all time-points', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     (global.fetch as jest.Mock).mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -111,8 +121,14 @@ describe('evaluatePromqlAlert (Prometheus endpoint)', () => {
 
     const result = await evaluatePromqlAlert({
       savedConfig: mockSavedConfig,
-      connectionId: mockConnectionId,
-      teamId: mockTeamId,
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      connection: {
+        id: mockConnectionId,
+        host: 'http://prometheus:9090',
+        isPrometheusEndpoint: true,
+      } as unknown as IConnection,
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      clickhouseClient: {} as any,
       dateRange: mockDateRange,
       windowSizeInMins: mockWindowSizeInMins,
     });
@@ -124,6 +140,7 @@ describe('evaluatePromqlAlert (Prometheus endpoint)', () => {
   });
 
   it('should throw on non-success Prometheus status instead of returning null', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     (global.fetch as jest.Mock).mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -137,8 +154,14 @@ describe('evaluatePromqlAlert (Prometheus endpoint)', () => {
       evaluatePromqlAlert({
         savedConfig: mockSavedConfig,
         source: mockSource,
-        connectionId: mockConnectionId,
-        teamId: mockTeamId,
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        connection: {
+          id: mockConnectionId,
+          host: 'http://prometheus:9090',
+          isPrometheusEndpoint: true,
+        } as unknown as IConnection,
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        clickhouseClient: {} as any,
         dateRange: mockDateRange,
         windowSizeInMins: mockWindowSizeInMins,
       }),
@@ -148,6 +171,7 @@ describe('evaluatePromqlAlert (Prometheus endpoint)', () => {
   });
 
   it('should return null when result array is empty', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     (global.fetch as jest.Mock).mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -158,8 +182,14 @@ describe('evaluatePromqlAlert (Prometheus endpoint)', () => {
 
     const result = await evaluatePromqlAlert({
       savedConfig: mockSavedConfig,
-      connectionId: mockConnectionId,
-      teamId: mockTeamId,
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      connection: {
+        id: mockConnectionId,
+        host: 'http://prometheus:9090',
+        isPrometheusEndpoint: true,
+      } as unknown as IConnection,
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      clickhouseClient: {} as any,
       dateRange: mockDateRange,
       windowSizeInMins: mockWindowSizeInMins,
     });
