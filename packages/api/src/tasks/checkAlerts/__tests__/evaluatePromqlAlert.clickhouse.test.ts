@@ -6,6 +6,11 @@ import type { IConnection } from '@/models/connection';
 import type { ISource } from '@/models/source';
 import { evaluatePromqlAlert } from '@/tasks/checkAlerts';
 
+function mock<T>(obj: Partial<T>): T {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  return obj as unknown as T;
+}
+
 jest.mock('@/controllers/connection');
 jest.mock('@/controllers/timeseriesEngine', () => {
   const actual = jest.requireActual<
@@ -33,20 +38,18 @@ describe('evaluatePromqlAlert (ClickHouse endpoint)', () => {
     connection: mockConnectionId,
   };
 
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-  const mockSource = {
+  const mockSource = mock<ISource>({
     from: {
       databaseName: 'default',
       tableName: 'otel_metrics_ts',
     },
-  } as unknown as ISource;
+  });
 
   afterEach(() => {
     jest.clearAllMocks();
   });
 
   beforeEach(() => {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     (getConnectionById as jest.Mock).mockResolvedValue({
       host: 'http://clickhouse:8123',
       username: 'default',
@@ -56,7 +59,6 @@ describe('evaluatePromqlAlert (ClickHouse endpoint)', () => {
   });
 
   it('should return multiple series with all time-points via formatMatrixResponse', async () => {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     (queryRangeViaTableFunction as jest.Mock).mockResolvedValue([
       {
         metric: { host: 'A' },
@@ -70,16 +72,14 @@ describe('evaluatePromqlAlert (ClickHouse endpoint)', () => {
 
     const result = await evaluatePromqlAlert({
       savedConfig: mockSavedConfig,
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       source: {
         from: { databaseName: 'my_db', tableName: 'my_table' },
       } as unknown as ISource,
-      connection: {
+      connection: mock<IConnection>({
         id: mockConnectionId,
-        host: 'localhost',
+        host: 'http://clickhouse:8123',
         isPrometheusEndpoint: false,
-      } as unknown as IConnection,
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      }),
       clickhouseClient: {} as any,
       dateRange: mockDateRange,
       windowSizeInMins: mockWindowSizeInMins,
@@ -108,7 +108,6 @@ describe('evaluatePromqlAlert (ClickHouse endpoint)', () => {
   });
 
   it('should have __name__ stripped from metric map', async () => {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     (queryRangeViaTableFunction as jest.Mock).mockResolvedValue([
       {
         metric: { __name__: 'up', host: 'A' },
@@ -119,13 +118,11 @@ describe('evaluatePromqlAlert (ClickHouse endpoint)', () => {
     const result = await evaluatePromqlAlert({
       savedConfig: mockSavedConfig,
       source: mockSource,
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      connection: {
+      connection: mock<IConnection>({
         id: mockConnectionId,
-        host: 'localhost',
+        host: 'http://clickhouse:8123',
         isPrometheusEndpoint: false,
-      } as unknown as IConnection,
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      }),
       clickhouseClient: {} as any,
       dateRange: mockDateRange,
       windowSizeInMins: mockWindowSizeInMins,
@@ -146,13 +143,11 @@ describe('evaluatePromqlAlert (ClickHouse endpoint)', () => {
       evaluatePromqlAlert({
         savedConfig: mockSavedConfig,
         source: undefined,
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-        connection: {
+        connection: mock<IConnection>({
           id: mockConnectionId,
-          host: 'localhost',
+          host: 'http://clickhouse:8123',
           isPrometheusEndpoint: false,
-        } as unknown as IConnection,
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        }),
         clickhouseClient: {} as any,
         dateRange: mockDateRange,
         windowSizeInMins: mockWindowSizeInMins,
@@ -166,17 +161,14 @@ describe('evaluatePromqlAlert (ClickHouse endpoint)', () => {
     await expect(
       evaluatePromqlAlert({
         savedConfig: mockSavedConfig,
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         source: {
           from: { databaseName: '', tableName: 'otel_metrics_ts' },
         } as unknown as ISource,
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-        connection: {
+        connection: mock<IConnection>({
           id: mockConnectionId,
-          host: 'localhost',
+          host: 'http://clickhouse:8123',
           isPrometheusEndpoint: false,
-        } as unknown as IConnection,
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        }),
         clickhouseClient: {} as any,
         dateRange: mockDateRange,
         windowSizeInMins: mockWindowSizeInMins,
@@ -187,19 +179,16 @@ describe('evaluatePromqlAlert (ClickHouse endpoint)', () => {
   });
 
   it('should return null when no data is returned', async () => {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     (queryRangeViaTableFunction as jest.Mock).mockResolvedValue([]);
 
     const result = await evaluatePromqlAlert({
       savedConfig: mockSavedConfig,
       source: mockSource,
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      connection: {
+      connection: mock<IConnection>({
         id: mockConnectionId,
-        host: 'localhost',
+        host: 'http://clickhouse:8123',
         isPrometheusEndpoint: false,
-      } as unknown as IConnection,
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      }),
       clickhouseClient: {} as any,
       dateRange: mockDateRange,
       windowSizeInMins: mockWindowSizeInMins,
