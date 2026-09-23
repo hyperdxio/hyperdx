@@ -25,7 +25,10 @@ import {
 import { Anchor, Center, Paper, Skeleton, Text } from '@mantine/core';
 
 import { AlertPreviewChart } from '@/components/AlertPreviewChart';
-import { getAlertReferenceLines } from '@/components/Alerts';
+import {
+  getAlertReferenceLines,
+  getAlertReferenceLineValues,
+} from '@/components/Alerts';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import { useDashboards } from '@/dashboard';
 import { useAlertAnnotations } from '@/hooks/useAlertAnnotations';
@@ -255,10 +258,12 @@ function useAlertReferenceLines(alert: AlertsPageItem) {
   );
   const referenceLineValues = React.useMemo(
     () =>
-      [alert.threshold, alert.thresholdMax].filter(
-        (v): v is number => v != null,
-      ),
-    [alert.threshold, alert.thresholdMax],
+      getAlertReferenceLineValues({
+        threshold: alert.threshold,
+        thresholdMax: alert.thresholdMax,
+        thresholdType: alert.thresholdType,
+      }),
+    [alert.threshold, alert.thresholdMax, alert.thresholdType],
   );
   return { referenceLines, referenceLineValues };
 }

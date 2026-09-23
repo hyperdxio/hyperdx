@@ -15,7 +15,10 @@ import { IconList } from '@tabler/icons-react';
 import { SortingState } from '@tanstack/react-table';
 
 import { buildTableRowSearchUrl } from '@/ChartUtils';
-import { getAlertReferenceLines } from '@/components/Alerts';
+import {
+  getAlertReferenceLines,
+  getAlertReferenceLineValues,
+} from '@/components/Alerts';
 import { ChartEditorFormState } from '@/components/ChartEditor/types';
 import ChartSQLPreview from '@/components/ChartSQLPreview';
 import { DBBarChart } from '@/components/DBBarChart';
@@ -212,9 +215,11 @@ export function ChartPreviewPanel({
   const referenceLineValues = useMemo(
     () =>
       alert
-        ? [alert.threshold, alert.thresholdMax].filter(
-            (v): v is number => v != null,
-          )
+        ? getAlertReferenceLineValues({
+            threshold: alert.threshold,
+            thresholdMax: alert.thresholdMax,
+            thresholdType: alert.thresholdType,
+          })
         : undefined,
     [alert],
   );
