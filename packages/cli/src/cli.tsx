@@ -1792,7 +1792,6 @@ program
     }
 
     const client = await ensureSession(opts.appUrl);
-    const chClient = client.createClickHouseClient();
     // One profiling window each for API CPU, API heap and the collector CPU.
     const windows = opts.collectorPprofUrl ? 3 : 2;
     _origError(
@@ -1801,29 +1800,40 @@ program
       ),
     );
 
-    const { dir, archive, manifest } = await runSupportBundle(
-      {
-        getApiUrl: () => client.getApiUrl(),
-        get: (path, signal) => client.get(path, signal),
-        post: (path, signal) => client.post(path, undefined, signal),
-        getConnections: () => client.getConnections(),
-        query: async (connectionId, sql) => {
-          const resultSet = await chClient.query({
-            query: sql,
-            format: 'JSON',
-            connectionId,
-          });
-          const json = (await resultSet.json()) as { data?: unknown[] };
-          return json.data ?? [];
+    let result: Awaited<ReturnType<typeof runSupportBundle>>;
+    try {
+      const chClient = client.createClickHouseClient();
+      result = await runSupportBundle(
+        {
+          getApiUrl: () => client.getApiUrl(),
+          get: (path, signal) => client.get(path, signal),
+          post: (path, signal) => client.post(path, undefined, signal),
+          getConnections: () => client.getConnections(),
+          query: async (connectionId, sql) => {
+            const resultSet = await chClient.query({
+              query: sql,
+              format: 'JSON',
+              connectionId,
+            });
+            const json = (await resultSet.json()) as { data?: unknown[] };
+            return json.data ?? [];
+          },
         },
-      },
-      {
-        seconds,
-        heapSnapshot: !!opts.heapSnapshot,
-        collectorPprofUrl: opts.collectorPprofUrl,
-        outDir: opts.out,
-      },
-    );
+        {
+          seconds,
+          heapSnapshot: !!opts.heapSnapshot,
+          collectorPprofUrl: opts.collectorPprofUrl,
+          outDir: opts.out,
+        },
+      );
+    } catch (err) {
+      // Setup failures (unwritable --out, no ClickHouse client) happen outside
+      // any step, so report them like the other commands do.
+      const msg = err instanceof Error ? err.message : String(err);
+      _origError(chalk.red(`Support bundle failed: ${msg}\n`));
+      process.exit(1);
+    }
+    const { dir, archive, manifest } = result;
 
     for (const s of manifest.steps) {
       _origError(

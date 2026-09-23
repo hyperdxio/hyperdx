@@ -6,12 +6,14 @@ import { pipeline } from 'stream/promises';
 import type { ReadableStream as NodeReadableStream } from 'stream/web';
 import { promisify } from 'util';
 
+import type { ConnectionResponse } from '@/api/client';
+
 export type BundleClient = {
   getApiUrl(): string;
   get(path: string, signal?: AbortSignal): Promise<Response>;
   post(path: string, signal?: AbortSignal): Promise<Response>;
   getConnections(): Promise<
-    { id: string; name: string; isPrometheusEndpoint?: boolean }[]
+    Pick<ConnectionResponse, 'id' | 'name' | 'isPrometheusEndpoint'>[]
   >;
   query(connectionId: string, sql: string): Promise<unknown[]>;
 };
@@ -53,10 +55,12 @@ export const CLICKHOUSE_QUERIES: Record<string, string> = {
     'SELECT database, table, sum(rows) AS rows, sum(bytes_on_disk) AS bytes_on_disk, count() AS parts FROM system.parts WHERE active GROUP BY database, table ORDER BY bytes_on_disk DESC LIMIT 100',
 };
 
+// Deliberately separate from the API's redactSecrets, which is scoped to LLM
+// input and documented as unsuitable for export pipelines like this one.
 export function redact(text: string): string {
   return (
     text
-      .replace(/(mongodb(?:\+srv)?:\/\/)[^@/\s"]+@/g, '$1***@')
+      .replace(/([a-z][a-z0-9+.-]*:\/\/)[^@/\s"]+@/gi, '$1***@')
       .replace(/(Bearer\s+)[^\s"]+/gi, '$1***')
       .replace(/("\w*(?:password|secret|token|key)"\s*:\s*")[^"]*"/gi, '$1***"')
       // The same, inside a JSON-encoded string such as DEFAULT_CONNECTIONS.

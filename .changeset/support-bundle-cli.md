@@ -1,6 +1,6 @@
 ---
-'@hyperdx/cli': patch
-'@hyperdx/otel-collector': patch
+'@hyperdx/cli': minor
+'@hyperdx/otel-collector': minor
 ---
 
 `hdx support-bundle` collects API profiles, ClickHouse errors, failed queries

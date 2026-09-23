@@ -485,12 +485,13 @@ export interface SourceResponse {
   sessionSourceId?: string;
 }
 
-interface ConnectionResponse {
+export interface ConnectionResponse {
   id: string;
   _id: string;
   name: string;
   host: string;
   username: string;
+  isPrometheusEndpoint?: boolean;
 }
 
 export interface SavedSearchResponse {

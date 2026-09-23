@@ -73,6 +73,13 @@ describe('redact', () => {
     );
   });
 
+  it('masks credentials in URLs of any scheme', () => {
+    expect(redact('CLICKHOUSE_ENDPOINT=https://default:pw@ch:8443')).toBe(
+      'CLICKHOUSE_ENDPOINT=https://***@ch:8443',
+    );
+    expect(redact('redis://:s3cret@cache:6379')).toBe('redis://***@cache:6379');
+  });
+
   it('leaves profile function names alone', () => {
     const text = '{"functionName":"getToken","url":"file:///app/auth.js"}';
     expect(redact(text)).toBe(text);
