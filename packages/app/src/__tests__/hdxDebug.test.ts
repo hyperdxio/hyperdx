@@ -195,3 +195,32 @@ describe('report url line', () => {
     expect(report).not.toContain('token');
   });
 });
+
+describe('report session and recent errors', () => {
+  it('says the session is not recording when there is no session id', () => {
+    expect(reportFor(loadHdxDebug())).toContain('session:  not recording');
+  });
+
+  it('reports no recent errors when none were recorded', () => {
+    expect(reportFor(loadHdxDebug())).toContain('recent errors: none');
+  });
+
+  it('lists recorded errors with their status or code', () => {
+    const mod = loadHdxDebug();
+    // Same module registry as hdxDebug after loadHdxDebug's resetModules.
+    const { recordRecentError } =
+      jest.requireActual<typeof import('@/recentErrors')>('@/recentErrors');
+    recordRecentError(
+      Object.assign(new Error('Bad gateway'), {
+        name: 'HTTPError',
+        response: { status: 502 },
+      }),
+    );
+    recordRecentError(new Error('Code: 60. DB::Exception: missing table'));
+
+    const report = reportFor(mod);
+    expect(report).toContain('recent errors:');
+    expect(report).toMatch(/\/ HTTPError \[502\] Bad gateway/);
+    expect(report).toMatch(/\/ Error \[CH 60\] Code: 60\. DB::Exception/);
+  });
+});

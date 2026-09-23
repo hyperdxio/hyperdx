@@ -205,7 +205,7 @@ const AppNavVersionItem = ({ version }: { version?: string }) => {
         }
       }}
     >
-      {copied ? 'Copied debug info' : 'Copy debug info'}
+      {copied ? 'Copied diagnostics' : 'Copy diagnostics'}
     </Menu.Item>
   );
 };

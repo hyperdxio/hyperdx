@@ -12,6 +12,7 @@ import {
   IS_OSS,
   IS_PROMQL_ENABLED,
 } from '@/config';
+import { getRecentErrors } from '@/recentErrors';
 import { copyTextToClipboard } from '@/utils/clipboard';
 
 // `window.hdx` — a small, namespaced debug handle for the browser console.
@@ -175,6 +176,23 @@ function enabledFeatureList(): string {
   return on.length ? on.join(', ') : 'none';
 }
 
+function recentErrorLines(): string[] {
+  const errors = getRecentErrors();
+  if (errors.length === 0) return ['recent errors: none'];
+  return [
+    'recent errors:',
+    ...errors.map(e => {
+      const tag =
+        e.status != null
+          ? ` [${e.status}]`
+          : e.code != null
+            ? ` [CH ${e.code}]`
+            : '';
+      return `  ${e.at} ${e.route} ${e.name}${tag} ${e.message}`;
+    }),
+  ];
+}
+
 function buildReport(): string {
   const device = getDevice();
   const lines = [
@@ -191,7 +209,8 @@ function buildReport(): string {
     `platform: ${device.platform}`,
     `language: ${device.language}`,
     `ua:       ${device.userAgent}`,
-    `session:  ${safeSessionId() || 'N/A'}`,
+    `session:  ${safeSessionId() || 'not recording'}`,
+    ...recentErrorLines(),
   ];
   return lines.join('\n');
 }
