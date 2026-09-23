@@ -252,7 +252,9 @@ describe('report session and recent errors', () => {
         request: { method: 'GET', url: 'http://localhost/api/sources/1' },
         response: {
           status: 404,
-          clone: () => ({ text: async () => '{"message":"Source not found"}' }),
+          clone: () => ({
+            json: async () => ({ message: 'Source not found' }),
+          }),
         },
       }),
     );

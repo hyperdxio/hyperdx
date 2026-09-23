@@ -145,7 +145,7 @@ describe('recentErrors', () => {
     const response = {
       status: 404,
       text: jest.fn(),
-      clone: () => ({ text: async () => '{"message":"Source not found"}' }),
+      clone: () => ({ json: async () => ({ message: 'Source not found' }) }),
     };
     const err = Object.assign(
       new Error('Request failed with status code 404'),
@@ -190,5 +190,70 @@ describe('recentErrors', () => {
     expect(getRecentErrors()[0].message).toBe(
       'Code: 62. DB::Exception: Syntax error:',
     );
+  });
+
+  describe('API reasons', () => {
+    const apiError = (body: () => Promise<unknown>) =>
+      Object.assign(new Error('Request failed with status code 400'), {
+        name: 'HTTPError',
+        request: { method: 'POST', url: 'http://localhost/api/dashboards' },
+        response: { status: 400, clone: () => ({ json: body }) },
+      });
+    const settle = () => new Promise(resolve => setTimeout(resolve, 0));
+
+    it('reads every issue from a schema rejection', async () => {
+      recordRecentError(
+        apiError(async () => [
+          { errors: { issues: [{ message: 'name is required' }] } },
+          { errors: { issues: [{ message: 'tiles must be an array' }] } },
+        ]),
+      );
+      await settle();
+
+      expect(getRecentErrors()[0].reason).toBe(
+        'name is required; tiles must be an array',
+      );
+    });
+
+    it('keeps the status message when the body is not an API error', async () => {
+      recordRecentError(
+        apiError(async () => {
+          throw new SyntaxError('Unexpected token < in JSON');
+        }),
+      );
+      await settle();
+
+      expect(getRecentErrors()[0]).toMatchObject({
+        message: 'Request failed with status code 400',
+      });
+      expect(getRecentErrors()[0].reason).toBeUndefined();
+    });
+
+    it('keeps different reasons on the same endpoint apart', async () => {
+      recordRecentError(
+        apiError(async () => ({ message: 'name is required' })),
+      );
+      recordRecentError(apiError(async () => ({ message: 'tiles invalid' })));
+      await settle();
+
+      expect(getRecentErrors().map(e => [e.reason, e.count])).toEqual([
+        ['name is required', 1],
+        ['tiles invalid', 1],
+      ]);
+    });
+
+    it('collapses the same reason on the same endpoint', async () => {
+      recordRecentError(
+        apiError(async () => ({ message: 'name is required' })),
+      );
+      recordRecentError(
+        apiError(async () => ({ message: 'name is required' })),
+      );
+      await settle();
+
+      expect(getRecentErrors().map(e => [e.reason, e.count])).toEqual([
+        ['name is required', 2],
+      ]);
+    });
   });
 });

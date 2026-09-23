@@ -1,3 +1,5 @@
+import { getApiErrorMessage } from '@/utils/apiErrors';
+
 // Recent query/mutation failures, surfaced in the "Copy debug info" report.
 // Only the error itself is recorded: query keys and SQL carry customer data.
 
@@ -37,7 +39,7 @@ function field(obj: unknown, key: string): unknown {
     : undefined;
 }
 
-// ky's message only restates the status, so name the endpoint that failed.
+// Names the request that failed; pathname only, so tokens stay out.
 function endpointOf(err: Error): string | undefined {
   const request = field(err, 'request');
   const url = field(request, 'url');
@@ -49,27 +51,32 @@ function endpointOf(err: Error): string | undefined {
   }
 }
 
-type Cloneable = { clone(): { text(): Promise<string> } };
+type Cloneable = { clone(): unknown };
 const isCloneable = (value: unknown): value is Cloneable =>
   typeof field(value, 'clone') === 'function';
 
-// The API's reason for the failure is in the response body.
-// Reading a clone leaves the original for the caller's own error handling.
-async function readReason(response: Cloneable): Promise<string | undefined> {
-  const body = await response.clone().text();
-  if (!body) return undefined;
-  try {
-    const message = field(JSON.parse(body), 'message');
-    if (typeof message === 'string') return oneLine(message);
-  } catch {
-    // not JSON: fall through to the raw text
-  }
-  return oneLine(body);
+const sameFailure = (a: RecentError, b: RecentError) =>
+  a.route === b.route &&
+  a.name === b.name &&
+  a.status === b.status &&
+  a.endpoint === b.endpoint &&
+  a.message === b.message &&
+  a.reason === b.reason;
+
+// A refreshing dashboard repeats the same failure; fold it into the earlier
+// entry so it cannot push the other errors out of the buffer.
+function add(entry: RecentError): void {
+  const previous = errors.find(e => e !== entry && sameFailure(e, entry));
+  if (previous) entry.count += previous.count;
+  errors = errors.filter(e => e !== previous && e !== entry);
+  errors.push(entry);
+  if (errors.length > MAX_ERRORS) errors = errors.slice(-MAX_ERRORS);
 }
 
 export function recordRecentError(error: unknown): void {
   const err = error instanceof Error ? error : new Error(String(error));
-  const status = field(field(err, 'response'), 'status');
+  const response = field(err, 'response');
+  const status = field(response, 'status');
   // The ClickHouse client puts the code on the wrapped error's cause.
   const causeCode = field(err.cause, 'code');
   const code = Number(causeCode ?? err.message.match(/Code: (\d+)\./)?.[1]);
@@ -77,48 +84,45 @@ export function recordRecentError(error: unknown): void {
     err.name === 'ClickHouseQueryError' ||
     causeCode != null ||
     /Code: \d+\.|DB::Exception/.test(err.message);
-  const message = oneLine(
-    isClickHouse ? scrubMessage(err.message) : err.message,
-  );
   const endpoint = endpointOf(err);
-  const route = typeof window !== 'undefined' ? window.location.pathname : '';
 
-  // A refreshing dashboard repeats the same failure; keep one entry so it
-  // cannot push the other errors out of the buffer.
-  const previous = errors.find(
-    e =>
-      e.route === route &&
-      e.name === err.name &&
-      e.status === status &&
-      e.endpoint === endpoint &&
-      e.message === message,
-  );
-  errors = errors.filter(e => e !== previous);
   const entry: RecentError = {
     // Not a render path: each error needs its own timestamp.
     // eslint-disable-next-line no-restricted-syntax
     at: new Date().toISOString(),
-    route,
+    route: typeof window !== 'undefined' ? window.location.pathname : '',
     name: err.name,
     ...(typeof status === 'number' ? { status } : {}),
     ...(Number.isInteger(code) ? { code } : {}),
     ...(endpoint ? { endpoint } : {}),
-    message,
-    ...(previous?.reason ? { reason: previous.reason } : {}),
-    count: (previous?.count ?? 0) + 1,
+    message: oneLine(isClickHouse ? scrubMessage(err.message) : err.message),
+    count: 1,
   };
+
+  // ky's message only restates the status; the API's reason is in the body.
+  // Reading a clone leaves the original for the caller's own error handling,
+  // and the entry is only compared with others once its reason is known.
+  if (!isCloneable(response)) {
+    add(entry);
+    return;
+  }
   errors.push(entry);
   if (errors.length > MAX_ERRORS) errors = errors.slice(-MAX_ERRORS);
-
-  const response = field(err, 'response');
-  if (isCloneable(response)) {
-    readReason(response)
-      .then(reason => {
-        if (reason) entry.reason = reason;
-      })
-      // A body that was already read cannot be cloned; keep the message.
-      .catch(() => {});
+  let clone: unknown;
+  try {
+    clone = response.clone();
+  } catch {
+    add(entry); // body already read: no reason to wait for
+    return;
   }
+  getApiErrorMessage({ response: clone }, '')
+    .then(reason => {
+      if (reason) entry.reason = oneLine(reason);
+    })
+    .catch(() => {})
+    .finally(() => {
+      if (errors.includes(entry)) add(entry);
+    });
 }
 
 export function getRecentErrors(): RecentError[] {
