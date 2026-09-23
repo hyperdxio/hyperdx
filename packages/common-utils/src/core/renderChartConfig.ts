@@ -1050,6 +1050,7 @@ function timeBucketExpr({
   dateRange,
   alias = FIXED_TIME_BUCKET_EXPR_ALIAS,
   isRenderingRawSqlTemplate,
+  minGranularitySeconds,
 }: {
   interval: SQLInterval | 'auto';
   timestampValueExpression: string;
@@ -1063,6 +1064,8 @@ function timeBucketExpr({
   dateRange?: [Date, Date];
   alias?: string;
   isRenderingRawSqlTemplate?: boolean;
+  /** See `DateRange.minGranularitySeconds`. Only affects `interval === 'auto'`. */
+  minGranularitySeconds?: number;
 }) {
   const unsafeTimestampValueExpression = {
     UNSAFE_RAW_SQL:
@@ -1079,7 +1082,11 @@ function timeBucketExpr({
   const unsafeInterval = {
     UNSAFE_RAW_SQL:
       interval === 'auto' && Array.isArray(dateRange)
-        ? convertDateRangeToGranularityString(dateRange)
+        ? convertDateRangeToGranularityString(
+            dateRange,
+            undefined,
+            minGranularitySeconds,
+          )
         : interval,
   };
 
@@ -1381,6 +1388,7 @@ async function renderSelect(
             chartConfig.bucketTimestampValueExpression,
           dateRange: chartConfig.dateRange,
           isRenderingRawSqlTemplate: chartConfig.isRenderingRawSqlTemplate,
+          minGranularitySeconds: chartConfig.minGranularitySeconds,
         })
       : [],
   );
@@ -1689,6 +1697,7 @@ async function renderGroupBy(
             chartConfig.bucketTimestampValueExpression,
           dateRange: chartConfig.dateRange,
           isRenderingRawSqlTemplate: chartConfig.isRenderingRawSqlTemplate,
+          minGranularitySeconds: chartConfig.minGranularitySeconds,
         })
       : [],
   );
@@ -1859,6 +1868,7 @@ function renderOrderBy(
             chartConfig.bucketTimestampValueExpression,
           dateRange: chartConfig.dateRange,
           isRenderingRawSqlTemplate: chartConfig.isRenderingRawSqlTemplate,
+          minGranularitySeconds: chartConfig.minGranularitySeconds,
         })
       : [],
     chartConfig.orderBy != null
@@ -2011,7 +2021,11 @@ function renderDeltaExpression(
 ) {
   const interval =
     chartConfig.granularity === 'auto' && Array.isArray(chartConfig.dateRange)
-      ? convertDateRangeToGranularityString(chartConfig.dateRange)
+      ? convertDateRangeToGranularityString(
+          chartConfig.dateRange,
+          undefined,
+          chartConfig.minGranularitySeconds,
+        )
       : chartConfig.granularity;
   const intervalInSeconds = convertGranularityToSeconds(interval ?? '');
 
@@ -2092,6 +2106,7 @@ async function translateMetricChartConfig(
       dateRange: chartConfig.dateRange,
       alias: timeBucketCol,
       isRenderingRawSqlTemplate: chartConfig.isRenderingRawSqlTemplate,
+      minGranularitySeconds: chartConfig.minGranularitySeconds,
     });
 
     const where = await renderWhere(
@@ -2186,6 +2201,7 @@ async function translateMetricChartConfig(
       dateRange: chartConfig.dateRange,
       alias: timeBucketCol,
       isRenderingRawSqlTemplate: chartConfig.isRenderingRawSqlTemplate,
+      minGranularitySeconds: chartConfig.minGranularitySeconds,
     });
 
     // Render the where clause to limit data selection on the source CTE but also search forward/back one
@@ -2208,7 +2224,11 @@ async function translateMetricChartConfig(
         includedDataInterval:
           chartConfig.granularity === 'auto' &&
           Array.isArray(chartConfig.dateRange)
-            ? convertDateRangeToGranularityString(chartConfig.dateRange)
+            ? convertDateRangeToGranularityString(
+                chartConfig.dateRange,
+                undefined,
+                chartConfig.minGranularitySeconds,
+              )
             : chartConfig.granularity,
       },
       metadata,
@@ -2456,7 +2476,11 @@ async function translateMetricChartConfig(
       includedDataInterval:
         chartConfig.granularity === 'auto' &&
         Array.isArray(chartConfig.dateRange)
-          ? convertDateRangeToGranularityString(chartConfig.dateRange)
+          ? convertDateRangeToGranularityString(
+              chartConfig.dateRange,
+              undefined,
+              chartConfig.minGranularitySeconds,
+            )
           : chartConfig.granularity,
     } satisfies BuilderChartConfigWithOptDateRangeEx;
 
@@ -2467,6 +2491,7 @@ async function translateMetricChartConfig(
           timestampValueExpression: cteChartConfig.timestampValueExpression,
           dateRange: cteChartConfig.dateRange,
           isRenderingRawSqlTemplate: chartConfig.isRenderingRawSqlTemplate,
+          minGranularitySeconds: cteChartConfig.minGranularitySeconds,
         })
       : undefined;
     const where = await renderWhere(cteChartConfig, metadata);

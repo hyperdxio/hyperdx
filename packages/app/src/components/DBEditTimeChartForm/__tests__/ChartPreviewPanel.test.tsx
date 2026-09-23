@@ -2,6 +2,8 @@ import React from 'react';
 import {
   ChartConfigWithDateRange,
   ChartVariable,
+  DisplayType,
+  PromqlExpressionList,
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
@@ -273,11 +275,13 @@ describe('ChartPreviewPanel', () => {
     // and left it undefined off a dashboard.
     const promqlConfig = (
       overrides: {
-        promqlExpression?: string;
+        promqlExpression?: PromqlExpressionList;
+        displayType?: DisplayType;
         variables?: ChartVariable[];
       } = {},
     ): ChartConfigWithDateRange => ({
       configType: 'promql',
+      displayType: DisplayType.Line,
       promqlExpression: EXPRESSION,
       connection: 'default',
       from: { databaseName: 'default', tableName: 'metrics' },
@@ -416,6 +420,27 @@ describe('ChartPreviewPanel', () => {
       expect(
         screen.queryByTestId('chart-promql-preview'),
       ).not.toBeInTheDocument();
+    });
+
+    it('shows one preview per expression, labelled by alias', async () => {
+      renderPanel({
+        queriedConfig: promqlConfig({
+          promqlExpression: [
+            { expression: 'e2e_service_up', alias: 'up' },
+            { expression: 'rate(e2e_requests_total[5m])' },
+          ],
+        }),
+        showGeneratedPromql: true,
+      });
+      await openGeneratedPromql();
+
+      const previews = screen.getAllByTestId('chart-promql-preview');
+      expect(previews).toHaveLength(2);
+      expect(previews[0]).toHaveTextContent('e2e_service_up');
+      expect(previews[1]).toHaveTextContent('rate(e2e_requests_total[5m])');
+      expect(screen.getByText('up')).toBeInTheDocument();
+      // Unaliased expressions are numbered rather than left unlabelled.
+      expect(screen.getByText('Expression 2')).toBeInTheDocument();
     });
   });
 
