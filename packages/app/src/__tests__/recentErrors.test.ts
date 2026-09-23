@@ -256,4 +256,42 @@ describe('recentErrors', () => {
       ]);
     });
   });
+
+  it('keeps quoted identifiers but blanks compared values', () => {
+    recordRecentError(
+      new Error(
+        "Code: 47. DB::Exception: Missing columns: 'ServiceName' while processing query: 'SELECT ServiceName'",
+      ),
+    );
+    recordRecentError(
+      new Error("Code: 60. DB::Exception: No rows for email = 'a@b.com'"),
+    );
+
+    const [missing, compared] = getRecentErrors().map(e => e.message);
+    expect(missing).toBe(
+      "Code: 47. DB::Exception: Missing columns: 'ServiceName'",
+    );
+    expect(compared).toBe("Code: 60. DB::Exception: No rows for email = '?'");
+  });
+
+  it('does not let failures awaiting a reason push out other errors', async () => {
+    for (let i = 0; i < 5; i++)
+      recordRecentError(new Error(`Code: 60. table t${i}`));
+    for (let i = 0; i < 25; i++) {
+      recordRecentError(
+        Object.assign(new Error('Request failed with status code 500'), {
+          name: 'HTTPError',
+          request: { method: 'GET', url: 'http://localhost/api/sources' },
+          response: {
+            status: 500,
+            clone: () => ({ json: async () => ({ message: 'boom' }) }),
+          },
+        }),
+      );
+    }
+
+    expect(getRecentErrors().filter(e => e.code === 60)).toHaveLength(5);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(getRecentErrors().map(e => e.count)).toEqual([1, 1, 1, 1, 1, 25]);
+  });
 });

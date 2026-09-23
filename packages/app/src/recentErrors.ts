@@ -23,8 +23,12 @@ const MAX_MESSAGE_LENGTH = 300;
 const QUERY_FRAGMENT =
   /(\s*In scope |\s*:?\s*while processing\b|\s*\(in query:|\s*failed at position).*$/is;
 
+// Quoted identifiers such as a missing column stay: they are what a ticket
+// needs. Only values compared in what is left of the message are blanked.
+const COMPARED_VALUE = /((?:[=<>]|\b(?:LIKE|IN)\b)\s*\(?\s*)'[^']*'/gi;
+
 function scrubMessage(message: string): string {
-  return message.replace(QUERY_FRAGMENT, '').replace(/'[^']*'/g, "'?'");
+  return message.replace(QUERY_FRAGMENT, '').replace(COMPARED_VALUE, "$1'?'");
 }
 
 // The report is one line per error.
@@ -32,6 +36,9 @@ const oneLine = (text: string) =>
   text.replace(/\s+/g, ' ').trim().slice(0, MAX_MESSAGE_LENGTH);
 
 let errors: RecentError[] = [];
+// API failures waiting for their reason; kept apart so a burst of them cannot
+// push other errors out before they fold together.
+let pending: RecentError[] = [];
 
 function field(obj: unknown, key: string): unknown {
   return typeof obj === 'object' && obj !== null
@@ -106,8 +113,6 @@ export function recordRecentError(error: unknown): void {
     add(entry);
     return;
   }
-  errors.push(entry);
-  if (errors.length > MAX_ERRORS) errors = errors.slice(-MAX_ERRORS);
   let clone: unknown;
   try {
     clone = response.clone();
@@ -115,20 +120,25 @@ export function recordRecentError(error: unknown): void {
     add(entry); // body already read: no reason to wait for
     return;
   }
+  pending.push(entry);
   getApiErrorMessage({ response: clone }, '')
     .then(reason => {
       if (reason) entry.reason = oneLine(reason);
     })
     .catch(() => {})
     .finally(() => {
-      if (errors.includes(entry)) add(entry);
+      if (!pending.includes(entry)) return; // cleared meanwhile
+      pending = pending.filter(e => e !== entry);
+      add(entry);
     });
 }
 
 export function getRecentErrors(): RecentError[] {
-  return [...errors];
+  // Pending entries show up briefly before they fold into the buffer.
+  return [...errors, ...pending];
 }
 
 export function clearRecentErrors(): void {
   errors = [];
+  pending = [];
 }
