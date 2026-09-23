@@ -55,4 +55,26 @@ describe('getAlertReferenceLineValues', () => {
       }),
     ).toEqual([10]);
   });
+
+  it("includes 0 for BELOW, matching the reference area's fixed bottom edge", () => {
+    // Regression: getAlertReferenceLines renders BELOW/BELOW_OR_EQUAL with
+    // y1={0} - omitting 0 here let Recharts silently widen the domain later.
+    expect(
+      getAlertReferenceLineValues({
+        threshold: 550,
+        thresholdMax: undefined,
+        thresholdType: AlertThresholdType.BELOW,
+      }),
+    ).toEqual([0, 550]);
+  });
+
+  it("includes 0 for BELOW_OR_EQUAL, matching the reference area's fixed bottom edge", () => {
+    expect(
+      getAlertReferenceLineValues({
+        threshold: 550,
+        thresholdMax: undefined,
+        thresholdType: AlertThresholdType.BELOW_OR_EQUAL,
+      }),
+    ).toEqual([0, 550]);
+  });
 });

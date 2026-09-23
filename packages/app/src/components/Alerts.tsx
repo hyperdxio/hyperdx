@@ -278,5 +278,11 @@ export const getAlertReferenceLineValues = ({
   ) {
     return [threshold, thresholdMax];
   }
+  if (
+    thresholdType === AlertThresholdType.BELOW ||
+    thresholdType === AlertThresholdType.BELOW_OR_EQUAL
+  ) {
+    return [0, threshold];
+  }
   return [threshold];
 };
