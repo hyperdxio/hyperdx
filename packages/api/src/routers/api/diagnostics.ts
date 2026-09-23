@@ -1,0 +1,192 @@
+import { Session } from 'node:inspector/promises';
+import os from 'node:os';
+import { pipeline } from 'node:stream/promises';
+import { setTimeout as sleep } from 'node:timers/promises';
+import v8 from 'node:v8';
+
+import express from 'express';
+import { z } from 'zod';
+
+import { CODE_VERSION, DIAGNOSTICS_HEAP_SNAPSHOT_ENABLED } from '@/config';
+import {
+  Api400Error,
+  Api404Error,
+  BaseError,
+  StatusCode,
+} from '@/utils/errors';
+import { withOperationMetrics, withSpan } from '@/utils/instrumentation';
+
+const router = express.Router();
+
+// Stays under the 60s load balancer idle timeout the server is tuned for.
+const MAX_PROFILE_SECONDS = 50;
+const secondsSchema = z.coerce
+  .number()
+  .int()
+  .min(1)
+  .max(MAX_PROFILE_SECONDS)
+  .default(30);
+
+type DiagnosticKind =
+  | 'report'
+  | 'cpu-profile'
+  | 'heap-profile'
+  | 'heap-snapshot';
+
+// Two profilers running at once distort each other's samples, so one per process.
+let profiling = false;
+
+function parseSeconds(req: express.Request): number {
+  const parsed = secondsSchema.safeParse(req.query.seconds);
+  if (!parsed.success) {
+    throw new Api400Error(
+      `seconds must be an integer from 1 to ${MAX_PROFILE_SECONDS}`,
+    );
+  }
+  return parsed.data;
+}
+
+function collect<T>(kind: DiagnosticKind, fn: () => Promise<T>): Promise<T> {
+  return withSpan(
+    'diagnostics.collect',
+    () => withOperationMetrics('diagnostics.collect', fn, { kind }),
+    { attributes: { 'hyperdx.diagnostics.kind': kind } },
+  );
+}
+
+async function withProfilingLock<T>(fn: () => Promise<T>): Promise<T> {
+  if (profiling) {
+    throw new BaseError(
+      'DiagnosticsBusy',
+      StatusCode.CONFLICT,
+      true,
+      'A profile is already running on this process',
+    );
+  }
+  profiling = true;
+  try {
+    return await fn();
+  } finally {
+    profiling = false;
+  }
+}
+
+async function withInspector<T>(fn: (session: Session) => Promise<T>) {
+  const session = new Session();
+  session.connect();
+  try {
+    return await fn(session);
+  } finally {
+    session.disconnect();
+  }
+}
+
+// attachment() derives Content-Type from the extension; these files are JSON.
+// The source header lets a bundle show which replica each file came from.
+function attachment(res: express.Response, extension: string) {
+  res
+    .attachment(`api-${process.pid}.${extension}`)
+    .type('application/json')
+    .set('X-HDX-Diagnostics-Source', `${os.hostname()}/${process.pid}`);
+}
+
+// Aborts when the client goes away, so an abandoned profile frees the lock.
+function abortOnDisconnect(res: express.Response): AbortSignal {
+  const controller = new AbortController();
+  res.on('close', () => {
+    if (!res.writableFinished) controller.abort();
+  });
+  return controller.signal;
+}
+
+router.get('/report', async (req, res, next) => {
+  try {
+    const body = await collect('report', async () => {
+      // The report and each workers[] entry embed the full environment (Mongo
+      // URI, API keys), so drop the key at every depth.
+      const report: unknown = JSON.parse(
+        JSON.stringify(process.report.getReport(), (key, value) =>
+          key === 'environmentVariables' ? undefined : value,
+        ),
+      );
+      return {
+        codeVersion: CODE_VERSION,
+        hostname: os.hostname(),
+        pid: process.pid,
+        uptimeSeconds: process.uptime(),
+        report,
+      };
+    });
+    res.json(body);
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.post('/cpu-profile', async (req, res, next) => {
+  const signal = abortOnDisconnect(res);
+  try {
+    const seconds = parseSeconds(req);
+    const profile = await collect('cpu-profile', () =>
+      withProfilingLock(() =>
+        withInspector(async session => {
+          await session.post('Profiler.enable');
+          await session.post('Profiler.start');
+          await sleep(seconds * 1000, undefined, { signal });
+          const { profile } = await session.post('Profiler.stop');
+          return profile;
+        }),
+      ),
+    );
+    attachment(res, 'cpuprofile');
+    res.json(profile);
+  } catch (e) {
+    // Nobody is left to answer, and a disconnect is not a server fault.
+    if (signal.aborted) return;
+    next(e);
+  }
+});
+
+router.post('/heap-profile', async (req, res, next) => {
+  const signal = abortOnDisconnect(res);
+  try {
+    const seconds = parseSeconds(req);
+    const profile = await collect('heap-profile', () =>
+      withProfilingLock(() =>
+        withInspector(async session => {
+          await session.post('HeapProfiler.startSampling');
+          await sleep(seconds * 1000, undefined, { signal });
+          const { profile } = await session.post('HeapProfiler.stopSampling');
+          return profile;
+        }),
+      ),
+    );
+    attachment(res, 'heapprofile');
+    res.json(profile);
+  } catch (e) {
+    if (signal.aborted) return;
+    next(e);
+  }
+});
+
+router.post('/heap-snapshot', async (req, res, next) => {
+  const signal = abortOnDisconnect(res);
+  try {
+    // Off by default: a snapshot pauses the event loop and can roughly double
+    // memory, which can OOMKill a pod that is already struggling.
+    if (!DIAGNOSTICS_HEAP_SNAPSHOT_ENABLED) {
+      throw new Api404Error('Heap snapshots are disabled');
+    }
+    await collect('heap-snapshot', () =>
+      withProfilingLock(async () => {
+        attachment(res, 'heapsnapshot');
+        await pipeline(v8.getHeapSnapshot(), res);
+      }),
+    );
+  } catch (e) {
+    if (signal.aborted) return;
+    next(e);
+  }
+});
+
+export default router;
