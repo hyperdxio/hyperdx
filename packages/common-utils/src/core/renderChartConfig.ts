@@ -1899,7 +1899,12 @@ async function getComputedMetricColumns(
     bucketedColumns: string[];
     groupBy: BuilderChartConfigWithOptDateRangeEx['groupBy'];
   },
-): Promise<{ select: string; aggregate: string; groupBy: string }> {
+): Promise<{
+  select: string;
+  aggregate: string;
+  groupBy: string;
+  project: (c: string) => { UNSAFE_RAW_SQL: string };
+}> {
   let columnNames: string[] = [];
   try {
     const columns = await metadata.getColumns({
@@ -1949,22 +1954,19 @@ async function getComputedMetricColumns(
     }),
   );
   const escape = (c: string) => SqlString.escapeId(c, true);
-  // A second projection of a Bucketed column would clash with its any()
-  // alias in GROUP BY.
-  const bucketed = columnNames.filter(c => !bucketedColumns.includes(c));
+  const grouped = new Set(columnNames.filter(c => referenced.has(c)));
+  // Bucketed projects its own columns via `project`, so they aren't repeated.
+  const extra = columnNames.filter(c => !bucketedColumns.includes(c));
+  const project = (c: string) =>
+    grouped.has(c) ? escape(c) : `any(${escape(c)}) AS ${escape(c)}`;
   return {
     select: columnNames.map(c => `, ${escape(c)}`).join(''),
-    aggregate: bucketed
-      .map(c =>
-        referenced.has(c)
-          ? `, ${escape(c)}`
-          : `, any(${escape(c)}) AS ${escape(c)}`,
-      )
-      .join(''),
-    groupBy: bucketed
-      .filter(c => referenced.has(c))
-      .map(c => `, ${escape(c)}`)
-      .join(''),
+    aggregate: extra.map(c => `, ${project(c)}`).join(''),
+    groupBy: [...grouped].map(c => `, ${escape(c)}`).join(''),
+    // Names come from the fixed OTel lists, so they need no quoting.
+    project: (c: string) => ({
+      UNSAFE_RAW_SQL: grouped.has(c) ? c : `any(${c}) AS ${c}`,
+    }),
   };
 }
 
@@ -2077,19 +2079,19 @@ async function translateMetricChartConfig(
               ${timeExpr},
               AttributesHash,
               ${bucketValueExpr} AS LastValue,
-              any(ScopeAttributes) AS ScopeAttributes,
-              any(ResourceAttributes) AS ResourceAttributes,
-              any(Attributes) AS Attributes,
-              any(ResourceSchemaUrl) AS ResourceSchemaUrl,
-              any(ScopeName) AS ScopeName,
-              any(ScopeVersion) AS ScopeVersion,
-              any(ScopeDroppedAttrCount) AS ScopeDroppedAttrCount,
-              any(ScopeSchemaUrl) AS ScopeSchemaUrl,
-              any(ServiceName) AS ServiceName,
-              any(MetricDescription) AS MetricDescription,
-              any(MetricUnit) AS MetricUnit,
-              any(StartTimeUnix) AS StartTimeUnix,
-              any(Flags) AS Flags${{ UNSAFE_RAW_SQL: computedColumns.aggregate }}
+              ${computedColumns.project('ScopeAttributes')},
+              ${computedColumns.project('ResourceAttributes')},
+              ${computedColumns.project('Attributes')},
+              ${computedColumns.project('ResourceSchemaUrl')},
+              ${computedColumns.project('ScopeName')},
+              ${computedColumns.project('ScopeVersion')},
+              ${computedColumns.project('ScopeDroppedAttrCount')},
+              ${computedColumns.project('ScopeSchemaUrl')},
+              ${computedColumns.project('ServiceName')},
+              ${computedColumns.project('MetricDescription')},
+              ${computedColumns.project('MetricUnit')},
+              ${computedColumns.project('StartTimeUnix')},
+              ${computedColumns.project('Flags')}${{ UNSAFE_RAW_SQL: computedColumns.aggregate }}
             FROM Source
             GROUP BY AttributesHash, ${timeBucketCol}${{ UNSAFE_RAW_SQL: computedColumns.groupBy }}
             ORDER BY AttributesHash, ${timeBucketCol}
@@ -2248,22 +2250,22 @@ async function translateMetricChartConfig(
                 -- deterministic w.r.t. TimeUnix ordering unlike last_value
                 -- which in a GROUP BY context is anyLast (order-dependent).
                 argMax(Source.Sum, TimeUnix) AS Sum,
-                any(ResourceAttributes) AS ResourceAttributes,
-                any(ResourceSchemaUrl) AS ResourceSchemaUrl,
-                any(ScopeName) AS ScopeName,
-                any(ScopeVersion) AS ScopeVersion,
-                any(ScopeAttributes) AS ScopeAttributes,
-                any(ScopeDroppedAttrCount) AS ScopeDroppedAttrCount,
-                any(ScopeSchemaUrl) AS ScopeSchemaUrl,
-                any(ServiceName) AS ServiceName,
-                any(MetricName) AS MetricName,
-                any(MetricDescription) AS MetricDescription,
-                any(MetricUnit) AS MetricUnit,
-                any(Attributes) AS Attributes,
-                any(StartTimeUnix) AS StartTimeUnix,
-                any(Flags) AS Flags,
-                any(AggregationTemporality) AS AggregationTemporality,
-                any(IsMonotonic) AS IsMonotonic${{ UNSAFE_RAW_SQL: computedColumns.aggregate }}
+                ${computedColumns.project('ResourceAttributes')},
+                ${computedColumns.project('ResourceSchemaUrl')},
+                ${computedColumns.project('ScopeName')},
+                ${computedColumns.project('ScopeVersion')},
+                ${computedColumns.project('ScopeAttributes')},
+                ${computedColumns.project('ScopeDroppedAttrCount')},
+                ${computedColumns.project('ScopeSchemaUrl')},
+                ${computedColumns.project('ServiceName')},
+                ${computedColumns.project('MetricName')},
+                ${computedColumns.project('MetricDescription')},
+                ${computedColumns.project('MetricUnit')},
+                ${computedColumns.project('Attributes')},
+                ${computedColumns.project('StartTimeUnix')},
+                ${computedColumns.project('Flags')},
+                ${computedColumns.project('AggregationTemporality')},
+                ${computedColumns.project('IsMonotonic')}${{ UNSAFE_RAW_SQL: computedColumns.aggregate }}
               FROM Source
               GROUP BY AttributesHash, \`${timeBucketCol}\`${{ UNSAFE_RAW_SQL: computedColumns.groupBy }}
               ORDER BY AttributesHash, \`${timeBucketCol}\`

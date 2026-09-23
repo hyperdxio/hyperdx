@@ -190,7 +190,7 @@ describe('renderChartConfig', () => {
     },
   );
 
-  it('does not re-project a computed column Bucketed already carries', async () => {
+  it('groups by a computed column Bucketed already carries, without projecting it twice', async () => {
     mockMetadata.getColumns = jest
       .fn()
       .mockResolvedValue([
@@ -203,8 +203,9 @@ describe('renderChartConfig', () => {
     );
     const sql = rendered.sql.replace(/\s+/g, ' ');
     expect(sql).toContain('AS AttributesHash, `ServiceName` FROM');
+    expect(sql).not.toContain('any(ServiceName)');
     expect(sql).toContain(
-      'any(Flags) AS Flags FROM Source GROUP BY AttributesHash, __hdx_time_bucket2 ORDER BY',
+      'any(Flags) AS Flags FROM Source GROUP BY AttributesHash, __hdx_time_bucket2, `ServiceName` ORDER BY',
     );
   });
 
