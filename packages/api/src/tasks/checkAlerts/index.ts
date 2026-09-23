@@ -41,11 +41,11 @@ import {
   DisplayType,
   getSampleWeightExpression,
   pickSampleWeightExpressionProps,
+  PrometheusMatrixResult,
   PromqlSavedChartConfig,
   SavedChartConfig,
   SourceKind,
 } from '@hyperdx/common-utils/dist/types';
-import { PrometheusMatrixResult } from '@hyperdx/common-utils/dist/types';
 import { substitutePromqlChartConfigVariables } from '@hyperdx/common-utils/dist/variables';
 import * as fns from 'date-fns';
 import { isString, pick } from 'lodash';
@@ -61,7 +61,6 @@ import { getConnectionById } from '@/controllers/connection';
 import {
   clickhouseAuthHeaders,
   clickhouseServesPrometheusHttpApi,
-  formatMatrixResponse,
   joinPrometheusUpstreamUrl,
   PROMETHEUS_CH_TIMEOUT_MS,
   queryRangeViaTableFunction,

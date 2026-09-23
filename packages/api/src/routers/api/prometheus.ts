@@ -13,8 +13,6 @@ import {
   clickhouseServesPrometheusHttpApi,
   joinPrometheusUpstreamUrl,
   PROMETHEUS_CH_TIMEOUT_MS,
-  PROMETHEUS_MAX_EXECUTION_SEC,
-  PROMETHEUS_MAX_RESULT_ROWS,
   queryInstantViaTableFunction,
   queryLabelNames,
   queryLabelValues,
