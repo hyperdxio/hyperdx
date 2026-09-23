@@ -152,6 +152,9 @@ processors:
 extensions:
   health_check:
     endpoint: :13133
+  # Localhost only, for support profiling via `docker exec`/`kubectl exec`.
+  pprof:
+    endpoint: 127.0.0.1:1777
 service:
   telemetry:
     metrics:
@@ -171,7 +174,7 @@ service:
       # field. In standalone mode both streams land in the container log, so
       # this is a no-op there.
       output_paths: [stdout]
-  extensions: [health_check]
+  extensions: [health_check, pprof]
   # Pipeline receivers and exporters are configured dynamically in
   # opampController.ts. Pipeline `processors:` lists are declared here in
   # the bootstrap config so they can be overridden via

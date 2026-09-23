@@ -28,6 +28,7 @@ import { renderTileContent } from '@/shared/tileRender';
 import { clearSession, loadSession, setActiveTeam } from '@/utils/config';
 import { parseTimeValue } from '@/utils/editor';
 import { uploadSourcemaps } from '@/sourcemaps';
+import { runSupportBundle } from '@/supportBundle';
 
 // ---- Standalone interactive login for `hdx auth login` -------------
 
@@ -1756,6 +1757,93 @@ program
       process.stderr.write(`${chalk.red(`Upload failed: ${msg}`)}\n`);
       process.exit(1);
     }
+  });
+
+// ---- Support Bundle ------------------------------------------------
+
+program
+  .command('support-bundle')
+  .description(
+    'Collect API profiles and ClickHouse health into a tarball for HyperDX support',
+  )
+  .option('-a, --app-url <url>', 'HyperDX app URL')
+  .option('--seconds <n>', 'Profile window in seconds (1-50)', '30')
+  .option(
+    '--heap-snapshot',
+    'Include a full API heap snapshot (server must set HDX_DIAGNOSTICS_HEAP_SNAPSHOT=true)',
+  )
+  .option(
+    '--collector-pprof-url <url>',
+    'Collector pprof URL, if port-forwarded (e.g. http://127.0.0.1:1777)',
+  )
+  .option('-o, --out <dir>', 'Directory to write the bundle to', '.')
+  .action(async opts => {
+    const seconds = Number(opts.seconds);
+    if (!Number.isInteger(seconds) || seconds < 1 || seconds > 50) {
+      _origError(chalk.red('--seconds must be an integer from 1 to 50\n'));
+      process.exit(1);
+    }
+    if (opts.heapSnapshot) {
+      _origError(
+        chalk.yellow(
+          'The heap snapshot holds every string in API memory, including secrets. Review it before sharing.\n',
+        ),
+      );
+    }
+
+    const client = await ensureSession(opts.appUrl);
+    const chClient = client.createClickHouseClient();
+    _origError(
+      chalk.dim(
+        `Collecting diagnostics (about ${seconds * 2}s of profiling)...\n`,
+      ),
+    );
+
+    const { dir, archive, manifest } = await runSupportBundle(
+      {
+        getApiUrl: () => client.getApiUrl(),
+        get: path => client.get(path),
+        post: path => client.post(path),
+        getConnections: () => client.getConnections(),
+        query: async (connectionId, sql) => {
+          const resultSet = await chClient.query({
+            query: sql,
+            format: 'JSON',
+            connectionId,
+          });
+          const json = (await resultSet.json()) as { data?: unknown[] };
+          return json.data ?? [];
+        },
+      },
+      {
+        seconds,
+        heapSnapshot: !!opts.heapSnapshot,
+        collectorPprofUrl: opts.collectorPprofUrl,
+        outDir: opts.out,
+      },
+    );
+
+    for (const s of manifest.steps) {
+      _origError(
+        s.ok
+          ? `${chalk.green('ok')}   ${s.name}\n`
+          : `${chalk.red('fail')} ${s.name}: ${s.error}\n`,
+      );
+    }
+    _origError(
+      `\n${archive ? `Bundle: ${archive}` : `tar failed; files are in ${dir}`}\n`,
+    );
+    _origError(
+      chalk.dim(
+        `
+Also attach, from the host running HyperDX:
+  docker exec <collector> wget -qO- 127.0.0.1:1777/debug/pprof/heap > collector-heap.pb.gz
+  docker compose logs --since 1h > compose.log
+  kubectl exec <collector-pod> -- wget -qO- 127.0.0.1:1777/debug/pprof/heap > collector-heap.pb.gz
+  kubectl logs <pod> --since=1h > <pod>.log
+`,
+      ),
+    );
   });
 
 program.parse();
