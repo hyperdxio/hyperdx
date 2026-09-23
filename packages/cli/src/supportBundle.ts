@@ -154,7 +154,9 @@ export async function runSupportBundle(
     }
   };
 
-  const unsupported = 'not supported by server';
+  // A 404 means diagnostics are off (the default) or the API predates them.
+  const unsupported =
+    'not available: set HDX_DIAGNOSTICS_ENABLED=true on the API, or upgrade it';
   const q = `seconds=${opts.seconds}`;
   // A stuck API is the main reason to run this, so every call is bounded.
   const profileTimeoutMs = (opts.seconds + 30) * 1000;

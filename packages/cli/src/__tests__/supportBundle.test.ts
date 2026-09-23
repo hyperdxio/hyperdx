@@ -159,7 +159,7 @@ describe('runSupportBundle', () => {
     );
   });
 
-  it('marks API steps unsupported when the server has no diagnostics endpoint', async () => {
+  it('explains how to enable diagnostics when the API returns 404', async () => {
     const { manifest } = await run(
       fakeClient({
         get: async () => json({}, 404),
@@ -169,7 +169,7 @@ describe('runSupportBundle', () => {
 
     expect(manifest.steps.find(s => s.name === 'api-report')).toMatchObject({
       ok: false,
-      error: 'not supported by server',
+      error: expect.stringContaining('HDX_DIAGNOSTICS_ENABLED=true'),
     });
   });
 
