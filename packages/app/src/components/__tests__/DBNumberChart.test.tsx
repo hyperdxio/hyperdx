@@ -1,4 +1,5 @@
 import React from 'react';
+import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import { act, screen } from '@testing-library/react';
 
 import DateRangeIndicator from '@/components/charts/DateRangeIndicator';
@@ -135,7 +136,8 @@ describe('DBNumberChart', () => {
     expect(mockFormatNumber).toHaveBeenCalledWith(1234, newFormat);
   });
 
-  it('includes numberFormat in the query key to ensure re-fetching when format changes', () => {
+  // The hook keys on the config it is handed, so a format change refetches.
+  it('hands the query hook the numberFormat and the key prefix', () => {
     const numberFormat = {
       output: 'percent' as const,
       mantissa: 2,
@@ -148,11 +150,9 @@ describe('DBNumberChart', () => {
 
     renderWithMantine(<DBNumberChart config={config} queryKeyPrefix="test" />);
 
-    const [firstCall] = mockUseQueriedChartConfig.mock.calls;
-    const [, { queryKey }] = firstCall;
-    const [, { numberFormat: queryKeyFormat }] = queryKey;
-
-    expect(queryKeyFormat).toEqual(numberFormat);
+    const [queriedConfig, options] = mockUseQueriedChartConfig.mock.calls[0];
+    expect(queriedConfig.numberFormat).toEqual(numberFormat);
+    expect(options.queryKeyPrefix).toBe('test');
   });
 
   it('displays formatted number in the UI', () => {
@@ -707,6 +707,127 @@ describe('DBNumberChart', () => {
         screen.queryByTestId('number-tile-background-chart'),
       ).not.toBeInTheDocument();
       expect(mockBackgroundChart).not.toHaveBeenCalled();
+    });
+  });
+  describe('promql configs', () => {
+    const promqlConfig = {
+      configType: 'promql' as const,
+      displayType: DisplayType.Number,
+      promqlExpression: 'e2e_service_up',
+      connection: 'test-connection',
+      dateRange: [new Date(), new Date()] as [Date, Date],
+    };
+
+    // The instant path always reports its columns, which is what lets the tile
+    // pick `value` rather than the leading `series_name`.
+    const instantMeta = [
+      { name: 'series_name', type: 'String' },
+      { name: 'value', type: 'Float64' },
+    ];
+
+    const setInstantRows = (rows: { series_name: string; value: number }[]) => {
+      mockUseQueriedChartConfig.mockReturnValue({
+        data: { data: rows, meta: instantMeta, rows: rows.length },
+        isLoading: false,
+        isError: false,
+      });
+    };
+
+    it('shows the value when the expression yields exactly one', () => {
+      setInstantRows([{ series_name: 'up{service="accounting"}', value: 7 }]);
+      mockFormatNumber.mockReturnValue('7');
+
+      renderWithMantine(<DBNumberChart config={promqlConfig} />);
+
+      expect(screen.getByTestId('number-chart-value')).toHaveTextContent('7');
+      expect(
+        screen.queryByTestId('multiple-values-indicator'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('reads the value column, not the leading series name', () => {
+      setInstantRows([{ series_name: 'up{service="accounting"}', value: 7 }]);
+
+      renderWithMantine(<DBNumberChart config={promqlConfig} />);
+
+      expect(mockFormatNumber).toHaveBeenCalledWith(7, undefined);
+    });
+
+    it('warns when the expression yields more than one series', () => {
+      setInstantRows([
+        { series_name: 'up{service="accounting"}', value: 1 },
+        { series_name: 'up{service="api-server"}', value: 2 },
+      ]);
+      mockFormatNumber.mockReturnValue('1');
+
+      renderWithMantine(<DBNumberChart config={promqlConfig} />);
+
+      expect(screen.getByTestId('multiple-values-indicator')).toHaveAttribute(
+        'aria-label',
+        'Query returned 2 series',
+      );
+      // Still shows the first value rather than blanking the tile.
+      expect(screen.getByTestId('number-chart-value')).toHaveTextContent('1');
+    });
+
+    // Several values under one name is the other failure: the expression is
+    // returning a range rather than a single sample per series.
+    it('warns differently when one series carries several values', () => {
+      setInstantRows([
+        { series_name: 'up', value: 1 },
+        { series_name: 'up', value: 2 },
+      ]);
+      mockFormatNumber.mockReturnValue('1');
+
+      renderWithMantine(<DBNumberChart config={promqlConfig} />);
+
+      expect(screen.getByTestId('multiple-values-indicator')).toHaveAttribute(
+        'aria-label',
+        'Query returned 2 values for one series',
+      );
+    });
+
+    it('does not warn for a non-PromQL config with several rows', () => {
+      mockUseQueriedChartConfig.mockReturnValue({
+        data: {
+          data: [{ value: 1 }, { value: 2 }],
+          meta: [{ name: 'value', type: 'Float64' }],
+          rows: 2,
+        },
+        isLoading: false,
+        isError: false,
+      });
+      mockFormatNumber.mockReturnValue('1');
+
+      renderWithMantine(<DBNumberChart config={baseTestConfig} />);
+
+      expect(
+        screen.queryByTestId('multiple-values-indicator'),
+      ).not.toBeInTheDocument();
+    });
+
+    // Color rules already applied to PromQL tiles; what changes is that the
+    // value they match is now the current one instead of the oldest bucket.
+    it('resolves a color rule against the displayed value', () => {
+      setInstantRows([{ series_name: 'up', value: 200 }]);
+      mockFormatNumber.mockReturnValue('200');
+
+      const config = {
+        ...promqlConfig,
+        color: 'chart-success' as const,
+        colorRules: [
+          {
+            operator: 'gte' as const,
+            value: 100,
+            color: 'chart-warning' as const,
+          },
+        ],
+      };
+      renderWithMantine(<DBNumberChart config={config} />);
+
+      expect(jest.mocked(getColorFromCSSToken)).toHaveBeenCalledWith(
+        'chart-warning',
+      );
     });
   });
 });

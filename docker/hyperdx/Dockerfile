@@ -159,10 +159,14 @@ ENV OTEL_RESOURCE_ATTRIBUTES="service.version=$CODE_VERSION"
 COPY --from=ocb-builder --chmod=755 /build/output/otelcol-hyperdx /otelcontribcol
 COPY --from=otel_collector_opampsupervisor_base --chmod=755 /usr/local/bin/opampsupervisor /usr/local/bin/opampsupervisor
 
-# Copy Node.js runtime from node base
+# Copy Node.js runtime from node base.
+# Deliberately NOT copying node's /usr/lib: it overwrites this image's
+# libapk.so, libssl, libcrypto and libz with whatever Alpine point release the
+# node image happens to be built on. When the two drift, apk stops linking
+# ("Error relocating /sbin/apk: ... symbol not found") and the build dies.
+# Node only needs libstdc++/libgcc from there; those are installed via apk below.
 COPY --from=node_base --link /usr/local/bin /usr/local/bin
 COPY --from=node_base --link /usr/local/lib /usr/local/lib
-COPY --from=node_base /usr/lib /usr/lib
 COPY --from=node_base /usr/local/include /usr/local/include
 
 # Set up Clickhouse
@@ -186,8 +190,11 @@ COPY --from=goose /bin/goose /usr/local/bin/goose
 # Copy migrate binary (Go-based goose migration tool with full TLS support)
 COPY --from=migrate-builder /migrate /usr/local/bin/migrate
 
-# Install MongoDB and other dependencies (consolidated into a single RUN command)
-RUN echo 'http://dl-cdn.alpinelinux.org/alpine/v3.9/main' >> /etc/apk/repositories && \
+# Install MongoDB and other dependencies (consolidated into a single RUN command).
+# libstdc++/libgcc are the Node.js runtime deps, installed before the v3.9
+# repositories are appended so they resolve from this image's own Alpine release.
+RUN apk add --no-cache libstdc++ libgcc && \
+  echo 'http://dl-cdn.alpinelinux.org/alpine/v3.9/main' >> /etc/apk/repositories && \
   echo 'http://dl-cdn.alpinelinux.org/alpine/v3.9/community' >> /etc/apk/repositories && \
   apk update && \
   apk add --no-cache mongodb yaml-cpp=0.6.2-r2 ca-certificates && \
@@ -217,7 +224,7 @@ WORKDIR /app
 # Add hosts entry in entrypoint script instead of here
 
 # Expose ports
-EXPOSE 8080 4317 4318 13133 8123 9000
+EXPOSE 8080 4317 4318 13133 8123 9000 8125/udp
 
 # all-in-one no auth ############################################################################################
 FROM all-in-one-base AS all-in-one-noauth

@@ -942,6 +942,14 @@ const NUMERIC_UNIT_CONFIGS: Record<NumericUnit, UnitFormatConfig> = {
   [NumericUnit.Wpm]: { type: 'fixed', suffix: 'wpm' },
 };
 
+// A fixed unit's suffix is the same on every value, unlike an auto-scale
+// one (KiB/MiB/GiB...), so it carries no information on its own.
+export function isFixedNumericUnit(numericUnit?: NumericUnit): boolean {
+  return (
+    numericUnit != null && NUMERIC_UNIT_CONFIGS[numericUnit]?.type === 'fixed'
+  );
+}
+
 const IEC_BYTE_UNITS = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB'];
 const SI_BYTE_UNITS = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
 const IEC_BIT_UNITS = ['b', 'Kibit', 'Mibit', 'Gibit', 'Tibit', 'Pibit'];

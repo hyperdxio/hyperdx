@@ -58,12 +58,14 @@ import { ClickhouseClient } from '@/clickhouse';
 import { ALERT_HISTORY_QUERY_CONCURRENCY } from '@/controllers/alertHistory';
 import { getConnectionById } from '@/controllers/connection';
 import {
+  clickhouseAuthHeaders,
+  clickhouseServesPrometheusHttpApi,
   formatMatrixResponse,
   joinPrometheusUpstreamUrl,
   PROMETHEUS_CH_TIMEOUT_MS,
-  PrometheusMatrixResult,
   queryRangeViaTableFunction,
 } from '@/controllers/timeseriesEngine';
+import { PrometheusMatrixResult } from '@hyperdx/common-utils/dist/types';
 import { AlertState, IAlert, IAlertError } from '@/models/alert';
 import AlertHistory, {
   IAlertHistory,
@@ -993,28 +995,32 @@ export async function evaluatePromqlAlert({
   // PromQL evaluates exactly at the given timestamps. We want the evaluation
   // for the window [T, T+step) to happen at T+step, using the freshest data.
   const startSec = dateRange[0].getTime() / 1000 + stepSec;
-  const promqlExpression =
+
+  // Resolve the expression to evaluate. The config stores either a bare string
+  // (tiles saved before multi-expression support) or an array of PromqlSeries.
+  // Alerts always target the LAST expression, mirroring how SQL builder alerts
+  // target the last series.
+  const resolvedConfig =
     variables && variables.length > 0
       ? substitutePromqlChartConfigVariables({ ...savedConfig, variables })
-          .promqlExpression
-      : savedConfig.promqlExpression;
+      : savedConfig;
+  const rawExpression = resolvedConfig.promqlExpression;
+  const promqlExpression = Array.isArray(rawExpression)
+    ? rawExpression[rawExpression.length - 1].expression
+    : rawExpression;
 
-  if (connection.isPrometheusEndpoint) {
-    // Proxy to the real Prometheus /api/v1/query_range
-    const url = joinPrometheusUpstreamUrl(
-      connection.host,
-      '/api/v1/query_range',
-    );
-    const params = new URLSearchParams({
-      query: promqlExpression,
-      start: String(startSec),
-      end: String(endSec),
-      step: String(stepSec),
-    });
-    for (const [key, value] of params.entries()) {
-      url.searchParams.set(key, value);
-    }
+  // Shared helper for querying a Prometheus-compatible HTTP endpoint.
+  async function queryPrometheusHttp(
+    upstreamHost: string,
+    headers?: Record<string, string>,
+  ): Promise<PrometheusMatrixResult[] | null> {
+    const url = joinPrometheusUpstreamUrl(upstreamHost, '/api/v1/query_range');
+    url.searchParams.set('query', promqlExpression);
+    url.searchParams.set('start', String(startSec));
+    url.searchParams.set('end', String(endSec));
+    url.searchParams.set('step', String(stepSec));
     const resp = await fetch(url.toString(), {
+      headers,
       signal: AbortSignal.timeout(30_000),
     });
     if (!resp.ok) {
@@ -1039,7 +1045,6 @@ export async function evaluatePromqlAlert({
     if (!Array.isArray(json?.data?.result)) {
       return null;
     }
-
     // Return all series with all time-points so the caller can evaluate each
     // window bucket individually (backfill support).
     const results: PrometheusMatrixResult[] = json.data.result
@@ -1051,14 +1056,41 @@ export async function evaluatePromqlAlert({
     return results.length > 0 ? results : null;
   }
 
-  // ClickHouse prometheusQueryRange path — use the API ClickhouseClient so
-  // request-scoped logger/telemetry wiring is included.
+  if (connection.isPrometheusEndpoint) {
+    return queryPrometheusHttp(connection.host);
+  }
+
+  // ClickHouse path — create a client for both the HTTP API probe and the
+  // table function fallback.
   const client = new ClickhouseClient({
     host: connection.host,
     username: connection.username,
     password: connection.password,
     requestTimeout: PROMETHEUS_CH_TIMEOUT_MS,
   });
+
+  if (
+    await clickhouseServesPrometheusHttpApi(client, {
+      id: connectionId,
+      host: connection.host,
+      username: connection.username,
+      password: connection.password,
+    })
+  ) {
+    // ClickHouse 26.6+ with the prometheus_api_v1 handler configured.
+    const chUpstream = new URL(connection.host);
+    chUpstream.searchParams.set(
+      'max_execution_time',
+      String(Math.round(PROMETHEUS_CH_TIMEOUT_MS / 1000)),
+    );
+    return queryPrometheusHttp(
+      chUpstream.toString(),
+      clickhouseAuthHeaders({
+        username: connection.username,
+        password: connection.password,
+      }),
+    );
+  }
 
   const startMs = Math.floor(startSec * 1000);
   const endMs = Math.floor(endSec * 1000);
@@ -1563,7 +1595,7 @@ export const processAlert = async (
           const groupKey = labelEntries.map(([k, v]) => `${k}:${v}`).join(', ');
           const attributes = Object.fromEntries(
             labelEntries.filter(([k]) => k !== '__name__'),
-          );
+          ) as Record<string, string>;
 
           for (const [tsSec, rawVal] of series.values) {
             // Shift the evaluation instant back to the start of the bucket

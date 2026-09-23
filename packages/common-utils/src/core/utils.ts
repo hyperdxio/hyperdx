@@ -542,11 +542,24 @@ export function hashCode(str: string) {
 export function convertDateRangeToGranularityString(
   dateRange: [Date, Date],
   maxNumBuckets: number = DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS,
+  /**
+   * Floor for the auto-inferred bucket size, in seconds. Useful when the
+   * underlying data is reported on a fixed interval (e.g. a metrics scrape
+   * interval): without this, a short selected date range can auto-infer a
+   * bucket smaller than that interval, producing sparse/steppy-looking
+   * series (buckets alternating between a real sample and an empty one).
+   * Sourced from `MetricSource.minAutoGranularity` where applicable -
+   * undefined/0 preserves the previous unfloored behavior.
+   */
+  minGranularitySeconds?: number,
 ): Granularity {
   const start = dateRange[0].getTime();
   const end = dateRange[1].getTime();
   const diffSeconds = Math.floor((end - start) / 1000);
-  const granularitySizeSeconds = Math.ceil(diffSeconds / maxNumBuckets);
+  const granularitySizeSeconds = Math.max(
+    Math.ceil(diffSeconds / maxNumBuckets),
+    minGranularitySeconds ?? 0,
+  );
 
   if (granularitySizeSeconds <= 15) {
     return Granularity.FifteenSecond;
