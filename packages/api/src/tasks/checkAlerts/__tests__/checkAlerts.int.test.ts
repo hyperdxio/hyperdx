@@ -5229,31 +5229,27 @@ describe('checkAlerts', () => {
         // We need to mock the timeseriesEngine call rather than evaluatePromqlAlert directly
         // because processAlert calls the local evaluatePromqlAlert inside index.ts
         jest
-          .spyOn(timeseriesEngine, 'queryPrometheusRangeFromClickHouse')
-          .mockResolvedValueOnce({
-            json: async () => ({
-              data: [
-                {
-                  tags: [
-                    ['__name__', 'up'],
-                    ['host', 'node-1'],
-                  ],
-                  time_series: [
-                    [new Date(prometheusReturnedMs).toISOString(), 42],
-                  ],
-                },
-                {
-                  tags: [
-                    ['__name__', 'up'],
-                    ['host', 'node-2'],
-                  ],
-                  time_series: [
-                    [new Date(prometheusReturnedMs).toISOString(), 5],
-                  ], // Below threshold
-                },
+          .spyOn(timeseriesEngine, 'queryRangeViaTableFunction')
+          .mockResolvedValueOnce([
+            {
+              metric: {
+                __name__: 'up',
+                host: 'node-1',
+              },
+              values: [
+                [prometheusReturnedMs / 1000, '42'],
               ],
-            }),
-          } as any);
+            },
+            {
+              metric: {
+                __name__: 'up',
+                host: 'node-2',
+              },
+              values: [
+                [prometheusReturnedMs / 1000, '5'],
+              ], // Below threshold
+            },
+          ]);
 
         await processAlertAtTime(
           now,
@@ -5289,7 +5285,7 @@ describe('checkAlerts', () => {
         expect(node2History.lastValues[0].count).toBe(5);
 
         expect(
-          timeseriesEngine.queryPrometheusRangeFromClickHouse,
+          timeseriesEngine.queryRangeViaTableFunction,
         ).toHaveBeenCalledTimes(1);
       });
     });

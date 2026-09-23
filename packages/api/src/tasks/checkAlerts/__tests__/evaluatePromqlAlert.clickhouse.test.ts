@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 
 import { getConnectionById } from '@/controllers/connection';
-import { queryPrometheusRangeFromClickHouse } from '@/controllers/timeseriesEngine';
+import { queryRangeViaTableFunction } from '@/controllers/timeseriesEngine';
 import type { ISource } from '@/models/source';
 import { evaluatePromqlAlert } from '@/tasks/checkAlerts';
 
@@ -13,7 +13,7 @@ jest.mock('@/controllers/timeseriesEngine', () => {
   return {
     ...actual,
     // Only mock the function that makes real network calls
-    queryPrometheusRangeFromClickHouse: jest.fn(),
+    queryRangeViaTableFunction: jest.fn(),
   };
 });
 jest.mock('@/clickhouse');
@@ -54,21 +54,16 @@ describe('evaluatePromqlAlert (ClickHouse endpoint)', () => {
   });
 
   it('should return multiple series with all time-points via formatMatrixResponse', async () => {
-    // tags is an array of [key, value] tuples — as returned by ClickHouse
-    (queryPrometheusRangeFromClickHouse as jest.Mock).mockResolvedValue({
-      json: async () => ({
-        data: [
-          {
-            tags: [['host', 'A']],
-            time_series: [['2024-01-01 00:05:00', 42.5]],
-          },
-          {
-            tags: [['host', 'B']],
-            time_series: [['2024-01-01 00:05:00', 10.5]],
-          },
-        ],
-      }),
-    });
+    (queryRangeViaTableFunction as jest.Mock).mockResolvedValue([
+      {
+        metric: { host: 'A' },
+        values: [[1704067500, '42.5']],
+      },
+      {
+        metric: { host: 'B' },
+        values: [[1704067500, '10.5']],
+      },
+    ]);
 
     const result = await evaluatePromqlAlert({
       savedConfig: mockSavedConfig,
@@ -94,7 +89,7 @@ describe('evaluatePromqlAlert (ClickHouse endpoint)', () => {
       },
     ]);
 
-    expect(queryPrometheusRangeFromClickHouse).toHaveBeenCalledWith(
+    expect(queryRangeViaTableFunction).toHaveBeenCalledWith(
       expect.objectContaining({
         expr: 'up',
         databaseName: 'my_db',
@@ -104,19 +99,12 @@ describe('evaluatePromqlAlert (ClickHouse endpoint)', () => {
   });
 
   it('should have __name__ stripped from metric map', async () => {
-    (queryPrometheusRangeFromClickHouse as jest.Mock).mockResolvedValue({
-      json: async () => ({
-        data: [
-          {
-            tags: [
-              ['__name__', 'up'],
-              ['host', 'A'],
-            ],
-            time_series: [['2024-01-01 00:05:00', 42.5]],
-          },
-        ],
-      }),
-    });
+    (queryRangeViaTableFunction as jest.Mock).mockResolvedValue([
+      {
+        metric: { __name__: 'up', host: 'A' },
+        values: [[1704067500, '42.5']],
+      },
+    ]);
 
     const result = await evaluatePromqlAlert({
       savedConfig: mockSavedConfig,
@@ -170,11 +158,7 @@ describe('evaluatePromqlAlert (ClickHouse endpoint)', () => {
   });
 
   it('should return null when no data is returned', async () => {
-    (queryPrometheusRangeFromClickHouse as jest.Mock).mockResolvedValue({
-      json: async () => ({
-        data: [],
-      }),
-    });
+    (queryRangeViaTableFunction as jest.Mock).mockResolvedValue([]);
 
     const result = await evaluatePromqlAlert({
       savedConfig: mockSavedConfig,

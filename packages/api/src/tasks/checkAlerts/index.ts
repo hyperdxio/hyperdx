@@ -62,7 +62,7 @@ import {
   joinPrometheusUpstreamUrl,
   PROMETHEUS_CH_TIMEOUT_MS,
   PrometheusMatrixResult,
-  queryPrometheusRangeFromClickHouse,
+  queryRangeViaTableFunction,
 } from '@/controllers/timeseriesEngine';
 import { AlertState, IAlert, IAlertError } from '@/models/alert';
 import AlertHistory, {
@@ -1081,8 +1081,9 @@ export async function evaluatePromqlAlert({
   }
 
   try {
-    const resp = await queryPrometheusRangeFromClickHouse({
+    const results = await queryRangeViaTableFunction({
       client,
+      connectionId,
       databaseName,
       tableName,
       expr: promqlExpression,
@@ -1091,14 +1092,6 @@ export async function evaluatePromqlAlert({
       stepSec: stepSecRounded,
     });
 
-    const json = (await resp.json()) as {
-      data?: { tags: [string, string][]; time_series: [string, number][] }[];
-    };
-    if (!Array.isArray(json?.data) || json.data.length === 0) return null;
-
-    // Reuse formatMatrixResponse to convert { tags, time_series } rows into
-    // PrometheusMatrixResult[] — the same shape as the real Prometheus path.
-    const results = formatMatrixResponse(json.data);
     return results.length > 0 ? results : null;
   } finally {
     await client.close();
