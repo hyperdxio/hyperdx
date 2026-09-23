@@ -189,6 +189,29 @@ export const DEFAULT_TILE_ALERT: z.infer<typeof ChartAlertBaseSchema> = {
 };
 
 /**
+ * Seed a chart config with the default tile alert when it has none, so opening
+ * the tile editor via the "Add Alert" action shows the alert editor straight
+ * away (issue #1781) instead of an empty editor the user must click "Add Alert"
+ * inside a second time. An existing alert is left untouched. Mirrors the default
+ * the in-editor "Add Alert" button applies, including seeding the alert's
+ * display name from the chart name.
+ */
+export function withDefaultTileAlert(
+  config: SavedChartConfig,
+): SavedChartConfig {
+  if (config.alert != null) {
+    return config;
+  }
+  return {
+    ...config,
+    alert: {
+      ...DEFAULT_TILE_ALERT,
+      ...(config.name ? { displayName: config.name } : {}),
+    },
+  } as SavedChartConfig;
+}
+
+/**
  * Checks if an alert's silence period has expired.
  * @param silenced - The alert's silenced state containing the until timestamp
  * @returns true if the silence period has expired, false otherwise

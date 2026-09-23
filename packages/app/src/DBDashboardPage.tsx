@@ -152,6 +152,7 @@ import {
   parseTimeRangeInput,
   timeRangeInputToSeconds,
 } from '@/components/TimePicker/utils';
+import { IS_LOCAL_MODE } from '@/config';
 import {
   Dashboard,
   type Tile,
@@ -165,6 +166,7 @@ import useDashboardContainers, {
 } from '@/hooks/useDashboardContainers';
 import { useDashboardKioskMode } from '@/hooks/useDashboardKioskMode';
 import { useReleaseAnnotations } from '@/hooks/useReleaseAnnotations';
+import { withDefaultTileAlert } from '@/utils/alerts';
 import { calculateNextTilePosition, makeId } from '@/utils/tilePositioning';
 
 import ChartContainer, {
@@ -420,6 +422,7 @@ const Tile = ({
   dateRange,
   onDuplicateClick,
   onEditClick,
+  onAddAlertClick,
   onDeleteClick,
   onUpdateChart,
   onMoveToGroup,
@@ -905,7 +908,7 @@ const Tile = ({
                 data-testid={`tile-alerts-button-${chart.id}`}
                 variant="subtle"
                 size="sm"
-                onClick={onEditClick}
+                onClick={onAddAlertClick ?? onEditClick}
                 mr={4}
               >
                 <IconBellPlus size={16} />
@@ -1040,6 +1043,7 @@ const Tile = ({
     onDeleteClick,
     onDuplicateClick,
     onEditClick,
+    onAddAlertClick,
     onMoveToGroup,
     openFullscreen,
     readOnly,
@@ -1079,7 +1083,7 @@ const Tile = ({
               leftSection={
                 alert ? <IconBell size={14} /> : <IconBellPlus size={14} />
               }
-              onClick={onEditClick}
+              onClick={alert ? onEditClick : (onAddAlertClick ?? onEditClick)}
             >
               {alertTooltip}
             </Menu.Item>
@@ -1182,6 +1186,7 @@ const Tile = ({
     onDeleteClick,
     onDuplicateClick,
     onEditClick,
+    onAddAlertClick,
     onMoveToGroup,
     openFullscreen,
     readOnly,
@@ -2410,6 +2415,15 @@ function DBDashboardPage({
           chart={chart}
           dateRange={searchedTimeRange}
           onEditClick={() => setEditedTile(chart)}
+          onAddAlertClick={() =>
+            setEditedTile(
+              // Local mode has no alerts (the in-editor "Add Alert" button is
+              // hidden there too), so fall back to a plain edit.
+              IS_LOCAL_MODE
+                ? chart
+                : { ...chart, config: withDefaultTileAlert(chart.config) },
+            )
+          }
           readOnly={isKioskMode}
           isLive={isRefreshEnabled}
           granularity={

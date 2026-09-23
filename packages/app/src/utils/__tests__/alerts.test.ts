@@ -7,11 +7,13 @@ import {
 import type { AlertsPageItem } from '@/types';
 import {
   buildInlineAlertPayload,
+  DEFAULT_TILE_ALERT,
   getAlertSourceLabel,
   getAlertSourceUrl,
   getDerivedAlertDisplayName,
   normalizeNoOpAlertScheduleFields,
   toAlertChannels,
+  withDefaultTileAlert,
 } from '@/utils/alerts';
 
 // A channel shape this repo doesn't define -- e.g. a downstream fork's email
@@ -344,5 +346,39 @@ describe('buildInlineAlertPayload', () => {
         alert,
       }),
     ).toBeUndefined();
+  });
+});
+
+describe('withDefaultTileAlert', () => {
+  const config = (extra: Record<string, unknown> = {}) =>
+    ({ source: 'src', select: 'count()', ...extra }) as any;
+
+  it('seeds the default alert when the config has none', () => {
+    const result = withDefaultTileAlert(config({ name: 'Errors' }));
+    expect(result.alert).toEqual({
+      ...DEFAULT_TILE_ALERT,
+      displayName: 'Errors',
+    });
+  });
+
+  it('omits displayName when the chart has no name', () => {
+    const result = withDefaultTileAlert(config());
+    expect(result.alert).toEqual(DEFAULT_TILE_ALERT);
+    expect(result.alert).not.toHaveProperty('displayName');
+  });
+
+  it('leaves an existing alert untouched and returns the same object', () => {
+    const existing = config({
+      alert: { ...DEFAULT_TILE_ALERT, threshold: 42 },
+    });
+    const result = withDefaultTileAlert(existing);
+    expect(result).toBe(existing);
+    expect((result.alert as { threshold: number }).threshold).toBe(42);
+  });
+
+  it('does not mutate the source config', () => {
+    const source = config({ name: 'Latency' });
+    withDefaultTileAlert(source);
+    expect(source.alert).toBeUndefined();
   });
 });
