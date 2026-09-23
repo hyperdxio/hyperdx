@@ -876,13 +876,16 @@ export function getYAxisTicks(
 // Rounds off float dust (e.g. 3 * 1.05 giving 3.1500000000000004).
 const cleanNumber = (v: number) => Number(v.toPrecision(12));
 
-// Every 1/2/5 x10^n step, plus 2.5 x10^n (excluding the bare value 2.5,
-// which is non-integer and formatAxisTick rounds "12.5" to "13").
+// Every 1/2/5 x10^n step, plus 2.5 x10^n only for n > 0 (25, 250, ... are
+// exact integers; 2.5, 0.25, 0.025, ... round unevenly at any precision).
 function niceStepsNear(target: number): number[] {
   const exp = Math.floor(Math.log10(target));
   return [exp - 1, exp, exp + 1]
-    .flatMap(e => [1, 2, 2.5, 5, 10].map(m => m * 10 ** e))
-    .filter(step => step > 0 && step !== 2.5)
+    .flatMap(e => {
+      const multipliers = e > 0 ? [1, 2, 2.5, 5, 10] : [1, 2, 5, 10];
+      return multipliers.map(m => m * 10 ** e);
+    })
+    .filter(step => step > 0)
     .sort((a, b) => a - b);
 }
 
@@ -967,7 +970,10 @@ function resolveDistinctTickLabels(
     // precision, which always distinguishes any two different numbers.
     const fullPrecision = (value: number) =>
       new Intl.NumberFormat('en-US').format(value);
-    return isDistinct(ticks, fullPrecision) ? fullPrecision : null;
+    return isDistinct(ticks, fullPrecision) &&
+      fitsLabelBudget(ticks, fullPrecision)
+      ? fullPrecision
+      : null;
   }
   if (axisNumberFormat.output === 'duration') {
     // formatDurationMsCompact has no mantissa - escalate its own fixed
@@ -1195,10 +1201,16 @@ export function computeYAxisBounds(
   if (upperBound <= lowerBound) {
     return degenerateFallback;
   }
-  // A reference line can extend this domain further (stale ticks), but
-  // Fit-to-Data/selection still need the tight domain itself to work.
+  // A reference line can widen the rendered domain, so precomputed nice-step
+  // ticks could go stale - use getYAxisTicks' dedup instead of skipping it.
   if (hasReferenceLines) {
-    return { domain: [lowerBound, upperBound], ticks: undefined };
+    const baseFormat = (value: number) =>
+      formatAxisTick(value, axisNumberFormat);
+    return {
+      domain: [lowerBound, upperBound],
+      ticks: getYAxisTicks(lowerBound, upperBound, baseFormat),
+      tickFormatter: baseFormat,
+    };
   }
   const { ticks, tickFormatter } = getNiceYAxisTicks(
     lowerBound,

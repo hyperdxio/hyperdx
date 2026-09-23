@@ -273,12 +273,10 @@ describe('getNiceYAxisTicks', () => {
     expect(getNiceYAxisTicks(0, 1480).ticks.length).toBeLessThanOrEqual(5);
   });
 
-  it('rejects a precision-collapsed step instead of looping or truncating', () => {
-    // Regression: accepting the truncated result of a precision-collapsed
-    // step gave a one-tick axis instead of trying a coarser step.
-    expect(getNiceYAxisTicks(999999999999, 1000000000030).ticks).toEqual([
-      1000000000000, 1000000000010, 1000000000020, 1000000000030,
-    ]);
+  it('rejects a step whose only distinct formatting overflows the label budget', () => {
+    // This domain needs 17-char labels to distinguish at all - no step
+    // fits the budget and stays distinct, so this returns no ticks.
+    expect(getNiceYAxisTicks(999999999999, 1000000000030).ticks).toEqual([]);
   });
 
   it('avoids a step that formatAxisTick would round unevenly (12.5 -> "13")', () => {
@@ -360,6 +358,25 @@ describe('getNiceYAxisTicks', () => {
       '1.1',
       '1.2',
     ]);
+  });
+
+  it('rejects a full-precision fallback that overflows the label budget', () => {
+    // Regression: no-format fallback had no budget check, rendering
+    // 9-char grouped numbers instead of falling through to a coarser step.
+    const result = getNiceYAxisTicks(1200000, 1250000);
+    const labels = result.ticks.map(t => result.tickFormatter!(t));
+    expect(labels.every(l => l.length <= 5)).toBe(true);
+    expect(new Set(labels).size).toBe(labels.length);
+  });
+
+  it('excludes a 2.5-scaled step below 1, not just the bare value', () => {
+    // Regression: step 0.25 (2.5x10^-1) survived the bare-2.5 filter,
+    // rounding to an uneven 0.3/0.2/0.3/0.2 progression at mantissa 0.
+    const result = getNiceYAxisTicks(0, 1.1, 5, {
+      output: 'number',
+      mantissa: 0,
+    });
+    expect(result.ticks).toEqual([0, 0.5, 1]);
   });
 });
 
@@ -605,9 +622,9 @@ describe('computeYAxisBounds', () => {
     });
   });
 
-  it('keeps the fitted/selected domain when a reference line is present, only dropping ticks', () => {
-    // Regression: bailing out to the auto fallback (instead of just
-    // omitting ticks) disabled Fit-to-Data/legend-isolate on alert charts.
+  it('keeps ticks deduped via getYAxisTicks when a reference line is present', () => {
+    // Regression: bailing to ticks: undefined dropped the duplicate-label
+    // dedup an alert chart (always has a reference line) used to get.
     const bounds = computeYAxisBounds(
       [{ a: 100 }, { a: 200 }],
       [series('a')],
@@ -616,7 +633,10 @@ describe('computeYAxisBounds', () => {
       DisplayType.Line,
       true,
     );
-    expect(bounds).toEqual({ domain: [95, 205], ticks: undefined });
+    expect(bounds.domain).toEqual([95, 205]);
+    expect(bounds.ticks).toBeDefined();
+    const labels = bounds.ticks!.map(t => bounds.tickFormatter!(t));
+    expect(new Set(labels).size).toBe(labels.length);
   });
 
   it('escalates precision instead of dropping a step whose labels collide', () => {
