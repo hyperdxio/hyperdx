@@ -1,5 +1,11 @@
 import { execFile } from 'child_process';
-import { createWriteStream, mkdirSync, rmSync, writeFileSync } from 'fs';
+import {
+  chmodSync,
+  createWriteStream,
+  mkdirSync,
+  rmSync,
+  writeFileSync,
+} from 'fs';
 import { basename, dirname, join } from 'path';
 import { Readable } from 'stream';
 import { pipeline } from 'stream/promises';
@@ -54,11 +60,17 @@ export type BundleOptions = {
 const scrubbed = (column: string) =>
   String.raw`replaceRegexpAll(replaceRegexpAll(${column}, '(?is)(\\s*In scope |\\s*while processing query|\\s*\\(in query:|\\s*failed at position).*$', ''), '''[^'']*''', '''?''') AS ${column}`;
 
+// Explicit UTC ISO timestamps: the settings lookup that would set the output
+// format is skipped (see cli.tsx), and SETTINGS would fail for readonly users.
+// A separate alias: reusing the column name would shadow it in WHERE/ORDER BY.
+const isoTime = (column: string) =>
+  `formatDateTime(${column}, '%FT%TZ', 'UTC') AS ${column}_utc`;
+
 // Fixed SQL only: nothing here takes user input.
 export const CLICKHOUSE_QUERIES: Record<string, string> = {
   version: 'SELECT version() AS version',
-  errors: `SELECT name, code, value, last_error_time, ${scrubbed('last_error_message')} FROM system.errors ORDER BY last_error_time DESC LIMIT 100`,
-  'failed-queries': `SELECT event_time, query_id, exception_code, ${scrubbed('exception')}, query_duration_ms, user FROM system.query_log WHERE type IN ('ExceptionBeforeStart', 'ExceptionWhileProcessing') AND event_time > now() - INTERVAL 1 HOUR ORDER BY event_time DESC LIMIT 200`,
+  errors: `SELECT name, code, value, ${isoTime('last_error_time')}, ${scrubbed('last_error_message')} FROM system.errors ORDER BY last_error_time DESC LIMIT 100`,
+  'failed-queries': `SELECT ${isoTime('event_time')}, query_id, exception_code, ${scrubbed('exception')}, query_duration_ms, user FROM system.query_log WHERE type IN ('ExceptionBeforeStart', 'ExceptionWhileProcessing') AND event_time > now() - INTERVAL 1 HOUR ORDER BY event_time DESC LIMIT 200`,
   'table-sizes':
     'SELECT database, table, sum(rows) AS rows, sum(bytes_on_disk) AS bytes_on_disk, count() AS parts FROM system.parts WHERE active GROUP BY database, table ORDER BY bytes_on_disk DESC LIMIT 100',
 };
@@ -110,7 +122,8 @@ export async function runSupportBundle(
 }> {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   const dir = join(opts.outDir, `hdx-support-${stamp}`);
-  mkdirSync(dir, { recursive: true });
+  // Owner-only: a bundle can hold a heap snapshot full of secrets.
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
 
   const manifest: Manifest = {
     createdAt: new Date().toISOString(),
@@ -245,7 +258,11 @@ export async function runSupportBundle(
     }
   }
 
-  writeFileSync(join(dir, 'manifest.json'), JSON.stringify(manifest, null, 2));
+  // apiUrl can carry basic-auth credentials and step errors are server text.
+  writeFileSync(
+    join(dir, 'manifest.json'),
+    redact(JSON.stringify(manifest, null, 2)),
+  );
 
   const archive = `${dir}.tar.gz`;
   try {
@@ -259,8 +276,11 @@ export async function runSupportBundle(
     // The archive is the result; a second loose copy (maybe a multi-GB heap
     // snapshot) would only be left behind unnoticed.
     rmSync(dir, { recursive: true, force: true });
+    chmodSync(archive, 0o600);
     return { dir, archive, manifest };
   } catch (err) {
+    // tar may have created a truncated archive before failing (e.g. ENOSPC).
+    rmSync(archive, { force: true });
     return {
       dir,
       manifest,

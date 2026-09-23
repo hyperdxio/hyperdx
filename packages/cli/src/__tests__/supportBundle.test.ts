@@ -1,5 +1,5 @@
 import { execFileSync } from 'child_process';
-import { existsSync, mkdtempSync, rmSync } from 'fs';
+import { existsSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { basename, join } from 'path';
 
@@ -470,7 +470,7 @@ describe('runSupportBundle', () => {
         controller.error(new Error('connection reset'));
       },
     });
-    const { dir, manifest } = await run(
+    const { archive, manifest } = await run(
       fakeClient({
         post: async path =>
           path.startsWith('/diagnostics/cpu-profile')
@@ -482,13 +482,51 @@ describe('runSupportBundle', () => {
     expect(manifest.steps.find(s => s.name === 'api-cpu-profile')?.ok).toBe(
       false,
     );
-    expect(existsSync(join(dir, 'api-cpu.cpuprofile'))).toBe(false);
+    expect(
+      execFileSync('tar', ['-tzf', archive ?? ''], { encoding: 'utf8' }),
+    ).not.toContain('api-cpu.cpuprofile');
   });
 
   it('writes which connection each ClickHouse file belongs to', async () => {
     const { manifest } = await run(fakeClient());
 
     expect(manifest.connections).toEqual([{ id: 'c1', name: 'Local' }]);
+  });
+
+  it('redacts the manifest too', async () => {
+    const { dir, archive } = await run(
+      fakeClient({ getApiUrl: () => 'https://ops:s3cret@hdx.internal/api' }),
+    );
+
+    const manifest = readFromArchive(archive, dir, 'manifest.json');
+    expect(manifest).toContain('https://***@hdx.internal/api');
+    expect(manifest).not.toContain('s3cret');
+  });
+
+  it('makes the bundle readable only by its owner', async () => {
+    const { archive } = await run(fakeClient());
+    expect(statSync(archive ?? '').mode & 0o777).toBe(0o600);
+
+    const { dir } = await run(fakeClient(), {
+      tarCommand: 'definitely-not-tar',
+    });
+    expect(statSync(dir).mode & 0o777).toBe(0o700);
+  });
+
+  it('removes a half-written archive when tar fails', async () => {
+    // Stands in for tar running out of disk after creating the archive.
+    const failingTar = join(outDir, 'failing-tar.sh');
+    writeFileSync(failingTar, '#!/bin/sh\ntouch "$2"\nexit 1\n', {
+      mode: 0o755,
+    });
+
+    const { dir, archive, archiveError } = await run(fakeClient(), {
+      tarCommand: failingTar,
+    });
+
+    expect(archive).toBeUndefined();
+    expect(archiveError).toBeDefined();
+    expect(existsSync(`${dir}.tar.gz`)).toBe(false);
   });
 
   it('keeps the directory when tar is unavailable', async () => {
@@ -504,6 +542,15 @@ describe('runSupportBundle', () => {
 
 describe('CLICKHOUSE_QUERIES', () => {
   // ClickHouse quotes the failing query, filter values included, in these columns.
+  it('reports ClickHouse timestamps as UTC ISO strings', () => {
+    expect(CLICKHOUSE_QUERIES['failed-queries']).toContain(
+      "formatDateTime(event_time, '%FT%TZ', 'UTC') AS event_time_utc",
+    );
+    expect(CLICKHOUSE_QUERIES.errors).toContain(
+      "formatDateTime(last_error_time, '%FT%TZ', 'UTC') AS last_error_time_utc",
+    );
+  });
+
   it.each([
     ['failed-queries', 'exception'],
     ['errors', 'last_error_message'],
