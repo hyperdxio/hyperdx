@@ -169,122 +169,12 @@ const MULTI_SERIES_SORT_ALIAS_PREFIX = '__hdx_sort_';
 /**
  * Render a user-facing output column name as a ClickHouse double-quoted
  * identifier. User aliases (and metric names, which flow into the default
- * aliases) can contain double quotes and backslashes. ClickHouse reads a
- * quoted identifier like a string literal, so `"` is doubled and `\` is
- * escaped: `bad"name` becomes "bad""name" instead of terminating the
- * identifier early, and `a\b` becomes "a\\b" instead of dropping to "ab".
- * Escaping happens only at SQL-emission time — collision dedup and the meta
- * column names consumers see keep the raw name.
+ * aliases) can contain double quotes; ClickHouse escapes them by doubling,
+ * so `bad"name` becomes "bad""name" instead of terminating the identifier
+ * early. Escaping happens only at SQL-emission time — collision dedup and
+ * the meta column names consumers see keep the raw name.
  */
-const quotedColumnName = (name: string) =>
-  `"${name.replace(/\\/g, '\\\\').replace(/"/g, '""')}"`;
-
-// A bare Map subscript: a plain or backtick-quoted column followed by one
-// single-quoted key and nothing else, e.g. `LogAttributes['service.name']`.
-// Captures the column as written and the key still SQL-escaped. A subscript
-// wrapped in a function, nested, or carrying an alias does not match.
-// Stricter than parseKeyPath (metadata.ts), which slices on the first `['`
-// and expects input already known to be a key path.
-const BARE_MAP_SUBSCRIPT_RE =
-  /^(`(?:[^`]|``)+`|[A-Za-z_][A-Za-z0-9_]*)\s*\[\s*'((?:[^'\\]|\\.|'')*)'\s*\]$/;
-
-// Undo the escapes a single-quoted ClickHouse literal carries for `'` and
-// `\` — the two the app emits when it builds a subscript from a row's key
-// (mergePath). Other C-style escapes stay as typed.
-const unescapeSqlStringLiteral = (literal: string) =>
-  literal.replace(/\\(['\\])|''/g, (_, escaped?: string) => escaped ?? "'");
-
-/**
- * Identifier-like tokens of a select entry outside string literals: bare
- * words plus the contents of backtick- and double-quoted identifiers. A
- * superset of the names the entry binds (keywords and function names come
- * along), which only makes the alias collision check more conservative.
- */
-function identifierTokens(entry: string): string[] {
-  const tokens: string[] = [];
-  const re =
-    /'(?:[^'\\]|\\.|'')*'|`((?:[^`]|``)+)`|"((?:[^"]|"")+)"|[A-Za-z_][A-Za-z0-9_.]*/g;
-  for (const match of entry.matchAll(re)) {
-    if (match[1] != null) {
-      tokens.push(match[1].replace(/``/g, '`'));
-    } else if (match[2] != null) {
-      tokens.push(match[2].replace(/""/g, '"'));
-    } else if (!match[0].startsWith("'")) {
-      tokens.push(match[0]);
-    }
-  }
-  return tokens;
-}
-
-/**
- * Alias each bare Map subscript in a string select list after its key, so
- * the result column is named `service.name` rather than ClickHouse's derived
- * `arrayElement(ResourceAttributes, 'service.name')`. Entries that are plain
- * columns, other expressions, or already aliased are left as written.
- *
- * ClickHouse resolves an identifier to a query alias before a table column,
- * so an alias must never shadow a name the rest of the query can reference.
- * A key is skipped when it is one of `reservedNames` (the source table's
- * columns, alias CTEs) or appears as an identifier anywhere in the list (a
- * selected column, an explicit alias, a function argument). The same key
- * selected from two maps is aliased with the map as prefix
- * (`LogAttributes.http.method`, `SpanAttributes.http.method`), since
- * ClickHouse rejects two expressions under one alias; an entry whose alias
- * is still taken keeps its derived name.
- *
- * A key containing a double quote or a backslash also keeps its derived
- * name, because neither survives the round trip back to the key. The app's
- * alias map (chSqlToAliasMap) parses the rendered statement with
- * node-sql-parser, which rejects a doubled quote inside an alias — and an
- * unparseable statement drops every alias in the query, not just that one —
- * and leaves a backslash escape as written rather than unescaping it, so the
- * recovered name never matches the column name ClickHouse reports.
- *
- * Returns the input untouched when nothing is aliased; otherwise the entries
- * are re-joined with `, `.
- */
-export function withMapSubscriptAliases(
-  select: string,
-  reservedNames: Iterable<string> = [],
-): string {
-  const entries = splitAndTrimWithBracket(select).map(entry => {
-    const match = entry.match(BARE_MAP_SUBSCRIPT_RE);
-    const key = match == null ? undefined : unescapeSqlStringLiteral(match[2]);
-    return match == null || key == null || /["\\]/.test(key)
-      ? { entry }
-      : {
-          entry,
-          subscript: {
-            column: unquoteIdentifier(match[1]).replace(/``/g, '`'),
-            key,
-          },
-        };
-  });
-  if (!entries.some(e => e.subscript != null)) {
-    return select;
-  }
-
-  const taken = new Set(reservedNames);
-  const keyCount = new Map<string, number>();
-  for (const { entry, subscript } of entries) {
-    for (const token of identifierTokens(entry)) taken.add(token);
-    if (subscript != null) {
-      keyCount.set(subscript.key, (keyCount.get(subscript.key) ?? 0) + 1);
-    }
-  }
-
-  let aliased = false;
-  const out = entries.map(({ entry, subscript: s }) => {
-    if (s == null) return entry;
-    const alias =
-      (keyCount.get(s.key) ?? 0) > 1 ? `${s.column}.${s.key}` : s.key;
-    if (taken.has(alias)) return entry;
-    taken.add(alias);
-    aliased = true;
-    return `${entry} AS ${quotedColumnName(alias)}`;
-  });
-  return aliased ? out.join(', ') : select;
-}
+const quotedColumnName = (name: string) => `"${name.replace(/"/g, '""')}"`;
 
 // Histogram translations bake the group-by dimensions into a single Array
 // column named GROUP_ALIAS instead of projecting them as individual columns
@@ -836,100 +726,16 @@ type RenderSelectListOptions = {
    * otherwise render `divide(ServiceName, Region)` into the GROUP BY clause.
    */
   mergeRatio: boolean;
-  /**
-   * Whether bare Map subscripts in a string list get an alias after their key
-   * (see withMapSubscriptAliases).
-   *
-   * True only for the chart's *select* list, where it names the output
-   * columns. A `groupBy` list must pass `false`: `GROUP BY x AS y` is a
-   * syntax error, and consumers such as the Kubernetes dashboard look
-   * group-by rows up by ClickHouse's derived names.
-   */
-  aliasMapSubscripts?: boolean;
-  /**
-   * Extra names a Map-subscript alias must not take, on top of the source
-   * table's columns and the alias CTEs. Used for the aliases the structured
-   * group-by binds, which are not visible in the select list itself.
-   */
-  reservedNames?: Iterable<string>;
 };
-
-/**
- * Output names a structured select list binds. A group-by list is projected
- * into the same SELECT as the select list, so its aliases are names a
- * Map-subscript alias must not reuse: ClickHouse rejects one alias standing
- * for two different expressions.
- */
-function selectListAliases(selectList: SelectList | undefined): string[] {
-  return typeof selectList === 'string' || selectList == null
-    ? []
-    : selectList.flatMap(select =>
-        select.alias != null && select.alias.trim() !== ''
-          ? [select.alias]
-          : [],
-      );
-}
-
-/**
- * withMapSubscriptAliases over a chart's string select list, reserving the
- * source table's columns and any alias CTE names. Without the column list (a
- * CTE source, or DESCRIBE failing) the list renders as written: an alias that
- * shadowed a column referenced in WHERE would silently change what the query
- * filters on.
- */
-async function aliasStringSelectList(
-  selectList: string,
-  chartConfig: BuilderChartConfigWithOptDateRangeEx,
-  metadata: Metadata,
-  reservedNames: Iterable<string>,
-): Promise<string> {
-  const { from, with: withClauses } = chartConfig;
-  if (
-    !from.databaseName ||
-    hasSubqueryCte(withClauses) ||
-    !splitAndTrimWithBracket(selectList).some(entry =>
-      BARE_MAP_SUBSCRIPT_RE.test(entry),
-    )
-  ) {
-    return selectList;
-  }
-  try {
-    const columns = await metadata.getColumns({
-      databaseName: from.databaseName,
-      tableName: from.tableName,
-      connectionId: chartConfig.connection,
-    });
-    return withMapSubscriptAliases(selectList, [
-      ...columns.map(c => c.name),
-      ...(withClauses ?? []).map(w => w.name),
-      ...reservedNames,
-    ]);
-  } catch {
-    return selectList;
-  }
-}
 
 async function renderSelectList(
   selectList: SelectList,
   chartConfig: BuilderChartConfigWithOptDateRangeEx,
   metadata: Metadata,
-  {
-    mergeRatio,
-    aliasMapSubscripts = false,
-    reservedNames = [],
-  }: RenderSelectListOptions,
+  { mergeRatio }: RenderSelectListOptions,
 ) {
   if (typeof selectList === 'string') {
-    return chSql`${{
-      UNSAFE_RAW_SQL: aliasMapSubscripts
-        ? await aliasStringSelectList(
-            selectList,
-            chartConfig,
-            metadata,
-            reservedNames,
-          )
-        : selectList,
-    }}`;
+    return chSql`${{ UNSAFE_RAW_SQL: selectList }}`;
   }
 
   // This metadata query is executed in an attempt tp optimize the selects by favoring materialized fields
@@ -1370,10 +1176,6 @@ async function renderSelect(
         )
       : await renderSelectList(chartConfig.select, chartConfig, metadata, {
           mergeRatio: true,
-          aliasMapSubscripts: true,
-          reservedNames: isIncludingGroupBy
-            ? selectListAliases(chartConfig.groupBy)
-            : [],
         }),
     isIncludingGroupBy && chartConfig.selectGroupBy !== false
       ? await renderSelectList(chartConfig.groupBy, chartConfig, metadata, {
