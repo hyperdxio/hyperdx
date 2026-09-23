@@ -56,14 +56,14 @@ describe('renderChartConfig', () => {
   const toClickHouseISOString = (date: Date) =>
     date.toISOString().replace('.000Z', 'Z');
 
-  const queryData = async (chsql: ChSql) => {
+  const queryData = async <T = unknown>(chsql: ChSql) => {
     try {
       const res = await clickhouseClient.query<'JSON'>({
         query: chsql.sql,
         query_params: chsql.params,
         format: 'JSON',
       });
-      const json = await res.json();
+      const json = await res.json<T>();
       return json.data;
     } catch (err) {
       console.error('[ClickhouseClient] Error:', err);
@@ -594,7 +594,7 @@ describe('renderChartConfig', () => {
           metadata,
           querySettings,
         );
-        const rows = await queryData(query);
+        const rows = await queryData<Record<string, string>>(query);
         expect(rows.map(r => r.value_band).sort()).toEqual([
           'high',
           'high',
@@ -627,7 +627,7 @@ describe('renderChartConfig', () => {
           querySettings,
         );
         expect(
-          (await queryData(query)).map(
+          (await queryData<Record<string, number>>(query)).map(
             r => r['max(toFloat64OrDefault(toString(LastValue)))'],
           ),
         ).toEqual([6.25, 80]);
@@ -852,7 +852,7 @@ describe('renderChartConfig', () => {
           metadata,
           querySettings,
         );
-        const rows = await queryData(query);
+        const rows = await queryData<Record<string, string>>(query);
         const secondBucket = rows.filter(
           r => new Date(r.__hdx_time_bucket).getTime() === now + ms('5m'),
         );
