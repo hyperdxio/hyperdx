@@ -241,4 +241,25 @@ describe('report session and recent errors', () => {
       /HTTPError \[502\] GET \/api\/dashboards Request failed with status code 502 \(x2\)/,
     );
   });
+
+  it("prints the API's reason instead of ky's status message", async () => {
+    const mod = loadHdxDebug();
+    const { recordRecentError } =
+      jest.requireActual<typeof import('@/recentErrors')>('@/recentErrors');
+    recordRecentError(
+      Object.assign(new Error('Request failed with status code 404'), {
+        name: 'HTTPError',
+        request: { method: 'GET', url: 'http://localhost/api/sources/1' },
+        response: {
+          status: 404,
+          clone: () => ({ text: async () => '{"message":"Source not found"}' }),
+        },
+      }),
+    );
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    const report = reportFor(mod);
+    expect(report).toContain('GET /api/sources/1 Source not found');
+    expect(report).not.toContain('Request failed with status code 404');
+  });
 });

@@ -190,7 +190,7 @@ function recentErrorLines(): string[] {
             : '';
       const endpoint = e.endpoint ? ` ${e.endpoint}` : '';
       const repeats = e.count > 1 ? ` (x${e.count})` : '';
-      return `  ${e.at} ${e.route} ${e.name}${tag}${endpoint} ${e.message}${repeats}`;
+      return `  ${e.at} ${e.route} ${e.name}${tag}${endpoint} ${e.reason ?? e.message}${repeats}`;
     }),
   ];
 }

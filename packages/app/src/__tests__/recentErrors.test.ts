@@ -139,4 +139,56 @@ describe('recentErrors', () => {
       "Cannot read properties of undefined (reading 'sourceId')",
     );
   });
+
+  it('reads the reason from the API response without consuming it', async () => {
+    // jsdom has no Response; this fake records whether the original body was read.
+    const response = {
+      status: 404,
+      text: jest.fn(),
+      clone: () => ({ text: async () => '{"message":"Source not found"}' }),
+    };
+    const err = Object.assign(
+      new Error('Request failed with status code 404'),
+      {
+        name: 'HTTPError',
+        request: { method: 'GET', url: 'http://localhost/api/sources/1' },
+        response,
+      },
+    );
+    recordRecentError(err);
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    expect(getRecentErrors()[0].reason).toBe('Source not found');
+    expect(response.text).not.toHaveBeenCalled();
+  });
+
+  it('keeps each error on one line', () => {
+    recordRecentError(new Error('first line\n  second line'));
+
+    expect(getRecentErrors()[0].message).toBe('first line second line');
+  });
+
+  it('cuts the old analyzer ": While processing" suffix', () => {
+    recordRecentError(
+      new Error(
+        'Code: 47. DB::Exception: Unknown identifier: foo: While processing foo = 42 AND email = a@b.com',
+      ),
+    );
+
+    expect(getRecentErrors()[0].message).toBe(
+      'Code: 47. DB::Exception: Unknown identifier: foo',
+    );
+  });
+
+  it('cuts at "failed at position" even without quoted literals', () => {
+    recordRecentError(
+      new Error(
+        'Code: 62. DB::Exception: Syntax error: failed at position 40 (end of query): SELECT x FROM logs WHERE id = 42',
+      ),
+    );
+
+    expect(getRecentErrors()[0].message).toBe(
+      'Code: 62. DB::Exception: Syntax error:',
+    );
+  });
 });
