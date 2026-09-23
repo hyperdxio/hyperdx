@@ -92,6 +92,11 @@ describe('config', () => {
       expect(enabledWith({ local: true })).toBe(false);
     });
 
+    it('accepts 1 and 0 as well as true and false', () => {
+      expect(enabledWith({ local: true, flag: '1' })).toBe(true);
+      expect(enabledWith({ flag: '0' })).toBe(false);
+    });
+
     it('follows an explicit setting either way', () => {
       expect(enabledWith({ local: true, flag: 'true' })).toBe(true);
       expect(enabledWith({ flag: 'false' })).toBe(false);

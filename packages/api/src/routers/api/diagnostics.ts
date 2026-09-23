@@ -11,8 +11,22 @@ import { processRequest } from 'zod-express-middleware';
 import { CODE_VERSION, DIAGNOSTICS_HEAP_SNAPSHOT_ENABLED } from '@/config';
 import { Api404Error, BaseError, StatusCode } from '@/utils/errors';
 import { recordOperationOutcome, withSpan } from '@/utils/instrumentation';
+import rateLimiter, { rateLimiterKeyGenerator } from '@/utils/rateLimiter';
 
 const router = express.Router();
+
+// Generating a report blocks the event loop briefly and every route here
+// costs CPU, so one user cannot call them in a tight loop.
+router.use(
+  rateLimiter({
+    windowMs: 60_000,
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: req =>
+      req.user?._id?.toString() ?? rateLimiterKeyGenerator(req),
+  }),
+);
 
 // Stays under the 60s load balancer idle timeout the server is tuned for.
 const MAX_PROFILE_SECONDS = 50;
@@ -24,34 +38,45 @@ const secondsSchema = z.coerce
   .max(MAX_PROFILE_SECONDS)
   .default(DEFAULT_PROFILE_SECONDS);
 
-type DiagnosticKind =
-  | 'report'
-  | 'cpu-profile'
-  | 'heap-profile'
-  | 'heap-snapshot';
-
-// Two profilers running at once distort each other's samples, so one per process.
-let profiling = false;
-
 // processRequest answers 400 in the shape every other route uses. It types the
 // parsed query with the pre-default shape, hence the fallback at each use.
 const validateSeconds = processRequest({
   query: z.object({ seconds: secondsSchema }),
 });
 
+type DiagnosticKind =
+  | 'report'
+  | 'cpu-profile'
+  | 'heap-profile'
+  | 'heap-snapshot';
+
+// Infrastructure detail a support bundle does not need: the environment (Mongo
+// URI, API keys), launch flags, interface addresses and socket peers. They
+// appear on the report and on every workers[] entry, so drop them at any depth.
+const REDACTED_REPORT_KEYS = new Set([
+  'environmentVariables',
+  'commandLine',
+  'networkInterfaces',
+  'localEndpoint',
+  'remoteEndpoint',
+]);
+
+// Two profilers running at once distort each other's samples, so one per process.
+let profiling = false;
+
 const isBusy = (err: unknown) =>
   err instanceof BaseError && err.statusCode === StatusCode.CONFLICT;
 
 // A client that hangs up, or a request refused because another profile is
-// running, is expected: neither counts against the availability SLI.
-function collect<T>(
+// running, is expected: it is neither an SLI failure nor an error span.
+async function collect<T>(
   kind: DiagnosticKind,
   fn: () => Promise<T>,
   signal?: AbortSignal,
 ): Promise<T> {
-  return withSpan(
+  const result = await withSpan(
     'diagnostics.collect',
-    async () => {
+    async span => {
       const start = performance.now();
       const record = (outcome: 'success' | 'error') =>
         recordOperationOutcome({
@@ -61,26 +86,31 @@ function collect<T>(
           attributes: { kind },
         });
       try {
-        const result = await fn();
+        const value = await fn();
         record('success');
-        return result;
+        return { value };
       } catch (err) {
-        if (!signal?.aborted && !isBusy(err)) record('error');
+        if (signal?.aborted || isBusy(err)) {
+          span.setAttribute(
+            'hyperdx.diagnostics.outcome',
+            signal?.aborted ? 'cancelled' : 'busy',
+          );
+          return { expected: err };
+        }
+        record('error');
         throw err;
       }
     },
     { attributes: { 'hyperdx.diagnostics.kind': kind } },
   );
+  if ('expected' in result) throw result.expected;
+  return result.value;
 }
 
 async function withProfilingLock<T>(fn: () => Promise<T>): Promise<T> {
   if (profiling) {
-    throw new BaseError(
-      'DiagnosticsBusy',
-      StatusCode.CONFLICT,
-      true,
-      'A profile is already running on this process',
-    );
+    const message = 'A profile is already running on this process';
+    throw new BaseError(message, StatusCode.CONFLICT, true, message);
   }
   profiling = true;
   try {
@@ -101,10 +131,11 @@ async function withInspector<T>(fn: (session: Session) => Promise<T>) {
 }
 
 // attachment() derives Content-Type from the extension; these files are JSON.
-// The source header lets a bundle show which replica each file came from.
+// pid alone is 1 in every container, so the hostname tells replicas apart.
 function attachment(res: express.Response, extension: string) {
+  const source = `${os.hostname()}-${process.pid}`;
   res
-    .attachment(`api-${process.pid}.${extension}`)
+    .attachment(`api-${source}.${extension}`)
     .type('application/json')
     .set('X-HDX-Diagnostics-Source', `${os.hostname()}/${process.pid}`);
 }
@@ -118,14 +149,66 @@ function abortOnDisconnect(res: express.Response): AbortSignal {
   return controller.signal;
 }
 
+type Profiler = {
+  kind: 'cpu-profile' | 'heap-profile';
+  extension: string;
+  start: (session: Session) => Promise<unknown>;
+  stop: (session: Session) => Promise<unknown>;
+};
+
+const CPU_PROFILER: Profiler = {
+  kind: 'cpu-profile',
+  extension: 'cpuprofile',
+  start: async session => {
+    await session.post('Profiler.enable');
+    await session.post('Profiler.start');
+  },
+  stop: async session => (await session.post('Profiler.stop')).profile,
+};
+
+const HEAP_PROFILER: Profiler = {
+  kind: 'heap-profile',
+  extension: 'heapprofile',
+  start: session => session.post('HeapProfiler.startSampling'),
+  stop: async session =>
+    (await session.post('HeapProfiler.stopSampling')).profile,
+};
+
+async function sendProfile(
+  profiler: Profiler,
+  seconds: number,
+  res: express.Response,
+  next: express.NextFunction,
+) {
+  const signal = abortOnDisconnect(res);
+  try {
+    const profile = await collect(
+      profiler.kind,
+      () =>
+        withProfilingLock(() =>
+          withInspector(async session => {
+            await profiler.start(session);
+            await sleep(seconds * 1000, undefined, { signal });
+            return profiler.stop(session);
+          }),
+        ),
+      signal,
+    );
+    attachment(res, profiler.extension);
+    res.json(profile);
+  } catch (e) {
+    // Nobody is left to answer, and a disconnect is not a server fault.
+    if (signal.aborted) return;
+    next(e);
+  }
+}
+
 router.get('/report', async (req, res, next) => {
   try {
     const body = await collect('report', async () => {
-      // The report and each workers[] entry embed the full environment (Mongo
-      // URI, API keys), so drop the key at every depth.
       const report: unknown = JSON.parse(
         JSON.stringify(process.report.getReport(), (key, value) =>
-          key === 'environmentVariables' ? undefined : value,
+          REDACTED_REPORT_KEYS.has(key) ? undefined : value,
         ),
       );
       return {
@@ -142,57 +225,23 @@ router.get('/report', async (req, res, next) => {
   }
 });
 
-router.post('/cpu-profile', validateSeconds, async (req, res, next) => {
-  const signal = abortOnDisconnect(res);
-  try {
-    const seconds = req.query.seconds ?? DEFAULT_PROFILE_SECONDS;
-    const profile = await collect(
-      'cpu-profile',
-      () =>
-        withProfilingLock(() =>
-          withInspector(async session => {
-            await session.post('Profiler.enable');
-            await session.post('Profiler.start');
-            await sleep(seconds * 1000, undefined, { signal });
-            const { profile } = await session.post('Profiler.stop');
-            return profile;
-          }),
-        ),
-      signal,
-    );
-    attachment(res, 'cpuprofile');
-    res.json(profile);
-  } catch (e) {
-    // Nobody is left to answer, and a disconnect is not a server fault.
-    if (signal.aborted) return;
-    next(e);
-  }
-});
+router.post('/cpu-profile', validateSeconds, (req, res, next) =>
+  sendProfile(
+    CPU_PROFILER,
+    req.query.seconds ?? DEFAULT_PROFILE_SECONDS,
+    res,
+    next,
+  ),
+);
 
-router.post('/heap-profile', validateSeconds, async (req, res, next) => {
-  const signal = abortOnDisconnect(res);
-  try {
-    const seconds = req.query.seconds ?? DEFAULT_PROFILE_SECONDS;
-    const profile = await collect(
-      'heap-profile',
-      () =>
-        withProfilingLock(() =>
-          withInspector(async session => {
-            await session.post('HeapProfiler.startSampling');
-            await sleep(seconds * 1000, undefined, { signal });
-            const { profile } = await session.post('HeapProfiler.stopSampling');
-            return profile;
-          }),
-        ),
-      signal,
-    );
-    attachment(res, 'heapprofile');
-    res.json(profile);
-  } catch (e) {
-    if (signal.aborted) return;
-    next(e);
-  }
-});
+router.post('/heap-profile', validateSeconds, (req, res, next) =>
+  sendProfile(
+    HEAP_PROFILER,
+    req.query.seconds ?? DEFAULT_PROFILE_SECONDS,
+    res,
+    next,
+  ),
+);
 
 router.post('/heap-snapshot', async (req, res, next) => {
   const signal = abortOnDisconnect(res);

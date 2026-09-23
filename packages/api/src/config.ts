@@ -64,9 +64,13 @@ export const IS_PROMQL_ENABLED = env.ENABLE_PROMQL === 'true';
 // On by default so OSS operators can profile a live problem without a restart.
 // Off by default in local app mode, where auth is skipped and anyone who can
 // reach the app could profile it. An explicit setting wins either way.
-export const DIAGNOSTICS_ENABLED = env.HDX_DIAGNOSTICS_ENABLED
-  ? env.HDX_DIAGNOSTICS_ENABLED === 'true'
-  : !IS_LOCAL_APP_MODE;
+const diagnosticsFlag = env.HDX_DIAGNOSTICS_ENABLED?.toLowerCase();
+export const DIAGNOSTICS_ENABLED =
+  diagnosticsFlag === 'true' || diagnosticsFlag === '1'
+    ? true
+    : diagnosticsFlag === 'false' || diagnosticsFlag === '0'
+      ? false
+      : !IS_LOCAL_APP_MODE;
 export const DIAGNOSTICS_HEAP_SNAPSHOT_ENABLED =
   env.HDX_DIAGNOSTICS_HEAP_SNAPSHOT === 'true';
 

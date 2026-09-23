@@ -56,6 +56,31 @@ describe('diagnostics router', () => {
     }
   });
 
+  it('leaves infrastructure detail out of the report', async () => {
+    const { agent } = await getLoggedInAgent(server);
+
+    const resp = await agent.get('/diagnostics/report').expect(200);
+
+    const body = JSON.stringify(resp.body);
+    for (const key of [
+      'networkInterfaces',
+      'commandLine',
+      'remoteEndpoint',
+      'localEndpoint',
+    ]) {
+      expect(body).not.toContain(`"${key}"`);
+    }
+  });
+
+  it('rate-limits each user', async () => {
+    const { agent } = await getLoggedInAgent(server);
+
+    for (let i = 0; i < 10; i++) {
+      await agent.get('/diagnostics/report').expect(200);
+    }
+    await agent.get('/diagnostics/report').expect(429);
+  });
+
   it('returns a CPU profile for the requested window', async () => {
     const { agent } = await getLoggedInAgent(server);
 
@@ -66,6 +91,9 @@ describe('diagnostics router', () => {
     expect(resp.headers['content-disposition']).toContain('.cpuprofile');
     expect(resp.headers['x-hdx-diagnostics-source']).toBe(
       `${os.hostname()}/${process.pid}`,
+    );
+    expect(resp.headers['content-disposition']).toContain(
+      `api-${os.hostname()}-${process.pid}.cpuprofile`,
     );
     expect(resp.body.nodes.length).toBeGreaterThan(0);
     expect(resp.body.startTime).toEqual(expect.any(Number));
@@ -99,7 +127,12 @@ describe('diagnostics router', () => {
     const first = agent.post('/diagnostics/cpu-profile?seconds=2').then(r => r);
     // Give the first request time to take the lock.
     await new Promise(resolve => setTimeout(resolve, 300));
-    await agent.post('/diagnostics/heap-profile?seconds=1').expect(409);
+    const busy = await agent
+      .post('/diagnostics/heap-profile?seconds=1')
+      .expect(409);
+    expect(busy.body.message).toBe(
+      'A profile is already running on this process',
+    );
     expect((await first).status).toBe(200);
 
     // The lock is released once the first profile finishes.
