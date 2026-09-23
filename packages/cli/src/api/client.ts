@@ -179,19 +179,25 @@ export class ApiClient {
 
   // ---- Generic HTTP ------------------------------------------------
 
-  async get(path: string): Promise<Response> {
+  async get(path: string, signal?: AbortSignal): Promise<Response> {
     return fetch(`${this.apiUrl}${path}`, {
       headers: this.headers(),
       redirect: 'manual',
+      signal,
     });
   }
 
-  async post(path: string, body?: unknown): Promise<Response> {
+  async post(
+    path: string,
+    body?: unknown,
+    signal?: AbortSignal,
+  ): Promise<Response> {
     return fetch(`${this.apiUrl}${path}`, {
       method: 'POST',
       headers: { ...this.headers(), 'Content-Type': 'application/json' },
       body: body != null ? JSON.stringify(body) : undefined,
       redirect: 'manual',
+      signal,
     });
   }
 
@@ -225,8 +231,8 @@ export class ApiClient {
     return res.json() as Promise<SourceResponse[]>;
   }
 
-  async getConnections(): Promise<ConnectionResponse[]> {
-    const res = await this.get('/connections');
+  async getConnections(signal?: AbortSignal): Promise<ConnectionResponse[]> {
+    const res = await this.get('/connections', signal);
     if (!res.ok) throw new Error(`GET /connections failed: ${res.status}`);
     return res.json() as Promise<ConnectionResponse[]>;
   }
@@ -479,12 +485,13 @@ export interface SourceResponse {
   sessionSourceId?: string;
 }
 
-interface ConnectionResponse {
+export interface ConnectionResponse {
   id: string;
   _id: string;
   name: string;
   host: string;
   username: string;
+  isPrometheusEndpoint?: boolean;
 }
 
 export interface SavedSearchResponse {

@@ -24,4 +24,4 @@ receivers:
           authenticator: bearertokenauth/hyperdx
 
 service:
-  extensions: [health_check, bearertokenauth/hyperdx]
+  extensions: [health_check, pprof, bearertokenauth/hyperdx]

@@ -24,4 +24,4 @@ receivers:
           authenticator: oidc/hyperdx
 
 service:
-  extensions: [health_check, oidc/hyperdx]
+  extensions: [health_check, pprof, oidc/hyperdx]
