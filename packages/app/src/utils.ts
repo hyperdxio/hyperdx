@@ -1195,6 +1195,62 @@ export const mergePath = (
     .join('')}`;
 };
 
+// A bare Map subscript as the UI builds it: `LogAttributes['key']` or `` `LogAttributes`['key'] ``
+const MAP_SUBSCRIPT_REGEX =
+  /^(`[^`]+`|[A-Za-z_][A-Za-z0-9_]*)\['((?:[^'\\]|\\.)*)'\]$/;
+// A trailing `AS alias` on a SELECT item, with the alias quoted or bare
+const SELECT_ALIAS_REGEX =
+  /\s+AS\s+("(?:[^"\\]|\\.)*"|`[^`]*`|[A-Za-z_][A-Za-z0-9_]*)\s*$/i;
+
+/**
+ * The expression of a SELECT item, without its `AS alias`
+ */
+export const selectItemExpression = (item: string): string =>
+  item.replace(SELECT_ALIAS_REGEX, '').trim();
+
+/**
+ * Whether a column picked in the UI is in the SELECT list, aliased or not
+ */
+export const isColumnInSelect = (
+  displayedColumns: string[] | undefined,
+  column: string,
+): boolean =>
+  displayedColumns?.some(
+    item => item === column || selectItemExpression(item) === column,
+  ) ?? false;
+
+/**
+ * Label a Map subscript picked in the UI with its key, so the results column
+ * reads `service.name` instead of `arrayElement(LogAttributes, 'service.name')`.
+ * The alias is left off when it could change the query: a key named like a
+ * table column (ClickHouse resolves an alias before a column), a name already
+ * in the SELECT list, or a key that would need escaping as an identifier.
+ */
+export const withMapKeyAlias = (
+  column: string,
+  selectItems: string[],
+  tableColumns: Set<string>,
+): string => {
+  const match = MAP_SUBSCRIPT_REGEX.exec(column);
+  if (!match) {
+    return column;
+  }
+  const key = match[2].replace(/\\(.)/g, '$1');
+  const selectedNames = selectItems.map(item => {
+    const alias = SELECT_ALIAS_REGEX.exec(item)?.[1];
+    return alias ? alias.replace(/^["`]|["`]$/g, '') : item.trim();
+  });
+  if (
+    key === '' ||
+    /["\\]/.test(key) ||
+    tableColumns.has(key) ||
+    selectedNames.includes(key)
+  ) {
+    return column;
+  }
+  return `${column} AS "${key}"`;
+};
+
 const _useTry = <T>(fn: () => T): [null | Error | unknown, null | T] => {
   let output = null;
   let error = null;

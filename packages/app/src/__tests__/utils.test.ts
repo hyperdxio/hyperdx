@@ -21,6 +21,7 @@ import {
   getAllMetricTables,
   getColorFromCSSToken,
   getMetricTableName,
+  isColumnInSelect,
   mapKeyBy,
   mergePath,
   orderByStringToSortingState,
@@ -29,6 +30,7 @@ import {
   sortingStateToOrderByString,
   stripTrailingSlash,
   useQueryHistory,
+  withMapKeyAlias,
 } from '@/utils';
 
 describe('formatAttributeClause', () => {
@@ -1417,6 +1419,79 @@ describe('mergePath', () => {
       // no-op because Number.isInteger(asNumber) succeeds. Sanity check.
       expect(mergePath(['SomeArray', '0'])).toBe('SomeArray[1]');
     });
+  });
+});
+
+describe('withMapKeyAlias', () => {
+  const noColumns = new Set<string>();
+
+  it('labels a Map subscript with its key', () => {
+    expect(
+      withMapKeyAlias("ResourceAttributes['service.name']", [], noColumns),
+    ).toBe(`ResourceAttributes['service.name'] AS "service.name"`);
+    expect(withMapKeyAlias("`LogAttributes`['k8s.pod']", [], noColumns)).toBe(
+      '`LogAttributes`[\'k8s.pod\'] AS "k8s.pod"',
+    );
+  });
+
+  it('unescapes the key the way mergePath escaped it', () => {
+    expect(withMapKeyAlias("LogAttributes['it\\'s']", [], noColumns)).toBe(
+      `LogAttributes['it\\'s'] AS "it's"`,
+    );
+  });
+
+  it('leaves anything that is not a bare Map subscript alone', () => {
+    [
+      'Body',
+      'lower(Body)',
+      "LogAttributes['a']['b']",
+      "JSONExtractString(Body, 'a')",
+      "LogAttributes['a'] AS a",
+    ].forEach(column => {
+      expect(withMapKeyAlias(column, [], noColumns)).toBe(column);
+    });
+  });
+
+  it('keeps the derived name when the alias could change the query', () => {
+    // An alias shadows a column of the same name in WHERE and ORDER BY
+    expect(
+      withMapKeyAlias(
+        "ResourceAttributes['ServiceName']",
+        [],
+        new Set(['ServiceName']),
+      ),
+    ).toBe("ResourceAttributes['ServiceName']");
+    // Two selected columns cannot share a name
+    expect(
+      withMapKeyAlias(
+        "LogAttributes['http.method']",
+        [`SpanAttributes['http.method'] AS "http.method"`],
+        noColumns,
+      ),
+    ).toBe("LogAttributes['http.method']");
+    // Keys that would need escaping inside the quoted alias
+    expect(withMapKeyAlias(`LogAttributes['a"b']`, [], noColumns)).toBe(
+      `LogAttributes['a"b']`,
+    );
+  });
+});
+
+describe('isColumnInSelect', () => {
+  it('matches a column whether or not it was aliased', () => {
+    const select = [
+      'Timestamp',
+      `ResourceAttributes['service.name'] AS "service.name"`,
+    ];
+    expect(isColumnInSelect(select, 'Timestamp')).toBe(true);
+    expect(isColumnInSelect(select, "ResourceAttributes['service.name']")).toBe(
+      true,
+    );
+    expect(isColumnInSelect(select, 'Body')).toBe(false);
+    expect(isColumnInSelect(undefined, 'Body')).toBe(false);
+  });
+
+  it('does not mistake a cast for an alias', () => {
+    expect(isColumnInSelect(['CAST(x AS String)'], 'CAST(x')).toBe(false);
   });
 });
 

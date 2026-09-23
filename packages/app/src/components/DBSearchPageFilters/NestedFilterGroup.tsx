@@ -4,6 +4,7 @@ import { Accordion, Group, Text, Tooltip, UnstyledButton } from '@mantine/core';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
 import { FilterGroup } from '@/components/DBSearchPageFilters';
+import { isColumnInSelect } from '@/utils';
 
 import classes from '@styles/SearchPage.module.scss';
 
@@ -243,7 +244,8 @@ export const NestedFilterGroup = ({
                                     onColumnToggle(child.sqlKey ?? child.key)
                                 : undefined
                             }
-                            isColumnDisplayed={displayedColumns?.includes(
+                            isColumnDisplayed={isColumnInSelect(
+                              displayedColumns,
                               child.sqlKey ?? child.key,
                             )}
                             onLoadMore={() => onLoadMore(child.key)}

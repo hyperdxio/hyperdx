@@ -131,8 +131,10 @@ import {
 import {
   formatDurationMs,
   QUERY_LOCAL_STORAGE,
+  selectItemExpression,
   useLocalStorage,
   usePrevious,
+  withMapKeyAlias,
 } from '@/utils';
 
 import ChartSQLPreview, { SQLPreview } from './components/ChartSQLPreview';
@@ -1737,13 +1739,20 @@ export function DBSearchPage() {
 
   const toggleColumn = useCallback(
     (column: string) => {
-      const newSelectArray = displayedColumns.includes(column)
-        ? displayedColumns.filter(s => s !== column)
-        : [...displayedColumns, column];
+      // A column added from the UI can carry an alias, so match the expression too
+      const selected = displayedColumns.find(
+        s => s === column || selectItemExpression(s) === column,
+      );
+      const newSelectArray = selected
+        ? displayedColumns.filter(s => s !== selected)
+        : [
+            ...displayedColumns,
+            withMapKeyAlias(column, displayedColumns, knownColumns),
+          ];
       setValue('select', newSelectArray.join(', '));
       onSubmit();
     },
-    [displayedColumns, setValue, onSubmit],
+    [displayedColumns, knownColumns, setValue, onSubmit],
   );
 
   const generateSearchUrl = useCallback(
