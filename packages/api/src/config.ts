@@ -1,8 +1,9 @@
+import crypto from 'crypto';
+
 const env = process.env;
 
 // DEFAULTS
 const DEFAULT_APP_TYPE = 'api';
-const DEFAULT_EXPRESS_SESSION = 'hyperdx is cool 👋';
 const DEFAULT_FRONTEND_URL = env.HYPERDX_APP_PORT
   ? `http://localhost:${env.HYPERDX_APP_PORT}`
   : '';
@@ -13,8 +14,12 @@ export const APP_TYPE = (env.APP_TYPE || DEFAULT_APP_TYPE) as
   | 'api'
   | 'scheduled-task';
 export const CODE_VERSION = env.CODE_VERSION ?? '';
-export const EXPRESS_SESSION_SECRET = (env.EXPRESS_SESSION_SECRET ||
-  DEFAULT_EXPRESS_SESSION) as string;
+// There is deliberately no fallback: a secret committed to this repo lets
+// anyone who can read it sign a `connect.sid` for any session id. Without one
+// we generate it per process, which signs every user out when that restarts.
+export const IS_EXPRESS_SESSION_SECRET_GENERATED = !env.EXPRESS_SESSION_SECRET;
+export const EXPRESS_SESSION_SECRET =
+  env.EXPRESS_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 export const FRONTEND_URL = (env.FRONTEND_URL ||
   DEFAULT_FRONTEND_URL) as string;
 const HYPERDX_IMAGE = env.HYPERDX_IMAGE;
