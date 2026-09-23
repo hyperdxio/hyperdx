@@ -8,8 +8,8 @@ import { promisify } from 'util';
 
 export type BundleClient = {
   getApiUrl(): string;
-  get(path: string): Promise<Response>;
-  post(path: string): Promise<Response>;
+  get(path: string, signal?: AbortSignal): Promise<Response>;
+  post(path: string, signal?: AbortSignal): Promise<Response>;
   getConnections(): Promise<
     { id: string; name: string; isPrometheusEndpoint?: boolean }[]
   >;
@@ -54,13 +54,29 @@ export const CLICKHOUSE_QUERIES: Record<string, string> = {
 };
 
 export function redact(text: string): string {
-  return text
-    .replace(/(mongodb(?:\+srv)?:\/\/)[^@/\s"]+@/g, '$1***@')
-    .replace(/(Bearer\s+)[^\s"]+/gi, '$1***')
-    .replace(
-      /("\w*(?:api_?key|access_?key|password|secret|token)"\s*:\s*")[^"]*"/gi,
-      '$1***"',
-    );
+  return (
+    text
+      .replace(/(mongodb(?:\+srv)?:\/\/)[^@/\s"]+@/g, '$1***@')
+      .replace(/(Bearer\s+)[^\s"]+/gi, '$1***')
+      .replace(/("\w*(?:password|secret|token|key)"\s*:\s*")[^"]*"/gi, '$1***"')
+      // The same, inside a JSON-encoded string such as DEFAULT_CONNECTIONS.
+      .replace(
+        /(\\"\w*(?:password|secret|token|key)\\"\s*:\s*\\").*?(\\")/gi,
+        '$1***$2',
+      )
+  );
+}
+
+// setTimeout-based rather than AbortSignal.timeout so it can be tested with
+// fake timers. Unref'd so a finished bundle does not wait for it.
+function timeoutSignal(ms: number): AbortSignal {
+  const controller = new AbortController();
+  const timer = setTimeout(
+    () => controller.abort(new Error(`timed out after ${ms / 1000}s`)),
+    ms,
+  );
+  timer.unref?.();
+  return controller.signal;
 }
 
 function checkApi(res: Response, notFound: string): Response {
@@ -85,11 +101,13 @@ export async function runSupportBundle(
   };
 
   // Text is redacted before it is written. A Response is streamed to disk
-  // untouched (profiles and snapshots), keeping multi-GB files out of memory.
+  // untouched (profiles and snapshots), keeping multi-GB files out of memory,
+  // unless it is marked as text to redact.
   const step = async (
     name: string,
     file: string,
     fetchContent: () => Promise<string | Response>,
+    { redactText = false } = {},
   ) => {
     try {
       const content = await fetchContent();
@@ -97,6 +115,9 @@ export async function runSupportBundle(
       let source: string | undefined;
       if (typeof content === 'string') {
         writeFileSync(path, redact(content));
+      } else if (redactText) {
+        source = content.headers.get('X-HDX-Diagnostics-Source') ?? undefined;
+        writeFileSync(path, redact(await content.text()));
       } else {
         source = content.headers.get('X-HDX-Diagnostics-Source') ?? undefined;
         if (!content.body) throw new Error('empty response');
@@ -114,22 +135,44 @@ export async function runSupportBundle(
 
   const unsupported = 'not supported by server';
   const q = `seconds=${opts.seconds}`;
+  // A stuck API is the main reason to run this, so every call is bounded.
+  const profileTimeoutMs = (opts.seconds + 30) * 1000;
 
-  await step('api-report', 'api-report.json', async () =>
-    checkApi(await client.get('/diagnostics/report'), unsupported).text(),
+  await step(
+    'api-report',
+    'api-report.json',
+    async () =>
+      checkApi(
+        await client.get('/diagnostics/report', timeoutSignal(30_000)),
+        unsupported,
+      ),
+    { redactText: true },
   );
   await step('api-cpu-profile', 'api-cpu.cpuprofile', async () =>
-    checkApi(await client.post(`/diagnostics/cpu-profile?${q}`), unsupported),
+    checkApi(
+      await client.post(
+        `/diagnostics/cpu-profile?${q}`,
+        timeoutSignal(profileTimeoutMs),
+      ),
+      unsupported,
+    ),
   );
   await step('api-heap-profile', 'api-heap.heapprofile', async () =>
-    checkApi(await client.post(`/diagnostics/heap-profile?${q}`), unsupported),
+    checkApi(
+      await client.post(
+        `/diagnostics/heap-profile?${q}`,
+        timeoutSignal(profileTimeoutMs),
+      ),
+      unsupported,
+    ),
   );
   if (opts.heapSnapshot) {
     // Written unredacted: rewriting a snapshot would corrupt it, and it holds
     // every string in memory anyway. The CLI warns about this before running.
     await step('api-heap-snapshot', 'api.heapsnapshot', async () =>
       checkApi(
-        await client.post('/diagnostics/heap-snapshot'),
+        // Large heaps take minutes to snapshot and download.
+        await client.post('/diagnostics/heap-snapshot', timeoutSignal(600_000)),
         'disabled on server (set HDX_DIAGNOSTICS_HEAP_SNAPSHOT=true)',
       ),
     );
@@ -138,9 +181,8 @@ export async function runSupportBundle(
   if (opts.collectorPprofUrl) {
     const base = opts.collectorPprofUrl.replace(/\/+$/, '');
     const pprof = async (path: string) => {
-      // Bounded so an unreachable collector fails the step instead of hanging.
       const res = await fetch(`${base}${path}`, {
-        signal: AbortSignal.timeout((opts.seconds + 30) * 1000),
+        signal: timeoutSignal(profileTimeoutMs),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return res;

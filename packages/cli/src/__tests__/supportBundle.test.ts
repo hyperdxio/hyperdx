@@ -2,7 +2,14 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
-import { afterEach, beforeEach, describe, expect, it } from '@jest/globals';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  jest,
+} from '@jest/globals';
 
 import {
   type BundleClient,
@@ -54,6 +61,15 @@ describe('redact', () => {
       ),
     ).toBe(
       '{"CLICKHOUSE_PASSWORD":"***","HYPERDX_API_KEY":"***","HOME":"/root"}',
+    );
+  });
+
+  it('masks key-named secrets and secrets inside JSON-encoded strings', () => {
+    expect(redact('{"TOKEN_ENCRYPTION_KEY":"k"}')).toBe(
+      '{"TOKEN_ENCRYPTION_KEY":"***"}',
+    );
+    expect(redact('{"DEFAULT_CONNECTIONS":"[{\\"password\\":\\"p\\"}]"}')).toBe(
+      '{"DEFAULT_CONNECTIONS":"[{\\"password\\":\\"***\\"}]"}',
     );
   });
 
@@ -252,23 +268,6 @@ describe('runSupportBundle', () => {
     expect(manifest.steps.find(s => s.name === 'api-report')?.ok).toBe(true);
   });
 
-  it('gives up on an unreachable collector instead of hanging', async () => {
-    const realFetch = globalThis.fetch;
-    const signals: (AbortSignal | undefined)[] = [];
-    globalThis.fetch = (async (_url: string, init?: RequestInit) => {
-      signals.push(init?.signal ?? undefined);
-      return new Response('pprof');
-    }) as typeof fetch;
-    try {
-      await run(fakeClient(), { collectorPprofUrl: 'http://127.0.0.1:1777' });
-
-      expect(signals).toHaveLength(2);
-      expect(signals.every(s => s instanceof AbortSignal)).toBe(true);
-    } finally {
-      globalThis.fetch = realFetch;
-    }
-  });
-
   it('skips Prometheus connections, which cannot run ClickHouse SQL', async () => {
     const queried: string[] = [];
     const { manifest } = await run(
@@ -286,6 +285,101 @@ describe('runSupportBundle', () => {
 
     expect(new Set(queried)).toEqual(new Set(['c1']));
     expect(manifest.steps.some(s => s.name.startsWith('ch-p1'))).toBe(false);
+  });
+
+  describe('timeouts', () => {
+    // Resolves only when the caller's signal aborts, like a wedged server.
+    const hang = (signal?: AbortSignal) =>
+      new Promise<Response>((_, reject) =>
+        signal?.addEventListener('abort', () => reject(signal.reason)),
+      );
+
+    beforeEach(() => {
+      jest.useFakeTimers({
+        doNotFake: ['nextTick', 'setImmediate', 'queueMicrotask'],
+      });
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('fails API steps on a hung API instead of waiting forever', async () => {
+      const done = run(
+        fakeClient({
+          get: (_path, signal) => hang(signal),
+          post: (_path, signal) => hang(signal),
+        }),
+      );
+      await jest.advanceTimersByTimeAsync(3 * 31_000);
+      const { manifest } = await done;
+
+      for (const name of [
+        'api-report',
+        'api-cpu-profile',
+        'api-heap-profile',
+      ]) {
+        expect(manifest.steps.find(s => s.name === name)).toMatchObject({
+          ok: false,
+          error: expect.stringContaining('timed out'),
+        });
+      }
+      expect(manifest.steps.find(s => s.name === 'ch-c1-version')?.ok).toBe(
+        true,
+      );
+    });
+
+    it('fails collector steps on an unreachable collector', async () => {
+      const realFetch = globalThis.fetch;
+      // Collector fetches start only after the API files are written, so the
+      // clock is advanced once each fetch is actually waiting.
+      let fetchStarted: () => void = () => {};
+      const nextFetch = () =>
+        new Promise<void>(resolve => {
+          fetchStarted = resolve;
+        });
+      let started = nextFetch();
+      globalThis.fetch = ((_url: string, init?: RequestInit) => {
+        fetchStarted();
+        return hang(init?.signal ?? undefined);
+      }) as typeof fetch;
+      try {
+        const done = run(fakeClient(), {
+          collectorPprofUrl: 'http://127.0.0.1:1777',
+        });
+        for (let i = 0; i < 2; i++) {
+          await started;
+          started = nextFetch();
+          await jest.advanceTimersByTimeAsync(31_000);
+        }
+        const { manifest } = await done;
+
+        expect(
+          manifest.steps.find(s => s.name === 'collector-cpu'),
+        ).toMatchObject({
+          ok: false,
+          error: expect.stringContaining('timed out'),
+        });
+      } finally {
+        globalThis.fetch = realFetch;
+      }
+    });
+  });
+
+  it('records which API replica served the report', async () => {
+    const { manifest } = await run(
+      fakeClient({
+        get: async () =>
+          new Response('{}', {
+            headers: { 'X-HDX-Diagnostics-Source': 'api-7f9c/42' },
+          }),
+      }),
+    );
+
+    expect(manifest.steps.find(s => s.name === 'api-report')).toMatchObject({
+      ok: true,
+      source: 'api-7f9c/42',
+    });
   });
 
   it('keeps the directory when tar is unavailable', async () => {

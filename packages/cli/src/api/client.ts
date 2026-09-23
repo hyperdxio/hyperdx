@@ -179,19 +179,25 @@ export class ApiClient {
 
   // ---- Generic HTTP ------------------------------------------------
 
-  async get(path: string): Promise<Response> {
+  async get(path: string, signal?: AbortSignal): Promise<Response> {
     return fetch(`${this.apiUrl}${path}`, {
       headers: this.headers(),
       redirect: 'manual',
+      signal,
     });
   }
 
-  async post(path: string, body?: unknown): Promise<Response> {
+  async post(
+    path: string,
+    body?: unknown,
+    signal?: AbortSignal,
+  ): Promise<Response> {
     return fetch(`${this.apiUrl}${path}`, {
       method: 'POST',
       headers: { ...this.headers(), 'Content-Type': 'application/json' },
       body: body != null ? JSON.stringify(body) : undefined,
       redirect: 'manual',
+      signal,
     });
   }
 

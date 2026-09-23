@@ -1793,17 +1793,19 @@ program
 
     const client = await ensureSession(opts.appUrl);
     const chClient = client.createClickHouseClient();
+    // One profiling window each for API CPU, API heap and the collector CPU.
+    const windows = opts.collectorPprofUrl ? 3 : 2;
     _origError(
       chalk.dim(
-        `Collecting diagnostics (about ${seconds * 2}s of profiling)...\n`,
+        `Collecting diagnostics (about ${seconds * windows}s of profiling)...\n`,
       ),
     );
 
     const { dir, archive, manifest } = await runSupportBundle(
       {
         getApiUrl: () => client.getApiUrl(),
-        get: path => client.get(path),
-        post: path => client.post(path),
+        get: (path, signal) => client.get(path, signal),
+        post: (path, signal) => client.post(path, undefined, signal),
         getConnections: () => client.getConnections(),
         query: async (connectionId, sql) => {
           const resultSet = await chClient.query({
@@ -1830,9 +1832,10 @@ program
           : `${chalk.red('fail')} ${s.name}: ${s.error}\n`,
       );
     }
-    _origError(
-      `\n${archive ? `Bundle: ${archive}` : `tar failed; files are in ${dir}`}\n`,
-    );
+    if (!archive) _origError(`\ntar failed; files are in ${dir}\n`);
+    // The path is the result, on stdout like other commands, so
+    // BUNDLE=$(hdx support-bundle) works.
+    process.stdout.write(`${archive ?? dir}\n`);
     _origError(
       chalk.dim(
         `
@@ -1844,6 +1847,7 @@ Also attach, from the host running HyperDX:
 `,
       ),
     );
+    if (!manifest.steps.some(s => s.ok)) process.exit(1);
   });
 
 program.parse();
