@@ -223,4 +223,22 @@ describe('report session and recent errors', () => {
     expect(report).toMatch(/\/ HTTPError \[502\] Bad gateway/);
     expect(report).toMatch(/\/ Error \[CH 60\] Code: 60\. DB::Exception/);
   });
+
+  it('shows the failing endpoint and how often the failure repeated', () => {
+    const mod = loadHdxDebug();
+    const { recordRecentError } =
+      jest.requireActual<typeof import('@/recentErrors')>('@/recentErrors');
+    const err = () =>
+      Object.assign(new Error('Request failed with status code 502'), {
+        name: 'HTTPError',
+        request: { method: 'GET', url: 'http://localhost/api/dashboards' },
+        response: { status: 502 },
+      });
+    recordRecentError(err());
+    recordRecentError(err());
+
+    expect(reportFor(mod)).toMatch(
+      /HTTPError \[502\] GET \/api\/dashboards Request failed with status code 502 \(x2\)/,
+    );
+  });
 });

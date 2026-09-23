@@ -96,4 +96,47 @@ describe('recentErrors', () => {
     expect(recorded).not.toContain('a@b.com');
     expect(recorded).not.toMatch(/SELECT/);
   });
+
+  it('records which API endpoint failed, without the query string', () => {
+    const err = Object.assign(
+      new Error('Request failed with status code 500'),
+      {
+        name: 'HTTPError',
+        request: {
+          method: 'POST',
+          url: 'http://localhost/api/sources?token=abc',
+        },
+        response: { status: 500 },
+      },
+    );
+    recordRecentError(err);
+
+    expect(getRecentErrors()[0]).toMatchObject({
+      endpoint: 'POST /api/sources',
+      status: 500,
+    });
+  });
+
+  it('collapses repeats of the same failure into one entry with a count', () => {
+    recordRecentError(new Error('first distinct failure'));
+    for (let i = 0; i < 25; i++)
+      recordRecentError(new Error('tile refresh failed'));
+
+    const errors = getRecentErrors();
+    expect(errors.map(e => e.message)).toEqual([
+      'first distinct failure',
+      'tile refresh failed',
+    ]);
+    expect(errors[1].count).toBe(25);
+  });
+
+  it('leaves quoted names in ordinary JS errors alone', () => {
+    recordRecentError(
+      new TypeError("Cannot read properties of undefined (reading 'sourceId')"),
+    );
+
+    expect(getRecentErrors()[0].message).toBe(
+      "Cannot read properties of undefined (reading 'sourceId')",
+    );
+  });
 });

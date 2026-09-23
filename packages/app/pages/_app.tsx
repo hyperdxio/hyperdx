@@ -51,8 +51,8 @@ if (typeof crypto !== 'undefined' && !crypto.randomUUID) {
 
 enableMapSet();
 
-const onQueryError = (error: unknown) => {
-  console.error(error);
+const onQueryError = (error: unknown, ...context: unknown[]) => {
+  console.error(error, ...context);
   recordRecentError(error);
 };
 

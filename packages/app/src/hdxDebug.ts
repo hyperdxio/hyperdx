@@ -188,7 +188,9 @@ function recentErrorLines(): string[] {
           : e.code != null
             ? ` [CH ${e.code}]`
             : '';
-      return `  ${e.at} ${e.route} ${e.name}${tag} ${e.message}`;
+      const endpoint = e.endpoint ? ` ${e.endpoint}` : '';
+      const repeats = e.count > 1 ? ` (x${e.count})` : '';
+      return `  ${e.at} ${e.route} ${e.name}${tag}${endpoint} ${e.message}${repeats}`;
     }),
   ];
 }
