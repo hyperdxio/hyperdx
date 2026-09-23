@@ -852,13 +852,19 @@ describe('renderChartConfig', () => {
           metadata,
           querySettings,
         );
-        const rows = await queryData<Record<string, string>>(query);
+        const rows = await queryData<{
+          __hdx_time_bucket: string;
+          value_band: string;
+          Value: number;
+        }>(query);
         const secondBucket = rows.filter(
           r => new Date(r.__hdx_time_bucket).getTime() === now + ms('5m'),
         );
-        expect(secondBucket.map(r => r.value_band).sort()).toEqual([
-          'high',
-          'low',
+        // The 8 -> 9 step lands in `high`; the rate window must not reset
+        // when the label changes.
+        expect(secondBucket.map(r => [r.value_band, r.Value]).sort()).toEqual([
+          ['high', 1],
+          ['low', 0],
         ]);
       });
 

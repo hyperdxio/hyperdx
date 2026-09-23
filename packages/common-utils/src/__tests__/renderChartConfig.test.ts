@@ -131,7 +131,7 @@ describe('renderChartConfig', () => {
     expect(sql).not.toContain('`LastValue`');
   });
 
-  it('hashes grouped-by computed columns into AttributesHash', async () => {
+  it('groups buckets by grouped-by computed columns', async () => {
     mockMetadata.getColumns = jest.fn().mockResolvedValue([
       { name: 'host.name', type: 'String', default_type: 'MATERIALIZED' },
       { name: 'region', type: 'String', default_type: 'ALIAS' },
@@ -142,7 +142,7 @@ describe('renderChartConfig', () => {
       querySettings,
     );
     expect(rendered.sql.replace(/\s+/g, ' ')).toContain(
-      'cityHash64(ScopeAttributes, ResourceAttributes, Attributes, tuple(`host.name`)) AS AttributesHash',
+      '`host.name`, any(`region`) AS `region` FROM Source GROUP BY AttributesHash, __hdx_time_bucket2, `host.name` ORDER BY',
     );
   });
 
@@ -152,7 +152,7 @@ describe('renderChartConfig', () => {
       'a column only named inside a string literal',
       "concat('region', ServiceName)",
     ],
-  ])('does not hash %s', async (_, groupBy) => {
+  ])('does not group buckets by %s', async (_, groupBy) => {
     mockMetadata.getColumns = jest
       .fn()
       .mockResolvedValue([
@@ -164,7 +164,7 @@ describe('renderChartConfig', () => {
       querySettings,
     );
     expect(rendered.sql.replace(/\s+/g, ' ')).toContain(
-      'cityHash64(ScopeAttributes, ResourceAttributes, Attributes) AS AttributesHash',
+      'GROUP BY AttributesHash, __hdx_time_bucket2 ORDER BY',
     );
   });
 
@@ -175,21 +175,24 @@ describe('renderChartConfig', () => {
     'region.1',
     '"region"',
     [{ valueExpression: 'ServiceName' }, { valueExpression: '`region`' }],
-  ])('hashes a computed column referenced by group-by %p', async groupBy => {
-    mockMetadata.getColumns = jest
-      .fn()
-      .mockResolvedValue([
-        { name: 'region', type: 'String', default_type: 'ALIAS' },
-      ]);
-    const rendered = await renderChartConfig(
-      { ...gaugeConfiguration, groupBy },
-      mockMetadata,
-      querySettings,
-    );
-    expect(rendered.sql.replace(/\s+/g, ' ')).toContain(
-      'Attributes, tuple(`region`)) AS AttributesHash',
-    );
-  });
+  ])(
+    'groups buckets by a computed column referenced by group-by %p',
+    async groupBy => {
+      mockMetadata.getColumns = jest
+        .fn()
+        .mockResolvedValue([
+          { name: 'region', type: 'String', default_type: 'ALIAS' },
+        ]);
+      const rendered = await renderChartConfig(
+        { ...gaugeConfiguration, groupBy },
+        mockMetadata,
+        querySettings,
+      );
+      expect(rendered.sql.replace(/\s+/g, ' ')).toContain(
+        'GROUP BY AttributesHash, __hdx_time_bucket2, `region`',
+      );
+    },
+  );
 
   it('should generate sql for a single gauge metric with a delta() function applied', async () => {
     const generatedSql = await renderChartConfig(

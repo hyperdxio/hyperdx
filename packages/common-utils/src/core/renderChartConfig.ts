@@ -1856,8 +1856,8 @@ function renderDeltaExpression(
  * `SELECT *` skips MATERIALIZED and ALIAS columns, so the metric CTEs select
  * them explicitly to keep them usable in the outer select and group-by.
  * Names the CTE already defines are skipped to avoid a clash. Grouped-by ones
- * also feed AttributesHash (via tuple, so NULLs hash) so the per-bucket `any()`
- * can't merge rows whose values differ.
+ * join the bucket GROUP BY instead of `any()`, so rows with different values
+ * stay apart; AttributesHash is left alone because the sum windows use it.
  */
 async function getComputedMetricColumns(
   metadata: Metadata,
@@ -1874,7 +1874,7 @@ async function getComputedMetricColumns(
     reservedNames: string[];
     groupBy: BuilderChartConfigWithOptDateRangeEx['groupBy'];
   },
-): Promise<{ select: string; aggregate: string; hash: string }> {
+): Promise<{ select: string; aggregate: string; groupBy: string }> {
   let columnNames: string[] = [];
   try {
     const columns = await metadata.getColumns({
@@ -1913,11 +1913,19 @@ async function getComputedMetricColumns(
   );
   const escape = (c: string) => SqlString.escapeId(c, true);
   const names = columnNames.map(escape);
-  const hashed = columnNames.filter(c => referenced.has(c)).map(escape);
   return {
     select: names.map(c => `, ${c}`).join(''),
-    aggregate: names.map(c => `, any(${c}) AS ${c}`).join(''),
-    hash: hashed.length ? `, tuple(${hashed.join(', ')})` : '',
+    aggregate: columnNames
+      .map(c =>
+        referenced.has(c)
+          ? `, ${escape(c)}`
+          : `, any(${escape(c)}) AS ${escape(c)}`,
+      )
+      .join(''),
+    groupBy: columnNames
+      .filter(c => referenced.has(c))
+      .map(c => `, ${escape(c)}`)
+      .join(''),
   };
 }
 
@@ -2017,7 +2025,7 @@ async function translateMetricChartConfig(
           sql: chSql`
             SELECT
               *,
-              cityHash64(ScopeAttributes, ResourceAttributes, Attributes${{ UNSAFE_RAW_SQL: computedColumns.hash }}) AS AttributesHash${{ UNSAFE_RAW_SQL: computedColumns.select }}
+              cityHash64(ScopeAttributes, ResourceAttributes, Attributes) AS AttributesHash${{ UNSAFE_RAW_SQL: computedColumns.select }}
             FROM ${renderFrom({ from: { ...from, tableName: metricTables[MetricsDataType.Gauge] }, isRenderingRawSqlTemplate: chartConfig.isRenderingRawSqlTemplate, metricType: MetricsDataType.Gauge })}
             WHERE ${where}
           `,
@@ -2043,7 +2051,7 @@ async function translateMetricChartConfig(
               any(StartTimeUnix) AS StartTimeUnix,
               any(Flags) AS Flags${{ UNSAFE_RAW_SQL: computedColumns.aggregate }}
             FROM Source
-            GROUP BY AttributesHash, ${timeBucketCol}
+            GROUP BY AttributesHash, ${timeBucketCol}${{ UNSAFE_RAW_SQL: computedColumns.groupBy }}
             ORDER BY AttributesHash, ${timeBucketCol}
           `,
         },
@@ -2145,7 +2153,7 @@ async function translateMetricChartConfig(
         sql: chSql`
                 SELECT
                   *,
-                  cityHash64(ScopeAttributes, ResourceAttributes, Attributes${{ UNSAFE_RAW_SQL: computedColumns.hash }}) AS AttributesHash,
+                  cityHash64(ScopeAttributes, ResourceAttributes, Attributes) AS AttributesHash,
                   IF(
                     AggregationTemporality = 1,
                     Value, -- DELTA: Value is already the per-interval increase
@@ -2216,7 +2224,7 @@ async function translateMetricChartConfig(
                 any(AggregationTemporality) AS AggregationTemporality,
                 any(IsMonotonic) AS IsMonotonic${{ UNSAFE_RAW_SQL: computedColumns.aggregate }}
               FROM Source
-              GROUP BY AttributesHash, \`${timeBucketCol}\`
+              GROUP BY AttributesHash, \`${timeBucketCol}\`${{ UNSAFE_RAW_SQL: computedColumns.groupBy }}
               ORDER BY AttributesHash, \`${timeBucketCol}\`
             )
           `,
