@@ -1852,6 +1852,29 @@ function renderDeltaExpression(
   return `IF(${timeDiffInSeconds} > 0, ${valueDiff} * ${intervalInSeconds} / ${timeDiffInSeconds}, 0)`;
 }
 
+// OTel columns each Bucketed CTE already projects with any().
+const GAUGE_BUCKETED_COLUMNS = [
+  'ScopeAttributes',
+  'ResourceAttributes',
+  'Attributes',
+  'ResourceSchemaUrl',
+  'ScopeName',
+  'ScopeVersion',
+  'ScopeDroppedAttrCount',
+  'ScopeSchemaUrl',
+  'ServiceName',
+  'MetricDescription',
+  'MetricUnit',
+  'StartTimeUnix',
+  'Flags',
+];
+const SUM_BUCKETED_COLUMNS = [
+  ...GAUGE_BUCKETED_COLUMNS,
+  'MetricName',
+  'AggregationTemporality',
+  'IsMonotonic',
+];
+
 /**
  * `SELECT *` skips MATERIALIZED and ALIAS columns, so the metric CTEs select
  * them explicitly to keep them usable in the outer select and group-by.
@@ -1866,12 +1889,14 @@ async function getComputedMetricColumns(
     tableName,
     connectionId,
     reservedNames,
+    bucketedColumns,
     groupBy,
   }: {
     databaseName: string;
     tableName: string;
     connectionId: string;
     reservedNames: string[];
+    bucketedColumns: string[];
     groupBy: BuilderChartConfigWithOptDateRangeEx['groupBy'];
   },
 ): Promise<{ select: string; aggregate: string; groupBy: string }> {
@@ -1903,9 +1928,20 @@ async function getComputedMetricColumns(
     (
       groupByText
         .replace(/'(?:[^'\\]|\\.)*'/g, "''")
-        .match(/`[^`]+`|"[^"]+"|[\p{L}\p{N}_$.]+/gu) ?? []
+        .match(
+          /`(?:[^`\\]|``|\\.)+`|"(?:[^"\\]|""|\\.)+"|[\p{L}\p{N}_$.]+/gu,
+        ) ?? []
     ).flatMap(token => {
-      if (/^[`"]/.test(token)) return [token.slice(1, -1)];
+      if (/^[`"]/.test(token)) {
+        // Undo ClickHouse's doubled-quote and backslash escapes.
+        const quote = token[0];
+        return [
+          token
+            .slice(1, -1)
+            .replaceAll(quote + quote, quote)
+            .replace(/\\(.)/g, '$1'),
+        ];
+      }
       const parts = token.split('.');
       return parts.flatMap((_, i) =>
         parts.slice(i).map((__, j) => parts.slice(i, i + j + 1).join('.')),
@@ -1913,17 +1949,19 @@ async function getComputedMetricColumns(
     }),
   );
   const escape = (c: string) => SqlString.escapeId(c, true);
-  const names = columnNames.map(escape);
+  // A second projection of a Bucketed column would clash with its any()
+  // alias in GROUP BY.
+  const bucketed = columnNames.filter(c => !bucketedColumns.includes(c));
   return {
-    select: names.map(c => `, ${c}`).join(''),
-    aggregate: columnNames
+    select: columnNames.map(c => `, ${escape(c)}`).join(''),
+    aggregate: bucketed
       .map(c =>
         referenced.has(c)
           ? `, ${escape(c)}`
           : `, any(${escape(c)}) AS ${escape(c)}`,
       )
       .join(''),
-    groupBy: columnNames
+    groupBy: bucketed
       .filter(c => referenced.has(c))
       .map(c => `, ${escape(c)}`)
       .join(''),
@@ -2015,6 +2053,7 @@ async function translateMetricChartConfig(
       tableName: metricTables[MetricsDataType.Gauge],
       connectionId: chartConfig.connection,
       reservedNames: ['AttributesHash', 'LastValue', timeBucketCol],
+      bucketedColumns: GAUGE_BUCKETED_COLUMNS,
       groupBy: chartConfig.groupBy,
     });
 
@@ -2126,6 +2165,7 @@ async function translateMetricChartConfig(
       tableName: metricTables[MetricsDataType.Sum],
       connectionId: chartConfig.connection,
       reservedNames: ['AttributesHash', 'Rate', 'Sum', timeBucketCol],
+      bucketedColumns: SUM_BUCKETED_COLUMNS,
       groupBy: chartConfig.groupBy,
     });
 

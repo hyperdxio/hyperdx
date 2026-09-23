@@ -170,6 +170,61 @@ describe('renderChartConfig', () => {
   });
 
   it.each([
+    ['a`b', '`a``b`', '`a``b`'],
+    ['a"b', '"a""b"', '`a"b`'],
+    ['a""b', '`a""b`', '`a""b`'],
+  ])(
+    'groups buckets by computed column %s written as %s',
+    async (name, groupBy, rendered) => {
+      mockMetadata.getColumns = jest
+        .fn()
+        .mockResolvedValue([{ name, type: 'String', default_type: 'ALIAS' }]);
+      const { sql } = await renderChartConfig(
+        { ...gaugeConfiguration, groupBy },
+        mockMetadata,
+        querySettings,
+      );
+      expect(sql.replace(/\s+/g, ' ')).toContain(
+        `GROUP BY AttributesHash, __hdx_time_bucket2, ${rendered}`,
+      );
+    },
+  );
+
+  it('does not re-project a computed column Bucketed already carries', async () => {
+    mockMetadata.getColumns = jest
+      .fn()
+      .mockResolvedValue([
+        { name: 'ServiceName', type: 'String', default_type: 'MATERIALIZED' },
+      ]);
+    const rendered = await renderChartConfig(
+      { ...gaugeConfiguration, groupBy: 'ServiceName' },
+      mockMetadata,
+      querySettings,
+    );
+    const sql = rendered.sql.replace(/\s+/g, ' ');
+    expect(sql).toContain('AS AttributesHash, `ServiceName` FROM');
+    expect(sql).toContain(
+      'any(Flags) AS Flags FROM Source GROUP BY AttributesHash, __hdx_time_bucket2 ORDER BY',
+    );
+  });
+
+  it('carries a computed column the gauge Bucketed CTE does not project', async () => {
+    mockMetadata.getColumns = jest
+      .fn()
+      .mockResolvedValue([
+        { name: 'IsMonotonic', type: 'Bool', default_type: 'ALIAS' },
+      ]);
+    const { sql } = await renderChartConfig(
+      gaugeConfiguration,
+      mockMetadata,
+      querySettings,
+    );
+    expect(sql.replace(/\s+/g, ' ')).toContain(
+      'any(`IsMonotonic`) AS `IsMonotonic` FROM Source',
+    );
+  });
+
+  it.each([
     'lower(region), ServiceName',
     "region ILIKE '%a%'",
     'Bucketed.region',
