@@ -918,7 +918,7 @@ export const FilterGroup = ({
   distributionKey,
   onRangeChange,
 }: FilterGroupProps) => {
-  const [expanded, setExpanded] = useGroupExpansion(
+  const [expanded, setExpanded, expandBrowse] = useGroupExpansion(
     isDefaultExpanded ?? false,
     isForceExpanded,
   );
@@ -947,9 +947,9 @@ export const FilterGroup = ({
 
   useEffect(() => {
     if (isDefaultExpanded) {
-      setExpanded(true);
+      expandBrowse();
     }
-  }, [isDefaultExpanded, setExpanded]);
+  }, [isDefaultExpanded, expandBrowse]);
 
   const totalAppliedFiltersSize =
     selectedValues.included.size +

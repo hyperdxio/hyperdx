@@ -11,11 +11,16 @@ import { useCallback, useEffect, useRef, useState } from 'react';
  *
  * The override resets whenever a search starts or ends, so each search begins
  * from "matches are visible" again.
+ *
+ * `expandBrowse` is for the caller's default-expansion signal — a group gaining
+ * a selection or a pin. That describes the browse state, so it has to bypass
+ * the override: routing it through `setExpanded` during a search would leave
+ * the browse state stale and collapse the group the moment the search cleared.
  */
 export function useGroupExpansion(
   defaultExpanded: boolean,
   isForceExpanded?: boolean,
-): [boolean, (expanded: boolean) => void] {
+): [boolean, (expanded: boolean) => void, () => void] {
   const [browseExpanded, setBrowseExpanded] = useState(defaultExpanded);
   const [searchExpanded, setSearchExpanded] = useState<boolean | null>(null);
 
@@ -45,5 +50,7 @@ export function useGroupExpansion(
     }
   }, []);
 
-  return [expanded, setExpanded];
+  const expandBrowse = useCallback(() => setBrowseExpanded(true), []);
+
+  return [expanded, setExpanded, expandBrowse];
 }

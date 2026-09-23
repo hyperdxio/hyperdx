@@ -66,6 +66,18 @@ describe('useGroupExpansion', () => {
     expect(result.current[0]).toBe(true);
   });
 
+  it('keeps a default-expansion signal raised during a search', () => {
+    const { result, rerender } = render(false);
+    rerender({ defaultExpanded: false, isForceExpanded: true });
+
+    // The group gains a selection mid-search, so the caller's
+    // default-expansion effect fires. That describes the browse state.
+    act(() => result.current[2]());
+
+    rerender({ defaultExpanded: true, isForceExpanded: false });
+    expect(result.current[0]).toBe(true);
+  });
+
   it('keeps the setter identity stable so callers can memoize on it', () => {
     const { result, rerender } = render(false);
     const setter = result.current[1];
