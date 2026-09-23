@@ -16,6 +16,7 @@ import { notifications } from '@mantine/notifications';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { hashCode } from '@/utils';
+import { makeId } from '@/utils/tilePositioning';
 
 import api, {
   hdxServer,
@@ -60,6 +61,46 @@ export type Dashboard = {
    *  contract. Unrelated to `Connection.platformProvisioned`. */
   provisioned?: boolean;
 };
+
+/**
+ * Build the create payload for a copy of an existing dashboard (issue #1253).
+ *
+ * - Every tile gets a fresh id, so the copy's tiles never collide with the
+ *   original's. Tile alerts and the Terraform provider both key on tile id, so
+ *   a shared id across two dashboards would let one dashboard's apply re-mint
+ *   or clobber the other's tile.
+ * - Tile alerts are dropped (`config.alert` removed from every tile). A copy
+ *   made in one click shouldn't silently start firing the original's alerts.
+ * - Layout, tags, filters and the saved query/range/values are carried over.
+ * - Server-owned fields (id, timestamps, authorship) and the machine-managed
+ *   `provisioned` flag are omitted; the copy is a fresh, user-owned dashboard.
+ */
+export function duplicateDashboard(
+  dashboard: Dashboard,
+): Omit<Dashboard, 'id'> {
+  const {
+    id: _id,
+    createdAt: _createdAt,
+    updatedAt: _updatedAt,
+    createdBy: _createdBy,
+    updatedBy: _updatedBy,
+    provisioned: _provisioned,
+    name,
+    tags,
+    tiles,
+    ...rest
+  } = dashboard;
+
+  return {
+    ...rest,
+    name: `${name} (Copy)`,
+    tags: [...tags],
+    tiles: tiles.map(tile => {
+      const { alert: _alert, ...config } = tile.config;
+      return { ...tile, id: makeId(), config };
+    }),
+  };
+}
 
 const localDashboards = createEntityStore<Dashboard>('hdx-local-dashboards');
 

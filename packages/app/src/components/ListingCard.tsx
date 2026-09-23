@@ -9,7 +9,7 @@ import {
   Text,
   Tooltip,
 } from '@mantine/core';
-import { IconDots, IconTrash } from '@tabler/icons-react';
+import { IconCopy, IconDots, IconTrash } from '@tabler/icons-react';
 
 import { FavoriteButton } from '@/components/FavoriteButton';
 import { Favorite } from '@/favorites';
@@ -21,6 +21,7 @@ export function ListingCard({
   description,
   tags,
   onDelete,
+  onDuplicate,
   statusIcon,
   resourceId,
   resourceType,
@@ -32,6 +33,7 @@ export function ListingCard({
   description?: string;
   tags?: string[];
   onDelete?: () => void;
+  onDuplicate?: () => void;
   statusIcon?: React.ReactNode;
   resourceId?: string;
   resourceType?: Favorite['resourceType'];
@@ -66,7 +68,7 @@ export function ListingCard({
             />
           )}
         </Group>
-        {onDelete && (
+        {(onDelete || onDuplicate) && (
           <Menu position="bottom-end" withinPortal>
             <Menu.Target>
               <ActionIcon
@@ -78,16 +80,29 @@ export function ListingCard({
               </ActionIcon>
             </Menu.Target>
             <Menu.Dropdown>
-              <Menu.Item
-                color="red"
-                leftSection={<IconTrash size={14} />}
-                onClick={e => {
-                  e.preventDefault();
-                  onDelete();
-                }}
-              >
-                Delete
-              </Menu.Item>
+              {onDuplicate && (
+                <Menu.Item
+                  leftSection={<IconCopy size={14} />}
+                  onClick={e => {
+                    e.preventDefault();
+                    onDuplicate();
+                  }}
+                >
+                  Duplicate
+                </Menu.Item>
+              )}
+              {onDelete && (
+                <Menu.Item
+                  color="red"
+                  leftSection={<IconTrash size={14} />}
+                  onClick={e => {
+                    e.preventDefault();
+                    onDelete();
+                  }}
+                >
+                  Delete
+                </Menu.Item>
+              )}
             </Menu.Dropdown>
           </Menu>
         )}

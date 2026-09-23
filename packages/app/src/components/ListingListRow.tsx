@@ -9,7 +9,7 @@ import {
   Text,
   Tooltip,
 } from '@mantine/core';
-import { IconDots, IconTrash } from '@tabler/icons-react';
+import { IconCopy, IconDots, IconTrash } from '@tabler/icons-react';
 
 import { FormatTime } from '@/useFormatTime';
 
@@ -19,6 +19,7 @@ export function ListingRow({
   href,
   tags,
   onDelete,
+  onDuplicate,
   leftSection,
   updatedAt,
   updatedBy,
@@ -29,6 +30,7 @@ export function ListingRow({
   href: string;
   tags?: string[];
   onDelete?: (id: string) => void;
+  onDuplicate?: (id: string) => void;
   leftSection?: React.ReactNode;
   updatedAt?: string;
   updatedBy?: string;
@@ -91,7 +93,7 @@ export function ListingRow({
         )}
       </Table.Td>
       <Table.Td>
-        {onDelete && (
+        {(onDelete || onDuplicate) && (
           <Menu position="bottom-end" withinPortal>
             <Menu.Target>
               <ActionIcon
@@ -103,16 +105,29 @@ export function ListingRow({
               </ActionIcon>
             </Menu.Target>
             <Menu.Dropdown>
-              <Menu.Item
-                color="red"
-                leftSection={<IconTrash size={14} />}
-                onClick={e => {
-                  e.stopPropagation();
-                  onDelete(id);
-                }}
-              >
-                Delete
-              </Menu.Item>
+              {onDuplicate && (
+                <Menu.Item
+                  leftSection={<IconCopy size={14} />}
+                  onClick={e => {
+                    e.stopPropagation();
+                    onDuplicate(id);
+                  }}
+                >
+                  Duplicate
+                </Menu.Item>
+              )}
+              {onDelete && (
+                <Menu.Item
+                  color="red"
+                  leftSection={<IconTrash size={14} />}
+                  onClick={e => {
+                    e.stopPropagation();
+                    onDelete(id);
+                  }}
+                >
+                  Delete
+                </Menu.Item>
+              )}
             </Menu.Dropdown>
           </Menu>
         )}

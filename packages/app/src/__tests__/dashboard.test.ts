@@ -22,7 +22,12 @@ jest.mock('@/utils', () => ({ hashCode: jest.fn(() => 0) }));
 
 import { LEGACY_CHART_PALETTE_TOKEN_MAP } from '@hyperdx/common-utils/dist/types';
 
-import { fetchLocalDashboards, getLocalDashboardTags } from '@/dashboard';
+import {
+  type Dashboard,
+  duplicateDashboard,
+  fetchLocalDashboards,
+  getLocalDashboardTags,
+} from '@/dashboard';
 
 const STORAGE_KEY = 'hdx-local-dashboards';
 
@@ -170,5 +175,114 @@ describe('getLocalDashboardTags', () => {
     ];
     localStorage.setItem(STORAGE_KEY, JSON.stringify(dashboards));
     expect(getLocalDashboardTags()).toEqual(['ops']);
+  });
+});
+
+describe('duplicateDashboard', () => {
+  const makeDashboard = (overrides: Partial<Dashboard> = {}): Dashboard =>
+    ({
+      id: 'dash-1',
+      name: 'Latency',
+      tags: ['prod', 'team-a'],
+      tiles: [
+        {
+          id: 'tile-1',
+          x: 0,
+          y: 0,
+          w: 8,
+          h: 10,
+          containerId: 'c1',
+          tabId: 't1',
+          config: { name: 'p99', source: 'traces', alert: { threshold: 5 } },
+        },
+        {
+          id: 'tile-2',
+          x: 8,
+          y: 0,
+          w: 8,
+          h: 10,
+          config: { name: 'errors', source: 'logs' },
+        },
+      ],
+      filters: [{ id: 'f1' }],
+      savedQuery: 'level:error',
+      savedQueryLanguage: 'lucene',
+      containers: [{ id: 'c1', name: 'Group' }],
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-02T00:00:00Z',
+      createdBy: { email: 'a@b.co' },
+      updatedBy: { email: 'a@b.co' },
+      provisioned: true,
+      ...overrides,
+    }) as unknown as Dashboard;
+
+  it('appends " (Copy)" to the name', () => {
+    expect(duplicateDashboard(makeDashboard()).name).toBe('Latency (Copy)');
+  });
+
+  it('re-mints every tile id, keeping them unique and distinct from the source', () => {
+    const source = makeDashboard();
+    const copy = duplicateDashboard(source);
+
+    const sourceIds = source.tiles.map(t => t.id);
+    const copyIds = copy.tiles.map(t => t.id);
+
+    expect(copyIds).toHaveLength(2);
+    copyIds.forEach(id => expect(sourceIds).not.toContain(id));
+    expect(new Set(copyIds).size).toBe(copyIds.length);
+  });
+
+  it('drops tile alerts but preserves the rest of each tile config and layout', () => {
+    const copy = duplicateDashboard(makeDashboard());
+
+    expect(copy.tiles.every(t => !('alert' in t.config))).toBe(true);
+    expect(copy.tiles[0].config).toMatchObject({
+      name: 'p99',
+      source: 'traces',
+    });
+    expect(copy.tiles[0]).toMatchObject({
+      x: 0,
+      y: 0,
+      w: 8,
+      h: 10,
+      containerId: 'c1',
+      tabId: 't1',
+    });
+  });
+
+  it('carries tags, filters, saved query and containers', () => {
+    const copy = duplicateDashboard(makeDashboard());
+
+    expect(copy.tags).toEqual(['prod', 'team-a']);
+    expect(copy.filters).toEqual([{ id: 'f1' }]);
+    expect(copy.savedQuery).toBe('level:error');
+    expect(copy.savedQueryLanguage).toBe('lucene');
+    expect(copy.containers).toEqual([{ id: 'c1', name: 'Group' }]);
+  });
+
+  it('copies the tags array rather than sharing the source reference', () => {
+    const source = makeDashboard();
+    const copy = duplicateDashboard(source);
+    expect(copy.tags).not.toBe(source.tags);
+  });
+
+  it('omits server-owned and machine-managed fields', () => {
+    const copy = duplicateDashboard(makeDashboard()) as Record<string, unknown>;
+
+    expect(copy).not.toHaveProperty('id');
+    expect(copy).not.toHaveProperty('createdAt');
+    expect(copy).not.toHaveProperty('updatedAt');
+    expect(copy).not.toHaveProperty('createdBy');
+    expect(copy).not.toHaveProperty('updatedBy');
+    expect(copy).not.toHaveProperty('provisioned');
+  });
+
+  it('does not mutate the source dashboard', () => {
+    const source = makeDashboard();
+    duplicateDashboard(source);
+
+    expect(source.name).toBe('Latency');
+    expect(source.tiles[0].id).toBe('tile-1');
+    expect(source.tiles[0].config).toHaveProperty('alert');
   });
 });

@@ -39,6 +39,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { IS_K8S_DASHBOARD_ENABLED } from '@/config';
 import {
   type Dashboard,
+  duplicateDashboard,
   useCreateDashboard,
   useDashboards,
   useDeleteDashboard,
@@ -180,6 +181,27 @@ export default function DashboardsListPage() {
     [confirm, deleteDashboard],
   );
 
+  const handleDuplicate = useCallback(
+    (dashboard: Dashboard) => {
+      createDashboard.mutate(duplicateDashboard(dashboard), {
+        onSuccess: created => {
+          notifications.show({
+            message: `Duplicated "${dashboard.name}"`,
+            color: 'green',
+          });
+          Router.push(`/dashboards/${created.id}`);
+        },
+        onError: () => {
+          notifications.show({
+            message: 'Failed to duplicate dashboard',
+            color: 'red',
+          });
+        },
+      });
+    },
+    [createDashboard],
+  );
+
   return (
     <div
       data-testid="dashboards-list-page"
@@ -228,6 +250,7 @@ export default function DashboardsListPage() {
                   tags={d.tags}
                   description={`${d.tiles.length} ${d.tiles.length === 1 ? 'tile' : 'tiles'}`}
                   onDelete={() => handleDelete(d.id)}
+                  onDuplicate={() => handleDuplicate(d)}
                   statusIcon={
                     <AlertStatusIcon alerts={getDashboardAlerts(d.tiles)} />
                   }
@@ -399,6 +422,7 @@ export default function DashboardsListPage() {
                   href={`/dashboards/${d.id}`}
                   tags={d.tags}
                   onDelete={handleDelete}
+                  onDuplicate={() => handleDuplicate(d)}
                   createdBy={d.createdBy?.name || d.createdBy?.email}
                   updatedAt={d.updatedAt}
                   updatedBy={d.updatedBy?.name || d.updatedBy?.email}
@@ -432,6 +456,7 @@ export default function DashboardsListPage() {
                       tags={d.tags}
                       description={`${d.tiles.length} ${d.tiles.length === 1 ? 'tile' : 'tiles'}`}
                       onDelete={() => handleDelete(d.id)}
+                      onDuplicate={() => handleDuplicate(d)}
                       statusIcon={
                         <AlertStatusIcon alerts={getDashboardAlerts(d.tiles)} />
                       }
