@@ -10,7 +10,9 @@ export type BundleClient = {
   getApiUrl(): string;
   get(path: string): Promise<Response>;
   post(path: string): Promise<Response>;
-  getConnections(): Promise<{ id: string; name: string }[]>;
+  getConnections(): Promise<
+    { id: string; name: string; isPrometheusEndpoint?: boolean }[]
+  >;
   query(connectionId: string, sql: string): Promise<unknown[]>;
 };
 
@@ -151,7 +153,7 @@ export async function runSupportBundle(
     );
   }
 
-  let connections: { id: string; name: string }[] = [];
+  let connections: Awaited<ReturnType<BundleClient['getConnections']>> = [];
   try {
     connections = await client.getConnections();
   } catch (err) {
@@ -161,7 +163,8 @@ export async function runSupportBundle(
       error: err instanceof Error ? err.message : String(err),
     });
   }
-  for (const { id } of connections) {
+  // Prometheus/Thanos connections can't run ClickHouse SQL.
+  for (const { id } of connections.filter(c => !c.isPrometheusEndpoint)) {
     for (const [key, sql] of Object.entries(CLICKHOUSE_QUERIES)) {
       await step(`ch-${id}-${key}`, `ch-${id}-${key}.json`, async () =>
         JSON.stringify(await client.query(id, sql), null, 2),

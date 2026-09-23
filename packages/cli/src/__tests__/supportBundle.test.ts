@@ -269,6 +269,25 @@ describe('runSupportBundle', () => {
     }
   });
 
+  it('skips Prometheus connections, which cannot run ClickHouse SQL', async () => {
+    const queried: string[] = [];
+    const { manifest } = await run(
+      fakeClient({
+        getConnections: async () => [
+          { id: 'c1', name: 'Local' },
+          { id: 'p1', name: 'Thanos', isPrometheusEndpoint: true },
+        ],
+        query: async id => {
+          queried.push(id);
+          return [];
+        },
+      }),
+    );
+
+    expect(new Set(queried)).toEqual(new Set(['c1']));
+    expect(manifest.steps.some(s => s.name.startsWith('ch-p1'))).toBe(false);
+  });
+
   it('keeps the directory when tar is unavailable', async () => {
     const { dir, archive } = await run(fakeClient(), {
       tarCommand: 'definitely-not-tar',
