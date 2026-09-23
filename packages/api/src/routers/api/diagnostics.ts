@@ -14,7 +14,7 @@ import {
   BaseError,
   StatusCode,
 } from '@/utils/errors';
-import { withOperationMetrics, withSpan } from '@/utils/instrumentation';
+import { recordOperationOutcome, withSpan } from '@/utils/instrumentation';
 
 const router = express.Router();
 
@@ -46,10 +46,36 @@ function parseSeconds(req: express.Request): number {
   return parsed.data;
 }
 
-function collect<T>(kind: DiagnosticKind, fn: () => Promise<T>): Promise<T> {
+const isBusy = (err: unknown) =>
+  err instanceof BaseError && err.statusCode === StatusCode.CONFLICT;
+
+// A client that hangs up, or a request refused because another profile is
+// running, is expected: neither counts against the availability SLI.
+function collect<T>(
+  kind: DiagnosticKind,
+  fn: () => Promise<T>,
+  signal?: AbortSignal,
+): Promise<T> {
   return withSpan(
     'diagnostics.collect',
-    () => withOperationMetrics('diagnostics.collect', fn, { kind }),
+    async () => {
+      const start = performance.now();
+      const record = (outcome: 'success' | 'error') =>
+        recordOperationOutcome({
+          operation: 'diagnostics.collect',
+          outcome,
+          durationMs: performance.now() - start,
+          attributes: { kind },
+        });
+      try {
+        const result = await fn();
+        record('success');
+        return result;
+      } catch (err) {
+        if (!signal?.aborted && !isBusy(err)) record('error');
+        throw err;
+      }
+    },
     { attributes: { 'hyperdx.diagnostics.kind': kind } },
   );
 }
@@ -127,16 +153,19 @@ router.post('/cpu-profile', async (req, res, next) => {
   const signal = abortOnDisconnect(res);
   try {
     const seconds = parseSeconds(req);
-    const profile = await collect('cpu-profile', () =>
-      withProfilingLock(() =>
-        withInspector(async session => {
-          await session.post('Profiler.enable');
-          await session.post('Profiler.start');
-          await sleep(seconds * 1000, undefined, { signal });
-          const { profile } = await session.post('Profiler.stop');
-          return profile;
-        }),
-      ),
+    const profile = await collect(
+      'cpu-profile',
+      () =>
+        withProfilingLock(() =>
+          withInspector(async session => {
+            await session.post('Profiler.enable');
+            await session.post('Profiler.start');
+            await sleep(seconds * 1000, undefined, { signal });
+            const { profile } = await session.post('Profiler.stop');
+            return profile;
+          }),
+        ),
+      signal,
     );
     attachment(res, 'cpuprofile');
     res.json(profile);
@@ -151,15 +180,18 @@ router.post('/heap-profile', async (req, res, next) => {
   const signal = abortOnDisconnect(res);
   try {
     const seconds = parseSeconds(req);
-    const profile = await collect('heap-profile', () =>
-      withProfilingLock(() =>
-        withInspector(async session => {
-          await session.post('HeapProfiler.startSampling');
-          await sleep(seconds * 1000, undefined, { signal });
-          const { profile } = await session.post('HeapProfiler.stopSampling');
-          return profile;
-        }),
-      ),
+    const profile = await collect(
+      'heap-profile',
+      () =>
+        withProfilingLock(() =>
+          withInspector(async session => {
+            await session.post('HeapProfiler.startSampling');
+            await sleep(seconds * 1000, undefined, { signal });
+            const { profile } = await session.post('HeapProfiler.stopSampling');
+            return profile;
+          }),
+        ),
+      signal,
     );
     attachment(res, 'heapprofile');
     res.json(profile);
@@ -177,11 +209,14 @@ router.post('/heap-snapshot', async (req, res, next) => {
     if (!DIAGNOSTICS_HEAP_SNAPSHOT_ENABLED) {
       throw new Api404Error('Heap snapshots are disabled');
     }
-    await collect('heap-snapshot', () =>
-      withProfilingLock(async () => {
-        attachment(res, 'heapsnapshot');
-        await pipeline(v8.getHeapSnapshot(), res);
-      }),
+    await collect(
+      'heap-snapshot',
+      () =>
+        withProfilingLock(async () => {
+          attachment(res, 'heapsnapshot');
+          await pipeline(v8.getHeapSnapshot(), res);
+        }),
+      signal,
     );
   } catch (e) {
     if (signal.aborted) return;

@@ -3,6 +3,7 @@ import os from 'node:os';
 import { Worker } from 'node:worker_threads';
 
 import { getAgent, getLoggedInAgent, getServer } from '@/fixtures';
+import * as instrumentation from '@/utils/instrumentation';
 
 describe('diagnostics router', () => {
   const server = getServer();
@@ -116,6 +117,24 @@ describe('diagnostics router', () => {
     await new Promise(resolve => setTimeout(resolve, 300));
 
     await agent.post('/diagnostics/heap-profile?seconds=1').expect(200);
+  });
+
+  it('does not count a disconnect or a busy lock as a failed operation', async () => {
+    const recordOutcome = jest.spyOn(instrumentation, 'recordOperationOutcome');
+    const { agent } = await getLoggedInAgent(server);
+
+    const abandoned = agent.post('/diagnostics/cpu-profile?seconds=30');
+    void abandoned.end(() => {});
+    await new Promise(resolve => setTimeout(resolve, 300));
+    await agent.post('/diagnostics/heap-profile?seconds=1').expect(409);
+    (abandoned as unknown as { req: { destroy(): void } }).req.destroy();
+    await new Promise(resolve => setTimeout(resolve, 300));
+
+    await agent.post('/diagnostics/heap-profile?seconds=1').expect(200);
+
+    const outcomes = recordOutcome.mock.calls.map(([args]) => args.outcome);
+    expect(outcomes).toEqual(['success']);
+    recordOutcome.mockRestore();
   });
 
   it('keeps heap snapshots off unless enabled', async () => {
