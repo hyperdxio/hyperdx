@@ -10,6 +10,7 @@ HyperDX can be deployed in a few different ways:
 - [Bring Your Own ClickHouse](#bring-your-own-clickhouse)
 - [All-in-one Docker Compose Stack](#all-in-one-docker-compose-stack)
 - [Local Development Mode](#local-development-mode)
+- [Easypanel](#easypanel)
 
 ## Bring Your Own ClickHouse
 
@@ -70,3 +71,14 @@ To get started, spin up the local mode container:
 ```bash
 docker run -p 8080:8080 docker.hyperdx.io/hyperdx/hyperdx-local:2-beta
 ```
+
+## Easypanel
+
+[Easypanel](https://easypanel.io) is a self-hosted Docker deployment platform, and HyperDX has a one-click deployment template there: https://easypanel.io/templates/hyperdx
+
+[![Deploy on Easypanel](https://easypanel.io/img/deploy-on-easypanel-40.svg)](https://easypanel.io/templates/hyperdx)
+
+The template deploys the all-in-one local mode image, the same one used in the section above.
+
+![HyperDX running in the Easypanel panel](docs/assets/easypanel-panel.png)
+
