@@ -152,6 +152,7 @@ describe('renderChartConfig', () => {
       'a column only named inside a string literal',
       "concat('region', ServiceName)",
     ],
+    ['a segment of a quoted dotted name', '`host.region`'],
   ])('does not group buckets by %s', async (_, groupBy) => {
     mockMetadata.getColumns = jest
       .fn()
@@ -172,6 +173,7 @@ describe('renderChartConfig', () => {
     'lower(region), ServiceName',
     "region ILIKE '%a%'",
     'Bucketed.region',
+    'Bucketed.`region`',
     'region.1',
     '"region"',
     [{ valueExpression: 'ServiceName' }, { valueExpression: '`region`' }],

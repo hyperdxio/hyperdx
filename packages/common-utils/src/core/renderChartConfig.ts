@@ -1893,8 +1893,8 @@ async function getComputedMetricColumns(
     // Charts still render, but group-by on a computed column will fail.
     console.warn('Failed to list computed metric columns', e);
   }
-  // Whole identifiers outside string literals, plus every dotted slice so
-  // `Bucketed.region` and `region.1` count. Over-matching only splits series.
+  // Whole identifiers outside string literals. Unquoted dotted names also
+  // count by slice, so `Bucketed.region` and `region.1` match; quoted stay whole.
   const groupByText =
     typeof groupBy === 'string'
       ? groupBy
@@ -1905,7 +1905,8 @@ async function getComputedMetricColumns(
         .replace(/'(?:[^'\\]|\\.)*'/g, "''")
         .match(/`[^`]+`|"[^"]+"|[\p{L}\p{N}_$.]+/gu) ?? []
     ).flatMap(token => {
-      const parts = token.replace(/^[`"]|[`"]$/g, '').split('.');
+      if (/^[`"]/.test(token)) return [token.slice(1, -1)];
+      const parts = token.split('.');
       return parts.flatMap((_, i) =>
         parts.slice(i).map((__, j) => parts.slice(i, i + j + 1).join('.')),
       );
