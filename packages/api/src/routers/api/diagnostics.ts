@@ -6,26 +6,23 @@ import v8 from 'node:v8';
 
 import express from 'express';
 import { z } from 'zod';
+import { processRequest } from 'zod-express-middleware';
 
 import { CODE_VERSION, DIAGNOSTICS_HEAP_SNAPSHOT_ENABLED } from '@/config';
-import {
-  Api400Error,
-  Api404Error,
-  BaseError,
-  StatusCode,
-} from '@/utils/errors';
+import { Api404Error, BaseError, StatusCode } from '@/utils/errors';
 import { recordOperationOutcome, withSpan } from '@/utils/instrumentation';
 
 const router = express.Router();
 
 // Stays under the 60s load balancer idle timeout the server is tuned for.
 const MAX_PROFILE_SECONDS = 50;
+const DEFAULT_PROFILE_SECONDS = 30;
 const secondsSchema = z.coerce
   .number()
   .int()
   .min(1)
   .max(MAX_PROFILE_SECONDS)
-  .default(30);
+  .default(DEFAULT_PROFILE_SECONDS);
 
 type DiagnosticKind =
   | 'report'
@@ -36,15 +33,11 @@ type DiagnosticKind =
 // Two profilers running at once distort each other's samples, so one per process.
 let profiling = false;
 
-function parseSeconds(req: express.Request): number {
-  const parsed = secondsSchema.safeParse(req.query.seconds);
-  if (!parsed.success) {
-    throw new Api400Error(
-      `seconds must be an integer from 1 to ${MAX_PROFILE_SECONDS}`,
-    );
-  }
-  return parsed.data;
-}
+// processRequest answers 400 in the shape every other route uses. It types the
+// parsed query with the pre-default shape, hence the fallback at each use.
+const validateSeconds = processRequest({
+  query: z.object({ seconds: secondsSchema }),
+});
 
 const isBusy = (err: unknown) =>
   err instanceof BaseError && err.statusCode === StatusCode.CONFLICT;
@@ -149,10 +142,10 @@ router.get('/report', async (req, res, next) => {
   }
 });
 
-router.post('/cpu-profile', async (req, res, next) => {
+router.post('/cpu-profile', validateSeconds, async (req, res, next) => {
   const signal = abortOnDisconnect(res);
   try {
-    const seconds = parseSeconds(req);
+    const seconds = req.query.seconds ?? DEFAULT_PROFILE_SECONDS;
     const profile = await collect(
       'cpu-profile',
       () =>
@@ -176,10 +169,10 @@ router.post('/cpu-profile', async (req, res, next) => {
   }
 });
 
-router.post('/heap-profile', async (req, res, next) => {
+router.post('/heap-profile', validateSeconds, async (req, res, next) => {
   const signal = abortOnDisconnect(res);
   try {
-    const seconds = parseSeconds(req);
+    const seconds = req.query.seconds ?? DEFAULT_PROFILE_SECONDS;
     const profile = await collect(
       'heap-profile',
       () =>
