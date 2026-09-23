@@ -1815,6 +1815,8 @@ program
               format: 'JSON',
               connectionId,
               abort_signal: signal,
+              // The settings lookup it would run first has no abort signal.
+              shouldSkipApplySettings: true,
             });
             const json = (await resultSet.json()) as { data?: unknown[] };
             return json.data ?? [];

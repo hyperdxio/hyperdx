@@ -69,7 +69,9 @@ export function redact(text: string): string {
   return (
     text
       .replace(/([a-z][a-z0-9+.-]*:\/\/)[^@/\s"]+@/gi, '$1***@')
-      .replace(/(Bearer\s+)[^\s"]+/gi, '$1***')
+      .replace(/((?:Bearer|Basic)\s+)[^\s"]+/gi, '$1***')
+      .replace(/\beyJ[\w-]+\.[\w-]+\.[\w-]+/g, '***')
+      .replace(/\b(\w*(?:password|secret|token|key)=)[^\s&"]+/gi, '$1***')
       .replace(/("\w*(?:password|secret|token|key)"\s*:\s*")[^"]*"/gi, '$1***"')
       // The same, inside a JSON-encoded string such as DEFAULT_CONNECTIONS.
       .replace(
@@ -196,7 +198,7 @@ export async function runSupportBundle(
       checkApi(
         // Large heaps take minutes to snapshot and download.
         await client.post('/diagnostics/heap-snapshot', timeoutSignal(600_000)),
-        'disabled on server (set HDX_DIAGNOSTICS_HEAP_SNAPSHOT=true)',
+        'not available: set HDX_DIAGNOSTICS_ENABLED=true and HDX_DIAGNOSTICS_HEAP_SNAPSHOT=true on the API',
       ),
     );
   }
@@ -254,6 +256,9 @@ export async function runSupportBundle(
       dirname(dir),
       basename(dir),
     ]);
+    // The archive is the result; a second loose copy (maybe a multi-GB heap
+    // snapshot) would only be left behind unnoticed.
+    rmSync(dir, { recursive: true, force: true });
     return { dir, archive, manifest };
   } catch (err) {
     return {

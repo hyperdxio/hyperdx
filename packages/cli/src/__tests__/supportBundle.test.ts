@@ -1,6 +1,7 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'fs';
+import { execFileSync } from 'child_process';
+import { existsSync, mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
-import { join } from 'path';
+import { basename, join } from 'path';
 
 import {
   afterEach,
@@ -20,6 +21,16 @@ import {
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status });
+
+// The bundle directory is removed once archived, so read files back out of it.
+const readFromArchive = (
+  archive: string | undefined,
+  dir: string,
+  file: string,
+) =>
+  execFileSync('tar', ['-xOzf', archive ?? '', `${basename(dir)}/${file}`], {
+    encoding: 'utf8',
+  });
 
 function fakeClient(overrides: Partial<BundleClient> = {}): BundleClient {
   return {
@@ -80,6 +91,18 @@ describe('redact', () => {
     expect(redact('redis://:s3cret@cache:6379')).toBe('redis://***@cache:6379');
   });
 
+  it('masks Basic credentials, JWTs and unquoted key=value secrets', () => {
+    expect(redact('Authorization: Basic dXNlcjpwYXNz')).toBe(
+      'Authorization: Basic ***',
+    );
+    expect(
+      redact('token eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2lnbmF0dXJl here'),
+    ).toBe('token *** here');
+    expect(redact('password=hunter2 api_key=abc123 user=bob')).toBe(
+      'password=*** api_key=*** user=bob',
+    );
+  });
+
   it('leaves profile function names alone', () => {
     const text = '{"functionName":"getToken","url":"file:///app/auth.js"}';
     expect(redact(text)).toBe(text);
@@ -119,9 +142,13 @@ describe('runSupportBundle', () => {
       'ch-c1-table-sizes',
     ]);
     expect(manifest.steps.every(s => s.ok)).toBe(true);
-    expect(existsSync(join(dir, 'api-cpu.cpuprofile'))).toBe(true);
     expect(archive).toBe(`${dir}.tar.gz`);
-    expect(existsSync(archive!)).toBe(true);
+    const listing = execFileSync('tar', ['-tzf', archive!], {
+      encoding: 'utf8',
+    });
+    expect(listing).toContain('api-cpu.cpuprofile');
+    // The archive is the result; the loose copy is removed.
+    expect(existsSync(dir)).toBe(false);
   });
 
   it('asks the API for the requested profile window', async () => {
@@ -174,14 +201,14 @@ describe('runSupportBundle', () => {
   });
 
   it('redacts secrets in written files', async () => {
-    const { dir } = await run(
+    const { dir, archive } = await run(
       fakeClient({
         get: async () =>
           json({ report: { header: { commandLine: ['mongodb://a:b@db/x'] } } }),
       }),
     );
 
-    const written = readFileSync(join(dir, 'api-report.json'), 'utf8');
+    const written = readFromArchive(archive, dir, 'api-report.json');
     expect(written).toContain('mongodb://***@db/x');
     expect(written).not.toContain('a:b@');
   });
@@ -195,7 +222,7 @@ describe('runSupportBundle', () => {
         return new Response('pprof-bytes');
       });
     try {
-      const { manifest, dir } = await run(fakeClient(), {
+      const { manifest, dir, archive } = await run(fakeClient(), {
         collectorPprofUrl: 'http://127.0.0.1:1777/',
       });
 
@@ -204,7 +231,7 @@ describe('runSupportBundle', () => {
         'http://127.0.0.1:1777/debug/pprof/profile?seconds=1',
       ]);
       expect(manifest.steps.map(s => s.name)).toContain('collector-cpu');
-      expect(readFileSync(join(dir, 'collector-heap.pb.gz'), 'utf8')).toBe(
+      expect(readFromArchive(archive, dir, 'collector-heap.pb.gz')).toBe(
         'pprof-bytes',
       );
     } finally {
@@ -228,7 +255,7 @@ describe('runSupportBundle', () => {
   });
 
   it('writes the heap snapshot as-is, without redaction', async () => {
-    const { dir, manifest } = await run(
+    const { dir, manifest, archive } = await run(
       fakeClient({
         post: async path =>
           path === '/diagnostics/heap-snapshot'
@@ -241,7 +268,7 @@ describe('runSupportBundle', () => {
     expect(manifest.steps.find(s => s.name === 'api-heap-snapshot')?.ok).toBe(
       true,
     );
-    expect(readFileSync(join(dir, 'api.heapsnapshot'), 'utf8')).toBe(
+    expect(readFromArchive(archive, dir, 'api.heapsnapshot')).toBe(
       '{"strings":["Bearer keep-me"]}',
     );
   });
@@ -257,7 +284,9 @@ describe('runSupportBundle', () => {
 
     expect(
       manifest.steps.find(s => s.name === 'api-heap-snapshot')?.error,
-    ).toContain('HDX_DIAGNOSTICS_HEAP_SNAPSHOT=true');
+    ).toMatch(
+      /HDX_DIAGNOSTICS_ENABLED=true.*HDX_DIAGNOSTICS_HEAP_SNAPSHOT=true/,
+    );
   });
 
   it('keeps the API steps when connections cannot be listed', async () => {
