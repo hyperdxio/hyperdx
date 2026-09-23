@@ -11,7 +11,7 @@ import { processRequest } from 'zod-express-middleware';
 import { CODE_VERSION, DIAGNOSTICS_HEAP_SNAPSHOT_ENABLED } from '@/config';
 import { Api404Error, BaseError, StatusCode } from '@/utils/errors';
 import { recordOperationOutcome, withSpan } from '@/utils/instrumentation';
-import rateLimiter, { rateLimiterKeyGenerator } from '@/utils/rateLimiter';
+import rateLimiter from '@/utils/rateLimiter';
 
 const router = express.Router();
 
@@ -23,8 +23,8 @@ router.use(
     max: 10,
     standardHeaders: true,
     legacyHeaders: false,
-    keyGenerator: req =>
-      req.user?._id?.toString() ?? rateLimiterKeyGenerator(req),
+    // Mounted behind isUserAuthenticated, so there is always a user.
+    keyGenerator: req => String(req.user?._id),
   }),
 );
 
@@ -205,21 +205,20 @@ async function sendProfile(
 
 router.get('/report', async (req, res, next) => {
   try {
-    const body = await collect('report', async () => {
-      const report: unknown = JSON.parse(
-        JSON.stringify(process.report.getReport(), (key, value) =>
-          REDACTED_REPORT_KEYS.has(key) ? undefined : value,
-        ),
-      );
-      return {
-        codeVersion: CODE_VERSION,
-        hostname: os.hostname(),
-        pid: process.pid,
-        uptimeSeconds: process.uptime(),
-        report,
-      };
-    });
-    res.json(body);
+    // One serialisation pass: this runs on a process that may be struggling.
+    const body = await collect('report', async () =>
+      JSON.stringify(
+        {
+          codeVersion: CODE_VERSION,
+          hostname: os.hostname(),
+          pid: process.pid,
+          uptimeSeconds: process.uptime(),
+          report: process.report.getReport(),
+        },
+        (key, value) => (REDACTED_REPORT_KEYS.has(key) ? undefined : value),
+      ),
+    );
+    res.type('json').send(body);
   } catch (e) {
     next(e);
   }
@@ -246,7 +245,8 @@ router.post('/heap-profile', validateSeconds, (req, res, next) =>
 router.post('/heap-snapshot', async (req, res, next) => {
   const signal = abortOnDisconnect(res);
   try {
-    // Off by default: a snapshot pauses the event loop and can roughly double
+    // Off by default: a snapshot is raw process memory, secrets and decrypted
+    // tokens included, and it pauses the event loop and can roughly double
     // memory, which can OOMKill a pod that is already struggling.
     if (!DIAGNOSTICS_HEAP_SNAPSHOT_ENABLED) {
       throw new Api404Error('Heap snapshots are disabled');
