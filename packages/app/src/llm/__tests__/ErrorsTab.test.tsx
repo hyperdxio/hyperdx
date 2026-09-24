@@ -41,6 +41,7 @@ describe('ErrorsTab', () => {
         logSource={LOG_SOURCE}
         logExpressions={logExpressions}
         sessionId="ses_123"
+        userId="alice@x.com"
       />,
     );
 
@@ -56,6 +57,9 @@ describe('ErrorsTab', () => {
     expect(traceConditions.some((c: string) => c.includes("'ses_123'"))).toBe(
       true,
     );
+    expect(
+      traceConditions.some((c: string) => c.includes("'alice@x.com'")),
+    ).toBe(true);
     expect(traceConfig.orderBy[0].ordering).toBe('DESC');
 
     const logConfig = rowTableProps[1].config;
@@ -70,6 +74,12 @@ describe('ErrorsTab', () => {
       c.includes("'ses_123'"),
     );
     expect(sessionCondition).toContain("LogAttributes['session.id']");
+    // Same for the user scope: matched against the log source's own column,
+    // not the trace source's.
+    const userCondition = logConditions.find((c: string) =>
+      c.includes("'alice@x.com'"),
+    );
+    expect(userCondition).toContain("LogAttributes['user.email']");
   });
 
   it('renders only the trace tile without a log source', () => {

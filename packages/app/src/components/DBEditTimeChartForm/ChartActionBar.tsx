@@ -1,5 +1,6 @@
-import { Control, UseFormHandleSubmit } from 'react-hook-form';
+import { Control, UseFormHandleSubmit, useWatch } from 'react-hook-form';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
+import { isRangeQuery } from '@hyperdx/common-utils/dist/core/promql';
 import { SavedChartConfig } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
@@ -18,6 +19,8 @@ import {
 } from '@tabler/icons-react';
 
 import { ChartEditorFormState } from '@/components/ChartEditor/types';
+import { isPromqlDisplayType } from '@/components/ChartEditor/utils';
+import { EDITOR_INPUT_HEIGHTS } from '@/components/editorInputHeights';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { TimePicker } from '@/components/TimePicker';
 import { IS_LOCAL_MODE } from '@/config';
@@ -117,6 +120,22 @@ export function ChartActionBar({
   filtersToggle,
   setSaveToDashboardModalOpen,
 }: ChartActionBarProps) {
+  const configType = useWatch({ control, name: 'configType' });
+  const displayType = useWatch({ control, name: 'displayType' });
+  const promqlExpressions = useWatch({ control, name: 'promqlExpressions' });
+
+  // A time chart always buckets, and a PromQL tile that reduces a range query
+  // reads the same granularity even though it shows one value rather than a
+  // series. An all-instant PromQL tile has no resolution to choose.
+  const showGranularity =
+    activeTab === 'time' ||
+    (configType === 'promql' &&
+      isPromqlDisplayType(displayType) &&
+      isRangeQuery({
+        promqlExpression: promqlExpressions,
+        displayType,
+      }));
+
   return (
     <Flex justify="space-between" mt="sm">
       <Flex gap="sm">
@@ -154,9 +173,11 @@ export function ChartActionBar({
           </Button>
         )}
       </Flex>
-      <Flex gap="sm" mb="sm" align="center" justify="end">
+      <Flex gap="sm" mb="sm" align="flex-start" justify="end">
         {filtersToggle != null && tabQueriesData(activeTab) && (
-          <DashboardFiltersToggle {...filtersToggle} />
+          <Flex h={`${EDITOR_INPUT_HEIGHTS.sm}px`} align="center">
+            <DashboardFiltersToggle {...filtersToggle} />
+          </Flex>
         )}
         {(activeTab === 'table' ||
           activeTab === 'pie' ||
@@ -192,7 +213,7 @@ export function ChartActionBar({
               }}
             />
           )}
-        {activeTab === 'time' && (
+        {showGranularity && (
           <GranularityPickerControlled control={control} name="granularity" />
         )}
         {tabQueriesData(activeTab) && (

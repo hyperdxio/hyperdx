@@ -3,53 +3,10 @@ import {
   AlertEvaluation,
   AlertInterval,
 } from '@hyperdx/common-utils/dist/types';
-import {
-  Button,
-  Center,
-  Group,
-  Loader,
-  Skeleton,
-  Table,
-  Text,
-  Tooltip,
-} from '@mantine/core';
-import { useInViewport } from '@mantine/hooks';
+import { Center, Skeleton, Table, Text, Tooltip } from '@mantine/core';
 
 import { AlertEvaluationRow } from '@/components/alerts/AlertEvaluationRow';
-
-type LoadMoreSentinelProps = {
-  isFetchingNextPage: boolean;
-  onLoadMore: () => void;
-};
-
-/**
- * Sentinel row at the bottom of the event stream: when scrolled into view
- * (and older pages exist), it triggers the next fetch — infinite scroll in
- * `limit`-sized chunks instead of a manual load-more button.
- */
-function LoadMoreSentinel({
-  isFetchingNextPage,
-  onLoadMore,
-}: LoadMoreSentinelProps) {
-  const { ref, inViewport } = useInViewport();
-
-  React.useEffect(() => {
-    if (inViewport && !isFetchingNextPage) {
-      onLoadMore();
-    }
-  }, [inViewport, isFetchingNextPage, onLoadMore]);
-
-  return (
-    <Center py="sm" ref={ref} data-testid="alert-evaluations-load-more">
-      <Group gap="xs">
-        <Loader size="xs" />
-        <Text size="sm" c="dimmed">
-          Loading older evaluations…
-        </Text>
-      </Group>
-    </Center>
-  );
-}
+import { InfiniteScrollFooter } from '@/components/InfiniteScrollFooter';
 
 type AlertEvaluationsTableProps = {
   evaluations: AlertEvaluation[];
@@ -113,7 +70,7 @@ export function AlertEvaluationsTable({
             <Table.Th>Query duration</Table.Th>
             <Table.Th>
               <Tooltip
-                label="Wall time delivering notifications in this evaluation, including retries. Targets are dispatched concurrently, so the slowest one sets this figure."
+                label="Wall time delivering this evaluation's notifications, including retries. Targets are dispatched concurrently, so the slowest one in each dispatch round sets this figure."
                 multiline
                 maw={320}
                 withArrow
@@ -135,33 +92,16 @@ export function AlertEvaluationsTable({
           ))}
         </Table.Tbody>
       </Table>
-      {hasNextPage &&
-        // A failed page fetch must unmount the sentinel: its effect refires
-        // whenever isFetchingNextPage settles back to false, so leaving it
-        // mounted after an error would refetch in an unbounded loop. Show an
-        // explicit retry affordance instead.
-        (isError ? (
-          <Center py="sm" data-testid="alert-evaluations-load-error">
-            <Group gap="xs">
-              <Text size="sm" c="red">
-                Failed to load older evaluations.
-              </Text>
-              <Button
-                variant="secondary"
-                size="compact-xs"
-                loading={isFetchingNextPage}
-                onClick={onLoadMore}
-              >
-                Retry
-              </Button>
-            </Group>
-          </Center>
-        ) : (
-          <LoadMoreSentinel
-            isFetchingNextPage={isFetchingNextPage}
-            onLoadMore={onLoadMore}
-          />
-        ))}
+      <InfiniteScrollFooter
+        hasNextPage={hasNextPage}
+        isFetchingNextPage={isFetchingNextPage}
+        isFetchNextPageError={isError}
+        onLoadMore={onLoadMore}
+        loadingLabel="Loading older evaluations…"
+        errorLabel="Failed to load older evaluations."
+        sentinelTestId="alert-evaluations-load-more"
+        errorTestId="alert-evaluations-load-error"
+      />
     </>
   );
 }

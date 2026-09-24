@@ -77,11 +77,13 @@ import {
   useAliasMapFromChartConfig,
   useRenderedSqlChartConfig,
 } from '@/hooks/useChartConfig';
-import { useCsvExport } from '@/hooks/useCsvExport';
+import { CsvColumn, useCsvExport } from '@/hooks/useCsvExport';
 import { useColumns, useTableMetadata } from '@/hooks/useMetadata';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import { useGroupedPatterns } from '@/hooks/usePatterns';
+import { useRowSelection } from '@/hooks/useRowSelection';
 import useRowWhere, {
+  getRowId,
   INTERNAL_ROW_FIELDS,
   RowWhereResult,
   WithClause,
@@ -102,12 +104,19 @@ import {
   useLocalStorage,
   usePrevious,
 } from '@/utils';
+import { csvExportFilename } from '@/utils/csv';
 
 import ChartErrorState, {
   ChartErrorStateVariant,
 } from './charts/ChartErrorState';
 import DBRowTableFieldWithPopover from './DBTable/DBRowTableFieldWithPopover';
 import DBRowTableRowButtons from './DBTable/DBRowTableRowButtons';
+import {
+  ROW_SELECTION_COLUMN_WIDTH,
+  RowSelectionCell,
+  RowSelectionHeaderCell,
+} from './DBTable/RowSelectionCells';
+import { RowSelectionMenu } from './DBTable/RowSelectionMenu';
 import TableHeader from './DBTable/TableHeader';
 import {
   highlightText,
@@ -139,11 +148,9 @@ const ACCESSOR_MAP: Record<string, AccessorFn> = {
 };
 
 const MAX_SCROLL_FETCH_LINES = 1000;
+const EXPAND_COLUMN_SIZE = 32;
 const MAX_CELL_LENGTH = 500;
 const MAX_CELL_LENGTH_WRAPPED = 50_000;
-
-const getRowId = (row: Record<string, any>): string =>
-  row[INTERNAL_ROW_FIELDS.ID];
 
 function retrieveColumnValue(column: string, row: Row): any {
   const accessor = ACCESSOR_MAP[column] ?? ACCESSOR_MAP.default;
@@ -365,6 +372,9 @@ export const RawLogTable = memo(
     onSortingChange,
     sortOrder,
     showExpandButton = true,
+    enableRowSelection = false,
+    selectionResetKey,
+    onSelectedRowsChange,
     getRowWhere,
     variant = 'default',
     onRemoveColumn,
@@ -397,6 +407,9 @@ export const RawLogTable = memo(
     onExpandedRowsChange?: (hasExpandedRows: boolean) => void;
     collapseAllRows?: boolean;
     showExpandButton?: boolean;
+    enableRowSelection?: boolean;
+    selectionResetKey?: string;
+    onSelectedRowsChange?: (hasSelectedRows: boolean) => void;
     renderRowDetails?: (row: {
       id: string;
       aliasWith?: WithClause[];
@@ -493,13 +506,25 @@ export const RawLogTable = memo(
       return inferLogLevelColumn(dedupedRows);
     }, [dedupedRows]);
 
+    const csvColumns = useMemo<CsvColumn[]>(
+      () =>
+        displayedColumns.map(col => ({
+          dataKey: col,
+          displayName: columnNameMap?.[col] ?? col,
+        })),
+      [displayedColumns, columnNameMap],
+    );
+
     const { csvData, maxRows, isLimited } = useCsvExport(
       dedupedRows,
-      displayedColumns.map(col => ({
-        dataKey: col,
-        displayName: columnNameMap?.[col] ?? col,
-      })),
+      csvColumns,
     );
+
+    const rowSelection = useRowSelection(dedupedRows, {
+      enabled: enableRowSelection,
+      resetKey: selectionResetKey,
+      onSelectionChange: onSelectedRowsChange,
+    });
 
     // Expandable rows functionality
     const {
@@ -527,6 +552,10 @@ export const RawLogTable = memo(
       [aliasMap, columnTypeMap, logLevelColumn, columnSizeStorage],
     );
 
+    const leadingColumnsWidth =
+      (showExpandButton ? EXPAND_COLUMN_SIZE : 0) +
+      (enableRowSelection ? ROW_SELECTION_COLUMN_WIDTH : 0);
+
     const lastColumnWidth = useMemo(() => {
       if (displayedColumns.length === 0) return MIN_LAST_COLUMN_WIDTH;
 
@@ -540,7 +569,6 @@ export const RawLogTable = memo(
         return Math.max(MIN_LAST_COLUMN_WIDTH, storedLast);
       }
 
-      const expandWidth = showExpandButton ? 32 : 0;
       const nonLastSum = displayedColumns
         .slice(0, -1)
         .reduce(
@@ -550,9 +578,9 @@ export const RawLogTable = memo(
         );
       return Math.max(
         MIN_LAST_COLUMN_WIDTH,
-        containerWidth - nonLastSum - expandWidth,
+        containerWidth - nonLastSum - leadingColumnsWidth,
       );
-    }, [displayedColumns, columnSizeOpts, showExpandButton, containerWidth]);
+    }, [displayedColumns, columnSizeOpts, leadingColumnsWidth, containerWidth]);
 
     const [wrapLinesEnabled, setWrapLinesEnabled] = useLocalStorage<boolean>(
       `${tableId}-wrap-lines`,
@@ -759,10 +787,8 @@ export const RawLogTable = memo(
     // This enables horizontal scrolling when the viewport is narrower than
     // the total column widths.
     const tableMinWidth = useMemo(() => {
-      const EXPAND_COLUMN_SIZE = 32;
-      const expandWidth = showExpandButton ? EXPAND_COLUMN_SIZE : 0;
       return (
-        expandWidth +
+        leadingColumnsWidth +
         displayedColumns.reduce((total, column, i) => {
           const size = getResolvedColumnSize(column, columnSizeOpts);
           if (i === displayedColumns.length - 1) {
@@ -771,7 +797,7 @@ export const RawLogTable = memo(
           return total + size;
         }, 0)
       );
-    }, [displayedColumns, columnSizeOpts, showExpandButton]);
+    }, [displayedColumns, columnSizeOpts, leadingColumnsWidth]);
 
     const { rows: _rows } = table.getRowModel();
 
@@ -938,14 +964,10 @@ export const RawLogTable = memo(
       shiftHighlightedLineId(-1);
     });
 
-    const getCsvFilename = useCallback(() => {
-      // eslint-disable-next-line no-restricted-syntax
-      const timestamp = new Date()
-        .toISOString()
-        .replace(/[:.]/g, '-')
-        .slice(0, 19);
-      return `hyperdx_search_results_${timestamp}.csv`;
-    }, []);
+    const getCsvFilename = useCallback(
+      () => csvExportFilename('hyperdx_search_results'),
+      [],
+    );
 
     return (
       <Flex direction="column" h="100%">
@@ -987,7 +1009,9 @@ export const RawLogTable = memo(
               />
             )}
             <table
-              className={styles.table}
+              className={cx(styles.table, {
+                [styles.selectionActive]: rowSelection.selectedCount > 0,
+              })}
               style={{ minWidth: tableMinWidth }}
               id={tableId}
             >
@@ -995,6 +1019,7 @@ export const RawLogTable = memo(
                 {displayedColumns.length > 0 &&
                   table.getHeaderGroups().map(headerGroup => (
                     <tr key={headerGroup.id}>
+                      {enableRowSelection && <RowSelectionHeaderCell />}
                       {headerGroup.headers.map((header, headerIndex) => {
                         const isLast =
                           headerIndex === headerGroup.headers.length - 1;
@@ -1085,6 +1110,16 @@ export const RawLogTable = memo(
                                     </MantineTooltip>
                                   </UnstyledButton>
                                 )}
+                                {enableRowSelection && (
+                                  <RowSelectionMenu
+                                    selectedCount={rowSelection.selectedCount}
+                                    getSelectedRows={
+                                      rowSelection.getSelectedRows
+                                    }
+                                    columns={csvColumns}
+                                    onClear={rowSelection.clearSelection}
+                                  />
+                                )}
                               </Group>
                             }
                           />
@@ -1093,148 +1128,169 @@ export const RawLogTable = memo(
                     </tr>
                   ))}
               </thead>
-              <tbody>
-                {paddingTop > 0 && (
+              {paddingTop > 0 && (
+                <tbody>
                   <tr>
                     <td colSpan={99999} style={{ height: `${paddingTop}px` }} />
                   </tr>
-                )}
-                {items.map(virtualRow => {
-                  const row = _rows[virtualRow.index] as TableRow<any>;
-                  const rowId = getRowId(row.original);
-                  const isExpanded = expandedRows[rowId] ?? false;
+                </tbody>
+              )}
+              {items.map(virtualRow => {
+                const row = _rows[virtualRow.index] as TableRow<any>;
+                const rowId = getRowId(row.original);
+                const isExpanded = expandedRows[rowId] ?? false;
+                const isRowSelected =
+                  enableRowSelection && rowSelection.isSelected(rowId);
 
-                  return (
-                    <React.Fragment key={virtualRow.key}>
-                      <tr
-                        data-testid={`table-row-${rowId}`}
-                        className={cx(styles.tableRow, {
-                          [styles.tableRow__selected]:
-                            highlightedLineId && highlightedLineId === rowId,
-                        })}
-                        data-index={virtualRow.index}
-                        ref={rowVirtualizer.measureElement}
-                      >
-                        {/* Expand button cell */}
-                        {showExpandButton && (
-                          <td
-                            className="align-top overflow-hidden"
-                            style={{ width: '40px' }}
-                          >
-                            {flexRender(
-                              row.getVisibleCells()[0].column.columnDef.cell,
-                              row.getVisibleCells()[0].getContext(),
-                            )}
-                          </td>
-                        )}
-
-                        {/* Content columns grouped back to preserve row hover/click */}
-                        <td
-                          className="align-top overflow-hidden p-0"
-                          colSpan={columns.length - (showExpandButton ? 1 : 0)}
-                        >
-                          <button
-                            type="button"
-                            className={cx(styles.rowContentButton, {
-                              [styles.isWrapped]: wrapLinesEnabled,
-                              [styles.isTruncated]: !wrapLinesEnabled,
-                            })}
-                            onClick={() => {
-                              _onRowExpandClick(row.original);
-                            }}
-                            aria-label="View details for log entry"
-                          >
-                            {row
-                              .getVisibleCells()
-                              .slice(showExpandButton ? 1 : 0) // Skip expand
-                              .map(cell => {
-                                const columnCustomClassName = (
-                                  cell.column.columnDef.meta as any
-                                )?.className;
-                                const columnSize = cell.column.getSize();
-                                const cellValue = cell.getValue<any>();
-
-                                return (
-                                  <div
-                                    key={cell.id}
-                                    className={cx(
-                                      'flex-shrink-0 overflow-hidden position-relative',
-                                      columnCustomClassName,
-                                    )}
-                                    style={{
-                                      width:
-                                        columnSize === UNDEFINED_WIDTH
-                                          ? 0
-                                          : `${columnSize}px`,
-                                      flex:
-                                        columnSize === UNDEFINED_WIDTH
-                                          ? '1 1 0'
-                                          : 'none',
-                                      minWidth:
-                                        columnSize === UNDEFINED_WIDTH
-                                          ? MIN_LAST_COLUMN_WIDTH
-                                          : undefined,
-                                    }}
-                                  >
-                                    <div className={styles.fieldTextContainer}>
-                                      <DBRowTableFieldWithPopover
-                                        key={cell.id}
-                                        cellValue={cellValue}
-                                        wrapLinesEnabled={wrapLinesEnabled}
-                                        tableContainerRef={tableContainerRef}
-                                        columnName={
-                                          (cell.column.columnDef.meta as any)
-                                            ?.column
-                                        }
-                                        isChart={
-                                          (cell.column.columnDef.meta as any)
-                                            ?.column === '__hdx_pattern_trend'
-                                        }
-                                      >
-                                        {flexRender(
-                                          cell.column.columnDef.cell,
-                                          cell.getContext(),
-                                        )}
-                                      </DBRowTableFieldWithPopover>
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            {/* Row-level copy buttons */}
-                            {getRowWhere && (
-                              <DBRowTableRowButtons
-                                row={row.original}
-                                getRowWhere={getRowWhere}
-                                sourceId={source?.id}
-                                isWrapped={wrapLinesEnabled}
-                                onToggleWrap={() =>
-                                  setWrapLinesEnabled(!wrapLinesEnabled)
-                                }
-                              />
-                            )}
-                          </button>
-                        </td>
-                      </tr>
-                      {showExpandButton && isExpanded && (
-                        <ExpandedLogRow
-                          columnsLength={columns.length}
-                          virtualKey={virtualRow.key.toString()}
-                          source={source}
+                return (
+                  // A row and its inline expansion are two `tr`s but one
+                  // virtual item, so the group — not either `tr` — is what the
+                  // virtualizer measures. Measuring the `tr`s directly gave
+                  // both the same `data-index`, and the expanded one took over
+                  // that index's ResizeObserver registration, then left its
+                  // height cached there after it unmounted.
+                  <tbody
+                    key={virtualRow.key}
+                    data-index={virtualRow.index}
+                    ref={rowVirtualizer.measureElement}
+                  >
+                    <tr
+                      data-testid={`table-row-${rowId}`}
+                      className={cx(styles.tableRow, {
+                        [styles.tableRow__selected]:
+                          highlightedLineId && highlightedLineId === rowId,
+                        [styles.tableRow__multiSelected]: isRowSelected,
+                      })}
+                    >
+                      {enableRowSelection && (
+                        <RowSelectionCell
                           rowId={rowId}
-                          measureElement={rowVirtualizer.measureElement}
-                          virtualIndex={virtualRow.index}
-                        >
-                          {renderRowDetails?.({
-                            id: rowId,
-                            aliasWith:
-                              row.original[INTERNAL_ROW_FIELDS.ALIAS_WITH],
-                            ...row.original,
-                          })}
-                        </ExpandedLogRow>
+                          isSelected={isRowSelected}
+                          onToggle={rowSelection.toggleRow}
+                        />
                       )}
-                    </React.Fragment>
-                  );
-                })}
+
+                      {/* Expand button cell */}
+                      {showExpandButton && (
+                        <td
+                          className="align-top overflow-hidden"
+                          style={{ width: '40px' }}
+                        >
+                          {flexRender(
+                            row.getVisibleCells()[0].column.columnDef.cell,
+                            row.getVisibleCells()[0].getContext(),
+                          )}
+                        </td>
+                      )}
+
+                      {/* Content columns grouped back to preserve row hover/click */}
+                      <td
+                        className="align-top overflow-hidden p-0"
+                        colSpan={columns.length - (showExpandButton ? 1 : 0)}
+                      >
+                        <button
+                          type="button"
+                          className={cx(styles.rowContentButton, {
+                            [styles.isWrapped]: wrapLinesEnabled,
+                            [styles.isTruncated]: !wrapLinesEnabled,
+                          })}
+                          onClick={() => {
+                            _onRowExpandClick(row.original);
+                          }}
+                          aria-label="View details for log entry"
+                        >
+                          {row
+                            .getVisibleCells()
+                            .slice(showExpandButton ? 1 : 0) // Skip expand
+                            .map(cell => {
+                              const columnCustomClassName = (
+                                cell.column.columnDef.meta as any
+                              )?.className;
+                              const columnSize = cell.column.getSize();
+                              const cellValue = cell.getValue<any>();
+
+                              return (
+                                <div
+                                  key={cell.id}
+                                  className={cx(
+                                    'flex-shrink-0 overflow-hidden position-relative',
+                                    columnCustomClassName,
+                                  )}
+                                  style={{
+                                    width:
+                                      columnSize === UNDEFINED_WIDTH
+                                        ? 0
+                                        : `${columnSize}px`,
+                                    flex:
+                                      columnSize === UNDEFINED_WIDTH
+                                        ? '1 1 0'
+                                        : 'none',
+                                    minWidth:
+                                      columnSize === UNDEFINED_WIDTH
+                                        ? MIN_LAST_COLUMN_WIDTH
+                                        : undefined,
+                                  }}
+                                >
+                                  <div className={styles.fieldTextContainer}>
+                                    <DBRowTableFieldWithPopover
+                                      key={cell.id}
+                                      cellValue={cellValue}
+                                      wrapLinesEnabled={wrapLinesEnabled}
+                                      tableContainerRef={tableContainerRef}
+                                      columnName={
+                                        (cell.column.columnDef.meta as any)
+                                          ?.column
+                                      }
+                                      isChart={
+                                        (cell.column.columnDef.meta as any)
+                                          ?.column === '__hdx_pattern_trend'
+                                      }
+                                    >
+                                      {flexRender(
+                                        cell.column.columnDef.cell,
+                                        cell.getContext(),
+                                      )}
+                                    </DBRowTableFieldWithPopover>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          {/* Row-level copy buttons */}
+                          {getRowWhere && (
+                            <DBRowTableRowButtons
+                              row={row.original}
+                              getRowWhere={getRowWhere}
+                              sourceId={source?.id}
+                              isWrapped={wrapLinesEnabled}
+                              onToggleWrap={() =>
+                                setWrapLinesEnabled(!wrapLinesEnabled)
+                              }
+                            />
+                          )}
+                        </button>
+                      </td>
+                    </tr>
+                    {showExpandButton && isExpanded && (
+                      <ExpandedLogRow
+                        columnsLength={
+                          columns.length + (enableRowSelection ? 1 : 0)
+                        }
+                        virtualKey={virtualRow.key.toString()}
+                        source={source}
+                        rowId={rowId}
+                      >
+                        {renderRowDetails?.({
+                          id: rowId,
+                          aliasWith:
+                            row.original[INTERNAL_ROW_FIELDS.ALIAS_WITH],
+                          ...row.original,
+                        })}
+                      </ExpandedLogRow>
+                    )}
+                  </tbody>
+                );
+              })}
+              <tbody>
                 <tr>
                   <td colSpan={800}>
                     <div
@@ -1513,6 +1569,9 @@ function DBSqlRowTableComponent({
   onExpandedRowsChange,
   collapseAllRows,
   showExpandButton = true,
+  enableRowSelection = false,
+  selectionResetKey,
+  onSelectedRowsChange,
   renderRowDetails,
   onSortingChange,
   initialSortBy,
@@ -1544,6 +1603,9 @@ function DBSqlRowTableComponent({
   onExpandedRowsChange?: (hasExpandedRows: boolean) => void;
   collapseAllRows?: boolean;
   showExpandButton?: boolean;
+  enableRowSelection?: boolean;
+  selectionResetKey?: string;
+  onSelectedRowsChange?: (hasSelectedRows: boolean) => void;
   initialSortBy?: SortingState;
   onSortingChange?: (v: SortingState | null) => void;
   variant?: DBRowTableVariant;
@@ -1862,6 +1924,9 @@ function DBSqlRowTableComponent({
         onExpandedRowsChange={onExpandedRowsChange}
         collapseAllRows={collapseAllRows}
         showExpandButton={showExpandButton}
+        enableRowSelection={enableRowSelection}
+        selectionResetKey={selectionResetKey}
+        onSelectedRowsChange={onSelectedRowsChange}
         enableSorting={true}
         onSortingChange={_onSortingChange}
         sortOrder={orderByArray}

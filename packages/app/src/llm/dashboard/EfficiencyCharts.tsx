@@ -23,7 +23,8 @@ const PERCENT_NUMBER_FORMAT: NumberFormat = {
  */
 export function EfficiencyCharts(props: LLMChartProps) {
   const { source, expressions } = props;
-  const base = baseLLMChartConfig(props);
+  // Neither chart selects cost, so skip the ~70 KiB cost alias binding.
+  const base = baseLLMChartConfig({ ...props, withCostAlias: false });
 
   return (
     <>

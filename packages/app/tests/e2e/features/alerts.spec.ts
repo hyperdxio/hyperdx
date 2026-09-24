@@ -243,10 +243,14 @@ test.describe('Alert Creation', { tag: ['@alerts', '@full-stack'] }, () => {
             .getByRole('link')
             .filter({ hasText: tileName }),
         ).toBeVisible({ timeout: 10000 });
-        // Tile alerts have no Terraform resource, so they must not be offered
-        // for import — this is the eligibility branch in AlertRowMenu.
+        // This tile's name is unique and non-blank on a dashboard nothing else
+        // manages, so the provider can address it and the export is offered.
+        // The withheld cases (blank or duplicated tile name, provisioned or
+        // missing dashboard) are covered in iac.int.test.ts and iac.test.ts —
+        // reproducing them here would mean driving the tile editor twice for a
+        // branch that never reaches the browser.
         await alertsPage.openRowMenu(alertsPage.getAlertCardByName(tileName));
-        await expect(alertsPage.terraformMenuItem).toBeHidden();
+        await expect(alertsPage.terraformMenuItem).toBeVisible();
       });
     },
   );
@@ -1042,6 +1046,8 @@ test.describe('Alert Filtering', { tag: ['@alerts', '@full-stack'] }, () => {
     tags: [`team-alpha-${ts}`, `staging-${ts}`],
   };
   const webhookUrl = `https://example.com/filter-${ts}`;
+  /** Applied to a dashboard and nothing else, so no alert can match it. */
+  const dashboardOnlyTag = `dashboard-only-${ts}`;
 
   async function seedFilterTestData(page: import('@playwright/test').Page) {
     const apiUrl = getApiUrl();
@@ -1086,6 +1092,14 @@ test.describe('Alert Filtering', { tag: ['@alerts', '@full-stack'] }, () => {
         },
       });
     }
+
+    await page.request.post(`${apiUrl}/dashboards`, {
+      data: {
+        name: `E2E Filter Dashboard ${ts}`,
+        tiles: [],
+        tags: [dashboardOnlyTag],
+      },
+    });
   }
 
   test.beforeAll(async ({ browser }) => {
@@ -1108,8 +1122,54 @@ test.describe('Alert Filtering', { tag: ['@alerts', '@full-stack'] }, () => {
 
   test('should show search and filter controls', async () => {
     await expect(alertsPage.searchField).toBeVisible();
+    await expect(alertsPage.stateFilterDropdown).toBeVisible();
     await expect(alertsPage.tagFilterDropdown).toBeVisible();
-    await expect(alertsPage.creatorFilterDropdown).toBeVisible();
+    await expect(alertsPage.creatorFilterControl).toBeVisible();
+  });
+
+  test('should filter alerts by state', async () => {
+    await expect(alertsPage.getAlertCardByName(searchAlpha.name)).toBeVisible({
+      timeout: 10000,
+    });
+
+    await test.step('A freshly created alert is in the Ok state', async () => {
+      await alertsPage.selectState('Ok');
+      await expect(
+        alertsPage.getAlertCardByName(searchAlpha.name),
+      ).toBeVisible();
+      await expect(alertsPage.page).toHaveURL(/state=OK/);
+    });
+
+    await test.step('Filtering to another state excludes it', async () => {
+      await alertsPage.selectState('Alert');
+      await expect(
+        alertsPage.getAlertCardByName(searchAlpha.name),
+      ).toBeHidden();
+    });
+
+    await test.step('Clearing the state filter brings it back', async () => {
+      await alertsPage.clearStateFilter();
+      await expect(
+        alertsPage.getAlertCardByName(searchAlpha.name),
+      ).toBeVisible();
+    });
+  });
+
+  test('should scope alerts to the current user', async () => {
+    await expect(alertsPage.getAlertCardByName(searchAlpha.name)).toBeVisible({
+      timeout: 10000,
+    });
+
+    // The fixtures are created by the authenticated user, so scoping to "my
+    // alerts" must keep them. Asserting exclusion would need a second user;
+    // that case is covered by the API's integration tests.
+    await alertsPage.showMyAlerts();
+    await expect(alertsPage.page).toHaveURL(/mine=true/);
+    await expect(alertsPage.getAlertCardByName(searchAlpha.name)).toBeVisible();
+
+    await alertsPage.showAllAlerts();
+    await expect(alertsPage.page).not.toHaveURL(/mine=true/);
+    await expect(alertsPage.getAlertCardByName(searchAlpha.name)).toBeVisible();
   });
 
   test('should filter alerts by name search', async () => {
@@ -1193,6 +1253,18 @@ test.describe('Alert Filtering', { tag: ['@alerts', '@full-stack'] }, () => {
     });
   });
 
+  test('should only offer tags that are applied to alerts', async () => {
+    await expect(alertsPage.getAlertCardByName(searchAlpha.name)).toBeVisible({
+      timeout: 10000,
+    });
+
+    await alertsPage.openTagFilter();
+    await expect(alertsPage.getTagOption(`team-alpha-${ts}`)).toBeVisible();
+    // Tagging a dashboard must not add the tag here: filtering alerts by it
+    // would return nothing.
+    await expect(alertsPage.getTagOption(dashboardOnlyTag)).toHaveCount(0);
+  });
+
   test('should filter alerts by tag shared across sources', async () => {
     await expect(alertsPage.getAlertCardByName(searchAlpha.name)).toBeVisible({
       timeout: 10000,
@@ -1226,5 +1298,117 @@ test.describe('Alert Filtering', { tag: ['@alerts', '@full-stack'] }, () => {
       timeout: 10000,
     });
     await expect(alertsPage.getAlertCardByName(searchAlpha.name)).toBeHidden();
+  });
+});
+
+test.describe('Alert Pagination', { tag: ['@alerts', '@full-stack'] }, () => {
+  // Serial so the 105-alert seed runs once, not once per worker.
+  test.describe.configure({ mode: 'serial' });
+
+  let alertsPage: AlertsPage;
+  const ts = Date.now();
+
+  /** Must exceed the page the app asks for (ALERTS_PAGE_SIZE = 100). */
+  const SEEDED_COUNT = 105;
+  const scope = `E2E Page ${ts}`;
+  /**
+   * Zero-padded so the server's `{displayName: 1, _id: 1}` order is
+   * predictable, which is what lets the test name a row that can only have
+   * arrived on the second page.
+   */
+  const alertName = (i: number) => `${scope} ${String(i).padStart(3, '0')}`;
+  const lastAlertName = alertName(SEEDED_COUNT - 1);
+
+  async function seedPaginationData(page: import('@playwright/test').Page) {
+    const apiUrl = getApiUrl();
+    const sources = await getSources(page, 'log');
+    const logSourceId = sources[0]._id;
+
+    const webhookRes = await page.request.post(`${apiUrl}/webhooks`, {
+      data: {
+        name: `E2E Page Webhook ${ts}`,
+        service: 'generic',
+        url: `https://example.com/page-${ts}`,
+      },
+    });
+    const webhook = (await webhookRes.json()).data;
+    const channel = { type: 'webhook', webhookId: webhook._id ?? webhook.id };
+
+    const ssRes = await page.request.post(`${apiUrl}/saved-search`, {
+      data: {
+        name: `${scope} source`,
+        select: '',
+        where: '',
+        whereLanguage: 'lucene',
+        source: logSourceId,
+        tags: [],
+      },
+    });
+    expect(ssRes.ok(), `saved search seed failed: ${await ssRes.text()}`).toBe(
+      true,
+    );
+    const saved = await ssRes.json();
+    const savedSearchId = saved._id ?? saved.id;
+
+    // One saved search, N alerts against it, each with an explicit
+    // displayName — the create endpoint only derives a name when none is
+    // given, so this avoids seeding N saved searches too.
+    for (let i = 0; i < SEEDED_COUNT; i++) {
+      const res = await page.request.post(`${apiUrl}/alerts`, {
+        data: {
+          source: 'saved_search',
+          savedSearchId,
+          displayName: alertName(i),
+          channel,
+          interval: '5m',
+          threshold: 10,
+          thresholdType: 'above',
+        },
+      });
+      // Seeding silently returning a 4xx is indistinguishable from a broken
+      // page once the assertions run, so fail loudly here instead.
+      expect(res.ok(), `alert seed ${i} failed: ${await res.text()}`).toBe(
+        true,
+      );
+    }
+  }
+
+  test.beforeAll(async ({ browser }) => {
+    const authFile = path.join(__dirname, '../.auth/user.json');
+    const context = await browser.newContext({ storageState: authFile });
+    const page = await context.newPage();
+    await seedPaginationData(page);
+    await context.close();
+  });
+
+  test.beforeEach(async ({ page }) => {
+    alertsPage = new AlertsPage(page);
+    await alertsPage.goto();
+    await expect(alertsPage.pageContainer).toBeVisible();
+    await expect(alertsPage.filters).toBeVisible({ timeout: 10000 });
+  });
+
+  test('should load more alerts when scrolling to the bottom', async () => {
+    await alertsPage.searchByName(scope);
+
+    await test.step('The first page stops short of every match', async () => {
+      await expect(alertsPage.getAlertCardByName(alertName(0))).toBeVisible({
+        timeout: 15000,
+      });
+      // Beyond the first page, so it cannot be in the response yet.
+      await expect(alertsPage.getAlertCardByName(lastAlertName)).toBeHidden();
+      await expect(alertsPage.loadMoreSentinel).toBeAttached();
+    });
+
+    await test.step('Scrolling to the bottom pulls the next page', async () => {
+      await alertsPage.scrollUntilAlertVisible(lastAlertName);
+      await expect(alertsPage.getAlertCardByName(lastAlertName)).toBeVisible();
+    });
+
+    await test.step('The sentinel goes away once every page is in', async () => {
+      await expect(alertsPage.loadMoreSentinel).toHaveCount(0, {
+        timeout: 15000,
+      });
+    });
   });
 });

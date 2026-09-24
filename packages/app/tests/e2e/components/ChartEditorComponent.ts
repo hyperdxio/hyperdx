@@ -14,6 +14,7 @@ import { switchWhereToLucene } from '../utils/lucene-autocomplete';
 import { addTagViaPicker, removeTagViaPicker } from '../utils/tags';
 
 import { WebhookAlertModalComponent } from './WebhookAlertModalComponent';
+import { WhereInputComponent } from './WhereInputComponent';
 
 export class ChartEditorComponent {
   readonly page: Page;
@@ -98,30 +99,21 @@ export class ChartEditorComponent {
 
   /**
    * The editor renders one WHERE input per series (the series' agg condition)
-   * followed by the chart-level WHERE, and they share a placeholder and testid.
-   * `'series'` takes the first, `'chart'` the last — so `'series'` only
-   * addresses the first series, which is all the tests need so far.
+   * followed by the chart-level WHERE. `'series'` takes the first, `'chart'`
+   * the last — so `'series'` only addresses the first series, which is all the
+   * tests need so far.
    */
-  private whereInput(locator: Locator, scope: 'chart' | 'series'): Locator {
-    return scope === 'series' ? locator.first() : locator.last();
-  }
-
-  /**
-   * A whole WHERE input — its language switch, the SQL or Lucene editor, and
-   * anything the input renders beside them. Located from the language switch,
-   * which is the one part present in both languages and whichever state the
-   * editor is in.
-   */
-  private whereRow(scope: 'chart' | 'series' = 'chart'): Locator {
-    return this.whereInput(
-      this.editorForm().getByTestId('where-language-switch'),
-      scope,
-    ).locator('xpath=..');
+  private whereInput(scope: 'chart' | 'series' = 'chart'): WhereInputComponent {
+    return new WhereInputComponent(
+      this.page,
+      this.editorForm(),
+      scope === 'series' ? 'first' : 'last',
+    );
   }
 
   /** The warning icon a WHERE input shows about the variables it references. */
   whereVariableWarning(scope: 'chart' | 'series' = 'chart'): Locator {
-    return this.whereRow(scope).getByTestId('variable-validation');
+    return this.whereInput(scope).variableWarning;
   }
 
   /**
@@ -147,26 +139,7 @@ export class ChartEditorComponent {
   ) {
     // A completion popup left open by a prior editor can overlay the switch.
     await dismissSqlAutocomplete(this.page);
-    const select = this.whereInput(
-      this.editorForm().getByTestId('where-language-switch'),
-      scope,
-    ).getByLabel('Query language');
-    await select.click();
-    await this.page
-      .getByRole('option', { name: language, exact: true })
-      .click();
-  }
-
-  /** Focus a WHERE input and replace its contents with `expression`. */
-  private async fillWhereEditor(expression: string, scope: 'chart' | 'series') {
-    // Located through the row rather than the placeholder, which CodeMirror
-    // drops as soon as there is content — so this can refill an input it has
-    // already filled once.
-    const editor = this.whereRow(scope).locator('.cm-content');
-    await editor.click();
-    await this.page.keyboard.press('ControlOrMeta+A');
-    await this.page.keyboard.press('Delete');
-    await this.page.keyboard.type(expression);
+    await this.whereInput(scope).selectLanguage(language);
   }
 
   /**
@@ -175,7 +148,7 @@ export class ChartEditorComponent {
    */
   async setSqlWhere(expression: string, scope: 'chart' | 'series' = 'chart') {
     await this.setWhereLanguage('SQL', scope);
-    await this.fillWhereEditor(expression, scope);
+    await this.whereInput(scope).fillSql(expression);
     await dismissSqlAutocomplete(this.page);
   }
 
@@ -184,12 +157,7 @@ export class ChartEditorComponent {
    * plain textarea rather than CodeMirror. Leaves the suggestion dropdown open.
    */
   async typeLuceneWhere(text: string, scope: 'chart' | 'series' = 'chart') {
-    const input = this.whereInput(
-      this.editorForm().getByPlaceholder(/Search your events w\/ Lucene/i),
-      scope,
-    );
-    await input.click();
-    await input.fill(text);
+    await this.whereInput(scope).typeLucene(text);
   }
 
   /**
@@ -204,7 +172,7 @@ export class ChartEditorComponent {
     scope: 'chart' | 'series' = 'chart',
   ): Promise<{ labels: string[]; info: string }> {
     await this.setWhereLanguage('SQL', scope);
-    await this.fillWhereEditor(prefix, scope);
+    await this.whereInput(scope).fillSql(prefix);
 
     const popup = this.page.locator('.cm-tooltip-autocomplete');
     await popup.waitFor({ state: 'visible', timeout: 10000 });
@@ -432,23 +400,29 @@ export class ChartEditorComponent {
   }
 
   /**
-   * Replace the entire contents of the PromQL expression editor.
+   * Replace the entire contents of one PromQL expression editor.
    *
-   * The same `.cm-editor` locator as the SQL template, and `.first()` for the
-   * same reason: the expression input is above the preview panel, whose
-   * "Generated PromQL" accordion holds a second, read-only CodeMirror.
+   * The same `.cm-editor` locator as the SQL template, indexed for the same
+   * reason: the expression inputs come before the preview panel, whose
+   * "Generated PromQL" accordion holds read-only CodeMirrors of its own. So
+   * `index` addresses the nth expression row, counting from the top.
    */
-  async replacePromqlExpression(expression: string) {
+  async replacePromqlExpression(expression: string, index = 0) {
     await replaceEditorText(
       this.page,
-      this.page.locator('.cm-editor .cm-content').first(),
+      this.page.locator('.cm-editor .cm-content').nth(index),
       expression,
     );
   }
 
-  /** Read the current text of the PromQL expression editor. */
-  async getPromqlEditorText(): Promise<string> {
-    return this.page.locator('.cm-editor .cm-content').first().innerText();
+  /** Read the current text of a PromQL expression editor. */
+  async getPromqlEditorText(index = 0): Promise<string> {
+    return this.page.locator('.cm-editor .cm-content').nth(index).innerText();
+  }
+
+  /** Append an empty PromQL expression row (time series charts only). */
+  async addPromqlExpression() {
+    await this.page.getByTestId('promql-add-expression-button').click();
   }
 
   /**
@@ -677,22 +651,26 @@ export class ChartEditorComponent {
   }
 
   /**
-   * CodeMirror content of the "Generated PromQL" preview.
+   * CodeMirror content of the nth expression in the "Generated PromQL"
+   * preview, which holds one per expression the tile plots.
    *
    * Its own test id rather than `.cm-editor` with an index: the editor page
    * can hold several CodeMirror instances, and which ordinal this one takes
    * depends on the mode the editor is in.
    */
-  generatedPromqlContent(): Locator {
-    return this.page.getByTestId('chart-promql-preview').locator('.cm-content');
+  generatedPromqlContent(index = 0): Locator {
+    return this.page
+      .getByTestId('chart-promql-preview')
+      .nth(index)
+      .locator('.cm-content');
   }
 
   /**
    * The generated PromQL as a single whitespace-collapsed line. Substitution is
    * debounced by 300ms, so assert on it with `toPass` or an expect timeout.
    */
-  async getGeneratedPromqlText(): Promise<string> {
-    const text = await this.generatedPromqlContent().innerText();
+  async getGeneratedPromqlText(index = 0): Promise<string> {
+    const text = await this.generatedPromqlContent(index).innerText();
     return text.replace(/\s+/g, ' ').trim();
   }
 
@@ -1171,6 +1149,31 @@ export class ChartEditorComponent {
   }
 
   /**
+   * Choose how a PromQL expression is evaluated, from the toggle under the
+   * expression editor. `reducer` is the visible label (e.g. "Max"), and only
+   * applies to a range query.
+   */
+  async setPromqlQueryType(
+    queryType: 'Instant' | 'Range',
+    { index = 0, reducer }: { index?: number; reducer?: string } = {},
+  ) {
+    const group = this.page.getByTestId(`promql-query-type-input-${index}`);
+    if (!(await group.isVisible())) {
+      await this.page.getByTestId(`promql-query-type-control-${index}`).click();
+    }
+    await group.getByText(queryType, { exact: true }).click();
+
+    if (reducer) {
+      await this.page
+        .getByRole('combobox', { name: 'PromQL range reducer' })
+        .click();
+      await this.page
+        .getByRole('option', { name: reducer, exact: true })
+        .click();
+    }
+  }
+
+  /**
    * Open the Display Settings drawer and wait for it to become visible.
    */
   async openDisplaySettings() {
@@ -1241,7 +1244,9 @@ export class ChartEditorComponent {
   /**
    * Click the "Add Formula" button (metric sources only) to append a formula
    * row, and fill its expression (and optional alias). Targets the last
-   * formula row so multiple formulas can be added in sequence.
+   * formula row so multiple formulas can be added in sequence. Formula rows
+   * reuse the shared series controls, so the alias input carries the series
+   * test id and is last on the page (formulas render after the series).
    */
   async addFormula(expression: string, alias?: string) {
     await this.page.getByTestId('add-formula-button').click();
@@ -1250,7 +1255,7 @@ export class ChartEditorComponent {
       .last();
     await expressionInput.fill(expression);
     if (alias !== undefined) {
-      await this.page.getByTestId('formula-alias-input').last().fill(alias);
+      await this.page.getByTestId('series-alias-input').last().fill(alias);
     }
     await expressionInput.blur();
   }
@@ -1291,7 +1296,12 @@ export class ChartEditorComponent {
    * default `count()` series distinct column names in a multi-series table.
    */
   async setSeriesAlias(index: number, alias: string) {
-    await this.page.getByTestId('series-alias-input').nth(index).fill(alias);
+    await this.seriesAliasInput(index).fill(alias);
+  }
+
+  /** The alias input of the series (or PromQL expression) row at `index`. */
+  seriesAliasInput(index: number): Locator {
+    return this.page.getByTestId('series-alias-input').nth(index);
   }
 
   /**
@@ -1354,13 +1364,18 @@ export class ChartEditorComponent {
    */
   async openSeriesNumberFormat(seriesIndex: number) {
     await this.page
-      .getByRole('button', { name: 'Edit series display format' })
+      .getByRole('button', { name: 'Edit display format' })
       .nth(seriesIndex)
       .click();
-    const drawer = this.page.getByRole('dialog', {
-      name: 'Series Display Settings',
+    await this.seriesDisplaySettingsDrawer().waitFor({
+      state: 'visible',
+      timeout: 5000,
     });
-    await drawer.waitFor({ state: 'visible', timeout: 5000 });
+  }
+
+  /** The per-series display settings drawer (number format, legend template). */
+  seriesDisplaySettingsDrawer(): Locator {
+    return this.page.getByRole('dialog', { name: 'Series Display Settings' });
   }
 
   /**
@@ -1368,10 +1383,9 @@ export class ChartEditorComponent {
    * "Series Display Settings" drawer.
    */
   async setSeriesFormatMode(mode: 'Inherit' | 'Custom') {
-    const drawer = this.page.getByRole('dialog', {
-      name: 'Series Display Settings',
-    });
-    await drawer.getByText(mode, { exact: true }).click();
+    await this.seriesDisplaySettingsDrawer()
+      .getByText(mode, { exact: true })
+      .click();
   }
 
   /**
@@ -1379,11 +1393,13 @@ export class ChartEditorComponent {
    * the drawer to close.
    */
   async applySeriesNumberFormat() {
-    const drawer = this.page.getByRole('dialog', {
-      name: 'Series Display Settings',
+    await this.seriesDisplaySettingsDrawer()
+      .getByRole('button', { name: 'Apply', exact: true })
+      .click();
+    await this.seriesDisplaySettingsDrawer().waitFor({
+      state: 'hidden',
+      timeout: 5000,
     });
-    await drawer.getByRole('button', { name: 'Apply', exact: true }).click();
-    await drawer.waitFor({ state: 'hidden', timeout: 5000 });
   }
 
   /**

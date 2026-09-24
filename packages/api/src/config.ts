@@ -47,6 +47,11 @@ export const WEBHOOK_HOSTNAME_ALLOWLIST = env.WEBHOOK_HOSTNAME_ALLOWLIST ?? '';
 export const RUN_SCHEDULED_TASKS_EXTERNALLY =
   env.RUN_SCHEDULED_TASKS_EXTERNALLY === 'true';
 
+// 32-byte key (base64 or hex). Setting it is what turns on encryption of
+// stored third-party tokens; unset means they are stored in plain text. See
+// utils/tokenEncryption.ts.
+export const TOKEN_ENCRYPTION_KEY = env.TOKEN_ENCRYPTION_KEY;
+
 // Only for single container local deployments, disable authentication
 export const IS_LOCAL_APP_MODE =
   env.IS_LOCAL_APP_MODE === 'DANGEROUSLY_is_local_app_mode💀';
@@ -56,6 +61,11 @@ export const DEFAULT_CONNECTIONS = env.DEFAULT_CONNECTIONS;
 export const DEFAULT_SOURCES = env.DEFAULT_SOURCES;
 
 export const IS_PROMQL_ENABLED = env.ENABLE_PROMQL === 'true';
+
+export const EXTERNAL_API_RATE_LIMIT_MAX = (() => {
+  const parsed = Number(env.EXTERNAL_API_RATE_LIMIT_MAX);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 100;
+})();
 
 // FOR CI ONLY
 export const CLICKHOUSE_HOST = env.CLICKHOUSE_HOST as string;

@@ -47,6 +47,16 @@
     <!--     <errors>true</errors> -->
     <!-- </prometheus> -->
 
+    <http_handlers>
+        <rule>
+            <url_prefix>/prometheus/api/v1</url_prefix>
+            <handler>
+                <type>prometheus_api_v1</type>
+            </handler>
+        </rule>
+        <defaults/>
+    </http_handlers>
+
     <!-- Query log. Used only for queries with setting log_queries = 1. -->
     <query_log>
         <database>system</database>

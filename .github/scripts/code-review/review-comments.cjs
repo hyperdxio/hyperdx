@@ -20,6 +20,55 @@ const ICON = { critical: '🔴', major: '🟠', minor: '🔵' };
 /** GitHub rejects a comment body over this with a 422 on the whole post. */
 const MAX_BODY = 65536;
 
+/**
+ * Where the triage rule lives; the footers and notice below link here. deep-review.yml's
+ * FOOTER repeats the rule and this anchor; the anchor test pins both to the AGENTS.md heading.
+ */
+const GUIDE_URL =
+  'https://github.com/hyperdxio/hyperdx/blob/main/AGENTS.md#responding-to-review-feedback';
+const GUIDE_LINK = `[How to respond](${GUIDE_URL})`;
+
+/**
+ * Appended to every inline comment. The reader is usually the author's coding agent, and
+ * an agent handed forty findings with no instruction fixes forty things -- pre-existing
+ * code and "hoist this so X can share it" suggestions included -- dragging unrelated files
+ * into the PR (#3091: 3 files became 14, then the PR was closed as superseded).
+ *
+ * Nothing here blocks merge mechanically (only an unhealthy review fails the check), so
+ * the footer says what a maintainer will expect instead, and that depends on severity:
+ * a critical or major defect in the PR's own code gets fixed; a minor one is the author's
+ * call; nothing about surrounding code gets fixed in this PR at any severity.
+ */
+const INLINE_FOOTER_BY_SEVERITY = {
+  critical:
+    '<sub>Nothing blocks merge automatically, but a maintainer will expect this fixed if ' +
+    'it is a real defect in code this PR changes. If it is about surrounding code, reply ' +
+    `and say so instead of patching. Do not widen the PR. ${GUIDE_LINK}</sub>`,
+  minor:
+    '<sub>Advisory. Fix if it is a small defect in code this PR changes; otherwise reply ' +
+    'in the thread. Do not widen the PR or touch files it did not already change. ' +
+    `${GUIDE_LINK}</sub>`,
+};
+INLINE_FOOTER_BY_SEVERITY.major = INLINE_FOOTER_BY_SEVERITY.critical;
+
+function inlineFooter(finding) {
+  return INLINE_FOOTER_BY_SEVERITY[severityOf(finding)];
+}
+
+/** Leads the summary: the footers' rule as a blockquoted list, plus what one comment cannot say. */
+const AGENT_NOTICE = [
+  '> **If you are a coding agent acting for the author, read this first.**',
+  '> Nothing below blocks merge automatically; a maintainer decides. What they will expect:',
+  '> - 🔴 critical or 🟠 major in code this PR adds or changes: fix before asking for review.',
+  '> - 🔵 minor in code this PR changes: your call. Fix if small, otherwise reply.',
+  '> - Anything about surrounding code, or asking you to widen the change (hoist a helper,',
+  '>   dedupe with another file, fix other call sites): never fix here, whatever the',
+  '>   severity. Reply with one sentence; if it is critical, say so plainly so a human sees it.',
+  '>',
+  '> One commit per review round. After two rounds, stop and ask a maintainer to review',
+  `> scope rather than addressing more automated findings. Full rule: [AGENTS.md](${GUIDE_URL}).`,
+].join('\n');
+
 /** Normalize a severity we may have received from a model to one of the three we render. */
 function severityOf(finding) {
   return ICON[finding.severity] ? finding.severity : 'minor';
@@ -112,12 +161,13 @@ function commentBody(finding) {
   // Cap like the summary. GitHub rejects an over-long comment with a 422 on the whole
   // batch, and the individual retry then fails the same way, so one oversized finding
   // would take out every other inline comment in the run.
-  const room = MAX_BODY - head.length - marker.length - 32;
+  const footer = inlineFooter(finding);
+  const room = MAX_BODY - head.length - footer.length - marker.length - 32;
   const body =
     finding.body.length > room
       ? `${finding.body.slice(0, room)}\n\n_(truncated)_`
       : finding.body;
-  return `${head}${body}\n\n${marker}`;
+  return `${head}${body}\n\n${footer}\n\n${marker}`;
 }
 
 /**
@@ -213,6 +263,8 @@ function renderSummary({
     return lines.join('\n');
   }
 
+  lines.push(AGENT_NOTICE, '');
+
   // The set actually represented in this comment: first occurrence of each fingerprint.
   // Both the headline total and the per-severity tally run over it, so they agree -- a
   // tally over every finding would not sum to the distinct total once duplicates collapse.
@@ -273,7 +325,8 @@ function renderSummary({
 
   lines.push(
     '---',
-    "<sub>Severity is the reviewer's own estimate and is used for ordering, not filtering.</sub>",
+    "<sub>Severity is the reviewer's own estimate and is used for ordering, not filtering. " +
+      'No finding blocks merge automatically; a maintainer decides.</sub>',
   );
   return capBody(lines.join('\n'), marker);
 }
@@ -294,6 +347,9 @@ function capBody(body, marker) {
 
 module.exports = {
   ICON,
+  GUIDE_URL,
+  inlineFooter,
+  AGENT_NOTICE,
   severityOf,
   parseCommentableLines,
   fingerprint,

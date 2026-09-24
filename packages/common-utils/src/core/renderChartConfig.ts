@@ -856,6 +856,7 @@ function timeBucketExpr({
   dateRange,
   alias = FIXED_TIME_BUCKET_EXPR_ALIAS,
   isRenderingRawSqlTemplate,
+  minGranularitySeconds,
 }: {
   interval: SQLInterval | 'auto';
   timestampValueExpression: string;
@@ -869,6 +870,8 @@ function timeBucketExpr({
   dateRange?: [Date, Date];
   alias?: string;
   isRenderingRawSqlTemplate?: boolean;
+  /** See `DateRange.minGranularitySeconds`. Only affects `interval === 'auto'`. */
+  minGranularitySeconds?: number;
 }) {
   const unsafeTimestampValueExpression = {
     UNSAFE_RAW_SQL:
@@ -885,7 +888,11 @@ function timeBucketExpr({
   const unsafeInterval = {
     UNSAFE_RAW_SQL:
       interval === 'auto' && Array.isArray(dateRange)
-        ? convertDateRangeToGranularityString(dateRange)
+        ? convertDateRangeToGranularityString(
+            dateRange,
+            undefined,
+            minGranularitySeconds,
+          )
         : interval,
   };
 
@@ -1183,6 +1190,7 @@ async function renderSelect(
             chartConfig.bucketTimestampValueExpression,
           dateRange: chartConfig.dateRange,
           isRenderingRawSqlTemplate: chartConfig.isRenderingRawSqlTemplate,
+          minGranularitySeconds: chartConfig.minGranularitySeconds,
         })
       : [],
   );
@@ -1491,6 +1499,7 @@ async function renderGroupBy(
             chartConfig.bucketTimestampValueExpression,
           dateRange: chartConfig.dateRange,
           isRenderingRawSqlTemplate: chartConfig.isRenderingRawSqlTemplate,
+          minGranularitySeconds: chartConfig.minGranularitySeconds,
         })
       : [],
   );
@@ -1661,6 +1670,7 @@ function renderOrderBy(
             chartConfig.bucketTimestampValueExpression,
           dateRange: chartConfig.dateRange,
           isRenderingRawSqlTemplate: chartConfig.isRenderingRawSqlTemplate,
+          minGranularitySeconds: chartConfig.minGranularitySeconds,
         })
       : [],
     chartConfig.orderBy != null
@@ -1813,7 +1823,11 @@ function renderDeltaExpression(
 ) {
   const interval =
     chartConfig.granularity === 'auto' && Array.isArray(chartConfig.dateRange)
-      ? convertDateRangeToGranularityString(chartConfig.dateRange)
+      ? convertDateRangeToGranularityString(
+          chartConfig.dateRange,
+          undefined,
+          chartConfig.minGranularitySeconds,
+        )
       : chartConfig.granularity;
   const intervalInSeconds = convertGranularityToSeconds(interval ?? '');
 
@@ -1836,6 +1850,124 @@ function renderDeltaExpression(
   // Prevent division by zero, if timeDiffInSeconds is 0, return 0
   // The delta is extrapolated to the bucket interval, to match prometheus delta() behavior
   return `IF(${timeDiffInSeconds} > 0, ${valueDiff} * ${intervalInSeconds} / ${timeDiffInSeconds}, 0)`;
+}
+
+// OTel columns each Bucketed CTE already projects with any().
+const GAUGE_BUCKETED_COLUMNS = [
+  'ScopeAttributes',
+  'ResourceAttributes',
+  'Attributes',
+  'ResourceSchemaUrl',
+  'ScopeName',
+  'ScopeVersion',
+  'ScopeDroppedAttrCount',
+  'ScopeSchemaUrl',
+  'ServiceName',
+  'MetricDescription',
+  'MetricUnit',
+  'StartTimeUnix',
+  'Flags',
+];
+const SUM_BUCKETED_COLUMNS = [
+  ...GAUGE_BUCKETED_COLUMNS,
+  'MetricName',
+  'AggregationTemporality',
+  'IsMonotonic',
+];
+
+/**
+ * `SELECT *` skips MATERIALIZED and ALIAS columns, so the metric CTEs select
+ * them explicitly to keep them usable in the outer select and group-by.
+ * Names the CTE already defines are skipped to avoid a clash. Grouped-by ones
+ * join the bucket GROUP BY instead of `any()`, so rows with different values
+ * stay apart; AttributesHash is left alone because the sum windows use it.
+ */
+async function getComputedMetricColumns(
+  metadata: Metadata,
+  {
+    databaseName,
+    tableName,
+    connectionId,
+    reservedNames,
+    bucketedColumns,
+    groupBy,
+  }: {
+    databaseName: string;
+    tableName: string;
+    connectionId: string;
+    reservedNames: string[];
+    bucketedColumns: string[];
+    groupBy: BuilderChartConfigWithOptDateRangeEx['groupBy'];
+  },
+): Promise<{
+  select: string;
+  aggregate: string;
+  groupBy: string;
+  project: (c: string) => { UNSAFE_RAW_SQL: string };
+}> {
+  let columnNames: string[] = [];
+  try {
+    const columns = await metadata.getColumns({
+      databaseName,
+      tableName,
+      connectionId,
+    });
+    columnNames = columns
+      .filter(
+        c =>
+          (c.default_type === 'MATERIALIZED' || c.default_type === 'ALIAS') &&
+          !reservedNames.includes(c.name),
+      )
+      .map(c => c.name);
+  } catch (e) {
+    // Charts still render, but group-by on a computed column will fail.
+    console.warn('Failed to list computed metric columns', e);
+  }
+  // Whole identifiers outside string literals. Unquoted dotted names also
+  // count by slice, so `Bucketed.region` and `region.1` match; quoted stay whole.
+  const groupByText =
+    typeof groupBy === 'string'
+      ? groupBy
+      : (groupBy ?? []).map(g => g.valueExpression).join(',');
+  const referenced = new Set(
+    (
+      groupByText
+        .replace(/'(?:[^'\\]|\\.)*'/g, "''")
+        .match(
+          /`(?:[^`\\]|``|\\.)+`|"(?:[^"\\]|""|\\.)+"|[\p{L}\p{N}_$.]+/gu,
+        ) ?? []
+    ).flatMap(token => {
+      if (/^[`"]/.test(token)) {
+        // Undo ClickHouse's doubled-quote and backslash escapes.
+        const quote = token[0];
+        return [
+          token
+            .slice(1, -1)
+            .replaceAll(quote + quote, quote)
+            .replace(/\\(.)/g, '$1'),
+        ];
+      }
+      const parts = token.split('.');
+      return parts.flatMap((_, i) =>
+        parts.slice(i).map((__, j) => parts.slice(i, i + j + 1).join('.')),
+      );
+    }),
+  );
+  const escape = (c: string) => SqlString.escapeId(c, true);
+  const grouped = new Set(columnNames.filter(c => referenced.has(c)));
+  // Bucketed projects its own columns via `project`, so they aren't repeated.
+  const extra = columnNames.filter(c => !bucketedColumns.includes(c));
+  const project = (c: string) =>
+    grouped.has(c) ? escape(c) : `any(${escape(c)}) AS ${escape(c)}`;
+  return {
+    select: columnNames.map(c => `, ${escape(c)}`).join(''),
+    aggregate: extra.map(c => `, ${project(c)}`).join(''),
+    groupBy: [...grouped].map(c => `, ${escape(c)}`).join(''),
+    // Names come from the fixed OTel lists, so they need no quoting.
+    project: (c: string) => ({
+      UNSAFE_RAW_SQL: grouped.has(c) ? c : `any(${c}) AS ${c}`,
+    }),
+  };
 }
 
 async function translateMetricChartConfig(
@@ -1894,6 +2026,7 @@ async function translateMetricChartConfig(
       dateRange: chartConfig.dateRange,
       alias: timeBucketCol,
       isRenderingRawSqlTemplate: chartConfig.isRenderingRawSqlTemplate,
+      minGranularitySeconds: chartConfig.minGranularitySeconds,
     });
 
     const where = await renderWhere(
@@ -1917,6 +2050,14 @@ async function translateMetricChartConfig(
     const bucketValueExpr = _select.isDelta
       ? renderDeltaExpression(chartConfig, 'Value')
       : `last_value(Value)`;
+    const computedColumns = await getComputedMetricColumns(metadata, {
+      databaseName: from.databaseName,
+      tableName: metricTables[MetricsDataType.Gauge],
+      connectionId: chartConfig.connection,
+      reservedNames: ['AttributesHash', 'LastValue', timeBucketCol],
+      bucketedColumns: GAUGE_BUCKETED_COLUMNS,
+      groupBy: chartConfig.groupBy,
+    });
 
     return {
       ...restChartConfig,
@@ -1926,7 +2067,7 @@ async function translateMetricChartConfig(
           sql: chSql`
             SELECT
               *,
-              cityHash64(ScopeAttributes, ResourceAttributes, Attributes) AS AttributesHash
+              cityHash64(ScopeAttributes, ResourceAttributes, Attributes) AS AttributesHash${{ UNSAFE_RAW_SQL: computedColumns.select }}
             FROM ${renderFrom({ from: { ...from, tableName: metricTables[MetricsDataType.Gauge] }, isRenderingRawSqlTemplate: chartConfig.isRenderingRawSqlTemplate, metricType: MetricsDataType.Gauge })}
             WHERE ${where}
           `,
@@ -1938,21 +2079,21 @@ async function translateMetricChartConfig(
               ${timeExpr},
               AttributesHash,
               ${bucketValueExpr} AS LastValue,
-              any(ScopeAttributes) AS ScopeAttributes,
-              any(ResourceAttributes) AS ResourceAttributes,
-              any(Attributes) AS Attributes,
-              any(ResourceSchemaUrl) AS ResourceSchemaUrl,
-              any(ScopeName) AS ScopeName,
-              any(ScopeVersion) AS ScopeVersion,
-              any(ScopeDroppedAttrCount) AS ScopeDroppedAttrCount,
-              any(ScopeSchemaUrl) AS ScopeSchemaUrl,
-              any(ServiceName) AS ServiceName,
-              any(MetricDescription) AS MetricDescription,
-              any(MetricUnit) AS MetricUnit,
-              any(StartTimeUnix) AS StartTimeUnix,
-              any(Flags) AS Flags
+              ${computedColumns.project('ScopeAttributes')},
+              ${computedColumns.project('ResourceAttributes')},
+              ${computedColumns.project('Attributes')},
+              ${computedColumns.project('ResourceSchemaUrl')},
+              ${computedColumns.project('ScopeName')},
+              ${computedColumns.project('ScopeVersion')},
+              ${computedColumns.project('ScopeDroppedAttrCount')},
+              ${computedColumns.project('ScopeSchemaUrl')},
+              ${computedColumns.project('ServiceName')},
+              ${computedColumns.project('MetricDescription')},
+              ${computedColumns.project('MetricUnit')},
+              ${computedColumns.project('StartTimeUnix')},
+              ${computedColumns.project('Flags')}${{ UNSAFE_RAW_SQL: computedColumns.aggregate }}
             FROM Source
-            GROUP BY AttributesHash, ${timeBucketCol}
+            GROUP BY AttributesHash, ${timeBucketCol}${{ UNSAFE_RAW_SQL: computedColumns.groupBy }}
             ORDER BY AttributesHash, ${timeBucketCol}
           `,
         },
@@ -1988,6 +2129,7 @@ async function translateMetricChartConfig(
       dateRange: chartConfig.dateRange,
       alias: timeBucketCol,
       isRenderingRawSqlTemplate: chartConfig.isRenderingRawSqlTemplate,
+      minGranularitySeconds: chartConfig.minGranularitySeconds,
     });
 
     // Render the where clause to limit data selection on the source CTE but also search forward/back one
@@ -2010,11 +2152,24 @@ async function translateMetricChartConfig(
         includedDataInterval:
           chartConfig.granularity === 'auto' &&
           Array.isArray(chartConfig.dateRange)
-            ? convertDateRangeToGranularityString(chartConfig.dateRange)
+            ? convertDateRangeToGranularityString(
+                chartConfig.dateRange,
+                undefined,
+                chartConfig.minGranularitySeconds,
+              )
             : chartConfig.granularity,
       },
       metadata,
     );
+
+    const computedColumns = await getComputedMetricColumns(metadata, {
+      databaseName: from.databaseName,
+      tableName: metricTables[MetricsDataType.Sum],
+      connectionId: chartConfig.connection,
+      reservedNames: ['AttributesHash', 'Rate', 'Sum', timeBucketCol],
+      bucketedColumns: SUM_BUCKETED_COLUMNS,
+      groupBy: chartConfig.groupBy,
+    });
 
     /**
      * See: https://github.com/open-telemetry/opentelemetry-proto/blob/main/opentelemetry/proto/metrics/v1/metrics.proto
@@ -2051,7 +2206,7 @@ async function translateMetricChartConfig(
                     AggregationTemporality = 1,
                     SUM(Value) OVER (PARTITION BY AttributesHash ORDER BY TimeUnix ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW),
                     Value
-                  ) AS Sum
+                  ) AS Sum${{ UNSAFE_RAW_SQL: computedColumns.select }}
                 FROM ${renderFrom({ from: { ...from, tableName: metricTables[MetricsDataType.Sum] }, isRenderingRawSqlTemplate: chartConfig.isRenderingRawSqlTemplate, metricType: MetricsDataType.Sum })}
                 WHERE ${where}`,
       },
@@ -2082,7 +2237,7 @@ async function translateMetricChartConfig(
               StartTimeUnix,
               Flags,
               AggregationTemporality,
-              IsMonotonic
+              IsMonotonic${{ UNSAFE_RAW_SQL: computedColumns.select }}
             FROM (
               SELECT
                 ${timeExpr},
@@ -2095,24 +2250,24 @@ async function translateMetricChartConfig(
                 -- deterministic w.r.t. TimeUnix ordering unlike last_value
                 -- which in a GROUP BY context is anyLast (order-dependent).
                 argMax(Source.Sum, TimeUnix) AS Sum,
-                any(ResourceAttributes) AS ResourceAttributes,
-                any(ResourceSchemaUrl) AS ResourceSchemaUrl,
-                any(ScopeName) AS ScopeName,
-                any(ScopeVersion) AS ScopeVersion,
-                any(ScopeAttributes) AS ScopeAttributes,
-                any(ScopeDroppedAttrCount) AS ScopeDroppedAttrCount,
-                any(ScopeSchemaUrl) AS ScopeSchemaUrl,
-                any(ServiceName) AS ServiceName,
-                any(MetricName) AS MetricName,
-                any(MetricDescription) AS MetricDescription,
-                any(MetricUnit) AS MetricUnit,
-                any(Attributes) AS Attributes,
-                any(StartTimeUnix) AS StartTimeUnix,
-                any(Flags) AS Flags,
-                any(AggregationTemporality) AS AggregationTemporality,
-                any(IsMonotonic) AS IsMonotonic
+                ${computedColumns.project('ResourceAttributes')},
+                ${computedColumns.project('ResourceSchemaUrl')},
+                ${computedColumns.project('ScopeName')},
+                ${computedColumns.project('ScopeVersion')},
+                ${computedColumns.project('ScopeAttributes')},
+                ${computedColumns.project('ScopeDroppedAttrCount')},
+                ${computedColumns.project('ScopeSchemaUrl')},
+                ${computedColumns.project('ServiceName')},
+                ${computedColumns.project('MetricName')},
+                ${computedColumns.project('MetricDescription')},
+                ${computedColumns.project('MetricUnit')},
+                ${computedColumns.project('Attributes')},
+                ${computedColumns.project('StartTimeUnix')},
+                ${computedColumns.project('Flags')},
+                ${computedColumns.project('AggregationTemporality')},
+                ${computedColumns.project('IsMonotonic')}${{ UNSAFE_RAW_SQL: computedColumns.aggregate }}
               FROM Source
-              GROUP BY AttributesHash, \`${timeBucketCol}\`
+              GROUP BY AttributesHash, \`${timeBucketCol}\`${{ UNSAFE_RAW_SQL: computedColumns.groupBy }}
               ORDER BY AttributesHash, \`${timeBucketCol}\`
             )
           `,
@@ -2258,7 +2413,11 @@ async function translateMetricChartConfig(
       includedDataInterval:
         chartConfig.granularity === 'auto' &&
         Array.isArray(chartConfig.dateRange)
-          ? convertDateRangeToGranularityString(chartConfig.dateRange)
+          ? convertDateRangeToGranularityString(
+              chartConfig.dateRange,
+              undefined,
+              chartConfig.minGranularitySeconds,
+            )
           : chartConfig.granularity,
     } satisfies BuilderChartConfigWithOptDateRangeEx;
 
@@ -2269,6 +2428,7 @@ async function translateMetricChartConfig(
           timestampValueExpression: cteChartConfig.timestampValueExpression,
           dateRange: cteChartConfig.dateRange,
           isRenderingRawSqlTemplate: chartConfig.isRenderingRawSqlTemplate,
+          minGranularitySeconds: cteChartConfig.minGranularitySeconds,
         })
       : undefined;
     const where = await renderWhere(cteChartConfig, metadata);

@@ -15,7 +15,10 @@ import {
 } from '@/components/DBTimeChart';
 import MVOptimizationIndicator from '@/components/MaterializedViews/MVOptimizationIndicator';
 import { MAX_LOADABLE_TIME_CHART_SERIES } from '@/defaults';
-import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import {
+  getMinGranularitySeconds,
+  useQueriedChartConfig,
+} from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { makeLogSource } from '@/llm/__fixtures__/sources';
 import { useSource } from '@/source';
@@ -23,6 +26,7 @@ import { useSource } from '@/source';
 // Mock dependencies
 jest.mock('@/hooks/useChartConfig', () => ({
   useQueriedChartConfig: jest.fn(),
+  getMinGranularitySeconds: jest.fn().mockReturnValue(undefined),
 }));
 
 jest.mock('@/hooks/useMVOptimizationExplanation', () => ({
@@ -516,6 +520,43 @@ describe('DBTimeChart', () => {
       alignedEndDate,
     ]);
     expect(dateRangeIndicatorCall.mvGranularity).toBeUndefined();
+  });
+
+  it("floors 'auto' granularity to the source's minAutoGranularity setting", () => {
+    // A 15-minute range with the default maxBuckets=80 would otherwise infer
+    // '15 second' (ceil(900/80)=12 <= 15) - well under a 60s floor.
+    const config = {
+      ...baseTestConfig,
+      granularity: 'auto',
+      dateRange: [
+        new Date('2024-01-01T00:00:00Z'),
+        new Date('2024-01-01T00:15:00Z'),
+      ] as [Date, Date],
+    };
+
+    jest.mocked(getMinGranularitySeconds).mockReturnValueOnce(60);
+
+    renderWithMantine(<DBTimeChart config={config} />);
+
+    const firstCallConfig = mockUseQueriedChartConfig.mock.calls[0][0];
+    expect(firstCallConfig.granularity).toBe('1 minute');
+  });
+
+  it("does not floor 'auto' granularity when the source has no minAutoGranularity set", () => {
+    const config = {
+      ...baseTestConfig,
+      granularity: 'auto',
+      dateRange: [
+        new Date('2024-01-01T00:00:00Z'),
+        new Date('2024-01-01T00:15:00Z'),
+      ] as [Date, Date],
+    };
+
+    // getMinGranularitySeconds already defaults to undefined per the module mock above.
+    renderWithMantine(<DBTimeChart config={config} />);
+
+    const firstCallConfig = mockUseQueriedChartConfig.mock.calls[0][0];
+    expect(firstCallConfig.granularity).toBe('15 second');
   });
 
   describe('raw SQL line chart', () => {
