@@ -8,7 +8,7 @@ describe('SavedSearchSwitcher', () => {
     const user = userEvent.setup();
     const onOpen = jest.fn();
     renderWithMantine(
-      <SavedSearchSwitcher label="Checkout errors" onOpen={onOpen} />,
+      <SavedSearchSwitcher name="Checkout errors" onOpen={onOpen} />,
     );
 
     await user.click(screen.getByTestId('saved-search-switcher'));
@@ -18,7 +18,7 @@ describe('SavedSearchSwitcher', () => {
 
   it('names the current search', () => {
     renderWithMantine(
-      <SavedSearchSwitcher label="Checkout errors" onOpen={jest.fn()} />,
+      <SavedSearchSwitcher name="Checkout errors" onOpen={jest.fn()} />,
     );
 
     expect(screen.getByTestId('saved-search-name')).toHaveTextContent(
@@ -26,17 +26,26 @@ describe('SavedSearchSwitcher', () => {
     );
   });
 
-  it('dims the placeholder on an unsaved search', () => {
+  it('marks a search that has never been saved', () => {
+    renderWithMantine(<SavedSearchSwitcher onOpen={jest.fn()} />);
+
+    const badge = screen.getByTestId('saved-search-name');
+
+    expect(badge).toHaveTextContent('Unsaved');
+    expect(badge).toHaveStyle({ color: 'var(--mantine-color-dimmed)' });
+  });
+
+  it('keeps the entry point in place whether or not the search is saved', () => {
     renderWithMantine(
       <>
-        <SavedSearchSwitcher label="Unsaved search" muted onOpen={jest.fn()} />
-        <SavedSearchSwitcher label="Checkout errors" onOpen={jest.fn()} />
+        <SavedSearchSwitcher onOpen={jest.fn()} />
+        <SavedSearchSwitcher name="Checkout errors" onOpen={jest.fn()} />
       </>,
     );
 
-    const [placeholder, name] = screen.getAllByTestId('saved-search-name');
+    const [unsaved, saved] = screen.getAllByTestId('saved-search-switcher');
 
-    expect(placeholder).toHaveStyle({ color: 'var(--mantine-color-dimmed)' });
-    expect(name).not.toHaveStyle({ color: 'var(--mantine-color-dimmed)' });
+    expect(unsaved).toHaveTextContent('Saved searches');
+    expect(saved).toHaveTextContent('Saved searches');
   });
 });

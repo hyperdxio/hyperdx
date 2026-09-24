@@ -23,7 +23,7 @@ export class SavedSearchesListPage {
     });
   }
 
-  /** Opens the drawer the way a user does: the name chip in the toolbar. */
+  /** Opens the drawer the way a user does: the toolbar button. */
   async openFromSwitcher() {
     await this.page.getByTestId('saved-search-switcher').click();
     await this.pageContainer.waitFor();

@@ -2216,8 +2216,7 @@ export function DBSearchPage() {
         {/* <DevTool control={control} /> */}
         <Flex gap="sm" px="sm" pt="sm" wrap="nowrap" align="center">
           <SavedSearchSwitcher
-            label={savedSearch?.name ?? 'Unsaved search'}
-            muted={savedSearch == null}
+            name={savedSearch?.name}
             meta={
               savedSearch ? (
                 <SavedSearchMeta savedSearch={savedSearch} />

@@ -1,50 +1,46 @@
-import { Button, Text, Tooltip } from '@mantine/core';
-import { IconLayoutSidebarRightExpand } from '@tabler/icons-react';
+import { Badge, Button, Group, Tooltip } from '@mantine/core';
+import { IconBookmarks, IconChevronDown } from '@tabler/icons-react';
 
-/** Names the current search and opens the saved searches drawer. */
+/** Opens the saved searches drawer, and names the search on screen. */
 export function SavedSearchSwitcher({
-  label,
   meta,
-  muted,
+  name,
   onOpen,
 }: {
-  label: string;
   /** Authorship and edit history, shown on hover. */
   meta?: React.ReactNode;
-  /** Dims the label when it stands in for a name the search does not have yet. */
-  muted?: boolean;
+  /** The saved search on screen, absent while the search is unsaved. */
+  name?: string;
   onOpen: () => void;
 }) {
   return (
-    <Tooltip
-      withArrow
-      fz="xs"
-      color="gray"
-      label={meta ?? 'Browse saved searches'}
-    >
+    <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
       <Button
         variant="secondary"
         size="xs"
-        rightSection={<IconLayoutSidebarRightExpand size={14} />}
-        style={{ flexShrink: 0, maxWidth: 220 }}
+        leftSection={<IconBookmarks size={14} />}
+        rightSection={<IconChevronDown size={14} />}
         data-testid="saved-search-switcher"
         onClick={onOpen}
       >
-        <Text
-          span
-          inherit
-          c={muted ? 'dimmed' : undefined}
-          data-testid="saved-search-name"
-          style={{
-            display: 'block',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {label}
-        </Text>
+        Saved searches
       </Button>
-    </Tooltip>
+      <Tooltip withArrow fz="xs" color="gray" label={meta} disabled={!meta}>
+        <Badge
+          variant="light"
+          color="gray"
+          radius="sm"
+          fw="normal"
+          // Sentence case, since the badge carries a search name as often as
+          // it carries a status.
+          tt="none"
+          c={name ? undefined : 'dimmed'}
+          data-testid="saved-search-name"
+          style={{ maxWidth: 200 }}
+        >
+          {name ?? 'Unsaved'}
+        </Badge>
+      </Tooltip>
+    </Group>
   );
 }
