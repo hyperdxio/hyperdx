@@ -8,6 +8,14 @@ import userEvent from '@testing-library/user-event';
 
 import SearchWhereInput from '@/components/SearchInput/SearchWhereInput';
 import { SqlVariablesProvider } from '@/components/SQLEditor/variableCompletions';
+import { useQueryLanguageRestriction } from '@/hooks/useQueryLanguageRestriction';
+
+jest.mock('@/hooks/useQueryLanguageRestriction', () => ({
+  useQueryLanguageRestriction: jest.fn(() => undefined),
+}));
+const mockUseQueryLanguageRestriction: jest.Mock = jest.mocked(
+  useQueryLanguageRestriction,
+);
 
 function renderWithMantine(ui: React.ReactElement) {
   return render(
@@ -39,12 +47,14 @@ function TestWrapper({
   defaultWhere = '',
   supportsVariables,
   onSubmit,
+  onLanguageChange,
   children,
 }: {
   defaultLanguage?: 'sql' | 'lucene';
   defaultWhere?: string;
   supportsVariables?: boolean;
   onSubmit?: jest.Mock;
+  onLanguageChange?: jest.Mock;
   children?: (props: { control: any }) => React.ReactNode;
 }) {
   const form = useForm({
@@ -64,6 +74,7 @@ function TestWrapper({
           control={form.control}
           name="where"
           onSubmit={onSubmit}
+          onLanguageChange={onLanguageChange}
           enableHotkey
           enableVariables={supportsVariables}
         />
@@ -75,6 +86,8 @@ function TestWrapper({
 describe('SearchWhereInput', () => {
   beforeEach(() => {
     queryClient.clear();
+    mockUseQueryLanguageRestriction.mockReturnValue(undefined);
+    window.localStorage.clear();
   });
 
   describe('Lucene Mode', () => {
@@ -222,6 +235,88 @@ describe('SearchWhereInput', () => {
       expect(
         screen.getByPlaceholderText('Custom Lucene placeholder'),
       ).toBeInTheDocument();
+    });
+  });
+
+  describe('Team query language restriction', () => {
+    it('shows the switch when the team has no restriction', () => {
+      renderWithMantine(<TestWrapper defaultLanguage="lucene" />);
+
+      expect(
+        screen.getByRole('combobox', { name: 'Query language' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByTestId('where-language-label'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('locks the input to SQL and writes the language back to the form', async () => {
+      mockUseQueryLanguageRestriction.mockReturnValue('sql');
+      const onLanguageChange = jest.fn();
+
+      renderWithMantine(
+        <TestWrapper
+          defaultLanguage="lucene"
+          onLanguageChange={onLanguageChange}
+        />,
+      );
+
+      expect(
+        screen.queryByRole('combobox', { name: 'Query language' }),
+      ).not.toBeInTheDocument();
+      expect(screen.getByTestId('where-language-label')).toHaveTextContent(
+        'SQL',
+      );
+      expect(screen.getByText(/SQL WHERE clause/i)).toBeInTheDocument();
+      expect(
+        screen.queryByPlaceholderText(/Search your events w\/ Lucene/i),
+      ).not.toBeInTheDocument();
+
+      await waitFor(() => {
+        expect(onLanguageChange).toHaveBeenCalledWith('sql');
+      });
+      expect(window.localStorage.getItem('hdx-search-where-language')).toBe(
+        'sql',
+      );
+    });
+
+    it('locks the input to Lucene when the team restricts to lucene', async () => {
+      mockUseQueryLanguageRestriction.mockReturnValue('lucene');
+      const onLanguageChange = jest.fn();
+
+      renderWithMantine(
+        <TestWrapper
+          defaultLanguage="sql"
+          onLanguageChange={onLanguageChange}
+        />,
+      );
+
+      expect(screen.getByTestId('where-language-label')).toHaveTextContent(
+        'Lucene',
+      );
+      expect(
+        screen.getByPlaceholderText(/Search your events w\/ Lucene/i),
+      ).toBeInTheDocument();
+      await waitFor(() => {
+        expect(onLanguageChange).toHaveBeenCalledWith('lucene');
+      });
+    });
+
+    it('leaves the form alone when it already matches the restriction', () => {
+      mockUseQueryLanguageRestriction.mockReturnValue('lucene');
+      const onLanguageChange = jest.fn();
+
+      renderWithMantine(
+        <TestWrapper
+          defaultLanguage="lucene"
+          onLanguageChange={onLanguageChange}
+        />,
+      );
+
+      expect(screen.getByTestId('where-language-label')).toHaveTextContent(
+        'Lucene',
+      );
+      expect(onLanguageChange).not.toHaveBeenCalled();
     });
   });
 

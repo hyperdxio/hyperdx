@@ -46,6 +46,11 @@ export default mongoose.model<ITeam>(
       fieldMetadataDisabled: Boolean,
       parallelizeWhenPossible: Boolean,
       filterKeysFetchLimit: Number,
+      // Search settings
+      queryLanguageRestriction: {
+        type: String,
+        enum: ['sql', 'lucene'],
+      },
     },
     {
       timestamps: true,

@@ -5,10 +5,12 @@ import type {
   TeamMembersApiResponse,
   TeamTagsApiResponse,
   UpdateClickHouseSettingsApiResponse,
+  UpdateSearchSettingsApiResponse,
 } from '@hyperdx/common-utils/dist/types';
 import {
   TagResourceTypeSchema,
   TeamClickHouseSettingsUpdateSchema,
+  TeamSearchSettingsUpdateSchema,
 } from '@hyperdx/common-utils/dist/types';
 import crypto from 'crypto';
 import express from 'express';
@@ -23,6 +25,7 @@ import {
   rotateTeamApiKey,
   setTeamName,
   updateTeamClickhouseSettings,
+  updateTeamSearchSettings,
 } from '@/controllers/team';
 import {
   deleteTeamMember,
@@ -128,6 +131,31 @@ router.patch(
       }
 
       const team = await updateTeamClickhouseSettings(teamId, req.body);
+
+      res.json(pick(team, Object.keys(req.body)));
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+router.patch(
+  '/search-settings',
+  processRequest({
+    body: TeamSearchSettingsUpdateSchema,
+  }),
+  async (req, res: express.Response<UpdateSearchSettingsApiResponse>, next) => {
+    try {
+      const teamId = req.user?.team;
+      if (teamId == null) {
+        throw new Error(`User ${req.user?._id} not associated with a team`);
+      }
+
+      if (Object.keys(req.body).length === 0) {
+        return res.json({});
+      }
+
+      const team = await updateTeamSearchSettings(teamId, req.body);
 
       res.json(pick(team, Object.keys(req.body)));
     } catch (e) {

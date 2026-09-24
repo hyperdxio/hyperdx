@@ -1,19 +1,23 @@
+import type { WhereLanguage } from '@hyperdx/common-utils/dist/types';
 import { Select } from '@mantine/core';
 import { IconChevronDown } from '@tabler/icons-react';
 
-type Language = 'sql' | 'lucene';
+export const LANGUAGE_LABELS: Record<WhereLanguage, string> = {
+  sql: 'SQL',
+  lucene: 'Lucene',
+};
 
-const DATA: { value: Language; label: string }[] = [
-  { value: 'sql', label: 'SQL' },
-  { value: 'lucene', label: 'Lucene' },
+const DATA: { value: WhereLanguage; label: string }[] = [
+  { value: 'sql', label: LANGUAGE_LABELS.sql },
+  { value: 'lucene', label: LANGUAGE_LABELS.lucene },
 ];
 
 export default function InputLanguageSwitch({
   language,
   onLanguageChange,
 }: {
-  language: Language;
-  onLanguageChange: (language: Language) => void;
+  language: WhereLanguage;
+  onLanguageChange: (language: WhereLanguage) => void;
 }) {
   return (
     <Select

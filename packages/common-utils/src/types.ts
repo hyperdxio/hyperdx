@@ -157,8 +157,12 @@ const SearchConditionRequiredLanguageSchema = z.enum([
 ]);
 export const SearchConditionLanguageSchema =
   SearchConditionRequiredLanguageSchema.optional();
+/** The two languages a WHERE input can switch between. */
+export const WhereLanguageSchema =
+  SearchConditionRequiredLanguageSchema.exclude(['promql']);
+export type WhereLanguage = z.infer<typeof WhereLanguageSchema>;
 export const SearchConditionTrimmedLanguageSchema =
-  SearchConditionRequiredLanguageSchema.exclude(['promql']).optional();
+  WhereLanguageSchema.optional();
 export const AggregateFunctionSchema = z.enum([
   'avg',
   'count',
@@ -2338,6 +2342,24 @@ export type TeamClickHouseSettings = z.infer<
   typeof TeamClickHouseSettingsSchema
 >;
 
+export const TeamSearchSettingsSchema = z.object({
+  /**
+   * Locks every WHERE input to one language and hides the language switch.
+   * Unset means users may pick either. Inputs that only ever accept one
+   * language (SQL-only expressions, Lucene-only filters) are unaffected.
+   */
+  queryLanguageRestriction: WhereLanguageSchema.optional(),
+});
+export type TeamSearchSettings = z.infer<typeof TeamSearchSettingsSchema>;
+
+/** Accepts null to unset (allow both languages). */
+export const TeamSearchSettingsUpdateSchema = z.object({
+  queryLanguageRestriction: WhereLanguageSchema.nullish(),
+});
+export type TeamSearchSettingsUpdate = z.infer<
+  typeof TeamSearchSettingsUpdateSchema
+>;
+
 export const TeamSchema = z
   .object({
     id: z.string(),
@@ -2348,7 +2370,8 @@ export const TeamSchema = z
     collectorAuthenticationEnforced: z.boolean(),
     isMetricsSeriesTableEnabled: z.boolean(),
   })
-  .merge(TeamClickHouseSettingsSchema);
+  .merge(TeamClickHouseSettingsSchema)
+  .merge(TeamSearchSettingsSchema);
 
 export type Team = z.infer<typeof TeamSchema>;
 
@@ -3005,6 +3028,13 @@ export type UpdateClickHouseSettingsApiResponse = z.infer<
   typeof UpdateClickHouseSettingsApiResponseSchema
 >;
 
+export const UpdateSearchSettingsApiResponseSchema =
+  TeamSearchSettingsSchema.partial();
+
+export type UpdateSearchSettingsApiResponse = z.infer<
+  typeof UpdateSearchSettingsApiResponseSchema
+>;
+
 export const RotateApiKeyApiResponseSchema = z.object({
   newApiKey: z.string(),
 });
@@ -3078,7 +3108,9 @@ export const MeApiResponseSchema = z.object({
     name: true,
     allowedAuthMethods: true,
     apiKey: true,
-  }).merge(TeamClickHouseSettingsSchema),
+  })
+    .merge(TeamClickHouseSettingsSchema)
+    .merge(TeamSearchSettingsSchema),
   usageStatsEnabled: z.boolean(),
   aiAssistantEnabled: z.boolean(),
 });

@@ -1,6 +1,7 @@
 import {
   TagResourceType,
   TeamClickHouseSettingsUpdate,
+  TeamSearchSettingsUpdate,
 } from '@hyperdx/common-utils/dist/types';
 import mongoose from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
@@ -104,6 +105,21 @@ export function setTeamName(teamId: ObjectId, name: string) {
 export function updateTeamClickhouseSettings(
   teamId: ObjectId,
   settings: TeamClickHouseSettingsUpdate,
+) {
+  return updateTeamSettings(teamId, settings);
+}
+
+export function updateTeamSearchSettings(
+  teamId: ObjectId,
+  settings: TeamSearchSettingsUpdate,
+) {
+  return updateTeamSettings(teamId, settings);
+}
+
+/** `null` unsets a setting so it falls back to its default. */
+function updateTeamSettings(
+  teamId: ObjectId,
+  settings: TeamClickHouseSettingsUpdate | TeamSearchSettingsUpdate,
 ) {
   const $set: Record<string, any> = {};
   const $unset: Record<string, any> = {};

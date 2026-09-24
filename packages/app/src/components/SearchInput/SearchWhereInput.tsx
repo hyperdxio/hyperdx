@@ -1,13 +1,16 @@
+import { useEffect } from 'react';
 import { FieldPath, useController, UseControllerProps } from 'react-hook-form';
 import { TableConnectionChoice } from '@hyperdx/common-utils/dist/core/metadata';
-import { ActionIcon, Box, Flex, Tooltip } from '@mantine/core';
+import type { WhereLanguage } from '@hyperdx/common-utils/dist/types';
+import { ActionIcon, Box, Flex, Text, Tooltip } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { IconHelp } from '@tabler/icons-react';
 
 import { EDITOR_INPUT_HEIGHTS } from '@/components/editorInputHeights';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
+import { useQueryLanguageRestriction } from '@/hooks/useQueryLanguageRestriction';
 
-import InputLanguageSwitch from './InputLanguageSwitch';
+import InputLanguageSwitch, { LANGUAGE_LABELS } from './InputLanguageSwitch';
 import SearchInputV2 from './SearchInputV2';
 import SyntaxReferenceModal from './SyntaxReferenceModal';
 
@@ -170,15 +173,33 @@ export default function SearchWhereInput({
     control,
     name: languageName as FieldPath<any>,
   });
+  const { value: languageFieldValue, onChange: setLanguageFieldValue } =
+    languageField;
 
-  const language: 'sql' | 'lucene' = languageField.value ?? 'lucene';
+  const restriction = useQueryLanguageRestriction();
+  const language: WhereLanguage = restriction ?? languageFieldValue ?? 'lucene';
   const isSql = language === 'sql';
 
-  const handleLanguageChange = (lang: 'sql' | 'lucene') => {
+  const handleLanguageChange = (lang: WhereLanguage) => {
     setStoredLanguage(lang);
-    languageField.onChange(lang);
+    setLanguageFieldValue(lang);
     onLanguageChange?.(lang);
   };
+
+  // A saved search, URL, or stored preference may still carry the other
+  // language. Write the enforced one back so submits, saves, and future
+  // defaults agree with what the input shows.
+  useEffect(() => {
+    if (restriction == null || languageFieldValue === restriction) return;
+    setStoredLanguage(restriction);
+    setLanguageFieldValue(restriction);
+    onLanguageChange?.(restriction);
+  }, [
+    restriction,
+    languageFieldValue,
+    setLanguageFieldValue,
+    onLanguageChange,
+  ]);
 
   const tc = tableConnection ? { tableConnection } : { tableConnections };
   const baseHeight =
@@ -207,10 +228,27 @@ export default function SearchWhereInput({
           onMouseDown={e => e.preventDefault()}
         >
           <Flex align="center" className={styles.languageSwitchRow}>
-            <InputLanguageSwitch
-              language={language}
-              onLanguageChange={handleLanguageChange}
-            />
+            {restriction != null ? (
+              <Tooltip
+                label="Query language is set in team settings"
+                withArrow
+                position="top"
+              >
+                <Text
+                  size="xs"
+                  fw={500}
+                  px="sm"
+                  data-testid="where-language-label"
+                >
+                  {LANGUAGE_LABELS[language]}
+                </Text>
+              </Tooltip>
+            ) : (
+              <InputLanguageSwitch
+                language={language}
+                onLanguageChange={handleLanguageChange}
+              />
+            )}
             <Tooltip label="Syntax reference" withArrow position="top">
               <ActionIcon
                 variant="subtle"

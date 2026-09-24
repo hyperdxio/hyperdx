@@ -427,4 +427,57 @@ describe('team router', () => {
 
     expect(resp.body.newApiKey.length).toBeGreaterThan(0);
   });
+
+  describe('PATCH /team/search-settings', () => {
+    it('sets and unsets the query language restriction', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+
+      const setResp = await agent
+        .patch('/team/search-settings')
+        .send({ queryLanguageRestriction: 'sql' })
+        .expect(200);
+      expect(setResp.body).toEqual({ queryLanguageRestriction: 'sql' });
+      expect((await Team.findById(team._id))?.queryLanguageRestriction).toBe(
+        'sql',
+      );
+
+      const me = await agent.get('/me').expect(200);
+      expect(me.body.team.queryLanguageRestriction).toBe('sql');
+
+      const unsetResp = await agent
+        .patch('/team/search-settings')
+        .send({ queryLanguageRestriction: null })
+        .expect(200);
+      expect(unsetResp.body).toEqual({});
+      expect(
+        (await Team.findById(team._id))?.queryLanguageRestriction,
+      ).toBeUndefined();
+
+      const meAfter = await agent.get('/me').expect(200);
+      expect(meAfter.body.team.queryLanguageRestriction).toBeUndefined();
+    });
+
+    it('rejects an unknown language', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+
+      await agent
+        .patch('/team/search-settings')
+        .send({ queryLanguageRestriction: 'promql' })
+        .expect(400);
+
+      expect(
+        (await Team.findById(team._id))?.queryLanguageRestriction,
+      ).toBeUndefined();
+    });
+
+    it('is a no-op with an empty body', async () => {
+      const { agent } = await getLoggedInAgent(server);
+
+      const resp = await agent
+        .patch('/team/search-settings')
+        .send({})
+        .expect(200);
+      expect(resp.body).toEqual({});
+    });
+  });
 });

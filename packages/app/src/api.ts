@@ -23,8 +23,10 @@ import type {
   TeamClickHouseSettingsUpdate,
   TeamInvitationsApiResponse,
   TeamMembersApiResponse,
+  TeamSearchSettingsUpdate,
   TeamTagsApiResponse,
   UpdateClickHouseSettingsApiResponse,
+  UpdateSearchSettingsApiResponse,
   WebhookCreateApiResponse,
   WebhooksApiResponse,
   WebhookTestApiResponse,
@@ -597,6 +599,19 @@ const api = {
           method: 'PATCH',
           json: settings,
         }).json<UpdateClickHouseSettingsApiResponse>(),
+    });
+  },
+  useUpdateSearchSettings() {
+    return useMutation<
+      UpdateSearchSettingsApiResponse,
+      HTTPError,
+      TeamSearchSettingsUpdate
+    >({
+      mutationFn: async settings =>
+        hdxServer(`team/search-settings`, {
+          method: 'PATCH',
+          json: settings,
+        }).json<UpdateSearchSettingsApiResponse>(),
     });
   },
   getTagsQueryKey: (resourceType?: TagResourceType) =>

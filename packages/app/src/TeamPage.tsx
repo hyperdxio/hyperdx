@@ -34,6 +34,7 @@ import SecurityPoliciesSection from './components/TeamSettings/SecurityPoliciesS
 import SourcesSection from './components/TeamSettings/SourcesSection';
 import TeamMembersSection from './components/TeamSettings/TeamMembersSection';
 import TeamQueryConfigSection from './components/TeamSettings/TeamQueryConfigSection';
+import TeamSearchSettingsSection from './components/TeamSettings/TeamSearchSettingsSection';
 import { useBrandDisplayName } from './theme/ThemeProvider';
 import api from './api';
 import { IS_IAC_EXPORT_ENABLED } from './config';
@@ -198,6 +199,10 @@ export default function TeamPage() {
       label: 'Query Settings',
       icon: <IconAdjustmentsHorizontal size={16} />,
       sections: [
+        {
+          id: 'team-advanced-search-settings',
+          content: () => <TeamSearchSettingsSection />,
+        },
         {
           id: 'team-advanced-query-settings',
           content: () => <TeamQueryConfigSection />,
