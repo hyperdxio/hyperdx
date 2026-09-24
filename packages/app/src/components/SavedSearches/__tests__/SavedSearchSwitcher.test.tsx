@@ -49,9 +49,7 @@ describe('SavedSearchSwitcher', () => {
     const user = userEvent.setup();
     renderWithMantine(<SavedSearchSwitcher onManage={jest.fn()} />);
 
-    await user.click(
-      screen.getByRole('button', { name: 'Switch saved search' }),
-    );
+    await user.click(screen.getByTestId('saved-search-switcher'));
     await user.type(
       await screen.findByPlaceholderText('Find a saved search'),
       'staging',
@@ -66,9 +64,7 @@ describe('SavedSearchSwitcher', () => {
     mockFavoriteIds = ['staging'];
     renderWithMantine(<SavedSearchSwitcher onManage={jest.fn()} />);
 
-    await user.click(
-      screen.getByRole('button', { name: 'Switch saved search' }),
-    );
+    await user.click(screen.getByTestId('saved-search-switcher'));
 
     const names = (await screen.findAllByRole('link')).map(link =>
       link.textContent?.trim(),
@@ -81,11 +77,25 @@ describe('SavedSearchSwitcher', () => {
     const onManage = jest.fn();
     renderWithMantine(<SavedSearchSwitcher onManage={onManage} />);
 
-    await user.click(
-      screen.getByRole('button', { name: 'Switch saved search' }),
-    );
+    await user.click(screen.getByTestId('saved-search-switcher'));
     await user.click(await screen.findByTestId('manage-saved-searches'));
 
     expect(onManage).toHaveBeenCalled();
+  });
+
+  it('renders an inline chip when given a label', async () => {
+    const user = userEvent.setup();
+    renderWithMantine(
+      <SavedSearchSwitcher label="Unsaved search" onManage={jest.fn()} />,
+    );
+
+    const chip = screen.getByTestId('saved-search-switcher');
+    expect(chip).toHaveTextContent('Unsaved search');
+
+    await user.click(chip);
+
+    expect(
+      await screen.findByPlaceholderText('Find a saved search'),
+    ).toBeInTheDocument();
   });
 });

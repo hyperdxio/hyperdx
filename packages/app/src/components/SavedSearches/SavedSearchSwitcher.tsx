@@ -23,9 +23,12 @@ import { useSavedSearches } from '@/savedSearch';
 export function SavedSearchSwitcher({
   activeSavedSearchId,
   onManage,
+  label,
 }: {
   activeSavedSearchId?: string;
   onManage: () => void;
+  /** Renders an inline chip carrying this text. Omit for a bare chevron. */
+  label?: string;
 }) {
   const [opened, setOpened] = useState(false);
   const [query, setQuery] = useState('');
@@ -71,16 +74,29 @@ export function SavedSearchSwitcher({
       trapFocus
     >
       <Popover.Target>
-        <Tooltip withArrow label="Switch saved search" fz="xs" color="gray">
-          <ActionIcon
-            variant="subtle"
-            aria-label="Switch saved search"
+        {label ? (
+          <Button
+            variant="secondary"
+            size="xs"
+            rightSection={<IconChevronDown size={14} />}
+            style={{ flexShrink: 0 }}
             data-testid="saved-search-switcher"
             onClick={() => setOpened(o => !o)}
           >
-            <IconChevronDown size={18} />
-          </ActionIcon>
-        </Tooltip>
+            {label}
+          </Button>
+        ) : (
+          <Tooltip withArrow label="Switch saved search" fz="xs" color="gray">
+            <ActionIcon
+              variant="subtle"
+              aria-label="Switch saved search"
+              data-testid="saved-search-switcher"
+              onClick={() => setOpened(o => !o)}
+            >
+              <IconChevronDown size={18} />
+            </ActionIcon>
+          </Tooltip>
+        )}
       </Popover.Target>
       <Popover.Dropdown p="xs">
         <TextInput

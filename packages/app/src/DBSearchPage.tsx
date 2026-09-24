@@ -63,7 +63,6 @@ import {
   Select,
   Stack,
   Text,
-  Title,
   Tooltip,
 } from '@mantine/core';
 import {
@@ -2184,8 +2183,8 @@ export function DBSearchPage() {
         />
       )}
       <OnboardingModal />
-      <Stack mt="lg" mx="xs">
-        {savedSearch && (
+      {savedSearch && (
+        <Stack mt="lg" mx="xs">
           <Group justify="space-between">
             <Breadcrumbs fz="sm">
               <Anchor component={Link} href="/search" fz="sm" c="dimmed">
@@ -2221,11 +2220,9 @@ export function DBSearchPage() {
               )}
             </Text>
           </Group>
-        )}
-        <Group justify="space-between" align="flex-end">
-          <Group gap={2} wrap="nowrap">
-            <div data-testid="saved-search-name">
-              {savedSearch ? (
+          <Group justify="space-between" align="flex-end">
+            <Group gap={2} wrap="nowrap">
+              <div data-testid="saved-search-name">
                 <EditablePageName
                   key={savedSearch.id}
                   name={savedSearch.name ?? 'Untitled Search'}
@@ -2236,19 +2233,13 @@ export function DBSearchPage() {
                     });
                   }}
                 />
-              ) : (
-                <Title order={3} fw={400} c="dimmed">
-                  Untitled search
-                </Title>
-              )}
-            </div>
-            <SavedSearchSwitcher
-              activeSavedSearchId={savedSearchId ?? undefined}
-              onManage={() => void setPanel('saved-searches')}
-            />
-          </Group>
+              </div>
+              <SavedSearchSwitcher
+                activeSavedSearchId={savedSearchId ?? undefined}
+                onManage={() => void setPanel('saved-searches')}
+              />
+            </Group>
 
-          {savedSearch && (
             <Group gap="xs">
               <FavoriteButton
                 resourceType="savedSearch"
@@ -2291,16 +2282,22 @@ export function DBSearchPage() {
                 }}
               />
             </Group>
-          )}
-        </Group>
-      </Stack>
+          </Group>
+        </Stack>
+      )}
       <form
         data-testid="search-form"
         onSubmit={onFormSubmit}
         className={searchPageStyles.searchForm}
       >
         {/* <DevTool control={control} /> */}
-        <Flex gap="sm" px="sm" pt="sm" wrap="nowrap">
+        <Flex gap="sm" px="sm" pt="sm" wrap="nowrap" align="center">
+          {!savedSearchId && (
+            <SavedSearchSwitcher
+              label="Unsaved search"
+              onManage={() => void setPanel('saved-searches')}
+            />
+          )}
           <SourceSelectControlled
             key={`${savedSearchId}`}
             size="xs"
