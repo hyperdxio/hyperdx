@@ -1,5 +1,5 @@
 import { Button, Text, Tooltip } from '@mantine/core';
-import { IconSelector } from '@tabler/icons-react';
+import { IconLayoutSidebarRightExpand } from '@tabler/icons-react';
 
 /** Names the current search and opens the saved searches drawer. */
 export function SavedSearchSwitcher({
@@ -25,7 +25,7 @@ export function SavedSearchSwitcher({
       <Button
         variant="secondary"
         size="xs"
-        rightSection={<IconSelector size={14} />}
+        rightSection={<IconLayoutSidebarRightExpand size={14} />}
         style={{ flexShrink: 0, maxWidth: 220 }}
         data-testid="saved-search-switcher"
         onClick={onOpen}
