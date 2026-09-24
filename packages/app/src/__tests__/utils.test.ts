@@ -24,6 +24,7 @@ import {
   isColumnInSelect,
   mapKeyBy,
   mergePath,
+  orderByAfterRemovingSelectItem,
   orderByStringToSortingState,
   parseTimestampToMs,
   resolveConditionalColor,
@@ -1423,7 +1424,7 @@ describe('mergePath', () => {
 });
 
 describe('withMapKeyAlias', () => {
-  const noColumns = new Set<string>();
+  const noColumns = new Set(['Timestamp', 'Body']);
 
   it('labels a Map subscript with its key', () => {
     expect(
@@ -1473,6 +1474,10 @@ describe('withMapKeyAlias', () => {
     expect(withMapKeyAlias(`LogAttributes['a"b']`, [], noColumns)).toBe(
       `LogAttributes['a"b']`,
     );
+    // Table columns not loaded yet: a clash with one cannot be ruled out
+    expect(
+      withMapKeyAlias("ResourceAttributes['ServiceName']", [], new Set()),
+    ).toBe("ResourceAttributes['ServiceName']");
   });
 });
 
@@ -1490,8 +1495,43 @@ describe('isColumnInSelect', () => {
     expect(isColumnInSelect(undefined, 'Body')).toBe(false);
   });
 
+  it('matches a hand-typed alias too', () => {
+    expect(isColumnInSelect(['Body AS b'], 'Body')).toBe(true);
+    expect(isColumnInSelect(['lower(Body) AS `b`'], 'lower(Body)')).toBe(true);
+  });
+
   it('does not mistake a cast for an alias', () => {
     expect(isColumnInSelect(['CAST(x AS String)'], 'CAST(x')).toBe(false);
+  });
+});
+
+describe('orderByAfterRemovingSelectItem', () => {
+  const item = `ResourceAttributes['service.name'] AS "service.name"`;
+
+  it('drops a sort on the alias of the removed column', () => {
+    expect(
+      orderByAfterRemovingSelectItem(
+        item,
+        '"service.name" DESC',
+        'Timestamp DESC',
+      ),
+    ).toBe('Timestamp DESC');
+    expect(orderByAfterRemovingSelectItem(item, '"service.name" ASC', '')).toBe(
+      '',
+    );
+  });
+
+  it('keeps any other sort', () => {
+    expect(
+      orderByAfterRemovingSelectItem(item, 'Timestamp ASC', 'Timestamp DESC'),
+    ).toBe('Timestamp ASC');
+    expect(orderByAfterRemovingSelectItem(item, '"http.method" DESC', '')).toBe(
+      '"http.method" DESC',
+    );
+    // A column without an alias sorts by its own expression, which is not affected
+    expect(
+      orderByAfterRemovingSelectItem('Body', 'Body DESC', 'Timestamp DESC'),
+    ).toBe('Body DESC');
   });
 });
 

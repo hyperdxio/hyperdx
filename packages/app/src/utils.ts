@@ -4,7 +4,10 @@ import { formatDistanceToNowStrict } from 'date-fns';
 import numbro from 'numbro';
 import type { SetStateAction } from 'react';
 import TimestampNano from 'timestamp-nano';
-import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
+import {
+  TableConnection,
+  unquoteIdentifier,
+} from '@hyperdx/common-utils/dist/core/metadata';
 import {
   CATEGORICAL_PALETTE_TOKENS,
   ChartPaletteToken,
@@ -1209,6 +1212,14 @@ export const selectItemExpression = (item: string): string =>
   item.replace(SELECT_ALIAS_REGEX, '').trim();
 
 /**
+ * The alias of a SELECT item, unquoted, or undefined if it has none
+ */
+export const selectItemAlias = (item: string): string | undefined => {
+  const alias = SELECT_ALIAS_REGEX.exec(item)?.[1];
+  return alias == null ? undefined : unquoteIdentifier(alias);
+};
+
+/**
  * Whether a column picked in the UI is in the SELECT list, aliased or not
  */
 export const isColumnInSelect = (
@@ -1222,9 +1233,7 @@ export const isColumnInSelect = (
 /**
  * Label a Map subscript picked in the UI with its key, so the results column
  * reads `service.name` instead of `arrayElement(LogAttributes, 'service.name')`.
- * The alias is left off when it could change the query: a key named like a
- * table column (ClickHouse resolves an alias before a column), a name already
- * in the SELECT list, or a key that would need escaping as an identifier.
+ * The alias is left off whenever it could change the query.
  */
 export const withMapKeyAlias = (
   column: string,
@@ -1235,20 +1244,45 @@ export const withMapKeyAlias = (
   if (!match) {
     return column;
   }
+  // Inverse of escapeSqlSingleQuoted, which mergePath uses to build the subscript
   const key = match[2].replace(/\\(.)/g, '$1');
-  const selectedNames = selectItems.map(item => {
-    const alias = SELECT_ALIAS_REGEX.exec(item)?.[1];
-    return alias ? alias.replace(/^["`]|["`]$/g, '') : item.trim();
-  });
+  const selectedNames = selectItems.map(
+    item => selectItemAlias(item) ?? item.trim(),
+  );
   if (
+    // Nothing to label
     key === '' ||
+    // Would need escaping inside the quoted alias
     /["\\]/.test(key) ||
+    // Table columns not loaded yet, so a clash with one cannot be ruled out
+    tableColumns.size === 0 ||
+    // ClickHouse resolves an alias before a column of the same name
     tableColumns.has(key) ||
+    // Two selected columns cannot share a name
     selectedNames.includes(key)
   ) {
     return column;
   }
   return `${column} AS "${key}"`;
+};
+
+/**
+ * The sort to keep once a SELECT item is removed. Sorting on an aliased column
+ * from the table header orders by the alias itself (`"service.name" DESC`),
+ * which stops resolving once the item is gone, so that falls back to the
+ * default sort.
+ */
+export const orderByAfterRemovingSelectItem = (
+  item: string,
+  orderBy: string,
+  defaultOrderBy: string,
+): string => {
+  const alias = selectItemAlias(item);
+  if (alias == null) {
+    return orderBy;
+  }
+  const sortedBy = orderBy.trim().replace(/\s+(ASC|DESC)$/i, '');
+  return sortedBy === `"${alias}"` ? defaultOrderBy : orderBy;
 };
 
 const _useTry = <T>(fn: () => T): [null | Error | unknown, null | T] => {

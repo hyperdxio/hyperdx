@@ -130,6 +130,7 @@ import {
 } from '@/timeQuery';
 import {
   formatDurationMs,
+  orderByAfterRemovingSelectItem,
   QUERY_LOCAL_STORAGE,
   selectItemExpression,
   useLocalStorage,
@@ -1106,7 +1107,7 @@ export function DBSearchPage() {
     [sources, lastSelectedSourceId],
   );
 
-  const { control, setValue, reset, handleSubmit, formState } =
+  const { control, setValue, getValues, reset, handleSubmit, formState } =
     useForm<SearchConfigFromSchema>({
       values: {
         select: searchedConfig.select || '',
@@ -1750,9 +1751,27 @@ export function DBSearchPage() {
             withMapKeyAlias(column, displayedColumns, knownColumns),
           ];
       setValue('select', newSelectArray.join(', '));
+      if (selected) {
+        const orderBy = getValues('orderBy') ?? '';
+        const nextOrderBy = orderByAfterRemovingSelectItem(
+          selected,
+          orderBy,
+          defaultSearchConfig.orderBy ?? '',
+        );
+        if (nextOrderBy !== orderBy) {
+          setValue('orderBy', nextOrderBy);
+        }
+      }
       onSubmit();
     },
-    [displayedColumns, knownColumns, setValue, onSubmit],
+    [
+      displayedColumns,
+      knownColumns,
+      setValue,
+      getValues,
+      defaultSearchConfig.orderBy,
+      onSubmit,
+    ],
   );
 
   const generateSearchUrl = useCallback(
