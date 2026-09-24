@@ -112,6 +112,20 @@ describe('DBBarChart', () => {
           .querySelector('.effect-pulse'),
       ).toBeNull();
     });
+
+    it('pulses the empty state while a refetch is running', () => {
+      mockUseQueriedChartConfig.mockReturnValue({
+        data: { data: [], meta: groupedData.meta },
+        isLoading: false,
+        isPlaceholderData: true,
+        isError: false,
+      });
+
+      renderWithMantine(<DBBarChart config={baseTestConfig} />);
+      expect(screen.getByText('No data found within time range.')).toHaveClass(
+        'effect-pulse',
+      );
+    });
   });
 
   it('handles error state correctly', () => {

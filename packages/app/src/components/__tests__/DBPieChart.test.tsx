@@ -90,10 +90,12 @@ describe('DBPieChart', () => {
       });
 
       renderWithMantine(<DBPieChart config={baseTestConfig} />);
+      expect(screen.getByTestId('pie-chart-container')).toHaveClass(
+        'effect-pulse',
+      );
+      // The legend shows values too, so it pulses along with the pie
       expect(
-        screen
-          .getByTestId('pie-chart-container')
-          .querySelector('.effect-pulse'),
+        screen.getByTestId('pie-chart-legend').closest('.effect-pulse'),
       ).not.toBeNull();
     });
 
@@ -106,11 +108,23 @@ describe('DBPieChart', () => {
       });
 
       renderWithMantine(<DBPieChart config={baseTestConfig} />);
-      expect(
-        screen
-          .getByTestId('pie-chart-container')
-          .querySelector('.effect-pulse'),
-      ).toBeNull();
+      expect(screen.getByTestId('pie-chart-container')).not.toHaveClass(
+        'effect-pulse',
+      );
+    });
+
+    it('pulses the empty state while a refetch is running', () => {
+      mockUseQueriedChartConfig.mockReturnValue({
+        data: { data: [], meta: groupedData.meta },
+        isLoading: false,
+        isPlaceholderData: true,
+        isError: false,
+      });
+
+      renderWithMantine(<DBPieChart config={baseTestConfig} />);
+      expect(screen.getByText('No data found within time range.')).toHaveClass(
+        'effect-pulse',
+      );
     });
   });
 

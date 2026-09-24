@@ -238,6 +238,20 @@ describe('DBNumberChart', () => {
         screen.getByTestId('number-chart-value').closest('.effect-pulse'),
       ).toBeNull();
     });
+
+    it('pulses the empty state while a refetch is running', () => {
+      mockUseQueriedChartConfig.mockReturnValue({
+        data: { data: [] },
+        isLoading: false,
+        isPlaceholderData: true,
+        isError: false,
+      });
+
+      renderWithMantine(<DBNumberChart config={baseTestConfig} />);
+      expect(screen.getByText('No data found within time range.')).toHaveClass(
+        'effect-pulse',
+      );
+    });
   });
 
   it('handles error state correctly', () => {

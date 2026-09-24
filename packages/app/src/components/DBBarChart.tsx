@@ -85,7 +85,9 @@ export const DBBarChart = (props: CategoricalChartProps) => {
           variant={props.errorVariant}
         />
       ) : data?.data.length === 0 ? (
-        <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
+        <div
+          className={`d-flex h-100 w-100 align-items-center justify-content-center text-muted${isPlaceholderData ? ' effect-pulse' : ''}`}
+        >
           No data found within time range.
         </div>
       ) : (

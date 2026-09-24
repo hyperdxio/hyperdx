@@ -112,7 +112,9 @@ export const DBPieChart = (props: CategoricalChartProps) => {
       ) : responseFormatError ? (
         <ChartErrorState error={responseFormatError} variant={errorVariant} />
       ) : data?.data.length === 0 ? (
-        <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
+        <div
+          className={`d-flex h-100 w-100 align-items-center justify-content-center text-muted${isPlaceholderData ? ' effect-pulse' : ''}`}
+        >
           No data found within time range.
         </div>
       ) : (
@@ -122,12 +124,10 @@ export const DBPieChart = (props: CategoricalChartProps) => {
           justify="center"
           h="100%"
           style={{ flexGrow: 1, overflow: 'hidden' }}
+          // Pulse the pie and its legend together: the legend shows values too
+          className={isLoading || isPlaceholderData ? 'effect-pulse' : ''}
         >
-          <ResponsiveContainer
-            height="100%"
-            width="100%"
-            className={isLoading || isPlaceholderData ? 'effect-pulse' : ''}
-          >
+          <ResponsiveContainer height="100%" width="100%">
             <PieChart>
               <Pie
                 cx="50%"
