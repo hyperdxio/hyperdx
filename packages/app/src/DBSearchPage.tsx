@@ -97,6 +97,7 @@ import ResourceTerraformPopover from '@/components/Iac/ResourceTerraformPopover'
 import { InputControlled } from '@/components/InputControlled';
 import OnboardingModal from '@/components/OnboardingModal';
 import { SavedSearchesDrawer } from '@/components/SavedSearches/SavedSearchesDrawer';
+import { getSavedSearchStatus } from '@/components/SavedSearches/savedSearchStatus';
 import { SavedSearchSwitcher } from '@/components/SavedSearches/SavedSearchSwitcher';
 import SearchWhereInput, {
   getStoredLanguage,
@@ -1064,6 +1065,20 @@ export function DBSearchPage() {
     {
       enabled: savedSearchId != null,
     },
+  );
+
+  const savedSearchStatus = useMemo(
+    () =>
+      getSavedSearchStatus(
+        savedSearch?.id === savedSearchId ? savedSearch : undefined,
+        {
+          ...searchedConfig,
+          // The resolved source is undefined while sources load, even when the
+          // URL already holds the saved search's source ID.
+          source: searchedConfig.source ?? rawSearchedConfig.source,
+        },
+      ),
+    [savedSearch, savedSearchId, searchedConfig, rawSearchedConfig.source],
   );
 
   const { data: sources } = useSources();
@@ -2217,6 +2232,7 @@ export function DBSearchPage() {
         <Flex gap="sm" px="sm" pt="sm" wrap="nowrap" align="center">
           <SavedSearchSwitcher
             name={savedSearch?.name}
+            status={savedSearchStatus}
             meta={
               savedSearch ? (
                 <SavedSearchMeta savedSearch={savedSearch} />

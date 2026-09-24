@@ -1,46 +1,72 @@
-import { Badge, Button, Group, Tooltip } from '@mantine/core';
-import { IconBookmarks, IconChevronDown } from '@tabler/icons-react';
+import { Badge, Button, Group, Text, Tooltip } from '@mantine/core';
+import { IconBookmarks, IconCheck, IconChevronDown } from '@tabler/icons-react';
 
-/** Opens the saved searches drawer, and names the search on screen. */
+import type { SavedSearchStatus } from './savedSearchStatus';
+
+const STATUS_BADGE = {
+  unsaved: { label: 'Unsaved', color: 'gray', icon: undefined },
+  saved: { label: 'Saved', color: 'green', icon: <IconCheck size={12} /> },
+  edited: { label: 'Edited', color: 'yellow', icon: undefined },
+} satisfies Record<
+  SavedSearchStatus,
+  { label: string; color: string; icon: React.ReactNode }
+>;
+
+/** Names the selected saved search, opens the drawer, and shows whether it has been edited. */
 export function SavedSearchSwitcher({
   meta,
   name,
   onOpen,
+  status,
 }: {
   /** Authorship and edit history, shown on hover. */
   meta?: React.ReactNode;
-  /** The saved search on screen, absent while the search is unsaved. */
+  /** The selected saved search, absent while the search is unsaved. */
   name?: string;
   onOpen: () => void;
+  status: SavedSearchStatus;
 }) {
+  const badge = STATUS_BADGE[status];
+
   return (
     <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
-      <Button
-        variant="secondary"
-        size="xs"
-        leftSection={<IconBookmarks size={14} />}
-        rightSection={<IconChevronDown size={14} />}
-        data-testid="saved-search-switcher"
-        onClick={onOpen}
-      >
-        Saved searches
-      </Button>
       <Tooltip withArrow fz="xs" color="gray" label={meta} disabled={!meta}>
-        <Badge
-          variant="light"
-          color="gray"
-          radius="sm"
-          fw="normal"
-          // Sentence case, since the badge carries a search name as often as
-          // it carries a status.
-          tt="none"
-          c={name ? undefined : 'dimmed'}
-          data-testid="saved-search-name"
-          style={{ maxWidth: 200 }}
+        <Button
+          variant="secondary"
+          size="xs"
+          leftSection={<IconBookmarks size={14} />}
+          rightSection={<IconChevronDown size={14} />}
+          style={{ maxWidth: 220 }}
+          data-testid="saved-search-switcher"
+          onClick={onOpen}
         >
-          {name ?? 'Unsaved'}
-        </Badge>
+          {name ? (
+            <Text
+              span
+              inherit
+              data-testid="saved-search-name"
+              style={{
+                display: 'block',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {name}
+            </Text>
+          ) : (
+            'Saved searches'
+          )}
+        </Button>
       </Tooltip>
+      <Badge
+        variant="light"
+        color={badge.color}
+        leftSection={badge.icon}
+        data-testid="saved-search-status"
+      >
+        {badge.label}
+      </Badge>
     </Group>
   );
 }

@@ -689,6 +689,7 @@ test.describe('Saved Search Functionality', () => {
           'Updatable Filter Search',
         );
         savedSearchUrl = page.url().split('?')[0];
+        await expect(searchPage.savedSearchStatus).toHaveText('Saved');
       });
 
       await test.step('Update saved search with second filter', async () => {
@@ -696,11 +697,13 @@ test.describe('Saved Search Functionality', () => {
         await searchPage.filters.applyFilter(secondFilterGroup, secondFilter);
         await searchPage.submitButton.click();
         await searchPage.table.waitForRowsToPopulate(true);
+        await expect(searchPage.savedSearchStatus).toHaveText('Edited');
 
         await searchPage.openSaveSearchModal({ update: true });
         await searchPage.savedSearchModal.saveSearchAndWaitForNavigation(
           'Updatable Filter Search updated',
         );
+        await expect(searchPage.savedSearchStatus).toHaveText('Saved');
       });
 
       await test.step('Navigate away and back', async () => {

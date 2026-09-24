@@ -7,45 +7,46 @@ describe('SavedSearchSwitcher', () => {
   it('opens the drawer in one click', async () => {
     const user = userEvent.setup();
     const onOpen = jest.fn();
-    renderWithMantine(
-      <SavedSearchSwitcher name="Checkout errors" onOpen={onOpen} />,
-    );
+    renderWithMantine(<SavedSearchSwitcher status="unsaved" onOpen={onOpen} />);
 
     await user.click(screen.getByTestId('saved-search-switcher'));
 
     expect(onOpen).toHaveBeenCalled();
   });
 
-  it('names the current search', () => {
+  it('reads "Saved searches" until a saved search is selected', () => {
     renderWithMantine(
-      <SavedSearchSwitcher name="Checkout errors" onOpen={jest.fn()} />,
+      <SavedSearchSwitcher status="unsaved" onOpen={jest.fn()} />,
     );
 
-    expect(screen.getByTestId('saved-search-name')).toHaveTextContent(
-      'Checkout errors',
+    expect(screen.getByTestId('saved-search-switcher')).toHaveTextContent(
+      'Saved searches',
+    );
+    expect(screen.queryByTestId('saved-search-name')).not.toBeInTheDocument();
+    expect(screen.getByTestId('saved-search-status')).toHaveTextContent(
+      'Unsaved',
     );
   });
 
-  it('marks a search that has never been saved', () => {
-    renderWithMantine(<SavedSearchSwitcher onOpen={jest.fn()} />);
-
-    const badge = screen.getByTestId('saved-search-name');
-
-    expect(badge).toHaveTextContent('Unsaved');
-    expect(badge).toHaveStyle({ color: 'var(--mantine-color-dimmed)' });
-  });
-
-  it('keeps the entry point in place whether or not the search is saved', () => {
+  it('names the selected saved search', () => {
     renderWithMantine(
-      <>
-        <SavedSearchSwitcher onOpen={jest.fn()} />
-        <SavedSearchSwitcher name="Checkout errors" onOpen={jest.fn()} />
-      </>,
+      <SavedSearchSwitcher name="Ops" status="saved" onOpen={jest.fn()} />,
     );
 
-    const [unsaved, saved] = screen.getAllByTestId('saved-search-switcher');
+    expect(screen.getByTestId('saved-search-name')).toHaveTextContent('Ops');
+    expect(screen.getByTestId('saved-search-switcher')).not.toHaveTextContent(
+      'Saved searches',
+    );
+  });
 
-    expect(unsaved).toHaveTextContent('Saved searches');
-    expect(saved).toHaveTextContent('Saved searches');
+  it.each([
+    ['saved', 'Saved'],
+    ['edited', 'Edited'],
+  ] as const)('shows the %s status', (status, label) => {
+    renderWithMantine(
+      <SavedSearchSwitcher name="Ops" status={status} onOpen={jest.fn()} />,
+    );
+
+    expect(screen.getByTestId('saved-search-status')).toHaveTextContent(label);
   });
 });
