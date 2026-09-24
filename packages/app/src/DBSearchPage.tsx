@@ -74,6 +74,7 @@ import { notifications } from '@mantine/notifications';
 import {
   IconArrowBarToRight,
   IconBolt,
+  IconBookmarks,
   IconCode,
   IconPlayerPlay,
   IconPlus,
@@ -2336,15 +2337,18 @@ export function DBSearchPage() {
             />
           </Box>
           <>
-            <Button
-              variant="secondary"
-              size="xs"
-              style={{ flexShrink: 0 }}
-              data-testid="saved-searches-button"
-              onClick={() => void setPanel('saved-searches')}
-            >
-              Saved searches
-            </Button>
+            <Tooltip withArrow label="Saved searches" fz="xs" color="gray">
+              <ActionIcon
+                variant="secondary"
+                size="input-xs"
+                style={{ flexShrink: 0 }}
+                aria-label="Saved searches"
+                data-testid="saved-searches-button"
+                onClick={() => void setPanel('saved-searches')}
+              >
+                <IconBookmarks size={14} />
+              </ActionIcon>
+            </Tooltip>
             {!savedSearchId ? (
               <>
                 <Button
