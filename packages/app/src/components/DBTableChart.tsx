@@ -311,8 +311,14 @@ export default function DBTableChart({
         <Table
           data={data?.data ?? []}
           columns={columns}
-          getRowAction={getRowAction ?? undefined}
-          getRowSearchLink={getRowAction ? undefined : getRowSearchLink}
+          // Rows kept from the previous query would link with the new date
+          // range and config, so leave them inert until fresh rows arrive.
+          getRowAction={
+            isPlaceholderData ? undefined : (getRowAction ?? undefined)
+          }
+          getRowSearchLink={
+            isPlaceholderData || getRowAction ? undefined : getRowSearchLink
+          }
           sorting={effectiveSort}
           enableClientSideSorting={isRawSqlChartConfig(config)}
           onSortingChange={handleSortingChange}

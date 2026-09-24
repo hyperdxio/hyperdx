@@ -834,6 +834,54 @@ describe('useOffsetPaginatedQuery', () => {
         expect(result.current.data?.data[0]?.ServiceName).toBe('from-range-b'),
       );
     });
+
+    it('does not offer more pages while showing placeholder rows', async () => {
+      // Ordered by timestamp, so each range is paged through time windows
+      const windowedA = createMockChartConfig();
+      const windowedB = createMockChartConfig({
+        dateRange: rangeB.dateRange,
+      });
+
+      let releaseRangeB!: (value: unknown) => void;
+      mockReader.read
+        .mockResolvedValueOnce(page('from-range-a'))
+        .mockResolvedValueOnce({ done: true })
+        .mockReturnValueOnce(
+          new Promise(resolve => {
+            releaseRangeB = resolve;
+          }),
+        )
+        .mockResolvedValueOnce({ done: true });
+
+      const { result, rerender } = renderHook(
+        ({ config }) =>
+          useOffsetPaginatedQuery(config, { keepPreviousData: true }),
+        { wrapper, initialProps: { config: windowedA } },
+      );
+      await waitFor(() =>
+        expect(result.current.data?.data[0]?.ServiceName).toBe('from-range-a'),
+      );
+      // Range A has later time windows left to load
+      expect(result.current.hasNextPage).toBe(true);
+
+      rerender({ config: windowedB });
+      await waitFor(() =>
+        expect(mockClickhouseClient.query).toHaveBeenCalledTimes(2),
+      );
+
+      // The old rows stay, but the "load more" trigger must not fire for them
+      expect(result.current.isPlaceholderData).toBe(true);
+      expect(result.current.data?.data[0]?.ServiceName).toBe('from-range-a');
+      expect(result.current.hasNextPage).toBe(false);
+
+      await act(async () => releaseRangeB(page('from-range-b')));
+      await waitFor(() =>
+        expect(result.current.data?.data[0]?.ServiceName).toBe('from-range-b'),
+      );
+      expect(result.current.isPlaceholderData).toBe(false);
+      // Paging resumes against the new range
+      expect(result.current.hasNextPage).toBe(true);
+    });
   });
 
   describe('Query Key Management', () => {

@@ -6,6 +6,7 @@ import MVOptimizationIndicator from '@/components/MaterializedViews/MVOptimizati
 import { Table } from '@/HDXMultiSeriesTableChart';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
+import { useOnClickLinkBuilder } from '@/hooks/useOnClickLinkBuilder';
 import { useSource } from '@/source';
 
 // Mock dependencies
@@ -196,6 +197,44 @@ describe('DBTableChart', () => {
       expect(
         jest.mocked(Table).mock.calls.at(-1)![0].className,
       ).toBeUndefined();
+    });
+
+    describe('row links', () => {
+      const getRowSearchLink = jest.fn(() => '/search');
+      const rowAction = jest.fn();
+
+      afterEach(() => {
+        jest.mocked(useOnClickLinkBuilder).mockReturnValue(null);
+      });
+
+      const renderTable = (isPlaceholderData: boolean) => {
+        jest.mocked(useOffsetPaginatedQuery).mockReturnValue({
+          ...jest.mocked(useOffsetPaginatedQuery)(baseTestConfig),
+          isPlaceholderData,
+        });
+        renderWithMantine(
+          <DBTableChart
+            config={baseTestConfig}
+            getRowSearchLink={getRowSearchLink}
+          />,
+        );
+        return jest.mocked(Table).mock.calls.at(-1)![0];
+      };
+
+      it('disables search links on rows kept from the previous query', () => {
+        expect(renderTable(true).getRowSearchLink).toBeUndefined();
+      });
+
+      it('enables search links once fresh rows have loaded', () => {
+        expect(renderTable(false).getRowSearchLink).toBe(getRowSearchLink);
+      });
+
+      it('disables the configured row action on rows kept from the previous query', () => {
+        jest.mocked(useOnClickLinkBuilder).mockReturnValue(rowAction);
+
+        expect(renderTable(true).getRowAction).toBeUndefined();
+        expect(renderTable(false).getRowAction).toBe(rowAction);
+      });
     });
   });
 
