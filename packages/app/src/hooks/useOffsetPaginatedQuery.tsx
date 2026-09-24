@@ -444,11 +444,14 @@ export default function useOffsetPaginatedQuery(
   config: ChartConfigWithOptTimestamp,
   {
     isLive,
+    keepPreviousData,
     enabled = true,
     queryKeyPrefix = '',
     enableSmallFirstWindow,
   }: {
     isLive?: boolean;
+    /** Keep showing the previous result while a new query key loads */
+    keepPreviousData?: boolean;
     enabled?: boolean;
     queryKeyPrefix?: string;
     enableSmallFirstWindow?: boolean;
@@ -489,6 +492,7 @@ export default function useOffsetPaginatedQuery(
     isError,
     error,
     isLoading,
+    isPlaceholderData,
   } = useInfiniteQuery<
     TQueryFnData,
     Error | ClickHouseQueryError,
@@ -498,8 +502,8 @@ export default function useOffsetPaginatedQuery(
   >({
     queryKey: key,
     placeholderData: (prev: TData | undefined) => {
-      // Only preserve previous query in live mode
-      return isLive ? prev : undefined;
+      // Only preserve previous query in live mode, or when the caller asks
+      return isLive || keepPreviousData ? prev : undefined;
     },
     enabled:
       enabled && !isLoadingMe && !isLoadingMVOptimization && !isSourceLoading,
@@ -538,5 +542,6 @@ export default function useOffsetPaginatedQuery(
     hasNextPage,
     isFetching: isFetching || isLoadingMe || isLoadingMVOptimization,
     isLoading: isLoading || isLoadingMe || isLoadingMVOptimization,
+    isPlaceholderData,
   };
 }

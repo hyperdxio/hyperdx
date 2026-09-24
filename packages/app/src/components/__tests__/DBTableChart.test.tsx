@@ -170,6 +170,35 @@ describe('DBTableChart', () => {
     expect(dateRangeIndicatorCall.mvGranularity).toBe('1 minute');
   });
 
+  describe('refresh indicator', () => {
+    it('asks the query to keep the previous rows during a refetch', () => {
+      renderWithMantine(<DBTableChart config={baseTestConfig} />);
+
+      const options = jest.mocked(useOffsetPaginatedQuery).mock.calls[0][1];
+      expect(options?.keepPreviousData).toBe(true);
+    });
+
+    it('pulses while a refetch is showing the previous rows', () => {
+      jest.mocked(useOffsetPaginatedQuery).mockReturnValue({
+        ...jest.mocked(useOffsetPaginatedQuery)(baseTestConfig),
+        isFetching: true,
+        isPlaceholderData: true,
+      });
+
+      renderWithMantine(<DBTableChart config={baseTestConfig} />);
+      expect(jest.mocked(Table).mock.calls.at(-1)![0].className).toBe(
+        'effect-pulse',
+      );
+    });
+
+    it('does not pulse once fresh rows have loaded', () => {
+      renderWithMantine(<DBTableChart config={baseTestConfig} />);
+      expect(
+        jest.mocked(Table).mock.calls.at(-1)![0].className,
+      ).toBeUndefined();
+    });
+  });
+
   describe('groupByColumnsOnLeft', () => {
     // Emulates how the ClickHouse query returns rows for a builder table chart:
     // series columns are produced before groupBy columns.

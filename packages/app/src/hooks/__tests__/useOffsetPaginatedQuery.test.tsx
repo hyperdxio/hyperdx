@@ -753,6 +753,89 @@ describe('useOffsetPaginatedQuery', () => {
     });
   });
 
+  describe('Refetching for a new date range', () => {
+    // A single, non-windowed page so each query is one read of the stream
+    const rangeA = createMockChartConfig({ orderBy: 'ServiceName' });
+    const rangeB = createMockChartConfig({
+      orderBy: 'ServiceName',
+      dateRange: [
+        new Date('2024-01-01T00:05:00Z'),
+        new Date('2024-01-02T00:05:00Z'),
+      ] as [Date, Date],
+    });
+
+    const page = (service: string) => ({
+      done: false,
+      value: [
+        { json: () => ['ServiceName'] },
+        { json: () => ['String'] },
+        { json: () => [service] },
+      ],
+    });
+
+    // Loads rangeA, then switches to rangeB and holds its response until
+    // the returned `finish` is called, so the refetch can be inspected.
+    const loadThenRefetch = async (options: { keepPreviousData?: boolean }) => {
+      let releaseRangeB!: (value: unknown) => void;
+      mockReader.read
+        .mockResolvedValueOnce(page('from-range-a'))
+        .mockResolvedValueOnce({ done: true })
+        .mockReturnValueOnce(
+          new Promise(resolve => {
+            releaseRangeB = resolve;
+          }),
+        )
+        .mockResolvedValueOnce({ done: true });
+
+      const { result, rerender } = renderHook(
+        ({ config }) => useOffsetPaginatedQuery(config, options),
+        { wrapper, initialProps: { config: rangeA } },
+      );
+      await waitFor(() =>
+        expect(result.current.data?.data[0]?.ServiceName).toBe('from-range-a'),
+      );
+
+      rerender({ config: rangeB });
+      await waitFor(() =>
+        expect(mockClickhouseClient.query).toHaveBeenCalledTimes(2),
+      );
+
+      return {
+        result,
+        finish: () => act(async () => releaseRangeB(page('from-range-b'))),
+      };
+    };
+
+    it('keeps the previous rows as placeholder data when keepPreviousData is set', async () => {
+      const { result, finish } = await loadThenRefetch({
+        keepPreviousData: true,
+      });
+
+      expect(result.current.data?.data[0]?.ServiceName).toBe('from-range-a');
+      expect(result.current.isPlaceholderData).toBe(true);
+      expect(result.current.isFetching).toBe(true);
+
+      await finish();
+      await waitFor(() =>
+        expect(result.current.data?.data[0]?.ServiceName).toBe('from-range-b'),
+      );
+      expect(result.current.isPlaceholderData).toBe(false);
+    });
+
+    it('clears the previous rows by default', async () => {
+      const { result, finish } = await loadThenRefetch({});
+
+      expect(result.current.data).toBeNull();
+      expect(result.current.isPlaceholderData).toBe(false);
+      expect(result.current.isLoading).toBe(true);
+
+      await finish();
+      await waitFor(() =>
+        expect(result.current.data?.data[0]?.ServiceName).toBe('from-range-b'),
+      );
+    });
+  });
+
   describe('Query Key Management', () => {
     it('should generate unique query keys for different configurations', async () => {
       const config1 = createMockChartConfig({

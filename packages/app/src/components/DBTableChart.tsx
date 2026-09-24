@@ -106,11 +106,20 @@ export default function DBTableChart({
     isBuilderChartConfig(queriedConfig) ? queriedConfig : undefined,
   );
 
-  const { data, fetchNextPage, hasNextPage, isLoading, isError, error } =
-    useOffsetPaginatedQuery(queriedConfig, {
-      enabled,
-      queryKeyPrefix,
-    });
+  const {
+    data,
+    fetchNextPage,
+    hasNextPage,
+    isLoading,
+    isError,
+    error,
+    isPlaceholderData,
+  } = useOffsetPaginatedQuery(queriedConfig, {
+    enabled,
+    queryKeyPrefix,
+    // Keep the current rows on screen while a refresh loads the new range
+    keepPreviousData: true,
+  });
   const { observerRef: fetchMoreRef } = useIntersectionObserver(fetchNextPage);
 
   // Returns an array of aliases, so we can check if something is using an alias
@@ -309,6 +318,7 @@ export default function DBTableChart({
           onSortingChange={handleSortingChange}
           variant={variant}
           alternateRowBackground={!!queriedConfig.alternateRowBackground}
+          className={isPlaceholderData ? 'effect-pulse' : undefined}
           tableBottom={
             hasNextPage && (
               <Text ref={fetchMoreRef} ta="center">
