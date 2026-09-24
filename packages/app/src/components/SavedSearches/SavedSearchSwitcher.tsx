@@ -24,11 +24,14 @@ export function SavedSearchSwitcher({
   activeSavedSearchId,
   onManage,
   label,
+  meta,
 }: {
   activeSavedSearchId?: string;
   onManage: () => void;
   /** Renders an inline chip carrying this text. Omit for a bare chevron. */
   label?: string;
+  /** Authorship and edit history, shown on hover over the chip. */
+  meta?: React.ReactNode;
 }) {
   const [opened, setOpened] = useState(false);
   const [query, setQuery] = useState('');
@@ -75,16 +78,34 @@ export function SavedSearchSwitcher({
     >
       <Popover.Target>
         {label ? (
-          <Button
-            variant="secondary"
-            size="xs"
-            rightSection={<IconChevronDown size={14} />}
-            style={{ flexShrink: 0 }}
-            data-testid="saved-search-switcher"
-            onClick={() => setOpened(o => !o)}
+          <Tooltip
+            withArrow
+            fz="xs"
+            color="gray"
+            label={meta ?? 'Switch saved search'}
+            disabled={opened}
           >
-            {label}
-          </Button>
+            <Button
+              variant="secondary"
+              size="xs"
+              rightSection={<IconChevronDown size={14} />}
+              style={{ flexShrink: 0, maxWidth: 220 }}
+              data-testid="saved-search-switcher"
+              onClick={() => setOpened(o => !o)}
+            >
+              <span
+                data-testid="saved-search-name"
+                style={{
+                  display: 'block',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {label}
+              </span>
+            </Button>
+          </Tooltip>
         ) : (
           <Tooltip withArrow label="Switch saved search" fz="xs" color="gray">
             <ActionIcon
