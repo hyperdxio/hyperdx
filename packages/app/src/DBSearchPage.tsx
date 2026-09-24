@@ -1923,6 +1923,25 @@ export function DBSearchPage() {
     prevSourceIdRef.current = searchedSource?.id;
   }, [searchedSource?.id, setTraceChartMode]);
 
+  // Pin live tail off while the heatmap is the visible chart. A live tick
+  // moves the absolute time range, and the heatmap keys its uPlot instance on
+  // the chart config, so every refresh would tear the chart down and rebuild
+  // it with a recomputed y-axis instead of updating in place. Delta and
+  // pattern modes already pin it off (see the analysisMode effect above), so
+  // the delta-view heatmap never hit this; results mode defaults to live, so
+  // the view has to opt out for itself. Only pinned while the heatmap is
+  // actually rendered, so a stale ?traceChartMode=heatmap on a log source
+  // can't disable live tail for a search that shows the histogram.
+  const isHeatmapChartVisible =
+    analysisMode === 'results' &&
+    traceRedMetricsSource != null &&
+    traceChartMode === 'heatmap';
+  useEffect(() => {
+    if (isHeatmapChartVisible) {
+      setIsLive(false);
+    }
+  }, [isHeatmapChartVisible, setIsLive]);
+
   const histogramTimeChartConfig = useMemo(() => {
     if (chartConfig == null) {
       return undefined;
