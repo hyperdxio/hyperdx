@@ -718,6 +718,7 @@ function HeatmapContainer({
   scaleType = 'log',
   showLegend = false,
   errorVariant,
+  queryKeyPrefix,
 }: {
   config: HeatmapChartConfig;
   enabled?: boolean;
@@ -737,6 +738,14 @@ function HeatmapContainer({
   scaleType?: HeatmapScaleType;
   showLegend?: boolean;
   errorVariant?: ChartErrorStateVariant;
+  /**
+   * Namespaces both heatmap queries, matching `DBTimeChart`'s prop of the same
+   * name. Callers that gate on `useIsFetching` (the search page pauses live
+   * tail while its charts are in flight) need the heatmap's queries to carry
+   * the same prefix as the sibling time charts, or a live tick fires a fresh
+   * pair of heatmap queries without waiting for the previous one.
+   */
+  queryKeyPrefix?: string;
 }) {
   const dateRange = config.dateRange;
   const granularity = convertDateRangeToGranularityString(dateRange, 245);
@@ -758,7 +767,7 @@ function HeatmapContainer({
     isLoading: isMinMaxLoading,
     error: minMaxError,
   } = useQueriedChartConfig(minMaxConfig, {
-    queryKey: ['heatmap', minMaxConfig],
+    queryKey: [queryKeyPrefix, 'heatmap', minMaxConfig],
     enabled: enabled,
   });
 
@@ -782,7 +791,7 @@ function HeatmapContainer({
   });
 
   const { data, isLoading, error } = useQueriedChartConfig(bucketConfig, {
-    queryKey: ['heatmap_bucket', bucketConfig],
+    queryKey: [queryKeyPrefix, 'heatmap_bucket', bucketConfig],
     enabled: !!minMaxData && bucketConfig != null && max > effectiveMin,
   });
 
