@@ -235,14 +235,12 @@ export default function DBNumberChart({
   const { data: mvOptimizationData } =
     useMVOptimizationExplanation(builderQueriedConfig);
 
-  const { data, isLoading, isError, error } = useQueriedChartConfig(
-    queriedConfig,
-    {
+  const { data, isLoading, isError, error, isPlaceholderData } =
+    useQueriedChartConfig(queriedConfig, {
       placeholderData: (prev: any) => prev,
       queryKeyPrefix,
       enabled,
-    },
-  );
+    });
 
   // The value is the first numeric value in the first row of the result
   const valueColumn = data?.meta
@@ -387,7 +385,10 @@ export default function DBNumberChart({
           No data found within time range.
         </div>
       ) : (
-        <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+        <div
+          className={isLoading || isPlaceholderData ? 'effect-pulse' : ''}
+          style={{ position: 'relative', width: '100%', height: '100%' }}
+        >
           {config.backgroundChart && (
             <NumberTileBackgroundChart
               config={config}

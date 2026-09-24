@@ -210,6 +210,36 @@ describe('DBNumberChart', () => {
     expect(screen.getByText('Loading Chart Data...')).toBeInTheDocument();
   });
 
+  describe('refresh indicator', () => {
+    it('pulses while a refetch is showing the previous value', () => {
+      mockUseQueriedChartConfig.mockReturnValue({
+        data: { data: [{ value: 1234 }] },
+        isLoading: false,
+        isPlaceholderData: true,
+        isError: false,
+      });
+
+      renderWithMantine(<DBNumberChart config={baseTestConfig} />);
+      expect(
+        screen.getByTestId('number-chart-value').closest('.effect-pulse'),
+      ).not.toBeNull();
+    });
+
+    it('does not pulse once the fresh value has loaded', () => {
+      mockUseQueriedChartConfig.mockReturnValue({
+        data: { data: [{ value: 1234 }] },
+        isLoading: false,
+        isPlaceholderData: false,
+        isError: false,
+      });
+
+      renderWithMantine(<DBNumberChart config={baseTestConfig} />);
+      expect(
+        screen.getByTestId('number-chart-value').closest('.effect-pulse'),
+      ).toBeNull();
+    });
+  });
+
   it('handles error state correctly', () => {
     mockUseQueriedChartConfig.mockReturnValue({
       data: undefined,

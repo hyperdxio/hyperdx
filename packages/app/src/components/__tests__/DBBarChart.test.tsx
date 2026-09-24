@@ -69,6 +69,51 @@ describe('DBBarChart', () => {
     expect(screen.getByText('Loading Chart Data...')).toBeInTheDocument();
   });
 
+  describe('refresh indicator', () => {
+    const groupedData = {
+      data: [
+        { status: 'success', count: 100 },
+        { status: 'error', count: 50 },
+      ],
+      meta: [
+        { name: 'status', type: 'String' },
+        { name: 'count', type: 'UInt64' },
+      ],
+    };
+
+    it('pulses while a refetch is showing the previous result', () => {
+      mockUseQueriedChartConfig.mockReturnValue({
+        data: groupedData,
+        isLoading: false,
+        isPlaceholderData: true,
+        isError: false,
+      });
+
+      renderWithMantine(<DBBarChart config={baseTestConfig} />);
+      expect(
+        screen
+          .getByTestId('bar-chart-container')
+          .querySelector('.effect-pulse'),
+      ).not.toBeNull();
+    });
+
+    it('does not pulse once fresh data has loaded', () => {
+      mockUseQueriedChartConfig.mockReturnValue({
+        data: groupedData,
+        isLoading: false,
+        isPlaceholderData: false,
+        isError: false,
+      });
+
+      renderWithMantine(<DBBarChart config={baseTestConfig} />);
+      expect(
+        screen
+          .getByTestId('bar-chart-container')
+          .querySelector('.effect-pulse'),
+      ).toBeNull();
+    });
+  });
+
   it('handles error state correctly', () => {
     mockUseQueriedChartConfig.mockReturnValue({
       data: undefined,

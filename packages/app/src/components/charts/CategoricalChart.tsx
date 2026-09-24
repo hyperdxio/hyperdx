@@ -56,14 +56,12 @@ export function useCategoricalChart({
   const { data: mvOptimizationData } =
     useMVOptimizationExplanation(builderQueriedConfig);
 
-  const { data, isLoading, isError, error } = useQueriedChartConfig(
-    queriedConfig,
-    {
+  const { data, isLoading, isError, error, isPlaceholderData } =
+    useQueriedChartConfig(queriedConfig, {
       placeholderData: (prev: any) => prev,
       queryKey: [queryKeyPrefix, queriedConfig],
       enabled,
-    },
-  );
+    });
 
   const toolbarItems = useMemo(() => {
     const allToolbarItems: React.ReactNode[] = [];
@@ -130,6 +128,8 @@ export function useCategoricalChart({
     toolbarItems,
     data,
     isLoading,
+    // True while a refetch (e.g. dashboard refresh) shows the previous result
+    isPlaceholderData,
     isError,
     error,
     chartData,

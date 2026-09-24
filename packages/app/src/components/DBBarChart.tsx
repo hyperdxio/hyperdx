@@ -64,6 +64,7 @@ export const DBBarChart = (props: CategoricalChartProps) => {
     toolbarItems,
     data,
     isLoading,
+    isPlaceholderData,
     isError,
     error,
     chartData,
@@ -98,7 +99,7 @@ export const DBBarChart = (props: CategoricalChartProps) => {
           <ResponsiveContainer
             height="100%"
             width="100%"
-            className={isLoading ? 'effect-pulse' : ''}
+            className={isLoading || isPlaceholderData ? 'effect-pulse' : ''}
           >
             <BarChart data={chartData}>
               <XAxis
