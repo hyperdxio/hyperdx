@@ -98,6 +98,7 @@ import { FavoriteButton } from '@/components/FavoriteButton';
 import ResourceTerraformPopover from '@/components/Iac/ResourceTerraformPopover';
 import { InputControlled } from '@/components/InputControlled';
 import OnboardingModal from '@/components/OnboardingModal';
+import { SavedSearchesDrawer } from '@/components/SavedSearches/SavedSearchesDrawer';
 import SearchWhereInput, {
   getStoredLanguage,
 } from '@/components/SearchInput/SearchWhereInput';
@@ -1010,6 +1011,7 @@ export function DBSearchPage() {
   // conditions with useQueryStates, so we'll parse it directly
   const paths = window.location.pathname.split('/');
   const savedSearchId = paths.length === 3 ? paths[2] : null;
+  const [panel, setPanel] = useQueryState('panel', parseAsString);
 
   const [rawSearchedConfig, setSearchedConfig] = useQueryStates(queryStateMap);
 
@@ -2164,6 +2166,13 @@ export function DBSearchPage() {
           {savedSearch ? `${savedSearch.name} Search` : 'Search'} - {brandName}
         </title>
       </Head>
+      {panel === 'saved-searches' && (
+        <SavedSearchesDrawer
+          opened
+          onClose={() => void setPanel(null)}
+          activeSavedSearchId={savedSearchId ?? undefined}
+        />
+      )}
       {!IS_LOCAL_MODE && isAlertModalOpen && (
         <DBSearchPageAlertModal
           id={savedSearch?.id}
@@ -2177,8 +2186,8 @@ export function DBSearchPage() {
         <Stack mt="lg" mx="xs">
           <Group justify="space-between">
             <Breadcrumbs fz="sm">
-              <Anchor component={Link} href="/search/list" fz="sm" c="dimmed">
-                Saved Searches
+              <Anchor component={Link} href="/search" fz="sm" c="dimmed">
+                Search
               </Anchor>
               <Text fz="sm" c="dimmed" maw={400} truncate="end">
                 {savedSearch.name}
@@ -2257,7 +2266,7 @@ export function DBSearchPage() {
                 onClickDeleteSavedSearch={() => {
                   deleteSavedSearch.mutate(savedSearch?.id ?? '', {
                     onSuccess: () => {
-                      router.push('/search/list');
+                      router.push('/search');
                     },
                   });
                 }}
@@ -2327,16 +2336,27 @@ export function DBSearchPage() {
             />
           </Box>
           <>
+            <Button
+              variant="secondary"
+              size="xs"
+              style={{ flexShrink: 0 }}
+              data-testid="saved-searches-button"
+              onClick={() => void setPanel('saved-searches')}
+            >
+              Saved searches
+            </Button>
             {!savedSearchId ? (
-              <Button
-                data-testid="save-search-button"
-                variant="secondary"
-                size="xs"
-                onClick={onSaveSearch}
-                style={{ flexShrink: 0 }}
-              >
-                Save
-              </Button>
+              <>
+                <Button
+                  data-testid="save-search-button"
+                  variant="secondary"
+                  size="xs"
+                  onClick={onSaveSearch}
+                  style={{ flexShrink: 0 }}
+                >
+                  Save
+                </Button>
+              </>
             ) : (
               <Button
                 data-testid="update-search-button"

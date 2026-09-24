@@ -53,6 +53,18 @@ test.describe('Navigation', { tag: ['@core'] }, () => {
         }
       });
 
+      await test.step('Saved searches nest under Search instead of a sibling nav item', async () => {
+        await expect(
+          page.locator('[data-testid="nav-link-search-list"]'),
+        ).toHaveCount(0);
+        await expect(
+          page.locator('[data-testid="nav-link-search-toggle"]'),
+        ).toBeVisible();
+        await expect(
+          page.locator('[data-testid="saved-searches-button"]'),
+        ).toBeVisible();
+      });
+
       await test.step('Navigate between each page', async () => {
         for (const { testId, contentTestId } of navLinks) {
           const link = page.locator(`[data-testid="${testId}"]`);

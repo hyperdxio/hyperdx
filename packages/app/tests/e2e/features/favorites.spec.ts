@@ -181,7 +181,7 @@ test.describe(
       savedSearchesListPage = new SavedSearchesListPage(page);
     });
 
-    test('should favorite and unfavorite a saved search in grid view', async ({
+    test('should favorite and unfavorite a saved search in the drawer', async ({
       page,
     }) => {
       const ts = Date.now();
@@ -193,9 +193,11 @@ test.describe(
 
       await test.step('Navigate to listing and verify item is not favorited', async () => {
         await savedSearchesListPage.goto();
+        await savedSearchesListPage.showFavorites();
         await expect(
           savedSearchesListPage.getFavoritedSearchCard(name),
         ).toBeHidden();
+        await savedSearchesListPage.showAll();
       });
 
       await test.step('Favorite the saved search', async () => {
@@ -203,6 +205,7 @@ test.describe(
       });
 
       await test.step('Verify the saved search appears in the favorites section', async () => {
+        await savedSearchesListPage.showFavorites();
         await expect(savedSearchesListPage.getFavoritesSection()).toBeVisible();
         await expect(
           savedSearchesListPage.getFavoritedSearchCard(name),
@@ -220,28 +223,6 @@ test.describe(
       });
     });
 
-    test('should favorite a saved search in list view', async ({ page }) => {
-      const ts = Date.now();
-      const name = `E2E Fav List Search ${ts}`;
-
-      await test.step('Create a saved search via API', async () => {
-        await createSavedSearchViaApi(page, { name });
-      });
-
-      await test.step('Switch to list view and favorite the saved search', async () => {
-        await savedSearchesListPage.goto();
-        await savedSearchesListPage.switchToListView();
-        await savedSearchesListPage.toggleFavoriteOnRow(name);
-      });
-
-      await test.step('Verify the favorites section appears with the saved search', async () => {
-        await expect(savedSearchesListPage.getFavoritesSection()).toBeVisible();
-        await expect(
-          savedSearchesListPage.getFavoritedSearchCard(name),
-        ).toBeVisible();
-      });
-    });
-
     test('should persist favorites across page reloads', async ({ page }) => {
       const ts = Date.now();
       const name = `E2E Persist Fav Search ${ts}`;
@@ -250,6 +231,7 @@ test.describe(
         await createSavedSearchViaApi(page, { name });
         await savedSearchesListPage.goto();
         await savedSearchesListPage.toggleFavoriteOnCard(name);
+        await savedSearchesListPage.showFavorites();
         await expect(
           savedSearchesListPage.getFavoritedSearchCard(name),
         ).toBeVisible();
@@ -257,6 +239,7 @@ test.describe(
 
       await test.step('Reload the page and verify favorite persists', async () => {
         await savedSearchesListPage.goto();
+        await savedSearchesListPage.showFavorites();
         await expect(savedSearchesListPage.getFavoritesSection()).toBeVisible();
         await expect(
           savedSearchesListPage.getFavoritedSearchCard(name),
