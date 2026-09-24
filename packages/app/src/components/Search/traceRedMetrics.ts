@@ -8,7 +8,7 @@ import {
   ERROR_RATE_PERCENTAGE_NUMBER_FORMAT,
   INTEGER_NUMBER_FORMAT,
 } from '@/ChartUtils';
-import { errorPredicateSql } from '@/source';
+import { errorStatusPredicateSql } from '@/source';
 import type { NumberFormat } from '@/types';
 
 export type ErrorsMode = 'rate' | 'volume';
@@ -93,7 +93,7 @@ export function errorsConfig(
   if (!groupBy) {
     return undefined;
   }
-  const errorCondition = errorPredicateSql(groupBy);
+  const errorCondition = errorStatusPredicateSql(groupBy);
   if (mode === 'rate') {
     return {
       ...base,
