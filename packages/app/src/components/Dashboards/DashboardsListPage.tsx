@@ -132,6 +132,11 @@ export default function DashboardsListPage() {
   // a tab the toolbar never renders and filter every dashboard away.
   const tab =
     requestedTab === 'mine' && !canFilterByCreator ? 'all' : requestedTab;
+  // All does not read the current user or favorites, so a slow favorites
+  // request should not hold the whole list.
+  const isTabDataPending =
+    (tab === 'mine' && isMePending) ||
+    (tab === 'favorites' && isFavoritesPending);
 
   const favoriteIds = useMemo(
     () =>
@@ -301,7 +306,7 @@ export default function DashboardsListPage() {
           onViewModeChange={setViewMode}
         />
 
-        {isLoading || isMePending || isFavoritesPending ? (
+        {isLoading || isTabDataPending ? (
           <Text size="sm" c="dimmed" ta="center" py="xl">
             Loading dashboards...
           </Text>

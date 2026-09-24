@@ -45,6 +45,22 @@ describe('filterAndSortDashboards', () => {
     expect(result.map(d => d.id)).toEqual(['a']);
   });
 
+  it('matches a selected tag regardless of casing', () => {
+    const dashboards = [
+      makeDashboard({ id: 'a', tags: ['Prod'] }),
+      makeDashboard({ id: 'b', tags: ['prod'] }),
+      makeDashboard({ id: 'c', tags: ['staging'] }),
+    ];
+
+    const result = filterAndSortDashboards({
+      ...defaults,
+      dashboards,
+      tagFilter: ['PROD'],
+    });
+
+    expect(result.map(d => d.id)).toEqual(['a', 'b']);
+  });
+
   it('requires a dashboard to carry every selected tag', () => {
     const dashboards = [
       makeDashboard({ id: 'both', tags: ['prod', 'billing'] }),

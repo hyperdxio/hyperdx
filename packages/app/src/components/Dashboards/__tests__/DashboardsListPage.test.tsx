@@ -9,6 +9,7 @@ let mockDashboards: Dashboard[] = [];
 let mockFavorites: Favorite[] = [];
 let mockMe: { email: string } | null = null;
 let mockMePending = false;
+let mockFavoritesPending = false;
 let mockTeamTags: string[] = [];
 
 jest.mock('next/head', () => ({
@@ -46,7 +47,10 @@ jest.mock('@/dashboard', () => ({
   useDeleteDashboard: () => ({ mutate: jest.fn() }),
 }));
 jest.mock('@/favorites', () => ({
-  useFavorites: () => ({ data: mockFavorites }),
+  useFavorites: () => ({
+    data: mockFavorites,
+    isPending: mockFavoritesPending,
+  }),
 }));
 jest.mock('@/layout', () => ({
   withAppNav: (component: unknown) => component,
@@ -84,6 +88,7 @@ describe('DashboardsListPage', () => {
     mockFavorites = [];
     mockMe = { email: 'me@hyperdx.io' };
     mockMePending = false;
+    mockFavoritesPending = false;
     mockTeamTags = [];
   });
 
@@ -252,6 +257,30 @@ describe('DashboardsListPage', () => {
       'true',
     );
     expect(screen.getByText('Checkout')).toBeInTheDocument();
+  });
+
+  it('shows the all tab while the current user and favorites are still loading', () => {
+    mockMePending = true;
+    mockFavoritesPending = true;
+    mockDashboards = [makeDashboard({ id: 'a', name: 'Checkout' })];
+
+    renderWithMantine(<DashboardsListPage />);
+
+    expect(screen.getByText('Checkout')).toBeInTheDocument();
+    expect(screen.queryByText('Loading dashboards...')).not.toBeInTheDocument();
+  });
+
+  it('waits for favorites before judging the favorites tab empty', () => {
+    mockQueryState.set('tab', 'favorites');
+    mockFavoritesPending = true;
+    mockDashboards = [makeDashboard({ id: 'a', name: 'Checkout' })];
+
+    renderWithMantine(<DashboardsListPage />);
+
+    expect(screen.getByText('Loading dashboards...')).toBeInTheDocument();
+    expect(
+      screen.queryByText('No favorite dashboards yet'),
+    ).not.toBeInTheDocument();
   });
 
   it('waits for the current user before judging the mine tab empty', () => {

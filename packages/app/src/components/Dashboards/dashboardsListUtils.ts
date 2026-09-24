@@ -75,7 +75,13 @@ export function filterAndSortDashboards({
   }
 
   if (tagFilter.length > 0) {
-    result = result.filter(d => tagFilter.every(tag => d.tags.includes(tag)));
+    // The tag picker collapses case variants into one checkbox, so the filter
+    // has to match whichever casing the dashboard actually stored.
+    result = result.filter(d =>
+      tagFilter.every(tag =>
+        d.tags.some(t => t.toLowerCase() === tag.toLowerCase()),
+      ),
+    );
   }
 
   const query = search.trim().toLowerCase();
