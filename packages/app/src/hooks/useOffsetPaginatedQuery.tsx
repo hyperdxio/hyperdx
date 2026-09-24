@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { omit } from 'lodash';
+import { isEqual, omit } from 'lodash';
 import ms from 'ms';
 import type {
   ClickHouseSettings,
@@ -59,6 +59,16 @@ function queryKeyFn(
   queryTimeout?: number,
 ): TQueryKey {
   return [prefix, config, queryTimeout];
+}
+
+// True when two keys describe the same query over a different time range,
+// e.g. a dashboard refresh.
+function differsOnlyInDateRange(a: TQueryKey, b: TQueryKey) {
+  return (
+    a[0] === b[0] &&
+    a[2] === b[2] &&
+    isEqual(omit(a[1], ['dateRange']), omit(b[1], ['dateRange']))
+  );
 }
 
 type TPageParam = {
@@ -450,7 +460,7 @@ export default function useOffsetPaginatedQuery(
     enableSmallFirstWindow,
   }: {
     isLive?: boolean;
-    /** Keep showing the previous result while a new query key loads */
+    /** Keep showing the previous result while the same query loads a new date range */
     keepPreviousData?: boolean;
     enabled?: boolean;
     queryKeyPrefix?: string;
@@ -501,9 +511,16 @@ export default function useOffsetPaginatedQuery(
     TPageParam
   >({
     queryKey: key,
-    placeholderData: (prev: TData | undefined) => {
+    placeholderData: (prev: TData | undefined, prevQuery) => {
       // Only preserve previous query in live mode, or when the caller asks
-      return isLive || keepPreviousData ? prev : undefined;
+      // and only the date range changed. Rows from a different config would
+      // be rendered with the new config's columns and formats.
+      if (isLive) return prev;
+      return keepPreviousData &&
+        prevQuery != null &&
+        differsOnlyInDateRange(prevQuery.queryKey, key)
+        ? prev
+        : undefined;
     },
     enabled:
       enabled && !isLoadingMe && !isLoadingMVOptimization && !isSourceLoading,

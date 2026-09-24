@@ -835,6 +835,51 @@ describe('useOffsetPaginatedQuery', () => {
       );
     });
 
+    it('clears the previous rows when more than the date range changes', async () => {
+      // e.g. a tile edit: rows from the old query would otherwise be rendered
+      // with the new config's columns, formats and colours
+      const edited = { ...rangeB, where: "ServiceName = 'api'" };
+
+      let releaseQuery!: () => void;
+      mockClickhouseClient.query
+        .mockImplementationOnce(() =>
+          Promise.resolve({ stream: () => mockStream }),
+        )
+        .mockImplementationOnce(
+          () =>
+            new Promise(resolve => {
+              releaseQuery = () => resolve({ stream: () => mockStream });
+            }),
+        );
+      mockReader.read
+        .mockResolvedValueOnce(page('from-range-a'))
+        .mockResolvedValueOnce({ done: true })
+        .mockResolvedValueOnce(page('edited'))
+        .mockResolvedValueOnce({ done: true });
+
+      const { result, rerender } = renderHook(
+        ({ config }) =>
+          useOffsetPaginatedQuery(config, { keepPreviousData: true }),
+        { wrapper, initialProps: { config: rangeA } },
+      );
+      await waitFor(() =>
+        expect(result.current.data?.data[0]?.ServiceName).toBe('from-range-a'),
+      );
+
+      rerender({ config: edited });
+      await waitFor(() =>
+        expect(mockClickhouseClient.query).toHaveBeenCalledTimes(2),
+      );
+
+      expect(result.current.data).toBeNull();
+      expect(result.current.isPlaceholderData).toBe(false);
+
+      await act(async () => releaseQuery());
+      await waitFor(() =>
+        expect(result.current.data?.data[0]?.ServiceName).toBe('edited'),
+      );
+    });
+
     it('does not offer more pages while showing placeholder rows', async () => {
       // Ordered by timestamp, so each range is paged through time windows
       const windowedA = createMockChartConfig();

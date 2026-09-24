@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
+import cx from 'classnames';
 import { isRatioChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
   isBuilderChartConfig,
@@ -304,7 +305,12 @@ export default function DBTableChart({
       ) : isError && error ? (
         <ChartErrorState error={error} variant={errorVariant} />
       ) : data?.data.length === 0 ? (
-        <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
+        <div
+          className={cx(
+            'd-flex h-100 w-100 align-items-center justify-content-center text-muted',
+            { 'effect-pulse': isPlaceholderData },
+          )}
+        >
           No data found within time range.
         </div>
       ) : (

@@ -182,7 +182,6 @@ describe('DBTableChart', () => {
     it('pulses while a refetch is showing the previous rows', () => {
       jest.mocked(useOffsetPaginatedQuery).mockReturnValue({
         ...jest.mocked(useOffsetPaginatedQuery)(baseTestConfig),
-        isFetching: true,
         isPlaceholderData: true,
       });
 
@@ -197,6 +196,22 @@ describe('DBTableChart', () => {
       expect(
         jest.mocked(Table).mock.calls.at(-1)![0].className,
       ).toBeUndefined();
+    });
+
+    it('pulses the empty state while a refetch is running', () => {
+      const current = jest.mocked(useOffsetPaginatedQuery)(baseTestConfig);
+      jest.mocked(useOffsetPaginatedQuery).mockReturnValue({
+        ...current,
+        data: { ...current.data!, data: [] },
+        isPlaceholderData: true,
+      });
+
+      const { getByText } = renderWithMantine(
+        <DBTableChart config={baseTestConfig} />,
+      );
+      expect(getByText('No data found within time range.')).toHaveClass(
+        'effect-pulse',
+      );
     });
 
     describe('row links', () => {
