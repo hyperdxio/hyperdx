@@ -56,14 +56,14 @@ describe('renderChartConfig', () => {
   const toClickHouseISOString = (date: Date) =>
     date.toISOString().replace('.000Z', 'Z');
 
-  const queryData = async (chsql: ChSql) => {
+  const queryData = async <T = unknown>(chsql: ChSql) => {
     try {
       const res = await clickhouseClient.query<'JSON'>({
         query: chsql.sql,
         query_params: chsql.params,
         format: 'JSON',
       });
-      const json = await res.json();
+      const json = await res.json<T>();
       return json.data;
     } catch (err) {
       console.error('[ClickhouseClient] Error:', err);
@@ -519,6 +519,120 @@ describe('renderChartConfig', () => {
       );
       expect(await queryData(query)).toMatchSnapshot();
     });
+
+    describe('with a dotted materialized column', () => {
+      const table = `${DEFAULT_DATABASE}.${DEFAULT_METRICS_TABLE.GAUGE}`;
+
+      beforeEach(async () => {
+        await executeSqlCommand(
+          `ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS \`host.name\` String MATERIALIZED ResourceAttributes['host']`,
+        );
+        await executeSqlCommand(
+          `ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS value_band String ALIAS if(Value > 20, 'high', 'low')`,
+        );
+      });
+
+      afterEach(async () => {
+        await executeSqlCommand(
+          `ALTER TABLE ${table} DROP COLUMN IF EXISTS \`host.name\``,
+        );
+        await executeSqlCommand(
+          `ALTER TABLE ${table} DROP COLUMN IF EXISTS value_band`,
+        );
+      });
+
+      it('filters and groups on the column', async () => {
+        const query = await renderChartConfig(
+          {
+            select: [
+              {
+                aggFn: 'max',
+                metricName: 'test.cpu',
+                metricType: MetricsDataType.Gauge,
+                valueExpression: 'Value',
+              },
+            ],
+            from: metricSource.from,
+            where: 'host.name:"host1"',
+            whereLanguage: 'lucene',
+            metricTables: TEST_METRIC_TABLES,
+            dateRange: [new Date(now), new Date(now + ms('10m'))],
+            granularity: '5 minute',
+            groupBy: '`host.name`',
+            timestampValueExpression: metricSource.timestampValueExpression,
+            connection: connection.id,
+          },
+          metadata,
+          querySettings,
+        );
+        expect(await queryData(query)).toEqual(
+          Array(2).fill(expect.objectContaining({ 'host.name': 'host1' })),
+        );
+      });
+
+      it('keeps a group per value of a column that varies within a series', async () => {
+        const query = await renderChartConfig(
+          {
+            select: [
+              {
+                aggFn: 'max',
+                metricName: 'test.cpu',
+                metricType: MetricsDataType.Gauge,
+                valueExpression: 'Value',
+              },
+            ],
+            from: metricSource.from,
+            where: 'host.name:"host1"',
+            whereLanguage: 'lucene',
+            metricTables: TEST_METRIC_TABLES,
+            dateRange: [new Date(now), new Date(now + ms('10m'))],
+            granularity: '5 minute',
+            groupBy: 'value_band',
+            timestampValueExpression: metricSource.timestampValueExpression,
+            connection: connection.id,
+          },
+          metadata,
+          querySettings,
+        );
+        const rows = await queryData<Record<string, string>>(query);
+        expect(rows.map(r => r.value_band).sort()).toEqual([
+          'high',
+          'high',
+          'low',
+          'low',
+        ]);
+      });
+
+      it('does not split series by a computed column the chart does not group by', async () => {
+        const query = await renderChartConfig(
+          {
+            select: [
+              {
+                aggFn: 'max',
+                metricName: 'test.cpu',
+                metricType: MetricsDataType.Gauge,
+                valueExpression: 'Value',
+              },
+            ],
+            from: metricSource.from,
+            where: 'host.name:"host1"',
+            whereLanguage: 'lucene',
+            metricTables: TEST_METRIC_TABLES,
+            dateRange: [new Date(now), new Date(now + ms('10m'))],
+            granularity: '5 minute',
+            timestampValueExpression: metricSource.timestampValueExpression,
+            connection: connection.id,
+          },
+          metadata,
+          querySettings,
+        );
+        expect(
+          (await queryData<Record<string, number>>(query)).map(
+            r => r['max(toFloat64OrDefault(toString(LastValue)))'],
+          ),
+        ).toEqual([6.25, 80]);
+      });
+    });
   });
 
   describe('Query Metrics - Sum', () => {
@@ -691,6 +805,128 @@ describe('renderChartConfig', () => {
         querySettings,
       );
       expect(await queryData(query)).toMatchSnapshot();
+    });
+
+    describe('with a dotted materialized column', () => {
+      const table = `${DEFAULT_DATABASE}.${DEFAULT_METRICS_TABLE.SUM}`;
+
+      beforeEach(async () => {
+        await executeSqlCommand(
+          `ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS \`host.name\` String MATERIALIZED ResourceAttributes['host']`,
+        );
+        await executeSqlCommand(
+          `ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS value_band String ALIAS if(Value > 8, 'high', 'low')`,
+        );
+      });
+
+      afterEach(async () => {
+        await executeSqlCommand(
+          `ALTER TABLE ${table} DROP COLUMN IF EXISTS \`host.name\``,
+        );
+        await executeSqlCommand(
+          `ALTER TABLE ${table} DROP COLUMN IF EXISTS value_band`,
+        );
+      });
+
+      it('keeps a group per value of a column that varies within a series', async () => {
+        const query = await renderChartConfig(
+          {
+            select: [
+              {
+                aggFn: 'sum',
+                metricName: 'test.users',
+                metricType: MetricsDataType.Sum,
+                valueExpression: 'Value',
+              },
+            ],
+            from: metricSource.from,
+            where: 'host.name:"host1"',
+            whereLanguage: 'lucene',
+            metricTables: TEST_METRIC_TABLES,
+            dateRange: [new Date(now), new Date(now + ms('20m'))],
+            granularity: '5 minute',
+            groupBy: 'value_band',
+            timestampValueExpression: metricSource.timestampValueExpression,
+            connection: connection.id,
+          },
+          metadata,
+          querySettings,
+        );
+        const rows = await queryData<{
+          __hdx_time_bucket: string;
+          value_band: string;
+          Value: number;
+        }>(query);
+        const secondBucket = rows.filter(
+          r => new Date(r.__hdx_time_bucket).getTime() === now + ms('5m'),
+        );
+        // The 8 -> 9 step lands in `high`; the rate window must not reset
+        // when the label changes.
+        expect(secondBucket.map(r => [r.value_band, r.Value]).sort()).toEqual([
+          ['high', 1],
+          ['low', 0],
+        ]);
+      });
+
+      it('filters and groups on the column', async () => {
+        const query = await renderChartConfig(
+          {
+            select: [
+              {
+                aggFn: 'sum',
+                metricName: 'test.users',
+                metricType: MetricsDataType.Sum,
+                valueExpression: 'Value',
+              },
+            ],
+            from: metricSource.from,
+            where: 'host.name:"host1"',
+            whereLanguage: 'lucene',
+            metricTables: TEST_METRIC_TABLES,
+            dateRange: [new Date(now), new Date(now + ms('20m'))],
+            granularity: '5 minute',
+            groupBy: '`host.name`',
+            timestampValueExpression: metricSource.timestampValueExpression,
+            connection: connection.id,
+          },
+          metadata,
+          querySettings,
+        );
+        expect(await queryData(query)).toEqual(
+          Array(4).fill(expect.objectContaining({ 'host.name': 'host1' })),
+        );
+      });
+
+      it('ranks increase groups by the column', async () => {
+        const query = await renderChartConfig(
+          {
+            select: [
+              {
+                aggFn: 'increase',
+                metricName: 'test.users',
+                metricType: MetricsDataType.Sum,
+                valueExpression: 'Value',
+              },
+            ],
+            from: metricSource.from,
+            where: '',
+            metricTables: TEST_METRIC_TABLES,
+            dateRange: [new Date(now), new Date(now + ms('20m'))],
+            granularity: '5 minute',
+            groupBy: '`host.name`',
+            timestampValueExpression: metricSource.timestampValueExpression,
+            connection: connection.id,
+          },
+          metadata,
+          querySettings,
+        );
+        expect(await queryData(query)).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ 'host.name': 'host1' }),
+            expect.objectContaining({ 'host.name': 'host2' }),
+          ]),
+        );
+      });
     });
 
     it('sum values as without rate computation', async () => {
