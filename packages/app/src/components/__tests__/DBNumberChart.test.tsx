@@ -225,6 +225,22 @@ describe('DBNumberChart', () => {
       ).not.toBeNull();
     });
 
+    it('pulses while still loading with a value on screen', () => {
+      // useQueriedChartConfig's isLoading also covers the MV-optimization
+      // check, which can be pending while a value is shown
+      mockUseQueriedChartConfig.mockReturnValue({
+        data: { data: [{ value: 1234 }] },
+        isLoading: true,
+        isPlaceholderData: false,
+        isError: false,
+      });
+
+      renderWithMantine(<DBNumberChart config={baseTestConfig} />);
+      expect(
+        screen.getByTestId('number-chart-value').closest('.effect-pulse'),
+      ).not.toBeNull();
+    });
+
     it('does not pulse once the fresh value has loaded', () => {
       mockUseQueriedChartConfig.mockReturnValue({
         data: { data: [{ value: 1234 }] },

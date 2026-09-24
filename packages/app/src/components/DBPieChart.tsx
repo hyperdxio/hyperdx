@@ -1,4 +1,5 @@
 import { memo } from 'react';
+import cx from 'classnames';
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
 import { Box, Flex, ScrollArea, Text } from '@mantine/core';
 
@@ -113,7 +114,10 @@ export const DBPieChart = (props: CategoricalChartProps) => {
         <ChartErrorState error={responseFormatError} variant={errorVariant} />
       ) : data?.data.length === 0 ? (
         <div
-          className={`d-flex h-100 w-100 align-items-center justify-content-center text-muted${isPlaceholderData ? ' effect-pulse' : ''}`}
+          className={cx(
+            'd-flex h-100 w-100 align-items-center justify-content-center text-muted',
+            { 'effect-pulse': isPlaceholderData },
+          )}
         >
           No data found within time range.
         </div>
