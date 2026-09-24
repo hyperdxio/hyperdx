@@ -4,11 +4,11 @@
  * `jest.mock('@/HDXMultiSeriesTimeChart')`) import from here, so the internal
  * file layout stays free to change.
  */
+export { formatAxisTick, getYAxisTicks } from './axisTicks';
 export {
   type ActiveClickPayload,
   type ActiveClickSeries,
   buildActiveClickSeries,
-  formatAxisTick,
   getSelectedLineData,
   getVisibleLineData,
   getVisibleTooltipRows,

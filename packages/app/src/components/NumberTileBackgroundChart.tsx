@@ -15,7 +15,10 @@ import {
   shouldFillNullsWithZero,
   useTimeChartSettings,
 } from '@/ChartUtils';
-import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import {
+  getMinGranularitySeconds,
+  useQueriedChartConfig,
+} from '@/hooks/useChartConfig';
 import { useSource } from '@/source';
 import { getColorFromCSSToken } from '@/utils';
 
@@ -97,7 +100,15 @@ function NumberTileBackgroundChartInner({
   config: ChartConfigWithDateRange;
   backgroundChart: BackgroundChart;
 }) {
-  const timeConfig = useMemo(() => buildSparklineTimeConfig(config), [config]);
+  // useTimeChartSettings/convertToTimeChartConfig below resolve 'auto', so
+  // the minimum has to be applied before that happens.
+  const { data: source } = useSource({ id: config.source });
+  const minGranularitySeconds = getMinGranularitySeconds(source);
+
+  const timeConfig = useMemo(
+    () => buildSparklineTimeConfig({ ...config, minGranularitySeconds }),
+    [config, minGranularitySeconds],
+  );
 
   const { dateRange, granularity, fillNulls } =
     useTimeChartSettings(timeConfig);
@@ -110,8 +121,6 @@ function NumberTileBackgroundChartInner({
     placeholderData: prev => prev,
     queryKey: ['number-tile-background', queriedConfig],
   });
-
-  const { data: source } = useSource({ id: config.source });
 
   const points = useMemo(() => {
     if (data == null) return [];

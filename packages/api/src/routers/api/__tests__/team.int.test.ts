@@ -60,7 +60,7 @@ describe('team router', () => {
     expect(resp.body.data).toMatchInlineSnapshot(`[]`);
   });
 
-  it('GET /team/tags', async () => {
+  it('GET /team/tags - unscoped, then scoped by resourceType', async () => {
     const { agent, team } = await getLoggedInAgent(server);
     await agent
       .post('/dashboards')
@@ -127,6 +127,33 @@ describe('team router', () => {
 
     const resp = await agent.get('/team/tags').expect(200);
     expect(resp.body.data.sort()).toStrictEqual(['test', 'test2', 'test3']);
+
+    const dashboardTags = await agent
+      .get('/team/tags')
+      .query({ resourceType: 'dashboard' })
+      .expect(200);
+    expect(dashboardTags.body.data.sort()).toStrictEqual(['test']);
+
+    const savedSearchTags = await agent
+      .get('/team/tags')
+      .query({ resourceType: 'savedSearch' })
+      .expect(200);
+    expect(savedSearchTags.body.data.sort()).toStrictEqual(['test', 'test2']);
+
+    const alertTags = await agent
+      .get('/team/tags')
+      .query({ resourceType: 'alert' })
+      .expect(200);
+    expect(alertTags.body.data.sort()).toStrictEqual(['test2', 'test3']);
+  });
+
+  it('GET /team/tags - rejects an unknown resourceType', async () => {
+    const { agent } = await getLoggedInAgent(server);
+
+    await agent
+      .get('/team/tags')
+      .query({ resourceType: 'webhook' })
+      .expect(400);
   });
 
   it('GET /team/members', async () => {

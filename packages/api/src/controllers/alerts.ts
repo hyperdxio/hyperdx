@@ -514,29 +514,42 @@ export const getAlertWithDisplayRefs = async (
   }).populate<AlertWithDisplayRefs>(DISPLAY_REF_POPULATE);
 };
 
-export const getAlertsEnhanced = async (teamId: ObjectId) => {
-  return Alert.find({ team: teamId }).populate<{
-    savedSearch: ISavedSearch;
-    dashboard: IDashboard;
-    createdBy?: IUser;
-    silenced?: IAlert['silenced'] & {
-      by: IUser;
-    };
-  }>(['savedSearch', 'dashboard', 'createdBy', 'silenced.by']);
+/** Represents the documents populated and projected by ALERT_PAGE_POPULATE */
+export type AlertPageRefs = {
+  // `_id` is not in the select below but Mongo returns it anyway
+  savedSearch: Pick<ISavedSearch, '_id' | 'name' | 'tags'> | null;
+  dashboard:
+    | (Pick<IDashboard, '_id' | 'name' | 'provisioned' | 'tags'> & {
+        tiles: { id: string; config?: { name?: string } }[];
+      })
+    | null;
+  createdBy?: Pick<IUser, 'email' | 'name'>;
+  silenced?: IAlert['silenced'] & {
+    by: Pick<IUser, 'email'>;
+  };
 };
+
+/**
+ * Projections for the internal alerts surfaces (the alerts page and the alert
+ * detail endpoint), kept to what the response actually renders.
+ */
+export const ALERT_PAGE_POPULATE = [
+  { path: 'savedSearch', select: 'name tags' },
+  {
+    path: 'dashboard',
+    select: 'name provisioned tags tiles.id tiles.config.name',
+  },
+  { path: 'createdBy', select: 'email name' },
+  { path: 'silenced.by', select: 'email' },
+];
 
 export const getAlertEnhanced = async (
   alertId: ObjectId | string,
   teamId: ObjectId,
 ) => {
-  return Alert.findOne({ _id: alertId, team: teamId }).populate<{
-    savedSearch: ISavedSearch;
-    dashboard: IDashboard;
-    createdBy?: IUser;
-    silenced?: IAlert['silenced'] & {
-      by: IUser;
-    };
-  }>(['savedSearch', 'dashboard', 'createdBy', 'silenced.by']);
+  return Alert.findOne({ _id: alertId, team: teamId }).populate<AlertPageRefs>(
+    ALERT_PAGE_POPULATE,
+  );
 };
 
 export const deleteAlert = async (id: string, teamId: ObjectId) => {

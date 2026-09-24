@@ -35,8 +35,9 @@ Both live next to `withAppNav` in `packages/app/src/layout.tsx`, which wraps pag
 | `leading` | Left cluster: source picker, badges, or other controls. When inputs are present, **do not** pair with `title` for the same page name. |
 | `actions` | Right-aligned cluster: time range, Run/Save, sampling, refresh. |
 | `children` | Full custom header when slots are not enough. Do not combine with `title` / `leading` / `actions` / `breadcrumbs` unless you use the breadcrumbs-only branch. |
+| `growing` | Opt in to block padding that only shows once the toolbar outgrows `min-height`. Sessions uses this for its multi-line search; title-only pages omit it. |
 
-Header styling is defined in `PageHeader.module.scss`: sticky top, bottom border, horizontal padding `var(--mantine-spacing-sm)` (same as Search `px="sm"`). Single-row headers keep `min-height: 60px`; stacked header (breadcrumbs + toolbar) grows with content.
+Header styling is defined in `PageHeader.module.scss`: sticky top, bottom border, horizontal padding `var(--mantine-spacing-sm)` (same as Search `px="sm"`). Single-row headers keep `min-height: 60px`; stacked header (breadcrumbs + toolbar) grows with content. Pass `growing` when the toolbar can outgrow that min-height (Sessions' multi-line search) so block padding appears only once the row is taller than the bar.
 
 ## PageLayout API
 

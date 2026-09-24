@@ -39,11 +39,11 @@ import type { NumberFormat } from '@/types';
 import { useFormatTime } from '@/useFormatTime';
 import { COLORS } from '@/utils';
 
+import { formatAxisTick, getYAxisTicks } from './axisTicks';
 import {
   type ActiveClickPayload,
   buildActiveClickSeries,
   type ChartMouseState,
-  formatAxisTick,
   getActiveLabel,
   getSelectedLineData,
   getSeriesDisplayName,
@@ -408,6 +408,16 @@ export const MemoChart = memo(function MemoChart({
     (value: number) => formatAxisTick(value, axisNumberFormat),
     [axisNumberFormat],
   );
+
+  // Only overrides Recharts' own tick generation when the domain is a
+  // concrete range - a bare 'auto' bound has no fixed interval to work from.
+  const yAxisTicks = useMemo(() => {
+    const [min, max] = yAxisDomain;
+    if (typeof min !== 'number' || typeof max !== 'number') {
+      return undefined;
+    }
+    return getYAxisTicks(min, max, tickFormatter);
+  }, [yAxisDomain, tickFormatter]);
 
   const [highlightStart, setHighlightStart] = useState<string | undefined>();
   const [highlightEnd, setHighlightEnd] = useState<string | undefined>();
@@ -799,6 +809,7 @@ export const MemoChart = memo(function MemoChart({
             tickFormatter={tickFormatter}
             tick={{ fontSize: 11, fontFamily: 'IBM Plex Mono, monospace' }}
             domain={yAxisDomain}
+            ticks={yAxisTicks}
           />
           {lines}
           {/* HOVER tooltip (also drives cross-chart shadow tooltips via syncId).

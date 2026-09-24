@@ -1,13 +1,7 @@
 .wrapper {
-  position: relative;
   flex: 1 1 0%;
   width: 100%;
   min-width: 0;
-}
-
-.placeholder {
-  min-height: var(--editor-base-height, 36px);
-  width: 100%;
 }
 
 .paper {
@@ -18,28 +12,28 @@
   min-height: var(--editor-base-height, 36px);
   box-shadow: none;
 
+  /* The Paper theme gives every Paper an inline `border`, and an inline
+     declaration outranks any selector here, so every state colour below has to
+     force its way past it. */
   &.error {
-    border-color: var(--color-bg-danger);
+    border-color: var(--color-bg-danger) !important;
   }
 
   &.warning {
-    border-color: var(--color-bg-warning);
+    border-color: var(--color-bg-warning) !important;
   }
 
-  &.expanded {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    z-index: 100;
-    box-shadow: var(--mb-shadow, var(--mantine-shadow-xs));
-    border-bottom: 2px solid var(--color-bg-brand) !important;
-  }
-
-  &:not(.expanded) {
-    position: relative;
+  /* Single-line editors only: hold one row and hide the rest. */
+  &.clamped {
     max-height: var(--editor-base-height, 36px);
     overflow: hidden;
+  }
+
+  /* An editor that grows with its content can't change border width on focus
+     without nudging everything below it, so recolor instead. Leave
+     error/warning borders alone so they stay visible while editing. */
+  &:not(.error, .warning).focused {
+    border-color: var(--color-bg-brand) !important;
   }
 }
 
@@ -65,30 +59,4 @@
     padding-top: 2.4px;
     font-size: var(--mantine-font-size-xs);
   }
-
-  &.collapsed {
-    overflow: hidden;
-  }
-}
-
-.languageSwitchWrapper {
-  display: flex;
-  align-items: center;
-  min-height: 100%;
-}
-
-/* Fade at the bottom when allowMultiline and collapsed (single-line) so text doesn't appear hard-cut */
-.collapseFade::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 12px;
-  background: linear-gradient(to bottom, transparent, var(--color-bg-field));
-  pointer-events: none;
-}
-
-.expanded {
-  /* Expanded state: no fade, full height */
 }
