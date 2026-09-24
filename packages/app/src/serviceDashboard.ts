@@ -4,7 +4,7 @@ import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { SourceKind, TTraceSource } from '@hyperdx/common-utils/dist/types';
 
 import { useColumns, useJsonColumns } from './hooks/useMetadata';
-import { errorPredicateSql } from './source';
+import { errorStatusPredicateSql } from './source';
 
 const COALESCE_FIELDS_LIMIT = 100;
 
@@ -187,7 +187,7 @@ export function getExpressions(
 
   const filterExpressions = {
     isEndpointNonEmpty: `NOT empty(${auxExpressions.endpoint})`,
-    isError: errorPredicateSql(fieldExpressions.severityText),
+    isError: errorStatusPredicateSql(fieldExpressions.severityText),
     isSpanKindServer: `${fieldExpressions.spanKind} IN ('Server', 'SPAN_KIND_SERVER')`,
     isDbSpan: `${fieldExpressions.dbStatement} <> ''`,
   };
