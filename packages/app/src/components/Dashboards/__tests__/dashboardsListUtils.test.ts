@@ -1,7 +1,4 @@
-import {
-  collectDashboardTags,
-  filterAndSortDashboards,
-} from '@/components/Dashboards/dashboardsListUtils';
+import { filterAndSortDashboards } from '@/components/Dashboards/dashboardsListUtils';
 import type { Dashboard } from '@/dashboard';
 
 function makeDashboard(
@@ -228,17 +225,5 @@ describe('filterAndSortDashboards', () => {
     filterAndSortDashboards({ ...defaults, dashboards });
 
     expect(dashboards.map(d => d.id)).toEqual(['b', 'a']);
-  });
-});
-
-describe('collectDashboardTags', () => {
-  it('deduplicates and sorts tags across dashboards', () => {
-    const dashboards = [
-      makeDashboard({ id: 'a', tags: ['prod', 'billing'] }),
-      makeDashboard({ id: 'b', tags: ['prod'] }),
-      makeDashboard({ id: 'c', tags: [] }),
-    ];
-
-    expect(collectDashboardTags(dashboards)).toEqual(['billing', 'prod']);
   });
 });

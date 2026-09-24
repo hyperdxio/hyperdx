@@ -166,8 +166,8 @@ export class DashboardsListPage {
   }
 
   /**
-   * Tick one tag in the filter popover. The popover filters as you tick, so
-   * it is left open for callers selecting several tags in a row.
+   * Tick one tag in the filter popover, then close it. Call again to tick
+   * another tag.
    */
   async selectTagFilter(tag: string) {
     await this.getTagFilterSelect().click();

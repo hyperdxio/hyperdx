@@ -16,10 +16,11 @@ import {
   Group,
   Menu,
   SimpleGrid,
+  Skeleton,
   Table,
   Text,
 } from '@mantine/core';
-import { useLocalStorage } from '@mantine/hooks';
+import { useLocalStorage, useMounted } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
   IconChevronDown,
@@ -33,7 +34,6 @@ import api from '@/api';
 import { AlertStatusIcon } from '@/components/AlertStatusIcon';
 import { DashboardsListToolbar } from '@/components/Dashboards/DashboardsListToolbar';
 import {
-  collectDashboardTags,
   DASHBOARD_SORT_VALUES,
   DASHBOARD_TAB_VALUES,
   type DashboardSort,
@@ -123,7 +123,12 @@ export default function DashboardsListPage() {
     defaultValue: 'grid',
   });
 
-  const { data: favorites, isPending: isFavoritesPending } = useFavorites();
+  const {
+    data: favorites,
+    isPending: isFavoritesPending,
+    isError: isFavoritesError,
+  } = useFavorites();
+  const mounted = useMounted();
 
   // Treat an in-flight `me` as eligible so the tab does not flip to All and
   // back while the request settles.
@@ -148,10 +153,7 @@ export default function DashboardsListPage() {
     [favorites],
   );
 
-  const allTags = useMemo(
-    () => collectDashboardTags(dashboards ?? []),
-    [dashboards],
-  );
+  const hasTags = (dashboards ?? []).some(d => d.tags.length > 0);
 
   const visibleDashboards = useMemo(
     () =>
@@ -291,26 +293,35 @@ export default function DashboardsListPage() {
           </Anchor>
         </Text>
 
-        <DashboardsListToolbar
-          tab={tab}
-          onTabChange={setTab}
-          canFilterByCreator={canFilterByCreator}
-          search={search}
-          onSearchChange={setSearch}
-          tags={allTags}
-          tagFilter={tagFilter}
-          onTagFilterChange={tags => setTagFilter(tags.length ? tags : null)}
-          sort={sort}
-          onSortChange={setSort}
-          viewMode={viewMode}
-          onViewModeChange={setViewMode}
-        />
+        {mounted ? (
+          <DashboardsListToolbar
+            tab={tab}
+            onTabChange={setTab}
+            canFilterByCreator={canFilterByCreator}
+            search={search}
+            onSearchChange={setSearch}
+            hasTags={hasTags}
+            tagFilter={tagFilter}
+            onTagFilterChange={tags => setTagFilter(tags.length ? tags : null)}
+            sort={sort}
+            onSortChange={setSort}
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
+          />
+        ) : (
+          // nuqs applies URL values on the first client render, which the
+          // prerendered HTML does not have.
+          <>
+            <Skeleton h={36} mb="md" />
+            <Skeleton h={36} mb="lg" />
+          </>
+        )}
 
         {isLoading || isTabDataPending ? (
           <Text size="sm" c="dimmed" ta="center" py="xl">
             Loading dashboards...
           </Text>
-        ) : isError ? (
+        ) : isError || (tab === 'favorites' && isFavoritesError) ? (
           <Text size="sm" c="red" ta="center" py="xl">
             Failed to load dashboards. Please try refreshing the page.
           </Text>

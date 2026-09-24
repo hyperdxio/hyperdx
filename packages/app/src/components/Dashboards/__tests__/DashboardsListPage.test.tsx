@@ -1,15 +1,17 @@
-import { screen } from '@testing-library/react';
+import { fireEvent, screen } from '@testing-library/react';
 
 import DashboardsListPage from '@/components/Dashboards/DashboardsListPage';
 import type { Dashboard } from '@/dashboard';
 import type { Favorite } from '@/favorites';
 
 const mockQueryState = new Map<string, unknown>();
+const mockSetQueryState = new Map<string, jest.Mock>();
 let mockDashboards: Dashboard[] = [];
 let mockFavorites: Favorite[] = [];
 let mockMe: { email: string } | null = null;
 let mockMePending = false;
 let mockFavoritesPending = false;
+let mockFavoritesError = false;
 let mockTeamTags: string[] = [];
 
 jest.mock('next/head', () => ({
@@ -24,10 +26,15 @@ jest.mock('nuqs', () => {
   const actual = jest.requireActual('nuqs');
   return {
     ...actual,
-    useQueryState: (key: string, parser?: { defaultValue?: unknown }) => [
-      mockQueryState.get(key) ?? parser?.defaultValue ?? null,
-      jest.fn(),
-    ],
+    useQueryState: (key: string, parser?: { defaultValue?: unknown }) => {
+      if (!mockSetQueryState.has(key)) {
+        mockSetQueryState.set(key, jest.fn());
+      }
+      return [
+        mockQueryState.get(key) ?? parser?.defaultValue ?? null,
+        mockSetQueryState.get(key),
+      ];
+    },
   };
 });
 jest.mock('@/api', () => ({
@@ -50,6 +57,7 @@ jest.mock('@/favorites', () => ({
   useFavorites: () => ({
     data: mockFavorites,
     isPending: mockFavoritesPending,
+    isError: mockFavoritesError,
   }),
 }));
 jest.mock('@/layout', () => ({
@@ -84,11 +92,13 @@ function favorite(resourceId: string): Favorite {
 describe('DashboardsListPage', () => {
   beforeEach(() => {
     mockQueryState.clear();
+    mockSetQueryState.clear();
     mockDashboards = [];
     mockFavorites = [];
     mockMe = { email: 'me@hyperdx.io' };
     mockMePending = false;
     mockFavoritesPending = false;
+    mockFavoritesError = false;
     mockTeamTags = [];
   });
 
@@ -278,6 +288,59 @@ describe('DashboardsListPage', () => {
     renderWithMantine(<DashboardsListPage />);
 
     expect(screen.getByText('Loading dashboards...')).toBeInTheDocument();
+    expect(
+      screen.queryByText('No favorite dashboards yet'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('writes the chosen tab into the query state', () => {
+    renderWithMantine(<DashboardsListPage />);
+
+    fireEvent.click(screen.getByTestId('dashboards-tab-favorites'));
+
+    expect(mockSetQueryState.get('tab')).toHaveBeenCalledWith('favorites');
+  });
+
+  it('writes the chosen sort into the query state', async () => {
+    renderWithMantine(<DashboardsListPage />);
+
+    // Mantine opens the list on pointerdown, and the options stay hidden
+    // until the dropdown is positioned.
+    fireEvent.mouseDown(screen.getByTestId('dashboards-sort-select'));
+    fireEvent.click(
+      await screen.findByRole('option', { name: 'Name (A–Z)', hidden: true }),
+    );
+
+    expect(mockSetQueryState.get('sort')).toHaveBeenCalledWith('name');
+  });
+
+  it('writes the ticked tag into the query state', async () => {
+    mockTeamTags = ['prod'];
+    mockDashboards = [
+      makeDashboard({ id: 'a', name: 'Checkout', tags: ['prod'] }),
+    ];
+    renderWithMantine(<DashboardsListPage />);
+
+    fireEvent.click(screen.getByTestId('dashboards-tag-filter'));
+    fireEvent.click(
+      await screen.findByRole('checkbox', { name: 'PROD', hidden: true }),
+    );
+
+    expect(mockSetQueryState.get('tag')).toHaveBeenCalledWith(['prod']);
+  });
+
+  it('shows an error on the favorites tab when favorites fail to load', () => {
+    mockQueryState.set('tab', 'favorites');
+    mockFavoritesError = true;
+    mockDashboards = [makeDashboard({ id: 'a', name: 'Checkout' })];
+
+    renderWithMantine(<DashboardsListPage />);
+
+    expect(
+      screen.getByText(
+        'Failed to load dashboards. Please try refreshing the page.',
+      ),
+    ).toBeInTheDocument();
     expect(
       screen.queryByText('No favorite dashboards yet'),
     ).not.toBeInTheDocument();

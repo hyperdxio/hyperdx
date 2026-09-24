@@ -31,7 +31,7 @@ export function DashboardsListToolbar({
   canFilterByCreator,
   search,
   onSearchChange,
-  tags,
+  hasTags,
   tagFilter,
   onTagFilterChange,
   sort,
@@ -44,7 +44,7 @@ export function DashboardsListToolbar({
   canFilterByCreator: boolean;
   search: string;
   onSearchChange: (search: string) => void;
-  tags: string[];
+  hasTags: boolean;
   tagFilter: string[];
   onTagFilterChange: (tags: string[]) => void;
   sort: DashboardSort;
@@ -87,7 +87,7 @@ export function DashboardsListToolbar({
         />
         {/* Stays mounted while a filter is set, even when no loaded dashboard
             carries a tag, so a stale ?tag= link can still be cleared. */}
-        {(tags.length > 0 || tagFilter.length > 0) && (
+        {(hasTags || tagFilter.length > 0) && (
           <Tags
             values={tagFilter}
             onChange={onTagFilterChange}

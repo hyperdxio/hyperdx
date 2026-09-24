@@ -98,9 +98,3 @@ export function filterAndSortDashboards({
     .slice()
     .sort((a, b) => compare(a, b, sort) || a.name.localeCompare(b.name));
 }
-
-export function collectDashboardTags(dashboards: Dashboard[]): string[] {
-  const tags = new Set<string>();
-  dashboards.forEach(d => d.tags.forEach(t => tags.add(t)));
-  return Array.from(tags).sort();
-}
