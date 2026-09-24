@@ -23,10 +23,9 @@ export class SavedSearchesListPage {
     });
   }
 
-  /** Opens the drawer the way a user does: title switcher, then Manage. */
+  /** Opens the drawer the way a user does: the name chip in the toolbar. */
   async openFromSwitcher() {
     await this.page.getByTestId('saved-search-switcher').click();
-    await this.page.getByTestId('manage-saved-searches').click();
     await this.pageContainer.waitFor();
   }
 

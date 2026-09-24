@@ -1,101 +1,42 @@
-import type { SavedSearchListApiResponse } from '@hyperdx/common-utils/dist/types';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { SavedSearchSwitcher } from '@/components/SavedSearches/SavedSearchSwitcher';
 
-let mockSavedSearches: SavedSearchListApiResponse[] = [];
-let mockFavoriteIds: string[] = [];
-
-jest.mock('next/router', () => ({
-  __esModule: true,
-  default: { push: jest.fn() },
-}));
-jest.mock('@/savedSearch', () => ({
-  useSavedSearches: () => ({ data: mockSavedSearches, isLoading: false }),
-}));
-jest.mock('@/favorites', () => ({
-  useFavorites: () => ({
-    data: mockFavoriteIds.map((resourceId, index) => ({
-      id: `favorite-${index}`,
-      resourceType: 'savedSearch',
-      resourceId,
-    })),
-  }),
-}));
-
-function savedSearch(id: string, name: string): SavedSearchListApiResponse {
-  return {
-    id,
-    name,
-    tags: [],
-    select: '*',
-    where: '',
-    whereLanguage: 'lucene',
-    source: 'source-id',
-  };
-}
-
 describe('SavedSearchSwitcher', () => {
-  beforeEach(() => {
-    mockSavedSearches = [
-      savedSearch('checkout', 'Checkout errors'),
-      savedSearch('staging', 'Staging logs'),
-    ];
-    mockFavoriteIds = [];
-  });
-
-  it('filters the list by name', async () => {
+  it('opens the drawer in one click', async () => {
     const user = userEvent.setup();
-    renderWithMantine(<SavedSearchSwitcher onManage={jest.fn()} />);
-
-    await user.click(screen.getByTestId('saved-search-switcher'));
-    await user.type(
-      await screen.findByPlaceholderText('Find a saved search'),
-      'staging',
-    );
-
-    expect(screen.getByText('Staging logs')).toBeInTheDocument();
-    expect(screen.queryByText('Checkout errors')).not.toBeInTheDocument();
-  });
-
-  it('lists favorites first', async () => {
-    const user = userEvent.setup();
-    mockFavoriteIds = ['staging'];
-    renderWithMantine(<SavedSearchSwitcher onManage={jest.fn()} />);
-
-    await user.click(screen.getByTestId('saved-search-switcher'));
-
-    const names = (await screen.findAllByRole('link')).map(link =>
-      link.textContent?.trim(),
-    );
-    expect(names).toEqual(['Staging logs', 'Checkout errors']);
-  });
-
-  it('hands off to the drawer for full management', async () => {
-    const user = userEvent.setup();
-    const onManage = jest.fn();
-    renderWithMantine(<SavedSearchSwitcher onManage={onManage} />);
-
-    await user.click(screen.getByTestId('saved-search-switcher'));
-    await user.click(await screen.findByTestId('manage-saved-searches'));
-
-    expect(onManage).toHaveBeenCalled();
-  });
-
-  it('renders an inline chip when given a label', async () => {
-    const user = userEvent.setup();
+    const onOpen = jest.fn();
     renderWithMantine(
-      <SavedSearchSwitcher label="Unsaved search" onManage={jest.fn()} />,
+      <SavedSearchSwitcher label="Checkout errors" onOpen={onOpen} />,
     );
 
-    const chip = screen.getByTestId('saved-search-switcher');
-    expect(chip).toHaveTextContent('Unsaved search');
+    await user.click(screen.getByTestId('saved-search-switcher'));
 
-    await user.click(chip);
+    expect(onOpen).toHaveBeenCalled();
+  });
 
-    expect(
-      await screen.findByPlaceholderText('Find a saved search'),
-    ).toBeInTheDocument();
+  it('names the current search', () => {
+    renderWithMantine(
+      <SavedSearchSwitcher label="Checkout errors" onOpen={jest.fn()} />,
+    );
+
+    expect(screen.getByTestId('saved-search-name')).toHaveTextContent(
+      'Checkout errors',
+    );
+  });
+
+  it('dims the placeholder on an unsaved search', () => {
+    renderWithMantine(
+      <>
+        <SavedSearchSwitcher label="Unsaved search" muted onOpen={jest.fn()} />
+        <SavedSearchSwitcher label="Checkout errors" onOpen={jest.fn()} />
+      </>,
+    );
+
+    const [placeholder, name] = screen.getAllByTestId('saved-search-name');
+
+    expect(placeholder).toHaveStyle({ color: 'var(--mantine-color-dimmed)' });
+    expect(name).not.toHaveStyle({ color: 'var(--mantine-color-dimmed)' });
   });
 });

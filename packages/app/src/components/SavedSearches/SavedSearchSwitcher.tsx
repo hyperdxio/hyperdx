@@ -1,175 +1,50 @@
-import { useMemo, useState } from 'react';
-import Link from 'next/link';
-import {
-  ActionIcon,
-  Button,
-  Divider,
-  NavLink,
-  Popover,
-  ScrollArea,
-  Text,
-  TextInput,
-  Tooltip,
-} from '@mantine/core';
-import {
-  IconChevronDown,
-  IconSearch,
-  IconStarFilled,
-} from '@tabler/icons-react';
+import { Button, Text, Tooltip } from '@mantine/core';
+import { IconSelector } from '@tabler/icons-react';
 
-import { useFavorites } from '@/favorites';
-import { useSavedSearches } from '@/savedSearch';
-
+/** Names the current search and opens the saved searches drawer. */
 export function SavedSearchSwitcher({
-  activeSavedSearchId,
-  onManage,
   label,
   meta,
+  muted,
+  onOpen,
 }: {
-  activeSavedSearchId?: string;
-  onManage: () => void;
-  /** Renders an inline chip carrying this text. Omit for a bare chevron. */
-  label?: string;
-  /** Authorship and edit history, shown on hover over the chip. */
+  label: string;
+  /** Authorship and edit history, shown on hover. */
   meta?: React.ReactNode;
+  /** Dims the label when it stands in for a name the search does not have yet. */
+  muted?: boolean;
+  onOpen: () => void;
 }) {
-  const [opened, setOpened] = useState(false);
-  const [query, setQuery] = useState('');
-  const { data: savedSearches, isLoading } = useSavedSearches();
-  const { data: favorites } = useFavorites();
-
-  const favoriteIds = useMemo(
-    () =>
-      new Set(
-        (favorites ?? [])
-          .filter(favorite => favorite.resourceType === 'savedSearch')
-          .map(favorite => favorite.resourceId),
-      ),
-    [favorites],
-  );
-
-  const matches = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    return (savedSearches ?? [])
-      .filter(savedSearch => savedSearch.name.toLowerCase().includes(needle))
-      .sort((a, b) => {
-        const aFavorite = favoriteIds.has(a.id);
-        const bFavorite = favoriteIds.has(b.id);
-        if (aFavorite !== bFavorite) return aFavorite ? -1 : 1;
-        return a.name.localeCompare(b.name);
-      });
-  }, [favoriteIds, query, savedSearches]);
-
-  const close = () => {
-    setOpened(false);
-    setQuery('');
-  };
-
   return (
-    <Popover
-      opened={opened}
-      onChange={setOpened}
-      onClose={close}
-      position="bottom-start"
-      width={320}
-      shadow="md"
-      withinPortal
-      trapFocus
+    <Tooltip
+      withArrow
+      fz="xs"
+      color="gray"
+      label={meta ?? 'Browse saved searches'}
     >
-      <Popover.Target>
-        {label ? (
-          <Tooltip
-            withArrow
-            fz="xs"
-            color="gray"
-            label={meta ?? 'Switch saved search'}
-            disabled={opened}
-          >
-            <Button
-              variant="secondary"
-              size="xs"
-              rightSection={<IconChevronDown size={14} />}
-              style={{ flexShrink: 0, maxWidth: 220 }}
-              data-testid="saved-search-switcher"
-              onClick={() => setOpened(o => !o)}
-            >
-              <span
-                data-testid="saved-search-name"
-                style={{
-                  display: 'block',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {label}
-              </span>
-            </Button>
-          </Tooltip>
-        ) : (
-          <Tooltip withArrow label="Switch saved search" fz="xs" color="gray">
-            <ActionIcon
-              variant="subtle"
-              aria-label="Switch saved search"
-              data-testid="saved-search-switcher"
-              onClick={() => setOpened(o => !o)}
-            >
-              <IconChevronDown size={18} />
-            </ActionIcon>
-          </Tooltip>
-        )}
-      </Popover.Target>
-      <Popover.Dropdown p="xs">
-        <TextInput
-          placeholder="Find a saved search"
-          leftSection={<IconSearch size={14} />}
-          value={query}
-          onChange={event => setQuery(event.currentTarget.value)}
-          size="xs"
-          mb="xs"
-        />
-        <ScrollArea.Autosize mah={280}>
-          {isLoading ? (
-            <Text size="xs" c="dimmed" ta="center" py="md">
-              Loading saved searches...
-            </Text>
-          ) : matches.length === 0 ? (
-            <Text size="xs" c="dimmed" ta="center" py="md">
-              {query ? 'No matching saved searches' : 'No saved searches yet'}
-            </Text>
-          ) : (
-            matches.map(savedSearch => (
-              <NavLink
-                key={savedSearch.id}
-                component={Link}
-                href={`/search/${savedSearch.id}`}
-                label={savedSearch.name}
-                active={savedSearch.id === activeSavedSearchId}
-                leftSection={
-                  favoriteIds.has(savedSearch.id) ? (
-                    <IconStarFilled size={12} />
-                  ) : null
-                }
-                onClick={close}
-              />
-            ))
-          )}
-        </ScrollArea.Autosize>
-        <Divider my="xs" />
-        <Button
-          variant="subtle"
-          size="xs"
-          fullWidth
-          justify="start"
-          data-testid="manage-saved-searches"
-          onClick={() => {
-            close();
-            onManage();
+      <Button
+        variant="secondary"
+        size="xs"
+        rightSection={<IconSelector size={14} />}
+        style={{ flexShrink: 0, maxWidth: 220 }}
+        data-testid="saved-search-switcher"
+        onClick={onOpen}
+      >
+        <Text
+          span
+          inherit
+          c={muted ? 'dimmed' : undefined}
+          data-testid="saved-search-name"
+          style={{
+            display: 'block',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
           }}
         >
-          Manage saved searches
-        </Button>
-      </Popover.Dropdown>
-    </Popover>
+          {label}
+        </Text>
+      </Button>
+    </Tooltip>
   );
 }

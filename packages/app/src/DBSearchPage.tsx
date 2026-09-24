@@ -2216,14 +2216,14 @@ export function DBSearchPage() {
         {/* <DevTool control={control} /> */}
         <Flex gap="sm" px="sm" pt="sm" wrap="nowrap" align="center">
           <SavedSearchSwitcher
-            activeSavedSearchId={savedSearchId ?? undefined}
             label={savedSearch?.name ?? 'Unsaved search'}
+            muted={savedSearch == null}
             meta={
               savedSearch ? (
                 <SavedSearchMeta savedSearch={savedSearch} />
               ) : undefined
             }
-            onManage={() => void setPanel('saved-searches')}
+            onOpen={() => void setPanel('saved-searches')}
           />
           <SourceSelectControlled
             key={`${savedSearchId}`}
