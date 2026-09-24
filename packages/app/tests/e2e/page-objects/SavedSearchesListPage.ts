@@ -23,6 +23,13 @@ export class SavedSearchesListPage {
     });
   }
 
+  /** Opens the drawer the way a user does: title switcher, then Manage. */
+  async openFromSwitcher() {
+    await this.page.getByTestId('saved-search-switcher').click();
+    await this.page.getByTestId('manage-saved-searches').click();
+    await this.pageContainer.waitFor();
+  }
+
   async searchSavedSearches(query: string) {
     await this.searchInput.fill(query);
   }

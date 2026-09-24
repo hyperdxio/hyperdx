@@ -63,6 +63,7 @@ import {
   Select,
   Stack,
   Text,
+  Title,
   Tooltip,
 } from '@mantine/core';
 import {
@@ -74,7 +75,6 @@ import { notifications } from '@mantine/notifications';
 import {
   IconArrowBarToRight,
   IconBolt,
-  IconBookmarks,
   IconCode,
   IconPlayerPlay,
   IconPlus,
@@ -100,6 +100,7 @@ import ResourceTerraformPopover from '@/components/Iac/ResourceTerraformPopover'
 import { InputControlled } from '@/components/InputControlled';
 import OnboardingModal from '@/components/OnboardingModal';
 import { SavedSearchesDrawer } from '@/components/SavedSearches/SavedSearchesDrawer';
+import { SavedSearchSwitcher } from '@/components/SavedSearches/SavedSearchSwitcher';
 import SearchWhereInput, {
   getStoredLanguage,
 } from '@/components/SearchInput/SearchWhereInput';
@@ -2183,8 +2184,8 @@ export function DBSearchPage() {
         />
       )}
       <OnboardingModal />
-      {savedSearch && (
-        <Stack mt="lg" mx="xs">
+      <Stack mt="lg" mx="xs">
+        {savedSearch && (
           <Group justify="space-between">
             <Breadcrumbs fz="sm">
               <Anchor component={Link} href="/search" fz="sm" c="dimmed">
@@ -2220,20 +2221,34 @@ export function DBSearchPage() {
               )}
             </Text>
           </Group>
-          <Group justify="space-between" align="flex-end">
+        )}
+        <Group justify="space-between" align="flex-end">
+          <Group gap={2} wrap="nowrap">
             <div data-testid="saved-search-name">
-              <EditablePageName
-                key={savedSearch.id}
-                name={savedSearch?.name ?? 'Untitled Search'}
-                onSave={editedName => {
-                  updateSavedSearch.mutate({
-                    id: savedSearch.id,
-                    name: editedName,
-                  });
-                }}
-              />
+              {savedSearch ? (
+                <EditablePageName
+                  key={savedSearch.id}
+                  name={savedSearch.name ?? 'Untitled Search'}
+                  onSave={editedName => {
+                    updateSavedSearch.mutate({
+                      id: savedSearch.id,
+                      name: editedName,
+                    });
+                  }}
+                />
+              ) : (
+                <Title order={3} fw={400} c="dimmed">
+                  Untitled search
+                </Title>
+              )}
             </div>
+            <SavedSearchSwitcher
+              activeSavedSearchId={savedSearchId ?? undefined}
+              onManage={() => void setPanel('saved-searches')}
+            />
+          </Group>
 
+          {savedSearch && (
             <Group gap="xs">
               <FavoriteButton
                 resourceType="savedSearch"
@@ -2276,9 +2291,9 @@ export function DBSearchPage() {
                 }}
               />
             </Group>
-          </Group>
-        </Stack>
-      )}
+          )}
+        </Group>
+      </Stack>
       <form
         data-testid="search-form"
         onSubmit={onFormSubmit}
@@ -2337,18 +2352,6 @@ export function DBSearchPage() {
             />
           </Box>
           <>
-            <Tooltip withArrow label="Saved searches" fz="xs" color="gray">
-              <ActionIcon
-                variant="secondary"
-                size="input-xs"
-                style={{ flexShrink: 0 }}
-                aria-label="Saved searches"
-                data-testid="saved-searches-button"
-                onClick={() => void setPanel('saved-searches')}
-              >
-                <IconBookmarks size={14} />
-              </ActionIcon>
-            </Tooltip>
             {!savedSearchId ? (
               <>
                 <Button

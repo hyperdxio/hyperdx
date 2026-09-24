@@ -61,7 +61,7 @@ test.describe('Navigation', { tag: ['@core'] }, () => {
           page.locator('[data-testid="nav-link-search-toggle"]'),
         ).toBeVisible();
         await expect(
-          page.locator('[data-testid="saved-searches-button"]'),
+          page.locator('[data-testid="saved-search-switcher"]'),
         ).toBeVisible();
       });
 

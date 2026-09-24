@@ -109,7 +109,12 @@ jest.mock('@/savedSearch', () => ({
   useCreateSavedSearch: () => ({ mutate: jest.fn() }),
   useDeleteSavedSearch: () => ({ mutate: jest.fn() }),
   useSavedSearch: () => ({ data: undefined }),
+  useSavedSearches: () => ({ data: [], isLoading: false }),
   useUpdateSavedSearch: () => ({ mutate: jest.fn() }),
+}));
+
+jest.mock('@/favorites', () => ({
+  useFavorites: () => ({ data: [] }),
 }));
 
 jest.mock('@/searchFilters', () => ({
