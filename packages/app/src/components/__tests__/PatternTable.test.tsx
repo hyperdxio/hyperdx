@@ -35,7 +35,13 @@ const config: React.ComponentProps<typeof PatternTable>['config'] = {
   ],
 };
 
-function mockPatterns({ isPlaceholderData }: { isPlaceholderData: boolean }) {
+function mockPatterns({
+  isPlaceholderData,
+  isLoading = false,
+}: {
+  isPlaceholderData: boolean;
+  isLoading?: boolean;
+}) {
   mockUseGroupedPatterns.mockReturnValue({
     data: {
       '1': {
@@ -46,7 +52,7 @@ function mockPatterns({ isPlaceholderData }: { isPlaceholderData: boolean }) {
         samples: [],
       },
     },
-    isLoading: false,
+    isLoading,
     isPlaceholderData,
     error: null,
     patternQueryConfig: undefined,
@@ -88,6 +94,23 @@ describe('PatternTable refresh', () => {
     expect(screen.getByTestId('search-results-table')).toHaveClass(
       'effect-pulse',
     );
+  });
+
+  it('does not show the loading footer under the previous patterns', () => {
+    // The new sample is still loading behind the placeholder patterns.
+    mockPatterns({ isPlaceholderData: true, isLoading: true });
+
+    renderTable({ keepPreviousData: true });
+
+    expect(screen.queryByText(/Loading results/)).not.toBeInTheDocument();
+  });
+
+  it('shows the loading footer while patterns load without a placeholder', () => {
+    mockPatterns({ isPlaceholderData: false, isLoading: true });
+
+    renderTable({ keepPreviousData: true });
+
+    expect(screen.getByText(/Loading results/)).toBeInTheDocument();
   });
 
   it('does not pulse once fresh patterns have loaded', () => {

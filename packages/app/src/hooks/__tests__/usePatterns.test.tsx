@@ -173,4 +173,23 @@ describe('useGroupedPatterns keepPreviousData', () => {
     expect(result.current.isPlaceholderData).toBe(true);
     expect(result.current.data).toBe(settled);
   });
+
+  it('keeps the same groups when re-rendered with an equal config', () => {
+    mockMining({ isPlaceholderData: false });
+    const { result, rerender } = renderHook(
+      ({ fromMs }) =>
+        useGroupedPatterns({
+          ...baseArgs,
+          config: configFor(fromMs),
+          keepPreviousData: true,
+        }),
+      { initialProps: { fromMs: T0 } },
+    );
+    const groups = result.current.data;
+
+    // A parent re-render builds the same range from new Date objects.
+    rerender({ fromMs: T0 });
+
+    expect(result.current.data).toBe(groups);
+  });
 });

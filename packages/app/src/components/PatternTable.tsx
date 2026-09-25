@@ -90,6 +90,7 @@ export default function PatternTable({
 
   const isLoading =
     isTotalCountLoading || !isTotalCountComplete || isGroupedPatternsLoading;
+  const isRefreshing = keepPreviousData && isPatternsPlaceholderData;
 
   const error = totalCountError || groupedPatternsError;
 
@@ -147,12 +148,9 @@ export default function PatternTable({
           <RawLogTable
             isLive={false}
             wrapLines={true}
-            isLoading={isLoading}
-            className={
-              keepPreviousData && isPatternsPlaceholderData
-                ? 'effect-pulse'
-                : undefined
-            }
+            // The pulse is the only refresh indicator, not the loading footer
+            isLoading={isLoading && !isRefreshing}
+            className={isRefreshing ? 'effect-pulse' : undefined}
             rows={sortedGroupedResults ?? []}
             displayedColumns={[
               '__hdx_pattern_trend',

@@ -129,7 +129,10 @@ export type Pattern = {
 const withoutDateRange = (part: unknown) =>
   typeof part === 'object' && part !== null ? omit(part, ['dateRange']) : part;
 
-/** Whether two query keys differ in nothing but their config's date range. */
+/**
+ * Whether two query keys differ in nothing but their config's date range.
+ * Only a top-level `dateRange` on each key part is ignored.
+ */
 export function differsOnlyInDateRange(
   prevKey: readonly unknown[] | undefined,
   key: readonly unknown[],
@@ -286,11 +289,18 @@ export function useGroupedPatterns({
     return totalCount && sampledRowCount ? totalCount / sampledRowCount : 1;
   }, [totalCount, sampledRowCount]);
 
-  const granularity = convertDateRangeToGranularityString(config.dateRange, 24);
-  const timeRangeBuckets = timeBucketByGranularity(
-    config.dateRange[0],
-    config.dateRange[1],
-    granularity,
+  // Keyed on the range's times, so an equal range built from new Date objects
+  // keeps `groupedResults` stable and the settled groups below don't loop.
+  const startTime = config.dateRange[0].getTime();
+  const endTime = config.dateRange[1].getTime();
+  const dateRange = useMemo<[Date, Date]>(
+    () => [new Date(startTime), new Date(endTime)],
+    [startTime, endTime],
+  );
+  const granularity = convertDateRangeToGranularityString(dateRange, 24);
+  const timeRangeBuckets = useMemo(
+    () => timeBucketByGranularity(dateRange[0], dateRange[1], granularity),
+    [dateRange, granularity],
   );
 
   // TODO: Group by pattern and other select attributes
@@ -346,19 +356,13 @@ export function useGroupedPatterns({
             count: Math.round(count * sampleMultiplier),
           })),
           granularity,
-          dateRange: config.dateRange,
+          dateRange,
         },
       };
     });
 
     return fullPatternGroups;
-  }, [
-    results,
-    granularity,
-    sampleMultiplier,
-    timeRangeBuckets,
-    config.dateRange,
-  ]);
+  }, [results, granularity, sampleMultiplier, timeRangeBuckets, dateRange]);
 
   // While the previous patterns are a placeholder, keep the groups as they
   // were last computed. Regrouping them on the new range would redraw each
