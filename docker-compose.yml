@@ -82,6 +82,10 @@ services:
       # 32-byte base64 or hex key. Setting it encrypts stored Slack and OAuth
       # tokens; unset means they are stored in plain text.
       TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY:-}
+      # Set to 'true' to turn on the /diagnostics profiling endpoints.
+      HDX_DIAGNOSTICS_ENABLED: ${HDX_DIAGNOSTICS_ENABLED:-}
+      # Set to 'true' to also allow full heap snapshots, which contain secrets.
+      HDX_DIAGNOSTICS_HEAP_SNAPSHOT: ${HDX_DIAGNOSTICS_HEAP_SNAPSHOT:-}
       # Uncomment the next two lines to enable PromQL (Prometheus-compatible metrics)
       # ENABLE_PROMQL: 'true'
       # NEXT_PUBLIC_ENABLE_PROMQL: 'true'

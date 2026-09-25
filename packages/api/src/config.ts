@@ -61,6 +61,16 @@ export const DEFAULT_CONNECTIONS = env.DEFAULT_CONNECTIONS;
 export const DEFAULT_SOURCES = env.DEFAULT_SOURCES;
 
 export const IS_PROMQL_ENABLED = env.ENABLE_PROMQL === 'true';
+// Only an explicit true/1 enables a flag, so a typo leaves it off.
+const isEnabledFlag = (value: string | undefined) =>
+  value?.toLowerCase() === 'true' || value === '1';
+
+// Opt-in, like the other surfaces that expose the process: any signed-in user
+// can call /diagnostics, so an operator turns it on for the incident.
+export const DIAGNOSTICS_ENABLED = isEnabledFlag(env.HDX_DIAGNOSTICS_ENABLED);
+export const DIAGNOSTICS_HEAP_SNAPSHOT_ENABLED = isEnabledFlag(
+  env.HDX_DIAGNOSTICS_HEAP_SNAPSHOT,
+);
 
 export const EXTERNAL_API_RATE_LIMIT_MAX = (() => {
   const parsed = Number(env.EXTERNAL_API_RATE_LIMIT_MAX);
