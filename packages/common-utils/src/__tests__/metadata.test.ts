@@ -1956,8 +1956,7 @@ describe('Metadata', () => {
     it('skips the raw table scan when there is no timestampValueExpression to bound it', async () => {
       const md = buildMetadata();
       const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
-
-      const keys = await md.getMapKeys({
+      const args = {
         databaseName: 'otel',
         tableName: 'generic_logs',
         column: 'LogAttributes',
@@ -1965,12 +1964,16 @@ describe('Metadata', () => {
         dateRange: [
           new Date('2026-05-11T16:00:00Z'),
           new Date('2026-05-11T17:00:00Z'),
-        ],
-      });
+        ] as [Date, Date],
+      };
+
+      const keys = await md.getMapKeys(args);
+      await md.getMapKeys(args);
 
       expect(keys).toEqual([]);
       expect(mockClickhouseClient.query).not.toHaveBeenCalled();
-      expect(warn).toHaveBeenCalled();
+      // Result is cached, so repeat calls don't re-warn.
+      expect(warn).toHaveBeenCalledTimes(1);
       warn.mockRestore();
     });
 
@@ -1980,7 +1983,9 @@ describe('Metadata', () => {
       const textIndexLookup: TextIndexInfoLookup = new Map([
         [
           'LogAttributes',
-          { key: { indexName: 'idx_log_attr_keys', mapColumn: 'LogAttributes' } },
+          {
+            key: { indexName: 'idx_log_attr_keys', mapColumn: 'LogAttributes' },
+          },
         ],
       ]);
       jest
@@ -2364,7 +2369,9 @@ describe('Metadata', () => {
       expect(mockClickhouseClient.query).toHaveBeenCalledTimes(2);
     });
 
-    it('does not let an empty rollup result block the raw-scan fallback', async () => {
+    // The shipped OTel rollups only index NativeColumn, so Map columns always
+    // come back empty from the rollup and must reach the bounded main-table scan.
+    it('falls back to the bounded main-table scan when the rollup is empty', async () => {
       const md = buildMetadata();
       const emptyTextIndexLookup: TextIndexInfoLookup = new Map();
       jest
@@ -2390,6 +2397,10 @@ describe('Metadata', () => {
 
       expect(keys).toEqual(['raw.key']);
       expect(mockClickhouseClient.query).toHaveBeenCalledTimes(2);
+      const scanCall = (mockClickhouseClient.query as jest.Mock).mock
+        .calls[1][0];
+      expect(scanCall.query).toContain('WHERE');
+      expect(scanCall.query).toContain('__TIME_FILTER__');
     });
   });
 

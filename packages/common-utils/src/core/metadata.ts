@@ -1025,7 +1025,9 @@ export class Metadata {
 
     // Rollup path: query the key rollup table filtered by ColumnIdentifier and date range
     if (metadataMVs && alignedDateRange) {
-      // Own cache key: an empty rollup result must not poison cacheKey, which the raw-scan fallback below also reads.
+      // Own cache key: the shipped OTel rollups only index NativeColumn, so
+      // Map columns come back empty here and must fall through to the bounded
+      // scan below. Caching [] under cacheKey would block that fallback.
       const rollupKeys = await this.cache.getOrFetch<string[]>(
         `${cacheKey}.rollup`,
         async () => {
@@ -1092,6 +1094,8 @@ export class Metadata {
       console.warn(
         `Skipping Map key discovery for ${databaseName}.${tableName}.${column}: no timestampValueExpression to bound the scan`,
       );
+      // Cache so getAllFields doesn't re-warn per Map column on every call.
+      this.cache.set(cacheKey, []);
       return [];
     }
 
