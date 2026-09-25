@@ -299,7 +299,7 @@ test.describe(
       await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
       await dashboardPage.chartEditor.waitForDataToLoad();
       await dashboardPage.chartEditor.switchToPromqlMode();
-      await dashboardPage.chartEditor.selectPromqlSource(PROMQL_SOURCE_NAME);
+      await dashboardPage.chartEditor.selectSource(PROMQL_SOURCE_NAME);
     };
 
     test('narrows the queried series to the selected values', async ({

@@ -252,17 +252,16 @@ export class ChartEditorComponent {
    * Select a data source
    */
   async selectSource(sourceName: string) {
+    // The editor pre-selects a source, and clicking the option that is already
+    // selected deselects it. Leave an existing match alone.
+    if ((await this.sourceSelector.inputValue()) === sourceName) {
+      return;
+    }
     await this.sourceSelector.click();
     // Use getByRole for more reliable selection. exact: true avoids matching
     // sources whose names are prefixes of others (e.g. "E2E Traces MV" vs
     // "E2E Traces MV AutoPopulate").
-    const sourceOption = this.page.getByRole('option', {
-      name: sourceName,
-      exact: true,
-    });
-    if ((await sourceOption.getAttribute('data-combobox-active')) != 'true') {
-      await sourceOption.click({ timeout: 5000 });
-    }
+    await this.sourceOption(sourceName).click({ timeout: 5000 });
   }
 
   /**
@@ -359,6 +358,27 @@ export class ChartEditorComponent {
     }
   }
 
+  /** Open the Data Source dropdown. */
+  async openSourcePicker() {
+    await this.sourceSelector.click();
+    await expect(this.page.getByRole('option').first()).toBeVisible();
+  }
+
+  /**
+   * Close the Data Source dropdown by moving focus to the chart name input.
+   * Escape would bubble to the tile-editor modal and close that instead, and
+   * clicking the select again leaves the searchable dropdown open.
+   */
+  async closeSourcePicker() {
+    await this.chartNameInput.click();
+    await expect(this.page.getByRole('option')).toHaveCount(0);
+  }
+
+  /** An option in the open Data Source dropdown. */
+  sourceOption(sourceName: string): Locator {
+    return this.page.getByRole('option', { name: sourceName, exact: true });
+  }
+
   /**
    * Switch the chart editor from Builder to SQL mode.
    */
@@ -383,20 +403,6 @@ export class ChartEditorComponent {
       .filter({ hasText: /^PromQL$/ });
     await label.waitFor({ state: 'visible', timeout: 5000 });
     await label.click();
-  }
-
-  /**
-   * Select the PromQL editor's data source.
-   *
-   * Located by role rather than by the `source-selector` test id: that id is on
-   * the builder's source select (ChartEditorControls), and PromQL mode renders
-   * its own `SourceSelectControlled` which doesn't carry it.
-   */
-  async selectPromqlSource(sourceName: string) {
-    await this.page.getByRole('combobox', { name: 'Data Source' }).click();
-    await this.page
-      .getByRole('option', { name: sourceName, exact: true })
-      .click();
   }
 
   /**

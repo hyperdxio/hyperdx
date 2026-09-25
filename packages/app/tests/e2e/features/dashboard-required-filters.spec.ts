@@ -191,7 +191,7 @@ test.describe(
         await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
         await dashboardPage.chartEditor.waitForDataToLoad();
         await dashboardPage.chartEditor.switchToPromqlMode();
-        await dashboardPage.chartEditor.selectPromqlSource(PROMQL_SOURCE_NAME);
+        await dashboardPage.chartEditor.selectSource(PROMQL_SOURCE_NAME);
         await dashboardPage.chartEditor.setChartName('PromQL tile');
         await dashboardPage.chartEditor.replacePromqlExpression(
           E2E_PROMQL_METRIC_NAME,

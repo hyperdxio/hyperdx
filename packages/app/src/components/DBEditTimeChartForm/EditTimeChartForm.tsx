@@ -12,7 +12,10 @@ import {
   displayTypeSupportsBuilderAlerts,
   displayTypeSupportsRawSqlAlerts,
 } from '@hyperdx/common-utils/dist/core/utils';
-import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
+import {
+  displayTypeRequiresSource,
+  isRawSqlSavedChartConfig,
+} from '@hyperdx/common-utils/dist/guards';
 import {
   ChartConfigWithDateRange,
   ChartVariable,
@@ -61,6 +64,7 @@ import {
   convertFormStateToChartConfig,
   convertFormStateToSavedChartConfig,
   convertSavedChartConfigToFormState,
+  getAllowedSourceKinds,
   isPromqlDisplayType,
   isRawSqlDisplayType,
   isStringSelectDisplayType,
@@ -74,12 +78,17 @@ import HeatmapSettingsDrawer, {
 import { InputControlled } from '@/components/InputControlled';
 import SaveToDashboardModal from '@/components/SaveToDashboardModal';
 import { getStoredLanguage } from '@/components/SearchInput/SearchWhereInput';
+import {
+  firstSourceItemValue,
+  useFilteredSortedSourceItems,
+} from '@/components/sourceSelectUtils';
 import { IS_PROMQL_ENABLED } from '@/config';
 import HDXMarkdownChart from '@/HDXMarkdownChart';
 import {
   getDurationMsExpression,
   getFirstSeriesNumberFormat,
   useSource,
+  useSources,
 } from '@/source';
 import { normalizeNoOpAlertScheduleFields } from '@/utils/alerts';
 
@@ -267,6 +276,7 @@ export default function EditTimeChartForm({
   const markdown = useWatch({ control, name: 'markdown' });
   const granularity = useWatch({ control, name: 'granularity' });
   const configType = useWatch({ control, name: 'configType' });
+  const connection = useWatch({ control, name: 'connection' });
 
   const chartConfigAlert = chartConfig.alert;
   const isRawSqlInput =
@@ -274,7 +284,20 @@ export default function EditTimeChartForm({
   const isPromqlInput =
     configType === 'promql' && isPromqlDisplayType(displayType);
 
-  const { data: tableSource } = useSource({ id: sourceId });
+  const { data: sources } = useSources();
+
+  const allowedSourceKinds = useMemo(
+    () => getAllowedSourceKinds({ configType, displayType }),
+    [configType, displayType],
+  );
+
+  // A source selection that current mode can't query counts as no source,
+  // so that nothing downstream builds a query from it.
+  const { data: tableSource } = useSource({
+    id: sourceId,
+    kinds: allowedSourceKinds,
+  });
+
   const databaseName = tableSource?.from.databaseName;
   const tableName = tableSource?.from.tableName;
 
@@ -669,6 +692,67 @@ export default function EditTimeChartForm({
     }
   }, [granularity, onSubmit]);
 
+  // Filtered and ordered exactly like the Data Source picker, so the
+  // replacement picked below is the option the user would see first.
+  const allowedSourceItems = useFilteredSortedSourceItems({
+    sources,
+    allowedSourceKinds,
+    connectionId: configType === 'sql' ? connection : undefined,
+    groupBySection: true,
+  });
+
+  // We auto-submit when the display type changes, this ref helps ensure we only
+  // submit once, and only after the source swap has been processed.
+  const isDisplayTypeSourceSwapPendingRef = useRef(false);
+
+  // Switching editor mode or display type can invalidate the selected source:
+  // Swap in the first source the picker still offers rather than
+  // leaving a selection it no longer lists.
+  const prevSourceModeRef = useRef({ configType, displayType });
+  useEffect(() => {
+    // Run only on configType and displayType changes
+    const prev = prevSourceModeRef.current;
+    if (prev.configType === configType && prev.displayType === displayType) {
+      return;
+    }
+
+    isDisplayTypeSourceSwapPendingRef.current = false;
+    if (sources == null) return;
+    if (!displayTypeRequiresSource(displayType)) return;
+
+    prevSourceModeRef.current = { configType, displayType };
+
+    // Builder and PromQL require a source, so an empty selection
+    // should be filled in. Raw SQL source is optional, so leave it.
+    if (!sourceId && configType === 'sql') return;
+
+    // If the currently selected source is still allowed, keep it.
+    const selected = sources.find(s => s.id === sourceId);
+    if (
+      selected &&
+      !selected.disabled &&
+      allowedSourceKinds.includes(selected.kind)
+    ) {
+      return;
+    }
+
+    // Select the first valid source
+    setValue('source', firstSourceItemValue(allowedSourceItems) ?? '');
+
+    // Record that a display-type change triggered a source change, so
+    // that auto-submit runs in the correct effect below.
+    isDisplayTypeSourceSwapPendingRef.current =
+      prev.displayType !== displayType;
+  }, [
+    allowedSourceItems,
+    allowedSourceKinds,
+    configType,
+    displayType,
+    setValue,
+    sourceId,
+    sources,
+  ]);
+
   useEffect(() => {
     const displayTypeChanged = displayType !== prevDisplayTypeRef.current;
     const configTypeChanged = configType !== prevConfigTypeRef.current;
@@ -714,25 +798,32 @@ export default function EditTimeChartForm({
       }
 
       // Don't auto-submit when config type changes, to avoid clearing form state (like source)
-      if (displayTypeChanged) {
+      // Defer auto-submit to the effect below when the display type change triggered a source swap above.
+      if (displayTypeChanged && !isDisplayTypeSourceSwapPendingRef.current) {
         // true = Suppress error notification (because we're auto-submitting)
         onSubmit(true);
       }
     }
   }, [displayType, select, setValue, onSubmit, configType, tableSource]);
 
-  // Auto-populate heatmap defaults when source changes while in heatmap mode
+  // Handle auto-submitting and form state updates when the source changes.
   useEffect(() => {
     const sourceChanged = sourceId !== prevSourceIdRef.current;
     prevSourceIdRef.current = sourceId;
+    if (!sourceChanged) return;
+
+    const swappedSourceDueToDisplayTypeChange =
+      isDisplayTypeSourceSwapPendingRef.current;
+    isDisplayTypeSourceSwapPendingRef.current = false;
 
     if (
-      sourceChanged &&
       displayType === DisplayType.Heatmap &&
       tableSource?.kind === SourceKind.Trace &&
       tableSource.durationExpression
     ) {
       applyHeatmapDefaults(setValue, getDurationMsExpression(tableSource));
+      onSubmit(true);
+    } else if (swappedSourceDueToDisplayTypeChange) {
       onSubmit(true);
     }
   }, [sourceId, displayType, tableSource, setValue, onSubmit]);
@@ -1004,6 +1095,7 @@ export default function EditTimeChartForm({
           <PromqlChartEditor
             control={control}
             getValues={getValues}
+            allowedSourceKinds={allowedSourceKinds}
             onSubmit={onSubmit}
             onOpenDisplaySettings={openDisplaySettings}
           />
@@ -1011,6 +1103,7 @@ export default function EditTimeChartForm({
           <RawSqlChartEditor
             control={control}
             setValue={setValue}
+            allowedSourceKinds={allowedSourceKinds}
             onOpenDisplaySettings={openDisplaySettings}
             onSubmit={onSubmit}
             isDashboardForm={isDashboardForm}
@@ -1034,6 +1127,7 @@ export default function EditTimeChartForm({
             duplicateSeries={duplicateSeries}
             tableSource={tableSource}
             tableConnection={tableConnection}
+            allowedSourceKinds={allowedSourceKinds}
             databaseName={databaseName}
             tableName={tableName}
             dateRange={dateRange}

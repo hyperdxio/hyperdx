@@ -18,6 +18,7 @@ import {
   convertFormStateToChartConfig,
   convertFormStateToSavedChartConfig,
   convertSavedChartConfigToFormState,
+  getAllowedSourceKinds,
   validateChartForm,
 } from '@/components/ChartEditor/utils';
 
@@ -2267,5 +2268,71 @@ describe('metric formulas (HDX-5080)', () => {
         },
       ]);
     });
+  });
+});
+
+describe('getAllowedSourceKinds', () => {
+  it('offers only PromQL sources in PromQL mode', () => {
+    expect(
+      getAllowedSourceKinds({
+        configType: 'promql',
+        displayType: DisplayType.Line,
+      }),
+    ).toEqual([SourceKind.Promql]);
+  });
+
+  it.each(['builder', 'sql'] as const)(
+    'excludes PromQL sources in %s mode',
+    configType => {
+      const kinds = getAllowedSourceKinds({
+        configType,
+        displayType: DisplayType.Line,
+      });
+      expect(kinds).not.toContain(SourceKind.Promql);
+      expect(kinds).toEqual(
+        expect.arrayContaining([
+          SourceKind.Log,
+          SourceKind.Trace,
+          SourceKind.Session,
+          SourceKind.Metric,
+        ]),
+      );
+    },
+  );
+
+  it.each([DisplayType.Search, DisplayType.EventPatterns])(
+    'excludes PromQL sources on %s tiles, which PromQL cannot render',
+    displayType => {
+      expect(
+        getAllowedSourceKinds({ configType: 'promql', displayType }),
+      ).not.toContain(SourceKind.Promql);
+    },
+  );
+
+  it.each([DisplayType.Search, DisplayType.EventPatterns])(
+    'excludes metric sources on %s tiles, which have no rows to list',
+    displayType => {
+      const kinds = getAllowedSourceKinds({
+        configType: 'builder',
+        displayType,
+      });
+      expect(kinds).not.toContain(SourceKind.Metric);
+      expect(kinds).toEqual(
+        expect.arrayContaining([
+          SourceKind.Log,
+          SourceKind.Trace,
+          SourceKind.Session,
+        ]),
+      );
+    },
+  );
+
+  it('narrows to traces on heatmap tiles', () => {
+    expect(
+      getAllowedSourceKinds({
+        configType: 'promql',
+        displayType: DisplayType.Heatmap,
+      }),
+    ).toEqual([SourceKind.Trace]);
   });
 });

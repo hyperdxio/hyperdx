@@ -27,11 +27,13 @@ import { ChartEditorFormState } from './types';
 export default function PromqlChartEditor({
   control,
   getValues,
+  allowedSourceKinds,
   onSubmit,
   onOpenDisplaySettings,
 }: {
   control: Control<ChartEditorFormState>;
   getValues: UseFormGetValues<ChartEditorFormState>;
+  allowedSourceKinds: SourceKind[];
   onSubmit: (suppressErrorNotification?: boolean) => void;
   onOpenDisplaySettings: () => void;
 }) {
@@ -100,7 +102,8 @@ export default function PromqlChartEditor({
           size="xs"
           control={control}
           name="source"
-          allowedSourceKinds={[SourceKind.Promql]}
+          data-testid="source-selector"
+          allowedSourceKinds={allowedSourceKinds}
         />
       </Group>
       {expressions.map((field, index) => (

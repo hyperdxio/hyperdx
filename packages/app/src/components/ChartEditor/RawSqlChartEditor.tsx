@@ -12,6 +12,7 @@ import {
 import {
   ChartVariable,
   RawSqlChartConfig,
+  SourceKind,
 } from '@hyperdx/common-utils/dist/types';
 import {
   DisplayType,
@@ -114,6 +115,7 @@ export function resolveConnectionSourceSync({
 export default function RawSqlChartEditor({
   control,
   setValue,
+  allowedSourceKinds,
   onOpenDisplaySettings,
   onSubmit,
   isDashboardForm,
@@ -126,6 +128,7 @@ export default function RawSqlChartEditor({
 }: {
   control: Control<ChartEditorFormState>;
   setValue: UseFormSetValue<ChartEditorFormState>;
+  allowedSourceKinds: SourceKind[];
   onOpenDisplaySettings: () => void;
   onSubmit: (suppressErrorNotification?: boolean) => void;
   isDashboardForm: boolean;
@@ -281,6 +284,8 @@ export default function RawSqlChartEditor({
           <SourceSelectControlled
             control={control}
             name="source"
+            data-testid="source-selector"
+            allowedSourceKinds={allowedSourceKinds}
             connectionId={connection}
             size="xs"
             clearable
