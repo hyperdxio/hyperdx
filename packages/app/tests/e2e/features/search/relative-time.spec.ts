@@ -42,9 +42,10 @@ test.describe('Relative Time Picker', { tag: '@relative-time' }, () => {
     });
 
     test('should show Live Tail option in relative time mode', async () => {
-      const liveTailButton = searchPage.page
-        .locator('text=Live Tail')
-        .locator('..');
+      const liveTailButton = searchPage.timePicker.popover.getByRole(
+        'button',
+        { name: 'Live Tail' },
+      );
       await expect(liveTailButton).toBeVisible();
     });
   });
