@@ -23,6 +23,7 @@ import {
 } from '@/config/fonts';
 import { ibmPlexMono, inter, roboto, robotoMono } from '@/fonts';
 import { fetchServerVersion, installHdxDebug } from '@/hdxDebug';
+import { recordRecentError } from '@/recentErrors';
 import { AppThemeProvider, useAppTheme } from '@/theme/ThemeProvider';
 import { ThemeWrapper } from '@/ThemeWrapper';
 import { NextApiConfigResponseData } from '@/types';
@@ -50,13 +51,14 @@ if (typeof crypto !== 'undefined' && !crypto.randomUUID) {
 
 enableMapSet();
 
+const onQueryError = (error: unknown, ...context: unknown[]) => {
+  console.error(error, ...context);
+  recordRecentError(error);
+};
+
 const queryClient = new QueryClient({
-  queryCache: new QueryCache({
-    onError: console.error,
-  }),
-  mutationCache: new MutationCache({
-    onError: console.error,
-  }),
+  queryCache: new QueryCache({ onError: onQueryError }),
+  mutationCache: new MutationCache({ onError: onQueryError }),
 });
 
 export type NextPageWithLayout<P = object, IP = P> = NextPage<P, IP> & {

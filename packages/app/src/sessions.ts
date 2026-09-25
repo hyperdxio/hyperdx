@@ -23,6 +23,7 @@ import useFieldExpressionGenerator, {
 } from './hooks/useFieldExpressionGenerator';
 import { useMetadataWithSettings } from './hooks/useMetadata';
 import { getClickhouseClient, useClickhouseClient } from './clickhouse';
+import { recordRecentError } from './recentErrors';
 import { SESSION_TABLE_EXPRESSIONS, useSource } from './source';
 
 export type Session = {
@@ -548,6 +549,8 @@ export function useRRWebEventStream(
           // the aborted stream did not finish.
         } else {
           console.error(e);
+          // This stream bypasses React Query, so report it to Copy debug info here.
+          recordRecentError(e);
         }
       }
 
