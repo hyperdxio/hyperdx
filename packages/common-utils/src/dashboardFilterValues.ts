@@ -10,10 +10,13 @@ import {
   isFilterVariableEnabled,
   parseQuery,
 } from '@/filters';
+import { isMissingFiltersMacro } from '@/macros';
 import {
+  ChartConfigWithOptDateRange,
   DashboardFilter,
   DashboardFilterValue,
   Filter,
+  SavedChartConfig,
   VariableFilterValue,
 } from '@/types';
 
@@ -177,6 +180,19 @@ export function getUnsatisfiedRequiredFilters<
   );
 }
 
+/** Whether a dashboard's broadcast filters reach a tile with the given config. */
+export function configConsumesBroadcastFilters(
+  config: SavedChartConfig | ChartConfigWithOptDateRange,
+  sourceId: string | undefined,
+): boolean {
+  if (!('configType' in config)) return true;
+  if (config.configType === 'promql') return false;
+  if (config.configType === 'sql') {
+    return !!sourceId && !isMissingFiltersMacro(config.sqlTemplate);
+  }
+  return true;
+}
+
 /**
  * The subset of `unsatisfiedRequiredFilters` that blocks the given tile.
  *
@@ -209,4 +225,26 @@ export function getBlockingRequiredFilters(
       (tile.consumesBroadcastFilters &&
         doesFilterApplyToSource(filter, tile.sourceId)),
   );
+}
+
+/** The names of the required filters that block a tile with the given config. */
+export function getBlockingRequiredFilterNames({
+  config,
+  sourceId,
+  unsatisfiedRequiredFilters,
+  referencedVariables,
+}: {
+  config: SavedChartConfig | ChartConfigWithOptDateRange;
+  sourceId: string | undefined;
+  unsatisfiedRequiredFilters: DashboardFilter[] | undefined;
+  /** The tile's variables, already narrowed to the ones it references. */
+  referencedVariables: readonly { name: string }[] | undefined;
+}): string[] {
+  return getBlockingRequiredFilters(unsatisfiedRequiredFilters ?? [], {
+    sourceId,
+    referencedVariableNames: referencedVariables?.map(
+      variable => variable.name,
+    ),
+    consumesBroadcastFilters: configConsumesBroadcastFilters(config, sourceId),
+  }).map(filter => filter.name);
 }

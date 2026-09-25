@@ -194,6 +194,7 @@ ci-unit:
 	npx nx run-many -t ci:unit
 	node --test .github/scripts/__tests__/release-notes.test.mjs
 	node --test .github/scripts/__tests__/changeset-hash.test.mjs
+	node --test .github/scripts/code-review/__tests__/review-comments.test.mjs
 
 .PHONY: ci-triage
 ci-triage:

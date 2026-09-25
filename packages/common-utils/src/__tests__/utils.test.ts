@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import {
   aliasMapToWithClauses,
+  convertDateRangeToGranularityString,
   convertToCategoricalChartConfig,
   convertToDashboardDocument,
   convertToDashboardTemplate,
@@ -3301,6 +3302,46 @@ describe('utils', () => {
           ...opts,
         }),
       ).toBe('EventTime');
+    });
+  });
+
+  describe('convertDateRangeToGranularityString', () => {
+    const range = (seconds: number): [Date, Date] => [
+      new Date(0),
+      new Date(seconds * 1000),
+    ];
+
+    it('infers 30 second buckets for a short range with no minimum', () => {
+      // 60 buckets max -> a 30-minute range infers 30 second buckets
+      expect(convertDateRangeToGranularityString(range(30 * 60))).toBe(
+        '30 second',
+      );
+    });
+
+    it('floors a short range up to the given minimum', () => {
+      expect(
+        convertDateRangeToGranularityString(range(30 * 60), undefined, 60),
+      ).toBe('1 minute');
+    });
+
+    it('is a no-op when the inferred bucket is already above the minimum', () => {
+      // 5-hour range infers 5 minute buckets, well above a 1-minute floor
+      expect(
+        convertDateRangeToGranularityString(range(5 * 3600), undefined, 60),
+      ).toBe('5 minute');
+    });
+
+    it('rounds a minimum that falls between two granularities up to the next one', () => {
+      // a 90-second minimum has no exact match; 5 minute is the next granularity up
+      expect(
+        convertDateRangeToGranularityString(range(30 * 60), undefined, 90),
+      ).toBe('5 minute');
+    });
+
+    it('treats an unset minimum the same as 0 (no flooring)', () => {
+      expect(
+        convertDateRangeToGranularityString(range(30 * 60), undefined, 0),
+      ).toBe('30 second');
     });
   });
 });

@@ -47,7 +47,10 @@ import {
   resolveRenderedSeriesCap,
 } from '@/defaults';
 import { type ActiveClickPayload, MemoChart } from '@/HDXMultiSeriesTimeChart';
-import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import {
+  getMinGranularitySeconds,
+  useQueriedChartConfig,
+} from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useChartNumberFormats, useSource } from '@/source';
 import type { NumberFormat } from '@/types';
@@ -429,19 +432,30 @@ function DBTimeChartComponent({
     [],
   );
 
+  const { data: source } = useSource({
+    id: sourceId || config.source,
+  });
+  const minGranularitySeconds = getMinGranularitySeconds(source);
+  // Both useTimeChartSettings and convertToTimeChartConfig resolve 'auto', so the
+  // minimum has to be in `config` before they run.
+  const configWithFloor = useMemo(
+    () => ({ ...config, minGranularitySeconds }),
+    [config, minGranularitySeconds],
+  );
+
   const originalDateRange = config.dateRange;
   const {
     displayType: displayTypeProp,
     dateRange,
     granularity,
     fillNulls,
-  } = useTimeChartSettings(config);
+  } = useTimeChartSettings(configWithFloor);
 
   const { data: me, isLoading: isLoadingMe } = api.useMe();
 
   const queriedConfig = useMemo(
-    () => convertToTimeChartConfig(config),
-    [config],
+    () => convertToTimeChartConfig(configWithFloor),
+    [configWithFloor],
   );
 
   // Stable identity for the query's SHAPE, excluding the sliding time window.
@@ -561,10 +575,6 @@ function DBTimeChartComponent({
     !data?.isComplete ||
     (config.compareToPreviousPeriod && !previousPeriodData?.isComplete) ||
     isPlaceholderData;
-
-  const { data: source } = useSource({
-    id: sourceId || config.source,
-  });
 
   // Where a metric chart's drill-down lands. Loaded here so the clicked series
   // can be re-addressed against the destination's own attribute expression

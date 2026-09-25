@@ -141,6 +141,23 @@ export function supportsDirectReadMap(
 }
 
 /**
+ * First release shipping the `mergeTreeIndex(database, table)` table function.
+ * Landed in 24.2 (ClickHouse/ClickHouse#58140, reverted and un-reverted within
+ * the same cycle by #60428/#60435).
+ */
+const MERGE_TREE_INDEX_MIN: ClickHouseVersion = [24, 2, 0, 0];
+
+/**
+ * Pre-flight check only — the table function can still fail at query time
+ * (permissions, a non-MergeTree engine), so keep a fallback path.
+ */
+export function supportsMergeTreeIndex(
+  version: ClickHouseVersion | undefined,
+): boolean {
+  return isClickHouseVersionAtLeast(version, MERGE_TREE_INDEX_MIN);
+}
+
+/**
  * First release that shipped the `mergeTreeTextIndex(database, table, index)`
  * table function used to introspect text skip indices.
  */
@@ -155,4 +172,12 @@ export function supportsMergeTreeTextIndex(
   version: ClickHouseVersion | undefined,
 ): boolean {
   return isClickHouseVersionAtLeast(version, MERGE_TREE_TEXT_INDEX_MIN);
+}
+
+const PROMETHEUS_HTTP_API_MIN: ClickHouseVersion = [26, 6, 0, 0];
+
+export function supportsPrometheusHttpApi(
+  version: ClickHouseVersion | undefined,
+): boolean {
+  return isClickHouseVersionAtLeast(version, PROMETHEUS_HTTP_API_MIN);
 }

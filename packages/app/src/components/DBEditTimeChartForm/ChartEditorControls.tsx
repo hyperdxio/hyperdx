@@ -43,6 +43,7 @@ import {
   isFormulaDisplayType,
   isFormulaSourceKind,
 } from '@/components/ChartEditor/utils';
+import { EDITOR_INPUT_HEIGHTS } from '@/components/editorInputHeights';
 import MVOptimizationIndicator from '@/components/MaterializedViews/MVOptimizationIndicator';
 import SearchWhereInput from '@/components/SearchInput/SearchWhereInput';
 import SourceSchemaPreview, {
@@ -83,6 +84,10 @@ type ChartEditorControlsProps = {
   ratioMode: ChartEditorFormState['ratioMode'];
   alert: ChartEditorFormState['alert'];
   additionalWarnings?: string[];
+  /** Whether this editor offers an alert (see EditTimeChartForm.enableAlerts). */
+  alertsEnabled?: boolean;
+  /** Hides the alert editor's remove control. */
+  isAlertRequired?: boolean;
   isRawSqlInput: boolean;
   dashboardId?: string;
   parentRef: HTMLElement | null;
@@ -115,6 +120,8 @@ export function ChartEditorControls({
   ratioMode,
   alert,
   additionalWarnings,
+  alertsEnabled,
+  isAlertRequired,
   isRawSqlInput,
   dashboardId,
   parentRef,
@@ -274,7 +281,6 @@ export function ChartEditorControls({
             onLanguageChange={(lang: 'sql' | 'lucene') =>
               setValue('whereLanguage', lang)
             }
-            showLabel={false}
             enableVariables
           />
         </Flex>
@@ -332,13 +338,14 @@ export function ChartEditorControls({
             <>
               <Divider mt="md" mb="sm" />
               <div
-                className="gap-2 align-items-center"
+                className="gap-2"
                 style={{
                   display: 'grid',
                   gridTemplateColumns: 'auto minmax(0, 1fr)',
+                  alignItems: 'start',
                 }}
               >
-                <div>
+                <Flex h={`${EDITOR_INPUT_HEIGHTS.sm}px`} align="center">
                   <Text
                     me="sm"
                     size="sm"
@@ -348,7 +355,7 @@ export function ChartEditorControls({
                   >
                     Group by
                   </Text>
-                </div>
+                </Flex>
                 <div>
                   <SQLInlineEditorControlled
                     {...groupByConnectionProps}
@@ -362,7 +369,7 @@ export function ChartEditorControls({
                 </div>
                 {displayType === DisplayType.Table && (
                   <>
-                    <div>
+                    <Flex h={`${EDITOR_INPUT_HEIGHTS.sm}px`} align="center">
                       <Text
                         me="sm"
                         size="sm"
@@ -372,7 +379,7 @@ export function ChartEditorControls({
                       >
                         Having
                       </Text>
-                    </div>
+                    </Flex>
                     <div>
                       <SQLInlineEditorControlled
                         tableConnection={tableConnection}
@@ -497,7 +504,7 @@ export function ChartEditorControls({
               {(displayType === DisplayType.Line ||
                 displayType === DisplayType.StackedBar ||
                 displayType === DisplayType.Number) &&
-                dashboardId &&
+                alertsEnabled &&
                 !alert &&
                 !IS_LOCAL_MODE && (
                   <Button
@@ -569,7 +576,6 @@ export function ChartEditorControls({
             onLanguageChange={(lang: 'sql' | 'lucene') =>
               setValue('whereLanguage', lang)
             }
-            showLabel={false}
             enableVariables
           />
         </Flex>
@@ -581,7 +587,9 @@ export function ChartEditorControls({
             setValue={setValue}
             alert={alert}
             dashboardId={dashboardId}
-            onRemove={() => setValue('alert', undefined)}
+            onRemove={
+              isAlertRequired ? undefined : () => setValue('alert', undefined)
+            }
             warning={
               additionalWarnings?.length
                 ? additionalWarnings.join(' ')

@@ -34,7 +34,7 @@ import {
   Granularity,
   isTimeSeriesDisplayType,
 } from '@hyperdx/common-utils/dist/core/utils';
-import { getBlockingRequiredFilters } from '@hyperdx/common-utils/dist/dashboardFilterValues';
+import { getBlockingRequiredFilterNames } from '@hyperdx/common-utils/dist/dashboardFilterValues';
 import {
   displayTypeRequiresSource,
   isBuilderChartConfig,
@@ -596,40 +596,20 @@ const Tile = ({
     [serializedTileVariables],
   );
 
-  // Whether a broadcast filter reaches this tile's query at all. PromQL tiles
-  // are handed no filters, and a raw-SQL tile drops them without a source or
-  // without a macro to apply them.
-  const consumesBroadcastFilters = useMemo(() => {
-    if (isPromqlSavedChartConfig(chart.config)) return false;
-    if (isRawSqlSavedChartConfig(chart.config)) {
-      return (
-        !!chart.config.source &&
-        !isMissingFiltersMacro(chart.config.sqlTemplate)
-      );
-    }
-    return true;
-  }, [chart.config]);
-
   // Serialized for the same reason as `tileVariables`: any change to the
   // dashboard's filters hands this tile a new array, and only a change to the
   // names this tile is blocked on should churn the render memo below.
   const serializedMissingRequiredFilterNames = useMemo(
     () =>
       JSON.stringify(
-        getBlockingRequiredFilters(unsatisfiedRequiredFilters ?? [], {
+        getBlockingRequiredFilterNames({
+          config: chart.config,
           sourceId: chart.config.source,
-          referencedVariableNames: tileVariables?.map(
-            variable => variable.name,
-          ),
-          consumesBroadcastFilters,
-        }).map(filter => filter.name),
+          unsatisfiedRequiredFilters,
+          referencedVariables: tileVariables,
+        }),
       ),
-    [
-      unsatisfiedRequiredFilters,
-      chart.config.source,
-      tileVariables,
-      consumesBroadcastFilters,
-    ],
+    [unsatisfiedRequiredFilters, chart.config, tileVariables],
   );
   const missingRequiredFilterNames = useMemo<string[]>(
     () => JSON.parse(serializedMissingRequiredFilterNames),
@@ -1627,6 +1607,8 @@ const EditTileModal = ({
   isSaving,
   dateRange,
   variables,
+  getDashboardFilters,
+  unsatisfiedRequiredFilters,
 }: {
   dashboardId?: string;
   chart: Tile | undefined;
@@ -1635,6 +1617,8 @@ const EditTileModal = ({
   isSaving?: boolean;
   onSave: (chart: Tile) => void;
   variables?: ChartVariable[];
+  getDashboardFilters: (sourceId: string | undefined) => Filter[];
+  unsatisfiedRequiredFilters?: DashboardFilter[];
 }) => {
   const contextZIndex = useZIndex();
   const modalZIndex = contextZIndex + 10;
@@ -1694,6 +1678,8 @@ const EditTileModal = ({
                 dashboardId={dashboardId}
                 chartConfig={chart.config}
                 variables={variables}
+                getDashboardFilters={getDashboardFilters}
+                unsatisfiedRequiredFilters={unsatisfiedRequiredFilters}
                 dateRange={dateRange}
                 isSaving={isSaving}
                 onSave={config => {
@@ -1900,7 +1886,7 @@ function DBDashboardPage({
     for (const { config } of dashboard.tiles) {
       if (!isBuilderSavedChartConfig(config)) continue;
       const source = sources?.find(v => v.id === config.source);
-      if (!source) continue;
+      if (!source || source.disabled) continue;
       // TODO: will need to update this when we allow for multiple metrics per chart
       const firstSelect = config.select[0];
       const metricType =
@@ -2397,6 +2383,20 @@ function DBDashboardPage({
     [dashboard, setDashboard],
   );
 
+  // The dashboard's search input plus the filter selections that broadcast to
+  // `sourceId`. Shared with the tile editor so its preview queries what the
+  // tile does.
+  const getTileFilters = useCallback(
+    (sourceId: string | undefined): Filter[] => [
+      {
+        type: whereLanguage === 'sql' ? 'sql' : 'lucene',
+        condition: where,
+      },
+      ...getFilterQueriesForSource(sourceId),
+    ],
+    [where, whereLanguage, getFilterQueriesForSource],
+  );
+
   const renderTileComponent = useCallback(
     (chart: Tile) => {
       // Resolve the tile's source ID so per-source-scoped filters can be
@@ -2415,13 +2415,7 @@ function DBDashboardPage({
           granularity={
             isRefreshEnabled ? granularityOverride : (granularity ?? undefined)
           }
-          filters={[
-            {
-              type: whereLanguage === 'sql' ? 'sql' : 'lucene',
-              condition: where,
-            },
-            ...getFilterQueriesForSource(tileSourceId),
-          ]}
+          filters={getTileFilters(tileSourceId)}
           variables={variables}
           unsatisfiedRequiredFilters={unsatisfiedRequiredFilters}
           onTimeRangeSelect={onTimeRangeSelect}
@@ -2520,12 +2514,10 @@ function DBDashboardPage({
       highlightedTileId,
       confirm,
       setDashboard,
-      where,
-      whereLanguage,
       onTimeRangeSelect,
       showAlertAnnotations,
       showReleaseAnnotations,
-      getFilterQueriesForSource,
+      getTileFilters,
       variables,
       unsatisfiedRequiredFilters,
       moveTargetContainers,
@@ -3125,7 +3117,6 @@ function DBDashboardPage({
         onLanguageChange={(lang: 'sql' | 'lucene') =>
           setValue('whereLanguage', lang)
         }
-        label="WHERE"
         enableHotkey
         allowMultiline
         minWidth={300}
@@ -3217,6 +3208,8 @@ function DBDashboardPage({
           }}
           dateRange={searchedTimeRange}
           variables={variables}
+          getDashboardFilters={getTileFilters}
+          unsatisfiedRequiredFilters={unsatisfiedRequiredFilters}
           isSaving={isSaving}
           onSave={newChart => {
             if (dashboard == null) {

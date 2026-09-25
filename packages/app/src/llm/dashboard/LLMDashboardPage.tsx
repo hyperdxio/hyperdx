@@ -55,6 +55,7 @@ import { SessionSelect } from './SessionSelect';
 import { SessionsTab } from './SessionsTab';
 import { TokenCostCharts } from './TokenCostCharts';
 import { LLMChartProps } from './types';
+import { UserSelect } from './UserSelect';
 
 const DEFAULT_INTERVAL = 'Past 1h';
 
@@ -64,6 +65,7 @@ const queryParamMap = {
   where: parseAsString.withDefault(''),
   whereLanguage: parseAsString.withDefault(''),
   sessionId: parseAsString.withDefault(''),
+  userId: parseAsString.withDefault(''),
 };
 
 /**
@@ -201,6 +203,7 @@ function LLMDashboardPage() {
           where: appliedConfig.where || '',
           whereLanguage: effectiveWhereLanguage,
           sessionId: appliedConfig.sessionId || undefined,
+          userId: appliedConfig.userId || undefined,
           logSource: logSource?.kind === SourceKind.Log ? logSource : undefined,
           logExpressions,
         }
@@ -299,6 +302,15 @@ function LLMDashboardPage() {
             dateRange={searchedTimeRange}
             size="sm"
             data-testid="llm-dashboard-session-select"
+          />
+          <UserSelect
+            value={appliedConfig.userId}
+            onChange={userId => setAppliedConfig({ userId })}
+            source={source}
+            expressions={expressions}
+            dateRange={searchedTimeRange}
+            size="sm"
+            data-testid="llm-dashboard-user-select"
           />
           <Box style={{ flexGrow: 1 }}>
             <SearchWhereInput

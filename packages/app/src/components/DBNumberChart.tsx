@@ -6,6 +6,7 @@ import {
 } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   isBuilderChartConfig,
+  isPromqlChartConfig,
   isRawSqlChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
 import {
@@ -31,6 +32,7 @@ import ChartContainer from './charts/ChartContainer';
 import ChartErrorState, {
   ChartErrorStateVariant,
 } from './charts/ChartErrorState';
+import MultipleValuesIndicator from './charts/MultipleValuesIndicator';
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
 import NumberTileBackgroundChart from './NumberTileBackgroundChart';
 
@@ -237,7 +239,7 @@ export default function DBNumberChart({
     queriedConfig,
     {
       placeholderData: (prev: any) => prev,
-      queryKey: [queryKeyPrefix, queriedConfig],
+      queryKeyPrefix,
       enabled,
     },
   );
@@ -252,6 +254,14 @@ export default function DBNumberChart({
           `No numeric columns found in result column metadata. Make sure a numeric column exists in the result set.\n\nResult Metadata: ${JSON.stringify(data.meta)}`,
         )
       : error;
+
+  const promqlRows = isPromqlChartConfig(queriedConfig)
+    ? (data?.data ?? [])
+    : [];
+  const promqlValueCount = promqlRows.length;
+  const promqlSeriesCount = new Set(
+    promqlRows.map((row: Record<string, unknown>) => row.series_name),
+  ).size;
 
   const resolvedNumberFormat = useSingleSeriesNumberFormat(queriedConfig);
 
@@ -313,6 +323,18 @@ export default function DBNumberChart({
       allToolbarItems.push(...toolbarPrefix);
     }
 
+    if (promqlValueCount > 1 || promqlSeriesCount > 1) {
+      allToolbarItems.push(
+        <MultipleValuesIndicator
+          key="db-number-chart-multiple-values"
+          valueCount={promqlValueCount}
+          seriesCount={promqlSeriesCount}
+          multipleSeriesHint="Aggregate the expression, for example with sum() or sum by (...), to return a single series."
+          multipleValuesHint="Wrap any range selectors in a function to return an instant vector, for example rate(metric[5m]) rather than metric[5m]."
+        />,
+      );
+    }
+
     if (source && showMVOptimizationIndicator && builderQueriedConfig) {
       allToolbarItems.push(
         <MVOptimizationIndicator
@@ -346,6 +368,8 @@ export default function DBNumberChart({
     mvOptimizationData,
     queriedConfig,
     builderQueriedConfig,
+    promqlValueCount,
+    promqlSeriesCount,
   ]);
 
   return (

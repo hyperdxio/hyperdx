@@ -2,7 +2,10 @@ import express from 'express';
 import { uniq } from 'lodash';
 import { z } from 'zod';
 
-import { deleteDashboard } from '@/controllers/dashboard';
+import {
+  deleteDashboard,
+  recordDashboardOnboardingIfHasTiles,
+} from '@/controllers/dashboard';
 import Dashboard, { IDashboard } from '@/models/dashboard';
 import { processRequestWithEnhancedErrors as validateRequest } from '@/utils/enhancedErrors';
 import { ExternalDashboardTileWithId, objectIdSchema } from '@/utils/zod';
@@ -2779,6 +2782,8 @@ router.post(
         ...(containers !== undefined ? { containers } : {}),
       }).save();
 
+      recordDashboardOnboardingIfHasTiles(req.user?._id, newDashboard.tiles);
+
       res.json({
         data: convertToExternalDashboard(newDashboard),
       });
@@ -3044,6 +3049,11 @@ router.put(
         internalTiles,
         existingTileIds,
       });
+
+      recordDashboardOnboardingIfHasTiles(
+        req.user?._id,
+        updatedDashboard.tiles,
+      );
 
       res.json({
         data: convertToExternalDashboard(updatedDashboard),

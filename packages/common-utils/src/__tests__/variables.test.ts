@@ -1299,6 +1299,22 @@ describe('filterReferencedVariables', () => {
     ).toEqual([SERVICE]);
   });
 
+  it('keeps the variables any of several PromQL expressions reference', () => {
+    expect(
+      filterReferencedVariables(
+        {
+          configType: 'promql',
+          promqlExpression: [
+            { expression: 'up' },
+            { expression: 'up{service=~"$service"}' },
+          ],
+          connection: 'local',
+        },
+        variables,
+      ),
+    ).toEqual([SERVICE]);
+  });
+
   it('keeps the variables a builder config references, across every expression field', () => {
     expect(
       filterReferencedVariables(
@@ -1581,6 +1597,26 @@ describe('substitutePromqlChartConfigVariables', () => {
         promqlConfig('up{service=~"$service"}', [EMPTY_SERVICE]),
       ).promqlExpression,
     ).toBe('up{service=~".*"}');
+  });
+
+  it('expands every expression of a multi-expression config', () => {
+    expect(
+      substitutePromqlChartConfigVariables({
+        configType: 'promql' as const,
+        connection: 'local',
+        promqlExpression: [
+          { expression: 'up{service=~"$service"}', alias: 'up' },
+          { expression: 'rate(errors{service=~"$service"}[5m])' },
+        ],
+        variables: [SERVICE],
+      }),
+    ).toMatchObject({
+      promqlExpression: [
+        { expression: 'up{service=~"(api|web)"}', alias: 'up' },
+        { expression: 'rate(errors{service=~"(api|web)"}[5m])' },
+      ],
+      variables: undefined,
+    });
   });
 });
 

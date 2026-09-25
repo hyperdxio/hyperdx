@@ -16,7 +16,9 @@ import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
   ChartConfigWithDateRange,
   ChartVariable,
+  DashboardFilter,
   DisplayType,
+  Filter,
   SavedChartConfig,
   SourceKind,
   TSource,
@@ -33,6 +35,7 @@ import {
 import { useDebouncedValue, useDisclosure, usePrevious } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
+  IconBell,
   IconBracketsContain,
   IconChartBar,
   IconChartLine,
@@ -81,7 +84,7 @@ import {
 } from '@/source';
 import { normalizeNoOpAlertScheduleFields } from '@/utils/alerts';
 
-import { ChartActionBar } from './ChartActionBar';
+import { ChartActionBar, DashboardFiltersToggleProps } from './ChartActionBar';
 import { ChartEditorControls } from './ChartEditorControls';
 import { ChartPreviewPanel } from './ChartPreviewPanel';
 import { ErrorNotificationMessage } from './ErrorNotificationMessage';
@@ -90,7 +93,7 @@ import {
   buildChartConfigForExplanations,
   computeDbTimeChartConfig,
   displayTypeToActiveTab,
-  resolvePreviewVariables,
+  resolveTilePreviewFilters,
   TABS_WITH_GENERATED_SQL,
   zSavedChartConfig,
 } from './utils';
@@ -100,6 +103,10 @@ type EditTimeChartFormProps = {
   chartConfig: SavedChartConfig;
   /** Variables and their selected values, from the parent dashboard (if one exists). */
   variables?: ChartVariable[];
+  /** Function returning the dashboard's broadcast filters for the given source, if any. */
+  getDashboardFilters?: (sourceId: string | undefined) => Filter[];
+  /** The dashboard's required filters that have nothing selected, if any */
+  unsatisfiedRequiredFilters?: DashboardFilter[];
   displayedTimeInputValue?: string;
   dateRange: [Date, Date];
   isSaving?: boolean;
@@ -114,7 +121,30 @@ type EditTimeChartFormProps = {
   submitRef?: React.MutableRefObject<(() => void) | undefined>;
   isDashboardForm?: boolean;
   autoRun?: boolean;
+  /**
+   * Whether the editor offers an alert. Defaults to "inside a dashboard",
+   * which is where tile alerts live; the chart explorer and the inline-alert
+   * editor opt in explicitly (their alerts persist on the alert document
+   * rather than on a tile).
+   */
+  enableAlerts?: boolean;
+  /**
+   * Save the chart's alert on its own, without a dashboard tile behind it
+   * (an inline alert). Renders a save button in the action bar; the config
+   * handed over still carries `alert`, so the caller splits it.
+   */
+  onSaveAlert?: (chart: SavedChartConfig) => void;
+  /** Label for the alert save button, e.g. "Create alert" vs "Save alert". */
+  saveAlertLabel?: string;
+  isSavingAlert?: boolean;
+  /** Hides the alert editor's remove control, for surfaces that require one. */
+  isAlertRequired?: boolean;
+  /** Whether to offer "Save to dashboard". Defaults to "outside a dashboard". */
+  showSaveToDashboard?: boolean;
 };
+
+const ALERT_IGNORES_DASHBOARD_FILTERS =
+  'Dashboard-level filter and variable selections cannot be applied when an alert is configured.';
 
 /** Populate form state with the standard heatmap series + duration numberFormat. */
 function applyHeatmapDefaults(
@@ -139,6 +169,8 @@ export default function EditTimeChartForm({
   dashboardId,
   chartConfig,
   variables,
+  getDashboardFilters,
+  unsatisfiedRequiredFilters,
   displayedTimeInputValue,
   dateRange,
   isSaving,
@@ -153,7 +185,14 @@ export default function EditTimeChartForm({
   submitRef,
   isDashboardForm = false,
   autoRun = false,
+  enableAlerts,
+  onSaveAlert,
+  saveAlertLabel,
+  isSavingAlert,
+  isAlertRequired = false,
+  showSaveToDashboard,
 }: EditTimeChartFormProps) {
+  const alertsEnabled = enableAlerts ?? dashboardId != null;
   const formValue: ChartEditorFormState = useMemo(
     () => convertSavedChartConfigToFormState(chartConfig),
     [chartConfig],
@@ -372,20 +411,63 @@ export default function EditTimeChartForm({
     [],
   );
 
-  // Attach variables so that variable references can be validated and expanded in the preview
+  // Alerts ignore dashboard-level filters and variables,
+  // so disable the toggle when an alert is configured.
+  const [applyFilters, setApplyFilters] = useState(true);
+  const resolvedApplyFilters = applyFilters && alert == null;
+
+  const dashboardFiltersToggleProps = useMemo<
+    DashboardFiltersToggleProps | undefined
+  >(
+    () =>
+      getDashboardFilters == null
+        ? undefined
+        : {
+            checked: resolvedApplyFilters,
+            disabledReason:
+              alert != null ? ALERT_IGNORES_DASHBOARD_FILTERS : undefined,
+            onChange: setApplyFilters,
+          },
+    [getDashboardFilters, resolvedApplyFilters, alert],
+  );
+
+  const previewDashboardFilters = useMemo(() => {
+    if (queriedConfig == null) {
+      return undefined;
+    }
+    // The submitted config carries the source it was built against. Resolving
+    // against that rather than the live selection keeps the filters consistent
+    // with the query on screen when the source is changed without a re-run.
+    const queriedSourceId = queriedConfig.source || undefined;
+
+    return resolveTilePreviewFilters({
+      config: queriedConfig,
+      sourceId: queriedSourceId,
+      filters: getDashboardFilters?.(queriedSourceId),
+      variables,
+      unsatisfiedRequiredFilters,
+      applySelections: resolvedApplyFilters,
+    });
+  }, [
+    queriedConfig,
+    getDashboardFilters,
+    variables,
+    unsatisfiedRequiredFilters,
+    resolvedApplyFilters,
+  ]);
+
+  // Attach the dashboard's filters and variables so that the preview queries
+  // what the tile will, and variable references can be validated.
   const previewConfig = useMemo(() => {
     if (queriedConfig == null) {
       return queriedConfig;
     }
     return {
       ...queriedConfig,
-      variables: resolvePreviewVariables({
-        config: queriedConfig,
-        variables,
-        hasAlert: alert != null,
-      }),
+      filters: previewDashboardFilters?.filters,
+      variables: previewDashboardFilters?.variables,
     };
-  }, [queriedConfig, variables, alert]);
+  }, [queriedConfig, previewDashboardFilters]);
 
   const dbTimeChartConfig = useMemo(
     () => computeDbTimeChartConfig(previewConfig, alert),
@@ -413,7 +495,10 @@ export default function EditTimeChartForm({
 
   const validateAndNormalize = useCallback(
     (form: ChartEditorFormState) => {
-      const errors = validateChartForm(form, tableSource, setError);
+      const errors = validateChartForm(form, tableSource, setError, {
+        // An inline alert has no tile to inherit a name from.
+        requireAlertDisplayName: alertsEnabled && dashboardId == null,
+      });
       if (errors.length > 0) return { errors, config: null };
 
       const savedConfig = convertFormStateToSavedChartConfig(form, tableSource);
@@ -451,6 +536,8 @@ export default function EditTimeChartForm({
     [
       tableSource,
       setError,
+      alertsEnabled,
+      dashboardId,
       chartConfigAlert,
       dirtyFields.alert?.scheduleOffsetMinutes,
       dirtyFields.alert?.scheduleStartAt,
@@ -532,6 +619,39 @@ export default function EditTimeChartForm({
       }
     },
     [validateAndNormalize, onSave],
+  );
+
+  // Same validation path as a tile save, but hands the config to the
+  // inline-alert saver. The alert must survive the round trip: the display
+  // type could have been switched to one that drops it since it was added.
+  const handleSaveAlert = useCallback(
+    (form: ChartEditorFormState) => {
+      const { errors, config } = validateAndNormalize(form);
+      if (errors.length > 0) {
+        notifications.show({
+          id: 'chart-error',
+          title: 'Invalid Chart',
+          message: <ErrorNotificationMessage errors={errors} />,
+          color: 'red',
+        });
+        return;
+      }
+
+      if (config == null) return;
+
+      if (config.alert == null) {
+        notifications.show({
+          id: 'chart-error',
+          color: 'red',
+          title: 'Invalid alert',
+          message: 'This chart has no alert to save.',
+        });
+        return;
+      }
+
+      onSaveAlert?.(config);
+    },
+    [validateAndNormalize, onSaveAlert],
   );
 
   // Track previous values for detecting changes
@@ -774,6 +894,19 @@ export default function EditTimeChartForm({
               Save
             </Button>
           )}
+          {/* Only once an alert exists on the chart: with none there is nothing
+              to save, and the button would read as a second way to add one. */}
+          {onSaveAlert != null && alert != null && (
+            <Button
+              data-testid="chart-save-alert-button"
+              loading={isSavingAlert}
+              variant="primary"
+              leftSection={<IconBell size={16} />}
+              onClick={handleSubmit(handleSaveAlert)}
+            >
+              {saveAlertLabel ?? 'Save alert'}
+            </Button>
+          )}
           {onClose != null && (
             <Button variant="subtle" onClick={onClose} disabled={isSaving}>
               Cancel
@@ -903,6 +1036,7 @@ export default function EditTimeChartForm({
             ) : isPromqlInput ? (
               <PromqlChartEditor
                 control={control}
+                getValues={getValues}
                 onSubmit={onSubmit}
                 onOpenDisplaySettings={openDisplaySettings}
                 hideDisplaySettings
@@ -916,6 +1050,8 @@ export default function EditTimeChartForm({
                 isDashboardForm={isDashboardForm}
                 alert={alert}
                 additionalWarnings={additionalAlertWarnings}
+                alertsEnabled={alertsEnabled}
+                isAlertRequired={isAlertRequired}
                 dashboardId={dashboardId}
                 variables={variables}
                 hideDisplaySettings
@@ -943,6 +1079,8 @@ export default function EditTimeChartForm({
                 ratioMode={ratioMode}
                 alert={alert}
                 additionalWarnings={additionalAlertWarnings}
+                alertsEnabled={alertsEnabled}
+                isAlertRequired={isAlertRequired}
                 isRawSqlInput={isRawSqlInput}
                 dashboardId={dashboardId}
                 parentRef={parentRef}
@@ -967,9 +1105,11 @@ export default function EditTimeChartForm({
               onSave={onSave}
               onClose={onClose}
               isSaving={isSaving}
+              showSaveToDashboard={showSaveToDashboard}
               displayedTimeInputValue={displayedTimeInputValue}
               setDisplayedTimeInputValue={setDisplayedTimeInputValue}
               onTimeRangeSearch={onTimeRangeSearch}
+              filtersToggle={dashboardFiltersToggleProps}
               setSaveToDashboardModalOpen={setSaveToDashboardModalOpen}
               hidePrimaryActions
             />
@@ -986,6 +1126,9 @@ export default function EditTimeChartForm({
               showSampleEvents={showSampleEvents}
               showGeneratedPromql={isPromqlInput}
               dbTimeChartConfig={dbTimeChartConfig}
+              missingRequiredFilterNames={
+                previewDashboardFilters?.missingRequiredFilterNames
+              }
               setValue={(name, value) => setValue(name, value)}
               onSubmit={onSubmit}
             />

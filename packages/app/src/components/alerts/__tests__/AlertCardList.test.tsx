@@ -9,7 +9,7 @@ import type { AlertsPageItem } from '@/types';
 
 // jsdom reports every element as zero-height, so the real virtualizer would
 // window the list down to an arbitrary slice. Rendering every item keeps this
-// about which rows land in which section.
+// about which rows the component lists, and in what order.
 jest.mock('@/hooks/useVirtualList', () => ({
   useVirtualList: (count: number) => ({
     rowVirtualizer: { measureElement: () => {} },
@@ -20,6 +20,13 @@ jest.mock('@/hooks/useVirtualList', () => ({
     paddingTop: 0,
     paddingBottom: 0,
   }),
+}));
+
+// Controls whether the infinite-scroll sentinel reports itself as visible.
+let mockInViewport = false;
+jest.mock('@mantine/hooks', () => ({
+  ...jest.requireActual('@mantine/hooks'),
+  useInViewport: () => ({ ref: jest.fn(), inViewport: mockInViewport }),
 }));
 
 jest.mock('@/components/alerts/AlertDetails', () => ({
@@ -45,15 +52,27 @@ function makeAlert(id: string, state: AlertState): AlertsPageItem {
   } satisfies AlertsPageItem;
 }
 
-const sectionHeadings = () =>
-  Array.from(document.querySelectorAll('.sectionHeader')).map(node =>
-    node.textContent?.trim(),
+const renderedIds = () =>
+  Array.from(document.querySelectorAll('[data-testid^="alert-card-"]')).map(
+    node => node.getAttribute('data-testid'),
   );
 
+const defaultProps = {
+  hasNextPage: false,
+  isFetchingNextPage: false,
+  isFetchNextPageError: false,
+  onLoadMore: () => {},
+};
+
 describe('AlertCardList', () => {
-  it('lists alerts under their state section, in section order', () => {
+  beforeEach(() => {
+    mockInViewport = false;
+  });
+
+  it('lists every alert in the order given, whatever its state', () => {
     renderWithMantine(
       <AlertCardList
+        {...defaultProps}
         alerts={[
           makeAlert('ok-1', AlertState.OK),
           makeAlert('alarm-1', AlertState.ALERT),
@@ -62,28 +81,73 @@ describe('AlertCardList', () => {
       />,
     );
 
-    expect(sectionHeadings()).toEqual(['Triggered', 'Pending', 'OK']);
-
-    const rendered = Array.from(
-      document.querySelectorAll('[data-testid^="alert-card-"]'),
-    ).map(node => node.getAttribute('data-testid'));
-    expect(rendered).toEqual([
+    // The server pages in name order, so the component must not re-sort or
+    // regroup: what it receives is what it shows.
+    expect(renderedIds()).toEqual([
+      'alert-card-ok-1',
       'alert-card-alarm-1',
       'alert-card-pending-1',
-      'alert-card-ok-1',
     ]);
   });
 
-  it('omits empty triggered and pending sections, and shows the OK empty state', () => {
+  it('lists disabled alerts, which the sectioned list used to drop', () => {
     renderWithMantine(
-      <AlertCardList alerts={[makeAlert('disabled-1', AlertState.DISABLED)]} />,
+      <AlertCardList
+        {...defaultProps}
+        alerts={[makeAlert('disabled-1', AlertState.DISABLED)]}
+      />,
     );
 
-    expect(sectionHeadings()).toEqual(['OK']);
-    expect(screen.getByText('No alerts')).toBeInTheDocument();
-    // Disabled alerts belong to no section and are not listed.
-    expect(
-      document.querySelectorAll('[data-testid^="alert-card-"]'),
-    ).toHaveLength(0);
+    expect(renderedIds()).toEqual(['alert-card-disabled-1']);
+  });
+
+  it('renders no footer once every page is loaded', () => {
+    renderWithMantine(
+      <AlertCardList
+        {...defaultProps}
+        alerts={[makeAlert('ok-1', AlertState.OK)]}
+      />,
+    );
+
+    expect(screen.queryByTestId('alerts-load-more')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('alerts-load-error')).not.toBeInTheDocument();
+  });
+
+  it('fetches the next page when the sentinel scrolls into view', () => {
+    mockInViewport = true;
+    const onLoadMore = jest.fn();
+
+    renderWithMantine(
+      <AlertCardList
+        {...defaultProps}
+        alerts={[makeAlert('ok-1', AlertState.OK)]}
+        hasNextPage
+        onLoadMore={onLoadMore}
+      />,
+    );
+
+    expect(screen.getByTestId('alerts-load-more')).toBeInTheDocument();
+    expect(onLoadMore).toHaveBeenCalled();
+  });
+
+  it('swaps the sentinel for a retry button when a page fetch fails', () => {
+    mockInViewport = true;
+    const onLoadMore = jest.fn();
+
+    renderWithMantine(
+      <AlertCardList
+        {...defaultProps}
+        alerts={[makeAlert('ok-1', AlertState.OK)]}
+        hasNextPage
+        isFetchNextPageError
+        onLoadMore={onLoadMore}
+      />,
+    );
+
+    expect(screen.getByTestId('alerts-load-error')).toBeInTheDocument();
+    // The sentinel must be gone, not merely hidden: mounted and in viewport,
+    // its effect would refetch in an unbounded loop.
+    expect(screen.queryByTestId('alerts-load-more')).not.toBeInTheDocument();
+    expect(onLoadMore).not.toHaveBeenCalled();
   });
 });

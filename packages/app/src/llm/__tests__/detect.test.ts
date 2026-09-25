@@ -44,19 +44,26 @@ describe('isLLMSpan', () => {
 });
 
 describe('buildLLMSpanSqlPredicate', () => {
-  it('builds a map-column predicate', () => {
+  // mapContains, not `col['k'] != ''`: only the former can be served by a
+  // mapKeys() skip index, and it is not a subcolumn reference so it stays out
+  // of the per-part size lookups PREWHERE planning does on CH 26.3+.
+  it('builds a map-column predicate with mapContains', () => {
     const predicate = buildLLMSpanSqlPredicate({
       attributeField: 'SpanAttributes',
       isJsonColumn: false,
     });
     expect(predicate).toContain(
-      "SpanAttributes['gen_ai.operation.name'] != ''",
+      "mapContains(SpanAttributes, 'gen_ai.operation.name')",
     );
-    expect(predicate).toContain("SpanAttributes['llm.model_name'] != ''");
+    expect(predicate).toContain(
+      "mapContains(SpanAttributes, 'llm.model_name')",
+    );
+    expect(predicate).not.toContain("!= ''");
     expect(predicate.startsWith('(')).toBe(true);
     expect(predicate.endsWith(')')).toBe(true);
   });
 
+  // JSON paths are real subcolumns; mapContains does not apply to them.
   it('builds a JSON-column predicate with backtick paths', () => {
     const predicate = buildLLMSpanSqlPredicate({
       attributeField: 'SpanAttributes',
@@ -65,5 +72,6 @@ describe('buildLLMSpanSqlPredicate', () => {
     expect(predicate).toContain(
       "toString(SpanAttributes.`gen_ai.operation.name`) != ''",
     );
+    expect(predicate).not.toContain('mapContains');
   });
 });

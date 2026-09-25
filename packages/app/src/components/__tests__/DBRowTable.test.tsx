@@ -44,6 +44,47 @@ describe('RawLogTable', () => {
     expect(await screen.findByTestId('db-row-table-no-results')).toBeTruthy();
   });
 
+  describe('Row selection', () => {
+    // Rows are virtualized and jsdom gives the scroll container no height, so
+    // only the header and the action bar are observable here. Checkbox clicks
+    // are covered by tests/e2e/features/search/row-multi-select.spec.ts.
+    const baseProps = {
+      displayedColumns: ['col1', 'col2'],
+      rows: [{ col1: 'value1', col2: 'value2' }],
+      isLoading: false,
+      dedupRows: false,
+      hasNextPage: false,
+      onRowDetailsClick: () => {},
+      generateRowId: () => mockRowWhereResult,
+      columnTypeMap: new Map(),
+      showExpandButton: false,
+    };
+
+    // The table is shared with dashboards, Kubernetes panels and side panels,
+    // none of which opt in.
+    it('adds no leading column unless selection is enabled', () => {
+      const { container } = renderWithMantine(<RawLogTable {...baseProps} />);
+
+      expect(container.querySelectorAll('th')).toHaveLength(2);
+    });
+
+    it('adds a leading header cell when selection is enabled', () => {
+      const { container } = renderWithMantine(
+        <RawLogTable {...baseProps} enableRowSelection />,
+      );
+
+      expect(container.querySelectorAll('th')).toHaveLength(3);
+    });
+
+    it('shows no selection menu before anything is selected', () => {
+      renderWithMantine(<RawLogTable {...baseProps} enableRowSelection />);
+
+      expect(
+        screen.queryByTestId('row-selection-count'),
+      ).not.toBeInTheDocument();
+    });
+  });
+
   describe('Sorting', () => {
     const baseProps = {
       displayedColumns: ['col1', 'col2'],

@@ -10,7 +10,7 @@ import {
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import { Accordion, Divider, Stack, Text } from '@mantine/core';
+import { Accordion, Box, Divider, Stack, Text } from '@mantine/core';
 import { IconList } from '@tabler/icons-react';
 import { SortingState } from '@tanstack/react-table';
 
@@ -49,6 +49,7 @@ import {
   buildRenderedPromqlExpression,
   buildSampleEventsConfig,
   isQueryReady,
+  tabQueriesData,
 } from './utils';
 
 /** Why a preview accordion is empty before its tile has been run. */
@@ -143,6 +144,8 @@ type ChartPreviewPanelProps = {
   showSampleEvents: boolean;
   showGeneratedPromql: boolean;
   dbTimeChartConfig?: ChartConfigWithDateRange;
+  /** Required dashboard filters with nothing selected that block this tile. */
+  missingRequiredFilterNames?: string[];
   setValue: (name: 'orderBy', value: string) => void;
   onSubmit: () => void;
 };
@@ -160,6 +163,7 @@ export function ChartPreviewPanel({
   showSampleEvents,
   showGeneratedPromql,
   dbTimeChartConfig,
+  missingRequiredFilterNames,
   setValue,
   onSubmit,
 }: ChartPreviewPanelProps) {
@@ -170,7 +174,11 @@ export function ChartPreviewPanel({
     [queriedConfig],
   );
 
-  const queryReady = !!isQueryReady(queriedConfig);
+  const blockingFilterNames = missingRequiredFilterNames ?? [];
+  const isBlockedByRequiredFilters =
+    blockingFilterNames.length > 0 && tabQueriesData(activeTab);
+  const queryReady =
+    !isBlockedByRequiredFilters && !!isQueryReady(queriedConfig);
 
   const onTableSortingChange = useCallback(
     (sortState: SortingState | null) => {
@@ -204,7 +212,16 @@ export function ChartPreviewPanel({
 
   return (
     <>
-      {!queryReady && activeTab !== 'markdown' ? (
+      {isBlockedByRequiredFilters ? (
+        <EmptyState
+          description={`Missing required filters: ${blockingFilterNames.join(
+            ', ',
+          )}. Select a value for each required filter, or turn off “Apply filters” to preview this tile without them.`}
+          variant="card"
+          fullWidth
+          data-testid="preview-missing-required-filters"
+        />
+      ) : !queryReady && tabQueriesData(activeTab) ? (
         <EmptyState
           description="Please start by defining your chart above and then click the play button to query data."
           variant="card"
@@ -468,7 +485,18 @@ export function ChartPreviewPanel({
               renderedPromql == null ? RUN_TO_PREVIEW : renderedPromql.error
             }
           >
-            <PromQLPreview expression={renderedPromql?.expression ?? ''} />
+            <Stack gap="xs">
+              {(renderedPromql?.expressions ?? []).map((entry, index, all) => (
+                <Box key={entry.id}>
+                  {all.length > 1 && (
+                    <Text size="xxs" c="dimmed" mb={2}>
+                      {entry.alias ?? `Expression ${index + 1}`}
+                    </Text>
+                  )}
+                  <PromQLPreview expression={entry.expression} />
+                </Box>
+              ))}
+            </Stack>
           </QueryPreviewAccordion>
         </>
       )}

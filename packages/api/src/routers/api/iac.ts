@@ -14,6 +14,7 @@ import Dashboard from '@/models/dashboard';
 import { SavedSearch } from '@/models/savedSearch';
 import { Source } from '@/models/source';
 import Webhook from '@/models/webhook';
+import { unaddressableTileAlertIds } from '@/utils/iacTileAlerts';
 import { getCounter, withSpan } from '@/utils/instrumentation';
 
 const router = express.Router();
@@ -37,6 +38,14 @@ const manifestUnexportableDashboards = getCounter(
   {
     description:
       'Dashboards withheld from Terraform export because a tile would not survive the import round trip.',
+  },
+);
+
+const manifestUnaddressableTileAlerts = getCounter(
+  'hyperdx.iac.import_manifest_unaddressable_tile_alerts',
+  {
+    description:
+      'Tile alerts withheld from Terraform export because Terraform cannot address their tile: the dashboard is gone or provisioned, or the tile has no unique, non-blank name.',
   },
 );
 
@@ -95,6 +104,7 @@ router.get('/import-manifest', async (req, res, next) => {
     const { teamId } = getNonNullUserWithTeam(req);
 
     const manifest = await withSpan('iac.import_manifest', async span => {
+      const startedAt = Date.now();
       const [
         dashboardRows,
         alertRows,
@@ -122,7 +132,12 @@ router.get('/import-manifest', async (req, res, next) => {
           ),
         ).lean(),
         bounded(
-          Alert.find({ team: teamId }, { name: 1, source: 1, savedSearch: 1 }),
+          Alert.find(
+            { team: teamId },
+            // dashboard/tileId are read only to resolve the tile's name below,
+            // and stay out of the response — the import id is the alert's own.
+            { name: 1, source: 1, savedSearch: 1, dashboard: 1, tileId: 1 },
+          ),
         ).lean(),
         bounded(SavedSearch.find({ team: teamId }, { name: 1 })).lean(),
         bounded(Source.find({ team: teamId }, { name: 1, kind: 1 })).lean(),
@@ -141,6 +156,17 @@ router.get('/import-manifest', async (req, res, next) => {
       const sources = capListing(sourceRows);
       const connections = capListing(connectionRows);
       const webhooks = capListing(webhookRows);
+
+      const unaddressableTileAlerts = await unaddressableTileAlertIds({
+        teamId,
+        alerts: alerts.items,
+        // What is left of the request's budget, not a second helping of it:
+        // this read is sequenced after the six listings above, and a fresh
+        // ceiling here would double the worst case the bound exists to cap.
+        // Passed through unclamped for the same reason — a floor under it
+        // would let a request that already spent the ceiling run past it.
+        maxTimeMS: IAC_MANIFEST_MAX_TIME_MS - (Date.now() - startedAt),
+      });
 
       const truncatedTypes = (
         [
@@ -178,6 +204,10 @@ router.get('/import-manifest', async (req, res, next) => {
         'hyperdx.iac.import_manifest.unexportable_sources',
         unexportableSources,
       );
+      span.setAttribute(
+        'hyperdx.iac.import_manifest.unaddressable_tile_alerts',
+        unaddressableTileAlerts.size,
+      );
       if (truncatedTypes.length > 0) {
         manifestTruncations.add(1);
       }
@@ -186,6 +216,9 @@ router.get('/import-manifest', async (req, res, next) => {
       }
       if (unexportableSources > 0) {
         manifestUnexportableSources.add(unexportableSources);
+      }
+      if (unaddressableTileAlerts.size > 0) {
+        manifestUnaddressableTileAlerts.add(unaddressableTileAlerts.size);
       }
 
       // `name` is `?? undefined` on every listing, not just alerts: these are
@@ -207,6 +240,10 @@ router.get('/import-manifest', async (req, res, next) => {
           name: a.name ?? undefined,
           source: a.source,
           savedSearchId: a.savedSearch?.toString(),
+          // Omitted rather than `false` when fine, like the dashboards leg.
+          ...(unaddressableTileAlerts.has(a._id.toString())
+            ? { unaddressableTile: true }
+            : {}),
         })),
         savedSearches: savedSearches.items.map(s => ({
           id: s._id.toString(),

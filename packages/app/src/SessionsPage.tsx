@@ -434,12 +434,13 @@ function SessionsPage() {
         <PageLayout
           data-testid="sessions-page"
           header={
-            <PageHeader>
+            <PageHeader growing>
               <Group
                 justify="space-between"
                 gap="xs"
                 wrap="nowrap"
                 w="100%"
+                align="flex-start"
                 className={styles.toolbar}
               >
                 <SourceSelectControlled

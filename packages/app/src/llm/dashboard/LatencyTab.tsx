@@ -32,6 +32,7 @@ export function LatencyTab(
     where,
     whereLanguage,
     sessionId,
+    userId,
     onWhereChange,
   } = props;
 
@@ -54,11 +55,12 @@ export function LatencyTab(
         where,
         whereLanguage,
         sessionId,
+        userId,
         withCostAlias: false,
       }),
       select: '',
     }),
-    [source, expressions, dateRange, where, whereLanguage, sessionId],
+    [source, expressions, dateRange, where, whereLanguage, sessionId, userId],
   );
 
   const handleAddFilter = useCallback<NonNullable<AddFilterFn>>(

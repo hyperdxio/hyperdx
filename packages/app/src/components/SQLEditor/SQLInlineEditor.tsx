@@ -30,8 +30,9 @@ import CodeMirror, {
   tooltips,
 } from '@uiw/react-codemirror';
 
-import InputLanguageSwitch from '@/components/SearchInput/InputLanguageSwitch';
+import { EDITOR_INPUT_HEIGHTS } from '@/components/editorInputHeights';
 import { useMultipleAllFields } from '@/hooks/useMetadata';
+import { useStableCallback } from '@/hooks/useStableCallback';
 import { useSource } from '@/source';
 import { useQueryHistory } from '@/utils';
 import { clickhouseSql } from '@/utils/codeMirror';
@@ -46,6 +47,7 @@ import { useSqlVariableCompletions } from './variableCompletions';
 import {
   useVariableValidation,
   VariableIssueIndicator,
+  variableValidationState,
 } from './variableValidation';
 
 import styles from './SQLInlineEditor.module.scss';
@@ -55,8 +57,6 @@ type SQLInlineEditorProps = {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
-  onLanguageChange?: (language: 'sql' | 'lucene') => void;
-  language?: 'sql' | 'lucene';
   onSubmit?: () => void;
   error?: React.ReactNode;
   size?: string;
@@ -92,8 +92,6 @@ export default function SQLInlineEditor({
   filterField,
   onChange,
   placeholder,
-  onLanguageChange,
-  language,
   onSubmit,
   error,
   value,
@@ -169,9 +167,8 @@ export default function SQLInlineEditor({
     };
   }, [queryHistory, onSelectSearchHistory]);
 
-  // Dashboard variables in scope, offered alongside the column identifiers, and
-  // checked for the references that won't expand. This editor's content is
-  // always SQL — `language` only drives the switch.
+  // Dashboard variables in scope, offered alongside the column identifiers,
+  // and checked for the references that won't expand.
   const variableCompletions = useSqlVariableCompletions({
     enabled: enableVariables,
   });
@@ -284,6 +281,18 @@ export default function SQLInlineEditor({
     ];
   }, [parentRef]);
 
+  // Stable so a new onSubmit identity (every live tail tick) doesn't reconfigure the editor.
+  const submitFromEditor = useStableCallback(() => {
+    if (onSubmit == null) {
+      return false;
+    }
+    if (queryHistoryType && ref?.current?.view) {
+      setQueryHistory(ref?.current?.view.state.doc.toString());
+    }
+    onSubmit();
+    return true;
+  });
+
   const cmExtensions = useMemo(
     () => [
       ...tooltipExt,
@@ -304,16 +313,7 @@ export default function SQLInlineEditor({
         keymap.of([
           {
             key: 'Enter',
-            run: () => {
-              if (onSubmit == null) {
-                return false;
-              }
-              if (queryHistoryType && ref?.current?.view) {
-                setQueryHistory(ref?.current?.view.state.doc.toString());
-              }
-              onSubmit();
-              return true;
-            },
+            run: submitFromEditor,
           },
           ...(allowMultiline
             ? [
@@ -335,7 +335,17 @@ export default function SQLInlineEditor({
         },
       ]),
     ],
-    [allowMultiline, onSubmit, queryHistoryType, setQueryHistory, tooltipExt],
+    [allowMultiline, submitFromEditor, tooltipExt],
+  );
+
+  // A new object on every render makes CodeMirror reconfigure and re-inject
+  // its theme's CSS rules.
+  const basicSetup = useMemo(
+    () => ({
+      ...DEFAULT_CODE_MIRROR_BASIC_SETUP,
+      lineNumbers: showLineNumbers,
+    }),
+    [showLineNumbers],
   );
 
   const onClickCodeMirror = useCallback(() => {
@@ -344,29 +354,25 @@ export default function SQLInlineEditor({
     }
   }, []);
 
-  // Only apply expanded styling when multiline is enabled and focused
-  const isExpanded = allowMultiline && isFocused;
-
-  const isVariableWarningOnly =
-    variableIssues.errors.length === 0 && variableIssues.warnings.length > 0;
-  const baseHeight = minHeight ?? (size === 'xs' ? 30 : 36);
+  const validationState = variableValidationState(variableIssues, !!error);
+  const baseHeight =
+    minHeight ??
+    (size === 'xs' ? EDITOR_INPUT_HEIGHTS.xs : EDITOR_INPUT_HEIGHTS.sm);
 
   return (
     <div
       className={styles.wrapper}
       style={{ ['--editor-base-height' as string]: `${baseHeight}px` }}
-      data-expanded={isExpanded ? 'true' : undefined}
+      data-validation-state={validationState}
     >
-      {/* When expanded, Paper is absolute; this keeps the wrapper width stable */}
-      {isExpanded && <div className={styles.placeholder} aria-hidden="true" />}
       <Paper
         shadow="none"
         className={cx(
           styles.paper,
-          error || variableIssues.errors.length > 0 ? styles.error : undefined,
-          isVariableWarningOnly ? styles.warning : undefined,
-          isExpanded ? styles.expanded : undefined,
-          allowMultiline && !isExpanded ? styles.collapseFade : undefined,
+          validationState === 'error' ? styles.error : undefined,
+          validationState === 'warning' ? styles.warning : undefined,
+          !allowMultiline ? styles.clamped : undefined,
+          isFocused ? styles.focused : undefined,
         )}
         ps="4px"
       >
@@ -393,8 +399,7 @@ export default function SQLInlineEditor({
           className={cx(
             styles.cmWrapper,
             size === 'xs' ? styles.sizeXs : undefined,
-            !isExpanded ? styles.collapsed : undefined,
-            isExpanded ? 'cm-editor-multiline' : undefined,
+            allowMultiline ? 'cm-editor-multiline' : undefined,
           )}
         >
           <CodeMirror
@@ -411,23 +416,12 @@ export default function SQLInlineEditor({
             }, [setIsFocused])}
             extensions={cmExtensions}
             onCreateEditor={updateAutocompleteColumns}
-            basicSetup={{
-              ...DEFAULT_CODE_MIRROR_BASIC_SETUP,
-              lineNumbers: showLineNumbers,
-            }}
+            basicSetup={basicSetup}
             placeholder={placeholder}
             onClick={onClickCodeMirror}
           />
         </div>
         <VariableIssueIndicator issues={variableIssues} />
-        {onLanguageChange != null && language != null && (
-          <div className={styles.languageSwitchWrapper}>
-            <InputLanguageSwitch
-              language={language}
-              onLanguageChange={onLanguageChange}
-            />
-          </div>
-        )}
       </Paper>
     </div>
   );
