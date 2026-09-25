@@ -17,7 +17,7 @@ import {
   subMilliseconds,
 } from 'date-fns';
 import {
-  parseAsFloat,
+  createParser,
   parseAsString,
   useQueryState,
   useQueryStates,
@@ -408,10 +408,27 @@ const getRelativeInterval = (start: Date, end: Date): string | undefined => {
   return `Past ${durationStr}`;
 };
 
-// This needs to be a stable reference to prevent rerenders
+// `Date`'s own valid range is roughly ±8.64e15ms. nuqs's parseAsFloat only
+// rejects NaN, so a URL from/to like `1e400` parses as Infinity (not NaN)
+// and survives, later producing `new Date(Infinity)` = Invalid Date, which
+// flows into metadata rollup queries as a "nan" ClickHouse Int64 param
+// (#2933). Reject anything outside Date's valid range at the source.
+const MAX_VALID_EPOCH_MS = 8_640_000_000_000_000;
+
+const parseAsValidEpochMs = createParser({
+  parse: (v) => {
+    const float = parseFloat(v);
+    if (!Number.isFinite(float) || Math.abs(float) > MAX_VALID_EPOCH_MS) {
+      return null;
+    }
+    return float;
+  },
+  serialize: v => v.toString(),
+});
+
 const timeRangeQueryStateMap = {
-  from: parseAsFloat,
-  to: parseAsFloat,
+  from: parseAsValidEpochMs,
+  to: parseAsValidEpochMs,
 };
 
 export function useNewTimeQuery({
