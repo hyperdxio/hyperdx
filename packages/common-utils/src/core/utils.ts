@@ -1211,11 +1211,13 @@ export function isDateRangeEqual(range1: [Date, Date], range2: [Date, Date]) {
 
 /**
  * Index of the first standalone SETTINGS keyword, or -1. Occurrences inside
- * quoted strings or identifiers (e.g. `'app.settings.reloads'`, `AppSettings`)
- * are not the clause and must not split the query.
+ * quoted strings, comments or identifiers (e.g. `'app.settings.reloads'`,
+ * `AppSettings`, `LogAttributes.settings`) are not the clause and must not
+ * split the query.
  */
 function findSettingsKeyword(sql: string): number {
   const isWordChar = (c: string) => /\w/.test(c);
+  const nextNonSpace = (from: number) => sql.slice(from).trimStart().charAt(0);
   let quote: string | undefined;
   for (let i = 0; i < sql.length; i++) {
     const c = sql.charAt(i);
@@ -1224,10 +1226,20 @@ function findSettingsKeyword(sql: string): number {
       else if (c === quote) quote = undefined;
     } else if (c === "'" || c === '"' || c === '`') {
       quote = c;
+    } else if (c === '-' && sql.charAt(i + 1) === '-') {
+      const lineEnd = sql.indexOf('\n', i + 2);
+      if (lineEnd === -1) break;
+      i = lineEnd;
+    } else if (c === '/' && sql.charAt(i + 1) === '*') {
+      const blockEnd = sql.indexOf('*/', i + 2);
+      if (blockEnd === -1) break;
+      i = blockEnd + 1;
     } else if (
       sql.substring(i, i + 8).toUpperCase() === 'SETTINGS' &&
       !isWordChar(sql.charAt(i - 1)) &&
-      !isWordChar(sql.charAt(i + 8))
+      !isWordChar(sql.charAt(i + 8)) &&
+      sql.slice(0, i).trimEnd().slice(-1) !== '.' &&
+      !['.', '['].includes(nextNonSpace(i + 8))
     ) {
       return i;
     }

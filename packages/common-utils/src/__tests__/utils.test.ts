@@ -2779,6 +2779,20 @@ describe('utils', () => {
           "SELECT * FROM table WHERE MetricName = 'app.settings.reloads'",
         settingsClause: undefined,
       },
+      {
+        label: 'settings as a dotted path or map column',
+        sql: "SELECT * FROM table WHERE LogAttributes.settings = 'x' AND settings['k'] = 'y'",
+        withoutSettingsClause:
+          "SELECT * FROM table WHERE LogAttributes.settings = 'x' AND settings['k'] = 'y'",
+        settingsClause: undefined,
+      },
+      {
+        label: 'apostrophe in a comment before SETTINGS',
+        sql: "SELECT * FROM table -- don't count retries\nWHERE a = 1 SETTINGS max_threads = 1",
+        withoutSettingsClause:
+          "SELECT * FROM table -- don't count retries\nWHERE a = 1",
+        settingsClause: 'SETTINGS max_threads = 1',
+      },
     ])(
       'Extracts SETTINGS clause from: "$label" query',
       ({ sql, settingsClause, withoutSettingsClause }) => {
