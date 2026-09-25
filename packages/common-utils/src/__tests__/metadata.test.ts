@@ -2402,6 +2402,38 @@ describe('Metadata', () => {
       expect(scanCall.query).toContain('WHERE');
       expect(scanCall.query).toContain('__TIME_FILTER__');
     });
+
+    it('does not let a skipped call without timestampValueExpression poison the cache for one that has it', async () => {
+      const md = buildMetadata();
+      jest.spyOn(console, 'warn').mockImplementation(() => {});
+      jest
+        .spyOn(md, 'getMapColumnTextIndexes')
+        .mockResolvedValue(new Map() as TextIndexInfoLookup);
+      const columnMeta: ColumnMeta = {
+        name: 'LogAttributes',
+        type: 'Map(String, String)',
+        default_type: '',
+        default_expression: '',
+        comment: '',
+        codec_expression: '',
+        ttl_expression: '',
+      };
+      jest.spyOn(md, 'getColumn').mockResolvedValue(columnMeta);
+      // Rollup (empty) for each call, then the bounded scan on the second.
+      (mockClickhouseClient.query as jest.Mock)
+        .mockResolvedValueOnce({ json: () => Promise.resolve({ data: [] }) })
+        .mockResolvedValueOnce({ json: () => Promise.resolve({ data: [] }) })
+        .mockResolvedValueOnce({
+          json: () => Promise.resolve({ data: [{ keysArr: ['raw.key'] }] }),
+        });
+
+      const {
+        timestampValueExpression: _timestampValueExpression,
+        ...noTsArgs
+      } = baseArgs;
+      expect(await md.getMapKeys(noTsArgs)).toEqual([]);
+      expect(await md.getMapKeys(baseArgs)).toEqual(['raw.key']);
+    });
   });
 
   describe('getMapValues', () => {
