@@ -762,7 +762,7 @@ function HeatmapContainer({
   } = useQueriedChartConfig(minMaxConfig, {
     queryKey: ['heatmap', minMaxConfig],
     enabled: enabled,
-    placeholderData: (prev: any) => prev,
+    placeholderData: prev => prev,
   });
 
   // UInt64 are returned as strings; quantile returns floats
@@ -784,18 +784,19 @@ function HeatmapContainer({
     nBuckets,
   });
 
+  const canQueryBuckets =
+    !!minMaxData && bucketConfig != null && max > effectiveMin;
   const { data, isLoading, isPlaceholderData, error } = useQueriedChartConfig(
     bucketConfig,
     {
       queryKey: ['heatmap_bucket', bucketConfig],
       // Wait for fresh bounds, so a refresh doesn't also query the new range
       // bucketed with the previous range's min/max.
-      enabled:
-        !!minMaxData &&
-        !isMinMaxPlaceholderData &&
-        bucketConfig != null &&
-        max > effectiveMin,
-      placeholderData: (prev: any) => prev,
+      enabled: canQueryBuckets && !isMinMaxPlaceholderData,
+      // Only keep the previous buckets while this query can still run, so an
+      // empty refreshed range shows "Not enough data points" instead of
+      // pulsing on stale buckets.
+      placeholderData: canQueryBuckets ? prev => prev : undefined,
     },
   );
   // A refresh keeps the previous heatmap on screen and pulses until both
@@ -834,7 +835,21 @@ function HeatmapContainer({
     });
   }, [data, generatedTsBuckets, scaleType, effectiveMin, max, nBuckets]);
 
-  const time = heatmapData[0];
+  // While refreshing, keep drawing the last settled heatmap. The previous
+  // bucket rows only line up with the time buckets and bounds they were
+  // queried with, so re-plotting them on the new range would draw a blank or
+  // mis-scaled grid.
+  const currentView = useMemo(
+    () => ({ heatmapData, generatedTsBuckets, effectiveMin }),
+    [heatmapData, generatedTsBuckets, effectiveMin],
+  );
+  const [settledView, setSettledView] = useState(currentView);
+  if (!isRefreshing && settledView !== currentView) {
+    setSettledView(currentView);
+  }
+  const view = isRefreshing ? settledView : currentView;
+
+  const time = view.heatmapData[0];
 
   const toolbarItemsMemo = useMemo(() => {
     const allToolbarItems: React.ReactNode[] = [];
@@ -870,7 +885,7 @@ function HeatmapContainer({
         </Text>
       ) : _error ? (
         <ChartErrorState error={_error} variant={errorVariant} />
-      ) : time.length < 2 || generatedTsBuckets?.length < 2 ? (
+      ) : time.length < 2 || view.generatedTsBuckets.length < 2 ? (
         <Text
           size="sm"
           ta="center"
@@ -884,7 +899,7 @@ function HeatmapContainer({
         <Heatmap
           key={JSON.stringify(config)}
           className={cx({ 'effect-pulse': isRefreshing })}
-          data={heatmapData}
+          data={view.heatmapData}
           numberFormat={config.numberFormat}
           onFilter={
             onFilter
@@ -896,7 +911,7 @@ function HeatmapContainer({
                   // The 1.1x threshold adds 10% headroom to account for
                   // floating-point rounding in the bucket boundary.
                   const adjustedYMin =
-                    scaleType === 'log' && yMin <= effectiveMin * 1.1
+                    scaleType === 'log' && yMin <= view.effectiveMin * 1.1
                       ? 0
                       : yMin;
                   onFilter(xMin, xMax, adjustedYMin, yMax);
