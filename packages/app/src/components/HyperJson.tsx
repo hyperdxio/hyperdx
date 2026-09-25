@@ -40,15 +40,27 @@ export type FormatLeafValue = (arg0: {
   value: unknown;
 }) => React.ReactNode | undefined;
 
+/**
+ * How object keys are ordered at every level of the tree.
+ *
+ * `original` keeps whatever order the data arrived in — for ClickHouse
+ * `Map(...)` columns that is physical storage order.
+ */
+export type KeyOrder = 'asc' | 'desc' | 'original';
+
+export const DEFAULT_KEY_ORDER: KeyOrder = 'asc';
+
 // Store common state in an atom so that it can be shared between components
 // to avoid prop drilling
 type HyperJsonAtom = {
   normallyExpanded: boolean;
+  keyOrder: KeyOrder;
   getLineActions?: GetLineActions;
   formatLeafValue?: FormatLeafValue;
 };
 const hyperJsonAtom = atom<HyperJsonAtom>({
   normallyExpanded: false,
+  keyOrder: DEFAULT_KEY_ORDER,
 });
 
 const ValueRenderer = React.memo(
@@ -273,6 +285,7 @@ const Line = React.memo(
         <div
           ref={ref}
           data-testid="json-viewer-line"
+          data-depth={nestedLevel}
           onClick={handleToggle}
           className={cx(styles.line, {
             [styles.nestedLine]: nestedLevel > 0,
@@ -358,6 +371,8 @@ function TreeNode({
 
   const originalLength = React.useMemo(() => Object.keys(data).length, [data]);
 
+  const { keyOrder } = useAtomValue(hyperJsonAtom);
+
   // ClickHouse hands back `Map(...)` keys in physical storage order, which reads
   // as random for wide maps like `ProfileEvents`. Sorting here (rather than
   // upstream) covers every nesting level for free, since TreeNode recurses, and
@@ -366,13 +381,15 @@ function TreeNode({
   const entries = React.useMemo(() => {
     const raw = Object.entries(data);
     // Arrays are index-keyed — reordering them would change the data.
-    if (isArray(data)) {
+    if (isArray(data) || keyOrder === 'original') {
       return raw;
     }
-    return raw.sort(([a], [b]) =>
-      a.localeCompare(b, undefined, { numeric: true }),
+    const direction = keyOrder === 'desc' ? -1 : 1;
+    return raw.sort(
+      ([a], [b]) =>
+        direction * a.localeCompare(b, undefined, { numeric: true }),
     );
-  }, [data]);
+  }, [data, keyOrder]);
 
   const visibleLines = React.useMemo(() => {
     return isExpanded ? entries : entries.slice(0, MAX_TREE_NODE_ITEMS);
@@ -430,6 +447,7 @@ type HyperJsonProps = {
   normallyExpanded?: boolean;
   tabulate?: boolean;
   whiteSpace?: 'pre' | 'pre-wrap';
+  keyOrder?: KeyOrder;
   getLineActions?: GetLineActions;
   formatLeafValue?: FormatLeafValue;
 };
@@ -439,16 +457,20 @@ const HyperJson = ({
   normallyExpanded = false,
   tabulate = false,
   whiteSpace = 'pre-wrap',
+  keyOrder = DEFAULT_KEY_ORDER,
   getLineActions,
   formatLeafValue,
 }: HyperJsonProps) => {
   const isEmpty = React.useMemo(() => Object.keys(data).length === 0, [data]);
 
+  const initialValues = React.useMemo(
+    () => ({ normallyExpanded, keyOrder, getLineActions, formatLeafValue }),
+    [normallyExpanded, keyOrder, getLineActions, formatLeafValue],
+  );
+
   return (
     <Provider>
-      <HydrateAtoms
-        initialValues={{ normallyExpanded, getLineActions, formatLeafValue }}
-      >
+      <HydrateAtoms initialValues={initialValues}>
         <div
           className={cx(styles.container, {
             [styles.withTabulate]: tabulate,

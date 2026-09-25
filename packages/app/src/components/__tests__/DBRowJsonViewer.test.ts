@@ -32,6 +32,7 @@ describe('migrateViewerOptions', () => {
       whiteSpace: undefined,
       tabulate: true,
       filterBlanks: false,
+      keyOrder: 'asc',
     });
   });
 
@@ -48,6 +49,8 @@ describe('migrateViewerOptions', () => {
       whiteSpace: 'pre-wrap',
       tabulate: true,
       filterBlanks: false,
+      // Migration fills in the defaults for options added later.
+      keyOrder: 'asc',
     });
   });
 
