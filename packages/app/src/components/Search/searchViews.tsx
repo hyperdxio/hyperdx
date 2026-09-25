@@ -133,13 +133,22 @@ export function getSearchViewMeta(
   return SEARCH_VIEWS.find(v => v.value === view);
 }
 
-/** Event vs chart views offered for this source (and SQL chart-only mode). */
+/**
+ * Views that can show the result of a hand-written statement: the row list and
+ * the charts, which map 1:1 to the raw-SQL display types. Heatmap and patterns
+ * are built from builder queries of their own.
+ */
+export function isSqlModeSearchView(view: SearchView): boolean {
+  return view === 'list' || isAggregatedSearchView(view);
+}
+
+/** Event vs chart views offered for this source (and SQL mode). */
 export function getVisibleSearchViews({
   sourceKind,
-  chartTypesOnly = false,
+  sqlMode = false,
 }: {
   sourceKind?: SourceKind;
-  chartTypesOnly?: boolean;
+  sqlMode?: boolean;
 }): SearchViewMeta[] {
   return SEARCH_VIEWS.filter(v => {
     if (v.hiddenInClickhouseBuild && IS_CLICKHOUSE_BUILD) return false;
@@ -150,9 +159,7 @@ export function getVisibleSearchViews({
     // (time series / number / table / bar / pie / treemap) make sense —
     // the List, Event deltas, and Event patterns views are hidden.
     if (sourceKind === SourceKind.Metric && !v.aggregated) return false;
-    // SQL mode renders a single raw-SQL statement as a chart display type,
-    // so only the aggregated (chart) views apply.
-    if (chartTypesOnly && !v.aggregated) return false;
+    if (sqlMode && !isSqlModeSearchView(v.value)) return false;
     return true;
   });
 }

@@ -16,7 +16,6 @@ import { useSource } from '@/source';
 import { AddFilterControl } from './AddFilterControl';
 import { ExploreLanguageAddon } from './ExploreLanguageAddon';
 import { ExploreSqlPanel } from './ExploreSqlPanel';
-import { ExploreSqlToggle } from './ExploreSqlToggle';
 import { fieldIdentifier } from './fieldIdentifier';
 import { FilterExpression } from './FilterExpression';
 import {
@@ -44,12 +43,11 @@ export type ExploreQueryEditorProps = {
    */
   dateTimeColumns?: ReadonlyMap<string, string>;
   /**
-   * Whether the SQL editor is disclosed. When `onSqlOpenChange` is provided a
-   * `SQL` toggle appears in the header; the search input stays visible either
-   * way.
+   * Whether the SQL editor is shown under the search input (advanced mode).
+   * The mode's switch lives in the page's top row; the search input stays
+   * visible either way.
    */
   sqlOpen?: boolean;
-  onSqlOpenChange?: (open: boolean) => void;
   /**
    * `'builder'` means the SQL is generated from the search above and kept in
    * step with it; `'sql'` means the user has taken it over.
@@ -60,8 +58,6 @@ export type ExploreQueryEditorProps = {
    * Receives the new text so the caller can ignore echoes of its own writes.
    */
   onSqlEdit?: (value: string) => void;
-  /** Called to hand the query back to the generator. */
-  onSqlReset?: () => void;
   /** Form field name for the raw-SQL template. */
   sqlTemplateName?: string;
   /** Display type the raw-SQL query targets (drives macros/placeholder/help). */
@@ -95,10 +91,8 @@ export function ExploreQueryEditor({
   controls,
   dateTimeColumns,
   sqlOpen = false,
-  onSqlOpenChange,
   queryMode,
   onSqlEdit,
-  onSqlReset,
   sqlTemplateName = 'sqlTemplate',
   rawSqlDisplayType = DisplayType.Table,
   searchFilters,
@@ -215,15 +209,6 @@ export function ExploreQueryEditor({
             onOpenSyntaxReference={openSyntaxRef}
           />
         }
-        sqlToggle={
-          onSqlOpenChange != null ? (
-            <ExploreSqlToggle
-              open={sqlOpen}
-              edited={sqlEdited}
-              onToggle={() => onSqlOpenChange(!sqlOpen)}
-            />
-          ) : undefined
-        }
         sqlPanel={
           sqlOpen ? (
             <ExploreSqlPanel
@@ -237,7 +222,6 @@ export function ExploreQueryEditor({
               sqlTemplate={sqlTemplateValue}
               edited={sqlEdited}
               onEdit={onSqlEdit}
-              onReset={() => onSqlReset?.()}
             />
           ) : undefined
         }

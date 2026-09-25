@@ -32,6 +32,28 @@ $button-height: 18px;
   height: 24px;
 }
 
+.framed {
+  border: 1px solid var(--color-border);
+  border-radius: var(--mantine-radius-sm);
+  overflow: hidden;
+
+  .tableHead {
+    background: var(--color-bg-muted);
+
+    th {
+      border-bottom: 1px solid var(--color-border);
+    }
+  }
+}
+
+.tableBar {
+  flex-shrink: 0;
+  min-height: 34px;
+  padding: 4px var(--mantine-spacing-xs);
+  background: var(--color-bg-muted);
+  border-bottom: 1px solid var(--color-border);
+}
+
 .tableRow {
   position: relative;
 
@@ -87,6 +109,12 @@ $button-height: 18px;
 // One checked row puts the table in selection mode and reveals every checkbox,
 // so a shift-click range has visible endpoints and checked rows stay marked.
 .selectionActive .selectCell {
+  opacity: 1;
+}
+
+// A table with a bar has an explicit on/off for checkboxes, so when they are
+// on they stay on rather than waiting for hover.
+.framed .selectCell {
   opacity: 1;
 }
 

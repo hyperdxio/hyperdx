@@ -60,21 +60,17 @@ export function SearchViewSwitcher({
   value,
   onChange,
   sourceKind,
-  chartTypesOnly = false,
+  sqlMode = false,
 }: {
   value: SearchView;
   onChange: (view: SearchView) => void;
   sourceKind?: SourceKind;
-  /**
-   * When true, only the aggregated chart views are shown. Used by SQL mode,
-   * where the switcher picks a raw-SQL display type (the aggregated views map
-   * 1:1 to the raw-SQL display types) rather than a builder view.
-   */
-  chartTypesOnly?: boolean;
+  /** Offer only the views that can show a hand-written statement's result. */
+  sqlMode?: boolean;
 }) {
   const options = useMemo(
-    () => getVisibleSearchViews({ sourceKind, chartTypesOnly }),
-    [sourceKind, chartTypesOnly],
+    () => getVisibleSearchViews({ sourceKind, sqlMode }),
+    [sourceKind, sqlMode],
   );
   const eventViews = options.filter(o => !o.aggregated);
   const chartViews = options.filter(o => o.aggregated);
@@ -132,8 +128,10 @@ export function SearchViewSwitcher({
       )}
       {/* Only while a chart is on screen: picking a chart type is a question
           about the current view, and asking it beside a table of events offers
-          a setting that changes nothing you can see. */}
-      {chartViews.length > 0 && isChart && (
+          a setting that changes nothing you can see. With the event views
+          hidden it is the whole switcher, so it stays even for a moment when
+          the view has not yet moved onto a chart. */}
+      {chartViews.length > 0 && (isChart || eventViews.length === 0) && (
         <Menu withinPortal position="bottom-end">
           <div className={classes.asControl}>
             <Text size="xs" fw={500} className={classes.asLabel}>

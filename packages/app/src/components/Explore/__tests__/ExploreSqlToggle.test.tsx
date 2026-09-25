@@ -4,40 +4,38 @@ import userEvent from '@testing-library/user-event';
 import { ExploreSqlToggle } from '@/components/Explore/ExploreSqlToggle';
 
 describe('ExploreSqlToggle', () => {
-  it('stays icon-only while the query is still generated', () => {
+  it('is a labelled switch that reads as off while closed', () => {
     renderWithMantine(
       <ExploreSqlToggle open={false} edited={false} onToggle={jest.fn()} />,
     );
 
-    const button = screen.getByRole('button', { name: 'Query editor' });
-    expect(button).toHaveTextContent('');
-    expect(button).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByRole('switch', { name: 'Advanced' })).not.toBeChecked();
   });
 
-  it('names the surface, not the language, so it survives a PromQL source', () => {
+  it('names the mode, not the language, so it survives a PromQL source', () => {
     renderWithMantine(
       <ExploreSqlToggle open={false} edited={false} onToggle={jest.fn()} />,
     );
 
-    expect(screen.queryByRole('button', { name: /SQL/i })).toBeNull();
+    expect(screen.queryByRole('switch', { name: /SQL/i })).toBeNull();
   });
 
-  it('spells itself out once the user owns the query', () => {
+  it('reads as on while open, and flags an edited query', () => {
     renderWithMantine(<ExploreSqlToggle open edited onToggle={jest.fn()} />);
 
-    const button = screen.getByRole('button', { name: 'Query editor, edited' });
-    expect(button).toHaveTextContent('Query edited');
-    expect(button).toHaveAttribute('aria-expanded', 'true');
+    const toggle = screen.getByRole('switch', { name: 'Advanced' });
+    expect(toggle).toBeChecked();
+    expect(toggle).toHaveAttribute('aria-description', 'Query edited');
   });
 
-  it('toggles the panel when clicked', async () => {
+  it('toggles the mode when clicked', async () => {
     const user = userEvent.setup();
     const onToggle = jest.fn();
     renderWithMantine(
       <ExploreSqlToggle open={false} edited={false} onToggle={onToggle} />,
     );
 
-    await user.click(screen.getByRole('button', { name: 'Query editor' }));
+    await user.click(screen.getByRole('switch', { name: 'Advanced' }));
 
     expect(onToggle).toHaveBeenCalledTimes(1);
   });

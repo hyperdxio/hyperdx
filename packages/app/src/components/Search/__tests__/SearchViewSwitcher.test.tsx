@@ -10,12 +10,12 @@ describe('SearchViewSwitcher', () => {
   function renderSwitcher({
     value = 'list',
     sourceKind = SourceKind.Log,
-    chartTypesOnly = false,
+    sqlMode = false,
     onChange = jest.fn(),
   }: {
     value?: SearchView;
     sourceKind?: SourceKind;
-    chartTypesOnly?: boolean;
+    sqlMode?: boolean;
     onChange?: jest.Mock;
   } = {}) {
     renderWithMantine(
@@ -23,7 +23,7 @@ describe('SearchViewSwitcher', () => {
         value={value}
         onChange={onChange}
         sourceKind={sourceKind}
-        chartTypesOnly={chartTypesOnly}
+        sqlMode={sqlMode}
       />,
     );
     return onChange;
@@ -137,13 +137,24 @@ describe('SearchViewSwitcher', () => {
     );
   });
 
-  it('hides event views in SQL chart-only mode', () => {
-    renderSwitcher({
-      sourceKind: SourceKind.Log,
-      chartTypesOnly: true,
-      value: 'timeseries',
-    });
+  it('keeps Events but drops heatmap and patterns in SQL mode', async () => {
+    const user = userEvent.setup();
+    const onChange = renderSwitcher({ sqlMode: true, value: 'timeseries' });
 
-    expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('radio', { name: 'Events' }));
+
+    expect(onChange).toHaveBeenCalledWith('list');
+    expect(
+      screen.queryByRole('menuitem', { name: /pattern|delta/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('offers chart types in SQL mode from the List view', async () => {
+    const user = userEvent.setup();
+    const onChange = renderSwitcher({ sqlMode: true, value: 'list' });
+
+    await user.click(screen.getByRole('radio', { name: 'Charts' }));
+
+    expect(onChange).toHaveBeenCalledWith('timeseries');
   });
 });

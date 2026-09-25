@@ -113,7 +113,6 @@ import SaveToDashboardModal from '@/components/SaveToDashboardModal';
 import { useSearchTotalCount } from '@/components/SearchTotalCountChart';
 import { TableSourceForm } from '@/components/Sources/SourceForm';
 import { SourceSelectControlled } from '@/components/SourceSelect';
-import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { Tags } from '@/components/Tags';
 import { TimePicker } from '@/components/TimePicker';
 import { IS_LOCAL_MODE } from '@/config';
@@ -152,6 +151,7 @@ import { ExploreGroupByControl } from './components/Explore/ExploreGroupByContro
 import { ExploreQueryEditor } from './components/Explore/ExploreQueryEditor';
 import { ExploreResultsToolbar } from './components/Explore/ExploreResultsToolbar';
 import { ExploreSeriesList } from './components/Explore/ExploreSeriesList';
+import { ExploreSqlToggle } from './components/Explore/ExploreSqlToggle';
 import { type QueryConfigMode } from './components/Explore/QueryEditor';
 import { SeveritySummary } from './components/Explore/SeveritySummary';
 import { nextSearchForPatternMatch } from './components/Patterns/patternColumn';
@@ -171,6 +171,8 @@ import { SearchColumnPicker } from './components/Search/SearchColumnPicker';
 import { SearchSortMenu } from './components/Search/SearchSortMenu';
 import {
   isAggregatedSearchView,
+  isSqlModeSearchView,
+  SearchView,
   SearchViewSwitcher,
   searchViewToDisplayType,
   useSearchView,
@@ -205,6 +207,7 @@ import { getPreviousDateRange } from './ChartUtils';
 import { LOCAL_STORE_CONNECTIONS_KEY } from './connection';
 import { DBSearchPageAlertModal } from './DBSearchPageAlertModal';
 import { SearchConfig } from './types';
+import { useConfirm } from './useConfirm';
 
 import searchPageStyles from '@styles/SearchPage.module.scss';
 
@@ -1244,15 +1247,6 @@ function DBExplorePage() {
     }
   }, [isMetricSource, view, setView]);
 
-  useEffect(() => {
-    // SQL mode renders a single raw-SQL statement as a chart display type, so
-    // the raw List / heatmap / patterns views don't apply — default to the
-    // Grouped table view when one of those is active.
-    if (isSqlMode && !isAggregatedSearchView(view)) {
-      setView('table');
-    }
-  }, [isSqlMode, view, setView]);
-
   const [isFilterSidebarCollapsed, setIsFilterSidebarCollapsed] =
     useLocalStorage<boolean>('isFilterSidebarCollapsed', false);
 
@@ -1736,6 +1730,16 @@ function DBExplorePage() {
   // still keys off `isSqlMode` (submitted) so nothing re-runs until Run.
   const isSqlUiMode = inputConfigType === 'sql';
 
+  // Heatmap and patterns can't show a hand-written statement, so SQL mode
+  // shows its rows in the List view instead, and leaving it goes back.
+  const viewBeforeSqlRef = useRef<SearchView | null>(null);
+  useEffect(() => {
+    if ((isSqlMode || isSqlUiMode) && !isSqlModeSearchView(view)) {
+      viewBeforeSqlRef.current = view;
+      setView('list');
+    }
+  }, [isSqlMode, isSqlUiMode, view, setView]);
+
   // SQL starts folded away — the search box is the faster tool and most
   // sessions never open it. A URL carrying a hand-written query opens it, or
   // the query it names would be invisible.
@@ -1930,12 +1934,6 @@ function DBExplorePage() {
     [displayedColumns, setValue, onSubmit],
   );
 
-  // Available columns for the structured Columns picker (List view).
-  const availableColumns = useMemo(
-    () => (inputSourceColumns ?? []).map(c => c.name),
-    [inputSourceColumns],
-  );
-
   const applyColumns = useCallback(
     (columns: string[]) => {
       setValue('select', columns.join(', '));
@@ -1968,6 +1966,49 @@ function DBExplorePage() {
   const revertListSort = useCallback(() => {
     setSearchedConfig({ orderBy: defaultSearchConfig.orderBy });
   }, [setSearchedConfig, defaultSearchConfig.orderBy]);
+
+  // With the SQL editor open the query is written there, so the structured
+  // controls stand down instead of competing with it. Memoized because the
+  // results table is, and a fresh element would re-render every row.
+  const listTableBarActions = useMemo(
+    () => (
+      <>
+        <SearchColumnPicker
+          source={inputSourceObj}
+          dateRange={searchedTimeRange}
+          selectedColumns={displayedColumns}
+          onApply={applyColumns}
+          disabled={sqlPanelOpen}
+          disabledReason="Turn off Advanced to change columns"
+        />
+        <SearchSortMenu
+          groupLabel="Sort by"
+          options={displayedColumns.map(column => ({
+            value: column,
+            label: column,
+          }))}
+          activeField={listSort.field}
+          direction={listSort.direction}
+          onChange={applyListSort}
+          onRevert={revertListSort}
+          canRevert={!!searchedConfig.orderBy}
+          disabled={sqlPanelOpen}
+          disabledReason="Turn off Advanced to change the sort"
+        />
+      </>
+    ),
+    [
+      inputSourceObj,
+      searchedTimeRange,
+      displayedColumns,
+      applyColumns,
+      sqlPanelOpen,
+      listSort,
+      applyListSort,
+      revertListSort,
+      searchedConfig.orderBy,
+    ],
+  );
 
   const generateSearchUrl = useCallback(
     ({
@@ -2433,21 +2474,41 @@ function DBExplorePage() {
   const metadata = useMetadataWithSettings();
 
   // The builder config the SQL panel mirrors. aggViewChartConfig already has a
-  // raw-SQL-compatible display type and an array select; for non-aggregated
-  // views synthesize a simple count().
+  // raw-SQL-compatible display type and an array select. The List view starts
+  // from the table's own columns and sort, so opening the editor shows the
+  // query behind the rows on screen; other event views synthesize a count().
+  // The generator only takes an array select, hence one plain column per item.
   const sqlTemplateBaseConfig = useMemo(() => {
     if (aggViewChartConfig) return aggViewChartConfig;
     if (!chartConfig) return undefined;
-    return {
+    const base = {
       ...chartConfig,
       displayType: DisplayType.Table,
-      select: [{ aggFn: 'count', aggCondition: '', valueExpression: '' }],
       groupBy: undefined,
-      orderBy: undefined,
       granularity: undefined,
       dateRange: searchedTimeRange,
     };
-  }, [aggViewChartConfig, chartConfig, searchedTimeRange]);
+    if (view === 'list' && displayedColumns.length > 0) {
+      return {
+        ...base,
+        select: displayedColumns.map(column => ({
+          aggCondition: '',
+          valueExpression: column,
+        })),
+      };
+    }
+    return {
+      ...base,
+      select: [{ aggFn: 'count', aggCondition: '', valueExpression: '' }],
+      orderBy: undefined,
+    };
+  }, [
+    aggViewChartConfig,
+    chartConfig,
+    searchedTimeRange,
+    view,
+    displayedColumns,
+  ]);
 
   // While the query is generated, keep it in step with the search above, so
   // opening the panel always shows the statement the current search would run.
@@ -2498,12 +2559,43 @@ function DBExplorePage() {
     [getValues, setValue],
   );
 
-  // Hand it back: clearing the template lets the effect above regenerate.
-  const handleSqlReset = useCallback(() => {
-    setValue('configType', 'builder', { shouldDirty: true });
-    setValue('sqlTemplate', '', { shouldDirty: true });
-    lastGeneratedSqlRef.current = '';
-  }, [setValue]);
+  // Advanced mode is the open editor. Leaving it hands the query back to the
+  // search, so the next time it opens it is regenerated from the UI; edits
+  // are only thrown away once the user agrees to.
+  const confirm = useConfirm();
+  const handleSqlOpenChange = useCallback(
+    async (open: boolean) => {
+      if (open) {
+        setSqlPanelOpen(true);
+        return;
+      }
+      if (getValues('configType') === 'sql') {
+        const ok = await confirm(
+          'Discard your SQL edits and go back to the search?',
+          'Discard',
+          { variant: 'danger' },
+        );
+        if (!ok) return;
+        setValue('configType', 'builder', { shouldDirty: true });
+      }
+      setValue('sqlTemplate', '', { shouldDirty: true });
+      lastGeneratedSqlRef.current = '';
+      setSqlPanelOpen(false);
+      if (isSqlMode) {
+        onSubmit();
+      }
+    },
+    [confirm, getValues, setValue, isSqlMode, onSubmit],
+  );
+
+  // Put back the view SQL mode moved off, once both the form and the results
+  // are builder again (restoring earlier would be undone by the move itself).
+  useEffect(() => {
+    if (!isSqlMode && !isSqlUiMode && viewBeforeSqlRef.current) {
+      setView(viewBeforeSqlRef.current);
+      viewBeforeSqlRef.current = null;
+    }
+  }, [isSqlMode, isSqlUiMode, setView]);
 
   const onFormSubmit = useCallback<FormEventHandler<HTMLFormElement>>(
     e => {
@@ -2918,6 +3010,13 @@ function DBExplorePage() {
           onSaveAsNew={() => setSaveSearchModalState('create')}
           saveDisabled={inputConfigType === 'sql'}
           saveDisabledTooltip="SQL searches aren't savable yet"
+          modeToggle={
+            <ExploreSqlToggle
+              open={sqlPanelOpen}
+              edited={isSqlUiMode}
+              onToggle={() => handleSqlOpenChange(!sqlPanelOpen)}
+            />
+          }
           onOpenAlert={openAlertModal}
           onDelete={() =>
             deleteSavedSearch.mutate(savedSearch?.id ?? '', {
@@ -2949,10 +3048,8 @@ function DBExplorePage() {
             dateRange={searchedTimeRange}
             sourceId={inputSource}
             sqlOpen={sqlPanelOpen}
-            onSqlOpenChange={setSqlPanelOpen}
             queryMode={inputConfigType}
             onSqlEdit={handleSqlEdit}
-            onSqlReset={handleSqlReset}
             sqlTemplateName="sqlTemplate"
             rawSqlDisplayType={
               isAggregatedSearchView(view)
@@ -3117,7 +3214,7 @@ function DBExplorePage() {
                           value={view}
                           onChange={setView}
                           sourceKind={searchedSource?.kind}
-                          chartTypesOnly={isSqlUiMode}
+                          sqlMode={isSqlUiMode}
                         />
                       }
                       viewControls={
@@ -3226,61 +3323,10 @@ function DBExplorePage() {
                         ) : undefined
                       }
                       shapeActions={
-                        isSqlUiMode ? undefined : view === 'list' ? (
-                          <>
-                            <SearchColumnPicker
-                              availableColumns={availableColumns}
-                              selectedColumns={displayedColumns}
-                              onApply={applyColumns}
-                              sqlSlot={
-                                <SQLInlineEditorControlled
-                                  tableConnection={inputSourceTableConnection}
-                                  control={control}
-                                  name="select"
-                                  defaultValue={defaultSearchConfig.select}
-                                  placeholder={
-                                    defaultSearchConfig.select ||
-                                    'SELECT Columns'
-                                  }
-                                  onSubmit={onSubmit}
-                                  label="SELECT"
-                                  size="xs"
-                                  allowMultiline
-                                  dateRange={searchedTimeRange}
-                                  sourceId={inputSource}
-                                />
-                              }
-                            />
-                            <SearchSortMenu
-                              groupLabel="Sort by"
-                              options={displayedColumns.map(column => ({
-                                value: column,
-                                label: column,
-                              }))}
-                              activeField={listSort.field}
-                              direction={listSort.direction}
-                              onChange={applyListSort}
-                              onRevert={revertListSort}
-                              canRevert={!!searchedConfig.orderBy}
-                              sqlSlot={
-                                <SQLInlineEditorControlled
-                                  tableConnection={inputSourceTableConnection}
-                                  control={control}
-                                  name="orderBy"
-                                  defaultValue={defaultSearchConfig.orderBy}
-                                  onSubmit={onSubmit}
-                                  label="ORDER BY"
-                                  size="xs"
-                                  dateRange={searchedTimeRange}
-                                  sourceId={inputSource}
-                                />
-                              }
-                            />
-                          </>
-                        ) : view === 'table' ||
-                          view === 'bar' ||
-                          view === 'pie' ||
-                          view === 'treemap' ? (
+                        view === 'table' ||
+                        view === 'bar' ||
+                        view === 'pie' ||
+                        view === 'treemap' ? (
                           <SearchSortMenu
                             groupLabel="Sort groups by"
                             options={[
@@ -3304,6 +3350,8 @@ function DBExplorePage() {
                               aggConfig.sort !== 'value' ||
                               aggConfig.sortDir !== 'desc'
                             }
+                            disabled={sqlPanelOpen}
+                            disabledReason="Turn off Advanced to change the sort"
                           />
                         ) : undefined
                       }
@@ -3452,6 +3500,34 @@ function DBExplorePage() {
                         )}
                       </div>
                     </>
+                  ) : isSqlUiMode &&
+                    view === 'list' &&
+                    rawSqlChartConfig &&
+                    searchedConfig.source &&
+                    dbSqlRowTableConfig ? (
+                    <Box
+                      flex="1"
+                      mih="0"
+                      px="sm"
+                      data-testid="search-results-panel"
+                    >
+                      <DBSqlRowTableWithSideBar
+                        context={rowTableContext}
+                        config={dbSqlRowTableConfig}
+                        rawSqlConfig={rawSqlChartConfig}
+                        sourceId={searchedConfig.source}
+                        tableId={columnSizeTableId}
+                        keepOpenSelector={
+                          SEARCH_RESULTS_PANEL_KEEP_OPEN_SELECTOR
+                        }
+                        onSidebarOpen={onSidebarOpen}
+                        enabled={isReady}
+                        queryKeyPrefix={QUERY_KEY_PREFIX}
+                        onScroll={onTableScroll}
+                        onError={handleTableError}
+                        tableBarRightSection={listTableBarActions}
+                      />
+                    </Box>
                   ) : isSqlUiMode ? (
                     <Box flex="1" mih="0" px="sm" py="xs">
                       {rawSqlChartConfig ? (
@@ -3698,6 +3774,7 @@ function DBExplorePage() {
                             initialSortBy={initialSortBy}
                             enableSmallFirstWindow
                             onResolvedColumnsChange={onResolvedColumnsChange}
+                            tableBarRightSection={listTableBarActions}
                           />
                         )}
                     </Box>

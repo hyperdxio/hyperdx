@@ -157,6 +157,7 @@ export function ExploreContextBand({
   onDelete,
   saveDisabled = false,
   saveDisabledTooltip,
+  modeToggle,
 }: {
   /** Rendered source selector (kept in the page so it stays form-controlled). */
   sourceSelect: React.ReactNode;
@@ -178,6 +179,8 @@ export function ExploreContextBand({
   /** Disable saving (e.g. SQL mode isn't persistable to saved searches yet). */
   saveDisabled?: boolean;
   saveDisabledTooltip?: string;
+  /** Advanced-mode switch, beside the save actions it can disable. */
+  modeToggle?: React.ReactNode;
 }) {
   return (
     <Flex
@@ -210,6 +213,7 @@ export function ExploreContextBand({
         </Group>
       ) : null}
       <Group gap="sm" ml="auto" wrap="nowrap">
+        {modeToggle}
         {!savedSearchId ? (
           <Button
             data-testid="save-view-button"

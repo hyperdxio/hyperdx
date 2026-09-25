@@ -3,7 +3,6 @@ import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { ExploreSqlPanel } from '@/components/Explore/ExploreSqlPanel';
-import { useConfirm } from '@/useConfirm';
 
 // The real editor pulls in CodeMirror and the ClickHouse metadata hooks; this
 // suite is about the panel's own chrome, so it stands in for the editor and
@@ -26,11 +25,6 @@ jest.mock('@/components/Explore/ExploreRawSqlEditor', () => ({
   ),
 }));
 
-// The real ConfirmProvider lives in pages/_app.tsx and pulls in next/router.
-jest.mock('@/useConfirm', () => ({ useConfirm: jest.fn() }));
-
-const mockUseConfirm: jest.Mock = jest.mocked(useConfirm);
-
 const GENERATED_SQL = 'SELECT count() FROM $__sourceTable WHERE $__filters';
 
 const noop = () => {};
@@ -39,12 +33,10 @@ function Harness({
   sqlTemplate = GENERATED_SQL,
   edited = false,
   onEdit = noop,
-  onReset = noop,
 }: {
   sqlTemplate?: string;
   edited?: boolean;
   onEdit?: (value: string) => void;
-  onReset?: () => void;
 }) {
   const { control } = useForm({ defaultValues: { sqlTemplate } });
   return (
@@ -55,59 +47,18 @@ function Harness({
       sqlTemplate={sqlTemplate}
       edited={edited}
       onEdit={onEdit}
-      onReset={onReset}
     />
   );
 }
 
 describe('ExploreSqlPanel', () => {
-  beforeEach(() => {
-    mockUseConfirm.mockReturnValue(jest.fn().mockResolvedValue(true));
-  });
-
-  it('offers no reset while the query is still generated', () => {
-    renderWithMantine(<Harness />);
+  it('has no reset action, since leaving Advanced mode discards edits', () => {
+    renderWithMantine(<Harness edited />);
 
     expect(screen.getByRole('button', { name: /copy/i })).toBeInTheDocument();
     expect(
-      screen.queryByRole('button', { name: /reset to generated/i }),
+      screen.queryByRole('button', { name: /reset/i }),
     ).not.toBeInTheDocument();
-  });
-
-  it('offers reset once the user owns the query', () => {
-    renderWithMantine(<Harness edited />);
-
-    expect(
-      screen.getByRole('button', { name: /reset to generated/i }),
-    ).toBeInTheDocument();
-  });
-
-  it('confirms before discarding hand-written SQL', async () => {
-    const user = userEvent.setup();
-    const onReset = jest.fn();
-    const confirm = jest.fn().mockResolvedValue(true);
-    mockUseConfirm.mockReturnValue(confirm);
-
-    renderWithMantine(<Harness edited onReset={onReset} />);
-    await user.click(
-      screen.getByRole('button', { name: /reset to generated/i }),
-    );
-
-    expect(confirm).toHaveBeenCalled();
-    expect(onReset).toHaveBeenCalledTimes(1);
-  });
-
-  it('keeps the edits when the reset is declined', async () => {
-    const user = userEvent.setup();
-    const onReset = jest.fn();
-    mockUseConfirm.mockReturnValue(jest.fn().mockResolvedValue(false));
-
-    renderWithMantine(<Harness edited onReset={onReset} />);
-    await user.click(
-      screen.getByRole('button', { name: /reset to generated/i }),
-    );
-
-    expect(onReset).not.toHaveBeenCalled();
   });
 
   it('warns that the search box no longer applies once $__filters is gone', () => {

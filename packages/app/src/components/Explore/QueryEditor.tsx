@@ -34,13 +34,6 @@ export interface QueryEditorProps {
   /** Left addon naming the expression language, flush inside the field. */
   addonSlot?: React.ReactNode;
   /**
-   * Discloses the full-statement editor. Sits outside the field, because the
-   * statement is the larger thing: the field is one clause inside it, spliced
-   * in wherever `$__filters` appears. Nesting this control in the field would
-   * have that backwards.
-   */
-  sqlToggle?: React.ReactNode;
-  /**
    * SQL editor revealed under the search input. The search input stays visible
    * either way — SQL is an addition to the query, never a replacement for it.
    */
@@ -87,7 +80,6 @@ export function QueryEditor({
   onChange,
   language,
   addonSlot,
-  sqlToggle,
   sqlPanel,
   rightSection,
   filtersSlot,
@@ -220,7 +212,6 @@ export function QueryEditor({
             <Box className={styles.actions}>{addFilterSlot}</Box>
           </Box>
         </Box>
-        {sqlToggle}
         <Flex align="center" gap="sm" wrap="nowrap" className={styles.controls}>
           {rightSection}
         </Flex>

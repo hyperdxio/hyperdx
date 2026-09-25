@@ -83,6 +83,93 @@ describe('RawLogTable', () => {
         screen.queryByTestId('row-selection-count'),
       ).not.toBeInTheDocument();
     });
+
+    describe('with a table bar', () => {
+      beforeEach(() => {
+        window.localStorage.clear();
+      });
+
+      it('starts with selection off and no checkbox column', async () => {
+        const { container } = renderWithMantine(
+          <RawLogTable
+            {...baseProps}
+            enableRowSelection
+            tableBarRightSection={null}
+          />,
+        );
+
+        expect(container.querySelectorAll('th')).toHaveLength(2);
+        await userEvent.click(screen.getByTestId('table-display-settings'));
+        expect(await screen.findByLabelText('Hide')).toBeChecked();
+      });
+
+      it('adds the checkbox column when toggled on, and remembers it', async () => {
+        const { container, unmount } = renderWithMantine(
+          <RawLogTable
+            {...baseProps}
+            enableRowSelection
+            tableBarRightSection={null}
+          />,
+        );
+
+        await userEvent.click(screen.getByTestId('table-display-settings'));
+        await userEvent.click(await screen.findByLabelText('Show'));
+        expect(container.querySelectorAll('th')).toHaveLength(3);
+        unmount();
+
+        const { container: remounted } = renderWithMantine(
+          <RawLogTable
+            {...baseProps}
+            enableRowSelection
+            tableBarRightSection={null}
+          />,
+        );
+        expect(remounted.querySelectorAll('th')).toHaveLength(3);
+      });
+    });
+  });
+
+  describe('Table bar', () => {
+    const baseProps = {
+      displayedColumns: ['col1', 'col2'],
+      rows: [{ col1: 'value1', col2: 'value2' }],
+      isLoading: false,
+      dedupRows: false,
+      hasNextPage: false,
+      onRowDetailsClick: () => {},
+      generateRowId: () => mockRowWhereResult,
+      columnTypeMap: new Map(),
+      showExpandButton: false,
+    };
+
+    it('keeps the table actions in the header by default', () => {
+      const { container } = renderWithMantine(<RawLogTable {...baseProps} />);
+
+      expect(
+        screen.queryByTestId('search-results-table-bar'),
+      ).not.toBeInTheDocument();
+      expect(
+        container.querySelector('thead [title="Enable wrap lines"]'),
+      ).toBeInTheDocument();
+    });
+
+    it('moves the table actions into the bar with the right section', () => {
+      const { container } = renderWithMantine(
+        <RawLogTable
+          {...baseProps}
+          tableBarRightSection={<span>columns control</span>}
+        />,
+      );
+
+      const bar = screen.getByTestId('search-results-table-bar');
+      expect(bar).toHaveTextContent('columns control');
+      expect(bar).toContainElement(
+        screen.getByTestId('table-display-settings'),
+      );
+      expect(
+        container.querySelector('thead [title="Enable wrap lines"]'),
+      ).not.toBeInTheDocument();
+    });
   });
 
   describe('Sorting', () => {
