@@ -96,6 +96,8 @@ const getClickhouseTableSize = async () => {
         host: connection.host,
         username: connection.username,
         password: connection.password,
+        // This client is only used by this job.
+        attribution: { surface: 'api', label: 'usage-stats' },
       });
       const _rows = await clickhouseClient.query({
         query: `

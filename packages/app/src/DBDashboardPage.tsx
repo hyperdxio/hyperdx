@@ -165,6 +165,7 @@ import useDashboardContainers, {
 } from '@/hooks/useDashboardContainers';
 import { useDashboardKioskMode } from '@/hooks/useDashboardKioskMode';
 import { useReleaseAnnotations } from '@/hooks/useReleaseAnnotations';
+import { QueryAttributionProvider } from '@/queryAttribution';
 import { calculateNextTilePosition, makeId } from '@/utils/tilePositioning';
 
 import ChartContainer, {
@@ -205,7 +206,7 @@ import {
   GranularityPickerControlled,
 } from './GranularityPicker';
 import HDXMarkdownChart from './HDXMarkdownChart';
-import { withAppNav } from './layout';
+import { withAppNavForSurface } from './layout';
 import {
   getEventBody,
   getFirstTimestampValueExpression,
@@ -434,6 +435,7 @@ const Tile = ({
   isLive,
   readOnly,
 
+  dashboard,
   // Properties forwarded by grid layout
   className,
   style,
@@ -480,6 +482,8 @@ const Tile = ({
   isSelected?: boolean;
   onSelect?: (tileId: string) => void;
   ref?: ForwardedRef<HTMLDivElement>;
+  /** Dashboard this tile sits on. Only used to tag its queries. */
+  dashboard?: string;
 }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
@@ -1499,7 +1503,9 @@ const Tile = ({
   );
 
   return (
-    <>
+    <QueryAttributionProvider
+      attribution={{ surface: 'dashboard', dashboard, tile: chart.id }}
+    >
       <div
         data-testid={`dashboard-tile-${chart.id}`}
         // `dashboard-chart-highlighted` triggers a one-shot flash animation
@@ -1595,7 +1601,7 @@ const Tile = ({
           </Flex>
         )}
       </FullscreenPanelModal>
-    </>
+    </QueryAttributionProvider>
   );
 };
 
@@ -1666,36 +1672,44 @@ const EditTileModal = ({
       zIndex={modalZIndex}
     >
       {chart != null && (
-        <ZIndexContext value={modalZIndex + 10}>
-          {/* Isolate chart cross-syncing to this edit modal: the preview chart
+        <QueryAttributionProvider
+          attribution={{
+            surface: 'chart-preview',
+            dashboard: dashboardId,
+            tile: chart.id,
+          }}
+        >
+          <ZIndexContext value={modalZIndex + 10}>
+            {/* Isolate chart cross-syncing to this edit modal: the preview chart
               must not drive shadow tooltips on the dashboard tiles behind it. */}
-          <IsolatedChartSyncProvider>
-            {/* Offers the dashboard's variables as completions in every
+            <IsolatedChartSyncProvider>
+              {/* Offers the dashboard's variables as completions in every
                 expression input the editor renders. */}
-            <SqlVariablesProvider variables={variables}>
-              <EditTimeChartForm
-                data-testid="tile-editor-form"
-                dashboardId={dashboardId}
-                chartConfig={chart.config}
-                variables={variables}
-                getDashboardFilters={getDashboardFilters}
-                unsatisfiedRequiredFilters={unsatisfiedRequiredFilters}
-                dateRange={dateRange}
-                isSaving={isSaving}
-                onSave={config => {
-                  onSave({
-                    ...chart,
-                    config: config,
-                  });
-                }}
-                onClose={handleClose}
-                onDirtyChange={setHasUnsavedChanges}
-                isDashboardForm
-                autoRun
-              />
-            </SqlVariablesProvider>
-          </IsolatedChartSyncProvider>
-        </ZIndexContext>
+              <SqlVariablesProvider variables={variables}>
+                <EditTimeChartForm
+                  data-testid="tile-editor-form"
+                  dashboardId={dashboardId}
+                  chartConfig={chart.config}
+                  variables={variables}
+                  getDashboardFilters={getDashboardFilters}
+                  unsatisfiedRequiredFilters={unsatisfiedRequiredFilters}
+                  dateRange={dateRange}
+                  isSaving={isSaving}
+                  onSave={config => {
+                    onSave({
+                      ...chart,
+                      config: config,
+                    });
+                  }}
+                  onClose={handleClose}
+                  onDirtyChange={setHasUnsavedChanges}
+                  isDashboardForm
+                  autoRun
+                />
+              </SqlVariablesProvider>
+            </IsolatedChartSyncProvider>
+          </ZIndexContext>
+        </QueryAttributionProvider>
       )}
     </Modal>
   );
@@ -2407,6 +2421,7 @@ function DBDashboardPage({
       return (
         <Tile
           key={chart.id}
+          dashboard={dashboardId}
           chart={chart}
           dateRange={searchedTimeRange}
           onEditClick={() => setEditedTile(chart)}
@@ -2507,6 +2522,7 @@ function DBDashboardPage({
     },
     [
       dashboard,
+      dashboardId,
       searchedTimeRange,
       isRefreshEnabled,
       granularityOverride,
@@ -3549,6 +3565,6 @@ const DBDashboardPageDynamic = dynamic(async () => DBDashboardPageGuarded, {
 });
 
 // @ts-expect-error for getLayout
-DBDashboardPageDynamic.getLayout = withAppNav;
+DBDashboardPageDynamic.getLayout = withAppNavForSurface('dashboard');
 
 export default DBDashboardPageDynamic;

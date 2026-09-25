@@ -1,3 +1,4 @@
+import { buildLogComment } from '@hyperdx/common-utils/dist/clickhouse';
 import http from 'http';
 
 import { getLoggedInAgent, getServer } from '@/fixtures';
@@ -15,15 +16,16 @@ type CapturedRequest = {
 };
 
 /**
- * Pins /clickhouse-proxy body forwarding: text/plain re-injection and the
+ * Pins what /clickhouse-proxy forwards upstream: text/plain re-injection, the
  * raw-stream passthrough of multipart/form-data bodies, which
  * `@clickhouse/client-web` emits when query params exceed its URL budget
- * (regression context: ClickHouse support-escalation #8482).
+ * (regression context: ClickHouse support-escalation #8482), and the
+ * decode/re-encode the query string goes through in `pathRewrite`.
  *
  * Known-latent cases (charset-suffixed JSON, urlencoded) are not covered;
  * tracked in https://github.com/hyperdxio/hyperdx/issues/2942.
  */
-describe('clickhouse-proxy body forwarding', () => {
+describe('clickhouse-proxy forwarding', () => {
   const server = getServer();
 
   let upstream: http.Server;
@@ -136,6 +138,48 @@ describe('clickhouse-proxy body forwarding', () => {
     expect(captured[0].body.toString()).toBe(body);
     expect(captured[0].headers['content-length']).toBe(
       String(Buffer.byteLength(body)),
+    );
+  });
+
+  // The browser client ships `log_comment` as a URL query param, and
+  // pathRewrite fully decodes the query string (sanitizeUrl) before
+  // re-encoding it with `searchParams.toString()`. Breaking that round trip
+  // fails every browser query, not just the attribution tag - which is why
+  // `buildLogComment` allowlists the characters it emits.
+  it('preserves the attribution query params through the path rewrite', async () => {
+    const { agent, team } = await getLoggedInAgent(server);
+    const connectionId = await createConnection(team._id.toString());
+
+    const logComment = buildLogComment({
+      surface: 'dashboard',
+      dashboard: 'my dashboard 1',
+      tile: 'tile-42',
+      label: 'a/b:c_d.e',
+    });
+    if (logComment == null) throw new Error('Expected a log_comment payload');
+
+    const queryId = 'hdx-dashboard-0e0d1a2b-3c4d-4e5f-8a9b-0c1d2e3f4a5b';
+    await agent
+      .post(
+        `/clickhouse-proxy/?query_id=${queryId}&log_comment=${encodeURIComponent(logComment)}`,
+      )
+      .set('x-hyperdx-connection-id', connectionId)
+      .set('Content-Type', 'text/plain')
+      .send('SELECT 1 FORMAT JSON')
+      .expect(200);
+
+    expect(captured).toHaveLength(1);
+    const forwarded = new URL(captured[0].url ?? '', 'http://localhost');
+    expect(forwarded.searchParams.get('query_id')).toBe(queryId);
+    expect(forwarded.searchParams.get('log_comment')).toBe(logComment);
+    expect(JSON.parse(forwarded.searchParams.get('log_comment') ?? '')).toEqual(
+      {
+        v: 1,
+        surface: 'dashboard',
+        dashboard: 'my dashboard 1',
+        tile: 'tile-42',
+        label: 'a/b:c_d.e',
+      },
     );
   });
 

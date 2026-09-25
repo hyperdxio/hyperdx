@@ -142,6 +142,26 @@ export function setBusinessContext(context: BusinessContext): void {
 }
 
 /**
+ * Trace id of the span in flight, if any. Tagged onto ClickHouse queries so a
+ * row in `system.query_log` links back to the request that ran it.
+ */
+export function getActiveTraceId(): string | undefined {
+  try {
+    const traceId = opentelemetry.trace.getActiveSpan()?.spanContext()?.traceId;
+    // All zeroes means "no real trace", and recording it would give us rows
+    // that look traced but link to nothing.
+    if (!traceId || /^0+$/.test(traceId)) {
+      return undefined;
+    }
+    return traceId;
+  } catch {
+    // Runs on every query, and the id is only a convenience. If tracing is
+    // off or set up oddly, go without it rather than fail the query.
+    return undefined;
+  }
+}
+
+/**
  * Returns the static (env / compile-time) feature flag states as span/trace
  * attributes. The repo has no dynamic flag service, so these are the toggles
  * that actually change behavior and are useful during incident remediation.

@@ -54,7 +54,7 @@ import SearchWhereInput, {
   getStoredLanguage,
 } from './components/SearchInput/SearchWhereInput';
 import { useBrandDisplayName } from './theme/ThemeProvider';
-import { withAppNav } from './layout';
+import { withAppNavForSurface } from './layout';
 import { Session, useSessions } from './sessions';
 import SessionSidePanel from './SessionSidePanel';
 import { useSource, useSources } from './source';
@@ -539,7 +539,7 @@ const SessionsPageDynamic = dynamic(async () => SessionsPage, {
 });
 
 // @ts-expect-error for getLayout
-SessionsPageDynamic.getLayout = withAppNav;
+SessionsPageDynamic.getLayout = withAppNavForSurface('session-replay');
 
 export default SessionsPageDynamic;
 

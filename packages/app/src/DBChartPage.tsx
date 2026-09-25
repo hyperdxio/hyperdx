@@ -37,7 +37,7 @@ import { IS_ALERT_DETAILS_ENABLED } from '@/config';
 import { useChartAssistant } from '@/hooks/ai';
 import { useAlertSeededChartConfig } from '@/hooks/useAlertSeededChartConfig';
 import { useResolvedSourceParam } from '@/hooks/useResolvedSourceParam';
-import { withAppNav } from '@/layout';
+import { withAppNavForSurface } from '@/layout';
 import { useSources } from '@/source';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import { useDefaultTimeRange, useNewTimeQuery } from '@/timeQuery';
@@ -362,6 +362,9 @@ const DBChartExplorerPageDynamic = dynamic(async () => DBChartExplorerPage, {
 });
 
 // @ts-expect-error next/dynamic component type does not include the getLayout static
-DBChartExplorerPageDynamic.getLayout = withAppNav;
+DBChartExplorerPageDynamic.getLayout = withAppNavForSurface(
+  'metrics-explorer',
+  'chart-explorer',
+);
 
 export default DBChartExplorerPageDynamic;

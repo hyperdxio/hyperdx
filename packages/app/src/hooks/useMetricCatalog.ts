@@ -3,6 +3,7 @@ import dayjs from 'dayjs';
 import {
   chSql,
   concatChSql,
+  mergeQueryAttribution,
   ResponseJSON,
   tableExpr,
 } from '@hyperdx/common-utils/dist/clickhouse';
@@ -15,6 +16,7 @@ import { useQuery } from '@tanstack/react-query';
 
 import { getClickhouseClient } from '@/clickhouse';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
+import { useQueryAttribution } from '@/queryAttribution';
 import { QUERYABLE_KINDS } from '@/utils/metricKinds';
 import {
   mergeMetricCatalog,
@@ -87,6 +89,12 @@ export function useMetricCatalog({
     return tableName ? [{ kind, tableName }] : [];
   });
 
+  // Page context first so its ids are kept, then `metadata` pinned over the
+  // top: these are metric lookups, not the page's own chart queries.
+  const attribution = mergeQueryAttribution(useQueryAttribution(), {
+    surface: 'metadata',
+  });
+
   const query = useQuery({
     queryKey: [
       'useMetricCatalog',
@@ -101,7 +109,7 @@ export function useMetricCatalog({
       // unstable time references leaking into render. This runs inside the
       // queryFn, not during render, but the rule is syntactic.
       const [start, end] = clampCatalogDateRange(dateRange, dayjs().toDate());
-      const clickhouseClient = getClickhouseClient();
+      const clickhouseClient = getClickhouseClient({ attribution });
 
       // Settled, not all: a source can legitimately have one misconfigured or
       // ungranted kind table, and failing the whole catalog would hide every

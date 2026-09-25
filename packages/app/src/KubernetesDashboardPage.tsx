@@ -64,7 +64,7 @@ import {
   K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
   K8S_MEM_NUMBER_FORMAT,
 } from './ChartUtils';
-import { withAppNav } from './layout';
+import { withAppNavForSurface } from './layout';
 import NamespaceDetailsSidePanel from './NamespaceDetailsSidePanel';
 import NodeDetailsSidePanel from './NodeDetailsSidePanel';
 import PodDetailsSidePanel from './PodDetailsSidePanel';
@@ -1762,6 +1762,9 @@ const KubernetesDashboardPageDynamic = dynamic(
 );
 
 // @ts-expect-error next/dynamic component type does not include the getLayout static
-KubernetesDashboardPageDynamic.getLayout = withAppNav;
+KubernetesDashboardPageDynamic.getLayout = withAppNavForSurface(
+  'dashboard',
+  'kubernetes',
+);
 
 export default KubernetesDashboardPageDynamic;

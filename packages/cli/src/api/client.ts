@@ -299,6 +299,10 @@ export class ProxyClickhouseClient extends BaseClickhouseClient {
   ) {
     super({
       host: `${apiClient.getApiUrl()}/clickhouse-proxy`,
+      // This extends the base client, not the node one, so it never sees the
+      // AsyncLocalStorage scope the API uses. A client-level surface is all
+      // the attribution the CLI gets.
+      attribution: { surface: 'cli' },
       ...opts,
     });
     this.apiClient = apiClient;
