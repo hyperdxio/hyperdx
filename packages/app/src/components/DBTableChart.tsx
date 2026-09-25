@@ -36,6 +36,9 @@ import ChartErrorState, {
 import { getClientSideSortingFn } from './DBTable/sorting';
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
 
+const quoteClickHouseOutputIdentifier = (name: string) =>
+  `"${name.replaceAll('\\', '\\\\').replaceAll('"', '""')}"`;
+
 export default function DBTableChart({
   config,
   getRowSearchLink,
@@ -123,26 +126,6 @@ export default function DBTableChart({
   });
   const { observerRef: fetchMoreRef } = useIntersectionObserver(fetchNextPage);
 
-  // Returns an array of aliases, so we can check if something is using an alias
-  const aliasMap = useMemo(() => {
-    if (isRawSqlChartConfig(config) || isPromqlChartConfig(config)) {
-      return [];
-    }
-
-    // If the config.select is a string, we can't infer this.
-    // One day, we could potentially run this through chSqlToAliasMap but AST parsing
-    //  doesn't work for most DBTableChart queries.
-    if (typeof config.select === 'string') {
-      return [];
-    }
-    return config.select.reduce((acc, select) => {
-      if (select.alias) {
-        acc.push(select.alias);
-      }
-      return acc;
-    }, [] as string[]);
-  }, [config]);
-
   const { formatByColumn } = useChartNumberFormats(queriedConfig, data?.meta);
 
   // Per-column color config (static token + ordered conditional rules) for
@@ -223,8 +206,11 @@ export default function DBTableChart({
     return orderedKeys
       .filter(key => !hiddenColumns?.includes(key))
       .map(key => ({
-        // If it's an alias, wrap in quotes to support a variety of formats (ex "Time (ms)", "Req/s", etc)
-        id: aliasMap.includes(key) ? `"${key}"` : key,
+        // Builder sorting runs against the final result, so every returned key
+        // must be treated as an output identifier rather than an expression.
+        id: isBuilderChartConfig(queriedConfig)
+          ? quoteClickHouseOutputIdentifier(key)
+          : key,
         dataKey: key,
         displayName: key,
         numberFormat: groupByKeys.includes(key)
@@ -240,7 +226,6 @@ export default function DBTableChart({
     data,
     queriedConfig,
     hiddenColumns,
-    aliasMap,
     formatByColumn,
     colorByColumn,
     rulesByColumn,
