@@ -31,6 +31,7 @@ export class SearchPage {
   readonly whereInput: WhereInputComponent;
   readonly savedSearchModal: SavedSearchModalComponent;
   readonly savedSearchNameTitle: Locator;
+  readonly savedSearchStatus: Locator;
   readonly alertModal: SearchPageAlertModalComponent;
   readonly defaultTimeout: number = 3000;
   private readonly alertsButtonLocator: Locator;
@@ -62,6 +63,7 @@ export class SearchPage {
     this.savedSearchNameTitle = page.locator(
       '[data-testid="saved-search-name"]',
     );
+    this.savedSearchStatus = page.getByTestId('saved-search-status');
 
     // Define page-specific locators
     this.searchForm = page.getByTestId('search-form');

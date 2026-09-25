@@ -11,7 +11,6 @@ import {
 } from 'react';
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
-import Link from 'next/link';
 import router from 'next/router';
 import { formatDistanceToNow } from 'date-fns';
 import {
@@ -44,14 +43,13 @@ import {
   Filter,
   isPersistableUserId,
   isTraceSource,
+  SavedSearchListApiResponse,
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
-  Anchor,
   Box,
-  Breadcrumbs,
   Button,
   Card,
   Code,
@@ -98,6 +96,9 @@ import { FavoriteButton } from '@/components/FavoriteButton';
 import ResourceTerraformPopover from '@/components/Iac/ResourceTerraformPopover';
 import { InputControlled } from '@/components/InputControlled';
 import OnboardingModal from '@/components/OnboardingModal';
+import { SavedSearchesDrawer } from '@/components/SavedSearches/SavedSearchesDrawer';
+import { getSavedSearchStatus } from '@/components/SavedSearches/savedSearchStatus';
+import { SavedSearchSwitcher } from '@/components/SavedSearches/SavedSearchSwitcher';
 import SearchWhereInput, {
   getStoredLanguage,
 } from '@/components/SearchInput/SearchWhereInput';
@@ -165,7 +166,6 @@ import {
 } from './utils/queryParsers';
 import { LOCAL_STORE_CONNECTIONS_KEY } from './connection';
 import { DBSearchPageAlertModal } from './DBSearchPageAlertModal';
-import { EditablePageName } from './EditablePageName';
 import { SearchConfig } from './types';
 import { FormatTime } from './useFormatTime';
 
@@ -892,6 +892,34 @@ function formatDroppedFiltersMessage(count: number): string {
   return `${count} ${noun} didn't apply to this source and ${verb} removed.`;
 }
 
+function SavedSearchMeta({
+  savedSearch,
+}: {
+  savedSearch: SavedSearchListApiResponse;
+}) {
+  return (
+    <Stack gap={2}>
+      {savedSearch.createdBy && (
+        <Text size="xs">
+          Created by {savedSearch.createdBy.name || savedSearch.createdBy.email}
+        </Text>
+      )}
+      {savedSearch.updatedAt && (
+        <Text size="xs">
+          Updated{' '}
+          {formatDistanceToNow(new Date(savedSearch.updatedAt), {
+            addSuffix: true,
+          })}
+          {savedSearch.updatedBy
+            ? ` by ${savedSearch.updatedBy.name || savedSearch.updatedBy.email}`
+            : ''}{' '}
+          (<FormatTime value={savedSearch.updatedAt} format="short" />)
+        </Text>
+      )}
+    </Stack>
+  );
+}
+
 // This is outside as it needs to be a stable reference
 const queryStateMap = {
   source: parseAsString,
@@ -1010,6 +1038,7 @@ export function DBSearchPage() {
   // conditions with useQueryStates, so we'll parse it directly
   const paths = window.location.pathname.split('/');
   const savedSearchId = paths.length === 3 ? paths[2] : null;
+  const [panel, setPanel] = useQueryState('panel', parseAsString);
 
   const [rawSearchedConfig, setSearchedConfig] = useQueryStates(queryStateMap);
 
@@ -1036,6 +1065,20 @@ export function DBSearchPage() {
     {
       enabled: savedSearchId != null,
     },
+  );
+
+  const savedSearchStatus = useMemo(
+    () =>
+      getSavedSearchStatus(
+        savedSearch?.id === savedSearchId ? savedSearch : undefined,
+        {
+          ...searchedConfig,
+          // The resolved source is undefined while sources load, even when the
+          // URL already holds the saved search's source ID.
+          source: searchedConfig.source ?? rawSearchedConfig.source,
+        },
+      ),
+    [savedSearch, savedSearchId, searchedConfig, rawSearchedConfig.source],
   );
 
   const { data: sources } = useSources();
@@ -2164,6 +2207,13 @@ export function DBSearchPage() {
           {savedSearch ? `${savedSearch.name} Search` : 'Search'} - {brandName}
         </title>
       </Head>
+      {panel === 'saved-searches' && (
+        <SavedSearchesDrawer
+          opened
+          onClose={() => void setPanel(null)}
+          activeSavedSearchId={savedSearchId ?? undefined}
+        />
+      )}
       {!IS_LOCAL_MODE && isAlertModalOpen && (
         <DBSearchPageAlertModal
           id={savedSearch?.id}
@@ -2173,109 +2223,23 @@ export function DBSearchPage() {
         />
       )}
       <OnboardingModal />
-      {savedSearch && (
-        <Stack mt="lg" mx="xs">
-          <Group justify="space-between">
-            <Breadcrumbs fz="sm">
-              <Anchor component={Link} href="/search/list" fz="sm" c="dimmed">
-                Saved Searches
-              </Anchor>
-              <Text fz="sm" c="dimmed" maw={400} truncate="end">
-                {savedSearch.name}
-              </Text>
-            </Breadcrumbs>
-            <Text size="xs" c="dimmed" lh={1}>
-              {savedSearch.createdBy && (
-                <span>
-                  Created by{' '}
-                  {savedSearch.createdBy.name || savedSearch.createdBy.email}.{' '}
-                </span>
-              )}
-              {savedSearch.updatedAt && (
-                <Tooltip
-                  label={
-                    <>
-                      <FormatTime
-                        value={savedSearch.updatedAt}
-                        format="short"
-                      />
-                      {savedSearch.updatedBy
-                        ? ` by ${savedSearch.updatedBy.name || savedSearch.updatedBy.email}`
-                        : ''}
-                    </>
-                  }
-                >
-                  <span>{`Updated ${formatDistanceToNow(new Date(savedSearch.updatedAt), { addSuffix: true })}.`}</span>
-                </Tooltip>
-              )}
-            </Text>
-          </Group>
-          <Group justify="space-between" align="flex-end">
-            <div data-testid="saved-search-name">
-              <EditablePageName
-                key={savedSearch.id}
-                name={savedSearch?.name ?? 'Untitled Search'}
-                onSave={editedName => {
-                  updateSavedSearch.mutate({
-                    id: savedSearch.id,
-                    name: editedName,
-                  });
-                }}
-              />
-            </div>
-
-            <Group gap="xs">
-              <FavoriteButton
-                resourceType="savedSearch"
-                resourceId={savedSearch.id}
-              />
-              <Tags
-                allowCreate
-                values={savedSearch.tags || []}
-                onChange={handleUpdateTags}
-              >
-                <Button
-                  data-testid="tags-button"
-                  variant="secondary"
-                  size="xs"
-                  style={{ flexShrink: 0 }}
-                >
-                  <IconTags size={14} className="me-1" />
-                  {savedSearch.tags?.length || 0}
-                </Button>
-              </Tags>
-
-              <ResourceTerraformPopover
-                resource={{
-                  type: 'saved_search',
-                  id: savedSearch.id,
-                  name: savedSearch.name,
-                }}
-              />
-
-              <SearchPageActionBar
-                onClickDeleteSavedSearch={() => {
-                  deleteSavedSearch.mutate(savedSearch?.id ?? '', {
-                    onSuccess: () => {
-                      router.push('/search/list');
-                    },
-                  });
-                }}
-                onClickSaveAsNew={() => {
-                  setSaveSearchModalState('create');
-                }}
-              />
-            </Group>
-          </Group>
-        </Stack>
-      )}
       <form
         data-testid="search-form"
         onSubmit={onFormSubmit}
         className={searchPageStyles.searchForm}
       >
         {/* <DevTool control={control} /> */}
-        <Flex gap="sm" px="sm" pt="sm" wrap="nowrap">
+        <Flex gap="sm" px="sm" pt="sm" wrap="nowrap" align="center">
+          <SavedSearchSwitcher
+            name={savedSearch?.name}
+            status={savedSearchStatus}
+            meta={
+              savedSearch ? (
+                <SavedSearchMeta savedSearch={savedSearch} />
+              ) : undefined
+            }
+            onOpen={() => void setPanel('saved-searches')}
+          />
           <SourceSelectControlled
             key={`${savedSearchId}`}
             size="xs"
@@ -2328,15 +2292,17 @@ export function DBSearchPage() {
           </Box>
           <>
             {!savedSearchId ? (
-              <Button
-                data-testid="save-search-button"
-                variant="secondary"
-                size="xs"
-                onClick={onSaveSearch}
-                style={{ flexShrink: 0 }}
-              >
-                Save
-              </Button>
+              <>
+                <Button
+                  data-testid="save-search-button"
+                  variant="secondary"
+                  size="xs"
+                  onClick={onSaveSearch}
+                  style={{ flexShrink: 0 }}
+                >
+                  Save
+                </Button>
+              </>
             ) : (
               <Button
                 data-testid="update-search-button"
@@ -2363,6 +2329,48 @@ export function DBSearchPage() {
                   <AlertStatusIcon alerts={savedSearch?.alerts} />
                 </Group>
               </Button>
+            )}
+            {savedSearch && (
+              <>
+                <FavoriteButton
+                  resourceType="savedSearch"
+                  resourceId={savedSearch.id}
+                />
+                <Tags
+                  allowCreate
+                  values={savedSearch.tags || []}
+                  onChange={handleUpdateTags}
+                >
+                  <Button
+                    data-testid="tags-button"
+                    variant="secondary"
+                    size="xs"
+                    style={{ flexShrink: 0 }}
+                  >
+                    <IconTags size={14} className="me-1" />
+                    {savedSearch.tags?.length || 0}
+                  </Button>
+                </Tags>
+                <ResourceTerraformPopover
+                  resource={{
+                    type: 'saved_search',
+                    id: savedSearch.id,
+                    name: savedSearch.name,
+                  }}
+                />
+                <SearchPageActionBar
+                  onClickDeleteSavedSearch={() => {
+                    deleteSavedSearch.mutate(savedSearch?.id ?? '', {
+                      onSuccess: () => {
+                        router.push('/search');
+                      },
+                    });
+                  }}
+                  onClickSaveAsNew={() => {
+                    setSaveSearchModalState('create');
+                  }}
+                />
+              </>
             )}
           </>
         </Flex>

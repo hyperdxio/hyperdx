@@ -689,6 +689,7 @@ test.describe('Saved Search Functionality', () => {
           'Updatable Filter Search',
         );
         savedSearchUrl = page.url().split('?')[0];
+        await expect(searchPage.savedSearchStatus).toHaveText('Saved');
       });
 
       await test.step('Update saved search with second filter', async () => {
@@ -696,11 +697,13 @@ test.describe('Saved Search Functionality', () => {
         await searchPage.filters.applyFilter(secondFilterGroup, secondFilter);
         await searchPage.submitButton.click();
         await searchPage.table.waitForRowsToPopulate(true);
+        await expect(searchPage.savedSearchStatus).toHaveText('Edited');
 
         await searchPage.openSaveSearchModal({ update: true });
         await searchPage.savedSearchModal.saveSearchAndWaitForNavigation(
           'Updatable Filter Search updated',
         );
+        await expect(searchPage.savedSearchStatus).toHaveText('Saved');
       });
 
       await test.step('Navigate away and back', async () => {
@@ -805,7 +808,7 @@ test.describe('Saved Search Functionality', () => {
   );
 });
 
-test.describe('Saved Searches Listing Page', { tag: ['@search'] }, () => {
+test.describe('Saved searches drawer', { tag: ['@search'] }, () => {
   let listPage: SavedSearchesListPage;
 
   test.beforeEach(async ({ page }) => {
@@ -813,7 +816,7 @@ test.describe('Saved Searches Listing Page', { tag: ['@search'] }, () => {
   });
 
   test(
-    'should display the saved searches listing page',
+    'should display the saved searches drawer',
     { tag: '@full-stack' },
     async () => {
       await listPage.goto();
@@ -829,6 +832,17 @@ test.describe('Saved Searches Listing Page', { tag: ['@search'] }, () => {
   );
 
   test(
+    'should redirect the old list route into the Search drawer',
+    { tag: '@full-stack' },
+    async ({ page }) => {
+      await page.goto('/search/list');
+
+      await expect(page).toHaveURL(/\/search\?panel=saved-searches$/);
+      await expect(listPage.pageContainer).toBeVisible();
+    },
+  );
+
+  test(
     'should navigate to search page when clicking New Search',
     { tag: '@full-stack' },
     async ({ page }) => {
@@ -839,7 +853,7 @@ test.describe('Saved Searches Listing Page', { tag: ['@search'] }, () => {
       });
 
       await test.step('Verify navigation to the search page', async () => {
-        await expect(page).toHaveURL(/\/search\?/);
+        await expect(page).toHaveURL(/\/search$/);
       });
     },
   );
@@ -855,7 +869,7 @@ test.describe('Saved Searches Listing Page', { tag: ['@search'] }, () => {
         await createSavedSearchViaApi(page, { name: uniqueName });
       });
 
-      await test.step('Navigate to the listing page', async () => {
+      await test.step('Open the saved searches drawer', async () => {
         await listPage.goto();
       });
 
@@ -878,44 +892,7 @@ test.describe('Saved Searches Listing Page', { tag: ['@search'] }, () => {
   );
 
   test(
-    'should switch between grid and list views',
-    { tag: '@full-stack' },
-    async ({ page }) => {
-      const ts = Date.now();
-      const uniqueName = `E2E View Toggle ${ts}`;
-
-      await test.step('Create a saved search via API', async () => {
-        await createSavedSearchViaApi(page, { name: uniqueName });
-      });
-
-      await test.step('Navigate to the listing page', async () => {
-        await listPage.goto();
-      });
-
-      await test.step('Verify grid view shows card', async () => {
-        await expect(listPage.getSavedSearchCard(uniqueName)).toBeVisible();
-      });
-
-      await test.step('Switch to list view', async () => {
-        await listPage.switchToListView();
-      });
-
-      await test.step('Verify the saved search appears in a table row', async () => {
-        await expect(listPage.getSavedSearchRow(uniqueName)).toBeVisible();
-      });
-
-      await test.step('Switch back to grid view', async () => {
-        await listPage.switchToGridView();
-      });
-
-      await test.step('Verify the card reappears', async () => {
-        await expect(listPage.getSavedSearchCard(uniqueName)).toBeVisible();
-      });
-    },
-  );
-
-  test(
-    'should delete a saved search from the card view',
+    'should delete a saved search from the drawer',
     { tag: '@full-stack' },
     async ({ page }) => {
       const ts = Date.now();
@@ -925,49 +902,16 @@ test.describe('Saved Searches Listing Page', { tag: ['@search'] }, () => {
         await createSavedSearchViaApi(page, { name: uniqueName });
       });
 
-      await test.step('Navigate to the listing page', async () => {
+      await test.step('Open the saved searches drawer', async () => {
         await listPage.goto();
       });
 
-      await test.step('Delete the saved search via the card menu', async () => {
+      await test.step('Delete the saved search via the row menu', async () => {
         await listPage.deleteSavedSearchFromCard(uniqueName);
       });
 
       await test.step('Verify the saved search is removed', async () => {
         await expect(listPage.getSavedSearchCard(uniqueName)).toBeHidden();
-      });
-
-      await test.step('Verify the deletion notification appears', async () => {
-        await expect(page.getByText('Saved search deleted')).toBeVisible();
-      });
-    },
-  );
-
-  test(
-    'should delete a saved search from the list view',
-    { tag: '@full-stack' },
-    async ({ page }) => {
-      const ts = Date.now();
-      const uniqueName = `E2E Delete Row ${ts}`;
-
-      await test.step('Create a saved search via API', async () => {
-        await createSavedSearchViaApi(page, { name: uniqueName });
-      });
-
-      await test.step('Navigate to the listing page', async () => {
-        await listPage.goto();
-      });
-
-      await test.step('Switch to list view', async () => {
-        await listPage.switchToListView();
-      });
-
-      await test.step('Delete the saved search via the row menu', async () => {
-        await listPage.deleteSavedSearchFromRow(uniqueName);
-      });
-
-      await test.step('Verify the saved search is removed', async () => {
-        await expect(listPage.getSavedSearchRow(uniqueName)).toBeHidden();
       });
 
       await test.step('Verify the deletion notification appears', async () => {
@@ -996,7 +940,7 @@ test.describe('Saved Searches Listing Page', { tag: ['@search'] }, () => {
         await createSavedSearchViaApi(page, { name: untaggedName });
       });
 
-      await test.step('Navigate to the listing page and verify both are visible', async () => {
+      await test.step('Open the drawer and verify both are visible', async () => {
         await listPage.goto();
         await expect(listPage.getSavedSearchCard(taggedName)).toBeVisible();
         await expect(listPage.getSavedSearchCard(untaggedName)).toBeVisible();
