@@ -1767,6 +1767,31 @@ describe('Metadata', () => {
       );
     });
 
+    it('should key numeric and boolean values by their string form', async () => {
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
+        json: () =>
+          Promise.resolve({
+            data: [
+              { __hdx_value: 200, __hdx_percentage: 90 },
+              { __hdx_value: false, __hdx_percentage: 10 },
+            ],
+          }),
+      });
+
+      const result = await metadata.getValuesDistribution({
+        chartConfig: mockChartConfig,
+        key: 'status',
+        source,
+      });
+
+      expect(result).toEqual(
+        new Map([
+          ['200', 90],
+          ['false', 10],
+        ]),
+      );
+    });
+
     it('should include alias CTEs when provided in the config', async () => {
       const configWithAliases = {
         ...mockChartConfig,

@@ -55,6 +55,13 @@ jest.mock('@/hooks/useMetadata', () => ({
     .mockReturnValue({ data: undefined, isFetching: false, error: undefined }),
 }));
 
+const mockDistribution = (data: Map<string, number>) =>
+  jest.mocked(useGetValuesDistribution).mockReturnValue({
+    data,
+    isFetching: false,
+    error: null,
+  } as UseQueryResult<Map<string, number>>);
+
 describe('cleanedFacetName', () => {
   describe('basic functionality', () => {
     it('should return non-toString strings unchanged', () => {
@@ -441,15 +448,13 @@ describe('FilterGroup', () => {
   });
 
   it('should show selected items first, then sort by counts, if percentages when they are enabled', () => {
-    jest.mocked(useGetValuesDistribution).mockReturnValue({
-      data: new Map([
+    mockDistribution(
+      new Map([
         ['apple', 30],
         ['banana', 20],
         ['zebra', 50],
       ]),
-      isFetching: false,
-      error: null,
-    } as UseQueryResult<Map<string, number>>);
+    );
 
     renderWithMantine(
       <FilterGroup
@@ -470,14 +475,12 @@ describe('FilterGroup', () => {
   });
 
   it('should show percentages, if enabled', async () => {
-    jest.mocked(useGetValuesDistribution).mockReturnValue({
-      data: new Map([
+    mockDistribution(
+      new Map([
         ['apple', 99.2],
         ['zebra', 0.6],
       ]),
-      isFetching: false,
-      error: null,
-    } as UseQueryResult<Map<string, number>>);
+    );
 
     renderWithMantine(
       <FilterGroup
@@ -497,17 +500,59 @@ describe('FilterGroup', () => {
     const options = screen.getAllByTestId(/filter-checkbox-.+-input/);
     expect(options).toHaveLength(3);
     const labels = screen.getAllByText(/%/);
+    expect(labels).toHaveLength(2);
     expect(labels[0]).toHaveTextContent('~99%'); // apple
     expect(labels[1]).toHaveTextContent('<1%'); // zebra
-    expect(labels[2]).toHaveTextContent('<1%'); // banana
+    // banana is missing from an uncapped result, so it was not seen at all
   });
 
-  it('should not show percentages for values the field filter rules out', async () => {
-    jest.mocked(useGetValuesDistribution).mockReturnValue({
-      data: new Map([['apple', 100]]),
-      isFetching: false,
-      error: null,
-    } as UseQueryResult<Map<string, number>>);
+  it('should show <1% for a value missing from a capped result', async () => {
+    mockDistribution(
+      new Map(
+        Array.from({ length: 101 }, (_, i) => [`value-${i}`, 1] as const),
+      ),
+    );
+
+    renderWithMantine(<FilterGroup {...defaultProps} />);
+
+    await userEvent.click(
+      screen.getByTestId('toggle-distribution-button-Test Filter'),
+    );
+
+    expect(
+      screen.getByTestId('filter-distribution-Test Filter-banana'),
+    ).toHaveTextContent('<1%');
+  });
+
+  it("should run the distribution query under the field's own filter", async () => {
+    const filters = [
+      { type: 'sql' as const, condition: "Test Filter IN ('apple')" },
+    ];
+    renderWithMantine(
+      <FilterGroup
+        {...defaultProps}
+        chartConfig={{ ...defaultProps.chartConfig, filters }}
+        selectedValues={{
+          included: new Set(['apple']),
+          excluded: new Set(),
+        }}
+      />,
+    );
+
+    await userEvent.click(
+      screen.getByTestId('toggle-distribution-button-Test Filter'),
+    );
+
+    expect(jest.mocked(useGetValuesDistribution)).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        chartConfig: expect.objectContaining({ filters }),
+      }),
+      expect.objectContaining({ enabled: true }),
+    );
+  });
+
+  it('should show 100% for the only value the field filter allows, and nothing for the rest', async () => {
+    mockDistribution(new Map([['apple', 100]]));
 
     renderWithMantine(
       <FilterGroup
@@ -525,18 +570,43 @@ describe('FilterGroup', () => {
 
     const labels = screen.getAllByText(/%/);
     expect(labels).toHaveLength(1);
-    expect(labels[0]).toHaveTextContent('>99%');
+    expect(labels[0]).toHaveTextContent('100%');
+  });
+
+  it('should keep estimated percentages when the field filter allows several values', async () => {
+    mockDistribution(
+      new Map([
+        ['apple', 99.7],
+        ['banana', 0.3],
+      ]),
+    );
+
+    renderWithMantine(
+      <FilterGroup
+        {...defaultProps}
+        selectedValues={{
+          included: new Set(['apple', 'banana']),
+          excluded: new Set(),
+        }}
+      />,
+    );
+
+    await userEvent.click(
+      screen.getByTestId('toggle-distribution-button-Test Filter'),
+    );
+
+    expect(
+      screen.getByTestId('filter-distribution-Test Filter-apple'),
+    ).toHaveTextContent('>99%');
   });
 
   it('should not show a percentage for an excluded value', async () => {
-    jest.mocked(useGetValuesDistribution).mockReturnValue({
-      data: new Map([
+    mockDistribution(
+      new Map([
         ['apple', 60],
         ['banana', 40],
       ]),
-      isFetching: false,
-      error: null,
-    } as UseQueryResult<Map<string, number>>);
+    );
 
     renderWithMantine(
       <FilterGroup

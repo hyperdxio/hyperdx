@@ -88,6 +88,9 @@ const INITIAL_MAX_VALUES_DISPLAYED = 10;
 /* The maximum number of values per filter to render at once after loading more */
 const SHOW_MORE_MAX_VALUES_DISPLAYED = 50;
 
+/* The 100 most common values are enough to find any value present in at least 1% of rows */
+const DISTRIBUTION_VALUE_LIMIT = 100;
+
 // This function will clean json string attributes specifically. It will turn a string like
 // 'toString(ResourceAttributes.`hdx`.`sdk`.`version`)' into 'ResourceAttributes.hdx.sdk.version'.
 export function cleanedFacetName(key: string): string {
@@ -133,6 +136,7 @@ type FilterCheckboxProps = {
   className?: string;
   percentage?: number;
   isPercentageLoading?: boolean;
+  isPercentageExact?: boolean;
 };
 
 const TextButton = ({
@@ -165,19 +169,24 @@ const TextButton = ({
 type FilterPercentageProps = {
   percentage: number;
   isLoading?: boolean;
+  // Share is guaranteed by the filter rather than estimated from the sample.
+  isExact?: boolean;
   'data-testid'?: string;
 };
 
 const FilterPercentage = ({
   percentage,
   isLoading,
+  isExact,
   'data-testid': dataTestId,
 }: FilterPercentageProps) => {
   const formattedPercentage =
     percentage < 1
       ? `<1%`
       : percentage >= 99.5
-        ? `>99%`
+        ? isExact
+          ? '100%'
+          : `>99%`
         : `~${Math.round(percentage)}%`;
 
   return (
@@ -205,6 +214,7 @@ const FilterCheckbox = ({
   className,
   percentage,
   isPercentageLoading,
+  isPercentageExact,
 }: FilterCheckboxProps) => {
   const [pinMenuOpened, setPinMenuOpened] = useState(false);
   const testIdPrefix = `filter-checkbox-${columnName}-${label}`;
@@ -268,6 +278,7 @@ const FilterCheckbox = ({
               <FilterPercentage
                 percentage={percentage}
                 isLoading={isPercentageLoading}
+                isExact={isPercentageExact}
                 data-testid={`filter-distribution-${columnName}-${label}`}
               />
             )}
@@ -492,7 +503,8 @@ const FilterGroupBody = ({
     {
       chartConfig: { ...chartConfig, dateRange },
       key: distributionKey || name,
-      limit: 100, // The 100 most common values are enough to find any values that are present in at least 1% of rows
+      // One extra row tells a capped result apart from exactly 100 values
+      limit: DISTRIBUTION_VALUE_LIMIT + 1,
     },
     {
       enabled: showDistributions,
@@ -635,6 +647,16 @@ const FilterGroupBody = ({
     selectedValues.excluded.has(value) ||
     (selectedValues.included.size > 0 && !selectedValues.included.has(value));
 
+  const getPercentage = (value: string | boolean) => {
+    if (!showDistributions || !distributionData || isExcludedByOwnFilter(value))
+      return undefined;
+    const percentage = distributionData.get(value.toString());
+    if (percentage != null) return percentage;
+    // Missing from a capped result means it ranks below the 100th value, so
+    // under 1%. Missing from an uncapped result means it wasn't seen at all.
+    return distributionData.size > DISTRIBUTION_VALUE_LIMIT ? 0 : undefined;
+  };
+
   const isLimitingDisplayedItems =
     sortedMatchingOptions.length > displayedOptions.length;
 
@@ -688,13 +710,11 @@ const FilterGroupBody = ({
             onSharedPinClick ? () => onSharedPinClick(option.value) : undefined
           }
           isPercentageLoading={isFetchingDistribution}
-          percentage={
-            showDistributions &&
-            distributionData &&
-            !isExcludedByOwnFilter(option.value)
-              ? (distributionData.get(option.value.toString()) ?? 0)
-              : undefined
+          isPercentageExact={
+            selectedValues.included.size === 1 &&
+            selectedValues.included.has(option.value)
           }
+          percentage={getPercentage(option.value)}
         />
       ))}
       {optionsLoading ? (

@@ -2363,14 +2363,15 @@ export class Metadata {
           })
           .then(res =>
             res.json<{
-              __hdx_value: string;
+              __hdx_value: string | number | boolean;
               __hdx_percentage: string | number;
             }>(),
           );
 
         return new Map(
+          // ClickHouse JSON returns numbers and booleans unquoted
           json.data.map(({ __hdx_value, __hdx_percentage }) => [
-            __hdx_value,
+            String(__hdx_value),
             Number(__hdx_percentage),
           ]),
         );
