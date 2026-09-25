@@ -1468,6 +1468,7 @@ const Tile = ({
                         granularity: undefined,
                       }}
                       totalCountQueryKeyPrefix={`dashboard-patterns-${chart.id}`}
+                      keepPreviousData
                     />
                   </ChartContainer>
                 )}

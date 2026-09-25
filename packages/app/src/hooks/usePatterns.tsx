@@ -1,4 +1,5 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
+import { isEqual, omit } from 'lodash';
 import stripAnsi from 'strip-ansi';
 import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
 import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
@@ -125,6 +126,20 @@ export type Pattern = {
   samples: SampleLog[];
 };
 
+const withoutDateRange = (part: unknown) =>
+  typeof part === 'object' && part !== null ? omit(part, ['dateRange']) : part;
+
+/** Whether two query keys differ in nothing but their config's date range. */
+export function differsOnlyInDateRange(
+  prevKey: readonly unknown[] | undefined,
+  key: readonly unknown[],
+) {
+  return (
+    prevKey != null &&
+    isEqual(prevKey.map(withoutDateRange), key.map(withoutDateRange))
+  );
+}
+
 function usePatterns({
   config,
   samples,
@@ -132,6 +147,7 @@ function usePatterns({
   levelExpression,
   serviceNameExpression,
   enabled = true,
+  keepPreviousData = false,
 }: {
   config: BuilderChartConfigWithDateRange;
   samples: number;
@@ -139,6 +155,8 @@ function usePatterns({
   levelExpression?: string;
   serviceNameExpression?: string;
   enabled?: boolean;
+  /** Keep showing the previous patterns while the same query loads a new date range */
+  keepPreviousData?: boolean;
 }) {
   const configWithPrimaryAndPartitionKey = useConfigWithAdditionalSelect({
     ...config,
@@ -173,8 +191,15 @@ function usePatterns({
     error: pyodideError,
   } = usePyodide({ enabled });
 
+  const queryKey = ['patterns', config, bodyValueExpression];
   const query = useQuery({
-    queryKey: ['patterns', config, bodyValueExpression],
+    queryKey,
+    // Mining waits for the new sample (see `enabled`), so a refresh never
+    // caches the previous range's patterns under the new key.
+    placeholderData: (prev, prevQuery) =>
+      keepPreviousData && differsOnlyInDateRange(prevQuery?.queryKey, queryKey)
+        ? prev
+        : undefined,
     queryFn: () => {
       if (configWithPrimaryAndPartitionKey == null) {
         throw new Error('Unexpected configWithPrimaryAndPartitionKey is null');
@@ -228,6 +253,7 @@ export function useGroupedPatterns({
   serviceNameExpression,
   totalCount,
   enabled = true,
+  keepPreviousData = false,
 }: {
   config: BuilderChartConfigWithDateRange;
   samples: number;
@@ -236,10 +262,13 @@ export function useGroupedPatterns({
   serviceNameExpression?: string;
   totalCount?: number;
   enabled?: boolean;
+  /** Keep showing the previous patterns while the same query loads a new date range */
+  keepPreviousData?: boolean;
 }) {
   const {
     data: results,
     isLoading,
+    isPlaceholderData,
     error,
     patternQueryConfig,
   } = usePatterns({
@@ -249,6 +278,7 @@ export function useGroupedPatterns({
     levelExpression,
     serviceNameExpression,
     enabled,
+    keepPreviousData,
   });
 
   const sampledRowCount = results?.data.length;
@@ -330,9 +360,18 @@ export function useGroupedPatterns({
     config.dateRange,
   ]);
 
+  // While the previous patterns are a placeholder, keep the groups as they
+  // were last computed. Regrouping them on the new range would redraw each
+  // trend against time buckets its samples weren't drawn from.
+  const [settledGroups, setSettledGroups] = useState(groupedResults);
+  if (!isPlaceholderData && settledGroups !== groupedResults) {
+    setSettledGroups(groupedResults);
+  }
+
   return {
-    data: groupedResults,
+    data: isPlaceholderData ? settledGroups : groupedResults,
     isLoading,
+    isPlaceholderData,
     error,
     miner: results?.miner,
     sampledRowCount,

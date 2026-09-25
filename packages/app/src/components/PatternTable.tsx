@@ -31,6 +31,7 @@ export default function PatternTable({
   onDraftPatternColumnChange: externalOnDraftPatternColumnChange,
   onSubmit: externalOnSubmit,
   source,
+  keepPreviousData,
 }: {
   config: BuilderChartConfigWithDateRange;
   totalCountConfig: BuilderChartConfigWithDateRange;
@@ -41,6 +42,8 @@ export default function PatternTable({
   onSubmit?: () => void;
   totalCountQueryKeyPrefix: string;
   source?: TSource;
+  /** Keep the current patterns on screen while a refresh loads a new date range */
+  keepPreviousData?: boolean;
 }) {
   const SAMPLES = 10_000;
 
@@ -69,6 +72,7 @@ export default function PatternTable({
   const {
     data: groupedResults,
     isLoading: isGroupedPatternsLoading,
+    isPlaceholderData: isPatternsPlaceholderData,
     error: groupedPatternsError,
     patternQueryConfig,
   } = useGroupedPatterns({
@@ -81,6 +85,7 @@ export default function PatternTable({
         source.serviceNameExpression) ||
       '',
     totalCount,
+    keepPreviousData,
   });
 
   const isLoading =
@@ -143,6 +148,11 @@ export default function PatternTable({
             isLive={false}
             wrapLines={true}
             isLoading={isLoading}
+            className={
+              keepPreviousData && isPatternsPlaceholderData
+                ? 'effect-pulse'
+                : undefined
+            }
             rows={sortedGroupedResults ?? []}
             displayedColumns={[
               '__hdx_pattern_trend',
