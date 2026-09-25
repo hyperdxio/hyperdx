@@ -2121,6 +2121,42 @@ function isNegatedAndParenthesized(ast: lucene.BinaryAST | lucene.LeftOnlyAST) {
   return ast.parenthesized && ast.field?.startsWith('-');
 }
 
+function getOperatorFamily(op: lucene.Operator): 'AND' | 'OR' {
+  switch (op as string) {
+    case '||':
+    case 'OR':
+    case 'OR NOT':
+      return 'OR';
+    case '&&':
+    case '<implicit>':
+    case 'AND':
+    case 'NOT':
+    case 'AND NOT':
+    default:
+      return 'AND';
+  }
+}
+
+async function serializeBinaryChild(
+  child: lucene.AST | lucene.Node,
+  parentOperator: lucene.Operator,
+  serializer: Serializer,
+  context: SerializerContext,
+): Promise<string> {
+  const result = await serialize(child, serializer, context);
+  if (!result) {
+    return '';
+  }
+  if (
+    isBinaryAST(child) &&
+    !child.parenthesized &&
+    getOperatorFamily(child.operator) !== getOperatorFamily(parentOperator)
+  ) {
+    return `(${result})`;
+  }
+  return result;
+}
+
 async function serialize(
   ast: lucene.AST | lucene.Node,
   serializer: Serializer,
@@ -2147,11 +2183,17 @@ async function serialize(
     const newContext = createSerializerContext(context, binaryAST);
     const serialized = `${isNegatedAndParenthesized(binaryAST) ? 'NOT ' : ''}${parenthesized ? '(' : ''}${
       hasStart(binaryAST) ? `${binaryAST.start} ` : ''
-    }${await serialize(
+    }${await serializeBinaryChild(
       binaryAST.left,
+      binaryAST.operator,
       serializer,
       newContext,
-    )} ${operator} ${await serialize(binaryAST.right, serializer, newContext)}${
+    )} ${operator} ${await serializeBinaryChild(
+      binaryAST.right,
+      binaryAST.operator,
+      serializer,
+      newContext,
+    )}${
       parenthesized ? ')' : ''
     }`;
     return serialized;
