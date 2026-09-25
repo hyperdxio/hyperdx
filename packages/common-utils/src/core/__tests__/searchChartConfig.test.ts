@@ -2,7 +2,14 @@ import {
   ALERT_COUNT_DEFAULT_SELECT,
   buildSearchChartConfig,
 } from '@/core/searchChartConfig';
-import { DisplayType, Filter, SourceKind, TSource } from '@/types';
+import {
+  ChartConfig,
+  DisplayType,
+  Filter,
+  SourceKind,
+  TraceScopeResolution,
+  TSource,
+} from '@/types';
 
 // Factory helpers keep tests focused on the behavior under test rather than
 // the full source shape. We cast to TSource because most per-kind fields are
@@ -449,6 +456,170 @@ describe('buildSearchChartConfig', () => {
         condition: "ServiceName NOT IN ('hidden')",
       });
       expect(config.filters?.[1]).toEqual(userFilter);
+    });
+  });
+
+  describe('filtersScope pass-through', () => {
+    it('sets filtersScope to "trace" when searchScope is "trace"', () => {
+      // @AC-FR002-01
+      const config = buildSearchChartConfig(makeTraceSource(), {
+        where: '',
+        searchScope: 'trace',
+      });
+
+      expect(config.filtersScope).toBe('trace');
+    });
+
+    it('sets filtersScope to "span" when searchScope is "span"', () => {
+      // @AC-FR002-01
+      const config = buildSearchChartConfig(makeTraceSource(), {
+        where: '',
+        searchScope: 'span',
+      });
+
+      expect(config.filtersScope).toBe('span');
+    });
+
+    it('omits filtersScope entirely when searchScope is not provided', () => {
+      // @AC-FR003-02
+      const config = buildSearchChartConfig(makeTraceSource(), { where: '' });
+
+      expect(config.filtersScope).toBeUndefined();
+      expect('filtersScope' in config).toBe(false);
+    });
+
+    it('does not alter merged filters when searchScope is set', () => {
+      // @AC-FR003-02
+      const source = makeLogSource({
+        tableFilterExpression: "ServiceName != 'noisy'",
+      });
+      const userFilters: Filter[] = [
+        { type: 'sql', condition: "Environment = 'prod'" },
+      ];
+
+      const config = buildSearchChartConfig(source, {
+        where: '',
+        filters: userFilters,
+        searchScope: 'trace',
+      });
+
+      expect(config.filters).toEqual([
+        { type: 'sql', condition: "ServiceName != 'noisy'" },
+        ...userFilters,
+      ]);
+    });
+
+    it('threads the resolved traceIdExpression onto the config for a trace source', () => {
+      // @AC-FR002-01
+      const source = makeTraceSource({ traceIdExpression: 'TraceId' });
+
+      const config = buildSearchChartConfig(source, {
+        where: '',
+        searchScope: 'trace',
+      });
+
+      expect(config.filtersScope).toBe('trace');
+      expect(config.traceIdExpression).toBe('TraceId');
+    });
+
+    it('omits traceIdExpression for a non-trace source even when searchScope is trace', () => {
+      // @AC-FR005-04
+      const source = makeLogSource({ traceIdExpression: 'TraceId' });
+
+      const config = buildSearchChartConfig(source, {
+        where: '',
+        searchScope: 'trace',
+      });
+
+      expect(config.filtersScope).toBe('trace');
+      expect(config.traceIdExpression).toBeUndefined();
+      expect('traceIdExpression' in config).toBe(false);
+    });
+
+    it('omits traceIdExpression when a trace source has no trace-id expression', () => {
+      // @AC-FR005-04
+      const source = makeTraceSource({ traceIdExpression: undefined });
+
+      const config = buildSearchChartConfig(source, {
+        where: '',
+        searchScope: 'trace',
+      });
+
+      expect(config.traceIdExpression).toBeUndefined();
+      expect('traceIdExpression' in config).toBe(false);
+    });
+
+    it('omits traceIdExpression when a trace source has a blank trace-id expression', () => {
+      // @AC-FR005-04
+      const source = makeTraceSource({ traceIdExpression: '   ' });
+
+      const config = buildSearchChartConfig(source, {
+        where: '',
+        searchScope: 'trace',
+      });
+
+      expect(config.traceIdExpression).toBeUndefined();
+    });
+
+    it('trims the resolved traceIdExpression before threading it onto the config', () => {
+      // @AC-FR002-01
+      const source = makeTraceSource({ traceIdExpression: '  TraceId  ' });
+
+      const config = buildSearchChartConfig(source, {
+        where: '',
+        searchScope: 'trace',
+      });
+
+      expect(config.traceIdExpression).toBe('TraceId');
+    });
+
+    it('accepts filtersScope as an optional span/trace field on ChartConfig', () => {
+      // @AC-FR002-01
+      const spanConfig: ChartConfig = {
+        connection: 'conn-1',
+        source: 'trace-source-1',
+        from: { databaseName: 'default', tableName: 'otel_traces' },
+        select: '',
+        where: '',
+        whereLanguage: 'sql',
+        timestampValueExpression: 'Timestamp',
+        filtersScope: 'span',
+      };
+      const traceConfig: ChartConfig = { ...spanConfig, filtersScope: 'trace' };
+      const unscopedConfig: ChartConfig = { ...spanConfig };
+      delete unscopedConfig.filtersScope;
+
+      expect(spanConfig.filtersScope).toBe('span');
+      expect(traceConfig.filtersScope).toBe('trace');
+      expect(unscopedConfig.filtersScope).toBeUndefined();
+    });
+  });
+
+  describe('TraceScopeResolution placeholder type', () => {
+    it('narrows the applicable branch to expose traceIdExpression', () => {
+      // @AC-FR002-01
+      const resolution: TraceScopeResolution = {
+        applicable: true,
+        traceIdExpression: 'TraceId',
+      };
+
+      expect(resolution.applicable).toBe(true);
+      if (resolution.applicable) {
+        expect(resolution.traceIdExpression).toBe('TraceId');
+      }
+    });
+
+    it('narrows the inapplicable branch to expose a reason', () => {
+      // @AC-FR002-01
+      const resolution: TraceScopeResolution = {
+        applicable: false,
+        reason: 'non-trace-source',
+      };
+
+      expect(resolution.applicable).toBe(false);
+      if (!resolution.applicable) {
+        expect(resolution.reason).toBe('non-trace-source');
+      }
     });
   });
 

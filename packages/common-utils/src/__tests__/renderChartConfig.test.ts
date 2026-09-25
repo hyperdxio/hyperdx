@@ -5,6 +5,8 @@ import {
   renderChartConfig,
   timeFilterExpr,
 } from '@/core/renderChartConfig';
+import { buildSearchChartConfig } from '@/core/searchChartConfig';
+import { resolveTraceScope } from '@/core/traceScope';
 import { convertToCategoricalChartConfig } from '@/core/utils';
 import {
   BuilderChartConfig,
@@ -12,6 +14,8 @@ import {
   DisplayType,
   MetricsDataType,
   QuerySettings,
+  SourceKind,
+  TSource,
 } from '@/types';
 
 describe('renderChartConfig', () => {
@@ -5356,6 +5360,431 @@ describe('renderChartConfig', () => {
       ).rejects.toThrow(
         'Invalid formula "A / C": Unknown series "C" — this chart only has series A through B',
       );
+    });
+  });
+
+  describe('trace scope', () => {
+    const traceDateRange: [Date, Date] = [
+      new Date('2025-01-01T00:00:00Z'),
+      new Date('2025-01-02T00:00:00Z'),
+    ];
+
+    const buildTraceConfig = (
+      overrides: Partial<ChartConfigWithOptDateRange>,
+    ): ChartConfigWithOptDateRange => ({
+      connection: 'test-connection',
+      from: { databaseName: 'default', tableName: 'otel_traces' },
+      select: [{ aggFn: 'count', valueExpression: '' }],
+      where: '',
+      whereLanguage: 'sql',
+      timestampValueExpression: 'Timestamp',
+      dateRange: traceDateRange,
+      traceIdExpression: 'TraceId',
+      filtersScope: 'trace',
+      ...overrides,
+    });
+
+    const renderSql = async (config: ChartConfigWithOptDateRange) =>
+      parameterizedQueryToSql(
+        await renderChartConfig(config, mockMetadata, undefined),
+      );
+
+    it('AND-composes one TraceId IN subquery per predicate for a two-predicate trace search @AC-FR001-01', async () => {
+      const sql = await renderSql(
+        buildTraceConfig({
+          filters: [
+            { type: 'sql', condition: "ServiceName = 'api'" },
+            { type: 'sql', condition: "SpanName = 'checkout'" },
+          ],
+        }),
+      );
+
+      const subqueryCount = (
+        sql.match(/TraceId IN \(SELECT TraceId FROM/g) ?? []
+      ).length;
+      expect(subqueryCount).toBe(2);
+      expect(sql).toContain("ServiceName = 'api'");
+      expect(sql).toContain("SpanName = 'checkout'");
+      expect(sql).toMatch(/IN \(SELECT.*\) AND .*IN \(SELECT/s);
+    });
+
+    it('targets the source table inside each subquery @AC-FR001-02', async () => {
+      const sql = await renderSql(
+        buildTraceConfig({
+          filters: [
+            { type: 'sql', condition: "ServiceName = 'api'" },
+            { type: 'sql', condition: "SpanName = 'checkout'" },
+          ],
+        }),
+      );
+      const fromMatches = (
+        sql.match(/SELECT TraceId FROM default\.otel_traces/g) ?? []
+      ).length;
+      expect(fromMatches).toBe(2);
+    });
+
+    it('embeds the outer time filter inside every subquery @AC-FR001-03', async () => {
+      const sql = await renderSql(
+        buildTraceConfig({
+          filters: [
+            { type: 'sql', condition: "ServiceName = 'api'" },
+            { type: 'sql', condition: "SpanName = 'checkout'" },
+          ],
+        }),
+      );
+
+      const subqueries = sql.split('TraceId IN (SELECT TraceId FROM').slice(1);
+      expect(subqueries.length).toBe(2);
+      for (const subquery of subqueries) {
+        expect(subquery).toContain('Timestamp >=');
+        expect(subquery).toContain('Timestamp <=');
+      }
+      const outerTimeOccurrences = (sql.match(/Timestamp >=/g) ?? []).length;
+      expect(outerTimeOccurrences).toBeGreaterThanOrEqual(3);
+    });
+
+    it('binds the time bounds and table as ClickHouse params reused inside each subquery @AC-FR001-04', async () => {
+      const generated = await renderChartConfig(
+        buildTraceConfig({
+          filters: [{ type: 'sql', condition: "ServiceName = 'api'" }],
+        }),
+        mockMetadata,
+        undefined,
+      );
+
+      expect(Object.values(generated.params)).toContain(1735689600000);
+      expect(Object.values(generated.params)).toContain(1735776000000);
+      expect(Object.values(generated.params)).toContain('otel_traces');
+
+      const int64Placeholders =
+        generated.sql.match(/\{[a-z0-9_]+:Int64\}/gi) ?? [];
+      const uniqueInt64 = new Set(int64Placeholders);
+      expect(int64Placeholders.length).toBeGreaterThanOrEqual(4);
+      expect(uniqueInt64.size).toBe(2);
+    });
+
+    it('keeps a NOT IN exclusion filter out of the membership subqueries so it still excludes @AC-FR002-01', async () => {
+      // No `negated` marker: negation is derived from the condition at render
+      // time, so exclusions from saved searches / older URLs are handled too.
+      const sql = await renderSql(
+        buildTraceConfig({
+          filters: [
+            { type: 'sql', condition: "SpanName = 'checkout'" },
+            { type: 'sql', condition: "ServiceName NOT IN ('api')" },
+          ],
+        }),
+      );
+
+      // Only the positive predicate is rewritten into a trace-membership
+      // subquery. Wrapping the exclusion as `TraceId IN (SELECT ... WHERE
+      // ServiceName NOT IN ('api'))` would mean "some span is not api" — true
+      // for almost any trace — so the exclusion is applied to the outer rows
+      // instead and excluded values genuinely disappear from the results.
+      const subqueryCount = (
+        sql.match(/TraceId IN \(SELECT TraceId FROM/g) ?? []
+      ).length;
+      expect(subqueryCount).toBe(1);
+      expect(sql).toContain("SpanName = 'checkout'");
+      expect(sql).toContain("ServiceName NOT IN ('api')");
+    });
+
+    it('keeps a sql_ast != filter and a negated search bar off the membership rewrite @AC-FR002-02', async () => {
+      const sql = await renderSql(
+        buildTraceConfig({
+          where: "ServiceName != 'cart'",
+          whereLanguage: 'sql',
+          filters: [
+            { type: 'sql', condition: "SpanName = 'checkout'" },
+            {
+              type: 'sql_ast',
+              operator: '!=',
+              left: 'ServiceName',
+              right: "'api'",
+            },
+          ],
+        }),
+      );
+
+      // Only the one positive predicate (SpanName = checkout) is a membership
+      // subquery; both negations stay on the outer WHERE.
+      const subqueryCount = (
+        sql.match(/TraceId IN \(SELECT TraceId FROM/g) ?? []
+      ).length;
+      expect(subqueryCount).toBe(1);
+      expect(sql).toContain("SpanName = 'checkout'");
+      expect(sql).toContain("ServiceName != 'api'");
+      expect(sql).toContain("ServiceName != 'cart'");
+    });
+
+    it('scans each membership subquery over the full range, not the paginated window @AC-FR001-05', async () => {
+      const fullRange: [Date, Date] = [
+        new Date('2025-01-01T00:00:00Z'),
+        new Date('2025-01-02T00:00:00Z'),
+      ];
+      const windowRange: [Date, Date] = [
+        new Date('2025-01-01T10:00:00Z'),
+        new Date('2025-01-01T10:01:00Z'),
+      ];
+      const filters = [
+        { type: 'sql' as const, condition: "ServiceName = 'api'" },
+        { type: 'sql' as const, condition: "SpanName = 'checkout'" },
+      ];
+
+      // dateRange is the (narrow) current window; traceScopeDateRange is the
+      // user's full selected range the membership subqueries must use, so a
+      // trace whose predicates sit in different windows is still matched. The
+      // full-range bound is only introduced by the subqueries (the outer query
+      // uses the window), so its presence proves the subqueries were pinned.
+      const withFullRange = await renderChartConfig(
+        buildTraceConfig({
+          dateRange: windowRange,
+          traceScopeDateRange: fullRange,
+          filters,
+        }),
+        mockMetadata,
+        undefined,
+      );
+      expect(Object.values(withFullRange.params)).toContain(
+        fullRange[1].getTime(),
+      );
+
+      // Without traceScopeDateRange the subqueries fall back to the window, so
+      // the full-range bound never appears.
+      const windowedOnly = await renderChartConfig(
+        buildTraceConfig({ dateRange: windowRange, filters }),
+        mockMetadata,
+        undefined,
+      );
+      expect(Object.values(windowedOnly.params)).not.toContain(
+        fullRange[1].getTime(),
+      );
+    });
+
+    it('emits identical SQL for span scope and for absent scope @AC-FR003-01', async () => {
+      const filters = [
+        { type: 'sql' as const, condition: "ServiceName = 'api'" },
+        { type: 'sql' as const, condition: "SpanName = 'checkout'" },
+      ];
+      const spanSql = await renderSql(
+        buildTraceConfig({ filters, filtersScope: 'span' }),
+      );
+      const absentSql = await renderSql(
+        buildTraceConfig({ filters, filtersScope: undefined }),
+      );
+
+      expect(spanSql).toBe(absentSql);
+      expect(spanSql).not.toContain('TraceId IN (SELECT');
+    });
+
+    it('does not alter the span-scope SQL of a two-predicate search @AC-FR003-02', async () => {
+      const filters = [
+        { type: 'sql' as const, condition: "ServiceName = 'api'" },
+        { type: 'sql' as const, condition: "SpanName = 'checkout'" },
+      ];
+      const spanSql = await renderSql(
+        buildTraceConfig({ filters, filtersScope: 'span' }),
+      );
+      expect(spanSql).toMatchSnapshot();
+    });
+
+    it('produces a single subquery whose trace set equals the span-scope predicate for one predicate @AC-FR006-01', async () => {
+      const filters = [
+        { type: 'sql' as const, condition: "ServiceName = 'api'" },
+      ];
+      const traceSql = await renderSql(buildTraceConfig({ filters }));
+      const spanSql = await renderSql(
+        buildTraceConfig({ filters, filtersScope: 'span' }),
+      );
+
+      const subqueryCount = (
+        traceSql.match(/TraceId IN \(SELECT TraceId FROM/g) ?? []
+      ).length;
+      expect(subqueryCount).toBe(1);
+      expect(traceSql).toContain("ServiceName = 'api'");
+      expect(spanSql).toContain("ServiceName = 'api'");
+      expect(spanSql).not.toContain('TraceId IN (SELECT');
+    });
+
+    it('emits the span path unchanged when trace scope is not applicable (no trace-id expression) @AC-FR005-04', async () => {
+      const filters = [
+        { type: 'sql' as const, condition: "ServiceName = 'api'" },
+      ];
+      const guardOffSql = await renderSql(
+        buildTraceConfig({ filters, traceIdExpression: undefined }),
+      );
+      const spanSql = await renderSql(
+        buildTraceConfig({ filters, filtersScope: 'span' }),
+      );
+
+      expect(guardOffSql).not.toContain('TraceId IN (SELECT');
+      expect(guardOffSql).toBe(spanSql);
+    });
+
+    it('renders the top-level where search as a trace-membership subquery @AC-FR001-05', async () => {
+      const sql = await renderSql(
+        buildTraceConfig({
+          where: "ServiceName = 'api'",
+          whereLanguage: 'sql',
+        }),
+      );
+      expect(sql).toContain(
+        'TraceId IN (SELECT TraceId FROM default.otel_traces',
+      );
+      expect(sql).toContain("ServiceName = 'api'");
+    });
+
+    it('matches the ClickHouse query contract end-to-end from a resolved trace source @AC-FR001-06', async () => {
+      const traceSource: TSource = {
+        id: 'trace-source-1',
+        kind: SourceKind.Trace,
+        name: 'Traces',
+        connection: 'test-connection',
+        from: { databaseName: 'default', tableName: 'otel_traces' },
+        timestampValueExpression: 'Timestamp',
+        defaultTableSelectExpression: 'Timestamp',
+        durationExpression: 'Duration',
+        durationPrecision: 3,
+        traceIdExpression: 'TraceId',
+        spanIdExpression: 'SpanId',
+        parentSpanIdExpression: 'ParentSpanId',
+        spanNameExpression: 'SpanName',
+        spanKindExpression: 'SpanKind',
+      };
+
+      const resolution = resolveTraceScope(traceSource);
+      expect(resolution.applicable).toBe(true);
+
+      const searchConfig = buildSearchChartConfig(traceSource, {
+        where: '',
+        whereLanguage: 'sql',
+        searchScope: 'trace',
+        filters: [
+          { type: 'sql', condition: "ServiceName = 'api'" },
+          { type: 'sql', condition: "SpanName = 'checkout'" },
+        ],
+      });
+
+      const sql = await renderSql({
+        ...searchConfig,
+        dateRange: traceDateRange,
+      } as ChartConfigWithOptDateRange);
+
+      expect(sql).toMatch(
+        /TraceId IN \(SELECT TraceId FROM default\.otel_traces WHERE .*ServiceName = 'api'.* AND .*Timestamp/s,
+      );
+      expect(sql).toMatch(
+        /AND TraceId IN \(SELECT TraceId FROM default\.otel_traces WHERE .*SpanName = 'checkout'/s,
+      );
+    });
+
+    it('reuses the same time-bound param placeholders across the outer WHERE and every subquery @AC-FR001-04', async () => {
+      const generated = await renderChartConfig(
+        buildTraceConfig({
+          filters: [
+            { type: 'sql', condition: "ServiceName = 'api'" },
+            { type: 'sql', condition: "SpanName = 'checkout'" },
+          ],
+        }),
+        mockMetadata,
+        undefined,
+      );
+
+      const int64Placeholders =
+        generated.sql.match(/\{[a-z0-9_]+:Int64\}/gi) ?? [];
+      const uniqueInt64 = new Set(int64Placeholders);
+      expect(uniqueInt64.size).toBe(2);
+      expect(int64Placeholders.length).toBe(6);
+      for (const placeholder of uniqueInt64) {
+        const key = placeholder.slice(1, placeholder.indexOf(':'));
+        expect(generated.params).toHaveProperty(key);
+      }
+    });
+
+    it('binds each subquery source table as a reused Identifier param, never an inlined table name @AC-FR001-04', async () => {
+      const generated = await renderChartConfig(
+        buildTraceConfig({
+          filters: [
+            { type: 'sql', condition: "ServiceName = 'api'" },
+            { type: 'sql', condition: "SpanName = 'checkout'" },
+          ],
+        }),
+        mockMetadata,
+        undefined,
+      );
+
+      const tableKeys = Object.entries(generated.params)
+        .filter(([, value]) => value === 'otel_traces')
+        .map(([key]) => key);
+      expect(tableKeys).toHaveLength(1);
+      const [tableKey] = tableKeys;
+      const tablePlaceholder = `{${tableKey}:Identifier}`;
+      const tableOccurrences = generated.sql.split(tablePlaceholder).length - 1;
+      expect(tableOccurrences).toBe(3);
+      expect(generated.sql).not.toContain('FROM default.otel_traces');
+    });
+
+    it('AND-composes membership subqueries even when filtersLogicalOperator is OR @AC-FR001-01', async () => {
+      const sql = await renderSql(
+        buildTraceConfig({
+          filtersLogicalOperator: 'OR',
+          filters: [
+            { type: 'sql', condition: "ServiceName = 'api'" },
+            { type: 'sql', condition: "SpanName = 'checkout'" },
+          ],
+        } as Partial<ChartConfigWithOptDateRange>),
+      );
+
+      const subqueryCount = (
+        sql.match(/TraceId IN \(SELECT TraceId FROM/g) ?? []
+      ).length;
+      expect(subqueryCount).toBe(2);
+      expect(sql).toMatch(/IN \(SELECT.*\) AND .*IN \(SELECT/s);
+      expect(sql).not.toMatch(/\) OR TraceId IN \(SELECT/);
+    });
+
+    it('composes the where search and each filter into a distinct membership subquery @AC-FR001-05', async () => {
+      const sql = await renderSql(
+        buildTraceConfig({
+          where: "ServiceName = 'api'",
+          whereLanguage: 'sql',
+          filters: [{ type: 'sql', condition: "SpanName = 'checkout'" }],
+        }),
+      );
+
+      const subqueryCount = (
+        sql.match(/TraceId IN \(SELECT TraceId FROM/g) ?? []
+      ).length;
+      expect(subqueryCount).toBe(2);
+      expect(sql).toMatch(
+        /TraceId IN \(SELECT TraceId FROM default\.otel_traces WHERE \(ServiceName = 'api'\)/,
+      );
+      expect(sql).toMatch(
+        /TraceId IN \(SELECT TraceId FROM default\.otel_traces WHERE \(SpanName = 'checkout'\)/,
+      );
+    });
+
+    it('keeps the outer time filter as the first conjunct outside every subquery @AC-FR001-03', async () => {
+      const sql = await renderSql(
+        buildTraceConfig({
+          filters: [{ type: 'sql', condition: "ServiceName = 'api'" }],
+        }),
+      );
+
+      expect(sql).toMatch(
+        /WHERE \(Timestamp >= fromUnixTimestamp64Milli\(1735689600000\) AND Timestamp <= fromUnixTimestamp64Milli\(1735776000000\)\) AND TraceId IN \(SELECT/,
+      );
+    });
+
+    it('emits the span path unchanged when filtersScope is span even with a trace-id expression set @AC-FR003-01', async () => {
+      const filters = [
+        { type: 'sql' as const, condition: "ServiceName = 'api'" },
+      ];
+      const spanSql = await renderSql(
+        buildTraceConfig({ filters, filtersScope: 'span' }),
+      );
+
+      expect(spanSql).not.toContain('TraceId IN (SELECT');
+      expect(spanSql).toContain("(ServiceName = 'api')");
     });
   });
 });

@@ -220,6 +220,12 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
     ? {
         ...config,
         dateRange: [timeWindow.startTime, timeWindow.endTime] as [Date, Date],
+        // Preserve the user's full selected range so trace-scope membership
+        // subqueries match spans that straddle a window boundary instead of
+        // only seeing the current chunk's window.
+        ...(shouldUseWindowing
+          ? { traceScopeDateRange: config.dateRange }
+          : {}),
         limit: {
           limit: config.limit?.limit,
           offset: pageParam.offset,

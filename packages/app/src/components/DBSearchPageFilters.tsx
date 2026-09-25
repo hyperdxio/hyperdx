@@ -1,13 +1,16 @@
-import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useId, useMemo, useState } from 'react';
 import cx from 'classnames';
 import {
   TableMetadata,
   tcFromSource,
 } from '@hyperdx/common-utils/dist/core/metadata';
+import { resolveTraceScope } from '@hyperdx/common-utils/dist/core/traceScope';
 import { FilterState } from '@hyperdx/common-utils/dist/filters';
 import {
   BuilderChartConfigWithDateRange,
+  SearchScope,
   SourceKind,
+  TSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
   Accordion,
@@ -24,6 +27,7 @@ import {
   MantineStyleProps,
   NumberInput,
   ScrollArea,
+  SegmentedControl,
   Stack,
   Tabs,
   Text,
@@ -1056,6 +1060,56 @@ export const FilterGroup = ({
   );
 };
 
+const TRACE_SCOPE_UNAVAILABLE_REASON =
+  "Trace scope isn't available for this source.";
+
+export const SearchScopeControl = ({
+  source,
+  value = 'span',
+  onChange,
+}: {
+  source?: TSource;
+  value?: SearchScope;
+  onChange: (scope: SearchScope) => void;
+}) => {
+  const traceScope = source ? resolveTraceScope(source) : undefined;
+  const traceApplicable = traceScope?.applicable ?? false;
+  const reasonId = useId();
+
+  useEffect(() => {
+    // Only fall back to span once the source has actually resolved. While it is
+    // still loading (`source` undefined), `traceApplicable` is false, and
+    // resetting here would discard a trace scope restored from the URL or a
+    // saved link before the trace source arrives.
+    if (source && !traceApplicable && value === 'trace') {
+      onChange('span');
+    }
+  }, [source, traceApplicable, value, onChange]);
+
+  const scopeValue = traceApplicable ? value : 'span';
+
+  return (
+    <Stack gap={4}>
+      <SegmentedControl
+        size="xs"
+        aria-label="Search scope"
+        aria-describedby={!traceApplicable ? reasonId : undefined}
+        value={scopeValue}
+        onChange={scope => onChange(scope as SearchScope)}
+        data={[
+          { label: 'Span', value: 'span' },
+          { label: 'Trace', value: 'trace', disabled: !traceApplicable },
+        ]}
+      />
+      {!traceApplicable && (
+        <Text id={reasonId} size="xxs" c="dimmed">
+          {TRACE_SCOPE_UNAVAILABLE_REASON}
+        </Text>
+      )}
+    </Stack>
+  );
+};
+
 const DBSearchPageFiltersComponent = ({
   filters: filterState,
   clearFilter,
@@ -1072,6 +1126,8 @@ const DBSearchPageFiltersComponent = ({
   onColumnToggle,
   displayedColumns,
   onCollapse,
+  searchScope = 'span',
+  onSearchScopeChange,
 }: {
   analysisMode: 'results' | 'delta' | 'pattern';
   setAnalysisMode: (mode: 'results' | 'delta' | 'pattern') => void;
@@ -1085,6 +1141,8 @@ const DBSearchPageFiltersComponent = ({
   onColumnToggle?: (column: string) => void;
   displayedColumns?: string[];
   onCollapse?: () => void;
+  searchScope?: SearchScope;
+  onSearchScopeChange?: (scope: SearchScope) => void;
 } & FilterStateHook) => {
   const setFilterValue = useCallback(
     (
@@ -1621,6 +1679,18 @@ const DBSearchPageFiltersComponent = ({
         }}
       >
         <Stack gap="sm" p="xs">
+          {onSearchScopeChange && (
+            <Stack gap={4}>
+              <Text size="xxs" c="dimmed" fw="bold">
+                Search scope
+              </Text>
+              <SearchScopeControl
+                source={source}
+                value={searchScope}
+                onChange={onSearchScopeChange}
+              />
+            </Stack>
+          )}
           <Flex align="center" justify="space-between">
             <Text size="xxs" c="dimmed" fw="bold">
               Analysis Mode

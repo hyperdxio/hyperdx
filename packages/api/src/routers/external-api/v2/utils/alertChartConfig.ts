@@ -143,6 +143,14 @@ export const KNOWN_LOSSY_CONFIG_KEYS: ReadonlySet<string> = new Set([
   'bodyExpression',
   'useTextIndexForImplicitColumn',
   'metricTables',
+  // Trace-scope search fields. Evaluation-relevant only together (filtersScope
+  // 'trace' rewrites the query to trace-membership subqueries keyed on
+  // traceIdExpression), and the external dialect cannot express them, so a
+  // trace-scoped config is treated as unrepresentable rather than silently
+  // downgraded to span. Absent on ordinary (span-scope) alerts, so they are
+  // unaffected.
+  'filtersScope',
+  'traceIdExpression',
 ]);
 
 /** Select-item fields the external dialect round-trips. */

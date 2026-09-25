@@ -93,6 +93,30 @@ export class SearchPage {
     return this.page.getByRole('menuitem', { name: 'View schema' });
   }
 
+  get searchScopeControl() {
+    return this.page.getByRole('radiogroup', { name: 'Search scope' });
+  }
+
+  get spanScopeOption() {
+    return this.searchScopeControl.getByRole('radio', { name: /span/i });
+  }
+
+  get traceScopeOption() {
+    return this.searchScopeControl.getByRole('radio', { name: /trace/i });
+  }
+
+  get resultScopeIndicator() {
+    return this.page.getByLabel('Scope: Trace');
+  }
+
+  get traceZeroEmptyState() {
+    return this.page.getByText(/no traces match all predicates/i);
+  }
+
+  async selectTraceScope() {
+    await this.traceScopeOption.click();
+  }
+
   /**
    * Navigate to the search page
    */

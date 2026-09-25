@@ -210,6 +210,10 @@ async function* fetchDataInChunks({
     ...(w != null && seriesLimit != null && rankingDateRange != null
       ? { seriesLimitDateRange: rankingDateRange }
       : {}),
+    // Preserve the full selected range for trace-scope membership subqueries so
+    // cross-span matches straddling a chunk boundary are not dropped (harmless
+    // for non-trace configs, which never read it).
+    ...(w != null ? { traceScopeDateRange: config.dateRange } : {}),
   });
 
   if (IS_MTVIEWS_ENABLED && isBuilderChartConfig(config)) {
