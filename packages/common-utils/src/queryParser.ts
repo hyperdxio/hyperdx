@@ -2083,8 +2083,8 @@ async function nodeTerm(
     const rangedTerm = node;
     return serializer.range(
       field,
-      rangedTerm.term_min,
-      rangedTerm.term_max,
+      decodeSpecialTokens(rangedTerm.term_min),
+      decodeSpecialTokens(rangedTerm.term_max),
       isNegatedField,
       context,
       rangedTerm.inclusive,
