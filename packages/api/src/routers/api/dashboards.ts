@@ -35,6 +35,10 @@ import { getSources } from '@/controllers/sources';
 import { getNonNullUserWithTeam } from '@/middleware/auth';
 import type { ObjectId } from '@/models';
 import { getPromqlLabelFilterSourceError } from '@/routers/external-api/v2/utils/dashboards';
+import {
+  DashboardVersionConflictError,
+  parseVersionToken,
+} from '@/utils/dashboardVersion';
 import { objectIdSchema } from '@/utils/zod';
 
 // create routes that will get and update dashboards
@@ -176,7 +180,13 @@ router.patch(
     params: z.object({
       id: objectIdSchema,
     }),
-    body: DashboardSchema.partial().superRefine(addFilterIssues),
+    body: DashboardSchema.partial()
+      .extend({
+        // Optional so existing internal callers are unaffected. Present means
+        // "only write if the dashboard is still at this version".
+        expectedVersion: z.string().optional(),
+      })
+      .superRefine(addFilterIssues),
   }),
   async (req, res, next) => {
     try {
@@ -189,9 +199,27 @@ router.patch(
         return res.sendStatus(404);
       }
 
+      const { expectedVersion } = req.body;
+      let expectedVersionNumber: number | undefined;
+      if (expectedVersion !== undefined) {
+        const parsed = parseVersionToken(expectedVersion);
+        if (parsed == null) {
+          return res
+            .status(400)
+            .json({ message: 'Malformed expectedVersion.' });
+        }
+        expectedVersionNumber = parsed;
+      }
+
       // Only omit undefined values, keep null (which signals field removal)
       // `provisioned` is server-owned — see the POST handler above.
-      const updates = _.omitBy(_.omit(req.body, 'provisioned'), _.isUndefined);
+      // `expectedVersion` is a control field, not document state; `version`
+      // is server-owned by the schema middleware. Neither belongs in
+      // `updates`, which is spread straight into the update.
+      const updates = _.omitBy(
+        _.omit(req.body, ['provisioned', 'expectedVersion', 'version']),
+        _.isUndefined,
+      );
 
       const sourceError = await validatePromqlLabelFilterSources(
         teamId,
@@ -202,14 +230,25 @@ router.patch(
         return res.status(400).json({ message: sourceError });
       }
 
-      const updatedDashboard = await updateDashboard(
-        dashboardId,
-        teamId,
-        updates,
-        userId,
-      );
-
-      res.json(updatedDashboard);
+      try {
+        const updatedDashboard = await updateDashboard(
+          dashboardId,
+          teamId,
+          updates,
+          userId,
+          expectedVersionNumber,
+        );
+        res.json(updatedDashboard);
+      } catch (e) {
+        if (e instanceof DashboardVersionConflictError) {
+          return res.status(409).json({
+            message:
+              'This dashboard was changed by someone else. Reload it and reapply your change.',
+            currentVersion: e.currentVersion,
+          });
+        }
+        throw e;
+      }
     } catch (e) {
       next(e);
     }

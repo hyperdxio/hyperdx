@@ -18,6 +18,12 @@ import {
   updateDashboardBodySchema,
   validateDashboardTiles,
 } from '@/routers/external-api/v2/utils/dashboards';
+import {
+  parseVersionToken,
+  resolveDashboardWriteMiss,
+  versionFilter,
+  versionToken,
+} from '@/utils/dashboardVersion';
 import type { ExternalDashboardTileWithId } from '@/utils/zod';
 import {
   MAX_TAG_LENGTH,
@@ -49,7 +55,7 @@ export function registerSaveDashboard({
       title: 'Create or Update Dashboard',
       annotations: { destructiveHint: true },
       description:
-        'Create a new dashboard (omit id) or update an existing one (provide id). ' +
+        'Create a new dashboard (omit id) or update an existing one (provide id and version). ' +
         'Call clickstack_list_sources first to obtain sourceId and connectionId values. ' +
         'IMPORTANT: After saving a dashboard, always run clickstack_query_tiles to validate ' +
         'every tile in one call (or clickstack_query_tile for a single tile) and confirm the ' +
@@ -69,6 +75,15 @@ export function registerSaveDashboard({
         ),
         containers: mcpContainersParam.optional(),
         filters: mcpFiltersParam.optional(),
+        version: z
+          .string()
+          .optional()
+          .describe(
+            'Required when updating (id provided): the `version` from the most ' +
+              'recent clickstack_get_dashboard or clickstack_save_dashboard ' +
+              'response for this dashboard. The update is rejected if the ' +
+              'dashboard changed since then. Omit when creating.',
+          ),
       }),
     },
     async ({
@@ -78,8 +93,14 @@ export function registerSaveDashboard({
       tags,
       containers,
       filters: inputFilters,
+      version,
     }) => {
       if (!dashboardId) {
+        if (version !== undefined) {
+          return mcpUserError(
+            'version applies only to updates. Omit it when creating a dashboard.',
+          );
+        }
         return createDashboard({
           teamId,
           userId,
@@ -91,6 +112,12 @@ export function registerSaveDashboard({
           inputFilters,
         });
       }
+      if (version === undefined) {
+        return mcpUserError(
+          'version is required when updating an existing dashboard. Call ' +
+            'clickstack_get_dashboard to read the current state and obtain its version.',
+        );
+      }
       return updateDashboard({
         teamId,
         userId,
@@ -101,6 +128,7 @@ export function registerSaveDashboard({
         tags,
         containers,
         inputFilters,
+        version,
       });
     },
   );
@@ -226,6 +254,7 @@ async function createDashboard({
             ...(frontendUrl
               ? { url: `${frontendUrl}/dashboards/${newDashboard._id}` }
               : {}),
+            version: versionToken(newDashboard),
             hint: 'Use clickstack_query_tiles to validate every tile in one call (or clickstack_query_tile for a single tile) before viewing the dashboard.',
             ...(macroWarnings.length > 0 ? { warnings: macroWarnings } : {}),
           },
@@ -249,6 +278,7 @@ async function updateDashboard({
   tags,
   containers,
   inputFilters,
+  version,
 }: {
   teamId: string;
   userId: string | undefined;
@@ -259,7 +289,16 @@ async function updateDashboard({
   tags: string[] | undefined;
   containers: DashboardContainer[] | undefined;
   inputFilters: McpDashboardFilter[] | undefined;
+  version: string;
 }) {
+  const expectedVersion = parseVersionToken(version);
+  if (expectedVersion == null) {
+    return mcpUserError(
+      `"${version}" is not a valid dashboard version. Use the \`version\` ` +
+        'value from a clickstack_get_dashboard response verbatim.',
+    );
+  }
+
   const parsed = updateDashboardBodySchema.safeParse({
     name,
     tiles: inputTiles,
@@ -285,7 +324,14 @@ async function updateDashboard({
   ).lean();
 
   if (!existingDashboard) {
-    return mcpUserError('Dashboard not found');
+    // Unlike the findOneAndUpdate miss below, this request never confirmed
+    // the dashboard existed, so there is no basis to claim it was deleted —
+    // a bad or stale id looks identical to one that's since been removed.
+    // Still needs to read as "not a version conflict, don't just retry."
+    return mcpUserError(
+      'Dashboard not found. It may never have existed, or it may have ' +
+        'been deleted.',
+    );
   }
 
   const effectiveContainers =
@@ -359,13 +405,28 @@ async function updateDashboard({
   }
 
   const updatedDashboard = await Dashboard.findOneAndUpdate(
-    { _id: dashboardId, team: teamId },
+    { _id: dashboardId, team: teamId, ...versionFilter(expectedVersion) },
     { $set: setPayload },
     { new: true },
   );
 
   if (!updatedDashboard) {
-    return mcpUserError('Dashboard not found');
+    const miss = await resolveDashboardWriteMiss(
+      dashboardId,
+      teamId,
+      'mcp_save',
+    );
+    if (miss.kind === 'deleted') {
+      return mcpUserError(
+        'Dashboard not found — it was deleted after you read it.',
+      );
+    }
+    return mcpUserError(
+      `Dashboard changed since you read it (you sent ${version}, current is ` +
+        `${miss.currentVersion}). Your update was not applied. Call ` +
+        'clickstack_get_dashboard to re-read it, re-apply your change on top ' +
+        'of the current state, then retry with the new version.',
+    );
   }
 
   await cleanupDashboardAlerts({
@@ -391,6 +452,7 @@ async function updateDashboard({
             ...(frontendUrl
               ? { url: `${frontendUrl}/dashboards/${updatedDashboard._id}` }
               : {}),
+            version: versionToken(updatedDashboard),
             hint: 'Use clickstack_query_tiles to validate every tile in one call (or clickstack_query_tile for a single tile) before viewing the dashboard.',
             ...(macroWarnings.length > 0 ? { warnings: macroWarnings } : {}),
           },

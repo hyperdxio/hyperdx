@@ -7809,4 +7809,153 @@ describe('External API v2 Dashboards - new format', () => {
       expect(await Dashboard.countDocuments({})).toBe(before);
     });
   });
+
+  describe('If-Match concurrency', () => {
+    const seed = async () => {
+      const created = await authRequest('post', BASE_URL)
+        .send(createMockDashboard(traceSource._id.toString()))
+        .expect(200);
+      return created;
+    };
+
+    it('emits a matching ETag on create and read', async () => {
+      const created = await seed();
+      expect(created.headers.etag).toMatch(/^"\d+"$/);
+
+      const read = await authRequest(
+        'get',
+        `${BASE_URL}/${created.body.data.id}`,
+      ).expect(200);
+      expect(read.headers.etag).toBe(created.headers.etag);
+    });
+
+    it('allows a write with no If-Match (unchanged behaviour)', async () => {
+      const created = await seed();
+
+      await authRequest('put', `${BASE_URL}/${created.body.data.id}`)
+        .send({
+          ...createMockDashboard(traceSource._id.toString()),
+          name: 'Renamed With No Header',
+        })
+        .expect(200);
+    });
+
+    it('allows a write with a matching If-Match and returns the new ETag', async () => {
+      const created = await seed();
+
+      const updated = await authRequest(
+        'put',
+        `${BASE_URL}/${created.body.data.id}`,
+      )
+        .set('If-Match', created.headers.etag)
+        .send({
+          ...createMockDashboard(traceSource._id.toString()),
+          name: 'Renamed With Matching Header',
+        })
+        .expect(200);
+
+      expect(updated.headers.etag).toMatch(/^"\d+"$/);
+      expect(updated.headers.etag).not.toBe(created.headers.etag);
+      expect(updated.body.data.name).toBe('Renamed With Matching Header');
+    });
+
+    it('rejects a stale If-Match with 412 and does not write', async () => {
+      const created = await seed();
+      await Dashboard.findByIdAndUpdate(created.body.data.id, {
+        $set: { name: 'Edited By Someone Else' },
+      });
+
+      const response = await authRequest(
+        'put',
+        `${BASE_URL}/${created.body.data.id}`,
+      )
+        .set('If-Match', created.headers.etag)
+        .send({
+          ...createMockDashboard(traceSource._id.toString()),
+          name: 'Should Not Land',
+        })
+        .expect(412);
+
+      expect(response.headers.etag).toBeDefined();
+      const inDb = await Dashboard.findById(created.body.data.id);
+      expect(inDb!.name).toBe('Edited By Someone Else');
+    });
+
+    it('treats If-Match: * as match-any', async () => {
+      const created = await seed();
+
+      await authRequest('put', `${BASE_URL}/${created.body.data.id}`)
+        .set('If-Match', '*')
+        .send({
+          ...createMockDashboard(traceSource._id.toString()),
+          name: 'Renamed With Wildcard',
+        })
+        .expect(200);
+    });
+
+    it('rejects a malformed If-Match with 400', async () => {
+      const created = await seed();
+
+      await authRequest('put', `${BASE_URL}/${created.body.data.id}`)
+        .set('If-Match', 'not-an-etag')
+        .send(createMockDashboard(traceSource._id.toString()))
+        .expect(400);
+    });
+
+    it('returns 404 when the dashboard was already deleted before the request (pre-write existence check)', async () => {
+      const created = await seed();
+      const etag = created.headers.etag;
+      await Dashboard.findByIdAndDelete(created.body.data.id);
+
+      await authRequest('put', `${BASE_URL}/${created.body.data.id}`)
+        .set('If-Match', etag)
+        .send(createMockDashboard(traceSource._id.toString()))
+        .expect(404);
+    });
+
+    // A sequential test can't reach the deleted branch inside the write-time
+    // miss handling: the handler's own pre-write existingDashboard read would
+    // already see any deletion made before the request and 404 there first.
+    // Spying on the single findOneAndUpdate call simulates the dashboard
+    // vanishing in the real gap between that read and the conditional write,
+    // which is what resolveDashboardWriteMiss's 'deleted' branch is for.
+    it('returns 404, not 412, when the dashboard is deleted between the read and the write (simulated race)', async () => {
+      const created = await seed();
+      const dashboardId = created.body.data.id;
+
+      const findOneAndUpdateSpy = jest
+        .spyOn(Dashboard, 'findOneAndUpdate')
+        .mockImplementationOnce((async () => {
+          await Dashboard.findByIdAndDelete(dashboardId);
+          return null;
+        }) as unknown as typeof Dashboard.findOneAndUpdate);
+
+      try {
+        await authRequest('put', `${BASE_URL}/${dashboardId}`)
+          .set('If-Match', created.headers.etag)
+          .send({
+            ...createMockDashboard(traceSource._id.toString()),
+            name: 'Should Not Land',
+          })
+          .expect(404);
+      } finally {
+        findOneAndUpdateSpy.mockRestore();
+      }
+    });
+
+    // The provider copies the GET body straight into dashboard_json on
+    // import and only strips id/createdAt/updatedAt, so a new top-level field
+    // would show as a perpetual plan diff.
+    it('keeps the version out of the response body', async () => {
+      const created = await seed();
+
+      const read = await authRequest(
+        'get',
+        `${BASE_URL}/${created.body.data.id}`,
+      ).expect(200);
+
+      expect(read.body.data).not.toHaveProperty('version');
+      expect(read.body.data).not.toHaveProperty('updatedAt');
+    });
+  });
 });

@@ -65,6 +65,7 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
             select: [{ aggFn: 'count' }],
           },
         },
+        version: created.version,
       },
     );
 
@@ -134,6 +135,7 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
             select: [{ aggFn: 'avg', valueExpression: 'Duration' }],
           },
         },
+        version: created.version,
       },
     );
 
@@ -157,6 +159,7 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
     const result = await callTool(ctx.client!, 'clickstack_patch_dashboard', {
       dashboardId: dashboard._id.toString(),
       name: 'New Name',
+      version: String(dashboard.version),
     });
 
     expect(result.isError).toBeFalsy();
@@ -181,6 +184,7 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
     const result = await callTool(ctx.client!, 'clickstack_patch_dashboard', {
       dashboardId: dashboard._id.toString(),
       tags: ['new1', 'new2'],
+      version: String(dashboard.version),
     });
 
     expect(result.isError).toBeFalsy();
@@ -222,6 +226,7 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
           select: [{ aggFn: 'avg', valueExpression: 'Duration' }],
         },
       },
+      version: created.version,
     });
 
     expect(result.isError).toBeFalsy();
@@ -244,6 +249,7 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
         name: 'Ghost',
         config: { displayType: 'markdown', markdown: 'hello' },
       },
+      version: String(dashboard.version),
     });
 
     expect(result.isError).toBe(true);
@@ -254,6 +260,7 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
     const result = await callTool(ctx.client!, 'clickstack_patch_dashboard', {
       dashboardId: '000000000000000000000000',
       name: 'Ghost',
+      version: '1',
     });
 
     expect(result.isError).toBe(true);
@@ -292,6 +299,7 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
           select: [{ aggFn: 'count' }],
         },
       },
+      version: created.version,
     });
 
     expect(result.isError).toBe(true);
@@ -334,6 +342,7 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
             'SELECT ServiceName, count() AS c FROM otel_traces WHERE $__timeFilter(Timestamp) AND $__filters GROUP BY ServiceName LIMIT 10',
         },
       },
+      version: created.version,
     });
 
     expect(result.isError).toBe(true);
@@ -386,6 +395,7 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
             'SELECT ServiceName, count() AS c FROM otel_traces WHERE $__timeFilter(Timestamp) AND $__filters GROUP BY ServiceName LIMIT 10',
         },
       },
+      version: created.version,
     });
 
     expect(result.isError).toBeFalsy();
@@ -464,6 +474,7 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
             select: [{ aggFn: 'avg', valueExpression: 'Duration' }],
           },
         },
+        version: created.version,
       },
     );
     expect(patchResult.isError).toBeFalsy();
@@ -516,6 +527,7 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
             select: [{ aggFn: 'avg', valueExpression: 'Duration' }],
           },
         },
+        version: created.version,
       },
     );
 
@@ -530,7 +542,7 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
       'clickstack_get_dashboard_tile',
       { dashboardId: created.id, tileId },
     );
-    const tile = JSON.parse(getFirstText(getResult));
+    const { tile } = JSON.parse(getFirstText(getResult));
     expect(tile.name).toBe('Original Title');
   });
 
@@ -585,6 +597,7 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
             select: [{ aggFn: 'count' }],
           },
         },
+        version: created.version,
       },
     );
 
@@ -631,6 +644,7 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
           colorRules: [{ operator: 'gte', value: 500, color: 'chart-error' }],
         },
       },
+      version: created.version,
     });
 
     // Get the tile back
@@ -644,7 +658,7 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
     );
 
     expect(getResult.isError).toBeFalsy();
-    const tile = JSON.parse(getFirstText(getResult));
+    const { tile } = JSON.parse(getFirstText(getResult));
     expect(tile.id).toBe(tileId);
     expect(tile.name).toBe('Patched');
     expect(tile.config.displayType).toBe('number');
@@ -700,6 +714,7 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
         dashboardId: created.id,
         tileId,
         tile: { name: 'SLO (patched)', config: fetched.tiles[0].config },
+        version: fetched.version,
       },
     );
     expect(patchResult.isError).toBeFalsy();
@@ -709,7 +724,7 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
       'clickstack_get_dashboard_tile',
       { dashboardId: created.id, tileId },
     );
-    const tile = JSON.parse(getFirstText(getResult));
+    const { tile } = JSON.parse(getFirstText(getResult));
     expect(tile.config.color).toBe('chart-success');
     expect(tile.config.colorRules).toEqual(colorRules);
   });
@@ -748,6 +763,7 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
           backgroundChart: { type: 'line', color: 'chart-blue' },
         },
       },
+      version: created.version,
     });
 
     const getResult = await callTool(
@@ -760,7 +776,7 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
     );
 
     expect(getResult.isError).toBeFalsy();
-    const tile = JSON.parse(getFirstText(getResult));
+    const { tile } = JSON.parse(getFirstText(getResult));
     expect(tile.config.displayType).toBe('number');
     expect(tile.config.backgroundChart).toEqual({
       type: 'line',
@@ -806,6 +822,7 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
           seriesLimit: 3,
         },
       },
+      version: created.version,
     });
 
     const getResult = await callTool(
@@ -818,7 +835,7 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
     );
 
     expect(getResult.isError).toBeFalsy();
-    const tile = JSON.parse(getFirstText(getResult));
+    const { tile } = JSON.parse(getFirstText(getResult));
     expect(tile.config.displayType).toBe('stacked_bar');
     expect(tile.config.seriesLimit).toBe(3);
   });
@@ -864,6 +881,7 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
               sqlTemplate: 'SELECT 1 AS value LIMIT 1',
             },
           },
+          version: created.version,
         },
       );
 
@@ -925,6 +943,7 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
                 'WHERE $__timeFilter(Timestamp) AND $__filters GROUP BY ServiceName LIMIT 10',
             },
           },
+          version: created.version,
         },
       );
 
@@ -1000,6 +1019,7 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
               sqlTemplate: macroSql('tenant'),
             },
           },
+          version: created.version,
         },
       );
 
@@ -1037,6 +1057,7 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
               ],
             },
           },
+          version: created.version,
         },
       );
 
@@ -1068,6 +1089,7 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
               sqlTemplate: macroSql('service'),
             },
           },
+          version: created.version,
         },
       );
 
@@ -1123,6 +1145,7 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
               sqlTemplate: macroSql('env'),
             },
           },
+          version: created.version,
         },
       );
       expect(declaredResult.isError).toBeFalsy();
@@ -1145,6 +1168,7 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
               sqlTemplate: macroSql('tenant'),
             },
           },
+          version: declared.version,
         },
       );
       expect(unknownResult.isError).toBeFalsy();
@@ -1232,6 +1256,7 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
               formulas: [{ expression: 'A / C' }],
             },
           },
+          version: dashboard.version,
         },
       );
 
@@ -1259,6 +1284,7 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
               asRatio: true,
             },
           },
+          version: dashboard.version,
         },
       );
 
@@ -1284,6 +1310,7 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
               select: metricSelect(),
             },
           },
+          version: dashboard.version,
         },
       );
 
@@ -1314,6 +1341,7 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
               showOperandSeries: false,
             },
           },
+          version: dashboard.version,
         },
       );
 
@@ -1324,9 +1352,192 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
         'clickstack_get_dashboard_tile',
         { dashboardId: dashboard.id, tileId: dashboard.tiles[0].id },
       );
-      const tile = JSON.parse(getFirstText(getResult));
+      const { tile } = JSON.parse(getFirstText(getResult));
       expect(tile.config.formulas).toEqual(formulas);
       expect(tile.config.showOperandSeries).toBe(false);
+    });
+  });
+
+  describe('version enforcement', () => {
+    const sourceIdFor = () => ctx.traceSource._id.toString();
+
+    const seed = async (name: string) => {
+      const sourceId = sourceIdFor();
+      return JSON.parse(
+        getFirstText(
+          await callTool(ctx.client!, 'clickstack_save_dashboard', {
+            name,
+            tiles: [
+              {
+                name: 'Tile A',
+                x: 0,
+                y: 0,
+                w: 12,
+                h: 4,
+                config: {
+                  displayType: 'line',
+                  sourceId,
+                  select: [{ aggFn: 'count' }],
+                },
+              },
+            ],
+          }),
+        ),
+      );
+    };
+
+    const patchTile = (sourceId: string) => ({
+      name: 'Patched',
+      config: {
+        displayType: 'table',
+        sourceId,
+        select: [{ aggFn: 'count' }],
+      },
+    });
+
+    // `version` is a required field on the Zod input schema, so an
+    // omitted call never reaches the handler's own check — it's rejected
+    // by the MCP SDK's schema validation, which reports it as a missing
+    // "version" field rather than the handler's prose message.
+    it('rejects a patch with no version', async () => {
+      const created = await seed('Patch No Version');
+
+      const result = await callTool(ctx.client!, 'clickstack_patch_dashboard', {
+        dashboardId: created.id,
+        tileId: created.tiles[0].id,
+        tile: patchTile(sourceIdFor()),
+      });
+
+      expect(result.isError).toBe(true);
+      const text = getFirstText(result);
+      expect(text).toContain('clickstack_patch_dashboard');
+      expect(text).toContain('"version"');
+      expect(text).toContain('Required');
+    });
+
+    it('rejects a stale version and leaves the tile untouched', async () => {
+      const created = await seed('Patch Stale Version');
+      await Dashboard.findByIdAndUpdate(created.id, {
+        $set: { name: 'Edited By Someone Else' },
+      });
+
+      const text = getFirstText(
+        await callTool(ctx.client!, 'clickstack_patch_dashboard', {
+          dashboardId: created.id,
+          tileId: created.tiles[0].id,
+          tile: patchTile(sourceIdFor()),
+          version: created.version,
+        }),
+      );
+
+      expect(text).toContain('changed since you read it');
+      const inDb = await Dashboard.findById(created.id);
+      expect(inDb!.tiles[0].config.displayType).toBe('line');
+    });
+
+    it('accepts a metadata-only patch with a current version', async () => {
+      const created = await seed('Patch Metadata');
+
+      const result = JSON.parse(
+        getFirstText(
+          await callTool(ctx.client!, 'clickstack_patch_dashboard', {
+            dashboardId: created.id,
+            name: 'Renamed By Patch',
+            version: created.version,
+          }),
+        ),
+      );
+
+      expect(result.name).toBe('Renamed By Patch');
+      expect(result.version).not.toBe(created.version);
+    });
+
+    // A tile that's already gone by the time the handler's own read runs
+    // (the tiles array was emptied before this call) is caught by the
+    // pre-existing read-time lookup, not by the write-time miss branch below.
+    it('reports a tile that is already gone at read time, with the available tile IDs', async () => {
+      const created = await seed('Patch Removed Tile');
+      const tileId = created.tiles[0].id;
+
+      const current = await Dashboard.findByIdAndUpdate(
+        created.id,
+        { $set: { tiles: [] } },
+        { new: true },
+      );
+
+      const text = getFirstText(
+        await callTool(ctx.client!, 'clickstack_patch_dashboard', {
+          dashboardId: created.id,
+          tileId,
+          tile: patchTile(sourceIdFor()),
+          version: String(current!.version),
+        }),
+      );
+
+      expect(text).toContain(`Tile not found: ${tileId}`);
+      expect(text).toContain('Available tile IDs:');
+      expect(text).not.toContain('changed since you read it');
+    });
+
+    // A sequential test can't desynchronise the read from the write: the
+    // handler's own findOne would already see any mutation made before the
+    // call, and the schema middleware bumps version on every write so a
+    // stale version can't be forced from outside. Spying on the single findOneAndUpdate
+    // call simulates the tile vanishing in the real gap between the
+    // handler's read and its conditional write.
+    it('reports the tile as missing at write time when it vanishes between the read and the write (simulated race)', async () => {
+      const created = await seed('Patch Race Tile');
+      const tileId = created.tiles[0].id;
+
+      const findOneAndUpdateSpy = jest
+        .spyOn(Dashboard, 'findOneAndUpdate')
+        .mockResolvedValueOnce(null);
+
+      try {
+        const text = getFirstText(
+          await callTool(ctx.client!, 'clickstack_patch_dashboard', {
+            dashboardId: created.id,
+            tileId,
+            tile: patchTile(sourceIdFor()),
+            version: created.version,
+          }),
+        );
+
+        expect(text).toContain('was not found at write time');
+        expect(text).not.toContain('changed since you read it');
+      } finally {
+        findOneAndUpdateSpy.mockRestore();
+      }
+    });
+
+    // Same race, but the dashboard itself is gone (not just the tile) by
+    // write time — reuses the findOneAndUpdate spy to delete the document
+    // out from under the write, which resolveDashboardWriteMiss then finds.
+    it('reports a deleted dashboard as deleted when it vanishes between the read and the write (simulated race)', async () => {
+      const created = await seed('Patch Race Deleted');
+      const tileId = created.tiles[0].id;
+
+      const findOneAndUpdateSpy = jest
+        .spyOn(Dashboard, 'findOneAndUpdate')
+        .mockImplementationOnce((async () => {
+          await Dashboard.findByIdAndDelete(created.id);
+          return null;
+        }) as unknown as typeof Dashboard.findOneAndUpdate);
+
+      try {
+        const text = getFirstText(
+          await callTool(ctx.client!, 'clickstack_patch_dashboard', {
+            dashboardId: created.id,
+            tileId,
+            tile: patchTile(sourceIdFor()),
+            version: created.version,
+          }),
+        );
+
+        expect(text).toContain('deleted after you read it');
+      } finally {
+        findOneAndUpdateSpy.mockRestore();
+      }
     });
   });
 });
