@@ -836,12 +836,12 @@ function HeatmapContainer({
   }, [data, generatedTsBuckets, scaleType, effectiveMin, max, nBuckets]);
 
   // While refreshing, keep drawing the last settled heatmap. The previous
-  // bucket rows only line up with the time buckets and bounds they were
+  // bucket rows only line up with the time buckets, bounds and scale they were
   // queried with, so re-plotting them on the new range would draw a blank or
   // mis-scaled grid.
   const currentView = useMemo(
-    () => ({ heatmapData, generatedTsBuckets, effectiveMin }),
-    [heatmapData, generatedTsBuckets, effectiveMin],
+    () => ({ heatmapData, generatedTsBuckets, effectiveMin, scaleType }),
+    [heatmapData, generatedTsBuckets, effectiveMin, scaleType],
   );
   const [settledView, setSettledView] = useState(currentView);
   if (!isRefreshing && settledView !== currentView) {
@@ -911,7 +911,7 @@ function HeatmapContainer({
                   // The 1.1x threshold adds 10% headroom to account for
                   // floating-point rounding in the bucket boundary.
                   const adjustedYMin =
-                    scaleType === 'log' && yMin <= view.effectiveMin * 1.1
+                    view.scaleType === 'log' && yMin <= view.effectiveMin * 1.1
                       ? 0
                       : yMin;
                   onFilter(xMin, xMax, adjustedYMin, yMax);
@@ -919,7 +919,7 @@ function HeatmapContainer({
               : undefined
           }
           onClearFilter={onClearFilter}
-          scaleType={scaleType}
+          scaleType={view.scaleType}
           palette={palette}
           selectionBounds={selectionBounds}
         />

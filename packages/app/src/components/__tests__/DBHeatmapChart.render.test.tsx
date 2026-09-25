@@ -30,12 +30,19 @@ jest.mock('next/dynamic', () => ({
   },
 }));
 
-// Heatmap passes uPlot `[[], [time, bucket, count]]`; record what it plots.
+// Heatmap passes uPlot `[[], [time, bucket, count]]` plus its options; record
+// what it plots and with which axes.
 const mockPlot = jest.fn();
 jest.mock('uplot-react', () => ({
   __esModule: true,
-  default: ({ data }: { data: [unknown, number[][]] }) => {
-    mockPlot(data[1]);
+  default: ({
+    data,
+    options,
+  }: {
+    data: [unknown, number[][]];
+    options: { axes?: { splits?: unknown }[] };
+  }) => {
+    mockPlot(data[1], options);
     return <div data-testid="heatmap-plot" />;
   },
 }));
@@ -119,6 +126,9 @@ function lastOptionsFor(queryName: string) {
 }
 
 const lastPlottedCounts = () => mockPlot.mock.calls.at(-1)?.[0]?.[2];
+// Only the log scale adds custom y-axis splits (ticks at powers of 10).
+const lastYAxisIsLog = () =>
+  mockPlot.mock.calls.at(-1)?.[1]?.axes?.[1]?.splits != null;
 
 // A wrapper (rather than renderWithMantine) keeps the provider in place across
 // rerenders, so the chart keeps its state when the range changes.
@@ -166,6 +176,23 @@ describe('DBHeatmapChart refresh', () => {
       'effect-pulse',
     );
     expect(screen.queryByText('Loading...')).not.toBeInTheDocument();
+  });
+
+  it('keeps the previous scale with the previous heatmap while a scale switch refreshes', async () => {
+    mockQueries({});
+    const { rerender } = renderChart(T0);
+    await screen.findByTestId('heatmap-plot');
+    expect(lastYAxisIsLog()).toBe(true);
+    const settledCounts = lastPlottedCounts();
+
+    // Switching to linear refetches both queries; until they return, the
+    // chart still shows log-scale data, so it must keep the log axis.
+    mockQueries({ boundsPlaceholder: true, bucketsPlaceholder: true });
+    rerender(<DBHeatmapChart config={configFor(T0)} scaleType="linear" />);
+
+    await screen.findByTestId('heatmap-plot');
+    expect(lastPlottedCounts()).toEqual(settledCounts);
+    expect(lastYAxisIsLog()).toBe(true);
   });
 
   it('pulses while only the bucket query is still refreshing', async () => {
