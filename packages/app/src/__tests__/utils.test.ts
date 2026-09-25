@@ -21,14 +21,17 @@ import {
   getAllMetricTables,
   getColorFromCSSToken,
   getMetricTableName,
+  isColumnInSelect,
   mapKeyBy,
   mergePath,
+  orderByAfterRemovingSelectItem,
   orderByStringToSortingState,
   parseTimestampToMs,
   resolveConditionalColor,
   sortingStateToOrderByString,
   stripTrailingSlash,
   useQueryHistory,
+  withMapKeyAlias,
 } from '@/utils';
 
 describe('formatAttributeClause', () => {
@@ -1417,6 +1420,118 @@ describe('mergePath', () => {
       // no-op because Number.isInteger(asNumber) succeeds. Sanity check.
       expect(mergePath(['SomeArray', '0'])).toBe('SomeArray[1]');
     });
+  });
+});
+
+describe('withMapKeyAlias', () => {
+  const noColumns = new Set(['Timestamp', 'Body']);
+
+  it('labels a Map subscript with its key', () => {
+    expect(
+      withMapKeyAlias("ResourceAttributes['service.name']", [], noColumns),
+    ).toBe(`ResourceAttributes['service.name'] AS "service.name"`);
+    expect(withMapKeyAlias("`LogAttributes`['k8s.pod']", [], noColumns)).toBe(
+      '`LogAttributes`[\'k8s.pod\'] AS "k8s.pod"',
+    );
+  });
+
+  it('unescapes the key the way mergePath escaped it', () => {
+    expect(withMapKeyAlias("LogAttributes['it\\'s']", [], noColumns)).toBe(
+      `LogAttributes['it\\'s'] AS "it's"`,
+    );
+  });
+
+  it('leaves anything that is not a bare Map subscript alone', () => {
+    [
+      'Body',
+      'lower(Body)',
+      "LogAttributes['a']['b']",
+      "JSONExtractString(Body, 'a')",
+      "LogAttributes['a'] AS a",
+    ].forEach(column => {
+      expect(withMapKeyAlias(column, [], noColumns)).toBe(column);
+    });
+  });
+
+  it('keeps the derived name when the alias could change the query', () => {
+    // An alias shadows a column of the same name in WHERE and ORDER BY
+    expect(
+      withMapKeyAlias(
+        "ResourceAttributes['ServiceName']",
+        [],
+        new Set(['ServiceName']),
+      ),
+    ).toBe("ResourceAttributes['ServiceName']");
+    // Two selected columns cannot share a name
+    expect(
+      withMapKeyAlias(
+        "LogAttributes['http.method']",
+        [`SpanAttributes['http.method'] AS "http.method"`],
+        noColumns,
+      ),
+    ).toBe("LogAttributes['http.method']");
+    // Keys that would need escaping inside the quoted alias
+    expect(withMapKeyAlias(`LogAttributes['a"b']`, [], noColumns)).toBe(
+      `LogAttributes['a"b']`,
+    );
+    // Table columns not loaded yet: a clash with one cannot be ruled out
+    expect(
+      withMapKeyAlias("ResourceAttributes['ServiceName']", [], new Set()),
+    ).toBe("ResourceAttributes['ServiceName']");
+  });
+});
+
+describe('isColumnInSelect', () => {
+  it('matches a column whether or not it was aliased', () => {
+    const select = [
+      'Timestamp',
+      `ResourceAttributes['service.name'] AS "service.name"`,
+    ];
+    expect(isColumnInSelect(select, 'Timestamp')).toBe(true);
+    expect(isColumnInSelect(select, "ResourceAttributes['service.name']")).toBe(
+      true,
+    );
+    expect(isColumnInSelect(select, 'Body')).toBe(false);
+    expect(isColumnInSelect(undefined, 'Body')).toBe(false);
+  });
+
+  it('matches a hand-typed alias too', () => {
+    expect(isColumnInSelect(['Body AS b'], 'Body')).toBe(true);
+    expect(isColumnInSelect(['lower(Body) AS `b`'], 'lower(Body)')).toBe(true);
+  });
+
+  it('does not mistake a cast for an alias', () => {
+    expect(isColumnInSelect(['CAST(x AS String)'], 'CAST(x')).toBe(false);
+  });
+});
+
+describe('orderByAfterRemovingSelectItem', () => {
+  const item = `ResourceAttributes['service.name'] AS "service.name"`;
+
+  it('drops a sort on the alias of the removed column', () => {
+    expect(
+      orderByAfterRemovingSelectItem(
+        item,
+        '"service.name" DESC',
+        'Timestamp DESC',
+      ),
+    ).toBe('Timestamp DESC');
+    expect(orderByAfterRemovingSelectItem(item, '"service.name" ASC', '')).toBe(
+      '',
+    );
+  });
+
+  it('keeps any other sort', () => {
+    expect(
+      orderByAfterRemovingSelectItem(item, 'Timestamp ASC', 'Timestamp DESC'),
+    ).toBe('Timestamp ASC');
+    expect(orderByAfterRemovingSelectItem(item, '"http.method" DESC', '')).toBe(
+      '"http.method" DESC',
+    );
+    // A column without an alias sorts by its own expression, which is not affected
+    expect(
+      orderByAfterRemovingSelectItem('Body', 'Body DESC', 'Timestamp DESC'),
+    ).toBe('Body DESC');
   });
 });
 

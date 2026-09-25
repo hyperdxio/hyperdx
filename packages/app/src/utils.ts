@@ -4,7 +4,10 @@ import { formatDistanceToNowStrict } from 'date-fns';
 import numbro from 'numbro';
 import type { SetStateAction } from 'react';
 import TimestampNano from 'timestamp-nano';
-import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
+import {
+  TableConnection,
+  unquoteIdentifier,
+} from '@hyperdx/common-utils/dist/core/metadata';
 import {
   CATEGORICAL_PALETTE_TOKENS,
   ChartPaletteToken,
@@ -1199,6 +1202,93 @@ export const mergePath = (
         : `['${escapeSqlSingleQuoted(v)}']`;
     })
     .join('')}`;
+};
+
+// A bare Map subscript as the UI builds it: `LogAttributes['key']` or `` `LogAttributes`['key'] ``
+const MAP_SUBSCRIPT_REGEX =
+  /^(`[^`]+`|[A-Za-z_][A-Za-z0-9_]*)\['((?:[^'\\]|\\.)*)'\]$/;
+// A trailing `AS alias` on a SELECT item, with the alias quoted or bare
+const SELECT_ALIAS_REGEX =
+  /\s+AS\s+("(?:[^"\\]|\\.)*"|`[^`]*`|[A-Za-z_][A-Za-z0-9_]*)\s*$/i;
+
+/**
+ * The expression of a SELECT item, without its `AS alias`
+ */
+export const selectItemExpression = (item: string): string =>
+  item.replace(SELECT_ALIAS_REGEX, '').trim();
+
+/**
+ * The alias of a SELECT item, unquoted, or undefined if it has none
+ */
+export const selectItemAlias = (item: string): string | undefined => {
+  const alias = SELECT_ALIAS_REGEX.exec(item)?.[1];
+  return alias == null ? undefined : unquoteIdentifier(alias);
+};
+
+/**
+ * Whether a column picked in the UI is in the SELECT list, aliased or not
+ */
+export const isColumnInSelect = (
+  displayedColumns: string[] | undefined,
+  column: string,
+): boolean =>
+  displayedColumns?.some(
+    item => item === column || selectItemExpression(item) === column,
+  ) ?? false;
+
+/**
+ * Label a Map subscript picked in the UI with its key, so the results column
+ * reads `service.name` instead of `arrayElement(LogAttributes, 'service.name')`.
+ * The alias is left off whenever it could change the query.
+ */
+export const withMapKeyAlias = (
+  column: string,
+  selectItems: string[],
+  tableColumns: Set<string>,
+): string => {
+  const match = MAP_SUBSCRIPT_REGEX.exec(column);
+  if (!match) {
+    return column;
+  }
+  // Inverse of escapeSqlSingleQuoted, which mergePath uses to build the subscript
+  const key = match[2].replace(/\\(.)/g, '$1');
+  const selectedNames = selectItems.map(
+    item => selectItemAlias(item) ?? item.trim(),
+  );
+  if (
+    // Nothing to label
+    key === '' ||
+    // Would need escaping inside the quoted alias
+    /["\\]/.test(key) ||
+    // Table columns not loaded yet, so a clash with one cannot be ruled out
+    tableColumns.size === 0 ||
+    // ClickHouse resolves an alias before a column of the same name
+    tableColumns.has(key) ||
+    // Two selected columns cannot share a name
+    selectedNames.includes(key)
+  ) {
+    return column;
+  }
+  return `${column} AS "${key}"`;
+};
+
+/**
+ * The sort to keep once a SELECT item is removed. Sorting on an aliased column
+ * from the table header orders by the alias itself (`"service.name" DESC`),
+ * which stops resolving once the item is gone, so that falls back to the
+ * default sort.
+ */
+export const orderByAfterRemovingSelectItem = (
+  item: string,
+  orderBy: string,
+  defaultOrderBy: string,
+): string => {
+  const alias = selectItemAlias(item);
+  if (alias == null) {
+    return orderBy;
+  }
+  const sortedBy = orderBy.trim().replace(/\s+(ASC|DESC)$/i, '');
+  return sortedBy === `"${alias}"` ? defaultOrderBy : orderBy;
 };
 
 const _useTry = <T>(fn: () => T): [null | Error | unknown, null | T] => {

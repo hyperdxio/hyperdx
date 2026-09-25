@@ -130,9 +130,12 @@ import {
 } from '@/timeQuery';
 import {
   formatDurationMs,
+  orderByAfterRemovingSelectItem,
   QUERY_LOCAL_STORAGE,
+  selectItemExpression,
   useLocalStorage,
   usePrevious,
+  withMapKeyAlias,
 } from '@/utils';
 
 import ChartSQLPreview, { SQLPreview } from './components/ChartSQLPreview';
@@ -1104,7 +1107,7 @@ export function DBSearchPage() {
     [sources, lastSelectedSourceId],
   );
 
-  const { control, setValue, reset, handleSubmit, formState } =
+  const { control, setValue, getValues, reset, handleSubmit, formState } =
     useForm<SearchConfigFromSchema>({
       values: {
         select: searchedConfig.select || '',
@@ -1737,13 +1740,38 @@ export function DBSearchPage() {
 
   const toggleColumn = useCallback(
     (column: string) => {
-      const newSelectArray = displayedColumns.includes(column)
-        ? displayedColumns.filter(s => s !== column)
-        : [...displayedColumns, column];
+      // A column added from the UI can carry an alias, so match the expression too
+      const selected = displayedColumns.find(
+        s => s === column || selectItemExpression(s) === column,
+      );
+      const newSelectArray = selected
+        ? displayedColumns.filter(s => s !== selected)
+        : [
+            ...displayedColumns,
+            withMapKeyAlias(column, displayedColumns, knownColumns),
+          ];
       setValue('select', newSelectArray.join(', '));
+      if (selected) {
+        const orderBy = getValues('orderBy') ?? '';
+        const nextOrderBy = orderByAfterRemovingSelectItem(
+          selected,
+          orderBy,
+          defaultSearchConfig.orderBy ?? '',
+        );
+        if (nextOrderBy !== orderBy) {
+          setValue('orderBy', nextOrderBy);
+        }
+      }
       onSubmit();
     },
-    [displayedColumns, setValue, onSubmit],
+    [
+      displayedColumns,
+      knownColumns,
+      setValue,
+      getValues,
+      defaultSearchConfig.orderBy,
+      onSubmit,
+    ],
   );
 
   const generateSearchUrl = useCallback(

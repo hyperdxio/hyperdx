@@ -33,7 +33,7 @@ import HyperJson, {
   LineAction,
 } from '@/components/HyperJson';
 import { useFormatTime } from '@/useFormatTime';
-import { mergePath } from '@/utils';
+import { isColumnInSelect, mergePath } from '@/utils';
 import {
   CLIPBOARD_ERROR_MESSAGE,
   copyTextToClipboard,
@@ -584,7 +584,7 @@ export function DBRowJsonViewer({
           }
         }
 
-        const isIncluded = displayedColumns?.includes(columnFieldPath);
+        const isIncluded = isColumnInSelect(displayedColumns, columnFieldPath);
         actions.push({
           key: 'toggle-column',
           label: isIncluded ? <IconMinus size={14} /> : <IconPlus size={14} />,
