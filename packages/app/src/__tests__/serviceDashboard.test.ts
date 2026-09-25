@@ -320,7 +320,7 @@ describe('Service Dashboard', () => {
 
       expect(result.current.isLoading).toBe(false);
       expect(result.current.expressions?.isError).toBe(
-        "lower(StatusCode) = 'error'",
+        "lower(StatusCode) IN ('error', 'status_code_error')",
       );
       expect(result.current.expressions?.isSpanKindServer).toContain(
         'SpanKind IN',
