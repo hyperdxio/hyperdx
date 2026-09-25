@@ -256,3 +256,33 @@ export const getAlertReferenceLines = ({
     />
   );
 };
+
+// Mirrors getAlertReferenceLines' own branching, so the values used to size
+// the Y-axis domain can never drift from what's actually drawn as a line.
+export const getAlertReferenceLineValues = ({
+  thresholdType,
+  threshold,
+  thresholdMax,
+}: {
+  thresholdType: AlertThresholdType;
+  threshold: number;
+  thresholdMax?: number;
+}): number[] => {
+  if (threshold == null) {
+    return [];
+  }
+  if (
+    (thresholdType === AlertThresholdType.BETWEEN ||
+      thresholdType === AlertThresholdType.NOT_BETWEEN) &&
+    thresholdMax != null
+  ) {
+    return [threshold, thresholdMax];
+  }
+  if (
+    thresholdType === AlertThresholdType.BELOW ||
+    thresholdType === AlertThresholdType.BELOW_OR_EQUAL
+  ) {
+    return [0, threshold];
+  }
+  return [threshold];
+};
