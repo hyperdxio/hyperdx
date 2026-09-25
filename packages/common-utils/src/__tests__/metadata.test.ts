@@ -653,7 +653,7 @@ describe('Metadata', () => {
     });
 
     it('renders faceted conditions the same way as the keys they constrain', async () => {
-      // A JSON column renders to a typed subcolumn rather than the bracket
+      // A JSON column renders to a string expression rather than the bracket
       // form the caller wrote. If the predicate kept the raw expression it
       // would address a different (or non-existent) column than the aggregate
       // wrapping it, so both halves must come out rendered.
@@ -692,8 +692,8 @@ describe('Metadata', () => {
       if (!isBuilderChartConfig(actualConfig))
         throw new Error('Expected builder config');
       expect(actualConfig.select).toContain(
-        'groupUniqArrayIf(10)(Attributes.`namespace`.:String, ' +
-          "(Attributes.`cluster`.:String IN ('prod'))) AS param1",
+        'groupUniqArrayIf(10)(toString(Attributes.`namespace`), ' +
+          "(toString(Attributes.`cluster`) IN ('prod'))) AS param1",
       );
       // The raw bracket form must not survive into either half.
       expect(actualConfig.select).not.toContain("Attributes['");
@@ -773,7 +773,7 @@ describe('Metadata', () => {
       expect(renderChartConfigSpy).not.toHaveBeenCalled();
     });
 
-    it('renders JSON attribute keys as typed subcolumns', async () => {
+    it('renders JSON attribute keys as string expressions', async () => {
       jest.spyOn(metadata, 'getColumn').mockImplementation(({ column }) =>
         Promise.resolve(
           column === 'ResourceAttributes'
@@ -802,7 +802,7 @@ describe('Metadata', () => {
       expect(actualConfig.with?.[0]).toMatchObject({
         chartConfig: {
           select:
-            'ResourceAttributes.`k8s`.`namespace`.`name`.:String as param0',
+            'toString(ResourceAttributes.`k8s`.`namespace`.`name`) as param0',
         },
       });
     });
@@ -836,7 +836,7 @@ describe('Metadata', () => {
       expect(actualConfig.with?.[0]).toMatchObject({
         chartConfig: {
           select:
-            'ResourceAttributes.`foo`.`:String, count() AS injected`.:String as param0',
+            'toString(ResourceAttributes.`foo`.`:String, count() AS injected`) as param0',
         },
       });
     });
@@ -1851,7 +1851,7 @@ describe('Metadata', () => {
       });
     });
 
-    it('renders JSON distribution keys as typed subcolumns', async () => {
+    it('renders JSON distribution keys as string expressions', async () => {
       jest.spyOn(metadata, 'getColumn').mockImplementation(({ column }) =>
         Promise.resolve(
           column === 'ResourceAttributes'
@@ -1877,7 +1877,7 @@ describe('Metadata', () => {
       if (!isBuilderChartConfig(actualConfig))
         throw new Error('Expected builder config');
       expect(actualConfig.select).toBe(
-        'ResourceAttributes.`k8s`.`namespace`.`name`.:String AS __hdx_value, count() as __hdx_count, __hdx_count / (sum(__hdx_count) OVER ()) * 100 AS __hdx_percentage',
+        'toString(ResourceAttributes.`k8s`.`namespace`.`name`) AS __hdx_value, count() as __hdx_count, __hdx_count / (sum(__hdx_count) OVER ()) * 100 AS __hdx_percentage',
       );
       expect(actualConfig.groupBy).toBe('__hdx_value');
     });
@@ -1908,7 +1908,7 @@ describe('Metadata', () => {
       if (!isBuilderChartConfig(actualConfig))
         throw new Error('Expected builder config');
       expect(actualConfig.select).toBe(
-        'ResourceAttributes.`k8s`.`namespace`.`name`.:String AS __hdx_value, count() as __hdx_count, __hdx_count / (sum(__hdx_count) OVER ()) * 100 AS __hdx_percentage',
+        'toString(ResourceAttributes.`k8s`.`namespace`.`name`) AS __hdx_value, count() as __hdx_count, __hdx_count / (sum(__hdx_count) OVER ()) * 100 AS __hdx_percentage',
       );
     });
   });
@@ -2416,7 +2416,7 @@ describe('Metadata', () => {
       const valuesCall = (mockClickhouseClient.query as jest.Mock).mock
         .calls[0][0];
       expect(valuesCall.query).toContain(
-        'ResourceAttributes.`k8s`.`namespace`.`name`.:String as value',
+        'toString(ResourceAttributes.`k8s`.`namespace`.`name`) as value',
       );
       expect(valuesCall.query).not.toContain('ResourceAttributes[');
     });
