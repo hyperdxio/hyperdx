@@ -330,7 +330,7 @@ const TimePickerComponent = ({
                   size="xs"
                   checked={isRelative}
                   onChange={e => setIsRelative(e.currentTarget.checked)}
-                  label="Relative Time"
+                  label="Live tail ranges"
                   labelPosition="right"
                   styles={{
                     label: {
@@ -367,18 +367,26 @@ const TimePickerComponent = ({
           <Card w={180} p={0}>
             <ScrollArea h={300} scrollbarSize={5}>
               <Stack gap={0} p="xs">
-                {relativeTimeOptions.map((item, index) =>
-                  item === 'divider' ? (
-                    <Divider key={index} my={4} />
-                  ) : (
+                {relativeTimeOptions.map((item, index) => {
+                  if (item === 'divider') {
+                    return <Divider key={index} my={4} />;
+                  }
+                  const isDisabledForLiveTail =
+                    isRelative &&
+                    !item[2] &&
+                    item[0] !== LIVE_TAIL_TIME_QUERY;
+                  const button = (
                     <Button
                       key={item[0]}
-                      disabled={
-                        isRelative &&
-                        !item[2] &&
-                        item[0] !== LIVE_TAIL_TIME_QUERY
-                      }
+                      // Use data-disabled instead of the `disabled` prop so
+                      // pointer-events stay active and the Tooltip can fire.
+                      // Mantine's [data-disabled] styles handle appearance.
+                      // aria-disabled exposes the state to screen readers,
+                      // keyboard users, and test assertions (toBeDisabled).
+                      data-disabled={isDisabledForLiveTail || undefined}
+                      aria-disabled={isDisabledForLiveTail || undefined}
                       onClick={() => {
+                        if (isDisabledForLiveTail) return;
                         if (isRelative || item[0] === LIVE_TAIL_TIME_QUERY) {
                           handleRelativeSearch?.(item[0], item[1]);
                         } else {
@@ -396,8 +404,22 @@ const TimePickerComponent = ({
                     >
                       {item[0]}
                     </Button>
-                  ),
-                )}
+                  );
+                  if (isDisabledForLiveTail) {
+                    return (
+                      <Tooltip
+                        key={item[0]}
+                        label="Not available for Live Tail"
+                        position="right"
+                        withArrow
+                        openDelay={0}
+                      >
+                        {button}
+                      </Tooltip>
+                    );
+                  }
+                  return button;
+                })}
               </Stack>
             </ScrollArea>
           </Card>
