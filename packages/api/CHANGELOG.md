@@ -1,5 +1,25 @@
 # @hyperdx/api
 
+## 2.40.0
+
+### Minor Changes
+
+- d91e66b8: Make the external API v2 rate limit (`/api/v2/*`) configurable via `EXTERNAL_API_RATE_LIMIT_MAX`. Defaults to 100 requests/minute, matching the previous hardcoded value.
+
+### Patch Changes
+
+- ec4f5087: fix: allow grouping gauge and sum metric charts by materialized and alias columns
+
+  Grouping or selecting a MATERIALIZED or ALIAS column on a gauge or sum metric chart failed with `Unknown expression identifier`, because the intermediate query didn't carry those columns through.
+
+- 08d9a908: feat: Plot several PromQL expressions on one chart
+- d9e2c58b: Add a per-source floor for auto granularity. A metric source can now set "Minimum auto granularity" (Team Settings → Sources → your Metrics source) so that auto-inferred time buckets never go below it — useful when the underlying metric is reported on a fixed interval (e.g. a 60s scrape), since a short selected date range can otherwise auto-infer a smaller bucket than that interval and render a sparse/steppy series (alternating real-sample/empty buckets). Mirrors Grafana's per-datasource "Min interval" setting. Unset (the default) preserves the existing unfloored behavior, and an explicit (non-auto) granularity chosen on a tile is never affected.
+- Updated dependencies [ec4f5087]
+- Updated dependencies [08d9a908]
+- Updated dependencies [a8a72c11]
+- Updated dependencies [d9e2c58b]
+  - @hyperdx/common-utils@0.30.0
+
 ## 2.39.1
 
 ## 2.39.0

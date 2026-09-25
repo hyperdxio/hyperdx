@@ -6,6 +6,143 @@ PR — keep the `hyperdx-release-notes` comment marker intact when editing so yo
 edits survive regeneration. Per-package detail lives in each
 `packages/*/CHANGELOG.md`.
 
+## v2.40.0 — 2026-09-25
+
+<!-- hyperdx-release-notes version=2.40.0 inputs=c96a5892d9f9 -->
+
+**Trace logs tab and multi-expression PromQL**
+
+The event side panel now has a "Trace logs" tab, listing a trace's logs as a flat
+chronological table instead of leaving you to hunt for them among the spans in
+the waterfall. A PromQL chart can now hold more than one expression, so you can
+compare related series on the same axes instead of spreading them across
+separate tiles. A metric source can also set a minimum auto granularity, so a
+short date range no longer auto-infers buckets smaller than the interval your
+metrics arrive on and leaves you with a sparse, steppy series. Search gets a
+tidier bar and a toolbar that stays put as a long query wraps, the dashboards
+list gains tabs, sorting and tag filtering, and the `hdx chart` command picks up
+the compact duration axis labels the web app already uses, so a tick reads "13m"
+instead of "13.33min". The bundled OTel collector also ships with the StatsD
+receiver compiled in, ready for a custom pipeline to ingest StatsD and
+DogStatsD metrics directly.
+
+### ✨ New Features
+
+- **A "Trace logs" tab in the event side panel**: any row carrying a trace id
+  that resolves a log source — a span, through the trace source's correlated log
+  source, or a log through its own — now gets a tab listing the trace's logs as
+  a flat chronological table over the same window the waterfall uses, so a
+  log-heavy trace no longer buries them among the green rows interleaved in the
+  waterfall. The tab lists the trace unfiltered and sorts ascending, which inside
+  a trace is execution order; "Open in search" hands the same query — same
+  source, same trace, same window — to the search page for anything narrower,
+  and picking a log opens it in the panel (#3127, thanks @MikeShi42!).
+- **Plot several PromQL expressions on one chart**: a PromQL chart is no longer
+  limited to a single expression, so related queries can share one set of axes
+  rather than one tile each (#3146, thanks @pulpdrew!).
+- **PromQL number tiles take instant queries and reductions**: a number tile
+  backed by PromQL can now run an instant query, or reduce a range query down to
+  the single value the tile shows, so a PromQL expression fits a number tile as
+  readily as it fits a time series (#3169, thanks @pulpdrew!).
+- **A per-source floor for auto granularity**: a metric source can now set a
+  "Minimum auto granularity" (Team Settings → Sources → your Metrics source) so
+  that auto-inferred time buckets never go below it. That helps when the
+  underlying metric is reported on a fixed interval — a 60s scrape, say — where
+  a short date range could otherwise infer a smaller bucket than the interval
+  and render a sparse, steppy series that alternates real samples with empty
+  buckets, much like Grafana's per-datasource "Min interval". Left unset, the
+  default, nothing changes, and an explicit granularity chosen on a tile is
+  never affected (#3149, thanks @arj22!).
+- **StatsD metrics from your own collector pipeline**: the OTel collector now
+  has the `statsdreceiver` compiled in, ready to reference from a custom
+  pipeline supplied via `CUSTOM_OTELCOL_CONFIG_FILE` to ingest StatsD and
+  DogStatsD metrics directly, without a separate StatsD-to-OTLP bridge. The
+  change is purely additive: no default pipeline or behaviour changes on its own
+  (#3100, thanks @arj22!).
+
+### 🔧 Improvements
+
+- **Search row-selection checkboxes appear on hover**: the multi-select checkbox
+  now fades in when you hover a row or move keyboard focus to it, and is a little
+  smaller, so its column costs less horizontal room. Selecting any row reveals
+  every checkbox so shift-click ranges stay aimable, touch devices keep them
+  visible, and the cell holds its width in every state so nothing reflows under
+  the cursor (#3164, thanks @MikeShi42!).
+- **A less cluttered search bar**: the `WHERE` label duplicated the SQL
+  placeholder already in the input, and the `/` keycap overlay sat on top of long
+  queries and clipped them, so both are gone. Pressing `/` or `s` still focuses
+  the search input (#3168, thanks @elizabetdev!).
+- **A reworked dashboards list**: a tagged dashboard is now listed once in the
+  grid rather than repeated under every tag it carries, and tags became a filter
+  behind a Tags button with a count badge, showing only dashboards that carry
+  every tag you select. Favourites moved out of a pinned row of cards into an
+  "All / Favorites / My dashboards" tab strip, a sort control offers last updated
+  (the default), name and recently created, and Import and New dashboard now sit
+  in the page header (#3199, thanks @elizabetdev!).
+- **The external API's rate limit is configurable**: the cap on `/api/v2/*`
+  requests can now be set with `EXTERNAL_API_RATE_LIMIT_MAX`, so a busy
+  integration or an export job no longer has to live within a fixed ceiling. It
+  defaults to 100 requests per minute, the value that was previously hardcoded,
+  so nothing changes unless you set it (#3200, thanks @vinzee!).
+
+### 🐛 Bug Fixes
+
+- **Search results no longer go blank after expanding and collapsing rows**: a
+  row and its inline expansion share one virtual index, and the expansion left
+  its own height cached against that index once it collapsed, so every
+  expand/collapse shrank the render window a little further until scrolling
+  showed a handful of rows above empty space. The two are now measured as a
+  single unit (#3171, thanks @MikeShi42!).
+- **The Search page stops growing in memory with Live Tail on**: every refresh
+  added CSS rules for the SELECT and ORDER BY editors that were never cleaned
+  up, so a Search tab left open on Live Tail could grow by gigabytes of browser
+  memory. The rules are now removed with the editors (#3193, thanks
+  @jordan-simonovski!).
+- **Toolbar controls stay level with a growing query field**: the date pickers,
+  Run button and nearby row actions now stay aligned with the first line of a SQL
+  or Lucene field as it wraps onto several lines, instead of sliding down with it.
+  Sessions also leaves room for a taller search bar (#3151, thanks
+  @elizabetdev!).
+- **Dashboard tiles show when they are refreshing**: during a dashboard refresh
+  the number, bar and pie tiles held the previous result on screen with nothing
+  to say new data was on its way, so a stale value looked current, while the
+  table and heatmap tiles went further and cleared what they were showing for a
+  loading message until the new result arrived. All five now keep what they are
+  showing and pulse while the refetch runs, as line and stacked-bar time charts
+  already did (#3211, #3212, #3221, thanks @Harshul1484!).
+- **Axis ticks keep their decimals on large values**: a tick at or above 1k was
+  rounded to a whole number whatever the chart's Number Format asked for, so
+  nearby values such as 950 and 1080 could both read `1k`. Ticks now carry as
+  much precision as the width of the axis allows, in the web app and in the
+  CLI's terminal charts, and a tightly fitted Y axis no longer shows two ticks
+  with the identical label (#3162, thanks @arj22!).
+- **Y-axis ticks stay evenly spaced and cleanly rounded**: a chart's Y axis could
+  space its ticks unevenly or land them on fractional values — `0, 300, 1k` where
+  `0, 250, 500, 750, 1k` reads far better — and could repeat a label across two
+  of them. Ticks now round to clean, evenly spaced, always-distinct values
+  (#3172, thanks @arj22!).
+- **Terminal charts use compact duration labels**: duration-formatted charts in
+  `hdx chart` fell through to the wide duration formatter for their axis ticks,
+  so they rendered "13.33min" where the web app renders "13m". The CLI now
+  matches the web app's formatting (#3158, thanks @arj22!).
+- **Gauge and sum metric charts group by `MATERIALIZED` and `ALIAS` columns**:
+  grouping or selecting one of those columns on a gauge or sum metric chart
+  failed with `Unknown expression identifier`, because the intermediate query
+  did not carry the column through. Both now work as any other column does
+  (#3191, thanks @jordan-simonovski!).
+
+<!-- hyperdx-package-list -->
+
+### 📦 Package changelogs
+
+- `@hyperdx/api` 2.39.1 → 2.40.0 — [changelog](https://github.com/hyperdxio/hyperdx/blob/main/packages/api/CHANGELOG.md#2400)
+- `@hyperdx/app` 2.39.1 → 2.40.0 — [changelog](https://github.com/hyperdxio/hyperdx/blob/main/packages/app/CHANGELOG.md#2400)
+- `@hyperdx/cli` 0.6.3 → 0.6.4 — [changelog](https://github.com/hyperdxio/hyperdx/blob/main/packages/cli/CHANGELOG.md#064)
+- `@hyperdx/common-utils` 0.29.0 → 0.30.0 — [changelog](https://github.com/hyperdxio/hyperdx/blob/main/packages/common-utils/CHANGELOG.md#0300)
+- `@hyperdx/otel-collector` 2.39.1 → 2.40.0 — [changelog](https://github.com/hyperdxio/hyperdx/blob/main/packages/otel-collector/CHANGELOG.md#2400)
+
+<!-- /hyperdx-package-list -->
+
 ## v2.39.1 — 2026-09-19
 
 <!-- hyperdx-release-notes version=2.39.1 inputs=75536f4ab390 -->

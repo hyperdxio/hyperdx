@@ -1,5 +1,93 @@
 # @hyperdx/app
 
+## 2.40.0
+
+### Minor Changes
+
+- 08d9a908: feat: Plot several PromQL expressions on one chart
+- d9e2c58b: Add a per-source floor for auto granularity. A metric source can now set "Minimum auto granularity" (Team Settings → Sources → your Metrics source) so that auto-inferred time buckets never go below it — useful when the underlying metric is reported on a fixed interval (e.g. a 60s scrape), since a short selected date range can otherwise auto-infer a smaller bucket than that interval and render a sparse/steppy series (alternating real-sample/empty buckets). Mirrors Grafana's per-datasource "Min interval" setting. Unset (the default) preserves the existing unfloored behavior, and an explicit (non-auto) granularity chosen on a tile is never affected.
+- d76cb7ed: Add a "Trace logs" tab to the event side panel, listing the trace's logs as a flat chronological table over the same time window the waterfall uses. It appears on any row that carries a trace id and resolves a log source — a span (via the trace source's correlated log source) or a log (its own source). Previously the only route to a trace's logs was hunting for the green rows interleaved in the waterfall, which a log-heavy trace buries.
+
+  The tab lists the trace unfiltered; "Open in search" hands the same query — same source, same trace, same window — to the search page for anything narrower. Picking a log opens it in the panel: a breadcrumb hop from a span, or a row change from another log. Sorting is ascending, which inside a trace is execution order.
+
+### Patch Changes
+
+- 416c92a0: fix: stop discarding chart axis-tick decimals for large numbers
+
+  Axis ticks at or above 1k were always rounded to a whole number regardless of the configured Number Format, so nearby values (e.g. 950 and 1080) could both render as `1k` — ticks now use as much precision as the axis's width allows, on both the web app and CLI terminal charts. Also fixed: a tightly fit Y-axis could show two ticks with the identical rounded label.
+
+- c47b9b9e: fix: rework the dashboards list with tabs, sort, and tag filtering
+
+  Tagged dashboards no longer repeat under every tag they carry — the grid lists
+  each dashboard once. Tags are now a filter behind a fixed-width Tags button
+  with a count badge (a dashboard must carry every selected tag). Favorites
+  moved from a pinned row of cards into an "All /
+  Favorites / My dashboards" tab strip, and a sort control offers last updated
+  (default), name, and recently created. Import and New dashboard moved into the
+  page header.
+
+- 5e3031da: fix: show that number, bar and pie tiles are refreshing
+
+  During a dashboard refresh these tiles kept the previous result on screen with
+  no sign that new data was loading, so stale values looked current. They now
+  pulse while the refetch runs, like line and stacked-bar time charts already do.
+
+- 517ffd90: fix: keep heatmap tiles on screen while a dashboard refreshes
+
+  During a refresh, heatmap tiles replaced the chart with a "Loading..." message
+  until the new data arrived. They now keep the current heatmap on screen and
+  pulse while the refetch runs, like the other dashboard tiles.
+
+- ec4f5087: fix: allow grouping gauge and sum metric charts by materialized and alias columns
+
+  Grouping or selecting a MATERIALIZED or ALIAS column on a gauge or sum metric chart failed with `Unknown expression identifier`, because the intermediate query didn't carry those columns through.
+
+- 4fa3c376: Fix search results going blank after expanding and collapsing rows. A row and
+  its inline expansion are two `tr`s sharing one virtual index, and both were
+  measured by the virtualizer, so the expanded row took over that index's
+  ResizeObserver registration and left its height cached there after it
+  collapsed. Each expand/collapse shrank the render window a little further until
+  scrolling showed only a handful of rows above empty space. The row and its
+  expansion are now wrapped in a `tbody` that is measured as one unit.
+- a8a72c11: fix: Support instant queries and reductions on PromQL number tiles
+- 4c4792f5: fix: drop the search bar WHERE label and `/` keycap overlay
+
+  The `WHERE` label repeated the SQL placeholder, and the `/` hint clipped long queries. `/` and `s` still focus the input; the overlay is gone.
+
+- 67673498: Fix the Search page using more and more browser memory with Live Tail on. Each
+  refresh added CSS rules for the SELECT and ORDER BY editors that were never
+  removed, so a tab left open could grow by gigabytes.
+- c2c26093: feat: reveal search row-selection checkboxes on hover
+
+  The multi-select checkbox now fades in when a row is hovered or the checkbox
+  takes keyboard focus, instead of sitting on every row all the time, and is a
+  little smaller so its column costs less horizontal room. Selecting
+  any row reveals every checkbox so shift-click ranges stay aimable, and touch
+  devices (no hover) keep them visible. The cell keeps its width in every state,
+  so nothing reflows on hover.
+
+- 1edc042a: fix: keep table tile rows on screen while a dashboard refreshes
+
+  A dashboard refresh cleared the table tile and showed "Loading Chart Data..."
+  until the new result arrived. The tile now keeps its current rows and pulses
+  while the refetch runs, like the other dashboard tiles.
+
+- 16c7a6c3: fix: keep toolbar controls level with the first line of a wrapping query field
+
+  Date pickers, Run, and nearby row actions stay top-aligned as a SQL or Lucene field grows. Sessions opts into PageHeader block padding so a taller search bar still has room.
+
+- e24acf73: fix: keep Y-axis ticks evenly spaced and cleanly rounded
+
+  A chart's Y-axis could render unevenly spaced or fractional ticks (e.g. `0, 300, 1k` instead of `0, 250, 500, 750, 1k`), or even show two ticks with the identical label. Ticks now round to clean, evenly-spaced, always-distinct values instead.
+
+- Updated dependencies [d91e66b8]
+- Updated dependencies [ec4f5087]
+- Updated dependencies [08d9a908]
+- Updated dependencies [a8a72c11]
+- Updated dependencies [d9e2c58b]
+  - @hyperdx/api@2.40.0
+  - @hyperdx/common-utils@0.30.0
+
 ## 2.39.1
 
 ### Patch Changes
