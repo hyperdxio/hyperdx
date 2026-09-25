@@ -8,6 +8,7 @@ import {
   SourceKind,
   TLogSource,
   TSource,
+  TSourceNoId,
   TTraceSource,
 } from '@hyperdx/common-utils/dist/types';
 import { Button, Divider, Flex, Loader, Modal, Text } from '@mantine/core';
@@ -30,8 +31,44 @@ import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import { TableSourceForm } from './Sources/SourceForm';
 import { SourcesList } from './Sources/SourcesList';
 
+/**
+ * Write a demo source, reusing the id of the same-named one already present.
+ *
+ * The demo sources are re-seeded every time someone clicks "Connect to demo
+ * server", and returning play.hyperdx.io visitors always come back through that
+ * button: sources persist in localStorage but connections live in
+ * sessionStorage, so the onboarding modal reopens on the connection step with
+ * the demo sources still listed. Deleting them first left the source list
+ * momentarily without the id that `?source=` already pointed at, which surfaced
+ * a spurious "Source not found" warning on load. Updating in place also keeps
+ * ids stable when the demo config changes, which local mode needs because there
+ * an id is a hash of the source body.
+ */
+async function upsertDemoSource({
+  source,
+  existingSources,
+  createSourceMutation,
+  updateSourceMutation,
+}: {
+  source: TSourceNoId;
+  existingSources: TSource[] | undefined;
+  createSourceMutation: ReturnType<typeof useCreateSource>;
+  updateSourceMutation: ReturnType<typeof useUpdateSource>;
+}): Promise<TSource> {
+  const existing = existingSources?.find(
+    s => s.kind === source.kind && s.name === source.name,
+  );
+  if (existing == null) {
+    return createSourceMutation.mutateAsync({ source });
+  }
+  const updated = { ...source, id: existing.id } as TSource;
+  await updateSourceMutation.mutateAsync({ source: updated });
+  return updated;
+}
+
 async function addOtelDemoSources({
   connectionId,
+  existingSources,
   createSourceMutation,
   updateSourceMutation,
 
@@ -53,6 +90,8 @@ async function addOtelDemoSources({
   traceSourceMaterializedViews,
 }: {
   connectionId: string;
+  /** Source list as it stood when the flow started, used to match by name. */
+  existingSources: TSource[] | undefined;
   createSourceMutation: ReturnType<typeof useCreateSource>;
   createConnectionMutation: ReturnType<typeof useCreateConnection>;
   updateSourceMutation: ReturnType<typeof useUpdateSource>;
@@ -81,7 +120,10 @@ async function addOtelDemoSources({
 
   let logSource: TLogSource | undefined;
   if (hasLogSource) {
-    const newSource = await createSourceMutation.mutateAsync({
+    const newSource = await upsertDemoSource({
+      existingSources,
+      createSourceMutation,
+      updateSourceMutation,
       source: {
         kind: SourceKind.Log,
         name: logSourceName,
@@ -107,7 +149,10 @@ async function addOtelDemoSources({
       logSource = newSource;
     }
   }
-  const traceSource = await createSourceMutation.mutateAsync({
+  const traceSource = await upsertDemoSource({
+    existingSources,
+    createSourceMutation,
+    updateSourceMutation,
     source: {
       kind: SourceKind.Trace,
       name: traceSourceName,
@@ -146,7 +191,10 @@ async function addOtelDemoSources({
   }
   let metricsSource: TSource | undefined;
   if (hasMetricsSource) {
-    metricsSource = await createSourceMutation.mutateAsync({
+    metricsSource = await upsertDemoSource({
+      existingSources,
+      createSourceMutation,
+      updateSourceMutation,
       source: {
         kind: SourceKind.Metric,
         name: metricsSourceName,
@@ -170,7 +218,10 @@ async function addOtelDemoSources({
       },
     });
   }
-  const sessionSource = await createSourceMutation.mutateAsync({
+  const sessionSource = await upsertDemoSource({
+    existingSources,
+    createSourceMutation,
+    updateSourceMutation,
     source: {
       kind: SourceKind.Session,
       name: sessionSourceName,
@@ -209,6 +260,10 @@ async function addOtelDemoSources({
       },
     }),
   ]);
+
+  return [logSource, traceSource, metricsSource, sessionSource].filter(
+    (source): source is TSource => source != null,
+  );
 }
 
 function OnboardingModalComponent({
@@ -596,19 +651,6 @@ function OnboardingModalComponent({
   const handleDemoServerClick = useCallback(async () => {
     if (IS_CLICKHOUSE_BUILD) return;
     try {
-      if (sources) {
-        for (const source of sources) {
-          // Clean out ALL existing demo and ClickPy sources to avoid duplicates
-          if (
-            source.name.startsWith('Demo') ||
-            source.name.startsWith('ClickPy')
-          ) {
-            await deleteSourceMutation.mutateAsync({
-              id: source.id,
-            });
-          }
-        }
-      }
       // Reuse existing demo connection if available, otherwise create one
       const existingDemoConnection = connections?.find(c => c.name === 'Demo');
       let createdConnectionId = existingDemoConnection?.id ?? '';
@@ -634,8 +676,9 @@ function OnboardingModalComponent({
         );
       }
 
-      await addOtelDemoSources({
+      const demoSources = await addOtelDemoSources({
         connectionId: createdConnectionId,
+        existingSources: sources,
         createConnectionMutation,
         createSourceMutation,
         deleteSourceMutation,
@@ -706,8 +749,9 @@ function OnboardingModalComponent({
       });
 
       // ClickPy demo sources
-      await addOtelDemoSources({
+      const clickPySources = await addOtelDemoSources({
         connectionId: createdConnectionId,
+        existingSources: sources,
         createConnectionMutation,
         createSourceMutation,
         deleteSourceMutation,
@@ -729,6 +773,22 @@ function OnboardingModalComponent({
 
         updateSourceMutation,
       });
+
+      // Drop demo sources left over from an older demo config, now that the
+      // current set is in place. Pruning last (rather than clearing everything
+      // up front) keeps every id that survives continuously resolvable.
+      const seededIds = new Set(
+        [...demoSources, ...clickPySources].map(source => source.id),
+      );
+      for (const source of sources ?? []) {
+        if (
+          (source.name.startsWith('Demo') ||
+            source.name.startsWith('ClickPy')) &&
+          !seededIds.has(source.id)
+        ) {
+          await deleteSourceMutation.mutateAsync({ id: source.id });
+        }
+      }
 
       notifications.show({
         title: 'Success',
