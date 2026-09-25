@@ -129,6 +129,19 @@ describe('convertFormStateToSavedChartConfig', () => {
     expect(result).toMatchObject({ alternateRowBackground: true });
   });
 
+  it('persists backgroundChart for a promql+number config', () => {
+    const form: ChartEditorFormState = {
+      configType: 'promql',
+      displayType: DisplayType.Number,
+      promqlExpression: 'up',
+      connection: 'conn-1',
+      backgroundChart: { type: 'area' },
+      series: [],
+    };
+    const result = convertFormStateToSavedChartConfig(form, undefined);
+    expect(result).toMatchObject({ backgroundChart: { type: 'area' } });
+  });
+
   it('persists alternateRowBackground for a promql+table config', () => {
     const form: ChartEditorFormState = {
       configType: 'promql',
@@ -407,6 +420,21 @@ describe('convertFormStateToChartConfig', () => {
     };
     const result = convertFormStateToChartConfig(form, dateRange, undefined);
     expect(result).toMatchObject({ alternateRowBackground: true });
+  });
+
+  // The sparkline only renders if the rendered config carries this, and the
+  // promql branch builds its config from an explicit pick list.
+  it('threads backgroundChart into the rendered promql+number config', () => {
+    const form: ChartEditorFormState = {
+      configType: 'promql',
+      displayType: DisplayType.Number,
+      promqlExpression: 'up',
+      connection: 'conn-1',
+      backgroundChart: { type: 'area' },
+      series: [],
+    };
+    const result = convertFormStateToChartConfig(form, dateRange, undefined);
+    expect(result).toMatchObject({ backgroundChart: { type: 'area' } });
   });
 
   it('threads alternateRowBackground into the rendered promql+table config', () => {

@@ -8,6 +8,7 @@ import {
 } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
+import { isReducibleRangeQuery } from '@hyperdx/common-utils/dist/core/promql';
 import {
   displayTypeSupportsBuilderAlerts,
   displayTypeSupportsRawSqlAlerts,
@@ -267,6 +268,7 @@ export default function EditTimeChartForm({
   const markdown = useWatch({ control, name: 'markdown' });
   const granularity = useWatch({ control, name: 'granularity' });
   const configType = useWatch({ control, name: 'configType' });
+  const promqlExpressions = useWatch({ control, name: 'promqlExpressions' });
 
   const chartConfigAlert = chartConfig.alert;
   const isRawSqlInput =
@@ -1113,6 +1115,10 @@ export default function EditTimeChartForm({
         previousDateRange={!dashboardId ? previousDateRange : undefined}
         displayType={displayType}
         configType={configType}
+        promqlUsesRange={isReducibleRangeQuery({
+          promqlExpression: promqlExpressions,
+          displayType,
+        })}
         onChange={handleUpdateDisplaySettings}
         onClose={closeDisplaySettings}
         isPerSeriesNumberFormatAllowed={configType !== 'sql'}

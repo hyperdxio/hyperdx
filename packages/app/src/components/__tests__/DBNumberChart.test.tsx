@@ -806,6 +806,62 @@ describe('DBNumberChart', () => {
       ).not.toBeInTheDocument();
     });
 
+    describe('background chart', () => {
+      const rangeConfig = {
+        ...promqlConfig,
+        promqlExpression: [
+          { expression: 'e2e_service_up', queryType: 'range' as const },
+        ],
+        backgroundChart: { type: 'area' as const },
+      };
+
+      // Whether the tile's query can be bucketed at all is the sparkline's own
+      // call, so the tile hands over its config and queries nothing extra.
+      it('hands the sparkline the tile config, and no buckets of its own', () => {
+        setInstantRows([{ series_name: 'up', value: 5 }]);
+
+        renderWithMantine(
+          <DBNumberChart config={rangeConfig} queryKeyPrefix="tile-1" />,
+        );
+
+        expect(jest.mocked(NumberTileBackgroundChart)).toHaveBeenCalledWith(
+          expect.objectContaining({
+            config: rangeConfig,
+            backgroundChart: { type: 'area' },
+            queryKeyPrefix: 'tile-1',
+          }),
+          undefined,
+        );
+        expect(mockUseQueriedChartConfig).toHaveBeenCalledTimes(1);
+      });
+
+      it("passes the tile's disabled gate on to the sparkline", () => {
+        setInstantRows([{ series_name: 'up', value: 5 }]);
+
+        renderWithMantine(
+          <DBNumberChart config={rangeConfig} enabled={false} />,
+        );
+
+        expect(jest.mocked(NumberTileBackgroundChart)).toHaveBeenCalledWith(
+          expect.objectContaining({ enabled: false }),
+          undefined,
+        );
+      });
+
+      it('draws nothing when the expression yields several series', () => {
+        setInstantRows([
+          { series_name: 'up{service="accounting"}', value: 1 },
+          { series_name: 'up{service="api-server"}', value: 2 },
+        ]);
+
+        renderWithMantine(<DBNumberChart config={rangeConfig} />);
+
+        expect(
+          screen.queryByTestId('number-tile-background-chart'),
+        ).not.toBeInTheDocument();
+      });
+    });
+
     // Color rules already applied to PromQL tiles; what changes is that the
     // value they match is now the current one instead of the oldest bucket.
     it('resolves a color rule against the displayed value', () => {

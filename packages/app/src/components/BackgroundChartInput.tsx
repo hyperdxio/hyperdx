@@ -15,18 +15,20 @@ const TYPE_OPTIONS = [
  * "Area" set the shape. The color swatch is an optional palette-token
  * override; when unset the sparkline inherits the tile's static color.
  *
- * `disabled` is set for raw SQL number tiles, which have no time dimension to
- * bucket: the control stays visible but inert with a hint, so the option is
- * discoverable rather than missing.
+ * `disabled` is set where the tile's query has no buckets to plot -- raw SQL,
+ * or a PromQL instant query. The control stays visible but inert with
+ * `disabledHint` explaining which, so the option stays discoverable.
  */
 export function BackgroundChartInput({
   value,
   onChange,
   disabled = false,
+  disabledHint = 'Available on query-builder number tiles.',
 }: {
   value?: BackgroundChart;
   onChange: (value: BackgroundChart | undefined) => void;
   disabled?: boolean;
+  disabledHint?: string;
 }) {
   return (
     <Box>
@@ -51,7 +53,7 @@ export function BackgroundChartInput({
       />
       {disabled ? (
         <Text size="xs" c="dimmed" mt={4}>
-          Available on query-builder number tiles.
+          {disabledHint}
         </Text>
       ) : (
         value && (
