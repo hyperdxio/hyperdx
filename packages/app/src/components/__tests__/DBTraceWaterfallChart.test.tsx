@@ -75,6 +75,21 @@ jest.mock('../DBRowDataPanel', () => ({
   getJSONColumnNames: jest.fn().mockReturnValue([]),
 }));
 
+jest.mock('@/api', () => ({
+  __esModule: true,
+  default: {
+    useMe: () => ({ data: { team: {} } }),
+  },
+}));
+
+jest.mock('@/useUserPreferences', () => ({
+  __esModule: true,
+  useUserPreferences: () => ({
+    userPreferences: {},
+    setUserPreference: jest.fn(),
+  }),
+}));
+
 // Lightweight stub: the real SearchWhereInput renders SearchInputV2, which
 // pulls in useMe()/metadata hooks that require a QueryClientProvider not present
 // in this harness. We only care that the right inputs render, so stub it to a
