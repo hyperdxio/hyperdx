@@ -1189,12 +1189,20 @@ export function buildEventsSearchUrl({
   dateRange,
   groupFilters,
   valueRangeFilter,
+  seriesCondition,
 }: {
   source: TSource;
   config: BuilderChartConfigWithDateRange;
   dateRange: [Date, Date];
   groupFilters?: Array<{ column: string; value: any }>;
   valueRangeFilter?: { expression: string; value: number; threshold?: number };
+  /**
+   * The WHERE the clicked series aggregated over, already variable-expanded by
+   * the caller (see `resolveSeriesConditionFilter`). A builder chart keeps each
+   * series' filter in its `aggCondition`, so without this the search spans
+   * every series on the chart.
+   */
+  seriesCondition?: Filter;
 }): string | null {
   if (!source?.id) {
     return null;
@@ -1224,6 +1232,10 @@ export function buildEventsSearchUrl({
 
   let where = config.where;
   let whereLanguage = config.whereLanguage || 'lucene';
+  // A lone series' condition reads better in the search bar than as a filter
+  // pill, and with an empty chart-level `where` there is nothing to AND it
+  // with. Every other shape keeps it as a filter below.
+  let promotedSingleSeries = false;
   if (
     where.length === 0 &&
     Array.isArray(config.select) &&
@@ -1231,9 +1243,14 @@ export function buildEventsSearchUrl({
   ) {
     where = config.select[0].aggCondition ?? '';
     whereLanguage = config.select[0].aggConditionLanguage ?? 'lucene';
+    promotedSingleSeries = true;
   }
 
   const additionalFilters: Filter[] = [];
+
+  if (!promotedSingleSeries && seriesCondition != null) {
+    additionalFilters.push(seriesCondition);
+  }
 
   // Add group-by column filters
   if (groupFilters && groupFilters.length > 0) {

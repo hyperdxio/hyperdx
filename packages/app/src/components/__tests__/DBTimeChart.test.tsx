@@ -1,4 +1,5 @@
 import React from 'react';
+import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { MantineProvider } from '@mantine/core';
 import { Notifications } from '@mantine/notifications';
 import { screen, waitFor } from '@testing-library/react';
@@ -10,6 +11,7 @@ import DateRangeIndicator from '@/components/charts/DateRangeIndicator';
 import {
   DBTimeChart,
   decodeSeriesGroupFilters,
+  resolveSeriesConditionFilter,
 } from '@/components/DBTimeChart';
 import MVOptimizationIndicator from '@/components/MaterializedViews/MVOptimizationIndicator';
 import { MAX_LOADABLE_TIME_CHART_SERIES } from '@/defaults';
@@ -705,6 +707,137 @@ describe('DBTimeChart', () => {
           isSingleValueColumn: true,
         }),
       ).toEqual([]);
+    });
+  });
+
+  describe('resolveSeriesConditionFilter', () => {
+    const series = (aggCondition: string, alias?: string) => ({
+      aggFn: 'count' as const,
+      aggCondition,
+      aggConditionLanguage: 'lucene' as const,
+      valueExpression: '',
+      ...(alias != null ? { alias } : {}),
+    });
+
+    const configWith = (
+      overrides: Partial<BuilderChartConfigWithDateRange>,
+    ): BuilderChartConfigWithDateRange => ({
+      ...baseTestConfig,
+      ...overrides,
+    });
+
+    const twoSeriesConfig = configWith({
+      select: [
+        series("ServiceName:'foo'", 'foo'),
+        series("ServiceName:'bar'", 'bar'),
+      ],
+    });
+
+    it('resolves the clicked series by its value column', () => {
+      expect(
+        resolveSeriesConditionFilter({
+          config: twoSeriesConfig,
+          resultColumns: ['foo', 'bar', '__hdx_time_bucket'],
+          valueColumnName: 'bar',
+        }),
+      ).toEqual({ type: 'lucene', condition: "ServiceName:'bar'" });
+    });
+
+    it('unions every series condition for a whole-bucket click', () => {
+      expect(
+        resolveSeriesConditionFilter({
+          config: twoSeriesConfig,
+          resultColumns: ['foo', 'bar', '__hdx_time_bucket'],
+        }),
+      ).toEqual({
+        type: 'lucene',
+        condition: "(ServiceName:'foo') OR (ServiceName:'bar')",
+      });
+    });
+
+    // The chart scans every row once a series is unfiltered, so there is no
+    // narrower scope to carry into the search.
+    it('returns nothing when a series has no condition', () => {
+      expect(
+        resolveSeriesConditionFilter({
+          config: configWith({
+            select: [series("ServiceName:'foo'", 'foo'), series('', 'all')],
+          }),
+          resultColumns: ['foo', 'all', '__hdx_time_bucket'],
+        }),
+      ).toBeUndefined();
+    });
+
+    // Both series feed the single merged column, so neither can be singled out.
+    it('unions both series of a ratio config rather than attributing one', () => {
+      expect(
+        resolveSeriesConditionFilter({
+          config: configWith({
+            select: [
+              series("ServiceName:'foo'", 'foo'),
+              series("ServiceName:'bar'", 'bar'),
+            ],
+            seriesReturnType: 'ratio',
+          }),
+          resultColumns: ['foo/bar', '__hdx_time_bucket'],
+          valueColumnName: 'foo/bar',
+        }),
+      ).toEqual({
+        type: 'lucene',
+        condition: "(ServiceName:'foo') OR (ServiceName:'bar')",
+      });
+    });
+
+    // With operands hidden the projection is formula columns only, so column 0
+    // is not select[0].
+    it('unions every series when a formula config hides its operands', () => {
+      expect(
+        resolveSeriesConditionFilter({
+          config: configWith({
+            select: [
+              series("ServiceName:'foo'", 'foo'),
+              series("ServiceName:'bar'", 'bar'),
+            ],
+            formulas: [{ expression: 'A/B' }],
+            showOperandSeries: false,
+          }),
+          resultColumns: ['A/B', '__hdx_time_bucket'],
+          valueColumnName: 'A/B',
+        }),
+      ).toEqual({
+        type: 'lucene',
+        condition: "(ServiceName:'foo') OR (ServiceName:'bar')",
+      });
+    });
+
+    // A formula column sits past the operand columns and has no aggCondition.
+    it('falls back to the union when a formula column is clicked', () => {
+      expect(
+        resolveSeriesConditionFilter({
+          config: configWith({
+            select: [
+              series("ServiceName:'foo'", 'foo'),
+              series("ServiceName:'bar'", 'bar'),
+            ],
+            formulas: [{ expression: 'A/B' }],
+          }),
+          resultColumns: ['foo', 'bar', 'A/B', '__hdx_time_bucket'],
+          valueColumnName: 'A/B',
+        }),
+      ).toEqual({
+        type: 'lucene',
+        condition: "(ServiceName:'foo') OR (ServiceName:'bar')",
+      });
+    });
+
+    it('returns nothing for a raw SQL select list', () => {
+      expect(
+        resolveSeriesConditionFilter({
+          config: configWith({ select: 'count()' }),
+          resultColumns: ['count()'],
+          valueColumnName: 'count()',
+        }),
+      ).toBeUndefined();
     });
   });
 
