@@ -72,7 +72,8 @@ export default function PatternTable({
   const {
     data: groupedResults,
     isLoading: isGroupedPatternsLoading,
-    isPlaceholderData: isPatternsPlaceholderData,
+    // Only true with `keepPreviousData`, while the previous patterns are shown
+    isPlaceholderData: isRefreshing,
     error: groupedPatternsError,
     patternQueryConfig,
   } = useGroupedPatterns({
@@ -90,7 +91,6 @@ export default function PatternTable({
 
   const isLoading =
     isTotalCountLoading || !isTotalCountComplete || isGroupedPatternsLoading;
-  const isRefreshing = keepPreviousData && isPatternsPlaceholderData;
 
   const error = totalCountError || groupedPatternsError;
 

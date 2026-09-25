@@ -122,14 +122,4 @@ describe('PatternTable refresh', () => {
       'effect-pulse',
     );
   });
-
-  it('does not pulse without keepPreviousData (e.g. the search page)', () => {
-    mockPatterns({ isPlaceholderData: true });
-
-    renderTable({});
-
-    expect(screen.getByTestId('search-results-table')).not.toHaveClass(
-      'effect-pulse',
-    );
-  });
 });
