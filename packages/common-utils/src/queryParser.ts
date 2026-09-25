@@ -2177,6 +2177,162 @@ async function serialize(
   return '';
 }
 
+/** A literal substring from a lucene query, and the field it applies to. */
+export type LuceneHighlightTerm = {
+  /** Decoded, wildcard-stripped text to look for in a value */
+  term: string;
+  /** Field the term is scoped to, or `undefined` for bare (implicit-field) terms */
+  field?: string;
+};
+
+const NEGATING_OPERATORS = new Set<lucene.Operator>([
+  'NOT',
+  'AND NOT',
+  'OR NOT',
+]);
+
+/** Comparison prefixes that match a value range rather than a substring. */
+const COMPARISON_PREFIXES = ['>=', '<=', '>', '<'];
+
+function stripFieldNegation(field: string) {
+  return field.startsWith('-')
+    ? { field: field.slice(1), isNegated: true }
+    : { field, isNegated: false };
+}
+
+/**
+ * The literal substring a term node matched on, or `undefined` when the node
+ * has no single substring that explains the match (negations, ranges,
+ * comparisons, regexes, bare `*`).
+ */
+function highlightTermFromNode(
+  node: lucene.NodeTerm,
+  inheritedField: string | undefined,
+): LuceneHighlightTerm | undefined {
+  if (node.regex) {
+    return undefined;
+  }
+
+  const isImplicitField = node.field === IMPLICIT_FIELD;
+  const { field, isNegated } = stripFieldNegation(node.field);
+  if (isNegated) {
+    return undefined;
+  }
+
+  // `-foo`/`!foo` exclude the term; `level:-5` searches for the literal `-5`.
+  if (isImplicitField && (node.prefix === '-' || node.prefix === '!')) {
+    return undefined;
+  }
+
+  let term = decodeSpecialTokens(node.term);
+  if (!isImplicitField && node.prefix === '-') {
+    term = `-${term}`;
+  }
+
+  if (!node.quoted) {
+    if (term === RANGE_UNBOUNDED) {
+      return undefined;
+    }
+    if (COMPARISON_PREFIXES.some(prefix => term.startsWith(prefix))) {
+      return undefined;
+    }
+    // Leading/trailing `*` widen an already-substring match, so drop them and
+    // highlight the literal part. Interior `*` is matched literally.
+    term = term.replace(/^\*/, '').replace(/\*$/, '');
+  }
+
+  if (!term) {
+    return undefined;
+  }
+
+  return {
+    term,
+    field: isImplicitField ? inheritedField : field,
+  };
+}
+
+function collectHighlightTerms(
+  node: lucene.AST | lucene.Node,
+  inheritedField: string | undefined,
+  push: (term: LuceneHighlightTerm) => void,
+): void {
+  if (isNodeTerm(node)) {
+    const term = highlightTermFromNode(node, inheritedField);
+    if (term) {
+      push(term);
+    }
+    return;
+  }
+
+  // Ranged terms match a span of values, not a substring
+  if (isNodeRangedTerm(node)) {
+    return;
+  }
+
+  const ast: lucene.BinaryAST | lucene.LeftOnlyAST | undefined = isBinaryAST(
+    node,
+  )
+    ? node
+    : isLeftOnlyAST(node)
+      ? node
+      : undefined;
+  // Blank AST, or `-foo:(bar baz)`
+  if (ast == null || isNegatedAndParenthesized(ast)) {
+    return;
+  }
+
+  // `foo:(bar baz)` scopes the group's bare terms to `foo`
+  const childField =
+    ast.parenthesized && ast.field && ast.field !== IMPLICIT_FIELD
+      ? stripFieldNegation(ast.field).field
+      : inheritedField;
+
+  // `start` is the leading `NOT` in ex. `NOT foo AND bar`, which negates `foo`
+  if (!('start' in ast && ast.start === 'NOT')) {
+    collectHighlightTerms(ast.left, childField, push);
+  }
+
+  if (isBinaryAST(ast) && !NEGATING_OPERATORS.has(ast.operator)) {
+    collectHighlightTerms(ast.right, childField, push);
+  }
+}
+
+/**
+ * Terms from a lucene query that can be highlighted in matching rows, so it is
+ * visible why a row matched. Only positive literal matches survive; anything
+ * without a substring to point at (negations, ranges, regexes) is dropped.
+ *
+ * Returns an empty list for unparseable queries — highlighting is decorative,
+ * and the query itself will surface the error elsewhere.
+ */
+export function extractLuceneHighlightTerms(
+  query: string,
+): LuceneHighlightTerm[] {
+  if (!query?.trim()) {
+    return [];
+  }
+
+  let ast: lucene.AST;
+  try {
+    ast = parse(query);
+  } catch {
+    return [];
+  }
+
+  const terms: LuceneHighlightTerm[] = [];
+  const seen = new Set<string>();
+  collectHighlightTerms(ast, undefined, term => {
+    const key = `${term.field ?? ''}\u0000${term.term.toLowerCase()}`;
+    if (seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    terms.push(term);
+  });
+
+  return terms;
+}
+
 // TODO: can just inline this within getSearchQuery
 export async function genWhereSQL(
   ast: lucene.AST,
