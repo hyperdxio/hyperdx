@@ -44,6 +44,7 @@ import { useDefaultTimeRange, useNewTimeQuery } from '@/timeQuery';
 import { useLocalStorage } from '@/utils';
 import { buildInlineAlertPayload } from '@/utils/alerts';
 import { getApiErrorMessage } from '@/utils/apiErrors';
+import { isImeCompositionKey } from '@/utils/ime';
 
 import OnboardingModal from './components/OnboardingModal';
 
@@ -119,6 +120,14 @@ function AIAssistant({
     );
   };
 
+  // A single text input in a form submits on Enter natively, which would fire
+  // while an IME conversion is still being confirmed.
+  const onKeyDown = (e: React.KeyboardEvent<HTMLFormElement>) => {
+    if (e.key === 'Enter' && isImeCompositionKey(e)) {
+      e.preventDefault();
+    }
+  };
+
   useHotkeys(
     'a',
     () => {
@@ -171,7 +180,7 @@ function AIAssistant({
       <Collapse expanded={opened}>
         {opened && (
           // eslint-disable-next-line react-hooks/refs
-          <form onSubmit={handleSubmit(onSubmit)}>
+          <form onSubmit={handleSubmit(onSubmit)} onKeyDown={onKeyDown}>
             <Group mb="md">
               <SourceSelectControlled
                 autoFocus

@@ -1,5 +1,5 @@
 import React from 'react';
-import { screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import {
@@ -474,6 +474,66 @@ describe('TableSearchInput', () => {
       await user.keyboard('{Shift>}{Enter}{/Shift}');
 
       expect(onPreviousMatch).toHaveBeenCalled();
+    });
+
+    it('should not navigate when Enter confirms an IME conversion', () => {
+      const onNextMatch = jest.fn();
+
+      renderWithMantine(
+        <TableSearchInput
+          {...defaultProps}
+          searchQuery="サービス"
+          matchIndices={[2, 5, 8]}
+          onNextMatch={onNextMatch}
+          isVisible={true}
+        />,
+      );
+
+      const input = screen.getByPlaceholderText('Find in table...');
+      fireEvent.keyDown(input, { key: 'Enter', isComposing: true });
+
+      expect(onNextMatch).not.toHaveBeenCalled();
+    });
+
+    // Safari fires compositionend before the confirming Enter, leaving
+    // isComposing false and keyCode 229 as the only signal.
+    it('should not navigate when the confirming Enter arrives after compositionend', () => {
+      const onNextMatch = jest.fn();
+
+      renderWithMantine(
+        <TableSearchInput
+          {...defaultProps}
+          searchQuery="サービス"
+          matchIndices={[2, 5, 8]}
+          onNextMatch={onNextMatch}
+          isVisible={true}
+        />,
+      );
+
+      const input = screen.getByPlaceholderText('Find in table...');
+      fireEvent.compositionEnd(input, { data: 'サービス' });
+      fireEvent.keyDown(input, { key: 'Enter', keyCode: 229 });
+
+      expect(onNextMatch).not.toHaveBeenCalled();
+    });
+
+    it('should navigate when Enter is pressed outside composition', () => {
+      const onNextMatch = jest.fn();
+
+      renderWithMantine(
+        <TableSearchInput
+          {...defaultProps}
+          searchQuery="mongodb"
+          matchIndices={[2, 5, 8]}
+          onNextMatch={onNextMatch}
+          isVisible={true}
+        />,
+      );
+
+      const input = screen.getByPlaceholderText('Find in table...');
+      fireEvent.keyDown(input, { key: 'Enter', keyCode: 13 });
+
+      expect(onNextMatch).toHaveBeenCalled();
     });
 
     it('should not navigate when Enter is pressed with no matches', async () => {

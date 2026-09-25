@@ -26,6 +26,7 @@ import { useDisclosure } from '@mantine/hooks';
 import { IconBolt, IconCalendarFilled } from '@tabler/icons-react';
 
 import { useUserPreferences } from '@/useUserPreferences';
+import { isImeCompositionKey } from '@/utils/ime';
 
 import { TimePickerMode } from './types';
 import { useTimePickerForm } from './useTimePickerForm';
@@ -81,7 +82,11 @@ const DateInputCmp = ({
     variant="filled"
     dateParser={dateParser}
     onKeyDown={e => {
-      if (e.key === 'Enter' && e.target instanceof HTMLInputElement) {
+      if (
+        e.key === 'Enter' &&
+        !isImeCompositionKey(e) &&
+        e.target instanceof HTMLInputElement
+      ) {
         e.target.blur();
       }
     }}
@@ -302,7 +307,11 @@ const TimePickerComponent = ({
           size={size}
           w={width}
           onKeyDown={e => {
-            if (e.key === 'Enter' && e.target instanceof HTMLInputElement) {
+            if (
+              e.key === 'Enter' &&
+              !isImeCompositionKey(e) &&
+              e.target instanceof HTMLInputElement
+            ) {
               onSubmit?.(e.target.value);
               close();
             }

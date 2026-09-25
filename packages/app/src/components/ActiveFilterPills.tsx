@@ -25,6 +25,7 @@ import {
   CLIPBOARD_ERROR_MESSAGE,
   copyTextToClipboard,
 } from '@/utils/clipboard';
+import { isImeCompositionKey } from '@/utils/ime';
 
 const MAX_VISIBLE_PILLS = 8;
 // Cap the value list fetched for the in-pill value picker.
@@ -317,7 +318,7 @@ function FilterPill({
           // Picking a suggestion commits immediately.
           onOptionSubmit={commitValue}
           onKeyDown={e => {
-            if (e.key !== 'Enter') {
+            if (e.key !== 'Enter' || isImeCompositionKey(e)) {
               return;
             }
             // If the user is keyboard-navigating the dropdown, an option is

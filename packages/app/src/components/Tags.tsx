@@ -14,6 +14,7 @@ import {
 import { IconSearch, IconTags } from '@tabler/icons-react';
 
 import api from '@/api';
+import { isImeCompositionKey } from '@/utils/ime';
 
 import styles from './Tags.module.scss';
 
@@ -68,7 +69,7 @@ export const Tags = React.memo(
 
     const handleSearchKeyDown = React.useCallback(
       (event: React.KeyboardEvent<HTMLInputElement>) => {
-        if (event.key === 'Enter') {
+        if (event.key === 'Enter' && !isImeCompositionKey(event)) {
           if (allowCreate && q.length > 0) {
             // Check if tag already exists (case insensitive)
             const newTag = event.currentTarget.value;
