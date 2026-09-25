@@ -14,7 +14,11 @@ type ResizeDirection = 'left' | 'right' | 'top' | 'bottom';
 function useResizable(
   initialSizePercent: number,
   direction: ResizeDirection = 'right',
+  /** Narrower limits than the defaults, as percentages of the window. */
+  bounds?: { minPercent?: number; maxPercent?: number },
 ) {
+  const boundsMinPercent = bounds?.minPercent;
+  const boundsMaxPercent = bounds?.maxPercent;
   const [sizePercentage, setSizePercentage] = useState(initialSizePercent);
 
   // Track drag start
@@ -38,16 +42,18 @@ function useResizable(
         ? window.innerHeight
         : document.body.offsetWidth;
       // Clamp to min and max
-      const maxPercent =
-        ((offsetWidth - MAX_PANEL_OFFSET_PX) / containerSize) * 100;
+      const maxPercent = Math.min(
+        ((offsetWidth - MAX_PANEL_OFFSET_PX) / containerSize) * 100,
+        boundsMaxPercent ?? Infinity,
+      );
 
-      const minPercent = MIN_PANEL_PERCENT;
+      const minPercent = boundsMinPercent ?? MIN_PANEL_PERCENT;
 
       const newSize = startSizeRef.current + deltaPercent * directionMultiplier;
 
       setSizePercentage(Math.min(Math.max(minPercent, newSize), maxPercent));
     },
-    [isVertical, axis, directionMultiplier],
+    [isVertical, axis, directionMultiplier, boundsMinPercent, boundsMaxPercent],
   );
 
   const endResize = useCallback(() => {

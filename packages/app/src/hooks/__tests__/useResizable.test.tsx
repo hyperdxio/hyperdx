@@ -1,5 +1,5 @@
 import { fireEvent } from '@testing-library/dom';
-import { act, renderHook } from '@testing-library/react';
+import { act, render, renderHook } from '@testing-library/react';
 
 import useResizable from '@/hooks/useResizable';
 
@@ -107,6 +107,27 @@ describe('useResizable', () => {
 
     // Max width should be (1000 - 25) / 1000 * 100 = 97.5%
     expect(result.current.size).toBeLessThanOrEqual(97.5);
+  });
+
+  it('keeps to caller-supplied bounds', () => {
+    function Handle() {
+      const { size, startResize } = useResizable(30, 'right', {
+        minPercent: 25,
+        maxPercent: 40,
+      });
+      return (
+        <div data-testid="handle" data-size={size} onMouseDown={startResize} />
+      );
+    }
+    const { getByTestId } = render(<Handle />);
+    const handle = getByTestId('handle');
+
+    fireEvent.mouseDown(handle, { clientX: 500 });
+    fireEvent.mouseMove(document, { clientX: 100 });
+    expect(handle).toHaveAttribute('data-size', '40');
+
+    fireEvent.mouseMove(document, { clientX: 900 });
+    expect(handle).toHaveAttribute('data-size', '25');
   });
 
   it('should cleanup event listeners on unmount', () => {

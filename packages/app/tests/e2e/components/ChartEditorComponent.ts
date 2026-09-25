@@ -327,7 +327,19 @@ export class ChartEditorComponent {
     });
   }
 
+  /**
+   * Opens the alert panel. A tile's existing alert opens its panel on request
+   * rather than with the editor; a no-op when the panel is already open.
+   */
+  async openAlertPanel() {
+    const panel = this.page.getByTestId('alert-panel');
+    if (await panel.isVisible()) return;
+    await this.addAlertButton.click();
+    await panel.waitFor({ state: 'visible' });
+  }
+
   async clickRemoveAlert() {
+    await this.openAlertPanel();
     await this.removeAlertButton.click();
     this.removeAlertButton.waitFor({
       state: 'hidden',
@@ -903,6 +915,7 @@ export class ChartEditorComponent {
    * message only exists as a tooltip, so this hovers the badge to read it.
    */
   async getAlertWarning(): Promise<string> {
+    await this.openAlertPanel();
     const badge = this.alertWarningBadge();
     if ((await badge.count()) === 0) return '';
     await badge.hover();
@@ -915,6 +928,7 @@ export class ChartEditorComponent {
    * Scoped to [data-testid="alert-details"].
    */
   async selectTileAlertThresholdType(value: string) {
+    await this.openAlertPanel();
     await this.page
       .getByTestId('alert-details')
       .locator('select')
@@ -928,6 +942,7 @@ export class ChartEditorComponent {
    * so getByRole('spinbutton') does not match. We use the inputmode attribute instead.
    */
   async setTileAlertThreshold(value: number) {
+    await this.openAlertPanel();
     const input = this.page
       .getByTestId('alert-details')
       .locator('input[inputmode="decimal"]')
@@ -943,6 +958,7 @@ export class ChartEditorComponent {
    * so getByRole('spinbutton') does not match. We use the inputmode attribute instead.
    */
   async setTileAlertThresholdMax(value: number) {
+    await this.openAlertPanel();
     const input = this.page
       .getByTestId('alert-details')
       .locator('input[inputmode="decimal"]')
@@ -953,6 +969,7 @@ export class ChartEditorComponent {
 
   /** Set the alert's own display name in the tile alert editor. */
   async setTileAlertDisplayName(name: string) {
+    await this.openAlertPanel();
     await this.page
       .getByTestId('alert-details')
       .getByTestId('alert-display-name-input')
@@ -966,10 +983,12 @@ export class ChartEditorComponent {
   }
 
   async addTileAlertTag(tag: string) {
+    await this.openAlertPanel();
     await addTagViaPicker(this.page, this.tileAlertTagsButton, tag);
   }
 
   async removeTileAlertTag(tag: string) {
+    await this.openAlertPanel();
     await removeTagViaPicker(this.page, this.tileAlertTagsButton, tag);
   }
 
@@ -977,6 +996,7 @@ export class ChartEditorComponent {
    * Set the note field in the tile alert editor.
    */
   async setTileAlertNote(note: string) {
+    await this.openAlertPanel();
     const noteInput = this.page.getByTestId('alert-note-input');
     await noteInput.fill(note);
   }

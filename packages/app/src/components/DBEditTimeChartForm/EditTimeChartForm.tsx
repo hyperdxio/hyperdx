@@ -26,7 +26,6 @@ import {
 import { getAlertVariableWarning } from '@hyperdx/common-utils/dist/variables';
 import {
   Box,
-  Divider,
   Flex,
   SegmentedControl,
   Tabs,
@@ -48,6 +47,7 @@ import {
 } from '@tabler/icons-react';
 
 import { getPreviousDateRange } from '@/ChartUtils';
+import { AlertPanelLayout } from '@/components/AlertPanel';
 import ChartDisplaySettingsDrawer, {
   ChartConfigDisplaySettings,
 } from '@/components/ChartDisplaySettingsDrawer';
@@ -83,9 +83,11 @@ import {
 } from '@/source';
 import { normalizeNoOpAlertScheduleFields } from '@/utils/alerts';
 
+import { AlertPanelPrimaryAction } from './AlertPanelPrimaryAction';
 import { ChartActionBar, DashboardFiltersToggleProps } from './ChartActionBar';
 import { ChartEditorControls } from './ChartEditorControls';
 import { ChartPreviewPanel } from './ChartPreviewPanel';
+import { ChartSaveActions } from './ChartSaveActions';
 import { ErrorNotificationMessage } from './ErrorNotificationMessage';
 import { useBuilderToSqlConversion } from './useBuilderToSqlConversion';
 import {
@@ -208,6 +210,7 @@ export default function EditTimeChartForm({
     handleSubmit,
     register,
     setError,
+    trigger,
     clearErrors,
     formState: { errors, isDirty, dirtyFields },
   } = useForm<ChartEditorFormState>({
@@ -655,6 +658,18 @@ export default function EditTimeChartForm({
     [validateAndNormalize, onSaveAlert],
   );
 
+  // The alert as it was when its panel opened, restored if the panel is closed
+  // without confirming. Cloned: the form updates nested values in place.
+  const alertSnapshotRef = useRef(formValue.alert);
+  const snapshotAlert = useCallback(() => {
+    alertSnapshotRef.current = structuredClone(getValues('alert'));
+  }, [getValues]);
+  const cancelAlertChanges = useCallback(
+    (isDraft: boolean) =>
+      setValue('alert', isDraft ? undefined : alertSnapshotRef.current),
+    [setValue],
+  );
+
   // Track previous values for detecting changes
   const prevGranularityRef = useRef(granularity);
   const prevDisplayTypeRef = useRef(displayType);
@@ -874,257 +889,271 @@ export default function EditTimeChartForm({
   );
 
   return (
-    <div ref={setParentRef} data-testid={dataTestId}>
-      <ErrorBoundary>
-        <Controller
-          control={control}
-          name="displayType"
-          render={({ field: { onChange, value } }) => (
-            <Tabs
-              value={value}
-              onChange={onChange}
-              radius={'xs'}
-              mb="md"
-              data-testid="chart-type-input"
-            >
-              <Tabs.List>
-                <Tabs.Tab
-                  value={DisplayType.Line}
-                  leftSection={<IconChartLine size={16} />}
-                >
-                  Time Series
-                </Tabs.Tab>
-                <Tabs.Tab
-                  value={DisplayType.Table}
-                  leftSection={<IconTable size={16} />}
-                >
-                  Table
-                </Tabs.Tab>
-                <Tabs.Tab
-                  value={DisplayType.Number}
-                  leftSection={<IconNumbers size={16} />}
-                >
-                  Number
-                </Tabs.Tab>
-                <Tabs.Tab
-                  value={DisplayType.Bar}
-                  leftSection={<IconChartBar size={16} />}
-                >
-                  Bar
-                </Tabs.Tab>
-                <Tabs.Tab
-                  value={DisplayType.Pie}
-                  leftSection={<IconChartPie size={16} />}
-                >
-                  Pie
-                </Tabs.Tab>
-                <Tabs.Tab
-                  value={DisplayType.Search}
-                  leftSection={<IconList size={16} />}
-                >
-                  Search
-                </Tabs.Tab>
-                <Tabs.Tab
-                  value={DisplayType.Heatmap}
-                  leftSection={<IconGrid3x3 size={16} />}
-                >
-                  Heatmap
-                </Tabs.Tab>
-                <Tabs.Tab
-                  value={DisplayType.EventPatterns}
-                  leftSection={<IconBracketsContain size={16} />}
-                >
-                  Patterns
-                </Tabs.Tab>
-                <Tabs.Tab
-                  value={DisplayType.Markdown}
-                  leftSection={<IconMarkdown size={16} />}
-                >
-                  Markdown
-                </Tabs.Tab>
-              </Tabs.List>
-            </Tabs>
-          )}
+    // The panel opens on request, except where the alert is what is being
+    // edited (the inline-alert modal).
+    <AlertPanelLayout
+      data-testid={dataTestId}
+      defaultOpened={isAlertRequired}
+      onOpen={snapshotAlert}
+      onCancel={cancelAlertChanges}
+      actions={
+        <AlertPanelPrimaryAction
+          trigger={trigger}
+          handleSubmit={handleSubmit}
+          handleSaveAlert={onSaveAlert != null ? handleSaveAlert : undefined}
+          saveAlertLabel={saveAlertLabel}
+          isSavingAlert={isSavingAlert}
         />
-        <Flex align="center" gap="sm" mb="sm">
-          <Text size="sm" className="text-nowrap">
-            Chart Name
-          </Text>
-          <InputControlled
-            name="name"
-            control={control}
-            flex={1}
-            type="text"
-            placeholder="My Chart Name"
-            data-testid="chart-name-input"
-          />
-          {isRawSqlDisplayType(displayType) && (
-            <Controller
+      }
+    >
+      <div ref={setParentRef}>
+        <ErrorBoundary>
+          <Flex align="center" gap="sm" mb="sm">
+            <Text size="sm" className="text-nowrap">
+              Chart Name
+            </Text>
+            <InputControlled
+              name="name"
               control={control}
-              name="configType"
-              render={({ field: { onChange, value } }) => (
-                <SegmentedControl
-                  value={value ?? 'builder'}
-                  onChange={onChange}
-                  data={[
-                    { label: 'Builder', value: 'builder' },
-                    { label: 'SQL', value: 'sql' },
-                    ...(IS_PROMQL_ENABLED
-                      ? [{ label: 'PromQL', value: 'promql' }]
-                      : []),
-                  ]}
-                />
-              )}
+              flex={1}
+              type="text"
+              placeholder="My Chart Name"
+              data-testid="chart-name-input"
             />
-          )}
-        </Flex>
-        <Divider my="md" />
-        {activeTab === 'markdown' ? (
-          <div>
-            <Textarea
-              {...register('markdown')}
-              label="Markdown content"
-              placeholder="Markdown"
-              mb="md"
-              styles={{
-                input: {
-                  minHeight: 200,
-                },
-              }}
+            {isRawSqlDisplayType(displayType) && (
+              <Controller
+                control={control}
+                name="configType"
+                render={({ field: { onChange, value } }) => (
+                  <SegmentedControl
+                    value={value ?? 'builder'}
+                    onChange={onChange}
+                    data={[
+                      { label: 'Builder', value: 'builder' },
+                      { label: 'SQL', value: 'sql' },
+                      ...(IS_PROMQL_ENABLED
+                        ? [{ label: 'PromQL', value: 'promql' }]
+                        : []),
+                    ]}
+                  />
+                )}
+              />
+            )}
+            <ChartSaveActions
+              handleSubmit={handleSubmit}
+              handleSave={handleSave}
+              onSave={onSave}
+              onClose={onClose}
+              isSaving={isSaving}
             />
-            <Box p="md" mb="md">
-              <HDXMarkdownChart
-                config={{
-                  markdown: markdown || 'Preview',
+          </Flex>
+          <Controller
+            control={control}
+            name="displayType"
+            render={({ field: { onChange, value } }) => (
+              <Tabs
+                value={value}
+                onChange={onChange}
+                radius={'xs'}
+                mb="md"
+                data-testid="chart-type-input"
+              >
+                <Tabs.List>
+                  <Tabs.Tab
+                    value={DisplayType.Line}
+                    leftSection={<IconChartLine size={16} />}
+                  >
+                    Time Series
+                  </Tabs.Tab>
+                  <Tabs.Tab
+                    value={DisplayType.Table}
+                    leftSection={<IconTable size={16} />}
+                  >
+                    Table
+                  </Tabs.Tab>
+                  <Tabs.Tab
+                    value={DisplayType.Number}
+                    leftSection={<IconNumbers size={16} />}
+                  >
+                    Number
+                  </Tabs.Tab>
+                  <Tabs.Tab
+                    value={DisplayType.Bar}
+                    leftSection={<IconChartBar size={16} />}
+                  >
+                    Bar
+                  </Tabs.Tab>
+                  <Tabs.Tab
+                    value={DisplayType.Pie}
+                    leftSection={<IconChartPie size={16} />}
+                  >
+                    Pie
+                  </Tabs.Tab>
+                  <Tabs.Tab
+                    value={DisplayType.Search}
+                    leftSection={<IconList size={16} />}
+                  >
+                    Search
+                  </Tabs.Tab>
+                  <Tabs.Tab
+                    value={DisplayType.Heatmap}
+                    leftSection={<IconGrid3x3 size={16} />}
+                  >
+                    Heatmap
+                  </Tabs.Tab>
+                  <Tabs.Tab
+                    value={DisplayType.EventPatterns}
+                    leftSection={<IconBracketsContain size={16} />}
+                  >
+                    Patterns
+                  </Tabs.Tab>
+                  <Tabs.Tab
+                    value={DisplayType.Markdown}
+                    leftSection={<IconMarkdown size={16} />}
+                  >
+                    Markdown
+                  </Tabs.Tab>
+                </Tabs.List>
+              </Tabs>
+            )}
+          />
+          {activeTab === 'markdown' ? (
+            <div>
+              <Textarea
+                {...register('markdown')}
+                label="Markdown content"
+                placeholder="Markdown"
+                mb="md"
+                styles={{
+                  input: {
+                    minHeight: 200,
+                  },
                 }}
               />
-            </Box>
-          </div>
-        ) : isPromqlInput ? (
-          <PromqlChartEditor
+              <Box p="md" mb="md">
+                <HDXMarkdownChart
+                  config={{
+                    markdown: markdown || 'Preview',
+                  }}
+                />
+              </Box>
+            </div>
+          ) : isPromqlInput ? (
+            <PromqlChartEditor
+              control={control}
+              getValues={getValues}
+              onSubmit={onSubmit}
+              onOpenDisplaySettings={openDisplaySettings}
+            />
+          ) : isRawSqlInput ? (
+            <RawSqlChartEditor
+              control={control}
+              setValue={setValue}
+              onOpenDisplaySettings={openDisplaySettings}
+              onSubmit={onSubmit}
+              isDashboardForm={isDashboardForm}
+              alert={alert}
+              additionalWarnings={additionalAlertWarnings}
+              alertsEnabled={alertsEnabled}
+              isAlertRequired={isAlertRequired}
+              dashboardId={dashboardId}
+              variables={variables}
+            />
+          ) : (
+            <ChartEditorControls
+              control={control}
+              setValue={setValue}
+              clearErrors={clearErrors}
+              errors={errors}
+              fields={fields}
+              append={append}
+              removeSeries={removeSeries}
+              swapSeries={swapSeries}
+              duplicateSeries={duplicateSeries}
+              tableSource={tableSource}
+              tableConnection={tableConnection}
+              databaseName={databaseName}
+              tableName={tableName}
+              dateRange={dateRange}
+              select={select}
+              displayType={displayType}
+              activeTab={activeTab}
+              seriesReturnType={seriesReturnType}
+              ratioMode={ratioMode}
+              alert={alert}
+              additionalWarnings={additionalAlertWarnings}
+              alertsEnabled={alertsEnabled}
+              isAlertRequired={isAlertRequired}
+              isRawSqlInput={isRawSqlInput}
+              dashboardId={dashboardId}
+              parentRef={parentRef}
+              chartConfigForExplanations={chartConfigForExplanations}
+              onSubmit={onSubmit}
+              openDisplaySettings={openDisplaySettings}
+              openHeatmapSettings={openHeatmapSettings}
+            />
+          )}
+          <ChartActionBar
             control={control}
-            getValues={getValues}
-            onSubmit={onSubmit}
-            onOpenDisplaySettings={openDisplaySettings}
-          />
-        ) : isRawSqlInput ? (
-          <RawSqlChartEditor
-            control={control}
-            setValue={setValue}
-            onOpenDisplaySettings={openDisplaySettings}
-            onSubmit={onSubmit}
-            isDashboardForm={isDashboardForm}
-            alert={alert}
-            additionalWarnings={additionalAlertWarnings}
-            alertsEnabled={alertsEnabled}
-            isAlertRequired={isAlertRequired}
-            dashboardId={dashboardId}
-            variables={variables}
-          />
-        ) : (
-          <ChartEditorControls
-            control={control}
-            setValue={setValue}
-            clearErrors={clearErrors}
-            errors={errors}
-            fields={fields}
-            append={append}
-            removeSeries={removeSeries}
-            swapSeries={swapSeries}
-            duplicateSeries={duplicateSeries}
-            tableSource={tableSource}
             tableConnection={tableConnection}
-            databaseName={databaseName}
-            tableName={tableName}
-            dateRange={dateRange}
-            select={select}
-            displayType={displayType}
             activeTab={activeTab}
-            seriesReturnType={seriesReturnType}
-            ratioMode={ratioMode}
-            alert={alert}
-            additionalWarnings={additionalAlertWarnings}
-            alertsEnabled={alertsEnabled}
-            isAlertRequired={isAlertRequired}
             isRawSqlInput={isRawSqlInput}
             dashboardId={dashboardId}
             parentRef={parentRef}
-            chartConfigForExplanations={chartConfigForExplanations}
+            groupBy={groupBy}
             onSubmit={onSubmit}
-            openDisplaySettings={openDisplaySettings}
-            openHeatmapSettings={openHeatmapSettings}
+            showSaveToDashboard={showSaveToDashboard}
+            displayedTimeInputValue={displayedTimeInputValue}
+            setDisplayedTimeInputValue={setDisplayedTimeInputValue}
+            onTimeRangeSearch={onTimeRangeSearch}
+            filtersToggle={dashboardFiltersToggleProps}
+            setSaveToDashboardModalOpen={setSaveToDashboardModalOpen}
           />
-        )}
-        <ChartActionBar
-          control={control}
-          handleSubmit={handleSubmit}
-          tableConnection={tableConnection}
+        </ErrorBoundary>
+        <ChartPreviewPanel
+          queriedConfig={previewConfig}
+          tableSource={tableSource}
+          dateRange={dateRange}
           activeTab={activeTab}
-          isRawSqlInput={isRawSqlInput}
-          dashboardId={dashboardId}
-          parentRef={parentRef}
-          groupBy={groupBy}
+          alert={alert}
+          sourceId={sourceId}
+          onTimeRangeSelect={onTimeRangeSelect}
+          chartConfigForExplanations={chartConfigForExplanations}
+          showGeneratedSql={showGeneratedSql}
+          showSampleEvents={showSampleEvents}
+          showGeneratedPromql={isPromqlInput}
+          dbTimeChartConfig={dbTimeChartConfig}
+          missingRequiredFilterNames={
+            previewDashboardFilters?.missingRequiredFilterNames
+          }
+          setValue={(name, value) => setValue(name, value)}
           onSubmit={onSubmit}
-          handleSave={handleSave}
-          onSave={onSave}
-          onClose={onClose}
-          isSaving={isSaving}
-          hasAlert={alert != null}
-          handleSaveAlert={handleSaveAlert}
-          onSaveAlert={onSaveAlert}
-          saveAlertLabel={saveAlertLabel}
-          isSavingAlert={isSavingAlert}
-          showSaveToDashboard={showSaveToDashboard}
-          displayedTimeInputValue={displayedTimeInputValue}
-          setDisplayedTimeInputValue={setDisplayedTimeInputValue}
-          onTimeRangeSearch={onTimeRangeSearch}
-          filtersToggle={dashboardFiltersToggleProps}
-          setSaveToDashboardModalOpen={setSaveToDashboardModalOpen}
         />
-      </ErrorBoundary>
-      <ChartPreviewPanel
-        queriedConfig={previewConfig}
-        tableSource={tableSource}
-        dateRange={dateRange}
-        activeTab={activeTab}
-        alert={alert}
-        sourceId={sourceId}
-        onTimeRangeSelect={onTimeRangeSelect}
-        chartConfigForExplanations={chartConfigForExplanations}
-        showGeneratedSql={showGeneratedSql}
-        showSampleEvents={showSampleEvents}
-        showGeneratedPromql={isPromqlInput}
-        dbTimeChartConfig={dbTimeChartConfig}
-        missingRequiredFilterNames={
-          previewDashboardFilters?.missingRequiredFilterNames
-        }
-        setValue={(name, value) => setValue(name, value)}
-        onSubmit={onSubmit}
-      />
-      <SaveToDashboardModal
-        chartConfig={chartConfig}
-        opened={saveToDashboardModalOpen}
-        onClose={() => setSaveToDashboardModalOpen(false)}
-      />
-      <ChartDisplaySettingsDrawer
-        opened={displaySettingsOpened}
-        settings={displaySettings}
-        defaultNumberFormat={autoDetectedNumberFormat}
-        previousDateRange={!dashboardId ? previousDateRange : undefined}
-        displayType={displayType}
-        configType={configType}
-        onChange={handleUpdateDisplaySettings}
-        onClose={closeDisplaySettings}
-        isPerSeriesNumberFormatAllowed={configType !== 'sql'}
-      />
-      <HeatmapSettingsDrawer
-        opened={heatmapSettingsOpened}
-        onClose={closeHeatmapSettings}
-        connection={tableConnection}
-        parentRef={parentRef}
-        defaultValues={heatmapSettingsDefaults}
-        onSubmit={handleUpdateHeatmapSettings}
-      />
-    </div>
+        <SaveToDashboardModal
+          chartConfig={chartConfig}
+          opened={saveToDashboardModalOpen}
+          onClose={() => setSaveToDashboardModalOpen(false)}
+        />
+        <ChartDisplaySettingsDrawer
+          opened={displaySettingsOpened}
+          settings={displaySettings}
+          defaultNumberFormat={autoDetectedNumberFormat}
+          previousDateRange={!dashboardId ? previousDateRange : undefined}
+          displayType={displayType}
+          configType={configType}
+          onChange={handleUpdateDisplaySettings}
+          onClose={closeDisplaySettings}
+          isPerSeriesNumberFormatAllowed={configType !== 'sql'}
+        />
+        <HeatmapSettingsDrawer
+          opened={heatmapSettingsOpened}
+          onClose={closeHeatmapSettings}
+          connection={tableConnection}
+          parentRef={parentRef}
+          defaultValues={heatmapSettingsDefaults}
+          onSubmit={handleUpdateHeatmapSettings}
+        />
+      </div>
+    </AlertPanelLayout>
   );
 }
