@@ -85,3 +85,67 @@ describe('DBRowSidePanelHeader: body section (HDX-4373)', () => {
     expect(screen.queryByText('No body for this event.')).toBeInTheDocument();
   });
 });
+
+describe('DBRowSidePanelHeader: body loading state (HDX-5442)', () => {
+  it('renders a loading placeholder instead of the empty state while the row is fetching', () => {
+    renderWithMantine(
+      <DBRowSidePanelHeader
+        mainContent=""
+        mainContentHeader="Body"
+        bodyConfigured
+        isLoading
+      />,
+    );
+    expect(screen.getByTestId('side-panel-body-loading')).toBeInTheDocument();
+    expect(
+      screen.queryByText('No body for this event.'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('keeps the body paper suppressed while loading when body is not configured', () => {
+    renderWithMantine(
+      <DBRowSidePanelHeader
+        mainContent=""
+        mainContentHeader=""
+        bodyConfigured={false}
+        isLoading
+      />,
+    );
+    expect(
+      screen.queryByTestId('side-panel-body-loading'),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('No body for this event.'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('renders the body rather than the loading placeholder when content arrived mid-refetch', () => {
+    renderWithMantine(
+      <DBRowSidePanelHeader
+        mainContent="hello world"
+        mainContentHeader="Body"
+        bodyConfigured
+        isLoading
+      />,
+    );
+    expect(screen.queryByText('hello world')).toBeInTheDocument();
+    expect(
+      screen.queryByTestId('side-panel-body-loading'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('falls through to the empty state once loading settles with no body', () => {
+    renderWithMantine(
+      <DBRowSidePanelHeader
+        mainContent=""
+        mainContentHeader="Body"
+        bodyConfigured
+        isLoading={false}
+      />,
+    );
+    expect(screen.queryByText('No body for this event.')).toBeInTheDocument();
+    expect(
+      screen.queryByTestId('side-panel-body-loading'),
+    ).not.toBeInTheDocument();
+  });
+});

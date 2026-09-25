@@ -155,6 +155,32 @@ export class TableComponent {
   }
 
   /**
+   * Switch the first expanded row between its Overview and Column Values tabs.
+   */
+  async openExpandedRowTab(tab: 'overview' | 'columnValues') {
+    await this.firstExpandedRow
+      .getByTestId(`tab-${tab.toLowerCase()}`)
+      .click({ timeout: 10_000 });
+  }
+
+  /**
+   * The Overview tab's body paper, its loading placeholder (rendered while the
+   * full row query is in flight), and the empty-body copy (rendered only once
+   * the query settles with no body).
+   */
+  get expandedRowBody() {
+    return this.firstExpandedRow.getByTestId('side-panel-body');
+  }
+
+  get expandedRowBodyLoading() {
+    return this.firstExpandedRow.getByTestId('side-panel-body-loading');
+  }
+
+  get expandedRowEmptyBody() {
+    return this.firstExpandedRow.getByText('No body for this event.');
+  }
+
+  /**
    * Get cell value by row index and column name
    * Usage in spec: await expect(table.getCell(0, 'status')).toHaveText('200')
    */
