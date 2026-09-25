@@ -847,6 +847,10 @@ describe('CustomSchemaSQLSerializerV2 - range bounds', () => {
       sql: "((Timestamp >= '2024-01-01T10:00:00'))",
     },
     {
+      lucene: 'Host:[localhost:3000 TO localhost:3999]',
+      sql: "((Host BETWEEN 'localhost:3000' AND 'localhost:3999'))",
+    },
+    {
       lucene: 'LogAttributes.duration_ms:{100 TO 500}',
       sql: "((`LogAttributes`['duration_ms'] > 100 AND `LogAttributes`['duration_ms'] < 500 AND indexHint(mapContains(`LogAttributes`, 'duration_ms'))))",
     },
