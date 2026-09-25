@@ -223,5 +223,20 @@ describe('DBListBarChart', () => {
         'effect-pulse',
       );
     });
+
+    it('does not pulse a fresh empty result', () => {
+      mockUseQueriedChartConfig.mockReturnValue({
+        data: { data: [] },
+        isLoading: false,
+        isPlaceholderData: false,
+        isError: false,
+      });
+
+      renderChart();
+
+      expect(
+        screen.getByText('No data found within time range.'),
+      ).not.toHaveClass('effect-pulse');
+    });
   });
 });

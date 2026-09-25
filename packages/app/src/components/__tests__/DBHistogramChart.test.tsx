@@ -207,6 +207,21 @@ describe('DBHistogramChart', () => {
       );
     });
 
+    it('does not pulse a fresh empty result', () => {
+      mockUseQueriedChartConfig.mockReturnValue({
+        data: { data: [], meta: [] },
+        isLoading: false,
+        isPlaceholderData: false,
+        isError: false,
+      });
+
+      renderWithMantine(<DBHistogramChart config={baseTestConfig} />);
+
+      expect(
+        screen.getByText('No data found within time range.'),
+      ).not.toHaveClass('effect-pulse');
+    });
+
     it('shows the loading state before the first buckets arrive', () => {
       mockUseQueriedChartConfig.mockReturnValue({
         data: undefined,
