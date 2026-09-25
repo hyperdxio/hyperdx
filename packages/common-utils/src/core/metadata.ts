@@ -3111,6 +3111,8 @@ export type TableConnection = {
   connectionId: string;
   metricName?: string;
   metadataMVs?: MetadataMaterializedViews;
+  // Bounds Map key discovery; without it Map keys are skipped. #3037
+  timestampValueExpression?: string;
 };
 
 export type TableConnectionChoice =
@@ -3142,6 +3144,7 @@ export function tcFromSource(source?: TSource): TableConnection {
       source && (isLogSource(source) || isTraceSource(source))
         ? source.metadataMaterializedViews
         : undefined,
+    timestampValueExpression: source?.timestampValueExpression,
   };
 }
 
