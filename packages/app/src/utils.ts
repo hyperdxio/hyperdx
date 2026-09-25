@@ -102,6 +102,7 @@ export const useDebounce = <T>(
   useEffect(
     () => {
       if (shouldBeImmediate) {
+        // eslint-disable-next-line
         setDebouncedValue(value);
         return () => {};
       }
@@ -201,6 +202,7 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
       const item = window.localStorage.getItem(key);
       // Parse stored json or if none return initialValue
       if (item != null) {
+        // eslint-disable-next-line
         setStoredValue(JSON.parse(item));
       }
     } catch (error) {

@@ -14,6 +14,7 @@ import ms from 'ms';
 import * as config from '@/config';
 import { createAlert } from '@/controllers/alerts';
 import { createTeam } from '@/controllers/team';
+import * as timeseriesEngine from '@/controllers/timeseriesEngine';
 import {
   bulkInsertData,
   bulkInsertLogs,
@@ -1216,7 +1217,6 @@ describe('checkAlerts', () => {
 
   describe('Alert Templates', () => {
     // Create a mock metadata object with the necessary methods
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const mockMetadata = {
       getColumn: jest.fn().mockImplementation(({ column }) => {
         // Provide basic column definitions for common columns to avoid warnings
@@ -1226,6 +1226,7 @@ describe('checkAlerts', () => {
           SeverityText: { name: 'SeverityText', type: 'String' },
           ServiceName: { name: 'ServiceName', type: 'String' },
         };
+        // eslint-disable-next-line security/detect-object-injection
         return Promise.resolve(columnMap[column]);
       }),
       getColumns: jest.fn().mockResolvedValue([]),
@@ -1240,7 +1241,6 @@ describe('checkAlerts', () => {
     } as any;
 
     // Create a mock clickhouse client
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const mockClickhouseClient = {
       query: jest.fn().mockResolvedValue({
         json: jest.fn().mockResolvedValue({ data: [] }),
@@ -2041,6 +2041,7 @@ describe('checkAlerts', () => {
             SeverityText: { name: 'SeverityText', type: 'String' },
             ServiceName: { name: 'ServiceName', type: 'String' },
           };
+          // eslint-disable-next-line security/detect-object-injection
           return Promise.resolve(columnMap[column]);
         }),
       };
@@ -2196,7 +2197,7 @@ describe('checkAlerts', () => {
           recentHistoryMap,
         },
         clickhouseClient,
-        connection.id,
+        connection,
         alertProvider,
         teamWebhooksById,
       );
@@ -5161,6 +5162,136 @@ describe('checkAlerts', () => {
       expect(alertHistories[0].counts).toBe(1);
       expect(alertHistories[0].lastValues[0].count).toBeGreaterThanOrEqual(1);
       expect(alertHistories[1].state).toBe('OK');
+    });
+
+    describe('PromQL Alerts', () => {
+      it('should process a PromQL alert, respecting grouping, state transitions, and backfilling', async () => {
+        const {
+          team,
+          webhook,
+          connection,
+          source,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
+
+        const dashboard = await new Dashboard({
+          name: 'PromQL Dashboard',
+          team: team._id,
+          tiles: [
+            {
+              id: 'promql1',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 4,
+              config: {
+                configType: 'promql',
+                displayType: 'line',
+                promqlExpression: 'sum(up) by (host)',
+                connection: connection.id,
+              },
+            },
+          ],
+        }).save();
+
+        const tile = dashboard.tiles?.find((t: any) => t.id === 'promql1');
+        if (!tile) throw new Error('tile not found for PromQL test');
+
+        const details = await createAlertDetails(
+          team,
+          source,
+          {
+            source: AlertSource.TILE,
+            channel: {
+              type: 'webhook',
+              webhookId: webhook._id.toString(),
+            },
+            interval: '5m',
+            thresholdType: AlertThresholdType.ABOVE,
+            threshold: 10,
+            dashboardId: dashboard.id,
+            tileId: 'promql1',
+          },
+          {
+            taskType: AlertTaskType.TILE,
+            tile,
+            dashboard,
+          },
+        );
+
+        const now = new Date('2023-11-16T22:12:00.000Z');
+        // Backfilled evaluation (worker was delayed). Expected bucket is 22:05:00.
+        const bucketStartMs = new Date('2023-11-16T22:05:00.000Z').getTime();
+        // Prometheus evaluates exactly at the step, so the returned timestamp for the 22:05 bucket is 22:10
+        const prometheusReturnedMs = bucketStartMs + 5 * 60 * 1000;
+
+        // We need to mock the timeseriesEngine call rather than evaluatePromqlAlert directly
+        // because processAlert calls the local evaluatePromqlAlert inside index.ts
+        jest
+          .spyOn(timeseriesEngine, 'queryRangeViaTableFunction')
+          .mockResolvedValueOnce([
+            {
+              metric: {
+                __name__: 'up',
+                host: 'node-1',
+              },
+              values: [
+                [(prometheusReturnedMs - 5 * 60 * 1000) / 1000, '42'],
+                [prometheusReturnedMs / 1000, '42'],
+              ],
+            },
+            {
+              metric: {
+                __name__: 'up',
+                host: 'node-2',
+              },
+              values: [
+                [(prometheusReturnedMs - 5 * 60 * 1000) / 1000, '5'],
+                [prometheusReturnedMs / 1000, '5'],
+              ], // Below threshold
+            },
+          ]);
+
+        await processAlertAtTime(
+          now,
+          details,
+          clickhouseClient,
+          connection,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        // State machine asserts
+        const alertHistories = await AlertHistory.find({
+          alert: details.alert.id,
+        }).sort({ createdAt: 1 });
+
+        // Two group keys, so two histories
+        expect(alertHistories.length).toBe(2);
+
+        // Group key order is non-deterministic depending on Map iterators, so find them.
+        const node1History = alertHistories.find(
+          h => h.group === '__name__:up, host:node-1',
+        )!;
+        const node2History = alertHistories.find(
+          h => h.group === '__name__:up, host:node-2',
+        )!;
+
+        expect(node1History).toBeDefined();
+        expect(node1History.state).toBe('ALERT');
+        expect(node1History.lastValues[0].count).toBe(42);
+        // Expect one backfilled bucket because we returned two buckets.
+        expect(node1History.analytics?.backfilledBuckets).toBe(1);
+
+        expect(node2History).toBeDefined();
+        expect(node2History.state).toBe('OK');
+        expect(node2History.lastValues[0].count).toBe(5);
+
+        expect(
+          timeseriesEngine.queryRangeViaTableFunction,
+        ).toHaveBeenCalledTimes(1);
+      });
     });
 
     describe('dashboard variables', () => {
@@ -11387,6 +11518,103 @@ describe('checkAlerts', () => {
         expect(serviceBHistories[0].state).toBe('PENDING');
         expect(serviceBHistories[0].fired).toBeFalsy();
       });
+
+      it('should route PromQL queries to the ClickHouse Prometheus HTTP API if supported', async () => {
+        const {
+          team,
+          webhook,
+          connection,
+          source,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
+
+        const dashboard = await new Dashboard({
+          name: 'PromQL Dashboard',
+          team: team._id,
+          tiles: [
+            {
+              id: 'promql1',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 4,
+              config: {
+                configType: 'promql',
+                displayType: 'line',
+                promqlExpression: 'sum(up)',
+                connection: connection.id,
+              },
+            },
+          ],
+        }).save();
+
+        const tile = dashboard.tiles?.find((t: any) => t.id === 'promql1');
+        const details = await createAlertDetails(
+          team,
+          source,
+          {
+            source: AlertSource.TILE,
+            channel: {
+              type: 'webhook',
+              webhookId: webhook._id.toString(),
+            },
+            interval: '5m',
+            thresholdType: AlertThresholdType.ABOVE,
+            threshold: 10,
+            dashboardId: dashboard.id,
+            tileId: 'promql1',
+          },
+          {
+            taskType: AlertTaskType.TILE,
+            tile: tile!,
+            dashboard,
+          },
+        );
+
+        jest
+          .spyOn(timeseriesEngine, 'clickhouseServesPrometheusHttpApi')
+          .mockResolvedValueOnce(true);
+
+        const fetchMock = jest.fn().mockResolvedValue({
+          ok: true,
+          json: async () => ({
+            status: 'success',
+            data: {
+              result: [
+                {
+                  metric: {},
+                  values: [[Date.now() / 1000, '42']],
+                },
+              ],
+            },
+          }),
+        });
+        const originalFetch = global.fetch;
+        global.fetch = fetchMock as any;
+
+        try {
+          await processAlertAtTime(
+            new Date(),
+            details,
+            clickhouseClient,
+            connection,
+            alertProvider,
+            teamWebhooksById,
+          );
+
+          expect(fetchMock).toHaveBeenCalled();
+          const callUrl = new URL(fetchMock.mock.calls[0][0]);
+          expect(callUrl.pathname).toBe('/prometheus/api/v1/query_range');
+          expect(callUrl.searchParams.get('database')).toBe(
+            source.from.databaseName,
+          );
+          expect(callUrl.searchParams.get('table')).toBe(source.from.tableName);
+          expect(callUrl.searchParams.get('query')).toBe('sum(up)');
+        } finally {
+          global.fetch = originalFetch;
+        }
+      });
     });
   });
 
@@ -11656,6 +11884,11 @@ describe('checkAlerts', () => {
     });
 
     it('should not use a materialized view when the query is incompatible with the available materialized view', async () => {
+      // Mock console.error to suppress expected EXPLAIN ESTIMATE failures logged by @clickhouse/client
+      const consoleErrorSpy = jest
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
+
       // Arrange
       const {
         team,
@@ -11797,6 +12030,8 @@ describe('checkAlerts', () => {
       expect(alertHistories[1].createdAt).toEqual(
         new Date('2023-11-16T22:15:00.000Z'),
       );
+
+      consoleErrorSpy.mockRestore();
     });
   });
 

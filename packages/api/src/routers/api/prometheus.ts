@@ -7,9 +7,12 @@ import z from 'zod';
 import { ClickhouseClient } from '@/clickhouse';
 import { getConnectionById } from '@/controllers/connection';
 import {
-  connectionSupportsPrometheusHttpApi,
-  PROMETHEUS_MAX_EXECUTION_SEC,
-  PROMETHEUS_MAX_RESULT_ROWS,
+  CLICKHOUSE_PROMETHEUS_API_PREFIX,
+  clickhouseAuthHeaders,
+  clickhousePrometheusUpstream,
+  clickhouseServesPrometheusHttpApi,
+  joinPrometheusUpstreamUrl,
+  PROMETHEUS_CH_TIMEOUT_MS,
   queryInstantViaTableFunction,
   queryLabelNames,
   queryLabelValues,
@@ -20,6 +23,14 @@ import { getNonNullUserWithTeam } from '@/middleware/auth';
 import { getCounter, getHistogram } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
 import { objectIdSchema, stringListQueryParam } from '@/utils/zod';
+
+// Re-export helpers that were moved to timeseriesEngine; existing imports from
+// this module (e.g. integration tests) continue to work unchanged.
+export {
+  CLICKHOUSE_PROMETHEUS_API_PREFIX,
+  clickhousePrometheusUpstream,
+  joinPrometheusUpstreamUrl,
+} from '@/controllers/timeseriesEngine';
 
 const router = express.Router();
 
@@ -108,7 +119,6 @@ function getParams(req: express.Request): Record<string, string> {
 // --------------------------
 
 const PROMETHEUS_PROXY_TIMEOUT_MS = 90_000;
-const PROMETHEUS_CH_TIMEOUT_MS = 30_000;
 const PROMETHEUS_MAX_RESOLUTION = 11_000;
 // Widest window /query_exemplars will proxy. Prometheus's exemplar store is a
 // small circular buffer, so a wider range mostly costs a bigger streamed body
@@ -118,13 +128,6 @@ export const PROMETHEUS_MAX_EXEMPLAR_WINDOW_SEC = 7 * 24 * 60 * 60;
 /**
  * Whether a rejection from streaming the upstream body means the client hung up
  * rather than the backend failing.
- *
- * The error code is the only usable signal. `pipeline` destroys every stream it
- * touches before rejecting — the destination included, whichever end actually
- * failed — so `res.destroyed` is true either way and testing it would classify
- * every upstream fault as a user cancellation. Node also resolves the race in
- * our favour: a real error always beats the ERR_STREAM_PREMATURE_CLOSE that the
- * cascading destroy raises, never the other way round.
  */
 export function isClientDisconnect(err: unknown): boolean {
   return (
@@ -133,48 +136,7 @@ export function isClientDisconnect(err: unknown): boolean {
   );
 }
 
-/**
- * Join a Connection host with an absolute Prometheus API path.
- *
- * `new URL('/api/v1/query_range', 'http://host:8481/select/0/prometheus')`
- * discards `/select/0/prometheus` because an absolute path replaces the base
- * pathname. VictoriaMetrics cluster (and any Prometheus-compatible server
- * mounted under a prefix) needs that prefix kept. Host userinfo, query, and
- * hash are left untouched.
- *
- * `path` must be an absolute path (every call site passes a literal starting
- * with `/`) -- this is not a general-purpose URL joiner.
- *
- * @see https://github.com/hyperdxio/hyperdx/issues/3046
- */
-export function joinPrometheusUpstreamUrl(
-  upstreamHost: string,
-  path: string,
-): URL {
-  const url = new URL(upstreamHost);
-  // `new URL('prometheus:9090')` succeeds with an opaque path (`prometheus:`
-  // scheme). The pathname setter is a no-op there, so without this guard the
-  // helper would return the host unchanged, `fetch` would fail, and the proxy
-  // would 502 / increment query_errors for a user misconfiguration. Same check
-  // as clickhouseProxy.ts.
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-    throw new TypeError('Connection host must be http(s)');
-  }
-  // Strip ALL trailing slashes, not just one -- a host saved with a doubled
-  // trailing slash (e.g. `http://prom:9090//`) would otherwise leave a `//`
-  // in the joined path, which most servers treat as a distinct (404) path.
-  const basePath = url.pathname.replace(/\/+$/, '');
-  url.pathname = `${basePath}${path}`;
-  return url;
-}
-
-// Only real Prometheus API params are ever caller-settable in
-// proxyToPrometheus's query merge below. `params` there is built upstream by
-// spreading the *entire* `req.query`/`req.body` with no allowlist (see
-// `getParams`), so without this, a request could supply an arbitrary key --
-// e.g. VictoriaMetrics's `extra_label`, which a Connection host may pin as a
-// tenant-isolation scope -- and un-pin or override it, even though no
-// legitimate caller ever sends that key.
+// Only real Prometheus API params are ever caller-settable in proxyToPrometheus.
 const CALLER_SETTABLE_PARAM_KEYS = new Set([
   'query',
   'time',
@@ -192,32 +154,6 @@ const CALLER_SETTABLE_PARAM_KEYS = new Set([
   'table',
 ]);
 
-// ClickHouse serves the Prometheus HTTP API under this prefix on its main HTTP
-// port when the `prometheus_api_v1` handler is configured (26.6+).
-export const CLICKHOUSE_PROMETHEUS_API_PREFIX = '/prometheus/api/v1';
-
-/**
- * The ClickHouse connection host with the query limits pinned as ClickHouse
- * HTTP settings. The prometheus_api_v1 handler honours settings given in the
- * URL and reports a breach as a Prometheus 400 (pinned by the live int test),
- * so this is the only place to bound a PromQL evaluation — the request carries
- * no SQL to attach SETTINGS to. Pinned on the host rather than passed as params
- * so the merge in proxyToPrometheus (which lets the caller override any
- * allowlisted key) can't loosen them.
- */
-export function clickhousePrometheusUpstream(
-  host: string,
-  {
-    maxExecutionSec = PROMETHEUS_MAX_EXECUTION_SEC,
-    maxResultRows = PROMETHEUS_MAX_RESULT_ROWS,
-  } = {},
-): string {
-  const url = new URL(host);
-  url.searchParams.set('max_execution_time', String(maxExecutionSec));
-  url.searchParams.set('max_result_rows', String(maxResultRows));
-  return url.toString();
-}
-
 function newClickhouseClient(connection: {
   host: string;
   username: string;
@@ -229,59 +165,6 @@ function newClickhouseClient(connection: {
     password: connection.password,
     requestTimeout: PROMETHEUS_CH_TIMEOUT_MS,
   });
-}
-
-/**
- * Whether a ClickHouse connection answers PromQL over HTTP. Two conditions,
- * cheapest first: the server is new enough (26.6+), and the prometheus_api_v1
- * handler is actually configured — a self-managed server needs an
- * `<http_handlers>` rule for that, which a stock install lacks. The handler
- * answers every request, error or not, with Prometheus JSON (`{status, ...}`);
- * a server without it answers a plain-text 404. `format_query` is used as the
- * probe because it is the one endpoint that needs no table.
- *
- * Probed on every request, like the version check, so a handler enabled or
- * removed on the server is reflected immediately.
- */
-const PROBE_TIMEOUT_MS = 5_000;
-
-async function clickhouseServesPrometheusHttpApi(
-  client: ClickhouseClient,
-  connection: { id: string; host: string; username: string; password?: string },
-): Promise<boolean> {
-  if (
-    !(await connectionSupportsPrometheusHttpApi({
-      client,
-      connectionId: connection.id,
-    }))
-  ) {
-    return false;
-  }
-
-  try {
-    const url = joinPrometheusUpstreamUrl(
-      connection.host,
-      `${CLICKHOUSE_PROMETHEUS_API_PREFIX}/format_query`,
-    );
-    url.searchParams.set('query', 'up');
-    const resp = await fetch(url, {
-      headers: clickhouseAuthHeaders(connection),
-      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
-    });
-    return typeof JSON.parse(await resp.text())?.status === 'string';
-  } catch {
-    return false;
-  }
-}
-
-function clickhouseAuthHeaders(connection: {
-  username: string;
-  password?: string;
-}): Record<string, string> {
-  return {
-    'X-ClickHouse-User': connection.username,
-    'X-ClickHouse-Key': connection.password ?? '',
-  };
 }
 
 // Forwards the response straight from the upstream Prometheus to the

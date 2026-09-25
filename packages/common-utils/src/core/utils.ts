@@ -1550,9 +1550,11 @@ export const isFormulaSourceKind = (
 export function displayTypeSupportsPromQLAlerts(
   displayType: DisplayType | undefined,
 ): boolean {
-  // TODO: Support alerts for PromQL (HDX-4636)
-  // This looks funky, just doing it to satisfy knip
-  return displayType ? false : false;
+  return (
+    displayType === DisplayType.Line ||
+    displayType === DisplayType.StackedBar ||
+    displayType === DisplayType.Number
+  );
 }
 
 /** Expand the chart's macros, returning failures instead of throwing. */

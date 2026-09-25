@@ -18,6 +18,7 @@ import {
   getSampleWeightExpression,
   isLogSource,
   isTraceSource,
+  PromqlConfigWithDateRange,
   SavedChartConfig,
   SourceKind,
   TSource,
@@ -143,8 +144,21 @@ export function buildAlertChartConfig({
   dateRange: [Date, Date];
   granularity: Granularity;
 }): ChartConfigWithDateRange | undefined {
-  if (!savedConfig || isPromqlSavedChartConfig(savedConfig)) {
+  if (!savedConfig) {
     return undefined;
+  }
+
+  if (isPromqlSavedChartConfig(savedConfig)) {
+    if (savedConfig.source && !source) {
+      return undefined;
+    }
+    return {
+      ...savedConfig,
+      ...(source ? { from: source.from, connection: source.connection } : {}),
+      dateRange,
+      granularity,
+      variables,
+    } satisfies PromqlConfigWithDateRange;
   }
 
   // Raw SQL: only time-series display types can be charted over the alert
@@ -270,9 +284,7 @@ function TileAlertChart({
   const tile = dashboard?.tiles?.find(t => t.id === alert.tileId);
 
   const tileSourceId =
-    tile != null && !isPromqlSavedChartConfig(tile.config)
-      ? tile.config.source
-      : undefined;
+    tile != null && 'source' in tile.config ? tile.config.source : undefined;
   const { data: source, isLoading: isSourceLoading } = useSource({
     id: tileSourceId,
   });

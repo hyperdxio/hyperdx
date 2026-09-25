@@ -165,9 +165,10 @@ describe('CheckAlertTask', () => {
         mockAlertTask.now,
         mockAlertTask.alerts[0],
         expect.any(ClickhouseClient),
-        'conn-123',
+        mockAlertTask.conn,
         mockAlertProvider,
         teamWebhooksById,
+        expect.any(Map),
       );
 
       mockProcessAlert.mockRestore();
@@ -306,9 +307,10 @@ describe('CheckAlertTask', () => {
         mockAlertTask1.now,
         mockAlertTask1.alerts[0],
         expect.any(ClickhouseClient),
-        'conn-123',
+        mockAlertTask1.conn,
         mockAlertProvider,
         team1WebhooksById,
+        expect.any(Map),
       );
 
       // Second call should use team2's webhooks
@@ -317,9 +319,10 @@ describe('CheckAlertTask', () => {
         mockAlertTask2.now,
         mockAlertTask2.alerts[0],
         expect.any(ClickhouseClient),
-        'conn-456',
+        mockAlertTask2.conn,
         mockAlertProvider,
         team2WebhooksById,
+        expect.any(Map),
       );
 
       // Verify getWebhooks was called for each team
@@ -425,8 +428,9 @@ describe('CheckAlertTask', () => {
             alert: expect.objectContaining({ id: 'alert-healthy' }),
           }),
           expect.any(ClickhouseClient),
-          'conn-healthy',
+          expect.objectContaining({ id: 'conn-healthy' }),
           mockAlertProvider,
+          expect.any(Map),
           expect.any(Map),
         );
       });

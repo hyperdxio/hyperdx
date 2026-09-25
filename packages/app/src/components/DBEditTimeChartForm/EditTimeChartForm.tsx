@@ -300,7 +300,7 @@ export default function EditTimeChartForm({
     if (!displayTypeSupportsAlerts) {
       setValue('alert', undefined);
     }
-  }, [configType, displayType, previousDisplayType, setValue]);
+  }, [configType, displayType, isPromqlInput, previousDisplayType, setValue]);
 
   const showGeneratedSql =
     TABS_WITH_GENERATED_SQL.has(activeTab) && !isPromqlInput;
@@ -677,6 +677,20 @@ export default function EditTimeChartForm({
       prevDisplayTypeRef.current = displayType;
       prevConfigTypeRef.current = configType;
 
+      if (configTypeChanged) {
+        if (
+          configType === 'promql' &&
+          tableSource?.kind !== SourceKind.Promql
+        ) {
+          setValue('source', '');
+        } else if (
+          configType !== 'promql' &&
+          tableSource?.kind === SourceKind.Promql
+        ) {
+          setValue('source', '');
+        }
+      }
+
       if (
         isStringSelectDisplayType(displayType) &&
         typeof select !== 'string'
@@ -726,6 +740,15 @@ export default function EditTimeChartForm({
     const sourceChanged = sourceId !== prevSourceIdRef.current;
     prevSourceIdRef.current = sourceId;
 
+    if (sourceChanged && tableSource?.kind === SourceKind.Promql) {
+      if (configType !== 'promql') {
+        setValue('configType', 'promql');
+      }
+      if (!isPromqlDisplayType(displayType)) {
+        setValue('displayType', DisplayType.Line);
+      }
+    }
+
     if (
       sourceChanged &&
       displayType === DisplayType.Heatmap &&
@@ -735,7 +758,7 @@ export default function EditTimeChartForm({
       applyHeatmapDefaults(setValue, getDurationMsExpression(tableSource));
       onSubmit(true);
     }
-  }, [sourceId, displayType, tableSource, setValue, onSubmit]);
+  }, [sourceId, displayType, configType, tableSource, setValue, onSubmit]);
 
   // Emulate the date range picker auto-searching similar to dashboards
   useEffect(() => {
@@ -894,12 +917,14 @@ export default function EditTimeChartForm({
                 >
                   Time Series
                 </Tabs.Tab>
-                <Tabs.Tab
-                  value={DisplayType.Table}
-                  leftSection={<IconTable size={16} />}
-                >
-                  Table
-                </Tabs.Tab>
+                {tableSource?.kind !== SourceKind.Promql && (
+                  <Tabs.Tab
+                    value={DisplayType.Table}
+                    leftSection={<IconTable size={16} />}
+                  >
+                    Table
+                  </Tabs.Tab>
+                )}
                 <Tabs.Tab
                   value={DisplayType.Number}
                   leftSection={<IconNumbers size={16} />}
@@ -918,24 +943,28 @@ export default function EditTimeChartForm({
                 >
                   Pie
                 </Tabs.Tab>
-                <Tabs.Tab
-                  value={DisplayType.Search}
-                  leftSection={<IconList size={16} />}
-                >
-                  Search
-                </Tabs.Tab>
-                <Tabs.Tab
-                  value={DisplayType.Heatmap}
-                  leftSection={<IconGrid3x3 size={16} />}
-                >
-                  Heatmap
-                </Tabs.Tab>
-                <Tabs.Tab
-                  value={DisplayType.EventPatterns}
-                  leftSection={<IconBracketsContain size={16} />}
-                >
-                  Patterns
-                </Tabs.Tab>
+                {tableSource?.kind !== SourceKind.Promql && (
+                  <>
+                    <Tabs.Tab
+                      value={DisplayType.Search}
+                      leftSection={<IconList size={16} />}
+                    >
+                      Search
+                    </Tabs.Tab>
+                    <Tabs.Tab
+                      value={DisplayType.Heatmap}
+                      leftSection={<IconGrid3x3 size={16} />}
+                    >
+                      Heatmap
+                    </Tabs.Tab>
+                    <Tabs.Tab
+                      value={DisplayType.EventPatterns}
+                      leftSection={<IconBracketsContain size={16} />}
+                    >
+                      Patterns
+                    </Tabs.Tab>
+                  </>
+                )}
                 <Tabs.Tab
                   value={DisplayType.Markdown}
                   leftSection={<IconMarkdown size={16} />}
@@ -1006,6 +1035,12 @@ export default function EditTimeChartForm({
             getValues={getValues}
             onSubmit={onSubmit}
             onOpenDisplaySettings={openDisplaySettings}
+            alert={alert}
+            alertsEnabled={alertsEnabled}
+            isAlertRequired={isAlertRequired}
+            dashboardId={dashboardId}
+            setValue={setValue}
+            additionalAlertWarnings={additionalAlertWarnings}
           />
         ) : isRawSqlInput ? (
           <RawSqlChartEditor

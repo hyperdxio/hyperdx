@@ -7,7 +7,6 @@ import {
   chSqlToAliasMap,
   ResponseJSON,
 } from '@hyperdx/common-utils/dist/clickhouse';
-import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { tryOptimizeConfigWithMaterializedView } from '@hyperdx/common-utils/dist/core/materializedViews';
 import {
   getMetadata,
@@ -38,12 +37,16 @@ import {
   AlertThresholdType,
   BuilderChartConfigWithOptDateRange,
   ChartConfigWithOptDateRange,
+  ChartVariable,
   DisplayType,
   getSampleWeightExpression,
   pickSampleWeightExpressionProps,
+  PrometheusMatrixResult,
+  PromqlSavedChartConfig,
   SavedChartConfig,
   SourceKind,
 } from '@hyperdx/common-utils/dist/types';
+import { substitutePromqlChartConfigVariables } from '@hyperdx/common-utils/dist/variables';
 import * as fns from 'date-fns';
 import { isString, pick } from 'lodash';
 import { ObjectId } from 'mongoose';
@@ -52,12 +55,23 @@ import ms from 'ms';
 import { performance } from 'perf_hooks';
 import { serializeError } from 'serialize-error';
 
+import { ClickhouseClient } from '@/clickhouse';
 import { ALERT_HISTORY_QUERY_CONCURRENCY } from '@/controllers/alertHistory';
+import {
+  CLICKHOUSE_PROMETHEUS_API_PREFIX,
+  clickhouseAuthHeaders,
+  clickhousePrometheusUpstream,
+  clickhouseServesPrometheusHttpApi,
+  joinPrometheusUpstreamUrl,
+  PROMETHEUS_CH_TIMEOUT_MS,
+  queryRangeViaTableFunction,
+} from '@/controllers/timeseriesEngine';
 import { AlertState, IAlert, IAlertError } from '@/models/alert';
 import AlertHistory, {
   IAlertHistory,
   IAlertHistoryAnalytics,
 } from '@/models/alertHistory';
+import { IConnection } from '@/models/connection';
 import { IDashboard } from '@/models/dashboard';
 import { ISavedSearch } from '@/models/savedSearch';
 import { ISource } from '@/models/source';
@@ -209,6 +223,7 @@ const makeAlertError = (
 ): IAlertError => ({
   timestamp: new Date(),
   type,
+  // eslint-disable-next-line security/detect-object-injection
   message: (HARDCODED_ALERT_ERROR_MESSAGES[type] ?? message).slice(0, 10000),
 });
 
@@ -716,7 +731,8 @@ const buildAlertChartConfigFromSavedConfig = ({
     return undefined;
   }
 
-  // PromQL charts don't support alerts yet
+  // PromQL tile alerts are evaluated separately via evaluatePromqlAlert;
+  // return undefined here so the shared ClickHouse path is skipped.
   if (isPromqlSavedChartConfig(savedConfig)) {
     return undefined;
   }
@@ -941,13 +957,210 @@ export const parseAlertData = (
   return { value, extraFields };
 };
 
+/**
+ * Execute a PromQL alert's expression for the given window and return all
+ * series with their full time-series data as {@link PrometheusMatrixResult}[],
+ * or `null` when the query returns no data.
+ *
+ * Returning all time-points (not just the last) allows the caller to evaluate
+ * every expected time bucket individually, enabling correct backfill support
+ * when multiple windows have been skipped.
+ *
+ * Supports both Prometheus-endpoint connections (HTTP proxy to
+ * `/api/v1/query_range`) and ClickHouse-backed connections
+ * (`prometheusQueryRange` table function).
+ */
+export async function evaluatePromqlAlert({
+  savedConfig,
+  source,
+  connection,
+  clickhouseClient,
+  clickhouseCapabilityMemo,
+  dateRange,
+  windowSizeInMins,
+  variables,
+}: {
+  savedConfig: PromqlSavedChartConfig;
+  source?: ISource | null;
+  connection: IConnection;
+  clickhouseClient: ClickhouseClient;
+  clickhouseCapabilityMemo?: Map<string, boolean>;
+  dateRange: [Date, Date];
+  windowSizeInMins: number;
+  variables?: ChartVariable[];
+}): Promise<PrometheusMatrixResult[] | null> {
+  const stepSec = windowSizeInMins * 60;
+  const endSec = dateRange[1].getTime() / 1000;
+  // PromQL evaluates exactly at the given timestamps. We want the evaluation
+  // for the window [T, T+step) to happen at T+step, using the freshest data.
+  const startSec = dateRange[0].getTime() / 1000 + stepSec;
+
+  // Resolve the expression to evaluate. The config stores either a bare string
+  // (tiles saved before multi-expression support) or an array of PromqlSeries.
+  // Alerts always target the LAST expression, mirroring how SQL builder alerts
+  // target the last series.
+  const resolvedConfig =
+    variables && variables.length > 0
+      ? substitutePromqlChartConfigVariables({ ...savedConfig, variables })
+      : savedConfig;
+  const rawExpression = resolvedConfig.promqlExpression;
+  let promqlExpression = typeof rawExpression === 'string' ? rawExpression : '';
+  if (Array.isArray(rawExpression)) {
+    const validExpressions = rawExpression.filter(
+      e => e.expression && e.expression.trim() !== '',
+    );
+    if (validExpressions.length > 0) {
+      if (
+        resolvedConfig.displayType === 'number' ||
+        resolvedConfig.displayType === 'table' ||
+        resolvedConfig.displayType === 'bar' ||
+        resolvedConfig.displayType === 'pie'
+      ) {
+        promqlExpression = validExpressions[0].expression;
+      } else {
+        promqlExpression =
+          validExpressions[validExpressions.length - 1].expression;
+      }
+    }
+  }
+
+  // Shared helper for querying a Prometheus-compatible HTTP endpoint.
+  async function queryPrometheusHttp(
+    url: URL,
+    headers?: Record<string, string>,
+  ): Promise<PrometheusMatrixResult[] | null> {
+    url.searchParams.set('query', promqlExpression);
+    url.searchParams.set('start', String(startSec));
+    url.searchParams.set('end', String(endSec));
+    url.searchParams.set('step', String(stepSec));
+    const resp = await fetch(url.toString(), {
+      headers,
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!resp.ok) {
+      throw new Error(
+        `Prometheus query_range returned HTTP ${resp.status} for PromQL alert`,
+      );
+    }
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const json = (await resp.json()) as {
+      status?: string;
+      data?: {
+        result?: {
+          metric?: Record<string, string>;
+          values?: [number, string][];
+        }[];
+      };
+    };
+    if (json?.status !== 'success') {
+      throw new Error(
+        `Prometheus query_range returned status '${json?.status}' for PromQL alert`,
+      );
+    }
+    if (!Array.isArray(json?.data?.result)) {
+      return null;
+    }
+    // Return all series with all time-points so the caller can evaluate each
+    // window bucket individually (backfill support).
+    const results: PrometheusMatrixResult[] = json.data.result
+      .filter(s => s.values && s.values.length > 0)
+      .map(s => ({
+        metric: s.metric ?? {},
+        values: s.values!,
+      }));
+    return results.length > 0 ? results : null;
+  }
+
+  if (connection.isPrometheusEndpoint) {
+    const url = joinPrometheusUpstreamUrl(
+      connection.host,
+      '/api/v1/query_range',
+    );
+    return queryPrometheusHttp(url);
+  }
+
+  const tableName = source?.from.tableName;
+  if (!tableName) {
+    throw new Error(
+      'A PromQL alert routed to ClickHouse must have a source with a valid TimeSeries table name. ' +
+        'Assign a source to this alert or switch to a Prometheus connection.',
+    );
+  }
+
+  const databaseName = source.from.databaseName;
+  if (!databaseName) {
+    throw new Error(
+      'A PromQL alert routed to ClickHouse must have a source with a valid database name. ' +
+        'Assign a source to this alert or switch to a Prometheus connection.',
+    );
+  }
+
+  // ClickHouse path — use the batch client for both the HTTP API probe and the
+  // table function fallback.
+
+  let servesHttpApi = false;
+  if (clickhouseCapabilityMemo) {
+    if (!clickhouseCapabilityMemo.has(connection.id)) {
+      clickhouseCapabilityMemo.set(
+        connection.id,
+        await clickhouseServesPrometheusHttpApi(clickhouseClient, connection),
+      );
+    }
+    servesHttpApi = clickhouseCapabilityMemo.get(connection.id)!;
+  } else {
+    servesHttpApi = await clickhouseServesPrometheusHttpApi(
+      clickhouseClient,
+      connection,
+    );
+  }
+
+  if (servesHttpApi) {
+    // ClickHouse 26.6+ with the prometheus_api_v1 handler configured.
+    const chUpstream = clickhousePrometheusUpstream(connection.host, {
+      maxExecutionSec: Math.round(PROMETHEUS_CH_TIMEOUT_MS / 1000),
+    });
+    const url = joinPrometheusUpstreamUrl(
+      chUpstream,
+      `${CLICKHOUSE_PROMETHEUS_API_PREFIX}/query_range`,
+    );
+    url.searchParams.set('database', databaseName);
+    url.searchParams.set('table', tableName);
+
+    return queryPrometheusHttp(
+      url,
+      clickhouseAuthHeaders({
+        username: connection.username,
+        password: connection.password,
+      }),
+    );
+  }
+
+  const startMs = Math.floor(startSec * 1000);
+  const endMs = Math.floor(endSec * 1000);
+  const stepSecRounded = Math.max(Math.floor(stepSec), 1);
+
+  const results = await queryRangeViaTableFunction({
+    client: clickhouseClient,
+    connectionId: connection.id,
+    databaseName,
+    tableName,
+    expr: promqlExpression,
+    startMs,
+    endMs,
+    stepSec: stepSecRounded,
+  });
+
+  return results.length > 0 ? results : null;
+}
+
 export const processAlert = async (
   now: Date,
   details: AlertDetails,
   clickhouseClient: ClickhouseClient,
-  connectionId: string,
+  connection: IConnection,
   alertProvider: AlertProvider,
   teamWebhooksById: Map<string, IWebhook>,
+  clickhouseCapabilityMemo?: Map<string, boolean>,
 ) => {
   const { alert, previousMap, recentHistoryMap } = details;
   const source = 'source' in details ? details.source : undefined;
@@ -1091,9 +1304,518 @@ export const processAlert = async (
       return;
     }
 
+    const metadata = getMetadata(clickhouseClient);
+    // Populated below for SAVED_SEARCH alerts; referenced by the shared
+    // sampleLinesFor closure that may be called after the non-PromQL query path.
+    let aliasWithClauses: BuilderChartConfigWithOptDateRange['with'];
+
+    // Track state per group (or one history if no groupBy)
+    const histories = new Map<string, IAlertHistory>();
+    const latestAlertContext = new Map<
+      string,
+      { value: number; attributes: Record<string, string>; startTime: Date }
+    >();
+
+    // Helper to get or create history for a group
+    const getOrCreateHistory = (groupKey: string): IAlertHistory => {
+      if (!histories.has(groupKey)) {
+        histories.set(groupKey, {
+          alert: new mongoose.Types.ObjectId(alert.id),
+          createdAt: nowInMinsRoundDown,
+          state: AlertState.OK,
+          counts: 0,
+          lastValues: [],
+          group: groupKey || undefined,
+        });
+      }
+      return histories.get(groupKey)!;
+    };
+
+    // The sample rows a saved-search body quotes depend on the window, not on
+    // the group or the state, so every group notifying for one window shares a
+    // fetch instead of repeating it. Backfilled buckets each notify for their
+    // own window, hence the key. A failed fetch is shared too — the body falls
+    // back to no sample lines rather than re-running the query per group.
+    const sampleLinesByWindow = new Map<number, Promise<string>>();
+    const sampleLinesFor =
+      details.taskType === AlertTaskType.SAVED_SEARCH
+        ? (startTime: Date) => () => {
+            const key = startTime.getTime();
+            const pending =
+              sampleLinesByWindow.get(key) ??
+              fetchSampleLines({
+                aliasWith: aliasWithClauses,
+                clickhouseClient,
+                endTime: fns.addMinutes(startTime, windowSizeInMins),
+                metadata,
+                savedSearch: details.savedSearch,
+                source: details.source,
+                startTime,
+              });
+            sampleLinesByWindow.set(key, pending);
+            return pending;
+          }
+        : undefined;
+
+    // Helper to send a notification, catching and logging any errors.
+    const trySendNotification = async ({
+      group,
+      totalCount,
+      state,
+      startTime = nowInMinsRoundDown,
+      attributes = {},
+    }: {
+      state: AlertState;
+      totalCount: number;
+      group: string;
+      startTime?: Date;
+      attributes?: Record<string, string>;
+    }) => {
+      // KNOWN LIMITATION: Alert data (including silenced state) is fetched when
+      // the task is queued via AlertProvider, not when it processes. If a user
+      // silences an alert after it's queued but before it processes, this
+      // execution may still send a notification. Subsequent alert checks will
+      // respect the silenced state. This trade-off maintains architectural
+      // separation from direct database access.
+      if ((alert.silenced?.until?.getTime() ?? 0) > Date.now()) {
+        alertEvaluationsCounter.add(1, { outcome: 'skipped_silenced' });
+        logger.info(
+          {
+            alertId: alert.id,
+            silenced: alert.silenced,
+          },
+          'Skipped firing alert due to silence',
+        );
+        return;
+      }
+
+      alertEvaluationsCounter.add(1, {
+        outcome: state === AlertState.ALERT ? 'fired' : 'resolved',
+      });
+      logger.info(
+        { alertId: alert.id, group, totalCount },
+        state === AlertState.ALERT
+          ? `Triggering ${alert.channel.type} alarm!`
+          : `Alert resolved for group "${group}", triggering ${alert.channel.type} notification`,
+      );
+
+      try {
+        // Casts to any here because this is where I stopped unraveling the
+        // alert logic requiring large, nested objects. We should look at
+        // cleaning this up next. fireChannelEvent guards against null values
+        // for these properties.
+        const { failures, timings, dispatchDurationMs } =
+          await fireChannelEvent({
+            alert,
+            alertProvider,
+            attributes,
+            clickhouseClient,
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+            dashboard: (details as any).dashboard,
+            startTime,
+            endTime: fns.addMinutes(startTime, windowSizeInMins),
+            group,
+            isGroupedAlert: hasGroupBy,
+            metadata,
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+            savedSearch: (details as any).savedSearch,
+            source,
+            state,
+            totalCount,
+            windowSizeInMins,
+            teamWebhooksById,
+            sampleLines: sampleLinesFor?.(startTime),
+          });
+        // Only the dispatch phase: the column reports how long the targets
+        // took to respond, not the time spent building the message. A round
+        // that queued no job (every target unresolvable) resolves instantly,
+        // so it must not report 0ms as though a target answered at once.
+        if (timings.length > 0) {
+          evaluationAnalytics.webhookDurationMs =
+            (evaluationAnalytics.webhookDurationMs ?? 0) + dispatchDurationMs;
+        }
+        recordNotificationTimings(timings);
+        // Each entry is a target that didn't end up delivered: unresolvable,
+        // capped, or (for the inline dispatcher) an actual send rejection —
+        // see renderAlertTemplate.
+        for (const failure of failures) {
+          logger.error(
+            {
+              alertId: alert.id,
+              group,
+              target: failure.target,
+              error: serializeError(failure.error),
+            },
+            'Notification target could not be dispatched',
+          );
+          executionErrors.push(makeNotificationAlertError(failure));
+        }
+      } catch (e) {
+        // Render-level failures (title/link building, template compile) —
+        // nothing was dispatched.
+        logger.error(
+          { alertId: alert.id, group, error: serializeError(e) },
+          'Failed to fire channel event',
+        );
+        executionErrors.push(makeWebhookAlertError(e));
+      }
+    };
+
+    const numWindowsToLookBack = alert.numConsecutiveWindows ?? 1;
+
+    const shouldFireBasedOnConsecutiveWindows = (
+      groupKey?: string,
+    ): boolean => {
+      if (numWindowsToLookBack <= 1) {
+        return true;
+      }
+
+      // recentHistoryMap entries are pre-filtered to the lookback window and
+      // sorted newest-first, so take the most recent M-1 for this group.
+      const key = computeHistoryMapKey(alert.id, groupKey || '');
+      const groupHistories = recentHistoryMap?.get(key) ?? [];
+      const relevant = groupHistories.slice(0, numWindowsToLookBack - 1);
+
+      return (
+        relevant.length === numWindowsToLookBack - 1 &&
+        relevant.every(
+          h => h.state === AlertState.ALERT || h.state === AlertState.PENDING,
+        )
+      );
+    };
+
+    const sendNotificationIfResolved = async (
+      previousHistory: AggregatedAlertHistory | undefined,
+      currentHistory: IAlertHistory,
+      groupKey: string,
+    ) => {
+      if (
+        (previousHistory?.state === AlertState.ALERT ||
+          previousHistory?.state === AlertState.PENDING) &&
+        previousHistory?.fired !== false &&
+        currentHistory.state === AlertState.OK
+      ) {
+        const lastValue =
+          currentHistory.lastValues[currentHistory.lastValues.length - 1];
+        await trySendNotification({
+          state: AlertState.OK,
+          group: groupKey,
+          totalCount: lastValue?.count || 0,
+          startTime: lastValue?.startTime || nowInMinsRoundDown,
+        });
+      }
+    };
+
+    const isPromQL =
+      details.taskType === AlertTaskType.INLINE
+        ? isPromqlSavedChartConfig(details.chartConfig)
+        : details.taskType === AlertTaskType.TILE
+          ? isPromqlSavedChartConfig(details.tile.config)
+          : false;
+
+    if (isPromQL) {
+      const savedConfig =
+        details.taskType === AlertTaskType.INLINE
+          ? details.chartConfig
+          : details.taskType === AlertTaskType.TILE
+            ? details.tile.config
+            : undefined;
+
+      let promqlResults: PrometheusMatrixResult[] | null = null;
+      const queryStartedAt = performance.now();
+      try {
+        promqlResults = await evaluatePromqlAlert({
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+          savedConfig: savedConfig as PromqlSavedChartConfig,
+          source: details.source,
+          connection,
+          clickhouseClient,
+          clickhouseCapabilityMemo,
+          dateRange,
+          windowSizeInMins,
+          variables:
+            details.taskType === AlertTaskType.TILE
+              ? getDashboardVariableDeclarations(details.dashboard.filters).map(
+                  declaration => ({
+                    ...declaration,
+                    values: [],
+                  }),
+                )
+              : undefined,
+        });
+
+        const queryDurationMs = performance.now() - queryStartedAt;
+        evaluationAnalytics.queryDurationMs = Math.round(queryDurationMs);
+        recordOperationOutcome({
+          operation: 'alerts.query',
+          outcome: 'success',
+          durationMs: queryDurationMs,
+          attributes: { alert_source: alert.source ?? 'unknown' },
+        });
+      } catch (e) {
+        const queryDurationMs = performance.now() - queryStartedAt;
+        evaluationAnalytics.queryDurationMs = Math.round(queryDurationMs);
+        recordOperationOutcome({
+          operation: 'alerts.query',
+          outcome: 'error',
+          durationMs: queryDurationMs,
+          attributes: { alert_source: alert.source ?? 'unknown' },
+        });
+        evalOutcome = 'error';
+        const alertError = makeQueryAlertError(e, PROMETHEUS_CH_TIMEOUT_MS);
+        alertQueryFailuresCounter.add(1, {
+          error_type:
+            alertError.type === AlertErrorType.QUERY_TIMEOUT
+              ? 'timeout'
+              : 'error',
+        });
+        logger.error(
+          {
+            alertId: alert.id,
+            errorType: alertError.type,
+            error: serializeError(e),
+          },
+          'PromQL alert query failed, skipping state/history update',
+        );
+        await alertProvider.recordAlertErrors(
+          alert.id,
+          [alertError],
+          nowInMinsRoundDown,
+          evaluationAnalytics,
+        );
+        return;
+      }
+
+      // Evaluate all series over the expected buckets so that missed or
+      // delayed execution windows can be backfilled correctly.
+      const expectedBuckets: Date[] = [];
+      const windowMs = windowSizeInMins * 60 * 1000;
+      for (
+        let t = dateRange[0].getTime();
+        t <= dateRange[1].getTime() - windowMs;
+        t += windowMs
+      ) {
+        expectedBuckets.push(new Date(t));
+      }
+      evaluationAnalytics.backfilledBuckets = Math.max(
+        0,
+        expectedBuckets.length - 1,
+      );
+
+      // Build a per-bucket lookup: timestamp (seconds) → per-series value map.
+      // key: series group string, value: numeric value at that bucket.
+      // Format group keys as k:v (consistent with builder alerts, not k:"v").
+      const bucketSeriesValues = new Map<
+        number,
+        Map<string, { value: number; attributes: Record<string, string> }>
+      >();
+
+      if (promqlResults != null) {
+        for (const series of promqlResults) {
+          // Build group key from labels — k:v format matches builder alerts.
+          // Keep __name__ in the group key to avoid collapsing distinct series.
+          const labelEntries = Object.entries(series.metric).sort(([a], [b]) =>
+            a.localeCompare(b),
+          );
+          const groupKey = labelEntries.map(([k, v]) => `${k}:${v}`).join(', ');
+          const attributes = Object.fromEntries(
+            labelEntries.filter(([k]) => k !== '__name__'),
+          ) as Record<string, string>;
+
+          for (const [tsSec, rawVal] of series.values) {
+            // Shift the evaluation instant back to the start of the bucket
+            const tsMs = Math.round(tsSec * 1000) - windowMs;
+
+            if (expectedBuckets.length === 0) continue;
+            const startMs = expectedBuckets[0].getTime();
+            const index = Math.round((tsMs - startMs) / windowMs);
+            if (index < 0 || index >= expectedBuckets.length) continue;
+
+            // eslint-disable-next-line security/detect-object-injection
+            const nearestBucketMs = expectedBuckets[index].getTime();
+            const parsed = parseFloat(rawVal);
+            if (!Number.isFinite(parsed)) continue;
+
+            if (!bucketSeriesValues.has(nearestBucketMs)) {
+              bucketSeriesValues.set(nearestBucketMs, new Map());
+            }
+            // Keep the highest value if the same series appears twice in a bucket
+            const existing = bucketSeriesValues
+              .get(nearestBucketMs)!
+              .get(groupKey);
+            if (existing == null || parsed > existing.value) {
+              bucketSeriesValues.get(nearestBucketMs)!.set(groupKey, {
+                value: parsed,
+                attributes,
+              });
+            }
+          }
+        }
+      }
+
+      for (const bucketStart of expectedBuckets) {
+        // Prometheus query_range aligns response timestamps to step boundaries,
+        // so we can do an exact ms lookup rather than a tolerance scan.
+        const seriesForBucket = bucketSeriesValues.get(bucketStart.getTime());
+
+        if (!seriesForBucket || seriesForBucket.size === 0) {
+          alertEvaluationsCounter.add(1, { outcome: 'empty_bucket' });
+          logger.info(
+            { alertId: alert.id, bucketStart },
+            'No PromQL data for time bucket',
+          );
+
+          const zeroValueIsAlert = doesExceedThreshold(alert, 0);
+
+          const hasAlertsInPreviousMap = previousMap
+            .values()
+            .some(
+              h =>
+                h.state === AlertState.ALERT || h.state === AlertState.PENDING,
+            );
+
+          if (zeroValueIsAlert) {
+            const history = getOrCreateHistory('');
+            history.lastValues.push({ count: 0, startTime: bucketStart });
+            history.counts += 1;
+            if (shouldFireBasedOnConsecutiveWindows('')) {
+              history.state = AlertState.ALERT;
+              history.fired = true;
+              latestAlertContext.set('', {
+                value: 0,
+                attributes: {},
+                startTime: bucketStart,
+              });
+            } else {
+              history.state = AlertState.PENDING;
+              history.fired =
+                previousMap.get(computeHistoryMapKey(alert.id, ''))?.fired ===
+                true;
+            }
+          } else if (!hasGroupBy || !hasAlertsInPreviousMap) {
+            const history = getOrCreateHistory('');
+            history.lastValues.push({ count: 0, startTime: bucketStart });
+          }
+          continue;
+        }
+
+        const bucketEvaluations = new Map<
+          string,
+          {
+            value: number;
+            attributes: Record<string, string>;
+            exceeds: boolean;
+          }
+        >();
+        for (const [
+          groupKey,
+          { value, attributes },
+        ] of seriesForBucket.entries()) {
+          const exceeds = doesExceedThreshold(alert, value);
+          const existing = bucketEvaluations.get(groupKey);
+          if (!existing || (!existing.exceeds && exceeds)) {
+            bucketEvaluations.set(groupKey, { value, attributes, exceeds });
+          }
+        }
+
+        for (const [groupKey, evaluation] of bucketEvaluations.entries()) {
+          const history = getOrCreateHistory(groupKey);
+
+          if (evaluation.exceeds) {
+            history.counts += 1;
+            if (shouldFireBasedOnConsecutiveWindows(groupKey)) {
+              history.state = AlertState.ALERT;
+              history.fired = true;
+              latestAlertContext.set(groupKey, {
+                value: evaluation.value,
+                attributes: evaluation.attributes,
+                startTime: bucketStart,
+              });
+            } else {
+              history.state = AlertState.PENDING;
+              history.fired =
+                previousMap.get(computeHistoryMapKey(alert.id, groupKey))
+                  ?.fired === true;
+            }
+          } else {
+            history.state = AlertState.OK;
+            history.counts = 0;
+          }
+          history.lastValues.push({
+            count: evaluation.value,
+            startTime: bucketStart,
+          });
+        }
+      }
+
+      // Auto-resolve: groups that were alerting/pending but absent from this run
+      if (hasGroupBy && previousMap && previousMap.size > 0) {
+        for (const [previousKey, previousHistory] of previousMap.entries()) {
+          const groupKey = extractGroupKeyFromMapKey(previousKey, alert.id);
+          if (
+            (previousHistory.state === AlertState.ALERT ||
+              previousHistory.state === AlertState.PENDING) &&
+            !histories.has(groupKey) &&
+            !doesExceedThreshold(alert, 0)
+          ) {
+            const history = getOrCreateHistory(groupKey);
+            history.lastValues.push({
+              count: 0,
+              startTime: expectedBuckets[0] ?? dateRange[1],
+            });
+          }
+        }
+      }
+
+      if (histories.size === 0) {
+        getOrCreateHistory('');
+      }
+
+      // Send notifications for state transitions
+      for (const [groupKey, history] of histories.entries()) {
+        const previousKey = computeHistoryMapKey(alert.id, groupKey);
+        let groupPrevious = previousMap.get(previousKey);
+
+        const hitAlertThisRun = latestAlertContext.has(groupKey);
+        if (hitAlertThisRun) {
+          const context = latestAlertContext.get(groupKey);
+          if (context) {
+            await trySendNotification({
+              state: AlertState.ALERT,
+              group: groupKey,
+              totalCount: context.value,
+              startTime: context.startTime,
+              attributes: context.attributes,
+            });
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+            groupPrevious = {
+              ...(groupPrevious ?? {}),
+              state: AlertState.ALERT,
+              fired: true,
+            } as AggregatedAlertHistory;
+          }
+        }
+
+        await sendNotificationIfResolved(groupPrevious, history, groupKey);
+      }
+
+      flushNotificationTimings();
+      const historyRecords = Array.from(histories.values());
+      for (const record of historyRecords) {
+        record.analytics = evaluationAnalytics;
+      }
+      await alertProvider.updateAlertState(
+        alert.id,
+        historyRecords,
+        executionErrors,
+        dateRange,
+      );
+      return;
+    }
+
     const chartConfig = getChartConfigFromAlert(
       details,
-      connectionId,
+      connection.id,
       dateRange,
       windowSizeInMins,
     );
@@ -1110,16 +1832,11 @@ export const processAlert = async (
       return;
     }
 
-    const metadata = getMetadata(clickhouseClient);
-
     // For saved search alerts, the WHERE clause may reference aliased columns
     // from the saved search's select expression (e.g. `toString(Body) AS body`).
     // The alert query itself uses count(*), not the saved search's select,
     // so we render the saved search's select separately to discover aliases
     // and inject them as WITH clauses into the alert query.
-    // Reused by the notification body's sample-row query, which resolves the
-    // same aliases against the same source.
-    let aliasWithClauses: BuilderChartConfigWithOptDateRange['with'];
     if (details.taskType === AlertTaskType.SAVED_SEARCH) {
       if (!isBuilderChartConfig(chartConfig)) {
         logger.error({
@@ -1135,7 +1852,6 @@ export const processAlert = async (
           details.source,
           metadata,
         );
-        aliasWithClauses = withClauses;
         if (withClauses) {
           chartConfig.with = withClauses;
         }
@@ -1247,201 +1963,6 @@ export const processAlert = async (
       `Received alert metric [${alert.source} source]`,
     );
 
-    // Track state per group (or one history if no groupBy)
-    const histories = new Map<string, IAlertHistory>();
-    const latestAlertContext = new Map<
-      string,
-      { value: number; attributes: Record<string, string>; startTime: Date }
-    >();
-
-    // Helper to get or create history for a group
-    const getOrCreateHistory = (groupKey: string): IAlertHistory => {
-      if (!histories.has(groupKey)) {
-        histories.set(groupKey, {
-          alert: new mongoose.Types.ObjectId(alert.id),
-          createdAt: nowInMinsRoundDown,
-          state: AlertState.OK,
-          counts: 0,
-          lastValues: [],
-          group: groupKey || undefined,
-        });
-      }
-      return histories.get(groupKey)!;
-    };
-
-    // The sample rows a saved-search body quotes depend on the window, not on
-    // the group or the state, so every group notifying for one window shares a
-    // fetch instead of repeating it. Backfilled buckets each notify for their
-    // own window, hence the key. A failed fetch is shared too — the body falls
-    // back to no sample lines rather than re-running the query per group.
-    const sampleLinesByWindow = new Map<number, Promise<string>>();
-    const sampleLinesFor =
-      details.taskType === AlertTaskType.SAVED_SEARCH
-        ? (startTime: Date) => () => {
-            const key = startTime.getTime();
-            const pending =
-              sampleLinesByWindow.get(key) ??
-              fetchSampleLines({
-                aliasWith: aliasWithClauses,
-                clickhouseClient,
-                endTime: fns.addMinutes(startTime, windowSizeInMins),
-                metadata,
-                savedSearch: details.savedSearch,
-                source: details.source,
-                startTime,
-              });
-            sampleLinesByWindow.set(key, pending);
-            return pending;
-          }
-        : undefined;
-
-    // Helper to send a notification, catching and logging any errors.
-    const trySendNotification = async ({
-      group,
-      totalCount,
-      state,
-      startTime = nowInMinsRoundDown,
-      attributes = {},
-    }: {
-      state: AlertState;
-      totalCount: number;
-      group: string;
-      startTime?: Date;
-      attributes?: Record<string, string>;
-    }) => {
-      // KNOWN LIMITATION: Alert data (including silenced state) is fetched when
-      // the task is queued via AlertProvider, not when it processes. If a user
-      // silences an alert after it's queued but before it processes, this
-      // execution may still send a notification. Subsequent alert checks will
-      // respect the silenced state. This trade-off maintains architectural
-      // separation from direct database access.
-      if ((alert.silenced?.until?.getTime() ?? 0) > Date.now()) {
-        alertEvaluationsCounter.add(1, { outcome: 'skipped_silenced' });
-        logger.info(
-          {
-            alertId: alert.id,
-            silenced: alert.silenced,
-          },
-          'Skipped firing alert due to silence',
-        );
-        return;
-      }
-
-      alertEvaluationsCounter.add(1, {
-        outcome: state === AlertState.ALERT ? 'fired' : 'resolved',
-      });
-      logger.info(
-        { alertId: alert.id, group, totalCount },
-        state === AlertState.ALERT
-          ? `Triggering ${alert.channel.type} alarm!`
-          : `Alert resolved for group "${group}", triggering ${alert.channel.type} notification`,
-      );
-
-      try {
-        // Casts to any here because this is where I stopped unraveling the
-        // alert logic requiring large, nested objects. We should look at
-        // cleaning this up next. fireChannelEvent guards against null values
-        // for these properties.
-        const { failures, timings, dispatchDurationMs } =
-          await fireChannelEvent({
-            alert,
-            alertProvider,
-            attributes,
-            clickhouseClient,
-            dashboard: (details as any).dashboard,
-            startTime,
-            endTime: fns.addMinutes(startTime, windowSizeInMins),
-            group,
-            isGroupedAlert: hasGroupBy,
-            metadata,
-            savedSearch: (details as any).savedSearch,
-            source,
-            state,
-            totalCount,
-            windowSizeInMins,
-            teamWebhooksById,
-            sampleLines: sampleLinesFor?.(startTime),
-          });
-        // Only the dispatch phase: the column reports how long the targets
-        // took to respond, not the time spent building the message. A round
-        // that queued no job (every target unresolvable) resolves instantly,
-        // so it must not report 0ms as though a target answered at once.
-        if (timings.length > 0) {
-          evaluationAnalytics.webhookDurationMs =
-            (evaluationAnalytics.webhookDurationMs ?? 0) + dispatchDurationMs;
-        }
-        recordNotificationTimings(timings);
-        // Each entry is a target that didn't end up delivered: unresolvable,
-        // capped, or (for the inline dispatcher) an actual send rejection —
-        // see renderAlertTemplate.
-        for (const failure of failures) {
-          logger.error(
-            {
-              alertId: alert.id,
-              group,
-              target: failure.target,
-              error: serializeError(failure.error),
-            },
-            'Notification target could not be dispatched',
-          );
-          executionErrors.push(makeNotificationAlertError(failure));
-        }
-      } catch (e) {
-        // Render-level failures (title/link building, template compile) —
-        // nothing was dispatched.
-        logger.error(
-          { alertId: alert.id, group, error: serializeError(e) },
-          'Failed to fire channel event',
-        );
-        executionErrors.push(makeWebhookAlertError(e));
-      }
-    };
-
-    const numWindowsToLookBack = alert.numConsecutiveWindows ?? 1;
-
-    const shouldFireBasedOnConsecutiveWindows = (
-      groupKey?: string,
-    ): boolean => {
-      if (numWindowsToLookBack <= 1) {
-        return true;
-      }
-
-      // recentHistoryMap entries are pre-filtered to the lookback window and
-      // sorted newest-first, so take the most recent M-1 for this group.
-      const key = computeHistoryMapKey(alert.id, groupKey || '');
-      const groupHistories = recentHistoryMap?.get(key) ?? [];
-      const relevant = groupHistories.slice(0, numWindowsToLookBack - 1);
-
-      return (
-        relevant.length === numWindowsToLookBack - 1 &&
-        relevant.every(
-          h => h.state === AlertState.ALERT || h.state === AlertState.PENDING,
-        )
-      );
-    };
-
-    const sendNotificationIfResolved = async (
-      previousHistory: AggregatedAlertHistory | undefined,
-      currentHistory: IAlertHistory,
-      groupKey: string,
-    ) => {
-      if (
-        (previousHistory?.state === AlertState.ALERT ||
-          previousHistory?.state === AlertState.PENDING) &&
-        previousHistory?.fired !== false &&
-        currentHistory.state === AlertState.OK
-      ) {
-        const lastValue =
-          currentHistory.lastValues[currentHistory.lastValues.length - 1];
-        await trySendNotification({
-          state: AlertState.OK,
-          group: groupKey,
-          totalCount: lastValue?.count || 0,
-          startTime: lastValue?.startTime || nowInMinsRoundDown,
-        });
-      }
-    };
-
     const meta = getResponseMetadata(chartConfig, checksData);
     if (!meta) {
       evalOutcome = 'error';
@@ -1502,7 +2023,7 @@ export const processAlert = async (
       return;
     }
 
-    // ── Time-series path (Line/StackedBar charts) ──
+    // Standard time-series alert evaluation (Line/StackedBar charts).
     const expectedBuckets = timeBucketByGranularity(
       dateRange[0],
       dateRange[1],
@@ -1699,6 +2220,7 @@ export const processAlert = async (
 
           // Inject a mock previous history so the resolve check below catches it
           // if the final state for this group is OK (i.e. it breached then resolved).
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
           groupPrevious = {
             ...(groupPrevious || {}),
             state: AlertState.ALERT,
@@ -1984,6 +2506,7 @@ export default class CheckAlertTask implements HdxTask {
   async processAlertTask(
     alertTask: AlertTask,
     teamWebhooksById: Map<string, IWebhook>,
+    clickhouseCapabilityMemo: Map<string, boolean>,
   ): Promise<boolean> {
     return tasksTracer.startActiveSpan('processAlertTask', async span => {
       setBusinessContext({ teamId: alertTask.conn.team.toString() });
@@ -2020,9 +2543,10 @@ export default class CheckAlertTask implements HdxTask {
                   alertTask.now,
                   alert,
                   clickhouseClient,
-                  conn.id,
+                  conn,
                   this.provider,
                   teamWebhooksById,
+                  clickhouseCapabilityMemo,
                 );
               },
               {
@@ -2102,11 +2626,16 @@ export default class CheckAlertTask implements HdxTask {
     );
 
     let failedBatchCount = 0;
+    const clickhouseCapabilityMemo = new Map<string, boolean>();
     for (const task of alertTasks) {
       const teamWebhooksById =
         teamToWebhooks.get(task.conn.team.toString()) ?? new Map();
       this.task_queue.add(async () => {
-        const success = await this.processAlertTask(task, teamWebhooksById);
+        const success = await this.processAlertTask(
+          task,
+          teamWebhooksById,
+          clickhouseCapabilityMemo,
+        );
         if (!success) {
           failedBatchCount++;
         }

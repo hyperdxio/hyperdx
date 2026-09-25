@@ -16,8 +16,8 @@ import {
 import { ClickhouseClient } from '@/clickhouse';
 import logger from '@/utils/logger';
 
-export const PROMETHEUS_MAX_EXECUTION_SEC = 30;
-export const PROMETHEUS_MAX_RESULT_ROWS = 100000;
+const PROMETHEUS_MAX_EXECUTION_SEC = 30;
+const PROMETHEUS_MAX_RESULT_ROWS = 100000;
 
 export type TimeSeriesTagsQueryArgs = {
   client: ClickhouseClient;
@@ -394,7 +394,7 @@ export async function queryInstantViaTableFunction({
  * server is picked up without a restart; an unknown version is treated as
  * old, matching the other version-gated features.
  */
-export async function connectionSupportsPrometheusHttpApi({
+async function connectionSupportsPrometheusHttpApi({
   client,
   connectionId,
 }: {
@@ -405,4 +405,99 @@ export async function connectionSupportsPrometheusHttpApi({
   return supportsPrometheusHttpApi(
     await metadata.getServerVersion({ connectionId }),
   );
+}
+
+// --------------------------
+// Shared Prometheus connection helpers
+// --------------------------
+//
+// Used by both the HTTP proxy (routers/api/prometheus.ts) and the alerting
+// task (tasks/checkAlerts) so backend-selection logic stays in one place.
+
+/** ClickHouse prefix for the prometheus_api_v1 HTTP handler (26.6+). */
+export const CLICKHOUSE_PROMETHEUS_API_PREFIX = '/prometheus/api/v1';
+
+/**
+ * Timeout for PromQL evaluation via ClickhouseClient.
+ * Shared with checkAlerts so both callers use the same limit.
+ */
+export const PROMETHEUS_CH_TIMEOUT_MS = 30_000;
+
+const PROM_PROBE_TIMEOUT_MS = 5_000;
+
+/**
+ * Join a Connection host with an absolute Prometheus API path, preserving any
+ * prefix already baked into the host (e.g. VictoriaMetrics cluster prefix).
+ */
+export function joinPrometheusUpstreamUrl(
+  upstreamHost: string,
+  path: string,
+): URL {
+  const url = new URL(upstreamHost);
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new TypeError('Connection host must be http(s)');
+  }
+  const basePath = url.pathname.replace(/\/+$/, '');
+  url.pathname = `${basePath}${path}`;
+  return url;
+}
+
+/** Basic-auth headers for ClickHouse's native HTTP API. */
+export function clickhouseAuthHeaders(connection: {
+  username: string;
+  password?: string;
+}): Record<string, string> {
+  return {
+    'X-ClickHouse-User': connection.username,
+    'X-ClickHouse-Key': connection.password ?? '',
+  };
+}
+
+/**
+ * ClickHouse host URL with PromQL query-limits pinned as HTTP settings so
+ * the prometheus_api_v1 handler enforces them.
+ */
+export function clickhousePrometheusUpstream(
+  host: string,
+  {
+    maxExecutionSec = PROMETHEUS_MAX_EXECUTION_SEC,
+    maxResultRows = PROMETHEUS_MAX_RESULT_ROWS,
+  } = {},
+): string {
+  const url = new URL(host);
+  url.searchParams.set('max_execution_time', String(maxExecutionSec));
+  url.searchParams.set('max_result_rows', String(maxResultRows));
+  return url.toString();
+}
+
+/**
+ * Whether this ClickHouse instance serves the Prometheus HTTP API.
+ * Probed on each call so a config change is reflected immediately.
+ */
+export async function clickhouseServesPrometheusHttpApi(
+  client: ClickhouseClient,
+  connection: { id: string; host: string; username: string; password?: string },
+): Promise<boolean> {
+  if (
+    !(await connectionSupportsPrometheusHttpApi({
+      client,
+      connectionId: connection.id,
+    }))
+  ) {
+    return false;
+  }
+  try {
+    const url = joinPrometheusUpstreamUrl(
+      connection.host,
+      `${CLICKHOUSE_PROMETHEUS_API_PREFIX}/format_query`,
+    );
+    url.searchParams.set('query', 'up');
+    const resp = await fetch(url, {
+      headers: clickhouseAuthHeaders(connection),
+      signal: AbortSignal.timeout(PROM_PROBE_TIMEOUT_MS),
+    });
+    return typeof JSON.parse(await resp.text())?.status === 'string';
+  } catch {
+    return false;
+  }
 }
