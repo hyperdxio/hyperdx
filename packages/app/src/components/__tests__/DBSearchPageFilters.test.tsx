@@ -502,6 +502,64 @@ describe('FilterGroup', () => {
     expect(labels[2]).toHaveTextContent('<1%'); // banana
   });
 
+  it('should not show percentages for values the field filter rules out', async () => {
+    jest.mocked(useGetValuesDistribution).mockReturnValue({
+      data: new Map([['apple', 100]]),
+      isFetching: false,
+      error: null,
+    } as UseQueryResult<Map<string, number>>);
+
+    renderWithMantine(
+      <FilterGroup
+        {...defaultProps}
+        selectedValues={{
+          included: new Set(['apple']),
+          excluded: new Set(),
+        }}
+      />,
+    );
+
+    await userEvent.click(
+      screen.getByTestId('toggle-distribution-button-Test Filter'),
+    );
+
+    const labels = screen.getAllByText(/%/);
+    expect(labels).toHaveLength(1);
+    expect(labels[0]).toHaveTextContent('>99%');
+  });
+
+  it('should not show a percentage for an excluded value', async () => {
+    jest.mocked(useGetValuesDistribution).mockReturnValue({
+      data: new Map([
+        ['apple', 60],
+        ['banana', 40],
+      ]),
+      isFetching: false,
+      error: null,
+    } as UseQueryResult<Map<string, number>>);
+
+    renderWithMantine(
+      <FilterGroup
+        {...defaultProps}
+        selectedValues={{
+          included: new Set(),
+          excluded: new Set(['zebra']),
+        }}
+      />,
+    );
+
+    await userEvent.click(
+      screen.getByTestId('toggle-distribution-button-Test Filter'),
+    );
+
+    expect(
+      screen.queryByTestId('filter-distribution-Test Filter-zebra'),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByTestId('filter-distribution-Test Filter-apple'),
+    ).toHaveTextContent('~60%');
+  });
+
   it('should handle excluded items', () => {
     renderWithMantine(
       <FilterGroup

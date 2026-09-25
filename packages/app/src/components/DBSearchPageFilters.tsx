@@ -629,6 +629,12 @@ const FilterGroupBody = ({
     [onChange, selectedValues],
   );
 
+  // The distribution query runs under this field's own filter, so a value the
+  // filter rules out has zero rows; showing it as "<1%" would read as rare.
+  const isExcludedByOwnFilter = (value: string | boolean) =>
+    selectedValues.excluded.has(value) ||
+    (selectedValues.included.size > 0 && !selectedValues.included.has(value));
+
   const isLimitingDisplayedItems =
     sortedMatchingOptions.length > displayedOptions.length;
 
@@ -683,7 +689,9 @@ const FilterGroupBody = ({
           }
           isPercentageLoading={isFetchingDistribution}
           percentage={
-            showDistributions && distributionData
+            showDistributions &&
+            distributionData &&
+            !isExcludedByOwnFilter(option.value)
               ? (distributionData.get(option.value.toString()) ?? 0)
               : undefined
           }
@@ -799,7 +807,9 @@ function FilterGroupActions({
         <>
           <Tooltip
             label={
-              showDistributions ? 'Hide Distribution' : 'Show Distribution'
+              showDistributions
+                ? 'Hide distribution'
+                : 'Show distribution (estimated from a sample of rows)'
             }
             position="top"
             withArrow
