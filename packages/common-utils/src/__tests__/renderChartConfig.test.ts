@@ -4313,6 +4313,24 @@ describe('renderChartConfig', () => {
       expect(sql).toContain('GROUP BY ALL ORDER BY `__hdx_time_bucket`');
     });
 
+    it('keeps a metric name containing "settings" intact in its branch', async () => {
+      const generatedSql = await renderChartConfig(
+        {
+          ...baseMultiSeriesConfig,
+          select: [
+            gaugeSelect('app.settings.reloads'),
+            gaugeSelect('metric.beta'),
+          ],
+        },
+        mockMetadata,
+        querySettings,
+      );
+      const sql = parameterizedQueryToSql(generatedSql);
+
+      expect(sql).toContain("MetricName = 'app.settings.reloads'");
+      expect(sql.match(/SETTINGS/g)).toHaveLength(1);
+    });
+
     it('renders a metric ratio as a SQL-side division', async () => {
       const generatedSql = await renderChartConfig(
         {

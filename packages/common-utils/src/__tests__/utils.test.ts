@@ -2766,6 +2766,19 @@ describe('utils', () => {
         // This test case illustrates that subsequent clauses will also be extracted.
         settingsClause: 'SETTINGS opt = 1, cast = 1 FORMAT json',
       },
+      {
+        label: 'settings inside an identifier',
+        sql: 'SELECT * FROM table WHERE AppSettings = 1 SETTINGS opt = 1',
+        withoutSettingsClause: 'SELECT * FROM table WHERE AppSettings = 1',
+        settingsClause: 'SETTINGS opt = 1',
+      },
+      {
+        label: 'settings inside a string literal',
+        sql: "SELECT * FROM table WHERE MetricName = 'app.settings.reloads'",
+        withoutSettingsClause:
+          "SELECT * FROM table WHERE MetricName = 'app.settings.reloads'",
+        settingsClause: undefined,
+      },
     ])(
       'Extracts SETTINGS clause from: "$label" query',
       ({ sql, settingsClause, withoutSettingsClause }) => {

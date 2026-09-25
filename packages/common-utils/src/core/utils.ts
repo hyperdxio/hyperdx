@@ -1209,6 +1209,32 @@ export function isDateRangeEqual(range1: [Date, Date], range2: [Date, Date]) {
   );
 }
 
+/**
+ * Index of the first standalone SETTINGS keyword, or -1. Occurrences inside
+ * quoted strings or identifiers (e.g. `'app.settings.reloads'`, `AppSettings`)
+ * are not the clause and must not split the query.
+ */
+function findSettingsKeyword(sql: string): number {
+  const isWordChar = (c: string) => /\w/.test(c);
+  let quote: string | undefined;
+  for (let i = 0; i < sql.length; i++) {
+    const c = sql.charAt(i);
+    if (quote) {
+      if (c === '\\') i++;
+      else if (c === quote) quote = undefined;
+    } else if (c === "'" || c === '"' || c === '`') {
+      quote = c;
+    } else if (
+      sql.substring(i, i + 8).toUpperCase() === 'SETTINGS' &&
+      !isWordChar(sql.charAt(i - 1)) &&
+      !isWordChar(sql.charAt(i + 8))
+    ) {
+      return i;
+    }
+  }
+  return -1;
+}
+
 /*
   This function extracts the SETTINGS clause from the end(!) of the sql string.
 */
@@ -1219,7 +1245,7 @@ export function extractSettingsClauseFromEnd(
     ? sqlInput.trim().slice(0, -1)
     : sqlInput.trim();
 
-  const settingsIndex = sql.toUpperCase().indexOf('SETTINGS');
+  const settingsIndex = findSettingsKeyword(sql);
 
   if (settingsIndex === -1) {
     return [sql, undefined] as const;
