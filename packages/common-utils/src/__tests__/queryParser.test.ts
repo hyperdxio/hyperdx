@@ -169,6 +169,17 @@ describe('CustomSchemaSQLSerializerV2 - json', () => {
     );
   });
 
+  it('range', async () => {
+    const field = 'ResourceAttributesJSON.range.test';
+    const numeric = `dynamicType(\`ResourceAttributesJSON\`.\`range\`.\`test\`) in ('Int8', 'Int16', 'Int32', 'Int64', 'Int128', 'Int256', 'UInt8', 'UInt16', 'UInt32', 'UInt64', 'UInt128', 'UInt256', 'Float32', 'Float64') and \`ResourceAttributesJSON\`.\`range\`.\`test\``;
+    expect(await serializer.range(field, '1', '5', false, {})).toBe(
+      `(${numeric} BETWEEN 1 AND 5)`,
+    );
+    expect(await serializer.range(field, '1', '5', false, {}, 'none')).toBe(
+      `(${numeric} > 1 AND ${numeric} < 5)`,
+    );
+  });
+
   const testCases = [
     {
       lucene: '"foo bar baz"',

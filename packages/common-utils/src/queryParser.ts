@@ -791,8 +791,14 @@ export abstract class SQLSerializer implements Serializer {
     context: SerializerContext,
     inclusive: lucene.NodeRangedTerm['inclusive'] = 'both',
   ) {
-    const { column, found, mapKeyIndexExpression, isArray } =
-      await this.getColumnForField(field, context);
+    const {
+      column: rawColumn,
+      columnJSON,
+      found,
+      propertyType,
+      mapKeyIndexExpression,
+      isArray,
+    } = await this.getColumnForField(field, context);
     if (!found) {
       return this.NOT_FOUND_QUERY;
     }
@@ -801,6 +807,10 @@ export abstract class SQLSerializer implements Serializer {
         'range comparison is not supported for Array-type fields',
       );
     }
+    // A JSON path has no plain column expression; compare its numeric form,
+    // as gt/gte/lt/lte do.
+    const column =
+      propertyType === JSDataType.JSON ? columnJSON?.number : rawColumn;
     const expressionPostfix =
       mapKeyIndexExpression && !isNegatedField
         ? ` AND ${mapKeyIndexExpression}`
