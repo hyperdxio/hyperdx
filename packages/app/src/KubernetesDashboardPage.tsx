@@ -175,7 +175,7 @@ export const InfraPodsStatusTable = ({
   });
 
   const groupBy = ['k8s.pod.name', 'k8s.namespace.name', 'k8s.node.name'];
-  const { data, isError, isLoading } = useQueriedChartConfig({
+  const queryConfig = {
     ...convertV1ChartConfigToV2(
       {
         series: [
@@ -244,7 +244,11 @@ export const InfraPodsStatusTable = ({
       },
     ),
     limit: { limit: TABLE_FETCH_LIMIT, offset: 0 },
-  });
+  };
+  const { data, isError, isLoading, isPlaceholderData } = useQueriedChartConfig(
+    queryConfig,
+    { placeholderData: prev => prev },
+  );
 
   const resourceAttr = metricSource.resourceAttributesExpression;
 
@@ -387,12 +391,13 @@ export const InfraPodsStatusTable = ({
       <Card.Section>
         <div
           ref={tableContainerRef}
+          className={isPlaceholderData ? 'effect-pulse' : undefined}
           style={{
             height: '300px',
             overflow: 'auto',
           }}
         >
-          {isLoading ? (
+          {isLoading && !data ? (
             <TableLoading />
           ) : isError ? (
             <div className="p-4 text-center text-muted fs-8">
@@ -539,7 +544,7 @@ export const InfraPodsStatusTable = ({
   );
 };
 
-const NodesTable = ({
+export const NodesTable = ({
   metricSource,
   where,
   dateRange,
@@ -550,7 +555,7 @@ const NodesTable = ({
 }) => {
   const groupBy = ['k8s.node.name'];
 
-  const { data, isError, isLoading } = useQueriedChartConfig({
+  const queryConfig = {
     ...convertV1ChartConfigToV2(
       {
         series: [
@@ -595,7 +600,11 @@ const NodesTable = ({
       },
     ),
     limit: { limit: TABLE_FETCH_LIMIT, offset: 0 },
-  });
+  };
+  const { data, isError, isLoading, isPlaceholderData } = useQueriedChartConfig(
+    queryConfig,
+    { placeholderData: prev => prev },
+  );
 
   const getLink = React.useCallback((nodeName: string) => {
     const searchParams = new URLSearchParams(window.location.search);
@@ -637,12 +646,13 @@ const NodesTable = ({
       <Card.Section>
         <div
           ref={nodesContainerRef}
+          className={isPlaceholderData ? 'effect-pulse' : undefined}
           style={{
             height: '300px',
             overflow: 'auto',
           }}
         >
-          {isLoading ? (
+          {isLoading && !data ? (
             <TableLoading />
           ) : isError ? (
             <div className="p-4 text-center text-muted fs-8">
@@ -742,7 +752,7 @@ const NodesTable = ({
   );
 };
 
-const NamespacesTable = ({
+export const NamespacesTable = ({
   dateRange,
   metricSource,
   where,
@@ -753,7 +763,7 @@ const NamespacesTable = ({
 }) => {
   const groupBy = ['k8s.namespace.name'];
 
-  const { data, isError, isLoading } = useQueriedChartConfig({
+  const queryConfig = {
     ...convertV1ChartConfigToV2(
       {
         series: [
@@ -795,7 +805,11 @@ const NamespacesTable = ({
       },
     ),
     limit: { limit: TABLE_FETCH_LIMIT, offset: 0 },
-  });
+  };
+  const { data, isError, isLoading, isPlaceholderData } = useQueriedChartConfig(
+    queryConfig,
+    { placeholderData: prev => prev },
+  );
 
   const resourceAttr = metricSource.resourceAttributesExpression;
 
@@ -836,12 +850,13 @@ const NamespacesTable = ({
       <Card.Section>
         <div
           ref={namespacesContainerRef}
+          className={isPlaceholderData ? 'effect-pulse' : undefined}
           style={{
             height: '300px',
             overflow: 'auto',
           }}
         >
-          {isLoading ? (
+          {isLoading && !data ? (
             <TableLoading />
           ) : isError ? (
             <div className="p-4 text-center text-muted fs-8">
