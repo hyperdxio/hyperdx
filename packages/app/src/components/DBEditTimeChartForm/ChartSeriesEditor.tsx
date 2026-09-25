@@ -419,6 +419,8 @@ export function ChartSeriesEditor({
           >
             <SQLInlineEditorControlled
               tableConnection={tableConnection}
+              sourceId={tableSource?.id}
+              dateRange={dateRange}
               control={control}
               name={`${namePrefix}valueExpression`}
               placeholder="SQL Column"
@@ -479,6 +481,8 @@ export function ChartSeriesEditor({
                   <SQLInlineEditorControlled
                     parentRef={parentRef}
                     tableConnection={tableConnection}
+                    sourceId={tableSource?.id}
+                    dateRange={dateRange}
                     control={control}
                     name={`groupBy`}
                     placeholder="SQL Columns"
@@ -497,6 +501,8 @@ export function ChartSeriesEditor({
                     <div style={{ minWidth: 300, maxWidth: '100%' }}>
                       <SQLInlineEditorControlled
                         tableConnection={tableConnection}
+                        sourceId={tableSource?.id}
+                        dateRange={dateRange}
                         control={control}
                         name="having"
                         placeholder="SQL HAVING clause (ex. count() > 100)"

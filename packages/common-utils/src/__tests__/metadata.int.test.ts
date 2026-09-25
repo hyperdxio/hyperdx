@@ -1306,4 +1306,106 @@ describe('Metadata Integration Tests', () => {
       querySpy.mockRestore();
     });
   });
+
+  describe('getMapKeys - unbounded scan guard (#3037)', () => {
+    const tableName = 'test_map_keys_scan';
+    let metadata: Metadata;
+
+    beforeAll(async () => {
+      await client.command({
+        query: `DROP TABLE IF EXISTS default.${tableName}`,
+      });
+      // Map(LowCardinality(String), String) hits a separate, pre-existing bug on this CH version.
+      await client.command({
+        query: `CREATE TABLE default.${tableName} (
+            Timestamp DateTime64(9),
+            LogAttributes Map(String, String)
+          )
+          ENGINE = MergeTree()
+          PARTITION BY toDate(Timestamp)
+          ORDER BY Timestamp
+        `,
+      });
+
+      // One row inside the default 24h lookback, one row 5 days back in its own partition.
+      await client.insert({
+        table: `default.${tableName}`,
+        values: [
+          {
+            Timestamp: new Date(Date.now() - 60 * 60 * 1000)
+              .toISOString()
+              .replace('T', ' ')
+              .replace('Z', ''),
+            LogAttributes: { 'http.method': 'GET' },
+          },
+          {
+            Timestamp: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000)
+              .toISOString()
+              .replace('T', ' ')
+              .replace('Z', ''),
+            LogAttributes: { 'legacy.key': 'value' },
+          },
+        ],
+        format: 'JSONEachRow',
+      });
+    });
+
+    afterAll(async () => {
+      await client.command({
+        query: `DROP TABLE IF EXISTS default.${tableName}`,
+      });
+    });
+
+    beforeEach(() => {
+      metadata = new Metadata(hdxClient, new MetadataCache());
+    });
+
+    it('never queries ClickHouse when no timestampValueExpression is given', async () => {
+      const querySpy = jest.spyOn(hdxClient, 'query');
+
+      const keys = await metadata.getMapKeys({
+        databaseName: 'default',
+        tableName,
+        column: 'LogAttributes',
+        connectionId: 'test_connection',
+        dateRange: [new Date(Date.now() - 60 * 60 * 1000), new Date()],
+      });
+
+      expect(keys).toEqual([]);
+      // No query, including the raw scan, should touch the data table.
+      const queries = querySpy.mock.calls.map(([opts]: any) => opts.query);
+      expect(queries.some(q => q.includes(tableName))).toBe(false);
+
+      querySpy.mockRestore();
+    });
+
+    it('defaults to the last 24h and excludes older partitions', async () => {
+      const keys = await metadata.getMapKeys({
+        databaseName: 'default',
+        tableName,
+        column: 'LogAttributes',
+        connectionId: 'test_connection',
+        timestampValueExpression: 'Timestamp',
+      });
+
+      expect(keys).toContain('http.method');
+      expect(keys).not.toContain('legacy.key');
+    });
+
+    it('reaches older partitions when the caller asks for that window explicitly', async () => {
+      const keys = await metadata.getMapKeys({
+        databaseName: 'default',
+        tableName,
+        column: 'LogAttributes',
+        connectionId: 'test_connection',
+        timestampValueExpression: 'Timestamp',
+        dateRange: [
+          new Date(Date.now() - 6 * 24 * 60 * 60 * 1000),
+          new Date(Date.now() - 4 * 24 * 60 * 60 * 1000),
+        ],
+      });
+
+      expect(keys).toEqual(['legacy.key']);
+    });
+  });
 });

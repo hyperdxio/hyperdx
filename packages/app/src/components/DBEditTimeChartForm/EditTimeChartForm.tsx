@@ -1059,6 +1059,8 @@ export default function EditTimeChartForm({
           control={control}
           handleSubmit={handleSubmit}
           tableConnection={tableConnection}
+          sourceId={tableSource?.id}
+          dateRange={dateRange}
           activeTab={activeTab}
           isRawSqlInput={isRawSqlInput}
           dashboardId={dashboardId}
@@ -1121,6 +1123,8 @@ export default function EditTimeChartForm({
         opened={heatmapSettingsOpened}
         onClose={closeHeatmapSettings}
         connection={tableConnection}
+        sourceId={tableSource?.id}
+        dateRange={dateRange}
         parentRef={parentRef}
         defaultValues={heatmapSettingsDefaults}
         onSubmit={handleUpdateHeatmapSettings}
