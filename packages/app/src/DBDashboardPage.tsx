@@ -1416,6 +1416,7 @@ const Tile = ({
                       queryKeyPrefix={'search'}
                       variant="default"
                       errorVariant="collapsible"
+                      keepPreviousData
                     />
                   </ChartContainer>
                 )}
