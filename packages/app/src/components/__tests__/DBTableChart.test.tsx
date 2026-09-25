@@ -6,6 +6,7 @@ import MVOptimizationIndicator from '@/components/MaterializedViews/MVOptimizati
 import { Table } from '@/HDXMultiSeriesTableChart';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
+import { useOnClickLinkBuilder } from '@/hooks/useOnClickLinkBuilder';
 import { useSource } from '@/source';
 
 // Mock dependencies
@@ -168,6 +169,88 @@ describe('DBTableChart', () => {
       alignedEndDate,
     ]);
     expect(dateRangeIndicatorCall.mvGranularity).toBe('1 minute');
+  });
+
+  describe('refresh indicator', () => {
+    it('asks the query to keep the previous rows during a refetch', () => {
+      renderWithMantine(<DBTableChart config={baseTestConfig} />);
+
+      const options = jest.mocked(useOffsetPaginatedQuery).mock.calls[0][1];
+      expect(options?.keepPreviousData).toBe(true);
+    });
+
+    it('pulses while a refetch is showing the previous rows', () => {
+      jest.mocked(useOffsetPaginatedQuery).mockReturnValue({
+        ...jest.mocked(useOffsetPaginatedQuery)(baseTestConfig),
+        isPlaceholderData: true,
+      });
+
+      renderWithMantine(<DBTableChart config={baseTestConfig} />);
+      expect(jest.mocked(Table).mock.calls.at(-1)![0].className).toBe(
+        'effect-pulse',
+      );
+    });
+
+    it('does not pulse once fresh rows have loaded', () => {
+      renderWithMantine(<DBTableChart config={baseTestConfig} />);
+      expect(
+        jest.mocked(Table).mock.calls.at(-1)![0].className,
+      ).toBeUndefined();
+    });
+
+    it('pulses the empty state while a refetch is running', () => {
+      const current = jest.mocked(useOffsetPaginatedQuery)(baseTestConfig);
+      jest.mocked(useOffsetPaginatedQuery).mockReturnValue({
+        ...current,
+        data: { ...current.data!, data: [] },
+        isPlaceholderData: true,
+      });
+
+      const { getByText } = renderWithMantine(
+        <DBTableChart config={baseTestConfig} />,
+      );
+      expect(getByText('No data found within time range.')).toHaveClass(
+        'effect-pulse',
+      );
+    });
+
+    describe('row links', () => {
+      const getRowSearchLink = jest.fn(() => '/search');
+      const rowAction = jest.fn();
+
+      afterEach(() => {
+        jest.mocked(useOnClickLinkBuilder).mockReturnValue(null);
+      });
+
+      const renderTable = (isPlaceholderData: boolean) => {
+        jest.mocked(useOffsetPaginatedQuery).mockReturnValue({
+          ...jest.mocked(useOffsetPaginatedQuery)(baseTestConfig),
+          isPlaceholderData,
+        });
+        renderWithMantine(
+          <DBTableChart
+            config={baseTestConfig}
+            getRowSearchLink={getRowSearchLink}
+          />,
+        );
+        return jest.mocked(Table).mock.calls.at(-1)![0];
+      };
+
+      it('disables search links on rows kept from the previous query', () => {
+        expect(renderTable(true).getRowSearchLink).toBeUndefined();
+      });
+
+      it('enables search links once fresh rows have loaded', () => {
+        expect(renderTable(false).getRowSearchLink).toBe(getRowSearchLink);
+      });
+
+      it('disables the configured row action on rows kept from the previous query', () => {
+        jest.mocked(useOnClickLinkBuilder).mockReturnValue(rowAction);
+
+        expect(renderTable(true).getRowAction).toBeUndefined();
+        expect(renderTable(false).getRowAction).toBe(rowAction);
+      });
+    });
   });
 
   describe('groupByColumnsOnLeft', () => {
