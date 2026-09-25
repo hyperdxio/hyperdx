@@ -50,6 +50,8 @@ interface Props {
   selectionResetKey?: string;
   onSelectedRowsChange?: (hasSelectedRows: boolean) => void;
   onResolvedColumnsChange?: (meta: ColumnMetaType[]) => void;
+  /** Keep the current rows on screen while a refresh loads a new date range */
+  keepPreviousData?: boolean;
   // Clicking outside the row side panel (and outside `keepOpenSelector`) closes
   // it. Enabled by default; pass `false` to opt out.
   closeOnClickOutside?: boolean;
@@ -82,6 +84,7 @@ export default function DBSqlRowTableWithSideBar({
   selectionResetKey,
   onSelectedRowsChange,
   onResolvedColumnsChange,
+  keepPreviousData,
   closeOnClickOutside = true,
   keepOpenSelector = DEFAULT_KEEP_OPEN_SELECTOR,
 }: Props) {
@@ -156,6 +159,7 @@ export default function DBSqlRowTableWithSideBar({
         selectionResetKey={selectionResetKey}
         onSelectedRowsChange={onSelectedRowsChange}
         onResolvedColumnsChange={onResolvedColumnsChange}
+        keepPreviousData={keepPreviousData}
       />
     </RowSidePanelContext>
   );
