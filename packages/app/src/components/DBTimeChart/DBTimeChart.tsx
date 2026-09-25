@@ -1,45 +1,26 @@
-import React, {
-  memo,
-  useCallback,
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
-import { add, differenceInSeconds } from 'date-fns';
-import {
-  convertGranularityToSeconds,
-  getAlignedDateRange,
-} from '@hyperdx/common-utils/dist/core/utils';
-import {
-  isBuilderChartConfig,
-  isPromqlChartConfig,
-  isRawSqlChartConfig,
-} from '@hyperdx/common-utils/dist/guards';
+import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { differenceInSeconds } from 'date-fns';
+import { getAlignedDateRange } from '@hyperdx/common-utils/dist/core/utils';
+import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
   BuilderChartConfigWithDateRange,
   ChartConfigWithDateRange,
   DisplayType,
 } from '@hyperdx/common-utils/dist/types';
-import { Popover, Portal } from '@mantine/core';
-import { IconChartBar, IconChartLine } from '@tabler/icons-react';
 
 import api from '@/api';
 import {
-  AGG_FNS,
-  buildEventsSearchUrl,
-  ChartKeyJoiner,
   convertToTimeChartConfig,
   formatResponseForTimeChart,
   getPreviousDateRange,
   shouldFillNullsWithZero,
-  tryExpandConfigVariables,
   useTimeChartSettings,
 } from '@/ChartUtils';
 import { ChartAnnotation } from '@/components/charts/chartAnnotations';
-import { ChartSeriesTooltip } from '@/components/charts/ChartSeriesTooltip';
-import { useChartTooltipZIndex } from '@/components/charts/ChartTooltip';
+import ChartContainer from '@/components/charts/ChartContainer';
+import ChartErrorState, {
+  ChartErrorStateVariant,
+} from '@/components/charts/ChartErrorState';
 import {
   MAX_LOADABLE_TIME_CHART_SERIES,
   resolveRenderedSeriesCap,
@@ -51,247 +32,15 @@ import {
 } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useChartNumberFormats, useSource } from '@/source';
-import type { NumberFormat } from '@/types';
 
-import ChartContainer from './charts/ChartContainer';
-import ChartErrorState, {
-  ChartErrorStateVariant,
-} from './charts/ChartErrorState';
-import DateRangeIndicator from './charts/DateRangeIndicator';
-import DisplaySwitcher from './charts/DisplaySwitcher';
-import HiddenSeriesIndicator from './charts/HiddenSeriesIndicator';
-import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
-
-/** A single group column / value pair decoded from a chart series key. */
-export type SeriesGroupFilter = { column: string; value: string };
-
-// Only one pinned tooltip at a time across all charts. Module-level (not
-// context) because charts can be scattered with no common provider, and their
-// onClick stopPropagation hides cross-chart clicks from Mantine's click-outside.
-const pinnedTooltipRegistry = new Map<string, () => void>();
-
-function broadcastTooltipPinned(activeId: string) {
-  pinnedTooltipRegistry.forEach((dismiss, id) => {
-    if (id !== activeId) {
-      dismiss();
-    }
-  });
-}
-
-// Registers this chart's dismiss handler and returns a callback to close every
-// other chart's pinned tooltip (call it when pinning this one).
-function useCrossChartPinDismiss(onDismiss: () => void): () => void {
-  const id = useId();
-  // Keep the latest onDismiss without re-subscribing each render.
-  const onDismissRef = useRef(onDismiss);
-  useEffect(() => {
-    onDismissRef.current = onDismiss;
-  }, [onDismiss]);
-
-  useEffect(() => {
-    pinnedTooltipRegistry.set(id, () => onDismissRef.current());
-    return () => {
-      pinnedTooltipRegistry.delete(id);
-    };
-  }, [id]);
-
-  return useCallback(() => broadcastTooltipPinned(id), [id]);
-}
-
-// Decode a Recharts series key (e.g. "count · error · api") into the
-// underlying group-column filters. This is the same decode `buildSearchUrl`
-// uses to build a drill-down URL, extracted so the focus callback can hand the
-// caller structured filters (rather than a display string) to apply to a
-// sibling results list.
-export function decodeSeriesGroupFilters({
-  seriesKey,
-  groupColumns,
-  isSingleValueColumn,
-}: {
-  seriesKey: string | undefined;
-  groupColumns: string[];
-  isSingleValueColumn: boolean | undefined;
-}): SeriesGroupFilter[] {
-  const seriesKeys = seriesKey?.split(ChartKeyJoiner);
-  const groupFilters: SeriesGroupFilter[] = [];
-
-  if (seriesKeys?.length && groupColumns?.length) {
-    // When the series has multiple value columns, the key is prefixed with the
-    // value column name (e.g. "count · error"), so the group values start at
-    // index 1. (The "no group columns" case the original inline code also
-    // guarded is impossible here — this block only runs when groupColumns is
-    // non-empty.)
-    const startsWithValueColumn = !(isSingleValueColumn ?? true);
-    const groupValues = startsWithValueColumn
-      ? seriesKeys.slice(1)
-      : seriesKeys;
-
-    groupValues.forEach((value, index) => {
-      if (groupColumns[index] != null) {
-        groupFilters.push({ column: groupColumns[index], value });
-      }
-    });
-  }
-
-  return groupFilters;
-}
-
-// The interactive PINNED tooltip, rendered over the chart in a body-portaled
-// Mantine Popover anchored at the clicked point. Hover uses the recharts tooltip
-// in MemoChart instead; this is only for the click-locked state.
-function ChartTooltipOverlay({
-  payload,
-  buildSearchUrl,
-  onDismiss,
-  onFocusSeries,
-  onShowAllSeries,
-  fallbackNumberFormat,
-  numberFormatByKey,
-  previousPeriodOffsetSeconds,
-  hiddenSeriesCount,
-  onLoadAllSeries,
-  expanded,
-}: {
-  payload: ActiveClickPayload | undefined;
-  buildSearchUrl: (key?: string, value?: number) => string | null;
-  onDismiss: () => void;
-  /** Focus a series by its raw series key (dataKey) and display name. */
-  onFocusSeries: (payload: { dataKey?: string; name: string }) => void;
-  /** Clear an active series focus; undefined when nothing is focused. */
-  onShowAllSeries?: () => void;
-  fallbackNumberFormat?: NumberFormat;
-  /** Per-value-column formats, keyed by result column name. */
-  numberFormatByKey: Map<string, NumberFormat>;
-  previousPeriodOffsetSeconds?: number;
-  /** Series dropped by the chart's render cap (see ChartSeriesTooltip). */
-  hiddenSeriesCount?: number;
-  /** Render every series on the chart, bypassing the cap. */
-  onLoadAllSeries?: () => void;
-  /** "Load all" is active: render every row in the scrollable tooltip body. */
-  expanded?: boolean;
-}) {
-  const isOpen =
-    payload != null &&
-    payload.activePayload != null &&
-    payload.activePayload.length > 0;
-
-  const popoverZIndex = useChartTooltipZIndex({ pinned: true });
-
-  const dropdownRef = useRef<HTMLDivElement | null>(null);
-
-  // The pinned tooltip anchors at `position: fixed` viewport coords captured
-  // once at click time. When a surrounding scroll container scrolls, the chart
-  // moves but the fixed tooltip stays glued to the viewport, detaching from its
-  // data point (Mantine's closeOnClickOutside/closeOnEscape don't fire on
-  // scroll). Dismiss on scroll instead so it never floats away — but ignore
-  // scrolls originating inside the tooltip's own scrollable series list, or a
-  // long tooltip couldn't be scrolled without instantly closing.
-  useEffect(() => {
-    if (!isOpen) return;
-    const handleScroll = (e: Event) => {
-      const target = e.target;
-      if (target instanceof Node && dropdownRef.current?.contains(target)) {
-        return;
-      }
-      onDismiss();
-    };
-    window.addEventListener('scroll', handleScroll, {
-      capture: true,
-      passive: true,
-    });
-    return () => {
-      window.removeEventListener('scroll', handleScroll, { capture: true });
-    };
-  }, [isOpen, onDismiss]);
-
-  // Dismiss on outside click. Mantine's closeOnClickOutside misses it because
-  // the chart's recharts onClick calls stopPropagation (see
-  // HDXMultiSeriesTimeChart handleClick); a capture-phase listener sees the
-  // click regardless, ignoring clicks inside the tooltip's own dropdown.
-  useEffect(() => {
-    if (!isOpen) return;
-    const handleMouseDown = (e: MouseEvent) => {
-      const target = e.target;
-      if (target instanceof Node && dropdownRef.current?.contains(target)) {
-        return;
-      }
-      onDismiss();
-    };
-    document.addEventListener('mousedown', handleMouseDown, true);
-    return () => {
-      document.removeEventListener('mousedown', handleMouseDown, true);
-    };
-  }, [isOpen, onDismiss]);
-
-  if (!isOpen) {
-    return null;
-  }
-
-  return (
-    // Portal to body so the `position: fixed` anchor resolves against the
-    // viewport: dashboard tiles use CSS transforms, and a transformed ancestor
-    // would otherwise make `fixed` resolve against it and throw the tooltip off.
-    <Portal>
-      <Popover
-        opened
-        onChange={opened => {
-          if (!opened) {
-            onDismiss();
-          }
-        }}
-        closeOnClickOutside
-        closeOnEscape
-        trapFocus={false}
-        withinPortal
-        position="bottom"
-        offset={12}
-        middlewares={{ flip: true, shift: true }}
-        returnFocus={false}
-        zIndex={popoverZIndex}
-      >
-        <Popover.Target>
-          {/* 1x1 anchor at the clicked data point. */}
-          <div
-            style={{
-              position: 'fixed',
-              left: payload.viewportX ?? 0,
-              top: payload.viewportY ?? 0,
-              width: 1,
-              height: 1,
-              pointerEvents: 'none',
-            }}
-          />
-        </Popover.Target>
-        <Popover.Dropdown
-          ref={dropdownRef}
-          p={0}
-          style={{
-            // Width comes from the shared .chartTooltip class; fit-content stops
-            // Mantine's default dropdown width from overriding it.
-            width: 'fit-content',
-            border: 'none',
-            background: 'transparent',
-          }}
-        >
-          <ChartSeriesTooltip
-            activeLabel={payload.activeLabel}
-            activePayload={payload.activePayload!}
-            fallbackNumberFormat={fallbackNumberFormat}
-            numberFormatByKey={numberFormatByKey}
-            previousPeriodOffsetSeconds={previousPeriodOffsetSeconds}
-            buildSearchUrl={buildSearchUrl}
-            onDismiss={onDismiss}
-            onFocusSeries={onFocusSeries}
-            onShowAllSeries={onShowAllSeries}
-            hiddenSeriesCount={hiddenSeriesCount}
-            onLoadAllSeries={onLoadAllSeries}
-            expanded={expanded}
-          />
-        </Popover.Dropdown>
-      </Popover>
-    </Portal>
-  );
-}
+import { ChartTooltipOverlay } from './ChartTooltipOverlay';
+import { useCrossChartPinDismiss } from './crossChartPin';
+import {
+  buildSeriesSearchUrl,
+  decodeSeriesGroupFilters,
+  type SeriesGroupFilter,
+} from './searchUrl';
+import { useChartToolbarItems } from './useChartToolbarItems';
 
 type DBTimeChartComponentProps = {
   config: ChartConfigWithDateRange;
@@ -664,7 +413,9 @@ function DBTimeChartComponent({
     ActiveClickPayload | undefined
   >(undefined);
 
-  const dismissPinned = useCallback(() => setActiveClickPayload(undefined), []);
+  const dismissPinned = useCallback(() => {
+    setActiveClickPayload(undefined);
+  }, []);
   const notifyTooltipPinned = useCrossChartPinDismiss(dismissPinned);
 
   // Dismiss any open pin when the query shape changes: its frozen snapshot
@@ -718,128 +469,18 @@ function DBTimeChartComponent({
   }, [activeClickPayload]);
 
   const buildSearchUrl = useCallback(
-    (seriesKey?: string, seriesValue?: number) => {
-      // Raw SQL charts are not supported for drill-down as we don't know the source which is being used.
-      if (
-        clickedActiveLabelDate == null ||
-        source == null ||
-        isRawSqlChartConfig(config) ||
-        isPromqlChartConfig(config)
-      ) {
-        return null;
-      }
-
-      // The search page has no variable machinery, so the expressions read here
-      // and handed to buildEventsSearchUrl must be final SQL/Lucene.
-      // `whereLanguage` is pinned to buildEventsSearchUrl's default first, since
-      // expansion below leaves nothing for it to expand.
-      const expandedConfig = tryExpandConfigVariables({
-        ...config,
-        whereLanguage: config.whereLanguage || 'lucene',
-      });
-
-      // Parse the series key to extract group values
-      const seriesKeys = seriesKey?.split(ChartKeyJoiner);
-      const groupFilters = decodeSeriesGroupFilters({
+    (seriesKey?: string, seriesValue?: number) =>
+      buildSeriesSearchUrl({
         seriesKey,
-        groupColumns,
-        isSingleValueColumn,
-      });
-
-      // Build value range filter for Y-axis if provided
-      let valueRangeFilter:
-        | {
-            expression: string;
-            value: number;
-          }
-        | undefined;
-
-      // Metric formula configs with hidden operand series project only the
-      // formula column(s), so value columns no longer map positionally onto
-      // `select` — skip the value-range filter rather than misattributing a
-      // formula value to an operand's expression. (With operands shown, the
-      // operand columns still map by index and formula columns fall past the
-      // `< expandedConfig.select.length` bound below.)
-      const operandsHidden =
-        isBuilderChartConfig(expandedConfig) &&
-        (expandedConfig.formulas?.length ?? 0) > 0 &&
-        expandedConfig.showOperandSeries === false;
-
-      if (
-        seriesValue &&
-        !operandsHidden &&
-        Array.isArray(expandedConfig.select) &&
-        expandedConfig.select.length > 0
-      ) {
-        // Determine which value column to filter on
-        let valueExpression: string | undefined;
-
-        if (
-          (isSingleValueColumn ?? true) &&
-          expandedConfig.select.length === 1
-        ) {
-          const firstSelect = expandedConfig.select[0];
-          const aggFn =
-            typeof firstSelect === 'string' ? undefined : firstSelect.aggFn;
-          // Only add value range filter if the aggregation is attributable
-          const isAttributable =
-            AGG_FNS.find(fn => fn.value === aggFn)?.isAttributable !== false;
-
-          if (isAttributable) {
-            valueExpression =
-              typeof firstSelect === 'string'
-                ? firstSelect
-                : firstSelect.valueExpression;
-          }
-        } else if (seriesKeys?.length && (valueColumns?.length ?? 0) > 0) {
-          const firstPart = seriesKeys[0];
-          const valueColumnIndex = valueColumns?.findIndex(
-            col => col === firstPart,
-          );
-
-          if (
-            valueColumnIndex != null &&
-            valueColumnIndex >= 0 &&
-            valueColumnIndex < expandedConfig.select.length
-          ) {
-            const selectItem = expandedConfig.select[valueColumnIndex];
-            const aggFn =
-              typeof selectItem === 'string' ? undefined : selectItem.aggFn;
-            // Only add value range filter if the aggregation is attributable
-            const isAttributable =
-              AGG_FNS.find(fn => fn.value === aggFn)?.isAttributable !== false;
-
-            if (isAttributable) {
-              valueExpression =
-                typeof selectItem === 'string'
-                  ? selectItem
-                  : selectItem.valueExpression;
-            }
-          }
-        }
-
-        if (valueExpression) {
-          valueRangeFilter = {
-            expression: valueExpression,
-            value: seriesValue,
-          };
-        }
-      }
-
-      // Calculate time range from clicked date and granularity
-      const from = clickedActiveLabelDate;
-      const to = add(clickedActiveLabelDate, {
-        seconds: convertGranularityToSeconds(granularity),
-      });
-
-      return buildEventsSearchUrl({
+        seriesValue,
+        clickedActiveLabelDate,
         source,
-        config: expandedConfig,
-        dateRange: [from, to],
-        groupFilters,
-        valueRangeFilter,
-      });
-    },
+        config,
+        granularity,
+        groupColumns,
+        valueColumns,
+        isSingleValueColumn,
+      }),
     [
       clickedActiveLabelDate,
       config,
@@ -874,108 +515,23 @@ function DBTimeChartComponent({
     [onFocusSeries, groupColumns, isSingleValueColumn, handleToggleSeries],
   );
 
-  const toolbarItemsMemo = useMemo(() => {
-    const allToolbarItems = [];
-
-    if (toolbarPrefix && toolbarPrefix.length > 0) {
-      allToolbarItems.push(...toolbarPrefix);
-    }
-
-    if (source && showMVOptimizationIndicator && builderQueriedConfig) {
-      allToolbarItems.push(
-        <MVOptimizationIndicator
-          key="db-time-chart-mv-indicator"
-          config={builderQueriedConfig}
-          source={source}
-          variant="icon"
-        />,
-      );
-    }
-
-    const mvDateRange = mvOptimizationData?.optimizedConfig?.dateRange;
-    const isAlignedToChartGranularity =
-      queriedConfig.alignDateRangeToGranularity !== false;
-
-    if (
-      showDateRangeIndicator &&
-      (mvDateRange || isAlignedToChartGranularity)
-    ) {
-      const mvGranularity = isAlignedToChartGranularity
-        ? undefined
-        : mvOptimizationData?.explanations.find(e => e.success)?.mvConfig
-            .minGranularity;
-
-      allToolbarItems.push(
-        <DateRangeIndicator
-          key="db-time-chart-date-range-indicator"
-          originalDateRange={config.dateRange}
-          effectiveDateRange={mvDateRange || queriedConfig.dateRange}
-          mvGranularity={mvGranularity}
-        />,
-      );
-    }
-
-    if (showDisplaySwitcher) {
-      allToolbarItems.push(
-        <DisplaySwitcher
-          key="db-time-chart-display-switcher"
-          value={displayType}
-          onChange={handleSetDisplayType}
-          options={[
-            {
-              value: DisplayType.Line,
-              label: 'Display as Line Chart',
-              icon: <IconChartLine />,
-            },
-            {
-              value: DisplayType.StackedBar,
-              label: config.compareToPreviousPeriod
-                ? 'Bar Chart Unavailable When Comparing to Previous Period'
-                : 'Display as Bar Chart',
-              icon: <IconChartBar />,
-              disabled: config.compareToPreviousPeriod,
-            },
-          ]}
-        />,
-      );
-    }
-
-    if (hiddenSeriesCount > 0) {
-      allToolbarItems.push(
-        <HiddenSeriesIndicator
-          key="db-time-chart-hidden-series-indicator"
-          hiddenSeriesCount={hiddenSeriesCount}
-          renderedSeriesCount={renderedSeriesCount}
-          // Offered only while still capped AND when load-all would actually
-          // raise the cap (loadAllHandler is undefined otherwise), so the
-          // notice never advertises a no-op click.
-          onLoadAll={loadAllHandler}
-        />,
-      );
-    }
-
-    if (toolbarSuffix && toolbarSuffix.length > 0) {
-      allToolbarItems.push(...toolbarSuffix);
-    }
-
-    return allToolbarItems;
-  }, [
+  const toolbarItemsMemo = useChartToolbarItems({
     builderQueriedConfig,
     config,
     displayType,
     handleSetDisplayType,
+    hiddenSeriesCount,
+    loadAllHandler,
+    mvOptimizationData,
+    queriedConfig,
+    renderedSeriesCount,
+    showDateRangeIndicator,
     showDisplaySwitcher,
+    showMVOptimizationIndicator,
     source,
     toolbarPrefix,
     toolbarSuffix,
-    showMVOptimizationIndicator,
-    showDateRangeIndicator,
-    mvOptimizationData,
-    queriedConfig,
-    hiddenSeriesCount,
-    renderedSeriesCount,
-    loadAllHandler,
-  ]);
+  });
 
   return (
     <ChartContainer title={title} toolbarItems={toolbarItemsMemo}>
