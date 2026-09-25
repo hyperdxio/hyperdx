@@ -144,19 +144,41 @@ export class DashboardsListPage {
     return this.pageContainer.locator('a').filter({ hasText: name });
   }
 
-  getTagFilterSelect() {
-    return this.page.getByPlaceholder('Filter by tag');
+  getTab(tab: 'all' | 'favorites' | 'mine') {
+    return this.page.getByTestId(`dashboards-tab-${tab}`);
   }
 
+  async selectTab(tab: 'all' | 'favorites' | 'mine') {
+    await this.getTab(tab).click();
+  }
+
+  getSortSelect() {
+    return this.page.getByTestId('dashboards-sort-select');
+  }
+
+  async selectSort(label: string) {
+    await this.getSortSelect().click();
+    await this.page.getByRole('option', { name: label, exact: true }).click();
+  }
+
+  getTagFilterSelect() {
+    return this.page.getByTestId('dashboards-tag-filter');
+  }
+
+  /**
+   * Tick one tag in the filter popover, then close it. Call again to tick
+   * another tag.
+   */
   async selectTagFilter(tag: string) {
     await this.getTagFilterSelect().click();
-    await this.page.getByRole('option', { name: tag, exact: true }).click();
+    await this.page.getByRole('checkbox', { name: tag }).check();
+    await this.page.keyboard.press('Escape');
   }
 
   async clearTagFilter() {
-    // The Mantine Select clear button is a sibling button next to the textbox
-    const select = this.getTagFilterSelect();
-    await select.locator('..').locator('button').click();
+    await this.getTagFilterSelect().click();
+    await this.page.getByRole('button', { name: 'Clear all' }).click();
+    await this.page.keyboard.press('Escape');
   }
 
   getEmptyState() {
@@ -167,10 +189,6 @@ export class DashboardsListPage {
     return this.pageContainer.getByText('No matching dashboards yet');
   }
 
-  getFavoritesSection() {
-    return this.page.getByTestId('favorite-dashboards-section');
-  }
-
   async toggleFavoriteOnCard(name: string) {
     const card = this.getDashboardCard(name);
     await card.getByTestId('favorite-button').click();
@@ -179,15 +197,6 @@ export class DashboardsListPage {
   async toggleFavoriteOnRow(name: string) {
     const row = this.getDashboardRow(name);
     await row.getByTestId('favorite-button').click();
-  }
-
-  getFavoritedDashboardCard(name: string) {
-    return this.getFavoritesSection().locator('a').filter({ hasText: name });
-  }
-
-  async toggleFavoriteOnFavoritedCard(name: string) {
-    const card = this.getFavoritedDashboardCard(name);
-    await card.getByTestId('favorite-button').click();
   }
 
   getAlertStatusIcon(name: string) {
