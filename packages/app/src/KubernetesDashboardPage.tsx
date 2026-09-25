@@ -5,6 +5,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import cx from 'classnames';
 import sub from 'date-fns/sub';
+import { isEqual, omit } from 'lodash';
 import { useQueryState } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
 import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
@@ -112,6 +113,22 @@ const Th = React.memo<{
 });
 
 const TABLE_FETCH_LIMIT = 10000;
+
+const withoutDateRange = (part: unknown) =>
+  typeof part === 'object' && part !== null ? omit(part, ['dateRange']) : part;
+
+// Whether the previous query ran this config over another time range. Rows
+// from another source or filter would be read with the wrong resource
+// attributes, so only a time-range change keeps them on screen.
+function isSameQueryIgnoringDateRange(
+  prevKey: readonly unknown[] | undefined,
+  config: object,
+) {
+  const target = withoutDateRange(config);
+  return (
+    prevKey?.some(part => isEqual(withoutDateRange(part), target)) ?? false
+  );
+}
 
 type InfraPodsStatusTableColumn =
   | 'restarts'
@@ -247,7 +264,12 @@ export const InfraPodsStatusTable = ({
   };
   const { data, isError, isLoading, isPlaceholderData } = useQueriedChartConfig(
     queryConfig,
-    { placeholderData: prev => prev },
+    {
+      placeholderData: (prev, prevQuery) =>
+        isSameQueryIgnoringDateRange(prevQuery?.queryKey, queryConfig)
+          ? prev
+          : undefined,
+    },
   );
 
   const resourceAttr = metricSource.resourceAttributesExpression;
@@ -380,7 +402,7 @@ export const InfraPodsStatusTable = ({
           />
         </Group>
       </Card.Section>
-      {isAtFetchLimit && !isLoading && !isError && podsList.length > 0 && (
+      {isAtFetchLimit && !isError && podsList.length > 0 && (
         <Card.Section px="md" py="xs">
           <Alert variant="light" color="blue">
             Showing first {TABLE_FETCH_LIMIT.toLocaleString()} pods. Use the
@@ -603,7 +625,12 @@ export const NodesTable = ({
   };
   const { data, isError, isLoading, isPlaceholderData } = useQueriedChartConfig(
     queryConfig,
-    { placeholderData: prev => prev },
+    {
+      placeholderData: (prev, prevQuery) =>
+        isSameQueryIgnoringDateRange(prevQuery?.queryKey, queryConfig)
+          ? prev
+          : undefined,
+    },
   );
 
   const getLink = React.useCallback((nodeName: string) => {
@@ -808,7 +835,12 @@ export const NamespacesTable = ({
   };
   const { data, isError, isLoading, isPlaceholderData } = useQueriedChartConfig(
     queryConfig,
-    { placeholderData: prev => prev },
+    {
+      placeholderData: (prev, prevQuery) =>
+        isSameQueryIgnoringDateRange(prevQuery?.queryKey, queryConfig)
+          ? prev
+          : undefined,
+    },
   );
 
   const resourceAttr = metricSource.resourceAttributesExpression;

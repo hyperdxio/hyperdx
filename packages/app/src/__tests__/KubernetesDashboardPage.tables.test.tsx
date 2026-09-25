@@ -15,11 +15,11 @@ jest.mock('@/hooks/useChartConfig', () => ({
     mockUseQueriedChartConfig(...args),
 }));
 
-// jsdom has no layout, so render every row instead of the visible window.
+// jsdom has no layout, so render the first rows instead of the visible window.
 jest.mock('@tanstack/react-virtual', () => ({
   useVirtualizer: ({ count }: { count: number }) => ({
     getVirtualItems: () =>
-      Array.from({ length: count }, (_, index) => ({
+      Array.from({ length: Math.min(count, 20) }, (_, index) => ({
         index,
         key: index,
         start: index * 40,
@@ -68,14 +68,16 @@ function mockQuery(state: {
   });
 }
 
+const podRow = {
+  "arrayElement(ResourceAttributes, 'k8s.pod.name')": 'api-7d9f',
+  'last_value(k8s.pod.phase)': KubePhase.Running,
+};
+
 describe.each([
   {
     table: 'pods',
     Table: InfraPodsStatusTable,
-    row: {
-      "arrayElement(ResourceAttributes, 'k8s.pod.name')": 'api-7d9f',
-      'last_value(k8s.pod.phase)': KubePhase.Running,
-    },
+    row: podRow,
     name: 'api-7d9f',
     empty: 'No pods found',
   },
@@ -105,14 +107,34 @@ describe.each([
     mockUseQueriedChartConfig.mockReset();
   });
 
-  it('asks the query to keep the previous rows', () => {
+  it('keeps the previous rows only while the same query loads a new time range', () => {
     mockQuery({ data: { data: [row] } });
 
     renderTable();
 
-    const [, options] = mockUseQueriedChartConfig.mock.calls[0];
+    const [config, options] = mockUseQueriedChartConfig.mock.calls[0];
     const previous = { data: [row] };
-    expect(options.placeholderData(previous)).toBe(previous);
+    const previousQuery = (prevConfig: unknown) => ({
+      queryKey: [prevConfig, false, false, 60],
+    });
+    const earlierRange = [
+      new Date('2026-07-05T23:00:00Z'),
+      new Date('2026-07-06T00:00:00Z'),
+    ];
+    expect(
+      options.placeholderData(
+        previous,
+        previousQuery({ ...config, dateRange: earlierRange }),
+      ),
+    ).toBe(previous);
+    // Rows from another source would be read with the wrong attributes.
+    expect(
+      options.placeholderData(
+        previous,
+        previousQuery({ ...config, connection: 'conn-2' }),
+      ),
+    ).toBeUndefined();
+    expect(options.placeholderData(previous, undefined)).toBeUndefined();
   });
 
   it('keeps the previous rows on screen and pulses them while a refresh loads', () => {
@@ -153,7 +175,33 @@ describe.each([
 
     renderTable();
 
+    // The skeleton is a table without any rows or empty-state message.
+    expect(screen.getByRole('table')).toBeInTheDocument();
     expect(screen.queryByText(name)).not.toBeInTheDocument();
     expect(screen.queryByText(empty)).not.toBeInTheDocument();
+  });
+});
+
+describe('Kubernetes pods table fetch limit', () => {
+  beforeEach(() => {
+    mockUseQueriedChartConfig.mockReset();
+  });
+
+  it('keeps the fetch-limit notice above the previous rows while a refresh loads', () => {
+    mockQuery({
+      data: { data: Array.from({ length: 10_000 }, () => podRow) },
+      isLoading: true,
+      isPlaceholderData: true,
+    });
+
+    renderWithMantine(
+      <InfraPodsStatusTable
+        dateRange={dateRange}
+        metricSource={metricSource}
+        where=""
+      />,
+    );
+
+    expect(screen.getByText(/Showing first 10.?000 pods/)).toBeInTheDocument();
   });
 });
