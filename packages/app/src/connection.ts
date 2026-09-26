@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { hdxServer } from '@/api';
 import { HDX_LOCAL_DEFAULT_CONNECTIONS, IS_LOCAL_MODE } from '@/config';
+import { forgetSelectAllColumnsSettingsRejection } from '@/hooks/useSelectAllColumnsSettingsRejection';
 import { parseJSON } from '@/utils';
 
 export const LOCAL_STORE_CONNECTIONS_KEY = 'connections';
@@ -132,7 +133,8 @@ export function useUpdateConnection() {
 
       return;
     },
-    onSuccess: () => {
+    onSuccess: (_data, { id }) => {
+      forgetSelectAllColumnsSettingsRejection(id);
       queryClient.invalidateQueries({ queryKey: ['connections'] });
     },
   });

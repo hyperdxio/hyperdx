@@ -1,10 +1,9 @@
-import { useEffect, useMemo, useSyncExternalStore } from 'react';
+import { useEffect, useMemo } from 'react';
 import { flatten } from 'flat';
 import type { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   isLogSource,
   isTraceSource,
-  QuerySettings,
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
@@ -15,6 +14,12 @@ import {
   useQueriedChartConfig,
 } from '@/hooks/useChartConfig';
 import { WithClause } from '@/hooks/useRowWhere';
+import {
+  isSelectAllColumnsSettingRejected,
+  markSelectAllColumnsSettingsRejected,
+  SELECT_ALL_COLUMNS_QUERY_SETTINGS,
+  useSelectAllColumnsSettingsRejected,
+} from '@/hooks/useSelectAllColumnsSettingsRejection';
 import {
   getDisplayedTimestampValueExpression,
   getDurationMsExpression,
@@ -42,42 +47,6 @@ export enum ROW_DATA_ALIASES {
   DURATION_MS = '__hdx_duration_ms',
   SPAN_KIND = '__hdx_span_kind',
   SPAN_LINKS = '__hdx_span_links',
-}
-
-// ClickHouse leaves MATERIALIZED and ALIAS columns out of `SELECT *` unless
-// these settings are on, so the row panel would hide those columns.
-const SELECT_ALL_COLUMNS_QUERY_SETTINGS: QuerySettings = [
-  { setting: 'asterisk_include_materialized_columns', value: '1' },
-  { setting: 'asterisk_include_alias_columns', value: '1' },
-];
-
-// Connections whose user cannot change these settings (for example, a
-// `readonly = 1` user). Shared by every row lookup, so each one fails once.
-// Read it through useSyncExternalStore: the React Compiler memoizes plain reads.
-const connectionsRejectingSelectAllSettings = new Set<string>();
-const rejectedConnectionListeners = new Set<() => void>();
-
-function subscribeToRejectedConnections(listener: () => void) {
-  rejectedConnectionListeners.add(listener);
-  return () => {
-    rejectedConnectionListeners.delete(listener);
-  };
-}
-
-function markConnectionRejectingSettings(connection: string) {
-  if (!connectionsRejectingSelectAllSettings.has(connection)) {
-    connectionsRejectingSelectAllSettings.add(connection);
-    rejectedConnectionListeners.forEach(listener => listener());
-  }
-}
-
-// ClickHouse names the setting in each rejection: READONLY (164),
-// UNKNOWN_SETTING (115) and SETTING_CONSTRAINT_VIOLATION (452).
-function isSelectAllSettingRejected(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error ?? '');
-  return SELECT_ALL_COLUMNS_QUERY_SETTINGS.some(({ setting }) =>
-    message.includes(setting),
-  );
 }
 
 export function useRowData({
@@ -250,11 +219,7 @@ export function useRowData({
   };
 
   const connection = source.connection;
-  const rejectsSettings = useSyncExternalStore(
-    subscribeToRejectedConnections,
-    () => connectionsRejectingSelectAllSettings.has(connection),
-    () => false,
-  );
+  const rejectsSettings = useSelectAllColumnsSettingsRejected(connection);
   // The row query has no `config.source`, so the source's query settings do not
   // reach it. Use the source's own value for these two settings here.
   const additionalQuerySettings =
@@ -273,7 +238,7 @@ export function useRowData({
     ? {
         additionalQuerySettings,
         retry: (failureCount: number, error: Error) =>
-          failureCount < 1 && !isSelectAllSettingRejected(error),
+          failureCount < 1 && !isSelectAllColumnsSettingRejected(error),
       }
     : {};
 
@@ -321,10 +286,10 @@ export function useRowData({
   const isSettingsRejected =
     additionalQuerySettings != null &&
     queryResult.isError &&
-    isSelectAllSettingRejected(queryResult.error);
+    isSelectAllColumnsSettingRejected(queryResult.error);
   useEffect(() => {
     if (isSettingsRejected) {
-      markConnectionRejectingSettings(connection);
+      markSelectAllColumnsSettingsRejected(connection);
     }
   }, [isSettingsRejected, connection]);
 

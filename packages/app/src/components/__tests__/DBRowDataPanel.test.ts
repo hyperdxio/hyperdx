@@ -156,10 +156,30 @@ describe('DBRowDataPanel', () => {
       const readonlySource = { ...source, connection: 'readonly-conn' };
       mockSettingsQueryError(new Error(READONLY_ERROR));
 
-      const { result } = renderHook(() =>
-        useRowData({ source: readonlySource, rowId: "id='abc123'" }),
-      );
+      const renders: Array<{
+        isLoading: boolean;
+        isError: boolean;
+        error: unknown;
+      }> = [];
+      const { result } = renderHook(() => {
+        const rowData = useRowData({
+          source: readonlySource,
+          rowId: "id='abc123'",
+        });
+        renders.push({
+          isLoading: rowData.isLoading,
+          isError: rowData.isError,
+          error: rowData.error,
+        });
+        return rowData;
+      });
 
+      // The render that sees the rejection reports loading, not the error.
+      expect(renders[0]).toEqual({
+        isLoading: true,
+        isError: false,
+        error: null,
+      });
       await waitFor(() => expect(result.current.data?.data).toEqual([row]));
       expect(result.current.isError).toBe(false);
       const calls = mockUseQueriedChartConfig.mock.calls;
