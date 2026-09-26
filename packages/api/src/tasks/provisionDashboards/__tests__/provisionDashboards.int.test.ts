@@ -1,4 +1,5 @@
 /* eslint-disable security/detect-non-literal-fs-filename */
+import { AlertThresholdType } from '@hyperdx/common-utils/dist/types';
 import fs from 'fs';
 import mongoose from 'mongoose';
 import os from 'os';
@@ -6,8 +7,10 @@ import path from 'path';
 
 import { createTeam } from '@/controllers/team';
 import { clearDBCollections, closeDB, connectDB, makeTile } from '@/fixtures';
+import Alert, { AlertSource } from '@/models/alert';
 import Dashboard from '@/models/dashboard';
 import Team from '@/models/team';
+import Webhook from '@/models/webhook';
 import {
   readDashboardFiles,
   syncDashboards,
@@ -311,6 +314,150 @@ describe('provisionDashboards', () => {
         provisioned: true,
       });
       expect(provisionedDashboard).toBeTruthy();
+    });
+  });
+
+  describe('syncDashboards tile alerts', () => {
+    const tileAlert = (webhookId: string, threshold = 10) =>
+      ({
+        interval: '5m',
+        threshold,
+        thresholdType: AlertThresholdType.ABOVE,
+        channel: { type: 'webhook', webhookId },
+      }) as any;
+
+    const writeDashboard = (tiles: ReturnType<typeof makeTile>[]) =>
+      fs.writeFileSync(
+        path.join(tmpDir, 'alerting.json'),
+        JSON.stringify({ name: 'Alerting', tiles, tags: [] }),
+      );
+
+    const setup = async () => {
+      const team = await createTeam({ name: 'My Team' });
+      const webhook = await new Webhook({
+        team: team._id,
+        service: 'generic',
+        url: 'https://example.com/hook',
+        name: 'Hook',
+      }).save();
+      return { team, webhookId: webhook._id.toString() };
+    };
+
+    const provisionedDashboard = (teamId: unknown) =>
+      Dashboard.findOne({ name: 'Alerting', team: teamId, provisioned: true });
+
+    it('creates a provisioned alert for a tile that declares one', async () => {
+      const { team, webhookId } = await setup();
+      writeDashboard([
+        makeTile({ id: 'with-alert', alert: tileAlert(webhookId) }),
+        makeTile({ id: 'without-alert' }),
+      ]);
+
+      await syncDashboards(team._id.toString(), tmpDir);
+
+      const dashboard = await provisionedDashboard(team._id);
+      const alerts = await Alert.find({ team: team._id });
+      expect(alerts).toHaveLength(1);
+      expect(alerts[0].source).toBe(AlertSource.TILE);
+      expect(alerts[0].dashboard?.toString()).toBe(dashboard?._id.toString());
+      expect(alerts[0].tileId).toBe('with-alert');
+      expect(alerts[0].threshold).toBe(10);
+      expect(alerts[0].channel).toEqual({ type: 'webhook', webhookId });
+      expect(alerts[0].provisioned).toBe(true);
+    });
+
+    it('updates the alert in place on later syncs', async () => {
+      const { team, webhookId } = await setup();
+      writeDashboard([makeTile({ id: 'tile', alert: tileAlert(webhookId) })]);
+      await syncDashboards(team._id.toString(), tmpDir);
+      const [created] = await Alert.find({ team: team._id });
+
+      writeDashboard([
+        makeTile({ id: 'tile', alert: tileAlert(webhookId, 50) }),
+      ]);
+      await syncDashboards(team._id.toString(), tmpDir);
+      await syncDashboards(team._id.toString(), tmpDir);
+
+      const alerts = await Alert.find({ team: team._id });
+      expect(alerts).toHaveLength(1);
+      expect(alerts[0]._id.toString()).toBe(created._id.toString());
+      expect(alerts[0].threshold).toBe(50);
+    });
+
+    it('removes a provisioned alert once its tile no longer declares one', async () => {
+      const { team, webhookId } = await setup();
+      writeDashboard([
+        makeTile({ id: 'kept', alert: tileAlert(webhookId) }),
+        makeTile({ id: 'dropped', alert: tileAlert(webhookId) }),
+        makeTile({ id: 'removed', alert: tileAlert(webhookId) }),
+      ]);
+      await syncDashboards(team._id.toString(), tmpDir);
+      expect(await Alert.countDocuments({ team: team._id })).toBe(3);
+
+      writeDashboard([
+        makeTile({ id: 'kept', alert: tileAlert(webhookId) }),
+        makeTile({ id: 'dropped' }),
+      ]);
+      await syncDashboards(team._id.toString(), tmpDir);
+
+      const alerts = await Alert.find({ team: team._id });
+      expect(alerts.map(a => a.tileId)).toEqual(['kept']);
+    });
+
+    it('skips an alert whose webhook does not exist', async () => {
+      const { team } = await setup();
+      writeDashboard([
+        makeTile({
+          id: 'tile',
+          alert: tileAlert(new mongoose.Types.ObjectId().toString()),
+        }),
+      ]);
+
+      await syncDashboards(team._id.toString(), tmpDir);
+
+      expect(await provisionedDashboard(team._id)).toBeTruthy();
+      expect(await Alert.countDocuments({ team: team._id })).toBe(0);
+    });
+
+    it('keeps the last valid version when a declared alert becomes invalid', async () => {
+      const { team, webhookId } = await setup();
+      writeDashboard([makeTile({ id: 'tile', alert: tileAlert(webhookId) })]);
+      await syncDashboards(team._id.toString(), tmpDir);
+
+      writeDashboard([
+        makeTile({
+          id: 'tile',
+          alert: tileAlert(new mongoose.Types.ObjectId().toString(), 99),
+        }),
+      ]);
+      await syncDashboards(team._id.toString(), tmpDir);
+
+      const alerts = await Alert.find({ team: team._id });
+      expect(alerts).toHaveLength(1);
+      expect(alerts[0].threshold).toBe(10);
+      expect(alerts[0].channel).toEqual({ type: 'webhook', webhookId });
+    });
+
+    it('leaves alerts created in the app alone', async () => {
+      const { team, webhookId } = await setup();
+      writeDashboard([makeTile({ id: 'tile' })]);
+      await syncDashboards(team._id.toString(), tmpDir);
+      const dashboard = await provisionedDashboard(team._id);
+      await new Alert({
+        team: team._id,
+        source: AlertSource.TILE,
+        dashboard: dashboard?._id,
+        tileId: 'tile',
+        interval: '5m',
+        threshold: 1,
+        thresholdType: AlertThresholdType.ABOVE,
+        channel: { type: 'webhook', webhookId },
+        createdBy: new mongoose.Types.ObjectId(),
+      }).save();
+
+      await syncDashboards(team._id.toString(), tmpDir);
+
+      expect(await Alert.countDocuments({ team: team._id })).toBe(1);
     });
   });
 

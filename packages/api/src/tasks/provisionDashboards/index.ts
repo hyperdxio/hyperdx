@@ -3,13 +3,21 @@ import {
   DashboardWithoutId,
   DashboardWithoutIdSchema,
   resolveChartPaletteToken,
+  Tile,
   walkRawDashboardTileColors,
 } from '@hyperdx/common-utils/dist/types';
 import fs from 'fs';
+import { Types } from 'mongoose';
 import path from 'path';
 
+import {
+  AlertInput,
+  createOrUpdateDashboardAlerts,
+  validateAlertInput,
+} from '@/controllers/alerts';
 import { connectDB, mongooseConnection } from '@/models';
-import Dashboard from '@/models/dashboard';
+import Alert, { AlertSource } from '@/models/alert';
+import Dashboard, { IDashboard } from '@/models/dashboard';
 import Team from '@/models/team';
 import type { HdxTask } from '@/tasks/types';
 import { ProvisionDashboardsTaskArgs } from '@/tasks/types';
@@ -68,6 +76,61 @@ export function readDashboardFiles(dir: string): DashboardWithoutId[] {
   return dashboards;
 }
 
+// Turns the `config.alert` of each provisioned tile into a tile alert, the way
+// saving a dashboard through the API does. An alert that fails validation is
+// skipped and keeps its last valid version; a provisioned alert whose tile no
+// longer declares one is removed. Alerts created in the app are left alone.
+export async function syncProvisionedAlerts(
+  dashboard: Pick<IDashboard, '_id' | 'name' | 'tags' | 'tiles'>,
+  teamId: string,
+  tiles: Tile[],
+) {
+  const team = new Types.ObjectId(teamId);
+  const declared = tiles.filter(tile => tile.config.alert != null);
+
+  const alertsByTile: Record<string, AlertInput> = {};
+  for (const tile of declared) {
+    const alert = tile.config.alert as AlertInput;
+    try {
+      await validateAlertInput(team, {
+        source: AlertSource.TILE,
+        dashboardId: dashboard._id.toString(),
+        tileId: tile.id,
+        channel: alert.channel,
+        channels: alert.channels,
+      });
+      alertsByTile[tile.id] = alert;
+    } catch (err) {
+      logger.warn(
+        {
+          name: dashboard.name,
+          tileId: tile.id,
+          err: err instanceof Error ? err.message : err,
+        },
+        'Skipping invalid provisioned tile alert',
+      );
+    }
+  }
+
+  if (Object.keys(alertsByTile).length > 0) {
+    await createOrUpdateDashboardAlerts(
+      dashboard,
+      team,
+      alertsByTile,
+      undefined,
+      { provisioned: true },
+    );
+  }
+
+  await Alert.deleteMany({
+    dashboard: dashboard._id,
+    team,
+    source: AlertSource.TILE,
+    provisioned: true,
+    tileId: { $nin: declared.map(tile => tile.id) },
+  });
+}
+
 export async function syncDashboards(teamId: string, dir: string) {
   const dashboards = readDashboardFiles(dir);
   if (dashboards.length === 0) return;
@@ -109,6 +172,15 @@ export async function syncDashboards(teamId: string, dir: string) {
 
       if (result === null) {
         logger.info({ name: dashboard.name }, 'Created provisioned dashboard');
+      }
+
+      const saved = await Dashboard.findOne({
+        name: dashboard.name,
+        team: teamId,
+        provisioned: true,
+      });
+      if (saved) {
+        await syncProvisionedAlerts(saved, teamId, dashboard.tiles || []);
       }
     } catch (err) {
       logger.error(

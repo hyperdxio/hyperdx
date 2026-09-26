@@ -220,6 +220,43 @@ with at minimum a `name` and `tiles` array:
 - Files are validated against the `DashboardWithoutIdSchema` Zod schema; invalid
   files are skipped with a warning
 
+### Tile Alerts
+
+A tile can declare an alert in `config.alert`, in the same shape the dashboards
+API accepts. The provisioner creates or updates that tile alert on every sync:
+
+```json
+{
+  "id": "error-rate",
+  "x": 0,
+  "y": 0,
+  "w": 12,
+  "h": 4,
+  "config": {
+    "name": "Error rate",
+    "source": "Logs",
+    "displayType": "line",
+    "select": [{ "aggFn": "count", "where": "SeverityText:error" }],
+    "alert": {
+      "interval": "5m",
+      "threshold": 100,
+      "thresholdType": "above",
+      "channel": { "type": "webhook", "webhookId": "<webhook ObjectId>" }
+    }
+  }
+}
+```
+
+- Provisioned alerts are flagged with `provisioned: true`. Removing an alert
+  from its tile, or the tile from the file, deletes it on the next sync
+- An alert that fails validation (for example an unknown webhook, or a raw SQL
+  tile whose display type or query does not support alerts) is skipped with a
+  warning and keeps its last valid version
+- Alerts created in the app on a provisioned dashboard are left alone, unless
+  the file declares an alert on the same tile, which then replaces it
+- Webhooks belong to a team, so with `DASHBOARD_PROVISIONER_ALL_TEAMS=true` an
+  alert is only created for the team that owns its webhook
+
 
 ## Note on Security
 

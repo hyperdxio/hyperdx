@@ -127,6 +127,9 @@ export interface IAlert {
   // Multi-window alerting: fire only after N violations in M consecutive windows
   numConsecutiveWindows?: number | null;
 
+  // Created by the dashboard file provisioner, which keeps it in sync with its file
+  provisioned?: boolean;
+
   // Errors recorded during the most recent execution
   executionErrors?: IAlertError[];
   createdAt: Date;
@@ -255,6 +258,10 @@ const AlertSchema = new Schema<IAlert>(
       type: Number,
       required: false,
       min: 1,
+    },
+    provisioned: {
+      type: Boolean,
+      required: false,
     },
     silenced: {
       required: false,

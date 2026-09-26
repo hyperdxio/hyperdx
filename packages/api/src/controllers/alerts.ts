@@ -419,6 +419,7 @@ export const createOrUpdateDashboardAlerts = async (
   teamId: ObjectId,
   alertsByTile: Record<string, AlertInput>,
   userId?: ObjectId,
+  { provisioned = false }: { provisioned?: boolean } = {},
 ) => {
   const dashboardId = dashboard._id;
   const result = await Promise.all(
@@ -440,6 +441,9 @@ export const createOrUpdateDashboardAlerts = async (
         oldAlert && oldAlert.createdBy
           ? makeAlertUpdate(alertInput, undefined, { dashboard })
           : makeAlertUpdate(alertInput, userId, { dashboard });
+      if (provisioned) {
+        alertUpdate.$set.provisioned = true;
+      }
 
       return await Alert.findOneAndUpdate(filter, alertUpdate, {
         new: true,
