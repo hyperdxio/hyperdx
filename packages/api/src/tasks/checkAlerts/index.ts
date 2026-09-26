@@ -1742,23 +1742,52 @@ export const processAlert = async (
         }
       }
 
-      // Auto-resolve: groups that were alerting/pending but absent from this run.
+      // Auto-resolve: groups that were alerting/pending but absent from the newest bucket.
       // PromQL always stores per-series history keyed by alertId||{labels},
       // regardless of hasGroupBy, so we always run this loop for PromQL alerts.
-      if (previousMap && previousMap.size > 0) {
-        for (const [previousKey, previousHistory] of previousMap.entries()) {
-          const groupKey = extractGroupKeyFromMapKey(previousKey, alert.id);
+      const lastExpectedBucket = expectedBuckets[expectedBuckets.length - 1];
+      if (lastExpectedBucket) {
+        const groupsToCheck = new Set<string>();
+        if (previousMap) {
+          for (const previousKey of previousMap.keys()) {
+            groupsToCheck.add(extractGroupKeyFromMapKey(previousKey, alert.id));
+          }
+        }
+        for (const groupKey of histories.keys()) {
+          groupsToCheck.add(groupKey);
+        }
+
+        for (const groupKey of groupsToCheck) {
+          const history = histories.get(groupKey);
+          const previousHistory = previousMap?.get(
+            computeHistoryMapKey(alert.id, groupKey),
+          );
+
+          const lastEvaluated =
+            history?.lastValues[history.lastValues.length - 1];
+          const isMissingFromLastBucket =
+            !lastEvaluated ||
+            lastEvaluated.startTime.getTime() !== lastExpectedBucket.getTime();
+
+          const wasAlertingOrPending =
+            previousHistory?.state === AlertState.ALERT ||
+            previousHistory?.state === AlertState.PENDING ||
+            history?.state === AlertState.ALERT ||
+            history?.state === AlertState.PENDING;
+
           if (
-            (previousHistory.state === AlertState.ALERT ||
-              previousHistory.state === AlertState.PENDING) &&
-            !histories.has(groupKey) &&
+            isMissingFromLastBucket &&
+            wasAlertingOrPending &&
             !doesExceedThreshold(alert, 0)
           ) {
-            const history = getOrCreateHistory(groupKey);
-            history.lastValues.push({
+            const h = getOrCreateHistory(groupKey);
+            h.lastValues.push({
               count: 0,
-              startTime: expectedBuckets[0] ?? dateRange[1],
+              startTime: lastExpectedBucket,
             });
+            h.state = AlertState.OK;
+            h.counts = 0;
+            latestAlertContext.delete(groupKey);
           }
         }
       }
@@ -2165,27 +2194,55 @@ export const processAlert = async (
 
     // Handle missing groups: If current check found no data, check if any previously alerting/pending groups need to be resolved
     // For group-by alerts, check if any previously alerting or pending groups are missing from current data
-    if (hasGroupBy && previousMap && previousMap.size > 0) {
-      for (const [previousKey, previousHistory] of previousMap.entries()) {
-        const groupKey = extractGroupKeyFromMapKey(previousKey, alert.id);
+    if (hasGroupBy) {
+      const lastExpectedBucket = expectedBuckets[expectedBuckets.length - 1];
+      if (lastExpectedBucket) {
+        const groupsToCheck = new Set<string>();
+        if (previousMap) {
+          for (const previousKey of previousMap.keys()) {
+            groupsToCheck.add(extractGroupKeyFromMapKey(previousKey, alert.id));
+          }
+        }
+        for (const groupKey of histories.keys()) {
+          groupsToCheck.add(groupKey);
+        }
 
-        // If this group was previously ALERT or PENDING but is missing from current data and would be resolved by a 0 value,
-        // create an OK history for the group
-        if (
-          (previousHistory.state === AlertState.ALERT ||
-            previousHistory.state === AlertState.PENDING) &&
-          !histories.has(groupKey) &&
-          !doesExceedThreshold(alert, 0)
-        ) {
-          logger.info(
-            {
-              alertId: alert.id,
-              group: groupKey,
-            },
-            `Group "${groupKey}" is missing from current data but was previously ${previousHistory.state} - creating OK history`,
+        for (const groupKey of groupsToCheck) {
+          const history = histories.get(groupKey);
+          const previousHistory = previousMap?.get(
+            computeHistoryMapKey(alert.id, groupKey),
           );
-          const history = getOrCreateHistory(groupKey);
-          history.lastValues.push({ count: 0, startTime: expectedBuckets[0] });
+
+          const lastEvaluated =
+            history?.lastValues[history.lastValues.length - 1];
+          const isMissingFromLastBucket =
+            !lastEvaluated ||
+            lastEvaluated.startTime.getTime() !== lastExpectedBucket.getTime();
+
+          const wasAlertingOrPending =
+            previousHistory?.state === AlertState.ALERT ||
+            previousHistory?.state === AlertState.PENDING ||
+            history?.state === AlertState.ALERT ||
+            history?.state === AlertState.PENDING;
+
+          if (
+            isMissingFromLastBucket &&
+            wasAlertingOrPending &&
+            !doesExceedThreshold(alert, 0)
+          ) {
+            logger.info(
+              {
+                alertId: alert.id,
+                group: groupKey,
+              },
+              `Group "${groupKey}" is missing from current data but was previously ALERT/PENDING - creating OK history`,
+            );
+            const h = getOrCreateHistory(groupKey);
+            h.lastValues.push({ count: 0, startTime: lastExpectedBucket });
+            h.state = AlertState.OK;
+            h.counts = 0;
+            latestAlertContext.delete(groupKey);
+          }
         }
       }
     }

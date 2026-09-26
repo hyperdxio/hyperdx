@@ -8722,9 +8722,9 @@ describe('checkAlerts', () => {
         teamWebhooksById,
       );
 
-      // Alert should be in ALERT state (service-b still alerting)
+      // Alert should be in OK state (both service-a and service-b resolved)
       const updatedAlert = await Alert.findById(details.alert.id);
-      expect(updatedAlert!.state).toBe('ALERT');
+      expect(updatedAlert!.state).toBe('OK');
 
       // Check alert histories after first run
       const firstRunHistories = await AlertHistory.find({
