@@ -69,6 +69,65 @@ describe('DBPieChart', () => {
     expect(screen.getByText('Loading Chart Data...')).toBeInTheDocument();
   });
 
+  describe('refresh indicator', () => {
+    const groupedData = {
+      data: [
+        { status: 'success', count: 100 },
+        { status: 'error', count: 50 },
+      ],
+      meta: [
+        { name: 'status', type: 'String' },
+        { name: 'count', type: 'UInt64' },
+      ],
+    };
+
+    it('pulses while a refetch is showing the previous result', () => {
+      mockUseQueriedChartConfig.mockReturnValue({
+        data: groupedData,
+        isLoading: false,
+        isPlaceholderData: true,
+        isError: false,
+      });
+
+      renderWithMantine(<DBPieChart config={baseTestConfig} />);
+      expect(screen.getByTestId('pie-chart-container')).toHaveClass(
+        'effect-pulse',
+      );
+      // The legend shows values too, so it pulses along with the pie
+      expect(
+        screen.getByTestId('pie-chart-legend').closest('.effect-pulse'),
+      ).not.toBeNull();
+    });
+
+    it('does not pulse once fresh data has loaded', () => {
+      mockUseQueriedChartConfig.mockReturnValue({
+        data: groupedData,
+        isLoading: false,
+        isPlaceholderData: false,
+        isError: false,
+      });
+
+      renderWithMantine(<DBPieChart config={baseTestConfig} />);
+      expect(screen.getByTestId('pie-chart-container')).not.toHaveClass(
+        'effect-pulse',
+      );
+    });
+
+    it('pulses the empty state while a refetch is running', () => {
+      mockUseQueriedChartConfig.mockReturnValue({
+        data: { data: [], meta: groupedData.meta },
+        isLoading: false,
+        isPlaceholderData: true,
+        isError: false,
+      });
+
+      renderWithMantine(<DBPieChart config={baseTestConfig} />);
+      expect(screen.getByText('No data found within time range.')).toHaveClass(
+        'effect-pulse',
+      );
+    });
+  });
+
   it('handles error state correctly', () => {
     mockUseQueriedChartConfig.mockReturnValue({
       data: undefined,

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
+import cx from 'classnames';
 import type { Plugin } from 'uplot';
 import uPlot from 'uplot';
 import UplotReact from 'uplot-react';
@@ -756,10 +757,12 @@ function HeatmapContainer({
   const {
     data: minMaxData,
     isLoading: isMinMaxLoading,
+    isPlaceholderData: isMinMaxPlaceholderData,
     error: minMaxError,
   } = useQueriedChartConfig(minMaxConfig, {
     queryKey: ['heatmap', minMaxConfig],
     enabled: enabled,
+    placeholderData: prev => prev,
   });
 
   // UInt64 are returned as strings; quantile returns floats
@@ -781,10 +784,24 @@ function HeatmapContainer({
     nBuckets,
   });
 
-  const { data, isLoading, error } = useQueriedChartConfig(bucketConfig, {
-    queryKey: ['heatmap_bucket', bucketConfig],
-    enabled: !!minMaxData && bucketConfig != null && max > effectiveMin,
-  });
+  const canQueryBuckets =
+    !!minMaxData && bucketConfig != null && max > effectiveMin;
+  const { data, isLoading, isPlaceholderData, error } = useQueriedChartConfig(
+    bucketConfig,
+    {
+      queryKey: ['heatmap_bucket', bucketConfig],
+      // Wait for fresh bounds, so a refresh doesn't also query the new range
+      // bucketed with the previous range's min/max.
+      enabled: canQueryBuckets && !isMinMaxPlaceholderData,
+      // Only keep the previous buckets while this query can still run, so an
+      // empty refreshed range shows "Not enough data points" instead of
+      // pulsing on stale buckets.
+      placeholderData: canQueryBuckets ? prev => prev : undefined,
+    },
+  );
+  // A refresh keeps the previous heatmap on screen and pulses until both
+  // queries have fresh data.
+  const isRefreshing = isMinMaxPlaceholderData || isPlaceholderData;
 
   // Memoize so timeBucketByGranularity's fresh Date[] doesn't defeat
   // the heatmapData memoization downstream. dateRange itself may be a
@@ -818,7 +835,21 @@ function HeatmapContainer({
     });
   }, [data, generatedTsBuckets, scaleType, effectiveMin, max, nBuckets]);
 
-  const time = heatmapData[0];
+  // While refreshing, keep drawing the last settled heatmap. The previous
+  // bucket rows only line up with the time buckets, bounds and scale they were
+  // queried with, so re-plotting them on the new range would draw a blank or
+  // mis-scaled grid.
+  const currentView = useMemo(
+    () => ({ heatmapData, generatedTsBuckets, effectiveMin, scaleType }),
+    [heatmapData, generatedTsBuckets, effectiveMin, scaleType],
+  );
+  const [settledView, setSettledView] = useState(currentView);
+  if (!isRefreshing && settledView !== currentView) {
+    setSettledView(currentView);
+  }
+  const view = isRefreshing ? settledView : currentView;
+
+  const time = view.heatmapData[0];
 
   const toolbarItemsMemo = useMemo(() => {
     const allToolbarItems: React.ReactNode[] = [];
@@ -854,15 +885,21 @@ function HeatmapContainer({
         </Text>
       ) : _error ? (
         <ChartErrorState error={_error} variant={errorVariant} />
-      ) : time.length < 2 || generatedTsBuckets?.length < 2 ? (
-        <Text size="sm" ta="center" p="xl">
+      ) : time.length < 2 || view.generatedTsBuckets.length < 2 ? (
+        <Text
+          size="sm"
+          ta="center"
+          p="xl"
+          className={cx({ 'effect-pulse': isRefreshing })}
+        >
           Not enough data points to render heatmap. Try expanding your search
           criteria.
         </Text>
       ) : (
         <Heatmap
           key={JSON.stringify(config)}
-          data={heatmapData}
+          className={cx({ 'effect-pulse': isRefreshing })}
+          data={view.heatmapData}
           numberFormat={config.numberFormat}
           onFilter={
             onFilter
@@ -874,7 +911,7 @@ function HeatmapContainer({
                   // The 1.1x threshold adds 10% headroom to account for
                   // floating-point rounding in the bucket boundary.
                   const adjustedYMin =
-                    scaleType === 'log' && yMin <= effectiveMin * 1.1
+                    view.scaleType === 'log' && yMin <= view.effectiveMin * 1.1
                       ? 0
                       : yMin;
                   onFilter(xMin, xMax, adjustedYMin, yMax);
@@ -882,7 +919,7 @@ function HeatmapContainer({
               : undefined
           }
           onClearFilter={onClearFilter}
-          scaleType={scaleType}
+          scaleType={view.scaleType}
           palette={palette}
           selectionBounds={selectionBounds}
         />
@@ -989,6 +1026,7 @@ function highlightDataPlugin({
 }
 
 function Heatmap({
+  className,
   data,
   numberFormat,
   onFilter,
@@ -997,6 +1035,7 @@ function Heatmap({
   palette,
   selectionBounds,
 }: {
+  className?: string;
   data: Mode2DataArray;
   numberFormat?: NumberFormat;
   onFilter?: (xMin: number, xMax: number, yMin: number, yMax: number) => void;
@@ -1299,7 +1338,7 @@ function Heatmap({
   return (
     <div
       ref={ref}
-      className="heatmap-selection-container"
+      className={cx('heatmap-selection-container', className)}
       style={{ width: '100%', height: '100%', position: 'relative' }}
       onClick={() => {
         // Chromium fires a click event on mouseup even after a drag.
