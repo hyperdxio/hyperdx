@@ -1009,18 +1009,11 @@ export async function evaluatePromqlAlert({
     const validExpressions = rawExpression.filter(
       e => e.expression && e.expression.trim() !== '',
     );
+    // Always evaluate the last expression, mirroring how SQL builder alerts
+    // target the last series and how the tile renders its primary value.
     if (validExpressions.length > 0) {
-      if (
-        resolvedConfig.displayType === 'number' ||
-        resolvedConfig.displayType === 'table' ||
-        resolvedConfig.displayType === 'bar' ||
-        resolvedConfig.displayType === 'pie'
-      ) {
-        promqlExpression = validExpressions[0].expression;
-      } else {
-        promqlExpression =
-          validExpressions[validExpressions.length - 1].expression;
-      }
+      promqlExpression =
+        validExpressions[validExpressions.length - 1].expression;
     }
   }
 
@@ -1261,7 +1254,15 @@ export const processAlert = async (
       scheduleStartAt,
     );
     evaluationWindowStart = nowInMinsRoundDown;
-    const hasGroupBy = alertHasGroupBy(details);
+    const isPromQL =
+      details.taskType === AlertTaskType.INLINE
+        ? isPromqlSavedChartConfig(details.chartConfig)
+        : details.taskType === AlertTaskType.TILE
+          ? isPromqlSavedChartConfig(details.tile.config)
+          : false;
+
+    // PromQL alerts always return label-keyed series, acting like grouped alerts end-to-end.
+    const hasGroupBy = isPromQL || alertHasGroupBy(details);
 
     // Check if we should skip this alert check based on last evaluation time
     if (shouldSkipAlertCheck(details, hasGroupBy, nowInMinsRoundDown)) {
@@ -1506,13 +1507,6 @@ export const processAlert = async (
       }
     };
 
-    const isPromQL =
-      details.taskType === AlertTaskType.INLINE
-        ? isPromqlSavedChartConfig(details.chartConfig)
-        : details.taskType === AlertTaskType.TILE
-          ? isPromqlSavedChartConfig(details.tile.config)
-          : false;
-
     if (isPromQL) {
       const savedConfig =
         details.taskType === AlertTaskType.INLINE
@@ -1592,7 +1586,7 @@ export const processAlert = async (
       const windowMs = windowSizeInMins * 60 * 1000;
       for (
         let t = dateRange[0].getTime();
-        t <= dateRange[1].getTime() - windowMs;
+        t < dateRange[1].getTime();
         t += windowMs
       ) {
         expectedBuckets.push(new Date(t));
@@ -1748,8 +1742,10 @@ export const processAlert = async (
         }
       }
 
-      // Auto-resolve: groups that were alerting/pending but absent from this run
-      if (hasGroupBy && previousMap && previousMap.size > 0) {
+      // Auto-resolve: groups that were alerting/pending but absent from this run.
+      // PromQL always stores per-series history keyed by alertId||{labels},
+      // regardless of hasGroupBy, so we always run this loop for PromQL alerts.
+      if (previousMap && previousMap.size > 0) {
         for (const [previousKey, previousHistory] of previousMap.entries()) {
           const groupKey = extractGroupKeyFromMapKey(previousKey, alert.id);
           if (

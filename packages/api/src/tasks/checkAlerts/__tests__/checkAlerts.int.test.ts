@@ -5281,8 +5281,8 @@ describe('checkAlerts', () => {
         expect(node1History).toBeDefined();
         expect(node1History.state).toBe('ALERT');
         expect(node1History.lastValues[0].count).toBe(42);
-        // Expect one backfilled bucket because we returned two buckets.
-        expect(node1History.analytics?.backfilledBuckets).toBe(1);
+        // Expect zero backfilled buckets because the date range for a new alert at 22:12 is [22:05, 22:10], which is exactly one 5-minute bucket.
+        expect(node1History.analytics?.backfilledBuckets).toBe(0);
 
         expect(node2History).toBeDefined();
         expect(node2History.state).toBe('OK');
