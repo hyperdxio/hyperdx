@@ -128,13 +128,30 @@ describe('SearchViewSwitcher', () => {
     );
   });
 
-  it('hides event views for metric sources', () => {
-    renderSwitcher({ sourceKind: SourceKind.Metric, value: 'timeseries' });
+  it('offers Browse instead of the event views for metric sources', async () => {
+    const user = userEvent.setup();
+    const onChange = renderSwitcher({
+      sourceKind: SourceKind.Metric,
+      value: 'timeseries',
+    });
 
-    expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('radio', { name: 'Events' }),
+    ).not.toBeInTheDocument();
     expect(screen.getByTestId('visualize-as-button')).toHaveTextContent(
       'Time series',
     );
+
+    await user.click(screen.getByRole('radio', { name: 'Browse' }));
+    expect(onChange).toHaveBeenCalledWith('browse');
+  });
+
+  it('keeps Browse to metric sources', () => {
+    renderSwitcher({ sourceKind: SourceKind.Log });
+
+    expect(
+      screen.queryByRole('radio', { name: 'Browse' }),
+    ).not.toBeInTheDocument();
   });
 
   it('keeps Events but drops heatmap and patterns in SQL mode', async () => {

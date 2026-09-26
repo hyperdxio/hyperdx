@@ -154,6 +154,11 @@ import { ExploreSeriesList } from './components/Explore/ExploreSeriesList';
 import { ExploreSqlToggle } from './components/Explore/ExploreSqlToggle';
 import { type QueryConfigMode } from './components/Explore/QueryEditor';
 import { SeveritySummary } from './components/Explore/SeveritySummary';
+import {
+  aggConfigFromWall,
+  type EditAsChartRequest,
+} from './components/MetricWall/editAsChart';
+import { MetricBrowse } from './components/MetricWall/MetricBrowse';
 import { nextSearchForPatternMatch } from './components/Patterns/patternColumn';
 import { PatternColumnSelector } from './components/Patterns/PatternColumnSelector';
 import PatternTable from './components/PatternTable';
@@ -1241,14 +1246,47 @@ function DBExplorePage() {
 
   useEffect(() => {
     // Metric sources can't render the raw List / heatmap / patterns views, so
-    // fall back to the Time series view when one of those is active.
-    if (isMetricSource && !isAggregatedSearchView(view)) {
-      setView('timeseries');
+    // they land on the metric wall instead; other sources have no wall.
+    // Waits for the source, or a browse link would lose its view on load.
+    if (searchedSource == null) return;
+    if (isMetricSource && !isAggregatedSearchView(view) && view !== 'browse') {
+      setView('browse');
+    } else if (!isMetricSource && view === 'browse') {
+      setView('list');
     }
-  }, [isMetricSource, view, setView]);
+  }, [searchedSource, isMetricSource, view, setView]);
+  const isMetricBrowse = isMetricSource && view === 'browse';
 
   const [isFilterSidebarCollapsed, setIsFilterSidebarCollapsed] =
     useLocalStorage<boolean>('isFilterSidebarCollapsed', false);
+
+  // The search box and pills above narrow every tile on the metric wall.
+  const metricBrowseFilters = useMemo<Filter[]>(
+    () => [
+      ...(searchedConfig.filters ?? []),
+      ...(searchedConfig.where?.trim()
+        ? [
+            {
+              type: searchedConfig.whereLanguage,
+              condition: searchedConfig.where.trim(),
+            } as Filter,
+          ]
+        : []),
+    ],
+    [
+      searchedConfig.filters,
+      searchedConfig.where,
+      searchedConfig.whereLanguage,
+    ],
+  );
+
+  const handleEditAsChart = useCallback(
+    (request: EditAsChartRequest) => {
+      setAggConfig(aggConfigFromWall(request));
+      setView('timeseries');
+    },
+    [setAggConfig, setView],
+  );
 
   const [denoiseResults, _setDenoiseResults] = useQueryState(
     'denoise',
@@ -3146,7 +3184,7 @@ function DBExplorePage() {
                 height: '100%',
               }}
             >
-              {!isFilterSidebarCollapsed && (
+              {!isFilterSidebarCollapsed && !isMetricBrowse && (
                 <ErrorBoundary message="Unable to render search filters">
                   <DBSearchPageFilters
                     denoiseResults={denoiseResults}
@@ -3203,7 +3241,8 @@ function DBExplorePage() {
                         )
                       }
                       filterExpand={
-                        isFilterSidebarCollapsed && (
+                        isFilterSidebarCollapsed &&
+                        !isMetricBrowse && (
                           <ExpandFiltersButton
                             onExpand={() => setIsFilterSidebarCollapsed(false)}
                           />
@@ -3243,7 +3282,8 @@ function DBExplorePage() {
                         // reduces to a single figure and has nothing to split.
                         !isSqlUiMode &&
                         view !== 'patterns' &&
-                        view !== 'number' && (
+                        view !== 'number' &&
+                        !isMetricBrowse && (
                           <ExploreGroupByControl
                             tableSource={searchedSource}
                             value={aggConfig.groupBy}
@@ -3594,6 +3634,15 @@ function DBExplorePage() {
                         </Flex>
                       )}
                     </Box>
+                  ) : isMetricBrowse && searchedMetricSource ? (
+                    <MetricBrowse
+                      source={searchedMetricSource}
+                      dateRange={searchedTimeRange}
+                      searchFilters={metricBrowseFilters}
+                      railCollapsed={isFilterSidebarCollapsed}
+                      onRailCollapsedChange={setIsFilterSidebarCollapsed}
+                      onEditAsChart={handleEditAsChart}
+                    />
                   ) : view === 'patterns' ? (
                     <Box flex="1" mih="0" px="sm">
                       <PatternTable

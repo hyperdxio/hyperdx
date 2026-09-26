@@ -1,0 +1,108 @@
+.layout {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
+.rail {
+  width: 220px;
+  flex-shrink: 0;
+  overflow-y: auto;
+  border-right: 1px solid var(--color-border);
+  padding: var(--mantine-spacing-sm);
+}
+
+.main {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: var(--mantine-spacing-xs) var(--mantine-spacing-sm)
+    var(--mantine-spacing-md);
+}
+
+.section {
+  border: 1px solid var(--color-border);
+  border-radius: var(--mantine-radius-sm);
+  background: var(--color-bg-surface);
+  padding: var(--mantine-spacing-sm);
+  margin-bottom: var(--mantine-spacing-sm);
+}
+
+.bandHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin: var(--mantine-spacing-xs) 0 6px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: var(--mantine-spacing-xs);
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 112px;
+  padding: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--mantine-radius-sm);
+  background: var(--color-bg-body);
+  text-align: left;
+  cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    background: var(--color-bg-hover);
+  }
+}
+
+.tileName {
+  font-family: var(--mantine-font-family-monospace);
+  font-size: var(--mantine-font-size-xs);
+  line-height: 1.3;
+  word-break: break-all;
+}
+
+.spark {
+  position: relative;
+  flex: 1;
+  min-height: 36px;
+}
+
+.drill {
+  border: 1px solid var(--color-border);
+  border-radius: var(--mantine-radius-sm);
+  background: var(--color-bg-body);
+  padding: var(--mantine-spacing-sm);
+  margin-bottom: var(--mantine-spacing-sm);
+}
+
+.multiple {
+  display: flex;
+  flex-direction: column;
+  height: 86px;
+  padding: 6px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--mantine-radius-sm);
+}
+
+.facet {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  padding: 2px 6px;
+  border-radius: var(--mantine-radius-xs);
+  font-size: var(--mantine-font-size-xs);
+
+  &:hover {
+    background: var(--color-bg-hover);
+  }
+}
+
+.facetActive {
+  background: var(--color-bg-highlighted);
+}

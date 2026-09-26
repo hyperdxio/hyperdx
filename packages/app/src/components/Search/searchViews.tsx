@@ -8,6 +8,7 @@ import {
   IconChartPie,
   IconChartTreemap,
   IconGrid3x3,
+  IconLayoutGrid,
   IconList,
   IconNumbers,
   IconTable,
@@ -24,7 +25,8 @@ export type SearchView =
   | 'pie'
   | 'treemap'
   | 'heatmap'
-  | 'patterns';
+  | 'patterns'
+  | 'browse';
 
 const DEFAULT_SEARCH_VIEW: SearchView = 'list';
 export const DEFAULT_CHART_VIEW: SearchView = 'timeseries';
@@ -106,6 +108,13 @@ const SEARCH_VIEWS: SearchViewMeta[] = [
     aggregated: false,
     hiddenInClickhouseBuild: true,
   },
+  {
+    value: 'browse',
+    label: 'Browse',
+    icon: <IconLayoutGrid size={16} />,
+    aggregated: false,
+    sourceKinds: [SourceKind.Metric],
+  },
 ];
 
 const VALID_VIEWS = new Set<string>(SEARCH_VIEWS.map(v => v.value));
@@ -155,10 +164,16 @@ export function getVisibleSearchViews({
     if (v.sourceKinds && (!sourceKind || !v.sourceKinds.includes(sourceKind))) {
       return false;
     }
-    // Metric sources have no raw rows, so only aggregated chart views
-    // (time series / number / table / bar / pie / treemap) make sense —
-    // the List, Event deltas, and Event patterns views are hidden.
-    if (sourceKind === SourceKind.Metric && !v.aggregated) return false;
+    // Metric sources have no raw rows, so besides the metric wall only the
+    // aggregated chart views (time series / number / table / bar / pie /
+    // treemap) make sense.
+    if (
+      sourceKind === SourceKind.Metric &&
+      !v.aggregated &&
+      v.value !== 'browse'
+    ) {
+      return false;
+    }
     if (sqlMode && !isSqlModeSearchView(v.value)) return false;
     return true;
   });

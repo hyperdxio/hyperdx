@@ -6,6 +6,7 @@ import {
   Line,
   LineChart,
   ResponsiveContainer,
+  YAxis,
 } from 'recharts';
 
 type SparklineType = 'line' | 'area' | 'bar';
@@ -37,6 +38,7 @@ export function Sparkline({
   type,
   color,
   height = '100%',
+  yDomain,
 }: {
   points: SparklinePoint[];
   type: SparklineType;
@@ -44,13 +46,18 @@ export function Sparkline({
   // Matches ResponsiveContainer's accepted height: a pixel number or a
   // percentage string (e.g. "100%").
   height?: number | `${number}%`;
+  /** Fixed value range, so sparklines drawn side by side share one scale. */
+  yDomain?: [number, number];
 }) {
   if (points.length < 2) return null;
+
+  const yAxis = yDomain ? <YAxis hide domain={yDomain} /> : null;
 
   return (
     <ResponsiveContainer width="100%" height={height}>
       {type === 'bar' ? (
         <BarChart data={points} margin={CHART_MARGIN}>
+          {yAxis}
           <Bar
             dataKey={VALUE_KEY}
             fill={color}
@@ -60,6 +67,7 @@ export function Sparkline({
         </BarChart>
       ) : type === 'area' ? (
         <AreaChart data={points} margin={CHART_MARGIN}>
+          {yAxis}
           <Area
             type="monotone"
             dataKey={VALUE_KEY}
@@ -74,6 +82,7 @@ export function Sparkline({
         </AreaChart>
       ) : (
         <LineChart data={points} margin={CHART_MARGIN}>
+          {yAxis}
           <Line
             type="monotone"
             dataKey={VALUE_KEY}
