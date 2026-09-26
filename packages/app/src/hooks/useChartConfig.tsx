@@ -73,6 +73,12 @@ interface AdditionalUseQueriedChartConfigOptions {
    * replaces the key the hook builds from the config.
    */
   queryKeyPrefix?: string;
+  /**
+   * Query settings for this query only, added after the source's own query
+   * settings. A setting that the source already defines keeps its value.
+   * They are added to the query key, also when the caller passes `queryKey`.
+   */
+  additionalQuerySettings?: QuerySettings;
 }
 
 type TimeWindow = {
@@ -285,6 +291,28 @@ async function* fetchDataInChunks({
   }
 }
 
+/**
+ * Adds per-query settings after the source's query settings. A setting that the
+ * source already defines keeps the source's value.
+ */
+export function mergeQuerySettings(
+  sourceSettings: QuerySettings | undefined,
+  additionalSettings: QuerySettings | undefined,
+): QuerySettings | undefined {
+  if (!additionalSettings?.length) {
+    return sourceSettings;
+  }
+  const sourceSettingNames = new Set(
+    (sourceSettings ?? []).map(({ setting }) => setting),
+  );
+  return [
+    ...(sourceSettings ?? []),
+    ...additionalSettings.filter(
+      ({ setting }) => !sourceSettingNames.has(setting),
+    ),
+  ];
+}
+
 /** Append the given chunk to the given accumulated result. Exported for tests. */
 export function appendChunk(
   accumulated: TQueryFnData,
@@ -373,6 +401,9 @@ export function useQueriedChartConfig(
       options?.enableQueryChunking ?? false,
       options?.enableParallelQueries ?? false,
       minGranularitySeconds,
+      ...(options?.additionalQuerySettings?.length
+        ? [options.additionalQuerySettings]
+        : []),
     ],
     // TODO: Replace this with `streamedQuery` when it is no longer experimental. Use 'replace' refetch mode.
     // https://tanstack.com/query/latest/docs/reference/streamedQuery
@@ -405,7 +436,10 @@ export function useQueriedChartConfig(
         enableQueryChunking: options?.enableQueryChunking,
         enableParallelQueries: options?.enableParallelQueries,
         metadata,
-        querySettings: source?.querySettings,
+        querySettings: mergeQuerySettings(
+          source?.querySettings,
+          options?.additionalQuerySettings,
+        ),
       });
 
       let accumulatedChunks: TQueryFnData = emptyValue;
@@ -439,6 +473,9 @@ export function useQueriedChartConfig(
     retry: 1,
     refetchOnWindowFocus: false,
     ...options,
+    ...(options?.queryKey && options.additionalQuerySettings?.length
+      ? { queryKey: [...options.queryKey, options.additionalQuerySettings] }
+      : {}),
     enabled: enabled && !isLoadingMVOptimization && !isSourceLoading,
   });
 
