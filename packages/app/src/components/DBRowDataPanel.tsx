@@ -220,10 +220,17 @@ export function useRowData({
   // A connection can reject these settings (for example, a `readonly = 1` user),
   // and an ALIAS column can fail to evaluate. Then fetch the row without them.
   const [settingsRejectedBy, setSettingsRejectedBy] = useState<string>();
+  // The row query has no `config.source`, so the source's query settings do not
+  // reach it. Use the source's own value for these two settings here.
   const additionalQuerySettings =
     knownColumns || settingsRejectedBy === source.connection
       ? undefined
-      : SELECT_ALL_COLUMNS_QUERY_SETTINGS;
+      : SELECT_ALL_COLUMNS_QUERY_SETTINGS.map(
+          defaultSetting =>
+            source.querySettings?.find(
+              ({ setting }) => setting === defaultSetting.setting,
+            ) ?? defaultSetting,
+        );
   const settingsQueryOptions = additionalQuerySettings
     ? { additionalQuerySettings, retry: false }
     : {};

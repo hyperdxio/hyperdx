@@ -2315,6 +2315,21 @@ describe('useChartConfig', () => {
       ]);
     });
 
+    it('adds only the settings that the source does not define', () => {
+      expect(
+        mergeQuerySettings(
+          [{ setting: 'asterisk_include_alias_columns', value: '0' }],
+          [
+            { setting: 'asterisk_include_materialized_columns', value: '1' },
+            { setting: 'asterisk_include_alias_columns', value: '1' },
+          ],
+        ),
+      ).toEqual([
+        { setting: 'asterisk_include_alias_columns', value: '0' },
+        { setting: 'asterisk_include_materialized_columns', value: '1' },
+      ]);
+    });
+
     it('keeps the value of a setting that the source already defines', () => {
       expect(
         mergeQuerySettings(

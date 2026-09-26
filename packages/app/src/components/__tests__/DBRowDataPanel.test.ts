@@ -89,6 +89,23 @@ describe('DBRowDataPanel', () => {
     }
   });
 
+  it("uses the source's own value for these settings", () => {
+    const sourceWithSetting: TLogSource = {
+      ...source,
+      querySettings: [{ setting: 'asterisk_include_alias_columns', value: '0' }],
+    };
+
+    renderHook(() =>
+      useRowData({ source: sourceWithSetting, rowId: "id='abc123'" }),
+    );
+
+    const [[, options]] = mockUseQueriedChartConfig.mock.calls;
+    expect(options.additionalQuerySettings).toEqual([
+      { setting: 'asterisk_include_materialized_columns', value: '1' },
+      { setting: 'asterisk_include_alias_columns', value: '0' },
+    ]);
+  });
+
   it('adds no query settings when the source has a Known Columns List', () => {
     const sourceWithKnownColumns: TLogSource = {
       ...source,

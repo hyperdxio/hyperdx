@@ -76,6 +76,8 @@ interface AdditionalUseQueriedChartConfigOptions {
   /**
    * Query settings for this query only, added after the source's own query
    * settings. A setting that the source already defines keeps its value.
+   * They are part of the default query key; a caller that passes its own
+   * `queryKey` must include them in it.
    */
   additionalQuerySettings?: QuerySettings;
 }
