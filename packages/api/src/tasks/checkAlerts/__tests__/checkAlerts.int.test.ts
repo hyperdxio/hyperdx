@@ -11901,136 +11901,136 @@ describe('checkAlerts', () => {
           teamWebhooksById,
         } = await createSavedSearchWithMVSource('Body:no'); // Body is not in the MV, so the MV should not be used
 
-      const mockUserId = new mongoose.Types.ObjectId();
-      const alert = await createAlert(
-        team._id,
-        {
-          source: AlertSource.SAVED_SEARCH,
-          channel: {
-            type: 'webhook',
-            webhookId: webhook._id.toString(),
+        const mockUserId = new mongoose.Types.ObjectId();
+        const alert = await createAlert(
+          team._id,
+          {
+            source: AlertSource.SAVED_SEARCH,
+            channel: {
+              type: 'webhook',
+              webhookId: webhook._id.toString(),
+            },
+            interval: '5m',
+            thresholdType: AlertThresholdType.ABOVE,
+            threshold: 1,
+            savedSearchId: savedSearch.id,
           },
-          interval: '5m',
-          thresholdType: AlertThresholdType.ABOVE,
-          threshold: 1,
-          savedSearchId: savedSearch.id,
-        },
-        mockUserId,
-      );
+          mockUserId,
+        );
 
-      const enhancedAlert: any = await Alert.findById(alert.id).populate([
-        'team',
-        'savedSearch',
-      ]);
+        const enhancedAlert: any = await Alert.findById(alert.id).populate([
+          'team',
+          'savedSearch',
+        ]);
 
-      const details = {
-        alert: enhancedAlert,
-        source,
-        previousMap: new Map(),
-        taskType: AlertTaskType.SAVED_SEARCH,
-        savedSearch,
-      } satisfies AlertDetails;
+        const details = {
+          alert: enhancedAlert,
+          source,
+          previousMap: new Map(),
+          taskType: AlertTaskType.SAVED_SEARCH,
+          savedSearch,
+        } satisfies AlertDetails;
 
-      const now = new Date('2023-11-16T22:12:00.000Z');
-      const eventMs = new Date('2023-11-16T22:05:00.000Z');
-      const eventNextMs = new Date('2023-11-16T22:10:00.000Z');
+        const now = new Date('2023-11-16T22:12:00.000Z');
+        const eventMs = new Date('2023-11-16T22:05:00.000Z');
+        const eventNextMs = new Date('2023-11-16T22:10:00.000Z');
 
-      // Insert directly into the MV so that we can be sure the MV is being used
-      await bulkInsertLogs([
-        // logs from 22:05 - 22:10
-        {
-          ServiceName: 'api',
-          Timestamp: eventMs,
-          SeverityText: 'error',
-          Body: 'Oh no! Something went wrong!',
-        },
-        {
-          ServiceName: 'api',
-          Timestamp: eventMs,
-          SeverityText: 'error',
-          Body: 'Oh no! Something went wrong!',
-        },
-        {
-          ServiceName: 'api',
-          Timestamp: eventMs,
-          SeverityText: 'error',
-          Body: 'Oh no! Something went wrong!',
-        },
-        // logs from 22:10 - 22:15
-        {
-          ServiceName: 'api',
-          Timestamp: eventNextMs,
-          SeverityText: 'error',
-          Body: 'Oh no! Something went wrong!',
-        },
-        {
-          ServiceName: 'api',
-          Timestamp: eventNextMs,
-          SeverityText: 'error',
-          Body: 'Oh no! Something went wrong!',
-        },
-        {
-          ServiceName: 'api',
-          Timestamp: eventNextMs,
-          SeverityText: 'info',
-          Body: 'Something went right for a change!',
-        },
-      ]);
+        // Insert directly into the MV so that we can be sure the MV is being used
+        await bulkInsertLogs([
+          // logs from 22:05 - 22:10
+          {
+            ServiceName: 'api',
+            Timestamp: eventMs,
+            SeverityText: 'error',
+            Body: 'Oh no! Something went wrong!',
+          },
+          {
+            ServiceName: 'api',
+            Timestamp: eventMs,
+            SeverityText: 'error',
+            Body: 'Oh no! Something went wrong!',
+          },
+          {
+            ServiceName: 'api',
+            Timestamp: eventMs,
+            SeverityText: 'error',
+            Body: 'Oh no! Something went wrong!',
+          },
+          // logs from 22:10 - 22:15
+          {
+            ServiceName: 'api',
+            Timestamp: eventNextMs,
+            SeverityText: 'error',
+            Body: 'Oh no! Something went wrong!',
+          },
+          {
+            ServiceName: 'api',
+            Timestamp: eventNextMs,
+            SeverityText: 'error',
+            Body: 'Oh no! Something went wrong!',
+          },
+          {
+            ServiceName: 'api',
+            Timestamp: eventNextMs,
+            SeverityText: 'info',
+            Body: 'Something went right for a change!',
+          },
+        ]);
 
-      // Act - Run alerts twice to cover two periods
-      let previousMap = await getPreviousAlertHistories(
-        [details.alert.id],
-        now,
-      );
-      await processAlert(
-        now,
-        {
-          ...details,
-          previousMap,
-        },
-        clickhouseClient,
-        connection.id,
-        alertProvider,
-        teamWebhooksById,
-      );
+        // Act - Run alerts twice to cover two periods
+        let previousMap = await getPreviousAlertHistories(
+          [details.alert.id],
+          now,
+        );
+        await processAlert(
+          now,
+          {
+            ...details,
+            previousMap,
+          },
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+        );
 
-      const nextWindow = new Date('2023-11-16T22:15:00.000Z');
-      previousMap = await getPreviousAlertHistories(
-        [details.alert.id],
-        nextWindow,
-      );
-      await processAlert(
-        nextWindow,
-        details,
-        clickhouseClient,
-        connection.id,
-        alertProvider,
-        teamWebhooksById,
-      );
+        const nextWindow = new Date('2023-11-16T22:15:00.000Z');
+        previousMap = await getPreviousAlertHistories(
+          [details.alert.id],
+          nextWindow,
+        );
+        await processAlert(
+          nextWindow,
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+        );
 
-      // Assert - Alert ran and has a state consistent with the data in the base table
-      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+        // Assert - Alert ran and has a state consistent with the data in the base table
+        expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
 
-      const alertHistories = await AlertHistory.find({
-        alert: details.alert.id,
-      }).sort({
-        createdAt: 1,
-      });
-      expect(alertHistories.length).toBe(2);
+        const alertHistories = await AlertHistory.find({
+          alert: details.alert.id,
+        }).sort({
+          createdAt: 1,
+        });
+        expect(alertHistories.length).toBe(2);
 
-      expect(alertHistories[0].state).toBe('ALERT');
-      expect(alertHistories[0].counts).toBe(1);
-      expect(alertHistories[0].lastValues[0].count).toBe(3);
-      expect(alertHistories[0].createdAt).toEqual(
-        new Date('2023-11-16T22:10:00.000Z'),
-      );
+        expect(alertHistories[0].state).toBe('ALERT');
+        expect(alertHistories[0].counts).toBe(1);
+        expect(alertHistories[0].lastValues[0].count).toBe(3);
+        expect(alertHistories[0].createdAt).toEqual(
+          new Date('2023-11-16T22:10:00.000Z'),
+        );
 
-      expect(alertHistories[1].state).toBe('ALERT');
-      expect(alertHistories[1].counts).toBe(1);
-      expect(alertHistories[1].lastValues[0].count).toBe(2);
-      expect(alertHistories[1].createdAt).toEqual(
-        new Date('2023-11-16T22:15:00.000Z'),
-      );
+        expect(alertHistories[1].state).toBe('ALERT');
+        expect(alertHistories[1].counts).toBe(1);
+        expect(alertHistories[1].lastValues[0].count).toBe(2);
+        expect(alertHistories[1].createdAt).toEqual(
+          new Date('2023-11-16T22:15:00.000Z'),
+        );
       } finally {
         consoleErrorSpy.mockRestore();
       }
