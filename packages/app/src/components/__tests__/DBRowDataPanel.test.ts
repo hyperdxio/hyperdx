@@ -77,6 +77,34 @@ describe('DBRowDataPanel', () => {
     expect(config.select).not.toContainEqual({ valueExpression: '*' });
   });
 
+  it('includes MATERIALIZED and ALIAS columns when selecting `*`', () => {
+    renderHook(() => useRowData({ source, rowId: "id='abc123'" }));
+
+    const [bounded, fallback] = mockUseQueriedChartConfig.mock.calls;
+    for (const [, options] of [bounded, fallback]) {
+      expect(options.additionalQuerySettings).toEqual([
+        { setting: 'asterisk_include_materialized_columns', value: '1' },
+        { setting: 'asterisk_include_alias_columns', value: '1' },
+      ]);
+    }
+  });
+
+  it('adds no query settings when the source has a Known Columns List', () => {
+    const sourceWithKnownColumns: TLogSource = {
+      ...source,
+      knownColumnsListExpression: 'Timestamp, Body, ServiceName',
+    };
+
+    renderHook(() =>
+      useRowData({ source: sourceWithKnownColumns, rowId: "id='abc123'" }),
+    );
+
+    const [bounded, fallback] = mockUseQueriedChartConfig.mock.calls;
+    for (const [, options] of [bounded, fallback]) {
+      expect(options.additionalQuerySettings).toBeUndefined();
+    }
+  });
+
   describe('time filtering', () => {
     // A row id synthesized from ids alone (e.g. "View Trace" builds
     // TraceId + SpanId) has no timestamp of its own, so without a dateRange the

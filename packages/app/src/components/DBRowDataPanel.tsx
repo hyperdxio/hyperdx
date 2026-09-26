@@ -4,6 +4,7 @@ import type { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   isLogSource,
   isTraceSource,
+  QuerySettings,
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
@@ -39,6 +40,13 @@ export enum ROW_DATA_ALIASES {
   SPAN_KIND = '__hdx_span_kind',
   SPAN_LINKS = '__hdx_span_links',
 }
+
+// ClickHouse leaves MATERIALIZED and ALIAS columns out of `SELECT *` unless
+// these settings are on, so the row panel would hide those columns.
+const SELECT_ALL_COLUMNS_QUERY_SETTINGS: QuerySettings = [
+  { setting: 'asterisk_include_materialized_columns', value: '1' },
+  { setting: 'asterisk_include_alias_columns', value: '1' },
+];
 
 export function useRowData({
   source,
@@ -209,6 +217,10 @@ export function useRowData({
     ...(aliasWith && aliasWith.length > 0 ? { with: aliasWith } : {}),
   };
 
+  const additionalQuerySettings = knownColumns
+    ? undefined
+    : SELECT_ALL_COLUMNS_QUERY_SETTINGS;
+
   const baseQueryKey = ['row_side_panel', rowId, aliasWith, source];
   // Both halves of the filter are needed for `renderChartConfig` to emit one, so
   // a source with no usable timestamp expression can't be bounded at all.
@@ -224,6 +236,7 @@ export function useRowData({
     {
       queryKey: [...baseQueryKey, dateRange],
       enabled: rowId != null && hasWindow,
+      additionalQuerySettings,
     },
   );
 
@@ -244,6 +257,7 @@ export function useRowData({
   const fallbackResult = useQueriedChartConfig(baseConfig, {
     queryKey: [...baseQueryKey, undefined],
     enabled: rowId != null && isFallbackActive,
+    additionalQuerySettings,
   });
 
   const queryResult = isFallbackActive ? fallbackResult : boundedResult;
