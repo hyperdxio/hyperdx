@@ -254,9 +254,7 @@ export async function queryLabelNames({
   return queryDistinctTagsValues({ ...args, value, conditions, limit });
 }
 
-// --------------------------
 // PromQL via table functions (ClickHouse < 26.6)
-// --------------------------
 //
 // Servers without the `prometheus_api_v1` HTTP handler can still evaluate
 // PromQL through `prometheusQuery`/`prometheusQueryRange`. ClickHouse only
@@ -407,9 +405,7 @@ async function connectionSupportsPrometheusHttpApi({
   );
 }
 
-// --------------------------
 // Shared Prometheus connection helpers
-// --------------------------
 //
 // Used by both the HTTP proxy (routers/api/prometheus.ts) and the alerting
 // task (tasks/checkAlerts) so backend-selection logic stays in one place.

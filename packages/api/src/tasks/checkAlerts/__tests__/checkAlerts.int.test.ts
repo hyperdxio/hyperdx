@@ -11889,16 +11889,17 @@ describe('checkAlerts', () => {
         .spyOn(console, 'error')
         .mockImplementation(() => {});
 
-      // Arrange
-      const {
-        team,
-        clickhouseClient,
-        webhook,
-        savedSearch,
-        source,
-        connection,
-        teamWebhooksById,
-      } = await createSavedSearchWithMVSource('Body:no'); // Body is not in the MV, so the MV should not be used
+      try {
+        // Arrange
+        const {
+          team,
+          clickhouseClient,
+          webhook,
+          savedSearch,
+          source,
+          connection,
+          teamWebhooksById,
+        } = await createSavedSearchWithMVSource('Body:no'); // Body is not in the MV, so the MV should not be used
 
       const mockUserId = new mongoose.Types.ObjectId();
       const alert = await createAlert(
@@ -12030,8 +12031,9 @@ describe('checkAlerts', () => {
       expect(alertHistories[1].createdAt).toEqual(
         new Date('2023-11-16T22:15:00.000Z'),
       );
-
-      consoleErrorSpy.mockRestore();
+      } finally {
+        consoleErrorSpy.mockRestore();
+      }
     });
   });
 
