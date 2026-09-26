@@ -1,5 +1,5 @@
 import { SourceKind, TLogSource } from '@hyperdx/common-utils/dist/types';
-import { renderHook } from '@testing-library/react';
+import { renderHook, waitFor } from '@testing-library/react';
 
 import {
   getJSONColumnNames,
@@ -103,6 +103,43 @@ describe('DBRowDataPanel', () => {
     for (const [, options] of [bounded, fallback]) {
       expect(options.additionalQuerySettings).toBeUndefined();
     }
+  });
+
+  it('fetches the row again without the settings when the connection rejects them', async () => {
+    const row = { Body: 'hello' };
+    mockUseQueriedChartConfig.mockImplementation(
+      (_config: unknown, options?: { additionalQuerySettings?: unknown }) =>
+        options?.additionalQuerySettings
+          ? {
+              data: undefined,
+              error: new Error(
+                "Cannot modify 'asterisk_include_materialized_columns' setting in readonly mode",
+              ),
+              isLoading: false,
+              isPending: false,
+              isError: true,
+              isSuccess: false,
+            }
+          : {
+              data: { data: [row], meta: [], rows: 1, isComplete: true },
+              error: null,
+              isLoading: false,
+              isPending: false,
+              isError: false,
+              isSuccess: true,
+            },
+    );
+
+    const { result } = renderHook(() =>
+      useRowData({ source, rowId: "id='abc123'" }),
+    );
+
+    await waitFor(() => expect(result.current.data?.data).toEqual([row]));
+    expect(result.current.isError).toBe(false);
+
+    const calls = mockUseQueriedChartConfig.mock.calls;
+    expect(calls[0][1]).toMatchObject({ retry: false });
+    expect(calls[calls.length - 1][1].additionalQuerySettings).toBeUndefined();
   });
 
   describe('time filtering', () => {
