@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { flatten } from 'flat';
 import type { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
 import {
@@ -10,7 +10,10 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import { Box } from '@mantine/core';
 
-import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import {
+  mergeQuerySettings,
+  useQueriedChartConfig,
+} from '@/hooks/useChartConfig';
 import { WithClause } from '@/hooks/useRowWhere';
 import {
   getDisplayedTimestampValueExpression,
@@ -47,6 +50,35 @@ const SELECT_ALL_COLUMNS_QUERY_SETTINGS: QuerySettings = [
   { setting: 'asterisk_include_materialized_columns', value: '1' },
   { setting: 'asterisk_include_alias_columns', value: '1' },
 ];
+
+// Connections whose user cannot change these settings (for example, a
+// `readonly = 1` user). Shared by every row lookup, so each one fails once.
+// Read it through useSyncExternalStore: the React Compiler memoizes plain reads.
+const connectionsRejectingSelectAllSettings = new Set<string>();
+const rejectedConnectionListeners = new Set<() => void>();
+
+function subscribeToRejectedConnections(listener: () => void) {
+  rejectedConnectionListeners.add(listener);
+  return () => {
+    rejectedConnectionListeners.delete(listener);
+  };
+}
+
+function markConnectionRejectingSettings(connection: string) {
+  if (!connectionsRejectingSelectAllSettings.has(connection)) {
+    connectionsRejectingSelectAllSettings.add(connection);
+    rejectedConnectionListeners.forEach(listener => listener());
+  }
+}
+
+// ClickHouse names the setting in each rejection: READONLY (164),
+// UNKNOWN_SETTING (115) and SETTING_CONSTRAINT_VIOLATION (452).
+function isSelectAllSettingRejected(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  return SELECT_ALL_COLUMNS_QUERY_SETTINGS.some(({ setting }) =>
+    message.includes(setting),
+  );
+}
 
 export function useRowData({
   source,
@@ -217,31 +249,35 @@ export function useRowData({
     ...(aliasWith && aliasWith.length > 0 ? { with: aliasWith } : {}),
   };
 
-  // A connection can reject these settings (for example, a `readonly = 1` user),
-  // and an ALIAS column can fail to evaluate. Then fetch the row without them.
-  const [settingsRejectedBy, setSettingsRejectedBy] = useState<string>();
+  const connection = source.connection;
+  const rejectsSettings = useSyncExternalStore(
+    subscribeToRejectedConnections,
+    () => connectionsRejectingSelectAllSettings.has(connection),
+    () => false,
+  );
   // The row query has no `config.source`, so the source's query settings do not
   // reach it. Use the source's own value for these two settings here.
   const additionalQuerySettings =
-    knownColumns || settingsRejectedBy === source.connection
+    knownColumns || rejectsSettings
       ? undefined
-      : SELECT_ALL_COLUMNS_QUERY_SETTINGS.map(
-          defaultSetting =>
-            source.querySettings?.find(
-              ({ setting }) => setting === defaultSetting.setting,
-            ) ?? defaultSetting,
+      : mergeQuerySettings(
+          source.querySettings?.filter(({ setting }) =>
+            SELECT_ALL_COLUMNS_QUERY_SETTINGS.some(
+              defaultSetting => defaultSetting.setting === setting,
+            ),
+          ),
+          SELECT_ALL_COLUMNS_QUERY_SETTINGS,
         );
+  // A rejected setting will fail again, so only other errors keep the retry.
   const settingsQueryOptions = additionalQuerySettings
-    ? { additionalQuerySettings, retry: false }
+    ? {
+        additionalQuerySettings,
+        retry: (failureCount: number, error: Error) =>
+          failureCount < 1 && !isSelectAllSettingRejected(error),
+      }
     : {};
 
-  const baseQueryKey = [
-    'row_side_panel',
-    rowId,
-    aliasWith,
-    source,
-    additionalQuerySettings,
-  ];
+  const baseQueryKey = ['row_side_panel', rowId, aliasWith, source];
   // Both halves of the filter are needed for `renderChartConfig` to emit one, so
   // a source with no usable timestamp expression can't be bounded at all.
   const hasWindow = dateRange != null && timestampValueExpr != null;
@@ -282,20 +318,22 @@ export function useRowData({
 
   const queryResult = isFallbackActive ? fallbackResult : boundedResult;
 
-  const isSettingsQueryFailed =
-    additionalQuerySettings != null && queryResult.isError;
+  const isSettingsRejected =
+    additionalQuerySettings != null &&
+    queryResult.isError &&
+    isSelectAllSettingRejected(queryResult.error);
   useEffect(() => {
-    if (isSettingsQueryFailed) {
-      setSettingsRejectedBy(source.connection);
+    if (isSettingsRejected) {
+      markConnectionRejectingSettings(connection);
     }
-  }, [isSettingsQueryFailed, source.connection]);
+  }, [isSettingsRejected, connection]);
 
   // The bounded result is known-empty by the time the retry is enabled, so
   // report loading until it settles rather than briefly claiming the row is
   // absent. The same applies while the row is fetched again without settings.
   const isLoading =
     queryResult.isLoading ||
-    isSettingsQueryFailed ||
+    isSettingsRejected ||
     (isBoundedEmpty && queryResult.isPending);
 
   // Normalize resource and event attributes to always use flat keys for both JSON and Map columns
@@ -327,7 +365,7 @@ export function useRowData({
 
   return {
     ...queryResult,
-    ...(isSettingsQueryFailed ? { isError: false, error: null } : {}),
+    ...(isSettingsRejected ? { isError: false, error: null } : {}),
     data: normalizedData,
     isLoading,
   };

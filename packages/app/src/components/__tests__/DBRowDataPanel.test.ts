@@ -9,6 +9,8 @@ import {
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 
 jest.mock('@/hooks/useChartConfig', () => ({
+  mergeQuerySettings: jest.requireActual('@/hooks/useChartConfig')
+    .mergeQuerySettings,
   useQueriedChartConfig: jest.fn(),
 }));
 
@@ -101,8 +103,8 @@ describe('DBRowDataPanel', () => {
 
     const [[, options]] = mockUseQueriedChartConfig.mock.calls;
     expect(options.additionalQuerySettings).toEqual([
-      { setting: 'asterisk_include_materialized_columns', value: '1' },
       { setting: 'asterisk_include_alias_columns', value: '0' },
+      { setting: 'asterisk_include_materialized_columns', value: '1' },
     ]);
   });
 
@@ -122,41 +124,84 @@ describe('DBRowDataPanel', () => {
     }
   });
 
-  it('fetches the row again without the settings when the connection rejects them', async () => {
+  describe('when the query with the settings fails', () => {
+    const READONLY_ERROR =
+      "Code: 164. DB::Exception: Cannot modify 'asterisk_include_materialized_columns' setting in readonly mode. (READONLY)";
     const row = { Body: 'hello' };
-    mockUseQueriedChartConfig.mockImplementation(
-      (_config: unknown, options?: { additionalQuerySettings?: unknown }) =>
-        options?.additionalQuerySettings
-          ? {
-              data: undefined,
-              error: new Error(
-                "Cannot modify 'asterisk_include_materialized_columns' setting in readonly mode",
-              ),
-              isLoading: false,
-              isPending: false,
-              isError: true,
-              isSuccess: false,
-            }
-          : {
-              data: { data: [row], meta: [], rows: 1, isComplete: true },
-              error: null,
-              isLoading: false,
-              isPending: false,
-              isError: false,
-              isSuccess: true,
-            },
-    );
 
-    const { result } = renderHook(() =>
-      useRowData({ source, rowId: "id='abc123'" }),
-    );
+    // Fails every query that carries the settings with `error`.
+    const mockSettingsQueryError = (error: Error) =>
+      mockUseQueriedChartConfig.mockImplementation(
+        (_config: unknown, options?: { additionalQuerySettings?: unknown }) =>
+          options?.additionalQuerySettings
+            ? {
+                data: undefined,
+                error,
+                isLoading: false,
+                isPending: false,
+                isError: true,
+                isSuccess: false,
+              }
+            : {
+                data: { data: [row], meta: [], rows: 1, isComplete: true },
+                error: null,
+                isLoading: false,
+                isPending: false,
+                isError: false,
+                isSuccess: true,
+              },
+      );
 
-    await waitFor(() => expect(result.current.data?.data).toEqual([row]));
-    expect(result.current.isError).toBe(false);
+    it('fetches the row again without them when the connection rejects them', async () => {
+      const readonlySource = { ...source, connection: 'readonly-conn' };
+      mockSettingsQueryError(new Error(READONLY_ERROR));
 
-    const calls = mockUseQueriedChartConfig.mock.calls;
-    expect(calls[0][1]).toMatchObject({ retry: false });
-    expect(calls[calls.length - 1][1].additionalQuerySettings).toBeUndefined();
+      const { result } = renderHook(() =>
+        useRowData({ source: readonlySource, rowId: "id='abc123'" }),
+      );
+
+      await waitFor(() => expect(result.current.data?.data).toEqual([row]));
+      expect(result.current.isError).toBe(false);
+      const calls = mockUseQueriedChartConfig.mock.calls;
+      expect(
+        calls[calls.length - 1][1].additionalQuerySettings,
+      ).toBeUndefined();
+
+      // A later lookup on the same connection skips the settings from the start.
+      mockUseQueriedChartConfig.mockClear();
+      renderHook(() =>
+        useRowData({ source: readonlySource, rowId: "id='def456'" }),
+      );
+      expect(
+        mockUseQueriedChartConfig.mock.calls[0][1].additionalQuerySettings,
+      ).toBeUndefined();
+    });
+
+    it('keeps them and reports the error when the query fails for another reason', async () => {
+      const timeout = new Error(
+        'Code: 159. DB::Exception: Timeout exceeded. (TIMEOUT_EXCEEDED)',
+      );
+      mockSettingsQueryError(timeout);
+
+      const { result } = renderHook(() =>
+        useRowData({ source, rowId: "id='abc123'" }),
+      );
+
+      await waitFor(() => expect(result.current.isError).toBe(true));
+      expect(result.current.error).toBe(timeout);
+      for (const [, options] of mockUseQueriedChartConfig.mock.calls) {
+        expect(options.additionalQuerySettings).toBeDefined();
+      }
+    });
+
+    it('retries once, except when a setting is rejected', () => {
+      renderHook(() => useRowData({ source, rowId: "id='abc123'" }));
+
+      const [[, { retry }]] = mockUseQueriedChartConfig.mock.calls;
+      expect(retry(0, new Error('Timeout exceeded'))).toBe(true);
+      expect(retry(1, new Error('Timeout exceeded'))).toBe(false);
+      expect(retry(0, new Error(READONLY_ERROR))).toBe(false);
+    });
   });
 
   describe('time filtering', () => {

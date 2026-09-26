@@ -76,8 +76,7 @@ interface AdditionalUseQueriedChartConfigOptions {
   /**
    * Query settings for this query only, added after the source's own query
    * settings. A setting that the source already defines keeps its value.
-   * They are part of the default query key; a caller that passes its own
-   * `queryKey` must include them in it.
+   * They are added to the query key, also when the caller passes `queryKey`.
    */
   additionalQuerySettings?: QuerySettings;
 }
@@ -294,7 +293,7 @@ async function* fetchDataInChunks({
 
 /**
  * Adds per-query settings after the source's query settings. A setting that the
- * source already defines keeps the source's value. Exported for tests.
+ * source already defines keeps the source's value.
  */
 export function mergeQuerySettings(
   sourceSettings: QuerySettings | undefined,
@@ -474,6 +473,9 @@ export function useQueriedChartConfig(
     retry: 1,
     refetchOnWindowFocus: false,
     ...options,
+    ...(options?.queryKey && options.additionalQuerySettings?.length
+      ? { queryKey: [...options.queryKey, options.additionalQuerySettings] }
+      : {}),
     enabled: enabled && !isLoadingMVOptimization && !isSourceLoading,
   });
 

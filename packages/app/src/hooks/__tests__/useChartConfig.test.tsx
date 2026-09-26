@@ -1145,6 +1145,40 @@ describe('useChartConfig', () => {
       });
     });
 
+    it('adds additionalQuerySettings to a queryKey that the caller passes', async () => {
+      const config = createMockChartConfig({
+        dateRange: undefined,
+        granularity: undefined,
+      });
+      const additionalQuerySettings = [
+        { setting: 'asterisk_include_alias_columns', value: '1' },
+      ];
+
+      mockClickhouseClient.queryChartConfig.mockResolvedValue(
+        createMockQueryResponse([]),
+      );
+
+      const { result } = renderHook(
+        () =>
+          useQueriedChartConfig(config, {
+            queryKey: ['caller-key'],
+            additionalQuerySettings,
+          }),
+        {
+          wrapper,
+        },
+      );
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+      expect(
+        queryClient.getQueryCache().find({
+          queryKey: ['caller-key', additionalQuerySettings],
+          exact: true,
+        }),
+      ).toBeDefined();
+    });
+
     it('fetches data without chunking when no granularity is provided', async () => {
       const config = createMockChartConfig({
         dateRange: [new Date('2025-10-01'), new Date('2025-10-02')],
