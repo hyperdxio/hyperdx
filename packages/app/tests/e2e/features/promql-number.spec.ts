@@ -153,6 +153,26 @@ test.describe(
         await expect(editorGranularity).toBeHidden();
       });
 
+      await test.step('A background chart plots the range behind the value', async () => {
+        await editor.setPromqlQueryType('Range', { reducer: 'Max' });
+        await editor.setBackgroundChart('Area');
+        await editor.runQuery(false);
+
+        await expect(
+          page.getByTestId('number-tile-background-chart'),
+        ).toBeVisible({ timeout: 30000 });
+      });
+
+      await test.step('Switching to instant drops the background chart', async () => {
+        await editor.setPromqlQueryType('Instant');
+        await editor.runQuery(false);
+
+        // An instant query has a single point, so there is no trend to plot.
+        await expect(
+          page.getByTestId('number-tile-background-chart'),
+        ).toBeHidden();
+      });
+
       await test.step('The range choice round-trips through a save', async () => {
         await editor.setPromqlQueryType('Range', { reducer: 'Count' });
         await editor.save();
