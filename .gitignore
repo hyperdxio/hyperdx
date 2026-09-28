@@ -79,6 +79,10 @@ e2e/cypress/results
 # storybook
 **/storybook-static/
 
+# otel smoke tests: OIDC issuer fixtures, regenerated on every run
+# (the matching private.pem is already covered by **/*.pem above)
+smoke-tests/otel-collector/data/oidc-auth/public/
+
 # scripts
 scripts/*.csv
 **/venv

@@ -730,6 +730,79 @@ describe('sources router', () => {
     });
   });
 
+  describe('minAutoGranularity', () => {
+    it('POST / - creates a metric source with minAutoGranularity and it round-trips', async () => {
+      const { agent } = await getLoggedInAgent(server);
+
+      const response = await agent
+        .post('/sources')
+        .send({
+          ...MOCK_METRIC_SOURCE,
+          minAutoGranularity: '1 minute',
+        })
+        .expect(200);
+
+      expect(response.body.minAutoGranularity).toBe('1 minute');
+
+      const sources = await Source.find({}).lean();
+      expect(sources).toHaveLength(1);
+      const persisted = sources[0];
+      if (persisted?.kind !== SourceKind.Metric) {
+        expect(persisted?.kind).toBe(SourceKind.Metric);
+        throw new Error('Source is not a metric');
+      }
+      expect(persisted.minAutoGranularity).toBe('1 minute');
+    });
+
+    it("POST / - the form's \"No minimum\" value ('') persists as unset, not as an empty string", async () => {
+      const { agent } = await getLoggedInAgent(server);
+
+      const response = await agent
+        .post('/sources')
+        .send({
+          ...MOCK_METRIC_SOURCE,
+          minAutoGranularity: '',
+        })
+        .expect(200);
+
+      expect(response.body).not.toHaveProperty('minAutoGranularity');
+
+      const sources = await Source.find({}).lean();
+      expect(sources).toHaveLength(1);
+      const persisted = sources[0];
+      if (persisted?.kind !== SourceKind.Metric) {
+        expect(persisted?.kind).toBe(SourceKind.Metric);
+        throw new Error('Source is not a metric');
+      }
+      expect(persisted).not.toHaveProperty('minAutoGranularity');
+    });
+
+    it('PUT /:id - removes minAutoGranularity when omitted from the update payload', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+
+      const metricSource = await Source.create({
+        ...MOCK_METRIC_SOURCE,
+        minAutoGranularity: '1 minute',
+        team: team._id,
+      });
+
+      await agent
+        .put(`/sources/${metricSource._id}`)
+        .send({
+          id: metricSource._id.toString(),
+          ...MOCK_METRIC_SOURCE,
+        })
+        .expect(200);
+
+      const updatedSource = await Source.findById(metricSource._id).lean();
+      if (updatedSource?.kind !== SourceKind.Metric) {
+        expect(updatedSource?.kind).toBe(SourceKind.Metric);
+        throw new Error('Source is not a metric');
+      }
+      expect(updatedSource).not.toHaveProperty('minAutoGranularity');
+    });
+  });
+
   it('DELETE /:id - deletes a source', async () => {
     const { agent, team } = await getLoggedInAgent(server);
 

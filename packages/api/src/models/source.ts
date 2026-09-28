@@ -284,6 +284,13 @@ export const MetricSource = Source.discriminator<IMetricSource>(
     logSourceId: String,
     // Unified metrics series table. Available only when `isMetricsSeriesTableEnabled` is set on the team document.
     seriesTable: String,
+    // See MetricSourceSchema.minAutoGranularity in @hyperdx/common-utils.
+    // The setter mirrors that schema's '' -> undefined preprocess, since
+    // validateRequest doesn't write the parsed body back to req.body.
+    minAutoGranularity: {
+      type: String,
+      set: (v: string | null | undefined) => (v === '' ? undefined : v),
+    },
   }),
 );
 

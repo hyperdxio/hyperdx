@@ -402,6 +402,108 @@ export function replaceJsonExpressions(sql: string) {
   return { sqlWithReplacements, replacements };
 }
 
+const QUOTED_IDENTIFIER_REPLACEMENT_PREFIX = '__hdx_quoted_identifier_';
+
+export type QuotedIdentifierReplacements = {
+  /** Map from sentinel token -> the original quoted SQL text, e.g. `` `x-host-header` `` */
+  quotedText: Map<string, string>;
+  /** Map from sentinel token -> the bare identifier, e.g. `x-host-header` */
+  names: Map<string, string>;
+};
+
+/**
+ * Replaces backtick-quoted identifiers with bare placeholder tokens.
+ *
+ * node-sql-parser's Postgresql dialect accepts a backtick-quoted identifier
+ * wherever a column is referenced, but rejects one used as an alias, so one
+ * backtick-quoted alias broke any other aliases.
+ *
+ * Pairs with `replaceJsonExpressions`: run this first, then tokenize JSON
+ * expressions, and restore in the opposite order (JSON, then identifiers).
+ * A JSON replacement's stored text is sliced from the already-tokenized SQL,
+ * so it can hold identifier tokens; restoring identifiers first would strand
+ * the ones that JSON restoration puts back afterwards.
+ */
+export function replaceBacktickedIdentifiers(sql: string): {
+  sqlWithReplacements: string;
+  replacements: QuotedIdentifierReplacements;
+} {
+  const quotedText = new Map<string, string>();
+  const names = new Map<string, string>();
+  let out = '';
+  let i = 0;
+
+  while (i < sql.length) {
+    const c = sql.charAt(i);
+
+    // Copy string literals and double-quoted identifiers verbatim so
+    // backticks inside them survive.
+    if (c === "'" || c === '"') {
+      out += c;
+      i++;
+      while (i < sql.length) {
+        const char = sql.charAt(i);
+        out += char;
+        i++;
+        if (c === "'" && char === '\\' && i < sql.length) {
+          out += sql.charAt(i);
+          i++;
+          continue;
+        }
+        if (char === c) break;
+      }
+      continue;
+    }
+
+    if (c === '`') {
+      const quotedStart = i;
+      i++;
+      let name = '';
+      while (i < sql.length) {
+        if (sql.charAt(i) === '`') {
+          // A doubled backtick is an escaped literal backtick.
+          if (sql.charAt(i + 1) === '`') {
+            name += '`';
+            i += 2;
+            continue;
+          }
+          i++;
+          break;
+        }
+        name += sql.charAt(i);
+        i++;
+      }
+      const token = `${QUOTED_IDENTIFIER_REPLACEMENT_PREFIX}${quotedText.size}`;
+      quotedText.set(token, sql.slice(quotedStart, i));
+      names.set(token, name);
+      out += token;
+      continue;
+    }
+
+    out += c;
+    i++;
+  }
+
+  return { sqlWithReplacements: out, replacements: { quotedText, names } };
+}
+
+/**
+ * Substitutes placeholder tokens from `replaceBacktickedIdentifiers` or
+ * `replaceJsonExpressions` back into an expression.
+ */
+export function restoreReplacements(
+  expression: string,
+  replacements: Map<string, string>,
+): string {
+  let restored = expression;
+  for (const [token, original] of [...replacements].sort(
+    ([a], [b]) => b.length - a.length,
+  )) {
+    restored = restored.replaceAll(token, original);
+  }
+  return restored;
+}
+
 /**
  * To best support Pre-aggregation in Materialized Views, any new
  * granularities should be multiples of all smaller granularities.
@@ -440,11 +542,24 @@ export function hashCode(str: string) {
 export function convertDateRangeToGranularityString(
   dateRange: [Date, Date],
   maxNumBuckets: number = DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS,
+  /**
+   * Floor for the auto-inferred bucket size, in seconds. Useful when the
+   * underlying data is reported on a fixed interval (e.g. a metrics scrape
+   * interval): without this, a short selected date range can auto-infer a
+   * bucket smaller than that interval, producing sparse/steppy-looking
+   * series (buckets alternating between a real sample and an empty one).
+   * Sourced from `MetricSource.minAutoGranularity` where applicable -
+   * undefined/0 preserves the previous unfloored behavior.
+   */
+  minGranularitySeconds?: number,
 ): Granularity {
   const start = dateRange[0].getTime();
   const end = dateRange[1].getTime();
   const diffSeconds = Math.floor((end - start) / 1000);
-  const granularitySizeSeconds = Math.ceil(diffSeconds / maxNumBuckets);
+  const granularitySizeSeconds = Math.max(
+    Math.ceil(diffSeconds / maxNumBuckets),
+    minGranularitySeconds ?? 0,
+  );
 
   if (granularitySizeSeconds <= 15) {
     return Granularity.FifteenSecond;

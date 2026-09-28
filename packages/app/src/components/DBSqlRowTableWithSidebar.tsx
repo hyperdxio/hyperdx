@@ -46,6 +46,9 @@ interface Props {
   enableSmallFirstWindow?: boolean;
   tableId?: string;
   errorVariant?: ChartErrorStateVariant;
+  enableRowSelection?: boolean;
+  selectionResetKey?: string;
+  onSelectedRowsChange?: (hasSelectedRows: boolean) => void;
   onResolvedColumnsChange?: (meta: ColumnMetaType[]) => void;
   // Clicking outside the row side panel (and outside `keepOpenSelector`) closes
   // it. Enabled by default; pass `false` to opt out.
@@ -75,6 +78,9 @@ export default function DBSqlRowTableWithSideBar({
   enableSmallFirstWindow,
   tableId,
   errorVariant,
+  enableRowSelection,
+  selectionResetKey,
+  onSelectedRowsChange,
   onResolvedColumnsChange,
   closeOnClickOutside = true,
   keepOpenSelector = DEFAULT_KEEP_OPEN_SELECTOR,
@@ -146,6 +152,9 @@ export default function DBSqlRowTableWithSideBar({
         enableSmallFirstWindow={enableSmallFirstWindow}
         tableId={tableId}
         errorVariant={errorVariant}
+        enableRowSelection={enableRowSelection}
+        selectionResetKey={selectionResetKey}
+        onSelectedRowsChange={onSelectedRowsChange}
         onResolvedColumnsChange={onResolvedColumnsChange}
       />
     </RowSidePanelContext>

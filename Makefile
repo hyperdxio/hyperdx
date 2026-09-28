@@ -114,6 +114,7 @@ ci-build:
 ci-lint:
 	npx nx run-many -t ci:lint
 	node scripts/ci/ratchet.mjs
+	-yarn dupes
 	scripts/ci/check-openapi-sync.sh
 
 .PHONY: ci-openapi
@@ -194,6 +195,7 @@ ci-unit:
 	npx nx run-many -t ci:unit
 	node --test .github/scripts/__tests__/release-notes.test.mjs
 	node --test .github/scripts/__tests__/changeset-hash.test.mjs
+	node --test .github/scripts/code-review/__tests__/review-comments.test.mjs
 
 .PHONY: ci-triage
 ci-triage:

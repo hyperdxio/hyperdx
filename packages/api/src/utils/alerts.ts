@@ -3,6 +3,14 @@ import {
   clampAlertTags,
   formatTileAlertDisplayName,
 } from '@hyperdx/common-utils/dist/alerts';
+import {
+  isBuilderSavedChartConfig,
+  isRawSqlSavedChartConfig,
+} from '@hyperdx/common-utils/dist/guards';
+import {
+  DisplayType,
+  SavedChartConfig,
+} from '@hyperdx/common-utils/dist/types';
 import { Types } from 'mongoose';
 
 import type { ObjectId } from '@/models';
@@ -44,6 +52,41 @@ type AlertDisplayInput = {
 };
 
 const FALLBACK_DISPLAY_NAME = 'Alert';
+
+/**
+ * Whether an alert evaluates as grouped (one series per group). Saved-search
+ * alerts carry groupBy on the alert itself; tile and inline alerts keep it in
+ * the chart config. Shared with the check-alerts task so consumers agree with
+ * how alert histories are keyed and counted.
+ */
+export function alertConfigHasGroupBy(
+  groupBy: string | null | undefined,
+  savedConfig: SavedChartConfig | undefined,
+): boolean {
+  if (groupBy && groupBy.length > 0) {
+    return true;
+  }
+  if (savedConfig == null) {
+    return false;
+  }
+
+  if (
+    isBuilderSavedChartConfig(savedConfig) &&
+    savedConfig.groupBy &&
+    savedConfig.groupBy.length > 0
+  ) {
+    return true;
+  }
+
+  // Without a reliable parser, it's difficult to tell if the raw sql contains a
+  // group by (besides the group by on the interval), so we'll assume it might
+  // in the case of time series charts, and assume it will not in the case of number charts.
+  // Group name will just be blank if there are no group by values.
+  if (isRawSqlSavedChartConfig(savedConfig)) {
+    return savedConfig.displayType !== DisplayType.Number;
+  }
+  return false;
+}
 
 /**
  * Referenced entities are read straight from Mongo and predate any of these

@@ -1,4 +1,10 @@
-jest.mock('../api', () => ({ hdxServer: jest.fn() }));
+jest.mock('../api', () => ({
+  __esModule: true,
+  default: { useMe: () => ({ data: null }) },
+  hdxServer: jest.fn(),
+  useMarkOnboardingTaskComplete: () => jest.fn(),
+  useCompleteOnboardingTask: () => ({ mutate: jest.fn() }),
+}));
 jest.mock('../config', () => ({ IS_LOCAL_MODE: true }));
 jest.mock('@mantine/notifications', () => ({
   notifications: { show: jest.fn() },

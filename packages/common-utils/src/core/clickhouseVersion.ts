@@ -173,3 +173,11 @@ export function supportsMergeTreeTextIndex(
 ): boolean {
   return isClickHouseVersionAtLeast(version, MERGE_TREE_TEXT_INDEX_MIN);
 }
+
+const PROMETHEUS_HTTP_API_MIN: ClickHouseVersion = [26, 6, 0, 0];
+
+export function supportsPrometheusHttpApi(
+  version: ClickHouseVersion | undefined,
+): boolean {
+  return isClickHouseVersionAtLeast(version, PROMETHEUS_HTTP_API_MIN);
+}

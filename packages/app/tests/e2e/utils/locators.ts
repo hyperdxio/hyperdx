@@ -28,6 +28,30 @@ export const getSqlEditor = (page: Page, placeholder?: string) => {
 };
 
 /**
+ * The bordered box around a query editor: the nearest Mantine Paper ancestor,
+ * which is what the user sees grow when the query wraps. Takes any node inside
+ * it — the editor itself, or the clause label beside it.
+ */
+export const borderedBox = (inner: Locator) =>
+  inner.locator(
+    'xpath=ancestor::div[contains(@class, "mantine-Paper-root")][1]',
+  );
+
+/**
+ * Move focus off whatever holds it, without pressing a key.
+ *
+ * Keyboard-driven blurs are not interchangeable here: Escape inside a Mantine
+ * Modal closes the modal (see `dismissSqlAutocomplete`), and Tab moves focus to
+ * a neighbour that may itself change the layout under test.
+ */
+export const blurActiveElement = async (page: Page) => {
+  await page.evaluate(() => {
+    const el = document.activeElement;
+    if (el instanceof HTMLElement) el.blur();
+  });
+};
+
+/**
  * Dismiss the CodeMirror autocomplete dropdown by blurring the focused editor.
  *
  * Do NOT use `keyboard.press('Escape')` for this: Mantine's Modal registers a
@@ -41,10 +65,7 @@ export const getSqlEditor = (page: Page, placeholder?: string) => {
  * intercepted by a still-animating popup.
  */
 export const dismissSqlAutocomplete = async (page: Page) => {
-  await page.evaluate(() => {
-    const el = document.activeElement;
-    if (el instanceof HTMLElement) el.blur();
-  });
+  await blurActiveElement(page);
   await page
     .locator('.cm-tooltip-autocomplete')
     .waitFor({ state: 'hidden', timeout: 2000 })

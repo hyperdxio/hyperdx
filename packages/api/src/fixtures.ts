@@ -336,15 +336,11 @@ export const seedTimeSeriesTagsTable = async ({
       .join(', ')})`;
 
   const columns = storeTimeBounds
-    ? '(metric_name, tags, all_tags, min_time, max_time)'
-    : '(metric_name, tags, all_tags)';
+    ? '(metric_name, tags, min_time, max_time)'
+    : '(metric_name, tags)';
   const values = series
     .map(s => {
-      const row = [
-        quoted(s.metricName),
-        mapLiteral(s.tags),
-        mapLiteral({ __name__: s.metricName, ...s.tags }),
-      ];
+      const row = [quoted(s.metricName), mapLiteral(s.tags)];
       if (storeTimeBounds) {
         row.push(
           `toDateTime64(${s.startSec}, 3)`,
