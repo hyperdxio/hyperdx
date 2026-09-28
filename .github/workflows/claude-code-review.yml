@@ -124,12 +124,16 @@ jobs:
         with:
           ref: ${{ github.sha }}
           path: .trusted
+          # AGENTS.md: the review-helper tests below read it to pin the footer's
+          # anchor to a real heading. trusted-hash.sh names its files explicitly,
+          # so a path added here does not move the gate hash.
           sparse-checkout: |
             .github/prompts
             .github/scripts
             .github/workflows
             .nvmrc
             agent_docs/code_style.md
+            AGENTS.md
           sparse-checkout-cone-mode: false
           persist-credentials: false
 

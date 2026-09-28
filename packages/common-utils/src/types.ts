@@ -695,6 +695,49 @@ export enum AlertState {
   PENDING = 'PENDING',
 }
 
+/**
+ * The body an incident.io webhook gets when it is saved without one. Lives
+ * here rather than beside the other webhook constants because it interpolates
+ * AlertState, which is declared above.
+ *
+ * incident.io accepts only `firing` or `resolved` in `status`, so HyperDX's
+ * own status rides in `metadata` instead, and everything there is quoted: a
+ * variable the alert doesn't carry renders empty, which is not valid JSON in
+ * an unquoted numeric slot. Only an OK maps to `resolved`: a state that is
+ * neither should leave the incident open rather than close one that was never
+ * known to recover.
+ *
+ * `deduplication_key` is the event id, which is stable per alert, group and
+ * channel across a firing and its resolve, so incident.io closes the alert it
+ * opened. `alertId` is in `metadata` for grouping every one of an alert's
+ * groups together.
+ */
+export const DEFAULT_INCIDENT_IO_WEBHOOK_BODY = `{
+  "title": "{{title}}",
+  "description": "{{body}}",
+  "deduplication_key": "{{eventId}}",
+  "status": "{{#if (eq state "${AlertState.OK}")}}resolved{{else}}firing{{/if}}",
+  "source_url": "{{link}}",
+  "metadata": {
+    "alert_id": "{{alertId}}",
+    "hyperdx_status": "{{status}}",
+    "alert_type": "{{alertType}}",
+    "comparator": "{{comparator}}",
+    "threshold": "{{threshold}}",
+    "threshold_max": "{{thresholdMax}}",
+    "value": "{{value}}",
+    "group_key": "{{groupKey}}",
+    "window_start": "{{startTimeISO}}",
+    "window_end": "{{endTimeISO}}"
+  }
+}`;
+
+/** The body a webhook saved without one is given, by service. */
+export const getDefaultWebhookBody = (service: WebhookService): string =>
+  service === WebhookService.IncidentIO
+    ? DEFAULT_INCIDENT_IO_WEBHOOK_BODY
+    : DEFAULT_GENERIC_WEBHOOK_BODY;
+
 export enum AlertErrorType {
   QUERY_ERROR = 'QUERY_ERROR',
   /** The alert query did not complete within the evaluation timeout. */
@@ -982,6 +1025,15 @@ export const tagsSchema = z
   .array(z.string().max(MAX_TAG_LENGTH))
   .max(MAX_TAGS)
   .optional();
+
+// The kinds of entity that carry tags.
+export const TagResourceTypeSchema = z.enum([
+  'alert',
+  'dashboard',
+  'savedSearch',
+]);
+
+export type TagResourceType = z.infer<typeof TagResourceTypeSchema>;
 
 export const alertNoteSchema = z.string().min(1).max(4096).nullish();
 
@@ -1731,10 +1783,76 @@ export type RawSqlChartConfig = z.infer<typeof RawSqlChartConfigSchema>;
 
 export const MAX_LEGEND_TEMPLATE_LENGTH = 1024;
 
+// Caps the number of expressions on one PromQL tile
+export const MAX_PROMQL_EXPRESSIONS = 10;
+
+/**
+ * Whether a PromQL expression is evaluated at a single moment (`instant`)
+ * or at intervals over a range of time (`range`).
+ */
+export const PromqlQueryTypeSchema = z.enum(['instant', 'range']);
+
+export type PromqlQueryType = z.infer<typeof PromqlQueryTypeSchema>;
+
+/** A Prometheus series' label set, `__name__` included. */
+export type PrometheusMetric = Record<string, string>;
+
+/**
+ * One series of a Prometheus matrix result: its samples over time. Values
+ * cross the wire as strings, as the Prometheus HTTP API returns them.
+ */
+export type PrometheusMatrixResult = {
+  metric: PrometheusMetric;
+  values: [number, string][];
+};
+
+/** One series of a Prometheus vector result: a single `[unix seconds, value]`. */
+export type PrometheusVectorResult = {
+  metric: PrometheusMetric;
+  value: [number, string];
+};
+
+/** How a range query's samples are client-side aggregated to a single value. */
+export enum PromqlReducer {
+  LastNotNull = 'lastNotNull',
+  Min = 'min',
+  Max = 'max',
+  Mean = 'mean',
+  Sum = 'sum',
+  Count = 'count',
+}
+
+export const PromqlReducerSchema = z.nativeEnum(PromqlReducer);
+
+/** One of the expressions a PromQL chart plots. */
+export const PromqlSeriesSchema = z.object({
+  expression: z.string(),
+  /** Prefixed to every series name this expression produces. */
+  alias: z.string().optional(),
+  /** Whether to evaluate with query or query_range. Instant is not supported for timeseries charts */
+  queryType: PromqlQueryTypeSchema.optional(),
+  /** Only read when `queryType` is `range`. Defaults to last non-null. */
+  reducer: PromqlReducerSchema.optional(),
+});
+
+export type PromqlSeries = z.infer<typeof PromqlSeriesSchema>;
+
+/**
+ * What a PromQL chart plots: a list of expressions, or a bare expression
+ * string as tiles were saved before multi-expression support.
+ */
+export const PromqlExpressionListSchema = z
+  .array(PromqlSeriesSchema)
+  .min(1)
+  .max(MAX_PROMQL_EXPRESSIONS)
+  .or(z.string());
+
+export type PromqlExpressionList = z.infer<typeof PromqlExpressionListSchema>;
+
 /** Base schema for PromQL chart configs (persisted fields) */
 const PromqlBaseChartConfigSchema = SharedChartSettingsSchema.extend({
   configType: z.literal('promql'),
-  promqlExpression: z.string(),
+  promqlExpression: PromqlExpressionListSchema,
   connection: z.string(),
   source: z.string().optional(),
   step: z.string().optional(),
@@ -1769,6 +1887,11 @@ export type DateRange = {
   // `__hdx_series_limit` CTE so every chunk ranks (and keeps) the same
   // top-N series. Never persisted.
   seriesLimitDateRange?: [Date, Date];
+  // Runtime-only, populated from the queried MetricSource's
+  // `minAutoGranularity` (when set) by whichever caller resolves the source
+  // before rendering. Floors "auto" granularity resolution; see
+  // `convertDateRangeToGranularityString`. Never persisted.
+  minGranularitySeconds?: number;
 };
 
 export type ChartConfigWithDateRange = ChartConfig & DateRange;
@@ -2445,6 +2568,22 @@ export const MetricSourceSchema = BaseSourceSchema.extend({
   logSourceId: z.string().optional(),
   // Unified metrics series table. Available only when `isMetricsSeriesTableEnabled` is set on the team document.
   seriesTable: z.string().optional(),
+  /**
+   * Floor for "Auto Granularity" on charts querying this source. Without
+   * this, a short selected date range can auto-infer a bucket smaller than
+   * the metric's actual scrape/report interval, producing sparse/steppy
+   * series. Unset preserves the previous unfloored behavior. Only
+   * constrains auto-inference - an explicit (non-"auto") granularity
+   * picked on a tile is never overridden.
+   *
+   * Preprocessed so the form's "No minimum" option (stored as `''`, since a
+   * Mantine Select needs a string value for every entry including the unset
+   * one) round-trips through the schema as `undefined`.
+   */
+  minAutoGranularity: z.preprocess(
+    v => (v === '' ? undefined : v),
+    SQLIntervalSchema.optional(),
+  ),
 });
 
 // PromQL source form schema
@@ -2654,8 +2793,8 @@ export const AlertsPageItemSchema = z.object({
   // tile. See isTileAlertUnaddressable.
   unaddressableTile: z.boolean().optional(),
   // Inline alerts: the persisted chart config. Only present on the
-  // single-alert (detail) response — the unpaginated list omits it so every
-  // alerts-page load doesn't carry every alert's full query definition.
+  // single-alert (detail) response — the list omits it so a page doesn't carry
+  // every alert's full query definition.
   chartConfig: AlertChartConfigSchema.optional(),
   groupBy: z.string().optional(),
   name: z.string().nullish(),
@@ -2668,10 +2807,7 @@ export const AlertsPageItemSchema = z.object({
   history: z.array(AlertHistorySchema),
   dashboard: z
     .object({
-      _id: z.string(),
       name: z.string(),
-      updatedAt: z.string(),
-      tags: z.array(z.string()),
       tiles: z.array(
         z.object({
           id: z.string(),
@@ -2682,11 +2818,7 @@ export const AlertsPageItemSchema = z.object({
     .optional(),
   savedSearch: z
     .object({
-      _id: z.string(),
-      createdAt: z.string(),
       name: z.string(),
-      updatedAt: z.string(),
-      tags: z.array(z.string()),
     })
     .optional(),
   createdBy: z
@@ -2710,6 +2842,14 @@ export type AlertsPageItem = z.infer<typeof AlertsPageItemSchema>;
 
 export const AlertsApiResponseSchema = z.object({
   data: z.array(AlertsPageItemSchema),
+  /** True when more alerts match the request beyond the returned page. */
+  hasMore: z.boolean(),
+  /**
+   * Keyset cursor for the next page: pass it back unchanged as `cursor`
+   * (alongside `limit`) to continue get the next page. Absent on the last
+   * page and on unpaginated responses.
+   */
+  nextCursor: z.string().optional(),
 });
 
 export type AlertsApiResponse = z.infer<typeof AlertsApiResponseSchema>;

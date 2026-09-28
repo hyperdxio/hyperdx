@@ -2,6 +2,11 @@ import { omit, pick } from 'lodash';
 import { Path, UseFormSetError } from 'react-hook-form';
 import { validateFormula } from '@hyperdx/common-utils/dist/core/formula';
 import {
+  displayTypeSupportsInstantQuery,
+  displayTypeSupportsReducer,
+  getPromqlSeries,
+} from '@hyperdx/common-utils/dist/core/promql';
+import {
   isFormulaDisplayType,
   isFormulaSourceKind,
   validateRawSqlForAlert,
@@ -25,6 +30,7 @@ import {
   isTraceSource,
   PromqlChartConfig,
   PromqlSavedChartConfig,
+  PromqlSeries,
   RawSqlChartConfig,
   RawSqlSavedChartConfig,
   SavedChartConfig,
@@ -202,7 +208,7 @@ export function convertFormStateToSavedChartConfig(
         'alternateRowBackground',
         // 'alert', // TODO: Support alerts on PromQL (HDX-4636)
       ]),
-      promqlExpression: form.promqlExpression ?? '',
+      promqlExpression: formPromqlExpressions(form),
       connection: form.connection ?? '',
       source: form.source || undefined,
       legendTemplate: form.legendTemplate?.trim() || undefined,
@@ -241,7 +247,14 @@ export function convertFormStateToSavedChartConfig(
 
   if (form.displayType === DisplayType.Markdown) {
     const config: BuilderSavedChartConfig = {
-      ...omit(form, ['series', 'configType', 'sqlTemplate', 'legendTemplate']),
+      ...omit(form, [
+        'series',
+        'configType',
+        'sqlTemplate',
+        'legendTemplate',
+        'promqlExpression',
+        'promqlExpressions',
+      ]),
       select: [],
       where: form.where ?? '',
       source: source?.id ?? form.source ?? '',
@@ -252,7 +265,14 @@ export function convertFormStateToSavedChartConfig(
   if (source) {
     // Merge the series and select fields back together, and prevent the series field from being submitted
     const config: BuilderSavedChartConfig = {
-      ...omit(form, ['series', 'configType', 'sqlTemplate', 'legendTemplate']),
+      ...omit(form, [
+        'series',
+        'configType',
+        'sqlTemplate',
+        'legendTemplate',
+        'promqlExpression',
+        'promqlExpressions',
+      ]),
       select: isStringSelectDisplayType(form.displayType)
         ? typeof form.select === 'string'
           ? form.select
@@ -285,7 +305,7 @@ export function convertFormStateToChartConfig(
         'alignDateRangeToGranularity',
         'alternateRowBackground',
       ]),
-      promqlExpression: form.promqlExpression ?? '',
+      promqlExpression: formPromqlExpressions(form),
       connection: source?.connection ?? form.connection ?? '',
       source: form.source || undefined,
       from: source?.from,
@@ -346,7 +366,14 @@ export function convertFormStateToChartConfig(
     const isSelectEmpty = !mergedSelect || mergedSelect.length === 0;
 
     const newConfig: ChartConfigWithDateRange = {
-      ...omit(form, ['series', 'configType', 'sqlTemplate', 'legendTemplate']),
+      ...omit(form, [
+        'series',
+        'configType',
+        'sqlTemplate',
+        'legendTemplate',
+        'promqlExpression',
+        'promqlExpressions',
+      ]),
       from: source.from,
       timestampValueExpression: source.timestampValueExpression,
       dateRange,
@@ -413,7 +440,46 @@ export function convertSavedChartConfigToFormState(
               s.aggConditionLanguage ?? getStoredLanguage() ?? 'lucene',
           }))
         : [],
+    // The list of promQL expressions, with a default set if the chart has none.
+    // Normalized to a list, whereas the saved chart config might have a single
+    // (string) expression.
+    promqlExpressions: toPromqlFormRows(
+      isPromqlSavedChartConfig(config) ? getPromqlSeries(config) : [],
+    ),
   };
+}
+
+/**
+ * The PromQL rows the editor renders: at least one, with every optional field
+ * defined so its input starts controlled rather than switching from
+ * uncontrolled on the first keystroke.
+ */
+const toPromqlFormRows = (expressions: PromqlSeries[]): PromqlSeries[] =>
+  (expressions.length > 0 ? expressions : [{ expression: '' }]).map(series => ({
+    ...series,
+    expression: series.expression ?? '',
+    alias: series.alias ?? '',
+  }));
+
+/**
+ * The expressions a PromQL form submits. Blank rows are kept: on the chart
+ * explorer the submitted config round-trips through the URL back into the
+ * form, so dropping a row here would delete an expression the user had just
+ * added. `getQueriedPromqlSeries` skips them at query time instead.
+ *
+ * Fields the display type does not offer are dropped, so a tile never carries
+ * a choice its editor cannot show.
+ */
+function formPromqlExpressions(form: ChartEditorFormState): PromqlSeries[] {
+  const { displayType } = form;
+  const keepQueryType = displayTypeSupportsInstantQuery({ displayType });
+  const keepReducer = displayTypeSupportsReducer({ displayType });
+  return toPromqlFormRows(form.promqlExpressions ?? []).map(series => ({
+    ...series,
+    alias: series.alias?.trim() || undefined,
+    queryType: keepQueryType ? series.queryType : undefined,
+    reducer: keepReducer ? series.reducer : undefined,
+  }));
 }
 
 export const validateChartForm = (

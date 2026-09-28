@@ -5,8 +5,7 @@ import { ZodIssue } from 'zod';
 import { json, jsonParseLinter } from '@codemirror/lang-json';
 import { linter } from '@codemirror/lint';
 import {
-  AlertState,
-  DEFAULT_GENERIC_WEBHOOK_BODY,
+  getDefaultWebhookBody,
   WEBHOOK_TEMPLATE_VARIABLES,
   WebhookApiData,
   WebhookService,
@@ -156,20 +155,10 @@ export function WebhookForm({
       }
     }
 
-    let defaultBody = body;
-    if (!body) {
-      if (service === WebhookService.Generic) {
-        defaultBody = DEFAULT_GENERIC_WEBHOOK_BODY;
-      } else if (service === WebhookService.IncidentIO) {
-        defaultBody = `{
-  "title": "{{title}}",
-  "description": "{{body}}",
-  "deduplication_key": "{{eventId}}",
-  "status": "{{#if (eq state "${AlertState.ALERT}")}}firing{{else}}resolved{{/if}}",
-  "source_url": "{{link}}"
-}`;
-      }
-    }
+    const defaultBody =
+      service === WebhookService.Slack
+        ? body
+        : body || getDefaultWebhookBody(service);
 
     try {
       await testWebhook.mutateAsync({
@@ -230,20 +219,10 @@ export function WebhookForm({
         }
       }
 
-      let defaultBody = body;
-      if (!body) {
-        if (service === WebhookService.Generic) {
-          defaultBody = DEFAULT_GENERIC_WEBHOOK_BODY;
-        } else if (service === WebhookService.IncidentIO) {
-          defaultBody = `{
-  "title": "{{title}}",
-  "description": "{{body}}",
-  "deduplication_key": "{{eventId}}",
-  "status": "{{#if (eq state "${AlertState.ALERT}")}}firing{{else}}resolved{{/if}}",
-  "source_url": "{{link}}"
-}`;
-        }
-      }
+      const defaultBody =
+        service === WebhookService.Slack
+          ? body
+          : body || getDefaultWebhookBody(service);
 
       const webhookData = {
         service,
@@ -310,6 +289,16 @@ export function WebhookForm({
   };
 
   const service = useWatch({ control: form.control, name: 'service' });
+  // A body left at the old service's default would still be sent verbatim, and
+  // each service's default is invalid to the others' receivers. A hand-edited
+  // body is the user's, so it survives the switch.
+  const onServiceChange = (next: WebhookService) => {
+    const body = form.getValues('body');
+    if (!body || body === getDefaultWebhookBody(service)) {
+      form.setValue('body', '');
+    }
+    form.setValue('service', next);
+  };
   const templateVariables = getWebhookTemplateVariables(brandName);
   const headersText = useWatch({ control: form.control, name: 'headers' });
   const hasMaskedHeaders = isEditing && !!headersText?.includes('****');
@@ -323,7 +312,7 @@ export function WebhookForm({
           label="Service Type"
           required
           value={service}
-          onChange={value => form.setValue('service', value as WebhookService)}
+          onChange={value => onServiceChange(value as WebhookService)}
         >
           <Group mt="xs">
             <Radio value={WebhookService.Slack} label="Slack" />
@@ -405,6 +394,8 @@ export function WebhookForm({
               )}
             />
           </div>,
+        ]}
+        {service !== WebhookService.Slack && [
           <label className=".mantine-TextInput-label" key="3">
             Webhook Body (optional)
           </label>,
@@ -418,7 +409,7 @@ export function WebhookForm({
                   extensions={[
                     json(),
                     linter(jsonLinterWithEmptyCheck()),
-                    placeholder(DEFAULT_GENERIC_WEBHOOK_BODY),
+                    placeholder(getDefaultWebhookBody(service)),
                   ]}
                   theme="dark"
                   value={field.value}

@@ -6,6 +6,7 @@ export enum Tab {
   Parsed = 'parsed',
   Debug = 'debug',
   Trace = 'trace',
+  Logs = 'logs',
   ServiceMap = 'serviceMap',
   Context = 'context',
   Replay = 'replay',

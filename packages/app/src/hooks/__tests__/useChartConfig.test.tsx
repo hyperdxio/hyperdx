@@ -5,7 +5,11 @@ import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
   ChartConfigWithDateRange,
   ChartConfigWithOptDateRange,
+  DisplayType,
   MetricsDataType,
+  PromqlReducer,
+  SourceKind,
+  TSource,
 } from '@hyperdx/common-utils/dist/types';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
@@ -15,6 +19,7 @@ import { useClickhouseClient } from '@/clickhouse';
 import {
   appendChunk,
   getGranularityAlignedTimeWindows,
+  getMinGranularitySeconds,
   useQueriedChartConfig,
 } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
@@ -76,6 +81,7 @@ jest.mock('@/api', () => ({
   __esModule: true,
   ...jest.requireActual('@/api'),
   prometheusApi: {
+    query: jest.fn(),
     queryRange: jest.fn(),
   },
 }));
@@ -452,6 +458,607 @@ describe('useChartConfig', () => {
           'e2e_service_up{service="accounting"}',
           'e2e_service_up{service="api-server"}',
         ]);
+      });
+
+      const singleSeriesResponse = (metricName: string) => ({
+        status: 'success' as const,
+        data: {
+          resultType: 'matrix' as const,
+          result: [
+            {
+              metric: { __name__: metricName, service: 'accounting' },
+              values: [[1673308800, '3']] as [number, string][],
+            },
+          ],
+        },
+      });
+
+      it('queries every expression of a time series chart', async () => {
+        jest
+          .mocked(prometheusApi.queryRange)
+          .mockResolvedValueOnce(matrixResponse)
+          .mockResolvedValueOnce(singleSeriesResponse('e2e_requests_total'));
+
+        const config = createPromqlConfig({
+          displayType: DisplayType.Line,
+          promqlExpression: [
+            { expression: 'e2e_service_up', alias: 'up' },
+            { expression: 'e2e_requests_total' },
+          ],
+        });
+        const { result } = renderHook(() => useQueriedChartConfig(config), {
+          wrapper,
+        });
+
+        await waitFor(() => expect(result.current.isSuccess).toBe(true));
+        expect(prometheusApi.queryRange).toHaveBeenCalledTimes(2);
+        expect(
+          jest
+            .mocked(prometheusApi.queryRange)
+            .mock.calls.map(([a]) => a.query),
+        ).toEqual(['e2e_service_up', 'e2e_requests_total']);
+        // The alias covers two series here, so it keeps their label sets
+        // behind it. service distinguishes series chart-wide, so the unaliased
+        // expression shows it too even though its own result has one series.
+        expect(
+          result.current.data?.data.map((r: any) => r.series_name),
+        ).toEqual([
+          'up · e2e_service_up{service="accounting"}',
+          'up · e2e_service_up{service="api-server"}',
+          'e2e_requests_total{service="accounting"}',
+        ]);
+      });
+
+      it('names one-series expressions after their aliases alone', async () => {
+        jest
+          .mocked(prometheusApi.queryRange)
+          .mockResolvedValueOnce(singleSeriesResponse('e2e_service_up'))
+          .mockResolvedValueOnce(singleSeriesResponse('e2e_requests_total'));
+
+        const config = createPromqlConfig({
+          displayType: DisplayType.Line,
+          promqlExpression: [
+            { expression: 'e2e_service_up', alias: 'up' },
+            { expression: 'e2e_requests_total', alias: 'requests' },
+          ],
+        });
+        const { result } = renderHook(() => useQueriedChartConfig(config), {
+          wrapper,
+        });
+
+        await waitFor(() => expect(result.current.isSuccess).toBe(true));
+        expect(
+          result.current.data?.data.map((r: any) => r.series_name),
+        ).toEqual(['up', 'requests']);
+      });
+
+      it('shows the legend template behind the alias', async () => {
+        jest
+          .mocked(prometheusApi.queryRange)
+          .mockResolvedValueOnce(singleSeriesResponse('e2e_service_up'));
+
+        const config = createPromqlConfig({
+          displayType: DisplayType.Line,
+          legendTemplate: 'svc:{{service}}',
+          promqlExpression: [{ expression: 'e2e_service_up', alias: 'up' }],
+        });
+        const { result } = renderHook(() => useQueriedChartConfig(config), {
+          wrapper,
+        });
+
+        await waitFor(() => expect(result.current.isSuccess).toBe(true));
+        expect(
+          result.current.data?.data.map((r: any) => r.series_name),
+        ).toEqual(['up · svc:accounting']);
+      });
+
+      it('queries only the first expression of a non-time-series chart', async () => {
+        jest.mocked(prometheusApi.queryRange).mockResolvedValue(matrixResponse);
+
+        const config = createPromqlConfig({
+          displayType: DisplayType.Number,
+          promqlExpression: [
+            { expression: 'e2e_service_up' },
+            { expression: 'e2e_requests_total' },
+          ],
+        });
+        const { result } = renderHook(() => useQueriedChartConfig(config), {
+          wrapper,
+        });
+
+        await waitFor(() => expect(result.current.isSuccess).toBe(true));
+        expect(prometheusApi.queryRange).toHaveBeenCalledTimes(1);
+        expect(
+          jest.mocked(prometheusApi.queryRange).mock.calls[0][0].query,
+        ).toBe('e2e_service_up');
+      });
+
+      it("forwards the query's abort signal to every request", async () => {
+        jest.mocked(prometheusApi.queryRange).mockResolvedValue(matrixResponse);
+
+        const config = createPromqlConfig({
+          displayType: DisplayType.Line,
+          promqlExpression: [
+            { expression: 'e2e_service_up' },
+            { expression: 'e2e_requests_total' },
+          ],
+        });
+        const { result } = renderHook(() => useQueriedChartConfig(config), {
+          wrapper,
+        });
+
+        await waitFor(() => expect(result.current.isSuccess).toBe(true));
+        const { calls } = jest.mocked(prometheusApi.queryRange).mock;
+        expect(calls).toHaveLength(2);
+        for (const [params] of calls) {
+          expect(params.signal).toBeInstanceOf(AbortSignal);
+        }
+      });
+
+      it('skips the blank row the editor holds for an unfinished expression', async () => {
+        jest.mocked(prometheusApi.queryRange).mockResolvedValue(matrixResponse);
+
+        const config = createPromqlConfig({
+          displayType: DisplayType.Line,
+          promqlExpression: [
+            { expression: 'e2e_service_up' },
+            { expression: '' },
+          ],
+        });
+        const { result } = renderHook(() => useQueriedChartConfig(config), {
+          wrapper,
+        });
+
+        await waitFor(() => expect(result.current.isSuccess).toBe(true));
+        expect(prometheusApi.queryRange).toHaveBeenCalledTimes(1);
+      });
+
+      // Prometheus drops __name__ from aggregation and arithmetic results, so
+      // these series have nothing to be named after.
+      describe('series without a metric name', () => {
+        const unnamedResponse = (labels: Record<string, string> = {}) => ({
+          status: 'success' as const,
+          data: {
+            resultType: 'matrix' as const,
+            result: [
+              {
+                metric: labels,
+                values: [[1673308800, '4']] as [number, string][],
+              },
+            ],
+          },
+        });
+
+        it('names them after their expression', async () => {
+          jest
+            .mocked(prometheusApi.queryRange)
+            .mockResolvedValueOnce(unnamedResponse())
+            .mockResolvedValueOnce(unnamedResponse());
+
+          const config = createPromqlConfig({
+            displayType: DisplayType.Line,
+            promqlExpression: [
+              { expression: 'sum(rate(e2e_requests_total[5m]))' },
+              { expression: 'sum(rate(e2e_errors_total[5m]))' },
+            ],
+          });
+          const { result } = renderHook(() => useQueriedChartConfig(config), {
+            wrapper,
+          });
+
+          await waitFor(() => expect(result.current.isSuccess).toBe(true));
+          expect(
+            result.current.data?.data.map((r: any) => r.series_name),
+          ).toEqual([
+            'sum(rate(e2e_requests_total[5m]))',
+            'sum(rate(e2e_errors_total[5m]))',
+          ]);
+        });
+
+        it('names a single aliased series after its alias alone', async () => {
+          jest
+            .mocked(prometheusApi.queryRange)
+            .mockResolvedValueOnce(unnamedResponse());
+
+          const config = createPromqlConfig({
+            displayType: DisplayType.Line,
+            promqlExpression: [
+              { expression: 'sum(rate(e2e_requests_total[5m]))', alias: 'rps' },
+            ],
+          });
+          const { result } = renderHook(() => useQueriedChartConfig(config), {
+            wrapper,
+          });
+
+          await waitFor(() => expect(result.current.isSuccess).toBe(true));
+          expect(
+            result.current.data?.data.map((r: any) => r.series_name),
+          ).toEqual(['rps']);
+        });
+
+        it('names them after their alias when the template renders nothing', async () => {
+          jest
+            .mocked(prometheusApi.queryRange)
+            .mockResolvedValueOnce(unnamedResponse())
+            .mockResolvedValueOnce(unnamedResponse());
+
+          const config = createPromqlConfig({
+            displayType: DisplayType.Line,
+            legendTemplate: '{{service}}',
+            promqlExpression: [
+              { expression: 'sum(rate(e2e_requests_total[5m]))', alias: 'rps' },
+              {
+                expression: 'sum(rate(e2e_errors_total[5m]))',
+                alias: 'errors',
+              },
+            ],
+          });
+          const { result } = renderHook(() => useQueriedChartConfig(config), {
+            wrapper,
+          });
+
+          await waitFor(() => expect(result.current.isSuccess).toBe(true));
+          expect(
+            result.current.data?.data.map((r: any) => r.series_name),
+          ).toEqual(['rps', 'errors']);
+        });
+
+        it('still prefers a distinguishing label set', async () => {
+          jest.mocked(prometheusApi.queryRange).mockResolvedValueOnce({
+            status: 'success' as const,
+            data: {
+              resultType: 'matrix' as const,
+              result: [
+                {
+                  metric: { service: 'accounting' },
+                  values: [[1673308800, '4']] as [number, string][],
+                },
+                {
+                  metric: { service: 'api-server' },
+                  values: [[1673308800, '5']] as [number, string][],
+                },
+              ],
+            },
+          });
+
+          const config = createPromqlConfig({
+            displayType: DisplayType.Line,
+            promqlExpression: [
+              { expression: 'sum by (service) (rate(e2e_requests_total[5m]))' },
+            ],
+          });
+          const { result } = renderHook(() => useQueriedChartConfig(config), {
+            wrapper,
+          });
+
+          await waitFor(() => expect(result.current.isSuccess).toBe(true));
+          expect(
+            result.current.data?.data.map((r: any) => r.series_name),
+          ).toEqual(['{service="accounting"}', '{service="api-server"}']);
+        });
+      });
+
+      describe('query type dispatch', () => {
+        const instantResponse = {
+          status: 'success' as const,
+          data: {
+            resultType: 'vector' as const,
+            result: [
+              {
+                metric: { __name__: 'e2e_service_up', service: 'accounting' },
+                value: [1673312400, '7'] as [number, string],
+              },
+            ],
+          },
+        };
+
+        it('sends an instant expression to the instant endpoint', async () => {
+          jest.mocked(prometheusApi.query).mockResolvedValue(instantResponse);
+
+          const config = createPromqlConfig({
+            displayType: DisplayType.Number,
+            promqlExpression: [
+              { expression: 'e2e_service_up', queryType: 'instant' },
+            ],
+          });
+          const { result } = renderHook(() => useQueriedChartConfig(config), {
+            wrapper,
+          });
+
+          await waitFor(() => expect(result.current.isSuccess).toBe(true));
+          expect(prometheusApi.queryRange).not.toHaveBeenCalled();
+          // Evaluated at the end of the window, and timeless: a Date column
+          // here would be read back as a time series.
+          expect(jest.mocked(prometheusApi.query).mock.calls[0][0].time).toBe(
+            new Date('2023-01-10 01:00:00').getTime() / 1000,
+          );
+          expect(result.current.data?.data).toEqual([
+            { series_name: 'e2e_service_up', value: 7 },
+          ]);
+          expect(result.current.data?.meta).toEqual([
+            { name: 'value', type: 'Float64' },
+            { name: 'series_name', type: 'String' },
+          ]);
+        });
+
+        it('sends a range expression to the range endpoint', async () => {
+          jest
+            .mocked(prometheusApi.queryRange)
+            .mockResolvedValue(matrixResponse);
+
+          const config = createPromqlConfig({
+            displayType: DisplayType.Number,
+            promqlExpression: [
+              { expression: 'e2e_service_up', queryType: 'range' },
+              { expression: 'e2e_requests_total', queryType: 'instant' },
+            ],
+          });
+          const { result } = renderHook(() => useQueriedChartConfig(config), {
+            wrapper,
+          });
+
+          await waitFor(() => expect(result.current.isSuccess).toBe(true));
+          expect(prometheusApi.query).not.toHaveBeenCalled();
+          expect(prometheusApi.queryRange).toHaveBeenCalledTimes(1);
+        });
+
+        it('reports an expression that evaluates to a string', async () => {
+          jest.mocked(prometheusApi.query).mockResolvedValue({
+            status: 'success',
+            data: { resultType: 'string', result: [1673312400, 'up'] },
+          });
+
+          const config = createPromqlConfig({
+            displayType: DisplayType.Number,
+            promqlExpression: [{ expression: '"up"', queryType: 'instant' }],
+          });
+          const { result } = renderHook(
+            () => useQueriedChartConfig(config, { retry: false }),
+            { wrapper },
+          );
+
+          await waitFor(() => expect(result.current.isError).toBe(true));
+          expect(result.current.error?.message).toMatch(/returned a string/);
+        });
+
+        it('shows a scalar result as one unlabelled row', async () => {
+          jest.mocked(prometheusApi.query).mockResolvedValue({
+            status: 'success',
+            data: { resultType: 'scalar', result: [1673312400, '42'] },
+          });
+
+          const config = createPromqlConfig({
+            displayType: DisplayType.Number,
+            promqlExpression: [
+              { expression: 'scalar(e2e_service_up)', queryType: 'instant' },
+            ],
+          });
+          const { result } = renderHook(() => useQueriedChartConfig(config), {
+            wrapper,
+          });
+
+          await waitFor(() => expect(result.current.isSuccess).toBe(true));
+          // A scalar carries no labels, so it is named after its expression.
+          expect(result.current.data?.data).toEqual([
+            { series_name: 'scalar(e2e_service_up)', value: 42 },
+          ]);
+          expect(result.current.data?.meta).toEqual([
+            { name: 'value', type: 'Float64' },
+            { name: 'series_name', type: 'String' },
+          ]);
+        });
+
+        it('keeps the buckets of a matrix the instant endpoint answers with', async () => {
+          // A range-vector selector evaluates to a matrix even at the instant
+          // endpoint, so the rows span time and carry a bucket column.
+          jest.mocked(prometheusApi.query).mockResolvedValue({
+            status: 'success',
+            data: {
+              resultType: 'matrix',
+              result: [
+                {
+                  metric: { __name__: 'e2e_service_up' },
+                  values: [
+                    [1673308800, '1'],
+                    [1673308860, '2'],
+                  ] as [number, string][],
+                },
+              ],
+            },
+          });
+
+          const config = createPromqlConfig({
+            displayType: DisplayType.Number,
+            promqlExpression: [
+              { expression: 'e2e_service_up[5m]', queryType: 'instant' },
+            ],
+          });
+          const { result } = renderHook(() => useQueriedChartConfig(config), {
+            wrapper,
+          });
+
+          await waitFor(() => expect(result.current.isSuccess).toBe(true));
+          expect(result.current.data?.meta).toEqual([
+            { name: '__hdx_time_bucket', type: 'DateTime64(3)' },
+            { name: 'value', type: 'Float64' },
+            { name: 'series_name', type: 'String' },
+          ]);
+          expect(result.current.data?.data).toEqual([
+            {
+              __hdx_time_bucket: new Date(1673308800 * 1000).toISOString(),
+              series_name: 'e2e_service_up',
+              value: 1,
+            },
+            {
+              __hdx_time_bucket: new Date(1673308860 * 1000).toISOString(),
+              series_name: 'e2e_service_up',
+              value: 2,
+            },
+          ]);
+        });
+
+        it('ranges a time series chart whatever its expressions ask for', async () => {
+          jest
+            .mocked(prometheusApi.queryRange)
+            .mockResolvedValue(matrixResponse);
+
+          const config = createPromqlConfig({
+            displayType: DisplayType.Line,
+            promqlExpression: [
+              { expression: 'e2e_service_up', queryType: 'instant' },
+            ],
+          });
+          const { result } = renderHook(() => useQueriedChartConfig(config), {
+            wrapper,
+          });
+
+          await waitFor(() => expect(result.current.isSuccess).toBe(true));
+          expect(prometheusApi.query).not.toHaveBeenCalled();
+          expect(prometheusApi.queryRange).toHaveBeenCalledTimes(1);
+        });
+      });
+
+      describe('range reducers', () => {
+        const rangeSamples = {
+          status: 'success' as const,
+          data: {
+            resultType: 'matrix' as const,
+            result: [
+              {
+                metric: { __name__: 'e2e_service_up', service: 'accounting' },
+                values: [
+                  [1673308800, '2'],
+                  [1673308860, '8'],
+                  [1673308920, '5'],
+                ] as [number, string][],
+              },
+              {
+                metric: { __name__: 'e2e_service_up', service: 'api-server' },
+                values: [
+                  [1673308800, '1'],
+                  [1673308860, '3'],
+                ] as [number, string][],
+              },
+            ],
+          },
+        };
+
+        const rangeNumberConfig = (
+          overrides: Partial<{
+            reducer: PromqlReducer;
+            expression: string;
+          }> = {},
+        ) =>
+          createPromqlConfig({
+            displayType: DisplayType.Number,
+            promqlExpression: [
+              {
+                expression: overrides.expression ?? 'e2e_service_up',
+                queryType: 'range' as const,
+                reducer: overrides.reducer,
+              },
+            ],
+          });
+
+        beforeEach(() => {
+          jest.mocked(prometheusApi.queryRange).mockResolvedValue(rangeSamples);
+        });
+
+        it('collapses the buckets to one row per series', async () => {
+          const { result } = renderHook(
+            () => useQueriedChartConfig(rangeNumberConfig()),
+            { wrapper },
+          );
+
+          await waitFor(() => expect(result.current.isSuccess).toBe(true));
+          expect(result.current.data?.data).toEqual([
+            { series_name: 'e2e_service_up{service="accounting"}', value: 5 },
+            { series_name: 'e2e_service_up{service="api-server"}', value: 3 },
+          ]);
+          expect(result.current.data?.rows).toBe(2);
+          // A time bucket here would be read back as a time series.
+          expect(result.current.data?.meta).toEqual([
+            { name: 'series_name', type: 'String' },
+            { name: 'value', type: 'Float64' },
+          ]);
+        });
+
+        it.each([
+          [PromqlReducer.Max, [8, 3]],
+          [PromqlReducer.Min, [2, 1]],
+          [PromqlReducer.Sum, [15, 4]],
+          [PromqlReducer.Count, [3, 2]],
+          [PromqlReducer.Mean, [5, 2]],
+          [PromqlReducer.LastNotNull, [5, 3]],
+        ])('reduces each series with %s', async (reducer, expected) => {
+          const { result } = renderHook(
+            () => useQueriedChartConfig(rangeNumberConfig({ reducer })),
+            { wrapper },
+          );
+
+          await waitFor(() => expect(result.current.isSuccess).toBe(true));
+          expect(result.current.data?.data.map((r: any) => r.value)).toEqual(
+            expected,
+          );
+        });
+
+        it('leaves a display type that plots the range unreduced', async () => {
+          const config = createPromqlConfig({
+            displayType: DisplayType.Line,
+            promqlExpression: [
+              {
+                expression: 'e2e_service_up',
+                queryType: 'range' as const,
+                reducer: PromqlReducer.Max,
+              },
+            ],
+          });
+          const { result } = renderHook(() => useQueriedChartConfig(config), {
+            wrapper,
+          });
+
+          await waitFor(() => expect(result.current.isSuccess).toBe(true));
+          expect(result.current.data?.data.map((r: any) => r.value)).toEqual([
+            2, 8, 5, 1, 3,
+          ]);
+        });
+
+        // The samples are cached without the reducer, so switching it
+        // re-derives the value rather than asking Prometheus again.
+        it('re-derives the value when only the reducer changes', async () => {
+          const { result, rerender } = renderHook(
+            ({ reducer }: { reducer: PromqlReducer }) =>
+              useQueriedChartConfig(rangeNumberConfig({ reducer })),
+            { wrapper, initialProps: { reducer: PromqlReducer.Max } },
+          );
+
+          await waitFor(() =>
+            expect(result.current.data?.data[0].value).toBe(8),
+          );
+
+          rerender({ reducer: PromqlReducer.Min });
+
+          await waitFor(() =>
+            expect(result.current.data?.data[0].value).toBe(2),
+          );
+          expect(prometheusApi.queryRange).toHaveBeenCalledTimes(1);
+        });
+
+        it('re-queries when a field other than the reducer changes', async () => {
+          const { result, rerender } = renderHook(
+            ({ expression }: { expression: string }) =>
+              useQueriedChartConfig(rangeNumberConfig({ expression })),
+            { wrapper, initialProps: { expression: 'e2e_service_up' } },
+          );
+
+          await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+          rerender({ expression: 'e2e_requests_total' });
+
+          await waitFor(() =>
+            expect(prometheusApi.queryRange).toHaveBeenCalledTimes(2),
+          );
+        });
       });
     });
 
@@ -1600,6 +2207,56 @@ describe('useChartConfig', () => {
       expect(queryCall.config.from.tableName).toBe('metrics_rollup_1h');
 
       expect(result2.current.data?.data).toBeDefined();
+    });
+  });
+
+  describe('getMinGranularitySeconds', () => {
+    const baseMetricSource = {
+      id: 'source-1',
+      kind: SourceKind.Metric,
+      name: 'Test Metrics',
+      connection: 'conn-1',
+      from: { databaseName: 'default', tableName: '' },
+      timestampValueExpression: 'TimeUnix',
+      resourceAttributesExpression: 'ResourceAttributes',
+      metricTables: {
+        gauge: 'otel_metrics_gauge',
+        histogram: 'otel_metrics_histogram',
+        sum: 'otel_metrics_sum',
+        summary: 'otel_metrics_summary',
+        'exponential histogram': 'otel_metrics_exponential_histogram',
+      },
+    } satisfies Extract<TSource, { kind: SourceKind.Metric }>;
+
+    it('converts the source minAutoGranularity setting to seconds', () => {
+      expect(
+        getMinGranularitySeconds({
+          ...baseMetricSource,
+          minAutoGranularity: '5 minute',
+        }),
+      ).toBe(300);
+    });
+
+    it('returns undefined when the source has no minAutoGranularity set', () => {
+      expect(getMinGranularitySeconds(baseMetricSource)).toBeUndefined();
+    });
+
+    it('returns undefined for a non-metric source', () => {
+      expect(
+        getMinGranularitySeconds({
+          id: 'source-2',
+          kind: SourceKind.Log,
+          name: 'Test Logs',
+          connection: 'conn-1',
+          from: { databaseName: 'default', tableName: 'otel_logs' },
+          timestampValueExpression: 'TimestampTime',
+          defaultTableSelectExpression: 'Body',
+        } satisfies TSource),
+      ).toBeUndefined();
+    });
+
+    it('returns undefined when the source is undefined', () => {
+      expect(getMinGranularitySeconds(undefined)).toBeUndefined();
     });
   });
 

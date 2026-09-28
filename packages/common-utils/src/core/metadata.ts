@@ -615,6 +615,32 @@ export class Metadata {
     );
   }
 
+  async getTimeSeriesTableVersion({
+    connectionId,
+    databaseName,
+    tableName,
+  }: {
+    connectionId: string;
+    databaseName: string;
+    tableName: string;
+  }): Promise<number> {
+    return this.cache.getOrFetch<number>(
+      `${connectionId}.${databaseName}.${tableName}.getTimeSeriesTableVersion`,
+      async () => {
+        const sql = chSql`SELECT toUInt32OrZero(extract(engine_full, 'version = (\\d+)')) AS version FROM system.tables WHERE database = ${{ String: databaseName }} AND name = ${{ String: tableName }}`;
+        const json = await this.clickhouseClient
+          .query<'JSON'>({
+            query: sql.sql,
+            query_params: sql.params,
+            connectionId,
+            clickhouse_settings: this.getClickHouseSettings(),
+          })
+          .then(res => res.json<{ version: number }>());
+        return Number(json.data[0]?.version ?? 0);
+      },
+    );
+  }
+
   async getMaterializedColumnsLookupTable({
     databaseName,
     tableName,

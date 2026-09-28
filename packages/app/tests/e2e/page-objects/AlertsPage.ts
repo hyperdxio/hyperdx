@@ -2,7 +2,10 @@
  * AlertsPage - Page object for the /alerts page
  * Encapsulates all interactions with the alerts interface
  */
-import { Locator, Page } from '@playwright/test';
+import { expect, Locator, Page } from '@playwright/test';
+
+/** Needed as a raw selector too, for the in-page `data-fetching` poll. */
+const LIST_SELECTOR = '[data-testid="alerts-list"]';
 
 export class AlertsPage {
   readonly page: Page;
@@ -11,8 +14,10 @@ export class AlertsPage {
   private readonly alertsModal: Locator;
   private readonly searchInput: Locator;
   private readonly tagFilter: Locator;
+  private readonly stateFilter: Locator;
   private readonly creatorFilter: Locator;
   private readonly filtersContainer: Locator;
+  private readonly listContainer: Locator;
 
   constructor(page: Page) {
     this.page = page;
@@ -21,8 +26,10 @@ export class AlertsPage {
     this.alertsModal = page.locator('[data-testid="alerts-modal"]');
     this.searchInput = page.locator('[data-testid="alerts-search-input"]');
     this.tagFilter = page.locator('[data-testid="alerts-tag-filter"]');
+    this.stateFilter = page.locator('[data-testid="alerts-state-filter"]');
     this.creatorFilter = page.locator('[data-testid="alerts-creator-filter"]');
     this.filtersContainer = page.locator('[data-testid="alerts-filters"]');
+    this.listContainer = page.locator(LIST_SELECTOR);
   }
 
   /**
@@ -71,10 +78,10 @@ export class AlertsPage {
 
   /**
    * Filter the list down to the alerts matching `name`, and wait for the list
-   * to settle. The list is virtualized: only the rows near the viewport exist
-   * in the DOM, so a row further down cannot be asserted on until it is
-   * filtered or scrolled to. Filtering is also what a user does on a team with
-   * thousands of alerts.
+   * to settle. Filtering is the only reliable way to reach a given row:
+   * the server returns one page at a time, and the rows it does return are
+   * virtualized, so anything further down exists neither in the response nor
+   * in the DOM.
    */
   async filterToAlert(name: string) {
     await this.searchByName(name);
@@ -232,41 +239,135 @@ export class AlertsPage {
     return this.tagFilter;
   }
 
-  get creatorFilterDropdown() {
+  get stateFilterDropdown() {
+    return this.stateFilter;
+  }
+
+  /**
+   * The "All alerts" / "Created by me" control. A SegmentedControl, not a
+   * dropdown — the creator filter no longer enumerates users.
+   */
+  get creatorFilterControl() {
     return this.creatorFilter;
+  }
+
+  /** The wrapper around whichever data state the list is in. */
+  get list() {
+    return this.listContainer;
+  }
+
+  /**
+   * Filtering is a server round trip behind a debounce now, so every filter
+   * interaction has to wait for the list to settle. `data-fetching` also
+   * covers the debounce window: immediately after a keystroke no request has
+   * been issued yet, so waiting on the network alone would settle against the
+   * *previous* filter's rows.
+   */
+  async waitForListSettled() {
+    // Absent on the "no alerts created yet" empty state, which no filter can
+    // produce — nothing to wait for there.
+    if ((await this.listContainer.count()) === 0) return;
+    await this.page
+      .waitForFunction(
+        selector =>
+          document.querySelector(selector)?.getAttribute('data-fetching') ===
+          'true',
+        LIST_SELECTOR,
+        { timeout: 2000 },
+      )
+      .catch(() => {});
+    await expect(this.listContainer).toHaveAttribute('data-fetching', 'false', {
+      timeout: 15000,
+    });
   }
 
   async searchByName(text: string) {
     await this.filtersContainer.waitFor({ state: 'visible', timeout: 10000 });
     await this.searchInput.fill(text);
+    await this.waitForListSettled();
   }
 
   async clearSearch() {
     await this.searchInput.fill('');
+    await this.waitForListSettled();
+  }
+
+  async openTagFilter() {
+    await this.tagFilter.click();
+  }
+
+  /** An option in the tag filter's dropdown; only resolves once it is open. */
+  getTagOption(tag: string) {
+    return this.page.getByRole('option', { name: tag, exact: true });
   }
 
   async selectTag(tag: string) {
     // In Mantine v9, data-testid on Select is applied to the <input> element
     // directly (via ...others spread). Fill opens the dropdown and filters options.
     await this.tagFilter.fill(tag);
-    await this.page.getByRole('option', { name: tag, exact: true }).click();
+    await this.getTagOption(tag).click();
+    await this.waitForListSettled();
   }
 
   async clearTagFilter() {
     // Mantine v9's ComboboxClearButton has aria-hidden="true", so getByRole
     // won't find it. Use a CSS selector to target the button directly.
     await this.tagFilter.locator('..').locator('button').click();
+    await this.waitForListSettled();
   }
 
-  async selectCreator(creator: string) {
-    await this.creatorFilter.fill(creator);
-    await this.page.getByRole('option', { name: creator, exact: true }).click();
+  async selectState(label: string) {
+    await this.stateFilter.click();
+    await this.page.getByRole('option', { name: label, exact: true }).click();
+    await this.waitForListSettled();
   }
 
-  async clearCreatorFilter() {
-    // Mantine v9's ComboboxClearButton has aria-hidden="true", so getByRole
-    // won't find it. Use a CSS selector to target the button directly.
-    await this.creatorFilter.locator('..').locator('button').click();
+  async clearStateFilter() {
+    await this.stateFilter.locator('..').locator('button').click();
+    await this.waitForListSettled();
+  }
+
+  async showMyAlerts() {
+    await this.creatorFilter
+      .getByText('Created by me', { exact: true })
+      .click();
+    await this.waitForListSettled();
+  }
+
+  async showAllAlerts() {
+    await this.creatorFilter.getByText('All alerts', { exact: true }).click();
+    await this.waitForListSettled();
+  }
+
+  // --- Infinite scroll ---
+
+  /** The in-viewport sentinel that pulls the next page. */
+  get loadMoreSentinel() {
+    return this.page.locator('[data-testid="alerts-load-more"]');
+  }
+
+  /**
+   * Scroll down until `name` is on screen, pulling pages as it goes.
+   *
+   * One jump to `scrollHeight` is not enough: the virtualizer reserves the
+   * unrendered rows as padding based on estimates, then re-measures the rows
+   * the jump brought into view, which moves the total height out from under
+   * the scroll position. Scrolling the sentinel itself into view is also what
+   * actually trips its IntersectionObserver.
+   */
+  async scrollUntilAlertVisible(name: string, timeout = 30000) {
+    await expect
+      .poll(
+        async () => {
+          if ((await this.loadMoreSentinel.count()) > 0) {
+            await this.loadMoreSentinel.scrollIntoViewIfNeeded();
+            await this.waitForListSettled();
+          }
+          return await this.getAlertCardByName(name).count();
+        },
+        { timeout, intervals: [250, 500, 1000] },
+      )
+      .toBeGreaterThan(0);
   }
 
   // --- Note interactions ---
