@@ -186,7 +186,8 @@ export function ChartActionBar({
         {(activeTab === 'table' ||
           activeTab === 'pie' ||
           activeTab === 'bar') &&
-          !isRawSqlInput && (
+          !isRawSqlInput &&
+          configType !== 'promql' && (
             <div style={{ width: 400 }} data-testid="order-by-input">
               <SQLInlineEditorControlled
                 parentRef={parentRef}

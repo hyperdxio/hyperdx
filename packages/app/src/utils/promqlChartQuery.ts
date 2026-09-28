@@ -7,6 +7,7 @@ import {
 } from '@hyperdx/common-utils/dist/core/promql';
 import { renderPromqlSeriesNames } from '@hyperdx/common-utils/dist/core/seriesNameTemplate';
 import {
+  DisplayType,
   PrometheusMatrixResult,
   PromqlChartConfig,
   PromqlReducer,
@@ -15,6 +16,7 @@ import {
 import { substitutePromqlChartConfigVariables } from '@hyperdx/common-utils/dist/variables';
 
 import { prometheusApi, PrometheusInstantQueryResponse } from '@/api';
+import { MAX_TABLE_ROWS } from '@/HDXMultiSeriesTableChart';
 import { ChartQueryResult } from '@/types';
 
 /** One series of a result: its labels, and its `[unix seconds, value]` samples. */
@@ -86,6 +88,11 @@ async function fetchInstantExpression(
     query: series.expression,
     time: evalTime.getTime() / 1000,
     connectionId: config.connection,
+    // A vector is one sample per series, so capping series caps a table's
+    // rows exactly. Range queries go uncapped: series can be sparse, so no
+    // series count bounds their samples without dropping rows that would fit.
+    limit:
+      config.displayType === DisplayType.Table ? MAX_TABLE_ROWS : undefined,
     database: config.from?.databaseName,
     table: config.from?.tableName,
     signal,
@@ -174,6 +181,77 @@ function toChartRows(
   };
 }
 
+/** `base`, or `base_N` with the lowest N that doesn't collide with a label column. */
+function uniqueColumnName(base: string, taken: Set<string>): string {
+  if (!taken.has(base)) return base;
+  let n = 1;
+  while (taken.has(`${base}_${n}`)) n++;
+  return `${base}_${n}`;
+}
+
+/** Every label any series carries, `__name__` first and the rest alphabetical. */
+function labelColumns(expressions: ExpressionResult[]): string[] {
+  const keys = new Set<string>();
+  for (const { result } of expressions) {
+    for (const { metric } of result) {
+      for (const key of Object.keys(metric)) keys.add(key);
+    }
+  }
+  const hasName = keys.delete('__name__');
+  return [...(hasName ? ['__name__'] : []), ...[...keys].sort()];
+}
+
+/** Every sample of every series, lazily, so a capped caller stops reading early. */
+function* samples(expressions: ExpressionResult[]) {
+  for (const { result } of expressions) {
+    for (const { metric, values } of result) {
+      for (const [ts, value] of values) yield { metric, ts, value };
+    }
+  }
+}
+
+/**
+ * Rows for a table tile: one per sample, with a column per Prometheus label,
+ * including __name__, plus Timestamp and Value column. Every row carries the
+ * same keys in the same order.
+ */
+export function toTableRows(
+  expressions: ExpressionResult[],
+  maxRows: number = MAX_TABLE_ROWS,
+): ChartQueryResult {
+  const labels = labelColumns(expressions);
+  const taken = new Set(labels);
+  const timeColumn = expressions.some(({ isBucketed }) => isBucketed)
+    ? uniqueColumnName('Timestamp', taken)
+    : undefined;
+  if (timeColumn) taken.add(timeColumn);
+  const valueColumn = uniqueColumnName('Value', taken);
+
+  // Cap the total number of rows before the rows end up in the react-query cache.
+  const data: Record<string, string | number>[] = [];
+  for (const { metric, ts, value } of samples(expressions)) {
+    if (data.length >= maxRows) break;
+    const row: [string, string | number][] = [];
+    if (timeColumn) row.push([timeColumn, new Date(ts * 1000).toISOString()]);
+    for (const label of labels) {
+      row.push([label, Object.hasOwn(metric, label) ? metric[label] : '']);
+    }
+    row.push([valueColumn, value]);
+    data.push(Object.fromEntries(row));
+  }
+
+  return {
+    data,
+    meta: [
+      ...(timeColumn ? [{ name: timeColumn, type: 'DateTime64(3)' }] : []),
+      ...labels.map(name => ({ name, type: 'String' })),
+      { name: valueColumn, type: 'Float64' },
+    ],
+    rows: data.length,
+    isComplete: true,
+  };
+}
+
 /**
  * Run a PromQL tile's expressions and shape the result like a ClickHouse
  * response, so the chart formatters treat it like every other source.
@@ -195,7 +273,9 @@ export async function queryPromqlChartConfig(
     ),
   );
 
-  return toChartRows(results, substituted.legendTemplate?.trim() || undefined);
+  return substituted.displayType === DisplayType.Table
+    ? toTableRows(results)
+    : toChartRows(results, substituted.legendTemplate?.trim() || undefined);
 }
 
 /**
