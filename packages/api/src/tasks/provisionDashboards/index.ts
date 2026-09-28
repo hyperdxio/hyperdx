@@ -19,6 +19,7 @@ import { connectDB, mongooseConnection } from '@/models';
 import Alert, { AlertSource } from '@/models/alert';
 import Dashboard, { IDashboard } from '@/models/dashboard';
 import Team from '@/models/team';
+import Webhook from '@/models/webhook';
 import type { HdxTask } from '@/tasks/types';
 import { ProvisionDashboardsTaskArgs } from '@/tasks/types';
 import logger from '@/utils/logger';
@@ -42,20 +43,64 @@ const provisionedDashboardSchema = DashboardWithoutIdSchema.superRefine(
     validateDashboardFilterOptionUniqueness(data.filters ?? [], ctx),
 );
 
-export function readDashboardFiles(dir: string): DashboardWithoutId[] {
+// A file names a webhook with `{ "type": "webhook", "webhookName": "..." }`,
+// since webhook ids differ per team and per install. Names only resolve per
+// team, after the file is parsed, so until then the name rides in `webhookId`
+// behind this prefix. It never reaches Mongo: resolveWebhookNames swaps it for
+// the real id, or drops the alert from the stored tile.
+const WEBHOOK_NAME_REF = 'webhook-name:';
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  value != null && typeof value === 'object' && !Array.isArray(value);
+
+function encodeWebhookName(channel: unknown): unknown {
+  if (
+    !isRecord(channel) ||
+    typeof channel.webhookName !== 'string' ||
+    'webhookId' in channel
+  ) {
+    return channel;
+  }
+  const { webhookName, ...rest } = channel;
+  return { ...rest, webhookId: `${WEBHOOK_NAME_REF}${webhookName}` };
+}
+
+function encodeWebhookNames(raw: unknown): unknown {
+  if (!isRecord(raw) || !Array.isArray(raw.tiles)) return raw;
+  for (const tile of raw.tiles) {
+    const alert =
+      isRecord(tile) && isRecord(tile.config) ? tile.config.alert : undefined;
+    if (!isRecord(alert)) continue;
+    if ('channel' in alert) alert.channel = encodeWebhookName(alert.channel);
+    if (Array.isArray(alert.channels)) {
+      alert.channels = alert.channels.map(encodeWebhookName);
+    }
+  }
+  return raw;
+}
+
+// `complete` is false when the directory or any file in it could not be read
+// or validated, so the caller cannot tell which dashboards the files declare.
+function readDashboardDir(dir: string): {
+  dashboards: DashboardWithoutId[];
+  complete: boolean;
+} {
   let files: string[];
   try {
     files = fs.readdirSync(dir).filter(f => f.endsWith('.json'));
   } catch (err) {
     logger.error({ err, dir }, 'Failed to read dashboard directory');
-    return [];
+    return { dashboards: [], complete: false };
   }
 
   const dashboards: DashboardWithoutId[] = [];
+  let complete = true;
   for (const file of files) {
     try {
-      const raw = migrateLegacyDashboardTileColorsRaw(
-        JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8')),
+      const raw = encodeWebhookNames(
+        migrateLegacyDashboardTileColorsRaw(
+          JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8')),
+        ),
       ) as Record<string, unknown> | null | undefined;
       const parsed = provisionedDashboardSchema.safeParse({
         tags: [],
@@ -66,27 +111,93 @@ export function readDashboardFiles(dir: string): DashboardWithoutId[] {
           { file, errors: parsed.error.issues },
           'Skipping invalid dashboard file',
         );
+        complete = false;
         continue;
       }
       dashboards.push(parsed.data);
     } catch (err) {
       logger.error({ err, file }, 'Failed to parse dashboard file');
+      complete = false;
     }
   }
-  return dashboards;
+  return { dashboards, complete };
+}
+
+export function readDashboardFiles(dir: string): DashboardWithoutId[] {
+  return readDashboardDir(dir).dashboards;
+}
+
+type AlertChannelInput = { type: 'webhook'; webhookId: string };
+
+// Swaps each `webhookName` reference for the id of the team's webhook with
+// that name. A tile whose alert names a missing or ambiguous webhook loses its
+// alert, and is reported in `unresolved` so its last valid version is kept.
+export function resolveWebhookNames(
+  tiles: Tile[],
+  webhookIdsByName: Map<string, string[]>,
+): { tiles: Tile[]; unresolved: Map<string, string> } {
+  const unresolved = new Map<string, string>();
+  const resolveChannel = (channel: AlertChannelInput): AlertChannelInput => {
+    if (!channel.webhookId.startsWith(WEBHOOK_NAME_REF)) return channel;
+    const name = channel.webhookId.slice(WEBHOOK_NAME_REF.length);
+    const ids = webhookIdsByName.get(name) ?? [];
+    if (ids.length === 0) {
+      throw new Error(`Webhook named "${name}" not found`);
+    }
+    if (ids.length > 1) {
+      throw new Error(
+        `Webhook name "${name}" matches ${ids.length} webhooks; use webhookId`,
+      );
+    }
+    return { ...channel, webhookId: ids[0] };
+  };
+
+  const resolved = tiles.map((tile): Tile => {
+    const alert = tile.config.alert;
+    if (alert == null) return tile;
+    try {
+      return {
+        ...tile,
+        config: {
+          ...tile.config,
+          alert: {
+            ...alert,
+            ...(alert.channel && { channel: resolveChannel(alert.channel) }),
+            ...(alert.channels && {
+              channels: alert.channels.map(resolveChannel),
+            }),
+          },
+        },
+      };
+    } catch (err) {
+      unresolved.set(tile.id, err instanceof Error ? err.message : String(err));
+      const { alert: _alert, ...config } = tile.config;
+      return { ...tile, config };
+    }
+  });
+  return { tiles: resolved, unresolved };
 }
 
 // Turns the `config.alert` of each provisioned tile into a tile alert, the way
-// saving a dashboard through the API does. An alert that fails validation is
-// skipped and keeps its last valid version; a provisioned alert whose tile no
-// longer declares one is removed. Alerts created in the app are left alone.
+// saving a dashboard through the API does. An alert that fails validation, or
+// is listed in `unresolved`, is skipped and keeps its last valid version; a
+// provisioned alert whose tile no longer declares one is removed. Alerts
+// created in the app are left alone.
 export async function syncProvisionedAlerts(
   dashboard: Pick<IDashboard, '_id' | 'name' | 'tags' | 'tiles'>,
   teamId: string,
   tiles: Tile[],
+  unresolved: Map<string, string> = new Map(),
 ) {
   const team = new Types.ObjectId(teamId);
   const declared = tiles.filter(tile => tile.config.alert != null);
+
+  for (const [tileId, reason] of unresolved) {
+    logger.warn(
+      { name: dashboard.name, tileId, err: reason },
+      'Skipping invalid provisioned tile alert',
+    );
+  }
 
   const alertsByTile: Record<string, AlertInput> = {};
   for (const tile of declared) {
@@ -127,13 +238,53 @@ export async function syncProvisionedAlerts(
     team,
     source: AlertSource.TILE,
     provisioned: true,
-    tileId: { $nin: declared.map(tile => tile.id) },
+    tileId: {
+      $nin: [...declared.map(tile => tile.id), ...unresolved.keys()],
+    },
   });
 }
 
+// Provisioned dashboards outlive their files, but their provisioned alerts
+// must not: a removed or renamed file would otherwise keep notifying. Only
+// called once every file in the directory was read, so a file that is briefly
+// invalid does not lose its alerts.
+export async function deleteOrphanedProvisionedAlerts(
+  teamId: string,
+  declaredNames: string[],
+) {
+  const orphaned = await Dashboard.find(
+    { team: teamId, provisioned: true, name: { $nin: declaredNames } },
+    { _id: 1, name: 1 },
+  ).lean();
+  if (orphaned.length === 0) return;
+
+  const { deletedCount } = await Alert.deleteMany({
+    team: teamId,
+    source: AlertSource.TILE,
+    provisioned: true,
+    dashboard: { $in: orphaned.map(d => d._id) },
+  });
+  if (deletedCount > 0) {
+    logger.info(
+      { teamId, deletedCount, dashboards: orphaned.map(d => d.name) },
+      'Deleted provisioned alerts of dashboards no longer in the provisioner directory',
+    );
+  }
+}
+
 export async function syncDashboards(teamId: string, dir: string) {
-  const dashboards = readDashboardFiles(dir);
+  const { dashboards, complete } = readDashboardDir(dir);
+  // An empty directory is more likely a failed mount than an intent to drop
+  // every provisioned alert, so orphan cleanup needs at least one file.
   if (dashboards.length === 0) return;
+
+  const webhookIdsByName = new Map<string, string[]>();
+  const webhooks = await Webhook.find({ team: teamId }, { name: 1 }).lean();
+  for (const webhook of webhooks) {
+    const ids = webhookIdsByName.get(webhook.name) ?? [];
+    ids.push(webhook._id.toString());
+    webhookIdsByName.set(webhook.name, ids);
+  }
 
   for (const dashboard of dashboards) {
     try {
@@ -149,11 +300,16 @@ export async function syncDashboards(teamId: string, dir: string) {
         );
       }
 
+      const { tiles, unresolved } = resolveWebhookNames(
+        dashboard.tiles || [],
+        webhookIdsByName,
+      );
+
       const result = await Dashboard.findOneAndUpdate(
         { name: dashboard.name, team: teamId, provisioned: true },
         {
           $set: {
-            tiles: dashboard.tiles || [],
+            tiles,
             tags: dashboard.tags || [],
             filters: dashboard.filters || [],
             savedQuery: dashboard.savedQuery ?? null,
@@ -180,7 +336,7 @@ export async function syncDashboards(teamId: string, dir: string) {
         provisioned: true,
       });
       if (saved) {
-        await syncProvisionedAlerts(saved, teamId, dashboard.tiles || []);
+        await syncProvisionedAlerts(saved, teamId, tiles, unresolved);
       }
     } catch (err) {
       logger.error(
@@ -188,6 +344,21 @@ export async function syncDashboards(teamId: string, dir: string) {
         'Failed to provision dashboard',
       );
     }
+  }
+
+  if (!complete) {
+    logger.warn(
+      'Some dashboard files could not be read, skipping cleanup of orphaned provisioned alerts',
+    );
+    return;
+  }
+  try {
+    await deleteOrphanedProvisionedAlerts(
+      teamId,
+      dashboards.map(d => d.name),
+    );
+  } catch (err) {
+    logger.error({ err }, 'Failed to clean up orphaned provisioned alerts');
   }
 }
 

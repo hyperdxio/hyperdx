@@ -241,22 +241,29 @@ API accepts. The provisioner creates or updates that tile alert on every sync:
       "interval": "5m",
       "threshold": 100,
       "thresholdType": "above",
-      "channel": { "type": "webhook", "webhookId": "<webhook ObjectId>" }
+      "channel": { "type": "webhook", "webhookName": "On-call" }
     }
   }
 }
 ```
 
+- A channel names its webhook with `webhookName`, which is looked up among the
+  team's webhooks on every sync, so the same file works across installs and,
+  with `DASHBOARD_PROVISIONER_ALL_TEAMS=true`, across teams that each have a
+  webhook of that name. `webhookId` still works too. A name that matches no
+  webhook, or webhooks of more than one service, fails validation
 - Provisioned alerts are flagged with `provisioned: true`. Removing an alert
   from its tile, or the tile from the file, deletes it on the next sync
+- Removing a dashboard's file, or renaming the dashboard, deletes the
+  provisioned alerts of the dashboard it leaves behind. The dashboard itself is
+  kept, as above. This cleanup only runs when every file in the directory was
+  read and validated, and never when the directory has no valid files, so a
+  broken file or an empty mount does not remove alerts
 - An alert that fails validation (for example an unknown webhook, or a raw SQL
   tile whose display type or query does not support alerts) is skipped with a
   warning and keeps its last valid version
 - Alerts created in the app on a provisioned dashboard are left alone, unless
   the file declares an alert on the same tile, which then replaces it
-- Webhooks belong to a team, so with `DASHBOARD_PROVISIONER_ALL_TEAMS=true` an
-  alert is only created for the team that owns its webhook
-
 
 ## Note on Security
 
