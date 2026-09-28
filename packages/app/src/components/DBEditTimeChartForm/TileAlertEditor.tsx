@@ -14,26 +14,28 @@ import {
   Alert,
   Badge,
   Box,
-  Collapse,
   Group,
   NativeSelect,
   NumberInput,
   Paper,
   Text,
   Tooltip,
-  UnstyledButton,
 } from '@mantine/core';
-import { useDisclosure } from '@mantine/hooks';
 import {
-  IconChevronDown,
   IconHelpCircle,
   IconInfoCircleFilled,
   IconTrash,
+  IconX,
 } from '@tabler/icons-react';
 
 import api from '@/api';
 import { AlertDisplayFields } from '@/components/AlertDisplayFields';
 import { AlertNoteField } from '@/components/AlertNoteField';
+import {
+  AlertPanelActions,
+  AlertPanelFill,
+  useAlertPanel,
+} from '@/components/AlertPanel';
 import { AlertChannelForm } from '@/components/Alerts';
 import { AckAlert } from '@/components/alerts/AckAlert';
 import { AlertHistoryCardList } from '@/components/alerts/AlertHistoryCards';
@@ -68,7 +70,7 @@ export function TileAlertEditor({
   warning?: string;
   tooltip?: string;
 }) {
-  const [opened, { toggle }] = useDisclosure(true);
+  const alertPanel = useAlertPanel();
 
   const alertThresholdType = useWatch({ control, name: 'alert.thresholdType' });
   const alertThreshold = useWatch({ control, name: 'alert.threshold' });
@@ -103,67 +105,73 @@ export function TileAlertEditor({
   const isInline = dashboardId == null;
 
   return (
-    <Paper data-testid="alert-details">
-      <Group justify="space-between" px="sm" pt="sm" pb="sm">
-        <UnstyledButton onClick={toggle}>
-          <Group gap="xs">
-            <IconChevronDown
-              size={14}
-              style={{
-                transform: opened ? 'rotate(0deg)' : 'rotate(-90deg)',
-                transition: 'transform 200ms',
-              }}
-            />
-            <Group gap={4} align="center">
-              <Text size="sm" fw={500} mt={2}>
-                Alert
-              </Text>
-              {tooltip && (
-                <Tooltip label={tooltip} withArrow>
-                  <IconHelpCircle size={16} opacity={0.5} />
-                </Tooltip>
-              )}
-              {error && (
-                <Tooltip label={error} withArrow>
-                  <Badge
-                    color="var(--color-text-danger)"
-                    size="xs"
-                    variant="light"
-                    ml="xs"
-                  >
-                    Invalid Query
-                  </Badge>
-                </Tooltip>
-              )}
-              {warning && (
-                <Tooltip label={warning} withArrow>
-                  <Badge color="yellow" size="xs" variant="light" ml="xs">
-                    Warning
-                  </Badge>
-                </Tooltip>
-              )}
-            </Group>
+    <AlertPanelFill>
+      <Paper data-testid="alert-details">
+        <Group justify="space-between" wrap="nowrap" px="sm" pt="sm" pb="sm">
+          <Group gap={4} align="center">
+            <Text size="sm" fw={500} mt={2}>
+              Alert
+            </Text>
+            {tooltip && (
+              <Tooltip label={tooltip} withArrow>
+                <IconHelpCircle size={16} opacity={0.5} />
+              </Tooltip>
+            )}
+            {error && (
+              <Tooltip label={error} withArrow>
+                <Badge
+                  color="var(--color-text-danger)"
+                  size="xs"
+                  variant="light"
+                  ml="xs"
+                >
+                  Invalid Query
+                </Badge>
+              </Tooltip>
+            )}
+            {warning && (
+              <Tooltip label={warning} withArrow>
+                <Badge color="yellow" size="xs" variant="light" ml="xs">
+                  Warning
+                </Badge>
+              </Tooltip>
+            )}
           </Group>
-        </UnstyledButton>
-        <Group gap="xs">
-          {alertItem && <AlertHistoryCardList alert={alertItem} />}
-          {alertItem && <AckAlert alert={alertItem} />}
-          {onRemove && (
-            <Tooltip label="Remove alert">
-              <ActionIcon
-                variant="danger"
-                color="red"
-                size="sm"
-                onClick={onRemove}
-                data-testid="remove-alert-button"
+          <Group gap="xs" wrap="nowrap">
+            {alertItem && <AlertHistoryCardList alert={alertItem} />}
+            {alertItem && <AckAlert alert={alertItem} />}
+            {onRemove && (
+              <Tooltip label="Remove alert">
+                <ActionIcon
+                  variant="danger"
+                  color="red"
+                  size="sm"
+                  onClick={onRemove}
+                  data-testid="remove-alert-button"
+                >
+                  <IconTrash size={14} />
+                </ActionIcon>
+              </Tooltip>
+            )}
+            {alertPanel && (
+              <Tooltip
+                label={alertPanel.isDraft ? 'Discard alert' : 'Discard changes'}
               >
-                <IconTrash size={14} />
-              </ActionIcon>
-            </Tooltip>
-          )}
+                <ActionIcon
+                  variant="subtle"
+                  size="sm"
+                  onClick={alertPanel.close}
+                  aria-label={
+                    alertPanel.isDraft ? 'Discard alert' : 'Discard changes'
+                  }
+                  data-testid="close-alert-panel-button"
+                >
+                  <IconX size={14} />
+                </ActionIcon>
+              </Tooltip>
+            )}
+          </Group>
         </Group>
-      </Group>
-      <Collapse expanded={opened}>
         <Box px="sm" pb="sm">
           <Group gap="xs">
             <Text size="sm" opacity={0.7}>
@@ -291,8 +299,9 @@ export function TileAlertEditor({
               comparison.
             </Alert>
           )}
+          <AlertPanelActions />
         </Box>
-      </Collapse>
-    </Paper>
+      </Paper>
+    </AlertPanelFill>
   );
 }

@@ -33,12 +33,12 @@ const defaultTableConnection = {
 };
 
 type WrapperProps = {
-  children: (props: { control: any; handleSubmit: any }) => React.ReactNode;
+  children: (props: { control: any }) => React.ReactNode;
   defaultValues?: Partial<ChartEditorFormState>;
 };
 
 function FormWrapper({ children, defaultValues }: WrapperProps) {
-  const { control, handleSubmit } = useForm<ChartEditorFormState>({
+  const { control } = useForm<ChartEditorFormState>({
     defaultValues: {
       displayType: DisplayType.Line,
       name: 'Test Chart',
@@ -57,7 +57,7 @@ function FormWrapper({ children, defaultValues }: WrapperProps) {
     },
   });
 
-  return <>{children({ control, handleSubmit })}</>;
+  return <>{children({ control })}</>;
 }
 
 const renderActionBar = (
@@ -65,26 +65,19 @@ const renderActionBar = (
   formValues: Partial<ChartEditorFormState> = {},
 ) => {
   const onSubmit = jest.fn();
-  const handleSave = jest.fn();
-  const onSave = jest.fn();
-  const onClose = jest.fn();
   const setSaveToDashboardModalOpen = jest.fn();
 
   const result = renderWithMantine(
     <FormWrapper defaultValues={formValues}>
-      {({ control, handleSubmit }) => (
+      {({ control }) => (
         <ChartActionBar
           control={control}
-          handleSubmit={handleSubmit}
           tableConnection={defaultTableConnection}
           activeTab="time"
           isRawSqlInput={false}
           parentRef={null}
           groupBy=""
           onSubmit={onSubmit}
-          handleSave={handleSave}
-          onSave={onSave}
-          onClose={onClose}
           setSaveToDashboardModalOpen={setSaveToDashboardModalOpen}
           {...overrides}
         />
@@ -95,9 +88,6 @@ const renderActionBar = (
   return {
     ...result,
     onSubmit,
-    handleSave,
-    onSave,
-    onClose,
     setSaveToDashboardModalOpen,
   };
 };
@@ -160,39 +150,6 @@ describe('ChartActionBar', () => {
 
       expect(await screen.findByText(disabledReason)).toBeInTheDocument();
     });
-  });
-
-  it('should render Save button when onSave is provided', () => {
-    renderActionBar();
-
-    expect(screen.getByTestId('chart-save-button')).toBeInTheDocument();
-    expect(screen.getByTestId('chart-save-button')).toHaveTextContent('Save');
-  });
-
-  it('should not render Save button when onSave is undefined', () => {
-    renderActionBar({ onSave: undefined });
-
-    expect(screen.queryByTestId('chart-save-button')).not.toBeInTheDocument();
-  });
-
-  it('should render Cancel button when onClose is provided', () => {
-    renderActionBar();
-
-    expect(screen.getByText('Cancel')).toBeInTheDocument();
-  });
-
-  it('should not render Cancel button when onClose is undefined', () => {
-    renderActionBar({ onClose: undefined });
-
-    expect(screen.queryByText('Cancel')).not.toBeInTheDocument();
-  });
-
-  it('should call onClose when Cancel is clicked', async () => {
-    const { onClose } = renderActionBar();
-
-    await userEvent.click(screen.getByText('Cancel'));
-
-    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   it('should render Run button for non-markdown tabs', () => {
@@ -327,18 +284,10 @@ describe('ChartActionBar', () => {
     expect(screen.queryByTestId('time-picker')).not.toBeInTheDocument();
   });
 
-  it('should disable Cancel button when isSaving is true', () => {
-    renderActionBar({ isSaving: true });
-
-    expect(screen.getByText('Cancel').closest('button')).toBeDisabled();
-  });
-
   it('should render action bar controls for raw SQL input mode', () => {
     renderActionBar({ isRawSqlInput: true, activeTab: 'time' });
 
     // The key regression test: action bar renders even for raw SQL
-    expect(screen.getByTestId('chart-save-button')).toBeInTheDocument();
-    expect(screen.getByText('Cancel')).toBeInTheDocument();
     expect(screen.getByTestId('chart-run-query-button')).toBeInTheDocument();
     expect(screen.getByTestId('granularity-picker')).toBeInTheDocument();
   });

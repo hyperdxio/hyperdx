@@ -353,7 +353,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
       await dashboardPage.chartEditor.setChartName(tileName);
 
       await expect(dashboardPage.chartEditor.alertButton).toHaveText(
-        'Add Alert',
+        'Add alert',
       );
       await dashboardPage.chartEditor.clickAddAlert();
       await dashboardPage.chartEditor.addNewWebhookButton.click();
@@ -419,6 +419,9 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
       // Hover over first tile to reveal edit button
       await dashboardPage.editTile(0);
 
+      await expect(dashboardPage.chartEditor.alertButton).toHaveText(
+        'Edit alert',
+      );
       await dashboardPage.chartEditor.clickRemoveAlert();
 
       await dashboardPage.saveTile();

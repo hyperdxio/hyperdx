@@ -562,12 +562,13 @@ describe('DBEditTimeChartForm - Add/delete alerts for display type Number', () =
 
     // Find and click the add alert button
     const alertButton = screen.getByTestId('alert-button');
-    expect(alertButton).toHaveTextContent('Add Alert');
+    expect(alertButton).toHaveTextContent('Add alert');
     await userEvent.click(alertButton);
 
-    // Verify that the alert is added
-    const alert = screen.getByTestId('alert-details');
-    expect(alert).toBeInTheDocument();
+    // The new alert's settings open in the side panel
+    expect(screen.getByTestId('alert-panel')).toContainElement(
+      screen.getByTestId('alert-details'),
+    );
   });
 
   it('should remove an alert when clicking the remove alert button', async () => {
@@ -582,7 +583,8 @@ describe('DBEditTimeChartForm - Add/delete alerts for display type Number', () =
     const alert = screen.getByTestId('alert-details');
     expect(alert).toBeInTheDocument();
 
-    expect(addAlertButton).not.toBeVisible();
+    // The button stays, now toggling the panel for the existing alert
+    expect(addAlertButton).toHaveAttribute('aria-expanded', 'true');
 
     const removeAlertButton = screen.getByTestId('remove-alert-button');
     await userEvent.click(removeAlertButton);
@@ -592,6 +594,128 @@ describe('DBEditTimeChartForm - Add/delete alerts for display type Number', () =
 
     // Verify that onSave was not called
     expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it('discards a new alert closed without confirming it', async () => {
+    renderAlertComponent();
+
+    await userEvent.click(screen.getByTestId('alert-button'));
+    await userEvent.click(screen.getByTestId('close-alert-panel-button'));
+
+    expect(screen.queryByTestId('alert-details')).not.toBeInTheDocument();
+    expect(screen.getByTestId('alert-button')).toHaveTextContent('Add alert');
+  });
+
+  it('keeps the panel open when confirming an incomplete alert', async () => {
+    renderAlertComponent();
+
+    // A new alert has no webhook yet.
+    await userEvent.click(screen.getByTestId('alert-button'));
+    await userEvent.click(screen.getByTestId('alert-panel-confirm-button'));
+
+    expect(
+      await screen.findByText("Webhook ID can't be empty"),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId('alert-panel')).toBeInTheDocument();
+    expect(screen.getByTestId('alert-button')).toHaveTextContent('Add alert');
+  });
+
+  describe('with an existing alert', () => {
+    const renderWithExistingAlert = (
+      alert: NonNullable<SavedChartConfig['alert']>,
+      props: Partial<React.ComponentProps<typeof DBEditTimeChartForm>> = {},
+    ) =>
+      renderAlertComponent({
+        chartConfig: {
+          ...defaultChartConfig,
+          displayType: DisplayType.Number,
+          alert,
+        },
+        ...props,
+      });
+
+    const completeAlert = {
+      ...DEFAULT_TILE_ALERT,
+      channels: [{ type: 'webhook' as const, webhookId: 'webhook-1' }],
+    };
+
+    it('opens its settings on request, offering to edit it', async () => {
+      renderWithExistingAlert(completeAlert);
+
+      expect(screen.queryByTestId('alert-panel')).not.toBeInTheDocument();
+      expect(screen.getByTestId('alert-button')).toHaveTextContent(
+        'Edit alert',
+      );
+
+      await userEvent.click(screen.getByTestId('alert-button'));
+
+      expect(screen.getByTestId('alert-panel')).toContainElement(
+        screen.getByTestId('alert-details'),
+      );
+      expect(
+        screen.getByTestId('alert-panel-confirm-button'),
+      ).toHaveTextContent('Update alert');
+    });
+
+    it('keeps the alert when the panel is closed', async () => {
+      renderWithExistingAlert(completeAlert);
+
+      await userEvent.click(screen.getByTestId('alert-button'));
+      await userEvent.click(screen.getByTestId('close-alert-panel-button'));
+
+      expect(screen.queryByTestId('alert-panel')).not.toBeInTheDocument();
+      expect(screen.getByTestId('alert-button')).toHaveTextContent(
+        'Edit alert',
+      );
+    });
+
+    it('keeps the panel open when Edit alert is clicked again', async () => {
+      renderWithExistingAlert(completeAlert);
+
+      await userEvent.click(screen.getByTestId('alert-button'));
+      await userEvent.click(screen.getByTestId('alert-button'));
+
+      expect(screen.getByTestId('alert-panel')).toBeInTheDocument();
+    });
+
+    const nameInput = () => screen.getByTestId('alert-display-name-input');
+
+    it('reverts edits closed without updating', async () => {
+      renderWithExistingAlert(completeAlert);
+
+      await userEvent.click(screen.getByTestId('alert-button'));
+      await userEvent.type(nameInput(), 'Renamed');
+      await userEvent.click(screen.getByTestId('close-alert-panel-button'));
+      await userEvent.click(screen.getByTestId('alert-button'));
+
+      expect(nameInput()).toHaveValue('');
+    });
+
+    it('keeps edits confirmed with Update alert', async () => {
+      renderWithExistingAlert(completeAlert);
+
+      await userEvent.click(screen.getByTestId('alert-button'));
+      await userEvent.type(nameInput(), 'Renamed');
+      await userEvent.click(screen.getByTestId('alert-panel-confirm-button'));
+      await waitFor(() =>
+        expect(screen.queryByTestId('alert-panel')).not.toBeInTheDocument(),
+      );
+      await userEvent.click(screen.getByTestId('alert-button'));
+
+      expect(nameInput()).toHaveValue('Renamed');
+    });
+
+    it('reopens the panel when a save fails on the alert', async () => {
+      const onSave = jest.fn();
+      // No webhook picked, so it can't be saved.
+      renderWithExistingAlert(DEFAULT_TILE_ALERT, { onSave });
+      expect(screen.queryByTestId('alert-panel')).not.toBeInTheDocument();
+
+      await userEvent.click(screen.getByTestId('chart-save-button'));
+
+      expect(await screen.findByTestId('alert-panel')).toBeInTheDocument();
+      expect(onSave).not.toHaveBeenCalled();
+    });
   });
 
   it('shows alert scheduling fields inside advanced settings', async () => {
@@ -1225,6 +1349,7 @@ describe('DBEditTimeChartForm - dashboard filters', () => {
   it('can be turned back on once the alert is removed', async () => {
     renderComponent({ getDashboardFilters, chartConfig: configWithAlert });
 
+    await userEvent.click(screen.getByTestId('alert-button'));
     await userEvent.click(screen.getByTestId('remove-alert-button'));
 
     expect(filterSwitch()).toBeChecked();
@@ -1308,6 +1433,9 @@ describe('DBEditTimeChartForm - Inline alerts', () => {
       onSaveAlert,
     });
 
+    // Existing alerts open their panel on request.
+    await userEvent.click(screen.getByTestId('alert-button'));
+
     await userEvent.click(screen.getByTestId('chart-save-alert-button'));
 
     expect(await screen.findByText('Alert name is required')).toBeVisible();
@@ -1319,6 +1447,9 @@ describe('DBEditTimeChartForm - Inline alerts', () => {
     renderInlineAlertForm({
       chartConfig: { ...validNumberConfig, alert: DEFAULT_TILE_ALERT },
     });
+
+    // Existing alerts open their panel on request.
+    await userEvent.click(screen.getByTestId('alert-button'));
 
     const button = screen.getByTestId('alert-tags-button');
     expect(button).toHaveTextContent('0');
@@ -1343,6 +1474,9 @@ describe('DBEditTimeChartForm - Inline alerts', () => {
       },
       onSaveAlert,
     });
+
+    // Existing alerts open their panel on request.
+    await userEvent.click(screen.getByTestId('alert-button'));
 
     await userEvent.type(
       screen.getByTestId('alert-display-name-input'),
