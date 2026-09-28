@@ -31,6 +31,7 @@ import {
   Tooltip,
   UnstyledButton,
 } from '@mantine/core';
+import { useDebouncedValue } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
   IconArrowBarToLeft,
@@ -65,6 +66,7 @@ import {
 import { useSource } from '@/source';
 import { useLocalStorage } from '@/utils';
 
+import { FilterKeySearch } from './DBSearchPageFilters/FilterKeySearch';
 import { FilterSettingsPanel } from './DBSearchPageFilters/FilterSettingsPopover';
 import { useFetchFacets } from './DBSearchPageFilters/hooks';
 import { NestedFilterGroup } from './DBSearchPageFilters/NestedFilterGroup';
@@ -73,6 +75,7 @@ import {
   PinShareMenu,
 } from './DBSearchPageFilters/PinShareMenu';
 import { SharedFiltersSection } from './DBSearchPageFilters/SharedFilters';
+import { useGroupExpansion } from './DBSearchPageFilters/useGroupExpansion';
 import {
   getFilterStateEntry,
   groupFacetsByBaseName,
@@ -87,6 +90,9 @@ const INITIAL_MAX_VALUES_DISPLAYED = 10;
 
 /* The maximum number of values per filter to render at once after loading more */
 const SHOW_MORE_MAX_VALUES_DISPLAYED = 50;
+
+/* How long typing in the filter-name search settles before it queries */
+const SEARCH_DEBOUNCE_MS = 300;
 
 // This function will clean json string attributes specifically. It will turn a string like
 // 'toString(ResourceAttributes.`hdx`.`sdk`.`version`)' into 'ResourceAttributes.hdx.sdk.version'.
@@ -400,6 +406,12 @@ export type FilterGroupProps = {
   loadMoreLoading: boolean;
   hasLoadedMore: boolean;
   isDefaultExpanded?: boolean;
+  /**
+   * Holds the group open for as long as it is true, without touching the
+   * user's own expand/collapse state — so a filter-name search can reveal
+   * matches and the group snaps back when the search is cleared.
+   */
+  isForceExpanded?: boolean;
   showFilterCounts?: boolean;
   'data-testid'?: string;
   chartConfig: BuilderChartConfigWithDateRange;
@@ -898,6 +910,7 @@ export const FilterGroup = ({
   loadMoreLoading,
   hasLoadedMore,
   isDefaultExpanded,
+  isForceExpanded,
   showFilterCounts,
   'data-testid': dataTestId,
   chartConfig,
@@ -905,7 +918,10 @@ export const FilterGroup = ({
   distributionKey,
   onRangeChange,
 }: FilterGroupProps) => {
-  const [isExpanded, setExpanded] = useState(isDefaultExpanded ?? false);
+  const [expanded, setExpanded, expandBrowse] = useGroupExpansion(
+    isDefaultExpanded ?? false,
+    isForceExpanded,
+  );
   const [showDistributions, setShowDistributions] = useState(false);
   const [isFetchingDistribution, setIsFetchingDistribution] = useState(false);
 
@@ -923,7 +939,7 @@ export const FilterGroup = ({
       }
       return !prev;
     });
-  }, []);
+  }, [setExpanded]);
 
   const onDistributionError = useCallback(() => {
     setShowDistributions(false);
@@ -931,9 +947,9 @@ export const FilterGroup = ({
 
   useEffect(() => {
     if (isDefaultExpanded) {
-      setExpanded(true);
+      expandBrowse();
     }
-  }, [isDefaultExpanded]);
+  }, [isDefaultExpanded, expandBrowse]);
 
   const totalAppliedFiltersSize =
     selectedValues.included.size +
@@ -951,7 +967,7 @@ export const FilterGroup = ({
       variant="unstyled"
       chevronPosition="left"
       classNames={{ chevron: classes.chevron }}
-      value={isExpanded ? displayName : null}
+      value={expanded ? displayName : null}
       onChange={v => {
         setExpanded(v === displayName);
       }}
@@ -1024,7 +1040,7 @@ export const FilterGroup = ({
                 onRangeChange={onRangeChange}
               />
             ) : (
-              isExpanded && (
+              expanded && (
                 <FilterGroupBody
                   name={name}
                   options={options}
@@ -1170,10 +1186,16 @@ const DBSearchPageFiltersComponent = ({
   );
 
   const [showMoreFields, setShowMoreFields] = useState(false);
+  const [filterSearch, setFilterSearch] = useState('');
+  const [debouncedFilterSearch] = useDebouncedValue(
+    filterSearch.trim(),
+    SEARCH_DEBOUNCE_MS,
+  );
   const {
     data: fetchFacetsData,
     isLoading: isFacetsLoading,
     isFetching: isFacetsFetching,
+    isSearchFetching,
     error,
     loadMoreFacetsForKey,
     loadMoreLoadingKeys,
@@ -1185,6 +1207,7 @@ const DBSearchPageFiltersComponent = ({
     mode: showAllValues ? 'all' : 'exact',
     filterState,
     showMoreFields,
+    searchQuery: debouncedFilterSearch,
   });
   const facets = fetchFacetsData.keyValues;
 
@@ -1342,6 +1365,34 @@ const DBSearchPageFiltersComponent = ({
     sharedFilterKeys,
   ]);
 
+  // Applied against the raw input, not the debounced value: filtering what is
+  // already on screen costs nothing, so it should keep up with typing even
+  // while the query behind it is still settling.
+  const isSearching = filterSearch.trim().length > 0;
+  // The debounce has not fired yet, so no query is in flight for what is
+  // currently typed. Without this the sidebar answers "No matching filters"
+  // for 300ms before it has asked anything.
+  const isSearchPending =
+    isSearching && filterSearch.trim() !== debouncedFilterSearch;
+  const isSearchBusy = isSearchPending || isSearchFetching;
+  const matchesFilterSearch = useCallback(
+    (key: string) => {
+      const needle = filterSearch.trim().toLowerCase();
+      if (!needle) return true;
+      return cleanedFacetName(key).toLowerCase().includes(needle);
+    },
+    [filterSearch],
+  );
+
+  const visibleFacets = useMemo(
+    () => shownFacets.filter(facet => matchesFilterSearch(facet.key)),
+    [shownFacets, matchesFilterSearch],
+  );
+  const visibleSharedFacets = useMemo(
+    () => sharedFacets.filter(facet => matchesFilterSearch(facet.key)),
+    [sharedFacets, matchesFilterSearch],
+  );
+
   // Check if shared facets have active selections
   const showSharedClearButton = useMemo(
     () =>
@@ -1421,10 +1472,17 @@ const DBSearchPageFiltersComponent = ({
   const renderFacetList = useCallback(
     (
       facets: { key: string; value: (string | boolean)[] }[],
-      options?: { keyPrefix?: string; isDefaultExpanded?: boolean },
+      options?: {
+        keyPrefix?: string;
+        isDefaultExpanded?: boolean;
+        isForceExpanded?: boolean;
+      },
     ) => {
-      const { keyPrefix = '', isDefaultExpanded: forceExpanded } =
-        options ?? {};
+      const {
+        keyPrefix = '',
+        isDefaultExpanded: forceExpanded,
+        isForceExpanded,
+      } = options ?? {};
       const { grouped, nonGrouped } = groupFacetsByBaseName(facets);
 
       const makeValuePins = (key: string): ValuePinHandlers => ({
@@ -1516,6 +1574,7 @@ const DBSearchPageFiltersComponent = ({
                   );
                 })
               }
+              isForceExpanded={isForceExpanded}
               chartConfig={chartConfig}
               isLive={isLive}
             />
@@ -1571,6 +1630,7 @@ const DBSearchPageFiltersComponent = ({
                           entry.range != null)))
                   );
                 })()}
+                isForceExpanded={isForceExpanded}
                 chartConfig={chartConfig}
                 isLive={isLive}
                 onRangeChange={range => setFilterRange(facet.key, range)}
@@ -1690,7 +1750,7 @@ const DBSearchPageFiltersComponent = ({
 
           {isSharedFiltersVisible && (
             <SharedFiltersSection
-              hasSharedFacets={sharedFacets.length > 0}
+              hasSharedFacets={visibleSharedFacets.length > 0}
               opened={isSharedFiltersExpanded}
               onToggle={() =>
                 setSharedFiltersExpanded(!isSharedFiltersExpanded)
@@ -1698,7 +1758,7 @@ const DBSearchPageFiltersComponent = ({
               showClearButton={showSharedClearButton}
               onClearSelections={clearSharedSelections}
             >
-              {renderFacetList(sharedFacets, {
+              {renderFacetList(visibleSharedFacets, {
                 keyPrefix: 'shared-',
                 isDefaultExpanded: true,
               })}
@@ -1706,7 +1766,7 @@ const DBSearchPageFiltersComponent = ({
           )}
 
           {/* Divider between shared and regular filters */}
-          {isSharedFiltersVisible && sharedFacets.length > 0 && (
+          {isSharedFiltersVisible && visibleSharedFacets.length > 0 && (
             <Divider color="dark.4" />
           )}
 
@@ -1827,17 +1887,35 @@ const DBSearchPageFiltersComponent = ({
                     />
                   )}
 
+                <FilterKeySearch
+                  value={filterSearch}
+                  onChange={setFilterSearch}
+                  isFetching={isSearchBusy}
+                />
+
                 {isFacetsLoading ? (
                   <Flex align="center" justify="center">
                     <Loader size="xs" color="gray" />
                   </Flex>
                 ) : (
-                  shownFacets.length === 0 && (
+                  visibleFacets.length === 0 &&
+                  (isSearching ? (
+                    <Text size="xxs">
+                      {isSearchBusy
+                        ? 'Searching filters…'
+                        : 'No matching filters'}
+                    </Text>
+                  ) : (
                     <Text size="xxs">No filters available</Text>
-                  )
+                  ))
                 )}
                 {/* Show facets even when loading to ensure pinned filters are visible while loading */}
-                {renderFacetList(shownFacets)}
+                {renderFacetList(visibleFacets, {
+                  // A match buried in a collapsed group is a match the user
+                  // cannot see, which defeats searching for it. Transient, so
+                  // clearing the search restores the browse view as it was.
+                  isForceExpanded: isSearching,
+                })}
 
                 <Button
                   variant="secondary"

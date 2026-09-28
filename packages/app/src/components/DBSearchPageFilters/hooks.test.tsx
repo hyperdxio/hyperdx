@@ -1,6 +1,8 @@
 /* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
 import React from 'react';
 import { enableMapSet } from 'immer';
+import { JSDataType } from '@hyperdx/common-utils/dist/clickhouse';
+import type { Field } from '@hyperdx/common-utils/dist/core/metadata';
 import { FilterState } from '@hyperdx/common-utils/dist/filters';
 import {
   BuilderChartConfigWithDateRange,
@@ -10,6 +12,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react';
 
 import api from '@/api';
+import type { Facet } from '@/hooks/useMetadata';
 import * as useMetadataModule from '@/hooks/useMetadata';
 import * as searchFiltersModule from '@/searchFilters';
 import * as sourceModule from '@/source';
@@ -83,6 +86,11 @@ const useMapColumns = jest.mocked(useMetadataModule.useMapColumns);
 const useAllFields = jest.mocked(useMetadataModule.useAllFields);
 const useGetKeyValues = jest.mocked(useMetadataModule.useGetKeyValues);
 
+// Each render issues two `useGetKeyValues` calls: the browse list, then the
+// filter-name search.
+const lastBrowseCall = () => useGetKeyValues.mock.calls.at(-2);
+const lastSearchCall = () => useGetKeyValues.mock.calls.at(-1);
+
 const CHART_CONFIG: BuilderChartConfigWithDateRange = {
   connection: 'conn1',
   from: { databaseName: 'db', tableName: 'logs' },
@@ -129,6 +137,24 @@ const mockSourceQuery = (data: SourceQueryResult['data']) =>
 
 const mockMetadata = (metadata: Partial<MetadataWithSettings>) =>
   useMetadataWithSettings.mockReturnValue(metadata as MetadataWithSettings);
+
+type AllFieldsResult = ReturnType<typeof useMetadataModule.useAllFields>;
+type MapColumnsResult = ReturnType<typeof useMetadataModule.useMapColumns>;
+type KeyValuesResult = ReturnType<typeof useMetadataModule.useGetKeyValues>;
+
+const mockAllFields = (data: Field[]) =>
+  useAllFields.mockReturnValue({ data } as AllFieldsResult);
+
+const mockMapColumns = (data: string[]) =>
+  useMapColumns.mockReturnValue({ data } as MapColumnsResult);
+
+const settledKeyValues = (data: Facet[]) =>
+  ({
+    data,
+    isLoading: false,
+    isFetching: false,
+    error: null,
+  }) as KeyValuesResult;
 
 function makeWrapper() {
   const queryClient = new QueryClient({
@@ -214,7 +240,7 @@ describe('useFetchFacets', () => {
         { wrapper },
       );
 
-      const call = useGetKeyValues.mock.calls.at(-1);
+      const call = lastBrowseCall();
       expect(call?.[0]?.mode).toBe('exact');
       expect(call?.[1]?.enabled).toBe(true);
     });
@@ -234,7 +260,7 @@ describe('useFetchFacets', () => {
         { wrapper },
       );
 
-      const call = useGetKeyValues.mock.calls.at(-1);
+      const call = lastBrowseCall();
       expect(call?.[0]?.mode).toBe('all');
       expect(call?.[1]?.enabled).toBe(true);
     });
@@ -254,7 +280,7 @@ describe('useFetchFacets', () => {
         { wrapper },
       );
 
-      const call = useGetKeyValues.mock.calls.at(-1);
+      const call = lastBrowseCall();
       expect(call?.[0]?.mode).toBe('exact');
     });
   });
@@ -280,7 +306,7 @@ describe('useFetchFacets', () => {
         { wrapper },
       );
 
-      const call = useGetKeyValues.mock.calls.at(-1);
+      const call = lastBrowseCall();
       expect(call?.[1]?.enabled).toBe(false);
     });
 
@@ -300,7 +326,7 @@ describe('useFetchFacets', () => {
         { wrapper },
       );
 
-      const call = useGetKeyValues.mock.calls.at(-1);
+      const call = lastBrowseCall();
       expect(call?.[1]?.enabled).toBe(true);
     });
 
@@ -1143,6 +1169,192 @@ describe('useFetchFacets', () => {
       });
 
       expect(result.current.extraFacetKeys.size).toBe(0);
+    });
+  });
+
+  // The filter-name search runs as a second query so the browse list survives
+  // typing untouched, and it looks at every string field rather than the
+  // low-cardinality subset the browse list narrows to.
+  describe('searchQuery', () => {
+    const FIELDS: Field[] = [
+      {
+        path: ['ServiceName'],
+        type: 'LowCardinality(String)',
+        jsType: JSDataType.String,
+      },
+      { path: ['TraceId'], type: 'String', jsType: JSDataType.String },
+      { path: ['SpanId'], type: 'String', jsType: JSDataType.String },
+      { path: ['Duration'], type: 'UInt64', jsType: JSDataType.Number },
+      {
+        path: ['LogAttributes', 'service.version'],
+        type: 'String',
+        jsType: JSDataType.String,
+      },
+    ];
+
+    const renderWithSearch = (searchQuery?: string) => {
+      setupDefaultMocks({ withMVs: false });
+      mockAllFields(FIELDS);
+      mockMapColumns(['LogAttributes']);
+      const { wrapper } = makeWrapper();
+      return renderHook(
+        () =>
+          useFetchFacets({
+            chartConfig: CHART_CONFIG,
+            sourceId: 'source1',
+            dateRange: DATE_RANGE,
+            mode: 'all',
+            searchQuery,
+          }),
+        { wrapper },
+      );
+    };
+
+    it('does not query when there is no search', () => {
+      renderWithSearch();
+
+      expect(lastSearchCall()?.[0]?.keys).toEqual([]);
+      expect(lastSearchCall()?.[1]?.enabled).toBe(false);
+    });
+
+    it('does not query for a single character', () => {
+      renderWithSearch('s');
+
+      expect(lastSearchCall()?.[1]?.enabled).toBe(false);
+    });
+
+    it('reaches fields the browse list never requests', () => {
+      renderWithSearch('trace');
+
+      expect(lastBrowseCall()?.[0]?.keys).not.toContain('TraceId');
+      expect(lastSearchCall()?.[0]?.keys).toEqual(['TraceId']);
+      expect(lastSearchCall()?.[1]?.enabled).toBe(true);
+    });
+
+    it('matches map sub-fields and ranks prefix matches first', () => {
+      renderWithSearch('service');
+
+      expect(lastSearchCall()?.[0]?.keys).toEqual([
+        'ServiceName',
+        "LogAttributes['service.version']",
+      ]);
+    });
+
+    it('leaves the browse query untouched while searching', () => {
+      renderWithSearch();
+      const browseKeys = lastBrowseCall()?.[0]?.keys;
+
+      jest.clearAllMocks();
+      renderWithSearch('trace');
+
+      expect(lastBrowseCall()?.[0]?.keys).toEqual(browseKeys);
+      expect(lastBrowseCall()?.[1]?.enabled).toBe(true);
+    });
+
+    it('does not re-request keys the browse query already answered', () => {
+      setupDefaultMocks({ withMVs: false });
+      mockAllFields(FIELDS);
+      // Browse answered for ServiceName, so searching for it must not ask
+      // again; TraceId is absent from the browse page and still must.
+      useGetKeyValues.mockImplementation(({ keys }) =>
+        settledKeyValues(
+          keys.includes('ServiceName')
+            ? [{ key: 'ServiceName', value: ['api'] }]
+            : [],
+        ),
+      );
+
+      const { wrapper } = makeWrapper();
+      const { rerender } = renderHook(
+        (props: { searchQuery: string }) =>
+          useFetchFacets({
+            chartConfig: CHART_CONFIG,
+            sourceId: 'source1',
+            dateRange: DATE_RANGE,
+            mode: 'all',
+            searchQuery: props.searchQuery,
+          }),
+        { wrapper, initialProps: { searchQuery: 'ServiceName' } },
+      );
+
+      expect(lastSearchCall()?.[0]?.keys).toEqual([]);
+      expect(lastSearchCall()?.[1]?.enabled).toBe(false);
+
+      rerender({ searchQuery: 'trace' });
+
+      expect(lastSearchCall()?.[0]?.keys).toEqual(['TraceId']);
+      expect(lastSearchCall()?.[1]?.enabled).toBe(true);
+    });
+
+    it('drops the last search page once the search is cleared', () => {
+      setupDefaultMocks({ withMVs: false });
+      mockAllFields(FIELDS);
+      // Browse answers with ServiceName; the search query answers with
+      // TraceId and keeps doing so after it is disabled, standing in for
+      // `keepPreviousData` still serving the last page. Distinct facets, so
+      // dropping the guard fails this test rather than passing by overlap.
+      useGetKeyValues.mockImplementation(({ keys }) =>
+        settledKeyValues(
+          keys.includes('ServiceName')
+            ? [{ key: 'ServiceName', value: ['api'] }]
+            : [{ key: 'TraceId', value: ['abc'] }],
+        ),
+      );
+
+      const { wrapper } = makeWrapper();
+      const { result, rerender } = renderHook(
+        (props: { searchQuery?: string }) =>
+          useFetchFacets({
+            chartConfig: CHART_CONFIG,
+            sourceId: 'source1',
+            dateRange: DATE_RANGE,
+            mode: 'all',
+            searchQuery: props.searchQuery,
+          }),
+        { wrapper, initialProps: { searchQuery: 'trace' } },
+      );
+
+      expect(result.current.data.keyValues).toEqual([
+        { key: 'ServiceName', value: ['api'] },
+        { key: 'TraceId', value: ['abc'] },
+      ]);
+
+      rerender({ searchQuery: '' });
+
+      expect(result.current.data.keyValues).toEqual([
+        { key: 'ServiceName', value: ['api'] },
+      ]);
+      expect(lastSearchCall()?.[1]?.enabled).toBe(false);
+    });
+
+    it('unions search results into the facet list without duplicating keys', () => {
+      setupDefaultMocks({ withMVs: false });
+      mockAllFields(FIELDS);
+      useGetKeyValues.mockImplementation(({ keys }) =>
+        settledKeyValues(
+          keys.includes('TraceId')
+            ? [{ key: 'TraceId', value: ['abc'] }]
+            : [{ key: 'ServiceName', value: ['api'] }],
+        ),
+      );
+
+      const { wrapper } = makeWrapper();
+      const { result } = renderHook(
+        () =>
+          useFetchFacets({
+            chartConfig: CHART_CONFIG,
+            sourceId: 'source1',
+            dateRange: DATE_RANGE,
+            mode: 'all',
+            searchQuery: 'trace',
+          }),
+        { wrapper },
+      );
+
+      expect(result.current.data.keyValues).toEqual([
+        { key: 'ServiceName', value: ['api'] },
+        { key: 'TraceId', value: ['abc'] },
+      ]);
     });
   });
 });
