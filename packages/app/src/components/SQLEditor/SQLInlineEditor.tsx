@@ -32,6 +32,7 @@ import CodeMirror, {
 
 import { EDITOR_INPUT_HEIGHTS } from '@/components/editorInputHeights';
 import { useMultipleAllFields } from '@/hooks/useMetadata';
+import { useStableCallback } from '@/hooks/useStableCallback';
 import { useSource } from '@/source';
 import { useQueryHistory } from '@/utils';
 import { clickhouseSql } from '@/utils/codeMirror';
@@ -273,6 +274,18 @@ export default function SQLInlineEditor({
     ];
   }, [parentRef]);
 
+  // Stable so a new onSubmit identity (every live tail tick) doesn't reconfigure the editor.
+  const submitFromEditor = useStableCallback(() => {
+    if (onSubmit == null) {
+      return false;
+    }
+    if (queryHistoryType && ref?.current?.view) {
+      setQueryHistory(ref?.current?.view.state.doc.toString());
+    }
+    onSubmit();
+    return true;
+  });
+
   const cmExtensions = useMemo(
     () => [
       ...tooltipExt,
@@ -293,16 +306,7 @@ export default function SQLInlineEditor({
         keymap.of([
           {
             key: 'Enter',
-            run: () => {
-              if (onSubmit == null) {
-                return false;
-              }
-              if (queryHistoryType && ref?.current?.view) {
-                setQueryHistory(ref?.current?.view.state.doc.toString());
-              }
-              onSubmit();
-              return true;
-            },
+            run: submitFromEditor,
           },
           ...(allowMultiline
             ? [
@@ -324,7 +328,7 @@ export default function SQLInlineEditor({
         },
       ]),
     ],
-    [allowMultiline, onSubmit, queryHistoryType, setQueryHistory, tooltipExt],
+    [allowMultiline, submitFromEditor, tooltipExt],
   );
 
   const onClickCodeMirror = useCallback(() => {
