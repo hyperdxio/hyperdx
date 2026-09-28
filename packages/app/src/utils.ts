@@ -1104,21 +1104,27 @@ export function formatDurationMs(ms: number): string {
   return `${parseFloat((ms / 3_600_000).toFixed(2))}h`;
 }
 
-/** Compact duration labels for axis ticks — fewer decimals, shorter units. */
-export function formatDurationMsCompact(ms: number): string {
-  if (ms < 0) return `-${formatDurationMsCompact(-ms)}`;
+// Compact duration labels for axis ticks. An explicit `precision` overrides
+// each branch's own default significant-digit count.
+export function formatDurationMsCompact(
+  ms: number,
+  precision?: number,
+): string {
+  if (ms < 0) return `-${formatDurationMsCompact(-ms, precision)}`;
   if (ms === 0) return '0';
-  if (ms < 0.001) return `${+(ms * 1e6).toPrecision(2)}ns`;
+  if (ms < 0.001) return `${+(ms * 1e6).toPrecision(precision ?? 2)}ns`;
   if (ms < 1) {
     const µs = ms * 1000;
+    if (precision != null) return `${+µs.toPrecision(precision)}µs`;
     return µs < 10 ? `${+µs.toPrecision(2)}µs` : `${Math.round(µs)}µs`;
   }
   if (ms < 1000) {
+    if (precision != null) return `${+ms.toPrecision(precision)}ms`;
     return ms < 10 ? `${+ms.toPrecision(2)}ms` : `${Math.round(ms)}ms`;
   }
-  if (ms < 120_000) return `${+(ms / 1000).toPrecision(3)}s`;
-  if (ms < 3_600_000) return `${+(ms / 60_000).toPrecision(2)}m`;
-  return `${+(ms / 3_600_000).toPrecision(2)}h`;
+  if (ms < 120_000) return `${+(ms / 1000).toPrecision(precision ?? 3)}s`;
+  if (ms < 3_600_000) return `${+(ms / 60_000).toPrecision(precision ?? 2)}m`;
+  return `${+(ms / 3_600_000).toPrecision(precision ?? 2)}h`;
 }
 
 // format uptime as days, hours, minutes or seconds

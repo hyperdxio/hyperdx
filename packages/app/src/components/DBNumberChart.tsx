@@ -1,4 +1,5 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import cx from 'classnames';
 import { ErrorBoundary } from 'react-error-boundary';
 import {
   filterColumnMetaByType,
@@ -235,14 +236,12 @@ export default function DBNumberChart({
   const { data: mvOptimizationData } =
     useMVOptimizationExplanation(builderQueriedConfig);
 
-  const { data, isLoading, isError, error } = useQueriedChartConfig(
-    queriedConfig,
-    {
+  const { data, isLoading, isError, error, isPlaceholderData } =
+    useQueriedChartConfig(queriedConfig, {
       placeholderData: (prev: any) => prev,
       queryKeyPrefix,
       enabled,
-    },
-  );
+    });
 
   // The value is the first numeric value in the first row of the result
   const valueColumn = data?.meta
@@ -383,11 +382,19 @@ export default function DBNumberChart({
       ) : resultError ? (
         <ChartErrorState error={resultError} variant={errorVariant} />
       ) : data?.data.length === 0 ? (
-        <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
+        <div
+          className={cx(
+            'd-flex h-100 w-100 align-items-center justify-content-center text-muted',
+            { 'effect-pulse': isPlaceholderData },
+          )}
+        >
           No data found within time range.
         </div>
       ) : (
-        <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+        <div
+          className={isLoading || isPlaceholderData ? 'effect-pulse' : ''}
+          style={{ position: 'relative', width: '100%', height: '100%' }}
+        >
           {config.backgroundChart && (
             <NumberTileBackgroundChart
               config={config}
