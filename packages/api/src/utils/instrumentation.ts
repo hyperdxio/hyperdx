@@ -147,13 +147,12 @@ export function setBusinessContext(context: BusinessContext): void {
  */
 export function getActiveTraceId(): string | undefined {
   try {
-    const traceId = opentelemetry.trace.getActiveSpan()?.spanContext()?.traceId;
-    // All zeroes means "no real trace", and recording it would give us rows
-    // that look traced but link to nothing.
-    if (!traceId || /^0+$/.test(traceId)) {
-      return undefined;
-    }
-    return traceId;
+    const ctx = opentelemetry.trace.getActiveSpan()?.spanContext();
+    // An invalid context (e.g. the all-zero id of a non-recording span) would
+    // give us rows that look traced but link to nothing.
+    return ctx && opentelemetry.trace.isSpanContextValid(ctx)
+      ? ctx.traceId
+      : undefined;
   } catch {
     // Runs on every query, and the id is only a convenience. If tracing is
     // off or set up oddly, go without it rather than fail the query.
