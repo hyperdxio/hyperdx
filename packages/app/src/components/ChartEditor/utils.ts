@@ -12,6 +12,7 @@ import {
   validateRawSqlForAlert,
 } from '@hyperdx/common-utils/dist/core/utils';
 import {
+  HEATMAP_ALLOWED_SOURCE_KINDS,
   isBuilderSavedChartConfig,
   isPromqlSavedChartConfig,
   isRawSqlSavedChartConfig,
@@ -175,6 +176,39 @@ export const isPromqlDisplayType = (
   displayType === DisplayType.Pie ||
   displayType === DisplayType.Bar ||
   displayType === DisplayType.Number;
+
+const NON_PROMQL_SOURCE_KINDS = Object.values(SourceKind).filter(
+  kind => kind !== SourceKind.Promql,
+);
+
+/**
+ * Search and event patterns list raw rows out of the source's `from` table. A
+ * metric source keeps its rows in `metricTables` and leaves `from.tableName`
+ * empty, so there is nothing for them to read.
+ */
+const ROW_LISTING_SOURCE_KINDS = NON_PROMQL_SOURCE_KINDS.filter(
+  kind => kind !== SourceKind.Metric,
+);
+
+/** Source kinds the Data Source picker offers, given the editor mode and the display type. */
+export function getAllowedSourceKinds({
+  configType,
+  displayType,
+}: {
+  configType: ChartEditorFormState['configType'];
+  displayType: DisplayType | undefined;
+}): SourceKind[] {
+  if (configType === 'promql' && isPromqlDisplayType(displayType)) {
+    return [SourceKind.Promql];
+  }
+  if (displayType === DisplayType.Heatmap) {
+    return [...HEATMAP_ALLOWED_SOURCE_KINDS];
+  }
+  if (isStringSelectDisplayType(displayType)) {
+    return ROW_LISTING_SOURCE_KINDS;
+  }
+  return NON_PROMQL_SOURCE_KINDS;
+}
 
 const isCustomOrderByDisplayType = (
   displayType: DisplayType | undefined,

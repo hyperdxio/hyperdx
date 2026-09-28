@@ -2,6 +2,7 @@ import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 import { renderHook } from '@testing-library/react';
 
 import {
+  firstSourceItemValue,
   sourceSelectFilter,
   SourceSelectGroup,
   useFilteredSortedSourceItems,
@@ -283,6 +284,45 @@ describe('useFilteredSortedSourceItems (grouped by section)', () => {
       { value: 'blank', label: 'Blank Section' },
       { value: 'z', label: 'Zebra Logs' },
     ]);
+  });
+});
+
+describe('firstSourceItemValue', () => {
+  it('returns undefined when nothing is selectable', () => {
+    expect(firstSourceItemValue([])).toBeUndefined();
+  });
+
+  it('returns the first value of a flat list', () => {
+    expect(
+      firstSourceItemValue([
+        { value: 'a', label: 'Alpha' },
+        { value: 'b', label: 'Beta' },
+      ]),
+    ).toBe('a');
+  });
+
+  it('returns the first value of the first group', () => {
+    expect(
+      firstSourceItemValue([
+        { group: 'Billing', items: [{ value: 'b', label: 'Beta' }] },
+        { group: 'Other', items: [{ value: 'a', label: 'Alpha' }] },
+      ]),
+    ).toBe('b');
+  });
+
+  it('skips a group with no items', () => {
+    expect(
+      firstSourceItemValue([
+        { group: 'Billing', items: [] },
+        { group: 'Other', items: [{ value: 'a', label: 'Alpha' }] },
+      ]),
+    ).toBe('a');
+  });
+
+  it('returns undefined when every group is empty', () => {
+    expect(
+      firstSourceItemValue([{ group: 'Billing', items: [] }]),
+    ).toBeUndefined();
   });
 });
 

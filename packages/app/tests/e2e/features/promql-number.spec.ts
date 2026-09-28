@@ -38,7 +38,7 @@ test.describe(
         await expect(editor.nameInput).toBeVisible();
         await editor.waitForDataToLoad();
         await editor.switchToPromqlMode();
-        await editor.selectPromqlSource(PROMQL_SOURCE_NAME);
+        await editor.selectSource(PROMQL_SOURCE_NAME);
         await editor.setChartName('PromQL number tile');
         await editor.setChartType(DisplayType.Number);
       });
@@ -98,7 +98,7 @@ test.describe(
         await expect(editor.nameInput).toBeVisible();
         await editor.waitForDataToLoad();
         await editor.switchToPromqlMode();
-        await editor.selectPromqlSource(PROMQL_SOURCE_NAME);
+        await editor.selectSource(PROMQL_SOURCE_NAME);
         await editor.setChartName('PromQL range reducer tile');
         await editor.setChartType(DisplayType.Number);
         // Counts the samples in the window, so the reducer's effect on the
