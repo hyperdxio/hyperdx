@@ -1364,8 +1364,8 @@ describe('Metadata Integration Tests', () => {
       metadata = new Metadata(hdxClient, new MetadataCache());
     });
 
-    it('never queries ClickHouse when no timestampValueExpression is given', async () => {
-      const querySpy = jest.spyOn(hdxClient, 'query');
+    it('falls back to an unbounded scan when no timestampValueExpression is given', async () => {
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
 
       const keys = await metadata.getMapKeys({
         databaseName: 'default',
@@ -1375,12 +1375,15 @@ describe('Metadata Integration Tests', () => {
         dateRange: [new Date(Date.now() - 60 * 60 * 1000), new Date()],
       });
 
-      expect(keys).toEqual([]);
-      // No query, including the raw scan, should touch the data table.
-      const queries = querySpy.mock.calls.map(([opts]: any) => opts.query);
-      expect(queries.some(q => q.includes(tableName))).toBe(false);
+      // dateRange is ignored without an expression to apply it to.
+      expect(keys).toEqual(
+        expect.arrayContaining(['http.method', 'legacy.key']),
+      );
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Unbounded Map key scan'),
+      );
 
-      querySpy.mockRestore();
+      warnSpy.mockRestore();
     });
 
     it('defaults to the last 24h and excludes older partitions', async () => {

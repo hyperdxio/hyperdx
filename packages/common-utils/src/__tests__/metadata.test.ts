@@ -1953,31 +1953,7 @@ describe('Metadata', () => {
       });
     });
 
-    it('skips the raw table scan when there is no timestampValueExpression to bound it', async () => {
-      const md = buildMetadata();
-      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
-      const args = {
-        databaseName: 'otel',
-        tableName: 'generic_logs',
-        column: 'LogAttributes',
-        connectionId: 'conn-1',
-        dateRange: [
-          new Date('2026-05-11T16:00:00Z'),
-          new Date('2026-05-11T17:00:00Z'),
-        ] as [Date, Date],
-      };
-
-      const keys = await md.getMapKeys(args);
-      await md.getMapKeys(args);
-
-      expect(keys).toEqual([]);
-      expect(mockClickhouseClient.query).not.toHaveBeenCalled();
-      // Result is cached, so repeat calls don't re-warn.
-      expect(warn).toHaveBeenCalledTimes(1);
-      warn.mockRestore();
-    });
-
-    it('does not fall open to an unbounded mergeTreeTextIndex scan when a text index exists but there is no timestampValueExpression', async () => {
+    it('skips the mergeTreeTextIndex path and falls back to the raw scan when a text index exists but there is no timestampValueExpression', async () => {
       const md = new Metadata(mockClickhouseClient, new MetadataCache());
       jest.spyOn(md, 'getServerVersion').mockResolvedValue([26, 3, 0, 0]);
       const textIndexLookup: TextIndexInfoLookup = new Map([
@@ -1992,6 +1968,13 @@ describe('Metadata', () => {
         .spyOn(md, 'getMapColumnTextIndexes')
         .mockResolvedValue(textIndexLookup);
       const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      (mockClickhouseClient.query as jest.Mock)
+        .mockResolvedValueOnce({
+          json: () => Promise.resolve({ data: [lowCardinalityMapColumn] }),
+        })
+        .mockResolvedValueOnce({
+          json: () => Promise.resolve({ data: [{ key: 'http.method' }] }),
+        });
 
       const keys = await md.getMapKeys({
         databaseName: 'otel',
@@ -2004,9 +1987,15 @@ describe('Metadata', () => {
         ],
       });
 
-      expect(keys).toEqual([]);
-      // Must not run `WHERE 1` across every part without a timestamp expression. #3037
-      expect(mockClickhouseClient.query).not.toHaveBeenCalled();
+      expect(keys).toEqual(['http.method']);
+      // Must not run `WHERE 1` across every part of the text index without a timestamp expression. #3037
+      const queries = (mockClickhouseClient.query as jest.Mock).mock.calls.map(
+        ([opts]) => opts.query,
+      );
+      expect(queries.some(q => q.includes('mergeTreeTextIndex'))).toBe(false);
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('Unbounded Map key scan'),
+      );
       warn.mockRestore();
     });
 
@@ -2403,9 +2392,9 @@ describe('Metadata', () => {
       expect(scanCall.query).toContain('__TIME_FILTER__');
     });
 
-    it('does not let a skipped call without timestampValueExpression poison the cache for one that has it', async () => {
+    it('falls back to an unbounded scan (with a warning) when timestampValueExpression is missing', async () => {
       const md = buildMetadata();
-      jest.spyOn(console, 'warn').mockImplementation(() => {});
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
       jest
         .spyOn(md, 'getMapColumnTextIndexes')
         .mockResolvedValue(new Map() as TextIndexInfoLookup);
@@ -2419,9 +2408,8 @@ describe('Metadata', () => {
         ttl_expression: '',
       };
       jest.spyOn(md, 'getColumn').mockResolvedValue(columnMeta);
-      // Rollup (empty) for each call, then the bounded scan on the second.
+      // Rollup (empty), then the unbounded scan.
       (mockClickhouseClient.query as jest.Mock)
-        .mockResolvedValueOnce({ json: () => Promise.resolve({ data: [] }) })
         .mockResolvedValueOnce({ json: () => Promise.resolve({ data: [] }) })
         .mockResolvedValueOnce({
           json: () => Promise.resolve({ data: [{ keysArr: ['raw.key'] }] }),
@@ -2431,8 +2419,15 @@ describe('Metadata', () => {
         timestampValueExpression: _timestampValueExpression,
         ...noTsArgs
       } = baseArgs;
-      expect(await md.getMapKeys(noTsArgs)).toEqual([]);
-      expect(await md.getMapKeys(baseArgs)).toEqual(['raw.key']);
+      expect(await md.getMapKeys(noTsArgs)).toEqual(['raw.key']);
+
+      const scanCall = (mockClickhouseClient.query as jest.Mock).mock
+        .calls[1][0];
+      expect(scanCall.query).not.toContain('WHERE');
+      expect(scanCall.query).not.toContain('__TIME_FILTER__');
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Unbounded Map key scan'),
+      );
     });
   });
 

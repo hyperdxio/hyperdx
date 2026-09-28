@@ -1089,14 +1089,12 @@ export class Metadata {
       if (rollupKeys.length > 0) return rollupKeys;
     }
 
-    // Original path: scan main table. Without a timestamp expression there's nothing to filter on. #3037
+    // Original path: scan main table. Without a timestamp expression there's
+    // nothing to filter on, so the scan is only bounded by the row LIMIT. #3037
     if (!timestampValueExpression) {
       console.warn(
-        `Skipping Map key discovery for ${databaseName}.${tableName}.${column}: no timestampValueExpression to bound the scan`,
+        `Unbounded Map key scan for ${databaseName}.${tableName}.${column}: no timestampValueExpression to bound the scan`,
       );
-      // Cache so getAllFields doesn't re-warn per Map column on every call.
-      this.cache.set(cacheKey, []);
-      return [];
     }
 
     const colMeta = await this.getColumn({
@@ -1118,21 +1116,27 @@ export class Metadata {
       strategy = 'lowCardinalityKeys';
     }
 
-    const timeFilterCondition = await timeFilterExpr({
-      connectionId,
-      databaseName,
-      tableName,
-      dateRange,
-      dateRangeStartInclusive: true,
-      dateRangeEndInclusive: true,
-      timestampValueExpression,
-      metadata: this,
-    });
     const whereConditions: ChSql[] = [
       ...(metricName ? [chSql`MetricName=${{ String: metricName }}`] : []),
-      timeFilterCondition,
+      ...(timestampValueExpression
+        ? [
+            await timeFilterExpr({
+              connectionId,
+              databaseName,
+              tableName,
+              dateRange,
+              dateRangeStartInclusive: true,
+              dateRangeEndInclusive: true,
+              timestampValueExpression,
+              metadata: this,
+            }),
+          ]
+        : []),
     ];
-    const where = chSql`WHERE ${concatChSql(' AND ', ...whereConditions)}`;
+    const where =
+      whereConditions.length > 0
+        ? chSql`WHERE ${concatChSql(' AND ', ...whereConditions)}`
+        : chSql``;
 
     // NOTE: getSubcolumn(col, 'keys') is used instead of the `col.keys` dot
     // form because, on a multi-shard Distributed read of a Map subcolumn, some
