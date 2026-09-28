@@ -115,3 +115,20 @@ export const isRangeQuery = (config: {
   getQueriedPromqlSeries(config).some(
     series => promqlSeriesQueryType(series) === 'range',
   );
+
+/**
+ * Whether this config's range buckets can be collapsed to one value per series by
+ * a client-side reducer, rather than plotted.
+ */
+export const isReducibleRangeQuery = (config: {
+  promqlExpression?: PromqlExpressionList;
+  displayType?: DisplayType;
+}): boolean => displayTypeSupportsReducer(config) && isRangeQuery(config);
+
+/** Whether the config specifies a reducer. */
+export const appliesPromqlReducer = (config: {
+  promqlExpression?: PromqlExpressionList;
+  displayType?: DisplayType;
+}): boolean =>
+  isReducibleRangeQuery(config) &&
+  getQueriedPromqlSeries(config)[0]?.reducer != null;
