@@ -1,0 +1,73 @@
+name: jscpd - Duplicate Code Analysis
+on:
+  pull_request:
+    branches: [main]
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  jscpd:
+    timeout-minutes: 10
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          # --baseline-from-ref scans the base branch's tree, so the whole
+          # history has to be present. Blobless, not treeless: jscpd needs the
+          # trees to materialise the base ref's files.
+          fetch-depth: 0
+          filter: blob:none
+
+      - name: Setup node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version-file: '.nvmrc'
+          cache-dependency-path: 'yarn.lock'
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      # Advisory check. dupes.mjs always exits 0; continue-on-error covers the
+      # case where it cannot run at all, so a tool failure can never block a PR.
+      - name: Build duplication report
+        continue-on-error: true
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run:
+          node scripts/ci/dupes.mjs --base "origin/$BASE_REF" --markdown >
+          /tmp/jscpd-comment.md
+
+      - name: Read report
+        id: report
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          result-encoding: string
+          script: |
+            const fs = require('fs');
+            const path = '/tmp/jscpd-comment.md';
+            const body = fs.existsSync(path)
+              ? fs.readFileSync(path, 'utf8').trim()
+              : '';
+            if (body === '') {
+              core.error('No duplication report was produced; skipping the PR comment.');
+              return '';
+            }
+            // Logged as well as commented so fork PRs, which cannot be
+            // commented on, still surface the result somewhere.
+            core.info(body);
+            return body;
+
+      - name: Comment PR with duplication report
+        # Skip for fork PRs: GITHUB_TOKEN cannot write to the base repo
+        if:
+          steps.report.outputs.result != '' &&
+          github.event.pull_request.head.repo.fork != true
+        uses: mshick/add-pr-comment@ec328af66588ab8f77cdeb2c264f14aba45bbf59 # v3.12.0
+        with:
+          message: ${{ steps.report.outputs.result }}
+          message-id: jscpd-duplication

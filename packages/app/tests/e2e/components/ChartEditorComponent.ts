@@ -1174,6 +1174,21 @@ export class ChartEditorComponent {
   }
 
   /**
+   * Set the "Background chart" type in the Display Settings drawer (number
+   * tiles only). Opens the drawer, picks the type, then applies and closes.
+   */
+  async setBackgroundChart(type: 'None' | 'Line' | 'Area') {
+    await this.openDisplaySettings();
+    const drawer = this.page.getByRole('dialog', { name: 'Display Settings' });
+    // Mantine repeats the aria-label on the options listbox, so match the role.
+    await drawer
+      .getByRole('combobox', { name: 'Number tile background chart type' })
+      .click();
+    await drawer.getByRole('option', { name: type, exact: true }).click();
+    await this.applyDisplaySettings();
+  }
+
+  /**
    * Open the Display Settings drawer and wait for it to become visible.
    */
   async openDisplaySettings() {

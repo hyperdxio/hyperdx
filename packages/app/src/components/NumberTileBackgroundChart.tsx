@@ -1,6 +1,10 @@
 import { useMemo } from 'react';
 import { ErrorBoundary } from 'react-error-boundary';
-import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
+import { isReducibleRangeQuery } from '@hyperdx/common-utils/dist/core/promql';
+import {
+  isBuilderChartConfig,
+  isPromqlChartConfig,
+} from '@hyperdx/common-utils/dist/guards';
 import {
   BackgroundChart,
   ChartConfigWithDateRange,
@@ -10,6 +14,7 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 
 import {
+  convertToPromqlNumberChartConfig,
   convertToTimeChartConfig,
   formatResponseForTimeChart,
   shouldFillNullsWithZero,
@@ -56,24 +61,19 @@ export function sparklinePointsFromGraphResults(
 }
 
 /**
- * Derive the sparkline's time-series query config from a number tile's config.
- *
- * The big number strips both `granularity` and `groupBy`
- * (`convertToNumberChartConfig`), collapsing the query to a single aggregate.
- * The sparkline must plot that same single series, so it strips `groupBy` too;
- * otherwise a tile carrying a residual `groupBy` (left over from a prior Line
- * display type) would query multiple series, and the renderer plots only the
- * first, which would not match the value. `granularity` is kept (auto when
- * unset) to recover the temporal trend behind the value.
- *
- * Number-tile display-only fields are dropped as well: they flow into the
- * query key (via `convertToTimeChartConfig`), so leaving them in would refetch
- * identical time-series data on every purely visual edit (sparkline type, tile
- * color, color rules, number format). Exported for unit testing.
+ * Derive the sparkline's query config from the given number tile's config.
  */
-export function buildSparklineTimeConfig(
+export function buildSparklineQueryConfig(
   config: ChartConfigWithDateRange,
 ): ChartConfigWithDateRange {
+  // A PromQL tile shares the same (range) query as the number chart, without a reducer.
+  // This ensures that the sparkline can re-use the same react-query cache entry.
+  if (isPromqlChartConfig(config)) {
+    return convertToPromqlNumberChartConfig(config, { withReducer: false });
+  }
+
+  // Display-only fields are dropped to avoid refetching identical time-series
+  // data on every purely visual edit.
   const {
     backgroundChart: _backgroundChart,
     color: _color,
@@ -90,36 +90,53 @@ export function buildSparklineTimeConfig(
   if (isBuilderChartConfig(timeConfig)) {
     delete timeConfig.groupBy;
   }
-  return timeConfig;
+  return convertToTimeChartConfig(timeConfig);
 }
 
 function NumberTileBackgroundChartInner({
   config,
   backgroundChart,
+  queryKeyPrefix,
+  enabled,
 }: {
   config: ChartConfigWithDateRange;
   backgroundChart: BackgroundChart;
+  queryKeyPrefix?: string;
+  enabled?: boolean;
 }) {
   // useTimeChartSettings/convertToTimeChartConfig below resolve 'auto', so
   // the minimum has to be applied before that happens.
   const { data: source } = useSource({ id: config.source });
   const minGranularitySeconds = getMinGranularitySeconds(source);
 
-  const timeConfig = useMemo(
-    () => buildSparklineTimeConfig({ ...config, minGranularitySeconds }),
+  const queriedConfig = useMemo(
+    () =>
+      buildSparklineQueryConfig(
+        isPromqlChartConfig(config)
+          ? config
+          : { ...config, minGranularitySeconds },
+      ),
     [config, minGranularitySeconds],
   );
 
   const { dateRange, granularity, fillNulls } =
-    useTimeChartSettings(timeConfig);
-  const queriedConfig = useMemo(
-    () => convertToTimeChartConfig(timeConfig),
-    [timeConfig],
-  );
+    useTimeChartSettings(queriedConfig);
 
   const { data } = useQueriedChartConfig(queriedConfig, {
     placeholderData: prev => prev,
-    queryKey: ['number-tile-background', queriedConfig],
+    enabled,
+    // A PromQL tile shares the cache entry its value is served from, so it has
+    // to leave the key to the hook. A builder tile derives a query of its
+    // own, and namespaces its own key.
+    ...(isPromqlChartConfig(config)
+      ? { queryKeyPrefix }
+      : {
+          queryKey: [
+            ...(queryKeyPrefix ? [queryKeyPrefix] : []),
+            'number-tile-background',
+            queriedConfig,
+          ],
+        }),
   });
 
   const points = useMemo(() => {
@@ -172,23 +189,31 @@ function NumberTileBackgroundChartInner({
 
 /**
  * Faint line / area sparkline drawn behind a number tile's value. Returns
- * null for non-builder configs (raw SQL number tiles have no structured time
- * dimension to bucket) and wraps the renderer in an error boundary so a
- * sparkline failure never blanks the tile's value.
+ * null for configs that don't support bucketed queries. Wrapped in an
+ * error boundary so a sparkline failure never blanks the tile's value.
  */
 export default function NumberTileBackgroundChart({
   config,
   backgroundChart,
+  queryKeyPrefix,
+  enabled = true,
 }: {
   config: ChartConfigWithDateRange;
   backgroundChart: BackgroundChart;
+  queryKeyPrefix?: string;
+  enabled?: boolean;
 }) {
-  if (!isBuilderChartConfig(config)) return null;
+  const canBucketQuery =
+    isBuilderChartConfig(config) ||
+    (isPromqlChartConfig(config) && isReducibleRangeQuery(config));
+  if (!canBucketQuery) return null;
   return (
     <ErrorBoundary fallback={<span />}>
       <NumberTileBackgroundChartInner
         config={config}
         backgroundChart={backgroundChart}
+        queryKeyPrefix={queryKeyPrefix}
+        enabled={enabled}
       />
     </ErrorBoundary>
   );

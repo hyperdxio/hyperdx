@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { TagResourceType } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
   Button,
@@ -21,11 +22,14 @@ export const Tags = React.memo(
     values,
     onChange,
     allowCreate,
+    resourceType,
     children,
   }: {
     values: string[];
     onChange: (value: string[]) => void;
     allowCreate?: boolean;
+    /** Narrows the offered tags to one resource. Omit to offer every team tag. */
+    resourceType?: TagResourceType;
     children?: React.ReactNode;
   }) => {
     const {
@@ -33,7 +37,7 @@ export const Tags = React.memo(
       isLoading,
       isError,
       refetch,
-    } = api.useTags();
+    } = api.useTags(resourceType);
 
     const tags = React.useMemo(() => {
       // Use a case-insensitive Set by creating a Map with lowercase keys
