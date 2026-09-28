@@ -2429,6 +2429,47 @@ describe('Metadata', () => {
         expect.stringContaining('Unbounded Map key scan'),
       );
     });
+
+    it('reuses the cached unbounded scan across dateRanges when timestampValueExpression is missing', async () => {
+      const md = buildMetadata();
+      jest.spyOn(console, 'warn').mockImplementation(() => {});
+      jest
+        .spyOn(md, 'getMapColumnTextIndexes')
+        .mockResolvedValue(new Map() as TextIndexInfoLookup);
+      jest.spyOn(md, 'getColumn').mockResolvedValue({
+        name: 'LogAttributes',
+        type: 'Map(String, String)',
+        default_type: '',
+        default_expression: '',
+        comment: '',
+        codec_expression: '',
+        ttl_expression: '',
+      });
+      // Rollup (empty) then scan for the first call; the second call with a
+      // different dateRange must be served from cache.
+      (mockClickhouseClient.query as jest.Mock)
+        .mockResolvedValueOnce({ json: () => Promise.resolve({ data: [] }) })
+        .mockResolvedValueOnce({
+          json: () => Promise.resolve({ data: [{ keysArr: ['raw.key'] }] }),
+        });
+
+      const {
+        timestampValueExpression: _timestampValueExpression,
+        ...noTsArgs
+      } = baseArgs;
+      expect(await md.getMapKeys(noTsArgs)).toEqual(['raw.key']);
+      expect(
+        await md.getMapKeys({
+          ...noTsArgs,
+          dateRange: [
+            new Date('2026-05-12T10:00:00Z'),
+            new Date('2026-05-12T11:00:00Z'),
+          ],
+        }),
+      ).toEqual(['raw.key']);
+
+      expect(mockClickhouseClient.query).toHaveBeenCalledTimes(2);
+    });
   });
 
   describe('getMapValues', () => {

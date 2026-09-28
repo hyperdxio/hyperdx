@@ -918,11 +918,20 @@ export class Metadata {
       ? getAlignedDateRange(dateRange, metadataMVs.granularity)
       : undefined;
 
-    const dateRangeCacheSuffix = `${dateRange[0].getTime()}-${dateRange[1].getTime()}-${timestampValueExpression ?? ''}`;
+    // Without timestampValueExpression the scan has no time filter, so its
+    // result doesn't depend on dateRange; keying on it would re-scan every
+    // hour as the default range rolls and pile up entries in the TTL-less cache.
+    const dateRangeCacheSuffix = timestampValueExpression
+      ? `${dateRange[0].getTime()}-${dateRange[1].getTime()}-${timestampValueExpression}`
+      : '';
+    const alignedCacheSuffix =
+      alignedDateRange && timestampValueExpression
+        ? `${alignedDateRange[0].getTime()}.${alignedDateRange[1].getTime()}.${timestampValueExpression}`
+        : '';
     const cacheKey = metricName
       ? `${connectionId}.${databaseName}.${tableName}.${column}.${metricName}.${dateRangeCacheSuffix}.keys`
       : alignedDateRange
-        ? `${connectionId}.${databaseName}.${tableName}.${column}.${alignedDateRange[0].getTime()}.${alignedDateRange[1].getTime()}.${timestampValueExpression ?? ''}.keys`
+        ? `${connectionId}.${databaseName}.${tableName}.${column}.${alignedCacheSuffix}.keys`
         : `${connectionId}.${databaseName}.${tableName}.${column}.${dateRangeCacheSuffix}.keys`;
     const cachedKeys = this.cache.get<string[]>(cacheKey);
 
@@ -1028,8 +1037,10 @@ export class Metadata {
       // Own cache key: the shipped OTel rollups only index NativeColumn, so
       // Map columns come back empty here and must fall through to the bounded
       // scan below. Caching [] under cacheKey would block that fallback.
+      // The rollup filters on Timestamp even without timestampValueExpression,
+      // so its key always carries the aligned range.
       const rollupKeys = await this.cache.getOrFetch<string[]>(
-        `${cacheKey}.rollup`,
+        `${cacheKey}.${alignedDateRange[0].getTime()}.${alignedDateRange[1].getTime()}.rollup`,
         async () => {
           try {
             const startExpr = renderStartOfBucketExpr(
