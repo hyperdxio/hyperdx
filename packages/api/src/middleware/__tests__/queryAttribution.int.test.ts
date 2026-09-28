@@ -52,8 +52,10 @@ describe('request query attribution', () => {
           FROM system.query_log
           WHERE type = 'QueryFinish'
             AND query_kind = 'Select'
-            AND has(tables, {table:String})`,
-        query_params: { table: `${DEFAULT_DATABASE}.${TABLE}` },
+            AND position(query, {table:String}) > 0`,
+        // Match on the text: timeSeriesTags() reads an inner table, so
+        // `tables` lists `.inner_id.tags.<uuid>`, not TABLE.
+        query_params: { table: TABLE },
         format: 'JSON',
       });
       const { data }: { data: { query_id: string; log_comment: string }[] } =

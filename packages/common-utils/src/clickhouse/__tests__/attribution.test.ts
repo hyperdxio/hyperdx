@@ -134,10 +134,11 @@ describe('buildLogComment', () => {
    * than approximate because the allowlist is ASCII, so the per-field cap
    * counts bytes too. Fails if a field is added or a cap raised without
    * checking the budget the browser spends on every request's query string.
+   * `Required` makes a new field a compile error here until it is added.
    */
   it('cannot exceed the size cap even when every field is at its longest', () => {
     const tooLong = 'x'.repeat(500);
-    const comment = buildLogComment({
+    const worstCase: Required<QueryAttribution> = {
       surface: 'service-dashboard',
       dashboard: tooLong,
       tile: tooLong,
@@ -146,7 +147,8 @@ describe('buildLogComment', () => {
       source: tooLong,
       trace: tooLong,
       label: tooLong,
-    });
+    };
+    const comment = buildLogComment(worstCase);
 
     expect(Buffer.byteLength(comment!)).toBeLessThanOrEqual(1024);
     // Nothing is shed today, so the worst case keeps every field.

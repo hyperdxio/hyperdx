@@ -1019,21 +1019,22 @@ function getSavedSearchIdFromPath(): string | null {
  * A wrapper so the page component's own JSX stays where it is.
  */
 export function DBSearchPage() {
-  const savedSearchId = getSavedSearchIdFromPath();
   return (
     <QueryAttributionProvider
-      attribution={{ surface: 'search', search: savedSearchId ?? undefined }}
+      attribution={{
+        surface: 'search',
+        search: getSavedSearchIdFromPath() ?? undefined,
+      }}
     >
-      <DBSearchPageContent savedSearchId={savedSearchId} />
+      <DBSearchPageContent />
     </QueryAttributionProvider>
   );
 }
 
-function DBSearchPageContent({
-  savedSearchId,
-}: {
-  savedSearchId: string | null;
-}) {
+function DBSearchPageContent() {
+  // Read again here, not passed down: this component re-renders from its own
+  // query-state hooks without the wrapper, and must see the current path.
+  const savedSearchId = getSavedSearchIdFromPath();
   const brandName = useBrandDisplayName();
   const defaultTimeRange = useDefaultTimeRange('Past 15m');
 

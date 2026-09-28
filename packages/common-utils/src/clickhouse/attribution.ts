@@ -74,8 +74,8 @@ const MAX_FIELD_LENGTH = 128;
  * Most useful first. If the payload runs out of room, fields at the end are
  * dropped whole, so the result is still valid JSON.
  *
- * Today's fields cannot fill the budget even at full length, so nothing is
- * ever dropped. This keeps that true if fields are added later.
+ * Today's fields fit the budget even at full length, with only a few bytes to
+ * spare, so the next field added will need this.
  *
  * Pairs rather than a list of key names, so nothing below has to read a field
  * out of the attribution through a variable key.
@@ -187,19 +187,16 @@ export function buildLogComment(
     payload.set('surface', surface);
   }
 
-  let serialized = safeStringify(payload);
-  if (serialized === undefined) return undefined;
+  let serialized = stringify(payload);
 
   for (const [field, raw] of idFields(attribution)) {
     const cleaned = sanitizeField(raw);
     if (!cleaned) continue;
 
     payload.set(field, cleaned);
-    const candidate = safeStringify(payload);
-    if (
-      candidate === undefined ||
-      byteLength(candidate) > MAX_LOG_COMMENT_BYTES
-    ) {
+    const candidate = stringify(payload);
+    // sanitizeField keeps only ASCII, so length is the byte count.
+    if (candidate.length > MAX_LOG_COMMENT_BYTES) {
       payload.delete(field);
       continue;
     }
@@ -210,19 +207,8 @@ export function buildLogComment(
   return payload.size > 1 ? serialized : undefined;
 }
 
-function safeStringify(payload: Map<string, string | number>) {
-  try {
-    return JSON.stringify(Object.fromEntries(payload));
-  } catch {
-    return undefined;
-  }
-}
-
-function byteLength(value: string): number {
-  if (typeof TextEncoder !== 'undefined') {
-    return new TextEncoder().encode(value).length;
-  }
-  return value.length;
+function stringify(payload: Map<string, string | number>): string {
+  return JSON.stringify(Object.fromEntries(payload));
 }
 
 /**
