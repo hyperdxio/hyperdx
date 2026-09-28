@@ -17,7 +17,10 @@ import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 
 import { IS_LOCAL_MODE } from '@/config';
 import { getLocalConnections } from '@/connection';
-import { useQueryAttribution } from '@/queryAttribution';
+import {
+  useMetadataQueryAttribution,
+  useQueryAttribution,
+} from '@/queryAttribution';
 
 import api from './api';
 import { DEFAULT_QUERY_TIMEOUT } from './defaults';
@@ -78,11 +81,7 @@ export function useDatabasesDirect(
   options?: Omit<UseQueryOptions<any, Error>, 'queryKey'>,
 ) {
   const clickhouseClient = getClickhouseClient({
-    // Page context first so its ids are kept, then `metadata` pinned over the
-    // top: SHOW DATABASES is schema browsing whichever page asked for it.
-    attribution: mergeQueryAttribution(useQueryAttribution(), {
-      surface: 'metadata',
-    }),
+    attribution: useMetadataQueryAttribution(),
   });
   return useQuery<ResponseJSON<ColumnMeta>, Error>({
     queryKey: [`direct_datasources/databases`, connectionId],
@@ -106,11 +105,7 @@ export function useTablesDirect(
   options?: Omit<UseQueryOptions<any, Error>, 'queryKey'>,
 ) {
   const clickhouseClient = getClickhouseClient({
-    // Page context first so its ids are kept, then `metadata` pinned over the
-    // top: SHOW TABLES is schema browsing whichever page asked for it.
-    attribution: mergeQueryAttribution(useQueryAttribution(), {
-      surface: 'metadata',
-    }),
+    attribution: useMetadataQueryAttribution(),
   });
   return useQuery<ResponseJSON<ColumnMeta>, Error>({
     queryKey: [`direct_datasources/databases/${database}/tables`, connectionId],

@@ -435,7 +435,6 @@ const Tile = ({
   isLive,
   readOnly,
 
-  dashboard,
   // Properties forwarded by grid layout
   className,
   style,
@@ -482,8 +481,6 @@ const Tile = ({
   isSelected?: boolean;
   onSelect?: (tileId: string) => void;
   ref?: ForwardedRef<HTMLDivElement>;
-  /** Dashboard this tile sits on. Only used to tag its queries. */
-  dashboard?: string;
 }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
@@ -1503,9 +1500,7 @@ const Tile = ({
   );
 
   return (
-    <QueryAttributionProvider
-      attribution={{ surface: 'dashboard', dashboard, tile: chart.id }}
-    >
+    <QueryAttributionProvider attribution={{ tile: chart.id }}>
       <div
         data-testid={`dashboard-tile-${chart.id}`}
         // `dashboard-chart-highlighted` triggers a one-shot flash animation
@@ -1675,7 +1670,6 @@ const EditTileModal = ({
         <QueryAttributionProvider
           attribution={{
             surface: 'chart-preview',
-            dashboard: dashboardId,
             tile: chart.id,
           }}
         >
@@ -2421,7 +2415,6 @@ function DBDashboardPage({
       return (
         <Tile
           key={chart.id}
-          dashboard={dashboardId}
           chart={chart}
           dateRange={searchedTimeRange}
           onEditClick={() => setEditedTile(chart)}
@@ -2522,7 +2515,6 @@ function DBDashboardPage({
     },
     [
       dashboard,
-      dashboardId,
       searchedTimeRange,
       isRefreshEnabled,
       granularityOverride,
@@ -3554,10 +3546,14 @@ function DBDashboardPageGuarded({
   if (!dashboardProps || !router.isReady) return <Loader size="lg" />;
 
   return (
-    <DBDashboardPage
-      dashboardProps={dashboardProps}
-      defaultTimeInput={defaultTimeInput}
-    />
+    <QueryAttributionProvider
+      attribution={{ surface: 'dashboard', dashboard: dashboardId }}
+    >
+      <DBDashboardPage
+        dashboardProps={dashboardProps}
+        defaultTimeInput={defaultTimeInput}
+      />
+    </QueryAttributionProvider>
   );
 }
 

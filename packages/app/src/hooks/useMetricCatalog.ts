@@ -3,7 +3,6 @@ import dayjs from 'dayjs';
 import {
   chSql,
   concatChSql,
-  mergeQueryAttribution,
   ResponseJSON,
   tableExpr,
 } from '@hyperdx/common-utils/dist/clickhouse';
@@ -16,7 +15,7 @@ import { useQuery } from '@tanstack/react-query';
 
 import { getClickhouseClient } from '@/clickhouse';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
-import { useQueryAttribution } from '@/queryAttribution';
+import { useMetadataQueryAttribution } from '@/queryAttribution';
 import { QUERYABLE_KINDS } from '@/utils/metricKinds';
 import {
   mergeMetricCatalog,
@@ -89,11 +88,7 @@ export function useMetricCatalog({
     return tableName ? [{ kind, tableName }] : [];
   });
 
-  // Page context first so its ids are kept, then `metadata` pinned over the
-  // top: these are metric lookups, not the page's own chart queries.
-  const attribution = mergeQueryAttribution(useQueryAttribution(), {
-    surface: 'metadata',
-  });
+  const attribution = useMetadataQueryAttribution();
 
   const query = useQuery({
     queryKey: [

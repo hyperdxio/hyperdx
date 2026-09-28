@@ -30,10 +30,11 @@ Or spot a query while it is still running, in `system.processes`, where the
 `query_id` names the surface with no JSON parsing needed.
 
 The payload records which part of the product asked (a dashboard, a search, an
-alert, an MCP tool, the metrics explorer, session replay, field lookups, and so
+alert, an MCP tool, the chart explorer, session replay, field lookups, and so
 on), the dashboard and tile or saved search id, the source id, and on the server
 the trace id of the request. Field lookups and autocomplete are labelled too, so
 they can be told apart from a user's chart queries.
 
-The one exception is the internal `system.settings` lookup, which has its
-settings dropped to avoid a loop. It still gets a `query_id`.
+The exception is queries that skip settings processing: the `system.settings`,
+server version and Cloud-detection probes, and the onboarding connection check.
+They get a `query_id` but an empty `log_comment`.

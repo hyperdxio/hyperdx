@@ -1,6 +1,5 @@
 import {
   chSql,
-  mergeQueryAttribution,
   ResponseJSON,
   tableExpr,
 } from '@hyperdx/common-utils/dist/clickhouse';
@@ -8,7 +7,7 @@ import { SourceKind, TMetricSource } from '@hyperdx/common-utils/dist/types';
 import { useQuery } from '@tanstack/react-query';
 
 import { getClickhouseClient } from '@/clickhouse';
-import { useQueryAttribution } from '@/queryAttribution';
+import { useMetadataQueryAttribution } from '@/queryAttribution';
 import { getMetricTableName } from '@/utils';
 
 export interface MetricMetadata {
@@ -47,11 +46,7 @@ export const useFetchMetricMetadata = ({
       tableSource?.kind === SourceKind.Metric,
   );
 
-  // Page context first so its ids are kept, then `metadata` pinned over the
-  // top: these are metric lookups, not the page's own chart queries.
-  const attribution = mergeQueryAttribution(useQueryAttribution(), {
-    surface: 'metadata',
-  });
+  const attribution = useMetadataQueryAttribution();
 
   return useQuery({
     queryKey: ['metric-metadata', databaseName, metricType, metricName],

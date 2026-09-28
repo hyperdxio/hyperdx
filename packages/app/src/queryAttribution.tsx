@@ -21,6 +21,14 @@ export function useQueryAttribution(): QueryAttribution {
   return use(QueryAttributionContext);
 }
 
+/**
+ * For schema and metric lookups. Page context first so its ids are kept, then
+ * `metadata` pinned over the top: these are not the page's own chart queries.
+ */
+export function useMetadataQueryAttribution(): QueryAttribution {
+  return mergeQueryAttribution(useQueryAttribution(), { surface: 'metadata' });
+}
+
 export function QueryAttributionProvider({
   attribution,
   children,

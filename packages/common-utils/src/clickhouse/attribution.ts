@@ -11,8 +11,9 @@
  *
  * None of this changes what a query returns, so it must never throw.
  *
- * One exception: queries that set `shouldSkipApplySettings` have their
- * settings dropped, so they get a `query_id` but no `log_comment`.
+ * One exception: queries that skip settings processing (the `system.settings`,
+ * server version and Cloud-detection probes, and the onboarding connection
+ * check) get a `query_id` but an empty `log_comment`.
  */
 
 /**
@@ -21,12 +22,12 @@
 export const QUERY_SURFACES = [
   'alert',
   'api',
+  'chart-explorer',
   'chart-preview',
   'cli',
   'dashboard',
   'mcp',
   'metadata',
-  'metrics-explorer',
   'search',
   'service-dashboard',
   'session-replay',
