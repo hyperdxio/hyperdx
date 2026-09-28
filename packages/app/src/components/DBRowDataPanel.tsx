@@ -96,6 +96,7 @@ export function useRowData({
       : undefined;
 
   const baseConfig = {
+    source: source.id,
     connection: source.connection,
     select: [
       {
