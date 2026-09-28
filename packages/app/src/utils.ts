@@ -1220,7 +1220,7 @@ export const selectItemExpression = (item: string): string =>
 /**
  * The alias of a SELECT item, unquoted, or undefined if it has none
  */
-export const selectItemAlias = (item: string): string | undefined => {
+const selectItemAlias = (item: string): string | undefined => {
   const alias = SELECT_ALIAS_REGEX.exec(item)?.[1];
   return alias == null ? undefined : unquoteIdentifier(alias);
 };
