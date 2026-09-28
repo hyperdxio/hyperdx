@@ -178,6 +178,7 @@ export const QueryExpressionFilterEditForm = ({
       >
         <SQLInlineEditorControlled
           tableConnection={tableConnection}
+          sourceId={sourceId}
           control={control}
           name="expression"
           placeholder="SQL column or expression"
