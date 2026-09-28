@@ -210,6 +210,19 @@ describe('DBDeltaChart', () => {
       }
     });
 
+    it('uses plain IN for the aggregated-timestamps subquery on local MergeTree tables', () => {
+      renderChart({ ...selection, valueExpr: 'count()' });
+
+      const [[outlierConfig], [inlierConfig]] =
+        mockUseQueriedChartConfig.mock.calls;
+      expect(conditions(outlierConfig)).toContain(
+        'Timestamp IN (SELECT Timestamp FROM AggregatedTimestamps)',
+      );
+      expect(conditions(inlierConfig)).toContain(
+        'Timestamp NOT IN (SELECT Timestamp FROM AggregatedTimestamps)',
+      );
+    });
+
     it('skips the PartIds hint on Distributed tables', () => {
       mockUseTableMetadata.mockReturnValue({
         data: { engine: 'MergeTree', isPointerTable: true },
@@ -268,6 +281,32 @@ describe('DBDeltaChart', () => {
         mockUseQueriedChartConfig.mock.calls;
       expect(outlierOptions).toMatchObject({ enabled: true });
       expect(outlierConfig.with).toBeUndefined();
+    });
+
+    it('uses GLOBAL IN for aggregate selections when table metadata is unavailable', () => {
+      mockUseTableMetadata.mockReturnValue({
+        data: undefined,
+        isLoading: false,
+      });
+      renderChart({ ...selection, valueExpr: 'count()' });
+
+      const [[outlierConfig], [inlierConfig]] =
+        mockUseQueriedChartConfig.mock.calls;
+      expect(conditions(outlierConfig)).toContain(
+        'Timestamp GLOBAL IN (SELECT Timestamp FROM AggregatedTimestamps)',
+      );
+      expect(conditions(inlierConfig)).toContain(
+        'Timestamp GLOBAL NOT IN (SELECT Timestamp FROM AggregatedTimestamps)',
+      );
+    });
+
+    it('does not retry a failed table metadata lookup', () => {
+      renderChart(selection);
+
+      expect(mockUseTableMetadata).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ retry: false }),
+      );
     });
   });
 

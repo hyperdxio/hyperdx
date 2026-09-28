@@ -110,13 +110,17 @@ export default function DBDeltaChart({
    *   are global (AggregatedTimestamps) must use GLOBAL IN.
    * - The PartIds prefetch hint is skipped entirely: `_part`/`_part_offset`
    *   only identify rows within one shard, so the hint is meaningless there.
+   *
+   *  Only a table confirmed local gets plain IN and the hint. If the lookup
+   *  fails, assume Distributed: GLOBAL IN also works on local tables, and
+   *  dropping the hint doesn't change results.
    */
   const { data: tableMetadata, isLoading: isTableMetadataLoading } =
-    useTableMetadata(tcFromChartConfig(config));
-  const isPointerTable = tableMetadata?.isPointerTable === true;
-  const canUsePartIdsHint = tableMetadata != null && !isPointerTable;
-  const inOperator = isPointerTable ? 'GLOBAL IN' : 'IN';
-  const notInOperator = isPointerTable ? 'GLOBAL NOT IN' : 'NOT IN';
+    useTableMetadata(tcFromChartConfig(config), { retry: false });
+  const isLocalTable = tableMetadata != null && !tableMetadata.isPointerTable;
+  const canUsePartIdsHint = isLocalTable;
+  const inOperator = isLocalTable ? 'IN' : 'GLOBAL IN';
+  const notInOperator = isLocalTable ? 'NOT IN' : 'GLOBAL NOT IN';
   const isSelectionQueryEnabled = hasSelection && !isTableMetadataLoading;
 
   // Helper to build the shared AggregatedTimestamps CTE (used by both outlier and inlier queries)
