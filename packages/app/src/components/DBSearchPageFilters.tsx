@@ -63,7 +63,7 @@ import {
   usePinnedFilters,
 } from '@/searchFilters';
 import { useSource } from '@/source';
-import { useLocalStorage } from '@/utils';
+import { isColumnInSelect, useLocalStorage } from '@/utils';
 
 import { FilterSettingsPanel } from './DBSearchPageFilters/FilterSettingsPopover';
 import { useFetchFacets } from './DBSearchPageFilters/hooks';
@@ -1584,7 +1584,10 @@ const DBSearchPageFiltersComponent = ({
                 onColumnToggle={
                   onColumnToggle ? () => onColumnToggle(facetSqlKey) : undefined
                 }
-                isColumnDisplayed={displayedColumns?.includes(facetSqlKey)}
+                isColumnDisplayed={isColumnInSelect(
+                  displayedColumns,
+                  facetSqlKey,
+                )}
                 onLoadMore={loadMoreFacetsForKey}
                 loadMoreLoading={loadMoreLoadingKeys.has(facet.key)}
                 hasLoadedMore={extraFacetKeys.has(facet.key)}

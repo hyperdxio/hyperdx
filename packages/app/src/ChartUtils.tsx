@@ -9,6 +9,11 @@ import {
   JSDataType,
   ResponseJSON,
 } from '@hyperdx/common-utils/dist/clickhouse';
+import {
+  DEFAULT_PROMQL_REDUCER,
+  getQueriedPromqlSeries,
+  isRangeQuery,
+} from '@hyperdx/common-utils/dist/core/promql';
 import { isMetricChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import { SERIES_KEY_JOINER } from '@hyperdx/common-utils/dist/core/seriesNameTemplate';
 import {
@@ -28,10 +33,12 @@ import {
   BuilderSavedChartConfig,
   ChartConfigWithDateRange,
   ChartConfigWithOptDateRange,
+  DateRange,
   DisplayType,
   Filter,
   isSearchableSource,
   MetricsDataType as MetricsDataTypeV2,
+  PromqlChartConfig,
   SourceKind,
   SQLInterval,
   TMetricSource,
@@ -114,6 +121,41 @@ function getTimeChartDateRange(
 }
 
 export const MAX_TIME_CHART_SERIES = DEFAULT_SERIES_LIMIT;
+
+/**
+ * A PromQL number tile's queried config, shared by the value and the sparkline
+ * drawn behind it.
+ */
+export function convertToPromqlNumberChartConfig(
+  config: PromqlChartConfig & DateRange,
+  { withReducer }: { withReducer: boolean },
+): PromqlChartConfig & DateRange {
+  const granularity = getTimeChartGranularity(
+    config.granularity,
+    config.dateRange,
+  );
+  return {
+    ...config,
+    granularity,
+    // Align the date range with the same buckets used by the sparkline and
+    // timeseries charts, when using a (bucketed) range query. Alignment is
+    // desirable for range queries to ensure consistent bucket boundaries
+    // and sizes.
+    dateRange: isRangeQuery(config)
+      ? getTimeChartDateRange(
+          config.dateRange,
+          config.alignDateRangeToGranularity,
+          granularity,
+        )
+      : config.dateRange,
+    promqlExpression: getQueriedPromqlSeries(config).map(series => ({
+      ...series,
+      reducer: withReducer
+        ? (series.reducer ?? DEFAULT_PROMQL_REDUCER)
+        : undefined,
+    })),
+  };
+}
 
 export function convertToTimeChartConfig(
   config: ChartConfigWithDateRange,
