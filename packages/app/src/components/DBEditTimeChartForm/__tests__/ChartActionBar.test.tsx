@@ -301,6 +301,19 @@ describe('ChartActionBar', () => {
     expect(screen.queryByTestId('sql-editor-order-by')).not.toBeInTheDocument();
   });
 
+  it('should not render ORDER BY editor for a PromQL table', () => {
+    renderActionBar(
+      { activeTab: 'table' },
+      {
+        configType: 'promql',
+        displayType: DisplayType.Table,
+        promqlExpressions: [{ expression: 'up' }],
+      },
+    );
+
+    expect(screen.queryByTestId('sql-editor-order-by')).not.toBeInTheDocument();
+  });
+
   it('should not render ORDER BY editor for time tab', () => {
     renderActionBar({ activeTab: 'time' });
 

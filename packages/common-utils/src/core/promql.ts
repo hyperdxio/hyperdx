@@ -45,7 +45,9 @@ export function getQueriedPromqlSeries(config: {
 /** Whether a display type can evaluate an expression using query instead of query_range */
 export const displayTypeSupportsInstantQuery = (config: {
   displayType?: DisplayType;
-}): boolean => config.displayType === DisplayType.Number;
+}): boolean =>
+  config.displayType === DisplayType.Number ||
+  config.displayType === DisplayType.Table;
 
 /** Whether a display type collapses a range query to one value per series using a client-side reducer. */
 export const displayTypeSupportsReducer = (config: {
@@ -115,3 +117,20 @@ export const isRangeQuery = (config: {
   getQueriedPromqlSeries(config).some(
     series => promqlSeriesQueryType(series) === 'range',
   );
+
+/**
+ * Whether this config's range buckets can be collapsed to one value per series by
+ * a client-side reducer, rather than plotted.
+ */
+export const isReducibleRangeQuery = (config: {
+  promqlExpression?: PromqlExpressionList;
+  displayType?: DisplayType;
+}): boolean => displayTypeSupportsReducer(config) && isRangeQuery(config);
+
+/** Whether the config specifies a reducer. */
+export const appliesPromqlReducer = (config: {
+  promqlExpression?: PromqlExpressionList;
+  displayType?: DisplayType;
+}): boolean =>
+  isReducibleRangeQuery(config) &&
+  getQueriedPromqlSeries(config)[0]?.reducer != null;
