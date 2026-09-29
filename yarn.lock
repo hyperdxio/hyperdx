@@ -4664,7 +4664,7 @@ __metadata:
     handlebars: "npm:^4.7.9"
     http-graceful-shutdown: "npm:^3.1.13"
     http-proxy-middleware: "npm:^4.0.0"
-    ip-address: "npm:^10.3.1"
+    ip-address: "npm:^10.5.1"
     jest: "npm:^30.2.0"
     lodash: "npm:^4.18.1"
     migrate-mongo: "npm:^11.0.0"
@@ -18975,10 +18975,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"ip-address@npm:^10.3.1":
-  version: 10.3.1
-  resolution: "ip-address@npm:10.3.1"
-  checksum: 10c0/45b1c31e2cc53d6354ea39f276d70c365a9b0332e7ca2140a9ad4cdb7fdb9d73b6a7ec0d8bf19993d8dce7ab636cd86c46c3e417b98db5ccb8c25546fe8c0b17
+"ip-address@npm:^10.5.1":
+  version: 10.5.1
+  resolution: "ip-address@npm:10.5.1"
+  checksum: 10c0/12ac14dc85de4fd3ba65cb4468033268fa0c30472d25e93e025d918ed178473024fdcf67ffc37c7dca2af5d1256a6083af0099a1e96cea8c6897e3b7227ed636
   languageName: node
   linkType: hard
 
