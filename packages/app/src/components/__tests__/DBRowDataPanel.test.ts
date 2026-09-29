@@ -55,6 +55,22 @@ describe('DBRowDataPanel', () => {
     });
   });
 
+  // useQueriedChartConfig resolves the source's querySettings from config.source
+  it('passes the source id on both the bounded and fallback lookups', () => {
+    renderHook(() =>
+      useRowData({
+        source,
+        rowId: "id='abc123'",
+        dateRange: [new Date(0), new Date(1000)],
+      }),
+    );
+
+    expect(mockUseQueriedChartConfig).toHaveBeenCalledTimes(2);
+    for (const [config] of mockUseQueriedChartConfig.mock.calls) {
+      expect(config.source).toBe('source-id');
+    }
+  });
+
   it('selects `*` when the source has no Known Columns List', () => {
     renderHook(() => useRowData({ source, rowId: "id='abc123'" }));
 
