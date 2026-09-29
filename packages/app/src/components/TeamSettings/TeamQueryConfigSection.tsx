@@ -23,6 +23,7 @@ import {
   DEFAULT_FILTER_KEYS_FETCH_LIMIT,
   DEFAULT_QUERY_TIMEOUT,
   DEFAULT_SEARCH_ROW_LIMIT,
+  DEFAULT_TRACE_SPAN_LIMIT,
 } from '@/defaults';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
 
@@ -341,6 +342,18 @@ export default function TeamQueryConfigSection() {
             tooltip={`${brandName} sends windowed queries to ClickHouse in series. This setting parallelizes those queries when it makes sense to. This may cause increased peak load on ClickHouse`}
             type="boolean"
             displayValue={value => (value ? 'Enabled' : 'Disabled')}
+          />
+          <ClickhouseSettingForm
+            settingKey="traceSpanLimit"
+            label="Trace span limit"
+            tooltip="Maximum number of spans fetched per trace in the waterfall view. Higher values show more complete traces but may impact browser performance."
+            type="number"
+            defaultValue={DEFAULT_TRACE_SPAN_LIMIT}
+            placeholder={`default = ${DEFAULT_TRACE_SPAN_LIMIT.toLocaleString()}`}
+            min={1000}
+            max={500000}
+            displayValue={displayValueWithUnit('spans')}
+            description={`Team-wide ceiling for trace waterfall queries. Individual users can set a lower personal limit in Preferences. Default is ${DEFAULT_TRACE_SPAN_LIMIT.toLocaleString()}.`}
           />
         </Stack>
       </Card>

@@ -43,6 +43,7 @@ import {
   IconLogs,
 } from '@tabler/icons-react';
 
+import api from '@/api';
 import { ContactSupportText } from '@/components/ContactSupportText';
 import { ErrorCollapse } from '@/components/Error/ErrorCollapse';
 import SearchWhereInput, {
@@ -53,6 +54,7 @@ import {
   TimelineMinimap,
   type TimelineViewportController,
 } from '@/components/TimelineChart';
+import { DEFAULT_TRACE_SPAN_LIMIT } from '@/defaults';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import useRowWhere, { WithClause } from '@/hooks/useRowWhere';
 import useWaterfallSearchState from '@/hooks/useWaterfallSearchState';
@@ -63,6 +65,7 @@ import {
   getSpanEventBody,
 } from '@/source';
 import { useFormatTime } from '@/useFormatTime';
+import { useUserPreferences } from '@/useUserPreferences';
 import {
   CATEGORICAL_PALETTE_TOKENS,
   COLORS,
@@ -161,6 +164,7 @@ function getConfig(
   traceId: string,
   hiddenRowExpression?: string,
   hiddenRowExpressionLanguage: 'lucene' | 'sql' = 'lucene',
+  spanLimit: number = DEFAULT_TRACE_SPAN_LIMIT,
 ) {
   const alias: Record<string, string> = {
     Body: getTableBody(source),
@@ -302,7 +306,7 @@ function getConfig(
     from: source.from,
     timestampValueExpression: source.timestampValueExpression,
     where: `${alias.TraceId} = ${SqlString.escape(traceId)}`,
-    limit: { limit: 50000 },
+    limit: { limit: spanLimit },
     connection: source.connection,
   };
   return { config, alias, type: source.kind };
@@ -337,6 +341,7 @@ export function useEventsAroundFocus({
   enabled,
   hiddenRowExpression,
   hiddenRowExpressionLanguage = 'lucene',
+  spanLimit,
 }: {
   tableSource: TTraceSource | TLogSource;
   focusDate: Date;
@@ -346,6 +351,7 @@ export function useEventsAroundFocus({
   /** An expression (in `hiddenRowExpressionLanguage`) that identifies rows to be hidden. Hidden rows will be returned with a `__hdx_hidden: true` column. */
   hiddenRowExpression?: string;
   hiddenRowExpressionLanguage?: 'lucene' | 'sql';
+  spanLimit?: number;
 }) {
   const { config, alias, type } = useMemo(
     () =>
@@ -354,8 +360,15 @@ export function useEventsAroundFocus({
         traceId,
         hiddenRowExpression,
         hiddenRowExpressionLanguage,
+        spanLimit,
       ),
-    [tableSource, traceId, hiddenRowExpression, hiddenRowExpressionLanguage],
+    [
+      tableSource,
+      traceId,
+      hiddenRowExpression,
+      hiddenRowExpressionLanguage,
+      spanLimit,
+    ],
   );
 
   const {
@@ -594,6 +607,17 @@ export function DBTraceWaterfallChartContainer({
   controlsExtra?: ReactNode;
 }) {
   const formatTime = useFormatTime();
+  const { data: me } = api.useMe();
+  const { userPreferences } = useUserPreferences();
+
+  const effectiveSpanLimit = useMemo(() => {
+    const teamLimit = me?.team?.traceSpanLimit ?? DEFAULT_TRACE_SPAN_LIMIT;
+    const userLimit = userPreferences.traceSpanLimit;
+    if (userLimit != null && userLimit > 0) {
+      return Math.min(userLimit, teamLimit);
+    }
+    return teamLimit;
+  }, [me?.team?.traceSpanLimit, userPreferences.traceSpanLimit]);
 
   const {
     traceWhere,
@@ -674,6 +698,7 @@ export function DBTraceWaterfallChartContainer({
     hiddenRowExpression: traceWhere ? `NOT (${traceWhere})` : undefined,
     hiddenRowExpressionLanguage: traceFilterLanguage,
     enabled: true,
+    spanLimit: effectiveSpanLimit,
   });
   const {
     rows: logRowsData,
@@ -691,6 +716,7 @@ export function DBTraceWaterfallChartContainer({
     hiddenRowExpression: logWhere ? `NOT (${logWhere})` : undefined,
     hiddenRowExpressionLanguage: logFilterLanguage,
     enabled: logTableSource ? true : false, // disable fire query if logSource is not exist
+    spanLimit: effectiveSpanLimit,
   });
 
   const isFetching = traceIsFetching || logIsFetching;

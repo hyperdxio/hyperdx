@@ -12,6 +12,8 @@ export type UserPreferences = {
   colorMode: ColorModePreference;
   font: 'IBM Plex Mono' | 'Roboto Mono' | 'Inter' | 'Roboto';
   expandSidebarHeader?: boolean;
+  /** Per-user max spans per trace override (clamped to team ceiling at query time). */
+  traceSpanLimit?: number;
 };
 
 // Legacy type for migration
