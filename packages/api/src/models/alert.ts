@@ -261,7 +261,7 @@ const AlertSchema = new Schema<IAlert>(
     },
     provisioned: {
       type: Boolean,
-      required: false,
+      default: false,
     },
     silenced: {
       required: false,
@@ -312,5 +312,15 @@ AlertSchema.index({ team: 1, _id: 1 });
 // The alerts page: filter on team, sort by displayName with _id as the
 // tie-break, and walk that order with a keyset cursor.
 AlertSchema.index({ team: 1, displayName: 1, _id: 1 });
+
+// One alert per provisioned tile, so concurrent provisioner runs upsert the
+// same document instead of inserting a duplicate that no sync would remove.
+AlertSchema.index(
+  { team: 1, dashboard: 1, tileId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { provisioned: true, source: AlertSource.TILE },
+  },
+);
 
 export default mongoose.model<IAlert>('Alert', AlertSchema);

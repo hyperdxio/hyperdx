@@ -429,6 +429,7 @@ export const createOrUpdateDashboardAlerts = async (
         tileId,
         source: AlertSource.TILE,
         team: teamId,
+        ...(provisioned && { provisioned: true }),
       };
       const alertInput = {
         ...alert,

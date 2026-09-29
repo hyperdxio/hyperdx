@@ -1,5 +1,9 @@
 /* eslint-disable security/detect-non-literal-fs-filename */
-import { AlertThresholdType } from '@hyperdx/common-utils/dist/types';
+import {
+  AlertThresholdType,
+  BuilderSavedChartConfig,
+  SourceKind,
+} from '@hyperdx/common-utils/dist/types';
 import fs from 'fs';
 import mongoose from 'mongoose';
 import os from 'os';
@@ -9,6 +13,7 @@ import { createTeam } from '@/controllers/team';
 import { clearDBCollections, closeDB, connectDB, makeTile } from '@/fixtures';
 import Alert, { AlertSource } from '@/models/alert';
 import Dashboard from '@/models/dashboard';
+import { Source } from '@/models/source';
 import Team from '@/models/team';
 import Webhook from '@/models/webhook';
 import {
@@ -318,19 +323,23 @@ describe('provisionDashboards', () => {
   });
 
   describe('syncDashboards tile alerts', () => {
-    const tileAlert = (webhookId: string, threshold = 10) =>
-      ({
-        interval: '5m',
-        threshold,
-        thresholdType: AlertThresholdType.ABOVE,
-        channel: { type: 'webhook', webhookId },
-      }) as any;
+    type TileAlert = NonNullable<BuilderSavedChartConfig['alert']>;
 
-    const writeDashboard = (tiles: ReturnType<typeof makeTile>[]) =>
+    const tileAlert = (webhookId: string, threshold = 10): TileAlert => ({
+      interval: '5m',
+      threshold,
+      thresholdType: AlertThresholdType.ABOVE,
+      channel: { type: 'webhook', webhookId },
+    });
+
+    const writeFile = (file: string, name: string, tiles: unknown[]) =>
       fs.writeFileSync(
-        path.join(tmpDir, 'alerting.json'),
-        JSON.stringify({ name: 'Alerting', tiles, tags: [] }),
+        path.join(tmpDir, file),
+        JSON.stringify({ name, tiles, tags: [] }),
       );
+
+    const writeDashboard = (tiles: unknown[]) =>
+      writeFile('alerting.json', 'Alerting', tiles);
 
     const setup = async (makeTeam = () => createTeam({ name: 'My Team' })) => {
       const team = await makeTeam();
@@ -340,17 +349,46 @@ describe('provisionDashboards', () => {
         url: 'https://example.com/hook',
         name: 'Hook',
       }).save();
-      return { team, webhookId: webhook._id.toString() };
+      const source = await Source.create({
+        kind: SourceKind.Log,
+        team: team._id,
+        from: { databaseName: 'default', tableName: 'otel_logs' },
+        timestampValueExpression: 'Timestamp',
+        connection: new mongoose.Types.ObjectId(),
+        name: 'Logs',
+      });
+      const sourceId = source._id.toString();
+      // A tile on this team's source; `alert` is raw JSON, as a file holds it.
+      const tile = (id: string, alert?: unknown, where?: string) => {
+        const base = makeTile({ id, sourceId, where });
+        return alert == null
+          ? base
+          : { ...base, config: { ...base.config, alert } };
+      };
+      return { team, webhookId: webhook._id.toString(), sourceId, tile };
     };
 
     const provisionedDashboard = (teamId: unknown) =>
       Dashboard.findOne({ name: 'Alerting', team: teamId, provisioned: true });
 
+    const appAlert = (teamId: unknown, dashboardId: unknown, tileId: string) =>
+      new Alert({
+        team: teamId,
+        source: AlertSource.TILE,
+        dashboard: dashboardId,
+        tileId,
+        interval: '5m',
+        threshold: 1,
+        thresholdType: AlertThresholdType.ABOVE,
+        channel: { type: 'webhook', webhookId: new mongoose.Types.ObjectId() },
+        createdBy: new mongoose.Types.ObjectId(),
+      }).save();
+
     it('creates a provisioned alert for a tile that declares one', async () => {
-      const { team, webhookId } = await setup();
+      const { team, webhookId, tile } = await setup();
       writeDashboard([
-        makeTile({ id: 'with-alert', alert: tileAlert(webhookId) }),
-        makeTile({ id: 'without-alert' }),
+        tile('with-alert', tileAlert(webhookId)),
+        tile('without-alert'),
       ]);
 
       await syncDashboards(team._id.toString(), tmpDir);
@@ -367,14 +405,12 @@ describe('provisionDashboards', () => {
     });
 
     it('updates the alert in place on later syncs', async () => {
-      const { team, webhookId } = await setup();
-      writeDashboard([makeTile({ id: 'tile', alert: tileAlert(webhookId) })]);
+      const { team, webhookId, tile } = await setup();
+      writeDashboard([tile('tile', tileAlert(webhookId))]);
       await syncDashboards(team._id.toString(), tmpDir);
       const [created] = await Alert.find({ team: team._id });
 
-      writeDashboard([
-        makeTile({ id: 'tile', alert: tileAlert(webhookId, 50) }),
-      ]);
+      writeDashboard([tile('tile', tileAlert(webhookId, 50))]);
       await syncDashboards(team._id.toString(), tmpDir);
       await syncDashboards(team._id.toString(), tmpDir);
 
@@ -385,19 +421,16 @@ describe('provisionDashboards', () => {
     });
 
     it('removes a provisioned alert once its tile no longer declares one', async () => {
-      const { team, webhookId } = await setup();
+      const { team, webhookId, tile } = await setup();
       writeDashboard([
-        makeTile({ id: 'kept', alert: tileAlert(webhookId) }),
-        makeTile({ id: 'dropped', alert: tileAlert(webhookId) }),
-        makeTile({ id: 'removed', alert: tileAlert(webhookId) }),
+        tile('kept', tileAlert(webhookId)),
+        tile('dropped', tileAlert(webhookId)),
+        tile('removed', tileAlert(webhookId)),
       ]);
       await syncDashboards(team._id.toString(), tmpDir);
       expect(await Alert.countDocuments({ team: team._id })).toBe(3);
 
-      writeDashboard([
-        makeTile({ id: 'kept', alert: tileAlert(webhookId) }),
-        makeTile({ id: 'dropped' }),
-      ]);
+      writeDashboard([tile('kept', tileAlert(webhookId)), tile('dropped')]);
       await syncDashboards(team._id.toString(), tmpDir);
 
       const alerts = await Alert.find({ team: team._id });
@@ -405,12 +438,45 @@ describe('provisionDashboards', () => {
     });
 
     it('skips an alert whose webhook does not exist', async () => {
-      const { team } = await setup();
+      const { team, tile } = await setup();
       writeDashboard([
-        makeTile({
-          id: 'tile',
-          alert: tileAlert(new mongoose.Types.ObjectId().toString()),
-        }),
+        tile('tile', tileAlert(new mongoose.Types.ObjectId().toString())),
+      ]);
+
+      await syncDashboards(team._id.toString(), tmpDir);
+
+      const dashboard = await provisionedDashboard(team._id);
+      expect(dashboard?.tiles[0].config.alert).toBeUndefined();
+      expect(await Alert.countDocuments({ team: team._id })).toBe(0);
+    });
+
+    it('skips an alert on a display type the alert task cannot evaluate', async () => {
+      const { team, webhookId, tile } = await setup();
+      const table = tile('tile', tileAlert(webhookId));
+      writeDashboard([
+        { ...table, config: { ...table.config, displayType: 'table' } },
+      ]);
+
+      await syncDashboards(team._id.toString(), tmpDir);
+
+      expect(await Alert.countDocuments({ team: team._id })).toBe(0);
+    });
+
+    it('skips an alert on a raw SQL tile whose display type does not support alerts', async () => {
+      const { team, webhookId, tile } = await setup();
+      const { config: _config, ...base } = tile('tile');
+      writeDashboard([
+        {
+          ...base,
+          config: {
+            configType: 'sql',
+            name: 'Raw',
+            displayType: 'table',
+            connection: new mongoose.Types.ObjectId().toString(),
+            sqlTemplate: 'SELECT 1',
+            alert: tileAlert(webhookId),
+          },
+        },
       ]);
 
       await syncDashboards(team._id.toString(), tmpDir);
@@ -419,16 +485,50 @@ describe('provisionDashboards', () => {
       expect(await Alert.countDocuments({ team: team._id })).toBe(0);
     });
 
-    it('keeps the last valid version when a declared alert becomes invalid', async () => {
+    it("skips an alert whose tile's source is not in the team", async () => {
       const { team, webhookId } = await setup();
-      writeDashboard([makeTile({ id: 'tile', alert: tileAlert(webhookId) })]);
-      await syncDashboards(team._id.toString(), tmpDir);
-
       writeDashboard([
         makeTile({
           id: 'tile',
-          alert: tileAlert(new mongoose.Types.ObjectId().toString(), 99),
+          sourceId: new mongoose.Types.ObjectId().toString(),
+          alert: tileAlert(webhookId),
         }),
+      ]);
+
+      await syncDashboards(team._id.toString(), tmpDir);
+
+      expect(await Alert.countDocuments({ team: team._id })).toBe(0);
+    });
+
+    it('applies the alerts API threshold rules', async () => {
+      const { team, webhookId, tile } = await setup();
+      writeDashboard([
+        tile('tile', {
+          ...tileAlert(webhookId),
+          thresholdType: AlertThresholdType.BETWEEN,
+        }),
+      ]);
+
+      await syncDashboards(team._id.toString(), tmpDir);
+
+      expect(await Alert.countDocuments({ team: team._id })).toBe(0);
+    });
+
+    it('keeps the last synced tile, query and alert together, when a declared alert becomes invalid', async () => {
+      const { team, webhookId, tile } = await setup();
+      writeDashboard([
+        tile('tile', tileAlert(webhookId), 'level:error'),
+        tile('other'),
+      ]);
+      await syncDashboards(team._id.toString(), tmpDir);
+
+      writeDashboard([
+        tile(
+          'tile',
+          tileAlert(new mongoose.Types.ObjectId().toString(), 99),
+          'level:warn',
+        ),
+        tile('other', undefined, 'updated'),
       ]);
       await syncDashboards(team._id.toString(), tmpDir);
 
@@ -436,42 +536,77 @@ describe('provisionDashboards', () => {
       expect(alerts).toHaveLength(1);
       expect(alerts[0].threshold).toBe(10);
       expect(alerts[0].channel).toEqual({ type: 'webhook', webhookId });
+      const dashboard = await provisionedDashboard(team._id);
+      const [kept, other] = dashboard?.tiles ?? [];
+      expect(kept.config).toMatchObject({ where: 'level:error' });
+      expect(other.config).toMatchObject({ where: 'updated' });
+    });
+
+    it('skips alerts on tiles whose id is not unique', async () => {
+      const { team, webhookId, tile } = await setup();
+      writeDashboard([
+        tile('tile', tileAlert(webhookId)),
+        tile('tile', tileAlert(webhookId, 20)),
+      ]);
+
+      await syncDashboards(team._id.toString(), tmpDir);
+
+      expect(await Alert.countDocuments({ team: team._id })).toBe(0);
     });
 
     it('leaves alerts created in the app alone', async () => {
-      const { team, webhookId } = await setup();
-      writeDashboard([makeTile({ id: 'tile' })]);
+      const { team, tile } = await setup();
+      writeDashboard([tile('tile')]);
       await syncDashboards(team._id.toString(), tmpDir);
       const dashboard = await provisionedDashboard(team._id);
-      await new Alert({
-        team: team._id,
-        source: AlertSource.TILE,
-        dashboard: dashboard?._id,
-        tileId: 'tile',
-        interval: '5m',
-        threshold: 1,
-        thresholdType: AlertThresholdType.ABOVE,
-        channel: { type: 'webhook', webhookId },
-        createdBy: new mongoose.Types.ObjectId(),
-      }).save();
+      await appAlert(team._id, dashboard?._id, 'tile');
 
       await syncDashboards(team._id.toString(), tmpDir);
 
       expect(await Alert.countDocuments({ team: team._id })).toBe(1);
     });
 
+    it('does not take over an app-created alert on a tile the file declares one on', async () => {
+      const { team, webhookId, tile } = await setup();
+      writeDashboard([tile('tile')]);
+      await syncDashboards(team._id.toString(), tmpDir);
+      const dashboard = await provisionedDashboard(team._id);
+      const userAlert = await appAlert(team._id, dashboard?._id, 'tile');
+
+      writeDashboard([tile('tile', tileAlert(webhookId, 50))]);
+      await syncDashboards(team._id.toString(), tmpDir);
+      writeDashboard([tile('tile')]);
+      await syncDashboards(team._id.toString(), tmpDir);
+
+      const alerts = await Alert.find({ team: team._id });
+      expect(alerts).toHaveLength(1);
+      expect(alerts[0]._id.toString()).toBe(userAlert._id.toString());
+      expect(alerts[0].threshold).toBe(1);
+      expect(alerts[0].provisioned).toBe(false);
+    });
+
+    it('allows only one provisioned alert per tile', async () => {
+      const { team, webhookId, tile } = await setup();
+      writeDashboard([tile('tile', tileAlert(webhookId))]);
+      await syncDashboards(team._id.toString(), tmpDir);
+      await Alert.init();
+      const [alert] = await Alert.find({ team: team._id }).lean();
+      const { _id, ...duplicate } = alert;
+
+      await expect(Alert.create(duplicate)).rejects.toThrow(/duplicate key/);
+    });
+
     describe('webhooks by name', () => {
-      const namedAlert = (webhookName: string, threshold = 10) =>
-        ({
-          interval: '5m',
-          threshold,
-          thresholdType: AlertThresholdType.ABOVE,
-          channel: { type: 'webhook', webhookName },
-        }) as any;
+      const namedAlert = (webhookName: string, threshold = 10) => ({
+        interval: '5m',
+        threshold,
+        thresholdType: AlertThresholdType.ABOVE,
+        channel: { type: 'webhook', webhookName },
+      });
 
       it('resolves a webhook name to the team webhook', async () => {
-        const { team, webhookId } = await setup();
-        writeDashboard([makeTile({ id: 'tile', alert: namedAlert('Hook') })]);
+        const { team, webhookId, tile } = await setup();
+        writeDashboard([tile('tile', namedAlert('Hook'))]);
 
         await syncDashboards(team._id.toString(), tmpDir);
 
@@ -487,109 +622,104 @@ describe('provisionDashboards', () => {
       });
 
       it('resolves names in `channels` too', async () => {
-        const { team, webhookId } = await setup();
+        const { team, webhookId, tile } = await setup();
         const other = await new Webhook({
           team: team._id,
           service: 'generic',
           url: 'https://example.com/other',
           name: 'Other',
         }).save();
+        const { channel: _channel, ...alert } = namedAlert('Hook');
         writeDashboard([
-          makeTile({
-            id: 'tile',
-            alert: {
-              ...namedAlert('Hook'),
-              channel: undefined,
-              channels: [
-                { type: 'webhook', webhookName: 'Hook' },
-                { type: 'webhook', webhookName: 'Other' },
-              ],
-            },
+          tile('tile', {
+            ...alert,
+            channels: [
+              { type: 'webhook', webhookName: 'Hook' },
+              { type: 'webhook', webhookName: 'Other' },
+            ],
           }),
         ]);
 
         await syncDashboards(team._id.toString(), tmpDir);
 
-        const [alert] = await Alert.find({ team: team._id });
-        expect(alert.channels).toEqual([
+        const [created] = await Alert.find({ team: team._id });
+        expect(created.channels).toEqual([
           { type: 'webhook', webhookId },
           { type: 'webhook', webhookId: other._id.toString() },
         ]);
       });
 
-      it('resolves the name separately for each team', async () => {
+      it('only creates the alert in the team that owns the tile source', async () => {
         const a = await setup();
         const b = await setup(() => new Team({ name: 'Team B' }).save());
-        writeDashboard([makeTile({ id: 'tile', alert: namedAlert('Hook') })]);
+        writeDashboard([a.tile('tile', namedAlert('Hook'))]);
 
         await syncDashboards(a.team._id.toString(), tmpDir);
         await syncDashboards(b.team._id.toString(), tmpDir);
 
         const [alertA] = await Alert.find({ team: a.team._id });
-        const [alertB] = await Alert.find({ team: b.team._id });
         expect(alertA.channel).toEqual({
           type: 'webhook',
           webhookId: a.webhookId,
         });
-        expect(alertB.channel).toEqual({
-          type: 'webhook',
-          webhookId: b.webhookId,
-        });
+        expect(await Alert.countDocuments({ team: b.team._id })).toBe(0);
+        expect(await provisionedDashboard(b.team._id)).toBeTruthy();
       });
 
       it('keeps the last valid version when the name matches no webhook', async () => {
-        const { team, webhookId } = await setup();
-        writeDashboard([makeTile({ id: 'tile', alert: namedAlert('Hook') })]);
+        const { team, webhookId, tile } = await setup();
+        writeDashboard([tile('tile', namedAlert('Hook'))]);
         await syncDashboards(team._id.toString(), tmpDir);
 
-        writeDashboard([
-          makeTile({ id: 'tile', alert: namedAlert('Missing', 99) }),
-        ]);
+        writeDashboard([tile('tile', namedAlert('Missing', 99))]);
         await syncDashboards(team._id.toString(), tmpDir);
 
         const alerts = await Alert.find({ team: team._id });
         expect(alerts).toHaveLength(1);
         expect(alerts[0].threshold).toBe(10);
         expect(alerts[0].channel).toEqual({ type: 'webhook', webhookId });
-        // The unresolved reference is not stored on the tile.
         const dashboard = await provisionedDashboard(team._id);
-        expect(dashboard?.tiles[0].config.alert).toBeUndefined();
+        expect(dashboard?.tiles[0].config.alert?.channel).toEqual({
+          type: 'webhook',
+          webhookId,
+        });
       });
 
       it('skips a name that matches webhooks of several services', async () => {
-        const { team } = await setup();
+        const { team, tile } = await setup();
         await new Webhook({
           team: team._id,
           service: 'slack',
           url: 'https://hooks.slack.com/services/x',
           name: 'Hook',
         }).save();
-        writeDashboard([makeTile({ id: 'tile', alert: namedAlert('Hook') })]);
+        writeDashboard([tile('tile', namedAlert('Hook'))]);
 
         await syncDashboards(team._id.toString(), tmpDir);
 
         expect(await Alert.countDocuments({ team: team._id })).toBe(0);
       });
+
+      it('does not read webhooks when no file names one', async () => {
+        const { team, webhookId, tile } = await setup();
+        const find = jest.spyOn(Webhook, 'find');
+        writeDashboard([tile('tile', tileAlert(webhookId))]);
+
+        await syncDashboards(team._id.toString(), tmpDir);
+
+        expect(find).not.toHaveBeenCalled();
+        find.mockRestore();
+      });
     });
 
     describe('orphaned alerts', () => {
-      const writeFile = (file: string, name: string, tiles: unknown[]) =>
-        fs.writeFileSync(
-          path.join(tmpDir, file),
-          JSON.stringify({ name, tiles, tags: [] }),
-        );
-
       const setupTwoDashboards = async () => {
-        const { team, webhookId } = await setup();
-        writeFile('a.json', 'A', [
-          makeTile({ id: 'tile', alert: tileAlert(webhookId) }),
-        ]);
-        writeFile('b.json', 'B', [
-          makeTile({ id: 'tile', alert: tileAlert(webhookId) }),
-        ]);
+        const { team, webhookId, tile } = await setup();
+        writeFile('a.json', 'A', [tile('tile', tileAlert(webhookId))]);
+        writeFile('b.json', 'B', [tile('tile', tileAlert(webhookId))]);
         await syncDashboards(team._id.toString(), tmpDir);
         expect(await Alert.countDocuments({ team: team._id })).toBe(2);
-        return { team, webhookId };
+        return { team, webhookId, tile };
       };
 
       const alertDashboardNames = async (teamId: unknown) => {
@@ -612,14 +742,31 @@ describe('provisionDashboards', () => {
       });
 
       it('moves the alerts along when a dashboard is renamed', async () => {
-        const { team, webhookId } = await setupTwoDashboards();
+        const { team, webhookId, tile } = await setupTwoDashboards();
 
-        writeFile('b.json', 'B renamed', [
-          makeTile({ id: 'tile', alert: tileAlert(webhookId) }),
-        ]);
+        writeFile('b.json', 'B renamed', [tile('tile', tileAlert(webhookId))]);
         await syncDashboards(team._id.toString(), tmpDir);
 
         expect(await alertDashboardNames(team._id)).toEqual(['A', 'B renamed']);
+      });
+
+      it('keeps the old alerts when the renamed dashboard fails to sync', async () => {
+        const { team, webhookId, tile } = await setupTwoDashboards();
+        const upsert = Dashboard.findOneAndUpdate.bind(Dashboard);
+        const spy = jest
+          .spyOn(Dashboard, 'findOneAndUpdate')
+          .mockImplementation((filter, ...rest) => {
+            if (filter?.name === 'B renamed') {
+              throw new Error('write failed');
+            }
+            return upsert(filter, ...rest);
+          });
+
+        writeFile('b.json', 'B renamed', [tile('tile', tileAlert(webhookId))]);
+        await syncDashboards(team._id.toString(), tmpDir);
+        spy.mockRestore();
+
+        expect(await alertDashboardNames(team._id)).toEqual(['A', 'B']);
       });
 
       it('keeps all alerts while any file is invalid', async () => {
@@ -641,20 +788,25 @@ describe('provisionDashboards', () => {
         expect(await alertDashboardNames(team._id)).toEqual(['A', 'B']);
       });
 
+      it('syncs only the first of two files with the same name, and keeps all alerts', async () => {
+        const { team, webhookId, tile } = await setupTwoDashboards();
+        const [created] = await Alert.find({ team: team._id, tileId: 'tile' })
+          .populate<{ dashboard: { name: string } }>('dashboard', 'name')
+          .then(alerts => alerts.filter(a => a.dashboard.name === 'A'));
+
+        writeFile('c.json', 'A', [tile('tile', tileAlert(webhookId, 99))]);
+        await syncDashboards(team._id.toString(), tmpDir);
+        await syncDashboards(team._id.toString(), tmpDir);
+
+        expect(await alertDashboardNames(team._id)).toEqual(['A', 'B']);
+        const same = await Alert.findById(created._id);
+        expect(same?.threshold).toBe(10);
+      });
+
       it('leaves app-created alerts on an orphaned dashboard alone', async () => {
-        const { team, webhookId } = await setupTwoDashboards();
+        const { team } = await setupTwoDashboards();
         const b = await Dashboard.findOne({ team: team._id, name: 'B' });
-        await new Alert({
-          team: team._id,
-          source: AlertSource.TILE,
-          dashboard: b?._id,
-          tileId: 'other',
-          interval: '5m',
-          threshold: 1,
-          thresholdType: AlertThresholdType.ABOVE,
-          channel: { type: 'webhook', webhookId },
-          createdBy: new mongoose.Types.ObjectId(),
-        }).save();
+        await appAlert(team._id, b?._id, 'other');
 
         fs.rmSync(path.join(tmpDir, 'b.json'));
         await syncDashboards(team._id.toString(), tmpDir);
@@ -665,6 +817,31 @@ describe('provisionDashboards', () => {
         });
         expect(remaining.map(a => a.tileId)).toEqual(['other']);
       });
+    });
+
+    it('creates alerts only in the team owning the webhook when provisioning all teams', async () => {
+      const a = await setup();
+      const b = await setup(() => new Team({ name: 'Team B' }).save());
+      writeDashboard([a.tile('tile', tileAlert(a.webhookId))]);
+      const env = process.env;
+      process.env = {
+        ...env,
+        DASHBOARD_PROVISIONER_DIR: tmpDir,
+        DASHBOARD_PROVISIONER_ALL_TEAMS: 'true',
+        DASHBOARD_PROVISIONER_TEAM_ID: '',
+      };
+
+      try {
+        await new ProvisionDashboardsTask({
+          taskName: TaskName.PROVISION_DASHBOARDS,
+        }).execute();
+      } finally {
+        process.env = env;
+      }
+
+      expect(await Alert.countDocuments({ team: a.team._id })).toBe(1);
+      expect(await Alert.countDocuments({ team: b.team._id })).toBe(0);
+      expect(await provisionedDashboard(b.team._id)).toBeTruthy();
     });
   });
 

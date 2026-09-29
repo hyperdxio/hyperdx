@@ -3,25 +3,24 @@ import {
   DashboardWithoutId,
   DashboardWithoutIdSchema,
   resolveChartPaletteToken,
-  Tile,
   walkRawDashboardTileColors,
 } from '@hyperdx/common-utils/dist/types';
 import fs from 'fs';
 import { Types } from 'mongoose';
 import path from 'path';
 
-import {
-  AlertInput,
-  createOrUpdateDashboardAlerts,
-  validateAlertInput,
-} from '@/controllers/alerts';
 import { connectDB, mongooseConnection } from '@/models';
-import Alert, { AlertSource } from '@/models/alert';
-import Dashboard, { IDashboard } from '@/models/dashboard';
+import Dashboard from '@/models/dashboard';
 import Team from '@/models/team';
-import Webhook from '@/models/webhook';
+import {
+  deleteOrphanedProvisionedAlerts,
+  prepareProvisionedTiles,
+  syncProvisionedAlerts,
+} from '@/tasks/provisionDashboards/alerts';
+import { encodeWebhookNames } from '@/tasks/provisionDashboards/webhookNames';
 import type { HdxTask } from '@/tasks/types';
 import { ProvisionDashboardsTaskArgs } from '@/tasks/types';
+import { setBusinessContext } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
 
 // Heal legacy `chart-1`..`chart-10` tile colors from #2265 before the
@@ -43,42 +42,6 @@ const provisionedDashboardSchema = DashboardWithoutIdSchema.superRefine(
     validateDashboardFilterOptionUniqueness(data.filters ?? [], ctx),
 );
 
-// A file names a webhook with `{ "type": "webhook", "webhookName": "..." }`,
-// since webhook ids differ per team and per install. Names only resolve per
-// team, after the file is parsed, so until then the name rides in `webhookId`
-// behind this prefix. It never reaches Mongo: resolveWebhookNames swaps it for
-// the real id, or drops the alert from the stored tile.
-const WEBHOOK_NAME_REF = 'webhook-name:';
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  value != null && typeof value === 'object' && !Array.isArray(value);
-
-function encodeWebhookName(channel: unknown): unknown {
-  if (
-    !isRecord(channel) ||
-    typeof channel.webhookName !== 'string' ||
-    'webhookId' in channel
-  ) {
-    return channel;
-  }
-  const { webhookName, ...rest } = channel;
-  return { ...rest, webhookId: `${WEBHOOK_NAME_REF}${webhookName}` };
-}
-
-function encodeWebhookNames(raw: unknown): unknown {
-  if (!isRecord(raw) || !Array.isArray(raw.tiles)) return raw;
-  for (const tile of raw.tiles) {
-    const alert =
-      isRecord(tile) && isRecord(tile.config) ? tile.config.alert : undefined;
-    if (!isRecord(alert)) continue;
-    if ('channel' in alert) alert.channel = encodeWebhookName(alert.channel);
-    if (Array.isArray(alert.channels)) {
-      alert.channels = alert.channels.map(encodeWebhookName);
-    }
-  }
-  return raw;
-}
-
 // `complete` is false when the directory or any file in it could not be read
 // or validated, so the caller cannot tell which dashboards the files declare.
 function readDashboardDir(dir: string): {
@@ -87,13 +50,17 @@ function readDashboardDir(dir: string): {
 } {
   let files: string[];
   try {
-    files = fs.readdirSync(dir).filter(f => f.endsWith('.json'));
+    files = fs
+      .readdirSync(dir)
+      .filter(f => f.endsWith('.json'))
+      .sort();
   } catch (err) {
     logger.error({ err, dir }, 'Failed to read dashboard directory');
     return { dashboards: [], complete: false };
   }
 
   const dashboards: DashboardWithoutId[] = [];
+  const names = new Set<string>();
   let complete = true;
   for (const file of files) {
     try {
@@ -114,6 +81,15 @@ function readDashboardDir(dir: string): {
         complete = false;
         continue;
       }
+      if (names.has(parsed.data.name)) {
+        logger.warn(
+          { file, name: parsed.data.name },
+          'Skipping dashboard file whose name another file already uses',
+        );
+        complete = false;
+        continue;
+      }
+      names.add(parsed.data.name);
       dashboards.push(parsed.data);
     } catch (err) {
       logger.error({ err, file }, 'Failed to parse dashboard file');
@@ -127,164 +103,13 @@ export function readDashboardFiles(dir: string): DashboardWithoutId[] {
   return readDashboardDir(dir).dashboards;
 }
 
-type AlertChannelInput = { type: 'webhook'; webhookId: string };
-
-// Swaps each `webhookName` reference for the id of the team's webhook with
-// that name. A tile whose alert names a missing or ambiguous webhook loses its
-// alert, and is reported in `unresolved` so its last valid version is kept.
-export function resolveWebhookNames(
-  tiles: Tile[],
-  webhookIdsByName: Map<string, string[]>,
-): { tiles: Tile[]; unresolved: Map<string, string> } {
-  const unresolved = new Map<string, string>();
-  const resolveChannel = (channel: AlertChannelInput): AlertChannelInput => {
-    if (!channel.webhookId.startsWith(WEBHOOK_NAME_REF)) return channel;
-    const name = channel.webhookId.slice(WEBHOOK_NAME_REF.length);
-    const ids = webhookIdsByName.get(name) ?? [];
-    if (ids.length === 0) {
-      throw new Error(`Webhook named "${name}" not found`);
-    }
-    if (ids.length > 1) {
-      throw new Error(
-        `Webhook name "${name}" matches ${ids.length} webhooks; use webhookId`,
-      );
-    }
-    return { ...channel, webhookId: ids[0] };
-  };
-
-  const resolved = tiles.map((tile): Tile => {
-    const alert = tile.config.alert;
-    if (alert == null) return tile;
-    try {
-      return {
-        ...tile,
-        config: {
-          ...tile.config,
-          alert: {
-            ...alert,
-            ...(alert.channel && { channel: resolveChannel(alert.channel) }),
-            ...(alert.channels && {
-              channels: alert.channels.map(resolveChannel),
-            }),
-          },
-        },
-      };
-    } catch (err) {
-      unresolved.set(tile.id, err instanceof Error ? err.message : String(err));
-      const { alert: _alert, ...config } = tile.config;
-      return { ...tile, config };
-    }
-  });
-  return { tiles: resolved, unresolved };
-}
-
-// Turns the `config.alert` of each provisioned tile into a tile alert, the way
-// saving a dashboard through the API does. An alert that fails validation, or
-// is listed in `unresolved`, is skipped and keeps its last valid version; a
-// provisioned alert whose tile no longer declares one is removed. Alerts
-// created in the app are left alone.
-export async function syncProvisionedAlerts(
-  dashboard: Pick<IDashboard, '_id' | 'name' | 'tags' | 'tiles'>,
-  teamId: string,
-  tiles: Tile[],
-  unresolved: Map<string, string> = new Map(),
-) {
-  const team = new Types.ObjectId(teamId);
-  const declared = tiles.filter(tile => tile.config.alert != null);
-
-  for (const [tileId, reason] of unresolved) {
-    logger.warn(
-      { name: dashboard.name, tileId, err: reason },
-      'Skipping invalid provisioned tile alert',
-    );
-  }
-
-  const alertsByTile: Record<string, AlertInput> = {};
-  for (const tile of declared) {
-    const alert = tile.config.alert as AlertInput;
-    try {
-      await validateAlertInput(team, {
-        source: AlertSource.TILE,
-        dashboardId: dashboard._id.toString(),
-        tileId: tile.id,
-        channel: alert.channel,
-        channels: alert.channels,
-      });
-      alertsByTile[tile.id] = alert;
-    } catch (err) {
-      logger.warn(
-        {
-          name: dashboard.name,
-          tileId: tile.id,
-          err: err instanceof Error ? err.message : err,
-        },
-        'Skipping invalid provisioned tile alert',
-      );
-    }
-  }
-
-  if (Object.keys(alertsByTile).length > 0) {
-    await createOrUpdateDashboardAlerts(
-      dashboard,
-      team,
-      alertsByTile,
-      undefined,
-      { provisioned: true },
-    );
-  }
-
-  await Alert.deleteMany({
-    dashboard: dashboard._id,
-    team,
-    source: AlertSource.TILE,
-    provisioned: true,
-    tileId: {
-      $nin: [...declared.map(tile => tile.id), ...unresolved.keys()],
-    },
-  });
-}
-
-// Provisioned dashboards outlive their files, but their provisioned alerts
-// must not: a removed or renamed file would otherwise keep notifying. Only
-// called once every file in the directory was read, so a file that is briefly
-// invalid does not lose its alerts.
-export async function deleteOrphanedProvisionedAlerts(
-  teamId: string,
-  declaredNames: string[],
-) {
-  const orphaned = await Dashboard.find(
-    { team: teamId, provisioned: true, name: { $nin: declaredNames } },
-    { _id: 1, name: 1 },
-  ).lean();
-  if (orphaned.length === 0) return;
-
-  const { deletedCount } = await Alert.deleteMany({
-    team: teamId,
-    source: AlertSource.TILE,
-    provisioned: true,
-    dashboard: { $in: orphaned.map(d => d._id) },
-  });
-  if (deletedCount > 0) {
-    logger.info(
-      { teamId, deletedCount, dashboards: orphaned.map(d => d.name) },
-      'Deleted provisioned alerts of dashboards no longer in the provisioner directory',
-    );
-  }
-}
-
 export async function syncDashboards(teamId: string, dir: string) {
-  const { dashboards, complete } = readDashboardDir(dir);
+  setBusinessContext({ teamId });
+  const { dashboards, complete: allRead } = readDashboardDir(dir);
+  let complete = allRead;
   // An empty directory is more likely a failed mount than an intent to drop
   // every provisioned alert, so orphan cleanup needs at least one file.
   if (dashboards.length === 0) return;
-
-  const webhookIdsByName = new Map<string, string[]>();
-  const webhooks = await Webhook.find({ team: teamId }, { name: 1 }).lean();
-  for (const webhook of webhooks) {
-    const ids = webhookIdsByName.get(webhook.name) ?? [];
-    ids.push(webhook._id.toString());
-    webhookIdsByName.set(webhook.name, ids);
-  }
 
   for (const dashboard of dashboards) {
     try {
@@ -300,12 +125,19 @@ export async function syncDashboards(teamId: string, dir: string) {
         );
       }
 
-      const { tiles, unresolved } = resolveWebhookNames(
+      const existing = await Dashboard.findOne(
+        { name: dashboard.name, team: teamId, provisioned: true },
+        { _id: 1, tiles: 1 },
+      ).lean();
+      const dashboardId = existing?._id ?? new Types.ObjectId();
+      const { tiles, alertsByTile } = await prepareProvisionedTiles(
+        teamId,
+        dashboardId,
         dashboard.tiles || [],
-        webhookIdsByName,
+        existing?.tiles ?? [],
       );
 
-      const result = await Dashboard.findOneAndUpdate(
+      const saved = await Dashboard.findOneAndUpdate(
         { name: dashboard.name, team: teamId, provisioned: true },
         {
           $set: {
@@ -318,27 +150,30 @@ export async function syncDashboards(teamId: string, dir: string) {
             containers: dashboard.containers || [],
           },
           $setOnInsert: {
+            _id: dashboardId,
             name: dashboard.name,
             team: teamId,
             provisioned: true,
           },
         },
-        { upsert: true, new: false },
+        { upsert: true, new: true },
       );
 
-      if (result === null) {
+      if (existing == null) {
         logger.info({ name: dashboard.name }, 'Created provisioned dashboard');
       }
 
-      const saved = await Dashboard.findOne({
-        name: dashboard.name,
-        team: teamId,
-        provisioned: true,
-      });
-      if (saved) {
-        await syncProvisionedAlerts(saved, teamId, tiles, unresolved);
+      try {
+        await syncProvisionedAlerts(saved, teamId, alertsByTile);
+      } catch (err) {
+        complete = false;
+        logger.error(
+          { err, name: dashboard.name },
+          'Failed to provision dashboard alerts',
+        );
       }
     } catch (err) {
+      complete = false;
       logger.error(
         { err, name: dashboard.name },
         'Failed to provision dashboard',
@@ -348,7 +183,7 @@ export async function syncDashboards(teamId: string, dir: string) {
 
   if (!complete) {
     logger.warn(
-      'Some dashboard files could not be read, skipping cleanup of orphaned provisioned alerts',
+      'Some dashboard files could not be read or synced, skipping cleanup of orphaned provisioned alerts',
     );
     return;
   }
@@ -423,7 +258,11 @@ export default class ProvisionDashboardsTask implements HdxTask {
     }
 
     for (const id of teamIds) {
-      await syncDashboards(id, dir);
+      try {
+        await syncDashboards(id, dir);
+      } catch (err) {
+        logger.error({ err, teamId: id }, 'Failed to provision dashboards');
+      }
     }
   }
 
