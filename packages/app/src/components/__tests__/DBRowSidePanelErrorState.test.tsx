@@ -2,7 +2,7 @@ import React from 'react';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import { SourceKind, TLogSource } from '@hyperdx/common-utils/dist/types';
 import { MantineProvider } from '@mantine/core';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 
 import { DBRowSidePanelErrorState } from '@/components/DBRowSidePanelErrorState';
 
@@ -128,5 +128,53 @@ describe('DBRowSidePanelErrorState', () => {
         /Failed to load row details from distributed or merge table/i,
       ),
     ).toBeNull();
+  });
+
+  describe('materialized and alias columns hint', () => {
+    const OPTION_KEY = 'hdx-row-show-materialized-alias-columns';
+    const aliasError = new ClickHouseQueryError(
+      "Dictionary ('default.missing') not found",
+      'SELECT * FROM logs LIMIT 1 SETTINGS asterisk_include_alias_columns = 1',
+    );
+
+    beforeEach(() => {
+      localStorage.clear();
+    });
+
+    it('offers to hide the columns when the row query added them', () => {
+      localStorage.setItem(OPTION_KEY, 'true');
+      renderErrorState(aliasError);
+
+      fireEvent.click(
+        screen.getByRole('button', {
+          name: 'Hide materialized and alias columns',
+        }),
+      );
+
+      expect(localStorage.getItem(OPTION_KEY)).toBe('false');
+      expect(
+        screen.queryByTestId('materialized-alias-columns-hint'),
+      ).toBeNull();
+    });
+
+    it('is not shown while the option is off', () => {
+      renderErrorState(aliasError);
+
+      expect(
+        screen.queryByTestId('materialized-alias-columns-hint'),
+      ).toBeNull();
+    });
+
+    it('is not shown when a Known Columns List replaces SELECT *', () => {
+      localStorage.setItem(OPTION_KEY, 'true');
+      renderErrorState(aliasError, {
+        ...source,
+        knownColumnsListExpression: 'Timestamp, Body',
+      });
+
+      expect(
+        screen.queryByTestId('materialized-alias-columns-hint'),
+      ).toBeNull();
+    });
   });
 });

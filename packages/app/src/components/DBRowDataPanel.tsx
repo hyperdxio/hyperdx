@@ -10,12 +10,14 @@ import {
 import { Box } from '@mantine/core';
 
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import {
+  getKnownColumnsList,
+  useSelectAllColumnsQuerySettings,
+} from '@/hooks/useMaterializedAliasColumnsOption';
 import { WithClause } from '@/hooks/useRowWhere';
 import {
   isSelectAllColumnsSettingRejected,
   markSelectAllColumnsSettingsRejected,
-  SELECT_ALL_COLUMNS_QUERY_SETTINGS,
-  useSelectAllColumnsSettingsRejected,
 } from '@/hooks/useSelectAllColumnsSettingsRejection';
 import {
   getDisplayedTimestampValueExpression,
@@ -25,10 +27,7 @@ import {
 import { getSelectExpressionsForHighlightedAttributes } from '@/utils/highlightedAttributes';
 import { getTimestampValueSelects } from '@/utils/rowTimestamps';
 
-import {
-  DBRowJsonViewer,
-  useShowMaterializedAliasColumns,
-} from './DBRowJsonViewer';
+import { DBRowJsonViewer } from './DBRowJsonViewer';
 import { getActiveInfraCorrelations } from './infraCorrelations';
 
 // The source's own `timestampValueExpression` columns are projected too, under
@@ -99,10 +98,7 @@ export function useRowData({
   // target tables declare different column sets. When the source declares a
   // "known columns" list (columns known to exist across all target tables) we
   // select that instead of `*` when fetching full row data.
-  const knownColumns =
-    isLogSource(source) || isTraceSource(source)
-      ? source.knownColumnsListExpression?.trim()
-      : undefined;
+  const knownColumns = getKnownColumnsList(source);
 
   const baseConfig = {
     source: source.id,
@@ -220,13 +216,7 @@ export function useRowData({
   };
 
   const connection = source.connection;
-  const showMaterializedAliasColumns = useShowMaterializedAliasColumns();
-  const rejectsSettings = useSelectAllColumnsSettingsRejected(connection);
-  // A value that the source's own query settings give for either setting wins.
-  const additionalQuerySettings =
-    showMaterializedAliasColumns && !knownColumns && !rejectsSettings
-      ? SELECT_ALL_COLUMNS_QUERY_SETTINGS
-      : undefined;
+  const additionalQuerySettings = useSelectAllColumnsQuerySettings(source);
   // A rejected setting will fail again, so only other errors keep the retry.
   const settingsQueryOptions = additionalQuerySettings
     ? {

@@ -32,6 +32,7 @@ import HyperJson, {
   GetLineActions,
   LineAction,
 } from '@/components/HyperJson';
+import { useMaterializedAliasColumnsOption } from '@/hooks/useMaterializedAliasColumnsOption';
 import { useFormatTime } from '@/useFormatTime';
 import { isColumnInSelect, mergePath } from '@/utils';
 import {
@@ -132,8 +133,6 @@ type ViewerOptions = {
   whiteSpace?: 'pre' | 'pre-wrap';
   tabulate: boolean;
   filterBlanks: boolean;
-  // Off when absent, as in options saved before it existed.
-  showMaterializedAliasColumns?: boolean;
 };
 
 const VIEWER_OPTIONS_KEY = 'hdx_json_viewer_options';
@@ -229,12 +228,10 @@ const viewerOptionsAtom = atomWithStorage<ViewerOptions>(
   viewerOptionsStorage,
 );
 
-export function useShowMaterializedAliasColumns(): boolean {
-  return useAtomValue(viewerOptionsAtom).showMaterializedAliasColumns === true;
-}
-
 function HyperJsonMenu({ rowData }: { rowData: any }) {
   const [jsonOptions, setJsonOptions] = useAtom(viewerOptionsAtom);
+  const [showMaterializedAliasColumns, setShowMaterializedAliasColumns] =
+    useMaterializedAliasColumnsOption();
   const effectiveWhiteSpace = jsonOptions.whiteSpace ?? 'pre-wrap';
 
   return (
@@ -346,16 +343,12 @@ function HyperJsonMenu({ rowData }: { rowData: any }) {
             py={8}
             data-testid="json-viewer-materialized-alias-toggle"
             rightSection={
-              jsonOptions.showMaterializedAliasColumns ? (
+              showMaterializedAliasColumns ? (
                 <IconCheck size={14} className="ps-2" />
               ) : null
             }
             onClick={() =>
-              setJsonOptions({
-                ...jsonOptions,
-                showMaterializedAliasColumns:
-                  !jsonOptions.showMaterializedAliasColumns,
-              })
+              setShowMaterializedAliasColumns(!showMaterializedAliasColumns)
             }
           >
             Show materialized and alias columns

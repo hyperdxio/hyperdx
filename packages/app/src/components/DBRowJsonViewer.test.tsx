@@ -1,11 +1,9 @@
 import React from 'react';
 import { fireEvent, screen, within } from '@testing-library/react';
 
-import {
-  buildJSONExtractQuery,
-  DBRowJsonViewer,
-  useShowMaterializedAliasColumns,
-} from './DBRowJsonViewer';
+import { useMaterializedAliasColumnsOption } from '@/hooks/useMaterializedAliasColumnsOption';
+
+import { buildJSONExtractQuery, DBRowJsonViewer } from './DBRowJsonViewer';
 import { RowSidePanelContext } from './DBRowSidePanel';
 
 // Mock Next.js router
@@ -193,7 +191,7 @@ describe('DBRowJsonViewer', () => {
   it('turns the materialized and alias columns option on and off from the menu', async () => {
     const OptionValue = () => (
       <span data-testid="materialized-alias-option">
-        {String(useShowMaterializedAliasColumns())}
+        {String(useMaterializedAliasColumnsOption()[0])}
       </span>
     );
     const { container } = renderWithMantine(
@@ -214,8 +212,8 @@ describe('DBRowJsonViewer', () => {
     await toggle();
     expect(option).toHaveTextContent('true');
     expect(
-      JSON.parse(localStorage.getItem('hdx_json_viewer_options')!),
-    ).toMatchObject({ showMaterializedAliasColumns: true });
+      localStorage.getItem('hdx-row-show-materialized-alias-columns'),
+    ).toBe('true');
     await toggle();
     expect(option).toHaveTextContent('false');
   });

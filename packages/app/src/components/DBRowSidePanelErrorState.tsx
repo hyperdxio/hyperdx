@@ -14,6 +14,10 @@ import { useDisclosure } from '@mantine/hooks';
 import { IconAlertTriangle } from '@tabler/icons-react';
 
 import { IS_LOCAL_MODE } from '@/config';
+import {
+  useMaterializedAliasColumnsOption,
+  useSelectAllColumnsQuerySettings,
+} from '@/hooks/useMaterializedAliasColumnsOption';
 import { useTableMetadata } from '@/hooks/useMetadata';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
 
@@ -82,6 +86,28 @@ function KnownColumnsListHint({
   );
 }
 
+// The option lives in the Column Values menu, which a failed row does not show.
+function MaterializedAliasColumnsHint({ onHide }: { onHide: () => void }) {
+  return (
+    <Alert
+      color="yellow"
+      icon={<IconAlertTriangle size={16} />}
+      title="Materialized and alias columns are on"
+      data-testid="materialized-alias-columns-hint"
+    >
+      <Stack gap="xs" align="start">
+        <Text size="sm">
+          The row query includes MATERIALIZED and ALIAS columns. If one of them
+          cannot be evaluated, the whole row fails to load.
+        </Text>
+        <Button size="xs" variant="subtle" onClick={onHide}>
+          Hide materialized and alias columns
+        </Button>
+      </Stack>
+    </Alert>
+  );
+}
+
 export function DBRowSidePanelErrorState({
   error,
   source,
@@ -94,6 +120,9 @@ export function DBRowSidePanelErrorState({
 
   const showHint =
     isMissingColumnError(error) && !!tableMetadata?.isPointerTable;
+  const selectAllColumnsSettings = useSelectAllColumnsQuerySettings(source);
+  const [, setShowMaterializedAliasColumns] =
+    useMaterializedAliasColumnsOption();
 
   return (
     <Stack gap="sm" data-testid="row-error-state">
@@ -101,6 +130,12 @@ export function DBRowSidePanelErrorState({
 
       {showHint && (
         <KnownColumnsListHint onEditClick={editModal.open} source={source} />
+      )}
+
+      {selectAllColumnsSettings != null && (
+        <MaterializedAliasColumnsHint
+          onHide={() => setShowMaterializedAliasColumns(false)}
+        />
       )}
 
       <Stack align="start">

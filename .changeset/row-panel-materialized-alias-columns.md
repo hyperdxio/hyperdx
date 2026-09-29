@@ -11,4 +11,5 @@ item in the properties view options menu, off by default, adds
 the row query. It has no effect on a source with a Known Columns List, and a
 value that the source's query settings give for either setting wins. If the
 connection's user cannot change these settings (for example, `readonly = 1`),
-the panel loads the row without them.
+the panel loads the row without them. If the row fails to load for another
+reason while the option is on, the error state offers to turn the option off.

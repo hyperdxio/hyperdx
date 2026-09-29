@@ -7,22 +7,15 @@ import {
   getMapColumnNames,
   useRowData,
 } from '@/components/DBRowDataPanel';
-import { useShowMaterializedAliasColumns } from '@/components/DBRowJsonViewer';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 
 jest.mock('@/hooks/useChartConfig', () => ({
   useQueriedChartConfig: jest.fn(),
 }));
 
-jest.mock('@/components/DBRowJsonViewer', () => ({
-  DBRowJsonViewer: () => null,
-  useShowMaterializedAliasColumns: jest.fn(),
-}));
-
 const mockUseQueriedChartConfig = useQueriedChartConfig as jest.Mock;
-const mockUseShowMaterializedAliasColumns = jest.mocked(
-  useShowMaterializedAliasColumns,
-);
+const showMaterializedAliasColumns = () =>
+  localStorage.setItem('hdx-row-show-materialized-alias-columns', 'true');
 
 describe('DBRowDataPanel', () => {
   const source: TLogSource = {
@@ -38,7 +31,7 @@ describe('DBRowDataPanel', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockUseShowMaterializedAliasColumns.mockReturnValue(false);
+    localStorage.clear();
     mockUseQueriedChartConfig.mockReturnValue({
       data: {
         data: [],
@@ -115,7 +108,7 @@ describe('DBRowDataPanel', () => {
   });
 
   it('includes MATERIALIZED and ALIAS columns when the viewer option is on', () => {
-    mockUseShowMaterializedAliasColumns.mockReturnValue(true);
+    showMaterializedAliasColumns();
     renderHook(() => useRowData({ source, rowId: "id='abc123'" }));
 
     const [bounded, fallback] = mockUseQueriedChartConfig.mock.calls;
@@ -128,7 +121,7 @@ describe('DBRowDataPanel', () => {
   });
 
   it('adds no query settings when the source has a Known Columns List', () => {
-    mockUseShowMaterializedAliasColumns.mockReturnValue(true);
+    showMaterializedAliasColumns();
     const sourceWithKnownColumns: TLogSource = {
       ...source,
       knownColumnsListExpression: 'Timestamp, Body, ServiceName',
@@ -146,7 +139,7 @@ describe('DBRowDataPanel', () => {
 
   describe('when the query with the settings fails', () => {
     beforeEach(() => {
-      mockUseShowMaterializedAliasColumns.mockReturnValue(true);
+      showMaterializedAliasColumns();
     });
 
     // The client's parsed error, wrapped the way the row query sees it.
