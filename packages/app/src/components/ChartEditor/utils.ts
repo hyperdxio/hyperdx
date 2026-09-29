@@ -164,18 +164,18 @@ export const isStringSelectDisplayType = (
 export const isPromqlDisplayType = (
   displayType: DisplayType | undefined,
 ): displayType is
+  | DisplayType.Table
   | DisplayType.Line
   | DisplayType.StackedBar
   | DisplayType.Pie
   | DisplayType.Bar
-  | DisplayType.Number
-  | DisplayType.Table =>
+  | DisplayType.Number =>
+  displayType === DisplayType.Table ||
   displayType === DisplayType.Line ||
   displayType === DisplayType.StackedBar ||
   displayType === DisplayType.Pie ||
   displayType === DisplayType.Bar ||
-  displayType === DisplayType.Number ||
-  displayType === DisplayType.Table;
+  displayType === DisplayType.Number;
 
 const NON_PROMQL_SOURCE_KINDS = Object.values(SourceKind).filter(
   kind => kind !== SourceKind.Promql,

@@ -136,7 +136,13 @@ export function isClientDisconnect(err: unknown): boolean {
   );
 }
 
-// Only real Prometheus API params are ever caller-settable in proxyToPrometheus.
+// Only real Prometheus API params are ever caller-settable in
+// proxyToPrometheus's query merge below. `params` there is built upstream by
+// spreading the *entire* `req.query`/`req.body` with no allowlist (see
+// `getParams`), so without this, a request could supply an arbitrary key --
+// e.g. VictoriaMetrics's `extra_label`, which a Connection host may pin as a
+// tenant-isolation scope -- and un-pin or override it, even though no
+// legitimate caller ever sends that key.
 const CALLER_SETTABLE_PARAM_KEYS = new Set([
   'query',
   'time',

@@ -12,6 +12,7 @@ import {
   getMetadata,
   Metadata,
 } from '@hyperdx/common-utils/dist/core/metadata';
+import { getQueriedPromqlSeries } from '@hyperdx/common-utils/dist/core/promql';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
   ALERT_COUNT_DEFAULT_SELECT,
@@ -42,6 +43,7 @@ import {
   getSampleWeightExpression,
   pickSampleWeightExpressionProps,
   PrometheusMatrixResult,
+  PrometheusQueryRangeResponse,
   PromqlSavedChartConfig,
   SavedChartConfig,
   SourceKind,
@@ -995,27 +997,18 @@ export async function evaluatePromqlAlert({
   // for the window [T, T+step) to happen at T+step, using the freshest data.
   const startSec = dateRange[0].getTime() / 1000 + stepSec;
 
-  // Resolve the expression to evaluate. The config stores either a bare string
-  // (tiles saved before multi-expression support) or an array of PromqlSeries.
-  // Alerts always target the LAST expression, mirroring how SQL builder alerts
-  // target the last series.
+  // Resolve the expression to evaluate. getQueriedPromqlSeries handles
+  // both the bare-string shape (tiles saved before multi-expression support)
+  // and the array shape, dropping blank rows and selecting only the first
+  // expression for non-time-series display types (e.g. Number).  Alerts
+  // always target the LAST queried expression, mirroring how SQL builder
+  // alerts target the last series.
   const resolvedConfig =
     variables && variables.length > 0
       ? substitutePromqlChartConfigVariables({ ...savedConfig, variables })
       : savedConfig;
-  const rawExpression = resolvedConfig.promqlExpression;
-  let promqlExpression = typeof rawExpression === 'string' ? rawExpression : '';
-  if (Array.isArray(rawExpression)) {
-    const validExpressions = rawExpression.filter(
-      e => e.expression && e.expression.trim() !== '',
-    );
-    // Always evaluate the last expression, mirroring how SQL builder alerts
-    // target the last series and how the tile renders its primary value.
-    if (validExpressions.length > 0) {
-      promqlExpression =
-        validExpressions[validExpressions.length - 1].expression;
-    }
-  }
+  const promqlExpression =
+    getQueriedPromqlSeries(resolvedConfig).at(-1)?.expression ?? '';
 
   // Shared helper for querying a Prometheus-compatible HTTP endpoint.
   async function queryPrometheusHttp(
@@ -1035,16 +1028,7 @@ export async function evaluatePromqlAlert({
         `Prometheus query_range returned HTTP ${resp.status} for PromQL alert`,
       );
     }
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    const json = (await resp.json()) as {
-      status?: string;
-      data?: {
-        result?: {
-          metric?: Record<string, string>;
-          values?: [number, string][];
-        }[];
-      };
-    };
+    const json: PrometheusQueryRangeResponse = await resp.json();
     if (json?.status !== 'success') {
       throw new Error(
         `Prometheus query_range returned status '${json?.status}' for PromQL alert`,
