@@ -498,8 +498,13 @@ describe('convertToExternalDashboard orphan-ref heal', () => {
       function writeRankingRange(
         seriesLimitRankingRange: 'recent' | 'full' | undefined,
       ): unknown {
-        const externalDisplayType =
-          displayType === DisplayType.StackedBar ? 'stacked_bar' : 'line';
+        const shared = {
+          sourceId: new mongoose.Types.ObjectId().toString(),
+          select: [{ aggFn: 'count' as const, where: '' }],
+          groupBy: 'ServiceName',
+          seriesLimit: 5,
+          seriesLimitRankingRange,
+        };
         const internal = convertToInternalTileConfig({
           id: 'ranking-range-tile',
           x: 0,
@@ -507,14 +512,10 @@ describe('convertToExternalDashboard orphan-ref heal', () => {
           w: 12,
           h: 4,
           name: 'Ranking range tile',
-          config: {
-            displayType: externalDisplayType,
-            sourceId: new mongoose.Types.ObjectId().toString(),
-            select: [{ aggFn: 'count', where: '' }],
-            groupBy: 'ServiceName',
-            seriesLimit: 5,
-            seriesLimitRankingRange,
-          },
+          config:
+            displayType === DisplayType.StackedBar
+              ? { ...shared, displayType: 'stacked_bar' as const }
+              : { ...shared, displayType: 'line' as const },
         });
         if (!isBuilderSavedChartConfig(internal.config)) {
           throw new Error('Expected a builder config for a time chart tile');
