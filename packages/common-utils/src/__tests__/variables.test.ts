@@ -12,7 +12,6 @@ import {
   getVariableReferences,
   hasVariableMacro,
   substituteChartConfigVariables,
-  substitutePromqlChartConfigVariables,
   substituteVariables,
   validateVariableReferencesInTemplate,
   VariableContext,
@@ -1561,62 +1560,6 @@ describe('substituteChartConfigVariables', () => {
         }),
       ).where,
     ).toBe("(1=1 /** no values selected for variable 'service' */)");
-  });
-});
-
-describe('substitutePromqlChartConfigVariables', () => {
-  const promqlConfig = (
-    promqlExpression: string,
-    variables?: ChartVariable[],
-  ) => ({
-    configType: 'promql' as const,
-    promqlExpression,
-    connection: 'local',
-    variables,
-  });
-
-  it('returns the config untouched when there is no variable context', () => {
-    const config = promqlConfig('up{service=~"$service"}');
-    expect(substitutePromqlChartConfigVariables(config)).toBe(config);
-  });
-
-  it('expands the expression and consumes the variables', () => {
-    expect(
-      substitutePromqlChartConfigVariables(
-        promqlConfig('up{service=~"$service"}', [SERVICE]),
-      ),
-    ).toMatchObject({
-      promqlExpression: 'up{service=~"(api|web)"}',
-      variables: undefined,
-    });
-  });
-
-  it('renders an empty selection as an unconstrained matcher', () => {
-    expect(
-      substitutePromqlChartConfigVariables(
-        promqlConfig('up{service=~"$service"}', [EMPTY_SERVICE]),
-      ).promqlExpression,
-    ).toBe('up{service=~".*"}');
-  });
-
-  it('expands every expression of a multi-expression config', () => {
-    expect(
-      substitutePromqlChartConfigVariables({
-        configType: 'promql' as const,
-        connection: 'local',
-        promqlExpression: [
-          { expression: 'up{service=~"$service"}', alias: 'up' },
-          { expression: 'rate(errors{service=~"$service"}[5m])' },
-        ],
-        variables: [SERVICE],
-      }),
-    ).toMatchObject({
-      promqlExpression: [
-        { expression: 'up{service=~"(api|web)"}', alias: 'up' },
-        { expression: 'rate(errors{service=~"(api|web)"}[5m])' },
-      ],
-      variables: undefined,
-    });
   });
 });
 

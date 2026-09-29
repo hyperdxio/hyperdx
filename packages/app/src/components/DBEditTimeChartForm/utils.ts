@@ -4,6 +4,7 @@ import {
   TableConnectionChoice,
 } from '@hyperdx/common-utils/dist/core/metadata';
 import { getQueriedPromqlSeries } from '@hyperdx/common-utils/dist/core/promql';
+import { isTimeSeriesDisplayType } from '@hyperdx/common-utils/dist/core/utils';
 import {
   configConsumesBroadcastFilters,
   getBlockingRequiredFilterNames,
@@ -14,6 +15,7 @@ import {
   isRawSqlChartConfig,
   isRawSqlSavedChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
+import { substitutePromqlChartConfigTemplates } from '@hyperdx/common-utils/dist/macros';
 import {
   BuilderChartConfigWithDateRange,
   ChartAlertBaseSchema,
@@ -21,22 +23,23 @@ import {
   ChartConfigWithOptTimestamp,
   ChartVariable,
   DashboardFilter,
+  DateRange,
   DisplayType,
   Filter,
+  PromqlChartConfig,
   SavedChartConfig,
   SelectList,
   SourceKind,
   TSource,
   validateAlertScheduleOffsetMinutes,
 } from '@hyperdx/common-utils/dist/types';
-import {
-  filterReferencedVariables,
-  substitutePromqlChartConfigVariables,
-} from '@hyperdx/common-utils/dist/variables';
+import { filterReferencedVariables } from '@hyperdx/common-utils/dist/variables';
 
 import {
   convertToCategoricalChartConfig,
   convertToNumberChartConfig,
+  convertToPromqlNumberChartConfig,
+  convertToPromqlTableChartConfig,
   convertToTableChartConfig,
   convertToTimeChartConfig,
   tryExpandConfigVariables,
@@ -263,7 +266,28 @@ export type RenderedPromqlExpression =
   | { expressions: RenderedPromqlEntry[]; error?: never }
   | { expressions?: never; error: string };
 
-/** The expressions a PromQL tile is queried with, with variables substituted. */
+/**
+ * The config a PromQL chart of this display type actually queries with. Macros
+ * depend on the resolved granularity and date range, so the preview must
+ * resolve them the same way the chart does.
+ */
+function toQueriedPromqlConfig(
+  config: PromqlChartConfig & DateRange,
+): PromqlChartConfig & DateRange {
+  if (config.displayType === DisplayType.Number) {
+    return convertToPromqlNumberChartConfig(config, { withReducer: false });
+  }
+  if (config.displayType === DisplayType.Table) {
+    return convertToPromqlTableChartConfig(config);
+  }
+  if (isTimeSeriesDisplayType(config.displayType)) {
+    const converted = convertToTimeChartConfig(config);
+    return isPromqlChartConfig(converted) ? converted : config;
+  }
+  return config;
+}
+
+/** The expressions a PromQL tile is queried with, with macros and variables substituted. */
 export function buildRenderedPromqlExpression(
   queriedConfig: ChartConfigWithDateRange | undefined,
 ): RenderedPromqlExpression | undefined {
@@ -272,7 +296,9 @@ export function buildRenderedPromqlExpression(
   }
 
   try {
-    const substituted = substitutePromqlChartConfigVariables(queriedConfig);
+    const substituted = substitutePromqlChartConfigTemplates(
+      toQueriedPromqlConfig(queriedConfig),
+    );
     return {
       expressions: getQueriedPromqlSeries(substituted).map((series, index) => ({
         id: String(index),
@@ -287,8 +313,8 @@ export function buildRenderedPromqlExpression(
     return {
       error:
         e instanceof Error
-          ? `Variables could not be expanded: ${e.message}`
-          : 'Variables could not be expanded.',
+          ? `Expression could not be expanded: ${e.message}`
+          : 'Expression could not be expanded.',
     };
   }
 }

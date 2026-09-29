@@ -1,6 +1,9 @@
 import { ChartVariable } from '@hyperdx/common-utils/dist/types';
 
-import { buildPromqlVariableCompletions } from '@/components/SQLEditor/variableCompletions';
+import {
+  buildPromqlVariableCompletions,
+  PROMQL_MACRO_COMPLETIONS,
+} from '@/components/SQLEditor/variableCompletions';
 
 const SERVICE: ChartVariable = {
   name: 'service',
@@ -111,5 +114,17 @@ describe('buildPromqlVariableCompletions', () => {
     const footnote = info?.querySelector('.cm-completionInfo-footnote');
     expect(info?.firstChild).not.toBe(footnote);
     expect(info?.firstChild?.textContent).not.toContain('Expands to:');
+  });
+});
+
+describe('PROMQL_MACRO_COMPLETIONS', () => {
+  it('inserts each macro without an argument list', () => {
+    expect(
+      PROMQL_MACRO_COMPLETIONS.map(({ label, apply }) => [label, apply]),
+    ).toEqual([
+      ['$__interval', '$__interval'],
+      ['$__range', '$__range'],
+      ['$__rate_interval', '$__rate_interval'],
+    ]);
   });
 });
