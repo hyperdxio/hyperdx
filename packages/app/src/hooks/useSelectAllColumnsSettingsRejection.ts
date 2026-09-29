@@ -8,9 +8,38 @@ export const SELECT_ALL_COLUMNS_QUERY_SETTINGS: QuerySettings = [
   { setting: 'asterisk_include_alias_columns', value: '1' },
 ];
 
-// ClickHouse names the setting in each rejection: READONLY (164),
-// UNKNOWN_SETTING (115) and SETTING_CONSTRAINT_VIOLATION (452).
+const REJECTION_TYPES = new Set([
+  'READONLY',
+  'UNKNOWN_SETTING',
+  'SETTING_CONSTRAINT_VIOLATION',
+]);
+
+// The ClickHouse client parses `type` out of the message, and
+// ClickHouseQueryError keeps the parsed error as its `cause`.
+function clickHouseErrorType(error: unknown): string | undefined {
+  for (const candidate of [
+    error,
+    error instanceof Error ? error.cause : undefined,
+  ]) {
+    if (
+      typeof candidate === 'object' &&
+      candidate !== null &&
+      'type' in candidate &&
+      typeof candidate.type === 'string'
+    ) {
+      return candidate.type;
+    }
+  }
+  return undefined;
+}
+
+// A rejection names the setting. The type check is needed too: a syntax error
+// quotes the rest of the query, SETTINGS clause included.
 export function isSelectAllColumnsSettingRejected(error: unknown): boolean {
+  const type = clickHouseErrorType(error);
+  if (type == null || !REJECTION_TYPES.has(type)) {
+    return false;
+  }
   const message = error instanceof Error ? error.message : String(error ?? '');
   return SELECT_ALL_COLUMNS_QUERY_SETTINGS.some(({ setting }) =>
     message.includes(setting),

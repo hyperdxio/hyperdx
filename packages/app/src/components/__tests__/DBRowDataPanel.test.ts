@@ -1,3 +1,4 @@
+import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import { SourceKind, TLogSource } from '@hyperdx/common-utils/dist/types';
 import { renderHook, waitFor } from '@testing-library/react';
 
@@ -148,8 +149,17 @@ describe('DBRowDataPanel', () => {
       mockUseShowMaterializedAliasColumns.mockReturnValue(true);
     });
 
-    const READONLY_ERROR =
-      "Code: 164. DB::Exception: Cannot modify 'asterisk_include_materialized_columns' setting in readonly mode. (READONLY)";
+    // The client's parsed error, wrapped the way the row query sees it.
+    const readonlyError = () => {
+      const message =
+        "Cannot modify 'asterisk_include_materialized_columns' setting in readonly mode. ";
+      const error = new ClickHouseQueryError(message, 'SELECT * LIMIT 1');
+      error.cause = Object.assign(new Error(message), {
+        code: '164',
+        type: 'READONLY',
+      });
+      return error;
+    };
     const row = { Body: 'hello' };
 
     // Fails every query that carries the settings with `error`.
@@ -177,7 +187,7 @@ describe('DBRowDataPanel', () => {
 
     it('fetches the row again without them when the connection rejects them', async () => {
       const readonlySource = { ...source, connection: 'readonly-conn' };
-      mockSettingsQueryError(new Error(READONLY_ERROR));
+      mockSettingsQueryError(readonlyError());
 
       const renders: Array<{
         isLoading: boolean;
@@ -243,7 +253,7 @@ describe('DBRowDataPanel', () => {
       const [[, { retry }]] = mockUseQueriedChartConfig.mock.calls;
       expect(retry(0, new Error('Timeout exceeded'))).toBe(true);
       expect(retry(1, new Error('Timeout exceeded'))).toBe(false);
-      expect(retry(0, new Error(READONLY_ERROR))).toBe(false);
+      expect(retry(0, readonlyError())).toBe(false);
     });
   });
 
