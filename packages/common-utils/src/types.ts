@@ -471,6 +471,18 @@ export const ChSqlSchema = z.object({
 
 // When making changes here, consider if they need to be made to the external API
 // schema as well (packages/api/src/utils/zod.ts).
+// Which range the `__hdx_series_limit` CTE ranks groups over when a time
+// chart is fetched in chunks:
+//   - `recent` (default): the newest chunk window only. Cheap, but groups with
+//     no events in that window are dropped, however large they are earlier on.
+//   - `full`: the whole chart date range. Accurate, but every chunk scans the
+//     full range to rank.
+// A query that is not chunked always ranks over its whole date range.
+export const SeriesLimitRankingRangeSchema = z.enum(['recent', 'full']);
+export type SeriesLimitRankingRange = z.infer<
+  typeof SeriesLimitRankingRangeSchema
+>;
+
 export const SelectSQLStatementSchema = z.object({
   select: SelectListSchema,
   from: z.object({
@@ -490,6 +502,9 @@ export const SelectSQLStatementSchema = z.object({
   // (0 = unlimited, null/undefined = default cap). On builder group-by time
   // charts a positive value additionally drives the __hdx_series_limit CTE.
   seriesLimit: z.number().int().nonnegative().nullish(),
+  // Builder group-by time charts only: the range the top-N ranking covers.
+  // Nullish = `recent`. See SeriesLimitRankingRangeSchema.
+  seriesLimitRankingRange: SeriesLimitRankingRangeSchema.nullish(),
 });
 
 export type SQLInterval = z.infer<typeof SQLIntervalSchema>;
@@ -1883,9 +1898,10 @@ export type DateRange = {
   dateRangeStartInclusive?: boolean; // default true
   dateRangeEndInclusive?: boolean; // default true
   // Runtime-only, set by query chunking when dateRange is narrowed to a
-  // window: a fixed ranking range (the newest chunk window) used by the
-  // `__hdx_series_limit` CTE so every chunk ranks (and keeps) the same
-  // top-N series. Never persisted.
+  // window: a fixed ranking range used by the `__hdx_series_limit` CTE so
+  // every chunk ranks (and keeps) the same top-N series. It is the newest
+  // chunk window, or the full chart range when `seriesLimitRankingRange` is
+  // `full`. Never persisted.
   seriesLimitDateRange?: [Date, Date];
   // Runtime-only, populated from the queried MetricSource's
   // `minAutoGranularity` (when set) by whichever caller resolves the source

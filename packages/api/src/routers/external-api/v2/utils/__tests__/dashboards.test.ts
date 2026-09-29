@@ -448,6 +448,52 @@ describe('convertToExternalDashboard orphan-ref heal', () => {
       });
     },
   );
+
+  // seriesLimitRankingRange defaults to 'recent' when absent. An explicit
+  // value must survive a GET->PUT round-trip; null maps to absent.
+  describe.each([DisplayType.Line, DisplayType.StackedBar])(
+    'seriesLimitRankingRange serialization for %s tiles',
+    displayType => {
+      function readRankingRange(
+        seriesLimitRankingRange: 'recent' | 'full' | null | undefined,
+      ): unknown {
+        const doc = makeDoc({
+          tiles: [
+            makeTile({
+              id: 'ranking-range-tile',
+              config: {
+                displayType,
+                source: new mongoose.Types.ObjectId().toString(),
+                name: 'Ranking range tile',
+                select: [{ aggFn: 'count', valueExpression: '' }],
+                where: '',
+                groupBy: 'ServiceName',
+                seriesLimit: 5,
+                seriesLimitRankingRange,
+              },
+            }),
+          ],
+        });
+        const wire = JSON.parse(
+          JSON.stringify(convertToExternalDashboard(doc)),
+        );
+        return wire.tiles[0].config.seriesLimitRankingRange;
+      }
+
+      it('passes full through unchanged', () => {
+        expect(readRankingRange('full')).toBe('full');
+      });
+
+      it('passes an explicit recent through unchanged', () => {
+        expect(readRankingRange('recent')).toBe('recent');
+      });
+
+      it('emits it as absent when stored as null or not set', () => {
+        expect(readRankingRange(null)).toBeUndefined();
+        expect(readRankingRange(undefined)).toBeUndefined();
+      });
+    },
+  );
 });
 
 describe('convertToExternalDashboard stale aggregation params', () => {

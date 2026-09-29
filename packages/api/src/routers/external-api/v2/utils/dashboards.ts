@@ -339,6 +339,8 @@ export const convertToExternalTileChartConfig = (
         // Three-state passthrough: 0 (unlimited) and positive N round-trip;
         // null/undefined map to absent (the default-cap state).
         seriesLimit: config.seriesLimit ?? undefined,
+        // null/undefined map to absent (the default, 'recent').
+        seriesLimitRankingRange: config.seriesLimitRankingRange ?? undefined,
         ...externalFormulaFields,
         ...externalShowOperandSeriesField,
       };
@@ -360,6 +362,8 @@ export const convertToExternalTileChartConfig = (
         // Three-state passthrough: 0 (unlimited) and positive N round-trip;
         // null/undefined map to absent (the default-cap state).
         seriesLimit: config.seriesLimit ?? undefined,
+        // null/undefined map to absent (the default, 'recent').
+        seriesLimitRankingRange: config.seriesLimitRankingRange ?? undefined,
         ...externalFormulaFields,
         ...externalShowOperandSeriesField,
       };
@@ -775,6 +779,7 @@ export function convertToInternalTileConfig(
           fillNulls: externalConfig.fillNulls === false ? false : undefined,
           seriesReturnType: externalConfig.asRatio ? 'ratio' : undefined,
           seriesLimit: externalConfig.seriesLimit,
+          seriesLimitRankingRange: externalConfig.seriesLimitRankingRange,
           name,
         } satisfies BuilderSavedChartConfig;
         break;

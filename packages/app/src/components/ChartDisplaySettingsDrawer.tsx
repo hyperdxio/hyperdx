@@ -9,6 +9,7 @@ import {
   DisplayType,
   MAX_LEGEND_TEMPLATE_LENGTH,
   NumberFormat,
+  SeriesLimitRankingRange,
 } from '@hyperdx/common-utils/dist/types';
 import {
   Alert,
@@ -19,6 +20,7 @@ import {
   Drawer,
   Group,
   NumberInput,
+  SegmentedControl,
   Stack,
   Text,
 } from '@mantine/core';
@@ -58,6 +60,10 @@ export type ChartConfigDisplaySettings = Pick<
   // for the authoritative semantics. The editor clears to `null` (not
   // `undefined`) so the cleared state survives JSON round-tripping via the URL.
   seriesLimit?: number | null;
+  // Builder group-by time charts only: the range the top-N ranking covers when
+  // the chart is fetched in chunks. null/undefined = 'recent' (the newest
+  // chunk window). See SeriesLimitRankingRangeSchema.
+  seriesLimitRankingRange?: SeriesLimitRankingRange | null;
   // PromQL-only: Handlebars template over each series' Prometheus label set
   // that renders the legend/tooltip name.
   legendTemplate?: string;
@@ -107,6 +113,7 @@ function applyDefaultSettings(
     // Coerce to null so `reset` clears the input; undefined leaves the
     // previously registered field value in place.
     seriesLimit: settings.seriesLimit ?? null,
+    seriesLimitRankingRange: settings.seriesLimitRankingRange ?? 'recent',
     legendTemplate: settings.legendTemplate ?? '',
     color: settings.color,
     colorRules: settings.colorRules
@@ -148,6 +155,7 @@ export default function ChartDisplaySettingsDrawer({
   }, [appliedDefaults, reset]);
 
   const fillNulls = useWatch({ control, name: 'fillNulls' });
+  const seriesLimit = useWatch({ control, name: 'seriesLimit' });
   const isFillNullsEnabled = shouldFillNullsWithZero(fillNulls);
 
   const handleClose = useCallback(() => {
@@ -170,6 +178,10 @@ export default function ChartDisplaySettingsDrawer({
       onChange(
         {
           ...rest,
+          // 'recent' is the default, so persist it as null to keep saved
+          // configs unchanged unless the user opts into the full range.
+          seriesLimitRankingRange:
+            formValues.seriesLimitRankingRange === 'full' ? 'full' : null,
           numberFormat: numberFormatExplicit
             ? formValues.numberFormat
             : undefined,
@@ -201,6 +213,13 @@ export default function ChartDisplaySettingsDrawer({
   // excluded — its series come from Prometheus, not this pipeline.
   const showSeriesLimit = isTimeChart && configType !== 'promql';
   const isRawSqlTimeChart = showSeriesLimit && configType === 'sql';
+  // The ranking range only matters where the __hdx_series_limit CTE runs:
+  // builder time charts with a positive Series Limit.
+  const showSeriesLimitRankingRange =
+    showSeriesLimit &&
+    !isRawSqlTimeChart &&
+    seriesLimit != null &&
+    seriesLimit > 0;
 
   // Every PromQL display that surfaces a series name. A number tile shows one
   // value and a table gives each label its own column, so neither has a legend.
@@ -304,7 +323,7 @@ export default function ChartDisplaySettingsDrawer({
                       description={
                         isRawSqlTimeChart
                           ? `Maximum number of series rendered, keeping those with the largest values. Leave empty for the default (${MAX_RENDERED_TIME_CHART_SERIES}); set 0 for unlimited.`
-                          : `Maximum number of series fetched for a group-by chart, keeping those with the largest values. Leave empty for the default (${MAX_RENDERED_TIME_CHART_SERIES}); set 0 for unlimited.`
+                          : `Maximum number of series fetched for a group-by chart, keeping those with the largest values in the ranking range below. Leave empty for the default (${MAX_RENDERED_TIME_CHART_SERIES}); set 0 for unlimited.`
                       }
                       placeholder={`Default (${MAX_RENDERED_TIME_CHART_SERIES})`}
                       min={0}
@@ -313,6 +332,36 @@ export default function ChartDisplaySettingsDrawer({
                       onChange={v =>
                         onChange(v === '' || v == null ? null : Number(v))
                       }
+                    />
+                  )}
+                />
+              </Box>
+            )}
+            {showSeriesLimitRankingRange && (
+              <Box>
+                <Text size="xs" fw={500} id="series-limit-ranking-range-label">
+                  Rank Series Over
+                </Text>
+                <Text size="xs" c="dimmed" mb={4}>
+                  Most recent window ranks series by the newest part of the time
+                  range only, so a series with no recent events is dropped. Full
+                  range ranks over the whole time range, which is accurate but
+                  slower on long ranges.
+                </Text>
+                <Controller
+                  control={control}
+                  name="seriesLimitRankingRange"
+                  render={({ field: { onChange, value } }) => (
+                    <SegmentedControl
+                      size="xs"
+                      aria-labelledby="series-limit-ranking-range-label"
+                      data-testid="series-limit-ranking-range"
+                      data={[
+                        { value: 'recent', label: 'Most recent window' },
+                        { value: 'full', label: 'Full range' },
+                      ]}
+                      value={value ?? 'recent'}
+                      onChange={onChange}
                     />
                   )}
                 />

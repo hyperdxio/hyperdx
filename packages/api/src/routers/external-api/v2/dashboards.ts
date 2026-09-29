@@ -703,8 +703,21 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           description: >
  *             Maximum number of series rendered (top-N by value). Omit to use
  *             the default render cap, set 0 for unlimited, or a positive N to
- *             keep the top N series.
+ *             keep the top N series. The range the ranking covers is set by
+ *             seriesLimitRankingRange.
  *           example: 5
+ *         seriesLimitRankingRange:
+ *           type: string
+ *           enum: [recent, full]
+ *           description: >
+ *             Range the top-N ranking for seriesLimit covers when the chart is
+ *             fetched in chunks. "recent" ranks over the newest chunk window
+ *             only, so a series with no events in that window is dropped.
+ *             "full" ranks over the whole time range, which is accurate but
+ *             scans more data. Ignored without a positive seriesLimit and a
+ *             groupBy.
+ *           default: recent
+ *           example: full
  *         formulas:
  *           type: array
  *           maxItems: 10
@@ -773,8 +786,21 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           description: >-
  *             Maximum number of series rendered (top-N by value). Omit to use
  *             the default render cap, set 0 for unlimited, or a positive N to
- *             keep the top N series.
+ *             keep the top N series. The range the ranking covers is set by
+ *             seriesLimitRankingRange.
  *           example: 5
+ *         seriesLimitRankingRange:
+ *           type: string
+ *           enum: [recent, full]
+ *           description: >
+ *             Range the top-N ranking for seriesLimit covers when the chart is
+ *             fetched in chunks. "recent" ranks over the newest chunk window
+ *             only, so a series with no events in that window is dropped.
+ *             "full" ranks over the whole time range, which is accurate but
+ *             scans more data. Ignored without a positive seriesLimit and a
+ *             groupBy.
+ *           default: recent
+ *           example: full
  *         formulas:
  *           type: array
  *           maxItems: 10
