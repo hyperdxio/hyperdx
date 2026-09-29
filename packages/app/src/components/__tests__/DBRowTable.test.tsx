@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
@@ -235,6 +236,108 @@ describe('RawLogTable', () => {
       const headers = container.querySelectorAll('th');
       expect(headers).toHaveLength(2);
       expect((headers[0] as HTMLElement).style.width).not.toBe('250px');
+    });
+  });
+
+  describe('Query term highlight toggle', () => {
+    const baseProps = {
+      displayedColumns: ['col1', 'col2'],
+      rows: [{ col1: 'value1', col2: 'value2' }],
+      isLoading: false,
+      dedupRows: false,
+      hasNextPage: false,
+      onRowDetailsClick: () => {},
+      generateRowId: () => mockRowWhereResult,
+      columnTypeMap: new Map(),
+      showExpandButton: false,
+    };
+
+    const config = (
+      where: string,
+      whereLanguage: 'lucene' | 'sql' = 'lucene',
+    ) =>
+      ({
+        where,
+        whereLanguage,
+        select: 'col1, col2',
+        from: { databaseName: 'default', tableName: 'logs' },
+        timestampValueExpression: 'Timestamp',
+        connection: 'local',
+        dateRange: [new Date(0), new Date(1)],
+      }) as any;
+
+    // Passing a config brings in the generated-SQL modal, which needs a client
+    const renderWithQueryClient = (ui: React.ReactElement) =>
+      renderWithMantine(
+        <QueryClientProvider
+          client={
+            new QueryClient({ defaultOptions: { queries: { retry: false } } })
+          }
+        >
+          {ui}
+        </QueryClientProvider>,
+      );
+
+    beforeEach(() => {
+      window.localStorage.clear();
+    });
+
+    it('offers the toggle when the Lucene query has terms to highlight', async () => {
+      renderWithQueryClient(
+        <RawLogTable {...baseProps} config={config('timeout')} />,
+      );
+
+      expect(
+        await screen.findByTitle('Hide search term highlights'),
+      ).toBeInTheDocument();
+    });
+
+    it('hides the toggle when there is nothing to highlight', () => {
+      renderWithQueryClient(<RawLogTable {...baseProps} />);
+      expect(
+        screen.queryByTitle('Hide search term highlights'),
+      ).not.toBeInTheDocument();
+
+      renderWithQueryClient(
+        <RawLogTable {...baseProps} config={config('NOT timeout')} />,
+      );
+      expect(
+        screen.queryByTitle('Hide search term highlights'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('hides the toggle for a SQL query', () => {
+      renderWithQueryClient(
+        <RawLogTable
+          {...baseProps}
+          config={config("col1 LIKE '%timeout%'", 'sql')}
+        />,
+      );
+
+      expect(
+        screen.queryByTitle('Hide search term highlights'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('remembers the preference across tables', async () => {
+      const { unmount } = renderWithQueryClient(
+        <RawLogTable {...baseProps} config={config('timeout')} />,
+      );
+
+      await userEvent.click(
+        await screen.findByTitle('Hide search term highlights'),
+      );
+      expect(
+        await screen.findByTitle('Highlight search terms'),
+      ).toBeInTheDocument();
+      unmount();
+
+      renderWithQueryClient(
+        <RawLogTable {...baseProps} config={config('timeout')} />,
+      );
+      expect(
+        await screen.findByTitle('Highlight search terms'),
+      ).toBeInTheDocument();
     });
   });
 

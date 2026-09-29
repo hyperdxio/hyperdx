@@ -5,6 +5,7 @@ import {
   CustomSchemaSQLSerializerV2,
   decodeSpecialTokensToSource,
   encodeSpecialTokens,
+  extractLuceneHighlightTerms,
   genEnglishExplanation,
   parseKvItemsCastExpression,
   parseKvItemsExpression,
@@ -3291,5 +3292,111 @@ describe('CustomSchemaSQLSerializerV2 - KV items version gate', () => {
   it('MATERIALIZED items column emits has() even when server version is unknown', async () => {
     const sql = await buildSql(undefined, 'MATERIALIZED');
     expect(sql).toContain(HAS_FORM);
+  });
+});
+
+describe('extractLuceneHighlightTerms', () => {
+  it('returns nothing for empty or unparseable queries', () => {
+    expect(extractLuceneHighlightTerms('')).toEqual([]);
+    expect(extractLuceneHighlightTerms('   ')).toEqual([]);
+    expect(extractLuceneHighlightTerms('ServiceName:((("broken')).toEqual([]);
+  });
+
+  it('extracts bare terms and phrases', () => {
+    expect(extractLuceneHighlightTerms('foo bar')).toEqual([
+      { term: 'foo', field: undefined },
+      { term: 'bar', field: undefined },
+    ]);
+    expect(extractLuceneHighlightTerms('"hello world" baz')).toEqual([
+      { term: 'hello world', field: undefined },
+      { term: 'baz', field: undefined },
+    ]);
+  });
+
+  it('scopes field terms to their field', () => {
+    expect(extractLuceneHighlightTerms('ServiceName:checkout oops')).toEqual([
+      { term: 'checkout', field: 'ServiceName' },
+      { term: 'oops', field: undefined },
+    ]);
+    expect(extractLuceneHighlightTerms('ServiceName:"api gateway"')).toEqual([
+      { term: 'api gateway', field: 'ServiceName' },
+    ]);
+  });
+
+  it('inherits the group field for parenthesized field searches', () => {
+    expect(extractLuceneHighlightTerms('ServiceName:(api OR web)')).toEqual([
+      { term: 'api', field: 'ServiceName' },
+      { term: 'web', field: 'ServiceName' },
+    ]);
+  });
+
+  it.each([
+    ['NOT foo', []],
+    ['-foo', []],
+    ['!foo', []],
+    ['-ServiceName:api', []],
+    ['-ServiceName:(api OR web)', []],
+    ['NOT (foo bar)', []],
+    ['foo AND NOT bar', [{ term: 'foo', field: undefined }]],
+    ['foo OR NOT bar', [{ term: 'foo', field: undefined }]],
+    ['NOT foo AND bar', [{ term: 'bar', field: undefined }]],
+    ['foo AND -bar', [{ term: 'foo', field: undefined }]],
+  ])('drops negated terms in %s', (query, expected) => {
+    expect(extractLuceneHighlightTerms(query)).toEqual(expected);
+  });
+
+  it('keeps a negative value searched within a field', () => {
+    expect(extractLuceneHighlightTerms('Duration:-5')).toEqual([
+      { term: '-5', field: 'Duration' },
+    ]);
+  });
+
+  it.each([
+    'Duration:[100 TO 500]',
+    'Duration:>=100',
+    'Duration:<100',
+    'ServiceName:*',
+  ])('drops %s, which has no substring to point at', query => {
+    expect(extractLuceneHighlightTerms(query)).toEqual([]);
+  });
+
+  it('strips leading and trailing wildcards', () => {
+    expect(extractLuceneHighlightTerms('err* *timeout *conn*')).toEqual([
+      { term: 'err', field: undefined },
+      { term: 'timeout', field: undefined },
+      { term: 'conn', field: undefined },
+    ]);
+  });
+
+  it('keeps interior wildcards, which lucene matches literally', () => {
+    expect(extractLuceneHighlightTerms('a*b')).toEqual([
+      { term: 'a*b', field: undefined },
+    ]);
+  });
+
+  it('decodes special tokens back to their raw value', () => {
+    expect(extractLuceneHighlightTerms('Url:http://example.com')).toEqual([
+      { term: 'http://example.com', field: 'Url' },
+    ]);
+  });
+
+  it('dedupes repeated terms case-insensitively, per field', () => {
+    expect(
+      extractLuceneHighlightTerms('error OR Error OR ServiceName:error'),
+    ).toEqual([
+      { term: 'error', field: undefined },
+      { term: 'error', field: 'ServiceName' },
+    ]);
+  });
+
+  it('walks nested groups', () => {
+    expect(
+      extractLuceneHighlightTerms('(foo OR (bar AND ServiceName:api)) baz'),
+    ).toEqual([
+      { term: 'foo', field: undefined },
+      { term: 'bar', field: undefined },
+      { term: 'api', field: 'ServiceName' },
+      { term: 'baz', field: undefined },
+    ]);
   });
 });

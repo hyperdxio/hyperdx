@@ -51,6 +51,8 @@ import {
 import {
   IconCode,
   IconDownload,
+  IconHighlight,
+  IconHighlightOff,
   IconRefresh,
   IconRotateClockwise,
   IconSettings,
@@ -81,6 +83,7 @@ import { CsvColumn, useCsvExport } from '@/hooks/useCsvExport';
 import { useColumns, useTableMetadata } from '@/hooks/useMetadata';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import { useGroupedPatterns } from '@/hooks/usePatterns';
+import { useQueryHighlightTerms } from '@/hooks/useQueryHighlightTerms';
 import { useRowSelection } from '@/hooks/useRowSelection';
 import useRowWhere, {
   getRowId,
@@ -112,6 +115,12 @@ import ChartErrorState, {
 import DBRowTableFieldWithPopover from './DBTable/DBRowTableFieldWithPopover';
 import DBRowTableRowButtons from './DBTable/DBRowTableRowButtons';
 import {
+  FIND_CURRENT_HIGHLIGHT_BACKGROUND,
+  FIND_HIGHLIGHT_BACKGROUND,
+  highlightTerms,
+  QUERY_HIGHLIGHT_BACKGROUND,
+} from './DBTable/highlightText';
+import {
   ROW_SELECTION_COLUMN_WIDTH,
   RowSelectionCell,
   RowSelectionHeaderCell,
@@ -119,7 +128,6 @@ import {
 import { RowSelectionMenu } from './DBTable/RowSelectionMenu';
 import TableHeader from './DBTable/TableHeader';
 import {
-  highlightText,
   TableSearchInput,
   TableSearchMatchIndicator,
 } from './DBTable/TableSearchInput';
@@ -151,6 +159,8 @@ const MAX_SCROLL_FETCH_LINES = 1000;
 const EXPAND_COLUMN_SIZE = 32;
 const MAX_CELL_LENGTH = 500;
 const MAX_CELL_LENGTH_WRAPPED = 50_000;
+/** Shared across tables: the preference is about the query, not one table. */
+const HIGHLIGHT_QUERY_STORAGE_KEY = 'hdx-highlight-query-terms';
 
 function retrieveColumnValue(column: string, row: Row): any {
   const accessor = ACCESSOR_MAP[column] ?? ACCESSOR_MAP.default;
@@ -587,6 +597,17 @@ export const RawLogTable = memo(
       wrapLines ?? false,
     );
 
+    const [highlightQueryEnabled, setHighlightQueryEnabled] =
+      useLocalStorage<boolean>(HIGHLIGHT_QUERY_STORAGE_KEY, true);
+
+    const queryHighlightTerms = useQueryHighlightTerms({
+      where: config?.where,
+      whereLanguage: config?.whereLanguage,
+      filters: config?.filters,
+      displayedColumns,
+    });
+    const hasQueryHighlightTerms = Object.keys(queryHighlightTerms).length > 0;
+
     const columns = useMemo<ColumnDef<any>[]>(
       () => [
         ...(showExpandButton
@@ -658,10 +679,30 @@ export const RawLogTable = memo(
                 tableSearch.matchIndices[tableSearch.currentMatchIndex] ===
                   info.row.index;
 
-              const displayValue = tableSearch.searchQuery
-                ? highlightText(truncatedStrValue, tableSearch.searchQuery, {
-                    isCurrentMatch,
-                  })
+              // The find box wins over the query terms where the two overlap
+              const highlightGroups = [
+                ...(tableSearch.searchQuery
+                  ? [
+                      {
+                        terms: [tableSearch.searchQuery],
+                        backgroundColor: isCurrentMatch
+                          ? FIND_CURRENT_HIGHLIGHT_BACKGROUND
+                          : FIND_HIGHLIGHT_BACKGROUND,
+                      },
+                    ]
+                  : []),
+                ...(highlightQueryEnabled && queryHighlightTerms[column]
+                  ? [
+                      {
+                        terms: queryHighlightTerms[column],
+                        backgroundColor: QUERY_HIGHLIGHT_BACKGROUND,
+                      },
+                    ]
+                  : []),
+              ];
+
+              const displayValue = highlightGroups.length
+                ? highlightTerms(truncatedStrValue, highlightGroups)
                 : truncatedStrValue;
 
               return (
@@ -698,6 +739,8 @@ export const RawLogTable = memo(
         tableSearch.searchQuery,
         tableSearch.matchIndices,
         tableSearch.currentMatchIndex,
+        queryHighlightTerms,
+        highlightQueryEnabled,
       ],
     );
 
@@ -1067,6 +1110,33 @@ export const RawLogTable = memo(
                                   >
                                     <MantineTooltip label="Show Generated SQL">
                                       <IconCode size={16} />
+                                    </MantineTooltip>
+                                  </UnstyledButton>
+                                )}
+                                {hasQueryHighlightTerms && (
+                                  <UnstyledButton
+                                    onClick={() =>
+                                      setHighlightQueryEnabled(prev => !prev)
+                                    }
+                                    title={
+                                      highlightQueryEnabled
+                                        ? 'Hide search term highlights'
+                                        : 'Highlight search terms'
+                                    }
+                                    display="flex"
+                                  >
+                                    <MantineTooltip
+                                      label={
+                                        highlightQueryEnabled
+                                          ? 'Hide search term highlights'
+                                          : 'Highlight search terms'
+                                      }
+                                    >
+                                      {highlightQueryEnabled ? (
+                                        <IconHighlight size={16} />
+                                      ) : (
+                                        <IconHighlightOff size={16} />
+                                      )}
                                     </MantineTooltip>
                                   </UnstyledButton>
                                 )}
