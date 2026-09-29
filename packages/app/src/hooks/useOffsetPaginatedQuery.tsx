@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { omit } from 'lodash';
+import { isEqual, omit } from 'lodash';
 import ms from 'ms';
 import type {
   ClickHouseSettings,
@@ -39,6 +39,7 @@ import { MAX_TABLE_ROWS } from '@/HDXMultiSeriesTableChart';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useSource } from '@/source';
+import { queryPromqlChartConfig } from '@/utils/promqlChartQuery';
 import {
   DEFAULT_TIME_WINDOWS_SECONDS,
   generateTimeWindowsAscending,
@@ -59,6 +60,16 @@ function queryKeyFn(
   queryTimeout?: number,
 ): TQueryKey {
   return [prefix, config, queryTimeout];
+}
+
+// True when two keys describe the same query over a different time range,
+// e.g. a dashboard refresh.
+function differsOnlyInDateRange(a: TQueryKey, b: TQueryKey) {
+  return (
+    a[0] === b[0] &&
+    a[2] === b[2] &&
+    isEqual(omit(a[1], ['dateRange']), omit(b[1], ['dateRange']))
+  );
 }
 
 type TPageParam = {
@@ -204,6 +215,22 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
         windowIndex: 0,
         direction: 'DESC' as const,
       };
+
+  // PromQL goes to the Prometheus API route rather than ClickHouse, and never
+  // paginates (see getNextPageParam), so it answers in a single page.
+  if (isPromqlChartConfig(config)) {
+    const { data, meta } = await queryPromqlChartConfig(
+      config,
+      config.dateRange,
+      signal,
+    );
+    return {
+      data,
+      meta: meta ?? [],
+      chSql: { sql: '', params: {} },
+      window: timeWindow,
+    };
+  }
 
   // Create config with windowed date range
   const windowedConfig = isBuilderChartConfig(config)
@@ -450,11 +477,14 @@ export default function useOffsetPaginatedQuery(
   config: ChartConfigWithOptTimestamp,
   {
     isLive,
+    keepPreviousData,
     enabled = true,
     queryKeyPrefix = '',
     enableSmallFirstWindow,
   }: {
     isLive?: boolean;
+    /** Keep showing the previous result while the same query loads a new date range */
+    keepPreviousData?: boolean;
     enabled?: boolean;
     queryKeyPrefix?: string;
     enableSmallFirstWindow?: boolean;
@@ -495,6 +525,7 @@ export default function useOffsetPaginatedQuery(
     isError,
     error,
     isLoading,
+    isPlaceholderData,
   } = useInfiniteQuery<
     TQueryFnData,
     Error | ClickHouseQueryError,
@@ -503,9 +534,16 @@ export default function useOffsetPaginatedQuery(
     TPageParam
   >({
     queryKey: key,
-    placeholderData: (prev: TData | undefined) => {
-      // Only preserve previous query in live mode
-      return isLive ? prev : undefined;
+    placeholderData: (prev: TData | undefined, prevQuery) => {
+      // Only preserve previous query in live mode, or when the caller asks
+      // and only the date range changed. Rows from a different config would
+      // be rendered with the new config's columns and formats.
+      if (isLive) return prev;
+      return keepPreviousData &&
+        prevQuery != null &&
+        differsOnlyInDateRange(prevQuery.queryKey, key)
+        ? prev
+        : undefined;
     },
     enabled:
       enabled && !isLoadingMe && !isLoadingMVOptimization && !isSourceLoading,
@@ -544,5 +582,6 @@ export default function useOffsetPaginatedQuery(
     hasNextPage,
     isFetching: isFetching || isLoadingMe || isLoadingMVOptimization,
     isLoading: isLoading || isLoadingMe || isLoadingMVOptimization,
+    isPlaceholderData,
   };
 }

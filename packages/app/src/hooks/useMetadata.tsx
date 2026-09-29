@@ -261,7 +261,12 @@ export function useMultipleAllFields(
 
       const promiseResults = await Promise.allSettled(
         tableConnections.map(tc =>
-          metadata.getAllFields({ ...tc, dateRange, timestampValueExpression }),
+          metadata.getAllFields({
+            ...tc,
+            dateRange,
+            timestampValueExpression:
+              timestampValueExpression ?? tc.timestampValueExpression,
+          }),
         ),
       );
 

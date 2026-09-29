@@ -7,9 +7,14 @@ import { screen } from '@testing-library/react';
 
 import DBDeltaChart from '@/components/DBDeltaChart';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import { useTableMetadata } from '@/hooks/useMetadata';
 
 jest.mock('@/hooks/useChartConfig', () => ({
   useQueriedChartConfig: jest.fn(),
+}));
+
+jest.mock('@/hooks/useMetadata', () => ({
+  useTableMetadata: jest.fn(),
 }));
 
 // PropertyComparisonChart is the per-attribute renderer. Stubbing it out keeps
@@ -27,6 +32,7 @@ jest.mock('../PropertyComparisonChart', () => ({
 }));
 
 const mockUseQueriedChartConfig = useQueriedChartConfig as jest.Mock;
+const mockUseTableMetadata = useTableMetadata as jest.Mock;
 
 // Sentinel filter on baseConfig so the allSpans assertion can prove
 // the branch passes user-supplied filters through unchanged. Without
@@ -67,6 +73,10 @@ describe('DBDeltaChart', () => {
     mockUseQueriedChartConfig.mockReturnValue({
       data: { data: [], meta: [] },
       error: undefined,
+      isLoading: false,
+    });
+    mockUseTableMetadata.mockReturnValue({
+      data: { engine: 'MergeTree', isPointerTable: false },
       isLoading: false,
     });
   });
@@ -213,6 +223,126 @@ describe('DBDeltaChart', () => {
       expect(outlierCall[1]).toMatchObject({ enabled: true });
       expect(inlierCall[1]).toMatchObject({ enabled: true });
       expect(allSpansCall[1]).toMatchObject({ enabled: false });
+    });
+  });
+
+  describe('selection queries by table engine', () => {
+    const selection = { xMin: 1, xMax: 2, yMin: 1, yMax: 2 };
+    const conditions = (config: BuilderChartConfigWithDateRange) =>
+      (config.filters ?? []).map(f => ('condition' in f ? f.condition : ''));
+
+    it('uses the PartIds prefetch hint on local MergeTree tables', () => {
+      renderChart(selection);
+
+      const [[outlierConfig], [inlierConfig]] =
+        mockUseQueriedChartConfig.mock.calls;
+      for (const config of [outlierConfig, inlierConfig]) {
+        expect(config.with?.map((cte: { name: string }) => cte.name)).toEqual([
+          'PartIds',
+        ]);
+        expect(conditions(config)).toContain(
+          'indexHint((_part, _part_offset) IN PartIds)',
+        );
+      }
+    });
+
+    it('uses plain IN for the aggregated-timestamps subquery on local MergeTree tables', () => {
+      renderChart({ ...selection, valueExpr: 'count()' });
+
+      const [[outlierConfig], [inlierConfig]] =
+        mockUseQueriedChartConfig.mock.calls;
+      expect(conditions(outlierConfig)).toContain(
+        'Timestamp IN (SELECT Timestamp FROM AggregatedTimestamps)',
+      );
+      expect(conditions(inlierConfig)).toContain(
+        'Timestamp NOT IN (SELECT Timestamp FROM AggregatedTimestamps)',
+      );
+    });
+
+    it('skips the PartIds hint on Distributed tables', () => {
+      mockUseTableMetadata.mockReturnValue({
+        data: { engine: 'MergeTree', isPointerTable: true },
+        isLoading: false,
+      });
+      renderChart(selection);
+
+      const [[outlierConfig], [inlierConfig]] =
+        mockUseQueriedChartConfig.mock.calls;
+      for (const config of [outlierConfig, inlierConfig]) {
+        expect(config.with).toBeUndefined();
+        expect(conditions(config).join(' ')).not.toContain('_part');
+      }
+    });
+
+    it('uses GLOBAL IN for the aggregated-timestamps subquery on Distributed tables', () => {
+      mockUseTableMetadata.mockReturnValue({
+        data: { engine: 'MergeTree', isPointerTable: true },
+        isLoading: false,
+      });
+      renderChart({ ...selection, valueExpr: 'count()' });
+
+      const [[outlierConfig], [inlierConfig]] =
+        mockUseQueriedChartConfig.mock.calls;
+      expect(
+        outlierConfig.with?.map((cte: { name: string }) => cte.name),
+      ).toEqual(['AggregatedTimestamps']);
+      expect(conditions(outlierConfig)).toContain(
+        'Timestamp GLOBAL IN (SELECT Timestamp FROM AggregatedTimestamps)',
+      );
+      expect(conditions(inlierConfig)).toContain(
+        'Timestamp GLOBAL NOT IN (SELECT Timestamp FROM AggregatedTimestamps)',
+      );
+    });
+
+    it('waits for table metadata before running selection queries', () => {
+      mockUseTableMetadata.mockReturnValue({
+        data: undefined,
+        isLoading: true,
+      });
+      renderChart(selection);
+
+      const [outlierCall, inlierCall] = mockUseQueriedChartConfig.mock.calls;
+      expect(outlierCall[1]).toMatchObject({ enabled: false });
+      expect(inlierCall[1]).toMatchObject({ enabled: false });
+    });
+
+    it('falls back to the hint-free query when table metadata is unavailable', () => {
+      mockUseTableMetadata.mockReturnValue({
+        data: undefined,
+        isLoading: false,
+      });
+      renderChart(selection);
+
+      const [[outlierConfig, outlierOptions]] =
+        mockUseQueriedChartConfig.mock.calls;
+      expect(outlierOptions).toMatchObject({ enabled: true });
+      expect(outlierConfig.with).toBeUndefined();
+    });
+
+    it('uses GLOBAL IN for aggregate selections when table metadata is unavailable', () => {
+      mockUseTableMetadata.mockReturnValue({
+        data: undefined,
+        isLoading: false,
+      });
+      renderChart({ ...selection, valueExpr: 'count()' });
+
+      const [[outlierConfig], [inlierConfig]] =
+        mockUseQueriedChartConfig.mock.calls;
+      expect(conditions(outlierConfig)).toContain(
+        'Timestamp GLOBAL IN (SELECT Timestamp FROM AggregatedTimestamps)',
+      );
+      expect(conditions(inlierConfig)).toContain(
+        'Timestamp GLOBAL NOT IN (SELECT Timestamp FROM AggregatedTimestamps)',
+      );
+    });
+
+    it('does not retry a failed table metadata lookup', () => {
+      renderChart(selection);
+
+      expect(mockUseTableMetadata).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ retry: false }),
+      );
     });
   });
 

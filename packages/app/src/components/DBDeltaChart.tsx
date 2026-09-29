@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
+import { tcFromChartConfig } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   BuilderChartConfigWithDateRange,
   Filter,
@@ -17,6 +18,7 @@ import { useElementSize } from '@mantine/hooks';
 
 import { isAggregateFunction } from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import { useTableMetadata } from '@/hooks/useMetadata';
 import { getFirstTimestampValueExpression } from '@/source';
 import { getChartColorError, getChartColorSuccess } from '@/utils';
 
@@ -119,6 +121,25 @@ export default function DBDeltaChart({
     return rest;
   }, [config]);
 
+  /** Distributed (and Merge) tables need different subquery handling:
+   * - An `IN <subquery>` over a Distributed table is rejected under the
+   *   default `distributed_product_mode = 'deny'`, so subqueries whose values
+   *   are global (AggregatedTimestamps) must use GLOBAL IN.
+   * - The PartIds prefetch hint is skipped entirely: `_part`/`_part_offset`
+   *   only identify rows within one shard, so the hint is meaningless there.
+   *
+   *  Only a table confirmed local gets plain IN and the hint. If the lookup
+   *  fails, assume Distributed: GLOBAL IN also works on local tables, and
+   *  dropping the hint doesn't change results.
+   */
+  const { data: tableMetadata, isLoading: isTableMetadataLoading } =
+    useTableMetadata(tcFromChartConfig(config), { retry: false });
+  const isLocalTable = tableMetadata != null && !tableMetadata.isPointerTable;
+  const canUsePartIdsHint = isLocalTable;
+  const inOperator = isLocalTable ? 'IN' : 'GLOBAL IN';
+  const notInOperator = isLocalTable ? 'NOT IN' : 'GLOBAL NOT IN';
+  const isSelectionQueryEnabled = hasSelection && !isTableMetadataLoading;
+
   // Helper to build the shared AggregatedTimestamps CTE (used by both outlier and inlier queries)
   const buildAggregatedTimestampsCTE = () =>
     isAggregate
@@ -153,10 +174,13 @@ export default function DBDeltaChart({
         }
       : null;
 
+  const buildAggregateTimestampCondition = (isOutlier: boolean) =>
+    `${timestampExpr} ${isOutlier ? inOperator : notInOperator} (SELECT ${timestampExpr} FROM AggregatedTimestamps)`;
+
   // Helper to build WITH clauses for a query (outlier or inlier)
   const buildWithClauses = (
     isOutlier: boolean,
-  ): NonNullable<BuilderChartConfigWithDateRange['with']> => {
+  ): BuilderChartConfigWithDateRange['with'] => {
     const aggregatedTimestampsCTE = buildAggregatedTimestampsCTE();
 
     // Build the SQL condition for filtering
@@ -170,38 +194,40 @@ export default function DBDeltaChart({
       return isOutlier ? query : `NOT (${query})`;
     };
 
-    const sqlCondition = buildSqlCondition();
-    const aggregateTimestampCondition = isOutlier
-      ? `${timestampExpr} IN (SELECT ${timestampExpr} FROM AggregatedTimestamps)`
-      : `${timestampExpr} NOT IN (SELECT ${timestampExpr} FROM AggregatedTimestamps)`;
+    const partIdsCTE = canUsePartIdsHint
+      ? {
+          name: 'PartIds',
+          chartConfig: {
+            ...baseConfig,
+            select: 'tuple(_part, _part_offset)',
+            filters: [
+              ...(config.filters ?? []),
+              {
+                type: 'sql',
+                condition: buildSqlCondition(),
+              } satisfies Filter,
+              ...(isAggregate
+                ? [
+                    {
+                      type: 'sql',
+                      condition: buildAggregateTimestampCondition(isOutlier),
+                    } satisfies Filter,
+                  ]
+                : []),
+            ],
+            orderBy: [
+              { ordering: 'DESC' as const, valueExpression: stableSampleExpr },
+            ],
+            limit: { limit: SAMPLE_SIZE },
+          },
+        }
+      : undefined;
 
-    return [
+    const withClauses = [
       ...(aggregatedTimestampsCTE ? [aggregatedTimestampsCTE] : []),
-      {
-        name: 'PartIds',
-        chartConfig: {
-          ...baseConfig,
-          select: 'tuple(_part, _part_offset)',
-          filters: [
-            ...(config.filters ?? []),
-            {
-              type: 'sql',
-              condition: sqlCondition,
-            } satisfies Filter,
-            ...(isAggregate
-              ? [
-                  {
-                    type: 'sql',
-                    condition: aggregateTimestampCondition,
-                  } satisfies Filter,
-                ]
-              : []),
-          ],
-          orderBy: [{ ordering: 'DESC', valueExpression: stableSampleExpr }],
-          limit: { limit: SAMPLE_SIZE },
-        },
-      },
+      ...(partIdsCTE ? [partIdsCTE] : []),
     ];
+    return withClauses.length > 0 ? withClauses : undefined;
   };
 
   // Helper to build filters for the main query
@@ -221,29 +247,28 @@ export default function DBDeltaChart({
       }
     };
 
-    const sqlCondition = buildSqlCondition();
-    const aggregateTimestampCondition = isOutlier
-      ? `${timestampExpr} IN (SELECT ${timestampExpr} FROM AggregatedTimestamps)`
-      : `${timestampExpr} NOT IN (SELECT ${timestampExpr} FROM AggregatedTimestamps)`;
-
     return [
       ...(config.filters ?? []),
       {
         type: 'sql',
-        condition: sqlCondition,
+        condition: buildSqlCondition(),
       } as { type: 'sql'; condition: string },
       ...(isAggregate
         ? [
             {
               type: 'sql',
-              condition: aggregateTimestampCondition,
+              condition: buildAggregateTimestampCondition(isOutlier),
             } as { type: 'sql'; condition: string },
           ]
         : []),
-      {
-        type: 'sql',
-        condition: `indexHint((_part, _part_offset) IN PartIds)`,
-      } as { type: 'sql'; condition: string },
+      ...(canUsePartIdsHint
+        ? [
+            {
+              type: 'sql',
+              condition: `indexHint((_part, _part_offset) IN PartIds)`,
+            } as { type: 'sql'; condition: string },
+          ]
+        : []),
     ];
   };
 
@@ -260,7 +285,7 @@ export default function DBDeltaChart({
       orderBy: [{ ordering: 'DESC', valueExpression: stableSampleExpr }],
       limit: { limit: SAMPLE_SIZE },
     },
-    { enabled: hasSelection },
+    { enabled: isSelectionQueryEnabled },
   );
 
   const { data: inlierData, isLoading: isInlierLoading } =
@@ -273,7 +298,7 @@ export default function DBDeltaChart({
         orderBy: [{ ordering: 'DESC', valueExpression: stableSampleExpr }],
         limit: { limit: SAMPLE_SIZE },
       },
-      { enabled: hasSelection },
+      { enabled: isSelectionQueryEnabled },
     );
 
   // When no selection exists, fetch all spans without any range filter
@@ -292,7 +317,7 @@ export default function DBDeltaChart({
   );
 
   const isLoading = hasSelection
-    ? isOutlierLoading || isInlierLoading
+    ? isTableMetadataLoading || isOutlierLoading || isInlierLoading
     : isAllSpansLoading;
 
   const error = outlierError ?? allSpansError;

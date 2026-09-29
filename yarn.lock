@@ -4664,7 +4664,7 @@ __metadata:
     handlebars: "npm:^4.7.9"
     http-graceful-shutdown: "npm:^3.1.13"
     http-proxy-middleware: "npm:^4.0.0"
-    ip-address: "npm:^10.3.1"
+    ip-address: "npm:^10.5.1"
     jest: "npm:^30.2.0"
     lodash: "npm:^4.18.1"
     migrate-mongo: "npm:^11.0.0"
@@ -17107,9 +17107,9 @@ __metadata:
   linkType: hard
 
 "fast-uri@npm:^3.0.1":
-  version: 3.1.4
-  resolution: "fast-uri@npm:3.1.4"
-  checksum: 10c0/f90948821ceb49980f64f89b8216ba498f5957f26035be813526a55b6145d26cbd63ef5618d5205a3292b31edc9c08589749350cd72bd86c7095eb434dceb757
+  version: 3.1.8
+  resolution: "fast-uri@npm:3.1.8"
+  checksum: 10c0/c9c47860a7f9110176d94bb30a02942182f0bfc8d6780e9702f320336dc2dadb83b1d9879cceaf8d4b439642d1ec6d78c317cb808ab155455551bd5d9d7c22d8
   languageName: node
   linkType: hard
 
@@ -18638,6 +18638,7 @@ __metadata:
     eslint-plugin-security: "npm:^3.0.1"
     eslint-plugin-simple-import-sort: "npm:^12.1.1"
     husky: "npm:^8.0.3"
+    jscpd: "npm:5.1.2"
     knip: "npm:^6.19.0"
     lint-staged: "npm:^13.1.2"
     nx: "npm:23.1.1"
@@ -18744,11 +18745,11 @@ __metadata:
   linkType: hard
 
 "image-size@npm:^2.0.2":
-  version: 2.0.2
-  resolution: "image-size@npm:2.0.2"
+  version: 2.0.4
+  resolution: "image-size@npm:2.0.4"
   bin:
     image-size: bin/image-size.js
-  checksum: 10c0/f09dd0f7cf8511cd20e4f756bdb5a7cb6d2240de3323f41bde266bed8373392a293892bf12e907e2995f52833fd88dd27cf6b1a52ab93968afc716cb78cd7b79
+  checksum: 10c0/af01b8c2b7c536df1b866fc6daaa7e58ee909cde42fcae27562612ea77181f473445bc8acf0dfb5b9e8590e966a7a1f3f0fbf4c87ec6d1d4d60d68d87d529d76
   languageName: node
   linkType: hard
 
@@ -18974,10 +18975,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"ip-address@npm:^10.3.1":
-  version: 10.3.1
-  resolution: "ip-address@npm:10.3.1"
-  checksum: 10c0/45b1c31e2cc53d6354ea39f276d70c365a9b0332e7ca2140a9ad4cdb7fdb9d73b6a7ec0d8bf19993d8dce7ab636cd86c46c3e417b98db5ccb8c25546fe8c0b17
+"ip-address@npm:^10.5.1":
+  version: 10.5.1
+  resolution: "ip-address@npm:10.5.1"
+  checksum: 10c0/12ac14dc85de4fd3ba65cb4468033268fa0c30472d25e93e025d918ed178473024fdcf67ffc37c7dca2af5d1256a6083af0099a1e96cea8c6897e3b7227ed636
   languageName: node
   linkType: hard
 
@@ -20513,6 +20514,97 @@ __metadata:
   version: 1.1.0
   resolution: "jsbn@npm:1.1.0"
   checksum: 10c0/4f907fb78d7b712e11dea8c165fe0921f81a657d3443dde75359ed52eb2b5d33ce6773d97985a089f09a65edd80b11cb75c767b57ba47391fee4c969f7215c96
+  languageName: node
+  linkType: hard
+
+"jscpd-darwin-arm64@npm:5.1.2":
+  version: 5.1.2
+  resolution: "jscpd-darwin-arm64@npm:5.1.2"
+  conditions: os=darwin & cpu=arm64
+  languageName: node
+  linkType: hard
+
+"jscpd-darwin-x64@npm:5.1.2":
+  version: 5.1.2
+  resolution: "jscpd-darwin-x64@npm:5.1.2"
+  conditions: os=darwin & cpu=x64
+  languageName: node
+  linkType: hard
+
+"jscpd-linux-arm64-gnu@npm:5.1.2":
+  version: 5.1.2
+  resolution: "jscpd-linux-arm64-gnu@npm:5.1.2"
+  conditions: os=linux & cpu=arm64 & libc=glibc
+  languageName: node
+  linkType: hard
+
+"jscpd-linux-arm64-musl@npm:5.1.2":
+  version: 5.1.2
+  resolution: "jscpd-linux-arm64-musl@npm:5.1.2"
+  conditions: os=linux & cpu=arm64 & libc=musl
+  languageName: node
+  linkType: hard
+
+"jscpd-linux-x64-gnu@npm:5.1.2":
+  version: 5.1.2
+  resolution: "jscpd-linux-x64-gnu@npm:5.1.2"
+  conditions: os=linux & cpu=x64 & libc=glibc
+  languageName: node
+  linkType: hard
+
+"jscpd-linux-x64-musl@npm:5.1.2":
+  version: 5.1.2
+  resolution: "jscpd-linux-x64-musl@npm:5.1.2"
+  conditions: os=linux & cpu=x64 & libc=musl
+  languageName: node
+  linkType: hard
+
+"jscpd-windows-arm64-msvc@npm:5.1.2":
+  version: 5.1.2
+  resolution: "jscpd-windows-arm64-msvc@npm:5.1.2"
+  conditions: os=win32 & cpu=arm64
+  languageName: node
+  linkType: hard
+
+"jscpd-windows-x64-msvc@npm:5.1.2":
+  version: 5.1.2
+  resolution: "jscpd-windows-x64-msvc@npm:5.1.2"
+  conditions: os=win32 & cpu=x64
+  languageName: node
+  linkType: hard
+
+"jscpd@npm:5.1.2":
+  version: 5.1.2
+  resolution: "jscpd@npm:5.1.2"
+  dependencies:
+    jscpd-darwin-arm64: "npm:5.1.2"
+    jscpd-darwin-x64: "npm:5.1.2"
+    jscpd-linux-arm64-gnu: "npm:5.1.2"
+    jscpd-linux-arm64-musl: "npm:5.1.2"
+    jscpd-linux-x64-gnu: "npm:5.1.2"
+    jscpd-linux-x64-musl: "npm:5.1.2"
+    jscpd-windows-arm64-msvc: "npm:5.1.2"
+    jscpd-windows-x64-msvc: "npm:5.1.2"
+  dependenciesMeta:
+    jscpd-darwin-arm64:
+      optional: true
+    jscpd-darwin-x64:
+      optional: true
+    jscpd-linux-arm64-gnu:
+      optional: true
+    jscpd-linux-arm64-musl:
+      optional: true
+    jscpd-linux-x64-gnu:
+      optional: true
+    jscpd-linux-x64-musl:
+      optional: true
+    jscpd-windows-arm64-msvc:
+      optional: true
+    jscpd-windows-x64-msvc:
+      optional: true
+  bin:
+    jscpd: run-jscpd.js
+  checksum: 10c0/ed84dda137489c4c9e068b1d2da8ea046fd68726e5240c3b0bf7e1394e82bd17c198e5f3ebe37e2846f2d42f7605cf2aba7dde0fc7f54c098a42a2980f89b40e
   languageName: node
   linkType: hard
 
