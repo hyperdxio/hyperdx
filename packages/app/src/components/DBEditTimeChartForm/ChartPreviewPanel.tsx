@@ -257,7 +257,11 @@ export function ChartPreviewPanel({
                     })
                 : undefined
             }
-            onSortingChange={onTableSortingChange}
+            onSortingChange={
+              isBuilderChartConfig(queriedConfig)
+                ? onTableSortingChange
+                : undefined
+            }
             sort={tableSortState}
             showMVOptimizationIndicator={false}
             errorVariant="inline"

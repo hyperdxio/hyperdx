@@ -136,6 +136,20 @@ describe('prometheusApi.query', () => {
     expect(params.has('step')).toBe(false);
   });
 
+  it('forwards a series limit only when one is given', async () => {
+    await prometheusApi.query({
+      query: 'up',
+      time: 1,
+      connectionId: 'conn',
+      limit: 25,
+    });
+    expect(postedParams().get('limit')).toBe('25');
+
+    post.mockClear();
+    await prometheusApi.query({ query: 'up', time: 1, connectionId: 'conn' });
+    expect(postedParams().has('limit')).toBe(false);
+  });
+
   it('omits the table params a Prometheus-backed connection has no use for', async () => {
     await prometheusApi.query({
       query: 'up',

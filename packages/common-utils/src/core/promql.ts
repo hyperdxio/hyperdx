@@ -45,7 +45,9 @@ export function getQueriedPromqlSeries(config: {
 /** Whether a display type can evaluate an expression using query instead of query_range */
 export const displayTypeSupportsInstantQuery = (config: {
   displayType?: DisplayType;
-}): boolean => config.displayType === DisplayType.Number;
+}): boolean =>
+  config.displayType === DisplayType.Number ||
+  config.displayType === DisplayType.Table;
 
 /** Whether a display type collapses a range query to one value per series using a client-side reducer. */
 export const displayTypeSupportsReducer = (config: {

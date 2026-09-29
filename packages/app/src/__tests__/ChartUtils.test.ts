@@ -11,6 +11,7 @@ import {
   ChartKeyJoiner,
   convertToNumberChartConfig,
   convertToPromqlNumberChartConfig,
+  convertToPromqlTableChartConfig,
   convertToTableChartConfig,
   convertToTimeChartConfig,
   findNearestSeriesKey,
@@ -1281,6 +1282,39 @@ describe('ChartUtils', () => {
 
       expect(convertedConfig.granularity).toBeUndefined();
       expect(convertedConfig.groupBy).toBeUndefined();
+    });
+  });
+
+  describe('convertToPromqlTableChartConfig', () => {
+    const promqlConfig = {
+      configType: 'promql' as const,
+      displayType: DisplayType.Table,
+      connection: 'conn',
+      promqlExpression: [{ expression: 'up' }, { expression: 'down' }],
+      dateRange: [
+        new Date('2025-11-26T00:00:14.076Z'),
+        new Date('2025-11-26T01:00:14.076Z'),
+      ] as [Date, Date],
+    };
+
+    it('aligns a range query to its granularity, keeping every expression', () => {
+      const result = convertToPromqlTableChartConfig(promqlConfig);
+
+      expect(result.dateRange).toEqual([
+        new Date('2025-11-26T00:00:00Z'),
+        new Date('2025-11-26T01:01:00Z'),
+      ]);
+      expect(result.granularity).toBe('1 minute');
+      expect(result.promqlExpression).toEqual(promqlConfig.promqlExpression);
+    });
+
+    it('leaves the date range unaligned for an instant query', () => {
+      const result = convertToPromqlTableChartConfig({
+        ...promqlConfig,
+        promqlExpression: [{ expression: 'up', queryType: 'instant' }],
+      });
+
+      expect(result.dateRange).toEqual(promqlConfig.dateRange);
     });
   });
 

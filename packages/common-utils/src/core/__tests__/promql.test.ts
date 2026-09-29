@@ -1,4 +1,6 @@
 import {
+  displayTypeSupportsInstantQuery,
+  displayTypeSupportsReducer,
   getPromqlSeries,
   getQueriedPromqlSeries,
   isRangeQuery,
@@ -100,6 +102,36 @@ describe('getQueriedPromqlSeries', () => {
         displayType: DisplayType.Number,
       }),
     ).toEqual([]);
+  });
+});
+
+describe('displayTypeSupportsInstantQuery', () => {
+  it.each([DisplayType.Number, DisplayType.Table])(
+    'offers an instant query on %s tiles',
+    displayType => {
+      expect(displayTypeSupportsInstantQuery({ displayType })).toBe(true);
+    },
+  );
+
+  it.each([DisplayType.Line, DisplayType.StackedBar, DisplayType.Pie])(
+    'always range-queries %s tiles',
+    displayType => {
+      expect(displayTypeSupportsInstantQuery({ displayType })).toBe(false);
+    },
+  );
+});
+
+describe('displayTypeSupportsReducer', () => {
+  it('reduces range buckets on number tiles', () => {
+    expect(
+      displayTypeSupportsReducer({ displayType: DisplayType.Number }),
+    ).toBe(true);
+  });
+
+  it('keeps every sample on table tiles', () => {
+    expect(displayTypeSupportsReducer({ displayType: DisplayType.Table })).toBe(
+      false,
+    );
   });
 });
 
