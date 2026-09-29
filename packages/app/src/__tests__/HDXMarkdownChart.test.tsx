@@ -32,4 +32,31 @@ describe('HDXMarkdownChart', () => {
     );
     expect(screen.getByText('${service:nope}')).toBeInTheDocument();
   });
+
+  it('flags a reference to an unknown variable', () => {
+    renderWithMantine(
+      <HDXMarkdownChart
+        config={{ markdown: '$service $nope' }}
+        variables={[service]}
+      />,
+    );
+    expect(screen.getByTestId('variable-validation')).toHaveAccessibleName(
+      'Markdown references unknown variable $nope. Available variables: service.',
+    );
+  });
+
+  it('flags nothing when every reference is known', () => {
+    renderWithMantine(
+      <HDXMarkdownChart
+        config={{ markdown: '$service' }}
+        variables={[service]}
+      />,
+    );
+    expect(screen.queryByTestId('variable-validation')).not.toBeInTheDocument();
+  });
+
+  it('flags nothing without variables', () => {
+    renderWithMantine(<HDXMarkdownChart config={{ markdown: '$nope' }} />);
+    expect(screen.queryByTestId('variable-validation')).not.toBeInTheDocument();
+  });
 });

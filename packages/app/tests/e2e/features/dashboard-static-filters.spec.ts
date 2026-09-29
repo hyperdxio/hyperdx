@@ -221,9 +221,12 @@ test.describe(
         await dashboardPage.chartEditor.setChartType(DisplayType.Markdown);
         await dashboardPage.chartEditor.setChartName(chartName);
         const editor = page.getByTestId('tile-editor-form');
-        await editor
-          .locator('textarea[name="markdown"]')
-          .fill('# Services: $svc');
+        const markdownInput = editor.locator('textarea[name="markdown"]');
+        await markdownInput.fill('# Services: $nope');
+        await expect(editor.getByTestId('variable-validation')).toBeVisible();
+
+        await markdownInput.fill('# Services: $svc');
+        await expect(editor.getByTestId('variable-validation')).toBeHidden();
         await expect(
           editor.getByRole('heading', { name: 'Services: accounting' }),
         ).toBeVisible();

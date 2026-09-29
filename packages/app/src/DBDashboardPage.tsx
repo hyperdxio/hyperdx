@@ -1377,7 +1377,7 @@ const Tile = ({
                     title={title}
                     toolbarItems={toolbar}
                     config={effectiveMarkdownConfig}
-                    variables={tileVariables}
+                    variables={variables}
                   />
                 )}
               {effectiveQueriedConfig?.displayType === DisplayType.Search &&
@@ -1496,7 +1496,7 @@ const Tile = ({
       annotations,
       isLive,
       readOnly,
-      tileVariables,
+      variables,
     ],
   );
 

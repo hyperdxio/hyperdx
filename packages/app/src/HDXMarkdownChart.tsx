@@ -1,9 +1,16 @@
 import { memo, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { ChartVariable } from '@hyperdx/common-utils/dist/types';
-import { substituteVariables } from '@hyperdx/common-utils/dist/variables';
+import {
+  substituteVariables,
+  validateVariableReferencesInTemplate,
+} from '@hyperdx/common-utils/dist/variables';
 
 import ChartContainer from './components/charts/ChartContainer';
+import {
+  hasVariableIssues,
+  VariableIssueIndicator,
+} from './components/SQLEditor/variableValidation';
 
 const HDXMarkdownChart = memo(
   ({
@@ -32,10 +39,24 @@ const HDXMarkdownChart = memo(
       }
     }, [markdown, variables]);
 
+    const toolbar = useMemo(() => {
+      // Without variables in scope nothing is substituted, so a `$word` is prose.
+      if (!markdown || !variables?.length) return toolbarItems;
+      const issues = validateVariableReferencesInTemplate(markdown, variables, {
+        subject: 'Markdown',
+        language: 'markdown',
+      });
+      if (!hasVariableIssues(issues)) return toolbarItems;
+      return [
+        <VariableIssueIndicator key="variable-issues" issues={issues} />,
+        ...(toolbarItems ?? []),
+      ];
+    }, [markdown, variables, toolbarItems]);
+
     return (
       <ChartContainer
         title={title}
-        toolbarItems={toolbarItems}
+        toolbarItems={toolbar}
         disableReactiveContainer
       >
         <div className="hdx-markdown">

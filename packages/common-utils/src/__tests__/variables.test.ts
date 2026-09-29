@@ -2055,6 +2055,42 @@ describe('validateVariableReferencesInTemplate', () => {
       });
     });
   });
+
+  describe('for markdown', () => {
+    const markdown = (template: string, variables: ChartVariable[]) =>
+      validate(template, variables, {
+        subject: 'Markdown',
+        language: 'markdown',
+      });
+
+    it('says nothing when every reference is known', () => {
+      expect(markdown("# $service\nToday's ${service:csv}", [SERVICE])).toEqual(
+        { errors: [], warnings: [] },
+      );
+    });
+
+    it('checks references in headings', () => {
+      expect(markdown('# $srvice', [SERVICE]).warnings).toEqual([
+        'Markdown references unknown variable $srvice. Available variables: service.',
+      ]);
+    });
+
+    it('warns about an unknown format', () => {
+      expect(markdown('${service:nope}', [SERVICE]).warnings).toEqual([
+        '${service:nope} uses an unknown format, so no variables are substituted. ' +
+          'Expected one of: sqlstring, regex, csv, lucene, markdown.',
+      ]);
+    });
+
+    it('warns that a macro is left as written', () => {
+      expect(
+        markdown('$__filter(ServiceName, $service)', [SERVICE]).warnings,
+      ).toEqual([
+        '$__filter has no meaning in markdown — it is left as written. ' +
+          'Reference the variable directly, as in $service.',
+      ]);
+    });
+  });
 });
 
 describe('macros naming an unknown variable', () => {

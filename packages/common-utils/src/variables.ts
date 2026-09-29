@@ -1211,13 +1211,16 @@ export function validateVariableReferencesInTemplate(
     /** The sentence subject of each message, e.g. `SQL references ...`. */
     subject?: string;
     /** The language the renderer parses this template as. */
-    language?: SearchConditionLanguage;
+    language?: TemplateLanguage;
   } = {},
 ): VariableReferenceIssues {
   const errors: string[] = [];
   const warnings: string[] = [];
 
-  const references = getVariableReferences(template);
+  const settings = languageSettings(language);
+  const references = getVariableReferences(template, {
+    skipSqlComments: settings.skipSqlComments,
+  });
 
   // Attempt to expand macros, so that errors during expansion can be surfaced.
   if (variables != null && hasVariableMacro(template)) {
@@ -1266,17 +1269,34 @@ export function validateVariableReferencesInTemplate(
     );
   }
 
-  const settings = languageSettings(language);
-
   // A macro-less language leaves a macro exactly as written, so writing one can
   // only ever have been a mistake.
   if (settings.disableMacros && macroReferences.length > 0) {
     const [{ name }] = macroReferences;
+    const macros = formatReferenceList(macroReferences);
     warnings.push(
       language === 'promql'
-        ? `${formatReferenceList(macroReferences)} has no meaning in a PromQL expression — it is left as written and sent to Prometheus verbatim. Reference the variable directly, as in {<label>=~"$${name}"}.`
-        : `${formatReferenceList(macroReferences)} has no meaning in a Lucene expression — it is left as written and matched as literal text. Switch this input to SQL, or reference the variable directly, as in <field>:$${name}.`,
+        ? `${macros} has no meaning in a PromQL expression — it is left as written and sent to Prometheus verbatim. Reference the variable directly, as in {<label>=~"$${name}"}.`
+        : language === 'markdown'
+          ? `${macros} has no meaning in markdown — it is left as written. Reference the variable directly, as in $${name}.`
+          : `${macros} has no meaning in a Lucene expression — it is left as written and matched as literal text. Switch this input to SQL, or reference the variable directly, as in <field>:$${name}.`,
     );
+  }
+
+  // Markdown rendering falls back to the text as written rather than failing
+  // like a query would, so nothing else reports an unrecognized format there.
+  if (language === 'markdown') {
+    const badFormat = valueReferences.filter(
+      r =>
+        knownVariableNames.has(r.name) &&
+        r.format != null &&
+        !isVariableFormat(r.format),
+    );
+    if (badFormat.length > 0) {
+      warnings.push(
+        `${formatReferenceList(badFormat)} uses an unknown format, so no variables are substituted. Expected one of: ${VARIABLE_FORMATS.join(', ')}.`,
+      );
+    }
   }
 
   // An unrecognized format throws during expansion, so it is already reported.
