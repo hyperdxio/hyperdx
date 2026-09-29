@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useMemo } from 'react';
 import { flatten } from 'flat';
 import type { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
 import {
@@ -15,10 +15,6 @@ import {
   useSelectAllColumnsQuerySettings,
 } from '@/hooks/useMaterializedAliasColumnsOption';
 import { WithClause } from '@/hooks/useRowWhere';
-import {
-  isSelectAllColumnsSettingRejected,
-  markSelectAllColumnsSettingsRejected,
-} from '@/hooks/useSelectAllColumnsSettingsRejection';
 import {
   getDisplayedTimestampValueExpression,
   getDurationMsExpression,
@@ -215,16 +211,7 @@ export function useRowData({
     ...(aliasWith && aliasWith.length > 0 ? { with: aliasWith } : {}),
   };
 
-  const connection = source.connection;
   const additionalQuerySettings = useSelectAllColumnsQuerySettings(source);
-  // A rejected setting will fail again, so only other errors keep the retry.
-  const settingsQueryOptions = additionalQuerySettings
-    ? {
-        additionalQuerySettings,
-        retry: (failureCount: number, error: Error) =>
-          failureCount < 1 && !isSelectAllColumnsSettingRejected(error),
-      }
-    : {};
 
   const baseQueryKey = ['row_side_panel', rowId, aliasWith, source];
   // Both halves of the filter are needed for `renderChartConfig` to emit one, so
@@ -241,7 +228,7 @@ export function useRowData({
     {
       queryKey: [...baseQueryKey, dateRange],
       enabled: rowId != null && hasWindow,
-      ...settingsQueryOptions,
+      additionalQuerySettings,
     },
   );
 
@@ -262,28 +249,16 @@ export function useRowData({
   const fallbackResult = useQueriedChartConfig(baseConfig, {
     queryKey: [...baseQueryKey, undefined],
     enabled: rowId != null && isFallbackActive,
-    ...settingsQueryOptions,
+    additionalQuerySettings,
   });
 
   const queryResult = isFallbackActive ? fallbackResult : boundedResult;
 
-  const isSettingsRejected =
-    additionalQuerySettings != null &&
-    queryResult.isError &&
-    isSelectAllColumnsSettingRejected(queryResult.error);
-  useEffect(() => {
-    if (isSettingsRejected) {
-      markSelectAllColumnsSettingsRejected(connection);
-    }
-  }, [isSettingsRejected, connection]);
-
   // The bounded result is known-empty by the time the retry is enabled, so
   // report loading until it settles rather than briefly claiming the row is
-  // absent. The same applies while the row is fetched again without settings.
+  // absent.
   const isLoading =
-    queryResult.isLoading ||
-    isSettingsRejected ||
-    (isBoundedEmpty && queryResult.isPending);
+    queryResult.isLoading || (isBoundedEmpty && queryResult.isPending);
 
   // Normalize resource and event attributes to always use flat keys for both JSON and Map columns
   const normalizedData = useMemo(() => {
@@ -314,7 +289,6 @@ export function useRowData({
 
   return {
     ...queryResult,
-    ...(isSettingsRejected ? { isError: false, error: null } : {}),
     data: normalizedData,
     isLoading,
   };

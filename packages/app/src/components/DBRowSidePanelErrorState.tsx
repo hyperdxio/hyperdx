@@ -97,8 +97,10 @@ function MaterializedAliasColumnsHint({ onHide }: { onHide: () => void }) {
     >
       <Stack gap="xs" align="start">
         <Text size="sm">
-          The row query includes MATERIALIZED and ALIAS columns. If one of them
-          cannot be evaluated, the whole row fails to load.
+          The row query includes MATERIALIZED and ALIAS columns. The whole row
+          fails to load if the connection&apos;s user cannot change query
+          settings (for example, a readonly user) or if one of these columns
+          cannot be evaluated.
         </Text>
         <Button size="xs" variant="subtle" onClick={onHide}>
           Hide materialized and alias columns

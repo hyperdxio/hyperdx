@@ -5,11 +5,14 @@ import {
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 
-import {
-  SELECT_ALL_COLUMNS_QUERY_SETTINGS,
-  useSelectAllColumnsSettingsRejected,
-} from '@/hooks/useSelectAllColumnsSettingsRejection';
 import { useLocalStorage } from '@/utils';
+
+// ClickHouse leaves MATERIALIZED and ALIAS columns out of `SELECT *` unless
+// these settings are on.
+const SELECT_ALL_COLUMNS_QUERY_SETTINGS: QuerySettings = [
+  { setting: 'asterisk_include_materialized_columns', value: '1' },
+  { setting: 'asterisk_include_alias_columns', value: '1' },
+];
 
 export function useMaterializedAliasColumnsOption() {
   return useLocalStorage('hdx-row-show-materialized-alias-columns', false);
@@ -28,9 +31,6 @@ export function useSelectAllColumnsQuerySettings(
   source: TSource,
 ): QuerySettings | undefined {
   const [showMaterializedAliasColumns] = useMaterializedAliasColumnsOption();
-  const rejectsSettings = useSelectAllColumnsSettingsRejected(
-    source.connection,
-  );
   const added = SELECT_ALL_COLUMNS_QUERY_SETTINGS.filter(
     ({ setting }) =>
       !source.querySettings?.some(
@@ -39,7 +39,6 @@ export function useSelectAllColumnsQuerySettings(
   );
   return showMaterializedAliasColumns &&
     !getKnownColumnsList(source) &&
-    !rejectsSettings &&
     added.length > 0
     ? added
     : undefined;

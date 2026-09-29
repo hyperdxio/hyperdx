@@ -9,7 +9,7 @@ details panel never showed them. A new "Show materialized and alias columns"
 item in the properties view options menu, off by default, adds
 `asterisk_include_materialized_columns` and `asterisk_include_alias_columns` to
 the row query. It has no effect on a source with a Known Columns List, and a
-value that the source's query settings give for either setting wins. If the
-connection's user cannot change these settings (for example, `readonly = 1`),
-the panel loads the row without them. If the row fails to load for another
-reason while the option is on, the error state offers to turn the option off.
+value that the source's query settings give for either setting wins. If the row
+fails to load while the option is on (for example, because the connection's user
+is `readonly = 1`, or an ALIAS column cannot be evaluated), the error state
+offers to turn the option off.

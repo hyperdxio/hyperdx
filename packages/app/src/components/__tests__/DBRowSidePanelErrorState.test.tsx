@@ -136,14 +136,21 @@ describe('DBRowSidePanelErrorState', () => {
       "Dictionary ('default.missing') not found",
       'SELECT * FROM logs LIMIT 1 SETTINGS asterisk_include_alias_columns = 1',
     );
+    const readonlyError = new ClickHouseQueryError(
+      "Cannot modify 'asterisk_include_materialized_columns' setting in readonly mode. ",
+      'SELECT * FROM logs LIMIT 1 SETTINGS asterisk_include_materialized_columns = 1',
+    );
 
     beforeEach(() => {
       localStorage.clear();
     });
 
-    it('offers to hide the columns when the row query added them', () => {
+    it.each([
+      ['an ALIAS column fails', aliasError],
+      ['the connection rejects the settings', readonlyError],
+    ])('offers to hide the columns when %s', (_case, error) => {
       localStorage.setItem(OPTION_KEY, 'true');
-      renderErrorState(aliasError);
+      renderErrorState(error);
 
       fireEvent.click(
         screen.getByRole('button', {
