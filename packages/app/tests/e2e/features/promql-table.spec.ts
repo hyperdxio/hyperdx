@@ -60,7 +60,7 @@ test.describe(
         await expect(editor.nameInput).toBeVisible();
         await editor.waitForDataToLoad();
         await editor.switchToPromqlMode();
-        await editor.selectPromqlSource(PROMQL_SOURCE_NAME);
+        await editor.selectSource(PROMQL_SOURCE_NAME);
         await editor.setChartName('PromQL table tile');
         await editor.setChartType(DisplayType.Table);
         await editor.replacePromqlExpression(ALL_SERIES);
