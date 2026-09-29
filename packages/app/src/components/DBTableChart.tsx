@@ -1,4 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
+import cx from 'classnames';
+import { inferNumericColumn } from '@hyperdx/common-utils/dist/clickhouse';
 import { isRatioChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
   isBuilderChartConfig,
@@ -15,6 +17,7 @@ import { SortingState } from '@tanstack/react-table';
 
 import {
   buildMVDateRangeIndicator,
+  convertToPromqlTableChartConfig,
   convertToTableChartConfig,
 } from '@/ChartUtils';
 import { Table, TableVariant } from '@/HDXMultiSeriesTableChart';
@@ -87,7 +90,9 @@ export default function DBTableChart({
 
   const queriedConfig = useMemo(() => {
     if (isRawSqlChartConfig(config)) return config;
-    if (isPromqlChartConfig(config)) return config;
+    if (isPromqlChartConfig(config)) {
+      return convertToPromqlTableChartConfig(config);
+    }
 
     const _config = convertToTableChartConfig(config);
 
@@ -106,11 +111,20 @@ export default function DBTableChart({
     isBuilderChartConfig(queriedConfig) ? queriedConfig : undefined,
   );
 
-  const { data, fetchNextPage, hasNextPage, isLoading, isError, error } =
-    useOffsetPaginatedQuery(queriedConfig, {
-      enabled,
-      queryKeyPrefix,
-    });
+  const {
+    data,
+    fetchNextPage,
+    hasNextPage,
+    isLoading,
+    isError,
+    error,
+    isPlaceholderData,
+  } = useOffsetPaginatedQuery(queriedConfig, {
+    enabled,
+    queryKeyPrefix,
+    // Keep the current rows on screen while a refresh loads the new range
+    keepPreviousData: true,
+  });
   const { observerRef: fetchMoreRef } = useIntersectionObserver(fetchNextPage);
 
   // Returns an array of aliases, so we can check if something is using an alias
@@ -196,6 +210,14 @@ export default function DBTableChart({
       const seriesCount = getBuilderValueColumnCount(queriedConfig);
       const groupByCount = allKeys.length - seriesCount;
       groupByKeys = groupByCount > 0 ? allKeys.slice(-groupByCount) : [];
+    } else if (isPromqlChartConfig(queriedConfig)) {
+      // A PromQL table projects the sample value plus a column per Prometheus
+      // label (and a timestamp for range queries). Only the value column is
+      // numeric, so only it takes the tile's number format.
+      const numericKeys = new Set(
+        inferNumericColumn(data?.meta ?? [])?.map(column => column.name),
+      );
+      groupByKeys = allKeys.filter(key => !numericKeys.has(key));
     }
 
     // Builder table configs may opt to render Group By columns
@@ -295,20 +317,34 @@ export default function DBTableChart({
       ) : isError && error ? (
         <ChartErrorState error={error} variant={errorVariant} />
       ) : data?.data.length === 0 ? (
-        <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
+        <div
+          className={cx(
+            'd-flex h-100 w-100 align-items-center justify-content-center text-muted',
+            { 'effect-pulse': isPlaceholderData },
+          )}
+        >
           No data found within time range.
         </div>
       ) : (
         <Table
           data={data?.data ?? []}
           columns={columns}
-          getRowAction={getRowAction ?? undefined}
-          getRowSearchLink={getRowAction ? undefined : getRowSearchLink}
+          // Rows kept from the previous query would link with the new date
+          // range and config, so leave them inert until fresh rows arrive.
+          getRowAction={
+            isPlaceholderData ? undefined : (getRowAction ?? undefined)
+          }
+          getRowSearchLink={
+            isPlaceholderData || getRowAction ? undefined : getRowSearchLink
+          }
           sorting={effectiveSort}
-          enableClientSideSorting={isRawSqlChartConfig(config)}
+          enableClientSideSorting={
+            isRawSqlChartConfig(config) || isPromqlChartConfig(config)
+          }
           onSortingChange={handleSortingChange}
           variant={variant}
           alternateRowBackground={!!queriedConfig.alternateRowBackground}
+          className={isPlaceholderData ? 'effect-pulse' : undefined}
           tableBottom={
             hasNextPage && (
               <Text ref={fetchMoreRef} ta="center">

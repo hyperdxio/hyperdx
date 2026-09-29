@@ -23,7 +23,7 @@ import { DBTimeChart } from '@/components/DBTimeChart';
 import { useAliasMapFromChartConfig } from '@/hooks/useChartConfig';
 import { intervalToDateRange, intervalToGranularity } from '@/utils/alerts';
 
-import { getAlertReferenceLines } from './Alerts';
+import { getAlertReferenceLines, getAlertReferenceLineValues } from './Alerts';
 
 type AlertPreviewChartProps = {
   source: TSource;
@@ -119,6 +119,11 @@ export const AlertPreviewChart = ({
       }),
     [threshold, thresholdMax, thresholdType],
   );
+  const referenceLineValues = useMemo(
+    () =>
+      getAlertReferenceLineValues({ threshold, thresholdMax, thresholdType }),
+    [threshold, thresholdMax, thresholdType],
+  );
 
   return (
     <Paper w="100%" h={height}>
@@ -128,6 +133,7 @@ export const AlertPreviewChart = ({
         showMVOptimizationIndicator={false}
         showDateRangeIndicator={false}
         referenceLines={referenceLines}
+        referenceLineValues={referenceLineValues}
         annotations={annotations}
         config={config}
       />

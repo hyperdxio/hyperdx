@@ -38,7 +38,7 @@ test.describe(
         await expect(editor.nameInput).toBeVisible();
         await editor.waitForDataToLoad();
         await editor.switchToPromqlMode();
-        await editor.selectPromqlSource(PROMQL_SOURCE_NAME);
+        await editor.selectSource(PROMQL_SOURCE_NAME);
         await editor.setChartName('PromQL number tile');
         await editor.setChartType(DisplayType.Number);
       });
@@ -98,7 +98,7 @@ test.describe(
         await expect(editor.nameInput).toBeVisible();
         await editor.waitForDataToLoad();
         await editor.switchToPromqlMode();
-        await editor.selectPromqlSource(PROMQL_SOURCE_NAME);
+        await editor.selectSource(PROMQL_SOURCE_NAME);
         await editor.setChartName('PromQL range reducer tile');
         await editor.setChartType(DisplayType.Number);
         // Counts the samples in the window, so the reducer's effect on the
@@ -151,6 +151,26 @@ test.describe(
         await editor.setPromqlQueryType('Instant');
         await editor.runQuery(false);
         await expect(editorGranularity).toBeHidden();
+      });
+
+      await test.step('A background chart plots the range behind the value', async () => {
+        await editor.setPromqlQueryType('Range', { reducer: 'Max' });
+        await editor.setBackgroundChart('Area');
+        await editor.runQuery(false);
+
+        await expect(
+          page.getByTestId('number-tile-background-chart'),
+        ).toBeVisible({ timeout: 30000 });
+      });
+
+      await test.step('Switching to instant drops the background chart', async () => {
+        await editor.setPromqlQueryType('Instant');
+        await editor.runQuery(false);
+
+        // An instant query has a single point, so there is no trend to plot.
+        await expect(
+          page.getByTestId('number-tile-background-chart'),
+        ).toBeHidden();
       });
 
       await test.step('The range choice round-trips through a save', async () => {

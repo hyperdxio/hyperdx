@@ -322,6 +322,17 @@ export type SkipIndexMetadata = {
   granularity: number;
 };
 
+const FIELD_METADATA_LOOKBACK_MS = 24 * 60 * 60 * 1000;
+
+// Hour-aligned so a range-keyed cache rotates hourly instead of every call.
+export function defaultFieldMetadataDateRange(): [Date, Date] {
+  const now = new Date();
+  return getAlignedDateRange(
+    [new Date(now.getTime() - FIELD_METADATA_LOOKBACK_MS), now],
+    '1 hour',
+  );
+}
+
 export class Metadata {
   private readonly clickhouseClient: BaseClickhouseClient;
   private readonly cache: MetadataCache;
@@ -926,7 +937,7 @@ export class Metadata {
     connectionId,
     metricName,
     metadataMVs,
-    dateRange,
+    dateRange: callerDateRange,
     timestampValueExpression,
     signal,
   }: {
@@ -943,20 +954,28 @@ export class Metadata {
   }) {
     inlineNonNegativeInt(maxKeys, 'maxKeys');
 
-    // Align date range to rollup granularity for consistent cache keys
-    const alignedDateRange =
-      metadataMVs && dateRange
-        ? getAlignedDateRange(dateRange, metadataMVs.granularity)
-        : undefined;
+    // Default a missing range instead of scanning unbounded. #3037
+    const dateRange = callerDateRange ?? defaultFieldMetadataDateRange();
 
-    const dateRangeCacheSuffix =
-      dateRange && timestampValueExpression
-        ? `${dateRange[0].getTime()}-${dateRange[1].getTime()}-${timestampValueExpression}`
+    // Align date range to rollup granularity for consistent cache keys
+    const alignedDateRange = metadataMVs
+      ? getAlignedDateRange(dateRange, metadataMVs.granularity)
+      : undefined;
+
+    // Without timestampValueExpression the scan has no time filter, so its
+    // result doesn't depend on dateRange; keying on it would re-scan every
+    // hour as the default range rolls and pile up entries in the TTL-less cache.
+    const dateRangeCacheSuffix = timestampValueExpression
+      ? `${dateRange[0].getTime()}-${dateRange[1].getTime()}-${timestampValueExpression}`
+      : '';
+    const alignedCacheSuffix =
+      alignedDateRange && timestampValueExpression
+        ? `${alignedDateRange[0].getTime()}.${alignedDateRange[1].getTime()}.${timestampValueExpression}`
         : '';
     const cacheKey = metricName
       ? `${connectionId}.${databaseName}.${tableName}.${column}.${metricName}.${dateRangeCacheSuffix}.keys`
-      : metadataMVs && alignedDateRange
-        ? `${connectionId}.${databaseName}.${tableName}.${column}.${alignedDateRange[0].getTime()}.${alignedDateRange[1].getTime()}.keys`
+      : alignedDateRange
+        ? `${connectionId}.${databaseName}.${tableName}.${column}.${alignedCacheSuffix}.keys`
         : `${connectionId}.${databaseName}.${tableName}.${column}.${dateRangeCacheSuffix}.keys`;
     const cachedKeys = this.cache.get<string[]>(cacheKey);
 
@@ -975,7 +994,12 @@ export class Metadata {
       supportsMergeTreeTextIndex(clickhouseVersion);
     // Text Index path: query the key rollup index
     const textIndexInfo = textIndexInfoLookup.get(column);
-    if (textIndexInfo?.key?.indexName && canQueryMergeTreeTextIndex) {
+    // Without timestampValueExpression, partsFilter can't bound this either. #3037
+    if (
+      textIndexInfo?.key?.indexName &&
+      canQueryMergeTreeTextIndex &&
+      timestampValueExpression
+    ) {
       const partsFilter = await this.partsOverlapFilter({
         databaseName,
         tableName,
@@ -1010,7 +1034,11 @@ export class Metadata {
         );
         return [];
       }
-    } else if (textIndexInfo?.kv?.indexName && canQueryMergeTreeTextIndex) {
+    } else if (
+      textIndexInfo?.kv?.indexName &&
+      canQueryMergeTreeTextIndex &&
+      timestampValueExpression
+    ) {
       const partsFilter = await this.partsOverlapFilter({
         databaseName,
         tableName,
@@ -1050,8 +1078,13 @@ export class Metadata {
 
     // Rollup path: query the key rollup table filtered by ColumnIdentifier and date range
     if (metadataMVs && alignedDateRange) {
+      // Own cache key: the shipped OTel rollups only index NativeColumn, so
+      // Map columns come back empty here and must fall through to the bounded
+      // scan below. Caching [] under cacheKey would block that fallback.
+      // The rollup filters on Timestamp even without timestampValueExpression,
+      // so its key always carries the aligned range.
       const rollupKeys = await this.cache.getOrFetch<string[]>(
-        cacheKey,
+        `${cacheKey}.${alignedDateRange[0].getTime()}.${alignedDateRange[1].getTime()}.rollup`,
         async () => {
           try {
             const startExpr = renderStartOfBucketExpr(
@@ -1111,7 +1144,14 @@ export class Metadata {
       if (rollupKeys.length > 0) return rollupKeys;
     }
 
-    // Original path: scan main table
+    // Original path: scan main table. Without a timestamp expression there's
+    // nothing to filter on, so the scan is only bounded by the row LIMIT. #3037
+    if (!timestampValueExpression) {
+      console.warn(
+        `Unbounded Map key scan for ${databaseName}.${tableName}.${column}: no timestampValueExpression to bound the scan`,
+      );
+    }
+
     const colMeta = await this.getColumn({
       databaseName,
       tableName,
@@ -1131,26 +1171,27 @@ export class Metadata {
       strategy = 'lowCardinalityKeys';
     }
 
-    const timeFilterCondition =
-      dateRange && timestampValueExpression
-        ? await timeFilterExpr({
-            connectionId,
-            databaseName,
-            tableName,
-            dateRange,
-            dateRangeStartInclusive: true,
-            dateRangeEndInclusive: true,
-            timestampValueExpression,
-            metadata: this,
-          })
-        : null;
     const whereConditions: ChSql[] = [
       ...(metricName ? [chSql`MetricName=${{ String: metricName }}`] : []),
-      ...(timeFilterCondition ? [timeFilterCondition] : []),
+      ...(timestampValueExpression
+        ? [
+            await timeFilterExpr({
+              connectionId,
+              databaseName,
+              tableName,
+              dateRange,
+              dateRangeStartInclusive: true,
+              dateRangeEndInclusive: true,
+              timestampValueExpression,
+              metadata: this,
+            }),
+          ]
+        : []),
     ];
-    const where = whereConditions.length
-      ? chSql`WHERE ${concatChSql(' AND ', ...whereConditions)}`
-      : '';
+    const where =
+      whereConditions.length > 0
+        ? chSql`WHERE ${concatChSql(' AND ', ...whereConditions)}`
+        : chSql``;
 
     // NOTE: getSubcolumn(col, 'keys') is used instead of the `col.keys` dot
     // form because, on a multi-shard Distributed read of a Map subcolumn, some
@@ -2363,14 +2404,15 @@ export class Metadata {
           })
           .then(res =>
             res.json<{
-              __hdx_value: string;
+              __hdx_value: string | number | boolean;
               __hdx_percentage: string | number;
             }>(),
           );
 
         return new Map(
+          // ClickHouse JSON returns numbers and booleans unquoted
           json.data.map(({ __hdx_value, __hdx_percentage }) => [
-            __hdx_value,
+            String(__hdx_value),
             Number(__hdx_percentage),
           ]),
         );
@@ -3129,6 +3171,8 @@ export type TableConnection = {
   connectionId: string;
   metricName?: string;
   metadataMVs?: MetadataMaterializedViews;
+  // Bounds Map key discovery; without it Map keys are skipped. #3037
+  timestampValueExpression?: string;
 };
 
 export type TableConnectionChoice =
@@ -3160,6 +3204,7 @@ export function tcFromSource(source?: TSource): TableConnection {
       source && (isLogSource(source) || isTraceSource(source))
         ? source.metadataMaterializedViews
         : undefined,
+    timestampValueExpression: source?.timestampValueExpression,
   };
 }
 
