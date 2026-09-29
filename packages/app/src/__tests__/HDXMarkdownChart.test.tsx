@@ -45,6 +45,17 @@ describe('HDXMarkdownChart', () => {
     );
   });
 
+  it('checks references against the available names when given', () => {
+    renderWithMantine(
+      <HDXMarkdownChart
+        config={{ markdown: '$service $env' }}
+        variables={[service]}
+        availableVariableNames={['service', 'env']}
+      />,
+    );
+    expect(screen.queryByTestId('variable-validation')).not.toBeInTheDocument();
+  });
+
   it('flags nothing when every reference is known', () => {
     renderWithMantine(
       <HDXMarkdownChart
