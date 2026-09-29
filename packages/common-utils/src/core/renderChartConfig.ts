@@ -1315,6 +1315,11 @@ const SQL_NEGATION_OPERATORS = new Set([
   'NOT BETWEEN',
 ]);
 
+// Reused across calls: `isNegatedFilterCondition` runs once per predicate on
+// every render, and `astify` holds no cross-call state, so a single parser
+// avoids allocating one each time.
+const NEGATION_SQL_PARSER = new SQLParser.Parser();
+
 /**
  * True when a lucene predicate carries a second top-level term after its
  * leading negation — i.e. a term boundary (whitespace, `&&`, `||`) that sits
@@ -1399,9 +1404,8 @@ export function isNegatedFilterCondition(
   }
 
   try {
-    const parser = new SQLParser.Parser();
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- astify returns a union; we read only `.where`
-    const ast = parser.astify(`SELECT * FROM t WHERE ${c}`, {
+    const ast = NEGATION_SQL_PARSER.astify(`SELECT * FROM t WHERE ${c}`, {
       database: 'Postgresql',
     }) as SQLParser.Select;
     const where = ast.where as
