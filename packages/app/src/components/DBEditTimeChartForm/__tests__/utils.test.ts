@@ -1,7 +1,9 @@
 import {
   ChartConfigWithDateRange,
+  ChartVariable,
   DashboardFilter,
   DisplayType,
+  PromqlExpressionList,
   SavedChartConfig,
   SourceKind,
   TSource,
@@ -11,6 +13,7 @@ import { ChartEditorFormState } from '@/components/ChartEditor/types';
 import {
   buildChartConfigForExplanations,
   buildGroupByConnectionProps,
+  buildRenderedPromqlExpression,
   buildSampleEventsConfig,
   computeDbTimeChartConfig,
   displayTypeToActiveTab,
@@ -156,6 +159,158 @@ describe('isQueryReady', () => {
         sqlTemplate: '',
       } as ChartConfigWithDateRange),
     ).toBe(false);
+  });
+
+  it('returns truthy for a PromQL config with an expression', () => {
+    expect(
+      isQueryReady({
+        configType: 'promql',
+        promqlExpression: [{ expression: 'up' }],
+        connection: 'local',
+        dateRange,
+      }),
+    ).toBeTruthy();
+    // The legacy single-expression shape still counts.
+    expect(
+      isQueryReady({
+        configType: 'promql',
+        promqlExpression: 'up',
+        connection: 'local',
+        dateRange,
+      }),
+    ).toBeTruthy();
+  });
+
+  it('returns falsy for a PromQL config with nothing entered', () => {
+    expect(
+      isQueryReady({
+        configType: 'promql',
+        promqlExpression: [{ expression: '' }],
+        connection: 'local',
+        dateRange,
+      }),
+    ).toBeFalsy();
+  });
+
+  // A single-series display type runs its first expression alone, so a blank
+  // one leaves it unready however many rows follow.
+  it('returns falsy for a single-series PromQL config whose first expression is blank', () => {
+    expect(
+      isQueryReady({
+        configType: 'promql',
+        displayType: DisplayType.Number,
+        promqlExpression: [{ expression: '' }, { expression: 'up' }],
+        connection: 'local',
+        dateRange,
+      }),
+    ).toBeFalsy();
+    expect(
+      isQueryReady({
+        configType: 'promql',
+        displayType: DisplayType.Line,
+        promqlExpression: [{ expression: '' }, { expression: 'up' }],
+        connection: 'local',
+        dateRange,
+      }),
+    ).toBeTruthy();
+  });
+});
+
+describe('buildRenderedPromqlExpression', () => {
+  const promqlConfig = (
+    overrides: {
+      promqlExpression?: PromqlExpressionList;
+      displayType?: DisplayType;
+      variables?: ChartVariable[];
+    } = {},
+  ): ChartConfigWithDateRange => ({
+    configType: 'promql',
+    connection: 'local',
+    displayType: DisplayType.Line,
+    promqlExpression: [{ expression: 'up' }],
+    dateRange,
+    ...overrides,
+  });
+
+  it('returns nothing for a non-PromQL config', () => {
+    expect(buildRenderedPromqlExpression(undefined)).toBeUndefined();
+    expect(buildRenderedPromqlExpression(builderConfig)).toBeUndefined();
+  });
+
+  it('lists every expression with its alias', () => {
+    expect(
+      buildRenderedPromqlExpression(
+        promqlConfig({
+          promqlExpression: [
+            { expression: 'up', alias: '  up  ' },
+            { expression: 'rate(errors[5m])' },
+          ],
+        }),
+      ),
+    ).toEqual({
+      expressions: [
+        { id: '0', expression: 'up', alias: 'up' },
+        { id: '1', expression: 'rate(errors[5m])', alias: undefined },
+      ],
+    });
+  });
+
+  // The preview has to match what the query path runs, and only time series
+  // charts run more than the first expression.
+  it('lists only the first expression for a non-time-series chart', () => {
+    expect(
+      buildRenderedPromqlExpression(
+        promqlConfig({
+          displayType: DisplayType.Number,
+          promqlExpression: [
+            { expression: 'up' },
+            { expression: 'rate(errors[5m])' },
+          ],
+        }),
+      ),
+    ).toEqual({
+      expressions: [{ id: '0', expression: 'up', alias: undefined }],
+    });
+  });
+
+  // Nothing in the content separates two identical rows, so the preview keys
+  // its previews on the id — duplicates render one CodeMirror each.
+  it('gives identical expressions distinct ids', () => {
+    expect(
+      buildRenderedPromqlExpression(
+        promqlConfig({
+          promqlExpression: [
+            { expression: 'up', alias: 'up' },
+            { expression: 'up', alias: 'up' },
+          ],
+        }),
+      )?.expressions?.map(entry => entry.id),
+    ).toEqual(['0', '1']);
+  });
+
+  it('substitutes variables into every expression', () => {
+    expect(
+      buildRenderedPromqlExpression(
+        promqlConfig({
+          promqlExpression: [
+            { expression: 'up{service=~"$service"}' },
+            { expression: 'errors{service=~"$service"}' },
+          ],
+          variables: [{ name: 'service', values: ['api'] }],
+        }),
+      )?.expressions?.map(entry => entry.expression),
+    ).toEqual(['up{service=~"api"}', 'errors{service=~"api"}']);
+  });
+
+  it('reports a substitution failure instead of an expression', () => {
+    const result = buildRenderedPromqlExpression(
+      promqlConfig({
+        promqlExpression: [{ expression: 'up{service=~"${service:json}"}' }],
+        variables: [{ name: 'service', values: ['api'] }],
+      }),
+    );
+    expect(result?.expressions).toBeUndefined();
+    expect(result?.error).toMatch(/Variables could not be expanded/);
   });
 });
 

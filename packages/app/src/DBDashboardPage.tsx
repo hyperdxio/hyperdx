@@ -3117,7 +3117,6 @@ function DBDashboardPage({
         onLanguageChange={(lang: 'sql' | 'lucene') =>
           setValue('whereLanguage', lang)
         }
-        label="WHERE"
         enableHotkey
         allowMultiline
         minWidth={300}

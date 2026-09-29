@@ -187,9 +187,17 @@ jobs:
         id: changed-files
         uses: tj-actions/changed-files@v47.0.6
         with:
+          # The ClickHouse config is mounted into both ch-server (via
+          # docker-compose.ci.yml) and ch-server-compat, which pins an older
+          # ClickHouse -- a config feature the old server rejects takes the
+          # whole suite down, so changes to it run these tests.
           files: |
             docker/otel-collector/**
             smoke-tests/otel-collector/**
+            packages/otel-collector/builder-config.yaml
+            docker/clickhouse/local/config.xml
+            docker/clickhouse/local/users.xml
+            docker-compose.ci.yml
       - name: Install required tooling
         if: steps.changed-files.outputs.any_changed == 'true'
         env:

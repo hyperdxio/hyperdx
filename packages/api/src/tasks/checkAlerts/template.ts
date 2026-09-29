@@ -1,5 +1,6 @@
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
+import { getPromqlSeries } from '@hyperdx/common-utils/dist/core/promql';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import { buildSearchChartConfig } from '@hyperdx/common-utils/dist/core/searchChartConfig';
 import { formatDate, objectHash } from '@hyperdx/common-utils/dist/core/utils';
@@ -142,7 +143,7 @@ const describeChartConfigQuery = (config: SavedChartConfig): string => {
   // because a tile's config is the full union, and this guard is what narrows
   // the builder case below.
   if (isPromqlSavedChartConfig(config)) {
-    return config.promqlExpression;
+    return getPromqlSeries(config).at(-1)?.expression ?? '';
   }
   const select = typeof config.select === 'string' ? [] : (config.select ?? []);
   // Only the last series drives the value -- parseAlertData keeps the last

@@ -252,17 +252,16 @@ export class ChartEditorComponent {
    * Select a data source
    */
   async selectSource(sourceName: string) {
+    // The editor pre-selects a source, and clicking the option that is already
+    // selected deselects it. Leave an existing match alone.
+    if ((await this.sourceSelector.inputValue()) === sourceName) {
+      return;
+    }
     await this.sourceSelector.click();
     // Use getByRole for more reliable selection. exact: true avoids matching
     // sources whose names are prefixes of others (e.g. "E2E Traces MV" vs
     // "E2E Traces MV AutoPopulate").
-    const sourceOption = this.page.getByRole('option', {
-      name: sourceName,
-      exact: true,
-    });
-    if ((await sourceOption.getAttribute('data-combobox-active')) != 'true') {
-      await sourceOption.click({ timeout: 5000 });
-    }
+    await this.sourceOption(sourceName).click({ timeout: 5000 });
   }
 
   /**
@@ -359,6 +358,27 @@ export class ChartEditorComponent {
     }
   }
 
+  /** Open the Data Source dropdown. */
+  async openSourcePicker() {
+    await this.sourceSelector.click();
+    await expect(this.page.getByRole('option').first()).toBeVisible();
+  }
+
+  /**
+   * Close the Data Source dropdown by moving focus to the chart name input.
+   * Escape would bubble to the tile-editor modal and close that instead, and
+   * clicking the select again leaves the searchable dropdown open.
+   */
+  async closeSourcePicker() {
+    await this.chartNameInput.click();
+    await expect(this.page.getByRole('option')).toHaveCount(0);
+  }
+
+  /** An option in the open Data Source dropdown. */
+  sourceOption(sourceName: string): Locator {
+    return this.page.getByRole('option', { name: sourceName, exact: true });
+  }
+
   /**
    * Switch the chart editor from Builder to SQL mode.
    */
@@ -386,37 +406,29 @@ export class ChartEditorComponent {
   }
 
   /**
-   * Select the PromQL editor's data source.
+   * Replace the entire contents of one PromQL expression editor.
    *
-   * Located by role rather than by the `source-selector` test id: that id is on
-   * the builder's source select (ChartEditorControls), and PromQL mode renders
-   * its own `SourceSelectControlled` which doesn't carry it.
+   * The same `.cm-editor` locator as the SQL template, indexed for the same
+   * reason: the expression inputs come before the preview panel, whose
+   * "Generated PromQL" accordion holds read-only CodeMirrors of its own. So
+   * `index` addresses the nth expression row, counting from the top.
    */
-  async selectPromqlSource(sourceName: string) {
-    await this.page.getByRole('combobox', { name: 'Data Source' }).click();
-    await this.page
-      .getByRole('option', { name: sourceName, exact: true })
-      .click();
-  }
-
-  /**
-   * Replace the entire contents of the PromQL expression editor.
-   *
-   * The same `.cm-editor` locator as the SQL template, and `.first()` for the
-   * same reason: the expression input is above the preview panel, whose
-   * "Generated PromQL" accordion holds a second, read-only CodeMirror.
-   */
-  async replacePromqlExpression(expression: string) {
+  async replacePromqlExpression(expression: string, index = 0) {
     await replaceEditorText(
       this.page,
-      this.page.locator('.cm-editor .cm-content').first(),
+      this.page.locator('.cm-editor .cm-content').nth(index),
       expression,
     );
   }
 
-  /** Read the current text of the PromQL expression editor. */
-  async getPromqlEditorText(): Promise<string> {
-    return this.page.locator('.cm-editor .cm-content').first().innerText();
+  /** Read the current text of a PromQL expression editor. */
+  async getPromqlEditorText(index = 0): Promise<string> {
+    return this.page.locator('.cm-editor .cm-content').nth(index).innerText();
+  }
+
+  /** Append an empty PromQL expression row (time series charts only). */
+  async addPromqlExpression() {
+    await this.page.getByTestId('promql-add-expression-button').click();
   }
 
   /**
@@ -645,22 +657,26 @@ export class ChartEditorComponent {
   }
 
   /**
-   * CodeMirror content of the "Generated PromQL" preview.
+   * CodeMirror content of the nth expression in the "Generated PromQL"
+   * preview, which holds one per expression the tile plots.
    *
    * Its own test id rather than `.cm-editor` with an index: the editor page
    * can hold several CodeMirror instances, and which ordinal this one takes
    * depends on the mode the editor is in.
    */
-  generatedPromqlContent(): Locator {
-    return this.page.getByTestId('chart-promql-preview').locator('.cm-content');
+  generatedPromqlContent(index = 0): Locator {
+    return this.page
+      .getByTestId('chart-promql-preview')
+      .nth(index)
+      .locator('.cm-content');
   }
 
   /**
    * The generated PromQL as a single whitespace-collapsed line. Substitution is
    * debounced by 300ms, so assert on it with `toPass` or an expect timeout.
    */
-  async getGeneratedPromqlText(): Promise<string> {
-    const text = await this.generatedPromqlContent().innerText();
+  async getGeneratedPromqlText(index = 0): Promise<string> {
+    const text = await this.generatedPromqlContent(index).innerText();
     return text.replace(/\s+/g, ' ').trim();
   }
 
@@ -1139,6 +1155,46 @@ export class ChartEditorComponent {
   }
 
   /**
+   * Choose how a PromQL expression is evaluated, from the toggle under the
+   * expression editor. `reducer` is the visible label (e.g. "Max"), and only
+   * applies to a range query.
+   */
+  async setPromqlQueryType(
+    queryType: 'Instant' | 'Range',
+    { index = 0, reducer }: { index?: number; reducer?: string } = {},
+  ) {
+    const group = this.page.getByTestId(`promql-query-type-input-${index}`);
+    if (!(await group.isVisible())) {
+      await this.page.getByTestId(`promql-query-type-control-${index}`).click();
+    }
+    await group.getByText(queryType, { exact: true }).click();
+
+    if (reducer) {
+      await this.page
+        .getByRole('combobox', { name: 'PromQL range reducer' })
+        .click();
+      await this.page
+        .getByRole('option', { name: reducer, exact: true })
+        .click();
+    }
+  }
+
+  /**
+   * Set the "Background chart" type in the Display Settings drawer (number
+   * tiles only). Opens the drawer, picks the type, then applies and closes.
+   */
+  async setBackgroundChart(type: 'None' | 'Line' | 'Area') {
+    await this.openDisplaySettings();
+    const drawer = this.page.getByRole('dialog', { name: 'Display Settings' });
+    // Mantine repeats the aria-label on the options listbox, so match the role.
+    await drawer
+      .getByRole('combobox', { name: 'Number tile background chart type' })
+      .click();
+    await drawer.getByRole('option', { name: type, exact: true }).click();
+    await this.applyDisplaySettings();
+  }
+
+  /**
    * Open the Display Settings drawer and wait for it to become visible.
    */
   async openDisplaySettings() {
@@ -1261,7 +1317,12 @@ export class ChartEditorComponent {
    * default `count()` series distinct column names in a multi-series table.
    */
   async setSeriesAlias(index: number, alias: string) {
-    await this.page.getByTestId('series-alias-input').nth(index).fill(alias);
+    await this.seriesAliasInput(index).fill(alias);
+  }
+
+  /** The alias input of the series (or PromQL expression) row at `index`. */
+  seriesAliasInput(index: number): Locator {
+    return this.page.getByTestId('series-alias-input').nth(index);
   }
 
   /**

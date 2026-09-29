@@ -1166,8 +1166,8 @@ export const RawLogTable = memo(
                   // virtual item, so the group — not either `tr` — is what the
                   // virtualizer measures. Measuring the `tr`s directly gave
                   // both the same `data-index`, and the expanded one took over
-                  // the index's ResizeObserver registration and left its height
-                  // cached there after it unmounted.
+                  // that index's ResizeObserver registration, then left its
+                  // height cached there after it unmounted.
                   <tbody
                     key={virtualRow.key}
                     data-index={virtualRow.index}
