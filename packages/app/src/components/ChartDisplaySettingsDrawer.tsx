@@ -340,7 +340,7 @@ export default function ChartDisplaySettingsDrawer({
             {showSeriesLimitRankingRange && (
               <Box>
                 <Text size="xs" fw={500} id="series-limit-ranking-range-label">
-                  Rank Series Over
+                  Rank series over
                 </Text>
                 <Text size="xs" c="dimmed" mb={4}>
                   Most recent window ranks series by the newest part of the time

@@ -492,6 +492,84 @@ describe('convertToExternalDashboard orphan-ref heal', () => {
         expect(readRankingRange(null)).toBeUndefined();
         expect(readRankingRange(undefined)).toBeUndefined();
       });
+
+      // The PUT side: what convertToInternalTileConfig stores for the value
+      // a client sends. Without this, a save that drops the field would pass.
+      function writeRankingRange(
+        seriesLimitRankingRange: 'recent' | 'full' | undefined,
+      ): unknown {
+        const externalDisplayType =
+          displayType === DisplayType.StackedBar ? 'stacked_bar' : 'line';
+        const internal = convertToInternalTileConfig({
+          id: 'ranking-range-tile',
+          x: 0,
+          y: 0,
+          w: 12,
+          h: 4,
+          name: 'Ranking range tile',
+          config: {
+            displayType: externalDisplayType,
+            sourceId: new mongoose.Types.ObjectId().toString(),
+            select: [{ aggFn: 'count', where: '' }],
+            groupBy: 'ServiceName',
+            seriesLimit: 5,
+            seriesLimitRankingRange,
+          },
+        });
+        if (!isBuilderSavedChartConfig(internal.config)) {
+          throw new Error('Expected a builder config for a time chart tile');
+        }
+        return internal.config.seriesLimitRankingRange;
+      }
+
+      it('stores full when a client sends it', () => {
+        expect(writeRankingRange('full')).toBe('full');
+      });
+
+      it('stores an explicit recent when a client sends it', () => {
+        expect(writeRankingRange('recent')).toBe('recent');
+      });
+
+      it('stores nothing when a client omits it', () => {
+        expect(writeRankingRange(undefined)).toBeUndefined();
+      });
+
+      it.each(['recent', 'full'] as const)(
+        'keeps %s through GET then PUT',
+        value => {
+          const doc = makeDoc({
+            tiles: [
+              makeTile({
+                id: 'ranking-range-tile',
+                config: {
+                  displayType,
+                  source: new mongoose.Types.ObjectId().toString(),
+                  name: 'Ranking range tile',
+                  select: [{ aggFn: 'count', valueExpression: '' }],
+                  where: '',
+                  groupBy: 'ServiceName',
+                  seriesLimit: 5,
+                  seriesLimitRankingRange: value,
+                },
+              }),
+            ],
+          });
+          const [externalTile] = convertToExternalDashboard(doc).tiles;
+          const externalConfig = externalTile.config;
+          if (!externalConfig) {
+            throw new Error('Expected the tile to have an external config');
+          }
+          const internal = convertToInternalTileConfig({
+            ...externalTile,
+            config: externalConfig,
+          });
+          if (!isBuilderSavedChartConfig(internal.config)) {
+            throw new Error('Expected a builder config for a time chart tile');
+          }
+          expect(internal.config.seriesLimitRankingRange).toBe(value);
+          expect(internal.config.seriesLimit).toBe(5);
+        },
+      );
     },
   );
 });

@@ -114,8 +114,8 @@ const seriesLimitSchema = z.number().int().nonnegative().optional();
 
 const seriesLimitRankingRangeSchema =
   SeriesLimitRankingRangeSchema.optional().describe(
-    'Range the top-N ranking for `seriesLimit` covers (the "Rank Series ' +
-      'Over" display setting). "recent" (default) ranks over the newest ' +
+    'Range the top-N ranking for `seriesLimit` covers (the "Rank series ' +
+      'over" display setting). "recent" (default) ranks over the newest ' +
       'chunk of the queried range only, so a group with no recent events is ' +
       'dropped even if it is the largest overall. "full" ranks over the ' +
       'whole queried range, which is accurate but scans more data. Ignored ' +
