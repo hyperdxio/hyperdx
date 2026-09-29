@@ -90,7 +90,7 @@ function KnownColumnsListHint({
 function MaterializedAliasColumnsHint({ onHide }: { onHide: () => void }) {
   return (
     <Alert
-      color="yellow"
+      variant="warning"
       icon={<IconAlertTriangle size={16} />}
       title="Materialized and alias columns are on"
       data-testid="materialized-alias-columns-hint"

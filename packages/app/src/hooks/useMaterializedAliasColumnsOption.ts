@@ -22,8 +22,8 @@ export function getKnownColumnsList(source: TSource): string | undefined {
     : undefined;
 }
 
-// The settings that the row query adds for this source, if any. A value that
-// the source's own query settings give for either setting wins.
+// The settings that the row query adds for this source, if any. A setting that
+// the source's own query settings define keeps the source's value.
 export function useSelectAllColumnsQuerySettings(
   source: TSource,
 ): QuerySettings | undefined {
@@ -31,9 +31,16 @@ export function useSelectAllColumnsQuerySettings(
   const rejectsSettings = useSelectAllColumnsSettingsRejected(
     source.connection,
   );
+  const added = SELECT_ALL_COLUMNS_QUERY_SETTINGS.filter(
+    ({ setting }) =>
+      !source.querySettings?.some(
+        sourceSetting => sourceSetting.setting === setting,
+      ),
+  );
   return showMaterializedAliasColumns &&
     !getKnownColumnsList(source) &&
-    !rejectsSettings
-    ? SELECT_ALL_COLUMNS_QUERY_SETTINGS
+    !rejectsSettings &&
+    added.length > 0
+    ? added
     : undefined;
 }

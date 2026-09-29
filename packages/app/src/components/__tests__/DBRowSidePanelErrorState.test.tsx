@@ -165,6 +165,21 @@ describe('DBRowSidePanelErrorState', () => {
       ).toBeNull();
     });
 
+    it('is not shown when the source sets both settings itself', () => {
+      localStorage.setItem(OPTION_KEY, 'true');
+      renderErrorState(aliasError, {
+        ...source,
+        querySettings: [
+          { setting: 'asterisk_include_materialized_columns', value: '0' },
+          { setting: 'asterisk_include_alias_columns', value: '0' },
+        ],
+      });
+
+      expect(
+        screen.queryByTestId('materialized-alias-columns-hint'),
+      ).toBeNull();
+    });
+
     it('is not shown when a Known Columns List replaces SELECT *', () => {
       localStorage.setItem(OPTION_KEY, 'true');
       renderErrorState(aliasError, {
