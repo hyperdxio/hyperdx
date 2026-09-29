@@ -1301,6 +1301,64 @@ async function renderWhereExpression(
   return chSql`${{ UNSAFE_RAW_SQL: _condition }}`;
 }
 
+// SQL comparison operators that flip a predicate into an exclusion: as an
+// existential trace-membership test (`TraceId IN (SELECT ... WHERE <p>)`) they
+// read as "*some* span is not X", true for almost any multi-span trace, so the
+// exclusion would stop excluding. `IS NOT` (e.g. `IS NOT NULL`) is deliberately
+// absent: "some span has a non-null X" is a legitimate positive existence test.
+const SQL_NEGATION_OPERATORS = new Set([
+  '!=',
+  '<>',
+  'NOT IN',
+  'NOT LIKE',
+  'NOT ILIKE',
+  'NOT BETWEEN',
+]);
+
+/**
+ * True when a lucene predicate carries a second top-level term after its
+ * leading negation — i.e. a term boundary (whitespace, `&&`, `||`) that sits
+ * outside quotes and parentheses. Such a query is a mix of terms, not a sole
+ * negation.
+ */
+function luceneHasSecondTerm(rest: string): boolean {
+  let inQuote = false;
+  let depth = 0;
+  let prev = '';
+  for (const ch of rest) {
+    if (ch === '"' && !(inQuote && prev === '\\')) {
+      inQuote = !inQuote;
+      prev = ch;
+      continue;
+    }
+    if (inQuote) {
+      prev = ch;
+      continue;
+    }
+    if (ch === '(') {
+      depth++;
+      prev = ch;
+      continue;
+    }
+    if (ch === ')') {
+      if (depth > 0) depth--;
+      prev = ch;
+      continue;
+    }
+    if (depth > 0) {
+      prev = ch;
+      continue;
+    }
+    if (/\s/.test(ch)) return true;
+    // The second character of a top-level `&&` / `||` operator.
+    if ((ch === '&' && prev === '&') || (ch === '|' && prev === '|')) {
+      return true;
+    }
+    prev = ch;
+  }
+  return false;
+}
+
 /**
  * Best-effort detection of a predicate that is a single top-level exclusion /
  * negation, derived from the raw condition (the source of truth) rather than an
@@ -1312,9 +1370,14 @@ async function renderWhereExpression(
  * the exclusion would stop excluding. Detected negations are applied to the
  * outer rows instead.
  *
- * Conservative: a predicate that combines terms at the top level (`AND`/`OR`)
- * is treated as positive so a mixed filter is never mis-routed — the residual
- * case is a hand-written mixed search-bar query, documented as a limitation.
+ * SQL is classified from the parsed AST, not substring matching, so a `!=`
+ * inside a string literal (`Body = 'a != b'`), `NOT LIKE` / `NOT BETWEEN`
+ * (whose inner `AND` no longer masks the negation), and top-level `AND`/`OR`
+ * (a mix, treated as positive) are all handled correctly. Lucene is classified
+ * as a sole negation only when the whole query is a single negated term; a
+ * mixed lucene query (e.g. `-ServiceName:cart SpanName:checkout`, implicit AND)
+ * stays positive so its positive part still drives a membership subquery — a
+ * documented conservative limitation.
  */
 export function isNegatedFilterCondition(
   condition: string | null | undefined,
@@ -1322,14 +1385,59 @@ export function isNegatedFilterCondition(
 ): boolean {
   const c = (condition ?? '').trim();
   if (!c) return false;
-  if (/\b(AND|OR)\b/i.test(c)) return false;
+
   if (language === 'lucene') {
-    // Lucene exclusion on the sole term: a leading `-` or `NOT `.
-    return /^-\S/.test(c) || /^NOT\s/i.test(c);
+    let rest: string | null = null;
+    const notMatch = c.match(/^NOT\s+/i);
+    if (notMatch) {
+      rest = c.slice(notMatch[0].length);
+    } else if (c.startsWith('-') && c.length > 1 && !/\s/.test(c[1])) {
+      rest = c.slice(1);
+    }
+    if (rest == null || rest.trim() === '') return false;
+    return !luceneHasSecondTerm(rest);
   }
-  // SQL: the deterministic sidebar exclusion (`col NOT IN (...)`), a leading
-  // `NOT`, or a single `!=` / `<>` comparison.
-  return /^NOT\s/i.test(c) || /\bNOT\s+IN\b/i.test(c) || /!=|<>/.test(c);
+
+  try {
+    const parser = new SQLParser.Parser();
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- astify returns a union; we read only `.where`
+    const ast = parser.astify(`SELECT * FROM t WHERE ${c}`, {
+      database: 'Postgresql',
+    }) as SQLParser.Select;
+    const where = ast.where as
+      | {
+          type?: string;
+          operator?: string;
+          name?: { name?: { value?: string }[] };
+        }
+      | null
+      | undefined;
+    if (!where) return false;
+    if (where.type === 'binary_expr') {
+      const op = String(where.operator ?? '').toUpperCase();
+      if (op === 'AND' || op === 'OR') return false;
+      return SQL_NEGATION_OPERATORS.has(op);
+    }
+    // `NOT <expr>` parses as a unary_expr, and `NOT (<expr>)` as a `NOT(...)`
+    // function node; both are a top-level negation.
+    if (
+      where.type === 'unary_expr' &&
+      String(where.operator ?? '').toUpperCase() === 'NOT'
+    ) {
+      return true;
+    }
+    if (
+      where.type === 'function' &&
+      where.name?.name?.[0]?.value?.toUpperCase() === 'NOT'
+    ) {
+      return true;
+    }
+    return false;
+  } catch {
+    // Unparseable predicate: fall back to matching only the deterministic
+    // sidebar exclusion shapes, which never contain string literals.
+    return /\bNOT\s+IN\b/i.test(c) || /(?:!=|<>)/.test(c);
+  }
 }
 
 async function renderWhere(

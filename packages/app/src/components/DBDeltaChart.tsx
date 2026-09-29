@@ -102,13 +102,30 @@ export default function DBDeltaChart({
     config.timestampValueExpression,
   );
 
+  // The heatmap spreads the (possibly trace-scoped) search config into this
+  // chart, but the delta's own outlier/inlier/`indexHint` predicates are
+  // span-level internals. Running them through the trace-membership rewrite
+  // (`TraceId IN (SELECT ...)`) would turn the selection box into "any trace
+  // with one span in the box", the inlier `NOT (...)` into "some span outside
+  // the box", and `indexHint` (always 1) into a match on every trace — breaking
+  // the delta. Strip the scope so every delta query stays span-scoped; the
+  // user's search predicates still apply, just at span granularity.
+  const baseConfig = useMemo(() => {
+    const {
+      filtersScope: _filtersScope,
+      traceIdExpression: _traceIdExpression,
+      ...rest
+    } = config;
+    return rest;
+  }, [config]);
+
   // Helper to build the shared AggregatedTimestamps CTE (used by both outlier and inlier queries)
   const buildAggregatedTimestampsCTE = () =>
     isAggregate
       ? {
           name: 'AggregatedTimestamps',
           chartConfig: {
-            ...config,
+            ...baseConfig,
             from: config.from,
             select: timestampExpr,
             filters: [
@@ -163,7 +180,7 @@ export default function DBDeltaChart({
       {
         name: 'PartIds',
         chartConfig: {
-          ...config,
+          ...baseConfig,
           select: 'tuple(_part, _part_offset)',
           filters: [
             ...(config.filters ?? []),
@@ -236,7 +253,7 @@ export default function DBDeltaChart({
     isLoading: isOutlierLoading,
   } = useQueriedChartConfig(
     {
-      ...config,
+      ...baseConfig,
       with: buildWithClauses(true),
       select: selectExpression,
       filters: buildFilters(true),
@@ -249,7 +266,7 @@ export default function DBDeltaChart({
   const { data: inlierData, isLoading: isInlierLoading } =
     useQueriedChartConfig(
       {
-        ...config,
+        ...baseConfig,
         with: buildWithClauses(false),
         select: selectExpression,
         filters: buildFilters(false),
@@ -266,7 +283,7 @@ export default function DBDeltaChart({
     isLoading: isAllSpansLoading,
   } = useQueriedChartConfig(
     {
-      ...config,
+      ...baseConfig,
       select: selectExpression,
       orderBy: [{ ordering: 'DESC', valueExpression: stableSampleExpr }],
       limit: { limit: SAMPLE_SIZE },

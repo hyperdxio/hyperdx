@@ -2,6 +2,7 @@ import { chSql, ColumnMeta, parameterizedQueryToSql } from '@/clickhouse';
 import { Metadata } from '@/core/metadata';
 import {
   ChartConfigWithOptDateRangeEx,
+  isNegatedFilterCondition,
   renderChartConfig,
   timeFilterExpr,
 } from '@/core/renderChartConfig';
@@ -5360,6 +5361,84 @@ describe('renderChartConfig', () => {
       ).rejects.toThrow(
         'Invalid formula "A / C": Unknown series "C" — this chart only has series A through B',
       );
+    });
+  });
+
+  describe('isNegatedFilterCondition', () => {
+    it('treats a lucene sole negation as an exclusion', () => {
+      expect(isNegatedFilterCondition('-ServiceName:cart', 'lucene')).toBe(
+        true,
+      );
+      expect(isNegatedFilterCondition('NOT ServiceName:cart', 'lucene')).toBe(
+        true,
+      );
+      expect(
+        isNegatedFilterCondition('-ServiceName:"cart service"', 'lucene'),
+      ).toBe(true);
+    });
+
+    it('treats a mixed lucene query (implicit AND) as positive, not negated', () => {
+      // Regression: `-a b` was classed as fully negated, so no membership
+      // subquery was built at all. It combines an exclusion and an inclusion,
+      // so it must stay positive and drive a membership subquery.
+      expect(
+        isNegatedFilterCondition(
+          '-ServiceName:cart SpanName:checkout',
+          'lucene',
+        ),
+      ).toBe(false);
+      expect(
+        isNegatedFilterCondition(
+          'ServiceName:cart OR SpanName:checkout',
+          'lucene',
+        ),
+      ).toBe(false);
+    });
+
+    it('classifies SQL negation operators from the AST', () => {
+      expect(isNegatedFilterCondition("ServiceName != 'cart'", 'sql')).toBe(
+        true,
+      );
+      expect(isNegatedFilterCondition("ServiceName <> 'cart'", 'sql')).toBe(
+        true,
+      );
+      expect(
+        isNegatedFilterCondition("ServiceName NOT IN ('api')", 'sql'),
+      ).toBe(true);
+      // Regression: `NOT LIKE` was missed (classed positive → existential) and
+      // `NOT BETWEEN`'s inner AND masked the negation via the old AND/OR guard.
+      expect(
+        isNegatedFilterCondition("SpanName NOT LIKE '%health%'", 'sql'),
+      ).toBe(true);
+      expect(
+        isNegatedFilterCondition('Duration NOT BETWEEN 1 AND 5', 'sql'),
+      ).toBe(true);
+      expect(
+        isNegatedFilterCondition("NOT (ServiceName = 'cart')", 'sql'),
+      ).toBe(true);
+    });
+
+    it('treats positive SQL predicates and top-level AND/OR as not negated', () => {
+      expect(isNegatedFilterCondition("SpanName = 'checkout'", 'sql')).toBe(
+        false,
+      );
+      expect(isNegatedFilterCondition("ServiceName IN ('api')", 'sql')).toBe(
+        false,
+      );
+      expect(isNegatedFilterCondition('ServiceName IS NOT NULL', 'sql')).toBe(
+        false,
+      );
+      expect(
+        isNegatedFilterCondition(
+          "ServiceName != 'a' AND SpanName = 'b'",
+          'sql',
+        ),
+      ).toBe(false);
+    });
+
+    it('does not treat a != inside a string literal as a negation', () => {
+      // Regression: substring matching flagged the `!=` inside the literal.
+      expect(isNegatedFilterCondition("Body = 'a != b'", 'sql')).toBe(false);
     });
   });
 
