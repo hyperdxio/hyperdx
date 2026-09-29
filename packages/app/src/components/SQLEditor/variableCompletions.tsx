@@ -20,6 +20,8 @@ const VARIABLE_FORMAT_DESCRIPTIONS: Record<VariableFormat, string> = {
   regex: 'A regex alternation. Regex escaped. e.g. (a|b|c)',
   lucene:
     'An OR of quoted terms, for Lucene inputs. e.g. ("a" OR "b" OR "c"). Quote the reference (field:"$var") for exact-match behavior. Leave unquoted (field:$var) for substring matching.',
+  markdown:
+    'Comma-separated with spaces, unquoted, and markdown escaped. e.g. a, b, c',
 };
 
 /** What `snippet` expands to against the variable's current selection. */

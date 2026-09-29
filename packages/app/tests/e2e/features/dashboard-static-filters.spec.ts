@@ -197,6 +197,52 @@ test.describe(
       });
     });
 
+    test('substitutes the selected values into a markdown tile', async ({
+      page,
+    }) => {
+      test.setTimeout(90000);
+      const chartName = `E2E Markdown Variables ${Date.now()}`;
+
+      await test.step('Create a static Service filter and select one value', async () => {
+        await dashboardPage.createNewDashboard();
+        await dashboardPage.openEditFiltersModal();
+        await dashboardPage.addStaticListFilterToDashboard(
+          'Service',
+          ['frontend', 'accounting', 'ad'],
+          { variableName: 'svc' },
+        );
+        await dashboardPage.closeFiltersModal();
+        await dashboardPage.toggleFilterValue('Service', 'accounting');
+      });
+
+      await test.step('The editor preview shows the selected value', async () => {
+        await dashboardPage.addTile();
+        await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+        await dashboardPage.chartEditor.setChartType(DisplayType.Markdown);
+        await dashboardPage.chartEditor.setChartName(chartName);
+        const editor = page.getByTestId('tile-editor-form');
+        await editor
+          .locator('textarea[name="markdown"]')
+          .fill('# Services: $svc');
+        await expect(
+          editor.getByRole('heading', { name: 'Services: accounting' }),
+        ).toBeVisible();
+        await dashboardPage.saveTile();
+      });
+
+      await test.step('The tile follows the selection', async () => {
+        const tile = dashboardPage.getTiles().filter({ hasText: chartName });
+        await expect(
+          tile.getByRole('heading', { name: 'Services: accounting' }),
+        ).toBeVisible();
+
+        await dashboardPage.toggleFilterValue('Service', 'frontend');
+        await expect(
+          tile.getByRole('heading', { name: 'Services: accounting, frontend' }),
+        ).toBeVisible();
+      });
+    });
+
     test('round-trips the options and variable name through an edit', async ({
       page,
     }) => {

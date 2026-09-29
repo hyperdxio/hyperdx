@@ -3,7 +3,7 @@ import {
   MalformedMacroArgsError,
   UnknownVariableError,
 } from '@/macroErrors';
-import type { BuilderChartConfig, ChartVariable } from '@/types';
+import { BuilderChartConfig, ChartVariable, DisplayType } from '@/types';
 import {
   filterReferencedVariables,
   formatVariableValues,
@@ -104,6 +104,31 @@ describe('formatVariableValues', () => {
 
     it('joins values with commas', () => {
       expect(formatVariableValues(['api', 'web'], 'csv')).toBe('api,web');
+    });
+  });
+
+  describe('markdown', () => {
+    it('renders empty when nothing is selected', () => {
+      expect(formatVariableValues([], 'markdown')).toBe('');
+    });
+
+    it('joins values with a comma and a space', () => {
+      expect(formatVariableValues(['api', 'web'], 'markdown')).toBe('api, web');
+    });
+
+    it('escapes markdown syntax in values', () => {
+      expect(
+        formatVariableValues(
+          ['[x](https://e.com)', '*a_b* \\ `c`'],
+          'markdown',
+        ),
+      ).toBe('\\[x\\]\\(https\\:\\/\\/e\\.com\\), \\*a\\_b\\* \\\\ \\`c\\`');
+    });
+
+    it('replaces newlines with spaces', () => {
+      expect(formatVariableValues(['a\n# b\r\nc'], 'markdown')).toBe(
+        'a \\# b c',
+      );
     });
   });
 
@@ -804,6 +829,63 @@ describe('substituteVariables per language', () => {
   });
 });
 
+describe('substituteVariables for markdown', () => {
+  const markdown = (input: string, variables: ChartVariable[]) =>
+    substituteVariables(input, { variables, inputLanguage: 'markdown' });
+
+  it('joins the selected values with a comma and a space by default', () => {
+    expect(markdown('Services: $service', [SERVICE])).toBe(
+      'Services: api, web',
+    );
+  });
+
+  it('renders nothing when no values are selected', () => {
+    expect(markdown('Services: ${service}', [EMPTY_SERVICE])).toBe(
+      'Services: ',
+    );
+  });
+
+  it('substitutes in headings and lines SQL would treat as comments', () => {
+    expect(markdown('# $service\n-- $service /* $service */', [SERVICE])).toBe(
+      '# api, web\n-- api, web /* api, web */',
+    );
+  });
+
+  it('substitutes after an apostrophe', () => {
+    expect(markdown("Today's services: $service", [SERVICE])).toBe(
+      "Today's services: api, web",
+    );
+  });
+
+  it('substitutes inside link URLs', () => {
+    expect(markdown('[logs](/search?where=${service:csv})', [SERVICE])).toBe(
+      '[logs](/search?where=api,web)',
+    );
+  });
+
+  it('honors an explicit format', () => {
+    expect(markdown('${service:regex}', [SERVICE])).toBe('(api|web)');
+  });
+
+  it('escapes markdown syntax in values by default', () => {
+    expect(markdown('$service', [variable('service', ['*prod*'])])).toBe(
+      '\\*prod\\*',
+    );
+  });
+
+  it('leaves values unescaped with the csv format', () => {
+    expect(
+      markdown('`${service:csv}`', [variable('service', ['*prod*'])]),
+    ).toBe('`*prod*`');
+  });
+
+  it('leaves unknown references and variable macros as written', () => {
+    expect(markdown('$nope $__filter(ServiceName, $service)', [SERVICE])).toBe(
+      '$nope $__filter(ServiceName, $service)',
+    );
+  });
+});
+
 describe('substituteVariables for promql', () => {
   const promql = (input: string, variables: ChartVariable[]) =>
     substituteVariables(input, { variables, inputLanguage: 'promql' });
@@ -1248,6 +1330,15 @@ describe('getReferencedVariableNames', () => {
       'env',
     ]);
   });
+
+  it('skips SQL comments for SQL but not for markdown', () => {
+    const template = '# $service\n$env';
+    expect(getReferencedVariableNames(template)).toEqual(['env']);
+    expect(getReferencedVariableNames(template, 'markdown')).toEqual([
+      'service',
+      'env',
+    ]);
+  });
 });
 
 describe('filterReferencedVariables', () => {
@@ -1330,6 +1421,30 @@ describe('filterReferencedVariables', () => {
         variables,
       ),
     ).toEqual(variables);
+  });
+
+  it('keeps the variables a markdown tile references', () => {
+    expect(
+      filterReferencedVariables(
+        builderConfig({
+          displayType: DisplayType.Markdown,
+          markdown: '# Service $service',
+        }),
+        variables,
+      ),
+    ).toEqual([SERVICE]);
+  });
+
+  it('ignores leftover markdown on a tile that is not markdown', () => {
+    expect(
+      filterReferencedVariables(
+        builderConfig({
+          displayType: DisplayType.Line,
+          markdown: '$service',
+        }),
+        variables,
+      ),
+    ).toEqual([]);
   });
 
   it('returns an empty array when a builder config references none of them', () => {

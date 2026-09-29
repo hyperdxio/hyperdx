@@ -21,6 +21,7 @@ import {
   ChartVariable,
   DASHBOARD_VARIABLE_NAME_PATTERN,
   DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED,
+  DisplayType,
   PromqlExpressionList,
   SavedChartConfig,
   SearchConditionLanguage,
@@ -34,6 +35,7 @@ export const VARIABLE_FORMATS = [
   'regex',
   'csv',
   'lucene',
+  'markdown',
 ] as const;
 
 export type VariableFormat = (typeof VARIABLE_FORMATS)[number];
@@ -50,6 +52,15 @@ const escapeLuceneValue = (value: string) =>
 /** Escape `\` and `"` so a value survives inside a double-quoted PromQL string. */
 const escapePromqlStringValue = (value: string) =>
   value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+
+/**
+ * Backslash-escape every ASCII punctuation character (CommonMark renders each
+ * escape as the literal character), so a value renders as plain text rather
+ * than as markdown syntax. Newlines become spaces so a value can't split the
+ * surrounding block.
+ */
+const escapeMarkdownValue = (value: string) =>
+  value.replace(/\r\n|\r|\n/g, ' ').replace(/[!-/:-@[-`{-~]/g, '\\$&');
 
 /**
  * Render a variable's selected values in the requested format. Every format
@@ -75,6 +86,8 @@ export function formatVariableValues(
       return values.length === 0
         ? '("")'
         : `(${values.map(value => `"${escapeLuceneValue(value)}"`).join(' OR ')})`;
+    case 'markdown':
+      return values.map(escapeMarkdownValue).join(', ');
     default:
       format satisfies never; // Unreachable
       throw new Error(`Unknown variable format '${format}'`);
@@ -197,7 +210,14 @@ export function findBalancedParens(input: string, start: number): number {
 export function scanTemplateTokens(
   input: string,
   macroNames: readonly string[],
-  { onMalformed = 'throw' }: { onMalformed?: 'throw' | 'skip' } = {},
+  {
+    onMalformed = 'throw',
+    skipSqlComments = true,
+  }: {
+    onMalformed?: 'throw' | 'skip';
+    /** Whether SQL comments are skipped over rather than scanned for references. */
+    skipSqlComments?: boolean;
+  } = {},
 ): TemplateToken[] {
   // Longest name first so `$__filters` isn't matched as `$__filter` + `s`, etc.
   const sortedMacroNames = [...macroNames].sort((a, b) => b.length - a.length);
@@ -219,7 +239,7 @@ export function scanTemplateTokens(
   let i = 0;
   while (i < input.length) {
     // Consume any comments starting at this position
-    if (!inSingleQuote && !inDoubleQuote) {
+    if (skipSqlComments && !inSingleQuote && !inDoubleQuote) {
       const commentEnd = findCommentEnd(input, i);
       if (commentEnd > i) {
         text += input.slice(i, commentEnd);
@@ -405,7 +425,9 @@ export function expandTemplate(
 
 // -- Variable expansion -----------------------------------------------------
 
-export type TemplateLanguage = NonNullable<SearchConditionLanguage>;
+export type TemplateLanguage =
+  | NonNullable<SearchConditionLanguage>
+  | 'markdown';
 
 export type VariableContext = {
   variables: ChartVariable[];
@@ -427,6 +449,11 @@ type LanguageSettings = {
    * themselves, and `csv` is the raw escape hatch that carries identifiers.
    */
   escapeRegexForLiteral?: (rendered: string) => string;
+  /**
+   * Whether SQL comments (`--`, `#`, block comments) are skipped over rather
+   * than scanned for references.
+   */
+  skipSqlComments?: boolean;
 };
 
 /** Settings controlling how variables and templates are expanded for each template language. */
@@ -440,6 +467,12 @@ const LANGUAGE_SETTINGS: Record<TemplateLanguage, LanguageSettings> = {
     defaultFormat: 'regex',
     disableMacros: true,
     escapeRegexForLiteral: escapePromqlStringValue,
+  },
+  markdown: {
+    defaultFormat: 'markdown',
+    disableMacros: true,
+    // Markdown doesn't have SQL comments, we wouldn't want to skip # ... (a markdown header)
+    skipSqlComments: false,
   },
 };
 
@@ -859,9 +892,11 @@ export function substituteVariables(
     );
   }
 
-  if (languageSettings(ctx.inputLanguage).disableMacros) {
+  const settings = languageSettings(ctx.inputLanguage);
+  if (settings.disableMacros) {
     return scanTemplateTokens(input, VARIABLE_MACRO_NAMES, {
       onMalformed: 'skip',
+      skipSqlComments: settings.skipSqlComments,
     })
       .map(token => expandVariableOnly(token, ctx))
       .join('');
@@ -1061,7 +1096,10 @@ export type VariableReference = {
  * template written that way is reported as using the macro; expansion is what
  * rejects it.
  */
-export function getVariableReferences(input: string): VariableReference[] {
+export function getVariableReferences(
+  input: string,
+  { skipSqlComments }: { skipSqlComments?: boolean } = {},
+): VariableReference[] {
   const references: VariableReference[] = [];
 
   /** Returns the referenced name, or undefined when the argument isn't one. */
@@ -1086,6 +1124,7 @@ export function getVariableReferences(input: string): VariableReference[] {
   const visit = (text: string, guardedBy?: string) => {
     for (const token of scanTemplateTokens(text, VARIABLE_MACRO_NAMES, {
       onMalformed: 'skip',
+      skipSqlComments,
     })) {
       if (token.kind === 'text') continue;
       if (token.kind !== 'macro') {
@@ -1298,9 +1337,13 @@ export function validateVariableReferencesInTemplate(
  * Returns the names of every variable the template could reference.
  * Never throws: it runs over saved SQL that may be mid-edit or malformed.
  */
-export function getReferencedVariableNames(input: string): string[] {
+export function getReferencedVariableNames(
+  input: string,
+  language: TemplateLanguage = 'sql',
+): string[] {
+  const { skipSqlComments } = languageSettings(language);
   const names = new Set<string>(
-    getVariableReferences(input).map(ref => ref.name),
+    getVariableReferences(input, { skipSqlComments }).map(ref => ref.name),
   );
   return Array.from(names);
 }
@@ -1333,6 +1376,9 @@ export function filterReferencedVariables(
     names = getBuilderVariableReferences(config).map(
       reference => reference.name,
     );
+    if (config.displayType === DisplayType.Markdown && config.markdown) {
+      names.push(...getReferencedVariableNames(config.markdown, 'markdown'));
+    }
   }
 
   const referenced = new Set(names);
