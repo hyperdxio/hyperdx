@@ -398,6 +398,24 @@ The UI is built with **Mantine components**, but **colors and surfaces** should 
 
 Mantine theme overrides in `packages/app/src/theme/**` may map Mantine’s scale to our palette; that does not replace using **`var(--color-...)`** in new styling where you need explicit color control.
 
+## Click UI (incremental adoption)
+
+`@clickhouse/click-ui` is a dependency of `packages/app`. `ThemeWrapper` mounts
+`ClickUIProvider` inside `MantineProvider` with `persistTheme={false}`, so it
+follows the HyperDX color mode and never writes its own theme to localStorage.
+Storybook and `renderWithMantine` in tests get the provider for free.
+
+- **Do**: Prefer a click-ui component over a new Mantine one when click-ui has
+  an equivalent for a simple primitive (`Link`, `Text`, `Title`, `Container`,
+  `Badge`, `Separator`, `Spacer`, `Icon`). Import from `@clickhouse/click-ui`.
+- **Do not**: Mix both libraries inside one small component, and do not
+  replace working Mantine code outside the change you were asked to make.
+- **Styling**: click-ui styles live in the `clickui` CSS cascade layer, so any
+  unlayered app or Mantine rule wins over them. Override `--click-*` variables
+  outside the layer if a token must change.
+- **First use**: `packages/app/src/components/ContactSupportText.tsx` and the
+  `Click UI/Link` story in `packages/app/src/stories/ClickUI.stories.tsx`.
+
 **Chart and visualization colors are a separate, more specific contract** — they have their own categorical, semantic, and heatmap palettes wired through `packages/app/src/utils.ts` helpers. Don't hard-code series colors or reuse `--color-text-*` for charts. See [`data_viz_colors.md`](./data_viz_colors.md) before touching anything that renders data.
 
 ## Refactoring
