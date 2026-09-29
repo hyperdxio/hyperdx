@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useSyncExternalStore } from 'react';
 import {
   MetricsDataType,
   MetricSourceSchema,
@@ -8,20 +8,42 @@ import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { classifyMetric } from '@/components/MetricWall/classifyMetric';
-import { MetricBrowse } from '@/components/MetricWall/MetricBrowse';
+import {
+  MetricBrowse,
+  MetricBrowseRail,
+} from '@/components/MetricWall/MetricBrowse';
 import {
   WallMetric,
   wallMetricId,
 } from '@/components/MetricWall/useMetricWallCatalog';
 
+// The rail and the wall each read the URL state, so the mock shares one value.
+const mockUrl: { value: unknown; listeners: Set<() => void> } = {
+  value: null,
+  listeners: new Set(),
+};
 jest.mock('nuqs', () => ({
   __esModule: true,
   parseAsJson: () => ({}),
   useQueryState: () => {
-    const [value, setValue] = useState(null);
+    const value = useSyncExternalStore(
+      listener => {
+        mockUrl.listeners.add(listener);
+        return () => mockUrl.listeners.delete(listener);
+      },
+      () => mockUrl.value,
+    );
+    const setValue = (next: unknown) => {
+      mockUrl.value = typeof next === 'function' ? next(mockUrl.value) : next;
+      mockUrl.listeners.forEach(l => l());
+    };
     return [value, setValue];
   },
 }));
+
+beforeEach(() => {
+  mockUrl.value = null;
+});
 
 function metric(
   name: string,
@@ -105,16 +127,23 @@ const source = MetricSourceSchema.parse({
   metricTables: { gauge: 'otel_metrics_gauge' },
 });
 
+const dateRange: [Date, Date] = [new Date(0), new Date(1000)];
+
 function renderBrowse() {
   renderWithMantine(
-    <MetricBrowse
-      source={source}
-      dateRange={[new Date(0), new Date(1000)]}
-      searchFilters={[]}
-      railCollapsed={false}
-      onRailCollapsedChange={jest.fn()}
-      onEditAsChart={jest.fn()}
-    />,
+    <>
+      <MetricBrowseRail
+        source={source}
+        dateRange={dateRange}
+        onCollapse={jest.fn()}
+      />
+      <MetricBrowse
+        source={source}
+        dateRange={dateRange}
+        searchFilters={[]}
+        onEditAsChart={jest.fn()}
+      />
+    </>,
   );
 }
 

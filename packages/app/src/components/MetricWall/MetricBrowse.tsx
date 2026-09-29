@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback } from 'react';
 import { Filter, TMetricSource } from '@hyperdx/common-utils/dist/types';
 import { Alert, Center, Loader, Text } from '@mantine/core';
 import { IconLayoutGrid } from '@tabler/icons-react';
@@ -11,13 +11,38 @@ import { MetricDrillDown } from './MetricDrillDown';
 import { MetricWall } from './MetricWall';
 import { MetricWallRail } from './MetricWallRail';
 import { MetricWallSearch } from './MetricWallSearch';
-import { parseMetricQuery } from './parseMetricQuery';
-import { MetricFilterClause } from './tileDefaults';
-import { useMetricWallCatalog } from './useMetricWallCatalog';
-import { useMetricWallState } from './useMetricWallState';
-import { groupWallMetrics, WallItem, wallItemKey } from './wallGrouping';
+import { useMetricBrowse } from './useMetricBrowse';
+import { WallItem, wallItemKey } from './wallGrouping';
 
 import styles from './MetricWall.module.scss';
+
+/** The facet rail, rendered in the page's filter sidebar slot. */
+export function MetricBrowseRail({
+  source,
+  dateRange,
+  onCollapse,
+}: {
+  source: TMetricSource;
+  dateRange: [Date, Date];
+  onCollapse: () => void;
+}) {
+  const { matching, query, state, update } = useMetricBrowse({
+    source,
+    dateRange,
+  });
+  return (
+    <MetricWallRail
+      metrics={matching}
+      source={source}
+      dateRange={dateRange}
+      query={query}
+      onQueryChange={q => update({ query: q })}
+      railKey={state.railKey}
+      onRailKeyChange={key => update({ railKey: key })}
+      onCollapse={onCollapse}
+    />
+  );
+}
 
 /**
  * The browse-first landing for metric sources: every metric already charted
@@ -28,45 +53,26 @@ export function MetricBrowse({
   source,
   dateRange,
   searchFilters,
-  railCollapsed,
-  onRailCollapsedChange,
   onEditAsChart,
 }: {
   source: TMetricSource;
   dateRange: [Date, Date];
   searchFilters: Filter[];
-  railCollapsed: boolean;
-  onRailCollapsedChange: (collapsed: boolean) => void;
   onEditAsChart: (request: EditAsChartRequest) => void;
 }) {
-  const [state, update] = useMetricWallState();
-  const query = state.query ?? '';
-  const grouping = state.grouping ?? 'entity';
-  const { metrics, failedKinds, isLoading, error } = useMetricWallCatalog({
-    source,
-    dateRange,
-  });
-
-  const parsed = useMemo(() => parseMetricQuery(query), [query]);
-  const sections = useMemo(
-    () => groupWallMetrics(metrics, parsed, grouping),
-    [metrics, parsed, grouping],
-  );
-  const matching = useMemo(() => {
-    const ids = new Set<string>();
-    for (const s of sections)
-      for (const b of s.bands) for (const i of b.items) ids.add(i.metric.id);
-    return metrics.filter(m => ids.has(m.id));
-  }, [sections, metrics]);
-  // Attribute values can only be checked by the query, so they ride along on
-  // every tile rather than narrowing the catalog.
-  const filters = useMemo<MetricFilterClause[]>(
-    () =>
-      parsed.tokens.flatMap(t =>
-        t.type === 'attr' ? [{ key: t.key, value: t.value }] : [],
-      ),
-    [parsed],
-  );
+  const {
+    metrics,
+    failedKinds,
+    isLoading,
+    error,
+    state,
+    update,
+    query,
+    grouping,
+    sections,
+    matching,
+    filters,
+  } = useMetricBrowse({ source, dateRange });
 
   const expandedKey = state.tile
     ? wallItemKey(state.tile.metricId, state.tile.entity)
@@ -152,40 +158,24 @@ export function MetricBrowse({
   }
 
   return (
-    <div className={styles.layout} data-testid="metric-browse">
-      {!railCollapsed && (
-        <MetricWallRail
-          metrics={matching}
-          source={source}
-          dateRange={dateRange}
-          query={query}
-          onQueryChange={q => update({ query: q })}
-          railKey={state.railKey}
-          onRailKeyChange={key => update({ railKey: key })}
-          onCollapse={() => onRailCollapsedChange(true)}
-        />
+    <div className={styles.main} data-testid="metric-browse">
+      <MetricWallSearch
+        query={query}
+        onQueryChange={q => update({ query: q })}
+        grouping={grouping}
+        onGroupingChange={g =>
+          update({ grouping: g === 'entity' ? undefined : g })
+        }
+        matchCount={matching.length}
+        totalCount={metrics.length}
+      />
+      {failedKinds.length > 0 && (
+        <Text size="xs" c="dimmed" mb="xs">
+          Could not read{' '}
+          {failedKinds.map(k => METRIC_KIND_LABELS[k]).join(', ')} metrics.
+        </Text>
       )}
-      <div className={styles.main}>
-        <MetricWallSearch
-          query={query}
-          onQueryChange={q => update({ query: q })}
-          grouping={grouping}
-          onGroupingChange={g =>
-            update({ grouping: g === 'entity' ? undefined : g })
-          }
-          matchCount={matching.length}
-          totalCount={metrics.length}
-          railCollapsed={railCollapsed}
-          onExpandRail={() => onRailCollapsedChange(false)}
-        />
-        {failedKinds.length > 0 && (
-          <Text size="xs" c="dimmed" mb="xs">
-            Could not read{' '}
-            {failedKinds.map(k => METRIC_KIND_LABELS[k]).join(', ')} metrics.
-          </Text>
-        )}
-        {body}
-      </div>
+      {body}
     </div>
   );
 }

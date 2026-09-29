@@ -1,14 +1,6 @@
 import { useState } from 'react';
-import {
-  ActionIcon,
-  Group,
-  Pill,
-  SegmentedControl,
-  Text,
-  TextInput,
-  Tooltip,
-} from '@mantine/core';
-import { IconLayoutSidebarLeftExpand, IconSearch } from '@tabler/icons-react';
+import { Group, Pill, SegmentedControl, Text, TextInput } from '@mantine/core';
+import { IconSearch } from '@tabler/icons-react';
 
 import { METRIC_KIND_LABELS } from '@/utils/metricKinds';
 
@@ -47,8 +39,6 @@ export function MetricWallSearch({
   onGroupingChange,
   matchCount,
   totalCount,
-  railCollapsed,
-  onExpandRail,
 }: {
   query: string;
   onQueryChange: (query: string) => void;
@@ -56,8 +46,6 @@ export function MetricWallSearch({
   onGroupingChange: (grouping: WallGrouping) => void;
   matchCount: number;
   totalCount: number;
-  railCollapsed: boolean;
-  onExpandRail: () => void;
 }) {
   const parsed = parseMetricQuery(query);
   // The typed text is held locally so a half-typed `unit:` stays text until
@@ -87,18 +75,6 @@ export function MetricWallSearch({
 
   return (
     <Group gap="xs" mb="xs" wrap="wrap" align="center">
-      {railCollapsed && (
-        <Tooltip label="Show the filter rail" fz="xs">
-          <ActionIcon
-            variant="subtle"
-            size="sm"
-            onClick={onExpandRail}
-            aria-label="Show the filter rail"
-          >
-            <IconLayoutSidebarLeftExpand size={14} />
-          </ActionIcon>
-        </Tooltip>
-      )}
       <TextInput
         size="xs"
         style={{ flex: 1, minWidth: 260 }}

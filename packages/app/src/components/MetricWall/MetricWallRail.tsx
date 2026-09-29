@@ -127,15 +127,15 @@ export function MetricWallRail({
     <aside className={styles.rail} data-testid="metric-wall-rail">
       <Stack gap="md">
         <Group justify="space-between">
-          <Text fz="xs" fw={600}>
+          <Text size="xxs" c="dimmed" fw="bold">
             Narrow
           </Text>
-          <Tooltip label="Hide" fz="xs">
+          <Tooltip label="Hide filters" position="bottom">
             <ActionIcon
               variant="subtle"
-              size="sm"
+              size="xs"
               onClick={onCollapse}
-              aria-label="Hide the filter rail"
+              aria-label="Hide filters"
             >
               <IconLayoutSidebarLeftCollapse size={14} />
             </ActionIcon>

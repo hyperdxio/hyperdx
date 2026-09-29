@@ -158,7 +158,10 @@ import {
   aggConfigFromWall,
   type EditAsChartRequest,
 } from './components/MetricWall/editAsChart';
-import { MetricBrowse } from './components/MetricWall/MetricBrowse';
+import {
+  MetricBrowse,
+  MetricBrowseRail,
+} from './components/MetricWall/MetricBrowse';
 import { nextSearchForPatternMatch } from './components/Patterns/patternColumn';
 import { PatternColumnSelector } from './components/Patterns/PatternColumnSelector';
 import PatternTable from './components/PatternTable';
@@ -3184,6 +3187,17 @@ function DBExplorePage() {
                 height: '100%',
               }}
             >
+              {!isFilterSidebarCollapsed &&
+                isMetricBrowse &&
+                searchedMetricSource && (
+                  <ErrorBoundary message="Unable to render metric filters">
+                    <MetricBrowseRail
+                      source={searchedMetricSource}
+                      dateRange={searchedTimeRange}
+                      onCollapse={() => setIsFilterSidebarCollapsed(true)}
+                    />
+                  </ErrorBoundary>
+                )}
               {!isFilterSidebarCollapsed && !isMetricBrowse && (
                 <ErrorBoundary message="Unable to render search filters">
                   <DBSearchPageFilters
@@ -3241,8 +3255,7 @@ function DBExplorePage() {
                         )
                       }
                       filterExpand={
-                        isFilterSidebarCollapsed &&
-                        !isMetricBrowse && (
+                        isFilterSidebarCollapsed && (
                           <ExpandFiltersButton
                             onExpand={() => setIsFilterSidebarCollapsed(false)}
                           />
@@ -3639,8 +3652,6 @@ function DBExplorePage() {
                       source={searchedMetricSource}
                       dateRange={searchedTimeRange}
                       searchFilters={metricBrowseFilters}
-                      railCollapsed={isFilterSidebarCollapsed}
-                      onRailCollapsedChange={setIsFilterSidebarCollapsed}
                       onEditAsChart={handleEditAsChart}
                     />
                   ) : view === 'patterns' ? (
