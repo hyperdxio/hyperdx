@@ -991,7 +991,7 @@ For configType: "sql" tiles, write ClickHouse SQL with template macros:
   table        1 to 20 select items. Optional groupBy defines row groups. Per-series numberFormat lets one column render as a duration while a sibling count column stays a plain number.
   heatmap      Exactly 1 select item with a non-empty valueExpression. No aggFn or alias on the select item (the chart-level displayType: "heatmap" is the discriminator). Trace sources only (no Log/Metric/Session). No groupBy. Optional where filter applied before bucketing.
   search       No select items (select is a column list string). where is the filter.
-  markdown     No select items. Set markdown field with content.
+  markdown     No select items. Set markdown field with content, which may reference dashboard variables (see DASHBOARD VARIABLES).
 
 == METRIC SOURCES ==
 
@@ -1221,6 +1221,7 @@ Only add one when the default is wrong. \${service:sqlstring} is redundant in a 
   lucene     ("a" OR "b")         ("")        the default in Lucene inputs; ("") is a match-all, so no guard is needed
   regex      (a|b)                .*          use with match()
   csv        a,b                  <empty>     use INSIDE a string literal
+  markdown   a, b                 <empty>     the default in markdown tiles; markdown syntax in values is escaped
 
 BUILDER TILES
 
@@ -1233,6 +1234,11 @@ Every expression on a builder tile accepts variable references, in either langua
 In a LUCENE input the macros have no meaning and are matched as literal text. Reference the variable directly instead, which renders in the lucene format and needs no guard: with nothing selected it becomes ServiceName:("") and the translator drops that to a match-all, so the tile returns everything rather than going empty.
   select: [{ aggFn: "count", whereLanguage: "lucene", where: "ServiceName:$service" }]
 When in doubt on a variable-driven tile, set whereLanguage: "sql" and use $__filter.
+
+MARKDOWN TILES
+
+The markdown field substitutes $variableName / \${variableName} / \${variableName:format} with the selected values as plain text, so a note can name what the dashboard is scoped to. Nothing is selected on a freshly-opened dashboard, so the reference renders as nothing until the user picks a value; write the surrounding text so it still reads. The macros have no meaning here and are left as written.
+  markdown: "Latency for the selected services: $service"
 
 RAW SQL TILES (for advanced use-cases only)
 
