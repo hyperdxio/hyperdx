@@ -9,10 +9,7 @@ import {
   useWatch,
 } from 'react-hook-form';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
-import {
-  HEATMAP_ALLOWED_SOURCE_KINDS,
-  isBuilderChartConfig,
-} from '@hyperdx/common-utils/dist/guards';
+import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
   ChartConfigWithOptTimestamp,
   DisplayType,
@@ -65,6 +62,7 @@ type ChartEditorControlsProps = {
   duplicateSeries: (index: number) => void;
   tableSource?: TSource;
   tableConnection: TableConnection;
+  allowedSourceKinds: SourceKind[];
   databaseName?: string;
   tableName?: string;
   dateRange: [Date, Date];
@@ -100,6 +98,7 @@ export function ChartEditorControls({
   duplicateSeries,
   tableSource,
   tableConnection,
+  allowedSourceKinds,
   databaseName,
   tableName,
   dateRange,
@@ -198,11 +197,7 @@ export function ChartEditorControls({
             control={control}
             name="source"
             data-testid="source-selector"
-            allowedSourceKinds={
-              displayType === DisplayType.Heatmap
-                ? [...HEATMAP_ALLOWED_SOURCE_KINDS]
-                : undefined
-            }
+            allowedSourceKinds={allowedSourceKinds}
             onSchemaPreview={() => setIsSourceSchemaPreviewOpen(true)}
             isSchemaPreviewEnabled={isSourceSchemaPreviewEnabled(tableSource)}
           />
@@ -240,6 +235,8 @@ export function ChartEditorControls({
         <Flex gap="xs" direction="column">
           <SQLInlineEditorControlled
             tableConnection={tableConnection}
+            sourceId={tableSource?.id}
+            dateRange={dateRange}
             control={control}
             name="select"
             placeholder={
@@ -346,6 +343,8 @@ export function ChartEditorControls({
                 <div>
                   <SQLInlineEditorControlled
                     {...groupByConnectionProps}
+                    sourceId={tableSource?.id}
+                    dateRange={dateRange}
                     control={control}
                     name={`groupBy`}
                     placeholder="SQL Columns"
@@ -370,6 +369,8 @@ export function ChartEditorControls({
                     <div>
                       <SQLInlineEditorControlled
                         tableConnection={tableConnection}
+                        sourceId={tableSource?.id}
+                        dateRange={dateRange}
                         control={control}
                         name="having"
                         placeholder="SQL HAVING clause (ex. count() > 100)"
@@ -533,6 +534,8 @@ export function ChartEditorControls({
         <Flex gap="xs" direction="column">
           <SQLInlineEditorControlled
             tableConnection={tableConnection}
+            sourceId={tableSource?.id}
+            dateRange={dateRange}
             control={control}
             name="select"
             placeholder={

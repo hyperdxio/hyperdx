@@ -2,7 +2,7 @@
 name: Bug report
 about: Something in HyperDX is broken or behaving unexpectedly
 title: ''
-labels: bug
+labels: bug, Needs Feedback
 ---
 
 **What happened?**
@@ -29,6 +29,20 @@ say which version.
 The UI (which page, and which browser), the API, the OpenTelemetry collector, or
 the CLI. A screenshot or a short video helps a lot for UI bugs.
 -->
+
+**Debug info**
+
+<!--
+For UI bugs, please include this — it saves a lot of back-and-forth. Open the
+Help menu (bottom-left of the app) and click "Copy debug info", then paste the
+block below. It captures versions, deployment mode, browser, and session id; no
+API keys or query params are included. Skip it if you're only hitting the
+collector or CLI (write N/A).
+-->
+
+```
+(paste Help → Copy debug info here)
+```
 
 **Logs**
 

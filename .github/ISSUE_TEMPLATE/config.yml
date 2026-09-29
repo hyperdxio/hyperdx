@@ -1,0 +1,11 @@
+# Blank issues are disabled so every issue starts from a template and picks up
+# the `Needs Feedback` label. Use the templates or the links below.
+blank_issues_enabled: false
+contact_links:
+  - name: Questions & help
+    url: https://discord.gg/FErRRKU78j
+    about:
+      For usage questions, setup help, and general discussion, ask on Discord.
+  - name: First-time contributor? Introduce yourself
+    url: https://github.com/hyperdxio/hyperdx/issues/new?template=introduce-yourself.md
+    about: Say hello and get vouched before your first pull request.

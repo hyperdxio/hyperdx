@@ -873,6 +873,407 @@ export function getYAxisTicks(
   return getTickValuesFixedDomain([min, max], 5, true);
 }
 
+// Rounds off float dust (e.g. 3 * 1.05 giving 3.1500000000000004).
+const cleanNumber = (v: number) => Number(v.toPrecision(12));
+
+// A format with no decimals to spend forces every tick to an integer,
+// where a 2.5x10^n step (n <= 0) rounds unevenly - see niceStepsNear.
+function forcesIntegerTicks(axisNumberFormat?: NumberFormat): boolean {
+  if (!axisNumberFormat) return true;
+  if (axisNumberFormat.output === 'duration') return false;
+  return (axisNumberFormat.mantissa ?? 0) === 0;
+}
+
+// Every 1/2/5 x10^n step, plus 2.5x10^n for n > 0 (integers like 250 are
+// always safe; 2.5, 0.25, ... round unevenly with no decimals to spare).
+function niceStepsNear(
+  target: number,
+  axisNumberFormat?: NumberFormat,
+): number[] {
+  const exp = Math.floor(Math.log10(target));
+  const excludeSmall2_5 = forcesIntegerTicks(axisNumberFormat);
+  return [exp - 1, exp, exp + 1]
+    .flatMap(e => {
+      const includeQuarterStep = e > 0 || !excludeSmall2_5;
+      const multipliers = includeQuarterStep
+        ? [1, 2, 2.5, 5, 10]
+        : [1, 2, 5, 10];
+      return multipliers.map(m => m * 10 ** e);
+    })
+    .filter(step => step > 0)
+    .sort((a, b) => a - b);
+}
+
+// null means the step is unusable at this magnitude (see below), which
+// getNiceYAxisTicks must treat as a rejection, not as a short tick list.
+function ticksWithinRange(
+  step: number,
+  min: number,
+  max: number,
+): number[] | null {
+  const ticks: number[] = [];
+  let t = cleanNumber(Math.ceil(min / step) * step);
+  while (t <= max + step * 1e-9) {
+    ticks.push(t);
+    const next = cleanNumber(t + step);
+    // At extreme magnitudes, float precision can make this step a no-op -
+    // reject it rather than accept a truncated, collapsed tick list.
+    if (next <= t) {
+      return null;
+    }
+    t = next;
+  }
+  return ticks;
+}
+
+// Escalates precision past the configured mantissa, bypassing
+// formatAxisTick's own selection (which can force 0 regardless).
+function formatTickAtMantissa(
+  value: number,
+  axisNumberFormat: NumberFormat,
+  mantissa: number,
+): string {
+  // Mirrors formatAxisTick's fixed-unit handling - re-adding the suffix it
+  // drops would make budget checks reject a label that never actually renders that wide.
+  if (isFixedNumericUnit(axisNumberFormat.numericUnit)) {
+    return trimTrailingZeros(value.toFixed(mantissa));
+  }
+  return trimTrailingZeros(
+    formatNumber(value, {
+      ...axisNumberFormat,
+      mantissa,
+      average: true,
+      unit: undefined,
+    }),
+  );
+}
+
+// Ticks must never carry duplicate labels.
+const MAX_TICK_MANTISSA_ESCALATION = 4;
+
+function isDistinct(
+  ticks: number[],
+  formatTick: (value: number) => string,
+): boolean {
+  return new Set(ticks.map(formatTick)).size === ticks.length;
+}
+
+// Reuses formatAxisTick's own per-label budget (axisLabelBudget already
+// accounts for a space-separated unit suffix or a negative percent sign).
+function fitsLabelBudget(
+  ticks: number[],
+  formatTick: (value: number) => string,
+): boolean {
+  return ticks.every(t => {
+    const label = formatTick(t);
+    return label.length <= axisLabelBudget(label);
+  });
+}
+
+// Prefers formatAxisTick's normal output, but escalates precision past the
+// configured mantissa when that's the only way to keep labels distinct.
+function resolveDistinctTickLabels(
+  ticks: number[],
+  axisNumberFormat: NumberFormat | undefined,
+): ((value: number) => string) | null {
+  const base = (value: number) => formatAxisTick(value, axisNumberFormat);
+  if (isDistinct(ticks, base)) {
+    return base;
+  }
+  if (!axisNumberFormat) {
+    // No configured mantissa to escalate - fall back to full, non-compact
+    // precision, which always distinguishes any two different numbers.
+    const fullPrecision = (value: number) =>
+      new Intl.NumberFormat('en-US').format(value);
+    return isDistinct(ticks, fullPrecision) &&
+      fitsLabelBudget(ticks, fullPrecision)
+      ? fullPrecision
+      : null;
+  }
+  if (axisNumberFormat.output === 'duration') {
+    // formatDurationMsCompact has no mantissa - escalate its own fixed
+    // 2-3 significant digits instead, past whichever unit it picks.
+    const factor = axisNumberFormat.factor ?? 1;
+    for (let p = 3; p <= 3 + MAX_TICK_MANTISSA_ESCALATION; p++) {
+      const escalated = (value: number) =>
+        formatDurationMsCompact(value * factor * 1000, p);
+      if (isDistinct(ticks, escalated) && fitsLabelBudget(ticks, escalated)) {
+        return escalated;
+      }
+    }
+    return null;
+  }
+  // formatAxisTick can force mantissa down to 0 regardless of what's
+  // configured, so escalation must start from 1, not the configured value.
+  for (let m = 1; m <= MAX_TICK_MANTISSA_ESCALATION; m++) {
+    const escalated = (value: number) =>
+      formatTickAtMantissa(value, axisNumberFormat, m);
+    if (isDistinct(ticks, escalated) && fitsLabelBudget(ticks, escalated)) {
+      return escalated;
+    }
+  }
+  return null;
+}
+
+export interface NiceYAxisTicks {
+  ticks: number[];
+  tickFormatter?: (value: number) => string;
+}
+
+// Ported from packages/cli/src/termchart/scale.ts's niceTicks: the smallest
+// step that fits within [min, max]/maxTicks and formats to distinct labels.
+export function getNiceYAxisTicks(
+  min: number,
+  max: number,
+  maxTicks = 5,
+  axisNumberFormat?: NumberFormat,
+): NiceYAxisTicks {
+  if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
+    return { ticks: [] };
+  }
+  const steps = niceStepsNear((max - min) / (maxTicks - 1), axisNumberFormat);
+  for (const step of steps) {
+    const ticks = ticksWithinRange(step, min, max);
+    // A single tick conveys no scale at all - never accept it, even
+    // though its "labels" are trivially distinct from one another.
+    if (!ticks || ticks.length < 2 || ticks.length > maxTicks) {
+      continue;
+    }
+    const tickFormatter = resolveDistinctTickLabels(ticks, axisNumberFormat);
+    if (tickFormatter) {
+      return { ticks, tickFormatter };
+    }
+  }
+  return { ticks: [] };
+}
+
+export interface ExpandableYAxisTicks {
+  max: number;
+  ticks: number[];
+  tickFormatter?: (value: number) => string;
+}
+
+// For the plain default branch (domain may expand, as [0,'auto'] did
+// pre-PR): rounds the upper bound up to fill slack under maxTicks.
+export function getExpandableYAxisTicks(
+  min: number,
+  max: number,
+  maxTicks = 5,
+  axisNumberFormat?: NumberFormat,
+): ExpandableYAxisTicks {
+  if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
+    return { max, ticks: [] };
+  }
+  const steps = niceStepsNear((max - min) / (maxTicks - 1), axisNumberFormat);
+  for (const step of steps) {
+    const tightTicks = ticksWithinRange(step, min, max);
+    // A single tick conveys no scale at all - never accept it, even
+    // though its "labels" are trivially distinct from one another.
+    if (!tightTicks || tightTicks.length < 2 || tightTicks.length > maxTicks) {
+      continue;
+    }
+    const tightFormatter = resolveDistinctTickLabels(
+      tightTicks,
+      axisNumberFormat,
+    );
+    if (!tightFormatter) {
+      continue;
+    }
+    const expandedMax = cleanNumber(Math.ceil(max / step) * step);
+    // Filling a step's worth of dead space is fine, but not at the cost
+    // of a large fraction of the range - keep the tight result instead.
+    if (expandedMax - max <= (max - min) * 0.25) {
+      const expandedTicks = ticksWithinRange(step, min, expandedMax);
+      if (expandedTicks && expandedTicks.length <= maxTicks) {
+        const expandedFormatter = resolveDistinctTickLabels(
+          expandedTicks,
+          axisNumberFormat,
+        );
+        if (expandedFormatter) {
+          return {
+            max: expandedMax,
+            ticks: expandedTicks,
+            tickFormatter: expandedFormatter,
+          };
+        }
+      }
+    }
+    return { max, ticks: tightTicks, tickFormatter: tightFormatter };
+  }
+  return { max, ticks: [] };
+}
+
+// Shared by every yAxisDomain branch below. Callers pass only the series
+// actually drawn (already selection- and HARD_LINES_LIMIT-filtered).
+export function scanYAxisValueRange(
+  graphResults: any[],
+  lineData: LineData[],
+): { min: number; max: number } {
+  let min = Infinity;
+  let max = -Infinity;
+  graphResults.forEach(dataPoint => {
+    lineData.forEach(ld => {
+      const value = dataPoint[ld.dataKey];
+      if (typeof value === 'number' && !isNaN(value)) {
+        min = Math.min(min, value);
+        max = Math.max(max, value);
+      }
+    });
+  });
+  return { min, max };
+}
+
+export interface YAxisBounds {
+  domain: AxisDomain;
+  ticks: number[] | undefined;
+  tickFormatter?: (value: number) => string;
+}
+
+// Stable identity for the referenceLineValues default - a fresh `[]` literal
+// as a default prop value defeats memoization and can loop React's compiler.
+const EMPTY_REFERENCE_LINE_VALUES: number[] = [];
+
+const DEFAULT_Y_AXIS_BOUNDS: YAxisBounds = {
+  domain: [0, 'auto'],
+  ticks: undefined,
+};
+const FIT_Y_AXIS_BOUNDS: YAxisBounds = {
+  domain: ['auto', 'auto'],
+  ticks: undefined,
+};
+
+// A stacked bar's rendered height sums its series at each timestamp - leave
+// that entirely to Recharts, regardless of selection/fit-to-data state.
+export function computeYAxisBounds(
+  graphResults: any[],
+  visibleLineData: LineData[],
+  hasSelection: boolean,
+  fitYAxisToData: boolean,
+  displayType: DisplayType,
+  referenceLineValues: number[],
+  axisNumberFormat?: NumberFormat,
+): YAxisBounds {
+  if (displayType === DisplayType.StackedBar) {
+    return DEFAULT_Y_AXIS_BOUNDS;
+  }
+  const shouldFitYAxis = fitYAxisToData;
+
+  if (!hasSelection && !shouldFitYAxis) {
+    // A fully numeric domain skips Recharts' own nice rounding, and a
+    // reference line can extend it further - defer to Recharts entirely.
+    if (referenceLineValues.length > 0) {
+      return DEFAULT_Y_AXIS_BOUNDS;
+    }
+    const { min, max } = scanYAxisValueRange(graphResults, visibleLineData);
+    if (max === -Infinity) {
+      return DEFAULT_Y_AXIS_BOUNDS;
+    }
+    // Recharts widens an explicit domain to fit out-of-range data, so
+    // negative data must be reflected here, not just pinned at zero.
+    const lowerBound = cleanNumber(Math.min(0, min));
+    // max * 1.05 would shrink the upper bound below max for negative data;
+    // padding away from zero keeps headroom regardless of max's sign.
+    const upperBound = cleanNumber(max + Math.abs(max) * 0.05);
+    if (upperBound <= lowerBound) {
+      return DEFAULT_Y_AXIS_BOUNDS;
+    }
+    const expanded = getExpandableYAxisTicks(
+      lowerBound,
+      upperBound,
+      5,
+      axisNumberFormat,
+    );
+    // No nice step fits - fall back to getYAxisTicks' reduce-tick-count
+    // dedup instead of Recharts' raw, collision-prone default.
+    if (expanded.ticks.length === 0) {
+      const baseFormat = (value: number) =>
+        formatAxisTick(value, axisNumberFormat);
+      return {
+        domain: [lowerBound, upperBound],
+        ticks: getYAxisTicks(lowerBound, upperBound, baseFormat),
+        tickFormatter: baseFormat,
+      };
+    }
+    return {
+      domain: [lowerBound, expanded.max],
+      ticks: expanded.ticks,
+      tickFormatter: expanded.tickFormatter,
+    };
+  }
+
+  // A selection with fit-to-data off still keeps the zero-pinned fallback,
+  // not the unpinned fit fallback - only fitting itself opts out of it.
+  const degenerateFallback = shouldFitYAxis
+    ? FIT_Y_AXIS_BOUNDS
+    : DEFAULT_Y_AXIS_BOUNDS;
+  const { min, max } = scanYAxisValueRange(graphResults, visibleLineData);
+  if (min === Infinity || max === -Infinity) {
+    return degenerateFallback;
+  }
+  const padding = (max - min) * 0.05;
+  // Recharts widens the domain to actual negative data regardless of fit
+  // mode, so the lower bound must follow it whenever min itself is negative.
+  const lowerBound = cleanNumber(
+    min < 0 ? min - padding : Math.max(0, min - padding),
+  );
+  const upperBound = cleanNumber(max + padding);
+  if (upperBound <= lowerBound) {
+    return degenerateFallback;
+  }
+  // A reference line can widen the domain (extendDomain) - extend it up
+  // front and nice-step the result, instead of ticking a stale domain.
+  if (referenceLineValues.length > 0) {
+    const extendedLower = cleanNumber(
+      Math.min(lowerBound, ...referenceLineValues),
+    );
+    const extendedUpper = cleanNumber(
+      Math.max(upperBound, ...referenceLineValues),
+    );
+    const expanded = getExpandableYAxisTicks(
+      extendedLower,
+      extendedUpper,
+      5,
+      axisNumberFormat,
+    );
+    if (expanded.ticks.length > 0) {
+      return {
+        domain: [extendedLower, expanded.max],
+        ticks: expanded.ticks,
+        tickFormatter: expanded.tickFormatter,
+      };
+    }
+    const baseFormat = (value: number) =>
+      formatAxisTick(value, axisNumberFormat);
+    return {
+      domain: [extendedLower, extendedUpper],
+      ticks: getYAxisTicks(extendedLower, extendedUpper, baseFormat),
+      tickFormatter: baseFormat,
+    };
+  }
+  const { ticks, tickFormatter } = getNiceYAxisTicks(
+    lowerBound,
+    upperBound,
+    5,
+    axisNumberFormat,
+  );
+  // Same fallback as the default branch above - reduce tick count via
+  // getYAxisTicks rather than leaving this to Recharts' raw default.
+  if (ticks.length === 0) {
+    const baseFormat = (value: number) =>
+      formatAxisTick(value, axisNumberFormat);
+    return {
+      domain: [lowerBound, upperBound],
+      ticks: getYAxisTicks(lowerBound, upperBound, baseFormat),
+      tickFormatter: baseFormat,
+    };
+  }
+  return {
+    domain: [lowerBound, upperBound],
+    ticks,
+    tickFormatter,
+  };
+}
+
 export const MemoChart = memo(function MemoChart({
   graphResults,
   setIsClickActive,
@@ -881,6 +1282,7 @@ export const MemoChart = memo(function MemoChart({
   dateRange,
   lineData,
   referenceLines,
+  referenceLineValues = EMPTY_REFERENCE_LINE_VALUES,
   annotations,
   logReferenceTimestamp,
   displayType = DisplayType.Line,
@@ -911,6 +1313,9 @@ export const MemoChart = memo(function MemoChart({
   dateRange: [Date, Date] | Readonly<[Date, Date]>;
   lineData: LineData[];
   referenceLines?: React.ReactNode;
+  // Raw numeric value(s) backing referenceLines (pre-rendered JSX the axis
+  // math can't read), used to size the Y-axis domain around them.
+  referenceLineValues?: number[];
   /**
    * Event markers (alerts, releases, …) drawn as dashed vertical lines with a
    * label above. Passed as data rather than pre-rendered elements so the chart
@@ -1051,64 +1456,28 @@ export const MemoChart = memo(function MemoChart({
     );
   }, [nearestSeriesKey, visibleLineData.length, id]);
 
-  const yAxisDomain: AxisDomain = useMemo(() => {
-    const hasSelection = hasSeriesSelection(selectedSeriesNames);
-
-    // Fitting the y-axis lower bound to the data only applies to line charts.
-    // Bar charts are always anchored at zero so the bar lengths stay
-    // proportional to their values.
-    const shouldFitYAxis =
-      fitYAxisToData && displayType !== DisplayType.StackedBar;
-
-    // The data min/max is only needed to either zoom into a selection or to
-    // fit the lower bound to the data. When neither applies, let Recharts
-    // auto-calculate the upper bound while pinning the lower bound to zero.
-    if (!hasSelection && !shouldFitYAxis) {
-      return [0, 'auto'];
-    }
-
-    // Calculate domain based on visible series (all series when there's no
-    // explicit selection).
-    let minValue = Infinity;
-    let maxValue = -Infinity;
-
-    graphResults.forEach(dataPoint => {
-      lineData.forEach(ld => {
-        const seriesName = ld.displayName || ld.dataKey;
-        // Only consider visible series
-        if (!hasSelection || selectedSeriesNames.has(seriesName)) {
-          const value = dataPoint[ld.dataKey];
-          if (typeof value === 'number' && !isNaN(value)) {
-            minValue = Math.min(minValue, value);
-            maxValue = Math.max(maxValue, value);
-          }
-        }
-      });
-    });
-
-    // If we found valid values, return them with some padding
-    if (minValue !== Infinity && maxValue !== -Infinity) {
-      const padding = (maxValue - minValue) * 0.05; // 5% padding
-      // When fitting to data, allow the lower bound to follow the data
-      // minimum; otherwise keep it pinned at zero. The 5% padding must not
-      // drag the axis below zero unless the data itself is negative, so
-      // clamp at zero whenever the minimum is non-negative.
-      const lowerBound =
-        shouldFitYAxis && minValue < 0
-          ? minValue - padding
-          : Math.max(0, minValue - padding);
-      const upperBound = maxValue + padding;
-      return [lowerBound, upperBound];
-    }
-
-    return ['auto', 'auto'];
-  }, [
-    graphResults,
-    lineData,
-    selectedSeriesNames,
-    fitYAxisToData,
-    displayType,
-  ]);
+  const yAxisBounds = useMemo(
+    () =>
+      computeYAxisBounds(
+        graphResults,
+        visibleLineData,
+        hasSeriesSelection(selectedSeriesNames),
+        fitYAxisToData,
+        displayType,
+        referenceLineValues,
+        axisNumberFormat,
+      ),
+    [
+      graphResults,
+      visibleLineData,
+      selectedSeriesNames,
+      fitYAxisToData,
+      displayType,
+      referenceLineValues,
+      axisNumberFormat,
+    ],
+  );
+  const yAxisDomain = yAxisBounds.domain;
 
   const [containerWidth, setContainerWidth] = useState(0);
 
@@ -1226,15 +1595,9 @@ export const MemoChart = memo(function MemoChart({
     [axisNumberFormat],
   );
 
-  // Only overrides Recharts' own tick generation when the domain is a
-  // concrete range - a bare 'auto' bound has no fixed interval to work from.
-  const yAxisTicks = useMemo(() => {
-    const [min, max] = yAxisDomain;
-    if (typeof min !== 'number' || typeof max !== 'number') {
-      return undefined;
-    }
-    return getYAxisTicks(min, max, tickFormatter);
-  }, [yAxisDomain, tickFormatter]);
+  const yAxisTicks = yAxisBounds.ticks;
+  // computeYAxisBounds already resolves ticks+formatter together per domain.
+  const yAxisTickFormatter = yAxisBounds.tickFormatter ?? tickFormatter;
 
   const [highlightStart, setHighlightStart] = useState<string | undefined>();
   const [highlightEnd, setHighlightEnd] = useState<string | undefined>();
@@ -1686,7 +2049,7 @@ export const MemoChart = memo(function MemoChart({
           <YAxis
             width={Y_AXIS_WIDTH}
             minTickGap={25}
-            tickFormatter={tickFormatter}
+            tickFormatter={yAxisTickFormatter}
             tick={{ fontSize: 11, fontFamily: 'IBM Plex Mono, monospace' }}
             domain={yAxisDomain}
             ticks={yAxisTicks}
