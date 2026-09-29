@@ -6,15 +6,22 @@ import {
   getMapColumnNames,
   useRowData,
 } from '@/components/DBRowDataPanel';
+import { useShowMaterializedAliasColumns } from '@/components/DBRowJsonViewer';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 
 jest.mock('@/hooks/useChartConfig', () => ({
-  mergeQuerySettings: jest.requireActual('@/hooks/useChartConfig')
-    .mergeQuerySettings,
   useQueriedChartConfig: jest.fn(),
 }));
 
+jest.mock('@/components/DBRowJsonViewer', () => ({
+  DBRowJsonViewer: () => null,
+  useShowMaterializedAliasColumns: jest.fn(),
+}));
+
 const mockUseQueriedChartConfig = useQueriedChartConfig as jest.Mock;
+const mockUseShowMaterializedAliasColumns = jest.mocked(
+  useShowMaterializedAliasColumns,
+);
 
 describe('DBRowDataPanel', () => {
   const source: TLogSource = {
@@ -30,6 +37,7 @@ describe('DBRowDataPanel', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockUseShowMaterializedAliasColumns.mockReturnValue(false);
     mockUseQueriedChartConfig.mockReturnValue({
       data: {
         data: [],
@@ -95,7 +103,18 @@ describe('DBRowDataPanel', () => {
     expect(config.select).not.toContainEqual({ valueExpression: '*' });
   });
 
-  it('includes MATERIALIZED and ALIAS columns when selecting `*`', () => {
+  it('adds no query settings while the viewer option is off', () => {
+    renderHook(() => useRowData({ source, rowId: "id='abc123'" }));
+
+    const [bounded, fallback] = mockUseQueriedChartConfig.mock.calls;
+    for (const [, options] of [bounded, fallback]) {
+      expect(options.additionalQuerySettings).toBeUndefined();
+      expect(options.retry).toBeUndefined();
+    }
+  });
+
+  it('includes MATERIALIZED and ALIAS columns when the viewer option is on', () => {
+    mockUseShowMaterializedAliasColumns.mockReturnValue(true);
     renderHook(() => useRowData({ source, rowId: "id='abc123'" }));
 
     const [bounded, fallback] = mockUseQueriedChartConfig.mock.calls;
@@ -107,24 +126,8 @@ describe('DBRowDataPanel', () => {
     }
   });
 
-  it("uses the source's own value for these settings", () => {
-    const sourceWithSetting: TLogSource = {
-      ...source,
-      querySettings: [{ setting: 'asterisk_include_alias_columns', value: '0' }],
-    };
-
-    renderHook(() =>
-      useRowData({ source: sourceWithSetting, rowId: "id='abc123'" }),
-    );
-
-    const [[, options]] = mockUseQueriedChartConfig.mock.calls;
-    expect(options.additionalQuerySettings).toEqual([
-      { setting: 'asterisk_include_alias_columns', value: '0' },
-      { setting: 'asterisk_include_materialized_columns', value: '1' },
-    ]);
-  });
-
   it('adds no query settings when the source has a Known Columns List', () => {
+    mockUseShowMaterializedAliasColumns.mockReturnValue(true);
     const sourceWithKnownColumns: TLogSource = {
       ...source,
       knownColumnsListExpression: 'Timestamp, Body, ServiceName',
@@ -141,6 +144,10 @@ describe('DBRowDataPanel', () => {
   });
 
   describe('when the query with the settings fails', () => {
+    beforeEach(() => {
+      mockUseShowMaterializedAliasColumns.mockReturnValue(true);
+    });
+
     const READONLY_ERROR =
       "Code: 164. DB::Exception: Cannot modify 'asterisk_include_materialized_columns' setting in readonly mode. (READONLY)";
     const row = { Body: 'hello' };

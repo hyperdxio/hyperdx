@@ -2,12 +2,13 @@
 '@hyperdx/app': patch
 ---
 
-fix: show MATERIALIZED and ALIAS columns in the row details panel
+feat: add an option to show MATERIALIZED and ALIAS columns in the row details panel
 
-The row details panel fetched the row with `SELECT *`, which ClickHouse runs
-without MATERIALIZED and ALIAS columns, so those columns never appeared. The row
-query now enables `asterisk_include_materialized_columns` and
-`asterisk_include_alias_columns`, except for sources that use a Known Columns
-List. A value set for either setting in the source's query settings still takes
-precedence. If the connection's user cannot change these settings (for example,
-`readonly = 1`), the panel loads the row without them.
+ClickHouse leaves MATERIALIZED and ALIAS columns out of `SELECT *`, so the row
+details panel never showed them. A new "Show materialized and alias columns"
+item in the properties view options menu, off by default, adds
+`asterisk_include_materialized_columns` and `asterisk_include_alias_columns` to
+the row query. It has no effect on a source with a Known Columns List, and a
+value that the source's query settings give for either setting wins. If the
+connection's user cannot change these settings (for example, `readonly = 1`),
+the panel loads the row without them.

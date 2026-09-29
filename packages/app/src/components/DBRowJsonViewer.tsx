@@ -132,6 +132,8 @@ type ViewerOptions = {
   whiteSpace?: 'pre' | 'pre-wrap';
   tabulate: boolean;
   filterBlanks: boolean;
+  // Off when absent, as in options saved before it existed.
+  showMaterializedAliasColumns?: boolean;
 };
 
 const VIEWER_OPTIONS_KEY = 'hdx_json_viewer_options';
@@ -226,6 +228,10 @@ const viewerOptionsAtom = atomWithStorage<ViewerOptions>(
   DEFAULT_VIEWER_OPTIONS,
   viewerOptionsStorage,
 );
+
+export function useShowMaterializedAliasColumns(): boolean {
+  return useAtomValue(viewerOptionsAtom).showMaterializedAliasColumns === true;
+}
 
 function HyperJsonMenu({ rowData }: { rowData: any }) {
   const [jsonOptions, setJsonOptions] = useAtom(viewerOptionsAtom);
@@ -334,6 +340,25 @@ function HyperJsonMenu({ rowData }: { rowData: any }) {
             }
           >
             Hide blank values
+          </Menu.Item>
+          <Menu.Item
+            lh="1"
+            py={8}
+            data-testid="json-viewer-materialized-alias-toggle"
+            rightSection={
+              jsonOptions.showMaterializedAliasColumns ? (
+                <IconCheck size={14} className="ps-2" />
+              ) : null
+            }
+            onClick={() =>
+              setJsonOptions({
+                ...jsonOptions,
+                showMaterializedAliasColumns:
+                  !jsonOptions.showMaterializedAliasColumns,
+              })
+            }
+          >
+            Show materialized and alias columns
           </Menu.Item>
         </Menu.Dropdown>
       </Menu>

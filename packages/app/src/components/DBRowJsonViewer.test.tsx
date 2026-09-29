@@ -1,7 +1,11 @@
 import React from 'react';
 import { fireEvent, screen, within } from '@testing-library/react';
 
-import { buildJSONExtractQuery, DBRowJsonViewer } from './DBRowJsonViewer';
+import {
+  buildJSONExtractQuery,
+  DBRowJsonViewer,
+  useShowMaterializedAliasColumns,
+} from './DBRowJsonViewer';
 import { RowSidePanelContext } from './DBRowSidePanel';
 
 // Mock Next.js router
@@ -184,6 +188,36 @@ describe('DBRowJsonViewer', () => {
     clickLineButton('field1', 'Column');
 
     expect(mockToggleColumn).toHaveBeenCalledWith("LogAttributes['field1']");
+  });
+
+  it('turns the materialized and alias columns option on and off from the menu', async () => {
+    const OptionValue = () => (
+      <span data-testid="materialized-alias-option">
+        {String(useShowMaterializedAliasColumns())}
+      </span>
+    );
+    const { container } = renderWithMantine(
+      <RowSidePanelContext value={defaultContext}>
+        <DBRowJsonViewer data={logData} />
+        <OptionValue />
+      </RowSidePanelContext>,
+    );
+    const option = screen.getByTestId('materialized-alias-option');
+    const toggle = async () => {
+      fireEvent.click(container.querySelector('[aria-haspopup="menu"]')!);
+      fireEvent.click(
+        await screen.findByTestId('json-viewer-materialized-alias-toggle'),
+      );
+    };
+
+    expect(option).toHaveTextContent('false');
+    await toggle();
+    expect(option).toHaveTextContent('true');
+    expect(
+      JSON.parse(localStorage.getItem('hdx_json_viewer_options')!),
+    ).toMatchObject({ showMaterializedAliasColumns: true });
+    await toggle();
+    expect(option).toHaveTextContent('false');
   });
 
   describe('timestamp fields', () => {

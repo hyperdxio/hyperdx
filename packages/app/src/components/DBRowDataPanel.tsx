@@ -9,10 +9,7 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import { Box } from '@mantine/core';
 
-import {
-  mergeQuerySettings,
-  useQueriedChartConfig,
-} from '@/hooks/useChartConfig';
+import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { WithClause } from '@/hooks/useRowWhere';
 import {
   isSelectAllColumnsSettingRejected,
@@ -28,7 +25,10 @@ import {
 import { getSelectExpressionsForHighlightedAttributes } from '@/utils/highlightedAttributes';
 import { getTimestampValueSelects } from '@/utils/rowTimestamps';
 
-import { DBRowJsonViewer } from './DBRowJsonViewer';
+import {
+  DBRowJsonViewer,
+  useShowMaterializedAliasColumns,
+} from './DBRowJsonViewer';
 import { getActiveInfraCorrelations } from './infraCorrelations';
 
 // The source's own `timestampValueExpression` columns are projected too, under
@@ -220,20 +220,13 @@ export function useRowData({
   };
 
   const connection = source.connection;
+  const showMaterializedAliasColumns = useShowMaterializedAliasColumns();
   const rejectsSettings = useSelectAllColumnsSettingsRejected(connection);
-  // The row query has no `config.source`, so the source's query settings do not
-  // reach it. Use the source's own value for these two settings here.
+  // A value that the source's own query settings give for either setting wins.
   const additionalQuerySettings =
-    knownColumns || rejectsSettings
-      ? undefined
-      : mergeQuerySettings(
-          source.querySettings?.filter(({ setting }) =>
-            SELECT_ALL_COLUMNS_QUERY_SETTINGS.some(
-              defaultSetting => defaultSetting.setting === setting,
-            ),
-          ),
-          SELECT_ALL_COLUMNS_QUERY_SETTINGS,
-        );
+    showMaterializedAliasColumns && !knownColumns && !rejectsSettings
+      ? SELECT_ALL_COLUMNS_QUERY_SETTINGS
+      : undefined;
   // A rejected setting will fail again, so only other errors keep the retry.
   const settingsQueryOptions = additionalQuerySettings
     ? {
