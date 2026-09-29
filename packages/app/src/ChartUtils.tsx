@@ -123,24 +123,19 @@ function getTimeChartDateRange(
 export const MAX_TIME_CHART_SERIES = DEFAULT_SERIES_LIMIT;
 
 /**
- * A PromQL number tile's queried config, shared by the value and the sparkline
- * drawn behind it.
+ * A PromQL config's resolved granularity, and its date range aligned to that
+ * granularity's buckets when it runs a range query, so its samples land on the
+ * same boundaries as the timeseries charts' and stay put across refreshes.
  */
-export function convertToPromqlNumberChartConfig(
+function getAlignedRangeAndGranularity(
   config: PromqlChartConfig & DateRange,
-  { withReducer }: { withReducer: boolean },
-): PromqlChartConfig & DateRange {
+): Pick<PromqlChartConfig & DateRange, 'granularity' | 'dateRange'> {
   const granularity = getTimeChartGranularity(
     config.granularity,
     config.dateRange,
   );
   return {
-    ...config,
     granularity,
-    // Align the date range with the same buckets used by the sparkline and
-    // timeseries charts, when using a (bucketed) range query. Alignment is
-    // desirable for range queries to ensure consistent bucket boundaries
-    // and sizes.
     dateRange: isRangeQuery(config)
       ? getTimeChartDateRange(
           config.dateRange,
@@ -148,6 +143,20 @@ export function convertToPromqlNumberChartConfig(
           granularity,
         )
       : config.dateRange,
+  };
+}
+
+/**
+ * A PromQL number tile's queried config, shared by the value and the sparkline
+ * drawn behind it.
+ */
+export function convertToPromqlNumberChartConfig(
+  config: PromqlChartConfig & DateRange,
+  { withReducer }: { withReducer: boolean },
+): PromqlChartConfig & DateRange {
+  return {
+    ...config,
+    ...getAlignedRangeAndGranularity(config),
     promqlExpression: getQueriedPromqlSeries(config).map(series => ({
       ...series,
       reducer: withReducer
@@ -155,6 +164,13 @@ export function convertToPromqlNumberChartConfig(
         : undefined,
     })),
   };
+}
+
+/** A PromQL table tile's queried config. */
+export function convertToPromqlTableChartConfig(
+  config: PromqlChartConfig & DateRange,
+): PromqlChartConfig & DateRange {
+  return { ...config, ...getAlignedRangeAndGranularity(config) };
 }
 
 export function convertToTimeChartConfig(

@@ -702,6 +702,28 @@ describe('PromQL expressions', () => {
     });
   });
 
+  it('keeps the query type but drops the reducer on a table chart', () => {
+    expect(
+      convertFormStateToSavedChartConfig(
+        promqlForm(
+          [
+            {
+              expression: 'up',
+              queryType: 'instant',
+              reducer: PromqlReducer.Max,
+            },
+          ],
+          DisplayType.Table,
+        ),
+        undefined,
+      ),
+    ).toMatchObject({
+      promqlExpression: [
+        { expression: 'up', queryType: 'instant', reducer: undefined },
+      ],
+    });
+  });
+
   // A stale `instant` on a time series tile would hide its granularity picker,
   // and a reducer it never applies is dead weight in the saved config.
   it('drops the query type and reducer a time series chart cannot offer', () => {

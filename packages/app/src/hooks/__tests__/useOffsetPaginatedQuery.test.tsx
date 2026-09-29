@@ -1,6 +1,9 @@
 import React, { act } from 'react';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
-import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
+import {
+  ChartConfigWithDateRange,
+  PromqlConfigWithDateRange,
+} from '@hyperdx/common-utils/dist/types';
 import {
   QueryClient,
   QueryClientProvider,
@@ -58,6 +61,10 @@ jest.mock('@hyperdx/common-utils/dist/core/renderChartConfig', () => ({
   renderChartConfig: jest.fn(),
 }));
 
+jest.mock('@/utils/promqlChartQuery', () => ({
+  queryPromqlChartConfig: jest.fn(),
+}));
+
 // Import mocked modules after jest.mock calls
 import { getClickhouseClient } from '@hyperdx/app/src/clickhouse';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
@@ -68,6 +75,7 @@ import {
   MVOptimizationExplanationResult,
   useMVOptimizationExplanation,
 } from '@/hooks/useMVOptimizationExplanation';
+import { queryPromqlChartConfig } from '@/utils/promqlChartQuery';
 
 // Create a mock ChartConfig based on the Zod schema
 const createMockChartConfig = (
@@ -1179,6 +1187,49 @@ describe('useOffsetPaginatedQuery', () => {
 
       // getSetting should not be called for builder configs
       expect(mockMetadata.getSetting).not.toHaveBeenCalled();
+    });
+  });
+
+  // PromQL never reaches ClickHouse: the Prometheus API route answers in one
+  // page, which is also why getNextPageParam refuses to paginate it.
+  describe('PromQL configs', () => {
+    const promqlConfig: PromqlConfigWithDateRange = {
+      configType: 'promql',
+      connection: 'foo',
+      promqlExpression: [{ expression: 'up' }],
+      dateRange: [
+        new Date('2024-01-01T00:00:00Z'),
+        new Date('2024-01-02T00:00:00Z'),
+      ],
+    };
+
+    it('queries Prometheus instead of rendering SQL', async () => {
+      jest.mocked(queryPromqlChartConfig).mockResolvedValue({
+        data: [{ service: 'web', Value: 1 }],
+        meta: [
+          { name: 'service', type: 'String' },
+          { name: 'Value', type: 'Float64' },
+        ],
+        rows: 1,
+        isComplete: true,
+      });
+
+      const { result } = renderHook(
+        () => useOffsetPaginatedQuery(promqlConfig),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      expect(queryPromqlChartConfig).toHaveBeenCalledWith(
+        promqlConfig,
+        promqlConfig.dateRange,
+        expect.anything(),
+      );
+      expect(renderChartConfig).not.toHaveBeenCalled();
+      expect(mockClickhouseClient.query).not.toHaveBeenCalled();
+      expect(result.current.data?.data).toEqual([{ service: 'web', Value: 1 }]);
+      expect(result.current.hasNextPage).toBe(false);
     });
   });
 

@@ -39,6 +39,7 @@ import { MAX_TABLE_ROWS } from '@/HDXMultiSeriesTableChart';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useSource } from '@/source';
+import { queryPromqlChartConfig } from '@/utils/promqlChartQuery';
 import {
   DEFAULT_TIME_WINDOWS_SECONDS,
   generateTimeWindowsAscending,
@@ -214,6 +215,22 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
         windowIndex: 0,
         direction: 'DESC' as const,
       };
+
+  // PromQL goes to the Prometheus API route rather than ClickHouse, and never
+  // paginates (see getNextPageParam), so it answers in a single page.
+  if (isPromqlChartConfig(config)) {
+    const { data, meta } = await queryPromqlChartConfig(
+      config,
+      config.dateRange,
+      signal,
+    );
+    return {
+      data,
+      meta: meta ?? [],
+      chSql: { sql: '', params: {} },
+      window: timeWindow,
+    };
+  }
 
   // Create config with windowed date range
   const windowedConfig = isBuilderChartConfig(config)

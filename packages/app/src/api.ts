@@ -902,6 +902,8 @@ export const prometheusApi = {
     connectionId: string;
     database?: string;
     table?: string;
+    /** Maximum number of series to return. */
+    limit?: number;
     signal?: AbortSignal;
   }): Promise<PrometheusInstantQueryResponse> =>
     prometheusFetch(
@@ -910,6 +912,7 @@ export const prometheusApi = {
         query: params.query,
         time: String(params.time),
         connectionId: params.connectionId,
+        ...(params.limit ? { limit: String(params.limit) } : {}),
         ...(params.database ? { database: params.database } : {}),
         ...(params.table ? { table: params.table } : {}),
       },

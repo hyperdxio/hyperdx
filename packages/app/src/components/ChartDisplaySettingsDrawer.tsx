@@ -202,9 +202,12 @@ export default function ChartDisplaySettingsDrawer({
   const showSeriesLimit = isTimeChart && configType !== 'promql';
   const isRawSqlTimeChart = showSeriesLimit && configType === 'sql';
 
-  // Every PromQL display except Number surfaces the series name
+  // Every PromQL display that surfaces a series name. A number tile shows one
+  // value and a table gives each label its own column, so neither has a legend.
   const showLegendTemplate =
-    configType === 'promql' && displayType !== DisplayType.Number;
+    configType === 'promql' &&
+    displayType !== DisplayType.Number &&
+    displayType !== DisplayType.Table;
 
   // On pie/bar builder charts, seriesLimit becomes a plain SQL LIMIT on the
   // number of slices/bars; raw SQL configs author their own LIMIT directly.
@@ -218,7 +221,8 @@ export default function ChartDisplaySettingsDrawer({
   // column ordering needs the builder `select` structure to know which columns
   // are group-by keys, so it stays builder-only.
   const showTableOptions = displayType === DisplayType.Table;
-  const showGroupByColumnsOnLeft = showTableOptions && configType !== 'sql';
+  const showGroupByColumnsOnLeft =
+    showTableOptions && configType !== 'sql' && configType !== 'promql';
 
   // Tile-level color is only meaningful for number tiles today.
   // Per-series colors on line / bar / pie ship in a follow-up PR via
