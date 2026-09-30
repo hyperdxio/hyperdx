@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { z } from 'zod';
 
 /**
  * Error category for MCP tool failures.
@@ -72,4 +73,22 @@ export function validateObjectId(
     return mcpUserError(`Invalid ${label}`);
   }
   return null;
+}
+
+/** Render a Zod error as one `path: message` line per issue. */
+export function formatZodIssues(error: z.ZodError): string {
+  return error.errors
+    .map(issue => {
+      const path = issue.path
+        .map((segment, index) =>
+          typeof segment === 'number'
+            ? `[${segment}]`
+            : index === 0
+              ? segment
+              : `.${segment}`,
+        )
+        .join('');
+      return path ? `${path}: ${issue.message}` : issue.message;
+    })
+    .join('\n');
 }

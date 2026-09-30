@@ -569,6 +569,55 @@ export enum WebhookService {
 }
 
 /**
+ * Every variable a Generic/incident.io webhook body template can reference.
+ * The one published list: `buildWebhookTemplateVariables` (packages/api) is
+ * typed against it so a variable cannot be built without appearing here, and
+ * the webhook form renders it as the in-product list. Documented in
+ * docs/alert-webhook-template-variables.md.
+ *
+ * The first seven are also the default body template the form applies.
+ */
+export const DEFAULT_WEBHOOK_TEMPLATE_VARIABLES = [
+  'title',
+  'body',
+  'link',
+  'state',
+  'startTime',
+  'endTime',
+  'eventId',
+] as const;
+
+export const WEBHOOK_TEMPLATE_VARIABLES = [
+  ...DEFAULT_WEBHOOK_TEMPLATE_VARIABLES,
+  'startTimeISO',
+  'endTimeISO',
+  'alertId',
+  'status',
+  'alertType',
+  'comparator',
+  'threshold',
+  'thresholdMax',
+  'value',
+  'groupKey',
+  'sourceQuery',
+  'teamId',
+  'note',
+] as const;
+
+export type WebhookTemplateVariable =
+  (typeof WEBHOOK_TEMPLATE_VARIABLES)[number];
+
+/**
+ * The body a Generic or incident.io webhook gets when it is saved without one.
+ * Published here so the form's default, the form's editor placeholder and the
+ * API's fallback are one string — the payload shape used to be respelled at
+ * each of those, and a change to it had to be repeated in all of them.
+ */
+export const DEFAULT_GENERIC_WEBHOOK_BODY = `{"text": "${DEFAULT_WEBHOOK_TEMPLATE_VARIABLES.map(
+  name => `{{${name}}}`,
+).join(' | ')}"}`;
+
+/**
  * Base webhook schema (matches backend IWebhook but with JSON-serialized types).
  * When making changes here, consider if they need to be made to the external
  * API schema as well (packages/api/src/utils/zod.ts).
@@ -646,6 +695,49 @@ export enum AlertState {
   PENDING = 'PENDING',
 }
 
+/**
+ * The body an incident.io webhook gets when it is saved without one. Lives
+ * here rather than beside the other webhook constants because it interpolates
+ * AlertState, which is declared above.
+ *
+ * incident.io accepts only `firing` or `resolved` in `status`, so HyperDX's
+ * own status rides in `metadata` instead, and everything there is quoted: a
+ * variable the alert doesn't carry renders empty, which is not valid JSON in
+ * an unquoted numeric slot. Only an OK maps to `resolved`: a state that is
+ * neither should leave the incident open rather than close one that was never
+ * known to recover.
+ *
+ * `deduplication_key` is the event id, which is stable per alert, group and
+ * channel across a firing and its resolve, so incident.io closes the alert it
+ * opened. `alertId` is in `metadata` for grouping every one of an alert's
+ * groups together.
+ */
+export const DEFAULT_INCIDENT_IO_WEBHOOK_BODY = `{
+  "title": "{{title}}",
+  "description": "{{body}}",
+  "deduplication_key": "{{eventId}}",
+  "status": "{{#if (eq state "${AlertState.OK}")}}resolved{{else}}firing{{/if}}",
+  "source_url": "{{link}}",
+  "metadata": {
+    "alert_id": "{{alertId}}",
+    "hyperdx_status": "{{status}}",
+    "alert_type": "{{alertType}}",
+    "comparator": "{{comparator}}",
+    "threshold": "{{threshold}}",
+    "threshold_max": "{{thresholdMax}}",
+    "value": "{{value}}",
+    "group_key": "{{groupKey}}",
+    "window_start": "{{startTimeISO}}",
+    "window_end": "{{endTimeISO}}"
+  }
+}`;
+
+/** The body a webhook saved without one is given, by service. */
+export const getDefaultWebhookBody = (service: WebhookService): string =>
+  service === WebhookService.IncidentIO
+    ? DEFAULT_INCIDENT_IO_WEBHOOK_BODY
+    : DEFAULT_GENERIC_WEBHOOK_BODY;
+
 export enum AlertErrorType {
   QUERY_ERROR = 'QUERY_ERROR',
   /** The alert query did not complete within the evaluation timeout. */
@@ -666,6 +758,12 @@ export type AlertError = z.infer<typeof AlertErrorSchema>;
 export enum AlertSource {
   SAVED_SEARCH = 'saved_search',
   TILE = 'tile',
+  /**
+   * A "detached" alert whose query definition lives inline on the alert
+   * document (a chart config, the same shape a dashboard tile stores)
+   * instead of referencing a saved search or tile.
+   */
+  INLINE = 'inline',
 }
 
 export const AlertIntervalSchema = z.union([
@@ -821,6 +919,18 @@ export const zTileAlert = z.object({
   dashboardId: z.string().min(1),
 });
 
+/**
+ * Inline alerts persist their query/chart definition directly on the alert —
+ * the same shape a dashboard tile stores (minus the embedded `alert` field).
+ * Builder and raw SQL configs only; PromQL charts cannot be alerted on.
+ * `z.lazy` defers resolution because the chart-config schemas are declared
+ * later in this module.
+ */
+export const zInlineAlert = z.object({
+  source: z.literal(AlertSource.INLINE),
+  chartConfig: z.lazy(() => AlertChartConfigSchema),
+});
+
 export const validateAlertScheduleOffsetMinutes = (
   alert: {
     interval: AlertInterval;
@@ -900,7 +1010,42 @@ export const scheduleStartAtSchema = z
     },
   );
 
+// --------------------------
+// TAGS
+// --------------------------
+// Shared limits + validator for user-supplied tag arrays. Any write path that
+// accepts tags (external API, MCP tools, internal routers) should validate with
+// `tagsSchema` so the caps stay consistent in one place. Read/model schemas keep
+// a bare `z.array(z.string())` so parsing existing documents never fails on
+// legacy data that predates these caps.
+export const MAX_TAG_LENGTH = 32;
+export const MAX_TAGS = 50;
+
+export const tagsSchema = z
+  .array(z.string().max(MAX_TAG_LENGTH))
+  .max(MAX_TAGS)
+  .optional();
+
+// The kinds of entity that carry tags.
+export const TagResourceTypeSchema = z.enum([
+  'alert',
+  'dashboard',
+  'savedSearch',
+]);
+
+export type TagResourceType = z.infer<typeof TagResourceTypeSchema>;
+
 export const alertNoteSchema = z.string().min(1).max(4096).nullish();
+
+export const MAX_ALERT_DISPLAY_NAME_LENGTH = 512;
+export const alertDisplayNameSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(MAX_ALERT_DISPLAY_NAME_LENGTH)
+  .nullish();
+
+export const alertTagsSchema = tagsSchema.nullish();
 
 export const AlertBaseObjectSchema = z.object({
   id: z.string().optional(),
@@ -921,6 +1066,8 @@ export const AlertBaseObjectSchema = z.object({
   name: z.string().min(1).max(512).nullish(),
   message: z.string().min(1).max(4096).nullish(),
   note: alertNoteSchema,
+  displayName: alertDisplayNameSchema,
+  tags: alertTagsSchema,
   silenced: z
     .object({
       by: z.string(),
@@ -968,19 +1115,64 @@ const ChartAlertBaseValidatedSchema = ChartAlertBaseSchema.superRefine(
 export const AlertSchema = z.union([
   z.intersection(AlertBaseValidatedSchema, zSavedSearchAlert),
   z.intersection(ChartAlertBaseValidatedSchema, zTileAlert),
+  z.intersection(ChartAlertBaseValidatedSchema, zInlineAlert),
 ]);
 
 export type Alert = z.infer<typeof AlertSchema>;
+
+/**
+ * Max per-target timing entries stored on one evaluation. An evaluation's
+ * distinct targets are already bounded (configured channels plus whatever the
+ * message body @mentions, itself capped per event), so this only guards
+ * against a pathological alert growing the document. Shared so the app can
+ * explain the truncation it renders.
+ */
+export const ALERT_NOTIFICATION_TARGETS_LIMIT = 20;
+
+/**
+ * One notification target's timing within an evaluation, summed across every
+ * dispatch the evaluation made to it — a grouped alert notifies the same
+ * target once per firing group, and a resolve notification is another
+ * dispatch.
+ */
+export const AlertNotificationTargetTimingSchema = z.object({
+  /**
+   * Stable identity for the target — the webhook id. Two webhooks can share a
+   * display name, so `target` alone does not identify a row.
+   */
+  targetId: z.string(),
+  /** Display label: the webhook's name as it was at dispatch time. */
+  target: z.string(),
+  /** Summed wall time across this target's dispatches (ms). */
+  durationMs: z.number(),
+  /** Dispatches attempted for this target in the evaluation. */
+  dispatches: z.number(),
+  /** How many of those dispatches failed. */
+  failures: z.number(),
+});
+
+export type AlertNotificationTargetTiming = z.infer<
+  typeof AlertNotificationTargetTimingSchema
+>;
 
 // Diagnostics for the evaluation that wrote a history record. Evaluation-
 // level: identical on every row one evaluation writes (incl. per-group rows).
 export const AlertHistoryAnalyticsSchema = z.object({
   /** ClickHouse query duration for the evaluation (ms). On query-failure ERROR records, the time until the query failed. */
   queryDurationMs: z.number().optional(),
-  /** Total wall time delivering webhook notifications in the evaluation, including retries (ms). */
+  /** Wall time delivering the evaluation's notifications (ms) — dispatch only, including retries. Absent when nothing was dispatched. */
   webhookDurationMs: z.number().optional(),
   /** Earlier buckets backfilled in this run after missed ticks (expected buckets − 1). */
   backfilledBuckets: z.number().optional(),
+  /**
+   * Per-target breakdown, highest first. Targets in a dispatch round run
+   * concurrently, so the slowest of each round sets `webhookDurationMs` and
+   * these do not sum to it. Absent when nothing was dispatched.
+   */
+  notificationTargets: z
+    .array(AlertNotificationTargetTimingSchema)
+    .max(ALERT_NOTIFICATION_TARGETS_LIMIT)
+    .optional(),
 });
 
 export type AlertHistoryAnalytics = z.infer<typeof AlertHistoryAnalyticsSchema>;
@@ -1046,21 +1238,21 @@ export const FilterSchema = z.union([
 
 export type Filter = z.infer<typeof FilterSchema>;
 
-// --------------------------
-// TAGS
-// --------------------------
-// Shared limits + validator for user-supplied tag arrays. Any write path that
-// accepts tags (external API, MCP tools, internal routers) should validate with
-// `tagsSchema` so the caps stay consistent in one place. Read/model schemas keep
-// a bare `z.array(z.string())` so parsing existing documents never fails on
-// legacy data that predates these caps.
-export const MAX_TAG_LENGTH = 32;
-export const MAX_TAGS = 50;
+export const VariableFilterValueSchema = z.object({
+  type: z.literal('variable'),
+  name: z.string().min(1).max(1024),
+  values: z.array(z.string().max(10000)).max(1000),
+});
 
-export const tagsSchema = z
-  .array(z.string().max(MAX_TAG_LENGTH))
-  .max(MAX_TAGS)
-  .optional();
+export type VariableFilterValue = z.infer<typeof VariableFilterValueSchema>;
+
+/** One entry in a dashboard's `filters=` param / `savedFilterValues`. */
+export const DashboardFilterValueSchema = z.union([
+  FilterSchema,
+  VariableFilterValueSchema,
+]);
+
+export type DashboardFilterValue = z.infer<typeof DashboardFilterValueSchema>;
 
 // --------------------------
 // SAVED SEARCH
@@ -1589,13 +1781,82 @@ const RawSqlChartConfigSchema = RawSqlBaseChartConfigSchema.extend({
 
 export type RawSqlChartConfig = z.infer<typeof RawSqlChartConfigSchema>;
 
+export const MAX_LEGEND_TEMPLATE_LENGTH = 1024;
+
+// Caps the number of expressions on one PromQL tile
+export const MAX_PROMQL_EXPRESSIONS = 10;
+
+/**
+ * Whether a PromQL expression is evaluated at a single moment (`instant`)
+ * or at intervals over a range of time (`range`).
+ */
+export const PromqlQueryTypeSchema = z.enum(['instant', 'range']);
+
+export type PromqlQueryType = z.infer<typeof PromqlQueryTypeSchema>;
+
+/** A Prometheus series' label set, `__name__` included. */
+export type PrometheusMetric = Record<string, string>;
+
+/**
+ * One series of a Prometheus matrix result: its samples over time. Values
+ * cross the wire as strings, as the Prometheus HTTP API returns them.
+ */
+export type PrometheusMatrixResult = {
+  metric: PrometheusMetric;
+  values: [number, string][];
+};
+
+/** One series of a Prometheus vector result: a single `[unix seconds, value]`. */
+export type PrometheusVectorResult = {
+  metric: PrometheusMetric;
+  value: [number, string];
+};
+
+/** How a range query's samples are client-side aggregated to a single value. */
+export enum PromqlReducer {
+  LastNotNull = 'lastNotNull',
+  Min = 'min',
+  Max = 'max',
+  Mean = 'mean',
+  Sum = 'sum',
+  Count = 'count',
+}
+
+export const PromqlReducerSchema = z.nativeEnum(PromqlReducer);
+
+/** One of the expressions a PromQL chart plots. */
+export const PromqlSeriesSchema = z.object({
+  expression: z.string(),
+  /** Prefixed to every series name this expression produces. */
+  alias: z.string().optional(),
+  /** Whether to evaluate with query or query_range. Instant is not supported for timeseries charts */
+  queryType: PromqlQueryTypeSchema.optional(),
+  /** Only read when `queryType` is `range`. Defaults to last non-null. */
+  reducer: PromqlReducerSchema.optional(),
+});
+
+export type PromqlSeries = z.infer<typeof PromqlSeriesSchema>;
+
+/**
+ * What a PromQL chart plots: a list of expressions, or a bare expression
+ * string as tiles were saved before multi-expression support.
+ */
+export const PromqlExpressionListSchema = z
+  .array(PromqlSeriesSchema)
+  .min(1)
+  .max(MAX_PROMQL_EXPRESSIONS)
+  .or(z.string());
+
+export type PromqlExpressionList = z.infer<typeof PromqlExpressionListSchema>;
+
 /** Base schema for PromQL chart configs (persisted fields) */
 const PromqlBaseChartConfigSchema = SharedChartSettingsSchema.extend({
   configType: z.literal('promql'),
-  promqlExpression: z.string(),
+  promqlExpression: PromqlExpressionListSchema,
   connection: z.string(),
   source: z.string().optional(),
   step: z.string().optional(),
+  legendTemplate: z.string().max(MAX_LEGEND_TEMPLATE_LENGTH).optional(),
 });
 
 /** Schema describing PromQL chart configs with runtime-only fields */
@@ -1604,6 +1865,7 @@ const PromqlChartConfigSchema = PromqlBaseChartConfigSchema.extend({
   from: z
     .object({ databaseName: z.string(), tableName: z.string() })
     .optional(),
+  variables: z.array(ChartVariableSchema).optional(),
 });
 
 export type PromqlChartConfig = z.infer<typeof PromqlChartConfigSchema>;
@@ -1625,6 +1887,11 @@ export type DateRange = {
   // `__hdx_series_limit` CTE so every chunk ranks (and keeps) the same
   // top-N series. Never persisted.
   seriesLimitDateRange?: [Date, Date];
+  // Runtime-only, populated from the queried MetricSource's
+  // `minAutoGranularity` (when set) by whichever caller resolves the source
+  // before rendering. Floors "auto" granularity resolution; see
+  // `convertDateRangeToGranularityString`. Never persisted.
+  minGranularitySeconds?: number;
 };
 
 export type ChartConfigWithDateRange = ChartConfig & DateRange;
@@ -1721,6 +1988,19 @@ export const SavedChartConfigSchema = z.union([
   PromqlSavedChartConfigSchema,
 ]);
 
+/**
+ * The chart config an inline-source alert persists (see `zInlineAlert`). Same
+ * shape as a dashboard tile's config, but without the embedded `alert` field
+ * (the alert's own document carries those fields) and without the PromQL
+ * variant (PromQL charts cannot be alerted on).
+ */
+export const AlertChartConfigSchema = z.union([
+  BuilderSavedChartConfigWithoutAlertSchema,
+  RawSqlSavedChartConfigWithoutAlertSchema,
+]);
+
+export type AlertChartConfig = z.infer<typeof AlertChartConfigSchema>;
+
 export type RawSqlSavedChartConfig = z.infer<
   typeof RawSqlSavedChartConfigSchema
 >;
@@ -1797,7 +2077,12 @@ export const DashboardContainerSchema = z.object({
 
 export type DashboardContainer = z.infer<typeof DashboardContainerSchema>;
 
-export const DashboardFilterType = z.enum(['QUERY_EXPRESSION']);
+/** Type of dashboard filter, determining how its dropdown values are populated. */
+export const DashboardFilterType = z.enum([
+  'QUERY_EXPRESSION',
+  'STATIC_LIST',
+  'PROMETHEUS_LABEL',
+]);
 
 /** Allowed variable names for dashboard filters. Alphanumeric + underscore, must start with a letter. */
 export const DASHBOARD_VARIABLE_NAME_PATTERN = '[a-zA-Z][a-zA-Z0-9_]*';
@@ -1805,32 +2090,12 @@ export const DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED = new RegExp(
   `^${DASHBOARD_VARIABLE_NAME_PATTERN}$`,
 );
 export const DASHBOARD_VARIABLE_NAME_MAX_LENGTH = 64;
+export const DASHBOARD_STATIC_FILTER_MAX_OPTIONS = 1000;
 
-export const DashboardFilterSchema = z.object({
+/** Fields carried by every dashboard filter, whatever its type. */
+const dashboardFilterBaseSchema = z.object({
   id: z.string(),
-  type: DashboardFilterType,
   name: z.string().min(1),
-  expression: z.string().min(1),
-  source: z.string().min(1),
-  sourceMetricType: z.nativeEnum(MetricsDataType).optional(),
-  where: z.string().optional(),
-  whereLanguage: SearchConditionTrimmedLanguageSchema,
-  // Sources this filter applies to. Undefined / missing means the filter
-  // applies to all tiles.
-  appliesToSourceIds: z.array(z.string().min(1)).optional(),
-  /**
-   * Whether the selected value is applied as a filter condition on matching
-   * tiles. Undefined / missing means ENABLED — every filter that predates this
-   * field broadcasts, and that must not change. Read it through
-   * `isFilterBroadcastEnabled` rather than defaulting at each call site.
-   */
-  isBroadcastEnabled: z.boolean().optional(),
-  /**
-   * Whether the selected value is exposed to tile queries as `$variableName`.
-   * Undefined / missing means DISABLED. Ignored while the dashboard-variables
-   * feature is off.
-   */
-  isVariableEnabled: z.boolean().optional(),
   /**
    * Token that tiles reference as `$variableName`. Defaults to the filter's display
    * name with illegal characters replaced by dashes (`deriveVariableName`).
@@ -1841,17 +2106,111 @@ export const DashboardFilterSchema = z.object({
     .max(DASHBOARD_VARIABLE_NAME_MAX_LENGTH)
     .regex(DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED)
     .optional(),
+  /**
+   * How many values must be selected before tiles will load. `isGlobalRequirement`
+   * decides which tiles are blocked. Only 0 and 1 are currently allowed.
+   * undefined and 0 both imply no minimum selection requirement.
+   */
+  minSelections: z.number().int().min(0).max(1).optional(),
+  /**
+   * Whether an unsatisfied requirement blocks every tile on the dashboard,
+   * rather than only the tiles that read this filter (via variable or broadcast).
+   * Ignored unless `minSelections` marks the filter required.
+   */
+  isGlobalRequirement: z.boolean().optional(),
 });
 
+/**
+ * A filter whose dropdown values are queried from ClickHouse: `expression`
+ * names the column, `source` the table, and the selection can be broadcast
+ * into matching tiles' `WHERE` clauses.
+ */
+export const QueryExpressionDashboardFilterSchema =
+  dashboardFilterBaseSchema.extend({
+    type: z.literal(DashboardFilterType.enum.QUERY_EXPRESSION),
+    expression: z.string().min(1),
+    source: z.string().min(1),
+    sourceMetricType: z.nativeEnum(MetricsDataType).optional(),
+    where: z.string().optional(),
+    whereLanguage: SearchConditionTrimmedLanguageSchema,
+    // Sources this filter applies to. Undefined / missing means the filter
+    // applies to all tiles.
+    appliesToSourceIds: z.array(z.string().min(1)).optional(),
+    /**
+     * Whether the selected value is applied as a filter condition on matching
+     * tiles. Undefined / missing means ENABLED — every filter that predates this
+     * field broadcasts, and that must not change. Read it through
+     * `isFilterBroadcastEnabled` rather than defaulting at each call site.
+     */
+    isBroadcastEnabled: z.boolean().optional(),
+    /**
+     * Whether the selected value is exposed to tile queries as `$variableName`.
+     * Undefined / missing means DISABLED. Ignored while the dashboard-variables
+     * feature is off.
+     */
+    isVariableEnabled: z.boolean().optional(),
+  });
+
+/** A filter whose dropdown offers a hand-authored list. */
+export const StaticListDashboardFilterSchema = dashboardFilterBaseSchema.extend(
+  {
+    type: z.literal(DashboardFilterType.enum.STATIC_LIST),
+    options: z
+      .array(z.string().min(1).max(10000))
+      .min(1)
+      .max(DASHBOARD_STATIC_FILTER_MAX_OPTIONS),
+    isBroadcastEnabled: z.literal(false),
+    isVariableEnabled: z.literal(true),
+  },
+);
+
+/** Sanity bound on a persisted label name; Prometheus itself imposes no limit. */
+export const PROMETHEUS_LABEL_NAME_MAX_LENGTH = 1024;
+
+/** A filter whose dropdown lists the values of a Prometheus label */
+export const PromqlLabelDashboardFilterSchema =
+  dashboardFilterBaseSchema.extend({
+    type: z.literal(DashboardFilterType.enum.PROMETHEUS_LABEL),
+    /** ID of a PromQL source to query */
+    source: z.string().min(1),
+    /** Label whose values populate the dropdown. */
+    label: z.string().min(1).max(PROMETHEUS_LABEL_NAME_MAX_LENGTH),
+    /**
+     * Optional Prometheus series selector narrowing which series the label
+     * values are read from.
+     */
+    match: z.string().min(1).optional(),
+    // Variable-only: there is no SQL expression to broadcast
+    isBroadcastEnabled: z.literal(false),
+    isVariableEnabled: z.literal(true),
+  });
+
+export const DashboardFilterSchema = z.discriminatedUnion('type', [
+  QueryExpressionDashboardFilterSchema,
+  StaticListDashboardFilterSchema,
+  PromqlLabelDashboardFilterSchema,
+]);
+
+export type QueryExpressionDashboardFilter = z.infer<
+  typeof QueryExpressionDashboardFilterSchema
+>;
+export type StaticListDashboardFilter = z.infer<
+  typeof StaticListDashboardFilterSchema
+>;
+export type PromqlLabelDashboardFilter = z.infer<
+  typeof PromqlLabelDashboardFilterSchema
+>;
 export type DashboardFilter = z.infer<typeof DashboardFilterSchema>;
 
 export enum PresetDashboard {
   Services = 'services',
 }
 
-export const PresetDashboardFilterSchema = DashboardFilterSchema.extend({
-  presetDashboard: z.nativeEnum(PresetDashboard),
-});
+/** Preset-dashboard filters are broadcast-only, and therefore do not support static value filters. */
+export const PresetDashboardFilterSchema =
+  QueryExpressionDashboardFilterSchema.extend({
+    presetDashboard: z.nativeEnum(PresetDashboard),
+  });
 
 export type PresetDashboardFilter = z.infer<typeof PresetDashboardFilterSchema>;
 
@@ -1893,7 +2252,19 @@ export const DashboardSchema = z.object({
   filters: z.array(DashboardFilterSchema).optional(),
   savedQuery: z.string().nullable().optional(),
   savedQueryLanguage: SearchConditionLanguageSchema.nullable().optional(),
-  savedFilterValues: z.array(FilterSchema).optional(),
+  savedFilterValues: z.array(DashboardFilterValueSchema).optional(),
+  savedDateRange: z
+    .discriminatedUnion('type', [
+      z.object({
+        type: z.literal('relative'),
+        value: z.number(),
+      }),
+      z.object({
+        type: z.literal('historical'),
+        value: z.array(z.number()).length(2),
+      }),
+    ])
+    .nullish(),
   containers: z
     .array(DashboardContainerSchema)
     .max(DASHBOARD_MAX_CONTAINERS)
@@ -2197,6 +2568,22 @@ export const MetricSourceSchema = BaseSourceSchema.extend({
   logSourceId: z.string().optional(),
   // Unified metrics series table. Available only when `isMetricsSeriesTableEnabled` is set on the team document.
   seriesTable: z.string().optional(),
+  /**
+   * Floor for "Auto Granularity" on charts querying this source. Without
+   * this, a short selected date range can auto-infer a bucket smaller than
+   * the metric's actual scrape/report interval, producing sparse/steppy
+   * series. Unset preserves the previous unfloored behavior. Only
+   * constrains auto-inference - an explicit (non-"auto") granularity
+   * picked on a tile is never overridden.
+   *
+   * Preprocessed so the form's "No minimum" option (stored as `''`, since a
+   * Mantine Select needs a string value for every entry including the unset
+   * one) round-trips through the schema as `undefined`.
+   */
+  minAutoGranularity: z.preprocess(
+    v => (v === '' ? undefined : v),
+    SQLIntervalSchema.optional(),
+  ),
 });
 
 // PromQL source form schema
@@ -2400,8 +2787,19 @@ export const AlertsPageItemSchema = z.object({
   dashboardId: z.string().optional(),
   savedSearchId: z.string().optional(),
   tileId: z.string().optional(),
+  // Tile alerts only: set when the tile this alert watches cannot be
+  // addressed in generated Terraform, so the row's export action is withheld.
+  // Server-computed — `dashboard.tiles` below carries only this alert's own
+  // tile. See isTileAlertUnaddressable.
+  unaddressableTile: z.boolean().optional(),
+  // Inline alerts: the persisted chart config. Only present on the
+  // single-alert (detail) response — the list omits it so a page doesn't carry
+  // every alert's full query definition.
+  chartConfig: AlertChartConfigSchema.optional(),
   groupBy: z.string().optional(),
   name: z.string().nullish(),
+  displayName: z.string(),
+  tags: z.array(z.string()),
   message: z.string().nullish(),
   note: alertNoteSchema,
   createdAt: z.string(),
@@ -2409,10 +2807,7 @@ export const AlertsPageItemSchema = z.object({
   history: z.array(AlertHistorySchema),
   dashboard: z
     .object({
-      _id: z.string(),
       name: z.string(),
-      updatedAt: z.string(),
-      tags: z.array(z.string()),
       tiles: z.array(
         z.object({
           id: z.string(),
@@ -2423,11 +2818,7 @@ export const AlertsPageItemSchema = z.object({
     .optional(),
   savedSearch: z
     .object({
-      _id: z.string(),
-      createdAt: z.string(),
       name: z.string(),
-      updatedAt: z.string(),
-      tags: z.array(z.string()),
     })
     .optional(),
   createdBy: z
@@ -2451,6 +2842,14 @@ export type AlertsPageItem = z.infer<typeof AlertsPageItemSchema>;
 
 export const AlertsApiResponseSchema = z.object({
   data: z.array(AlertsPageItemSchema),
+  /** True when more alerts match the request beyond the returned page. */
+  hasMore: z.boolean(),
+  /**
+   * Keyset cursor for the next page: pass it back unchanged as `cursor`
+   * (alongside `limit`) to continue get the next page. Absent on the last
+   * page and on unpaginated responses.
+   */
+  nextCursor: z.string().optional(),
 });
 
 export type AlertsApiResponse = z.infer<typeof AlertsApiResponseSchema>;
@@ -2623,6 +3022,49 @@ export type InstallationApiResponse = z.infer<
   typeof InstallationApiResponseSchema
 >;
 
+// Onboarding
+//
+// SSOT for product-usage tasks. UI copy/hrefs live in the frontend registry
+// (typed Record<OnboardingTaskId>), which compile-errors until a new key gets
+// copy + a link. Declaration order is the checklist display order; membership
+// (not order) is what the API enum and persisted subdoc rely on.
+export const ONBOARDING_TASK_IDS = [
+  'advancedQuery',
+  'dashboard',
+  'alert',
+  'mcp',
+] as const;
+
+export type OnboardingTaskId = (typeof ONBOARDING_TASK_IDS)[number];
+
+// True only for a real 24-hex Mongo ObjectId. The all-in-one-noauth image
+// injects a synthetic `_local_user_` id server-side, which mongoose casts to an
+// ObjectId matching no document — and which mongoose.isValidObjectId() wrongly
+// accepts (any 12-char string passes) — so this string check is the guard both
+// packages use to skip onboarding writes/rendering for that non-persistable user.
+export function isPersistableUserId(id: string | null | undefined): boolean {
+  return id != null && /^[0-9a-fA-F]{24}$/.test(id);
+}
+
+const KNOWN_ONBOARDING_TASK_IDS: readonly string[] = ONBOARDING_TASK_IDS;
+
+export const OnboardingDataSchema = z.object({
+  // Read-tolerant so removing/renaming a task can't 500 GET /me for users who
+  // completed it; the write boundary (CompleteOnboardingTaskApiBodySchema)
+  // stays a strict z.enum.
+  completedTasks: z
+    .array(z.string())
+    .default([])
+    .transform(ids =>
+      ids.filter((id): id is OnboardingTaskId =>
+        KNOWN_ONBOARDING_TASK_IDS.includes(id),
+      ),
+    ),
+  isDismissed: z.boolean().default(false),
+});
+
+export type OnboardingData = z.infer<typeof OnboardingDataSchema>;
+
 // Me
 export const MeApiResponseSchema = z.object({
   accessKey: z.string(),
@@ -2630,6 +3072,7 @@ export const MeApiResponseSchema = z.object({
   email: z.string(),
   id: z.string(),
   name: z.string(),
+  onboardingData: OnboardingDataSchema,
   team: TeamSchema.pick({
     id: true,
     name: true,
@@ -2641,6 +3084,34 @@ export const MeApiResponseSchema = z.object({
 });
 
 export type MeApiResponse = z.infer<typeof MeApiResponseSchema>;
+
+// Body for `POST /me/onboarding/task`.
+export const CompleteOnboardingTaskApiBodySchema = z.object({
+  taskId: z.enum(ONBOARDING_TASK_IDS),
+});
+
+export type CompleteOnboardingTaskApiBody = z.infer<
+  typeof CompleteOnboardingTaskApiBodySchema
+>;
+
+// Body for `PATCH /me/onboarding/dismiss`.
+export const DismissOnboardingApiBodySchema = z.object({
+  isDismissed: z.boolean(),
+});
+
+export type DismissOnboardingApiBody = z.infer<
+  typeof DismissOnboardingApiBodySchema
+>;
+
+// Response for both onboarding mutations: the updated onboarding state, so the
+// client can seed its `me` cache without a refetch.
+export const OnboardingDataApiResponseSchema = z.object({
+  onboardingData: OnboardingDataSchema,
+});
+
+export type OnboardingDataApiResponse = z.infer<
+  typeof OnboardingDataApiResponseSchema
+>;
 
 // Response for `PATCH /me/accessKey`.
 //
@@ -2681,9 +3152,15 @@ export const IacImportManifestSchema = z.object({
   ),
   alerts: z.array(
     IacManifestEntrySchema.extend({
-      // Only saved-search alerts are modelled by the Terraform provider.
+      // The provider models saved-search and dashboard tile alerts, not
+      // inline ones, so the client needs the discriminator to filter.
       source: z.string().optional(),
       savedSearchId: z.string().optional(),
+      // Tile alerts only: set when the provider could not address the tile
+      // this alert watches. Computed server-side — the tile lives on a
+      // dashboard this manifest may not even list. See
+      // isTileAlertUnaddressable.
+      unaddressableTile: z.boolean().optional(),
     }),
   ),
   savedSearches: z.array(IacManifestEntrySchema),

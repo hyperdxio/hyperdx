@@ -18,3 +18,19 @@ export class MacroExpansionError extends Error {
     this.name = 'MacroExpansionError';
   }
 }
+
+/**
+ * Thrown during expansion when `$__filter` / `$__conditionalAll` names a
+ * variable that the context does not declare.
+ */
+export class UnknownVariableError extends MacroExpansionError {
+  constructor(
+    macro: MacroName,
+    public readonly variableName: string,
+    public readonly availableVariables: string[],
+    message: string,
+  ) {
+    super(macro, message);
+    this.name = 'UnknownVariableError';
+  }
+}

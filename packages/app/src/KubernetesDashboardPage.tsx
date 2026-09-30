@@ -69,7 +69,7 @@ import NamespaceDetailsSidePanel from './NamespaceDetailsSidePanel';
 import NodeDetailsSidePanel from './NodeDetailsSidePanel';
 import PodDetailsSidePanel from './PodDetailsSidePanel';
 import { useSource, useSources } from './source';
-import { parseTimeQuery, useTimeQuery } from './timeQuery';
+import { useDefaultTimeRange, useTimeQuery } from './timeQuery';
 import { KubePhase } from './types';
 import { formatNumber, formatUptime } from './utils';
 
@@ -940,8 +940,6 @@ const NamespacesTable = ({
   );
 };
 
-const defaultTimeRange = parseTimeQuery('Past 1h', false);
-
 const CHART_HEIGHT = 300;
 
 const findSource = (
@@ -1047,7 +1045,10 @@ export const resolveSourceIds = (
   return { logSourceId: logSource?.id, metricSourceId: metricSource?.id };
 };
 
+const DEFAULT_INTERVAL = 'Past 1h';
+
 function KubernetesDashboardPage() {
+  const defaultTimeRange = useDefaultTimeRange(DEFAULT_INTERVAL);
   const brandName = useBrandDisplayName();
   const { data: sources } = useSources();
 
@@ -1239,10 +1240,10 @@ function KubernetesDashboardPage() {
     onSearch,
     onTimeRangeSelect,
   } = useTimeQuery({
-    defaultValue: 'Past 1h',
+    defaultValue: DEFAULT_INTERVAL,
     defaultTimeRange: [
-      defaultTimeRange?.[0]?.getTime() ?? -1,
-      defaultTimeRange?.[1]?.getTime() ?? -1,
+      defaultTimeRange[0].getTime(),
+      defaultTimeRange[1].getTime(),
     ],
   });
 
@@ -1384,18 +1385,21 @@ function KubernetesDashboardPage() {
         <PodDetailsSidePanel
           logSource={logSource}
           metricSource={metricSource}
+          dateRange={dateRange}
         />
       )}
       {metricSource && logSource && (
         <NodeDetailsSidePanel
           metricSource={metricSource}
           logSource={logSource}
+          dateRange={dateRange}
         />
       )}
       {metricSource && logSource && (
         <NamespaceDetailsSidePanel
           metricSource={metricSource}
           logSource={logSource}
+          dateRange={dateRange}
         />
       )}
       {metricSource && (

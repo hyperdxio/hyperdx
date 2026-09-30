@@ -1,12 +1,10 @@
-import { useState } from 'react';
-import CopyToClipboard from 'react-copy-to-clipboard';
 import { format } from '@hyperdx/common-utils/dist/sqlFormatter';
 import { ChartConfigWithOptDateRange } from '@hyperdx/common-utils/dist/types';
-import { Button, Paper, Text, useMantineColorScheme } from '@mantine/core';
-import { IconCheck, IconCopy } from '@tabler/icons-react';
+import { Paper, Text, useMantineColorScheme } from '@mantine/core';
 import { keepPreviousData } from '@tanstack/react-query';
 import CodeMirror, { EditorView } from '@uiw/react-codemirror';
 
+import PreviewCopyButton from '@/components/PreviewCopyButton';
 import { useRenderedSqlChartConfig } from '@/hooks/useChartConfig';
 import { clickhouseSql } from '@/utils/codeMirror';
 
@@ -19,36 +17,6 @@ function tryFormat(data?: string) {
   } catch {
     return data;
   }
-}
-
-function CopyButton({
-  text = '',
-  size = 'md',
-}: {
-  text?: string;
-  size?: 'xs' | 'md';
-}) {
-  const [copied, setCopied] = useState(false);
-
-  const iconSize = size === 'xs' ? 14 : 16;
-  const buttonSize = size === 'xs' ? 'compact-xs' : 'sm';
-
-  return (
-    <CopyToClipboard text={text ?? ''} onCopy={() => setCopied(true)}>
-      <Button
-        variant={copied ? 'light' : 'default'}
-        size={buttonSize}
-        className="position-absolute top-0 end-0"
-      >
-        {copied ? (
-          <IconCheck size={iconSize} className="me-2" />
-        ) : (
-          <IconCopy size={iconSize} className="me-2" />
-        )}
-        {copied ? 'Copied!' : 'Copy'}
-      </Button>
-    </CopyToClipboard>
-  );
 }
 
 export function SQLPreview({
@@ -85,7 +53,9 @@ export function SQLPreview({
         ]}
         editable={false}
       />
-      {enableCopy && <CopyButton text={displayed} size={copyButtonSize} />}
+      {enableCopy && (
+        <PreviewCopyButton text={displayed} size={copyButtonSize} />
+      )}
     </div>
   );
 }

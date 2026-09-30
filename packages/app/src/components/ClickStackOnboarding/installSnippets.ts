@@ -189,6 +189,12 @@ function buildCodexOneLiner(deployment: DeploymentShape): string {
  * by the deep-link host's URL parser. Notably, `+` decodes as space
  * under `application/x-www-form-urlencoded`, which corrupts the
  * embedded JSON.
+ *
+ * Residual by design: the access key is (base64/URL-)encoded into the
+ * deep-link target so the one-click install can authenticate. Only the
+ * human-readable JSON fallback is masked; the deep link itself carries the
+ * key in the DOM href. It is not shoulder-surfable visible text and is
+ * required for the link to work, so it is intentionally not reveal-gated.
  */
 function buildCursorDeeplink(deployment: DeploymentShape): string {
   const config = {

@@ -16,6 +16,7 @@ setup_suite() {
     wait_for_ready "otel-collector-compat"
     wait_for_ready "otel-collector-custom"
     wait_for_ready "otel-collector-oidc"
+    wait_for_ready "otel-collector-bearer-auth"
     # otel-collector-oidc-missing-audience is expected to exit immediately,
     # not become ready -- checked directly in oidc-auth.bats instead.
 }

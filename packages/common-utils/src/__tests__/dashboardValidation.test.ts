@@ -4,6 +4,7 @@ import {
   validateChartConfigFormulas,
   validateDashboardFilterFieldGating,
   validateDashboardFilterModes,
+  validateDashboardFilterOptionUniqueness,
   validateDashboardFilterVariableNames,
 } from '@/dashboardValidation';
 
@@ -418,6 +419,89 @@ describe('validateDashboardFilterFieldGating', () => {
     );
 
     expect(issues[0].path).toEqual(['body', 'filters', 0, 'variableName']);
+  });
+});
+
+type OptionsFilter = Parameters<
+  typeof validateDashboardFilterOptionUniqueness
+>[0][number];
+
+const collectOptionIssues = (
+  filters: OptionsFilter[],
+  paths?: { filtersPath?: (string | number)[] },
+) => {
+  const schema = z
+    .object({})
+    .superRefine((_, ctx) =>
+      validateDashboardFilterOptionUniqueness(filters, ctx, paths),
+    );
+  const result = schema.safeParse({});
+  return result.success ? [] : result.error.issues;
+};
+
+// Everything else per-type — which fields exist, `options` being non-empty, the
+// literal variable-only modes — is carried by the `DashboardFilterSchema`
+// variants and covered in `types.test.ts`. Uniqueness is what a shape cannot
+// state, so it lives here.
+describe('validateDashboardFilterOptions', () => {
+  it('accepts an empty filter list', () => {
+    expect(collectOptionIssues([])).toEqual([]);
+  });
+
+  it('accepts a filter with no options at all', () => {
+    expect(collectOptionIssues([{ name: 'Service' }])).toEqual([]);
+  });
+
+  it('accepts distinct options', () => {
+    expect(
+      collectOptionIssues([
+        { name: 'Environment', options: ['prod', 'staging', 'dev'] },
+      ]),
+    ).toEqual([]);
+  });
+
+  it('reports a repeated option once, naming it', () => {
+    const issues = collectOptionIssues([
+      { name: 'Environment', options: ['prod', 'dev', 'prod', 'dev'] },
+    ]);
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0].path).toEqual(['filters', 0, 'options']);
+    expect(issues[0].message).toBe(
+      'Filter "Environment" repeats the option "prod"; options must be unique',
+    );
+  });
+
+  // Case and whitespace make a distinct value: the dropdown offers them as
+  // written and a selection carries them verbatim.
+  it('compares options exactly', () => {
+    expect(
+      collectOptionIssues([
+        { name: 'Environment', options: ['prod', 'PROD', ' prod'] },
+      ]),
+    ).toEqual([]);
+  });
+
+  it('reports every offending filter, by index', () => {
+    const issues = collectOptionIssues([
+      { name: 'Fine', options: ['a', 'b'] },
+      { name: 'Broken A', options: ['a', 'a'] },
+      { name: 'Broken B', options: ['b', 'b'] },
+    ]);
+
+    expect(issues.map(i => i.path)).toEqual([
+      ['filters', 1, 'options'],
+      ['filters', 2, 'options'],
+    ]);
+  });
+
+  it('honors a custom filters path', () => {
+    const issues = collectOptionIssues(
+      [{ name: 'Environment', options: ['prod', 'prod'] }],
+      { filtersPath: ['body', 'filters'] },
+    );
+
+    expect(issues[0].path).toEqual(['body', 'filters', 0, 'options']);
   });
 });
 

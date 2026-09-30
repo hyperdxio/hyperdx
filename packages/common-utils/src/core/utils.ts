@@ -6,6 +6,7 @@ import { z } from 'zod';
 
 export { default as objectHash } from 'object-hash';
 
+import { isQueryExpressionFilter, isStaticListFilter } from '@/filters';
 import { isBuilderSavedChartConfig, isRawSqlSavedChartConfig } from '@/guards';
 import { MacroExpansionError, MalformedMacroArgsError } from '@/macroErrors';
 import {
@@ -401,6 +402,108 @@ export function replaceJsonExpressions(sql: string) {
   return { sqlWithReplacements, replacements };
 }
 
+const QUOTED_IDENTIFIER_REPLACEMENT_PREFIX = '__hdx_quoted_identifier_';
+
+export type QuotedIdentifierReplacements = {
+  /** Map from sentinel token -> the original quoted SQL text, e.g. `` `x-host-header` `` */
+  quotedText: Map<string, string>;
+  /** Map from sentinel token -> the bare identifier, e.g. `x-host-header` */
+  names: Map<string, string>;
+};
+
+/**
+ * Replaces backtick-quoted identifiers with bare placeholder tokens.
+ *
+ * node-sql-parser's Postgresql dialect accepts a backtick-quoted identifier
+ * wherever a column is referenced, but rejects one used as an alias, so one
+ * backtick-quoted alias broke any other aliases.
+ *
+ * Pairs with `replaceJsonExpressions`: run this first, then tokenize JSON
+ * expressions, and restore in the opposite order (JSON, then identifiers).
+ * A JSON replacement's stored text is sliced from the already-tokenized SQL,
+ * so it can hold identifier tokens; restoring identifiers first would strand
+ * the ones that JSON restoration puts back afterwards.
+ */
+export function replaceBacktickedIdentifiers(sql: string): {
+  sqlWithReplacements: string;
+  replacements: QuotedIdentifierReplacements;
+} {
+  const quotedText = new Map<string, string>();
+  const names = new Map<string, string>();
+  let out = '';
+  let i = 0;
+
+  while (i < sql.length) {
+    const c = sql.charAt(i);
+
+    // Copy string literals and double-quoted identifiers verbatim so
+    // backticks inside them survive.
+    if (c === "'" || c === '"') {
+      out += c;
+      i++;
+      while (i < sql.length) {
+        const char = sql.charAt(i);
+        out += char;
+        i++;
+        if (c === "'" && char === '\\' && i < sql.length) {
+          out += sql.charAt(i);
+          i++;
+          continue;
+        }
+        if (char === c) break;
+      }
+      continue;
+    }
+
+    if (c === '`') {
+      const quotedStart = i;
+      i++;
+      let name = '';
+      while (i < sql.length) {
+        if (sql.charAt(i) === '`') {
+          // A doubled backtick is an escaped literal backtick.
+          if (sql.charAt(i + 1) === '`') {
+            name += '`';
+            i += 2;
+            continue;
+          }
+          i++;
+          break;
+        }
+        name += sql.charAt(i);
+        i++;
+      }
+      const token = `${QUOTED_IDENTIFIER_REPLACEMENT_PREFIX}${quotedText.size}`;
+      quotedText.set(token, sql.slice(quotedStart, i));
+      names.set(token, name);
+      out += token;
+      continue;
+    }
+
+    out += c;
+    i++;
+  }
+
+  return { sqlWithReplacements: out, replacements: { quotedText, names } };
+}
+
+/**
+ * Substitutes placeholder tokens from `replaceBacktickedIdentifiers` or
+ * `replaceJsonExpressions` back into an expression.
+ */
+export function restoreReplacements(
+  expression: string,
+  replacements: Map<string, string>,
+): string {
+  let restored = expression;
+  for (const [token, original] of [...replacements].sort(
+    ([a], [b]) => b.length - a.length,
+  )) {
+    restored = restored.replaceAll(token, original);
+  }
+  return restored;
+}
+
 /**
  * To best support Pre-aggregation in Materialized Views, any new
  * granularities should be multiples of all smaller granularities.
@@ -439,11 +542,24 @@ export function hashCode(str: string) {
 export function convertDateRangeToGranularityString(
   dateRange: [Date, Date],
   maxNumBuckets: number = DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS,
+  /**
+   * Floor for the auto-inferred bucket size, in seconds. Useful when the
+   * underlying data is reported on a fixed interval (e.g. a metrics scrape
+   * interval): without this, a short selected date range can auto-infer a
+   * bucket smaller than that interval, producing sparse/steppy-looking
+   * series (buckets alternating between a real sample and an empty one).
+   * Sourced from `MetricSource.minAutoGranularity` where applicable -
+   * undefined/0 preserves the previous unfloored behavior.
+   */
+  minGranularitySeconds?: number,
 ): Granularity {
   const start = dateRange[0].getTime();
   const end = dateRange[1].getTime();
   const diffSeconds = Math.floor((end - start) / 1000);
-  const granularitySizeSeconds = Math.ceil(diffSeconds / maxNumBuckets);
+  const granularitySizeSeconds = Math.max(
+    Math.ceil(diffSeconds / maxNumBuckets),
+    minGranularitySeconds ?? 0,
+  );
 
   if (granularitySizeSeconds <= 15) {
     return Granularity.FifteenSecond;
@@ -700,17 +816,24 @@ export function convertToDashboardTemplate(
     input: DashboardFilter,
     sources: TSource[],
   ): DashboardFilter => {
-    const filter = DashboardFilterSchema.strip().parse(structuredClone(input));
+    const filter = DashboardFilterSchema.parse(structuredClone(input));
+
+    // A static filter references nothing in the workspace
+    if (isStaticListFilter(filter)) return filter;
+
     // Extract name from source or default to '' if not found
     filter.source =
-      sources.find(source => source.id === input.source)?.name ?? '';
-    if (input.appliesToSourceIds?.length) {
-      const remapped = input.appliesToSourceIds
-        .map(id => sources.find(source => source.id === id)?.name)
-        .filter((name): name is string => !!name && name.length > 0);
-      filter.appliesToSourceIds = remapped.length > 0 ? remapped : undefined;
-    } else {
-      filter.appliesToSourceIds = undefined;
+      sources.find(source => source.id === filter.source)?.name ?? '';
+
+    if (isQueryExpressionFilter(filter)) {
+      if (filter.appliesToSourceIds?.length) {
+        const remapped = filter.appliesToSourceIds
+          .map(id => sources.find(source => source.id === id)?.name)
+          .filter((name): name is string => !!name && name.length > 0);
+        filter.appliesToSourceIds = remapped.length > 0 ? remapped : undefined;
+      } else {
+        filter.appliesToSourceIds = undefined;
+      }
     }
     return filter;
   };
@@ -1086,6 +1209,44 @@ export function isDateRangeEqual(range1: [Date, Date], range2: [Date, Date]) {
   );
 }
 
+/**
+ * Index of the first standalone SETTINGS keyword, or -1. Occurrences inside
+ * quoted strings, comments or identifiers (e.g. `'app.settings.reloads'`,
+ * `AppSettings`, `LogAttributes.settings`) are not the clause and must not
+ * split the query.
+ */
+function findSettingsKeyword(sql: string): number {
+  const isWordChar = (c: string) => /\w/.test(c);
+  const nextNonSpace = (from: number) => sql.slice(from).trimStart().charAt(0);
+  let quote: string | undefined;
+  for (let i = 0; i < sql.length; i++) {
+    const c = sql.charAt(i);
+    if (quote) {
+      if (c === '\\') i++;
+      else if (c === quote) quote = undefined;
+    } else if (c === "'" || c === '"' || c === '`') {
+      quote = c;
+    } else if (c === '-' && sql.charAt(i + 1) === '-') {
+      const lineEnd = sql.indexOf('\n', i + 2);
+      if (lineEnd === -1) break;
+      i = lineEnd;
+    } else if (c === '/' && sql.charAt(i + 1) === '*') {
+      const blockEnd = sql.indexOf('*/', i + 2);
+      if (blockEnd === -1) break;
+      i = blockEnd + 1;
+    } else if (
+      sql.substring(i, i + 8).toUpperCase() === 'SETTINGS' &&
+      !isWordChar(sql.charAt(i - 1)) &&
+      !isWordChar(sql.charAt(i + 8)) &&
+      sql.slice(0, i).trimEnd().slice(-1) !== '.' &&
+      !['.', '['].includes(nextNonSpace(i + 8))
+    ) {
+      return i;
+    }
+  }
+  return -1;
+}
+
 /*
   This function extracts the SETTINGS clause from the end(!) of the sql string.
 */
@@ -1096,7 +1257,7 @@ export function extractSettingsClauseFromEnd(
     ? sqlInput.trim().slice(0, -1)
     : sqlInput.trim();
 
-  const settingsIndex = sql.toUpperCase().indexOf('SETTINGS');
+  const settingsIndex = findSettingsKeyword(sql);
 
   if (settingsIndex === -1) {
     return [sql, undefined] as const;

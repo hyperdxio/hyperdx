@@ -162,6 +162,7 @@ export const mcpSaveSourceSchema = z.object({
 
   // ── Metric ──
   metricTables: metricTablesSchema.optional(),
+  minAutoGranularity: z.string().optional(),
 
   // ── Materialized views (advanced; granularities use "<n> <unit>" form) ──
   materializedViews: materializedViewsSchema.optional(),

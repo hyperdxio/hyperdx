@@ -79,12 +79,27 @@ const TRACE_SOURCE = {
   spanIdExpression: 'SpanId',
 };
 
+// A log source stack frames can resolve to. Unlike a trace source, its
+// Overview (and thus the span-link rows) renders as a top-level side panel
+// tab, so pop-back tests can click a link while a frame is active without
+// going through the mocked-away trace waterfall.
+const STACK_LOG_SOURCE = {
+  id: 'stack-log-src',
+  kind: 'log',
+  traceSourceId: 'trace-src',
+  resourceAttributesExpression: 'ResourceAttributes',
+};
+
 jest.mock('@/source', () => ({
   __esModule: true,
   getEventBody: () => undefined,
 
   useSource: ({ id }: { id: string | null }) =>
-    id === 'trace-src' ? { data: TRACE_SOURCE } : { data: undefined },
+    id === 'trace-src'
+      ? { data: TRACE_SOURCE }
+      : id === 'stack-log-src'
+        ? { data: STACK_LOG_SOURCE }
+        : { data: undefined },
 }));
 
 jest.mock('../DBSessionPanel', () => ({
@@ -127,6 +142,23 @@ jest.mock('../ServiceMap/ServiceMapSidePanel', () => ({
 jest.mock('../TimelineChart/utils', () => ({
   __esModule: true,
   renderMs: () => '',
+}));
+// The linked-span lookups issue real queries through useQueriedChartConfig,
+// whose providers this harness doesn't set up.
+jest.mock('../linkedSpans', () => ({
+  __esModule: true,
+  useReverseSpanLinks: () => ({ links: [], isLoading: false, error: null }),
+  useLinkedSpanDetails: () => ({
+    details: new Map(),
+    isLoading: false,
+    error: null,
+  }),
+  linkedSpanKey: (traceId: string, spanId: string) => `${traceId}:${spanId}`,
+  LinkedSpanMetaLine: () => null,
+}));
+jest.mock('../SpanLinkedFromSubpanel', () => ({
+  __esModule: true,
+  SpanLinkedFromSubpanel: () => null,
 }));
 jest.mock('../DrawerUtils', () => ({
   __esModule: true,
@@ -222,6 +254,88 @@ describe('DBRowSidePanelInner, span link "Open trace" push wiring (HDX-3191)', (
     // matching handleSourceStackPush's Trace-vs-Overview routing.
     expect(setterFor('sidePanelNavStack')).toHaveBeenCalledWith([]);
     expect(setterFor('sidePanelTab')).toHaveBeenCalledWith('trace');
+  });
+
+  it('stamps the canonical origin row id onto the pushed frame', () => {
+    mockUseRowData.mockReturnValue({
+      data: {
+        data: [
+          {
+            __hdx_span_links: [LINK],
+            __hdx_trace_id: 'origin-trace',
+            __hdx_span_id: 'origin-span',
+          },
+        ],
+        meta: [],
+      },
+      isLoading: false,
+      isSuccess: true,
+      isError: false,
+      error: null,
+    });
+
+    renderInner('row-1');
+
+    fireEvent.click(screen.getByTestId('span-link-open-trace'));
+
+    const pushedStack = setterFor('sidePanelSourceStack').mock.calls[0][0];
+    expect(pushedStack[0]).toMatchObject({
+      originRowId: [
+        SqlString.format('?=?', [SqlString.raw('TraceId'), 'origin-trace']),
+        SqlString.format('?=?', [SqlString.raw('SpanId'), 'origin-span']),
+      ].join(' AND '),
+    });
+  });
+
+  it('pops back to the previous breadcrumb when the link targets the span it was pushed from', () => {
+    // One frame deep, and that frame remembers it was entered from the exact
+    // span this link points at: A -> B, now B links back to A.
+    mockQueryStore['sidePanelSourceStack'] = [
+      {
+        sourceId: 'stack-log-src',
+        rowId: 'TraceId=whatever',
+        aliasWith: [],
+        label: 'Trace bbbb',
+        sourceKind: 'log',
+        // The canonical row id a hop targeting LINK's span would compute.
+        originRowId: [
+          SqlString.format('?=?', [SqlString.raw('TraceId'), LINK.TraceId]),
+          SqlString.format('?=?', [SqlString.raw('SpanId'), LINK.SpanId]),
+        ].join(' AND '),
+        originTab: 'overview',
+      },
+    ];
+    mockQueryStore['sidePanelStackRoot'] = 'row-1';
+
+    renderInner('row-1');
+
+    fireEvent.click(screen.getByTestId('span-link-open-trace'));
+
+    expect(setterFor('sidePanelSourceStack')).toHaveBeenCalledTimes(1);
+    expect(setterFor('sidePanelSourceStack')).toHaveBeenCalledWith([]);
+    // The level we return to gets its tab back.
+    expect(setterFor('sidePanelTab')).toHaveBeenCalledWith('overview');
+  });
+
+  it('pushes normally when the link targets a span other than the previous breadcrumb', () => {
+    mockQueryStore['sidePanelSourceStack'] = [
+      {
+        sourceId: 'stack-log-src',
+        rowId: 'TraceId=whatever',
+        aliasWith: [],
+        label: 'Trace bbbb',
+        sourceKind: 'log',
+        originRowId: "TraceId='some-other-trace' AND SpanId='some-other-span'",
+      },
+    ];
+    mockQueryStore['sidePanelStackRoot'] = 'row-1';
+
+    renderInner('row-1');
+
+    fireEvent.click(screen.getByTestId('span-link-open-trace'));
+
+    const pushedStack = setterFor('sidePanelSourceStack').mock.calls[0][0];
+    expect(pushedStack).toHaveLength(2);
   });
 
   it('does not push when the current row has no resolvable trace source', () => {

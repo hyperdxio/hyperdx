@@ -1,6 +1,7 @@
 import { uniq } from 'lodash';
 
 import * as config from '@/config';
+import { recordDashboardOnboardingIfHasTiles } from '@/controllers/dashboard';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
 import Dashboard from '@/models/dashboard';
@@ -18,13 +19,14 @@ import { mcpPatchDashboardSchema } from './schemas';
 import {
   getRawSqlMissingSourceError,
   getRawSqlTileMacroWarnings,
+  getTileVariableWarnings,
 } from './validation';
 
 export function registerPatchDashboard({
   context,
   registerTool,
 }: ToolRegistrar): void {
-  const { teamId } = context;
+  const { teamId, userId } = context;
   const frontendUrl = config.FRONTEND_URL;
 
   registerTool(
@@ -231,6 +233,8 @@ export function registerPatchDashboard({
         });
       }
 
+      recordDashboardOnboardingIfHasTiles(userId, updatedDashboard.tiles);
+
       // Return a lightweight response: the patched tile (if any) plus
       // updated dashboard metadata, without the full tile array.
       const output: Record<string, unknown> = {
@@ -245,7 +249,10 @@ export function registerPatchDashboard({
         output.patchedTile = patchedTile;
         output.hint =
           'Use clickstack_query_tile to test the patched tile query.';
-        const macroWarnings = getRawSqlTileMacroWarnings([patchedTile]);
+        const macroWarnings = [
+          ...getRawSqlTileMacroWarnings([patchedTile]),
+          ...getTileVariableWarnings([patchedTile], existingDashboard.filters),
+        ];
         if (macroWarnings.length > 0) {
           output.warnings = macroWarnings;
         }

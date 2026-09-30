@@ -1,0 +1,29 @@
+.code {
+  margin: 0;
+  padding: 12px 14px;
+  overflow-x: auto;
+  border-radius: var(--mantine-radius-sm);
+  background: var(--color-bg-field);
+  color: var(--mantine-color-text);
+  font-family: var(--mantine-font-family-monospace);
+  font-size: var(--mantine-font-size-sm);
+  line-height: 1.6;
+  white-space: pre;
+}
+
+.wrap {
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+// Shared muted-at-rest treatment for the Reveal and Copy buttons. Uses the
+// themed text color (not Mantine "dimmed") so it stays legible in light/dark
+// and across brands; both buttons carry `c="inherit"` to pick up this color.
+.reveal {
+  color: var(--color-text-muted);
+  transition: color 100ms ease;
+
+  &:hover {
+    color: var(--color-text);
+  }
+}

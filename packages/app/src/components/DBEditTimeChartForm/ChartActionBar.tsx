@@ -1,23 +1,72 @@
-import { Control, UseFormHandleSubmit } from 'react-hook-form';
+import { Control, UseFormHandleSubmit, useWatch } from 'react-hook-form';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
+import { isRangeQuery } from '@hyperdx/common-utils/dist/core/promql';
 import { SavedChartConfig } from '@hyperdx/common-utils/dist/types';
-import { ActionIcon, Button, Flex, Menu } from '@mantine/core';
 import {
+  ActionIcon,
+  Box,
+  Button,
+  Flex,
+  Menu,
+  Switch,
+  Tooltip,
+} from '@mantine/core';
+import {
+  IconBell,
   IconDotsVertical,
   IconLayoutGrid,
   IconPlayerPlay,
 } from '@tabler/icons-react';
 
 import { ChartEditorFormState } from '@/components/ChartEditor/types';
+import { isPromqlDisplayType } from '@/components/ChartEditor/utils';
+import { EDITOR_INPUT_HEIGHTS } from '@/components/editorInputHeights';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { TimePicker } from '@/components/TimePicker';
 import { IS_LOCAL_MODE } from '@/config';
 import { GranularityPickerControlled } from '@/GranularityPicker';
 
+import { tabQueriesData } from './utils';
+
+export type DashboardFiltersToggleProps = {
+  checked: boolean;
+  disabledReason?: string;
+  onChange: (checked: boolean) => void;
+};
+
+function DashboardFiltersToggle({
+  checked,
+  disabledReason,
+  onChange,
+}: DashboardFiltersToggleProps) {
+  const isDisabled = disabledReason != null;
+  const tooltip = isDisabled
+    ? disabledReason
+    : 'Apply dashboard-level filter and variable selections to the chart preview';
+
+  return (
+    <Tooltip label={tooltip} position="top" multiline maw={320}>
+      <Box data-testid="apply-dashboard-filters">
+        <Switch
+          label="Apply filters"
+          size="sm"
+          labelPosition="left"
+          checked={checked}
+          disabled={isDisabled}
+          onChange={event => onChange(event.currentTarget.checked)}
+          style={isDisabled ? { pointerEvents: 'none' } : undefined}
+        />
+      </Box>
+    </Tooltip>
+  );
+}
+
 type ChartActionBarProps = {
   control: Control<ChartEditorFormState>;
   handleSubmit: UseFormHandleSubmit<ChartEditorFormState>;
   tableConnection: TableConnection;
+  sourceId?: string;
+  dateRange?: [Date, Date];
   activeTab: string;
   isRawSqlInput: boolean;
   dashboardId?: string;
@@ -28,9 +77,22 @@ type ChartActionBarProps = {
   onSave?: (chart: SavedChartConfig) => void;
   onClose?: () => void;
   isSaving?: boolean;
+  /** Whether the edited chart currently carries an alert. */
+  hasAlert?: boolean;
+  handleSaveAlert?: (form: ChartEditorFormState) => void;
+  onSaveAlert?: (chart: SavedChartConfig) => void;
+  saveAlertLabel?: string;
+  isSavingAlert?: boolean;
+  /**
+   * Whether to offer "Save to dashboard". Defaults to "outside a dashboard".
+   * The inline-alert editor turns it off: saving that chart as a tile would
+   * copy its alert onto the tile, leaving two alerts on one query.
+   */
+  showSaveToDashboard?: boolean;
   displayedTimeInputValue?: string;
   setDisplayedTimeInputValue?: (value: string) => void;
   onTimeRangeSearch?: (value: string) => void;
+  filtersToggle?: DashboardFiltersToggleProps;
   setSaveToDashboardModalOpen: (open: boolean) => void;
 };
 
@@ -38,6 +100,8 @@ export function ChartActionBar({
   control,
   handleSubmit,
   tableConnection,
+  sourceId,
+  dateRange,
   activeTab,
   isRawSqlInput,
   dashboardId,
@@ -48,11 +112,34 @@ export function ChartActionBar({
   onSave,
   onClose,
   isSaving,
+  hasAlert,
+  handleSaveAlert,
+  onSaveAlert,
+  saveAlertLabel = 'Save alert',
+  isSavingAlert,
+  showSaveToDashboard,
   displayedTimeInputValue,
   setDisplayedTimeInputValue,
   onTimeRangeSearch,
+  filtersToggle,
   setSaveToDashboardModalOpen,
 }: ChartActionBarProps) {
+  const configType = useWatch({ control, name: 'configType' });
+  const displayType = useWatch({ control, name: 'displayType' });
+  const promqlExpressions = useWatch({ control, name: 'promqlExpressions' });
+
+  // A time chart always buckets, and a PromQL tile that reduces a range query
+  // reads the same granularity even though it shows one value rather than a
+  // series. An all-instant PromQL tile has no resolution to choose.
+  const showGranularity =
+    activeTab === 'time' ||
+    (configType === 'promql' &&
+      isPromqlDisplayType(displayType) &&
+      isRangeQuery({
+        promqlExpression: promqlExpressions,
+        displayType,
+      }));
+
   return (
     <Flex justify="space-between" mt="sm">
       <Flex gap="sm">
@@ -66,6 +153,19 @@ export function ChartActionBar({
             Save
           </Button>
         )}
+        {/* Only once an alert exists on the chart: with none there is nothing
+            to save, and the button would read as a second way to add one. */}
+        {onSaveAlert != null && handleSaveAlert != null && hasAlert && (
+          <Button
+            data-testid="chart-save-alert-button"
+            loading={isSavingAlert}
+            variant="primary"
+            leftSection={<IconBell size={16} />}
+            onClick={handleSubmit(handleSaveAlert)}
+          >
+            {saveAlertLabel}
+          </Button>
+        )}
         {onClose != null && (
           <Button
             variant="subtle"
@@ -77,15 +177,23 @@ export function ChartActionBar({
           </Button>
         )}
       </Flex>
-      <Flex gap="sm" mb="sm" align="center" justify="end">
+      <Flex gap="sm" mb="sm" align="flex-start" justify="end">
+        {filtersToggle != null && tabQueriesData(activeTab) && (
+          <Flex h={`${EDITOR_INPUT_HEIGHTS.sm}px`} align="center">
+            <DashboardFiltersToggle {...filtersToggle} />
+          </Flex>
+        )}
         {(activeTab === 'table' ||
           activeTab === 'pie' ||
           activeTab === 'bar') &&
-          !isRawSqlInput && (
+          !isRawSqlInput &&
+          configType !== 'promql' && (
             <div style={{ width: 400 }} data-testid="order-by-input">
               <SQLInlineEditorControlled
                 parentRef={parentRef}
                 tableConnection={tableConnection}
+                sourceId={sourceId}
+                dateRange={dateRange}
                 // The default order by is the current group by value
                 placeholder={typeof groupBy === 'string' ? groupBy : ''}
                 control={control}
@@ -97,7 +205,7 @@ export function ChartActionBar({
               />
             </div>
           )}
-        {activeTab !== 'markdown' &&
+        {tabQueriesData(activeTab) &&
           setDisplayedTimeInputValue != null &&
           displayedTimeInputValue != null &&
           onTimeRangeSearch != null && (
@@ -112,10 +220,10 @@ export function ChartActionBar({
               }}
             />
           )}
-        {activeTab === 'time' && (
+        {showGranularity && (
           <GranularityPickerControlled control={control} name="granularity" />
         )}
-        {activeTab !== 'markdown' && (
+        {tabQueriesData(activeTab) && (
           <Button
             data-testid="chart-run-query-button"
             variant="primary"
@@ -127,7 +235,7 @@ export function ChartActionBar({
             Run
           </Button>
         )}
-        {!IS_LOCAL_MODE && !dashboardId && (
+        {!IS_LOCAL_MODE && (showSaveToDashboard ?? !dashboardId) && (
           <Menu width={250}>
             <Menu.Target>
               <ActionIcon variant="secondary" size="input-sm">

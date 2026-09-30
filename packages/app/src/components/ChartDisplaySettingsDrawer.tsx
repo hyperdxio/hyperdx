@@ -1,8 +1,13 @@
 import { useCallback, useEffect, useMemo } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import {
+  UnknownTemplateHelperError,
+  validateTemplate,
+} from '@hyperdx/common-utils/dist/core/handlebarsEnv';
+import {
   ChartConfigWithDateRange,
   DisplayType,
+  MAX_LEGEND_TEMPLATE_LENGTH,
   NumberFormat,
 } from '@hyperdx/common-utils/dist/types';
 import {
@@ -30,7 +35,7 @@ import {
   stripLocalIds,
 } from './ColorRulesEditor';
 import { ColorSwatchInput } from './ColorSwatchInput';
-import { CheckBoxControlled } from './InputControlled';
+import { CheckBoxControlled, TextInputControlled } from './InputControlled';
 import { DEFAULT_NUMBER_FORMAT, NumberFormatForm } from './NumberFormat';
 
 export type ChartConfigDisplaySettings = Pick<
@@ -53,6 +58,9 @@ export type ChartConfigDisplaySettings = Pick<
   // for the authoritative semantics. The editor clears to `null` (not
   // `undefined`) so the cleared state survives JSON round-tripping via the URL.
   seriesLimit?: number | null;
+  // PromQL-only: Handlebars template over each series' Prometheus label set
+  // that renders the legend/tooltip name.
+  legendTemplate?: string;
 };
 
 /**
@@ -72,6 +80,8 @@ interface ChartDisplaySettingsDrawerProps {
   displayType: DisplayType;
   /** 'sql' for raw SQL chart configs; anything else is treated as a builder config. */
   configType?: 'sql' | 'builder' | 'promql';
+  /** Whether a PromQL tile's queried expression runs over a range. */
+  promqlUsesRange?: boolean;
   previousDateRange?: [Date, Date];
   onChange: (settings: ChartConfigDisplaySettings, isDirty: boolean) => void;
   onClose: () => void;
@@ -97,6 +107,7 @@ function applyDefaultSettings(
     // Coerce to null so `reset` clears the input; undefined leaves the
     // previously registered field value in place.
     seriesLimit: settings.seriesLimit ?? null,
+    legendTemplate: settings.legendTemplate ?? '',
     color: settings.color,
     colorRules: settings.colorRules
       ? attachLocalIds(settings.colorRules)
@@ -110,6 +121,7 @@ export default function ChartDisplaySettingsDrawer({
   opened,
   displayType,
   configType,
+  promqlUsesRange = false,
   defaultNumberFormat,
   onChange,
   onClose,
@@ -165,8 +177,9 @@ export default function ChartDisplaySettingsDrawer({
         },
         hasDirtyFields,
       );
+      // Close only on successful validation
+      onClose();
     })();
-    onClose();
   }, [onChange, handleSubmit, onClose, settings.numberFormat, dirtyFields]);
 
   const resetToDefaults = useCallback(() => {
@@ -189,6 +202,13 @@ export default function ChartDisplaySettingsDrawer({
   const showSeriesLimit = isTimeChart && configType !== 'promql';
   const isRawSqlTimeChart = showSeriesLimit && configType === 'sql';
 
+  // Every PromQL display that surfaces a series name. A number tile shows one
+  // value and a table gives each label its own column, so neither has a legend.
+  const showLegendTemplate =
+    configType === 'promql' &&
+    displayType !== DisplayType.Number &&
+    displayType !== DisplayType.Table;
+
   // On pie/bar builder charts, seriesLimit becomes a plain SQL LIMIT on the
   // number of slices/bars; raw SQL configs author their own LIMIT directly.
   const isCategoricalChart =
@@ -201,20 +221,27 @@ export default function ChartDisplaySettingsDrawer({
   // column ordering needs the builder `select` structure to know which columns
   // are group-by keys, so it stays builder-only.
   const showTableOptions = displayType === DisplayType.Table;
-  const showGroupByColumnsOnLeft = showTableOptions && configType !== 'sql';
+  const showGroupByColumnsOnLeft =
+    showTableOptions && configType !== 'sql' && configType !== 'promql';
 
   // Tile-level color is only meaningful for number tiles today.
   // Per-series colors on line / bar / pie ship in a follow-up PR via
   // `select[i].color`.
   const showTileColor = displayType === DisplayType.Number;
 
-  // The background sparkline is derived from a time-bucketed version of the
-  // tile's query, so it only applies to builder number tiles: raw SQL number
-  // tiles return a single value with no time dimension to bucket. On a SQL
-  // number tile the control is shown disabled with a hint rather than hidden,
-  // so the option stays discoverable.
+  // The sparkline needs buckets. A builder tile derives them from a
+  // time-bucketed version of its query; a PromQL tile reuses the buckets its
+  // range query fetches, so an instant one has none. Raw SQL returns a
+  // single value with no time dimension at all. Where it cannot apply the
+  // control is shown disabled with a hint rather than hidden, so the option
+  // stays discoverable.
   const showBackgroundChart = displayType === DisplayType.Number;
-  const isBackgroundChartDisabled = configType === 'sql';
+  const isBackgroundChartDisabled =
+    configType === 'sql' || (configType === 'promql' && !promqlUsesRange);
+  const backgroundChartDisabledHint =
+    configType === 'promql'
+      ? 'Available on PromQL range queries.'
+      : 'Available on query-builder number tiles.';
 
   return (
     <Drawer
@@ -291,6 +318,40 @@ export default function ChartDisplaySettingsDrawer({
                 />
               </Box>
             )}
+            <Divider />
+          </>
+        )}
+
+        {showLegendTemplate && (
+          <>
+            <Box>
+              <TextInputControlled
+                control={control}
+                name="legendTemplate"
+                size="xs"
+                label="Legend template"
+                description="Handlebars template rendered with each series' Prometheus labels. Leave empty for the default legend. Additional labels will be added if the template does not produce unique labels for each series."
+                placeholder="e.g. {{namespace}} - {{pod}}"
+                data-testid="legend-template-input"
+                rules={{
+                  validate: value => {
+                    if (typeof value !== 'string' || !value) return true;
+                    const trimmed = value.trim();
+                    if (trimmed.length > MAX_LEGEND_TEMPLATE_LENGTH) {
+                      return `Template is too long (${trimmed.length} characters, max ${MAX_LEGEND_TEMPLATE_LENGTH})`;
+                    }
+                    try {
+                      validateTemplate(trimmed);
+                      return true;
+                    } catch (err) {
+                      return err instanceof UnknownTemplateHelperError
+                        ? err.message
+                        : 'Invalid Handlebars template';
+                    }
+                  },
+                }}
+              />
+            </Box>
             <Divider />
           </>
         )}
@@ -382,6 +443,7 @@ export default function ChartDisplaySettingsDrawer({
                   value={value}
                   onChange={onChange}
                   disabled={isBackgroundChartDisabled}
+                  disabledHint={backgroundChartDisabledHint}
                 />
               )}
             />

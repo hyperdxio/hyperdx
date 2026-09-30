@@ -438,19 +438,24 @@ describe('useSidePanelStack', () => {
       expect(readLastTab()).toBe(Tab.Parsed);
     });
 
-    it('does not remember a navigational tab as a reading view', () => {
-      const { result } = renderHook(() =>
-        useSidePanelStack({ initialRowId: 'root-1' }),
-      );
-      act(() => result.current.setTab(Tab.Parsed));
-      // Opening Surrounding Context to hunt for a neighbouring row must not cost
-      // the reader the view they had chosen.
-      act(() => result.current.setTab(Tab.Context));
+    it.each([Tab.Context, Tab.Logs])(
+      'does not remember %s as a reading view',
+      navigationalTab => {
+        const { result } = renderHook(() =>
+          useSidePanelStack({ initialRowId: 'root-1' }),
+        );
+        act(() => result.current.setTab(Tab.Parsed));
+        // Opening Surrounding Context or the trace's logs to hunt for a row
+        // must not cost the reader the view they had chosen.
+        act(() => result.current.setTab(navigationalTab));
 
-      expect(readLastTab()).toBe(Tab.Parsed);
-      // It is still the active tab for the current row, just not remembered.
-      expect(setterFor('sidePanelTab')).toHaveBeenLastCalledWith(Tab.Context);
-    });
+        expect(readLastTab()).toBe(Tab.Parsed);
+        // It is still the active tab for the current row, just not remembered.
+        expect(setterFor('sidePanelTab')).toHaveBeenLastCalledWith(
+          navigationalTab,
+        );
+      },
+    );
 
     it('exposes the reading view separately from where the URL points', () => {
       seedLastTab(Tab.Parsed);

@@ -1,0 +1,35 @@
+{
+  "resourceLogs": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "suite-id",
+            "value": {
+              "stringValue": "bearer-auth"
+            }
+          },
+          {
+            "key": "test-id",
+            "value": {
+              "stringValue": "bearer-prefixed"
+            }
+          }
+        ]
+      },
+      "scopeLogs": [
+        {
+          "scope": {},
+          "logRecords": [
+            {
+              "timeUnixNano": "1901999600000000000",
+              "body": {
+                "stringValue": "a log accepted with a Bearer-prefixed token"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -19,7 +19,12 @@ export type CellSummary = {
   columnKey: ColumnKey;
   n: number;
   programmatic: { mean: number; perCheck: Record<string, number> };
-  adoption?: { mean: number; perCheck: Record<string, number> };
+  adoption?: {
+    mean: number;
+    perCheck: Record<string, number>;
+    /** Check ids that are informational — reported but excluded from mean. */
+    informational?: string[];
+  };
   judge: {
     weightedMean: number;
     perCriterion: Record<string, number>;
@@ -262,8 +267,12 @@ function buildCellSummary(
     const adoptionMean = mean(adopted.map(p => p.grade.adoption!.score));
     const adoptionPerCheck: Record<string, number> = {};
     const adoptionCheckIds = new Set<string>();
+    const adoptionInformational = new Set<string>();
     for (const p of adopted)
-      for (const h of p.grade.adoption!.hits) adoptionCheckIds.add(h.id);
+      for (const h of p.grade.adoption!.hits) {
+        adoptionCheckIds.add(h.id);
+        if (h.informational) adoptionInformational.add(h.id);
+      }
     for (const id of adoptionCheckIds) {
       const satisfied = adopted.map(
         p => p.grade.adoption!.hits.find(h => h.id === id)?.satisfied ?? false,
@@ -271,7 +280,13 @@ function buildCellSummary(
       adoptionPerCheck[id] =
         satisfied.filter(Boolean).length / satisfied.length;
     }
-    adoption = { mean: adoptionMean, perCheck: adoptionPerCheck };
+    adoption = {
+      mean: adoptionMean,
+      perCheck: adoptionPerCheck,
+      ...(adoptionInformational.size > 0
+        ? { informational: [...adoptionInformational].sort() }
+        : {}),
+    };
   }
 
   const perCriterion: Record<string, number> = {};

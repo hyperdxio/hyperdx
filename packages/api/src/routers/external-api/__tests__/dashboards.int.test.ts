@@ -1,5 +1,9 @@
 import { isBuilderSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
-import { MetricsDataType, SourceKind } from '@hyperdx/common-utils/dist/types';
+import {
+  MetricsDataType,
+  OnboardingTaskId,
+  SourceKind,
+} from '@hyperdx/common-utils/dist/types';
 import { omit } from 'lodash';
 import { ObjectId } from 'mongodb';
 import request from 'supertest';
@@ -17,6 +21,7 @@ import Alert, { AlertSource, AlertThresholdType } from '@/models/alert';
 import Connection from '@/models/connection';
 import Dashboard from '@/models/dashboard';
 import { Source } from '@/models/source';
+import User from '@/models/user';
 import Webhook, { WebhookService } from '@/models/webhook';
 import {
   ExternalDashboardTile,
@@ -216,6 +221,43 @@ describe('External API v2 Dashboards - old format', () => {
   const authRequest = (method, url) => {
     return agent[method](url).set('Authorization', `Bearer ${user?.accessKey}`);
   };
+
+  describe('onboarding task recording', () => {
+    const completedTasks = async () =>
+      (await User.findById(user._id))?.onboardingData?.completedTasks ?? [];
+
+    // Recording is fire-and-forget (not awaited by the handler), so poll
+    // briefly rather than reading once immediately after the response.
+    const waitForTask = async (task: OnboardingTaskId) => {
+      for (let i = 0; i < 20; i++) {
+        if ((await completedTasks()).includes(task)) return true;
+        await new Promise(r => setTimeout(r, 25));
+      }
+      return false;
+    };
+
+    it('records the dashboard task when a v2 dashboard with a tile is created', async () => {
+      await authRequest('post', BASE_URL)
+        .send({
+          name: 'With tile',
+          tiles: [createTimeSeriesChart(traceSource._id.toString())],
+          tags: [],
+        })
+        .expect(200);
+
+      expect(await waitForTask('dashboard')).toBe(true);
+    });
+
+    it('does not record the dashboard task for a tileless v2 dashboard', async () => {
+      await authRequest('post', BASE_URL)
+        .send({ name: 'Empty', tiles: [], tags: [] })
+        .expect(200);
+
+      // Give any stray write a chance to land, then assert it did not.
+      await new Promise(r => setTimeout(r, 200));
+      expect(await completedTasks()).not.toContain('dashboard');
+    });
+  });
 
   describe('Response Format', () => {
     it('should return responses in the expected (new) format when creating the dashboard in the old format', async () => {
@@ -1872,7 +1914,7 @@ describe('External API v2 Dashboards - new format', () => {
   });
 
   const server = getServer();
-  let agent, team, user, traceSource, metricSource, connection;
+  let agent, team, user, traceSource, metricSource, promqlSource, connection;
 
   beforeAll(async () => {
     await server.start();
@@ -1920,6 +1962,18 @@ describe('External API v2 Dashboards - new format', () => {
       timestampValueExpression: 'TimeUnix',
       connection: connection._id,
       name: 'Metrics',
+    });
+
+    promqlSource = await Source.create({
+      kind: SourceKind.Promql,
+      team: team._id,
+      from: {
+        databaseName: DEFAULT_DATABASE,
+        tableName: 'otel_metrics_timeseries',
+      },
+      timestampValueExpression: 'TimeUnix',
+      connection: connection._id,
+      name: 'PromQL',
     });
   });
 
@@ -3074,7 +3128,7 @@ describe('External API v2 Dashboards - new format', () => {
           sqlTemplate,
           sourceId,
           numberFormat: { output: 'currency', currencySymbol: '$' },
-          // Raw SQL number tiles carry the static tile color (no colorRules).
+          // This fixture exercises the static color; raw SQL number tiles also support colorRules.
           color: 'chart-purple',
         },
       };
@@ -4768,7 +4822,7 @@ describe('External API v2 Dashboards - new format', () => {
           sqlTemplate,
           sourceId,
           numberFormat: { output: 'currency', currencySymbol: '$' },
-          // Raw SQL number tiles carry the static tile color (no colorRules).
+          // This fixture exercises the static color; raw SQL number tiles also support colorRules.
           color: 'chart-purple',
         },
       };
@@ -5317,6 +5371,29 @@ describe('External API v2 Dashboards - new format', () => {
       ...overrides,
     });
 
+    const staticFilterInput = (overrides = {}) => ({
+      id: new ObjectId().toString(),
+      type: 'STATIC_LIST' as const,
+      name: 'Environment',
+      options: ['prod', 'staging', 'dev'],
+      isBroadcastEnabled: false,
+      isVariableEnabled: true,
+      variableName: 'env',
+      ...overrides,
+    });
+
+    const promqlFilterInput = (overrides = {}) => ({
+      id: new ObjectId().toString(),
+      type: 'PROMETHEUS_LABEL' as const,
+      name: 'Pod',
+      sourceId: promqlSource._id.toString(),
+      label: 'pod',
+      isBroadcastEnabled: false,
+      isVariableEnabled: true,
+      variableName: 'pod',
+      ...overrides,
+    });
+
     const sendFilters = async (filters: Record<string, unknown>[]) => {
       const payload = createMockDashboardWithIds(
         traceSource._id.toString(),
@@ -5553,6 +5630,370 @@ describe('External API v2 Dashboards - new format', () => {
         expect(response.status).toBe(200);
       });
     });
+
+    describe('required filters', () => {
+      // Named factories rather than a keyed map, so the label `it.each` prints
+      // does not have to come from a lookup evaluated at collection time
+      // (`promqlFilterInput` reads a source created in `beforeEach`).
+      const variants = [
+        ['QUERY_EXPRESSION', filterInput],
+        ['STATIC_LIST', staticFilterInput],
+        ['PROMETHEUS_LABEL', promqlFilterInput],
+      ] as const;
+
+      it.each(variants)(
+        'accepts a required %s filter',
+        async (_type, makeFilter) => {
+          const response = await sendFilters([
+            makeFilter({ minSelections: 1 }),
+          ]);
+          expect(response.status).toBe(200);
+          expect(response.body.data.filters[0].minSelections).toBe(1);
+        },
+      );
+
+      // Not required is the absence of the field, so a GET response can be PUT
+      // back verbatim - the same policy `variableName` already follows.
+      it.each([undefined, 0])(
+        'omits the key from responses when minSelections is %s',
+        async minSelections => {
+          const response = await sendFilters([filterInput({ minSelections })]);
+          expect(response.status).toBe(200);
+          expect(response.body.data.filters[0]).not.toHaveProperty(
+            'minSelections',
+          );
+        },
+      );
+
+      it.each([2, -1, 1.5, '1'])('rejects minSelections %s', async value => {
+        await expectFilters([filterInput({ minSelections: value })], 400);
+      });
+
+      it('round-trips a required filter through GET and back', async () => {
+        const response = await sendFilters([filterInput({ minSelections: 1 })]);
+        expect(response.status).toBe(200);
+
+        const dashboard = await authRequest(
+          'get',
+          `${BASE_URL}/${response.body.data.id}`,
+        ).expect(200);
+        expect(dashboard.body.data.filters[0].minSelections).toBe(1);
+
+        await authRequest('put', `${BASE_URL}/${response.body.data.id}`)
+          .send(omit(dashboard.body.data, 'id'))
+          .expect(200);
+      });
+
+      it.each(variants)(
+        'accepts a dashboard-wide requirement on a %s filter',
+        async (_type, makeFilter) => {
+          const response = await sendFilters([
+            makeFilter({ minSelections: 1, isGlobalRequirement: true }),
+          ]);
+          expect(response.status).toBe(200);
+          expect(response.body.data.filters[0].isGlobalRequirement).toBe(true);
+        },
+      );
+
+      // Same policy as minSelections: the scope means nothing without a
+      // requirement, so it never appears on an optional filter's response.
+      it('omits the scope from responses when the filter is not required', async () => {
+        const response = await sendFilters([
+          filterInput({ isGlobalRequirement: true }),
+        ]);
+        expect(response.status).toBe(200);
+        expect(response.body.data.filters[0]).not.toHaveProperty(
+          'isGlobalRequirement',
+        );
+      });
+
+      it('rejects a non-boolean scope', async () => {
+        await expectFilters(
+          [filterInput({ minSelections: 1, isGlobalRequirement: 'true' })],
+          400,
+        );
+      });
+
+      it('round-trips a dashboard-wide requirement through GET and back', async () => {
+        const response = await sendFilters([
+          filterInput({ minSelections: 1, isGlobalRequirement: true }),
+        ]);
+        expect(response.status).toBe(200);
+
+        const dashboard = await authRequest(
+          'get',
+          `${BASE_URL}/${response.body.data.id}`,
+        ).expect(200);
+        expect(dashboard.body.data.filters[0].isGlobalRequirement).toBe(true);
+
+        await authRequest('put', `${BASE_URL}/${response.body.data.id}`)
+          .send(omit(dashboard.body.data, 'id'))
+          .expect(200);
+      });
+    });
+
+    describe('static-list filters', () => {
+      it('accepts a static-list filter and round-trips it through GET', async () => {
+        const response = await sendFilters([staticFilterInput()]);
+        expect(response.status).toBe(200);
+
+        const [filter] = response.body.data.filters;
+        expect(filter).toMatchObject({
+          type: 'STATIC_LIST',
+          name: 'Environment',
+          // Author order, not sorted.
+          options: ['prod', 'staging', 'dev'],
+          isBroadcastEnabled: false,
+          isVariableEnabled: true,
+          variableName: 'env',
+        });
+        // A sourceless filter emits no `sourceId` key at all rather than a
+        // null one, so the response body can be PUT straight back.
+        expect(filter).not.toHaveProperty('sourceId');
+        expect(filter).not.toHaveProperty('expression');
+
+        const getResponse = await authRequest(
+          'get',
+          `${BASE_URL}/${response.body.data.id}`,
+        ).expect(200);
+        expect(getResponse.body.data.filters).toEqual(
+          response.body.data.filters,
+        );
+      });
+
+      it('accepts a static filter alongside a queried one', async () => {
+        const response = await sendFilters([
+          filterInput(),
+          staticFilterInput(),
+        ]);
+
+        expect(response.status).toBe(200);
+        expect(response.body.data.filters).toHaveLength(2);
+      });
+
+      // Each mode flag accepts exactly one value, so omitting it fills that
+      // value in rather than falling back to the queried filter's defaults.
+      it('defaults the mode flags when they are omitted', async () => {
+        const response = await sendFilters([
+          staticFilterInput({
+            isBroadcastEnabled: undefined,
+            isVariableEnabled: undefined,
+          }),
+        ]);
+
+        expect(response.status).toBe(200);
+        expect(response.body.data.filters[0]).toMatchObject({
+          isBroadcastEnabled: false,
+          isVariableEnabled: true,
+          variableName: 'env',
+        });
+      });
+
+      it.each([
+        ['broadcast enabled', { isBroadcastEnabled: true }],
+        ['not variable-enabled', { isVariableEnabled: false }],
+        ['no options', { options: undefined }],
+        ['an empty option list', { options: [] }],
+        ['duplicate options', { options: ['prod', 'prod'] }],
+      ])('rejects a static filter with %s', async (_label, overrides) => {
+        const response = await sendFilters([staticFilterInput(overrides)]);
+
+        expect(response.status).toBe(400);
+      });
+
+      // Unlike the internal variants, which strip them, the external ones are
+      // strict: a field belonging to the other variant is an unrecognized key,
+      // named in the error.
+      it.each([
+        ['an expression', { expression: 'ServiceName' }],
+        ['a sourceId', { sourceId: '65f5e4a3b9e77c001a111111' }],
+        ['a where clause', { where: "ServiceName = 'api'" }],
+        ['a where language', { whereLanguage: 'sql' }],
+        [
+          'applies-to sources',
+          { appliesToSourceIds: ['65f5e4a3b9e77c001a111111'] },
+        ],
+      ])('rejects a static filter carrying %s', async (_label, overrides) => {
+        const response = await sendFilters([staticFilterInput(overrides)]);
+
+        expect(response.status).toBe(400);
+        expect(JSON.stringify(response.body)).toContain(
+          `Unrecognized key(s) in object: '${Object.keys(overrides)[0]}'`,
+        );
+      });
+
+      it('rejects options on a queried filter', async () => {
+        const response = await sendFilters([
+          filterInput({ options: ['prod'] }),
+        ]);
+
+        expect(response.status).toBe(400);
+        expect(JSON.stringify(response.body)).toContain(
+          "Unrecognized key(s) in object: 'options'",
+        );
+      });
+
+      it.each(['expression', 'sourceId'])(
+        'still rejects a queried filter with no %s',
+        async field => {
+          const response = await sendFilters([
+            filterInput({ [field]: undefined }),
+          ]);
+
+          expect(response.status).toBe(400);
+          expect(JSON.stringify(response.body)).toContain(field);
+        },
+      );
+
+      // A bogus type must not fall through to either variant.
+      it('rejects an unknown filter type at the discriminator', async () => {
+        const response = await sendFilters([
+          staticFilterInput({ type: 'STATIC' }),
+        ]);
+
+        expect(response.status).toBe(400);
+        expect(JSON.stringify(response.body)).toContain(
+          'Invalid discriminator value',
+        );
+      });
+    });
+
+    describe('promql-label filters', () => {
+      it('accepts a promql-label filter and round-trips it through GET', async () => {
+        const response = await sendFilters([promqlFilterInput()]);
+        expect(response.status).toBe(200);
+
+        const [filter] = response.body.data.filters;
+        expect(filter).toMatchObject({
+          type: 'PROMETHEUS_LABEL',
+          name: 'Pod',
+          sourceId: promqlSource._id.toString(),
+          label: 'pod',
+          isBroadcastEnabled: false,
+          isVariableEnabled: true,
+          variableName: 'pod',
+        });
+        // Stored internally as `source`; only `sourceId` is ever external.
+        expect(filter).not.toHaveProperty('source');
+        expect(filter).not.toHaveProperty('expression');
+
+        const getResponse = await authRequest(
+          'get',
+          `${BASE_URL}/${response.body.data.id}`,
+        ).expect(200);
+        expect(getResponse.body.data.filters).toEqual(
+          response.body.data.filters,
+        );
+      });
+
+      // Prometheus 3 allows UTF-8 label names, and a ClickHouse-backed source's
+      // tags hold whatever the collector ingested.
+      it('accepts a dotted OTel-shaped label', async () => {
+        const response = await sendFilters([
+          promqlFilterInput({ label: 'k8s.pod.name' }),
+        ]);
+
+        expect(response.status).toBe(200);
+        expect(response.body.data.filters[0].label).toBe('k8s.pod.name');
+      });
+
+      it('round-trips a series selector', async () => {
+        const response = await sendFilters([
+          promqlFilterInput({ match: 'up{job=~"$env"}' }),
+        ]);
+
+        expect(response.status).toBe(200);
+        expect(response.body.data.filters[0].match).toBe('up{job=~"$env"}');
+      });
+
+      it('rejects an empty series selector', async () => {
+        const response = await sendFilters([promqlFilterInput({ match: '' })]);
+
+        expect(response.status).toBe(400);
+      });
+
+      // Each mode flag accepts exactly one value, so omitting it fills that
+      // value in rather than falling back to the queried filter's defaults.
+      it('defaults the mode flags when they are omitted', async () => {
+        const response = await sendFilters([
+          promqlFilterInput({
+            isBroadcastEnabled: undefined,
+            isVariableEnabled: undefined,
+          }),
+        ]);
+
+        expect(response.status).toBe(200);
+        expect(response.body.data.filters[0]).toMatchObject({
+          isBroadcastEnabled: false,
+          isVariableEnabled: true,
+          variableName: 'pod',
+        });
+      });
+
+      // Resolving one of these reads the source's connection and db/table,
+      // which only a PromQL source carries. Mirrors the heatmap/formula gates.
+      it('rejects a source of the wrong kind', async () => {
+        const response = await sendFilters([
+          promqlFilterInput({ sourceId: traceSource._id.toString() }),
+        ]);
+
+        expect(response.status).toBe(400);
+        expect(JSON.stringify(response.body)).toContain(
+          `PROMETHEUS_LABEL filters require a PromQL source. The following source IDs are not PromQL sources: ${traceSource._id.toString()}`,
+        );
+      });
+
+      it('rejects a source that does not exist for the team', async () => {
+        const sourceId = new ObjectId().toString();
+        const response = await sendFilters([promqlFilterInput({ sourceId })]);
+
+        expect(response.status).toBe(400);
+        expect(JSON.stringify(response.body)).toContain(
+          `Could not find the following source IDs: ${sourceId}`,
+        );
+      });
+
+      it.each([
+        ['broadcast enabled', { isBroadcastEnabled: true }],
+        ['not variable-enabled', { isVariableEnabled: false }],
+        ['no label', { label: undefined }],
+        ['an empty label', { label: '' }],
+        ['no sourceId', { sourceId: undefined }],
+      ])('rejects a promql-label filter with %s', async (_label, overrides) => {
+        const response = await sendFilters([promqlFilterInput(overrides)]);
+
+        expect(response.status).toBe(400);
+      });
+
+      it.each([
+        ['an expression', { expression: 'ServiceName' }],
+        ['an option list', { options: ['prod'] }],
+        ['a source', { source: '65f5e4a3b9e77c001a111111' }],
+        [
+          'applies-to sources',
+          { appliesToSourceIds: ['65f5e4a3b9e77c001a111111'] },
+        ],
+      ])(
+        'rejects a promql-label filter carrying %s',
+        async (_label, overrides) => {
+          const response = await sendFilters([promqlFilterInput(overrides)]);
+
+          expect(response.status).toBe(400);
+          expect(JSON.stringify(response.body)).toContain(
+            `Unrecognized key(s) in object: '${Object.keys(overrides)[0]}'`,
+          );
+        },
+      );
+
+      it('rejects a label on a queried filter', async () => {
+        const response = await sendFilters([filterInput({ label: 'pod' })]);
+
+        expect(response.status).toBe(400);
+        expect(JSON.stringify(response.body)).toContain(
+          "Unrecognized key(s) in object: 'label'",
+        );
+      });
+    });
   });
 
   describe('Number tile color (HDX-1360)', () => {
@@ -5595,6 +6036,13 @@ describe('External API v2 Dashboards - new format', () => {
         ...config,
       },
     });
+
+    const postRawSqlTile = (config: Record<string, unknown>) =>
+      authRequest('post', BASE_URL).send({
+        name: 'Raw SQL number color dashboard',
+        tiles: [rawSqlNumberTile(config)],
+        tags: [],
+      });
 
     // ── Positive: one per UI input ──────────────────────────────────────
 
@@ -5691,21 +6139,52 @@ describe('External API v2 Dashboards - new format', () => {
       });
     });
 
-    it('strips colorRules from a raw SQL number tile, keeping color', async () => {
+    it('round-trips colorRules for a raw SQL number tile', async () => {
+      const colorRules = [
+        { operator: 'gt', value: 1, color: 'chart-red' },
+        { operator: 'lte', value: 1, color: 'chart-green' },
+      ];
+
       const create = await authRequest('post', BASE_URL)
         .send({
           name: 'Raw SQL colorRules',
           tiles: [
             rawSqlNumberTile({
               color: 'chart-blue',
-              colorRules: [{ operator: 'gt', value: 1, color: 'chart-red' }],
+              colorRules,
             }),
           ],
           tags: [],
         })
         .expect(200);
-      expect(create.body.data.tiles[0].config.color).toBe('chart-blue');
-      expect(create.body.data.tiles[0].config.colorRules).toBeUndefined();
+
+      expect(create.body.data.tiles[0].config).toMatchObject({
+        color: 'chart-blue',
+        colorRules,
+      });
+
+      const dashboardId = create.body.data.id;
+      const get = await authRequest('get', `${BASE_URL}/${dashboardId}`).expect(
+        200,
+      );
+
+      expect(get.body.data.tiles[0].config).toMatchObject({
+        color: 'chart-blue',
+        colorRules,
+      });
+
+      const update = await authRequest('put', `${BASE_URL}/${dashboardId}`)
+        .send({
+          name: get.body.data.name,
+          tiles: get.body.data.tiles,
+          tags: get.body.data.tags,
+        })
+        .expect(200);
+
+      expect(update.body.data.tiles[0].config).toMatchObject({
+        color: 'chart-blue',
+        colorRules,
+      });
     });
 
     // ── Negative: one per schema rejection rule ─────────────────────────
@@ -5735,6 +6214,16 @@ describe('External API v2 Dashboards - new format', () => {
       expect(res.body.message).toContain('tiles.0.config.colorRules');
     });
 
+    it('rejects more than 10 colorRules for a raw SQL number tile', async () => {
+      const colorRules = Array.from({ length: 11 }, (_, i) => ({
+        operator: 'gt',
+        value: i,
+        color: 'chart-blue',
+      }));
+      const res = await postRawSqlTile({ colorRules }).expect(400);
+      expect(res.body.message).toContain('tiles.0.config.colorRules');
+    });
+
     it('rejects a between rule whose value is not a two-number tuple', async () => {
       await postTile({
         colorRules: [{ operator: 'between', value: 100, color: 'chart-blue' }],
@@ -5756,6 +6245,15 @@ describe('External API v2 Dashboards - new format', () => {
       }
     });
 
+    it('rejects unsupported colorRule operators for a raw SQL number tile', async () => {
+      for (const operator of ['contains', 'startsWith', 'endsWith', 'regex']) {
+        const res = await postRawSqlTile({
+          colorRules: [{ operator, value: 'error', color: 'chart-blue' }],
+        }).expect(400);
+        expect(res.body.message).toContain('tiles.0.config.colorRules');
+      }
+    });
+
     it('rejects a per-rule color that is not a palette token', async () => {
       const res = await postTile({
         colorRules: [{ operator: 'gt', value: 1, color: 'red' }],
@@ -5763,6 +6261,17 @@ describe('External API v2 Dashboards - new format', () => {
       expect(res.body.message).toContain('tiles.0.config.colorRules');
       // Legacy numeric tokens are normalized on read, never accepted on write.
       await postTile({
+        colorRules: [{ operator: 'gt', value: 1, color: 'chart-1' }],
+      }).expect(400);
+    });
+
+    it('rejects a per-rule color that is not a palette token for a raw SQL number tile', async () => {
+      const res = await postRawSqlTile({
+        colorRules: [{ operator: 'gt', value: 1, color: 'red' }],
+      }).expect(400);
+      expect(res.body.message).toContain('tiles.0.config.colorRules');
+
+      await postRawSqlTile({
         colorRules: [{ operator: 'gt', value: 1, color: 'chart-1' }],
       }).expect(400);
     });
@@ -5865,13 +6374,7 @@ describe('External API v2 Dashboards - new format', () => {
     });
 
     it('normalizes a legacy numeric token on a raw SQL number tile to its hue name on read', async () => {
-      const create = await authRequest('post', BASE_URL)
-        .send({
-          name: 'Raw SQL legacy color',
-          tiles: [rawSqlNumberTile({ color: 'chart-blue' })],
-          tags: [],
-        })
-        .expect(200);
+      const create = await postRawSqlTile({ color: 'chart-blue' }).expect(200);
       const dashboardId = create.body.data.id;
 
       await Dashboard.updateOne(
@@ -5884,6 +6387,32 @@ describe('External API v2 Dashboards - new format', () => {
       );
       // chart-4 maps to chart-red.
       expect(get.body.data.tiles[0].config.color).toBe('chart-red');
+    });
+
+    it('normalizes legacy raw SQL colorRule colors and drops unresolvable ones on read', async () => {
+      const create = await postRawSqlTile({
+        colorRules: [{ operator: 'gt', value: 1, color: 'chart-green' }],
+      }).expect(200);
+      const dashboardId = create.body.data.id;
+
+      await Dashboard.updateOne(
+        { _id: dashboardId },
+        {
+          $set: {
+            'tiles.0.config.colorRules': [
+              { operator: 'gt', value: 1, color: 'chart-1' },
+              { operator: 'gt', value: 2, color: 'not-a-token' },
+            ],
+          },
+        },
+      );
+
+      const get = await authRequest('get', `${BASE_URL}/${dashboardId}`).expect(
+        200,
+      );
+      expect(get.body.data.tiles[0].config.colorRules).toEqual([
+        { operator: 'gt', value: 1, color: 'chart-green' },
+      ]);
     });
   });
 
@@ -6230,6 +6759,18 @@ describe('External API v2 Dashboards - new format', () => {
       expect(res.body.message).toContain(
         'Number tiles support a single select item',
       );
+    });
+
+    it('rejects an unsupported configType instead of routing it to the builder dialect', async () => {
+      // A body carrying an unrecognized configType parses fine against the
+      // builder union (the unknown keys are stripped), so without an explicit
+      // check it would persist as a builder tile AND skip the builder-only
+      // rules — here a formula referencing a nonexistent series.
+      const res = await postTile({
+        configType: 'promql',
+        formulas: [{ expression: 'C * 2' }],
+      }).expect(400);
+      expect(res.body.message).toContain('configType must be "sql" or omitted');
     });
 
     it('round-trips formulas on a log/trace event source', async () => {
@@ -7092,6 +7633,108 @@ describe('External API v2 Dashboards - new format', () => {
       const [returnedTile] = getResp.body.data.tiles;
       expect(returnedTile.containerId).toBe('real');
       expect(returnedTile.tabId).toBeUndefined();
+    });
+  });
+
+  describe('savedFilterValues', () => {
+    const sqlValue = { type: 'sql', condition: "Env IN ('prod')" };
+    const variableValue = {
+      type: 'variable',
+      name: 'svc',
+      values: ['accounting', 'frontend'],
+    };
+
+    it('should persist and return a variable-keyed value verbatim', async () => {
+      const response = await authRequest('post', BASE_URL)
+        .send(
+          createMockDashboard(traceSource._id.toString(), {
+            savedFilterValues: [variableValue],
+          }),
+        )
+        .expect(200);
+
+      expect(response.body.data.savedFilterValues).toEqual([variableValue]);
+
+      const dashboardInDb = await Dashboard.findById(
+        response.body.data.id,
+      ).lean();
+      expect(dashboardInDb?.savedFilterValues).toEqual([variableValue]);
+    });
+
+    it('should accept a variable-keyed value with no values selected', async () => {
+      const emptySelection = { type: 'variable', name: 'svc', values: [] };
+      const response = await authRequest('post', BASE_URL)
+        .send(
+          createMockDashboard(traceSource._id.toString(), {
+            savedFilterValues: [emptySelection],
+          }),
+        )
+        .expect(200);
+
+      expect(response.body.data.savedFilterValues).toEqual([emptySelection]);
+    });
+
+    // The regression this format change exists to prevent: GET returns whatever
+    // is stored, so a write schema that only accepted the sql shape would make a
+    // dashboard holding a variable value un-updatable by echoing its own body.
+    it('should accept a mixed array echoed straight back from GET', async () => {
+      const created = await authRequest('post', BASE_URL)
+        .send(
+          createMockDashboardWithIds(traceSource._id.toString(), {
+            savedFilterValues: [sqlValue, variableValue],
+          }),
+        )
+        .expect(200);
+
+      const fetched = await authRequest(
+        'get',
+        `${BASE_URL}/${created.body.data.id}`,
+      ).expect(200);
+      expect(fetched.body.data.savedFilterValues).toEqual([
+        sqlValue,
+        variableValue,
+      ]);
+
+      const echoed = await authRequest(
+        'put',
+        `${BASE_URL}/${created.body.data.id}`,
+      )
+        .send(fetched.body.data)
+        .expect(200);
+      expect(echoed.body.data.savedFilterValues).toEqual([
+        sqlValue,
+        variableValue,
+      ]);
+    });
+
+    it('should return 400 for a variable-keyed value missing name', async () => {
+      await authRequest('post', BASE_URL)
+        .send(
+          createMockDashboard(traceSource._id.toString(), {
+            savedFilterValues: [{ type: 'variable', values: ['a'] }],
+          }),
+        )
+        .expect(400);
+    });
+
+    it('should return 400 for a variable-keyed value missing values', async () => {
+      await authRequest('post', BASE_URL)
+        .send(
+          createMockDashboard(traceSource._id.toString(), {
+            savedFilterValues: [{ type: 'variable', name: 'svc' }],
+          }),
+        )
+        .expect(400);
+    });
+
+    it('should return 400 for an unknown saved filter value type', async () => {
+      await authRequest('post', BASE_URL)
+        .send(
+          createMockDashboard(traceSource._id.toString(), {
+            savedFilterValues: [{ type: 'nonsense', name: 'svc', values: [] }],
+          }),
+        )
+        .expect(400);
     });
   });
 

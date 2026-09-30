@@ -1,5 +1,8 @@
 import React from 'react';
-import { DisplayType } from '@hyperdx/common-utils/dist/types';
+import {
+  DisplayType,
+  MAX_LEGEND_TEMPLATE_LENGTH,
+} from '@hyperdx/common-utils/dist/types';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
@@ -483,6 +486,24 @@ describe('ChartDisplaySettingsDrawer', () => {
     });
   });
 
+  describe('display group by columns on left setting (PromQL)', () => {
+    it('does not show the toggle for PromQL table charts', () => {
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          configType="promql"
+          displayType={DisplayType.Table}
+        />,
+      );
+
+      expect(
+        screen.queryByRole('checkbox', {
+          name: /display group by columns on left/i,
+        }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
   describe('number format persistence', () => {
     // A duration number tile (e.g. p95 Duration from a trace source) auto-detects
     // a duration format from the datasource; the drawer receives it as
@@ -565,6 +586,95 @@ describe('ChartDisplaySettingsDrawer', () => {
         color: 'chart-blue',
         numberFormat: { output: 'currency' },
       });
+    });
+  });
+
+  describe('legend template', () => {
+    const promqlProps = {
+      ...baseProps,
+      configType: 'promql' as const,
+      displayType: DisplayType.Line,
+    };
+
+    it('is offered on a PromQL time series chart', () => {
+      renderWithMantine(<ChartDisplaySettingsDrawer {...promqlProps} />);
+
+      expect(screen.getByTestId('legend-template-input')).toBeInTheDocument();
+    });
+
+    it('is hidden on a PromQL table chart', () => {
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...promqlProps}
+          displayType={DisplayType.Table}
+        />,
+      );
+
+      expect(
+        screen.queryByTestId('legend-template-input'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('blocks Apply when the template exceeds the persisted length cap', async () => {
+      const onChange = jest.fn();
+      const onClose = jest.fn();
+      const user = userEvent.setup();
+
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...promqlProps}
+          onChange={onChange}
+          onClose={onClose}
+        />,
+      );
+
+      const tooLong = 'a'.repeat(MAX_LEGEND_TEMPLATE_LENGTH + 1);
+      await user.click(screen.getByTestId('legend-template-input'));
+      await user.paste(tooLong);
+      await user.click(screen.getByRole('button', { name: /apply/i }));
+
+      expect(
+        screen.getByText(
+          `Template is too long (${MAX_LEGEND_TEMPLATE_LENGTH + 1} characters, max ${MAX_LEGEND_TEMPLATE_LENGTH})`,
+        ),
+      ).toBeInTheDocument();
+      expect(onChange).not.toHaveBeenCalled();
+      expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it('accepts a template exactly at the cap', async () => {
+      const onChange = jest.fn();
+      const user = userEvent.setup();
+
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer {...promqlProps} onChange={onChange} />,
+      );
+
+      const atCap = 'a'.repeat(MAX_LEGEND_TEMPLATE_LENGTH);
+      await user.click(screen.getByTestId('legend-template-input'));
+      await user.paste(atCap);
+      await user.click(screen.getByRole('button', { name: /apply/i }));
+
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(onChange.mock.calls[0][0]).toMatchObject({
+        legendTemplate: atCap,
+      });
+    });
+
+    it('measures the trimmed value, matching what gets persisted', async () => {
+      const onChange = jest.fn();
+      const user = userEvent.setup();
+
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer {...promqlProps} onChange={onChange} />,
+      );
+
+      const padded = `  ${'a'.repeat(MAX_LEGEND_TEMPLATE_LENGTH)}  `;
+      await user.click(screen.getByTestId('legend-template-input'));
+      await user.paste(padded);
+      await user.click(screen.getByRole('button', { name: /apply/i }));
+
+      expect(onChange).toHaveBeenCalledTimes(1);
     });
   });
 });

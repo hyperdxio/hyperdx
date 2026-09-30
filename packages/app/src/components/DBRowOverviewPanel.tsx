@@ -7,6 +7,7 @@ import { Accordion, Box, Flex, Text } from '@mantine/core';
 import { WithClause } from '@/hooks/useRowWhere';
 import { getEventBody } from '@/source';
 import { getHighlightedAttributesFromData } from '@/utils/highlightedAttributes';
+import { resolveRowTimestampAnchor } from '@/utils/rowTimestamps';
 
 import {
   getJSONColumnNames,
@@ -18,8 +19,10 @@ import { RowSidePanelContext } from './DBRowSidePanel';
 import DBRowSidePanelHeader from './DBRowSidePanelHeader';
 import EventTag from './EventTag';
 import { ExceptionSubpanel } from './ExceptionSubpanel';
+import { useLinkedSpanDetails, useReverseSpanLinks } from './linkedSpans';
 import { NetworkPropertySubpanel } from './NetworkPropertyPanel';
 import { SpanEventsSubpanel } from './SpanEventsSubpanel';
+import { SpanLinkedFromSubpanel } from './SpanLinkedFromSubpanel';
 import { getValidSpanLinks, SpanLinksSubpanel } from './SpanLinksSubpanel';
 
 const EMPTY_OBJ = {};
@@ -191,9 +194,37 @@ export function RowOverviewPanel({
     );
   }, [firstRow?.__hdx_span_events]);
 
-  const hasSpanLinks = useMemo(() => {
-    return getValidSpanLinks(firstRow?.__hdx_span_links).length > 0;
+  const validSpanLinks = useMemo(() => {
+    return getValidSpanLinks(firstRow?.__hdx_span_links);
   }, [firstRow?.__hdx_span_links]);
+  const hasSpanLinks = validSpanLinks.length > 0;
+
+  const rowMeta = data?.meta;
+  const linkAnchorDate = useMemo(
+    () =>
+      resolveRowTimestampAnchor({
+        timestampValueExpression: source.timestampValueExpression,
+        row: firstRow,
+        meta: rowMeta,
+      }),
+    [source.timestampValueExpression, firstRow, rowMeta],
+  );
+
+  const rowTraceId = firstRow?.__hdx_trace_id;
+  const rowSpanId = firstRow?.__hdx_span_id;
+
+  const { links: reverseSpanLinks } = useReverseSpanLinks({
+    source,
+    traceId: typeof rowTraceId === 'string' ? rowTraceId : undefined,
+    spanId: typeof rowSpanId === 'string' ? rowSpanId : undefined,
+    anchorDate: linkAnchorDate,
+  });
+
+  const { details: linkedSpanDetails } = useLinkedSpanDetails({
+    source,
+    links: validSpanLinks,
+    anchorDate: linkAnchorDate,
+  });
 
   const mainContentColumn = getEventBody(source);
   const mainContent = isString(firstRow?.['__hdx_body'])
@@ -226,6 +257,7 @@ export function RowOverviewPanel({
           'exception',
           'spanEvents',
           'spanLinks',
+          'linkedFrom',
           'network',
           'resourceAttributes',
           'eventAttributes',
@@ -328,14 +360,33 @@ export function RowOverviewPanel({
         {hasSpanLinks && (
           <Accordion.Item value="spanLinks">
             <Accordion.Control>
-              <Text size="sm" ps="md">
+              <Text size="sm" ps={contentPx}>
                 Span Links
               </Text>
             </Accordion.Control>
             <Accordion.Panel>
-              <Box px="md">
+              <Box ps={contentPx}>
                 <SpanLinksSubpanel
                   spanLinks={firstRow?.__hdx_span_links}
+                  linkedSpanDetails={linkedSpanDetails}
+                  onOpenTrace={onOpenLinkedTrace}
+                />
+              </Box>
+            </Accordion.Panel>
+          </Accordion.Item>
+        )}
+
+        {reverseSpanLinks.length > 0 && (
+          <Accordion.Item value="linkedFrom">
+            <Accordion.Control>
+              <Text size="sm" ps={contentPx}>
+                Linked from
+              </Text>
+            </Accordion.Control>
+            <Accordion.Panel>
+              <Box ps={contentPx}>
+                <SpanLinkedFromSubpanel
+                  links={reverseSpanLinks}
                   onOpenTrace={onOpenLinkedTrace}
                 />
               </Box>

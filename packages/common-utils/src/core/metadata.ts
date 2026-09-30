@@ -9,8 +9,11 @@ import {
   ColumnMeta,
   concatChSql,
   convertCHDataTypeToJSType,
+  extractColumnReferencesFromKey,
   filterColumnMetaByType,
   JSDataType,
+  Row,
+  streamToAsyncIterator,
   tableExpr,
 } from '@/clickhouse';
 import { renderChartConfig, timeFilterExpr } from '@/core/renderChartConfig';
@@ -35,6 +38,7 @@ import { isLogSource, isTraceSource, SourceKind } from '@/types';
 import {
   ClickHouseVersion,
   parseClickHouseVersion,
+  supportsMergeTreeIndex,
   supportsMergeTreeTextIndex,
 } from './clickhouseVersion';
 import {
@@ -47,6 +51,7 @@ import {
   getDistributedTableArgs,
   MetadataMVQueryOptions,
   objectHash,
+  splitAndTrimWithBracket,
   TextIndexColumnQueryOptions,
   TextIndexMapColumnQueryOptions,
 } from './utils';
@@ -58,6 +63,21 @@ const DEFAULT_MAX_KEYS = 1000;
 
 // Cap keys per dispatched query: each key is another operation for the db to fetch, and simply fetching all keys at once can be too much for the db to handle.
 export const GET_ALL_KEY_VALUES_CHUNK_SIZE = 100;
+
+/**
+ * The index read could not be scoped to the requested date range, so it was
+ * refused in favour of a path that can. Not a failure — an expected property
+ * of tables whose partition key is not time-derived.
+ */
+export class UnprunableIndexReadError extends Error {
+  constructor(reason: string) {
+    super(`Cannot scope the primary index read: ${reason}`);
+    this.name = 'UnprunableIndexReadError';
+  }
+}
+
+// Runaway guard, not a tuning knob.
+const DEFAULT_MAX_INDEX_VALUES = 10_000;
 
 type KeyFetchingStrategies = {
   mapTextIndexLookup: TextIndexInfo[];
@@ -71,6 +91,20 @@ export type KeyValues = {
   value: string[] | number[];
 };
 
+export type MetricNames = {
+  names: string[];
+  /** True when more names matched than `limit`, so the page is incomplete. */
+  truncated: boolean;
+};
+
+// Metric-name listing. See `getMetricNames`.
+export const DEFAULT_METRIC_NAMES_LIMIT = 500;
+
+// `%` and `_` are ILIKE wildcards, so a metric name containing them (or a
+// literal backslash) has to be escaped before being wrapped in `%...%`.
+const escapeLikePattern = (value: string): string =>
+  value.replace(/[\\%_]/g, char => `\\${char}`);
+
 // See https://github.com/hyperdxio/hyperdx/issues/2163. Inlining a validated
 // integer literal avoids the `_CAST` wrapper entirely.
 const inlineNonNegativeInt = (value: number, label: string): string => {
@@ -82,7 +116,8 @@ const inlineNonNegativeInt = (value: number, label: string): string => {
   return String(value);
 };
 
-const unquoteIdentifier = (identifier: string): string => {
+/** Strip one level of `…` / "…" identifier quoting, if present. */
+export const unquoteIdentifier = (identifier: string): string => {
   if (
     (identifier.startsWith('`') && identifier.endsWith('`')) ||
     (identifier.startsWith('"') && identifier.endsWith('"'))
@@ -92,17 +127,53 @@ const unquoteIdentifier = (identifier: string): string => {
   return identifier;
 };
 
+/**
+ * Whether a table's partition key derives from its timestamp column, which is
+ * what decides whether `system.parts.min_time` is populated and so whether
+ * part-level pruning can work at all.
+ */
+const partitionKeyCoversTimestamp = (
+  partitionKey: string,
+  timestampValueExpression: string,
+): boolean => {
+  if (!partitionKey) return false;
+  const partitionColumns = new Set(
+    extractColumnReferencesFromKey(partitionKey).map(unquoteIdentifier),
+  );
+  return extractColumnReferencesFromKey(timestampValueExpression)
+    .map(unquoteIdentifier)
+    .some(column => partitionColumns.has(column));
+};
+
 const quoteJsonPathSegment = (segment: string): string => {
   const unquoted = unquoteIdentifier(segment);
   return `\`${unquoted.replace(/`/g, '``')}\``;
 };
 
-const quoteIdentifierIfNeeded = (identifier: string): string => {
+/**
+ * Backtick-quote an identifier unless it is already a valid bare ClickHouse
+ * identifier. Strips one level of existing quoting first, so it is idempotent.
+ */
+export const quoteIdentifierIfNeeded = (identifier: string): string => {
   const unquoted = unquoteIdentifier(identifier);
   return /^[A-Za-z_][A-Za-z0-9_]*$/.test(unquoted)
     ? unquoted
     : quoteJsonPathSegment(unquoted);
 };
+
+/**
+ * Quote a query result column name so it can be referenced in raw SQL.
+ *
+ * Most result column names do not need quoting:
+ * - Bare identifiers (alphanumeric and underscore, starting with a letter or underscore)
+ * - Numeric literals (e.g., `1`, `0x10`)
+ * - Dotted column names (e.g., `my.col`)
+ * - Function calls (e.g., `plus(a, b)`, `arrayElement(m, 'key')`)
+ */
+export const quoteResultColumnNameIfNeeded = (name: string): string =>
+  /^[^`'"()[\],.]+$/.test(name) && !Number.isFinite(Number(name))
+    ? quoteIdentifierIfNeeded(name)
+    : name;
 
 const columnAppearsInMvSelect = (sql: string, columnName: string): boolean => {
   const escaped = columnName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -250,6 +321,17 @@ export type SkipIndexMetadata = {
   expression: string; // e.g., "tokens(lower(Body))"
   granularity: number;
 };
+
+const FIELD_METADATA_LOOKBACK_MS = 24 * 60 * 60 * 1000;
+
+// Hour-aligned so a range-keyed cache rotates hourly instead of every call.
+export function defaultFieldMetadataDateRange(): [Date, Date] {
+  const now = new Date();
+  return getAlignedDateRange(
+    [new Date(now.getTime() - FIELD_METADATA_LOOKBACK_MS), now],
+    '1 hour',
+  );
+}
 
 export class Metadata {
   private readonly clickhouseClient: BaseClickhouseClient;
@@ -511,6 +593,65 @@ export class Metadata {
     );
   }
 
+  /** Queries and returns the columns of a TimeSeries table's inner table */
+  async getTimeSeriesTableColumns({
+    connectionId,
+    databaseName,
+    tableName,
+    innerTableType,
+  }: {
+    connectionId: string;
+    databaseName: string;
+    tableName: string;
+    innerTableType: 'Tags' | 'Metrics' | 'Data';
+  }) {
+    return this.cache.getOrFetch<ColumnMeta[]>(
+      `${connectionId}.${databaseName}.${tableName}.${innerTableType}.getTimeSeriesTableColumns`,
+      async () => {
+        const sql = chSql`DESCRIBE TABLE timeSeries${innerTableType}(${{ String: databaseName }}, ${{ String: tableName }})`;
+        const columns = await this.clickhouseClient
+          .query<'JSON'>({
+            query: sql.sql,
+            query_params: sql.params,
+            connectionId,
+            clickhouse_settings: {
+              ...this.getClickHouseSettings(),
+              allow_experimental_time_series_table: 1,
+            },
+          })
+          .then(res => res.json<ColumnMeta>())
+          .then(d => d.data);
+        return columns;
+      },
+    );
+  }
+
+  async getTimeSeriesTableVersion({
+    connectionId,
+    databaseName,
+    tableName,
+  }: {
+    connectionId: string;
+    databaseName: string;
+    tableName: string;
+  }): Promise<number> {
+    return this.cache.getOrFetch<number>(
+      `${connectionId}.${databaseName}.${tableName}.getTimeSeriesTableVersion`,
+      async () => {
+        const sql = chSql`SELECT toUInt32OrZero(extract(engine_full, 'version = (\\d+)')) AS version FROM system.tables WHERE database = ${{ String: databaseName }} AND name = ${{ String: tableName }}`;
+        const json = await this.clickhouseClient
+          .query<'JSON'>({
+            query: sql.sql,
+            query_params: sql.params,
+            connectionId,
+            clickhouse_settings: this.getClickHouseSettings(),
+          })
+          .then(res => res.json<{ version: number }>());
+        return Number(json.data[0]?.version ?? 0);
+      },
+    );
+  }
+
   async getMaterializedColumnsLookupTable({
     databaseName,
     tableName,
@@ -638,6 +779,156 @@ export class Metadata {
     )`;
   }
 
+  /** Rejects what `mergeTreeIndex` cannot read; callers fall back to a scan. */
+  private async assertIndexReadable({
+    databaseName,
+    tableName,
+    column,
+    connectionId,
+  }: {
+    databaseName: string;
+    tableName: string;
+    column: string;
+    connectionId: string;
+  }): Promise<TableMetadata> {
+    const reject = (reason: string) => {
+      throw new Error(`Cannot read the primary index: ${reason}`);
+    };
+
+    if (
+      !supportsMergeTreeIndex(await this.getServerVersion({ connectionId }))
+    ) {
+      reject('the server predates the mergeTreeIndex table function (< 24.2)');
+    }
+
+    const tableMetadata = await this.getTableMetadata({
+      databaseName,
+      tableName,
+      connectionId,
+    });
+    if (!tableMetadata) {
+      return reject(`table ${databaseName}.${tableName} was not found`);
+    }
+    // Distributed/Merge tables route elsewhere and have no index of their own.
+    if (tableMetadata.isPointerTable) {
+      reject(
+        `${tableMetadata.engine} tables have no primary index of their own`,
+      );
+    }
+    if (!tableMetadata.engine.includes('MergeTree')) {
+      reject(`engine ${tableMetadata.engine} is not a MergeTree`);
+    }
+    // Only primary key columns exist in the index; check for a usable message.
+    const primaryKeyColumns = splitAndTrimWithBracket(
+      tableMetadata.primary_key,
+    ).map(unquoteIdentifier);
+    if (!primaryKeyColumns.includes(unquoteIdentifier(column))) {
+      reject(
+        `${column} is not in the primary key (${tableMetadata.primary_key})`,
+      );
+    }
+
+    return tableMetadata;
+  }
+
+  /**
+   * Streams the distinct values of a primary key column, read from the table's
+   * sparse primary index instead of the data — one row per granule mark rather
+   * than a full column scan.
+   *
+   * **Returns a subset.** The index only records the value at each granule
+   * boundary, so a value confined to one granule never appears; callers need a
+   * full-scan path for completeness.
+   *
+   * Unordered on purpose: `DISTINCT` streams, `ORDER BY` would have to finish
+   * before the first row. The caller sorts. Not cached — `MetadataCache`
+   * resolves a single value and cannot hold a stream.
+   */
+  async *streamDistinctIndexValues({
+    databaseName,
+    tableName,
+    column,
+    connectionId,
+    dateRange,
+    timestampValueExpression,
+    limit = DEFAULT_MAX_INDEX_VALUES,
+    signal,
+  }: {
+    databaseName: string;
+    tableName: string;
+    /** Must be a primary key column. */
+    column: string;
+    connectionId: string;
+    /** Prunes to overlapping parts; needs `timestampValueExpression` too. */
+    dateRange?: [Date, Date];
+    timestampValueExpression?: string;
+    limit?: number;
+    signal?: AbortSignal;
+  }): AsyncGenerator<string[], void, undefined> {
+    const tableMetadata = await this.assertIndexReadable({
+      databaseName,
+      tableName,
+      column,
+      connectionId,
+    });
+
+    // Part pruning is the only range restriction this read can express —
+    // `mergeTreeIndex` exposes primary key columns and part metadata, not the
+    // timestamp — and `system.parts.min_time` is only populated for time-based
+    // partition keys. Rather than quietly returning names from outside the
+    // requested window (which would disagree with the exhaustive search the
+    // caller falls back to), refuse the read and let that path answer.
+    if (
+      dateRange &&
+      timestampValueExpression &&
+      !partitionKeyCoversTimestamp(
+        tableMetadata.partition_key,
+        timestampValueExpression,
+      )
+    ) {
+      throw new UnprunableIndexReadError(
+        `partition key ${tableMetadata.partition_key || '(none)'} is not derived from ${timestampValueExpression}, so the read cannot be scoped to the date range`,
+      );
+    }
+
+    const partsFilter = await this.partsOverlapFilter({
+      databaseName,
+      tableName,
+      dateRange,
+      timestampValueExpression,
+    });
+
+    const sql = chSql`
+      SELECT DISTINCT ${{ Identifier: column }} AS value
+      FROM mergeTreeIndex(${{ String: databaseName }}, ${{ String: tableName }})
+      WHERE ${partsFilter}
+      LIMIT ${{ Int32: limit }}`;
+
+    const resultSet = await this.clickhouseClient.query<'JSONEachRow'>({
+      query: sql.sql,
+      query_params: sql.params,
+      format: 'JSONEachRow',
+      connectionId,
+      clickhouse_settings: this.getClickHouseSettings(),
+      abort_signal: signal,
+    });
+
+    for await (const chunk of streamToAsyncIterator(resultSet.stream())) {
+      // `stream()` is typed as an unparameterized ReadableStream; narrow here.
+      const rows: Row<unknown, 'JSONEachRow'>[] = chunk;
+      const values: string[] = [];
+      for (const row of rows) {
+        const { value } = row.json<{ value: unknown }>();
+        if (typeof value === 'string' && value !== '') {
+          values.push(value);
+        }
+      }
+      if (values.length > 0) {
+        yield values;
+      }
+    }
+  }
+
   async getMapKeys({
     databaseName,
     tableName,
@@ -646,7 +937,7 @@ export class Metadata {
     connectionId,
     metricName,
     metadataMVs,
-    dateRange,
+    dateRange: callerDateRange,
     timestampValueExpression,
     signal,
   }: {
@@ -663,20 +954,28 @@ export class Metadata {
   }) {
     inlineNonNegativeInt(maxKeys, 'maxKeys');
 
-    // Align date range to rollup granularity for consistent cache keys
-    const alignedDateRange =
-      metadataMVs && dateRange
-        ? getAlignedDateRange(dateRange, metadataMVs.granularity)
-        : undefined;
+    // Default a missing range instead of scanning unbounded. #3037
+    const dateRange = callerDateRange ?? defaultFieldMetadataDateRange();
 
-    const dateRangeCacheSuffix =
-      dateRange && timestampValueExpression
-        ? `${dateRange[0].getTime()}-${dateRange[1].getTime()}-${timestampValueExpression}`
+    // Align date range to rollup granularity for consistent cache keys
+    const alignedDateRange = metadataMVs
+      ? getAlignedDateRange(dateRange, metadataMVs.granularity)
+      : undefined;
+
+    // Without timestampValueExpression the scan has no time filter, so its
+    // result doesn't depend on dateRange; keying on it would re-scan every
+    // hour as the default range rolls and pile up entries in the TTL-less cache.
+    const dateRangeCacheSuffix = timestampValueExpression
+      ? `${dateRange[0].getTime()}-${dateRange[1].getTime()}-${timestampValueExpression}`
+      : '';
+    const alignedCacheSuffix =
+      alignedDateRange && timestampValueExpression
+        ? `${alignedDateRange[0].getTime()}.${alignedDateRange[1].getTime()}.${timestampValueExpression}`
         : '';
     const cacheKey = metricName
       ? `${connectionId}.${databaseName}.${tableName}.${column}.${metricName}.${dateRangeCacheSuffix}.keys`
-      : metadataMVs && alignedDateRange
-        ? `${connectionId}.${databaseName}.${tableName}.${column}.${alignedDateRange[0].getTime()}.${alignedDateRange[1].getTime()}.keys`
+      : alignedDateRange
+        ? `${connectionId}.${databaseName}.${tableName}.${column}.${alignedCacheSuffix}.keys`
         : `${connectionId}.${databaseName}.${tableName}.${column}.${dateRangeCacheSuffix}.keys`;
     const cachedKeys = this.cache.get<string[]>(cacheKey);
 
@@ -695,7 +994,12 @@ export class Metadata {
       supportsMergeTreeTextIndex(clickhouseVersion);
     // Text Index path: query the key rollup index
     const textIndexInfo = textIndexInfoLookup.get(column);
-    if (textIndexInfo?.key?.indexName && canQueryMergeTreeTextIndex) {
+    // Without timestampValueExpression, partsFilter can't bound this either. #3037
+    if (
+      textIndexInfo?.key?.indexName &&
+      canQueryMergeTreeTextIndex &&
+      timestampValueExpression
+    ) {
       const partsFilter = await this.partsOverlapFilter({
         databaseName,
         tableName,
@@ -730,7 +1034,11 @@ export class Metadata {
         );
         return [];
       }
-    } else if (textIndexInfo?.kv?.indexName && canQueryMergeTreeTextIndex) {
+    } else if (
+      textIndexInfo?.kv?.indexName &&
+      canQueryMergeTreeTextIndex &&
+      timestampValueExpression
+    ) {
       const partsFilter = await this.partsOverlapFilter({
         databaseName,
         tableName,
@@ -770,8 +1078,13 @@ export class Metadata {
 
     // Rollup path: query the key rollup table filtered by ColumnIdentifier and date range
     if (metadataMVs && alignedDateRange) {
+      // Own cache key: the shipped OTel rollups only index NativeColumn, so
+      // Map columns come back empty here and must fall through to the bounded
+      // scan below. Caching [] under cacheKey would block that fallback.
+      // The rollup filters on Timestamp even without timestampValueExpression,
+      // so its key always carries the aligned range.
       const rollupKeys = await this.cache.getOrFetch<string[]>(
-        cacheKey,
+        `${cacheKey}.${alignedDateRange[0].getTime()}.${alignedDateRange[1].getTime()}.rollup`,
         async () => {
           try {
             const startExpr = renderStartOfBucketExpr(
@@ -831,7 +1144,14 @@ export class Metadata {
       if (rollupKeys.length > 0) return rollupKeys;
     }
 
-    // Original path: scan main table
+    // Original path: scan main table. Without a timestamp expression there's
+    // nothing to filter on, so the scan is only bounded by the row LIMIT. #3037
+    if (!timestampValueExpression) {
+      console.warn(
+        `Unbounded Map key scan for ${databaseName}.${tableName}.${column}: no timestampValueExpression to bound the scan`,
+      );
+    }
+
     const colMeta = await this.getColumn({
       databaseName,
       tableName,
@@ -851,26 +1171,27 @@ export class Metadata {
       strategy = 'lowCardinalityKeys';
     }
 
-    const timeFilterCondition =
-      dateRange && timestampValueExpression
-        ? await timeFilterExpr({
-            connectionId,
-            databaseName,
-            tableName,
-            dateRange,
-            dateRangeStartInclusive: true,
-            dateRangeEndInclusive: true,
-            timestampValueExpression,
-            metadata: this,
-          })
-        : null;
     const whereConditions: ChSql[] = [
       ...(metricName ? [chSql`MetricName=${{ String: metricName }}`] : []),
-      ...(timeFilterCondition ? [timeFilterCondition] : []),
+      ...(timestampValueExpression
+        ? [
+            await timeFilterExpr({
+              connectionId,
+              databaseName,
+              tableName,
+              dateRange,
+              dateRangeStartInclusive: true,
+              dateRangeEndInclusive: true,
+              timestampValueExpression,
+              metadata: this,
+            }),
+          ]
+        : []),
     ];
-    const where = whereConditions.length
-      ? chSql`WHERE ${concatChSql(' AND ', ...whereConditions)}`
-      : '';
+    const where =
+      whereConditions.length > 0
+        ? chSql`WHERE ${concatChSql(' AND ', ...whereConditions)}`
+        : chSql``;
 
     // NOTE: getSubcolumn(col, 'keys') is used instead of the `col.keys` dot
     // form because, on a multi-shard Distributed read of a Map subcolumn, some
@@ -2083,14 +2404,15 @@ export class Metadata {
           })
           .then(res =>
             res.json<{
-              __hdx_value: string;
+              __hdx_value: string | number | boolean;
               __hdx_percentage: string | number;
             }>(),
           );
 
         return new Map(
+          // ClickHouse JSON returns numbers and booleans unquoted
           json.data.map(({ __hdx_value, __hdx_percentage }) => [
-            __hdx_value,
+            String(__hdx_value),
             Number(__hdx_percentage),
           ]),
         );
@@ -2601,6 +2923,128 @@ export class Metadata {
     );
   }
 
+  /**
+   * List metric names from a single OTel metrics table.
+   *
+   * Deliberately does NOT go through `getKeyValues`: that path builds
+   * `groupUniqArray(limit)(MetricName)`, which keeps an *arbitrary* subset once a
+   * table has more than `limit` distinct names — the survivors follow hash order,
+   * not name order, and shift as the data and part layout change. On a
+   * high-cardinality source (a full Prometheus scrape) that silently hid metrics
+   * such as `up`, with no way to search for what had been dropped.
+   *
+   * Instead: a deterministic page, ordered by relevance to `namePattern` so an
+   * exact match is always on the first page, plus one extra row so callers can
+   * tell the list was cut off rather than having to guess.
+   *
+   * Not cached in `MetadataCache`: that is an unbounded module-level Map with no
+   * TTL, and this is the only lookup keyed on free-form user input. Callers
+   * should cache through react-query, whose `gcTime` bounds it.
+   */
+  async getMetricNames({
+    databaseName,
+    tableName,
+    connectionId,
+    dateRange,
+    timestampValueExpression,
+    namePattern,
+    limit = DEFAULT_METRIC_NAMES_LIMIT,
+    signal,
+  }: {
+    databaseName: string;
+    tableName: string;
+    connectionId: string;
+    dateRange: [Date, Date];
+    timestampValueExpression: string;
+    namePattern?: string;
+    limit?: number;
+    signal?: AbortSignal;
+  }): Promise<MetricNames> {
+    if (!Number.isInteger(limit) || limit < 1) {
+      throw new Error(
+        `limit must be a positive integer, got: ${String(limit)}`,
+      );
+    }
+
+    // Reuse the shared time filter so `timestampValueExpression` and the
+    // primary-key/partition pruning optimizations keep applying.
+    const timeFilter = await timeFilterExpr({
+      connectionId,
+      databaseName,
+      dateRange,
+      dateRangeEndInclusive: true,
+      dateRangeStartInclusive: true,
+      metadata: this,
+      tableName,
+      timestampValueExpression,
+    });
+
+    // Excluded in SQL rather than after the fact: an empty name sorts first, so
+    // filtering it client-side would consume the extra row and under-report
+    // `truncated`.
+    const whereParts: ChSql[] = [timeFilter, chSql`MetricName != ''`];
+    if (namePattern) {
+      whereParts.push(
+        chSql`MetricName ILIKE ${{
+          String: `%${escapeLikePattern(namePattern)}%`,
+        }}`,
+      );
+    }
+
+    // Relevance first when searching, so a short query like `up` cannot be
+    // crowded off the page by the many names that merely contain it
+    // (`group_reads`, `node_uptime_seconds`, ...). Ordering here rather than in
+    // the client keeps the page we return the page worth showing. Position
+    // ranks earlier occurrences higher and covers prefix matches (position 1),
+    // so exact → earliest occurrence → alphabetical.
+    const orderBy = namePattern
+      ? chSql`lower(MetricName) = lower(${{ String: namePattern }}) DESC,
+              positionCaseInsensitive(MetricName, ${{ String: namePattern }}) ASC,
+              MetricName ASC`
+      : chSql`MetricName ASC`;
+
+    const sql = chSql`
+      SELECT MetricName
+      FROM ${tableExpr({ database: databaseName, table: tableName })}
+      WHERE ${concatChSql(' AND ', whereParts)}
+      GROUP BY MetricName
+      ORDER BY ${orderBy}
+      LIMIT ${{ Int32: limit + 1 }}
+    `;
+
+    const names = await this.clickhouseClient
+      .query<'JSON'>({
+        query: sql.sql,
+        query_params: sql.params,
+        connectionId,
+        clickhouse_settings: {
+          ...this.getClickHouseSettings(),
+          // Bounded by wall clock, not rows: a row cap under `ORDER BY ... LIMIT`
+          // is what made the old result an arbitrary subset, so capping rows here
+          // would reintroduce the bug this method removes. `max_execution_time`
+          // is deliberately left unset so the client applies the deployment's
+          // configured query timeout — the same effective bound this path had
+          // before. Superseded searches abort through `signal`, so only the
+          // latest pattern is ever in flight.
+          max_rows_to_read: '0',
+          // Pinned, not merely left unset: `break` returns a partial aggregate
+          // as HTTP 200, i.e. a short list reporting `truncated: false`, which
+          // is the silent incompleteness this method exists to remove. The
+          // spread above is a mutable process-wide bag, so relying on absence
+          // would let a deployment profile reintroduce it.
+          timeout_overflow_mode: 'throw',
+        },
+        abort_signal: signal,
+      })
+      .then(res => res.json<{ MetricName: string }>())
+      .then(d => d.data.map(row => row.MetricName));
+
+    return {
+      names: names.slice(0, limit),
+      truncated: names.length > limit,
+    };
+  }
+
   async getKeyValuesWithMVs({
     chartConfig,
     keys,
@@ -2727,6 +3171,8 @@ export type TableConnection = {
   connectionId: string;
   metricName?: string;
   metadataMVs?: MetadataMaterializedViews;
+  // Bounds Map key discovery; without it Map keys are skipped. #3037
+  timestampValueExpression?: string;
 };
 
 export type TableConnectionChoice =
@@ -2758,6 +3204,7 @@ export function tcFromSource(source?: TSource): TableConnection {
       source && (isLogSource(source) || isTraceSource(source))
         ? source.metadataMaterializedViews
         : undefined,
+    timestampValueExpression: source?.timestampValueExpression,
   };
 }
 

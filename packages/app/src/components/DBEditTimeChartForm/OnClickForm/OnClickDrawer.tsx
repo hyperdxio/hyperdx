@@ -8,6 +8,7 @@ import {
 } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { validateOnClickTemplate } from '@hyperdx/common-utils/dist/core/linkUrlBuilder';
+import { getFilterExpression } from '@hyperdx/common-utils/dist/filters';
 import {
   isSearchableSource,
   OnClick,
@@ -78,7 +79,6 @@ function SearchOnClickFields({ control }: { control: DrawerControl }) {
           name="onClick.whereTemplate"
           languageName="onClick.whereLanguage"
           allowMultiline
-          showLabel={false}
           sqlPlaceholder="ServiceName = '{{ServiceName}}'"
           lucenePlaceholder="ServiceName:{{ServiceName}}"
         />
@@ -119,11 +119,18 @@ function DashboardOnClickFields({
 
       setValue(
         'onClick.filters',
-        dashboardFilters.map(f => ({
-          kind: 'expressionTemplate' as const,
-          expression: f.expression,
-          template: '',
-        })),
+        dashboardFilters.flatMap(f => {
+          const expression = getFilterExpression(f);
+          return expression != null
+            ? [
+                {
+                  kind: 'expressionTemplate' as const,
+                  expression,
+                  template: '',
+                },
+              ]
+            : [];
+        }),
       );
     },
     [dashboards, setValue, getValues],
@@ -154,7 +161,6 @@ function DashboardOnClickFields({
           name="onClick.whereTemplate"
           languageName="onClick.whereLanguage"
           allowMultiline
-          showLabel={false}
           sqlPlaceholder="ServiceName = '{{ServiceName}}'"
           lucenePlaceholder="ServiceName:{{ServiceName}}"
         />

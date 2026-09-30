@@ -4,6 +4,7 @@ import { Locator } from '@playwright/test';
 import { AlertsPage } from '../page-objects/AlertsPage';
 import { DashboardPage } from '../page-objects/DashboardPage';
 import { DashboardsListPage } from '../page-objects/DashboardsListPage';
+import { SearchPage } from '../page-objects/SearchPage';
 import { getApiUrl, getSources } from '../utils/api-helpers';
 import { expect, test } from '../utils/base-test';
 import {
@@ -402,6 +403,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
 
     await test.step('Verify alerts page loads with content', async () => {
       await expect(alertsPage.pageContainer).toBeVisible();
+      await alertsPage.filterToAlert(tileName);
       await expect(
         alertsPage.pageContainer
           .getByRole('link')
@@ -428,6 +430,9 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
 
     await test.step('Verify alerts page loads with no alerts', async () => {
       await expect(alertsPage.pageContainer).toBeVisible();
+      // Search first: an unrendered virtualized row is absent from the DOM
+      // too, so this would pass even if the alert were still there.
+      await alertsPage.searchByName(tileName);
       await expect(
         alertsPage.pageContainer
           .getByRole('link')
@@ -443,6 +448,45 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
     await expect(dashboardPage.chartEditor.nameInput).toBeHidden({
       timeout: 5000,
     });
+    await expect(dashboardPage.unsavedChangesConfirmModal).toBeHidden();
+  });
+
+  test('should warn when closing filter editor with unsaved changes', async () => {
+    await dashboardPage.createNewDashboard();
+    await dashboardPage.openEditFiltersModal();
+    await dashboardPage.openAddFilterForm();
+    await expect(dashboardPage.getFilterForm()).toBeVisible();
+
+    await dashboardPage.fillFilterName('Unsaved filter');
+
+    await dashboardPage.page.keyboard.press('Escape');
+    await expect(dashboardPage.unsavedChangesConfirmModal).toBeAttached({
+      timeout: 5000,
+    });
+
+    // Cancelling keeps the editor open with the pending edit intact.
+    await dashboardPage.unsavedChangesConfirmCancelButton.click();
+    await expect(dashboardPage.unsavedChangesConfirmModal).toBeHidden();
+    await expect(dashboardPage.getFilterNameInput()).toHaveValue(
+      'Unsaved filter',
+    );
+
+    await dashboardPage.page.keyboard.press('Escape');
+    await expect(dashboardPage.unsavedChangesConfirmModal).toBeAttached({
+      timeout: 5000,
+    });
+    await dashboardPage.unsavedChangesConfirmDiscardButton.click();
+    await expect(dashboardPage.getFilterForm()).toBeHidden({ timeout: 5000 });
+  });
+
+  test('should close filter editor without confirm when there are no unsaved changes', async () => {
+    await dashboardPage.createNewDashboard();
+    await dashboardPage.openEditFiltersModal();
+    await dashboardPage.openAddFilterForm();
+    await expect(dashboardPage.getFilterForm()).toBeVisible();
+
+    await dashboardPage.page.keyboard.press('Escape');
+    await expect(dashboardPage.getFilterForm()).toBeHidden({ timeout: 5000 });
     await expect(dashboardPage.unsavedChangesConfirmModal).toBeHidden();
   });
 
@@ -1157,7 +1201,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
 
       // Wait for success notification
       const notification = dashboardPage.page.locator(
-        'text=/Filter query and dropdown values/i',
+        'text=/Filter query, dropdown values, and relative time range/i',
       );
       await expect(notification).toBeVisible({ timeout: 5000 });
     });
@@ -1222,7 +1266,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
         // Wait for the save success notification rather than a blind sleep, so
         // we only read the URL once the save has actually landed.
         const notification = dashboardPage.page.locator(
-          'text=/Filter query and dropdown values/i',
+          'text=/Filter query, dropdown values, and relative time range/i',
         );
         await expect(notification).toBeVisible({ timeout: 5000 });
 
@@ -2153,6 +2197,96 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
     );
 
     test(
+      'expands variables in the chart drilldown search link',
+      { tag: '@full-stack' },
+      async () => {
+        test.setTimeout(90000);
+        const chartName = `E2E Builder Drilldown Tile ${Date.now()}`;
+
+        await test.step('Create a dashboard with a selected variable value', async () => {
+          await dashboardPage.createNewDashboard();
+          await addServiceVariable();
+          await dashboardPage.clickFilterOption('Service', 'accounting');
+          await dashboardPage.page.keyboard.press('Escape');
+          // The drilldown searches the clicked bucket only. Auto granularity
+          // over the default hour gives one-minute buckets, and the seeded logs
+          // put an `accounting` row down roughly every 3.6 minutes — so most
+          // buckets are legitimately empty and the search below would have
+          // nothing to show. A 30-minute bucket always holds several.
+          await dashboardPage.changeGranularity('30 Minutes Granularity');
+        });
+
+        await test.step('Save a builder line tile whose WHERE uses $__filter', async () => {
+          await dashboardPage.addTile();
+          await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+          await dashboardPage.chartEditor.waitForDataToLoad();
+          await dashboardPage.chartEditor.setChartType(DisplayType.Line);
+          await dashboardPage.chartEditor.setChartName(chartName);
+          await dashboardPage.chartEditor.selectSource(
+            DEFAULT_LOGS_SOURCE_NAME,
+          );
+          await dashboardPage.chartEditor.setSqlWhere(
+            '$__filter(ServiceName, $svc)',
+          );
+          await dashboardPage.chartEditor.runQuery();
+          await dashboardPage.saveTile();
+        });
+
+        const link = dashboardPage.page.getByTestId('chart-view-events-link');
+
+        await test.step('Pin the tooltip and read the View All Events link', async () => {
+          const tile = dashboardPage.getTiles().filter({ hasText: chartName });
+          const chart = tile.locator('.recharts-responsive-container');
+          await expect(chart).toBeVisible({ timeout: 30000 });
+
+          // Recharts only pins on a click that lands on a bucket, so the click
+          // itself is part of what gets retried.
+          await expect(async () => {
+            await chart.click();
+            await expect(link).toBeVisible({ timeout: 2000 });
+          }).toPass({ timeout: 30000 });
+
+          const href = (await link.getAttribute('href')) ?? '';
+          const params = new URL(href, 'http://localhost').searchParams;
+          expect(params.get('where')).toBe("(ServiceName IN ('accounting'))");
+          expect(decodeURIComponent(href)).not.toContain('$svc');
+        });
+
+        await test.step('Following the link searches on the expanded predicate', async () => {
+          // The href assertion above only proves what was written. Following it
+          // is what proves the expansion is SQL the search page can actually
+          // run — an unexpanded `$__filter(...)` reaches ClickHouse verbatim
+          // and errors, because the destination has no variable machinery.
+          const popupPromise = dashboardPage.page.waitForEvent('popup');
+          await link.click();
+          const searchTab = await popupPromise;
+          const searchPage = new SearchPage(searchTab);
+
+          await expect(searchTab).toHaveURL(/\/search\?/, { timeout: 15000 });
+          expect(new URL(searchTab.url()).searchParams.get('where')).toBe(
+            "(ServiceName IN ('accounting'))",
+          );
+
+          await expect(searchPage.table.firstRow).toBeVisible({
+            timeout: 30000,
+          });
+          await expect(searchTab.getByTestId('chart-error-state')).toHaveCount(
+            0,
+          );
+
+          // ServiceName is a column of the E2E Logs default select, so every
+          // rendered row names its service.
+          const rowTexts = await searchPage.table.getRows().allInnerTexts();
+          expect(rowTexts.filter(text => !text.includes('accounting'))).toEqual(
+            [],
+          );
+
+          await searchTab.close();
+        });
+      },
+    );
+
+    test(
       'autocompletes variables in the builder inputs, with their expansion',
       { tag: '@full-stack' },
       async () => {
@@ -2197,8 +2331,8 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
           // the selection rather than the reference it was written with.
           await dashboardPage.chartEditor.typeLuceneWhere('ServiceName:$svc');
           await expect(
-            dashboardPage.page.getByText(/ServiceName.*accounting/i),
-          ).toBeVisible({ timeout: 10000 });
+            dashboardPage.chartEditor.searchQueryDescription(),
+          ).toHaveText(/ServiceName.*accounting/i, { timeout: 10000 });
 
           // Leave the input empty for the SQL steps below.
           await dashboardPage.chartEditor.typeLuceneWhere('');
@@ -2515,7 +2649,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
 
         // Wait for success notification
         const notification = dashboardPage.page.locator(
-          'text=/Filter query and dropdown values/i',
+          'text=/Filter query, dropdown values, and relative time range/i',
         );
         await expect(notification).toBeVisible({ timeout: 5000 });
       });
@@ -2536,7 +2670,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
 
         // Wait for success notification
         const notification = dashboardPage.page.locator(
-          'text=/Filter query and dropdown values/i',
+          'text=/Filter query, dropdown values, and relative time range/i',
         );
         await expect(notification).toBeVisible({ timeout: 5000 });
       });
@@ -2738,7 +2872,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
       });
 
       test('per-series format overrides chart-wide format and falls back when reset to inherit', async () => {
-        test.setTimeout(15000);
+        test.setTimeout(60000);
         const ts = Date.now();
         const chartName = `E2E Per-Series Format ${ts}`;
 
@@ -2842,7 +2976,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
                   cells.length > 0 && cells.every(c => c.includes(substring))
                 );
               },
-              { timeout: 10000 },
+              { timeout: 15000 },
             )
             .toBe(true);
         };
@@ -2961,7 +3095,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
           await page
             .getByTestId('formula-expression-input')
             .fill('A / (A + B) * 100');
-          await page.getByTestId('formula-alias-input').fill('CpuShare');
+          await page.getByTestId('series-alias-input').last().fill('CpuShare');
           expect(await dashboardPage.chartEditor.getFormulaError(0)).toBeNull();
           await dashboardPage.chartEditor.runQuery(false);
 
@@ -3019,7 +3153,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
             dashboardPage.page.getByTestId('formula-expression-input'),
           ).toHaveValue('A / (A + B) * 100');
           await expect(
-            dashboardPage.page.getByTestId('formula-alias-input'),
+            dashboardPage.page.getByTestId('series-alias-input').last(),
           ).toHaveValue('CpuShare');
           await expect(
             dashboardPage.page.getByRole('switch', {

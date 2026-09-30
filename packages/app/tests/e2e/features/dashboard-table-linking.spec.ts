@@ -670,6 +670,94 @@ test.describe(
       });
     });
 
+    test('Dashboard mode: a variable-enabled target filter still receives an expression-keyed link', async ({
+      page,
+    }) => {
+      // `renderOnClickDashboard` has no view of the target's variable config, so
+      // links stay in the expression-keyed format. The target must still apply
+      // them — this is the back-compat read path through the real cross-page
+      // navigation.
+      const ts = Date.now();
+      const targetDashboardName = `E2E Variable Filter Target ${ts}`;
+      let targetDashboardId = '';
+
+      await test.step('Create the target dashboard with a variable-enabled ServiceName filter', async () => {
+        // beforeEach already created a dashboard; repurpose it as the target.
+        await dashboardPage.editDashboardName(targetDashboardName);
+        await dashboardPage.addTile();
+        await dashboardPage.chartEditor.createBasicChart(
+          `Variable Filter Target Tile ${ts}`,
+        );
+        targetDashboardId = dashboardPage.getCurrentDashboardId();
+        await dashboardPage.openEditFiltersModal();
+        await dashboardPage.addFilterToDashboard(
+          'Service Filter',
+          DEFAULT_LOGS_SOURCE_NAME,
+          'ServiceName',
+          undefined,
+          undefined,
+          { variableName: 'svc' },
+        );
+        await dashboardPage.closeFiltersModal();
+      });
+
+      await test.step('Create source dashboard with a Dashboard-mode filter template', async () => {
+        await dashboardPage.goto();
+        await dashboardPage.createNewDashboard();
+        await addTableTile(`E2E Variable Dashboard Filter ${ts}`);
+        await dashboardPage.chartEditor.openRowClickDrawer();
+        await dashboardPage.chartEditor.setRowClickMode('Dashboard');
+        await dashboardPage.chartEditor.selectRowClickTarget(
+          targetDashboardName,
+        );
+        await expect(
+          dashboardPage.chartEditor.onClickFilterExpressionInput(0),
+        ).toHaveValue('ServiceName');
+        await dashboardPage.chartEditor
+          .onClickFilterTemplateInput(0)
+          .fill('{{ServiceName}}');
+        await dashboardPage.chartEditor.applyRowClickDrawer();
+        await dashboardPage.saveTile();
+      });
+
+      await test.step('Set dashboard time range to Last 6 hours', async () => {
+        await dashboardPage.timePicker.selectRelativeTime('Last 6 hours');
+      });
+
+      await dashboardPage.waitForTableTileRows(0);
+      const serviceName = await dashboardPage.getFirstTableRowValue(0, 1);
+      expect(serviceName.length).toBeGreaterThan(0);
+
+      await test.step('Click first table row', async () => {
+        await dashboardPage.clickFirstTableRow(0);
+      });
+
+      await test.step('Verify the link is still expression-keyed', async () => {
+        await expect(page).toHaveURL(
+          new RegExp(`/dashboards/${targetDashboardId}`),
+          { timeout: 10000 },
+        );
+        const url = new URL(page.url());
+        const filtersRaw = url.searchParams.get('filters');
+        expect(filtersRaw).not.toBeNull();
+        const filters = JSON.parse(decodeURIComponent(filtersRaw!));
+        expect(filters).toEqual([
+          {
+            type: 'sql',
+            condition: `ServiceName IN ('${serviceName}')`,
+          },
+        ]);
+      });
+
+      await test.step('Verify the target applied it, with no banner', async () => {
+        await expect(
+          dashboardPage.getFilterPill('Service Filter', serviceName),
+        ).toBeVisible({ timeout: 20000 });
+        await expect(dashboardPage.ignoredUrlFiltersBanner).toBeHidden();
+        await expect(dashboardPage.getLinkErrorNotification()).toBeHidden();
+      });
+    });
+
     test('Dashboard mode: ignored-filter warning banner is dismissable', async ({
       page,
     }) => {

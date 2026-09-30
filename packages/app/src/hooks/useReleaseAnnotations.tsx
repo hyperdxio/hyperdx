@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
+import Link from 'next/link';
+import { isMissingColumnError } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   BuilderChartConfigWithDateRange,
   Filter,
@@ -7,9 +9,11 @@ import {
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
+import { Anchor, Stack, Text } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 
 import { ChartAnnotation } from '@/components/charts/chartAnnotations';
+import { IS_LOCAL_MODE } from '@/config';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { getFirstTimestampValueExpression } from '@/source';
 import { getChartColorInfo } from '@/utils';
@@ -22,6 +26,20 @@ export const DEFAULT_VERSION_EXPRESSION =
   "ResourceAttributes['service.version']";
 
 const RELEASE_EMPTY_NOTIFICATION_ID = 'release-markers-empty';
+const RELEASE_ERROR_NOTIFICATION_ID = 'release-markers-error';
+
+/**
+ * A ClickHouse error message often echoes the full rendered SQL, which reads
+ * as an unreadable wall of text in a toast. Truncating keeps the notification
+ * skimmable while still surfacing enough of the raw error to be useful.
+ */
+const RELEASE_ERROR_MESSAGE_MAX_LENGTH = 200;
+
+function truncateForNotification(message: string): string {
+  return message.length > RELEASE_ERROR_MESSAGE_MAX_LENGTH
+    ? `${message.slice(0, RELEASE_ERROR_MESSAGE_MAX_LENGTH)}…`
+    : message;
+}
 
 /** Distinct versions fetched per window. Far above any real release cadence. */
 const MAX_RELEASE_ROWS = 500;
@@ -372,7 +390,7 @@ export function useReleaseAnnotations(
     scopeKey,
   ]);
 
-  const { data, isFetching } = useQueriedChartConfig(config, {
+  const { data, isFetching, isError, error } = useQueriedChartConfig(config, {
     enabled: enabled && isSupported,
   });
 
@@ -386,22 +404,111 @@ export function useReleaseAnnotations(
     return mapped.length ? mapped : undefined;
   }, [enabled, data, windowStartMs]);
 
-  // Toggling markers on and seeing nothing reads as broken, and the common
-  // cause is simply that the service does not emit `service.version`. Say so
-  // once (Mantine dedupes concurrent tiles by notification id).
-  const hasWarnedRef = useRef(false);
+  // Toggling markers on and seeing nothing reads as broken. The common cause
+  // is simply that the service does not emit `service.version`, but the
+  // configured expression can also reference a column the source's table
+  // doesn't have (e.g. no `ResourceAttributes` at all) — a query error the
+  // chart otherwise renders identically to "no releases", with no signal to
+  // the user. Distinguish the two (Mantine dedupes concurrent tiles by
+  // notification id).
+  //
+  // The two warnings latch on different identities, because they mean
+  // different things: an error is a scope-wide problem (e.g. a missing
+  // column persists regardless of which window you're looking at), so
+  // panning shouldn't re-show it — but "no releases found" is inherently
+  // per-window (a different range can genuinely have different releases),
+  // so a new window's empty result deserves its own notification even on an
+  // unchanged scope. Two independent latches (rather than one "last warned
+  // kind") keep those two reset rules from fighting each other: a run of
+  // empty windows must not reset the error latch, and vice versa.
+  const hasWarnedErrorRef = useRef(false);
+  const hasWarnedEmptyRef = useRef(false);
+  // A changed *scope* (source, version expression, or the tile's own
+  // filters) is a genuinely new query, so it resets both latches. A changed
+  // *window* only resets the empty latch — see above. Detected inline
+  // (rather than separate effects) so every latch mutation lives in one
+  // place and doesn't depend on effect declaration order.
+  const scopeIdentity = `${source?.id ?? ''}::${versionExpression}::${scopeKey}`;
+  const windowIdentity = `${windowStartMs}::${windowEndMs}`;
+  const prevScopeRef = useRef(scopeIdentity);
+  const prevWindowRef = useRef(windowIdentity);
   useEffect(() => {
+    if (prevScopeRef.current !== scopeIdentity) {
+      prevScopeRef.current = scopeIdentity;
+      hasWarnedErrorRef.current = false;
+      hasWarnedEmptyRef.current = false;
+    }
+    if (prevWindowRef.current !== windowIdentity) {
+      prevWindowRef.current = windowIdentity;
+      hasWarnedEmptyRef.current = false;
+    }
     if (!enabled) {
-      hasWarnedRef.current = false;
+      hasWarnedErrorRef.current = false;
+      hasWarnedEmptyRef.current = false;
       return;
     }
-    if (isFetching || data == null || annotations != null) {
+    if (isFetching) {
       return;
     }
-    if (hasWarnedRef.current) {
+    if (isError) {
+      if (hasWarnedErrorRef.current) {
+        return;
+      }
+      hasWarnedErrorRef.current = true;
+      const rawMessage = error instanceof Error ? error.message : String(error);
+      const truncatedMessage = truncateForNotification(rawMessage);
+      notifications.show({
+        id: RELEASE_ERROR_NOTIFICATION_ID,
+        color: 'red',
+        title: "Couldn't load release markers",
+        message: (
+          <Stack gap={4}>
+            <Text size="sm">
+              {isMissingColumnError(error) ? (
+                <>
+                  The version expression configured for release markers
+                  doesn&apos;t match a column on this source.{' '}
+                  {/* `/team` isn't reachable in local mode (e.g. the Vercel
+                  preview) — same constraint DBRowSidePanelErrorState works
+                  around with a modal instead. A hook's notification content
+                  isn't part of a component tree a Modal could mount into, so
+                  just omit the link there rather than pointing at a dead
+                  route. */}
+                  {!IS_LOCAL_MODE && source != null && (
+                    <Anchor
+                      component={Link}
+                      href={`/team#source-${source.id}`}
+                      size="sm"
+                    >
+                      Check the Service Version Expression in Team Settings
+                    </Anchor>
+                  )}
+                </>
+              ) : (
+                'Release marker query failed.'
+              )}
+            </Text>
+            <Text size="xs" c="dimmed" style={{ wordBreak: 'break-word' }}>
+              {truncatedMessage}
+            </Text>
+          </Stack>
+        ),
+      });
       return;
     }
-    hasWarnedRef.current = true;
+    // A non-error result recovers the error latch: a later failure of this
+    // scope is a new problem, not a continuation of one already shown.
+    hasWarnedErrorRef.current = false;
+    if (annotations != null) {
+      return;
+    }
+    if (data == null) {
+      return;
+    }
+    if (hasWarnedEmptyRef.current) {
+      return;
+    }
+    hasWarnedEmptyRef.current = true;
     notifications.show({
       id: RELEASE_EMPTY_NOTIFICATION_ID,
       color: 'yellow',
@@ -409,7 +516,17 @@ export function useReleaseAnnotations(
       message:
         'Release markers come from changes in the version attribute configured on this source. No version changes were found in this time range - if you deploy without changing the version, there is nothing to mark.',
     });
-  }, [enabled, isFetching, data, annotations]);
+  }, [
+    enabled,
+    isFetching,
+    isError,
+    error,
+    data,
+    annotations,
+    scopeIdentity,
+    windowIdentity,
+    source,
+  ]);
 
   return annotations;
 }

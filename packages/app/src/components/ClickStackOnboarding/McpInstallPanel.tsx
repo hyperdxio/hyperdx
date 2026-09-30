@@ -17,16 +17,8 @@ import {
   type DeploymentShape,
 } from './installSnippets';
 
-/**
- * Agent hosts the install panel covers. Five named installs (Claude
- * Code, Cursor, VS Code, Codex CLI, OpenCode) plus "Other" as the
- * JSON-fallback escape hatch for any other MCP-compatible host
- * (Claude Desktop, Continue, Cline, ...).
- *
- * ChatGPT is intentionally absent: native MCP isn't there yet, and
- * bridges are a user-side decision better tracked in the docs than
- * in this UI surface.
- */
+// ChatGPT is intentionally absent: no native MCP yet, and bridges are a
+// user-side decision better tracked in docs than in this UI.
 type AgentHost =
   | 'claude-code'
   | 'cursor'
@@ -56,26 +48,13 @@ function isAgentHost(value: string): value is AgentHost {
 }
 
 interface McpInstallPanelProps {
-  /**
-   * Deployment shape derived from `useMe()` in the caller. The
-   * caller is responsible for not mounting this panel until the
-   * deployment is ready (matching the convention in
-   * `ApiKeysSection`), so the type here is non-nullable.
-   */
+  /** Non-nullable: the caller mounts this only once the deployment is ready. */
   deployment: DeploymentShape;
 }
 
 /**
- * Renders the host picker plus the install primitive (CLI command,
- * deep link, or JSON block) for the chosen host. Presentational;
- * the deployment shape comes in via props so the same component
- * can render from any surface that resolves a deployment + access
- * key.
- *
- * The access key is inlined in the rendered snippet to match the
- * existing API Keys card pattern, which shows the key in plain
- * text. A follow-up will introduce a shared mask + reveal-to-copy
- * affordance across every credential surface in Team Settings.
+ * Host picker plus the install primitive (CLI command, deep link, or JSON
+ * block) for the chosen host. The access key is masked in every snippet.
  */
 export default function McpInstallPanel({ deployment }: McpInstallPanelProps) {
   const [host, setHost] = useState<AgentHost>('claude-code');
@@ -88,10 +67,8 @@ export default function McpInstallPanel({ deployment }: McpInstallPanelProps) {
         fullWidth
         value={host}
         onChange={value => {
-          // Narrow the SegmentedControl's `string` callback against
-          // the CHOICES set so a future out-of-band value cannot
-          // silently install an invalid host. CHOICES is the source
-          // of truth for the option list.
+          // Narrow the string callback so an out-of-band value can't set an
+          // invalid host.
           if (isAgentHost(value)) {
             setHost(value);
           }
@@ -108,7 +85,11 @@ export default function McpInstallPanel({ deployment }: McpInstallPanelProps) {
         aria-label="MCP host"
       />
 
-      <HostInstall host={host} snippets={snippets} />
+      <HostInstall
+        host={host}
+        snippets={snippets}
+        accessKey={deployment.accessKey}
+      />
     </Stack>
   );
 }
@@ -128,9 +109,7 @@ function HostIcon({ id }: { id: AgentHost }) {
     case 'other':
       return <IconRobot size={16} />;
   }
-  // Exhaustiveness check via `satisfies never`: adding a new
-  // AgentHost variant without extending the switch fails the
-  // compile here. Defensive `return null` (instead of throwing)
+  // Exhaustiveness: a new AgentHost variant fails compile here. `return null`
   // keeps a runtime-only unknown variant from crashing the panel.
   id satisfies never;
   return null;
@@ -139,15 +118,18 @@ function HostIcon({ id }: { id: AgentHost }) {
 interface HostInstallProps {
   host: AgentHost;
   snippets: BuiltSnippets;
+  /** Access key masked in every snippet; empty when there's no key. */
+  accessKey: string;
 }
 
-function HostInstall({ host, snippets }: HostInstallProps) {
+function HostInstall({ host, snippets, accessKey }: HostInstallProps) {
   switch (host) {
     case 'claude-code':
       return (
         <CopySnippet
           label="Paste in your terminal:"
           snippet={snippets.claudeCode}
+          accessKey={accessKey}
         />
       );
 
@@ -158,6 +140,7 @@ function HostInstall({ host, snippets }: HostInstallProps) {
           deeplink={snippets.cursor}
           fallbackLabel="Or paste this JSON into Cursor settings > MCP:"
           fallbackSnippet={snippets.jsonBlock}
+          fallbackAccessKey={accessKey}
         />
       );
 
@@ -168,6 +151,7 @@ function HostInstall({ host, snippets }: HostInstallProps) {
           deeplink={snippets.vscode}
           fallbackLabel="Or paste this JSON into .vscode/mcp.json:"
           fallbackSnippet={snippets.jsonBlock}
+          fallbackAccessKey={accessKey}
           note={
             <Text size="xs" c="dimmed">
               Requires VS Code 1.99+ with the Copilot Chat MCP feature enabled.
@@ -181,6 +165,7 @@ function HostInstall({ host, snippets }: HostInstallProps) {
         <CopySnippet
           label="Paste in your terminal:"
           snippet={snippets.codexCli}
+          accessKey={accessKey}
         />
       );
 
@@ -189,6 +174,7 @@ function HostInstall({ host, snippets }: HostInstallProps) {
         <CopySnippet
           label="Paste this into `opencode.json` (project) or `~/.config/opencode/config.json` (global):"
           snippet={snippets.openCode}
+          accessKey={accessKey}
         />
       );
 
@@ -197,12 +183,11 @@ function HostInstall({ host, snippets }: HostInstallProps) {
         <CopySnippet
           label="Paste this into your host's MCP config:"
           snippet={snippets.jsonBlock}
+          accessKey={accessKey}
         />
       );
   }
-  // Exhaustiveness check via `satisfies never`: adding a new
-  // AgentHost variant without extending the switch fails the
-  // compile here. Defensive `return null` (instead of throwing)
+  // Exhaustiveness: a new AgentHost variant fails compile here. `return null`
   // keeps a runtime-only unknown variant from crashing the panel.
   host satisfies never;
   return null;

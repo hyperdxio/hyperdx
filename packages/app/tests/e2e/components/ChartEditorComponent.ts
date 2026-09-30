@@ -5,10 +5,16 @@
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import { expect, Locator, Page } from '@playwright/test';
 
-import { dismissSqlAutocomplete, getSqlEditor } from '../utils/locators';
+import {
+  dismissSqlAutocomplete,
+  getSqlEditor,
+  replaceEditorText,
+} from '../utils/locators';
 import { switchWhereToLucene } from '../utils/lucene-autocomplete';
+import { addTagViaPicker, removeTagViaPicker } from '../utils/tags';
 
 import { WebhookAlertModalComponent } from './WebhookAlertModalComponent';
+import { WhereInputComponent } from './WhereInputComponent';
 
 export class ChartEditorComponent {
   readonly page: Page;
@@ -93,30 +99,21 @@ export class ChartEditorComponent {
 
   /**
    * The editor renders one WHERE input per series (the series' agg condition)
-   * followed by the chart-level WHERE, and they share a placeholder and testid.
-   * `'series'` takes the first, `'chart'` the last — so `'series'` only
-   * addresses the first series, which is all the tests need so far.
+   * followed by the chart-level WHERE. `'series'` takes the first, `'chart'`
+   * the last — so `'series'` only addresses the first series, which is all the
+   * tests need so far.
    */
-  private whereInput(locator: Locator, scope: 'chart' | 'series'): Locator {
-    return scope === 'series' ? locator.first() : locator.last();
-  }
-
-  /**
-   * A whole WHERE input — its language switch, the SQL or Lucene editor, and
-   * anything the input renders beside them. Located from the language switch,
-   * which is the one part present in both languages and whichever state the
-   * editor is in.
-   */
-  private whereRow(scope: 'chart' | 'series' = 'chart'): Locator {
-    return this.whereInput(
-      this.editorForm().getByTestId('where-language-switch'),
-      scope,
-    ).locator('xpath=..');
+  private whereInput(scope: 'chart' | 'series' = 'chart'): WhereInputComponent {
+    return new WhereInputComponent(
+      this.page,
+      this.editorForm(),
+      scope === 'series' ? 'first' : 'last',
+    );
   }
 
   /** The warning icon a WHERE input shows about the variables it references. */
   whereVariableWarning(scope: 'chart' | 'series' = 'chart'): Locator {
-    return this.whereRow(scope).getByTestId('variable-validation');
+    return this.whereInput(scope).variableWarning;
   }
 
   /**
@@ -142,26 +139,7 @@ export class ChartEditorComponent {
   ) {
     // A completion popup left open by a prior editor can overlay the switch.
     await dismissSqlAutocomplete(this.page);
-    const select = this.whereInput(
-      this.editorForm().getByTestId('where-language-switch'),
-      scope,
-    ).getByLabel('Query language');
-    await select.click();
-    await this.page
-      .getByRole('option', { name: language, exact: true })
-      .click();
-  }
-
-  /** Focus a WHERE input and replace its contents with `expression`. */
-  private async fillWhereEditor(expression: string, scope: 'chart' | 'series') {
-    // Located through the row rather than the placeholder, which CodeMirror
-    // drops as soon as there is content — so this can refill an input it has
-    // already filled once.
-    const editor = this.whereRow(scope).locator('.cm-content');
-    await editor.click();
-    await this.page.keyboard.press('ControlOrMeta+A');
-    await this.page.keyboard.press('Delete');
-    await this.page.keyboard.type(expression);
+    await this.whereInput(scope).selectLanguage(language);
   }
 
   /**
@@ -170,7 +148,7 @@ export class ChartEditorComponent {
    */
   async setSqlWhere(expression: string, scope: 'chart' | 'series' = 'chart') {
     await this.setWhereLanguage('SQL', scope);
-    await this.fillWhereEditor(expression, scope);
+    await this.whereInput(scope).fillSql(expression);
     await dismissSqlAutocomplete(this.page);
   }
 
@@ -179,12 +157,7 @@ export class ChartEditorComponent {
    * plain textarea rather than CodeMirror. Leaves the suggestion dropdown open.
    */
   async typeLuceneWhere(text: string, scope: 'chart' | 'series' = 'chart') {
-    const input = this.whereInput(
-      this.editorForm().getByPlaceholder(/Search your events w\/ Lucene/i),
-      scope,
-    );
-    await input.click();
-    await input.fill(text);
+    await this.whereInput(scope).typeLucene(text);
   }
 
   /**
@@ -199,7 +172,7 @@ export class ChartEditorComponent {
     scope: 'chart' | 'series' = 'chart',
   ): Promise<{ labels: string[]; info: string }> {
     await this.setWhereLanguage('SQL', scope);
-    await this.fillWhereEditor(prefix, scope);
+    await this.whereInput(scope).fillSql(prefix);
 
     const popup = this.page.locator('.cm-tooltip-autocomplete');
     await popup.waitFor({ state: 'visible', timeout: 10000 });
@@ -279,17 +252,16 @@ export class ChartEditorComponent {
    * Select a data source
    */
   async selectSource(sourceName: string) {
+    // The editor pre-selects a source, and clicking the option that is already
+    // selected deselects it. Leave an existing match alone.
+    if ((await this.sourceSelector.inputValue()) === sourceName) {
+      return;
+    }
     await this.sourceSelector.click();
     // Use getByRole for more reliable selection. exact: true avoids matching
     // sources whose names are prefixes of others (e.g. "E2E Traces MV" vs
     // "E2E Traces MV AutoPopulate").
-    const sourceOption = this.page.getByRole('option', {
-      name: sourceName,
-      exact: true,
-    });
-    if ((await sourceOption.getAttribute('data-combobox-active')) != 'true') {
-      await sourceOption.click({ timeout: 5000 });
-    }
+    await this.sourceOption(sourceName).click({ timeout: 5000 });
   }
 
   /**
@@ -386,6 +358,27 @@ export class ChartEditorComponent {
     }
   }
 
+  /** Open the Data Source dropdown. */
+  async openSourcePicker() {
+    await this.sourceSelector.click();
+    await expect(this.page.getByRole('option').first()).toBeVisible();
+  }
+
+  /**
+   * Close the Data Source dropdown by moving focus to the chart name input.
+   * Escape would bubble to the tile-editor modal and close that instead, and
+   * clicking the select again leaves the searchable dropdown open.
+   */
+  async closeSourcePicker() {
+    await this.chartNameInput.click();
+    await expect(this.page.getByRole('option')).toHaveCount(0);
+  }
+
+  /** An option in the open Data Source dropdown. */
+  sourceOption(sourceName: string): Locator {
+    return this.page.getByRole('option', { name: sourceName, exact: true });
+  }
+
   /**
    * Switch the chart editor from Builder to SQL mode.
    */
@@ -395,6 +388,123 @@ export class ChartEditorComponent {
     );
     await sqlLabel.waitFor({ state: 'visible', timeout: 5000 });
     await sqlLabel.click();
+  }
+
+  /**
+   * Switch the chart editor to PromQL mode. Only offered when the app is run
+   * with NEXT_PUBLIC_ENABLE_PROMQL=true (the e2e webServer sets it).
+   *
+   * Matched exactly: "SQL" is a substring of the PromQL label, so a
+   * `has-text("SQL")` selector would resolve to both.
+   */
+  async switchToPromqlMode() {
+    const label = this.page
+      .locator('.mantine-SegmentedControl-label')
+      .filter({ hasText: /^PromQL$/ });
+    await label.waitFor({ state: 'visible', timeout: 5000 });
+    await label.click();
+  }
+
+  /**
+   * Replace the entire contents of one PromQL expression editor.
+   *
+   * The same `.cm-editor` locator as the SQL template, indexed for the same
+   * reason: the expression inputs come before the preview panel, whose
+   * "Generated PromQL" accordion holds read-only CodeMirrors of its own. So
+   * `index` addresses the nth expression row, counting from the top.
+   */
+  async replacePromqlExpression(expression: string, index = 0) {
+    await replaceEditorText(
+      this.page,
+      this.page.locator('.cm-editor .cm-content').nth(index),
+      expression,
+    );
+  }
+
+  /** Read the current text of a PromQL expression editor. */
+  async getPromqlEditorText(index = 0): Promise<string> {
+    return this.page.locator('.cm-editor .cm-content').nth(index).innerText();
+  }
+
+  /** Append an empty PromQL expression row (time series charts only). */
+  async addPromqlExpression() {
+    await this.page.getByTestId('promql-add-expression-button').click();
+  }
+
+  /**
+   * The warning icon the PromQL expression input shows about the variables it
+   * references.
+   *
+   * Scoped to the editor form, which in PromQL mode renders the expression
+   * input and no WHERE inputs — so this is the only indicator inside it. The
+   * validation debounces, so assertions on it need a generous timeout.
+   */
+  promqlVariableWarning(): Locator {
+    return this.editorForm().getByTestId('variable-validation');
+  }
+
+  /**
+   * Type `prefix` into the PromQL editor and return the labels its
+   * autocomplete popup offers, once `settleOn` is among them.
+   *
+   * Waiting on a known label rather than on the popup is what makes this
+   * safe to read as a whole: three sources feed the popup — dashboard
+   * variables, metric names and PromQL's own functions and keywords — and the
+   * metric-name one debounces, so the list repaints after first appearing.
+   *
+   * The prefix is re-typed until the label shows up, rather than waited on in
+   * place: the metric names arrive from a query, and the source that reads
+   * them only joins the `override` array once they do. A popup opened before
+   * that lists the other two sources and never repaints on its own, so only a
+   * fresh input event can pick the metric names up.
+   *
+   * Assert the result with `toContain` rather than comparing it whole: which
+   * of PromQL's built-ins fuzzy-match a short prefix is not worth pinning.
+   */
+  async readPromqlCompletions(
+    prefix: string,
+    settleOn: string,
+  ): Promise<string[]> {
+    const options = this.completionOptions();
+    await expect(async () => {
+      // Only on a retry, and only if the last attempt left the popup up: it
+      // covers the editor, so `replacePromqlExpression`'s click would land on
+      // an option instead. Unconditional dismissal would send keystrokes
+      // before the editor has been focused at all.
+      if (await this.page.locator('.cm-tooltip-autocomplete').isVisible()) {
+        await this.dismissCompletion();
+      }
+      await this.replacePromqlExpression(prefix);
+      await expect(options.filter({ hasText: settleOn })).not.toHaveCount(0, {
+        timeout: 5000,
+      });
+    }).toPass({ timeout: 30000 });
+    return options.allInnerTexts();
+  }
+
+  /**
+   * Type `prefix` into the PromQL editor, accept the suggestion labelled
+   * `label`, and return the resulting expression.
+   *
+   * Verifies that what a completion inserts is well-formed: the replace range
+   * reaches forward over the rest of the reference, so the `}` the editor
+   * auto-inserts after `${` is inside it and `apply` has to supply its own.
+   */
+  async acceptPromqlCompletion(prefix: string, label: string): Promise<string> {
+    await this.replacePromqlExpression(prefix);
+
+    const option = this.page
+      .locator('.cm-tooltip-autocomplete > ul > li')
+      .filter({ has: this.page.getByText(label, { exact: true }) })
+      .first();
+    await option.waitFor({ state: 'visible', timeout: 10000 });
+    await option.click();
+
+    const text = await this.getPromqlEditorText();
+    // Accepting can immediately re-open the popup on the inserted text, which
+    // would intercept the next caller's click.
+    await this.dismissCompletion();
+    return text;
   }
 
   /**
@@ -454,6 +564,56 @@ export class ChartEditorComponent {
     }
   }
 
+  /**
+   * The "Searching for:" summary of the focused search input, which renders
+   * the query in English. Assertions scope to it because the SQL the query
+   * expands to is also on the page, in the generated-SQL preview.
+   */
+  searchQueryDescription(): Locator {
+    return this.page.getByTestId('search-query-description');
+  }
+
+  /**
+   * The action bar's "Apply filters" control, present only for a tile being
+   * edited from a dashboard.
+   */
+  applyDashboardFilters(): Locator {
+    return this.page.getByTestId('apply-dashboard-filters');
+  }
+
+  applyDashboardFiltersSwitch(): Locator {
+    return this.applyDashboardFilters().getByRole('switch');
+  }
+
+  /** Turn the dashboard's filter selections on or off for the preview. */
+  async setApplyDashboardFilters(apply: boolean) {
+    const toggle = this.applyDashboardFiltersSwitch();
+    await toggle.waitFor({ state: 'visible', timeout: 10000 });
+    if ((await toggle.isChecked()) !== apply) {
+      await toggle.click();
+    }
+  }
+
+  /**
+   * Hover the switch's wrapper rather than the switch, so the tooltip opens
+   * even while the switch is disabled and emits no pointer events itself.
+   */
+  async hoverApplyDashboardFilters() {
+    await this.applyDashboardFilters().hover();
+  }
+
+  /** The placeholder shown while required dashboard filters are unselected. */
+  previewMissingRequiredFilters(): Locator {
+    return this.page.getByTestId('preview-missing-required-filters');
+  }
+
+  /** The rendered chart in the preview panel of the tile editor modal. */
+  tileEditorPreviewChart(): Locator {
+    return this.page
+      .getByTestId('tile-editor-form')
+      .locator('.recharts-responsive-container');
+  }
+
   /** CodeMirror content of the rendered "Generated SQL" preview. */
   generatedSqlContent(): Locator {
     return this.page.getByTestId('chart-sql-preview').locator('.cm-content');
@@ -465,6 +625,58 @@ export class ChartEditorComponent {
    */
   async getGeneratedSqlText(): Promise<string> {
     const text = await this.generatedSqlContent().innerText();
+    return text.replace(/\s+/g, ' ').trim();
+  }
+
+  /**
+   * Expand the "Generated PromQL" accordion in the preview panel, where a
+   * PromQL tile shows what "Generated SQL" shows for the other kinds. Safe to
+   * call when it is already open.
+   *
+   * Rendered off the *queried* config, like that one, so it only appears once
+   * the tile has been run.
+   */
+  async openGeneratedPromql() {
+    const control = this.generatedPromqlControl();
+    await control.waitFor({ state: 'visible', timeout: 10000 });
+    if ((await control.getAttribute('aria-expanded')) !== 'true') {
+      await control.click();
+    }
+    await this.generatedPromqlContent().waitFor({
+      state: 'visible',
+      timeout: 10000,
+    });
+  }
+
+  /**
+   * The "Generated PromQL" accordion's control. Present for the whole time the
+   * editor is in PromQL mode, and disabled until a PromQL query has run.
+   */
+  generatedPromqlControl(): Locator {
+    return this.page.getByRole('button', { name: 'Generated PromQL' });
+  }
+
+  /**
+   * CodeMirror content of the nth expression in the "Generated PromQL"
+   * preview, which holds one per expression the tile plots.
+   *
+   * Its own test id rather than `.cm-editor` with an index: the editor page
+   * can hold several CodeMirror instances, and which ordinal this one takes
+   * depends on the mode the editor is in.
+   */
+  generatedPromqlContent(index = 0): Locator {
+    return this.page
+      .getByTestId('chart-promql-preview')
+      .nth(index)
+      .locator('.cm-content');
+  }
+
+  /**
+   * The generated PromQL as a single whitespace-collapsed line. Substitution is
+   * debounced by 300ms, so assert on it with `toPass` or an expect timeout.
+   */
+  async getGeneratedPromqlText(index = 0): Promise<string> {
+    const text = await this.generatedPromqlContent(index).innerText();
     return text.replace(/\s+/g, ' ').trim();
   }
 
@@ -523,7 +735,7 @@ export class ChartEditorComponent {
    * Escape also closes it, but it bubbles to the tile modal and pops the
    * discard-changes dialog.
    */
-  async dismissSqlCompletion() {
+  async dismissCompletion() {
     await this.page.keyboard.press(
       process.platform === 'darwin' ? 'Meta+A' : 'Control+A',
     );
@@ -533,11 +745,26 @@ export class ChartEditorComponent {
       .waitFor({ state: 'hidden', timeout: 10000 });
   }
 
-  /** Labels currently offered by the SQL autocomplete popup. */
-  sqlCompletionOptions(): Locator {
+  /** `dismissCompletion` under its original, SQL-specific name. */
+  async dismissSqlCompletion() {
+    await this.dismissCompletion();
+  }
+
+  /**
+   * Labels currently offered by the autocomplete popup.
+   *
+   * Not scoped to a particular editor: CodeMirror portals the tooltip out of
+   * the editor it belongs to, and only one is ever open at a time.
+   */
+  completionOptions(): Locator {
     return this.page.locator(
       '.cm-tooltip-autocomplete > ul > li .cm-completionLabel',
     );
+  }
+
+  /** `completionOptions` under its original, SQL-specific name. */
+  sqlCompletionOptions(): Locator {
+    return this.completionOptions();
   }
 
   /**
@@ -606,8 +833,8 @@ export class ChartEditorComponent {
    */
   async save() {
     await this.saveButton.click();
-    // Wait for save button to disappear (modal closes)
-    await this.saveButton.waitFor({ state: 'hidden', timeout: 2000 });
+    // The modal closes once the dashboard mutation resolves.
+    await this.saveButton.waitFor({ state: 'hidden', timeout: 10000 });
   }
 
   /**
@@ -728,6 +955,28 @@ export class ChartEditorComponent {
       .nth(1);
     await input.fill(String(value));
     await input.blur();
+  }
+
+  /** Set the alert's own display name in the tile alert editor. */
+  async setTileAlertDisplayName(name: string) {
+    await this.page
+      .getByTestId('alert-details')
+      .getByTestId('alert-display-name-input')
+      .fill(name);
+  }
+
+  private get tileAlertTagsButton() {
+    return this.page
+      .getByTestId('alert-details')
+      .getByTestId('alert-tags-button');
+  }
+
+  async addTileAlertTag(tag: string) {
+    await addTagViaPicker(this.page, this.tileAlertTagsButton, tag);
+  }
+
+  async removeTileAlertTag(tag: string) {
+    await removeTagViaPicker(this.page, this.tileAlertTagsButton, tag);
   }
 
   /**
@@ -895,6 +1144,57 @@ export class ChartEditorComponent {
   }
 
   /**
+   * Set the "Legend template" value in the Display Settings drawer (PromQL
+   * charts only). Opens the drawer, fills the input, then applies and closes.
+   */
+  async setLegendTemplate(template: string) {
+    await this.openDisplaySettings();
+    const drawer = this.page.getByRole('dialog', { name: 'Display Settings' });
+    await drawer.getByTestId('legend-template-input').fill(template);
+    await this.applyDisplaySettings();
+  }
+
+  /**
+   * Choose how a PromQL expression is evaluated, from the toggle under the
+   * expression editor. `reducer` is the visible label (e.g. "Max"), and only
+   * applies to a range query.
+   */
+  async setPromqlQueryType(
+    queryType: 'Instant' | 'Range',
+    { index = 0, reducer }: { index?: number; reducer?: string } = {},
+  ) {
+    const group = this.page.getByTestId(`promql-query-type-input-${index}`);
+    if (!(await group.isVisible())) {
+      await this.page.getByTestId(`promql-query-type-control-${index}`).click();
+    }
+    await group.getByText(queryType, { exact: true }).click();
+
+    if (reducer) {
+      await this.page
+        .getByRole('combobox', { name: 'PromQL range reducer' })
+        .click();
+      await this.page
+        .getByRole('option', { name: reducer, exact: true })
+        .click();
+    }
+  }
+
+  /**
+   * Set the "Background chart" type in the Display Settings drawer (number
+   * tiles only). Opens the drawer, picks the type, then applies and closes.
+   */
+  async setBackgroundChart(type: 'None' | 'Line' | 'Area') {
+    await this.openDisplaySettings();
+    const drawer = this.page.getByRole('dialog', { name: 'Display Settings' });
+    // Mantine repeats the aria-label on the options listbox, so match the role.
+    await drawer
+      .getByRole('combobox', { name: 'Number tile background chart type' })
+      .click();
+    await drawer.getByRole('option', { name: type, exact: true }).click();
+    await this.applyDisplaySettings();
+  }
+
+  /**
    * Open the Display Settings drawer and wait for it to become visible.
    */
   async openDisplaySettings() {
@@ -965,7 +1265,9 @@ export class ChartEditorComponent {
   /**
    * Click the "Add Formula" button (metric sources only) to append a formula
    * row, and fill its expression (and optional alias). Targets the last
-   * formula row so multiple formulas can be added in sequence.
+   * formula row so multiple formulas can be added in sequence. Formula rows
+   * reuse the shared series controls, so the alias input carries the series
+   * test id and is last on the page (formulas render after the series).
    */
   async addFormula(expression: string, alias?: string) {
     await this.page.getByTestId('add-formula-button').click();
@@ -974,7 +1276,7 @@ export class ChartEditorComponent {
       .last();
     await expressionInput.fill(expression);
     if (alias !== undefined) {
-      await this.page.getByTestId('formula-alias-input').last().fill(alias);
+      await this.page.getByTestId('series-alias-input').last().fill(alias);
     }
     await expressionInput.blur();
   }
@@ -1015,7 +1317,12 @@ export class ChartEditorComponent {
    * default `count()` series distinct column names in a multi-series table.
    */
   async setSeriesAlias(index: number, alias: string) {
-    await this.page.getByTestId('series-alias-input').nth(index).fill(alias);
+    await this.seriesAliasInput(index).fill(alias);
+  }
+
+  /** The alias input of the series (or PromQL expression) row at `index`. */
+  seriesAliasInput(index: number): Locator {
+    return this.page.getByTestId('series-alias-input').nth(index);
   }
 
   /**
@@ -1078,13 +1385,18 @@ export class ChartEditorComponent {
    */
   async openSeriesNumberFormat(seriesIndex: number) {
     await this.page
-      .getByRole('button', { name: 'Edit series display format' })
+      .getByRole('button', { name: 'Edit display format' })
       .nth(seriesIndex)
       .click();
-    const drawer = this.page.getByRole('dialog', {
-      name: 'Series Display Settings',
+    await this.seriesDisplaySettingsDrawer().waitFor({
+      state: 'visible',
+      timeout: 5000,
     });
-    await drawer.waitFor({ state: 'visible', timeout: 5000 });
+  }
+
+  /** The per-series display settings drawer (number format, legend template). */
+  seriesDisplaySettingsDrawer(): Locator {
+    return this.page.getByRole('dialog', { name: 'Series Display Settings' });
   }
 
   /**
@@ -1092,10 +1404,9 @@ export class ChartEditorComponent {
    * "Series Display Settings" drawer.
    */
   async setSeriesFormatMode(mode: 'Inherit' | 'Custom') {
-    const drawer = this.page.getByRole('dialog', {
-      name: 'Series Display Settings',
-    });
-    await drawer.getByText(mode, { exact: true }).click();
+    await this.seriesDisplaySettingsDrawer()
+      .getByText(mode, { exact: true })
+      .click();
   }
 
   /**
@@ -1103,11 +1414,13 @@ export class ChartEditorComponent {
    * the drawer to close.
    */
   async applySeriesNumberFormat() {
-    const drawer = this.page.getByRole('dialog', {
-      name: 'Series Display Settings',
+    await this.seriesDisplaySettingsDrawer()
+      .getByRole('button', { name: 'Apply', exact: true })
+      .click();
+    await this.seriesDisplaySettingsDrawer().waitFor({
+      state: 'hidden',
+      timeout: 5000,
     });
-    await drawer.getByRole('button', { name: 'Apply', exact: true }).click();
-    await drawer.waitFor({ state: 'hidden', timeout: 5000 });
   }
 
   /**

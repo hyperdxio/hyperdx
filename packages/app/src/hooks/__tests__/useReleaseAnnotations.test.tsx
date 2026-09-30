@@ -1,3 +1,4 @@
+import { isValidElement } from 'react';
 import {
   BuilderChartConfigWithDateRange,
   DerivedColumn,
@@ -27,6 +28,15 @@ jest.mock('@/hooks/useChartConfig', () => ({
 jest.mock('@mantine/notifications', () => ({
   notifications: { show: jest.fn() },
 }));
+// A getter (rather than a plain value) so individual tests can flip
+// `mockIsLocalMode` without re-mocking the module.
+let mockIsLocalMode = false;
+jest.mock('@/config', () => ({
+  __esModule: true,
+  get IS_LOCAL_MODE() {
+    return mockIsLocalMode;
+  },
+}));
 
 // Untyped handle on the mocked hook. Going through the module object keeps the
 // mock's argument and return types loose, so the fixtures below don't need
@@ -34,6 +44,58 @@ jest.mock('@mantine/notifications', () => ({
 const chartConfigModule: { useQueriedChartConfig: jest.Mock } =
   jest.requireMock('@/hooks/useChartConfig');
 const mockedUseQueriedChartConfig = chartConfigModule.useQueriedChartConfig;
+
+const notificationsModule: { notifications: { show: jest.Mock } } =
+  jest.requireMock('@mantine/notifications');
+const mockedNotificationsShow = notificationsModule.notifications.show;
+
+/**
+ * The error notification's `message` is JSX (to carry a truncated raw error
+ * and, for missing-column errors, a settings link), not a plain string.
+ * Walks it to recover the rendered text and any `href`s for assertions.
+ * Takes `unknown` (rather than `ReactNode`) so narrowing an element's untyped
+ * `props` needs only `in` checks, not a type assertion.
+ */
+function readNotificationMessage(node: unknown): {
+  text: string;
+  hrefs: string[];
+} {
+  if (node == null || typeof node === 'boolean') {
+    return { text: '', hrefs: [] };
+  }
+  if (typeof node === 'string' || typeof node === 'number') {
+    return { text: String(node), hrefs: [] };
+  }
+  if (Array.isArray(node)) {
+    return node.reduce<{ text: string; hrefs: string[] }>(
+      (acc, child) => {
+        const next = readNotificationMessage(child);
+        return {
+          text: acc.text + next.text,
+          hrefs: [...acc.hrefs, ...next.hrefs],
+        };
+      },
+      { text: '', hrefs: [] },
+    );
+  }
+  if (isValidElement(node)) {
+    const props: unknown = node.props;
+    if (props == null || typeof props !== 'object') {
+      return { text: '', hrefs: [] };
+    }
+    const children = 'children' in props ? props.children : undefined;
+    const href =
+      'href' in props && typeof props.href === 'string'
+        ? props.href
+        : undefined;
+    const inner = readNotificationMessage(children);
+    return {
+      text: inner.text,
+      hrefs: href ? [...inner.hrefs, href] : inner.hrefs,
+    };
+  }
+  return { text: '', hrefs: [] };
+}
 
 // Fully-formed sources, typed as their concrete kind rather than asserted, so
 // a schema change surfaces here instead of being silently cast away.
@@ -522,6 +584,16 @@ describe('useReleaseAnnotations', () => {
     mockedUseQueriedChartConfig.mockReturnValue({
       data: rows ? { data: rows } : undefined,
       isFetching,
+      isError: false,
+      error: null,
+    });
+
+  const mockQueryError = (error: Error) =>
+    mockedUseQueriedChartConfig.mockReturnValue({
+      data: undefined,
+      isFetching: false,
+      isError: true,
+      error,
     });
 
   /** The config and options the hook last handed to `useQueriedChartConfig`. */
@@ -534,7 +606,10 @@ describe('useReleaseAnnotations', () => {
     ];
 
   beforeEach(() => mockQuery([]));
-  afterEach(() => jest.clearAllMocks());
+  afterEach(() => {
+    jest.clearAllMocks();
+    mockIsLocalMode = false;
+  });
 
   it('returns undefined and keeps the query idle when disabled', () => {
     mockQuery([{ firstSeen: '2026-07-01T00:30:00.000Z', version: '1.0.0' }]);
@@ -586,6 +661,228 @@ describe('useReleaseAnnotations', () => {
     );
 
     expect(result.current).toBeUndefined();
+  });
+
+  // Regression: the `isError` branch was added ahead of this one; guard
+  // against a future reorder silently swallowing the empty-result case.
+  it('warns "no releases found" for a genuinely empty result', () => {
+    mockQuery([{ firstSeen: '2026-06-30T20:00:00.000Z', version: '1.43.0' }]);
+
+    renderHook(() => useReleaseAnnotations(range, true, { source: logSource }));
+
+    expect(mockedNotificationsShow).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'release-markers-empty' }),
+    );
+    expect(mockedNotificationsShow).not.toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'release-markers-error' }),
+    );
+  });
+
+  // Regression: unlike a structural error, "no releases found" is inherently
+  // per-window -- a different range can genuinely have different releases --
+  // so an unchanged scope must not suppress a second window's empty warning.
+  it('warns again for a new window even if a previous window already warned empty', () => {
+    // A timestamp before any window in this test, so every window maps to
+    // the same "genuinely empty" result regardless of its bounds.
+    mockQuery([{ firstSeen: '2000-01-01T00:00:00.000Z', version: '1.0.0' }]);
+
+    const { rerender } = renderHook(
+      ({ range }: { range: [Date, Date] }) =>
+        useReleaseAnnotations(range, true, { source: logSource }),
+      { initialProps: { range } },
+    );
+    expect(mockedNotificationsShow).toHaveBeenCalledTimes(1);
+    expect(mockedNotificationsShow).toHaveBeenLastCalledWith(
+      expect.objectContaining({ id: 'release-markers-empty' }),
+    );
+
+    rerender({
+      range: [
+        new Date(range[0].getTime() + 24 * 60 * 60_000),
+        new Date(range[1].getTime() + 24 * 60 * 60_000),
+      ],
+    });
+
+    expect(mockedNotificationsShow).toHaveBeenCalledTimes(2);
+    expect(mockedNotificationsShow).toHaveBeenLastCalledWith(
+      expect.objectContaining({ id: 'release-markers-empty' }),
+    );
+  });
+
+  describe('query errors', () => {
+    // A query failure and a truly-empty result both leave `data` unset;
+    // without distinguishing `isError` the two look identical to the user.
+    it('warns distinctly on a query error rather than reporting "no releases found"', () => {
+      mockQueryError(new Error('Timeout exceeded'));
+
+      const { result } = renderHook(() =>
+        useReleaseAnnotations(range, true, { source: logSource }),
+      );
+
+      expect(result.current).toBeUndefined();
+      expect(mockedNotificationsShow).toHaveBeenCalledTimes(1);
+      const call = mockedNotificationsShow.mock.calls[0][0];
+      expect(call).toMatchObject({ id: 'release-markers-error', color: 'red' });
+      expect(readNotificationMessage(call.message).text).toContain(
+        'Timeout exceeded',
+      );
+    });
+
+    // The scenario in question: a source configured for release markers
+    // whose table has no matching column (e.g. no `ResourceAttributes`).
+    it('gives an actionable hint for a missing-column error, linking to the source settings', () => {
+      mockQueryError(new Error("Missing columns: 'ResourceAttributes'"));
+
+      renderHook(() =>
+        useReleaseAnnotations(range, true, { source: logSource }),
+      );
+
+      const call = mockedNotificationsShow.mock.calls[0][0];
+      expect(call.id).toBe('release-markers-error');
+      const { text, hrefs } = readNotificationMessage(call.message);
+      expect(text).toContain('Service Version Expression');
+      expect(text).toContain("Missing columns: 'ResourceAttributes'");
+      expect(hrefs).toContain(`/team#source-${logSource.id}`);
+    });
+
+    // Regression: `/team` isn't reachable in local mode (e.g. the Vercel
+    // preview), so linking there would be a dead link.
+    it('omits the Team Settings link in local mode', () => {
+      mockIsLocalMode = true;
+      mockQueryError(new Error("Missing columns: 'ResourceAttributes'"));
+
+      renderHook(() =>
+        useReleaseAnnotations(range, true, { source: logSource }),
+      );
+
+      const call = mockedNotificationsShow.mock.calls[0][0];
+      const { text, hrefs } = readNotificationMessage(call.message);
+      expect(text).toContain("doesn't match a column on this source");
+      expect(hrefs).toEqual([]);
+    });
+
+    // Real ClickHouse errors often echo the full rendered SQL, which is
+    // unreadable dumped whole into a toast.
+    it('truncates a long raw error message', () => {
+      mockQueryError(new Error('x'.repeat(500)));
+
+      renderHook(() =>
+        useReleaseAnnotations(range, true, { source: logSource }),
+      );
+
+      const call = mockedNotificationsShow.mock.calls[0][0];
+      const { text } = readNotificationMessage(call.message);
+      expect(text.length).toBeLessThan(500);
+      expect(text).toContain('…');
+    });
+
+    it('warns only once while the error persists', () => {
+      mockQueryError(new Error('Timeout exceeded'));
+
+      const { rerender } = renderHook(() =>
+        useReleaseAnnotations(range, true, { source: logSource }),
+      );
+      rerender();
+
+      expect(mockedNotificationsShow).toHaveBeenCalledTimes(1);
+    });
+
+    // Regression: the warned-once latch used to reset only when markers were
+    // toggled off, so a later, differently-scoped query's own error (or empty
+    // result) silently went unreported because the earlier query had already
+    // tripped the latch.
+    it('warns again for a new query even if a previous query already warned', () => {
+      mockQueryError(new Error('Timeout exceeded'));
+
+      const { rerender } = renderHook(
+        ({ where }: { where: string }) =>
+          useReleaseAnnotations(range, true, { source: logSource, where }),
+        { initialProps: { where: 'ServiceName:"checkout"' } },
+      );
+      expect(mockedNotificationsShow).toHaveBeenCalledTimes(1);
+
+      mockQueryError(new Error('Connection reset'));
+      rerender({ where: 'ServiceName:"cart"' });
+
+      expect(mockedNotificationsShow).toHaveBeenCalledTimes(2);
+      const lastCallArg =
+        mockedNotificationsShow.mock.calls[
+          mockedNotificationsShow.mock.calls.length - 1
+        ][0];
+      expect(lastCallArg.id).toBe('release-markers-error');
+      expect(readNotificationMessage(lastCallArg.message).text).toContain(
+        'Connection reset',
+      );
+    });
+
+    // A reviewer's point: panning/zooming the time range doesn't fix a
+    // structural error (e.g. a missing column), so re-showing the same
+    // warning on every range change -- which happens every `BUCKET_MS` on a
+    // live-tailing dashboard -- would just be noise.
+    it('does not warn again for a pure time-range change on the same scope', () => {
+      mockQueryError(new Error('Timeout exceeded'));
+
+      const { rerender } = renderHook(
+        ({ range }: { range: [Date, Date] }) =>
+          useReleaseAnnotations(range, true, { source: logSource }),
+        { initialProps: { range } },
+      );
+      expect(mockedNotificationsShow).toHaveBeenCalledTimes(1);
+
+      rerender({
+        range: [
+          new Date(range[0].getTime() + 5 * 60_000),
+          new Date(range[1].getTime() + 5 * 60_000),
+        ],
+      });
+
+      expect(mockedNotificationsShow).toHaveBeenCalledTimes(1);
+    });
+
+    // Regression: a single boolean latch stayed tripped across a kind
+    // change on the *same* query (e.g. a background refetch that flips an
+    // empty result to an error), silently swallowing the second warning.
+    it('warns again when the result kind changes without a config change', () => {
+      mockQueryError(new Error('Timeout exceeded'));
+
+      const { rerender } = renderHook(() =>
+        useReleaseAnnotations(range, true, { source: logSource }),
+      );
+      expect(mockedNotificationsShow).toHaveBeenCalledTimes(1);
+
+      mockQuery([{ firstSeen: '2026-06-30T20:00:00.000Z', version: '1.43.0' }]);
+      rerender();
+      expect(mockedNotificationsShow).toHaveBeenCalledTimes(2);
+      expect(mockedNotificationsShow).toHaveBeenLastCalledWith(
+        expect.objectContaining({ id: 'release-markers-empty' }),
+      );
+
+      mockQueryError(new Error('Timeout exceeded'));
+      rerender();
+      expect(mockedNotificationsShow).toHaveBeenCalledTimes(3);
+      expect(mockedNotificationsShow).toHaveBeenLastCalledWith(
+        expect.objectContaining({ id: 'release-markers-error' }),
+      );
+    });
+
+    // A real (non-empty) result between two failures clears the latch, same
+    // as a distinct kind would -- a later failure is never "the same" one.
+    it('warns again after recovering and failing once more on the same config', () => {
+      mockQueryError(new Error('Timeout exceeded'));
+
+      const { rerender } = renderHook(() =>
+        useReleaseAnnotations(range, true, { source: logSource }),
+      );
+      expect(mockedNotificationsShow).toHaveBeenCalledTimes(1);
+
+      mockQuery([{ firstSeen: '2026-07-01T00:30:00.000Z', version: '1.43.1' }]);
+      rerender();
+      expect(mockedNotificationsShow).toHaveBeenCalledTimes(1);
+
+      mockQueryError(new Error('Timeout exceeded'));
+      rerender();
+      expect(mockedNotificationsShow).toHaveBeenCalledTimes(2);
+    });
   });
 
   it("uses the source's configured version expression", () => {

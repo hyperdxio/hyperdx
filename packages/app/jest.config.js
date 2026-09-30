@@ -24,6 +24,7 @@ module.exports = {
     '^ky-universal$': '<rootDir>/src/__mocks__/ky-universal.ts',
     '^ky$': '<rootDir>/src/__mocks__/ky-universal.ts',
     '^react-markdown$': '<rootDir>/src/__mocks__/react-markdown.tsx',
+    '^remark-gfm$': '<rootDir>/src/__mocks__/remark-gfm.ts',
   },
   setupFilesAfterEnv: ['<rootDir>/src/setupTests.tsx'],
   // Coverage floors are scoped to hooks/ and utils/ only — the genuinely

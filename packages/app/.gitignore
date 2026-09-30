@@ -7,7 +7,13 @@ next.config.original.js
 
 public/__ENV.js
 
-# Copied from CHANGELOG.md at build time (see next.config.mjs)
+# Generated from CHANGELOG.md at build time (see next.config.mjs)
+public/whats-new.json
+
+# Leftover from before whats-new.json: earlier builds copied the whole changelog
+# into public/. Kept ignored so the stale artefact in existing checkouts doesn't
+# show up as untracked (and get committed by accident). Removable once everyone
+# has rebuilt.
 public/CHANGELOG.md
 
 # E2E test authentication state

@@ -32,41 +32,41 @@ exports[`buildAlertMessageTemplateTitle saved search alerts OK state (resolved) 
 
 exports[`buildAlertMessageTemplateTitle saved search alerts OK state (resolved) not_equal threshold=5 okValue=5 1`] = `"✅ Alert for "My Search" - 5 lines found"`;
 
-exports[`buildAlertMessageTemplateTitle tile alerts ALERT state above threshold=5 alertValue=10 1`] = `"🚨 Alert for "Test Chart" in "My Dashboard" - 10 meets or exceeds 5"`;
+exports[`buildAlertMessageTemplateTitle tile alerts ALERT state above threshold=5 alertValue=10 1`] = `"🚨 Alert for "My Dashboard - Test Chart" - 10 meets or exceeds 5"`;
 
-exports[`buildAlertMessageTemplateTitle tile alerts ALERT state above_exclusive threshold=5 alertValue=10 1`] = `"🚨 Alert for "Test Chart" in "My Dashboard" - 10 exceeds 5"`;
+exports[`buildAlertMessageTemplateTitle tile alerts ALERT state above_exclusive threshold=5 alertValue=10 1`] = `"🚨 Alert for "My Dashboard - Test Chart" - 10 exceeds 5"`;
 
-exports[`buildAlertMessageTemplateTitle tile alerts ALERT state below threshold=5 alertValue=2 1`] = `"🚨 Alert for "Test Chart" in "My Dashboard" - 2 falls below 5"`;
+exports[`buildAlertMessageTemplateTitle tile alerts ALERT state below threshold=5 alertValue=2 1`] = `"🚨 Alert for "My Dashboard - Test Chart" - 2 falls below 5"`;
 
-exports[`buildAlertMessageTemplateTitle tile alerts ALERT state below_or_equal threshold=5 alertValue=3 1`] = `"🚨 Alert for "Test Chart" in "My Dashboard" - 3 falls to or below 5"`;
+exports[`buildAlertMessageTemplateTitle tile alerts ALERT state below_or_equal threshold=5 alertValue=3 1`] = `"🚨 Alert for "My Dashboard - Test Chart" - 3 falls to or below 5"`;
 
-exports[`buildAlertMessageTemplateTitle tile alerts ALERT state between threshold=5 alertValue=6 1`] = `"🚨 Alert for "Test Chart" in "My Dashboard" - 6 falls between 5 and 7"`;
+exports[`buildAlertMessageTemplateTitle tile alerts ALERT state between threshold=5 alertValue=6 1`] = `"🚨 Alert for "My Dashboard - Test Chart" - 6 falls between 5 and 7"`;
 
-exports[`buildAlertMessageTemplateTitle tile alerts ALERT state decimal threshold 1`] = `"🚨 Alert for "Test Chart" in "My Dashboard" - 10.1 meets or exceeds 1.5"`;
+exports[`buildAlertMessageTemplateTitle tile alerts ALERT state decimal threshold 1`] = `"🚨 Alert for "My Dashboard - Test Chart" - 10.1 meets or exceeds 1.5"`;
 
-exports[`buildAlertMessageTemplateTitle tile alerts ALERT state equal threshold=5 alertValue=5 1`] = `"🚨 Alert for "Test Chart" in "My Dashboard" - 5 equals 5"`;
+exports[`buildAlertMessageTemplateTitle tile alerts ALERT state equal threshold=5 alertValue=5 1`] = `"🚨 Alert for "My Dashboard - Test Chart" - 5 equals 5"`;
 
-exports[`buildAlertMessageTemplateTitle tile alerts ALERT state integer threshold rounds value 1`] = `"🚨 Alert for "Test Chart" in "My Dashboard" - 11 meets or exceeds 5"`;
+exports[`buildAlertMessageTemplateTitle tile alerts ALERT state integer threshold rounds value 1`] = `"🚨 Alert for "My Dashboard - Test Chart" - 11 meets or exceeds 5"`;
 
-exports[`buildAlertMessageTemplateTitle tile alerts ALERT state not_between threshold=5 alertValue=12 1`] = `"🚨 Alert for "Test Chart" in "My Dashboard" - 12 falls outside 5 and 7"`;
+exports[`buildAlertMessageTemplateTitle tile alerts ALERT state not_between threshold=5 alertValue=12 1`] = `"🚨 Alert for "My Dashboard - Test Chart" - 12 falls outside 5 and 7"`;
 
-exports[`buildAlertMessageTemplateTitle tile alerts ALERT state not_equal threshold=5 alertValue=10 1`] = `"🚨 Alert for "Test Chart" in "My Dashboard" - 10 does not equal 5"`;
+exports[`buildAlertMessageTemplateTitle tile alerts ALERT state not_equal threshold=5 alertValue=10 1`] = `"🚨 Alert for "My Dashboard - Test Chart" - 10 does not equal 5"`;
 
-exports[`buildAlertMessageTemplateTitle tile alerts OK state (resolved) above threshold=5 okValue=3 1`] = `"✅ Alert for "Test Chart" in "My Dashboard" - 3 falls below 5"`;
+exports[`buildAlertMessageTemplateTitle tile alerts OK state (resolved) above threshold=5 okValue=3 1`] = `"✅ Alert for "My Dashboard - Test Chart" - 3 falls below 5"`;
 
-exports[`buildAlertMessageTemplateTitle tile alerts OK state (resolved) above_exclusive threshold=5 okValue=3 1`] = `"✅ Alert for "Test Chart" in "My Dashboard" - 3 falls to or below 5"`;
+exports[`buildAlertMessageTemplateTitle tile alerts OK state (resolved) above_exclusive threshold=5 okValue=3 1`] = `"✅ Alert for "My Dashboard - Test Chart" - 3 falls to or below 5"`;
 
-exports[`buildAlertMessageTemplateTitle tile alerts OK state (resolved) below threshold=5 okValue=10 1`] = `"✅ Alert for "Test Chart" in "My Dashboard" - 10 meets or exceeds 5"`;
+exports[`buildAlertMessageTemplateTitle tile alerts OK state (resolved) below threshold=5 okValue=10 1`] = `"✅ Alert for "My Dashboard - Test Chart" - 10 meets or exceeds 5"`;
 
-exports[`buildAlertMessageTemplateTitle tile alerts OK state (resolved) below_or_equal threshold=5 okValue=10 1`] = `"✅ Alert for "Test Chart" in "My Dashboard" - 10 exceeds 5"`;
+exports[`buildAlertMessageTemplateTitle tile alerts OK state (resolved) below_or_equal threshold=5 okValue=10 1`] = `"✅ Alert for "My Dashboard - Test Chart" - 10 exceeds 5"`;
 
-exports[`buildAlertMessageTemplateTitle tile alerts OK state (resolved) between threshold=5 okValue=10 1`] = `"✅ Alert for "Test Chart" in "My Dashboard" - 10 falls outside 5 and 7"`;
+exports[`buildAlertMessageTemplateTitle tile alerts OK state (resolved) between threshold=5 okValue=10 1`] = `"✅ Alert for "My Dashboard - Test Chart" - 10 falls outside 5 and 7"`;
 
-exports[`buildAlertMessageTemplateTitle tile alerts OK state (resolved) equal threshold=5 okValue=10 1`] = `"✅ Alert for "Test Chart" in "My Dashboard" - 10 does not equal 5"`;
+exports[`buildAlertMessageTemplateTitle tile alerts OK state (resolved) equal threshold=5 okValue=10 1`] = `"✅ Alert for "My Dashboard - Test Chart" - 10 does not equal 5"`;
 
-exports[`buildAlertMessageTemplateTitle tile alerts OK state (resolved) not_between threshold=5 okValue=6 1`] = `"✅ Alert for "Test Chart" in "My Dashboard" - 6 falls between 5 and 7"`;
+exports[`buildAlertMessageTemplateTitle tile alerts OK state (resolved) not_between threshold=5 okValue=6 1`] = `"✅ Alert for "My Dashboard - Test Chart" - 6 falls between 5 and 7"`;
 
-exports[`buildAlertMessageTemplateTitle tile alerts OK state (resolved) not_equal threshold=5 okValue=5 1`] = `"✅ Alert for "Test Chart" in "My Dashboard" - 5 equals 5"`;
+exports[`buildAlertMessageTemplateTitle tile alerts OK state (resolved) not_equal threshold=5 okValue=5 1`] = `"✅ Alert for "My Dashboard - Test Chart" - 5 equals 5"`;
 
 exports[`renderAlertTemplate saved search alerts ALERT state above threshold=5 alertValue=10 1`] = `
 "

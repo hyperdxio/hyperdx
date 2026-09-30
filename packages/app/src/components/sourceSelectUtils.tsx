@@ -45,6 +45,11 @@ type FilteredSourceItemsArgs = {
   sources: TSource[] | undefined;
   allowedSourceKinds?: SourceKind[];
   connectionId?: string;
+  /**
+   * Extra per-source gate, for restrictions that allowedSourceKinds and
+   * connectionId can't express. Must be referentially stable.
+   */
+  isSourceAllowed?: (source: TSource) => boolean;
   groupBySection?: boolean;
 };
 
@@ -58,6 +63,7 @@ export function useFilteredSortedSourceItems({
   sources,
   allowedSourceKinds,
   connectionId,
+  isSourceAllowed,
   groupBySection = false,
 }: FilteredSourceItemsArgs): ComboboxItem[] | SourceSelectGroup[] {
   return useMemo(() => {
@@ -66,6 +72,7 @@ export function useFilteredSortedSourceItems({
         source =>
           (!allowedSourceKinds || allowedSourceKinds.includes(source.kind)) &&
           (!connectionId || source.connection === connectionId) &&
+          (!isSourceAllowed || isSourceAllowed(source)) &&
           !source.disabled,
       ) ?? [];
 
@@ -97,7 +104,28 @@ export function useFilteredSortedSourceItems({
       group,
       items: (bySection.get(group) ?? []).sort(byLabel),
     }));
-  }, [sources, allowedSourceKinds, connectionId, groupBySection]);
+  }, [
+    sources,
+    allowedSourceKinds,
+    connectionId,
+    isSourceAllowed,
+    groupBySection,
+  ]);
+}
+
+/**
+ * Value of the first option the selector renders, whether the items came back
+ * grouped by section or flat. Skips groups with no items, which Mantine
+ * accepts and renders as a bare header. Undefined when nothing is selectable.
+ */
+export function firstSourceItemValue(
+  items: ComboboxItem[] | SourceSelectGroup[],
+): string | undefined {
+  for (const item of items) {
+    const value = 'group' in item ? item.items[0]?.value : item.value;
+    if (value != null) return value;
+  }
+  return undefined;
 }
 
 /**

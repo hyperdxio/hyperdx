@@ -34,6 +34,7 @@ import {
   Granularity,
   isTimeSeriesDisplayType,
 } from '@hyperdx/common-utils/dist/core/utils';
+import { getBlockingRequiredFilterNames } from '@hyperdx/common-utils/dist/dashboardFilterValues';
 import {
   displayTypeRequiresSource,
   isBuilderChartConfig,
@@ -76,6 +77,8 @@ import {
   Flex,
   Group,
   Indicator,
+  List,
+  Loader,
   Menu,
   Modal,
   Paper,
@@ -145,7 +148,10 @@ import { PageHeader } from '@/components/PageHeader';
 import { PageLayout } from '@/components/PageLayout';
 import { SqlVariablesProvider } from '@/components/SQLEditor/variableCompletions';
 import { TimePicker } from '@/components/TimePicker';
-import { parseTimeRangeInput } from '@/components/TimePicker/utils';
+import {
+  parseTimeRangeInput,
+  timeRangeInputToSeconds,
+} from '@/components/TimePicker/utils';
 import {
   Dashboard,
   type Tile,
@@ -166,6 +172,7 @@ import ChartContainer, {
   CollapsedToolbarProvider,
   DASHBOARD_TILE_PADDING_INLINE,
 } from './components/charts/ChartContainer';
+import DashboardFiltersModal from './components/DashboardFiltersModal';
 import { DBBarChart } from './components/DBBarChart';
 import DBHeatmapChart, {
   toHeatmapChartConfig,
@@ -180,7 +187,6 @@ import SearchWhereInput, {
 import { Tags } from './components/Tags';
 import useDashboardFilters from './hooks/useDashboardFilters';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
-import { useIsVariablesEnabled } from './hooks/useIsVariablesEnabled';
 import useTileSelection from './hooks/useTileSelection';
 import { useBrandDisplayName } from './theme/ThemeProvider';
 import { parseAsJsonEncoded, parseAsStringEncoded } from './utils/queryParsers';
@@ -193,7 +199,6 @@ import {
 import { useConnections } from './connection';
 import { useDashboard } from './dashboard';
 import DashboardFilters from './DashboardFilters';
-import DashboardFiltersModal from './DashboardFiltersModal';
 import { EditablePageName } from './EditablePageName';
 import {
   GranularityPicker,
@@ -210,7 +215,8 @@ import {
 } from './source';
 import {
   dateRangeToString,
-  parseTimeQuery,
+  parseRelativeTimeQuery,
+  useDefaultTimeRange,
   useNewTimeQuery,
 } from './timeQuery';
 import { useConfirm } from './useConfirm';
@@ -375,11 +381,38 @@ const tileToLayoutItem = (chart: Tile): RGL.Layout => ({
   minW: 1,
 });
 
-// TODO: This is a hack to set the default time range
-const defaultTimeRange = parseTimeQuery('Past 1h', false) as [Date, Date];
-
 const whereLanguageParser = parseAsString.withDefault(
   typeof window !== 'undefined' ? (getStoredLanguage() ?? 'lucene') : 'lucene',
+);
+
+/**
+ * A tile that cannot draw its chart yet, explaining why in its place. Keeps the
+ * chrome identical to a rendered tile so the toolbar stays usable.
+ */
+const TilePlaceholder = ({
+  title,
+  toolbarItems,
+  children,
+  'data-testid': dataTestId,
+}: {
+  title: React.ReactNode;
+  toolbarItems?: React.ReactNode[];
+  children: React.ReactNode;
+  'data-testid'?: string;
+}) => (
+  <ChartContainer title={title} toolbarItems={toolbarItems}>
+    <Stack
+      align="center"
+      justify="center"
+      h="100%"
+      p="md"
+      data-testid={dataTestId}
+    >
+      <Text size="sm" c="dimmed" ta="center">
+        {children}
+      </Text>
+    </Stack>
+  </ChartContainer>
 );
 
 const Tile = ({
@@ -395,6 +428,7 @@ const Tile = ({
   onTimeRangeSelect,
   filters,
   variables,
+  unsatisfiedRequiredFilters,
   showAlertAnnotations,
   showReleaseAnnotations,
   isLive,
@@ -426,6 +460,8 @@ const Tile = ({
   onTimeRangeSelect: (start: Date, end: Date) => void;
   filters?: Filter[];
   variables?: ChartVariable[];
+  /** The dashboard's required filters that have nothing selected. */
+  unsatisfiedRequiredFilters?: DashboardFilter[];
   // When true, draw alert firing/recovery annotations on this tile's chart.
   showAlertAnnotations?: boolean;
   // When true, draw release markers on this tile's chart.
@@ -549,7 +585,7 @@ const Tile = ({
   // changes to `tileVariables`.
   const serializedTileVariables = useMemo(
     () =>
-      !!variables && !isPromqlSavedChartConfig(chart.config)
+      variables
         ? JSON.stringify(filterReferencedVariables(chart.config, variables))
         : undefined,
     [chart.config, variables],
@@ -560,6 +596,29 @@ const Tile = ({
     [serializedTileVariables],
   );
 
+  // Serialized for the same reason as `tileVariables`: any change to the
+  // dashboard's filters hands this tile a new array, and only a change to the
+  // names this tile is blocked on should churn the render memo below.
+  const serializedMissingRequiredFilterNames = useMemo(
+    () =>
+      JSON.stringify(
+        getBlockingRequiredFilterNames({
+          config: chart.config,
+          sourceId: chart.config.source,
+          unsatisfiedRequiredFilters,
+          referencedVariables: tileVariables,
+        }),
+      ),
+    [unsatisfiedRequiredFilters, chart.config, tileVariables],
+  );
+  const missingRequiredFilterNames = useMemo<string[]>(
+    () => JSON.parse(serializedMissingRequiredFilterNames),
+    [serializedMissingRequiredFilterNames],
+  );
+  const isBlockedByRequiredFilters =
+    missingRequiredFilterNames.length > 0 &&
+    displayTypeRequiresSource(chart.config.displayType);
+
   useEffect(() => {
     if (isPromqlSavedChartConfig(chart.config)) {
       if (source != null) {
@@ -569,6 +628,7 @@ const Tile = ({
           connection: source.connection,
           dateRange,
           granularity,
+          variables: tileVariables,
         });
       }
       return;
@@ -691,7 +751,9 @@ const Tile = ({
   const alertAnnotations = useAlertAnnotations(
     alert?.id,
     isFullscreen ? fullscreenDateRange : dateRange,
-    showAlertAnnotations && tileCanDrawAnnotations,
+    showAlertAnnotations &&
+      tileCanDrawAnnotations &&
+      !isBlockedByRequiredFilters,
   );
 
   // Release markers, over the same visible window. Scoped to this tile: the
@@ -708,7 +770,9 @@ const Tile = ({
     : undefined;
   const releaseAnnotations = useReleaseAnnotations(
     isFullscreen ? fullscreenDateRange : dateRange,
-    showReleaseAnnotations && tileCanDrawAnnotations,
+    showReleaseAnnotations &&
+      tileCanDrawAnnotations &&
+      !isBlockedByRequiredFilters,
     {
       source,
       where: builderConfig?.where,
@@ -1146,7 +1210,11 @@ const Tile = ({
 
       // The fullscreen view is always visible, so it should always load.
       // In the tile (grid) view, gate data fetching on viewport visibility.
-      const chartEnabled = isFullscreenView ? true : hasBeenVisible;
+      const chartEnabled = isBlockedByRequiredFilters
+        ? false
+        : isFullscreenView
+          ? true
+          : hasBeenVisible;
 
       // Use the fullscreen-local date range and granularity when rendering
       // inside the fullscreen modal so that changing them does not affect
@@ -1177,24 +1245,26 @@ const Tile = ({
             </div>
           }
         >
-          {isSourceMissing ? (
-            <ChartContainer title={title} toolbarItems={toolbar}>
-              <Stack align="center" justify="center" h="100%" p="md">
-                <Text size="sm" c="dimmed" ta="center">
-                  The data source for this tile no longer exists. Edit the tile
-                  to select a new source.
-                </Text>
-              </Stack>
-            </ChartContainer>
+          {isBlockedByRequiredFilters ? (
+            <TilePlaceholder
+              title={title}
+              toolbarItems={toolbar}
+              data-testid="tile-missing-required-filters"
+            >
+              {`Missing required filters: ${missingRequiredFilterNames.join(
+                ', ',
+              )}. Select a value for each to load this tile.`}
+            </TilePlaceholder>
+          ) : isSourceMissing ? (
+            <TilePlaceholder title={title} toolbarItems={toolbar}>
+              The data source for this tile no longer exists. Edit the tile to
+              select a new source.
+            </TilePlaceholder>
           ) : isSourceUnset ? (
-            <ChartContainer title={title} toolbarItems={toolbar}>
-              <Stack align="center" justify="center" h="100%" p="md">
-                <Text size="sm" c="dimmed" ta="center">
-                  The data source for this tile is not set. Edit the tile to
-                  select a data source.
-                </Text>
-              </Stack>
-            </ChartContainer>
+            <TilePlaceholder title={title} toolbarItems={toolbar}>
+              The data source for this tile is not set. Edit the tile to select
+              a data source.
+            </TilePlaceholder>
           ) : (
             <>
               {(effectiveQueriedConfig?.displayType === DisplayType.Line ||
@@ -1419,6 +1489,8 @@ const Tile = ({
       filterWarning,
       isSourceMissing,
       isSourceUnset,
+      isBlockedByRequiredFilters,
+      missingRequiredFilterNames,
       hasBeenVisible,
       annotations,
       isLive,
@@ -1535,6 +1607,8 @@ const EditTileModal = ({
   isSaving,
   dateRange,
   variables,
+  getDashboardFilters,
+  unsatisfiedRequiredFilters,
 }: {
   dashboardId?: string;
   chart: Tile | undefined;
@@ -1543,6 +1617,8 @@ const EditTileModal = ({
   isSaving?: boolean;
   onSave: (chart: Tile) => void;
   variables?: ChartVariable[];
+  getDashboardFilters: (sourceId: string | undefined) => Filter[];
+  unsatisfiedRequiredFilters?: DashboardFilter[];
 }) => {
   const contextZIndex = useZIndex();
   const modalZIndex = contextZIndex + 10;
@@ -1602,6 +1678,8 @@ const EditTileModal = ({
                 dashboardId={dashboardId}
                 chartConfig={chart.config}
                 variables={variables}
+                getDashboardFilters={getDashboardFilters}
+                unsatisfiedRequiredFilters={unsatisfiedRequiredFilters}
                 dateRange={dateRange}
                 isSaving={isSaving}
                 onSave={config => {
@@ -1766,14 +1844,16 @@ function DashboardContainerRow({
   );
 }
 
-function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
-  const brandName = useBrandDisplayName();
-  const confirm = useConfirm();
+const DEFAULT_INTERVAL = 'Past 1h';
 
-  const router = useRouter();
-  const dashboardId = router.query.dashboardId as string | undefined;
-  const { enterKioskMode, exitKioskMode, isKioskMode } =
-    useDashboardKioskMode();
+function DBDashboardPage({
+  dashboardProps,
+  defaultTimeInput = DEFAULT_INTERVAL,
+}: {
+  dashboardProps: ReturnType<typeof useDashboard>;
+  defaultTimeInput?: string;
+}) {
+  const defaultTimeRange = useDefaultTimeRange(defaultTimeInput);
 
   const {
     dashboard,
@@ -1782,10 +1862,17 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     isLocalDashboard,
     isFetching: isFetchingDashboard,
     isSetting: isSavingDashboard,
-  } = useDashboard({
-    dashboardId: dashboardId as string | undefined,
-    presetConfig,
-  });
+  } = dashboardProps;
+  const brandName = useBrandDisplayName();
+  const confirm = useConfirm();
+  const {
+    userPreferences: { isUTC },
+  } = useUserPreferences();
+
+  const router = useRouter();
+  const dashboardId = router.query.dashboardId as string | undefined;
+  const { enterKioskMode, exitKioskMode, isKioskMode } =
+    useDashboardKioskMode();
 
   const { data: sources } = useSources();
   const { data: connections } = useConnections();
@@ -1799,7 +1886,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     for (const { config } of dashboard.tiles) {
       if (!isBuilderSavedChartConfig(config)) continue;
       const source = sources?.find(v => v.id === config.source);
-      if (!source) continue;
+      if (!source || source.disabled) continue;
       // TODO: will need to update this when we allow for multiple metrics per chart
       const firstSelect = config.select[0];
       const metricType =
@@ -1828,11 +1915,6 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     'whereLanguage',
     whereLanguageParser,
   );
-  // Get raw filter queries from URL (not processed by hook)
-  const [rawFilterQueries] = useQueryState(
-    'filters',
-    parseAsJsonEncoded<Filter[]>(),
-  );
   // Toggle for overlaying alert firing/recovery markers on tile charts.
   // Ephemeral view state (URL param), not persisted on the dashboard.
   const [showAlertAnnotations, setShowAlertAnnotations] = useQueryState(
@@ -1852,18 +1934,16 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
 
   const filters = dashboard?.filters ?? [];
   const {
-    filterValues,
+    selectionByFilterId,
     setFilterValue,
-    setFilterQueries,
+    setFilterValueEntries,
+    filterValueEntries,
     ignoredFilterExpressions,
+    ignoredVariableNames,
     getFilterQueriesForSource,
     variables,
+    unsatisfiedRequiredFilters,
   } = useDashboardFilters(filters);
-
-  const { isLoading: isVariablesFlagLoading, isVariablesEnabled } =
-    useIsVariablesEnabled();
-  const showFilterVariableOptions =
-    !isVariablesFlagLoading && isVariablesEnabled;
 
   const dashboardReady =
     !!dashboard?.id &&
@@ -1888,7 +1968,9 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   useEffect(() => {
     if (!dashboardReady || lastLoadedIdForBannerRef.current === dashboard?.id)
       return;
-    setShouldShowIgnoredFiltersBanner(ignoredFilterExpressions.length > 0);
+    setShouldShowIgnoredFiltersBanner(
+      ignoredFilterExpressions.length > 0 || ignoredVariableNames.length > 0,
+    );
     lastLoadedIdForBannerRef.current = dashboard?.id;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dashboard?.id, dashboardReady]);
@@ -1948,10 +2030,10 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   }, [router.isReady, watchedGranularity, granularity, setGranularity]);
 
   const [displayedTimeInputValue, setDisplayedTimeInputValue] =
-    useState('Past 1h');
+    useState(defaultTimeInput);
 
   const { searchedTimeRange, onSearch, onTimeRangeSelect } = useNewTimeQuery({
-    initialDisplayValue: 'Past 1h',
+    initialDisplayValue: defaultTimeInput,
     initialTimeRange: defaultTimeRange,
     setDisplayedTimeInputValue,
   });
@@ -2016,9 +2098,9 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     // dashboard without defaults, clear selected filters.
     if (!hasFiltersInUrl) {
       if (dashboard.savedFilterValues) {
-        setFilterQueries(dashboard.savedFilterValues);
+        setFilterValueEntries(dashboard.savedFilterValues);
       } else if (isSwitchingDashboards) {
-        setFilterQueries(null);
+        setFilterValueEntries(null);
       }
     }
 
@@ -2028,6 +2110,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     dashboard?.savedQuery,
     dashboard?.savedQueryLanguage,
     dashboard?.savedFilterValues,
+    dashboard?.savedDateRange,
     isLocalDashboard,
     isFetchingDashboard,
     router.isReady,
@@ -2035,7 +2118,8 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     setValue,
     setWhere,
     setWhereLanguage,
-    setFilterQueries,
+    setFilterValueEntries,
+    onTimeRangeSelect,
   ]);
 
   // Sync changes to the URL params into the form
@@ -2061,22 +2145,34 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     const currentWhereLanguage = currentWhere
       ? formValues.whereLanguage || 'lucene'
       : null;
-    const currentFilterValues = rawFilterQueries?.length
-      ? rawFilterQueries
+    const currentFilterValues = filterValueEntries?.length
+      ? filterValueEntries
       : [];
+
+    const currentRelativeDateRange = timeRangeInputToSeconds(
+      displayedTimeInputValue,
+      isUTC,
+    );
 
     setDashboard(
       produce(dashboard, draft => {
         draft.savedQuery = currentWhere;
         draft.savedQueryLanguage = currentWhereLanguage;
         draft.savedFilterValues = currentFilterValues;
+        // Only supporting relative date range saving ATM
+        if (currentRelativeDateRange) {
+          draft.savedDateRange = {
+            type: 'relative',
+            value: currentRelativeDateRange,
+          };
+        }
       }),
       () => {
         notifications.show({
           color: 'green',
           title: 'Query saved and executed',
           message:
-            'Filter query and dropdown values have been saved with the dashboard',
+            'Filter query, dropdown values, and relative time range have been saved with the dashboard',
           autoClose: 3000,
         });
       },
@@ -2086,8 +2182,10 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     isLocalDashboard,
     setDashboard,
     getValues,
-    rawFilterQueries,
+    filterValueEntries,
     onSubmit,
+    isUTC,
+    displayedTimeInputValue,
   ]);
   const handleRemoveSavedQuery = useCallback(() => {
     if (!dashboard || isLocalDashboard) return;
@@ -2097,6 +2195,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         draft.savedQuery = null;
         draft.savedQueryLanguage = null;
         draft.savedFilterValues = [];
+        draft.savedDateRange = null;
       }),
       () => {
         notifications.show({
@@ -2284,6 +2383,20 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     [dashboard, setDashboard],
   );
 
+  // The dashboard's search input plus the filter selections that broadcast to
+  // `sourceId`. Shared with the tile editor so its preview queries what the
+  // tile does.
+  const getTileFilters = useCallback(
+    (sourceId: string | undefined): Filter[] => [
+      {
+        type: whereLanguage === 'sql' ? 'sql' : 'lucene',
+        condition: where,
+      },
+      ...getFilterQueriesForSource(sourceId),
+    ],
+    [where, whereLanguage, getFilterQueriesForSource],
+  );
+
   const renderTileComponent = useCallback(
     (chart: Tile) => {
       // Resolve the tile's source ID so per-source-scoped filters can be
@@ -2302,14 +2415,9 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           granularity={
             isRefreshEnabled ? granularityOverride : (granularity ?? undefined)
           }
-          filters={[
-            {
-              type: whereLanguage === 'sql' ? 'sql' : 'lucene',
-              condition: where,
-            },
-            ...getFilterQueriesForSource(tileSourceId),
-          ]}
-          variables={showFilterVariableOptions ? variables : undefined}
+          filters={getTileFilters(tileSourceId)}
+          variables={variables}
+          unsatisfiedRequiredFilters={unsatisfiedRequiredFilters}
           onTimeRangeSelect={onTimeRangeSelect}
           showAlertAnnotations={showAlertAnnotations}
           showReleaseAnnotations={showReleaseAnnotations}
@@ -2406,14 +2514,12 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       highlightedTileId,
       confirm,
       setDashboard,
-      where,
-      whereLanguage,
       onTimeRangeSelect,
       showAlertAnnotations,
       showReleaseAnnotations,
-      getFilterQueriesForSource,
-      showFilterVariableOptions,
+      getTileFilters,
       variables,
+      unsatisfiedRequiredFilters,
       moveTargetContainers,
       handleMoveTileToGroup,
       selectedTileIds,
@@ -3011,7 +3117,6 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         onLanguageChange={(lang: 'sql' | 'lucene') =>
           setValue('whereLanguage', lang)
         }
-        label="WHERE"
         enableHotkey
         allowMultiline
         minWidth={300}
@@ -3058,9 +3163,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       </Tooltip>
       <Tooltip
         withArrow
-        label={
-          isVariablesEnabled ? 'Edit Filters and Variables' : 'Edit Filters'
-        }
+        label="Edit filters and variables"
         fz="xs"
         color="gray"
       >
@@ -3104,7 +3207,9 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             if (!isSaving) setEditedTile(undefined);
           }}
           dateRange={searchedTimeRange}
-          variables={showFilterVariableOptions ? variables : undefined}
+          variables={variables}
+          getDashboardFilters={getTileFilters}
+          unsatisfiedRequiredFilters={unsatisfiedRequiredFilters}
           isSaving={isSaving}
           onSave={newChart => {
             if (dashboard == null) {
@@ -3153,10 +3258,11 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       )}
       {!isKioskMode &&
         shouldShowIgnoredFiltersBanner &&
-        ignoredFilterExpressions.length > 0 && (
+        (ignoredFilterExpressions.length > 0 ||
+          ignoredVariableNames.length > 0) && (
           <Alert
-            mt="sm"
-            color="yellow"
+            mb="sm"
+            variant="warning"
             icon={<IconAlertTriangle size={16} />}
             title="Some filters could not be applied"
             data-testid="ignored-url-filters-banner"
@@ -3164,21 +3270,35 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             closeButtonLabel="Dismiss"
             onClose={() => setShouldShowIgnoredFiltersBanner(false)}
           >
-            No dashboard filter(s) found for{' '}
-            {ignoredFilterExpressions.length === 1
-              ? 'expression'
-              : 'expressions'}{' '}
-            in the URL: {ignoredFilterExpressions.join(', ')}. Add a filter with
-            a matching expression to apply these filters.
+            <List type="unordered" size="sm" mb="xs">
+              {ignoredFilterExpressions.length > 0 && (
+                <List.Item>
+                  No dashboard filter(s) found for{' '}
+                  {ignoredFilterExpressions.length === 1
+                    ? 'expression'
+                    : 'expressions'}{' '}
+                  in the URL: {ignoredFilterExpressions.join(', ')}. Add a
+                  filter with a matching expression to apply these filters.
+                </List.Item>
+              )}
+              {ignoredVariableNames.length > 0 && (
+                <List.Item>
+                  No dashboard variable(s) found for{' '}
+                  {ignoredVariableNames.map(name => `$${name}`).join(', ')} in
+                  the URL. Add a variable-enabled filter with a matching
+                  variable name to apply these values.
+                </List.Item>
+              )}
+            </List>
           </Alert>
         )}
       {!isKioskMode && (
         <DashboardFilters
           filters={filters}
-          filterValues={filterValues}
+          selectionByFilterId={selectionByFilterId}
           onSetFilterValue={setFilterValue}
           dateRange={searchedTimeRange}
-          variables={showFilterVariableOptions ? variables : undefined}
+          variables={variables}
         />
       )}
       {/* Selection indicator */}
@@ -3354,8 +3474,9 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           onSaveFilter={handleSaveFilter}
           onRemoveFilter={handleRemoveFilter}
           isLoading={isSavingDashboard || isFetchingDashboard}
-          showVariableOptions={showFilterVariableOptions}
-          variables={showFilterVariableOptions ? variables : undefined}
+          showVariableOptions
+          showRequiredFilterOptions
+          variables={variables}
         />
       )}
     </>
@@ -3384,7 +3505,46 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   );
 }
 
-const DBDashboardPageDynamic = dynamic(async () => DBDashboardPage, {
+function DBDashboardPageGuarded({
+  presetConfig,
+}: {
+  presetConfig?: Dashboard;
+}) {
+  const router = useRouter();
+  const dashboardId = router.query.dashboardId as string | undefined;
+  const dashboardProps = useDashboard({
+    dashboardId: dashboardId as string | undefined,
+    presetConfig,
+  });
+  const {
+    userPreferences: { isUTC },
+  } = useUserPreferences();
+
+  const savedDateRange = dashboardProps.dashboard?.savedDateRange;
+  // Keyed on the saved range, not the render: a relative range re-stringifies
+  // to a new value every render, and useNewTimeQuery resets the input on change.
+  // Valid URL from/to still win: useNewTimeQuery overwrites the input from them.
+  const defaultTimeInput = useMemo(() => {
+    if (!savedDateRange) return undefined;
+    const [start, end] =
+      savedDateRange.type === 'relative'
+        ? parseRelativeTimeQuery(savedDateRange.value * 1000)
+        : savedDateRange.value.map(v => new Date(v));
+    // TODO: show relative ranges as "Past Xh" via getRelativeInterval
+    return dateRangeToString([start, end], isUTC);
+  }, [savedDateRange, isUTC]);
+
+  if (!dashboardProps || !router.isReady) return <Loader size="lg" />;
+
+  return (
+    <DBDashboardPage
+      dashboardProps={dashboardProps}
+      defaultTimeInput={defaultTimeInput}
+    />
+  );
+}
+
+const DBDashboardPageDynamic = dynamic(async () => DBDashboardPageGuarded, {
   ssr: false,
 });
 

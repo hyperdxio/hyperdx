@@ -2,13 +2,16 @@ import {
   AlertErrorType,
   AlertThresholdType,
   DisplayType,
+  SourceKind,
 } from '@hyperdx/common-utils/dist/types';
 import mongoose from 'mongoose';
 
 import {
   getLoggedInAgent,
   getServer,
+  makeAlertChartConfig,
   makeAlertInput,
+  makeInlineAlertInput,
   makeRawSqlAlertTile,
   makeRawSqlNumberAlertTile,
   makeRawSqlTile,
@@ -19,7 +22,10 @@ import {
 } from '@/fixtures';
 import Alert, { AlertSource, AlertState } from '@/models/alert';
 import AlertHistory from '@/models/alertHistory';
+import Connection from '@/models/connection';
+import Dashboard from '@/models/dashboard';
 import { SavedSearch } from '@/models/savedSearch';
+import { Source } from '@/models/source';
 import Webhook, { WebhookDocument, WebhookService } from '@/models/webhook';
 
 const MOCK_TILES = [makeTile(), makeTile(), makeTile(), makeTile(), makeTile()];
@@ -130,6 +136,42 @@ describe('alerts router', () => {
     expect(allAlerts.body.data[0].threshold).toBe(10);
   });
 
+  it('clears thresholdMax when an alert is moved off a range comparator', async () => {
+    const dashboard = await agent
+      .post('/dashboards')
+      .send(MOCK_DASHBOARD)
+      .expect(200);
+    const alert = await agent
+      .post('/alerts')
+      .send({
+        ...makeAlertInput({
+          dashboardId: dashboard.body.id,
+          tileId: MOCK_TILES[0].id,
+          webhookId: webhook._id.toString(),
+        }),
+        thresholdType: AlertThresholdType.BETWEEN,
+        threshold: 5,
+        thresholdMax: 20,
+      })
+      .expect(200);
+    expect(alert.body.data.thresholdMax).toBe(20);
+
+    await agent
+      .put(`/alerts/${alert.body.data._id}`)
+      .send({
+        ...alert.body.data,
+        dashboardId: dashboard.body.id,
+        thresholdType: AlertThresholdType.ABOVE,
+        thresholdMax: undefined,
+      })
+      .expect(200);
+
+    const updated = await agent
+      .get(`/alerts/${alert.body.data._id}`)
+      .expect(200);
+    expect(updated.body.data.thresholdMax).toBeUndefined();
+  });
+
   it('returns channel.webhookId, name, and message in GET list and GET single', async () => {
     const dashboard = await agent
       .post('/dashboards')
@@ -155,6 +197,9 @@ describe('alerts router', () => {
       channel: { type: 'webhook', webhookId: webhook._id.toString() },
       name: 'My alert',
       message: 'My message template',
+      // Derived from the tile / dashboard, since neither was sent.
+      displayName: 'Test Dashboard - Test Chart',
+      tags: ['test'],
     };
 
     const list = await agent.get('/alerts').expect(200);
@@ -377,6 +422,134 @@ describe('alerts router', () => {
       .get(`/alerts/${alert.body.data._id}`)
       .expect(200);
     expect(afterClear.body.data.note).toBeNull();
+  });
+
+  it('round-trips displayName and tags through create, update, and revert', async () => {
+    const dashboard = await agent
+      .post('/dashboards')
+      .send(MOCK_DASHBOARD)
+      .expect(200);
+
+    const alert = await agent
+      .post('/alerts')
+      .send(
+        makeAlertInput({
+          dashboardId: dashboard.body.id,
+          tileId: dashboard.body.tiles[0].id,
+          webhookId: webhook._id.toString(),
+          displayName: 'Checkout errors',
+          tags: ['checkout'],
+        }),
+      )
+      .expect(200);
+    const alertId = alert.body.data._id;
+
+    const created = await agent.get(`/alerts/${alertId}`).expect(200);
+    expect(created.body.data).toMatchObject({
+      displayName: 'Checkout errors',
+      tags: ['checkout'],
+    });
+
+    // PUT is full-replace: omitting both fields reverts to the derived values.
+    await agent
+      .put(`/alerts/${alertId}`)
+      .send(
+        makeAlertInput({
+          dashboardId: dashboard.body.id,
+          tileId: dashboard.body.tiles[0].id,
+          webhookId: webhook._id.toString(),
+        }),
+      )
+      .expect(200);
+
+    const reverted = await agent.get(`/alerts/${alertId}`).expect(200);
+    expect(reverted.body.data).toMatchObject({
+      displayName: 'Test Dashboard - Test Chart',
+      tags: ['test'],
+    });
+
+    // An explicitly emptied tag list is stored, not re-derived.
+    await agent
+      .put(`/alerts/${alertId}`)
+      .send(
+        makeAlertInput({
+          dashboardId: dashboard.body.id,
+          tileId: dashboard.body.tiles[0].id,
+          webhookId: webhook._id.toString(),
+          tags: [],
+        }),
+      )
+      .expect(200);
+
+    const emptied = await agent.get(`/alerts/${alertId}`).expect(200);
+    expect(emptied.body.data.tags).toEqual([]);
+    expect((await Alert.findById(alertId))?.tags).toEqual([]);
+  });
+
+  it('derives displayName from the chart config for inline alerts', async () => {
+    const source = await Source.create({
+      kind: SourceKind.Log,
+      team: team._id,
+      from: { databaseName: 'default', tableName: 'otel_logs' },
+      timestampValueExpression: 'Timestamp',
+      connection: new mongoose.Types.ObjectId(),
+      name: 'Logs',
+    });
+
+    const alert = await agent
+      .post('/alerts')
+      .send(
+        makeInlineAlertInput({
+          chartConfig: makeAlertChartConfig({
+            sourceId: source._id.toString(),
+            name: 'Inline chart',
+          }),
+          webhookId: webhook._id.toString(),
+        }),
+      )
+      .expect(200);
+
+    const single = await agent
+      .get(`/alerts/${alert.body.data._id}`)
+      .expect(200);
+    expect(single.body.data).toMatchObject({
+      displayName: 'Inline chart',
+      tags: [],
+    });
+  });
+
+  it('Derives name and tags from the saved search for a document stored without them', async () => {
+    const savedSearch = await SavedSearch.create({
+      name: 'Legacy search',
+      source: new mongoose.Types.ObjectId(),
+      team: team._id,
+      tags: ['legacy'],
+    });
+    const alert = await Alert.create({
+      team: team._id,
+      channel: { type: 'webhook', webhookId: webhook._id.toString() },
+      interval: '15m',
+      threshold: 8,
+      thresholdType: AlertThresholdType.ABOVE,
+      source: AlertSource.SAVED_SEARCH,
+      savedSearch: savedSearch._id,
+    });
+    expect(alert.displayName).toBeUndefined();
+    expect(alert.tags).toBeUndefined();
+
+    const single = await agent
+      .get(`/alerts/${alert._id.toString()}`)
+      .expect(200);
+    expect(single.body.data).toMatchObject({
+      displayName: 'Legacy search',
+      tags: ['legacy'],
+    });
+
+    const list = await agent.get('/alerts').expect(200);
+    expect(list.body.data[0]).toMatchObject({
+      displayName: 'Legacy search',
+      tags: ['legacy'],
+    });
   });
 
   it('preserves scheduleStartAt when omitted in updates and clears when null', async () => {
@@ -691,6 +864,87 @@ describe('alerts router', () => {
     for (const alert of alerts.body.data) {
       expect(alert.tileId).toBeDefined();
       expect(alert.dashboard).toBeDefined();
+    }
+  });
+
+  // The row menu's Terraform export gates on this, and it can only come from
+  // the server: the response filters `dashboard.tiles` down to the alert's own
+  // tile, so the client cannot see a sibling tile sharing its name.
+  it('marks a tile alert whose tile name is not unique', async () => {
+    // Every makeTile() carries the same config.name, so all five collide.
+    const duplicated = await agent
+      .post('/dashboards')
+      .send(MOCK_DASHBOARD)
+      .expect(200);
+    const unique = await agent
+      .post('/dashboards')
+      .send({
+        id: randomMongoId(),
+        name: 'Unique tiles',
+        tags: [],
+        tiles: [makeTile()],
+      })
+      .expect(200);
+
+    for (const dashboard of [duplicated, unique]) {
+      await agent
+        .post('/alerts')
+        .send(
+          makeAlertInput({
+            dashboardId: dashboard.body.id,
+            tileId: dashboard.body.tiles[0].id,
+            webhookId: webhook._id.toString(),
+          }),
+        )
+        .expect(200);
+    }
+
+    const resp = await agent.get('/alerts').expect(200);
+    const byDashboard = Object.fromEntries(
+      resp.body.data.map((a: { dashboard: { name: string } }) => [
+        a.dashboard.name,
+        a,
+      ]),
+    );
+
+    expect(byDashboard['Test Dashboard'].unaddressableTile).toBe(true);
+    // Absent rather than `false` when fine, matching the IaC manifest.
+    expect(byDashboard['Unique tiles']).not.toHaveProperty('unaddressableTile');
+  });
+
+  // Both legs of the rule the manifest also applies. The provisioned case
+  // works only because getAlertsEnhanced populates the dashboard whole — a
+  // projection added there would break it silently — and the deleted case
+  // only because the marker sits outside the `alert.dashboard` spread.
+  it('marks a tile alert on a provisioned dashboard, and one whose dashboard is gone', async () => {
+    const tile = makeTile();
+    const provisioned = await Dashboard.create({
+      name: 'Provisioned',
+      team: team._id,
+      provisioned: true,
+      tiles: [tile],
+    });
+
+    const tileAlert = async (dashboardId: unknown, tileId: string) =>
+      Alert.create({
+        team: team._id,
+        channel: { type: 'webhook', webhookId: webhook._id.toString() },
+        interval: '15m',
+        threshold: 8,
+        thresholdType: AlertThresholdType.ABOVE,
+        source: AlertSource.TILE,
+        dashboard: dashboardId,
+        tileId,
+      });
+
+    await tileAlert(provisioned._id, tile.id);
+    await tileAlert(randomMongoId(), tile.id);
+
+    const resp = await agent.get('/alerts').expect(200);
+
+    expect(resp.body.data).toHaveLength(2);
+    for (const alert of resp.body.data) {
+      expect(alert.unaddressableTile).toBe(true);
     }
   });
 
@@ -1647,6 +1901,379 @@ describe('alerts router', () => {
           ],
         })
         .expect(400);
+    });
+  });
+
+  describe('inline alerts', () => {
+    const makeSource = async () => {
+      const connection = await Connection.create({
+        team: team._id,
+        name: 'Default',
+        host: 'http://localhost:8123',
+        username: 'default',
+        password: '',
+      });
+      const source = await Source.create({
+        kind: SourceKind.Log,
+        team: team._id,
+        from: { databaseName: 'default', tableName: 'otel_logs' },
+        timestampValueExpression: 'Timestamp',
+        connection: connection._id,
+        name: 'Logs',
+      });
+      return { connection, source };
+    };
+
+    it('creates an inline alert and round-trips chartConfig through GET', async () => {
+      const { source } = await makeSource();
+      const chartConfig = makeAlertChartConfig({
+        sourceId: source._id.toString(),
+      });
+
+      const created = await agent
+        .post('/alerts')
+        .send(
+          makeInlineAlertInput({
+            chartConfig,
+            webhookId: webhook._id.toString(),
+          }),
+        )
+        .expect(200);
+
+      expect(created.body.data.source).toBe(AlertSource.INLINE);
+      expect(created.body.data.chartConfig).toMatchObject({
+        name: 'Chart Alert Query',
+        source: source._id.toString(),
+      });
+
+      const single = await agent
+        .get(`/alerts/${created.body.data._id}`)
+        .expect(200);
+      expect(single.body.data.chartConfig).toMatchObject({
+        name: 'Chart Alert Query',
+        source: source._id.toString(),
+      });
+      expect(single.body.data.savedSearchId).toBeUndefined();
+      expect(single.body.data.dashboardId).toBeUndefined();
+
+      // The unpaginated list omits the config — only the detail response
+      // carries the full query definition.
+      const list = await agent.get('/alerts').expect(200);
+      expect(list.body.data).toHaveLength(1);
+      expect(list.body.data[0].source).toBe(AlertSource.INLINE);
+      expect(list.body.data[0].chartConfig).toBeUndefined();
+    });
+
+    it('updates an inline alert config', async () => {
+      const { source } = await makeSource();
+      const created = await agent
+        .post('/alerts')
+        .send(
+          makeInlineAlertInput({
+            chartConfig: makeAlertChartConfig({
+              sourceId: source._id.toString(),
+            }),
+            webhookId: webhook._id.toString(),
+          }),
+        )
+        .expect(200);
+
+      const updatedConfig = makeAlertChartConfig({
+        sourceId: source._id.toString(),
+        groupBy: 'ServiceName',
+      });
+      await agent
+        .put(`/alerts/${created.body.data._id}`)
+        .send(
+          makeInlineAlertInput({
+            chartConfig: updatedConfig,
+            threshold: 42,
+            webhookId: webhook._id.toString(),
+          }),
+        )
+        .expect(200);
+
+      const stored = await Alert.findById(created.body.data._id);
+      expect(stored!.threshold).toBe(42);
+      expect(stored!.chartConfig).toMatchObject({ groupBy: 'ServiceName' });
+    });
+
+    it('clears source-specific references when switching between chart and tile sources', async () => {
+      const { source } = await makeSource();
+      const dashboard = await agent
+        .post('/dashboards')
+        .send(MOCK_DASHBOARD)
+        .expect(200);
+      const tileId = dashboard.body.tiles[0].id;
+
+      const created = await agent
+        .post('/alerts')
+        .send(
+          makeInlineAlertInput({
+            chartConfig: makeAlertChartConfig({
+              sourceId: source._id.toString(),
+            }),
+            webhookId: webhook._id.toString(),
+          }),
+        )
+        .expect(200);
+
+      await agent
+        .put(`/alerts/${created.body.data._id}`)
+        .send(
+          makeAlertInput({
+            dashboardId: dashboard.body.id,
+            tileId,
+            webhookId: webhook._id.toString(),
+          }),
+        )
+        .expect(200);
+
+      let stored = await Alert.findById(created.body.data._id);
+      expect(stored!.chartConfig).toBeNull();
+      expect(stored!.dashboard?.toString()).toBe(dashboard.body.id);
+      expect(stored!.tileId).toBe(tileId);
+
+      await agent
+        .put(`/alerts/${created.body.data._id}`)
+        .send(
+          makeInlineAlertInput({
+            chartConfig: makeAlertChartConfig({
+              sourceId: source._id.toString(),
+            }),
+            webhookId: webhook._id.toString(),
+          }),
+        )
+        .expect(200);
+
+      stored = await Alert.findById(created.body.data._id);
+      expect(stored!.chartConfig).toMatchObject({
+        source: source._id.toString(),
+      });
+      expect(stored!.dashboard).toBeNull();
+      expect(stored!.tileId).toBeNull();
+    });
+
+    it('rejects an inline alert whose source does not exist in the team', async () => {
+      await agent
+        .post('/alerts')
+        .send(
+          makeInlineAlertInput({
+            chartConfig: makeAlertChartConfig({ sourceId: randomMongoId() }),
+            webhookId: webhook._id.toString(),
+          }),
+        )
+        .expect(400);
+    });
+
+    it('rejects an inline alert with an unsupported display type', async () => {
+      const { source } = await makeSource();
+      await agent
+        .post('/alerts')
+        .send(
+          makeInlineAlertInput({
+            chartConfig: makeAlertChartConfig({
+              sourceId: source._id.toString(),
+              displayType: DisplayType.Table,
+            }),
+            webhookId: webhook._id.toString(),
+          }),
+        )
+        .expect(400);
+    });
+
+    it('validates metric formulas on builder chart configs', async () => {
+      const { source } = await makeSource();
+      const base = makeAlertChartConfig({ sourceId: source._id.toString() });
+
+      // Formula referencing a nonexistent series (only A exists)
+      const unknownSeries = await agent
+        .post('/alerts')
+        .send(
+          makeInlineAlertInput({
+            chartConfig: { ...base, formulas: [{ expression: 'B * 2' }] },
+            webhookId: webhook._id.toString(),
+          }),
+        )
+        .expect(400);
+      // The alert body's source union must be discriminated for this to
+      // surface: a plain `.or()` reports only a generic union failure and
+      // buries the real issue in unionErrors.
+      expect(JSON.stringify(unknownSeries.body)).toContain('Unknown series');
+
+      // Malformed expression
+      await agent
+        .post('/alerts')
+        .send(
+          makeInlineAlertInput({
+            chartConfig: { ...base, formulas: [{ expression: 'A +' }] },
+            webhookId: webhook._id.toString(),
+          }),
+        )
+        .expect(400);
+
+      // Formulas are mutually exclusive with the ratio toggle (internal
+      // configs spell it seriesReturnType: 'ratio')
+      await agent
+        .post('/alerts')
+        .send(
+          makeInlineAlertInput({
+            chartConfig: {
+              ...base,
+              seriesReturnType: 'ratio',
+              formulas: [{ expression: 'A * 2' }],
+            },
+            webhookId: webhook._id.toString(),
+          }),
+        )
+        .expect(400);
+
+      const created = await agent
+        .post('/alerts')
+        .send(
+          makeInlineAlertInput({
+            chartConfig: { ...base, formulas: [{ expression: 'A * 2' }] },
+            webhookId: webhook._id.toString(),
+          }),
+        )
+        .expect(200);
+      expect(created.body.data.chartConfig).toMatchObject({
+        formulas: [{ expression: 'A * 2' }],
+      });
+    });
+
+    it('rejects a raw SQL inline alert whose source is on a different connection', async () => {
+      const { connection, source } = await makeSource();
+      const otherConnection = await Connection.create({
+        team: team._id,
+        name: 'Other',
+        host: 'http://localhost:8124',
+        username: 'default',
+        password: '',
+      });
+
+      const rawSqlConfig = {
+        configType: 'sql' as const,
+        displayType: DisplayType.Line,
+        sqlTemplate: RAW_SQL_ALERT_TEMPLATE,
+        source: source._id.toString(),
+      };
+
+      // The source belongs to `connection`, not `otherConnection` — the
+      // worker would execute on one and expand $__sourceTable from the other.
+      await agent
+        .post('/alerts')
+        .send(
+          makeInlineAlertInput({
+            chartConfig: {
+              ...rawSqlConfig,
+              connection: otherConnection._id.toString(),
+            },
+            webhookId: webhook._id.toString(),
+          }),
+        )
+        .expect(400);
+
+      await agent
+        .post('/alerts')
+        .send(
+          makeInlineAlertInput({
+            chartConfig: {
+              ...rawSqlConfig,
+              connection: connection._id.toString(),
+            },
+            webhookId: webhook._id.toString(),
+          }),
+        )
+        .expect(200);
+
+      // Equivalent non-canonical representations (uppercase hex) of the same
+      // connection ID must be accepted — the consistency check compares
+      // ObjectIds, not strings.
+      await agent
+        .post('/alerts')
+        .send(
+          makeInlineAlertInput({
+            chartConfig: {
+              ...rawSqlConfig,
+              connection: connection._id.toString().toUpperCase(),
+            },
+            webhookId: webhook._id.toString(),
+          }),
+        )
+        .expect(200);
+    });
+
+    it('rejects an inline alert with a PromQL config', async () => {
+      await agent
+        .post('/alerts')
+        .send({
+          ...makeInlineAlertInput({
+            chartConfig: makeAlertChartConfig({ sourceId: randomMongoId() }),
+            webhookId: webhook._id.toString(),
+          }),
+          chartConfig: {
+            configType: 'promql',
+            promqlQuery: 'up',
+            source: randomMongoId(),
+          },
+        })
+        .expect(400);
+    });
+
+    it('accepts a raw SQL inline alert and validates its template', async () => {
+      const { connection } = await makeSource();
+
+      // Missing the required time-filter/interval parameters
+      await agent
+        .post('/alerts')
+        .send(
+          makeInlineAlertInput({
+            chartConfig: {
+              configType: 'sql',
+              displayType: DisplayType.Line,
+              sqlTemplate: 'SELECT 1',
+              connection: connection._id.toString(),
+            },
+            webhookId: webhook._id.toString(),
+          }),
+        )
+        .expect(400);
+
+      // A connection outside the team is rejected
+      await agent
+        .post('/alerts')
+        .send(
+          makeInlineAlertInput({
+            chartConfig: {
+              configType: 'sql',
+              displayType: DisplayType.Line,
+              sqlTemplate: RAW_SQL_ALERT_TEMPLATE,
+              connection: randomMongoId(),
+            },
+            webhookId: webhook._id.toString(),
+          }),
+        )
+        .expect(400);
+
+      const created = await agent
+        .post('/alerts')
+        .send(
+          makeInlineAlertInput({
+            chartConfig: {
+              configType: 'sql',
+              displayType: DisplayType.Line,
+              sqlTemplate: RAW_SQL_ALERT_TEMPLATE,
+              connection: connection._id.toString(),
+            },
+            webhookId: webhook._id.toString(),
+          }),
+        )
+        .expect(200);
+      expect(created.body.data.chartConfig).toMatchObject({
+        configType: 'sql',
+        connection: connection._id.toString(),
+      });
     });
   });
 });

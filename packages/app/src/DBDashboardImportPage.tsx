@@ -17,14 +17,22 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { convertToDashboardDocument } from '@hyperdx/common-utils/dist/core/utils';
 import {
   type DashboardFilterQueryIssue,
+  isPrometheusLabelFilter,
+  isQueryExpressionFilter,
+  isStaticListFilter,
+  QUERY_EXPRESSION_FILTER_SOURCE_KINDS,
   type SavedFilterValueIssue,
   type SavedQueryIssue,
   validateDashboardFilterQueries,
   validateSavedFilterValues,
   validateSavedQuery,
 } from '@hyperdx/common-utils/dist/filters';
-import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
+  displayTypeRequiresSource,
+  isRawSqlSavedChartConfig,
+} from '@hyperdx/common-utils/dist/guards';
+import {
+  type DashboardFilter,
   type DashboardTemplate,
   DashboardTemplateSchema,
   isLogSource,
@@ -32,6 +40,7 @@ import {
   isOnClickSearchById,
   isTraceSource,
   SavedChartConfig,
+  SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
@@ -383,28 +392,131 @@ function resolveAppliesToSources(
   };
 }
 
-const MappingFormStateSchema = z.object({
-  dashboardName: z.string().min(1),
-  tags: z.array(z.string()),
-  /** A list of tile source mappings, ordered by input tile index */
-  tileSourceMappings: z.array(z.string()),
-  /** A list of tile connection mappings, ordered by input tile index. Only applicable for RawSQL tiles */
-  connectionMappings: z.array(z.string()),
-  /** A list of filter source mappings, ordered by input filter index */
-  filterSourceMappings: z.array(z.string()).optional(),
-  /**
-   * Per-filter applies-to source mappings. Each entry is an array of mapped
-   * source IDs in the same order as the filter's `appliesToSourceIds` names
-   * from the template. Empty arrays mean "applies to all" after import.
-   */
-  filterAppliesToSourceMappings: z.array(z.array(z.string())).optional(),
-  /** A list of onClick source mappings, ordered by input tile index */
-  onClickSourceMappings: z.array(z.string()).optional(),
-  /** A list of onClick dashboard mappings, ordered by input tile index */
-  onClickDashboardMappings: z.array(z.string()).optional(),
-});
+/** Returns the filter if it names a source, or `undefined` if it doesn't. */
+const sourceBackedTemplateFilter = (filter: DashboardFilter | undefined) =>
+  filter && !isStaticListFilter(filter) ? filter : undefined;
 
-type MappingFormState = z.infer<typeof MappingFormStateSchema>;
+/**
+ * The query-expression half of a template filter, or `undefined` for any other
+ * type. Only a queried filter broadcasts, so only it carries an applies-to list.
+ */
+const queriedTemplateFilter = (filter: DashboardFilter | undefined) =>
+  filter && isQueryExpressionFilter(filter) ? filter : undefined;
+
+/**
+ * The source kinds a filter of this type can read its dropdown values from, or
+ * `undefined` for a filter that reads no source at all.
+ */
+const filterSourceKinds = (
+  filter: DashboardFilter,
+): SourceKind[] | undefined =>
+  isPrometheusLabelFilter(filter)
+    ? [SourceKind.Promql]
+    : isQueryExpressionFilter(filter)
+      ? QUERY_EXPRESSION_FILTER_SOURCE_KINDS
+      : undefined;
+
+/**
+ * One mapping select's value. Mantine's Select writes `null` when the user
+ * clears a selection, so accept that and normalize it to ''.
+ */
+const MappingValueSchema = z
+  .string()
+  .nullish()
+  .transform(value => value ?? '');
+
+/**
+ * The mapping form's schema for one specific template. It has to be built from
+ * the template rather than declared once because the form state is positional
+ * (one entry per input tile/filter).
+ */
+export function buildMappingFormSchema(
+  input: DashboardTemplate,
+  sources?: readonly Pick<TSource, 'id' | 'kind'>[],
+) {
+  return z
+    .object({
+      dashboardName: z.string().min(1, 'Enter a dashboard name'),
+      tags: z.array(z.string()),
+      /** A list of tile source mappings, ordered by input tile index */
+      tileSourceMappings: z.array(MappingValueSchema),
+      /** A list of tile connection mappings, ordered by input tile index. Only applicable for RawSQL tiles */
+      connectionMappings: z.array(MappingValueSchema),
+      /** A list of filter source mappings, ordered by input filter index */
+      filterSourceMappings: z.array(MappingValueSchema).optional(),
+      /**
+       * Per-filter applies-to source mappings. Each entry is an array of mapped
+       * source IDs in the same order as the filter's `appliesToSourceIds` names
+       * from the template. Empty arrays mean "applies to all" after import.
+       */
+      filterAppliesToSourceMappings: z
+        .array(z.array(MappingValueSchema))
+        .optional(),
+      /** A list of onClick source mappings, ordered by input tile index */
+      onClickSourceMappings: z.array(MappingValueSchema).optional(),
+      /** A list of onClick dashboard mappings, ordered by input tile index */
+      onClickDashboardMappings: z.array(MappingValueSchema).optional(),
+    })
+    .superRefine((data, ctx) => {
+      input.tiles.forEach((tile, idx) => {
+        const config = tile.config;
+        // Only require what the table actually offers a row for: a tile gets a
+        // source row when it declared a source, and markdown carries no
+        // meaningful source even when the template names one.
+        if (
+          config.source &&
+          displayTypeRequiresSource(config.displayType) &&
+          !data.tileSourceMappings[idx]
+        ) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['tileSourceMappings', idx],
+            message: 'Select a source for this tile',
+          });
+        }
+        // A raw SQL tile always gets a connection row, and its connection is
+        // not optional — leaving it unpicked used to throw on `connection!.id`.
+        if (isRawSqlSavedChartConfig(config) && !data.connectionMappings[idx]) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['connectionMappings', idx],
+            message: 'Select a connection for this tile',
+          });
+        }
+      });
+
+      input.filters?.forEach((filter, idx) => {
+        if (isStaticListFilter(filter)) return;
+        const mappedSourceId = data.filterSourceMappings?.[idx];
+        if (!mappedSourceId) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['filterSourceMappings', idx],
+            message: 'Select a source for this filter',
+          });
+          return;
+        }
+
+        const mappedSource = sources?.find(s => s.id === mappedSourceId);
+        const allowedKinds = filterSourceKinds(filter);
+        if (
+          allowedKinds &&
+          mappedSource &&
+          !allowedKinds.includes(mappedSource.kind)
+        ) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['filterSourceMappings', idx],
+            message: isPrometheusLabelFilter(filter)
+              ? 'Select a PromQL source for this filter'
+              : 'Select a non-PromQL source for this filter',
+          });
+        }
+      });
+    });
+}
+
+type MappingFormState = z.infer<ReturnType<typeof buildMappingFormSchema>>;
 
 export function Mapping({ input }: { input: DashboardTemplate }) {
   const router = useRouter();
@@ -414,9 +526,15 @@ export function Mapping({ input }: { input: DashboardTemplate }) {
   const { data: existingTags } = api.useTags();
   const [dashboardId] = useQueryState('dashboardId', parseAsString);
 
+  const formSchema = useMemo(
+    () => buildMappingFormSchema(input, sources),
+    [input, sources],
+  );
+
   const { handleSubmit, getFieldState, control, setValue, getValues } =
     useForm<MappingFormState>({
-      resolver: zodResolver(MappingFormStateSchema),
+      resolver: zodResolver(formSchema),
+      mode: 'onChange',
       defaultValues: {
         dashboardName: input.name,
         tags: input.tags ?? [],
@@ -429,9 +547,14 @@ export function Mapping({ input }: { input: DashboardTemplate }) {
       },
     });
 
+  // The template whose names have already been auto-mapped
+  const autoMappedInputRef = useRef<DashboardTemplate | null>(null);
+
   // When the input changes, reset the form
   useEffect(() => {
     if (!input || !sources || !connections || !dashboards) return;
+    if (autoMappedInputRef.current === input) return;
+    autoMappedInputRef.current = input;
 
     const tileSourceMappings = input.tiles.map(tile => {
       const config = tile.config as SavedChartConfig;
@@ -452,6 +575,7 @@ export function Mapping({ input }: { input: DashboardTemplate }) {
     });
 
     const filterSourceMappings = input.filters?.map(filter => {
+      if (isStaticListFilter(filter)) return '';
       const match = sources.find(
         source => source.name.toLowerCase() === filter.source.toLowerCase(),
       );
@@ -463,7 +587,11 @@ export function Mapping({ input }: { input: DashboardTemplate }) {
     // resolve are dropped — the surviving IDs become the multiselect's
     // initial value.
     const filterAppliesToSourceMappings = input.filters?.map(
-      filter => resolveAppliesToSources(filter.appliesToSourceIds, sources).ids,
+      filter =>
+        resolveAppliesToSources(
+          queriedTemplateFilter(filter)?.appliesToSourceIds,
+          sources,
+        ).ids,
     );
 
     // onClick targets in a template carry the source/dashboard *name* in
@@ -555,7 +683,9 @@ export function Mapping({ input }: { input: DashboardTemplate }) {
       );
       if (idx !== -1) {
         prevFilterSourceMappingsRef.current = filterSourceMappings;
-        inputSourceName = input.filters?.[idx]?.source;
+        inputSourceName = sourceBackedTemplateFilter(
+          input.filters?.[idx],
+        )?.source;
         selectedSourceId = filterSourceMappings[idx] ?? '';
       }
     }
@@ -586,8 +716,11 @@ export function Mapping({ input }: { input: DashboardTemplate }) {
 
     const keysForFiltersWithMatchingSource =
       input.filters
-        ?.map((filter, index) => ({ ...filter, index }))
-        .filter(f => f.source === inputSourceName)
+        ?.map((filter, index) => ({ filter, index }))
+        .filter(
+          ({ filter }) =>
+            sourceBackedTemplateFilter(filter)?.source === inputSourceName,
+        )
         .map(({ index }) => `filterSourceMappings.${index}` as const) ?? [];
 
     const keysForOnClicksWithMatchingSource = input.tiles
@@ -618,6 +751,7 @@ export function Mapping({ input }: { input: DashboardTemplate }) {
     // the resolver's stripped-list index so it lines up with the form-state
     // array (which has unresolved template names dropped).
     input.filters?.forEach((filter, filterIdx) => {
+      if (!isQueryExpressionFilter(filter)) return;
       if (!filter.appliesToSourceIds?.includes(inputSourceName)) return;
       const key = `filterAppliesToSourceMappings.${filterIdx}` as const;
       if (getFieldState(key).isDirty) return;
@@ -817,7 +951,9 @@ export function Mapping({ input }: { input: DashboardTemplate }) {
         );
         return {
           ...filter,
-          source: source!.id,
+          // A sourceless filter (`STATIC_LIST`) gets no mapping row, so
+          // `source` is undefined here
+          ...(source ? { source: source.id } : {}),
           appliesToSourceIds: appliesTo?.length ? appliesTo : undefined,
         };
       });
@@ -987,45 +1123,56 @@ export function Mapping({ input }: { input: DashboardTemplate }) {
             {/** Map filter sources */}
             {input.filters?.map((filter, i) => (
               <Fragment key={filter.id}>
-                <Table.Tr>
-                  <Table.Td>{filter.name} (Filter)</Table.Td>
-                  <Table.Td>Data Source</Table.Td>
-                  <Table.Td>{filter.source}</Table.Td>
-                  <Table.Td>
-                    <SelectControlled
-                      control={control}
-                      name={`filterSourceMappings.${i}`}
-                      data={sources?.map(source => ({
-                        value: source.id,
-                        label: source.name,
-                      }))}
-                      placeholder="Select a source"
-                    />
-                  </Table.Td>
-                  <Table.Td />
-                  <Table.Td />
-                </Table.Tr>
-                {!!filter.appliesToSourceIds?.length && (
+                {/* A static filter reads its values from the list stored on it,
+                    so it has neither a source nor an applies-to list to map. */}
+                {!isStaticListFilter(filter) && (
                   <Table.Tr>
                     <Table.Td>{filter.name} (Filter)</Table.Td>
+                    <Table.Td>Data Source</Table.Td>
+                    <Table.Td>{filter.source}</Table.Td>
                     <Table.Td>
-                      <Tooltip label="The list of sources that this filter will be applied to. Leave empty to apply to all tiles, regardless of source.">
-                        <span>Applies to Sources</span>
-                      </Tooltip>
-                    </Table.Td>
-                    <Table.Td>{filter.appliesToSourceIds.join(', ')}</Table.Td>
-                    <Table.Td>
-                      <SourceMultiSelectControlled
+                      <SelectControlled
                         control={control}
-                        name={`filterAppliesToSourceMappings.${i}`}
-                        placeholder="Select sources"
-                        data-testid={`filter-applies-to-mapping-${filter.name}`}
+                        name={`filterSourceMappings.${i}`}
+                        data={sources
+                          ?.filter(source =>
+                            filterSourceKinds(filter)?.includes(source.kind),
+                          )
+                          .map(source => ({
+                            value: source.id,
+                            label: source.name,
+                          }))}
+                        placeholder="Select a source"
                       />
                     </Table.Td>
                     <Table.Td />
                     <Table.Td />
                   </Table.Tr>
                 )}
+                {isQueryExpressionFilter(filter) &&
+                  !!filter.appliesToSourceIds?.length && (
+                    <Table.Tr>
+                      <Table.Td>{filter.name} (Filter)</Table.Td>
+                      <Table.Td>
+                        <Tooltip label="The list of sources that this filter will be applied to. Leave empty to apply to all tiles, regardless of source.">
+                          <span>Applies to Sources</span>
+                        </Tooltip>
+                      </Table.Td>
+                      <Table.Td>
+                        {filter.appliesToSourceIds.join(', ')}
+                      </Table.Td>
+                      <Table.Td>
+                        <SourceMultiSelectControlled
+                          control={control}
+                          name={`filterAppliesToSourceMappings.${i}`}
+                          placeholder="Select sources"
+                          data-testid={`filter-applies-to-mapping-${filter.name}`}
+                        />
+                      </Table.Td>
+                      <Table.Td />
+                      <Table.Td />
+                    </Table.Tr>
+                  )}
               </Fragment>
             ))}
           </Table.Tbody>

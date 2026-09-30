@@ -30,7 +30,10 @@ jest.mock('@/config', () => ({
   },
 }));
 
-import { buildOtelCollectorConfig } from '@/opamp/controllers/opampController';
+import {
+  bearerTokenVariants,
+  buildOtelCollectorConfig,
+} from '@/opamp/controllers/opampController';
 
 const resetConfig = () => {
   configState.IS_ALL_IN_ONE_IMAGE = false;
@@ -58,6 +61,65 @@ describe('opampController', () => {
           timeout: '${env:HYPERDX_OTEL_EXPORTER_TIMEOUT:-5s}',
         },
       });
+    });
+  });
+
+  describe('buildOtelCollectorConfig otlp/hyperdx authentication', () => {
+    it('accepts bare and bearer-prefixed authorization values for each API key', () => {
+      const cfg = buildOtelCollectorConfig([
+        { apiKey: 'k1', collectorAuthenticationEnforced: true },
+        { apiKey: 'k2', collectorAuthenticationEnforced: true },
+      ]);
+
+      // The extension matches the full header value exactly, so every
+      // accepted form must be listed explicitly (see bearerTokenVariants).
+      expect(cfg.extensions['bearertokenauth/hyperdx']).toEqual({
+        scheme: '',
+        tokens: [
+          'k1',
+          'Bearer k1',
+          'bearer k1',
+          'BEARER k1',
+          'k2',
+          'Bearer k2',
+          'bearer k2',
+          'BEARER k2',
+        ],
+      });
+      expect(cfg.receivers['otlp/hyperdx']?.protocols.grpc.auth).toEqual({
+        authenticator: 'bearertokenauth/hyperdx',
+      });
+      expect(cfg.receivers['otlp/hyperdx']?.protocols.http.auth).toEqual({
+        authenticator: 'bearertokenauth/hyperdx',
+      });
+    });
+
+    it('includes variants for INGESTION_API_KEY in all-in-one mode', () => {
+      configState.IS_ALL_IN_ONE_IMAGE = true;
+      configState.INGESTION_API_KEY = 'ingest-key';
+
+      const cfg = buildOtelCollectorConfig([
+        { apiKey: 'k1', collectorAuthenticationEnforced: true },
+      ]);
+
+      const tokens = cfg.extensions['bearertokenauth/hyperdx'].tokens;
+      expect(tokens).toEqual(
+        expect.arrayContaining([
+          'ingest-key',
+          'Bearer ingest-key',
+          'bearer ingest-key',
+          'BEARER ingest-key',
+        ]),
+      );
+    });
+
+    it('bearerTokenVariants emits the bare token plus the bearer scheme case variants', () => {
+      expect(bearerTokenVariants(['tok'])).toEqual([
+        'tok',
+        'Bearer tok',
+        'bearer tok',
+        'BEARER tok',
+      ]);
     });
   });
 

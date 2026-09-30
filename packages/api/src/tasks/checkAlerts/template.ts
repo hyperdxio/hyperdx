@@ -1,14 +1,21 @@
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
+import { getPromqlSeries } from '@hyperdx/common-utils/dist/core/promql';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
+import { buildSearchChartConfig } from '@hyperdx/common-utils/dist/core/searchChartConfig';
 import { formatDate, objectHash } from '@hyperdx/common-utils/dist/core/utils';
+import {
+  isPromqlSavedChartConfig,
+  isRawSqlSavedChartConfig,
+} from '@hyperdx/common-utils/dist/guards';
 import {
   AlertChannelType,
   AlertThresholdType,
+  BuilderChartConfigWithOptDateRange,
   ChartConfigWithOptDateRange,
-  DisplayType,
+  Filter,
   isRangeThresholdType,
-  pickSampleWeightExpressionProps,
+  SavedChartConfig,
   SourceKind,
   zAlertChannelType,
 } from '@hyperdx/common-utils/dist/types';
@@ -19,7 +26,12 @@ import { serializeError } from 'serialize-error';
 import { z } from 'zod';
 
 import { AlertInput } from '@/controllers/alerts';
-import { AlertSource, AlertState, getAlertChannels } from '@/models/alert';
+import {
+  AlertChannel,
+  AlertSource,
+  AlertState,
+  getAlertChannels,
+} from '@/models/alert';
 import { IDashboard } from '@/models/dashboard';
 import { ISavedSearch } from '@/models/savedSearch';
 import { ISource } from '@/models/source';
@@ -44,6 +56,7 @@ import {
 } from '@/tasks/checkAlerts/providers';
 import { createHandlebarsWithHelpers } from '@/tasks/checkAlerts/transports';
 import { unflattenObject } from '@/tasks/util';
+import { resolveAlertDisplayFields } from '@/utils/alerts';
 import { truncateString } from '@/utils/common';
 import { getCounter } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
@@ -100,7 +113,108 @@ const describeThreshold = (alert: AlertInput): string => {
     : `${alert.threshold}`;
 };
 
+const describeFilter = (filter: Filter): string =>
+  filter.type === 'sql_ast'
+    ? `${filter.left} ${filter.operator} ${filter.right}`
+    : filter.condition;
+
+const joinConditions = (...parts: (string | undefined)[]): string => {
+  const present = parts
+    .map(part => part?.trim())
+    .filter((part): part is string => !!part);
+  // A lone condition needs no brackets; two or more do, so that a part
+  // carrying its own top-level OR keeps its precedence under the AND join.
+  // renderChartConfig brackets each group the same way before combining them.
+  return present.length > 1
+    ? present.map(part => `(${part})`).join(' AND ')
+    : (present[0] ?? '');
+};
+
+// Reports only the fields the alert query is actually built from.
+// buildAlertChartConfigFromSavedConfig assembles a chart alert field by field
+// and passes neither `filters` nor `having`, so a tile or inline alert never
+// narrows on those; naming them here would advertise a condition that never
+// fired, the same way a stale thresholdMax would.
+const describeChartConfigQuery = (config: SavedChartConfig): string => {
+  if (isRawSqlSavedChartConfig(config)) {
+    return config.sqlTemplate;
+  }
+  // Anticipatory: a PromQL chart cannot be alerted on today. The branch stays
+  // because a tile's config is the full union, and this guard is what narrows
+  // the builder case below.
+  if (isPromqlSavedChartConfig(config)) {
+    return getPromqlSeries(config).at(-1)?.expression ?? '';
+  }
+  const select = typeof config.select === 'string' ? [] : (config.select ?? []);
+  // Only the last series drives the value -- parseAlertData keeps the last
+  // value column it sees -- so an earlier series' condition is not the one
+  // that fired.
+  return joinConditions(config.where, select.at(-1)?.aggCondition);
+};
+
+// Only a saved-search alert states its query on the saved search. A tile
+// alert's lives on the dashboard tile and an inline alert's on the alert
+// itself, so both were reported as empty before.
+const describeSourceQuery = (
+  alert: AlertInput,
+  savedSearch?: ISavedSearch | null,
+  dashboard?: IDashboard | null,
+): string => {
+  if (alert.source === AlertSource.INLINE) {
+    return alert.chartConfig ? describeChartConfigQuery(alert.chartConfig) : '';
+  }
+  if (alert.source === AlertSource.TILE) {
+    const tile = dashboard?.tiles.find(t => t.id === alert.tileId);
+    return tile ? describeChartConfigQuery(tile.config) : '';
+  }
+  // A saved-search alert counts rows rather than aggregating a series, so it
+  // has no aggCondition -- but the query does apply its pinned filters.
+  return savedSearch
+    ? joinConditions(
+        savedSearch.where,
+        ...(savedSearch.filters ?? []).map(describeFilter),
+      )
+    : '';
+};
+
+// Mappings for the enriched webhook template variables. These turn internal
+// enums into stable, consumer-friendly strings a receiver can branch on
+// without knowing HyperDX's internals. Exported so the "Send test" sample
+// payload indexes them rather than restating the strings.
+export const ALERT_STATUS_BY_STATE: Record<AlertState, string> = {
+  [AlertState.ALERT]: 'firing',
+  [AlertState.OK]: 'resolved',
+  [AlertState.INSUFFICIENT_DATA]: 'no_data',
+  [AlertState.DISABLED]: 'no_data',
+  [AlertState.PENDING]: 'pending',
+  [AlertState.ERROR]: 'error',
+};
+
+export const COMPARATOR_BY_THRESHOLD_TYPE: Record<AlertThresholdType, string> =
+  {
+    [AlertThresholdType.ABOVE]: '>=',
+    [AlertThresholdType.ABOVE_EXCLUSIVE]: '>',
+    [AlertThresholdType.BELOW]: '<',
+    [AlertThresholdType.BELOW_OR_EQUAL]: '<=',
+    [AlertThresholdType.EQUAL]: '=',
+    [AlertThresholdType.NOT_EQUAL]: '!=',
+    [AlertThresholdType.BETWEEN]: 'between',
+    [AlertThresholdType.NOT_BETWEEN]: 'outside',
+  };
+
+export const ALERT_TYPE_BY_SOURCE: Record<AlertSource, string> = {
+  [AlertSource.SAVED_SEARCH]: 'search',
+  [AlertSource.TILE]: 'dashboard_chart',
+  // Detached alert: the chart config lives on the alert itself, so there is
+  // no saved search or tile behind it to open.
+  [AlertSource.INLINE]: 'inline_query',
+};
+
 const MAX_MESSAGE_LENGTH = 500;
+// A raw SQL template or a long filter set is unbounded in the schema, and
+// {{sourceQuery}} goes straight into a webhook body, so cap it the way the
+// sample-log block is capped.
+const MAX_SOURCE_QUERY_LENGTH = 2000;
 const NOTIFY_FN_NAME = '__hdx_notify_channel__';
 const IS_MATCH_FN_NAME = 'is_match';
 
@@ -205,22 +319,49 @@ export const buildAlertMessageTemplateHdxLink = (
       startTime,
       tileId: alert.tileId ?? undefined,
     });
+  } else if (alert.source === AlertSource.INLINE) {
+    if (alert.chartConfig == null) {
+      throw new Error(`Source is ${alert.source} but chartConfig is null`);
+    }
+    // Inline alerts have no saved search or dashboard to open — link to the
+    // chart explorer seeded with the alert's persisted config.
+    return alertProvider.buildChartExplorerLink({
+      chartConfig: alert.chartConfig,
+      endTime,
+      granularity,
+      startTime,
+    });
   }
 
   throw new Error(`Unsupported alert source: ${alert.source}`);
 };
 
 export const buildAlertMessageTemplateTitle = ({
-  template,
   view,
   state,
 }: {
-  template?: string | null;
   view: AlertMessageTemplateDefaultView;
   state?: AlertState;
 }) => {
   const { alert, dashboard, savedSearch, value } = view;
   const handlebars = createHandlebarsWithHelpers();
+  // `alert.name` is an optional Handlebars template for the notification title.
+  let renderedTemplate: string | null = null;
+  if (alert.name) {
+    try {
+      renderedTemplate = handlebars.compile(alert.name)(view);
+    } catch (e) {
+      logger.error(
+        { err: e, alertId: alert.id, template: alert.name },
+        'Failed to render alert title template, using it verbatim',
+      );
+      renderedTemplate = alert.name;
+    }
+  }
+  const { displayName } = resolveAlertDisplayFields(alert, {
+    savedSearch,
+    dashboard,
+  });
 
   // Add emoji prefix based on alert state
   const emoji = isAlertResolved(state) ? '✅ ' : '🚨 ';
@@ -230,9 +371,8 @@ export const buildAlertMessageTemplateTitle = ({
       throw new Error(`Source is ${alert.source}  but savedSearch is null`);
     }
     // TODO: using template engine to render the title
-    const baseTitle = template
-      ? handlebars.compile(template)(view)
-      : `Alert for "${savedSearch.name}" - ${value} lines found`;
+    const baseTitle =
+      renderedTemplate ?? `Alert for "${displayName}" - ${value} lines found`;
     return `${emoji}${baseTitle}`;
   } else if (alert.source === AlertSource.TILE) {
     if (dashboard == null) {
@@ -245,42 +385,31 @@ export const buildAlertMessageTemplateTitle = ({
       );
     }
     const formattedValue = formatValueToMatchThreshold(value, alert.threshold);
-    const baseTitle = template
-      ? handlebars.compile(template)(view)
-      : `Alert for "${tile.config.name}" in "${dashboard.name}" - ${formattedValue} ${
-          doesExceedThreshold(alert, value)
-            ? describeThresholdViolation(alert.thresholdType)
-            : describeThresholdResolution(alert.thresholdType)
-        } ${describeThreshold(alert)}`;
+    const baseTitle =
+      renderedTemplate ??
+      `Alert for "${displayName}" - ${formattedValue} ${
+        doesExceedThreshold(alert, value)
+          ? describeThresholdViolation(alert.thresholdType)
+          : describeThresholdResolution(alert.thresholdType)
+      } ${describeThreshold(alert)}`;
+    return `${emoji}${baseTitle}`;
+  } else if (alert.source === AlertSource.INLINE) {
+    const formattedValue = formatValueToMatchThreshold(value, alert.threshold);
+    // Inline alerts have no saved search/tile to name them; the alert's `name`
+    // doubles as the title template, so the default falls back to the resolved
+    // display name (itself derived from the chart config's name).
+    const baseTitle =
+      renderedTemplate ??
+      `Alert for "${displayName}" - ${formattedValue} ${
+        doesExceedThreshold(alert, value)
+          ? describeThresholdViolation(alert.thresholdType)
+          : describeThresholdResolution(alert.thresholdType)
+      } ${describeThreshold(alert)}`;
     return `${emoji}${baseTitle}`;
   }
 
   throw new Error(`Unsupported alert source: ${alert.source}`);
 };
-
-/**
- * Fans each channel out to an `@webhook-<id>` mention string, which
- * `getPopulatedChannel` later parses back into a channel. This round-trip is
- * lossy: only `type` and `webhookId` survive it, because the mention string
- * has no room for anything else. This predates multi-channel support and is
- * not being fixed here.
- *
- * Anything that needs a channel's other fields (e.g. a fork's
- * `emailRecipients`) at delivery time must thread them through separately --
- * they will not come back out of this string. In particular, a consumer that
- * reads `alert.channel` to recover them will get `channels[0]`'s values for
- * every channel, since `channel` is a single mirrored value, not one per
- * `channels` entry.
- */
-export const getDefaultExternalActions = (
-  alert: AlertMessageTemplateDefaultView['alert'],
-): string[] =>
-  getAlertChannels(alert)
-    .filter(
-      (c): c is { type: 'webhook'; webhookId: string } =>
-        c.type === 'webhook' && c.webhookId != null,
-    )
-    .map(c => `@${c.type}-${c.webhookId}`);
 
 export const translateExternalActionsToInternal = (template: string) => {
   // ex: @webhook-1234_5678 -> "{{NOTIFY_FN_NAME channel="webhook" id="1234_5678}}"
@@ -360,11 +489,119 @@ const channelKey = (c: PopulatedAlertChannel) =>
 const channelLabel = (c: PopulatedAlertChannel) =>
   c.type === 'webhook' ? c.channel.name : c.type;
 
+/**
+ * One dispatch's wall time. Emitted per target per event, so a grouped alert
+ * produces one of these per (group, target); the caller aggregates.
+ */
+export type NotificationTiming = {
+  /** Stable identity for aggregation across events — the webhook id. */
+  key: string;
+  /** Display label: the webhook's name. */
+  target: string;
+  durationMs: number;
+  ok: boolean;
+};
+
 export type RenderedAlert = {
   /** The rendered message body, as delivered to every target. */
   body: string;
   /** One entry per target that did not end up delivered — see NotificationFailure. */
   failures: NotificationFailure[];
+  /**
+   * One entry per target that reached the dispatcher, delivered or not.
+   * Targets that failed before dispatch have no timing — there was nothing to
+   * time — so this is not the complement of `failures`.
+   */
+  timings: NotificationTiming[];
+  /** Wall time of the concurrent dispatch phase (ms) — the evaluation's delivery time. */
+  dispatchDurationMs: number;
+};
+
+/**
+ * The sample rows a saved-search alert quotes in its message body. Keyed to
+ * the evaluation window and the saved search's own filter — not to the group
+ * or the alert state — so one evaluation's notifications can share a result.
+ *
+ * Returns '' when the query fails: a message without its sample lines still
+ * carries the count and the link, so this never fails the notification.
+ */
+export const fetchSampleLines = async ({
+  aliasWith,
+  clickhouseClient,
+  endTime,
+  metadata,
+  savedSearch,
+  source,
+  startTime,
+}: {
+  /** Reuses the evaluation's clauses; recomputed here when absent. */
+  aliasWith?: BuilderChartConfigWithOptDateRange['with'];
+  clickhouseClient: ClickhouseClient;
+  endTime: Date;
+  metadata: Metadata;
+  savedSearch: Pick<
+    ISavedSearch,
+    'id' | 'select' | 'where' | 'whereLanguage' | 'orderBy' | 'filters'
+  >;
+  source: ISource;
+  startTime: Date;
+}): Promise<string> => {
+  const chartConfig: ChartConfigWithOptDateRange = {
+    ...buildSearchChartConfig(source, {
+      connection: '', // no need for the connection id since clickhouse client is already initialized
+      dateRange: [startTime, endTime],
+      select: savedSearch.select,
+      where: savedSearch.where,
+      whereLanguage: savedSearch.whereLanguage,
+      filters: savedSearch.filters,
+      orderBy: savedSearch.orderBy,
+      dateRangeStartInclusive: true,
+      dateRangeEndInclusive: false,
+    }),
+    limit: {
+      limit: 5,
+      offset: 0,
+    },
+  };
+
+  try {
+    const withClauses =
+      aliasWith ??
+      (await computeAliasWithClauses(savedSearch, source, metadata));
+    if (withClauses) {
+      chartConfig.with = withClauses;
+    }
+    const query = await renderChartConfig(
+      chartConfig,
+      metadata,
+      source.querySettings,
+    );
+    const raw = await clickhouseClient
+      .query<'CSV'>({
+        query: query.sql,
+        query_params: query.params,
+        format: 'CSV',
+      })
+      .then(res => res.text());
+
+    return truncateString(
+      raw
+        .split('\n')
+        .map(line => truncateString(line, MAX_MESSAGE_LENGTH))
+        .join('\n'),
+      2500,
+    );
+  } catch (e) {
+    logger.error(
+      {
+        savedSearchId: savedSearch.id,
+        chartConfig,
+        error: serializeError(e),
+      },
+      'Failed to fetch sample logs',
+    );
+    return '';
+  }
 };
 
 // this method will build the body of the alert message and will be used to send the alert to the channel
@@ -379,6 +616,7 @@ export const renderAlertTemplate = async ({
   teamId,
   teamWebhooksById,
   dispatcher = inlineNotificationDispatcher,
+  sampleLines,
 }: {
   alertProvider: AlertProvider;
   clickhouseClient: ClickhouseClient;
@@ -390,6 +628,12 @@ export const renderAlertTemplate = async ({
   teamId: string;
   teamWebhooksById: Map<string, IWebhook>;
   dispatcher?: NotificationDispatcher;
+  /**
+   * Supplies the sample rows for a saved-search body. The evaluation passes a
+   * memoised provider so a grouped alert fetches them once rather than once
+   * per group; without one they are fetched here.
+   */
+  sampleLines?: () => Promise<string>;
 }): Promise<RenderedAlert> => {
   // Internal mutable view with __hdx_query_results__ populated on the
   // saved-search path. Untrusted values must flow through the view so
@@ -412,15 +656,9 @@ export const renderAlertTemplate = async ({
     value,
   } = view;
 
-  const defaultExternalActions = getDefaultExternalActions(alert);
-  // Only trim when a default action was appended — an alert with no channel
-  // keeps the template's own leading/trailing whitespace, as it always has.
-  const targetTemplate =
-    defaultExternalActions.length > 0
-      ? translateExternalActionsToInternal(
-          [template ?? '', ...defaultExternalActions].join(' '),
-        ).trim()
-      : translateExternalActionsToInternal(template ?? '');
+  // Only ad hoc `@mentions` written into the message body go through the
+  // template. The alert's configured channels are queued directly below.
+  const targetTemplate = translateExternalActionsToInternal(template ?? '');
 
   const isMatchFn = function (shouldRender: boolean) {
     return function (
@@ -458,6 +696,101 @@ export const renderAlertTemplate = async ({
     error: unknown,
   ) => {
     failures.push({ target, type, error });
+  };
+
+  /**
+   * Queue one resolved target. Returns false when it was already queued — a
+   * configured channel and an `@mention` can name the same destination, and
+   * notifying it twice is not the intent.
+   */
+  const queueChannel = (
+    channel: PopulatedAlertChannel,
+    renderedBody: string,
+  ) => {
+    const webhookId = channelKey(channel);
+    if (queuedWebhookIds.has(webhookId)) {
+      return false;
+    }
+    queuedWebhookIds.add(webhookId);
+
+    const eventId = objectHash({
+      alertId: alert.id,
+      channel: {
+        type: channel.type,
+        id: channel.channel._id.toString(),
+      },
+      // Explicitly track if this is a grouped alert
+      isGrouped: view.isGroupedAlert,
+      ...(view.isGroupedAlert && group ? { groupId: group } : {}),
+    });
+
+    jobs.push({
+      eventId,
+      alertId: alert.id,
+      teamId,
+      group,
+      populatedChannel: channel,
+      message: {
+        hdxLink: buildAlertMessageTemplateHdxLink(alertProvider, view),
+        title,
+        body: renderedBody,
+        state,
+        startTime: view.startTime.getTime(),
+        endTime: view.endTime.getTime(),
+        eventId,
+        // Enriched fields, exposed to Generic/incident.io body templates.
+        alertId: alert.id ?? '',
+        status: ALERT_STATUS_BY_STATE[state],
+        alertType: alert.source ? ALERT_TYPE_BY_SOURCE[alert.source] : '',
+        comparator: COMPARATOR_BY_THRESHOLD_TYPE[alert.thresholdType],
+        threshold: alert.threshold,
+        // Gated on the comparator rather than trusting the stored field:
+        // makeAlertUpdate clears it going forward, but an alert written before
+        // that shipped still carries a bound from a range it no longer has.
+        thresholdMax: isRangeThresholdType(alert.thresholdType)
+          ? alert.thresholdMax
+          : undefined,
+        value,
+        groupKey: group ?? '',
+        sourceQuery: truncateString(
+          describeSourceQuery(alert, savedSearch, dashboard),
+          MAX_SOURCE_QUERY_LENGTH,
+        ),
+        teamId,
+        note: alert.note ?? '',
+      },
+    });
+    return true;
+  };
+
+  /**
+   * Expand one configured channel into the targets it delivers to, resolved
+   * straight from the alert rather than round-tripped through an
+   * `@webhook-<id>` mention string. The mention carries only `type` and an id,
+   * so every other field on the channel was lost before delivery.
+   */
+  const resolveConfiguredChannel = (
+    channel: AlertChannel,
+  ): PopulatedAlertChannel[] => {
+    if (channel.type !== 'webhook') {
+      return [];
+    }
+    const webhook = teamWebhooksById.get(channel.webhookId);
+    if (!webhook) {
+      logger.error(
+        { alertId: alert.id, webhookId: channel.webhookId },
+        'webhook not found',
+      );
+      recordPreFailure(
+        channel.webhookId,
+        'webhook',
+        new WebhookNotFoundError(
+          `Webhook not found. The webhook may have been deleted — update the alert's notification channel.`,
+        ),
+      );
+      return [];
+    }
+    return [{ type: 'webhook', channel: webhook }];
   };
 
   const registerHelpers = (rawTemplateBody: string) => {
@@ -539,38 +872,7 @@ export const renderAlertTemplate = async ({
         );
         return;
       }
-      queuedWebhookIds.add(webhookId);
-
-      const startTime = view.startTime.getTime();
-      const endTime = view.endTime.getTime();
-
-      const eventId = objectHash({
-        alertId: alert.id,
-        channel: {
-          type: channel.type,
-          id: channel.channel._id.toString(),
-        },
-        // Explicitly track if this is a grouped alert
-        isGrouped: view.isGroupedAlert,
-        ...(view.isGroupedAlert && group ? { groupId: group } : {}),
-      });
-
-      jobs.push({
-        eventId,
-        alertId: alert.id,
-        teamId,
-        group,
-        populatedChannel: channel,
-        message: {
-          hdxLink: buildAlertMessageTemplateHdxLink(alertProvider, view),
-          title,
-          body: renderedBody,
-          state,
-          startTime,
-          endTime,
-          eventId,
-        },
-      });
+      queueChannel(channel, renderedBody);
     });
   };
 
@@ -601,71 +903,20 @@ ${targetTemplate}`;
       );
     }
     // TODO: show group + total count for group-by alerts
-    // fetch sample logs
-    const resolvedSelect =
-      savedSearch.select || source.defaultTableSelectExpression || '';
-    const chartConfig: ChartConfigWithOptDateRange = {
-      connection: '', // no need for the connection id since clickhouse client is already initialized
-      displayType: DisplayType.Search,
-      dateRange: [startTime, endTime],
-      from: source.from,
-      select: resolvedSelect,
-      where: savedSearch.where,
-      whereLanguage: savedSearch.whereLanguage,
-      implicitColumnExpression: source.implicitColumnExpression,
-      useTextIndexForImplicitColumn: source.useTextIndexForImplicitColumn,
-      ...pickSampleWeightExpressionProps(source),
-      timestampValueExpression: source.timestampValueExpression,
-      orderBy: savedSearch.orderBy,
-      limit: {
-        limit: 5,
-        offset: 0,
-      },
-    };
-
-    let truncatedResults = '';
-    try {
-      const aliasWith = await computeAliasWithClauses(
-        savedSearch,
-        source,
-        metadata,
-      );
-      if (aliasWith) {
-        chartConfig.with = aliasWith;
-      }
-      const query = await renderChartConfig(
-        chartConfig,
-        metadata,
-        source.querySettings,
-      );
-      const raw = await clickhouseClient
-        .query<'CSV'>({
-          query: query.sql,
-          query_params: query.params,
-          format: 'CSV',
-        })
-        .then(res => res.text());
-
-      const lines = raw.split('\n');
-
-      truncatedResults = truncateString(
-        lines.map(line => truncateString(line, MAX_MESSAGE_LENGTH)).join('\n'),
-        2500,
-      );
-    } catch (e) {
-      logger.error(
-        {
-          savedSearchId: savedSearch.id,
-          chartConfig,
-          error: serializeError(e),
-        },
-        'Failed to fetch sample logs',
-      );
-    }
-
     // Pass query results through the view so Handlebars syntax in log lines
     // is treated as literal text rather than parsed as template source.
-    view.__hdx_query_results__ = truncatedResults;
+    view.__hdx_query_results__ = await (
+      sampleLines ??
+      (() =>
+        fetchSampleLines({
+          clickhouseClient,
+          endTime,
+          metadata,
+          savedSearch,
+          source,
+          startTime,
+        }))
+    )();
 
     rawTemplateBody = `{{#if group}}Group: "{{{group}}}"{{/if}}
 ${value} lines found, which ${describeThresholdViolation(alert.thresholdType)} the threshold of ${describeThreshold(alert)} lines\n${timeRangeMessage}
@@ -673,8 +924,11 @@ ${targetTemplate}
 \`\`\`
 {{{__hdx_query_results__}}}
 \`\`\``;
-  } else if (alert.source === AlertSource.TILE) {
-    if (dashboard == null) {
+  } else if (
+    alert.source === AlertSource.TILE ||
+    alert.source === AlertSource.INLINE
+  ) {
+    if (alert.source === AlertSource.TILE && dashboard == null) {
       throw new Error(`Source is ${alert.source} but dashboard is null`);
     }
     const formattedValue = formatValueToMatchThreshold(value, alert.threshold);
@@ -689,6 +943,17 @@ ${targetTemplate}`;
 
   // render the template
   if (rawTemplateBody) {
+    // Queue the configured channels first, and without the per-event cap:
+    // `channels` is already bounded by MAX_ALERT_CHANNELS, so letting ad hoc
+    // mentions in the message body crowd out an alert's own targets would be
+    // backwards.
+    const configuredBody = _hb.compile(rawTemplateBody)(view);
+    for (const configured of getAlertChannels(alert)) {
+      for (const channel of resolveConfiguredChannel(configured)) {
+        queueChannel(channel, configuredBody);
+      }
+    }
+
     registerHelpers(rawTemplateBody);
     const compiledTemplate = hb.compile(rawTemplateBody);
     const body = await compiledTemplate(view);
@@ -703,11 +968,18 @@ ${targetTemplate}`;
     // queued dispatcher resolves after enqueue and never rejects here; it
     // reports delivery outcomes through its own logs/metrics instead (see
     // agent_docs/observability.md).
+    const timings: NotificationTiming[] = [];
+    const dispatchStartedAt = performance.now();
     await Promise.all(
       jobs.map(async job => {
+        // Per-job, not around the Promise.all: the whole point is attributing
+        // the total to a target, and the dispatches overlap.
+        const startedAt = performance.now();
+        let ok = true;
         try {
           await dispatcher.dispatch(job);
         } catch (e) {
+          ok = false;
           logger.error(
             {
               alertId: alert.id,
@@ -721,11 +993,23 @@ ${targetTemplate}`;
             type: job.populatedChannel.type,
             error: e,
           });
+        } finally {
+          timings.push({
+            key: channelKey(job.populatedChannel),
+            target: channelLabel(job.populatedChannel),
+            durationMs: Math.round(performance.now() - startedAt),
+            ok,
+          });
         }
       }),
     );
 
-    return { body, failures };
+    return {
+      body,
+      failures,
+      timings,
+      dispatchDurationMs: Math.round(performance.now() - dispatchStartedAt),
+    };
   }
 
   throw new Error(`Unsupported alert source: ${alert.source}`);

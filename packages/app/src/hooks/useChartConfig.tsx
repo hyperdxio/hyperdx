@@ -1,3 +1,4 @@
+import { useCallback } from 'react';
 import {
   chSqlToAliasMap,
   ClickHouseQueryError,
@@ -7,6 +8,10 @@ import {
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/browser';
 import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import {
+  appliesPromqlReducer,
+  getQueriedPromqlSeries,
+} from '@hyperdx/common-utils/dist/core/promql';
+import {
   isMetricChartConfig,
   isUsingGranularity,
   renderChartConfig,
@@ -14,6 +19,7 @@ import {
 import { generateTimeWindowsDescending } from '@hyperdx/common-utils/dist/core/searchWindows';
 import {
   convertDateRangeToGranularityString,
+  convertGranularityToSeconds,
   hasPositiveSeriesLimit,
 } from '@hyperdx/common-utils/dist/core/utils';
 import {
@@ -26,7 +32,9 @@ import {
   BuilderChartConfigWithOptDateRange,
   ChartConfigWithDateRange,
   ChartConfigWithOptDateRange,
+  isMetricSource,
   QuerySettings,
+  TSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
   useQuery,
@@ -34,13 +42,18 @@ import {
   UseQueryOptions,
 } from '@tanstack/react-query';
 
-import { prometheusApi } from '@/api';
 import { toStartOfInterval } from '@/ChartUtils';
 import { useClickhouseClient } from '@/clickhouse';
 import { IS_MTVIEWS_ENABLED } from '@/config';
 import { buildMTViewSelectQuery } from '@/hdxMTViews';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
 import { useSource } from '@/source';
+import { ChartQueryResult } from '@/types';
+import { stripClientSideConfigFields } from '@/utils/chartConfig';
+import {
+  queryPromqlChartConfig,
+  reduceBucketRows,
+} from '@/utils/promqlChartQuery';
 
 import { useMVOptimizationExplanation } from './useMVOptimizationExplanation';
 
@@ -54,6 +67,11 @@ interface AdditionalUseQueriedChartConfigOptions {
    */
   enableQueryChunking?: boolean;
   enableParallelQueries?: boolean;
+  /**
+   * Scopes the hook's own query key. Prefer this to passing `queryKey`, which
+   * replaces the key the hook builds from the config.
+   */
+  queryKeyPrefix?: string;
 }
 
 type TimeWindow = {
@@ -61,9 +79,7 @@ type TimeWindow = {
   dateRangeEndInclusive?: boolean;
 };
 
-type TQueryFnData = Pick<ResponseJSON<any>, 'data' | 'meta' | 'rows'> & {
-  isComplete: boolean;
-};
+type TQueryFnData = ChartQueryResult;
 
 type TChunk = {
   chunk: ResponseJSON<Record<string, string | number>>;
@@ -91,6 +107,20 @@ const shouldUseChunking = (
   return true;
 };
 
+/**
+ * Floor for "auto" granularity resolution, from the source's own setting.
+ * Exported so callers that resolve 'auto' before reaching useQueriedChartConfig
+ * (DBTimeChart and siblings, via ChartUtils.tsx) can apply it themselves.
+ */
+export function getMinGranularitySeconds(
+  source: TSource | undefined,
+): number | undefined {
+  if (!source || !isMetricSource(source) || !source.minAutoGranularity) {
+    return undefined;
+  }
+  return convertGranularityToSeconds(source.minAutoGranularity);
+}
+
 export const getGranularityAlignedTimeWindows = (
   config: ChartConfigWithDateRange & { granularity: string },
   windowDurationsSeconds?: number[],
@@ -104,7 +134,11 @@ export const getGranularityAlignedTimeWindows = (
 
   const granularity =
     config.granularity === 'auto'
-      ? convertDateRangeToGranularityString(config.dateRange)
+      ? convertDateRangeToGranularityString(
+          config.dateRange,
+          undefined,
+          config.minGranularitySeconds,
+        )
       : config.granularity;
 
   const windows = [];
@@ -309,107 +343,47 @@ export function useQueriedChartConfig(
   const { data: source, isLoading: isSourceLoading } = useSource({
     id: config.source,
   });
+  const minGranularitySeconds = getMinGranularitySeconds(source);
+
+  // A PromQL range query keeps every bucket in the cache. An observer whose
+  // config names a reducer collapses them to a single value per series on
+  // read; the sparkline behind a number tile names none, so it plots them.
+  const reducesRangeBuckets =
+    isPromqlChartConfig(config) && appliesPromqlReducer(config);
+  const rangeReducer = reducesRangeBuckets
+    ? getQueriedPromqlSeries(config)[0]?.reducer
+    : undefined;
+
+  const selectRangeReduced = useCallback(
+    (result: TQueryFnData) => reduceBucketRows(result, rangeReducer),
+    [rangeReducer],
+  );
 
   const query = useQuery<TQueryFnData, ClickHouseQueryError | Error>({
     // Include enableQueryChunking in the query key to ensure that queries with the
-    // same config but different enableQueryChunking values do not share a query
+    // same config but different enableQueryChunking values do not share a query.
+    // minGranularitySeconds too: it can change independently of `config`.
+    // Strip fields that only affect the client-side processing and thus should not
+    // trigger a requery when changed.
     queryKey: [
-      config,
+      ...(options?.queryKeyPrefix ? [options?.queryKeyPrefix] : []),
+      stripClientSideConfigFields(config),
       options?.enableQueryChunking ?? false,
       options?.enableParallelQueries ?? false,
+      minGranularitySeconds,
     ],
     // TODO: Replace this with `streamedQuery` when it is no longer experimental. Use 'replace' refetch mode.
     // https://tanstack.com/query/latest/docs/reference/streamedQuery
     queryFn: async context => {
       // PromQL queries go through the Prometheus API route, not ClickHouse proxy
       if (isPromqlChartConfig(config) && config.dateRange) {
-        const [startDate, endDate] = config.dateRange;
-        const startSec = startDate.getTime() / 1000;
-        const endSec = endDate.getTime() / 1000;
-
-        // Convert HyperDX granularity ("5 minute") to Prometheus step ("300s")
-        let stepStr = '60s';
-        if (config.granularity && config.granularity !== 'auto') {
-          const granToSec: Record<string, number> = {
-            '15 second': 15,
-            '30 second': 30,
-            '1 minute': 60,
-            '5 minute': 300,
-            '10 minute': 600,
-            '15 minute': 900,
-            '30 minute': 1800,
-            '1 hour': 3600,
-            '2 hour': 7200,
-            '6 hour': 21600,
-            '12 hour': 43200,
-            '1 day': 86400,
-          };
-          stepStr = `${granToSec[config.granularity] ?? 60}s`;
-        }
-
-        const resp = await prometheusApi.queryRange({
-          query: config.promqlExpression,
-          start: startSec,
-          end: endSec,
-          step: stepStr,
-          connectionId: config.connection,
-          database: config.from?.databaseName,
-          table: config.from?.tableName,
-        });
-
-        if (resp.status !== 'success' || !resp.data) {
-          throw new Error(resp.error ?? 'PromQL query failed');
-        }
-
-        // Transform Prometheus matrix response into chart-compatible format.
-        // Use Grafana-style legends: only show labels that differ across series.
-        const allSeries = resp.data.result;
-
-        // Find labels that have more than one distinct value across all series
-        const labelValueSets = new Map<string, Set<string>>();
-        for (const s of allSeries) {
-          for (const [k, v] of Object.entries(s.metric)) {
-            if (k === '__name__') continue;
-            if (!labelValueSets.has(k)) labelValueSets.set(k, new Set());
-            labelValueSets.get(k)!.add(v);
-          }
-        }
-        const distinguishingKeys = new Set<string>();
-        for (const [k, vs] of labelValueSets) {
-          if (vs.size > 1) distinguishingKeys.add(k);
-        }
-
-        const data: Record<string, string | number>[] = [];
-        for (const series of allSeries) {
-          const metricName = series.metric.__name__ ?? '';
-          const labels = Object.entries(series.metric)
-            .filter(([k]) => k !== '__name__' && distinguishingKeys.has(k))
-            .map(([k, v]) => `${k}="${v}"`)
-            .join(', ');
-          const seriesName = labels ? `${metricName}{${labels}}` : metricName;
-
-          for (const [ts, val] of series.values) {
-            data.push({
-              __hdx_time_bucket: new Date(ts * 1000).toISOString(),
-              value: parseFloat(val),
-              series_name: seriesName,
-            });
-          }
-        }
-
-        return {
-          data,
-          meta: [
-            { name: '__hdx_time_bucket', type: 'DateTime64(3)' },
-            { name: 'value', type: 'Float64' },
-            { name: 'series_name', type: 'String' },
-          ],
-          rows: data.length,
-          isComplete: true,
-        };
+        return queryPromqlChartConfig(config, config.dateRange, context.signal);
       }
 
-      const optimizedConfig = mvOptimizationData?.optimizedConfig ?? config;
+      const optimizedConfig = {
+        ...(mvOptimizationData?.optimizedConfig ?? config),
+        minGranularitySeconds,
+      };
       const query = queryClient
         .getQueryCache()
         .find({ queryKey: context.queryKey, exact: true });
@@ -458,6 +432,8 @@ export function useQueriedChartConfig(
 
       return queryClient.getQueryData(context.queryKey)!;
     },
+    // PromQL reducer is applied as a client-side react-query select function
+    select: reducesRangeBuckets ? selectRangeReduced : undefined,
     retry: 1,
     refetchOnWindowFocus: false,
     ...options,
@@ -491,11 +467,16 @@ export function useRenderedSqlChartConfig(
   const { data: source, isLoading: isSourceLoading } = useSource({
     id: config.source,
   });
+  const minGranularitySeconds = getMinGranularitySeconds(source);
 
   const query = useQuery({
-    queryKey: ['renderedSql', config],
+    // See the analogous queryKey comment on useQueriedChartConfig above.
+    queryKey: ['renderedSql', config, minGranularitySeconds],
     queryFn: async () => {
-      const optimizedConfig = mvOptimizationData?.optimizedConfig ?? config;
+      const optimizedConfig = {
+        ...(mvOptimizationData?.optimizedConfig ?? config),
+        minGranularitySeconds,
+      };
       const query = await renderChartConfig(
         optimizedConfig,
         metadata,

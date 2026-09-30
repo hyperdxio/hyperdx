@@ -48,7 +48,7 @@ function setConfig(overrides: Record<string, string | undefined>) {
   Object.assign(mockConfig, overrides);
 }
 
-import { getAIModel } from '@/controllers/ai';
+import { getAIModel, llmTelemetry } from '@/controllers/ai';
 
 beforeEach(() => {
   setConfig({});
@@ -249,6 +249,24 @@ describe('openai provider', () => {
       getAIModel();
       const call = mockCreateOpenAI.mock.calls[0]?.[0];
       expect(call?.headers).toBeUndefined();
+    });
+  });
+});
+
+describe('llmTelemetry', () => {
+  it('enables telemetry and passes through string metadata', () => {
+    expect(
+      llmTelemetry({ sessionId: 'notebook-1', teamId: 't1', userId: 'u1' }),
+    ).toEqual({
+      isEnabled: true,
+      metadata: { sessionId: 'notebook-1', teamId: 't1', userId: 'u1' },
+    });
+  });
+
+  it('drops nullish metadata values', () => {
+    expect(llmTelemetry({ sessionId: undefined, teamId: 't1' })).toEqual({
+      isEnabled: true,
+      metadata: { teamId: 't1' },
     });
   });
 });

@@ -27,19 +27,21 @@ import { timeBucketByGranularity } from '@hyperdx/common-utils/dist/core/utils';
 import { getDashboardVariableDeclarations } from '@hyperdx/common-utils/dist/filters';
 import {
   isBuilderChartConfig,
-  isBuilderSavedChartConfig,
   isPromqlSavedChartConfig,
   isRawSqlChartConfig,
   isRawSqlSavedChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
 import {
+  ALERT_NOTIFICATION_TARGETS_LIMIT,
   AlertErrorType,
+  AlertNotificationTargetTiming,
   AlertThresholdType,
   BuilderChartConfigWithOptDateRange,
   ChartConfigWithOptDateRange,
   DisplayType,
   getSampleWeightExpression,
   pickSampleWeightExpressionProps,
+  SavedChartConfig,
   SourceKind,
 } from '@hyperdx/common-utils/dist/types';
 import * as fns from 'date-fns';
@@ -79,8 +81,11 @@ import {
 import {
   AlertMessageTemplateDefaultView,
   buildAlertMessageTemplateTitle,
+  fetchSampleLines,
   NotificationFailure,
+  NotificationTiming,
   renderAlertTemplate,
+  RenderedAlert,
 } from '@/tasks/checkAlerts/template';
 import { handleSendGenericWebhook } from '@/tasks/checkAlerts/transports';
 import { tasksTracer } from '@/tasks/tracer';
@@ -90,6 +95,7 @@ import {
   roundDownToXMinutes,
   unflattenObject,
 } from '@/tasks/util';
+import { alertConfigHasGroupBy, isPopulatedRef } from '@/utils/alerts';
 import {
   getCounter,
   type OperationOutcome,
@@ -125,33 +131,19 @@ const alertBatchFailuresCounter = getCounter('hyperdx.alerts.batch_failures', {
 /**
  * Determine if an alert has group-by behavior.
  * For saved search alerts, groupBy is on alert.groupBy.
- * For tile alerts, groupBy is on tile.config.groupBy.
+ * For tile and inline alerts, groupBy is on the chart config.
  */
 export const alertHasGroupBy = (details: AlertDetails): boolean => {
-  const { alert } = details;
-  if (alert.groupBy && alert.groupBy.length > 0) {
-    return true;
-  }
-  if (
-    details.taskType === AlertTaskType.TILE &&
-    isBuilderSavedChartConfig(details.tile.config) &&
-    details.tile.config.groupBy &&
-    details.tile.config.groupBy.length > 0
-  ) {
-    return true;
-  }
-
-  // Without a reliable parser, it's difficult to tell if the raw sql contains a
-  // group by (besides the group by on the interval), so we'll assume it might
-  // in the case of time series charts, and assume it will not in the case of number charts.
-  // Group name will just be blank if there are no group by values.
-  if (
-    details.taskType === AlertTaskType.TILE &&
-    isRawSqlSavedChartConfig(details.tile.config)
-  ) {
-    return details.tile.config.displayType !== DisplayType.Number;
-  }
-  return false;
+  // AlertChartConfig members are the tile config types minus the embedded
+  // alert field, so they're assignable to SavedChartConfig (which the
+  // chart-config guards narrow on).
+  const savedConfig: SavedChartConfig | undefined =
+    details.taskType === AlertTaskType.TILE
+      ? details.tile.config
+      : details.taskType === AlertTaskType.INLINE
+        ? details.chartConfig
+        : undefined;
+  return alertConfigHasGroupBy(details.alert.groupBy, savedConfig);
 };
 
 /**
@@ -477,6 +469,7 @@ const fireChannelEvent = async ({
   totalCount,
   windowSizeInMins,
   teamWebhooksById,
+  sampleLines,
 }: {
   alert: IAlert;
   alertProvider: AlertProvider;
@@ -494,20 +487,18 @@ const fireChannelEvent = async ({
   totalCount: number;
   windowSizeInMins: number;
   teamWebhooksById: Map<string, IWebhook>;
-}): Promise<NotificationFailure[]> => {
+  sampleLines?: () => Promise<string>;
+}): Promise<
+  Pick<RenderedAlert, 'failures' | 'timings' | 'dispatchDurationMs'>
+> => {
   const team = alert.team;
   if (team == null) {
     throw new Error('Team not found');
   }
   // alert.team is typed as a bare ObjectId, but a caller that populated it
   // (int-test setups do `.populate(['team', ...])`; the production path never
-  // does) hands us a full Team document instead — Mongoose documents don't
-  // override toString(), so calling it directly would silently stringify to
-  // "[object Object]" rather than the hex id. Prefer the populated
-  // document's own _id when present.
-  const isPopulatedWithId = (value: unknown): value is { _id: ObjectId } =>
-    typeof value === 'object' && value !== null && '_id' in value;
-  const teamId = (isPopulatedWithId(team) ? team._id : team).toString();
+  // does) hands us a full Team document instead. Prefer its own _id.
+  const teamId = (isPopulatedRef(team) ? team._id : team).toString();
 
   const attributesNested = unflattenObject(attributes);
   const templateView: AlertMessageTemplateDefaultView = {
@@ -526,6 +517,8 @@ const fireChannelEvent = async ({
       }),
       message: alert.message,
       name: alert.name,
+      displayName: alert.displayName,
+      tags: alert.tags,
       savedSearchId: savedSearch?.id,
       silenced: alert.silenced,
       source: alert.source,
@@ -533,6 +526,9 @@ const fireChannelEvent = async ({
       thresholdMax: alert.thresholdMax,
       thresholdType: alert.thresholdType,
       tileId: alert.tileId,
+      // Inline alerts: the persisted config, used to build the explorer link
+      // and the default notification title.
+      chartConfig: alert.chartConfig,
     },
     attributes: attributesNested,
     dashboard,
@@ -546,13 +542,12 @@ const fireChannelEvent = async ({
     value: totalCount,
   };
 
-  const { failures } = await renderAlertTemplate({
+  const { failures, timings, dispatchDurationMs } = await renderAlertTemplate({
     alertProvider,
     clickhouseClient,
     metadata,
     state,
     title: buildAlertMessageTemplateTitle({
-      template: alert.name,
       view: templateView,
       state,
     }),
@@ -560,8 +555,9 @@ const fireChannelEvent = async ({
     view: templateView,
     teamId,
     teamWebhooksById,
+    sampleLines,
   });
-  return failures;
+  return { failures, timings, dispatchDurationMs };
 };
 
 // Use a delimiter that's unlikely to appear in alert IDs or group names
@@ -667,6 +663,124 @@ const getAlertEvaluationDateRange = (
   );
 };
 
+/**
+ * Assemble the queryable chart config for an alert backed by a saved chart
+ * config — a dashboard tile's config or an inline alert's persisted config.
+ * Shared so tile and inline alerts evaluate identically; only the dashboard
+ * variables differ (inline alerts have no dashboard, so none are declared).
+ */
+const buildAlertChartConfigFromSavedConfig = ({
+  alertId,
+  savedConfig,
+  source,
+  connection,
+  dateRange,
+  windowSizeInMins,
+  variables,
+}: {
+  alertId: string;
+  // AlertChartConfig (an inline alert's persisted config) is assignable here:
+  // its members are the tile config types minus the embedded alert field.
+  savedConfig: SavedChartConfig;
+  source?: ISource;
+  connection: string;
+  dateRange: [Date, Date];
+  windowSizeInMins: number;
+  variables: NonNullable<BuilderChartConfigWithOptDateRange['variables']>;
+}): ChartConfigWithOptDateRange | undefined => {
+  // Raw SQL configs: build a RawSqlChartConfig
+  if (isRawSqlSavedChartConfig(savedConfig)) {
+    if (displayTypeSupportsRawSqlAlerts(savedConfig.displayType)) {
+      return {
+        ...pick(savedConfig, [
+          'configType',
+          'sqlTemplate',
+          'displayType',
+          'source',
+        ]),
+        connection,
+        dateRange,
+        variables,
+        // Only time-series charts use interval bucketing
+        ...(isTimeSeriesDisplayType(savedConfig.displayType) && {
+          granularity: `${windowSizeInMins} minute`,
+        }),
+        // Include source metadata for macro expansion ($__sourceTable)
+        ...(source && {
+          from: source.from,
+          metricTables:
+            source.kind === SourceKind.Metric ? source.metricTables : undefined,
+        }),
+      };
+    }
+    return undefined;
+  }
+
+  // PromQL charts don't support alerts yet
+  if (isPromqlSavedChartConfig(savedConfig)) {
+    return undefined;
+  }
+
+  if (!source) {
+    logger.error({ alertId }, 'Source not found for builder inline alert');
+    return undefined;
+  }
+
+  if (
+    savedConfig.displayType === DisplayType.Line ||
+    savedConfig.displayType === DisplayType.StackedBar ||
+    savedConfig.displayType === DisplayType.Number
+  ) {
+    // Alerts can use Log, Trace, or Metric sources.
+    // implicitColumnExpression+useTextIndexForImplicitColumn exist on Log and Trace sources;
+    // metricTables exists on Metric sources.
+    const implicitColumnExpression =
+      source.kind === SourceKind.Log || source.kind === SourceKind.Trace
+        ? source.implicitColumnExpression
+        : undefined;
+    const useTextIndexForImplicitColumn =
+      source.kind === SourceKind.Log || source.kind === SourceKind.Trace
+        ? source.useTextIndexForImplicitColumn
+        : undefined;
+    const sampleWeightExpression = getSampleWeightExpression(source);
+    const metricTables =
+      source.kind === SourceKind.Metric ? source.metricTables : undefined;
+    return {
+      connection,
+      dateRange,
+      dateRangeStartInclusive: true,
+      dateRangeEndInclusive: false,
+      displayType: savedConfig.displayType,
+      from: source.from,
+      granularity: `${windowSizeInMins} minute`,
+      groupBy: savedConfig.groupBy,
+      implicitColumnExpression,
+      useTextIndexForImplicitColumn,
+      sampleWeightExpression,
+      metricTables,
+      select: savedConfig.select,
+      timestampValueExpression: source.timestampValueExpression,
+      where: savedConfig.where,
+      whereLanguage: savedConfig.whereLanguage,
+      seriesReturnType: savedConfig.seriesReturnType,
+      // Grouped ratios can divide per-group or share-of-total; without this
+      // the alert would silently evaluate the default (per-group) mode.
+      ratioMode: savedConfig.ratioMode,
+      // Metric formulas (HDX-5080): the alert must evaluate the derived
+      // formula column, not a raw operand series. Operand columns are
+      // always dropped from the alert query — regardless of the tile's
+      // "Show input series" display toggle — so the formula is the value
+      // column parseAlertData picks (the last one wins, consistent with
+      // the multi-series "last series drives the alert" semantics).
+      formulas: savedConfig.formulas,
+      ...(savedConfig.formulas?.length ? { showOperandSeries: false } : {}),
+      variables,
+    };
+  }
+
+  return undefined;
+};
+
 const getChartConfigFromAlert = (
   details: AlertDetails,
   connection: string,
@@ -695,8 +809,6 @@ const getChartConfigFromAlert = (
       granularity: `${windowSizeInMins} minute`,
     });
   } else if (details.taskType === AlertTaskType.TILE) {
-    const tile = details.tile;
-
     // Substitute empty selections for each variable the dashboard defines
     const variables = getDashboardVariableDeclarations(
       details.dashboard.filters,
@@ -705,101 +817,31 @@ const getChartConfigFromAlert = (
       values: [],
     }));
 
-    // Raw SQL tiles: build a RawSqlChartConfig
-    if (isRawSqlSavedChartConfig(tile.config)) {
-      if (displayTypeSupportsRawSqlAlerts(tile.config.displayType)) {
-        return {
-          ...pick(tile.config, [
-            'configType',
-            'sqlTemplate',
-            'displayType',
-            'source',
-          ]),
-          connection,
-          dateRange,
-          variables,
-          // Only time-series charts use interval bucketing
-          ...(isTimeSeriesDisplayType(tile.config.displayType) && {
-            granularity: `${windowSizeInMins} minute`,
-          }),
-          // Include source metadata for macro expansion ($__sourceTable)
-          ...(details.source && {
-            from: details.source.from,
-            metricTables:
-              details.source.kind === SourceKind.Metric
-                ? details.source.metricTables
-                : undefined,
-          }),
-        };
-      }
-      return undefined;
+    const config = buildAlertChartConfigFromSavedConfig({
+      alertId: alert.id,
+      savedConfig: details.tile.config,
+      source: details.source,
+      connection,
+      dateRange,
+      windowSizeInMins,
+      variables,
+    });
+    if (config != null) {
+      return config;
     }
-
-    // PromQL tiles don't support alerts yet
-    if (isPromqlSavedChartConfig(tile.config)) {
-      return undefined;
-    }
-
-    const { source } = details;
-    if (!source) {
-      logger.error(
-        { alertId: alert.id },
-        'Source not found for builder tile alert',
-      );
-      return undefined;
-    }
-
-    // Doesn't work for metric alerts yet
-    if (
-      tile.config.displayType === DisplayType.Line ||
-      tile.config.displayType === DisplayType.StackedBar ||
-      tile.config.displayType === DisplayType.Number
-    ) {
-      // Tile alerts can use Log, Trace, or Metric sources.
-      // implicitColumnExpression+useTextIndexForImplicitColumn exist on Log and Trace sources;
-      // metricTables exists on Metric sources.
-      const implicitColumnExpression =
-        source.kind === SourceKind.Log || source.kind === SourceKind.Trace
-          ? source.implicitColumnExpression
-          : undefined;
-      const useTextIndexForImplicitColumn =
-        source.kind === SourceKind.Log || source.kind === SourceKind.Trace
-          ? source.useTextIndexForImplicitColumn
-          : undefined;
-      const sampleWeightExpression = getSampleWeightExpression(source);
-      const metricTables =
-        source.kind === SourceKind.Metric ? source.metricTables : undefined;
-      return {
-        connection,
-        dateRange,
-        dateRangeStartInclusive: true,
-        dateRangeEndInclusive: false,
-        displayType: tile.config.displayType,
-        from: source.from,
-        granularity: `${windowSizeInMins} minute`,
-        groupBy: tile.config.groupBy,
-        implicitColumnExpression,
-        useTextIndexForImplicitColumn,
-        sampleWeightExpression,
-        metricTables,
-        select: tile.config.select,
-        timestampValueExpression: source.timestampValueExpression,
-        where: tile.config.where,
-        whereLanguage: tile.config.whereLanguage,
-        seriesReturnType: tile.config.seriesReturnType,
-        // Grouped ratios can divide per-group or share-of-total; without this
-        // the alert would silently evaluate the default (per-group) mode.
-        ratioMode: tile.config.ratioMode,
-        // Metric formulas (HDX-5080): the alert must evaluate the derived
-        // formula column, not a raw operand series. Operand columns are
-        // always dropped from the alert query — regardless of the tile's
-        // "Show input series" display toggle — so the formula is the value
-        // column parseAlertData picks (the last one wins, consistent with
-        // the multi-series "last series drives the alert" semantics).
-        formulas: tile.config.formulas,
-        ...(tile.config.formulas?.length ? { showOperandSeries: false } : {}),
-        variables,
-      };
+  } else if (details.taskType === AlertTaskType.INLINE) {
+    // Inline alerts have no dashboard, so no variables are declared.
+    const config = buildAlertChartConfigFromSavedConfig({
+      alertId: alert.id,
+      savedConfig: details.chartConfig,
+      source: details.source,
+      connection,
+      dateRange,
+      windowSizeInMins,
+      variables: [],
+    });
+    if (config != null) {
+      return config;
     }
   }
 
@@ -925,6 +967,45 @@ export const processAlert = async (
   // (query duration, webhook delivery time, backfilled buckets). Populated
   // progressively; hoisted so the catch blocks can attach what was measured.
   const evaluationAnalytics: IAlertHistoryAnalytics = {};
+  // Per-target notification timings, keyed by webhook id so the same target
+  // notified for several groups (and again on resolve) aggregates into one
+  // entry rather than one per dispatch.
+  const notificationTimings = new Map<string, AlertNotificationTargetTiming>();
+  const recordNotificationTimings = (timings: NotificationTiming[]) => {
+    for (const timing of timings) {
+      const existing = notificationTimings.get(timing.key);
+      if (existing == null) {
+        notificationTimings.set(timing.key, {
+          targetId: timing.key,
+          target: timing.target,
+          durationMs: timing.durationMs,
+          dispatches: 1,
+          failures: timing.ok ? 0 : 1,
+        });
+        continue;
+      }
+      existing.durationMs += timing.durationMs;
+      existing.dispatches += 1;
+      existing.failures += timing.ok ? 0 : 1;
+    }
+  };
+  /**
+   * Fold the aggregated timings onto the analytics object. Called before the
+   * records are written, from both the success and the error path, so a
+   * failed evaluation still reports what it managed to deliver.
+   */
+  const flushNotificationTimings = () => {
+    if (notificationTimings.size === 0) {
+      return;
+    }
+    evaluationAnalytics.notificationTargets = Array.from(
+      notificationTimings.values(),
+    )
+      // Slowest first: the point of the breakdown is finding what dominated
+      // the total, and the cap below should drop the least interesting rows.
+      .sort((a, b) => b.durationMs - a.durationMs)
+      .slice(0, ALERT_NOTIFICATION_TARGETS_LIMIT);
+  };
   try {
     const windowSizeInMins = ms(alert.interval) / 60000;
     const scheduleStartAt = normalizeScheduleStartAt({
@@ -1036,6 +1117,9 @@ export const processAlert = async (
     // The alert query itself uses count(*), not the saved search's select,
     // so we render the saved search's select separately to discover aliases
     // and inject them as WITH clauses into the alert query.
+    // Reused by the notification body's sample-row query, which resolves the
+    // same aliases against the same source.
+    let aliasWithClauses: BuilderChartConfigWithOptDateRange['with'];
     if (details.taskType === AlertTaskType.SAVED_SEARCH) {
       if (!isBuilderChartConfig(chartConfig)) {
         logger.error({
@@ -1051,6 +1135,7 @@ export const processAlert = async (
           details.source,
           metadata,
         );
+        aliasWithClauses = withClauses;
         if (withClauses) {
           chartConfig.with = withClauses;
         }
@@ -1184,6 +1269,32 @@ export const processAlert = async (
       return histories.get(groupKey)!;
     };
 
+    // The sample rows a saved-search body quotes depend on the window, not on
+    // the group or the state, so every group notifying for one window shares a
+    // fetch instead of repeating it. Backfilled buckets each notify for their
+    // own window, hence the key. A failed fetch is shared too — the body falls
+    // back to no sample lines rather than re-running the query per group.
+    const sampleLinesByWindow = new Map<number, Promise<string>>();
+    const sampleLinesFor =
+      details.taskType === AlertTaskType.SAVED_SEARCH
+        ? (startTime: Date) => () => {
+            const key = startTime.getTime();
+            const pending =
+              sampleLinesByWindow.get(key) ??
+              fetchSampleLines({
+                aliasWith: aliasWithClauses,
+                clickhouseClient,
+                endTime: fns.addMinutes(startTime, windowSizeInMins),
+                metadata,
+                savedSearch: details.savedSearch,
+                source: details.source,
+                startTime,
+              });
+            sampleLinesByWindow.set(key, pending);
+            return pending;
+          }
+        : undefined;
+
     // Helper to send a notification, catching and logging any errors.
     const trySendNotification = async ({
       group,
@@ -1226,30 +1337,40 @@ export const processAlert = async (
           : `Alert resolved for group "${group}", triggering ${alert.channel.type} notification`,
       );
 
-      const notificationStartedAt = performance.now();
       try {
         // Casts to any here because this is where I stopped unraveling the
         // alert logic requiring large, nested objects. We should look at
         // cleaning this up next. fireChannelEvent guards against null values
         // for these properties.
-        const failures = await fireChannelEvent({
-          alert,
-          alertProvider,
-          attributes,
-          clickhouseClient,
-          dashboard: (details as any).dashboard,
-          startTime,
-          endTime: fns.addMinutes(startTime, windowSizeInMins),
-          group,
-          isGroupedAlert: hasGroupBy,
-          metadata,
-          savedSearch: (details as any).savedSearch,
-          source,
-          state,
-          totalCount,
-          windowSizeInMins,
-          teamWebhooksById,
-        });
+        const { failures, timings, dispatchDurationMs } =
+          await fireChannelEvent({
+            alert,
+            alertProvider,
+            attributes,
+            clickhouseClient,
+            dashboard: (details as any).dashboard,
+            startTime,
+            endTime: fns.addMinutes(startTime, windowSizeInMins),
+            group,
+            isGroupedAlert: hasGroupBy,
+            metadata,
+            savedSearch: (details as any).savedSearch,
+            source,
+            state,
+            totalCount,
+            windowSizeInMins,
+            teamWebhooksById,
+            sampleLines: sampleLinesFor?.(startTime),
+          });
+        // Only the dispatch phase: the column reports how long the targets
+        // took to respond, not the time spent building the message. A round
+        // that queued no job (every target unresolvable) resolves instantly,
+        // so it must not report 0ms as though a target answered at once.
+        if (timings.length > 0) {
+          evaluationAnalytics.webhookDurationMs =
+            (evaluationAnalytics.webhookDurationMs ?? 0) + dispatchDurationMs;
+        }
+        recordNotificationTimings(timings);
         // Each entry is a target that didn't end up delivered: unresolvable,
         // capped, or (for the inline dispatcher) an actual send rejection —
         // see renderAlertTemplate.
@@ -1273,12 +1394,6 @@ export const processAlert = async (
           'Failed to fire channel event',
         );
         executionErrors.push(makeWebhookAlertError(e));
-      } finally {
-        // Total wall time spent delivering notifications in this evaluation
-        // (summed across groups/resolves, includes retries and failures).
-        evaluationAnalytics.webhookDurationMs =
-          (evaluationAnalytics.webhookDurationMs ?? 0) +
-          Math.round(performance.now() - notificationStartedAt);
       }
     };
 
@@ -1373,6 +1488,7 @@ export const processAlert = async (
 
       // Single-value evaluations always cover exactly the current window.
       evaluationAnalytics.backfilledBuckets = 0;
+      flushNotificationTimings();
       const historyRecords = Array.from(histories.values());
       for (const record of historyRecords) {
         record.analytics = evaluationAnalytics;
@@ -1595,6 +1711,7 @@ export const processAlert = async (
     }
 
     // Save all history records and update alert state
+    flushNotificationTimings();
     const historyRecords = Array.from(histories.values());
     for (const record of historyRecords) {
       record.analytics = evaluationAnalytics;
@@ -1623,6 +1740,9 @@ export const processAlert = async (
       e instanceof InvalidAlertError
         ? AlertErrorType.INVALID_ALERT
         : AlertErrorType.UNKNOWN;
+    // An evaluation can notify some targets and then fail; report what it
+    // managed to deliver rather than dropping the timings with the error.
+    flushNotificationTimings();
     try {
       await alertProvider.recordAlertErrors(
         alert.id,

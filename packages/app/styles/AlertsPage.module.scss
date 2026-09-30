@@ -84,3 +84,17 @@
     color: var(--color-text);
   }
 }
+
+/* The properties line wraps between whole phrases, never inside one: without
+   this a narrow header split "Notify via" across two lines. */
+.propertiesSummary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  row-gap: 4px;
+}
+
+.propertySegment {
+  white-space: nowrap;
+}

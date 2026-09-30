@@ -1,0 +1,250 @@
+import {
+  doesFilterApplyToSource,
+  FilterState,
+  filtersToQuery,
+  getDashboardVariableFilters,
+  getFilterExpression,
+  getFilterVariableName,
+  isFilterGlobalRequirement,
+  isFilterRequired,
+  isFilterVariableEnabled,
+  parseQuery,
+} from '@/filters';
+import { isMissingFiltersMacro } from '@/macros';
+import {
+  ChartConfigWithOptDateRange,
+  DashboardFilter,
+  DashboardFilterValue,
+  Filter,
+  SavedChartConfig,
+  VariableFilterValue,
+} from '@/types';
+
+/**
+ * A dashboards filter/variable state is persisted as an array of entries in one of two
+ * addressing schemes:
+ *
+ *  - legacy, keyed by SQL expression: `{ type: 'sql', condition: "E IN ('a')" }`
+ *  - variable-keyed:                  `{ type: 'variable', name: 'svc', values: ['a'] }`
+ *
+ * Expression keying cannot represent two filters that share an `expression`,
+ * and has nowhere to put a selection for a filter with no expression at all.
+ * Variable keying fixes both, but only exists for variable-enabled filters, so
+ * both schemes are accepted when reading state, and state is written in
+ * variable-keyed format when possible, falling back to expression-keyed
+ * format for filters that are not variable-enabled.
+ */
+
+/** One filter's selection: what a `FilterState` holds per key. */
+export type FilterSelection = FilterState[string];
+
+export type ParsedDashboardFilterValues = {
+  /** Selections addressed by SQL expression, parsed via `parseQuery`. */
+  byExpression: FilterState;
+  /** Selections addressed by dashboard variable name. */
+  byVariable: Map<string, string[]>;
+  /**
+   * Non-`sql` entries (`lucene`, `sql_ast`), carried verbatim so a write doesn't
+   * destroy them.
+   */
+  passthrough: DashboardFilterValue[];
+};
+
+const isVariableEntry = (
+  entry: DashboardFilterValue,
+): entry is VariableFilterValue => entry.type === 'variable';
+
+/** Split a raw entry array into the two addressing schemes + passthrough. */
+export function parseDashboardFilterValues(
+  entries: DashboardFilterValue[] | undefined,
+): ParsedDashboardFilterValues {
+  const byVariable = new Map<string, string[]>();
+  const passthrough: DashboardFilterValue[] = [];
+  const sqlEntries: Filter[] = [];
+
+  for (const entry of entries ?? []) {
+    if (isVariableEntry(entry)) {
+      // There shouldn't be duplicate names, but if there are the first wins.
+      if (!byVariable.has(entry.name)) {
+        byVariable.set(entry.name, entry.values);
+      }
+      continue;
+    }
+
+    if (entry.type !== 'sql') {
+      passthrough.push(entry);
+      continue;
+    }
+
+    // `parseQuery` is lenient: it extracts the clauses it recognizes and drops
+    // the rest, so an entry it understands nothing of contributes no key here.
+    sqlEntries.push(entry);
+  }
+
+  return {
+    // Parsed as one batch rather than merged per entry, so multiple entries on
+    // one expression combine exactly as they do today.
+    byExpression: parseQuery(sqlEntries).filters,
+    byVariable,
+    passthrough,
+  };
+}
+
+/**
+ * Inverse of `parseDashboardFilterValues`.
+ *
+ * Ordering is legacy entries, then variable entries, then passthrough — output
+ * is deterministic to avoid unnecessary churn in URL query params.
+ */
+export function serializeDashboardFilterValues(input: {
+  byExpression?: FilterState;
+  byVariable?: ReadonlyMap<string, string[]>;
+  passthrough?: DashboardFilterValue[];
+}): DashboardFilterValue[] {
+  const entries: DashboardFilterValue[] = [
+    // Re-use existing filter query rendering for legacy/expression-keyed format
+    ...filtersToQuery(input.byExpression ?? {}, { stringifyKeys: false }),
+  ];
+
+  for (const [name, values] of input.byVariable ?? []) {
+    if (values.length === 0) continue; // Empty selections are omitted.
+    entries.push({ type: 'variable', name, values });
+  }
+
+  entries.push(...(input.passthrough ?? []));
+
+  return entries;
+}
+
+/**
+ * The identity a filter's selection is stored under: its variable name when it
+ * has one, otherwise its SQL expression.
+ */
+export function filterSelectionKey(
+  filter: DashboardFilter,
+):
+  | { kind: 'variable'; name: string }
+  | { kind: 'expression'; expression: string } {
+  const expression = getFilterExpression(filter);
+
+  if (expression == null) {
+    return { kind: 'variable', name: getFilterVariableName(filter) ?? '' };
+  }
+
+  if (isFilterVariableEnabled(filter)) {
+    const name = getFilterVariableName(filter);
+    if (name) return { kind: 'variable', name };
+  }
+
+  return { kind: 'expression', expression };
+}
+
+/**
+ * Resolve one filter's selection out of a parsed entry array.
+ *
+ * A variable-keyed entry wins over an expression-keyed entry if they address
+ * the same filter, including when it holds no values.
+ */
+export function resolveFilterSelection(
+  filter: DashboardFilter,
+  parsed: Pick<ParsedDashboardFilterValues, 'byExpression'> & {
+    byVariable: ReadonlyMap<string, string[]>;
+  },
+): FilterSelection | undefined {
+  const key = filterSelectionKey(filter);
+  if (key.kind === 'variable') {
+    const values = parsed.byVariable.get(key.name);
+    if (values) {
+      return {
+        included: new Set<string | boolean>(values),
+        excluded: new Set(),
+      };
+    }
+  }
+  const expression = getFilterExpression(filter);
+  if (expression == null) return undefined;
+  return new Map(Object.entries(parsed.byExpression)).get(expression);
+}
+
+/** The required filters that have nothing selected, in filter order. */
+export function getUnsatisfiedRequiredFilters<
+  T extends { id: string; minSelections?: number },
+>(
+  filters: T[] | undefined,
+  selectionByFilterId: ReadonlyMap<string, FilterSelection>,
+): T[] {
+  return (filters ?? []).filter(
+    filter =>
+      isFilterRequired(filter) &&
+      (selectionByFilterId.get(filter.id)?.included.size ?? 0) === 0,
+  );
+}
+
+/** Whether a dashboard's broadcast filters reach a tile with the given config. */
+export function configConsumesBroadcastFilters(
+  config: SavedChartConfig | ChartConfigWithOptDateRange,
+  sourceId: string | undefined,
+): boolean {
+  if (!('configType' in config)) return true;
+  if (config.configType === 'promql') return false;
+  if (config.configType === 'sql') {
+    return !!sourceId && !isMissingFiltersMacro(config.sqlTemplate);
+  }
+  return true;
+}
+
+/**
+ * The subset of `unsatisfiedRequiredFilters` that blocks the given tile.
+ *
+ * A tile is blocked if any of the following conditions hold:
+ * 1. The filter has isGlobalRequirement set.
+ * 2. The tile references the filter's variable.
+ * 3. The filter applies via broadcast to the tile's source, and the tile
+ *    applies broadcast conditions (`consumesBroadcastFilters`).
+ */
+export function getBlockingRequiredFilters(
+  unsatisfiedRequiredFilters: DashboardFilter[],
+  tile: {
+    sourceId?: string;
+    referencedVariableNames?: readonly string[];
+    /** Whether the tile's query applies broadcast filter conditions. */
+    consumesBroadcastFilters: boolean;
+  },
+): DashboardFilter[] {
+  const referencedNamesSet = new Set(tile.referencedVariableNames ?? []);
+  const referencedFilterIds = new Set(
+    getDashboardVariableFilters(unsatisfiedRequiredFilters)
+      .filter(({ name }) => referencedNamesSet.has(name))
+      .map(({ filter }) => filter.id),
+  );
+
+  return unsatisfiedRequiredFilters.filter(
+    filter =>
+      isFilterGlobalRequirement(filter) ||
+      referencedFilterIds.has(filter.id) ||
+      (tile.consumesBroadcastFilters &&
+        doesFilterApplyToSource(filter, tile.sourceId)),
+  );
+}
+
+/** The names of the required filters that block a tile with the given config. */
+export function getBlockingRequiredFilterNames({
+  config,
+  sourceId,
+  unsatisfiedRequiredFilters,
+  referencedVariables,
+}: {
+  config: SavedChartConfig | ChartConfigWithOptDateRange;
+  sourceId: string | undefined;
+  unsatisfiedRequiredFilters: DashboardFilter[] | undefined;
+  /** The tile's variables, already narrowed to the ones it references. */
+  referencedVariables: readonly { name: string }[] | undefined;
+}): string[] {
+  return getBlockingRequiredFilters(unsatisfiedRequiredFilters ?? [], {
+    sourceId,
+    referencedVariableNames: referencedVariables?.map(
+      variable => variable.name,
+    ),
+    consumesBroadcastFilters: configConsumesBroadcastFilters(config, sourceId),
+  }).map(filter => filter.name);
+}

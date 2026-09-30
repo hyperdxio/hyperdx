@@ -15,12 +15,22 @@ import CodeMirror, {
   keymap,
   Prec,
   ReactCodeMirrorRef,
+  tooltips,
 } from '@uiw/react-codemirror';
 
+import { EDITOR_INPUT_HEIGHTS } from '@/components/editorInputHeights';
 import {
   createCodeMirrorStyleTheme,
   DEFAULT_CODE_MIRROR_BASIC_SETUP,
 } from '@/components/SQLEditor/utils';
+import { usePromqlVariableCompletions } from '@/components/SQLEditor/variableCompletions';
+import {
+  useVariableValidation,
+  VariableIssueIndicator,
+  variableValidationState,
+} from '@/components/SQLEditor/variableValidation';
+
+import { createVariableCompletionSource } from './variableCompletionSource';
 
 import styles from '@/components/SQLEditor/SQLInlineEditor.module.scss';
 
@@ -32,6 +42,11 @@ type PromQLEditorProps = {
   placeholder?: string;
   onSubmit?: () => void;
   metricNames?: string[];
+  /**
+   * Where to render the completion popup. Set it to `document.body` inside a
+   * modal or other scroll container, which would otherwise clip the popup.
+   */
+  parentRef?: HTMLElement | null;
 };
 
 const MAX_EDITOR_HEIGHT = '150px';
@@ -97,25 +112,40 @@ export default function PromQLEditor({
   placeholder,
   onSubmit,
   metricNames,
+  parentRef,
 }: PromQLEditorProps) {
   const { colorScheme } = useMantineColorScheme();
   const ref = useRef<ReactCodeMirrorRef>(null);
   const compartmentRef = useRef<Compartment>(new Compartment());
   const [isFocused, setIsFocused] = useState(false);
+  const variableCompletions = usePromqlVariableCompletions();
+  const variableIssues = useVariableValidation(value, { language: 'promql' });
 
   const updateAutocomplete = useCallback(
     (viewRef: EditorView) => {
-      if (!metricNames || metricNames.length === 0) return;
+      const override: CompletionSource[] = [];
+
+      if (variableCompletions.length > 0) {
+        override.push(createVariableCompletionSource(variableCompletions));
+      }
+
+      if (metricNames?.length) {
+        override.push(debounceAndPruneAutocompleteResults(metricNames));
+      }
+
+      // PromQL's own function/keyword completion, re-registered explicitly.
+      // `PromQLExtension.asExtension()` registers it through
+      // `language.data.of({ autocomplete })`, which an `override` array
+      // replaces outright — so without this it is silently lost.
+      override.push(context => promqlExtension.getComplete().promQL(context));
 
       viewRef.dispatch({
         effects: compartmentRef.current.reconfigure(
-          autocompletion({
-            override: [debounceAndPruneAutocompleteResults(metricNames)],
-          }),
+          autocompletion({ override }),
         ),
       });
     },
-    [metricNames],
+    [metricNames, variableCompletions],
   );
 
   useEffect(() => {
@@ -126,13 +156,14 @@ export default function PromQLEditor({
 
   const cmExtensions = useMemo(
     () => [
+      ...(parentRef ? [tooltips({ parent: parentRef })] : []),
       createCodeMirrorStyleTheme(MAX_EDITOR_HEIGHT),
       EditorView.lineWrapping,
 
       // PromQL syntax highlighting
       promqlExtension.asExtension(),
 
-      // Metric name autocomplete (via compartment for hot-swapping)
+      // Autocomplete sources (via compartment for hot-swapping)
       // eslint-disable-next-line react-hooks/refs
       compartmentRef.current.of([]),
 
@@ -159,7 +190,7 @@ export default function PromQLEditor({
         },
       ]),
     ],
-    [onSubmit],
+    [onSubmit, parentRef],
   );
 
   const onClickCodeMirror = useCallback(() => {
@@ -168,32 +199,25 @@ export default function PromQLEditor({
     }
   }, []);
 
-  const isExpanded = isFocused;
-  const baseHeight = 36;
+  const validationState = variableValidationState(variableIssues);
+  const baseHeight = EDITOR_INPUT_HEIGHTS.sm;
 
   return (
     <div
       className={styles.wrapper}
       style={{ ['--editor-base-height' as string]: `${baseHeight}px` }}
-      data-expanded={isExpanded ? 'true' : undefined}
     >
-      {isExpanded && <div className={styles.placeholder} aria-hidden="true" />}
       <Paper
         shadow="none"
         className={cx(
           styles.paper,
-          isExpanded ? styles.expanded : undefined,
-          !isExpanded ? styles.collapseFade : undefined,
+          validationState === 'error' ? styles.error : undefined,
+          validationState === 'warning' ? styles.warning : undefined,
+          isFocused ? styles.focused : undefined,
         )}
         ps="4px"
       >
-        <div
-          className={cx(
-            styles.cmWrapper,
-            !isExpanded ? styles.collapsed : undefined,
-            isExpanded ? 'cm-editor-multiline' : undefined,
-          )}
-        >
+        <div className={cx(styles.cmWrapper, 'cm-editor-multiline')}>
           <CodeMirror
             indentWithTab={false}
             ref={ref}
@@ -209,6 +233,7 @@ export default function PromQLEditor({
             onClick={onClickCodeMirror}
           />
         </div>
+        <VariableIssueIndicator issues={variableIssues} />
       </Paper>
     </div>
   );

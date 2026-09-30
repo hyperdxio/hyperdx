@@ -22,6 +22,7 @@ import {
   MANTINE_FONT_MAP,
 } from '@/config/fonts';
 import { ibmPlexMono, inter, roboto, robotoMono } from '@/fonts';
+import { fetchServerVersion, installHdxDebug } from '@/hdxDebug';
 import { AppThemeProvider, useAppTheme } from '@/theme/ThemeProvider';
 import { ThemeWrapper } from '@/ThemeWrapper';
 import { NextApiConfigResponseData } from '@/types';
@@ -125,6 +126,14 @@ function AppContent({
 }
 
 export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
+  // Expose build identity + debug helpers on window.hdx (all environments).
+  // Installed once; the backend/API version (deployed separately) is fetched
+  // from /api/health and read live via window.hdx's getters.
+  useEffect(() => {
+    installHdxDebug();
+    fetchServerVersion();
+  }, []);
+
   // port to react query ? (needs to wrap with QueryClientProvider)
   useEffect(() => {
     if (IS_LOCAL_MODE) {

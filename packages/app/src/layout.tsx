@@ -11,6 +11,13 @@ import { HDXSpotlightProvider } from './Spotlights';
 import { useLocalStorage } from './utils';
 
 /**
+ * The scroll container every page inside the app nav scrolls in. Pages that
+ * virtualize their content have to virtualize against it, since they have no
+ * scroller of their own.
+ */
+export const APP_CONTENT_SCROLL_CONTAINER_ID = 'app-content-scroll-container';
+
+/**
  * Next.js layout for pages that use the AppNav component. Using the same layout
  * for all pages that use the AppNav component ensures that the AppNav state, such as
  * scroll position, input values, etc. is preserved when navigating between pages.
@@ -75,7 +82,7 @@ function PageWrapper({ children }: { children: React.ReactNode }) {
       <div className="d-flex" style={{ height: '100%', overflow: 'hidden' }}>
         {!isDashboardKioskMode && <AppNav />}
         <div
-          id="app-content-scroll-container"
+          id={APP_CONTENT_SCROLL_CONTAINER_ID}
           className="w-100 min-w-0"
           style={{
             minWidth: 0,

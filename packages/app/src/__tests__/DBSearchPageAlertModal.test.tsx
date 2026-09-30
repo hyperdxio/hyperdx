@@ -1,3 +1,5 @@
+import type { ComponentProps } from 'react';
+import { Controller as MockController } from 'react-hook-form';
 import {
   AlertSource,
   AlertThresholdType,
@@ -5,6 +7,7 @@ import {
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 
+import type { AlertChannelForm } from '@/components/Alerts';
 import { DBSearchPageAlertModal } from '@/DBSearchPageAlertModal';
 
 // --- Mutation spies ------------------------------------------------------
@@ -40,7 +43,9 @@ const savedSearch = {
   select: '',
   source: 'source-id',
   orderBy: '',
-  tags: [],
+  // One tag over the alert cap (32): the prefill must clamp it or the form
+  // rejects on mount and Create Alert silently does nothing.
+  tags: ['prod', 'checkout-service-payment-failures'],
   alerts: [firstAlert, secondAlert],
 };
 
@@ -63,6 +68,12 @@ jest.mock('@/api', () => ({
       data: {
         data: [firstAlert, secondAlert].find(a => a.id === id) ?? firstAlert,
       },
+    }),
+    useTags: () => ({
+      data: { data: ['prod'] },
+      isLoading: false,
+      isError: false,
+      refetch: jest.fn(),
     }),
   },
 }));
@@ -98,10 +109,30 @@ jest.mock('@/components/AlertPreviewChart', () => ({
   __esModule: true,
   AlertPreviewChart: () => <div data-testid="alert-preview-chart" />,
 }));
-jest.mock('@/components/Alerts', () => ({
-  __esModule: true,
-  AlertChannelForm: () => <div data-testid="alert-channel-form" />,
-}));
+// Stubbed, but it still has to register the webhook id: the form schema
+// rejects an empty one, so a create submitted through an inert stub would
+// never reach the mutation.
+jest.mock('@/components/Alerts', () => {
+  return {
+    __esModule: true,
+    AlertChannelForm: ({
+      control,
+      channelsName,
+    }: ComponentProps<typeof AlertChannelForm>) => (
+      <MockController
+        control={control}
+        name={`${channelsName}.0.webhookId`}
+        render={({ field }) => (
+          <input
+            data-testid="webhook-id-input"
+            {...field}
+            value={field.value ?? ''}
+          />
+        )}
+      />
+    ),
+  };
+});
 jest.mock('@/components/SQLEditor/SQLInlineEditor', () => ({
   __esModule: true,
   SQLInlineEditorControlled: () => <div data-testid="sql-inline-editor" />,
@@ -177,5 +208,33 @@ describe('DBSearchPageAlertModal', () => {
     expect(payload.channels).toEqual([
       { type: 'webhook', webhookId: 'webhook-id' },
     ]);
+  });
+
+  // A new alert opens prefilled from the saved search it will watch, so the
+  // create payload carries those values rather than relying on the server's
+  // derivation.
+  it('prefills the display name and tags from the saved search, clamped to the alert caps', async () => {
+    renderModal();
+
+    expect(await screen.findByTestId('alert-display-name-input')).toHaveValue(
+      'My Search',
+    );
+
+    fireEvent.change(screen.getByTestId('webhook-id-input'), {
+      target: { value: 'webhook-id' },
+    });
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Create Alert' }),
+    );
+
+    await waitFor(() => {
+      expect(createAlertMutateAsync).toHaveBeenCalledTimes(1);
+    });
+    expect(createAlertMutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        displayName: 'My Search',
+        tags: ['prod', 'checkout-service-payment-failure'],
+      }),
+    );
   });
 });

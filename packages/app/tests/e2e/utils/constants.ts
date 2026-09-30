@@ -2,11 +2,19 @@ export const DEFAULT_SESSIONS_SOURCE_NAME = 'E2E Sessions';
 export const DEFAULT_TRACES_SOURCE_NAME = 'E2E Traces';
 export const DEFAULT_METRICS_SOURCE_NAME = 'E2E Metrics';
 export const DEFAULT_LOGS_SOURCE_NAME = 'E2E Logs';
+export const PROMQL_SOURCE_NAME = 'E2E PromQL';
+
+// The single ClickHouse connection seeded from `fixtures/e2e-fixtures.json`.
+export const DEFAULT_CONNECTION_NAME = 'local';
 
 // Log source deliberately left without a correlated metric source, so tests can
 // exercise the "not correlated" paths (the search side panel's infrastructure
 // tab, and the Kubernetes dashboard's correlation warning).
 export const K8S_LOGS_NO_METRICS_SOURCE_NAME = 'E2E K8s Logs No Metrics';
+
+// Log source with a a non-standard service name that is NOT part of the
+// backing table's sort/primary key.
+export const CUSTOM_SERVICE_LOGS_SOURCE_NAME = 'E2E Custom Service Logs';
 
 // Source backed by `otel_logs_interesting_filter_keys`, used by the filter-key
 // edge case tests to exercise identifier escaping (dotted/hyphenated column
@@ -47,6 +55,13 @@ export const E2E_TRACES_MV_TABLE = 'e2e_otel_traces_1m';
 export const E2E_SESSIONS_TABLE = 'e2e_hyperdx_sessions';
 export const E2E_METRICS_GAUGE_TABLE = 'e2e_otel_metrics_gauge';
 export const E2E_METRICS_SUM_TABLE = 'e2e_otel_metrics_sum';
+// TimeSeries-engine table backing the PromQL source. `prometheusQueryRange`,
+// which the API's PromQL path calls, reads only this engine — the otel_metrics_*
+// tables above are not usable for PromQL. The seeder writes through the
+// timeSeries* table functions, which take this same table name.
+export const E2E_PROMQL_TABLE = 'e2e_promql';
+/** The one metric name seeded into the PromQL table, one series per service. */
+export const E2E_PROMQL_METRIC_NAME = 'e2e_service_up';
 // A second database holding OTEL-shaped metric tables, so the metric table
 // autofill tests can switch the source form's database and see tables detected
 // from the new one. The table names differ from the `default` database's so an
@@ -67,3 +82,6 @@ export const E2E_INTERESTING_FILTER_KEYS_TABLE =
 export const E2E_METADATA_MV_LOGS_TABLE = 'e2e_otel_logs_metadata_mv';
 export const E2E_METADATA_MV_KV_ROLLUP_TABLE = 'e2e_otel_logs_kv_rollup_15m';
 export const E2E_METADATA_MV_KEY_ROLLUP_TABLE = 'e2e_otel_logs_key_rollup_15m';
+// Table backing CUSTOM_SERVICE_LOGS_SOURCE_NAME. Created in
+// `docker/clickhouse/local/init-db-e2e.sh` and seeded in `seed-clickhouse.ts`.
+export const E2E_CUSTOM_SERVICE_LOGS_TABLE = 'e2e_custom_service_name';

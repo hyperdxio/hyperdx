@@ -1,3 +1,4 @@
+import { hasVariableMacro } from '@hyperdx/common-utils/dist/variables';
 import { z } from 'zod';
 
 import type { ToolRegistrar } from '@/mcp/tools/types';
@@ -85,6 +86,19 @@ export function registerSql({ context, registerTool }: ToolRegistrar) {
         return mcpUserError(timeRange.error);
       }
       const { startDate, endDate } = timeRange;
+
+      // $__filter / $__conditionalAll read the variables a dashboard's filters
+      // declare, and this tool has no dashboard behind it.
+      if (hasVariableMacro(input.sql)) {
+        return mcpUserError(
+          'The $__filter and $__conditionalAll macros only resolve for a tile ' +
+            'on a dashboard, because they read the dashboard variables its ' +
+            'filters declare. This tool has no dashboard, so they would be ' +
+            'sent to ClickHouse as literal text. Inline the condition here, ' +
+            'or save the query as a dashboard tile and validate it with ' +
+            'clickstack_query_tile.',
+        );
+      }
 
       const tile = buildTile('MCP SQL', 24, 6, {
         configType: 'sql' as const,

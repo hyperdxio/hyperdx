@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import api from '@/api';
+import { defaultRedact } from '@/components/RevealSnippet/RevealSnippet';
 import ApiKeysSection from '@/components/TeamSettings/ApiKeysSection';
 import { useConfirm } from '@/useConfirm';
 
@@ -107,10 +108,32 @@ describe('ApiKeysSection', () => {
   it('renders the ingestion and personal keys under distinct test ids', () => {
     renderWithMantine(<ApiKeysSection />);
 
-    expect(screen.getByTestId('ingestion-api-key')).toHaveTextContent(
-      'ingestion_key_xyz',
+    // Masked inputs: the value is on the input's `value`, not text content.
+    const ingestion = screen.getByTestId('ingestion-api-key');
+    const personal = screen.getByTestId('personal-access-key');
+    // defaultRedact preserves the real length, so asserting the exact masked
+    // string also covers "the field width doesn't jump on reveal".
+    expect(ingestion).toHaveValue(defaultRedact('ingestion_key_xyz'));
+    expect(personal).toHaveValue(defaultRedact('personal_key_abc'));
+    expect(ingestion).not.toHaveValue('ingestion_key_xyz');
+    expect(personal).not.toHaveValue('personal_key_abc');
+  });
+
+  it('reveals the full key on the inline reveal toggle', async () => {
+    const user = userEvent.setup();
+    renderWithMantine(<ApiKeysSection />);
+
+    expect(screen.getByTestId('personal-access-key')).not.toHaveValue(
+      'personal_key_abc',
     );
-    expect(screen.getByTestId('personal-access-key')).toHaveTextContent(
+
+    // Two "Reveal key" toggles (ingestion + personal); reveal the personal one.
+    const revealButtons = screen.getAllByRole('button', {
+      name: /reveal key/i,
+    });
+    await user.click(revealButtons[revealButtons.length - 1]);
+
+    expect(screen.getByTestId('personal-access-key')).toHaveValue(
       'personal_key_abc',
     );
   });
