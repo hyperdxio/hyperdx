@@ -196,7 +196,7 @@ describe('DBRowJsonViewer', () => {
     );
     const { container } = renderWithMantine(
       <RowSidePanelContext value={defaultContext}>
-        <DBRowJsonViewer data={logData} />
+        <DBRowJsonViewer data={logData} showMaterializedAliasColumnsOption />
         <OptionValue />
       </RowSidePanelContext>,
     );
@@ -216,6 +216,16 @@ describe('DBRowJsonViewer', () => {
     ).toBe('true');
     await toggle();
     expect(option).toHaveTextContent('false');
+  });
+
+  it('hides the materialized and alias columns option unless asked to show it', async () => {
+    const { container } = renderComponent(logData);
+    fireEvent.click(container.querySelector('[aria-haspopup="menu"]')!);
+
+    expect(await screen.findByText('Hide blank values')).toBeInTheDocument();
+    expect(
+      screen.queryByTestId('json-viewer-materialized-alias-toggle'),
+    ).not.toBeInTheDocument();
   });
 
   describe('timestamp fields', () => {

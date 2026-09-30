@@ -12,6 +12,7 @@ import { Box } from '@mantine/core';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import {
   getKnownColumnsList,
+  getSelectAllColumnsQuerySettings,
   useSelectAllColumnsQuerySettings,
 } from '@/hooks/useMaterializedAliasColumnsOption';
 import { WithClause } from '@/hooks/useRowWhere';
@@ -384,6 +385,9 @@ export function RowDataPanel({
           data={firstRow}
           jsonColumns={jsonColumns}
           mapColumns={mapColumns}
+          showMaterializedAliasColumnsOption={
+            getSelectAllColumnsQuerySettings(source) != null
+          }
         />
       </Box>
     </div>

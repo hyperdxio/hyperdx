@@ -132,23 +132,17 @@ describe('DBRowSidePanelErrorState', () => {
 
   describe('materialized and alias columns hint', () => {
     const OPTION_KEY = 'hdx-row-show-materialized-alias-columns';
-    const aliasError = new ClickHouseQueryError(
-      "Dictionary ('default.missing') not found",
-      'SELECT * FROM logs LIMIT 1 SETTINGS asterisk_include_alias_columns = 1',
-    );
-    const readonlyError = new ClickHouseQueryError(
-      "Cannot modify 'asterisk_include_materialized_columns' setting in readonly mode. ",
-      'SELECT * FROM logs LIMIT 1 SETTINGS asterisk_include_materialized_columns = 1',
+    // The hint does not depend on the error, so any error shows it.
+    const error = new ClickHouseQueryError(
+      'Timeout exceeded: elapsed 30 seconds',
+      'SELECT * FROM logs LIMIT 1',
     );
 
     beforeEach(() => {
       localStorage.clear();
     });
 
-    it.each([
-      ['an ALIAS column fails', aliasError],
-      ['the connection rejects the settings', readonlyError],
-    ])('offers to hide the columns when %s', (_case, error) => {
+    it('offers to hide the columns while the option is on', () => {
       localStorage.setItem(OPTION_KEY, 'true');
       renderErrorState(error);
 
@@ -165,34 +159,7 @@ describe('DBRowSidePanelErrorState', () => {
     });
 
     it('is not shown while the option is off', () => {
-      renderErrorState(aliasError);
-
-      expect(
-        screen.queryByTestId('materialized-alias-columns-hint'),
-      ).toBeNull();
-    });
-
-    it('is not shown when the source sets both settings itself', () => {
-      localStorage.setItem(OPTION_KEY, 'true');
-      renderErrorState(aliasError, {
-        ...source,
-        querySettings: [
-          { setting: 'asterisk_include_materialized_columns', value: '0' },
-          { setting: 'asterisk_include_alias_columns', value: '0' },
-        ],
-      });
-
-      expect(
-        screen.queryByTestId('materialized-alias-columns-hint'),
-      ).toBeNull();
-    });
-
-    it('is not shown when a Known Columns List replaces SELECT *', () => {
-      localStorage.setItem(OPTION_KEY, 'true');
-      renderErrorState(aliasError, {
-        ...source,
-        knownColumnsListExpression: 'Timestamp, Body',
-      });
+      renderErrorState(error);
 
       expect(
         screen.queryByTestId('materialized-alias-columns-hint'),

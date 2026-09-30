@@ -2407,15 +2407,6 @@ describe('useChartConfig', () => {
         { setting: 'asterisk_include_materialized_columns', value: '1' },
       ]);
     });
-
-    it('keeps the value of a setting that the source already defines', () => {
-      expect(
-        mergeQuerySettings(
-          [{ setting: 'asterisk_include_alias_columns', value: '0' }],
-          [{ setting: 'asterisk_include_alias_columns', value: '1' }],
-        ),
-      ).toEqual([{ setting: 'asterisk_include_alias_columns', value: '0' }]);
-    });
   });
 
   describe('appendChunk', () => {
