@@ -2766,6 +2766,85 @@ describe('utils', () => {
         // This test case illustrates that subsequent clauses will also be extracted.
         settingsClause: 'SETTINGS opt = 1, cast = 1 FORMAT json',
       },
+      {
+        label: 'settings inside an identifier',
+        sql: 'SELECT * FROM table WHERE AppSettings = 1 SETTINGS opt = 1',
+        withoutSettingsClause: 'SELECT * FROM table WHERE AppSettings = 1',
+        settingsClause: 'SETTINGS opt = 1',
+      },
+      {
+        label: 'settings inside a string literal',
+        sql: "SELECT * FROM table WHERE MetricName = 'app.settings.reloads'",
+        withoutSettingsClause:
+          "SELECT * FROM table WHERE MetricName = 'app.settings.reloads'",
+        settingsClause: undefined,
+      },
+      {
+        label: 'settings as a dotted path or map column',
+        sql: "SELECT * FROM table WHERE LogAttributes.settings = 'x' AND settings['k'] = 'y'",
+        withoutSettingsClause:
+          "SELECT * FROM table WHERE LogAttributes.settings = 'x' AND settings['k'] = 'y'",
+        settingsClause: undefined,
+      },
+      {
+        label: 'apostrophe in a comment before SETTINGS',
+        sql: "SELECT * FROM table -- don't count retries\nWHERE a = 1 SETTINGS max_threads = 1",
+        withoutSettingsClause:
+          "SELECT * FROM table -- don't count retries\nWHERE a = 1",
+        settingsClause: 'SETTINGS max_threads = 1',
+      },
+      {
+        label: 'apostrophe in a block comment before SETTINGS',
+        sql: "SELECT * FROM table /* don't count retries */ WHERE a = 1 SETTINGS max_threads = 1",
+        withoutSettingsClause:
+          "SELECT * FROM table /* don't count retries */ WHERE a = 1",
+        settingsClause: 'SETTINGS max_threads = 1',
+      },
+      {
+        label: 'settings inside a comment',
+        sql: 'SELECT * FROM table -- SETTINGS in a comment\nWHERE a = 1',
+        withoutSettingsClause:
+          'SELECT * FROM table -- SETTINGS in a comment\nWHERE a = 1',
+        settingsClause: undefined,
+      },
+      {
+        label: 'escaped quote in a string literal before settings',
+        sql: "SELECT * FROM table WHERE a = 'it\\'s settings' SETTINGS max_threads = 1",
+        withoutSettingsClause:
+          "SELECT * FROM table WHERE a = 'it\\'s settings'",
+        settingsClause: 'SETTINGS max_threads = 1',
+      },
+      {
+        label: 'doubled quote in a string literal before settings',
+        sql: "SELECT * FROM table WHERE a = 'it''s settings' SETTINGS max_threads = 1",
+        withoutSettingsClause: "SELECT * FROM table WHERE a = 'it''s settings'",
+        settingsClause: 'SETTINGS max_threads = 1',
+      },
+      {
+        label: 'settings as a quoted identifier',
+        sql: 'SELECT `settings`, "settings" FROM table SETTINGS max_threads = 1',
+        withoutSettingsClause: 'SELECT `settings`, "settings" FROM table',
+        settingsClause: 'SETTINGS max_threads = 1',
+      },
+      {
+        label: 'settings as a table name',
+        sql: 'SELECT name FROM system.settings WHERE changed SETTINGS max_threads = 1',
+        withoutSettingsClause: 'SELECT name FROM system.settings WHERE changed',
+        settingsClause: 'SETTINGS max_threads = 1',
+      },
+      {
+        label: 'lowercase keyword followed by a newline',
+        sql: 'SELECT * FROM table WHERE a = 1 settings\n  max_threads = 1',
+        withoutSettingsClause: 'SELECT * FROM table WHERE a = 1',
+        settingsClause: 'settings\n  max_threads = 1',
+      },
+      {
+        label: 'string value inside the SETTINGS clause',
+        sql: "SELECT * FROM table SETTINGS short_circuit_function_evaluation = 'force_enable'",
+        withoutSettingsClause: 'SELECT * FROM table',
+        settingsClause:
+          "SETTINGS short_circuit_function_evaluation = 'force_enable'",
+      },
     ])(
       'Extracts SETTINGS clause from: "$label" query',
       ({ sql, settingsClause, withoutSettingsClause }) => {
