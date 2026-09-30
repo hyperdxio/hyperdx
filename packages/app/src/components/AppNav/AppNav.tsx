@@ -30,7 +30,7 @@ import {
 
 import api from '@/api';
 import { AlertStatusIcon } from '@/components/AlertStatusIcon';
-import { APP_VERSION, IS_LOCAL_MODE } from '@/config';
+import { APP_VERSION, INSTANCE_LABEL, IS_LOCAL_MODE } from '@/config';
 import { Dashboard, useDashboards } from '@/dashboard';
 import { useFavorites } from '@/favorites';
 import { setHdxIdentity } from '@/hdxDebug';
@@ -366,6 +366,11 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               ) : (
                 <Group gap="xs" align="center">
                   {wordmark}
+                  {INSTANCE_LABEL && (
+                    <span className="fw-bold mono" style={{ fontSize: 15 }}>
+                      {INSTANCE_LABEL}
+                    </span>
+                  )}
                   {isUTC && (
                     <Badge
                       size="xs"
