@@ -11,6 +11,7 @@ import {
   isUsingGranularity,
   renderChartConfig,
 } from '@hyperdx/common-utils/dist/core/renderChartConfig';
+import { generateTimeWindowsDescending } from '@hyperdx/common-utils/dist/core/searchWindows';
 import {
   convertDateRangeToGranularityString,
   hasPositiveSeriesLimit,
@@ -40,7 +41,6 @@ import { IS_MTVIEWS_ENABLED } from '@/config';
 import { buildMTViewSelectQuery } from '@/hdxMTViews';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
 import { useSource } from '@/source';
-import { generateTimeWindowsDescending } from '@/utils/searchWindows';
 
 import { useMVOptimizationExplanation } from './useMVOptimizationExplanation';
 
