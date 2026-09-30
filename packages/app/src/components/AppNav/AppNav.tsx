@@ -367,9 +367,9 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                 <Group gap="xs" align="center">
                   {wordmark}
                   {INSTANCE_LABEL && (
-                    <span className="fw-bold mono" style={{ fontSize: 15 }}>
+                    <Text component="span" fw={700} ff="monospace" fz={15}>
                       {INSTANCE_LABEL}
-                    </span>
+                    </Text>
                   )}
                   {isUTC && (
                     <Badge
