@@ -1,11 +1,15 @@
 import { useMemo } from 'react';
 import { hasNonEmptyOrderBy } from '@hyperdx/common-utils/dist/core/utils';
-import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
+import {
+  isBuilderChartConfig,
+  isPromqlChartConfig,
+} from '@hyperdx/common-utils/dist/guards';
 import { ChartConfigWithOptTimestamp } from '@hyperdx/common-utils/dist/types';
 
 import {
   buildMVDateRangeIndicator,
   convertToCategoricalChartConfig,
+  convertToReducedPromqlChartConfig,
   formatResponseForCategoricalChart,
 } from '@/ChartUtils';
 import MVOptimizationIndicator from '@/components/MaterializedViews/MVOptimizationIndicator';
@@ -13,6 +17,7 @@ import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useSingleSeriesNumberFormat, useSource } from '@/source';
 import { getColorProps } from '@/utils';
+import { stripClientSideConfigFields } from '@/utils/chartConfig';
 
 import { ChartErrorStateVariant } from './ChartErrorState';
 
@@ -43,9 +48,13 @@ export function useCategoricalChart({
   const { data: source } = useSource({ id: config.source });
 
   const queriedConfig = useMemo(() => {
-    return isBuilderChartConfig(config)
-      ? convertToCategoricalChartConfig(config)
-      : config;
+    if (isBuilderChartConfig(config)) {
+      return convertToCategoricalChartConfig(config);
+    }
+    if (isPromqlChartConfig(config)) {
+      return convertToReducedPromqlChartConfig(config);
+    }
+    return config;
   }, [config]);
 
   const resolvedNumberFormat = useSingleSeriesNumberFormat(queriedConfig);
@@ -59,7 +68,7 @@ export function useCategoricalChart({
   const { data, isLoading, isError, error, isPlaceholderData } =
     useQueriedChartConfig(queriedConfig, {
       placeholderData: (prev: any) => prev,
-      queryKey: [queryKeyPrefix, queriedConfig],
+      queryKey: [queryKeyPrefix, stripClientSideConfigFields(queriedConfig)],
       enabled,
     });
 

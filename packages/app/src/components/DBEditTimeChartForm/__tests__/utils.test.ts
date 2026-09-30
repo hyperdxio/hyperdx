@@ -344,6 +344,26 @@ describe('buildRenderedPromqlExpression', () => {
     ).toBe('rate(up[60s])');
   });
 
+  it.each([DisplayType.Pie, DisplayType.Bar])(
+    'expands macros with the aligned range a %s tile queries with',
+    displayType => {
+      const unaligned: [Date, Date] = [
+        new Date('2024-01-01T00:00:14Z'),
+        new Date('2024-01-01T01:10:14Z'),
+      ];
+      expect(
+        buildRenderedPromqlExpression({
+          ...promqlConfig({
+            displayType,
+            granularity: 'auto',
+            promqlExpression: [{ expression: 'up[$__interval] / $__range' }],
+          }),
+          dateRange: unaligned,
+        })?.expressions?.[0].expression,
+      ).toBe('up[60s] / 4260s');
+    },
+  );
+
   it('reports a substitution failure instead of an expression', () => {
     const result = buildRenderedPromqlExpression(
       promqlConfig({

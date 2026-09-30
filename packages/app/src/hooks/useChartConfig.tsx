@@ -345,18 +345,18 @@ export function useQueriedChartConfig(
   });
   const minGranularitySeconds = getMinGranularitySeconds(source);
 
-  // A PromQL range query keeps every bucket in the cache. An observer whose
-  // config names a reducer collapses them to a single value per series on
-  // read; the sparkline behind a number tile names none, so it plots them.
-  const reducesRangeBuckets =
+  // A PromQL query keeps every sample in the cache. An observer whose config
+  // names a reducer collapses them to a single value per series on read; the
+  // sparkline behind a number tile names none, so it plots them.
+  const appliesReducer =
     isPromqlChartConfig(config) && appliesPromqlReducer(config);
-  const rangeReducer = reducesRangeBuckets
+  const reducer = appliesReducer
     ? getQueriedPromqlSeries(config)[0]?.reducer
     : undefined;
 
-  const selectRangeReduced = useCallback(
-    (result: TQueryFnData) => reduceBucketRows(result, rangeReducer),
-    [rangeReducer],
+  const selectReduced = useCallback(
+    (result: TQueryFnData) => reduceBucketRows(result, reducer),
+    [reducer],
   );
 
   const query = useQuery<TQueryFnData, ClickHouseQueryError | Error>({
@@ -433,7 +433,7 @@ export function useQueriedChartConfig(
       return queryClient.getQueryData(context.queryKey)!;
     },
     // PromQL reducer is applied as a client-side react-query select function
-    select: reducesRangeBuckets ? selectRangeReduced : undefined,
+    select: appliesReducer ? selectReduced : undefined,
     retry: 1,
     refetchOnWindowFocus: false,
     ...options,

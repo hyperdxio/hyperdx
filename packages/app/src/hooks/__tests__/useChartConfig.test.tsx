@@ -919,7 +919,7 @@ describe('useChartConfig', () => {
         });
       });
 
-      describe('range reducers', () => {
+      describe('reducers', () => {
         const rangeSamples = {
           status: 'success' as const,
           data: {
@@ -1102,6 +1102,65 @@ describe('useChartConfig', () => {
           await waitFor(() =>
             expect(prometheusApi.queryRange).toHaveBeenCalledTimes(2),
           );
+        });
+
+        it('reduces the matrix an instant range selector returns', async () => {
+          jest.mocked(prometheusApi.query).mockResolvedValue(rangeSamples);
+
+          const config = createPromqlConfig({
+            displayType: DisplayType.Pie,
+            promqlExpression: [
+              {
+                expression: 'e2e_service_up[5m]',
+                queryType: 'instant',
+                reducer: PromqlReducer.Max,
+              },
+            ],
+          });
+          const { result } = renderHook(() => useQueriedChartConfig(config), {
+            wrapper,
+          });
+
+          await waitFor(() => expect(result.current.isSuccess).toBe(true));
+          expect(prometheusApi.queryRange).not.toHaveBeenCalled();
+          expect(result.current.data?.data).toEqual([
+            { series_name: 'e2e_service_up{service="accounting"}', value: 8 },
+            { series_name: 'e2e_service_up{service="api-server"}', value: 3 },
+          ]);
+        });
+
+        it('passes an instant vector through any reducer unchanged', async () => {
+          jest.mocked(prometheusApi.query).mockResolvedValue({
+            status: 'success',
+            data: {
+              resultType: 'vector',
+              result: [
+                {
+                  metric: { __name__: 'e2e_service_up', service: 'accounting' },
+                  value: [1673312400, '7'],
+                },
+              ],
+            },
+          });
+
+          const config = createPromqlConfig({
+            displayType: DisplayType.Number,
+            promqlExpression: [
+              {
+                expression: 'e2e_service_up',
+                queryType: 'instant',
+                reducer: PromqlReducer.Sum,
+              },
+            ],
+          });
+          const { result } = renderHook(() => useQueriedChartConfig(config), {
+            wrapper,
+          });
+
+          await waitFor(() => expect(result.current.isSuccess).toBe(true));
+          expect(result.current.data?.data).toEqual([
+            { series_name: 'e2e_service_up', value: 7 },
+          ]);
         });
       });
     });

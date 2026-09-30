@@ -1157,7 +1157,7 @@ export class ChartEditorComponent {
   /**
    * Choose how a PromQL expression is evaluated, from the toggle under the
    * expression editor. `reducer` is the visible label (e.g. "Max"), and only
-   * applies to a range query.
+   * applies to display types that reduce each series to one value.
    */
   async setPromqlQueryType(
     queryType: 'Instant' | 'Range',
@@ -1170,9 +1170,7 @@ export class ChartEditorComponent {
     await group.getByText(queryType, { exact: true }).click();
 
     if (reducer) {
-      await this.page
-        .getByRole('combobox', { name: 'PromQL range reducer' })
-        .click();
+      await this.page.getByRole('combobox', { name: 'PromQL reducer' }).click();
       await this.page
         .getByRole('option', { name: reducer, exact: true })
         .click();

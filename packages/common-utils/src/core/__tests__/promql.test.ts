@@ -1,4 +1,5 @@
 import {
+  appliesPromqlReducer,
   displayTypeSupportsInstantQuery,
   displayTypeSupportsReducer,
   getPromqlMacroInputs,
@@ -108,14 +109,16 @@ describe('getQueriedPromqlSeries', () => {
 });
 
 describe('displayTypeSupportsInstantQuery', () => {
-  it.each([DisplayType.Number, DisplayType.Table])(
-    'offers an instant query on %s tiles',
-    displayType => {
-      expect(displayTypeSupportsInstantQuery({ displayType })).toBe(true);
-    },
-  );
+  it.each([
+    DisplayType.Number,
+    DisplayType.Table,
+    DisplayType.Pie,
+    DisplayType.Bar,
+  ])('offers an instant query on %s tiles', displayType => {
+    expect(displayTypeSupportsInstantQuery({ displayType })).toBe(true);
+  });
 
-  it.each([DisplayType.Line, DisplayType.StackedBar, DisplayType.Pie])(
+  it.each([DisplayType.Line, DisplayType.StackedBar])(
     'always range-queries %s tiles',
     displayType => {
       expect(displayTypeSupportsInstantQuery({ displayType })).toBe(false);
@@ -124,11 +127,12 @@ describe('displayTypeSupportsInstantQuery', () => {
 });
 
 describe('displayTypeSupportsReducer', () => {
-  it('reduces range buckets on number tiles', () => {
-    expect(
-      displayTypeSupportsReducer({ displayType: DisplayType.Number }),
-    ).toBe(true);
-  });
+  it.each([DisplayType.Number, DisplayType.Pie, DisplayType.Bar])(
+    'reduces range buckets on %s tiles',
+    displayType => {
+      expect(displayTypeSupportsReducer({ displayType })).toBe(true);
+    },
+  );
 
   it('keeps every sample on table tiles', () => {
     expect(displayTypeSupportsReducer({ displayType: DisplayType.Table })).toBe(
@@ -326,5 +330,39 @@ describe('isRangeQuery', () => {
 
   it('is false when nothing is queried', () => {
     expect(isRangeQuery({ displayType: DisplayType.Line })).toBe(false);
+  });
+});
+
+describe('appliesPromqlReducer', () => {
+  it.each(['instant', 'range'] as const)(
+    'applies to a %s query on a reducing display type',
+    queryType => {
+      expect(
+        appliesPromqlReducer({
+          promqlExpression: [
+            { expression: 'up', queryType, reducer: PromqlReducer.Max },
+          ],
+          displayType: DisplayType.Pie,
+        }),
+      ).toBe(true);
+    },
+  );
+
+  it('does not apply when no reducer is named', () => {
+    expect(
+      appliesPromqlReducer({
+        promqlExpression: [{ expression: 'up', queryType: 'instant' }],
+        displayType: DisplayType.Number,
+      }),
+    ).toBe(false);
+  });
+
+  it('does not apply to a display type that plots every sample', () => {
+    expect(
+      appliesPromqlReducer({
+        promqlExpression: [{ expression: 'up', reducer: PromqlReducer.Max }],
+        displayType: DisplayType.Line,
+      }),
+    ).toBe(false);
   });
 });

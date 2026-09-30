@@ -830,23 +830,6 @@ describe('DBNumberChart', () => {
       expect(screen.getByTestId('number-chart-value')).toHaveTextContent('1');
     });
 
-    // Several values under one name is the other failure: the expression is
-    // returning a range rather than a single sample per series.
-    it('warns differently when one series carries several values', () => {
-      setInstantRows([
-        { series_name: 'up', value: 1 },
-        { series_name: 'up', value: 2 },
-      ]);
-      mockFormatNumber.mockReturnValue('1');
-
-      renderWithMantine(<DBNumberChart config={promqlConfig} />);
-
-      expect(screen.getByTestId('multiple-values-indicator')).toHaveAttribute(
-        'aria-label',
-        'Query returned 2 values for one series',
-      );
-    });
-
     it('does not warn for a non-PromQL config with several rows', () => {
       mockUseQueriedChartConfig.mockReturnValue({
         data: {
