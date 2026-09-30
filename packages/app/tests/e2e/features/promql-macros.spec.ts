@@ -15,8 +15,6 @@ const ONE_SERIES = `${E2E_PROMQL_METRIC_NAME}{service="accounting"}`;
 
 test.describe('PromQL macros', { tag: ['@charts', '@full-stack'] }, () => {
   test('expands macros in the chart explorer', async ({ page }) => {
-    test.setTimeout(120000);
-
     const chartExplorerPage = new ChartExplorerPage(page);
     const editor = chartExplorerPage.chartEditor;
 
@@ -39,25 +37,20 @@ test.describe('PromQL macros', { tag: ['@charts', '@full-stack'] }, () => {
 
     await test.step('The preview shows the expanded duration', async () => {
       await editor.openGeneratedPromql();
-      const preview = page.getByTestId('chart-promql-preview');
-      await expect(preview).toContainText(/last_over_time\(.+\[\d+s\]\)/);
-      await expect(preview).not.toContainText('$__');
+      await expect
+        .poll(() => editor.getGeneratedPromqlText())
+        .toMatch(/^last_over_time\(.+\[\d+s\]\)$/);
     });
   });
 
   test('expands macros on a dashboard without variables', async ({ page }) => {
-    test.setTimeout(120000);
-
     const dashboardPage = new DashboardPage(page);
     const editor = dashboardPage.chartEditor;
     const value = page.getByTestId('number-chart-value');
 
     await test.step('Create a PromQL number tile that uses $__range', async () => {
       await dashboardPage.goto();
-      await dashboardPage.createNewDashboard();
-      await dashboardPage.addTile();
-      await expect(editor.nameInput).toBeVisible();
-      await editor.waitForDataToLoad();
+      await dashboardPage.openNewTileEditor();
       await editor.switchToPromqlMode();
       await editor.selectSource(PROMQL_SOURCE_NAME);
       await editor.setChartName('PromQL macro tile');
@@ -76,7 +69,7 @@ test.describe('PromQL macros', { tag: ['@charts', '@full-stack'] }, () => {
       await expect(dashboardPage.getTiles()).toHaveCount(1, {
         timeout: 10000,
       });
-      await expect(page.getByTestId('number-chart-value')).toHaveText('1', {
+      await expect(dashboardPage.getNumberTileValue()).toHaveText('1', {
         timeout: 30000,
       });
     });
