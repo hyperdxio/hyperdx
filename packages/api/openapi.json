@@ -3638,8 +3638,8 @@
           "cursor": {
             "type": "string",
             "maxLength": 1024,
-            "example": "eyJ2IjoxLCJ3IjoyLCJvIjo1MDAsImYiOiJhMWIyYzNkNGU1ZjZhN2I4In0",
-            "description": "Opaque pagination cursor returned as nextCursor by a previous\nresponse. When set, offset is ignored.\n\nKeep requesting pages until nextCursor is null. A page that\nreturns fewer rows than maxResults does NOT mean the results are\nexhausted: pages are scoped to a time window, and a window can\nhold fewer matching rows than the page size. Stopping on a short\npage silently truncates your results.\n"
+            "example": "start",
+            "description": "Send the literal string \"start\" to begin cursor paging, then pass\nback the nextCursor from each response. When set, offset is\nignored; omit cursor entirely to keep the existing offset paging\nbehaviour, which searches the whole requested range.\n\nKeep requesting pages until nextCursor is null. A page that\nreturns fewer rows than maxResults does NOT mean the results are\nexhausted: pages are scoped to a time window, and a window can\nhold fewer matching rows than the page size. Stopping on a short\npage silently truncates your results.\n"
           }
         }
       },
@@ -3666,7 +3666,7 @@
             "type": "string",
             "nullable": true,
             "example": "eyJ2IjoxLCJ3IjoyLCJvIjo1MDAsImYiOiJhMWIyYzNkNGU1ZjZhN2I4In0",
-            "description": "Cursor for the next page, or null when the walk is complete. Pass it back as cursor. Do not inspect its contents.\n"
+            "description": "Cursor for the next page, or null when the walk is complete or the request was not a cursor walk. Pass it back as cursor. Do not inspect its contents.\n"
           }
         }
       },

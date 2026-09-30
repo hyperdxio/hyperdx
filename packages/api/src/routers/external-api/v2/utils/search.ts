@@ -53,10 +53,19 @@ export function resolveSearchWindows(
   startDate: Date,
   endDate: Date,
 ): TimeWindow[] {
-  const canWindow = isTimestampExpressionInFirstOrderBy({
-    orderBy,
-    timestampValueExpression: source.timestampValueExpression,
-  } as Parameters<typeof isTimestampExpressionInFirstOrderBy>[0]);
+  // renderChartConfig forces both bounds inclusive for toStartOf*/Date-typed
+  // timestamp expressions, which defeats the half-open windows below and would
+  // return boundary rows on two consecutive pages. Fall back to one window.
+  const roundsTimestamp = /\btoStartOf|\btoDate\s*\(/i.test(
+    source.timestampValueExpression ?? '',
+  );
+
+  const canWindow =
+    !roundsTimestamp &&
+    isTimestampExpressionInFirstOrderBy({
+      orderBy,
+      timestampValueExpression: source.timestampValueExpression,
+    } as Parameters<typeof isTimestampExpressionInFirstOrderBy>[0]);
 
   if (!canWindow) {
     return [
@@ -180,12 +189,21 @@ export async function runSearchConfig({
   const effectiveOrderBy =
     config.orderBy?.trim() || resolveSearchOrderBy(source);
 
-  const windows = resolveSearchWindows(
-    source,
-    effectiveOrderBy,
-    startDate,
-    endDate,
-  );
+  // Window ONLY for an active cursor walk. An offset-only request keeps the
+  // legacy single-range behaviour: confining it to window 0 would make a large
+  // `offset` skip within the newest window and never reach older rows.
+  const windows = cursorState
+    ? resolveSearchWindows(source, effectiveOrderBy, startDate, endDate)
+    : [
+        {
+          startTime: startDate,
+          endTime: endDate,
+          windowIndex: 0,
+          direction: isFirstOrderByAscending(effectiveOrderBy)
+            ? ('ASC' as const)
+            : ('DESC' as const),
+        },
+      ];
   const windowIndex = cursorState?.windowIndex ?? 0;
   const window = windows[windowIndex];
   if (window == null) {
@@ -234,14 +252,22 @@ export async function runSearchConfig({
     unknown
   >[];
 
+  // Only a cursor walk gets a next cursor; offset-only callers are unchanged.
   let nextCursorState: SearchCursorState | null = null;
-  if (data.length >= maxResults) {
-    nextCursorState = {
-      windowIndex,
-      offset: effectiveOffset + data.length,
+  if (cursorState) {
+    const pinned = {
+      startTime: cursorState.startTime,
+      endTime: cursorState.endTime,
     };
-  } else if (windowIndex + 1 < windows.length) {
-    nextCursorState = { windowIndex: windowIndex + 1, offset: 0 };
+    if (data.length >= maxResults) {
+      nextCursorState = {
+        windowIndex,
+        offset: effectiveOffset + data.length,
+        ...pinned,
+      };
+    } else if (windowIndex + 1 < windows.length) {
+      nextCursorState = { windowIndex: windowIndex + 1, offset: 0, ...pinned };
+    }
   }
 
   return { isError: false, data, nextCursorState };

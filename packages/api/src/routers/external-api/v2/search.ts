@@ -16,6 +16,7 @@ import { externalDashboardSearchRequestSchema } from '@/utils/zod';
 
 import { runSearchConfig, type SearchErrorCode } from './utils/search';
 import {
+  CURSOR_START,
   decodeSearchCursor,
   encodeSearchCursor,
   fingerprintQuery,
@@ -138,10 +139,12 @@ const CH_USER_INPUT_ERRORS = new Set([
  *         cursor:
  *           type: string
  *           maxLength: 1024
- *           example: "eyJ2IjoxLCJ3IjoyLCJvIjo1MDAsImYiOiJhMWIyYzNkNGU1ZjZhN2I4In0"
+ *           example: "start"
  *           description: |
- *             Opaque pagination cursor returned as nextCursor by a previous
- *             response. When set, offset is ignored.
+ *             Send the literal string "start" to begin cursor paging, then pass
+ *             back the nextCursor from each response. When set, offset is
+ *             ignored; omit cursor entirely to keep the existing offset paging
+ *             behaviour, which searches the whole requested range.
  *
  *             Keep requesting pages until nextCursor is null. A page that
  *             returns fewer rows than maxResults does NOT mean the results are
@@ -173,8 +176,9 @@ const CH_USER_INPUT_ERRORS = new Set([
  *           nullable: true
  *           example: "eyJ2IjoxLCJ3IjoyLCJvIjo1MDAsImYiOiJhMWIyYzNkNGU1ZjZhN2I4In0"
  *           description: >
- *             Cursor for the next page, or null when the walk is complete. Pass
- *             it back as cursor. Do not inspect its contents.
+ *             Cursor for the next page, or null when the walk is complete or
+ *             the request was not a cursor walk. Pass it back as cursor. Do
+ *             not inspect its contents.
  */
 
 // Rejects semicolons and SELECT subqueries in column expressions.
@@ -267,8 +271,9 @@ const searchRequestSchema = z.object({
     .max(1024)
     .optional()
     .describe(
-      'Opaque pagination cursor from a previous response. When set, offset is ignored. ' +
-        'Keep requesting pages until nextCursor is null.',
+      'Set to "start" to begin cursor paging, then pass back the nextCursor ' +
+        'from each response. When set, offset is ignored. Keep requesting ' +
+        'pages until nextCursor is null.',
     ),
 });
 
@@ -427,12 +432,20 @@ router.post(
         whereLanguage: whereLanguage ?? 'lucene',
         select: select ?? '',
         orderBy: orderBy ?? '',
-        startTime: startDate.toISOString(),
-        endTime: endDate.toISOString(),
       });
 
+      // `cursor: "start"` opts into windowed cursor paging and pins the range
+      // resolved for this request, so a defaulted endTime stays stable across
+      // pages. Omitting `cursor` keeps the legacy single-range offset paging.
       let cursorState: SearchCursorState | undefined;
-      if (cursor != null) {
+      if (cursor === CURSOR_START) {
+        cursorState = {
+          windowIndex: 0,
+          offset: 0,
+          startTime: startDate.toISOString(),
+          endTime: endDate.toISOString(),
+        };
+      } else if (cursor != null) {
         const decoded = decodeSearchCursor(cursor, fingerprint);
         if ('error' in decoded) {
           searchQueryErrors.add(1, { error_type: decoded.error });

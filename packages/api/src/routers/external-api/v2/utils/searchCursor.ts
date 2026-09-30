@@ -2,10 +2,20 @@ import { createHash } from 'crypto';
 
 const CURSOR_VERSION = 1;
 const FINGERPRINT_LENGTH = 16;
+// Must match the `offset` field's cap in the request schema. The fingerprint is
+// an unkeyed hash of request fields, so a caller can mint a cursor carrying any
+// offset; without this bound that would skip more rows than the endpoint allows.
+const MAX_CURSOR_OFFSET = 10_000;
+
+/** Literal `cursor` value that starts a windowed cursor walk. */
+export const CURSOR_START = 'start';
 
 export type SearchCursorState = {
   windowIndex: number;
   offset: number;
+  /** Time range pinned by the walk, so a defaulted endTime stays stable. */
+  startTime: string;
+  endTime: string;
 };
 
 export type CursorFingerprintInput = {
@@ -14,8 +24,6 @@ export type CursorFingerprintInput = {
   whereLanguage: string;
   select: string;
   orderBy: string;
-  startTime: string;
-  endTime: string;
 };
 
 export type CursorDecodeError = {
@@ -25,7 +33,9 @@ export type CursorDecodeError = {
 /**
  * Binds a cursor to the query that produced it. Window indices resolve against
  * any range, so without this a cursor replayed after the caller edits `where`
- * or the time range returns pages from a different result set.
+ * returns pages from a different result set. The time range is carried in the
+ * cursor rather than fingerprinted, so a defaulted `endTime` resolving to a
+ * fresh `now` on each request does not invalidate the walk.
  */
 export function fingerprintQuery(input: CursorFingerprintInput): string {
   // JSON.stringify of a fixed-order array is unambiguous: a value containing
@@ -37,8 +47,6 @@ export function fingerprintQuery(input: CursorFingerprintInput): string {
     input.whereLanguage,
     input.select,
     input.orderBy,
-    input.startTime,
-    input.endTime,
   ]);
   return createHash('sha256')
     .update(canonical)
@@ -56,6 +64,8 @@ export function encodeSearchCursor(
       w: state.windowIndex,
       o: state.offset,
       f: fingerprint,
+      s: state.startTime,
+      e: state.endTime,
     }),
   ).toString('base64url');
 }
@@ -74,7 +84,7 @@ export function decodeSearchCursor(
   if (parsed == null || typeof parsed !== 'object') {
     return { error: 'INVALID_CURSOR' };
   }
-  const { v, w, o, f } = parsed as Record<string, unknown>;
+  const { v, w, o, f, s: start, e: end } = parsed as Record<string, unknown>;
   if (
     v !== CURSOR_VERSION ||
     typeof w !== 'number' ||
@@ -83,12 +93,17 @@ export function decodeSearchCursor(
     !Number.isInteger(o) ||
     w < 0 ||
     o < 0 ||
-    typeof f !== 'string'
+    o > MAX_CURSOR_OFFSET ||
+    typeof f !== 'string' ||
+    typeof start !== 'string' ||
+    typeof end !== 'string' ||
+    Number.isNaN(Date.parse(start)) ||
+    Number.isNaN(Date.parse(end))
   ) {
     return { error: 'INVALID_CURSOR' };
   }
   if (f !== fingerprint) {
     return { error: 'CURSOR_QUERY_MISMATCH' };
   }
-  return { windowIndex: w, offset: o };
+  return { windowIndex: w, offset: o, startTime: start, endTime: end };
 }
