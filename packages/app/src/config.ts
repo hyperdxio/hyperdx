@@ -82,6 +82,9 @@ export const IS_METRICS_ENABLED = true;
 export const IS_MTVIEWS_ENABLED = false;
 export const IS_SESSIONS_ENABLED = true;
 export const IS_PROMQL_ENABLED = env('NEXT_PUBLIC_ENABLE_PROMQL') === 'true';
+// Optional suffix appended to the brand name (e.g. "HyperDX UK"), for
+// operators running multiple instances. Empty by default.
+export const INSTANCE_LABEL = env('NEXT_PUBLIC_INSTANCE_LABEL') ?? '';
 // Alert detail page (/alerts/:id). Default off — currently enabled only in
 // dev (.env.development) and CI (e2e webserver) while the feature bakes.
 export const IS_ALERT_DETAILS_ENABLED =

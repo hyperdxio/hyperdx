@@ -8,6 +8,8 @@ import React, {
   useState,
 } from 'react';
 
+import { INSTANCE_LABEL } from '@/config';
+
 import {
   DEFAULT_THEME,
   getDevThemeName,
@@ -239,5 +241,7 @@ export function useThemeName(): ThemeName {
 /** Hook to get the current theme's display name for UI copy (e.g. "HyperDX" or "ClickStack"). */
 export function useBrandDisplayName(): string {
   const { theme } = useAppTheme();
-  return theme.displayName;
+  return INSTANCE_LABEL
+    ? `${theme.displayName} ${INSTANCE_LABEL}`
+    : theme.displayName;
 }
