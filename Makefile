@@ -6,22 +6,19 @@ include .env
 # ---------------------------------------------------------------------------
 # Multi-agent / worktree isolation
 # ---------------------------------------------------------------------------
-# Compute a deterministic port offset (0-99) from the working directory name
-# so that multiple worktrees can run integration tests in parallel without
-# port conflicts.  Override HDX_CI_SLOT manually if you need a specific slot.
-#
-# Port mapping (base + slot):
-#   ClickHouse HTTP : 18123 + slot
-#   MongoDB         : 39999 + slot
-#   API test server : 19000 + slot
-#   OpAMP           : 14320 + slot
+# Integration tests get a slot and ports per worktree so they can run in
+# parallel. scripts/slots.sh computes them; override the slot with
+# `make dev-int HDX_CI_SLOT=5`.
 # ---------------------------------------------------------------------------
-HDX_CI_SLOT      ?= $(shell printf '%s' "$(notdir $(CURDIR))" | cksum | awk '{print $$1 % 100}')
-HDX_CI_PROJECT   := int-$(HDX_CI_SLOT)
-HDX_CI_CH_PORT   := $(shell echo $$((18123 + $(HDX_CI_SLOT))))
-HDX_CI_MONGO_PORT:= $(shell echo $$((39999 + $(HDX_CI_SLOT))))
-HDX_CI_API_PORT  := $(shell echo $$((19000 + $(HDX_CI_SLOT))))
-HDX_CI_OPAMP_PORT:= $(shell echo $$((14320 + $(HDX_CI_SLOT))))
+# Value of one variable exported by hdx_ci_ports in scripts/slots.sh.
+ci_slots = $(shell HDX_CI_SLOT='$(HDX_CI_SLOT)' sh -c '. ./scripts/slots.sh && hdx_ci_ports && printf %s "$$$(1)"')
+
+HDX_CI_SLOT      := $(call ci_slots,HDX_CI_SLOT)
+HDX_CI_PROJECT   := $(call ci_slots,HDX_CI_PROJECT)
+HDX_CI_CH_PORT   := $(call ci_slots,HDX_CI_CH_PORT)
+HDX_CI_MONGO_PORT:= $(call ci_slots,HDX_CI_MONGO_PORT)
+HDX_CI_API_PORT  := $(call ci_slots,HDX_CI_API_PORT)
+HDX_CI_OPAMP_PORT:= $(call ci_slots,HDX_CI_OPAMP_PORT)
 
 export HDX_CI_CH_PORT HDX_CI_MONGO_PORT HDX_CI_API_PORT HDX_CI_OPAMP_PORT
 
@@ -135,9 +132,9 @@ dev-int-down:
 
 .PHONY: dev-e2e-down
 dev-e2e-down:
-	$(eval HDX_E2E_SLOT := $(shell printf '%s' "$(notdir $(CURDIR))" | cksum | awk '{print $$1 % 100}'))
-	docker compose -p e2e-$(HDX_E2E_SLOT) -f packages/app/tests/e2e/docker-compose.yml down -v
-	@for port in $$((21000 + $(HDX_E2E_SLOT))) $$((20320 + $(HDX_E2E_SLOT))) $$((21300 + $(HDX_E2E_SLOT))) $$((21200 + $(HDX_E2E_SLOT))); do \
+	@. ./scripts/slots.sh && hdx_e2e_ports && \
+	docker compose -p "$$E2E_PROJECT" -f packages/app/tests/e2e/docker-compose.yml down -v && \
+	for port in $$HDX_E2E_API_PORT $$HDX_E2E_OPAMP_PORT $$HDX_E2E_APP_PORT $$HDX_E2E_APP_LOCAL_PORT; do \
 		pids=$$(lsof -ti :$$port 2>/dev/null); \
 		for pid in $$pids; do \
 			echo "Killing process $$pid on port $$port"; \
@@ -196,6 +193,7 @@ ci-unit:
 	node --test .github/scripts/__tests__/release-notes.test.mjs
 	node --test .github/scripts/__tests__/changeset-hash.test.mjs
 	node --test .github/scripts/code-review/__tests__/review-comments.test.mjs
+	node --test scripts/__tests__/slots.test.mjs
 
 .PHONY: ci-triage
 ci-triage:
@@ -205,9 +203,6 @@ ci-triage:
 # ---------------------------------------------------------------------------
 # E2E tests — port isolation is handled by scripts/test-e2e.sh
 # ---------------------------------------------------------------------------
-# Slot for the Playwright report server (only used by the Makefile REPORT flag)
-HDX_E2E_SLOT ?= $(shell printf '%s' "$(notdir $(CURDIR))" | cksum | awk '{print $$1 % 100}')
-
 .PHONY: e2e
 e2e:
 	./scripts/test-e2e.sh
@@ -227,7 +222,7 @@ dev-e2e-clean:
 dev-e2e:
 	./scripts/test-e2e.sh --dev $(if $(FILE),$(FILE)) $(if $(GREP),--grep "$(GREP)") $(ARGS); \
 	ret=$$?; \
-	$(if $(REPORT),cd packages/app && npx playwright show-report --port $$((9323 + $(HDX_E2E_SLOT)));) \
+	$(if $(REPORT),. ./scripts/slots.sh && hdx_e2e_ports && cd packages/app && npx playwright show-report --port $$HDX_E2E_REPORT_PORT;) \
 	exit $$ret
 
 
