@@ -415,7 +415,7 @@ describe('ChartPreviewPanel', () => {
       await userEvent.hover(wrapper!);
 
       expect(
-        await screen.findByText(/Variables could not be expanded/),
+        await screen.findByText(/Expression could not be expanded/),
       ).toBeInTheDocument();
       expect(
         screen.queryByTestId('chart-promql-preview'),

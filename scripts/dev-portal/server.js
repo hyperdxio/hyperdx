@@ -18,7 +18,7 @@
 // ---------------------------------------------------------------------------
 
 const http = require('node:http');
-const { execSync, spawn } = require('node:child_process');
+const { execFileSync, execSync, spawn } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 const net = require('node:net');
@@ -697,10 +697,18 @@ function discoverHistory() {
     // valid fallback (only for the slot that matches this worktree).
     let localSlot = null;
     try {
-      const cwd = process.cwd();
-      const base = path.basename(cwd);
-      const cksum = [...base].reduce((s, c) => s + c.charCodeAt(0), 0);
-      localSlot = cksum % 100;
+      localSlot = Number(
+        execFileSync(
+          'sh',
+          [
+            '-c',
+            '. "$0" && hdx_dev_ports "$1" && printf %s "$HDX_DEV_SLOT"',
+            path.join(__dirname, '..', 'slots.sh'),
+            process.cwd(),
+          ],
+          { encoding: 'utf8' },
+        ),
+      );
     } catch {
       // ignore
     }
