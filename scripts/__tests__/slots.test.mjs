@@ -193,12 +193,13 @@ test('with-slots.sh runs a command with the dev ports of its own worktree', () =
 
 test('no other code derives a slot', () => {
   // The slot formula is `cksum` of the folder name; slots.sh must be the only
-  // copy so the dev stack, tests, and tools can never disagree.
+  // copy so the dev stack, tests, and tools can never disagree. Any tracked use
+  // of the word fails this; if a file needs `cksum` for something else,
+  // exclude it below.
   const files = execFileSync(
     'git',
     [
       'grep',
-      '--untracked',
       '-lw',
       'cksum',
       '--',

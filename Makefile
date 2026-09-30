@@ -10,15 +10,16 @@ include .env
 # parallel. scripts/slots.sh computes them; override the slot with
 # `make dev-int HDX_CI_SLOT=5`.
 # ---------------------------------------------------------------------------
-# Value of one variable exported by hdx_ci_ports in scripts/slots.sh.
-ci_slots = $(shell HDX_CI_SLOT='$(HDX_CI_SLOT)' sh -c '. ./scripts/slots.sh && hdx_ci_ports && printf %s "$$$(1)"')
+# One shell for all six values: this runs on every make invocation, and each
+# shell costs ~20ms.
+_hdx_ci := $(shell HDX_CI_SLOT='$(HDX_CI_SLOT)' sh -c '. ./scripts/slots.sh && hdx_ci_ports && echo "$$HDX_CI_SLOT $$HDX_CI_PROJECT $$HDX_CI_CH_PORT $$HDX_CI_MONGO_PORT $$HDX_CI_API_PORT $$HDX_CI_OPAMP_PORT"')
 
-HDX_CI_SLOT      := $(call ci_slots,HDX_CI_SLOT)
-HDX_CI_PROJECT   := $(call ci_slots,HDX_CI_PROJECT)
-HDX_CI_CH_PORT   := $(call ci_slots,HDX_CI_CH_PORT)
-HDX_CI_MONGO_PORT:= $(call ci_slots,HDX_CI_MONGO_PORT)
-HDX_CI_API_PORT  := $(call ci_slots,HDX_CI_API_PORT)
-HDX_CI_OPAMP_PORT:= $(call ci_slots,HDX_CI_OPAMP_PORT)
+HDX_CI_SLOT      := $(word 1,$(_hdx_ci))
+HDX_CI_PROJECT   := $(word 2,$(_hdx_ci))
+HDX_CI_CH_PORT   := $(word 3,$(_hdx_ci))
+HDX_CI_MONGO_PORT:= $(word 4,$(_hdx_ci))
+HDX_CI_API_PORT  := $(word 5,$(_hdx_ci))
+HDX_CI_OPAMP_PORT:= $(word 6,$(_hdx_ci))
 
 export HDX_CI_CH_PORT HDX_CI_MONGO_PORT HDX_CI_API_PORT HDX_CI_OPAMP_PORT
 
