@@ -87,6 +87,9 @@ services:
       # NEXT_PUBLIC_ENABLE_PROMQL: 'true'
       # Uncomment to enable the alert detail page (in development)
       # NEXT_PUBLIC_ENABLE_ALERT_DETAILS: 'true'
+      # Uncomment and set to append a label to the browser tab title, e.g.
+      # for operators running multiple instances (produces "HyperDX UK")
+      # NEXT_PUBLIC_INSTANCE_LABEL: 'UK'
       DEFAULT_CONNECTIONS:
         '[{"name":"Local
         ClickHouse","host":"http://ch-server:8123","username":"default","password":""}]'
