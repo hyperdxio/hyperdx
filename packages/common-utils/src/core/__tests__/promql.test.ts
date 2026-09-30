@@ -1,9 +1,11 @@
 import {
   displayTypeSupportsInstantQuery,
   displayTypeSupportsReducer,
+  getPromqlMacroInputs,
   getPromqlSeries,
   getQueriedPromqlSeries,
   isRangeQuery,
+  PROMQL_MACROS,
   promqlSeriesQueryType,
   promqlStep,
   reducePromqlSamples,
@@ -224,6 +226,45 @@ describe('promqlStep with a window', () => {
     expect(promqlStep('auto', hour)).toBe('60s');
     expect(promqlStep(undefined, hour)).toBe('60s');
     expect(promqlStep('auto', month)).not.toBe('60s');
+  });
+});
+
+describe('PROMQL_MACROS', () => {
+  const hour: [Date, Date] = [
+    new Date('2024-01-01T00:00:00Z'),
+    new Date('2024-01-01T01:00:00Z'),
+  ];
+  const expandMacro = (
+    name: string,
+    granularity: string,
+    dateRange: [Date, Date],
+  ) =>
+    PROMQL_MACROS.find(macro => macro.name === name)?.expand(
+      getPromqlMacroInputs(granularity, dateRange),
+    );
+
+  it('uses the step for $__interval', () => {
+    expect(expandMacro('interval', '5 minute', hour)).toBe('300s');
+    expect(expandMacro('interval', 'auto', hour)).toBe(
+      promqlStep('auto', hour),
+    );
+  });
+
+  it('rounds the window length to seconds for $__range', () => {
+    expect(expandMacro('range', '1 minute', hour)).toBe('3600s');
+    expect(
+      expandMacro('range', '1 minute', [
+        new Date('2024-01-01T00:00:00.000Z'),
+        new Date('2024-01-01T00:00:10.600Z'),
+      ]),
+    ).toBe('11s');
+    expect(expandMacro('range', '1 minute', [hour[0], hour[0]])).toBe('1s');
+  });
+
+  it('floors $__rate_interval at four scrape intervals', () => {
+    expect(expandMacro('rate_interval', '15 second', hour)).toBe('60s');
+    expect(expandMacro('rate_interval', '1 minute', hour)).toBe('75s');
+    expect(expandMacro('rate_interval', '5 minute', hour)).toBe('315s');
   });
 });
 
