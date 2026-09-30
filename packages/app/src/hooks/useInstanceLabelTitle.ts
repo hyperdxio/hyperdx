@@ -14,13 +14,17 @@ export function useInstanceLabelTitle(): void {
     if (!titleEl) {
       return;
     }
+    // document.title strips trailing whitespace, so discard our own write's
+    // mutation record rather than trusting endsWith to stop the loop.
     const applySuffix = () => {
-      if (!document.title.endsWith(suffix)) {
-        document.title = `${document.title}${suffix}`;
+      if (document.title.endsWith(suffix)) {
+        return;
       }
+      document.title = `${document.title}${suffix}`;
+      observer.takeRecords();
     };
-    applySuffix();
     const observer = new MutationObserver(applySuffix);
+    applySuffix();
     observer.observe(titleEl, {
       childList: true,
       characterData: true,

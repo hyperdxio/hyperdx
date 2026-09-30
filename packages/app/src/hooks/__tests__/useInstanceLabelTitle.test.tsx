@@ -14,14 +14,11 @@ describe('useInstanceLabelTitle', () => {
     expect(document.title).toBe('Search - HyperDX UK');
   });
 
-  it('keeps appending the label as the title changes on navigation', done => {
+  it('keeps appending the label as the title changes on navigation', async () => {
     renderHook(() => useInstanceLabelTitle());
     document.title = 'Alerts - HyperDX';
-    // MutationObserver callbacks are microtasks; flush before asserting.
-    queueMicrotask(() => {
-      expect(document.title).toBe('Alerts - HyperDX UK');
-      done();
-    });
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(document.title).toBe('Alerts - HyperDX UK');
   });
 
   it('does not double-append if the title already has the suffix', () => {
