@@ -222,6 +222,7 @@ describe('buildRenderedPromqlExpression', () => {
       promqlExpression?: PromqlExpressionList;
       displayType?: DisplayType;
       variables?: ChartVariable[];
+      granularity?: string;
     } = {},
   ): ChartConfigWithDateRange => ({
     configType: 'promql',
@@ -302,6 +303,67 @@ describe('buildRenderedPromqlExpression', () => {
     ).toEqual(['up{service=~"api"}', 'errors{service=~"api"}']);
   });
 
+  it('expands macros with the granularity the chart queries with', () => {
+    const expression = 'rate(up[$__rate_interval]) / $__interval / $__range';
+    const render = (displayType: DisplayType, granularity?: string) =>
+      buildRenderedPromqlExpression(
+        promqlConfig({
+          displayType,
+          granularity,
+          promqlExpression: [{ expression }],
+        }),
+      )?.expressions?.[0].expression;
+
+    expect(render(DisplayType.Line, '5 minute')).toBe(
+      'rate(up[315s]) / 300s / 86400s',
+    );
+    // `auto` resolves to the chart's 80-bucket granularity (30 minutes for a
+    // day), not promqlStep's own fallback.
+    expect(render(DisplayType.Line, 'auto')).toBe(
+      'rate(up[1815s]) / 1800s / 86400s',
+    );
+    expect(render(DisplayType.Number, 'auto')).toBe(
+      'rate(up[1815s]) / 1800s / 86400s',
+    );
+  });
+
+  it('expands macros with the granularity a table queries with', () => {
+    const seventyMinutes: [Date, Date] = [
+      new Date('2024-01-01T00:00:00Z'),
+      new Date('2024-01-01T01:10:00Z'),
+    ];
+    expect(
+      buildRenderedPromqlExpression({
+        ...promqlConfig({
+          displayType: DisplayType.Table,
+          granularity: 'auto',
+          promqlExpression: [{ expression: 'rate(up[$__interval])' }],
+        }),
+        dateRange: seventyMinutes,
+      })?.expressions?.[0].expression,
+    ).toBe('rate(up[60s])');
+  });
+
+  it.each([DisplayType.Pie, DisplayType.Bar])(
+    'expands macros with the aligned range a %s tile queries with',
+    displayType => {
+      const unaligned: [Date, Date] = [
+        new Date('2024-01-01T00:00:14Z'),
+        new Date('2024-01-01T01:10:14Z'),
+      ];
+      expect(
+        buildRenderedPromqlExpression({
+          ...promqlConfig({
+            displayType,
+            granularity: 'auto',
+            promqlExpression: [{ expression: 'up[$__interval] / $__range' }],
+          }),
+          dateRange: unaligned,
+        })?.expressions?.[0].expression,
+      ).toBe('up[60s] / 4260s');
+    },
+  );
+
   it('reports a substitution failure instead of an expression', () => {
     const result = buildRenderedPromqlExpression(
       promqlConfig({
@@ -310,7 +372,7 @@ describe('buildRenderedPromqlExpression', () => {
       }),
     );
     expect(result?.expressions).toBeUndefined();
-    expect(result?.error).toMatch(/Variables could not be expanded/);
+    expect(result?.error).toMatch(/Expression could not be expanded/);
   });
 });
 

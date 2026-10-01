@@ -21,6 +21,7 @@ import {
   appendChunk,
   getGranularityAlignedTimeWindows,
   getMinGranularitySeconds,
+  mergeQuerySettings,
   useQueriedChartConfig,
 } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
@@ -919,7 +920,7 @@ describe('useChartConfig', () => {
         });
       });
 
-      describe('range reducers', () => {
+      describe('reducers', () => {
         const rangeSamples = {
           status: 'success' as const,
           data: {
@@ -1103,6 +1104,65 @@ describe('useChartConfig', () => {
             expect(prometheusApi.queryRange).toHaveBeenCalledTimes(2),
           );
         });
+
+        it('reduces the matrix an instant range selector returns', async () => {
+          jest.mocked(prometheusApi.query).mockResolvedValue(rangeSamples);
+
+          const config = createPromqlConfig({
+            displayType: DisplayType.Pie,
+            promqlExpression: [
+              {
+                expression: 'e2e_service_up[5m]',
+                queryType: 'instant',
+                reducer: PromqlReducer.Max,
+              },
+            ],
+          });
+          const { result } = renderHook(() => useQueriedChartConfig(config), {
+            wrapper,
+          });
+
+          await waitFor(() => expect(result.current.isSuccess).toBe(true));
+          expect(prometheusApi.queryRange).not.toHaveBeenCalled();
+          expect(result.current.data?.data).toEqual([
+            { series_name: 'e2e_service_up{service="accounting"}', value: 8 },
+            { series_name: 'e2e_service_up{service="api-server"}', value: 3 },
+          ]);
+        });
+
+        it('passes an instant vector through any reducer unchanged', async () => {
+          jest.mocked(prometheusApi.query).mockResolvedValue({
+            status: 'success',
+            data: {
+              resultType: 'vector',
+              result: [
+                {
+                  metric: { __name__: 'e2e_service_up', service: 'accounting' },
+                  value: [1673312400, '7'],
+                },
+              ],
+            },
+          });
+
+          const config = createPromqlConfig({
+            displayType: DisplayType.Number,
+            promqlExpression: [
+              {
+                expression: 'e2e_service_up',
+                queryType: 'instant',
+                reducer: PromqlReducer.Sum,
+              },
+            ],
+          });
+          const { result } = renderHook(() => useQueriedChartConfig(config), {
+            wrapper,
+          });
+
+          await waitFor(() => expect(result.current.isSuccess).toBe(true));
+          expect(result.current.data?.data).toEqual([
+            { series_name: 'e2e_service_up', value: 7 },
+          ]);
+        });
       });
     });
 
@@ -1153,6 +1213,73 @@ describe('useChartConfig', () => {
       });
       expect(result.current.isLoading).toBe(false);
       expect(result.current.isPending).toBe(false);
+    });
+
+    it('passes additionalQuerySettings to the query', async () => {
+      const config = createMockChartConfig({
+        dateRange: undefined,
+        granularity: undefined,
+      });
+      const additionalQuerySettings = [
+        { setting: 'asterisk_include_alias_columns', value: '1' },
+      ];
+
+      mockClickhouseClient.queryChartConfig.mockResolvedValue(
+        createMockQueryResponse([]),
+      );
+
+      const { result } = renderHook(
+        () => useQueriedChartConfig(config, { additionalQuerySettings }),
+        {
+          wrapper,
+        },
+      );
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+      expect(mockClickhouseClient.queryChartConfig).toHaveBeenCalledTimes(1);
+      expect(mockClickhouseClient.queryChartConfig).toHaveBeenCalledWith({
+        config,
+        metadata: expect.any(Object),
+        opts: {
+          abort_signal: expect.any(AbortSignal),
+        },
+        querySettings: additionalQuerySettings,
+      });
+    });
+
+    it('adds additionalQuerySettings to a queryKey that the caller passes', async () => {
+      const config = createMockChartConfig({
+        dateRange: undefined,
+        granularity: undefined,
+      });
+      const additionalQuerySettings = [
+        { setting: 'asterisk_include_alias_columns', value: '1' },
+      ];
+
+      mockClickhouseClient.queryChartConfig.mockResolvedValue(
+        createMockQueryResponse([]),
+      );
+
+      const { result } = renderHook(
+        () =>
+          useQueriedChartConfig(config, {
+            queryKey: ['caller-key'],
+            additionalQuerySettings,
+          }),
+        {
+          wrapper,
+        },
+      );
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+      expect(
+        queryClient.getQueryCache().find({
+          queryKey: ['caller-key', additionalQuerySettings],
+          exact: true,
+        }),
+      ).toBeDefined();
     });
 
     it('fetches data without chunking when no granularity is provided', async () => {
@@ -2301,6 +2428,43 @@ describe('useChartConfig', () => {
 
     it('returns undefined when the source is undefined', () => {
       expect(getMinGranularitySeconds(undefined)).toBeUndefined();
+    });
+  });
+
+  describe('mergeQuerySettings', () => {
+    const sourceSettings = [{ setting: 'max_threads', value: '4' }];
+
+    it('returns the source settings unchanged when there is nothing to add', () => {
+      expect(mergeQuerySettings(sourceSettings, undefined)).toBe(
+        sourceSettings,
+      );
+      expect(mergeQuerySettings(undefined, [])).toBeUndefined();
+    });
+
+    it('adds the additional settings after the source settings', () => {
+      expect(
+        mergeQuerySettings(sourceSettings, [
+          { setting: 'asterisk_include_alias_columns', value: '1' },
+        ]),
+      ).toEqual([
+        { setting: 'max_threads', value: '4' },
+        { setting: 'asterisk_include_alias_columns', value: '1' },
+      ]);
+    });
+
+    it('adds only the settings that the source does not define', () => {
+      expect(
+        mergeQuerySettings(
+          [{ setting: 'asterisk_include_alias_columns', value: '0' }],
+          [
+            { setting: 'asterisk_include_materialized_columns', value: '1' },
+            { setting: 'asterisk_include_alias_columns', value: '1' },
+          ],
+        ),
+      ).toEqual([
+        { setting: 'asterisk_include_alias_columns', value: '0' },
+        { setting: 'asterisk_include_materialized_columns', value: '1' },
+      ]);
     });
   });
 

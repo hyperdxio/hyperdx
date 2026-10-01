@@ -1,4 +1,5 @@
 import { createContext, use, useCallback, useMemo } from 'react';
+import { PROMQL_MACROS } from '@hyperdx/common-utils/dist/core/promql';
 import {
   MacroSuggestion,
   VARIABLE_MACRO_SUGGESTIONS,
@@ -206,6 +207,10 @@ export function buildPromqlVariableCompletions(
 
   return variables.flatMap(getPromqlVariableCompletions);
 }
+
+/** Completions for the macros a PromQL chart expression can use. */
+export const PROMQL_MACRO_COMPLETIONS: SQLCompletion[] =
+  PROMQL_MACROS.map(toMacroCompletion);
 
 /** One bare `$name` suggestion for a Lucene input. */
 export type LuceneVariableSuggestion = {

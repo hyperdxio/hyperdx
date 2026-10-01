@@ -22,7 +22,6 @@ import {
   DASHBOARD_VARIABLE_NAME_PATTERN,
   DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED,
   DisplayType,
-  PromqlExpressionList,
   SavedChartConfig,
   SearchConditionLanguage,
   SelectList,
@@ -1019,38 +1018,6 @@ export function substituteChartConfigVariables<
   );
 
   return { ...substituted, variables: undefined };
-}
-
-/**
- * Expand the variable references in a PromQL config's expression(s), returning it
- * with `variables` consumed. `variables` being undefined means this is a no-op.
- *
- * Dropping `variables` from the result ensures a config can't be substituted
- * twice, the same way `substituteChartConfigVariables` does.
- */
-export function substitutePromqlChartConfigVariables<
-  T extends {
-    promqlExpression: PromqlExpressionList;
-    variables?: ChartVariable[];
-  },
->(config: T): T {
-  const { promqlExpression, variables } = config;
-  if (variables == null) return config;
-
-  const substitute = (expression: string) =>
-    substituteVariables(expression, { variables, inputLanguage: 'promql' });
-
-  return {
-    ...config,
-    promqlExpression:
-      typeof promqlExpression === 'string'
-        ? substitute(promqlExpression)
-        : promqlExpression.map(series => ({
-            ...series,
-            expression: substitute(series.expression),
-          })),
-    variables: undefined,
-  };
 }
 
 /**
