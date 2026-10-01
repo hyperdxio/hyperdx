@@ -27,8 +27,8 @@ import {
   DISCOVERABLE_METRIC_KINDS,
   type DiscoverableMetricKind,
 } from './metricKinds';
+import { parseTimeRange } from './metricTimeRange';
 
-const DEFAULT_LOOKBACK_MS = 24 * 60 * 60 * 1000;
 // Matches the 30s cap the MCP query tools use.
 const DESCRIBE_TIMEOUT_MS = 30_000;
 
@@ -139,25 +139,6 @@ type KindDetail = {
  * need different agent guidance (retry/report vs. widen the window).
  */
 type FetchResult<T> = { ok: true; data: T } | { ok: false; error: string };
-
-function parseTimeRange(
-  startTime?: string,
-  endTime?: string,
-): { error: string } | { startDate: Date; endDate: Date } {
-  const endDate = endTime ? new Date(endTime) : new Date();
-  const startDate = startTime
-    ? new Date(startTime)
-    : new Date(endDate.getTime() - DEFAULT_LOOKBACK_MS);
-  if (isNaN(endDate.getTime()) || isNaN(startDate.getTime())) {
-    return {
-      error: 'Invalid startTime or endTime: must be valid ISO 8601 strings',
-    };
-  }
-  if (startDate >= endDate) {
-    return { error: 'endTime must be greater than startTime' };
-  }
-  return { startDate, endDate };
-}
 
 /**
  * Fetch unit and description for a metric name on a single kind table.

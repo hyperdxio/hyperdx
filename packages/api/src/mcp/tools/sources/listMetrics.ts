@@ -9,28 +9,20 @@ import { getSource } from '@/controllers/sources';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpServerError, mcpUserError } from '@/mcp/utils/errors';
 import logger from '@/utils/logger';
-import {
-  decodeCursor as decodeCursorPayload,
-  encodeCursor as encodeCursorPayload,
-} from '@/utils/pagination';
 
+import { KIND_TIMED_OUT_ERROR, scanKindsForPage } from './listMetricsPage';
+import { enrichEntries, fetchMetricNames } from './listMetricsQueries';
 import {
-  KIND_TIMED_OUT_ERROR,
-  type MetricEntry,
-  scanKindsForPage,
-} from './listMetricsPage';
-import {
-  fetchMetricNames,
-  fetchMetricUnitsAndDescriptions,
-} from './listMetricsQueries';
+  decodeCursor,
+  DEFAULT_LIMIT,
+  encodeCursor,
+  listMetricsSchema,
+} from './listMetricsSchema';
 import {
   DISCOVERABLE_METRIC_KINDS,
   type DiscoverableMetricKind,
 } from './metricKinds';
-
-const DEFAULT_LIMIT = 50;
-const MAX_LIMIT = 500;
-const DEFAULT_LOOKBACK_MS = 24 * 60 * 60 * 1000;
+import { parseTimeRange } from './metricTimeRange';
 
 // Wall-clock budget for the whole call, matching the 30s cap the MCP query
 // tools use.
@@ -45,101 +37,6 @@ const ENRICH_RESERVE_MS = 4_000;
 // ClickHouse returns what it has read before the wall clock fires.
 const NAMES_MAX_EXEC_SECONDS = 24;
 const ENRICH_MAX_EXEC_SECONDS = 3;
-
-// ─── Cursor ──────────────────────────────────────────────────────────────────
-
-const cursorPayloadSchema = z.object({
-  kind: z.enum(DISCOVERABLE_METRIC_KINDS),
-  // Absent when the next page starts at the beginning of `kind`.
-  lastName: z.string().optional(),
-});
-
-export type ListMetricsCursorPayload = z.infer<typeof cursorPayloadSchema>;
-
-/** @internal Exported for testing. */
-export function encodeCursor(payload: ListMetricsCursorPayload): string {
-  return encodeCursorPayload(payload);
-}
-
-/** @internal Exported for testing. */
-export function decodeCursor(raw: string): ListMetricsCursorPayload | null {
-  return decodeCursorPayload(raw, cursorPayloadSchema);
-}
-
-// ─── Schema ──────────────────────────────────────────────────────────────────
-
-const listMetricsSchema = z.object({
-  sourceId: z
-    .string()
-    .describe(
-      'Source ID. Must reference a metric source — get IDs from clickstack_list_sources.',
-    ),
-  kind: z
-    .enum(DISCOVERABLE_METRIC_KINDS)
-    .optional()
-    .describe(
-      'Optional metric kind filter. Omit to scan every populated kind on the source ' +
-        '(gauge, sum, histogram, exponential histogram, summary). Set to narrow results to one kind. ' +
-        'NOTE: summary metrics are discovery-only — they cannot be passed to ' +
-        'clickstack_timeseries / clickstack_table; query them with clickstack_sql.',
-    ),
-  namePattern: z
-    .string()
-    .optional()
-    .describe(
-      'Optional ClickHouse ILIKE pattern applied to MetricName server-side. ' +
-        'Use % as the wildcard. Examples: "system.cpu.%", "%duration%", "http.server.%".',
-    ),
-  startTime: z
-    .string()
-    .optional()
-    .describe(
-      'Restrict to metrics with data points after this ISO 8601 timestamp. ' +
-        'Default: 24 hours before endTime (or now).',
-    ),
-  endTime: z
-    .string()
-    .optional()
-    .describe('End of the time window as ISO 8601. Default: now.'),
-  limit: z
-    .number()
-    .int()
-    .min(1)
-    .max(MAX_LIMIT)
-    .optional()
-    .default(DEFAULT_LIMIT)
-    .describe(
-      `Max metrics returned per page. Default ${DEFAULT_LIMIT}, max ${MAX_LIMIT}.`,
-    ),
-  cursor: z
-    .string()
-    .optional()
-    .describe(
-      'Opaque pagination cursor returned by a previous call as `nextCursor`. ' +
-        'Pass it back unchanged to get the next page.',
-    ),
-});
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function parseTimeRange(
-  startTime?: string,
-  endTime?: string,
-): { error: string } | { startDate: Date; endDate: Date } {
-  const endDate = endTime ? new Date(endTime) : new Date();
-  const startDate = startTime
-    ? new Date(startTime)
-    : new Date(endDate.getTime() - DEFAULT_LOOKBACK_MS);
-  if (isNaN(endDate.getTime()) || isNaN(startDate.getTime())) {
-    return {
-      error: 'Invalid startTime or endTime: must be valid ISO 8601 strings',
-    };
-  }
-  if (startDate >= endDate) {
-    return { error: 'endTime must be greater than startTime' };
-  }
-  return { startDate, endDate };
-}
 
 // ─── Tool registration ───────────────────────────────────────────────────────
 
@@ -213,90 +110,6 @@ export function registerListMetrics({
       }
     },
   );
-}
-
-type Enrichments = Awaited<ReturnType<typeof fetchMetricUnitsAndDescriptions>>;
-
-/**
- * Attach unit and description to each entry. Best effort: on failure or
- * timeout the names are still returned.
- */
-async function enrichEntries({
-  entries,
-  clickhouseClient,
-  metadata,
-  databaseName,
-  metricTables,
-  connectionId,
-  startDate,
-  endDate,
-  signal,
-}: {
-  entries: MetricEntry[];
-  clickhouseClient: ClickhouseClient;
-  metadata: ReturnType<typeof getMetadata>;
-  databaseName: string;
-  metricTables: Partial<Record<DiscoverableMetricKind, string>>;
-  connectionId: string;
-  startDate: Date;
-  endDate: Date;
-  signal: AbortSignal;
-}): Promise<MetricEntry[]> {
-  const kinds = [...new Set(entries.map(e => e.kind))];
-  // metadata.getColumns takes no abort signal, so race the whole lookup
-  // against it; otherwise a slow schema lookup could outlast the call's
-  // wall clock and discard the names already collected.
-  const aborted = new Promise<undefined>(resolve => {
-    if (signal.aborted) resolve(undefined);
-    signal.addEventListener('abort', () => resolve(undefined), { once: true });
-  });
-  const lookups = Promise.all(
-    kinds.map(async (kind): Promise<[DiscoverableMetricKind, Enrichments]> => {
-      const tableName = metricTables[kind]!;
-      try {
-        // Skip MetricUnit / MetricDescription on non-OTel-default schemas.
-        const columns = await metadata.getColumns({
-          databaseName,
-          tableName,
-          connectionId,
-        });
-        const columnNames = new Set(columns.map(c => c.name));
-        const enrichments = await fetchMetricUnitsAndDescriptions({
-          clickhouseClient,
-          databaseName,
-          tableName,
-          connectionId,
-          names: entries.filter(e => e.kind === kind).map(e => e.name),
-          startDate,
-          endDate,
-          hasUnit: columnNames.has('MetricUnit'),
-          hasDescription: columnNames.has('MetricDescription'),
-          maxExecutionSeconds: ENRICH_MAX_EXEC_SECONDS,
-          signal,
-        });
-        return [kind, enrichments];
-      } catch (e) {
-        logger.warn(
-          { kind, tableName, error: e instanceof Error ? e.message : e },
-          'Failed to fetch metric unit/description',
-        );
-        return [kind, new Map()];
-      }
-    }),
-  );
-  const byKind = await Promise.race([lookups, aborted]);
-  if (!byKind) {
-    logger.warn(
-      { kinds },
-      'Timed out fetching metric unit/description; returning names only',
-    );
-    return entries;
-  }
-  const enrichments = new Map(byKind);
-  return entries.map(entry => ({
-    ...entry,
-    ...enrichments.get(entry.kind)?.get(entry.name),
-  }));
 }
 
 async function listMetricsImpl(
@@ -414,6 +227,7 @@ async function listMetricsImpl(
     connectionId,
     startDate,
     endDate,
+    maxExecutionSeconds: ENRICH_MAX_EXEC_SECONDS,
     signal: enrichSignal,
   });
 

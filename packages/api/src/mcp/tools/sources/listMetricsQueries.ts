@@ -4,9 +4,14 @@ import {
   concatChSql,
   tableExpr,
 } from '@hyperdx/common-utils/dist/clickhouse';
+import type { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import SqlString from 'sqlstring';
 
 import type { ClickhouseClient } from '@/clickhouse';
+import logger from '@/utils/logger';
+
+import type { MetricEntry } from './listMetricsPage';
+import type { DiscoverableMetricKind } from './metricKinds';
 
 // Both queries use timeout_overflow_mode: 'break' so ClickHouse returns what
 // it has read when the cap is hit instead of failing.
@@ -106,7 +111,7 @@ export async function fetchMetricNames({
  * matches the `anyLast` this replaced; unit and description are effectively
  * constant per metric.
  */
-export async function fetchMetricUnitsAndDescriptions({
+async function fetchMetricUnitsAndDescriptions({
   clickhouseClient,
   databaseName,
   tableName,
@@ -169,4 +174,90 @@ export async function fetchMetricUnitsAndDescriptions({
     });
   }
   return enrichments;
+}
+
+type Enrichments = Awaited<ReturnType<typeof fetchMetricUnitsAndDescriptions>>;
+
+/**
+ * Attach unit and description to each entry. Best effort: on failure or
+ * timeout the names are still returned.
+ */
+export async function enrichEntries({
+  entries,
+  clickhouseClient,
+  metadata,
+  databaseName,
+  metricTables,
+  connectionId,
+  startDate,
+  endDate,
+  maxExecutionSeconds,
+  signal,
+}: {
+  entries: MetricEntry[];
+  clickhouseClient: ClickhouseClient;
+  metadata: ReturnType<typeof getMetadata>;
+  databaseName: string;
+  metricTables: Partial<Record<DiscoverableMetricKind, string>>;
+  connectionId: string;
+  startDate: Date;
+  endDate: Date;
+  maxExecutionSeconds: number;
+  signal: AbortSignal;
+}): Promise<MetricEntry[]> {
+  const kinds = [...new Set(entries.map(e => e.kind))];
+  // metadata.getColumns takes no abort signal, so race the whole lookup
+  // against it; otherwise a slow schema lookup could outlast the call's
+  // wall clock and discard the names already collected.
+  const aborted = new Promise<undefined>(resolve => {
+    if (signal.aborted) resolve(undefined);
+    signal.addEventListener('abort', () => resolve(undefined), { once: true });
+  });
+  const lookups = Promise.all(
+    kinds.map(async (kind): Promise<[DiscoverableMetricKind, Enrichments]> => {
+      const tableName = metricTables[kind]!;
+      try {
+        // Skip MetricUnit / MetricDescription on non-OTel-default schemas.
+        const columns = await metadata.getColumns({
+          databaseName,
+          tableName,
+          connectionId,
+        });
+        const columnNames = new Set(columns.map(c => c.name));
+        const enrichments = await fetchMetricUnitsAndDescriptions({
+          clickhouseClient,
+          databaseName,
+          tableName,
+          connectionId,
+          names: entries.filter(e => e.kind === kind).map(e => e.name),
+          startDate,
+          endDate,
+          hasUnit: columnNames.has('MetricUnit'),
+          hasDescription: columnNames.has('MetricDescription'),
+          maxExecutionSeconds,
+          signal,
+        });
+        return [kind, enrichments];
+      } catch (e) {
+        logger.warn(
+          { kind, tableName, error: e instanceof Error ? e.message : e },
+          'Failed to fetch metric unit/description',
+        );
+        return [kind, new Map()];
+      }
+    }),
+  );
+  const byKind = await Promise.race([lookups, aborted]);
+  if (!byKind) {
+    logger.warn(
+      { kinds },
+      'Timed out fetching metric unit/description; returning names only',
+    );
+    return entries;
+  }
+  const enrichments = new Map(byKind);
+  return entries.map(entry => ({
+    ...entry,
+    ...enrichments.get(entry.kind)?.get(entry.name),
+  }));
 }
