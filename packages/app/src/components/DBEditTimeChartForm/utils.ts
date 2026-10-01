@@ -3,39 +3,49 @@ import {
   TableConnection,
   TableConnectionChoice,
 } from '@hyperdx/common-utils/dist/core/metadata';
+import { getQueriedPromqlSeries } from '@hyperdx/common-utils/dist/core/promql';
+import { isTimeSeriesDisplayType } from '@hyperdx/common-utils/dist/core/utils';
+import {
+  configConsumesBroadcastFilters,
+  getBlockingRequiredFilterNames,
+} from '@hyperdx/common-utils/dist/dashboardFilterValues';
 import {
   isBuilderChartConfig,
   isPromqlChartConfig,
   isRawSqlChartConfig,
   isRawSqlSavedChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
+import { substitutePromqlChartConfigTemplates } from '@hyperdx/common-utils/dist/macros';
 import {
   BuilderChartConfigWithDateRange,
   ChartAlertBaseSchema,
   ChartConfigWithDateRange,
   ChartConfigWithOptTimestamp,
   ChartVariable,
+  DashboardFilter,
+  DateRange,
   DisplayType,
   Filter,
+  PromqlChartConfig,
   SavedChartConfig,
   SelectList,
   SourceKind,
   TSource,
   validateAlertScheduleOffsetMinutes,
 } from '@hyperdx/common-utils/dist/types';
-import {
-  filterReferencedVariables,
-  substitutePromqlChartConfigVariables,
-} from '@hyperdx/common-utils/dist/variables';
+import { filterReferencedVariables } from '@hyperdx/common-utils/dist/variables';
 
 import {
   convertToCategoricalChartConfig,
   convertToNumberChartConfig,
+  convertToPromqlNumberChartConfig,
+  convertToPromqlTableChartConfig,
   convertToTableChartConfig,
   convertToTimeChartConfig,
   tryExpandConfigVariables,
 } from '@/ChartUtils';
 import { ChartEditorFormState } from '@/components/ChartEditor/types';
+import { getMinGranularitySeconds } from '@/hooks/useChartConfig';
 import { getFirstTimestampValueExpression } from '@/source';
 import { getMetricTableName } from '@/utils';
 import {
@@ -48,7 +58,10 @@ export const isQueryReady = (
 ) => {
   if (!queriedConfig) return false;
   if (isPromqlChartConfig(queriedConfig)) {
-    return !!(queriedConfig.promqlExpression && queriedConfig.connection);
+    return !!(
+      getQueriedPromqlSeries(queriedConfig).length > 0 &&
+      queriedConfig.connection
+    );
   }
   if (isRawSqlChartConfig(queriedConfig)) {
     return !!(queriedConfig.sqlTemplate && queriedConfig.connection);
@@ -121,6 +134,15 @@ export function displayTypeToActiveTab(displayType: DisplayType): string {
   }
 }
 
+/**
+ * Whether a tab queries data. Markdown is static content, so it gets no Run
+ * button, time range or dashboard filters, and no required filter can block
+ * its preview — the tab-level counterpart of `displayTypeRequiresSource`.
+ */
+export function tabQueriesData(activeTab: string): boolean {
+  return activeTab !== displayTypeToActiveTab(DisplayType.Markdown);
+}
+
 export const TABS_WITH_GENERATED_SQL = new Set([
   'table',
   'time',
@@ -150,32 +172,122 @@ export function computeDbTimeChartConfig(
 }
 
 /**
- * Returns the dashboard variables a chart preview should use.
- * - Alerts always run with empty variable selections, so they resolve to each referenced variable with an empty `values` array.
- * - Otherwise, variables are filtered to only those referenced by the chart config.
+ * Returns the dashboard variables a chart preview should use, narrowed to the
+ * ones the chart config references. When applySelections is false, return empty
+ * selections for each variable.
  */
 export function resolvePreviewVariables({
   config,
   variables,
-  hasAlert,
+  applySelections,
 }: {
   config: ChartConfigWithDateRange;
   variables: ChartVariable[] | undefined;
-  hasAlert: boolean;
+  applySelections: boolean;
 }): ChartVariable[] | undefined {
   if (!variables) return undefined;
   const referenced = filterReferencedVariables(config, variables);
-  return hasAlert
-    ? referenced.map(variable => ({ ...variable, values: [] }))
-    : referenced;
+  return applySelections
+    ? referenced
+    : referenced.map(variable => ({ ...variable, values: [] }));
 }
 
-/** A PromQL tile's substituted expression, or why there isn't one. */
-export type RenderedPromqlExpression =
-  | { expression: string; error?: never }
-  | { expression?: never; error: string };
+/** What the dashboard's filter state contributes to a tile preview. */
+export type TilePreviewFilters = {
+  /** Broadcast filter conditions to query the preview with. */
+  filters: Filter[] | undefined;
+  /** The referenced variables, with or without their selections. */
+  variables: ChartVariable[] | undefined;
+  /** Names of the required filters that have nothing selected. */
+  missingRequiredFilterNames: string[];
+};
 
-/** The expression a PromQL tile is queried with, with variables substituted. */
+/**
+ * Applies the parent dashboard's filter selections to a tile preview.
+ *
+ * With `applySelections` off, the preview runs as an alert would: no broadcast
+ * filters, empty variable selections, and no required-filter block.
+ */
+export function resolveTilePreviewFilters({
+  config,
+  sourceId,
+  filters,
+  variables,
+  unsatisfiedRequiredFilters,
+  applySelections,
+}: {
+  config: ChartConfigWithDateRange;
+  sourceId: string | undefined;
+  filters: Filter[] | undefined;
+  variables: ChartVariable[] | undefined;
+  unsatisfiedRequiredFilters: DashboardFilter[] | undefined;
+  applySelections: boolean;
+}): TilePreviewFilters {
+  const previewVariables = resolvePreviewVariables({
+    config,
+    variables,
+    applySelections,
+  });
+
+  if (!applySelections) {
+    return {
+      filters: undefined,
+      variables: previewVariables,
+      missingRequiredFilterNames: [],
+    };
+  }
+
+  const consumesBroadcastFilters = configConsumesBroadcastFilters(
+    config,
+    sourceId,
+  );
+
+  return {
+    filters: consumesBroadcastFilters ? filters : undefined,
+    variables: previewVariables,
+    missingRequiredFilterNames: getBlockingRequiredFilterNames({
+      config,
+      sourceId,
+      unsatisfiedRequiredFilters,
+      referencedVariables: previewVariables,
+    }),
+  };
+}
+
+/** One expression as a PromQL tile queries it. */
+type RenderedPromqlEntry = {
+  id: string;
+  expression: string;
+  alias?: string;
+};
+
+/** A PromQL tile's substituted expressions, or why there aren't any. */
+export type RenderedPromqlExpression =
+  | { expressions: RenderedPromqlEntry[]; error?: never }
+  | { expressions?: never; error: string };
+
+/**
+ * The config a PromQL chart of this display type actually queries with. Macros
+ * depend on the resolved granularity and date range, so the preview must
+ * resolve them the same way the chart does.
+ */
+function toQueriedPromqlConfig(
+  config: PromqlChartConfig & DateRange,
+): PromqlChartConfig & DateRange {
+  if (config.displayType === DisplayType.Number) {
+    return convertToPromqlNumberChartConfig(config, { withReducer: false });
+  }
+  if (config.displayType === DisplayType.Table) {
+    return convertToPromqlTableChartConfig(config);
+  }
+  if (isTimeSeriesDisplayType(config.displayType)) {
+    const converted = convertToTimeChartConfig(config);
+    return isPromqlChartConfig(converted) ? converted : config;
+  }
+  return config;
+}
+
+/** The expressions a PromQL tile is queried with, with macros and variables substituted. */
 export function buildRenderedPromqlExpression(
   queriedConfig: ChartConfigWithDateRange | undefined,
 ): RenderedPromqlExpression | undefined {
@@ -184,9 +296,15 @@ export function buildRenderedPromqlExpression(
   }
 
   try {
+    const substituted = substitutePromqlChartConfigTemplates(
+      toQueriedPromqlConfig(queriedConfig),
+    );
     return {
-      expression:
-        substitutePromqlChartConfigVariables(queriedConfig).promqlExpression,
+      expressions: getQueriedPromqlSeries(substituted).map((series, index) => ({
+        id: String(index),
+        expression: series.expression,
+        alias: series.alias?.trim() || undefined,
+      })),
     };
   } catch (e) {
     // Substitution throws on an unrecognized format such as `${svc:json}`. The
@@ -195,8 +313,8 @@ export function buildRenderedPromqlExpression(
     return {
       error:
         e instanceof Error
-          ? `Variables could not be expanded: ${e.message}`
-          : 'Variables could not be expanded.',
+          ? `Expression could not be expanded: ${e.message}`
+          : 'Expression could not be expanded.',
     };
   }
 }
@@ -309,7 +427,10 @@ export function buildChartConfigForExplanations({
   // other at runtime, so the SQL preview transforms `config` itself into
   // both queries on render and the MV indicator is suppressed for this
   // tab.  Returning `config` unchanged is intentional.
-  const builderConfig = config as BuilderChartConfigWithDateRange;
+  const builderConfig: BuilderChartConfigWithDateRange = {
+    ...config,
+    minGranularitySeconds: getMinGranularitySeconds(tableSource),
+  };
 
   if (activeTab === 'time') {
     return convertToTimeChartConfig(builderConfig);

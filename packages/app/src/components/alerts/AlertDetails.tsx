@@ -1,7 +1,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import ReactMarkdown from 'react-markdown';
-import { AlertSource, AlertState } from '@hyperdx/common-utils/dist/types';
+import { AlertSource } from '@hyperdx/common-utils/dist/types';
 import {
   Badge,
   Collapse,
@@ -14,9 +14,9 @@ import {
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import {
+  IconChartDots,
   IconChartLine,
   IconChevronDown,
-  IconChevronRight,
   IconHelpCircle,
   IconNote,
   IconTableRow,
@@ -26,14 +26,10 @@ import { AckAlert } from '@/components/alerts/AckAlert';
 import { AlertHistoryCardList } from '@/components/alerts/AlertHistoryCards';
 import { AlertPropertiesSummary } from '@/components/alerts/AlertPropertiesSummary';
 import { AlertRowMenu } from '@/components/alerts/AlertRowMenu';
+import { AlertStateBadge } from '@/components/alerts/AlertStateBadge';
 import { IS_ALERT_DETAILS_ENABLED } from '@/config';
 import type { AlertsPageItem } from '@/types';
-import {
-  getAlertDisplayName,
-  getAlertSourceLabel,
-  getAlertSourceUrl,
-  getAlertTags,
-} from '@/utils/alerts';
+import { getAlertSourceLabel, getAlertSourceUrl } from '@/utils/alerts';
 
 import styles from '@styles/AlertsPage.module.scss';
 
@@ -99,29 +95,7 @@ export const AlertDetails = React.memo(function AlertDetails({
 }: {
   alert: AlertsPageItem;
 }) {
-  const alertName = React.useMemo(() => {
-    if (alert.source === AlertSource.TILE && alert.dashboard) {
-      const tile = alert.dashboard?.tiles.find(
-        tile => tile.id === alert.tileId,
-      );
-      const tileName = tile?.config.name || 'Tile';
-      return (
-        <>
-          {alert.dashboard?.name}
-          {tileName ? (
-            <>
-              <IconChevronRight size={14} className="mx-1" />
-              {tileName}
-            </>
-          ) : null}
-        </>
-      );
-    }
-    if (alert.source === AlertSource.SAVED_SEARCH && alert.savedSearch) {
-      return alert.savedSearch?.name;
-    }
-    return '–';
-  }, [alert]);
+  const alertName = alert.displayName || '–';
 
   const alertUrl = React.useMemo(() => getAlertSourceUrl(alert), [alert]);
 
@@ -136,6 +110,10 @@ export const AlertDetails = React.memo(function AlertDetails({
         return <IconChartLine size={14} aria-hidden="true" />;
       case AlertSource.SAVED_SEARCH:
         return <IconTableRow size={14} aria-hidden="true" />;
+      case AlertSource.INLINE:
+        // Matches the chart explorer's nav icon: an inline alert's query is
+        // authored and reopened there.
+        return <IconChartDots size={14} aria-hidden="true" />;
       default:
         return <IconHelpCircle size={14} aria-hidden="true" />;
     }
@@ -168,44 +146,40 @@ export const AlertDetails = React.memo(function AlertDetails({
   // "Open <source>" and falls back to its own wording when blank.
   const linkTitle = alert.source ? sourceLabel : '';
 
+  const nameHref = IS_ALERT_DETAILS_ENABLED
+    ? `/alerts/${alert._id}`
+    : alertUrl || undefined;
+
   return (
     <div data-testid={`alert-card-${alert._id}`} className={styles.alertRow}>
       <Group>
-        {alert.state === AlertState.ALERT && (
-          <Badge variant="light" color="red">
-            Alert
-          </Badge>
-        )}
-        {alert.state === AlertState.PENDING && (
-          <Badge variant="light" color="orange">
-            Pending
-          </Badge>
-        )}
-        {alert.state === AlertState.OK && <Badge variant="light">Ok</Badge>}
-        {alert.state === AlertState.DISABLED && (
-          <Badge variant="light" color="gray">
-            Disabled
-          </Badge>
-        )}
+        {alert.state && <AlertStateBadge state={alert.state} />}
 
         <Stack gap={2}>
           <div>
             {/* With alert details enabled, the alert name is the entry point
                 to its status page; the source tile / saved search moves to a
-                secondary link on the right. */}
-            <Link
-              data-testid={`alert-link-${alert._id}`}
-              href={
-                IS_ALERT_DETAILS_ENABLED ? `/alerts/${alert._id}` : alertUrl
-              }
-              className={styles.alertLink}
-              title={IS_ALERT_DETAILS_ENABLED ? 'Alert details' : linkTitle}
-            >
-              <Group gap={2}>
+                secondary link on the right. An alert whose source cannot be
+                resolved — a deleted dashboard, say — has no destination at
+                all, so its name is plain text rather than a link to nowhere. */}
+            {nameHref ? (
+              <Link
+                data-testid={`alert-link-${alert._id}`}
+                href={nameHref}
+                className={styles.alertLink}
+                title={IS_ALERT_DETAILS_ENABLED ? 'Alert details' : linkTitle}
+              >
+                <Group gap={2}>
+                  {alertIcon}
+                  {alertName}
+                </Group>
+              </Link>
+            ) : (
+              <Group gap={2} data-testid={`alert-name-${alert._id}`}>
                 {alertIcon}
                 {alertName}
               </Group>
-            </Link>
+            )}
           </div>
           <AlertPropertiesSummary alert={alert} />
           {alert.createdBy && (
@@ -213,9 +187,9 @@ export const AlertDetails = React.memo(function AlertDetails({
               Created by {alert.createdBy.name || alert.createdBy.email}
             </Text>
           )}
-          {getAlertTags(alert).length > 0 && (
+          {alert.tags?.length > 0 && (
             <Group gap={4}>
-              {getAlertTags(alert).map(tag => (
+              {alert.tags.map(tag => (
                 <Badge key={tag} variant="light" color="gray" size="xs">
                   {tag}
                 </Badge>
@@ -238,7 +212,7 @@ export const AlertDetails = React.memo(function AlertDetails({
           alert={alert}
           alertUrl={IS_ALERT_DETAILS_ENABLED ? alertUrl : undefined}
           linkTitle={linkTitle}
-          alertName={getAlertDisplayName(alert)}
+          alertName={alert.displayName}
         />
       </Group>
     </div>

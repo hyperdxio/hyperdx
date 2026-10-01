@@ -1023,6 +1023,105 @@ describe('MCP Dashboard Tools - clickstack_query_tile', () => {
       expect(result.isError).toBe(true);
       expect(getFirstText(result)).toContain('Available variables: service');
     });
+
+    describe('static list filters', () => {
+      const staticSqlTile = () => ({
+        name: 'Rows by service (static)',
+        config: {
+          configType: 'sql',
+          displayType: 'table',
+          connectionId: ctx.connection._id.toString(),
+          sourceId: logSourceId,
+          sqlTemplate:
+            'SELECT ServiceName, count() AS c FROM $__sourceTable ' +
+            'WHERE $__timeFilter(Timestamp) AND $__filter(ServiceName, $svc) ' +
+            'GROUP BY ServiceName ORDER BY ServiceName LIMIT 10',
+        },
+      });
+
+      const saveStaticDashboard = async () => {
+        const result = await callTool(
+          ctx.client!,
+          'clickstack_save_dashboard',
+          {
+            name: 'Static variable tiles',
+            tiles: [staticSqlTile()],
+            filters: [
+              {
+                type: 'STATIC_LIST',
+                name: 'Service',
+                options: ['checkout', 'payments', 'ghost'],
+                variableName: 'svc',
+              },
+            ],
+          },
+        );
+        expect(result.isError).toBeFalsy();
+        return JSON.parse(getFirstText(result));
+      };
+
+      it('narrows a tile when variableValues selects a static option', async () => {
+        const dashboard = await saveStaticDashboard();
+
+        const unselected = await callTool(
+          ctx.client!,
+          'clickstack_query_tile',
+          {
+            dashboardId: dashboard.id,
+            tileId: dashboard.tiles[0].id,
+            startTime,
+            endTime,
+          },
+        );
+        expect(unselected.isError).toBeFalsy();
+        expect(rowsOf(getFirstText(unselected))).toHaveLength(2);
+
+        const selected = await callTool(ctx.client!, 'clickstack_query_tile', {
+          dashboardId: dashboard.id,
+          tileId: dashboard.tiles[0].id,
+          startTime,
+          endTime,
+          variableValues: [{ name: 'svc', values: ['checkout'] }],
+        });
+        expect(selected.isError).toBeFalsy();
+        const rows = rowsOf(getFirstText(selected));
+        expect(rows).toHaveLength(1);
+        expect(rows[0].ServiceName).toBe('checkout');
+      });
+
+      it('treats an empty selection as nothing selected', async () => {
+        const dashboard = await saveStaticDashboard();
+
+        const result = await callTool(ctx.client!, 'clickstack_query_tile', {
+          dashboardId: dashboard.id,
+          tileId: dashboard.tiles[0].id,
+          startTime,
+          endTime,
+          variableValues: [{ name: 'svc', values: [] }],
+        });
+
+        expect(result.isError).toBeFalsy();
+        expect(rowsOf(getFirstText(result))).toHaveLength(2);
+      });
+
+      it('rejects a value outside the declared options', async () => {
+        const dashboard = await saveStaticDashboard();
+
+        const result = await callTool(ctx.client!, 'clickstack_query_tile', {
+          dashboardId: dashboard.id,
+          tileId: dashboard.tiles[0].id,
+          startTime,
+          endTime,
+          variableValues: [{ name: 'svc', values: ['not-a-service'] }],
+        });
+
+        expect(result.isError).toBe(true);
+        const text = getFirstText(result);
+        expect(text).toContain('"svc"');
+        expect(text).toContain('"not-a-service"');
+        expect(text).toContain('checkout, payments, ghost');
+      });
+    });
   });
 
   describe('categorical (bar) tile series limit', () => {

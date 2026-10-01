@@ -318,7 +318,7 @@ test.describe('Navigation', { tag: ['@core'] }, () => {
       }),
     );
 
-    // A browser that has never acknowledged a version counts as unseen. Cleared
+    // A browser that has never acknowledged a release counts as unseen. Cleared
     // explicitly because the shared auth storage state may carry the key over.
     await page.evaluate(() =>
       window.localStorage.removeItem('hdx-whats-new-seen'),

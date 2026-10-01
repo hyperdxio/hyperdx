@@ -94,6 +94,19 @@ export function getEventBody(eventModel: TSource) {
 }
 
 /**
+ * The source's level column: severity text for logs, status code for traces.
+ */
+export function getLevelExpression(source?: TSource): string {
+  if (source?.kind === SourceKind.Log) {
+    return source.severityTextExpression ?? '';
+  }
+  if (source?.kind === SourceKind.Trace) {
+    return source.statusCodeExpression ?? '';
+  }
+  return '';
+}
+
+/**
  * Check if a select string is a single expression (valid as a pattern body
  * expression) rather than a multi-column list (stale
  * `defaultTableSelectExpression`). Uses bracket-aware comma splitting so

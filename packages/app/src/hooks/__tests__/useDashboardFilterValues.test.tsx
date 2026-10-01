@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   DashboardFilter,
+  PromqlLabelDashboardFilter,
   SourceKind,
   StaticListDashboardFilter,
   TSource,
@@ -11,7 +12,18 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { useDashboardFilterValues } from '@/hooks/useDashboardFilterValues';
 
 const mockGetKeyValues = jest.fn();
+const mockLabelValues = jest.fn();
 let mockSourcesData: Partial<TSource>[];
+
+// Only the PromQL client is stubbed; the rest of the module stays real,
+// since the ClickHouse client below reads `api.useMe` from it.
+jest.mock('@/api', () => ({
+  __esModule: true,
+  ...jest.requireActual('@/api'),
+  prometheusApi: {
+    labelValues: (...args: unknown[]) => mockLabelValues(...args),
+  },
+}));
 
 // Untyped factories, so partial mocks need no unsafe type assertions.
 jest.mock('@/source', () => ({
@@ -46,6 +58,17 @@ describe('useDashboardFilterValues', () => {
     variableName: 'tier',
   };
 
+  const promqlFilter: PromqlLabelDashboardFilter = {
+    id: 'promql1',
+    type: 'PROMETHEUS_LABEL',
+    name: 'Job',
+    source: 'promql-source',
+    label: 'job',
+    isBroadcastEnabled: false,
+    isVariableEnabled: true,
+    variableName: 'job',
+  };
+
   const queriedFilter: DashboardFilter = {
     id: 'queried1',
     type: 'QUERY_EXPRESSION',
@@ -72,7 +95,16 @@ describe('useDashboardFilterValues', () => {
           tableName: 'logs',
         },
       },
+      {
+        id: 'promql-source',
+        kind: SourceKind.Promql,
+        name: 'Prometheus',
+        connection: 'clickhouse-conn',
+        from: { databaseName: 'telemetry', tableName: 'metrics' },
+      },
     ];
+    mockLabelValues.mockReset();
+    mockLabelValues.mockResolvedValue({ status: 'success', data: ['api'] });
     mockGetKeyValues.mockReset();
     mockGetKeyValues.mockImplementation(({ keys }: { keys: string[] }) =>
       Promise.resolve(
@@ -128,6 +160,45 @@ describe('useDashboardFilterValues', () => {
         ['queried1', { values: ['production', 'staging'], isLoading: false }],
         ['static1', { values: ['low', 'medium', 'high'], isLoading: false }],
       ]),
+    );
+  });
+
+  it('merges PromQL label values into the same map', async () => {
+    const { result } = renderHook(
+      () =>
+        useDashboardFilterValues({
+          filters: [staticFilter, queriedFilter, promqlFilter],
+          dateRange: mockDateRange,
+        }),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(result.current.isFetching).toBe(false));
+
+    expect(result.current.data.get('promql1')).toEqual({
+      values: ['api'],
+      isLoading: false,
+    });
+    expect(result.current.isError).toBe(false);
+  });
+
+  it('surfaces a PromQL label error without implicating the other filters', async () => {
+    mockLabelValues.mockRejectedValue(new Error('connection refused'));
+
+    const { result } = renderHook(
+      () =>
+        useDashboardFilterValues({
+          filters: [staticFilter, queriedFilter, promqlFilter],
+          dateRange: mockDateRange,
+        }),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+
+    expect(result.current.erroredFilterIds).toEqual(new Set(['promql1']));
+    expect(result.current.filterErrorMessages.get('promql1')).toBe(
+      'connection refused',
     );
   });
 

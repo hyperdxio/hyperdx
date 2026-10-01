@@ -133,6 +133,19 @@ const SourceModel = mongoose.model<MongooseSourceBase>(
 // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
 export const Source = SourceModel as unknown as mongoose.Model<ISource>;
 
+// Declared as a nested Schema with `_id: false`, like metricTables below.
+// Left as an inline object, Mongoose makes this a single-nested subdoc with an
+// auto-generated `_id`; documents stored without one get a fresh ObjectId on
+// every hydration, so every /api/sources response body and ETag differs
+const MetadataMaterializedViewsMongoSchema = new Schema(
+  {
+    keyRollupTable: String,
+    kvRollupTable: String,
+    granularity: String,
+  },
+  { _id: false },
+);
+
 // --------------------------
 // Log discriminator
 // --------------------------
@@ -170,11 +183,7 @@ export const LogSource = Source.discriminator<ILogSource>(
       type: mongoose.Schema.Types.Array,
     },
     metadataMaterializedViews: {
-      type: {
-        keyRollupTable: String,
-        kvRollupTable: String,
-        granularity: String,
-      },
+      type: MetadataMaterializedViewsMongoSchema,
       default: undefined,
     },
     orderByExpression: String,
@@ -225,11 +234,7 @@ export const TraceSource = Source.discriminator<ITraceSource>(
       type: mongoose.Schema.Types.Array,
     },
     metadataMaterializedViews: {
-      type: {
-        keyRollupTable: String,
-        kvRollupTable: String,
-        granularity: String,
-      },
+      type: MetadataMaterializedViewsMongoSchema,
       default: undefined,
     },
     orderByExpression: String,
@@ -279,6 +284,13 @@ export const MetricSource = Source.discriminator<IMetricSource>(
     logSourceId: String,
     // Unified metrics series table. Available only when `isMetricsSeriesTableEnabled` is set on the team document.
     seriesTable: String,
+    // See MetricSourceSchema.minAutoGranularity in @hyperdx/common-utils.
+    // The setter mirrors that schema's '' -> undefined preprocess, since
+    // validateRequest doesn't write the parsed body back to req.body.
+    minAutoGranularity: {
+      type: String,
+      set: (v: string | null | undefined) => (v === '' ? undefined : v),
+    },
   }),
 );
 

@@ -16,9 +16,11 @@ export interface Message {
   // Optional so existing callers and non-enriched templates are unaffected.
   alertId?: string;
   status?: string; // firing | resolved | no_data | pending
-  alertType?: string; // search | dashboard_chart
+  alertType?: string; // search | dashboard_chart | inline_query
   comparator?: string; // >=, >, <=, <, =, !=, between, outside
   threshold?: number;
+  // Upper bound of a `between`/`outside` condition; unset for the others.
+  thresholdMax?: number;
   value?: number; // the value that triggered/resolved the alert
   groupKey?: string;
   sourceQuery?: string; // the search expr / SQL that defines the alert

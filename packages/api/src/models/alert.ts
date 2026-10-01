@@ -92,12 +92,18 @@ export interface IAlert {
   thresholdType: AlertThresholdType;
   createdBy?: ObjectId;
 
-  // Message template
+  // Message template (handlebars)
   name?: string | null;
   message?: string | null;
 
   // Freeform note (supports markdown)
   note?: string | null;
+
+  // User-facing name shown in the alerts list and notification titles (when not overridden by name template).
+  // Unset means "derive from the referenced saved search / dashboard tile".
+  displayName?: string | null;
+  // Unset (not []) means "derive from the referenced entity".
+  tags?: string[] | null;
 
   // SavedSearch alerts
   groupBy?: string | null;
@@ -209,6 +215,14 @@ const AlertSchema = new Schema<IAlert>(
       type: String,
       required: false,
     },
+    displayName: {
+      type: String,
+      required: false,
+    },
+    // `default: undefined` stops Mongoose materializing [], which would make
+    // an un-backfilled document indistinguishable from one whose tags the user
+    // deliberately emptied.
+    tags: { type: [String], default: undefined },
 
     // Log alerts
     savedSearch: {
@@ -287,5 +301,9 @@ const AlertSchema = new Schema<IAlert>(
 // Team-scoped list/count queries (e.g. external API pagination) filter on team
 // and sort by _id. Compound so the sort is index-covered (no in-memory sort).
 AlertSchema.index({ team: 1, _id: 1 });
+
+// The alerts page: filter on team, sort by displayName with _id as the
+// tie-break, and walk that order with a keyset cursor.
+AlertSchema.index({ team: 1, displayName: 1, _id: 1 });
 
 export default mongoose.model<IAlert>('Alert', AlertSchema);

@@ -131,6 +131,7 @@ jest.mock('@/serviceDashboard', () => ({
 jest.mock('@/timeQuery', () => ({
   __esModule: true,
   parseTimeQuery: () => [new Date(0), new Date(1)],
+  useDefaultTimeRange: () => [new Date(0), new Date(1)],
   useNewTimeQuery: () => ({
     searchedTimeRange: [new Date(0), new Date(1)],
     onSearch: jest.fn(),

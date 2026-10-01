@@ -30,6 +30,7 @@ jest.mock('@/useFormatTime', () => ({
 
 const baseAlert = {
   _id: 'alert-1',
+  tags: [],
   interval: '5m',
   threshold: 3,
   thresholdType: AlertThresholdType.ABOVE,
@@ -40,7 +41,8 @@ const baseAlert = {
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-02-01T00:00:00.000Z',
   history: [],
-} as unknown as AlertsPageItem;
+  displayName: 'Alert',
+} satisfies AlertsPageItem;
 
 describe('AlertDetailProperties', () => {
   it('renders all persisted metadata fields when set', () => {
@@ -59,20 +61,15 @@ describe('AlertDetailProperties', () => {
               // Far future so the silence reads as active, not expired.
               until: '2099-01-01T00:00:00.000Z',
             },
-            savedSearch: {
-              _id: 'saved-search-id',
-              name: 'My Search',
-              createdAt: '2026-01-01T00:00:00.000Z',
-              updatedAt: '2026-01-01T00:00:00.000Z',
-              tags: ['prod', 'payments'],
-            },
-          } as AlertsPageItem
+            tags: ['prod', 'payments'],
+            savedSearch: { name: 'My Search' },
+          } satisfies AlertsPageItem
         }
       />,
     );
 
     expect(screen.getByTestId('alert-property-name')).toHaveTextContent(
-      'CPU alert',
+      'Notification titleCPU alert',
     );
     expect(screen.getByTestId('alert-property-message')).toHaveTextContent(
       'CPU is high on {{group}}',
@@ -94,6 +91,27 @@ describe('AlertDetailProperties', () => {
     );
     // The summary line resolves the webhook id to its display name.
     expect(screen.getByText(/Team Slack/)).toBeInTheDocument();
+  });
+
+  it("renders the alert's own tags", () => {
+    renderWithMantine(
+      <AlertDetailProperties
+        alert={
+          {
+            ...baseAlert,
+            tags: ['own-tag'],
+            savedSearch: { name: 'My Search' },
+          } satisfies AlertsPageItem
+        }
+      />,
+    );
+
+    expect(screen.getByTestId('alert-property-tags')).toHaveTextContent(
+      'own-tag',
+    );
+    expect(screen.getByTestId('alert-property-tags')).not.toHaveTextContent(
+      'prod',
+    );
   });
 
   it('omits rows for unset fields and marks expired silences', () => {

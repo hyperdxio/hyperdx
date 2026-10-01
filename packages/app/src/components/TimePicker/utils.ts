@@ -72,6 +72,16 @@ export function parseTimeRangeInput(
   }
 }
 
+// Duration of a time range input in seconds, or null if it doesn't parse.
+export function timeRangeInputToSeconds(
+  str: string,
+  isUTC: boolean,
+): number | null {
+  const [start, end] = parseTimeRangeInput(str, isUTC);
+  if (start == null || end == null) return null;
+  return (end.getTime() - start.getTime()) / 1000;
+}
+
 export const LIVE_TAIL_TIME_QUERY = 'Live Tail' as const;
 export const LIVE_TAIL_DURATION_MS = ms('15m');
 
@@ -89,8 +99,8 @@ export const RELATIVE_TIME_OPTIONS: (
   ['Last 45 minutes', ms('45m'), true],
   'divider',
   ['Last 1 hour', ms('1h'), true],
-  ['Last 3 hours', ms('3h')],
-  ['Last 6 hours', ms('6h')],
+  ['Last 3 hours', ms('3h'), true],
+  ['Last 6 hours', ms('6h'), true],
   ['Last 12 hours', ms('12h')],
   'divider',
   ['Last 1 days', ms('1d')],

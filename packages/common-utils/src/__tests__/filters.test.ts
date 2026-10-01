@@ -1,5 +1,6 @@
 import {
   deriveVariableName,
+  doesFilterApplyToSource,
   FilterState,
   filterStateToPredicate,
   filtersToQuery,
@@ -11,11 +12,14 @@ import {
   getPendingFilterValuesVariables,
   hasFilterEffect,
   isFilterBroadcastEnabled,
+  isFilterGlobalRequirement,
+  isFilterRequired,
   isFilterVariableEnabled,
   isQueryExpressionFilter,
   isRenderablePinnedFilter,
   parseQuery,
   resolveFilterValuesWhere,
+  resolvePromqlLabelFilterMatch,
   serializeFilterState,
   validateDashboardFilterQueries,
   validateSavedFilterValues,
@@ -705,6 +709,23 @@ describe('filters', () => {
       ).toEqual([]);
     });
 
+    it('skips a promql-label filter, which has no ClickHouse values query', () => {
+      expect(
+        validateDashboardFilterQueries([
+          {
+            id: 'f1',
+            type: 'PROMETHEUS_LABEL',
+            name: 'Pod',
+            source: 'promql',
+            label: 'pod',
+            isBroadcastEnabled: false,
+            isVariableEnabled: true,
+            variableName: 'pod',
+          },
+        ]),
+      ).toEqual([]);
+    });
+
     it('accepts a valid lucene where clause', () => {
       expect(
         validateDashboardFilterQueries([
@@ -1006,6 +1027,75 @@ describe('filters', () => {
         [svc(['accounting'])],
       );
       expect(resolved.where).toBe("Body = '$notAVariable'");
+      expect(resolved.error).toBeUndefined();
+    });
+  });
+
+  describe('resolvePromqlLabelFilterMatch', () => {
+    const svc = (values: string[]): ChartVariable => ({
+      name: 'svc',
+      expression: 'ServiceName',
+      values,
+    });
+
+    it('reports no selector when there is none to send', () => {
+      expect(resolvePromqlLabelFilterMatch({}, [svc(['api'])])).toEqual({});
+      expect(
+        resolvePromqlLabelFilterMatch({ match: '   ' }, [svc(['api'])]),
+      ).toEqual({});
+    });
+
+    it('trims the selector', () => {
+      expect(
+        resolvePromqlLabelFilterMatch({ match: '  up{job="api"} ' }, undefined)
+          .match,
+      ).toBe('up{job="api"}');
+    });
+
+    it('returns the template as written when there is no variable context', () => {
+      expect(
+        resolvePromqlLabelFilterMatch({ match: 'up{job=~"$svc"}' }, undefined),
+      ).toEqual({ match: 'up{job=~"$svc"}' });
+    });
+
+    it('expands a reference as a regex alternation', () => {
+      expect(
+        resolvePromqlLabelFilterMatch({ match: 'up{job=~"$svc"}' }, [
+          svc(['api', 'ad']),
+        ]).match,
+      ).toBe('up{job=~"(api|ad)"}');
+    });
+
+    it('expands an empty selection to match everything', () => {
+      expect(
+        resolvePromqlLabelFilterMatch({ match: 'up{job=~"$svc"}' }, [svc([])])
+          .match,
+      ).toBe('up{job=~".*"}');
+    });
+
+    it('expands the csv format for a name rather than a matcher value', () => {
+      expect(
+        resolvePromqlLabelFilterMatch({ match: '${svc:csv}{code="200"}' }, [
+          svc(['up']),
+        ]).match,
+      ).toBe('up{code="200"}');
+    });
+
+    it('reports an unrecognized format without throwing', () => {
+      const resolved = resolvePromqlLabelFilterMatch(
+        { match: 'up{job=~"${svc:bogus}"}' },
+        [svc(['api'])],
+      );
+      expect(resolved.match).toBe('up{job=~"${svc:bogus}"}');
+      expect(resolved.error).toMatch(/Unknown variable format 'bogus'/);
+    });
+
+    it('leaves an undeclared bare reference alone', () => {
+      const resolved = resolvePromqlLabelFilterMatch(
+        { match: 'up{job=~"$nope"}' },
+        [svc(['api'])],
+      );
+      expect(resolved.match).toBe('up{job=~"$nope"}');
       expect(resolved.error).toBeUndefined();
     });
   });
@@ -1481,9 +1571,24 @@ describe('filters', () => {
       expect(getFilterExpression(queried)).toBe('ServiceName');
     });
 
+    const promqlLabel: DashboardFilter = {
+      id: 'f3',
+      type: 'PROMETHEUS_LABEL',
+      name: 'Pod',
+      source: 'promql',
+      label: 'pod',
+      isBroadcastEnabled: false,
+      isVariableEnabled: true,
+    };
+
     it('rejects a static-list filter, which names no column', () => {
       expect(isQueryExpressionFilter(staticList)).toBe(false);
       expect(getFilterExpression(staticList)).toBeUndefined();
+    });
+
+    it('rejects a promql-label filter, which names a label rather than a column', () => {
+      expect(isQueryExpressionFilter(promqlLabel)).toBe(false);
+      expect(getFilterExpression(promqlLabel)).toBeUndefined();
     });
   });
 
@@ -1529,6 +1634,20 @@ describe('filters', () => {
         }),
       ).toBeUndefined();
     });
+
+    it('returns undefined for a promql-label filter, which has no column', () => {
+      expect(
+        getFilterBroadcastTarget({
+          id: 'f3',
+          type: 'PROMETHEUS_LABEL',
+          name: 'Pod',
+          source: 'promql',
+          label: 'pod',
+          isBroadcastEnabled: false,
+          isVariableEnabled: true,
+        }),
+      ).toBeUndefined();
+    });
   });
 
   describe('isFilterVariableEnabled', () => {
@@ -1542,6 +1661,95 @@ describe('filters', () => {
     it('respects an explicit flag', () => {
       expect(isFilterVariableEnabled({ isVariableEnabled: true })).toBe(true);
       expect(isFilterVariableEnabled({ isVariableEnabled: false })).toBe(false);
+    });
+  });
+
+  describe('isFilterRequired', () => {
+    it('treats a missing or zero minimum as not required', () => {
+      expect(isFilterRequired({})).toBe(false);
+      expect(isFilterRequired({ minSelections: undefined })).toBe(false);
+      expect(isFilterRequired({ minSelections: 0 })).toBe(false);
+    });
+
+    it('treats a null minimum as not required', () => {
+      expect(
+        isFilterRequired({
+          minSelections: null,
+        } as unknown as DashboardFilter),
+      ).toBe(false);
+    });
+
+    it('holds for a minimum of one', () => {
+      expect(isFilterRequired({ minSelections: 1 })).toBe(true);
+    });
+  });
+
+  describe('isFilterGlobalRequirement', () => {
+    it('treats a missing flag as covering only the tiles that read the filter', () => {
+      expect(isFilterGlobalRequirement({})).toBe(false);
+      expect(
+        isFilterGlobalRequirement({ isGlobalRequirement: undefined }),
+      ).toBe(false);
+    });
+
+    it('respects an explicit flag', () => {
+      expect(isFilterGlobalRequirement({ isGlobalRequirement: true })).toBe(
+        true,
+      );
+      expect(isFilterGlobalRequirement({ isGlobalRequirement: false })).toBe(
+        false,
+      );
+    });
+  });
+
+  describe('doesFilterApplyToSource', () => {
+    const filter = (
+      overrides: Partial<QueryExpressionDashboardFilter> = {},
+    ): QueryExpressionDashboardFilter => ({
+      id: 'f1',
+      type: 'QUERY_EXPRESSION',
+      name: 'Service',
+      expression: 'ServiceName',
+      source: 'logs',
+      ...overrides,
+    });
+
+    it('reaches every tile when the scope is empty', () => {
+      for (const scoped of [
+        filter(),
+        filter({ appliesToSourceIds: [] }),
+        filter({ appliesToSourceIds: undefined }),
+      ]) {
+        expect(doesFilterApplyToSource(scoped, 'traces')).toBe(true);
+        expect(doesFilterApplyToSource(scoped, undefined)).toBe(true);
+      }
+    });
+
+    it('reaches only the scoped sources', () => {
+      const scoped = filter({ appliesToSourceIds: ['logs'] });
+
+      expect(doesFilterApplyToSource(scoped, 'logs')).toBe(true);
+      expect(doesFilterApplyToSource(scoped, 'traces')).toBe(false);
+      expect(doesFilterApplyToSource(scoped, undefined)).toBe(false);
+    });
+
+    it('reaches nothing when broadcasting is off', () => {
+      expect(
+        doesFilterApplyToSource(filter({ isBroadcastEnabled: false }), 'logs'),
+      ).toBe(false);
+      expect(
+        doesFilterApplyToSource(
+          {
+            id: 'f2',
+            type: 'STATIC_LIST',
+            name: 'Environment',
+            options: ['prod'],
+            isBroadcastEnabled: false,
+            isVariableEnabled: true,
+          },
+          'logs',
+        ),
+      ).toBe(false);
     });
   });
 

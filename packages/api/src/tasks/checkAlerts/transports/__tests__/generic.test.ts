@@ -1,9 +1,13 @@
-import { WebhookService } from '@hyperdx/common-utils/dist/types';
+import {
+  DEFAULT_INCIDENT_IO_WEBHOOK_BODY,
+  WebhookService,
+} from '@hyperdx/common-utils/dist/types';
 import { ObjectId } from 'mongodb';
 
 import { AlertState } from '@/models/alert';
 import {
   buildWebhookTemplateVariables,
+  createHandlebarsWithHelpers,
   getWebhookFetchTimeoutMs,
   handleSendGenericWebhook,
 } from '@/tasks/checkAlerts/transports/generic';
@@ -96,8 +100,9 @@ describe('buildWebhookTemplateVariables', () => {
       alertId: 'alert-1',
       status: 'firing',
       alertType: 'search',
-      comparator: '>=',
+      comparator: 'between',
       threshold: 5,
+      thresholdMax: 10,
       value: 42,
       groupKey: 'checkout',
       sourceQuery: 'Body: "error"',
@@ -111,8 +116,9 @@ describe('buildWebhookTemplateVariables', () => {
       alertId: 'alert-1',
       status: 'firing',
       alertType: 'search',
-      comparator: '>=',
+      comparator: 'between',
       threshold: 5,
+      thresholdMax: 10,
       value: 42,
       groupKey: 'checkout',
       teamId: 'team-1',
@@ -129,5 +135,120 @@ describe('buildWebhookTemplateVariables', () => {
     expect(vars.status).toBe('');
     expect(vars.note).toBe('');
     expect(vars.startTimeISO).toBe(new Date(0).toISOString());
+    // A raw number renders as an empty slot when absent, not "undefined".
+    expect(vars.thresholdMax).toBeUndefined();
+  });
+});
+
+// The guard published in docs/alert-webhook-template-variables.md is the only
+// way a receiver can put an optional number in an unquoted JSON slot, so a
+// change to the helper set that breaks it would break every template using it.
+describe('the documented guard for an optional numeric variable', () => {
+  const render = (thresholdMax?: number) =>
+    createHandlebarsWithHelpers().compile(
+      '{"threshold": {{threshold}}{{#unless (eq thresholdMax undefined)}}, "threshold_max": {{thresholdMax}}{{/unless}}\n}',
+      // Same options as sendGenericWebhook: noEscape is load-bearing, because
+      // escapeJsonString already emits \" and HTML-escaping would mangle it.
+      { noEscape: true },
+    )(
+      buildWebhookTemplateVariables({ ...message, threshold: 5, thresholdMax }),
+    );
+
+  it.each([
+    [undefined, { threshold: 5 }],
+    [20, { threshold: 5, threshold_max: 20 }],
+    // A range bounded at zero is real, and `{{#if}}` would drop it.
+    [0, { threshold: 5, threshold_max: 0 }],
+  ])('renders valid JSON for thresholdMax=%s', (thresholdMax, expected) => {
+    expect(JSON.parse(render(thresholdMax))).toEqual(expected);
+  });
+});
+
+describe('the default incident.io body', () => {
+  const render = (overrides: Partial<Message>) =>
+    JSON.parse(
+      createHandlebarsWithHelpers().compile(DEFAULT_INCIDENT_IO_WEBHOOK_BODY, {
+        noEscape: true,
+      })(
+        buildWebhookTemplateVariables({
+          ...message,
+          alertId: 'alert-1',
+          status: 'firing',
+          comparator: '>=',
+          threshold: 5,
+          value: 42,
+          groupKey: 'checkout',
+          ...overrides,
+        }),
+      ),
+    );
+
+  it('sends a stable deduplication key and a status incident.io accepts', () => {
+    const firing = render({ state: AlertState.ALERT });
+    const resolved = render({ state: AlertState.OK, status: 'resolved' });
+
+    expect(firing.status).toBe('firing');
+    expect(resolved.status).toBe('resolved');
+    // Only an OK resolves: a state that never reported recovery must not close
+    // the incident.
+    expect(render({ state: AlertState.INSUFFICIENT_DATA }).status).toBe(
+      'firing',
+    );
+    // The same key on both is what closes the alert incident.io opened.
+    expect(resolved.deduplication_key).toBe(firing.deduplication_key);
+    expect(firing.deduplication_key).toBe('evt-1');
+    expect(firing.metadata).toMatchObject({
+      alert_id: 'alert-1',
+      hyperdx_status: 'firing',
+      comparator: '>=',
+      threshold: '5',
+      value: '42',
+      group_key: 'checkout',
+    });
+  });
+
+  it('stays valid JSON when the alert carries no optional values', () => {
+    const rendered = render({
+      alertId: undefined,
+      status: 'no_data',
+      comparator: undefined,
+      threshold: undefined,
+      value: undefined,
+      groupKey: undefined,
+    });
+
+    expect(rendered.status).toBe('firing');
+    expect(rendered.metadata).toMatchObject({
+      hyperdx_status: 'no_data',
+      threshold_max: '',
+      value: '',
+    });
+  });
+});
+
+describe('a webhook saved without a body', () => {
+  const originalFetch = global.fetch;
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  const sentBody = async (service: WebhookService) => {
+    const fetchMock: any = jest.fn(async () => new Response('ok'));
+    global.fetch = fetchMock;
+    const bodylessChannel: any = {
+      type: 'webhook',
+      channel: { ...webhook, service, url: 'https://example.test/hook' },
+    };
+    await handleSendGenericWebhook(bodylessChannel, message);
+    return JSON.parse(fetchMock.mock.calls[0][1].body);
+  };
+
+  it('falls back to the body its service expects', async () => {
+    expect(await sentBody(WebhookService.Generic)).toHaveProperty('text');
+    expect(await sentBody(WebhookService.IncidentIO)).toMatchObject({
+      title: 'title',
+      status: 'firing',
+      deduplication_key: 'evt-1',
+    });
   });
 });

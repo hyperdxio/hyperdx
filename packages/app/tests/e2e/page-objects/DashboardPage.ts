@@ -7,13 +7,23 @@ import { expect, Locator, Page } from '@playwright/test';
 
 import { ChartEditorComponent } from '../components/ChartEditorComponent';
 import { TimePickerComponent } from '../components/TimePickerComponent';
-import { dismissSqlAutocomplete, getSqlEditor } from '../utils/locators';
+import {
+  dismissSqlAutocomplete,
+  getSqlEditor,
+  replaceEditorText,
+} from '../utils/locators';
 import { switchWhereLanguage } from '../utils/lucene-autocomplete';
 
 /** The "Dropdown values filter" on a dashboard filter, and its language. */
 export type FilterWhereOptions = {
   value: string;
   language?: 'sql' | 'lucene';
+};
+
+/** The "Required" checkbox and the "Block every tile" one nested under it. */
+export type FilterRequirementOptions = {
+  required?: boolean;
+  globalRequirement?: boolean;
 };
 
 /**
@@ -94,6 +104,8 @@ export class DashboardPage {
   readonly appliesToSourceSelector: Locator;
   readonly broadcastFilterCheckbox: Locator;
   readonly variableEnabledCheckbox: Locator;
+  readonly requiredFilterCheckbox: Locator;
+  readonly globalRequirementCheckbox: Locator;
   readonly variableNameInput: Locator;
   private readonly saveButton: Locator;
   private readonly tileSourceSelector: Locator;
@@ -156,6 +168,10 @@ export class DashboardPage {
     );
     this.variableEnabledCheckbox = page.getByTestId(
       'filter-variable-enabled-checkbox',
+    );
+    this.requiredFilterCheckbox = page.getByTestId('filter-required-checkbox');
+    this.globalRequirementCheckbox = page.getByTestId(
+      'filter-global-requirement-checkbox',
     );
     this.variableNameInput = page.getByTestId('filter-variable-name-input');
     this.saveButton = page.getByTestId('chart-save-button');
@@ -886,6 +902,22 @@ export class DashboardPage {
       .click();
   }
 
+  /**
+   * Set the filter form's requirement checkboxes, leaving either alone when the
+   * caller says nothing about it. The nested "Block every tile" box only exists
+   * while "Required" is checked, so the order matters.
+   */
+  private async setFilterRequirement(options?: FilterRequirementOptions) {
+    if (options?.required !== undefined) {
+      await this.requiredFilterCheckbox.setChecked(options.required);
+    }
+    if (options?.globalRequirement !== undefined) {
+      await this.globalRequirementCheckbox.setChecked(
+        options.globalRequirement,
+      );
+    }
+  }
+
   async fillFilterForm(
     name: string,
     sourceName: string,
@@ -896,7 +928,7 @@ export class DashboardPage {
       isBroadcastEnabled?: boolean;
       isVariableEnabled?: boolean;
       variableName?: string;
-    },
+    } & FilterRequirementOptions,
     whereOptions?: FilterWhereOptions,
   ) {
     const filterNameInput = this.page.getByTestId('filter-name-input');
@@ -937,6 +969,8 @@ export class DashboardPage {
       }
     }
 
+    await this.setFilterRequirement(variableOptions);
+
     if (appliesToSourceNames && appliesToSourceNames.length > 0) {
       for (const appliesName of appliesToSourceNames) {
         await this.appliesToSourceSelector.click();
@@ -962,7 +996,7 @@ export class DashboardPage {
       isBroadcastEnabled?: boolean;
       isVariableEnabled?: boolean;
       variableName?: string;
-    },
+    } & FilterRequirementOptions,
     whereOptions?: FilterWhereOptions,
   ) {
     await this.addFiltersButton.click();
@@ -1077,6 +1111,33 @@ export class DashboardPage {
     await this.page.getByTestId(`edit-filter-button-${filterName}`).click();
     await this.broadcastFilterCheckbox.setChecked(enabled);
     await this.page.getByTestId('save-filter-button').click();
+  }
+
+  /**
+   * Toggle "Required" on an already-saved filter and save. Assumes the filters
+   * list modal is open.
+   */
+  async setFilterRequiredForSavedFilter(filterName: string, enabled: boolean) {
+    await this.page.getByTestId(`edit-filter-button-${filterName}`).click();
+    await this.requiredFilterCheckbox.setChecked(enabled);
+    await this.page.getByTestId('save-filter-button').click();
+    await this.getFilterItemByName(filterName).waitFor({
+      state: 'visible',
+      timeout: 10000,
+    });
+  }
+
+  /** The caution icon shown when a required filter has no selected value. */
+  getFilterRequiredWarning(filterName: string): Locator {
+    return this.page.getByTestId(`dashboard-filter-required-${filterName}`);
+  }
+
+  /**
+   * The placeholder a tile renders instead of its chart while a required
+   * filter has no selected value.
+   */
+  getTileMissingRequiredFilters(tileIndex = 0): Locator {
+    return this.getTile(tileIndex).getByTestId('tile-missing-required-filters');
   }
 
   /**
@@ -1202,18 +1263,44 @@ export class DashboardPage {
   /**
    * Create a Number tile that counts events from `sourceName`. The tile editor's
    * default aggregation is "Count of Events", so no agg configuration is needed.
-   * Leaves exactly one tile on the dashboard.
+   *
+   * `sqlSeriesWhere` sets the tile's own SQL filter, the usual place a tile
+   * references a `$variable`.
    */
-  async addNumberTile(name: string, sourceName: string) {
+  async addNumberTile(
+    name: string,
+    sourceName: string,
+    options?: { sqlSeriesWhere?: string },
+  ) {
+    const existingTiles = await this.getTiles().count();
     await this.addTile();
     await expect(this.chartEditor.nameInput).toBeVisible();
     await this.chartEditor.waitForDataToLoad();
     await this.chartEditor.setChartType(DisplayType.Number);
     await this.chartEditor.setChartName(name);
     await this.chartEditor.selectSource(sourceName);
+    if (options?.sqlSeriesWhere != null) {
+      await this.chartEditor.setSqlWhere(options.sqlSeriesWhere, 'series');
+    }
     await this.chartEditor.runQuery(false);
     await this.chartEditor.save();
-    await expect(this.getTiles()).toHaveCount(1, { timeout: 10000 });
+    await expect(this.getTiles()).toHaveCount(existingTiles + 1, {
+      timeout: 10000,
+    });
+  }
+
+  /** Create a Markdown tile, which needs neither a source nor a query. */
+  async addMarkdownTile(name: string, content: string) {
+    const existingTiles = await this.getTiles().count();
+    await this.addTile();
+    await expect(this.chartEditor.nameInput).toBeVisible();
+    await this.chartEditor.setChartType(DisplayType.Markdown);
+    await this.chartEditor.setChartName(name);
+    await this.markdownTextarea.first().fill(content);
+    await this.chartEditor.save();
+    await expect(this.getTiles()).toHaveCount(existingTiles + 1, {
+      timeout: 10000,
+    });
   }
 
   /** Locator for the rendered value of a Number tile. */
@@ -1282,8 +1369,10 @@ export class DashboardPage {
     return this.page.getByTestId('filter-type-picker');
   }
 
-  /** Switch the add-filter form between the queried and static value types. */
-  async selectFilterType(label: 'Queried values' | 'Static values') {
+  /** Switch the add-filter form between the available value types. */
+  async selectFilterType(
+    label: 'Queried values' | 'Static values' | 'PromQL label values',
+  ) {
     await this.getFilterTypePicker().click();
     await this.getFilterOption(label).click();
   }
@@ -1338,7 +1427,7 @@ export class DashboardPage {
   async addStaticListFilterToDashboard(
     name: string,
     options: string[],
-    variableOptions?: { variableName?: string },
+    variableOptions?: { variableName?: string } & FilterRequirementOptions,
   ) {
     await this.addFiltersButton.click();
     await this.selectFilterType('Static values');
@@ -1349,6 +1438,91 @@ export class DashboardPage {
     if (variableOptions?.variableName !== undefined) {
       await this.variableNameInput.fill(variableOptions.variableName);
     }
+    await this.setFilterRequirement(variableOptions);
+    await this.page.getByTestId('save-filter-button').click();
+    await this.getFilterItemByName(name).waitFor({
+      state: 'visible',
+      timeout: 10000,
+    });
+  }
+
+  /** The PromQL filter form's label field. */
+  getFilterLabelInput(): Locator {
+    return this.page.getByTestId('filter-label-input');
+  }
+
+  /**
+   * The PromQL filter form's series-selector editor. Only rendered when the
+   * chosen source sits on a connection that proxies to a real Prometheus.
+   */
+  getFilterMatchInput(): Locator {
+    return this.getFilterForm().getByTestId('filter-match-input');
+  }
+
+  /** Replace the contents of the series-selector editor. */
+  async fillFilterMatch(selector: string) {
+    await replaceEditorText(
+      this.page,
+      this.getFilterMatchInput().locator('.cm-content'),
+      selector,
+    );
+  }
+
+  /** The current text of the series-selector editor. */
+  async getFilterMatchText(): Promise<string> {
+    return this.getFilterMatchInput().locator('.cm-content').innerText();
+  }
+
+  /**
+   * The series-selector editor's completion options. Portalled to the body
+   * rather than rendered in the modal, so this is not scoped to the form.
+   */
+  filterMatchCompletionOptions(): Locator {
+    return this.page.locator('.cm-tooltip-autocomplete > ul > li');
+  }
+
+  /** Accept the completion labelled `label` from that popup. */
+  async acceptFilterMatchCompletion(label: string) {
+    const option = this.filterMatchCompletionOptions()
+      .filter({ has: this.page.getByText(label, { exact: true }) })
+      .first();
+    await option.waitFor({ state: 'visible', timeout: 10000 });
+    await option.click();
+  }
+
+  /**
+   * Add a dashboard filter whose dropdown lists the values of one Prometheus
+   * label. Like the static variant it shares only the display name and variable
+   * name with a queried filter — there is no expression or broadcast mode, and
+   * the source must be a PromQL one.
+   *
+   * Assumes the Edit Filters modal is already open; leaves it open on the
+   * filters list, having waited for the new filter to land there so a slow
+   * save cannot race the next add.
+   */
+  async addPromqlLabelFilterToDashboard(
+    name: string,
+    sourceName: string,
+    label: string,
+    variableOptions?: {
+      variableName?: string;
+      match?: string;
+    } & FilterRequirementOptions,
+  ) {
+    await this.addFiltersButton.click();
+    await this.selectFilterType('PromQL label values');
+    const nameInput = this.getFilterNameInput();
+    await nameInput.waitFor({ state: 'visible', timeout: 10000 });
+    await nameInput.fill(name);
+    await this.selectFilterSource(sourceName);
+    await this.getFilterLabelInput().fill(label);
+    if (variableOptions?.match !== undefined) {
+      await this.fillFilterMatch(variableOptions.match);
+    }
+    if (variableOptions?.variableName !== undefined) {
+      await this.variableNameInput.fill(variableOptions.variableName);
+    }
+    await this.setFilterRequirement(variableOptions);
     await this.page.getByTestId('save-filter-button').click();
     await this.getFilterItemByName(name).waitFor({
       state: 'visible',

@@ -9,6 +9,7 @@ import {
   DashboardFilter,
   DashboardFilterValue,
   Filter,
+  SourceKind,
 } from '@/types';
 import { getVariableReferences, substituteVariables } from '@/variables';
 
@@ -787,8 +788,8 @@ export function validateDashboardFilterQueries(
   ).map(declaration => ({ ...declaration, values: [] }));
 
   for (const filter of filters) {
-    // A static filter has no values query to validate.
-    if (isStaticListFilter(filter)) continue;
+    // Only ClickHouse-queried filters carry a values query to validate.
+    if (!isQueryExpressionFilter(filter)) continue;
     const where = filter.where ?? '';
     if (!where.trim()) continue;
     const language = filter.whereLanguage ?? 'sql';
@@ -846,8 +847,34 @@ export function isFilterVariableEnabled(filter: {
   return filter.isVariableEnabled === true;
 }
 
+/**
+ * Whether a filter must have at least one value selected before the tiles it
+ * covers will load.
+ */
+export function isFilterRequired(filter: { minSelections?: number }): boolean {
+  return (filter.minSelections ?? 0) > 0;
+}
+
+/**
+ * Whether the given required filter blocks every tile on the dashboard,
+ * rather than only the tiles that read it.
+ */
+export function isFilterGlobalRequirement(filter: {
+  isGlobalRequirement?: boolean;
+}): boolean {
+  return !!filter.isGlobalRequirement;
+}
+
 /** The discriminant every dashboard-filter shape carries. */
 export type DashboardFilterKind = DashboardFilter['type'];
+
+/** The source kinds a QUERY_EXPRESSION filter can run its `SELECT` against. */
+export const QUERY_EXPRESSION_FILTER_SOURCE_KINDS: SourceKind[] = [
+  SourceKind.Log,
+  SourceKind.Trace,
+  SourceKind.Session,
+  SourceKind.Metric,
+];
 
 /** Type guard for QUERY_EXPRESSION type filters. */
 export function isQueryExpressionFilter<
@@ -863,6 +890,13 @@ export function isStaticListFilter<T extends { type: DashboardFilterKind }>(
   return filter.type === 'STATIC_LIST';
 }
 
+/** Type guard for PROMETHEUS_LABEL type filters. */
+export function isPrometheusLabelFilter<
+  T extends { type: DashboardFilterKind },
+>(filter: T): filter is Extract<T, { type: 'PROMETHEUS_LABEL' }> {
+  return filter.type === 'PROMETHEUS_LABEL';
+}
+
 /** The SQL expression associated with the filter, if any. */
 export function getFilterExpression(
   filter: DashboardFilter,
@@ -874,12 +908,28 @@ export function getFilterExpression(
 export function getFilterBroadcastTarget(
   filter: DashboardFilter,
 ): { expression: string; appliesToSourceIds?: string[] } | undefined {
-  if (!isFilterBroadcastEnabled(filter) || isStaticListFilter(filter))
+  if (!isQueryExpressionFilter(filter) || !isFilterBroadcastEnabled(filter))
     return undefined;
   return {
     expression: filter.expression,
     appliesToSourceIds: filter.appliesToSourceIds,
   };
+}
+
+/**
+ * Whether a filter broadcasts its selected value onto a tile whose source is
+ * `sourceId`. A broadcasting filter with no `appliesToSourceIds` reaches every
+ * tile, including one with no source of its own.
+ */
+export function doesFilterApplyToSource(
+  filter: DashboardFilter,
+  sourceId: string | undefined,
+): boolean {
+  const target = getFilterBroadcastTarget(filter);
+  if (!target) return false;
+  const appliesTo = target.appliesToSourceIds;
+  if (!appliesTo || appliesTo.length === 0) return true;
+  return !!sourceId && appliesTo.includes(sourceId);
 }
 
 /**
@@ -912,14 +962,22 @@ export type DashboardVariableDeclaration = Pick<
   'name' | 'expression'
 >;
 
+/** Minimal projection of fields necessary to extract the variables a dashboard declares. */
+export type FilterForVariableDeclaration = {
+  name: string;
+  expression?: string;
+  variableName?: string;
+  isVariableEnabled?: boolean;
+};
+
 /**
  * The variable-enabled filters a dashboard declares, paired with the name each
  * one answers to, in filter order.
  */
-export function getDashboardVariableFilters(
-  filters: DashboardFilter[] | undefined,
-): { filter: DashboardFilter; name: string }[] {
-  const results: { filter: DashboardFilter; name: string }[] = [];
+export function getDashboardVariableFilters<
+  T extends FilterForVariableDeclaration,
+>(filters: T[] | undefined): { filter: T; name: string }[] {
+  const results: { filter: T; name: string }[] = [];
   const takenNames = new Set<string>();
 
   for (const filter of filters ?? []) {
@@ -936,33 +994,14 @@ export function getDashboardVariableFilters(
   return results;
 }
 
-/** Minimal projection of fields necessary to extract the variables a dashboard declares. */
-export type FilterForVariableDeclaration = {
-  name: string;
-  expression?: string;
-  variableName?: string;
-  isVariableEnabled?: boolean;
-};
-
 /** The variables a dashboard declares, in filter order. */
 export function getDashboardVariableDeclarations(
   filters: FilterForVariableDeclaration[] | undefined,
 ): DashboardVariableDeclaration[] {
-  const declarations: DashboardVariableDeclaration[] = [];
-  const takenNames = new Set<string>();
-
-  for (const filter of filters ?? []) {
-    if (!isFilterVariableEnabled(filter)) continue;
-
-    // There shouldn't be any duplicate names, but if there are then the first one wins.
-    const name = getFilterVariableName(filter);
-    if (!name || takenNames.has(name)) continue;
-    takenNames.add(name);
-
-    declarations.push({ name, expression: filter.expression });
-  }
-
-  return declarations;
+  return getDashboardVariableFilters(filters).map(({ filter, name }) => ({
+    name,
+    expression: filter.expression,
+  }));
 }
 
 export type ResolvedFilterValuesQuery = {
@@ -1003,6 +1042,40 @@ export function resolveFilterValuesWhere(
       whereLanguage,
       error: e instanceof Error ? e.message : String(e),
     };
+  }
+}
+
+export type ResolvedPromqlLabelFilterMatch = {
+  /** The selector the values lookup actually sends, or undefined for none. */
+  match?: string;
+  /** Set when expansion failed; `match` is then the template as written. */
+  error?: string;
+};
+
+/**
+ * Expand the dashboard variables a Prometheus label filter's series selector
+ * references.
+ *
+ * Never throws. Failures (unknown variables, etc) leave the selector as
+ * written and report an `error`.
+ */
+export function resolvePromqlLabelFilterMatch(
+  filter: { match?: string },
+  variables: ChartVariable[] | undefined,
+): ResolvedPromqlLabelFilterMatch {
+  const match = filter.match?.trim();
+  if (!match) return {};
+  if (variables == null) return { match };
+
+  try {
+    return {
+      match: substituteVariables(match, {
+        variables,
+        inputLanguage: 'promql',
+      }),
+    };
+  } catch (e) {
+    return { match, error: e instanceof Error ? e.message : String(e) };
   }
 }
 

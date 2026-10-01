@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import {
   aliasMapToWithClauses,
+  convertDateRangeToGranularityString,
   convertToCategoricalChartConfig,
   convertToDashboardDocument,
   convertToDashboardTemplate,
@@ -1329,6 +1330,55 @@ describe('utils', () => {
           variableName: 'Service_Name',
         },
       ]);
+    });
+
+    it('should export a promql-label filter with its source id remapped to a name', () => {
+      const sources: TSource[] = [
+        {
+          id: 'source1',
+          name: 'Prom',
+          connection: 'connection1',
+          kind: SourceKind.Promql,
+          from: { databaseName: 'db1', tableName: 'timeseries_table' },
+          timestampValueExpression: 'Timestamp',
+        },
+      ];
+
+      const dashboard: z.infer<typeof DashboardSchema> = {
+        id: 'dashboard1',
+        name: 'PromQL Filter Dashboard',
+        tags: [],
+        tiles: [],
+        filters: [
+          {
+            id: 'filter-promql',
+            type: 'PROMETHEUS_LABEL',
+            name: 'Pod',
+            source: 'source1',
+            label: 'pod',
+            isBroadcastEnabled: false,
+            isVariableEnabled: true,
+            variableName: 'pod',
+          },
+        ],
+      };
+
+      const template = convertToDashboardTemplate(dashboard, sources);
+
+      expect(template.filters).toEqual([
+        {
+          id: 'filter-promql',
+          type: 'PROMETHEUS_LABEL',
+          name: 'Pod',
+          source: 'Prom',
+          label: 'pod',
+          isBroadcastEnabled: false,
+          isVariableEnabled: true,
+          variableName: 'pod',
+        },
+      ]);
+      // Only queried filters broadcast, so no applies-to key is stamped on.
+      expect('appliesToSourceIds' in template.filters![0]).toBe(false);
     });
 
     // A `STATIC_LIST` filter references nothing in the workspace at all, so it
@@ -2716,6 +2766,85 @@ describe('utils', () => {
         // This test case illustrates that subsequent clauses will also be extracted.
         settingsClause: 'SETTINGS opt = 1, cast = 1 FORMAT json',
       },
+      {
+        label: 'settings inside an identifier',
+        sql: 'SELECT * FROM table WHERE AppSettings = 1 SETTINGS opt = 1',
+        withoutSettingsClause: 'SELECT * FROM table WHERE AppSettings = 1',
+        settingsClause: 'SETTINGS opt = 1',
+      },
+      {
+        label: 'settings inside a string literal',
+        sql: "SELECT * FROM table WHERE MetricName = 'app.settings.reloads'",
+        withoutSettingsClause:
+          "SELECT * FROM table WHERE MetricName = 'app.settings.reloads'",
+        settingsClause: undefined,
+      },
+      {
+        label: 'settings as a dotted path or map column',
+        sql: "SELECT * FROM table WHERE LogAttributes.settings = 'x' AND settings['k'] = 'y'",
+        withoutSettingsClause:
+          "SELECT * FROM table WHERE LogAttributes.settings = 'x' AND settings['k'] = 'y'",
+        settingsClause: undefined,
+      },
+      {
+        label: 'apostrophe in a comment before SETTINGS',
+        sql: "SELECT * FROM table -- don't count retries\nWHERE a = 1 SETTINGS max_threads = 1",
+        withoutSettingsClause:
+          "SELECT * FROM table -- don't count retries\nWHERE a = 1",
+        settingsClause: 'SETTINGS max_threads = 1',
+      },
+      {
+        label: 'apostrophe in a block comment before SETTINGS',
+        sql: "SELECT * FROM table /* don't count retries */ WHERE a = 1 SETTINGS max_threads = 1",
+        withoutSettingsClause:
+          "SELECT * FROM table /* don't count retries */ WHERE a = 1",
+        settingsClause: 'SETTINGS max_threads = 1',
+      },
+      {
+        label: 'settings inside a comment',
+        sql: 'SELECT * FROM table -- SETTINGS in a comment\nWHERE a = 1',
+        withoutSettingsClause:
+          'SELECT * FROM table -- SETTINGS in a comment\nWHERE a = 1',
+        settingsClause: undefined,
+      },
+      {
+        label: 'escaped quote in a string literal before settings',
+        sql: "SELECT * FROM table WHERE a = 'it\\'s settings' SETTINGS max_threads = 1",
+        withoutSettingsClause:
+          "SELECT * FROM table WHERE a = 'it\\'s settings'",
+        settingsClause: 'SETTINGS max_threads = 1',
+      },
+      {
+        label: 'doubled quote in a string literal before settings',
+        sql: "SELECT * FROM table WHERE a = 'it''s settings' SETTINGS max_threads = 1",
+        withoutSettingsClause: "SELECT * FROM table WHERE a = 'it''s settings'",
+        settingsClause: 'SETTINGS max_threads = 1',
+      },
+      {
+        label: 'settings as a quoted identifier',
+        sql: 'SELECT `settings`, "settings" FROM table SETTINGS max_threads = 1',
+        withoutSettingsClause: 'SELECT `settings`, "settings" FROM table',
+        settingsClause: 'SETTINGS max_threads = 1',
+      },
+      {
+        label: 'settings as a table name',
+        sql: 'SELECT name FROM system.settings WHERE changed SETTINGS max_threads = 1',
+        withoutSettingsClause: 'SELECT name FROM system.settings WHERE changed',
+        settingsClause: 'SETTINGS max_threads = 1',
+      },
+      {
+        label: 'lowercase keyword followed by a newline',
+        sql: 'SELECT * FROM table WHERE a = 1 settings\n  max_threads = 1',
+        withoutSettingsClause: 'SELECT * FROM table WHERE a = 1',
+        settingsClause: 'settings\n  max_threads = 1',
+      },
+      {
+        label: 'string value inside the SETTINGS clause',
+        sql: "SELECT * FROM table SETTINGS short_circuit_function_evaluation = 'force_enable'",
+        withoutSettingsClause: 'SELECT * FROM table',
+        settingsClause:
+          "SETTINGS short_circuit_function_evaluation = 'force_enable'",
+      },
     ])(
       'Extracts SETTINGS clause from: "$label" query',
       ({ sql, settingsClause, withoutSettingsClause }) => {
@@ -3252,6 +3381,46 @@ describe('utils', () => {
           ...opts,
         }),
       ).toBe('EventTime');
+    });
+  });
+
+  describe('convertDateRangeToGranularityString', () => {
+    const range = (seconds: number): [Date, Date] => [
+      new Date(0),
+      new Date(seconds * 1000),
+    ];
+
+    it('infers 30 second buckets for a short range with no minimum', () => {
+      // 60 buckets max -> a 30-minute range infers 30 second buckets
+      expect(convertDateRangeToGranularityString(range(30 * 60))).toBe(
+        '30 second',
+      );
+    });
+
+    it('floors a short range up to the given minimum', () => {
+      expect(
+        convertDateRangeToGranularityString(range(30 * 60), undefined, 60),
+      ).toBe('1 minute');
+    });
+
+    it('is a no-op when the inferred bucket is already above the minimum', () => {
+      // 5-hour range infers 5 minute buckets, well above a 1-minute floor
+      expect(
+        convertDateRangeToGranularityString(range(5 * 3600), undefined, 60),
+      ).toBe('5 minute');
+    });
+
+    it('rounds a minimum that falls between two granularities up to the next one', () => {
+      // a 90-second minimum has no exact match; 5 minute is the next granularity up
+      expect(
+        convertDateRangeToGranularityString(range(30 * 60), undefined, 90),
+      ).toBe('5 minute');
+    });
+
+    it('treats an unset minimum the same as 0 (no flooring)', () => {
+      expect(
+        convertDateRangeToGranularityString(range(30 * 60), undefined, 0),
+      ).toBe('30 second');
     });
   });
 });

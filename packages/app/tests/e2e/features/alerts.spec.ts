@@ -76,6 +76,117 @@ test.describe('Alert Creation', { tag: ['@alerts', '@full-stack'] }, () => {
   );
 
   test(
+    'should create and update a saved-search alert with a custom display name and tags',
+    { tag: '@full-stack' },
+    async () => {
+      // Two round trips through the alert detail page, which dev mode compiles
+      // on first hit.
+      test.setTimeout(120000);
+      const ts = Date.now();
+      const savedSearchName = `E2E Named Alert Search ${ts}`;
+      const displayName = `E2E Custom Alert Name ${ts}`;
+      const tag = `e2e-tag-${ts}`;
+      const updatedDisplayName = `E2E Renamed Alert ${ts}`;
+      const updatedTag = `e2e-renamed-tag-${ts}`;
+      const webhookName = `E2E Webhook Named ${ts}`;
+      const webhookUrl = `https://example.com/named-${ts}`;
+
+      await test.step('Create a saved search', async () => {
+        await searchPage.goto();
+        await searchPage.openSaveSearchModal();
+        await searchPage.savedSearchModal.saveSearchAndWaitForNavigation(
+          savedSearchName,
+        );
+      });
+
+      await test.step('Open the alerts modal from the saved search page', async () => {
+        await expect(searchPage.alertsButton).toBeVisible();
+        await searchPage.openAlertsModal();
+        await expect(searchPage.alertModal.addNewWebhookButton).toBeVisible();
+      });
+
+      await test.step('Set a custom display name and tag', async () => {
+        await searchPage.alertModal.setDisplayName(displayName);
+        await searchPage.alertModal.addTag(tag);
+      });
+
+      await test.step('Create a new incoming webhook for the alert channel', async () => {
+        await searchPage.alertModal.addWebhookAndWait(
+          'Generic',
+          webhookName,
+          webhookUrl,
+        );
+      });
+
+      await test.step('Create the alert (webhook is auto-selected after creation)', async () => {
+        await searchPage.alertModal.createAlert();
+      });
+
+      await test.step('The alerts page finds it by its custom name and tag', async () => {
+        await alertsPage.goto();
+        await expect(alertsPage.pageContainer).toBeVisible();
+        await alertsPage.filterToAlert(displayName);
+
+        const card = alertsPage.getAlertCardByName(displayName);
+        await expect(card).toBeVisible({ timeout: 10000 });
+        await expect(card.getByText(tag)).toBeVisible();
+      });
+
+      await test.step('The saved search name no longer surfaces it', async () => {
+        await alertsPage.searchByName(savedSearchName);
+        await expect(
+          alertsPage.getAlertCardByName(savedSearchName),
+        ).toHaveCount(0);
+      });
+
+      await test.step('The detail page shows the custom name and tag', async () => {
+        await alertsPage.filterToAlert(displayName);
+        await alertsPage.openDetails(
+          alertsPage.getAlertCardByName(displayName),
+        );
+        await expect(alertsPage.detailName).toHaveText(displayName);
+        await expect(alertsPage.detailTags).toContainText(tag);
+      });
+
+      await test.step('Rename and retag the alert from the saved search page', async () => {
+        await alertsPage.detailSourceLink.click();
+        await alertsPage.page.waitForURL(/\/search\/[a-f0-9]{24}/);
+        await expect(searchPage.alertsButton).toBeVisible();
+        await searchPage.openAlertsModal();
+        await searchPage.alertModal.selectExistingAlertTab(0);
+        await searchPage.alertModal.setDisplayName(updatedDisplayName);
+        await searchPage.alertModal.removeTag(tag);
+        await searchPage.alertModal.addTag(updatedTag);
+        await searchPage.alertModal.saveAlert();
+      });
+
+      await test.step('The alerts page shows the updated name and tag', async () => {
+        await alertsPage.goto();
+        await expect(alertsPage.pageContainer).toBeVisible();
+        await alertsPage.filterToAlert(updatedDisplayName);
+
+        const card = alertsPage.getAlertCardByName(updatedDisplayName);
+        await expect(card).toBeVisible({ timeout: 10000 });
+        await expect(card.getByText(updatedTag)).toBeVisible();
+        await expect(card.getByText(tag, { exact: true })).toHaveCount(0);
+
+        await alertsPage.searchByName(displayName);
+        await expect(alertsPage.getAlertCardByName(displayName)).toHaveCount(0);
+      });
+
+      await test.step('The detail page shows the updated name and tag', async () => {
+        await alertsPage.filterToAlert(updatedDisplayName);
+        await alertsPage.openDetails(
+          alertsPage.getAlertCardByName(updatedDisplayName),
+        );
+        await expect(alertsPage.detailName).toHaveText(updatedDisplayName);
+        await expect(alertsPage.detailTags).toContainText(updatedTag);
+        await expect(alertsPage.detailTags).not.toContainText(tag);
+      });
+    },
+  );
+
+  test(
     'should create an alert from a dashboard tile and verify on the alerts page',
     { tag: '@full-stack' },
     async ({ page }) => {
@@ -132,10 +243,134 @@ test.describe('Alert Creation', { tag: ['@alerts', '@full-stack'] }, () => {
             .getByRole('link')
             .filter({ hasText: tileName }),
         ).toBeVisible({ timeout: 10000 });
-        // Tile alerts have no Terraform resource, so they must not be offered
-        // for import — this is the eligibility branch in AlertRowMenu.
+        // This tile's name is unique and non-blank on a dashboard nothing else
+        // manages, so the provider can address it and the export is offered.
+        // The withheld cases (blank or duplicated tile name, provisioned or
+        // missing dashboard) are covered in iac.int.test.ts and iac.test.ts —
+        // reproducing them here would mean driving the tile editor twice for a
+        // branch that never reaches the browser.
         await alertsPage.openRowMenu(alertsPage.getAlertCardByName(tileName));
-        await expect(alertsPage.terraformMenuItem).toBeHidden();
+        await expect(alertsPage.terraformMenuItem).toBeVisible();
+      });
+    },
+  );
+
+  test(
+    'should create and update a dashboard tile alert with a custom display name and tags',
+    { tag: '@full-stack' },
+    async ({ page }) => {
+      test.setTimeout(120000);
+      const ts = Date.now();
+      const tileName = `E2E Named Alert Tile ${ts}`;
+      const displayName = `E2E Custom Tile Alert ${ts}`;
+      const tag = `e2e-tile-tag-${ts}`;
+      const updatedDisplayName = `E2E Renamed Tile Alert ${ts}`;
+      const updatedTag = `e2e-tile-retag-${ts}`;
+      const webhookName = `E2E Webhook Named Tile ${ts}`;
+      const webhookUrl = `https://example.com/named-tile-${ts}`;
+
+      await test.step('Create a new dashboard', async () => {
+        await dashboardPage.goto();
+        await dashboardPage.createNewDashboard();
+      });
+
+      await test.step('Add a tile to the dashboard', async () => {
+        await dashboardPage.addTile();
+        await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+        await dashboardPage.chartEditor.waitForDataToLoad();
+        await dashboardPage.chartEditor.setChartName(tileName);
+        await dashboardPage.chartEditor.runQuery();
+      });
+
+      await test.step('Enable an alert with a custom display name and tag', async () => {
+        await expect(dashboardPage.chartEditor.alertButton).toBeVisible();
+        await dashboardPage.chartEditor.clickAddAlert();
+        await expect(
+          dashboardPage.chartEditor.addNewWebhookButton,
+        ).toBeVisible();
+        await dashboardPage.chartEditor.setTileAlertDisplayName(displayName);
+        await dashboardPage.chartEditor.addTileAlertTag(tag);
+        await dashboardPage.chartEditor.addNewWebhookButton.click();
+        await expect(page.getByTestId('webhook-name-input')).toBeVisible();
+        await dashboardPage.chartEditor.webhookAlertModal.addWebhook(
+          'Generic',
+          webhookName,
+          webhookUrl,
+        );
+        await expect(page.getByTestId('alert-modal')).toBeHidden();
+      });
+
+      await test.step('Save the tile with the alert configured', async () => {
+        await dashboardPage.chartEditor.save();
+        await expect(dashboardPage.getTiles()).toHaveCount(1, {
+          timeout: 10000,
+        });
+      });
+
+      await test.step('The alerts page finds it by its custom name and tag', async () => {
+        await alertsPage.goto();
+        await expect(alertsPage.pageContainer).toBeVisible();
+        await alertsPage.filterToAlert(displayName);
+
+        const card = alertsPage.getAlertCardByName(displayName);
+        await expect(card).toBeVisible({ timeout: 10000 });
+        await expect(card.getByText(tag)).toBeVisible();
+
+        await alertsPage.searchByName(tileName);
+        await expect(alertsPage.getAlertCardByName(tileName)).toHaveCount(0);
+      });
+
+      await test.step('The detail page shows the custom name and tag', async () => {
+        await alertsPage.filterToAlert(displayName);
+        await alertsPage.openDetails(
+          alertsPage.getAlertCardByName(displayName),
+        );
+        await expect(alertsPage.detailName).toHaveText(displayName);
+        await expect(alertsPage.detailTags).toContainText(tag);
+      });
+
+      await test.step('Rename and retag the alert from the tile editor', async () => {
+        await alertsPage.detailSourceLink.click();
+        await page.waitForURL(/\/dashboards\/[a-f0-9]{24}/);
+        await expect(dashboardPage.getTiles()).toHaveCount(1, {
+          timeout: 10000,
+        });
+        await dashboardPage.editTile(0);
+        await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+        await dashboardPage.chartEditor.setTileAlertDisplayName(
+          updatedDisplayName,
+        );
+        await dashboardPage.chartEditor.removeTileAlertTag(tag);
+        await dashboardPage.chartEditor.addTileAlertTag(updatedTag);
+        // The tile save issues a fire-and-forget PATCH; navigating away before
+        // it lands would drop the update.
+        const patch = dashboardPage.waitForDashboardPatch();
+        await dashboardPage.chartEditor.save();
+        await patch;
+      });
+
+      await test.step('The alerts page shows the updated name and tag', async () => {
+        await alertsPage.goto();
+        await expect(alertsPage.pageContainer).toBeVisible();
+        await alertsPage.filterToAlert(updatedDisplayName);
+
+        const card = alertsPage.getAlertCardByName(updatedDisplayName);
+        await expect(card).toBeVisible({ timeout: 10000 });
+        await expect(card.getByText(updatedTag)).toBeVisible();
+        await expect(card.getByText(tag, { exact: true })).toHaveCount(0);
+
+        await alertsPage.searchByName(displayName);
+        await expect(alertsPage.getAlertCardByName(displayName)).toHaveCount(0);
+      });
+
+      await test.step('The detail page shows the updated name and tag', async () => {
+        await alertsPage.filterToAlert(updatedDisplayName);
+        await alertsPage.openDetails(
+          alertsPage.getAlertCardByName(updatedDisplayName),
+        );
+        await expect(alertsPage.detailName).toHaveText(updatedDisplayName);
+        await expect(alertsPage.detailTags).toContainText(updatedTag);
+        await expect(alertsPage.detailTags).not.toContainText(tag);
       });
     },
   );
@@ -811,6 +1046,8 @@ test.describe('Alert Filtering', { tag: ['@alerts', '@full-stack'] }, () => {
     tags: [`team-alpha-${ts}`, `staging-${ts}`],
   };
   const webhookUrl = `https://example.com/filter-${ts}`;
+  /** Applied to a dashboard and nothing else, so no alert can match it. */
+  const dashboardOnlyTag = `dashboard-only-${ts}`;
 
   async function seedFilterTestData(page: import('@playwright/test').Page) {
     const apiUrl = getApiUrl();
@@ -855,6 +1092,14 @@ test.describe('Alert Filtering', { tag: ['@alerts', '@full-stack'] }, () => {
         },
       });
     }
+
+    await page.request.post(`${apiUrl}/dashboards`, {
+      data: {
+        name: `E2E Filter Dashboard ${ts}`,
+        tiles: [],
+        tags: [dashboardOnlyTag],
+      },
+    });
   }
 
   test.beforeAll(async ({ browser }) => {
@@ -877,8 +1122,54 @@ test.describe('Alert Filtering', { tag: ['@alerts', '@full-stack'] }, () => {
 
   test('should show search and filter controls', async () => {
     await expect(alertsPage.searchField).toBeVisible();
+    await expect(alertsPage.stateFilterDropdown).toBeVisible();
     await expect(alertsPage.tagFilterDropdown).toBeVisible();
-    await expect(alertsPage.creatorFilterDropdown).toBeVisible();
+    await expect(alertsPage.creatorFilterControl).toBeVisible();
+  });
+
+  test('should filter alerts by state', async () => {
+    await expect(alertsPage.getAlertCardByName(searchAlpha.name)).toBeVisible({
+      timeout: 10000,
+    });
+
+    await test.step('A freshly created alert is in the Ok state', async () => {
+      await alertsPage.selectState('Ok');
+      await expect(
+        alertsPage.getAlertCardByName(searchAlpha.name),
+      ).toBeVisible();
+      await expect(alertsPage.page).toHaveURL(/state=OK/);
+    });
+
+    await test.step('Filtering to another state excludes it', async () => {
+      await alertsPage.selectState('Alert');
+      await expect(
+        alertsPage.getAlertCardByName(searchAlpha.name),
+      ).toBeHidden();
+    });
+
+    await test.step('Clearing the state filter brings it back', async () => {
+      await alertsPage.clearStateFilter();
+      await expect(
+        alertsPage.getAlertCardByName(searchAlpha.name),
+      ).toBeVisible();
+    });
+  });
+
+  test('should scope alerts to the current user', async () => {
+    await expect(alertsPage.getAlertCardByName(searchAlpha.name)).toBeVisible({
+      timeout: 10000,
+    });
+
+    // The fixtures are created by the authenticated user, so scoping to "my
+    // alerts" must keep them. Asserting exclusion would need a second user;
+    // that case is covered by the API's integration tests.
+    await alertsPage.showMyAlerts();
+    await expect(alertsPage.page).toHaveURL(/mine=true/);
+    await expect(alertsPage.getAlertCardByName(searchAlpha.name)).toBeVisible();
+
+    await alertsPage.showAllAlerts();
+    await expect(alertsPage.page).not.toHaveURL(/mine=true/);
+    await expect(alertsPage.getAlertCardByName(searchAlpha.name)).toBeVisible();
   });
 
   test('should filter alerts by name search', async () => {
@@ -962,6 +1253,18 @@ test.describe('Alert Filtering', { tag: ['@alerts', '@full-stack'] }, () => {
     });
   });
 
+  test('should only offer tags that are applied to alerts', async () => {
+    await expect(alertsPage.getAlertCardByName(searchAlpha.name)).toBeVisible({
+      timeout: 10000,
+    });
+
+    await alertsPage.openTagFilter();
+    await expect(alertsPage.getTagOption(`team-alpha-${ts}`)).toBeVisible();
+    // Tagging a dashboard must not add the tag here: filtering alerts by it
+    // would return nothing.
+    await expect(alertsPage.getTagOption(dashboardOnlyTag)).toHaveCount(0);
+  });
+
   test('should filter alerts by tag shared across sources', async () => {
     await expect(alertsPage.getAlertCardByName(searchAlpha.name)).toBeVisible({
       timeout: 10000,
@@ -995,5 +1298,117 @@ test.describe('Alert Filtering', { tag: ['@alerts', '@full-stack'] }, () => {
       timeout: 10000,
     });
     await expect(alertsPage.getAlertCardByName(searchAlpha.name)).toBeHidden();
+  });
+});
+
+test.describe('Alert Pagination', { tag: ['@alerts', '@full-stack'] }, () => {
+  // Serial so the 105-alert seed runs once, not once per worker.
+  test.describe.configure({ mode: 'serial' });
+
+  let alertsPage: AlertsPage;
+  const ts = Date.now();
+
+  /** Must exceed the page the app asks for (ALERTS_PAGE_SIZE = 100). */
+  const SEEDED_COUNT = 105;
+  const scope = `E2E Page ${ts}`;
+  /**
+   * Zero-padded so the server's `{displayName: 1, _id: 1}` order is
+   * predictable, which is what lets the test name a row that can only have
+   * arrived on the second page.
+   */
+  const alertName = (i: number) => `${scope} ${String(i).padStart(3, '0')}`;
+  const lastAlertName = alertName(SEEDED_COUNT - 1);
+
+  async function seedPaginationData(page: import('@playwright/test').Page) {
+    const apiUrl = getApiUrl();
+    const sources = await getSources(page, 'log');
+    const logSourceId = sources[0]._id;
+
+    const webhookRes = await page.request.post(`${apiUrl}/webhooks`, {
+      data: {
+        name: `E2E Page Webhook ${ts}`,
+        service: 'generic',
+        url: `https://example.com/page-${ts}`,
+      },
+    });
+    const webhook = (await webhookRes.json()).data;
+    const channel = { type: 'webhook', webhookId: webhook._id ?? webhook.id };
+
+    const ssRes = await page.request.post(`${apiUrl}/saved-search`, {
+      data: {
+        name: `${scope} source`,
+        select: '',
+        where: '',
+        whereLanguage: 'lucene',
+        source: logSourceId,
+        tags: [],
+      },
+    });
+    expect(ssRes.ok(), `saved search seed failed: ${await ssRes.text()}`).toBe(
+      true,
+    );
+    const saved = await ssRes.json();
+    const savedSearchId = saved._id ?? saved.id;
+
+    // One saved search, N alerts against it, each with an explicit
+    // displayName — the create endpoint only derives a name when none is
+    // given, so this avoids seeding N saved searches too.
+    for (let i = 0; i < SEEDED_COUNT; i++) {
+      const res = await page.request.post(`${apiUrl}/alerts`, {
+        data: {
+          source: 'saved_search',
+          savedSearchId,
+          displayName: alertName(i),
+          channel,
+          interval: '5m',
+          threshold: 10,
+          thresholdType: 'above',
+        },
+      });
+      // Seeding silently returning a 4xx is indistinguishable from a broken
+      // page once the assertions run, so fail loudly here instead.
+      expect(res.ok(), `alert seed ${i} failed: ${await res.text()}`).toBe(
+        true,
+      );
+    }
+  }
+
+  test.beforeAll(async ({ browser }) => {
+    const authFile = path.join(__dirname, '../.auth/user.json');
+    const context = await browser.newContext({ storageState: authFile });
+    const page = await context.newPage();
+    await seedPaginationData(page);
+    await context.close();
+  });
+
+  test.beforeEach(async ({ page }) => {
+    alertsPage = new AlertsPage(page);
+    await alertsPage.goto();
+    await expect(alertsPage.pageContainer).toBeVisible();
+    await expect(alertsPage.filters).toBeVisible({ timeout: 10000 });
+  });
+
+  test('should load more alerts when scrolling to the bottom', async () => {
+    await alertsPage.searchByName(scope);
+
+    await test.step('The first page stops short of every match', async () => {
+      await expect(alertsPage.getAlertCardByName(alertName(0))).toBeVisible({
+        timeout: 15000,
+      });
+      // Beyond the first page, so it cannot be in the response yet.
+      await expect(alertsPage.getAlertCardByName(lastAlertName)).toBeHidden();
+      await expect(alertsPage.loadMoreSentinel).toBeAttached();
+    });
+
+    await test.step('Scrolling to the bottom pulls the next page', async () => {
+      await alertsPage.scrollUntilAlertVisible(lastAlertName);
+      await expect(alertsPage.getAlertCardByName(lastAlertName)).toBeVisible();
+    });
+
+    await test.step('The sentinel goes away once every page is in', async () => {
+      await expect(alertsPage.loadMoreSentinel).toHaveCount(0, {
+        timeout: 15000,
+      });
+    });
   });
 });

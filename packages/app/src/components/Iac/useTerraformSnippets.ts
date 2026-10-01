@@ -4,6 +4,7 @@ import {
   buildProviderBlock,
   type IacResourceRef,
   providerEndpoint,
+  TERRAFORM_PROVIDER_TILE_ALERT_VERSION_CONSTRAINT,
 } from '@hyperdx/common-utils/dist/iac';
 
 import api from '@/api';
@@ -32,7 +33,7 @@ export function useTerraformSnippets({
   // Destructured so the memo keys off primitives. Call sites build `resource`
   // inline in JSX, so depending on the object itself would re-run this on
   // every render.
-  const { type, id, name } = resource;
+  const { type, id, name, tileAlert } = resource;
   // Import ids are team-scoped. Read here rather than taken as a prop so the
   // call sites don't each have to know that. `me` is fetched once for the app
   // shell, so this is a cache read; it is only null in local mode, where
@@ -50,7 +51,14 @@ export function useTerraformSnippets({
         // consumes, so it works in a fresh project — and matches what the
         // bulk export writes, so both surfaces produce the same artefact.
         label: 'Import block',
-        hint: 'Add to your Terraform project, then run `terraform plan -generate-config-out=generated.tf` and review before applying. The address is derived from this resource’s id, so it survives a rename in HyperDX.',
+        // The tile-alert caveat is the bulk file's, cut to one line. This is
+        // the likelier path for someone who just made a tile alert, and the
+        // generated config it produces is only durable after a hand edit.
+        hint: `Add to your Terraform project, then run \`terraform plan -generate-config-out=generated.tf\` and review before applying. The address is derived from this resource’s id, so it survives a rename in HyperDX.${
+          tileAlert
+            ? ' The generated config pins dashboard_id and tile_id as literals — replace them with clickhouse_clickstack_dashboard references before you apply, or a later dashboard apply re-mints the tile id and deletes this alert with the tile it pointed at.'
+            : ''
+        }`,
         snippet: buildImportBlock({ type, id, name }, teamId),
       },
       {
@@ -59,11 +67,18 @@ export function useTerraformSnippets({
         // convenience. Tucked behind a toggle for the first-time case only.
         label: 'Provider setup',
         collapsible: true,
-        hint: 'Add once per Terraform module. Skip if your project already declares the ClickHouse provider.',
+        hint: `Add once per Terraform module. Skip if your project already declares the ClickHouse provider${
+          tileAlert
+            ? `, as long as it requires ${TERRAFORM_PROVIDER_TILE_ALERT_VERSION_CONSTRAINT} — earlier versions cannot model a tile alert`
+            : ''
+        }.`,
+        // A tile alert needs the provider version that models
+        // `source = "tile"`, so the floor here follows the resource.
         snippet: buildProviderBlock(
           providerEndpoint(window.location.origin, BASE_PATH),
+          { tileAlerts: !!tileAlert },
         ),
       },
     ];
-  }, [enabled, type, id, name, teamId]);
+  }, [enabled, type, id, name, tileAlert, teamId]);
 }

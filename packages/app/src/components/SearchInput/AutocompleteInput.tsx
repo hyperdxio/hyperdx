@@ -3,10 +3,10 @@ import cx from 'classnames';
 import Fuse from 'fuse.js';
 import { Loader, Popover, Textarea, UnstyledButton } from '@mantine/core';
 
+import { EDITOR_INPUT_HEIGHTS } from '@/components/editorInputHeights';
+import type { VariableValidationState } from '@/components/SQLEditor/variableValidation';
 import type { TokenInfo } from '@/hooks/useAutoCompleteOptions';
 import { useQueryHistory } from '@/utils';
-
-import InputLanguageSwitch from './InputLanguageSwitch';
 
 import styles from './AutocompleteInput.module.scss';
 
@@ -23,13 +23,13 @@ export default function AutocompleteInput({
   aboveSuggestions,
   belowSuggestions,
   rightAdornment,
+  validationState,
   showSuggestionsOnEmpty,
   suggestionsHeader = 'Properties',
   zIndex = 999,
-  onLanguageChange,
-  language,
   onSubmit,
   queryHistoryType,
+  allowMultiline = true,
   'data-testid': dataTestId,
 }: {
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
@@ -44,17 +44,19 @@ export default function AutocompleteInput({
   tokenInfo?: TokenInfo;
   aboveSuggestions?: React.ReactNode;
   belowSuggestions?: React.ReactNode;
-  /** Rendered at the right edge of the input, left of the language switch. */
+  /** Rendered at the right edge of the input. */
   rightAdornment?: React.ReactNode;
+  validationState?: VariableValidationState;
   showSuggestionsOnEmpty?: boolean;
   suggestionsHeader?: string;
   zIndex?: number;
-  onLanguageChange?: (language: 'sql' | 'lucene') => void;
-  language?: 'sql' | 'lucene';
   queryHistoryType?: string;
+  allowMultiline?: boolean;
   'data-testid'?: string;
 }) {
   const suggestionsLimit = 10;
+  // Rows the query is shown across before the textarea starts scrolling.
+  const maxVisibleRows = 4;
 
   const [isSearchInputFocused, _setIsSearchInputFocused] = useState(false);
   const [isInputDropdownOpen, setIsInputDropdownOpen] = useState(false);
@@ -191,16 +193,17 @@ export default function AutocompleteInput({
     if (inputRef.current) {
       setInputWidth(inputRef.current.clientWidth);
     }
-  }, [language, onLanguageChange, rightAdornment, inputRef]);
+  }, [rightAdornment, inputRef]);
 
-  // Height including the 2px border from .textarea (1px top + 1px bottom)
-  const baseHeight = size === 'xs' ? 30 : size === 'lg' ? 44 : 38;
+  const baseHeight = EDITOR_INPUT_HEIGHTS[size];
 
   return (
     <div
       className={styles.root}
-      style={{ ['--autocomplete-base-height' as string]: `${baseHeight}px` }}
-      data-expanded={isSearchInputFocused ? 'true' : undefined}
+      style={{ ['--editor-base-height' as string]: `${baseHeight}px` }}
+      data-empty={value ? undefined : 'true'}
+      data-single-line={allowMultiline ? undefined : 'true'}
+      data-validation-state={validationState}
     >
       <Popover
         opened={isInputDropdownOpen}
@@ -225,14 +228,13 @@ export default function AutocompleteInput({
             placeholder={placeholder}
             className={cx(
               styles.textarea,
-              !isSearchInputFocused && styles.collapseFade,
               isSearchInputFocused && styles.focused,
             )}
             value={value}
             size={size}
             autosize
             minRows={1}
-            maxRows={isSearchInputFocused ? 4 : 1}
+            maxRows={allowMultiline ? maxVisibleRows : 1}
             data-testid={dataTestId}
             onChange={e => onChange(e.target.value)}
             onFocus={() => {
@@ -279,15 +281,14 @@ export default function AutocompleteInput({
                   e.preventDefault();
                   const selected = suggestions[selectedAutocompleteIndex];
                   onAcceptSuggestion(selected.value, selected.isVariable);
-                } else {
-                  // Allow shift+enter to still create new lines
-                  if (!e.shiftKey) {
-                    e.preventDefault();
-                    if (queryHistoryType && value) {
-                      setQueryHistory(value);
-                    }
-                    onSubmit?.();
+                } else if (!e.shiftKey) {
+                  e.preventDefault();
+                  if (queryHistoryType && value) {
+                    setQueryHistory(value);
                   }
+                  onSubmit?.();
+                } else if (!allowMultiline) {
+                  e.preventDefault();
                 }
               }
               if (
@@ -319,16 +320,9 @@ export default function AutocompleteInput({
             }}
             rightSectionWidth={rightSectionWidth}
             rightSection={
-              rightAdornment != null ||
-              (language != null && onLanguageChange != null) ? (
+              rightAdornment != null ? (
                 <div ref={ref} className={styles.rightSection}>
                   {rightAdornment}
-                  {language != null && onLanguageChange != null && (
-                    <InputLanguageSwitch
-                      language={language}
-                      onLanguageChange={onLanguageChange}
-                    />
-                  )}
                 </div>
               ) : undefined
             }

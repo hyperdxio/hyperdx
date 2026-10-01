@@ -58,7 +58,7 @@ import { withAppNav } from '@/layout';
 import { useServiceDashboardExpressions } from '@/serviceDashboard';
 import { useSource, useSources } from '@/source';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
-import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
+import { useDefaultTimeRange, useNewTimeQuery } from '@/timeQuery';
 
 import DatabaseTab from './DatabaseTab';
 import ErrorsTab from './ErrorsTab';
@@ -139,9 +139,6 @@ function ServiceSelectControlled({
   );
 }
 
-// TODO: This is a hack to set the default time range
-const defaultTimeRange = parseTimeQuery('Past 1h', false) as [Date, Date];
-
 const appliedConfigMap = {
   source: parseAsString,
   where: parseAsString,
@@ -165,7 +162,10 @@ export function getEffectiveTraceSourceId(
   return (isUsable ? sourceId : traceSources?.[0]?.id) || '';
 }
 
+const DEFAULT_INTERVAL = 'Past 1h';
+
 function ServicesDashboardPage() {
+  const defaultTimeRange = useDefaultTimeRange(DEFAULT_INTERVAL);
   const brandName = useBrandDisplayName();
   const [tab, setTab] = useQueryState(
     'tab',
@@ -268,7 +268,6 @@ function ServicesDashboardPage() {
     syncSourceParam(appliedConfigWithoutFilters.source);
   }, [appliedConfigWithoutFilters.source]);
 
-  const DEFAULT_INTERVAL = 'Past 1h';
   const [displayedTimeInputValue, setDisplayedTimeInputValue] =
     useState(DEFAULT_INTERVAL);
 
@@ -343,7 +342,13 @@ function ServicesDashboardPage() {
         }}
       >
         <Group gap="xs">
-          <Group justify="space-between" gap="xs" wrap="nowrap" flex={1}>
+          <Group
+            justify="space-between"
+            gap="xs"
+            wrap="nowrap"
+            flex={1}
+            align="flex-start"
+          >
             <SourceSelectControlled
               control={control}
               name="source"
@@ -460,6 +465,7 @@ function ServicesDashboardPage() {
         source={source}
         isLoading={isFetchingFilters || isFiltersMutationPending}
         showVariableOptions={false}
+        showRequiredFilterOptions={false}
       />
     </Box>
   );

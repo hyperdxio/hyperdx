@@ -1374,7 +1374,6 @@ export function DBTraceWaterfallChartContainer({
                 languageName="traceWhereLanguage"
                 control={control}
                 size="xs"
-                showLabel={false}
                 allowMultiline={false}
                 onSubmit={handleSubmit(onSubmitFilters)}
                 onLanguageChange={lang =>
@@ -1413,7 +1412,6 @@ export function DBTraceWaterfallChartContainer({
                   languageName="logWhereLanguage"
                   control={control}
                   size="xs"
-                  showLabel={false}
                   allowMultiline={false}
                   onSubmit={handleSubmit(onSubmitFilters)}
                   onLanguageChange={lang =>

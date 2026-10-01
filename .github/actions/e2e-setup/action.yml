@@ -9,7 +9,7 @@ description: |
 runs:
   using: composite
   steps:
-    # E2E port configuration (slot 0 defaults — must match scripts/test-e2e.sh)
+    # E2E port configuration (slot 0 defaults — must match scripts/slots.sh)
     - name: Set E2E environment variables
       shell: bash
       run: |

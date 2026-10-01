@@ -2,6 +2,7 @@ import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 import { renderHook } from '@testing-library/react';
 
 import {
+  firstSourceItemValue,
   sourceSelectFilter,
   SourceSelectGroup,
   useFilteredSortedSourceItems,
@@ -109,6 +110,49 @@ describe('useFilteredSortedSourceItems', () => {
     expect(result.current).toEqual([]);
   });
 
+  it('filters by isSourceAllowed', () => {
+    const { result } = renderHook(() =>
+      useFilteredSortedSourceItems({
+        sources,
+        isSourceAllowed: source => source.id === 'm',
+      }),
+    );
+    expect(result.current.map(i => i.value)).toEqual(['m']);
+  });
+
+  it('combines isSourceAllowed with allowedSourceKinds + connectionId (AND semantics)', () => {
+    const { result } = renderHook(() =>
+      useFilteredSortedSourceItems({
+        sources,
+        allowedSourceKinds: [SourceKind.Log, SourceKind.Metric],
+        connectionId: 'conn-a',
+        isSourceAllowed: source => source.id !== 'z',
+      }),
+    );
+    expect(result.current.map(i => i.value)).toEqual(['m']);
+  });
+
+  it('keeps disabled sources out even when isSourceAllowed accepts them', () => {
+    const { result } = renderHook(() =>
+      useFilteredSortedSourceItems({
+        sources,
+        isSourceAllowed: source => source.kind === SourceKind.Log,
+      }),
+    );
+    expect(result.current.map(i => i.value)).toEqual(['z']);
+  });
+
+  it('recomputes when the isSourceAllowed predicate changes', () => {
+    const { result, rerender } = renderHook(
+      (props: { isSourceAllowed: (source: TSource) => boolean }) =>
+        useFilteredSortedSourceItems({ sources, ...props }),
+      { initialProps: { isSourceAllowed: (s: TSource) => s.id === 'm' } },
+    );
+    expect(result.current.map(i => i.value)).toEqual(['m']);
+    rerender({ isSourceAllowed: (s: TSource) => s.id === 'z' });
+    expect(result.current.map(i => i.value)).toEqual(['z']);
+  });
+
   it('returns a stable reference when inputs are unchanged', () => {
     const { result, rerender } = renderHook(
       (props: {
@@ -197,6 +241,32 @@ describe('useFilteredSortedSourceItems (grouped by section)', () => {
     ]);
   });
 
+  it('applies isSourceAllowed before grouping, dropping sections left empty', () => {
+    const sources = [
+      makeSource('bl', 'Billing Logs', SourceKind.Log, { section: 'Billing' }),
+      makeSource('rl', 'Refund Logs', SourceKind.Log, { section: 'Billing' }),
+      makeSource('cpl', 'Prod Logs', SourceKind.Log, {
+        section: 'Control Plane Prod',
+      }),
+    ];
+    const { result } = renderHook(() =>
+      useFilteredSortedSourceItems({
+        sources,
+        isSourceAllowed: source => source.section === 'Billing',
+        groupBySection: true,
+      }),
+    );
+    expect(result.current).toEqual([
+      {
+        group: 'Billing',
+        items: [
+          { value: 'bl', label: 'Billing Logs' },
+          { value: 'rl', label: 'Refund Logs' },
+        ],
+      },
+    ]);
+  });
+
   it('stays flat (no lone "Other" header) until a source has a real section', () => {
     const sources = [
       makeSource('z', 'Zebra Logs', SourceKind.Log),
@@ -214,6 +284,45 @@ describe('useFilteredSortedSourceItems (grouped by section)', () => {
       { value: 'blank', label: 'Blank Section' },
       { value: 'z', label: 'Zebra Logs' },
     ]);
+  });
+});
+
+describe('firstSourceItemValue', () => {
+  it('returns undefined when nothing is selectable', () => {
+    expect(firstSourceItemValue([])).toBeUndefined();
+  });
+
+  it('returns the first value of a flat list', () => {
+    expect(
+      firstSourceItemValue([
+        { value: 'a', label: 'Alpha' },
+        { value: 'b', label: 'Beta' },
+      ]),
+    ).toBe('a');
+  });
+
+  it('returns the first value of the first group', () => {
+    expect(
+      firstSourceItemValue([
+        { group: 'Billing', items: [{ value: 'b', label: 'Beta' }] },
+        { group: 'Other', items: [{ value: 'a', label: 'Alpha' }] },
+      ]),
+    ).toBe('b');
+  });
+
+  it('skips a group with no items', () => {
+    expect(
+      firstSourceItemValue([
+        { group: 'Billing', items: [] },
+        { group: 'Other', items: [{ value: 'a', label: 'Alpha' }] },
+      ]),
+    ).toBe('a');
+  });
+
+  it('returns undefined when every group is empty', () => {
+    expect(
+      firstSourceItemValue([{ group: 'Billing', items: [] }]),
+    ).toBeUndefined();
   });
 });
 

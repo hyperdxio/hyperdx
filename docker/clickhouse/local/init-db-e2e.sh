@@ -465,6 +465,25 @@ GROUP BY
     Key,
     Timestamp;
 
+-- ---------------------------------------------------------------------------
+-- Generic Logs source (HDX-5274)
+-- ---------------------------------------------------------------------------
+-- A log table with a custom ServiceName column, which is deliberately NOT
+-- part of the sort/primary key.
+CREATE TABLE IF NOT EXISTS ${DATABASE}.e2e_custom_service_name
+(
+  \`Timestamp\` DateTime64(9) CODEC(Delta(8), ZSTD(1)),
+  \`AppName\` LowCardinality(String) CODEC(ZSTD(1)),
+  \`SeverityText\` LowCardinality(String) CODEC(ZSTD(1)),
+  \`Body\` String CODEC(ZSTD(1)),
+  \`LogAttributes\` Map(LowCardinality(String), String) CODEC(ZSTD(1))
+)
+ENGINE = MergeTree
+PARTITION BY toDate(Timestamp)
+ORDER BY (toStartOfFiveMinutes(Timestamp), Timestamp)
+TTL toDateTime(Timestamp) + toIntervalDay(30)
+SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1;
+
 -- PromQL fixture.
 CREATE TABLE IF NOT EXISTS ${DATABASE}.e2e_promql ENGINE = TimeSeries;
 EOFSQL

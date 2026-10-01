@@ -21,6 +21,8 @@ jest.mock('@/api', () => ({
 
 const baseAlert = {
   _id: 'alert-1',
+  displayName: 'Alert 1',
+  tags: [],
   interval: '5m',
   threshold: 3,
   thresholdType: AlertThresholdType.ABOVE,

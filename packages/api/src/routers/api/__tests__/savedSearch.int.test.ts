@@ -221,4 +221,31 @@ describe('savedSearch router', () => {
     expect(savedSearches.body[0].alerts[0].createdBy).toBeDefined();
     expect(savedSearches.body[0].alerts[0].createdBy.email).toBe(user.email);
   });
+
+  it('resolves displayName and tags on GET for an alert stored without them', async () => {
+    const savedSearch = await agent
+      .post('/saved-search')
+      .send({ ...MOCK_SAVED_SEARCH, tags: ['prod'] })
+      .expect(200);
+    const alert = await agent
+      .post('/alerts')
+      .send(
+        makeSavedSearchAlertInput({
+          savedSearchId: savedSearch.body._id,
+          webhookId: webhook._id.toString(),
+        }),
+      )
+      .expect(200);
+    // Alerts written before the fields existed.
+    await Alert.updateOne(
+      { _id: alert.body.data._id },
+      { $set: { displayName: null, tags: null } },
+    );
+
+    const savedSearches = await agent.get('/saved-search').expect(200);
+    expect(savedSearches.body[0].alerts[0]).toMatchObject({
+      displayName: MOCK_SAVED_SEARCH.name,
+      tags: ['prod'],
+    });
+  });
 });

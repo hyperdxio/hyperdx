@@ -9,7 +9,13 @@ import {
   JSDataType,
   ResponseJSON,
 } from '@hyperdx/common-utils/dist/clickhouse';
+import {
+  DEFAULT_PROMQL_REDUCER,
+  getQueriedPromqlSeries,
+  isRangeQuery,
+} from '@hyperdx/common-utils/dist/core/promql';
 import { isMetricChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
+import { SERIES_KEY_JOINER } from '@hyperdx/common-utils/dist/core/seriesNameTemplate';
 import {
   convertDateRangeToGranularityString,
   convertGranularityToSeconds,
@@ -27,10 +33,12 @@ import {
   BuilderSavedChartConfig,
   ChartConfigWithDateRange,
   ChartConfigWithOptDateRange,
+  DateRange,
   DisplayType,
   Filter,
   isSearchableSource,
   MetricsDataType as MetricsDataTypeV2,
+  PromqlChartConfig,
   SourceKind,
   SQLInterval,
   TMetricSource,
@@ -95,9 +103,10 @@ export const DEFAULT_CHART_CONFIG: Omit<
 function getTimeChartGranularity(
   granularity: string | undefined,
   dateRange: [Date, Date],
+  minGranularitySeconds?: number,
 ) {
   return granularity === 'auto' || granularity == null
-    ? convertDateRangeToGranularityString(dateRange, 80)
+    ? convertDateRangeToGranularityString(dateRange, 80, minGranularitySeconds)
     : granularity;
 }
 
@@ -112,6 +121,57 @@ function getTimeChartDateRange(
 }
 
 export const MAX_TIME_CHART_SERIES = DEFAULT_SERIES_LIMIT;
+
+/**
+ * A PromQL config's resolved granularity, and its date range aligned to that
+ * granularity's buckets when it runs a range query, so its samples land on the
+ * same boundaries as the timeseries charts' and stay put across refreshes.
+ */
+function getAlignedRangeAndGranularity(
+  config: PromqlChartConfig & DateRange,
+): Pick<PromqlChartConfig & DateRange, 'granularity' | 'dateRange'> {
+  const granularity = getTimeChartGranularity(
+    config.granularity,
+    config.dateRange,
+  );
+  return {
+    granularity,
+    dateRange: isRangeQuery(config)
+      ? getTimeChartDateRange(
+          config.dateRange,
+          config.alignDateRangeToGranularity,
+          granularity,
+        )
+      : config.dateRange,
+  };
+}
+
+/**
+ * A PromQL number tile's queried config, shared by the value and the sparkline
+ * drawn behind it.
+ */
+export function convertToPromqlNumberChartConfig(
+  config: PromqlChartConfig & DateRange,
+  { withReducer }: { withReducer: boolean },
+): PromqlChartConfig & DateRange {
+  return {
+    ...config,
+    ...getAlignedRangeAndGranularity(config),
+    promqlExpression: getQueriedPromqlSeries(config).map(series => ({
+      ...series,
+      reducer: withReducer
+        ? (series.reducer ?? DEFAULT_PROMQL_REDUCER)
+        : undefined,
+    })),
+  };
+}
+
+/** A PromQL table tile's queried config. */
+export function convertToPromqlTableChartConfig(
+  config: PromqlChartConfig & DateRange,
+): PromqlChartConfig & DateRange {
+  return { ...config, ...getAlignedRangeAndGranularity(config) };
+}
 
 export function convertToTimeChartConfig(
   config: ChartConfigWithDateRange,
@@ -129,6 +189,7 @@ export function convertToTimeChartConfig(
   const granularity = getTimeChartGranularity(
     config.granularity,
     config.dateRange,
+    config.minGranularitySeconds,
   );
 
   const dateRange = getTimeChartDateRange(
@@ -173,12 +234,14 @@ export function useTimeChartSettings(
     | 'fillNulls'
     | 'granularity'
     | 'alignDateRangeToGranularity'
+    | 'minGranularitySeconds'
   >,
 ) {
   return useMemo(() => {
     const granularity = getTimeChartGranularity(
       config.granularity,
       config.dateRange,
+      config.minGranularitySeconds,
     );
 
     const dateRange = getTimeChartDateRange(
@@ -196,7 +259,7 @@ export function useTimeChartSettings(
   }, [config]);
 }
 
-export const ChartKeyJoiner = ' · ';
+export const ChartKeyJoiner = SERIES_KEY_JOINER;
 const PreviousPeriodSuffix = ' (previous)';
 
 /**
@@ -438,6 +501,11 @@ export const K8S_FILESYSTEM_NUMBER_FORMAT: NumberFormat = {
 
 export const K8S_MEM_NUMBER_FORMAT: NumberFormat = {
   output: 'byte',
+};
+
+export const GPU_UTILIZATION_NUMBER_FORMAT: NumberFormat = {
+  output: 'percent',
+  mantissa: 1,
 };
 
 function inferValueColumns(

@@ -2,6 +2,8 @@ import React from 'react';
 import {
   ChartConfigWithDateRange,
   ChartVariable,
+  DisplayType,
+  PromqlExpressionList,
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
@@ -273,11 +275,13 @@ describe('ChartPreviewPanel', () => {
     // and left it undefined off a dashboard.
     const promqlConfig = (
       overrides: {
-        promqlExpression?: string;
+        promqlExpression?: PromqlExpressionList;
+        displayType?: DisplayType;
         variables?: ChartVariable[];
       } = {},
     ): ChartConfigWithDateRange => ({
       configType: 'promql',
+      displayType: DisplayType.Line,
       promqlExpression: EXPRESSION,
       connection: 'default',
       from: { databaseName: 'default', tableName: 'metrics' },
@@ -411,10 +415,71 @@ describe('ChartPreviewPanel', () => {
       await userEvent.hover(wrapper!);
 
       expect(
-        await screen.findByText(/Variables could not be expanded/),
+        await screen.findByText(/Expression could not be expanded/),
       ).toBeInTheDocument();
       expect(
         screen.queryByTestId('chart-promql-preview'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('shows one preview per expression, labelled by alias', async () => {
+      renderPanel({
+        queriedConfig: promqlConfig({
+          promqlExpression: [
+            { expression: 'e2e_service_up', alias: 'up' },
+            { expression: 'rate(e2e_requests_total[5m])' },
+          ],
+        }),
+        showGeneratedPromql: true,
+      });
+      await openGeneratedPromql();
+
+      const previews = screen.getAllByTestId('chart-promql-preview');
+      expect(previews).toHaveLength(2);
+      expect(previews[0]).toHaveTextContent('e2e_service_up');
+      expect(previews[1]).toHaveTextContent('rate(e2e_requests_total[5m])');
+      expect(screen.getByText('up')).toBeInTheDocument();
+      // Unaliased expressions are numbered rather than left unlabelled.
+      expect(screen.getByText('Expression 2')).toBeInTheDocument();
+    });
+  });
+
+  describe('when required dashboard filters are unsatisfied', () => {
+    const blockedProps = {
+      queriedConfig: baseBuilderConfig,
+      dbTimeChartConfig: baseBuilderConfig,
+      missingRequiredFilterNames: ['Service', 'Environment'],
+    };
+
+    it('names them instead of querying', () => {
+      renderPanel(blockedProps);
+
+      expect(
+        screen.getByText(
+          'Missing required filters: Service, Environment. Select a value for each required filter, or turn off “Apply filters” to preview this tile without them.',
+        ),
+      ).toBeInTheDocument();
+      expect(screen.queryByTestId('db-time-chart')).not.toBeInTheDocument();
+      // The block is the reason, not "you haven't run a query yet".
+      expect(
+        screen.queryByText(/please start by defining/i),
+      ).not.toBeInTheDocument();
+    });
+
+    it('does not block a markdown tile, which queries nothing', () => {
+      renderPanel({ ...blockedProps, activeTab: 'markdown' });
+
+      expect(
+        screen.queryByTestId('preview-missing-required-filters'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('renders the chart once one is selected', () => {
+      renderPanel({ ...blockedProps, missingRequiredFilterNames: [] });
+
+      expect(screen.getByTestId('db-time-chart')).toBeInTheDocument();
+      expect(
+        screen.queryByText(/Missing required filters/),
       ).not.toBeInTheDocument();
     });
   });
