@@ -1232,7 +1232,10 @@ describe('MCP Trace Tools', () => {
         );
 
         expect(result.isError).toBe(true);
-        expect(getFirstText(result)).toContain('Failed to compute breakdown');
+        const text = getFirstText(result);
+        expect(text).toContain('Failed to compute breakdown');
+        expect(text).toContain('must be valid ClickHouse SQL');
+        expect(text).not.toContain('shorter startTime/endTime window');
       });
 
       it('applies the MCP time limits even when the source sets max_execution_time', async () => {
