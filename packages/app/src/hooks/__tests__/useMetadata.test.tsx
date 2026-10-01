@@ -336,6 +336,32 @@ describe('useMultipleAllFields', () => {
     expect(result.current.data).toEqual(fieldsA);
   });
 
+  it('falls back to each connection timestampValueExpression when none is passed', async () => {
+    const getAllFields = jest
+      .spyOn(mockMetadata, 'getAllFields')
+      .mockResolvedValue(fieldsA);
+
+    const { result } = renderHook(
+      () =>
+        useMultipleAllFields([
+          { ...tcA, timestampValueExpression: 'TimestampA' },
+          tcB,
+        ]),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(getAllFields).toHaveBeenCalledWith(
+      expect.objectContaining({ timestampValueExpression: 'TimestampA' }),
+    );
+    expect(getAllFields).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tableName: 'table_b',
+        timestampValueExpression: undefined,
+      }),
+    );
+  });
+
   it('should deduplicate fields across successful connections', async () => {
     jest
       .spyOn(mockMetadata, 'getAllFields')

@@ -60,6 +60,70 @@ describe('config', () => {
     });
   });
 
+  describe('EXTERNAL_API_RATE_LIMIT_MAX', () => {
+    const ORIGINAL = process.env.EXTERNAL_API_RATE_LIMIT_MAX;
+
+    afterEach(() => {
+      if (ORIGINAL === undefined) {
+        delete process.env.EXTERNAL_API_RATE_LIMIT_MAX;
+      } else {
+        process.env.EXTERNAL_API_RATE_LIMIT_MAX = ORIGINAL;
+      }
+      jest.resetModules();
+    });
+
+    it('defaults to 100 when unset', () => {
+      delete process.env.EXTERNAL_API_RATE_LIMIT_MAX;
+
+      jest.isolateModules(() => {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports, n/no-missing-require
+        const config = require('@/config');
+        expect(config.EXTERNAL_API_RATE_LIMIT_MAX).toBe(100);
+      });
+    });
+
+    it('accepts a valid positive integer', () => {
+      process.env.EXTERNAL_API_RATE_LIMIT_MAX = '1000';
+
+      jest.isolateModules(() => {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports, n/no-missing-require
+        const config = require('@/config');
+        expect(config.EXTERNAL_API_RATE_LIMIT_MAX).toBe(1000);
+      });
+    });
+
+    it('accepts exponential notation', () => {
+      process.env.EXTERNAL_API_RATE_LIMIT_MAX = '1e3';
+
+      jest.isolateModules(() => {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports, n/no-missing-require
+        const config = require('@/config');
+        expect(config.EXTERNAL_API_RATE_LIMIT_MAX).toBe(1000);
+      });
+    });
+
+    it.each([
+      ['garbage string (NaN)', 'abc'],
+      ['zero (express-rate-limit v6 treats 0 as unlimited)', '0'],
+      ['negative', '-5'],
+      ['trailing garbage', '100/min'],
+      ['empty string', ''],
+      ['fractional (would block every request at max=0.5)', '0.5'],
+      ['Infinity (would disable the limit entirely)', 'Infinity'],
+    ])(
+      'falls back to the default of 100 and does not silently disable the limit: %s (%p)',
+      (_desc, raw) => {
+        process.env.EXTERNAL_API_RATE_LIMIT_MAX = raw;
+
+        jest.isolateModules(() => {
+          // eslint-disable-next-line @typescript-eslint/no-require-imports, n/no-missing-require
+          const config = require('@/config');
+          expect(config.EXTERNAL_API_RATE_LIMIT_MAX).toBe(100);
+        });
+      },
+    );
+  });
+
   describe('EXPRESS_SESSION_SECRET', () => {
     const ORIGINAL_SECRET = process.env.EXPRESS_SESSION_SECRET;
 
@@ -91,6 +155,22 @@ describe('config', () => {
         'a-deployment-specific-secret',
       );
       expect(config.IS_EXPRESS_SESSION_SECRET_GENERATED).toBe(false);
+    });
+
+    it.each(['  verbatim secret 👋  ', 'hyperdx is cool 👋'])(
+      'preserves explicitly configured values: %s',
+      secret => {
+        process.env.EXPRESS_SESSION_SECRET = secret;
+        expect(loadConfig().EXPRESS_SESSION_SECRET).toBe(secret);
+        expect(loadConfig().IS_EXPRESS_SESSION_SECRET_GENERATED).toBe(false);
+      },
+    );
+
+    it('keeps a configured secret across process reloads and replicas', () => {
+      process.env.EXPRESS_SESSION_SECRET = 'stable-session-sentinel';
+      expect(loadConfig().EXPRESS_SESSION_SECRET).toBe(
+        loadConfig().EXPRESS_SESSION_SECRET,
+      );
     });
 
     it('generates a secret when unset or empty', () => {

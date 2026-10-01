@@ -57,9 +57,18 @@ such as ufw. See the
 [Docker docs](https://docs.docker.com/engine/network/packet-filtering-firewalls/#docker-and-ufw)
 for more information.
 
-Additionally, set the `EXPRESS_SESSION_SECRET` environment variable to a random
-string (e.g. `openssl rand -hex 32`). Without it the API generates one per
-process, which signs users out on every restart.
+Generate a secret once with `openssl rand -hex 32`, then set
+`EXPRESS_SESSION_SECRET=<generated value>` in the root `.env` or `.env.local`.
+Compose forwards this value to the app container. To load `.env.local` and
+override the defaults in `.env`, run:
+
+```bash
+docker compose --env-file .env --env-file .env.local up -d
+```
+
+Reuse the same secret across restarts and all replicas. Without it the API
+generates one per process, which signs users out on every restart and prevents
+replicas from sharing sessions.
 
 ## Local Development Mode
 

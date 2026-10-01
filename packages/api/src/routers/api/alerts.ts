@@ -1,3 +1,4 @@
+import { isTileAlertUnaddressable } from '@hyperdx/common-utils/dist/iac';
 import type {
   AlertApiResponse,
   AlertEvaluationsApiResponse,
@@ -22,13 +23,14 @@ import {
   deleteAlert,
   getAlertById,
   getAlertEnhanced,
-  getAlertsEnhanced,
   updateAlert,
   validateAlertInput,
 } from '@/controllers/alerts';
-import { getAlertChannels } from '@/models/alert';
+import { alertsPageQuerySchema, getAlertsPage } from '@/controllers/alertsPage';
+import { AlertSource, getAlertChannels } from '@/models/alert';
 import { IAlertHistory } from '@/models/alertHistory';
 import { resolveAlertDisplayFields } from '@/utils/alerts';
+import { setBusinessContext } from '@/utils/instrumentation';
 import { PreSerialized, sendJson } from '@/utils/serialization';
 import { internalAlertSchema, objectIdSchema } from '@/utils/zod';
 
@@ -65,34 +67,37 @@ const formatAlertResponse = (
     // team members via GET /webhooks.
     channel: pick(alert.channel, ['type', 'webhookId']),
     channels: getAlertChannels(alert).map(c => pick(c, ['type', 'webhookId'])),
+    // Computed here rather than on the client: `dashboard.tiles` below is
+    // filtered to this alert's own tile, so the response cannot show whether a
+    // sibling tile shares its name — which is what decides Terraform
+    // eligibility. Outside the `alert.dashboard` spread on purpose: a deleted
+    // dashboard populates as null, and that alert is the least addressable of
+    // the lot. Omitted rather than `false` when fine, matching the manifest.
+    ...(alert.source === AlertSource.TILE &&
+    isTileAlertUnaddressable(alert.dashboard ?? undefined, alert.tileId)
+      ? { unaddressableTile: true }
+      : {}),
     ...(alert.dashboard && {
       dashboardId: alert.dashboard._id,
       dashboard: {
+        name: alert.dashboard.name,
         tiles: alert.dashboard.tiles
           .filter(tile => tile.id === alert.tileId)
           .map(tile => ({
             id: tile.id,
-            config: { name: tile.config.name },
+            config: { name: tile.config?.name },
           })),
-        ...pick(alert.dashboard, ['_id', 'updatedAt', 'name', 'tags']),
       },
     }),
     ...(alert.savedSearch && {
       savedSearchId: alert.savedSearch._id,
-      savedSearch: pick(alert.savedSearch, [
-        '_id',
-        'createdAt',
-        'name',
-        'updatedAt',
-        'tags',
-      ]),
+      savedSearch: { name: alert.savedSearch.name },
     }),
     // Inline alerts carry their persisted config so edit surfaces can seed
     // the chart editor and the detail page can render the query — but only on
-    // the single-alert response. The list endpoint is unpaginated, so
-    // attaching every alert's full config (raw SQL templates included) would
-    // bloat every alerts-page load and create a contract that couldn't be
-    // paginated away later.
+    // the single-alert response. Attaching every alert's full config (raw SQL
+    // templates included) would bloat the list; surfaces that need it fetch
+    // the one alert.
     ...(includeChartConfig &&
       alert.chartConfig && { chartConfig: alert.chartConfig }),
     ...pick(alert, [
@@ -119,33 +124,47 @@ const formatAlertResponse = (
 };
 
 type AlertsExpRes = express.Response<AlertsApiResponse>;
-router.get('/', async (req, res: AlertsExpRes, next) => {
-  try {
-    const teamId = req.user?.team;
-    if (teamId == null) {
-      return res.sendStatus(403);
+router.get(
+  '/',
+  processRequest({ query: alertsPageQuerySchema }),
+  async (req, res: AlertsExpRes, next) => {
+    try {
+      const teamId = req.user?.team;
+      if (teamId == null) {
+        return res.sendStatus(403);
+      }
+
+      const params = alertsPageQuerySchema.parse(req.query ?? {});
+      const {
+        data: alerts,
+        hasMore,
+        nextCursor,
+      } = await getAlertsPage(teamId, params);
+
+      setBusinessContext({
+        'hyperdx.alerts.list.page_size': alerts.length,
+        'hyperdx.alerts.list.limit': params.limit,
+      });
+
+      const historyMap = await getRecentAlertHistoriesBatch(
+        alerts.map(alert => ({
+          alertId: new ObjectId(alert._id),
+          interval: alert.interval,
+        })),
+        20,
+      );
+
+      const data = alerts.map(alert => {
+        const history = historyMap.get(alert._id.toString()) ?? [];
+        return formatAlertResponse(alert, history);
+      });
+
+      sendJson(res, { data, hasMore, ...(nextCursor && { nextCursor }) });
+    } catch (e) {
+      next(e);
     }
-
-    const alerts = await getAlertsEnhanced(teamId);
-
-    const historyMap = await getRecentAlertHistoriesBatch(
-      alerts.map(alert => ({
-        alertId: new ObjectId(alert._id),
-        interval: alert.interval,
-      })),
-      20,
-    );
-
-    const data = alerts.map(alert => {
-      const history = historyMap.get(alert._id.toString()) ?? [];
-      return formatAlertResponse(alert, history);
-    });
-
-    sendJson(res, { data });
-  } catch (e) {
-    next(e);
-  }
-});
+  },
+);
 
 type AlertExpRes = express.Response<AlertApiResponse>;
 router.get(

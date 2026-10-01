@@ -847,6 +847,13 @@ describe('DBEditTimeChartForm - Metric formulas', () => {
     select: [gaugeSeries, { ...gaugeSeries, metricName: 'test.metric.sum' }],
   };
 
+  // The formula row reuses the shared series controls, so its alias input and
+  // remove button carry the series test ids. Formulas render after the series.
+  const lastSeriesControl = (testId: string) => {
+    const els = screen.getAllByTestId(testId);
+    return els[els.length - 1];
+  };
+
   it('shows the Add Formula button and series letter badges for metric sources', () => {
     renderComponent({ chartConfig: twoSeriesConfig });
 
@@ -861,7 +868,7 @@ describe('DBEditTimeChartForm - Metric formulas', () => {
     await userEvent.click(screen.getByTestId('add-formula-button'));
 
     expect(screen.getByTestId('formula-expression-input')).toBeInTheDocument();
-    expect(screen.getByTestId('formula-alias-input')).toBeInTheDocument();
+    expect(screen.getAllByTestId('series-alias-input')).toHaveLength(3);
   });
 
   it('shows an inline validation error for a malformed expression', async () => {
@@ -916,7 +923,7 @@ describe('DBEditTimeChartForm - Metric formulas', () => {
       'A / (A + B) * 100',
     );
     await userEvent.type(
-      screen.getByTestId('formula-alias-input'),
+      lastSeriesControl('series-alias-input'),
       'Share of gauge',
     );
     await userEvent.click(screen.getByTestId('chart-save-button'));
@@ -957,7 +964,7 @@ describe('DBEditTimeChartForm - Metric formulas', () => {
     });
 
     expect(screen.getByTestId('formula-expression-input')).toBeInTheDocument();
-    await userEvent.click(screen.getByTestId('formula-remove-button'));
+    await userEvent.click(lastSeriesControl('series-remove-button'));
     expect(
       screen.queryByTestId('formula-expression-input'),
     ).not.toBeInTheDocument();
