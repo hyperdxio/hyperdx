@@ -13,19 +13,19 @@ import logger from '@/utils/logger';
 import type { MetricEntry } from './listMetricsPage';
 import type { DiscoverableMetricKind } from './metricKinds';
 
-// Both queries use timeout_overflow_mode: 'break' so ClickHouse returns what
-// it has read when the cap is hit instead of failing.
 async function queryRows<T>({
   clickhouseClient,
   sql,
   connectionId,
   maxExecutionSeconds,
+  timeoutOverflowMode,
   signal,
 }: {
   clickhouseClient: ClickhouseClient;
   sql: ChSql;
   connectionId: string;
   maxExecutionSeconds: number;
+  timeoutOverflowMode: 'break' | 'throw';
   signal: AbortSignal;
 }): Promise<T[]> {
   const response = await clickhouseClient.query<'JSON'>({
@@ -35,7 +35,7 @@ async function queryRows<T>({
     connectionId,
     clickhouse_settings: {
       max_execution_time: maxExecutionSeconds,
-      timeout_overflow_mode: 'break',
+      timeout_overflow_mode: timeoutOverflowMode,
     },
     abort_signal: signal,
   });
@@ -99,6 +99,8 @@ export async function fetchMetricNames({
     sql,
     connectionId,
     maxExecutionSeconds,
+    // A truncated name set would be paged past as if complete.
+    timeoutOverflowMode: 'throw',
     signal,
   });
   return rows.map(row => row.MetricName);
@@ -166,7 +168,15 @@ async function fetchMetricUnitsAndDescriptions({
     MetricName: string;
     MetricUnit?: string;
     MetricDescription?: string;
-  }>({ clickhouseClient, sql, connectionId, maxExecutionSeconds, signal });
+  }>({
+    clickhouseClient,
+    sql,
+    connectionId,
+    maxExecutionSeconds,
+    // Partial enrichment is fine; names without a row just lack unit/description.
+    timeoutOverflowMode: 'break',
+    signal,
+  });
   for (const row of rows) {
     enrichments.set(row.MetricName, {
       ...(row.MetricUnit ? { unit: row.MetricUnit } : {}),

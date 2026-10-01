@@ -33,9 +33,11 @@ const LIST_TIMEOUT_MS = 30_000;
 // timed out and the kinds that finished are returned.
 const ENRICH_RESERVE_MS = 4_000;
 
-// Per-query ClickHouse caps. Both use timeout_overflow_mode: 'break', so
-// ClickHouse returns what it has read before the wall clock fires.
-const NAMES_MAX_EXEC_SECONDS = 24;
+// Per-query ClickHouse caps. The names cap sits above the scan deadline
+// (LIST_TIMEOUT_MS - ENRICH_RESERVE_MS) so a slow kind is aborted and
+// reported as timed out, not cut short by ClickHouse. A partial name set
+// would look complete and the cursor would skip the names never read.
+const NAMES_MAX_EXEC_SECONDS = 28;
 const ENRICH_MAX_EXEC_SECONDS = 3;
 
 // ─── Tool registration ───────────────────────────────────────────────────────
