@@ -5,13 +5,14 @@ import {
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { type MetricTable, SourceKind } from '@hyperdx/common-utils/dist/types';
+import { trace } from '@opentelemetry/api';
 import SqlString from 'sqlstring';
 import { z } from 'zod';
 
 import { ClickhouseClient } from '@/clickhouse';
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
-import type { ToolRegistrar } from '@/mcp/tools/types';
+import type { ToolRegistrar, ToolResult } from '@/mcp/tools/types';
 import { mcpServerError, mcpUserError } from '@/mcp/utils/errors';
 import logger from '@/utils/logger';
 import { trimToolResponse } from '@/utils/trimToolResponse';
@@ -31,8 +32,16 @@ import { extractSourceConfig } from './schemas';
 // How far back to look when querying the rollup tables for value samples.
 const VALUE_SAMPLE_LOOKBACK_MS = 24 * 60 * 60 * 1000; // 24 hours
 
-// Hard timeout for the entire describe operation (ms).
-const DESCRIBE_TIMEOUT_MS = 10_000;
+// When discovery's signal is aborted; it then returns what it has so far.
+// Matches the 30s budget of the other MCP query tools.
+export const DESCRIBE_TIMEOUT_MS = 30_000;
+
+// Extra time after the abort before the handler stops waiting, in case a
+// ClickHouse call ignores the signal. 30s + 2s lines up with
+// MCP_REQUEST_TIMEOUT in query/helpers.ts.
+export const DESCRIBE_BACKSTOP_MS = 2_000;
+
+const BACKSTOP = Symbol('backstop');
 
 // Max sampled values per low-cardinality column / map attribute key.
 const MAX_LC_VALUES = 20;
@@ -58,15 +67,25 @@ function pickRepresentativeMetricTable(
   return undefined;
 }
 
+type DescribeProgress = {
+  /**
+   * Set once the column schema has loaded. Renders everything gathered so far,
+   * with unfinished stages listed in skippedStages, so the handler can still
+   * answer if discovery is stuck past the backstop.
+   */
+  snapshot?: () => ToolResult;
+};
+
 /**
- * Core schema-discovery logic. Extracted so the caller can wrap it in
- * Promise.race for wall-clock timeout enforcement.
+ * Core schema-discovery logic. Stages after the column schema stop when
+ * `signal` aborts, and the result is flagged partial.
  */
 async function describeSourceSchema(
   teamId: string,
   sourceId: string,
   signal: AbortSignal,
-) {
+  progress: DescribeProgress,
+): Promise<ToolResult> {
   const source = await getSource(teamId, sourceId);
   if (!source) {
     return mcpUserError(
@@ -214,6 +233,27 @@ async function describeSourceSchema(
     jsType: convertCHDataTypeToJSType(c.type),
   }));
 
+  const isMetricSource = source.kind === SourceKind.Metric;
+  const optionalStages = [
+    'mapAttributeKeys',
+    'lowCardinalityValues',
+    'mapAttributeValues',
+    ...(isMetricSource ? ['metricNames'] : []),
+  ];
+  const finishedStages = new Set<string>();
+  progress.snapshot = () =>
+    formatDescribeResult({
+      sourceId,
+      meta,
+      isMetricSource,
+      skippedStages: [
+        ...skippedStages,
+        ...optionalStages.filter(
+          s => !finishedStages.has(s) && !skippedStages.includes(s),
+        ),
+      ],
+    });
+
   // ── 2. Map attribute keys ─────────────────────────────────────────────
   // timestampValueExpression is threaded into getMapKeys / getAllKeyValues /
   // sampleMetricNamesForKind below so the no-rollup fallback path (i.e.
@@ -256,6 +296,7 @@ async function describeSourceSchema(
   if (Object.keys(mapKeysResults).length > 0) {
     meta.mapAttributeKeys = mapKeysResults;
   }
+  finishedStages.add('mapAttributeKeys');
 
   // ── 3. Low-cardinality column value sampling ──────────────────────────
   const lcColumns = columns.filter(c => {
@@ -297,6 +338,7 @@ async function describeSourceSchema(
   if (Object.keys(lowCardinalityValues).length > 0) {
     meta.lowCardinalityValues = lowCardinalityValues;
   }
+  finishedStages.add('lowCardinalityValues');
 
   // ── 4. Map attribute value sampling (best-effort) ─────────────────────
   if (Object.keys(mapKeysResults).length > 0 && !signal.aborted) {
@@ -344,6 +386,7 @@ async function describeSourceSchema(
     // Signal was already aborted before we started this stage
     skippedStages.push('mapAttributeValues');
   }
+  finishedStages.add('mapAttributeValues');
 
   // ── 5. Metric name + unit + description sampling ──────────────────────
   // For metric sources, sample distinct MetricName values per discoverable
@@ -354,7 +397,7 @@ async function describeSourceSchema(
   // Defensively check for MetricUnit / MetricDescription columns: they
   // exist on the standard OTel Collector schema but a custom metric table
   // may not declare them.
-  if (source.kind === SourceKind.Metric && !signal.aborted) {
+  if (isMetricSource && !signal.aborted) {
     const metricNames: Record<string, MetricNameSample[]> = {};
     await Promise.all(
       DISCOVERABLE_METRIC_KINDS.map(async kind => {
@@ -388,13 +431,35 @@ async function describeSourceSchema(
     if (Object.keys(metricNames).length > 0) {
       meta.metricNames = metricNames;
     }
+  } else if (isMetricSource) {
+    skippedStages.push('metricNames');
   }
+  finishedStages.add('metricNames');
 
-  // Flag partial results so the LLM knows value samples may be incomplete
-  if (skippedStages.length > 0) {
-    meta.partial = true;
-    meta.skippedStages = skippedStages;
-  }
+  return formatDescribeResult({
+    sourceId,
+    meta,
+    isMetricSource,
+    skippedStages,
+  });
+}
+
+function formatDescribeResult({
+  sourceId,
+  meta,
+  isMetricSource,
+  skippedStages,
+}: {
+  sourceId: string;
+  meta: Record<string, unknown>;
+  isMetricSource: boolean;
+  skippedStages: string[];
+}): ToolResult {
+  // Flag partial results so the LLM knows value samples may be incomplete.
+  // Copy rather than mutate: the backstop snapshot renders `meta` while
+  // discovery may still be writing to it.
+  const source =
+    skippedStages.length > 0 ? { ...meta, partial: true, skippedStages } : meta;
 
   const lcValuesHint =
     skippedStages.length > 0
@@ -403,7 +468,6 @@ async function describeSourceSchema(
       : 'These are the REAL values in your data — use them in filters instead of guessing. ' +
         'Example: where: "SeverityText:error" (if \'error\' appears in the sampled values above).';
 
-  const isMetricSource = source.kind === SourceKind.Metric;
   const queryNextStep = isMetricSource
     ? `Use clickstack_timeseries or clickstack_table with sourceId "${sourceId}" and metricType/metricName from above. ` +
       'Summary metrics (metricTables.summary) are not supported by those tools — ' +
@@ -414,7 +478,7 @@ async function describeSourceSchema(
     : undefined;
 
   const { data: output, isTrimmed } = trimToolResponse({
-    source: meta,
+    source,
     usage: {
       topLevelColumns:
         'Use directly in valueExpression/groupBy with PascalCase: Duration, StatusCode, SpanName',
@@ -478,6 +542,8 @@ export function registerDescribeSource({
         '(SeverityText, StatusCode, ServiceName, etc.) — use these in filters instead of guessing\n' +
         '- mapAttributeValues: sampled top values for the most common map attribute keys ' +
         "(e.g. ResourceAttributes['service.name'] top values) — requires rollup tables\n\n" +
+        'Value sampling stops after 30 seconds. If it is cut short, the result still includes ' +
+        'the columns and sets partial: true with skippedStages listing what is missing.\n\n' +
         'Cost: one describe call prevents 3–5 exploratory queries against non-existent columns.',
       inputSchema: z.object({
         sourceId: z
@@ -489,36 +555,65 @@ export function registerDescribeSource({
     },
     async ({ sourceId }) => {
       const controller = new AbortController();
+      const progress: DescribeProgress = {};
 
-      // Promise.race enforces wall-clock timeout regardless of whether
-      // internal ClickHouse calls honour the AbortSignal. Hoist the
-      // timer handle so the finally block can cancel it on the success
-      // path — otherwise a stale controller.abort() fires
-      // DESCRIBE_TIMEOUT_MS after every successful call and the
-      // setTimeout closure stays pinned for the same duration.
-      let timeoutId: ReturnType<typeof setTimeout> | undefined;
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        timeoutId = setTimeout(() => {
-          controller.abort();
-          reject(new Error('DESCRIBE_TIMEOUT'));
-        }, DESCRIBE_TIMEOUT_MS);
+      // At the deadline, abort so discovery skips its remaining stages and
+      // returns what it has. The backstop covers ClickHouse calls that
+      // ignore the signal: it answers from the latest snapshot instead of
+      // waiting on them.
+      const abortTimer = setTimeout(
+        () => controller.abort(),
+        DESCRIBE_TIMEOUT_MS,
+      );
+      let backstopTimer: ReturnType<typeof setTimeout> | undefined;
+      const backstop = new Promise<typeof BACKSTOP>(resolve => {
+        backstopTimer = setTimeout(
+          () => resolve(BACKSTOP),
+          DESCRIBE_TIMEOUT_MS + DESCRIBE_BACKSTOP_MS,
+        );
       });
 
-      try {
-        return await Promise.race([
-          describeSourceSchema(teamId.toString(), sourceId, controller.signal),
-          timeoutPromise,
-        ]);
-      } catch (e) {
-        if (e instanceof Error && e.message === 'DESCRIBE_TIMEOUT') {
+      const span = trace.getActiveSpan();
+      const recordOutcome = (outcome: 'complete' | 'partial' | 'timeout') => {
+        span?.setAttribute('mcp.describe_source.outcome', outcome);
+        if (outcome !== 'complete') {
           logger.warn(
-            { teamId, sourceId },
-            'clickstack_describe_source timed out',
+            { teamId, sourceId, outcome },
+            'clickstack_describe_source hit its deadline',
           );
-          return mcpServerError(
-            'Schema discovery timed out. The ClickHouse server may be under load. ' +
-              'Try again, or use clickstack_list_sources for basic source info without schema details.',
-          );
+        }
+      };
+      const timedOutResult = () => {
+        if (progress.snapshot) {
+          recordOutcome('partial');
+          return progress.snapshot();
+        }
+        recordOutcome('timeout');
+        return mcpServerError(
+          'Schema discovery timed out before the column schema loaded. ' +
+            'The ClickHouse server may be under load. Try again, or use ' +
+            'clickstack_list_sources for basic source info without schema details.',
+        );
+      };
+
+      try {
+        const result = await Promise.race([
+          describeSourceSchema(
+            teamId.toString(),
+            sourceId,
+            controller.signal,
+            progress,
+          ),
+          backstop,
+        ]);
+        if (result === BACKSTOP) {
+          return timedOutResult();
+        }
+        recordOutcome(controller.signal.aborted ? 'partial' : 'complete');
+        return result;
+      } catch (e) {
+        if (controller.signal.aborted) {
+          return timedOutResult();
         }
         logger.warn(
           { teamId, sourceId, error: e },
@@ -526,7 +621,8 @@ export function registerDescribeSource({
         );
         throw e;
       } finally {
-        if (timeoutId !== undefined) clearTimeout(timeoutId);
+        clearTimeout(abortTimer);
+        clearTimeout(backstopTimer);
       }
     },
   );
