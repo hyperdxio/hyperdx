@@ -77,12 +77,16 @@ const parse = (result: ToolResult) => JSON.parse(result.content[0].text);
 describe('clickstack_describe_source deadline', () => {
   beforeEach(() => {
     jest.useFakeTimers();
-    jest.mocked(getSource).mockResolvedValue(traceSource as any);
+    jest
+      .mocked(getSource)
+      .mockResolvedValue(
+        traceSource as unknown as Awaited<ReturnType<typeof getSource>>,
+      );
     jest.mocked(getConnectionById).mockResolvedValue({
       host: 'http://localhost:8123',
       username: 'default',
       password: '',
-    } as any);
+    } as unknown as Awaited<ReturnType<typeof getConnectionById>>);
     mockMetadata.getColumns.mockResolvedValue(COLUMNS);
     mockMetadata.getMapKeys.mockResolvedValue(['http.method']);
     mockMetadata.getAllKeyValues.mockResolvedValue([
