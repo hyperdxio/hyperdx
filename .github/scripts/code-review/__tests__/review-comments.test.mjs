@@ -6,7 +6,7 @@
 // Run by claude-code-review.yml before the (expensive) review step.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -186,6 +186,9 @@ test('duplicate findings within one run collapse to a single comment', () => {
 // catch. Lift the `RE=` line out of the workflow and run the real `sed`.
 const WORKFLOW = fileURLToPath(
   new URL('../../../workflows/claude-code-review.yml', import.meta.url),
+);
+const DEEP_REVIEW = fileURLToPath(
+  new URL('../../../workflows/deep-review.yml', import.meta.url),
 );
 
 function gateParse(body) {
@@ -422,6 +425,225 @@ test('the dedup marker is exactly what commentBody emits', () => {
   assert.ok(
     seen.has(helpers.fingerprint(f)),
     'commentBody output must be parseable back',
+  );
+});
+
+test('every inline comment carries the advisory footer, with the dedup marker last', () => {
+  // The reader is usually the author's coding agent; without the footer it treats every
+  // finding as a task. The marker stays last so truncation can never cut it off.
+  const f = { file: 'src/a.ts', line: 11, title: 'x', body: 'y' };
+  const body = helpers.commentBody(f);
+  assert.ok(
+    body.includes(helpers.inlineFooter(f)),
+    'inline comment must carry the footer',
+  );
+  assert.match(body, /AGENTS\.md#responding-to-review-feedback/);
+  const lines = body.trimEnd().split('\n');
+  assert.match(
+    lines.at(-1),
+    /^<!-- hdxr:[0-9a-f]{16} -->$/,
+    'marker must be the last line',
+  );
+  const footerAt = lines.indexOf(helpers.inlineFooter(f));
+  assert.ok(
+    footerAt >= 0 && footerAt < lines.length - 1,
+    'footer must precede the marker',
+  );
+});
+
+test('the guide link points at a heading that exists in AGENTS.md, in both bots', () => {
+  // Every posted comment links here. Renaming the heading would dead-link all of them
+  // with no failing check anywhere else, so derive the anchor from the heading text.
+  const root = p => fileURLToPath(new URL(p, import.meta.url));
+  // CI runs this file from the sparse `.trusted` checkout in claude-code-review.yml,
+  // where AGENTS.md exists only because that sparse-checkout list names it.
+  const agentsPath = root('../../../../AGENTS.md');
+  assert.ok(
+    existsSync(agentsPath),
+    `${agentsPath} is missing: keep AGENTS.md in the sparse-checkout list of claude-code-review.yml`,
+  );
+  assert.match(
+    readFileSync(WORKFLOW, 'utf8'),
+    /^\s+AGENTS\.md$/m,
+    'claude-code-review.yml must sparse-checkout AGENTS.md for this test to run in CI',
+  );
+  const agents = readFileSync(agentsPath, 'utf8');
+  const heading = '## Responding to review feedback';
+  assert.ok(
+    agents.split('\n').includes(heading),
+    `AGENTS.md must contain the line "${heading}"`,
+  );
+  const anchor = `#${heading.slice(3).toLowerCase().replace(/\s+/g, '-')}`;
+  assert.ok(
+    helpers.GUIDE_URL.endsWith(anchor),
+    `GUIDE_URL must end with ${anchor}`,
+  );
+  // deep-review.yml appends its own copy of the footer in shell; keep it on the same anchor.
+  const deepReview = readFileSync(DEEP_REVIEW, 'utf8');
+  // The whole URL, not just the anchor: the two hardcoded copies must point at the same
+  // repo and branch, or one bot's link 404s while the other's works.
+  assert.ok(
+    deepReview.includes(helpers.GUIDE_URL),
+    `deep-review.yml must link ${helpers.GUIDE_URL} verbatim`,
+  );
+  assert.match(
+    deepReview,
+    /FOOTER='<sub>[^\n]*Do not widen the PR/,
+    "deep-review.yml's FOOTER must carry the scope rule the other footers carry",
+  );
+});
+
+test("deep-review's footer gate fires on findings of any shape and not on a clean review", () => {
+  // Same rule as gateParse: lift the pattern out of the workflow and run real grep, or a
+  // drift between the prompt's finding format and the gate silently drops every footer.
+  const line = readFileSync(DEEP_REVIEW, 'utf8')
+    .split('\n')
+    .find(l => l.trim().startsWith('HAS_FINDINGS_RE='));
+  assert.ok(line, 'could not find HAS_FINDINGS_RE= in deep-review.yml');
+  const re = line.trim().slice('HAS_FINDINGS_RE='.length).replace(/^'|'$/g, '');
+  const matches = body => {
+    try {
+      execFileSync('grep', ['-qE', re], { input: body });
+      return true;
+    } catch (e) {
+      if (e.status === 1) return false;
+      throw e;
+    }
+  };
+  const head = '<!-- deep-review -->\n## Deep Review\n\n';
+  const clean = `${head}✅ No critical issues found.\n\n---\n**Reviewers (5):** a, b.\n`;
+  const p2 = `${head}✅ No critical issues found.\n\n### 🟡 P2 -- recommended\n\n- **\`a/b.ts:3\`** -- issue.\n`;
+  const p3Only = `${head}✅ No critical issues found.\n\n<details>\n<summary>🔵 P3 nitpicks (1)</summary>\n\n- **\`a/b.ts:3\`** -- nit.\n\n</details>\n`;
+  const numbered = `${head}### 🔴 P0/P1 -- must fix\n\n1. a/b.ts:3 -- issue.\n`;
+  assert.equal(matches(clean), false, 'a clean review gets no footer');
+  assert.equal(
+    matches(p2),
+    true,
+    'P2 advice under a clean headline still gets the footer',
+  );
+  assert.equal(matches(p3Only), true, 'a P3-only review gets the footer');
+  assert.equal(
+    matches(numbered),
+    true,
+    'the gate must not depend on bullet shape',
+  );
+});
+
+test("deep-review's prior-comments filter recognizes our own inline comments", () => {
+  // deep-review.yml drops our output from prior-comments.md by marker. Inline comments
+  // carry only the dedup marker, so OURS must match what commentBody emits, or every
+  // finding flows back to the previous-comments persona as "unaddressed feedback".
+  const wf = readFileSync(DEEP_REVIEW, 'utf8');
+  const ours = [
+    ...wf.match(/const OURS = \[([\s\S]*?)\];/)[1].matchAll(/'([^']+)'/g),
+  ].map(m => m[1]);
+  const inline = helpers.commentBody({
+    file: 'src/a.ts',
+    line: 11,
+    title: 'x',
+    body: 'y',
+  });
+  assert.ok(
+    ours.some(m => inline.includes(m)),
+    `OURS ${JSON.stringify(ours)} must match an inline comment`,
+  );
+  const humanReply = 'Pre-existing, out of scope for this PR.';
+  assert.ok(
+    !ours.some(m => humanReply.includes(m)),
+    'a human reply must still pass the filter',
+  );
+});
+
+test('the footer is severity-aware: critical and major say a maintainer will expect a fix, minor says your call', () => {
+  // "Advisory, not blocking" alone left an agent unable to tell a real ship-blocker from a
+  // nit. Nothing gates merge mechanically, so the footer states what the human will expect.
+  const at = severity => ({
+    file: 'src/a.ts',
+    line: 11,
+    severity,
+    title: 'x',
+    body: 'y',
+  });
+  const critical = helpers.inlineFooter(at('critical'));
+  const major = helpers.inlineFooter(at('major'));
+  const minor = helpers.inlineFooter(at('minor'));
+  assert.equal(
+    major,
+    critical,
+    'critical and major carry the same expectation',
+  );
+  assert.notEqual(minor, critical);
+  assert.match(critical, /maintainer will expect this fixed/);
+  assert.match(minor, /Fix if it is a small defect/);
+  for (const footer of [critical, minor]) {
+    assert.match(
+      footer,
+      /Do not widen the PR/,
+      'scope rule applies at every severity',
+    );
+    assert.match(footer, /AGENTS\.md#responding-to-review-feedback/);
+  }
+  // An unknown severity degrades to minor everywhere else; the footer must agree.
+  assert.equal(helpers.inlineFooter(at('bogus')), minor);
+  assert.match(
+    helpers.commentBody(at('critical')),
+    /maintainer will expect this fixed/,
+  );
+});
+
+test('a summary with findings leads with the agent notice; clean and unhealthy runs do not', () => {
+  const f = {
+    file: 'src/a.ts',
+    line: 11,
+    severity: 'major',
+    title: 'x',
+    body: 'y',
+  };
+  const base = {
+    unanchored: [],
+    skipped: [],
+    duplicates: [],
+    posted: 1,
+    diffHash: HASH,
+    promptHash: HASH,
+  };
+  const withFindings = helpers.renderSummary({
+    ...base,
+    findings: [f],
+    healthy: true,
+  });
+  assert.ok(
+    withFindings.includes(helpers.AGENT_NOTICE),
+    'summary must carry the notice',
+  );
+  // Before the tally, so an agent reading top-down meets the rule before the first finding.
+  assert.ok(
+    withFindings.indexOf(helpers.AGENT_NOTICE) <
+      withFindings.indexOf('finding(s)'),
+    'notice must precede the findings',
+  );
+  assert.match(withFindings, /blocks merge automatically/);
+  assert.match(withFindings, /fix before asking for review/);
+
+  const clean = helpers.renderSummary({
+    ...base,
+    findings: [],
+    posted: 0,
+    healthy: true,
+  });
+  assert.ok(
+    !clean.includes(helpers.AGENT_NOTICE),
+    'nothing to triage on a clean run',
+  );
+  const broken = helpers.renderSummary({
+    ...base,
+    findings: [f],
+    healthy: false,
+    reason: 'x',
+  });
+  assert.ok(
+    !broken.includes(helpers.AGENT_NOTICE),
+    'no findings were posted on an unhealthy run',
   );
 });
 
@@ -690,6 +912,10 @@ test('an oversized single finding is capped so it cannot 422 the whole batch', (
   const body = helpers.commentBody(f);
   assert.ok(body.length <= 65536, `inline body must fit, got ${body.length}`);
   assert.match(body, /_\(truncated\)_/);
+  assert.ok(
+    body.includes(helpers.inlineFooter(f)),
+    'footer must survive truncation',
+  );
   // The dedup marker must survive, or the finding reposts on every push.
   assert.ok(
     helpers.seenFingerprints([{ body }]).has(helpers.fingerprint(f)),

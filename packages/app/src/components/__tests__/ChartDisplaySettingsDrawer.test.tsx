@@ -486,6 +486,24 @@ describe('ChartDisplaySettingsDrawer', () => {
     });
   });
 
+  describe('display group by columns on left setting (PromQL)', () => {
+    it('does not show the toggle for PromQL table charts', () => {
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          configType="promql"
+          displayType={DisplayType.Table}
+        />,
+      );
+
+      expect(
+        screen.queryByRole('checkbox', {
+          name: /display group by columns on left/i,
+        }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
   describe('number format persistence', () => {
     // A duration number tile (e.g. p95 Duration from a trace source) auto-detects
     // a duration format from the datasource; the drawer receives it as
@@ -577,6 +595,25 @@ describe('ChartDisplaySettingsDrawer', () => {
       configType: 'promql' as const,
       displayType: DisplayType.Line,
     };
+
+    it('is offered on a PromQL time series chart', () => {
+      renderWithMantine(<ChartDisplaySettingsDrawer {...promqlProps} />);
+
+      expect(screen.getByTestId('legend-template-input')).toBeInTheDocument();
+    });
+
+    it('is hidden on a PromQL table chart', () => {
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...promqlProps}
+          displayType={DisplayType.Table}
+        />,
+      );
+
+      expect(
+        screen.queryByTestId('legend-template-input'),
+      ).not.toBeInTheDocument();
+    });
 
     it('blocks Apply when the template exceeds the persisted length cap', async () => {
       const onChange = jest.fn();

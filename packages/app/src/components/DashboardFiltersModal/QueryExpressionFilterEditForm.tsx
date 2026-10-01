@@ -178,10 +178,10 @@ export const QueryExpressionFilterEditForm = ({
       >
         <SQLInlineEditorControlled
           tableConnection={tableConnection}
+          sourceId={sourceId}
           control={control}
           name="expression"
           placeholder="SQL column or expression"
-          language="sql"
           enableHotkey
           rules={{ required: true }}
           parentRef={TOOLTIP_PORTAL_TARGET}
@@ -198,7 +198,6 @@ export const QueryExpressionFilterEditForm = ({
           control={control}
           name="where"
           languageName="whereLanguage"
-          showLabel={false}
           allowMultiline={true}
           sqlPlaceholder="Filter for dropdown values"
           lucenePlaceholder="Filter for dropdown values"
