@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Set up the full environment for hdx-eval, then exec the remaining args.
 #
-# 1. Source dev-env.sh from the monorepo root for slot-based port vars
+# 1. Set the dev stack's slot-based port vars from scripts/slots.sh
 # 2. Wrap the command with dotenvx to load .env / .env.local
 #
 # Usage:
@@ -9,10 +9,9 @@
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 
 # Slot-based port env vars (HYPERDX_API_PORT, HDX_DEV_CH_HTTP_PORT, etc.)
-_HDX_EVAL_CWD="$PWD"
-cd "$REPO_ROOT" && source ./scripts/dev-env.sh > /dev/null 2>&1
-cd "$_HDX_EVAL_CWD"
-unset _HDX_EVAL_CWD
+# shellcheck source=../../../scripts/slots.sh
+. "$REPO_ROOT/scripts/slots.sh"
+hdx_dev_ports "$REPO_ROOT"
 
 # Load .env.local from the monorepo root (existing vars take precedence)
 exec "$REPO_ROOT/node_modules/.bin/dotenvx" run \

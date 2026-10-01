@@ -1,11 +1,14 @@
 import {
+  DisplayType,
   MAX_TAG_LENGTH,
   MAX_TAGS,
+  SavedChartConfig,
   tagsSchema,
 } from '@hyperdx/common-utils/dist/types';
 
 import { AlertSource } from '@/models/alert';
 import {
+  alertConfigHasGroupBy,
   deriveAlertDisplayFields,
   isPopulatedRef,
   resolveAlertDisplayFields,
@@ -225,6 +228,56 @@ describe('resolveAlertDisplayFields', () => {
     const alert = { source: AlertSource.SAVED_SEARCH, tags: ['a'] };
     resolveAlertDisplayFields(alert).tags.push('b');
     expect(alert.tags).toEqual(['a']);
+  });
+});
+
+describe('alertConfigHasGroupBy', () => {
+  const builderConfig = {
+    source: 'test-source',
+    select: 'count()',
+    where: '',
+    groupBy: '',
+    displayType: DisplayType.Line,
+  } satisfies SavedChartConfig;
+  const rawSqlConfig = {
+    configType: 'sql',
+    connection: 'test-connection',
+    sqlTemplate: 'SELECT count() FROM logs',
+    displayType: DisplayType.Line,
+  } satisfies SavedChartConfig;
+
+  it('is false with no groupBy and no config (ungrouped saved search alert)', () => {
+    expect(alertConfigHasGroupBy(undefined, undefined)).toBe(false);
+    expect(alertConfigHasGroupBy(null, undefined)).toBe(false);
+    expect(alertConfigHasGroupBy('', undefined)).toBe(false);
+  });
+
+  it('is true when the alert itself carries a groupBy', () => {
+    expect(alertConfigHasGroupBy('ServiceName', undefined)).toBe(true);
+  });
+
+  it('reads the builder chart config groupBy (tile/inline alerts)', () => {
+    expect(
+      alertConfigHasGroupBy(undefined, {
+        ...builderConfig,
+        groupBy: 'ServiceName',
+      }),
+    ).toBe(true);
+    expect(alertConfigHasGroupBy(undefined, builderConfig)).toBe(false);
+  });
+
+  it('prefers the alert groupBy over an empty config groupBy', () => {
+    expect(alertConfigHasGroupBy('ServiceName', builderConfig)).toBe(true);
+  });
+
+  it('assumes time-series raw SQL configs are grouped and number charts are not', () => {
+    expect(alertConfigHasGroupBy(undefined, rawSqlConfig)).toBe(true);
+    expect(
+      alertConfigHasGroupBy(undefined, {
+        ...rawSqlConfig,
+        displayType: DisplayType.Number,
+      }),
+    ).toBe(false);
   });
 });
 

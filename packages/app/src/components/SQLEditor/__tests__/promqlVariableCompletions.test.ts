@@ -1,6 +1,9 @@
 import { ChartVariable } from '@hyperdx/common-utils/dist/types';
 
-import { buildPromqlVariableCompletions } from '@/components/SQLEditor/variableCompletions';
+import {
+  buildPromqlVariableCompletions,
+  PROMQL_MACRO_COMPLETIONS,
+} from '@/components/SQLEditor/variableCompletions';
 
 const SERVICE: ChartVariable = {
   name: 'service',
@@ -65,11 +68,12 @@ describe('buildPromqlVariableCompletions', () => {
     expect(labels([SERVICE])).not.toContain('$__filter($service)');
   });
 
-  it('withholds the formats that emit SQL or Lucene syntax', () => {
+  it('withholds the formats that emit SQL, Lucene, or markdown syntax', () => {
     // Still honoured if hand-typed — just never suggested, because neither
     // `'api', 'web'` nor `("api" OR "web")` parses inside a PromQL expression.
     expect(labels([SERVICE])).not.toContain('${service:sqlstring}');
     expect(labels([SERVICE])).not.toContain('${service:lucene}');
+    expect(labels([SERVICE])).not.toContain('${service:markdown}');
   });
 
   it('offers the same set of forms for every variable', () => {
@@ -111,5 +115,17 @@ describe('buildPromqlVariableCompletions', () => {
     const footnote = info?.querySelector('.cm-completionInfo-footnote');
     expect(info?.firstChild).not.toBe(footnote);
     expect(info?.firstChild?.textContent).not.toContain('Expands to:');
+  });
+});
+
+describe('PROMQL_MACRO_COMPLETIONS', () => {
+  it('inserts each macro without an argument list', () => {
+    expect(
+      PROMQL_MACRO_COMPLETIONS.map(({ label, apply }) => [label, apply]),
+    ).toEqual([
+      ['$__interval', '$__interval'],
+      ['$__range', '$__range'],
+      ['$__rate_interval', '$__rate_interval'],
+    ]);
   });
 });

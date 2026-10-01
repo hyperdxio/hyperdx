@@ -6,9 +6,11 @@ import {
   IAC_MANIFEST_LIMIT,
   type IacImportManifest,
   type IacResourceType,
+  isAddressableTile,
   isImportableAlert,
   isImportableDashboard,
   isImportableSource,
+  isTileAlertUnaddressable,
   isUnexportableTile,
   providerEndpoint,
   TERRAFORM_RESOURCE_TYPES,
@@ -72,8 +74,16 @@ describe('isImportableAlert', () => {
     ).toBe(true);
   });
 
-  it('rejects a tile alert', () => {
-    expect(isImportableAlert({ source: 'tile' })).toBe(false);
+  // clickhouse_clickstack_alert models `source = "tile"` (provider #683), so
+  // a tile alert is importable as long as its tile can be addressed.
+  it('accepts a tile alert whose tile is addressable', () => {
+    expect(isImportableAlert({ source: 'tile' })).toBe(true);
+  });
+
+  it('rejects a tile alert whose tile has no addressable name', () => {
+    expect(isImportableAlert({ source: 'tile', unaddressableTile: true })).toBe(
+      false,
+    );
   });
 
   // The provider's alert resource does not model a chartConfig, so inline
@@ -89,17 +99,118 @@ describe('isImportableAlert', () => {
   // Reachable, not hypothetical: converting a saved-search alert to a tile
   // alert leaves the old savedSearch behind, because `makeAlert` passes
   // `savedSearch: undefined` and Mongoose 6 strips undefined from the `$set`.
-  // An unconditional `||` fallback would wrongly offer this for import.
-  it('rejects a tile alert carrying a stale savedSearchId', () => {
-    expect(isImportableAlert({ source: 'tile', savedSearchId: ID })).toBe(
-      false,
-    );
+  // The stale reference must not promote it back to the saved-search rule,
+  // which would offer an unaddressable tile alert for import.
+  it('judges a tile alert by its tile even when it carries a stale savedSearchId', () => {
+    expect(
+      isImportableAlert({
+        source: 'tile',
+        savedSearchId: ID,
+        unaddressableTile: true,
+      }),
+    ).toBe(false);
   });
 
   // Legacy rows predate the `source` discriminator; a saved-search reference
   // is enough to identify them.
   it('accepts a legacy alert that only carries a savedSearchId', () => {
     expect(isImportableAlert({ savedSearchId: ID })).toBe(true);
+  });
+});
+
+// The provider addresses a tile through the dashboard's computed `tile_ids`
+// map, which is keyed by tile name — so a tile with no unique, non-blank name
+// cannot be referenced, only pinned to a literal id the next apply can re-mint.
+describe('isAddressableTile', () => {
+  const named = [
+    { id: 'tile-1', config: { name: 'Errors' } },
+    { id: 'tile-2', config: { name: 'Latency' } },
+  ];
+
+  it('accepts a tile with a unique, non-blank name', () => {
+    expect(isAddressableTile(named, 'tile-1')).toBe(true);
+  });
+
+  it('rejects a tile whose name is shared with another tile', () => {
+    expect(
+      isAddressableTile(
+        [
+          { id: 'tile-1', config: { name: 'Errors' } },
+          { id: 'tile-2', config: { name: 'Errors' } },
+        ],
+        'tile-1',
+      ),
+    ).toBe(false);
+  });
+
+  // Trimmed on both sides of the comparison: if the provider trims its
+  // tile_ids keys these two collide, and calling them distinct would emit a
+  // reference that cannot resolve.
+  it('treats names differing only by surrounding whitespace as duplicates', () => {
+    expect(
+      isAddressableTile(
+        [
+          { id: 'tile-1', config: { name: 'Errors' } },
+          { id: 'tile-2', config: { name: 'Errors ' } },
+        ],
+        'tile-1',
+      ),
+    ).toBe(false);
+  });
+
+  it('rejects a blank or whitespace-only name', () => {
+    expect(
+      isAddressableTile([{ id: 'tile-1', config: { name: '' } }], 'tile-1'),
+    ).toBe(false);
+    expect(
+      isAddressableTile([{ id: 'tile-1', config: { name: '  ' } }], 'tile-1'),
+    ).toBe(false);
+  });
+
+  // A dangling reference: the alert points at a tile, or a dashboard, that is
+  // no longer there. Importing it would fail, so it is not offered.
+  it('rejects a missing tile, a missing tile id and missing tiles', () => {
+    expect(isAddressableTile(named, 'tile-9')).toBe(false);
+    expect(isAddressableTile(named, undefined)).toBe(false);
+    expect(isAddressableTile(undefined, 'tile-1')).toBe(false);
+  });
+
+  // `tiles` is a Mongoose Mixed array, so a legacy row can carry anything.
+  it('survives tiles with no config, a non-string name and a non-array tiles value', () => {
+    expect(isAddressableTile([{ id: 'tile-1' }], 'tile-1')).toBe(false);
+    expect(
+      isAddressableTile([{ id: 'tile-1', config: { name: 123 } }], 'tile-1'),
+    ).toBe(false);
+    expect(isAddressableTile('not an array' as never, 'tile-1')).toBe(false);
+  });
+});
+
+// The whole tile-alert rule, shared by the IaC manifest and the alerts
+// listing so the bulk export and the row menu cannot disagree.
+describe('isTileAlertUnaddressable', () => {
+  const tiles = [{ id: 'tile-1', config: { name: 'Errors' } }];
+
+  it('accepts a tile alert on an addressable tile', () => {
+    expect(isTileAlertUnaddressable({ tiles }, 'tile-1')).toBe(false);
+  });
+
+  // ProvisionDashboardsTask rewrites a provisioned dashboard's tiles
+  // wholesale, so the tile this alert is bound to can be replaced underneath
+  // Terraform — the same reason isImportableDashboard rejects one.
+  it('rejects a tile alert on a provisioned dashboard', () => {
+    expect(
+      isTileAlertUnaddressable({ provisioned: true, tiles }, 'tile-1'),
+    ).toBe(true);
+  });
+
+  // The alert points at a dashboard that is gone, or one the caller could not
+  // read. Importing it would fail, so it is not offered.
+  it('rejects a tile alert whose dashboard is missing', () => {
+    expect(isTileAlertUnaddressable(undefined, 'tile-1')).toBe(true);
+  });
+
+  it('rejects a tile alert whose tile is not addressable', () => {
+    expect(isTileAlertUnaddressable({ tiles }, 'tile-gone')).toBe(true);
   });
 });
 
@@ -438,6 +549,63 @@ describe('buildImportFile', () => {
     expect(file).not.toContain('locals'); // no connections selected
   });
 
+  // The floor only rises for a file that carries a tile alert: `source =
+  // "tile"` needs a newer provider than the base floor, and demanding it of an
+  // export that has none would fail `terraform init` for nothing.
+  it('raises the provider version floor for a tile alert and explains the hand edit', () => {
+    const file = buildImportFile({
+      endpoint: 'https://hyperdx.example.com/api',
+      teamId: TEAM_ID,
+      resources: [
+        { type: 'alert', id: ID, name: 'Tile alert', tileAlert: true },
+      ],
+    });
+
+    expect(file).toContain('version = ">= 3.28.0"');
+    expect(file).not.toContain('version = ">= 3.25.0"');
+    expect(file).toContain('tile_ids["<tile name>"]');
+    expect(file).toContain('requires >= 3.28.0');
+  });
+
+  // The floor is picked, not compared, so a bump to the base floor past the
+  // tile-alert one would make a tile-alert export ask for *less*.
+  it('keeps the tile-alert floor at or above the base floor', () => {
+    const base = buildImportFile({
+      endpoint: 'https://hyperdx.example.com/api',
+      teamId: TEAM_ID,
+      resources: [{ type: 'dashboard', id: ID }],
+    });
+    const withTileAlert = buildImportFile({
+      endpoint: 'https://hyperdx.example.com/api',
+      teamId: TEAM_ID,
+      resources: [{ type: 'alert', id: ID, tileAlert: true }],
+    });
+    // Sortable, so this cannot pass on a string comparison of "3.9" vs "3.10".
+    // `^\s+` skips `required_version`, which is the Terraform CLI floor and
+    // would otherwise match first and make both sides read 1.5.0.
+    const floor = (file: string) => {
+      const [major, minor, patch] = (
+        file.match(/^\s+version = ">= ([\d.]+)"$/m)?.[1] ?? '0.0.0'
+      )
+        .split('.')
+        .map(Number);
+      return major * 1e6 + minor * 1e3 + patch;
+    };
+
+    expect(floor(withTileAlert)).toBeGreaterThanOrEqual(floor(base));
+  });
+
+  it('keeps the lower floor and drops the tile-alert notice without one', () => {
+    const file = buildImportFile({
+      endpoint: 'https://hyperdx.example.com/api',
+      teamId: TEAM_ID,
+      resources: [{ type: 'alert', id: ID, name: 'Saved search alert' }],
+    });
+
+    expect(file).toContain('version = ">= 3.25.0"');
+    expect(file).not.toContain('tile_ids');
+  });
+
   // Two same-type resources sharing a name used to collide, because the
   // address was a name slug plus five hex characters of the id. Terraform
   // rejects the whole file when two import blocks share a `to` address.
@@ -570,15 +738,29 @@ describe('collectImportableResources', () => {
         savedSearchId: '4'.repeat(24),
       },
       { id: '3'.repeat(24), name: 'A2 (tile)', source: 'tile' },
+      {
+        id: '5'.repeat(24),
+        name: 'A3 (unnamed tile)',
+        source: 'tile',
+        unaddressableTile: true,
+      },
     ],
     savedSearches: [{ id: '4'.repeat(24), name: 'S1' }],
   });
 
-  it('only includes selected types and skips tile alerts with a count', () => {
+  it('only includes selected types and skips unaddressable tile alerts with a count', () => {
     const { resources, connectionLocals, skippedAlerts } =
       collectImportableResources(manifest, ['dashboard', 'alert']);
     expect(resources).toEqual([
       { type: 'alert', id: '2'.repeat(24), name: 'A1' },
+      // Marked, because it is what raises the provider version floor of the
+      // file the resources go into.
+      {
+        type: 'alert',
+        id: '3'.repeat(24),
+        name: 'A2 (tile)',
+        tileAlert: true,
+      },
       { type: 'dashboard', id: '1'.repeat(24), name: 'D1' },
     ]);
     expect(connectionLocals).toEqual([]);

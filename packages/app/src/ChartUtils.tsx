@@ -9,7 +9,13 @@ import {
   JSDataType,
   ResponseJSON,
 } from '@hyperdx/common-utils/dist/clickhouse';
+import {
+  DEFAULT_PROMQL_REDUCER,
+  getQueriedPromqlSeries,
+  isRangeQuery,
+} from '@hyperdx/common-utils/dist/core/promql';
 import { isMetricChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
+import { SERIES_KEY_JOINER } from '@hyperdx/common-utils/dist/core/seriesNameTemplate';
 import {
   convertDateRangeToGranularityString,
   convertGranularityToSeconds,
@@ -27,10 +33,12 @@ import {
   BuilderSavedChartConfig,
   ChartConfigWithDateRange,
   ChartConfigWithOptDateRange,
+  DateRange,
   DisplayType,
   Filter,
   isSearchableSource,
   MetricsDataType as MetricsDataTypeV2,
+  PromqlChartConfig,
   SourceKind,
   SQLInterval,
   TMetricSource,
@@ -95,9 +103,10 @@ export const DEFAULT_CHART_CONFIG: Omit<
 function getTimeChartGranularity(
   granularity: string | undefined,
   dateRange: [Date, Date],
+  minGranularitySeconds?: number,
 ) {
   return granularity === 'auto' || granularity == null
-    ? convertDateRangeToGranularityString(dateRange, 80)
+    ? convertDateRangeToGranularityString(dateRange, 80, minGranularitySeconds)
     : granularity;
 }
 
@@ -112,6 +121,75 @@ function getTimeChartDateRange(
 }
 
 export const MAX_TIME_CHART_SERIES = DEFAULT_SERIES_LIMIT;
+
+/**
+ * A PromQL config's resolved granularity, and its date range aligned to that
+ * granularity's buckets when it runs a range query, so its samples land on the
+ * same boundaries as the timeseries charts' and stay put across refreshes.
+ */
+function getAlignedRangeAndGranularity(
+  config: PromqlChartConfig & DateRange,
+): Pick<PromqlChartConfig & DateRange, 'granularity' | 'dateRange'> {
+  const granularity = getTimeChartGranularity(
+    config.granularity,
+    config.dateRange,
+  );
+  return {
+    granularity,
+    dateRange: isRangeQuery(config)
+      ? getTimeChartDateRange(
+          config.dateRange,
+          config.alignDateRangeToGranularity,
+          granularity,
+        )
+      : config.dateRange,
+  };
+}
+
+/**
+ * Converts the given config into one that is suitable for a tile that shows
+ * 1 value per series (number, pie, and bar tiles). The reducer defaults to
+ * the last value.
+ */
+export function convertToReducedPromqlChartConfig(
+  config: PromqlChartConfig & DateRange,
+): PromqlChartConfig & DateRange {
+  return {
+    ...config,
+    ...getAlignedRangeAndGranularity(config),
+    promqlExpression: getQueriedPromqlSeries(config).map(series => ({
+      ...series,
+      reducer: series.reducer ?? DEFAULT_PROMQL_REDUCER,
+    })),
+  };
+}
+
+/**
+ * The config for the sparkline behind a PromQL number tile: the tile's query
+ * with no reducer, so the buckets are plotted rather than collapsed.
+ *
+ * Intentionally matches convertToReducedPromqlChartConfig except for the reducer,
+ * so that react-query keys remain consistent between the reduced and sparkline versions.
+ */
+export function convertToPromqlSparklineChartConfig(
+  config: PromqlChartConfig & DateRange,
+): PromqlChartConfig & DateRange {
+  const reduced = convertToReducedPromqlChartConfig(config);
+  return {
+    ...reduced,
+    promqlExpression: getQueriedPromqlSeries(reduced).map(series => ({
+      ...series,
+      reducer: undefined,
+    })),
+  };
+}
+
+/** A PromQL table tile's queried config. */
+export function convertToPromqlTableChartConfig(
+  config: PromqlChartConfig & DateRange,
+): PromqlChartConfig & DateRange {
+  return { ...config, ...getAlignedRangeAndGranularity(config) };
+}
 
 export function convertToTimeChartConfig(
   config: ChartConfigWithDateRange,
@@ -129,6 +207,7 @@ export function convertToTimeChartConfig(
   const granularity = getTimeChartGranularity(
     config.granularity,
     config.dateRange,
+    config.minGranularitySeconds,
   );
 
   const dateRange = getTimeChartDateRange(
@@ -173,12 +252,14 @@ export function useTimeChartSettings(
     | 'fillNulls'
     | 'granularity'
     | 'alignDateRangeToGranularity'
+    | 'minGranularitySeconds'
   >,
 ) {
   return useMemo(() => {
     const granularity = getTimeChartGranularity(
       config.granularity,
       config.dateRange,
+      config.minGranularitySeconds,
     );
 
     const dateRange = getTimeChartDateRange(
@@ -196,7 +277,7 @@ export function useTimeChartSettings(
   }, [config]);
 }
 
-export const ChartKeyJoiner = ' · ';
+export const ChartKeyJoiner = SERIES_KEY_JOINER;
 const PreviousPeriodSuffix = ' (previous)';
 
 /**

@@ -3,6 +3,7 @@ import { createOpenAI } from '@ai-sdk/openai';
 import {
   getMetadata,
   TableMetadata,
+  tcFromSource,
 } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   AILineTableResponse,
@@ -128,6 +129,8 @@ export async function getAIMetadata(source: ISource) {
     databaseName,
     tableName,
     connectionId,
+    metadataMVs: tcFromSource(source).metadataMVs,
+    timestampValueExpression: source.timestampValueExpression,
   });
 
   // TODO: Dedup with DBSearchPageFilters.tsx logic

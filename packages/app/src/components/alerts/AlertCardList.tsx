@@ -1,126 +1,27 @@
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { AlertState } from '@hyperdx/common-utils/dist/types';
-import { Group } from '@mantine/core';
-import {
-  IconAlertTriangle,
-  IconBell,
-  IconCheck,
-  IconHourglass,
-} from '@tabler/icons-react';
+import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 
 import { AlertDetails } from '@/components/alerts/AlertDetails';
-import EmptyState from '@/components/EmptyState';
+import { InfiniteScrollFooter } from '@/components/InfiniteScrollFooter';
 import { useVirtualList } from '@/hooks/useVirtualList';
 import { APP_CONTENT_SCROLL_CONTAINER_ID } from '@/layout';
 import type { AlertsPageItem } from '@/types';
 
-import styles from '@styles/AlertsPage.module.scss';
-
 /**
- * Space above a section header. `.sectionHeader`'s own `margin-top` plus the
- * `gap-4` (--mantine-spacing-lg, 20px) the sections used to sit in, applied as
- * padding on the measured wrapper: the virtualizer measures bounding rects,
- * which exclude margins.
- */
-const FIRST_HEADER_SPACING = 30;
-const HEADER_SPACING = 50;
-
-/**
- * Heights assumed until an item is measured. Every correction shifts the items
- * below it, so a per-item estimate rather than one average keeps the list from
+ * Heights assumed until a row is measured. Every correction shifts the rows
+ * below it, so a per-row estimate rather than one average keeps the list from
  * visibly wobbling as it is scrolled. Measured in the browser: a row is 66px,
- * tag badges add 18px and the note toggle 27px, and a section header is 63px
- * over its spacing above.
+ * tag badges add 18px and the note toggle 27px.
  */
 const ROW_HEIGHT = 66;
 const TAGS_HEIGHT = 18;
 const NOTE_TOGGLE_HEIGHT = 27;
-/** `.sectionHeader` text plus its padding-bottom and border. */
-const HEADER_HEIGHT = 33;
-/**
- * `EmptyState variant="card"`: `p="xl"` (32px) around a `mih={100}` centre,
- * plus the border. Arithmetic rather than measured — it renders at most once,
- * so its error cannot accumulate down the list.
- */
-const OK_EMPTY_HEIGHT = 166;
 
-function estimateItemHeight(item: AlertListItem): number {
-  switch (item.type) {
-    case 'header':
-      return (
-        (item.isFirst ? FIRST_HEADER_SPACING : HEADER_SPACING) + HEADER_HEIGHT
-      );
-    case 'okEmpty':
-      return OK_EMPTY_HEIGHT;
-    default:
-      return (
-        ROW_HEIGHT +
-        (item.alert.tags?.length > 0 ? TAGS_HEIGHT : 0) +
-        (item.alert.note ? NOTE_TOGGLE_HEIGHT : 0)
-      );
-  }
-}
-
-type SectionKind = 'triggered' | 'pending' | 'ok';
-
-type AlertListItem =
-  | { type: 'header'; key: string; section: SectionKind; isFirst: boolean }
-  | { type: 'alert'; key: string; alert: AlertsPageItem }
-  | { type: 'okEmpty'; key: string };
-
-const SECTIONS: Record<
-  SectionKind,
-  { label: string; icon: React.ReactNode; state: AlertState }
-> = {
-  triggered: {
-    label: 'Triggered',
-    icon: <IconAlertTriangle size={14} />,
-    state: AlertState.ALERT,
-  },
-  pending: {
-    label: 'Pending',
-    icon: <IconHourglass size={14} />,
-    state: AlertState.PENDING,
-  },
-  ok: {
-    label: 'OK',
-    icon: <IconCheck size={14} />,
-    state: AlertState.OK,
-  },
-};
-
-/** Items in the list include alerts and alert state section headers (eg. 'Triggered') */
-function buildItems(alerts: AlertsPageItem[]): AlertListItem[] {
-  const items: AlertListItem[] = [];
-
-  // Alerts in the DISABLED and ERROR states belong to none of the three
-  // sections and are not listed
-  const pushSection = (section: SectionKind) => {
-    const sectionAlerts = alerts.filter(
-      alert => alert.state === SECTIONS[section].state,
-    );
-    if (section !== 'ok' && sectionAlerts.length === 0) return;
-
-    items.push({
-      type: 'header',
-      key: `header-${section}`,
-      section,
-      isFirst: items.length === 0,
-    });
-    if (section === 'ok' && sectionAlerts.length === 0) {
-      items.push({ type: 'okEmpty', key: 'ok-empty' });
-      return;
-    }
-    sectionAlerts.forEach(alert =>
-      items.push({ type: 'alert', key: alert._id, alert }),
-    );
-  };
-
-  pushSection('triggered');
-  pushSection('pending');
-  pushSection('ok');
-
-  return items;
+function estimateItemHeight(alert: AlertsPageItem): number {
+  return (
+    ROW_HEIGHT +
+    (alert.tags?.length > 0 ? TAGS_HEIGHT : 0) +
+    (alert.note ? NOTE_TOGGLE_HEIGHT : 0)
+  );
 }
 
 /**
@@ -158,9 +59,22 @@ function useScrollMargin(listRef: React.RefObject<HTMLDivElement | null>) {
   return scrollMargin;
 }
 
-export function AlertCardList({ alerts }: { alerts: AlertsPageItem[] }) {
-  const items = useMemo(() => buildItems(alerts), [alerts]);
+type AlertCardListProps = {
+  /** Sorted (name-ascending) list of alerts */
+  alerts: AlertsPageItem[];
+  hasNextPage: boolean;
+  isFetchingNextPage: boolean;
+  isFetchNextPageError: boolean;
+  onLoadMore: () => void;
+};
 
+export function AlertCardList({
+  alerts: items,
+  hasNextPage,
+  isFetchingNextPage,
+  isFetchNextPageError,
+  onLoadMore,
+}: AlertCardListProps) {
   const listRef = useRef<HTMLDivElement>(null);
   const scrollMargin = useScrollMargin(listRef);
 
@@ -174,49 +88,34 @@ export function AlertCardList({ alerts }: { alerts: AlertsPageItem[] }) {
       getScrollElement: () =>
         document.getElementById(APP_CONTENT_SCROLL_CONTAINER_ID),
       scrollMargin,
-      getItemKey: useCallback((index: number) => items[index].key, [items]),
+      getItemKey: useCallback((index: number) => items[index]._id, [items]),
     });
 
   return (
-    <div ref={listRef}>
-      {paddingTop > 0 && <div style={{ height: paddingTop }} />}
-      {virtualItems.map(virtualRow => {
-        const item = items[virtualRow.index];
-        return (
+    <>
+      <div ref={listRef}>
+        {paddingTop > 0 && <div style={{ height: paddingTop }} />}
+        {virtualItems.map(virtualRow => (
           <div
             key={virtualRow.key}
             data-index={virtualRow.index}
             ref={rowVirtualizer.measureElement}
           >
-            {item.type === 'header' ? (
-              <div
-                style={{
-                  paddingTop: item.isFirst
-                    ? FIRST_HEADER_SPACING
-                    : HEADER_SPACING,
-                }}
-              >
-                <Group
-                  className={styles.sectionHeader}
-                  style={{ marginTop: 0 }}
-                >
-                  {SECTIONS[item.section].icon} {SECTIONS[item.section].label}
-                </Group>
-              </div>
-            ) : item.type === 'alert' ? (
-              <AlertDetails alert={item.alert} />
-            ) : (
-              <EmptyState
-                variant="card"
-                icon={<IconBell size={32} />}
-                title="No alerts"
-                description="All alerts in OK state will appear here."
-              />
-            )}
+            <AlertDetails alert={items[virtualRow.index]} />
           </div>
-        );
-      })}
-      {paddingBottom > 0 && <div style={{ height: paddingBottom }} />}
-    </div>
+        ))}
+        {paddingBottom > 0 && <div style={{ height: paddingBottom }} />}
+      </div>
+      <InfiniteScrollFooter
+        hasNextPage={hasNextPage}
+        isFetchingNextPage={isFetchingNextPage}
+        isFetchNextPageError={isFetchNextPageError}
+        onLoadMore={onLoadMore}
+        loadingLabel="Loading more alerts…"
+        errorLabel="Failed to load more alerts."
+        sentinelTestId="alerts-load-more"
+        errorTestId="alerts-load-error"
+      />
+    </>
   );
 }

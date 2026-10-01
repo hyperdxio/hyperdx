@@ -5,6 +5,8 @@ import { formatDurationMs } from '@/utils';
 
 import type { ServiceMapMetricMax } from './ServiceMapMetricContext';
 import {
+  ERROR_RATE_ELEVATED,
+  ERROR_RATE_HIGH,
   formatRate,
   getMetricGradientCss,
   getRequestsPerSecond,
@@ -16,9 +18,9 @@ import {
 import styles from './ServiceMap.module.scss';
 
 /**
- * Formats the graph-wide max for the active metric into a human label so the
- * relative (max-normalized) color ramp is interpretable — e.g. the fully
- * saturated end of the scale corresponds to this value.
+ * Labels the top of the active metric's color scale. Latency and throughput
+ * are normalized against the graph, so their label is the graph-wide max;
+ * error rate is bucketed on absolute thresholds and ignores `max`.
  */
 function formatMax(
   metric: ServiceMapMetric,
@@ -27,14 +29,16 @@ function formatMax(
   dateRange: [Date, Date],
   isSingleTrace?: boolean,
 ): string {
-  // Only treat missing/invalid data as "n/a"; a real zero (e.g. a map with no
-  // errors) is meaningful and should render as a formatted 0 for its metric.
+  // Only treat missing/invalid data as "n/a"; a real zero is meaningful and
+  // should render as a formatted 0 for its metric.
   if (!Number.isFinite(max) || max < 0) {
     return 'n/a';
   }
   switch (metric) {
     case 'errorRate':
-      return max === 0 ? '0%' : `${max.toFixed(max < 10 ? 1 : 0)}%`;
+      // Error rate is bucketed on absolute thresholds rather than normalized
+      // against the graph, so the scale ends at the top bucket, not at `max`.
+      return `≥${ERROR_RATE_HIGH}%`;
     case 'latency':
       // A zero latency max is a "no latency data" sentinel (see
       // getServiceMetricValue), not a genuine 0ms, so surface it as n/a.
@@ -81,12 +85,24 @@ export default function ServiceMapLegend({
       />
       <Group justify="space-between" gap="xs" wrap="nowrap">
         <Text size="xxs" c="var(--color-text-muted)">
-          low
+          {metric === 'errorRate' ? 'none' : 'low'}
         </Text>
+        {/* Lands on the right stop only while the bar has four equal
+            segments, which puts the 1% threshold at its midpoint. */}
+        {metric === 'errorRate' && (
+          <Text size="xxs" c="var(--color-text-muted)">
+            {ERROR_RATE_ELEVATED}%
+          </Text>
+        )}
         <Text size="xxs" c="var(--color-text)">
           {formatMax(metric, max, source, dateRange, isSingleTrace)}
         </Text>
       </Group>
+      {metric === 'errorRate' && (
+        <Text size="xxs" c="var(--color-text-muted)">
+          Hollow = no data
+        </Text>
+      )}
       <Text size="xxs" c="var(--color-text-muted)">
         Node size = throughput
       </Text>

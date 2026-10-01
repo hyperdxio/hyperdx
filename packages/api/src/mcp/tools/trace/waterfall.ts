@@ -1,9 +1,15 @@
-import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
-import { getFirstTimestampValueExpression } from '@hyperdx/common-utils/dist/core/utils';
+import type { ChSql } from '@hyperdx/common-utils/dist/clickhouse';
+import {
+  getMetadata,
+  type Metadata,
+} from '@hyperdx/common-utils/dist/core/metadata';
+import { timeFilterExpr } from '@hyperdx/common-utils/dist/core/renderChartConfig';
+import { pickBucketTimestampColumn } from '@hyperdx/common-utils/dist/core/utils';
 import {
   type BuilderChartConfigWithDateRange,
   type ChartConfigWithDateRange,
   DisplayType,
+  type QuerySettings,
   SourceKind,
 } from '@hyperdx/common-utils/dist/types';
 import { z } from 'zod';
@@ -19,6 +25,7 @@ import {
 } from '@/mcp/tools/query/helpers';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
+import logger from '@/utils/logger';
 
 // ─── Schema ──────────────────────────────────────────────────────────────────
 
@@ -127,9 +134,10 @@ const TRACE_PROBE_TRAIL_PAD_MS = 1 * 60 * 60 * 1000;
 const TRACE_PROBE_MAX_LOOKBACK_MS = 90 * 24 * 60 * 60 * 1000;
 const TRACE_MAX_FETCH_WINDOW_MS = 24 * 60 * 60 * 1000;
 
-// Auto-pick guarantees only one span inside the default window; the root can
-// predate it, so probe a bounded distance before startDate to cover it.
-const TRACE_PROBE_AUTOPICK_LOOKBACK_MS = 6 * 60 * 60 * 1000;
+// Auto-pick guarantees only one span inside the pick window; the root can
+// predate it and the tail can outlast it, so probe a bounded distance on both
+// sides to cover them.
+const TRACE_PROBE_AUTOPICK_MARGIN_MS = 6 * 60 * 60 * 1000;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -189,11 +197,66 @@ function durationDivisor(precision: number): number {
   return Math.pow(10, Math.max(0, precision - 3));
 }
 
-// ClickHouse renders min()/max() over an empty set as the epoch / a zero date.
-function parseProbeTimestamp(value: string | undefined): number | null {
-  if (!value) return null;
-  const ms = new Date(value).getTime();
+// min()/max() over an empty set yields the epoch, i.e. 0.
+function parseProbeTimestamp(
+  value: string | number | undefined,
+): number | null {
+  if (value == null) return null;
+  const ms = Number(value);
   return isNaN(ms) || ms <= 0 ? null : ms;
+}
+
+async function getMcpClickhouseClient(
+  teamId: string,
+  connectionId: string,
+): Promise<ClickhouseClient | null> {
+  const connection = await getConnectionById(teamId, connectionId, true);
+  if (!connection) return null;
+  return new ClickhouseClient({
+    host: connection.host,
+    username: connection.username,
+    password: connection.password,
+    requestTimeout: MCP_REQUEST_TIMEOUT,
+  });
+}
+
+// MCP settings win over source.querySettings so a source can't relax the
+// max_execution_time / readonly ceiling this tool depends on.
+function mcpQuerySettings(querySettings: QuerySettings | undefined) {
+  return {
+    ...(querySettings
+      ? Object.fromEntries(querySettings.map(s => [s.setting, s.value]))
+      : {}),
+    ...MCP_CLICKHOUSE_SETTINGS,
+  };
+}
+
+type TimestampExprs = {
+  /** Highest-precision DateTime column, for event-time SELECT/ORDER BY. */
+  eventTs: string;
+  /** Inclusive filter over every configured timestamp column, so a
+   *  composite "EventDate, EventTime" source still prunes on its Date column. */
+  timeFilter: (start: Date, end: Date) => Promise<ChSql>;
+};
+
+async function resolveTimestampExprs(params: {
+  timestampValueExpression: string;
+  metadata: Metadata;
+  databaseName: string;
+  tableName: string;
+  connectionId: string;
+}): Promise<TimestampExprs> {
+  const eventTs = await pickBucketTimestampColumn(params);
+  return {
+    eventTs,
+    timeFilter: (start, end) =>
+      timeFilterExpr({
+        ...params,
+        dateRange: [start, end],
+        dateRangeStartInclusive: true,
+        dateRangeEndInclusive: true,
+      }),
+  };
 }
 
 type ProbedWindow = { start: Date; end: Date; clamped: boolean };
@@ -217,38 +280,45 @@ async function probeTraceWindow(
     tableName: string;
     connectionId: string;
     traceIdExpr: string;
-    tsExpr: string;
+    ts: TimestampExprs;
     traceId: string;
     startDate: Date;
     endDate: Date;
+    querySettings: QuerySettings | undefined;
   },
 ): Promise<ProbedWindow | null> {
+  const timeFilter = await params.ts.timeFilter(
+    params.startDate,
+    params.endDate,
+  );
+  // Return epoch ms: a rendered DateTime string has no zone, so parsing it
+  // with new Date() would shift the window on a non-UTC API host.
   const probeQuery = `
     SELECT
-      min(${params.tsExpr}) AS firstSeen,
-      max(${params.tsExpr}) AS lastSeen
+      toUnixTimestamp64Milli(toDateTime64(min(${params.ts.eventTs}), 3)) AS firstSeen,
+      toUnixTimestamp64Milli(toDateTime64(max(${params.ts.eventTs}), 3)) AS lastSeen
     FROM {db:Identifier}.{tbl:Identifier}
     WHERE ${params.traceIdExpr} = {tid:String}
-      AND ${params.tsExpr} >= fromUnixTimestamp64Milli({startMs:Int64})
-      AND ${params.tsExpr} <= fromUnixTimestamp64Milli({endMs:Int64})
+      AND ${timeFilter.sql}
   `;
   const result = await clickhouseClient.query({
     query: probeQuery,
     query_params: {
+      ...timeFilter.params,
       db: params.databaseName,
       tbl: params.tableName,
       tid: params.traceId,
-      startMs: params.startDate.getTime(),
-      endMs: params.endDate.getTime(),
     },
     format: 'JSONEachRow',
     connectionId: params.connectionId,
-    clickhouse_settings: MCP_CLICKHOUSE_SETTINGS,
+    clickhouse_settings: mcpQuerySettings(params.querySettings),
   });
   const rows =
     (await (
       result as {
-        json: () => Promise<{ firstSeen: string; lastSeen: string }[]>;
+        json: () => Promise<
+          { firstSeen: string | number; lastSeen: string | number }[]
+        >;
       }
     ).json()) ?? [];
   const firstSeen = parseProbeTimestamp(rows[0]?.firstSeen);
@@ -264,7 +334,8 @@ async function probeTraceWindow(
   return {
     start: new Date(fetchStart),
     end: new Date(fetchEnd),
-    clamped: unclampedStart < clampFloor,
+    // The lead pad is slack, so only a floor above firstSeen drops real spans.
+    clamped: firstSeen < fetchStart,
   };
 }
 
@@ -335,23 +406,15 @@ export function registerTraceWaterfall({
         );
       }
 
-      const connection = await getConnectionById(
+      const clickhouseClient = await getMcpClickhouseClient(
         teamId.toString(),
         source.connection.toString(),
-        true,
       );
-      if (!connection) {
+      if (!clickhouseClient) {
         return mcpUserError(
           `Connection not found for source: ${input.sourceId}`,
         );
       }
-
-      const clickhouseClient = new ClickhouseClient({
-        host: connection.host,
-        username: connection.username,
-        password: connection.password,
-        requestTimeout: MCP_REQUEST_TIMEOUT,
-      });
       const metadata = getMetadata(clickhouseClient);
 
       const traceIdExpr = source.traceIdExpression;
@@ -361,18 +424,19 @@ export function registerTraceWaterfall({
       const spanKindExpr = source.spanKindExpression;
       const durationExpr = source.durationExpression;
       const tsExpr = source.timestampValueExpression;
-      // A source's timestampValueExpression may be a comma-separated list (e.g.
-      // "EventDate, EventTime"). Raw-SQL uses that aggregate or compare on it —
-      // min()/max() and the WHERE bounds — need a single column; only the
-      // queryChartConfig picker (which splits it itself) gets the full form.
-      const tsExprFirst = getFirstTimestampValueExpression(tsExpr);
+      const ts = await resolveTimestampExprs({
+        timestampValueExpression: tsExpr,
+        metadata,
+        databaseName: source.from.databaseName,
+        tableName: source.from.tableName,
+        connectionId: source.connection.toString(),
+      });
       const serviceNameExpr = source.serviceNameExpression ?? "''";
       const statusCodeExpr = source.statusCodeExpression ?? "''";
       const statusMessageExpr = source.statusMessageExpression ?? "''";
       const attrsExpr = source.eventAttributesExpression ?? 'map()';
       const divisor = durationDivisor(source.durationPrecision);
 
-      // ── Step 1: pick a TraceId (unless one was provided) ──
       let pickedTraceId = input.traceId;
       if (!pickedTraceId) {
         // Compose pickFilter with the pickBy-specific filter when needed.
@@ -401,8 +465,8 @@ export function registerTraceWaterfall({
           input.pickBy === 'slowest'
             ? `max(${durationExpr}) DESC`
             : input.pickBy === 'first_error'
-              ? `min(${tsExprFirst}) ASC`
-              : `max(${tsExprFirst}) DESC`;
+              ? `min(${ts.eventTs}) ASC`
+              : `max(${ts.eventTs}) DESC`;
 
         const pickConfig: BuilderChartConfigWithDateRange = {
           displayType: DisplayType.Table,
@@ -433,6 +497,7 @@ export function registerTraceWaterfall({
             config: pickConfig as ChartConfigWithDateRange,
             metadata,
             querySettings: source.querySettings,
+            opts: { clickhouse_settings: MCP_CLICKHOUSE_SETTINGS },
           })) as { data?: Array<Record<string, unknown>> };
         } catch (e) {
           return clickHouseErrorResult(e, 'Failed to pick a trace');
@@ -491,80 +556,83 @@ export function registerTraceWaterfall({
       const isAutoPick = input.traceId == null;
       const usedDefaultWindow = input.startTime == null;
       if (isAutoPick || usedDefaultWindow) {
-        const probeStart =
-          input.traceId && usedDefaultWindow
-            ? new Date(endDate.getTime() - TRACE_PROBE_MAX_LOOKBACK_MS)
-            : new Date(startDate.getTime() - TRACE_PROBE_AUTOPICK_LOOKBACK_MS);
+        const [probeStart, probeEnd] = isAutoPick
+          ? [
+              new Date(startDate.getTime() - TRACE_PROBE_AUTOPICK_MARGIN_MS),
+              new Date(endDate.getTime() + TRACE_PROBE_AUTOPICK_MARGIN_MS),
+            ]
+          : [
+              new Date(endDate.getTime() - TRACE_PROBE_MAX_LOOKBACK_MS),
+              endDate,
+            ];
         try {
           const probed = await probeTraceWindow(clickhouseClient, {
             databaseName: source.from.databaseName,
             tableName: source.from.tableName,
             connectionId: source.connection.toString(),
             traceIdExpr,
-            tsExpr: tsExprFirst,
+            ts,
             traceId: pickedTraceId,
             startDate: probeStart,
-            endDate,
+            endDate: probeEnd,
+            querySettings: source.querySettings,
           });
           if (probed) {
             fetchStart = probed.start;
             fetchEnd = probed.end;
             windowClamped = probed.clamped;
           }
-        } catch {
+        } catch (e) {
           // probeTraceWindow returns null (not throws) for the empty case, so a
           // throw means the probe genuinely didn't complete. The fallback window
           // will likely also come back empty, so flag it for an accurate hint.
+          logger.warn(
+            {
+              error: e,
+              teamId,
+              traceId: pickedTraceId,
+              sourceId: input.sourceId,
+            },
+            'trace waterfall extent probe failed',
+          );
           probeFailed = true;
         }
       }
 
-      // ── Step 2: fetch the full span tree ──
-      const treeQuery = `
-        SELECT
-          ${spanIdExpr} AS spanId,
-          ${parentSpanIdExpr} AS parentSpanId,
-          ${serviceNameExpr} AS serviceName,
-          ${spanNameExpr} AS spanName,
-          ${spanKindExpr} AS spanKind,
-          ${durationExpr} / {divisor:Float64} AS durationMs,
-          ${statusCodeExpr} AS statusCode,
-          ${statusMessageExpr} AS statusMessage,
-          ${tsExprFirst} AS timestamp,
-          ${attrsExpr} AS spanAttributes
-        FROM {db:Identifier}.{tbl:Identifier}
-        WHERE ${traceIdExpr} = {tid:String}
-          AND ${tsExprFirst} >= fromUnixTimestamp64Milli({startMs:Int64})
-          AND ${tsExprFirst} <= fromUnixTimestamp64Milli({endMs:Int64})
-        ORDER BY ${tsExprFirst} ASC
-        LIMIT {n:UInt32}
-      `;
-
       let rows: SpanRow[];
       try {
+        const timeFilter = await ts.timeFilter(fetchStart, fetchEnd);
+        const treeQuery = `
+          SELECT
+            ${spanIdExpr} AS spanId,
+            ${parentSpanIdExpr} AS parentSpanId,
+            ${serviceNameExpr} AS serviceName,
+            ${spanNameExpr} AS spanName,
+            ${spanKindExpr} AS spanKind,
+            ${durationExpr} / {divisor:Float64} AS durationMs,
+            ${statusCodeExpr} AS statusCode,
+            ${statusMessageExpr} AS statusMessage,
+            ${ts.eventTs} AS timestamp,
+            ${attrsExpr} AS spanAttributes
+          FROM {db:Identifier}.{tbl:Identifier}
+          WHERE ${traceIdExpr} = {tid:String}
+            AND ${timeFilter.sql}
+          ORDER BY ${ts.eventTs} ASC
+          LIMIT {n:UInt32}
+        `;
         const result = await clickhouseClient.query({
           query: treeQuery,
           query_params: {
+            ...timeFilter.params,
             db: source.from.databaseName,
             tbl: source.from.tableName,
             tid: pickedTraceId,
-            startMs: fetchStart.getTime(),
-            endMs: fetchEnd.getTime(),
             n: input.maxSpans + 1, // +1 to detect truncation
             divisor,
           },
           format: 'JSONEachRow',
           connectionId: source.connection.toString(),
-          // MCP settings win over source.querySettings so a source can't relax
-          // the max_execution_time / readonly ceiling this tool depends on.
-          clickhouse_settings: {
-            ...(source.querySettings
-              ? Object.fromEntries(
-                  source.querySettings.map(s => [s.setting, s.value]),
-                )
-              : {}),
-            ...MCP_CLICKHOUSE_SETTINGS,
-          },
+          clickhouse_settings: mcpQuerySettings(source.querySettings),
         });
         rows =
           (await (result as { json: () => Promise<SpanRow[]> }).json()) ?? [];
@@ -638,7 +706,6 @@ export function registerTraceWaterfall({
           "trace's start to see the full tree."
         : undefined;
 
-      // ── Step 3: fetch correlated logs (when logSourceId is configured) ──
       type LogRow = {
         timestamp: string;
         severityText: string;
@@ -661,72 +728,65 @@ export function registerTraceWaterfall({
         } else {
           const logTraceIdExpr = logSource.traceIdExpression ?? 'TraceId';
           const logSpanIdExpr = logSource.spanIdExpression ?? "''";
-          const logTsExpr = getFirstTimestampValueExpression(
-            logSource.timestampValueExpression,
-          );
           const logBodyExpr = logSource.bodyExpression ?? "''";
           const logSevExpr = logSource.severityTextExpression ?? "''";
           const logSvcExpr = logSource.serviceNameExpression ?? "''";
 
           // Reuse the same connection only when the log source lives there.
-          let logClient = clickhouseClient;
+          let logClient: ClickhouseClient | null = clickhouseClient;
           if (
             logSource.connection.toString() !== source.connection.toString()
           ) {
-            const logConn = await getConnectionById(
+            logClient = await getMcpClickhouseClient(
               teamId.toString(),
               logSource.connection.toString(),
-              true,
             );
-            if (!logConn) {
-              logsNote = `connection for log source ${source.logSourceId} not found`;
-            } else {
-              logClient = new ClickhouseClient({
-                host: logConn.host,
-                username: logConn.username,
-                password: logConn.password,
-                requestTimeout: MCP_REQUEST_TIMEOUT,
-              });
-            }
+          }
+          if (!logClient) {
+            logsNote = `connection for log source ${source.logSourceId} not found`;
           }
 
-          if (!logsNote) {
-            const logsQuery = `
-              SELECT
-                ${logTsExpr} AS timestamp,
-                ${logSevExpr} AS severityText,
-                ${logBodyExpr} AS body,
-                ${logSvcExpr} AS serviceName,
-                ${logSpanIdExpr} AS spanId
-              FROM {db:Identifier}.{tbl:Identifier}
-              WHERE ${logTraceIdExpr} = {tid:String}
-                AND ${logTsExpr} >= fromUnixTimestamp64Milli({startMs:Int64})
-                AND ${logTsExpr} <= fromUnixTimestamp64Milli({endMs:Int64})
-              ORDER BY ${logTsExpr} ASC
-              LIMIT {n:UInt32}
-            `;
+          if (logClient && !logsNote) {
             try {
+              const logTs = await resolveTimestampExprs({
+                timestampValueExpression: logSource.timestampValueExpression,
+                metadata:
+                  logClient === clickhouseClient
+                    ? metadata
+                    : getMetadata(logClient),
+                databaseName: logSource.from.databaseName,
+                tableName: logSource.from.tableName,
+                connectionId: logSource.connection.toString(),
+              });
+              const logTimeFilter = await logTs.timeFilter(
+                fetchStart,
+                fetchEnd,
+              );
+              const logsQuery = `
+                SELECT
+                  ${logTs.eventTs} AS timestamp,
+                  ${logSevExpr} AS severityText,
+                  ${logBodyExpr} AS body,
+                  ${logSvcExpr} AS serviceName,
+                  ${logSpanIdExpr} AS spanId
+                FROM {db:Identifier}.{tbl:Identifier}
+                WHERE ${logTraceIdExpr} = {tid:String}
+                  AND ${logTimeFilter.sql}
+                ORDER BY ${logTs.eventTs} ASC
+                LIMIT {n:UInt32}
+              `;
               const logResult = await logClient.query({
                 query: logsQuery,
                 query_params: {
+                  ...logTimeFilter.params,
                   db: logSource.from.databaseName,
                   tbl: logSource.from.tableName,
                   tid: pickedTraceId,
-                  startMs: fetchStart.getTime(),
-                  endMs: fetchEnd.getTime(),
                   n: input.maxLogs + 1, // +1 to detect truncation
                 },
                 format: 'JSONEachRow',
                 connectionId: logSource.connection.toString(),
-                // MCP settings win over source.querySettings (see span fetch).
-                clickhouse_settings: {
-                  ...(logSource.querySettings
-                    ? Object.fromEntries(
-                        logSource.querySettings.map(s => [s.setting, s.value]),
-                      )
-                    : {}),
-                  ...MCP_CLICKHOUSE_SETTINGS,
-                },
+                clickhouse_settings: mcpQuerySettings(logSource.querySettings),
               });
               const allLogs =
                 (await (

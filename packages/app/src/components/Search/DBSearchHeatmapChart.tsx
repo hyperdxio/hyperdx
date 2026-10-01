@@ -174,6 +174,7 @@ export function DBSearchHeatmapChart({
             variant="subtle"
             size="sm"
             onClick={settingsHandlers.open}
+            data-testid="heatmap-settings-button"
             style={{
               position: 'absolute',
               top: 4,
@@ -189,6 +190,8 @@ export function DBSearchHeatmapChart({
         opened={settingsOpened}
         onClose={settingsHandlers.close}
         connection={tcFromSource(source)}
+        sourceId={source.id}
+        dateRange={chartConfig.dateRange}
         parentRef={container}
         defaultValues={heatmapSettingsDefaults}
         onSubmit={data => {

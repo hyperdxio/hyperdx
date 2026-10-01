@@ -767,6 +767,114 @@ describe('MCP Trace Tools', () => {
         expect(output.spanCount).toBe(2);
         expect(output.rootSpan.spanId).toBe('pick2_root_span01');
       });
+
+      it('flags a partial tree with probeNote when the extent probe fails', async () => {
+        const FAIL_TRACE_ID = 'eeee5555ffff6666aaaa7777bbbb8888';
+        const FAIL_SVC = 'wf-probe-fail-svc';
+        await bulkInsertTraces([
+          {
+            Timestamp: rootTs,
+            TraceId: FAIL_TRACE_ID,
+            SpanId: 'fail_root_span01',
+            ParentSpanId: '',
+            SpanName: 'GET /wf-probe-fail/root',
+            SpanKind: 'SPAN_KIND_SERVER',
+            ServiceName: FAIL_SVC,
+            Duration: 2_400_000_000_000,
+            StatusCode: 'STATUS_CODE_OK',
+          },
+          {
+            Timestamp: childTs,
+            TraceId: FAIL_TRACE_ID,
+            SpanId: 'fail_child_span1',
+            ParentSpanId: 'fail_root_span01',
+            SpanName: 'wf-probe-fail-child',
+            SpanKind: 'SPAN_KIND_CLIENT',
+            ServiceName: FAIL_SVC,
+            Duration: 100_000_000,
+            StatusCode: 'STATUS_CODE_OK',
+          },
+        ]);
+        const original = ClickhouseClient.prototype.query;
+        const spy = jest
+          .spyOn(ClickhouseClient.prototype, 'query')
+          .mockImplementation(function (this: ClickhouseClient, args) {
+            if (args.query.includes('AS firstSeen')) {
+              return Promise.reject(new Error('Timeout exceeded'));
+            }
+            return original.call(this, args);
+          });
+        try {
+          const result = await callTool(client, 'clickstack_trace_waterfall', {
+            sourceId: traceSource._id.toString(),
+            pickFilter: `ServiceName:${FAIL_SVC}`,
+            pickBy: 'slowest',
+            includeLogs: false,
+          });
+
+          expect(result.isError).toBeFalsy();
+          const output = JSON.parse(getFirstText(result));
+          expect(output.traceId).toBe(FAIL_TRACE_ID);
+          // Fallback window only covers the in-window child.
+          expect(output.spanCount).toBe(1);
+          expect(output.probeNote).toContain('probe failed');
+        } finally {
+          spy.mockRestore();
+        }
+      });
+
+      it('probes past an explicit endTime so a late trace tail is not dropped', async () => {
+        const PICK3_TRACE_ID = 'dddd4444eeee5555ffff6666aaaa7777';
+        const PICK3_SVC = 'wf-autopick-tail-svc';
+        const pickRootTs = new Date(now.getTime() - 4 * 60 * 60 * 1000);
+        // > 1h past endTime, so only the forward probe margin can find it.
+        const tailTs = new Date(now.getTime() - 2 * 60 * 60 * 1000);
+        await bulkInsertTraces([
+          {
+            Timestamp: pickRootTs,
+            TraceId: PICK3_TRACE_ID,
+            SpanId: 'pick3_root_span01',
+            ParentSpanId: '',
+            SpanName: 'GET /wf-autopick3/root',
+            SpanKind: 'SPAN_KIND_SERVER',
+            ServiceName: PICK3_SVC,
+            Duration: 7_200_000_000_000,
+            StatusCode: 'STATUS_CODE_OK',
+          },
+          {
+            Timestamp: tailTs,
+            TraceId: PICK3_TRACE_ID,
+            SpanId: 'pick3_tail_span1',
+            ParentSpanId: 'pick3_root_span01',
+            SpanName: 'wf-autopick3-tail',
+            SpanKind: 'SPAN_KIND_CLIENT',
+            ServiceName: PICK3_SVC,
+            Duration: 100_000_000,
+            StatusCode: 'STATUS_CODE_OK',
+          },
+        ]);
+
+        const result = await callTool(client, 'clickstack_trace_waterfall', {
+          sourceId: traceSource._id.toString(),
+          pickFilter: `ServiceName:${PICK3_SVC}`,
+          pickBy: 'slowest',
+          includeLogs: false,
+          startTime: new Date(
+            pickRootTs.getTime() - 10 * 60 * 1000,
+          ).toISOString(),
+          endTime: new Date(
+            pickRootTs.getTime() + 10 * 60 * 1000,
+          ).toISOString(),
+        });
+
+        expect(result.isError).toBeFalsy();
+        const output = JSON.parse(getFirstText(result));
+        expect(output.traceId).toBe(PICK3_TRACE_ID);
+        expect(output.spanCount).toBe(2);
+        expect(output.spans.map((s: any) => s.spanId)).toContain(
+          'pick3_tail_span1',
+        );
+      });
     });
 
     describe('first_error pick mode', () => {

@@ -3095,7 +3095,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
           await page
             .getByTestId('formula-expression-input')
             .fill('A / (A + B) * 100');
-          await page.getByTestId('formula-alias-input').fill('CpuShare');
+          await page.getByTestId('series-alias-input').last().fill('CpuShare');
           expect(await dashboardPage.chartEditor.getFormulaError(0)).toBeNull();
           await dashboardPage.chartEditor.runQuery(false);
 
@@ -3153,7 +3153,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
             dashboardPage.page.getByTestId('formula-expression-input'),
           ).toHaveValue('A / (A + B) * 100');
           await expect(
-            dashboardPage.page.getByTestId('formula-alias-input'),
+            dashboardPage.page.getByTestId('series-alias-input').last(),
           ).toHaveValue('CpuShare');
           await expect(
             dashboardPage.page.getByRole('switch', {

@@ -1,5 +1,124 @@
 # @hyperdx/common-utils
 
+## 0.30.0
+
+### Minor Changes
+
+- 8a9fcd2f: feat: Support macros in PromQL charts
+- 08d9a908: feat: Plot several PromQL expressions on one chart
+- d9e2c58b: Add a per-source floor for auto granularity. A metric source can now set "Minimum auto granularity" (Team Settings → Sources → your Metrics source) so that auto-inferred time buckets never go below it — useful when the underlying metric is reported on a fixed interval (e.g. a 60s scrape), since a short selected date range can otherwise auto-infer a smaller bucket than that interval and render a sparse/steppy series (alternating real-sample/empty buckets). Mirrors Grafana's per-datasource "Min interval" setting. Unset (the default) preserves the existing unfloored behavior, and an explicit (non-auto) granularity chosen on a tile is never affected.
+
+### Patch Changes
+
+- 1e355ac4: fix: don't scan the whole table to discover Map keys
+
+  `getMapKeys` only applied a time predicate when the caller passed both a date
+  range and a timestamp expression; otherwise the raw `sampledKeys` scan ran with
+  no `WHERE` and touched every part of the table. It now defaults a missing date
+  range to the last 24 hours and skips the raw scan entirely when there is no
+  timestamp expression to filter on. The chart, alert and dashboard-filter
+  editors pass the source and date range they already have so Map keys keep
+  autocompleting there.
+
+- 793fe19e: feat: Substitute dashboard variables in markdown tiles
+- ec4f5087: fix: allow grouping gauge and sum metric charts by materialized and alias columns
+
+  Grouping or selecting a MATERIALIZED or ALIAS column on a gauge or sum metric chart failed with `Unknown expression identifier`, because the intermediate query didn't carry those columns through.
+
+- a8a72c11: fix: Support instant queries and reductions on PromQL number tiles
+- 8cfb2672: feat: Support background sparklines on PromQL range number tiles
+- 4570d5ee: feat: Support pie and bar tiles on PromQL sources
+- 78ed5921: feat: Support table tiles on PromQL sources
+- 23423c13: fix: Show distribution only labels a value "<1%" when the sample shows it is rare, not when it has no matching rows, and shows 100% when the field's filter allows only that value
+- 19182e7e: fix: only split a query at a standalone SETTINGS keyword
+
+  `extractSettingsClauseFromEnd` cut the query at the first "settings" anywhere in
+  it, including inside a string or an identifier. A multi-series metric chart with
+  a metric such as `app.settings.reloads` produced SQL with an unterminated
+  string, and a SQL filter on a column such as `AppSettings` was rewritten to
+  reference `App`. The keyword now has to stand alone outside quotes.
+
+## 0.29.0
+
+### Minor Changes
+
+- e31e5d8d: Offer dashboard tile alerts for Terraform import. `clickhouse_clickstack_alert`
+  gained `source = "tile"` with `dashboard_id`/`tile_id` in provider 3.28.0, so
+  the bulk export and the per-alert menu now include tile alerts instead of
+  skipping every alert that is not a saved-search one. A file carrying a tile
+  alert asks for `>= 3.28.0` and explains the hand edit its generated config
+  needs; an export without one still installs on 3.25.x. A tile alert is withheld
+  when its tile has a blank or duplicated name — the provider's `tile_ids` map is
+  keyed by tile name and omits those, so the alert could only be pinned to a
+  literal id the next dashboard apply can re-mint — or when its dashboard is
+  provisioned, since ProvisionDashboardsTask rewrites those tiles wholesale. Both
+  decisions are made server-side, on the import manifest and on the alerts
+  listing, because neither response carries a dashboard's sibling tile names.
+- f007c37f: Add a context-aware getting-started checklist to the sidebar for recently-created teams. After the setup steps (connect ClickHouse, add data) complete, a second phase tracks product-usage milestones persisted per user on `user.onboardingData`: exploring data, building a dashboard, setting up an alert, and using the MCP server. Completion is recorded server-side so it counts from the UI, the external REST API v2, or an MCP tool; the card can be dismissed and reappears if a new task is added to the registry.
+- 3876d6b9: Fill the metric name select from the table's primary index, so it populates almost immediately instead of waiting on an aggregation over the data. On a source reporting ~4,900 gauge metrics the first options appear in ~30ms rather than ~770ms, and they stream in progressively rather than arriving all at once. A small spinner replaces the dropdown chevron while more are still on the way.
+
+  The picker now has two modes. **Browsing** streams `MetricName` out of the sparse primary index via the `mergeTreeIndex` table function — one row per granule mark instead of a full column scan. Because the index only records the value at each granule boundary, that list is a subset, weighted towards metrics that actually carry data (index-visible metrics have a median ~32k datapoints against ~14 for the rest). **Typing** switches to the exhaustive, relevance-ranked `GROUP BY` search, so any metric the index omitted is still reachable by name. The placeholder reads "Search metrics..." to invite that.
+
+  Two details that matter in use: while the first search for a pattern is in flight the browse list is held and filtered client-side, so the options never blank out mid-keystroke; and the dropdown's render cap is raised to 500 to match the server-side page size, so a search that is not reported as truncated is fully renderable.
+
+  Browsing falls back to the exhaustive listing when the index cannot be read at all — a server older than 24.2, a Distributed or non-MergeTree metric table, or a schema whose primary key omits `MetricName` — so no deployment loses the picker.
+
+  `Metadata` gains `streamDistinctIndexValues`, an async generator generic over table and column, so any primary-key column (`ServiceName`, for instance) can be listed the same way. `streamToAsyncIterator` moves from `packages/app`'s session code into `common-utils` beside the ClickHouse client, and a new `useStreamingQuery` hook accumulates an async iterable into a React Query cache entry, publishing partial results on a throttle.
+
+- 972634d2: Report the whole alert condition in the `{{sourceQuery}}` webhook template
+  variable. It read only a chart's top-level `where`, so an alert defined by a
+  per-series `aggCondition` — a common shape — still rendered empty. The variable
+  now reports every part of the condition the alert query actually applies: a
+  chart's `where` plus the `aggCondition` of the series the alert reads, and a
+  saved search's `where` plus its pinned filters. A chart's pinned filters are
+  deliberately excluded, since a tile or inline alert does not apply them. The
+  value is truncated at 2000 characters.
+
+  Editing an alert off a `between` or `outside` comparator now clears the stored
+  `thresholdMax` instead of leaving the old bound on the document, where it was
+  also served by the alerts APIs and would advertise a range that no longer
+  fires. Webhook templates already guarded against this on read.
+
+  The webhook form's variable list and the API's fallback body template both
+  derive from one list in common-utils, which `buildWebhookTemplateVariables` is
+  typed against, so a variable cannot be added without appearing in both places.
+  The "Send test" payload carries a sample value for every variable, so a body
+  template can be checked before an alert fires.
+
+  The documented guard for an optional number is now
+  `{{#unless (eq thresholdMax undefined)}}` rather than `{{#if thresholdMax}}`,
+  which treats a legitimate bound of `0` as absent.
+
+### Patch Changes
+
+- 482d2cb0: feat: Paginate the alerts page
+- 5311d63c: fix: give incident.io webhooks a body incident.io accepts
+
+  An incident.io webhook saved without a body was sent the generic `{"text": ...}` payload, which has neither of the two fields incident.io requires, so every delivery was rejected and no alert was ever raised. It now gets an incident.io payload carrying a deduplication key that is stable across a firing and its resolve, so incident.io closes the alert it opened, plus the alert id, status, condition and evaluation window in `metadata` for routing. The webhook body editor and its list of template variables are also available when incident.io is the selected service, not only for Generic, so the payload can be tailored to an alert source's configured fields.
+
+- 96ac6b1b: fix: disable per-part subcolumn size calculation on ClickHouse 26.3+
+
+  ClickHouse 26.3 turned on
+  `allow_calculating_subcolumns_sizes_for_merge_tree_reading` by default, which
+  makes PREWHERE planning fetch per-part sizes for every map key a query
+  references. On SharedMergeTree that is one S3 GET per (key × active part), it
+  runs before any row is read, and `max_execution_time` does not interrupt it.
+  Queries referencing many attribute keys — the LLM dashboard reads ~64 — could
+  spend minutes in planning. Queries now send the setting as `0` when the server
+  supports it.
+
+- 84c67f4b: fix: show only the delivery time in an alert's notification duration
+
+  The notification duration on an alert's evaluation list was timing everything an alert does once it decides to fire: building the message title and links, querying the log lines that go in the body, rendering the template, and then delivering it. That made the column read in seconds while the webhook underneath it answered in milliseconds — the column and its own per-target breakdown disagreed, and the figure was dominated by work that has nothing to do with how fast the notification target responded. It now times the delivery alone. Evaluations already recorded keep their old figure and will read high.
+
+- cfacdbe5: feat: relative date ranges for dashboards can now be saved
+- 806d242e: feat: page and filter GET /alerts server-side
+- f7ae72c2: refactor: Extract PromQL functions, PromqlExpressionEditor, and ChartSeriesControls
+- b1e48b99: fix: Quote column identifiers when opening row details
+- 78a33ba4: feat: Allow configuring dashboard filters as required
+- bef61fbc: feat: Scope tags endpoint by resource type
+- b4840573: feat: Optionally apply the dashboard's filter selections to the tile editor preview
+
 ## 0.28.1
 
 ### Patch Changes

@@ -25,6 +25,22 @@ const VALIDATION_DEBOUNCE_MS = 500;
 export const hasVariableIssues = (issues: VariableReferenceIssues) =>
   issues.errors.length > 0 || issues.warnings.length > 0;
 
+export type VariableValidationState = 'error' | 'warning';
+
+/**
+ * Which state an input paints its border with. Errors win over warnings, and
+ * `hasError` folds in an error the caller already knows about from elsewhere
+ * (an invalid expression), which outranks a variable warning.
+ */
+export const variableValidationState = (
+  issues: VariableReferenceIssues,
+  hasError = false,
+): VariableValidationState | undefined => {
+  if (hasError || issues.errors.length > 0) return 'error';
+  if (issues.warnings.length > 0) return 'warning';
+  return undefined;
+};
+
 /**
  * Returns variable-reference issues in the given template. Returns nothing when no variables are in scope.
  */
