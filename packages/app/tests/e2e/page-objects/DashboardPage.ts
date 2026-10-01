@@ -31,7 +31,7 @@ export type FilterRequirementOptions = {
  * Used with verifyTileFormFromConfig
  */
 export type TileConfig = {
-  displayType: Exclude<DisplayType, 'heatmap'>;
+  displayType: DisplayType;
   sourceId?: string;
   select?:
     | {
@@ -55,7 +55,8 @@ type SeriesType =
   | 'markdown'
   | 'pie'
   | 'event_patterns'
-  | 'bar';
+  | 'bar'
+  | 'heatmap';
 
 /**
  * Series data structure for chart verification
@@ -640,6 +641,27 @@ export class DashboardPage {
    */
   getTiles() {
     return this.page.locator('[data-testid^="dashboard-tile-"]');
+  }
+
+  /** A dashboard tile, matched by the chart name shown in its header. */
+  getTileByName(name: string) {
+    return this.getTiles().filter({ hasText: name });
+  }
+
+  getTileHeatmapCanvas(tileName: string) {
+    return this.getTileByName(tileName).locator(
+      '.heatmap-selection-container canvas',
+    );
+  }
+
+  getTileErrorState(tileName: string) {
+    return this.getTileByName(tileName).getByTestId('chart-error-state');
+  }
+
+  getTileHeatmapNotEnoughDataText(tileName: string) {
+    return this.getTileByName(tileName).getByText(
+      'Not enough data points to render heatmap',
+    );
   }
 
   /**

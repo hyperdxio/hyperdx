@@ -114,6 +114,96 @@ export class SearchPage {
     return this.page.getByRole('tab', { name: 'Event Patterns' });
   }
 
+  /** The "Event Deltas" analysis-mode tab, shown only for trace sources. */
+  get eventDeltasTab() {
+    return this.page.getByRole('tab', { name: 'Event Deltas' });
+  }
+
+  async switchToEventDeltas() {
+    await this.eventDeltasTab.click();
+    await expect(this.page).toHaveURL(/[?&]mode=delta/);
+  }
+
+  /** The event-deltas heatmap's plot container (rendered by DBHeatmapChart). */
+  get heatmapContainer() {
+    return this.page.locator('.heatmap-selection-container');
+  }
+
+  get heatmapCanvas() {
+    return this.heatmapContainer.locator('canvas');
+  }
+
+  get heatmapNotEnoughDataText() {
+    return this.page.getByText('Not enough data points to render heatmap');
+  }
+
+  get chartErrorState() {
+    return this.page.getByTestId('chart-error-state');
+  }
+
+  /**
+   * Drag a rectangle over the inner area of the heatmap plot. Targets uPlot's
+   * `.u-over` overlay, which receives the drag events and excludes the axes.
+   */
+  async dragSelectHeatmap(
+    start: { x: number; y: number } = { x: 0.3, y: 0.2 },
+    end: { x: number; y: number } = { x: 0.7, y: 0.8 },
+  ) {
+    const plot = this.heatmapContainer.locator('.u-over');
+    await expect(plot).toBeVisible();
+    const box = await plot.boundingBox();
+    if (!box) {
+      throw new Error('Heatmap plot area not found');
+    }
+    await this.page.mouse.move(
+      box.x + box.width * start.x,
+      box.y + box.height * start.y,
+    );
+    await this.page.mouse.down();
+    await this.page.mouse.move(
+      box.x + box.width * end.x,
+      box.y + box.height * end.y,
+      { steps: 10 },
+    );
+    await this.page.mouse.up();
+  }
+
+  /** DBDeltaChart legend entries shown only while a selection is compared. */
+  get deltaSelectionLegend() {
+    return this.page.getByText('Selection', { exact: true });
+  }
+
+  get deltaBackgroundLegend() {
+    return this.page.getByText('Background', { exact: true });
+  }
+
+  /** DBDeltaChart hint shown while there is no selection to compare. */
+  get deltaNoSelectionHint() {
+    return this.page.getByText(
+      'Select an area on the chart above to enable comparisons',
+    );
+  }
+
+  get heatmapSettingsDrawer() {
+    return this.page.getByRole('dialog', { name: 'Display Settings' });
+  }
+
+  async openHeatmapSettings() {
+    await this.page.getByTestId('heatmap-settings-button').click();
+    await expect(this.heatmapSettingsDrawer).toBeVisible();
+  }
+
+  async setHeatmapScale(scale: 'Log' | 'Linear') {
+    await this.heatmapSettingsDrawer.getByText(scale, { exact: true }).click();
+  }
+
+  async applyHeatmapSettings() {
+    await this.heatmapSettingsDrawer
+      .getByRole('button', { name: 'Apply' })
+      .click();
+    await expect(this.heatmapSettingsDrawer).toBeHidden();
+  }
+
   /**
    * The pattern list table (the "Event Patterns" grid). It renders before the
    * flyout in the DOM (the flyout is a portaled drawer), so `.first()` resolves
