@@ -206,6 +206,20 @@ function parseProbeTimestamp(
   return isNaN(ms) || ms <= 0 ? null : ms;
 }
 
+async function getMcpClickhouseClient(
+  teamId: string,
+  connectionId: string,
+): Promise<ClickhouseClient | null> {
+  const connection = await getConnectionById(teamId, connectionId, true);
+  if (!connection) return null;
+  return new ClickhouseClient({
+    host: connection.host,
+    username: connection.username,
+    password: connection.password,
+    requestTimeout: MCP_REQUEST_TIMEOUT,
+  });
+}
+
 // MCP settings win over source.querySettings so a source can't relax the
 // max_execution_time / readonly ceiling this tool depends on.
 function mcpQuerySettings(querySettings: QuerySettings | undefined) {
@@ -392,23 +406,15 @@ export function registerTraceWaterfall({
         );
       }
 
-      const connection = await getConnectionById(
+      const clickhouseClient = await getMcpClickhouseClient(
         teamId.toString(),
         source.connection.toString(),
-        true,
       );
-      if (!connection) {
+      if (!clickhouseClient) {
         return mcpUserError(
           `Connection not found for source: ${input.sourceId}`,
         );
       }
-
-      const clickhouseClient = new ClickhouseClient({
-        host: connection.host,
-        username: connection.username,
-        password: connection.password,
-        requestTimeout: MCP_REQUEST_TIMEOUT,
-      });
       const metadata = getMetadata(clickhouseClient);
 
       const traceIdExpr = source.traceIdExpression;
@@ -431,7 +437,6 @@ export function registerTraceWaterfall({
       const attrsExpr = source.eventAttributesExpression ?? 'map()';
       const divisor = durationDivisor(source.durationPrecision);
 
-      // ── Step 1: pick a TraceId (unless one was provided) ──
       let pickedTraceId = input.traceId;
       if (!pickedTraceId) {
         // Compose pickFilter with the pickBy-specific filter when needed.
@@ -594,7 +599,6 @@ export function registerTraceWaterfall({
         }
       }
 
-      // ── Step 2: fetch the full span tree ──
       let rows: SpanRow[];
       try {
         const timeFilter = await ts.timeFilter(fetchStart, fetchEnd);
@@ -702,7 +706,6 @@ export function registerTraceWaterfall({
           "trace's start to see the full tree."
         : undefined;
 
-      // ── Step 3: fetch correlated logs (when logSourceId is configured) ──
       type LogRow = {
         timestamp: string;
         severityText: string;
@@ -730,28 +733,20 @@ export function registerTraceWaterfall({
           const logSvcExpr = logSource.serviceNameExpression ?? "''";
 
           // Reuse the same connection only when the log source lives there.
-          let logClient = clickhouseClient;
+          let logClient: ClickhouseClient | null = clickhouseClient;
           if (
             logSource.connection.toString() !== source.connection.toString()
           ) {
-            const logConn = await getConnectionById(
+            logClient = await getMcpClickhouseClient(
               teamId.toString(),
               logSource.connection.toString(),
-              true,
             );
-            if (!logConn) {
-              logsNote = `connection for log source ${source.logSourceId} not found`;
-            } else {
-              logClient = new ClickhouseClient({
-                host: logConn.host,
-                username: logConn.username,
-                password: logConn.password,
-                requestTimeout: MCP_REQUEST_TIMEOUT,
-              });
-            }
+          }
+          if (!logClient) {
+            logsNote = `connection for log source ${source.logSourceId} not found`;
           }
 
-          if (!logsNote) {
+          if (logClient && !logsNote) {
             try {
               const logTs = await resolveTimestampExprs({
                 timestampValueExpression: logSource.timestampValueExpression,
