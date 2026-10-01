@@ -26,13 +26,13 @@ import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
 import {
   clickHouseErrorResult,
-  isQueryTimeoutError,
   MCP_CLICKHOUSE_SETTINGS,
   MCP_REQUEST_TIMEOUT,
   parseTimeRange,
 } from '@/mcp/tools/query/helpers';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
+import { isQueryTimeoutError } from '@/tasks/checkAlerts/errors';
 
 // ─── Schema ──────────────────────────────────────────────────────────────────
 

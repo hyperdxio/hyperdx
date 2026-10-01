@@ -19,7 +19,6 @@ import {
   errorHint,
   getClickHouseErrorType,
   INCREASE_TOP_N_CAP,
-  isQueryTimeoutError,
   isServerError,
   mergeWhereIntoSelectItems,
   parseTimeRange,
@@ -335,38 +334,6 @@ describe('errorHint', () => {
   it('should return null for unrecognized errors', () => {
     const hint = errorHint('Connection refused');
     expect(hint).toBeNull();
-  });
-});
-
-describe('isQueryTimeoutError', () => {
-  it.each([
-    ['client request timeout', new Error('Timeout error.')],
-    [
-      'server TIMEOUT_EXCEEDED',
-      new Error('Code: 159. Timeout exceeded: elapsed 30s (TIMEOUT_EXCEEDED)'),
-    ],
-    [
-      'timeout in the cause chain',
-      new Error('', { cause: new Error('Timeout error.') }),
-    ],
-  ])('matches a %s', (_label, error) => {
-    expect(isQueryTimeoutError(error)).toBe(true);
-  });
-
-  it.each([
-    [
-      'max_execution_time constraint violation',
-      new Error(
-        "Setting max_execution_time shouldn't be greater than 10. (SETTING_CONSTRAINT_VIOLATION)",
-      ),
-    ],
-    [
-      'socket timeout text inside a longer message',
-      new Error('Timeout error. retrying'),
-    ],
-    ['non-Error value', 'Timeout error.'],
-  ])('does not match a %s', (_label, error) => {
-    expect(isQueryTimeoutError(error)).toBe(false);
   });
 });
 

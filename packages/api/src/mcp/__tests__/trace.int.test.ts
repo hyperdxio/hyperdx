@@ -1,3 +1,4 @@
+import { ClickHouseError } from '@clickhouse/client-common';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 
@@ -1390,9 +1391,11 @@ describe('MCP Trace Tools', () => {
         ['client request timeout', new Error('Timeout error.')],
         [
           'ClickHouse TIMEOUT_EXCEEDED',
-          new Error(
-            'Code: 159. DB::Exception: Timeout exceeded: elapsed 30.001 seconds, maximum: 30. (TIMEOUT_EXCEEDED)',
-          ),
+          new ClickHouseError({
+            code: '159',
+            type: 'TIMEOUT_EXCEEDED',
+            message: 'Timeout exceeded: elapsed 30.001 seconds, maximum: 30',
+          }),
         ],
       ])('returns actionable guidance on a %s', async (_label, error) => {
         const querySpy = jest

@@ -877,16 +877,6 @@ function findCause<T>(
 const QUERY_TIMEOUT_RE =
   /TIMEOUT_EXCEEDED|Timeout exceeded|^Timeout error\.?$/i;
 
-/** True when a query failed because it ran out of time, server- or client-side. */
-export function isQueryTimeoutError(e: unknown): boolean {
-  let current: unknown = e;
-  for (let i = 0; i <= 5 && current instanceof Error; i++) {
-    if (QUERY_TIMEOUT_RE.test(current.message)) return true;
-    current = current.cause;
-  }
-  return false;
-}
-
 /** @internal Exported for testing only. */
 export function errorHint(msg: string, error?: unknown): string | null {
   const unknownVariableError = findCause(
