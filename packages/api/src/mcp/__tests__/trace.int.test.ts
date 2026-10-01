@@ -21,6 +21,15 @@ import { callTool, createTestClient, getFirstText } from './mcpTestUtils';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+type BreakdownOperation = {
+  service: string;
+  operation: string;
+  totalTimeMs: number;
+  calls: number;
+  inParents: number;
+  shareOfTotalTime: number;
+};
+
 /** Insert trace spans into the default otel_traces table. */
 async function bulkInsertTraces(
   spans: {
@@ -1214,10 +1223,10 @@ describe('MCP Trace Tools', () => {
 
         // DB operations should be ranked first (higher total time)
         const dbOp = output.operations.find(
-          (op: any) => op.operation === CHILD_DB_OP,
+          (op: BreakdownOperation) => op.operation === CHILD_DB_OP,
         );
         const cacheOp = output.operations.find(
-          (op: any) => op.operation === CHILD_CACHE_OP,
+          (op: BreakdownOperation) => op.operation === CHILD_CACHE_OP,
         );
         expect(dbOp).toBeDefined();
         expect(cacheOp).toBeDefined();
@@ -1252,7 +1261,7 @@ describe('MCP Trace Tools', () => {
 
         // Only trace 2's children should be included (1 call each)
         const dbOp = output.operations.find(
-          (op: any) => op.operation === CHILD_DB_OP,
+          (op: BreakdownOperation) => op.operation === CHILD_DB_OP,
         );
         expect(dbOp).toBeDefined();
         expect(dbOp.inParents).toBe(1);
@@ -1323,7 +1332,7 @@ describe('MCP Trace Tools', () => {
         expect(result.isError).toBeFalsy();
         const output = JSON.parse(getFirstText(result));
         const dbOp = output.operations.find(
-          (op: any) => op.operation === CHILD_DB_OP,
+          (op: BreakdownOperation) => op.operation === CHILD_DB_OP,
         );
         expect(dbOp?.inParents).toBe(2);
       });

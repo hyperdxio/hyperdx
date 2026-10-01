@@ -32,6 +32,7 @@ import {
   convertToInternalTileConfig,
   isConfigTile,
 } from '@/routers/external-api/v2/utils/dashboards';
+import { isQueryTimeoutError } from '@/tasks/checkAlerts/errors';
 import { trimToolResponse } from '@/utils/trimToolResponse';
 import type { ExternalDashboardTileWithId } from '@/utils/zod';
 import { externalDashboardTileSchemaWithId } from '@/utils/zod';
@@ -916,7 +917,7 @@ export function errorHint(msg: string, error?: unknown): string | null {
       'The result row count is too large to serialize back to the agent.'
     );
   }
-  if (QUERY_TIMEOUT_RE.test(msg)) {
+  if (QUERY_TIMEOUT_RE.test(msg) || isQueryTimeoutError(error)) {
     return (
       'The query exceeded its execution-time limit. Narrow the time range so ' +
       'ClickHouse can prune partitions, add filters to reduce the rows scanned, ' +

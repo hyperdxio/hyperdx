@@ -314,6 +314,12 @@ describe('errorHint', () => {
     expect(hint).toContain('execution-time limit');
   });
 
+  it('should match a socket timeout from the error object', () => {
+    const error: NodeJS.ErrnoException = new Error('connect ETIMEDOUT');
+    error.code = 'ETIMEDOUT';
+    expect(errorHint(error.message, error)).toContain('execution-time limit');
+  });
+
   it('should match SETTING_CONSTRAINT_VIOLATION errors', () => {
     const hint = errorHint(
       "Setting max_result_rows shouldn't be greater than 1000. (SETTING_CONSTRAINT_VIOLATION)",
