@@ -315,6 +315,13 @@ describe('renderChartConfig', () => {
       expect(sql).not.toContain('Value * 100');
     });
 
+    it('counts an attribute whose key is Value', async () => {
+      const sql = await renderGaugeSelect({
+        valueExpression: "Attributes['Value']",
+      });
+      expect(sql).toContain("count(DISTINCT Attributes['Value'])");
+    });
+
     it('keeps other aggregations on the bucketed metric value', async () => {
       const sql = await renderGaugeSelect({
         aggFn: 'max',
