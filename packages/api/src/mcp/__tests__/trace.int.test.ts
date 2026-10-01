@@ -1194,6 +1194,31 @@ describe('MCP Trace Tools', () => {
         expect(output.summary.grandTotalTimeMs).toBeGreaterThan(0);
       });
 
+      it('handles a multi-column timestampValueExpression with a leading Date column', async () => {
+        await Source.updateOne(
+          { _id: traceSource._id },
+          { timestampValueExpression: 'toDate(Timestamp), Timestamp' },
+        );
+
+        const result = await callTool(
+          client,
+          'clickstack_trace_top_time_consuming_operations',
+          {
+            sourceId: traceSource._id.toString(),
+            parentFilter: `ServiceName = '${PARENT_SVC}' AND SpanName = '${PARENT_OP}'`,
+            startTime: new Date(now.getTime() - 10 * 60 * 1000).toISOString(),
+            endTime: new Date(now.getTime() + 60 * 1000).toISOString(),
+          },
+        );
+
+        expect(result.isError).toBeFalsy();
+        const output = JSON.parse(getFirstText(result));
+        const dbOp = output.operations.find(
+          (op: any) => op.operation === CHILD_DB_OP,
+        );
+        expect(dbOp?.inParents).toBe(2);
+      });
+
       it('should return error for invalid parentFilter SQL', async () => {
         const result = await callTool(
           client,

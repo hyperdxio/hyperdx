@@ -15,7 +15,9 @@
  * endpoint" without dropping into raw SQL with self-JOINs. The builder
  * tools (table / timeseries / search) can't express the TraceId subselect.
  */
-import { getFirstTimestampValueExpression } from '@hyperdx/common-utils/dist/core/utils';
+import type { ChSql } from '@hyperdx/common-utils/dist/clickhouse';
+import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
+import { timeFilterExpr } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { z } from 'zod';
 
@@ -207,12 +209,51 @@ export function registerTraceBreakdown({
         );
       }
 
+      const clickhouseClient = new ClickhouseClient({
+        host: connection.host,
+        username: connection.username,
+        password: connection.password,
+        requestTimeout: MCP_REQUEST_TIMEOUT,
+      });
+
+      // timeFilterExpr filters on every column of a multi-column
+      // timestampValueExpression and compares Date columns at day precision.
+      // Comparing a leading Date column (e.g. "EventDate, EventTime") against
+      // millisecond bounds would drop every span after midnight.
+      const renderTimeFilter = (start: number, end: number) =>
+        timeFilterExpr({
+          connectionId: source.connection.toString(),
+          databaseName: source.from.databaseName,
+          tableName: source.from.tableName,
+          timestampValueExpression: source.timestampValueExpression,
+          dateRange: [new Date(start), new Date(end)],
+          dateRangeStartInclusive: true,
+          dateRangeEndInclusive: true,
+          metadata: getMetadata(clickhouseClient),
+        });
+      let parentTimeFilter: ChSql;
+      let childTimeFilter: ChSql;
+      try {
+        [parentTimeFilter, childTimeFilter] = await Promise.all([
+          renderTimeFilter(startDate.getTime(), endDate.getTime()),
+          // Widen the child window by 60s on each side to catch children
+          // that started slightly before / ended slightly after the parent
+          // sampling window.
+          renderTimeFilter(
+            startDate.getTime() - 60_000,
+            endDate.getTime() + 60_000,
+          ),
+        ]);
+      } catch (e) {
+        return clickHouseErrorResult(e, {
+          prefix: 'Failed to compute breakdown',
+          suffix: isQueryTimeoutError(e) ? TIMEOUT_SUFFIX : undefined,
+        });
+      }
+
       // Source-configured SQL expressions. These are trusted (set by the
       // team admin in source config) and we substitute them into the
       // generated SQL.
-      const tsExpr = getFirstTimestampValueExpression(
-        source.timestampValueExpression,
-      );
       const traceIdExpr = source.traceIdExpression;
       const spanNameExpr = source.spanNameExpression ?? "''";
       const serviceNameExpr = source.serviceNameExpression ?? "''";
@@ -235,8 +276,7 @@ export function registerTraceBreakdown({
 WITH parent_traces AS (
   SELECT DISTINCT ${traceIdExpr} AS _trace_id
   FROM \`${dbName}\`.\`${tableName}\`
-  WHERE ${tsExpr} >= fromUnixTimestamp64Milli({startMs:Int64})
-    AND ${tsExpr} <= fromUnixTimestamp64Milli({endMs:Int64})
+  WHERE ${parentTimeFilter.sql}
     AND (${input.parentFilter})
     ${minDurationClause}
   LIMIT {maxParentTraces:UInt32}
@@ -251,8 +291,7 @@ SELECT
   quantile(0.99)(${durationExpr}) / {divisor:Float64} AS p99_ms
 FROM \`${dbName}\`.\`${tableName}\`
 WHERE ${traceIdExpr} IN (SELECT _trace_id FROM parent_traces)
-  AND ${tsExpr} >= fromUnixTimestamp64Milli({wideStartMs:Int64})
-  AND ${tsExpr} <= fromUnixTimestamp64Milli({wideEndMs:Int64})
+  AND ${childTimeFilter.sql}
   AND NOT (${input.parentFilter})
 GROUP BY service, operation
 ORDER BY total_time_ms DESC
@@ -260,13 +299,8 @@ LIMIT {topN:UInt32}
         `;
 
       const params: Record<string, unknown> = {
-        startMs: startDate.getTime(),
-        endMs: endDate.getTime(),
-        // Widen the child window by 60s on each side to catch children
-        // that started slightly before / ended slightly after the parent
-        // sampling window.
-        wideStartMs: startDate.getTime() - 60_000,
-        wideEndMs: endDate.getTime() + 60_000,
+        ...parentTimeFilter.params,
+        ...childTimeFilter.params,
         maxParentTraces: input.maxParentTraces,
         topN: input.topN,
         divisor,
@@ -275,13 +309,6 @@ LIMIT {topN:UInt32}
         // Stored duration is divisor × ms.
         params.minParentDurationStored = input.minParentDurationMs * divisor;
       }
-
-      const clickhouseClient = new ClickhouseClient({
-        host: connection.host,
-        username: connection.username,
-        password: connection.password,
-        requestTimeout: MCP_REQUEST_TIMEOUT,
-      });
 
       type Row = {
         service: string;
