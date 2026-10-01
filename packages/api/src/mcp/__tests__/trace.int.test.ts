@@ -1,6 +1,7 @@
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 
+import { ClickhouseClient } from '@/clickhouse';
 import * as config from '@/config';
 import {
   bulkInsertData,
@@ -764,6 +765,61 @@ describe('MCP Trace Tools', () => {
         expect(output.traceId).toBe(PICK2_TRACE_ID);
         expect(output.spanCount).toBe(2);
         expect(output.rootSpan.spanId).toBe('pick2_root_span01');
+      });
+
+      it('flags a partial tree with probeNote when the extent probe fails', async () => {
+        const FAIL_TRACE_ID = 'eeee5555ffff6666aaaa7777bbbb8888';
+        const FAIL_SVC = 'wf-probe-fail-svc';
+        await bulkInsertTraces([
+          {
+            Timestamp: rootTs,
+            TraceId: FAIL_TRACE_ID,
+            SpanId: 'fail_root_span01',
+            ParentSpanId: '',
+            SpanName: 'GET /wf-probe-fail/root',
+            SpanKind: 'SPAN_KIND_SERVER',
+            ServiceName: FAIL_SVC,
+            Duration: 2_400_000_000_000,
+            StatusCode: 'STATUS_CODE_OK',
+          },
+          {
+            Timestamp: childTs,
+            TraceId: FAIL_TRACE_ID,
+            SpanId: 'fail_child_span1',
+            ParentSpanId: 'fail_root_span01',
+            SpanName: 'wf-probe-fail-child',
+            SpanKind: 'SPAN_KIND_CLIENT',
+            ServiceName: FAIL_SVC,
+            Duration: 100_000_000,
+            StatusCode: 'STATUS_CODE_OK',
+          },
+        ]);
+        const original = ClickhouseClient.prototype.query;
+        const spy = jest
+          .spyOn(ClickhouseClient.prototype, 'query')
+          .mockImplementation(function (this: ClickhouseClient, args) {
+            if (args.query.includes('AS firstSeen')) {
+              return Promise.reject(new Error('Timeout exceeded'));
+            }
+            return original.call(this, args);
+          });
+        try {
+          const result = await callTool(client, 'clickstack_trace_waterfall', {
+            sourceId: traceSource._id.toString(),
+            pickFilter: `ServiceName:${FAIL_SVC}`,
+            pickBy: 'slowest',
+            includeLogs: false,
+          });
+
+          expect(result.isError).toBeFalsy();
+          const output = JSON.parse(getFirstText(result));
+          expect(output.traceId).toBe(FAIL_TRACE_ID);
+          // Fallback window only covers the in-window child.
+          expect(output.spanCount).toBe(1);
+          expect(output.probeNote).toContain('probe failed');
+        } finally {
+          spy.mockRestore();
+        }
       });
 
       it('probes past an explicit endTime so a late trace tail is not dropped', async () => {

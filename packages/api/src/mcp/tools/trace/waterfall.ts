@@ -25,6 +25,7 @@ import {
 } from '@/mcp/tools/query/helpers';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
+import logger from '@/utils/logger';
 
 // ─── Schema ──────────────────────────────────────────────────────────────────
 
@@ -196,10 +197,12 @@ function durationDivisor(precision: number): number {
   return Math.pow(10, Math.max(0, precision - 3));
 }
 
-// ClickHouse renders min()/max() over an empty set as the epoch / a zero date.
-function parseProbeTimestamp(value: string | undefined): number | null {
-  if (!value) return null;
-  const ms = new Date(value).getTime();
+// min()/max() over an empty set yields the epoch, i.e. 0.
+function parseProbeTimestamp(
+  value: string | number | undefined,
+): number | null {
+  if (value == null) return null;
+  const ms = Number(value);
   return isNaN(ms) || ms <= 0 ? null : ms;
 }
 
@@ -274,10 +277,12 @@ async function probeTraceWindow(
     params.startDate,
     params.endDate,
   );
+  // Return epoch ms: a rendered DateTime string has no zone, so parsing it
+  // with new Date() would shift the window on a non-UTC API host.
   const probeQuery = `
     SELECT
-      min(${params.ts.eventTs}) AS firstSeen,
-      max(${params.ts.eventTs}) AS lastSeen
+      toUnixTimestamp64Milli(toDateTime64(min(${params.ts.eventTs}), 3)) AS firstSeen,
+      toUnixTimestamp64Milli(toDateTime64(max(${params.ts.eventTs}), 3)) AS lastSeen
     FROM {db:Identifier}.{tbl:Identifier}
     WHERE ${params.traceIdExpr} = {tid:String}
       AND ${timeFilter.sql}
@@ -297,7 +302,9 @@ async function probeTraceWindow(
   const rows =
     (await (
       result as {
-        json: () => Promise<{ firstSeen: string; lastSeen: string }[]>;
+        json: () => Promise<
+          { firstSeen: string | number; lastSeen: string | number }[]
+        >;
       }
     ).json()) ?? [];
   const firstSeen = parseProbeTimestamp(rows[0]?.firstSeen);
@@ -485,6 +492,7 @@ export function registerTraceWaterfall({
             config: pickConfig as ChartConfigWithDateRange,
             metadata,
             querySettings: source.querySettings,
+            opts: { clickhouse_settings: MCP_CLICKHOUSE_SETTINGS },
           })) as { data?: Array<Record<string, unknown>> };
         } catch (e) {
           return clickHouseErrorResult(e, 'Failed to pick a trace');
@@ -569,10 +577,19 @@ export function registerTraceWaterfall({
             fetchEnd = probed.end;
             windowClamped = probed.clamped;
           }
-        } catch {
+        } catch (e) {
           // probeTraceWindow returns null (not throws) for the empty case, so a
           // throw means the probe genuinely didn't complete. The fallback window
           // will likely also come back empty, so flag it for an accurate hint.
+          logger.warn(
+            {
+              error: e,
+              teamId,
+              traceId: pickedTraceId,
+              sourceId: input.sourceId,
+            },
+            'trace waterfall extent probe failed',
+          );
           probeFailed = true;
         }
       }
