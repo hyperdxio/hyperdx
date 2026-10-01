@@ -2101,11 +2101,12 @@ async function translateMetricChartConfig(
       select: [
         {
           ..._select,
-          // count_distinct may count an attribute, which Bucketed still carries
+          // count_distinct may count an attribute, which Bucketed still carries;
+          // Bucketed has no Value column, only LastValue
           valueExpression:
             _select.aggFn === 'count_distinct' &&
             _select.valueExpression &&
-            _select.valueExpression !== 'Value'
+            !/\bValue\b/.test(_select.valueExpression)
               ? _select.valueExpression
               : 'LastValue',
           aggCondition: '', // clear up the condition since the where clause is already applied at the upstream CTE

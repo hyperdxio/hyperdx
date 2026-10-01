@@ -309,6 +309,12 @@ describe('renderChartConfig', () => {
       expect(sql).toContain('count(DISTINCT LastValue)');
     });
 
+    it('still counts the bucketed metric value for an expression over Value', async () => {
+      const sql = await renderGaugeSelect({ valueExpression: 'Value * 100' });
+      expect(sql).toContain('count(DISTINCT LastValue)');
+      expect(sql).not.toContain('Value * 100');
+    });
+
     it('keeps other aggregations on the bucketed metric value', async () => {
       const sql = await renderGaugeSelect({
         aggFn: 'max',
