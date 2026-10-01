@@ -13,6 +13,9 @@ jest.mock('@/clickhouse', () => ({ ClickhouseClient: jest.fn() }));
 jest.mock('@hyperdx/common-utils/dist/core/metadata', () => ({
   getMetadata: () => mockMetadata,
 }));
+jest.mock('@/mcp/tools/sources/metricNames', () => ({
+  sampleMetricNamesWithLookback: jest.fn(),
+}));
 jest.mock('@/utils/trimToolResponse', () => ({
   trimToolResponse: (data: unknown) => ({ data, isTrimmed: false }),
 }));
@@ -26,6 +29,7 @@ import {
   DESCRIBE_TIMEOUT_MS,
   registerDescribeSource,
 } from '@/mcp/tools/sources/describeSource';
+import { sampleMetricNamesWithLookback } from '@/mcp/tools/sources/metricNames';
 import type { ToolRegistrar, ToolResult } from '@/mcp/tools/types';
 
 const COLUMNS = [
@@ -44,6 +48,14 @@ const traceSource = {
   toObject() {
     return { ...this };
   },
+};
+
+const metricSource = {
+  ...traceSource,
+  kind: SourceKind.Metric,
+  timestampValueExpression: 'TimeUnix',
+  from: { databaseName: 'default', tableName: '' },
+  metricTables: { gauge: 'otel_metrics_gauge', sum: 'otel_metrics_sum' },
 };
 
 const never = () => new Promise<never>(() => {});
@@ -180,5 +192,119 @@ describe('clickstack_describe_source deadline', () => {
 
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain('Schema discovery timed out');
+  });
+
+  it('reports map keys as skipped when only some Map columns finish', async () => {
+    mockMetadata.getColumns.mockResolvedValue([
+      ...COLUMNS,
+      {
+        name: 'ResourceAttributes',
+        type: 'Map(LowCardinality(String), String)',
+      },
+    ]);
+    mockMetadata.getMapKeys.mockImplementation(({ column, signal }) =>
+      column === 'SpanAttributes'
+        ? Promise.resolve(['http.method'])
+        : rejectOnAbort(signal),
+    );
+
+    const { source } = parse(await runWithClock(DESCRIBE_TIMEOUT_MS));
+
+    expect(source.mapAttributeKeys).toEqual({
+      SpanAttributes: ['http.method'],
+    });
+    expect(source.partial).toBe(true);
+    expect(source.skippedStages).toContain('mapAttributeKeys');
+  });
+
+  it('keeps finished map keys in the backstop snapshot', async () => {
+    mockMetadata.getColumns.mockResolvedValue([
+      ...COLUMNS,
+      {
+        name: 'ResourceAttributes',
+        type: 'Map(LowCardinality(String), String)',
+      },
+    ]);
+    mockMetadata.getMapKeys.mockImplementation(({ column }) =>
+      column === 'SpanAttributes' ? Promise.resolve(['http.method']) : never(),
+    );
+
+    const { source } = parse(
+      await runWithClock(DESCRIBE_TIMEOUT_MS + DESCRIBE_BACKSTOP_MS),
+    );
+
+    expect(source.mapAttributeKeys).toEqual({
+      SpanAttributes: ['http.method'],
+    });
+    expect(source.skippedStages).toContain('mapAttributeKeys');
+  });
+
+  it('does not report stages with nothing to sample in the backstop snapshot', async () => {
+    mockMetadata.getColumns.mockResolvedValue([
+      { name: 'Timestamp', type: 'DateTime64(9)' },
+      { name: 'ServiceName', type: 'LowCardinality(String)' },
+    ]);
+    mockMetadata.getAllKeyValues.mockImplementation(never);
+
+    const { source } = parse(
+      await runWithClock(DESCRIBE_TIMEOUT_MS + DESCRIBE_BACKSTOP_MS),
+    );
+
+    expect(source.skippedStages).toEqual(['lowCardinalityValues']);
+  });
+
+  describe('metric sources', () => {
+    beforeEach(() => {
+      jest
+        .mocked(getSource)
+        .mockResolvedValue(
+          metricSource as unknown as Awaited<ReturnType<typeof getSource>>,
+        );
+      mockMetadata.getColumns.mockResolvedValue([
+        { name: 'TimeUnix', type: 'DateTime64(9)' },
+        { name: 'MetricName', type: 'LowCardinality(String)' },
+      ]);
+    });
+
+    it('returns metric names when sampling finishes', async () => {
+      jest
+        .mocked(sampleMetricNamesWithLookback)
+        .mockResolvedValue([{ name: 'cpu.usage' }]);
+
+      const { source } = parse(await runWithClock(0));
+
+      expect(source.metricNames).toEqual({
+        gauge: [{ name: 'cpu.usage' }],
+        sum: [{ name: 'cpu.usage' }],
+      });
+      expect(source.partial).toBeUndefined();
+    });
+
+    it('reports metricNames as skipped when one kind is cut short', async () => {
+      jest
+        .mocked(sampleMetricNamesWithLookback)
+        .mockImplementation(({ tableName, signal }) =>
+          tableName === 'otel_metrics_gauge'
+            ? Promise.resolve([{ name: 'cpu.usage' }])
+            : rejectOnAbort(signal),
+        );
+
+      const { source } = parse(await runWithClock(DESCRIBE_TIMEOUT_MS));
+
+      expect(source.metricNames).toEqual({ gauge: [{ name: 'cpu.usage' }] });
+      expect(source.partial).toBe(true);
+      expect(source.skippedStages).toEqual(['metricNames']);
+    });
+
+    it('lists metricNames in the backstop snapshot when sampling hangs', async () => {
+      jest.mocked(sampleMetricNamesWithLookback).mockImplementation(never);
+
+      const { source } = parse(
+        await runWithClock(DESCRIBE_TIMEOUT_MS + DESCRIBE_BACKSTOP_MS),
+      );
+
+      expect(source.partial).toBe(true);
+      expect(source.skippedStages).toEqual(['metricNames']);
+    });
   });
 });

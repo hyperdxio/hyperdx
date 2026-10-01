@@ -74,6 +74,8 @@ type DescribeProgress = {
    * answer if discovery is stuck past the backstop.
    */
   snapshot?: () => ToolResult;
+  /** Set on the final result: whether any stage was cut short. */
+  partial?: boolean;
 };
 
 /**
@@ -234,11 +236,28 @@ async function describeSourceSchema(
   }));
 
   const isMetricSource = source.kind === SourceKind.Metric;
+  const mapColumns = filterColumnMetaByType(columns, [JSDataType.Map]) ?? [];
+  const lcColumns = columns.filter(c => {
+    const normalized = c.type.replace(/\s/g, '');
+    return (
+      normalized.startsWith('LowCardinality(') &&
+      (normalized.includes('String') || normalized.includes('string'))
+    );
+  });
+  const metricKinds =
+    source.kind === SourceKind.Metric
+      ? DISCOVERABLE_METRIC_KINDS.flatMap(kind => {
+          const kindTableName = source.metricTables[kind];
+          return kindTableName ? [{ kind, kindTableName }] : [];
+        })
+      : [];
+  // Stages with nothing to sample can't be skipped, so the snapshot must not
+  // report them as missing.
   const optionalStages = [
-    'mapAttributeKeys',
-    'lowCardinalityValues',
-    'mapAttributeValues',
-    ...(isMetricSource ? ['metricNames'] : []),
+    ...(mapColumns.length > 0 ? ['mapAttributeKeys'] : []),
+    ...(lcColumns.length > 0 ? ['lowCardinalityValues'] : []),
+    ...(mapColumns.length > 0 ? ['mapAttributeValues'] : []),
+    ...(metricKinds.length > 0 ? ['metricNames'] : []),
   ];
   const finishedStages = new Set<string>();
   progress.snapshot = () =>
@@ -261,12 +280,11 @@ async function describeSourceSchema(
   // can scope its scan to dateRange instead of going unbounded against
   // the raw metric table on cold cache.
   const timestampValueExpression = source.timestampValueExpression;
-  const mapColumns = filterColumnMetaByType(columns, [JSDataType.Map]);
   const mapKeysResults: Record<string, string[]> = {};
 
   if (!signal.aborted) {
     await Promise.all(
-      (mapColumns ?? []).map(async col => {
+      mapColumns.map(async col => {
         try {
           const keys = await metadata.getMapKeys({
             databaseName,
@@ -280,6 +298,8 @@ async function describeSourceSchema(
             signal,
           });
           mapKeysResults[col.name] = keys;
+          // Visible to the backstop snapshot before the other columns finish.
+          meta.mapAttributeKeys = mapKeysResults;
         } catch (e) {
           logger.warn(
             { sourceId, column: col.name, error: e },
@@ -290,23 +310,19 @@ async function describeSourceSchema(
     );
   }
 
-  if (signal.aborted && Object.keys(mapKeysResults).length === 0) {
+  // Any column still missing at the abort means the key list is incomplete.
+  if (
+    signal.aborted &&
+    Object.keys(mapKeysResults).length < mapColumns.length
+  ) {
     skippedStages.push('mapAttributeKeys');
   }
-  if (Object.keys(mapKeysResults).length > 0) {
-    meta.mapAttributeKeys = mapKeysResults;
-  }
   finishedStages.add('mapAttributeKeys');
+  if (Object.keys(mapKeysResults).length === 0) {
+    finishedStages.add('mapAttributeValues');
+  }
 
   // ── 3. Low-cardinality column value sampling ──────────────────────────
-  const lcColumns = columns.filter(c => {
-    const normalized = c.type.replace(/\s/g, '');
-    return (
-      normalized.startsWith('LowCardinality(') &&
-      (normalized.includes('String') || normalized.includes('string'))
-    );
-  });
-
   const lowCardinalityValues: Record<string, string[]> = {};
 
   if (lcColumns.length > 0 && !signal.aborted) {
@@ -332,7 +348,11 @@ async function describeSourceSchema(
     }
   }
 
-  if (signal.aborted && Object.keys(lowCardinalityValues).length === 0) {
+  if (
+    lcColumns.length > 0 &&
+    signal.aborted &&
+    Object.keys(lowCardinalityValues).length === 0
+  ) {
     skippedStages.push('lowCardinalityValues');
   }
   if (Object.keys(lowCardinalityValues).length > 0) {
@@ -397,12 +417,11 @@ async function describeSourceSchema(
   // Defensively check for MetricUnit / MetricDescription columns: they
   // exist on the standard OTel Collector schema but a custom metric table
   // may not declare them.
-  if (isMetricSource && !signal.aborted) {
+  if (metricKinds.length > 0 && !signal.aborted) {
     const metricNames: Record<string, MetricNameSample[]> = {};
+    let sampledKinds = 0;
     await Promise.all(
-      DISCOVERABLE_METRIC_KINDS.map(async kind => {
-        const kindTableName = source.metricTables[kind];
-        if (!kindTableName) return;
+      metricKinds.map(async ({ kind, kindTableName }) => {
         try {
           const samples = await sampleMetricNamesWithLookback({
             metadata,
@@ -414,8 +433,10 @@ async function describeSourceSchema(
             timestampValueExpression,
             signal,
           });
+          sampledKinds++;
           if (samples.length > 0) {
             metricNames[kind] = samples;
+            meta.metricNames = metricNames;
           }
         } catch (e) {
           logger.warn(
@@ -425,17 +446,15 @@ async function describeSourceSchema(
         }
       }),
     );
-    if (signal.aborted && Object.keys(metricNames).length === 0) {
+    if (signal.aborted && sampledKinds < metricKinds.length) {
       skippedStages.push('metricNames');
     }
-    if (Object.keys(metricNames).length > 0) {
-      meta.metricNames = metricNames;
-    }
-  } else if (isMetricSource) {
+  } else if (metricKinds.length > 0) {
     skippedStages.push('metricNames');
   }
   finishedStages.add('metricNames');
 
+  progress.partial = skippedStages.length > 0;
   return formatDescribeResult({
     sourceId,
     meta,
@@ -542,7 +561,7 @@ export function registerDescribeSource({
         '(SeverityText, StatusCode, ServiceName, etc.) — use these in filters instead of guessing\n' +
         '- mapAttributeValues: sampled top values for the most common map attribute keys ' +
         "(e.g. ResourceAttributes['service.name'] top values) — requires rollup tables\n\n" +
-        'Value sampling stops after 30 seconds. If it is cut short, the result still includes ' +
+        `Value sampling stops after ${DESCRIBE_TIMEOUT_MS / 1000} seconds. If it is cut short, the result still includes ` +
         'the columns and sets partial: true with skippedStages listing what is missing.\n\n' +
         'Cost: one describe call prevents 3–5 exploratory queries against non-existent columns.',
       inputSchema: z.object({
@@ -574,9 +593,11 @@ export function registerDescribeSource({
       });
 
       const span = trace.getActiveSpan();
-      const recordOutcome = (outcome: 'complete' | 'partial' | 'timeout') => {
+      const recordOutcome = (
+        outcome: 'complete' | 'partial' | 'timeout' | 'error',
+      ) => {
         span?.setAttribute('mcp.describe_source.outcome', outcome);
-        if (outcome !== 'complete') {
+        if (outcome === 'partial' || outcome === 'timeout') {
           logger.warn(
             { teamId, sourceId, outcome },
             'clickstack_describe_source hit its deadline',
@@ -609,7 +630,9 @@ export function registerDescribeSource({
         if (result === BACKSTOP) {
           return timedOutResult();
         }
-        recordOutcome(controller.signal.aborted ? 'partial' : 'complete');
+        recordOutcome(
+          result.isError ? 'error' : progress.partial ? 'partial' : 'complete',
+        );
         return result;
       } catch (e) {
         if (controller.signal.aborted) {
