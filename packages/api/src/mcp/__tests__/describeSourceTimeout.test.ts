@@ -304,6 +304,23 @@ describe('clickstack_describe_source deadline', () => {
       expect(source.skippedStages).toEqual(['metricNames']);
     });
 
+    it('reports metricNames as skipped when an aborted lookback returns no names', async () => {
+      jest
+        .mocked(sampleMetricNamesWithLookback)
+        .mockImplementation(
+          ({ signal }) =>
+            new Promise(resolve =>
+              signal.addEventListener('abort', () => resolve([])),
+            ),
+        );
+
+      const { source } = parse(await runWithClock(DESCRIBE_TIMEOUT_MS));
+
+      expect(source.metricNames).toBeUndefined();
+      expect(source.partial).toBe(true);
+      expect(source.skippedStages).toEqual(['metricNames']);
+    });
+
     it('lists metricNames in the backstop snapshot when sampling hangs', async () => {
       jest.mocked(sampleMetricNamesWithLookback).mockImplementation(never);
 

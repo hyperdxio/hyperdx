@@ -433,7 +433,9 @@ async function describeSourceSchema(
             timestampValueExpression,
             signal,
           });
-          sampledKinds++;
+          // The sampler returns [] rather than throwing when aborted, so an
+          // empty result after the abort may just be a cut-short lookback.
+          if (samples.length > 0 || !signal.aborted) sampledKinds++;
           if (samples.length > 0) {
             metricNames[kind] = samples;
             meta.metricNames = metricNames;
