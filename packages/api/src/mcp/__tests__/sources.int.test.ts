@@ -908,12 +908,11 @@ describe('MCP Source Tools', () => {
           ...(cursor && { cursor }),
         });
         expect(result.isError).toBeFalsy();
-        const output = JSON.parse(getFirstText(result));
-        seen.push(
-          ...(output.metrics as { kind: string; name: string }[]).map(
-            m => `${m.kind}:${m.name}`,
-          ),
-        );
+        const output: {
+          metrics: { kind: string; name: string }[];
+          nextCursor?: string;
+        } = JSON.parse(getFirstText(result));
+        seen.push(...output.metrics.map(m => `${m.kind}:${m.name}`));
         cursor = output.nextCursor;
         if (!cursor) break;
       }

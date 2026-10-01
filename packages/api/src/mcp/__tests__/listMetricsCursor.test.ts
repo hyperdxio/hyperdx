@@ -77,11 +77,11 @@ describe('listMetrics cursor', () => {
       expect(decodeCursor(malformed)).toBeNull();
     });
 
-    it('returns null when lastName is missing', () => {
-      const malformed = Buffer.from(JSON.stringify({ kind: 'gauge' })).toString(
+    it('accepts a cursor without lastName as the start of that kind', () => {
+      const raw = Buffer.from(JSON.stringify({ kind: 'gauge' })).toString(
         'base64',
       );
-      expect(decodeCursor(malformed)).toBeNull();
+      expect(decodeCursor(raw)).toEqual({ kind: 'gauge' });
     });
 
     it('returns null when kind is not a discoverable metric kind', () => {

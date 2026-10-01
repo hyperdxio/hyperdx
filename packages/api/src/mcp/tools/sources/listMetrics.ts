@@ -48,7 +48,8 @@ const ENRICH_MAX_EXEC_SECONDS = 3;
 
 const cursorPayloadSchema = z.object({
   kind: z.enum(DISCOVERABLE_METRIC_KINDS),
-  lastName: z.string(),
+  // Absent when the next page starts at the beginning of `kind`.
+  lastName: z.string().optional(),
 });
 
 export type ListMetricsCursorPayload = z.infer<typeof cursorPayloadSchema>;
@@ -212,6 +213,8 @@ export function registerListMetrics({
   );
 }
 
+type Enrichments = Awaited<ReturnType<typeof fetchMetricUnitsAndDescriptions>>;
+
 /**
  * Attach unit and description to each entry. Best effort: on failure or
  * timeout the names are still returned.
@@ -238,8 +241,15 @@ async function enrichEntries({
   signal: AbortSignal;
 }): Promise<MetricEntry[]> {
   const kinds = [...new Set(entries.map(e => e.kind))];
-  const byKind = await Promise.all(
-    kinds.map(async kind => {
+  // metadata.getColumns takes no abort signal, so race the whole lookup
+  // against it; otherwise a slow schema lookup could outlast the call's
+  // wall clock and discard the names already collected.
+  const aborted = new Promise<undefined>(resolve => {
+    if (signal.aborted) resolve(undefined);
+    signal.addEventListener('abort', () => resolve(undefined), { once: true });
+  });
+  const lookups = Promise.all(
+    kinds.map(async (kind): Promise<[DiscoverableMetricKind, Enrichments]> => {
       const tableName = metricTables[kind]!;
       try {
         // Skip MetricUnit / MetricDescription on non-OTel-default schemas.
@@ -249,7 +259,7 @@ async function enrichEntries({
           connectionId,
         });
         const columnNames = new Set(columns.map(c => c.name));
-        return await fetchMetricUnitsAndDescriptions({
+        const enrichments = await fetchMetricUnitsAndDescriptions({
           clickhouseClient,
           databaseName,
           tableName,
@@ -262,16 +272,25 @@ async function enrichEntries({
           maxExecutionSeconds: ENRICH_MAX_EXEC_SECONDS,
           signal,
         });
+        return [kind, enrichments];
       } catch (e) {
         logger.warn(
           { kind, tableName, error: e instanceof Error ? e.message : e },
           'Failed to fetch metric unit/description',
         );
-        return new Map<string, { unit?: string; description?: string }>();
+        return [kind, new Map()];
       }
     }),
   );
-  const enrichments = new Map(kinds.map((kind, i) => [kind, byKind[i]]));
+  const byKind = await Promise.race([lookups, aborted]);
+  if (!byKind) {
+    logger.warn(
+      { kinds },
+      'Timed out fetching metric unit/description; returning names only',
+    );
+    return entries;
+  }
+  const enrichments = new Map(byKind);
   return entries.map(entry => ({
     ...entry,
     ...enrichments.get(entry.kind)?.get(entry.name),
@@ -314,9 +333,9 @@ async function listMetricsImpl(
   // Resolve which kinds to scan, in order. When a cursor is set,
   // skip kinds before the cursor's kind (already returned) and start
   // the cursor's kind at the lastName-exclusive position.
-  const requestedKinds: DiscoverableMetricKind[] = input.kind
-    ? [input.kind]
-    : DISCOVERABLE_METRIC_KINDS.filter(k => Boolean(source.metricTables[k]));
+  const requestedKinds: DiscoverableMetricKind[] = (
+    input.kind ? [input.kind] : DISCOVERABLE_METRIC_KINDS
+  ).filter(k => Boolean(source.metricTables[k]));
   const startKindIdx = cursor ? requestedKinds.indexOf(cursor.kind) : 0;
   if (startKindIdx < 0) {
     // Cursor points at a kind that's not in scope for this call —
@@ -348,15 +367,16 @@ async function listMetricsImpl(
   const connectionId = source.connection.toString();
 
   // Kinds before the cursor's kind were already returned on earlier pages.
-  const scanKinds = requestedKinds
-    .slice(startKindIdx)
-    .filter(kind => Boolean(source.metricTables[kind]));
+  const scanKinds = requestedKinds.slice(startKindIdx).map((kind, i) => ({
+    kind,
+    afterName: i === 0 ? cursor?.lastName : undefined,
+  }));
   const page = await scanKindsForPage({
     kinds: scanKinds,
     limit,
     deadlineAt: deadlineAt - ENRICH_RESERVE_MS,
     signal,
-    fetchNames: (kind, kindSignal) =>
+    fetchNames: ({ kind, afterName }, kindSignal) =>
       fetchMetricNames({
         clickhouseClient,
         databaseName,
@@ -365,7 +385,7 @@ async function listMetricsImpl(
         startDate,
         endDate,
         namePattern: input.namePattern,
-        afterName: kind === cursor?.kind ? cursor.lastName : undefined,
+        afterName,
         // One extra row detects that more names remain for this kind.
         limit: limit + 1,
         maxExecutionSeconds: NAMES_MAX_EXEC_SECONDS,

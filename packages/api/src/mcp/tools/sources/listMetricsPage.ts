@@ -3,6 +3,7 @@ import {
   concatChSql,
   tableExpr,
 } from '@hyperdx/common-utils/dist/clickhouse';
+import SqlString from 'sqlstring';
 
 import type { ClickhouseClient } from '@/clickhouse';
 
@@ -20,10 +21,21 @@ export type KindScan =
   | { status: 'ok'; names: string[] }
   | { status: 'error'; error: string };
 
+export type KindToScan = {
+  kind: DiscoverableMetricKind;
+  /** Exclusive start within this kind; set only for the cursor's kind. */
+  afterName?: string;
+};
+
+export type KindSlot = KindToScan & { scan: KindScan };
+
 export type MetricsPage = {
   entries: MetricEntry[];
-  /** Kind + last name of a truncated kind; absent when the scan is exhausted. */
-  next?: { kind: DiscoverableMetricKind; lastName: string };
+  /**
+   * Where the next page starts. `lastName` is absent when the next page
+   * starts at the beginning of `kind`. Absent when the scan is exhausted.
+   */
+  next?: { kind: DiscoverableMetricKind; lastName?: string };
   partialFailure: { kind: DiscoverableMetricKind; error: string }[];
 };
 
@@ -34,56 +46,59 @@ export const KIND_TIMED_OUT_ERROR =
  * Build a page from per-kind scan results, filling `limit` entries in kind
  * order. Each scan holds up to `limit + 1` names so an overflow can be
  * detected. Returns null when a pending kind still decides the page's
- * contents, unless `finalize` is set, in which case pending kinds are
- * reported as timed out.
+ * contents, unless `finalize` is set, in which case the first pending kind
+ * is reported as timed out and the page ends there.
  *
  * @internal Exported for testing.
  */
 export function assembleMetricsPage(
-  kinds: DiscoverableMetricKind[],
-  scans: KindScan[],
+  slots: KindSlot[],
   limit: number,
   finalize: boolean,
 ): MetricsPage | null {
   const entries: MetricEntry[] = [];
   const partialFailure: MetricsPage['partialFailure'] = [];
-  for (let i = 0; i < kinds.length; i++) {
-    const kind = kinds[i];
-    const scan = scans[i];
+  const resumeAt = (slot: KindToScan): MetricsPage => ({
+    entries,
+    next: { kind: slot.kind, lastName: slot.afterName },
+    partialFailure,
+  });
+  for (const [i, slot] of slots.entries()) {
+    const { kind, scan } = slot;
     if (scan.status === 'pending') {
       if (!finalize) return null;
+      // End the page at the timed-out kind so the cursor resumes there.
+      // Moving on to later kinds would leave its names unreachable.
       partialFailure.push({ kind, error: KIND_TIMED_OUT_ERROR });
-      continue;
+      return resumeAt(slot);
     }
     if (scan.status === 'error') {
       partialFailure.push({ kind, error: scan.error });
       continue;
     }
     const remaining = limit - entries.length;
+    const kept = scan.names.slice(0, remaining);
+    entries.push(...kept.map(name => ({ name, kind })));
     if (scan.names.length > remaining) {
-      entries.push(
-        ...scan.names.slice(0, remaining).map(name => ({ name, kind })),
-      );
-      // When an earlier kind exactly filled the page, the cursor points at
-      // that kind's last name so the next call moves on to this kind.
-      const last = entries[entries.length - 1];
-      return {
-        entries,
-        next: { kind: last.kind, lastName: last.name },
-        partialFailure,
-      };
+      return { entries, next: { kind, lastName: kept.at(-1) }, partialFailure };
     }
-    entries.push(...scan.names.map(name => ({ name, kind })));
+    if (entries.length === limit) {
+      // The page is full. Point the cursor at the next kind that may still
+      // have names instead of waiting for it to finish.
+      const nextSlot = slots
+        .slice(i + 1)
+        .find(s => s.scan.status !== 'ok' || s.scan.names.length > 0);
+      return nextSlot ? resumeAt(nextSlot) : { entries, partialFailure };
+    }
   }
   return { entries, partialFailure };
 }
 
 /**
- * Scan every kind in parallel and resolve as soon as the page is decided:
- * once the kinds in front of an overflowing kind have all settled, later
- * kinds cannot contribute and their queries are aborted. Kinds still running
- * at `deadlineAt` are reported as timed out so the kinds that finished are
- * returned instead of failing the whole call.
+ * Scan every kind in parallel and resolve as soon as the page is decided.
+ * Queries for kinds that can no longer contribute are aborted. Kinds still
+ * running at `deadlineAt` are reported as timed out so the kinds that
+ * finished are returned instead of failing the whole call.
  */
 export function scanKindsForPage({
   kinds,
@@ -92,16 +107,16 @@ export function scanKindsForPage({
   signal,
   fetchNames,
 }: {
-  kinds: DiscoverableMetricKind[];
+  kinds: KindToScan[];
   limit: number;
   deadlineAt: number;
   signal: AbortSignal;
-  fetchNames: (
-    kind: DiscoverableMetricKind,
-    signal: AbortSignal,
-  ) => Promise<string[]>;
+  fetchNames: (kind: KindToScan, signal: AbortSignal) => Promise<string[]>;
 }): Promise<MetricsPage> {
-  const scans: KindScan[] = kinds.map(() => ({ status: 'pending' }));
+  const slots: KindSlot[] = kinds.map(k => ({
+    ...k,
+    scan: { status: 'pending' },
+  }));
   const controller = new AbortController();
   const abort = () => controller.abort();
   signal.addEventListener('abort', abort, { once: true });
@@ -110,7 +125,7 @@ export function scanKindsForPage({
     let done = false;
     const tryFinish = (finalize: boolean) => {
       if (done) return;
-      const page = assembleMetricsPage(kinds, scans, limit, finalize);
+      const page = assembleMetricsPage(slots, limit, finalize);
       if (!page) return;
       done = true;
       clearTimeout(timer);
@@ -122,23 +137,25 @@ export function scanKindsForPage({
       () => tryFinish(true),
       Math.max(0, deadlineAt - Date.now()),
     );
-    kinds.forEach((kind, i) => {
-      fetchNames(kind, controller.signal)
+    for (const slot of slots) {
+      fetchNames(slot, controller.signal)
         .then(
           names => {
-            scans[i] = { status: 'ok', names };
+            slot.scan = { status: 'ok', names };
           },
           (e: unknown) => {
             if (done) return;
             const message = e instanceof Error ? e.message : String(e);
-            scans[i] = {
+            slot.scan = {
               status: 'error',
               error: message.replace(/\s+/g, ' ').trim().slice(0, 200),
             };
           },
         )
         .finally(() => tryFinish(false));
-    });
+    }
+    // Resolves right away when there are no kinds to scan.
+    tryFinish(false);
   });
 }
 
@@ -254,10 +271,12 @@ export async function fetchMetricUnitsAndDescriptions({
   const sql = chSql`
     SELECT ${concatChSql(', ', projections)}
     FROM ${tableExpr({ database: databaseName, table: tableName })}
-    WHERE MetricName IN (${concatChSql(
-      ',',
-      names.map(name => chSql`${{ String: name }}`),
-    )})
+    WHERE MetricName IN (${{
+      // Inline names as escaped literals: one bind param per name (up to
+      // 500) pushes the client into a multipart request that query proxies
+      // can reject.
+      UNSAFE_RAW_SQL: names.map(name => SqlString.escape(name)).join(','),
+    }})
       AND TimeUnix >= fromUnixTimestamp64Milli(${{ Int64: startDate.getTime() }})
       AND TimeUnix <= fromUnixTimestamp64Milli(${{ Int64: endDate.getTime() }})
     LIMIT 1 BY MetricName
