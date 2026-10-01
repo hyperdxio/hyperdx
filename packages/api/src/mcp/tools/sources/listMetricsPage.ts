@@ -1,4 +1,5 @@
-import { sanitizeFetchError } from './describeMetric';
+import { sanitizeFetchError } from '@/mcp/utils/errors';
+
 import type { DiscoverableMetricKind } from './metricKinds';
 
 export type MetricEntry = {

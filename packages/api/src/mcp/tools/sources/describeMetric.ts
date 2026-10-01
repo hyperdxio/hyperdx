@@ -15,7 +15,11 @@ import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
 import { clickHouseErrorResult } from '@/mcp/tools/query/helpers';
 import type { ToolRegistrar } from '@/mcp/tools/types';
-import { mcpServerError, mcpUserError } from '@/mcp/utils/errors';
+import {
+  mcpServerError,
+  mcpUserError,
+  sanitizeFetchError,
+} from '@/mcp/utils/errors';
 import logger from '@/utils/logger';
 import { trimToolResponse } from '@/utils/trimToolResponse';
 
@@ -135,15 +139,6 @@ type KindDetail = {
  * need different agent guidance (retry/report vs. widen the window).
  */
 type FetchResult<T> = { ok: true; data: T } | { ok: false; error: string };
-
-/**
- * Compact an error for inclusion in a tool response: single line,
- * capped length, no stack frames.
- */
-export function sanitizeFetchError(e: unknown): string {
-  const message = e instanceof Error ? e.message : String(e);
-  return message.replace(/\s+/g, ' ').trim().slice(0, 200);
-}
 
 function parseTimeRange(
   startTime?: string,
