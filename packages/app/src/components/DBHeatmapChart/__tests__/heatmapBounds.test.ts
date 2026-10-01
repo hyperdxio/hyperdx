@@ -1,9 +1,8 @@
 /**
  * Tests for heatmap bucket boundary computation algorithm.
  *
- * Validates the logic extracted from DBHeatmapChart's HeatmapContainer —
- * specifically the range calculation, effectiveMin capping, and
- * bucketToYValue mapping.
+ * Validates the bounds policy (quantile lower bound, effectiveMin capping)
+ * and the row placement of the server-side bucket grid.
  *
  * Background: The initial PR #1913 used p99 as the max boundary for log scale.
  * When latency spikes are rare (<1% of spans), they fell above p99 and were
@@ -12,19 +11,15 @@
  * wide ranges naturally. Future: #1914 adds overflow-bucket indicators.
  */
 
-// ---------------------------------------------------------------------------
-// Extracted algorithm (mirrors DBHeatmapChart HeatmapContainer)
-// ---------------------------------------------------------------------------
-
-type ScaleType = 'log' | 'linear';
-
-/**
- * Compute quantile level for the lower bound.
- * Upper bound uses actual max() — no quantile needed.
- */
-function getQuantileLo(scaleType: ScaleType) {
-  return scaleType === 'log' ? 0.01 : 0.001;
-}
+import {
+  computeEffectiveMin,
+  heatmapLowQuantile,
+} from '@/components/DBHeatmapChart/heatmapBounds';
+import {
+  gridFromBucketRows,
+  gridToPlotData,
+  HeatmapScaleType,
+} from '@/components/DBHeatmapChart/heatmapGrid';
 
 /**
  * Simulate what ClickHouse `quantile(level)(values)` returns.
@@ -35,35 +30,6 @@ function quantile(values: number[], level: number): number {
   if (sorted.length === 0) return 0;
   const idx = Math.ceil(level * sorted.length) - 1;
   return sorted[Math.max(0, idx)];
-}
-
-/**
- * Compute effectiveMin given the min/max and scale type.
- */
-function computeEffectiveMin(
-  min: number,
-  max: number,
-  scaleType: ScaleType,
-): number {
-  return scaleType === 'log' ? Math.max(min, max * 1e-4 || 1e-4) : min;
-}
-
-/**
- * Compute the y-value for a given bucket index.
- */
-function bucketToYValue(
-  j: number,
-  nBuckets: number,
-  effectiveMin: number,
-  max: number,
-  scaleType: ScaleType,
-): number {
-  if (scaleType === 'log' && effectiveMin > 0 && max > effectiveMin) {
-    const actualValue =
-      effectiveMin * Math.pow(max / effectiveMin, j / nBuckets);
-    return Math.log(actualValue);
-  }
-  return effectiveMin + j * ((max - effectiveMin) / nBuckets);
 }
 
 /**
@@ -106,10 +72,10 @@ function widthBucketLog(
  */
 function computeHeatmapBuckets(
   values: number[],
-  scaleType: ScaleType,
+  scaleType: HeatmapScaleType,
   nBuckets = 40,
 ) {
-  const qLo = getQuantileLo(scaleType);
+  const qLo = heatmapLowQuantile(scaleType);
   const nonNeg = values.filter(v => v >= 0);
   const min = quantile(nonNeg, qLo);
   const max = Math.max(...values); // actual max, not quantile
@@ -136,7 +102,7 @@ function computeHeatmapBuckets(
  */
 function computeHeatmapBuckets_BUGGY(
   values: number[],
-  scaleType: ScaleType,
+  scaleType: HeatmapScaleType,
   nBuckets = 40,
 ) {
   const qLo = scaleType === 'log' ? 0.01 : 0.001;
@@ -206,11 +172,11 @@ function generateLatencyData(opts: {
 describe('Heatmap bucket boundary algorithm', () => {
   describe('quantile lower bound selection', () => {
     it('log scale uses p1 for lower bound', () => {
-      expect(getQuantileLo('log')).toBe(0.01);
+      expect(heatmapLowQuantile('log')).toBe(0.01);
     });
 
     it('linear scale uses p0.1 for lower bound', () => {
-      expect(getQuantileLo('linear')).toBe(0.001);
+      expect(heatmapLowQuantile('linear')).toBe(0.001);
     });
   });
 
@@ -228,22 +194,36 @@ describe('Heatmap bucket boundary algorithm', () => {
     });
   });
 
-  describe('bucketToYValue', () => {
+  describe('row centers', () => {
+    // Row j of the server-side grid is centered on the upper bound of
+    // widthBucket's bucket j.
+    const rowCenters = (
+      effectiveMin: number,
+      max: number,
+      scaleType: HeatmapScaleType,
+      nBuckets: number,
+    ) =>
+      gridToPlotData(
+        gridFromBucketRows({
+          data: [],
+          timestampColumn: { name: 'ts', type: 'DateTime' },
+          generatedTsBuckets: [new Date(0)],
+          scaleType,
+          effectiveMin,
+          max,
+          nBuckets,
+        }),
+      )[1];
+
     it('linear: produces uniformly spaced values', () => {
-      const nBuckets = 10;
-      const values = Array.from({ length: nBuckets + 1 }, (_, j) =>
-        bucketToYValue(j, nBuckets, 0, 100, 'linear'),
-      );
-      for (let i = 0; i <= nBuckets; i++) {
+      const values = rowCenters(0, 100, 'linear', 10);
+      for (let i = 0; i <= 10; i++) {
         expect(values[i]).toBeCloseTo(i * 10);
       }
     });
 
     it('log: produces uniformly spaced values in log space', () => {
-      const nBuckets = 10;
-      const values = Array.from({ length: nBuckets + 1 }, (_, j) =>
-        bucketToYValue(j, nBuckets, 1, 1000, 'log'),
-      );
+      const values = rowCenters(1, 1000, 'log', 10);
       const diffs = values.slice(1).map((v, i) => v - values[i]);
       for (let i = 1; i < diffs.length; i++) {
         expect(diffs[i]).toBeCloseTo(diffs[0], 5);
