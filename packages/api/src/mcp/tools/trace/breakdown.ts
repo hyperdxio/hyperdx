@@ -22,6 +22,8 @@ import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { getSource } from '@/controllers/sources';
 import {
   clickHouseErrorResult,
+  isQueryOutOfTime,
+  isServerError,
   parseTimeRange,
 } from '@/mcp/tools/query/helpers';
 import {
@@ -37,7 +39,6 @@ import {
 } from '@/mcp/tools/trace/shared';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
-import { isQueryTimeoutError } from '@/tasks/checkAlerts/errors';
 
 // The child stage looks spans up by TraceId, which is not in the sort key, so
 // it reads every span in the window regardless of how few parents matched.
@@ -121,10 +122,9 @@ export function registerTraceBreakdown({
           ),
         ]);
       } catch (e) {
-        return clickHouseErrorResult(e, {
-          prefix: 'Failed to compute breakdown',
-          suffix: isQueryTimeoutError(e) ? TIMEOUT_SUFFIX : undefined,
-        });
+        // Only the DESCRIBE lookups run here; they don't depend on the window or
+        // filters, so neither suffix applies.
+        return clickHouseErrorResult(e, 'Failed to compute breakdown');
       }
 
       // Source-configured SQL expressions. These are trusted (set by the
@@ -212,9 +212,11 @@ LIMIT {topN:UInt32}
       } catch (e) {
         return clickHouseErrorResult(e, {
           prefix: 'Failed to compute breakdown',
-          suffix: isQueryTimeoutError(e)
+          suffix: isQueryOutOfTime(e)
             ? TIMEOUT_SUFFIX
-            : INVALID_FILTER_SUFFIX,
+            : isServerError(e)
+              ? undefined
+              : INVALID_FILTER_SUFFIX,
         });
       }
 

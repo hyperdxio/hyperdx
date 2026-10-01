@@ -310,14 +310,14 @@ describe('errorHint', () => {
   });
 
   it('should match the client-side request timeout', () => {
-    const hint = errorHint('Timeout error.');
-    expect(hint).toContain('execution-time limit');
+    const error = new Error('Timeout error.');
+    expect(errorHint(error.message, error)).toContain('execution-time limit');
   });
 
-  it('should match a socket timeout from the error object', () => {
+  it('should not give query-tuning advice for a socket timeout', () => {
     const error: NodeJS.ErrnoException = new Error('connect ETIMEDOUT');
     error.code = 'ETIMEDOUT';
-    expect(errorHint(error.message, error)).toContain('execution-time limit');
+    expect(errorHint(error.message, error)).toBeNull();
   });
 
   it('should match SETTING_CONSTRAINT_VIOLATION errors', () => {

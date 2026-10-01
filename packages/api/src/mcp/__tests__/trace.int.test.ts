@@ -1407,9 +1407,34 @@ describe('MCP Trace Tools', () => {
           }),
         ],
       ])('returns actionable guidance on a %s', async (_label, error) => {
+        const text = await callBreakdownWithFailingQuery(error);
+        expect(text).toContain('Failed to compute breakdown');
+        expect(text).toContain('execution-time limit');
+        expect(text).toContain('shorter startTime/endTime window');
+        expect(text).toContain('minParentDurationMs');
+        expect(text).not.toContain('must be valid ClickHouse SQL');
+      });
+
+      it('gives no query-tuning or invalid-SQL advice on a socket timeout', async () => {
+        const error: NodeJS.ErrnoException = new Error('connect ETIMEDOUT');
+        error.code = 'ETIMEDOUT';
+        const text = await callBreakdownWithFailingQuery(error);
+        expect(text).toContain('Failed to compute breakdown');
+        expect(text).not.toContain('execution-time limit');
+        expect(text).not.toContain('shorter startTime/endTime window');
+        expect(text).not.toContain('must be valid ClickHouse SQL');
+      });
+
+      async function callBreakdownWithFailingQuery(error: Error) {
+        const original = ClickhouseClient.prototype.query;
         const querySpy = jest
           .spyOn(ClickhouseClient.prototype, 'query')
-          .mockRejectedValue(error);
+          .mockImplementation(function (this: ClickhouseClient, args) {
+            if (args.query.includes('parent_traces')) {
+              return Promise.reject(error);
+            }
+            return original.call(this, args);
+          });
         try {
           const result = await callTool(
             client,
@@ -1421,18 +1446,12 @@ describe('MCP Trace Tools', () => {
               endTime: new Date(now.getTime() + 60 * 1000).toISOString(),
             },
           );
-
           expect(result.isError).toBe(true);
-          const text = getFirstText(result);
-          expect(text).toContain('Failed to compute breakdown');
-          expect(text).toContain('execution-time limit');
-          expect(text).toContain('shorter startTime/endTime window');
-          expect(text).toContain('minParentDurationMs');
-          expect(text).not.toContain('must be valid ClickHouse SQL');
+          return getFirstText(result);
         } finally {
           querySpy.mockRestore();
         }
-      });
+      }
     });
   });
 });

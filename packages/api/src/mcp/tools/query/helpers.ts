@@ -870,13 +870,19 @@ function findCause<T>(
   return undefined;
 }
 
-// Match only real timeouts. A bare `max_execution_time` substring would also
-// hijack SETTING_CONSTRAINT_VIOLATION / readonly errors ("Setting
-// max_execution_time shouldn't be greater than…"), which need a different fix.
-// "Timeout error." is what @clickhouse/client throws when the HTTP request
-// timeout fires before ClickHouse answers.
-const QUERY_TIMEOUT_RE =
-  /TIMEOUT_EXCEEDED|Timeout exceeded|^Timeout error\.?$/i;
+const SOCKET_TIMEOUT_CODES: ReadonlySet<string> = new Set(['ETIMEDOUT']);
+
+/**
+ * True when a query ran out of time: ClickHouse's max_execution_time or the
+ * client request timeout. A socket ETIMEDOUT is excluded because ClickHouse
+ * was unreachable, so narrowing the query won't help.
+ */
+export function isQueryOutOfTime(e: unknown): boolean {
+  const socketTimeout = findCause(e, (c): c is Error =>
+    hasNodeErrorCode(c, SOCKET_TIMEOUT_CODES),
+  );
+  return !socketTimeout && isQueryTimeoutError(e);
+}
 
 /** @internal Exported for testing only. */
 export function errorHint(msg: string, error?: unknown): string | null {
@@ -917,7 +923,13 @@ export function errorHint(msg: string, error?: unknown): string | null {
       'The result row count is too large to serialize back to the agent.'
     );
   }
-  if (QUERY_TIMEOUT_RE.test(msg) || isQueryTimeoutError(error)) {
+  // Match only real timeouts. A bare `max_execution_time` substring would also
+  // hijack SETTING_CONSTRAINT_VIOLATION / readonly errors ("Setting
+  // max_execution_time shouldn't be greater than…"), which need a different fix.
+  if (
+    /TIMEOUT_EXCEEDED|Timeout exceeded/i.test(msg) ||
+    isQueryOutOfTime(error)
+  ) {
     return (
       'The query exceeded its execution-time limit. Narrow the time range so ' +
       'ClickHouse can prune partitions, add filters to reduce the rows scanned, ' +
