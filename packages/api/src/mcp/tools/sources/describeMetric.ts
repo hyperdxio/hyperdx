@@ -140,7 +140,7 @@ type FetchResult<T> = { ok: true; data: T } | { ok: false; error: string };
  * Compact an error for inclusion in a tool response: single line,
  * capped length, no stack frames.
  */
-function sanitizeFetchError(e: unknown): string {
+export function sanitizeFetchError(e: unknown): string {
   const message = e instanceof Error ? e.message : String(e);
   return message.replace(/\s+/g, ' ').trim().slice(0, 200);
 }

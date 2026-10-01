@@ -1,3 +1,4 @@
+import { sanitizeFetchError } from './describeMetric';
 import type { DiscoverableMetricKind } from './metricKinds';
 
 export type MetricEntry = {
@@ -136,11 +137,7 @@ export function scanKindsForPage({
           },
           (e: unknown) => {
             if (done) return;
-            const message = e instanceof Error ? e.message : String(e);
-            slot.scan = {
-              status: 'error',
-              error: message.replace(/\s+/g, ' ').trim().slice(0, 200),
-            };
+            slot.scan = { status: 'error', error: sanitizeFetchError(e) };
           },
         )
         .finally(() => tryFinish(false));
