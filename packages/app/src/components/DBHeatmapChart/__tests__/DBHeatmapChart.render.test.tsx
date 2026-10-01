@@ -30,8 +30,8 @@ jest.mock('next/dynamic', () => ({
   },
 }));
 
-// Heatmap passes uPlot `[[], [time, bucket, count]]` plus its options; record
-// what it plots and with which axes.
+// HeatmapPlot passes uPlot `[[], [time, bucket, count, ...cellExtents]]`
+// plus its options; record what it plots and with which axes.
 const mockPlot = jest.fn();
 jest.mock('uplot-react', () => ({
   __esModule: true,

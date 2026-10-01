@@ -174,6 +174,7 @@ export function DBSearchHeatmapChart({
             variant="subtle"
             size="sm"
             onClick={settingsHandlers.open}
+            data-testid="heatmap-settings-button"
             style={{
               position: 'absolute',
               top: 4,
