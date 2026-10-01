@@ -48,12 +48,22 @@ export const displayTypeSupportsInstantQuery = (config: {
   displayType?: DisplayType;
 }): boolean =>
   config.displayType === DisplayType.Number ||
-  config.displayType === DisplayType.Table;
+  config.displayType === DisplayType.Table ||
+  config.displayType === DisplayType.Pie ||
+  config.displayType === DisplayType.Bar;
 
-/** Whether a display type collapses a range query to one value per series using a client-side reducer. */
+/**
+ * Whether a display type collapses each series to one value using a client-side
+ * reducer. Applies to instant and range queries alike: an instant vector has
+ * one sample per series, so any reducer returns it, while an instant query
+ * with a range selector (`up[5m]`) returns several.
+ */
 export const displayTypeSupportsReducer = (config: {
   displayType?: DisplayType;
-}): boolean => config.displayType === DisplayType.Number;
+}): boolean =>
+  config.displayType === DisplayType.Number ||
+  config.displayType === DisplayType.Pie ||
+  config.displayType === DisplayType.Bar;
 
 /** The reducer applied when none is chosen. */
 export const DEFAULT_PROMQL_REDUCER = PromqlReducer.LastNotNull;
@@ -203,10 +213,10 @@ export const isReducibleRangeQuery = (config: {
   displayType?: DisplayType;
 }): boolean => displayTypeSupportsReducer(config) && isRangeQuery(config);
 
-/** Whether the config specifies a reducer. */
+/** Whether the config specifies a reducer its display type applies. */
 export const appliesPromqlReducer = (config: {
   promqlExpression?: PromqlExpressionList;
   displayType?: DisplayType;
 }): boolean =>
-  isReducibleRangeQuery(config) &&
+  displayTypeSupportsReducer(config) &&
   getQueriedPromqlSeries(config)[0]?.reducer != null;

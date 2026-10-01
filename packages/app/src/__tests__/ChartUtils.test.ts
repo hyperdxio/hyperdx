@@ -10,8 +10,9 @@ import {
 import {
   ChartKeyJoiner,
   convertToNumberChartConfig,
-  convertToPromqlNumberChartConfig,
+  convertToPromqlSparklineChartConfig,
   convertToPromqlTableChartConfig,
+  convertToReducedPromqlChartConfig,
   convertToTableChartConfig,
   convertToTimeChartConfig,
   findNearestSeriesKey,
@@ -1318,7 +1319,7 @@ describe('ChartUtils', () => {
     });
   });
 
-  describe('convertToPromqlNumberChartConfig', () => {
+  describe('convertToReducedPromqlChartConfig and convertToPromqlSparklineChartConfig', () => {
     const promqlConfig = {
       configType: 'promql' as const,
       displayType: DisplayType.Number,
@@ -1337,9 +1338,7 @@ describe('ChartUtils', () => {
     // unresolved step puts the samples between the buckets the sparkline plots
     // on -- which the empty-bucket filler then fills with zeros.
     it('aligns the date range and resolves the granularity', () => {
-      const result = convertToPromqlNumberChartConfig(promqlConfig, {
-        withReducer: true,
-      });
+      const result = convertToReducedPromqlChartConfig(promqlConfig);
 
       expect(result.dateRange).toEqual([
         new Date('2025-11-26T00:00:00Z'),
@@ -1349,17 +1348,14 @@ describe('ChartUtils', () => {
     });
 
     it('leaves the date range unaligned for an instant query', () => {
-      const result = convertToPromqlNumberChartConfig(
-        {
-          ...promqlConfig,
-          promqlExpression: [{ expression: 'up', queryType: 'instant' }],
-          dateRange: [
-            new Date('2025-11-26T00:00:14.076Z'),
-            new Date('2025-11-27T00:00:14.076Z'),
-          ],
-        },
-        { withReducer: true },
-      );
+      const result = convertToReducedPromqlChartConfig({
+        ...promqlConfig,
+        promqlExpression: [{ expression: 'up', queryType: 'instant' }],
+        dateRange: [
+          new Date('2025-11-26T00:00:14.076Z'),
+          new Date('2025-11-27T00:00:14.076Z'),
+        ],
+      });
 
       expect(result.dateRange).toEqual([
         new Date('2025-11-26T00:00:14.076Z'),
@@ -1369,9 +1365,7 @@ describe('ChartUtils', () => {
     });
 
     it('names the reducer, defaulting it, and queries one expression', () => {
-      const result = convertToPromqlNumberChartConfig(promqlConfig, {
-        withReducer: true,
-      });
+      const result = convertToReducedPromqlChartConfig(promqlConfig);
 
       expect(result).toEqual(
         expect.objectContaining({
@@ -1387,19 +1381,16 @@ describe('ChartUtils', () => {
     });
 
     it('keeps a chosen reducer', () => {
-      const result = convertToPromqlNumberChartConfig(
-        {
-          ...promqlConfig,
-          promqlExpression: [
-            {
-              expression: 'up',
-              queryType: 'range' as const,
-              reducer: PromqlReducer.Max,
-            },
-          ],
-        },
-        { withReducer: true },
-      );
+      const result = convertToReducedPromqlChartConfig({
+        ...promqlConfig,
+        promqlExpression: [
+          {
+            expression: 'up',
+            queryType: 'range' as const,
+            reducer: PromqlReducer.Max,
+          },
+        ],
+      });
 
       expect(result).toEqual(
         expect.objectContaining({
@@ -1417,12 +1408,8 @@ describe('ChartUtils', () => {
     // Without a reducer named, the hook leaves the buckets alone -- which is
     // how the sparkline reads the same response as the value.
     it('names no reducer for the sparkline, otherwise matching the value', () => {
-      const value = convertToPromqlNumberChartConfig(promqlConfig, {
-        withReducer: true,
-      });
-      const sparkline = convertToPromqlNumberChartConfig(promqlConfig, {
-        withReducer: false,
-      });
+      const value = convertToReducedPromqlChartConfig(promqlConfig);
+      const sparkline = convertToPromqlSparklineChartConfig(promqlConfig);
 
       expect(sparkline).toEqual({
         ...value,
