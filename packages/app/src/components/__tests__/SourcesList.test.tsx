@@ -11,9 +11,6 @@ jest.mock('next/router', () => ({
 jest.mock('@/source', () => ({ useSources: jest.fn() }));
 jest.mock('@/connection', () => ({ useConnections: jest.fn() }));
 jest.mock('@/config', () => ({ IS_LOCAL_MODE: false }));
-jest.mock('@/utils', () => ({
-  capitalizeFirstLetter: (s: string) => s.charAt(0).toUpperCase() + s.slice(1),
-}));
 // TableSourceForm only renders while editing/creating; stub it so the list test
 // does not pull in the full source form.
 jest.mock('../Sources/SourceForm', () => ({ TableSourceForm: () => null }));
@@ -61,13 +58,28 @@ describe('SourcesList section display', () => {
 
   it('shows no section labels when no source has a section', () => {
     asMock(useSources).mockReturnValue({
-      data: [makeSource('a', 'Logs'), makeSource('b', 'Traces')],
+      data: [makeSource('a', 'App'), makeSource('b', 'Host')],
+      isLoading: false,
+      refetch: jest.fn(),
+    });
+    renderWithMantine(<SourcesList withCard={false} />);
+
+    expect(screen.getByText('App')).toBeInTheDocument();
+    expect(screen.getByText('Host')).toBeInTheDocument();
+  });
+
+  it('shows the plural kind label for each source', () => {
+    asMock(useSources).mockReturnValue({
+      data: [
+        makeSource('a', 'App'),
+        makeSource('b', 'Host', { kind: SourceKind.Metric }),
+      ],
       isLoading: false,
       refetch: jest.fn(),
     });
     renderWithMantine(<SourcesList withCard={false} />);
 
     expect(screen.getByText('Logs')).toBeInTheDocument();
-    expect(screen.getByText('Traces')).toBeInTheDocument();
+    expect(screen.getByText('OTel Metrics')).toBeInTheDocument();
   });
 });
