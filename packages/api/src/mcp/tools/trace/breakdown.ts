@@ -15,6 +15,7 @@
  * endpoint" without dropping into raw SQL with self-JOINs. The builder
  * tools (table / timeseries / search) can't express the TraceId subselect.
  */
+import { getFirstTimestampValueExpression } from '@hyperdx/common-utils/dist/core/utils';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { z } from 'zod';
 
@@ -23,6 +24,9 @@ import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
 import {
   clickHouseErrorResult,
+  isQueryTimeoutError,
+  MCP_CLICKHOUSE_SETTINGS,
+  MCP_REQUEST_TIMEOUT,
   parseTimeRange,
 } from '@/mcp/tools/query/helpers';
 import type { ToolRegistrar } from '@/mcp/tools/types';
@@ -98,6 +102,20 @@ type TraceBreakdownInput = z.infer<typeof traceBreakdownSchema>;
 function durationDivisor(precision: number): number {
   return Math.pow(10, Math.max(0, precision - 3));
 }
+
+// The child stage looks spans up by TraceId, which is not in the sort key, so
+// it reads every span in the window regardless of how few parents matched.
+// Cost tracks the window length, so that is the first thing to shrink.
+const TIMEOUT_SUFFIX =
+  'This tool reads every span in the time window to find the children of ' +
+  'matching traces, so cost grows with the window length. Retry with a ' +
+  'shorter startTime/endTime window (e.g. 15-60 minutes around the ' +
+  'incident), scope parentFilter to one ServiceName AND SpanName, set ' +
+  'minParentDurationMs to break down only slow parents, or lower ' +
+  'maxParentTraces.';
+
+const INVALID_FILTER_SUFFIX =
+  "The parentFilter must be valid ClickHouse SQL referencing columns on the trace table (e.g. ServiceName = 'X' AND SpanName = 'Y').";
 
 export function registerTraceBreakdown({
   context,
@@ -192,7 +210,9 @@ export function registerTraceBreakdown({
       // Source-configured SQL expressions. These are trusted (set by the
       // team admin in source config) and we substitute them into the
       // generated SQL.
-      const tsExpr = source.timestampValueExpression;
+      const tsExpr = getFirstTimestampValueExpression(
+        source.timestampValueExpression,
+      );
       const traceIdExpr = source.traceIdExpression;
       const spanNameExpr = source.spanNameExpression ?? "''";
       const serviceNameExpr = source.serviceNameExpression ?? "''";
@@ -260,6 +280,7 @@ LIMIT {topN:UInt32}
         host: connection.host,
         username: connection.username,
         password: connection.password,
+        requestTimeout: MCP_REQUEST_TIMEOUT,
       });
 
       type Row = {
@@ -279,14 +300,16 @@ LIMIT {topN:UInt32}
           query_params: params,
           format: 'JSON',
           connectionId: source.connection.toString(),
+          // MCP settings win over source.querySettings so a source can't relax
+          // the max_execution_time ceiling, or the readonly guard that blocks
+          // DDL/DML injected through parentFilter.
           clickhouse_settings: {
-            // Prevent DDL/DML injection via parentFilter — only SELECTs allowed.
-            readonly: '1',
             ...(source.querySettings
               ? Object.fromEntries(
                   source.querySettings.map(s => [s.setting, s.value]),
                 )
               : {}),
+            ...MCP_CLICKHOUSE_SETTINGS,
           },
         });
         const json = (await (
@@ -296,8 +319,9 @@ LIMIT {topN:UInt32}
       } catch (e) {
         return clickHouseErrorResult(e, {
           prefix: 'Failed to compute breakdown',
-          suffix:
-            "The parentFilter must be valid ClickHouse SQL referencing columns on the trace table (e.g. ServiceName = 'X' AND SpanName = 'Y').",
+          suffix: isQueryTimeoutError(e)
+            ? TIMEOUT_SUFFIX
+            : INVALID_FILTER_SUFFIX,
         });
       }
 
