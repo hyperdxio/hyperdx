@@ -153,6 +153,11 @@ export const TRACE_WATERFALL_ROW_LIMIT = 50000;
 // Fetch one extra row so a window that contains *exactly* the cap is not
 // mistaken for truncation. A full page of LIMIT is ambiguous; LIMIT+1 is not.
 const TRACE_WATERFALL_FETCH_LIMIT = TRACE_WATERFALL_ROW_LIMIT + 1;
+// The span queries keep `Timestamp >= dateRange[0]`, so a start strictly
+// before the window is not returned and `minStart <= dateRange[0]` only
+// matches an exact hit. A start this close to the lower edge is the signal
+// that the fetch cut off earlier spans.
+const WINDOW_START_EDGE_TOLERANCE_MS = 1;
 
 // Stable empty fallback. `data ?? []` would allocate a new array every render
 // and invalidate every memo downstream of the waterfall rows.
@@ -800,22 +805,21 @@ export function DBTraceWaterfallChartContainer({
   // `windowClipped` is a lower bound for the fetch window, separate from the
   // row-cap flag so a cap change does not rescan every span:
   //   - a span ending at or after `dateRange[1]` may continue past the window
-  //   - the earliest span's parent was not loaded. Both queries filter
-  //     `Timestamp >= dateRange[0]`, so comparing min start to the lower edge
-  //     never sees a span that started earlier. A missing parent on the
-  //     earliest span is that signal.
+  //   - the earliest span starts within WINDOW_START_EDGE_TOLERANCE_MS of
+  //     `dateRange[0]`. That includes a non-empty parent id that was not
+  //     loaded when the child sits on that edge.
+  // A missing parent further inside the window is a gap in the export (the
+  // root was never collected), and an empty ParentSpanId is a real root.
+  // Neither marks the start. `minStart <= dateRange[0]` is not used: the
+  // queries already filter `Timestamp >= dateRange[0]`, so it never sees a
+  // span that began earlier, and a span that did begin earlier was loaded.
   const traceExtent = useMemo(() => {
     if (traceRowsData.length === 0) return null;
-    const spanIds = new Set<string>();
-    for (const row of traceRowsData) {
-      if (typeof row.SpanId === 'string' && row.SpanId.length > 0) {
-        spanIds.add(row.SpanId);
-      }
-    }
+    const windowStartMs = dateRange[0].getTime();
     const windowEndMs = dateRange[1].getTime();
     let minStartMs = Number.POSITIVE_INFINITY;
     let maxEndMs = Number.NEGATIVE_INFINITY;
-    let earliestParentMissing = false;
+    let startClipped = false;
     let extendsPastWindowEnd = false;
     let sawValid = false;
     for (const row of traceRowsData) {
@@ -829,12 +833,10 @@ export function DBTraceWaterfallChartContainer({
       const durationSec = Number(row.Duration);
       const endMs =
         startMs + (Number.isFinite(durationSec) ? durationSec : 0) * 1000;
-      const parentId =
-        typeof row.ParentSpanId === 'string' ? row.ParentSpanId : '';
-      const parentMissing = parentId.length > 0 && !spanIds.has(parentId);
       if (startMs < minStartMs) {
         minStartMs = startMs;
-        earliestParentMissing = parentMissing;
+        startClipped =
+          Math.abs(startMs - windowStartMs) <= WINDOW_START_EDGE_TOLERANCE_MS;
       }
       if (endMs > maxEndMs) maxEndMs = endMs;
       if (endMs >= windowEndMs) extendsPastWindowEnd = true;
@@ -843,7 +845,7 @@ export function DBTraceWaterfallChartContainer({
     if (!sawValid) return null;
     return {
       totalDurationMs: maxEndMs - minStartMs,
-      windowClipped: earliestParentMissing || extendsPastWindowEnd,
+      windowClipped: startClipped || extendsPastWindowEnd,
     };
   }, [traceRowsData, dateRange]);
 

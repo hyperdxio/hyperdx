@@ -498,22 +498,40 @@ describe('DBTraceWaterfallChartContainer', () => {
     );
   });
 
-  it("marks the duration as a lower bound when the earliest span's parent was not loaded", async () => {
-    const orphan = {
+  it('does not mark a missing parent as clipped when the child starts inside the window', async () => {
+    const orphanInsideWindow = {
       data: [
         {
           ...mockTraceData.data[0],
-          // Inside the window. The parent id is not among the fetched spans,
-          // so the trace may have started before the loaded range. A span that
-          // merely starts on dateRange[0] is not enough: the queries already
-          // exclude anything earlier than that edge.
+          // Well inside 05:00:00-08:00:00. The parent was never exported;
+          // that is a gap in the trace, not a fetch cut off at the window.
           Timestamp: '2024-01-01T06:00:00.000000000Z',
           ParentSpanId: 'missing-root',
         },
       ],
       meta: [{ totalCount: 1 }],
     };
-    setupQueryMocks({ traceData: orphan });
+    setupQueryMocks({ traceData: orphanInsideWindow });
+    renderComponent(null);
+    await waitForLoading();
+
+    expect(screen.getByTestId('trace-total-stats').textContent?.trim()).toBe(
+      '· Total duration: 100ms',
+    );
+  });
+
+  it('marks the duration as a lower bound when a missing parent starts at the window start', async () => {
+    const orphanAtWindowStart = {
+      data: [
+        {
+          ...mockTraceData.data[0],
+          Timestamp: '2024-01-01T05:00:00.000000000Z',
+          ParentSpanId: 'missing-root',
+        },
+      ],
+      meta: [{ totalCount: 1 }],
+    };
+    setupQueryMocks({ traceData: orphanAtWindowStart });
     renderComponent(null);
     await waitForLoading();
 
@@ -522,18 +540,41 @@ describe('DBTraceWaterfallChartContainer', () => {
     );
   });
 
-  it("does not mark a span that starts on the window's lower edge as clipped when its parent was loaded", async () => {
-    const onLowerEdge = {
+  it('marks the duration as a lower bound when the earliest span starts within a small tolerance of the window start', async () => {
+    const justInsideEdge = {
       data: [
         {
           ...mockTraceData.data[0],
-          Timestamp: '2024-01-01T05:00:00.000000000Z',
+          // 0.5ms after dateRange[0]. The queries filter Timestamp >= that
+          // edge, so an exact `minStart <= dateRange[0]` check does not see
+          // this span as clipped. A root (empty parent) on the edge still is.
+          Timestamp: '2024-01-01T05:00:00.000500000Z',
           ParentSpanId: '',
         },
       ],
       meta: [{ totalCount: 1 }],
     };
-    setupQueryMocks({ traceData: onLowerEdge });
+    setupQueryMocks({ traceData: justInsideEdge });
+    renderComponent(null);
+    await waitForLoading();
+
+    expect(screen.getByTestId('trace-total-stats').textContent?.trim()).toBe(
+      '· Total duration: 100ms+',
+    );
+  });
+
+  it('does not mark a span that starts before the window when that span was loaded', async () => {
+    const startedBeforeWindow = {
+      data: [
+        {
+          ...mockTraceData.data[0],
+          Timestamp: '2024-01-01T04:59:00.000000000Z',
+          ParentSpanId: '',
+        },
+      ],
+      meta: [{ totalCount: 1 }],
+    };
+    setupQueryMocks({ traceData: startedBeforeWindow });
     renderComponent(null);
     await waitForLoading();
 
@@ -563,8 +604,8 @@ describe('DBTraceWaterfallChartContainer', () => {
     );
   });
 
-  it('does not mark the duration as a lower bound when every span sits comfortably inside the fetch window', async () => {
-    setupQueryMocks({ traceData: mockTraceData }); // 06:00:00, well inside 05:00:00-08:00:00
+  it('does not mark a root with no parent when it starts inside the window', async () => {
+    setupQueryMocks({ traceData: mockTraceData }); // 06:00:00, ParentSpanId '', inside 05:00:00-08:00:00
     renderComponent(null);
     await waitForLoading();
 
