@@ -52,11 +52,13 @@ jest.mock('@/components/TimelineChart', () => {
     return (
       <div data-testid="timeline-chart">
         TimelineChart
-        {props.rows?.map((row: any) => (
-          <div key={row.id}>
-            {row.events?.map((event: any) => flattenText(event.body))}
-          </div>
-        ))}
+        {props.rows
+          ?.slice(0, 20)
+          .map((row: any) => (
+            <div key={row.id}>
+              {row.events?.map((event: any) => flattenText(event.body))}
+            </div>
+          ))}
       </div>
     );
   };
@@ -149,12 +151,9 @@ describe('DBTraceWaterfallChartContainer', () => {
   };
 
   // Wide enough to contain every span/log timestamp used by the tests below
-  // (06:00:00-07:00:00) with margin on both sides, so the window-clipping
-  // check in `traceTotalStats` (a span starting at/before the window's lower
-  // edge, or ending at/after its upper edge, marks the duration as a lower
-  // bound) doesn't incidentally trip for data that was never meant to be
-  // testing that behavior. See the dedicated window-clipping tests below for
-  // cases that deliberately sit at the edge.
+  // (06:00:00-07:00:00) with margin on both sides, so a span ending at the
+  // window's upper edge does not trip the lower-bound marker unless a test
+  // asks for that.
   const mockDateRange = [
     new Date('2024-01-01T05:00:00.000Z'),
     new Date('2024-01-01T08:00:00.000Z'),
@@ -474,20 +473,23 @@ describe('DBTraceWaterfallChartContainer', () => {
     );
   });
 
-  it('marks the duration as a lower bound when a span starts at/before the fetch window\'s lower edge (possible earlier spans outside the window)', async () => {
-    const spanAtWindowEdge = {
-      data: [
-        {
-          ...mockTraceData.data[0],
-          // mockDateRange's lower edge is 05:00:00 -- a span starting exactly
-          // there (or earlier) means there could be earlier spans that the
-          // ±window fetch never requested.
-          Timestamp: '2024-01-01T05:00:00.000000000Z',
-        },
-      ],
-      meta: [{ totalCount: 1 }],
+  it('shows the lower-bound marker when the trace query exceeds the row cap', async () => {
+    const span = {
+      Body: 'capped span',
+      Timestamp: '2024-01-01T06:00:00.000000000Z',
+      Duration: 0.1,
+      SpanId: 'span-1',
+      ParentSpanId: '',
+      ServiceName: 'test-service',
+      HyperDXEventType: 'span' as const,
+      type: 'trace',
     };
-    setupQueryMocks({ traceData: spanAtWindowEdge });
+    setupQueryMocks({
+      traceData: {
+        data: Array.from({ length: TRACE_WATERFALL_ROW_LIMIT + 1 }, () => span),
+        meta: [{ totalCount: TRACE_WATERFALL_ROW_LIMIT + 1 }],
+      },
+    });
     renderComponent(null);
     await waitForLoading();
 
@@ -496,14 +498,57 @@ describe('DBTraceWaterfallChartContainer', () => {
     );
   });
 
-  it('marks the duration as a lower bound when a span ends at/after the fetch window\'s upper edge (possible later spans outside the window)', async () => {
+  it("marks the duration as a lower bound when the earliest span's parent was not loaded", async () => {
+    const orphan = {
+      data: [
+        {
+          ...mockTraceData.data[0],
+          // Inside the window. The parent id is not among the fetched spans,
+          // so the trace may have started before the loaded range. A span that
+          // merely starts on dateRange[0] is not enough: the queries already
+          // exclude anything earlier than that edge.
+          Timestamp: '2024-01-01T06:00:00.000000000Z',
+          ParentSpanId: 'missing-root',
+        },
+      ],
+      meta: [{ totalCount: 1 }],
+    };
+    setupQueryMocks({ traceData: orphan });
+    renderComponent(null);
+    await waitForLoading();
+
+    expect(screen.getByTestId('trace-total-stats').textContent?.trim()).toBe(
+      '· Total duration: 100ms+',
+    );
+  });
+
+  it("does not mark a span that starts on the window's lower edge as clipped when its parent was loaded", async () => {
+    const onLowerEdge = {
+      data: [
+        {
+          ...mockTraceData.data[0],
+          Timestamp: '2024-01-01T05:00:00.000000000Z',
+          ParentSpanId: '',
+        },
+      ],
+      meta: [{ totalCount: 1 }],
+    };
+    setupQueryMocks({ traceData: onLowerEdge });
+    renderComponent(null);
+    await waitForLoading();
+
+    expect(screen.getByTestId('trace-total-stats').textContent?.trim()).toBe(
+      '· Total duration: 100ms',
+    );
+  });
+
+  it("marks the duration as a lower bound when a span ends at/after the fetch window's upper edge", async () => {
     const spanAtWindowEdge = {
       data: [
         {
           ...mockTraceData.data[0],
           // Ends exactly at mockDateRange's upper edge (08:00:00): starts at
-          // 07:59:59.900 + Duration 0.1s. Same reasoning as the lower-edge
-          // case above, mirrored at the other end of the window.
+          // 07:59:59.900 + Duration 0.1s.
           Timestamp: '2024-01-01T07:59:59.900000000Z',
         },
       ],
@@ -528,19 +573,43 @@ describe('DBTraceWaterfallChartContainer', () => {
     );
   });
 
-  // Note: the row-cap trigger for isTruncated (as opposed to the
-  // window-edge trigger tested above) is covered at the `useEventsAroundFocus`
-  // hook level below ("flags isTruncated when a window returns more rows than
-  // the cap...") and at the render level by the "appends + on the duration
-  // label..." test above. A true end-to-end version of that case (actually
-  // fetching/rendering TRACE_WATERFALL_ROW_LIMIT+1 real rows through
-  // setupQueryMocks) was tried here and is correct but prohibitively slow
-  // under full-suite jsdom contention (passes in isolation, times out at 30s+
-  // alongside the rest of the file) -- not a good trade for the marginal
-  // wiring coverage over the window-edge tests above, which already exercise
-  // the identical `traceTotalStats.isTruncated` -> rendered "+" chain for the
-  // other trigger.
+  it('keeps the fetched duration when a span is flagged hidden', async () => {
+    const hiddenSpanData = {
+      data: [
+        {
+          Body: 'visible span',
+          Timestamp: '2024-01-01T06:00:00.000000000Z',
+          Duration: 0.1,
+          SpanId: 'span-visible',
+          ParentSpanId: '',
+          ServiceName: 'test-service',
+          HyperDXEventType: 'span' as const,
+          type: 'trace',
+          __hdx_hidden: false,
+        } as SpanRow,
+        {
+          Body: 'hidden span',
+          Timestamp: '2024-01-01T06:00:01.000000000Z',
+          Duration: 0.5,
+          SpanId: 'span-hidden',
+          ParentSpanId: '',
+          ServiceName: 'test-service',
+          HyperDXEventType: 'span' as const,
+          type: 'trace',
+          __hdx_hidden: true,
+        } as SpanRow,
+      ],
+      meta: [{ totalCount: 2 }],
+    };
 
+    setupQueryMocks({ traceData: hiddenSpanData });
+    renderComponent(null);
+    await waitForLoading();
+
+    expect(screen.getByTestId('trace-total-stats').textContent?.trim()).toBe(
+      '· Total duration: 1.5s',
+    );
+  });
   it('renders empty state when no data is available', async () => {
     mockUseOffsetPaginatedQuery.mockReturnValue({
       data: emptyData,

@@ -154,6 +154,10 @@ export const TRACE_WATERFALL_ROW_LIMIT = 50000;
 // mistaken for truncation. A full page of LIMIT is ambiguous; LIMIT+1 is not.
 const TRACE_WATERFALL_FETCH_LIMIT = TRACE_WATERFALL_ROW_LIMIT + 1;
 
+// Stable empty fallback. `data ?? []` would allocate a new array every render
+// and invalidate every memo downstream of the waterfall rows.
+const EMPTY_ROWS: Record<string, any>[] = [];
+
 export function TraceTotalDurationStat({
   totalDurationMs,
   isTruncated,
@@ -165,8 +169,8 @@ export function TraceTotalDurationStat({
     <Tooltip
       label={
         isTruncated
-          ? `This trace may have spans outside the ${TRACE_WATERFALL_ROW_LIMIT.toLocaleString()}-span fetch cap or the loaded time window, so the duration is a lower bound across the spans that were loaded.`
-          : 'Wall-clock duration from the earliest fetched span start to the latest span end. Independent of the visible count, chips, and collapse state.'
+          ? `This duration is a lower bound. The trace may extend past the loaded time window, or a fetch window has more than ${TRACE_WATERFALL_ROW_LIMIT.toLocaleString()} spans. Each side of the focus time is a single fetched page.`
+          : 'Wall-clock duration from the earliest fetched span start to the latest span end. Independent of the visible count, chips, and collapse state. Each side of the focus time is a single fetched page.'
       }
       position="bottom"
     >
@@ -418,18 +422,25 @@ export function useEventsAroundFocus({
   const error = beforeSpanError || afterSpanError;
   // LIMIT+1 is a sentinel: a complete window of exactly TRACE_WATERFALL_ROW_LIMIT
   // rows must not show as a lower bound. Drop the extra row so the chart still
-  // renders at most the cap.
-  const beforeRows = beforeSpanData?.data ?? [];
-  const afterRows = afterSpanData?.data ?? [];
-  const beforeTruncated = beforeRows.length > TRACE_WATERFALL_ROW_LIMIT;
-  const afterTruncated = afterRows.length > TRACE_WATERFALL_ROW_LIMIT;
-  const isTruncated = beforeTruncated || afterTruncated;
-  const trimmedBefore = beforeTruncated
-    ? beforeRows.slice(0, TRACE_WATERFALL_ROW_LIMIT)
-    : beforeRows;
-  const trimmedAfter = afterTruncated
-    ? afterRows.slice(0, TRACE_WATERFALL_ROW_LIMIT)
-    : afterRows;
+  // renders at most the cap. Trim inside this memo so a parent re-render does
+  // not allocate fresh arrays and rebuild the span tree.
+  const beforeData = beforeSpanData?.data;
+  const afterData = afterSpanData?.data;
+  const { isTruncated, trimmedBefore, trimmedAfter } = useMemo(() => {
+    const beforeRows = beforeData ?? EMPTY_ROWS;
+    const afterRows = afterData ?? EMPTY_ROWS;
+    const beforeTruncated = beforeRows.length > TRACE_WATERFALL_ROW_LIMIT;
+    const afterTruncated = afterRows.length > TRACE_WATERFALL_ROW_LIMIT;
+    return {
+      isTruncated: beforeTruncated || afterTruncated,
+      trimmedBefore: beforeTruncated
+        ? beforeRows.slice(0, TRACE_WATERFALL_ROW_LIMIT)
+        : beforeRows,
+      trimmedAfter: afterTruncated
+        ? afterRows.slice(0, TRACE_WATERFALL_ROW_LIMIT)
+        : afterRows,
+    };
+  }, [beforeData, afterData]);
 
   const getRowWhere = useRowWhere({ meta, aliasMap: alias });
   const rows = useMemo(() => {
@@ -446,9 +457,13 @@ export function useEventsAroundFocus({
       return {
         // Keep all fields available for display
         ...cd,
-        // Added for typing
+        // Named fields are repeated for typing. Spreading Record<string, any>
+        // drops the index signature once explicit keys are set, so Duration
+        // would otherwise be missing from the row type.
         Timestamp: cd?.Timestamp,
         SpanId: cd?.SpanId,
+        ParentSpanId: cd?.ParentSpanId,
+        Duration: cd?.Duration,
         __hdx_hidden: cd?.__hdx_hidden,
         type,
         id: rowWhereResult.where,
@@ -775,39 +790,62 @@ export function DBTraceWaterfallChartContainer({
   // the visible/collapsed subset. Waterfall search filters only flag rows via
   // `__hdx_hidden`, so they do not change this figure (#3038).
   //
-  // This is not the same as MCP `trace_waterfall`'s `totalDurationMs`, which is
-  // the longest single span. Clock skew or async children that outlive the root
-  // make the two disagree; the UI number is the envelope of the timeline.
+  // `useEventsData` loads a single page on each side of the focus time and does
+  // not call `fetchNextPage`. Spans outside that page, or outside the requested
+  // date range, are not included.
   //
-  // This is a lower bound if either fetch window was clipped:
-  //   - the TRACE_WATERFALL_ROW_LIMIT row cap (traceIsTruncated), or
-  //   - the ±1h `dateRange` fetch window itself (DBRowSidePanel passes
-  //     oneHourRange) -- a span starting at-or-before the window's lower
-  //     edge, or ending at-or-after its upper edge, means there may be
-  //     earlier/later spans outside the fetched range. `<=`/`>=` (not
-  //     strict) is deliberate: a span landing exactly on the boundary is
-  //     itself ambiguous, and it's safer to over-signal "possibly clipped"
-  //     than to silently under-report (matches the row-cap sentinel above).
-  const traceTotalStats = useMemo(() => {
-    let minStartMs = Number.MAX_SAFE_INTEGER;
-    let maxEndMs = 0;
-    let spanCount = 0;
-    for (const row of traceRowsData as any[]) {
-      spanCount++;
-      const startMs = parseTimestampToMs(row.Timestamp);
-      const endMs = startMs + (row.Duration || 0) * 1000;
-      if (startMs < minStartMs) minStartMs = startMs;
-      if (endMs > maxEndMs) maxEndMs = endMs;
+  // MCP `trace_waterfall` reports the longest single span instead. Changing
+  // that tool is a separate behavior change; this number is the timeline envelope.
+  //
+  // `windowClipped` is a lower bound for the fetch window, separate from the
+  // row-cap flag so a cap change does not rescan every span:
+  //   - a span ending at or after `dateRange[1]` may continue past the window
+  //   - the earliest span's parent was not loaded. Both queries filter
+  //     `Timestamp >= dateRange[0]`, so comparing min start to the lower edge
+  //     never sees a span that started earlier. A missing parent on the
+  //     earliest span is that signal.
+  const traceExtent = useMemo(() => {
+    if (traceRowsData.length === 0) return null;
+    const spanIds = new Set<string>();
+    for (const row of traceRowsData) {
+      if (typeof row.SpanId === 'string' && row.SpanId.length > 0) {
+        spanIds.add(row.SpanId);
+      }
     }
-    if (spanCount === 0) return null;
-    const windowClipped =
-      minStartMs <= dateRange[0].getTime() ||
-      maxEndMs >= dateRange[1].getTime();
+    const windowEndMs = dateRange[1].getTime();
+    let minStartMs = Number.POSITIVE_INFINITY;
+    let maxEndMs = Number.NEGATIVE_INFINITY;
+    let earliestParentMissing = false;
+    let extendsPastWindowEnd = false;
+    let sawValid = false;
+    for (const row of traceRowsData) {
+      let startMs: number;
+      try {
+        startMs = parseTimestampToMs(row.Timestamp);
+      } catch {
+        continue;
+      }
+      if (!Number.isFinite(startMs)) continue;
+      const durationSec = Number(row.Duration);
+      const endMs =
+        startMs + (Number.isFinite(durationSec) ? durationSec : 0) * 1000;
+      const parentId =
+        typeof row.ParentSpanId === 'string' ? row.ParentSpanId : '';
+      const parentMissing = parentId.length > 0 && !spanIds.has(parentId);
+      if (startMs < minStartMs) {
+        minStartMs = startMs;
+        earliestParentMissing = parentMissing;
+      }
+      if (endMs > maxEndMs) maxEndMs = endMs;
+      if (endMs >= windowEndMs) extendsPastWindowEnd = true;
+      sawValid = true;
+    }
+    if (!sawValid) return null;
     return {
       totalDurationMs: maxEndMs - minStartMs,
-      isTruncated: traceIsTruncated || windowClipped,
+      windowClipped: earliestParentMissing || extendsPastWindowEnd,
     };
-  }, [traceRowsData, traceIsTruncated, dateRange]);
+  }, [traceRowsData, dateRange]);
 
   // Map each distinct span service to a stable color. Sorting the names first
   // keeps a service's color stable across renders regardless of row ordering.
@@ -1496,10 +1534,10 @@ export function DBTraceWaterfallChartContainer({
             <span className={errorCount ? 'text-danger' : ''}>
               {errorCountString}
             </span>
-            {traceTotalStats && (
+            {traceExtent != null && (
               <TraceTotalDurationStat
-                totalDurationMs={traceTotalStats.totalDurationMs}
-                isTruncated={traceTotalStats.isTruncated}
+                totalDurationMs={traceExtent.totalDurationMs}
+                isTruncated={traceIsTruncated || traceExtent.windowClipped}
               />
             )}
           </Text>
