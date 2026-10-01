@@ -18,6 +18,7 @@ import {
   convertFormStateToChartConfig,
   convertFormStateToSavedChartConfig,
   convertSavedChartConfigToFormState,
+  getAllowedSourceKinds,
   validateChartForm,
 } from '@/components/ChartEditor/utils';
 
@@ -127,6 +128,19 @@ describe('convertFormStateToSavedChartConfig', () => {
     };
     const result = convertFormStateToSavedChartConfig(form, undefined);
     expect(result).toMatchObject({ alternateRowBackground: true });
+  });
+
+  it('persists backgroundChart for a promql+number config', () => {
+    const form: ChartEditorFormState = {
+      configType: 'promql',
+      displayType: DisplayType.Number,
+      promqlExpression: 'up',
+      connection: 'conn-1',
+      backgroundChart: { type: 'area' },
+      series: [],
+    };
+    const result = convertFormStateToSavedChartConfig(form, undefined);
+    expect(result).toMatchObject({ backgroundChart: { type: 'area' } });
   });
 
   it('persists alternateRowBackground for a promql+table config', () => {
@@ -409,6 +423,21 @@ describe('convertFormStateToChartConfig', () => {
     expect(result).toMatchObject({ alternateRowBackground: true });
   });
 
+  // The sparkline only renders if the rendered config carries this, and the
+  // promql branch builds its config from an explicit pick list.
+  it('threads backgroundChart into the rendered promql+number config', () => {
+    const form: ChartEditorFormState = {
+      configType: 'promql',
+      displayType: DisplayType.Number,
+      promqlExpression: 'up',
+      connection: 'conn-1',
+      backgroundChart: { type: 'area' },
+      series: [],
+    };
+    const result = convertFormStateToChartConfig(form, dateRange, undefined);
+    expect(result).toMatchObject({ backgroundChart: { type: 'area' } });
+  });
+
   it('threads alternateRowBackground into the rendered promql+table config', () => {
     const form: ChartEditorFormState = {
       configType: 'promql',
@@ -669,6 +698,28 @@ describe('PromQL expressions', () => {
     ).toMatchObject({
       promqlExpression: [
         { expression: 'up', queryType: 'range', reducer: PromqlReducer.Max },
+      ],
+    });
+  });
+
+  it('keeps the query type but drops the reducer on a table chart', () => {
+    expect(
+      convertFormStateToSavedChartConfig(
+        promqlForm(
+          [
+            {
+              expression: 'up',
+              queryType: 'instant',
+              reducer: PromqlReducer.Max,
+            },
+          ],
+          DisplayType.Table,
+        ),
+        undefined,
+      ),
+    ).toMatchObject({
+      promqlExpression: [
+        { expression: 'up', queryType: 'instant', reducer: undefined },
       ],
     });
   });
@@ -2267,5 +2318,71 @@ describe('metric formulas (HDX-5080)', () => {
         },
       ]);
     });
+  });
+});
+
+describe('getAllowedSourceKinds', () => {
+  it('offers only PromQL sources in PromQL mode', () => {
+    expect(
+      getAllowedSourceKinds({
+        configType: 'promql',
+        displayType: DisplayType.Line,
+      }),
+    ).toEqual([SourceKind.Promql]);
+  });
+
+  it.each(['builder', 'sql'] as const)(
+    'excludes PromQL sources in %s mode',
+    configType => {
+      const kinds = getAllowedSourceKinds({
+        configType,
+        displayType: DisplayType.Line,
+      });
+      expect(kinds).not.toContain(SourceKind.Promql);
+      expect(kinds).toEqual(
+        expect.arrayContaining([
+          SourceKind.Log,
+          SourceKind.Trace,
+          SourceKind.Session,
+          SourceKind.Metric,
+        ]),
+      );
+    },
+  );
+
+  it.each([DisplayType.Search, DisplayType.EventPatterns])(
+    'excludes PromQL sources on %s tiles, which PromQL cannot render',
+    displayType => {
+      expect(
+        getAllowedSourceKinds({ configType: 'promql', displayType }),
+      ).not.toContain(SourceKind.Promql);
+    },
+  );
+
+  it.each([DisplayType.Search, DisplayType.EventPatterns])(
+    'excludes metric sources on %s tiles, which have no rows to list',
+    displayType => {
+      const kinds = getAllowedSourceKinds({
+        configType: 'builder',
+        displayType,
+      });
+      expect(kinds).not.toContain(SourceKind.Metric);
+      expect(kinds).toEqual(
+        expect.arrayContaining([
+          SourceKind.Log,
+          SourceKind.Trace,
+          SourceKind.Session,
+        ]),
+      );
+    },
+  );
+
+  it('narrows to traces on heatmap tiles', () => {
+    expect(
+      getAllowedSourceKinds({
+        configType: 'promql',
+        displayType: DisplayType.Heatmap,
+      }),
+    ).toEqual([SourceKind.Trace]);
   });
 });

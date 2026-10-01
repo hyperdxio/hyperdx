@@ -4,7 +4,12 @@
  * `jest.mock('@/HDXMultiSeriesTimeChart')`) import from here, so the internal
  * file layout stays free to change.
  */
-export { formatAxisTick, getYAxisTicks } from './axisTicks';
+export {
+  formatAxisTick,
+  getExpandableYAxisTicks,
+  getNiceYAxisTicks,
+  getYAxisTicks,
+} from './axisTicks';
 export {
   type ActiveClickPayload,
   type ActiveClickSeries,
@@ -18,3 +23,4 @@ export {
 export { MAX_TOOLTIP_ROWS, TOOLTIP_POINT_OFFSET_PX } from './constants';
 export { collectMemoChartGradientHexes, MemoChart } from './MemoChart';
 export { TooltipItem } from './TooltipItem';
+export { computeYAxisBounds, scanYAxisValueRange } from './useChartScales';

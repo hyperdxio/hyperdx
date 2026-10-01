@@ -15,7 +15,15 @@ import {
   layoutAnnotations,
   resolveAnnotationSeries,
 } from '@/components/charts/chartAnnotations';
+import type { NumberFormat } from '@/types';
 
+import {
+  cleanNumber,
+  formatAxisTick,
+  getExpandableYAxisTicks,
+  getNiceYAxisTicks,
+  getYAxisTicks,
+} from './axisTicks';
 import { hasSeriesSelection } from './chartData';
 import { Y_AXIS_WIDTH } from './constants';
 
@@ -30,8 +38,178 @@ type UseChartScalesArgs = {
   fitYAxisToData: boolean | undefined;
   graphResults: Record<string, unknown>[];
   lineData: LineData[];
+  visibleLineData: LineData[];
   selectedSeriesNames: Set<string> | undefined;
+  referenceLineValues: number[];
+  axisNumberFormat: NumberFormat | undefined;
 };
+
+// Shared by every yAxisDomain branch below. Callers pass only the series
+// actually drawn (already selection- and HARD_LINES_LIMIT-filtered).
+export function scanYAxisValueRange(
+  graphResults: any[],
+  lineData: LineData[],
+): { min: number; max: number } {
+  let min = Infinity;
+  let max = -Infinity;
+  graphResults.forEach(dataPoint => {
+    lineData.forEach(ld => {
+      const value = dataPoint[ld.dataKey];
+      if (typeof value === 'number' && !isNaN(value)) {
+        min = Math.min(min, value);
+        max = Math.max(max, value);
+      }
+    });
+  });
+  return { min, max };
+}
+
+export interface YAxisBounds {
+  domain: AxisDomain;
+  ticks: number[] | undefined;
+  tickFormatter?: (value: number) => string;
+}
+
+const DEFAULT_Y_AXIS_BOUNDS: YAxisBounds = {
+  domain: [0, 'auto'],
+  ticks: undefined,
+};
+const FIT_Y_AXIS_BOUNDS: YAxisBounds = {
+  domain: ['auto', 'auto'],
+  ticks: undefined,
+};
+
+// A stacked bar's rendered height sums its series at each timestamp - leave
+// that entirely to Recharts, regardless of selection/fit-to-data state.
+export function computeYAxisBounds(
+  graphResults: any[],
+  visibleLineData: LineData[],
+  hasSelection: boolean,
+  fitYAxisToData: boolean,
+  displayType: DisplayType,
+  referenceLineValues: number[],
+  axisNumberFormat?: NumberFormat,
+): YAxisBounds {
+  if (displayType === DisplayType.StackedBar) {
+    return DEFAULT_Y_AXIS_BOUNDS;
+  }
+  const shouldFitYAxis = fitYAxisToData;
+
+  if (!hasSelection && !shouldFitYAxis) {
+    // A fully numeric domain skips Recharts' own nice rounding, and a
+    // reference line can extend it further - defer to Recharts entirely.
+    if (referenceLineValues.length > 0) {
+      return DEFAULT_Y_AXIS_BOUNDS;
+    }
+    const { min, max } = scanYAxisValueRange(graphResults, visibleLineData);
+    if (max === -Infinity) {
+      return DEFAULT_Y_AXIS_BOUNDS;
+    }
+    // Recharts widens an explicit domain to fit out-of-range data, so
+    // negative data must be reflected here, not just pinned at zero.
+    const lowerBound = cleanNumber(Math.min(0, min));
+    // max * 1.05 would shrink the upper bound below max for negative data;
+    // padding away from zero keeps headroom regardless of max's sign.
+    const upperBound = cleanNumber(max + Math.abs(max) * 0.05);
+    if (upperBound <= lowerBound) {
+      return DEFAULT_Y_AXIS_BOUNDS;
+    }
+    const expanded = getExpandableYAxisTicks(
+      lowerBound,
+      upperBound,
+      5,
+      axisNumberFormat,
+    );
+    // No nice step fits - fall back to getYAxisTicks' reduce-tick-count
+    // dedup instead of Recharts' raw, collision-prone default.
+    if (expanded.ticks.length === 0) {
+      const baseFormat = (value: number) =>
+        formatAxisTick(value, axisNumberFormat);
+      return {
+        domain: [lowerBound, upperBound],
+        ticks: getYAxisTicks(lowerBound, upperBound, baseFormat),
+        tickFormatter: baseFormat,
+      };
+    }
+    return {
+      domain: [lowerBound, expanded.max],
+      ticks: expanded.ticks,
+      tickFormatter: expanded.tickFormatter,
+    };
+  }
+
+  // A selection with fit-to-data off still keeps the zero-pinned fallback,
+  // not the unpinned fit fallback - only fitting itself opts out of it.
+  const degenerateFallback = shouldFitYAxis
+    ? FIT_Y_AXIS_BOUNDS
+    : DEFAULT_Y_AXIS_BOUNDS;
+  const { min, max } = scanYAxisValueRange(graphResults, visibleLineData);
+  if (min === Infinity || max === -Infinity) {
+    return degenerateFallback;
+  }
+  const padding = (max - min) * 0.05;
+  // Recharts widens the domain to actual negative data regardless of fit
+  // mode, so the lower bound must follow it whenever min itself is negative.
+  const lowerBound = cleanNumber(
+    min < 0 ? min - padding : Math.max(0, min - padding),
+  );
+  const upperBound = cleanNumber(max + padding);
+  if (upperBound <= lowerBound) {
+    return degenerateFallback;
+  }
+  // A reference line can widen the domain (extendDomain) - extend it up
+  // front and nice-step the result, instead of ticking a stale domain.
+  if (referenceLineValues.length > 0) {
+    const extendedLower = cleanNumber(
+      Math.min(lowerBound, ...referenceLineValues),
+    );
+    const extendedUpper = cleanNumber(
+      Math.max(upperBound, ...referenceLineValues),
+    );
+    const expanded = getExpandableYAxisTicks(
+      extendedLower,
+      extendedUpper,
+      5,
+      axisNumberFormat,
+    );
+    if (expanded.ticks.length > 0) {
+      return {
+        domain: [extendedLower, expanded.max],
+        ticks: expanded.ticks,
+        tickFormatter: expanded.tickFormatter,
+      };
+    }
+    const baseFormat = (value: number) =>
+      formatAxisTick(value, axisNumberFormat);
+    return {
+      domain: [extendedLower, extendedUpper],
+      ticks: getYAxisTicks(extendedLower, extendedUpper, baseFormat),
+      tickFormatter: baseFormat,
+    };
+  }
+  const { ticks, tickFormatter } = getNiceYAxisTicks(
+    lowerBound,
+    upperBound,
+    5,
+    axisNumberFormat,
+  );
+  // Same fallback as the default branch above - reduce tick count via
+  // getYAxisTicks rather than leaving this to Recharts' raw default.
+  if (ticks.length === 0) {
+    const baseFormat = (value: number) =>
+      formatAxisTick(value, axisNumberFormat);
+    return {
+      domain: [lowerBound, upperBound],
+      ticks: getYAxisTicks(lowerBound, upperBound, baseFormat),
+      tickFormatter: baseFormat,
+    };
+  }
+  return {
+    domain: [lowerBound, upperBound],
+    ticks,
+    tickFormatter,
+  };
+}
 
 /**
  * Derive the chart's axis domains and the annotation elements that hang off the
@@ -51,65 +229,32 @@ export function useChartScales({
   fitYAxisToData,
   graphResults,
   lineData,
+  visibleLineData,
   selectedSeriesNames,
+  referenceLineValues,
+  axisNumberFormat,
 }: UseChartScalesArgs) {
-  const yAxisDomain: AxisDomain = useMemo(() => {
-    const hasSelection = hasSeriesSelection(selectedSeriesNames);
-
-    // Fitting the y-axis lower bound to the data only applies to line charts.
-    // Bar charts are always anchored at zero so the bar lengths stay
-    // proportional to their values.
-    const shouldFitYAxis =
-      fitYAxisToData && displayType !== DisplayType.StackedBar;
-
-    // The domain follows the visible series only. With no selection and no fit,
-    // let Recharts auto-scale, which pins the lower bound to 0.
-    if (!hasSelection && !shouldFitYAxis) {
-      return [0, 'auto'];
-    }
-
-    // Calculate domain based on visible series (all series when there's no
-    // explicit selection).
-    let minValue = Infinity;
-    let maxValue = -Infinity;
-
-    graphResults.forEach(dataPoint => {
-      lineData.forEach(ld => {
-        const seriesName = ld.displayName || ld.dataKey;
-        // Only consider visible series
-        if (!hasSelection || selectedSeriesNames.has(seriesName)) {
-          const value = dataPoint[ld.dataKey];
-          if (typeof value === 'number' && !isNaN(value)) {
-            minValue = Math.min(minValue, value);
-            maxValue = Math.max(maxValue, value);
-          }
-        }
-      });
-    });
-
-    // If we found valid values, return them with some padding
-    if (minValue !== Infinity && maxValue !== -Infinity) {
-      const padding = (maxValue - minValue) * 0.05; // 5% padding
-      // When fitting to data, allow the lower bound to follow the data
-      // minimum; otherwise keep it pinned at zero. The 5% padding must not
-      // drag the axis below zero unless the data itself is negative, so
-      // clamp at zero whenever the minimum is non-negative.
-      const lowerBound =
-        shouldFitYAxis && minValue < 0
-          ? minValue - padding
-          : Math.max(0, minValue - padding);
-      const upperBound = maxValue + padding;
-      return [lowerBound, upperBound];
-    }
-
-    return ['auto', 'auto'];
-  }, [
-    graphResults,
-    lineData,
-    selectedSeriesNames,
-    fitYAxisToData,
-    displayType,
-  ]);
+  const yAxisBounds = useMemo(
+    () =>
+      computeYAxisBounds(
+        graphResults,
+        visibleLineData,
+        hasSeriesSelection(selectedSeriesNames),
+        fitYAxisToData ?? false,
+        displayType,
+        referenceLineValues,
+        axisNumberFormat,
+      ),
+    [
+      graphResults,
+      visibleLineData,
+      selectedSeriesNames,
+      fitYAxisToData,
+      displayType,
+      referenceLineValues,
+      axisNumberFormat,
+    ],
+  );
 
   // Typed as the tuple it actually returns rather than the wider AxisDomain, so
   // the annotation elements below can read [min, max] without asserting. Still
@@ -176,7 +321,7 @@ export function useChartScales({
   }, [coloredAnnotations, xAxisDomain, containerWidth]);
 
   return {
-    yAxisDomain,
+    yAxisBounds,
     xAxisDomain,
     annotationElements,
     laidOutAnnotations,

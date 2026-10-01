@@ -4,6 +4,7 @@ import { renderHook } from '@testing-library/react';
 
 import { type LineData } from '@/ChartUtils';
 import { ChartAnnotation } from '@/components/charts/chartAnnotations';
+import { getVisibleLineData } from '@/HDXMultiSeriesTimeChart/chartData';
 import { useChartScales } from '@/HDXMultiSeriesTimeChart/useChartScales';
 
 /**
@@ -40,20 +41,41 @@ const baseArgs = {
   ] as Record<string, unknown>[],
   lineData,
   selectedSeriesNames: undefined as Set<string> | undefined,
+  referenceLineValues: [] as number[],
 };
 
-const scales = (overrides: Partial<typeof baseArgs> = {}) =>
-  renderHook(() => useChartScales({ ...baseArgs, ...overrides })).result
-    .current;
+// visibleLineData mirrors MemoChart, which derives it from the selection.
+const scales = (overrides: Partial<typeof baseArgs> = {}) => {
+  const args = { ...baseArgs, ...overrides };
+  return renderHook(() =>
+    useChartScales({
+      ...args,
+      visibleLineData: getVisibleLineData(
+        args.lineData,
+        args.selectedSeriesNames,
+      ),
+      axisNumberFormat: undefined,
+    }),
+  ).result.current;
+};
 
 describe('useChartScales y-domain', () => {
-  it('lets recharts auto-scale from zero with no selection and no fit', () => {
-    expect(scales().yAxisDomain).toEqual([0, 'auto']);
+  it('pins zero and pads the max by 5% with no selection and no fit', () => {
+    expect(scales().yAxisBounds.domain).toEqual([0, 42]);
+  });
+
+  it('defers to recharts from zero when a reference line could widen it', () => {
+    expect(scales({ referenceLineValues: [100] }).yAxisBounds.domain).toEqual([
+      0,
+      'auto',
+    ]);
   });
 
   it('fits the lower bound to the data minimum, less padding', () => {
     // min 10, max 40 -> 5% padding is 1.5.
-    expect(scales({ fitYAxisToData: true }).yAxisDomain).toEqual([8.5, 41.5]);
+    expect(scales({ fitYAxisToData: true }).yAxisBounds.domain).toEqual([
+      8.5, 41.5,
+    ]);
   });
 
   it('does not let the padding drag the axis below zero', () => {
@@ -64,7 +86,7 @@ describe('useChartScales y-domain', () => {
       scales({
         fitYAxisToData: true,
         graphResults: [{ a: 1, b: 100 }],
-      }).yAxisDomain,
+      }).yAxisBounds.domain,
     ).toEqual([0, 104.95]);
   });
 
@@ -77,7 +99,7 @@ describe('useChartScales y-domain', () => {
           { a: -50, b: -10 },
           { a: 0, b: 25 },
         ],
-      }).yAxisDomain,
+      }).yAxisBounds.domain,
     ).toEqual([-53.75, 28.75]);
   });
 
@@ -85,9 +107,9 @@ describe('useChartScales y-domain', () => {
     // A alone spans 10..30, so padding is 1 and the domain is [9, 31]. With B
     // included it would be [8.5, 41.5] — asserting the exact pair catches a
     // wrong padding factor too, which a `toBeLessThan(40)` bound would not.
-    expect(scales({ selectedSeriesNames: new Set(['A']) }).yAxisDomain).toEqual(
-      [9, 31],
-    );
+    expect(
+      scales({ selectedSeriesNames: new Set(['A']) }).yAxisBounds.domain,
+    ).toEqual([9, 31]);
   });
 
   it('bars stay anchored at zero even when fitting is requested', () => {
@@ -97,17 +119,17 @@ describe('useChartScales y-domain', () => {
         fitYAxisToData: true,
         displayType: DisplayType.StackedBar,
         graphResults: [{ a: 100, b: 110 }],
-      }).yAxisDomain,
+      }).yAxisBounds.domain,
     ).toEqual([0, 'auto']);
   });
 
-  it('falls back to auto when no numeric values are present', () => {
+  it('keeps zero pinned when a selection has no numeric values', () => {
     expect(
       scales({
         selectedSeriesNames: new Set(['A']),
         graphResults: [{ a: null, b: 'x' }] as Record<string, unknown>[],
-      }).yAxisDomain,
-    ).toEqual(['auto', 'auto']);
+      }).yAxisBounds.domain,
+    ).toEqual([0, 'auto']);
   });
 });
 
