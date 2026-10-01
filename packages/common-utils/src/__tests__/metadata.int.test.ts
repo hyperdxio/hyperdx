@@ -1436,6 +1436,7 @@ describe('Metadata Integration Tests', () => {
         textIndexSupported = supportsMergeTreeTextIndex(
           await probe.getServerVersion({ connectionId: 'test_connection' }),
         );
+        if (!textIndexSupported) return;
 
         await client.command({
           query: `CREATE OR REPLACE TABLE default.${tableName} (

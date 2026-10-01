@@ -1007,6 +1007,7 @@ export class Metadata {
         timestampValueExpression,
       });
       const index = textIndexInfo.key.indexName;
+      // `cardinality` is the token's row count in the part, not a distinct count.
       const sql = chSql`
         SELECT token AS key
         FROM mergeTreeTextIndex(${{ String: databaseName }}, ${{ String: tableName }}, ${{ String: index }})
@@ -1048,6 +1049,7 @@ export class Metadata {
       });
       const index = textIndexInfo.kv.indexName;
       const separator = textIndexInfo.kv.separator;
+      // `cardinality` is the token's row count in the part, not a distinct count.
       const sql = chSql`
         SELECT splitByString(${{ String: separator }}, token)[1] AS key
         FROM mergeTreeTextIndex(${{ String: databaseName }}, ${{ String: tableName }}, ${{ String: index }})
