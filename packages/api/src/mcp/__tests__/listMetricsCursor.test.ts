@@ -13,7 +13,7 @@ describe('listMetrics cursor', () => {
     it('round-trips a gauge cursor', () => {
       const payload = { kind: 'gauge' as const, lastName: 'system.cpu.idle' };
       const encoded = encodeCursor(payload);
-      expect(encoded).toMatch(/^[A-Za-z0-9+/]+=*$/); // base64
+      expect(encoded).toMatch(/^[A-Za-z0-9_-]+$/); // base64url, unpadded
       expect(decodeCursor(encoded)).toEqual(payload);
     });
 

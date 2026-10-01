@@ -46,6 +46,9 @@ interface Props {
   enableSmallFirstWindow?: boolean;
   tableId?: string;
   errorVariant?: ChartErrorStateVariant;
+  enableRowSelection?: boolean;
+  selectionResetKey?: string;
+  onSelectedRowsChange?: (hasSelectedRows: boolean) => void;
   onResolvedColumnsChange?: (meta: ColumnMetaType[]) => void;
   // Clicking outside the row side panel (and outside `keepOpenSelector`) closes
   // it. Enabled by default; pass `false` to opt out.
@@ -75,6 +78,9 @@ export default function DBSqlRowTableWithSideBar({
   enableSmallFirstWindow,
   tableId,
   errorVariant,
+  enableRowSelection,
+  selectionResetKey,
+  onSelectedRowsChange,
   onResolvedColumnsChange,
   closeOnClickOutside = true,
   keepOpenSelector = DEFAULT_KEEP_OPEN_SELECTOR,
@@ -114,23 +120,30 @@ export default function DBSqlRowTableWithSideBar({
     [sourceData],
   );
 
+  // `rowWhere`/`rowSource` survive a source switch, so a stale `rowWhere` can
+  // outlive the panel it belongs to. Deriving the table's highlight from this
+  // element keeps it from highlighting a row — and from treating the panel as
+  // open, which suppresses inline expansion — while no panel is mounted.
+  const sidePanel =
+    sourceData && (rowSource === sourceId || !rowSource) ? (
+      <DBRowSidePanel
+        source={sourceData}
+        rowId={rowId ?? undefined}
+        aliasWith={aliasWith}
+        onClose={onCloseSidebar}
+        closeOnClickOutside={closeOnClickOutside}
+        keepOpenSelector={keepOpenSelector}
+      />
+    ) : null;
+
   return (
     <RowSidePanelContext value={context ?? {}}>
-      {sourceData && (rowSource === sourceId || !rowSource) && (
-        <DBRowSidePanel
-          source={sourceData}
-          rowId={rowId ?? undefined}
-          aliasWith={aliasWith}
-          onClose={onCloseSidebar}
-          closeOnClickOutside={closeOnClickOutside}
-          keepOpenSelector={keepOpenSelector}
-        />
-      )}
+      {sidePanel}
       <DBSqlRowTable
         config={config}
         sourceId={sourceId}
         onRowDetailsClick={onOpenSidebar}
-        highlightedLineId={rowId ?? undefined}
+        highlightedLineId={sidePanel ? (rowId ?? undefined) : undefined}
         enabled={enabled}
         isLive={isLive ?? true}
         queryKeyPrefix={'dbSqlRowTable'}
@@ -146,6 +159,9 @@ export default function DBSqlRowTableWithSideBar({
         enableSmallFirstWindow={enableSmallFirstWindow}
         tableId={tableId}
         errorVariant={errorVariant}
+        enableRowSelection={enableRowSelection}
+        selectionResetKey={selectionResetKey}
+        onSelectedRowsChange={onSelectedRowsChange}
         onResolvedColumnsChange={onResolvedColumnsChange}
       />
     </RowSidePanelContext>

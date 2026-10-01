@@ -130,9 +130,12 @@ import {
 } from '@/timeQuery';
 import {
   formatDurationMs,
+  orderByAfterRemovingSelectItem,
   QUERY_LOCAL_STORAGE,
+  selectItemExpression,
   useLocalStorage,
   usePrevious,
+  withMapKeyAlias,
 } from '@/utils';
 
 import ChartSQLPreview, { SQLPreview } from './components/ChartSQLPreview';
@@ -1104,7 +1107,7 @@ export function DBSearchPage() {
     [sources, lastSelectedSourceId],
   );
 
-  const { control, setValue, reset, handleSubmit, formState } =
+  const { control, setValue, getValues, reset, handleSubmit, formState } =
     useForm<SearchConfigFromSchema>({
       values: {
         select: searchedConfig.select || '',
@@ -1647,6 +1650,19 @@ export function DBSearchPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [updateRelativeTimeInputValue, searchedConfig.source, isReady]);
 
+  // Row selection is scoped to one result set, so anything that re-queries
+  // or changes the result set should reset the selection.
+  const selectionResetKey = useMemo(
+    () =>
+      JSON.stringify([
+        searchedConfig,
+        searchedTimeRange[0].getTime(),
+        searchedTimeRange[1].getTime(),
+        denoiseResults,
+      ]),
+    [searchedConfig, searchedTimeRange, denoiseResults],
+  );
+
   useLiveUpdate({
     isLive,
     interval,
@@ -1661,6 +1677,18 @@ export function DBSearchPage() {
   useEffect(() => {
     setShouldShowLiveModeHint(isLive === false);
   }, [isLive]);
+
+  // Selected rows belong to one result set, so a live refresh would churn the
+  // table under them. Same treatment as expanding a row: leave live tail, which
+  // surfaces the Resume Live Tail button so the exit is visible and undoable.
+  const onSelectedRowsChange = useCallback(
+    (hasSelectedRows: boolean) => {
+      if (hasSelectedRows && isLive) {
+        setIsLive(false);
+      }
+    },
+    [isLive, setIsLive],
+  );
 
   // Callback to handle when rows are expanded - kick user out of live tail
   const onExpandedRowsChange = useCallback(
@@ -1712,13 +1740,38 @@ export function DBSearchPage() {
 
   const toggleColumn = useCallback(
     (column: string) => {
-      const newSelectArray = displayedColumns.includes(column)
-        ? displayedColumns.filter(s => s !== column)
-        : [...displayedColumns, column];
+      // A column added from the UI can carry an alias, so match the expression too
+      const selected = displayedColumns.find(
+        s => s === column || selectItemExpression(s) === column,
+      );
+      const newSelectArray = selected
+        ? displayedColumns.filter(s => s !== selected)
+        : [
+            ...displayedColumns,
+            withMapKeyAlias(column, displayedColumns, knownColumns),
+          ];
       setValue('select', newSelectArray.join(', '));
+      if (selected) {
+        const orderBy = getValues('orderBy') ?? '';
+        const nextOrderBy = orderByAfterRemovingSelectItem(
+          selected,
+          orderBy,
+          defaultSearchConfig.orderBy ?? '',
+        );
+        if (nextOrderBy !== orderBy) {
+          setValue('orderBy', nextOrderBy);
+        }
+      }
       onSubmit();
     },
-    [displayedColumns, setValue, onSubmit],
+    [
+      displayedColumns,
+      knownColumns,
+      setValue,
+      getValues,
+      defaultSearchConfig.orderBy,
+      onSubmit,
+    ],
   );
 
   const generateSearchUrl = useCallback(
@@ -2369,7 +2422,7 @@ export function DBSearchPage() {
           <Flex
             gap="sm"
             style={{ flex: '0 1 500px', minWidth: 0 }}
-            align="center"
+            align="flex-start"
           >
             <TimePicker
               data-testid="time-picker"
@@ -2779,6 +2832,9 @@ export function DBSearchPage() {
                             onSortingChange={onSortingChange}
                             initialSortBy={initialSortBy}
                             enableSmallFirstWindow
+                            enableRowSelection
+                            selectionResetKey={selectionResetKey}
+                            onSelectedRowsChange={onSelectedRowsChange}
                             onResolvedColumnsChange={onResolvedColumnsChange}
                           />
                         )}

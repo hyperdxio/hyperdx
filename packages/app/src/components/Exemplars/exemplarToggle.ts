@@ -1,8 +1,12 @@
+import { getExemplarPromqlExpression } from '@hyperdx/common-utils/dist/core/promql';
 import {
   isExemplarEligible,
   isPromqlExemplarEligible,
 } from '@hyperdx/common-utils/dist/core/renderChartConfig';
-import { SourceKind } from '@hyperdx/common-utils/dist/types';
+import {
+  PromqlExpressionList,
+  SourceKind,
+} from '@hyperdx/common-utils/dist/types';
 
 export type ExemplarToggleState = {
   /** Render the toggle at all: this chart's source kind can carry exemplars. */
@@ -42,7 +46,7 @@ export function getExemplarToggleState({
   enabled: boolean;
   configType?: 'sql' | 'builder' | 'promql';
   sourceKind?: SourceKind;
-  promqlExpression?: string;
+  promqlExpression?: PromqlExpressionList;
   series?: { aggFn?: string; metricType?: string }[];
   seriesReturnType?: 'ratio' | 'column';
   /** Builder group by: a SQL string or a select list, both length-bearing. */
@@ -54,7 +58,9 @@ export function getExemplarToggleState({
   if (configType === 'promql') {
     return {
       showExemplars: true,
-      exemplarIneligibleReason: isPromqlExemplarEligible(promqlExpression)
+      exemplarIneligibleReason: isPromqlExemplarEligible(
+        getExemplarPromqlExpression(promqlExpression),
+      )
         ? undefined
         : PROMQL_INELIGIBLE,
     };

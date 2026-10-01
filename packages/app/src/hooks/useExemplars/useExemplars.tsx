@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { isEqual } from 'lodash';
+import { getExemplarPromqlExpression } from '@hyperdx/common-utils/dist/core/promql';
 import {
   isPromqlExemplarEligible,
   renderMetricExemplarsChartConfig,
@@ -73,8 +74,11 @@ export function useExemplars(
   // isPromqlExemplarEligible. Same rule the PromQL editor gates its toggle on, so
   // a config saved before the rule tightened (or written via the API) doesn't
   // plot duration markers on a requests/sec axis.
+  const promqlExpression = isPromql
+    ? getExemplarPromqlExpression(config.promqlExpression)
+    : undefined;
   const promqlEligible =
-    !isPromql || isPromqlExemplarEligible(config.promqlExpression);
+    !isPromql || isPromqlExemplarEligible(promqlExpression);
   // Global feature gate: even a config with enableExemplars set fetches nothing
   // while the feature is disabled for the deployment.
   // A marker's y is the trace's own value on the chart's shared axis, so with
@@ -125,10 +129,13 @@ export function useExemplars(
     queryFn: async context => {
       // PromQL → native Prometheus exemplars via the API proxy.
       if (isPromqlChartConfig(config) && fetchRange) {
+        // Unreachable while `enabled` requires eligibility; keeps a PromQL chart
+        // out of the metric-table branch below.
+        if (!promqlExpression) return { exemplars: [] };
         const [startDate, endDate] = fetchRange;
         const resp = await prometheusApi.queryExemplars(
           {
-            query: config.promqlExpression,
+            query: promqlExpression,
             start: startDate.getTime() / 1000,
             end: endDate.getTime() / 1000,
             connectionId: config.connection,
@@ -142,7 +149,7 @@ export function useExemplars(
         }
         const { exemplars, dropped } = normalizePrometheusExemplars(
           resp.data,
-          config.promqlExpression,
+          promqlExpression,
         );
         // Native Prometheus /query_exemplars has no result-limit parameter, so
         // bound the set client-side to keep an unbounded upstream response from

@@ -39,6 +39,7 @@ jest.mock('@/components/Exemplars', () => ({
 jest.mock('@/hooks/useChartConfig', () => ({
   useQueriedChartConfig: (...args: unknown[]) =>
     mockUseQueriedChartConfig(...args),
+  getMinGranularitySeconds: jest.fn().mockReturnValue(undefined),
 }));
 
 jest.mock('@/hooks/useMVOptimizationExplanation', () => ({

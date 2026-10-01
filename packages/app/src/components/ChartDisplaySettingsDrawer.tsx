@@ -84,6 +84,8 @@ interface ChartDisplaySettingsDrawerProps {
   displayType: DisplayType;
   /** 'sql' for raw SQL chart configs; anything else is treated as a builder config. */
   configType?: 'sql' | 'builder' | 'promql';
+  /** Whether a PromQL tile's queried expression runs over a range. */
+  promqlUsesRange?: boolean;
   previousDateRange?: [Date, Date];
   onChange: (settings: ChartConfigDisplaySettings, isDirty: boolean) => void;
   onClose: () => void;
@@ -138,6 +140,7 @@ export default function ChartDisplaySettingsDrawer({
   opened,
   displayType,
   configType,
+  promqlUsesRange = false,
   defaultNumberFormat,
   onChange,
   onClose,
@@ -224,9 +227,12 @@ export default function ChartDisplaySettingsDrawer({
   const showSeriesLimit = isTimeChart && configType !== 'promql';
   const isRawSqlTimeChart = showSeriesLimit && configType === 'sql';
 
-  // Every PromQL display except Number surfaces the series name
+  // Every PromQL display that surfaces a series name. A number tile shows one
+  // value and a table gives each label its own column, so neither has a legend.
   const showLegendTemplate =
-    configType === 'promql' && displayType !== DisplayType.Number;
+    configType === 'promql' &&
+    displayType !== DisplayType.Number &&
+    displayType !== DisplayType.Table;
 
   // On pie/bar builder charts, seriesLimit becomes a plain SQL LIMIT on the
   // number of slices/bars; raw SQL configs author their own LIMIT directly.
@@ -240,20 +246,27 @@ export default function ChartDisplaySettingsDrawer({
   // column ordering needs the builder `select` structure to know which columns
   // are group-by keys, so it stays builder-only.
   const showTableOptions = displayType === DisplayType.Table;
-  const showGroupByColumnsOnLeft = showTableOptions && configType !== 'sql';
+  const showGroupByColumnsOnLeft =
+    showTableOptions && configType !== 'sql' && configType !== 'promql';
 
   // Tile-level color is only meaningful for number tiles today.
   // Per-series colors on line / bar / pie ship in a follow-up PR via
   // `select[i].color`.
   const showTileColor = displayType === DisplayType.Number;
 
-  // The background sparkline is derived from a time-bucketed version of the
-  // tile's query, so it only applies to builder number tiles: raw SQL number
-  // tiles return a single value with no time dimension to bucket. On a SQL
-  // number tile the control is shown disabled with a hint rather than hidden,
-  // so the option stays discoverable.
+  // The sparkline needs buckets. A builder tile derives them from a
+  // time-bucketed version of its query; a PromQL tile reuses the buckets its
+  // range query fetches, so an instant one has none. Raw SQL returns a
+  // single value with no time dimension at all. Where it cannot apply the
+  // control is shown disabled with a hint rather than hidden, so the option
+  // stays discoverable.
   const showBackgroundChart = displayType === DisplayType.Number;
-  const isBackgroundChartDisabled = configType === 'sql';
+  const isBackgroundChartDisabled =
+    configType === 'sql' || (configType === 'promql' && !promqlUsesRange);
+  const backgroundChartDisabledHint =
+    configType === 'promql'
+      ? 'Available on PromQL range queries.'
+      : 'Available on query-builder number tiles.';
 
   return (
     <Drawer
@@ -488,6 +501,7 @@ export default function ChartDisplaySettingsDrawer({
                   value={value}
                   onChange={onChange}
                   disabled={isBackgroundChartDisabled}
+                  disabledHint={backgroundChartDisabledHint}
                 />
               )}
             />

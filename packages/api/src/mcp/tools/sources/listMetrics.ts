@@ -13,6 +13,10 @@ import { getSource } from '@/controllers/sources';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpServerError, mcpUserError } from '@/mcp/utils/errors';
 import logger from '@/utils/logger';
+import {
+  decodeCursor as decodeCursorPayload,
+  encodeCursor as encodeCursorPayload,
+} from '@/utils/pagination';
 
 import {
   DISCOVERABLE_METRIC_KINDS,
@@ -32,37 +36,21 @@ const MAX_EXEC_SECONDS = 8;
 
 // ─── Cursor ──────────────────────────────────────────────────────────────────
 
-export type ListMetricsCursorPayload = {
-  kind: DiscoverableMetricKind;
-  lastName: string;
-};
+const cursorPayloadSchema = z.object({
+  kind: z.enum(DISCOVERABLE_METRIC_KINDS),
+  lastName: z.string(),
+});
+
+export type ListMetricsCursorPayload = z.infer<typeof cursorPayloadSchema>;
 
 /** @internal Exported for testing. */
 export function encodeCursor(payload: ListMetricsCursorPayload): string {
-  return Buffer.from(JSON.stringify(payload), 'utf8').toString('base64');
+  return encodeCursorPayload(payload);
 }
 
 /** @internal Exported for testing. */
 export function decodeCursor(raw: string): ListMetricsCursorPayload | null {
-  try {
-    const decoded = Buffer.from(raw, 'base64').toString('utf8');
-    const parsed = JSON.parse(decoded);
-    if (
-      typeof parsed === 'object' &&
-      parsed !== null &&
-      typeof parsed.kind === 'string' &&
-      typeof parsed.lastName === 'string' &&
-      (DISCOVERABLE_METRIC_KINDS as readonly string[]).includes(parsed.kind)
-    ) {
-      return {
-        kind: parsed.kind as DiscoverableMetricKind,
-        lastName: parsed.lastName,
-      };
-    }
-  } catch {
-    // fall through
-  }
-  return null;
+  return decodeCursorPayload(raw, cursorPayloadSchema);
 }
 
 // ─── Schema ──────────────────────────────────────────────────────────────────

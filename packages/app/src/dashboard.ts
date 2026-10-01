@@ -20,10 +20,11 @@ import { hashCode } from '@/utils';
 import api, {
   hdxServer,
   useCompleteOnboardingTask,
+  useInvalidateTags,
   useMarkOnboardingTaskComplete,
 } from './api';
 import { IS_LOCAL_MODE } from './config';
-import { createEntityStore } from './localStore';
+import { collectTags, createEntityStore } from './localStore';
 
 // TODO: Move to types
 export type Tile = {
@@ -152,6 +153,7 @@ function markDashboardOnboarding(
 export function useUpdateDashboard() {
   const queryClient = useQueryClient();
   const markOnboardingTaskComplete = useMarkOnboardingTaskComplete();
+  const invalidateTags = useInvalidateTags();
 
   return useMutation({
     mutationFn: async (
@@ -172,6 +174,7 @@ export function useUpdateDashboard() {
     },
     onSuccess: updated => {
       queryClient.invalidateQueries({ queryKey: ['dashboards'] });
+      invalidateTags();
       markDashboardOnboarding(markOnboardingTaskComplete, updated?.tiles);
     },
   });
@@ -180,6 +183,7 @@ export function useUpdateDashboard() {
 export function useCreateDashboard() {
   const queryClient = useQueryClient();
   const markOnboardingTaskComplete = useMarkOnboardingTaskComplete();
+  const invalidateTags = useInvalidateTags();
 
   return useMutation({
     mutationFn: async (dashboard: Omit<Dashboard, 'id'>) => {
@@ -194,6 +198,7 @@ export function useCreateDashboard() {
     },
     onSuccess: created => {
       queryClient.invalidateQueries({ queryKey: ['dashboards'] });
+      invalidateTags();
       // Key off the server's persisted tiles (see useUpdateDashboard).
       markDashboardOnboarding(markOnboardingTaskComplete, created?.tiles);
     },
@@ -336,15 +341,12 @@ export function fetchLocalDashboards(): Dashboard[] {
 }
 
 export function getLocalDashboardTags(): string[] {
-  const tagSet = new Set<string>();
-  localDashboards
-    .getAll()
-    .forEach(d => (d.tags ?? []).forEach(t => tagSet.add(t)));
-  return Array.from(tagSet);
+  return collectTags(localDashboards.getAll());
 }
 
 export function useDeleteDashboard() {
   const queryClient = useQueryClient();
+  const invalidateTags = useInvalidateTags();
 
   return useMutation({
     mutationFn: (id: string) => {
@@ -356,6 +358,7 @@ export function useDeleteDashboard() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['dashboards'] });
+      invalidateTags();
     },
   });
 }

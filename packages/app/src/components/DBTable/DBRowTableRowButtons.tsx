@@ -1,14 +1,20 @@
 import React, { useState } from 'react';
 import { notifications } from '@mantine/notifications';
-import { IconCopy, IconLink, IconTextWrap } from '@tabler/icons-react';
+import {
+  IconCopy,
+  IconLayoutSidebarRightExpand,
+  IconLink,
+  IconTextWrap,
+} from '@tabler/icons-react';
 
-import { INTERNAL_ROW_FIELDS, RowWhereResult } from '@/hooks/useRowWhere';
+import { RowWhereResult } from '@/hooks/useRowWhere';
 import {
   CLIPBOARD_ERROR_MESSAGE,
   copyTextToClipboard,
 } from '@/utils/clipboard';
 
 import { DBRowTableIconButton } from './DBRowTableIconButton';
+import { toExportableRow } from './rowExport';
 
 import styles from '@styles/LogTable.module.scss';
 
@@ -18,6 +24,8 @@ interface DBRowTableRowButtonsProps {
   sourceId?: string;
   isWrapped: boolean;
   onToggleWrap: () => void;
+  /** Omitted when clicking the row already opens the side panel. */
+  onOpenSidePanel?: () => void;
 }
 
 const DBRowTableRowButtons: React.FC<DBRowTableRowButtonsProps> = ({
@@ -26,38 +34,14 @@ const DBRowTableRowButtons: React.FC<DBRowTableRowButtonsProps> = ({
   sourceId,
   isWrapped,
   onToggleWrap,
+  onOpenSidePanel,
 }) => {
   const [isCopied, setIsCopied] = useState(false);
   const [isUrlCopied, setIsUrlCopied] = useState(false);
 
   const copyRowData = async () => {
     try {
-      // Filter out internal metadata fields that start with __ or are generated IDs
-
-      const { [INTERNAL_ROW_FIELDS.ID]: _id, ...cleanRow } = row;
-
-      // Parse JSON string fields to make them proper JSON objects
-      const parsedRow = Object.entries(cleanRow).reduce(
-        (acc, [key, value]) => {
-          if (
-            typeof value === 'string' &&
-            (value.startsWith('{') || value.startsWith('['))
-          ) {
-            try {
-              acc[key] = JSON.parse(value);
-            } catch {
-              // If parsing fails, keep the original string
-              acc[key] = value;
-            }
-          } else {
-            acc[key] = value;
-          }
-          return acc;
-        },
-        {} as Record<string, any>,
-      );
-
-      const rowData = JSON.stringify(parsedRow, null, 2);
+      const rowData = JSON.stringify(toExportableRow(row), null, 2);
       const copied = await copyTextToClipboard(rowData);
       if (!copied) {
         notifications.show({
@@ -129,6 +113,15 @@ const DBRowTableRowButtons: React.FC<DBRowTableRowButtonsProps> = ({
       >
         <IconLink size={16} />
       </DBRowTableIconButton>
+      {onOpenSidePanel && (
+        <DBRowTableIconButton
+          onClick={onOpenSidePanel}
+          variant="copy"
+          title="Open in side panel"
+        >
+          <IconLayoutSidebarRightExpand size={16} />
+        </DBRowTableIconButton>
+      )}
     </div>
   );
 };
