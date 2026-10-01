@@ -452,6 +452,8 @@ export const bulkInsertLogs = async (
 export const bulkInsertMetricsGauge = async (
   metrics: {
     MetricName: string;
+    MetricUnit?: string;
+    MetricDescription?: string;
     ResourceAttributes: Record<string, string>;
     ScopeAttributes?: Record<string, string>;
     Attributes?: Record<string, string>;

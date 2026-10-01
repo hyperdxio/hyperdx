@@ -25,7 +25,8 @@ import {
 } from './metricKinds';
 
 const DEFAULT_LOOKBACK_MS = 24 * 60 * 60 * 1000;
-const DESCRIBE_TIMEOUT_MS = 10_000;
+// Matches the 30s cap the MCP query tools use.
+const DESCRIBE_TIMEOUT_MS = 30_000;
 
 // Server-side safety nets for the attribute-keys discovery query.
 // Sample at most N rows that match (MetricName, time range), then
@@ -34,7 +35,10 @@ const DESCRIBE_TIMEOUT_MS = 10_000;
 // wall-clock budget. 100k rows is plenty to surface every unique map
 // key on a healthy OTel metric.
 const METRIC_ATTR_KEYS_SAMPLE_SIZE = 100_000;
-const METRIC_ATTR_KEYS_MAX_EXEC_SECONDS = 8;
+// Attribute keys and value sampling run back to back, so each gets under half
+// the wall-clock budget; with timeout_overflow_mode: 'break' both return
+// partial results before DESCRIBE_TIMEOUT_MS fires.
+const METRIC_ATTR_KEYS_MAX_EXEC_SECONDS = 14;
 
 // Max sampled values per attribute key (when sampleValues is true).
 const MAX_ATTR_VALUES = 10;

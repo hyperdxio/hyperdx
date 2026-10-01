@@ -1,10 +1,6 @@
-import {
-  chSql,
-  concatChSql,
-  tableExpr,
-} from '@hyperdx/common-utils/dist/clickhouse';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
+import { trace } from '@opentelemetry/api';
 import { z } from 'zod';
 
 import { ClickhouseClient } from '@/clickhouse';
@@ -19,6 +15,13 @@ import {
 } from '@/utils/pagination';
 
 import {
+  fetchMetricNames,
+  fetchMetricUnitsAndDescriptions,
+  KIND_TIMED_OUT_ERROR,
+  type MetricEntry,
+  scanKindsForPage,
+} from './listMetricsPage';
+import {
   DISCOVERABLE_METRIC_KINDS,
   type DiscoverableMetricKind,
 } from './metricKinds';
@@ -27,12 +30,19 @@ const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 500;
 const DEFAULT_LOOKBACK_MS = 24 * 60 * 60 * 1000;
 
-// Hard timeout for the entire list operation (ms).
-const LIST_TIMEOUT_MS = 10_000;
+// Wall-clock budget for the whole call, matching the 30s cap the MCP query
+// tools use.
+const LIST_TIMEOUT_MS = 30_000;
 
-// Server-side ClickHouse execution cap per query. Matches the bounds
-// used by describeMetric's fetchAttributeKeys / sampleAttributeValues.
-const MAX_EXEC_SECONDS = 8;
+// Time held back from the name scan for the unit/description lookup and
+// response assembly. Kinds still scanning when it starts are reported as
+// timed out and the kinds that finished are returned.
+const ENRICH_RESERVE_MS = 4_000;
+
+// Per-query ClickHouse caps. Both use timeout_overflow_mode: 'break', so
+// ClickHouse returns what it has read before the wall clock fires.
+const NAMES_MAX_EXEC_SECONDS = 24;
+const ENRICH_MAX_EXEC_SECONDS = 3;
 
 // ─── Cursor ──────────────────────────────────────────────────────────────────
 
@@ -109,13 +119,6 @@ const listMetricsSchema = z.object({
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-type MetricEntry = {
-  name: string;
-  kind: DiscoverableMetricKind;
-  unit?: string;
-  description?: string;
-};
-
 function parseTimeRange(
   startTime?: string,
   endTime?: string,
@@ -133,102 +136,6 @@ function parseTimeRange(
     return { error: 'endTime must be greater than startTime' };
   }
   return { startDate, endDate };
-}
-
-async function fetchMetricsForKind({
-  clickhouseClient,
-  metadata,
-  kind,
-  databaseName,
-  tableName,
-  connectionId,
-  startDate,
-  endDate,
-  namePattern,
-  afterName,
-  limit,
-  signal,
-}: {
-  clickhouseClient: ClickhouseClient;
-  metadata: ReturnType<typeof getMetadata>;
-  kind: DiscoverableMetricKind;
-  databaseName: string;
-  tableName: string;
-  connectionId: string;
-  startDate: Date;
-  endDate: Date;
-  namePattern: string | undefined;
-  afterName: string | undefined;
-  limit: number;
-  signal: AbortSignal;
-}): Promise<MetricEntry[]> {
-  // Defensive column-presence check so we don't reference MetricUnit /
-  // MetricDescription on non-OTel-default schemas.
-  const columns = await metadata.getColumns({
-    databaseName,
-    tableName,
-    connectionId,
-  });
-  const columnNames = new Set(columns.map(c => c.name));
-  const hasUnit = columnNames.has('MetricUnit');
-  const hasDescription = columnNames.has('MetricDescription');
-
-  const projections = [
-    chSql`MetricName`,
-    ...(hasUnit
-      ? [chSql`anyLast(${{ Identifier: 'MetricUnit' }}) AS MetricUnit`]
-      : []),
-    ...(hasDescription
-      ? [
-          chSql`anyLast(${{ Identifier: 'MetricDescription' }}) AS MetricDescription`,
-        ]
-      : []),
-  ];
-
-  const whereParts = [
-    chSql`TimeUnix >= fromUnixTimestamp64Milli(${{ Int64: startDate.getTime() }})`,
-    chSql`TimeUnix <= fromUnixTimestamp64Milli(${{ Int64: endDate.getTime() }})`,
-    ...(afterName !== undefined
-      ? [chSql`MetricName > ${{ String: afterName }}`]
-      : []),
-    ...(namePattern
-      ? [chSql`MetricName ILIKE ${{ String: namePattern }}`]
-      : []),
-  ];
-
-  const sql = chSql`
-    SELECT ${concatChSql(', ', projections)}
-    FROM ${tableExpr({ database: databaseName, table: tableName })}
-    WHERE ${concatChSql(' AND ', whereParts)}
-    GROUP BY MetricName
-    ORDER BY MetricName ASC
-    LIMIT ${{ Int32: limit }}
-  `;
-
-  type Row = {
-    MetricName: string;
-    MetricUnit?: string;
-    MetricDescription?: string;
-  };
-
-  const response = await clickhouseClient.query<'JSON'>({
-    query: sql.sql,
-    query_params: sql.params,
-    format: 'JSON',
-    connectionId,
-    clickhouse_settings: {
-      max_execution_time: MAX_EXEC_SECONDS,
-      timeout_overflow_mode: 'break',
-    },
-    abort_signal: signal,
-  });
-  const result = (await response.json()) as { data: Row[] };
-  return result.data.map(row => {
-    const entry: MetricEntry = { name: row.MetricName, kind };
-    if (row.MetricUnit) entry.unit = row.MetricUnit;
-    if (row.MetricDescription) entry.description = row.MetricDescription;
-    return entry;
-  });
 }
 
 // ─── Tool registration ───────────────────────────────────────────────────────
@@ -266,6 +173,7 @@ export function registerListMetrics({
       const input: z.infer<typeof listMetricsSchema> =
         listMetricsSchema.parse(rawInput);
 
+      const deadlineAt = Date.now() + LIST_TIMEOUT_MS;
       const controller = new AbortController();
       let timeoutId: ReturnType<typeof setTimeout> | undefined;
       const timeoutPromise = new Promise<never>((_, reject) => {
@@ -277,7 +185,12 @@ export function registerListMetrics({
 
       try {
         return await Promise.race([
-          listMetricsImpl(teamId.toString(), input, controller.signal),
+          listMetricsImpl(
+            teamId.toString(),
+            input,
+            deadlineAt,
+            controller.signal,
+          ),
           timeoutPromise,
         ]);
       } catch (e) {
@@ -299,9 +212,76 @@ export function registerListMetrics({
   );
 }
 
+/**
+ * Attach unit and description to each entry. Best effort: on failure or
+ * timeout the names are still returned.
+ */
+async function enrichEntries({
+  entries,
+  clickhouseClient,
+  metadata,
+  databaseName,
+  metricTables,
+  connectionId,
+  startDate,
+  endDate,
+  signal,
+}: {
+  entries: MetricEntry[];
+  clickhouseClient: ClickhouseClient;
+  metadata: ReturnType<typeof getMetadata>;
+  databaseName: string;
+  metricTables: Partial<Record<DiscoverableMetricKind, string>>;
+  connectionId: string;
+  startDate: Date;
+  endDate: Date;
+  signal: AbortSignal;
+}): Promise<MetricEntry[]> {
+  const kinds = [...new Set(entries.map(e => e.kind))];
+  const byKind = await Promise.all(
+    kinds.map(async kind => {
+      const tableName = metricTables[kind]!;
+      try {
+        // Skip MetricUnit / MetricDescription on non-OTel-default schemas.
+        const columns = await metadata.getColumns({
+          databaseName,
+          tableName,
+          connectionId,
+        });
+        const columnNames = new Set(columns.map(c => c.name));
+        return await fetchMetricUnitsAndDescriptions({
+          clickhouseClient,
+          databaseName,
+          tableName,
+          connectionId,
+          names: entries.filter(e => e.kind === kind).map(e => e.name),
+          startDate,
+          endDate,
+          hasUnit: columnNames.has('MetricUnit'),
+          hasDescription: columnNames.has('MetricDescription'),
+          maxExecutionSeconds: ENRICH_MAX_EXEC_SECONDS,
+          signal,
+        });
+      } catch (e) {
+        logger.warn(
+          { kind, tableName, error: e instanceof Error ? e.message : e },
+          'Failed to fetch metric unit/description',
+        );
+        return new Map<string, { unit?: string; description?: string }>();
+      }
+    }),
+  );
+  const enrichments = new Map(kinds.map((kind, i) => [kind, byKind[i]]));
+  return entries.map(entry => ({
+    ...entry,
+    ...enrichments.get(entry.kind)?.get(entry.name),
+  }));
+}
+
 async function listMetricsImpl(
   teamId: string,
   input: z.infer<typeof listMetricsSchema>,
+  deadlineAt: number,
   signal: AbortSignal,
 ) {
   const source = await getSource(teamId, input.sourceId);
@@ -365,64 +345,68 @@ async function listMetricsImpl(
   const limit = input.limit ?? DEFAULT_LIMIT;
   const databaseName = source.from.databaseName;
 
-  const metrics: MetricEntry[] = [];
-  // Per-kind fetch failures, surfaced on the response so the agent
-  // can distinguish "kind genuinely has no metrics" from "the fetch
-  // for that kind failed" — the two need different recovery steps.
-  const partialFailure: { kind: string; error: string }[] = [];
-  let nextCursor: string | undefined;
-  for (let i = startKindIdx; i < requestedKinds.length; i++) {
-    const kind = requestedKinds[i];
-    const tableName = source.metricTables[kind];
-    if (!tableName) continue;
-    const afterName =
-      cursor && cursor.kind === kind && i === startKindIdx
-        ? cursor.lastName
-        : undefined;
-    const remaining = limit - metrics.length;
-    if (remaining <= 0) break;
-    // Fetch one extra row so we can detect more-data-available.
-    let kindMetrics: MetricEntry[];
-    try {
-      kindMetrics = await fetchMetricsForKind({
+  const connectionId = source.connection.toString();
+
+  // Kinds before the cursor's kind were already returned on earlier pages.
+  const scanKinds = requestedKinds
+    .slice(startKindIdx)
+    .filter(kind => Boolean(source.metricTables[kind]));
+  const page = await scanKindsForPage({
+    kinds: scanKinds,
+    limit,
+    deadlineAt: deadlineAt - ENRICH_RESERVE_MS,
+    signal,
+    fetchNames: (kind, kindSignal) =>
+      fetchMetricNames({
         clickhouseClient,
-        metadata,
-        kind,
         databaseName,
-        tableName,
-        connectionId: source.connection.toString(),
+        tableName: source.metricTables[kind]!,
+        connectionId,
         startDate,
         endDate,
         namePattern: input.namePattern,
-        afterName,
-        limit: remaining + 1,
-        signal,
-      });
-    } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      logger.warn(
-        { sourceId: input.sourceId, kind, error: message },
-        'Failed to list metrics for kind',
-      );
-      partialFailure.push({
-        kind,
-        error: message.replace(/\s+/g, ' ').trim().slice(0, 200),
-      });
-      continue;
-    }
-    if (kindMetrics.length > remaining) {
-      // We hit the cap for this kind; emit cursor pointing at the
-      // last returned name and stop iterating further kinds.
-      const truncated = kindMetrics.slice(0, remaining);
-      metrics.push(...truncated);
-      nextCursor = encodeCursor({
-        kind,
-        lastName: truncated[truncated.length - 1].name,
-      });
-      break;
-    }
-    metrics.push(...kindMetrics);
+        afterName: kind === cursor?.kind ? cursor.lastName : undefined,
+        // One extra row detects that more names remain for this kind.
+        limit: limit + 1,
+        maxExecutionSeconds: NAMES_MAX_EXEC_SECONDS,
+        signal: kindSignal,
+      }),
+  });
+  for (const failure of page.partialFailure) {
+    logger.warn(
+      { sourceId: input.sourceId, kind: failure.kind, error: failure.error },
+      'Failed to list metrics for kind',
+    );
   }
+
+  const enrichSignal = AbortSignal.any([
+    signal,
+    AbortSignal.timeout(Math.max(0, deadlineAt - Date.now() - 500)),
+  ]);
+  const metrics = await enrichEntries({
+    entries: page.entries,
+    clickhouseClient,
+    metadata,
+    databaseName,
+    metricTables: source.metricTables,
+    connectionId,
+    startDate,
+    endDate,
+    signal: enrichSignal,
+  });
+
+  const nextCursor = page.next && encodeCursor(page.next);
+  // Per-kind failures are surfaced so the agent can tell "kind has no
+  // metrics" apart from "the fetch for that kind failed or timed out".
+  const partialFailure = page.partialFailure;
+  trace.getActiveSpan()?.setAttributes({
+    'mcp.list_metrics.kinds_scanned': scanKinds.length,
+    'mcp.list_metrics.kinds_failed': partialFailure.length,
+    'mcp.list_metrics.kinds_timed_out': partialFailure.filter(
+      f => f.error === KIND_TIMED_OUT_ERROR,
+    ).length,
+    'mcp.list_metrics.result_count': metrics.length,
+  });
 
   const responseObj: Record<string, unknown> = {
     metrics,
