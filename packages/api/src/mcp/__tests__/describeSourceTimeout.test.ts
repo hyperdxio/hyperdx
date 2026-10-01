@@ -137,9 +137,30 @@ describe('clickstack_describe_source deadline', () => {
     expect(source.partial).toBe(true);
     expect(source.skippedStages).toEqual([
       'mapAttributeKeys',
+      'mapAttributeValues',
       'lowCardinalityValues',
     ]);
     expect(usage.lowCardinalityValues).toContain('skipped due to timeout');
+  });
+
+  it('flags value sampling that returns some keys after the abort', async () => {
+    mockMetadata.getAllKeyValues.mockImplementation(
+      ({ signal }) =>
+        new Promise(resolve =>
+          signal.addEventListener('abort', () =>
+            resolve([{ key: 'ServiceName', value: ['api'] }]),
+          ),
+        ),
+    );
+
+    const { source } = parse(await runWithClock(DESCRIBE_TIMEOUT_MS));
+
+    expect(source.lowCardinalityValues).toEqual({ ServiceName: ['api'] });
+    expect(source.partial).toBe(true);
+    expect(source.skippedStages).toEqual([
+      'lowCardinalityValues',
+      'mapAttributeValues',
+    ]);
   });
 
   it('keeps stages that finished before the deadline', async () => {

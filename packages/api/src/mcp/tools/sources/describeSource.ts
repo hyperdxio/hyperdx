@@ -318,7 +318,12 @@ async function describeSourceSchema(
     skippedStages.push('mapAttributeKeys');
   }
   finishedStages.add('mapAttributeKeys');
+  // No keys and no abort means stage 4 has nothing to sample. No keys because
+  // of the abort means it was never sampled, matching the backstop snapshot.
   if (Object.keys(mapKeysResults).length === 0) {
+    if (signal.aborted && mapColumns.length > 0) {
+      skippedStages.push('mapAttributeValues');
+    }
     finishedStages.add('mapAttributeValues');
   }
 
@@ -348,11 +353,9 @@ async function describeSourceSchema(
     }
   }
 
-  if (
-    lcColumns.length > 0 &&
-    signal.aborted &&
-    Object.keys(lowCardinalityValues).length === 0
-  ) {
+  // getAllKeyValues drops aborted chunks instead of throwing, so any result
+  // returned after the abort may be missing keys.
+  if (lcColumns.length > 0 && signal.aborted) {
     skippedStages.push('lowCardinalityValues');
   }
   if (Object.keys(lowCardinalityValues).length > 0) {
@@ -396,7 +399,7 @@ async function describeSourceSchema(
       // Best-effort; skip on failure
     }
 
-    if (signal.aborted && Object.keys(mapAttributeValues).length === 0) {
+    if (signal.aborted) {
       skippedStages.push('mapAttributeValues');
     }
     if (Object.keys(mapAttributeValues).length > 0) {
