@@ -194,6 +194,14 @@ describe('clickstack_describe_source deadline', () => {
     expect(result.content[0].text).toContain('Schema discovery timed out');
   });
 
+  it('rethrows errors raised before the deadline', async () => {
+    mockMetadata.getColumns.mockRejectedValue(new Error('connection refused'));
+
+    await expect(getHandler()({ sourceId: 'source-1' })).rejects.toThrow(
+      'connection refused',
+    );
+  });
+
   it('reports map keys as skipped when only some Map columns finish', async () => {
     mockMetadata.getColumns.mockResolvedValue([
       ...COLUMNS,
