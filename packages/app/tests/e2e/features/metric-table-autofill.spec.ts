@@ -80,9 +80,9 @@ test.describe(
       await searchPage.sourceActionsMenu.click();
       await searchPage.createNewSourceItem.click();
 
-      // Switching the kind to OTel Metrics renders the metric table selects for
+      // Switching the kind to OTel metrics renders the metric table selects for
       // the default database, which is what autofill reacts to.
-      await sourceForm.selectSourceKind('OTel Metrics');
+      await sourceForm.selectSourceKind('OTel metrics');
 
       await sourceForm.waitForMetricTableAutofill();
       await expect(sourceForm.getMetricTableInput('gauge')).toHaveValue(

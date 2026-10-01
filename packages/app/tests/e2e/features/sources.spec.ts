@@ -94,7 +94,7 @@ const allSourcesData = [
   {
     name: DEFAULT_METRICS_SOURCE_NAME,
     fields: METRIC_FIELDS,
-    radioButtonName: 'OTel Metrics',
+    radioButtonName: 'OTel metrics',
   },
   {
     name: DEFAULT_SESSIONS_SOURCE_NAME,
@@ -348,7 +348,7 @@ test.describe('Sources Functionality', { tag: ['@sources'] }, () => {
           await searchPage.createNewSourceItem.click();
 
           await searchPage.page
-            .getByLabel('OTel Metrics', { exact: true })
+            .getByLabel('OTel metrics', { exact: true })
             .click();
           await searchPage.sourceModalShowOptionalFields();
 

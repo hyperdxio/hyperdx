@@ -71,15 +71,25 @@ describe('SourcesList section display', () => {
   it('shows the plural kind label for each source', () => {
     asMock(useSources).mockReturnValue({
       data: [
-        makeSource('a', 'App'),
-        makeSource('b', 'Host', { kind: SourceKind.Metric }),
+        makeSource('a', 'A'),
+        makeSource('b', 'B', { kind: SourceKind.Trace }),
+        makeSource('c', 'C', { kind: SourceKind.Metric }),
+        makeSource('d', 'D', { kind: SourceKind.Session }),
+        makeSource('e', 'E', { kind: SourceKind.Promql }),
       ],
       isLoading: false,
       refetch: jest.fn(),
     });
     renderWithMantine(<SourcesList withCard={false} />);
 
-    expect(screen.getByText('Logs')).toBeInTheDocument();
-    expect(screen.getByText('OTel Metrics')).toBeInTheDocument();
+    for (const label of [
+      'Logs',
+      'Traces',
+      'OTel metrics',
+      'Sessions',
+      'PromQL',
+    ]) {
+      expect(screen.getByText(label)).toBeInTheDocument();
+    }
   });
 });

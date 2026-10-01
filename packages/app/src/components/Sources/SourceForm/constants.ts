@@ -10,7 +10,7 @@ export const DEFAULT_DATABASE = 'default';
 export const SOURCE_KIND_LABELS: Record<SourceKind, string> = {
   [SourceKind.Log]: 'Logs',
   [SourceKind.Trace]: 'Traces',
-  [SourceKind.Metric]: 'OTel Metrics',
+  [SourceKind.Metric]: 'OTel metrics',
   [SourceKind.Session]: 'Sessions',
   [SourceKind.Promql]: 'PromQL',
 };
