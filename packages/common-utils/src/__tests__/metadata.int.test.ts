@@ -1411,4 +1411,105 @@ describe('Metadata Integration Tests', () => {
       expect(keys).toEqual(['legacy.key']);
     });
   });
+
+  describe.each([
+    {
+      path: 'key',
+      tableName: 'test_map_keys_key_text_index_order',
+      indexDefinition: `INDEX idx_log_attr_key mapKeys(LogAttributes) TYPE text(tokenizer = 'array') GRANULARITY 1`,
+    },
+    {
+      path: 'kv',
+      tableName: 'test_map_keys_kv_text_index_order',
+      indexDefinition: `LogAttributeItems Array(String) MATERIALIZED
+          arrayMap(x -> concat(x.1, '=', x.2), CAST(LogAttributes, 'Array(Tuple(String, String))')),
+        INDEX idx_log_attr_items LogAttributeItems TYPE text(tokenizer = 'array') GRANULARITY 1`,
+    },
+  ])(
+    'getMapKeys - $path text index ordering',
+    ({ tableName, indexDefinition }) => {
+      let metadata: Metadata;
+      let textIndexSupported = false;
+
+      beforeAll(async () => {
+        const probe = new Metadata(hdxClient, new MetadataCache());
+        textIndexSupported = supportsMergeTreeTextIndex(
+          await probe.getServerVersion({ connectionId: 'test_connection' }),
+        );
+
+        await client.command({
+          query: `CREATE OR REPLACE TABLE default.${tableName} (
+              Timestamp DateTime64(9),
+              LogAttributes Map(LowCardinality(String), String),
+              ${indexDefinition}
+            )
+            ENGINE = MergeTree()
+            PARTITION BY toDate(Timestamp)
+            ORDER BY Timestamp
+          `,
+        });
+
+        // The text index dictionary is sorted, so without an ORDER BY the
+        // LIMIT keeps the alphabetically first keys. The frequent keys sort
+        // after the 200 one-off keys, and in reverse order of frequency.
+        const insert = (attributes: string, rows: number) =>
+          client.command({
+            query: `INSERT INTO default.${tableName} (Timestamp, LogAttributes)
+              SELECT now64(9) - INTERVAL 10 MINUTE, ${attributes}
+              FROM numbers(${rows})`,
+          });
+        await insert(`map(concat('rare.', toString(number)), 'v')`, 200);
+        await insert(
+          `map('user.id', 'x', 'trace.flags', 'x', 'service.name', 'x')`,
+          40,
+        );
+        await insert(`map('user.id', 'x', 'trace.flags', 'x')`, 10);
+        await insert(`map('user.id', 'x')`, 10);
+      });
+
+      afterAll(async () => {
+        await client.command({
+          query: `DROP TABLE IF EXISTS default.${tableName}`,
+        });
+      });
+
+      beforeEach(() => {
+        metadata = new Metadata(hdxClient, new MetadataCache());
+      });
+
+      afterEach(() => {
+        jest.restoreAllMocks();
+      });
+
+      it('keeps the most frequent keys when maxKeys truncates the list', async () => {
+        if (!textIndexSupported) {
+          console.warn(
+            'Skipping: ClickHouse < 26.3 does not support mergeTreeTextIndex()',
+          );
+          return;
+        }
+        const querySpy = jest.spyOn(hdxClient, 'query');
+
+        const keys = await metadata.getMapKeys({
+          databaseName: 'default',
+          tableName,
+          column: 'LogAttributes',
+          connectionId: 'test_connection',
+          maxKeys: 3,
+          timestampValueExpression: 'Timestamp',
+          dateRange: [
+            new Date(Date.now() - 60 * 60 * 1000),
+            new Date(Date.now() + 60 * 1000),
+          ],
+        });
+
+        expect(
+          querySpy.mock.calls.some(([{ query }]) =>
+            query.includes('mergeTreeTextIndex'),
+          ),
+        ).toBe(true);
+        expect(keys).toEqual(['user.id', 'trace.flags', 'service.name']);
+      });
+    },
+  );
 });

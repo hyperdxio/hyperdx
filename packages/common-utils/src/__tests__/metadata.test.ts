@@ -2498,6 +2498,84 @@ describe('Metadata', () => {
     });
   });
 
+  describe('getMapKeys (text index paths)', () => {
+    const textIndexLookups: [string, TextIndexInfoLookup][] = [
+      [
+        'key',
+        new Map([
+          [
+            'LogAttributes',
+            {
+              key: {
+                indexName: 'idx_log_attr_keys',
+                mapColumn: 'LogAttributes',
+              },
+            },
+          ],
+        ]),
+      ],
+      [
+        'kv',
+        new Map([
+          [
+            'LogAttributes',
+            {
+              kv: {
+                columnName: 'LogAttributeItems',
+                indexName: 'idx_log_attr_items',
+                separator: '=',
+                useHasAny: true,
+                mapColumn: 'LogAttributes',
+              },
+            },
+          ],
+        ]),
+      ],
+    ];
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+      (mockClickhouseClient.query as jest.Mock).mockReset();
+    });
+
+    it.each(textIndexLookups)(
+      'ranks keys by row count before the LIMIT on the %s text index path',
+      async (_, textIndexLookup) => {
+        const md = new Metadata(mockClickhouseClient, new MetadataCache());
+        jest.spyOn(md, 'getServerVersion').mockResolvedValue([26, 3, 0, 0]);
+        jest
+          .spyOn(md, 'getMapColumnTextIndexes')
+          .mockResolvedValue(textIndexLookup);
+        (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
+          json: () =>
+            Promise.resolve({ data: [{ key: 'http.method' }, { key: 'k8s' }] }),
+        });
+
+        const keys = await md.getMapKeys({
+          databaseName: 'default',
+          tableName: 'otel_logs',
+          column: 'LogAttributes',
+          connectionId: 'test_connection',
+          maxKeys: 2,
+          dateRange: [
+            new Date('2024-01-01T00:00:00Z'),
+            new Date('2024-01-01T01:00:00Z'),
+          ],
+          timestampValueExpression: 'Timestamp',
+        });
+
+        expect(keys).toEqual(['http.method', 'k8s']);
+        expect(mockClickhouseClient.query).toHaveBeenCalledTimes(1);
+        const { query } = (mockClickhouseClient.query as jest.Mock).mock
+          .calls[0][0];
+        expect(query).toContain('FROM mergeTreeTextIndex(');
+        expect(query).toMatch(
+          /GROUP BY key HAVING key != ''\s+ORDER BY sum\(cardinality\) DESC, key\s+LIMIT/,
+        );
+      },
+    );
+  });
+
   describe('getMapValues', () => {
     const buildMetadata = () => {
       const realCache = new (

@@ -1012,6 +1012,7 @@ export class Metadata {
         FROM mergeTreeTextIndex(${{ String: databaseName }}, ${{ String: tableName }}, ${{ String: index }})
         WHERE ${partsFilter}
         GROUP BY key HAVING key != ''
+        ORDER BY sum(cardinality) DESC, key
         LIMIT ${{ Int32: maxKeys }}`;
       try {
         const keys = await this.clickhouseClient
@@ -1052,6 +1053,7 @@ export class Metadata {
         FROM mergeTreeTextIndex(${{ String: databaseName }}, ${{ String: tableName }}, ${{ String: index }})
         WHERE ${partsFilter}
         GROUP BY key HAVING key != ''
+        ORDER BY sum(cardinality) DESC, key
         LIMIT ${{ Int32: maxKeys }}`;
       try {
         const keys = await this.clickhouseClient
