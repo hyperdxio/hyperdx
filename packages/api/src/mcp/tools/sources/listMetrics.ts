@@ -15,12 +15,14 @@ import {
 } from '@/utils/pagination';
 
 import {
-  fetchMetricNames,
-  fetchMetricUnitsAndDescriptions,
   KIND_TIMED_OUT_ERROR,
   type MetricEntry,
   scanKindsForPage,
 } from './listMetricsPage';
+import {
+  fetchMetricNames,
+  fetchMetricUnitsAndDescriptions,
+} from './listMetricsQueries';
 import {
   DISCOVERABLE_METRIC_KINDS,
   type DiscoverableMetricKind,
