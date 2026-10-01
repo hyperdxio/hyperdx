@@ -30,7 +30,8 @@ up your connection with ClickHouse.
 Before deploying into production, set the `EXPRESS_SESSION_SECRET` environment
 variable to a random string (e.g. `openssl rand -hex 32`). Without it the API
 generates one per process, which signs users out on every restart and prevents
-replicas from sharing sessions.
+replicas from sharing sessions. The old public value `hyperdx is cool 👋` is
+also replaced with a per-process secret when authentication is enabled.
 
 To customize the frontend URL, set the `FRONTEND_URL` environment variable to
 the URL your HyperDX instance is hosted on.
@@ -68,7 +69,7 @@ docker compose --env-file .env --env-file .env.local up -d
 
 Reuse the same secret across restarts and all replicas. Without it the API
 generates one per process, which signs users out on every restart and prevents
-replicas from sharing sessions.
+replicas from sharing sessions. The old public value is not a production secret.
 
 ## Local Development Mode
 

@@ -126,12 +126,22 @@ describe('config', () => {
 
   describe('EXPRESS_SESSION_SECRET', () => {
     const ORIGINAL_SECRET = process.env.EXPRESS_SESSION_SECRET;
+    const ORIGINAL_LOCAL_APP_MODE = process.env.IS_LOCAL_APP_MODE;
+
+    beforeEach(() => {
+      delete process.env.IS_LOCAL_APP_MODE;
+    });
 
     afterEach(() => {
       if (ORIGINAL_SECRET === undefined) {
         delete process.env.EXPRESS_SESSION_SECRET;
       } else {
         process.env.EXPRESS_SESSION_SECRET = ORIGINAL_SECRET;
+      }
+      if (ORIGINAL_LOCAL_APP_MODE === undefined) {
+        delete process.env.IS_LOCAL_APP_MODE;
+      } else {
+        process.env.IS_LOCAL_APP_MODE = ORIGINAL_LOCAL_APP_MODE;
       }
       jest.resetModules();
     });
@@ -157,24 +167,15 @@ describe('config', () => {
       expect(config.IS_EXPRESS_SESSION_SECRET_GENERATED).toBe(false);
     });
 
-    it.each(['  verbatim secret 👋  ', 'hyperdx is cool 👋'])(
-      'preserves explicitly configured values: %s',
-      secret => {
-        process.env.EXPRESS_SESSION_SECRET = secret;
-        expect(loadConfig().EXPRESS_SESSION_SECRET).toBe(secret);
-        expect(loadConfig().IS_EXPRESS_SESSION_SECRET_GENERATED).toBe(false);
-      },
-    );
-
-    it('keeps a configured secret across process reloads and replicas', () => {
-      process.env.EXPRESS_SESSION_SECRET = 'stable-session-sentinel';
-      expect(loadConfig().EXPRESS_SESSION_SECRET).toBe(
-        loadConfig().EXPRESS_SESSION_SECRET,
-      );
+    it('preserves a configured secret verbatim', () => {
+      process.env.EXPRESS_SESSION_SECRET = '  verbatim secret 👋  ';
+      const config = loadConfig();
+      expect(config.EXPRESS_SESSION_SECRET).toBe('  verbatim secret 👋  ');
+      expect(config.IS_EXPRESS_SESSION_SECRET_GENERATED).toBe(false);
     });
 
-    it('generates a secret when unset or empty', () => {
-      for (const value of [undefined, '']) {
+    it('generates a secret when unset, empty, or publicly known', () => {
+      for (const value of [undefined, '', 'hyperdx is cool 👋']) {
         if (value === undefined) {
           delete process.env.EXPRESS_SESSION_SECRET;
         } else {
@@ -185,6 +186,15 @@ describe('config', () => {
         expect(config.EXPRESS_SESSION_SECRET).toMatch(/^[0-9a-f]{64}$/);
         expect(config.IS_EXPRESS_SESSION_SECRET_GENERATED).toBe(true);
       }
+    });
+
+    it('keeps the public demo secret only without authentication', () => {
+      process.env.IS_LOCAL_APP_MODE = 'DANGEROUSLY_is_local_app_mode💀';
+      process.env.EXPRESS_SESSION_SECRET = 'hyperdx is cool 👋';
+
+      const config = loadConfig();
+      expect(config.EXPRESS_SESSION_SECRET).toBe('hyperdx is cool 👋');
+      expect(config.IS_EXPRESS_SESSION_SECRET_GENERATED).toBe(false);
     });
 
     it('generates a different secret on each load', () => {

@@ -14,12 +14,20 @@ export const APP_TYPE = (env.APP_TYPE || DEFAULT_APP_TYPE) as
   | 'api'
   | 'scheduled-task';
 export const CODE_VERSION = env.CODE_VERSION ?? '';
-// There is deliberately no fallback: a secret committed to this repo lets
-// anyone who can read it sign a `connect.sid` for any session id. Without one
-// we generate it per process, which signs every user out when that restarts.
-export const IS_EXPRESS_SESSION_SECRET_GENERATED = !env.EXPRESS_SESSION_SECRET;
+// Only for single container local deployments, disable authentication
+export const IS_LOCAL_APP_MODE =
+  env.IS_LOCAL_APP_MODE === 'DANGEROUSLY_is_local_app_mode💀';
+const LEGACY_PUBLIC_SESSION_SECRET = 'hyperdx is cool 👋';
+// Authenticated deployments never use the public demo secret. Without a safe
+// configured value, generate one per process (sessions end on restart).
+export const IS_EXPRESS_SESSION_SECRET_GENERATED =
+  !env.EXPRESS_SESSION_SECRET ||
+  (!IS_LOCAL_APP_MODE &&
+    env.EXPRESS_SESSION_SECRET === LEGACY_PUBLIC_SESSION_SECRET);
 export const EXPRESS_SESSION_SECRET =
-  env.EXPRESS_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
+  !IS_EXPRESS_SESSION_SECRET_GENERATED && env.EXPRESS_SESSION_SECRET
+    ? env.EXPRESS_SESSION_SECRET
+    : crypto.randomBytes(32).toString('hex');
 export const FRONTEND_URL = (env.FRONTEND_URL ||
   DEFAULT_FRONTEND_URL) as string;
 const HYPERDX_IMAGE = env.HYPERDX_IMAGE;
@@ -56,10 +64,6 @@ export const RUN_SCHEDULED_TASKS_EXTERNALLY =
 // stored third-party tokens; unset means they are stored in plain text. See
 // utils/tokenEncryption.ts.
 export const TOKEN_ENCRYPTION_KEY = env.TOKEN_ENCRYPTION_KEY;
-
-// Only for single container local deployments, disable authentication
-export const IS_LOCAL_APP_MODE =
-  env.IS_LOCAL_APP_MODE === 'DANGEROUSLY_is_local_app_mode💀';
 
 // Only used to bootstrap empty instances
 export const DEFAULT_CONNECTIONS = env.DEFAULT_CONNECTIONS;

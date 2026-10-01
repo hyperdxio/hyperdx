@@ -18,6 +18,6 @@ export function verifySessionSecret(): void {
   reported = true;
   generatedSecretCounter.add(1);
   logger.error(
-    'EXPRESS_SESSION_SECRET is not set: generated a random secret for this process. Users are signed out whenever it restarts, and replicas do not share sessions. Configure a random secret shared by all replicas to keep sessions.',
+    'EXPRESS_SESSION_SECRET is missing or uses the public legacy value: generated a random secret for this process. Users are signed out whenever it restarts, and replicas do not share sessions. Configure a random secret shared by all replicas to keep sessions.',
   );
 }

@@ -41,8 +41,10 @@ describe.each(['server', 'serverless'])(
     it.each([
       [false, undefined, 1],
       [false, '', 1],
+      [false, 'hyperdx is cool 👋', 1],
       [false, 'startup-secret-sentinel', 0],
       [true, undefined, 0],
+      [true, 'hyperdx is cool 👋', 0],
       [true, 'startup-secret-sentinel', 0],
     ])(
       'local=%s, secret=%s logs %s times across both entrypoints',
