@@ -148,11 +148,18 @@ describe('DBTraceWaterfallChartContainer', () => {
     connection: 'conn2',
   };
 
+  // Wide enough to contain every span/log timestamp used by the tests below
+  // (06:00:00-07:00:00) with margin on both sides, so the window-clipping
+  // check in `traceTotalStats` (a span starting at/before the window's lower
+  // edge, or ending at/after its upper edge, marks the duration as a lower
+  // bound) doesn't incidentally trip for data that was never meant to be
+  // testing that behavior. See the dedicated window-clipping tests below for
+  // cases that deliberately sit at the edge.
   const mockDateRange = [
-    new Date('2024-01-01T00:00:00.000Z'),
-    new Date('2024-01-01T01:00:00.000Z'),
+    new Date('2024-01-01T05:00:00.000Z'),
+    new Date('2024-01-01T08:00:00.000Z'),
   ] as [Date, Date];
-  const mockFocusDate = new Date('2024-01-01T00:30:00.000Z');
+  const mockFocusDate = new Date('2024-01-01T06:30:00.000Z');
   const mockTraceId = 'test-trace-id';
 
   // Sample data
@@ -466,6 +473,73 @@ describe('DBTraceWaterfallChartContainer', () => {
       '· Total duration: 100ms+',
     );
   });
+
+  it('marks the duration as a lower bound when a span starts at/before the fetch window\'s lower edge (possible earlier spans outside the window)', async () => {
+    const spanAtWindowEdge = {
+      data: [
+        {
+          ...mockTraceData.data[0],
+          // mockDateRange's lower edge is 05:00:00 -- a span starting exactly
+          // there (or earlier) means there could be earlier spans that the
+          // ±window fetch never requested.
+          Timestamp: '2024-01-01T05:00:00.000000000Z',
+        },
+      ],
+      meta: [{ totalCount: 1 }],
+    };
+    setupQueryMocks({ traceData: spanAtWindowEdge });
+    renderComponent(null);
+    await waitForLoading();
+
+    expect(screen.getByTestId('trace-total-stats').textContent?.trim()).toBe(
+      '· Total duration: 100ms+',
+    );
+  });
+
+  it('marks the duration as a lower bound when a span ends at/after the fetch window\'s upper edge (possible later spans outside the window)', async () => {
+    const spanAtWindowEdge = {
+      data: [
+        {
+          ...mockTraceData.data[0],
+          // Ends exactly at mockDateRange's upper edge (08:00:00): starts at
+          // 07:59:59.900 + Duration 0.1s. Same reasoning as the lower-edge
+          // case above, mirrored at the other end of the window.
+          Timestamp: '2024-01-01T07:59:59.900000000Z',
+        },
+      ],
+      meta: [{ totalCount: 1 }],
+    };
+    setupQueryMocks({ traceData: spanAtWindowEdge });
+    renderComponent(null);
+    await waitForLoading();
+
+    expect(screen.getByTestId('trace-total-stats').textContent?.trim()).toBe(
+      '· Total duration: 100ms+',
+    );
+  });
+
+  it('does not mark the duration as a lower bound when every span sits comfortably inside the fetch window', async () => {
+    setupQueryMocks({ traceData: mockTraceData }); // 06:00:00, well inside 05:00:00-08:00:00
+    renderComponent(null);
+    await waitForLoading();
+
+    expect(screen.getByTestId('trace-total-stats').textContent?.trim()).toBe(
+      '· Total duration: 100ms',
+    );
+  });
+
+  // Note: the row-cap trigger for isTruncated (as opposed to the
+  // window-edge trigger tested above) is covered at the `useEventsAroundFocus`
+  // hook level below ("flags isTruncated when a window returns more rows than
+  // the cap...") and at the render level by the "appends + on the duration
+  // label..." test above. A true end-to-end version of that case (actually
+  // fetching/rendering TRACE_WATERFALL_ROW_LIMIT+1 real rows through
+  // setupQueryMocks) was tried here and is correct but prohibitively slow
+  // under full-suite jsdom contention (passes in isolation, times out at 30s+
+  // alongside the rest of the file) -- not a good trade for the marginal
+  // wiring coverage over the window-edge tests above, which already exercise
+  // the identical `traceTotalStats.isTruncated` -> rendered "+" chain for the
+  // other trigger.
 
   it('renders empty state when no data is available', async () => {
     mockUseOffsetPaginatedQuery.mockReturnValue({

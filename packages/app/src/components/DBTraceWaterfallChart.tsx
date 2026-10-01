@@ -165,7 +165,7 @@ export function TraceTotalDurationStat({
     <Tooltip
       label={
         isTruncated
-          ? `This trace has more than ${TRACE_WATERFALL_ROW_LIMIT.toLocaleString()} spans in a fetch window, so the duration is a lower bound across the spans that were loaded.`
+          ? `This trace may have spans outside the ${TRACE_WATERFALL_ROW_LIMIT.toLocaleString()}-span fetch cap or the loaded time window, so the duration is a lower bound across the spans that were loaded.`
           : 'Wall-clock duration from the earliest fetched span start to the latest span end. Independent of the visible count, chips, and collapse state.'
       }
       position="bottom"
@@ -779,12 +779,20 @@ export function DBTraceWaterfallChartContainer({
   // the longest single span. Clock skew or async children that outlive the root
   // make the two disagree; the UI number is the envelope of the timeline.
   //
-  // If a fetch window exceeded TRACE_WATERFALL_ROW_LIMIT, this is a lower bound.
+  // This is a lower bound if either fetch window was clipped:
+  //   - the TRACE_WATERFALL_ROW_LIMIT row cap (traceIsTruncated), or
+  //   - the ±1h `dateRange` fetch window itself (DBRowSidePanel passes
+  //     oneHourRange) -- a span starting at-or-before the window's lower
+  //     edge, or ending at-or-after its upper edge, means there may be
+  //     earlier/later spans outside the fetched range. `<=`/`>=` (not
+  //     strict) is deliberate: a span landing exactly on the boundary is
+  //     itself ambiguous, and it's safer to over-signal "possibly clipped"
+  //     than to silently under-report (matches the row-cap sentinel above).
   const traceTotalStats = useMemo(() => {
     let minStartMs = Number.MAX_SAFE_INTEGER;
     let maxEndMs = 0;
     let spanCount = 0;
-    for (const row of traceRowsData) {
+    for (const row of traceRowsData as any[]) {
       spanCount++;
       const startMs = parseTimestampToMs(row.Timestamp);
       const endMs = startMs + (row.Duration || 0) * 1000;
@@ -792,11 +800,14 @@ export function DBTraceWaterfallChartContainer({
       if (endMs > maxEndMs) maxEndMs = endMs;
     }
     if (spanCount === 0) return null;
+    const windowClipped =
+      minStartMs <= dateRange[0].getTime() ||
+      maxEndMs >= dateRange[1].getTime();
     return {
       totalDurationMs: maxEndMs - minStartMs,
-      isTruncated: traceIsTruncated,
+      isTruncated: traceIsTruncated || windowClipped,
     };
-  }, [traceRowsData, traceIsTruncated]);
+  }, [traceRowsData, traceIsTruncated, dateRange]);
 
   // Map each distinct span service to a stable color. Sorting the names first
   // keeps a service's color stable across renders regardless of row ordering.
