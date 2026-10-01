@@ -22,18 +22,19 @@ test.describe('Heatmap', () => {
       });
 
       await test.step('Heatmap renders', async () => {
-        await expect(searchPage.heatmapCanvas.first()).toBeVisible({
+        await expect(searchPage.heatmap.canvas.first()).toBeVisible({
           timeout: 20000,
         });
-        await expect(searchPage.heatmapNotEnoughDataText).toHaveCount(0);
+        await expect(searchPage.heatmap.notEnoughDataText).toHaveCount(0);
         await expect(searchPage.chartErrorState).toHaveCount(0);
+        await searchPage.heatmap.hoverPopulatedCell();
         await expect(searchPage.deltaNoSelectionHint).toBeVisible({
           timeout: 20000,
         });
       });
 
       await test.step('Drag-select enters comparison mode', async () => {
-        await searchPage.dragSelectHeatmap();
+        await searchPage.heatmap.dragSelect();
         await expect(page).toHaveURL(/[?&]xMin=/);
         await expect(page).toHaveURL(/[?&]xMax=/);
         await expect(page).toHaveURL(/[?&]yMin=/);
@@ -48,11 +49,12 @@ test.describe('Heatmap', () => {
         await searchPage.setHeatmapScale('Linear');
         await searchPage.applyHeatmapSettings();
         await expect(page).toHaveURL(/[?&]scaleType=linear/);
-        await expect(searchPage.heatmapCanvas.first()).toBeVisible({
+        await expect(searchPage.heatmap.canvas.first()).toBeVisible({
           timeout: 20000,
         });
-        await expect(searchPage.heatmapNotEnoughDataText).toHaveCount(0);
+        await expect(searchPage.heatmap.notEnoughDataText).toHaveCount(0);
         await expect(searchPage.chartErrorState).toHaveCount(0);
+        await searchPage.heatmap.hoverPopulatedCell();
       });
     },
   );
@@ -87,15 +89,11 @@ test.describe('Heatmap', () => {
       });
 
       const assertTileRendersHeatmap = async () => {
-        await expect(
-          dashboardPage.getTileHeatmapCanvas(tileName).first(),
-        ).toBeVisible({
-          timeout: 20000,
-        });
-        await expect(dashboardPage.getTileErrorState(tileName)).toHaveCount(0);
-        await expect(
-          dashboardPage.getTileHeatmapNotEnoughDataText(tileName),
-        ).toHaveCount(0);
+        const heatmap = dashboardPage.getTileHeatmap();
+        await expect(heatmap.canvas.first()).toBeVisible({ timeout: 20000 });
+        await expect(dashboardPage.getTileError()).toHaveCount(0);
+        await expect(heatmap.notEnoughDataText).toHaveCount(0);
+        await heatmap.hoverPopulatedCell();
       };
 
       await test.step('Tile renders the heatmap', assertTileRendersHeatmap);

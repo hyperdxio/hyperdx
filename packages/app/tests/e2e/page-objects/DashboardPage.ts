@@ -6,6 +6,7 @@ import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import { expect, Locator, Page } from '@playwright/test';
 
 import { ChartEditorComponent } from '../components/ChartEditorComponent';
+import { HeatmapComponent } from '../components/HeatmapComponent';
 import { TimePickerComponent } from '../components/TimePickerComponent';
 import {
   dismissSqlAutocomplete,
@@ -643,32 +644,15 @@ export class DashboardPage {
     return this.page.locator('[data-testid^="dashboard-tile-"]');
   }
 
-  /** A dashboard tile, matched by the chart name shown in its header. */
-  getTileByName(name: string) {
-    return this.getTiles().filter({ hasText: name });
-  }
-
-  getTileHeatmapCanvas(tileName: string) {
-    return this.getTileByName(tileName).locator(
-      '.heatmap-selection-container canvas',
-    );
-  }
-
-  getTileErrorState(tileName: string) {
-    return this.getTileByName(tileName).getByTestId('chart-error-state');
-  }
-
-  getTileHeatmapNotEnoughDataText(tileName: string) {
-    return this.getTileByName(tileName).getByText(
-      'Not enough data points to render heatmap',
-    );
-  }
-
   /**
    * Get specific tile by index
    */
   getTile(index: number) {
     return this.getTiles().nth(index);
+  }
+
+  getTileHeatmap(tileIndex = 0) {
+    return new HeatmapComponent(this.page, this.getTile(tileIndex));
   }
 
   /**

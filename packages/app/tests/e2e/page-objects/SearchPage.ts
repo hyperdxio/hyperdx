@@ -5,6 +5,7 @@
 import { expect, Locator, Page } from '@playwright/test';
 
 import { FilterComponent } from '../components/FilterComponent';
+import { HeatmapComponent } from '../components/HeatmapComponent';
 import { InfrastructurePanelComponent } from '../components/InfrastructurePanelComponent';
 import { PatternSidePanelComponent } from '../components/PatternSidePanelComponent';
 import { SavedSearchModalComponent } from '../components/SavedSearchModalComponent';
@@ -28,6 +29,7 @@ export class SearchPage {
   readonly patternSidePanel: PatternSidePanelComponent;
   readonly infrastructure: InfrastructurePanelComponent;
   readonly filters: FilterComponent;
+  readonly heatmap: HeatmapComponent;
   readonly whereInput: WhereInputComponent;
   readonly savedSearchModal: SavedSearchModalComponent;
   readonly savedSearchNameTitle: Locator;
@@ -56,6 +58,7 @@ export class SearchPage {
     this.patternSidePanel = new PatternSidePanelComponent(page);
     this.infrastructure = new InfrastructurePanelComponent(page);
     this.filters = new FilterComponent(page);
+    this.heatmap = new HeatmapComponent(page);
     this.savedSearchModal = new SavedSearchModalComponent(page);
     this.alertModal = new SearchPageAlertModalComponent(page);
     this.alertsButtonLocator = page.getByTestId('alerts-button');
@@ -124,48 +127,8 @@ export class SearchPage {
     await expect(this.page).toHaveURL(/[?&]mode=delta/);
   }
 
-  /** The event-deltas heatmap's plot container (rendered by DBHeatmapChart). */
-  get heatmapContainer() {
-    return this.page.locator('.heatmap-selection-container');
-  }
-
-  get heatmapCanvas() {
-    return this.heatmapContainer.locator('canvas');
-  }
-
-  get heatmapNotEnoughDataText() {
-    return this.page.getByText('Not enough data points to render heatmap');
-  }
-
   get chartErrorState() {
     return this.page.getByTestId('chart-error-state');
-  }
-
-  /**
-   * Drag a rectangle over the inner area of the heatmap plot. Targets uPlot's
-   * `.u-over` overlay, which receives the drag events and excludes the axes.
-   */
-  async dragSelectHeatmap(
-    start: { x: number; y: number } = { x: 0.3, y: 0.2 },
-    end: { x: number; y: number } = { x: 0.7, y: 0.8 },
-  ) {
-    const plot = this.heatmapContainer.locator('.u-over');
-    await expect(plot).toBeVisible();
-    const box = await plot.boundingBox();
-    if (!box) {
-      throw new Error('Heatmap plot area not found');
-    }
-    await this.page.mouse.move(
-      box.x + box.width * start.x,
-      box.y + box.height * start.y,
-    );
-    await this.page.mouse.down();
-    await this.page.mouse.move(
-      box.x + box.width * end.x,
-      box.y + box.height * end.y,
-      { steps: 10 },
-    );
-    await this.page.mouse.up();
   }
 
   /** DBDeltaChart legend entries shown only while a selection is compared. */
