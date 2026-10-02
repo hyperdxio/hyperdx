@@ -1889,14 +1889,14 @@ export const processAlert = async (
     >();
     for (const checkData of checksData.data) {
       const bucketStart = new Date(checkData[meta.timestampColumnName]);
+      const bucketMs = bucketStart.getTime();
+      if (!sqlBucketRows.has(bucketMs)) sqlBucketRows.set(bucketMs, []);
       const { value, extraFields } = parseAlertData(checkData, meta);
       if (value == null) continue; // skip NULL (missing denominator, empty ratio, etc.)
       const groupKey = hasGroupBy
         ? extraFields.map(([k, v]) => `${k}:${v}`).join(', ')
         : '';
       const attributes = hasGroupBy ? Object.fromEntries(extraFields) : {};
-      const bucketMs = bucketStart.getTime();
-      if (!sqlBucketRows.has(bucketMs)) sqlBucketRows.set(bucketMs, []);
       sqlBucketRows.get(bucketMs)!.push({ groupKey, value, attributes });
     }
 
@@ -1905,7 +1905,7 @@ export const processAlert = async (
     runAutoResolveForAll = false; // SQL grouped alerts already guard this with hasGroupBy
     }
 
-    // ─── Shared tail: bucket state machine + auto-resolve + notifications ───
+    // Shared tail: bucket state machine + auto-resolve + notifications
     //
     // Both paths (PromQL and SQL) produce:
     //   sharedExpectedBuckets: Date[]
@@ -2002,53 +2002,32 @@ export const processAlert = async (
       }
     }
 
-    // Auto-resolve: groups that were alerting/pending but absent from the newest bucket.
+    // Auto-resolve: groups that were alerting/pending but absent from all evaluated buckets.
     // PromQL always runs this for every group (runAutoResolveForAll=true).
     // SQL grouped alerts also run it when hasGroupBy is set.
     if (runAutoResolveForAll || hasGroupBy) {
       const lastBucket =
         sharedExpectedBuckets[sharedExpectedBuckets.length - 1];
-      if (lastBucket) {
-        const groupsToCheck = new Set<string>();
+      if (lastBucket && previousMap) {
         for (const previousKey of previousMap.keys()) {
-          groupsToCheck.add(extractGroupKeyFromMapKey(previousKey, alert.id));
-        }
-        for (const groupKey of histories.keys()) {
-          groupsToCheck.add(groupKey);
-        }
+          const groupKey = extractGroupKeyFromMapKey(previousKey, alert.id);
+          // Only auto-resolve if the group did not appear in ANY bucket this run.
+          if (!histories.has(groupKey)) {
+            const previousHistory = previousMap.get(previousKey);
+            const wasAlertingOrPending =
+              previousHistory?.state === AlertState.ALERT ||
+              previousHistory?.state === AlertState.PENDING;
 
-        for (const groupKey of groupsToCheck) {
-          const history = histories.get(groupKey);
-          const previousHistory = previousMap?.get(
-            computeHistoryMapKey(alert.id, groupKey),
-          );
-
-          const lastEvaluated =
-            history?.lastValues[history.lastValues.length - 1];
-          const isMissingFromLastBucket =
-            !lastEvaluated ||
-            lastEvaluated.startTime.getTime() !== lastBucket.getTime();
-
-          const wasAlertingOrPending =
-            previousHistory?.state === AlertState.ALERT ||
-            previousHistory?.state === AlertState.PENDING ||
-            history?.state === AlertState.ALERT ||
-            history?.state === AlertState.PENDING;
-
-          if (
-            isMissingFromLastBucket &&
-            wasAlertingOrPending &&
-            !doesExceedThreshold(alert, 0)
-          ) {
-            logger.info(
-              { alertId: alert.id, group: groupKey },
-              `Group "${groupKey}" absent from current data but was ALERT/PENDING — auto-resolving`,
-            );
-            const h = getOrCreateHistory(groupKey);
-            h.lastValues.push({ count: 0, startTime: lastBucket });
-            h.state = AlertState.OK;
-            h.counts = 0;
-            latestAlertContext.delete(groupKey);
+            if (wasAlertingOrPending && !doesExceedThreshold(alert, 0)) {
+              logger.info(
+                { alertId: alert.id, group: groupKey },
+                `Group "${groupKey}" absent from current data but was ALERT/PENDING — auto-resolving`,
+              );
+              const h = getOrCreateHistory(groupKey);
+              h.lastValues.push({ count: 0, startTime: lastBucket });
+              h.state = AlertState.OK;
+              h.counts = 0;
+            }
           }
         }
       }
