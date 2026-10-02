@@ -6,6 +6,7 @@ import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import { expect, Locator, Page } from '@playwright/test';
 
 import { ChartEditorComponent } from '../components/ChartEditorComponent';
+import { HeatmapComponent } from '../components/HeatmapComponent';
 import { TimePickerComponent } from '../components/TimePickerComponent';
 import {
   dismissSqlAutocomplete,
@@ -31,7 +32,7 @@ export type FilterRequirementOptions = {
  * Used with verifyTileFormFromConfig
  */
 export type TileConfig = {
-  displayType: Exclude<DisplayType, 'heatmap'>;
+  displayType: DisplayType;
   sourceId?: string;
   select?:
     | {
@@ -55,7 +56,8 @@ type SeriesType =
   | 'markdown'
   | 'pie'
   | 'event_patterns'
-  | 'bar';
+  | 'bar'
+  | 'heatmap';
 
 /**
  * Series data structure for chart verification
@@ -647,6 +649,10 @@ export class DashboardPage {
    */
   getTile(index: number) {
     return this.getTiles().nth(index);
+  }
+
+  getTileHeatmap(tileIndex = 0) {
+    return new HeatmapComponent(this.page, this.getTile(tileIndex));
   }
 
   /**
