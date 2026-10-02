@@ -498,20 +498,49 @@ describe('DBTraceWaterfallChartContainer', () => {
     );
   });
 
-  it('does not mark a missing parent as clipped when the child starts inside the window', async () => {
-    const orphanInsideWindow = {
+  it('marks the duration when the earliest span has a parent that was not loaded', async () => {
+    const childInsideWindow = {
       data: [
         {
           ...mockTraceData.data[0],
-          // Well inside 05:00:00-08:00:00. The parent was never exported;
-          // that is a gap in the trace, not a fetch cut off at the window.
+          // Seconds inside 05:00:00-08:00:00. The parent started before the
+          // window, so the query never returned it.
           Timestamp: '2024-01-01T06:00:00.000000000Z',
+          SpanId: 'span-child',
           ParentSpanId: 'missing-root',
+        },
+        {
+          ...mockTraceData.data[0],
+          Body: 'later span',
+          Timestamp: '2024-01-01T06:00:01.000000000Z',
+          Duration: 0.1,
+          SpanId: 'span-later',
+          ParentSpanId: 'span-child',
+        },
+      ],
+      meta: [{ totalCount: 2 }],
+    };
+    setupQueryMocks({ traceData: childInsideWindow });
+    renderComponent(null);
+    await waitForLoading();
+
+    expect(screen.getByTestId('trace-total-stats').textContent?.trim()).toBe(
+      '· Total duration: 1.1s+',
+    );
+  });
+
+  it('does not mark a root span that starts within 1ms of the window edge', async () => {
+    const rootNearEdge = {
+      data: [
+        {
+          ...mockTraceData.data[0],
+          Timestamp: '2024-01-01T05:00:00.000500000Z',
+          ParentSpanId: '',
         },
       ],
       meta: [{ totalCount: 1 }],
     };
-    setupQueryMocks({ traceData: orphanInsideWindow });
+    setupQueryMocks({ traceData: rootNearEdge });
     renderComponent(null);
     await waitForLoading();
 
@@ -520,61 +549,26 @@ describe('DBTraceWaterfallChartContainer', () => {
     );
   });
 
-  it('marks the duration as a lower bound when a missing parent starts at the window start', async () => {
-    const orphanAtWindowStart = {
+  it('does not mark a span that starts within 1ms of the window edge when its parent is loaded', async () => {
+    const childNearEdge = {
       data: [
         {
           ...mockTraceData.data[0],
-          Timestamp: '2024-01-01T05:00:00.000000000Z',
-          ParentSpanId: 'missing-root',
-        },
-      ],
-      meta: [{ totalCount: 1 }],
-    };
-    setupQueryMocks({ traceData: orphanAtWindowStart });
-    renderComponent(null);
-    await waitForLoading();
-
-    expect(screen.getByTestId('trace-total-stats').textContent?.trim()).toBe(
-      '· Total duration: 100ms+',
-    );
-  });
-
-  it('marks the duration as a lower bound when the earliest span starts within a small tolerance of the window start', async () => {
-    const justInsideEdge = {
-      data: [
-        {
-          ...mockTraceData.data[0],
-          // 0.5ms after dateRange[0]. The queries filter Timestamp >= that
-          // edge, so an exact `minStart <= dateRange[0]` check does not see
-          // this span as clipped. A root (empty parent) on the edge still is.
           Timestamp: '2024-01-01T05:00:00.000500000Z',
-          ParentSpanId: '',
+          SpanId: 'span-child',
+          ParentSpanId: 'span-parent',
         },
-      ],
-      meta: [{ totalCount: 1 }],
-    };
-    setupQueryMocks({ traceData: justInsideEdge });
-    renderComponent(null);
-    await waitForLoading();
-
-    expect(screen.getByTestId('trace-total-stats').textContent?.trim()).toBe(
-      '· Total duration: 100ms+',
-    );
-  });
-
-  it('does not mark a span that starts before the window when that span was loaded', async () => {
-    const startedBeforeWindow = {
-      data: [
         {
           ...mockTraceData.data[0],
-          Timestamp: '2024-01-01T04:59:00.000000000Z',
+          Body: 'parent span',
+          Timestamp: '2024-01-01T05:00:00.000500000Z',
+          SpanId: 'span-parent',
           ParentSpanId: '',
         },
       ],
-      meta: [{ totalCount: 1 }],
+      meta: [{ totalCount: 2 }],
     };
-    setupQueryMocks({ traceData: startedBeforeWindow });
+    setupQueryMocks({ traceData: childNearEdge });
     renderComponent(null);
     await waitForLoading();
 
@@ -612,6 +606,51 @@ describe('DBTraceWaterfallChartContainer', () => {
     expect(screen.getByTestId('trace-total-stats').textContent?.trim()).toBe(
       '· Total duration: 100ms',
     );
+  });
+
+  it('skips an unparseable timestamp when another span is valid', async () => {
+    const mixed = {
+      data: [
+        {
+          ...mockTraceData.data[0],
+          Timestamp: 'not-a-timestamp',
+          SpanId: 'span-bad',
+          ParentSpanId: '',
+        },
+        {
+          ...mockTraceData.data[0],
+          Timestamp: '2024-01-01T06:00:00.000000000Z',
+          Duration: 0.1,
+          SpanId: 'span-good',
+          ParentSpanId: '',
+        },
+      ],
+      meta: [{ totalCount: 2 }],
+    };
+    setupQueryMocks({ traceData: mixed });
+    renderComponent(null);
+    await waitForLoading();
+
+    expect(screen.getByTestId('trace-total-stats').textContent?.trim()).toBe(
+      '· Total duration: 100ms',
+    );
+  });
+
+  it('does not render the total duration stat when every timestamp is unparseable', async () => {
+    const invalid = {
+      data: [
+        {
+          ...mockTraceData.data[0],
+          Timestamp: 'not-a-timestamp',
+        },
+      ],
+      meta: [{ totalCount: 1 }],
+    };
+    setupQueryMocks({ traceData: invalid });
+    renderComponent(null);
+    await waitForLoading();
+
+    expect(screen.queryByTestId('trace-total-stats')).not.toBeInTheDocument();
   });
 
   it('keeps the fetched duration when a span is flagged hidden', async () => {

@@ -153,11 +153,6 @@ export const TRACE_WATERFALL_ROW_LIMIT = 50000;
 // Fetch one extra row so a window that contains *exactly* the cap is not
 // mistaken for truncation. A full page of LIMIT is ambiguous; LIMIT+1 is not.
 const TRACE_WATERFALL_FETCH_LIMIT = TRACE_WATERFALL_ROW_LIMIT + 1;
-// The span queries keep `Timestamp >= dateRange[0]`, so a start strictly
-// before the window is not returned and `minStart <= dateRange[0]` only
-// matches an exact hit. A start this close to the lower edge is the signal
-// that the fetch cut off earlier spans.
-const WINDOW_START_EDGE_TOLERANCE_MS = 1;
 
 // Stable empty fallback. `data ?? []` would allocate a new array every render
 // and invalidate every memo downstream of the waterfall rows.
@@ -174,8 +169,8 @@ export function TraceTotalDurationStat({
     <Tooltip
       label={
         isTruncated
-          ? `This duration is a lower bound. The trace may extend past the loaded time window, or a fetch window has more than ${TRACE_WATERFALL_ROW_LIMIT.toLocaleString()} spans. Each side of the focus time is a single fetched page.`
-          : 'Wall-clock duration from the earliest fetched span start to the latest span end. Independent of the visible count, chips, and collapse state. Each side of the focus time is a single fetched page.'
+          ? `This duration is a lower bound because not all spans were loaded. The trace may extend past the loaded time window, or contain more than ${TRACE_WATERFALL_ROW_LIMIT.toLocaleString()} spans.`
+          : 'Wall-clock duration from the earliest fetched span start to the latest span end. Independent of the applied filters.'
       }
       position="bottom"
     >
@@ -795,34 +790,39 @@ export function DBTraceWaterfallChartContainer({
   // the visible/collapsed subset. Waterfall search filters only flag rows via
   // `__hdx_hidden`, so they do not change this figure (#3038).
   //
-  // `useEventsData` loads a single page on each side of the focus time and does
-  // not call `fetchNextPage`. Spans outside that page, or outside the requested
-  // date range, are not included.
+  // `useEventsData` loads one page on each side of the focus time and does not
+  // call `fetchNextPage`.
   //
-  // MCP `trace_waterfall` reports the longest single span instead. Changing
-  // that tool is a separate behavior change; this number is the timeline envelope.
-  //
-  // `windowClipped` is a lower bound for the fetch window, separate from the
-  // row-cap flag so a cap change does not rescan every span:
-  //   - a span ending at or after `dateRange[1]` may continue past the window
-  //   - the earliest span starts within WINDOW_START_EDGE_TOLERANCE_MS of
-  //     `dateRange[0]`. That includes a non-empty parent id that was not
-  //     loaded when the child sits on that edge.
-  // A missing parent further inside the window is a gap in the export (the
-  // root was never collected), and an empty ParentSpanId is a real root.
-  // Neither marks the start. `minStart <= dateRange[0]` is not used: the
-  // queries already filter `Timestamp >= dateRange[0]`, so it never sees a
-  // span that began earlier, and a span that did begin earlier was loaded.
+  // The fetch is Timestamp >= the window start and Timestamp <= the window
+  // end, so a span that starts entirely outside the window is never returned.
+  // `isWindowClipped` is set only from rows that were loaded:
+  //   - a span ends at or after the window end
+  //   - the earliest span has a ParentSpanId that is not in the loaded set
+  //     (its parent started before the window and was filtered out)
+  // An empty ParentSpanId is a root and does not set the flag.
   const traceExtent = useMemo(() => {
     if (traceRowsData.length === 0) return null;
-    const windowStartMs = dateRange[0].getTime();
+    const spanIds = new Set<string>();
+    for (const row of traceRowsData) {
+      if (typeof row.SpanId === 'string' && row.SpanId.length > 0) {
+        spanIds.add(row.SpanId);
+      }
+    }
     const windowEndMs = dateRange[1].getTime();
     let minStartMs = Number.POSITIVE_INFINITY;
     let maxEndMs = Number.NEGATIVE_INFINITY;
-    let startClipped = false;
-    let extendsPastWindowEnd = false;
-    let sawValid = false;
+    let isStartClipped = false;
+    let isPastWindowEnd = false;
+    let isAnySpanValid = false;
     for (const row of traceRowsData) {
+      // timestamp-nano accepts a non-date as a finite instant, which would
+      // stretch the envelope. Skip those before parsing.
+      if (
+        typeof row.Timestamp !== 'string' ||
+        Number.isNaN(Date.parse(row.Timestamp))
+      ) {
+        continue;
+      }
       let startMs: number;
       try {
         startMs = parseTimestampToMs(row.Timestamp);
@@ -835,17 +835,18 @@ export function DBTraceWaterfallChartContainer({
         startMs + (Number.isFinite(durationSec) ? durationSec : 0) * 1000;
       if (startMs < minStartMs) {
         minStartMs = startMs;
-        startClipped =
-          Math.abs(startMs - windowStartMs) <= WINDOW_START_EDGE_TOLERANCE_MS;
+        const parentId =
+          typeof row.ParentSpanId === 'string' ? row.ParentSpanId : '';
+        isStartClipped = parentId.length > 0 && !spanIds.has(parentId);
       }
       if (endMs > maxEndMs) maxEndMs = endMs;
-      if (endMs >= windowEndMs) extendsPastWindowEnd = true;
-      sawValid = true;
+      if (endMs >= windowEndMs) isPastWindowEnd = true;
+      isAnySpanValid = true;
     }
-    if (!sawValid) return null;
+    if (!isAnySpanValid) return null;
     return {
       totalDurationMs: maxEndMs - minStartMs,
-      windowClipped: startClipped || extendsPastWindowEnd,
+      isWindowClipped: isStartClipped || isPastWindowEnd,
     };
   }, [traceRowsData, dateRange]);
 
@@ -1539,7 +1540,7 @@ export function DBTraceWaterfallChartContainer({
             {traceExtent != null && (
               <TraceTotalDurationStat
                 totalDurationMs={traceExtent.totalDurationMs}
-                isTruncated={traceIsTruncated || traceExtent.windowClipped}
+                isTruncated={traceIsTruncated || traceExtent.isWindowClipped}
               />
             )}
           </Text>
