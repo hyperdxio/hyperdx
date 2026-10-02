@@ -153,7 +153,8 @@ export function buildHeatmapBucketConfig({
   nBuckets: number;
 }): BuilderChartConfigWithDateRange {
   const valueExpression = config.select[0].valueExpression;
-  const countExpression = config.select[0].countExpression ?? 'count()';
+  // The chart editor saves a cleared Count input as ''.
+  const countExpression = config.select[0].countExpression?.trim() || 'count()';
   const isAggregateExpression = isAggregateFunction(valueExpression);
 
   const bucketExprAgg =
