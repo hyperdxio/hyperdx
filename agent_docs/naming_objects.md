@@ -33,7 +33,7 @@ Sizes go from `xs` to `md`. Don't add larger ones.
   and `getByRole('heading')`. Use `headingLevel={3}` to match the existing
   dashboard and saved search pages.
 - `size="sm"` (default): editor headers, next to the close button and before the
-  editor's actions, and the name row at the top of the chart editor.
+  editor's actions.
 - `size="xs"`: compact rows, such as a name inside a dense form or list.
 
 ## Copy
