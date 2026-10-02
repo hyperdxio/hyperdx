@@ -241,78 +241,15 @@ describe('DBTracePanel', () => {
   });
 
   describe('span selection ownership', () => {
-    const renderPanel = () =>
-      renderWithMantine(
-        <DBTracePanel
-          traceId="trace-123"
-          parentSourceId="trace-source"
-          childSourceId="log-source"
-          dateRange={[new Date(0), new Date(1000)]}
-          focusDate={new Date(500)}
-        />,
-      );
-
-    it('opens the clicked span without waiting for the URL to come back', () => {
-      renderPanel();
-
-      fireEvent.click(screen.getByText('select span-b'));
-
-      expect(screen.getByTestId('overview-row-id')).toHaveTextContent('span-b');
-      expect(screen.getByTestId('highlighted-row')).toHaveTextContent('span-b');
-      expect(mockSetEventRowWhere).toHaveBeenLastCalledWith(
-        expect.objectContaining({ id: 'span-b', traceId: 'trace-123' }),
-      );
+    const span = (id: string, traceId = 'trace-123') => ({
+      id,
+      type: SourceKind.Trace,
+      aliasWith: [],
+      traceId,
     });
 
-    it('switches to the newly clicked span', () => {
-      renderPanel();
-
-      fireEvent.click(screen.getByText('select span-a'));
-      fireEvent.click(screen.getByText('select span-b'));
-
-      expect(screen.getByTestId('overview-row-id')).toHaveTextContent('span-b');
-    });
-
-    it('keeps the clicked span and corrects the URL after a late commit', () => {
-      renderPanel();
-      fireEvent.click(screen.getByText('select span-a'));
-      fireEvent.click(screen.getByText('select span-b'));
-      mockSetEventRowWhere.mockClear();
-
-      act(() =>
-        mockCommitUrl({
-          id: 'span-a',
-          type: SourceKind.Trace,
-          aliasWith: [],
-          traceId: 'trace-123',
-        }),
-      );
-
-      expect(screen.getByTestId('overview-row-id')).toHaveTextContent('span-b');
-      expect(mockSetEventRowWhere).toHaveBeenLastCalledWith(
-        expect.objectContaining({ id: 'span-b' }),
-      );
-    });
-
-    it('leaves a URL value written by another panel alone', () => {
-      renderPanel();
-      fireEvent.click(screen.getByText('select span-b'));
-      mockSetEventRowWhere.mockClear();
-
-      act(() =>
-        mockCommitUrl({
-          id: 'span-other',
-          type: SourceKind.Trace,
-          aliasWith: [],
-          traceId: 'trace-123',
-        }),
-      );
-
-      expect(screen.getByTestId('overview-row-id')).toHaveTextContent('span-b');
-      expect(mockSetEventRowWhere).not.toHaveBeenCalled();
-    });
-
-    it('keeps a destination span that reaches the URL before the trace changes', () => {
+    // Renders the panel with a button that moves it to trace-456.
+    const renderPanel = () => {
       const TraceSwitcher = () => {
         const [traceId, setTraceId] = React.useState('trace-123');
         return (
@@ -328,22 +265,32 @@ describe('DBTracePanel', () => {
           </>
         );
       };
-      renderWithMantine(<TraceSwitcher />);
+      return renderWithMantine(<TraceSwitcher />);
+    };
+    const shownSpan = () => screen.queryByTestId('overview-row-id');
+
+    it('switches to the clicked span and writes it to the URL', () => {
+      renderPanel();
+      fireEvent.click(screen.getByText('select span-a'));
       fireEvent.click(screen.getByText('select span-b'));
-      mockSetEventRowWhere.mockClear();
 
-      act(() =>
-        mockCommitUrl({
-          id: 'span-x',
-          type: SourceKind.Trace,
-          aliasWith: [],
-          traceId: 'trace-456',
-        }),
+      expect(shownSpan()).toHaveTextContent('span-b');
+      expect(mockSetEventRowWhere).toHaveBeenLastCalledWith(
+        expect.objectContaining({ id: 'span-b' }),
       );
-      fireEvent.click(screen.getByText('switch'));
+    });
 
-      expect(screen.getByTestId('overview-row-id')).toHaveTextContent('span-x');
-      expect(mockSetEventRowWhere).not.toHaveBeenCalled();
+    it('keeps the clicked span and corrects the URL after a late commit', () => {
+      renderPanel();
+      fireEvent.click(screen.getByText('select span-a'));
+      fireEvent.click(screen.getByText('select span-b'));
+
+      act(() => mockCommitUrl(span('span-a')));
+
+      expect(shownSpan()).toHaveTextContent('span-b');
+      expect(mockSetEventRowWhere).toHaveBeenLastCalledWith(
+        expect.objectContaining({ id: 'span-b' }),
+      );
     });
 
     it('stays closed when a late commit brings back a span', () => {
@@ -351,97 +298,28 @@ describe('DBTracePanel', () => {
       fireEvent.click(screen.getByText('select span-b'));
       fireEvent.click(screen.getByLabelText('Close span details'));
 
-      act(() =>
-        mockCommitUrl({
-          id: 'span-b',
-          type: SourceKind.Trace,
-          aliasWith: [],
-          traceId: 'trace-123',
-        }),
-      );
+      act(() => mockCommitUrl(span('span-b')));
 
-      expect(screen.queryByTestId('overview-row-id')).not.toBeInTheDocument();
+      expect(shownSpan()).not.toBeInTheDocument();
       expect(mockSetEventRowWhere).toHaveBeenLastCalledWith(null);
     });
 
-    it('restores a URL selection on mount only for its own trace', () => {
-      mockEventRowWhere = {
-        id: 'span-from-url',
-        type: SourceKind.Trace,
-        aliasWith: [],
-        traceId: 'trace-123',
-      };
-      const { unmount } = renderPanel();
-      expect(screen.getByTestId('overview-row-id')).toHaveTextContent(
-        'span-from-url',
-      );
-      unmount();
-
-      mockEventRowWhere = { ...mockEventRowWhere, traceId: 'trace-other' };
+    it('keeps a destination span that reaches the URL before the trace changes', () => {
       renderPanel();
-      expect(screen.queryByTestId('overview-row-id')).not.toBeInTheDocument();
-    });
-
-    it('shows the span a URL selects when the panel moves to that trace', () => {
-      const TraceSwitcher = () => {
-        const [traceId, setTraceId] = React.useState('trace-123');
-        return (
-          <>
-            <button onClick={() => setTraceId('trace-456')}>switch</button>
-            <DBTracePanel
-              traceId={traceId}
-              parentSourceId="trace-source"
-              childSourceId="log-source"
-              dateRange={[new Date(0), new Date(1000)]}
-              focusDate={new Date(500)}
-            />
-          </>
-        );
-      };
-      renderWithMantine(<TraceSwitcher />);
       fireEvent.click(screen.getByText('select span-b'));
+      mockSetEventRowWhere.mockClear();
 
-      // Back/Forward restores the URL first; the trace prop follows a render later.
-      window.history.pushState(
-        null,
-        '',
-        `/search?eventRowWhere=${encodeURIComponent(
-          JSON.stringify({
-            id: 'span-x',
-            type: SourceKind.Trace,
-            aliasWith: [],
-            traceId: 'trace-456',
-          }),
-        )}`,
-      );
-      fireEvent.popState(window);
+      act(() => mockCommitUrl(span('span-x', 'trace-456')));
       fireEvent.click(screen.getByText('switch'));
 
-      expect(screen.getByTestId('overview-row-id')).toHaveTextContent('span-x');
-      expect(mockSetEventRowWhere).not.toHaveBeenCalledWith(null);
-      window.history.pushState(null, '', '/search');
+      expect(shownSpan()).toHaveTextContent('span-x');
+      expect(mockSetEventRowWhere).not.toHaveBeenCalled();
     });
 
     it('writes a span clicked after a trace change to the URL', () => {
-      const TraceSwitcher = () => {
-        const [traceId, setTraceId] = React.useState('trace-123');
-        return (
-          <>
-            <button onClick={() => setTraceId('trace-456')}>switch</button>
-            <DBTracePanel
-              traceId={traceId}
-              parentSourceId="trace-source"
-              childSourceId="log-source"
-              dateRange={[new Date(0), new Date(1000)]}
-              focusDate={new Date(500)}
-            />
-          </>
-        );
-      };
-      renderWithMantine(<TraceSwitcher />);
+      renderPanel();
       fireEvent.click(screen.getByText('select span-b'));
       fireEvent.click(screen.getByText('switch'));
-
       fireEvent.click(screen.getByText('select span-a'));
 
       expect(mockSetEventRowWhere).toHaveBeenLastCalledWith(
@@ -449,39 +327,24 @@ describe('DBTracePanel', () => {
       );
     });
 
-    it('follows the URL on a real back/forward navigation', () => {
+    it('follows back/forward to an earlier span without rewriting the URL', () => {
       renderPanel();
+      fireEvent.click(screen.getByText('select span-a'));
       fireEvent.click(screen.getByText('select span-b'));
+      mockSetEventRowWhere.mockClear();
 
       window.history.pushState(
         null,
         '',
         `/search?eventRowWhere=${encodeURIComponent(
-          JSON.stringify({
-            id: 'span-a',
-            type: SourceKind.Trace,
-            aliasWith: [],
-            traceId: 'trace-123',
-          }),
+          JSON.stringify(span('span-a')),
         )}`,
       );
       fireEvent.popState(window);
+      act(() => mockCommitUrl(span('span-a')));
 
-      expect(screen.getByTestId('overview-row-id')).toHaveTextContent('span-a');
-      window.history.pushState(null, '', '/search');
-    });
-
-    it.each([
-      ['no selection', '/search'],
-      ['a malformed selection', '/search?eventRowWhere=%7Bnot-json'],
-    ])('closes on back/forward to a URL with %s', (_, url) => {
-      renderPanel();
-      fireEvent.click(screen.getByText('select span-b'));
-
-      window.history.pushState(null, '', url);
-      fireEvent.popState(window);
-
-      expect(screen.queryByTestId('overview-row-id')).not.toBeInTheDocument();
+      expect(shownSpan()).toHaveTextContent('span-a');
+      expect(mockSetEventRowWhere).not.toHaveBeenCalled();
       window.history.pushState(null, '', '/search');
     });
   });

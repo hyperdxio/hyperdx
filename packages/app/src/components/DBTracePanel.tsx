@@ -365,6 +365,9 @@ export default function DBTracePanel({
       const raw = new URLSearchParams(window.location.search).get(
         'eventRowWhere',
       );
+      // A real navigation cancels any pending correction of our own writes.
+      lastWrittenRef.current = undefined;
+      supersededRef.current.clear();
       setLocalSelection(raw == null ? null : eventRowWhereParser.parse(raw));
     };
     window.addEventListener('popstate', syncFromUrl);
