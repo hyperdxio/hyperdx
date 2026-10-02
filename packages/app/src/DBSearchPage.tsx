@@ -2761,29 +2761,28 @@ export function DBSearchPage() {
                   {hasQueryError && queryError ? (
                     <>
                       <div className="h-100 w-100 px-4 mt-4 align-items-center justify-content-center text-muted overflow-auto">
-                        <Alert
-                          variant="danger"
-                          title="Query failed"
-                          mb="md"
-                          data-testid="search-query-error"
-                        >
-                          <Group justify="space-between" align="center">
-                            <Text size="sm">
-                              The query didn't complete, so this is not a
-                              zero-result.
-                              {traceScopeActive
-                                ? ` ${getScopeIndicatorLabel('trace')}.`
-                                : ''}
-                            </Text>
-                            <Button
-                              variant="secondary"
-                              size="xs"
-                              onClick={() => onSubmit()}
-                            >
-                              Retry
-                            </Button>
-                          </Group>
-                        </Alert>
+                        {traceScopeActive && (
+                          <Alert
+                            variant="danger"
+                            title="Query failed"
+                            mb="md"
+                            data-testid="search-query-error"
+                          >
+                            <Group justify="space-between" align="center">
+                              <Text size="sm">
+                                The query didn't complete, so this is not a
+                                zero-result. {getScopeIndicatorLabel('trace')}.
+                              </Text>
+                              <Button
+                                variant="secondary"
+                                size="xs"
+                                onClick={() => onSubmit()}
+                              >
+                                Retry
+                              </Button>
+                            </Group>
+                          </Alert>
+                        )}
                         {whereSuggestions && whereSuggestions.length > 0 && (
                           <Box mb="xl">
                             <Text size="lg">
