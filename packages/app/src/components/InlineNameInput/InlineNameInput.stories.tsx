@@ -150,17 +150,19 @@ export const DraftInEditorHeader: Story = {
   render: () => <DraftEditorDemo />,
 };
 
-const SIZE_USAGE = {
+const SIZE_USAGE: Record<'xs' | 'sm' | 'md', string> = {
   xs: 'Compact rows, e.g. inside a form',
   sm: 'Editor headers (default)',
   md: 'Page titles',
-} as const;
+};
+
+const SIZES: Array<'xs' | 'sm' | 'md'> = ['xs', 'sm', 'md'];
 
 /** Every size, filled and empty. */
 export const Sizes: Story = {
   render: () => (
     <Stack gap="lg">
-      {(['xs', 'sm', 'md'] as const).map(size => (
+      {SIZES.map(size => (
         <Stack key={size} gap={4}>
           <Text size="xs" c="dimmed">
             size=&quot;{size}&quot; · {SIZE_USAGE[size]}

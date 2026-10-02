@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import cx from 'classnames';
+import type { HTMLAttributes, ReactNode } from 'react';
 import type { InputHTMLAttributes, KeyboardEvent, Ref } from 'react';
 import { Control, Controller, FieldValues, Path } from 'react-hook-form';
 
@@ -23,6 +24,23 @@ interface InlineNameFieldProps extends NativeInputProps {
   ref?: Ref<HTMLInputElement>;
 }
 
+function NameRoot({
+  level,
+  children,
+  ...props
+}: {
+  level?: InlineNameFieldProps['headingLevel'];
+  children: ReactNode;
+} & HTMLAttributes<HTMLElement>) {
+  if (level === 1) return <h1 {...props}>{children}</h1>;
+  if (level === 2) return <h2 {...props}>{children}</h2>;
+  if (level === 3) return <h3 {...props}>{children}</h3>;
+  if (level === 4) return <h4 {...props}>{children}</h4>;
+  if (level === 5) return <h5 {...props}>{children}</h5>;
+  if (level === 6) return <h6 {...props}>{children}</h6>;
+  return <span {...props}>{children}</span>;
+}
+
 function InlineNameField({
   value,
   onChange,
@@ -32,11 +50,15 @@ function InlineNameField({
   placeholder,
   ...inputProps
 }: InlineNameFieldProps) {
-  const Root = headingLevel != null ? (`h${headingLevel}` as const) : 'span';
+  // The input's value is not part of its parent's accessible name, so the
+  // heading would otherwise be announced as the input's label.
+  const headingName = headingLevel != null ? value || placeholder : undefined;
   return (
-    <Root
+    <NameRoot
+      level={headingLevel}
       className={cx(classes.root, classes[size])}
       data-value={value || placeholder}
+      aria-label={headingName}
     >
       <input
         {...inputProps}
@@ -49,7 +71,7 @@ function InlineNameField({
         aria-invalid={invalid || undefined}
         onChange={e => onChange(e.target.value)}
       />
-    </Root>
+    </NameRoot>
   );
 }
 

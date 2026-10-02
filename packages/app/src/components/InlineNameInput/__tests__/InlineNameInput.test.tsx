@@ -165,9 +165,9 @@ describe('InlineNameInput', () => {
       />,
     );
 
-    expect(screen.getByRole('heading', { level: 3 })).toContainElement(
-      screen.getByLabelText('Dashboard name'),
-    );
+    expect(
+      screen.getByRole('heading', { level: 3, name: 'My dashboard' }),
+    ).toContainElement(screen.getByLabelText('Dashboard name'));
   });
 });
 
