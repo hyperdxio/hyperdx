@@ -271,6 +271,134 @@ describe('ChartDisplaySettingsDrawer', () => {
     });
   });
 
+  describe('series limit ranking range setting', () => {
+    const builderProps = { ...baseProps, configType: 'builder' as const };
+
+    it('is hidden until a positive Series Limit is set', async () => {
+      const user = userEvent.setup();
+
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...builderProps}
+          displayType={DisplayType.Line}
+        />,
+      );
+
+      expect(
+        screen.queryByTestId('series-limit-ranking-range'),
+      ).not.toBeInTheDocument();
+
+      await user.type(
+        screen.getByRole('textbox', { name: /series limit/i }),
+        '5',
+      );
+
+      expect(
+        screen.getByTestId('series-limit-ranking-range'),
+      ).toBeInTheDocument();
+    });
+
+    it('is hidden when Series Limit is 0 (unlimited)', () => {
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...builderProps}
+          displayType={DisplayType.Line}
+          settings={{ seriesLimit: 0 } as ChartConfigDisplaySettings}
+        />,
+      );
+
+      expect(
+        screen.queryByTestId('series-limit-ranking-range'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('is hidden for raw SQL time charts, which rank client-side', () => {
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          displayType={DisplayType.Line}
+          settings={{ seriesLimit: 5 } as ChartConfigDisplaySettings}
+        />,
+      );
+
+      expect(
+        screen.queryByTestId('series-limit-ranking-range'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('defaults to the most recent window', () => {
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...builderProps}
+          displayType={DisplayType.StackedBar}
+          settings={{ seriesLimit: 5 } as ChartConfigDisplaySettings}
+        />,
+      );
+
+      expect(
+        screen.getByRole('radio', { name: /most recent window/i }),
+      ).toBeChecked();
+      expect(
+        screen.getByRole('radio', { name: /full range/i }),
+      ).not.toBeChecked();
+    });
+
+    it('calls onChange with seriesLimitRankingRange full when selected', async () => {
+      const onChange = jest.fn();
+      const user = userEvent.setup();
+
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...builderProps}
+          displayType={DisplayType.Line}
+          settings={{ seriesLimit: 5 } as ChartConfigDisplaySettings}
+          onChange={onChange}
+        />,
+      );
+
+      await user.click(screen.getByRole('radio', { name: /full range/i }));
+      await user.click(screen.getByRole('button', { name: /apply/i }));
+
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(onChange.mock.calls[0][0]).toMatchObject({
+        seriesLimit: 5,
+        seriesLimitRankingRange: 'full',
+      });
+      expect(onChange.mock.calls[0][1]).toBe(true);
+    });
+
+    // The default is stored as null so existing saved configs are unchanged
+    // and the cleared state survives the URL round-trip.
+    it('emits null when switched back to the most recent window', async () => {
+      const onChange = jest.fn();
+      const user = userEvent.setup();
+
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...builderProps}
+          displayType={DisplayType.Line}
+          settings={
+            {
+              seriesLimit: 5,
+              seriesLimitRankingRange: 'full',
+            } as ChartConfigDisplaySettings
+          }
+          onChange={onChange}
+        />,
+      );
+
+      expect(screen.getByRole('radio', { name: /full range/i })).toBeChecked();
+
+      await user.click(
+        screen.getByRole('radio', { name: /most recent window/i }),
+      );
+      await user.click(screen.getByRole('button', { name: /apply/i }));
+
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(onChange.mock.calls[0][0].seriesLimitRankingRange).toBeNull();
+    });
+  });
+
   describe('categorical series limit setting (pie/bar)', () => {
     const builderProps = { ...baseProps, configType: 'builder' as const };
 

@@ -24,6 +24,7 @@ import {
   QueryExpressionDashboardFilterSchema,
   scheduleStartAtSchema,
   SearchConditionLanguageSchema as whereLanguageSchema,
+  SeriesLimitRankingRangeSchema,
   StaticListDashboardFilterSchema,
   tagsSchema,
   validateAlertChannelSelection,
@@ -354,6 +355,9 @@ const externalDashboardLineChartConfigSchema =
     // Three-state, matching the internal SharedChartSettingsSchema.seriesLimit:
     // omitted = default render cap, 0 = unlimited, positive N = top-N by peak.
     seriesLimit: z.number().int().nonnegative().optional(),
+    // Matches the internal SelectSQLStatementSchema.seriesLimitRankingRange:
+    // omitted = 'recent' (rank over the newest chunk window).
+    seriesLimitRankingRange: SeriesLimitRankingRangeSchema.optional(),
   });
 
 const externalDashboardLineRawSqlChartConfigSchema =
@@ -376,6 +380,9 @@ const externalDashboardBarChartConfigSchema =
     // Three-state, matching the internal SharedChartSettingsSchema.seriesLimit:
     // omitted = default render cap, 0 = unlimited, positive N = top-N by peak.
     seriesLimit: z.number().int().nonnegative().optional(),
+    // Matches the internal SelectSQLStatementSchema.seriesLimitRankingRange:
+    // omitted = 'recent' (rank over the newest chunk window).
+    seriesLimitRankingRange: SeriesLimitRankingRangeSchema.optional(),
   });
 
 const externalDashboardBarRawSqlChartConfigSchema =

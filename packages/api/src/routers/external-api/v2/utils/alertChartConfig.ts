@@ -112,6 +112,9 @@ export const EVALUATION_INERT_CONFIG_KEYS: ReadonlySet<string> = new Set([
   // Evaluation-relevant only with a groupBy, which (on variants whose shape
   // lacks seriesLimit, i.e. number) is itself refused when present.
   'seriesLimit',
+  // Only read by the chunked time-chart fetch in the app; the alert task
+  // does not chunk its queries.
+  'seriesLimitRankingRange',
   // The alert task derives granularity from alert.interval
   // (tasks/checkAlerts/index.ts: `${windowSizeInMins} minute`) and the alert
   // detail chart from intervalToGranularity, so the stored value only affects
