@@ -1640,16 +1640,18 @@ export const processAlert = async (
       // Normalise into the shared bucket-row format used by the state machine below.
       // Each bucket maps to a list of { groupKey, value, attributes } rows.
       checkDataByBucket = new Map(
-        Array.from(bucketSeriesValues.entries()).map(([bucketMs, seriesMap]) => [
-          bucketMs,
-          Array.from(
-            seriesMap.entries(),
-          ).map(([groupKey, { value, attributes }]) => ({
-            groupKey,
-            value,
-            attributes,
-          })),
-        ]),
+        Array.from(bucketSeriesValues.entries()).map(
+          ([bucketMs, seriesMap]) => [
+            bucketMs,
+            Array.from(seriesMap.entries()).map(
+              ([groupKey, { value, attributes }]) => ({
+                groupKey,
+                value,
+                attributes,
+              }),
+            ),
+          ],
+        ),
       );
       sharedExpectedBuckets = expectedBuckets;
       // PromQL alerts always behave as grouped (every label-set is a distinct group).
@@ -1657,252 +1659,258 @@ export const processAlert = async (
     }
 
     if (!isPromQL) {
-    const chartConfig = getChartConfigFromAlert(
-      details,
-      connection.id,
-      dateRange,
-      windowSizeInMins,
-    );
-
-    if (chartConfig == null) {
-      evalOutcome = 'error';
-      logger.error(
-        {
-          chartConfig,
-          alertId: alert.id,
-        },
-        'Failed to build chart config',
-      );
-      return;
-    }
-
-    // For saved search alerts, the WHERE clause may reference aliased columns
-    // from the saved search's select expression (e.g. `toString(Body) AS body`).
-    // The alert query itself uses count(*), not the saved search's select,
-    // so we render the saved search's select separately to discover aliases
-    // and inject them as WITH clauses into the alert query.
-    if (details.taskType === AlertTaskType.SAVED_SEARCH) {
-      if (!isBuilderChartConfig(chartConfig)) {
-        logger.error({
-          chartConfig,
-          message:
-            'Found non-builder chart config for saved search alert, cannot compute WITH clauses',
-        });
-        throw new Error('Expected builder chart config for saved search alert');
-      }
-      try {
-        const withClauses = await computeAliasWithClauses(
-          details.savedSearch,
-          details.source,
-          metadata,
-        );
-        if (withClauses) {
-          chartConfig.with = withClauses;
-          aliasWithClauses = withClauses;
-        }
-      } catch (e) {
-        logger.warn(
-          { error: serializeError(e), alertId: alert.id },
-          'Failed to compute alias WITH clauses for alert check',
-        );
-      }
-    }
-
-    // Optimize chart config with materialized views, if available.
-    // materializedViews exists on Log and Trace sources.
-    const mvSource =
-      source?.kind === SourceKind.Log || source?.kind === SourceKind.Trace
-        ? source
-        : undefined;
-    const optimizedChartConfig =
-      isBuilderChartConfig(chartConfig) && mvSource?.materializedViews?.length
-        ? await tryOptimizeConfigWithMaterializedView(
-            chartConfig,
-            metadata,
-            clickhouseClient,
-            undefined,
-            mvSource,
-          )
-        : chartConfig;
-
-    // Readonly = 2 means the query is readonly but can still specify query settings.
-    // This is done only for Raw SQL configs because it carries a minor risk of conflict with
-    // existing settings (which may have readonly = 1) and is not required for builder
-    // chart configs, which are always rendered as select statements.
-    const clickHouseSettings = isRawSqlChartConfig(optimizedChartConfig)
-      ? { readonly: '2' }
-      : {};
-
-    // Query for alert data. If the query fails, record the error and exit
-    // without touching alert state or creating an AlertHistory.
-    let checksData;
-    const queryStartedAt = performance.now();
-    try {
-      checksData = await clickhouseClient.queryChartConfig({
-        config: optimizedChartConfig,
-        metadata,
-        opts: { clickhouse_settings: clickHouseSettings },
-        querySettings: source?.querySettings,
-      });
-      // SLO signal for alert data fetching (distinct from the end-to-end
-      // evaluation SLI): did ClickHouse serve the alert query, and how fast.
-      const queryDurationMs = performance.now() - queryStartedAt;
-      evaluationAnalytics.queryDurationMs = Math.round(queryDurationMs);
-      recordOperationOutcome({
-        operation: 'alerts.query',
-        outcome: 'success',
-        durationMs: queryDurationMs,
-        attributes: { alert_source: alert.source ?? 'unknown' },
-      });
-    } catch (e) {
-      const queryDurationMs = performance.now() - queryStartedAt;
-      // Time-to-failure — for QUERY_TIMEOUT this is roughly the configured
-      // evaluation timeout.
-      evaluationAnalytics.queryDurationMs = Math.round(queryDurationMs);
-      recordOperationOutcome({
-        operation: 'alerts.query',
-        outcome: 'error',
-        durationMs: queryDurationMs,
-        attributes: { alert_source: alert.source ?? 'unknown' },
-      });
-      evalOutcome = 'error';
-      const alertError = makeQueryAlertError(
-        e,
-        clickhouseClient.requestTimeoutMs,
-      );
-      alertQueryFailuresCounter.add(1, {
-        error_type:
-          alertError.type === AlertErrorType.QUERY_TIMEOUT
-            ? 'timeout'
-            : 'error',
-      });
-      logger.error(
-        {
-          alertId: alert.id,
-          errorType: alertError.type,
-          error: serializeError(e),
-        },
-        'Alert query failed, skipping state/history update',
-      );
-      // Record the error on the alert and as an ERROR history row for this
-      // window. ERROR rows are excluded from the due-ness gate and date-range
-      // computation, so the failed window is still retried/backfilled.
-      await alertProvider.recordAlertErrors(
-        alert.id,
-        [alertError],
-        nowInMinsRoundDown,
-        evaluationAnalytics,
-      );
-      return;
-    }
-
-    logger.info(
-      {
-        alertId: alert.id,
-        chartConfig,
-        optimizedChartConfig,
-        checksData,
-        checkStartTime: dateRange[0],
-        checkEndTime: dateRange[1],
-      },
-      `Received alert metric [${alert.source} source]`,
-    );
-
-    const meta = getResponseMetadata(chartConfig, checksData);
-    if (!meta) {
-      evalOutcome = 'error';
-      logger.error({ alertId: alert.id }, 'Failed to get response metadata');
-      return;
-    }
-
-    // single_value type (Raw SQL Number charts) returns a single value with no
-    // timestamp column, and are assumed to not have groups.
-    if (meta.type === 'single_value') {
-      // Use the date range end as the alert timestamp.
-      const alertTimestamp = dateRange[1];
-      const history = getOrCreateHistory('');
-
-      // The value is taken from the last numeric column of the first row.
-      // The value defaults to 0.
-      const value =
-        checksData.data.length > 0
-          ? (parseAlertData(checksData.data[0], meta).value ?? 0)
-          : 0;
-
-      history.lastValues.push({ count: value, startTime: alertTimestamp });
-      const previous = previousMap.get(computeHistoryMapKey(alert.id, ''));
-      if (doesExceedThreshold(alert, value)) {
-        history.counts += 1;
-        if (shouldFireBasedOnConsecutiveWindows()) {
-          history.state = AlertState.ALERT;
-          history.fired = true;
-          await trySendNotification({
-            state: AlertState.ALERT,
-            group: '',
-            totalCount: value,
-            startTime: alertTimestamp,
-          });
-        } else {
-          history.state = AlertState.PENDING;
-          // Carry forward fired=true if a notification was previously sent and not yet resolved.
-          history.fired = previous?.fired === true;
-        }
-      }
-
-      // Auto-resolve
-      await sendNotificationIfResolved(previous, history, '');
-
-      // Single-value evaluations always cover exactly the current window.
-      evaluationAnalytics.backfilledBuckets = 0;
-      flushNotificationTimings();
-      const historyRecords = Array.from(histories.values());
-      for (const record of historyRecords) {
-        record.analytics = evaluationAnalytics;
-      }
-      await alertProvider.updateAlertState(
-        alert.id,
-        historyRecords,
-        executionErrors,
+      const chartConfig = getChartConfigFromAlert(
+        details,
+        connection.id,
         dateRange,
+        windowSizeInMins,
       );
-      return;
-    }
 
-    // Standard time-series alert evaluation (Line/StackedBar charts).
-    const sqlExpectedBuckets = timeBucketByGranularity(
-      dateRange[0],
-      dateRange[1],
-      `${windowSizeInMins} minute`,
-    );
-    // Buckets beyond the current window were backfilled in this run —
-    // earlier evaluation ticks were missed (job delay, failed evaluations).
-    evaluationAnalytics.backfilledBuckets = Math.max(
-      0,
-      sqlExpectedBuckets.length - 1,
-    );
+      if (chartConfig == null) {
+        evalOutcome = 'error';
+        logger.error(
+          {
+            chartConfig,
+            alertId: alert.id,
+          },
+          'Failed to build chart config',
+        );
+        return;
+      }
 
-    // Normalise SQL rows into the shared bucket-row format:
-    // Map<bucketMs, { groupKey, value, attributes }[]>
-    const sqlBucketRows = new Map<
-      number,
-      { groupKey: string; value: number; attributes: Record<string, string> }[]
-    >();
-    for (const checkData of checksData.data) {
-      const bucketStart = new Date(checkData[meta.timestampColumnName]);
-      const bucketMs = bucketStart.getTime();
-      if (!sqlBucketRows.has(bucketMs)) sqlBucketRows.set(bucketMs, []);
-      const { value, extraFields } = parseAlertData(checkData, meta);
-      if (value == null) continue; // skip NULL (missing denominator, empty ratio, etc.)
-      const groupKey = hasGroupBy
-        ? extraFields.map(([k, v]) => `${k}:${v}`).join(', ')
-        : '';
-      const attributes = hasGroupBy ? Object.fromEntries(extraFields) : {};
-      sqlBucketRows.get(bucketMs)!.push({ groupKey, value, attributes });
-    }
+      // For saved search alerts, the WHERE clause may reference aliased columns
+      // from the saved search's select expression (e.g. `toString(Body) AS body`).
+      // The alert query itself uses count(*), not the saved search's select,
+      // so we render the saved search's select separately to discover aliases
+      // and inject them as WITH clauses into the alert query.
+      if (details.taskType === AlertTaskType.SAVED_SEARCH) {
+        if (!isBuilderChartConfig(chartConfig)) {
+          logger.error({
+            chartConfig,
+            message:
+              'Found non-builder chart config for saved search alert, cannot compute WITH clauses',
+          });
+          throw new Error(
+            'Expected builder chart config for saved search alert',
+          );
+        }
+        try {
+          const withClauses = await computeAliasWithClauses(
+            details.savedSearch,
+            details.source,
+            metadata,
+          );
+          if (withClauses) {
+            chartConfig.with = withClauses;
+            aliasWithClauses = withClauses;
+          }
+        } catch (e) {
+          logger.warn(
+            { error: serializeError(e), alertId: alert.id },
+            'Failed to compute alias WITH clauses for alert check',
+          );
+        }
+      }
 
-    checkDataByBucket = sqlBucketRows;
-    sharedExpectedBuckets = sqlExpectedBuckets;
-    runAutoResolveForAll = false; // SQL grouped alerts already guard this with hasGroupBy
+      // Optimize chart config with materialized views, if available.
+      // materializedViews exists on Log and Trace sources.
+      const mvSource =
+        source?.kind === SourceKind.Log || source?.kind === SourceKind.Trace
+          ? source
+          : undefined;
+      const optimizedChartConfig =
+        isBuilderChartConfig(chartConfig) && mvSource?.materializedViews?.length
+          ? await tryOptimizeConfigWithMaterializedView(
+              chartConfig,
+              metadata,
+              clickhouseClient,
+              undefined,
+              mvSource,
+            )
+          : chartConfig;
+
+      // Readonly = 2 means the query is readonly but can still specify query settings.
+      // This is done only for Raw SQL configs because it carries a minor risk of conflict with
+      // existing settings (which may have readonly = 1) and is not required for builder
+      // chart configs, which are always rendered as select statements.
+      const clickHouseSettings = isRawSqlChartConfig(optimizedChartConfig)
+        ? { readonly: '2' }
+        : {};
+
+      // Query for alert data. If the query fails, record the error and exit
+      // without touching alert state or creating an AlertHistory.
+      let checksData;
+      const queryStartedAt = performance.now();
+      try {
+        checksData = await clickhouseClient.queryChartConfig({
+          config: optimizedChartConfig,
+          metadata,
+          opts: { clickhouse_settings: clickHouseSettings },
+          querySettings: source?.querySettings,
+        });
+        // SLO signal for alert data fetching (distinct from the end-to-end
+        // evaluation SLI): did ClickHouse serve the alert query, and how fast.
+        const queryDurationMs = performance.now() - queryStartedAt;
+        evaluationAnalytics.queryDurationMs = Math.round(queryDurationMs);
+        recordOperationOutcome({
+          operation: 'alerts.query',
+          outcome: 'success',
+          durationMs: queryDurationMs,
+          attributes: { alert_source: alert.source ?? 'unknown' },
+        });
+      } catch (e) {
+        const queryDurationMs = performance.now() - queryStartedAt;
+        // Time-to-failure — for QUERY_TIMEOUT this is roughly the configured
+        // evaluation timeout.
+        evaluationAnalytics.queryDurationMs = Math.round(queryDurationMs);
+        recordOperationOutcome({
+          operation: 'alerts.query',
+          outcome: 'error',
+          durationMs: queryDurationMs,
+          attributes: { alert_source: alert.source ?? 'unknown' },
+        });
+        evalOutcome = 'error';
+        const alertError = makeQueryAlertError(
+          e,
+          clickhouseClient.requestTimeoutMs,
+        );
+        alertQueryFailuresCounter.add(1, {
+          error_type:
+            alertError.type === AlertErrorType.QUERY_TIMEOUT
+              ? 'timeout'
+              : 'error',
+        });
+        logger.error(
+          {
+            alertId: alert.id,
+            errorType: alertError.type,
+            error: serializeError(e),
+          },
+          'Alert query failed, skipping state/history update',
+        );
+        // Record the error on the alert and as an ERROR history row for this
+        // window. ERROR rows are excluded from the due-ness gate and date-range
+        // computation, so the failed window is still retried/backfilled.
+        await alertProvider.recordAlertErrors(
+          alert.id,
+          [alertError],
+          nowInMinsRoundDown,
+          evaluationAnalytics,
+        );
+        return;
+      }
+
+      logger.info(
+        {
+          alertId: alert.id,
+          chartConfig,
+          optimizedChartConfig,
+          checksData,
+          checkStartTime: dateRange[0],
+          checkEndTime: dateRange[1],
+        },
+        `Received alert metric [${alert.source} source]`,
+      );
+
+      const meta = getResponseMetadata(chartConfig, checksData);
+      if (!meta) {
+        evalOutcome = 'error';
+        logger.error({ alertId: alert.id }, 'Failed to get response metadata');
+        return;
+      }
+
+      // single_value type (Raw SQL Number charts) returns a single value with no
+      // timestamp column, and are assumed to not have groups.
+      if (meta.type === 'single_value') {
+        // Use the date range end as the alert timestamp.
+        const alertTimestamp = dateRange[1];
+        const history = getOrCreateHistory('');
+
+        // The value is taken from the last numeric column of the first row.
+        // The value defaults to 0.
+        const value =
+          checksData.data.length > 0
+            ? (parseAlertData(checksData.data[0], meta).value ?? 0)
+            : 0;
+
+        history.lastValues.push({ count: value, startTime: alertTimestamp });
+        const previous = previousMap.get(computeHistoryMapKey(alert.id, ''));
+        if (doesExceedThreshold(alert, value)) {
+          history.counts += 1;
+          if (shouldFireBasedOnConsecutiveWindows()) {
+            history.state = AlertState.ALERT;
+            history.fired = true;
+            await trySendNotification({
+              state: AlertState.ALERT,
+              group: '',
+              totalCount: value,
+              startTime: alertTimestamp,
+            });
+          } else {
+            history.state = AlertState.PENDING;
+            // Carry forward fired=true if a notification was previously sent and not yet resolved.
+            history.fired = previous?.fired === true;
+          }
+        }
+
+        // Auto-resolve
+        await sendNotificationIfResolved(previous, history, '');
+
+        // Single-value evaluations always cover exactly the current window.
+        evaluationAnalytics.backfilledBuckets = 0;
+        flushNotificationTimings();
+        const historyRecords = Array.from(histories.values());
+        for (const record of historyRecords) {
+          record.analytics = evaluationAnalytics;
+        }
+        await alertProvider.updateAlertState(
+          alert.id,
+          historyRecords,
+          executionErrors,
+          dateRange,
+        );
+        return;
+      }
+
+      // Standard time-series alert evaluation (Line/StackedBar charts).
+      const sqlExpectedBuckets = timeBucketByGranularity(
+        dateRange[0],
+        dateRange[1],
+        `${windowSizeInMins} minute`,
+      );
+      // Buckets beyond the current window were backfilled in this run —
+      // earlier evaluation ticks were missed (job delay, failed evaluations).
+      evaluationAnalytics.backfilledBuckets = Math.max(
+        0,
+        sqlExpectedBuckets.length - 1,
+      );
+
+      // Normalise SQL rows into the shared bucket-row format:
+      // Map<bucketMs, { groupKey, value, attributes }[]>
+      const sqlBucketRows = new Map<
+        number,
+        {
+          groupKey: string;
+          value: number;
+          attributes: Record<string, string>;
+        }[]
+      >();
+      for (const checkData of checksData.data) {
+        const bucketStart = new Date(checkData[meta.timestampColumnName]);
+        const bucketMs = bucketStart.getTime();
+        if (!sqlBucketRows.has(bucketMs)) sqlBucketRows.set(bucketMs, []);
+        const { value, extraFields } = parseAlertData(checkData, meta);
+        if (value == null) continue; // skip NULL (missing denominator, empty ratio, etc.)
+        const groupKey = hasGroupBy
+          ? extraFields.map(([k, v]) => `${k}:${v}`).join(', ')
+          : '';
+        const attributes = hasGroupBy ? Object.fromEntries(extraFields) : {};
+        sqlBucketRows.get(bucketMs)!.push({ groupKey, value, attributes });
+      }
+
+      checkDataByBucket = sqlBucketRows;
+      sharedExpectedBuckets = sqlExpectedBuckets;
+      runAutoResolveForAll = false; // SQL grouped alerts already guard this with hasGroupBy
     }
 
     // Shared tail: bucket state machine + auto-resolve + notifications
@@ -1929,8 +1937,7 @@ export const processAlert = async (
         const hasAlertsInPreviousMap = previousMap
           .values()
           .some(
-            h =>
-              h.state === AlertState.ALERT || h.state === AlertState.PENDING,
+            h => h.state === AlertState.ALERT || h.state === AlertState.PENDING,
           );
 
         if (zeroValueIsAlert) {
