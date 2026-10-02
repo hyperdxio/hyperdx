@@ -7,6 +7,7 @@ import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError, validateObjectId } from '@/mcp/utils/errors';
 import Dashboard from '@/models/dashboard';
 import { convertToExternalDashboard } from '@/routers/external-api/v2/utils/dashboards';
+import { versionToken } from '@/utils/dashboardVersion';
 
 import { withResolvedFilterVariableNames } from './variables';
 
@@ -24,7 +25,10 @@ export function registerGetDashboard({
       annotations: { readOnlyHint: true },
       description:
         'Without an ID: list all dashboards (returns IDs, names, tags). ' +
-        'With an ID: get full dashboard detail including all tiles and configuration.',
+        'With an ID: get full dashboard detail including all tiles and configuration. ' +
+        'The returned `version` is required by clickstack_save_dashboard and ' +
+        'clickstack_patch_dashboard — pass it back unchanged so the write is ' +
+        'rejected instead of overwriting an edit made since you read.',
       inputSchema: z.object({
         id: z
           .string()
@@ -67,6 +71,10 @@ export function registerGetDashboard({
             text: JSON.stringify(
               {
                 ...externalDashboard,
+                // The token a subsequent clickstack_save_dashboard or
+                // clickstack_patch_dashboard must echo back. Detail only: a
+                // list entry is not something you can write to.
+                version: versionToken(dashboard),
                 filters: withResolvedFilterVariableNames(
                   externalDashboard.filters ?? [],
                 ),

@@ -95,4 +95,50 @@ describe('MCP Dashboard Tools - clickstack_get_dashboard', () => {
     expect(result.isError).toBe(true);
     expect(getFirstText(result)).toContain('not found');
   });
+
+  it('returns a version on the detail response', async () => {
+    const sourceId = ctx.traceSource._id.toString();
+    const created = JSON.parse(
+      getFirstText(
+        await callTool(ctx.client!, 'clickstack_save_dashboard', {
+          name: 'Version Read Dashboard',
+          tiles: [
+            {
+              name: 'Tile',
+              x: 0,
+              y: 0,
+              w: 12,
+              h: 4,
+              config: {
+                displayType: 'line',
+                sourceId,
+                select: [{ aggFn: 'count' }],
+              },
+            },
+          ],
+        }),
+      ),
+    );
+
+    const detail = JSON.parse(
+      getFirstText(
+        await callTool(ctx.client!, 'clickstack_get_dashboard', {
+          id: created.id,
+        }),
+      ),
+    );
+
+    expect(detail.version).toMatch(/^\d+$/);
+    expect(detail.version).toBe(created.version);
+  });
+
+  it('omits version from the list response', async () => {
+    const list = JSON.parse(
+      getFirstText(await callTool(ctx.client!, 'clickstack_get_dashboard', {})),
+    );
+    expect(Array.isArray(list)).toBe(true);
+    list.forEach((d: Record<string, unknown>) =>
+      expect(d).not.toHaveProperty('version'),
+    );
+  });
 });

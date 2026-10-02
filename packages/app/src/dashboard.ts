@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
+import { HTTPError } from 'ky';
 import { parseAsJson, useQueryState } from 'nuqs';
 import {
   DashboardContainer,
@@ -51,6 +52,13 @@ export type Dashboard = {
   containers?: DashboardContainer[];
   createdAt?: string;
   updatedAt?: string;
+  /**
+   * The optimistic-concurrency token for dashboard writes. Optional because
+   * IS_LOCAL_MODE dashboards live in URL state and have none. Opaque here
+   * even though it is an integer on the wire — send it back to
+   * `expectedVersion` verbatim.
+   */
+  version?: number;
   createdBy?: { email: string; name?: string };
   updatedBy?: { email: string; name?: string };
   /** Machine-managed by ProvisionDashboardsTask, whose name-keyed upsert
@@ -150,29 +158,67 @@ function markDashboardOnboarding(
   }
 }
 
-export function useUpdateDashboard() {
+export function useUpdateDashboard(dashboardId?: string) {
   const queryClient = useQueryClient();
   const markOnboardingTaskComplete = useMarkOnboardingTaskComplete();
   const invalidateTags = useInvalidateTags();
 
   return useMutation({
+    // TanStack runs same-scope mutations one at a time, so two saves fired
+    // back to back queue instead of racing (HDX-4159). That buys ordering
+    // and a deterministic loser: whichever save is queued second still
+    // carries the version its payload was built from, so it 409s against
+    // the first save's write rather than silently overwriting it.
+    scope: dashboardId ? { id: `dashboard-${dashboardId}` } : undefined,
     mutationFn: async (
       dashboard: Partial<Dashboard> & { id: Dashboard['id'] },
     ) => {
-      const normalized = normalizeDashboardTileColors(dashboard);
+      // `updatedAt` is a display-only field the API returns but doesn't
+      // accept back; drop it here too so it isn't echoed into the PATCH body.
+      const { version, updatedAt: _updatedAt, ...rest } = dashboard;
+      const normalized = normalizeDashboardTileColors(rest);
       if (IS_LOCAL_MODE) {
         const { id, ...updates } = normalized;
         localDashboards.update(id, updates);
         return undefined;
       }
+      // Send the version the payload itself was built from, not whatever
+      // is newest in the cache. Re-reading the cache here would let a save
+      // whose payload predates a sibling's write pass the guard with the
+      // sibling's fresher token, silently reverting the sibling's change
+      // with the stale document this save still carries.
       // Return the persisted dashboard so onboarding keys off saved tiles, not
       // the partial PATCH payload — a name/tag-only save omits `tiles`.
       return hdxServer(`dashboards/${normalized.id}`, {
         method: 'PATCH',
-        json: normalized,
+        json: {
+          ...normalized,
+          expectedVersion: version != null ? String(version) : undefined,
+        },
       }).json<Dashboard>();
     },
     onSuccess: updated => {
+      // Seed the new token synchronously. invalidateQueries alone refetches
+      // asynchronously, leaving a window where the next save would send a
+      // stale token and 409 against its own predecessor.
+      if (updated != null) {
+        queryClient.setQueryData<Dashboard[]>(['dashboards'], prev =>
+          prev?.map(d =>
+            d.id === updated.id
+              ? {
+                  ...d,
+                  ...updated,
+                  // The PATCH response comes straight from findOneAndUpdate
+                  // with no populate, so these arrive as bare ObjectIds and
+                  // would blank the author names the list query resolved,
+                  // until the refetch below lands.
+                  createdBy: d.createdBy,
+                  updatedBy: d.updatedBy,
+                }
+              : d,
+          ),
+        );
+      }
       queryClient.invalidateQueries({ queryKey: ['dashboards'] });
       invalidateTags();
       markDashboardOnboarding(markOnboardingTaskComplete, updated?.tiles);
@@ -235,7 +281,8 @@ export function useDashboard({
     parseAsJson<Dashboard>(),
   );
 
-  const updateDashboard = useUpdateDashboard();
+  const queryClient = useQueryClient();
+  const updateDashboard = useUpdateDashboard(dashboardId);
   const completeOnboardingTask = useCompleteOnboardingTask();
   const { data: me } = api.useMe();
   // A non-persistable user counts as "already built" so the temp-dashboard POST
@@ -248,7 +295,7 @@ export function useDashboard({
     useQuery({
       queryKey: ['dashboards'],
       queryFn: fetchDashboards,
-      select: data => {
+      select: (data: Dashboard[]) => {
         return data.find(d => d.id === dashboardId);
       },
       enabled: dashboardId != null,
@@ -294,28 +341,52 @@ export function useDashboard({
         onSuccess?.();
       } else {
         setIsSettingDashboard(true);
-        return updateDashboard.mutate(newDashboard, {
-          onSuccess: () => {
-            setIsSettingDashboard(false);
-            onSuccess?.();
+        // `remoteDashboard` is the render this payload was built from, so
+        // its version describes what the payload assumes is still current —
+        // that's the token the write needs to check against.
+        return updateDashboard.mutate(
+          { ...newDashboard, version: remoteDashboard?.version },
+          {
+            onSuccess: () => {
+              setIsSettingDashboard(false);
+              onSuccess?.();
+            },
+            onError: async e => {
+              setIsSettingDashboard(false);
+              if (e instanceof HTTPError && e.response?.status === 409) {
+                await queryClient.invalidateQueries({
+                  queryKey: ['dashboards'],
+                });
+                notifications.show({
+                  color: 'yellow',
+                  // Describes the state rather than blaming another person:
+                  // a rejected save is just as often the user's own second
+                  // edit made against a render the first save superseded.
+                  title: 'Dashboard has newer changes',
+                  message:
+                    'Your change was not saved. The latest version has been loaded — please reapply it.',
+                  autoClose: 8000,
+                });
+              } else {
+                notifications.show({
+                  color: 'red',
+                  title: 'Unable to save dashboard',
+                  message: e.message.slice(0, 100),
+                  autoClose: 5000,
+                });
+              }
+              onError?.();
+            },
           },
-          onError: e => {
-            setIsSettingDashboard(false);
-            notifications.show({
-              color: 'red',
-              title: 'Unable to save dashboard',
-              message: e.message.slice(0, 100),
-              autoClose: 5000,
-            });
-            onError?.();
-          },
-        });
+        );
       }
     },
     [
       isLocalDashboard,
       setLocalDashboard,
       updateDashboard,
+      remoteDashboard,
+      queryClient,
       completeOnboardingTask,
       hasBuiltDashboard,
     ],

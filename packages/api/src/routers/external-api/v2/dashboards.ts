@@ -7,6 +7,12 @@ import {
   recordDashboardOnboardingIfHasTiles,
 } from '@/controllers/dashboard';
 import Dashboard, { IDashboard } from '@/models/dashboard';
+import {
+  dashboardETag,
+  parseIfMatch,
+  resolveDashboardWriteMiss,
+  versionFilter,
+} from '@/utils/dashboardVersion';
 import { processRequestWithEnhancedErrors as validateRequest } from '@/utils/enhancedErrors';
 import { ExternalDashboardTileWithId, objectIdSchema } from '@/utils/zod';
 
@@ -36,6 +42,10 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
   savedQueryLanguage: 1,
   savedFilterValues: 1,
   containers: 1,
+  // Feeds the ETag response header; deliberately not surfaced by
+  // convertToExternalDashboard, since a new body field would show up as a
+  // permanent diff in the terraform provider's imported state.
+  version: 1,
 } as const;
 
 /**
@@ -2377,6 +2387,15 @@ router.get('/', async (req, res, next) => {
  *     responses:
  *       '200':
  *         description: Successfully retrieved dashboard
+ *         headers:
+ *           ETag:
+ *             description: >
+ *               Opaque version token for this dashboard. Send it back as
+ *               If-Match on a PUT to that dashboard to guard against
+ *               overwriting a concurrent edit.
+ *             schema:
+ *               type: string
+ *               example: '"7"'
  *         content:
  *           application/json:
  *             schema:
@@ -2462,6 +2481,7 @@ router.get(
         return res.sendStatus(404);
       }
 
+      res.setHeader('ETag', dashboardETag(dashboard));
       res.json({
         data: convertToExternalDashboard(dashboard),
       });
@@ -2673,6 +2693,15 @@ router.post('/validate', async (req, res, next) => {
  *     responses:
  *       '200':
  *         description: Successfully created dashboard
+ *         headers:
+ *           ETag:
+ *             description: >
+ *               Opaque version token for this dashboard. Send it back as
+ *               If-Match on a PUT to that dashboard to guard against
+ *               overwriting a concurrent edit.
+ *             schema:
+ *               type: string
+ *               example: '"7"'
  *         content:
  *           application/json:
  *             schema:
@@ -2784,6 +2813,7 @@ router.post(
 
       recordDashboardOnboardingIfHasTiles(req.user?._id, newDashboard.tiles);
 
+      res.setHeader('ETag', dashboardETag(newDashboard));
       res.json({
         data: convertToExternalDashboard(newDashboard),
       });
@@ -2801,11 +2831,10 @@ router.post(
  *     description: |
  *       Updates an existing dashboard.
  *
- *       **Concurrency:** This endpoint does not support optimistic
- *       concurrency control. Concurrent PUT requests for the same
- *       dashboard may silently overwrite each other, which can leave
- *       orphan tile-to-container references on layout-shape edits.
- *       Clients should serialize edits to a given dashboard.
+ *       **Concurrency:** Optimistic concurrency control is opt-in via the
+ *       If-Match header. Send the ETag from a prior GET on this dashboard
+ *       to guard against overwriting a concurrent edit; omit it to keep the
+ *       previous last-write-wins behaviour.
  *     operationId: updateDashboard
  *     tags: [Dashboards]
  *     parameters:
@@ -2816,6 +2845,17 @@ router.post(
  *           type: string
  *         description: Dashboard ID
  *         example: "65f5e4a3b9e77c001a567890"
+ *       - name: If-Match
+ *         in: header
+ *         required: false
+ *         schema:
+ *           type: string
+ *         description: >
+ *           Optional. The ETag from a prior GET on this dashboard, or "*"
+ *           to require the dashboard to exist without pinning a version.
+ *           When provided, the update fails with 412 if the dashboard was
+ *           modified since that ETag was issued.
+ *         example: '"7"'
  *     requestBody:
  *       required: true
  *       content:
@@ -2862,6 +2902,14 @@ router.post(
  *     responses:
  *       '200':
  *         description: Successfully updated dashboard
+ *         headers:
+ *           ETag:
+ *             description: >
+ *               Opaque version token for the dashboard as stored after this
+ *               update. Use it as the next If-Match value.
+ *             schema:
+ *               type: string
+ *               example: '"8"'
  *         content:
  *           application/json:
  *             schema:
@@ -2929,6 +2977,26 @@ router.post(
  *               $ref: '#/components/schemas/Error'
  *             example:
  *               message: "Dashboard not found"
+ *       '412':
+ *         description: >
+ *           Precondition Failed. The If-Match header did not match the
+ *           dashboard's current ETag, meaning it was modified since the
+ *           caller last read it. The response carries the current ETag so
+ *           the caller can re-read and retry.
+ *         headers:
+ *           ETag:
+ *             description: The dashboard's current version token.
+ *             schema:
+ *               type: string
+ *               example: '"8"'
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               message: >-
+ *                 Dashboard was modified after the version in your If-Match
+ *                 header. Re-read the dashboard and retry.
  *       '500':
  *         description: Server error or validation failure
  *         content:
@@ -2955,6 +3023,23 @@ router.put(
       }
       if (!dashboardId) {
         return res.sendStatus(400);
+      }
+
+      const ifMatch = req.get('If-Match');
+      let expectedVersion: number | undefined;
+      if (ifMatch !== undefined) {
+        const parsed = parseIfMatch(ifMatch);
+        if (parsed === null) {
+          return res.status(400).json({
+            message:
+              'Malformed If-Match header. Use the ETag from a GET on this dashboard, or *.',
+          });
+        }
+        // `*` means "any current representation", so existence is the only
+        // precondition and the plain filter below already covers it.
+        if (parsed !== '*') {
+          expectedVersion = parsed;
+        }
       }
 
       const {
@@ -3034,13 +3119,33 @@ router.put(
       }
 
       const updatedDashboard = await Dashboard.findOneAndUpdate(
-        { _id: dashboardId, team: teamId },
+        {
+          _id: dashboardId,
+          team: teamId,
+          ...(expectedVersion != null ? versionFilter(expectedVersion) : {}),
+        },
         { $set: setPayload },
         { new: true },
       );
 
       if (updatedDashboard == null) {
-        return res.sendStatus(404);
+        if (expectedVersion == null) {
+          return res.sendStatus(404);
+        }
+        const miss = await resolveDashboardWriteMiss(
+          dashboardId,
+          teamId,
+          'v2_put',
+        );
+        if (miss.kind === 'deleted') {
+          return res.sendStatus(404);
+        }
+        res.setHeader('ETag', `"${miss.currentVersion}"`);
+        return res.status(412).json({
+          message:
+            'Dashboard was modified after the version in your If-Match header. ' +
+            'Re-read the dashboard and retry.',
+        });
       }
 
       await cleanupDashboardAlerts({
@@ -3055,6 +3160,7 @@ router.put(
         updatedDashboard.tiles,
       );
 
+      res.setHeader('ETag', dashboardETag(updatedDashboard));
       res.json({
         data: convertToExternalDashboard(updatedDashboard),
       });

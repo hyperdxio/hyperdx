@@ -1471,6 +1471,14 @@ export const mcpPatchDashboardSchema = z.object({
         'Layout fields (x, y, w, h), name, and containerId/tabId default to the ' +
         "existing tile's values when omitted, so you only need to specify what changed.",
     ),
+  version: z
+    .string()
+    .describe(
+      'Required. The `version` from the most recent clickstack_get_dashboard ' +
+        'response (or `dashboardVersion` from clickstack_get_dashboard_tile) ' +
+        'for this dashboard. The patch is rejected if the dashboard changed ' +
+        'since then.',
+    ),
 });
 
 export const mcpSearchDashboardsSchema = z.object({

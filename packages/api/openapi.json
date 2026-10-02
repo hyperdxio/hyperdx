@@ -6570,6 +6570,15 @@
         "responses": {
           "200": {
             "description": "Successfully created dashboard",
+            "headers": {
+              "ETag": {
+                "description": "Opaque version token for this dashboard. Send it back as If-Match on a PUT to that dashboard to guard against overwriting a concurrent edit.\n",
+                "schema": {
+                  "type": "string",
+                  "example": "\"7\""
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -6687,6 +6696,15 @@
         "responses": {
           "200": {
             "description": "Successfully retrieved dashboard",
+            "headers": {
+              "ETag": {
+                "description": "Opaque version token for this dashboard. Send it back as If-Match on a PUT to that dashboard to guard against overwriting a concurrent edit.\n",
+                "schema": {
+                  "type": "string",
+                  "example": "\"7\""
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -6789,7 +6807,7 @@
       },
       "put": {
         "summary": "Update Dashboard",
-        "description": "Updates an existing dashboard.\n\n**Concurrency:** This endpoint does not support optimistic\nconcurrency control. Concurrent PUT requests for the same\ndashboard may silently overwrite each other, which can leave\norphan tile-to-container references on layout-shape edits.\nClients should serialize edits to a given dashboard.\n",
+        "description": "Updates an existing dashboard.\n\n**Concurrency:** Optimistic concurrency control is opt-in via the\nIf-Match header. Send the ETag from a prior GET on this dashboard\nto guard against overwriting a concurrent edit; omit it to keep the\nprevious last-write-wins behaviour.\n",
         "operationId": "updateDashboard",
         "tags": [
           "Dashboards"
@@ -6804,6 +6822,16 @@
             },
             "description": "Dashboard ID",
             "example": "65f5e4a3b9e77c001a567890"
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Optional. The ETag from a prior GET on this dashboard, or \"*\" to require the dashboard to exist without pinning a version. When provided, the update fails with 412 if the dashboard was modified since that ETag was issued.\n",
+            "example": "\"7\""
           }
         ],
         "requestBody": {
@@ -6878,6 +6906,15 @@
         "responses": {
           "200": {
             "description": "Successfully updated dashboard",
+            "headers": {
+              "ETag": {
+                "description": "Opaque version token for the dashboard as stored after this update. Use it as the next If-Match value.\n",
+                "schema": {
+                  "type": "string",
+                  "example": "\"8\""
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -6983,6 +7020,28 @@
                 },
                 "example": {
                   "message": "Dashboard not found"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Precondition Failed. The If-Match header did not match the dashboard's current ETag, meaning it was modified since the caller last read it. The response carries the current ETag so the caller can re-read and retry.\n",
+            "headers": {
+              "ETag": {
+                "description": "The dashboard's current version token.",
+                "schema": {
+                  "type": "string",
+                  "example": "\"8\""
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Dashboard was modified after the version in your If-Match header. Re-read the dashboard and retry."
                 }
               }
             }

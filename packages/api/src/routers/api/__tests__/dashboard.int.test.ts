@@ -2264,4 +2264,92 @@ describe('dashboard router', () => {
       });
     });
   });
+
+  describe('PATCH concurrency', () => {
+    it('applies a patch with a matching expectedVersion', async () => {
+      const created = await agent
+        .post('/dashboards')
+        .send(MOCK_DASHBOARD)
+        .expect(200);
+
+      const updated = await agent
+        .patch(`/dashboards/${created.body.id}`)
+        .send({
+          name: 'Renamed',
+          expectedVersion: String(created.body.version),
+        })
+        .expect(200);
+
+      expect(updated.body.name).toBe('Renamed');
+      expect(updated.body.version).not.toBe(created.body.version);
+    });
+
+    it('rejects a stale expectedVersion with 409 and does not write', async () => {
+      const created = await agent
+        .post('/dashboards')
+        .send(MOCK_DASHBOARD)
+        .expect(200);
+
+      await Dashboard.findByIdAndUpdate(created.body.id, {
+        $set: { name: 'Edited By Someone Else' },
+      });
+
+      const response = await agent
+        .patch(`/dashboards/${created.body.id}`)
+        .send({
+          name: 'Should Not Land',
+          expectedVersion: String(created.body.version),
+        })
+        .expect(409);
+
+      expect(response.body.currentVersion).toBeDefined();
+      const inDb = await Dashboard.findById(created.body.id);
+      expect(inDb!.name).toBe('Edited By Someone Else');
+    });
+
+    it('applies a patch with no expectedVersion (unchanged behaviour)', async () => {
+      const created = await agent
+        .post('/dashboards')
+        .send(MOCK_DASHBOARD)
+        .expect(200);
+
+      await agent
+        .patch(`/dashboards/${created.body.id}`)
+        .send({ name: 'Renamed With No Version' })
+        .expect(200);
+    });
+
+    it('rejects a malformed expectedVersion with 400', async () => {
+      const created = await agent
+        .post('/dashboards')
+        .send(MOCK_DASHBOARD)
+        .expect(200);
+
+      await agent
+        .patch(`/dashboards/${created.body.id}`)
+        .send({ name: 'Renamed', expectedVersion: 'yesterday' })
+        .expect(400);
+    });
+
+    // expectedVersion is a request-only control field, not part of the
+    // document. `updates` is spread into findOneAndUpdate, so leaking it
+    // would persist a junk key on the dashboard.
+    it('does not persist expectedVersion onto the document', async () => {
+      const created = await agent
+        .post('/dashboards')
+        .send(MOCK_DASHBOARD)
+        .expect(200);
+
+      await agent
+        .patch(`/dashboards/${created.body.id}`)
+        .send({
+          name: 'Renamed',
+          expectedVersion: String(created.body.version),
+        })
+        .expect(200);
+
+      const inDb = await Dashboard.findById(created.body.id).lean();
+      expect(inDb).not.toHaveProperty('expectedVersion');
+    });
+  });
 });
