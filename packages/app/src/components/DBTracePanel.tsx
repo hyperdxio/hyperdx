@@ -331,21 +331,21 @@ export default function DBTracePanel({
   const supersededRef = useRef(new Set<string>());
 
   // Makes `next` the current value; anything recorded before it becomes stale.
-  const recordSelection = (next: EventRowWhere | null) => {
+  const recordSelection = useCallback((next: EventRowWhere | null) => {
     if (lastWrittenRef.current !== undefined) {
       supersededRef.current.add(selectionKey(lastWrittenRef.current));
     }
     supersededRef.current.delete(selectionKey(next));
     lastWrittenRef.current = next;
     setLocalSelection(next);
-  };
+  }, []);
 
   const writeSelection = useCallback(
     (next: EventRowWhere | null) => {
       recordSelection(next);
       void setUrlSelection(next);
     },
-    [setUrlSelection],
+    [recordSelection, setUrlSelection],
   );
 
   useEffect(() => {
@@ -375,7 +375,7 @@ export default function DBTracePanel({
     };
     window.addEventListener('popstate', syncFromUrl);
     return () => window.removeEventListener('popstate', syncFromUrl);
-  }, []);
+  }, [recordSelection]);
 
   const {
     control: traceIdControl,

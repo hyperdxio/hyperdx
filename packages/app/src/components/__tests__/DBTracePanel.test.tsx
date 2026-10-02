@@ -289,7 +289,7 @@ describe('DBTracePanel', () => {
       act(() => mockCommitUrl(span('span-a')));
 
       expect(shownSpan()).toHaveTextContent('span-b');
-      expect(mockSetEventRowWhere).toHaveBeenCalledWith(
+      expect(mockSetEventRowWhere).toHaveBeenLastCalledWith(
         expect.objectContaining({ id: 'span-b' }),
       );
     });
@@ -303,7 +303,7 @@ describe('DBTracePanel', () => {
       act(() => mockCommitUrl(span('span-b')));
 
       expect(shownSpan()).not.toBeInTheDocument();
-      expect(mockSetEventRowWhere).toHaveBeenCalledWith(null);
+      expect(mockSetEventRowWhere).toHaveBeenLastCalledWith(null);
     });
 
     it('keeps a destination span that reaches the URL before the trace changes', () => {
