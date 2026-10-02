@@ -484,6 +484,18 @@ export function getDurationMsExpression(source: TTraceSource) {
   return `(${source.durationExpression})/1e${(source.durationPrecision ?? 9) - 3}`;
 }
 
+/**
+ * Number format for a duration heatmap whose value expression is already in
+ * milliseconds, which is what `getDurationMsExpression` returns: it applies
+ * the source's `durationPrecision`, so the only conversion left for display
+ * is milliseconds to seconds. Pair the two; this factor is wrong against a
+ * raw duration column.
+ */
+export const DURATION_HEATMAP_NUMBER_FORMAT = {
+  output: 'duration',
+  factor: 0.001,
+} satisfies NumberFormat;
+
 export function getDurationSecondsExpression(source: TTraceSource) {
   return `(${source.durationExpression})/1e${source.durationPrecision ?? 9}`;
 }

@@ -26,8 +26,10 @@ import DBHeatmapChart, {
   toHeatmapChartConfig,
 } from '@/components/DBHeatmapChart';
 import HeatmapSettingsDrawer from '@/components/HeatmapSettingsDrawer';
-import { getDurationMsExpression } from '@/source';
-import type { NumberFormat } from '@/types';
+import {
+  DURATION_HEATMAP_NUMBER_FORMAT,
+  getDurationMsExpression,
+} from '@/source';
 
 export function DBSearchHeatmapChart({
   chartConfig,
@@ -151,10 +153,7 @@ export function DBSearchHeatmapChart({
               ],
               numberFormat:
                 fields.value === getDurationMsExpression(source)
-                  ? ({
-                      output: 'duration',
-                      factor: 0.001,
-                    } satisfies NumberFormat)
+                  ? DURATION_HEATMAP_NUMBER_FORMAT
                   : undefined,
             }).heatmapConfig
           }
