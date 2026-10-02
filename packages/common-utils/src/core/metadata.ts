@@ -1028,11 +1028,12 @@ export class Metadata {
           return keys;
         }
       } catch (e) {
+        // e.g. ACCESS_DENIED under a row policy or BAD_ARGUMENTS on a
+        // Distributed table; the rollup and scan paths below still work.
         console.warn(
-          'getMapKeys rollup query failed for key text index query',
+          'getMapKeys key text index query failed; falling through to the next strategy',
           e,
         );
-        return [];
       }
     } else if (
       textIndexInfo?.kv?.indexName &&
@@ -1068,11 +1069,11 @@ export class Metadata {
           return keys;
         }
       } catch (e) {
+        // See the key text index catch above.
         console.warn(
-          'getMapKeys rollup query failed for kv text index query',
+          'getMapKeys kv text index query failed; falling through to the next strategy',
           e,
         );
-        return [];
       }
     }
 

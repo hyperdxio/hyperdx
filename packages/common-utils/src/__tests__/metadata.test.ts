@@ -2216,6 +2216,177 @@ describe('Metadata', () => {
       expect(keysA).toEqual(['a']);
       expect(keysB).toEqual(['b']);
     });
+
+    describe('when the mergeTreeTextIndex query fails', () => {
+      const accessDenied = new Error(
+        'Cannot read from `mergeTreeTextIndex` because a row policy is applied on table default.otel_logs',
+      );
+      const args = {
+        databaseName: 'default',
+        tableName: 'otel_logs',
+        column: 'LogAttributes',
+        connectionId: 'conn-1',
+        timestampValueExpression: 'Timestamp',
+        dateRange: [
+          new Date('2026-05-11T16:00:00Z'),
+          new Date('2026-05-11T17:00:00Z'),
+        ] as [Date, Date],
+      };
+
+      const buildWithTextIndex = (lookup: TextIndexInfoLookup) => {
+        const md = new Metadata(mockClickhouseClient, new MetadataCache());
+        jest.spyOn(md, 'getServerVersion').mockResolvedValue([26, 3, 0, 0]);
+        jest.spyOn(md, 'getMapColumnTextIndexes').mockResolvedValue(lookup);
+        return md;
+      };
+
+      const queries = () =>
+        (mockClickhouseClient.query as jest.Mock).mock.calls.map(
+          ([opts]) => opts.query as string,
+        );
+
+      let warn: jest.SpyInstance;
+      beforeEach(() => {
+        warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      });
+      afterEach(() => {
+        warn.mockRestore();
+      });
+
+      it('falls through to the bounded scan when the key text index read fails', async () => {
+        const md = buildWithTextIndex(
+          new Map([
+            [
+              'LogAttributes',
+              {
+                key: {
+                  indexName: 'idx_log_attr_key',
+                  mapColumn: 'LogAttributes',
+                },
+              },
+            ],
+          ]),
+        );
+        (mockClickhouseClient.query as jest.Mock)
+          .mockRejectedValueOnce(accessDenied)
+          .mockResolvedValueOnce({
+            json: () => Promise.resolve({ data: [lowCardinalityMapColumn] }),
+          })
+          .mockResolvedValueOnce({
+            json: () => Promise.resolve({ data: [{ key: 'http.method' }] }),
+          });
+
+        const keys = await md.getMapKeys(args);
+
+        expect(keys).toEqual(['http.method']);
+        expect(queries()[0]).toContain('mergeTreeTextIndex(');
+        expect(queries().at(-1)).toContain('sampledKeys');
+        expect(warn).toHaveBeenCalledWith(
+          expect.stringContaining('key text index query failed'),
+          accessDenied,
+        );
+      });
+
+      it('falls through to the bounded scan when the kv text index read fails', async () => {
+        const md = buildWithTextIndex(
+          new Map([
+            [
+              'LogAttributes',
+              {
+                kv: {
+                  columnName: 'LogAttributes',
+                  indexName: 'idx_log_attr_kv',
+                  mapColumn: 'LogAttributes',
+                  separator: '=',
+                  useHasAny: true,
+                },
+              },
+            ],
+          ]),
+        );
+        (mockClickhouseClient.query as jest.Mock)
+          .mockRejectedValueOnce(accessDenied)
+          .mockResolvedValueOnce({
+            json: () => Promise.resolve({ data: [lowCardinalityMapColumn] }),
+          })
+          .mockResolvedValueOnce({
+            json: () => Promise.resolve({ data: [{ key: 'http.method' }] }),
+          });
+
+        const keys = await md.getMapKeys(args);
+
+        expect(keys).toEqual(['http.method']);
+        expect(queries()[0]).toContain('mergeTreeTextIndex(');
+        expect(queries().at(-1)).toContain('sampledKeys');
+        expect(warn).toHaveBeenCalledWith(
+          expect.stringContaining('kv text index query failed'),
+          accessDenied,
+        );
+      });
+
+      it('tries the key rollup table before the scan when metadataMVs is configured', async () => {
+        const md = buildWithTextIndex(
+          new Map([
+            [
+              'LogAttributes',
+              {
+                key: {
+                  indexName: 'idx_log_attr_key',
+                  mapColumn: 'LogAttributes',
+                },
+              },
+            ],
+          ]),
+        );
+        (mockClickhouseClient.query as jest.Mock)
+          .mockRejectedValueOnce(accessDenied)
+          .mockResolvedValueOnce({
+            json: () => Promise.resolve({ data: [{ Key: 'user.id' }] }),
+          });
+
+        const keys = await md.getMapKeys({
+          ...args,
+          metadataMVs: {
+            keyRollupTable: 'otel_logs_key_rollup_15m',
+            kvRollupTable: 'otel_logs_kv_rollup_15m',
+            granularity: '15 minute',
+          },
+        });
+
+        expect(keys).toEqual(['user.id']);
+        expect(queries()).toHaveLength(2);
+        expect(queries()[1]).toContain('ColumnIdentifier = ');
+      });
+
+      it('caches the fallback result so the failing index read is not retried', async () => {
+        const md = buildWithTextIndex(
+          new Map([
+            [
+              'LogAttributes',
+              {
+                key: {
+                  indexName: 'idx_log_attr_key',
+                  mapColumn: 'LogAttributes',
+                },
+              },
+            ],
+          ]),
+        );
+        (mockClickhouseClient.query as jest.Mock)
+          .mockRejectedValueOnce(accessDenied)
+          .mockResolvedValueOnce({
+            json: () => Promise.resolve({ data: [lowCardinalityMapColumn] }),
+          })
+          .mockResolvedValueOnce({
+            json: () => Promise.resolve({ data: [{ key: 'http.method' }] }),
+          });
+
+        await md.getMapKeys(args);
+        const callsAfterFirst = queries().length;
+        expect(await md.getMapKeys(args)).toEqual(['http.method']);
+        expect(queries()).toHaveLength(callsAfterFirst);
+      });
+    });
   });
 
   // Regression guard for commit 612bb2f9a: the `keyRollupTable` MV is no
