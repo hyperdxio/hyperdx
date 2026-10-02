@@ -18,8 +18,20 @@ function makeRows(count: number): ActiveClickSeries[] {
 }
 
 const multiSeriesPayload: ActiveClickSeries[] = [
-  { dataKey: 'error', name: 'error', value: 90, color: '#f00' },
-  { dataKey: 'warn', name: 'warn', value: 10, color: '#ff0' },
+  {
+    dataKey: 'error',
+    name: 'error',
+    value: 90,
+    color: '#f00',
+    valueColumnName: 'error',
+  },
+  {
+    dataKey: 'warn',
+    name: 'warn',
+    value: 10,
+    color: '#ff0',
+    valueColumnName: 'warn',
+  },
 ];
 
 const singleSeriesPayload: ActiveClickSeries[] = [
@@ -231,6 +243,38 @@ describe('ChartSeriesTooltip', () => {
 
     expect(onShowAllSeries).toHaveBeenCalledTimes(1);
     expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  // The per-series WHERE lives on the series' `select` entry, which the caller
+  // can only find from the result column the series was plotted from.
+  it('identifies the clicked series by its value column when building its Search URL', () => {
+    const buildSearchUrl = jest.fn(
+      (series?: { dataKey?: string }) => `/search?series=${series?.dataKey}`,
+    );
+
+    renderWithMantine(
+      <ChartSeriesTooltip
+        {...baseProps}
+        activePayload={multiSeriesPayload}
+        buildSearchUrl={buildSearchUrl}
+      />,
+    );
+
+    expect(buildSearchUrl).toHaveBeenCalledWith();
+    expect(buildSearchUrl).toHaveBeenCalledWith({
+      dataKey: 'error',
+      value: 90,
+      valueColumnName: 'error',
+    });
+    expect(buildSearchUrl).toHaveBeenCalledWith({
+      dataKey: 'warn',
+      value: 10,
+      valueColumnName: 'warn',
+    });
+    expect(screen.getByTestId('chart-view-events-link-error')).toHaveAttribute(
+      'href',
+      '/search?series=error',
+    );
   });
 
   it('renders no tooltip content when every series value is non-finite', () => {
