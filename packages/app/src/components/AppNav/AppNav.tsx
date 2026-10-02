@@ -30,6 +30,7 @@ import {
 
 import api from '@/api';
 import { AlertStatusIcon } from '@/components/AlertStatusIcon';
+import { InstanceLabel } from '@/components/AppNav/InstanceLabel';
 import { APP_VERSION, IS_LOCAL_MODE } from '@/config';
 import { Dashboard, useDashboards } from '@/dashboard';
 import { useFavorites } from '@/favorites';
@@ -366,6 +367,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               ) : (
                 <Group gap="xs" align="center">
                   {wordmark}
+                  <InstanceLabel />
                   {isUTC && (
                     <Badge
                       size="xs"
