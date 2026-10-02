@@ -42,6 +42,7 @@ const baseArgs = {
   lineData,
   selectedSeriesNames: undefined as Set<string> | undefined,
   referenceLineValues: [] as number[],
+  hasExemplars: false,
 };
 
 // visibleLineData mirrors MemoChart, which derives it from the selection.
@@ -130,6 +131,52 @@ describe('useChartScales y-domain', () => {
         graphResults: [{ a: null, b: 'x' }] as Record<string, unknown>[],
       }).yAxisBounds.domain,
     ).toEqual([0, 'auto']);
+  });
+});
+
+describe('useChartScales exemplar clamp', () => {
+  it('bounds markers by the top of the drawn axis', () => {
+    expect(scales({ hasExemplars: true }).exemplarYBounds).toEqual({
+      min: 0,
+      max: 42,
+    });
+  });
+
+  // A reference line leaves the upper bound 'auto', so the clamp falls back to
+  // the visible series max: an outlier marker pins to the top of the series
+  // range instead of stretching the axis and flattening every line.
+  it('falls back to the visible series max when the axis top is auto', () => {
+    expect(
+      scales({ hasExemplars: true, referenceLineValues: [100] })
+        .exemplarYBounds,
+    ).toEqual({ min: 0, max: 40 });
+  });
+
+  it('follows the legend selection rather than every series', () => {
+    // A selection gives the axis numeric bounds, so the clamp takes those
+    // directly ([9, 31]) instead of falling back to the series max. Either way
+    // it tracks what is on screen — with B shown too it would be [8.5, 41.5].
+    expect(
+      scales({ hasExemplars: true, selectedSeriesNames: new Set(['A']) })
+        .exemplarYBounds,
+    ).toEqual({ min: 9, max: 31 });
+  });
+
+  it('skips the O(rows x series) scan when no marker can draw', () => {
+    // Every time chart in the app pays for this pass otherwise, including
+    // deployments running with the overlay switched off entirely.
+    expect(
+      scales({ hasExemplars: false, referenceLineValues: [100] })
+        .exemplarYBounds.max,
+    ).toBe(0);
+  });
+
+  it('takes a numeric upper bound from the axis when there is one', () => {
+    // Fitting to data gives a real number, and the marker should respect the
+    // axis the chart actually drew rather than the raw series max.
+    expect(
+      scales({ hasExemplars: true, fitYAxisToData: true }).exemplarYBounds,
+    ).toEqual({ min: 8.5, max: 41.5 });
   });
 });
 

@@ -19,6 +19,13 @@ jest.mock('@/api', () => ({
   },
 }));
 
+// Exemplar hooks need a QueryClientProvider (via useMetadataWithSettings) and
+// are irrelevant to queryKey consistency, so stub them out.
+jest.mock('@/hooks/useExemplars', () => ({
+  useExemplars: () => ({ exemplars: [], isLoading: false, isError: false }),
+  useExemplarTraceMeta: () => ({ data: null, isLoading: false }),
+}));
+
 jest.mock('@/hooks/useMVOptimizationExplanation', () => ({
   useMVOptimizationExplanation: jest.fn().mockReturnValue({
     data: undefined,
