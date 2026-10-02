@@ -11,7 +11,7 @@ import styles from './PageHeader.module.scss';
  *    or breadcrumb trail above a horizontal toolbar that splits cleanly
  *    into a leading group (source picker, edit control) and a trailing
  *    group (Run, Save, time picker, refresh). Examples:
- *    - title-only:    `AlertsPage`, `DashboardsListPage`, `SavedSearchesListPage`
+ *    - title-only:    `AlertsPage`, `DashboardsListPage`
  *    - leading+actions: `DBServiceMapPage`
  *    - breadcrumbs+leading+actions: `KubernetesDashboardPage`
  *

@@ -1,7 +1,4 @@
-/**
- * SavedSearchesListPage - Page object for the saved searches listing page
- * Encapsulates interactions with saved search browsing, search, filtering, and management
- */
+/** Saved-search drawer interactions on the Search page. */
 import { Locator, Page } from '@playwright/test';
 
 export class SavedSearchesListPage {
@@ -9,25 +6,27 @@ export class SavedSearchesListPage {
   readonly pageContainer: Locator;
   readonly searchInput: Locator;
   readonly newSearchButton: Locator;
-  readonly gridViewButton: Locator;
-  readonly listViewButton: Locator;
 
-  private readonly emptyNewSearchButton: Locator;
   private readonly confirmConfirmButton: Locator;
 
   constructor(page: Page) {
     this.page = page;
-    this.pageContainer = page.getByTestId('saved-searches-list-page');
-    this.searchInput = page.getByPlaceholder('Search by name');
+    this.pageContainer = page.getByTestId('saved-searches-drawer');
+    this.searchInput = page.getByPlaceholder('Search saved searches');
     this.newSearchButton = page.getByTestId('new-search-button');
-    this.gridViewButton = page.getByRole('button', { name: 'Grid view' });
-    this.listViewButton = page.getByRole('button', { name: 'List view' });
-    this.emptyNewSearchButton = page.getByTestId('empty-new-search-button');
     this.confirmConfirmButton = page.getByTestId('confirm-confirm-button');
   }
 
   async goto() {
-    await this.page.goto('/search/list', { waitUntil: 'networkidle' });
+    await this.page.goto('/search?panel=saved-searches', {
+      waitUntil: 'networkidle',
+    });
+  }
+
+  /** Opens the drawer the way a user does: the toolbar button. */
+  async openFromSwitcher() {
+    await this.page.getByTestId('saved-search-switcher').click();
+    await this.pageContainer.waitFor();
   }
 
   async searchSavedSearches(query: string) {
@@ -40,37 +39,37 @@ export class SavedSearchesListPage {
 
   async clickNewSearch() {
     await this.newSearchButton.click();
-    await this.page.waitForURL(/\/search\?/);
-  }
-
-  async switchToGridView() {
-    await this.gridViewButton.click();
-  }
-
-  async switchToListView() {
-    await this.listViewButton.click();
+    await this.page.waitForURL(url => !url.searchParams.has('panel'));
   }
 
   getSavedSearchCard(name: string) {
-    return this.pageContainer.locator('a').filter({ hasText: name });
+    return this.getSavedSearchRow(name);
   }
 
   getSavedSearchRow(name: string) {
-    return this.pageContainer.locator('tr').filter({ hasText: name });
+    return this.pageContainer
+      .getByTestId('saved-search-row')
+      .filter({ hasText: name });
   }
 
   async deleteSavedSearchFromCard(name: string) {
-    const card = this.getSavedSearchCard(name);
-    await card.locator('[data-variant="secondary"]').click();
-    await this.page.getByRole('menuitem', { name: 'Delete' }).click();
-    await this.confirmConfirmButton.click();
+    await this.deleteSavedSearchFromRow(name);
   }
 
   async deleteSavedSearchFromRow(name: string) {
     const row = this.getSavedSearchRow(name);
-    await row.locator('[data-variant="secondary"]').click();
-    await this.page.getByRole('menuitem', { name: 'Delete' }).click();
+    await row.getByRole('button', { name: `Actions for ${name}` }).click();
+    await this.page.getByTestId('saved-search-delete').click();
     await this.confirmConfirmButton.click();
+  }
+
+  async renameSavedSearchFromRow(name: string, nextName: string) {
+    const row = this.getSavedSearchRow(name);
+    await row.getByRole('button', { name: `Actions for ${name}` }).click();
+    await this.page.getByTestId('saved-search-rename').click();
+    const input = this.page.getByTestId('saved-search-rename-input');
+    await input.fill(nextName);
+    await input.press('Enter');
   }
 
   getTagFilterSelect() {
@@ -96,7 +95,15 @@ export class SavedSearchesListPage {
   }
 
   getFavoritesSection() {
-    return this.page.getByTestId('favorite-saved-searches-section');
+    return this.pageContainer.getByRole('tab', { name: 'Favorites' });
+  }
+
+  async showFavorites() {
+    await this.getFavoritesSection().click();
+  }
+
+  async showAll() {
+    await this.pageContainer.getByRole('tab', { name: 'All' }).click();
   }
 
   async toggleFavoriteOnCard(name: string) {
@@ -105,16 +112,14 @@ export class SavedSearchesListPage {
   }
 
   async toggleFavoriteOnRow(name: string) {
-    const row = this.getSavedSearchRow(name);
-    await row.getByTestId('favorite-button').click();
+    await this.toggleFavoriteOnCard(name);
   }
 
   getFavoritedSearchCard(name: string) {
-    return this.getFavoritesSection().locator('a').filter({ hasText: name });
+    return this.getSavedSearchRow(name);
   }
 
   async toggleFavoriteOnFavoritedCard(name: string) {
-    const card = this.getFavoritedSearchCard(name);
-    await card.getByTestId('favorite-button').click();
+    await this.toggleFavoriteOnCard(name);
   }
 }

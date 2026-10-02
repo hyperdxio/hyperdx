@@ -20,7 +20,6 @@ import {
   IconArrowBarToLeft,
   IconBell,
   IconChartDots,
-  IconDeviceFloppy,
   IconDeviceLaptop,
   IconLayoutGrid,
   IconSettings,
@@ -287,8 +286,11 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
     { open: openInstallInstructions, close: closeInstallInstructions },
   ] = useDisclosure(false);
 
-  const isSavedSearchActive = useMemo(() => {
-    if (!pathname?.startsWith('/search/')) return false;
+  const isSearchPath =
+    pathname === '/search' || pathname?.startsWith('/search/');
+
+  const isSearchActive = useMemo(() => {
+    if (!isSearchPath) return false;
 
     if (
       typeof query.savedSearchId === 'string' &&
@@ -301,7 +303,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
   }, [
     favoritedSavedSearchIds,
     isSavedSearchExpanded,
-    pathname,
+    isSearchPath,
     query.savedSearchId,
   ]);
 
@@ -406,15 +408,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               label="Search"
               icon={<IconTable size={16} />}
               href="/search"
-              isActive={pathname === '/search'}
-            />
-
-            {/* Saved Searches */}
-            <AppNavLink
-              label="Saved Searches"
-              href="/search/list"
-              icon={<IconDeviceFloppy size={16} />}
-              isActive={isSavedSearchActive}
+              isActive={isSearchActive}
               isExpanded={isSavedSearchExpanded}
               onToggle={() => setIsSavedSearchExpanded(!isSavedSearchExpanded)}
             />
@@ -426,9 +420,13 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                     favoritedSavedSearches.map(renderSavedSearchLink)
                   ) : favorites != null && savedSearches != null ? (
                     <Text size="xs" c="dimmed" pl="lg" pr="xs" py={4} lh={1.4}>
-                      No favorites. Star on{' '}
-                      <Anchor component={Link} href="/search/list" size="xs">
-                        Saved Searches
+                      No favorites. Star a search from{' '}
+                      <Anchor
+                        component={Link}
+                        href="/search?panel=saved-searches"
+                        size="xs"
+                      >
+                        saved searches
                       </Anchor>
                       .
                     </Text>

@@ -82,7 +82,9 @@ Playwright UI has built-in watch. Run with UI, then enable it per test:
 ./scripts/test-e2e.sh --keep-running --ui
 ```
 
-In the Playwright UI sidebar, click the **eye icon** next to a test (or file/describe) to turn on watch for it. When you save changes to that test file, that test will re-run automatically.
+In the Playwright UI sidebar, click the **eye icon** next to a test (or
+file/describe) to turn on watch for it. When you save changes to that test file,
+that test will re-run automatically.
 
 **Available flags:**
 
@@ -103,7 +105,11 @@ ClickHouse data.
 - MongoDB (port 29998) - authentication, teams, users, persistence
 - API Server (port 29000) - full backend logic
 - App Server (port 28081) - frontend
-- **Local Docker ClickHouse** (localhost:8123) - seeded E2E test data (logs/traces/metrics/K8s). Seeded timestamps span a past+future window (~1h past, ~2h future from seed time) so relative ranges like "last 5 minutes" keep finding data. If you run tests more than ~2 hours after the last seed, re-run the global setup (or full test run) to re-seed.
+- **Local Docker ClickHouse** (localhost:8123) - seeded E2E test data
+  (logs/traces/metrics/K8s). Seeded timestamps span a past+future window (~1h
+  past, ~2h future from seed time) so relative ranges like "last 5 minutes" keep
+  finding data. If you run tests more than ~2 hours after the last seed, re-run
+  the global setup (or full test run) to re-seed.
 
 **Benefits:**
 
@@ -177,11 +183,15 @@ are skipped appropriately.
 
 ### Page Object Pattern
 
-All UI interactions in spec files must go through page objects (`page-objects/`) and components (`components/`). Never use raw `page.getByTestId()`, `page.locator()`, or `page.getByRole()` directly in spec files. If a needed interaction doesn't exist in a page object, add it there first.
+All UI interactions in spec files must go through page objects (`page-objects/`)
+and components (`components/`). Never use raw `page.getByTestId()`,
+`page.locator()`, or `page.getByRole()` directly in spec files. If a needed
+interaction doesn't exist in a page object, add it there first.
 
 ### Data Isolation
 
-Tests run in parallel and share a database. Use `Date.now()` for **every field the API uniqueness-checks** — not just display names:
+Tests run in parallel and share a database. Use `Date.now()` for **every field
+the API uniqueness-checks** — not just display names:
 
 ```typescript
 const ts = Date.now();
@@ -189,11 +199,14 @@ const name = `E2E Thing ${ts}`;
 const url = `https://example.com/thing-${ts}`; // URL fields too, not just name
 ```
 
-The webhook API enforces uniqueness on `(team, service, url)`. A hardcoded URL will collide between parallel runs or retries and cause the form to stay open (API returns 400).
+The webhook API enforces uniqueness on `(team, service, url)`. A hardcoded URL
+will collide between parallel runs or retries and cause the form to stay open
+(API returns 400).
 
 ### Scoped Assertions
 
-Never assert global counts — other tests' data is in the shared DB. Scope assertions to the current test's unique data:
+Never assert global counts — other tests' data is in the shared DB. Scope
+assertions to the current test's unique data:
 
 ```typescript
 // ❌ Brittle — other tests' alerts pollute the count
@@ -207,27 +220,36 @@ await expect(
 
 ### AI-Assisted Test Writing
 
-The project ships with AI tooling for generating, fixing, and planning E2E tests using a live browser via the [Playwright MCP server](https://github.com/microsoft/playwright/tree/main/packages/playwright-mcp).
+The project ships with AI tooling for generating, fixing, and planning E2E tests
+using a live browser via the
+[Playwright MCP server](https://github.com/microsoft/playwright/tree/main/packages/playwright-mcp).
 
 #### Claude Code
 
 Use the `/playwright <description>` skill. It orchestrates three agents:
 
-- **`playwright-test-generator`** — drives a real browser, executes steps live, writes spec code following HyperDX conventions
-- **`playwright-test-healer`** — debugs failing tests interactively using the MCP browser tools
-- **`playwright-test-planner`** — explores the UI and produces a structured test plan before writing code
+- **`playwright-test-generator`** — drives a real browser, executes steps live,
+  writes spec code following HyperDX conventions
+- **`playwright-test-healer`** — debugs failing tests interactively using the
+  MCP browser tools
+- **`playwright-test-planner`** — explores the UI and produces a structured test
+  plan before writing code
 
 ```
 /playwright write a test that creates an alert from a saved search
 ```
 
-The skill automatically runs the test after generation and invokes the healer if it fails. Update `.claude/skills/playwright/SKILL.md` if the output doesn't match project conventions.
+The skill automatically runs the test after generation and invokes the healer if
+it fails. Update `.claude/skills/playwright/SKILL.md` if the output doesn't
+match project conventions.
 
 #### Cursor
 
-The Playwright MCP server is pre-configured in `.cursor/mcp.json`. Enable it under **Settings → Tools & MCP**.
+The Playwright MCP server is pre-configured in `.cursor/mcp.json`. Enable it
+under **Settings → Tools & MCP**.
 
-To write a test, reference the `@playwright` rule in your prompt — it loads all HyperDX conventions automatically:
+To write a test, reference the `@playwright` rule in your prompt — it loads all
+HyperDX conventions automatically:
 
 ```
 @playwright write a new E2E test at packages/app/tests/e2e/features/search.spec.ts
@@ -240,7 +262,9 @@ To fix a failing test:
 @playwright this test is failing with [error]. Debug and fix it using the Playwright MCP tools.
 ```
 
-The `@playwright` rule is a thin wrapper that points to `.claude/skills/playwright/SKILL.md` as the single source of truth for conventions — so both Claude Code and Cursor stay in sync automatically.
+The `@playwright` rule is a thin wrapper that points to
+`.claude/skills/playwright/SKILL.md` as the single source of truth for
+conventions — so both Claude Code and Cursor stay in sync automatically.
 
 ## Test Organization
 
@@ -439,7 +463,8 @@ multiple servers:
 **Sources don't appear in UI:**
 
 - Check API logs for `setupTeamDefaults` errors
-- Verify `DEFAULT_SOURCES` in `.env.e2e` points to local Docker ClickHouse (localhost:8123)
+- Verify `DEFAULT_SOURCES` in `.env.e2e` points to local Docker ClickHouse
+  (localhost:8123)
 - Ensure you registered a new user (DEFAULT_SOURCES only applies to new teams)
 
 **Tests can't find demo data:**
