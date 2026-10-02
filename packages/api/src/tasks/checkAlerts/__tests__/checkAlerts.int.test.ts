@@ -71,6 +71,10 @@ beforeAll(async () => {
 });
 
 describe('checkAlerts', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   describe('doesExceedThreshold', () => {
     it('should return true when value exceeds ABOVE threshold', () => {
       expect(
