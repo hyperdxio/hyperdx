@@ -275,6 +275,7 @@ describe('DBTracePanel', () => {
 
     it('keeps the clicked span and corrects the URL after a late commit', () => {
       renderPanel();
+      fireEvent.click(screen.getByText('select span-a'));
       fireEvent.click(screen.getByText('select span-b'));
       mockSetEventRowWhere.mockClear();
 
@@ -291,6 +292,58 @@ describe('DBTracePanel', () => {
       expect(mockSetEventRowWhere).toHaveBeenLastCalledWith(
         expect.objectContaining({ id: 'span-b' }),
       );
+    });
+
+    it('leaves a URL value written by another panel alone', () => {
+      renderPanel();
+      fireEvent.click(screen.getByText('select span-b'));
+      mockSetEventRowWhere.mockClear();
+
+      act(() =>
+        mockCommitUrl({
+          id: 'span-other',
+          type: SourceKind.Trace,
+          aliasWith: [],
+          traceId: 'trace-123',
+        }),
+      );
+
+      expect(screen.getByTestId('overview-row-id')).toHaveTextContent('span-b');
+      expect(mockSetEventRowWhere).not.toHaveBeenCalled();
+    });
+
+    it('keeps a destination span that reaches the URL before the trace changes', () => {
+      const TraceSwitcher = () => {
+        const [traceId, setTraceId] = React.useState('trace-123');
+        return (
+          <>
+            <button onClick={() => setTraceId('trace-456')}>switch</button>
+            <DBTracePanel
+              traceId={traceId}
+              parentSourceId="trace-source"
+              childSourceId="log-source"
+              dateRange={[new Date(0), new Date(1000)]}
+              focusDate={new Date(500)}
+            />
+          </>
+        );
+      };
+      renderWithMantine(<TraceSwitcher />);
+      fireEvent.click(screen.getByText('select span-b'));
+      mockSetEventRowWhere.mockClear();
+
+      act(() =>
+        mockCommitUrl({
+          id: 'span-x',
+          type: SourceKind.Trace,
+          aliasWith: [],
+          traceId: 'trace-456',
+        }),
+      );
+      fireEvent.click(screen.getByText('switch'));
+
+      expect(screen.getByTestId('overview-row-id')).toHaveTextContent('span-x');
+      expect(mockSetEventRowWhere).not.toHaveBeenCalled();
     });
 
     it('stays closed when a late commit brings back a span', () => {

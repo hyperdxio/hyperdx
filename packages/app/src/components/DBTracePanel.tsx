@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import { useAtom } from 'jotai';
@@ -78,6 +79,9 @@ const eventRowWhereSchema = z.object({
 const eventRowWhereParser = parseAsJsonEncoded<EventRowWhere>(
   eventRowWhereSchema.parse,
 );
+
+const selectionKey = (value: EventRowWhere | null) =>
+  value == null ? 'null' : `${value.traceId}|${value.type}|${value.id}`;
 
 enum SpanDetailTab {
   Overview = 'overview',
@@ -321,11 +325,39 @@ export default function DBTracePanel({
   const selectedSpan =
     mergedSelection?.traceId === traceId ? mergedSelection : null;
 
+  // Values this panel wrote and has since replaced. Seeing one in the URL means
+  // a late commit; any other value belongs to another panel or a navigation.
+  const lastWrittenRef = useRef<EventRowWhere | null | undefined>(undefined);
+  const supersededRef = useRef(new Set<string>());
+
+  const writeSelection = useCallback(
+    (next: EventRowWhere | null) => {
+      if (lastWrittenRef.current !== undefined) {
+        supersededRef.current.add(selectionKey(lastWrittenRef.current));
+      }
+      supersededRef.current.delete(selectionKey(next));
+      lastWrittenRef.current = next;
+      setLocalSelection(next);
+      void setUrlSelection(next);
+    },
+    [setUrlSelection],
+  );
+
+  useEffect(() => {
+    // Deleting consumes the stale value, so two panels can never ping-pong.
+    if (
+      lastWrittenRef.current !== undefined &&
+      supersededRef.current.delete(selectionKey(urlSelection))
+    ) {
+      void setUrlSelection(lastWrittenRef.current);
+    }
+  }, [urlSelection, setUrlSelection]);
+
   const selectSpan = useCallback(
     (where: { id: string; type: string; aliasWith: WithClause[] }) => {
-      setLocalSelection({ ...where, traceId });
+      writeSelection({ ...where, traceId });
     },
-    [traceId],
+    [writeSelection, traceId],
   );
 
   useEffect(() => {
@@ -338,23 +370,6 @@ export default function DBTracePanel({
     window.addEventListener('popstate', syncFromUrl);
     return () => window.removeEventListener('popstate', syncFromUrl);
   }, []);
-
-  useEffect(() => {
-    if (localSelection === undefined) {
-      return;
-    }
-    if (localSelection === null) {
-      if (urlSelection != null) {
-        void setUrlSelection(null);
-      }
-    } else if (
-      urlSelection?.id !== localSelection.id ||
-      urlSelection.type !== localSelection.type ||
-      urlSelection.traceId !== localSelection.traceId
-    ) {
-      void setUrlSelection(localSelection);
-    }
-  }, [localSelection, urlSelection, setUrlSelection]);
 
   const {
     control: traceIdControl,
@@ -394,8 +409,8 @@ export default function DBTracePanel({
   const detailPanelSize = isSideLayout ? rightPanelSize : bottomPanelSize;
 
   const handleCloseSpanDetails = useCallback(() => {
-    setLocalSelection(null);
-  }, []);
+    writeSelection(null);
+  }, [writeSelection]);
 
   const selectedSpanSource = useMemo(() => {
     if (!selectedSpan) return null;
