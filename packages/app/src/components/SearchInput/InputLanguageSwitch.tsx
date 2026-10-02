@@ -31,6 +31,9 @@ export default function InputLanguageSwitch({
         input: {
           border: 'none',
           background: 'transparent',
+          // Mantine colours inputs itself, so the addon's text token has to be
+          // set here rather than inherited from the surrounding addon.
+          color: 'var(--color-text-secondary)',
           minHeight: 28,
           fontWeight: 500,
         },

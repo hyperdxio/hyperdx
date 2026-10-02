@@ -2,6 +2,15 @@
   flex: 1 1 0%;
   width: 100%;
   min-width: 0;
+  min-height: var(--editor-base-height, 36px);
+}
+
+/* Holds one row while the open editor spills over it, so focusing a long query
+   does not push the row below. `max-height` is what pins it: as a flex item
+   `flex-basis: 0%` replaces `height`, which then resolves to the content size. */
+.pinnedHeight {
+  height: var(--editor-base-height, 36px);
+  max-height: var(--editor-base-height, 36px);
 }
 
 .paper {
@@ -23,10 +32,32 @@
     border-color: var(--color-bg-warning) !important;
   }
 
-  /* Single-line editors only: hold one row and hide the rest. */
+  /* Collapsed editors hold one row and hide the rest. `clip` rather than
+     `hidden` because a scrollable box gets scrolled when the caret moves —
+     pasting a long query scrolled the label and the toggle out of view along
+     with the first line. `clip` cannot be scrolled at all. */
   &.clamped {
     max-height: var(--editor-base-height, 36px);
-    overflow: hidden;
+    overflow: clip;
+  }
+
+  /* Focus (or a pinned expand) reveals the whole query. */
+  &.open {
+    max-height: 150px;
+  }
+
+  /* Stacks over the content it spills onto. Stays in flow so it keeps its
+     width — going absolute collapses it in shrink-to-fit parents. A parent that
+     grows the whole field (SearchWhereInput, so its language picker grows too)
+     opts out. */
+  &.floating {
+    position: relative;
+    z-index: var(--mantine-z-index-popover);
+  }
+
+  /* Only while editing — a pinned-open editor sits flat against the page. */
+  &.elevated {
+    box-shadow: 0 4px 16px rgb(0 0 0 / 15%);
   }
 
   /* An editor that grows with its content can't change border width on focus
@@ -37,8 +68,20 @@
   }
 }
 
+/* Part of the field's frame, not a control sitting inside it — the addon fill
+   is what says so, matching the Explore query editor. Rounds its own start
+   corners so they follow the Paper's radius, and stays level with the first
+   line as the editor grows rather than centring in the taller box. */
 .label {
+  align-self: stretch;
+  flex-shrink: 0;
   white-space: nowrap;
+  padding-inline: 8px;
+  border-right: 1px solid var(--color-border);
+  border-start-start-radius: var(--mantine-radius-default);
+  border-end-start-radius: var(--mantine-radius-default);
+  background: var(--color-bg-field-addon);
+  color: var(--color-text-secondary);
 
   &.sizeXs {
     padding-top: 6px;
@@ -50,13 +93,37 @@
 }
 
 .cmWrapper {
+  --cm-padding-top: 3.4px;
+
   min-width: 10px;
   width: 100%;
-  padding-top: 3.4px;
+  padding-top: var(--cm-padding-top);
   font-size: var(--mantine-font-size-sm);
 
   &.sizeXs {
-    padding-top: 2.4px;
+    --cm-padding-top: 2.4px;
+
     font-size: var(--mantine-font-size-xs);
   }
+}
+
+/* Keeps the query off the addon's border, since the Paper gives up its own
+   inline padding to let the addon sit flush. */
+.label + .cmWrapper {
+  padding-left: 8px;
+}
+
+/* A clamped editor shows exactly its first line. The clip lands just below
+   that line — CodeMirror's 1.4 line-height plus the 4px it pads .cm-content
+   with — so no sliver of the next line shows under the border. */
+.paper.clamped .cmWrapper {
+  max-height: calc(var(--cm-padding-top) + 4px + 1.4em);
+  overflow: clip;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  min-height: calc(var(--editor-base-height, 36px) - 2px);
 }
