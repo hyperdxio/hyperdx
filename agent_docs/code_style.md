@@ -285,6 +285,14 @@ the copy). Exercise the real dialog in E2E instead.
 
 **Title copy**: Treat `title` as a short headline (like `Title` in the UI). Do **not** end it with a period. Use `description` for full sentences, which should use normal punctuation including a trailing period when appropriate. Match listing pages (e.g. dashboards and saved searches use parallel phrasing such as “No matching … yet” / “No … yet” without dots).
 
+### Object names: use `InlineNameInput` (REQUIRED)
+
+**Name or rename a dashboard, saved search, tile, or any other user-created
+object with `InlineNameInput` (`@/components/InlineNameInput/InlineNameInput`).**
+Do not build a pencil-button edit mode, a bordered name `TextInput` in a
+header, or a "Name" field inside a save modal. See
+[naming_objects.md](naming_objects.md) for which variant to use.
+
 ### Code snippets (REQUIRED)
 
 **Do not render raw `<pre>`, ad-hoc `Paper` + monospace text, or unstyled `<code>`.** Use the existing Mantine/product components so snippets match Terraform export, onboarding, and Storybook guidelines.
