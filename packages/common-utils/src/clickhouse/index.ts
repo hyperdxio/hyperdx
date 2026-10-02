@@ -11,6 +11,7 @@ import type {
 import type { ClickHouseClient as WebClickHouseClient } from '@clickhouse/client-web';
 import * as SQLParser from 'node-sql-parser';
 
+import { stripTypeWrappers } from '@/core/eventDeltas';
 import {
   getMetadata,
   Metadata,
@@ -129,29 +130,12 @@ export const convertCHDataTypeToJSType = (
  * LowCardinality wrappers.
  *
  * convertCHDataTypeToJSType maps FixedString to JSDataType.String, which is
- * right for search semantics (ILIKE, equality). hasToken and hasAllTokens do
- * not accept a FixedString haystack, so token-search codegen has to tell them
- * apart and CAST the column to String first.
+ * right for search semantics (ILIKE, equality). hasToken rejects a FixedString
+ * haystack, so that fallback has to CAST the column to String. hasAllTokens
+ * accepts FixedString and must keep the original column so a text index matches.
  */
 export const isCHFixedStringType = (dataType: string): boolean => {
-  return unwrapCHTypeModifiers(dataType).startsWith('FixedString');
-};
-
-const unwrapCHTypeModifiers = (dataType: string): string => {
-  let current = dataType.trim();
-  // Real types only nest a couple of modifiers (Nullable, LowCardinality).
-  for (let i = 0; i < 5; i++) {
-    if (current.startsWith('LowCardinality(') && current.endsWith(')')) {
-      current = current.slice('LowCardinality('.length, -1).trim();
-      continue;
-    }
-    if (current.startsWith('Nullable(') && current.endsWith(')')) {
-      current = current.slice('Nullable('.length, -1).trim();
-      continue;
-    }
-    break;
-  }
-  return current;
+  return stripTypeWrappers(dataType).startsWith('FixedString');
 };
 
 export const isJSDataTypeJSONStringifiable = (

@@ -20,6 +20,7 @@ import {
   parseKeyPath,
   SkipIndexMetadata,
   TableConnection,
+  unquoteIdentifier,
 } from '@/core/metadata';
 import {
   parseTokenizerFromTextIndex,
@@ -1477,11 +1478,11 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
     if (!found) {
       return this.NOT_FOUND_QUERY;
     }
-    // hasToken/hasAllTokens accept String and LowCardinality(String) only.
-    // lower(FixedString) stays FixedString, so a bare search against TraceId
-    // (FixedString(32) in the OTel schema) errors. CAST first. LIKE still
-    // accepts FixedString, and bloom-filter index expressions are used as
-    // stored — those were accepted by ClickHouse when the index was created.
+    // hasToken rejects FixedString; lower(FixedString) stays FixedString, so a
+    // bare search against TraceId (FixedString(32) in the OTel schema) errors.
+    // hasAllTokens accepts FixedString and is how a text index is used, so that
+    // path keeps the raw column. LIKE accepts FixedString too. Bloom-filter
+    // index expressions are used as stored.
     const tokenHaystack =
       isFixedString && column ? `CAST(${column} AS String)` : column;
     const expressionPostfix =
@@ -1588,9 +1589,11 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
 
           // When the text index is on lower(column), we must pass lower(column)
           // as the first argument and wrap the tokens in lower() to match.
+          // Do not CAST here: hasAllTokens accepts FixedString, and CAST would
+          // no longer match an index built on the column.
           const hasAllTokensColumn = textIndexHasLower
-            ? `lower(${tokenHaystack})`
-            : tokenHaystack;
+            ? `lower(${column})`
+            : column;
 
           // Batch tokens to avoid exceeding hasAllTokens limit (64)
           const tokenBatches = chunk(tokens, HAS_ALL_TOKENS_CHUNK_SIZE);
@@ -1947,17 +1950,15 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
 
   /**
    * Whether a single implicit-column expression is a FixedString column.
-   * Expressions (function calls, concat) are not: concatWithSeparator returns
-   * String, and a failed lookup keeps the previous hasToken SQL.
+   * Only a bare identifier is looked up. A function wrapper such as
+   * lower(TraceId) is left as written: concatWithSeparator returns String,
+   * and guessing the result type of an arbitrary expression is out of scope.
+   * A failed lookup keeps the previous hasToken SQL.
    */
   private async columnExpressionIsFixedString(
     expression: string,
   ): Promise<boolean> {
-    const trimmed = expression.trim();
-    const columnName =
-      trimmed.length >= 2 && trimmed.startsWith('`') && trimmed.endsWith('`')
-        ? trimmed.slice(1, -1).replace(/``/g, '`')
-        : trimmed;
+    const columnName = unquoteIdentifier(expression.trim());
     if (!columnName || columnName.includes('(')) {
       return false;
     }
