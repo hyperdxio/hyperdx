@@ -9,10 +9,17 @@ let mockSources: Record<string, any> = {};
 // Controls the value returned by the mocked `useQueryState('eventRowWhere')`
 // so tests can render with or without a selected span. Prefixed with `mock` so
 // the hoisted jest.mock factory may reference it.
-let mockEventRowWhere: any = null;
+type MockSelection = {
+  id: string;
+  type: string;
+  aliasWith: unknown[];
+  traceId?: string;
+} | null;
+
+let mockEventRowWhere: MockSelection = null;
 const mockSetEventRowWhere = jest.fn();
 // Lets a test land a URL value the way a late nuqs commit would.
-let mockCommitUrl: (value: any) => void = () => {};
+let mockCommitUrl: (value: MockSelection) => void = () => {};
 
 jest.mock('nuqs', () => ({
   ...jest.requireActual('nuqs'),
@@ -20,7 +27,7 @@ jest.mock('nuqs', () => ({
     const { useCallback, useState } = jest.requireActual('react');
     const [value, setValue] = useState(() => mockEventRowWhere);
     mockCommitUrl = setValue;
-    const set = useCallback((next: any) => {
+    const set = useCallback((next: MockSelection) => {
       mockSetEventRowWhere(next);
       setValue(next);
     }, []);
@@ -341,20 +348,52 @@ describe('DBTracePanel', () => {
       renderWithMantine(<TraceSwitcher />);
       fireEvent.click(screen.getByText('select span-b'));
 
-      // The URL and the trace come from different sources and land in
-      // separate renders.
-      act(() =>
-        mockCommitUrl({
-          id: 'span-x',
-          type: SourceKind.Trace,
-          aliasWith: [],
-          traceId: 'trace-456',
-        }),
+      // Back/Forward restores the URL first; the trace prop follows a render later.
+      window.history.pushState(
+        null,
+        '',
+        `/search?eventRowWhere=${encodeURIComponent(
+          JSON.stringify({
+            id: 'span-x',
+            type: SourceKind.Trace,
+            aliasWith: [],
+            traceId: 'trace-456',
+          }),
+        )}`,
       );
+      fireEvent.popState(window);
       fireEvent.click(screen.getByText('switch'));
 
       expect(screen.getByTestId('overview-row-id')).toHaveTextContent('span-x');
       expect(mockSetEventRowWhere).not.toHaveBeenCalledWith(null);
+      window.history.pushState(null, '', '/search');
+    });
+
+    it('writes a span clicked after a trace change to the URL', () => {
+      const TraceSwitcher = () => {
+        const [traceId, setTraceId] = React.useState('trace-123');
+        return (
+          <>
+            <button onClick={() => setTraceId('trace-456')}>switch</button>
+            <DBTracePanel
+              traceId={traceId}
+              parentSourceId="trace-source"
+              childSourceId="log-source"
+              dateRange={[new Date(0), new Date(1000)]}
+              focusDate={new Date(500)}
+            />
+          </>
+        );
+      };
+      renderWithMantine(<TraceSwitcher />);
+      fireEvent.click(screen.getByText('select span-b'));
+      fireEvent.click(screen.getByText('switch'));
+
+      fireEvent.click(screen.getByText('select span-a'));
+
+      expect(mockSetEventRowWhere).toHaveBeenLastCalledWith(
+        expect.objectContaining({ id: 'span-a', traceId: 'trace-456' }),
+      );
     });
 
     it('follows the URL on a real back/forward navigation', () => {
@@ -376,6 +415,20 @@ describe('DBTracePanel', () => {
       fireEvent.popState(window);
 
       expect(screen.getByTestId('overview-row-id')).toHaveTextContent('span-a');
+      window.history.pushState(null, '', '/search');
+    });
+
+    it.each([
+      ['no selection', '/search'],
+      ['a malformed selection', '/search?eventRowWhere=%7Bnot-json'],
+    ])('closes on back/forward to a URL with %s', (_, url) => {
+      renderPanel();
+      fireEvent.click(screen.getByText('select span-b'));
+
+      window.history.pushState(null, '', url);
+      fireEvent.popState(window);
+
+      expect(screen.queryByTestId('overview-row-id')).not.toBeInTheDocument();
       window.history.pushState(null, '', '/search');
     });
   });

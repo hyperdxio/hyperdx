@@ -298,28 +298,32 @@ export default function DBTracePanel({
 
   const { mutate: updateTableSource } = useUpdateSource();
 
-  const [urlEventRowWhere, setUrlEventRowWhere] = useQueryState(
+  const [urlSelection, setUrlSelection] = useQueryState(
     'eventRowWhere',
     eventRowWhereParser,
   );
 
-  // nuqs applies URL writes out of order (#3255), so a choice made here wins over the URL.
-  const [selection, setSelection] = useState<EventRowWhere | null>();
+  // nuqs applies URL writes out of order (#3255), so a choice made here wins
+  // over the URL. undefined: defer to the URL; null: closed; value: selected.
+  const [localSelection, setLocalSelection] = useState<
+    EventRowWhere | null | undefined
+  >(undefined);
 
+  // React's "adjust state when a prop changes" pattern: drop another trace's span.
   const [selectionTraceId, setSelectionTraceId] = useState(traceId);
   if (selectionTraceId !== traceId) {
     setSelectionTraceId(traceId);
-    setSelection(prev => (prev?.traceId === traceId ? prev : undefined));
+    setLocalSelection(prev => (prev?.traceId === traceId ? prev : undefined));
   }
 
-  const effectiveSelection =
-    selection === undefined ? urlEventRowWhere : selection;
+  const mergedSelection =
+    localSelection === undefined ? urlSelection : localSelection;
   const selectedSpan =
-    effectiveSelection?.traceId === traceId ? effectiveSelection : null;
+    mergedSelection?.traceId === traceId ? mergedSelection : null;
 
   const selectSpan = useCallback(
     (where: { id: string; type: string; aliasWith: WithClause[] }) => {
-      setSelection({ ...where, traceId });
+      setLocalSelection({ ...where, traceId });
     },
     [traceId],
   );
@@ -329,32 +333,28 @@ export default function DBTracePanel({
       const raw = new URLSearchParams(window.location.search).get(
         'eventRowWhere',
       );
-      setSelection(raw == null ? null : eventRowWhereParser.parse(raw));
+      setLocalSelection(raw == null ? null : eventRowWhereParser.parse(raw));
     };
     window.addEventListener('popstate', syncFromUrl);
     return () => window.removeEventListener('popstate', syncFromUrl);
   }, []);
 
   useEffect(() => {
-    // A URL value for another trace is a navigation in flight, not drift.
-    if (
-      selection === undefined ||
-      (urlEventRowWhere != null && urlEventRowWhere.traceId !== traceId)
-    ) {
+    if (localSelection === undefined) {
       return;
     }
-    if (selection === null) {
-      if (urlEventRowWhere != null) {
-        void setUrlEventRowWhere(null);
+    if (localSelection === null) {
+      if (urlSelection != null) {
+        void setUrlSelection(null);
       }
     } else if (
-      urlEventRowWhere?.id !== selection.id ||
-      urlEventRowWhere.type !== selection.type ||
-      urlEventRowWhere.traceId !== selection.traceId
+      urlSelection?.id !== localSelection.id ||
+      urlSelection.type !== localSelection.type ||
+      urlSelection.traceId !== localSelection.traceId
     ) {
-      void setUrlEventRowWhere(selection);
+      void setUrlSelection(localSelection);
     }
-  }, [selection, urlEventRowWhere, traceId, setUrlEventRowWhere]);
+  }, [localSelection, urlSelection, setUrlSelection]);
 
   const {
     control: traceIdControl,
@@ -394,7 +394,7 @@ export default function DBTracePanel({
   const detailPanelSize = isSideLayout ? rightPanelSize : bottomPanelSize;
 
   const handleCloseSpanDetails = useCallback(() => {
-    setSelection(null);
+    setLocalSelection(null);
   }, []);
 
   const selectedSpanSource = useMemo(() => {
