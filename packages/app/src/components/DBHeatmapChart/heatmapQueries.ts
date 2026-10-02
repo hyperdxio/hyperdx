@@ -28,16 +28,22 @@ export type HeatmapChartConfig = {
   with?: BuilderChartConfigWithDateRange['with'];
 };
 
-/** Build a HeatmapChartConfig from a builder chart config that has heatmap extras on select[0]. */
-export function toHeatmapChartConfig(config: BuilderChartConfigWithDateRange): {
-  heatmapConfig: HeatmapChartConfig;
+/** What a heatmap queries. */
+export type HeatmapQuery = {
+  mode: 'distribution';
+  config: HeatmapChartConfig;
   scaleType: HeatmapScaleType;
-} {
+};
+
+export function toHeatmapQuery(
+  config: BuilderChartConfigWithDateRange,
+): HeatmapQuery {
   const firstSelect = Array.isArray(config.select)
     ? config.select[0]
     : undefined;
   return {
-    heatmapConfig: {
+    mode: 'distribution',
+    config: {
       ...config,
       displayType: DisplayType.Heatmap,
       select: [

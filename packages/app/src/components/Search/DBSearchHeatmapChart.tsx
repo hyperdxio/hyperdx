@@ -20,14 +20,14 @@ import DBDeltaChart from '@/components/DBDeltaChart';
 import DBHeatmapChart, {
   ColorLegend,
   darkPalette,
+  HEATMAP_DURATION_NUMBER_FORMAT,
   type HeatmapScaleType,
   lightPalette,
   type SelectionBounds,
-  toHeatmapChartConfig,
+  toHeatmapQuery,
 } from '@/components/DBHeatmapChart';
 import HeatmapSettingsDrawer from '@/components/HeatmapSettingsDrawer';
 import { getDurationMsExpression } from '@/source';
-import type { NumberFormat } from '@/types';
 
 export function DBSearchHeatmapChart({
   chartConfig,
@@ -139,27 +139,21 @@ export function DBSearchHeatmapChart({
         }}
       >
         <DBHeatmapChart
-          config={
-            toHeatmapChartConfig({
-              ...chartConfig,
-              select: [
-                {
-                  valueExpression: fields.value,
-                  countExpression: fields.count || undefined,
-                  heatmapScaleType: scaleType,
-                },
-              ],
-              numberFormat:
-                fields.value === getDurationMsExpression(source)
-                  ? ({
-                      output: 'duration',
-                      factor: 0.001,
-                    } satisfies NumberFormat)
-                  : undefined,
-            }).heatmapConfig
-          }
+          query={toHeatmapQuery({
+            ...chartConfig,
+            select: [
+              {
+                valueExpression: fields.value,
+                countExpression: fields.count || undefined,
+                heatmapScaleType: scaleType,
+              },
+            ],
+            numberFormat:
+              fields.value === getDurationMsExpression(source)
+                ? HEATMAP_DURATION_NUMBER_FORMAT
+                : undefined,
+          })}
           enabled={isReady}
-          scaleType={scaleType}
           selectionBounds={selectionBounds}
           onFilter={(xMin, xMax, yMin, yMax) => {
             setFields({ xMin, xMax, yMin, yMax });
