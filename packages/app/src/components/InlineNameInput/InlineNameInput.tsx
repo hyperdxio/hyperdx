@@ -114,7 +114,9 @@ export function InlineNameInput({
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     onKeyDown?.(e);
-    if (e.key === 'Enter') {
+    // Enter confirms an IME candidate before it inserts text. Committing
+    // there would save the half-composed name.
+    if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
       e.preventDefault();
       e.currentTarget.blur();
     } else if (e.key === 'Escape') {

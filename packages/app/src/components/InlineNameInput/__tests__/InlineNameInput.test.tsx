@@ -1,5 +1,5 @@
 import { useForm } from 'react-hook-form';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import {
@@ -53,7 +53,9 @@ describe('InlineNameInput', () => {
     await user.type(input, ' v2{Enter}');
     expect(input).toHaveValue('My dashboard v2');
 
-    resolveSave();
+    await act(async () => {
+      resolveSave();
+    });
     expect(input).toHaveValue('My dashboard v2');
 
     rerender(
