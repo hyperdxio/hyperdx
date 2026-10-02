@@ -488,6 +488,20 @@ export function getDurationSecondsExpression(source: TTraceSource) {
   return `(${source.durationExpression})/1e${source.durationPrecision ?? 9}`;
 }
 
+/**
+ * The single definition of an errored span, as a SQL predicate over a span
+ * status-code expression. Matches both the short OTel status ('Error'/'ERROR')
+ * and the legacy collector form ('STATUS_CODE_ERROR'), which some collectors
+ * write instead.
+ *
+ * Span status only. Log severity text is a different vocabulary (its error
+ * values are 'fatal', 'crit' and friends, never 'status_code_error'), so log
+ * callers keep their own predicate rather than reusing this one.
+ */
+export function errorStatusPredicateSql(statusCodeExpression: string): string {
+  return `lower(${statusCodeExpression}) IN ('error', 'status_code_error')`;
+}
+
 // Aggregate functions whose output preserves the unit of the input value.
 // count and count_distinct produce dimensionless counts and should not
 // inherit the duration format.
