@@ -1,8 +1,15 @@
 import PQueue from '@esm2cjs/p-queue';
-import { displayTypeSupportsRawSqlAlerts } from '@hyperdx/common-utils/dist/core/utils';
-import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
+import {
+  displayTypeSupportsPromQLAlerts,
+  displayTypeSupportsRawSqlAlerts,
+} from '@hyperdx/common-utils/dist/core/utils';
+import {
+  isPromqlSavedChartConfig,
+  isRawSqlSavedChartConfig,
+} from '@hyperdx/common-utils/dist/guards';
 import {
   AlertChartConfig,
+  PromqlSavedChartConfig,
   RawSqlSavedChartConfig,
   Tile,
 } from '@hyperdx/common-utils/dist/types';
@@ -106,9 +113,9 @@ async function getSavedSearchDetails(
  * source macros keep evaluating correctly, and templates that do fail with a
  * visible query error recorded on the alert.
  */
-async function getRawSqlSourceMetadata(
+async function getConnectionPinnedSourceMetadata(
   alert: IAlert,
-  chartConfig: RawSqlSavedChartConfig,
+  chartConfig: RawSqlSavedChartConfig | PromqlSavedChartConfig,
 ): Promise<ISource | undefined> {
   if (!chartConfig.source) {
     return undefined;
@@ -130,7 +137,7 @@ async function getRawSqlSourceMetadata(
   ) {
     logger.warn({
       message:
-        'raw sql alert source has moved to a different connection; ignoring its metadata',
+        'alert source has moved to a different connection; ignoring its metadata',
       alertId: alert.id,
       sourceId: chartConfig.source,
       sourceConnectionId: String(sourceDoc.connection),
@@ -201,13 +208,55 @@ async function getTileDetails(
     }
 
     // Optionally look up source for filter/macro metadata
-    const source = await getRawSqlSourceMetadata(alert, tile.config);
+    const source = await getConnectionPinnedSourceMetadata(alert, tile.config);
 
     return [
       connection,
       {
         alert,
         source,
+        taskType: AlertTaskType.TILE,
+        tile,
+        dashboard,
+      },
+    ];
+  }
+
+  if (isPromqlSavedChartConfig(tile.config)) {
+    if (!displayTypeSupportsPromQLAlerts(tile.config.displayType)) {
+      logger.warn({
+        tileId,
+        dashboardId: dashboard._id,
+        alertId: alert.id,
+        message:
+          'skipping alert with promql chart config, unsupported display type',
+      });
+      return [];
+    }
+
+    const connection = await Connection.findOne({
+      _id: tile.config.connection,
+      team: alert.team,
+    }).select('+password');
+
+    if (!connection) {
+      logger.error({
+        message: 'connection not found for promql tile',
+        connectionId: tile.config.connection,
+        tileId,
+        dashboardId: dashboard._id,
+        alertId: alert.id,
+      });
+      return [];
+    }
+
+    const source = await getConnectionPinnedSourceMetadata(alert, tile.config);
+
+    return [
+      connection,
+      {
+        alert,
+        source: source ? { ...source, connection: connection.id } : undefined,
         taskType: AlertTaskType.TILE,
         tile,
         dashboard,
@@ -297,13 +346,50 @@ async function getInlineAlertDetails(
     }
 
     // Optionally look up source for filter/macro metadata
-    const source = await getRawSqlSourceMetadata(alert, chartConfig);
+    const source = await getConnectionPinnedSourceMetadata(alert, chartConfig);
 
     return [
       connection,
       {
         alert,
         source,
+        taskType: AlertTaskType.INLINE,
+        chartConfig,
+      },
+    ];
+  }
+
+  if (isPromqlSavedChartConfig(chartConfig)) {
+    if (!displayTypeSupportsPromQLAlerts(chartConfig.displayType)) {
+      logger.warn({
+        alertId: alert.id,
+        message:
+          'skipping inline alert with promql chart config, unsupported display type',
+      });
+      return [];
+    }
+
+    const connection = await Connection.findOne({
+      _id: chartConfig.connection,
+      team: alert.team,
+    }).select('+password');
+
+    if (!connection) {
+      logger.error({
+        message: 'connection not found for promql inline alert',
+        connectionId: chartConfig.connection,
+        alertId: alert.id,
+      });
+      return [];
+    }
+
+    const source = await getConnectionPinnedSourceMetadata(alert, chartConfig);
+
+    return [
+      connection,
+      {
+        alert,
+        source: source ? { ...source, connection: connection.id } : undefined,
         taskType: AlertTaskType.INLINE,
         chartConfig,
       },

@@ -1924,9 +1924,11 @@ export const processAlert = async (
     // which path populated the data above.
 
     for (const bucketStart of sharedExpectedBuckets) {
-      const rowsForBucket = checkDataByBucket.get(bucketStart.getTime()) ?? [];
+      const bucketMs = bucketStart.getTime();
+      const hasBucket = checkDataByBucket.has(bucketMs);
+      const rowsForBucket = checkDataByBucket.get(bucketMs) ?? [];
 
-      if (rowsForBucket.length === 0) {
+      if (!hasBucket) {
         alertEvaluationsCounter.add(1, { outcome: 'empty_bucket' });
         logger.info(
           { alertId: alert.id, bucketStart },
