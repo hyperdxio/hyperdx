@@ -26,7 +26,7 @@ import DBHeatmapChart, {
   buildHeatmapBoundsConfig,
   buildHeatmapBucketConfig,
   HEATMAP_N_BUCKETS,
-  toHeatmapChartConfig,
+  toHeatmapQuery,
 } from '@/components/DBHeatmapChart';
 import DBNumberChart from '@/components/DBNumberChart';
 import { DBPieChart } from '@/components/DBPieChart';
@@ -62,12 +62,10 @@ function HeatmapPreview({
 }: {
   config: BuilderChartConfigWithDateRange;
 }) {
-  const { heatmapConfig, scaleType } = toHeatmapChartConfig(config);
   return (
     <div className="flex-grow-1 d-flex flex-column" style={{ height: 400 }}>
       <DBHeatmapChart
-        config={heatmapConfig}
-        scaleType={scaleType}
+        query={toHeatmapQuery(config)}
         showLegend
         errorVariant="inline"
       />
@@ -96,8 +94,8 @@ function HeatmapSQLPreview({
     ...config,
     timestampValueExpression,
   };
-  const { heatmapConfig, scaleType } =
-    toHeatmapChartConfig(configWithTimestamp);
+  const { config: heatmapConfig, scaleType } =
+    toHeatmapQuery(configWithTimestamp);
   const granularity = convertDateRangeToGranularityString(dateRange, 245);
 
   const boundsConfig = buildHeatmapBoundsConfig({

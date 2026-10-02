@@ -174,9 +174,7 @@ import ChartContainer, {
 } from './components/charts/ChartContainer';
 import DashboardFiltersModal from './components/DashboardFiltersModal';
 import { DBBarChart } from './components/DBBarChart';
-import DBHeatmapChart, {
-  toHeatmapChartConfig,
-} from './components/DBHeatmapChart';
+import DBHeatmapChart, { toHeatmapQuery } from './components/DBHeatmapChart';
 import { DBPieChart } from './components/DBPieChart';
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import OnboardingModal from './components/OnboardingModal';
@@ -249,7 +247,7 @@ function HeatmapTile({
   dateRange: [Date, Date];
   enabled?: boolean;
 }) {
-  const { heatmapConfig, scaleType } = toHeatmapChartConfig(queriedConfig);
+  const heatmapQuery = toHeatmapQuery(queriedConfig);
 
   const [clickPos, setClickPos] = useState<{ x: number; y: number } | null>(
     null,
@@ -291,8 +289,7 @@ function HeatmapTile({
         title={title}
         toolbarPrefix={toolbarPrefix}
         toolbarSuffix={toolbarSuffix}
-        config={heatmapConfig}
-        scaleType={scaleType}
+        query={heatmapQuery}
         enabled={enabled}
         showLegend
       />

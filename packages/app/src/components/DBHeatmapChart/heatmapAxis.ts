@@ -1,7 +1,15 @@
+import type uPlot from 'uplot';
+
 import { NumberFormat } from '@/types';
 import { formatDurationMsCompact, formatNumber } from '@/utils';
 
 import type { HeatmapScaleType } from './heatmapGrid';
+
+/** Number format for a heatmap of trace durations in ms. */
+export const HEATMAP_DURATION_NUMBER_FORMAT = {
+  output: 'duration',
+  factor: 0.001,
+} as const satisfies NumberFormat;
 
 /** Format a plot-space y value as a y-axis / tooltip label. */
 export function formatHeatmapTick(
@@ -67,4 +75,28 @@ export function logScaleSplits(yMin: number, yMax: number): number[] {
     return [...new Set(splits)].sort((a, b) => a - b);
   }
   return splits;
+}
+
+/**
+ * uPlot y axis overrides for a heatmap's numeric y axis: formatted ticks,
+ * placed at powers of 10 on a log scale.
+ */
+export function heatmapYAxisOptions(
+  scaleType: HeatmapScaleType,
+  tickFormatter: (value: number) => string,
+): Pick<uPlot.Axis, 'values' | 'splits'> {
+  return {
+    values: (_u: uPlot, vals: number[]) => vals.map(tickFormatter),
+    ...(scaleType === 'log'
+      ? {
+          splits: (u: uPlot) => {
+            const [yMin, yMax] =
+              u.scales.y!.min != null
+                ? [u.scales.y!.min, u.scales.y!.max!]
+                : [0, 1];
+            return logScaleSplits(yMin, yMax);
+          },
+        }
+      : {}),
+  };
 }

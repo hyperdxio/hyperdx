@@ -56,9 +56,10 @@ jest.mock('@/components/DBSqlRowTableWithSidebar', () => ({
 jest.mock('@/components/DBHeatmapChart', () => ({
   __esModule: true,
   default: () => <div data-testid="db-heatmap-chart">Heatmap Chart</div>,
-  toHeatmapChartConfig: (config: unknown) => ({
-    heatmapConfig: config,
-    scaleType: 'log' as const,
+  toHeatmapQuery: (config: unknown) => ({
+    mode: 'distribution',
+    config,
+    scaleType: 'log',
   }),
   buildHeatmapBoundsConfig: ({ config }: { config: unknown }) => config,
   buildHeatmapBucketConfig: ({ config }: { config: unknown }) => config,
