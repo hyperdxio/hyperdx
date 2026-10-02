@@ -767,6 +767,23 @@ export default function EditTimeChartForm({
         isStringSelectDisplayType(displayType) &&
         typeof select !== 'string'
       ) {
+        // Carry a single builder series' aggCondition back into `where` so a
+        // filter set in the builder survives the switch to Search/EventPatterns
+        // (which only edit `where`). Only with exactly one series and an empty
+        // `where`, so a filter isn't guessed across series or allowed to
+        // clobber an existing `where`. See HDX-5602.
+        const currentSeries = getValues('series');
+        if (Array.isArray(currentSeries) && currentSeries.length === 1) {
+          const condition = currentSeries[0]?.aggCondition ?? '';
+          const currentWhere = getValues('where') ?? '';
+          if (condition && !currentWhere) {
+            setValue('where', condition);
+            const language = currentSeries[0]?.aggConditionLanguage;
+            if (language) {
+              setValue('whereLanguage', language);
+            }
+          }
+        }
         setValue('select', '');
         setValue('series', []);
       } else if (displayType === DisplayType.Heatmap) {
@@ -786,11 +803,17 @@ export default function EditTimeChartForm({
         }
         applyHeatmapDefaults(setValue, defaultValue);
       } else if (!Array.isArray(select)) {
+        // Carry a Search/EventPatterns `where` filter into the new single
+        // series' aggCondition so a filter set on those tabs survives the
+        // switch to a builder chart type, which filters per-series rather than
+        // via the (hidden) chart-level `where`. See HDX-5602.
+        const carriedWhere = getValues('where') ?? '';
         const defaultSeries: SavedChartConfigWithSelectArray['select'] = [
           {
             aggFn: 'count',
-            aggCondition: '',
-            aggConditionLanguage: getStoredLanguage() ?? 'lucene',
+            aggCondition: carriedWhere,
+            aggConditionLanguage:
+              getValues('whereLanguage') ?? getStoredLanguage() ?? 'lucene',
             valueExpression: '',
           },
         ];
@@ -806,7 +829,15 @@ export default function EditTimeChartForm({
         onSubmit(true);
       }
     }
-  }, [displayType, select, setValue, onSubmit, configType, tableSource]);
+  }, [
+    displayType,
+    select,
+    setValue,
+    getValues,
+    onSubmit,
+    configType,
+    tableSource,
+  ]);
 
   // Handle auto-submitting and form state updates when the source changes.
   useEffect(() => {

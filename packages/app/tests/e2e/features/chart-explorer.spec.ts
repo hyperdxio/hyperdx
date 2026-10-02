@@ -359,4 +359,73 @@ test.describe('Chart Explorer Functionality', { tag: ['@charts'] }, () => {
       });
     },
   );
+
+  // HDX-5602: a filter set on the Search tab lives in the chart-level `where`,
+  // while the builder chart types filter per-series via `aggCondition`. The
+  // editor carries the value across so the filter does not silently reset when
+  // the user switches chart types.
+  test(
+    'should carry a Search WHERE filter into the series when switching to Time Series',
+    { tag: '@full-stack' },
+    async () => {
+      const filter = 'ServiceName:"frontend"';
+
+      await test.step('Wait for the chart editor data to load', async () => {
+        await chartExplorerPage.chartEditor.waitForDataToLoad();
+      });
+
+      await test.step('Select the E2E Logs source', async () => {
+        await chartExplorerPage.chartEditor.selectSource(
+          DEFAULT_LOGS_SOURCE_NAME,
+        );
+      });
+
+      await test.step('Switch to the Search chart type and enter a filter', async () => {
+        await chartExplorerPage.chartEditor.setChartType(DisplayType.Search);
+        await chartExplorerPage.chartEditor.setWhereLanguage('Lucene', 'chart');
+        await chartExplorerPage.chartEditor.typeLuceneWhere(filter, 'chart');
+      });
+
+      await test.step('Switch to Time Series and verify the filter carried into the series WHERE', async () => {
+        await chartExplorerPage.chartEditor.setChartType(DisplayType.Line);
+        await expect
+          .poll(() => chartExplorerPage.chartEditor.getLuceneWhere('series'))
+          .toBe(filter);
+      });
+    },
+  );
+
+  test(
+    'should carry a single series WHERE filter into the Search WHERE when switching to Search',
+    { tag: '@full-stack' },
+    async () => {
+      const filter = 'ServiceName:"frontend"';
+
+      await test.step('Wait for the chart editor data to load', async () => {
+        await chartExplorerPage.chartEditor.waitForDataToLoad();
+      });
+
+      await test.step('Select the E2E Logs source', async () => {
+        await chartExplorerPage.chartEditor.selectSource(
+          DEFAULT_LOGS_SOURCE_NAME,
+        );
+      });
+
+      await test.step('On Time Series, enter a filter in the series WHERE', async () => {
+        await chartExplorerPage.chartEditor.setChartType(DisplayType.Line);
+        await chartExplorerPage.chartEditor.setWhereLanguage(
+          'Lucene',
+          'series',
+        );
+        await chartExplorerPage.chartEditor.typeLuceneWhere(filter, 'series');
+      });
+
+      await test.step('Switch to Search and verify the filter carried into the chart WHERE', async () => {
+        await chartExplorerPage.chartEditor.setChartType(DisplayType.Search);
+        await expect
+          .poll(() => chartExplorerPage.chartEditor.getLuceneWhere('chart'))
+          .toBe(filter);
+      });
+    },
+  );
 });

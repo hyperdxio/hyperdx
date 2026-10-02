@@ -161,6 +161,16 @@ export class ChartEditorComponent {
   }
 
   /**
+   * Read the current text of a WHERE input in Lucene mode, where it renders as
+   * a plain textarea. Switches the input to Lucene first (the mode is sticky in
+   * localStorage, so a prior spec can leave it on SQL).
+   */
+  async getLuceneWhere(scope: 'chart' | 'series' = 'chart'): Promise<string> {
+    await this.setWhereLanguage('Lucene', scope);
+    return this.whereInput(scope).luceneInput.inputValue();
+  }
+
+  /**
    * Type `prefix` into a SQL WHERE input to open its autocomplete popup, and
    * report what it offers plus the help panel of the highlighted suggestion.
    *
