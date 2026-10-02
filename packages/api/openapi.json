@@ -4007,7 +4007,13 @@
             "minimum": 0,
             "maximum": 10000,
             "default": 0,
-            "description": "Number of rows to skip (best-effort offset pagination). Default is\n0, max is 10000. Offset pagination is non-deterministic when\nmultiple rows share the same timestamp; for reliable deep paging\nfilter by the last Timestamp value returned in the previous page\ninstead of using a large offset.\n"
+            "description": "Number of rows to skip (best-effort offset pagination). Default is\n0, max is 10000. Offset pagination is non-deterministic when\nmultiple rows share the same timestamp. Prefer cursor for paging.\n"
+          },
+          "cursor": {
+            "type": "string",
+            "maxLength": 1024,
+            "example": "start",
+            "description": "Send the literal string \"start\" to begin cursor paging, then pass\nback the nextCursor from each response. When set, offset is\nignored; omit cursor entirely to keep the existing offset paging\nbehaviour, which searches the whole requested range.\n\nKeep requesting pages until nextCursor is null. A page that\nreturns fewer rows than maxResults does NOT mean the results are\nexhausted: pages are scoped to a time window, and a window can\nhold fewer matching rows than the page size. Stopping on a short\npage silently truncates your results.\n"
           }
         }
       },
@@ -4029,6 +4035,12 @@
           "rows": {
             "type": "integer",
             "description": "Number of rows in this response (not total matching rows)."
+          },
+          "nextCursor": {
+            "type": "string",
+            "nullable": true,
+            "example": "eyJ2IjoxLCJ3IjoyLCJvIjo1MDAsImYiOiJhMWIyYzNkNGU1ZjZhN2I4In0",
+            "description": "Cursor for the next page, or null when the walk is complete or the request was not a cursor walk. Pass it back as cursor. Do not inspect its contents.\n"
           }
         }
       },

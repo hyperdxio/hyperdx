@@ -16,6 +16,7 @@ import {
   isUsingGranularity,
   renderChartConfig,
 } from '@hyperdx/common-utils/dist/core/renderChartConfig';
+import { generateTimeWindowsDescending } from '@hyperdx/common-utils/dist/core/searchWindows';
 import {
   convertDateRangeToGranularityString,
   convertGranularityToSeconds,
@@ -53,7 +54,6 @@ import {
   queryPromqlChartConfig,
   reduceBucketRows,
 } from '@/utils/promqlChartQuery';
-import { generateTimeWindowsDescending } from '@/utils/searchWindows';
 
 import { useMVOptimizationExplanation } from './useMVOptimizationExplanation';
 

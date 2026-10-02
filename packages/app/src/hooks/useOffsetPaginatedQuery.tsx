@@ -14,6 +14,13 @@ import {
 import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
+  DEFAULT_TIME_WINDOWS_SECONDS,
+  generateTimeWindowsAscending,
+  generateTimeWindowsDescending,
+  ONE_MIN_WINDOW,
+  TimeWindow,
+} from '@hyperdx/common-utils/dist/core/searchWindows';
+import {
   isFirstOrderByAscending,
   isTimestampExpressionInFirstOrderBy,
 } from '@hyperdx/common-utils/dist/core/utils';
@@ -40,13 +47,6 @@ import { useMetadataWithSettings } from '@/hooks/useMetadata';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useSource } from '@/source';
 import { queryPromqlChartConfig } from '@/utils/promqlChartQuery';
-import {
-  DEFAULT_TIME_WINDOWS_SECONDS,
-  generateTimeWindowsAscending,
-  generateTimeWindowsDescending,
-  ONE_MIN_WINDOW,
-  TimeWindow,
-} from '@/utils/searchWindows';
 
 type TQueryKey = readonly [
   string,
