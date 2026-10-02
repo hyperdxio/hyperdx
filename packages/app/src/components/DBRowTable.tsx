@@ -381,6 +381,7 @@ export const RawLogTable = memo(
     getRowWhere,
     variant = 'default',
     onRemoveColumn,
+    className,
   }: {
     wrapLines?: boolean;
     displayedColumns: string[];
@@ -424,6 +425,9 @@ export const RawLogTable = memo(
     getRowWhere?: (row: Record<string, any>) => RowWhereResult;
     variant?: DBRowTableVariant;
     onRemoveColumn?: (column: string) => void;
+    // Extra classes for the scroll container, e.g. `effect-pulse` while the
+    // tile is refreshing.
+    className?: string;
   }) => {
     const dedupedRows = useMemo(() => {
       const lIds = new Set();
@@ -1005,9 +1009,13 @@ export const RawLogTable = memo(
           />
           <div
             data-testid="search-results-table"
-            className={cx(styles.tableWrapper, {
-              [styles.muted]: variant === 'muted',
-            })}
+            className={cx(
+              styles.tableWrapper,
+              {
+                [styles.muted]: variant === 'muted',
+              },
+              className,
+            )}
             onScroll={e => {
               fetchMoreOnBottomReached(e.target as HTMLDivElement);
 
@@ -1619,6 +1627,7 @@ function DBSqlRowTableComponent({
   tableId,
   errorVariant,
   onResolvedColumnsChange,
+  keepPreviousData,
 }: {
   config: BuilderChartConfigWithDateRange;
   sourceId?: string;
@@ -1652,6 +1661,8 @@ function DBSqlRowTableComponent({
   tableId?: string;
   errorVariant?: ChartErrorStateVariant;
   onResolvedColumnsChange?: (meta: ColumnMetaType[]) => void;
+  /** Keep the current rows on screen while a refresh loads a new date range */
+  keepPreviousData?: boolean;
 }) {
   const { data: me } = api.useMe();
   const { toggleColumn, displayedColumns: contextDisplayedColumns } =
@@ -1711,14 +1722,22 @@ function DBSqlRowTableComponent({
 
   const mergedConfig = useConfigWithAdditionalSelect(mergedConfigObj, sourceId);
 
-  const { data, fetchNextPage, hasNextPage, isFetching, isError, error } =
-    useOffsetPaginatedQuery(mergedConfig ?? config, {
-      enabled:
-        enabled && mergedConfig != null && getSelectLength(config.select) > 0,
-      isLive,
-      queryKeyPrefix,
-      enableSmallFirstWindow,
-    });
+  const {
+    data,
+    fetchNextPage,
+    hasNextPage,
+    isFetching,
+    isError,
+    error,
+    isPlaceholderData,
+  } = useOffsetPaginatedQuery(mergedConfig ?? config, {
+    enabled:
+      enabled && mergedConfig != null && getSelectLength(config.select) > 0,
+    isLive,
+    queryKeyPrefix,
+    enableSmallFirstWindow,
+    keepPreviousData,
+  });
 
   // The first N columns are the select columns from the user
   // We can't use names as CH may rewrite the names
@@ -1975,6 +1994,9 @@ function DBSqlRowTableComponent({
         variant={variant}
         onRemoveColumn={toggleColumn ? onRemoveColumnFromTable : undefined}
         tableId={tableId}
+        className={
+          keepPreviousData && isPlaceholderData ? 'effect-pulse' : undefined
+        }
       />
     </>
   );
