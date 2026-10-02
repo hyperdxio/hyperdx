@@ -195,3 +195,73 @@ describe('report url line', () => {
     expect(report).not.toContain('token');
   });
 });
+
+describe('report session and recent errors', () => {
+  it('says the session is not recording when there is no session id', () => {
+    expect(reportFor(loadHdxDebug())).toContain('session:  not recording');
+  });
+
+  it('reports no recent errors when none were recorded', () => {
+    expect(reportFor(loadHdxDebug())).toContain('recent errors: none');
+  });
+
+  it('lists recorded errors with their status or code', () => {
+    const mod = loadHdxDebug();
+    // Same module registry as hdxDebug after loadHdxDebug's resetModules.
+    const { recordRecentError } =
+      jest.requireActual<typeof import('@/recentErrors')>('@/recentErrors');
+    recordRecentError(
+      Object.assign(new Error('Bad gateway'), {
+        name: 'HTTPError',
+        response: { status: 502 },
+      }),
+    );
+    recordRecentError(new Error('Code: 60. DB::Exception: missing table'));
+
+    const report = reportFor(mod);
+    expect(report).toContain('recent errors:');
+    expect(report).toMatch(/\/ HTTPError \[502\] Bad gateway/);
+    expect(report).toMatch(/\/ Error \[CH 60\] Code: 60\. DB::Exception/);
+  });
+
+  it('shows the failing endpoint and how often the failure repeated', () => {
+    const mod = loadHdxDebug();
+    const { recordRecentError } =
+      jest.requireActual<typeof import('@/recentErrors')>('@/recentErrors');
+    const err = () =>
+      Object.assign(new Error('Request failed with status code 502'), {
+        name: 'HTTPError',
+        request: { method: 'GET', url: 'http://localhost/api/dashboards' },
+        response: { status: 502 },
+      });
+    recordRecentError(err());
+    recordRecentError(err());
+
+    expect(reportFor(mod)).toMatch(
+      /HTTPError \[502\] GET \/api\/dashboards Request failed with status code 502 \(x2\)/,
+    );
+  });
+
+  it("prints the API's reason instead of ky's status message", async () => {
+    const mod = loadHdxDebug();
+    const { recordRecentError } =
+      jest.requireActual<typeof import('@/recentErrors')>('@/recentErrors');
+    recordRecentError(
+      Object.assign(new Error('Request failed with status code 404'), {
+        name: 'HTTPError',
+        request: { method: 'GET', url: 'http://localhost/api/sources/1' },
+        response: {
+          status: 404,
+          clone: () => ({
+            json: async () => ({ message: 'Source not found' }),
+          }),
+        },
+      }),
+    );
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    const report = reportFor(mod);
+    expect(report).toContain('GET /api/sources/1 Source not found');
+    expect(report).not.toContain('Request failed with status code 404');
+  });
+});
