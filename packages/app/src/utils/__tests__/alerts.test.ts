@@ -2,6 +2,7 @@ import {
   AlertSource,
   AlertThresholdType,
   DisplayType,
+  type PromqlSavedChartConfig,
 } from '@hyperdx/common-utils/dist/types';
 
 import type { AlertsPageItem } from '@/types';
@@ -332,17 +333,23 @@ describe('buildInlineAlertPayload', () => {
     expect(buildInlineAlertPayload(inlineChartConfig)).toBeUndefined();
   });
 
-  // PromQL charts cannot be alerted on: the inline-alert schema has no PromQL
-  // variant, so a payload built from one would be rejected server-side.
-  it('returns nothing for a PromQL chart', () => {
-    expect(
-      buildInlineAlertPayload({
+  it('builds payload for a PromQL chart', () => {
+    const config: PromqlSavedChartConfig = {
+      configType: 'promql',
+      promqlExpression: 'up',
+      connection: 'conn-1',
+      displayType: DisplayType.Line,
+      alert,
+    };
+    expect(buildInlineAlertPayload(config)).toEqual({
+      ...alert,
+      source: AlertSource.INLINE,
+      chartConfig: {
         configType: 'promql',
         promqlExpression: 'up',
         connection: 'conn-1',
         displayType: DisplayType.Line,
-        alert,
-      }),
-    ).toBeUndefined();
+      },
+    });
   });
 });

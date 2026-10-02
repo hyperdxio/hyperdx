@@ -5,6 +5,7 @@ import {
 } from '@hyperdx/common-utils/dist/alerts';
 import {
   isBuilderSavedChartConfig,
+  isPromqlSavedChartConfig,
   isRawSqlSavedChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
 import {
@@ -75,6 +76,13 @@ export function alertConfigHasGroupBy(
     savedConfig.groupBy &&
     savedConfig.groupBy.length > 0
   ) {
+    return true;
+  }
+
+  if (isPromqlSavedChartConfig(savedConfig)) {
+    // PromQL /query_range always returns one result-set entry per label-set.
+    // Treating it as grouped ensures the missing-series recovery loop runs
+    // when a previously-firing series disappears from the response.
     return true;
   }
 

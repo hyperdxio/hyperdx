@@ -14,6 +14,7 @@ import ms from 'ms';
 import * as config from '@/config';
 import { createAlert } from '@/controllers/alerts';
 import { createTeam } from '@/controllers/team';
+import * as timeseriesEngine from '@/controllers/timeseriesEngine';
 import {
   bulkInsertData,
   bulkInsertLogs,
@@ -70,6 +71,10 @@ beforeAll(async () => {
 });
 
 describe('checkAlerts', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   describe('doesExceedThreshold', () => {
     it('should return true when value exceeds ABOVE threshold', () => {
       expect(
@@ -1216,7 +1221,6 @@ describe('checkAlerts', () => {
 
   describe('Alert Templates', () => {
     // Create a mock metadata object with the necessary methods
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const mockMetadata = {
       getColumn: jest.fn().mockImplementation(({ column }) => {
         // Provide basic column definitions for common columns to avoid warnings
@@ -1226,6 +1230,7 @@ describe('checkAlerts', () => {
           SeverityText: { name: 'SeverityText', type: 'String' },
           ServiceName: { name: 'ServiceName', type: 'String' },
         };
+        // eslint-disable-next-line security/detect-object-injection
         return Promise.resolve(columnMap[column]);
       }),
       getColumns: jest.fn().mockResolvedValue([]),
@@ -1240,7 +1245,6 @@ describe('checkAlerts', () => {
     } as any;
 
     // Create a mock clickhouse client
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const mockClickhouseClient = {
       query: jest.fn().mockResolvedValue({
         json: jest.fn().mockResolvedValue({ data: [] }),
@@ -2041,6 +2045,7 @@ describe('checkAlerts', () => {
             SeverityText: { name: 'SeverityText', type: 'String' },
             ServiceName: { name: 'ServiceName', type: 'String' },
           };
+          // eslint-disable-next-line security/detect-object-injection
           return Promise.resolve(columnMap[column]);
         }),
       };
@@ -2196,7 +2201,7 @@ describe('checkAlerts', () => {
           recentHistoryMap,
         },
         clickhouseClient,
-        connection.id,
+        connection,
         alertProvider,
         teamWebhooksById,
       );
@@ -5161,6 +5166,950 @@ describe('checkAlerts', () => {
       expect(alertHistories[0].counts).toBe(1);
       expect(alertHistories[0].lastValues[0].count).toBeGreaterThanOrEqual(1);
       expect(alertHistories[1].state).toBe('OK');
+    });
+
+    describe('PromQL Alerts', () => {
+      it('should create ALERT and OK history entries for two PromQL groups in a single evaluation', async () => {
+        const {
+          team,
+          webhook,
+          connection,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
+
+        const tsSource = await Source.create({
+          kind: SourceKind.Metric,
+          team: team._id,
+          name: 'Prometheus Metrics',
+          connection: connection.id,
+          from: {
+            databaseName: DEFAULT_DATABASE,
+            tableName: DEFAULT_METRICS_TABLE,
+          },
+        });
+
+        const dashboard = await new Dashboard({
+          name: 'PromQL Dashboard',
+          team: team._id,
+          tiles: [
+            {
+              id: 'promql1',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 4,
+              config: {
+                configType: 'promql',
+                displayType: 'line',
+                promqlExpression: 'sum(up) by (host)',
+                connection: connection.id,
+              },
+            },
+          ],
+        }).save();
+
+        const tile = dashboard.tiles?.find((t: any) => t.id === 'promql1');
+        if (!tile) throw new Error('tile not found for PromQL test');
+
+        const details = await createAlertDetails(
+          team,
+          tsSource,
+          {
+            source: AlertSource.TILE,
+            channel: {
+              type: 'webhook',
+              webhookId: webhook._id.toString(),
+            },
+            interval: '5m',
+            thresholdType: AlertThresholdType.ABOVE,
+            threshold: 10,
+            dashboardId: dashboard.id,
+            tileId: 'promql1',
+          },
+          {
+            taskType: AlertTaskType.TILE,
+            tile,
+            dashboard,
+          },
+        );
+
+        const now = new Date('2023-11-16T22:12:00.000Z');
+        // Backfilled evaluation (worker was delayed). Expected bucket is 22:05:00.
+        const bucketStartMs = new Date('2023-11-16T22:05:00.000Z').getTime();
+        // Prometheus evaluates exactly at the step, so the returned timestamp for the 22:05 bucket is 22:10
+        const prometheusReturnedMs = bucketStartMs + 5 * 60 * 1000;
+
+        // We need to mock the timeseriesEngine call rather than evaluatePromqlAlert directly
+        // because processAlert calls the local evaluatePromqlAlert inside index.ts
+        jest
+          .spyOn(timeseriesEngine, 'queryRangeViaTableFunction')
+          .mockResolvedValueOnce([
+            {
+              metric: {
+                __name__: 'up',
+                host: 'node-1',
+              },
+              values: [[prometheusReturnedMs / 1000, '42']],
+            },
+            {
+              metric: {
+                __name__: 'up',
+                host: 'node-2',
+              },
+              values: [[prometheusReturnedMs / 1000, '5']], // Below threshold
+            },
+          ]);
+
+        jest
+          .spyOn(timeseriesEngine, 'clickhouseServesPrometheusHttpApi')
+          .mockResolvedValueOnce(false);
+
+        await processAlertAtTime(
+          now,
+          details,
+          clickhouseClient,
+          connection,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        // State machine asserts
+        const alertHistories = await AlertHistory.find({
+          alert: details.alert.id,
+        }).sort({ createdAt: 1 });
+
+        // Two group keys, so two histories
+        expect(alertHistories.length).toBe(2);
+
+        // Group key order is non-deterministic depending on Map iterators, so find them.
+        const node1History = alertHistories.find(
+          h => h.group === '__name__:up, host:node-1',
+        )!;
+        const node2History = alertHistories.find(
+          h => h.group === '__name__:up, host:node-2',
+        )!;
+
+        expect(node1History).toBeDefined();
+        expect(node1History.state).toBe('ALERT');
+        expect(node1History.lastValues[0].count).toBe(42);
+        // Expect zero backfilled buckets because the date range for a new alert at 22:12 is [22:05, 22:10], which is exactly one 5-minute bucket.
+        expect(node1History.analytics?.backfilledBuckets).toBe(0);
+
+        expect(node2History).toBeDefined();
+        expect(node2History.state).toBe('OK');
+        expect(node2History.lastValues[0].count).toBe(5);
+
+        expect(
+          timeseriesEngine.queryRangeViaTableFunction,
+        ).toHaveBeenCalledTimes(1);
+      });
+
+      it('should handle ALERT to OK state transition and resolve notification', async () => {
+        const {
+          team,
+          webhook,
+          connection,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
+        const tsSource = await Source.create({
+          kind: SourceKind.Metric,
+          team: team._id,
+          name: 'Prometheus Metrics',
+          connection: connection.id,
+          from: {
+            databaseName: DEFAULT_DATABASE,
+            tableName: DEFAULT_METRICS_TABLE,
+          },
+        });
+        const dashboard = await new Dashboard({
+          name: 'PromQL Dashboard',
+          team: team._id,
+          tiles: [
+            {
+              id: 'promql1',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 4,
+              config: {
+                configType: 'promql',
+                displayType: 'line',
+                promqlExpression: 'up',
+                connection: connection.id,
+              },
+            },
+          ],
+        }).save();
+        const tile = dashboard.tiles?.find((t: any) => t.id === 'promql1');
+        const details = await createAlertDetails(
+          team,
+          tsSource,
+          {
+            source: AlertSource.TILE,
+            channel: { type: 'webhook', webhookId: webhook._id.toString() },
+            interval: '5m',
+            thresholdType: AlertThresholdType.ABOVE,
+            threshold: 10,
+            dashboardId: dashboard.id,
+            tileId: 'promql1',
+          },
+          { taskType: AlertTaskType.TILE, tile, dashboard },
+        );
+
+        // First run: Above threshold
+        jest
+          .spyOn(timeseriesEngine, 'queryRangeViaTableFunction')
+          .mockResolvedValueOnce([
+            {
+              metric: { host: 'node-1' },
+              values: [[(Date.now() - 300000) / 1000, '42']],
+            },
+          ]);
+        jest
+          .spyOn(timeseriesEngine, 'clickhouseServesPrometheusHttpApi')
+          .mockResolvedValueOnce(false);
+        const webhookSpy = jest
+          .spyOn(global, 'fetch')
+          .mockResolvedValue({ ok: true, json: async () => ({}) } as any);
+        await processAlertAtTime(
+          new Date(),
+          details,
+          clickhouseClient,
+          connection,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        let node1History = await AlertHistory.findOne({
+          alert: details.alert.id,
+          group: 'host:node-1',
+        }).sort({ createdAt: -1 });
+        expect(node1History?.state).toBe('ALERT');
+        expect(webhookSpy).toHaveBeenCalled(); // Alert fired
+        webhookSpy.mockClear();
+
+        // Second run: Below threshold (Resolve)
+        jest
+          .spyOn(timeseriesEngine, 'queryRangeViaTableFunction')
+          .mockResolvedValueOnce([
+            { metric: { host: 'node-1' }, values: [[Date.now() / 1000, '5']] },
+          ]);
+        jest
+          .spyOn(timeseriesEngine, 'clickhouseServesPrometheusHttpApi')
+          .mockResolvedValueOnce(false);
+        webhookSpy.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({}),
+        } as any);
+        await processAlertAtTime(
+          new Date(Date.now() + 300000),
+          details,
+          clickhouseClient,
+          connection,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        node1History = await AlertHistory.findOne({
+          alert: details.alert.id,
+          group: 'host:node-1',
+        }).sort({ createdAt: -1 });
+        expect(node1History?.state).toBe('OK');
+        expect(webhookSpy).toHaveBeenCalled(); // Resolve fired
+      });
+
+      it('should handle PENDING state with numConsecutiveWindows', async () => {
+        const {
+          team,
+          webhook,
+          connection,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
+        const tsSource = await Source.create({
+          kind: SourceKind.Metric,
+          team: team._id,
+          name: 'Prometheus Metrics',
+          connection: connection.id,
+          from: {
+            databaseName: DEFAULT_DATABASE,
+            tableName: DEFAULT_METRICS_TABLE,
+          },
+        });
+        const dashboard = await new Dashboard({
+          name: 'PromQL Dashboard',
+          team: team._id,
+          tiles: [
+            {
+              id: 'promql1',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 4,
+              config: {
+                configType: 'promql',
+                displayType: 'line',
+                promqlExpression: 'up',
+                connection: connection.id,
+              },
+            },
+          ],
+        }).save();
+        const tile = dashboard.tiles?.find((t: any) => t.id === 'promql1');
+        const details = await createAlertDetails(
+          team,
+          tsSource,
+          {
+            source: AlertSource.TILE,
+            channel: { type: 'webhook', webhookId: webhook._id.toString() },
+            interval: '5m',
+            thresholdType: AlertThresholdType.ABOVE,
+            threshold: 10,
+            dashboardId: dashboard.id,
+            tileId: 'promql1',
+            numConsecutiveWindows: 2,
+          },
+          { taskType: AlertTaskType.TILE, tile, dashboard },
+        );
+
+        // First run: Above threshold -> PENDING
+        jest
+          .spyOn(timeseriesEngine, 'queryRangeViaTableFunction')
+          .mockResolvedValueOnce([
+            {
+              metric: { host: 'node-1' },
+              values: [[(Date.now() - 300000) / 1000, '42']],
+            },
+          ]);
+        jest
+          .spyOn(timeseriesEngine, 'clickhouseServesPrometheusHttpApi')
+          .mockResolvedValueOnce(false);
+        await processAlertAtTime(
+          new Date(),
+          details,
+          clickhouseClient,
+          connection,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        let node1History = await AlertHistory.findOne({
+          alert: details.alert.id,
+          group: 'host:node-1',
+        }).sort({ createdAt: -1 });
+        expect(node1History?.state).toBe('PENDING');
+
+        // Second run: Above threshold -> ALERT
+        jest
+          .spyOn(timeseriesEngine, 'queryRangeViaTableFunction')
+          .mockResolvedValueOnce([
+            { metric: { host: 'node-1' }, values: [[Date.now() / 1000, '42']] },
+          ]);
+        jest
+          .spyOn(timeseriesEngine, 'clickhouseServesPrometheusHttpApi')
+          .mockResolvedValueOnce(false);
+        await processAlertAtTime(
+          new Date(Date.now() + 300000),
+          details,
+          clickhouseClient,
+          connection,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        node1History = await AlertHistory.findOne({
+          alert: details.alert.id,
+          group: 'host:node-1',
+        }).sort({ createdAt: -1 });
+        expect(node1History?.state).toBe('ALERT');
+      });
+
+      it('should handle empty results and treat as 0', async () => {
+        const {
+          team,
+          webhook,
+          connection,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
+        const tsSource = await Source.create({
+          kind: SourceKind.Metric,
+          team: team._id,
+          name: 'Prometheus Metrics',
+          connection: connection.id,
+          from: {
+            databaseName: DEFAULT_DATABASE,
+            tableName: DEFAULT_METRICS_TABLE,
+          },
+        });
+        const dashboard = await new Dashboard({
+          name: 'PromQL Dashboard',
+          team: team._id,
+          tiles: [
+            {
+              id: 'promql1',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 4,
+              config: {
+                configType: 'promql',
+                displayType: 'line',
+                promqlExpression: 'up',
+                connection: connection.id,
+              },
+            },
+          ],
+        }).save();
+        const tile = dashboard.tiles?.find((t: any) => t.id === 'promql1');
+        const details = await createAlertDetails(
+          team,
+          tsSource,
+          {
+            source: AlertSource.TILE,
+            channel: { type: 'webhook', webhookId: webhook._id.toString() },
+            interval: '5m',
+            thresholdType: AlertThresholdType.BELOW,
+            threshold: 1,
+            dashboardId: dashboard.id,
+            tileId: 'promql1',
+          },
+          { taskType: AlertTaskType.TILE, tile, dashboard },
+        );
+
+        // First run: Empty result
+        jest
+          .spyOn(timeseriesEngine, 'queryRangeViaTableFunction')
+          .mockResolvedValueOnce([]);
+        jest
+          .spyOn(timeseriesEngine, 'clickhouseServesPrometheusHttpApi')
+          .mockResolvedValueOnce(false);
+        await processAlertAtTime(
+          new Date(),
+          details,
+          clickhouseClient,
+          connection,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        const history = await AlertHistory.findOne({
+          alert: details.alert.id,
+        }).sort({ createdAt: -1 });
+        expect(history?.state).toBe('ALERT');
+        expect(history?.lastValues[0].count).toBe(0); // Treated as 0, which is below 1
+        expect(history?.group).toBe(''); // Empty group
+      });
+
+      it('should handle offset windows correctly', async () => {
+        const {
+          team,
+          webhook,
+          connection,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
+        const tsSource = await Source.create({
+          kind: SourceKind.Metric,
+          team: team._id,
+          name: 'Prometheus Metrics',
+          connection: connection.id,
+          from: {
+            databaseName: DEFAULT_DATABASE,
+            tableName: DEFAULT_METRICS_TABLE,
+          },
+        });
+        const dashboard = await new Dashboard({
+          name: 'PromQL Dashboard',
+          team: team._id,
+          tiles: [
+            {
+              id: 'promql1',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 4,
+              config: {
+                configType: 'promql',
+                displayType: 'line',
+                promqlExpression: 'up',
+                connection: connection.id,
+              },
+            },
+          ],
+        }).save();
+        const tile = dashboard.tiles?.find((t: any) => t.id === 'promql1');
+        const details = await createAlertDetails(
+          team,
+          tsSource,
+          {
+            source: AlertSource.TILE,
+            channel: { type: 'webhook', webhookId: webhook._id.toString() },
+            interval: '5m',
+            thresholdType: AlertThresholdType.ABOVE,
+            threshold: 10,
+            dashboardId: dashboard.id,
+            tileId: 'promql1',
+            scheduleOffsetMinutes: 10,
+          },
+          { taskType: AlertTaskType.TILE, tile, dashboard },
+        );
+
+        const now = new Date('2023-11-16T22:15:00.000Z'); // Evaluating at :15
+        const offsetTarget = now.getTime() - 10 * 60 * 1000; // Expected window ends at :05
+
+        jest
+          .spyOn(timeseriesEngine, 'queryRangeViaTableFunction')
+          .mockResolvedValueOnce([
+            {
+              metric: { host: 'node-1' },
+              values: [[offsetTarget / 1000, '42']],
+            },
+          ]);
+        jest
+          .spyOn(timeseriesEngine, 'clickhouseServesPrometheusHttpApi')
+          .mockResolvedValueOnce(false);
+        await processAlertAtTime(
+          now,
+          details,
+          clickhouseClient,
+          connection,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        const history = await AlertHistory.findOne({
+          alert: details.alert.id,
+        }).sort({ createdAt: -1 });
+        expect(history?.state).toBe('ALERT');
+        expect(history?.lastValues[0].count).toBe(42);
+      });
+
+      it('should handle inline PromQL alerts', async () => {
+        const {
+          team,
+          webhook,
+          connection,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
+        const tsSource = await Source.create({
+          kind: SourceKind.Metric,
+          team: team._id,
+          name: 'Prometheus Metrics',
+          connection: connection.id,
+          from: {
+            databaseName: DEFAULT_DATABASE,
+            tableName: DEFAULT_METRICS_TABLE,
+          },
+        });
+
+        const details = await createAlertDetails(
+          team,
+          tsSource,
+          {
+            source: AlertSource.INLINE,
+            channel: { type: 'webhook', webhookId: webhook._id.toString() },
+            interval: '5m',
+            thresholdType: AlertThresholdType.ABOVE,
+            threshold: 10,
+          },
+          {
+            taskType: AlertTaskType.INLINE,
+            inlineChartConfig: {
+              configType: 'promql',
+              displayType: 'line',
+              promqlExpression: 'up',
+              connection: connection.id,
+            },
+          },
+        );
+
+        jest
+          .spyOn(timeseriesEngine, 'queryRangeViaTableFunction')
+          .mockResolvedValueOnce([
+            { metric: { host: 'node-1' }, values: [[Date.now() / 1000, '42']] },
+          ]);
+        jest
+          .spyOn(timeseriesEngine, 'clickhouseServesPrometheusHttpApi')
+          .mockResolvedValueOnce(false);
+        await processAlertAtTime(
+          new Date(),
+          details,
+          clickhouseClient,
+          connection,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        const history = await AlertHistory.findOne({
+          alert: details.alert.id,
+        }).sort({ createdAt: -1 });
+        expect(history?.state).toBe('ALERT');
+      });
+
+      it('should backfill across multiple buckets correctly', async () => {
+        const {
+          team,
+          webhook,
+          connection,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
+        const tsSource = await Source.create({
+          kind: SourceKind.Metric,
+          team: team._id,
+          name: 'Prometheus Metrics',
+          connection: connection.id,
+          from: {
+            databaseName: DEFAULT_DATABASE,
+            tableName: DEFAULT_METRICS_TABLE,
+          },
+        });
+        const dashboard = await new Dashboard({
+          name: 'PromQL Dashboard',
+          team: team._id,
+          tiles: [
+            {
+              id: 'promql1',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 4,
+              config: {
+                configType: 'promql',
+                displayType: 'line',
+                promqlExpression: 'up',
+                connection: connection.id,
+              },
+            },
+          ],
+        }).save();
+        const tile = dashboard.tiles?.find((t: any) => t.id === 'promql1');
+        const details = await createAlertDetails(
+          team,
+          tsSource,
+          {
+            source: AlertSource.TILE,
+            channel: { type: 'webhook', webhookId: webhook._id.toString() },
+            interval: '5m',
+            thresholdType: AlertThresholdType.ABOVE,
+            threshold: 10,
+            dashboardId: dashboard.id,
+            tileId: 'promql1',
+          },
+          { taskType: AlertTaskType.TILE, tile, dashboard },
+        );
+
+        // Force a large time gap to create 3 backfill buckets + 1 normal bucket
+        const now = new Date('2023-11-16T22:20:00.000Z');
+        const mockHistory = await AlertHistory.create({
+          alert: details.alert.id,
+          state: 'OK',
+          group: 'host:node-1',
+          lastValues: [{ ts: new Date('2023-11-16T22:00:00.000Z'), count: 0 }],
+          team: team._id,
+        });
+
+        // The task should evaluate 3 skipped windows + the current window (22:05, 22:10, 22:15, 22:20)
+        jest
+          .spyOn(timeseriesEngine, 'queryRangeViaTableFunction')
+          .mockResolvedValueOnce([
+            {
+              metric: { host: 'node-1' },
+              values: [
+                [new Date('2023-11-16T22:05:00.000Z').getTime() / 1000, '42'],
+                [new Date('2023-11-16T22:10:00.000Z').getTime() / 1000, '42'],
+                [new Date('2023-11-16T22:15:00.000Z').getTime() / 1000, '42'],
+                [new Date('2023-11-16T22:20:00.000Z').getTime() / 1000, '42'],
+              ],
+            },
+          ]);
+        jest
+          .spyOn(timeseriesEngine, 'clickhouseServesPrometheusHttpApi')
+          .mockResolvedValueOnce(false);
+        await processAlertAtTime(
+          now,
+          details,
+          clickhouseClient,
+          connection,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        const history = await AlertHistory.findOne({
+          alert: details.alert.id,
+          _id: { $ne: mockHistory._id },
+        }).sort({ createdAt: -1 });
+        expect(history?.state).toBe('ALERT');
+        expect(history?.analytics?.backfilledBuckets).toBe(3); // 3 skipped + 1 current
+      });
+
+      it('should properly map samples to buckets (step shift, drop out-of-range, skip NaN/Inf, keep highest dup)', async () => {
+        const {
+          team,
+          webhook,
+          connection,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
+        const tsSource = await Source.create({
+          kind: SourceKind.Metric,
+          team: team._id,
+          name: 'Prometheus Metrics',
+          connection: connection.id,
+          from: {
+            databaseName: DEFAULT_DATABASE,
+            tableName: DEFAULT_METRICS_TABLE,
+          },
+        });
+        const dashboard = await new Dashboard({
+          name: 'PromQL Dashboard',
+          team: team._id,
+          tiles: [
+            {
+              id: 'promql1',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 4,
+              config: {
+                configType: 'promql',
+                displayType: 'line',
+                promqlExpression: 'up',
+                connection: connection.id,
+              },
+            },
+          ],
+        }).save();
+        const tile = dashboard.tiles?.find((t: any) => t.id === 'promql1');
+        const details = await createAlertDetails(
+          team,
+          tsSource,
+          {
+            source: AlertSource.TILE,
+            channel: { type: 'webhook', webhookId: webhook._id.toString() },
+            interval: '5m',
+            thresholdType: AlertThresholdType.ABOVE,
+            threshold: 10,
+            dashboardId: dashboard.id,
+            tileId: 'promql1',
+          },
+          { taskType: AlertTaskType.TILE, tile, dashboard },
+        );
+
+        const now = new Date('2023-11-16T22:12:00.000Z');
+        const targetMs = new Date('2023-11-16T22:10:00.000Z').getTime() / 1000;
+
+        jest
+          .spyOn(timeseriesEngine, 'queryRangeViaTableFunction')
+          .mockResolvedValueOnce([
+            {
+              metric: { host: 'node-1' },
+              values: [
+                [targetMs - 1, '100'], // Out of range
+                [targetMs, 'NaN'], // NaN ignored
+                [targetMs, '+Inf'], // Inf ignored
+                [targetMs, '40'], // Valid
+                [targetMs, '42'], // Duplicate timestamp, keep higher
+                [targetMs + 1, '500'], // Out of range
+              ],
+            },
+          ]);
+        jest
+          .spyOn(timeseriesEngine, 'clickhouseServesPrometheusHttpApi')
+          .mockResolvedValueOnce(false);
+        await processAlertAtTime(
+          now,
+          details,
+          clickhouseClient,
+          connection,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        const history = await AlertHistory.findOne({
+          alert: details.alert.id,
+        }).sort({ createdAt: -1 });
+        expect(history?.state).toBe('ALERT');
+        expect(history?.lastValues[0].count).toBe(42);
+      });
+
+      it('should support Number tiles with multiple expressions by evaluating the last one', async () => {
+        const {
+          team,
+          webhook,
+          connection,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
+        const tsSource = await Source.create({
+          kind: SourceKind.Metric,
+          team: team._id,
+          name: 'Prometheus Metrics',
+          connection: connection.id,
+          from: {
+            databaseName: DEFAULT_DATABASE,
+            tableName: DEFAULT_METRICS_TABLE,
+          },
+        });
+        const dashboard = await new Dashboard({
+          name: 'PromQL Dashboard',
+          team: team._id,
+          tiles: [
+            {
+              id: 'promql1',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 4,
+              config: {
+                configType: 'promql',
+                displayType: 'number',
+                promqlExpression: [
+                  { expression: 'ignored' },
+                  { expression: 'up' },
+                ] as any,
+                connection: connection.id,
+              },
+            },
+          ],
+        }).save();
+        const tile = dashboard.tiles?.find((t: any) => t.id === 'promql1');
+        const details = await createAlertDetails(
+          team,
+          tsSource,
+          {
+            source: AlertSource.TILE,
+            channel: { type: 'webhook', webhookId: webhook._id.toString() },
+            interval: '5m',
+            thresholdType: AlertThresholdType.ABOVE,
+            threshold: 10,
+            dashboardId: dashboard.id,
+            tileId: 'promql1',
+          },
+          { taskType: AlertTaskType.TILE, tile, dashboard },
+        );
+
+        const queryRangeSpy = jest
+          .spyOn(timeseriesEngine, 'queryRangeViaTableFunction')
+          .mockResolvedValueOnce([
+            { metric: { host: 'node-1' }, values: [[Date.now() / 1000, '42']] },
+          ]);
+        jest
+          .spyOn(timeseriesEngine, 'clickhouseServesPrometheusHttpApi')
+          .mockResolvedValueOnce(false);
+        await processAlertAtTime(
+          new Date(),
+          details,
+          clickhouseClient,
+          connection,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        const history = await AlertHistory.findOne({
+          alert: details.alert.id,
+        }).sort({ createdAt: -1 });
+        expect(history?.state).toBe('ALERT');
+        expect(queryRangeSpy).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({ query: 'up' }),
+          expect.anything(),
+          expect.anything(),
+        );
+      });
+
+      it('should include correct group key and labels in the notification, firing only for the breaching series', async () => {
+        const {
+          team,
+          webhook,
+          connection,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
+        const tsSource = await Source.create({
+          kind: SourceKind.Metric,
+          team: team._id,
+          name: 'Prometheus Metrics',
+          connection: connection.id,
+          from: {
+            databaseName: DEFAULT_DATABASE,
+            tableName: DEFAULT_METRICS_TABLE,
+          },
+        });
+        const dashboard = await new Dashboard({
+          name: 'PromQL Dashboard',
+          team: team._id,
+          tiles: [
+            {
+              id: 'promql1',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 4,
+              config: {
+                configType: 'promql',
+                displayType: 'line',
+                promqlExpression: 'up',
+                connection: connection.id,
+              },
+            },
+          ],
+        }).save();
+        const tile = dashboard.tiles?.find((t: any) => t.id === 'promql1');
+        const details = await createAlertDetails(
+          team,
+          tsSource,
+          {
+            source: AlertSource.TILE,
+            channel: { type: 'webhook', webhookId: webhook._id.toString() },
+            interval: '5m',
+            thresholdType: AlertThresholdType.ABOVE,
+            threshold: 10,
+            dashboardId: dashboard.id,
+            tileId: 'promql1',
+          },
+          { taskType: AlertTaskType.TILE, tile, dashboard },
+        );
+
+        jest
+          .spyOn(timeseriesEngine, 'queryRangeViaTableFunction')
+          .mockResolvedValueOnce([
+            {
+              metric: { host: 'node-1', env: 'prod' },
+              values: [[Date.now() / 1000, '42']],
+            }, // Breaches
+            {
+              metric: { host: 'node-2', env: 'dev' },
+              values: [[Date.now() / 1000, '5']],
+            }, // Doesn't breach
+          ]);
+        jest
+          .spyOn(timeseriesEngine, 'clickhouseServesPrometheusHttpApi')
+          .mockResolvedValueOnce(false);
+        const fetchSpy = jest
+          .spyOn(global, 'fetch')
+          .mockResolvedValue({ ok: true, json: async () => ({}) } as any);
+
+        await processAlertAtTime(
+          new Date(),
+          details,
+          clickhouseClient,
+          connection,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+        const payload = JSON.parse(fetchSpy.mock.calls[0][1].body);
+        expect(payload.text).toContain('host:node-1');
+        expect(payload.text).toContain('env:prod');
+        expect(payload.text).not.toContain('node-2');
+      });
     });
 
     describe('dashboard variables', () => {
@@ -8591,7 +9540,7 @@ describe('checkAlerts', () => {
         teamWebhooksById,
       );
 
-      // Alert should be in ALERT state (service-b still alerting)
+      // Alert should be in ALERT state (service-b fired)
       const updatedAlert = await Alert.findById(details.alert.id);
       expect(updatedAlert!.state).toBe('ALERT');
 
@@ -11387,6 +12336,103 @@ describe('checkAlerts', () => {
         expect(serviceBHistories[0].state).toBe('PENDING');
         expect(serviceBHistories[0].fired).toBeFalsy();
       });
+
+      it('should route PromQL queries to the ClickHouse Prometheus HTTP API if supported', async () => {
+        const {
+          team,
+          webhook,
+          connection,
+          source,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
+
+        const dashboard = await new Dashboard({
+          name: 'PromQL Dashboard',
+          team: team._id,
+          tiles: [
+            {
+              id: 'promql1',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 4,
+              config: {
+                configType: 'promql',
+                displayType: 'line',
+                promqlExpression: 'sum(up)',
+                connection: connection.id,
+              },
+            },
+          ],
+        }).save();
+
+        const tile = dashboard.tiles?.find((t: any) => t.id === 'promql1');
+        const details = await createAlertDetails(
+          team,
+          source,
+          {
+            source: AlertSource.TILE,
+            channel: {
+              type: 'webhook',
+              webhookId: webhook._id.toString(),
+            },
+            interval: '5m',
+            thresholdType: AlertThresholdType.ABOVE,
+            threshold: 10,
+            dashboardId: dashboard.id,
+            tileId: 'promql1',
+          },
+          {
+            taskType: AlertTaskType.TILE,
+            tile: tile!,
+            dashboard,
+          },
+        );
+
+        jest
+          .spyOn(timeseriesEngine, 'clickhouseServesPrometheusHttpApi')
+          .mockResolvedValueOnce(true);
+
+        const fetchMock = jest.fn().mockResolvedValue({
+          ok: true,
+          json: async () => ({
+            status: 'success',
+            data: {
+              result: [
+                {
+                  metric: {},
+                  values: [[Date.now() / 1000, '42']],
+                },
+              ],
+            },
+          }),
+        });
+        const originalFetch = global.fetch;
+        global.fetch = fetchMock as any;
+
+        try {
+          await processAlertAtTime(
+            new Date(),
+            details,
+            clickhouseClient,
+            connection,
+            alertProvider,
+            teamWebhooksById,
+          );
+
+          expect(fetchMock).toHaveBeenCalled();
+          const callUrl = new URL(fetchMock.mock.calls[0][0]);
+          expect(callUrl.pathname).toBe('/prometheus/api/v1/query_range');
+          expect(callUrl.searchParams.get('database')).toBe(
+            source.from.databaseName,
+          );
+          expect(callUrl.searchParams.get('table')).toBe(source.from.tableName);
+          expect(callUrl.searchParams.get('query')).toBe('sum(up)');
+        } finally {
+          global.fetch = originalFetch;
+        }
+      });
     });
   });
 
@@ -11656,147 +12702,156 @@ describe('checkAlerts', () => {
     });
 
     it('should not use a materialized view when the query is incompatible with the available materialized view', async () => {
-      // Arrange
-      const {
-        team,
-        clickhouseClient,
-        webhook,
-        savedSearch,
-        source,
-        connection,
-        teamWebhooksById,
-      } = await createSavedSearchWithMVSource('Body:no'); // Body is not in the MV, so the MV should not be used
+      // Mock console.error to suppress expected EXPLAIN ESTIMATE failures logged by @clickhouse/client
+      const consoleErrorSpy = jest
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
 
-      const mockUserId = new mongoose.Types.ObjectId();
-      const alert = await createAlert(
-        team._id,
-        {
-          source: AlertSource.SAVED_SEARCH,
-          channel: {
-            type: 'webhook',
-            webhookId: webhook._id.toString(),
+      try {
+        // Arrange
+        const {
+          team,
+          clickhouseClient,
+          webhook,
+          savedSearch,
+          source,
+          connection,
+          teamWebhooksById,
+        } = await createSavedSearchWithMVSource('Body:no'); // Body is not in the MV, so the MV should not be used
+
+        const mockUserId = new mongoose.Types.ObjectId();
+        const alert = await createAlert(
+          team._id,
+          {
+            source: AlertSource.SAVED_SEARCH,
+            channel: {
+              type: 'webhook',
+              webhookId: webhook._id.toString(),
+            },
+            interval: '5m',
+            thresholdType: AlertThresholdType.ABOVE,
+            threshold: 1,
+            savedSearchId: savedSearch.id,
           },
-          interval: '5m',
-          thresholdType: AlertThresholdType.ABOVE,
-          threshold: 1,
-          savedSearchId: savedSearch.id,
-        },
-        mockUserId,
-      );
+          mockUserId,
+        );
 
-      const enhancedAlert: any = await Alert.findById(alert.id).populate([
-        'team',
-        'savedSearch',
-      ]);
+        const enhancedAlert: any = await Alert.findById(alert.id).populate([
+          'team',
+          'savedSearch',
+        ]);
 
-      const details = {
-        alert: enhancedAlert,
-        source,
-        previousMap: new Map(),
-        taskType: AlertTaskType.SAVED_SEARCH,
-        savedSearch,
-      } satisfies AlertDetails;
+        const details = {
+          alert: enhancedAlert,
+          source,
+          previousMap: new Map(),
+          taskType: AlertTaskType.SAVED_SEARCH,
+          savedSearch,
+        } satisfies AlertDetails;
 
-      const now = new Date('2023-11-16T22:12:00.000Z');
-      const eventMs = new Date('2023-11-16T22:05:00.000Z');
-      const eventNextMs = new Date('2023-11-16T22:10:00.000Z');
+        const now = new Date('2023-11-16T22:12:00.000Z');
+        const eventMs = new Date('2023-11-16T22:05:00.000Z');
+        const eventNextMs = new Date('2023-11-16T22:10:00.000Z');
 
-      // Insert directly into the MV so that we can be sure the MV is being used
-      await bulkInsertLogs([
-        // logs from 22:05 - 22:10
-        {
-          ServiceName: 'api',
-          Timestamp: eventMs,
-          SeverityText: 'error',
-          Body: 'Oh no! Something went wrong!',
-        },
-        {
-          ServiceName: 'api',
-          Timestamp: eventMs,
-          SeverityText: 'error',
-          Body: 'Oh no! Something went wrong!',
-        },
-        {
-          ServiceName: 'api',
-          Timestamp: eventMs,
-          SeverityText: 'error',
-          Body: 'Oh no! Something went wrong!',
-        },
-        // logs from 22:10 - 22:15
-        {
-          ServiceName: 'api',
-          Timestamp: eventNextMs,
-          SeverityText: 'error',
-          Body: 'Oh no! Something went wrong!',
-        },
-        {
-          ServiceName: 'api',
-          Timestamp: eventNextMs,
-          SeverityText: 'error',
-          Body: 'Oh no! Something went wrong!',
-        },
-        {
-          ServiceName: 'api',
-          Timestamp: eventNextMs,
-          SeverityText: 'info',
-          Body: 'Something went right for a change!',
-        },
-      ]);
+        // Insert directly into the MV so that we can be sure the MV is being used
+        await bulkInsertLogs([
+          // logs from 22:05 - 22:10
+          {
+            ServiceName: 'api',
+            Timestamp: eventMs,
+            SeverityText: 'error',
+            Body: 'Oh no! Something went wrong!',
+          },
+          {
+            ServiceName: 'api',
+            Timestamp: eventMs,
+            SeverityText: 'error',
+            Body: 'Oh no! Something went wrong!',
+          },
+          {
+            ServiceName: 'api',
+            Timestamp: eventMs,
+            SeverityText: 'error',
+            Body: 'Oh no! Something went wrong!',
+          },
+          // logs from 22:10 - 22:15
+          {
+            ServiceName: 'api',
+            Timestamp: eventNextMs,
+            SeverityText: 'error',
+            Body: 'Oh no! Something went wrong!',
+          },
+          {
+            ServiceName: 'api',
+            Timestamp: eventNextMs,
+            SeverityText: 'error',
+            Body: 'Oh no! Something went wrong!',
+          },
+          {
+            ServiceName: 'api',
+            Timestamp: eventNextMs,
+            SeverityText: 'info',
+            Body: 'Something went right for a change!',
+          },
+        ]);
 
-      // Act - Run alerts twice to cover two periods
-      let previousMap = await getPreviousAlertHistories(
-        [details.alert.id],
-        now,
-      );
-      await processAlert(
-        now,
-        {
-          ...details,
-          previousMap,
-        },
-        clickhouseClient,
-        connection.id,
-        alertProvider,
-        teamWebhooksById,
-      );
+        // Act - Run alerts twice to cover two periods
+        let previousMap = await getPreviousAlertHistories(
+          [details.alert.id],
+          now,
+        );
+        await processAlert(
+          now,
+          {
+            ...details,
+            previousMap,
+          },
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+        );
 
-      const nextWindow = new Date('2023-11-16T22:15:00.000Z');
-      previousMap = await getPreviousAlertHistories(
-        [details.alert.id],
-        nextWindow,
-      );
-      await processAlert(
-        nextWindow,
-        details,
-        clickhouseClient,
-        connection.id,
-        alertProvider,
-        teamWebhooksById,
-      );
+        const nextWindow = new Date('2023-11-16T22:15:00.000Z');
+        previousMap = await getPreviousAlertHistories(
+          [details.alert.id],
+          nextWindow,
+        );
+        await processAlert(
+          nextWindow,
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+        );
 
-      // Assert - Alert ran and has a state consistent with the data in the base table
-      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+        // Assert - Alert ran and has a state consistent with the data in the base table
+        expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
 
-      const alertHistories = await AlertHistory.find({
-        alert: details.alert.id,
-      }).sort({
-        createdAt: 1,
-      });
-      expect(alertHistories.length).toBe(2);
+        const alertHistories = await AlertHistory.find({
+          alert: details.alert.id,
+        }).sort({
+          createdAt: 1,
+        });
+        expect(alertHistories.length).toBe(2);
 
-      expect(alertHistories[0].state).toBe('ALERT');
-      expect(alertHistories[0].counts).toBe(1);
-      expect(alertHistories[0].lastValues[0].count).toBe(3);
-      expect(alertHistories[0].createdAt).toEqual(
-        new Date('2023-11-16T22:10:00.000Z'),
-      );
+        expect(alertHistories[0].state).toBe('ALERT');
+        expect(alertHistories[0].counts).toBe(1);
+        expect(alertHistories[0].lastValues[0].count).toBe(3);
+        expect(alertHistories[0].createdAt).toEqual(
+          new Date('2023-11-16T22:10:00.000Z'),
+        );
 
-      expect(alertHistories[1].state).toBe('ALERT');
-      expect(alertHistories[1].counts).toBe(1);
-      expect(alertHistories[1].lastValues[0].count).toBe(2);
-      expect(alertHistories[1].createdAt).toEqual(
-        new Date('2023-11-16T22:15:00.000Z'),
-      );
+        expect(alertHistories[1].state).toBe('ALERT');
+        expect(alertHistories[1].counts).toBe(1);
+        expect(alertHistories[1].lastValues[0].count).toBe(2);
+        expect(alertHistories[1].createdAt).toEqual(
+          new Date('2023-11-16T22:15:00.000Z'),
+        );
+      } finally {
+        consoleErrorSpy.mockRestore();
+      }
     });
   });
 

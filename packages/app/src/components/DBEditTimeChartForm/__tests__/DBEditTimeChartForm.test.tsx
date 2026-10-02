@@ -1310,7 +1310,8 @@ describe('DBEditTimeChartForm - Inline alerts', () => {
 
     await userEvent.click(screen.getByTestId('chart-save-alert-button'));
 
-    expect(await screen.findByText('Alert name is required')).toBeVisible();
+    const elements = await screen.findAllByText('Alert name is required');
+    expect(elements[0]).toBeVisible();
     expect(onSaveAlert).not.toHaveBeenCalled();
   });
 

@@ -3,23 +3,30 @@ import {
   Control,
   useFieldArray,
   UseFormGetValues,
+  UseFormSetValue,
   useWatch,
 } from 'react-hook-form';
 import {
   displayTypeSupportsInstantQuery,
   displayTypeSupportsReducer,
 } from '@hyperdx/common-utils/dist/core/promql';
-import { isTimeSeriesDisplayType } from '@hyperdx/common-utils/dist/core/utils';
+import {
+  displayTypeSupportsPromQLAlerts,
+  isTimeSeriesDisplayType,
+} from '@hyperdx/common-utils/dist/core/utils';
 import {
   MAX_PROMQL_EXPRESSIONS,
   SourceKind,
 } from '@hyperdx/common-utils/dist/types';
 import { Button, Divider, Flex, Group, Text } from '@mantine/core';
-import { IconCirclePlus } from '@tabler/icons-react';
+import { IconBell, IconCirclePlus } from '@tabler/icons-react';
 
+import { TileAlertEditor } from '@/components/DBEditTimeChartForm/TileAlertEditor';
 import { SourceSelectControlled } from '@/components/SourceSelect';
+import { IS_LOCAL_MODE } from '@/config';
 import { usePromqlMetricNames } from '@/hooks/usePromqlMetadata';
 import { useSource } from '@/source';
+import { DEFAULT_TILE_ALERT } from '@/utils/alerts';
 
 import PromqlExpressionEditor from './PromqlExpressionEditor';
 import { ChartEditorFormState } from './types';
@@ -30,12 +37,26 @@ export default function PromqlChartEditor({
   allowedSourceKinds,
   onSubmit,
   onOpenDisplaySettings,
+  alert,
+  alertsEnabled,
+  isAlertRequired,
+  dashboardId,
+  setValue,
+  additionalAlertWarnings,
 }: {
   control: Control<ChartEditorFormState>;
   getValues: UseFormGetValues<ChartEditorFormState>;
   allowedSourceKinds: SourceKind[];
   onSubmit: (suppressErrorNotification?: boolean) => void;
   onOpenDisplaySettings: () => void;
+  setValue: UseFormSetValue<ChartEditorFormState>;
+  alert?: ChartEditorFormState['alert'];
+  /** Whether this editor offers an alert. */
+  alertsEnabled?: boolean;
+  /** Hides the alert editor's remove control for surfaces that require an alert. */
+  isAlertRequired?: boolean;
+  dashboardId?: string;
+  additionalAlertWarnings?: string[];
 }) {
   const {
     fields: expressions,
@@ -74,12 +95,15 @@ export default function PromqlChartEditor({
 
   const sourceId = useWatch({ control, name: 'source' });
   const displayType = useWatch({ control, name: 'displayType' });
+  const chartName = useWatch({ control, name: 'name' });
   const { data: source } = useSource({ id: sourceId });
+
   // The form can still hold a non-PromQL source right after switching a tile
   // into PromQL mode (the picker above only restricts future selections), and
   // the metric-name lookup reads a TimeSeries engine table, so it would fail
   // against any other source's table.
   const promqlSource = source?.kind === SourceKind.Promql ? source : undefined;
+
   const { data: metricNames } = usePromqlMetricNames(
     promqlSource?.connection,
     promqlSource?.from.databaseName,
@@ -106,6 +130,7 @@ export default function PromqlChartEditor({
           allowedSourceKinds={allowedSourceKinds}
         />
       </Group>
+
       {expressions.map((field, index) => (
         <PromqlExpressionEditor
           key={field.id}
@@ -142,6 +167,25 @@ export default function PromqlChartEditor({
               Add expression
             </Button>
           )}
+          {alertsEnabled &&
+            !alert &&
+            !IS_LOCAL_MODE &&
+            displayTypeSupportsPromQLAlerts(displayType) && (
+              <Button
+                variant="subtle"
+                data-testid="alert-button"
+                size="sm"
+                onClick={() =>
+                  setValue('alert', {
+                    ...DEFAULT_TILE_ALERT,
+                    ...(chartName && { displayName: chartName }),
+                  })
+                }
+              >
+                <IconBell size={14} className="me-2" />
+                Add alert
+              </Button>
+            )}
         </Group>
         <Button
           onClick={onOpenDisplaySettings}
@@ -152,6 +196,23 @@ export default function PromqlChartEditor({
           Display Settings
         </Button>
       </Flex>
+      {alert && (
+        <TileAlertEditor
+          control={control}
+          setValue={setValue}
+          alert={alert}
+          dashboardId={dashboardId}
+          onRemove={
+            isAlertRequired ? undefined : () => setValue('alert', undefined)
+          }
+          warning={
+            additionalAlertWarnings?.length
+              ? additionalAlertWarnings.join(' ')
+              : undefined
+          }
+          tooltip="The threshold is checked against the last PromQL expression, evaluated at the end of each alert interval."
+        />
+      )}
     </>
   );
 }

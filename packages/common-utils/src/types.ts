@@ -1812,6 +1812,16 @@ export type PrometheusVectorResult = {
   value: [number, string];
 };
 
+/** The top-level response envelope for a Prometheus range query (`/api/v1/query_range`). */
+export type PrometheusQueryRangeResponse = {
+  status: 'success' | 'error';
+  data?: {
+    resultType: 'matrix';
+    result: PrometheusMatrixResult[];
+  };
+  error?: string;
+};
+
 /** How a range query's samples are client-side aggregated to a single value. */
 export enum PromqlReducer {
   LastNotNull = 'lastNotNull',
@@ -1991,12 +2001,12 @@ export const SavedChartConfigSchema = z.union([
 /**
  * The chart config an inline-source alert persists (see `zInlineAlert`). Same
  * shape as a dashboard tile's config, but without the embedded `alert` field
- * (the alert's own document carries those fields) and without the PromQL
- * variant (PromQL charts cannot be alerted on).
+ * (the alert's own document carries those fields).
  */
 export const AlertChartConfigSchema = z.union([
   BuilderSavedChartConfigWithoutAlertSchema,
   RawSqlSavedChartConfigWithoutAlertSchema,
+  PromqlSavedChartConfigWithoutAlertSchema,
 ]);
 
 export type AlertChartConfig = z.infer<typeof AlertChartConfigSchema>;

@@ -325,7 +325,7 @@ export default function EditTimeChartForm({
     if (!displayTypeSupportsAlerts) {
       setValue('alert', undefined);
     }
-  }, [configType, displayType, previousDisplayType, setValue]);
+  }, [configType, displayType, isPromqlInput, previousDisplayType, setValue]);
 
   const showGeneratedSql =
     TABS_WITH_GENERATED_SQL.has(activeTab) && !isPromqlInput;
@@ -828,7 +828,7 @@ export default function EditTimeChartForm({
     } else if (swappedSourceDueToDisplayTypeChange) {
       onSubmit(true);
     }
-  }, [sourceId, displayType, tableSource, setValue, onSubmit]);
+  }, [sourceId, displayType, configType, tableSource, setValue, onSubmit]);
 
   // Emulate the date range picker auto-searching similar to dashboards
   useEffect(() => {
@@ -1101,6 +1101,12 @@ export default function EditTimeChartForm({
             allowedSourceKinds={allowedSourceKinds}
             onSubmit={onSubmit}
             onOpenDisplaySettings={openDisplaySettings}
+            alert={alert}
+            alertsEnabled={alertsEnabled}
+            isAlertRequired={isAlertRequired}
+            dashboardId={dashboardId}
+            setValue={setValue}
+            additionalAlertWarnings={additionalAlertWarnings}
           />
         ) : isRawSqlInput ? (
           <RawSqlChartEditor

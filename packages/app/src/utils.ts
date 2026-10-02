@@ -87,24 +87,13 @@ export const useDebugMode = () => {
   return Boolean(query.debugMode) || Boolean(query.debug);
 };
 
-const returnFalse = () => false;
 
 // From: https://usehooks.com/useDebounce/
-export const useDebounce = <T>(
-  value: T,
-  delay: number,
-  immediate?: (value: T) => boolean,
-) => {
+export const useDebounce = <T>(value: T, delay: number) => {
   // State and setters for debounced value
   const [debouncedValue, setDebouncedValue] = useState<T>(value);
-  const shouldBeImmediate = (immediate ?? returnFalse)(value);
   useEffect(
     () => {
-      if (shouldBeImmediate) {
-        setDebouncedValue(value);
-        return () => {};
-      }
-
       // Update debounced value after delay
       const handler = setTimeout(() => {
         setDebouncedValue(value);
@@ -116,12 +105,8 @@ export const useDebounce = <T>(
         clearTimeout(handler);
       };
     },
-    [value, delay, shouldBeImmediate], // Only re-call effect if value or delay changes
+    [value, delay], // Only re-call effect if value or delay changes
   );
-  if (shouldBeImmediate) {
-    return value;
-  }
-
   return debouncedValue;
 };
 
