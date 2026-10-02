@@ -16,7 +16,9 @@ jest.mock('nuqs', () => ({
 }));
 
 jest.mock('@/utils/queryParsers', () => ({
-  parseAsJsonEncoded: () => 'parseAsJsonEncoded',
+  parseAsJsonEncoded: () => ({
+    parse: (value: string) => JSON.parse(decodeURIComponent(value)),
+  }),
 }));
 
 jest.mock('@/source', () => ({
@@ -33,13 +35,30 @@ jest.mock('@/components/DBTraceWaterfallChart', () => ({
   DBTraceWaterfallChartContainer: ({
     emptyState,
     controlsExtra,
+    onClick,
+    highlightedRowWhere,
   }: {
     emptyState?: React.ReactNode;
     controlsExtra?: React.ReactNode;
+    onClick?: (rowWhere: {
+      id: string;
+      type: string;
+      aliasWith: never[];
+    }) => void;
+    highlightedRowWhere?: string | null;
   }) => (
     <div>
       {controlsExtra}
       {emptyState ?? 'waterfall'}
+      <div data-testid="highlighted-row">{String(highlightedRowWhere)}</div>
+      {['span-a', 'span-b'].map(id => (
+        <button
+          key={id}
+          onClick={() => onClick?.({ id, type: 'trace', aliasWith: [] })}
+        >
+          select {id}
+        </button>
+      ))}
     </div>
   ),
 }));
@@ -60,7 +79,7 @@ jest.mock('../DBRowDataPanel', () => ({
 // RowSidePanelContext, so the tests below can observe the source-aware
 // context SpanDetailPanel derives for the selected event (HDX-5040).
 jest.mock('../DBRowOverviewPanel', () => ({
-  RowOverviewPanel: () => {
+  RowOverviewPanel: ({ rowId }: { rowId?: string | null }) => {
     const ReactActual = jest.requireActual('react');
     // Required lazily so the circular DBTracePanel <-> DBRowSidePanel import
     // is fully initialized by render time.
@@ -70,6 +89,7 @@ jest.mock('../DBRowOverviewPanel', () => ({
     return (
       <div>
         <div>overview panel</div>
+        <div data-testid="overview-row-id">{String(rowId)}</div>
         <button
           onClick={() =>
             ctx.generateSearchUrl?.({ where: 'x', whereLanguage: 'sql' })
@@ -203,6 +223,75 @@ describe('DBTracePanel', () => {
     expect(JSON.parse(localStorage.getItem('hdx_trace_detail_layout')!)).toBe(
       'side',
     );
+  });
+
+  describe('span selection ownership', () => {
+    const renderPanel = () =>
+      renderWithMantine(
+        <DBTracePanel
+          traceId="trace-123"
+          parentSourceId="trace-source"
+          childSourceId="log-source"
+          dateRange={[new Date(0), new Date(1000)]}
+          focusDate={new Date(500)}
+        />,
+      );
+
+    it('opens the clicked span without waiting for the URL to come back', () => {
+      renderPanel();
+
+      fireEvent.click(screen.getByText('select span-b'));
+
+      expect(screen.getByTestId('overview-row-id')).toHaveTextContent('span-b');
+      expect(screen.getByTestId('highlighted-row')).toHaveTextContent('span-b');
+    });
+
+    it('switches to the newly clicked span', () => {
+      renderPanel();
+
+      fireEvent.click(screen.getByText('select span-a'));
+      fireEvent.click(screen.getByText('select span-b'));
+
+      expect(screen.getByTestId('overview-row-id')).toHaveTextContent('span-b');
+    });
+
+    it('keeps the clicked span when the persisted value changes underneath', () => {
+      renderPanel();
+      fireEvent.click(screen.getByText('select span-b'));
+
+      mockEventRowWhere = {
+        id: 'span-a',
+        type: SourceKind.Trace,
+        aliasWith: [],
+        traceId: 'trace-123',
+      };
+      fireEvent.click(screen.getByTestId('trace-detail-layout-toggle'));
+
+      expect(screen.getByTestId('overview-row-id')).toHaveTextContent('span-b');
+      fireEvent.click(screen.getByTestId('trace-detail-layout-toggle'));
+    });
+
+    it('follows the URL on a real back/forward navigation', () => {
+      renderPanel();
+      fireEvent.click(screen.getByText('select span-b'));
+
+      window.history.pushState(
+        null,
+        '',
+        `/search?eventRowWhere=${encodeURIComponent(
+          JSON.stringify({
+            id: 'span-a',
+            type: SourceKind.Trace,
+            aliasWith: [],
+            traceId: 'trace-123',
+          }),
+        )}`,
+      );
+      fireEvent.popState(window);
+
+      expect(screen.getByTestId('overview-row-id')).toHaveTextContent('span-a');
+      window.history.pushState(null, '', '/search');
+    });
   });
 
   // The searched source is the trace source; the selected waterfall event may
