@@ -5505,6 +5505,48 @@ describe('renderChartConfig', () => {
       expect(sql).toMatch(/IN \(SELECT.*\) AND .*IN \(SELECT/s);
     });
 
+    it('uses GLOBAL IN for membership subqueries on a Distributed source @AC-FR001-01', async () => {
+      // A plain `IN (subquery)` is rejected on a Distributed/Merge table under
+      // the default `distributed_product_mode = 'deny'`, so each membership
+      // subquery must use `GLOBAL IN` there.
+      mockMetadata.getTableMetadata = jest
+        .fn()
+        .mockResolvedValue({ isPointerTable: true });
+
+      const sql = await renderSql(
+        buildTraceConfig({
+          filters: [
+            { type: 'sql', condition: "ServiceName = 'api'" },
+            { type: 'sql', condition: "SpanName = 'checkout'" },
+          ],
+        }),
+      );
+
+      const globalInCount = (
+        sql.match(/TraceId GLOBAL IN \(SELECT TraceId FROM/g) ?? []
+      ).length;
+      expect(globalInCount).toBe(2);
+      // ... and never a plain `IN (` membership subquery.
+      expect(sql).not.toMatch(/TraceId IN \(SELECT TraceId FROM/);
+    });
+
+    it('falls back to GLOBAL IN when the table engine cannot be resolved @AC-FR001-01', async () => {
+      // Unknown engine (lookup throws) must fail safe to GLOBAL IN — correct on
+      // a local table and required on a distributed one — never a bare `IN`.
+      mockMetadata.getTableMetadata = jest
+        .fn()
+        .mockRejectedValue(new Error('metadata unavailable'));
+
+      const sql = await renderSql(
+        buildTraceConfig({
+          filters: [{ type: 'sql', condition: "ServiceName = 'api'" }],
+        }),
+      );
+
+      expect(sql).toContain('TraceId GLOBAL IN (SELECT TraceId FROM');
+      expect(sql).not.toMatch(/TraceId IN \(SELECT TraceId FROM/);
+    });
+
     it('targets the source table inside each subquery @AC-FR001-02', async () => {
       const sql = await renderSql(
         buildTraceConfig({

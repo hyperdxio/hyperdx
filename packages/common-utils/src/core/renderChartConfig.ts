@@ -1679,9 +1679,38 @@ async function renderWhere(
       from: chartConfig.from,
       isRenderingRawSqlTemplate: chartConfig.isRenderingRawSqlTemplate,
     });
+
+    // A plain `IN (subquery)` is rejected on a ClickHouse Distributed/Merge
+    // table under the default `distributed_product_mode = 'deny'`; `GLOBAL IN`
+    // is required there and is also correct on a local table (it just evaluates
+    // the subquery once and broadcasts it). Default to `GLOBAL IN` whenever the
+    // source isn't confirmed local — a CTE source, a missing database/table, or
+    // a failed lookup — so trace scope never emits an `IN` a clustered
+    // deployment rejects.
+    let membershipInOperator = 'GLOBAL IN';
+    if (
+      chartConfig.from.databaseName &&
+      chartConfig.from.tableName &&
+      !hasSubqueryCte(chartConfig.with)
+    ) {
+      try {
+        const tableMetadata = await metadata.getTableMetadata({
+          databaseName: chartConfig.from.databaseName,
+          tableName: chartConfig.from.tableName,
+          connectionId: chartConfig.connection,
+        });
+        if (tableMetadata != null && !tableMetadata.isPointerTable) {
+          membershipInOperator = 'IN';
+        }
+      } catch {
+        // Keep GLOBAL IN on any lookup failure: correct on local and required
+        // on distributed, so the safe default never breaks a clustered read.
+      }
+    }
+
     const membershipSubqueries = membershipPredicates.map(
       predicate =>
-        chSql`${tid} IN (SELECT ${tid} FROM ${from} WHERE ${concatChSql(' AND ', predicate, membershipTimeFilter)})`,
+        chSql`${tid} ${{ UNSAFE_RAW_SQL: membershipInOperator }} (SELECT ${tid} FROM ${from} WHERE ${concatChSql(' AND ', predicate, membershipTimeFilter)})`,
     );
 
     // Trace scope is search-only by contract, so (unlike the span path below)
