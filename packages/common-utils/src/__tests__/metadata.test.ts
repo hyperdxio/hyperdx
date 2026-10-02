@@ -2378,7 +2378,7 @@ describe('Metadata', () => {
         expect(queries()[1]).toContain('ColumnIdentifier = ');
       });
 
-      it('bounds the text index read and forwards the abort signal', async () => {
+      it('forwards the abort signal to the text index read', async () => {
         const md = buildWithTextIndex(keyIndexLookup);
         mockScanResponses(
           (mockClickhouseClient.query as jest.Mock).mockRejectedValueOnce(
@@ -2390,10 +2390,6 @@ describe('Metadata', () => {
         await md.getMapKeys({ ...args, signal });
 
         const [first] = (mockClickhouseClient.query as jest.Mock).mock.calls[0];
-        expect(first.clickhouse_settings).toMatchObject({
-          max_execution_time: 15,
-          timeout_overflow_mode: 'break',
-        });
         expect(first.abort_signal).toBe(signal);
       });
 

@@ -995,12 +995,6 @@ export class Metadata {
       supportsMergeTreeTextIndex(clickhouseVersion);
     // Text Index path: query the key rollup index
     const textIndexInfo = textIndexInfoLookup.get(column);
-    // Bounded so a slow index read plus the scan fallback can't stack up.
-    const textIndexQuerySettings: ClickHouseSettings = {
-      ...this.getClickHouseSettings(),
-      timeout_overflow_mode: 'break',
-      max_execution_time: 15,
-    };
     // Set when the text index read hits a row policy; see the rollup guard.
     let rowPolicyDenied = false;
     // Without timestampValueExpression, partsFilter can't bound this either. #3037
@@ -1028,7 +1022,7 @@ export class Metadata {
             query: sql.sql,
             query_params: sql.params,
             connectionId,
-            clickhouse_settings: textIndexQuerySettings,
+            clickhouse_settings: this.getClickHouseSettings(),
             abort_signal: signal,
           })
           .then(r => r.json<{ key: string }>())
@@ -1071,7 +1065,7 @@ export class Metadata {
             query: sql.sql,
             query_params: sql.params,
             connectionId,
-            clickhouse_settings: textIndexQuerySettings,
+            clickhouse_settings: this.getClickHouseSettings(),
             abort_signal: signal,
           })
           .then(r => r.json<{ key: string }>())
