@@ -90,7 +90,10 @@ describe('filters', () => {
       };
       expect(filtersToQuery(filters, { stringifyKeys: true })).toEqual([
         { type: 'sql', condition: "toString(json.key) IN ('value')" },
-        { type: 'sql', condition: "toString(json.key) NOT IN ('other value')" },
+        {
+          type: 'sql',
+          condition: "toString(json.key) NOT IN ('other value')",
+        },
       ]);
     });
 
@@ -107,7 +110,10 @@ describe('filters', () => {
       };
       expect(filtersToQuery(filters)).toEqual([
         { type: 'sql', condition: 'isRootSpan IN (true)' },
-        { type: 'sql', condition: 'another_column NOT IN (true, false)' },
+        {
+          type: 'sql',
+          condition: 'another_column NOT IN (true, false)',
+        },
       ]);
     });
 
@@ -381,7 +387,10 @@ describe('filters', () => {
           },
         };
         expect(filtersToQuery(filters)).toEqual([
-          { type: 'sql', condition: "Timestamp NOT IN ('2026-06-16')" },
+          {
+            type: 'sql',
+            condition: "Timestamp NOT IN ('2026-06-16')",
+          },
         ]);
       });
     });
