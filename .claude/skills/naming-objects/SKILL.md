@@ -22,8 +22,9 @@ It is the source of truth; this skill is the short version.
    or blur saves immediately; Escape and empty names revert.
 3. **Draft in an editor** → `InlineNameInputControlled` with the form's
    `control`. The name saves with the editor's save button.
-4. Page titles use `size="lg"` (default) with `headingLevel={3}`. Editor headers
-   use `size="sm"`.
+4. Sizes are `xs`, `sm`, `md` only. Page titles use `size="md"` with
+   `headingLevel={3}`. Editor headers use `size="sm"` (default). Compact rows
+   use `size="xs"`.
 5. Always set `aria-label` ("Dashboard name") and an "Untitled …" placeholder in
    sentence case ("Untitled tile").
 6. Don't ask for a name inside a save modal. Name inline, then save.

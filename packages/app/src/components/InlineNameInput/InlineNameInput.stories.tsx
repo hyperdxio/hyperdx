@@ -55,6 +55,7 @@ function SavedObjectDemo({ initialName }: { initialName: string }) {
         }}
         placeholder="Untitled dashboard"
         aria-label="Dashboard name"
+        size="md"
         headingLevel={3}
       />
       <Text size="xs" c="dimmed">
@@ -149,14 +150,20 @@ export const DraftInEditorHeader: Story = {
   render: () => <DraftEditorDemo />,
 };
 
-/** Both sizes side by side, empty and filled. */
+const SIZE_USAGE = {
+  xs: 'Compact rows, e.g. inside a form',
+  sm: 'Editor headers (default)',
+  md: 'Page titles',
+} as const;
+
+/** Every size, filled and empty. */
 export const Sizes: Story = {
   render: () => (
     <Stack gap="lg">
-      {(['lg', 'sm'] as const).map(size => (
+      {(['xs', 'sm', 'md'] as const).map(size => (
         <Stack key={size} gap={4}>
           <Text size="xs" c="dimmed">
-            size=&quot;{size}&quot;
+            size=&quot;{size}&quot; · {SIZE_USAGE[size]}
           </Text>
           <InlineNameInput
             size={size}

@@ -26,12 +26,15 @@ so it waits for the explicit save.
 
 ## Size and placement
 
-- `size="lg"` (default): the page title, top-left of the page body under the
-  breadcrumbs. Pass `headingLevel` so the name is still the page heading for
-  screen readers and `getByRole('heading')`. Use `headingLevel={3}` to match the
-  existing dashboard and saved search pages.
-- `size="sm"`: editor headers, next to the close button and before the editor's
-  actions.
+Sizes go from `xs` to `md`. Don't add larger ones.
+
+- `size="md"`: the page title, top-left of the page body under the breadcrumbs.
+  Pass `headingLevel` so the name is still the page heading for screen readers
+  and `getByRole('heading')`. Use `headingLevel={3}` to match the existing
+  dashboard and saved search pages.
+- `size="sm"` (default): editor headers, next to the close button and before the
+  editor's actions, and the name row at the top of the chart editor.
+- `size="xs"`: compact rows, such as a name inside a dense form or list.
 
 ## Copy
 
@@ -51,6 +54,7 @@ Saved object, saves on commit:
   onCommit={name => setDashboard({ ...dashboard, name })}
   placeholder="Untitled dashboard"
   aria-label="Dashboard name"
+  size="md"
   headingLevel={3}
   data-testid="dashboard-name-input"
 />

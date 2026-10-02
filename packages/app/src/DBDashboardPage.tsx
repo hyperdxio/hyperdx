@@ -2906,6 +2906,7 @@ function DBDashboardPage({
       value={dashboard?.name ?? ''}
       placeholder="Untitled dashboard"
       aria-label="Dashboard name"
+      size="md"
       headingLevel={3}
       data-testid="dashboard-name-input"
       onCommit={editedName => {

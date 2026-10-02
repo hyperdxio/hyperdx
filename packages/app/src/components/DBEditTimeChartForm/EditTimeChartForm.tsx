@@ -34,7 +34,6 @@ import {
   Flex,
   SegmentedControl,
   Tabs,
-  Text,
   Textarea,
 } from '@mantine/core';
 import { useDebouncedValue, useDisclosure, usePrevious } from '@mantine/hooks';
@@ -76,7 +75,7 @@ import { ErrorBoundary } from '@/components/Error/ErrorBoundary';
 import HeatmapSettingsDrawer, {
   HeatmapSettingsValues,
 } from '@/components/HeatmapSettingsDrawer';
-import { InputControlled } from '@/components/InputControlled';
+import { InlineNameInputControlled } from '@/components/InlineNameInput/InlineNameInput';
 import SaveToDashboardModal from '@/components/SaveToDashboardModal';
 import { getStoredLanguage } from '@/components/SearchInput/SearchWhereInput';
 import {
@@ -1039,16 +1038,13 @@ export default function EditTimeChartForm({
             </Tabs>
           )}
         />
-        <Flex align="center" gap="sm" mb="sm">
-          <Text size="sm" className="text-nowrap">
-            Chart Name
-          </Text>
-          <InputControlled
+        <Flex align="center" justify="space-between" gap="sm" mb="sm">
+          <InlineNameInputControlled
             name="name"
             control={control}
-            flex={1}
-            type="text"
-            placeholder="My Chart Name"
+            size="sm"
+            placeholder="Untitled chart"
+            aria-label="Chart name"
             data-testid="chart-name-input"
           />
           {isRawSqlDisplayType(displayType) && (

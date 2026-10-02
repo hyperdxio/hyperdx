@@ -56,18 +56,25 @@
   }
 }
 
-.lg {
-  font-size: var(--mantine-h3-font-size);
-  line-height: var(--mantine-h3-line-height);
-  font-weight: 400;
+.xs,
+.sm,
+.md {
+  font-weight: 500;
+  line-height: var(--mantine-line-height-sm);
 
-  // Keeps the text aligned with content below while the hover border sits
-  // outside it.
+  // Aligns the text with content around it, so only the hover border sits
+  // outside the column. Equals the input's padding plus border.
   margin-inline-start: -7px;
+}
+
+.xs {
+  font-size: var(--mantine-font-size-sm);
 }
 
 .sm {
   font-size: var(--mantine-font-size-md);
-  line-height: var(--mantine-line-height-sm);
-  font-weight: 500;
+}
+
+.md {
+  font-size: var(--mantine-font-size-xl);
 }

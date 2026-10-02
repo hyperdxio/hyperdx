@@ -13,8 +13,8 @@ type NativeInputProps = Omit<
 interface InlineNameFieldProps extends NativeInputProps {
   value: string;
   onChange: (value: string) => void;
-  /** `lg` for page titles, `sm` for editor headers. */
-  size?: 'lg' | 'sm';
+  /** `md` for page titles, `sm` for editor headers, `xs` for compact rows. */
+  size?: 'xs' | 'sm' | 'md';
   /** Required: the field has no visible label. */
   'aria-label': string;
   /** Wraps the field in a heading when it is the page title. */
@@ -26,7 +26,7 @@ interface InlineNameFieldProps extends NativeInputProps {
 function InlineNameField({
   value,
   onChange,
-  size = 'lg',
+  size = 'sm',
   headingLevel,
   invalid,
   placeholder,

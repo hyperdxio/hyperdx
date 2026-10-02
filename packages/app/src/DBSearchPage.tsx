@@ -2244,6 +2244,7 @@ export function DBSearchPage() {
               value={savedSearch.name ?? ''}
               placeholder="Untitled search"
               aria-label="Saved search name"
+              size="md"
               headingLevel={3}
               data-testid="saved-search-name"
               onCommit={editedName => {
