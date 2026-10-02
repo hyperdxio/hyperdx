@@ -11,6 +11,7 @@ import {
   convertCHDataTypeToJSType,
   extractColumnReferencesFromKey,
   filterColumnMetaByType,
+  isAccessDeniedError,
   JSDataType,
   Row,
   streamToAsyncIterator,
@@ -994,6 +995,14 @@ export class Metadata {
       supportsMergeTreeTextIndex(clickhouseVersion);
     // Text Index path: query the key rollup index
     const textIndexInfo = textIndexInfoLookup.get(column);
+    // Bounded so a slow index read plus the scan fallback can't stack up.
+    const textIndexQuerySettings: ClickHouseSettings = {
+      ...this.getClickHouseSettings(),
+      timeout_overflow_mode: 'break',
+      max_execution_time: 15,
+    };
+    // Set when the text index read hits a row policy; see the rollup guard.
+    let rowPolicyDenied = false;
     // Without timestampValueExpression, partsFilter can't bound this either. #3037
     if (
       textIndexInfo?.key?.indexName &&
@@ -1019,7 +1028,8 @@ export class Metadata {
             query: sql.sql,
             query_params: sql.params,
             connectionId,
-            clickhouse_settings: this.getClickHouseSettings(),
+            clickhouse_settings: textIndexQuerySettings,
+            abort_signal: signal,
           })
           .then(r => r.json<{ key: string }>())
           .then(d => d.data.map(r => r.key).filter(Boolean));
@@ -1029,7 +1039,8 @@ export class Metadata {
         }
       } catch (e) {
         // e.g. ACCESS_DENIED under a row policy or BAD_ARGUMENTS on a
-        // Distributed table; the rollup and scan paths below still work.
+        // Distributed table; the paths below still work.
+        rowPolicyDenied = isAccessDeniedError(e);
         console.warn(
           'getMapKeys key text index query failed; falling through to the next strategy',
           e,
@@ -1060,7 +1071,8 @@ export class Metadata {
             query: sql.sql,
             query_params: sql.params,
             connectionId,
-            clickhouse_settings: this.getClickHouseSettings(),
+            clickhouse_settings: textIndexQuerySettings,
+            abort_signal: signal,
           })
           .then(r => r.json<{ key: string }>())
           .then(d => d.data.map(r => r.key).filter(Boolean));
@@ -1070,6 +1082,7 @@ export class Metadata {
         }
       } catch (e) {
         // See the key text index catch above.
+        rowPolicyDenied = isAccessDeniedError(e);
         console.warn(
           'getMapKeys kv text index query failed; falling through to the next strategy',
           e,
@@ -1077,8 +1090,10 @@ export class Metadata {
       }
     }
 
-    // Rollup path: query the key rollup table filtered by ColumnIdentifier and date range
-    if (metadataMVs && alignedDateRange) {
+    // Rollup path: query the key rollup table filtered by ColumnIdentifier and date range.
+    // Rollups are separate tables the source's row policy doesn't cover, so
+    // after a policy denial only the source-table scan below is safe.
+    if (metadataMVs && alignedDateRange && !rowPolicyDenied) {
       // Own cache key: the shipped OTel rollups only index NativeColumn, so
       // Map columns come back empty here and must fall through to the bounded
       // scan below. Caching [] under cacheKey would block that fallback.

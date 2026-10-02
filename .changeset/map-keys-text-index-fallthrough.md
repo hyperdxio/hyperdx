@@ -10,4 +10,6 @@ fix: fall back to the Map key scan when the text index read fails
 failed, so the rollup and bounded `mapKeys` scan paths never ran. ClickHouse
 refuses `mergeTreeTextIndex` with `ACCESS_DENIED` on any table with a row
 policy, which left search autocomplete with no Map keys on those tables. A
-failed text index read now falls through to the next strategy.
+failed text index read now falls through to the next strategy. After a row
+policy denial it skips the key rollup table, which the policy doesn't cover,
+and reads keys only from the policy-filtered source table.
