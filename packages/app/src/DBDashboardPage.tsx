@@ -596,6 +596,21 @@ const Tile = ({
     [serializedTileVariables],
   );
 
+  // Serialized for the same reason as `tileVariables`. Markdown tiles flag
+  // references to names outside this list, which `tileVariables` filters out.
+  const serializedVariableNames = useMemo(
+    () =>
+      variables
+        ? JSON.stringify(variables.map(variable => variable.name))
+        : undefined,
+    [variables],
+  );
+  const variableNames = useMemo<string[] | undefined>(
+    () =>
+      serializedVariableNames ? JSON.parse(serializedVariableNames) : undefined,
+    [serializedVariableNames],
+  );
+
   // Serialized for the same reason as `tileVariables`: any change to the
   // dashboard's filters hands this tile a new array, and only a change to the
   // names this tile is blocked on should churn the render memo below.
@@ -1377,6 +1392,8 @@ const Tile = ({
                     title={title}
                     toolbarItems={toolbar}
                     config={effectiveMarkdownConfig}
+                    variables={tileVariables}
+                    availableVariableNames={variableNames}
                   />
                 )}
               {effectiveQueriedConfig?.displayType === DisplayType.Search &&
@@ -1495,6 +1512,8 @@ const Tile = ({
       annotations,
       isLive,
       readOnly,
+      tileVariables,
+      variableNames,
     ],
   );
 

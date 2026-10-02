@@ -1,4 +1,5 @@
-import { screen } from '@testing-library/react';
+import { DisplayType, PromqlReducer } from '@hyperdx/common-utils/dist/types';
+import { screen, within } from '@testing-library/react';
 
 import DateRangeIndicator from '@/components/charts/DateRangeIndicator';
 import { DBPieChart } from '@/components/DBPieChart';
@@ -293,5 +294,72 @@ describe('DBPieChart', () => {
 
     // Verify DateRangeIndicator was not called
     expect(jest.mocked(DateRangeIndicator)).not.toHaveBeenCalled();
+  });
+
+  describe('PromQL', () => {
+    const promqlConfig = {
+      configType: 'promql' as const,
+      displayType: DisplayType.Pie,
+      connection: 'test-connection',
+      promqlExpression: [{ expression: 'up' }, { expression: 'down' }],
+      dateRange: [
+        new Date('2025-11-26T00:00:14.076Z'),
+        new Date('2025-11-26T01:00:14.076Z'),
+      ] as [Date, Date],
+    };
+
+    it('queries the first expression, reduced to one value per series', () => {
+      renderWithMantine(<DBPieChart config={promqlConfig} />);
+
+      const queriedConfig = mockUseQueriedChartConfig.mock.calls[0][0];
+      expect(queriedConfig.promqlExpression).toEqual([
+        { expression: 'up', reducer: PromqlReducer.LastNotNull },
+      ]);
+      expect(queriedConfig.granularity).toBe('1 minute');
+    });
+
+    it('keeps the same query key when only the reducer changes', () => {
+      renderWithMantine(<DBPieChart config={promqlConfig} />);
+      renderWithMantine(
+        <DBPieChart
+          config={{
+            ...promqlConfig,
+            promqlExpression: [
+              { expression: 'up', reducer: PromqlReducer.Max },
+            ],
+          }}
+        />,
+      );
+
+      const [first, second] = mockUseQueriedChartConfig.mock.calls.map(
+        ([, options]) => options.queryKey,
+      );
+      expect(second).toEqual(first);
+    });
+
+    it('draws a slice per series, largest first', () => {
+      mockUseQueriedChartConfig.mockReturnValue({
+        data: {
+          data: [
+            { series_name: 'cart', value: 2 },
+            { series_name: 'checkout', value: 7 },
+            { series_name: 'ad', value: 4 },
+          ],
+          meta: [
+            { name: 'series_name', type: 'String' },
+            { name: 'value', type: 'Float64' },
+          ],
+        },
+        isLoading: false,
+        isError: false,
+      });
+
+      renderWithMantine(<DBPieChart config={promqlConfig} />);
+
+      const labels = within(screen.getByTestId('pie-chart-legend'))
+        .getAllByTitle(/.+/)
+        .map(el => el.getAttribute('title'));
+      expect(labels).toEqual(['checkout', 'ad', 'cart']);
+    });
   });
 });

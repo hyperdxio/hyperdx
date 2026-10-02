@@ -3,7 +3,7 @@ import {
   MalformedMacroArgsError,
   UnknownVariableError,
 } from '@/macroErrors';
-import type { BuilderChartConfig, ChartVariable } from '@/types';
+import { BuilderChartConfig, ChartVariable, DisplayType } from '@/types';
 import {
   filterReferencedVariables,
   formatVariableValues,
@@ -12,7 +12,6 @@ import {
   getVariableReferences,
   hasVariableMacro,
   substituteChartConfigVariables,
-  substitutePromqlChartConfigVariables,
   substituteVariables,
   validateVariableReferencesInTemplate,
   VariableContext,
@@ -104,6 +103,31 @@ describe('formatVariableValues', () => {
 
     it('joins values with commas', () => {
       expect(formatVariableValues(['api', 'web'], 'csv')).toBe('api,web');
+    });
+  });
+
+  describe('markdown', () => {
+    it('renders empty when nothing is selected', () => {
+      expect(formatVariableValues([], 'markdown')).toBe('');
+    });
+
+    it('joins values with a comma and a space', () => {
+      expect(formatVariableValues(['api', 'web'], 'markdown')).toBe('api, web');
+    });
+
+    it('escapes markdown syntax in values', () => {
+      expect(
+        formatVariableValues(
+          ['[x](https://e.com)', '*a_b* \\ `c`'],
+          'markdown',
+        ),
+      ).toBe('\\[x\\]\\(https\\:\\/\\/e\\.com\\), \\*a\\_b\\* \\\\ \\`c\\`');
+    });
+
+    it('replaces newlines with spaces', () => {
+      expect(formatVariableValues(['a\n# b\r\nc'], 'markdown')).toBe(
+        'a \\# b c',
+      );
     });
   });
 
@@ -804,6 +828,63 @@ describe('substituteVariables per language', () => {
   });
 });
 
+describe('substituteVariables for markdown', () => {
+  const markdown = (input: string, variables: ChartVariable[]) =>
+    substituteVariables(input, { variables, inputLanguage: 'markdown' });
+
+  it('joins the selected values with a comma and a space by default', () => {
+    expect(markdown('Services: $service', [SERVICE])).toBe(
+      'Services: api, web',
+    );
+  });
+
+  it('renders nothing when no values are selected', () => {
+    expect(markdown('Services: ${service}', [EMPTY_SERVICE])).toBe(
+      'Services: ',
+    );
+  });
+
+  it('substitutes in headings and lines SQL would treat as comments', () => {
+    expect(markdown('# $service\n-- $service /* $service */', [SERVICE])).toBe(
+      '# api, web\n-- api, web /* api, web */',
+    );
+  });
+
+  it('substitutes after an apostrophe', () => {
+    expect(markdown("Today's services: $service", [SERVICE])).toBe(
+      "Today's services: api, web",
+    );
+  });
+
+  it('substitutes inside link URLs', () => {
+    expect(markdown('[logs](/search?where=${service:csv})', [SERVICE])).toBe(
+      '[logs](/search?where=api,web)',
+    );
+  });
+
+  it('honors an explicit format', () => {
+    expect(markdown('${service:regex}', [SERVICE])).toBe('(api|web)');
+  });
+
+  it('escapes markdown syntax in values by default', () => {
+    expect(markdown('$service', [variable('service', ['*prod*'])])).toBe(
+      '\\*prod\\*',
+    );
+  });
+
+  it('leaves values unescaped with the csv format', () => {
+    expect(
+      markdown('`${service:csv}`', [variable('service', ['*prod*'])]),
+    ).toBe('`*prod*`');
+  });
+
+  it('leaves unknown references and variable macros as written', () => {
+    expect(markdown('$nope $__filter(ServiceName, $service)', [SERVICE])).toBe(
+      '$nope $__filter(ServiceName, $service)',
+    );
+  });
+});
+
 describe('substituteVariables for promql', () => {
   const promql = (input: string, variables: ChartVariable[]) =>
     substituteVariables(input, { variables, inputLanguage: 'promql' });
@@ -1248,6 +1329,15 @@ describe('getReferencedVariableNames', () => {
       'env',
     ]);
   });
+
+  it('skips SQL comments for SQL but not for markdown', () => {
+    const template = '# $service\n$env';
+    expect(getReferencedVariableNames(template)).toEqual(['env']);
+    expect(getReferencedVariableNames(template, 'markdown')).toEqual([
+      'service',
+      'env',
+    ]);
+  });
 });
 
 describe('filterReferencedVariables', () => {
@@ -1330,6 +1420,30 @@ describe('filterReferencedVariables', () => {
         variables,
       ),
     ).toEqual(variables);
+  });
+
+  it('keeps the variables a markdown tile references', () => {
+    expect(
+      filterReferencedVariables(
+        builderConfig({
+          displayType: DisplayType.Markdown,
+          markdown: '# Service $service',
+        }),
+        variables,
+      ),
+    ).toEqual([SERVICE]);
+  });
+
+  it('ignores leftover markdown on a tile that is not markdown', () => {
+    expect(
+      filterReferencedVariables(
+        builderConfig({
+          displayType: DisplayType.Line,
+          markdown: '$service',
+        }),
+        variables,
+      ),
+    ).toEqual([]);
   });
 
   it('returns an empty array when a builder config references none of them', () => {
@@ -1561,62 +1675,6 @@ describe('substituteChartConfigVariables', () => {
         }),
       ).where,
     ).toBe("(1=1 /** no values selected for variable 'service' */)");
-  });
-});
-
-describe('substitutePromqlChartConfigVariables', () => {
-  const promqlConfig = (
-    promqlExpression: string,
-    variables?: ChartVariable[],
-  ) => ({
-    configType: 'promql' as const,
-    promqlExpression,
-    connection: 'local',
-    variables,
-  });
-
-  it('returns the config untouched when there is no variable context', () => {
-    const config = promqlConfig('up{service=~"$service"}');
-    expect(substitutePromqlChartConfigVariables(config)).toBe(config);
-  });
-
-  it('expands the expression and consumes the variables', () => {
-    expect(
-      substitutePromqlChartConfigVariables(
-        promqlConfig('up{service=~"$service"}', [SERVICE]),
-      ),
-    ).toMatchObject({
-      promqlExpression: 'up{service=~"(api|web)"}',
-      variables: undefined,
-    });
-  });
-
-  it('renders an empty selection as an unconstrained matcher', () => {
-    expect(
-      substitutePromqlChartConfigVariables(
-        promqlConfig('up{service=~"$service"}', [EMPTY_SERVICE]),
-      ).promqlExpression,
-    ).toBe('up{service=~".*"}');
-  });
-
-  it('expands every expression of a multi-expression config', () => {
-    expect(
-      substitutePromqlChartConfigVariables({
-        configType: 'promql' as const,
-        connection: 'local',
-        promqlExpression: [
-          { expression: 'up{service=~"$service"}', alias: 'up' },
-          { expression: 'rate(errors{service=~"$service"}[5m])' },
-        ],
-        variables: [SERVICE],
-      }),
-    ).toMatchObject({
-      promqlExpression: [
-        { expression: 'up{service=~"(api|web)"}', alias: 'up' },
-        { expression: 'rate(errors{service=~"(api|web)"}[5m])' },
-      ],
-      variables: undefined,
-    });
   });
 });
 
@@ -1938,6 +1996,42 @@ describe('validateVariableReferencesInTemplate', () => {
           'This expression references $service, but no variables are available here.',
         ],
       });
+    });
+  });
+
+  describe('for markdown', () => {
+    const markdown = (template: string, variables: ChartVariable[]) =>
+      validate(template, variables, {
+        subject: 'Markdown',
+        language: 'markdown',
+      });
+
+    it('says nothing when every reference is known', () => {
+      expect(markdown("# $service\nToday's ${service:csv}", [SERVICE])).toEqual(
+        { errors: [], warnings: [] },
+      );
+    });
+
+    it('checks references in headings', () => {
+      expect(markdown('# $srvice', [SERVICE]).warnings).toEqual([
+        'Markdown references unknown variable $srvice. Available variables: service.',
+      ]);
+    });
+
+    it('warns about an unknown format', () => {
+      expect(markdown('${service:nope}', [SERVICE]).warnings).toEqual([
+        '${service:nope} uses an unknown format, so no variables are substituted. ' +
+          'Expected one of: sqlstring, regex, csv, lucene, markdown.',
+      ]);
+    });
+
+    it('warns that a macro is left as written', () => {
+      expect(
+        markdown('$__filter(ServiceName, $service)', [SERVICE]).warnings,
+      ).toEqual([
+        '$__filter has no meaning in markdown — it is left as written. ' +
+          'Reference the variable directly, as in $service.',
+      ]);
     });
   });
 });

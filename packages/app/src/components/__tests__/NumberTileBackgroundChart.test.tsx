@@ -2,7 +2,7 @@ import React from 'react';
 import { DisplayType, PromqlReducer } from '@hyperdx/common-utils/dist/types';
 import { screen } from '@testing-library/react';
 
-import { convertToPromqlNumberChartConfig } from '@/ChartUtils';
+import { convertToPromqlSparklineChartConfig } from '@/ChartUtils';
 import NumberTileBackgroundChart, {
   buildSparklineQueryConfig,
   sparklinePointsFromGraphResults,
@@ -133,7 +133,7 @@ describe('buildSparklineQueryConfig', () => {
     };
 
     expect(buildSparklineQueryConfig(promqlConfig)).toEqual(
-      convertToPromqlNumberChartConfig(promqlConfig, { withReducer: false }),
+      convertToPromqlSparklineChartConfig(promqlConfig),
     );
   });
 

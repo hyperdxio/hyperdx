@@ -1090,6 +1090,7 @@ export default function EditTimeChartForm({
                 config={{
                   markdown: markdown || 'Preview',
                 }}
+                variables={variables}
               />
             </Box>
           </div>
