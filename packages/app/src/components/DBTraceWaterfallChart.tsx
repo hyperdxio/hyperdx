@@ -148,7 +148,6 @@ const SERVICE_COLORS = COLORS.filter(
 );
 
 // Per-window (before/after focus date) row cap applied in `getConfig` below.
-// Exported for the truncation check in `useEventsAroundFocus`.
 export const TRACE_WATERFALL_ROW_LIMIT = 50000;
 // Fetch one extra row so a window that contains *exactly* the cap is not
 // mistaken for truncation. A full page of LIMIT is ambiguous; LIMIT+1 is not.
@@ -169,7 +168,7 @@ export function TraceTotalDurationStat({
     <Tooltip
       label={
         isTruncated
-          ? `This duration is a lower bound because not all spans were loaded. The trace may extend past the loaded time window, or contain more than ${TRACE_WATERFALL_ROW_LIMIT.toLocaleString()} spans.`
+          ? `This duration is a lower bound because some spans may not have been loaded. The trace may extend past the loaded time window, or contain more than ${TRACE_WATERFALL_ROW_LIMIT.toLocaleString()} spans.`
           : 'Wall-clock duration from the earliest fetched span start to the latest span end. Independent of the applied filters.'
       }
       position="bottom"
@@ -786,33 +785,25 @@ export function DBTraceWaterfallChartContainer({
     return nextRows;
   }, [traceRowsData, logRowsData]);
 
-  // Wall-clock duration across every fetched span (min start to max end), not
-  // the visible/collapsed subset. Waterfall search filters only flag rows via
-  // `__hdx_hidden`, so they do not change this figure (#3038).
-  //
-  // `useEventsData` loads one page on each side of the focus time and does not
-  // call `fetchNextPage`.
-  //
-  // The fetch is Timestamp >= the window start and Timestamp <= the window
-  // end, so a span that starts entirely outside the window is never returned.
-  // `isWindowClipped` is set only from rows that were loaded:
-  //   - a span ends at or after the window end
-  //   - the earliest span has a ParentSpanId that is not in the loaded set
-  //     (its parent started before the window and was filtered out)
-  // An empty ParentSpanId is a root and does not set the flag.
+  const validSpanIDs = useMemo(() => {
+    return new Set(
+      traceRowsData // only spans in traces can define valid span ids
+        ?.filter(row => _.isString(row.SpanId) && row.SpanId.length > 0)
+        .map(row => row.SpanId) ?? [],
+    );
+  }, [traceRowsData]);
+
   const traceExtent = useMemo(() => {
     if (traceRowsData.length === 0) return null;
-    const spanIds = new Set<string>();
-    for (const row of traceRowsData) {
-      if (typeof row.SpanId === 'string' && row.SpanId.length > 0) {
-        spanIds.add(row.SpanId);
-      }
-    }
+
     const windowEndMs = dateRange[1].getTime();
+
     let minStartMs = Number.POSITIVE_INFINITY;
     let maxEndMs = Number.NEGATIVE_INFINITY;
+
     let isStartClipped = false;
-    let isPastWindowEnd = false;
+    let isEndClipped = false;
+
     let isAnySpanValid = false;
     for (const row of traceRowsData) {
       // timestamp-nano accepts a non-date as a finite instant, which would
@@ -823,6 +814,7 @@ export function DBTraceWaterfallChartContainer({
       ) {
         continue;
       }
+
       let startMs: number;
       try {
         startMs = parseTimestampToMs(row.Timestamp);
@@ -830,25 +822,32 @@ export function DBTraceWaterfallChartContainer({
         continue;
       }
       if (!Number.isFinite(startMs)) continue;
+
       const durationSec = Number(row.Duration);
       const endMs =
         startMs + (Number.isFinite(durationSec) ? durationSec : 0) * 1000;
       if (startMs < minStartMs) {
         minStartMs = startMs;
+
+        // The start is clipped if the earliest span has a parent that was not fetched
         const parentId =
           typeof row.ParentSpanId === 'string' ? row.ParentSpanId : '';
-        isStartClipped = parentId.length > 0 && !spanIds.has(parentId);
+        isStartClipped = parentId.length > 0 && !validSpanIDs.has(parentId);
       }
+
       if (endMs > maxEndMs) maxEndMs = endMs;
-      if (endMs >= windowEndMs) isPastWindowEnd = true;
+      if (endMs >= windowEndMs) isEndClipped = true;
       isAnySpanValid = true;
     }
     if (!isAnySpanValid) return null;
+
     return {
+      /** Wall-clock duration across every fetched span (min start to max end) */
       totalDurationMs: maxEndMs - minStartMs,
-      isWindowClipped: isStartClipped || isPastWindowEnd,
+      /** Whether the trace start or end is clipped by the time range */
+      isWindowClipped: isStartClipped || isEndClipped,
     };
-  }, [traceRowsData, dateRange]);
+  }, [traceRowsData, validSpanIDs, dateRange]);
 
   // Map each distinct span service to a stable color. Sorting the names first
   // keeps a service's color stable across renders regardless of row ordering.
@@ -972,13 +971,6 @@ export function DBTraceWaterfallChartContainer({
     children: SpanRow[];
     aliasWith: WithClause[];
   };
-  const validSpanIDs = useMemo(() => {
-    return new Set(
-      traceRowsData // only spans in traces can define valid span ids
-        ?.filter(row => _.isString(row.SpanId) && row.SpanId.length > 0)
-        .map(row => row.SpanId) ?? [],
-    );
-  }, [traceRowsData]);
 
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
   const [showSpanEvents, setShowSpanEvents] = useState(true);

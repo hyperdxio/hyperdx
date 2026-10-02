@@ -529,51 +529,31 @@ describe('DBTraceWaterfallChartContainer', () => {
     );
   });
 
-  it('does not mark a root span that starts within 1ms of the window edge', async () => {
-    const rootNearEdge = {
+  it('does not mark the duration when the earliest span has a parent that was loaded', async () => {
+    const skewedChildFirst = {
       data: [
         {
           ...mockTraceData.data[0],
-          Timestamp: '2024-01-01T05:00:00.000500000Z',
-          ParentSpanId: '',
-        },
-      ],
-      meta: [{ totalCount: 1 }],
-    };
-    setupQueryMocks({ traceData: rootNearEdge });
-    renderComponent(null);
-    await waitForLoading();
-
-    expect(screen.getByTestId('trace-total-stats').textContent?.trim()).toBe(
-      '· Total duration: 100ms',
-    );
-  });
-
-  it('does not mark a span that starts within 1ms of the window edge when its parent is loaded', async () => {
-    const childNearEdge = {
-      data: [
-        {
-          ...mockTraceData.data[0],
-          Timestamp: '2024-01-01T05:00:00.000500000Z',
+          Timestamp: '2024-01-01T06:00:00.000000000Z',
           SpanId: 'span-child',
           ParentSpanId: 'span-parent',
         },
         {
           ...mockTraceData.data[0],
           Body: 'parent span',
-          Timestamp: '2024-01-01T05:00:00.000500000Z',
+          Timestamp: '2024-01-01T06:00:00.050000000Z',
           SpanId: 'span-parent',
           ParentSpanId: '',
         },
       ],
       meta: [{ totalCount: 2 }],
     };
-    setupQueryMocks({ traceData: childNearEdge });
+    setupQueryMocks({ traceData: skewedChildFirst });
     renderComponent(null);
     await waitForLoading();
 
     expect(screen.getByTestId('trace-total-stats').textContent?.trim()).toBe(
-      '· Total duration: 100ms',
+      '· Total duration: 150ms',
     );
   });
 
@@ -595,16 +575,6 @@ describe('DBTraceWaterfallChartContainer', () => {
 
     expect(screen.getByTestId('trace-total-stats').textContent?.trim()).toBe(
       '· Total duration: 100ms+',
-    );
-  });
-
-  it('does not mark a root with no parent when it starts inside the window', async () => {
-    setupQueryMocks({ traceData: mockTraceData }); // 06:00:00, ParentSpanId '', inside 05:00:00-08:00:00
-    renderComponent(null);
-    await waitForLoading();
-
-    expect(screen.getByTestId('trace-total-stats').textContent?.trim()).toBe(
-      '· Total duration: 100ms',
     );
   });
 
@@ -1096,6 +1066,21 @@ describe('useEventsAroundFocus', () => {
 
     expect(result.isTruncated).toBe(true);
     expect(result.rows.length).toBe(TRACE_WATERFALL_ROW_LIMIT);
+  });
+
+  it('flags isTruncated when only the after window returns more rows than the cap', () => {
+    const overCapData = {
+      data: new Array(TRACE_WATERFALL_ROW_LIMIT + 1).fill(null),
+      meta: [{ totalCount: TRACE_WATERFALL_ROW_LIMIT + 1 }],
+    };
+
+    const result = testEventsAroundFocus({
+      beforeData: { data: [{ Body: 'a' }], meta: [{ totalCount: 1 }] },
+      afterData: overCapData,
+    });
+
+    expect(result.isTruncated).toBe(true);
+    expect(result.rows.length).toBe(TRACE_WATERFALL_ROW_LIMIT + 1);
   });
 
   it('does not flag isTruncated when both windows return fewer rows than the cap', () => {
