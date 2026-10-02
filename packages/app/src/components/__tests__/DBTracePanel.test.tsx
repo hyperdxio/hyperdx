@@ -284,11 +284,12 @@ describe('DBTracePanel', () => {
       renderPanel();
       fireEvent.click(screen.getByText('select span-a'));
       fireEvent.click(screen.getByText('select span-b'));
+      mockSetEventRowWhere.mockClear();
 
       act(() => mockCommitUrl(span('span-a')));
 
       expect(shownSpan()).toHaveTextContent('span-b');
-      expect(mockSetEventRowWhere).toHaveBeenLastCalledWith(
+      expect(mockSetEventRowWhere).toHaveBeenCalledWith(
         expect.objectContaining({ id: 'span-b' }),
       );
     });
@@ -297,11 +298,12 @@ describe('DBTracePanel', () => {
       renderPanel();
       fireEvent.click(screen.getByText('select span-b'));
       fireEvent.click(screen.getByLabelText('Close span details'));
+      mockSetEventRowWhere.mockClear();
 
       act(() => mockCommitUrl(span('span-b')));
 
       expect(shownSpan()).not.toBeInTheDocument();
-      expect(mockSetEventRowWhere).toHaveBeenLastCalledWith(null);
+      expect(mockSetEventRowWhere).toHaveBeenCalledWith(null);
     });
 
     it('keeps a destination span that reaches the URL before the trace changes', () => {

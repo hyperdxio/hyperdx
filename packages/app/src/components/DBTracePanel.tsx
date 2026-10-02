@@ -330,14 +330,19 @@ export default function DBTracePanel({
   const lastWrittenRef = useRef<EventRowWhere | null | undefined>(undefined);
   const supersededRef = useRef(new Set<string>());
 
+  // Makes `next` the current value; anything recorded before it becomes stale.
+  const recordSelection = (next: EventRowWhere | null) => {
+    if (lastWrittenRef.current !== undefined) {
+      supersededRef.current.add(selectionKey(lastWrittenRef.current));
+    }
+    supersededRef.current.delete(selectionKey(next));
+    lastWrittenRef.current = next;
+    setLocalSelection(next);
+  };
+
   const writeSelection = useCallback(
     (next: EventRowWhere | null) => {
-      if (lastWrittenRef.current !== undefined) {
-        supersededRef.current.add(selectionKey(lastWrittenRef.current));
-      }
-      supersededRef.current.delete(selectionKey(next));
-      lastWrittenRef.current = next;
-      setLocalSelection(next);
+      recordSelection(next);
       void setUrlSelection(next);
     },
     [setUrlSelection],
@@ -365,10 +370,8 @@ export default function DBTracePanel({
       const raw = new URLSearchParams(window.location.search).get(
         'eventRowWhere',
       );
-      // A real navigation cancels any pending correction of our own writes.
-      lastWrittenRef.current = undefined;
-      supersededRef.current.clear();
-      setLocalSelection(raw == null ? null : eventRowWhereParser.parse(raw));
+      // The browser already holds this URL, so record it without writing.
+      recordSelection(raw == null ? null : eventRowWhereParser.parse(raw));
     };
     window.addEventListener('popstate', syncFromUrl);
     return () => window.removeEventListener('popstate', syncFromUrl);
