@@ -71,7 +71,10 @@ import {
   isStringSelectDisplayType,
   validateChartForm,
 } from '@/components/ChartEditor/utils';
-import type { HeatmapScaleType } from '@/components/DBHeatmapChart';
+import {
+  HEATMAP_DURATION_NUMBER_FORMAT,
+  type HeatmapScaleType,
+} from '@/components/DBHeatmapChart';
 import { ErrorBoundary } from '@/components/Error/ErrorBoundary';
 import HeatmapSettingsDrawer, {
   HeatmapSettingsValues,
@@ -171,7 +174,7 @@ function applyHeatmapDefaults(
   setValue('select', heatmapSeries);
   setValue('series', heatmapSeries);
   setValue('series.0.countExpression', 'count()');
-  setValue('numberFormat', { output: 'duration', factor: 0.001 });
+  setValue('numberFormat', { ...HEATMAP_DURATION_NUMBER_FORMAT });
 }
 
 export default function EditTimeChartForm({

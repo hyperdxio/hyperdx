@@ -668,23 +668,27 @@ function ClickhousePage() {
                     <DBHeatmapChart
                       title="Query Latency"
                       toolbarSuffix={heatmapToolbarItems}
-                      config={{
-                        displayType: DisplayType.Heatmap,
-                        select: [
-                          {
-                            aggFn: 'heatmap',
-                            valueExpression: 'query_duration_ms',
-                          },
-                        ],
-                        from,
-                        dateRange: searchedTimeRange,
-                        granularity: 'auto',
-                        timestampValueExpression: 'event_time',
-                        connection,
-                        where: `query_kind='Select' AND (
+                      query={{
+                        mode: 'distribution',
+                        scaleType: 'log',
+                        config: {
+                          displayType: DisplayType.Heatmap,
+                          select: [
+                            {
+                              aggFn: 'heatmap',
+                              valueExpression: 'query_duration_ms',
+                            },
+                          ],
+                          from,
+                          dateRange: searchedTimeRange,
+                          granularity: 'auto',
+                          timestampValueExpression: 'event_time',
+                          connection,
+                          where: `query_kind='Select' AND (
                   type='ExceptionWhileProcessing' OR type='QueryFinish' 
                 )`,
-                        filters,
+                          filters,
+                        },
                       }}
                       onFilter={(tsStart, tsEnd, latencyMin, latencyMax) => {
                         onTimeRangeSelect(
