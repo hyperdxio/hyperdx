@@ -2378,7 +2378,7 @@ describe('Metadata', () => {
         expect(queries()[1]).toContain('ColumnIdentifier = ');
       });
 
-      it('forwards the abort signal to the text index read', async () => {
+      it('bounds the text index read and forwards the abort signal', async () => {
         const md = buildWithTextIndex(keyIndexLookup);
         mockScanResponses(
           (mockClickhouseClient.query as jest.Mock).mockRejectedValueOnce(
@@ -2390,7 +2390,52 @@ describe('Metadata', () => {
         await md.getMapKeys({ ...args, signal });
 
         const [first] = (mockClickhouseClient.query as jest.Mock).mock.calls[0];
+        expect(first.clickhouse_settings).toMatchObject({
+          max_execution_time: 15,
+          timeout_overflow_mode: 'throw',
+        });
         expect(first.abort_signal).toBe(signal);
+      });
+
+      it('falls through to the rollup when the text index read times out', async () => {
+        const md = buildWithTextIndex(keyIndexLookup);
+        (mockClickhouseClient.query as jest.Mock)
+          .mockRejectedValueOnce(
+            new Error('Timeout exceeded: elapsed 15 seconds', {
+              cause: { type: 'TIMEOUT_EXCEEDED', code: '159' },
+            }),
+          )
+          .mockResolvedValueOnce({
+            json: () => Promise.resolve({ data: [{ Key: 'user.id' }] }),
+          });
+
+        const keys = await md.getMapKeys({ ...args, metadataMVs });
+
+        expect(keys).toEqual(['user.id']);
+        expect(queries()[1]).toContain('ColumnIdentifier = ');
+      });
+
+      it('rethrows an aborted text index read without running or caching the fallback', async () => {
+        const md = buildWithTextIndex(keyIndexLookup);
+        const controller = new AbortController();
+        const abortError = new Error('The user aborted a request.');
+        (mockClickhouseClient.query as jest.Mock).mockImplementationOnce(() => {
+          controller.abort();
+          return Promise.reject(abortError);
+        });
+
+        await expect(
+          md.getMapKeys({ ...args, metadataMVs, signal: controller.signal }),
+        ).rejects.toBe(abortError);
+        expect(queries()).toHaveLength(1);
+
+        (mockClickhouseClient.query as jest.Mock).mockResolvedValueOnce({
+          json: () => Promise.resolve({ data: [{ key: 'http.method' }] }),
+        });
+        expect(await md.getMapKeys({ ...args, metadataMVs })).toEqual([
+          'http.method',
+        ]);
+        expect(queries()[1]).toContain('mergeTreeTextIndex(');
       });
 
       it('caches the fallback result so the failing index read is not retried', async () => {

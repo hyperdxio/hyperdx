@@ -995,6 +995,13 @@ export class Metadata {
       supportsMergeTreeTextIndex(clickhouseVersion);
     // Text Index path: query the key rollup index
     const textIndexInfo = textIndexInfoLookup.get(column);
+    const textIndexQuerySettings: ClickHouseSettings = {
+      ...this.getClickHouseSettings(),
+      // 'throw', not 'break': a partial key list would be cached without a
+      // TTL. On timeout the rollup/scan paths below take over.
+      max_execution_time: 15,
+      timeout_overflow_mode: 'throw',
+    };
     // Set when the text index read hits a row policy; see the rollup guard.
     let rowPolicyDenied = false;
     // Without timestampValueExpression, partsFilter can't bound this either. #3037
@@ -1022,7 +1029,7 @@ export class Metadata {
             query: sql.sql,
             query_params: sql.params,
             connectionId,
-            clickhouse_settings: this.getClickHouseSettings(),
+            clickhouse_settings: textIndexQuerySettings,
             abort_signal: signal,
           })
           .then(r => r.json<{ key: string }>())
@@ -1032,6 +1039,9 @@ export class Metadata {
           return keys;
         }
       } catch (e) {
+        // The caller gave up; don't start the fallback with a dead signal and
+        // cache its instant rejection under the rollup key.
+        if (signal?.aborted) throw e;
         // e.g. ACCESS_DENIED under a row policy or BAD_ARGUMENTS on a
         // Distributed table; the paths below still work.
         rowPolicyDenied = isAccessDeniedError(e);
@@ -1065,7 +1075,7 @@ export class Metadata {
             query: sql.sql,
             query_params: sql.params,
             connectionId,
-            clickhouse_settings: this.getClickHouseSettings(),
+            clickhouse_settings: textIndexQuerySettings,
             abort_signal: signal,
           })
           .then(r => r.json<{ key: string }>())
@@ -1076,6 +1086,7 @@ export class Metadata {
         }
       } catch (e) {
         // See the key text index catch above.
+        if (signal?.aborted) throw e;
         rowPolicyDenied = isAccessDeniedError(e);
         console.warn(
           'getMapKeys kv text index query failed; falling through to the next strategy',
