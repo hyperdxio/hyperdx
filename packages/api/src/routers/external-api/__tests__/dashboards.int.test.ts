@@ -2410,6 +2410,7 @@ describe('External API v2 Dashboards - new format', () => {
             average: true,
           },
           groupByColumnsOnLeft: true,
+          alternateRowBackground: true,
           onClick: {
             type: 'search',
             target: {
@@ -2783,6 +2784,116 @@ describe('External API v2 Dashboards - new format', () => {
       expect(response.body.data.tiles[0].config).not.toHaveProperty('orderBy');
     });
 
+    it('omits alternateRowBackground on a table tile when not provided, and persists explicit false', async () => {
+      const tableNoStripe: ExternalDashboardTile = {
+        name: 'Table without stripe setting',
+        x: 0,
+        y: 0,
+        w: 6,
+        h: 3,
+        config: {
+          displayType: 'table',
+          sourceId: traceSource._id.toString(),
+          select: [
+            {
+              aggFn: 'count',
+              alias: 'Count',
+              where: '',
+              whereLanguage: 'sql',
+            },
+          ],
+          groupBy: 'ServiceName',
+        },
+      };
+
+      const tableStripeOff: ExternalDashboardTile = {
+        name: 'Table with stripe explicitly off',
+        x: 6,
+        y: 0,
+        w: 6,
+        h: 3,
+        config: {
+          displayType: 'table',
+          sourceId: traceSource._id.toString(),
+          select: [
+            {
+              aggFn: 'count',
+              alias: 'Count',
+              where: '',
+              whereLanguage: 'sql',
+            },
+          ],
+          groupBy: 'ServiceName',
+          alternateRowBackground: false,
+        },
+      };
+
+      const response = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Dashboard table stripe defaults',
+          tiles: [tableNoStripe, tableStripeOff],
+        })
+        .expect(200);
+
+      expect(response.body.data.tiles[0].config).not.toHaveProperty(
+        'alternateRowBackground',
+      );
+      expect(response.body.data.tiles[1].config.alternateRowBackground).toBe(
+        false,
+      );
+    });
+
+    it('omits alternateRowBackground on a raw SQL table tile when not provided, and persists explicit false', async () => {
+      const connectionId = connection._id.toString();
+      const sourceId = traceSource._id.toString();
+      const sqlTemplate = 'SELECT count() FROM otel_logs WHERE {timeFilter}';
+
+      const tableNoStripe: ExternalDashboardTile = {
+        name: 'Raw SQL table without stripe setting',
+        x: 0,
+        y: 0,
+        w: 6,
+        h: 3,
+        config: {
+          configType: 'sql',
+          displayType: 'table',
+          connectionId,
+          sqlTemplate,
+          sourceId,
+        },
+      };
+
+      const tableStripeOff: ExternalDashboardTile = {
+        name: 'Raw SQL table with stripe explicitly off',
+        x: 6,
+        y: 0,
+        w: 6,
+        h: 3,
+        config: {
+          configType: 'sql',
+          displayType: 'table',
+          connectionId,
+          sqlTemplate,
+          sourceId,
+          alternateRowBackground: false,
+        },
+      };
+
+      const response = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Dashboard raw SQL table stripe defaults',
+          tiles: [tableNoStripe, tableStripeOff],
+        })
+        .expect(200);
+
+      expect(response.body.data.tiles[0].config).not.toHaveProperty(
+        'alternateRowBackground',
+      );
+      expect(response.body.data.tiles[1].config.alternateRowBackground).toBe(
+        false,
+      );
+    });
+
     // Schema-level rejections that exercise pure Zod constraints
     // (discriminated-union absence, `min(1)` on valueExpression, and
     // `length(1)` on the select array). The non-Trace-source case
@@ -3103,6 +3214,7 @@ describe('External API v2 Dashboards - new format', () => {
           sqlTemplate,
           sourceId,
           numberFormat: { output: 'percent', mantissa: 1 },
+          alternateRowBackground: true,
           onClick: {
             type: 'search',
             target: {
@@ -4569,6 +4681,7 @@ describe('External API v2 Dashboards - new format', () => {
             average: true,
           },
           groupByColumnsOnLeft: true,
+          alternateRowBackground: true,
           onClick: {
             type: 'search',
             target: {
@@ -4797,6 +4910,7 @@ describe('External API v2 Dashboards - new format', () => {
           sqlTemplate,
           sourceId,
           numberFormat: { output: 'percent', mantissa: 1 },
+          alternateRowBackground: true,
           onClick: {
             type: 'dashboard',
             target: {
@@ -4896,6 +5010,110 @@ describe('External API v2 Dashboards - new format', () => {
       );
       expect(omit(response.body.data.tiles[5], ['id'])).toEqual(
         omit(categoricalBarRawSql, ['id']),
+      );
+    });
+
+    it('omits alternateRowBackground on update when not provided, and persists explicit false', async () => {
+      const connectionId = connection._id.toString();
+      const sourceId = traceSource._id.toString();
+      const sqlTemplate = 'SELECT count() FROM otel_logs WHERE {timeFilter}';
+
+      const builderNoStripe: ExternalDashboardTileWithId = {
+        id: new ObjectId().toString(),
+        name: 'Table without stripe setting',
+        x: 0,
+        y: 0,
+        w: 6,
+        h: 3,
+        config: {
+          displayType: 'table',
+          sourceId,
+          select: [
+            { aggFn: 'count', alias: 'Count', where: '', whereLanguage: 'sql' },
+          ],
+          groupBy: 'ServiceName',
+        },
+      };
+
+      const builderStripeOff: ExternalDashboardTileWithId = {
+        id: new ObjectId().toString(),
+        name: 'Table with stripe explicitly off',
+        x: 6,
+        y: 0,
+        w: 6,
+        h: 3,
+        config: {
+          displayType: 'table',
+          sourceId,
+          select: [
+            { aggFn: 'count', alias: 'Count', where: '', whereLanguage: 'sql' },
+          ],
+          groupBy: 'ServiceName',
+          alternateRowBackground: false,
+        },
+      };
+
+      const rawSqlNoStripe: ExternalDashboardTileWithId = {
+        id: new ObjectId().toString(),
+        name: 'Raw SQL table without stripe setting',
+        x: 12,
+        y: 0,
+        w: 6,
+        h: 3,
+        config: {
+          configType: 'sql',
+          displayType: 'table',
+          connectionId,
+          sqlTemplate,
+          sourceId,
+        },
+      };
+
+      const rawSqlStripeOff: ExternalDashboardTileWithId = {
+        id: new ObjectId().toString(),
+        name: 'Raw SQL table with stripe explicitly off',
+        x: 18,
+        y: 0,
+        w: 6,
+        h: 3,
+        config: {
+          configType: 'sql',
+          displayType: 'table',
+          connectionId,
+          sqlTemplate,
+          sourceId,
+          alternateRowBackground: false,
+        },
+      };
+
+      const initialDashboard = await createTestDashboard();
+
+      const response = await authRequest(
+        'put',
+        `${BASE_URL}/${initialDashboard._id}`,
+      )
+        .send({
+          name: 'Dashboard table stripe defaults on update',
+          tiles: [
+            builderNoStripe,
+            builderStripeOff,
+            rawSqlNoStripe,
+            rawSqlStripeOff,
+          ],
+        })
+        .expect(200);
+
+      expect(response.body.data.tiles[0].config).not.toHaveProperty(
+        'alternateRowBackground',
+      );
+      expect(response.body.data.tiles[1].config.alternateRowBackground).toBe(
+        false,
+      );
+      expect(response.body.data.tiles[2].config).not.toHaveProperty(
+        'alternateRowBackground',
+      );
+      expect(response.body.data.tiles[3].config.alternateRowBackground).toBe(
+        false,
       );
     });
 

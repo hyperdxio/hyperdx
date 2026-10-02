@@ -17,9 +17,9 @@ import { useTerraformSnippets } from './useTerraformSnippets';
  * is exactly what the Terraform provider reads. That premise does not hold:
  * `convertToExternalTileChartConfig` is a per-displayType field allowlist, so a
  * tile can survive the conversion while silently losing fields
- * (`alternateRowBackground`, `granularity`, `ratioMode`, and a ratio Number
- * tile's second series). Because `dashboard_json` is a whole-body replace,
- * emitting that body as configuration would write the loss back on apply.
+ * (`granularity`, `ratioMode`, and a ratio Number tile's second series).
+ * Because `dashboard_json` is a whole-body replace, emitting that body as
+ * configuration would write the loss back on apply.
  *
  * `terraform plan -generate-config-out` reads through the provider instead of
  * through us, so importing stays safe and accurate for every resource type.
