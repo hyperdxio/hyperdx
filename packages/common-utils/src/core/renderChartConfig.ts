@@ -1323,8 +1323,9 @@ const NEGATION_SQL_PARSER = new SQLParser.Parser();
 /**
  * True when a lucene predicate carries a second top-level term after its
  * leading negation — i.e. a term boundary (whitespace, `&&`, `||`) that sits
- * outside quotes and parentheses. Such a query is a mix of terms, not a sole
- * negation.
+ * outside quotes and any grouping/range brackets. Such a query is a mix of
+ * terms, not a sole negation. Range queries (`[1 TO 5]`, `{1 TO 5}`) and groups
+ * (`(...)`) carry internal spaces that must not read as a term boundary.
  */
 function luceneHasSecondTerm(rest: string): boolean {
   let inQuote = false;
@@ -1340,12 +1341,12 @@ function luceneHasSecondTerm(rest: string): boolean {
       prev = ch;
       continue;
     }
-    if (ch === '(') {
+    if (ch === '(' || ch === '[' || ch === '{') {
       depth++;
       prev = ch;
       continue;
     }
-    if (ch === ')') {
+    if (ch === ')' || ch === ']' || ch === '}') {
       if (depth > 0) depth--;
       prev = ch;
       continue;

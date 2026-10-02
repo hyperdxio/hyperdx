@@ -5395,6 +5395,28 @@ describe('renderChartConfig', () => {
       ).toBe(true);
     });
 
+    it('treats a sole negated lucene range/group as an exclusion', () => {
+      // Regression: range/group brackets carry internal spaces; the tokenizer
+      // must not read `[1 TO 5]` / `{1 TO 5}` / `(a OR b)` as a second term and
+      // demote the negation to a (non-excluding) membership subquery.
+      expect(isNegatedFilterCondition('-Duration:[1 TO 5]', 'lucene')).toBe(
+        true,
+      );
+      expect(isNegatedFilterCondition('-Duration:{1 TO 5}', 'lucene')).toBe(
+        true,
+      );
+      expect(
+        isNegatedFilterCondition('NOT ServiceName:(cart OR api)', 'lucene'),
+      ).toBe(true);
+      // A real second term after the range is still a mix, so stays positive.
+      expect(
+        isNegatedFilterCondition(
+          '-Duration:[1 TO 5] SpanName:checkout',
+          'lucene',
+        ),
+      ).toBe(false);
+    });
+
     it('treats a mixed lucene query (implicit AND) as positive, not negated', () => {
       // Regression: `-a b` was classed as fully negated, so no membership
       // subquery was built at all. It combines an exclusion and an inclusion,
