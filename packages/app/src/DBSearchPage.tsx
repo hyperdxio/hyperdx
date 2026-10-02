@@ -2202,7 +2202,7 @@ export function DBSearchPage() {
       )}
       <OnboardingModal />
       {savedSearch && (
-        <Stack mt="lg" mx="xs">
+        <Stack mt="xs" mx="xs" gap="xs">
           <Group justify="space-between">
             <Breadcrumbs fz="sm">
               <Anchor component={Link} href="/search/list" fz="sm" c="dimmed">
@@ -2212,7 +2212,7 @@ export function DBSearchPage() {
                 {savedSearch.name}
               </Text>
             </Breadcrumbs>
-            <Text size="xs" c="dimmed" lh={1}>
+            <Text size="xs" c="dimmed">
               {savedSearch.createdBy && (
                 <span>
                   Created by{' '}
