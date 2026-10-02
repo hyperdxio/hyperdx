@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import { useAtom } from 'jotai';
@@ -78,6 +79,9 @@ const eventRowWhereSchema = z.object({
 const eventRowWhereParser = parseAsJsonEncoded<EventRowWhere>(
   eventRowWhereSchema.parse,
 );
+
+const selectionKey = (value: EventRowWhere | null) =>
+  value == null ? 'null' : `${value.traceId}|${value.type}|${value.id}`;
 
 enum SpanDetailTab {
   Overview = 'overview',
@@ -298,29 +302,80 @@ export default function DBTracePanel({
 
   const { mutate: updateTableSource } = useUpdateSource();
 
-  const [eventRowWhere, setEventRowWhere] = useQueryState(
+  const [urlSelection, setUrlSelection] = useQueryState(
     'eventRowWhere',
     eventRowWhereParser,
   );
 
-  // A persisted span selection belongs to the trace it was made in. Gate it by
-  // the current `traceId` at *read* time so a selection left in the URL from a
-  // previous trace (e.g. after "View Trace" opened a different trace, or an old
-  // shared link) can never render against this trace's waterfall — no matter how
-  // the panel was (re)mounted.
-  const selectedSpan =
-    eventRowWhere != null && eventRowWhere.traceId === traceId
-      ? eventRowWhere
-      : null;
+  // nuqs applies URL writes out of order (#3255), so a choice made here wins
+  // over the URL. undefined: defer to the URL; null: closed; value: selected.
+  const [localSelection, setLocalSelection] = useState<
+    EventRowWhere | null | undefined
+  >(undefined);
 
-  // Stamp the current trace onto every selection so the gate above can tell it
-  // apart from a stale one.
+  // React's "adjust state when a prop changes" pattern: drop another trace's span.
+  const [selectionTraceId, setSelectionTraceId] = useState(traceId);
+  if (selectionTraceId !== traceId) {
+    setSelectionTraceId(traceId);
+    setLocalSelection(prev => (prev?.traceId === traceId ? prev : undefined));
+  }
+
+  const mergedSelection =
+    localSelection === undefined ? urlSelection : localSelection;
+  const selectedSpan =
+    mergedSelection?.traceId === traceId ? mergedSelection : null;
+
+  // Values this panel wrote and has since replaced. Seeing one in the URL means
+  // a late commit; any other value belongs to another panel or a navigation.
+  const lastWrittenRef = useRef<EventRowWhere | null | undefined>(undefined);
+  const supersededRef = useRef(new Set<string>());
+
+  // Makes `next` the current value; anything recorded before it becomes stale.
+  const recordSelection = useCallback((next: EventRowWhere | null) => {
+    if (lastWrittenRef.current !== undefined) {
+      supersededRef.current.add(selectionKey(lastWrittenRef.current));
+    }
+    supersededRef.current.delete(selectionKey(next));
+    lastWrittenRef.current = next;
+    setLocalSelection(next);
+  }, []);
+
+  const writeSelection = useCallback(
+    (next: EventRowWhere | null) => {
+      recordSelection(next);
+      void setUrlSelection(next);
+    },
+    [recordSelection, setUrlSelection],
+  );
+
+  useEffect(() => {
+    // Deleting consumes the stale value, so two panels can never ping-pong.
+    if (
+      lastWrittenRef.current !== undefined &&
+      supersededRef.current.delete(selectionKey(urlSelection))
+    ) {
+      void setUrlSelection(lastWrittenRef.current);
+    }
+  }, [urlSelection, setUrlSelection]);
+
   const selectSpan = useCallback(
     (where: { id: string; type: string; aliasWith: WithClause[] }) => {
-      setEventRowWhere({ ...where, traceId });
+      writeSelection({ ...where, traceId });
     },
-    [setEventRowWhere, traceId],
+    [writeSelection, traceId],
   );
+
+  useEffect(() => {
+    const syncFromUrl = () => {
+      const raw = new URLSearchParams(window.location.search).get(
+        'eventRowWhere',
+      );
+      // The browser already holds this URL, so record it without writing.
+      recordSelection(raw == null ? null : eventRowWhereParser.parse(raw));
+    };
+    window.addEventListener('popstate', syncFromUrl);
+    return () => window.removeEventListener('popstate', syncFromUrl);
+  }, [recordSelection]);
 
   const {
     control: traceIdControl,
@@ -345,16 +400,6 @@ export default function DBTracePanel({
     }
   }, [parentSourceData, traceIdSetValue]);
 
-  // Reset highlighted row when trace ID changes
-  // otherwise we'll show stale span details
-  useEffect(() => {
-    if (eventRowWhere != null && eventRowWhere.traceId !== traceId) {
-      setEventRowWhere(prev =>
-        prev != null && prev.traceId !== traceId ? null : prev,
-      );
-    }
-  }, [eventRowWhere, traceId, setEventRowWhere]);
-
   const [isSourceSchemaPreviewOpen, setIsSourceSchemaPreviewOpen] =
     useState(false);
 
@@ -370,8 +415,8 @@ export default function DBTracePanel({
   const detailPanelSize = isSideLayout ? rightPanelSize : bottomPanelSize;
 
   const handleCloseSpanDetails = useCallback(() => {
-    setEventRowWhere(null);
-  }, [setEventRowWhere]);
+    writeSelection(null);
+  }, [writeSelection]);
 
   const selectedSpanSource = useMemo(() => {
     if (!selectedSpan) return null;

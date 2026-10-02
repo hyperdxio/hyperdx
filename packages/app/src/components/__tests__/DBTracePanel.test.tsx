@@ -1,6 +1,6 @@
 import React from 'react';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
-import { fireEvent, screen } from '@testing-library/react';
+import { act, fireEvent, screen } from '@testing-library/react';
 
 import { RowSidePanelContext } from '@/components/DBRowSidePanel';
 import DBTracePanel from '@/components/DBTracePanel';
@@ -9,14 +9,30 @@ let mockSources: Record<string, any> = {};
 // Controls the value returned by the mocked `useQueryState('eventRowWhere')`
 // so tests can render with or without a selected span. Prefixed with `mock` so
 // the hoisted jest.mock factory may reference it.
-let mockEventRowWhere: any = null;
+type MockSelection = {
+  id: string;
+  type: string;
+  aliasWith: unknown[];
+  traceId?: string;
+} | null;
+
+let mockEventRowWhere: MockSelection = null;
+const mockSetEventRowWhere = jest.fn();
+// Lets a test land a URL value the way a late nuqs commit would.
+let mockCommitUrl: (value: MockSelection) => void = () => {};
 
 jest.mock('nuqs', () => ({
-  useQueryState: () => [mockEventRowWhere, jest.fn()],
-}));
-
-jest.mock('@/utils/queryParsers', () => ({
-  parseAsJsonEncoded: () => 'parseAsJsonEncoded',
+  ...jest.requireActual('nuqs'),
+  useQueryState: () => {
+    const { useCallback, useState } = jest.requireActual('react');
+    const [value, setValue] = useState(() => mockEventRowWhere);
+    mockCommitUrl = setValue;
+    const set = useCallback((next: MockSelection) => {
+      mockSetEventRowWhere(next);
+      setValue(next);
+    }, []);
+    return [value, set];
+  },
 }));
 
 jest.mock('@/source', () => ({
@@ -33,13 +49,30 @@ jest.mock('@/components/DBTraceWaterfallChart', () => ({
   DBTraceWaterfallChartContainer: ({
     emptyState,
     controlsExtra,
+    onClick,
+    highlightedRowWhere,
   }: {
     emptyState?: React.ReactNode;
     controlsExtra?: React.ReactNode;
+    onClick?: (rowWhere: {
+      id: string;
+      type: string;
+      aliasWith: never[];
+    }) => void;
+    highlightedRowWhere?: string | null;
   }) => (
     <div>
       {controlsExtra}
       {emptyState ?? 'waterfall'}
+      <div data-testid="highlighted-row">{String(highlightedRowWhere)}</div>
+      {['span-a', 'span-b'].map(id => (
+        <button
+          key={id}
+          onClick={() => onClick?.({ id, type: 'trace', aliasWith: [] })}
+        >
+          select {id}
+        </button>
+      ))}
     </div>
   ),
 }));
@@ -60,7 +93,7 @@ jest.mock('../DBRowDataPanel', () => ({
 // RowSidePanelContext, so the tests below can observe the source-aware
 // context SpanDetailPanel derives for the selected event (HDX-5040).
 jest.mock('../DBRowOverviewPanel', () => ({
-  RowOverviewPanel: () => {
+  RowOverviewPanel: ({ rowId }: { rowId?: string | null }) => {
     const ReactActual = jest.requireActual('react');
     // Required lazily so the circular DBTracePanel <-> DBRowSidePanel import
     // is fully initialized by render time.
@@ -70,6 +103,7 @@ jest.mock('../DBRowOverviewPanel', () => ({
     return (
       <div>
         <div>overview panel</div>
+        <div data-testid="overview-row-id">{String(rowId)}</div>
         <button
           onClick={() =>
             ctx.generateSearchUrl?.({ where: 'x', whereLanguage: 'sql' })
@@ -100,6 +134,7 @@ jest.mock('../SourceSchemaPreview', () => ({
 describe('DBTracePanel', () => {
   beforeEach(() => {
     mockEventRowWhere = null;
+    mockSetEventRowWhere.mockClear();
     mockSources = {
       'trace-source': {
         id: 'trace-source',
@@ -203,6 +238,117 @@ describe('DBTracePanel', () => {
     expect(JSON.parse(localStorage.getItem('hdx_trace_detail_layout')!)).toBe(
       'side',
     );
+  });
+
+  describe('span selection ownership', () => {
+    const span = (id: string, traceId = 'trace-123') => ({
+      id,
+      type: SourceKind.Trace,
+      aliasWith: [],
+      traceId,
+    });
+
+    // Renders the panel with a button that moves it to trace-456.
+    const renderPanel = () => {
+      const TraceSwitcher = () => {
+        const [traceId, setTraceId] = React.useState('trace-123');
+        return (
+          <>
+            <button onClick={() => setTraceId('trace-456')}>switch</button>
+            <DBTracePanel
+              traceId={traceId}
+              parentSourceId="trace-source"
+              childSourceId="log-source"
+              dateRange={[new Date(0), new Date(1000)]}
+              focusDate={new Date(500)}
+            />
+          </>
+        );
+      };
+      return renderWithMantine(<TraceSwitcher />);
+    };
+    const shownSpan = () => screen.queryByTestId('overview-row-id');
+
+    it('switches to the clicked span and writes it to the URL', () => {
+      renderPanel();
+      fireEvent.click(screen.getByText('select span-a'));
+      fireEvent.click(screen.getByText('select span-b'));
+
+      expect(shownSpan()).toHaveTextContent('span-b');
+      expect(mockSetEventRowWhere).toHaveBeenLastCalledWith(
+        expect.objectContaining({ id: 'span-b' }),
+      );
+    });
+
+    it('keeps the clicked span and corrects the URL after a late commit', () => {
+      renderPanel();
+      fireEvent.click(screen.getByText('select span-a'));
+      fireEvent.click(screen.getByText('select span-b'));
+      mockSetEventRowWhere.mockClear();
+
+      act(() => mockCommitUrl(span('span-a')));
+
+      expect(shownSpan()).toHaveTextContent('span-b');
+      expect(mockSetEventRowWhere).toHaveBeenLastCalledWith(
+        expect.objectContaining({ id: 'span-b' }),
+      );
+    });
+
+    it('stays closed when a late commit brings back a span', () => {
+      renderPanel();
+      fireEvent.click(screen.getByText('select span-b'));
+      fireEvent.click(screen.getByLabelText('Close span details'));
+      mockSetEventRowWhere.mockClear();
+
+      act(() => mockCommitUrl(span('span-b')));
+
+      expect(shownSpan()).not.toBeInTheDocument();
+      expect(mockSetEventRowWhere).toHaveBeenLastCalledWith(null);
+    });
+
+    it('keeps a destination span that reaches the URL before the trace changes', () => {
+      renderPanel();
+      fireEvent.click(screen.getByText('select span-b'));
+      mockSetEventRowWhere.mockClear();
+
+      act(() => mockCommitUrl(span('span-x', 'trace-456')));
+      fireEvent.click(screen.getByText('switch'));
+
+      expect(shownSpan()).toHaveTextContent('span-x');
+      expect(mockSetEventRowWhere).not.toHaveBeenCalled();
+    });
+
+    it('writes a span clicked after a trace change to the URL', () => {
+      renderPanel();
+      fireEvent.click(screen.getByText('select span-b'));
+      fireEvent.click(screen.getByText('switch'));
+      fireEvent.click(screen.getByText('select span-a'));
+
+      expect(mockSetEventRowWhere).toHaveBeenLastCalledWith(
+        expect.objectContaining({ id: 'span-a', traceId: 'trace-456' }),
+      );
+    });
+
+    it('follows back/forward to an earlier span without rewriting the URL', () => {
+      renderPanel();
+      fireEvent.click(screen.getByText('select span-a'));
+      fireEvent.click(screen.getByText('select span-b'));
+      mockSetEventRowWhere.mockClear();
+
+      window.history.pushState(
+        null,
+        '',
+        `/search?eventRowWhere=${encodeURIComponent(
+          JSON.stringify(span('span-a')),
+        )}`,
+      );
+      fireEvent.popState(window);
+      act(() => mockCommitUrl(span('span-a')));
+
+      expect(shownSpan()).toHaveTextContent('span-a');
+      expect(mockSetEventRowWhere).not.toHaveBeenCalled();
+      window.history.pushState(null, '', '/search');
+    });
   });
 
   // The searched source is the trace source; the selected waterfall event may
