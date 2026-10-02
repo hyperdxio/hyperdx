@@ -5,6 +5,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import cx from 'classnames';
 import sub from 'date-fns/sub';
+import { isEqual, omit } from 'lodash';
 import { useQueryState } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
 import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
@@ -113,6 +114,22 @@ const Th = React.memo<{
 
 const TABLE_FETCH_LIMIT = 10000;
 
+const withoutDateRange = (part: unknown) =>
+  typeof part === 'object' && part !== null ? omit(part, ['dateRange']) : part;
+
+// Whether the previous query ran this config over another time range. Rows
+// from another source or filter would be read with the wrong resource
+// attributes, so only a time-range change keeps them on screen.
+function isSameQueryIgnoringDateRange(
+  prevKey: readonly unknown[] | undefined,
+  config: object,
+) {
+  const target = withoutDateRange(config);
+  return (
+    prevKey?.some(part => isEqual(withoutDateRange(part), target)) ?? false
+  );
+}
+
 type InfraPodsStatusTableColumn =
   | 'restarts'
   | 'uptime'
@@ -175,7 +192,7 @@ export const InfraPodsStatusTable = ({
   });
 
   const groupBy = ['k8s.pod.name', 'k8s.namespace.name', 'k8s.node.name'];
-  const { data, isError, isLoading } = useQueriedChartConfig({
+  const queryConfig = {
     ...convertV1ChartConfigToV2(
       {
         series: [
@@ -244,7 +261,16 @@ export const InfraPodsStatusTable = ({
       },
     ),
     limit: { limit: TABLE_FETCH_LIMIT, offset: 0 },
-  });
+  };
+  const { data, isError, isLoading, isPlaceholderData } = useQueriedChartConfig(
+    queryConfig,
+    {
+      placeholderData: (prev, prevQuery) =>
+        isSameQueryIgnoringDateRange(prevQuery?.queryKey, queryConfig)
+          ? prev
+          : undefined,
+    },
+  );
 
   const resourceAttr = metricSource.resourceAttributesExpression;
 
@@ -376,7 +402,7 @@ export const InfraPodsStatusTable = ({
           />
         </Group>
       </Card.Section>
-      {isAtFetchLimit && !isLoading && !isError && podsList.length > 0 && (
+      {isAtFetchLimit && !isError && podsList.length > 0 && (
         <Card.Section px="md" py="xs">
           <Alert variant="light" color="blue">
             Showing first {TABLE_FETCH_LIMIT.toLocaleString()} pods. Use the
@@ -387,12 +413,13 @@ export const InfraPodsStatusTable = ({
       <Card.Section>
         <div
           ref={tableContainerRef}
+          className={isPlaceholderData ? 'effect-pulse' : undefined}
           style={{
             height: '300px',
             overflow: 'auto',
           }}
         >
-          {isLoading ? (
+          {isLoading && !data ? (
             <TableLoading />
           ) : isError ? (
             <div className="p-4 text-center text-muted fs-8">
@@ -539,7 +566,7 @@ export const InfraPodsStatusTable = ({
   );
 };
 
-const NodesTable = ({
+export const NodesTable = ({
   metricSource,
   where,
   dateRange,
@@ -550,7 +577,7 @@ const NodesTable = ({
 }) => {
   const groupBy = ['k8s.node.name'];
 
-  const { data, isError, isLoading } = useQueriedChartConfig({
+  const queryConfig = {
     ...convertV1ChartConfigToV2(
       {
         series: [
@@ -595,7 +622,16 @@ const NodesTable = ({
       },
     ),
     limit: { limit: TABLE_FETCH_LIMIT, offset: 0 },
-  });
+  };
+  const { data, isError, isLoading, isPlaceholderData } = useQueriedChartConfig(
+    queryConfig,
+    {
+      placeholderData: (prev, prevQuery) =>
+        isSameQueryIgnoringDateRange(prevQuery?.queryKey, queryConfig)
+          ? prev
+          : undefined,
+    },
+  );
 
   const getLink = React.useCallback((nodeName: string) => {
     const searchParams = new URLSearchParams(window.location.search);
@@ -637,12 +673,13 @@ const NodesTable = ({
       <Card.Section>
         <div
           ref={nodesContainerRef}
+          className={isPlaceholderData ? 'effect-pulse' : undefined}
           style={{
             height: '300px',
             overflow: 'auto',
           }}
         >
-          {isLoading ? (
+          {isLoading && !data ? (
             <TableLoading />
           ) : isError ? (
             <div className="p-4 text-center text-muted fs-8">
@@ -742,7 +779,7 @@ const NodesTable = ({
   );
 };
 
-const NamespacesTable = ({
+export const NamespacesTable = ({
   dateRange,
   metricSource,
   where,
@@ -753,7 +790,7 @@ const NamespacesTable = ({
 }) => {
   const groupBy = ['k8s.namespace.name'];
 
-  const { data, isError, isLoading } = useQueriedChartConfig({
+  const queryConfig = {
     ...convertV1ChartConfigToV2(
       {
         series: [
@@ -795,7 +832,16 @@ const NamespacesTable = ({
       },
     ),
     limit: { limit: TABLE_FETCH_LIMIT, offset: 0 },
-  });
+  };
+  const { data, isError, isLoading, isPlaceholderData } = useQueriedChartConfig(
+    queryConfig,
+    {
+      placeholderData: (prev, prevQuery) =>
+        isSameQueryIgnoringDateRange(prevQuery?.queryKey, queryConfig)
+          ? prev
+          : undefined,
+    },
+  );
 
   const resourceAttr = metricSource.resourceAttributesExpression;
 
@@ -836,12 +882,13 @@ const NamespacesTable = ({
       <Card.Section>
         <div
           ref={namespacesContainerRef}
+          className={isPlaceholderData ? 'effect-pulse' : undefined}
           style={{
             height: '300px',
             overflow: 'auto',
           }}
         >
-          {isLoading ? (
+          {isLoading && !data ? (
             <TableLoading />
           ) : isError ? (
             <div className="p-4 text-center text-muted fs-8">
