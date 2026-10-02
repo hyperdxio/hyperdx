@@ -26,12 +26,29 @@ import {
 } from '@hyperdx/common-utils/dist/core/metadata';
 
 import { loadSession, saveSession, clearSession } from '@/utils/config';
-import {
+import type {
   AlertThresholdType,
+  DashboardWithoutId,
   MetricTable,
+  SavedSearch,
   Tile,
   UseTextIndex,
 } from '@hyperdx/common-utils/dist/types';
+
+/**
+ * Extract a readable detail string from an error response body.
+ * Handles both plain-text errors and zod-express-middleware's JSON
+ * validation issue arrays.
+ */
+async function formatErrorBody(res: Response): Promise<string> {
+  try {
+    const text = await res.text();
+    if (!text) return '';
+    return `\n${text.length > 2000 ? `${text.slice(0, 2000)}…` : text}`;
+  } catch {
+    return '';
+  }
+}
 
 // ------------------------------------------------------------------
 // API Client (session management + REST calls)
@@ -232,15 +249,39 @@ export class ApiClient {
   }
 
   async getSavedSearches(): Promise<SavedSearchResponse[]> {
-    const res = await this.get('/saved-searches');
-    if (!res.ok) throw new Error(`GET /saved-searches failed: ${res.status}`);
+    // NOTE: the API mounts this router at the singular `/saved-search`
+    // (see packages/api/src/api-app.ts).
+    const res = await this.get('/saved-search');
+    if (!res.ok) throw new Error(`GET /saved-search failed: ${res.status}`);
     return res.json() as Promise<SavedSearchResponse[]>;
+  }
+
+  async createSavedSearch(
+    input: SavedSearchCreateInput,
+  ): Promise<SavedSearchResponse> {
+    const res = await this.post('/saved-search', input);
+    if (!res.ok) {
+      throw new Error(
+        `POST /saved-search failed: ${res.status}${await formatErrorBody(res)}`,
+      );
+    }
+    return res.json() as Promise<SavedSearchResponse>;
   }
 
   async getDashboards(): Promise<DashboardResponse[]> {
     const res = await this.get('/dashboards');
     if (!res.ok) throw new Error(`GET /dashboards failed: ${res.status}`);
     return res.json() as Promise<DashboardResponse[]>;
+  }
+
+  async createDashboard(input: DashboardWithoutId): Promise<DashboardResponse> {
+    const res = await this.post('/dashboards', input);
+    if (!res.ok) {
+      throw new Error(
+        `POST /dashboards failed: ${res.status}${await formatErrorBody(res)}`,
+      );
+    }
+    return res.json() as Promise<DashboardResponse>;
   }
 
   async getAlerts(): Promise<AlertsResponse> {
@@ -486,6 +527,9 @@ interface ConnectionResponse {
   host: string;
   username: string;
 }
+
+/** Body accepted by POST /saved-search (SavedSearchSchema minus the id). */
+export type SavedSearchCreateInput = Omit<SavedSearch, 'id'>;
 
 export interface SavedSearchResponse {
   id: string;
