@@ -1,4 +1,4 @@
-import { ColumnMeta } from '@/clickhouse';
+import { ClickHouseQueryError, ColumnMeta } from '@/clickhouse';
 import { ClickhouseClient } from '@/clickhouse/node';
 import {
   GET_ALL_KEY_VALUES_CHUNK_SIZE,
@@ -10,7 +10,7 @@ import {
 import * as renderChartConfigModule from '@/core/renderChartConfig';
 import { timeFilterExpr } from '@/core/renderChartConfig';
 import { isBuilderChartConfig } from '@/guards';
-import { TextIndexInfoLookup } from '@/queryParser';
+import { KvIndexInfo, TextIndexInfo, TextIndexInfoLookup } from '@/queryParser';
 import { BuilderChartConfigWithDateRange, SourceKind, TSource } from '@/types';
 
 // Mock ClickhouseClient
@@ -2023,6 +2023,105 @@ describe('Metadata', () => {
         expect.stringContaining('Unbounded Map key scan'),
       );
       warn.mockRestore();
+    });
+
+    describe('text index query failures', () => {
+      const dateRange: [Date, Date] = [
+        new Date('2026-05-11T16:00:00Z'),
+        new Date('2026-05-11T17:00:00Z'),
+      ];
+      const getKeys = (md: Metadata) =>
+        md.getMapKeys({
+          databaseName: 'otel',
+          tableName: 'otel_logs',
+          column: 'LogAttributes',
+          connectionId: 'conn-1',
+          dateRange,
+          timestampValueExpression: 'Timestamp',
+        });
+
+      // ClickHouse refuses mergeTreeTextIndex for any user under a row policy
+      // on the table (ClickHouse#119032); the scan respects the policy.
+      const rowPolicyDenied = () =>
+        Promise.reject(
+          new ClickHouseQueryError(
+            'Cannot read from `mergeTreeTextIndex` because a row policy is applied on table otel.otel_logs. (ACCESS_DENIED)',
+            '',
+          ),
+        );
+
+      const buildWithTextIndex = (textIndexInfo: TextIndexInfo) => {
+        const md = new Metadata(mockClickhouseClient, new MetadataCache());
+        jest.spyOn(md, 'getServerVersion').mockResolvedValue([26, 8, 0, 0]);
+        jest
+          .spyOn(md, 'getMapColumnTextIndexes')
+          .mockResolvedValue(new Map([['LogAttributes', textIndexInfo]]));
+        return md;
+      };
+
+      const mockQueries = (onTextIndex: () => Promise<any>) =>
+        (mockClickhouseClient.query as jest.Mock).mockImplementation(
+          ({ query }: any) => {
+            if (query.includes('mergeTreeTextIndex(')) return onTextIndex();
+            if (query.includes('sampledKeys')) {
+              return Promise.resolve({
+                json: () => Promise.resolve({ data: [{ key: 'http.method' }] }),
+              });
+            }
+            return Promise.resolve({
+              json: () => Promise.resolve({ data: [lowCardinalityMapColumn] }),
+            });
+          },
+        );
+
+      const queriesSent = () =>
+        (mockClickhouseClient.query as jest.Mock).mock.calls.map(
+          ([opts]) => opts.query as string,
+        );
+
+      let warn: jest.SpyInstance;
+      beforeEach(() => {
+        warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      });
+      afterEach(() => warn.mockRestore());
+
+      it('falls back to the scan when the key text index query is denied', async () => {
+        const md = buildWithTextIndex({
+          key: { indexName: 'idx_log_attr_key', mapColumn: 'LogAttributes' },
+        });
+        mockQueries(rowPolicyDenied);
+
+        await expect(getKeys(md)).resolves.toEqual(['http.method']);
+        expect(queriesSent().some(q => q.includes('sampledKeys'))).toBe(true);
+      });
+
+      it('falls back to the scan when the kv text index query is denied', async () => {
+        const md = buildWithTextIndex({
+          kv: {
+            columnName: 'LogAttributeItems',
+            indexName: 'idx_log_attr_items',
+            separator: '=',
+          } as KvIndexInfo,
+        });
+        mockQueries(rowPolicyDenied);
+
+        await expect(getKeys(md)).resolves.toEqual(['http.method']);
+        expect(queriesSent().some(q => q.includes('sampledKeys'))).toBe(true);
+      });
+
+      it('returns text index keys without scanning when the index query succeeds', async () => {
+        const md = buildWithTextIndex({
+          key: { indexName: 'idx_log_attr_key', mapColumn: 'LogAttributes' },
+        });
+        mockQueries(() =>
+          Promise.resolve({
+            json: () => Promise.resolve({ data: [{ key: 'from.index' }] }),
+          }),
+        );
+
+        await expect(getKeys(md)).resolves.toEqual(['from.index']);
+        expect(queriesSent().some(q => q.includes('sampledKeys'))).toBe(false);
+      });
     });
 
     it('scans the last 24h when the caller supplies no dateRange', async () => {

@@ -1028,11 +1028,13 @@ export class Metadata {
           return keys;
         }
       } catch (e) {
+        // Fall through rather than return []: ClickHouse refuses
+        // mergeTreeTextIndex under any row policy on the table (ACCESS_DENIED),
+        // and the scan below still works and respects the policy. #3265
         console.warn(
-          'getMapKeys rollup query failed for key text index query',
+          'getMapKeys key text index query failed; falling back to the next strategy',
           e,
         );
-        return [];
       }
     } else if (
       textIndexInfo?.kv?.indexName &&
@@ -1068,11 +1070,11 @@ export class Metadata {
           return keys;
         }
       } catch (e) {
+        // See the key text index catch above.
         console.warn(
-          'getMapKeys rollup query failed for kv text index query',
+          'getMapKeys kv text index query failed; falling back to the next strategy',
           e,
         );
-        return [];
       }
     }
 
