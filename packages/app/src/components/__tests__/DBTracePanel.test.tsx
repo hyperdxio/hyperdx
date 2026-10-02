@@ -286,6 +286,42 @@ describe('DBTracePanel', () => {
       );
     });
 
+    it('stays closed when a late commit brings back a span', () => {
+      renderPanel();
+      fireEvent.click(screen.getByText('select span-b'));
+      fireEvent.click(screen.getByLabelText('Close span details'));
+
+      act(() =>
+        mockCommitUrl({
+          id: 'span-b',
+          type: SourceKind.Trace,
+          aliasWith: [],
+          traceId: 'trace-123',
+        }),
+      );
+
+      expect(screen.queryByTestId('overview-row-id')).not.toBeInTheDocument();
+      expect(mockSetEventRowWhere).toHaveBeenLastCalledWith(null);
+    });
+
+    it('restores a URL selection on mount only for its own trace', () => {
+      mockEventRowWhere = {
+        id: 'span-from-url',
+        type: SourceKind.Trace,
+        aliasWith: [],
+        traceId: 'trace-123',
+      };
+      const { unmount } = renderPanel();
+      expect(screen.getByTestId('overview-row-id')).toHaveTextContent(
+        'span-from-url',
+      );
+      unmount();
+
+      mockEventRowWhere = { ...mockEventRowWhere, traceId: 'trace-other' };
+      renderPanel();
+      expect(screen.queryByTestId('overview-row-id')).not.toBeInTheDocument();
+    });
+
     it('shows the span a URL selects when the panel moves to that trace', () => {
       const TraceSwitcher = () => {
         const [traceId, setTraceId] = React.useState('trace-123');
@@ -305,16 +341,17 @@ describe('DBTracePanel', () => {
       renderWithMantine(<TraceSwitcher />);
       fireEvent.click(screen.getByText('select span-b'));
 
-      // A link navigation updates the URL and the trace in the same render.
-      act(() => {
+      // The URL and the trace come from different sources and land in
+      // separate renders.
+      act(() =>
         mockCommitUrl({
           id: 'span-x',
           type: SourceKind.Trace,
           aliasWith: [],
           traceId: 'trace-456',
-        });
-        fireEvent.click(screen.getByText('switch'));
-      });
+        }),
+      );
+      fireEvent.click(screen.getByText('switch'));
 
       expect(screen.getByTestId('overview-row-id')).toHaveTextContent('span-x');
       expect(mockSetEventRowWhere).not.toHaveBeenCalledWith(null);

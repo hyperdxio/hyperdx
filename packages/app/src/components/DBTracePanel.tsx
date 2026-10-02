@@ -303,24 +303,19 @@ export default function DBTracePanel({
     eventRowWhereParser,
   );
 
-  // nuqs applies URL writes out of order (#3255), so state owns the selection
-  // and the URL only mirrors it.
-  const [selection, setSelection] = useState<EventRowWhere | null>(
-    () => urlEventRowWhere,
-  );
+  // nuqs applies URL writes out of order (#3255), so a choice made here wins over the URL.
+  const [selection, setSelection] = useState<EventRowWhere | null>();
 
   const [selectionTraceId, setSelectionTraceId] = useState(traceId);
   if (selectionTraceId !== traceId) {
     setSelectionTraceId(traceId);
-    setSelection(prev => (prev?.traceId === traceId ? prev : null));
+    setSelection(prev => (prev?.traceId === traceId ? prev : undefined));
   }
 
+  const effectiveSelection =
+    selection === undefined ? urlEventRowWhere : selection;
   const selectedSpan =
-    selection?.traceId === traceId
-      ? selection
-      : urlEventRowWhere?.traceId === traceId
-        ? urlEventRowWhere
-        : null;
+    effectiveSelection?.traceId === traceId ? effectiveSelection : null;
 
   const selectSpan = useCallback(
     (where: { id: string; type: string; aliasWith: WithClause[] }) => {
@@ -341,10 +336,25 @@ export default function DBTracePanel({
   }, []);
 
   useEffect(() => {
-    if (selectedSpan != null && urlEventRowWhere?.id !== selectedSpan.id) {
-      void setUrlEventRowWhere(selectedSpan);
+    // A URL value for another trace is a navigation in flight, not drift.
+    if (
+      selection === undefined ||
+      (urlEventRowWhere != null && urlEventRowWhere.traceId !== traceId)
+    ) {
+      return;
     }
-  }, [selectedSpan, urlEventRowWhere, setUrlEventRowWhere]);
+    if (selection === null) {
+      if (urlEventRowWhere != null) {
+        void setUrlEventRowWhere(null);
+      }
+    } else if (
+      urlEventRowWhere?.id !== selection.id ||
+      urlEventRowWhere.type !== selection.type ||
+      urlEventRowWhere.traceId !== selection.traceId
+    ) {
+      void setUrlEventRowWhere(selection);
+    }
+  }, [selection, urlEventRowWhere, traceId, setUrlEventRowWhere]);
 
   const {
     control: traceIdControl,
@@ -369,16 +379,6 @@ export default function DBTracePanel({
     }
   }, [parentSourceData, traceIdSetValue]);
 
-  // Reset highlighted row when trace ID changes
-  // otherwise we'll show stale span details
-  useEffect(() => {
-    if (urlEventRowWhere != null && urlEventRowWhere.traceId !== traceId) {
-      void setUrlEventRowWhere(prev =>
-        prev != null && prev.traceId !== traceId ? null : prev,
-      );
-    }
-  }, [urlEventRowWhere, traceId, setUrlEventRowWhere]);
-
   const [isSourceSchemaPreviewOpen, setIsSourceSchemaPreviewOpen] =
     useState(false);
 
@@ -395,8 +395,7 @@ export default function DBTracePanel({
 
   const handleCloseSpanDetails = useCallback(() => {
     setSelection(null);
-    void setUrlEventRowWhere(null);
-  }, [setUrlEventRowWhere]);
+  }, []);
 
   const selectedSpanSource = useMemo(() => {
     if (!selectedSpan) return null;
