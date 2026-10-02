@@ -273,6 +273,67 @@ describe('renderChartConfig', () => {
     expect(actual).toMatchSnapshot();
   });
 
+  describe('count_distinct on a gauge metric', () => {
+    const renderGaugeSelect = async (select: {
+      aggFn?: string;
+      valueExpression: string;
+    }) =>
+      parameterizedQueryToSql(
+        await renderChartConfig(
+          {
+            ...gaugeConfiguration,
+            select: [
+              {
+                aggFn: 'count_distinct',
+                metricName: 'argocd_app_info',
+                metricType: MetricsDataType.Gauge,
+                ...select,
+              },
+            ],
+          },
+          mockMetadata,
+          querySettings,
+        ),
+      );
+
+    it('counts the distinct values of an attribute expression', async () => {
+      const sql = await renderGaugeSelect({
+        valueExpression: "Attributes['name']",
+      });
+      expect(sql).toContain("count(DISTINCT Attributes['name'])");
+      expect(sql).not.toContain('count(DISTINCT LastValue)');
+    });
+
+    it('still counts the bucketed metric value for the default Value expression', async () => {
+      const sql = await renderGaugeSelect({ valueExpression: 'Value' });
+      expect(sql).toContain('count(DISTINCT LastValue)');
+    });
+
+    it('still counts the bucketed metric value for an expression over Value', async () => {
+      const sql = await renderGaugeSelect({ valueExpression: 'Value * 100' });
+      expect(sql).toContain('count(DISTINCT LastValue)');
+      expect(sql).not.toContain('Value * 100');
+    });
+
+    it('counts an attribute whose key is Value', async () => {
+      const sql = await renderGaugeSelect({
+        valueExpression: "Attributes['Value']",
+      });
+      expect(sql).toContain("count(DISTINCT Attributes['Value'])");
+    });
+
+    it('keeps other aggregations on the bucketed metric value', async () => {
+      const sql = await renderGaugeSelect({
+        aggFn: 'max',
+        valueExpression: "Attributes['name']",
+      });
+      expect(sql).toMatch(
+        /SELECT max\(\s*toFloat64OrDefault\(toString\(LastValue\)\)/,
+      );
+      expect(sql).not.toContain("Attributes['name']");
+    });
+  });
+
   it('should generate sql for a single sum metric', async () => {
     const config: ChartConfigWithOptDateRange = {
       displayType: DisplayType.Line,
