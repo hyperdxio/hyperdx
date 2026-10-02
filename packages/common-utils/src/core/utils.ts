@@ -1685,7 +1685,7 @@ export function validateRawSqlChartConfig(
   }
 
   // Track macros this function has already described with an error, to avoid repetition.
-  const reportedMacros = new Set<MacroName>();
+  const reportedMacros = new Set<MacroExpansionError['macro']>();
   const pushError = (message: string, macro?: MacroName) => {
     errors.push(message);
     if (macro != null) reportedMacros.add(macro);

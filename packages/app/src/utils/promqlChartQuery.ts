@@ -6,6 +6,7 @@ import {
   reducePromqlSamples,
 } from '@hyperdx/common-utils/dist/core/promql';
 import { renderPromqlSeriesNames } from '@hyperdx/common-utils/dist/core/seriesNameTemplate';
+import { substitutePromqlChartConfigTemplates } from '@hyperdx/common-utils/dist/macros';
 import {
   DisplayType,
   PrometheusMatrixResult,
@@ -13,7 +14,6 @@ import {
   PromqlReducer,
   PromqlSeries,
 } from '@hyperdx/common-utils/dist/types';
-import { substitutePromqlChartConfigVariables } from '@hyperdx/common-utils/dist/variables';
 
 import { prometheusApi, PrometheusInstantQueryResponse } from '@/api';
 import { MAX_TABLE_ROWS } from '@/HDXMultiSeriesTableChart';
@@ -261,8 +261,11 @@ export async function queryPromqlChartConfig(
   dateRange: [Date, Date],
   signal: AbortSignal,
 ): Promise<ChartQueryResult> {
-  // Expand dashboard variables in the expressions before sending to Prometheus.
-  const substituted = substitutePromqlChartConfigVariables(config);
+  // Expand dashboard variables and macros before sending to Prometheus.
+  const substituted = substitutePromqlChartConfigTemplates({
+    ...config,
+    dateRange,
+  });
 
   const results = await Promise.all(
     getQueriedPromqlSeries(substituted).map(series =>

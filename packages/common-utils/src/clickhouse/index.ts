@@ -335,6 +335,18 @@ export function isMissingColumnError(error: unknown): boolean {
   );
 }
 
+/** ClickHouse ACCESS_DENIED (497), e.g. a row policy blocking mergeTreeTextIndex. */
+export function isAccessDeniedError(error: unknown): boolean {
+  const cause = error instanceof Error ? error.cause : undefined;
+  if (cause != null && typeof cause === 'object') {
+    const type = 'type' in cause ? cause.type : undefined;
+    const code = 'code' in cause ? cause.code : undefined;
+    if (type === 'ACCESS_DENIED' || String(code) === '497') return true;
+  }
+  const msg = error instanceof Error ? error.message : String(error ?? '');
+  return /ACCESS_DENIED|Code: 497\b|row policy is applied/i.test(msg);
+}
+
 /**
  * Returns columns referenced in given expression, where the expression is a comma-separated list of SQL expressions
  * E.g. "id, toStartOfInterval(timestamp, toIntervalDay(3)), user_id, json.a.b".
