@@ -6,6 +6,72 @@ PR — keep the `hyperdx-release-notes` comment marker intact when editing so yo
 edits survive regeneration. Per-package detail lives in each
 `packages/*/CHANGELOG.md`.
 
+## v2.41.0 — 2026-10-02
+
+<!-- hyperdx-release-notes version=2.41.0 inputs=57fa7d195a19 -->
+
+**Query attribution and row-policy autocomplete**
+
+Every ClickHouse query HyperDX runs is now tagged with the part of the product
+that issued it, so a row in `system.query_log` tells you which dashboard, tile,
+search or alert put that load on your cluster. This release also restores Map
+attribute autocomplete on tables guarded by a ClickHouse row policy, where the
+search bar and the chart, alert and dashboard-filter editors had stopped
+suggesting any keys at all. Key discovery no longer gives up when its text index
+lookup is refused, and instead reads the keys it can see through the policy. The
+MCP `clickstack_describe_source` tool also gets a longer deadline and hands back
+whatever it gathered when it runs out of time, rather than failing outright.
+
+### ✨ New Features
+
+- **Attribute ClickHouse queries to the dashboard, search or alert behind
+  them**: every query HyperDX issues now carries a small JSON `log_comment` and
+  a `query_id` beginning with `hdx-`, naming the surface that asked — a
+  dashboard and tile, a saved search, an alert, an MCP tool, the chart explorer,
+  session replay or a field lookup — along with the source id and, from the
+  server, the trace id of the request. Group `system.query_log` by
+  `JSONExtractString(log_comment, 'surface')` to see where your read load
+  actually goes, or read the `query_id` straight out of `system.processes` to
+  name a query while it is still running, with no JSON parsing needed. The
+  exception is the probes that skip settings processing — the `system.settings`,
+  server version and Cloud-detection checks, and the onboarding connection test
+  — which get a `query_id` but an empty `log_comment` (#3155, thanks @tommyzli!).
+
+### 🐛 Bug Fixes
+
+- **Map key autocomplete works again on tables with a row policy**: ClickHouse
+  refuses the `mergeTreeTextIndex` lookup with `ACCESS_DENIED` on any table
+  carrying a row policy, and key discovery treated that as "no keys" rather than
+  trying anything else, so autocomplete offered nothing for `Map` columns such
+  as `ResourceAttributes` on those tables. A failed text index read now falls
+  through to the remaining strategies, reading keys from the policy-filtered
+  source table and skipping the key rollup table the policy does not cover
+  (#3268).
+- **Heatmap hover follows the cell under the cursor**: hovering a heatmap now
+  highlights and describes the cell you are actually pointing at, instead of a
+  neighbouring one (#3273, thanks @pulpdrew!).
+- **Consistent source kind labels on the Sources page**: the source form's data
+  type options and the sources list now read Logs, Traces, OTel metrics,
+  Sessions and PromQL, so the names match between the two and "OTel" is spelt
+  the same way everywhere (#3257, thanks @teeohhem!).
+- **`clickstack_describe_source` returns partial results instead of timing
+  out**: the MCP describe deadline is now 30s, matching the other MCP query
+  tools, and hitting it no longer throws away the work. The tool returns the
+  schema and samples it managed to gather, marked `partial` with the
+  `skippedStages` it had to drop, and only reports a timeout error when the
+  column schema never loaded at all (#3259).
+
+<!-- hyperdx-package-list -->
+
+### 📦 Package changelogs
+
+- `@hyperdx/api` 2.40.0 → 2.41.0 — [changelog](https://github.com/hyperdxio/hyperdx/blob/main/packages/api/CHANGELOG.md#2410)
+- `@hyperdx/app` 2.40.0 → 2.41.0 — [changelog](https://github.com/hyperdxio/hyperdx/blob/main/packages/app/CHANGELOG.md#2410)
+- `@hyperdx/common-utils` 0.30.0 → 0.31.0 — [changelog](https://github.com/hyperdxio/hyperdx/blob/main/packages/common-utils/CHANGELOG.md#0310)
+- `@hyperdx/otel-collector` 2.40.0 → 2.41.0 — [changelog](https://github.com/hyperdxio/hyperdx/blob/main/packages/otel-collector/CHANGELOG.md#2410)
+
+<!-- /hyperdx-package-list -->
+
 ## v2.40.0 — 2026-10-01
 
 <!-- hyperdx-release-notes version=2.40.0 inputs=b95c34cd6847 -->
