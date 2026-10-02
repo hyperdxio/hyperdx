@@ -312,19 +312,21 @@ export default function DBTracePanel({
   const [selectionTraceId, setSelectionTraceId] = useState(traceId);
   if (selectionTraceId !== traceId) {
     setSelectionTraceId(traceId);
-    setSelection(null);
+    setSelection(prev => (prev?.traceId === traceId ? prev : null));
   }
 
   const selectedSpan =
-    selection != null && selection.traceId === traceId ? selection : null;
+    selection?.traceId === traceId
+      ? selection
+      : urlEventRowWhere?.traceId === traceId
+        ? urlEventRowWhere
+        : null;
 
   const selectSpan = useCallback(
     (where: { id: string; type: string; aliasWith: WithClause[] }) => {
-      const next = { ...where, traceId };
-      setSelection(next);
-      void setUrlEventRowWhere(next);
+      setSelection({ ...where, traceId });
     },
-    [setUrlEventRowWhere, traceId],
+    [traceId],
   );
 
   useEffect(() => {
@@ -339,16 +341,10 @@ export default function DBTracePanel({
   }, []);
 
   useEffect(() => {
-    if (selectedSpan == null) {
-      if (urlEventRowWhere?.traceId === traceId) {
-        void setUrlEventRowWhere(null);
-      }
-      return;
-    }
-    if (urlEventRowWhere?.id !== selectedSpan.id) {
+    if (selectedSpan != null && urlEventRowWhere?.id !== selectedSpan.id) {
       void setUrlEventRowWhere(selectedSpan);
     }
-  }, [selectedSpan, urlEventRowWhere, traceId, setUrlEventRowWhere]);
+  }, [selectedSpan, urlEventRowWhere, setUrlEventRowWhere]);
 
   const {
     control: traceIdControl,

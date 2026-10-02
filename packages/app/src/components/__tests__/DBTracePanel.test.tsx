@@ -1,6 +1,6 @@
 import React from 'react';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
-import { fireEvent, screen } from '@testing-library/react';
+import { act, fireEvent, screen } from '@testing-library/react';
 
 import { RowSidePanelContext } from '@/components/DBRowSidePanel';
 import DBTracePanel from '@/components/DBTracePanel';
@@ -10,15 +10,22 @@ let mockSources: Record<string, any> = {};
 // so tests can render with or without a selected span. Prefixed with `mock` so
 // the hoisted jest.mock factory may reference it.
 let mockEventRowWhere: any = null;
+const mockSetEventRowWhere = jest.fn();
+// Lets a test land a URL value the way a late nuqs commit would.
+let mockCommitUrl: (value: any) => void = () => {};
 
 jest.mock('nuqs', () => ({
-  useQueryState: () => [mockEventRowWhere, jest.fn()],
-}));
-
-jest.mock('@/utils/queryParsers', () => ({
-  parseAsJsonEncoded: () => ({
-    parse: (value: string) => JSON.parse(decodeURIComponent(value)),
-  }),
+  ...jest.requireActual('nuqs'),
+  useQueryState: () => {
+    const { useCallback, useState } = jest.requireActual('react');
+    const [value, setValue] = useState(() => mockEventRowWhere);
+    mockCommitUrl = setValue;
+    const set = useCallback((next: any) => {
+      mockSetEventRowWhere(next);
+      setValue(next);
+    }, []);
+    return [value, set];
+  },
 }));
 
 jest.mock('@/source', () => ({
@@ -120,6 +127,7 @@ jest.mock('../SourceSchemaPreview', () => ({
 describe('DBTracePanel', () => {
   beforeEach(() => {
     mockEventRowWhere = null;
+    mockSetEventRowWhere.mockClear();
     mockSources = {
       'trace-source': {
         id: 'trace-source',
@@ -244,6 +252,9 @@ describe('DBTracePanel', () => {
 
       expect(screen.getByTestId('overview-row-id')).toHaveTextContent('span-b');
       expect(screen.getByTestId('highlighted-row')).toHaveTextContent('span-b');
+      expect(mockSetEventRowWhere).toHaveBeenLastCalledWith(
+        expect.objectContaining({ id: 'span-b', traceId: 'trace-123' }),
+      );
     });
 
     it('switches to the newly clicked span', () => {
@@ -255,20 +266,58 @@ describe('DBTracePanel', () => {
       expect(screen.getByTestId('overview-row-id')).toHaveTextContent('span-b');
     });
 
-    it('keeps the clicked span when the persisted value changes underneath', () => {
+    it('keeps the clicked span and corrects the URL after a late commit', () => {
       renderPanel();
       fireEvent.click(screen.getByText('select span-b'));
+      mockSetEventRowWhere.mockClear();
 
-      mockEventRowWhere = {
-        id: 'span-a',
-        type: SourceKind.Trace,
-        aliasWith: [],
-        traceId: 'trace-123',
-      };
-      fireEvent.click(screen.getByTestId('trace-detail-layout-toggle'));
+      act(() =>
+        mockCommitUrl({
+          id: 'span-a',
+          type: SourceKind.Trace,
+          aliasWith: [],
+          traceId: 'trace-123',
+        }),
+      );
 
       expect(screen.getByTestId('overview-row-id')).toHaveTextContent('span-b');
-      fireEvent.click(screen.getByTestId('trace-detail-layout-toggle'));
+      expect(mockSetEventRowWhere).toHaveBeenLastCalledWith(
+        expect.objectContaining({ id: 'span-b' }),
+      );
+    });
+
+    it('shows the span a URL selects when the panel moves to that trace', () => {
+      const TraceSwitcher = () => {
+        const [traceId, setTraceId] = React.useState('trace-123');
+        return (
+          <>
+            <button onClick={() => setTraceId('trace-456')}>switch</button>
+            <DBTracePanel
+              traceId={traceId}
+              parentSourceId="trace-source"
+              childSourceId="log-source"
+              dateRange={[new Date(0), new Date(1000)]}
+              focusDate={new Date(500)}
+            />
+          </>
+        );
+      };
+      renderWithMantine(<TraceSwitcher />);
+      fireEvent.click(screen.getByText('select span-b'));
+
+      // A link navigation updates the URL and the trace in the same render.
+      act(() => {
+        mockCommitUrl({
+          id: 'span-x',
+          type: SourceKind.Trace,
+          aliasWith: [],
+          traceId: 'trace-456',
+        });
+        fireEvent.click(screen.getByText('switch'));
+      });
+
+      expect(screen.getByTestId('overview-row-id')).toHaveTextContent('span-x');
+      expect(mockSetEventRowWhere).not.toHaveBeenCalledWith(null);
     });
 
     it('follows the URL on a real back/forward navigation', () => {
