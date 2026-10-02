@@ -1812,6 +1812,16 @@ export type PrometheusVectorResult = {
   value: [number, string];
 };
 
+/** The top-level response envelope for a Prometheus range query (`/api/v1/query_range`). */
+export type PrometheusQueryRangeResponse = {
+  status: 'success' | 'error';
+  data?: {
+    resultType: 'matrix';
+    result: PrometheusMatrixResult[];
+  };
+  error?: string;
+};
+
 /** How a range query's samples are client-side aggregated to a single value. */
 export enum PromqlReducer {
   LastNotNull = 'lastNotNull',

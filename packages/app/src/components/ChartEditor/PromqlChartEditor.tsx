@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   Control,
   useFieldArray,
@@ -25,7 +25,7 @@ import { TileAlertEditor } from '@/components/DBEditTimeChartForm/TileAlertEdito
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { IS_LOCAL_MODE } from '@/config';
 import { usePromqlMetricNames } from '@/hooks/usePromqlMetadata';
-import { useSource, useSources } from '@/source';
+import { useSource } from '@/source';
 import { DEFAULT_TILE_ALERT } from '@/utils/alerts';
 
 import PromqlExpressionEditor from './PromqlExpressionEditor';
@@ -97,16 +97,6 @@ export default function PromqlChartEditor({
   const displayType = useWatch({ control, name: 'displayType' });
   const chartName = useWatch({ control, name: 'name' });
   const { data: source } = useSource({ id: sourceId });
-  const { data: sources } = useSources();
-
-  useEffect(() => {
-    if (!sourceId && sources) {
-      const firstPromqlSource = sources.find(s => s.kind === SourceKind.Promql);
-      if (firstPromqlSource) {
-        setValue('source', firstPromqlSource.id);
-      }
-    }
-  }, [sourceId, sources, setValue]);
 
   // The form can still hold a non-PromQL source right after switching a tile
   // into PromQL mode (the picker above only restricts future selections), and
@@ -114,12 +104,10 @@ export default function PromqlChartEditor({
   // against any other source's table.
   const promqlSource = source?.kind === SourceKind.Promql ? source : undefined;
 
-  const tableName = promqlSource?.from.tableName;
-
   const { data: metricNames } = usePromqlMetricNames(
     promqlSource?.connection,
     promqlSource?.from.databaseName,
-    tableName,
+    promqlSource?.from.tableName,
   );
 
   const displayTypeSupportsMultiExpression =
@@ -222,7 +210,7 @@ export default function PromqlChartEditor({
               ? additionalAlertWarnings.join(' ')
               : undefined
           }
-          tooltip="The threshold will be evaluated against the last value returned by the last PromQL expression"
+          tooltip="The threshold is checked against the last PromQL expression, evaluated at the end of each alert interval."
         />
       )}
     </>

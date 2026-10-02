@@ -309,6 +309,7 @@ export default function RawSqlChartEditor({
                 variant="subtle"
                 data-testid="alert-button"
                 size="sm"
+                color={'gray'}
                 onClick={() =>
                   setValue('alert', {
                     ...DEFAULT_TILE_ALERT,

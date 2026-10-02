@@ -48,7 +48,7 @@ import {
   SavedChartConfig,
   SourceKind,
 } from '@hyperdx/common-utils/dist/types';
-import { substitutePromqlChartConfigVariables } from '@hyperdx/common-utils/dist/variables';
+import { substituteVariables } from '@hyperdx/common-utils/dist/variables';
 import * as fns from 'date-fns';
 import { isString, pick } from 'lodash';
 import { ObjectId } from 'mongoose';
@@ -997,18 +997,16 @@ export async function evaluatePromqlAlert({
   // for the window [T, T+step) to happen at T+step, using the freshest data.
   const startSec = dateRange[0].getTime() / 1000 + stepSec;
 
-  // Resolve the expression to evaluate. getQueriedPromqlSeries handles
-  // both the bare-string shape (tiles saved before multi-expression support)
-  // and the array shape, dropping blank rows and selecting only the first
-  // expression for non-time-series display types (e.g. Number).  Alerts
-  // always target the LAST queried expression, mirroring how SQL builder
-  // alerts target the last series.
-  const resolvedConfig =
-    variables && variables.length > 0
-      ? substitutePromqlChartConfigVariables({ ...savedConfig, variables })
-      : savedConfig;
+  // Extract the last PromQL expression and substitute any dashboard variables.
+  const rawExpression =
+    getQueriedPromqlSeries(savedConfig).at(-1)?.expression ?? '';
   const promqlExpression =
-    getQueriedPromqlSeries(resolvedConfig).at(-1)?.expression ?? '';
+    variables && variables.length > 0
+      ? substituteVariables(rawExpression, {
+          variables,
+          inputLanguage: 'promql',
+        })
+      : rawExpression;
 
   // Shared helper for querying a Prometheus-compatible HTTP endpoint.
   async function queryPrometheusHttp(
@@ -1491,6 +1489,15 @@ export const processAlert = async (
       }
     };
 
+    // Shared variables populated by whichever path runs (PromQL or SQL)
+    // and consumed by the shared tail below.
+    let sharedExpectedBuckets: Date[] = [];
+    let checkDataByBucket = new Map<
+      number,
+      { groupKey: string; value: number; attributes: Record<string, string> }[]
+    >();
+    let runAutoResolveForAll = false;
+
     if (isPromQL) {
       const savedConfig =
         details.taskType === AlertTaskType.INLINE
@@ -1630,198 +1637,26 @@ export const processAlert = async (
           }
         }
       }
-
-      for (const bucketStart of expectedBuckets) {
-        // Prometheus query_range aligns response timestamps to step boundaries,
-        // so we can do an exact ms lookup rather than a tolerance scan.
-        const seriesForBucket = bucketSeriesValues.get(bucketStart.getTime());
-
-        if (!seriesForBucket || seriesForBucket.size === 0) {
-          alertEvaluationsCounter.add(1, { outcome: 'empty_bucket' });
-          logger.info(
-            { alertId: alert.id, bucketStart },
-            'No PromQL data for time bucket',
-          );
-
-          const zeroValueIsAlert = doesExceedThreshold(alert, 0);
-
-          const hasAlertsInPreviousMap = previousMap
-            .values()
-            .some(
-              h =>
-                h.state === AlertState.ALERT || h.state === AlertState.PENDING,
-            );
-
-          if (zeroValueIsAlert) {
-            const history = getOrCreateHistory('');
-            history.lastValues.push({ count: 0, startTime: bucketStart });
-            history.counts += 1;
-            if (shouldFireBasedOnConsecutiveWindows('')) {
-              history.state = AlertState.ALERT;
-              history.fired = true;
-              latestAlertContext.set('', {
-                value: 0,
-                attributes: {},
-                startTime: bucketStart,
-              });
-            } else {
-              history.state = AlertState.PENDING;
-              history.fired =
-                previousMap.get(computeHistoryMapKey(alert.id, ''))?.fired ===
-                true;
-            }
-          } else if (!hasGroupBy || !hasAlertsInPreviousMap) {
-            const history = getOrCreateHistory('');
-            history.lastValues.push({ count: 0, startTime: bucketStart });
-          }
-          continue;
-        }
-
-        const bucketEvaluations = new Map<
-          string,
-          {
-            value: number;
-            attributes: Record<string, string>;
-            exceeds: boolean;
-          }
-        >();
-        for (const [
-          groupKey,
-          { value, attributes },
-        ] of seriesForBucket.entries()) {
-          const exceeds = doesExceedThreshold(alert, value);
-          const existing = bucketEvaluations.get(groupKey);
-          if (!existing || (!existing.exceeds && exceeds)) {
-            bucketEvaluations.set(groupKey, { value, attributes, exceeds });
-          }
-        }
-
-        for (const [groupKey, evaluation] of bucketEvaluations.entries()) {
-          const history = getOrCreateHistory(groupKey);
-
-          if (evaluation.exceeds) {
-            history.counts += 1;
-            if (shouldFireBasedOnConsecutiveWindows(groupKey)) {
-              history.state = AlertState.ALERT;
-              history.fired = true;
-              latestAlertContext.set(groupKey, {
-                value: evaluation.value,
-                attributes: evaluation.attributes,
-                startTime: bucketStart,
-              });
-            } else {
-              history.state = AlertState.PENDING;
-              history.fired =
-                previousMap.get(computeHistoryMapKey(alert.id, groupKey))
-                  ?.fired === true;
-            }
-          } else {
-            history.state = AlertState.OK;
-            history.counts = 0;
-          }
-          history.lastValues.push({
-            count: evaluation.value,
-            startTime: bucketStart,
-          });
-        }
-      }
-
-      // Auto-resolve: groups that were alerting/pending but absent from the newest bucket.
-      // PromQL always stores per-series history keyed by alertId||{labels},
-      // regardless of hasGroupBy, so we always run this loop for PromQL alerts.
-      const lastExpectedBucket = expectedBuckets[expectedBuckets.length - 1];
-      if (lastExpectedBucket) {
-        const groupsToCheck = new Set<string>();
-        if (previousMap) {
-          for (const previousKey of previousMap.keys()) {
-            groupsToCheck.add(extractGroupKeyFromMapKey(previousKey, alert.id));
-          }
-        }
-        for (const groupKey of histories.keys()) {
-          groupsToCheck.add(groupKey);
-        }
-
-        for (const groupKey of groupsToCheck) {
-          const history = histories.get(groupKey);
-          const previousHistory = previousMap?.get(
-            computeHistoryMapKey(alert.id, groupKey),
-          );
-
-          const lastEvaluated =
-            history?.lastValues[history.lastValues.length - 1];
-          const isMissingFromLastBucket =
-            !lastEvaluated ||
-            lastEvaluated.startTime.getTime() !== lastExpectedBucket.getTime();
-
-          const wasAlertingOrPending =
-            previousHistory?.state === AlertState.ALERT ||
-            previousHistory?.state === AlertState.PENDING ||
-            history?.state === AlertState.ALERT ||
-            history?.state === AlertState.PENDING;
-
-          if (
-            isMissingFromLastBucket &&
-            wasAlertingOrPending &&
-            !doesExceedThreshold(alert, 0)
-          ) {
-            const h = getOrCreateHistory(groupKey);
-            h.lastValues.push({
-              count: 0,
-              startTime: lastExpectedBucket,
-            });
-            h.state = AlertState.OK;
-            h.counts = 0;
-            latestAlertContext.delete(groupKey);
-          }
-        }
-      }
-
-      if (histories.size === 0) {
-        getOrCreateHistory('');
-      }
-
-      // Send notifications for state transitions
-      for (const [groupKey, history] of histories.entries()) {
-        const previousKey = computeHistoryMapKey(alert.id, groupKey);
-        let groupPrevious = previousMap.get(previousKey);
-
-        const hitAlertThisRun = latestAlertContext.has(groupKey);
-        if (hitAlertThisRun) {
-          const context = latestAlertContext.get(groupKey);
-          if (context) {
-            await trySendNotification({
-              state: AlertState.ALERT,
-              group: groupKey,
-              totalCount: context.value,
-              startTime: context.startTime,
-              attributes: context.attributes,
-            });
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-            groupPrevious = {
-              ...(groupPrevious ?? {}),
-              state: AlertState.ALERT,
-              fired: true,
-            } as AggregatedAlertHistory;
-          }
-        }
-
-        await sendNotificationIfResolved(groupPrevious, history, groupKey);
-      }
-
-      flushNotificationTimings();
-      const historyRecords = Array.from(histories.values());
-      for (const record of historyRecords) {
-        record.analytics = evaluationAnalytics;
-      }
-      await alertProvider.updateAlertState(
-        alert.id,
-        historyRecords,
-        executionErrors,
-        dateRange,
+      // Normalise into the shared bucket-row format used by the state machine below.
+      // Each bucket maps to a list of { groupKey, value, attributes } rows.
+      checkDataByBucket = new Map(
+        Array.from(bucketSeriesValues.entries()).map(([bucketMs, seriesMap]) => [
+          bucketMs,
+          Array.from(
+            seriesMap.entries(),
+          ).map(([groupKey, { value, attributes }]) => ({
+            groupKey,
+            value,
+            attributes,
+          })),
+        ]),
       );
-      return;
+      sharedExpectedBuckets = expectedBuckets;
+      // PromQL alerts always behave as grouped (every label-set is a distinct group).
+      runAutoResolveForAll = true;
     }
 
+    if (!isPromQL) {
     const chartConfig = getChartConfigFromAlert(
       details,
       connection.id,
@@ -1863,6 +1698,7 @@ export const processAlert = async (
         );
         if (withClauses) {
           chartConfig.with = withClauses;
+          aliasWithClauses = withClauses;
         }
       } catch (e) {
         logger.warn(
@@ -2033,7 +1869,7 @@ export const processAlert = async (
     }
 
     // Standard time-series alert evaluation (Line/StackedBar charts).
-    const expectedBuckets = timeBucketByGranularity(
+    const sqlExpectedBuckets = timeBucketByGranularity(
       dateRange[0],
       dateRange[1],
       `${windowSizeInMins} minute`,
@@ -2042,51 +1878,66 @@ export const processAlert = async (
     // earlier evaluation ticks were missed (job delay, failed evaluations).
     evaluationAnalytics.backfilledBuckets = Math.max(
       0,
-      expectedBuckets.length - 1,
+      sqlExpectedBuckets.length - 1,
     );
 
-    // Group data by time bucket (grouped alerts may have multiple entries per time bucket)
-    const checkDataByBucket = new Map<
+    // Normalise SQL rows into the shared bucket-row format:
+    // Map<bucketMs, { groupKey, value, attributes }[]>
+    const sqlBucketRows = new Map<
       number,
-      Record<string, string | number>[]
+      { groupKey: string; value: number; attributes: Record<string, string> }[]
     >();
-
     for (const checkData of checksData.data) {
       const bucketStart = new Date(checkData[meta.timestampColumnName]);
-      if (!checkDataByBucket.has(bucketStart.getTime())) {
-        checkDataByBucket.set(bucketStart.getTime(), []);
-      }
-
-      checkDataByBucket.get(bucketStart.getTime())!.push(checkData);
+      const { value, extraFields } = parseAlertData(checkData, meta);
+      if (value == null) continue; // skip NULL (missing denominator, empty ratio, etc.)
+      const groupKey = hasGroupBy
+        ? extraFields.map(([k, v]) => `${k}:${v}`).join(', ')
+        : '';
+      const attributes = hasGroupBy ? Object.fromEntries(extraFields) : {};
+      const bucketMs = bucketStart.getTime();
+      if (!sqlBucketRows.has(bucketMs)) sqlBucketRows.set(bucketMs, []);
+      sqlBucketRows.get(bucketMs)!.push({ groupKey, value, attributes });
     }
 
-    for (const bucketStart of expectedBuckets) {
-      const dataForBucket = checkDataByBucket.get(bucketStart.getTime());
+    checkDataByBucket = sqlBucketRows;
+    sharedExpectedBuckets = sqlExpectedBuckets;
+    runAutoResolveForAll = false; // SQL grouped alerts already guard this with hasGroupBy
+    }
 
-      // Handle case where no data is available for this bucket
-      const bucketHasData = dataForBucket && dataForBucket.length > 0;
-      if (!bucketHasData) {
+    // ─── Shared tail: bucket state machine + auto-resolve + notifications ───
+    //
+    // Both paths (PromQL and SQL) produce:
+    //   sharedExpectedBuckets: Date[]
+    //   checkDataByBucket: Map<bucketMs, {groupKey, value, attributes}[]>
+    //   runAutoResolveForAll: boolean
+    //
+    // Everything from here to updateAlertState runs exactly once regardless of
+    // which path populated the data above.
+
+    for (const bucketStart of sharedExpectedBuckets) {
+      const rowsForBucket = checkDataByBucket.get(bucketStart.getTime()) ?? [];
+
+      if (rowsForBucket.length === 0) {
         alertEvaluationsCounter.add(1, { outcome: 'empty_bucket' });
         logger.info(
           { alertId: alert.id, bucketStart },
-          'No data returned from ClickHouse for time bucket',
+          'No data for time bucket',
         );
 
         const zeroValueIsAlert = doesExceedThreshold(alert, 0);
-
         const hasAlertsInPreviousMap = previousMap
           .values()
           .some(
-            history =>
-              history.state === AlertState.ALERT ||
-              history.state === AlertState.PENDING,
+            h =>
+              h.state === AlertState.ALERT || h.state === AlertState.PENDING,
           );
 
         if (zeroValueIsAlert) {
           const history = getOrCreateHistory('');
           history.lastValues.push({ count: 0, startTime: bucketStart });
           history.counts += 1;
-          if (shouldFireBasedOnConsecutiveWindows()) {
+          if (shouldFireBasedOnConsecutiveWindows('')) {
             history.state = AlertState.ALERT;
             history.fired = true;
             latestAlertContext.set('', {
@@ -2096,48 +1947,27 @@ export const processAlert = async (
             });
           } else {
             history.state = AlertState.PENDING;
-            // Carry forward fired=true if a notification was previously sent and not yet resolved.
             history.fired =
               previousMap.get(computeHistoryMapKey(alert.id, ''))?.fired ===
               true;
           }
         } else if (!hasGroupBy || !hasAlertsInPreviousMap) {
-          // For grouped alerts, if there are alerts in the previous map,
-          // we will handle creating a history as part of auto-resolve later
           const history = getOrCreateHistory('');
           history.lastValues.push({ count: 0, startTime: bucketStart });
         }
-
         continue;
       }
 
-      // We have at least one data point for this bucket
-
-      // Track the worst-case state for each group in this bucket to prevent
-      // a subsequent OK row in the SAME bucket from overwriting an ALERT row.
+      // Track worst-case state per group in this bucket: an OK row must not
+      // overwrite an ALERT row that appeared earlier in the same bucket.
       const bucketEvaluations = new Map<
         string,
         { value: number; attributes: Record<string, string>; exceeds: boolean }
       >();
-      for (const checkData of dataForBucket) {
-        const { value, extraFields } = parseAlertData(checkData, meta);
-
-        // NULL means no data: a metric series with no row at this bucket, or
-        // a ratio with a missing/zero denominator. Skip the row instead of
-        // fabricating a state from a gap.
-        if (value == null) {
-          continue;
-        }
-
-        const groupKey = hasGroupBy
-          ? extraFields.map(([k, v]) => `${k}:${v}`).join(', ')
-          : '';
-        const attributes = hasGroupBy ? Object.fromEntries(extraFields) : {};
-
+      for (const { groupKey, value, attributes } of rowsForBucket) {
         const exceeds = doesExceedThreshold(alert, value);
-
         const existing = bucketEvaluations.get(groupKey);
-        if (!existing || !existing.exceeds || exceeds) {
+        if (!existing || (!existing.exceeds && exceeds)) {
           bucketEvaluations.set(groupKey, { value, attributes, exceeds });
         }
       }
@@ -2157,15 +1987,11 @@ export const processAlert = async (
             });
           } else {
             history.state = AlertState.PENDING;
-            // Carry forward fired=true if a notification was previously sent and not yet resolved.
             history.fired =
               previousMap.get(computeHistoryMapKey(alert.id, groupKey))
                 ?.fired === true;
           }
         } else {
-          // If the threshold is not met, reset the state to OK.
-          // This ensures that if a previous window in this evaluation triggered an ALERT,
-          // a subsequent OK window correctly resolves it before the notification phase.
           history.state = AlertState.OK;
           history.counts = 0;
         }
@@ -2176,16 +2002,16 @@ export const processAlert = async (
       }
     }
 
-    // Handle missing groups: If current check found no data, check if any previously alerting/pending groups need to be resolved
-    // For group-by alerts, check if any previously alerting or pending groups are missing from current data
-    if (hasGroupBy) {
-      const lastExpectedBucket = expectedBuckets[expectedBuckets.length - 1];
-      if (lastExpectedBucket) {
+    // Auto-resolve: groups that were alerting/pending but absent from the newest bucket.
+    // PromQL always runs this for every group (runAutoResolveForAll=true).
+    // SQL grouped alerts also run it when hasGroupBy is set.
+    if (runAutoResolveForAll || hasGroupBy) {
+      const lastBucket =
+        sharedExpectedBuckets[sharedExpectedBuckets.length - 1];
+      if (lastBucket) {
         const groupsToCheck = new Set<string>();
-        if (previousMap) {
-          for (const previousKey of previousMap.keys()) {
-            groupsToCheck.add(extractGroupKeyFromMapKey(previousKey, alert.id));
-          }
+        for (const previousKey of previousMap.keys()) {
+          groupsToCheck.add(extractGroupKeyFromMapKey(previousKey, alert.id));
         }
         for (const groupKey of histories.keys()) {
           groupsToCheck.add(groupKey);
@@ -2201,7 +2027,7 @@ export const processAlert = async (
             history?.lastValues[history.lastValues.length - 1];
           const isMissingFromLastBucket =
             !lastEvaluated ||
-            lastEvaluated.startTime.getTime() !== lastExpectedBucket.getTime();
+            lastEvaluated.startTime.getTime() !== lastBucket.getTime();
 
           const wasAlertingOrPending =
             previousHistory?.state === AlertState.ALERT ||
@@ -2215,14 +2041,11 @@ export const processAlert = async (
             !doesExceedThreshold(alert, 0)
           ) {
             logger.info(
-              {
-                alertId: alert.id,
-                group: groupKey,
-              },
-              `Group "${groupKey}" is missing from current data but was previously ALERT/PENDING - creating OK history`,
+              { alertId: alert.id, group: groupKey },
+              `Group "${groupKey}" absent from current data but was ALERT/PENDING — auto-resolving`,
             );
             const h = getOrCreateHistory(groupKey);
-            h.lastValues.push({ count: 0, startTime: lastExpectedBucket });
+            h.lastValues.push({ count: 0, startTime: lastBucket });
             h.state = AlertState.OK;
             h.counts = 0;
             latestAlertContext.delete(groupKey);
@@ -2231,19 +2054,16 @@ export const processAlert = async (
       }
     }
 
-    // If no histories exist at all (no current data and no previous alerting groups), create a default OK history
     if (histories.size === 0) {
       getOrCreateHistory('');
     }
 
-    // Check for state transitions and send notifications
+    // Send notifications for state transitions
     for (const [groupKey, history] of histories.entries()) {
       const previousKey = computeHistoryMapKey(alert.id, groupKey);
       let groupPrevious = previousMap.get(previousKey);
 
       const hitAlertThisRun = latestAlertContext.has(groupKey);
-
-      // If it hit ALERT during this run, send the notification (re-notifying every tick if it continuously breaches)
       if (hitAlertThisRun) {
         const context = latestAlertContext.get(groupKey);
         if (context) {
@@ -2254,12 +2074,11 @@ export const processAlert = async (
             startTime: context.startTime,
             attributes: context.attributes,
           });
-
-          // Inject a mock previous history so the resolve check below catches it
-          // if the final state for this group is OK (i.e. it breached then resolved).
+          // Inject a synthetic previous so the resolve-check below fires if the
+          // group already returned to OK within the same evaluation batch.
           // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
           groupPrevious = {
-            ...(groupPrevious || {}),
+            ...(groupPrevious ?? {}),
             state: AlertState.ALERT,
             fired: true,
           } as AggregatedAlertHistory;
@@ -2269,7 +2088,6 @@ export const processAlert = async (
       await sendNotificationIfResolved(groupPrevious, history, groupKey);
     }
 
-    // Save all history records and update alert state
     flushNotificationTimings();
     const historyRecords = Array.from(histories.values());
     for (const record of historyRecords) {
