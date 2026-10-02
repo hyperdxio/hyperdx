@@ -19,6 +19,22 @@ import { HeatmapTooltip } from './HeatmapTooltip';
 import { highlightDataPlugin, HighlightedPoint } from './highlightDataPlugin';
 import { applySelectionToChart, SelectionBounds } from './selection';
 
+const isSameRenderedPoint = (
+  a: HighlightedPoint | undefined,
+  b: HighlightedPoint | undefined,
+) =>
+  a === b ||
+  (a != null &&
+    b != null &&
+    a.xVal === b.xVal &&
+    a.yVal === b.yVal &&
+    a.countVal === b.countVal &&
+    a.closestIndex === b.closestIndex &&
+    a.xCoord === b.xCoord &&
+    a.yCoord === b.yCoord &&
+    a.xSize === b.xSize &&
+    a.ySize === b.ySize);
+
 type HeatmapPlotProps = {
   className?: string;
   grid: HeatmapGrid;
@@ -195,12 +211,18 @@ export function HeatmapPlot({
       },
       plugins: [
         highlightDataPlugin({
-          proximity: 20,
+          margin: 20,
           onPointHighlight: point => {
             // Only show tooltip after the user has actually hovered the chart.
             // uPlot fires setCursor on init which would trigger this on page load.
             if (!mouseInsideRef.current) return;
-            setHighlightedPoint(point);
+            // Keep the same object while the cursor stays on one cell, so
+            // moving within it doesn't re-render the tooltip. Compare what
+            // the tooltip renders, not just the index: after a data refresh
+            // or resize the same index can hold a different cell.
+            setHighlightedPoint(prev =>
+              isSameRenderedPoint(prev, point) ? prev : point,
+            );
           },
         }),
         {
@@ -269,7 +291,7 @@ export function HeatmapPlot({
         );
         onClearFilter?.();
       }}
-      onMouseEnter={() => {
+      onMouseMoveCapture={() => {
         mouseInsideRef.current = true;
       }}
       onMouseLeave={() => {
