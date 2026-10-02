@@ -15,10 +15,10 @@ import {
 
 ## Pick the variant by how the object is saved
 
-| The object is...                                                         | Use                                                   | When the name is saved                                                                  |
-| ------------------------------------------------------------------------ | ----------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| Already saved, and the page shows it (dashboard page, saved search page) | `InlineNameInput` with `onCommit`                     | Immediately. Enter or blur commits, Escape reverts, an empty or unchanged name reverts. |
-| A draft in an editor (tile editor, new chart, new saved search)          | `InlineNameInputControlled` with the form's `control` | With the rest of the form, when the user presses the editor's save button.              |
+| The object is...                                                         | Use                                                   | When the name is saved                                                                                                                                                             |
+| ------------------------------------------------------------------------ | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Already saved, and the page shows it (dashboard page, saved search page) | `InlineNameInput` with `onCommit`                     | Enter or blur commits. The typed name stays until `value` updates. Return a rejected promise from `onCommit` to revert it. Escape reverts, and an empty or unchanged name reverts. |
+| A draft in an editor (tile editor, new chart, new saved search)          | `InlineNameInputControlled` with the form's `control` | With the rest of the form, when the user presses the editor's save button.                                                                                                         |
 
 A rename on a saved object is an arrangement change, like moving a tile, so it
 saves without a confirmation. A name on a draft is part of the draft's content,

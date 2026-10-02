@@ -2247,12 +2247,24 @@ export function DBSearchPage() {
               size="md"
               headingLevel={3}
               data-testid="saved-search-name"
-              onCommit={editedName => {
-                updateSavedSearch.mutate({
-                  id: savedSearch.id,
-                  name: editedName,
-                });
-              }}
+              onCommit={editedName =>
+                updateSavedSearch
+                  .mutateAsync({
+                    id: savedSearch.id,
+                    name: editedName,
+                  })
+                  .catch(error => {
+                    notifications.show({
+                      color: 'red',
+                      title: 'Unable to save search',
+                      message:
+                        error instanceof Error
+                          ? error.message.slice(0, 100)
+                          : 'An error occurred while renaming your saved search.',
+                    });
+                    throw error;
+                  })
+              }
             />
 
             <Group gap="xs">

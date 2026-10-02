@@ -56,8 +56,12 @@ function InlineNameField({
 export interface InlineNameInputProps
   extends Omit<InlineNameFieldProps, 'value' | 'onChange' | 'invalid'> {
   value: string;
-  /** Called with the trimmed name when it changed and isn't empty. */
-  onCommit: (name: string) => void;
+  /**
+   * Called with the trimmed name when it changed and isn't empty. Return a
+   * promise so a failed save reverts the field; the typed name stays on
+   * screen until `value` updates or the promise rejects.
+   */
+  onCommit: (name: string) => void | Promise<unknown>;
 }
 
 /**
@@ -71,9 +75,20 @@ export function InlineNameInput({
   onBlur,
   ...fieldProps
 }: InlineNameInputProps) {
-  // Outside of editing, show the saved value rather than the last draft, so a
-  // save that fails or gets overwritten doesn't leave a stale name on screen.
+  // The name just committed, kept until the saved `value` catches up so the
+  // title doesn't flash the old name while the save is in flight. Cleared
+  // when `value` changes (the save landed, or something else wrote) or when
+  // the commit rejects.
+  const [pending, setPending] = useState<string>();
+  const [trackedValue, setTrackedValue] = useState(value);
+  if (value !== trackedValue) {
+    setTrackedValue(value);
+    setPending(undefined);
+  }
+
+  // What the user is typing. Undefined means show the committed name.
   const [draft, setDraft] = useState<string>();
+  const shown = draft ?? pending ?? value;
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     onKeyDown?.(e);
@@ -83,7 +98,7 @@ export function InlineNameInput({
     } else if (e.key === 'Escape') {
       e.preventDefault();
       // The blur handler reads the DOM value, so reset it before blurring.
-      e.currentTarget.value = value;
+      e.currentTarget.value = pending ?? value;
       e.currentTarget.blur();
     }
   };
@@ -91,14 +106,19 @@ export function InlineNameInput({
   return (
     <InlineNameField
       {...fieldProps}
-      value={draft ?? value}
+      value={shown}
       onChange={setDraft}
       onKeyDown={handleKeyDown}
       onBlur={e => {
-        setDraft(undefined);
         const next = e.currentTarget.value.trim();
-        if (next !== '' && next !== value) {
-          onCommit(next);
+        setDraft(undefined);
+        if (next !== '' && next !== (pending ?? value)) {
+          setPending(next);
+          Promise.resolve(onCommit(next)).catch(() => {
+            setPending(current => (current === next ? undefined : current));
+          });
+        } else if (next === '') {
+          setPending(undefined);
         }
         onBlur?.(e);
       }}

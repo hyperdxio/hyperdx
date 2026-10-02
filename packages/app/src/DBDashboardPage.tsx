@@ -2910,12 +2910,12 @@ function DBDashboardPage({
       headingLevel={3}
       data-testid="dashboard-name-input"
       onCommit={editedName => {
-        if (dashboard != null) {
-          setDashboard({
-            ...dashboard,
-            name: editedName,
-          });
-        }
+        if (dashboard == null) return;
+        return new Promise<void>((resolve, reject) => {
+          setDashboard({ ...dashboard, name: editedName }, resolve, () =>
+            reject(new Error('Unable to save dashboard')),
+          );
+        });
       }}
     />
   );

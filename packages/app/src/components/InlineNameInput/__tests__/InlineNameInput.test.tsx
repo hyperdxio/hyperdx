@@ -1,5 +1,5 @@
 import { useForm } from 'react-hook-form';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import {
@@ -32,21 +32,80 @@ describe('InlineNameInput', () => {
     expect(input).not.toHaveFocus();
   });
 
-  it('shows the saved value after committing, not the draft', async () => {
+  it('keeps the typed name until the saved value arrives', async () => {
     const user = userEvent.setup();
-    const { input, rerender } = renderInput();
+    let resolveSave: () => void = () => {};
+    const onCommit = jest.fn(
+      () =>
+        new Promise<void>(resolve => {
+          resolveSave = resolve;
+        }),
+    );
+    const { rerender } = render(
+      <InlineNameInput
+        value="My dashboard"
+        onCommit={onCommit}
+        aria-label="Dashboard name"
+      />,
+    );
+    const input = screen.getByLabelText('Dashboard name');
 
     await user.type(input, ' v2{Enter}');
-    expect(input).toHaveValue('My dashboard');
+    expect(input).toHaveValue('My dashboard v2');
+
+    resolveSave();
+    expect(input).toHaveValue('My dashboard v2');
 
     rerender(
       <InlineNameInput
         value="My dashboard v2"
-        onCommit={jest.fn()}
+        onCommit={onCommit}
         aria-label="Dashboard name"
       />,
     );
     expect(input).toHaveValue('My dashboard v2');
+  });
+
+  it('reverts to the saved name when the commit fails', async () => {
+    const user = userEvent.setup();
+    const onCommit = jest.fn(() => Promise.reject(new Error('nope')));
+    render(
+      <InlineNameInput
+        value="My dashboard"
+        onCommit={onCommit}
+        aria-label="Dashboard name"
+      />,
+    );
+    const input = screen.getByLabelText('Dashboard name');
+
+    await user.type(input, ' v2{Enter}');
+
+    await waitFor(() => expect(input).toHaveValue('My dashboard'));
+  });
+
+  it('shows a newer saved value that arrives while a rename is in flight', async () => {
+    const user = userEvent.setup();
+    const onCommit = jest.fn(() => new Promise(() => {}));
+    const { rerender } = render(
+      <InlineNameInput
+        value="My dashboard"
+        onCommit={onCommit}
+        aria-label="Dashboard name"
+      />,
+    );
+    const input = screen.getByLabelText('Dashboard name');
+
+    await user.type(input, ' v2{Enter}');
+    expect(input).toHaveValue('My dashboard v2');
+
+    rerender(
+      <InlineNameInput
+        value="Renamed elsewhere"
+        onCommit={onCommit}
+        aria-label="Dashboard name"
+      />,
+    );
+    expect(input).toHaveValue('Renamed elsewhere');
   });
 
   it('commits on blur', async () => {
