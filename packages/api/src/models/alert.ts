@@ -127,6 +127,9 @@ export interface IAlert {
   // Multi-window alerting: fire only after N violations in M consecutive windows
   numConsecutiveWindows?: number | null;
 
+  // Created by the dashboard file provisioner, which keeps it in sync with its file
+  provisioned?: boolean;
+
   // Errors recorded during the most recent execution
   executionErrors?: IAlertError[];
   createdAt: Date;
@@ -256,6 +259,10 @@ const AlertSchema = new Schema<IAlert>(
       required: false,
       min: 1,
     },
+    provisioned: {
+      type: Boolean,
+      default: false,
+    },
     silenced: {
       required: false,
       type: {
@@ -305,5 +312,15 @@ AlertSchema.index({ team: 1, _id: 1 });
 // The alerts page: filter on team, sort by displayName with _id as the
 // tie-break, and walk that order with a keyset cursor.
 AlertSchema.index({ team: 1, displayName: 1, _id: 1 });
+
+// One alert per provisioned tile, so concurrent provisioner runs upsert the
+// same document instead of inserting a duplicate that no sync would remove.
+AlertSchema.index(
+  { team: 1, dashboard: 1, tileId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { provisioned: true, source: AlertSource.TILE },
+  },
+);
 
 export default mongoose.model<IAlert>('Alert', AlertSchema);
