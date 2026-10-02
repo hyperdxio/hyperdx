@@ -4,6 +4,10 @@ import { MantineProvider } from '@mantine/core';
 import { render, screen } from '@testing-library/react';
 
 import DBHeatmapChart from '@/components/DBHeatmapChart';
+import type {
+  HeatmapChartConfig,
+  HeatmapQuery,
+} from '@/components/DBHeatmapChart/heatmapQueries';
 
 type Props = Record<string, unknown>;
 
@@ -57,7 +61,7 @@ const HOUR = 60 * 60 * 1000;
 const T0 = new Date('2026-07-06T00:00:00Z').getTime();
 
 function configFor(fromMs: number) {
-  const config: React.ComponentProps<typeof DBHeatmapChart>['config'] = {
+  const config: HeatmapChartConfig = {
     displayType: DisplayType.Heatmap,
     select: [{ aggFn: 'heatmap', valueExpression: 'Duration' }],
     from: { databaseName: 'default', tableName: 'otel_traces' },
@@ -69,6 +73,15 @@ function configFor(fromMs: number) {
   };
   return config;
 }
+
+const distribution = (
+  fromMs: number,
+  scaleType: 'log' | 'linear' = 'log',
+): HeatmapQuery => ({
+  mode: 'distribution',
+  config: configFor(fromMs),
+  scaleType,
+});
 
 // Bucket rows that line up with the time buckets of `configFor(T0)`.
 const bucketData = {
@@ -133,7 +146,7 @@ const lastYAxisIsLog = () =>
 // A wrapper (rather than renderWithMantine) keeps the provider in place across
 // rerenders, so the chart keeps its state when the range changes.
 const renderChart = (fromMs: number) =>
-  render(<DBHeatmapChart config={configFor(fromMs)} />, {
+  render(<DBHeatmapChart query={distribution(fromMs)} />, {
     wrapper: MantineProvider,
   });
 
@@ -168,7 +181,7 @@ describe('DBHeatmapChart refresh', () => {
     // A refresh moves to a later, non-overlapping range; both queries are
     // still showing the previous range's results.
     mockQueries({ boundsPlaceholder: true, bucketsPlaceholder: true });
-    rerender(<DBHeatmapChart config={configFor(T0 + 3 * HOUR)} />);
+    rerender(<DBHeatmapChart query={distribution(T0 + 3 * HOUR)} />);
 
     const plot = await screen.findByTestId('heatmap-plot');
     expect(lastPlottedCounts()).toEqual(settledCounts);
@@ -188,7 +201,7 @@ describe('DBHeatmapChart refresh', () => {
     // Switching to linear refetches both queries; until they return, the
     // chart still shows log-scale data, so it must keep the log axis.
     mockQueries({ boundsPlaceholder: true, bucketsPlaceholder: true });
-    rerender(<DBHeatmapChart config={configFor(T0)} scaleType="linear" />);
+    rerender(<DBHeatmapChart query={distribution(T0, 'linear')} />);
 
     await screen.findByTestId('heatmap-plot');
     expect(lastPlottedCounts()).toEqual(settledCounts);
@@ -235,7 +248,7 @@ describe('DBHeatmapChart refresh', () => {
     expect(lastOptionsFor('heatmap_bucket')?.enabled).toBe(false);
 
     mockQueries({ bucketsPlaceholder: true });
-    rerender(<DBHeatmapChart config={configFor(T0)} />);
+    rerender(<DBHeatmapChart query={distribution(T0)} />);
     expect(lastOptionsFor('heatmap_bucket')?.enabled).toBe(true);
   });
 
