@@ -239,11 +239,17 @@ export function scanTemplateTokens(
   // inside a string literal.
   let inSingleQuote = false;
   let inDoubleQuote = false;
+  let inBacktick = false;
 
   let i = 0;
   while (i < input.length) {
     // Consume any comments starting at this position
-    if (skipSqlComments && !inSingleQuote && !inDoubleQuote) {
+    if (
+      skipSqlComments &&
+      !inSingleQuote &&
+      !inDoubleQuote &&
+      !inBacktick
+    ) {
       const commentEnd = findCommentEnd(input, i);
       if (commentEnd > i) {
         text += input.slice(i, commentEnd);
@@ -254,14 +260,27 @@ export function scanTemplateTokens(
 
     if (input.charAt(i) !== '$') {
       const c = input.charAt(i);
-      if (c === '"' && !inSingleQuote && !isQuoteEscapedByBackslash(input, i)) {
+      if (
+        c === '"' &&
+        !inSingleQuote &&
+        !inBacktick &&
+        !isQuoteEscapedByBackslash(input, i)
+      ) {
         inDoubleQuote = !inDoubleQuote;
       } else if (
         c === "'" &&
         !inDoubleQuote &&
+        !inBacktick &&
         !isQuoteEscapedByBackslash(input, i)
       ) {
         inSingleQuote = !inSingleQuote;
+      } else if (
+        c === '`' &&
+        !inSingleQuote &&
+        !inDoubleQuote &&
+        !isQuoteEscapedByBackslash(input, i)
+      ) {
+        inBacktick = !inBacktick;
       }
       text += c;
       i++;

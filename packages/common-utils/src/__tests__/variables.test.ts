@@ -964,6 +964,14 @@ describe('substituteVariables for promql', () => {
       );
     });
 
+    it('substitutes inside a backtick raw string containing a URL', () => {
+      const input =
+        'rate(http_requests_total{url=~`https://$service/.*`}[5m])';
+      expect(promql(input, [variable('service', ['api'])])).toBe(
+        'rate(http_requests_total{url=~`https://api/.*`}[5m])',
+      );
+    });
+
     it('does not re-expand a selected value that looks like a reference', () => {
       expect(
         promql('$a $b', [variable('a', ['$b']), variable('b', ['literal'])]),
@@ -1143,6 +1151,12 @@ describe('getVariableReferences', () => {
         expect(getVariableReferences(input)).toEqual(bareRef(false));
       },
     );
+
+    it('does not treat // inside a backtick identifier as a comment', () => {
+      expect(
+        getVariableReferences('SELECT `service//name`, $service'),
+      ).toEqual(bareRef(false));
+    });
 
     it('treats an unterminated block comment as running to the end', () => {
       expect(getVariableReferences("SELECT 1 /* don't $service")).toEqual([]);
@@ -1343,6 +1357,15 @@ describe('getReferencedVariableNames', () => {
         'lucene',
       ),
     ).toEqual(['service']);
+  });
+
+  it('finds PromQL references inside backtick raw strings with URLs', () => {
+    expect(
+      getReferencedVariableNames(
+        'rate(http_requests_total{url=~`https://$host/.*`}[5m])',
+        'promql',
+      ),
+    ).toEqual(['host']);
   });
 
   it('skips SQL comments for SQL but not for markdown', () => {
