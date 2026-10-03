@@ -1059,8 +1059,12 @@ function getBuilderVariableReferences(
   config: BuilderVariableFields,
 ): VariableReference[] {
   const references: VariableReference[] = [];
-  mapBuilderVariableTemplates(config, template => {
-    references.push(...getVariableReferences(template));
+  mapBuilderVariableTemplates(config, (template, language) => {
+    references.push(
+      ...getVariableReferences(template, {
+        skipSqlComments: languageSettings(language).skipSqlComments,
+      }),
+    );
     return template;
   });
   return references;

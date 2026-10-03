@@ -876,6 +876,21 @@ describe('getFilterVariableWarnings', () => {
     expect(joined).toContain('values already selected');
   });
 
+  it('finds a self-reference after a URL in a Lucene dropdown query', () => {
+    const warnings = getFilterVariableWarnings([
+      serviceFilter,
+      endpointFilter({
+        isVariableEnabled: true,
+        variableName: 'endpoint',
+        where: 'Url:http://example.com AND SpanName:"$endpoint"',
+        whereLanguage: 'lucene',
+      }),
+    ]);
+    expect(warnings.join('\n')).toContain(
+      "references this filter's own variable $endpoint",
+    );
+  });
+
   it('warns about a variable macro in a Lucene dropdown query', () => {
     const warnings = getFilterVariableWarnings([
       serviceFilter,

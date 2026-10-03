@@ -1460,6 +1460,18 @@ describe('filterReferencedVariables', () => {
     ).toEqual(variables);
   });
 
+  it('keeps variables after URLs in Lucene builder expressions', () => {
+    expect(
+      filterReferencedVariables(
+        builderConfig({
+          where: 'Url:http://example.com AND ServiceName:"$service"',
+          whereLanguage: 'lucene',
+        }),
+        variables,
+      ),
+    ).toEqual([SERVICE]);
+  });
+
   it('keeps the variables a markdown tile references', () => {
     expect(
       filterReferencedVariables(

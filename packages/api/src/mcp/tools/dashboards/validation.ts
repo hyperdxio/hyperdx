@@ -20,7 +20,7 @@ import {
   SavedChartConfig,
 } from '@hyperdx/common-utils/dist/types';
 import {
-  getVariableReferences,
+  getReferencedVariableNames,
   mapBuilderVariableTemplates,
   TemplateLanguage,
   validateVariableReferencesInTemplate,
@@ -213,7 +213,7 @@ export function getFilterVariableWarnings(
     const issues = [...result.errors, ...result.warnings];
 
     const referencedNames = new Set(
-      getVariableReferences(where).map(reference => reference.name),
+      getReferencedVariableNames(where, language),
     );
 
     const ownName = isFilterVariableEnabled(filter)
