@@ -53,6 +53,10 @@ import {
   TimelineMinimap,
   type TimelineViewportController,
 } from '@/components/TimelineChart';
+import {
+  TRACE_WATERFALL_FETCH_LIMIT,
+  TRACE_WATERFALL_ROW_LIMIT,
+} from '@/components/traceWaterfallLimits';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import useRowWhere, { WithClause } from '@/hooks/useRowWhere';
 import useWaterfallSearchState from '@/hooks/useWaterfallSearchState';
@@ -146,12 +150,6 @@ const SERVICE_COLORS = COLORS.filter(
     CATEGORICAL_PALETTE_TOKENS[i] !== 'chart-green' &&
     CATEGORICAL_PALETTE_TOKENS[i] !== 'chart-red',
 );
-
-// Per-window (before/after focus date) row cap applied in `getConfig` below.
-export const TRACE_WATERFALL_ROW_LIMIT = 50000;
-// Fetch one extra row so a window that contains *exactly* the cap is not
-// mistaken for truncation. A full page of LIMIT is ambiguous; LIMIT+1 is not.
-const TRACE_WATERFALL_FETCH_LIMIT = TRACE_WATERFALL_ROW_LIMIT + 1;
 
 // Stable empty fallback. `data ?? []` would allocate a new array every render
 // and invalidate every memo downstream of the waterfall rows.
