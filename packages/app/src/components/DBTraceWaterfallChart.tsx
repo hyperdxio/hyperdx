@@ -66,6 +66,7 @@ import { useFormatTime } from '@/useFormatTime';
 import {
   CATEGORICAL_PALETTE_TOKENS,
   COLORS,
+  formatDurationMs,
   getChartColorError,
   getChartColorSuccess,
   getChartColorSuccessHighlight,
@@ -145,6 +146,41 @@ const SERVICE_COLORS = COLORS.filter(
     CATEGORICAL_PALETTE_TOKENS[i] !== 'chart-green' &&
     CATEGORICAL_PALETTE_TOKENS[i] !== 'chart-red',
 );
+
+// Per-window (before/after focus date) row cap applied in `getConfig` below.
+export const TRACE_WATERFALL_ROW_LIMIT = 50000;
+// Fetch one extra row so a window that contains *exactly* the cap is not
+// mistaken for truncation. A full page of LIMIT is ambiguous; LIMIT+1 is not.
+const TRACE_WATERFALL_FETCH_LIMIT = TRACE_WATERFALL_ROW_LIMIT + 1;
+
+// Stable empty fallback. `data ?? []` would allocate a new array every render
+// and invalidate every memo downstream of the waterfall rows.
+const EMPTY_ROWS: Record<string, any>[] = [];
+
+export function TraceTotalDurationStat({
+  totalDurationMs,
+  isTruncated,
+}: {
+  totalDurationMs: number;
+  isTruncated: boolean;
+}) {
+  return (
+    <Tooltip
+      label={
+        isTruncated
+          ? `This duration is a lower bound because some spans may not have been loaded. The trace may extend past the loaded time window, or contain more than ${TRACE_WATERFALL_ROW_LIMIT.toLocaleString()} spans.`
+          : 'Wall-clock duration from the earliest fetched span start to the latest span end. Independent of the applied filters.'
+      }
+      position="bottom"
+    >
+      <span data-testid="trace-total-stats">
+        {' '}
+        &middot; Total duration: {formatDurationMs(totalDurationMs)}
+        {isTruncated ? '+' : ''}
+      </span>
+    </Tooltip>
+  );
+}
 
 function getTableBody(tableModel: TSource) {
   if (tableModel?.kind === SourceKind.Trace) {
@@ -302,7 +338,7 @@ function getConfig(
     from: source.from,
     timestampValueExpression: source.timestampValueExpression,
     where: `${alias.TraceId} = ${SqlString.escape(traceId)}`,
-    limit: { limit: 50000 },
+    limit: { limit: TRACE_WATERFALL_FETCH_LIMIT },
     connection: source.connection,
   };
   return { config, alias, type: source.kind };
@@ -383,16 +419,34 @@ export function useEventsAroundFocus({
   const isFetching = isBeforeSpanFetching || isAfterSpanFetching;
   const meta = beforeSpanData?.meta ?? afterSpanData?.meta;
   const error = beforeSpanError || afterSpanError;
+  // LIMIT+1 is a sentinel: a complete window of exactly TRACE_WATERFALL_ROW_LIMIT
+  // rows must not show as a lower bound. Drop the extra row so the chart still
+  // renders at most the cap. Trim inside this memo so a parent re-render does
+  // not allocate fresh arrays and rebuild the span tree.
+  const beforeData = beforeSpanData?.data;
+  const afterData = afterSpanData?.data;
+  const { isTruncated, trimmedBefore, trimmedAfter } = useMemo(() => {
+    const beforeRows = beforeData ?? EMPTY_ROWS;
+    const afterRows = afterData ?? EMPTY_ROWS;
+    const beforeTruncated = beforeRows.length > TRACE_WATERFALL_ROW_LIMIT;
+    const afterTruncated = afterRows.length > TRACE_WATERFALL_ROW_LIMIT;
+    return {
+      isTruncated: beforeTruncated || afterTruncated,
+      trimmedBefore: beforeTruncated
+        ? beforeRows.slice(0, TRACE_WATERFALL_ROW_LIMIT)
+        : beforeRows,
+      trimmedAfter: afterTruncated
+        ? afterRows.slice(0, TRACE_WATERFALL_ROW_LIMIT)
+        : afterRows,
+    };
+  }, [beforeData, afterData]);
 
   const getRowWhere = useRowWhere({ meta, aliasMap: alias });
   const rows = useMemo(() => {
     // Sometimes meta has not loaded yet
     // DO NOT REMOVE, useRowWhere will error if no meta
     if (!meta || meta.length === 0) return [];
-    return [
-      ...(beforeSpanData?.data ?? []),
-      ...(afterSpanData?.data ?? []),
-    ].map(cd => {
+    return [...trimmedBefore, ...trimmedAfter].map(cd => {
       // Omit SpanAttributes, SpanEvents and __hdx_hidden from rowWhere id generation.
       // SpanAttributes and SpanEvents can be large objects, and __hdx_hidden may be a lucene expression.
       const rowWhereResult = getRowWhere(
@@ -402,9 +456,13 @@ export function useEventsAroundFocus({
       return {
         // Keep all fields available for display
         ...cd,
-        // Added for typing
+        // Named fields are repeated for typing. Spreading Record<string, any>
+        // drops the index signature once explicit keys are set, so Duration
+        // would otherwise be missing from the row type.
         Timestamp: cd?.Timestamp,
         SpanId: cd?.SpanId,
+        ParentSpanId: cd?.ParentSpanId,
+        Duration: cd?.Duration,
         __hdx_hidden: cd?.__hdx_hidden,
         type,
         id: rowWhereResult.where,
@@ -414,13 +472,14 @@ export function useEventsAroundFocus({
         aliasWith: [],
       };
     });
-  }, [afterSpanData, beforeSpanData, meta, getRowWhere, type]);
+  }, [trimmedAfter, trimmedBefore, meta, getRowWhere, type]);
 
   return {
     rows,
     meta,
     isFetching,
     error,
+    isTruncated,
   };
 }
 
@@ -445,6 +504,7 @@ function useFilteredEventsAroundFocus(
       isFetching: filtered.isFetching || fallback.isFetching,
       filterError: fallback.error ? undefined : filtered.error,
       fatalError: fallback.error,
+      isTruncated: fallback.isTruncated,
     };
   }
 
@@ -454,6 +514,7 @@ function useFilteredEventsAroundFocus(
     isFetching: filtered.isFetching,
     filterError: undefined,
     fatalError: filtered.error,
+    isTruncated: filtered.isTruncated,
   };
 }
 
@@ -666,6 +727,7 @@ export function DBTraceWaterfallChartContainer({
     meta: traceRowsMeta,
     filterError: traceFilterError,
     fatalError: traceError,
+    isTruncated: traceIsTruncated,
   } = useFilteredEventsAroundFocus({
     tableSource: traceTableSource,
     focusDate,
@@ -722,6 +784,70 @@ export function DBTraceWaterfallChartContainer({
 
     return nextRows;
   }, [traceRowsData, logRowsData]);
+
+  const validSpanIDs = useMemo(() => {
+    return new Set(
+      traceRowsData // only spans in traces can define valid span ids
+        ?.filter(row => _.isString(row.SpanId) && row.SpanId.length > 0)
+        .map(row => row.SpanId) ?? [],
+    );
+  }, [traceRowsData]);
+
+  const traceExtent = useMemo(() => {
+    if (traceRowsData.length === 0) return null;
+
+    const windowEndMs = dateRange[1].getTime();
+
+    let minStartMs = Number.POSITIVE_INFINITY;
+    let maxEndMs = Number.NEGATIVE_INFINITY;
+
+    let isStartClipped = false;
+    let isEndClipped = false;
+
+    let isAnySpanValid = false;
+    for (const row of traceRowsData) {
+      // timestamp-nano accepts a non-date as a finite instant, which would
+      // stretch the envelope. Skip those before parsing.
+      if (
+        typeof row.Timestamp !== 'string' ||
+        Number.isNaN(Date.parse(row.Timestamp))
+      ) {
+        continue;
+      }
+
+      let startMs: number;
+      try {
+        startMs = parseTimestampToMs(row.Timestamp);
+      } catch {
+        continue;
+      }
+      if (!Number.isFinite(startMs)) continue;
+
+      const durationSec = Number(row.Duration);
+      const endMs =
+        startMs + (Number.isFinite(durationSec) ? durationSec : 0) * 1000;
+      if (startMs < minStartMs) {
+        minStartMs = startMs;
+
+        // The start is clipped if the earliest span has a parent that was not fetched
+        const parentId =
+          typeof row.ParentSpanId === 'string' ? row.ParentSpanId : '';
+        isStartClipped = parentId.length > 0 && !validSpanIDs.has(parentId);
+      }
+
+      if (endMs > maxEndMs) maxEndMs = endMs;
+      if (endMs >= windowEndMs) isEndClipped = true;
+      isAnySpanValid = true;
+    }
+    if (!isAnySpanValid) return null;
+
+    return {
+      /** Wall-clock duration across every fetched span (min start to max end) */
+      totalDurationMs: maxEndMs - minStartMs,
+      /** Whether the trace start or end is clipped by the time range */
+      isWindowClipped: isStartClipped || isEndClipped,
+    };
+  }, [traceRowsData, validSpanIDs, dateRange]);
 
   // Map each distinct span service to a stable color. Sorting the names first
   // keeps a service's color stable across renders regardless of row ordering.
@@ -845,13 +971,6 @@ export function DBTraceWaterfallChartContainer({
     children: SpanRow[];
     aliasWith: WithClause[];
   };
-  const validSpanIDs = useMemo(() => {
-    return new Set(
-      traceRowsData // only spans in traces can define valid span ids
-        ?.filter(row => _.isString(row.SpanId) && row.SpanId.length > 0)
-        .map(row => row.SpanId) ?? [],
-    );
-  }, [traceRowsData]);
 
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
   const [showSpanEvents, setShowSpanEvents] = useState(true);
@@ -1410,6 +1529,12 @@ export function DBTraceWaterfallChartContainer({
             <span className={errorCount ? 'text-danger' : ''}>
               {errorCountString}
             </span>
+            {traceExtent != null && (
+              <TraceTotalDurationStat
+                totalDurationMs={traceExtent.totalDurationMs}
+                isTruncated={traceIsTruncated || traceExtent.isWindowClipped}
+              />
+            )}
           </Text>
           <Group gap="xs" align="center">
             <Text size="xs" c="dimmed">

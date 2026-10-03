@@ -17,6 +17,8 @@ import {
   DBTraceWaterfallChartContainer,
   getDescendantIds,
   SpanRow,
+  TRACE_WATERFALL_ROW_LIMIT,
+  TraceTotalDurationStat,
   useEventsAroundFocus,
 } from '@/components/DBTraceWaterfallChart';
 import { TimelineChart } from '@/components/TimelineChart';
@@ -50,11 +52,13 @@ jest.mock('@/components/TimelineChart', () => {
     return (
       <div data-testid="timeline-chart">
         TimelineChart
-        {props.rows?.map((row: any) => (
-          <div key={row.id}>
-            {row.events?.map((event: any) => flattenText(event.body))}
-          </div>
-        ))}
+        {props.rows
+          ?.slice(0, 20)
+          .map((row: any) => (
+            <div key={row.id}>
+              {row.events?.map((event: any) => flattenText(event.body))}
+            </div>
+          ))}
       </div>
     );
   };
@@ -146,11 +150,15 @@ describe('DBTraceWaterfallChartContainer', () => {
     connection: 'conn2',
   };
 
+  // Wide enough to contain every span/log timestamp used by the tests below
+  // (06:00:00-07:00:00) with margin on both sides, so a span ending at the
+  // window's upper edge does not trip the lower-bound marker unless a test
+  // asks for that.
   const mockDateRange = [
-    new Date('2024-01-01T00:00:00.000Z'),
-    new Date('2024-01-01T01:00:00.000Z'),
+    new Date('2024-01-01T05:00:00.000Z'),
+    new Date('2024-01-01T08:00:00.000Z'),
   ] as [Date, Date];
-  const mockFocusDate = new Date('2024-01-01T00:30:00.000Z');
+  const mockFocusDate = new Date('2024-01-01T06:30:00.000Z');
   const mockTraceId = 'test-trace-id';
 
   // Sample data
@@ -312,6 +320,346 @@ describe('DBTraceWaterfallChartContainer', () => {
     expect(MockTimelineChart.latestProps.rows[1]).toBeTruthy(); // Log row
   });
 
+  it('renders total duration computed from all fetched spans', async () => {
+    setupQueryMocks({ traceData: mockTraceData });
+    renderComponent(null); // No log table source
+    await waitForLoading();
+
+    const stats = screen.getByTestId('trace-total-stats');
+    // mockTraceData has one span, Duration: 0.1 (seconds) -> 100ms wall clock
+    expect(stats.textContent?.trim()).toBe('· Total duration: 100ms');
+  });
+
+  it('excludes correlated logs from the total duration computation', async () => {
+    const laterLogData = {
+      data: [
+        {
+          ...mockLogData.data[0],
+          // Far later than the span's own end (start + 100ms) -- if logs were
+          // wrongly included in the MAX(end) computation, this would blow up
+          // the reported duration.
+          Timestamp: '2024-01-01T07:00:00.000000000Z',
+        },
+      ],
+      meta: [{ totalCount: 1 }],
+    };
+
+    setupQueryMocks({
+      traceData: mockTraceData,
+      logData: laterLogData,
+    });
+
+    renderComponent(); // With log table source
+    await waitForLoading();
+
+    const stats = screen.getByTestId('trace-total-stats');
+    expect(stats.textContent?.trim()).toBe('· Total duration: 100ms');
+  });
+
+  it('computes total duration as the wall-clock span across multiple non-overlapping spans', async () => {
+    const multiSpanData = {
+      data: [
+        {
+          Body: 'first span',
+          Timestamp: '2024-01-01T06:00:00.000000000Z',
+          Duration: 0.1, // ends at +100ms
+          SpanId: 'span-1',
+          ParentSpanId: '',
+          ServiceName: 'test-service',
+          HyperDXEventType: 'span' as const,
+          type: 'trace',
+        } as SpanRow,
+        {
+          Body: 'second span',
+          Timestamp: '2024-01-01T06:00:01.000000000Z', // starts 1s after the first
+          Duration: 0.5, // ends at +1.5s from the first span's start
+          SpanId: 'span-2',
+          ParentSpanId: '',
+          ServiceName: 'test-service',
+          HyperDXEventType: 'span' as const,
+          type: 'trace',
+        } as SpanRow,
+      ],
+      meta: [{ totalCount: 2 }],
+    };
+
+    setupQueryMocks({ traceData: multiSpanData });
+    renderComponent(null);
+    await waitForLoading();
+
+    const stats = screen.getByTestId('trace-total-stats');
+    // MIN(start) = 06:00:00.000, MAX(start+duration) = 06:00:01.500 -> 1500ms
+    expect(stats.textContent?.trim()).toBe('· Total duration: 1.5s');
+  });
+
+  it('computes total duration as the true max end time even when a later-processed span ends earlier (overlapping spans)', async () => {
+    const overlappingSpanData = {
+      data: [
+        {
+          Body: 'outer span',
+          Timestamp: '2024-01-01T06:00:00.000000000Z',
+          Duration: 1.0, // ends at +1000ms -- this is the actual max end
+          SpanId: 'span-1',
+          ParentSpanId: '',
+          ServiceName: 'test-service',
+          HyperDXEventType: 'span' as const,
+          type: 'trace',
+        } as SpanRow,
+        {
+          Body: 'inner span',
+          Timestamp: '2024-01-01T06:00:00.100000000Z', // starts 100ms after the outer span
+          Duration: 0.2, // ends at +300ms -- earlier than the outer span's end, but processed last
+          SpanId: 'span-2',
+          ParentSpanId: 'span-1',
+          ServiceName: 'test-service',
+          HyperDXEventType: 'span' as const,
+          type: 'trace',
+        } as SpanRow,
+      ],
+      meta: [{ totalCount: 2 }],
+    };
+
+    setupQueryMocks({ traceData: overlappingSpanData });
+    renderComponent(null);
+    await waitForLoading();
+
+    const stats = screen.getByTestId('trace-total-stats');
+    // A "last row wins" bug would report the inner span's earlier end (300ms)
+    // instead of the true MAX(end) across all spans (1000ms).
+    expect(stats.textContent?.trim()).toBe('· Total duration: 1s');
+  });
+
+  it('does not change when the Spans chip hides spans from the visible timeline (reflects all fetched spans, not the visible subset)', async () => {
+    setupQueryMocks({
+      traceData: mockTraceData,
+      logData: mockLogData,
+    });
+    renderComponent(); // With log table source, so the chart stays mounted
+    await waitForLoading();
+
+    const statsBefore = screen.getByTestId('trace-total-stats').textContent;
+    expect(statsBefore?.trim()).toBe('· Total duration: 100ms');
+
+    await userEvent.click(screen.getByTestId('show-spans-chip'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('trace-total-stats').textContent).toBe(
+        statsBefore,
+      );
+    });
+  });
+
+  it('does not render the total duration stat when there are no spans', async () => {
+    // A log with no matching span never becomes a visible node (correlated
+    // logs attach to a span), so this renders the existing empty state --
+    // just confirms the new stat doesn't render in that case either.
+    setupQueryMocks({ logData: mockLogData });
+    renderComponent();
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('No matching spans or logs found'),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('trace-total-stats')).not.toBeInTheDocument();
+  });
+
+  it('appends + on the duration label when the fetch window was truncated', () => {
+    renderWithMantine(
+      <TraceTotalDurationStat totalDurationMs={100} isTruncated={true} />,
+    );
+    expect(screen.getByTestId('trace-total-stats').textContent?.trim()).toBe(
+      '· Total duration: 100ms+',
+    );
+  });
+
+  it('shows the lower-bound marker when the trace query exceeds the row cap', async () => {
+    const span = {
+      Body: 'capped span',
+      Timestamp: '2024-01-01T06:00:00.000000000Z',
+      Duration: 0.1,
+      SpanId: 'span-1',
+      ParentSpanId: '',
+      ServiceName: 'test-service',
+      HyperDXEventType: 'span' as const,
+      type: 'trace',
+    };
+    setupQueryMocks({
+      traceData: {
+        data: Array.from({ length: TRACE_WATERFALL_ROW_LIMIT + 1 }, () => span),
+        meta: [{ totalCount: TRACE_WATERFALL_ROW_LIMIT + 1 }],
+      },
+    });
+    renderComponent(null);
+    await waitForLoading();
+
+    expect(screen.getByTestId('trace-total-stats').textContent?.trim()).toBe(
+      '· Total duration: 100ms+',
+    );
+  });
+
+  it('marks the duration when the earliest span has a parent that was not loaded', async () => {
+    const childInsideWindow = {
+      data: [
+        {
+          ...mockTraceData.data[0],
+          // Seconds inside 05:00:00-08:00:00. The parent started before the
+          // window, so the query never returned it.
+          Timestamp: '2024-01-01T06:00:00.000000000Z',
+          SpanId: 'span-child',
+          ParentSpanId: 'missing-root',
+        },
+        {
+          ...mockTraceData.data[0],
+          Body: 'later span',
+          Timestamp: '2024-01-01T06:00:01.000000000Z',
+          Duration: 0.1,
+          SpanId: 'span-later',
+          ParentSpanId: 'span-child',
+        },
+      ],
+      meta: [{ totalCount: 2 }],
+    };
+    setupQueryMocks({ traceData: childInsideWindow });
+    renderComponent(null);
+    await waitForLoading();
+
+    expect(screen.getByTestId('trace-total-stats').textContent?.trim()).toBe(
+      '· Total duration: 1.1s+',
+    );
+  });
+
+  it('does not mark the duration when the earliest span has a parent that was loaded', async () => {
+    const skewedChildFirst = {
+      data: [
+        {
+          ...mockTraceData.data[0],
+          Timestamp: '2024-01-01T06:00:00.000000000Z',
+          SpanId: 'span-child',
+          ParentSpanId: 'span-parent',
+        },
+        {
+          ...mockTraceData.data[0],
+          Body: 'parent span',
+          Timestamp: '2024-01-01T06:00:00.050000000Z',
+          SpanId: 'span-parent',
+          ParentSpanId: '',
+        },
+      ],
+      meta: [{ totalCount: 2 }],
+    };
+    setupQueryMocks({ traceData: skewedChildFirst });
+    renderComponent(null);
+    await waitForLoading();
+
+    expect(screen.getByTestId('trace-total-stats').textContent?.trim()).toBe(
+      '· Total duration: 150ms',
+    );
+  });
+
+  it("marks the duration as a lower bound when a span ends at/after the fetch window's upper edge", async () => {
+    const spanAtWindowEdge = {
+      data: [
+        {
+          ...mockTraceData.data[0],
+          // Ends exactly at mockDateRange's upper edge (08:00:00): starts at
+          // 07:59:59.900 + Duration 0.1s.
+          Timestamp: '2024-01-01T07:59:59.900000000Z',
+        },
+      ],
+      meta: [{ totalCount: 1 }],
+    };
+    setupQueryMocks({ traceData: spanAtWindowEdge });
+    renderComponent(null);
+    await waitForLoading();
+
+    expect(screen.getByTestId('trace-total-stats').textContent?.trim()).toBe(
+      '· Total duration: 100ms+',
+    );
+  });
+
+  it('skips an unparseable timestamp when another span is valid', async () => {
+    const mixed = {
+      data: [
+        {
+          ...mockTraceData.data[0],
+          Timestamp: 'not-a-timestamp',
+          SpanId: 'span-bad',
+          ParentSpanId: '',
+        },
+        {
+          ...mockTraceData.data[0],
+          Timestamp: '2024-01-01T06:00:00.000000000Z',
+          Duration: 0.1,
+          SpanId: 'span-good',
+          ParentSpanId: '',
+        },
+      ],
+      meta: [{ totalCount: 2 }],
+    };
+    setupQueryMocks({ traceData: mixed });
+    renderComponent(null);
+    await waitForLoading();
+
+    expect(screen.getByTestId('trace-total-stats').textContent?.trim()).toBe(
+      '· Total duration: 100ms',
+    );
+  });
+
+  it('does not render the total duration stat when every timestamp is unparseable', async () => {
+    const invalid = {
+      data: [
+        {
+          ...mockTraceData.data[0],
+          Timestamp: 'not-a-timestamp',
+        },
+      ],
+      meta: [{ totalCount: 1 }],
+    };
+    setupQueryMocks({ traceData: invalid });
+    renderComponent(null);
+    await waitForLoading();
+
+    expect(screen.queryByTestId('trace-total-stats')).not.toBeInTheDocument();
+  });
+
+  it('keeps the fetched duration when a span is flagged hidden', async () => {
+    const hiddenSpanData = {
+      data: [
+        {
+          Body: 'visible span',
+          Timestamp: '2024-01-01T06:00:00.000000000Z',
+          Duration: 0.1,
+          SpanId: 'span-visible',
+          ParentSpanId: '',
+          ServiceName: 'test-service',
+          HyperDXEventType: 'span' as const,
+          type: 'trace',
+          __hdx_hidden: false,
+        } as SpanRow,
+        {
+          Body: 'hidden span',
+          Timestamp: '2024-01-01T06:00:01.000000000Z',
+          Duration: 0.5,
+          SpanId: 'span-hidden',
+          ParentSpanId: '',
+          ServiceName: 'test-service',
+          HyperDXEventType: 'span' as const,
+          type: 'trace',
+          __hdx_hidden: true,
+        } as SpanRow,
+      ],
+      meta: [{ totalCount: 2 }],
+    };
+
+    setupQueryMocks({ traceData: hiddenSpanData });
+    renderComponent(null);
+    await waitForLoading();
+
+    expect(screen.getByTestId('trace-total-stats').textContent?.trim()).toBe(
+      '· Total duration: 1.5s',
+    );
+  });
   it('renders empty state when no data is available', async () => {
     mockUseOffsetPaginatedQuery.mockReturnValue({
       data: emptyData,
@@ -688,6 +1036,60 @@ describe('useEventsAroundFocus', () => {
   it('does not fetch when disabled', () => {
     const result = testEventsAroundFocus({ enabled: false });
     expect(result.rows.length).toBe(0);
+  });
+
+  it('does not flag isTruncated when a window returns exactly the row cap', () => {
+    const exactCapData = {
+      data: new Array(TRACE_WATERFALL_ROW_LIMIT).fill(null),
+      meta: [{ totalCount: TRACE_WATERFALL_ROW_LIMIT }],
+    };
+
+    const result = testEventsAroundFocus({
+      beforeData: exactCapData,
+      afterData: { data: [], meta: [{ totalCount: 0 }] },
+    });
+
+    expect(result.isTruncated).toBe(false);
+    expect(result.rows.length).toBe(TRACE_WATERFALL_ROW_LIMIT);
+  });
+
+  it('flags isTruncated when a window returns more rows than the cap, and drops the sentinel row', () => {
+    const overCapData = {
+      data: new Array(TRACE_WATERFALL_ROW_LIMIT + 1).fill(null),
+      meta: [{ totalCount: TRACE_WATERFALL_ROW_LIMIT + 1 }],
+    };
+
+    const result = testEventsAroundFocus({
+      beforeData: overCapData,
+      afterData: { data: [], meta: [{ totalCount: 0 }] },
+    });
+
+    expect(result.isTruncated).toBe(true);
+    expect(result.rows.length).toBe(TRACE_WATERFALL_ROW_LIMIT);
+  });
+
+  it('flags isTruncated when only the after window returns more rows than the cap', () => {
+    const overCapData = {
+      data: new Array(TRACE_WATERFALL_ROW_LIMIT + 1).fill(null),
+      meta: [{ totalCount: TRACE_WATERFALL_ROW_LIMIT + 1 }],
+    };
+
+    const result = testEventsAroundFocus({
+      beforeData: { data: [{ Body: 'a' }], meta: [{ totalCount: 1 }] },
+      afterData: overCapData,
+    });
+
+    expect(result.isTruncated).toBe(true);
+    expect(result.rows.length).toBe(TRACE_WATERFALL_ROW_LIMIT + 1);
+  });
+
+  it('does not flag isTruncated when both windows return fewer rows than the cap', () => {
+    const result = testEventsAroundFocus({
+      beforeData: { data: [{ Body: 'a' }], meta: [{ totalCount: 1 }] },
+      afterData: { data: [{ Body: 'b' }], meta: [{ totalCount: 1 }] },
+    });
+
+    expect(result.isTruncated).toBe(false);
   });
 });
 
