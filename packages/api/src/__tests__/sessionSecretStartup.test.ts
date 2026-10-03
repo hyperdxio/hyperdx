@@ -59,21 +59,17 @@ describe.each(['server', 'serverless'])(
           delete process.env.EXPRESS_SESSION_SECRET;
         else process.env.EXPRESS_SESSION_SECRET = secret;
 
-        /* eslint-disable @typescript-eslint/no-require-imports, n/no-missing-require */
-        const {
-          default: logger,
-        }: typeof import('@/utils/logger') = require('@/utils/logger');
-        const {
-          getCounter,
-        }: typeof import('@/utils/instrumentation') = require('@/utils/instrumentation');
-        const {
-          default: Server,
-        }: typeof import('@/server') = require('@/server');
-        const {
-          serverlessHandler,
-        }: typeof import('@/serverless') = require('@/serverless');
-        const config: typeof import('@/config') = require('@/config');
-        /* eslint-enable @typescript-eslint/no-require-imports, n/no-missing-require */
+        const { default: logger } =
+          jest.requireMock<typeof import('@/utils/logger')>('@/utils/logger');
+        const { getCounter } = jest.requireMock<
+          typeof import('@/utils/instrumentation')
+        >('@/utils/instrumentation');
+        const { default: Server } =
+          jest.requireActual<typeof import('@/server')>('@/server');
+        const { serverlessHandler } =
+          jest.requireActual<typeof import('@/serverless')>('@/serverless');
+        const config =
+          jest.requireActual<typeof import('@/config')>('@/config');
         expect(logger.error).not.toHaveBeenCalled();
 
         const req = new IncomingMessage(new Socket());

@@ -151,8 +151,7 @@ describe('config', () => {
     const loadConfig = () => {
       let loaded!: typeof import('@/config');
       jest.isolateModules(() => {
-        // eslint-disable-next-line @typescript-eslint/no-require-imports, n/no-missing-require
-        loaded = require('@/config');
+        loaded = jest.requireActual<typeof import('@/config')>('@/config');
       });
       return loaded;
     };
