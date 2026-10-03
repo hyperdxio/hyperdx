@@ -17,15 +17,19 @@ import {
   DBTraceWaterfallChartContainer,
   getDescendantIds,
   SpanRow,
-  TRACE_WATERFALL_ROW_LIMIT,
   TraceTotalDurationStat,
   useEventsAroundFocus,
 } from '@/components/DBTraceWaterfallChart';
 import { TimelineChart } from '@/components/TimelineChart';
+import { TRACE_WATERFALL_ROW_LIMIT } from '@/components/traceWaterfallLimits';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import useRowWhere from '@/hooks/useRowWhere';
 
 // Mock setup
+jest.mock('@/components/traceWaterfallLimits', () => ({
+  TRACE_WATERFALL_ROW_LIMIT: 3,
+  TRACE_WATERFALL_FETCH_LIMIT: 4,
+}));
 jest.mock('@/components/TimelineChart', () => {
   const flattenText = (value: React.ReactNode): string => {
     if (value == null || typeof value === 'boolean') {
@@ -52,13 +56,11 @@ jest.mock('@/components/TimelineChart', () => {
     return (
       <div data-testid="timeline-chart">
         TimelineChart
-        {props.rows
-          ?.slice(0, 20)
-          .map((row: any) => (
-            <div key={row.id}>
-              {row.events?.map((event: any) => flattenText(event.body))}
-            </div>
-          ))}
+        {props.rows?.map((row: any) => (
+          <div key={row.id}>
+            {row.events?.map((event: any) => flattenText(event.body))}
+          </div>
+        ))}
       </div>
     );
   };
