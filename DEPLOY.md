@@ -59,9 +59,9 @@ such as ufw. See the
 for more information.
 
 Generate a secret once with `openssl rand -hex 32`, then set
-`EXPRESS_SESSION_SECRET=<generated value>` in the root `.env` or `.env.local`.
-Compose forwards this value to the app container. To load `.env.local` and
-override the defaults in `.env`, run:
+`EXPRESS_SESSION_SECRET=<generated value>` in `.env.local`, which Git ignores.
+Do not put the secret in the tracked root `.env`. Compose forwards this value to
+the app container when you load `.env.local` after `.env`:
 
 ```bash
 docker compose --env-file .env --env-file .env.local up -d
