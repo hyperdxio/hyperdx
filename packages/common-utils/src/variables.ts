@@ -132,12 +132,7 @@ const BRACED_REFERENCE_REGEX = new RegExp(
   `^(${DASHBOARD_VARIABLE_NAME_PATTERN})(?::([a-zA-Z][a-zA-Z0-9_]*))?$`,
 );
 
-/**
- * ClickHouse's line comment introducers, per the `lineCommentTypes` of the
- * tokenizer this repo already formats and highlights with (`sql-formatter`'s
- * clickhouse dialect).
- */
-const LINE_COMMENT_STARTS = ['--', '#'] as const;
+const LINE_COMMENT_STARTS = ['--', '#', '//'] as const;
 
 /**
  * Index just past the SQL comment starting at `start`, or `start` when no
@@ -150,8 +145,18 @@ export function findCommentEnd(input: string, start: number): number {
     return newline < 0 ? input.length : newline;
   }
   if (input.startsWith('/*', start)) {
-    const close = input.indexOf('*/', start + 2);
-    return close < 0 ? input.length : close + 2;
+    let depth = 1;
+    for (let i = start + 2; i < input.length; i++) {
+      if (input.startsWith('/*', i)) {
+        depth++;
+        i++;
+      } else if (input.startsWith('*/', i)) {
+        depth--;
+        if (depth === 0) return i + 2;
+        i++;
+      }
+    }
+    return input.length;
   }
   return start;
 }
@@ -461,7 +466,11 @@ const LANGUAGE_SETTINGS: Record<TemplateLanguage, LanguageSettings> = {
     defaultFormat: 'sqlstring',
     escapeRegexForLiteral: rendered => escapeSqlString(rendered),
   },
-  lucene: { defaultFormat: 'lucene', disableMacros: true },
+  lucene: {
+    defaultFormat: 'lucene',
+    disableMacros: true,
+    skipSqlComments: false,
+  },
   promql: {
     defaultFormat: 'regex',
     disableMacros: true,
@@ -886,7 +895,10 @@ export function substituteVariables(
     return substituteTokensWithLuceneRewrites(
       // Variable macros are not supported in lucene, but we still scan for them so that
       // downstream expansion doesn't attempt to expand variables referenced in their args.
-      scanTemplateTokens(input, VARIABLE_MACRO_NAMES, { onMalformed: 'skip' }),
+      scanTemplateTokens(input, VARIABLE_MACRO_NAMES, {
+        onMalformed: 'skip',
+        skipSqlComments: false,
+      }),
       ctx,
     );
   }

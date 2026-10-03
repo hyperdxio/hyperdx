@@ -1116,7 +1116,12 @@ describe('getVariableReferences', () => {
     it.each([
       ['a hash line comment', "# don't\nWHERE a IN ($service)"],
       ['a line comment', "-- don't\nWHERE a IN ($service)"],
+      ['a C++ line comment', "// don't\nWHERE a IN ($service)"],
       ['a block comment', "/* don't */ WHERE a IN ($service)"],
+      [
+        'a nested block comment',
+        "/* /* inner */ don't */ WHERE a IN ($service)",
+      ],
       ['a trailing line comment', "WHERE a IN ($service) -- don't"],
     ])('does not let an apostrophe in %s open a string', (_label, input) => {
       expect(getVariableReferences(input)).toEqual(bareRef(false));
@@ -1130,6 +1135,7 @@ describe('getVariableReferences', () => {
 
     it.each([
       ['--', "SELECT 'a -- b', $service"],
+      ['//', "SELECT 'a // b', $service"],
       ['#', "SELECT 'a # b', $service"],
     ])(
       'does not treat %s inside a string literal as a comment',
@@ -1328,6 +1334,15 @@ describe('getReferencedVariableNames', () => {
     expect(getReferencedVariableNames('$__filter(col, service $env')).toEqual([
       'env',
     ]);
+  });
+
+  it('finds Lucene references after an unquoted URL', () => {
+    expect(
+      getReferencedVariableNames(
+        'Url:http://example.com AND ServiceName:"$service"',
+        'lucene',
+      ),
+    ).toEqual(['service']);
   });
 
   it('skips SQL comments for SQL but not for markdown', () => {

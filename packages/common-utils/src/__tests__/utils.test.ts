@@ -203,6 +203,123 @@ describe('utils', () => {
       expect(splitAndTrimWithBracket(input)).toEqual(expected);
     });
 
+    it.each([
+      {
+        input: '`service,name`, count()',
+        expected: ['`service,name`', 'count()'],
+      },
+      { input: '`latency(ms`, count()', expected: ['`latency(ms`', 'count()'] },
+      { input: '`latency)ms`, count()', expected: ['`latency)ms`', 'count()'] },
+      {
+        input: '`service[name`, count()',
+        expected: ['`service[name`', 'count()'],
+      },
+      {
+        input: '`service]name`, count()',
+        expected: ['`service]name`', 'count()'],
+      },
+      {
+        input: "`service'name`, count()",
+        expected: ["`service'name`", 'count()'],
+      },
+      {
+        input: '`service"name`, count()',
+        expected: ['`service"name`', 'count()'],
+      },
+      {
+        input: '`foo\\`bar,baz` AS label, count()',
+        expected: ['`foo\\`bar,baz` AS label', 'count()'],
+      },
+      {
+        input: '`foo\\\\\\`bar,baz`, count()',
+        expected: ['`foo\\\\\\`bar,baz`', 'count()'],
+      },
+      { input: '`path\\\\`, count()', expected: ['`path\\\\`', 'count()'] },
+      {
+        input: '`foo``bar,baz`, count()',
+        expected: ['`foo``bar,baz`', 'count()'],
+      },
+      {
+        input: "'backtick`, comma', count()",
+        expected: ["'backtick`, comma'", 'count()'],
+      },
+      {
+        input: '"backtick`, comma", count()',
+        expected: ['"backtick`, comma"', 'count()'],
+      },
+      {
+        input: 'sum(`service,(name`), array[`zone,name`], count()',
+        expected: ['sum(`service,(name`)', 'array[`zone,name`]', 'count()'],
+      },
+      {
+        input: ',  `service,name`  ,, count(), ',
+        expected: ['`service,name`', 'count()'],
+      },
+    ])(
+      'should preserve backtick-quoted expressions in $input',
+      ({ input, expected }) => {
+        expect(splitAndTrimWithBracket(input)).toEqual(expected);
+      },
+    );
+
+    it.each([
+      {
+        input: 'foo // ` comment\n, bar',
+        expected: ['foo // ` comment', 'bar'],
+      },
+      {
+        input: 'foo, bar /// ` comment',
+        expected: ['foo', 'bar /// ` comment'],
+      },
+      {
+        input: 'foo /* outer /* inner */ ` comment */, bar',
+        expected: ['foo /* outer /* inner */ ` comment */', 'bar'],
+      },
+      {
+        input: 'foo /* outer /* inner /* nested */ */ ` comment */, bar',
+        expected: ['foo /* outer /* inner /* nested */ */ ` comment */', 'bar'],
+      },
+      {
+        input: '`service//,name`, count()',
+        expected: ['`service//,name`', 'count()'],
+      },
+      {
+        input: 'foo /* ` comment */, bar',
+        expected: ['foo /* ` comment */', 'bar'],
+      },
+      {
+        input: 'foo -- ` comment\n, bar',
+        expected: ['foo -- ` comment', 'bar'],
+      },
+      { input: 'foo # ` comment\n, bar', expected: ['foo # ` comment', 'bar'] },
+      { input: 'foo, bar -- ` comment', expected: ['foo', 'bar -- ` comment'] },
+      {
+        input: 'foo /* `, (, [ */ + bar, baz',
+        expected: ['foo /* `, (, [ */ + bar', 'baz'],
+      },
+      {
+        input: '`service/*,name`, count()',
+        expected: ['`service/*,name`', 'count()'],
+      },
+      {
+        input: '`service--,name`, count()',
+        expected: ['`service--,name`', 'count()'],
+      },
+      {
+        input: '`service#,name`, count()',
+        expected: ['`service#,name`', 'count()'],
+      },
+      {
+        input: "'/* `, comment */', count()",
+        expected: ["'/* `, comment */'", 'count()'],
+      },
+    ])(
+      'should ignore SQL comment contents in $input',
+      ({ input, expected }) => {
+        expect(splitAndTrimWithBracket(input)).toEqual(expected);
+      },
+    );
+
     it('should handle single quoted strings with commas', () => {
       const input = `col1, 'quoted, string', col3`;
       const expected = ['col1', `'quoted, string'`, 'col3'];
