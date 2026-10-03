@@ -38,7 +38,10 @@ import {
   TileTemplateSchema,
   TSource,
 } from '@/types';
-import { validateVariableReferencesInTemplate } from '@/variables';
+import {
+  findCommentEnd,
+  validateVariableReferencesInTemplate,
+} from '@/variables';
 
 import { SkipIndexMetadata, TableMetadata } from './metadata';
 
@@ -99,25 +102,55 @@ export function splitAndTrimWithBracket(input: string): string[] {
   let squareCount: number = 0;
   let inSingleQuote: boolean = false;
   let inDoubleQuote: boolean = false;
+  let inBacktick: boolean = false;
 
   const res: string[] = [];
   let cur: string = '';
   for (let i = 0; i <= input.length; i++) {
     const c = i === input.length ? ',' : input[i];
 
-    if (c === '"' && !inSingleQuote && !isQuoteEscapedByBackslash(input, i)) {
+    if (!inSingleQuote && !inDoubleQuote && !inBacktick) {
+      const commentEnd = findCommentEnd(input, i);
+      if (commentEnd > i) {
+        cur += input.slice(i, commentEnd);
+        i = commentEnd - 1;
+        continue;
+      }
+    }
+
+    if (
+      c === '"' &&
+      !inSingleQuote &&
+      !inBacktick &&
+      !isQuoteEscapedByBackslash(input, i)
+    ) {
       inDoubleQuote = !inDoubleQuote;
       cur += c;
       continue;
     }
 
-    if (c === "'" && !inDoubleQuote && !isQuoteEscapedByBackslash(input, i)) {
+    if (
+      c === "'" &&
+      !inDoubleQuote &&
+      !inBacktick &&
+      !isQuoteEscapedByBackslash(input, i)
+    ) {
       inSingleQuote = !inSingleQuote;
       cur += c;
       continue;
     }
+    if (
+      c === '`' &&
+      !inSingleQuote &&
+      !inDoubleQuote &&
+      !isQuoteEscapedByBackslash(input, i)
+    ) {
+      inBacktick = !inBacktick;
+      cur += c;
+      continue;
+    }
     // Only count brackets when not in quotes
-    if (!inSingleQuote && !inDoubleQuote) {
+    if (!inSingleQuote && !inDoubleQuote && !inBacktick) {
       if (c === '(') {
         parenCount++;
       } else if (c === ')') {
@@ -134,7 +167,8 @@ export function splitAndTrimWithBracket(input: string): string[] {
       parenCount === 0 &&
       squareCount === 0 &&
       !inSingleQuote &&
-      !inDoubleQuote
+      !inDoubleQuote &&
+      !inBacktick
     ) {
       const trimString = cur.trim();
       if (trimString) res.push(trimString);
