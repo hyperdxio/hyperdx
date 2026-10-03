@@ -171,6 +171,103 @@ describe('CustomSchemaSQLSerializerV2 - json', () => {
 
   const testCases = [
     {
+      lucene: '(ServiceName:"a" AND ServiceName:"b") OR ServiceName:"c"',
+      sql: "(((ServiceName = 'a') AND (ServiceName = 'b')) OR (ServiceName = 'c'))",
+      english:
+        "('ServiceName' is a AND 'ServiceName' is b) OR 'ServiceName' is c",
+    },
+    {
+      lucene: '-ServiceName:"a" AND ServiceName:"b" OR ServiceName:"c"',
+      sql: "((ServiceName != 'a') AND (ServiceName = 'b') OR (ServiceName = 'c'))",
+      english:
+        "'ServiceName' is not a AND 'ServiceName' is b OR 'ServiceName' is c",
+    },
+    {
+      lucene: 'ServiceName:"a" NOT ServiceName:"b" OR ServiceName:"c"',
+      sql: "((ServiceName = 'a') AND NOT (ServiceName = 'b') OR (ServiceName = 'c'))",
+      english:
+        "'ServiceName' is a AND NOT 'ServiceName' is b OR 'ServiceName' is c",
+    },
+    {
+      lucene: 'ServiceName:"a" OR NOT (ServiceName:"b" AND ServiceName:"c")',
+      sql: "((ServiceName = 'a') OR NOT ((ServiceName = 'b') AND (ServiceName = 'c')))",
+      english:
+        "'ServiceName' is a OR NOT ('ServiceName' is b AND 'ServiceName' is c)",
+    },
+    {
+      lucene: 'ServiceName:"a" AND ServiceName:"b" OR ServiceName:"c"',
+      sql: "((ServiceName = 'a') AND (ServiceName = 'b') OR (ServiceName = 'c'))",
+      english:
+        "'ServiceName' is a AND 'ServiceName' is b OR 'ServiceName' is c",
+    },
+    {
+      lucene: 'ServiceName:"a" OR ServiceName:"b" AND ServiceName:"c"',
+      sql: "((ServiceName = 'a') OR (ServiceName = 'b') AND (ServiceName = 'c'))",
+      english:
+        "'ServiceName' is a OR 'ServiceName' is b AND 'ServiceName' is c",
+    },
+    {
+      lucene:
+        'ServiceName:"a" AND ServiceName:"b" OR ServiceName:"c" AND ServiceName:"d"',
+      sql: "((ServiceName = 'a') AND (ServiceName = 'b') OR (ServiceName = 'c') AND (ServiceName = 'd'))",
+      english:
+        "'ServiceName' is a AND 'ServiceName' is b OR 'ServiceName' is c AND 'ServiceName' is d",
+    },
+    {
+      lucene: '(ServiceName:"a" OR ServiceName:"b") AND ServiceName:"c"',
+      sql: "(((ServiceName = 'a') OR (ServiceName = 'b')) AND (ServiceName = 'c'))",
+      english:
+        "('ServiceName' is a OR 'ServiceName' is b) AND 'ServiceName' is c",
+    },
+    {
+      lucene: 'ServiceName:"a" AND (ServiceName:"b" OR ServiceName:"c")',
+      sql: "((ServiceName = 'a') AND ((ServiceName = 'b') OR (ServiceName = 'c')))",
+      english:
+        "'ServiceName' is a AND ('ServiceName' is b OR 'ServiceName' is c)",
+    },
+    {
+      lucene: 'ServiceName:"a" && ServiceName:"b" || ServiceName:"c"',
+      sql: "((ServiceName = 'a') AND (ServiceName = 'b') OR (ServiceName = 'c'))",
+      english:
+        "'ServiceName' is a AND 'ServiceName' is b OR 'ServiceName' is c",
+    },
+    {
+      lucene: 'ServiceName:"a" || ServiceName:"b" && ServiceName:"c"',
+      sql: "((ServiceName = 'a') OR (ServiceName = 'b') AND (ServiceName = 'c'))",
+      english:
+        "'ServiceName' is a OR 'ServiceName' is b AND 'ServiceName' is c",
+    },
+    {
+      lucene: 'ServiceName:"a" ServiceName:"b" OR ServiceName:"c"',
+      sql: "((ServiceName = 'a') AND (ServiceName = 'b') OR (ServiceName = 'c'))",
+      english:
+        "'ServiceName' is a AND 'ServiceName' is b OR 'ServiceName' is c",
+    },
+    {
+      lucene: 'ServiceName:"a" AND NOT ServiceName:"b" OR ServiceName:"c"',
+      sql: "((ServiceName = 'a') AND NOT (ServiceName = 'b') OR (ServiceName = 'c'))",
+      english:
+        "'ServiceName' is a AND NOT 'ServiceName' is b OR 'ServiceName' is c",
+    },
+    {
+      lucene: 'ServiceName:"a" OR NOT ServiceName:"b" AND ServiceName:"c"',
+      sql: "((ServiceName = 'a') OR NOT (ServiceName = 'b') AND (ServiceName = 'c'))",
+      english:
+        "'ServiceName' is a OR NOT 'ServiceName' is b AND 'ServiceName' is c",
+    },
+    {
+      lucene: 'ServiceName:"a" AND NOT (ServiceName:"b" OR ServiceName:"c")',
+      sql: "((ServiceName = 'a') AND NOT ((ServiceName = 'b') OR (ServiceName = 'c')))",
+      english:
+        "'ServiceName' is a AND NOT ('ServiceName' is b OR 'ServiceName' is c)",
+    },
+    {
+      lucene: 'NOT ServiceName:"a" OR ServiceName:"b" AND ServiceName:"c"',
+      sql: "(NOT (ServiceName = 'a') OR (ServiceName = 'b') AND (ServiceName = 'c'))",
+      english:
+        "NOT 'ServiceName' is a OR 'ServiceName' is b AND 'ServiceName' is c",
+    },
+    {
       lucene: '"foo bar baz"',
       sql: "((hasToken(lower(Body), lower('foo')) AND hasToken(lower(Body), lower('bar')) AND hasToken(lower(Body), lower('baz')) AND (lower(Body) LIKE lower('%foo bar baz%'))))",
       english: 'event has whole word "foo bar baz"',
@@ -3293,87 +3390,3 @@ describe('CustomSchemaSQLSerializerV2 - KV items version gate', () => {
     expect(sql).toContain(HAS_FORM);
   });
 });
-
-describe('BinaryAST operator precedence and grouping in emitted SQL', () => {
-  const metadata = getMetadata(
-    new ClickhouseClient({ host: 'http://localhost:8123' }),
-  );
-  metadata.getColumn = jest.fn().mockImplementation(async ({ column }) => {
-    return { name: column, type: 'String' };
-  });
-  metadata.getColumns = jest.fn().mockImplementation(async () => []);
-  metadata.getMaterializedColumnsLookupTable = jest
-    .fn()
-    .mockImplementation(async () => new Map());
-  metadata.getSkipIndices = jest.fn().mockImplementation(async () => []);
-  metadata.getSetting = jest.fn().mockImplementation(async () => '0');
-  metadata.getServerVersion = jest.fn().mockImplementation(async () => undefined);
-  metadata.isClickHouseCloud = jest.fn().mockImplementation(async () => false);
-
-  const serializer = new CustomSchemaSQLSerializerV2({
-    metadata,
-    databaseName: 'testDb',
-    tableName: 'testTable',
-    connectionId: 'testConn',
-    implicitColumnExpression: 'Body',
-  });
-
-  it('groups inner OR when mixed with AND without explicit parentheses', async () => {
-    const actual = await new SearchQueryBuilder(
-      'a:"1" AND b:"2" OR c:"3"',
-      serializer,
-    ).build();
-    expect(actual).toBe("((a = '1') AND ((b = '2') OR (c = '3')))");
-  });
-
-  it('groups inner AND when mixed with OR without explicit parentheses', async () => {
-    const actual = await new SearchQueryBuilder(
-      'a:"1" OR b:"2" AND c:"3"',
-      serializer,
-    ).build();
-    expect(actual).toBe("((a = '1') OR ((b = '2') AND (c = '3')))");
-  });
-
-  it('keeps chained identical AND operators flat', async () => {
-    const actual = await new SearchQueryBuilder(
-      'a:"1" AND b:"2" AND c:"3"',
-      serializer,
-    ).build();
-    expect(actual).toBe("((a = '1') AND (b = '2') AND (c = '3'))");
-  });
-
-  it('keeps chained identical OR operators flat', async () => {
-    const actual = await new SearchQueryBuilder(
-      'a:"1" OR b:"2" OR c:"3"',
-      serializer,
-    ).build();
-    expect(actual).toBe("((a = '1') OR (b = '2') OR (c = '3'))");
-  });
-
-  it('preserves explicitly parenthesized left-grouped expressions', async () => {
-    const actual = await new SearchQueryBuilder(
-      '(a:"1" AND b:"2") OR c:"3"',
-      serializer,
-    ).build();
-    expect(actual).toBe("(((a = '1') AND (b = '2')) OR (c = '3'))");
-  });
-
-  it('preserves explicitly parenthesized right-grouped expressions', async () => {
-    const actual = await new SearchQueryBuilder(
-      'a:"1" AND (b:"2" OR c:"3")',
-      serializer,
-    ).build();
-    expect(actual).toBe("((a = '1') AND ((b = '2') OR (c = '3')))");
-  });
-
-  it('handles multi-level operator nesting correctly', async () => {
-    const actual = await new SearchQueryBuilder(
-      'a:"1" AND b:"2" OR c:"3" AND d:"4"',
-      serializer,
-    ).build();
-    expect(actual).toBe(
-      "((a = '1') AND ((b = '2') OR ((c = '3') AND (d = '4'))))",
-    );
-  });
-});
-
