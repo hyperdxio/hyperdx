@@ -32,7 +32,7 @@ import SearchWhereInput, {
 } from '@/components/SearchInput/SearchWhereInput';
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { TimePicker } from '@/components/TimePicker';
-import { withAppNav } from '@/layout';
+import { withAppNavForSurface } from '@/layout';
 import {
   useLLMDashboardExpressions,
   useLLMLogDashboardExpressions,
@@ -377,6 +377,6 @@ const LLMDashboardPageDynamic = dynamic(async () => LLMDashboardPage, {
 });
 
 // @ts-expect-error Next.js layout typing
-LLMDashboardPageDynamic.getLayout = withAppNav;
+LLMDashboardPageDynamic.getLayout = withAppNavForSurface('dashboard', 'llm');
 
 export default LLMDashboardPageDynamic;
