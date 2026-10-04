@@ -418,6 +418,8 @@ export class ProxyClickhouseClient extends BaseClickhouseClient {
 export interface MeTeam {
   id: string;
   name: string;
+  defaultQueryLanguage?: 'sql' | 'lucene';
+  allowedQueryLanguages?: ('sql' | 'lucene')[];
 }
 
 interface MeResponse {

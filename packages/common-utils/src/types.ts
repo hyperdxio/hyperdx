@@ -2338,6 +2338,35 @@ export type TeamClickHouseSettings = z.infer<
   typeof TeamClickHouseSettingsSchema
 >;
 
+export const TeamQueryLanguageSettingsSchema = z.object({
+  defaultQueryLanguage: z.enum(['lucene', 'sql']).optional(),
+  allowedQueryLanguages: z
+    .array(z.enum(['lucene', 'sql']))
+    .min(1)
+    .optional(),
+});
+
+export const TeamQueryLanguageSettingsUpdateSchema = z.object({
+  defaultQueryLanguage: z.enum(['lucene', 'sql']).nullish(),
+  allowedQueryLanguages: z
+    .array(z.enum(['lucene', 'sql']))
+    .min(1)
+    .nullish(),
+});
+
+export type TeamQueryLanguageSettings = z.infer<
+  typeof TeamQueryLanguageSettingsSchema
+>;
+export type TeamQueryLanguageSettingsUpdate = z.infer<
+  typeof TeamQueryLanguageSettingsUpdateSchema
+>;
+
+export const UpdateQueryLanguageSettingsApiResponseSchema =
+  TeamQueryLanguageSettingsSchema.partial();
+export type UpdateQueryLanguageSettingsApiResponse = z.infer<
+  typeof UpdateQueryLanguageSettingsApiResponseSchema
+>;
+
 export const TeamSchema = z
   .object({
     id: z.string(),
@@ -2348,7 +2377,8 @@ export const TeamSchema = z
     collectorAuthenticationEnforced: z.boolean(),
     isMetricsSeriesTableEnabled: z.boolean(),
   })
-  .merge(TeamClickHouseSettingsSchema);
+  .merge(TeamClickHouseSettingsSchema)
+  .merge(TeamQueryLanguageSettingsSchema);
 
 export type Team = z.infer<typeof TeamSchema>;
 
@@ -3078,7 +3108,9 @@ export const MeApiResponseSchema = z.object({
     name: true,
     allowedAuthMethods: true,
     apiKey: true,
-  }).merge(TeamClickHouseSettingsSchema),
+  })
+    .merge(TeamClickHouseSettingsSchema)
+    .merge(TeamQueryLanguageSettingsSchema),
   usageStatsEnabled: z.boolean(),
   aiAssistantEnabled: z.boolean(),
 });

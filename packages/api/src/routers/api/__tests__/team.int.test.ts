@@ -34,10 +34,57 @@ describe('team router', () => {
       .toMatchInlineSnapshot(`
       {
         "allowedAuthMethods": [],
+        "allowedQueryLanguages": [
+          "lucene",
+          "sql",
+        ],
+        "defaultQueryLanguage": "lucene",
         "isMetricsSeriesTableEnabled": false,
         "name": "fake@deploysentinel.com's Team",
       }
     `);
+  });
+
+  it('PATCH /team/query-language-settings - update query language settings', async () => {
+    const { agent } = await getLoggedInAgent(server);
+
+    const patchResp = await agent
+      .patch('/team/query-language-settings')
+      .send({
+        allowedQueryLanguages: ['sql'],
+        defaultQueryLanguage: 'sql',
+      })
+      .expect(200);
+
+    expect(patchResp.body).toEqual({
+      allowedQueryLanguages: ['sql'],
+      defaultQueryLanguage: 'sql',
+    });
+
+    const getResp = await agent.get('/team').expect(200);
+    expect(getResp.body.allowedQueryLanguages).toEqual(['sql']);
+    expect(getResp.body.defaultQueryLanguage).toEqual('sql');
+  });
+
+  it('PATCH /team/query-language-settings - rejects invalid configuration', async () => {
+    const { agent } = await getLoggedInAgent(server);
+
+    // Rejects empty allowed languages
+    await agent
+      .patch('/team/query-language-settings')
+      .send({
+        allowedQueryLanguages: [],
+      })
+      .expect(400);
+
+    // Rejects default language not in allowed languages
+    await agent
+      .patch('/team/query-language-settings')
+      .send({
+        allowedQueryLanguages: ['sql'],
+        defaultQueryLanguage: 'lucene',
+      })
+      .expect(400);
   });
 
   it('GET /team reflects isMetricsSeriesTableEnabled when set', async () => {

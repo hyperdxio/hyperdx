@@ -1,6 +1,7 @@
 import {
   TagResourceType,
   TeamClickHouseSettingsUpdate,
+  TeamQueryLanguageSettingsUpdate,
 } from '@hyperdx/common-utils/dist/types';
 import mongoose from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
@@ -11,6 +12,7 @@ import Alert from '@/models/alert';
 import Dashboard from '@/models/dashboard';
 import { SavedSearch } from '@/models/savedSearch';
 import Team, { type ITeam, type TeamDocument } from '@/models/team';
+import { BadRequestError } from '@/utils/errors';
 
 export function getTeamInviteUrl(token: string) {
   return `${config.FRONTEND_URL}/join-team?token=${token}`;
@@ -105,6 +107,58 @@ export function updateTeamClickhouseSettings(
   teamId: ObjectId,
   settings: TeamClickHouseSettingsUpdate,
 ) {
+  const $set: Record<string, any> = {};
+  const $unset: Record<string, any> = {};
+
+  for (const [key, value] of Object.entries(settings)) {
+    if (value === null) {
+      $unset[key] = '';
+    } else if (value !== undefined) {
+      $set[key] = value;
+    }
+  }
+
+  const update: Record<string, any> = {};
+  if (Object.keys($set).length > 0) update.$set = $set;
+  if (Object.keys($unset).length > 0) update.$unset = $unset;
+
+  return Team.findByIdAndUpdate(teamId, update, { new: true });
+}
+
+export async function updateTeamQueryLanguageSettings(
+  teamId: ObjectId,
+  settings: TeamQueryLanguageSettingsUpdate,
+) {
+  const currentTeam = await Team.findById(teamId);
+  if (!currentTeam) {
+    throw new Error(`Team ${teamId} not found`);
+  }
+
+  const effectiveAllowed =
+    settings.allowedQueryLanguages !== undefined &&
+    settings.allowedQueryLanguages !== null
+      ? settings.allowedQueryLanguages
+      : (currentTeam.allowedQueryLanguages ?? ['lucene', 'sql']);
+
+  if (!effectiveAllowed || effectiveAllowed.length === 0) {
+    throw new BadRequestError('At least one query language must be enabled');
+  }
+
+  const effectiveDefault =
+    settings.defaultQueryLanguage !== undefined &&
+    settings.defaultQueryLanguage !== null
+      ? settings.defaultQueryLanguage
+      : (currentTeam.defaultQueryLanguage ?? 'lucene');
+
+  if (
+    effectiveDefault != null &&
+    !effectiveAllowed.includes(effectiveDefault as 'sql' | 'lucene')
+  ) {
+    throw new BadRequestError(
+      'Default query language must be one of the allowed query languages',
+    );
+  }
+
   const $set: Record<string, any> = {};
   const $unset: Record<string, any> = {};
 

@@ -1,9 +1,11 @@
+import { useCallback, useEffect, useMemo } from 'react';
 import { FieldPath, useController, UseControllerProps } from 'react-hook-form';
 import { TableConnectionChoice } from '@hyperdx/common-utils/dist/core/metadata';
 import { ActionIcon, Box, Flex, Tooltip } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { IconHelp } from '@tabler/icons-react';
 
+import api from '@/api';
 import { EDITOR_INPUT_HEIGHTS } from '@/components/editorInputHeights';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 
@@ -19,17 +21,33 @@ const STORAGE_KEY = 'hdx-search-where-language';
  * Returns the user's stored WHERE language preference, or null if none or unavailable.
  * Use when building form/URL defaults so the same selection applies across pages and on navigation.
  */
-export function getStoredLanguage(): 'sql' | 'lucene' | null {
+export function getStoredLanguage(
+  team?: {
+    allowedQueryLanguages?: ('sql' | 'lucene')[];
+    defaultQueryLanguage?: 'sql' | 'lucene';
+  } | null,
+): 'sql' | 'lucene' | null {
+  const allowed = team?.allowedQueryLanguages?.length
+    ? team.allowedQueryLanguages
+    : ['lucene', 'sql'];
   try {
     const stored =
       typeof window !== 'undefined'
         ? window.localStorage.getItem(STORAGE_KEY)
         : null;
-    if (stored === 'sql' || stored === 'lucene') return stored;
+    if (stored === 'sql' || stored === 'lucene') {
+      if (allowed.includes(stored)) return stored;
+    }
   } catch {
     // localStorage may throw in private browsing
   }
-  return null;
+  if (
+    team?.defaultQueryLanguage &&
+    allowed.includes(team.defaultQueryLanguage)
+  ) {
+    return team.defaultQueryLanguage;
+  }
+  return allowed[0] ?? null;
 }
 
 function setStoredLanguage(lang: 'sql' | 'lucene'): void {
@@ -166,19 +184,56 @@ export default function SearchWhereInput({
   const [syntaxRefOpened, { open: openSyntaxRef, close: closeSyntaxRef }] =
     useDisclosure(false);
 
+  const { data: me } = api.useMe();
+  const teamAllowedLanguages = me?.team?.allowedQueryLanguages;
+  const allowedLanguages = useMemo(
+    () => teamAllowedLanguages ?? ['lucene', 'sql'],
+    [teamAllowedLanguages],
+  );
+  const defaultLanguage = me?.team?.defaultQueryLanguage ?? 'lucene';
+
   const { field: languageField } = useController({
     control,
     name: languageName as FieldPath<any>,
   });
 
-  const language: 'sql' | 'lucene' = languageField.value ?? 'lucene';
+  const language: 'sql' | 'lucene' = allowedLanguages.includes(
+    languageField.value,
+  )
+    ? languageField.value
+    : allowedLanguages.includes(defaultLanguage)
+      ? defaultLanguage
+      : (allowedLanguages[0] ?? 'lucene');
+
   const isSql = language === 'sql';
 
-  const handleLanguageChange = (lang: 'sql' | 'lucene') => {
-    setStoredLanguage(lang);
-    languageField.onChange(lang);
-    onLanguageChange?.(lang);
-  };
+  const handleLanguageChange = useCallback(
+    (lang: 'sql' | 'lucene') => {
+      setStoredLanguage(lang);
+      languageField.onChange(lang);
+      onLanguageChange?.(lang);
+    },
+    [languageField, onLanguageChange],
+  );
+
+  useEffect(() => {
+    if (
+      languageField.value &&
+      !allowedLanguages.includes(languageField.value)
+    ) {
+      handleLanguageChange(language);
+    } else if (!languageField.value) {
+      const stored = getStoredLanguage(me?.team);
+      const fallback = stored ?? language;
+      handleLanguageChange(fallback);
+    }
+  }, [
+    languageField.value,
+    allowedLanguages,
+    language,
+    me?.team,
+    handleLanguageChange,
+  ]);
 
   const tc = tableConnection ? { tableConnection } : { tableConnections };
   const baseHeight =
@@ -210,6 +265,7 @@ export default function SearchWhereInput({
             <InputLanguageSwitch
               language={language}
               onLanguageChange={handleLanguageChange}
+              allowedLanguages={allowedLanguages}
             />
             <Tooltip label="Syntax reference" withArrow position="top">
               <ActionIcon

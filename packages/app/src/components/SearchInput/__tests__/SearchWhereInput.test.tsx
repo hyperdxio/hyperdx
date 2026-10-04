@@ -6,7 +6,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import SearchWhereInput from '@/components/SearchInput/SearchWhereInput';
+import SearchWhereInput, {
+  getStoredLanguage,
+} from '@/components/SearchInput/SearchWhereInput';
 import { SqlVariablesProvider } from '@/components/SQLEditor/variableCompletions';
 
 function renderWithMantine(ui: React.ReactElement) {
@@ -75,6 +77,28 @@ function TestWrapper({
 describe('SearchWhereInput', () => {
   beforeEach(() => {
     queryClient.clear();
+  });
+
+  describe('Team Query Language Settings', () => {
+    it('returns stored language if allowed by team', () => {
+      window.localStorage.setItem('hdx-search-where-language', 'sql');
+      expect(
+        getStoredLanguage({
+          allowedQueryLanguages: ['lucene', 'sql'],
+          defaultQueryLanguage: 'lucene',
+        }),
+      ).toBe('sql');
+    });
+
+    it('falls back to defaultQueryLanguage when stored language is disallowed', () => {
+      window.localStorage.setItem('hdx-search-where-language', 'lucene');
+      expect(
+        getStoredLanguage({
+          allowedQueryLanguages: ['sql'],
+          defaultQueryLanguage: 'sql',
+        }),
+      ).toBe('sql');
+    });
   });
 
   describe('Lucene Mode', () => {
