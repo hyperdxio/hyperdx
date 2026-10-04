@@ -109,6 +109,16 @@ describe('SearchWhereInput', () => {
         }),
       ).toBe('sql');
     });
+
+    it('returns defaultQueryLanguage SQL when both languages are allowed and localStorage is empty', () => {
+      window.localStorage.removeItem('hdx-search-where-language');
+      expect(
+        getStoredLanguage({
+          allowedQueryLanguages: ['lucene', 'sql'],
+          defaultQueryLanguage: 'sql',
+        }),
+      ).toBe('sql');
+    });
   });
 
   describe('Lucene Mode', () => {

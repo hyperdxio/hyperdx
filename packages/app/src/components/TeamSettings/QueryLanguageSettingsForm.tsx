@@ -18,7 +18,6 @@ import api from '@/api';
 export default function QueryLanguageSettingsForm() {
   const { data: me } = api.useMe();
   const updateQueryLanguageSettings = api.useUpdateQueryLanguageSettings();
-  const hasAdminAccess = true;
   const [isEditing, setIsEditing] = useState(false);
 
   const allowedLanguages: ('sql' | 'lucene')[] = me?.team
@@ -115,7 +114,7 @@ export default function QueryLanguageSettingsForm() {
         Restrict available query languages across search interfaces and set the
         default option.
       </Text>
-      {isEditing && hasAdminAccess ? (
+      {isEditing ? (
         <form onSubmit={handleSubmit}>
           <Stack gap="sm" mt="xs">
             <Box>
@@ -196,16 +195,14 @@ export default function QueryLanguageSettingsForm() {
               {defaultLanguage === 'sql' ? 'SQL' : 'Lucene'}
             </Text>
           </Stack>
-          {hasAdminAccess && (
-            <Button
-              size="xs"
-              variant="secondary"
-              leftSection={<IconPencil size={16} />}
-              onClick={handleStartEdit}
-            >
-              Change
-            </Button>
-          )}
+          <Button
+            size="xs"
+            variant="secondary"
+            leftSection={<IconPencil size={16} />}
+            onClick={handleStartEdit}
+          >
+            Change
+          </Button>
         </Group>
       )}
     </Stack>

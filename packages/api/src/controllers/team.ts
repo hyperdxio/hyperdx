@@ -174,7 +174,46 @@ export async function updateTeamQueryLanguageSettings(
 
   const update = buildSetUnsetUpdate(settings);
 
-  return Team.findByIdAndUpdate(teamId, update, { new: true });
+  const updatedTeam = await Team.findByIdAndUpdate(teamId, update, {
+    new: true,
+  });
+
+  if (!updatedTeam) {
+    throw new Error(`Team ${teamId} not found`);
+  }
+
+  const finalAllowed = updatedTeam.allowedQueryLanguages ?? ['lucene', 'sql'];
+  const finalDefault = updatedTeam.defaultQueryLanguage ?? 'lucene';
+
+  if (finalAllowed.length === 0) {
+    await Team.findByIdAndUpdate(teamId, {
+      $set: {
+        allowedQueryLanguages: currentTeam.allowedQueryLanguages ?? [
+          'lucene',
+          'sql',
+        ],
+        defaultQueryLanguage: currentTeam.defaultQueryLanguage ?? 'lucene',
+      },
+    });
+    throw new Api400Error('At least one query language must be enabled');
+  }
+
+  if (!finalAllowed.includes(finalDefault)) {
+    await Team.findByIdAndUpdate(teamId, {
+      $set: {
+        allowedQueryLanguages: currentTeam.allowedQueryLanguages ?? [
+          'lucene',
+          'sql',
+        ],
+        defaultQueryLanguage: currentTeam.defaultQueryLanguage ?? 'lucene',
+      },
+    });
+    throw new Api400Error(
+      'Default query language must be one of the allowed query languages',
+    );
+  }
+
+  return updatedTeam;
 }
 
 function getCollectionsWithTags(

@@ -2346,10 +2346,8 @@ export const TeamQueryLanguageSettingsSchema = z.object({
   allowedQueryLanguages: z.array(QueryLanguageSchema).min(1).optional(),
 });
 
-export const TeamQueryLanguageSettingsUpdateSchema = z.object({
-  defaultQueryLanguage: QueryLanguageSchema.optional(),
-  allowedQueryLanguages: z.array(QueryLanguageSchema).min(1).optional(),
-});
+export const TeamQueryLanguageSettingsUpdateSchema =
+  TeamQueryLanguageSettingsSchema;
 
 export type TeamQueryLanguageSettings = z.infer<
   typeof TeamQueryLanguageSettingsSchema

@@ -2,6 +2,11 @@ import _ from 'lodash';
 import { ObjectId } from 'mongodb';
 import mongoose from 'mongoose';
 
+import * as config from '@/config';
+import {
+  LOCAL_APP_TEAM,
+  updateTeamQueryLanguageSettings,
+} from '@/controllers/team';
 import { getLoggedInAgent, getServer } from '@/fixtures';
 import Alert, { AlertSource, AlertThresholdType } from '@/models/alert';
 import Team from '@/models/team';
@@ -85,6 +90,22 @@ describe('team router', () => {
         defaultQueryLanguage: 'lucene',
       })
       .expect(400);
+  });
+
+  it('updateTeamQueryLanguageSettings works in local app mode', async () => {
+    const origLocalMode = config.IS_LOCAL_APP_MODE;
+    try {
+      (config as { IS_LOCAL_APP_MODE: boolean }).IS_LOCAL_APP_MODE = true;
+      const res = await updateTeamQueryLanguageSettings(LOCAL_APP_TEAM._id, {
+        allowedQueryLanguages: ['sql'],
+        defaultQueryLanguage: 'sql',
+      });
+      expect(res.allowedQueryLanguages).toEqual(['sql']);
+      expect(res.defaultQueryLanguage).toEqual('sql');
+    } finally {
+      (config as { IS_LOCAL_APP_MODE: boolean }).IS_LOCAL_APP_MODE =
+        origLocalMode;
+    }
   });
 
   it('GET /team reflects isMetricsSeriesTableEnabled when set', async () => {
