@@ -195,21 +195,27 @@ export async function updateTeamQueryLanguageSettings(
 
   const update = buildSetUnsetUpdate(settings);
 
-  const updatedTeam = await Team.findOneAndUpdate(
-    {
-      _id: teamId,
-      ...(settings.allowedQueryLanguages && !settings.defaultQueryLanguage
-        ? {
-            $or: [
-              { defaultQueryLanguage: { $in: settings.allowedQueryLanguages } },
-              { defaultQueryLanguage: { $exists: false } },
-            ],
-          }
-        : {}),
-    },
-    update,
-    { new: true },
-  );
+  const queryFilter: Record<string, unknown> = { _id: teamId };
+
+  if (settings.allowedQueryLanguages && !settings.defaultQueryLanguage) {
+    const includesDefaultLucene =
+      settings.allowedQueryLanguages.includes('lucene');
+    queryFilter.$or = [
+      { defaultQueryLanguage: { $in: settings.allowedQueryLanguages } },
+      ...(includesDefaultLucene
+        ? [{ defaultQueryLanguage: { $exists: false } }]
+        : []),
+    ];
+  } else if (settings.defaultQueryLanguage && !settings.allowedQueryLanguages) {
+    queryFilter.$or = [
+      { allowedQueryLanguages: settings.defaultQueryLanguage },
+      { allowedQueryLanguages: { $exists: false } },
+    ];
+  }
+
+  const updatedTeam = await Team.findOneAndUpdate(queryFilter, update, {
+    new: true,
+  });
 
   if (!updatedTeam) {
     throw new Api400Error(

@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo } from 'react';
 import { FieldPath, useController, UseControllerProps } from 'react-hook-form';
 import { TableConnectionChoice } from '@hyperdx/common-utils/dist/core/metadata';
-import type { QueryLanguage } from '@hyperdx/common-utils/dist/types';
+import {
+  DEFAULT_QUERY_LANGUAGES,
+  type QueryLanguage,
+} from '@hyperdx/common-utils/dist/types';
 import { ActionIcon, Box, Flex, Tooltip } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { IconHelp } from '@tabler/icons-react';
@@ -47,7 +50,7 @@ export function getStoredLanguage(
 
   const allowed: QueryLanguage[] = team.allowedQueryLanguages?.length
     ? team.allowedQueryLanguages
-    : ['lucene', 'sql'];
+    : DEFAULT_QUERY_LANGUAGES;
 
   if (stored && allowed.includes(stored)) {
     return stored;
@@ -200,7 +203,7 @@ export default function SearchWhereInput({
   const { data: me } = api.useMe();
   const teamAllowedLanguages = me?.team?.allowedQueryLanguages;
   const allowedLanguages: QueryLanguage[] = useMemo(
-    () => teamAllowedLanguages ?? ['lucene', 'sql'],
+    () => teamAllowedLanguages ?? DEFAULT_QUERY_LANGUAGES,
     [teamAllowedLanguages],
   );
   const defaultLanguage = me?.team?.defaultQueryLanguage ?? 'lucene';
@@ -219,8 +222,10 @@ export default function SearchWhereInput({
   const isSql = language === 'sql';
 
   const handleLanguageChange = useCallback(
-    (lang: QueryLanguage) => {
-      setStoredLanguage(lang);
+    (lang: QueryLanguage, options?: { isUserSelection?: boolean }) => {
+      if (options?.isUserSelection) {
+        setStoredLanguage(lang);
+      }
       languageField.onChange(lang);
       onLanguageChange?.(lang);
     },
@@ -228,31 +233,13 @@ export default function SearchWhereInput({
   );
 
   useEffect(() => {
-    const rawStored = getStoredLanguage();
-    if (
-      languageField.value &&
-      !allowedLanguages.includes(languageField.value)
-    ) {
-      handleLanguageChange(language);
-    } else if (!languageField.value) {
-      const stored = getStoredLanguage(me?.team);
-      const fallback = stored ?? language;
-      handleLanguageChange(fallback);
-    } else if (
-      rawStored == null &&
-      me?.team?.defaultQueryLanguage &&
-      allowedLanguages.includes(me.team.defaultQueryLanguage) &&
-      languageField.value !== me.team.defaultQueryLanguage
-    ) {
-      handleLanguageChange(me.team.defaultQueryLanguage);
+    if (languageField.value && allowedLanguages.includes(languageField.value)) {
+      return;
     }
-  }, [
-    languageField.value,
-    allowedLanguages,
-    language,
-    me?.team,
-    handleLanguageChange,
-  ]);
+    const target =
+      getStoredLanguage(me?.team) ?? allowedLanguages[0] ?? 'lucene';
+    handleLanguageChange(target, { isUserSelection: false });
+  }, [languageField.value, allowedLanguages, me?.team, handleLanguageChange]);
 
   const tc = tableConnection ? { tableConnection } : { tableConnections };
   const baseHeight =
@@ -283,7 +270,9 @@ export default function SearchWhereInput({
           <Flex align="center" className={styles.languageSwitchRow}>
             <InputLanguageSwitch
               language={language}
-              onLanguageChange={handleLanguageChange}
+              onLanguageChange={lang =>
+                handleLanguageChange(lang, { isUserSelection: true })
+              }
               allowedLanguages={allowedLanguages}
             />
             <Tooltip label="Syntax reference" withArrow position="top">

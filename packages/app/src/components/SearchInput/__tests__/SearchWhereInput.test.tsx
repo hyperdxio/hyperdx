@@ -132,6 +132,16 @@ describe('SearchWhereInput', () => {
         window.localStorage.getItem('hdx-search-where-language'),
       ).toBeNull();
     });
+
+    it('preserves an explicit allowed form language when team default differs', () => {
+      renderWithMantine(<TestWrapper defaultLanguage="sql" />);
+      expect(
+        screen.getByRole('combobox', { name: 'Query language' }),
+      ).toHaveValue('SQL');
+      expect(
+        screen.queryByPlaceholderText(/Search your events w\/ Lucene/i),
+      ).not.toBeInTheDocument();
+    });
   });
 
   describe('InputLanguageSwitch', () => {
