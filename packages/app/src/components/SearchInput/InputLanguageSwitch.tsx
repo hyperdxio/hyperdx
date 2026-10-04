@@ -1,23 +1,25 @@
+import {
+  DEFAULT_QUERY_LANGUAGES,
+  formatQueryLanguageLabel,
+  type QueryLanguage,
+} from '@hyperdx/common-utils/dist/types';
 import { Select } from '@mantine/core';
 import { IconChevronDown } from '@tabler/icons-react';
 
-type Language = 'sql' | 'lucene';
-
-const DATA: { value: Language; label: string }[] = [
-  { value: 'sql', label: 'SQL' },
-  { value: 'lucene', label: 'Lucene' },
-];
-
-const DEFAULT_ALLOWED_LANGUAGES: Language[] = ['sql', 'lucene'];
+const DATA: { value: QueryLanguage; label: string }[] =
+  DEFAULT_QUERY_LANGUAGES.map(lang => ({
+    value: lang,
+    label: formatQueryLanguageLabel(lang),
+  }));
 
 export default function InputLanguageSwitch({
   language,
   onLanguageChange,
-  allowedLanguages = DEFAULT_ALLOWED_LANGUAGES,
+  allowedLanguages = DEFAULT_QUERY_LANGUAGES,
 }: {
-  language: Language;
-  onLanguageChange: (language: Language) => void;
-  allowedLanguages?: Language[];
+  language: QueryLanguage;
+  onLanguageChange: (language: QueryLanguage) => void;
+  allowedLanguages?: QueryLanguage[];
 }) {
   const options = DATA.filter(d => allowedLanguages.includes(d.value));
 

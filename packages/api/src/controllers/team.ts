@@ -1,4 +1,6 @@
 import {
+  DEFAULT_QUERY_LANGUAGES,
+  QueryLanguage,
   TagResourceType,
   TeamClickHouseSettingsUpdate,
   TeamQueryLanguageSettingsUpdate,
@@ -28,8 +30,8 @@ export const LOCAL_APP_TEAM = {
   apiKey: uuidv4(),
   collectorAuthenticationEnforced: false,
   isMetricsSeriesTableEnabled: false,
-  defaultQueryLanguage: 'lucene' as 'sql' | 'lucene',
-  allowedQueryLanguages: ['lucene', 'sql'] as ('sql' | 'lucene')[],
+  defaultQueryLanguage: 'lucene' as QueryLanguage,
+  allowedQueryLanguages: [...DEFAULT_QUERY_LANGUAGES] as QueryLanguage[],
   toJSON() {
     return this;
   },
@@ -136,16 +138,45 @@ export async function updateTeamQueryLanguageSettings(
   teamId: ObjectId,
   settings: TeamQueryLanguageSettingsUpdate,
 ) {
-  const currentTeam = config.IS_LOCAL_APP_MODE
-    ? LOCAL_APP_TEAM
-    : await Team.findById(teamId);
+  if (config.IS_LOCAL_APP_MODE) {
+    const effectiveAllowed =
+      settings.allowedQueryLanguages ??
+      LOCAL_APP_TEAM.allowedQueryLanguages ??
+      DEFAULT_QUERY_LANGUAGES;
 
+    if (effectiveAllowed.length === 0) {
+      throw new Api400Error('At least one query language must be enabled');
+    }
+
+    const effectiveDefault =
+      settings.defaultQueryLanguage ??
+      LOCAL_APP_TEAM.defaultQueryLanguage ??
+      'lucene';
+
+    if (!effectiveAllowed.includes(effectiveDefault)) {
+      throw new Api400Error(
+        'Default query language must be one of the allowed query languages',
+      );
+    }
+
+    if (settings.defaultQueryLanguage !== undefined) {
+      LOCAL_APP_TEAM.defaultQueryLanguage = settings.defaultQueryLanguage;
+    }
+    if (settings.allowedQueryLanguages !== undefined) {
+      LOCAL_APP_TEAM.allowedQueryLanguages = settings.allowedQueryLanguages;
+    }
+    return LOCAL_APP_TEAM;
+  }
+
+  const currentTeam = await Team.findById(teamId);
   if (!currentTeam) {
     throw new Error(`Team ${teamId} not found`);
   }
 
-  const effectiveAllowed = settings.allowedQueryLanguages ??
-    currentTeam.allowedQueryLanguages ?? ['lucene', 'sql'];
+  const effectiveAllowed =
+    settings.allowedQueryLanguages ??
+    currentTeam.allowedQueryLanguages ??
+    DEFAULT_QUERY_LANGUAGES;
 
   if (effectiveAllowed.length === 0) {
     throw new Api400Error('At least one query language must be enabled');
@@ -162,52 +193,25 @@ export async function updateTeamQueryLanguageSettings(
     );
   }
 
-  if (config.IS_LOCAL_APP_MODE) {
-    if (settings.defaultQueryLanguage !== undefined) {
-      LOCAL_APP_TEAM.defaultQueryLanguage = settings.defaultQueryLanguage;
-    }
-    if (settings.allowedQueryLanguages !== undefined) {
-      LOCAL_APP_TEAM.allowedQueryLanguages = settings.allowedQueryLanguages;
-    }
-    return LOCAL_APP_TEAM;
-  }
-
   const update = buildSetUnsetUpdate(settings);
 
-  const updatedTeam = await Team.findByIdAndUpdate(teamId, update, {
-    new: true,
-  });
+  const updatedTeam = await Team.findOneAndUpdate(
+    {
+      _id: teamId,
+      ...(settings.allowedQueryLanguages && !settings.defaultQueryLanguage
+        ? {
+            $or: [
+              { defaultQueryLanguage: { $in: settings.allowedQueryLanguages } },
+              { defaultQueryLanguage: { $exists: false } },
+            ],
+          }
+        : {}),
+    },
+    update,
+    { new: true },
+  );
 
   if (!updatedTeam) {
-    throw new Error(`Team ${teamId} not found`);
-  }
-
-  const finalAllowed = updatedTeam.allowedQueryLanguages ?? ['lucene', 'sql'];
-  const finalDefault = updatedTeam.defaultQueryLanguage ?? 'lucene';
-
-  if (finalAllowed.length === 0) {
-    await Team.findByIdAndUpdate(teamId, {
-      $set: {
-        allowedQueryLanguages: currentTeam.allowedQueryLanguages ?? [
-          'lucene',
-          'sql',
-        ],
-        defaultQueryLanguage: currentTeam.defaultQueryLanguage ?? 'lucene',
-      },
-    });
-    throw new Api400Error('At least one query language must be enabled');
-  }
-
-  if (!finalAllowed.includes(finalDefault)) {
-    await Team.findByIdAndUpdate(teamId, {
-      $set: {
-        allowedQueryLanguages: currentTeam.allowedQueryLanguages ?? [
-          'lucene',
-          'sql',
-        ],
-        defaultQueryLanguage: currentTeam.defaultQueryLanguage ?? 'lucene',
-      },
-    });
     throw new Api400Error(
       'Default query language must be one of the allowed query languages',
     );

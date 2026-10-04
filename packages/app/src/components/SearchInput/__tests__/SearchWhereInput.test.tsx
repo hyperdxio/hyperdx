@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
+import InputLanguageSwitch from '@/components/SearchInput/InputLanguageSwitch';
 import SearchWhereInput, {
   getStoredLanguage,
 } from '@/components/SearchInput/SearchWhereInput';
@@ -118,6 +119,33 @@ describe('SearchWhereInput', () => {
           defaultQueryLanguage: 'sql',
         }),
       ).toBe('sql');
+    });
+
+    it('does not write auto-resolved team defaults to localStorage on reconciliation', () => {
+      window.localStorage.removeItem('hdx-search-where-language');
+      const lang = getStoredLanguage({
+        allowedQueryLanguages: ['lucene', 'sql'],
+        defaultQueryLanguage: 'sql',
+      });
+      expect(lang).toBe('sql');
+      expect(
+        window.localStorage.getItem('hdx-search-where-language'),
+      ).toBeNull();
+    });
+  });
+
+  describe('InputLanguageSwitch', () => {
+    it('disables language dropdown when only one language is allowed', () => {
+      const onLanguageChange = jest.fn();
+      renderWithMantine(
+        <InputLanguageSwitch
+          language="sql"
+          onLanguageChange={onLanguageChange}
+          allowedLanguages={['sql']}
+        />,
+      );
+      const select = screen.getByRole('combobox', { name: 'Query language' });
+      expect(select).toBeDisabled();
     });
   });
 

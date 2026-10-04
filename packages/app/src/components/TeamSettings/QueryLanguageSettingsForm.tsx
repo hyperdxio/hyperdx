@@ -1,5 +1,10 @@
 import { useState } from 'react';
 import {
+  DEFAULT_QUERY_LANGUAGES,
+  formatQueryLanguageLabel,
+  type QueryLanguage,
+} from '@hyperdx/common-utils/dist/types';
+import {
   Box,
   Button,
   Checkbox,
@@ -20,16 +25,15 @@ export default function QueryLanguageSettingsForm() {
   const updateQueryLanguageSettings = api.useUpdateQueryLanguageSettings();
   const [isEditing, setIsEditing] = useState(false);
 
-  const allowedLanguages: ('sql' | 'lucene')[] = me?.team
-    ?.allowedQueryLanguages ?? ['lucene', 'sql'];
-  const defaultLanguage: 'sql' | 'lucene' =
+  const allowedLanguages: QueryLanguage[] =
+    me?.team?.allowedQueryLanguages ?? DEFAULT_QUERY_LANGUAGES;
+  const defaultLanguage: QueryLanguage =
     me?.team?.defaultQueryLanguage ?? 'lucene';
 
   const [selectedAllowed, setSelectedAllowed] =
-    useState<('sql' | 'lucene')[]>(allowedLanguages);
-  const [selectedDefault, setSelectedDefault] = useState<'sql' | 'lucene'>(
-    defaultLanguage,
-  );
+    useState<QueryLanguage[]>(allowedLanguages);
+  const [selectedDefault, setSelectedDefault] =
+    useState<QueryLanguage>(defaultLanguage);
 
   const handleStartEdit = () => {
     setSelectedAllowed(allowedLanguages);
@@ -37,12 +41,12 @@ export default function QueryLanguageSettingsForm() {
     setIsEditing(true);
   };
 
-  const handleToggleLanguage = (lang: 'sql' | 'lucene', checked: boolean) => {
-    let newAllowed: ('sql' | 'lucene')[];
+  const handleToggleLanguage = (lang: QueryLanguage, checked: boolean) => {
+    let newAllowed: QueryLanguage[];
     if (checked) {
       newAllowed = [...selectedAllowed, lang];
     } else {
-      newAllowed = selectedAllowed.filter(l => l !== lang);
+      newAllowed = selectedAllowed.filter((l: QueryLanguage) => l !== lang);
     }
     if (newAllowed.length === 0) {
       notifications.show({
@@ -150,9 +154,9 @@ export default function QueryLanguageSettingsForm() {
                     setSelectedDefault(val);
                   }
                 }}
-                data={selectedAllowed.map(l => ({
+                data={selectedAllowed.map((l: QueryLanguage) => ({
                   value: l,
-                  label: l === 'sql' ? 'SQL' : 'Lucene',
+                  label: formatQueryLanguageLabel(l),
                 }))}
               />
             </Box>
@@ -184,15 +188,13 @@ export default function QueryLanguageSettingsForm() {
               <Text span fw={500}>
                 Enabled:{' '}
               </Text>
-              {allowedLanguages
-                .map(l => (l === 'sql' ? 'SQL' : 'Lucene'))
-                .join(', ')}
+              {allowedLanguages.map(formatQueryLanguageLabel).join(', ')}
             </Text>
             <Text size="sm">
               <Text span fw={500}>
                 Default:{' '}
               </Text>
-              {defaultLanguage === 'sql' ? 'SQL' : 'Lucene'}
+              {formatQueryLanguageLabel(defaultLanguage)}
             </Text>
           </Stack>
           <Button

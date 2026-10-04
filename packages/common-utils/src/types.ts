@@ -158,6 +158,11 @@ const SearchConditionRequiredLanguageSchema = z.enum([
 export const QueryLanguageSchema =
   SearchConditionRequiredLanguageSchema.exclude(['promql']);
 export type QueryLanguage = z.infer<typeof QueryLanguageSchema>;
+export const DEFAULT_QUERY_LANGUAGES: QueryLanguage[] =
+  QueryLanguageSchema.options;
+export function formatQueryLanguageLabel(lang: QueryLanguage): string {
+  return lang === 'sql' ? 'SQL' : 'Lucene';
+}
 export const SearchConditionLanguageSchema =
   SearchConditionRequiredLanguageSchema.optional();
 export const SearchConditionTrimmedLanguageSchema =
