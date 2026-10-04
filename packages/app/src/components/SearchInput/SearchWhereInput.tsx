@@ -27,26 +27,38 @@ export function getStoredLanguage(
     defaultQueryLanguage?: 'sql' | 'lucene';
   } | null,
 ): 'sql' | 'lucene' | null {
-  const allowed = team?.allowedQueryLanguages?.length
-    ? team.allowedQueryLanguages
-    : ['lucene', 'sql'];
+  let stored: 'sql' | 'lucene' | null = null;
   try {
-    const stored =
+    const val =
       typeof window !== 'undefined'
         ? window.localStorage.getItem(STORAGE_KEY)
         : null;
-    if (stored === 'sql' || stored === 'lucene') {
-      if (allowed.includes(stored)) return stored;
+    if (val === 'sql' || val === 'lucene') {
+      stored = val;
     }
   } catch {
     // localStorage may throw in private browsing
   }
+
+  if (!team) {
+    return stored;
+  }
+
+  const allowed: ('sql' | 'lucene')[] = team.allowedQueryLanguages?.length
+    ? team.allowedQueryLanguages
+    : ['lucene', 'sql'];
+
+  if (stored && allowed.includes(stored)) {
+    return stored;
+  }
+
   if (
-    team?.defaultQueryLanguage &&
+    team.defaultQueryLanguage &&
     allowed.includes(team.defaultQueryLanguage)
   ) {
     return team.defaultQueryLanguage;
   }
+
   return allowed[0] ?? null;
 }
 
@@ -186,7 +198,7 @@ export default function SearchWhereInput({
 
   const { data: me } = api.useMe();
   const teamAllowedLanguages = me?.team?.allowedQueryLanguages;
-  const allowedLanguages = useMemo(
+  const allowedLanguages: ('sql' | 'lucene')[] = useMemo(
     () => teamAllowedLanguages ?? ['lucene', 'sql'],
     [teamAllowedLanguages],
   );

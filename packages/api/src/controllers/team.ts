@@ -12,7 +12,7 @@ import Alert from '@/models/alert';
 import Dashboard from '@/models/dashboard';
 import { SavedSearch } from '@/models/savedSearch';
 import Team, { type ITeam, type TeamDocument } from '@/models/team';
-import { BadRequestError } from '@/utils/errors';
+import { Api400Error } from '@/utils/errors';
 
 export function getTeamInviteUrl(token: string) {
   return `${config.FRONTEND_URL}/join-team?token=${token}`;
@@ -28,6 +28,8 @@ export const LOCAL_APP_TEAM = {
   apiKey: uuidv4(),
   collectorAuthenticationEnforced: false,
   isMetricsSeriesTableEnabled: false,
+  defaultQueryLanguage: 'lucene' as 'sql' | 'lucene',
+  allowedQueryLanguages: ['lucene', 'sql'] as ('sql' | 'lucene')[],
   toJSON() {
     return this;
   },
@@ -103,12 +105,9 @@ export function setTeamName(teamId: ObjectId, name: string) {
   return Team.findByIdAndUpdate(teamId, { name }, { new: true });
 }
 
-export function updateTeamClickhouseSettings(
-  teamId: ObjectId,
-  settings: TeamClickHouseSettingsUpdate,
-) {
-  const $set: Record<string, any> = {};
-  const $unset: Record<string, any> = {};
+function buildSetUnsetUpdate<T extends Record<string, unknown>>(settings: T) {
+  const $set: Record<string, unknown> = {};
+  const $unset: Record<string, unknown> = {};
 
   for (const [key, value] of Object.entries(settings)) {
     if (value === null) {
@@ -118,10 +117,18 @@ export function updateTeamClickhouseSettings(
     }
   }
 
-  const update: Record<string, any> = {};
+  const update: mongoose.UpdateQuery<ITeam> = {};
   if (Object.keys($set).length > 0) update.$set = $set;
   if (Object.keys($unset).length > 0) update.$unset = $unset;
 
+  return update;
+}
+
+export function updateTeamClickhouseSettings(
+  teamId: ObjectId,
+  settings: TeamClickHouseSettingsUpdate,
+) {
+  const update = buildSetUnsetUpdate(settings);
   return Team.findByIdAndUpdate(teamId, update, { new: true });
 }
 
@@ -129,50 +136,43 @@ export async function updateTeamQueryLanguageSettings(
   teamId: ObjectId,
   settings: TeamQueryLanguageSettingsUpdate,
 ) {
-  const currentTeam = await Team.findById(teamId);
+  const currentTeam = config.IS_LOCAL_APP_MODE
+    ? LOCAL_APP_TEAM
+    : await Team.findById(teamId);
+
   if (!currentTeam) {
     throw new Error(`Team ${teamId} not found`);
   }
 
-  const effectiveAllowed =
-    settings.allowedQueryLanguages !== undefined &&
-    settings.allowedQueryLanguages !== null
-      ? settings.allowedQueryLanguages
-      : (currentTeam.allowedQueryLanguages ?? ['lucene', 'sql']);
+  const effectiveAllowed = settings.allowedQueryLanguages ??
+    currentTeam.allowedQueryLanguages ?? ['lucene', 'sql'];
 
-  if (!effectiveAllowed || effectiveAllowed.length === 0) {
-    throw new BadRequestError('At least one query language must be enabled');
+  if (effectiveAllowed.length === 0) {
+    throw new Api400Error('At least one query language must be enabled');
   }
 
   const effectiveDefault =
-    settings.defaultQueryLanguage !== undefined &&
-    settings.defaultQueryLanguage !== null
-      ? settings.defaultQueryLanguage
-      : (currentTeam.defaultQueryLanguage ?? 'lucene');
+    settings.defaultQueryLanguage ??
+    currentTeam.defaultQueryLanguage ??
+    'lucene';
 
-  if (
-    effectiveDefault != null &&
-    !effectiveAllowed.includes(effectiveDefault as 'sql' | 'lucene')
-  ) {
-    throw new BadRequestError(
+  if (!effectiveAllowed.includes(effectiveDefault)) {
+    throw new Api400Error(
       'Default query language must be one of the allowed query languages',
     );
   }
 
-  const $set: Record<string, any> = {};
-  const $unset: Record<string, any> = {};
-
-  for (const [key, value] of Object.entries(settings)) {
-    if (value === null) {
-      $unset[key] = '';
-    } else if (value !== undefined) {
-      $set[key] = value;
+  if (config.IS_LOCAL_APP_MODE) {
+    if (settings.defaultQueryLanguage !== undefined) {
+      LOCAL_APP_TEAM.defaultQueryLanguage = settings.defaultQueryLanguage;
     }
+    if (settings.allowedQueryLanguages !== undefined) {
+      LOCAL_APP_TEAM.allowedQueryLanguages = settings.allowedQueryLanguages;
+    }
+    return LOCAL_APP_TEAM;
   }
 
-  const update: Record<string, any> = {};
-  if (Object.keys($set).length > 0) update.$set = $set;
-  if (Object.keys($unset).length > 0) update.$unset = $unset;
+  const update = buildSetUnsetUpdate(settings);
 
   return Team.findByIdAndUpdate(teamId, update, { new: true });
 }

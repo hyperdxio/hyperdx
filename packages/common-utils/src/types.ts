@@ -155,10 +155,13 @@ const SearchConditionRequiredLanguageSchema = z.enum([
   'lucene',
   'promql',
 ]);
+export const QueryLanguageSchema =
+  SearchConditionRequiredLanguageSchema.exclude(['promql']);
+export type QueryLanguage = z.infer<typeof QueryLanguageSchema>;
 export const SearchConditionLanguageSchema =
   SearchConditionRequiredLanguageSchema.optional();
 export const SearchConditionTrimmedLanguageSchema =
-  SearchConditionRequiredLanguageSchema.exclude(['promql']).optional();
+  QueryLanguageSchema.optional();
 export const AggregateFunctionSchema = z.enum([
   'avg',
   'count',
@@ -2339,19 +2342,13 @@ export type TeamClickHouseSettings = z.infer<
 >;
 
 export const TeamQueryLanguageSettingsSchema = z.object({
-  defaultQueryLanguage: z.enum(['lucene', 'sql']).optional(),
-  allowedQueryLanguages: z
-    .array(z.enum(['lucene', 'sql']))
-    .min(1)
-    .optional(),
+  defaultQueryLanguage: QueryLanguageSchema.optional(),
+  allowedQueryLanguages: z.array(QueryLanguageSchema).min(1).optional(),
 });
 
 export const TeamQueryLanguageSettingsUpdateSchema = z.object({
-  defaultQueryLanguage: z.enum(['lucene', 'sql']).nullish(),
-  allowedQueryLanguages: z
-    .array(z.enum(['lucene', 'sql']))
-    .min(1)
-    .nullish(),
+  defaultQueryLanguage: QueryLanguageSchema.optional(),
+  allowedQueryLanguages: z.array(QueryLanguageSchema).min(1).optional(),
 });
 
 export type TeamQueryLanguageSettings = z.infer<

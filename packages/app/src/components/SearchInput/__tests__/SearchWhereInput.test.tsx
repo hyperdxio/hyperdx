@@ -80,6 +80,16 @@ describe('SearchWhereInput', () => {
   });
 
   describe('Team Query Language Settings', () => {
+    it('returns null when no team argument is passed and localStorage is empty', () => {
+      window.localStorage.removeItem('hdx-search-where-language');
+      expect(getStoredLanguage()).toBeNull();
+    });
+
+    it('returns stored language when no team argument is passed if localStorage has a value', () => {
+      window.localStorage.setItem('hdx-search-where-language', 'sql');
+      expect(getStoredLanguage()).toBe('sql');
+    });
+
     it('returns stored language if allowed by team', () => {
       window.localStorage.setItem('hdx-search-where-language', 'sql');
       expect(
