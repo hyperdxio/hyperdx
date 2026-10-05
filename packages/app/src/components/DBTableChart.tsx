@@ -21,6 +21,7 @@ import {
   convertToTableChartConfig,
 } from '@/ChartUtils';
 import { Table, TableVariant } from '@/HDXMultiSeriesTableChart';
+import { getMinGranularitySeconds } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import { useOnClickLinkBuilder } from '@/hooks/useOnClickLinkBuilder';
@@ -88,10 +89,15 @@ export default function DBTableChart({
     [onSortingChange],
   );
 
+  const minGranularitySeconds = getMinGranularitySeconds(source);
+
   const queriedConfig = useMemo(() => {
     if (isRawSqlChartConfig(config)) return config;
     if (isPromqlChartConfig(config)) {
-      return convertToPromqlTableChartConfig(config);
+      return convertToPromqlTableChartConfig({
+        ...config,
+        minGranularitySeconds,
+      });
     }
 
     const _config = convertToTableChartConfig(config);
@@ -105,7 +111,7 @@ export default function DBTableChart({
       });
     }
     return _config;
-  }, [config, effectiveSort]);
+  }, [config, effectiveSort, minGranularitySeconds]);
 
   const { data: mvOptimizationData } = useMVOptimizationExplanation(
     isBuilderChartConfig(queriedConfig) ? queriedConfig : undefined,

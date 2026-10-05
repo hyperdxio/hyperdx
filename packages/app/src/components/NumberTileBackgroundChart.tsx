@@ -105,17 +105,13 @@ function NumberTileBackgroundChartInner({
   enabled?: boolean;
 }) {
   // useTimeChartSettings/convertToTimeChartConfig below resolve 'auto', so
-  // the minimum has to be applied before that happens.
+  // the minimum has to be applied before that happens. A PromQL tile applies
+  // it the same way DBNumberChart does, so the two share a cache entry.
   const { data: source } = useSource({ id: config.source });
   const minGranularitySeconds = getMinGranularitySeconds(source);
 
   const queriedConfig = useMemo(
-    () =>
-      buildSparklineQueryConfig(
-        isPromqlChartConfig(config)
-          ? config
-          : { ...config, minGranularitySeconds },
-      ),
+    () => buildSparklineQueryConfig({ ...config, minGranularitySeconds }),
     [config, minGranularitySeconds],
   );
 

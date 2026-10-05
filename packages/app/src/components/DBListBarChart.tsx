@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import Link from 'next/link';
+import cx from 'classnames';
 import { omit } from 'lodash';
 import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import type { FloatingPosition } from '@mantine/core';
@@ -202,14 +203,12 @@ export default function DBListBarChart({
   errorVariant?: ChartErrorStateVariant;
 }) {
   const queriedConfig = omit(config, ['granularity']);
-  const { data, isLoading, isError, error } = useQueriedChartConfig(
-    queriedConfig,
-    {
+  const { data, isLoading, isPlaceholderData, isError, error } =
+    useQueriedChartConfig(queriedConfig, {
       placeholderData: (prev: any) => prev,
       queryKey: [queryKeyPrefix, queriedConfig],
       enabled,
-    },
-  );
+    });
 
   const { data: mvOptimizationData } =
     useMVOptimizationExplanation(queriedConfig);
@@ -285,18 +284,25 @@ export default function DBListBarChart({
       ) : isError ? (
         <ChartErrorState error={error} variant={errorVariant} />
       ) : data?.data.length === 0 ? (
-        <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
+        <div
+          className={cx(
+            'd-flex h-100 w-100 align-items-center justify-content-center text-muted',
+            { 'effect-pulse': isPlaceholderData },
+          )}
+        >
           No data found within time range.
         </div>
       ) : (
-        <ListBar
-          data={data?.data ?? []}
-          columns={columns}
-          getRowSearchLink={getRowSearchLink}
-          hoverCardPosition={hoverCardPosition}
-          groupColumn={groupColumn}
-          valueColumn={valueColumn}
-        />
+        <div className={isPlaceholderData ? 'effect-pulse' : undefined}>
+          <ListBar
+            data={data?.data ?? []}
+            columns={columns}
+            getRowSearchLink={getRowSearchLink}
+            hoverCardPosition={hoverCardPosition}
+            groupColumn={groupColumn}
+            valueColumn={valueColumn}
+          />
+        </div>
       )}
     </ChartContainer>
   );

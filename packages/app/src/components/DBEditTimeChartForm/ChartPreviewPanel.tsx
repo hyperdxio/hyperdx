@@ -26,7 +26,7 @@ import DBHeatmapChart, {
   buildHeatmapBoundsConfig,
   buildHeatmapBucketConfig,
   HEATMAP_N_BUCKETS,
-  toHeatmapChartConfig,
+  toHeatmapQuery,
 } from '@/components/DBHeatmapChart';
 import DBNumberChart from '@/components/DBNumberChart';
 import { DBPieChart } from '@/components/DBPieChart';
@@ -36,10 +36,12 @@ import { DBTimeChart } from '@/components/DBTimeChart';
 import EmptyState from '@/components/EmptyState';
 import PatternTable from '@/components/PatternTable';
 import PromQLPreview from '@/components/PromQLEditor/PromQLPreview';
+import { getMinGranularitySeconds } from '@/hooks/useChartConfig';
 import {
   getEventBody,
   getFirstTimestampValueExpression,
   isSingleExpression,
+  useSource,
 } from '@/source';
 import {
   orderByStringToSortingState,
@@ -62,12 +64,10 @@ function HeatmapPreview({
 }: {
   config: BuilderChartConfigWithDateRange;
 }) {
-  const { heatmapConfig, scaleType } = toHeatmapChartConfig(config);
   return (
     <div className="flex-grow-1 d-flex flex-column" style={{ height: 400 }}>
       <DBHeatmapChart
-        config={heatmapConfig}
-        scaleType={scaleType}
+        query={toHeatmapQuery(config)}
         showLegend
         errorVariant="inline"
       />
@@ -96,8 +96,8 @@ function HeatmapSQLPreview({
     ...config,
     timestampValueExpression,
   };
-  const { heatmapConfig, scaleType } =
-    toHeatmapChartConfig(configWithTimestamp);
+  const { config: heatmapConfig, scaleType } =
+    toHeatmapQuery(configWithTimestamp);
   const granularity = convertDateRangeToGranularityString(dateRange, 245);
 
   const boundsConfig = buildHeatmapBoundsConfig({
@@ -171,9 +171,11 @@ export function ChartPreviewPanel({
 }: ChartPreviewPanelProps) {
   const [isSampleEventsOpen, setIsSampleEventsOpen] = useState(false);
 
+  const { data: queriedSource } = useSource({ id: queriedConfig?.source });
+  const minGranularitySeconds = getMinGranularitySeconds(queriedSource);
   const renderedPromql = useMemo(
-    () => buildRenderedPromqlExpression(queriedConfig),
-    [queriedConfig],
+    () => buildRenderedPromqlExpression(queriedConfig, minGranularitySeconds),
+    [queriedConfig, minGranularitySeconds],
   );
 
   const blockingFilterNames = missingRequiredFilterNames ?? [];
