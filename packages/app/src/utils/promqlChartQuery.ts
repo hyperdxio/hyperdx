@@ -9,6 +9,7 @@ import {
 import { renderPromqlSeriesNames } from '@hyperdx/common-utils/dist/core/seriesNameTemplate';
 import { substitutePromqlChartConfigTemplates } from '@hyperdx/common-utils/dist/macros';
 import {
+  DateRange,
   DisplayType,
   PrometheusMatrixResult,
   PromqlChartConfig,
@@ -109,7 +110,7 @@ async function fetchInstantExpression(
 
 /** Evaluate one expression over the whole window, at the range endpoint. */
 async function fetchRangeExpression(
-  config: PromqlChartConfig,
+  config: PromqlChartConfig & Pick<DateRange, 'minGranularitySeconds'>,
   series: PromqlSeries,
   dateRange: [Date, Date],
   signal: AbortSignal,
@@ -120,7 +121,11 @@ async function fetchRangeExpression(
     query: series.expression,
     start: startDate.getTime() / 1000,
     end: endDate.getTime() / 1000,
-    step: promqlStep(config.granularity, dateRange),
+    step: promqlStep(
+      config.granularity,
+      dateRange,
+      config.minGranularitySeconds,
+    ),
     connectionId: config.connection,
     database: config.from?.databaseName,
     table: config.from?.tableName,
@@ -262,7 +267,7 @@ export function toTableRows(
  * response, so the chart formatters treat it like every other source.
  */
 export async function queryPromqlChartConfig(
-  config: PromqlChartConfig,
+  config: PromqlChartConfig & Pick<DateRange, 'minGranularitySeconds'>,
   dateRange: [Date, Date],
   signal: AbortSignal,
   // Required so a new caller can't forget it and leave its queries untagged.

@@ -21,7 +21,10 @@ import {
   convertToNumberChartConfig,
   convertToReducedPromqlChartConfig,
 } from '@/ChartUtils';
-import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import {
+  getMinGranularitySeconds,
+  useQueriedChartConfig,
+} from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useSingleSeriesNumberFormat, useSource } from '@/source';
 import {
@@ -223,13 +226,21 @@ export default function DBNumberChart({
   showMVOptimizationIndicator?: boolean;
   errorVariant?: ChartErrorStateVariant;
 }) {
+  const { data: source } = useSource({
+    id: config.source,
+  });
+  const minGranularitySeconds = getMinGranularitySeconds(source);
+
   const queriedConfig = useMemo(() => {
     if (isBuilderChartConfig(config)) return convertToNumberChartConfig(config);
     if (isPromqlChartConfig(config)) {
-      return convertToReducedPromqlChartConfig(config);
+      return convertToReducedPromqlChartConfig({
+        ...config,
+        minGranularitySeconds,
+      });
     }
     return config;
-  }, [config]);
+  }, [config, minGranularitySeconds]);
 
   const builderQueriedConfig = isBuilderChartConfig(queriedConfig)
     ? queriedConfig
@@ -272,10 +283,6 @@ export default function DBNumberChart({
     ? data?.data?.[0]?.[valueColumn.name]
     : (Object.values(data?.data?.[0] ?? {})?.[0] ?? Number.NaN);
   const formattedValue = formatNumber(value as number, resolvedNumberFormat);
-
-  const { data: source } = useSource({
-    id: config.source,
-  });
 
   // Resolve the display color in three layers:
   //   1. Conditional color rules evaluated against the raw value

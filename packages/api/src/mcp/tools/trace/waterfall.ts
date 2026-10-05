@@ -1,9 +1,5 @@
 import type { ChSql } from '@hyperdx/common-utils/dist/clickhouse';
-import {
-  getMetadata,
-  type Metadata,
-} from '@hyperdx/common-utils/dist/core/metadata';
-import { timeFilterExpr } from '@hyperdx/common-utils/dist/core/renderChartConfig';
+import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { pickBucketTimestampColumn } from '@hyperdx/common-utils/dist/core/utils';
 import {
   type BuilderChartConfigWithDateRange,
@@ -14,15 +10,20 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import { z } from 'zod';
 
-import { ClickhouseClient } from '@/clickhouse';
-import { getConnectionById } from '@/controllers/connection';
+import type { ClickhouseClient } from '@/clickhouse';
 import { getSource } from '@/controllers/sources';
 import {
   clickHouseErrorResult,
   MCP_CLICKHOUSE_SETTINGS,
-  MCP_REQUEST_TIMEOUT,
   parseTimeRange,
 } from '@/mcp/tools/query/helpers';
+import {
+  durationDivisor,
+  getMcpClickhouseClient,
+  inclusiveTimeFilter,
+  mcpQuerySettings,
+  type TimeFilterParams,
+} from '@/mcp/tools/trace/shared';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
 import logger from '@/utils/logger';
@@ -190,13 +191,6 @@ function buildPreOrderTree(spans: SpanRow[]): TreeSpan[] {
   return ordered;
 }
 
-function durationDivisor(precision: number): number {
-  // durationPrecision is the number of decimal digits in the stored value.
-  // precision=9 → ns (divide by 1e6 for ms), precision=6 → µs (divide by 1e3),
-  // precision=3 → already ms (divide by 1).
-  return Math.pow(10, Math.max(0, precision - 3));
-}
-
 // min()/max() over an empty set yields the epoch, i.e. 0.
 function parseProbeTimestamp(
   value: string | number | undefined,
@@ -204,31 +198,6 @@ function parseProbeTimestamp(
   if (value == null) return null;
   const ms = Number(value);
   return isNaN(ms) || ms <= 0 ? null : ms;
-}
-
-async function getMcpClickhouseClient(
-  teamId: string,
-  connectionId: string,
-): Promise<ClickhouseClient | null> {
-  const connection = await getConnectionById(teamId, connectionId, true);
-  if (!connection) return null;
-  return new ClickhouseClient({
-    host: connection.host,
-    username: connection.username,
-    password: connection.password,
-    requestTimeout: MCP_REQUEST_TIMEOUT,
-  });
-}
-
-// MCP settings win over source.querySettings so a source can't relax the
-// max_execution_time / readonly ceiling this tool depends on.
-function mcpQuerySettings(querySettings: QuerySettings | undefined) {
-  return {
-    ...(querySettings
-      ? Object.fromEntries(querySettings.map(s => [s.setting, s.value]))
-      : {}),
-    ...MCP_CLICKHOUSE_SETTINGS,
-  };
 }
 
 type TimestampExprs = {
@@ -239,23 +208,13 @@ type TimestampExprs = {
   timeFilter: (start: Date, end: Date) => Promise<ChSql>;
 };
 
-async function resolveTimestampExprs(params: {
-  timestampValueExpression: string;
-  metadata: Metadata;
-  databaseName: string;
-  tableName: string;
-  connectionId: string;
-}): Promise<TimestampExprs> {
+async function resolveTimestampExprs(
+  params: TimeFilterParams,
+): Promise<TimestampExprs> {
   const eventTs = await pickBucketTimestampColumn(params);
   return {
     eventTs,
-    timeFilter: (start, end) =>
-      timeFilterExpr({
-        ...params,
-        dateRange: [start, end],
-        dateRangeStartInclusive: true,
-        dateRangeEndInclusive: true,
-      }),
+    timeFilter: (start, end) => inclusiveTimeFilter(params, start, end),
   };
 }
 

@@ -226,7 +226,7 @@ async function callJudge(args: {
       model: args.model,
       schema: args.schema,
       maxOutputTokens: args.maxOutputTokens,
-      system: args.systemPrompt,
+      instructions: args.systemPrompt,
       prompt: args.userPrompt,
     });
     return {

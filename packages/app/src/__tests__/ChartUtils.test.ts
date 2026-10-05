@@ -1317,6 +1317,29 @@ describe('ChartUtils', () => {
 
       expect(result.dateRange).toEqual(promqlConfig.dateRange);
     });
+
+    it("floors an auto granularity at the source's minimum", () => {
+      const result = convertToPromqlTableChartConfig({
+        ...promqlConfig,
+        minGranularitySeconds: 300,
+      });
+
+      expect(result.granularity).toBe('5 minute');
+      expect(result.dateRange).toEqual([
+        new Date('2025-11-26T00:00:00Z'),
+        new Date('2025-11-26T01:05:00Z'),
+      ]);
+    });
+
+    it('never floors a granularity the tile picked', () => {
+      const result = convertToPromqlTableChartConfig({
+        ...promqlConfig,
+        granularity: '15 second',
+        minGranularitySeconds: 300,
+      });
+
+      expect(result.granularity).toBe('15 second');
+    });
   });
 
   describe('convertToReducedPromqlChartConfig and convertToPromqlSparklineChartConfig', () => {
@@ -1362,6 +1385,29 @@ describe('ChartUtils', () => {
         new Date('2025-11-27T00:00:14.076Z'),
       ]);
       expect(result.granularity).toBe('30 minute');
+    });
+
+    it("floors an auto granularity at the source's minimum", () => {
+      const result = convertToReducedPromqlChartConfig({
+        ...promqlConfig,
+        minGranularitySeconds: 300,
+      });
+
+      expect(result.granularity).toBe('5 minute');
+      expect(result.dateRange).toEqual([
+        new Date('2025-11-26T00:00:00Z'),
+        new Date('2025-11-26T01:05:00Z'),
+      ]);
+    });
+
+    it('never floors a granularity the tile picked', () => {
+      const result = convertToReducedPromqlChartConfig({
+        ...promqlConfig,
+        granularity: '15 second',
+        minGranularitySeconds: 300,
+      });
+
+      expect(result.granularity).toBe('15 second');
     });
 
     it('names the reducer, defaulting it, and queries one expression', () => {

@@ -3333,7 +3333,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
         // Wait for THIS dashboard's data to land before asserting absence —
         // otherwise the assertion races an unrendered page and passes for the
         // wrong reason.
-        await expect(dashboardPage.dashboardName).toHaveText(uniqueName);
+        await expect(dashboardPage.dashboardName).toHaveValue(uniqueName);
         // Terraform and ProvisionDashboardsTask would both claim ownership of
         // this dashboard, so the popover must not appear.
         await expect(terraformButton).toBeHidden();
@@ -3386,7 +3386,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
 
       await test.step('Verify it is withheld after reload', async () => {
         await dashboardPage.gotoDashboard(dashboardId);
-        await expect(dashboardPage.dashboardName).toHaveText(uniqueName);
+        await expect(dashboardPage.dashboardName).toHaveValue(uniqueName);
         // Importing this dashboard would delete the PromQL tile on the next
         // apply, because the provider reads it back through external API v2.
         await expect(terraformButton).toBeHidden();
