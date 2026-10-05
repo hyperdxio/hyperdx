@@ -86,7 +86,7 @@ export function MetricTableModelForm({
               if (!isValid) {
                 notifications.show({
                   color: 'red',
-                  message: `${newValue} is not a valid OTEL ${metricType} schema.`,
+                  message: `${newValue} is not a valid OTel ${metricType} schema.`,
                 });
               }
             }
@@ -121,7 +121,7 @@ export function MetricTableModelForm({
           if (!isValid) {
             notifications.show({
               color: 'red',
-              message: `${seriesTable} is not a valid OTEL series schema.`,
+              message: `${seriesTable} is not a valid OTel series schema.`,
             });
           }
         }

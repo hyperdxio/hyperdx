@@ -27,9 +27,8 @@ export function HeatmapTooltip({
       <div
         style={{
           position: 'absolute',
-          top: point.yCoord,
-          // TODO: This seems to be off by a few pixels depending on scale
-          left: point.xCoord,
+          top: point.yCoord - point.ySize / 2,
+          left: point.xCoord - point.xSize / 2,
           width: point.xSize,
           height: point.ySize,
           pointerEvents: 'none',

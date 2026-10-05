@@ -115,6 +115,7 @@ import { useExplainQuery } from '@/hooks/useExplainQuery';
 import { useResolvedSourceParam } from '@/hooks/useResolvedSourceParam';
 import { withAppNav } from '@/layout';
 import { isNonTrivialSearch } from '@/OnboardingChecklist/onboardingTasks';
+import { QueryAttributionProvider } from '@/queryAttribution';
 import {
   useCreateSavedSearch,
   useDeleteSavedSearch,
@@ -1005,14 +1006,40 @@ export function useSearchTelemetry({
   return { searchElapsedMs: completedSearch?.latency_ms ?? null };
 }
 
+/**
+ * The saved search being shown, or null for an ad-hoc one.
+ *
+ * Read from the URL directly because the Next router lags window.location,
+ * which races with useQueryStates.
+ */
+function getSavedSearchIdFromPath(): string | null {
+  const paths = window.location.pathname.split('/');
+  return paths.length === 3 ? paths[2] : null;
+}
+
+/**
+ * Tags the page's ClickHouse queries with the saved search they belong to.
+ * A wrapper so the page component's own JSX stays where it is.
+ */
 export function DBSearchPage() {
+  return (
+    <QueryAttributionProvider
+      attribution={{
+        surface: 'search',
+        search: getSavedSearchIdFromPath() ?? undefined,
+      }}
+    >
+      <DBSearchPageContent />
+    </QueryAttributionProvider>
+  );
+}
+
+function DBSearchPageContent() {
+  // Read again here, not passed down: this component re-renders from its own
+  // query-state hooks without the wrapper, and must see the current path.
+  const savedSearchId = getSavedSearchIdFromPath();
   const brandName = useBrandDisplayName();
   const defaultTimeRange = useDefaultTimeRange('Past 15m');
-
-  // Next router is laggy behind window.location, which causes race
-  // conditions with useQueryStates, so we'll parse it directly
-  const paths = window.location.pathname.split('/');
-  const savedSearchId = paths.length === 3 ? paths[2] : null;
 
   const [rawSearchedConfig, setSearchedConfig] = useQueryStates(queryStateMap);
 

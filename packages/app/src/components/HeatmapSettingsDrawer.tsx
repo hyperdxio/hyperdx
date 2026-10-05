@@ -3,18 +3,10 @@ import { useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
-import {
-  Box,
-  Button,
-  Divider,
-  Drawer,
-  Group,
-  SegmentedControl,
-  Stack,
-  Text,
-} from '@mantine/core';
+import { Button, Divider, Drawer, Group, Stack } from '@mantine/core';
 import { IconPlayerPlay } from '@tabler/icons-react';
 
+import { HeatmapScaleControl } from '@/components/DBHeatmapChart/HeatmapScaleControl';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 
 const HeatmapSettingsSchema = z.object({
@@ -72,24 +64,10 @@ export default function HeatmapSettingsDrawer({
     >
       <form onSubmit={form.handleSubmit(onSubmit)}>
         <Stack gap="md">
-          <Box>
-            <Text size="sm" fw={500} mb={4}>
-              Scale
-            </Text>
-            <SegmentedControl
-              size="xs"
-              value={scaleType}
-              onChange={v => {
-                if (v === 'log' || v === 'linear') {
-                  form.setValue('scaleType', v);
-                }
-              }}
-              data={[
-                { label: 'Log', value: 'log' },
-                { label: 'Linear', value: 'linear' },
-              ]}
-            />
-          </Box>
+          <HeatmapScaleControl
+            value={scaleType}
+            onChange={v => form.setValue('scaleType', v)}
+          />
 
           <Divider />
 

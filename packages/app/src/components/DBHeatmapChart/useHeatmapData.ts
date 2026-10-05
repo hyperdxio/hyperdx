@@ -1,8 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { inferTimestampColumn } from '@hyperdx/common-utils/dist/clickhouse';
-import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
 
-import { timeBucketByGranularity } from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 
 import { computeEffectiveMin, HEATMAP_N_BUCKETS } from './heatmapBounds';
@@ -17,13 +15,12 @@ import {
   buildHeatmapBucketConfig,
   HeatmapChartConfig,
 } from './heatmapQueries';
-
-export type HeatmapView = {
-  grid: HeatmapGrid;
-  generatedTsBuckets: Date[];
-  effectiveMin: number;
-  scaleType: HeatmapScaleType;
-};
+import {
+  HeatmapData,
+  HeatmapView,
+  useHeatmapTimeBuckets,
+  useSettledView,
+} from './useHeatmapView';
 
 /**
  * Query a heatmap and shape it into a `HeatmapGrid`. While a refresh is in
@@ -37,10 +34,10 @@ export function useHeatmapData({
   config: HeatmapChartConfig;
   scaleType: HeatmapScaleType;
   enabled: boolean;
-}) {
-  const dateRange = config.dateRange;
-  const granularity = convertDateRangeToGranularityString(dateRange, 245);
-
+}): HeatmapData {
+  const { granularity, generatedTsBuckets } = useHeatmapTimeBuckets(
+    config.dateRange,
+  );
   const nBuckets = HEATMAP_N_BUCKETS;
 
   // Future: #1914 adds overflow-bucket indicators for smarter range
@@ -54,7 +51,7 @@ export function useHeatmapData({
     error: minMaxError,
   } = useQueriedChartConfig(minMaxConfig, {
     queryKey: ['heatmap', minMaxConfig],
-    enabled: enabled,
+    enabled,
     placeholderData: prev => prev,
   });
 
@@ -81,7 +78,7 @@ export function useHeatmapData({
       queryKey: ['heatmap_bucket', bucketConfig],
       // Wait for fresh bounds, so a refresh doesn't also query the new range
       // bucketed with the previous range's min/max.
-      enabled: canQueryBuckets && !isMinMaxPlaceholderData,
+      enabled: enabled && canQueryBuckets && !isMinMaxPlaceholderData,
       // Only keep the previous buckets while this query can still run, so an
       // empty refreshed range shows "Not enough data points" instead of
       // pulsing on stale buckets.
@@ -91,17 +88,6 @@ export function useHeatmapData({
   // A refresh keeps the previous heatmap on screen and pulses until both
   // queries have fresh data.
   const isRefreshing = isMinMaxPlaceholderData || isPlaceholderData;
-
-  // Memoize so timeBucketByGranularity's fresh Date[] doesn't defeat
-  // the grid memoization downstream. dateRange itself may be a
-  // fresh array each render, so depend on primitive ms + granularity.
-  const fromMs = dateRange[0]?.getTime() ?? 0;
-  const toMs = dateRange[1]?.getTime() ?? 0;
-  const generatedTsBuckets = useMemo(
-    () => timeBucketByGranularity(dateRange[0], dateRange[1], granularity),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [fromMs, toMs, granularity],
-  );
 
   // A stable grid lets uplot-react skip its setData path when only
   // URL-state (xMin/xMax/yMin/yMax) changed. Pairs with the selectionBounds
@@ -123,22 +109,13 @@ export function useHeatmapData({
     });
   }, [data, generatedTsBuckets, scaleType, effectiveMin, max, nBuckets]);
 
-  // While refreshing, keep drawing the last settled heatmap. The previous
-  // bucket rows only line up with the time buckets, bounds and scale they were
-  // queried with, so re-plotting them on the new range would draw a blank or
-  // mis-scaled grid.
   const currentView = useMemo<HeatmapView>(
     () => ({ grid, generatedTsBuckets, effectiveMin, scaleType }),
     [grid, generatedTsBuckets, effectiveMin, scaleType],
   );
-  const [settledView, setSettledView] = useState(currentView);
-  if (!isRefreshing && settledView !== currentView) {
-    setSettledView(currentView);
-  }
-  const view = isRefreshing ? settledView : currentView;
 
   return {
-    view,
+    view: useSettledView(currentView, isRefreshing),
     isLoading: isLoading || isMinMaxLoading,
     isRefreshing,
     error: error || minMaxError,

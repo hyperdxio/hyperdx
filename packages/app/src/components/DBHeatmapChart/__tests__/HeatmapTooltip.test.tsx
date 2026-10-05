@@ -48,6 +48,22 @@ describe('HeatmapTooltip', () => {
     expect(screen.getByText(/y=2 \(p95\.3\)/)).toBeInTheDocument();
   });
 
+  it('centers the cell highlight on the hovered cell', () => {
+    const { container } = renderTooltip({
+      point: { ...point, xCoord: 100, yCoord: 50, xSize: 20, ySize: 40 },
+    });
+
+    const highlight = container.querySelector<HTMLElement>(
+      'div[style*="pointer-events: none"]',
+    );
+    expect(highlight?.style).toMatchObject({
+      top: '30px',
+      left: '90px',
+      width: '20px',
+      height: '40px',
+    });
+  });
+
   it('shows the drag hint only when filtering is enabled', () => {
     const { unmount } = renderTooltip();
     expect(screen.queryByText(/Drag to Compare/)).not.toBeInTheDocument();
