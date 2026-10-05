@@ -123,4 +123,55 @@ describe('config', () => {
       },
     );
   });
+
+  describe('DIAGNOSTICS_ENABLED', () => {
+    const ORIGINAL_ENV = { ...process.env };
+    const LOCAL_APP_MODE = 'DANGEROUSLY_is_local_app_mode💀';
+
+    afterEach(() => {
+      process.env = { ...ORIGINAL_ENV };
+      jest.resetModules();
+    });
+
+    const enabledWith = (env: { local?: boolean; flag?: string }) => {
+      delete process.env.IS_LOCAL_APP_MODE;
+      delete process.env.HDX_DIAGNOSTICS_ENABLED;
+      if (env.local) process.env.IS_LOCAL_APP_MODE = LOCAL_APP_MODE;
+      if (env.flag) process.env.HDX_DIAGNOSTICS_ENABLED = env.flag;
+      let enabled: boolean | undefined;
+      jest.isolateModules(() => {
+        enabled =
+          jest.requireActual<typeof import('@/config')>(
+            '@/config',
+          ).DIAGNOSTICS_ENABLED;
+      });
+      return enabled;
+    };
+
+    it('is off by default', () => {
+      expect(enabledWith({})).toBe(false);
+      expect(enabledWith({ local: true })).toBe(false);
+    });
+
+    it('turns on only for true or 1', () => {
+      expect(enabledWith({ flag: 'true' })).toBe(true);
+      expect(enabledWith({ flag: 'TRUE' })).toBe(true);
+      expect(enabledWith({ flag: '1' })).toBe(true);
+      expect(enabledWith({ flag: 'false' })).toBe(false);
+      // A typo must not turn on an endpoint the operator meant to leave off.
+      expect(enabledWith({ flag: 'fales' })).toBe(false);
+    });
+
+    it('parses the heap snapshot flag the same way', () => {
+      process.env.HDX_DIAGNOSTICS_HEAP_SNAPSHOT = '1';
+      let enabled: boolean | undefined;
+      jest.isolateModules(() => {
+        enabled =
+          jest.requireActual<typeof import('@/config')>(
+            '@/config',
+          ).DIAGNOSTICS_HEAP_SNAPSHOT_ENABLED;
+      });
+      expect(enabled).toBe(true);
+    });
+  });
 });
