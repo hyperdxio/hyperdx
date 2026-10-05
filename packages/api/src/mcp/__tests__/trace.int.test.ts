@@ -1,3 +1,4 @@
+import { ClickHouseError } from '@clickhouse/client-common';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 
@@ -11,6 +12,7 @@ import {
   getLoggedInAgent,
   getServer,
 } from '@/fixtures';
+import { MCP_REQUEST_TIMEOUT } from '@/mcp/tools/query/helpers';
 import { McpContext } from '@/mcp/tools/types';
 import Connection from '@/models/connection';
 import { Source, type SourceDocument } from '@/models/source';
@@ -18,6 +20,15 @@ import { Source, type SourceDocument } from '@/models/source';
 import { callTool, createTestClient, getFirstText } from './mcpTestUtils';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+type BreakdownOperation = {
+  service: string;
+  operation: string;
+  totalTimeMs: number;
+  calls: number;
+  inParents: number;
+  shareOfTotalTime: number;
+};
 
 /** Insert trace spans into the default otel_traces table. */
 async function bulkInsertTraces(
@@ -1212,10 +1223,10 @@ describe('MCP Trace Tools', () => {
 
         // DB operations should be ranked first (higher total time)
         const dbOp = output.operations.find(
-          (op: any) => op.operation === CHILD_DB_OP,
+          (op: BreakdownOperation) => op.operation === CHILD_DB_OP,
         );
         const cacheOp = output.operations.find(
-          (op: any) => op.operation === CHILD_CACHE_OP,
+          (op: BreakdownOperation) => op.operation === CHILD_CACHE_OP,
         );
         expect(dbOp).toBeDefined();
         expect(cacheOp).toBeDefined();
@@ -1250,7 +1261,7 @@ describe('MCP Trace Tools', () => {
 
         // Only trace 2's children should be included (1 call each)
         const dbOp = output.operations.find(
-          (op: any) => op.operation === CHILD_DB_OP,
+          (op: BreakdownOperation) => op.operation === CHILD_DB_OP,
         );
         expect(dbOp).toBeDefined();
         expect(dbOp.inParents).toBe(1);
@@ -1301,6 +1312,31 @@ describe('MCP Trace Tools', () => {
         expect(output.summary.grandTotalTimeMs).toBeGreaterThan(0);
       });
 
+      it('handles a multi-column timestampValueExpression with a leading Date column', async () => {
+        await Source.updateOne(
+          { _id: traceSource._id },
+          { timestampValueExpression: 'toDate(Timestamp), Timestamp' },
+        );
+
+        const result = await callTool(
+          client,
+          'clickstack_trace_top_time_consuming_operations',
+          {
+            sourceId: traceSource._id.toString(),
+            parentFilter: `ServiceName = '${PARENT_SVC}' AND SpanName = '${PARENT_OP}'`,
+            startTime: new Date(now.getTime() - 10 * 60 * 1000).toISOString(),
+            endTime: new Date(now.getTime() + 60 * 1000).toISOString(),
+          },
+        );
+
+        expect(result.isError).toBeFalsy();
+        const output = JSON.parse(getFirstText(result));
+        const dbOp = output.operations.find(
+          (op: BreakdownOperation) => op.operation === CHILD_DB_OP,
+        );
+        expect(dbOp?.inParents).toBe(2);
+      });
+
       it('should return error for invalid parentFilter SQL', async () => {
         const result = await callTool(
           client,
@@ -1314,8 +1350,108 @@ describe('MCP Trace Tools', () => {
         );
 
         expect(result.isError).toBe(true);
-        expect(getFirstText(result)).toContain('Failed to compute breakdown');
+        const text = getFirstText(result);
+        expect(text).toContain('Failed to compute breakdown');
+        expect(text).toContain('must be valid ClickHouse SQL');
+        expect(text).not.toContain('shorter startTime/endTime window');
       });
+
+      it('applies the MCP time limits even when the source sets max_execution_time', async () => {
+        await Source.updateOne(
+          { _id: traceSource._id },
+          {
+            querySettings: [
+              { setting: 'max_execution_time', value: '3600' },
+              { setting: 'max_threads', value: '2' },
+            ],
+          },
+        );
+        const querySpy = jest.spyOn(ClickhouseClient.prototype, 'query');
+        try {
+          const result = await callTool(
+            client,
+            'clickstack_trace_top_time_consuming_operations',
+            {
+              sourceId: traceSource._id.toString(),
+              parentFilter: `ServiceName = '${PARENT_SVC}' AND SpanName = '${PARENT_OP}'`,
+              startTime: new Date(now.getTime() - 10 * 60 * 1000).toISOString(),
+              endTime: new Date(now.getTime() + 60 * 1000).toISOString(),
+            },
+          );
+
+          expect(result.isError).toBeFalsy();
+          const call = querySpy.mock.calls.find(([args]) =>
+            args.query.includes('parent_traces'),
+          );
+          expect(call?.[0].clickhouse_settings).toMatchObject({
+            max_execution_time: 30,
+            readonly: '2',
+            max_threads: '2',
+          });
+          const ctx: ClickhouseClient =
+            querySpy.mock.contexts[querySpy.mock.calls.indexOf(call!)];
+          expect(ctx.requestTimeoutMs).toBe(MCP_REQUEST_TIMEOUT);
+        } finally {
+          querySpy.mockRestore();
+        }
+      });
+
+      it.each([
+        ['client request timeout', new Error('Timeout error.')],
+        [
+          'ClickHouse TIMEOUT_EXCEEDED',
+          new ClickHouseError({
+            code: '159',
+            type: 'TIMEOUT_EXCEEDED',
+            message: 'Timeout exceeded: elapsed 30.001 seconds, maximum: 30',
+          }),
+        ],
+      ])('returns actionable guidance on a %s', async (_label, error) => {
+        const text = await callBreakdownWithFailingQuery(error);
+        expect(text).toContain('Failed to compute breakdown');
+        expect(text).toContain('execution-time limit');
+        expect(text).toContain('shorter startTime/endTime window');
+        expect(text).toContain('minParentDurationMs');
+        expect(text).not.toContain('must be valid ClickHouse SQL');
+      });
+
+      it('gives no query-tuning or invalid-SQL advice on a socket timeout', async () => {
+        const error: NodeJS.ErrnoException = new Error('connect ETIMEDOUT');
+        error.code = 'ETIMEDOUT';
+        const text = await callBreakdownWithFailingQuery(error);
+        expect(text).toContain('Failed to compute breakdown');
+        expect(text).not.toContain('execution-time limit');
+        expect(text).not.toContain('shorter startTime/endTime window');
+        expect(text).not.toContain('must be valid ClickHouse SQL');
+      });
+
+      async function callBreakdownWithFailingQuery(error: Error) {
+        const original = ClickhouseClient.prototype.query;
+        const querySpy = jest
+          .spyOn(ClickhouseClient.prototype, 'query')
+          .mockImplementation(function (this: ClickhouseClient, args) {
+            if (args.query.includes('parent_traces')) {
+              return Promise.reject(error);
+            }
+            return original.call(this, args);
+          });
+        try {
+          const result = await callTool(
+            client,
+            'clickstack_trace_top_time_consuming_operations',
+            {
+              sourceId: traceSource._id.toString(),
+              parentFilter: `ServiceName = '${PARENT_SVC}' AND SpanName = '${PARENT_OP}'`,
+              startTime: new Date(now.getTime() - 10 * 60 * 1000).toISOString(),
+              endTime: new Date(now.getTime() + 60 * 1000).toISOString(),
+            },
+          );
+          expect(result.isError).toBe(true);
+          return getFirstText(result);
+        } finally {
+          querySpy.mockRestore();
+        }
+      }
     });
   });
 });

@@ -4,12 +4,16 @@ import { screen, within } from '@testing-library/react';
 import DateRangeIndicator from '@/components/charts/DateRangeIndicator';
 import { DBPieChart } from '@/components/DBPieChart';
 import MVOptimizationIndicator from '@/components/MaterializedViews/MVOptimizationIndicator';
-import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import {
+  getMinGranularitySeconds,
+  useQueriedChartConfig,
+} from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useSource } from '@/source';
 
 jest.mock('@/hooks/useChartConfig', () => ({
   useQueriedChartConfig: jest.fn(),
+  getMinGranularitySeconds: jest.fn().mockReturnValue(undefined),
 }));
 
 jest.mock('@/hooks/useMVOptimizationExplanation', () => ({
@@ -316,6 +320,16 @@ describe('DBPieChart', () => {
         { expression: 'up', reducer: PromqlReducer.LastNotNull },
       ]);
       expect(queriedConfig.granularity).toBe('1 minute');
+    });
+
+    it("floors an auto granularity at the source's minimum", () => {
+      jest.mocked(getMinGranularitySeconds).mockReturnValueOnce(300);
+
+      renderWithMantine(<DBPieChart config={promqlConfig} />);
+
+      const queriedConfig = mockUseQueriedChartConfig.mock.calls[0][0];
+      expect(queriedConfig.granularity).toBe('5 minute');
+      expect(queriedConfig.minGranularitySeconds).toBe(300);
     });
 
     it('keeps the same query key when only the reducer changes', () => {
