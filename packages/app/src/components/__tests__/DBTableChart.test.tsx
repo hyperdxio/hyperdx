@@ -202,32 +202,16 @@ describe('DBTableChart', () => {
     // Emulates how the ClickHouse query returns rows for a builder table chart:
     // series columns are produced before groupBy columns.
     beforeEach(() => {
-      jest.mocked(useOffsetPaginatedQuery).mockReturnValue({
-        data: {
-          data: [
-            {
-              Count: 10,
-              AvgDuration: 42,
-              ServiceName: 'web',
-              SpanName: 'GET /',
-            },
-          ],
-          meta: [],
-          chSql: { sql: '', params: {} },
-          window: {
-            startTime: new Date(),
-            endTime: new Date(),
-            windowIndex: 0,
-            direction: 'DESC' as const,
+      jest.mocked(useOffsetPaginatedQuery).mockReturnValue(
+        createTableQueryResult([
+          {
+            Count: 10,
+            AvgDuration: 42,
+            ServiceName: 'web',
+            SpanName: 'GET /',
           },
-        },
-        fetchNextPage: jest.fn(),
-        hasNextPage: false,
-        isLoading: false,
-        isFetching: false,
-        isError: false,
-        error: null,
-      } as any);
+        ]),
+      );
     });
 
     const configWithGroupBy = {
@@ -430,9 +414,9 @@ describe('DBTableChart', () => {
       expect(
         columns.map(column => ({ id: column.id, dataKey: column.dataKey })),
       ).toEqual([
-        { id: '`avg(metric.total)`', dataKey: 'avg(metric.total)' },
-        { id: '`error rate`', dataKey: 'error rate' },
-        { id: '`ServiceName`', dataKey: 'ServiceName' },
+        { id: '"avg(metric.total)"', dataKey: 'avg(metric.total)' },
+        { id: '"error rate"', dataKey: 'error rate' },
+        { id: '"ServiceName"', dataKey: 'ServiceName' },
       ]);
     });
 
@@ -443,7 +427,7 @@ describe('DBTableChart', () => {
 
       act(() => {
         tableProps.onSortingChange?.([
-          { id: '`avg(metric.total)`', desc: true },
+          { id: '"avg(metric.total)"', desc: true },
         ]);
       });
 
@@ -457,7 +441,62 @@ describe('DBTableChart', () => {
 
       expect(queriedConfig.orderBy).toEqual([
         {
-          valueExpression: '`avg(metric.total)`',
+          valueExpression: '"avg(metric.total)"',
+          ordering: 'DESC',
+        },
+      ]);
+    });
+
+    it('keeps single-series metric expressions in their original query scope', () => {
+      const config = {
+        ...baseTestConfig,
+        metricTables: { gauge: 'metrics_gauge' },
+        select: [{ aggFn: 'avg' as const, valueExpression: 'metric.total' }],
+        groupBy: "ResourceAttributes['service.name']",
+      };
+
+      jest.mocked(useOffsetPaginatedQuery).mockReturnValue(
+        createTableQueryResult([
+          {
+            'avg(metric.total)': 42,
+            "ResourceAttributes['service.name']": 'api',
+          },
+        ]),
+      );
+
+      renderWithMantine(<DBTableChart config={config} />);
+
+      const tableProps = jest.mocked(Table).mock.calls.at(-1)![0];
+      expect(
+        tableProps.columns.map(column => ({
+          id: column.id,
+          dataKey: column.dataKey,
+        })),
+      ).toEqual([
+        { id: 'avg(metric.total)', dataKey: 'avg(metric.total)' },
+        {
+          id: "ResourceAttributes['service.name']",
+          dataKey: "ResourceAttributes['service.name']",
+        },
+      ]);
+
+      act(() => {
+        tableProps.onSortingChange?.([
+          { id: 'avg(metric.total)', desc: true },
+        ]);
+      });
+
+      const queriedConfig = jest
+        .mocked(useOffsetPaginatedQuery)
+        .mock.calls.at(-1)![0];
+
+      if (!isBuilderChartConfig(queriedConfig)) {
+        throw new Error('Expected a builder chart config');
+      }
+
+      expect(queriedConfig.orderBy).toEqual([
+        {
+          valueExpression: 'avg(metric.total)',
           ordering: 'DESC',
         },
       ]);
@@ -515,6 +554,58 @@ describe('DBTableChart', () => {
       ]);
     });
 
+    it('sorts inline formula outputs by their quoted alias', () => {
+      const config = {
+        ...baseTestConfig,
+        select: [{ aggFn: 'count' as const, valueExpression: '' }],
+        formulas: [{ expression: 'A * 2', alias: 'error rate' }],
+        groupBy: 'ServiceName',
+      };
+
+      jest.mocked(useOffsetPaginatedQuery).mockReturnValue(
+        createTableQueryResult([
+          {
+            'count()': 2,
+            'error rate': 4,
+            ServiceName: 'api',
+          },
+        ]),
+      );
+
+      renderWithMantine(<DBTableChart config={config} />);
+
+      const tableProps = jest.mocked(Table).mock.calls.at(-1)![0];
+      expect(
+        tableProps.columns.map(column => ({
+          id: column.id,
+          dataKey: column.dataKey,
+        })),
+      ).toEqual([
+        { id: 'count()', dataKey: 'count()' },
+        { id: '"error rate"', dataKey: 'error rate' },
+        { id: 'ServiceName', dataKey: 'ServiceName' },
+      ]);
+
+      act(() => {
+        tableProps.onSortingChange?.([{ id: '"error rate"', desc: true }]);
+      });
+
+      const queriedConfig = jest
+        .mocked(useOffsetPaginatedQuery)
+        .mock.calls.at(-1)![0];
+
+      if (!isBuilderChartConfig(queriedConfig)) {
+        throw new Error('Expected a builder chart config');
+      }
+
+      expect(queriedConfig.orderBy).toEqual([
+        {
+          valueExpression: '"error rate"',
+          ordering: 'DESC',
+        },
+      ]);
+    });
+
     it('normalizes legacy unquoted metric sort state to the column id', () => {
       renderWithMantine(
         <DBTableChart
@@ -525,7 +616,7 @@ describe('DBTableChart', () => {
 
       const tableProps = jest.mocked(Table).mock.calls.at(-1)![0];
       expect(tableProps.sorting).toEqual([
-        { id: '`avg(metric.total)`', desc: true },
+        { id: '"avg(metric.total)"', desc: true },
       ]);
 
       const queriedConfig = jest
@@ -538,7 +629,50 @@ describe('DBTableChart', () => {
 
       expect(queriedConfig.orderBy).toEqual([
         {
-          valueExpression: '`avg(metric.total)`',
+          valueExpression: '"avg(metric.total)"',
+          ordering: 'DESC',
+        },
+      ]);
+    });
+
+    it('keeps commas inside metric output identifiers', () => {
+      const outputName = 'error, rate';
+      const config = {
+        ...metricBuilderConfig,
+        formulas: [{ expression: 'A * 2', alias: outputName }],
+      };
+
+      jest.mocked(useOffsetPaginatedQuery).mockReturnValue(
+        createTableQueryResult([
+          { 'avg(metric.total)': 42, [outputName]: 84 },
+        ]),
+      );
+
+      renderWithMantine(<DBTableChart config={config} />);
+
+      const tableProps = jest.mocked(Table).mock.calls.at(-1)![0];
+      const formulaColumn = tableProps.columns.find(
+        column => column.dataKey === outputName,
+      );
+      expect(formulaColumn?.id).toBe('"error, rate"');
+
+      act(() => {
+        tableProps.onSortingChange?.([
+          { id: '"error, rate"', desc: true },
+        ]);
+      });
+
+      const queriedConfig = jest
+        .mocked(useOffsetPaginatedQuery)
+        .mock.calls.at(-1)![0];
+
+      if (!isBuilderChartConfig(queriedConfig)) {
+        throw new Error('Expected a builder chart config');
+      }
+
+      expect(queriedConfig.orderBy).toEqual([
+        {
+          valueExpression: '"error, rate"',
           ordering: 'DESC',
         },
       ]);
@@ -563,11 +697,11 @@ describe('DBTableChart', () => {
         column => column.dataKey === 'bad"name',
       );
 
-      expect(formulaColumn?.id).toBe('`bad"name`');
+      expect(formulaColumn?.id).toBe('"bad""name"');
     });
 
-    it('escapes backticks in output names', () => {
-      const outputName = 'bad`name';
+    it('escapes backslashes in output names', () => {
+      const outputName = 'ratio\\';
       const config = {
         ...metricBuilderConfig,
         formulas: [{ expression: 'A * 2', alias: outputName }],
@@ -586,7 +720,7 @@ describe('DBTableChart', () => {
         column => column.dataKey === outputName,
       );
 
-      expect(formulaColumn?.id).toBe('`bad``name`');
+      expect(formulaColumn?.id).toBe('"ratio\\\\"');
     });
   });
 

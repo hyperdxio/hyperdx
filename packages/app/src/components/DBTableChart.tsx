@@ -1,5 +1,4 @@
 import { useCallback, useMemo, useState } from 'react';
-import SqlString from 'sqlstring';
 import {
   isMetricChartConfig,
   isRatioChartConfig,
@@ -31,7 +30,10 @@ import {
   useChartNumberFormats,
   useSource,
 } from '@/source';
-import { useIntersectionObserver } from '@/utils';
+import {
+  quoteClickHouseOutputIdentifier,
+  useIntersectionObserver,
+} from '@/utils';
 
 import ChartContainer from './charts/ChartContainer';
 import ChartErrorState, {
@@ -39,6 +41,15 @@ import ChartErrorState, {
 } from './charts/ChartErrorState';
 import { getClientSideSortingFn } from './DBTable/sorting';
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
+
+const usesComposedMetricOutputIdentifiers = (
+  config: ChartConfigWithOptTimestamp,
+) =>
+  isBuilderChartConfig(config) &&
+  isMetricChartConfig(config) &&
+  Array.isArray(config.select) &&
+  (config.select.length > 1 ||
+    (config.select.length === 1 && (config.formulas?.length ?? 0) > 0));
 
 export default function DBTableChart({
   config,
@@ -80,6 +91,35 @@ export default function DBTableChart({
     [controlledSort, sort],
   );
 
+  const configuredOutputAliases = useMemo(() => {
+    const aliases = new Set<string>();
+    if (!isBuilderChartConfig(config)) {
+      return aliases;
+    }
+
+    if (Array.isArray(config.select)) {
+      for (const select of config.select) {
+        if (select.alias?.trim()) {
+          aliases.add(select.alias);
+        }
+      }
+    }
+
+    if (Array.isArray(config.groupBy)) {
+      for (const groupBy of config.groupBy) {
+        if (groupBy.alias?.trim()) {
+          aliases.add(groupBy.alias);
+        }
+      }
+    }
+
+    for (const formula of config.formulas ?? []) {
+      aliases.add(formula.alias || formula.expression);
+    }
+
+    return aliases;
+  }, [config]);
+
   const handleSortingChange = useCallback(
     (newSort: SortingState) => {
       setSort(newSort);
@@ -97,20 +137,25 @@ export default function DBTableChart({
     const _config = convertToTableChartConfig(config);
 
     if (effectiveSort.length) {
-      const sortUsesOutputIdentifiers = isMetricChartConfig(_config);
+      const sortUsesOutputIdentifiers =
+        usesComposedMetricOutputIdentifiers(_config);
       _config.orderBy = effectiveSort.map(o => {
-        const isQuotedIdentifier = unquoteIdentifier(o.id) !== o.id;
+        const rawSortId = unquoteIdentifier(o.id);
+        const isQuotedIdentifier = rawSortId !== o.id;
+        const isConfiguredOutputAlias = configuredOutputAliases.has(rawSortId);
+
         return {
           valueExpression:
-            sortUsesOutputIdentifiers && !isQuotedIdentifier
-              ? SqlString.escapeId(o.id, true)
+            (sortUsesOutputIdentifiers || isConfiguredOutputAlias) &&
+            !isQuotedIdentifier
+              ? quoteClickHouseOutputIdentifier(rawSortId)
               : o.id,
           ordering: o.desc ? 'DESC' : 'ASC',
         };
       });
     }
     return _config;
-  }, [config, effectiveSort]);
+  }, [config, configuredOutputAliases, effectiveSort]);
 
   const { data: mvOptimizationData } = useMVOptimizationExplanation(
     isBuilderChartConfig(queriedConfig) ? queriedConfig : undefined,
@@ -122,22 +167,6 @@ export default function DBTableChart({
       queryKeyPrefix,
     });
   const { observerRef: fetchMoreRef } = useIntersectionObserver(fetchNextPage);
-
-  const aliasMap = useMemo(() => {
-    if (isRawSqlChartConfig(config) || isPromqlChartConfig(config)) {
-      return [];
-    }
-
-    if (typeof config.select === 'string') {
-      return [];
-    }
-    return config.select.reduce((acc, select) => {
-      if (select.alias) {
-        acc.push(select.alias);
-      }
-      return acc;
-    }, [] as string[]);
-  }, [config]);
 
   const { formatByColumn } = useChartNumberFormats(queriedConfig, data?.meta);
 
@@ -193,15 +222,24 @@ export default function DBTableChart({
     // the groupBy string, which may have complex expressions and aliases, making
     // it difficult to reliably parse out the individual group by keys.
     let groupByKeys: string[] = [];
+    let formulaKeys: string[] = [];
     if (
       isBuilderChartConfig(queriedConfig) &&
       Array.isArray(queriedConfig.select)
     ) {
       // Value columns come first (formula-aware: operands + formula columns,
       // or one merged ratio column); everything after is a group-by column.
-      const seriesCount = getBuilderValueColumnCount(queriedConfig);
-      const groupByCount = allKeys.length - seriesCount;
+      const valueColumnCount = getBuilderValueColumnCount(queriedConfig);
+      const groupByCount = allKeys.length - valueColumnCount;
       groupByKeys = groupByCount > 0 ? allKeys.slice(-groupByCount) : [];
+
+      const formulaCount = queriedConfig.formulas?.length ?? 0;
+      if (formulaCount > 0) {
+        formulaKeys = allKeys.slice(
+          Math.max(0, valueColumnCount - formulaCount),
+          valueColumnCount,
+        );
+      }
     }
 
     // Builder table configs may opt to render Group By columns
@@ -222,10 +260,10 @@ export default function DBTableChart({
         // Multi-series metrics sort in the final projection. Other builder
         // tables still need unaliased expressions in their original scope.
         id:
-          (isBuilderChartConfig(queriedConfig) &&
-            isMetricChartConfig(queriedConfig)) ||
-          aliasMap.includes(key)
-            ? SqlString.escapeId(key, true)
+          usesComposedMetricOutputIdentifiers(queriedConfig) ||
+          configuredOutputAliases.has(key) ||
+          formulaKeys.includes(key)
+            ? quoteClickHouseOutputIdentifier(key)
             : key,
         dataKey: key,
         displayName: key,
@@ -242,7 +280,7 @@ export default function DBTableChart({
     data,
     queriedConfig,
     hiddenColumns,
-    aliasMap,
+    configuredOutputAliases,
     formatByColumn,
     colorByColumn,
     rulesByColumn,

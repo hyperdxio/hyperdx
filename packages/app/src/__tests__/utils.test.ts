@@ -25,6 +25,7 @@ import {
   mergePath,
   orderByStringToSortingState,
   parseTimestampToMs,
+  quoteClickHouseOutputIdentifier,
   resolveConditionalColor,
   sortingStateToOrderByString,
   stripTrailingSlash,
@@ -1115,6 +1116,19 @@ describe('useQueryHistory', () => {
       setQueryHistory('   '); // empty after trim
     });
     expect(mockSetItem).not.toHaveBeenCalled();
+  });
+});
+
+describe('quoteClickHouseOutputIdentifier', () => {
+  it('quotes output names without splitting commas', () => {
+    expect(quoteClickHouseOutputIdentifier('error, rate')).toBe(
+      '"error, rate"',
+    );
+  });
+
+  it('escapes double quotes and backslashes', () => {
+    expect(quoteClickHouseOutputIdentifier('bad"name')).toBe('"bad""name"');
+    expect(quoteClickHouseOutputIdentifier('ratio\\')).toBe('"ratio\\\\"');
   });
 });
 

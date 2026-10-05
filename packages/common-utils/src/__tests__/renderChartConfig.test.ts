@@ -4284,6 +4284,39 @@ describe('renderChartConfig', () => {
       expect(sql.match(/SETTINGS/g)).toHaveLength(1);
     });
 
+    it('keeps single-series metric sort expressions in the original query scope', async () => {
+      const generatedSql = await renderChartConfig(
+        {
+          ...baseMultiSeriesConfig,
+          displayType: DisplayType.Table,
+          granularity: undefined,
+          select: [gaugeSelect('metric.alpha')],
+          groupBy: [
+            {
+              aggCondition: '',
+              valueExpression: "ResourceAttributes['service.name']",
+            },
+          ],
+          orderBy: [
+            {
+              valueExpression: "ResourceAttributes['service.name']",
+              ordering: 'DESC',
+            },
+          ],
+        },
+        mockMetadata,
+        querySettings,
+      );
+      const sql = parameterizedQueryToSql(generatedSql);
+
+      expect(sql).toContain(
+        "ORDER BY ResourceAttributes['service.name'] DESC",
+      );
+      expect(sql).not.toContain(
+        'ORDER BY "ResourceAttributes[\'service.name\']" DESC',
+      );
+    });
+
     // HAVING / ORDER BY / LIMIT apply to the final joined result, where the
     // user-facing output columns exist — never inside a per-series branch.
     describe('outer HAVING / ORDER BY / LIMIT', () => {
@@ -4325,6 +4358,32 @@ describe('renderChartConfig', () => {
         expect(havingIdx).toBeGreaterThan(groupByIdx);
         expect(orderByIdx).toBeGreaterThan(havingIdx);
         expect(sql.indexOf('LIMIT 5 OFFSET 10')).toBeGreaterThan(orderByIdx);
+      });
+
+      it('keeps commas inside double-quoted output identifiers', async () => {
+        const generatedSql = await renderChartConfig(
+          {
+            ...baseMultiSeriesConfig,
+            displayType: DisplayType.Table,
+            granularity: undefined,
+            select: [
+              { ...gaugeSelect('metric.alpha'), alias: 'error, rate' },
+              gaugeSelect('metric.beta'),
+            ],
+            orderBy: [
+              {
+                valueExpression: '"error, rate"',
+                ordering: 'DESC',
+              },
+            ],
+          },
+          mockMetadata,
+          querySettings,
+        );
+        const sql = parameterizedQueryToSql(generatedSql);
+
+        expect(sql).toContain('AS "error, rate"');
+        expect(sql).toContain('ORDER BY "error, rate" DESC');
       });
 
       it('keeps time charts bucket-ordered first, with the user sort as tiebreaker', async () => {

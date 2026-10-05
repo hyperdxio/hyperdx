@@ -1289,6 +1289,16 @@ export function toArray<T>(obj?: T | T[]): T[] {
   return !obj ? [] : Array.isArray(obj) ? obj : [obj];
 }
 
+/**
+ * Quote a returned ClickHouse column name for use as an identifier.
+ *
+ * Double quotes are intentional: the shared SQL list parser tracks them, so
+ * commas inside an output name remain one ORDER BY item. ClickHouse treats
+ * backslash as an escape inside quoted identifiers, so preserve it by doubling.
+ */
+export const quoteClickHouseOutputIdentifier = (name: string): string =>
+  `"${name.replaceAll('\\', '\\\\').replaceAll('"', '""')}"`;
+
 // Helper function to remove trailing slash
 export const stripTrailingSlash = (url: string | undefined | null): string => {
   if (!url || typeof url !== 'string') {
