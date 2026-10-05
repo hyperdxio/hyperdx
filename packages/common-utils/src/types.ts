@@ -34,6 +34,7 @@ export const UseTextIndexSchema = z.nativeEnum(UseTextIndex);
 export enum DisplayType {
   Line = 'line',
   StackedBar = 'stacked_bar',
+  StackedLine = 'stacked_line',
   Table = 'table',
   Pie = 'pie',
   Bar = 'bar',

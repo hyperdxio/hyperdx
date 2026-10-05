@@ -25,6 +25,7 @@ import {
   getAlignedDateRange,
   Granularity,
   hasPositiveSeriesLimit,
+  TIME_SERIES_DISPLAY_TYPE_BY_NAME,
 } from '@hyperdx/common-utils/dist/core/utils';
 import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
@@ -1166,7 +1167,7 @@ export const convertV1ChartConfigToV2 = (
     granularity?: Granularity;
     dateRange: [Date, Date];
     seriesReturnType: 'ratio' | 'column';
-    displayType?: 'stacked_bar' | 'line';
+    displayType?: 'stacked_bar' | 'stacked_line' | 'line';
     name?: string;
     fillNulls?: number | false;
     sortOrder?: SortOrder;
@@ -1190,8 +1191,7 @@ export const convertV1ChartConfigToV2 = (
   }
 
   const firstSeries = series[0];
-  const convertedDisplayType =
-    displayType === 'stacked_bar' ? DisplayType.StackedBar : DisplayType.Line;
+  const convertedDisplayType = TIME_SERIES_DISPLAY_TYPE_BY_NAME[displayType];
 
   if (firstSeries.table === 'logs') {
     // TODO: this might not work properly since logs + traces are mixed in v1

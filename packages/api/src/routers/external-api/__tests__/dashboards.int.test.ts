@@ -2718,6 +2718,63 @@ describe('External API v2 Dashboards - new format', () => {
       expect(getResponse.body.data.tiles[1].config.seriesLimit).toBe(7);
     });
 
+    it('round-trips a stacked_line builder tile through create and get', async () => {
+      const stackedLineChart: ExternalDashboardTile = {
+        name: 'Stacked line',
+        x: 0,
+        y: 0,
+        w: 6,
+        h: 3,
+        config: {
+          displayType: 'stacked_line',
+          sourceId: traceSource._id.toString(),
+          select: [
+            {
+              aggFn: 'count',
+              alias: 'Count',
+              where: '',
+              whereLanguage: 'sql',
+            },
+          ],
+          groupBy: 'ServiceName',
+          seriesLimit: 5,
+        },
+      };
+
+      const createResponse = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Dashboard with a stacked line tile',
+          tiles: [stackedLineChart],
+        })
+        .expect(200);
+
+      expect(createResponse.body.data.tiles[0].config.displayType).toBe(
+        'stacked_line',
+      );
+
+      const { id } = createResponse.body.data;
+      const getResponse = await authRequest('get', `${BASE_URL}/${id}`).expect(
+        200,
+      );
+      expect(omit(getResponse.body.data.tiles[0], ['id'])).toEqual({
+        ...stackedLineChart,
+        config: {
+          ...stackedLineChart.config,
+          asRatio: false,
+          fillNulls: true,
+          select: [
+            {
+              aggFn: 'count',
+              alias: 'Count',
+              valueExpression: '',
+              where: '',
+              whereLanguage: 'sql',
+            },
+          ],
+        },
+      });
+    });
+
     it('omits seriesLimit on line/stacked_bar tiles when it is not provided', async () => {
       const lineChart: ExternalDashboardTile = {
         name: 'Line without series limit',
@@ -3396,6 +3453,24 @@ describe('External API v2 Dashboards - new format', () => {
         },
       };
 
+      const stackedLineRawSql: ExternalDashboardTile = {
+        name: 'Stacked Line Raw SQL',
+        x: 12,
+        y: 0,
+        w: 6,
+        h: 3,
+        config: {
+          configType: 'sql',
+          displayType: 'stacked_line',
+          connectionId,
+          sqlTemplate,
+          sourceId,
+          fillNulls: false,
+          alignDateRangeToGranularity: false,
+          numberFormat: { output: 'byte', decimalBytes: true },
+        },
+      };
+
       const tableRawSql: ExternalDashboardTile = {
         name: 'Table Raw SQL',
         x: 0,
@@ -3475,6 +3550,7 @@ describe('External API v2 Dashboards - new format', () => {
           tiles: [
             lineRawSql,
             barRawSql,
+            stackedLineRawSql,
             tableRawSql,
             numberRawSql,
             pieRawSql,
@@ -3486,10 +3562,13 @@ describe('External API v2 Dashboards - new format', () => {
 
       expect(omit(response.body.data.tiles[0], ['id'])).toEqual(lineRawSql);
       expect(omit(response.body.data.tiles[1], ['id'])).toEqual(barRawSql);
-      expect(omit(response.body.data.tiles[2], ['id'])).toEqual(tableRawSql);
-      expect(omit(response.body.data.tiles[3], ['id'])).toEqual(numberRawSql);
-      expect(omit(response.body.data.tiles[4], ['id'])).toEqual(pieRawSql);
-      expect(omit(response.body.data.tiles[5], ['id'])).toEqual(
+      expect(omit(response.body.data.tiles[2], ['id'])).toEqual(
+        stackedLineRawSql,
+      );
+      expect(omit(response.body.data.tiles[3], ['id'])).toEqual(tableRawSql);
+      expect(omit(response.body.data.tiles[4], ['id'])).toEqual(numberRawSql);
+      expect(omit(response.body.data.tiles[5], ['id'])).toEqual(pieRawSql);
+      expect(omit(response.body.data.tiles[6], ['id'])).toEqual(
         categoricalBarRawSql,
       );
     });

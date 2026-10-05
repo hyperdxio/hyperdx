@@ -72,7 +72,7 @@ export type SeriesData = {
   whereLanguage?: 'sql' | 'lucene';
   groupBy?: string[];
   alias?: string;
-  displayType?: 'line' | 'stacked_bar';
+  displayType?: 'line' | 'stacked_bar' | 'stacked_line';
   sortOrder?: 'desc' | 'asc';
   fields?: string[]; // For search type
   content?: string; // For markdown type
@@ -806,6 +806,16 @@ export class DashboardPage {
    */
   getChartContainers() {
     return this.page.locator('.recharts-responsive-container');
+  }
+
+  /** A time-chart display-switcher option in a tile's toolbar. */
+  getTileDisplaySwitcherOption(
+    displayType: 'line' | 'stacked_bar' | 'stacked_line',
+    tileIndex = 0,
+  ) {
+    return this.getTile(tileIndex).getByTestId(
+      `display-switcher-${displayType}`,
+    );
   }
 
   /**
@@ -1581,7 +1591,9 @@ export class DashboardPage {
     }
 
     const type: SeriesData['type'] =
-      config.displayType === 'line' || config.displayType === 'stacked_bar'
+      config.displayType === 'line' ||
+      config.displayType === 'stacked_bar' ||
+      config.displayType === 'stacked_line'
         ? 'time'
         : config.displayType;
 
