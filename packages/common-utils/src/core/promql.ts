@@ -3,6 +3,7 @@ import {
   convertGranularityToSeconds,
   isTimeSeriesDisplayType,
 } from '@/core/utils';
+import type { MacroSuggestion } from '@/macros';
 import {
   DisplayType,
   PromqlExpressionList,
@@ -45,12 +46,24 @@ export function getQueriedPromqlSeries(config: {
 /** Whether a display type can evaluate an expression using query instead of query_range */
 export const displayTypeSupportsInstantQuery = (config: {
   displayType?: DisplayType;
-}): boolean => config.displayType === DisplayType.Number;
+}): boolean =>
+  config.displayType === DisplayType.Number ||
+  config.displayType === DisplayType.Table ||
+  config.displayType === DisplayType.Pie ||
+  config.displayType === DisplayType.Bar;
 
-/** Whether a display type collapses a range query to one value per series using a client-side reducer. */
+/**
+ * Whether a display type collapses each series to one value using a client-side
+ * reducer. Applies to instant and range queries alike: an instant vector has
+ * one sample per series, so any reducer returns it, while an instant query
+ * with a range selector (`up[5m]`) returns several.
+ */
 export const displayTypeSupportsReducer = (config: {
   displayType?: DisplayType;
-}): boolean => config.displayType === DisplayType.Number;
+}): boolean =>
+  config.displayType === DisplayType.Number ||
+  config.displayType === DisplayType.Pie ||
+  config.displayType === DisplayType.Bar;
 
 /** The reducer applied when none is chosen. */
 export const DEFAULT_PROMQL_REDUCER = PromqlReducer.LastNotNull;
@@ -90,19 +103,94 @@ export function reducePromqlSamples(
   }
 }
 
-/** A HyperDX granularity ("5 minute") as a Prometheus step ("300s"). */
-export const promqlStep = (
+/** A HyperDX granularity ("5 minute") as a Prometheus step, in seconds. */
+const promqlStepSeconds = (
   granularity: string | undefined,
   dateRange?: [Date, Date],
-): string => {
+): number => {
   const resolved =
     (!granularity || granularity === 'auto') && dateRange
       ? convertDateRangeToGranularityString(dateRange)
       : granularity;
-  if (!resolved || resolved === 'auto') return '60s';
+  if (!resolved || resolved === 'auto') return 60;
   // convertGranularityToSeconds returns 0 for units it doesn't recognize.
-  return `${convertGranularityToSeconds(resolved as SQLInterval) || 60}s`;
+  return convertGranularityToSeconds(resolved as SQLInterval) || 60;
 };
+
+/** A HyperDX granularity ("5 minute") as a Prometheus step ("300s"). */
+export const promqlStep = (
+  granularity: string | undefined,
+  dateRange?: [Date, Date],
+): string => `${promqlStepSeconds(granularity, dateRange)}s`;
+
+/**
+ * HyperDX doesn't know a PromQL source's scrape interval, so `$__rate_interval`
+ * assumes Prometheus' default.
+ *
+ * TODO (HDX-5512): Use the PromQL source's minGranularitySeconds setting instead.
+ */
+const PROMQL_DEFAULT_SCRAPE_INTERVAL_SECONDS = 15;
+
+/** What the PromQL macros are computed from, for a chart's granularity and time range. */
+export type PromqlMacroInputs = {
+  intervalSeconds: number;
+  rangeSeconds: number;
+};
+
+export type PromqlMacro = MacroSuggestion & {
+  expand: (inputs: PromqlMacroInputs) => string;
+};
+
+export const PROMQL_MACROS = [
+  {
+    name: 'interval',
+    minArgs: 0,
+    maxArgs: 0,
+    description:
+      'The step between points in the chart, as a duration such as 60s. Use it as a range, e.g. avg_over_time(metric[$__interval]).',
+    expand: ({ intervalSeconds }) => `${intervalSeconds}s`,
+  },
+  {
+    name: 'range',
+    minArgs: 0,
+    maxArgs: 0,
+    description:
+      'The length of the selected time range, as a duration such as 3600s. e.g. increase(metric[$__range]).',
+    expand: ({ rangeSeconds }) => `${rangeSeconds}s`,
+  },
+  {
+    name: 'rate_interval',
+    minArgs: 0,
+    maxArgs: 0,
+    description: `A safe range for rate() and increase(): the larger of $__interval + ${PROMQL_DEFAULT_SCRAPE_INTERVAL_SECONDS}s and ${4 * PROMQL_DEFAULT_SCRAPE_INTERVAL_SECONDS}s, assuming a ${PROMQL_DEFAULT_SCRAPE_INTERVAL_SECONDS}s scrape interval. e.g. rate(metric[$__rate_interval]).`,
+    expand: ({ intervalSeconds }) =>
+      `${Math.max(
+        intervalSeconds + PROMQL_DEFAULT_SCRAPE_INTERVAL_SECONDS,
+        4 * PROMQL_DEFAULT_SCRAPE_INTERVAL_SECONDS,
+      )}s`,
+  },
+] as const satisfies readonly PromqlMacro[];
+
+export type PromqlMacroName = (typeof PROMQL_MACROS)[number]['name'];
+
+export const PROMQL_MACRO_NAMES = PROMQL_MACROS.map(({ name }) => name);
+
+export const isPromqlMacroName = (name: string): name is PromqlMacroName =>
+  (PROMQL_MACRO_NAMES as readonly string[]).includes(name);
+
+export function getPromqlMacroInputs(
+  granularity: string | undefined,
+  dateRange: [Date, Date],
+): PromqlMacroInputs {
+  const [start, end] = dateRange;
+  return {
+    intervalSeconds: promqlStepSeconds(granularity, dateRange),
+    rangeSeconds: Math.max(
+      1,
+      Math.round((end.getTime() - start.getTime()) / 1000),
+    ),
+  };
+}
 
 /**
  * Whether any expression this config queries is evaluated over a range, and so
@@ -115,3 +203,20 @@ export const isRangeQuery = (config: {
   getQueriedPromqlSeries(config).some(
     series => promqlSeriesQueryType(series) === 'range',
   );
+
+/**
+ * Whether this config's range buckets can be collapsed to one value per series by
+ * a client-side reducer, rather than plotted.
+ */
+export const isReducibleRangeQuery = (config: {
+  promqlExpression?: PromqlExpressionList;
+  displayType?: DisplayType;
+}): boolean => displayTypeSupportsReducer(config) && isRangeQuery(config);
+
+/** Whether the config specifies a reducer its display type applies. */
+export const appliesPromqlReducer = (config: {
+  promqlExpression?: PromqlExpressionList;
+  displayType?: DisplayType;
+}): boolean =>
+  displayTypeSupportsReducer(config) &&
+  getQueriedPromqlSeries(config)[0]?.reducer != null;

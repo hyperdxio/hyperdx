@@ -10,6 +10,7 @@ import {
   ChSql,
   ClickHouseQueryError,
   ColumnMetaType,
+  type QueryAttribution,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
@@ -38,7 +39,9 @@ import { getClickhouseClient } from '@/clickhouse';
 import { MAX_TABLE_ROWS } from '@/HDXMultiSeriesTableChart';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
+import { useQueryAttribution } from '@/queryAttribution';
 import { useSource } from '@/source';
+import { queryPromqlChartConfig } from '@/utils/promqlChartQuery';
 import {
   DEFAULT_TIME_WINDOWS_SECONDS,
   generateTimeWindowsAscending,
@@ -95,6 +98,12 @@ type QueryMeta = {
   metadata: Metadata;
   optimizedConfig?: ChartConfigWithOptTimestamp;
   source: TSource | undefined;
+  /**
+   * Read during render and carried here because the queryFn runs outside
+   * React and cannot read context. `meta` rather than `queryKey`, which would
+   * split the cache per surface.
+   */
+  attribution: QueryAttribution;
 };
 
 // Get time window from page param
@@ -189,6 +198,7 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
     hasPreviousQueries,
     optimizedConfig,
     source,
+    attribution,
   } = meta as QueryMeta;
 
   // Only stream incrementally if this is a fresh query with no previous
@@ -198,7 +208,7 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
     !hasPreviousQueries || pageParam.offset > 0 || pageParam.windowIndex > 0;
 
   const queryTimeout = queryKey[2];
-  const clickhouseClient = getClickhouseClient({ queryTimeout });
+  const clickhouseClient = getClickhouseClient({ queryTimeout, attribution });
 
   const rawConfig = queryKey[1];
   const config = optimizedConfig ?? rawConfig;
@@ -214,6 +224,22 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
         windowIndex: 0,
         direction: 'DESC' as const,
       };
+
+  // PromQL goes to the Prometheus API route rather than ClickHouse, and never
+  // paginates (see getNextPageParam), so it answers in a single page.
+  if (isPromqlChartConfig(config)) {
+    const { data, meta } = await queryPromqlChartConfig(
+      config,
+      config.dateRange,
+      signal,
+    );
+    return {
+      data,
+      meta: meta ?? [],
+      chSql: { sql: '', params: {} },
+      window: timeWindow,
+    };
+  }
 
   // Create config with windowed date range
   const windowedConfig = isBuilderChartConfig(config)
@@ -471,6 +497,7 @@ export default function useOffsetPaginatedQuery(
   const key = queryKeyFn(queryKeyPrefix, config, meData?.team?.queryTimeout);
   const queryClient = useQueryClient();
   const metadata = useMetadataWithSettings();
+  const attribution = useQueryAttribution();
   const matchedQueries = queryClient.getQueriesData<TData>({
     queryKey: [queryKeyPrefix, omit(config, ['dateRange'])],
   });
@@ -541,6 +568,7 @@ export default function useOffsetPaginatedQuery(
       metadata,
       optimizedConfig: mvOptimizationData?.optimizedConfig,
       source,
+      attribution,
     } satisfies QueryMeta,
     queryFn,
     gcTime: isLive ? ms('30s') : ms('5m'), // more aggressive gc for live data, since it can end up holding lots of data

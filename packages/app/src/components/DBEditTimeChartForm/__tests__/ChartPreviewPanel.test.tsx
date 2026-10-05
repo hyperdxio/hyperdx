@@ -56,9 +56,10 @@ jest.mock('@/components/DBSqlRowTableWithSidebar', () => ({
 jest.mock('@/components/DBHeatmapChart', () => ({
   __esModule: true,
   default: () => <div data-testid="db-heatmap-chart">Heatmap Chart</div>,
-  toHeatmapChartConfig: (config: unknown) => ({
-    heatmapConfig: config,
-    scaleType: 'log' as const,
+  toHeatmapQuery: (config: unknown) => ({
+    mode: 'distribution',
+    config,
+    scaleType: 'log',
   }),
   buildHeatmapBoundsConfig: ({ config }: { config: unknown }) => config,
   buildHeatmapBucketConfig: ({ config }: { config: unknown }) => config,
@@ -415,7 +416,7 @@ describe('ChartPreviewPanel', () => {
       await userEvent.hover(wrapper!);
 
       expect(
-        await screen.findByText(/Variables could not be expanded/),
+        await screen.findByText(/Expression could not be expanded/),
       ).toBeInTheDocument();
       expect(
         screen.queryByTestId('chart-promql-preview'),

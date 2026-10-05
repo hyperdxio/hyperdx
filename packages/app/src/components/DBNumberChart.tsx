@@ -19,6 +19,7 @@ import { Flex, Text } from '@mantine/core';
 import {
   buildMVDateRangeIndicator,
   convertToNumberChartConfig,
+  convertToReducedPromqlChartConfig,
 } from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
@@ -222,13 +223,13 @@ export default function DBNumberChart({
   showMVOptimizationIndicator?: boolean;
   errorVariant?: ChartErrorStateVariant;
 }) {
-  const queriedConfig = useMemo(
-    () =>
-      isBuilderChartConfig(config)
-        ? convertToNumberChartConfig(config)
-        : config,
-    [config],
-  );
+  const queriedConfig = useMemo(() => {
+    if (isBuilderChartConfig(config)) return convertToNumberChartConfig(config);
+    if (isPromqlChartConfig(config)) {
+      return convertToReducedPromqlChartConfig(config);
+    }
+    return config;
+  }, [config]);
 
   const builderQueriedConfig = isBuilderChartConfig(queriedConfig)
     ? queriedConfig
@@ -254,13 +255,16 @@ export default function DBNumberChart({
         )
       : error;
 
-  const promqlRows = isPromqlChartConfig(queriedConfig)
-    ? (data?.data ?? [])
-    : [];
-  const promqlValueCount = promqlRows.length;
-  const promqlSeriesCount = new Set(
-    promqlRows.map((row: Record<string, unknown>) => row.series_name),
-  ).size;
+  // The reducer leaves one row per series.
+  const promqlSeriesCount = isPromqlChartConfig(queriedConfig)
+    ? (data?.data?.length ?? 0)
+    : 0;
+
+  // Several series leave the value ambiguous (see the warning) and the tile
+  // shows whichever came first, so a trend behind it would mislead. Whether
+  // the config can be bucketed at all is the sparkline's own call.
+  const showSparkline =
+    config.backgroundChart != null && promqlSeriesCount <= 1;
 
   const resolvedNumberFormat = useSingleSeriesNumberFormat(queriedConfig);
 
@@ -322,14 +326,12 @@ export default function DBNumberChart({
       allToolbarItems.push(...toolbarPrefix);
     }
 
-    if (promqlValueCount > 1 || promqlSeriesCount > 1) {
+    if (promqlSeriesCount > 1) {
       allToolbarItems.push(
         <MultipleValuesIndicator
           key="db-number-chart-multiple-values"
-          valueCount={promqlValueCount}
           seriesCount={promqlSeriesCount}
           multipleSeriesHint="Aggregate the expression, for example with sum() or sum by (...), to return a single series."
-          multipleValuesHint="Wrap any range selectors in a function to return an instant vector, for example rate(metric[5m]) rather than metric[5m]."
         />,
       );
     }
@@ -367,7 +369,6 @@ export default function DBNumberChart({
     mvOptimizationData,
     queriedConfig,
     builderQueriedConfig,
-    promqlValueCount,
     promqlSeriesCount,
   ]);
 
@@ -395,10 +396,12 @@ export default function DBNumberChart({
           className={isLoading || isPlaceholderData ? 'effect-pulse' : ''}
           style={{ position: 'relative', width: '100%', height: '100%' }}
         >
-          {config.backgroundChart && (
+          {showSparkline && config.backgroundChart && (
             <NumberTileBackgroundChart
               config={config}
               backgroundChart={config.backgroundChart}
+              queryKeyPrefix={queryKeyPrefix}
+              enabled={enabled}
             />
           )}
           <div style={{ position: 'relative', zIndex: 1, height: '100%' }}>

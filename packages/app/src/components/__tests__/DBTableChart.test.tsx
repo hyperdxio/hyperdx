@@ -490,6 +490,102 @@ describe('DBTableChart', () => {
     });
   });
 
+  describe('PromQL configs', () => {
+    const promqlConfig = {
+      configType: 'promql' as const,
+      dateRange: [new Date(), new Date()] as [Date, Date],
+      connection: 'test-connection',
+      promqlExpression: [{ expression: 'up' }],
+      numberFormat: { output: 'number' as const },
+    };
+
+    const queryResult = (valueType: string) => ({
+      data: {
+        data: [{ Time: '2023-11-14T22:13:20.000Z', service: 'web', Value: 1 }],
+        meta: [
+          { name: 'Time', type: 'DateTime64(3)' },
+          { name: 'service', type: 'String' },
+          { name: 'Value', type: valueType },
+        ],
+        chSql: { sql: '', params: {} },
+        window: {
+          startTime: new Date(),
+          endTime: new Date(),
+          windowIndex: 0,
+          direction: 'DESC' as const,
+        },
+      },
+      fetchNextPage: jest.fn(),
+      hasNextPage: false,
+      isLoading: false,
+      isFetching: false,
+      isError: false,
+      isPlaceholderData: false,
+      error: null,
+    });
+
+    beforeEach(() => {
+      jest
+        .mocked(useOffsetPaginatedQuery)
+        .mockReturnValue(queryResult('Float64'));
+    });
+
+    it('queries a range aligned to a resolved granularity', () => {
+      renderWithMantine(
+        <DBTableChart
+          config={{
+            ...promqlConfig,
+            dateRange: [
+              new Date('2025-11-26T00:00:14.076Z'),
+              new Date('2025-11-26T01:00:14.076Z'),
+            ],
+          }}
+        />,
+      );
+
+      const queried = jest
+        .mocked(useOffsetPaginatedQuery)
+        .mock.calls.at(-1)![0];
+      expect(queried.dateRange).toEqual([
+        new Date('2025-11-26T00:00:00Z'),
+        new Date('2025-11-26T01:01:00Z'),
+      ]);
+      expect(queried.granularity).toBe('1 minute');
+    });
+
+    it('sorts client-side, since the query cannot be re-ordered server-side', () => {
+      renderWithMantine(<DBTableChart config={promqlConfig} />);
+
+      expect(
+        jest.mocked(Table).mock.calls.at(-1)![0].enableClientSideSorting,
+      ).toBe(true);
+    });
+
+    it('formats only the value column, leaving the label columns alone', () => {
+      renderWithMantine(<DBTableChart config={promqlConfig} />);
+
+      const columns = jest.mocked(Table).mock.calls.at(-1)![0].columns;
+      expect(columns.map(c => [c.dataKey, c.numberFormat?.output])).toEqual([
+        ['Time', undefined],
+        ['service', undefined],
+        ['Value', 'number'],
+      ]);
+    });
+
+    it('formats a value column of any numeric type', () => {
+      jest
+        .mocked(useOffsetPaginatedQuery)
+        .mockReturnValue(queryResult('Nullable(Float64)'));
+
+      renderWithMantine(<DBTableChart config={promqlConfig} />);
+
+      const columns = jest.mocked(Table).mock.calls.at(-1)![0].columns;
+      expect(columns.find(c => c.dataKey === 'Value')?.numberFormat).toEqual({
+        output: 'number',
+      });
+    });
+  });
+
   it('does not render DateRangeIndicator when MV optimization has no optimized date range', () => {
     // Mock useMVOptimizationExplanation to return data without an optimized config
     jest.mocked(useMVOptimizationExplanation).mockReturnValue({

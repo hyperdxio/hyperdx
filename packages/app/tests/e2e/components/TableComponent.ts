@@ -54,7 +54,7 @@ export class TableComponent {
   }
 
   /**
-   * Click on a specific row
+   * Click on a specific row, which opens it in the side panel.
    */
   async clickRow(index: number) {
     await this.getRow(index).click();
@@ -65,6 +65,24 @@ export class TableComponent {
    */
   async clickFirstRow() {
     await this.firstRow.click();
+  }
+
+  /**
+   * Open a row in the side panel via its hover button. The button only exists
+   * once the `expand` row-click preference is set — without it a plain
+   * {@link clickRow} already opens the panel.
+   */
+  async openRowSidePanel(index: number) {
+    const row = this.getRow(index);
+    await row.hover();
+    await row.getByRole('button', { name: 'Open in side panel' }).click();
+  }
+
+  /**
+   * Open the first row in the side panel via its hover button.
+   */
+  async openFirstRowSidePanel() {
+    await this.openRowSidePanel(0);
   }
 
   /**
@@ -85,6 +103,25 @@ export class TableComponent {
     await this.getRow(index)
       .getByRole('button', { name: 'Collapse log details' })
       .click();
+  }
+
+  /**
+   * Click a row's body — the large hit target covering everything but the
+   * chevron. Requires the `expand` row-click preference, under which it toggles
+   * inline expansion, so calling it twice collapses the row.
+   */
+  async clickRowBody(index: number) {
+    await this.getRow(index)
+      .getByRole('button', { name: /^(Expand|Collapse) log row$/ })
+      .click();
+  }
+
+  /**
+   * Expand a row in place by clicking its body rather than the chevron.
+   */
+  async expandRowByBodyClick(index: number) {
+    await this.clickRowBody(index);
+    await this.firstExpandedRow.waitFor({ state: 'visible', timeout: 10_000 });
   }
 
   /**

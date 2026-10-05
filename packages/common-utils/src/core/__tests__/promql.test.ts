@@ -1,7 +1,12 @@
 import {
+  appliesPromqlReducer,
+  displayTypeSupportsInstantQuery,
+  displayTypeSupportsReducer,
+  getPromqlMacroInputs,
   getPromqlSeries,
   getQueriedPromqlSeries,
   isRangeQuery,
+  PROMQL_MACROS,
   promqlSeriesQueryType,
   promqlStep,
   reducePromqlSamples,
@@ -103,6 +108,39 @@ describe('getQueriedPromqlSeries', () => {
   });
 });
 
+describe('displayTypeSupportsInstantQuery', () => {
+  it.each([
+    DisplayType.Number,
+    DisplayType.Table,
+    DisplayType.Pie,
+    DisplayType.Bar,
+  ])('offers an instant query on %s tiles', displayType => {
+    expect(displayTypeSupportsInstantQuery({ displayType })).toBe(true);
+  });
+
+  it.each([DisplayType.Line, DisplayType.StackedBar])(
+    'always range-queries %s tiles',
+    displayType => {
+      expect(displayTypeSupportsInstantQuery({ displayType })).toBe(false);
+    },
+  );
+});
+
+describe('displayTypeSupportsReducer', () => {
+  it.each([DisplayType.Number, DisplayType.Pie, DisplayType.Bar])(
+    'reduces range buckets on %s tiles',
+    displayType => {
+      expect(displayTypeSupportsReducer({ displayType })).toBe(true);
+    },
+  );
+
+  it('keeps every sample on table tiles', () => {
+    expect(displayTypeSupportsReducer({ displayType: DisplayType.Table })).toBe(
+      false,
+    );
+  });
+});
+
 describe('promqlSeriesQueryType', () => {
   it('defaults to a range query', () => {
     expect(promqlSeriesQueryType({ expression: 'up' })).toBe('range');
@@ -195,6 +233,45 @@ describe('promqlStep with a window', () => {
   });
 });
 
+describe('PROMQL_MACROS', () => {
+  const hour: [Date, Date] = [
+    new Date('2024-01-01T00:00:00Z'),
+    new Date('2024-01-01T01:00:00Z'),
+  ];
+  const expandMacro = (
+    name: string,
+    granularity: string,
+    dateRange: [Date, Date],
+  ) =>
+    PROMQL_MACROS.find(macro => macro.name === name)?.expand(
+      getPromqlMacroInputs(granularity, dateRange),
+    );
+
+  it('uses the step for $__interval', () => {
+    expect(expandMacro('interval', '5 minute', hour)).toBe('300s');
+    expect(expandMacro('interval', 'auto', hour)).toBe(
+      promqlStep('auto', hour),
+    );
+  });
+
+  it('rounds the window length to seconds for $__range', () => {
+    expect(expandMacro('range', '1 minute', hour)).toBe('3600s');
+    expect(
+      expandMacro('range', '1 minute', [
+        new Date('2024-01-01T00:00:00.000Z'),
+        new Date('2024-01-01T00:00:10.600Z'),
+      ]),
+    ).toBe('11s');
+    expect(expandMacro('range', '1 minute', [hour[0], hour[0]])).toBe('1s');
+  });
+
+  it('floors $__rate_interval at four scrape intervals', () => {
+    expect(expandMacro('rate_interval', '15 second', hour)).toBe('60s');
+    expect(expandMacro('rate_interval', '1 minute', hour)).toBe('75s');
+    expect(expandMacro('rate_interval', '5 minute', hour)).toBe('315s');
+  });
+});
+
 describe('isRangeQuery', () => {
   it('is false while every queried expression is an instant query', () => {
     expect(
@@ -253,5 +330,39 @@ describe('isRangeQuery', () => {
 
   it('is false when nothing is queried', () => {
     expect(isRangeQuery({ displayType: DisplayType.Line })).toBe(false);
+  });
+});
+
+describe('appliesPromqlReducer', () => {
+  it.each(['instant', 'range'] as const)(
+    'applies to a %s query on a reducing display type',
+    queryType => {
+      expect(
+        appliesPromqlReducer({
+          promqlExpression: [
+            { expression: 'up', queryType, reducer: PromqlReducer.Max },
+          ],
+          displayType: DisplayType.Pie,
+        }),
+      ).toBe(true);
+    },
+  );
+
+  it('does not apply when no reducer is named', () => {
+    expect(
+      appliesPromqlReducer({
+        promqlExpression: [{ expression: 'up', queryType: 'instant' }],
+        displayType: DisplayType.Number,
+      }),
+    ).toBe(false);
+  });
+
+  it('does not apply to a display type that plots every sample', () => {
+    expect(
+      appliesPromqlReducer({
+        promqlExpression: [{ expression: 'up', reducer: PromqlReducer.Max }],
+        displayType: DisplayType.Line,
+      }),
+    ).toBe(false);
   });
 });

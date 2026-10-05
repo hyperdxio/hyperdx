@@ -165,6 +165,7 @@ import useDashboardContainers, {
 } from '@/hooks/useDashboardContainers';
 import { useDashboardKioskMode } from '@/hooks/useDashboardKioskMode';
 import { useReleaseAnnotations } from '@/hooks/useReleaseAnnotations';
+import { QueryAttributionProvider } from '@/queryAttribution';
 import { calculateNextTilePosition, makeId } from '@/utils/tilePositioning';
 
 import ChartContainer, {
@@ -174,9 +175,7 @@ import ChartContainer, {
 } from './components/charts/ChartContainer';
 import DashboardFiltersModal from './components/DashboardFiltersModal';
 import { DBBarChart } from './components/DBBarChart';
-import DBHeatmapChart, {
-  toHeatmapChartConfig,
-} from './components/DBHeatmapChart';
+import DBHeatmapChart, { toHeatmapQuery } from './components/DBHeatmapChart';
 import { DBPieChart } from './components/DBPieChart';
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import OnboardingModal from './components/OnboardingModal';
@@ -205,7 +204,7 @@ import {
   GranularityPickerControlled,
 } from './GranularityPicker';
 import HDXMarkdownChart from './HDXMarkdownChart';
-import { withAppNav } from './layout';
+import { withAppNavForSurface } from './layout';
 import {
   getEventBody,
   getFirstTimestampValueExpression,
@@ -249,7 +248,7 @@ function HeatmapTile({
   dateRange: [Date, Date];
   enabled?: boolean;
 }) {
-  const { heatmapConfig, scaleType } = toHeatmapChartConfig(queriedConfig);
+  const heatmapQuery = toHeatmapQuery(queriedConfig);
 
   const [clickPos, setClickPos] = useState<{ x: number; y: number } | null>(
     null,
@@ -291,8 +290,7 @@ function HeatmapTile({
         title={title}
         toolbarPrefix={toolbarPrefix}
         toolbarSuffix={toolbarSuffix}
-        config={heatmapConfig}
-        scaleType={scaleType}
+        query={heatmapQuery}
         enabled={enabled}
         showLegend
       />
@@ -594,6 +592,21 @@ const Tile = ({
     () =>
       serializedTileVariables ? JSON.parse(serializedTileVariables) : undefined,
     [serializedTileVariables],
+  );
+
+  // Serialized for the same reason as `tileVariables`. Markdown tiles flag
+  // references to names outside this list, which `tileVariables` filters out.
+  const serializedVariableNames = useMemo(
+    () =>
+      variables
+        ? JSON.stringify(variables.map(variable => variable.name))
+        : undefined,
+    [variables],
+  );
+  const variableNames = useMemo<string[] | undefined>(
+    () =>
+      serializedVariableNames ? JSON.parse(serializedVariableNames) : undefined,
+    [serializedVariableNames],
   );
 
   // Serialized for the same reason as `tileVariables`: any change to the
@@ -1377,6 +1390,8 @@ const Tile = ({
                     title={title}
                     toolbarItems={toolbar}
                     config={effectiveMarkdownConfig}
+                    variables={tileVariables}
+                    availableVariableNames={variableNames}
                   />
                 )}
               {effectiveQueriedConfig?.displayType === DisplayType.Search &&
@@ -1495,11 +1510,13 @@ const Tile = ({
       annotations,
       isLive,
       readOnly,
+      tileVariables,
+      variableNames,
     ],
   );
 
   return (
-    <>
+    <QueryAttributionProvider attribution={{ tile: chart.id }}>
       <div
         data-testid={`dashboard-tile-${chart.id}`}
         // `dashboard-chart-highlighted` triggers a one-shot flash animation
@@ -1595,7 +1612,7 @@ const Tile = ({
           </Flex>
         )}
       </FullscreenPanelModal>
-    </>
+    </QueryAttributionProvider>
   );
 };
 
@@ -1666,36 +1683,43 @@ const EditTileModal = ({
       zIndex={modalZIndex}
     >
       {chart != null && (
-        <ZIndexContext value={modalZIndex + 10}>
-          {/* Isolate chart cross-syncing to this edit modal: the preview chart
+        <QueryAttributionProvider
+          attribution={{
+            surface: 'chart-preview',
+            tile: chart.id,
+          }}
+        >
+          <ZIndexContext value={modalZIndex + 10}>
+            {/* Isolate chart cross-syncing to this edit modal: the preview chart
               must not drive shadow tooltips on the dashboard tiles behind it. */}
-          <IsolatedChartSyncProvider>
-            {/* Offers the dashboard's variables as completions in every
+            <IsolatedChartSyncProvider>
+              {/* Offers the dashboard's variables as completions in every
                 expression input the editor renders. */}
-            <SqlVariablesProvider variables={variables}>
-              <EditTimeChartForm
-                data-testid="tile-editor-form"
-                dashboardId={dashboardId}
-                chartConfig={chart.config}
-                variables={variables}
-                getDashboardFilters={getDashboardFilters}
-                unsatisfiedRequiredFilters={unsatisfiedRequiredFilters}
-                dateRange={dateRange}
-                isSaving={isSaving}
-                onSave={config => {
-                  onSave({
-                    ...chart,
-                    config: config,
-                  });
-                }}
-                onClose={handleClose}
-                onDirtyChange={setHasUnsavedChanges}
-                isDashboardForm
-                autoRun
-              />
-            </SqlVariablesProvider>
-          </IsolatedChartSyncProvider>
-        </ZIndexContext>
+              <SqlVariablesProvider variables={variables}>
+                <EditTimeChartForm
+                  data-testid="tile-editor-form"
+                  dashboardId={dashboardId}
+                  chartConfig={chart.config}
+                  variables={variables}
+                  getDashboardFilters={getDashboardFilters}
+                  unsatisfiedRequiredFilters={unsatisfiedRequiredFilters}
+                  dateRange={dateRange}
+                  isSaving={isSaving}
+                  onSave={config => {
+                    onSave({
+                      ...chart,
+                      config: config,
+                    });
+                  }}
+                  onClose={handleClose}
+                  onDirtyChange={setHasUnsavedChanges}
+                  isDashboardForm
+                  autoRun
+                />
+              </SqlVariablesProvider>
+            </IsolatedChartSyncProvider>
+          </ZIndexContext>
+        </QueryAttributionProvider>
       )}
     </Modal>
   );
@@ -3537,10 +3561,14 @@ function DBDashboardPageGuarded({
   if (!dashboardProps || !router.isReady) return <Loader size="lg" />;
 
   return (
-    <DBDashboardPage
-      dashboardProps={dashboardProps}
-      defaultTimeInput={defaultTimeInput}
-    />
+    <QueryAttributionProvider
+      attribution={{ surface: 'dashboard', dashboard: dashboardId }}
+    >
+      <DBDashboardPage
+        dashboardProps={dashboardProps}
+        defaultTimeInput={defaultTimeInput}
+      />
+    </QueryAttributionProvider>
   );
 }
 
@@ -3549,6 +3577,6 @@ const DBDashboardPageDynamic = dynamic(async () => DBDashboardPageGuarded, {
 });
 
 // @ts-expect-error for getLayout
-DBDashboardPageDynamic.getLayout = withAppNav;
+DBDashboardPageDynamic.getLayout = withAppNavForSurface('dashboard');
 
 export default DBDashboardPageDynamic;

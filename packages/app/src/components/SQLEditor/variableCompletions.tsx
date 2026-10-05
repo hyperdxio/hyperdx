@@ -1,4 +1,5 @@
 import { createContext, use, useCallback, useMemo } from 'react';
+import { PROMQL_MACROS } from '@hyperdx/common-utils/dist/core/promql';
 import {
   MacroSuggestion,
   VARIABLE_MACRO_SUGGESTIONS,
@@ -7,20 +8,48 @@ import { ChartVariable } from '@hyperdx/common-utils/dist/types';
 import {
   substituteVariables,
   TemplateLanguage,
-  VARIABLE_FORMATS,
   VariableFormat,
 } from '@hyperdx/common-utils/dist/variables';
 
 import { type SQLCompletion } from './utils';
 
-/** What each `${name:format}` renders, for the completion's help text. */
-const VARIABLE_FORMAT_DESCRIPTIONS: Record<VariableFormat, string> = {
-  sqlstring: "Quoted and comma-separated, escaped for SQL. e.g. 'a', 'b', 'c'",
-  csv: 'Comma-separated and unquoted. Not SQL-escaped. e.g. a,b,c',
-  regex: 'A regex alternation. Regex escaped. e.g. (a|b|c)',
-  lucene:
-    'An OR of quoted terms, for Lucene inputs. e.g. ("a" OR "b" OR "c"). Quote the reference (field:"$var") for exact-match behavior. Leave unquoted (field:$var) for substring matching.',
+/**
+ * The `${name:format}` forms each language's completions offer, in display
+ * order, with their help text.
+ */
+const COMPLETION_FORMATS: Record<
+  TemplateLanguage,
+  Partial<Record<VariableFormat, string>>
+> = {
+  sql: {
+    sqlstring:
+      "Quoted and comma-separated, escaped for SQL. e.g. 'a', 'b', 'c'",
+    csv: 'Comma-separated and unquoted. Not SQL-escaped. e.g. a,b,c',
+    regex: 'A regex alternation. Regex escaped. e.g. (a|b|c)',
+    lucene:
+      'An OR of quoted terms, for Lucene inputs. e.g. ("a" OR "b" OR "c"). Quote the reference (field:"$var") for exact-match behavior. Leave unquoted (field:$var) for substring matching.',
+  },
+  promql: {
+    regex:
+      'The default format, written out. A regex alternation, escaped for the string literal it sits in. e.g. (a|b|c)',
+    csv: 'Comma-separated and unquoted, with no escaping.',
+  },
+  // Lucene inputs suggest only the bare `$name` reference.
+  lucene: {},
+  // Markdown has no auto-complete
+  markdown: {},
 };
+
+/** A completion for each of `formats`, for the given variable. */
+function formatCompletions(
+  name: string,
+  formats: Partial<Record<VariableFormat, string>>,
+  buildCompletion: (label: string, description: string) => SQLCompletion,
+): SQLCompletion[] {
+  return Object.entries(formats).map(([format, description]) =>
+    buildCompletion(`\${${name}:${format}}`, description),
+  );
+}
 
 /** What `snippet` expands to against the variable's current selection. */
 function describeVariableExpansion(
@@ -128,12 +157,7 @@ function getSqlVariableCompletions(variable: ChartVariable): SQLCompletion[] {
       `\${${name}}`,
       `The same as $${name}, but delimited — use it when the reference runs into following word characters, as in \${${name}}_total.`,
     ),
-    ...VARIABLE_FORMATS.map(format =>
-      buildCompletion(
-        `\${${name}:${format}}`,
-        VARIABLE_FORMAT_DESCRIPTIONS[format],
-      ),
-    ),
+    ...formatCompletions(name, COMPLETION_FORMATS.sql, buildCompletion),
   ];
 }
 
@@ -168,14 +192,7 @@ function getPromqlVariableCompletions(
       `\${${name}}`,
       `The same as $${name}, but delimited — use it when the reference runs into following word characters.`,
     ),
-    reference(
-      `\${${name}:regex}`,
-      'The default format, written out. A regex alternation, escaped for the string literal it sits in. e.g. (a|b|c)',
-    ),
-    reference(
-      `\${${name}:csv}`,
-      'Comma-separated and unquoted, with no escaping. Use it to interpolate something that is not a matcher value, such as a metric or label name.',
-    ),
+    ...formatCompletions(name, COMPLETION_FORMATS.promql, reference),
   ];
 }
 
@@ -190,6 +207,10 @@ export function buildPromqlVariableCompletions(
 
   return variables.flatMap(getPromqlVariableCompletions);
 }
+
+/** Completions for the macros a PromQL chart expression can use. */
+export const PROMQL_MACRO_COMPLETIONS: SQLCompletion[] =
+  PROMQL_MACROS.map(toMacroCompletion);
 
 /** One bare `$name` suggestion for a Lucene input. */
 export type LuceneVariableSuggestion = {

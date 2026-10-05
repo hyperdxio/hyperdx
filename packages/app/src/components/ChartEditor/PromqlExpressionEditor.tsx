@@ -64,6 +64,7 @@ export default function PromqlExpressionEditor({
           onSubmit={() => onSubmit()}
           placeholder="rate(http_requests_total{service='api'}[5m])"
           metricNames={metricNames}
+          enableMacros
         />
       </Box>
       {isIgnored ? (

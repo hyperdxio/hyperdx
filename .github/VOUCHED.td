@@ -28,8 +28,10 @@
 adityapimpalkar
 alex-fedotyev
 alok87
+archat-hash
 arj22
 aryainguz
+bilalatique
 brandon-pereira
 colehpage
 copilot
@@ -50,6 +52,7 @@ juliojimenez
 jwhitaker-gridcog
 karl-power
 knudtty
+krishs01
 kyle-mally-ch
 leticiawebb
 lyhuang
@@ -70,6 +73,7 @@ rip21
 sanjams2
 shuvamk
 spencertorres
+squaredg
 teeohhem
 tommyzli
 tsushanth
