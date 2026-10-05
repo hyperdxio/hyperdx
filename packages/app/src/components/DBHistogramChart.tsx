@@ -1,4 +1,5 @@
 import { memo, useEffect, useMemo, useState } from 'react';
+import cx from 'classnames';
 import { omit } from 'lodash';
 import { useHotkeys } from 'react-hotkeys-hook';
 import {
@@ -47,7 +48,13 @@ export function resolvePinnedBarIndex(
   return Number.isInteger(idx) && idx >= 0 ? idx : undefined;
 }
 
-function HistogramChart({ graphResults }: { graphResults: any[] }) {
+function HistogramChart({
+  graphResults,
+  className,
+}: {
+  graphResults: any[];
+  className?: string;
+}) {
   const data = useMemo(() => {
     return (
       graphResults?.map((result: any) => {
@@ -77,7 +84,12 @@ function HistogramChart({ graphResults }: { graphResults: any[] }) {
   }, [data]);
 
   return (
-    <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+    <ResponsiveContainer
+      width="100%"
+      height="100%"
+      minWidth={0}
+      className={className}
+    >
       <BarChart
         width={500}
         height={300}
@@ -212,14 +224,12 @@ export default function DBHistogramChart({
   errorVariant?: ChartErrorStateVariant;
 }) {
   const queriedConfig = omit(config, ['granularity']);
-  const { data, isLoading, isError, error } = useQueriedChartConfig(
-    queriedConfig,
-    {
+  const { data, isLoading, isPlaceholderData, isError, error } =
+    useQueriedChartConfig(queriedConfig, {
       placeholderData: (prev: any) => prev,
       queryKey: [queryKeyPrefix, queriedConfig],
       enabled,
-    },
-  );
+    });
 
   const { data: mvOptimizationData } =
     useMVOptimizationExplanation(queriedConfig);
@@ -272,18 +282,26 @@ export default function DBHistogramChart({
 
   return (
     <ChartContainer title={title} toolbarItems={toolbarItemsMemo}>
-      {isLoading ? (
+      {isLoading && !data ? (
         <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
           Loading Chart Data...
         </div>
       ) : isError ? (
         <ChartErrorState error={error} variant={errorVariant} />
       ) : data?.data.length === 0 ? (
-        <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
+        <div
+          className={cx(
+            'd-flex h-100 w-100 align-items-center justify-content-center text-muted',
+            { 'effect-pulse': isPlaceholderData },
+          )}
+        >
           No data found within time range.
         </div>
       ) : (
-        <HistogramChart graphResults={buckets} />
+        <HistogramChart
+          graphResults={buckets}
+          className={isPlaceholderData ? 'effect-pulse' : undefined}
+        />
       )}
     </ChartContainer>
   );
