@@ -41,6 +41,7 @@ import {
   getEventBody,
   getFirstTimestampValueExpression,
   isSingleExpression,
+  useSource,
 } from '@/source';
 import {
   orderByStringToSortingState,
@@ -170,7 +171,8 @@ export function ChartPreviewPanel({
 }: ChartPreviewPanelProps) {
   const [isSampleEventsOpen, setIsSampleEventsOpen] = useState(false);
 
-  const minGranularitySeconds = getMinGranularitySeconds(tableSource);
+  const { data: queriedSource } = useSource({ id: queriedConfig?.source });
+  const minGranularitySeconds = getMinGranularitySeconds(queriedSource);
   const renderedPromql = useMemo(
     () => buildRenderedPromqlExpression(queriedConfig, minGranularitySeconds),
     [queriedConfig, minGranularitySeconds],
