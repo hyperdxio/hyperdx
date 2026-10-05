@@ -28,16 +28,22 @@ export type HeatmapChartConfig = {
   with?: BuilderChartConfigWithDateRange['with'];
 };
 
-/** Build a HeatmapChartConfig from a builder chart config that has heatmap extras on select[0]. */
-export function toHeatmapChartConfig(config: BuilderChartConfigWithDateRange): {
-  heatmapConfig: HeatmapChartConfig;
+/** What a heatmap queries. */
+export type HeatmapQuery = {
+  mode: 'distribution';
+  config: HeatmapChartConfig;
   scaleType: HeatmapScaleType;
-} {
+};
+
+export function toHeatmapQuery(
+  config: BuilderChartConfigWithDateRange,
+): HeatmapQuery {
   const firstSelect = Array.isArray(config.select)
     ? config.select[0]
     : undefined;
   return {
-    heatmapConfig: {
+    mode: 'distribution',
+    config: {
       ...config,
       displayType: DisplayType.Heatmap,
       select: [
@@ -147,7 +153,8 @@ export function buildHeatmapBucketConfig({
   nBuckets: number;
 }): BuilderChartConfigWithDateRange {
   const valueExpression = config.select[0].valueExpression;
-  const countExpression = config.select[0].countExpression ?? 'count()';
+  // The chart editor saves a cleared Count input as ''.
+  const countExpression = config.select[0].countExpression?.trim() || 'count()';
   const isAggregateExpression = isAggregateFunction(valueExpression);
 
   const bucketExprAgg =

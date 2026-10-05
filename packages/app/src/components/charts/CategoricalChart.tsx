@@ -13,7 +13,10 @@ import {
   formatResponseForCategoricalChart,
 } from '@/ChartUtils';
 import MVOptimizationIndicator from '@/components/MaterializedViews/MVOptimizationIndicator';
-import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import {
+  getMinGranularitySeconds,
+  useQueriedChartConfig,
+} from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useSingleSeriesNumberFormat, useSource } from '@/source';
 import { getColorProps } from '@/utils';
@@ -46,16 +49,20 @@ export function useCategoricalChart({
   toolbarSuffix,
 }: CategoricalChartProps) {
   const { data: source } = useSource({ id: config.source });
+  const minGranularitySeconds = getMinGranularitySeconds(source);
 
   const queriedConfig = useMemo(() => {
     if (isBuilderChartConfig(config)) {
       return convertToCategoricalChartConfig(config);
     }
     if (isPromqlChartConfig(config)) {
-      return convertToReducedPromqlChartConfig(config);
+      return convertToReducedPromqlChartConfig({
+        ...config,
+        minGranularitySeconds,
+      });
     }
     return config;
-  }, [config]);
+  }, [config, minGranularitySeconds]);
 
   const resolvedNumberFormat = useSingleSeriesNumberFormat(queriedConfig);
 

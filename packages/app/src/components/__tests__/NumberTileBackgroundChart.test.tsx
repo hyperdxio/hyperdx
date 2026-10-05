@@ -8,7 +8,10 @@ import NumberTileBackgroundChart, {
   sparklinePointsFromGraphResults,
 } from '@/components/NumberTileBackgroundChart';
 import { Sparkline } from '@/components/Sparkline';
-import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import {
+  getMinGranularitySeconds,
+  useQueriedChartConfig,
+} from '@/hooks/useChartConfig';
 import { useSource } from '@/source';
 
 jest.mock('@/hooks/useChartConfig', () => ({
@@ -296,6 +299,29 @@ describe('NumberTileBackgroundChart', () => {
         new Date('2024-01-01T00:11:00Z'),
       ]);
       expect(queriedConfig.granularity).toBe('1 minute');
+    });
+
+    // The number tile applies the source's floor to its own config, and the two
+    // share one cached query, so the sparkline has to apply it identically.
+    it("floors an auto granularity at the source's minimum, like the value", () => {
+      jest.mocked(getMinGranularitySeconds).mockReturnValueOnce(300);
+      const autoConfig = { ...promqlConfig, granularity: 'auto' };
+
+      renderWithMantine(
+        <NumberTileBackgroundChart
+          config={autoConfig}
+          backgroundChart={{ type: 'area' }}
+        />,
+      );
+
+      const queriedConfig = mockUseQueriedChartConfig.mock.calls[0][0];
+      expect(queriedConfig.granularity).toBe('5 minute');
+      expect(queriedConfig).toEqual(
+        convertToPromqlSparklineChartConfig({
+          ...autoConfig,
+          minGranularitySeconds: 300,
+        }),
+      );
     });
 
     it('plots one point per sample, with no zeros between them', () => {

@@ -27,6 +27,7 @@ import { shouldFillNullsWithZero } from '@/ChartUtils';
 import { MAX_RENDERED_TIME_CHART_SERIES } from '@/defaults';
 import { FormatTime } from '@/useFormatTime';
 
+import { HeatmapScaleControl } from './DBHeatmapChart/HeatmapScaleControl';
 import { BackgroundChartInput } from './BackgroundChartInput';
 import {
   attachLocalIds,
@@ -35,6 +36,7 @@ import {
   stripLocalIds,
 } from './ColorRulesEditor';
 import { ColorSwatchInput } from './ColorSwatchInput';
+import type { HeatmapScaleType } from './DBHeatmapChart';
 import { CheckBoxControlled, TextInputControlled } from './InputControlled';
 import { DEFAULT_NUMBER_FORMAT, NumberFormatForm } from './NumberFormat';
 
@@ -61,6 +63,8 @@ export type ChartConfigDisplaySettings = Pick<
   // PromQL-only: Handlebars template over each series' Prometheus label set
   // that renders the legend/tooltip name.
   legendTemplate?: string;
+  // Heatmaps only; stored on the heatmap's select[0].
+  heatmapScaleType?: HeatmapScaleType;
 };
 
 /**
@@ -113,6 +117,7 @@ function applyDefaultSettings(
       ? attachLocalIds(settings.colorRules)
       : undefined,
     backgroundChart: settings.backgroundChart,
+    heatmapScaleType: settings.heatmapScaleType ?? 'log',
   };
 }
 
@@ -243,6 +248,8 @@ export default function ChartDisplaySettingsDrawer({
       ? 'Available on PromQL range queries.'
       : 'Available on query-builder number tiles.';
 
+  const showHeatmapScale = displayType === DisplayType.Heatmap;
+
   return (
     <Drawer
       title="Display Settings"
@@ -318,6 +325,22 @@ export default function ChartDisplaySettingsDrawer({
                 />
               </Box>
             )}
+            <Divider />
+          </>
+        )}
+
+        {showHeatmapScale && (
+          <>
+            <Controller
+              control={control}
+              name="heatmapScaleType"
+              render={({ field: { onChange, value } }) => (
+                <HeatmapScaleControl
+                  value={value ?? 'log'}
+                  onChange={onChange}
+                />
+              )}
+            />
             <Divider />
           </>
         )}

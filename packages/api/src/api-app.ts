@@ -19,8 +19,11 @@ import savedSearchRouter from './routers/api/savedSearch';
 import sourcesRouter from './routers/api/sources';
 import externalRoutersV2 from './routers/external-api/v2';
 import usageStats from './tasks/usageStats';
+import { registerAITelemetry } from './utils/aiTelemetry';
 import logger, { expressLogger } from './utils/logger';
 import passport from './utils/passport';
+
+registerAITelemetry();
 
 const app: express.Application = express();
 
