@@ -27,8 +27,11 @@ You'll need to set the `MONGO_URI` environment variable to the URI of your
 MongoDB instance. Afterwards, you'll want to visit http://localhost:8080 to set
 up your connection with ClickHouse.
 
-Before deploying into production, you'll want to set the
-`EXPRESS_SESSION_SECRET` environment variable to a random string.
+Before deploying into production, set the `EXPRESS_SESSION_SECRET` environment
+variable to a random string (e.g. `openssl rand -hex 32`). Without it the API
+generates one per process, which signs users out on every restart and prevents
+replicas from sharing sessions. The old public value `hyperdx is cool 👋` is
+also replaced with a per-process secret when authentication is enabled.
 
 To customize the frontend URL, set the `FRONTEND_URL` environment variable to
 the URL your HyperDX instance is hosted on.
@@ -55,8 +58,18 @@ such as ufw. See the
 [Docker docs](https://docs.docker.com/engine/network/packet-filtering-firewalls/#docker-and-ufw)
 for more information.
 
-Additionally, you'll want to set the `EXPRESS_SESSION_SECRET` environment
-variable to a random string.
+Generate a secret once with `openssl rand -hex 32`, then set
+`EXPRESS_SESSION_SECRET=<generated value>` in `.env.local`, which Git ignores.
+Do not put the secret in the tracked root `.env`. Compose forwards this value to
+the app container when you load `.env.local` after `.env`:
+
+```bash
+docker compose --env-file .env --env-file .env.local up -d
+```
+
+Reuse the same secret across restarts and all replicas. Without it the API
+generates one per process, which signs users out on every restart and prevents
+replicas from sharing sessions. The old public value is not a production secret.
 
 ## Local Development Mode
 
