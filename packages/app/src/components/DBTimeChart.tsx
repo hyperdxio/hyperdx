@@ -8,6 +8,7 @@ import React, {
   useState,
 } from 'react';
 import { add, differenceInSeconds } from 'date-fns';
+import { isRatioChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
   convertGranularityToSeconds,
   getAlignedDateRange,
@@ -21,6 +22,7 @@ import {
   BuilderChartConfigWithDateRange,
   ChartConfigWithDateRange,
   DisplayType,
+  Filter,
 } from '@hyperdx/common-utils/dist/types';
 import { Popover, Portal } from '@mantine/core';
 import { IconChartBar, IconChartLine } from '@tabler/icons-react';
@@ -38,7 +40,10 @@ import {
   useTimeChartSettings,
 } from '@/ChartUtils';
 import { ChartAnnotation } from '@/components/charts/chartAnnotations';
-import { ChartSeriesTooltip } from '@/components/charts/ChartSeriesTooltip';
+import {
+  ChartSeriesTooltip,
+  type ClickedSeries,
+} from '@/components/charts/ChartSeriesTooltip';
 import { useChartTooltipZIndex } from '@/components/charts/ChartTooltip';
 import {
   MAX_LOADABLE_TIME_CHART_SERIES,
@@ -50,6 +55,7 @@ import {
   useQueriedChartConfig,
 } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
+import { aggConditionScopeFilter } from '@/hooks/useReleaseAnnotations';
 import { useChartNumberFormats, useSource } from '@/source';
 import type { NumberFormat } from '@/types';
 
@@ -136,6 +142,59 @@ export function decodeSeriesGroupFilters({
   return groupFilters;
 }
 
+/**
+ * The WHERE the clicked series aggregated over, as a filter for the drill-down
+ * search.
+ *
+ * A builder time chart does not put a series' filter in the statement-level
+ * `where` — each series carries its own `aggCondition`, applied inside that
+ * series' aggregate. A search built from chart-level state alone therefore
+ * spans every series, and its counts don't reconcile with the clicked line.
+ *
+ * Value columns map positionally onto `select` (the contract
+ * `useChartNumberFormats` relies on), so the clicked series' result column
+ * names the series that produced it.
+ *
+ * When no single series can be attributed — a whole-bucket click, a merged
+ * ratio column, or a formula column — fall back to the union of every series'
+ * condition, which is the scan scope the chart itself used
+ * (`aggConditionScopeFilter` yields nothing once any series is unfiltered).
+ */
+export function resolveSeriesConditionFilter({
+  config,
+  resultColumns,
+  valueColumnName,
+}: {
+  config: BuilderChartConfigWithDateRange;
+  /** Result column names in query order, i.e. `data.meta`. */
+  resultColumns: string[];
+  /** Result column behind the clicked series; absent for a whole-bucket click. */
+  valueColumnName?: string;
+}): Filter | undefined {
+  const select = config.select;
+  if (!Array.isArray(select) || select.length === 0) {
+    return undefined;
+  }
+
+  // Ratio configs merge two series into one column, and a formula config with
+  // hidden operands projects only formula columns — neither lines up with
+  // `select` positionally (same guard as DBTableChart's per-column colors).
+  const columnsMapToSelect =
+    !isRatioChartConfig(select, config) &&
+    !((config.formulas?.length ?? 0) > 0 && config.showOperandSeries === false);
+
+  const index =
+    columnsMapToSelect && valueColumnName != null
+      ? resultColumns.indexOf(valueColumnName)
+      : -1;
+  const clickedSeries =
+    index >= 0 && index < select.length ? select[index] : undefined;
+
+  return aggConditionScopeFilter(
+    clickedSeries != null ? [clickedSeries] : select,
+  );
+}
+
 // The interactive PINNED tooltip, rendered over the chart in a body-portaled
 // Mantine Popover anchored at the clicked point. Hover uses the recharts tooltip
 // in MemoChart instead; this is only for the click-locked state.
@@ -153,7 +212,7 @@ function ChartTooltipOverlay({
   expanded,
 }: {
   payload: ActiveClickPayload | undefined;
-  buildSearchUrl: (key?: string, value?: number) => string | null;
+  buildSearchUrl: (series?: ClickedSeries) => string | null;
   onDismiss: () => void;
   /** Focus a series by its raw series key (dataKey) and display name. */
   onFocusSeries: (payload: { dataKey?: string; name: string }) => void;
@@ -720,8 +779,17 @@ function DBTimeChartComponent({
       : undefined;
   }, [activeClickPayload]);
 
+  const resultColumns = useMemo(
+    () => (data?.meta ?? []).map(column => column.name),
+    [data?.meta],
+  );
+
   const buildSearchUrl = useCallback(
-    (seriesKey?: string, seriesValue?: number) => {
+    ({
+      dataKey: seriesKey,
+      value: seriesValue,
+      valueColumnName,
+    }: ClickedSeries = {}) => {
       // Raw SQL charts are not supported for drill-down as we don't know the source which is being used.
       if (
         clickedActiveLabelDate == null ||
@@ -841,6 +909,13 @@ function DBTimeChartComponent({
         dateRange: [from, to],
         groupFilters,
         valueRangeFilter,
+        seriesCondition: isBuilderChartConfig(expandedConfig)
+          ? resolveSeriesConditionFilter({
+              config: expandedConfig,
+              resultColumns,
+              valueColumnName,
+            })
+          : undefined,
       });
     },
     [
@@ -849,6 +924,7 @@ function DBTimeChartComponent({
       granularity,
       source,
       groupColumns,
+      resultColumns,
       valueColumns,
       isSingleValueColumn,
     ],

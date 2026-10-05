@@ -2,6 +2,7 @@ import {
   BuilderChartConfigWithDateRange,
   ChartVariable,
   DisplayType,
+  Filter,
   SourceKind,
   TLogSource,
 } from '@hyperdx/common-utils/dist/types';
@@ -187,6 +188,89 @@ describe('buildEventsSearchUrl variable expansion', () => {
         }),
       ).get('where'),
     ).toBe('$__filter(ServiceName, $nope)');
+  });
+});
+
+describe('buildEventsSearchUrl series conditions', () => {
+  const series = (aggCondition: string) => ({
+    ...builderConfig.select[0],
+    aggCondition,
+  });
+
+  const buildWithSeriesCondition = (
+    overrides: Partial<BuilderChartConfigWithDateRange>,
+    seriesCondition: Filter,
+  ) =>
+    buildEventsSearchUrl({
+      source: logSource,
+      config: { ...builderConfig, ...overrides },
+      dateRange,
+      seriesCondition,
+    });
+
+  const filtersOf = (url: string | null) =>
+    JSON.parse(searchParams(url).get('filters') ?? '');
+
+  it('applies the clicked series condition on a multi-series chart', () => {
+    const url = buildWithSeriesCondition(
+      { select: [series("ServiceName:'foo'"), series("ServiceName:'bar'")] },
+      { type: 'lucene', condition: "ServiceName:'foo'" },
+    );
+
+    expect(searchParams(url).get('where')).toBe('');
+    expect(filtersOf(url)).toEqual([
+      { type: 'lucene', condition: "ServiceName:'foo'" },
+    ]);
+  });
+
+  it('ANDs the series condition with the chart-level where and filters', () => {
+    const url = buildWithSeriesCondition(
+      {
+        select: [series("ServiceName:'foo'"), series("ServiceName:'bar'")],
+        where: "Env = 'prod'",
+        whereLanguage: 'sql',
+        filters: [{ type: 'sql', condition: "Region = 'us-east-1'" }],
+      },
+      { type: 'lucene', condition: "ServiceName:'foo'" },
+    );
+
+    const params = searchParams(url);
+    expect(params.get('where')).toBe("Env = 'prod'");
+    expect(params.get('whereLanguage')).toBe('sql');
+    expect(filtersOf(url)).toEqual([
+      { type: 'sql', condition: "Region = 'us-east-1'" },
+      { type: 'lucene', condition: "ServiceName:'foo'" },
+    ]);
+  });
+
+  // A single series' condition already lands in `where`; adding it again as a
+  // filter would show the user the same predicate twice.
+  it('does not duplicate a single series condition promoted into where', () => {
+    const url = buildWithSeriesCondition(
+      { select: [series("ServiceName:'foo'")] },
+      { type: 'lucene', condition: "ServiceName:'foo'" },
+    );
+
+    expect(searchParams(url).get('where')).toBe("ServiceName:'foo'");
+    expect(filtersOf(url)).toEqual([]);
+  });
+
+  // Promotion is skipped when the chart has its own `where`, so the series
+  // condition would otherwise be dropped entirely.
+  it('keeps a single series condition that cannot be promoted', () => {
+    const url = buildWithSeriesCondition(
+      {
+        select: [series("ServiceName:'foo'")],
+        where: "Env = 'prod'",
+        whereLanguage: 'sql',
+      },
+      { type: 'lucene', condition: "ServiceName:'foo'" },
+    );
+
+    expect(searchParams(url).get('where')).toBe("Env = 'prod'");
+    expect(filtersOf(url)).toEqual([
+      { type: 'lucene', condition: "ServiceName:'foo'" },
+    ]);
   });
 });
 
