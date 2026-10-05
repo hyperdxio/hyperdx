@@ -1224,6 +1224,7 @@ Only add one when the default is wrong. \${service:sqlstring} is redundant in a 
   sqlstring  'a', 'b'             NULL        the default in SQL inputs
   lucene     ("a" OR "b")         ("")        the default in Lucene inputs; ("") is a match-all, so no guard is needed
   regex      (a|b)                .*          use with match()
+  promql     a  or  (a|b)         ""  or  .*  the default in PromQL; a single-select variable (maxSelections: 1) renders its raw value for {label="$var"}, a multi-select one an escaped regex for {label=~"$var"}
   csv        a,b                  <empty>     use INSIDE a string literal
   markdown   a, b                 <empty>     the default in markdown tiles; markdown syntax in values is escaped
 

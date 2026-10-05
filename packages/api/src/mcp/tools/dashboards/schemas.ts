@@ -1327,7 +1327,10 @@ const mcpDashboardFilterBaseShape = {
     .optional()
     .describe(
       'Set to 1 to make this filter SINGLE-SELECT: the user can pick at most one ' +
-        'value. Omit for the normal multi-select behavior.',
+        'value. In PromQL, a single-select variable expands to its raw value by ' +
+        'default (for exact matchers such as {job="$job"}), while a multi-select ' +
+        'one expands to an escaped regex (for {job=~"$job"}). Omit for the normal ' +
+        'multi-select behavior.',
     ),
 };
 
