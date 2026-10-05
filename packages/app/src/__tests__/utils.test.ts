@@ -1147,6 +1147,11 @@ describe('sortingStateToOrderByString', () => {
     const sortingState: SortingState = [{ id: '"error rate"', desc: true }];
     expect(sortingStateToOrderByString(sortingState)).toBe('"error rate" DESC');
   });
+
+  it('preserves backtick-quoted column names with spaces', () => {
+    const sortingState: SortingState = [{ id: '`error rate`', desc: true }];
+    expect(sortingStateToOrderByString(sortingState)).toBe('`error rate` DESC');
+  });
 });
 
 describe('orderByStringToSortingState', () => {
@@ -1171,6 +1176,12 @@ describe('orderByStringToSortingState', () => {
   it('converts quoted column names with spaces', () => {
     expect(orderByStringToSortingState('"error rate" DESC')).toEqual([
       { id: '"error rate"', desc: true },
+    ]);
+  });
+
+  it('converts backtick-quoted column names with spaces', () => {
+    expect(orderByStringToSortingState('`error rate` DESC')).toEqual([
+      { id: '`error rate`', desc: true },
     ]);
   });
 

@@ -402,8 +402,9 @@ describe('DBTableChart', () => {
   });
 
   describe('builder output column identifiers', () => {
-    const builderConfig = {
+    const metricBuilderConfig = {
       ...baseTestConfig,
+      metricTables: { gauge: 'metrics_gauge' },
       select: [{ aggFn: 'avg' as const, valueExpression: 'metric.total' }],
       formulas: [{ expression: 'A * 2', alias: 'error rate' }],
       groupBy: 'ServiceName',
@@ -421,28 +422,28 @@ describe('DBTableChart', () => {
       );
     });
 
-    it('quotes generated aggregate, formula, and group-by output names', () => {
-      renderWithMantine(<DBTableChart config={builderConfig} />);
+    it('quotes metric result keys as output identifiers', () => {
+      renderWithMantine(<DBTableChart config={metricBuilderConfig} />);
 
       const columns = jest.mocked(Table).mock.calls.at(-1)![0].columns;
 
       expect(
         columns.map(column => ({ id: column.id, dataKey: column.dataKey })),
       ).toEqual([
-        { id: '"avg(metric.total)"', dataKey: 'avg(metric.total)' },
-        { id: '"error rate"', dataKey: 'error rate' },
-        { id: '"ServiceName"', dataKey: 'ServiceName' },
+        { id: '`avg(metric.total)`', dataKey: 'avg(metric.total)' },
+        { id: '`error rate`', dataKey: 'error rate' },
+        { id: '`ServiceName`', dataKey: 'ServiceName' },
       ]);
     });
 
-    it('uses the quoted output name when building server-side sorting', () => {
-      renderWithMantine(<DBTableChart config={builderConfig} />);
+    it('uses the metric output identifier for server-side sorting', () => {
+      renderWithMantine(<DBTableChart config={metricBuilderConfig} />);
 
       const tableProps = jest.mocked(Table).mock.calls.at(-1)![0];
 
       act(() => {
         tableProps.onSortingChange?.([
-          { id: '"avg(metric.total)"', desc: true },
+          { id: '`avg(metric.total)`', desc: true },
         ]);
       });
 
@@ -456,23 +457,104 @@ describe('DBTableChart', () => {
 
       expect(queriedConfig.orderBy).toEqual([
         {
-          valueExpression: '"avg(metric.total)"',
+          valueExpression: '`avg(metric.total)`',
           ordering: 'DESC',
         },
       ]);
     });
 
-    it('escapes double quotes in output names', () => {
+    it('keeps unaliased non-metric expressions as expressions', () => {
       const config = {
-        ...builderConfig,
+        ...baseTestConfig,
+        select: [{ aggFn: 'count' as const, valueExpression: '' }],
+        groupBy: "ResourceAttributes['service.name']",
+      };
+
+      jest.mocked(useOffsetPaginatedQuery).mockReturnValue(
+        createTableQueryResult([
+          {
+            'count()': 2,
+            "ResourceAttributes['service.name']": 'api',
+          },
+        ]),
+      );
+
+      renderWithMantine(<DBTableChart config={config} />);
+
+      const tableProps = jest.mocked(Table).mock.calls.at(-1)![0];
+      expect(
+        tableProps.columns.map(column => ({
+          id: column.id,
+          dataKey: column.dataKey,
+        })),
+      ).toEqual([
+        { id: 'count()', dataKey: 'count()' },
+        {
+          id: "ResourceAttributes['service.name']",
+          dataKey: "ResourceAttributes['service.name']",
+        },
+      ]);
+
+      act(() => {
+        tableProps.onSortingChange?.([{ id: 'count()', desc: true }]);
+      });
+
+      const queriedConfig = jest
+        .mocked(useOffsetPaginatedQuery)
+        .mock.calls.at(-1)![0];
+
+      if (!isBuilderChartConfig(queriedConfig)) {
+        throw new Error('Expected a builder chart config');
+      }
+
+      expect(queriedConfig.orderBy).toEqual([
+        {
+          valueExpression: 'count()',
+          ordering: 'DESC',
+        },
+      ]);
+    });
+
+    it('normalizes legacy unquoted metric sort state to the column id', () => {
+      renderWithMantine(
+        <DBTableChart
+          config={metricBuilderConfig}
+          sort={[{ id: 'avg(metric.total)', desc: true }]}
+        />,
+      );
+
+      const tableProps = jest.mocked(Table).mock.calls.at(-1)![0];
+      expect(tableProps.sorting).toEqual([
+        { id: '`avg(metric.total)`', desc: true },
+      ]);
+
+      const queriedConfig = jest
+        .mocked(useOffsetPaginatedQuery)
+        .mock.calls.at(-1)![0];
+
+      if (!isBuilderChartConfig(queriedConfig)) {
+        throw new Error('Expected a builder chart config');
+      }
+
+      expect(queriedConfig.orderBy).toEqual([
+        {
+          valueExpression: '`avg(metric.total)`',
+          ordering: 'DESC',
+        },
+      ]);
+    });
+
+    it('quotes output names containing double quotes', () => {
+      const config = {
+        ...metricBuilderConfig,
         formulas: [{ expression: 'A * 2', alias: 'bad"name' }],
       };
 
-      jest
-        .mocked(useOffsetPaginatedQuery)
-        .mockReturnValue(
-          createTableQueryResult([{ 'avg(metric.total)': 42, 'bad"name': 84 }]),
-        );
+      jest.mocked(useOffsetPaginatedQuery).mockReturnValue(
+        createTableQueryResult([
+          { 'avg(metric.total)': 42, 'bad"name': 84 },
+        ]),
+      );
 
       renderWithMantine(<DBTableChart config={config} />);
 
@@ -481,23 +563,21 @@ describe('DBTableChart', () => {
         column => column.dataKey === 'bad"name',
       );
 
-      expect(formulaColumn?.id).toBe('"bad""name"');
+      expect(formulaColumn?.id).toBe('`bad"name`');
     });
 
-    it('escapes backslashes in output names', () => {
-      const outputName = 'bad\\name';
+    it('escapes backticks in output names', () => {
+      const outputName = 'bad`name';
       const config = {
-        ...builderConfig,
+        ...metricBuilderConfig,
         formulas: [{ expression: 'A * 2', alias: outputName }],
       };
 
-      jest
-        .mocked(useOffsetPaginatedQuery)
-        .mockReturnValue(
-          createTableQueryResult([
-            { 'avg(metric.total)': 42, [outputName]: 84 },
-          ]),
-        );
+      jest.mocked(useOffsetPaginatedQuery).mockReturnValue(
+        createTableQueryResult([
+          { 'avg(metric.total)': 42, [outputName]: 84 },
+        ]),
+      );
 
       renderWithMantine(<DBTableChart config={config} />);
 
@@ -506,7 +586,7 @@ describe('DBTableChart', () => {
         column => column.dataKey === outputName,
       );
 
-      expect(formulaColumn?.id).toBe('"bad\\\\name"');
+      expect(formulaColumn?.id).toBe('`bad``name`');
     });
   });
 

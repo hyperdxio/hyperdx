@@ -1,5 +1,10 @@
 import { useCallback, useMemo, useState } from 'react';
-import { isRatioChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
+import SqlString from 'sqlstring';
+import {
+  isMetricChartConfig,
+  isRatioChartConfig,
+} from '@hyperdx/common-utils/dist/core/renderChartConfig';
+import { unquoteIdentifier } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   isBuilderChartConfig,
   isPromqlChartConfig,
@@ -34,9 +39,6 @@ import ChartErrorState, {
 } from './charts/ChartErrorState';
 import { getClientSideSortingFn } from './DBTable/sorting';
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
-
-const quoteClickHouseOutputIdentifier = (name: string) =>
-  `"${name.replaceAll('\\', '\\\\').replaceAll('"', '""')}"`;
 
 export default function DBTableChart({
   config,
@@ -95,9 +97,14 @@ export default function DBTableChart({
     const _config = convertToTableChartConfig(config);
 
     if (effectiveSort.length) {
+      const sortUsesOutputIdentifiers = isMetricChartConfig(_config);
       _config.orderBy = effectiveSort.map(o => {
+        const isQuotedIdentifier = unquoteIdentifier(o.id) !== o.id;
         return {
-          valueExpression: o.id,
+          valueExpression:
+            sortUsesOutputIdentifiers && !isQuotedIdentifier
+              ? SqlString.escapeId(o.id, true)
+              : o.id,
           ordering: o.desc ? 'DESC' : 'ASC',
         };
       });
@@ -115,6 +122,22 @@ export default function DBTableChart({
       queryKeyPrefix,
     });
   const { observerRef: fetchMoreRef } = useIntersectionObserver(fetchNextPage);
+
+  const aliasMap = useMemo(() => {
+    if (isRawSqlChartConfig(config) || isPromqlChartConfig(config)) {
+      return [];
+    }
+
+    if (typeof config.select === 'string') {
+      return [];
+    }
+    return config.select.reduce((acc, select) => {
+      if (select.alias) {
+        acc.push(select.alias);
+      }
+      return acc;
+    }, [] as string[]);
+  }, [config]);
 
   const { formatByColumn } = useChartNumberFormats(queriedConfig, data?.meta);
 
@@ -196,11 +219,14 @@ export default function DBTableChart({
     return orderedKeys
       .filter(key => !hiddenColumns?.includes(key))
       .map(key => ({
-        // Builder sorting runs against the final result, so every returned key
-        // must be treated as an output identifier rather than an expression.
-        id: isBuilderChartConfig(queriedConfig)
-          ? quoteClickHouseOutputIdentifier(key)
-          : key,
+        // Multi-series metrics sort in the final projection. Other builder
+        // tables still need unaliased expressions in their original scope.
+        id:
+          (isBuilderChartConfig(queriedConfig) &&
+            isMetricChartConfig(queriedConfig)) ||
+          aliasMap.includes(key)
+            ? SqlString.escapeId(key, true)
+            : key,
         dataKey: key,
         displayName: key,
         numberFormat: groupByKeys.includes(key)
@@ -216,10 +242,29 @@ export default function DBTableChart({
     data,
     queriedConfig,
     hiddenColumns,
+    aliasMap,
     formatByColumn,
     colorByColumn,
     rulesByColumn,
   ]);
+
+  const tableSort = useMemo(
+    () =>
+      effectiveSort.map(sortItem => {
+        const rawSortId = unquoteIdentifier(sortItem.id);
+        const matchingColumn = columns.find(
+          column =>
+            column.id === sortItem.id ||
+            column.dataKey === sortItem.id ||
+            column.dataKey === rawSortId,
+        );
+
+        return matchingColumn && matchingColumn.id !== sortItem.id
+          ? { ...sortItem, id: matchingColumn.id }
+          : sortItem;
+      }),
+    [columns, effectiveSort],
+  );
 
   const toolbarItemsMemo = useMemo(() => {
     const allToolbarItems = [];
@@ -289,7 +334,7 @@ export default function DBTableChart({
           columns={columns}
           getRowAction={getRowAction ?? undefined}
           getRowSearchLink={getRowAction ? undefined : getRowSearchLink}
-          sorting={effectiveSort}
+          sorting={tableSort}
           enableClientSideSorting={isRawSqlChartConfig(config)}
           onSortingChange={handleSortingChange}
           variant={variant}
