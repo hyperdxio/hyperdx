@@ -104,14 +104,12 @@ export default function DBSqlRowTableWithSideBar({
       setAliasWith(rowWhere.aliasWith);
       setRowSource(sourceId);
       onSidebarOpen?.(rowWhere.where);
-      // Same trace id used to leave the previous span selected, so the
-      // waterfall kept showing it after this result was closed and another
-      // span of that trace was opened.
       setEventRowWhere(current =>
-        eventRowWhereForOpenedRow(current, rowWhere.where),
+        eventRowWhereForOpenedRow(current, rowId, rowWhere.where),
       );
     },
     [
+      rowId,
       setRowId,
       setAliasWith,
       setRowSource,

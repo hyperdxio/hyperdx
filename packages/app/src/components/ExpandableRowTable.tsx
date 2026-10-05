@@ -16,7 +16,7 @@ import styles from '@styles/LogTable.module.scss';
 
 // Hook that provides a function to open the sidebar with specific row details
 const useSidebarOpener = () => {
-  const [, setRowId] = useQueryState('rowWhere', parseAsStringEncoded);
+  const [rowId, setRowId] = useQueryState('rowWhere', parseAsStringEncoded);
   const [, setRowSource] = useQueryState('rowSource');
   const [, setEventRowWhere] = useQueryState(
     'eventRowWhere',
@@ -28,10 +28,10 @@ const useSidebarOpener = () => {
       setRowId(rowWhere);
       setRowSource(sourceId ?? null);
       setEventRowWhere(current =>
-        eventRowWhereForOpenedRow(current, rowWhere),
+        eventRowWhereForOpenedRow(current, rowId, rowWhere),
       );
     },
-    [setRowId, setRowSource, setEventRowWhere],
+    [rowId, setRowId, setRowSource, setEventRowWhere],
   );
 };
 
