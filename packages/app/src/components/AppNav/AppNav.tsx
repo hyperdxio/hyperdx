@@ -31,7 +31,7 @@ import {
 import api from '@/api';
 import { AlertStatusIcon } from '@/components/AlertStatusIcon';
 import { InstanceLabel } from '@/components/AppNav/InstanceLabel';
-import { APP_VERSION, INSTANCE_LABEL, IS_LOCAL_MODE } from '@/config';
+import { APP_VERSION, IS_LOCAL_MODE } from '@/config';
 import { Dashboard, useDashboards } from '@/dashboard';
 import { useFavorites } from '@/favorites';
 import { setHdxIdentity } from '@/hdxDebug';
@@ -374,21 +374,21 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                   {wordmark}
                   {/* Label and UTC badge are mutually exclusive - showing both
                       would be redundant and crowd this already-tight row. */}
-                  {INSTANCE_LABEL ? (
-                    <InstanceLabel />
-                  ) : (
-                    isUTC && (
-                      <Badge
-                        size="xs"
-                        color="gray"
-                        variant="light"
-                        fw="normal"
-                        title="Showing time in UTC"
-                      >
-                        UTC
-                      </Badge>
-                    )
-                  )}
+                  <InstanceLabel
+                    fallback={
+                      isUTC && (
+                        <Badge
+                          size="xs"
+                          color="gray"
+                          variant="light"
+                          fw="normal"
+                          title="Showing time in UTC"
+                        >
+                          UTC
+                        </Badge>
+                      )
+                    }
+                  />
                 </Group>
               )}
             </Link>

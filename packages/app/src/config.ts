@@ -84,8 +84,12 @@ export const IS_SESSIONS_ENABLED = true;
 export const IS_PROMQL_ENABLED = env('NEXT_PUBLIC_ENABLE_PROMQL') === 'true';
 // Suffix for the tab title/sidebar pill. Shown in full in the page title;
 // only truncated visually (via CSS ellipsis) in the sidebar, where space is
-// constrained.
-export const INSTANCE_LABEL = (env('NEXT_PUBLIC_INSTANCE_LABEL') ?? '').trim();
+// constrained. Internal whitespace is collapsed so it displays consistently
+// and so the tab-title suffix (which compares against document.title, where
+// the browser collapses whitespace runs) can reliably detect its own suffix.
+export const INSTANCE_LABEL = (env('NEXT_PUBLIC_INSTANCE_LABEL') ?? '')
+  .trim()
+  .replace(/\s+/g, ' ');
 // Alert detail page (/alerts/:id). Default off — currently enabled only in
 // dev (.env.development) and CI (e2e webserver) while the feature bakes.
 export const IS_ALERT_DETAILS_ENABLED =

@@ -31,4 +31,12 @@ describe('useTitleSuffix', () => {
     renderHook(() => useTitleSuffix());
     expect(document.title).toBe('Search - HyperDX UK');
   });
+
+  it('stops observing after unmount', async () => {
+    const { unmount } = renderHook(() => useTitleSuffix());
+    unmount();
+    document.title = 'Alerts - HyperDX';
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(document.title).toBe('Alerts - HyperDX');
+  });
 });

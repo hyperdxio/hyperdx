@@ -14,4 +14,14 @@ describe('InstanceLabel', () => {
     );
     expect(screen.getByText('UK')).toBeInTheDocument();
   });
+
+  it('ignores the fallback when a label is set, so they stay mutually exclusive', () => {
+    render(
+      <MantineProvider>
+        <InstanceLabel fallback={<span>UTC</span>} />
+      </MantineProvider>,
+    );
+    expect(screen.getByText('UK')).toBeInTheDocument();
+    expect(screen.queryByText('UTC')).not.toBeInTheDocument();
+  });
 });

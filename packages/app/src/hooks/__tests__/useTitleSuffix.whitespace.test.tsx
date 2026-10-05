@@ -1,18 +1,24 @@
 import { renderHook } from '@testing-library/react';
 
-jest.mock('@/config', () => ({ INSTANCE_LABEL: 'AB CDEF ' }));
+// A double space is a value real config.ts can produce before its own
+// collapsing, and is also what document.title would collapse on write -
+// this is the case that actually breaks the endsWith-based dedup check,
+// not a trailing space (which .trim() already handles upstream).
+jest.mock('@/config', () => ({ INSTANCE_LABEL: 'EU  West' }));
 
 import { useTitleSuffix } from '@/hooks/useTitleSuffix';
 
-describe('useTitleSuffix (suffix ends in whitespace)', () => {
-  it('does not grow the title unboundedly', async () => {
+describe('useTitleSuffix (label contains an internal whitespace run)', () => {
+  it('collapses the run so the suffix matches what document.title will store', () => {
     document.title = 'Search - HyperDX';
+    const { result } = renderHook(() => useTitleSuffix());
+    expect(result.current).toBe(' EU West');
+    expect(document.title).toBe('Search - HyperDX EU West');
+  });
+
+  it('does not double-append when the title already has the collapsed suffix', () => {
+    document.title = 'Search - HyperDX EU West';
     renderHook(() => useTitleSuffix());
-    await Promise.resolve();
-    await Promise.resolve();
-    const lengthAfterFirstFlush = document.title.length;
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(document.title.length).toBe(lengthAfterFirstFlush);
+    expect(document.title).toBe('Search - HyperDX EU West');
   });
 });
