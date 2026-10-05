@@ -71,6 +71,13 @@ export class ChartEditorComponent {
     await this.chartTypeInput.getByRole('tab', { name: tabName }).click();
   }
 
+  /** The heatmap's "Value" (y axis) SQL input. */
+  get heatmapValueInput(): Locator {
+    return this.editorForm()
+      .getByTestId('heatmap-value-input')
+      .locator('.cm-content');
+  }
+
   /**
    * Set group by expression
    */
@@ -1141,6 +1148,27 @@ export class ChartEditorComponent {
     const drawer = this.page.getByRole('dialog', { name: 'Display Settings' });
     await drawer.getByLabel('Series Limit').fill(String(limit));
     await this.applyDisplaySettings();
+  }
+
+  /**
+   * Set a heatmap's "Y axis scale" in the Display Settings drawer. Opens the
+   * drawer, picks the scale, then applies and closes.
+   */
+  async setHeatmapScale(scale: 'Log' | 'Linear') {
+    await this.openDisplaySettings();
+    await this.page
+      .getByTestId('heatmap-scale-control')
+      .locator('.mantine-SegmentedControl-label')
+      .filter({ hasText: new RegExp(`^${scale}$`) })
+      .click();
+    await this.applyDisplaySettings();
+  }
+
+  /** A "Y axis scale" option's (visually hidden) radio in the open drawer. */
+  heatmapScaleOption(scale: 'Log' | 'Linear'): Locator {
+    return this.page
+      .getByTestId('heatmap-scale-control')
+      .getByRole('radio', { name: scale, exact: true });
   }
 
   /**

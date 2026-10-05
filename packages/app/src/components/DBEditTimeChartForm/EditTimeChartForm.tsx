@@ -71,14 +71,8 @@ import {
   isStringSelectDisplayType,
   validateChartForm,
 } from '@/components/ChartEditor/utils';
-import {
-  HEATMAP_DURATION_NUMBER_FORMAT,
-  type HeatmapScaleType,
-} from '@/components/DBHeatmapChart';
+import { HEATMAP_DURATION_NUMBER_FORMAT } from '@/components/DBHeatmapChart';
 import { ErrorBoundary } from '@/components/Error/ErrorBoundary';
-import HeatmapSettingsDrawer, {
-  HeatmapSettingsValues,
-} from '@/components/HeatmapSettingsDrawer';
 import { InputControlled } from '@/components/InputControlled';
 import SaveToDashboardModal from '@/components/SaveToDashboardModal';
 import { getStoredLanguage } from '@/components/SearchInput/SearchWhereInput';
@@ -349,6 +343,7 @@ export default function EditTimeChartForm({
     colorRules,
     backgroundChart,
     legendTemplate,
+    heatmapScaleType,
   ] = useWatch({
     control,
     name: [
@@ -364,6 +359,7 @@ export default function EditTimeChartForm({
       'colorRules',
       'backgroundChart',
       'legendTemplate',
+      'series.0.heatmapScaleType',
     ],
   });
 
@@ -395,6 +391,7 @@ export default function EditTimeChartForm({
       colorRules,
       backgroundChart,
       legendTemplate,
+      heatmapScaleType,
     }),
     [
       alignDateRangeToGranularity,
@@ -409,17 +406,13 @@ export default function EditTimeChartForm({
       colorRules,
       backgroundChart,
       legendTemplate,
+      heatmapScaleType,
     ],
   );
 
   const [
     displaySettingsOpened,
     { open: openDisplaySettings, close: closeDisplaySettings },
-  ] = useDisclosure(false);
-
-  const [
-    heatmapSettingsOpened,
-    { open: openHeatmapSettings, close: closeHeatmapSettings },
   ] = useDisclosure(false);
 
   // Only update this on submit, otherwise we'll have issues
@@ -890,6 +883,7 @@ export default function EditTimeChartForm({
         colorRules,
         backgroundChart,
         legendTemplate,
+        heatmapScaleType,
       }: ChartConfigDisplaySettings,
       isDirty: boolean,
     ) => {
@@ -916,6 +910,9 @@ export default function EditTimeChartForm({
       if (configType === 'promql') {
         setValue('legendTemplate', legendTemplate ?? '');
       }
+      if (displayType === DisplayType.Heatmap) {
+        setValue('series.0.heatmapScaleType', heatmapScaleType);
+      }
       // Display settings live in a separate drawer form, so RHF can't track
       // them. Latch dirty state only when the drawer reports actual changes.
       if (isDirty) {
@@ -924,44 +921,7 @@ export default function EditTimeChartForm({
       }
       onSubmit();
     },
-    [setValue, onDirtyChange, onSubmit, configType],
-  );
-
-  const handleUpdateHeatmapSettings = useCallback(
-    (data: HeatmapSettingsValues) => {
-      setValue('series.0.valueExpression', data.value);
-      setValue('series.0.countExpression', data.count || 'count()');
-      setValue('series.0.heatmapScaleType', data.scaleType);
-      // Heatmap settings are applied outside RHF's change tracking.
-      subFormDirtyRef.current = true;
-      onDirtyChange?.(true);
-      onSubmit();
-      closeHeatmapSettings();
-    },
-    [setValue, onDirtyChange, onSubmit, closeHeatmapSettings],
-  );
-
-  const heatmapValueExpression = useWatch({
-    control,
-    name: 'series.0.valueExpression',
-  });
-  const heatmapCountExpression = useWatch({
-    control,
-    name: 'series.0.countExpression',
-  });
-  const heatmapScaleType: HeatmapScaleType =
-    useWatch({
-      control,
-      name: 'series.0.heatmapScaleType',
-    }) ?? 'log';
-
-  const heatmapSettingsDefaults = useMemo(
-    () => ({
-      value: heatmapValueExpression || '',
-      count: heatmapCountExpression || 'count()',
-      scaleType: heatmapScaleType,
-    }),
-    [heatmapValueExpression, heatmapCountExpression, heatmapScaleType],
+    [setValue, onDirtyChange, onSubmit, configType, displayType],
   );
 
   const tableConnection = useMemo(
@@ -1152,7 +1112,6 @@ export default function EditTimeChartForm({
             chartConfigForExplanations={chartConfigForExplanations}
             onSubmit={onSubmit}
             openDisplaySettings={openDisplaySettings}
-            openHeatmapSettings={openHeatmapSettings}
           />
         )}
         <ChartActionBar
@@ -1221,17 +1180,10 @@ export default function EditTimeChartForm({
         })}
         onChange={handleUpdateDisplaySettings}
         onClose={closeDisplaySettings}
-        isPerSeriesNumberFormatAllowed={configType !== 'sql'}
-      />
-      <HeatmapSettingsDrawer
-        opened={heatmapSettingsOpened}
-        onClose={closeHeatmapSettings}
-        connection={tableConnection}
-        sourceId={tableSource?.id}
-        dateRange={dateRange}
-        parentRef={parentRef}
-        defaultValues={heatmapSettingsDefaults}
-        onSubmit={handleUpdateHeatmapSettings}
+        // Heatmaps format with the chart-level number format only.
+        isPerSeriesNumberFormatAllowed={
+          configType !== 'sql' && displayType !== DisplayType.Heatmap
+        }
       />
     </div>
   );
