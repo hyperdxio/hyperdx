@@ -155,11 +155,23 @@ describe('DBSqlRowTableWithSideBar span selection', () => {
     expect(mockQuery.eventRowWhere).toEqual(span(FIRST_SPAN));
 
     fireEvent.click(screen.getByRole('button', { name: 'close result' }));
-    expect(mockQuery.eventRowWhere).toBeNull();
+    expect(mockQuery.eventRowWhere).toEqual(span(FIRST_SPAN));
+    expect(mockQuery.rowWhere).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'open other span' }));
     expect(mockQuery.eventRowWhere).toBeNull();
     expect(mockQuery.rowWhere).toBe(OTHER_SPAN);
+  });
+
+  it('keeps the waterfall span when the result is closed', () => {
+    mockQuery.rowWhere = FIRST_SPAN;
+    mockQuery.eventRowWhere = span(WATERFALL_SPAN);
+    renderResults();
+
+    fireEvent.click(screen.getByRole('button', { name: 'close result' }));
+
+    expect(mockQuery.rowWhere).toBeNull();
+    expect(mockQuery.eventRowWhere).toEqual(span(WATERFALL_SPAN));
   });
 
   it('keeps the waterfall span when the same result is opened again', () => {
