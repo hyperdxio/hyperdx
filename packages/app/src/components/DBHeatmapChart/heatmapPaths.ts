@@ -83,9 +83,11 @@ export function heatmapPaths(opts: {
   };
 }
 
+export const HEATMAP_AXIS_FONT = '12px IBM Plex Mono, monospace';
+
 const axis: uPlot.Axis = {
   stroke: 'rgba(102,102,102,1)', // color of the axis line
-  font: '12px IBM Plex Mono, monospace',
+  font: HEATMAP_AXIS_FONT,
   grid: {
     show: true, // show grid lines
     stroke: 'rgba(52,58,64)', // grid line color

@@ -1,10 +1,11 @@
-import { fireEvent, screen } from '@testing-library/react';
+import { act, fireEvent, screen } from '@testing-library/react';
 
 import {
   gridToPlotData,
   HeatmapGrid,
 } from '@/components/DBHeatmapChart/heatmapGrid';
 import { HeatmapPlot } from '@/components/DBHeatmapChart/HeatmapPlot';
+import type { HighlightedPoint } from '@/components/DBHeatmapChart/highlightDataPlugin';
 
 type PlotOptions = {
   cursor?: { drag?: { x?: boolean; y?: boolean } };
@@ -23,6 +24,16 @@ jest.mock('uplot-react', () => ({
   }) => {
     mockPlot(data[1], options);
     return <div data-testid="heatmap-plot" />;
+  },
+}));
+
+let onPointHighlight: (point: HighlightedPoint | undefined) => void;
+jest.mock('@/components/DBHeatmapChart/highlightDataPlugin', () => ({
+  highlightDataPlugin: (opts: {
+    onPointHighlight: typeof onPointHighlight;
+  }) => {
+    onPointHighlight = opts.onPointHighlight;
+    return {};
   },
 }));
 
@@ -88,5 +99,45 @@ describe('HeatmapPlot', () => {
     renderPlot({ onFilter: jest.fn(), onClearFilter });
     fireEvent.click(screen.getByTestId('heatmap-plot'));
     expect(onClearFilter).toHaveBeenCalledTimes(1);
+  });
+
+  const point: HighlightedPoint = {
+    xVal: 1000,
+    yVal: 0.5,
+    countVal: 1,
+    closestDistance: 0,
+    closestIndex: 0,
+    xCoord: 10,
+    yCoord: 20,
+    xSize: 10,
+    ySize: 10,
+  };
+
+  it('shows the tooltip only once the mouse moves over the plot', () => {
+    renderPlot();
+
+    // uPlot reports a point on init, before any hover
+    act(() => onPointHighlight(point));
+    expect(screen.queryByText('Count Value:')).not.toBeInTheDocument();
+
+    // No mouseenter: the plot can mount under a cursor that never re-enters
+    fireEvent.mouseMove(screen.getByTestId('heatmap-plot'));
+    act(() => onPointHighlight(point));
+    expect(screen.getByText('Count Value:')).toBeInTheDocument();
+  });
+
+  it('updates the tooltip when the same cell index reports new values', () => {
+    renderPlot();
+    fireEvent.mouseMove(screen.getByTestId('heatmap-plot'));
+
+    act(() => onPointHighlight(point));
+    expect(screen.getByText('Count Value:').parentElement).toHaveTextContent(
+      'Count Value: 1',
+    );
+
+    act(() => onPointHighlight({ ...point, countVal: 7, xCoord: 30 }));
+    expect(screen.getByText('Count Value:').parentElement).toHaveTextContent(
+      'Count Value: 7',
+    );
   });
 });

@@ -6,7 +6,10 @@ import DateRangeIndicator from '@/components/charts/DateRangeIndicator';
 import DBNumberChart from '@/components/DBNumberChart';
 import MVOptimizationIndicator from '@/components/MaterializedViews/MVOptimizationIndicator';
 import NumberTileBackgroundChart from '@/components/NumberTileBackgroundChart';
-import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import {
+  getMinGranularitySeconds,
+  useQueriedChartConfig,
+} from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useSource } from '@/source';
 import { NumberFormat } from '@/types';
@@ -15,6 +18,7 @@ import { formatNumber, getColorFromCSSToken } from '@/utils';
 // Mock dependencies
 jest.mock('@/hooks/useChartConfig', () => ({
   useQueriedChartConfig: jest.fn(),
+  getMinGranularitySeconds: jest.fn().mockReturnValue(undefined),
 }));
 
 jest.mock('@/hooks/useMVOptimizationExplanation', () => ({
@@ -792,6 +796,26 @@ describe('DBNumberChart', () => {
         isError: false,
       });
     };
+
+    it("floors an auto granularity at the source's minimum", () => {
+      jest.mocked(getMinGranularitySeconds).mockReturnValueOnce(300);
+
+      renderWithMantine(
+        <DBNumberChart
+          config={{
+            ...promqlConfig,
+            dateRange: [
+              new Date('2025-11-26T00:00:14.076Z'),
+              new Date('2025-11-26T01:00:14.076Z'),
+            ],
+          }}
+        />,
+      );
+
+      const queriedConfig = mockUseQueriedChartConfig.mock.calls[0][0];
+      expect(queriedConfig.granularity).toBe('5 minute');
+      expect(queriedConfig.minGranularitySeconds).toBe(300);
+    });
 
     it('shows the value when the expression yields exactly one', () => {
       setInstantRows([{ series_name: 'up{service="accounting"}', value: 7 }]);

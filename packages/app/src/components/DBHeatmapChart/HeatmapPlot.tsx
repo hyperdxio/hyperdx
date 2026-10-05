@@ -6,7 +6,7 @@ import { useElementSize } from '@mantine/hooks';
 
 import { NumberFormat } from '@/types';
 
-import { formatHeatmapTick, logScaleSplits } from './heatmapAxis';
+import { formatHeatmapTick, heatmapYAxisOptions } from './heatmapAxis';
 import {
   computeBucketPercentiles,
   gridToPlotData,
@@ -14,10 +14,30 @@ import {
   heatmapRowCount,
   HeatmapScaleType,
 } from './heatmapGrid';
-import { baseHeatmapOptions, buildSeriesForPalette } from './heatmapPaths';
+import {
+  baseHeatmapOptions,
+  buildSeriesForPalette,
+  HEATMAP_AXIS_FONT,
+} from './heatmapPaths';
 import { HeatmapTooltip } from './HeatmapTooltip';
 import { highlightDataPlugin, HighlightedPoint } from './highlightDataPlugin';
 import { applySelectionToChart, SelectionBounds } from './selection';
+
+const isSameRenderedPoint = (
+  a: HighlightedPoint | undefined,
+  b: HighlightedPoint | undefined,
+) =>
+  a === b ||
+  (a != null &&
+    b != null &&
+    a.xVal === b.xVal &&
+    a.yVal === b.yVal &&
+    a.countVal === b.countVal &&
+    a.closestIndex === b.closestIndex &&
+    a.xCoord === b.xCoord &&
+    a.yCoord === b.yCoord &&
+    a.xSize === b.xSize &&
+    a.ySize === b.ySize);
 
 type HeatmapPlotProps = {
   className?: string;
@@ -143,19 +163,15 @@ export function HeatmapPlot({
               opt.axes[0],
               {
                 ...opt.axes[1],
-                values: (_u: uPlot, vals: number[]) => {
-                  return vals.map(tickFormatter);
-                },
+                ...heatmapYAxisOptions(scaleType, tickFormatter),
                 // Override the static size fn so it measures the actual
                 // formatted labels (from tickFormatter) rather than
                 // whatever raw values uPlot passes in a prior cycle.
                 size(self: uPlot, values: string[]) {
                   if (!values || values.length === 0) return 50;
-                  const font =
-                    self.axes[1]?.font ?? '12px IBM Plex Mono, monospace';
                   const ctx = self.ctx;
                   ctx.save();
-                  ctx.font = font;
+                  ctx.font = HEATMAP_AXIS_FONT;
                   let maxW = 0;
                   for (const v of values) {
                     const w = ctx.measureText(v).width;
@@ -164,17 +180,6 @@ export function HeatmapPlot({
                   ctx.restore();
                   return Math.ceil(maxW) + 16;
                 },
-                ...(scaleType === 'log'
-                  ? {
-                      splits: (u: uPlot) => {
-                        const [yMin, yMax] =
-                          u.scales.y!.min != null
-                            ? [u.scales.y!.min, u.scales.y!.max!]
-                            : [0, 1];
-                        return logScaleSplits(yMin, yMax);
-                      },
-                    }
-                  : {}),
               },
             ],
           }
@@ -195,12 +200,18 @@ export function HeatmapPlot({
       },
       plugins: [
         highlightDataPlugin({
-          proximity: 20,
+          margin: 20,
           onPointHighlight: point => {
             // Only show tooltip after the user has actually hovered the chart.
             // uPlot fires setCursor on init which would trigger this on page load.
             if (!mouseInsideRef.current) return;
-            setHighlightedPoint(point);
+            // Keep the same object while the cursor stays on one cell, so
+            // moving within it doesn't re-render the tooltip. Compare what
+            // the tooltip renders, not just the index: after a data refresh
+            // or resize the same index can hold a different cell.
+            setHighlightedPoint(prev =>
+              isSameRenderedPoint(prev, point) ? prev : point,
+            );
           },
         }),
         {
@@ -269,7 +280,7 @@ export function HeatmapPlot({
         );
         onClearFilter?.();
       }}
-      onMouseEnter={() => {
+      onMouseMoveCapture={() => {
         mouseInsideRef.current = true;
       }}
       onMouseLeave={() => {
