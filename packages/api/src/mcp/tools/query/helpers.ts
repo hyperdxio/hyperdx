@@ -32,6 +32,7 @@ import {
   convertToInternalTileConfig,
   isConfigTile,
 } from '@/routers/external-api/v2/utils/dashboards';
+import { isQueryTimeoutError } from '@/tasks/checkAlerts/errors';
 import { trimToolResponse } from '@/utils/trimToolResponse';
 import type { ExternalDashboardTileWithId } from '@/utils/zod';
 import { externalDashboardTileSchemaWithId } from '@/utils/zod';
@@ -869,6 +870,20 @@ function findCause<T>(
   return undefined;
 }
 
+const SOCKET_TIMEOUT_CODES: ReadonlySet<string> = new Set(['ETIMEDOUT']);
+
+/**
+ * True when a query ran out of time: ClickHouse's max_execution_time or the
+ * client request timeout. A socket ETIMEDOUT is excluded because ClickHouse
+ * was unreachable, so narrowing the query won't help.
+ */
+export function isQueryOutOfTime(e: unknown): boolean {
+  const socketTimeout = findCause(e, (c): c is Error =>
+    hasNodeErrorCode(c, SOCKET_TIMEOUT_CODES),
+  );
+  return !socketTimeout && isQueryTimeoutError(e);
+}
+
 /** @internal Exported for testing only. */
 export function errorHint(msg: string, error?: unknown): string | null {
   const unknownVariableError = findCause(
@@ -911,7 +926,10 @@ export function errorHint(msg: string, error?: unknown): string | null {
   // Match only real timeouts. A bare `max_execution_time` substring would also
   // hijack SETTING_CONSTRAINT_VIOLATION / readonly errors ("Setting
   // max_execution_time shouldn't be greater than…"), which need a different fix.
-  if (/TIMEOUT_EXCEEDED|Timeout exceeded/i.test(msg)) {
+  if (
+    /TIMEOUT_EXCEEDED|Timeout exceeded/i.test(msg) ||
+    isQueryOutOfTime(error)
+  ) {
     return (
       'The query exceeded its execution-time limit. Narrow the time range so ' +
       'ClickHouse can prune partitions, add filters to reduce the rows scanned, ' +

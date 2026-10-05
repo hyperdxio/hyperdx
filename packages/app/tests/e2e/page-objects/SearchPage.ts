@@ -32,7 +32,7 @@ export class SearchPage {
   readonly heatmap: HeatmapComponent;
   readonly whereInput: WhereInputComponent;
   readonly savedSearchModal: SavedSearchModalComponent;
-  readonly savedSearchNameTitle: Locator;
+  readonly savedSearchNameInput: Locator;
   readonly alertModal: SearchPageAlertModalComponent;
   readonly defaultTimeout: number = 3000;
   private readonly alertsButtonLocator: Locator;
@@ -62,9 +62,7 @@ export class SearchPage {
     this.savedSearchModal = new SavedSearchModalComponent(page);
     this.alertModal = new SearchPageAlertModalComponent(page);
     this.alertsButtonLocator = page.getByTestId('alerts-button');
-    this.savedSearchNameTitle = page.locator(
-      '[data-testid="saved-search-name"]',
-    );
+    this.savedSearchNameInput = page.getByTestId('saved-search-name');
 
     // Define page-specific locators
     this.searchForm = page.getByTestId('search-form');

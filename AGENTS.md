@@ -69,6 +69,8 @@ directory:
   `useConfirm` for confirmation dialogs, `EmptyState`, and where shared code
   already lives), so copying the conventions of the component you are editing is
   not sufficient.
+- `agent_docs/naming_objects.md` - How users name and rename objects
+  (`InlineNameInput`). Read before adding or changing any name field
 - `agent_docs/observability.md` - Instrumentation standards (tracing, metrics,
   context) and the shared helpers (read when adding or changing a feature)
 
