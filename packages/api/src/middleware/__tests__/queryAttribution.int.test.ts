@@ -12,8 +12,10 @@ import {
 } from '@/fixtures';
 import Connection from '@/models/connection';
 
-// Set by jest.setup.ts before it stubs `fetch`.
-const { realFetch } = globalThis as unknown as { realFetch: typeof fetch };
+declare global {
+  // Set by jest.setup.ts before it stubs `fetch`.
+  var realFetch: typeof fetch;
+}
 
 // Covers the wiring the unit tests can't: auth middleware opens the
 // AsyncLocalStorage scope, and a query issued deep inside the route handler
@@ -182,7 +184,7 @@ describe('request query attribution', () => {
   // itself: this pins that it honours the log_comment and query_id we send.
   it('tags PromQL proxied to the prometheus_api_v1 handler', async () => {
     // A spy, so the afterEach restoreAllMocks puts the stub back.
-    jest.spyOn(global, 'fetch').mockImplementation(realFetch);
+    jest.spyOn(global, 'fetch').mockImplementation(globalThis.realFetch);
     const { agent, team } = await getLoggedInAgent(server);
     const conn = await Connection.create({
       team: team._id,
