@@ -5,6 +5,9 @@ import DBSqlRowTableWithSideBar from '@/components/DBSqlRowTableWithSidebar';
 
 const FIRST_SPAN = "SpanId='8cea712d1d4df628'";
 const OTHER_SPAN = "SpanId='b2e2b0df5304a26a'";
+// Waterfall ids omit SpanAttributes/SpanEvents and are not the search row's where.
+const WATERFALL_SPAN =
+  "TraceId='trace-123' AND SpanId='b2e2b0df5304a26a' AND Timestamp='2024-01-01'";
 
 type StoredSpan = {
   id: string;
@@ -159,13 +162,25 @@ describe('DBSqlRowTableWithSideBar span selection', () => {
     expect(mockQuery.rowWhere).toBe(OTHER_SPAN);
   });
 
-  it('keeps the span when the opened result is that span', () => {
-    mockQuery.eventRowWhere = span(FIRST_SPAN);
+  it('keeps the waterfall span when the same result is opened again', () => {
+    mockQuery.rowWhere = FIRST_SPAN;
+    mockQuery.eventRowWhere = span(WATERFALL_SPAN);
     renderResults();
 
     fireEvent.click(screen.getByRole('button', { name: 'open first span' }));
 
-    expect(mockQuery.eventRowWhere).toEqual(span(FIRST_SPAN));
+    expect(mockQuery.eventRowWhere).toEqual(span(WATERFALL_SPAN));
     expect(mockQuery.rowWhere).toBe(FIRST_SPAN);
+  });
+
+  it('drops the waterfall span when a different result is opened', () => {
+    mockQuery.rowWhere = FIRST_SPAN;
+    mockQuery.eventRowWhere = span(OTHER_SPAN);
+    renderResults();
+
+    fireEvent.click(screen.getByRole('button', { name: 'open other span' }));
+
+    expect(mockQuery.eventRowWhere).toBeNull();
+    expect(mockQuery.rowWhere).toBe(OTHER_SPAN);
   });
 });
