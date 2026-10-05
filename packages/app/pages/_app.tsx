@@ -76,10 +76,7 @@ function AppHeadContent() {
 
   return (
     <Head>
-      <title>
-        {theme.displayName}
-        {suffix}
-      </title>
+      <title>{`${theme.displayName}${suffix}`}</title>
       <meta name="viewport" content="width=device-width, initial-scale=1" />
       <meta name="google" content="notranslate" />
       <SystemColorSchemeScript />
