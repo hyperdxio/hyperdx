@@ -122,8 +122,7 @@ export default function DBSqlRowTableWithSideBar({
   const onCloseSidebar = useCallback(() => {
     setRowId(null);
     setRowSource(null);
-    setEventRowWhere(null);
-  }, [setRowId, setRowSource, setEventRowWhere]);
+  }, [setRowId, setRowSource]);
   const renderRowDetails = useCallback(
     (r: { id: string; aliasWith?: WithClause[]; [key: string]: unknown }) => {
       if (!sourceData) {
