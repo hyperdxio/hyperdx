@@ -7,19 +7,31 @@ import { IconArrowsMaximize, IconChevronRight } from '@tabler/icons-react';
 import { INTERNAL_ROW_FIELDS } from '@/hooks/useRowWhere';
 import { parseAsStringEncoded } from '@/utils/queryParsers';
 
+import {
+  eventRowWhereForOpenedRow,
+  eventRowWhereParser,
+} from './eventRowWhere';
+
 import styles from '@styles/LogTable.module.scss';
 
 // Hook that provides a function to open the sidebar with specific row details
 const useSidebarOpener = () => {
   const [, setRowId] = useQueryState('rowWhere', parseAsStringEncoded);
   const [, setRowSource] = useQueryState('rowSource');
+  const [, setEventRowWhere] = useQueryState(
+    'eventRowWhere',
+    eventRowWhereParser,
+  );
 
   return useCallback(
     (rowWhere: string, sourceId?: string) => {
       setRowId(rowWhere);
       setRowSource(sourceId ?? null);
+      setEventRowWhere(current =>
+        eventRowWhereForOpenedRow(current, rowWhere),
+      );
     },
-    [setRowId, setRowSource],
+    [setRowId, setRowSource, setEventRowWhere],
   );
 };
 
