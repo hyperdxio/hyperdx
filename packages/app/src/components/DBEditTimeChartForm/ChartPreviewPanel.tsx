@@ -36,6 +36,7 @@ import { DBTimeChart } from '@/components/DBTimeChart';
 import EmptyState from '@/components/EmptyState';
 import PatternTable from '@/components/PatternTable';
 import PromQLPreview from '@/components/PromQLEditor/PromQLPreview';
+import { getMinGranularitySeconds } from '@/hooks/useChartConfig';
 import {
   getEventBody,
   getFirstTimestampValueExpression,
@@ -169,9 +170,10 @@ export function ChartPreviewPanel({
 }: ChartPreviewPanelProps) {
   const [isSampleEventsOpen, setIsSampleEventsOpen] = useState(false);
 
+  const minGranularitySeconds = getMinGranularitySeconds(tableSource);
   const renderedPromql = useMemo(
-    () => buildRenderedPromqlExpression(queriedConfig),
-    [queriedConfig],
+    () => buildRenderedPromqlExpression(queriedConfig, minGranularitySeconds),
+    [queriedConfig, minGranularitySeconds],
   );
 
   const blockingFilterNames = missingRequiredFilterNames ?? [];

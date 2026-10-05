@@ -364,6 +364,59 @@ describe('buildRenderedPromqlExpression', () => {
     },
   );
 
+  describe("with the source's minimum auto granularity", () => {
+    const render = (
+      displayType: DisplayType,
+      granularity: string,
+      minGranularitySeconds?: number,
+    ) =>
+      buildRenderedPromqlExpression(
+        promqlConfig({
+          displayType,
+          granularity,
+          promqlExpression: [
+            { expression: 'rate(up[$__rate_interval]) / $__interval' },
+          ],
+        }),
+        minGranularitySeconds,
+      )?.expressions?.[0].expression;
+
+    // 70 minutes on auto resolves to 60s, below the 300s floor.
+    it('floors an auto step that is below it', () => {
+      const seventyMinutes: [Date, Date] = [
+        new Date('2024-01-01T00:00:00Z'),
+        new Date('2024-01-01T01:10:00Z'),
+      ];
+      const renderShort = (displayType: DisplayType) =>
+        buildRenderedPromqlExpression(
+          {
+            ...promqlConfig({
+              displayType,
+              granularity: 'auto',
+              promqlExpression: [{ expression: '$__interval' }],
+            }),
+            dateRange: seventyMinutes,
+          },
+          300,
+        )?.expressions?.[0].expression;
+
+      expect(renderShort(DisplayType.Line)).toBe('300s');
+      expect(renderShort(DisplayType.Table)).toBe('300s');
+      expect(renderShort(DisplayType.Number)).toBe('300s');
+    });
+
+    it('sizes $__rate_interval from it, however the granularity was chosen', () => {
+      // max(15 + 60, 4 * 60), with the hand-picked 15s step kept
+      expect(render(DisplayType.Line, '15 second', 60)).toBe(
+        'rate(up[240s]) / 15s',
+      );
+    });
+
+    it('assumes a 15s scrape interval without one', () => {
+      expect(render(DisplayType.Line, '15 second')).toBe('rate(up[60s]) / 15s');
+    });
+  });
+
   it('reports a substitution failure instead of an expression', () => {
     const result = buildRenderedPromqlExpression(
       promqlConfig({

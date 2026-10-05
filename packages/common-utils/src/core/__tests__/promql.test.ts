@@ -231,6 +231,19 @@ describe('promqlStep with a window', () => {
     expect(promqlStep(undefined, hour)).toBe('60s');
     expect(promqlStep('auto', month)).not.toBe('60s');
   });
+
+  it('floors an auto step at minGranularitySeconds', () => {
+    expect(promqlStep('auto', hour, 300)).toBe('300s');
+    expect(promqlStep(undefined, hour, 300)).toBe('300s');
+  });
+
+  it('leaves an auto step alone when it is already above the floor', () => {
+    expect(promqlStep('auto', month, 60)).toBe(promqlStep('auto', month));
+  });
+
+  it('never floors a granularity the tile picked', () => {
+    expect(promqlStep('15 second', hour, 300)).toBe('15s');
+  });
 });
 
 describe('PROMQL_MACROS', () => {
@@ -242,9 +255,10 @@ describe('PROMQL_MACROS', () => {
     name: string,
     granularity: string,
     dateRange: [Date, Date],
+    minGranularitySeconds?: number,
   ) =>
     PROMQL_MACROS.find(macro => macro.name === name)?.expand(
-      getPromqlMacroInputs(granularity, dateRange),
+      getPromqlMacroInputs(granularity, dateRange, minGranularitySeconds),
     );
 
   it('uses the step for $__interval', () => {
@@ -269,6 +283,31 @@ describe('PROMQL_MACROS', () => {
     expect(expandMacro('rate_interval', '15 second', hour)).toBe('60s');
     expect(expandMacro('rate_interval', '1 minute', hour)).toBe('75s');
     expect(expandMacro('rate_interval', '5 minute', hour)).toBe('315s');
+  });
+
+  it('floors an auto $__interval at minGranularitySeconds', () => {
+    expect(expandMacro('interval', 'auto', hour, 300)).toBe('300s');
+  });
+
+  it('sizes $__rate_interval from minGranularitySeconds as the scrape interval', () => {
+    // max(60 + 60, 4 * 60)
+    expect(expandMacro('rate_interval', '1 minute', hour, 60)).toBe('240s');
+    // max(300 + 300, 4 * 300)
+    expect(expandMacro('rate_interval', 'auto', hour, 300)).toBe('1200s');
+  });
+
+  it('sizes $__rate_interval from the floor even when the tile picked its granularity', () => {
+    // The step stays 15s, but the data only arrives every 60s:
+    // max(15 + 60, 4 * 60)
+    expect(expandMacro('interval', '15 second', hour, 60)).toBe('15s');
+    expect(expandMacro('rate_interval', '15 second', hour, 60)).toBe('240s');
+  });
+
+  it('assumes a 15s scrape interval when there is no floor', () => {
+    expect(expandMacro('rate_interval', '15 second', hour, undefined)).toBe(
+      '60s',
+    );
+    expect(expandMacro('rate_interval', '15 second', hour, 0)).toBe('60s');
   });
 });
 
