@@ -176,13 +176,11 @@ const MULTI_SERIES_SORT_ALIAS_PREFIX = '__hdx_sort_';
 
 /**
  * Render a user-facing output column name as a ClickHouse double-quoted
- * identifier. User aliases (and metric names, which flow into the default
- * aliases) can contain double quotes; ClickHouse escapes them by doubling,
- * so `bad"name` becomes "bad""name" instead of terminating the identifier
- * early. Escaping happens only at SQL-emission time — collision dedup and
- * the meta column names consumers see keep the raw name.
+ * identifier. Quoted identifiers use backslash escapes, so preserve literal
+ * backslashes by doubling them. Double quotes are escaped by doubling them.
  */
-const quotedColumnName = (name: string) => `"${name.replace(/"/g, '""')}"`;
+export const quoteClickHouseOutputIdentifier = (name: string): string =>
+  `"${name.replace(/\\/g, '\\\\').replace(/"/g, '""')}"`;
 
 // Histogram translations bake the group-by dimensions into a single Array
 // column named GROUP_ALIAS instead of projecting them as individual columns
@@ -832,7 +830,9 @@ async function renderSelectList(
 
       return chSql`${expr}${
         select.alias != null && select.alias.trim() !== ''
-          ? chSql` AS "${{ UNSAFE_RAW_SQL: select.alias }}"`
+          ? chSql` AS ${{
+              UNSAFE_RAW_SQL: quoteClickHouseOutputIdentifier(select.alias),
+            }}`
           : []
       }`;
     }),
@@ -1142,7 +1142,7 @@ async function renderSelectListWithFormulas(
     const sql = `${compileFormulaAst(
       parsed.ast,
       index => operandAt(index).sql,
-    )} AS ${quotedColumnName(name)}`;
+    )} AS ${quoteClickHouseOutputIdentifier(name)}`;
     const params = Object.assign(
       {},
       ...parsed.referencedIndices.map(index => operandAt(index).params),
@@ -2759,7 +2759,7 @@ function renderMultiSeriesOrderBy(
       rewroteAny = true;
       if (matched.alias) {
         return chSql`${{
-          UNSAFE_RAW_SQL: `${quotedColumnName(matched.alias)}${direction}`,
+          UNSAFE_RAW_SQL: `${quoteClickHouseOutputIdentifier(matched.alias)}${direction}`,
         }}`;
       }
       let companionIdx = sortCompanionExprs.indexOf(matched.expr);
@@ -3106,13 +3106,13 @@ async function renderMultiSeriesMetricChartConfig(
     if (chartConfig.showOperandSeries !== false) {
       outputNames.forEach((outputName, splitIdx) => {
         projection.push(
-          `${valueExprFor(splitIdx)} AS ${quotedColumnName(outputName)}`,
+          `${valueExprFor(splitIdx)} AS ${quoteClickHouseOutputIdentifier(outputName)}`,
         );
       });
     }
     formulaColumns.forEach(({ name, ast }) => {
       projection.push(
-        `${compileFormulaAst(ast, valueExprFor)} AS ${quotedColumnName(name)}`,
+        `${compileFormulaAst(ast, valueExprFor)} AS ${quoteClickHouseOutputIdentifier(name)}`,
       );
     });
   } else if (isRatio) {
@@ -3136,12 +3136,12 @@ async function renderMultiSeriesMetricChartConfig(
     // same-alias ratio reads "avg(x)/avg(x)", not "avg(x)/avg(x)__1".
     const ratioName = `${outputNames[0]}/${outputNames[1].replace(/__\d+$/, '')}`;
     projection.push(
-      `${numerator} / nullif(${denominator}, 0) AS ${quotedColumnName(ratioName)}`,
+      `${numerator} / nullif(${denominator}, 0) AS ${quoteClickHouseOutputIdentifier(ratioName)}`,
     );
   } else {
     outputNames.forEach((outputName, splitIdx) => {
       projection.push(
-        `${valueExprFor(splitIdx)} AS ${quotedColumnName(outputName)}`,
+        `${valueExprFor(splitIdx)} AS ${quoteClickHouseOutputIdentifier(outputName)}`,
       );
     });
   }

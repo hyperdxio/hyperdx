@@ -3,6 +3,7 @@ import cx from 'classnames';
 import { inferNumericColumn } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   isRatioChartConfig,
+  quoteClickHouseOutputIdentifier,
   setChartSelectsAlias,
   usesComposedMetricQuery,
 } from '@hyperdx/common-utils/dist/core/renderChartConfig';
@@ -34,10 +35,7 @@ import {
   useChartNumberFormats,
   useSource,
 } from '@/source';
-import {
-  quoteClickHouseOutputIdentifier,
-  useIntersectionObserver,
-} from '@/utils';
+import { useIntersectionObserver } from '@/utils';
 
 import ChartContainer from './charts/ChartContainer';
 import ChartErrorState, {

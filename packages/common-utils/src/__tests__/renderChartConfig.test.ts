@@ -5209,6 +5209,24 @@ describe('renderChartConfig', () => {
         expect(sql).not.toContain('AS "bad"name"');
       });
 
+      it('escapes backslashes in formula and operand column names', async () => {
+        const generatedSql = await renderChartConfig(
+          {
+            ...baseMultiSeriesConfig,
+            select: [
+              { ...gaugeSelect('metric.alpha'), alias: 'operand\\name' },
+              gaugeSelect('metric.beta'),
+            ],
+            formulas: [{ expression: 'A / B', alias: 'ratio\\name' }],
+          },
+          mockMetadata,
+          querySettings,
+        );
+        const sql = parameterizedQueryToSql(generatedSql);
+        expect(sql).toContain('AS "ratio\\\\name"');
+        expect(sql).toContain('AS "operand\\\\name"');
+      });
+
       it('escapes double quotes in the ratio column label', async () => {
         const generatedSql = await renderChartConfig(
           {
@@ -5376,6 +5394,35 @@ describe('renderChartConfig', () => {
       const sql = parameterizedQueryToSql(generatedSql);
       expect(sql).toContain('AS "bad""name"');
       expect(sql).not.toContain('AS "bad"name"');
+    });
+
+    it('escapes backslashes in inline select and formula aliases', async () => {
+      const generatedSql = await renderChartConfig(
+        {
+          ...baseEventFormulaConfig,
+          select: [
+            {
+              aggFn: 'count' as const,
+              valueExpression: '',
+              aggCondition: "SeverityText = 'error'",
+              aggConditionLanguage: 'sql' as const,
+              alias: 'errors\\count',
+            },
+            {
+              aggFn: 'count' as const,
+              valueExpression: '',
+              aggCondition: '',
+              alias: 'total',
+            },
+          ],
+          formulas: [{ expression: 'A / B', alias: 'ratio\\name' }],
+        },
+        mockMetadata,
+        querySettings,
+      );
+      const sql = parameterizedQueryToSql(generatedSql);
+      expect(sql).toContain('AS "errors\\\\count"');
+      expect(sql).toContain('AS "ratio\\\\name"');
     });
 
     it('lets HAVING reference a formula output column on a table shape', async () => {
