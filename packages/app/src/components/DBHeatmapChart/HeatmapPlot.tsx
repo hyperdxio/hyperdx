@@ -14,6 +14,7 @@ import {
 import {
   computeBucketPercentiles,
   gridToPlotData,
+  heatmapCellKind,
   HeatmapGrid,
   heatmapRowCount,
   HeatmapScaleType,
@@ -151,14 +152,17 @@ export function HeatmapPlot({
 
   const plotData = useMemo(() => gridToPlotData(grid), [grid]);
   const rowCount = heatmapRowCount(grid.yAxis);
+  const cellKind = heatmapCellKind(grid.yAxis);
 
   // Key on label content: every refresh builds a fresh labels array, and new
   // options make uplot-react recreate the chart instead of updating its data.
   const seriesLabelsKey =
-    grid.yAxis.type === 'series' ? grid.yAxis.labels.join('\0') : undefined;
-  const seriesLabels = useMemo(
-    () => (grid.yAxis.type === 'series' ? grid.yAxis.labels : undefined),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    grid.yAxis.type === 'series'
+      ? JSON.stringify(grid.yAxis.labels)
+      : undefined;
+  const seriesLabels = useMemo<string[] | undefined>(
+    () =>
+      seriesLabelsKey === undefined ? undefined : JSON.parse(seriesLabelsKey),
     [seriesLabelsKey],
   );
 
@@ -170,7 +174,7 @@ export function HeatmapPlot({
 
   const options: uPlot.Options = useMemo(() => {
     const opt = baseHeatmapOptions;
-    const themedSeries = buildSeriesForPalette(palette);
+    const themedSeries = buildSeriesForPalette(palette, cellKind);
     const yAxis = heatmapYAxisOptions(seriesLabels, scaleType, tickFormatter);
     return {
       ...opt,
@@ -222,6 +226,7 @@ export function HeatmapPlot({
       plugins: [
         highlightDataPlugin({
           margin: 20,
+          cellKind,
           onPointHighlight: point => {
             // Only show tooltip after the user has actually hovered the chart.
             // uPlot fires setCursor on init which would trigger this on page load.
@@ -282,6 +287,7 @@ export function HeatmapPlot({
     palette,
     hasFilter,
     seriesLabels,
+    cellKind,
   ]);
 
   const seriesAxisHover = useSeriesAxisHover(uplotRef, seriesLabels);

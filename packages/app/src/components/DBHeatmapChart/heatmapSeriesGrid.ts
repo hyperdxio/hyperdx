@@ -22,8 +22,9 @@ function makeTimeIndexer(times: number[], stepMs: number) {
 }
 
 /**
- * One row per series, colored by value. Rows sort naturally by name with the
- * first name in the top row (row 0 is the bottom row).
+ * One row per series, colored by value; cells without a value are NaN. Rows
+ * sort naturally by name with the first name in the top row (row 0 is the
+ * bottom row).
  */
 export function gridFromSeries(
   series: HeatmapSeries[],
@@ -34,7 +35,7 @@ export function gridFromSeries(
 
   const rows = sorted.length;
   const timeIndex = makeTimeIndexer(times, stepMs);
-  const cells = new Array<number>(times.length * rows).fill(0);
+  const cells = new Array<number>(times.length * rows).fill(NaN);
   sorted.forEach((s, r) => {
     for (const { t, v } of s.points) {
       const ti = timeIndex(t);

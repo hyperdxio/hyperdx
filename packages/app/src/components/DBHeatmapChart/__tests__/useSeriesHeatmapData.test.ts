@@ -92,7 +92,7 @@ describe('useSeriesHeatmapData', () => {
     const t1 = times.indexOf(T0 + HOUR);
     expect(grid.yAxis).toEqual({ type: 'series', labels: ['web', 'api'] });
     expect(grid.cells.slice(0, 2)).toEqual([4, 1]);
-    expect(grid.cells.slice(t1 * 2, t1 * 2 + 2)).toEqual([0, 2]);
+    expect(grid.cells.slice(t1 * 2, t1 * 2 + 2)).toEqual([NaN, 2]);
     expect(optionsFor('heatmap_series')?.[1].enabled).toBe(true);
   });
 

@@ -27,6 +27,20 @@ export type HeatmapGrid = {
   cells: number[];
 };
 
+/**
+ * Numeric-axis cells are counts, empty at 0. Series-axis cells are values
+ * that may be zero or negative, empty when NaN.
+ */
+export type HeatmapCellKind = 'count' | 'value';
+
+export function heatmapCellKind(yAxis: HeatmapYAxis): HeatmapCellKind {
+  return yAxis.type === 'series' ? 'value' : 'count';
+}
+
+export function isEmptyHeatmapCell(value: number, kind: HeatmapCellKind) {
+  return kind === 'value' ? !Number.isFinite(value) : !(value > 0);
+}
+
 export const EMPTY_HEATMAP_GRID: HeatmapGrid = {
   times: [],
   stepMs: 0,
