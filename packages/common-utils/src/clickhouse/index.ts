@@ -11,6 +11,7 @@ import type {
 import type { ClickHouseClient as WebClickHouseClient } from '@clickhouse/client-web';
 import * as SQLParser from 'node-sql-parser';
 
+import { stripTypeWrappers } from '@/core/eventDeltas';
 import {
   getMetadata,
   Metadata,
@@ -140,6 +141,19 @@ export const convertCHDataTypeToJSType = (
   }
 
   return null;
+};
+
+/**
+ * True when the ClickHouse type is FixedString, including Nullable and
+ * LowCardinality wrappers.
+ *
+ * convertCHDataTypeToJSType maps FixedString to JSDataType.String, which is
+ * right for search semantics (ILIKE, equality). hasToken rejects a FixedString
+ * haystack, so that fallback has to CAST the column to String. hasAllTokens
+ * accepts FixedString and must keep the original column so a text index matches.
+ */
+export const isCHFixedStringType = (dataType: string): boolean => {
+  return stripTypeWrappers(dataType).startsWith('FixedString');
 };
 
 export const isJSDataTypeJSONStringifiable = (

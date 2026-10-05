@@ -7,6 +7,7 @@ import {
   convertCHDataTypeToJSType,
   convertCHTypeToLuceneSearchType,
   extractInnerCHArrayJSType,
+  isCHFixedStringType,
   JSDataType,
 } from '@/clickhouse';
 import {
@@ -19,6 +20,7 @@ import {
   parseKeyPath,
   SkipIndexMetadata,
   TableConnection,
+  unquoteIdentifier,
 } from '@/core/metadata';
 import {
   parseTokenizerFromTextIndex,
@@ -483,6 +485,11 @@ export abstract class SQLSerializer implements Serializer {
     column?: string;
     columnJSON?: { string: string; number: string };
     propertyType?: JSDataType;
+    /**
+     * The resolved column is FixedString. Token functions (hasToken,
+     * hasAllTokens) reject that haystack and need CAST(... AS String).
+     */
+    isFixedString?: boolean;
     isArray?: boolean;
     found: boolean;
     mapKey?: string;
@@ -1466,10 +1473,18 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
       mapKey,
       mapKeyIndexExpression,
       arrayMapKeyExpression,
+      isFixedString,
     } = await this.getColumnForField(field, context);
     if (!found) {
       return this.NOT_FOUND_QUERY;
     }
+    // hasToken rejects FixedString; lower(FixedString) stays FixedString, so a
+    // bare search against TraceId (FixedString(32) in the OTel schema) errors.
+    // hasAllTokens accepts FixedString and is how a text index is used, so that
+    // path keeps the raw column. LIKE accepts FixedString too. Bloom-filter
+    // index expressions are used as stored.
+    const tokenHaystack =
+      isFixedString && column ? `CAST(${column} AS String)` : column;
     const expressionPostfix =
       mapKeyIndexExpression &&
       !isNegatedField &&
@@ -1574,6 +1589,8 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
 
           // When the text index is on lower(column), we must pass lower(column)
           // as the first argument and wrap the tokens in lower() to match.
+          // Do not CAST here: hasAllTokens accepts FixedString, and CAST would
+          // no longer match an index built on the column.
           const hasAllTokensColumn = textIndexHasLower
             ? `lower(${column})`
             : column;
@@ -1643,7 +1660,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
           return `(${isNegatedField ? 'NOT (' : ''}${[
             ...tokens.map(token =>
               SqlString.format(`hasToken(lower(?), lower(?))`, [
-                SqlString.raw(column),
+                SqlString.raw(tokenHaystack),
                 token,
               ]),
             ),
@@ -1656,7 +1673,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
         } else {
           return SqlString.format(
             `(${isNegatedField ? 'NOT ' : ''}hasToken(lower(?), lower(?)))`,
-            [SqlString.raw(column), term],
+            [SqlString.raw(tokenHaystack), term],
           );
         }
       }
@@ -1931,6 +1948,34 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
     return false;
   }
 
+  /**
+   * Whether a single implicit-column expression is a FixedString column.
+   * Only a bare identifier is looked up. A function wrapper such as
+   * lower(TraceId) is left as written: concatWithSeparator returns String,
+   * and guessing the result type of an arbitrary expression is out of scope.
+   * A failed lookup keeps the previous hasToken SQL.
+   */
+  private async columnExpressionIsFixedString(
+    expression: string,
+  ): Promise<boolean> {
+    const columnName = unquoteIdentifier(expression.trim());
+    if (!columnName || columnName.includes('(')) {
+      return false;
+    }
+    try {
+      const meta = await this.metadata.getColumn({
+        databaseName: this.databaseName,
+        tableName: this.tableName,
+        column: columnName,
+        connectionId: this.connectionId,
+      });
+      return meta != null && isCHFixedStringType(meta.type);
+    } catch (error) {
+      console.debug('Error resolving implicit column type', error);
+      return false;
+    }
+  }
+
   async getColumnForField(field: string, context: SerializerContext) {
     // Fall back to bodyExpression for implicit column expression.
     // values can be empty if previously configured then removed.
@@ -1967,6 +2012,11 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
             : fieldFinal,
         columnJSON: undefined,
         propertyType: JSDataType.String,
+        // concatWithSeparator returns String even when an input is FixedString.
+        isFixedString:
+          expressions.length === 1
+            ? await this.columnExpressionIsFixedString(expressions[0])
+            : false,
         found: true,
       };
     }
