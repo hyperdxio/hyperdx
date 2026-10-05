@@ -133,6 +133,7 @@ function getAlignedRangeAndGranularity(
   const granularity = getTimeChartGranularity(
     config.granularity,
     config.dateRange,
+    config.minGranularitySeconds,
   );
   return {
     granularity,
