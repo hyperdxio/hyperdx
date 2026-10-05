@@ -2,9 +2,9 @@ import { useCallback, useMemo, useState } from 'react';
 import cx from 'classnames';
 import { inferNumericColumn } from '@hyperdx/common-utils/dist/clickhouse';
 import {
+  getComposedMetricOutputNames,
   isRatioChartConfig,
   quoteClickHouseOutputIdentifier,
-  setChartSelectsAlias,
   usesComposedMetricQuery,
 } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import { unquoteIdentifier } from '@hyperdx/common-utils/dist/core/metadata';
@@ -90,15 +90,21 @@ export default function DBTableChart({
       return aliases;
     }
 
-    const outputConfig = usesComposedMetricQuery(config)
-      ? setChartSelectsAlias(config)
-      : config;
-
-    if (Array.isArray(outputConfig.select)) {
-      for (const select of outputConfig.select) {
-        if (select.alias?.trim()) {
-          aliases.add(select.alias);
+    if (usesComposedMetricQuery(config)) {
+      for (const outputName of getComposedMetricOutputNames(config)) {
+        aliases.add(outputName);
+      }
+    } else {
+      if (Array.isArray(config.select)) {
+        for (const select of config.select) {
+          if (select.alias?.trim()) {
+            aliases.add(select.alias);
+          }
         }
+      }
+
+      for (const formula of config.formulas ?? []) {
+        aliases.add(formula.alias || formula.expression);
       }
     }
 
@@ -108,10 +114,6 @@ export default function DBTableChart({
           aliases.add(groupBy.alias);
         }
       }
-    }
-
-    for (const formula of config.formulas ?? []) {
-      aliases.add(formula.alias || formula.expression);
     }
 
     return aliases;

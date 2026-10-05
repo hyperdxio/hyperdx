@@ -156,6 +156,60 @@ export const setChartSelectsAlias = (
   return config;
 };
 
+const getComposedMetricOutputNameParts = (
+  chartConfig: BuilderChartConfigWithOptDateRange,
+) => {
+  if (!Array.isArray(chartConfig.select)) {
+    return { outputNames: [], formulaNames: [] };
+  }
+
+  const seen = new Set<string>();
+  const uniqueName = (base: string, columnIdx: number) => {
+    const name = seen.has(base) ? `${base}__${columnIdx}` : base;
+    seen.add(name);
+    return name;
+  };
+
+  const outputNames = chartConfig.select.map((select, selectIdx) =>
+    uniqueName(select.alias ?? '', selectIdx),
+  );
+  const formulaNames = (chartConfig.formulas ?? []).map((formula, formulaIdx) =>
+    uniqueName(
+      formula.alias || formula.expression,
+      chartConfig.select.length + formulaIdx,
+    ),
+  );
+
+  return { outputNames, formulaNames };
+};
+
+export const getComposedMetricOutputNames = (
+  rawChartConfig: BuilderChartConfigWithOptDateRange,
+): string[] => {
+  if (!usesComposedMetricQuery(rawChartConfig)) {
+    return [];
+  }
+
+  const chartConfig = setChartSelectsAlias(rawChartConfig);
+  const { outputNames, formulaNames } =
+    getComposedMetricOutputNameParts(chartConfig);
+
+  if (formulaNames.length > 0) {
+    return [
+      ...(chartConfig.showOperandSeries === false ? [] : outputNames),
+      ...formulaNames,
+    ];
+  }
+
+  if (chartConfig.seriesReturnType === 'ratio' && outputNames.length === 2) {
+    return [
+      `${outputNames[0]}/${outputNames[1].replace(/__\d+$/, '')}`,
+    ];
+  }
+
+  return outputNames;
+};
+
 // Internal aliases used to compose a multi-series metric query. Every
 // per-series branch projects its VALUE under this fixed name (and is tagged
 // with its series index) so the outer pivot can reference them. Group-by and
@@ -2857,41 +2911,31 @@ async function renderMultiSeriesMetricChartConfig(
   // like an operand); suffix collisions with the column index so they stay
   // distinct.
   const formulas = chartConfig.formulas ?? [];
-  const outputNames: string[] = [];
+  const { outputNames, formulaNames } =
+    getComposedMetricOutputNameParts(chartConfig);
   const formulaColumns: { name: string; ast: FormulaAst }[] = [];
-  {
-    const seen = new Set<string>();
-    const uniqueName = (base: string, columnIdx: number) => {
-      const name = seen.has(base) ? `${base}__${columnIdx}` : base;
-      seen.add(name);
-      return name;
-    };
-    select.forEach((s, splitIdx) => {
-      outputNames.push(uniqueName(s.alias ?? '', splitIdx));
+  formulas.forEach((f, formulaIdx) => {
+    // Parse + validate against the chart's series before rendering any
+    // SQL. Persisted configs should already be valid (the editor validates
+    // on save); this is a render-time guard so a stale or hand-built
+    // config fails with a structured message instead of a ClickHouse error.
+    const parsed = validateFormula(f.expression, {
+      seriesCount: select.length,
     });
-    formulas.forEach((f, formulaIdx) => {
-      // Parse + validate against the chart's series before rendering any
-      // SQL. Persisted configs should already be valid (the editor validates
-      // on save); this is a render-time guard so a stale or hand-built
-      // config fails with a structured message instead of a ClickHouse error.
-      const parsed = validateFormula(f.expression, {
-        seriesCount: select.length,
-      });
-      if (!parsed.ok) {
-        throw new Error(
-          `Invalid formula "${f.expression}": ${parsed.errors
-            .map(e => e.message)
-            .join('; ')}`,
-        );
-      }
-      formulaColumns.push({
-        // A formula column is named by its alias, falling back to the raw
-        // expression text (mirrors DerivedColumnSchema.alias semantics).
-        name: uniqueName(f.alias || f.expression, select.length + formulaIdx),
-        ast: parsed.ast,
-      });
+    if (!parsed.ok) {
+      throw new Error(
+        `Invalid formula "${f.expression}": ${parsed.errors
+          .map(e => e.message)
+          .join('; ')}`,
+      );
+    }
+    formulaColumns.push({
+      // A formula column is named by its alias, falling back to the raw
+      // expression text (mirrors DerivedColumnSchema.alias semantics).
+      name: formulaNames[formulaIdx],
+      ast: parsed.ast,
     });
-  }
+  });
 
   const hasGranularity = isUsingGranularity(chartConfig);
   const includeGroupBy =
