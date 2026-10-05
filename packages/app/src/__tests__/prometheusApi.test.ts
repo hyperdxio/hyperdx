@@ -162,6 +162,33 @@ describe('prometheusApi.query', () => {
     expect(params.has('table')).toBe(false);
   });
 
+  it('sends the attribution as a log_comment payload in a header', async () => {
+    await prometheusApi.query({
+      query: 'up',
+      time: 1,
+      connectionId: 'conn',
+      attribution: { surface: 'dashboard', dashboard: 'd1', tile: 't1' },
+    });
+
+    const { headers } = post.mock.calls[0][1];
+    expect(JSON.parse(headers['x-hyperdx-query-attribution'])).toEqual({
+      v: 1,
+      surface: 'dashboard',
+      dashboard: 'd1',
+      tile: 't1',
+    });
+  });
+
+  it('sends no attribution header when there is nothing to say', async () => {
+    await prometheusApi.query({
+      query: 'up',
+      time: 1,
+      connectionId: 'conn',
+      attribution: {},
+    });
+    expect(post.mock.calls[0][1].headers).toBeUndefined();
+  });
+
   it('reports the error a failed instant query carries', async () => {
     post.mockReturnValue({
       json: () =>

@@ -2,6 +2,11 @@ import { useCallback } from 'react';
 import Router from 'next/router';
 import type { HTTPError, Options, ResponsePromise } from 'ky';
 import ky from 'ky-universal';
+import {
+  buildLogComment,
+  QUERY_ATTRIBUTION_HEADER,
+  type QueryAttribution,
+} from '@hyperdx/common-utils/dist/clickhouse';
 import type {
   Alert,
   AlertApiResponse,
@@ -866,10 +871,16 @@ const prometheusFetch = <T>(
   path: string,
   searchParams: Record<string, string>,
   signal?: AbortSignal,
-): Promise<T> =>
-  withPrometheusError(() =>
-    server.post(path, { searchParams, signal }).json<T>(),
+  attribution?: QueryAttribution,
+): Promise<T> => {
+  const logComment = buildLogComment(attribution);
+  const headers = logComment
+    ? { [QUERY_ATTRIBUTION_HEADER]: logComment }
+    : undefined;
+  return withPrometheusError(() =>
+    server.post(path, { searchParams, signal, headers }).json<T>(),
   );
+};
 
 export const prometheusApi = {
   queryRange: (params: {
@@ -881,6 +892,7 @@ export const prometheusApi = {
     database?: string;
     table?: string;
     signal?: AbortSignal;
+    attribution?: QueryAttribution;
   }): Promise<PrometheusQueryRangeResponse> =>
     prometheusFetch(
       'v1/prometheus/query_range',
@@ -894,6 +906,7 @@ export const prometheusApi = {
         ...(params.table ? { table: params.table } : {}),
       },
       params.signal,
+      params.attribution,
     ),
 
   query: (params: {
@@ -905,6 +918,7 @@ export const prometheusApi = {
     /** Maximum number of series to return. */
     limit?: number;
     signal?: AbortSignal;
+    attribution?: QueryAttribution;
   }): Promise<PrometheusInstantQueryResponse> =>
     prometheusFetch(
       'v1/prometheus/query',
@@ -917,6 +931,7 @@ export const prometheusApi = {
         ...(params.table ? { table: params.table } : {}),
       },
       params.signal,
+      params.attribution,
     ),
 
   labels: (params: {

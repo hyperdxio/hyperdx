@@ -16,6 +16,8 @@
  * check) get a `query_id` but an empty `log_comment`.
  */
 
+import { z } from 'zod';
+
 /**
  * Which part of the product sent the query.
  */
@@ -205,6 +207,48 @@ export function buildLogComment(
 
   // Only the version survived, so there is nothing to say.
   return payload.size > 1 ? serialized : undefined;
+}
+
+/**
+ * Carries a `buildLogComment` payload on requests that reach ClickHouse through
+ * an API route rather than a ClickHouse client, such as PromQL.
+ */
+export const QUERY_ATTRIBUTION_HEADER = 'x-hyperdx-query-attribution';
+
+// `.catch` per field, so one bad value drops that field rather than the lot.
+const optionalString = z.string().optional().catch(undefined);
+const wireAttributionSchema = z.object({
+  surface: z.enum(QUERY_SURFACES).optional().catch(undefined),
+  dashboard: optionalString,
+  tile: optionalString,
+  search: optionalString,
+  alert: optionalString,
+  source: optionalString,
+  trace: optionalString,
+  label: optionalString,
+});
+
+/**
+ * The inverse of `buildLogComment`, for a payload that arrived over the wire.
+ * Unknown keys and non-string values are dropped. Values are not sanitized
+ * here: they go back through `buildLogComment` before reaching ClickHouse.
+ */
+export function parseLogComment(
+  value: string | undefined,
+): QueryAttribution | undefined {
+  if (!value || value.length > MAX_LOG_COMMENT_BYTES) return undefined;
+
+  let json: unknown;
+  try {
+    json = JSON.parse(value);
+  } catch {
+    return undefined;
+  }
+  const parsed = wireAttributionSchema.safeParse(json);
+  if (!parsed.success) return undefined;
+
+  const attribution = mergeQueryAttribution(parsed.data);
+  return Object.keys(attribution).length > 0 ? attribution : undefined;
 }
 
 function stringify(payload: Map<string, string | number>): string {
