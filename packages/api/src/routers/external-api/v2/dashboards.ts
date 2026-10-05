@@ -2,7 +2,10 @@ import express from 'express';
 import { uniq } from 'lodash';
 import { z } from 'zod';
 
-import { deleteDashboard } from '@/controllers/dashboard';
+import {
+  deleteDashboard,
+  recordDashboardOnboardingIfHasTiles,
+} from '@/controllers/dashboard';
 import Dashboard, { IDashboard } from '@/models/dashboard';
 import { processRequestWithEnhancedErrors as validateRequest } from '@/utils/enhancedErrors';
 import { ExternalDashboardTileWithId, objectIdSchema } from '@/utils/zod';
@@ -1764,7 +1767,10 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *         A drop-down filter on a dashboard. Depending on type, filters can either broadcast
  *         selected value(s) to every tile (isBroadcastEnabled), expose selected
  *         values as a variable (isVariableEnabled) or both. Typically a filter should
- *         do just one of these things.
+ *         do just one of these things. Any filter may additionally be marked
+ *         required via minSelections, which blocks the tiles that read it until it
+ *         has a selected value - or every tile on the dashboard, with
+ *         isGlobalRequirement.
  *       oneOf:
  *         - $ref: '#/components/schemas/QueryExpressionFilterInput'
  *         - $ref: '#/components/schemas/StaticListFilterInput'
@@ -1867,6 +1873,24 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *             only, so the field is rejected when isVariableEnabled is not true, and
  *             is omitted from responses for such a filter.
  *           example: "environment"
+ *         minSelections:
+ *           type: integer
+ *           enum: [0, 1]
+ *           default: 0
+ *           description: |
+ *             Minimum number of values that must be selected before tiles load.
+ *             Set to 1 to make the filter required. Only 0 and 1 are accepted.
+ *             Omit the field (or send 0) for the default optional behavior.
+ *           example: 1
+ *         isGlobalRequirement:
+ *           type: boolean
+ *           default: false
+ *           description: |
+ *             Widens a required filter's block to every tile on the dashboard. False
+ *             (the default) blocks only the tiles that read the filter: those
+ *             referencing its variableName, and those its broadcast applies to.
+ *             Ignored unless minSelections is 1.
+ *           example: true
  *
  *     StaticListFilterInput:
  *       type: object
@@ -1935,6 +1959,24 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *             only, so the field is rejected when isVariableEnabled is not true, and
  *             is omitted from responses for such a filter.
  *           example: "environment"
+ *         minSelections:
+ *           type: integer
+ *           enum: [0, 1]
+ *           default: 0
+ *           description: |
+ *             Minimum number of values that must be selected before tiles load.
+ *             Set to 1 to make the filter required. Only 0 and 1 are accepted.
+ *             Omit the field (or send 0) for the default optional behavior.
+ *           example: 1
+ *         isGlobalRequirement:
+ *           type: boolean
+ *           default: false
+ *           description: |
+ *             Widens a required filter's block to every tile on the dashboard. False
+ *             (the default) blocks only the tiles that read the filter: those
+ *             referencing its variableName, and those its broadcast applies to.
+ *             Ignored unless minSelections is 1.
+ *           example: true
  *
  *     PrometheusLabelFilterInput:
  *       type: object
@@ -2004,6 +2046,24 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *             removed. Variable names must be unique across a dashboard's
  *             variable-enabled filters.
  *           example: "pod"
+ *         minSelections:
+ *           type: integer
+ *           enum: [0, 1]
+ *           default: 0
+ *           description: |
+ *             Minimum number of values that must be selected before tiles load.
+ *             Set to 1 to make the filter required. Only 0 and 1 are accepted.
+ *             Omit the field (or send 0) for the default optional behavior.
+ *           example: 1
+ *         isGlobalRequirement:
+ *           type: boolean
+ *           default: false
+ *           description: |
+ *             Widens a required filter's block to every tile on the dashboard. False
+ *             (the default) blocks only the tiles that read the filter: those
+ *             referencing its variableName, and those its broadcast applies to.
+ *             Ignored unless minSelections is 1.
+ *           example: true
  *
  *     Filter:
  *       allOf:
@@ -2722,6 +2782,8 @@ router.post(
         ...(containers !== undefined ? { containers } : {}),
       }).save();
 
+      recordDashboardOnboardingIfHasTiles(req.user?._id, newDashboard.tiles);
+
       res.json({
         data: convertToExternalDashboard(newDashboard),
       });
@@ -2987,6 +3049,11 @@ router.put(
         internalTiles,
         existingTileIds,
       });
+
+      recordDashboardOnboardingIfHasTiles(
+        req.user?._id,
+        updatedDashboard.tiles,
+      );
 
       res.json({
         data: convertToExternalDashboard(updatedDashboard),

@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import produce from 'immer';
 import type { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
-import { chSql } from '@hyperdx/common-utils/dist/clickhouse';
+import {
+  chSql,
+  streamToAsyncIterator,
+} from '@hyperdx/common-utils/dist/clickhouse';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
   DateRange,
@@ -13,6 +16,7 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 
+import { useQueryAttribution } from '@/queryAttribution';
 import { usePrevious } from '@/utils';
 
 import useFieldExpressionGenerator, {
@@ -292,21 +296,6 @@ function isAbortError(e: unknown): boolean {
   );
 }
 
-async function* streamToAsyncIterator<T = any>(
-  stream: ReadableStream<T>,
-): AsyncIterableIterator<T> {
-  const reader = stream.getReader();
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) return;
-      yield value;
-    }
-  } finally {
-    reader.releaseLock();
-  }
-}
-
 // OPTIMIZATION STRATEGY
 //
 // 1. Write a clickhouse query to divide a session into different chunks, where each chunk has a start time. Maybe each chunk contains 100 events.
@@ -439,6 +428,7 @@ export function useRRWebEventStream(
   const lastFetchStatusRef = useRef<'fetching' | 'idle' | undefined>(undefined);
 
   const { data: source } = useSource({ id: sourceId });
+  const attribution = useQueryAttribution();
 
   const fetchResults = useCallback(
     async ({
@@ -483,7 +473,7 @@ export function useRRWebEventStream(
 
       const format = 'JSONEachRow';
       const fetchPromise = (async () => {
-        const clickhouseClient = getClickhouseClient();
+        const clickhouseClient = getClickhouseClient({ attribution });
         const resultSet = await clickhouseClient.query({
           query: query.sql,
           query_params: query.params,
@@ -582,6 +572,7 @@ export function useRRWebEventStream(
       resultsKey,
       metadata,
       getSessionSourceFieldExpression,
+      attribution,
     ],
   );
 

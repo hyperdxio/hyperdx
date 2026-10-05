@@ -5,10 +5,12 @@ import {
   validateRawSqlForAlert,
 } from '@hyperdx/common-utils/dist/core/utils';
 import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
+import { isRangeThresholdType } from '@hyperdx/common-utils/dist/types';
 import { groupBy } from 'lodash';
 import { Types } from 'mongoose';
 import { z } from 'zod';
 
+import { recordOnboardingTaskCompletion } from '@/controllers/user';
 import type { ObjectId } from '@/models';
 import Alert, {
   AlertChannel,
@@ -281,7 +283,13 @@ export const makeAlert = (
     }),
     source: alert.source,
     threshold: alert.threshold,
-    thresholdMax: alert.thresholdMax,
+    // Omitted rather than set to undefined for a non-range comparator, so
+    // updateAlert can $unset the path. Writing null instead would surface on
+    // the create/update responses, which return the document directly, and a
+    // client round-tripping one back into an update would fail validation.
+    ...(isRangeThresholdType(alert.thresholdType) && {
+      thresholdMax: alert.thresholdMax,
+    }),
     thresholdType: alert.thresholdType,
     ...(userId && { createdBy: userId }),
 
@@ -314,16 +322,34 @@ export const makeAlert = (
   };
 };
 
+// makeAlert omits thresholdMax for a non-range comparator, and Mongoose drops
+// an omitted key from an update rather than clearing the path, so the bound has
+// to be unset explicitly or an alert edited off `between` keeps a stale one and
+// reports a range condition it no longer has. Every update path needs this;
+// $unset is ignored on an upsert insert, so it is safe there too.
+const makeAlertUpdate = (
+  alertInput: AlertInput,
+  userId?: ObjectId,
+  refs: AlertRefs = {},
+) => ({
+  $set: makeAlert(alertInput, userId, refs),
+  ...(!isRangeThresholdType(alertInput.thresholdType) && {
+    $unset: { thresholdMax: 1 },
+  }),
+});
+
 export const createAlert = async (
   teamId: ObjectId,
   alertInput: z.infer<typeof internalAlertSchema>,
   userId: ObjectId,
   refs: AlertRefs = {},
 ) => {
-  return new Alert({
+  const alert = await new Alert({
     ...makeAlert(alertInput, userId, refs),
     team: teamId,
   }).save();
+  recordOnboardingTaskCompletion(userId, 'alert');
+  return alert;
 };
 
 // create an update alert function based off of the above create alert function
@@ -332,18 +358,24 @@ export const updateAlert = async (
   teamId: ObjectId,
   alertInput: AlertInput,
   refs: AlertRefs = {},
+  userId?: ObjectId,
 ) => {
   // should consider clearing AlertHistory when updating an alert?
-  return Alert.findOneAndUpdate(
+  const alert = await Alert.findOneAndUpdate(
     {
       _id: id,
       team: teamId,
     },
-    makeAlert(alertInput, undefined, refs),
+    makeAlertUpdate(alertInput, undefined, refs),
     {
       returnDocument: 'after',
     },
   );
+  // Editing an alert also completes "set up an alert", not just creating one.
+  if (alert != null) {
+    recordOnboardingTaskCompletion(userId, 'alert');
+  }
+  return alert;
 };
 
 export const countAlerts = async (teamId: ObjectId) => {
@@ -389,7 +421,7 @@ export const createOrUpdateDashboardAlerts = async (
   userId?: ObjectId,
 ) => {
   const dashboardId = dashboard._id;
-  return Promise.all(
+  const result = await Promise.all(
     Object.entries(alertsByTile).map(async ([tileId, alert]) => {
       const filter = {
         dashboard: dashboardId,
@@ -404,17 +436,24 @@ export const createOrUpdateDashboardAlerts = async (
         tileId,
       };
       const oldAlert = await Alert.findOne(filter);
-      const alertValues =
+      const alertUpdate =
         oldAlert && oldAlert.createdBy
-          ? makeAlert(alertInput, undefined, { dashboard })
-          : makeAlert(alertInput, userId, { dashboard });
+          ? makeAlertUpdate(alertInput, undefined, { dashboard })
+          : makeAlertUpdate(alertInput, userId, { dashboard });
 
-      return await Alert.findOneAndUpdate(filter, alertValues, {
+      return await Alert.findOneAndUpdate(filter, alertUpdate, {
         new: true,
         upsert: true,
       });
     }),
   );
+
+  // Tile alerts never hit the /alerts router, so record here.
+  if (result.length > 0) {
+    recordOnboardingTaskCompletion(userId, 'alert');
+  }
+
+  return result;
 };
 
 export const deleteDashboardAlerts = async (
@@ -475,29 +514,42 @@ export const getAlertWithDisplayRefs = async (
   }).populate<AlertWithDisplayRefs>(DISPLAY_REF_POPULATE);
 };
 
-export const getAlertsEnhanced = async (teamId: ObjectId) => {
-  return Alert.find({ team: teamId }).populate<{
-    savedSearch: ISavedSearch;
-    dashboard: IDashboard;
-    createdBy?: IUser;
-    silenced?: IAlert['silenced'] & {
-      by: IUser;
-    };
-  }>(['savedSearch', 'dashboard', 'createdBy', 'silenced.by']);
+/** Represents the documents populated and projected by ALERT_PAGE_POPULATE */
+export type AlertPageRefs = {
+  // `_id` is not in the select below but Mongo returns it anyway
+  savedSearch: Pick<ISavedSearch, '_id' | 'name' | 'tags'> | null;
+  dashboard:
+    | (Pick<IDashboard, '_id' | 'name' | 'provisioned' | 'tags'> & {
+        tiles: { id: string; config?: { name?: string } }[];
+      })
+    | null;
+  createdBy?: Pick<IUser, 'email' | 'name'>;
+  silenced?: IAlert['silenced'] & {
+    by: Pick<IUser, 'email'>;
+  };
 };
+
+/**
+ * Projections for the internal alerts surfaces (the alerts page and the alert
+ * detail endpoint), kept to what the response actually renders.
+ */
+export const ALERT_PAGE_POPULATE = [
+  { path: 'savedSearch', select: 'name tags' },
+  {
+    path: 'dashboard',
+    select: 'name provisioned tags tiles.id tiles.config.name',
+  },
+  { path: 'createdBy', select: 'email name' },
+  { path: 'silenced.by', select: 'email' },
+];
 
 export const getAlertEnhanced = async (
   alertId: ObjectId | string,
   teamId: ObjectId,
 ) => {
-  return Alert.findOne({ _id: alertId, team: teamId }).populate<{
-    savedSearch: ISavedSearch;
-    dashboard: IDashboard;
-    createdBy?: IUser;
-    silenced?: IAlert['silenced'] & {
-      by: IUser;
-    };
-  }>(['savedSearch', 'dashboard', 'createdBy', 'silenced.by']);
+  return Alert.findOne({ _id: alertId, team: teamId }).populate<AlertPageRefs>(
+    ALERT_PAGE_POPULATE,
+  );
 };
 
 export const deleteAlert = async (id: string, teamId: ObjectId) => {

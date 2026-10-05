@@ -1,4 +1,8 @@
-import { dateParser, parseTimeRangeInput } from '@/components/TimePicker/utils';
+import {
+  dateParser,
+  parseTimeRangeInput,
+  timeRangeInputToSeconds,
+} from '@/components/TimePicker/utils';
 
 describe('dateParser', () => {
   let mockDate: Date;
@@ -152,5 +156,32 @@ describe('parseTimeRangeInput', () => {
       new Date('2024-01-15T12:00:00'),
       new Date('2024-01-16T12:00:00'),
     ]);
+  });
+});
+
+describe('timeRangeInputToSeconds', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2025-01-15T22:00:00'));
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('returns the relative range length in seconds', () => {
+    expect(timeRangeInputToSeconds('Past 1h', false)).toBe(3600);
+    expect(timeRangeInputToSeconds('Past 15m', false)).toBe(900);
+  });
+
+  it('returns the span of an absolute range', () => {
+    expect(timeRangeInputToSeconds('2024-01-15 to 2024-01-16', false)).toBe(
+      86400,
+    );
+  });
+
+  it('returns null for unparseable input', () => {
+    expect(timeRangeInputToSeconds('', false)).toBeNull();
+    expect(timeRangeInputToSeconds('not a date', false)).toBeNull();
   });
 });

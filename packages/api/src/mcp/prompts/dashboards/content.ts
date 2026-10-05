@@ -114,6 +114,8 @@ Apply these before calling clickstack_save_dashboard. Each rule is enforced by t
 
 9d. USE A STATIC_LIST FILTER WHEN THE DROPDOWN SHOULD OFFER A FIXED HAND-AUTHORED LIST. When the values are a business list (environments, tenants, tiers) or a curated subset rather than derivable from the data, declare filters: [{ type: "STATIC_LIST", name, options: ["prod", "staging"], variableName }]. It takes no expression, sourceId, or where, and it is always variable-only (there is nothing to broadcast), so tiles must reference $variableName, typically via $__filter(<expression>, $<variableName>) with the column passed explicitly (the one-argument $__filter($var) form fails because the filter has no expression of its own).
 
+9e. MAKE A FILTER REQUIRED ONLY WHEN AN UNSCOPED VIEW IS MEANINGLESS. minSelections: 1 blocks the tiles that read the filter - the ones referencing its $variableName, and the ones its broadcast applies to - until the user picks a value. isGlobalRequirement: true widens that to every tile on the dashboard. Consider pairing either form with savedFilterValues so the dashboard opens on a sensible default rather than blocked.
+
 10. UPDATE IS REPLACE, NOT MERGE. clickstack_save_dashboard with an id overwrites tiles, containers, and filters in their entirety. Call clickstack_get_dashboard first when you only want to add or rename one entry; do not send a partial set or you will silently drop everything you omitted.
 
 11. GROUP RELATED TILES INTO CONTAINERS. REQUIRED at five or more tiles, no exceptions. An ungrouped wall of nine or ten tiles is a readability failure even when each tile is correct in isolation. Containers are the right way to introduce structure; markdown tiles for section labels are not.
@@ -989,7 +991,7 @@ For configType: "sql" tiles, write ClickHouse SQL with template macros:
   table        1 to 20 select items. Optional groupBy defines row groups. Per-series numberFormat lets one column render as a duration while a sibling count column stays a plain number.
   heatmap      Exactly 1 select item with a non-empty valueExpression. No aggFn or alias on the select item (the chart-level displayType: "heatmap" is the discriminator). Trace sources only (no Log/Metric/Session). No groupBy. Optional where filter applied before bucketing.
   search       No select items (select is a column list string). where is the filter.
-  markdown     No select items. Set markdown field with content.
+  markdown     No select items. Set markdown field with content, which may reference dashboard variables (see DASHBOARD VARIABLES).
 
 == METRIC SOURCES ==
 
@@ -1219,6 +1221,7 @@ Only add one when the default is wrong. \${service:sqlstring} is redundant in a 
   lucene     ("a" OR "b")         ("")        the default in Lucene inputs; ("") is a match-all, so no guard is needed
   regex      (a|b)                .*          use with match()
   csv        a,b                  <empty>     use INSIDE a string literal
+  markdown   a, b                 <empty>     the default in markdown tiles; markdown syntax in values is escaped
 
 BUILDER TILES
 
@@ -1231,6 +1234,11 @@ Every expression on a builder tile accepts variable references, in either langua
 In a LUCENE input the macros have no meaning and are matched as literal text. Reference the variable directly instead, which renders in the lucene format and needs no guard: with nothing selected it becomes ServiceName:("") and the translator drops that to a match-all, so the tile returns everything rather than going empty.
   select: [{ aggFn: "count", whereLanguage: "lucene", where: "ServiceName:$service" }]
 When in doubt on a variable-driven tile, set whereLanguage: "sql" and use $__filter.
+
+MARKDOWN TILES
+
+The markdown field substitutes $variableName / \${variableName} / \${variableName:format} with the selected values as plain text, so a note can name what the dashboard is scoped to. Nothing is selected on a freshly-opened dashboard, so the reference renders as nothing until the user picks a value; write the surrounding text so it still reads. The macros have no meaning here and are left as written.
+  markdown: "Latency for the selected services: $service"
 
 RAW SQL TILES (for advanced use-cases only)
 

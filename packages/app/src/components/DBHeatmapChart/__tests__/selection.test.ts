@@ -1,6 +1,9 @@
 import type uPlot from 'uplot';
 
-import { applySelectionToChart, SelectionBounds } from './DBHeatmapChart';
+import {
+  applySelectionToChart,
+  SelectionBounds,
+} from '@/components/DBHeatmapChart/selection';
 
 type StubU = {
   scales: {

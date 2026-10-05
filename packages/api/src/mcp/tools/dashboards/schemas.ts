@@ -1225,6 +1225,28 @@ const mcpDashboardFilterBaseShape = {
       'Human-readable filter label shown in the dashboard filter bar dropdown.',
     ),
   variableName: variableNameSchema.describe(VARIABLE_NAME_DESCRIPTION),
+  minSelections: z
+    .number()
+    .int()
+    .min(0)
+    .max(1)
+    .optional()
+    .describe(
+      'Set to 1 to make this filter REQUIRED. Until the user picks at least one ' +
+        'value for it, the tiles that read this filter refuse to load and show a ' +
+        '"missing required filters" message instead. By default, tiles that ' +
+        'reference this filter by its variable or receive a broadcasted value ' +
+        'from this filter will be blocked. isGlobalRequirement widens the block ' +
+        'to all tiles.Only 0 and 1 are accepted; omit the field (or pass 0) for ' +
+        'the normal optional behavior, which is usually what you want.',
+    ),
+  isGlobalRequirement: z
+    .boolean()
+    .optional()
+    .describe(
+      'Widens a REQUIRED filter (minSelections: 1) to block EVERY tile on the dashboard, ' +
+        'not just the ones that read it. Ignored unless minSelections is 1.',
+    ),
 };
 
 const mcpQueryExpressionFilterSchema = z

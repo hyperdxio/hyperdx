@@ -365,6 +365,51 @@ describe('dashboard router', () => {
     });
   });
 
+  // The dashboard editor only ever sets thresholdMax, so switching a tile alert
+  // off a range comparator has to clear the stored bound on this path too.
+  it('clears thresholdMax when a tile alert is moved off a range comparator', async () => {
+    const mockAlert = makeMockAlert(webhook._id.toString());
+    const tile = makeTile({
+      alert: {
+        ...mockAlert,
+        thresholdType: AlertThresholdType.BETWEEN,
+        threshold: 5,
+        thresholdMax: 20,
+      },
+    });
+    const dashboard = await agent
+      .post('/dashboards')
+      .send({ name: 'Test Dashboard', tiles: [tile], tags: [] })
+      .expect(200);
+
+    const created = await agent.get(`/alerts`).expect(200);
+    expect(created.body.data[0].thresholdMax).toBe(20);
+
+    await agent
+      .patch(`/dashboards/${dashboard.body.id}`)
+      .send({
+        ...dashboard.body,
+        tiles: [
+          {
+            ...dashboard.body.tiles[0],
+            config: {
+              ...dashboard.body.tiles[0].config,
+              alert: {
+                ...mockAlert,
+                thresholdType: AlertThresholdType.ABOVE,
+                threshold: 5,
+              },
+            },
+          },
+        ],
+      })
+      .expect(200);
+
+    const updated = await agent.get(`/alerts`).expect(200);
+    expect(updated.body.data[0].thresholdType).toBe(AlertThresholdType.ABOVE);
+    expect(updated.body.data[0].thresholdMax).toBeUndefined();
+  });
+
   it('rejects a tile alert with no notification channel', async () => {
     await agent
       .post('/dashboards')
@@ -1097,6 +1142,116 @@ describe('dashboard router', () => {
           }),
         ]);
       });
+    });
+  });
+
+  describe('required filters', () => {
+    const makeFilter = (overrides = {}) => ({
+      id: new Types.ObjectId().toString(),
+      type: 'QUERY_EXPRESSION' as const,
+      name: 'Service Name',
+      expression: 'ServiceName',
+      source: new Types.ObjectId().toString(),
+      ...overrides,
+    });
+
+    it('persists minSelections on create', async () => {
+      const filter = makeFilter({ minSelections: 1 });
+
+      const created = await agent
+        .post('/dashboards')
+        .send({ ...MOCK_DASHBOARD, filters: [filter] })
+        .expect(200);
+
+      expect(created.body.filters).toEqual([filter]);
+
+      const stored = await Dashboard.findById(created.body.id).lean();
+      expect(stored?.filters).toEqual([filter]);
+    });
+
+    it('persists minSelections on patch', async () => {
+      const created = await agent
+        .post('/dashboards')
+        .send({ ...MOCK_DASHBOARD, filters: [makeFilter()] })
+        .expect(200);
+
+      const filter = makeFilter({
+        id: created.body.filters[0].id,
+        minSelections: 1,
+      });
+      await agent
+        .patch(`/dashboards/${created.body.id}`)
+        .send({ filters: [filter] })
+        .expect(200);
+
+      const stored = await Dashboard.findById(created.body.id).lean();
+      expect(stored?.filters?.[0].minSelections).toBe(1);
+    });
+
+    // Absence is meaningful: the client reads a missing value as not required,
+    // so the server must not materialize one.
+    it('leaves minSelections absent when it is not sent', async () => {
+      const created = await agent
+        .post('/dashboards')
+        .send({ ...MOCK_DASHBOARD, filters: [makeFilter()] })
+        .expect(200);
+
+      const stored = await Dashboard.findById(created.body.id).lean();
+      expect(stored?.filters?.[0]).not.toHaveProperty('minSelections');
+    });
+
+    it.each([2, -1, 1.5, '1'])('rejects minSelections %s', async value => {
+      await agent
+        .post('/dashboards')
+        .send({
+          ...MOCK_DASHBOARD,
+          filters: [makeFilter({ minSelections: value })],
+        })
+        .expect(400);
+    });
+
+    it('persists a dashboard-wide requirement', async () => {
+      const filter = makeFilter({
+        minSelections: 1,
+        isGlobalRequirement: true,
+      });
+
+      const created = await agent
+        .post('/dashboards')
+        .send({ ...MOCK_DASHBOARD, filters: [filter] })
+        .expect(200);
+
+      expect(created.body.filters).toEqual([filter]);
+
+      const stored = await Dashboard.findById(created.body.id).lean();
+      expect(stored?.filters).toEqual([filter]);
+    });
+
+    // Absence is what scopes the block to the filter's own tiles, so the server
+    // must not materialize the flag.
+    it('leaves the scope absent when it is not sent', async () => {
+      const created = await agent
+        .post('/dashboards')
+        .send({
+          ...MOCK_DASHBOARD,
+          filters: [makeFilter({ minSelections: 1 })],
+        })
+        .expect(200);
+
+      const stored = await Dashboard.findById(created.body.id).lean();
+      expect(stored?.filters?.[0]).not.toHaveProperty('isGlobalRequirement');
+    });
+
+    it('rejects a non-boolean scope', async () => {
+      await agent
+        .post('/dashboards')
+        .send({
+          ...MOCK_DASHBOARD,
+          filters: [
+            makeFilter({ minSelections: 1, isGlobalRequirement: 'true' }),
+          ],
+        })
+        .expect(400);
     });
   });
 

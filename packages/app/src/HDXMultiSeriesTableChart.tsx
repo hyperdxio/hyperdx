@@ -60,6 +60,7 @@ export const Table = ({
   onSortingChange,
   variant = 'default',
   alternateRowBackground = false,
+  className,
 }: {
   data: any[];
   columns: {
@@ -101,6 +102,9 @@ export const Table = ({
   // dedicated `.stripedRow` hover rule keeps row hover visible over a stripe
   // (see the CSS module).
   alternateRowBackground?: boolean;
+  // Extra classes for the scroll container, e.g. `effect-pulse` while the
+  // tile is refreshing.
+  className?: string;
 }) => {
   const brandName = useBrandDisplayName();
   const MIN_COLUMN_WIDTH_PX = 100;
@@ -403,7 +407,10 @@ export const Table = ({
   );
 
   return (
-    <div className="overflow-auto h-100 fs-8" ref={tableContainerRef}>
+    <div
+      className={cx('overflow-auto h-100 fs-8', className)}
+      ref={tableContainerRef}
+    >
       <table
         className="w-100"
         style={{

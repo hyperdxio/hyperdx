@@ -5,6 +5,7 @@ import type {
   WebhookTestApiResponse,
   WebhookUpdateApiResponse,
 } from '@hyperdx/common-utils/dist/types';
+import { AlertThresholdType } from '@hyperdx/common-utils/dist/types';
 import express from 'express';
 import { ObjectId } from 'mongodb';
 import mongoose from 'mongoose';
@@ -13,8 +14,13 @@ import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
 import { createWebhook, deleteWebhook } from '@/controllers/webhook';
-import { AlertState } from '@/models/alert';
+import { AlertSource, AlertState } from '@/models/alert';
 import Webhook, { WebhookService } from '@/models/webhook';
+import {
+  ALERT_STATUS_BY_STATE,
+  ALERT_TYPE_BY_SOURCE,
+  COMPARATOR_BY_THRESHOLD_TYPE,
+} from '@/tasks/checkAlerts/template';
 import {
   handleSendGenericWebhook,
   handleSendSlackWebhook,
@@ -478,9 +484,9 @@ router.post(
         state: AlertState.ALERT,
         eventId: 'test-event-id',
         alertId: 'test-alert-id',
-        status: 'firing',
-        alertType: 'search',
-        comparator: 'between',
+        status: ALERT_STATUS_BY_STATE[AlertState.ALERT],
+        alertType: ALERT_TYPE_BY_SOURCE[AlertSource.SAVED_SEARCH],
+        comparator: COMPARATOR_BY_THRESHOLD_TYPE[AlertThresholdType.BETWEEN],
         threshold: 5,
         thresholdMax: 10,
         value: 7,

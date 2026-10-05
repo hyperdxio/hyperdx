@@ -3656,6 +3656,158 @@ describe('checkAlerts', () => {
         expect(targets![0].durationMs).toEqual(expect.any(Number));
         expect(targets![0].dispatches).toBe(1);
         expect(targets![0].failures).toBe(0);
+        // The figure is the dispatch phase alone — with one target it is that
+        // target's own response time, give or take each figure's rounding.
+        // Time spent building the message is deliberately excluded.
+        const { webhookDurationMs } = normalHistories[0].analytics!;
+        expect(webhookDurationMs).toBeGreaterThanOrEqual(
+          targets![0].durationMs - 2,
+        );
+        expect(webhookDurationMs).toBeLessThanOrEqual(
+          targets![0].durationMs + 2,
+        );
+      });
+
+      // Every target unresolvable (the webhook was deleted) queues no job, and
+      // an empty dispatch finishes instantly — 0ms would read as a target that
+      // answered at once.
+      it('records no delivery time when the webhook no longer exists', async () => {
+        const {
+          team,
+          webhook,
+          connection,
+          source,
+          savedSearch,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
+
+        await bulkInsertLogs([
+          {
+            ServiceName: 'api',
+            Timestamp: new Date('2023-11-16T22:05:00.000Z'),
+            SeverityText: 'error',
+            Body: 'oh no',
+          },
+          {
+            ServiceName: 'api',
+            Timestamp: new Date('2023-11-16T22:05:00.000Z'),
+            SeverityText: 'error',
+            Body: 'oh no',
+          },
+        ]);
+
+        const details = await createAlertDetails(
+          team,
+          source,
+          {
+            source: AlertSource.SAVED_SEARCH,
+            channel: {
+              type: 'webhook',
+              webhookId: webhook._id.toString(),
+            },
+            interval: '5m',
+            thresholdType: AlertThresholdType.ABOVE,
+            threshold: 1,
+            savedSearchId: savedSearch.id,
+          },
+          {
+            taskType: AlertTaskType.SAVED_SEARCH,
+            savedSearch,
+          },
+        );
+
+        await processAlertAtTime(
+          new Date('2023-11-16T22:10:00.000Z'),
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          // The alert still points at a webhook the team no longer has.
+          new Map(),
+        );
+
+        const normalHistories = await AlertHistory.find({
+          alert: details.alert.id,
+          state: { $ne: AlertState.ERROR },
+        });
+        expect(normalHistories).toHaveLength(1);
+        const { webhookDurationMs, notificationTargets } =
+          normalHistories[0].analytics!;
+        expect(notificationTargets).toBeUndefined();
+        expect(webhookDurationMs).toBeUndefined();
+      });
+
+      // An unclosed Handlebars block throws at compile, before any dispatch.
+      it('records no delivery time when the message fails to compile', async () => {
+        const {
+          team,
+          webhook,
+          connection,
+          source,
+          savedSearch,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
+
+        await bulkInsertLogs([
+          {
+            ServiceName: 'api',
+            Timestamp: new Date('2023-11-16T22:05:00.000Z'),
+            SeverityText: 'error',
+            Body: 'oh no',
+          },
+          {
+            ServiceName: 'api',
+            Timestamp: new Date('2023-11-16T22:05:00.000Z'),
+            SeverityText: 'error',
+            Body: 'oh no',
+          },
+        ]);
+
+        const details = await createAlertDetails(
+          team,
+          source,
+          {
+            source: AlertSource.SAVED_SEARCH,
+            channel: {
+              type: 'webhook',
+              webhookId: webhook._id.toString(),
+            },
+            interval: '5m',
+            thresholdType: AlertThresholdType.ABOVE,
+            threshold: 1,
+            savedSearchId: savedSearch.id,
+            message: '{{#if}}',
+          },
+          {
+            taskType: AlertTaskType.SAVED_SEARCH,
+            savedSearch,
+          },
+        );
+
+        await processAlertAtTime(
+          new Date('2023-11-16T22:10:00.000Z'),
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        const errorHistories = await AlertHistory.find({
+          alert: details.alert.id,
+          state: AlertState.ERROR,
+        });
+        expect(errorHistories).toHaveLength(1);
+        expect(errorHistories[0].errors![0].type).toBe(
+          AlertErrorType.WEBHOOK_ERROR,
+        );
+        // Nothing reached a target, so there is no delivery time to report —
+        // the time spent rendering is not it.
+        const { webhookDurationMs, notificationTargets } =
+          errorHistories[0].analytics!;
+        expect(notificationTargets).toBeUndefined();
+        expect(webhookDurationMs).toBeUndefined();
       });
 
       it('keeps ERROR rows from older windows when a later window succeeds', async () => {
@@ -6510,6 +6662,89 @@ describe('checkAlerts', () => {
         call[1].text.includes('My Search'),
       );
       expect(resolutionCall).toBeDefined();
+    });
+
+    // The sample rows quoted in the message body carry no group predicate, so
+    // every group's notification used to re-run the identical query.
+    it('fetches the message body sample rows once for all groups in a window', async () => {
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        savedSearch,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
+
+      const eventMs = new Date('2023-11-16T22:05:00.000Z');
+      await bulkInsertLogs([
+        {
+          ServiceName: 'service-a',
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'Error from service-a',
+        },
+        {
+          ServiceName: 'service-a',
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'Error from service-a',
+        },
+        {
+          ServiceName: 'service-b',
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'Error from service-b',
+        },
+        {
+          ServiceName: 'service-b',
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'Error from service-b',
+        },
+      ]);
+
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 1,
+          savedSearchId: savedSearch.id,
+          groupBy: 'ServiceName',
+        },
+        {
+          taskType: AlertTaskType.SAVED_SEARCH,
+          savedSearch,
+        },
+      );
+
+      // The sample fetch is the only CSV query in an evaluation.
+      const querySpy = jest.spyOn(clickhouseClient, 'query');
+
+      await processAlertAtTime(
+        new Date('2023-11-16T22:12:00.000Z'),
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      const histories = await AlertHistory.find({ alert: details.alert.id });
+      expect(histories).toHaveLength(2);
+      expect(histories.every(h => h.state === AlertState.ALERT)).toBe(true);
+      const sampleQueries = querySpy.mock.calls.filter(
+        ([input]) => input.format === 'CSV',
+      );
+      expect(sampleQueries).toHaveLength(1);
     });
 
     it('Group-by alerts skip logic - should skip when any group history exists in current window', async () => {

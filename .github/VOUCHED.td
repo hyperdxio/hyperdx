@@ -37,10 +37,12 @@ dhable
 dkong16
 elizabetdev
 ernestii
+eugeneo17
 fallintoplace
 fleon
 gingerwizard
 gyancr7
+harshul1484
 jaggederest
 jeyrathnam
 jordan-simonovski
@@ -48,6 +50,7 @@ juliojimenez
 jwhitaker-gridcog
 karl-power
 knudtty
+krishs01
 kyle-mally-ch
 leticiawebb
 lyhuang
@@ -68,9 +71,11 @@ rip21
 sanjams2
 shuvamk
 spencertorres
+squaredg
 teeohhem
 tommyzli
 tsushanth
+tyagiquamar
 tylerhannan
 vineethasok
 vinzee

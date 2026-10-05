@@ -11,6 +11,7 @@ import {
   DerivedColumnSchema,
   MAX_LEGEND_TEMPLATE_LENGTH,
   MetricFormulaSchema,
+  MetricSourceSchema,
   PresetDashboard,
   PresetDashboardFilterSchema,
   SavedChartConfigSchema,
@@ -826,6 +827,61 @@ describe('DashboardFilterValueSchema', () => {
       ],
     });
     expect(result.success).toBe(true);
+  });
+});
+
+describe('DashboardSchema.savedDateRange', () => {
+  const base = { id: 'd1', name: 'Dashboard', tiles: [], tags: [] };
+  const parse = (savedDateRange: unknown) =>
+    DashboardSchema.safeParse({ ...base, savedDateRange }).success;
+
+  it('accepts relative, historical, null, or absent', () => {
+    expect(parse({ type: 'relative', value: 3600 })).toBe(true);
+    expect(parse({ type: 'historical', value: [1700000000, 1700003600] })).toBe(
+      true,
+    );
+    expect(parse(null)).toBe(true);
+    expect(parse(undefined)).toBe(true);
+  });
+
+  it('rejects malformed values', () => {
+    expect(parse({ type: 'relative', value: '1h' })).toBe(false);
+    expect(parse({ type: 'historical', value: [1700000000] })).toBe(false);
+    expect(parse({ type: 'other', value: 1 })).toBe(false);
+    expect(parse(3600)).toBe(false);
+  });
+});
+
+describe('MetricSourceSchema.minAutoGranularity', () => {
+  const base = {
+    id: 'source-1',
+    kind: 'metric' as const,
+    name: 'Metrics',
+    connection: 'conn-1',
+    from: { databaseName: 'default', tableName: '' },
+    timestampValueExpression: 'TimeUnix',
+    resourceAttributesExpression: 'ResourceAttributes',
+    metricTables: { gauge: 'otel_metrics_gauge' },
+  };
+  const parse = (minAutoGranularity: unknown) =>
+    MetricSourceSchema.safeParse({ ...base, minAutoGranularity });
+
+  it('accepts a valid interval or absent', () => {
+    expect(parse('1 minute').success).toBe(true);
+    expect(parse(undefined).success).toBe(true);
+  });
+
+  it("coerces the form's \"No minimum\" value ('') to undefined", () => {
+    const result = parse('');
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.minAutoGranularity).toBeUndefined();
+    }
+  });
+
+  it('rejects a malformed interval', () => {
+    expect(parse('1 fortnight').success).toBe(false);
+    expect(parse('minute').success).toBe(false);
   });
 });
 

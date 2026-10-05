@@ -1,3 +1,5 @@
+import { DashboardFilter } from '@hyperdx/common-utils/dist/types';
+
 import {
   FilterFormValues,
   toFormValues,
@@ -189,4 +191,110 @@ describe('toSavedFilter', () => {
       toSavedFilter(formValues({ type: 'STATIC_LIST', options: [] })),
     ).toThrow();
   });
+});
+
+/** The minimum a form needs to save, per filter type. */
+const byType: Record<DashboardFilter['type'], Partial<FilterFormValues>> = {
+  QUERY_EXPRESSION: {
+    type: 'QUERY_EXPRESSION',
+    name: 'Service',
+    expression: 'ServiceName',
+    source: 'logs',
+  },
+  STATIC_LIST: {
+    type: 'STATIC_LIST',
+    name: 'Environment',
+    options: ['prod'],
+  },
+  PROMETHEUS_LABEL: {
+    type: 'PROMETHEUS_LABEL',
+    name: 'Job',
+    source: 'prom',
+    label: 'job',
+  },
+};
+const variants = Object.entries(byType);
+
+describe('minSelections', () => {
+  it.each(variants)(
+    'reads a stored minimum back onto the %s form',
+    (_type, filter) => {
+      const saved = toSavedFilter(formValues({ ...filter, isRequired: true }));
+
+      expect(saved.minSelections).toBe(1);
+      expect(toFormValues(saved).isRequired).toBe(true);
+    },
+  );
+
+  // Absent rather than 0, so an optional filter's API payload is unchanged.
+  it.each(variants)(
+    'emits no key at all for an optional %s filter',
+    (_type, filter) => {
+      const saved = toSavedFilter(formValues({ ...filter, isRequired: false }));
+
+      expect(saved).not.toHaveProperty('minSelections');
+      expect(toFormValues(saved).isRequired).toBe(false);
+    },
+  );
+
+  it('never leaks the form-only isRequired field into the saved filter', () => {
+    expect(
+      toSavedFilter(
+        formValues({ ...byType.QUERY_EXPRESSION, isRequired: true }),
+      ),
+    ).not.toHaveProperty('isRequired');
+  });
+
+  it('defaults a new filter to optional', () => {
+    expect(toFormValues().isRequired).toBe(false);
+  });
+});
+
+describe('isGlobalRequirement', () => {
+  it('defaults a new filter to blocking only the tiles that use it', () => {
+    expect(toFormValues().isGlobalRequirement).toBe(false);
+  });
+
+  it.each(variants)(
+    'stores a dashboard-wide %s requirement and reads it back onto the form',
+    (_type, filter) => {
+      const saved = toSavedFilter(
+        formValues({ ...filter, isRequired: true, isGlobalRequirement: true }),
+      );
+
+      expect(saved.isGlobalRequirement).toBe(true);
+      expect(toFormValues(saved).isGlobalRequirement).toBe(true);
+    },
+  );
+
+  // Absent rather than false, so a required filter's payload carries only the
+  // field that turns the requirement on.
+  it.each(variants)(
+    'emits no key for a %s filter that blocks only its own tiles',
+    (_type, filter) => {
+      const saved = toSavedFilter(
+        formValues({ ...filter, isRequired: true, isGlobalRequirement: false }),
+      );
+
+      expect(saved).not.toHaveProperty('isGlobalRequirement');
+      expect(toFormValues(saved).isGlobalRequirement).toBe(false);
+    },
+  );
+
+  // The scope is meaningless without a requirement, so an unchecked "Required"
+  // must not leave the wider block behind on the stored filter.
+  it.each(variants)(
+    'emits no key for an optional %s filter',
+    (_type, filter) => {
+      expect(
+        toSavedFilter(
+          formValues({
+            ...filter,
+            isRequired: false,
+            isGlobalRequirement: true,
+          }),
+        ),
+      ).not.toHaveProperty('isGlobalRequirement');
+    },
+  );
 });

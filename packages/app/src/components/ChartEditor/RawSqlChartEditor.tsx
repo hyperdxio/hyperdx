@@ -12,6 +12,7 @@ import {
 import {
   ChartVariable,
   RawSqlChartConfig,
+  SourceKind,
 } from '@hyperdx/common-utils/dist/types';
 import {
   DisplayType,
@@ -114,21 +115,29 @@ export function resolveConnectionSourceSync({
 export default function RawSqlChartEditor({
   control,
   setValue,
+  allowedSourceKinds,
   onOpenDisplaySettings,
   onSubmit,
   isDashboardForm,
   alert,
   additionalWarnings,
+  alertsEnabled,
+  isAlertRequired,
   dashboardId,
   variables,
 }: {
   control: Control<ChartEditorFormState>;
   setValue: UseFormSetValue<ChartEditorFormState>;
+  allowedSourceKinds: SourceKind[];
   onOpenDisplaySettings: () => void;
   onSubmit: (suppressErrorNotification?: boolean) => void;
   isDashboardForm: boolean;
   alert: ChartEditorFormState['alert'];
   additionalWarnings?: string[];
+  /** Whether this editor offers an alert (see EditTimeChartForm.enableAlerts). */
+  alertsEnabled?: boolean;
+  /** Hides the alert editor's remove control. */
+  isAlertRequired?: boolean;
   dashboardId?: string;
   variables?: ChartVariable[];
 }) {
@@ -217,7 +226,7 @@ export default function RawSqlChartEditor({
   const tableConnections: TableConnection[] = useMemo(() => {
     if (!sources) return [];
     return sources
-      .filter(s => s.connection === connection)
+      .filter(s => s.connection === connection && !s.disabled)
       .flatMap(source => {
         const tables: TableConnection[] = getAllMetricTables(source);
 
@@ -275,6 +284,8 @@ export default function RawSqlChartEditor({
           <SourceSelectControlled
             control={control}
             name="source"
+            data-testid="source-selector"
+            allowedSourceKinds={allowedSourceKinds}
             connectionId={connection}
             size="xs"
             clearable
@@ -291,7 +302,7 @@ export default function RawSqlChartEditor({
         </Group>
         <Group gap="xs">
           {displayTypeSupportsRawSqlAlerts(displayType) &&
-            dashboardId &&
+            alertsEnabled &&
             !alert &&
             !IS_LOCAL_MODE && (
               <Button
@@ -368,7 +379,9 @@ export default function RawSqlChartEditor({
           setValue={setValue}
           alert={alert}
           dashboardId={dashboardId}
-          onRemove={() => setValue('alert', undefined)}
+          onRemove={
+            isAlertRequired ? undefined : () => setValue('alert', undefined)
+          }
           error={alertErrorMessage}
           warning={alertWarningMessage}
           tooltip={alertTooltip}

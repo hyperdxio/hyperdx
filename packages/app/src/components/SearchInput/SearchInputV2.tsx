@@ -17,6 +17,7 @@ import {
   hasVariableIssues,
   useVariableValidation,
   VariableIssueIndicator,
+  variableValidationState,
 } from '@/components/SQLEditor/variableValidation';
 import {
   ILanguageFormatter,
@@ -47,12 +48,11 @@ export default function SearchInputV2({
   placeholder = 'Search your events for anything...',
   size = 'sm',
   zIndex,
-  language,
-  onLanguageChange,
   enableHotkey,
   onSubmit,
   additionalSuggestions,
   queryHistoryType,
+  allowMultiline = true,
   dateRange,
   sourceId,
   enableVariables = false,
@@ -62,12 +62,11 @@ export default function SearchInputV2({
   placeholder?: string;
   size?: 'xs' | 'sm' | 'lg';
   zIndex?: number;
-  onLanguageChange?: (language: 'sql' | 'lucene') => void;
-  language?: 'sql' | 'lucene';
   enableHotkey?: boolean;
   onSubmit?: () => void;
   additionalSuggestions?: string[];
   queryHistoryType?: string;
+  allowMultiline?: boolean;
   dateRange?: [Date, Date];
   sourceId?: string;
   enableVariables?: boolean;
@@ -96,6 +95,7 @@ export default function SearchInputV2({
       language: 'lucene',
     },
   );
+  const validationState = variableValidationState(variableIssues);
 
   const {
     options: autoCompleteOptions,
@@ -152,11 +152,11 @@ export default function SearchInputV2({
       tokenInfo={tokenInfo}
       size={size}
       zIndex={zIndex}
-      language={language}
-      onLanguageChange={onLanguageChange}
       onSubmit={onSubmit}
       queryHistoryType={queryHistoryType}
+      allowMultiline={allowMultiline}
       data-testid={dataTestId}
+      validationState={validationState}
       rightAdornment={
         hasVariableIssues(variableIssues) ? (
           <VariableIssueIndicator issues={variableIssues} />
@@ -165,7 +165,10 @@ export default function SearchInputV2({
       aboveSuggestions={
         <>
           <div className={styles.searchingHeader}>Searching for:</div>
-          <div className={styles.searchingDescription}>
+          <div
+            className={styles.searchingDescription}
+            data-testid="search-query-description"
+          >
             {parsedEnglishQuery === ''
               ? 'Matching all events, enter a query to search.'
               : parsedEnglishQuery}

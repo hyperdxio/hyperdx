@@ -1,3 +1,5 @@
+import SqlString from 'sqlstring';
+
 import { hasKeyWithPrefix } from './attributeUtils';
 import { LLMSpanEvent, SpanAttributeMap } from './types';
 
@@ -82,9 +84,72 @@ export function isLLMSpan(
 }
 
 /**
+ * SQL testing whether an attribute key is present on a row.
+ *
+ * For map columns this is `mapContains`, not `col['key'] != ''`, for two
+ * reasons. It is one of the few shapes a `mapKeys(col)` skip index can serve
+ * (`MergeTreeIndexConditionText::isSupportedFunction`) — `!= ''` normalizes to
+ * `notEmpty()`, which no index supports, so it scans every granule. And a map
+ * subscript is a subcolumn reference, which on ClickHouse 26.3+ costs one
+ * per-part size lookup during PREWHERE planning; `mapContains` costs none.
+ *
+ * JSON columns keep the comparison: their paths are real subcolumns, and
+ * `mapContains` does not apply.
+ *
+ * Trade-off: `fastifySQL` rewrites a `Col['key']` subscript onto a
+ * materialized column when one exists, and it matches on the subscript AST
+ * node, so it cannot see this form. On a table where an operator materialized
+ * one of these keys, the subscript would have read that column instead. The
+ * subscript is also not a subcolumn reference once rewritten, so such tables
+ * never had the planning problem — this form trades that rewrite for skip-index
+ * pruning, which is the better deal only where the columns do not exist (the
+ * default).
+ *
+ * This tests presence only. Callers that pair a gate with a value expression
+ * they group by need non-emptiness as well, or a key set to '' becomes a blank
+ * row — see `anyKeyHasValue` in expressions.ts.
+ *
+ * queryParser's private `buildMapContains` emits the same call, but it takes a
+ * rendered `col['key']` subscript and parses it back apart; the field and key
+ * are already separate here. `attributeField` stays raw because it holds a
+ * source's `eventAttributesExpression`, which may be a compound expression
+ * rather than an identifier — the same reason `fieldAccess` interpolates it.
+ */
+function buildKeyExistsSql({
+  attributeField,
+  key,
+  isJsonColumn,
+}: {
+  attributeField: string;
+  key: string;
+  isJsonColumn: boolean;
+}): string {
+  return isJsonColumn
+    ? `toString(${attributeField}.\`${key}\`) != ''`
+    : `mapContains(${attributeField}, ${SqlString.escape(key)})`;
+}
+
+/** SQL matching rows carrying any of the given attribute keys. */
+export function buildAnyKeyExistsSql(args: {
+  attributeField: string;
+  keys: readonly string[];
+  isJsonColumn: boolean;
+}): string {
+  const { attributeField, keys, isJsonColumn } = args;
+  const conditions = keys.map(key =>
+    buildKeyExistsSql({ attributeField, key, isJsonColumn }),
+  );
+  return `(${conditions.join(' OR ')})`;
+}
+
+/**
  * Build a SQL predicate matching LLM spans, for use in search filters and
  * dashboard chart configs. Handles both `Map(String, String)` attribute
- * columns (missing key reads as '') and JSON-typed columns.
+ * columns and JSON-typed columns.
+ *
+ * Presence is the right test here: a span carrying `gen_ai.system` at all was
+ * emitted by LLM instrumentation, whatever the value. Nothing groups by this
+ * predicate, so an empty value cannot produce a blank row.
  */
 export function buildLLMSpanSqlPredicate({
   attributeField,
@@ -94,10 +159,9 @@ export function buildLLMSpanSqlPredicate({
   attributeField: string;
   isJsonColumn: boolean;
 }): string {
-  const conditions = LLM_MARKER_ATTRIBUTE_KEYS.map(key =>
-    isJsonColumn
-      ? `toString(${attributeField}.\`${key}\`) != ''`
-      : `${attributeField}['${key}'] != ''`,
-  );
-  return `(${conditions.join(' OR ')})`;
+  return buildAnyKeyExistsSql({
+    attributeField,
+    keys: LLM_MARKER_ATTRIBUTE_KEYS,
+    isJsonColumn,
+  });
 }

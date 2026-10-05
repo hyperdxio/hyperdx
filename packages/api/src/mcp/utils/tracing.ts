@@ -1,9 +1,12 @@
+import { withQueryAttribution } from '@hyperdx/common-utils/dist/clickhouse/node';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
+import { recordOnboardingTaskCompletion } from '@/controllers/user';
 import type { McpContext, ToolResult } from '@/mcp/tools/types';
 import type { McpErrorCategory, McpErrorResult } from '@/mcp/utils/errors';
 import { getErrorCategory } from '@/mcp/utils/errors';
 import {
+  getActiveTraceId,
   getCounter,
   getHistogram,
   SpanStatusCode,
@@ -87,7 +90,16 @@ export function withToolTracing<TArgs>(
         logger.info(logContext, `MCP tool invoked: ${toolName}`);
 
         try {
-          const result = await handler(args);
+          // Around the whole handler, so every query the tool makes carries
+          // the tool name and who called it.
+          const result = await withQueryAttribution(
+            {
+              surface: 'mcp',
+              label: toolName,
+              trace: getActiveTraceId(),
+            },
+            async () => handler(args),
+          );
           const durationMs = Date.now() - startTime;
 
           if (result.isError) {
@@ -118,6 +130,8 @@ export function withToolTracing<TArgs>(
               { ...logContext, durationMs },
               `MCP tool completed: ${toolName}`,
             );
+            // Only reliable signal the user exercised the MCP server.
+            recordOnboardingTaskCompletion(context.userId, 'mcp');
           }
 
           span.setAttribute('mcp.tool.duration_ms', durationMs);

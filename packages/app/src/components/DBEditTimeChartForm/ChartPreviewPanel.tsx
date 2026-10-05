@@ -10,12 +10,15 @@ import {
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import { Accordion, Divider, Stack, Text } from '@mantine/core';
+import { Accordion, Box, Divider, Stack, Text } from '@mantine/core';
 import { IconList } from '@tabler/icons-react';
 import { SortingState } from '@tanstack/react-table';
 
 import { buildTableRowSearchUrl } from '@/ChartUtils';
-import { getAlertReferenceLines } from '@/components/Alerts';
+import {
+  getAlertReferenceLines,
+  getAlertReferenceLineValues,
+} from '@/components/Alerts';
 import { ChartEditorFormState } from '@/components/ChartEditor/types';
 import ChartSQLPreview from '@/components/ChartSQLPreview';
 import { DBBarChart } from '@/components/DBBarChart';
@@ -23,7 +26,7 @@ import DBHeatmapChart, {
   buildHeatmapBoundsConfig,
   buildHeatmapBucketConfig,
   HEATMAP_N_BUCKETS,
-  toHeatmapChartConfig,
+  toHeatmapQuery,
 } from '@/components/DBHeatmapChart';
 import DBNumberChart from '@/components/DBNumberChart';
 import { DBPieChart } from '@/components/DBPieChart';
@@ -48,6 +51,7 @@ import {
   buildRenderedPromqlExpression,
   buildSampleEventsConfig,
   isQueryReady,
+  tabQueriesData,
 } from './utils';
 
 /** Why a preview accordion is empty before its tile has been run. */
@@ -58,12 +62,10 @@ function HeatmapPreview({
 }: {
   config: BuilderChartConfigWithDateRange;
 }) {
-  const { heatmapConfig, scaleType } = toHeatmapChartConfig(config);
   return (
     <div className="flex-grow-1 d-flex flex-column" style={{ height: 400 }}>
       <DBHeatmapChart
-        config={heatmapConfig}
-        scaleType={scaleType}
+        query={toHeatmapQuery(config)}
         showLegend
         errorVariant="inline"
       />
@@ -92,8 +94,8 @@ function HeatmapSQLPreview({
     ...config,
     timestampValueExpression,
   };
-  const { heatmapConfig, scaleType } =
-    toHeatmapChartConfig(configWithTimestamp);
+  const { config: heatmapConfig, scaleType } =
+    toHeatmapQuery(configWithTimestamp);
   const granularity = convertDateRangeToGranularityString(dateRange, 245);
 
   const boundsConfig = buildHeatmapBoundsConfig({
@@ -142,6 +144,8 @@ type ChartPreviewPanelProps = {
   showSampleEvents: boolean;
   showGeneratedPromql: boolean;
   dbTimeChartConfig?: ChartConfigWithDateRange;
+  /** Required dashboard filters with nothing selected that block this tile. */
+  missingRequiredFilterNames?: string[];
   setValue: (name: 'orderBy', value: string) => void;
   onSubmit: () => void;
 };
@@ -159,6 +163,7 @@ export function ChartPreviewPanel({
   showSampleEvents,
   showGeneratedPromql,
   dbTimeChartConfig,
+  missingRequiredFilterNames,
   setValue,
   onSubmit,
 }: ChartPreviewPanelProps) {
@@ -169,7 +174,11 @@ export function ChartPreviewPanel({
     [queriedConfig],
   );
 
-  const queryReady = !!isQueryReady(queriedConfig);
+  const blockingFilterNames = missingRequiredFilterNames ?? [];
+  const isBlockedByRequiredFilters =
+    blockingFilterNames.length > 0 && tabQueriesData(activeTab);
+  const queryReady =
+    !isBlockedByRequiredFilters && !!isQueryReady(queriedConfig);
 
   const onTableSortingChange = useCallback(
     (sortState: SortingState | null) => {
@@ -201,9 +210,30 @@ export function ChartPreviewPanel({
     [queriedConfig, tableSource, dateRange, queryReady],
   );
 
+  const referenceLineValues = useMemo(
+    () =>
+      alert
+        ? getAlertReferenceLineValues({
+            threshold: alert.threshold,
+            thresholdMax: alert.thresholdMax,
+            thresholdType: alert.thresholdType,
+          })
+        : undefined,
+    [alert],
+  );
+
   return (
     <>
-      {!queryReady && activeTab !== 'markdown' ? (
+      {isBlockedByRequiredFilters ? (
+        <EmptyState
+          description={`Missing required filters: ${blockingFilterNames.join(
+            ', ',
+          )}. Select a value for each required filter, or turn off “Apply filters” to preview this tile without them.`}
+          variant="card"
+          fullWidth
+          data-testid="preview-missing-required-filters"
+        />
+      ) : !queryReady && tabQueriesData(activeTab) ? (
         <EmptyState
           description="Please start by defining your chart above and then click the play button to query data."
           variant="card"
@@ -225,7 +255,11 @@ export function ChartPreviewPanel({
                     })
                 : undefined
             }
-            onSortingChange={onTableSortingChange}
+            onSortingChange={
+              isBuilderChartConfig(queriedConfig)
+                ? onTableSortingChange
+                : undefined
+            }
             sort={tableSortState}
             showMVOptimizationIndicator={false}
             errorVariant="inline"
@@ -246,6 +280,7 @@ export function ChartPreviewPanel({
                 thresholdType: alert.thresholdType,
               })
             }
+            referenceLineValues={referenceLineValues}
             errorVariant="inline"
             showMVOptimizationIndicator={false}
             // Preview doesn't need the MV indicators; disabling both lets
@@ -458,7 +493,18 @@ export function ChartPreviewPanel({
               renderedPromql == null ? RUN_TO_PREVIEW : renderedPromql.error
             }
           >
-            <PromQLPreview expression={renderedPromql?.expression ?? ''} />
+            <Stack gap="xs">
+              {(renderedPromql?.expressions ?? []).map((entry, index, all) => (
+                <Box key={entry.id}>
+                  {all.length > 1 && (
+                    <Text size="xxs" c="dimmed" mb={2}>
+                      {entry.alias ?? `Expression ${index + 1}`}
+                    </Text>
+                  )}
+                  <PromQLPreview expression={entry.expression} />
+                </Box>
+              ))}
+            </Stack>
           </QueryPreviewAccordion>
         </>
       )}

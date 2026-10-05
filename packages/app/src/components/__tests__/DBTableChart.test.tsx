@@ -8,6 +8,7 @@ import MVOptimizationIndicator from '@/components/MaterializedViews/MVOptimizati
 import { Table } from '@/HDXMultiSeriesTableChart';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
+import { useOnClickLinkBuilder } from '@/hooks/useOnClickLinkBuilder';
 import { useSource } from '@/source';
 
 // Mock dependencies
@@ -56,32 +57,6 @@ jest.mock('../MaterializedViews/MVOptimizationIndicator', () =>
 jest.mock('../charts/DateRangeIndicator', () => jest.fn(() => null));
 
 describe('DBTableChart', () => {
-  type TableQueryResult = ReturnType<typeof useOffsetPaginatedQuery>;
-  type TableQueryData = NonNullable<TableQueryResult['data']>;
-
-  const createTableQueryResult = (
-    rows: TableQueryData['data'],
-    meta: TableQueryData['meta'] = [],
-  ): TableQueryResult => ({
-    data: {
-      data: rows,
-      meta,
-      chSql: { sql: '', params: {} },
-      window: {
-        startTime: new Date(),
-        endTime: new Date(),
-        windowIndex: 0,
-        direction: 'DESC',
-      },
-    },
-    fetchNextPage: jest.fn(),
-    hasNextPage: false,
-    isLoading: false,
-    isFetching: false,
-    isError: false,
-    error: null,
-  });
-
   const baseTestConfig = {
     dateRange: [new Date(), new Date()] as [Date, Date],
     from: { databaseName: 'test', tableName: 'test' },
@@ -89,6 +64,27 @@ describe('DBTableChart', () => {
     connection: 'test-connection',
     select: '',
     where: '',
+  };
+
+  type TableQueryResult = ReturnType<typeof useOffsetPaginatedQuery>;
+  type TableQueryData = NonNullable<TableQueryResult['data']>;
+
+  const mockTableRows = (
+    rows: TableQueryData['data'],
+    meta: TableQueryData['meta'] = [],
+  ) => {
+    const current = jest.mocked(useOffsetPaginatedQuery)(baseTestConfig);
+    if (!current.data) {
+      throw new Error('Expected the table query mock to have data');
+    }
+    jest.mocked(useOffsetPaginatedQuery).mockReturnValue({
+      ...current,
+      data: {
+        ...current.data,
+        data: rows,
+        meta,
+      },
+    });
   };
 
   beforeEach(() => {
@@ -198,20 +194,118 @@ describe('DBTableChart', () => {
     expect(dateRangeIndicatorCall.mvGranularity).toBe('1 minute');
   });
 
+  describe('refresh indicator', () => {
+    it('asks the query to keep the previous rows during a refetch', () => {
+      renderWithMantine(<DBTableChart config={baseTestConfig} />);
+
+      const options = jest.mocked(useOffsetPaginatedQuery).mock.calls[0][1];
+      expect(options?.keepPreviousData).toBe(true);
+    });
+
+    it('pulses while a refetch is showing the previous rows', () => {
+      jest.mocked(useOffsetPaginatedQuery).mockReturnValue({
+        ...jest.mocked(useOffsetPaginatedQuery)(baseTestConfig),
+        isPlaceholderData: true,
+      });
+
+      renderWithMantine(<DBTableChart config={baseTestConfig} />);
+      expect(jest.mocked(Table).mock.calls.at(-1)![0].className).toBe(
+        'effect-pulse',
+      );
+    });
+
+    it('does not pulse once fresh rows have loaded', () => {
+      renderWithMantine(<DBTableChart config={baseTestConfig} />);
+      expect(
+        jest.mocked(Table).mock.calls.at(-1)![0].className,
+      ).toBeUndefined();
+    });
+
+    it('pulses the empty state while a refetch is running', () => {
+      const current = jest.mocked(useOffsetPaginatedQuery)(baseTestConfig);
+      jest.mocked(useOffsetPaginatedQuery).mockReturnValue({
+        ...current,
+        data: { ...current.data!, data: [] },
+        isPlaceholderData: true,
+      });
+
+      const { getByText } = renderWithMantine(
+        <DBTableChart config={baseTestConfig} />,
+      );
+      expect(getByText('No data found within time range.')).toHaveClass(
+        'effect-pulse',
+      );
+    });
+
+    describe('row links', () => {
+      const getRowSearchLink = jest.fn(() => '/search');
+      const rowAction = jest.fn();
+
+      afterEach(() => {
+        jest.mocked(useOnClickLinkBuilder).mockReturnValue(null);
+      });
+
+      const renderTable = (isPlaceholderData: boolean) => {
+        jest.mocked(useOffsetPaginatedQuery).mockReturnValue({
+          ...jest.mocked(useOffsetPaginatedQuery)(baseTestConfig),
+          isPlaceholderData,
+        });
+        renderWithMantine(
+          <DBTableChart
+            config={baseTestConfig}
+            getRowSearchLink={getRowSearchLink}
+          />,
+        );
+        return jest.mocked(Table).mock.calls.at(-1)![0];
+      };
+
+      it('disables search links on rows kept from the previous query', () => {
+        expect(renderTable(true).getRowSearchLink).toBeUndefined();
+      });
+
+      it('enables search links once fresh rows have loaded', () => {
+        expect(renderTable(false).getRowSearchLink).toBe(getRowSearchLink);
+      });
+
+      it('disables the configured row action on rows kept from the previous query', () => {
+        jest.mocked(useOnClickLinkBuilder).mockReturnValue(rowAction);
+
+        expect(renderTable(true).getRowAction).toBeUndefined();
+        expect(renderTable(false).getRowAction).toBe(rowAction);
+      });
+    });
+  });
+
   describe('groupByColumnsOnLeft', () => {
     // Emulates how the ClickHouse query returns rows for a builder table chart:
     // series columns are produced before groupBy columns.
     beforeEach(() => {
-      jest.mocked(useOffsetPaginatedQuery).mockReturnValue(
-        createTableQueryResult([
-          {
-            Count: 10,
-            AvgDuration: 42,
-            ServiceName: 'web',
-            SpanName: 'GET /',
+      jest.mocked(useOffsetPaginatedQuery).mockReturnValue({
+        data: {
+          data: [
+            {
+              Count: 10,
+              AvgDuration: 42,
+              ServiceName: 'web',
+              SpanName: 'GET /',
+            },
+          ],
+          meta: [],
+          chSql: { sql: '', params: {} },
+          window: {
+            startTime: new Date(),
+            endTime: new Date(),
+            windowIndex: 0,
+            direction: 'DESC' as const,
           },
-        ]),
-      );
+        },
+        fetchNextPage: jest.fn(),
+        hasNextPage: false,
+        isLoading: false,
+        isFetching: false,
+        isError: false,
+        error: null,
+      } as any);
     });
 
     const configWithGroupBy = {
@@ -350,37 +444,11 @@ describe('DBTableChart', () => {
       renderWithMantine(<DBTableChart config={rawSqlConfig} />);
 
       const columns = jest.mocked(Table).mock.calls.at(-1)![0].columns;
-      expect(columns.map(c => c.id)).toEqual([
-        'Count',
-        'AvgDuration',
-        'ServiceName',
-        'SpanName',
-      ]);
       expect(columns.map(c => c.dataKey)).toEqual([
         'Count',
         'AvgDuration',
         'ServiceName',
         'SpanName',
-      ]);
-    });
-
-    it('keeps PromQL output identifiers unchanged', () => {
-      const promqlConfig = {
-        configType: 'promql' as const,
-        dateRange: [new Date(), new Date()] as [Date, Date],
-        connection: 'test-connection',
-        promqlExpression: 'up',
-      };
-
-      jest
-        .mocked(useOffsetPaginatedQuery)
-        .mockReturnValue(createTableQueryResult([{ 'error rate': 1 }]));
-
-      renderWithMantine(<DBTableChart config={promqlConfig} />);
-
-      const columns = jest.mocked(Table).mock.calls.at(-1)![0].columns;
-      expect(columns.map(c => ({ id: c.id, dataKey: c.dataKey }))).toEqual([
-        { id: 'error rate', dataKey: 'error rate' },
       ]);
     });
   });
@@ -395,22 +463,19 @@ describe('DBTableChart', () => {
     };
 
     beforeEach(() => {
-      jest.mocked(useOffsetPaginatedQuery).mockReturnValue(
-        createTableQueryResult([
-          {
-            'avg(metric.total)': 42,
-            'error rate': 84,
-            ServiceName: 'web',
-          },
-        ]),
-      );
+      mockTableRows([
+        {
+          'avg(metric.total)': 42,
+          'error rate': 84,
+          ServiceName: 'web',
+        },
+      ]);
     });
 
-    it('quotes metric result keys as output identifiers', () => {
+    it('quotes composed metric result keys as output identifiers', () => {
       renderWithMantine(<DBTableChart config={metricBuilderConfig} />);
 
       const columns = jest.mocked(Table).mock.calls.at(-1)![0].columns;
-
       expect(
         columns.map(column => ({ id: column.id, dataKey: column.dataKey })),
       ).toEqual([
@@ -420,11 +485,10 @@ describe('DBTableChart', () => {
       ]);
     });
 
-    it('uses the metric output identifier for server-side sorting', () => {
+    it('uses the output identifier for composed metric sorting', () => {
       renderWithMantine(<DBTableChart config={metricBuilderConfig} />);
 
       const tableProps = jest.mocked(Table).mock.calls.at(-1)![0];
-
       act(() => {
         tableProps.onSortingChange?.([
           { id: '"avg(metric.total)"', desc: true },
@@ -434,11 +498,9 @@ describe('DBTableChart', () => {
       const queriedConfig = jest
         .mocked(useOffsetPaginatedQuery)
         .mock.calls.at(-1)![0];
-
       if (!isBuilderChartConfig(queriedConfig)) {
         throw new Error('Expected a builder chart config');
       }
-
       expect(queriedConfig.orderBy).toEqual([
         {
           valueExpression: '"avg(metric.total)"',
@@ -454,15 +516,12 @@ describe('DBTableChart', () => {
         select: [{ aggFn: 'avg' as const, valueExpression: 'metric.total' }],
         groupBy: "ResourceAttributes['service.name']",
       };
-
-      jest.mocked(useOffsetPaginatedQuery).mockReturnValue(
-        createTableQueryResult([
-          {
-            'avg(metric.total)': 42,
-            "ResourceAttributes['service.name']": 'api',
-          },
-        ]),
-      );
+      mockTableRows([
+        {
+          'avg(metric.total)': 42,
+          "ResourceAttributes['service.name']": 'api',
+        },
+      ]);
 
       renderWithMantine(<DBTableChart config={config} />);
 
@@ -485,15 +544,12 @@ describe('DBTableChart', () => {
           { id: 'avg(metric.total)', desc: true },
         ]);
       });
-
       const queriedConfig = jest
         .mocked(useOffsetPaginatedQuery)
         .mock.calls.at(-1)![0];
-
       if (!isBuilderChartConfig(queriedConfig)) {
         throw new Error('Expected a builder chart config');
       }
-
       expect(queriedConfig.orderBy).toEqual([
         {
           valueExpression: 'avg(metric.total)',
@@ -508,44 +564,25 @@ describe('DBTableChart', () => {
         select: [{ aggFn: 'count' as const, valueExpression: '' }],
         groupBy: "ResourceAttributes['service.name']",
       };
-
-      jest.mocked(useOffsetPaginatedQuery).mockReturnValue(
-        createTableQueryResult([
-          {
-            'count()': 2,
-            "ResourceAttributes['service.name']": 'api',
-          },
-        ]),
-      );
+      mockTableRows([
+        {
+          'count()': 2,
+          "ResourceAttributes['service.name']": 'api',
+        },
+      ]);
 
       renderWithMantine(<DBTableChart config={config} />);
 
       const tableProps = jest.mocked(Table).mock.calls.at(-1)![0];
-      expect(
-        tableProps.columns.map(column => ({
-          id: column.id,
-          dataKey: column.dataKey,
-        })),
-      ).toEqual([
-        { id: 'count()', dataKey: 'count()' },
-        {
-          id: "ResourceAttributes['service.name']",
-          dataKey: "ResourceAttributes['service.name']",
-        },
-      ]);
-
       act(() => {
         tableProps.onSortingChange?.([{ id: 'count()', desc: true }]);
       });
-
       const queriedConfig = jest
         .mocked(useOffsetPaginatedQuery)
         .mock.calls.at(-1)![0];
-
       if (!isBuilderChartConfig(queriedConfig)) {
         throw new Error('Expected a builder chart config');
       }
-
       expect(queriedConfig.orderBy).toEqual([
         {
           valueExpression: 'count()',
@@ -561,16 +598,13 @@ describe('DBTableChart', () => {
         formulas: [{ expression: 'A * 2', alias: 'error rate' }],
         groupBy: 'ServiceName',
       };
-
-      jest.mocked(useOffsetPaginatedQuery).mockReturnValue(
-        createTableQueryResult([
-          {
-            'count()': 2,
-            'error rate': 4,
-            ServiceName: 'api',
-          },
-        ]),
-      );
+      mockTableRows([
+        {
+          'count()': 2,
+          'error rate': 4,
+          ServiceName: 'api',
+        },
+      ]);
 
       renderWithMantine(<DBTableChart config={config} />);
 
@@ -589,15 +623,12 @@ describe('DBTableChart', () => {
       act(() => {
         tableProps.onSortingChange?.([{ id: '"error rate"', desc: true }]);
       });
-
       const queriedConfig = jest
         .mocked(useOffsetPaginatedQuery)
         .mock.calls.at(-1)![0];
-
       if (!isBuilderChartConfig(queriedConfig)) {
         throw new Error('Expected a builder chart config');
       }
-
       expect(queriedConfig.orderBy).toEqual([
         {
           valueExpression: '"error rate"',
@@ -618,15 +649,12 @@ describe('DBTableChart', () => {
       expect(tableProps.sorting).toEqual([
         { id: '"avg(metric.total)"', desc: true },
       ]);
-
       const queriedConfig = jest
         .mocked(useOffsetPaginatedQuery)
         .mock.calls.at(-1)![0];
-
       if (!isBuilderChartConfig(queriedConfig)) {
         throw new Error('Expected a builder chart config');
       }
-
       expect(queriedConfig.orderBy).toEqual([
         {
           valueExpression: '"avg(metric.total)"',
@@ -641,12 +669,7 @@ describe('DBTableChart', () => {
         ...metricBuilderConfig,
         formulas: [{ expression: 'A * 2', alias: outputName }],
       };
-
-      jest.mocked(useOffsetPaginatedQuery).mockReturnValue(
-        createTableQueryResult([
-          { 'avg(metric.total)': 42, [outputName]: 84 },
-        ]),
-      );
+      mockTableRows([{ 'avg(metric.total)': 42, [outputName]: 84 }]);
 
       renderWithMantine(<DBTableChart config={config} />);
 
@@ -661,15 +684,12 @@ describe('DBTableChart', () => {
           { id: '"error, rate"', desc: true },
         ]);
       });
-
       const queriedConfig = jest
         .mocked(useOffsetPaginatedQuery)
         .mock.calls.at(-1)![0];
-
       if (!isBuilderChartConfig(queriedConfig)) {
         throw new Error('Expected a builder chart config');
       }
-
       expect(queriedConfig.orderBy).toEqual([
         {
           valueExpression: '"error, rate"',
@@ -678,49 +698,22 @@ describe('DBTableChart', () => {
       ]);
     });
 
-    it('quotes output names containing double quotes', () => {
-      const config = {
-        ...metricBuilderConfig,
-        formulas: [{ expression: 'A * 2', alias: 'bad"name' }],
-      };
-
-      jest.mocked(useOffsetPaginatedQuery).mockReturnValue(
-        createTableQueryResult([
-          { 'avg(metric.total)': 42, 'bad"name': 84 },
-        ]),
-      );
-
-      renderWithMantine(<DBTableChart config={config} />);
-
-      const columns = jest.mocked(Table).mock.calls.at(-1)![0].columns;
-      const formulaColumn = columns.find(
-        column => column.dataKey === 'bad"name',
-      );
-
-      expect(formulaColumn?.id).toBe('"bad""name"');
-    });
-
-    it('escapes backslashes in output names', () => {
-      const outputName = 'ratio\\';
+    it.each([
+      ['bad"name', '"bad""name"'],
+      ['ratio\\', '"ratio\\\\"'],
+    ])('escapes output identifier %p', (outputName, expectedId) => {
       const config = {
         ...metricBuilderConfig,
         formulas: [{ expression: 'A * 2', alias: outputName }],
       };
-
-      jest.mocked(useOffsetPaginatedQuery).mockReturnValue(
-        createTableQueryResult([
-          { 'avg(metric.total)': 42, [outputName]: 84 },
-        ]),
-      );
+      mockTableRows([{ 'avg(metric.total)': 42, [outputName]: 84 }]);
 
       renderWithMantine(<DBTableChart config={config} />);
 
       const columns = jest.mocked(Table).mock.calls.at(-1)![0].columns;
-      const formulaColumn = columns.find(
-        column => column.dataKey === outputName,
+      expect(columns.find(column => column.dataKey === outputName)?.id).toBe(
+        expectedId,
       );
-
-      expect(formulaColumn?.id).toBe('"ratio\\\\"');
     });
   });
 
@@ -781,6 +774,102 @@ describe('DBTableChart', () => {
       expect(
         jest.mocked(Table).mock.calls.at(-1)![0].alternateRowBackground,
       ).toBe(false);
+    });
+  });
+
+  describe('PromQL configs', () => {
+    const promqlConfig = {
+      configType: 'promql' as const,
+      dateRange: [new Date(), new Date()] as [Date, Date],
+      connection: 'test-connection',
+      promqlExpression: [{ expression: 'up' }],
+      numberFormat: { output: 'number' as const },
+    };
+
+    const queryResult = (valueType: string) => ({
+      data: {
+        data: [{ Time: '2023-11-14T22:13:20.000Z', service: 'web', Value: 1 }],
+        meta: [
+          { name: 'Time', type: 'DateTime64(3)' },
+          { name: 'service', type: 'String' },
+          { name: 'Value', type: valueType },
+        ],
+        chSql: { sql: '', params: {} },
+        window: {
+          startTime: new Date(),
+          endTime: new Date(),
+          windowIndex: 0,
+          direction: 'DESC' as const,
+        },
+      },
+      fetchNextPage: jest.fn(),
+      hasNextPage: false,
+      isLoading: false,
+      isFetching: false,
+      isError: false,
+      isPlaceholderData: false,
+      error: null,
+    });
+
+    beforeEach(() => {
+      jest
+        .mocked(useOffsetPaginatedQuery)
+        .mockReturnValue(queryResult('Float64'));
+    });
+
+    it('queries a range aligned to a resolved granularity', () => {
+      renderWithMantine(
+        <DBTableChart
+          config={{
+            ...promqlConfig,
+            dateRange: [
+              new Date('2025-11-26T00:00:14.076Z'),
+              new Date('2025-11-26T01:00:14.076Z'),
+            ],
+          }}
+        />,
+      );
+
+      const queried = jest
+        .mocked(useOffsetPaginatedQuery)
+        .mock.calls.at(-1)![0];
+      expect(queried.dateRange).toEqual([
+        new Date('2025-11-26T00:00:00Z'),
+        new Date('2025-11-26T01:01:00Z'),
+      ]);
+      expect(queried.granularity).toBe('1 minute');
+    });
+
+    it('sorts client-side, since the query cannot be re-ordered server-side', () => {
+      renderWithMantine(<DBTableChart config={promqlConfig} />);
+
+      expect(
+        jest.mocked(Table).mock.calls.at(-1)![0].enableClientSideSorting,
+      ).toBe(true);
+    });
+
+    it('formats only the value column, leaving the label columns alone', () => {
+      renderWithMantine(<DBTableChart config={promqlConfig} />);
+
+      const columns = jest.mocked(Table).mock.calls.at(-1)![0].columns;
+      expect(columns.map(c => [c.dataKey, c.numberFormat?.output])).toEqual([
+        ['Time', undefined],
+        ['service', undefined],
+        ['Value', 'number'],
+      ]);
+    });
+
+    it('formats a value column of any numeric type', () => {
+      jest
+        .mocked(useOffsetPaginatedQuery)
+        .mockReturnValue(queryResult('Nullable(Float64)'));
+
+      renderWithMantine(<DBTableChart config={promqlConfig} />);
+
+      const columns = jest.mocked(Table).mock.calls.at(-1)![0].columns;
+      expect(columns.find(c => c.dataKey === 'Value')?.numberFormat).toEqual({
+        output: 'number',
+      });
     });
   });
 

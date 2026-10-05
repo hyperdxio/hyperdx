@@ -1,6 +1,7 @@
 import { uniq } from 'lodash';
 
 import * as config from '@/config';
+import { recordDashboardOnboardingIfHasTiles } from '@/controllers/dashboard';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
 import Dashboard from '@/models/dashboard';
@@ -25,7 +26,7 @@ export function registerPatchDashboard({
   context,
   registerTool,
 }: ToolRegistrar): void {
-  const { teamId } = context;
+  const { teamId, userId } = context;
   const frontendUrl = config.FRONTEND_URL;
 
   registerTool(
@@ -231,6 +232,8 @@ export function registerPatchDashboard({
           existingTileIds,
         });
       }
+
+      recordDashboardOnboardingIfHasTiles(userId, updatedDashboard.tiles);
 
       // Return a lightweight response: the patched tile (if any) plus
       // updated dashboard metadata, without the full tile array.

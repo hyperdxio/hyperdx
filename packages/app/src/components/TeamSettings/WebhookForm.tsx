@@ -5,9 +5,11 @@ import { ZodIssue } from 'zod';
 import { json, jsonParseLinter } from '@codemirror/lang-json';
 import { linter } from '@codemirror/lint';
 import {
-  AlertState,
+  getDefaultWebhookBody,
+  WEBHOOK_TEMPLATE_VARIABLES,
   WebhookApiData,
   WebhookService,
+  WebhookTemplateVariable,
 } from '@hyperdx/common-utils/dist/types';
 import { isValidSlackUrl } from '@hyperdx/common-utils/dist/validation';
 import {
@@ -32,66 +34,45 @@ import api from '@/api';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import { isValidUrl } from '@/utils';
 
-const DEFAULT_GENERIC_WEBHOOK_BODY = [
-  '{{title}}',
-  '{{body}}',
-  '{{link}}',
-  '{{state}}',
-  '{{startTime}}',
-  '{{endTime}}',
-  '{{eventId}}',
-];
-const DEFAULT_GENERIC_WEBHOOK_BODY_TEMPLATE =
-  DEFAULT_GENERIC_WEBHOOK_BODY.join(' | ');
+// The default body and the variable list both come from common-utils, so this
+// form and the API's fallback cannot drift. The docs page restates them by
+// hand; a unit test in common-utils keeps that table honest.
+// Keyed by WebhookTemplateVariable so a variable added in common-utils cannot
+// reach the transports without a description here.
+const describeTemplateVariable = (
+  brandName: string,
+): Record<WebhookTemplateVariable, string> => ({
+  title: 'Alert title',
+  body: 'Rendered message body (markdown)',
+  link: `Deep link back into ${brandName}`,
+  state: 'Raw internal alert state',
+  status: 'firing, resolved, no_data, pending or error',
+  eventId: 'Unique id for this firing',
+  alertId: 'Stable id of the alert — the key to dedupe on',
+  alertType: 'search, dashboard_chart or inline_query',
+  comparator: '>=, >, <, <=, =, !=, between or outside',
+  threshold: 'The configured threshold (number)',
+  thresholdMax: 'Upper bound of a between/outside range (number)',
+  value: 'Value that triggered or resolved the alert (number)',
+  groupKey: 'The breaching group, if grouped',
+  sourceQuery: 'Search expression or SQL behind the alert',
+  startTime: 'Window start, Unix ms (number)',
+  endTime: 'Window end, Unix ms (number)',
+  startTimeISO: 'Window start, ISO-8601',
+  endTimeISO: 'Window end, ISO-8601',
+  teamId: 'Team the alert belongs to',
+  note: "Alert's note, commonly a runbook link",
+});
 
-// Mirrors buildWebhookTemplateVariables in
-// packages/api/src/tasks/checkAlerts/transports/generic.ts — keep in sync when
-// variables are added or removed there.
 export const getWebhookTemplateVariables = (
   brandName: string,
-): { name: string; description: string }[] => [
-  { name: '{{title}}', description: 'Alert title' },
-  { name: '{{body}}', description: 'Rendered message body (markdown)' },
-  { name: '{{link}}', description: `Deep link back into ${brandName}` },
-  { name: '{{state}}', description: 'Raw internal alert state' },
-  {
-    name: '{{status}}',
-    description: 'firing, resolved, no_data, pending or error',
-  },
-  { name: '{{eventId}}', description: 'Unique id for this firing' },
-  {
-    name: '{{alertId}}',
-    description: 'Stable id of the alert — the key to dedupe on',
-  },
-  {
-    name: '{{alertType}}',
-    description: 'search, dashboard_chart or inline_query',
-  },
-  {
-    name: '{{comparator}}',
-    description: '>=, >, <, <=, =, !=, between or outside',
-  },
-  { name: '{{threshold}}', description: 'The configured threshold (number)' },
-  {
-    name: '{{thresholdMax}}',
-    description: 'Upper bound of a between/outside range (number)',
-  },
-  {
-    name: '{{value}}',
-    description: 'Value that triggered or resolved the alert (number)',
-  },
-  { name: '{{groupKey}}', description: 'The breaching group, if grouped' },
-  {
-    name: '{{sourceQuery}}',
-    description: 'Search expression or SQL behind the alert',
-  },
-  { name: '{{startTime}}', description: 'Window start, Unix ms (number)' },
-  { name: '{{endTime}}', description: 'Window end, Unix ms (number)' },
-  { name: '{{startTimeISO}}', description: 'Window start, ISO-8601' },
-  { name: '{{endTimeISO}}', description: 'Window end, ISO-8601' },
-  { name: '{{teamId}}', description: 'Team the alert belongs to' },
-  { name: '{{note}}', description: "Alert's note, commonly a runbook link" },
-];
+): { name: string; description: string }[] => {
+  const descriptions = describeTemplateVariable(brandName);
+  return WEBHOOK_TEMPLATE_VARIABLES.map(name => ({
+    name: `{{${name}}}`,
+    description: descriptions[name],
+  }));
+};
 
 const jsonLinterWithEmptyCheck = () => (editorView: EditorView) => {
   const text = editorView.state.doc.toString().trim();
@@ -174,20 +155,10 @@ export function WebhookForm({
       }
     }
 
-    let defaultBody = body;
-    if (!body) {
-      if (service === WebhookService.Generic) {
-        defaultBody = `{"text": "${DEFAULT_GENERIC_WEBHOOK_BODY_TEMPLATE}"}`;
-      } else if (service === WebhookService.IncidentIO) {
-        defaultBody = `{
-  "title": "{{title}}",
-  "description": "{{body}}",
-  "deduplication_key": "{{eventId}}",
-  "status": "{{#if (eq state "${AlertState.ALERT}")}}firing{{else}}resolved{{/if}}",
-  "source_url": "{{link}}"
-}`;
-      }
-    }
+    const defaultBody =
+      service === WebhookService.Slack
+        ? body
+        : body || getDefaultWebhookBody(service);
 
     try {
       await testWebhook.mutateAsync({
@@ -248,20 +219,10 @@ export function WebhookForm({
         }
       }
 
-      let defaultBody = body;
-      if (!body) {
-        if (service === WebhookService.Generic) {
-          defaultBody = `{"text": "${DEFAULT_GENERIC_WEBHOOK_BODY_TEMPLATE}"}`;
-        } else if (service === WebhookService.IncidentIO) {
-          defaultBody = `{
-  "title": "{{title}}",
-  "description": "{{body}}",
-  "deduplication_key": "{{eventId}}",
-  "status": "{{#if (eq state "${AlertState.ALERT}")}}firing{{else}}resolved{{/if}}",
-  "source_url": "{{link}}"
-}`;
-        }
-      }
+      const defaultBody =
+        service === WebhookService.Slack
+          ? body
+          : body || getDefaultWebhookBody(service);
 
       const webhookData = {
         service,
@@ -328,6 +289,16 @@ export function WebhookForm({
   };
 
   const service = useWatch({ control: form.control, name: 'service' });
+  // A body left at the old service's default would still be sent verbatim, and
+  // each service's default is invalid to the others' receivers. A hand-edited
+  // body is the user's, so it survives the switch.
+  const onServiceChange = (next: WebhookService) => {
+    const body = form.getValues('body');
+    if (!body || body === getDefaultWebhookBody(service)) {
+      form.setValue('body', '');
+    }
+    form.setValue('service', next);
+  };
   const templateVariables = getWebhookTemplateVariables(brandName);
   const headersText = useWatch({ control: form.control, name: 'headers' });
   const hasMaskedHeaders = isEditing && !!headersText?.includes('****');
@@ -341,7 +312,7 @@ export function WebhookForm({
           label="Service Type"
           required
           value={service}
-          onChange={value => form.setValue('service', value as WebhookService)}
+          onChange={value => onServiceChange(value as WebhookService)}
         >
           <Group mt="xs">
             <Radio value={WebhookService.Slack} label="Slack" />
@@ -423,6 +394,8 @@ export function WebhookForm({
               )}
             />
           </div>,
+        ]}
+        {service !== WebhookService.Slack && [
           <label className=".mantine-TextInput-label" key="3">
             Webhook Body (optional)
           </label>,
@@ -436,9 +409,7 @@ export function WebhookForm({
                   extensions={[
                     json(),
                     linter(jsonLinterWithEmptyCheck()),
-                    placeholder(
-                      `{\n\t"text": "${DEFAULT_GENERIC_WEBHOOK_BODY_TEMPLATE}"\n}`,
-                    ),
+                    placeholder(getDefaultWebhookBody(service)),
                   ]}
                   theme="dark"
                   value={field.value}

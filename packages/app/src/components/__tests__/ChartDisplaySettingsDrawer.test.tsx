@@ -30,6 +30,51 @@ describe('ChartDisplaySettingsDrawer', () => {
     jest.clearAllMocks();
   });
 
+  describe('heatmap y axis scale', () => {
+    it('shows the scale only for heatmaps', () => {
+      const { unmount } = renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          configType="builder"
+          displayType={DisplayType.Line}
+        />,
+      );
+      expect(
+        screen.queryByTestId('heatmap-scale-control'),
+      ).not.toBeInTheDocument();
+      unmount();
+
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          configType="builder"
+          displayType={DisplayType.Heatmap}
+        />,
+      );
+      expect(screen.getByTestId('heatmap-scale-control')).toBeInTheDocument();
+    });
+
+    it('applies the chosen scale', async () => {
+      const onChange = jest.fn();
+      const user = userEvent.setup();
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          configType="builder"
+          displayType={DisplayType.Heatmap}
+          onChange={onChange}
+        />,
+      );
+
+      await user.click(screen.getByText('Linear'));
+      await user.click(screen.getByRole('button', { name: /apply/i }));
+
+      expect(onChange.mock.calls[0][0]).toMatchObject({
+        heatmapScaleType: 'linear',
+      });
+    });
+  });
+
   describe('color picker section', () => {
     it('shows the color picker when displayType is Number', () => {
       renderWithMantine(
@@ -486,6 +531,24 @@ describe('ChartDisplaySettingsDrawer', () => {
     });
   });
 
+  describe('display group by columns on left setting (PromQL)', () => {
+    it('does not show the toggle for PromQL table charts', () => {
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          configType="promql"
+          displayType={DisplayType.Table}
+        />,
+      );
+
+      expect(
+        screen.queryByRole('checkbox', {
+          name: /display group by columns on left/i,
+        }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
   describe('number format persistence', () => {
     // A duration number tile (e.g. p95 Duration from a trace source) auto-detects
     // a duration format from the datasource; the drawer receives it as
@@ -577,6 +640,25 @@ describe('ChartDisplaySettingsDrawer', () => {
       configType: 'promql' as const,
       displayType: DisplayType.Line,
     };
+
+    it('is offered on a PromQL time series chart', () => {
+      renderWithMantine(<ChartDisplaySettingsDrawer {...promqlProps} />);
+
+      expect(screen.getByTestId('legend-template-input')).toBeInTheDocument();
+    });
+
+    it('is hidden on a PromQL table chart', () => {
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...promqlProps}
+          displayType={DisplayType.Table}
+        />,
+      );
+
+      expect(
+        screen.queryByTestId('legend-template-input'),
+      ).not.toBeInTheDocument();
+    });
 
     it('blocks Apply when the template exceeds the persisted length cap', async () => {
       const onChange = jest.fn();

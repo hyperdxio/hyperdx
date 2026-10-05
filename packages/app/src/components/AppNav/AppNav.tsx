@@ -53,6 +53,12 @@ import { AppNavFeedback } from './AppNavFeedback';
 
 import styles from './AppNav.module.scss';
 
+// Newest release version in the notes, inlined by next.config.mjs. Separate from
+// APP_VERSION on purpose: this one answers "what is the latest release?", which
+// is what the Help sparkle is for, while APP_VERSION answers "what build is
+// this?" and carries a build id that moves on every deploy.
+const WHATS_NEW_VERSION = process.env.NEXT_PUBLIC_WHATS_NEW_VERSION;
+
 // Reo.dev client ID for our usage tracking. USAGE_STATS_ENABLED is the opt-out.
 const REO_CLIENT_ID = '38b2e79cdb32fa7';
 
@@ -476,7 +482,10 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
             )}
 
             {/* Help */}
-            <AppNavHelpMenu version={APP_VERSION} />
+            <AppNavHelpMenu
+              version={APP_VERSION}
+              whatsNewVersion={WHATS_NEW_VERSION}
+            />
 
             {/* Feedback */}
             <AppNavFeedback />

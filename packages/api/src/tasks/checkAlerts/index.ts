@@ -5,9 +5,13 @@ import PQueue from '@esm2cjs/p-queue';
 import * as clickhouse from '@hyperdx/common-utils/dist/clickhouse';
 import {
   chSqlToAliasMap,
+  type QueryAttribution,
   ResponseJSON,
 } from '@hyperdx/common-utils/dist/clickhouse';
-import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
+import {
+  ClickhouseClient,
+  withQueryAttribution,
+} from '@hyperdx/common-utils/dist/clickhouse/node';
 import { tryOptimizeConfigWithMaterializedView } from '@hyperdx/common-utils/dist/core/materializedViews';
 import {
   getMetadata,
@@ -27,7 +31,6 @@ import { timeBucketByGranularity } from '@hyperdx/common-utils/dist/core/utils';
 import { getDashboardVariableDeclarations } from '@hyperdx/common-utils/dist/filters';
 import {
   isBuilderChartConfig,
-  isBuilderSavedChartConfig,
   isPromqlSavedChartConfig,
   isRawSqlChartConfig,
   isRawSqlSavedChartConfig,
@@ -82,6 +85,7 @@ import {
 import {
   AlertMessageTemplateDefaultView,
   buildAlertMessageTemplateTitle,
+  fetchSampleLines,
   NotificationFailure,
   NotificationTiming,
   renderAlertTemplate,
@@ -95,8 +99,9 @@ import {
   roundDownToXMinutes,
   unflattenObject,
 } from '@/tasks/util';
-import { isPopulatedRef } from '@/utils/alerts';
+import { alertConfigHasGroupBy, isPopulatedRef } from '@/utils/alerts';
 import {
+  getActiveTraceId,
   getCounter,
   type OperationOutcome,
   recordOperationOutcome,
@@ -134,11 +139,6 @@ const alertBatchFailuresCounter = getCounter('hyperdx.alerts.batch_failures', {
  * For tile and inline alerts, groupBy is on the chart config.
  */
 export const alertHasGroupBy = (details: AlertDetails): boolean => {
-  const { alert } = details;
-  if (alert.groupBy && alert.groupBy.length > 0) {
-    return true;
-  }
-
   // AlertChartConfig members are the tile config types minus the embedded
   // alert field, so they're assignable to SavedChartConfig (which the
   // chart-config guards narrow on).
@@ -148,26 +148,7 @@ export const alertHasGroupBy = (details: AlertDetails): boolean => {
       : details.taskType === AlertTaskType.INLINE
         ? details.chartConfig
         : undefined;
-  if (savedConfig == null) {
-    return false;
-  }
-
-  if (
-    isBuilderSavedChartConfig(savedConfig) &&
-    savedConfig.groupBy &&
-    savedConfig.groupBy.length > 0
-  ) {
-    return true;
-  }
-
-  // Without a reliable parser, it's difficult to tell if the raw sql contains a
-  // group by (besides the group by on the interval), so we'll assume it might
-  // in the case of time series charts, and assume it will not in the case of number charts.
-  // Group name will just be blank if there are no group by values.
-  if (isRawSqlSavedChartConfig(savedConfig)) {
-    return savedConfig.displayType !== DisplayType.Number;
-  }
-  return false;
+  return alertConfigHasGroupBy(details.alert.groupBy, savedConfig);
 };
 
 /**
@@ -493,6 +474,7 @@ const fireChannelEvent = async ({
   totalCount,
   windowSizeInMins,
   teamWebhooksById,
+  sampleLines,
 }: {
   alert: IAlert;
   alertProvider: AlertProvider;
@@ -510,7 +492,10 @@ const fireChannelEvent = async ({
   totalCount: number;
   windowSizeInMins: number;
   teamWebhooksById: Map<string, IWebhook>;
-}): Promise<Pick<RenderedAlert, 'failures' | 'timings'>> => {
+  sampleLines?: () => Promise<string>;
+}): Promise<
+  Pick<RenderedAlert, 'failures' | 'timings' | 'dispatchDurationMs'>
+> => {
   const team = alert.team;
   if (team == null) {
     throw new Error('Team not found');
@@ -562,7 +547,7 @@ const fireChannelEvent = async ({
     value: totalCount,
   };
 
-  const { failures, timings } = await renderAlertTemplate({
+  const { failures, timings, dispatchDurationMs } = await renderAlertTemplate({
     alertProvider,
     clickhouseClient,
     metadata,
@@ -575,8 +560,9 @@ const fireChannelEvent = async ({
     view: templateView,
     teamId,
     teamWebhooksById,
+    sampleLines,
   });
-  return { failures, timings };
+  return { failures, timings, dispatchDurationMs };
 };
 
 // Use a delimiter that's unlikely to appear in alert IDs or group names
@@ -960,6 +946,37 @@ export const parseAlertData = (
   return { value, extraFields };
 };
 
+/**
+ * Names the alert, and the tile or search it came from, on each of its
+ * queries. Per evaluation rather than per client, because one client is shared
+ * by every alert on a connection.
+ */
+const sourceId = (source: AlertDetails['source']): string | undefined => {
+  if (typeof source?.id === 'string') return source.id;
+  return isPopulatedRef(source) ? source._id.toString() : undefined;
+};
+
+export const alertQueryAttribution = (
+  details: AlertDetails,
+): QueryAttribution => ({
+  // `?.` everywhere, even where the type says otherwise: a tag must never be
+  // the reason an alert fails to run.
+  surface: 'alert',
+  alert: details.alert?.id,
+  trace: getActiveTraceId(),
+  // `id` is a mongoose virtual and the tile path goes through `toObject()`,
+  // which leaves virtuals out, so that source only has `_id`. Try both, and
+  // check the type: a bare ObjectId has an `id` of its own that is a byte
+  // array, which would satisfy `??` and then be discarded.
+  source: 'source' in details ? sourceId(details.source) : undefined,
+  ...(details.taskType === AlertTaskType.SAVED_SEARCH
+    ? { search: details.savedSearch?.id }
+    : {}),
+  ...(details.taskType === AlertTaskType.TILE
+    ? { dashboard: details.dashboard?.id, tile: details.tile?.id }
+    : {}),
+});
+
 export const processAlert = async (
   now: Date,
   details: AlertDetails,
@@ -1136,6 +1153,9 @@ export const processAlert = async (
     // The alert query itself uses count(*), not the saved search's select,
     // so we render the saved search's select separately to discover aliases
     // and inject them as WITH clauses into the alert query.
+    // Reused by the notification body's sample-row query, which resolves the
+    // same aliases against the same source.
+    let aliasWithClauses: BuilderChartConfigWithOptDateRange['with'];
     if (details.taskType === AlertTaskType.SAVED_SEARCH) {
       if (!isBuilderChartConfig(chartConfig)) {
         logger.error({
@@ -1151,6 +1171,7 @@ export const processAlert = async (
           details.source,
           metadata,
         );
+        aliasWithClauses = withClauses;
         if (withClauses) {
           chartConfig.with = withClauses;
         }
@@ -1284,6 +1305,32 @@ export const processAlert = async (
       return histories.get(groupKey)!;
     };
 
+    // The sample rows a saved-search body quotes depend on the window, not on
+    // the group or the state, so every group notifying for one window shares a
+    // fetch instead of repeating it. Backfilled buckets each notify for their
+    // own window, hence the key. A failed fetch is shared too — the body falls
+    // back to no sample lines rather than re-running the query per group.
+    const sampleLinesByWindow = new Map<number, Promise<string>>();
+    const sampleLinesFor =
+      details.taskType === AlertTaskType.SAVED_SEARCH
+        ? (startTime: Date) => () => {
+            const key = startTime.getTime();
+            const pending =
+              sampleLinesByWindow.get(key) ??
+              fetchSampleLines({
+                aliasWith: aliasWithClauses,
+                clickhouseClient,
+                endTime: fns.addMinutes(startTime, windowSizeInMins),
+                metadata,
+                savedSearch: details.savedSearch,
+                source: details.source,
+                startTime,
+              });
+            sampleLinesByWindow.set(key, pending);
+            return pending;
+          }
+        : undefined;
+
     // Helper to send a notification, catching and logging any errors.
     const trySendNotification = async ({
       group,
@@ -1326,30 +1373,39 @@ export const processAlert = async (
           : `Alert resolved for group "${group}", triggering ${alert.channel.type} notification`,
       );
 
-      const notificationStartedAt = performance.now();
       try {
         // Casts to any here because this is where I stopped unraveling the
         // alert logic requiring large, nested objects. We should look at
         // cleaning this up next. fireChannelEvent guards against null values
         // for these properties.
-        const { failures, timings } = await fireChannelEvent({
-          alert,
-          alertProvider,
-          attributes,
-          clickhouseClient,
-          dashboard: (details as any).dashboard,
-          startTime,
-          endTime: fns.addMinutes(startTime, windowSizeInMins),
-          group,
-          isGroupedAlert: hasGroupBy,
-          metadata,
-          savedSearch: (details as any).savedSearch,
-          source,
-          state,
-          totalCount,
-          windowSizeInMins,
-          teamWebhooksById,
-        });
+        const { failures, timings, dispatchDurationMs } =
+          await fireChannelEvent({
+            alert,
+            alertProvider,
+            attributes,
+            clickhouseClient,
+            dashboard: (details as any).dashboard,
+            startTime,
+            endTime: fns.addMinutes(startTime, windowSizeInMins),
+            group,
+            isGroupedAlert: hasGroupBy,
+            metadata,
+            savedSearch: (details as any).savedSearch,
+            source,
+            state,
+            totalCount,
+            windowSizeInMins,
+            teamWebhooksById,
+            sampleLines: sampleLinesFor?.(startTime),
+          });
+        // Only the dispatch phase: the column reports how long the targets
+        // took to respond, not the time spent building the message. A round
+        // that queued no job (every target unresolvable) resolves instantly,
+        // so it must not report 0ms as though a target answered at once.
+        if (timings.length > 0) {
+          evaluationAnalytics.webhookDurationMs =
+            (evaluationAnalytics.webhookDurationMs ?? 0) + dispatchDurationMs;
+        }
         recordNotificationTimings(timings);
         // Each entry is a target that didn't end up delivered: unresolvable,
         // capped, or (for the inline dispatcher) an actual send rejection —
@@ -1374,12 +1430,6 @@ export const processAlert = async (
           'Failed to fire channel event',
         );
         executionErrors.push(makeWebhookAlertError(e));
-      } finally {
-        // Total wall time spent delivering notifications in this evaluation
-        // (summed across groups/resolves, includes retries and failures).
-        evaluationAnalytics.webhookDurationMs =
-          (evaluationAnalytics.webhookDurationMs ?? 0) +
-          Math.round(performance.now() - notificationStartedAt);
       }
     };
 
@@ -1568,7 +1618,6 @@ export const processAlert = async (
       }
 
       // We have at least one data point for this bucket
-
       // Track the worst-case state for each group in this bucket to prevent
       // a subsequent OK row in the SAME bucket from overwriting an ALERT row.
       const bucketEvaluations = new Map<
@@ -2002,13 +2051,19 @@ export default class CheckAlertTask implements HdxTask {
               'processAlert',
               async () => {
                 setBusinessContext({ teamId: conn.team.toString() });
-                await processAlert(
-                  alertTask.now,
-                  alert,
-                  clickhouseClient,
-                  conn.id,
-                  this.provider,
-                  teamWebhooksById,
+                // Set once here, so the alert's own query, the EXPLAIN
+                // probes and the notification's sample rows all get tagged.
+                await withQueryAttribution(
+                  alertQueryAttribution(alert),
+                  async () =>
+                    processAlert(
+                      alertTask.now,
+                      alert,
+                      clickhouseClient,
+                      conn.id,
+                      this.provider,
+                      teamWebhooksById,
+                    ),
                 );
               },
               {

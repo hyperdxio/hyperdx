@@ -5,6 +5,7 @@
 import { expect, Locator, Page } from '@playwright/test';
 
 import { FilterComponent } from '../components/FilterComponent';
+import { HeatmapComponent } from '../components/HeatmapComponent';
 import { InfrastructurePanelComponent } from '../components/InfrastructurePanelComponent';
 import { PatternSidePanelComponent } from '../components/PatternSidePanelComponent';
 import { SavedSearchModalComponent } from '../components/SavedSearchModalComponent';
@@ -12,7 +13,10 @@ import { SearchPageAlertModalComponent } from '../components/SearchPageAlertModa
 import { SidePanelComponent } from '../components/SidePanelComponent';
 import { TableComponent } from '../components/TableComponent';
 import { TimePickerComponent } from '../components/TimePickerComponent';
-import { dismissSqlAutocomplete } from '../utils/locators';
+import { WhereInputComponent } from '../components/WhereInputComponent';
+import { DEFAULT_TRACES_SOURCE_NAME } from '../utils/constants';
+import { borderedBox, dismissSqlAutocomplete } from '../utils/locators';
+import type { MultilineField } from '../utils/multiline-input';
 
 type SaveSearchModalProps = {
   update: boolean;
@@ -25,6 +29,8 @@ export class SearchPage {
   readonly patternSidePanel: PatternSidePanelComponent;
   readonly infrastructure: InfrastructurePanelComponent;
   readonly filters: FilterComponent;
+  readonly heatmap: HeatmapComponent;
+  readonly whereInput: WhereInputComponent;
   readonly savedSearchModal: SavedSearchModalComponent;
   readonly savedSearchNameTitle: Locator;
   readonly alertModal: SearchPageAlertModalComponent;
@@ -36,10 +42,7 @@ export class SearchPage {
   private readonly searchInput: Locator;
   private readonly searchButton: Locator;
   private readonly saveSearchButton: Locator;
-  private readonly languageSelect: Locator;
   private readonly updateSearchButton: Locator;
-  private readonly luceneTab: Locator;
-  private readonly sqlTab: Locator;
   private readonly sourceSelector: Locator;
 
   constructor(page: Page, defaultTimeout: number = 3000) {
@@ -55,6 +58,7 @@ export class SearchPage {
     this.patternSidePanel = new PatternSidePanelComponent(page);
     this.infrastructure = new InfrastructurePanelComponent(page);
     this.filters = new FilterComponent(page);
+    this.heatmap = new HeatmapComponent(page);
     this.savedSearchModal = new SavedSearchModalComponent(page);
     this.alertModal = new SearchPageAlertModalComponent(page);
     this.alertsButtonLocator = page.getByTestId('alerts-button');
@@ -64,16 +68,11 @@ export class SearchPage {
 
     // Define page-specific locators
     this.searchForm = page.getByTestId('search-form');
+    this.whereInput = new WhereInputComponent(page, this.searchForm);
     this.searchInput = page.getByTestId('search-input');
     this.searchButton = page.getByTestId('search-submit-button');
     this.saveSearchButton = page.getByTestId('save-search-button');
     this.updateSearchButton = page.getByTestId('update-search-button');
-    const whereLanguageSwitch = page.getByTestId('where-language-switch');
-    this.languageSelect = whereLanguageSwitch.getByRole('combobox', {
-      name: 'Query language',
-    });
-    this.sqlTab = page.getByRole('option', { name: 'SQL', exact: true });
-    this.luceneTab = page.getByRole('option', { name: 'Lucene', exact: true });
     this.sourceSelector = page.getByTestId('source-selector');
   }
 
@@ -116,6 +115,56 @@ export class SearchPage {
   /** The "Event Patterns" analysis-mode tab in the filters sidebar. */
   get eventPatternsTab() {
     return this.page.getByRole('tab', { name: 'Event Patterns' });
+  }
+
+  /** The "Event Deltas" analysis-mode tab, shown only for trace sources. */
+  get eventDeltasTab() {
+    return this.page.getByRole('tab', { name: 'Event Deltas' });
+  }
+
+  async switchToEventDeltas() {
+    await this.eventDeltasTab.click();
+    await expect(this.page).toHaveURL(/[?&]mode=delta/);
+  }
+
+  get chartErrorState() {
+    return this.page.getByTestId('chart-error-state');
+  }
+
+  /** DBDeltaChart legend entries shown only while a selection is compared. */
+  get deltaSelectionLegend() {
+    return this.page.getByText('Selection', { exact: true });
+  }
+
+  get deltaBackgroundLegend() {
+    return this.page.getByText('Background', { exact: true });
+  }
+
+  /** DBDeltaChart hint shown while there is no selection to compare. */
+  get deltaNoSelectionHint() {
+    return this.page.getByText(
+      'Select an area on the chart above to enable comparisons',
+    );
+  }
+
+  get heatmapSettingsDrawer() {
+    return this.page.getByRole('dialog', { name: 'Display Settings' });
+  }
+
+  async openHeatmapSettings() {
+    await this.page.getByTestId('heatmap-settings-button').click();
+    await expect(this.heatmapSettingsDrawer).toBeVisible();
+  }
+
+  async setHeatmapScale(scale: 'Log' | 'Linear') {
+    await this.heatmapSettingsDrawer.getByText(scale, { exact: true }).click();
+  }
+
+  async applyHeatmapSettings() {
+    await this.heatmapSettingsDrawer
+      .getByRole('button', { name: 'Apply' })
+      .click();
+    await expect(this.heatmapSettingsDrawer).toBeHidden();
   }
 
   /**
@@ -205,6 +254,83 @@ export class SearchPage {
     await expect(this.sidePanel.tabs).toBeVisible();
   }
 
+  /** The selection menu button in the table header, once rows are selected. */
+  get selectionCount() {
+    return this.page.getByTestId('row-selection-count');
+  }
+
+  /** Only rendered while live tail is stopped. */
+  get resumeLiveTailButton() {
+    return this.page.getByRole('button', { name: 'Resume Live Tail' });
+  }
+
+  async resumeLiveTail() {
+    await this.resumeLiveTailButton.click();
+  }
+
+  /** Opens the selection menu and picks one of its actions. */
+  private async clickSelectionMenuItem(testId: string) {
+    await this.selectionCount.click();
+    await this.page.getByTestId(testId).click();
+  }
+
+  async copySelectedRows(format: 'csv' | 'json' = 'csv') {
+    await this.clickSelectionMenuItem(`row-selection-copy-${format}`);
+  }
+
+  /** The toast confirming a clipboard copy of the selected rows. */
+  getCopiedSelectionToast() {
+    return this.page.getByText(/copied \d+ rows? as (CSV|JSON)/i);
+  }
+
+  async clearRowSelection() {
+    await this.clickSelectionMenuItem('row-selection-clear');
+  }
+
+  /**
+   * Download the selected rows and return the CSV text. The export triggers a
+   * client-side anchor download, so capture the Playwright download event and
+   * read its stream.
+   */
+  async downloadSelectedRowsCsv(): Promise<{
+    filename: string;
+    content: string;
+  }> {
+    const downloadPromise = this.page.waitForEvent('download');
+    await this.clickSelectionMenuItem('row-selection-download-csv');
+    const download = await downloadPromise;
+    const stream = await download.createReadStream();
+    const chunks: Buffer[] = [];
+    for await (const chunk of stream) {
+      chunks.push(Buffer.from(chunk));
+    }
+    return {
+      filename: download.suggestedFilename(),
+      content: Buffer.concat(chunks).toString('utf-8'),
+    };
+  }
+
+  /**
+   * Open the waterfall's spans filter — a `SearchWhereInput` with
+   * `allowMultiline={false}` in both SQL and Lucene.
+   */
+  async openTraceSpansFilter(): Promise<WhereInputComponent> {
+    await this.selectSource(DEFAULT_TRACES_SOURCE_NAME);
+    await this.timePicker.selectRelativeTime('Last 1 days');
+    await this.submitEmptySearch();
+    await expect(this.table.firstRow).toBeVisible();
+    await this.table.clickFirstRow();
+    await expect(this.sidePanel.container).toBeVisible();
+    await expect(this.sidePanel.getTab('trace')).toBeVisible({
+      timeout: 15_000,
+    });
+    await this.sidePanel.clickTab('trace');
+    await this.sidePanel.toggleTraceFilters();
+    const whereInput = this.sidePanel.traceSpansWhereInput;
+    await expect(whereInput.languageSwitch).toBeVisible();
+    return whereInput;
+  }
+
   /**
    * Clear the search input
    */
@@ -216,16 +342,14 @@ export class SearchPage {
    * Switch to SQL mode
    */
   async switchToSQLMode() {
-    await this.languageSelect.click();
-    await this.sqlTab.click();
+    await this.whereInput.selectLanguage('SQL');
   }
 
   /**
    * Switch to Lucene mode
    */
   async switchToLuceneMode() {
-    await this.languageSelect.click();
-    await this.luceneTab.click();
+    await this.whereInput.selectLanguage('Lucene');
   }
 
   /**
@@ -312,11 +436,62 @@ export class SearchPage {
     return this.page.getByText(/Error loading/i);
   }
 
+  /** Move focus into the WHERE input, whichever language it is rendering. */
+  async focusWhereInput() {
+    await this.whereInput.focus();
+  }
+
+  /**
+   * Border colors of the two halves of the WHERE control. They sit flush
+   * against each other, so a focus state on only one reads as half-focused.
+   */
+  async getWhereBorderColors(): Promise<{
+    languageSwitch: string;
+    input: string;
+  }> {
+    return this.whereInput.borderColors();
+  }
+
   /**
    * Get SELECT editor (CodeMirror)
    */
   getSELECTEditor() {
     return this.page.locator('.cm-content').first();
+  }
+
+  async getSelectBorderColor(): Promise<string> {
+    return this.selectClauseField().visibleBox.evaluate(
+      el => getComputedStyle(el).borderTopColor,
+    );
+  }
+
+  async getOrderByBorderColor(): Promise<string> {
+    return this.orderByClauseField().visibleBox.evaluate(
+      el => getComputedStyle(el).borderTopColor,
+    );
+  }
+
+  /** The SELECT / ORDER BY clause editors as growth-assertable fields. */
+  selectClauseField(): MultilineField {
+    return this.clauseField(this.getSELECTEditor());
+  }
+
+  orderByClauseField(): MultilineField {
+    return this.clauseField(this.getOrderByEditor());
+  }
+
+  /** Empty a clause editor so it starts from one short line. */
+  async clearClause(field: MultilineField) {
+    await field.focusTarget.press('ControlOrMeta+A');
+    await field.focusTarget.press('Backspace');
+  }
+
+  private clauseField(content: Locator): MultilineField {
+    return {
+      focusTarget: content,
+      growthBox: content,
+      visibleBox: borderedBox(content),
+    };
   }
 
   /**
@@ -419,11 +594,11 @@ export class SearchPage {
   }
 
   get luceneModeTab() {
-    return this.luceneTab;
+    return this.page.getByRole('option', { name: 'Lucene', exact: true });
   }
 
   get sqlModeTab() {
-    return this.sqlTab;
+    return this.page.getByRole('option', { name: 'SQL', exact: true });
   }
 
   get sourceDropdown() {

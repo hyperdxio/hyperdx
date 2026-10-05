@@ -1,5 +1,9 @@
 import { isBuilderSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
-import { MetricsDataType, SourceKind } from '@hyperdx/common-utils/dist/types';
+import {
+  MetricsDataType,
+  OnboardingTaskId,
+  SourceKind,
+} from '@hyperdx/common-utils/dist/types';
 import { omit } from 'lodash';
 import { ObjectId } from 'mongodb';
 import request from 'supertest';
@@ -17,6 +21,7 @@ import Alert, { AlertSource, AlertThresholdType } from '@/models/alert';
 import Connection from '@/models/connection';
 import Dashboard from '@/models/dashboard';
 import { Source } from '@/models/source';
+import User from '@/models/user';
 import Webhook, { WebhookService } from '@/models/webhook';
 import {
   ExternalDashboardTile,
@@ -216,6 +221,43 @@ describe('External API v2 Dashboards - old format', () => {
   const authRequest = (method, url) => {
     return agent[method](url).set('Authorization', `Bearer ${user?.accessKey}`);
   };
+
+  describe('onboarding task recording', () => {
+    const completedTasks = async () =>
+      (await User.findById(user._id))?.onboardingData?.completedTasks ?? [];
+
+    // Recording is fire-and-forget (not awaited by the handler), so poll
+    // briefly rather than reading once immediately after the response.
+    const waitForTask = async (task: OnboardingTaskId) => {
+      for (let i = 0; i < 20; i++) {
+        if ((await completedTasks()).includes(task)) return true;
+        await new Promise(r => setTimeout(r, 25));
+      }
+      return false;
+    };
+
+    it('records the dashboard task when a v2 dashboard with a tile is created', async () => {
+      await authRequest('post', BASE_URL)
+        .send({
+          name: 'With tile',
+          tiles: [createTimeSeriesChart(traceSource._id.toString())],
+          tags: [],
+        })
+        .expect(200);
+
+      expect(await waitForTask('dashboard')).toBe(true);
+    });
+
+    it('does not record the dashboard task for a tileless v2 dashboard', async () => {
+      await authRequest('post', BASE_URL)
+        .send({ name: 'Empty', tiles: [], tags: [] })
+        .expect(200);
+
+      // Give any stray write a chance to land, then assert it did not.
+      await new Promise(r => setTimeout(r, 200));
+      expect(await completedTasks()).not.toContain('dashboard');
+    });
+  });
 
   describe('Response Format', () => {
     it('should return responses in the expected (new) format when creating the dashboard in the old format', async () => {
@@ -5329,6 +5371,29 @@ describe('External API v2 Dashboards - new format', () => {
       ...overrides,
     });
 
+    const staticFilterInput = (overrides = {}) => ({
+      id: new ObjectId().toString(),
+      type: 'STATIC_LIST' as const,
+      name: 'Environment',
+      options: ['prod', 'staging', 'dev'],
+      isBroadcastEnabled: false,
+      isVariableEnabled: true,
+      variableName: 'env',
+      ...overrides,
+    });
+
+    const promqlFilterInput = (overrides = {}) => ({
+      id: new ObjectId().toString(),
+      type: 'PROMETHEUS_LABEL' as const,
+      name: 'Pod',
+      sourceId: promqlSource._id.toString(),
+      label: 'pod',
+      isBroadcastEnabled: false,
+      isVariableEnabled: true,
+      variableName: 'pod',
+      ...overrides,
+    });
+
     const sendFilters = async (filters: Record<string, unknown>[]) => {
       const payload = createMockDashboardWithIds(
         traceSource._id.toString(),
@@ -5566,18 +5631,108 @@ describe('External API v2 Dashboards - new format', () => {
       });
     });
 
-    describe('static-list filters', () => {
-      const staticFilterInput = (overrides = {}) => ({
-        id: new ObjectId().toString(),
-        type: 'STATIC_LIST' as const,
-        name: 'Environment',
-        options: ['prod', 'staging', 'dev'],
-        isBroadcastEnabled: false,
-        isVariableEnabled: true,
-        variableName: 'env',
-        ...overrides,
+    describe('required filters', () => {
+      // Named factories rather than a keyed map, so the label `it.each` prints
+      // does not have to come from a lookup evaluated at collection time
+      // (`promqlFilterInput` reads a source created in `beforeEach`).
+      const variants = [
+        ['QUERY_EXPRESSION', filterInput],
+        ['STATIC_LIST', staticFilterInput],
+        ['PROMETHEUS_LABEL', promqlFilterInput],
+      ] as const;
+
+      it.each(variants)(
+        'accepts a required %s filter',
+        async (_type, makeFilter) => {
+          const response = await sendFilters([
+            makeFilter({ minSelections: 1 }),
+          ]);
+          expect(response.status).toBe(200);
+          expect(response.body.data.filters[0].minSelections).toBe(1);
+        },
+      );
+
+      // Not required is the absence of the field, so a GET response can be PUT
+      // back verbatim - the same policy `variableName` already follows.
+      it.each([undefined, 0])(
+        'omits the key from responses when minSelections is %s',
+        async minSelections => {
+          const response = await sendFilters([filterInput({ minSelections })]);
+          expect(response.status).toBe(200);
+          expect(response.body.data.filters[0]).not.toHaveProperty(
+            'minSelections',
+          );
+        },
+      );
+
+      it.each([2, -1, 1.5, '1'])('rejects minSelections %s', async value => {
+        await expectFilters([filterInput({ minSelections: value })], 400);
       });
 
+      it('round-trips a required filter through GET and back', async () => {
+        const response = await sendFilters([filterInput({ minSelections: 1 })]);
+        expect(response.status).toBe(200);
+
+        const dashboard = await authRequest(
+          'get',
+          `${BASE_URL}/${response.body.data.id}`,
+        ).expect(200);
+        expect(dashboard.body.data.filters[0].minSelections).toBe(1);
+
+        await authRequest('put', `${BASE_URL}/${response.body.data.id}`)
+          .send(omit(dashboard.body.data, 'id'))
+          .expect(200);
+      });
+
+      it.each(variants)(
+        'accepts a dashboard-wide requirement on a %s filter',
+        async (_type, makeFilter) => {
+          const response = await sendFilters([
+            makeFilter({ minSelections: 1, isGlobalRequirement: true }),
+          ]);
+          expect(response.status).toBe(200);
+          expect(response.body.data.filters[0].isGlobalRequirement).toBe(true);
+        },
+      );
+
+      // Same policy as minSelections: the scope means nothing without a
+      // requirement, so it never appears on an optional filter's response.
+      it('omits the scope from responses when the filter is not required', async () => {
+        const response = await sendFilters([
+          filterInput({ isGlobalRequirement: true }),
+        ]);
+        expect(response.status).toBe(200);
+        expect(response.body.data.filters[0]).not.toHaveProperty(
+          'isGlobalRequirement',
+        );
+      });
+
+      it('rejects a non-boolean scope', async () => {
+        await expectFilters(
+          [filterInput({ minSelections: 1, isGlobalRequirement: 'true' })],
+          400,
+        );
+      });
+
+      it('round-trips a dashboard-wide requirement through GET and back', async () => {
+        const response = await sendFilters([
+          filterInput({ minSelections: 1, isGlobalRequirement: true }),
+        ]);
+        expect(response.status).toBe(200);
+
+        const dashboard = await authRequest(
+          'get',
+          `${BASE_URL}/${response.body.data.id}`,
+        ).expect(200);
+        expect(dashboard.body.data.filters[0].isGlobalRequirement).toBe(true);
+
+        await authRequest('put', `${BASE_URL}/${response.body.data.id}`)
+          .send(omit(dashboard.body.data, 'id'))
+          .expect(200);
+      });
+    });
+
+    describe('static-list filters', () => {
       it('accepts a static-list filter and round-trips it through GET', async () => {
         const response = await sendFilters([staticFilterInput()]);
         expect(response.status).toBe(200);
@@ -5704,18 +5859,6 @@ describe('External API v2 Dashboards - new format', () => {
     });
 
     describe('promql-label filters', () => {
-      const promqlFilterInput = (overrides = {}) => ({
-        id: new ObjectId().toString(),
-        type: 'PROMETHEUS_LABEL' as const,
-        name: 'Pod',
-        sourceId: promqlSource._id.toString(),
-        label: 'pod',
-        isBroadcastEnabled: false,
-        isVariableEnabled: true,
-        variableName: 'pod',
-        ...overrides,
-      });
-
       it('accepts a promql-label filter and round-trips it through GET', async () => {
         const response = await sendFilters([promqlFilterInput()]);
         expect(response.status).toBe(200);

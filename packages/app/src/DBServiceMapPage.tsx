@@ -37,7 +37,7 @@ import SearchWhereInput, {
 import { IS_LOCAL_MODE } from '@/config';
 import { useGetKeyValues } from '@/hooks/useMetadata';
 import { useResolvedSourceParam } from '@/hooks/useResolvedSourceParam';
-import { withAppNav } from '@/layout';
+import { withAppNavForSurface } from '@/layout';
 import { parseAsStringEncoded } from '@/utils/queryParsers';
 
 import OnboardingModal from './components/OnboardingModal';
@@ -50,7 +50,7 @@ import { SourceSelectControlled } from './components/SourceSelect';
 import { TimePicker } from './components/TimePicker';
 import { useBrandDisplayName } from './theme/ThemeProvider';
 import { useSources } from './source';
-import { parseTimeQuery, useNewTimeQuery } from './timeQuery';
+import { useDefaultTimeRange, useNewTimeQuery } from './timeQuery';
 
 // The % of requests sampled is 1 / sampling factor
 const SAMPLING_FACTORS = [
@@ -77,10 +77,6 @@ const SAMPLING_FACTORS = [
 ];
 
 const DEFAULT_INTERVAL = 'Past 1h';
-const defaultTimeRange = parseTimeQuery(DEFAULT_INTERVAL, false) as [
-  Date,
-  Date,
-];
 
 const searchQueryStateMap = {
   where: parseAsStringEncoded,
@@ -89,6 +85,7 @@ const searchQueryStateMap = {
 };
 
 function DBServiceMapPage() {
+  const defaultTimeRange = useDefaultTimeRange(DEFAULT_INTERVAL);
   const brandName = useBrandDisplayName();
 
   const { data: sources } = useSources();
@@ -413,6 +410,9 @@ const DBServiceMapPageDynamic = dynamic(async () => DBServiceMapPage, {
 });
 
 // @ts-expect-error next/dynamic component type does not include the getLayout static
-DBServiceMapPageDynamic.getLayout = withAppNav;
+DBServiceMapPageDynamic.getLayout = withAppNavForSurface(
+  'service-dashboard',
+  'service-map',
+);
 
 export default DBServiceMapPageDynamic;

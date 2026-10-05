@@ -13,17 +13,7 @@ import {
   TSource,
 } from './types';
 
-/**
- * Source kinds that can back a heatmap tile. The HeatmapSeriesEditor
- * defaults to `Duration` for traces, and the editor's source picker
- * filters with `allowedSourceKinds={[SourceKind.Trace]}` when the
- * selected display type is heatmap (see
- * `packages/app/src/components/DBEditTimeChartForm/ChartEditorControls.tsx`).
- *
- * The external dashboards API uses the same set so UI and API gates
- * move together; expanding heatmap to a new source kind only requires
- * adding it here.
- */
+/** Source kinds that can back a heatmap tile. */
 export const HEATMAP_ALLOWED_SOURCE_KINDS: ReadonlyArray<SourceKind> = [
   SourceKind.Trace,
 ];

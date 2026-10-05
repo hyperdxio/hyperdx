@@ -1,4 +1,5 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import cx from 'classnames';
 import { ErrorBoundary } from 'react-error-boundary';
 import {
   filterColumnMetaByType,
@@ -6,6 +7,7 @@ import {
 } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   isBuilderChartConfig,
+  isPromqlChartConfig,
   isRawSqlChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
 import {
@@ -17,6 +19,7 @@ import { Flex, Text } from '@mantine/core';
 import {
   buildMVDateRangeIndicator,
   convertToNumberChartConfig,
+  convertToReducedPromqlChartConfig,
 } from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
@@ -31,6 +34,7 @@ import ChartContainer from './charts/ChartContainer';
 import ChartErrorState, {
   ChartErrorStateVariant,
 } from './charts/ChartErrorState';
+import MultipleValuesIndicator from './charts/MultipleValuesIndicator';
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
 import NumberTileBackgroundChart from './NumberTileBackgroundChart';
 
@@ -219,13 +223,13 @@ export default function DBNumberChart({
   showMVOptimizationIndicator?: boolean;
   errorVariant?: ChartErrorStateVariant;
 }) {
-  const queriedConfig = useMemo(
-    () =>
-      isBuilderChartConfig(config)
-        ? convertToNumberChartConfig(config)
-        : config,
-    [config],
-  );
+  const queriedConfig = useMemo(() => {
+    if (isBuilderChartConfig(config)) return convertToNumberChartConfig(config);
+    if (isPromqlChartConfig(config)) {
+      return convertToReducedPromqlChartConfig(config);
+    }
+    return config;
+  }, [config]);
 
   const builderQueriedConfig = isBuilderChartConfig(queriedConfig)
     ? queriedConfig
@@ -233,14 +237,12 @@ export default function DBNumberChart({
   const { data: mvOptimizationData } =
     useMVOptimizationExplanation(builderQueriedConfig);
 
-  const { data, isLoading, isError, error } = useQueriedChartConfig(
-    queriedConfig,
-    {
+  const { data, isLoading, isError, error, isPlaceholderData } =
+    useQueriedChartConfig(queriedConfig, {
       placeholderData: (prev: any) => prev,
-      queryKey: [queryKeyPrefix, queriedConfig],
+      queryKeyPrefix,
       enabled,
-    },
-  );
+    });
 
   // The value is the first numeric value in the first row of the result
   const valueColumn = data?.meta
@@ -252,6 +254,17 @@ export default function DBNumberChart({
           `No numeric columns found in result column metadata. Make sure a numeric column exists in the result set.\n\nResult Metadata: ${JSON.stringify(data.meta)}`,
         )
       : error;
+
+  // The reducer leaves one row per series.
+  const promqlSeriesCount = isPromqlChartConfig(queriedConfig)
+    ? (data?.data?.length ?? 0)
+    : 0;
+
+  // Several series leave the value ambiguous (see the warning) and the tile
+  // shows whichever came first, so a trend behind it would mislead. Whether
+  // the config can be bucketed at all is the sparkline's own call.
+  const showSparkline =
+    config.backgroundChart != null && promqlSeriesCount <= 1;
 
   const resolvedNumberFormat = useSingleSeriesNumberFormat(queriedConfig);
 
@@ -313,6 +326,16 @@ export default function DBNumberChart({
       allToolbarItems.push(...toolbarPrefix);
     }
 
+    if (promqlSeriesCount > 1) {
+      allToolbarItems.push(
+        <MultipleValuesIndicator
+          key="db-number-chart-multiple-values"
+          seriesCount={promqlSeriesCount}
+          multipleSeriesHint="Aggregate the expression, for example with sum() or sum by (...), to return a single series."
+        />,
+      );
+    }
+
     if (source && showMVOptimizationIndicator && builderQueriedConfig) {
       allToolbarItems.push(
         <MVOptimizationIndicator
@@ -346,6 +369,7 @@ export default function DBNumberChart({
     mvOptimizationData,
     queriedConfig,
     builderQueriedConfig,
+    promqlSeriesCount,
   ]);
 
   return (
@@ -359,15 +383,25 @@ export default function DBNumberChart({
       ) : resultError ? (
         <ChartErrorState error={resultError} variant={errorVariant} />
       ) : data?.data.length === 0 ? (
-        <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
+        <div
+          className={cx(
+            'd-flex h-100 w-100 align-items-center justify-content-center text-muted',
+            { 'effect-pulse': isPlaceholderData },
+          )}
+        >
           No data found within time range.
         </div>
       ) : (
-        <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-          {config.backgroundChart && (
+        <div
+          className={isLoading || isPlaceholderData ? 'effect-pulse' : ''}
+          style={{ position: 'relative', width: '100%', height: '100%' }}
+        >
+          {showSparkline && config.backgroundChart && (
             <NumberTileBackgroundChart
               config={config}
               backgroundChart={config.backgroundChart}
+              queryKeyPrefix={queryKeyPrefix}
+              enabled={enabled}
             />
           )}
           <div style={{ position: 'relative', zIndex: 1, height: '100%' }}>
