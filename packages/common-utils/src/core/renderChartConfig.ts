@@ -126,6 +126,14 @@ export const hasMetricFormulas = (
   chartConfig: BuilderChartConfigWithOptDateRange,
 ): boolean => (chartConfig.formulas?.length ?? 0) > 0;
 
+export const usesComposedMetricQuery = (
+  chartConfig: BuilderChartConfigWithOptDateRange,
+): boolean =>
+  isMetricChartConfig(chartConfig) &&
+  Array.isArray(chartConfig.select) &&
+  (chartConfig.select.length > 1 ||
+    (chartConfig.select.length === 1 && hasMetricFormulas(chartConfig)));
+
 // TODO: apply this to all chart configs
 export const setChartSelectsAlias = (
   config: BuilderChartConfigWithOptDateRange,
@@ -3237,13 +3245,7 @@ export async function renderChartConfig(
   // (and without formulas). A single-series chart with a formula (e.g.
   // `A * 100`) also takes the composed path — the formula projects over the
   // pivoted value columns, which only the composed shape produces.
-  if (
-    isMetricChartConfig(substitutedChartConfig) &&
-    Array.isArray(substitutedChartConfig.select) &&
-    (substitutedChartConfig.select.length > 1 ||
-      (substitutedChartConfig.select.length === 1 &&
-        hasMetricFormulas(substitutedChartConfig)))
-  ) {
+  if (usesComposedMetricQuery(substitutedChartConfig)) {
     return renderMultiSeriesMetricChartConfig(
       substitutedChartConfig,
       metadata,

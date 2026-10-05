@@ -2,8 +2,9 @@ import { useCallback, useMemo, useState } from 'react';
 import cx from 'classnames';
 import { inferNumericColumn } from '@hyperdx/common-utils/dist/clickhouse';
 import {
-  isMetricChartConfig,
   isRatioChartConfig,
+  setChartSelectsAlias,
+  usesComposedMetricQuery,
 } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import { unquoteIdentifier } from '@hyperdx/common-utils/dist/core/metadata';
 import {
@@ -44,15 +45,6 @@ import ChartErrorState, {
 } from './charts/ChartErrorState';
 import { getClientSideSortingFn } from './DBTable/sorting';
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
-
-const usesComposedMetricOutputIdentifiers = (
-  config: ChartConfigWithOptTimestamp,
-) =>
-  isBuilderChartConfig(config) &&
-  isMetricChartConfig(config) &&
-  Array.isArray(config.select) &&
-  (config.select.length > 1 ||
-    (config.select.length === 1 && (config.formulas?.length ?? 0) > 0));
 
 export default function DBTableChart({
   config,
@@ -100,8 +92,12 @@ export default function DBTableChart({
       return aliases;
     }
 
-    if (Array.isArray(config.select)) {
-      for (const select of config.select) {
+    const outputConfig = usesComposedMetricQuery(config)
+      ? setChartSelectsAlias(config)
+      : config;
+
+    if (Array.isArray(outputConfig.select)) {
+      for (const select of outputConfig.select) {
         if (select.alias?.trim()) {
           aliases.add(select.alias);
         }
@@ -142,8 +138,6 @@ export default function DBTableChart({
     const _config = convertToTableChartConfig(config);
 
     if (effectiveSort.length) {
-      const sortUsesOutputIdentifiers =
-        usesComposedMetricOutputIdentifiers(_config);
       _config.orderBy = effectiveSort.map(o => {
         const rawSortId = unquoteIdentifier(o.id);
         const isQuotedIdentifier = rawSortId !== o.id;
@@ -151,8 +145,7 @@ export default function DBTableChart({
 
         return {
           valueExpression:
-            (sortUsesOutputIdentifiers || isConfiguredOutputAlias) &&
-            !isQuotedIdentifier
+            isConfiguredOutputAlias && !isQuotedIdentifier
               ? quoteClickHouseOutputIdentifier(rawSortId)
               : o.id,
           ordering: o.desc ? 'DESC' : 'ASC',
@@ -282,7 +275,8 @@ export default function DBTableChart({
         // Multi-series metrics sort in the final projection. Other builder
         // tables still need unaliased expressions in their original scope.
         id:
-          usesComposedMetricOutputIdentifiers(queriedConfig) ||
+          (isBuilderChartConfig(queriedConfig) &&
+            usesComposedMetricQuery(queriedConfig)) ||
           configuredOutputAliases.has(key) ||
           formulaKeys.includes(key)
             ? quoteClickHouseOutputIdentifier(key)

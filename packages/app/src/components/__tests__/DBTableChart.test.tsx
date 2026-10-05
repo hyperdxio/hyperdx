@@ -457,7 +457,13 @@ describe('DBTableChart', () => {
     const metricBuilderConfig = {
       ...baseTestConfig,
       metricTables: { gauge: 'metrics_gauge' },
-      select: [{ aggFn: 'avg' as const, valueExpression: 'metric.total' }],
+      select: [
+        {
+          aggFn: 'avg' as const,
+          metricName: 'metric.total',
+          valueExpression: 'Value',
+        },
+      ],
       formulas: [{ expression: 'A * 2', alias: 'error rate' }],
       groupBy: 'ServiceName',
     };
@@ -659,6 +665,28 @@ describe('DBTableChart', () => {
         {
           valueExpression: '"avg(metric.total)"',
           ordering: 'DESC',
+        },
+      ]);
+    });
+
+    it('keeps free-form ORDER BY expressions unquoted for composed metrics', () => {
+      renderWithMantine(
+        <DBTableChart
+          config={metricBuilderConfig}
+          sort={[{ id: 'lower(ServiceName)', desc: false }]}
+        />,
+      );
+
+      const queriedConfig = jest
+        .mocked(useOffsetPaginatedQuery)
+        .mock.calls.at(-1)![0];
+      if (!isBuilderChartConfig(queriedConfig)) {
+        throw new Error('Expected a builder chart config');
+      }
+      expect(queriedConfig.orderBy).toEqual([
+        {
+          valueExpression: 'lower(ServiceName)',
+          ordering: 'ASC',
         },
       ]);
     });
