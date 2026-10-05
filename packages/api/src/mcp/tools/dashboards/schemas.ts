@@ -927,7 +927,7 @@ const mcpHeatmapSelectItemSchema = z.object({
     .describe('Color scale: "log" or "linear"'),
 });
 
-// Heatmap tiles are builder-only and currently restricted to Trace sources
+// Distribution heatmap tiles are builder-only and restricted to Trace sources
 // (see HEATMAP_DISTRIBUTION_SOURCE_KINDS in `packages/common-utils/src/guards.ts`).
 // The save path runs `getHeatmapTilesWithIncompatibleSources` after schema
 // validation to enforce that, mirroring the REST handler.
@@ -935,7 +935,14 @@ const mcpHeatmapTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
     displayType: z
       .literal('heatmap')
-      .describe('Heatmap chart, requires a Trace source'),
+      .describe(
+        'Heatmap chart. Without `heatmapMode` it is a distribution heatmap, ' +
+          'which buckets a numeric value on the y-axis and requires a Trace source',
+      ),
+    heatmapMode: z
+      .literal('distribution')
+      .optional()
+      .describe('Omit for a distribution heatmap'),
     sourceId: z
       .string()
       .describe(
@@ -962,6 +969,41 @@ const mcpHeatmapTileSchema = mcpTileLayoutSchema.extend({
         'Display formatting for bucket values. Example: { output: "duration", factor: 0.000000001 } ' +
           'to format nanosecond durations as human-readable time.',
       ),
+  }),
+});
+
+const mcpHeatmapSeriesTileSchema = mcpTileLayoutSchema.extend({
+  config: z.object({
+    ...rejectedTileWhereFields,
+    displayType: z
+      .literal('heatmap')
+      .describe(
+        'Series heatmap: one row per groupBy value, each cell colored by the ' +
+          'aggregated value over time',
+      ),
+    heatmapMode: z
+      .literal('series')
+      .describe('Must be "series" for a series heatmap'),
+    sourceId: z
+      .string()
+      .describe(
+        'Source ID of a Trace, Log, or Metric source - call clickstack_list_sources',
+      ),
+    select: z
+      .array(mcpTileSelectItemSchema)
+      .length(1)
+      .describe(
+        'Defines the aggregate value displayed for each heatmap series.',
+      ),
+    groupBy: z
+      .string()
+      .optional()
+      .describe(
+        'SQL GROUP BY expression defining the series shown in the heatmap.',
+      ),
+    numberFormat: mcpNumberFormatSchema
+      .optional()
+      .describe(tileLevelNumberFormatDescription),
   }),
 });
 
@@ -1116,6 +1158,7 @@ const mcpTileSchema = z.union([
   mcpNumberTileSchema,
   mcpPieTileSchema,
   mcpCategoricalBarTileSchema,
+  mcpHeatmapSeriesTileSchema,
   mcpHeatmapTileSchema,
   mcpSearchTileSchema,
   mcpEventPatternsTileSchema,
@@ -1153,6 +1196,9 @@ const mcpPatchTileSchema = z.union([
   mcpPatchTileLayoutSchema.extend({ config: mcpPieTileSchema.shape.config }),
   mcpPatchTileLayoutSchema.extend({
     config: mcpCategoricalBarTileSchema.shape.config,
+  }),
+  mcpPatchTileLayoutSchema.extend({
+    config: mcpHeatmapSeriesTileSchema.shape.config,
   }),
   mcpPatchTileLayoutSchema.extend({
     config: mcpHeatmapTileSchema.shape.config,
