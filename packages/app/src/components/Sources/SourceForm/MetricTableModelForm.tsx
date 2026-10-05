@@ -7,7 +7,6 @@ import { notifications } from '@mantine/notifications';
 import api from '@/api';
 import { useTablesDirect } from '@/clickhouse';
 import { DBTableSelectControlled } from '@/components/DBTableSelect';
-import SelectControlled from '@/components/SelectControlled';
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
 import { useMetricsSeriesTableAvailability } from '@/hooks/useMetricsSeriesTableAvailability';
@@ -18,12 +17,9 @@ import {
   matchSeriesTable,
 } from '@/utils/metricTableAutofill';
 
-import {
-  DEFAULT_DATABASE,
-  MIN_AUTO_GRANULARITY_OPTIONS,
-  OTEL_CLICKHOUSE_EXPRESSIONS,
-} from './constants';
+import { DEFAULT_DATABASE, OTEL_CLICKHOUSE_EXPRESSIONS } from './constants';
 import { FormRow } from './FormRow';
+import { MinAutoGranularityFormRow } from './MinAutoGranularityFormRow';
 import { TableModelProps } from './types';
 
 export function MetricTableModelForm({
@@ -325,23 +321,7 @@ export function MetricTableModelForm({
         >
           <SourceSelectControlled control={control} name="logSourceId" />
         </FormRow>
-        <FormRow
-          label="Minimum auto granularity"
-          helpText="Floor for 'auto granularity' on charts querying this source. Set this to your metrics' scrape/report interval to avoid sparse-looking charts on short time ranges. Doesn't affect an explicitly chosen (non-auto) granularity."
-        >
-          <SelectControlled
-            control={control}
-            name="minAutoGranularity"
-            data={MIN_AUTO_GRANULARITY_OPTIONS}
-            allowDeselect={false}
-            // An existing source's minAutoGranularity is undefined when
-            // unset, which matches no entry in `data` (the "No minimum"
-            // entry's value is '', not undefined) - SelectControlled then
-            // renders blank rather than that option's label. The
-            // placeholder covers exactly that unset state.
-            placeholder="No minimum"
-          />
-        </FormRow>
+        <MinAutoGranularityFormRow control={control} />
       </Stack>
     </>
   );

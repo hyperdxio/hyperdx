@@ -290,9 +290,14 @@ function toQueriedPromqlConfig(
   return config;
 }
 
-/** The expressions a PromQL tile is queried with, with macros and variables substituted. */
+/**
+ * The expressions a PromQL tile is queried with, with macros and variables
+ * substituted. `minGranularitySeconds` is the PromQL source's floor, which the
+ * chart applies to `auto` granularity and `$__rate_interval`.
+ */
 export function buildRenderedPromqlExpression(
   queriedConfig: ChartConfigWithDateRange | undefined,
+  minGranularitySeconds?: number,
 ): RenderedPromqlExpression | undefined {
   if (queriedConfig == null || !isPromqlChartConfig(queriedConfig)) {
     return undefined;
@@ -300,7 +305,7 @@ export function buildRenderedPromqlExpression(
 
   try {
     const substituted = substitutePromqlChartConfigTemplates(
-      toQueriedPromqlConfig(queriedConfig),
+      toQueriedPromqlConfig({ ...queriedConfig, minGranularitySeconds }),
     );
     return {
       expressions: getQueriedPromqlSeries(substituted).map((series, index) => ({

@@ -2412,7 +2412,31 @@ describe('useChartConfig', () => {
       expect(getMinGranularitySeconds(baseMetricSource)).toBeUndefined();
     });
 
-    it('returns undefined for a non-metric source', () => {
+    describe('for a PromQL source', () => {
+      const basePromqlSource = {
+        id: 'source-3',
+        kind: SourceKind.Promql,
+        name: 'Test Prometheus',
+        connection: 'conn-1',
+        from: { databaseName: 'default', tableName: 'metrics_ts' },
+        timestampValueExpression: 'timestamp',
+      } satisfies Extract<TSource, { kind: SourceKind.Promql }>;
+
+      it('converts the source minAutoGranularity setting to seconds', () => {
+        expect(
+          getMinGranularitySeconds({
+            ...basePromqlSource,
+            minAutoGranularity: '1 minute',
+          }),
+        ).toBe(60);
+      });
+
+      it('returns undefined when the source has no minAutoGranularity set', () => {
+        expect(getMinGranularitySeconds(basePromqlSource)).toBeUndefined();
+      });
+    });
+
+    it('returns undefined for a source that has no such setting', () => {
       expect(
         getMinGranularitySeconds({
           id: 'source-2',
