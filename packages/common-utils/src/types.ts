@@ -1887,10 +1887,11 @@ export type DateRange = {
   // `__hdx_series_limit` CTE so every chunk ranks (and keeps) the same
   // top-N series. Never persisted.
   seriesLimitDateRange?: [Date, Date];
-  // Runtime-only, populated from the queried MetricSource's
+  // Runtime-only, populated from the queried Metric or PromQL source's
   // `minAutoGranularity` (when set) by whichever caller resolves the source
   // before rendering. Floors "auto" granularity resolution; see
-  // `convertDateRangeToGranularityString`. Never persisted.
+  // `convertDateRangeToGranularityString`. PromQL also reads it as the
+  // source's scrape interval for `$__rate_interval`. Never persisted.
   minGranularitySeconds?: number;
 };
 
@@ -2548,6 +2549,24 @@ export const SessionSourceSchema = BaseSourceSchema.extend({
   resourceAttributesExpression: z.string().optional(),
 });
 
+/**
+ * Floor for "Auto Granularity" on charts querying a metric or PromQL source.
+ * Without this, a short selected date range can auto-infer a bucket smaller
+ * than the metric's actual scrape/report interval, producing sparse/steppy
+ * series. Unset preserves the previous unfloored behavior. Only
+ * constrains auto-inference - an explicit (non-"auto") granularity
+ * picked on a tile is never overridden. PromQL sources also use it as the
+ * scrape interval that `$__rate_interval` is computed from.
+ *
+ * Preprocessed so the form's "No minimum" option (stored as `''`, since a
+ * Mantine Select needs a string value for every entry including the unset
+ * one) round-trips through the schema as `undefined`.
+ */
+export const MinAutoGranularitySchema = z.preprocess(
+  v => (v === '' ? undefined : v),
+  SQLIntervalSchema.optional(),
+);
+
 // Metric source form schema
 export const MetricSourceSchema = BaseSourceSchema.extend({
   kind: z.literal(SourceKind.Metric),
@@ -2568,27 +2587,13 @@ export const MetricSourceSchema = BaseSourceSchema.extend({
   logSourceId: z.string().optional(),
   // Unified metrics series table. Available only when `isMetricsSeriesTableEnabled` is set on the team document.
   seriesTable: z.string().optional(),
-  /**
-   * Floor for "Auto Granularity" on charts querying this source. Without
-   * this, a short selected date range can auto-infer a bucket smaller than
-   * the metric's actual scrape/report interval, producing sparse/steppy
-   * series. Unset preserves the previous unfloored behavior. Only
-   * constrains auto-inference - an explicit (non-"auto") granularity
-   * picked on a tile is never overridden.
-   *
-   * Preprocessed so the form's "No minimum" option (stored as `''`, since a
-   * Mantine Select needs a string value for every entry including the unset
-   * one) round-trips through the schema as `undefined`.
-   */
-  minAutoGranularity: z.preprocess(
-    v => (v === '' ? undefined : v),
-    SQLIntervalSchema.optional(),
-  ),
+  minAutoGranularity: MinAutoGranularitySchema,
 });
 
 // PromQL source form schema
 export const PromqlSourceSchema = BaseSourceSchema.extend({
   kind: z.literal(SourceKind.Promql),
+  minAutoGranularity: MinAutoGranularitySchema,
 });
 
 // Union of all source form schemas for validation
