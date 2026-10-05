@@ -2,6 +2,7 @@ import {
   getDashboardVariableDeclarations,
   getDashboardVariableFilters,
   getFilterVariableName,
+  isFilterSingleSelect,
   isFilterVariableEnabled,
   isStaticListFilter,
 } from '@hyperdx/common-utils/dist/filters';
@@ -99,6 +100,23 @@ export function resolveDashboardVariables(
   });
   if (optionErrors.length > 0) {
     return { error: optionErrors.join('\n') };
+  }
+
+  // The dashboard can never hold several values for a single-select variable.
+  const singleSelectNames = new Set(
+    variables.filter(isFilterSingleSelect).map(variable => variable.name),
+  );
+  const singleSelectErrors = variableValues
+    .filter(
+      ({ name, values }) => values.length > 1 && singleSelectNames.has(name),
+    )
+    .map(
+      ({ name }) =>
+        `Variable "${name}" belongs to a single-select filter (maxSelections: 1) ` +
+        'and accepts at most one value.',
+    );
+  if (singleSelectErrors.length > 0) {
+    return { error: singleSelectErrors.join('\n') };
   }
 
   // Override the default empty selection with the given variableValues

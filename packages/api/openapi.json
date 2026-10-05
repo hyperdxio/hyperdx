@@ -3287,6 +3287,14 @@
             "default": false,
             "description": "Widens a required filter's block to every tile on the dashboard. False\n(the default) blocks only the tiles that read the filter: those\nreferencing its variableName, and those its broadcast applies to.\nIgnored unless minSelections is 1.\n",
             "example": true
+          },
+          "maxSelections": {
+            "type": "integer",
+            "enum": [
+              1
+            ],
+            "description": "Maximum number of values that can be selected at once. Set to 1 to make\nthe filter single-select. Omit the field for the default multi-select\nbehavior.\n",
+            "example": 1
           }
         }
       },
@@ -3369,6 +3377,14 @@
             "default": false,
             "description": "Widens a required filter's block to every tile on the dashboard. False\n(the default) blocks only the tiles that read the filter: those\nreferencing its variableName, and those its broadcast applies to.\nIgnored unless minSelections is 1.\n",
             "example": true
+          },
+          "maxSelections": {
+            "type": "integer",
+            "enum": [
+              1
+            ],
+            "description": "Maximum number of values that can be selected at once. Set to 1 to make\nthe filter single-select. Omit the field for the default multi-select\nbehavior.\n",
+            "example": 1
           }
         }
       },
@@ -3454,6 +3470,14 @@
             "default": false,
             "description": "Widens a required filter's block to every tile on the dashboard. False\n(the default) blocks only the tiles that read the filter: those\nreferencing its variableName, and those its broadcast applies to.\nIgnored unless minSelections is 1.\n",
             "example": true
+          },
+          "maxSelections": {
+            "type": "integer",
+            "enum": [
+              1
+            ],
+            "description": "Maximum number of values that can be selected at once. Set to 1 to make\nthe filter single-select. Omit the field for the default multi-select\nbehavior.\n",
+            "example": 1
           }
         }
       },

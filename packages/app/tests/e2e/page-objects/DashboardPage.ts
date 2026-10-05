@@ -108,6 +108,7 @@ export class DashboardPage {
   readonly variableEnabledCheckbox: Locator;
   readonly requiredFilterCheckbox: Locator;
   readonly globalRequirementCheckbox: Locator;
+  readonly singleSelectCheckbox: Locator;
   readonly variableNameInput: Locator;
   private readonly saveButton: Locator;
   private readonly tileSourceSelector: Locator;
@@ -174,6 +175,9 @@ export class DashboardPage {
     this.requiredFilterCheckbox = page.getByTestId('filter-required-checkbox');
     this.globalRequirementCheckbox = page.getByTestId(
       'filter-global-requirement-checkbox',
+    );
+    this.singleSelectCheckbox = page.getByTestId(
+      'filter-single-select-checkbox',
     );
     this.variableNameInput = page.getByTestId('filter-variable-name-input');
     this.saveButton = page.getByTestId('chart-save-button');
@@ -1433,7 +1437,10 @@ export class DashboardPage {
   async addStaticListFilterToDashboard(
     name: string,
     options: string[],
-    variableOptions?: { variableName?: string } & FilterRequirementOptions,
+    variableOptions?: {
+      variableName?: string;
+      singleSelect?: boolean;
+    } & FilterRequirementOptions,
   ) {
     await this.addFiltersButton.click();
     await this.selectFilterType('Static values');
@@ -1443,6 +1450,9 @@ export class DashboardPage {
     await this.fillFilterOptions(options);
     if (variableOptions?.variableName !== undefined) {
       await this.variableNameInput.fill(variableOptions.variableName);
+    }
+    if (variableOptions?.singleSelect !== undefined) {
+      await this.singleSelectCheckbox.setChecked(variableOptions.singleSelect);
     }
     await this.setFilterRequirement(variableOptions);
     await this.page.getByTestId('save-filter-button').click();

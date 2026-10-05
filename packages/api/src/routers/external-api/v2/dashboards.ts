@@ -1891,6 +1891,14 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *             referencing its variableName, and those its broadcast applies to.
  *             Ignored unless minSelections is 1.
  *           example: true
+ *         maxSelections:
+ *           type: integer
+ *           enum: [1]
+ *           description: |
+ *             Maximum number of values that can be selected at once. Set to 1 to make
+ *             the filter single-select. Omit the field for the default multi-select
+ *             behavior.
+ *           example: 1
  *
  *     StaticListFilterInput:
  *       type: object
@@ -1977,6 +1985,14 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *             referencing its variableName, and those its broadcast applies to.
  *             Ignored unless minSelections is 1.
  *           example: true
+ *         maxSelections:
+ *           type: integer
+ *           enum: [1]
+ *           description: |
+ *             Maximum number of values that can be selected at once. Set to 1 to make
+ *             the filter single-select. Omit the field for the default multi-select
+ *             behavior.
+ *           example: 1
  *
  *     PrometheusLabelFilterInput:
  *       type: object
@@ -2064,6 +2080,14 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *             referencing its variableName, and those its broadcast applies to.
  *             Ignored unless minSelections is 1.
  *           example: true
+ *         maxSelections:
+ *           type: integer
+ *           enum: [1]
+ *           description: |
+ *             Maximum number of values that can be selected at once. Set to 1 to make
+ *             the filter single-select. Omit the field for the default multi-select
+ *             behavior.
+ *           example: 1
  *
  *     Filter:
  *       allOf:
