@@ -25,7 +25,6 @@ export type HeatmapGrid = {
   yAxis: HeatmapYAxis;
   /** Row-major: `cells[timeIdx * rowCount + rowIdx]`. */
   cells: number[];
-  cellKind: 'count' | 'value';
 };
 
 export const EMPTY_HEATMAP_GRID: HeatmapGrid = {
@@ -33,7 +32,6 @@ export const EMPTY_HEATMAP_GRID: HeatmapGrid = {
   stepMs: 0,
   yAxis: { type: 'numeric', scale: 'linear', edges: [] },
   cells: [],
-  cellKind: 'count',
 };
 
 export function heatmapRowCount(yAxis: HeatmapYAxis) {
@@ -180,7 +178,6 @@ export function gridFromBucketRows({
     stepMs: times.length > 1 ? times[1] - times[0] : 0,
     yAxis: { type: 'numeric', scale: isLog ? 'log' : 'linear', edges },
     cells,
-    cellKind: 'count',
   };
 }
 

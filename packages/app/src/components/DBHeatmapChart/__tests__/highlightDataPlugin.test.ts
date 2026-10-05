@@ -24,7 +24,6 @@ function hover(cursor: { left: number; top: number }, cells = [2, 6]) {
         stepMs: 10,
         yAxis: { type: 'numeric', scale: 'linear', edges: [0, 1, 3] },
         cells,
-        cellKind: 'count',
       }),
     ],
   };
