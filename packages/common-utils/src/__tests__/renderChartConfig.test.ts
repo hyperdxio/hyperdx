@@ -4449,7 +4449,7 @@ describe('renderChartConfig', () => {
       expect(sql.match(/SETTINGS/g)).toHaveLength(1);
     });
 
-    it('keeps single-series metric sort expressions in the original query scope', async () => {
+    it('keeps single-series metric sort in original query scope', async () => {
       const generatedSql = await renderChartConfig(
         {
           ...baseMultiSeriesConfig,

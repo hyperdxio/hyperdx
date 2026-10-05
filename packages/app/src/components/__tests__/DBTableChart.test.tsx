@@ -509,7 +509,7 @@ describe('DBTableChart', () => {
       ]);
     });
 
-    it('keeps single-series metric expressions in their original query scope', () => {
+    it('keeps single-series metric sorts in the original query scope', () => {
       const config = {
         ...baseTestConfig,
         metricTables: { gauge: 'metrics_gauge' },
