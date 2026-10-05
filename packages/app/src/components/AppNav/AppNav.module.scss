@@ -109,6 +109,8 @@ $transition-slow: 0.2s ease;
   align-items: center;
   justify-content: center;
   color: var(--color-text);
+  min-width: 0;
+  flex: 1;
 }
 
 .logoIconWrapper {

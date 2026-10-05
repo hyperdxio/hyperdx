@@ -82,13 +82,10 @@ export const IS_METRICS_ENABLED = true;
 export const IS_MTVIEWS_ENABLED = false;
 export const IS_SESSIONS_ENABLED = true;
 export const IS_PROMQL_ENABLED = env('NEXT_PUBLIC_ENABLE_PROMQL') === 'true';
-// Suffix for the tab title/sidebar wordmark; capped at 7 chars so it still
-// fits next to the sidebar's UTC badge without wrapping.
-export const INSTANCE_LABEL = [
-  ...(env('NEXT_PUBLIC_INSTANCE_LABEL') ?? '').trim(),
-]
-  .slice(0, 7)
-  .join('');
+// Suffix for the tab title/sidebar pill. Shown in full in the page title;
+// only truncated visually (via CSS ellipsis) in the sidebar, where space is
+// constrained.
+export const INSTANCE_LABEL = (env('NEXT_PUBLIC_INSTANCE_LABEL') ?? '').trim();
 // Alert detail page (/alerts/:id). Default off — currently enabled only in
 // dev (.env.development) and CI (e2e webserver) while the feature bakes.
 export const IS_ALERT_DETAILS_ENABLED =

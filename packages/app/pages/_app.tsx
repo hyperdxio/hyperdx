@@ -23,7 +23,7 @@ import {
 } from '@/config/fonts';
 import { ibmPlexMono, inter, roboto, robotoMono } from '@/fonts';
 import { fetchServerVersion, installHdxDebug } from '@/hdxDebug';
-import { useInstanceLabelTitle } from '@/hooks/useInstanceLabelTitle';
+import { useTitleSuffix } from '@/hooks/useTitleSuffix';
 import { AppThemeProvider, useAppTheme } from '@/theme/ThemeProvider';
 import { ThemeWrapper } from '@/ThemeWrapper';
 import { NextApiConfigResponseData } from '@/types';
@@ -72,11 +72,14 @@ type AppPropsWithLayout = AppProps & {
 // Must be rendered inside AppThemeProvider to avoid hydration mismatch
 function AppHeadContent() {
   const { theme } = useAppTheme();
-  useInstanceLabelTitle();
+  const suffix = useTitleSuffix();
 
   return (
     <Head>
-      <title>{theme.displayName}</title>
+      <title>
+        {theme.displayName}
+        {suffix}
+      </title>
       <meta name="viewport" content="width=device-width, initial-scale=1" />
       <meta name="google" content="notranslate" />
       <SystemColorSchemeScript />

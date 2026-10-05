@@ -1,14 +1,23 @@
-import { Text } from '@mantine/core';
+import { Badge } from '@mantine/core';
 
 import { INSTANCE_LABEL } from '@/config';
 
+// Styled to match the sidebar's UTC badge; see AppNav.tsx, where the two are
+// mutually exclusive (the label takes priority when set).
 export function InstanceLabel() {
   if (!INSTANCE_LABEL) {
     return null;
   }
   return (
-    <Text component="span" fw={700} ff="monospace" fz={15}>
+    <Badge
+      size="xs"
+      color="gray"
+      variant="light"
+      fw="normal"
+      title={INSTANCE_LABEL}
+      style={{ minWidth: 0, maxWidth: 120 }}
+    >
       {INSTANCE_LABEL}
-    </Text>
+    </Badge>
   );
 }

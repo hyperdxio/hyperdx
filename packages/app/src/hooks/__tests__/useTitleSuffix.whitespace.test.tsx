@@ -2,12 +2,12 @@ import { renderHook } from '@testing-library/react';
 
 jest.mock('@/config', () => ({ INSTANCE_LABEL: 'AB CDEF ' }));
 
-import { useInstanceLabelTitle } from '@/hooks/useInstanceLabelTitle';
+import { useTitleSuffix } from '@/hooks/useTitleSuffix';
 
-describe('useInstanceLabelTitle (suffix ends in whitespace)', () => {
+describe('useTitleSuffix (suffix ends in whitespace)', () => {
   it('does not grow the title unboundedly', async () => {
     document.title = 'Search - HyperDX';
-    renderHook(() => useInstanceLabelTitle());
+    renderHook(() => useTitleSuffix());
     await Promise.resolve();
     await Promise.resolve();
     const lengthAfterFirstFlush = document.title.length;
