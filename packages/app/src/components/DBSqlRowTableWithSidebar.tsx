@@ -25,6 +25,10 @@ import DBRowSidePanel, {
 } from './DBRowSidePanel';
 import { DBRowSidePanelErrorState } from './DBRowSidePanelErrorState';
 import { DBRowTableVariant, DBSqlRowTable } from './DBRowTable';
+import {
+  eventRowWhereForOpenedRow,
+  eventRowWhereParser,
+} from './eventRowWhere';
 
 interface Props {
   sourceId: string;
@@ -88,6 +92,10 @@ export default function DBSqlRowTableWithSideBar({
   const { data: sourceData } = useSource({ id: sourceId });
   const [rowId, setRowId] = useQueryState('rowWhere', parseAsStringEncoded);
   const [rowSource, setRowSource] = useQueryState('rowSource');
+  const [, setEventRowWhere] = useQueryState(
+    'eventRowWhere',
+    eventRowWhereParser,
+  );
   const [aliasWith, setAliasWith] = useState<WithClause[]>([]);
 
   const onOpenSidebar = useCallback(
@@ -96,14 +104,28 @@ export default function DBSqlRowTableWithSideBar({
       setAliasWith(rowWhere.aliasWith);
       setRowSource(sourceId);
       onSidebarOpen?.(rowWhere.where);
+      // Same trace id used to leave the previous span selected, so the
+      // waterfall kept showing it after this result was closed and another
+      // span of that trace was opened.
+      setEventRowWhere(current =>
+        eventRowWhereForOpenedRow(current, rowWhere.where),
+      );
     },
-    [setRowId, setAliasWith, setRowSource, sourceId, onSidebarOpen],
+    [
+      setRowId,
+      setAliasWith,
+      setRowSource,
+      sourceId,
+      onSidebarOpen,
+      setEventRowWhere,
+    ],
   );
 
   const onCloseSidebar = useCallback(() => {
     setRowId(null);
     setRowSource(null);
-  }, [setRowId, setRowSource]);
+    setEventRowWhere(null);
+  }, [setRowId, setRowSource, setEventRowWhere]);
   const renderRowDetails = useCallback(
     (r: { id: string; aliasWith?: WithClause[]; [key: string]: unknown }) => {
       if (!sourceData) {
