@@ -1,4 +1,5 @@
 import { getHeatmapMode } from '@hyperdx/common-utils/dist/core/heatmap';
+import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
 import {
   BuilderChartConfigWithDateRange,
   ChartConfigWithDateRange,
@@ -47,6 +48,29 @@ export type HeatmapQuery =
       config: BuilderChartConfigWithDateRange;
     };
 
+const HEATMAP_AUTO_GRANULARITY_BUCKETS = 245;
+
+/**
+ * `minGranularitySeconds` floors only auto granularity: an explicit
+ * granularity is the user's choice and is kept as-is.
+ */
+export function resolveHeatmapGranularity({
+  granularity,
+  dateRange,
+  minGranularitySeconds,
+}: Pick<
+  BuilderChartConfigWithDateRange,
+  'granularity' | 'dateRange' | 'minGranularitySeconds'
+>): SQLInterval {
+  return granularity == null || granularity === 'auto'
+    ? convertDateRangeToGranularityString(
+        dateRange,
+        HEATMAP_AUTO_GRANULARITY_BUCKETS,
+        minGranularitySeconds,
+      )
+    : granularity;
+}
+
 export function toHeatmapQuery(
   config: BuilderChartConfigWithDateRange,
 ): HeatmapQuery {
@@ -69,7 +93,7 @@ export function toHeatmapQuery(
           countExpression: firstSelect?.countExpression,
         },
       ],
-      granularity: 'auto',
+      granularity: config.granularity,
       numberFormat: config.numberFormat,
     },
     scaleType: firstSelect?.heatmapScaleType ?? 'log',

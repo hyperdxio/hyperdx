@@ -432,9 +432,9 @@ export function buildChartConfigForExplanations({
   // so that the MV optimization explanation and generated SQL preview
   // are accurate.  Heatmap is special-cased: it actually runs as two
   // sequential queries (bounds + bucketed counts) that depend on each
-  // other at runtime, so the SQL preview transforms `config` itself into
-  // both queries on render and the MV indicator is suppressed for this
-  // tab.  Returning `config` unchanged is intentional.
+  // other at runtime, so the SQL preview transforms `builderConfig` itself
+  // into both queries on render and the MV indicator is suppressed for this
+  // tab.
   const builderConfig: BuilderChartConfigWithDateRange = {
     ...config,
     minGranularitySeconds: getMinGranularitySeconds(tableSource),
@@ -449,7 +449,7 @@ export function buildChartConfigForExplanations({
   } else if (activeTab === 'pie' || activeTab === 'bar') {
     return convertToCategoricalChartConfig(builderConfig);
   } else if (activeTab === 'heatmap') {
-    return config;
+    return builderConfig;
   }
 
   return config;

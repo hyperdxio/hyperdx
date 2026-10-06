@@ -161,6 +161,7 @@ import {
   useDeleteDashboard,
 } from '@/dashboard';
 import { useAlertAnnotations } from '@/hooks/useAlertAnnotations';
+import { getMinGranularitySeconds } from '@/hooks/useChartConfig';
 import useDashboardContainers, {
   TabDeleteAction,
 } from '@/hooks/useDashboardContainers';
@@ -248,7 +249,10 @@ function HeatmapTile({
   dateRange: [Date, Date];
   enabled?: boolean;
 }) {
-  const heatmapQuery = toHeatmapQuery(queriedConfig);
+  const heatmapQuery = toHeatmapQuery({
+    ...queriedConfig,
+    minGranularitySeconds: getMinGranularitySeconds(source),
+  });
   const { mode } = heatmapQuery;
 
   const [clickPos, setClickPos] = useState<{ x: number; y: number } | null>(

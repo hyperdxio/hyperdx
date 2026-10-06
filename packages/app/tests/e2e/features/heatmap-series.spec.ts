@@ -64,6 +64,34 @@ test.describe('Heatmap modes', { tag: ['@full-stack', '@dashboard'] }, () => {
       .toContain(whereMarker);
   });
 
+  test('the editor granularity applies in both heatmap modes', async ({
+    page,
+  }) => {
+    const dashboardPage = new DashboardPage(page);
+    const editor = dashboardPage.chartEditor;
+
+    await dashboardPage.goto();
+    await dashboardPage.createNewDashboard();
+    await dashboardPage.addTile();
+    await expect(editor.nameInput).toBeVisible();
+    await editor.waitForDataToLoad();
+    await editor.setChartType(DisplayType.Heatmap);
+    await expect(editor.source).toHaveValue(DEFAULT_TRACES_SOURCE_NAME);
+
+    await editor.setGranularity('1 Hour Granularity');
+    await editor.runQuery(false);
+    await editor.openGeneratedSql();
+    await expect
+      .poll(() => editor.getAllGeneratedSqlText())
+      .toContain('INTERVAL 1 hour');
+
+    await editor.setHeatmapMode('Series');
+    await editor.openGeneratedSql();
+    await expect
+      .poll(() => editor.getAllGeneratedSqlText())
+      .toContain('INTERVAL 1 hour');
+  });
+
   test('series heatmap with a group by renders and persists', async ({
     page,
   }) => {

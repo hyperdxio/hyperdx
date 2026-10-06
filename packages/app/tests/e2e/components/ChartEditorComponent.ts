@@ -80,6 +80,16 @@ export class ChartEditorComponent {
       .click();
   }
 
+  /** The editor's own granularity picker, not the dashboard header's. */
+  get granularityPicker(): Locator {
+    return this.editorForm().getByTestId('granularity-picker');
+  }
+
+  async setGranularity(label: string) {
+    await this.granularityPicker.click();
+    await this.page.getByRole('option', { name: label, exact: true }).click();
+  }
+
   /** The distribution heatmap's "Value" (y axis) SQL input. */
   get heatmapValueInput(): Locator {
     return this.editorForm()

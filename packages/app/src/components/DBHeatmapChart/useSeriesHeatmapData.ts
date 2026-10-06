@@ -60,7 +60,7 @@ export function useSeriesHeatmapData({
   enabled: boolean;
 }): HeatmapData {
   const { granularity, generatedTsBuckets, fromMs, toMs } =
-    useHeatmapTimeBuckets(config.dateRange);
+    useHeatmapTimeBuckets(config);
 
   const seriesConfig = buildHeatmapSeriesConfig(config, granularity);
   const { data, isLoading, isPlaceholderData, error } = useQueriedChartConfig(
