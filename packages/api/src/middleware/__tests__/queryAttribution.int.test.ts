@@ -41,9 +41,19 @@ describe('request query attribution', () => {
     });
   });
 
+  // jest.setup.ts installs `fetch` as a plain jest.fn(), not a spy, so
+  // restoreAllMocks can't put it back; and restoreAllMocks would also undo
+  // the setup's console spies. Each mock is reset by hand instead.
+  const fetchStub = jest.mocked(global.fetch).getMockImplementation();
+  let serverVersionSpy: jest.SpiedFunction<
+    Metadata['getServerVersion']
+  > | null = null;
+
   afterEach(async () => {
     await server.clearDBs();
-    jest.restoreAllMocks();
+    jest.mocked(global.fetch).mockImplementation(fetchStub);
+    serverVersionSpy?.mockRestore();
+    serverVersionSpy = null;
   });
 
   afterAll(async () => {
@@ -132,7 +142,7 @@ describe('request query attribution', () => {
   it('tags PromQL table-function queries with the attribution the browser sent', async () => {
     // Below 26.6 the router evaluates through prometheusQuery() rather than
     // proxying to ClickHouse's Prometheus HTTP API.
-    jest
+    serverVersionSpy = jest
       .spyOn(Metadata.prototype, 'getServerVersion')
       .mockResolvedValue([26, 5, 0, 0]);
     const { agent, team } = await getLoggedInAgent(server);
@@ -183,8 +193,7 @@ describe('request query attribution', () => {
   // The CI ClickHouse serves prometheus_api_v1, which evaluates the PromQL
   // itself: this pins that it honours the log_comment and query_id we send.
   it('tags PromQL proxied to the prometheus_api_v1 handler', async () => {
-    // A spy, so the afterEach restoreAllMocks puts the stub back.
-    jest.spyOn(global, 'fetch').mockImplementation(globalThis.realFetch);
+    jest.mocked(global.fetch).mockImplementation(globalThis.realFetch);
     const { agent, team } = await getLoggedInAgent(server);
     const conn = await Connection.create({
       team: team._id,
