@@ -271,10 +271,30 @@ describe('queryPromqlChartConfig', () => {
       },
       dateRange,
       new AbortController().signal,
+      {},
     );
 
     expect(prometheusApi.query).toHaveBeenCalledWith(
       expect.objectContaining({ limit: 10_000 }),
+    );
+  });
+
+  it('passes the attribution through to the request', async () => {
+    const attribution = { surface: 'dashboard' as const, tile: 'tile-1' };
+    await queryPromqlChartConfig(
+      {
+        configType: 'promql',
+        displayType: DisplayType.Table,
+        connection: 'conn',
+        promqlExpression: [{ expression: 'up', queryType: 'instant' }],
+      },
+      dateRange,
+      new AbortController().signal,
+      attribution,
+    );
+
+    expect(prometheusApi.query).toHaveBeenCalledWith(
+      expect.objectContaining({ attribution }),
     );
   });
 
@@ -290,6 +310,7 @@ describe('queryPromqlChartConfig', () => {
       },
       dateRange,
       new AbortController().signal,
+      {},
     );
 
     expect(prometheusApi.query).toHaveBeenCalledWith(
