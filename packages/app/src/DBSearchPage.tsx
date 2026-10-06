@@ -109,7 +109,7 @@ import { SourceSelectControlled } from '@/components/SourceSelect';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { Tags } from '@/components/Tags';
 import { TimePicker } from '@/components/TimePicker';
-import { INSTANCE_TITLE_SUFFIX, IS_LOCAL_MODE } from '@/config';
+import { IS_LOCAL_MODE } from '@/config';
 import { useAliasMapFromChartConfig } from '@/hooks/useChartConfig';
 import { useExplainQuery } from '@/hooks/useExplainQuery';
 import { useResolvedSourceParam } from '@/hooks/useResolvedSourceParam';
@@ -124,7 +124,7 @@ import {
 } from '@/savedSearch';
 import { useSearchPageFilterState } from '@/searchFilters';
 import { getEventBody, useSource, useSources } from '@/source';
-import { useAppTheme, useBrandDisplayName } from '@/theme/ThemeProvider';
+import { useAppTheme, usePageTitle } from '@/theme/ThemeProvider';
 import {
   parseRelativeTimeQuery,
   useDefaultTimeRange,
@@ -1038,7 +1038,6 @@ function DBSearchPageContent() {
   // Read again here, not passed down: this component re-renders from its own
   // query-state hooks without the wrapper, and must see the current path.
   const savedSearchId = getSavedSearchIdFromPath();
-  const brandName = useBrandDisplayName();
   const defaultTimeRange = useDefaultTimeRange('Past 15m');
 
   const [rawSearchedConfig, setSearchedConfig] = useQueryStates(queryStateMap);
@@ -1066,6 +1065,9 @@ function DBSearchPageContent() {
     {
       enabled: savedSearchId != null,
     },
+  );
+  const title = usePageTitle(
+    savedSearch ? `${savedSearch.name} Search` : 'Search',
   );
 
   const { data: sources } = useSources();
@@ -2215,7 +2217,7 @@ function DBSearchPageContent() {
       data-testid="search-page"
     >
       <Head>
-        <title>{`${savedSearch ? `${savedSearch.name} Search` : 'Search'} - ${brandName}${INSTANCE_TITLE_SUFFIX}`}</title>
+        <title>{title}</title>
       </Head>
       {!IS_LOCAL_MODE && isAlertModalOpen && (
         <DBSearchPageAlertModal

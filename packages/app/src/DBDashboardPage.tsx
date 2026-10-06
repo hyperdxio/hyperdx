@@ -153,7 +153,6 @@ import {
   parseTimeRangeInput,
   timeRangeInputToSeconds,
 } from '@/components/TimePicker/utils';
-import { INSTANCE_TITLE_SUFFIX } from '@/config';
 import {
   Dashboard,
   type Tile,
@@ -189,7 +188,7 @@ import { Tags } from './components/Tags';
 import useDashboardFilters from './hooks/useDashboardFilters';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
 import useTileSelection from './hooks/useTileSelection';
-import { useBrandDisplayName } from './theme/ThemeProvider';
+import { usePageTitle } from './theme/ThemeProvider';
 import { parseAsJsonEncoded, parseAsStringEncoded } from './utils/queryParsers';
 import {
   buildDashboardReplaySearchUrl,
@@ -1891,7 +1890,7 @@ function DBDashboardPage({
     isFetching: isFetchingDashboard,
     isSetting: isSavingDashboard,
   } = dashboardProps;
-  const brandName = useBrandDisplayName();
+  const title = usePageTitle(dashboard?.name ? dashboard.name : 'Dashboard');
   const confirm = useConfirm();
   const {
     userPreferences: { isUTC },
@@ -3227,7 +3226,7 @@ function DBDashboardPage({
   const dashboardBody = (
     <>
       <Head>
-        <title>{`${dashboard?.name ? dashboard.name : 'Dashboard'} – ${brandName}${INSTANCE_TITLE_SUFFIX}`}</title>
+        <title>{title}</title>
       </Head>
       {!isKioskMode && <OnboardingModal />}
       {!isKioskMode && (

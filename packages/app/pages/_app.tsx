@@ -15,11 +15,7 @@ import {
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 
 import { DynamicFavicon } from '@/components/DynamicFavicon';
-import {
-  INSTANCE_TITLE_SUFFIX,
-  IS_LOCAL_MODE,
-  parseResourceAttributes,
-} from '@/config';
+import { IS_LOCAL_MODE, parseResourceAttributes } from '@/config';
 import {
   DEFAULT_FONT_VAR,
   FONT_VAR_MAP,
@@ -27,7 +23,11 @@ import {
 } from '@/config/fonts';
 import { ibmPlexMono, inter, roboto, robotoMono } from '@/fonts';
 import { fetchServerVersion, installHdxDebug } from '@/hdxDebug';
-import { AppThemeProvider, useAppTheme } from '@/theme/ThemeProvider';
+import {
+  AppThemeProvider,
+  useAppTheme,
+  usePageTitle,
+} from '@/theme/ThemeProvider';
 import { ThemeWrapper } from '@/ThemeWrapper';
 import { NextApiConfigResponseData } from '@/types';
 import { ConfirmProvider } from '@/useConfirm';
@@ -74,11 +74,11 @@ type AppPropsWithLayout = AppProps & {
 // Component that renders Head content requiring user preferences
 // Must be rendered inside AppThemeProvider to avoid hydration mismatch
 function AppHeadContent() {
-  const { theme } = useAppTheme();
+  const title = usePageTitle();
 
   return (
     <Head>
-      <title>{`${theme.displayName}${INSTANCE_TITLE_SUFFIX}`}</title>
+      <title>{title}</title>
       <meta name="viewport" content="width=device-width, initial-scale=1" />
       <meta name="google" content="notranslate" />
       <SystemColorSchemeScript />

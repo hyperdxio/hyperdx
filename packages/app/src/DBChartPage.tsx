@@ -33,13 +33,13 @@ import { DEFAULT_CHART_CONFIG } from '@/ChartUtils';
 import EditTimeChartForm from '@/components/DBEditTimeChartForm';
 import { InputControlled } from '@/components/InputControlled';
 import { SourceSelectControlled } from '@/components/SourceSelect';
-import { INSTANCE_TITLE_SUFFIX, IS_ALERT_DETAILS_ENABLED } from '@/config';
+import { IS_ALERT_DETAILS_ENABLED } from '@/config';
 import { useChartAssistant } from '@/hooks/ai';
 import { useAlertSeededChartConfig } from '@/hooks/useAlertSeededChartConfig';
 import { useResolvedSourceParam } from '@/hooks/useResolvedSourceParam';
 import { withAppNavForSurface } from '@/layout';
 import { useSources } from '@/source';
-import { useBrandDisplayName } from '@/theme/ThemeProvider';
+import { useBrandDisplayName, usePageTitle } from '@/theme/ThemeProvider';
 import { useDefaultTimeRange, useNewTimeQuery } from '@/timeQuery';
 import { useLocalStorage } from '@/utils';
 import { buildInlineAlertPayload } from '@/utils/alerts';
@@ -211,7 +211,7 @@ const DEFAULT_INTERVAL = 'Past 1h';
 
 function DBChartExplorerPage() {
   const defaultTimeRange = useDefaultTimeRange(DEFAULT_INTERVAL);
-  const brandName = useBrandDisplayName();
+  const title = usePageTitle('Chart Explorer');
   const {
     searchedTimeRange,
     displayedTimeInputValue,
@@ -316,7 +316,7 @@ function DBChartExplorerPage() {
   return (
     <Box data-testid="chart-explorer-page" p="sm">
       <Head>
-        <title>{`Chart Explorer - ${brandName}${INSTANCE_TITLE_SUFFIX}`}</title>
+        <title>{title}</title>
       </Head>
       <OnboardingModal />
       <AIAssistant

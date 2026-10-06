@@ -43,7 +43,6 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 
 import { PageLayout } from '@/components/PageLayout';
 import { TimePicker } from '@/components/TimePicker';
-import { INSTANCE_TITLE_SUFFIX } from '@/config';
 import { useResolvedSourceParam } from '@/hooks/useResolvedSourceParam';
 import { useVirtualList } from '@/hooks/useVirtualList';
 
@@ -59,7 +58,7 @@ import { SourceSelectControlled } from './components/SourceSelect';
 import { useQueriedChartConfig } from './hooks/useChartConfig';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
 import { useJsonColumns } from './hooks/useMetadata';
-import { useBrandDisplayName } from './theme/ThemeProvider';
+import { usePageTitle } from './theme/ThemeProvider';
 import {
   convertV1ChartConfigToV2,
   K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
@@ -1050,7 +1049,7 @@ const DEFAULT_INTERVAL = 'Past 1h';
 
 function KubernetesDashboardPage() {
   const defaultTimeRange = useDefaultTimeRange(DEFAULT_INTERVAL);
-  const brandName = useBrandDisplayName();
+  const title = usePageTitle('Kubernetes Dashboard');
   const { data: sources } = useSources();
 
   const [_logSourceId, setLogSourceId] = useQueryState('logSource');
@@ -1379,7 +1378,7 @@ function KubernetesDashboardPage() {
   const dashboardBody = (
     <>
       <Head>
-        <title>{`Kubernetes Dashboard – ${brandName}${INSTANCE_TITLE_SUFFIX}`}</title>
+        <title>{title}</title>
       </Head>
       <OnboardingModal requireSource={false} />
       {metricSource && logSource && (

@@ -45,7 +45,6 @@ import { PageHeader } from '@/components/PageHeader';
 import { PageLayout } from '@/components/PageLayout';
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { TimePicker } from '@/components/TimePicker';
-import { INSTANCE_TITLE_SUFFIX } from '@/config';
 import { useDashboardRefresh } from '@/hooks/useDashboardRefresh';
 import { useResolvedSourceParam } from '@/hooks/useResolvedSourceParam';
 import { useDefaultTimeRange, useNewTimeQuery } from '@/timeQuery';
@@ -54,7 +53,7 @@ import OnboardingModal from './components/OnboardingModal';
 import SearchWhereInput, {
   getStoredLanguage,
 } from './components/SearchInput/SearchWhereInput';
-import { useBrandDisplayName } from './theme/ThemeProvider';
+import { useBrandDisplayName, usePageTitle } from './theme/ThemeProvider';
 import { withAppNavForSurface } from './layout';
 import { Session, useSessions } from './sessions';
 import SessionSidePanel from './SessionSidePanel';
@@ -241,7 +240,7 @@ const DEFAULT_INTERVAL = 'Past 1h';
 
 function SessionsPage() {
   const defaultTimeRange = useDefaultTimeRange(DEFAULT_INTERVAL);
-  const brandName = useBrandDisplayName();
+  const title = usePageTitle('Client Sessions');
   const [appliedConfig, setAppliedConfig] = useQueryStates(appliedConfigMap);
   // `?sessionSource=` accepts a source name as well as a source ID. The form
   // holds the resolved ID, so nothing downstream ever sees a name.
@@ -398,7 +397,7 @@ function SessionsPage() {
   return (
     <>
       <Head>
-        <title>{`Client Sessions - ${brandName}${INSTANCE_TITLE_SUFFIX}`}</title>
+        <title>{title}</title>
       </Head>
       <OnboardingModal />
       {selectedSession != null &&

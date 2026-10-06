@@ -34,7 +34,7 @@ import { PageLayout } from '@/components/PageLayout';
 import SearchWhereInput, {
   getStoredLanguage,
 } from '@/components/SearchInput/SearchWhereInput';
-import { INSTANCE_TITLE_SUFFIX, IS_LOCAL_MODE } from '@/config';
+import { IS_LOCAL_MODE } from '@/config';
 import { useGetKeyValues } from '@/hooks/useMetadata';
 import { useResolvedSourceParam } from '@/hooks/useResolvedSourceParam';
 import { withAppNavForSurface } from '@/layout';
@@ -48,7 +48,7 @@ import SourceSchemaPreview, {
 } from './components/SourceSchemaPreview';
 import { SourceSelectControlled } from './components/SourceSelect';
 import { TimePicker } from './components/TimePicker';
-import { useBrandDisplayName } from './theme/ThemeProvider';
+import { usePageTitle } from './theme/ThemeProvider';
 import { useSources } from './source';
 import { useDefaultTimeRange, useNewTimeQuery } from './timeQuery';
 
@@ -86,7 +86,7 @@ const searchQueryStateMap = {
 
 function DBServiceMapPage() {
   const defaultTimeRange = useDefaultTimeRange(DEFAULT_INTERVAL);
-  const brandName = useBrandDisplayName();
+  const title = usePageTitle('Service Map');
 
   const { data: sources } = useSources();
   // `?source=` accepts a source name as well as a source ID.
@@ -224,12 +224,12 @@ function DBServiceMapPage() {
     () => (
       <>
         <Head>
-          <title>{`Service Map - ${brandName}${INSTANCE_TITLE_SUFFIX}`}</title>
+          <title>{title}</title>
         </Head>
         <OnboardingModal />
       </>
     ),
-    [brandName],
+    [title],
   );
 
   const sourceSelect = source ? (

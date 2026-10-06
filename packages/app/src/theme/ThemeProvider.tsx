@@ -8,6 +8,8 @@ import React, {
   useState,
 } from 'react';
 
+import { INSTANCE_TITLE_SUFFIX } from '@/config';
+
 import {
   DEFAULT_THEME,
   getDevThemeName,
@@ -240,4 +242,15 @@ export function useThemeName(): ThemeName {
 export function useBrandDisplayName(): string {
   const { theme } = useAppTheme();
   return theme.displayName;
+}
+
+/**
+ * Hook to build a `<title>`/`<NextSeo title>` value: brand name plus the
+ * configured instance label, with an optional page name prepended.
+ * e.g. usePageTitle('Search') => "Search - HyperDX - USA"
+ */
+export function usePageTitle(page?: string): string {
+  const brandName = useBrandDisplayName();
+  const brandTitle = `${brandName}${INSTANCE_TITLE_SUFFIX}`;
+  return page ? `${page} - ${brandTitle}` : brandTitle;
 }

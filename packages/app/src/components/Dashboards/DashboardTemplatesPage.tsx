@@ -13,13 +13,12 @@ import {
 } from '@mantine/core';
 import { IconUpload } from '@tabler/icons-react';
 
-import { INSTANCE_TITLE_SUFFIX } from '@/config';
 import { DASHBOARD_TEMPLATES } from '@/dashboardTemplates';
 import { withAppNav } from '@/layout';
-import { useBrandDisplayName } from '@/theme/ThemeProvider';
+import { usePageTitle } from '@/theme/ThemeProvider';
 
 export default function DashboardTemplatesPage() {
-  const brandName = useBrandDisplayName();
+  const title = usePageTitle('Dashboard Templates');
 
   const templatesByTag = useMemo(() => {
     const groups = new Map<string, typeof DASHBOARD_TEMPLATES>();
@@ -45,7 +44,7 @@ export default function DashboardTemplatesPage() {
   return (
     <div data-testid="dashboard-templates-page">
       <Head>
-        <title>{`Dashboard Templates - ${brandName}${INSTANCE_TITLE_SUFFIX}`}</title>
+        <title>{title}</title>
       </Head>
       <Breadcrumbs my="lg" ms="xs" fz="sm">
         <Anchor component={Link} href="/dashboards/list" fz="sm" c="dimmed">

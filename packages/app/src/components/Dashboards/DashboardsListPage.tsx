@@ -46,7 +46,7 @@ import { FavoriteButton } from '@/components/FavoriteButton';
 import { ListingCard } from '@/components/ListingCard';
 import { ListingRow } from '@/components/ListingListRow';
 import { PageHeader } from '@/components/PageHeader';
-import { INSTANCE_TITLE_SUFFIX, IS_K8S_DASHBOARD_ENABLED } from '@/config';
+import { IS_K8S_DASHBOARD_ENABLED } from '@/config';
 import {
   type Dashboard,
   useCreateDashboard,
@@ -55,7 +55,7 @@ import {
 } from '@/dashboard';
 import { useFavorites } from '@/favorites';
 import { withAppNav } from '@/layout';
-import { useBrandDisplayName } from '@/theme/ThemeProvider';
+import { usePageTitle } from '@/theme/ThemeProvider';
 import { useConfirm } from '@/useConfirm';
 
 function getDashboardAlerts(tiles: Dashboard['tiles']) {
@@ -97,7 +97,7 @@ const PRESET_DASHBOARDS = [
 ];
 
 export default function DashboardsListPage() {
-  const brandName = useBrandDisplayName();
+  const title = usePageTitle('Dashboards');
   const { data: dashboards, isLoading, isError } = useDashboards();
   const { data: me, isPending: isMePending } = api.useMe();
   const confirm = useConfirm();
@@ -218,7 +218,7 @@ export default function DashboardsListPage() {
       style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}
     >
       <Head>
-        <title>{`Dashboards - ${brandName}${INSTANCE_TITLE_SUFFIX}`}</title>
+        <title>{title}</title>
       </Head>
       <PageHeader
         title="Dashboards"

@@ -27,10 +27,10 @@ import { AlertStateBadge } from '@/components/alerts/AlertStateBadge';
 import EmptyState from '@/components/EmptyState';
 import { PageHeader } from '@/components/PageHeader';
 import { TimePicker } from '@/components/TimePicker';
-import { INSTANCE_TITLE_SUFFIX, IS_ALERT_DETAILS_ENABLED } from '@/config';
+import { IS_ALERT_DETAILS_ENABLED } from '@/config';
 import { getAlertSourceLabel, getAlertSourceUrl } from '@/utils/alerts';
 
-import { useBrandDisplayName } from './theme/ThemeProvider';
+import { usePageTitle } from './theme/ThemeProvider';
 import api from './api';
 import { withAppNavForSurface } from './layout';
 import { useDefaultTimeRange, useNewTimeQuery } from './timeQuery';
@@ -223,7 +223,6 @@ function AlertDetailBody({ alert }: { alert: AlertsPageItem }) {
 }
 
 export default function AlertDetailPage() {
-  const brandName = useBrandDisplayName();
   const router = useRouter();
   const alertId =
     typeof router.query.alertId === 'string' ? router.query.alertId : undefined;
@@ -238,6 +237,9 @@ export default function AlertDetailPage() {
 
   const { data, isLoading, isError } = api.useAlert(alertId);
   const alert = data?.data;
+  const title = usePageTitle(
+    alert ? `${alert.displayName} - Alerts` : 'Alerts',
+  );
 
   if (!IS_ALERT_DETAILS_ENABLED) {
     return null;
@@ -249,7 +251,7 @@ export default function AlertDetailPage() {
       style={{ display: 'flex', flexDirection: 'column', height: '100%' }}
     >
       <Head>
-        <title>{`${alert ? `${alert.displayName} - Alerts` : 'Alerts'} - ${brandName}${INSTANCE_TITLE_SUFFIX}`}</title>
+        <title>{title}</title>
       </Head>
       {isLoading && (
         <Container size="xl" py="md" w="100%">

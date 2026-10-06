@@ -10,14 +10,12 @@ import {
   TextInput,
 } from '@mantine/core';
 
-import { INSTANCE_TITLE_SUFFIX } from '@/config';
-
-import { useBrandDisplayName } from './theme/ThemeProvider';
+import { usePageTitle } from './theme/ThemeProvider';
 import { PasswordCheck } from './PasswordCheck';
 
 export default function JoinTeam() {
   const router = useRouter();
-  const brandName = useBrandDisplayName();
+  const title = usePageTitle('Join Team');
   const { err, reason, token } = router.query;
   const [password, setPassword] = useState('');
 
@@ -33,7 +31,7 @@ export default function JoinTeam() {
 
   return (
     <div className="AuthPage">
-      <NextSeo title={`Join Team - ${brandName}${INSTANCE_TITLE_SUFFIX}`} />
+      <NextSeo title={title} />
       <div className="d-flex align-items-center justify-content-center vh-100 p-2">
         <div style={{ width: '26rem', maxWidth: '100%' }}>
           <div className="text-center mb-4">

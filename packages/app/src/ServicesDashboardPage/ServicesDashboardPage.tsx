@@ -48,7 +48,7 @@ import ServiceDashboardDbQuerySidePanel from '@/components/ServiceDashboardDbQue
 import ServiceDashboardEndpointSidePanel from '@/components/ServiceDashboardEndpointSidePanel';
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { TimePicker } from '@/components/TimePicker';
-import { INSTANCE_TITLE_SUFFIX, IS_LOCAL_MODE } from '@/config';
+import { IS_LOCAL_MODE } from '@/config';
 import DashboardFilters from '@/DashboardFilters';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useDashboardRefresh } from '@/hooks/useDashboardRefresh';
@@ -57,7 +57,7 @@ import { useResolvedSourceParam } from '@/hooks/useResolvedSourceParam';
 import { withAppNavForSurface } from '@/layout';
 import { useServiceDashboardExpressions } from '@/serviceDashboard';
 import { useSource, useSources } from '@/source';
-import { useBrandDisplayName } from '@/theme/ThemeProvider';
+import { usePageTitle } from '@/theme/ThemeProvider';
 import { useDefaultTimeRange, useNewTimeQuery } from '@/timeQuery';
 
 import DatabaseTab from './DatabaseTab';
@@ -166,7 +166,7 @@ const DEFAULT_INTERVAL = 'Past 1h';
 
 function ServicesDashboardPage() {
   const defaultTimeRange = useDefaultTimeRange(DEFAULT_INTERVAL);
-  const brandName = useBrandDisplayName();
+  const title = usePageTitle('Services Dashboard');
   const [tab, setTab] = useQueryState(
     'tab',
     parseAsStringEnum<string>(['http', 'database', 'errors']).withDefault(
@@ -313,7 +313,7 @@ function ServicesDashboardPage() {
   return (
     <Box p="sm" data-testid="services-dashboard-page">
       <Head>
-        <title>{`Services Dashboard – ${brandName}${INSTANCE_TITLE_SUFFIX}`}</title>
+        <title>{title}</title>
       </Head>
       <Breadcrumbs mb="sm" mt="xs" fz="sm">
         <Anchor component={Link} href="/dashboards/list" fz="sm" c="dimmed">
