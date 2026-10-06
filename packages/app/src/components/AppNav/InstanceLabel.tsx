@@ -18,7 +18,13 @@ export function InstanceLabel({ fallback = null }: { fallback?: ReactNode }) {
       fw="normal"
       tt="none"
       title={INSTANCE_LABEL}
-      style={{ minWidth: 0, maxWidth: 120 }}
+      // Capped well under the sidebar's available width (wordmark + gap +
+      // collapse button) so a long label can't push the header's content past
+      // one line: `.header`'s flex-wrap:wrap decides line breaks using each
+      // item's pre-shrink hypothetical size, not its post-shrink size, so
+      // min-width:0 alone doesn't prevent a maxed-out badge from wrapping the
+      // collapse button onto a second, clipped line.
+      style={{ minWidth: 0, maxWidth: 80 }}
     >
       {INSTANCE_LABEL}
     </Badge>
