@@ -275,7 +275,7 @@ export class DashboardPage {
     // The document title comes from the saved dashboard, so it only changes
     // once the rename has persisted.
     const escaped = newName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    await expect(this.page).toHaveTitle(new RegExp(`^${escaped} – `), {
+    await expect(this.page).toHaveTitle(new RegExp(`^${escaped} - `), {
       timeout: 10000,
     });
   }
