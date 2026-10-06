@@ -111,7 +111,7 @@ test.describe(
         // rather than claiming the instant query it is not running.
         await expect(
           page.getByTestId('promql-query-type-control-0'),
-        ).toContainText('Settings: Range');
+        ).toContainText('Settings: Range / Last');
       });
 
       await test.step('Count over the range reports more than one sample', async () => {
@@ -126,6 +126,27 @@ test.describe(
         await editor.setPromqlQueryType('Instant');
         await editor.runQuery(false);
 
+        // Count still applies, but an instant vector has one sample per series.
+        await expect(value).toHaveText('1', { timeout: 30000 });
+        await expect(
+          page.getByRole('combobox', { name: 'PromQL reducer' }),
+        ).toHaveValue('Count');
+      });
+
+      await test.step('An instant range selector is reduced too', async () => {
+        // A range selector evaluates to every sample in the window, even as an
+        // instant query. The expression is set after the query type: it does
+        // not end in `}`, so the autocomplete popup can stay open.
+        await editor.replacePromqlExpression(`${ONE_SERIES}[5m]`);
+        await editor.runQuery(false);
+
+        await expect(value).not.toHaveText('1', { timeout: 30000 });
+        await expect(
+          page.getByTestId('multiple-values-indicator'),
+        ).toBeHidden();
+
+        await editor.replacePromqlExpression(ONE_SERIES);
+        await editor.runQuery(false);
         await expect(value).toHaveText('1', { timeout: 30000 });
       });
 

@@ -1,6 +1,4 @@
 import React from 'react';
-import { MantineProvider } from '@mantine/core';
-import { Notifications } from '@mantine/notifications';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
@@ -307,8 +305,7 @@ describe('DBTimeChart', () => {
       // survive — this also guards against dateRange being reintroduced into
       // queryShapeIdentity, which would make live-range ticks re-cap the chart.
       rerender(
-        <MantineProvider>
-          <Notifications />
+        <TestProviders>
           <DBTimeChart
             config={{
               ...groupByConfig,
@@ -318,7 +315,7 @@ describe('DBTimeChart', () => {
               ],
             }}
           />
-        </MantineProvider>,
+        </TestProviders>,
       );
 
       // The opt-in survives: no series are re-hidden, so the affordance stays
@@ -349,10 +346,9 @@ describe('DBTimeChart', () => {
       // Change the query shape (a positive seriesLimit below GROUP_COUNT keeps
       // series hidden), which should reset the opt-in and re-show the affordance.
       rerender(
-        <MantineProvider>
-          <Notifications />
+        <TestProviders>
           <DBTimeChart config={{ ...groupByConfig, seriesLimit: 5 }} />
-        </MantineProvider>,
+        </TestProviders>,
       );
 
       expect(

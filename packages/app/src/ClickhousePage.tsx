@@ -36,7 +36,7 @@ import { ConnectionSelectControlled } from '@/components/ConnectionSelect';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import { PageLayout } from '@/components/PageLayout';
 import { TimePicker } from '@/components/TimePicker';
-import { withAppNav } from '@/layout';
+import { withAppNavForSurface } from '@/layout';
 
 import { ChartCard } from './components/charts/ChartCard';
 import ChartContainer from './components/charts/ChartContainer';
@@ -668,23 +668,27 @@ function ClickhousePage() {
                     <DBHeatmapChart
                       title="Query Latency"
                       toolbarSuffix={heatmapToolbarItems}
-                      config={{
-                        displayType: DisplayType.Heatmap,
-                        select: [
-                          {
-                            aggFn: 'heatmap',
-                            valueExpression: 'query_duration_ms',
-                          },
-                        ],
-                        from,
-                        dateRange: searchedTimeRange,
-                        granularity: 'auto',
-                        timestampValueExpression: 'event_time',
-                        connection,
-                        where: `query_kind='Select' AND (
+                      query={{
+                        mode: 'distribution',
+                        scaleType: 'log',
+                        config: {
+                          displayType: DisplayType.Heatmap,
+                          select: [
+                            {
+                              aggFn: 'heatmap',
+                              valueExpression: 'query_duration_ms',
+                            },
+                          ],
+                          from,
+                          dateRange: searchedTimeRange,
+                          granularity: 'auto',
+                          timestampValueExpression: 'event_time',
+                          connection,
+                          where: `query_kind='Select' AND (
                   type='ExceptionWhileProcessing' OR type='QueryFinish' 
                 )`,
-                        filters,
+                          filters,
+                        },
                       }}
                       onFilter={(tsStart, tsEnd, latencyMin, latencyMax) => {
                         onTimeRangeSelect(
@@ -871,6 +875,9 @@ const ClickhousePageDynamic = dynamic(async () => ClickhousePage, {
 });
 
 // @ts-expect-error next/dynamic component type does not include the getLayout static
-ClickhousePageDynamic.getLayout = withAppNav;
+ClickhousePageDynamic.getLayout = withAppNavForSurface(
+  'dashboard',
+  'clickhouse',
+);
 
 export default ClickhousePageDynamic;

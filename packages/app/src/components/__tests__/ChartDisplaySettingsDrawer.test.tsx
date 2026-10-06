@@ -30,6 +30,51 @@ describe('ChartDisplaySettingsDrawer', () => {
     jest.clearAllMocks();
   });
 
+  describe('heatmap y axis scale', () => {
+    it('shows the scale only for heatmaps', () => {
+      const { unmount } = renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          configType="builder"
+          displayType={DisplayType.Line}
+        />,
+      );
+      expect(
+        screen.queryByTestId('heatmap-scale-control'),
+      ).not.toBeInTheDocument();
+      unmount();
+
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          configType="builder"
+          displayType={DisplayType.Heatmap}
+        />,
+      );
+      expect(screen.getByTestId('heatmap-scale-control')).toBeInTheDocument();
+    });
+
+    it('applies the chosen scale', async () => {
+      const onChange = jest.fn();
+      const user = userEvent.setup();
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          configType="builder"
+          displayType={DisplayType.Heatmap}
+          onChange={onChange}
+        />,
+      );
+
+      await user.click(screen.getByText('Linear'));
+      await user.click(screen.getByRole('button', { name: /apply/i }));
+
+      expect(onChange.mock.calls[0][0]).toMatchObject({
+        heatmapScaleType: 'linear',
+      });
+    });
+  });
+
   describe('color picker section', () => {
     it('shows the color picker when displayType is Number', () => {
       renderWithMantine(

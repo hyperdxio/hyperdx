@@ -6,7 +6,10 @@ import DateRangeIndicator from '@/components/charts/DateRangeIndicator';
 import DBNumberChart from '@/components/DBNumberChart';
 import MVOptimizationIndicator from '@/components/MaterializedViews/MVOptimizationIndicator';
 import NumberTileBackgroundChart from '@/components/NumberTileBackgroundChart';
-import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import {
+  getMinGranularitySeconds,
+  useQueriedChartConfig,
+} from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useSource } from '@/source';
 import { NumberFormat } from '@/types';
@@ -15,6 +18,7 @@ import { formatNumber, getColorFromCSSToken } from '@/utils';
 // Mock dependencies
 jest.mock('@/hooks/useChartConfig', () => ({
   useQueriedChartConfig: jest.fn(),
+  getMinGranularitySeconds: jest.fn().mockReturnValue(undefined),
 }));
 
 jest.mock('@/hooks/useMVOptimizationExplanation', () => ({
@@ -793,6 +797,26 @@ describe('DBNumberChart', () => {
       });
     };
 
+    it("floors an auto granularity at the source's minimum", () => {
+      jest.mocked(getMinGranularitySeconds).mockReturnValueOnce(300);
+
+      renderWithMantine(
+        <DBNumberChart
+          config={{
+            ...promqlConfig,
+            dateRange: [
+              new Date('2025-11-26T00:00:14.076Z'),
+              new Date('2025-11-26T01:00:14.076Z'),
+            ],
+          }}
+        />,
+      );
+
+      const queriedConfig = mockUseQueriedChartConfig.mock.calls[0][0];
+      expect(queriedConfig.granularity).toBe('5 minute');
+      expect(queriedConfig.minGranularitySeconds).toBe(300);
+    });
+
     it('shows the value when the expression yields exactly one', () => {
       setInstantRows([{ series_name: 'up{service="accounting"}', value: 7 }]);
       mockFormatNumber.mockReturnValue('7');
@@ -828,23 +852,6 @@ describe('DBNumberChart', () => {
       );
       // Still shows the first value rather than blanking the tile.
       expect(screen.getByTestId('number-chart-value')).toHaveTextContent('1');
-    });
-
-    // Several values under one name is the other failure: the expression is
-    // returning a range rather than a single sample per series.
-    it('warns differently when one series carries several values', () => {
-      setInstantRows([
-        { series_name: 'up', value: 1 },
-        { series_name: 'up', value: 2 },
-      ]);
-      mockFormatNumber.mockReturnValue('1');
-
-      renderWithMantine(<DBNumberChart config={promqlConfig} />);
-
-      expect(screen.getByTestId('multiple-values-indicator')).toHaveAttribute(
-        'aria-label',
-        'Query returned 2 values for one series',
-      );
     });
 
     it('does not warn for a non-PromQL config with several rows', () => {
